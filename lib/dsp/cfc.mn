@@ -27,6 +27,13 @@ import math
 
 import io
 
+// Positive — a strictly positive count: a hop in samples, a grid width.
+// The refinement PROVES the divisions below total (`k / num_high` and
+// `(len(xs) - win) / hop` exclude 0 and -1), so no site here performs
+// `Trap`; a caller pays the claim once, at the argument, where a literal
+// folds and a computed value is honest debt.
+type Positive = Int where 0 < self
+
 // ─── Hann window — the taper that tames spectral leakage ────────────
 //
 // 0.5·(1 − cos(2πi/(n−1))): zero at the ends, unity at the centre, so a
@@ -55,7 +62,7 @@ fn bin_mag(re: Float, im: Float) -> Float with Pure = sqrt(re * re + im * im)
 //
 // The loop is the tail-recursive accumulator the whole file uses; no
 // list grows inside it (the samples are read, never appended).
-fn dft_bin_loop(xs, start: Int, n: Int, freq: Int, sr: Int, j: Int, re: Float, im: Float) with Memory + Alloc = if j >= n {
+fn dft_bin_loop(xs, start: Int, n: Int, freq: Int, sr: Int, j: Int, re: Float, im: Float) = if j >= n {
   (re / float_of_int(n), 0.0 - im / float_of_int(n))
 } else {
   let sample = list_index(xs, start + j)
@@ -65,7 +72,7 @@ fn dft_bin_loop(xs, start: Int, n: Int, freq: Int, sr: Int, j: Int, re: Float, i
   dft_bin_loop(xs, start, n, freq, sr, j + 1, re + wx * cos(angle), im + wx * sin(angle))
 }
 
-fn dft_bin(xs, start: Int, n: Int, freq: Int, sr: Int) with Memory + Alloc =
+fn dft_bin(xs, start: Int, n: Int, freq: Int, sr: Int) =
   dft_bin_loop(xs, start, n, freq, sr, 0, 0.0, 0.0)
 
 // ─── Mean vector length — the coupling measure ──────────────────────
@@ -83,7 +90,7 @@ fn dft_bin(xs, start: Int, n: Int, freq: Int, sr: Int) with Memory + Alloc =
 // with no carrier (measured: the /Σamp form peaks at high=60 Hz, a band
 // the signal never fills, while the raw form peaks at the true 40 Hz).
 // The amplitude weight IS the discriminator; do not divide it out.
-fn mvl_loop(phases, amps, i: Int, n: Int, sc: Float, ss: Float) -> Float with Memory = if i >= n {
+fn mvl_loop(phases, amps, i: Int, n: Int, sc: Float, ss: Float) -> Float = if i >= n {
   sqrt(sc * sc + ss * ss) / float_of_int(n)
 } else {
   let p = list_index(phases, i)
@@ -91,7 +98,7 @@ fn mvl_loop(phases, amps, i: Int, n: Int, sc: Float, ss: Float) -> Float with Me
   mvl_loop(phases, amps, i + 1, n, sc + a * cos(p), ss + a * sin(p))
 }
 
-fn mvl(phases, amps) -> Float with Memory = mvl_loop(phases, amps, 0, len(phases), 0.0, 0.0)
+fn mvl(phases, amps) -> Float = mvl_loop(phases, amps, 0, len(phases), 0.0, 0.0)
 
 // ─── Per-frequency time series — the O(frames × win × bins) tables ──
 //
@@ -101,7 +108,7 @@ fn mvl(phases, amps) -> Float with Memory = mvl_loop(phases, amps, 0, len(phases
 // amplitude column for every high bin visits each (frame, bin) once:
 // O(num_frames × win × (num_low + num_high)). The comodulogram then reads
 // columns, never recomputing a DFT per (low, high) pair.
-fn fill_phase_column(xs, sr: Int, freq: Int, win: Int, hop: Int, num_frames: Int, out, f: Int) with Memory + Alloc = if f >= num_frames {
+fn fill_phase_column(xs, sr: Int, freq: Int, win: Int, hop: Int, num_frames: Int, out, f: Int) = if f >= num_frames {
   out
 } else {
   match dft_bin(xs, f * hop, win, freq, sr) {
@@ -112,10 +119,10 @@ fn fill_phase_column(xs, sr: Int, freq: Int, win: Int, hop: Int, num_frames: Int
   }
 }
 
-fn phase_column(xs, sr: Int, freq: Int, win: Int, hop: Int, num_frames: Int) with Memory + Alloc =
+fn phase_column(xs, sr: Int, freq: Int, win: Int, hop: Int, num_frames: Int) =
   fill_phase_column(xs, sr, freq, win, hop, num_frames, make_list(num_frames), 0)
 
-fn fill_amp_column(xs, sr: Int, freq: Int, win: Int, hop: Int, num_frames: Int, out, f: Int) with Memory + Alloc = if f >= num_frames {
+fn fill_amp_column(xs, sr: Int, freq: Int, win: Int, hop: Int, num_frames: Int, out, f: Int) = if f >= num_frames {
   out
 } else {
   match dft_bin(xs, f * hop, win, freq, sr) {
@@ -126,13 +133,13 @@ fn fill_amp_column(xs, sr: Int, freq: Int, win: Int, hop: Int, num_frames: Int, 
   }
 }
 
-fn amp_column(xs, sr: Int, freq: Int, win: Int, hop: Int, num_frames: Int) with Memory + Alloc =
+fn amp_column(xs, sr: Int, freq: Int, win: Int, hop: Int, num_frames: Int) =
   fill_amp_column(xs, sr, freq, win, hop, num_frames, make_list(num_frames), 0)
 
 // One column per frequency, collected into a list-of-columns (the list
 // holds column handles — an ordinary Int-slot list). `is_phase` picks the
 // projection so the two builds share one walk.
-fn fill_columns(xs, sr: Int, freqs, win: Int, hop: Int, num_frames: Int, num_freqs: Int, is_phase, out, fi: Int) with Memory + Alloc = if fi >= num_freqs {
+fn fill_columns(xs, sr: Int, freqs, win: Int, hop: Int, num_frames: Int, num_freqs: Int, is_phase, out, fi: Int) = if fi >= num_freqs {
   out
 } else {
   let freq = list_index(freqs, fi)
@@ -145,7 +152,7 @@ fn fill_columns(xs, sr: Int, freqs, win: Int, hop: Int, num_frames: Int, num_fre
   fill_columns(xs, sr, freqs, win, hop, num_frames, num_freqs, is_phase, out2, fi + 1)
 }
 
-fn columns(xs, sr: Int, freqs, win: Int, hop: Int, num_frames: Int, is_phase) with Memory + Alloc =
+fn columns(xs, sr: Int, freqs, win: Int, hop: Int, num_frames: Int, is_phase) =
   fill_columns(xs, sr, freqs, win, hop, num_frames, len(freqs), is_phase, make_list(len(freqs)), 0)
 
 // ─── The comodulogram — one MVL per (low, high) cell ────────────────
@@ -154,7 +161,7 @@ fn columns(xs, sr: Int, freqs, win: Int, hop: Int, num_frames: Int, is_phase) wi
 // then cell (li, hi) = MVL(low_phase[li], high_amp[hi]). Returns [[Float]]
 // (rows = low frequencies, cols = high). num_frames is
 // (len(xs) − win)/hop + 1.
-fn fill_row(low_cols, high_cols, li: Int, num_high: Int, out, hi: Int) with Memory = if hi >= num_high {
+fn fill_row(low_cols, high_cols, li: Int, num_high: Int, out, hi: Int) = if hi >= num_high {
   out
 } else {
   let phases = list_index(low_cols, li)
@@ -163,7 +170,7 @@ fn fill_row(low_cols, high_cols, li: Int, num_high: Int, out, hi: Int) with Memo
   fill_row(low_cols, high_cols, li, num_high, out2, hi + 1)
 }
 
-fn fill_matrix(low_cols, high_cols, num_low: Int, num_high: Int, out, li: Int) with Memory + Alloc = if li >= num_low {
+fn fill_matrix(low_cols, high_cols, num_low: Int, num_high: Int, out, li: Int) = if li >= num_low {
   out
 } else {
   let row = fill_row(low_cols, high_cols, li, num_high, make_list(num_high), 0)
@@ -171,7 +178,7 @@ fn fill_matrix(low_cols, high_cols, num_low: Int, num_high: Int, out, li: Int) w
   fill_matrix(low_cols, high_cols, num_low, num_high, out2, li + 1)
 }
 
-fn comodulogram(xs, sr: Int, low_freqs, high_freqs, win: Int, hop: Int) with Memory + Alloc = {
+fn comodulogram(xs, sr: Int, low_freqs, high_freqs, win: Int, hop: Positive) = {
   let num_frames = (len(xs) - win) / hop + 1
   let low_cols = columns(xs, sr, low_freqs, win, hop, num_frames, true)
   let high_cols = columns(xs, sr, high_freqs, win, hop, num_frames, false)
@@ -179,12 +186,12 @@ fn comodulogram(xs, sr: Int, low_freqs, high_freqs, win: Int, hop: Int) with Mem
 }
 
 // ─── Reading the matrix — accessor, argmax, and stats ───────────────
-fn matrix_get(matrix, li: Int, hi: Int) with Memory = list_index(list_index(matrix, li), hi)
+fn matrix_get(matrix, li: Int, hi: Int) = list_index(list_index(matrix, li), hi)
 
 // The argmax cell as a FLAT index (li·num_high + hi). The demo maps it
 // back to a (low, high) pair. Track the running best cell and its value;
 // a flat scan over num_low × num_high, no allocation.
-fn argmax_scan(matrix, num_low: Int, num_high: Int, k: Int, total: Int, best_k: Int, best_v: Float) with Memory = if k >= total {
+fn argmax_scan(matrix, num_low: Int, num_high: Positive, k: Int, total: Int, best_k: Int, best_v: Float) = if k >= total {
   best_k
 } else {
   let li = k / num_high
@@ -197,12 +204,12 @@ fn argmax_scan(matrix, num_low: Int, num_high: Int, k: Int, total: Int, best_k: 
   }
 }
 
-fn comodulogram_argmax(matrix, num_low: Int, num_high: Int) with Memory =
+fn comodulogram_argmax(matrix, num_low: Int, num_high: Positive) =
   argmax_scan(matrix, num_low, num_high, 0, num_low * num_high, 0, 0.0 - 1.0)
 
 // Sum of all cells (scaled Int) — for the mean, a peak/mean separation
 // witness the demo reports.
-fn matrix_sum(matrix, num_low: Int, num_high: Int, k: Int, total: Int, acc: Float) with Memory = if k >= total {
+fn matrix_sum(matrix, num_low: Int, num_high: Positive, k: Int, total: Int, acc: Float) = if k >= total {
   acc
 } else {
   let li = k / num_high
@@ -210,7 +217,7 @@ fn matrix_sum(matrix, num_low: Int, num_high: Int, k: Int, total: Int, acc: Floa
   matrix_sum(matrix, num_low, num_high, k + 1, total, acc + matrix_get(matrix, li, hi))
 }
 
-fn matrix_max(matrix, num_low: Int, num_high: Int) with Memory = {
+fn matrix_max(matrix, num_low: Int, num_high: Positive) = {
   let flat = comodulogram_argmax(matrix, num_low, num_high)
   let li = flat / num_high
   let hi = flat - li * num_high
@@ -222,7 +229,7 @@ fn matrix_max(matrix, num_low: Int, num_high: Int) with Memory = {
 // One row per low frequency, cells scaled by 1e6. Diagnostics-tier: the
 // gated demo never calls it, but a debug main does, so the (low, high)
 // peak is eyeball-checkable and the peak/mean ratio recordable.
-fn eprint_row(matrix, li: Int, num_high: Int, hi: Int) with Memory + Alloc + WASI = if hi >= num_high {
+fn eprint_row(matrix, li: Int, num_high: Int, hi: Int) = if hi >= num_high {
   eprint_string("\n")
 } else {
   eprint_string(float_to_str(matrix_get(matrix, li, hi)))
@@ -230,7 +237,7 @@ fn eprint_row(matrix, li: Int, num_high: Int, hi: Int) with Memory + Alloc + WAS
   eprint_row(matrix, li, num_high, hi + 1)
 }
 
-fn eprint_matrix(matrix, num_low: Int, num_high: Int, li: Int) with Memory + Alloc + WASI = if li >= num_low {
+fn eprint_matrix(matrix, num_low: Int, num_high: Int, li: Int) = if li >= num_low {
   0
 } else {
   eprint_row(matrix, li, num_high, 0)
@@ -254,7 +261,7 @@ fn eprint_matrix(matrix, num_low: Int, num_high: Int, li: Int) with Memory + All
 // `byte_len` reads a view's real length. A trailing newline leaves one
 // empty final view (byte_len 0), skipped. The buffer is preallocated to
 // the line count and sliced to the parsed length — no grow-and-copy.
-fn fill_recording(strs, num: Int, out, i: Int, w: Int) with Memory + Alloc = if i >= num {
+fn fill_recording(strs, num: Int, out, i: Int, w: Int) = if i >= num {
   slice(out, 0, w)
 } else {
   let line = str_concat("", list_index(strs, i))
@@ -266,7 +273,7 @@ fn fill_recording(strs, num: Int, out, i: Int, w: Int) with Memory + Alloc = if 
   }
 }
 
-fn read_recording(path) with Memory + Alloc + WASI = {
+fn read_recording(path) = {
   let strs = lines(fs_read_file_impl(path))
   fill_recording(strs, len(strs), make_list(len(strs)), 0, 0)
 }

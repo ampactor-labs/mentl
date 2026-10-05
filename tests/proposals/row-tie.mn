@@ -1,0 +1,22 @@
+// propose 20:33: ask row
+// The capability split (see tests/frontier/mn-row-tie.mn for the voice).
+effect Log {
+  note()
+}
+
+handler quiet_log {
+  note() => resume(),
+}
+
+type Seven = Int where self == 7
+
+fn silent() -> Seven with Pure = 7
+
+fn logged() -> Seven with Log = {
+  note()
+  7
+}
+
+fn choose() -> Seven with Log = ??
+
+fn main() = choose() ~> quiet_log

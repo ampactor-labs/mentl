@@ -1,0 +1,17 @@
+// expect: refuse E_EffectMismatch
+// A caller's function handed to another of the caller's choices: `run`
+// applies `h` at 5 and hands it to `g`, whose use only `run`'s caller
+// knows. What `g` is handed goes where `run` cannot see, so `h` learns that
+// its position is also handed values nothing here can name. Before that
+// rule the H4 tree read the provision 5 alone and this divided by zero
+// (exit 134); boot e23392f6 refused it because a constant provided nothing.
+type Positive = Int where 0 < self
+
+fn inv(n: Positive) = 100 / n
+
+fn run(g, h) = {
+  let _ = h(5)
+  g(h)
+}
+
+fn main() with !Trap = run({ k => k(0) }, inv)

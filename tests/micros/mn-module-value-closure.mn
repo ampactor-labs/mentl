@@ -1,0 +1,12 @@
+// expect: 7
+// A module-scope VALUE that holds a closure is called through the closure.
+// Every value binding was registered as a FnScheme, the kind lower cashes
+// into a direct call of the name's own symbol, so boot 2d18aedd called
+// `$add3`, which does not exist: `mentl check` clean, the module
+// unassemblable. Value bindings carry their own kind (ValueScheme,
+// types.mn).
+fn make_adder(n) = (x) => x + n
+
+let add3 = make_adder(3)
+
+fn main() = add3(4)

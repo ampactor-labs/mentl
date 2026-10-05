@@ -1,0 +1,15 @@
+// propose 13:38: ask name
+// One value, three spellings.
+type Seven = Int where self == 7
+
+effect Network {
+  ping()
+}
+
+fn pure_seven() -> Seven with Pure = 7
+
+fn calm_seven() -> Seven with Pure = pure_seven()
+
+fn choose() -> Seven with !Network = ??
+
+fn main() = choose()

@@ -1,0 +1,10 @@
+// B4 (2026-09-30): the sound twin of the race refusal through a callee —
+// the callback's handler only READS its state, so two spawned instances
+// share one immutable record and the demand runs `tally`'s fanout threaded.
+// Expected exit: 10.
+effect Counter { bump() -> Int }
+handler k with n = 5 { bump() => resume(n) }
+fn tally(f) = (f()) >< (f())
+fn main() = match (tally(() => bump())) ~> parallel_compose ~> k {
+  (a, b) => a + b,
+}

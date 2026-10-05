@@ -1,0 +1,26 @@
+// mn-arm-config-record — a handler reads its config record, a helper beside
+// it reads the record twice. Expect 42: (2·10 + 1) + (2·10 + 1).
+//
+// The arm reads two fields of `cfg`, so the install's record is the
+// instantiation the arm runs at; the helper `moved` reads the same record
+// and the one the op resumes with. Each read must land on its own record's
+// slots.
+//
+// RED on boot b29e319b: exit 134. The arm was lowered once from the
+// declaration and read `cfg` through its open row, so its offsets were
+// unprovable and the first read trapped.
+effect Facts {
+  facts_now() -> {v: [Int], w: [Int], x: Int, y: Int}
+}
+
+handler facting(cfg) {
+  facts_now() => resume({v: [1], w: [2], x: cfg.x, y: cfg.y}),
+}
+
+fn moved(prev, next) = prev.x * 10 + prev.y + next.x * 10 + next.y
+
+fn fix(prev) = match facts_now() ~> facting(prev) {
+  next => moved(prev, next),
+}
+
+fn main() -> Int = fix({v: [], w: [], x: 2, y: 1})

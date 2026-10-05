@@ -1,0 +1,12 @@
+// expect: 10
+// A `<~` inside a fn nested in a module-scope let's block: the fn is a
+// closure minted at run time, so its line is a slot in the record it is
+// minted with, and two calls tick one line — 3 against the zero prior, then
+// 4 against the prior 3. Boot 2d18aedd refused it: at frame depth zero the
+// nested fn took a static home it had no record for.
+let acc = {
+  fn step(x) = ((prev) => prev + x) <~ delay(1)
+  step(3) + step(4)
+}
+
+fn main() = acc

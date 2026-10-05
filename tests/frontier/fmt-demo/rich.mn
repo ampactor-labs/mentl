@@ -20,6 +20,22 @@ fn level_plus(a, b: {kind: String, level: Int}) = a + b.level
 // vertical layout so each label stays glued to its own element.
 fn spread(f, pair) = f(pair)
 
+fn keep(r) = r
+
+// The heads of postfix forms — a field read's receiver, a call's callee, an
+// index's receiver — each an operator expression: postfix binds tighter than
+// every operator, so the render must keep their parens or the re-parse takes
+// the postfix onto the head's last operand (the boot of 2026-09-28 rendered
+// `(r |> keep).level` as `r |> keep.level`).
+fn heads(r) = ((r |> keep).level - 5) + (((a, b) => a * b)(2, 3) - 6) + (([1, 2] ++ [3, 4])[2] - 3)
+
+// A module-scope `let` bound to a function literal IS the declaration: the
+// binder form renders as `fn`, and the arm-list form keeps its literal, whose
+// one parameter is minted and never reaches the page.
+let twice_of = (x) => x * 2
+
+let or_zero = { Some(v) => v, None => 0 }
+
 fn main() = {
   let base = {kind: "b", level: 2}
   let lifted = {...base, level: 3}
@@ -35,5 +51,5 @@ fn main() = {
   let (l2, _) = labeled
   let sharp = g((lo + hi) * 2) - (hi - lo) - 1
   describe(level_plus(lo, lifted) + hi, "sum")
-  sharp + level_plus(lo, lifted) - 5 + both - hi - l2
+  sharp + level_plus(lo, lifted) - 5 + both - hi - l2 + heads({kind: "c", level: 5}) + (twice_of(3) - 6) + (or_zero(Some(7)) - 7)
 }

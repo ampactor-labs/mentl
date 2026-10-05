@@ -272,6 +272,8 @@ The pipe's type rule (§«`|>` — converge») requires `right : A -> B` — a p
 
 **One primitive, five surfaces.** Positional construction, field/labeled construction, defaults, the hole (partial application), and pipe-completion are ONE thing — the parameter-list product constructed by identity with any subset of fields supplied, defaulted, or left as holes. There is no currying mechanism distinct from the product: a "curried function" is a product-with-holes, and the arity is never fuzzy, because the holes are named fields, not a hidden nesting of one-argument functions.
 
+**The product is the judgment's, written once at the call** (real, 2026-09-30). Labels resolve, defaults fill and holes are typed against the parameters the CALLEE NODE carries — a let-bound closure's own parameter names, a parameter's own arity, a field's own type — never against a module function that happens to share the name, and the lowering reads that product off the call node instead of resolving it again. Until then the lowering resolved every call a second time, by name in the module env: `g(b = 1, a = 5)` on a let-bound `g` ran as `g(1, 5)` (exit 252 for 4, zero diagnostics); `fn run(f) = f(7)` beside a top-level `f(a, b = 100)` spliced the module's default into the callback's call and trapped at the indirect call; the prelude's `fold_handler` arm `f(acc, elem)` was refused with an arity mismatch inside the library the moment a program declared a one-parameter `f`; and a partial over a local — `let inc = add(1)` on a let-bound `add` — called a top-level `add` of the same name, or floored where there was none. A partial over a local callee carries the callee's value in its record beside the supplied fields, and every open slot of a partial is typed by its own cell, so `fadd(1.5)` over a Float pair assembles where it did not (`Hβ.lower.callee-resolved-by-name-in-the-module-env`, closed).
+
 **The hole is the suspension point — SPACE and TIME are one.** A hole-product is a computation *suspended at its argument*; filling the hole *resumes* it. On the SPACE axis this is partial application — the field filled by a value, or by the pipe's flowing datum. On the TIME axis it is the multi-shot continuation (`PLAN.md §4④`): a `??` hole reified as a resumable record is a continuation awaiting its argument, fillable now, later, or many times. Partial application and continuation-resumption are the same operation — hole-filling keyed by identity — distinguished only by whether the hole is filled at the call site or captured and resumed. `??` is one absence marker across the whole medium: the gradient's synth-hole, the argument hole, and the continuation's resume-slot are the cursor reading *the same absence* at three altitudes.
 
 **A hole is productive, never executable.** A bare value-position `??` (no
@@ -336,12 +338,13 @@ projection; see §«What a comment TRENDS TO»). Three rulings:
   it was that a standalone helper can never reach `Thread` scheduling at all:
   the schedule is read LIVE at the fanout's own install site (§`><` — the
   same `resolve_in_stack` every op uses), never across a call boundary, so a
-  `><` inside a reusable fn is permanently `Seq` while its name promises
-  parallelism. `map` is sequential by construction (one tail loop); genuine
-  multi-core map is written `(map(f, a)) >< (map(f, b)) ~> Thread` at the
-  site where the schedule installs. Caller-selectable fanout inside a
-  reusable helper is the open peer `Hβ.lower.schedule-specialized-callee`
-  (PLAN §5.R band E).
+  `><` inside a reusable fn read `Seq` whatever its caller installed. The
+  schedule reaches it now — by DEMAND, through a direct call (real,
+  2026-09-30, §`><`): a `~> parallel_compose` over `render(voices)` runs
+  every `><` and `fanout` in `render`'s direct-call reach threaded, while
+  `map` stays sequential by construction (one loop) and `fanout(f, xs)` is
+  the sequence fanout that declares its applications independent. The
+  parallel map is spelled `fanout(f, xs) ~> parallel_compose`.
 - **A name must not lie about the representation.** `list_head`/`list_tail`
   read and remove the LAST element (the snoc end — O(1) by construction);
   the borrowed cons-vocabulary asserts the opposite and has already billed
@@ -367,9 +370,13 @@ fn check_exhaustive(patterns) = {
 }
 ```
 
-Nested `fn name(params) = body` is syntactic sugar for `let name = (params) => body`. Same semantics; nested form reads more naturally when the inner fn is genuinely function-shaped (vs. a lambda passed as an argument).
+A nested `fn name(params) = body` is a declaration scoped to its block, and consecutive `fn` declarations in a block form one RUN — a local letrec scope: every name of the run is in scope in every body of the run and in everything after it, so siblings call each other in either direction. The run is judged as the module's declarations are, callee-first by binding group with each cycle judged as one unit, so every member is generalized — one nested `fn ident(x) = x` serves an Int and a String even where its caller is declared above it. Any other statement between two `fn` declarations ends the run: a later fn may capture what that statement computes, which does not exist while an earlier fn can already be called, so in `fn first() = second() + 1; let k = 2; fn second() = k` the name `second` is out of scope at `first`'s call (`E_MissingVariable`). Two declarations of one name in one run refuse (`E_DuplicateFnName`), as two at module level do, and a fn in a later run shadows one of its name in an earlier run for what follows it (real, 2026-10-03; until then a nested fn's name was in scope only in its own body and after its declaration, so a sibling calling one declared below it was refused). A block-scope `let name = (params) => body` is a closure VALUE, and the two differ in exactly that: the `let` binds after its value, so its name is not in scope in its own body, it is not generalized, and it may shadow — `let f = (x) => f(x) * 10` calls the `f` bound before it.
 
-Mutual recursion: nested fns may reference each other — the compiler hoists them into a local letrec scope.
+**A nested fn is MINTED where it is declared** (real, 2026-09-30). Its closure record — its captures, or an empty record with none — is built when the block reaches its run, every record of the run allocated and bound before any is filled, so a record that holds a sibling declared after it, or itself, holds the sibling's record. The declaring frame pays `Memory + Alloc` once per nested fn, exactly as it pays for a lambda it mints (§«Function literals»): `fn adder(k) with !Alloc = { fn add(x) = x + k; add }` refuses. Until this landed the judgment never charged it, and every maker in lib/dsp returning its nested stage carried a row of `Pure`. A nested fn that captures nothing could be the module's static record and cost nothing; the charge follows that representation the day the lowering builds it (`Hβ.lower.captureless-nested-fn-is-static`).
+
+**A binder shadows its name for its own scope and no further.** A `let` in a block, a pattern in a match arm, a pipe stage's parameter, a recurrence's prior and a binding inside the recurrence body each hide the same name while their scope is open, and the hidden binding is read again, unchanged, once it closes: `fn f(x) = { let y = { let x = 5; x + 1 }; x + y }` answers `f(100) = 106`. Two binders of one name are two values at their own widths, never one storage place (real, 2026-09-28: until then an arm's `Some(x)` or a block's `let x` wrote the parameter's register, and that program answered 11 with zero diagnostics — `Hβ.lower.shadowing-binder-clobbers-its-register`).
+
+**At module scope there is nothing to shadow, and a `let` bound to a function literal IS the declaration** (real, 2026-09-28): `let inc = (x) => x + 1` is born as `fn inc(x) = x + 1` at parse — recursive, generalized, emitted as the symbol its callers call directly — and `mentl fmt` writes it as `fn`. An arm-list literal bound at module scope, `let pick = { Some(v) => v, None => 0 }`, is a declaration too and keeps its spelling, because its one parameter is minted by the literal and never reaches the page. An annotated module let keeps its annotation's constraint and stays a value, and a module value holding a closure (`let add3 = make_adder(3)`) is called through that closure. Until this landed the let was judged a value and lowered as a lambda named for its handle while its callers called `$inc`, a symbol nothing emitted: `mentl check` was clean and the module did not assemble (`Hβ.lower.module-scope-has-no-frame`).
 
 ---
 
@@ -381,6 +388,8 @@ Surfaces primitives **#2** (pattern dispatch, the handler's own shape) and **#8*
 
 1. **REFERENCE** an existing function, with the fields it is not yet given left as holes — `f`, `f(cfg)`, `f(a, ??, c)` (§«Partial application — the product with a hole»). An edge to a node that exists.
 2. **MINT** a new one, with an **ARM LIST** — `{ pattern => body, … }`.
+
+**What each costs is in the row of the frame that forms it** (real, 2026-09-28). A bare reference to a top-level function reaches its static record and costs nothing. A reference with fields supplied (a partial) and a mint each build a closure record — its captures, its supplied fields — so each charges `Memory + Alloc` where it is formed, and `with !Alloc` refuses it. The exception is structural, not a discount: where a verb APPLIES the literal in place — the stage of a `|>`, the recurrence of a `<~` — nothing is minted, so nothing is charged (§«`|>` — converge»). Calling a closure charges the closure's own row, which rides its type, and never the cost of having made it.
 
 ### Canonical form
 
@@ -399,6 +408,8 @@ weights |> filter({ (name, w) => w > 0 })
 **`match` is the arm list APPLIED.** `match scrut { arms }` and `{ arms }(scrut)` are the same graph and the same value — one form names its argument at the site, the other leaves it to the caller. This is why the medium needs no separate lambda: pattern dispatch was always the mint, and a binder wrapping it was the wrapper.
 
 **The literal takes exactly ONE parameter** — the value its arms match. Several arguments are a product the arms destructure (`{ (a, b) => a + b }` takes a pair), which is the parameter-list-as-product rule (§«Labeled call arguments») read at the literal.
+
+**And a pair is ONE argument, at every altitude.** A call's argument count is its callee's parameter count: `{ (a, b) => a + b }` is called as `f((1, 2))`, never `f(1, 2)`, and it is not a two-argument callback — `fold(0, { (acc, x) => … }, xs)` is refused, because `fold` calls its stage with two arguments; the binder form `(acc, x) => …` or a reference is the two-parameter value. Until 2026-09-27 the type layer decomposed a single tuple parameter against N parameters ("parameters ARE tuples") while the emit did not, so `(1, 2) |> add` checked clean and trapped at the indirect call; the rule is gone and the shapes refuse (`E_TypeMismatch`, its arity face). The calling convention that would make the two one value is `Hβ.lower.parameter-product-calling-convention`.
 
 **A brace opens a literal when a PATTERN ends at a `=>`.** That question is answered by a bounded token scan, never by parsing a pattern speculatively and never by layout: one pattern atom — an ident (optionally applied), a literal, or a balanced group — joined to further atoms only by `@` or `|`. Two adjacent atoms are never a pattern, so `{ setup()` newline `(x) => run(x) }` is the block it looks like. Record literal and block discrimination are unchanged and follow (§«Records», §«Function declarations»).
 
@@ -526,6 +537,10 @@ x |> double |> square
 
 **Type rule:** if `left: A` and `right: A -> B with E`, then `left |> right: B with E`. The chain's row unions all stage rows.
 
+**A stage is APPLIED, never minted.** A call standing as a stage is completed in place (its hole filled by the piped value), and a function literal standing as a stage — `x |> (v) => v * 2`, `x |> { 0 => 1, n => n - 1 }` — is the piped value bound to its parameter, its body lowered in the frame the pipe stands in. Neither builds a closure, so neither costs the frame anything, and a stage-shaped chain inside a `with !Alloc` function stays allocation-free (real, 2026-09-28; before, each literal stage minted a closure per call under the same `!Alloc`). The parameter is a binder of that frame like any other: it may share a name with a local there, and the local reads its own value again once the stage closes.
+
+**Applying a stage owes what the stage demands.** The piped value fills the stage's parameter exactly as a call's argument fills it, so the parameter's refinement is claimed of the value at the pipe and the row its precondition guards is paid there when the claim is open: `30000.0 |> alpha` over `alpha(c: Hz)` refuses as `alpha(30000.0)` does, and a partial stage owes the contract of the slot it leaves open (real, 2026-10-01; the pipe raised no claim before, §«Refinement types»).
+
 ### `<|` — diverge (fanout)
 
 One input, multiple branches, output is a tuple of branch outputs. **Input is BORROWED into each branch** — a value cannot escape the branch tuple.
@@ -589,9 +604,14 @@ they mean; ownership keeps it honest.
 `><` declares the branches independent; whether they run sequential / threaded /
 SIMD-lane-packed / on a device is decided by a `Schedule` handler installed in the
 enclosing `~>` chain — `type Strategy = Seq | Thread | Simd | Gpu` (an ADT, never
-a `mode == 0/1/2` int). The verb stays PURE TOPOLOGY contributing zero effects; the
+a `mode == 0/1/2` int). The verb stays PURE TOPOLOGY in what it performs — it
+contributes no effect of its own to the row, and the schedule is not in it; the
 cursor reads the strategy from the live handler stack (the same `resolve_in_stack`
 every `perform` uses), exactly as persistence is a handler swap (`PLAN.md §4④`).
+What the verb COSTS is in the row: a fanout builds the tuple of its results (and
+`><` a thunk per branch), so both glyphs charge `Memory + Alloc` in the frame
+they stand in, and `with !Alloc` refuses `(x + 1) >< (x + 2)` (real, 2026-09-28;
+the row said nothing of it before, at 56 bytes per call).
 **No `Schedule` installed → `Seq`** — inline-eval in source order, deterministic
 and debuggable, the invisible default. `~> Thread` runs the branches on parallel
 threads; `~> Simd` cashes a `[f32; 4]` branch tuple to a v128 lane (the
@@ -599,7 +619,86 @@ representation gradient and the topology axis composing in ONE read). Because `<
 borrows read-only and `><` shares nothing, the schedule is PROVABLY race-free; a
 real-time region can declare `with !Thread` and the medium PROVES, transitively,
 that no spawn occurs (provable like `!Alloc` — Rayon/Faust cannot state this).
-`mentl where` badges the chosen strategy: `>< [Thread ×4]`, output not input.
+`mentl where` badges the chosen strategy: `>< [Thread ×4]`, output not input —
+each site in the glyph its author wrote with the branches it spawns (`<| [Seq
+×2]`; a sequence fanout as `fanout [Thread, a branch per element]`), and a
+site whose frame installs no schedule names the callers that demand it (real,
+2026-10-02).
+
+**The race-freedom claim has its gate (real, 2026-09-27).** A spawned branch
+runs in the world it was spawned in — the task record carries the install
+chain of the PERFORM that spawned it and the fresh instance installs it before
+the branch runs — so an effect a branch performs reaches the handler installed
+at the fanout's frame, from a second instance, and the schedule's own ops
+answer there too: `current_id()` inside a branch reaches the
+`parallel_compose` that started it (real 2026-09-30; until then the record
+carried the spawn arm's world, which by the deep-handler law excluded the
+schedule itself, and the branch faulted at the chain's end). `E_ThreadedBranchEffect` (armed)
+refuses at lowering any effect in a branch's row whose covering handler at
+that frame is STATEFUL (two instances resuming `with n = n + 1` on one state
+record), lies beyond the frame fence with no caller's schedule demanding the
+fanout (a caller's install is provable only along a demand, below), or is stateless but
+performs, from an arm, into a stateful one further out (an arm runs in the
+spawned instance and its performs resolve outer, so the walk follows each
+handler's own residual row down the stack). The fix is stated in the refusal:
+install a stateless handler at the fanout's frame, or install the handler
+inside the branch, where each instance gets its own state record. The rule
+reads WRITES, not declarations: a handler is stateful when an arm carries a
+`resume … with` update (the one writer this document gives state), so a
+state that is only read is shared read-only across instances and runs.
+
+**A branch's abandon is re-raised at the join** (real, 2026-10-03). A branch
+whose perform never resumes leaves its thread with the op and its arguments
+banked in the task record; the join re-raises it in the joiner — the first
+abandoned branch in join order wins — and the joiner unwinds from the join
+to the install whose arm answers, which is the fanout's value: `match (0 <|
+({ _ => ab() }, { _ => 10 })) ~> parallel_compose ~> h { (a, b) => a + b }`
+with `ab() => (5, 0)` answers 5, and the same fanout under
+`sequential_compose` answers 5 through the spawn arm's own call boundary. A
+branch that yields a LIVE continuation has nowhere to resume — no joiner can
+hold it — and traps loudly at the thread's end, never silently joining its
+dummy. Until this landed the branch thread trapped at the thunk's floor.
+
+**The schedule reaches a callee's fanout by DEMAND (real, 2026-09-30).** A
+fanout's own frame's install wins; a fanout whose frame installs no schedule
+runs under the schedule a CALLER installs over a direct call to it, and so
+does every fanout in that callee's direct-call reach: `fn both() = (a()) ><
+(b())` under `(both()) ~> parallel_compose` spawns both branches, and the
+callee is emitted as a schedule TWIN keyed by the install's schedule beside
+its instantiation — the proof becomes the dispatch, as a twin is keyed by
+what its body reads. Two things bound the reach, each a decision the row
+reads. A callee declared `!Thread` keeps its own frame's schedule: the
+negation is what the demand reads, so a real-time region's fanouts stay
+sequential under any caller. And the demand crosses DIRECT calls only: a
+function value minted under the schedule — a lambda, a partial, a nested fn —
+keeps its own frame's schedule, because a value can outlive the install and a
+spawn it carried out would find no handler on the chain
+(`Hβ.lower.schedule-through-a-value`); a branch thunk, an install's arm and
+a state init never leave the extent and take the schedule. The race rule is
+read along the same demand: each demanded fanout's branch rows are checked
+against the installs between it and the demanding site, and a branch whose
+row is a callback PARAMETER's is read at the instantiating site — `fn
+tally(f) = (f()) >< (f())` called with a callback that bumps a stateful
+counter refuses, where the lexical rule saw a free row. Until this landed the
+frame fence made a callee's fanout `Seq` whatever its caller installed, and
+no reusable helper could fan out.
+
+**`fanout(f, xs)` is the SEQUENCE fanout** — `><` over a runtime sequence: `f`
+applied to each element as an independent branch, the results collected in
+order, under whatever schedule governs the site. It is typed exactly as `map`
+is and, with no schedule installed, IS `map`; under a Thread-class install
+every element's branch is spawned and joined in source order
+(`fanout_threaded`, lib/threading), under a Persist-class install
+checkpointed and joined (`fanout_persisted`, lib/persist). `map` itself stays
+a sequential loop by construction (§Vocabulary): only a fanout declares its
+applications independent, which is the whole difference between them.
+Simd and Gpu pack a fixed lane count and run a sequence fanout sequentially.
+The ??-fan is written this way (`segment_verify`, src/synth_proposer.mn):
+the candidates fan through their judgment under the schedule of the propose
+site — none installed, sequential by property — and a `~> parallel_compose`
+over it is refused by the race rule, each branch writing the one graph
+through a stateful handler, which is 9.2's deterministic partition stated as
+a gate.
 
 **`><` is a structural N-ary construct the formatter renders in one of two layouts** (a presentation choice, never a parse distinction — there are no semantic "forms," only render shapes):
 
@@ -699,7 +798,9 @@ from tree shape: a chain body earns the block layout (`~>` on its
 own line at left-edge indent); a single-stage body renders inline.
 Same node, same scope, either way.
 
-**Type rule:** `row(expr ~> h) = row(expr) - handled(h) + row(h)`. The handler subtracts what it absorbs; anything its arms perform is added.
+**Type rule:** `row(expr ~> h) = row(expr) - handled(h) + row(h) + cost(h)`. The handler subtracts what it absorbs; anything its arms perform is added; and the install's own cost, a fact of its class, is charged to the frame it stands in: a dispatched install (a schedule included) builds the record its arms run against and pushes its world, so it costs `Memory + Alloc`, and a derivative reading (`~> grad(w)`, which replaces the install with the extent's derivative program) costs nothing.
+
+*The fourth term is real since 2026-09-28. Until then `with !Alloc` accepted `(ask(w) + 1.0) ~> scaled(w)` while every call grew the heap 48 bytes, and a stateless handler's install grew it 40 (`Hβ.effects.install-allocates-unrowed`). An install whose record never outlives its extent could live in the frame and cost nothing; that is a representation the lowering has not built, and the charge follows it when it does (`Hβ.lower.install-record-in-the-frame`).*
 
 **`~>` governs the topology to its left — including a `><` / `<|` fanout.** Because
 `~>` is the loosest operator, a `Schedule` handler at the foot of a chain governs
@@ -710,6 +811,122 @@ strategy LIVE from this install edge (§`><`) — adding `~> Thread`, swapping i
 `~> Simd`, or installing `~> persist(...)` over a multi-shot branch is the entire
 diff between sequential, parallel, lane-packed, and crash-surviving. The schedule
 is a fact in the `~>` edge, never baked into the verb.
+
+**A derivative reading is the other projection an install can be** (real,
+2026-09-28, forward mode). `(body) ~> grad(w)` — lib/ml/grad.mn's `Derivative`
+effect and its `grad` handler — evaluates `body` exactly as it evaluates without
+the install, and lets it ask `d(v)`: the partial derivative of `v` with respect to
+the seed `w`, every other free variable of the extent held fixed.
+
+```
+fn train_step(w: Float, x: Float, want: Float) with !Alloc =
+  w - 0.05 * ({ let e = want - w * x; d(e * e) } ~> grad(w))
+```
+
+Like a schedule, the install is recognized by the effect its handler answers,
+and it builds no record, pushes no world and never calls its arm: the lowering
+derives the derivative program from the body's own graph and emits it beside the
+forward one, so there is no tape and no second copy of the chain to fall out of
+step, and the step above leaves the heap where it found it. The seed is a Float
+variable in scope, or a record or tuple of Floats (below). State that lives past
+the extent — a `<~` line, a handler's state — enters it held fixed, and a `<~`
+line inside the extent carries its tangent as a recurrence of its own.
+
+**The reading crosses a function value and a handler's arms through the record
+that holds them** (real, 2026-09-30). Handler = state = closure, read once more:
+a closure minted under the reading carries its captures' tangents in its own
+record, beside the captures, so `d(f(3.0))` for `f = { v => w * v }` minted
+under `~> grad(w)` is 3 wherever `f` is called — through `apply(f, x)`, through
+a handler's config, through the prelude's `fold`. A perform enters its arm's
+derivative program, and a state field written by `resume … with` carries its
+tangent beside the field, so `fold(0.0, (a, x) => a + w * x, xs)` differentiates
+in `w` through the closure, the accumulator's state and the perform that feeds
+it, and scene 1's distortion differentiates through the envelopes its handler
+keeps. A function value or an install minted BEFORE the reading opened is a
+free variable of the extent and is held fixed: its captures and its state carry
+no tangent where the reading opens, and are differentiated from the first write
+inside it, so `d(g(3.0))` for the same `g` minted before the install is 0.
+
+**A product seed is answered in one reverse sweep** (real, 2026-09-30). The
+seed may be a record or tuple of Floats — `~> grad(ws)` with `ws = {a: 2.0, b:
+1.0}` — and `d(v)` is then the gradient of `v` in every Float field, READ BY
+DESTRUCTURING where it is asked: `let {a: ga, b: gb} = d(v)` binds each field to
+the adjoint of its seed and builds no record, so a `!Alloc` extent stays honest.
+The rules of the reading are written once, as a linear program over the
+primal's residuals, and the two modes are its two projections, chosen by cost
+and never authored, since forward and reverse mean the same thing: a scalar seed
+is answered forward (one pass answers every query), a product seed in reverse —
+the primal runs first with each test and scrutinee kept as a residual, then
+each query transposes the statements before it back to the seeds, one adjoint
+per tangent, and a call into a known function runs that function's ADJOINT
+TWIN, which recomputes the callee in its own frame and hands its parameters'
+adjoints back through registers. What the reverse projection does not carry —
+a call through a function value, a perform reaching an arm, a `<~` line or a
+record carrying a tangent, an install, an early return, a query inside a callee,
+a recursion anywhere in the extent's reach — a product seed reaching it REFUSES
+naming the vector-forward reading (`Hβ.derive.vector-forward`), never a slope
+of zero; and holding a gradient as a value (`let g = d(v)`) refuses too
+(`Hβ.derive.gradient-as-a-value`), since the record it would build is an
+allocation the row never saw. Reverse through iteration, through the record and
+through a `<~` line's history are `Hβ.derive.transpose-through-iteration`,
+`Hβ.derive.transpose-through-the-record` and `Hβ.derive.bptt-priced-by-the-row`.
+
+What the reading cannot carry, it refuses: `d` of a value whose tangent was lost
+— into an aggregate, across a multi-shot perform, off a line ticked by forward
+code, through another `d` — is `E_DerivativeUnreachable` at the query, naming
+where it was lost, never a slope of zero; and a mint, an install or a state
+write that would store a lost tangent into a record refuses where it stands,
+since the record's later readers could not know. A `d` outside every reading
+leaves `Derivative` unhandled at the root. A `<~` line a closure record owns is
+`Hβ.derive.closure-line-tangent`.
+
+**An arena is the third: the extent's allocations die at its exit** (real,
+2026-10-03). `(body) ~> arena` — lib/arena.mn's `arena`, which answers `Alloc`
+by forwarding — evaluates `body` exactly as it evaluates without the install,
+and at the exit reclaims everything the body allocated except what its
+publication reaches: the body's value, and each value the body stored into
+memory older than the arena. Those move, by type, and the line resets behind
+the copies, so an exit costs what crossed and never what died.
+
+```
+fn total_of(n) = (build(n) |> fold(0, add)) ~> arena   // the list dies; the sum crosses
+```
+
+Like a schedule and a reading, the install is recognized by the effect its
+handler answers; it builds no record and pushes no world, and it charges
+`Arena` — an effect no handler answers — so `main`'s row says whether a program
+opens one, and a program that opens none pays nothing at a store. A store into
+older memory is known where it happens: a list slot's `list_set`, a handler's
+state commit and a `<~` tick each journal the slot with the type the store
+knows, wherever the judgment cannot prove the target belongs to the extent — a
+buffer the extent allocated owes nothing, a parameter is its callers' question,
+a handler's state its installs'. A value whose type the store cannot see — a
+function, a continuation, a store through `list_set` reached as a value — is
+never moved: the exit keeps the whole region instead, correct for any program
+and reclaiming nothing (`Hβ.arena.closure-evac-face`). Reclamation is
+reachability from the publication, never a `Consume`: ownership's regions stay
+compile-time facts. In a module that spawns, the arena runs its body and
+reclaims nothing (`Hβ.arena.per-instance-regions`).
+
+**A suspended arena keeps its region, and each resumption is an arena of its
+own** (real, 2026-10-03). An op performed inside an arena and answered by a
+handler outside it suspends what the arena encloses: the continuation the
+handler holds and the perform's arguments live in the arena's region, and the
+rest of the body has not run. So the exit does not end the extent — the arena
+SUSPENDS, its region joining the extent around it — and every resumption runs
+the rest inside a fresh arena that exits where the body ends, reclaiming what
+that resumption built and moving out what it published. The fresh arena
+encloses everything the original enclosed, a callee's rest after the perform
+as much as the body's own, opened before any of it runs: under a handler that
+resumes three times, `fn step() = work() ~> arena` with `fn work() = pick() +
+len(build(200)) - 200` grows the heap 96 bytes in all, against 19,240 with no
+arena. An arena whose body suspends is a capture point for the function it
+stands in (§«Resume discipline»), so the rest of that function resumes at the
+arena's value; an arm that never resumes leaves the arena suspended for good,
+its arguments intact. `arena_stat(ArSuspended)` counts the suspensions. Until
+this landed the exit ran on the way out and reclaimed the continuation and the
+arguments from under the arm, which then trapped or read zero
+(`Hβ.arena.suspended-by-a-continuation`).
 
 ### `<~` — feedback (cycle closure)
 
@@ -731,9 +948,9 @@ signal
 
 **The causality rule (real, 2026-08-12):** a cycle with no delay has no computable value — the prior would be the very output being computed — so `x <~ delay(0)` is **`E_ZeroDelayFeedback`**, an ARMED refusal at the `<~` site (nonzero exit, zero WAT). Faust makes this unsayable by inserting its delay implicitly; Mentl names the depth, so the depth can be wrong, so the medium refuses it. The refusal is one ARM of the depth read below — the same read that sizes the line judges whether the size is sayable — and both `delay(0)` and `Delay(0)` convict, the two spellings of one FeedbackSpec variant.
 
-**The iterative context is the CLOCK, and the clock is inferred, not required** (measured 2026-08-12). An earlier reading of this section demanded "the structural presence of a cycle/iteration-resume handler in the enclosing stack," with `E_FeedbackNoContext` when absent. The substrate never realized that: a `<~` site is a per-site state register whose *previous iteration* is the enclosing function's next call, which is why `bandpass_step` (`lib/dsp/signal.mn`, four `<~` sites) carries no effect row and is correct. Requiring an ambient effect would refuse correct code — the wheel's own thirteen `<~` sites among it — so `E_FeedbackNoContext` has no construction site, deliberately. Its honest form is the inferred clock (`Hβ.dataflow.clock-calculus-sample-rate`, Lustre's clock calculus): when the medium *proves* what advances a cycle, "nothing advances this one" becomes a measurement, and the refusal is that measurement projected. `Sample`/`Tick`/`Clock` are instances of the class, never a name-allowlist (a name-allowlist would be the string-keyed drift at the handler layer); `IterContext` (`lib/dsp/clock.mn`) is the marker vocabulary waiting on that landing.
+**The iterative context is the CLOCK, and the clock is inferred, not required** (measured 2026-08-12). An earlier reading of this section demanded "the structural presence of a cycle/iteration-resume handler in the enclosing stack," with `E_FeedbackNoContext` when absent. The substrate never realized that: a `<~` site is a per-site state register whose *previous iteration* is the enclosing function's next call, which is why the stage `bandpass_stage` mints (`lib/dsp/signal.mn`, four `<~` sites) carries no clock in its row and is correct. Requiring an ambient effect would refuse correct code — the wheel's own thirteen `<~` sites among it — so `E_FeedbackNoContext` has no construction site, deliberately. Its honest form is the inferred clock (`Hβ.dataflow.clock-calculus-sample-rate`, Lustre's clock calculus): when the medium *proves* what advances a cycle, "nothing advances this one" becomes a measurement, and the refusal is that measurement projected. `Sample`/`Tick`/`Clock` are instances of the class, never a name-allowlist (a name-allowlist would be the string-keyed drift at the handler layer); `IterContext` (`lib/dsp/clock.mn`) is the marker vocabulary waiting on that landing.
 
-**The declared depth IS the line's depth (real, 2026-08-12).** `delay(N)` carries N priors: the site's state is an N-slot line, the prior the cycle reads is its OLDEST slot — y[n−N] — and each tick advances the line by one. `delay(1)` is the single register it always was; `delay(3)` is genuinely three deep, measured by the same recurrence driven six times answering 6 under `delay(1)` and 2 under `delay(3)`. The slots are declared, never allocated, so depth costs nothing per tick. **The `!Alloc` row does NOT survive the cycle, and this sentence claimed it did until 2026-08-17**: a `fn cycle() with !Alloc` wrapping `((prev) => ramp(prev)) <~ Delay(3)` REFUSES with `!Alloc + Any vs Memory + Alloc`, while the identical lambda and comparison with the `<~` removed judges `Pure` — so the charge is the feedback site's own. That is a claim about the ROW, and the ROW IS THE WRONG ONE — the declared-slots half of this sentence is CONFIRMED at the artifact (2026-08-17). Emit's `LFeedback` arm destructures the lowered spec as `_spec` and discards it, and the compiled WAT for a `Delay(N)` recurrence contains ZERO construction of it across 1553 lines while the prior rides a declared global `$__fb_prev_<h>`. So the slots really are declared and never allocated; what charges `Alloc` is `infer_expr` walking the RHS as an ordinary constructor call at a site whose only load-bearing content — the depth — is read statically. The drop half of the same edge is fixed (the body's row now joins); this over-charge is `Hβ.effects.feedback-row-substitutes`, with the repro at tests/frontier/mn-feedback-transport.mn, and it turns on a question the surface has to answer first: whether a `<~` RHS is a VALUE, as this section says, or a static depth ANNOTATION, as the emit already treats it.
+**The declared depth IS the line's depth (real, 2026-08-12), and the line is a RING OWNED BY THE RECORD OF THE FUNCTION THAT CONTAINS THE CYCLE (real, 2026-09-27).** `delay(N)` carries N priors: the site's line is an N-slot ring, the prior the cycle reads is its OLDEST slot — y[n−N] — and each tick stores the output over it and advances the head by one, so a tick is a load, a store and a bounded increment at any depth (`delay(24_000)` costs what `delay(1)` costs per tick; `tests/frontier/mn-feedback-deep-line.mn` drives 2,000,000 ticks at that depth and the frontier leg prints the ticks per second). `delay(1)` is the single register it always was; `delay(3)` is genuinely three deep, measured by the same recurrence driven six times answering 6 under `delay(1)` and 2 under `delay(3)`. The ring is allocated ONCE, where its owner is built — never per tick — and its owner is the record of the function the `<~` sits in (handler = state = closure, read at the site): a lambda's line lives in the closure record past its captures, so every closure minted from one lambda is its own filter (`let lp_l = lowpass(0.3)` and `let lp_r = lowpass(0.3)` are two lines, the two-channel shape every stereo stage writes); a handler arm's line lives in the install record past the arms, so every `~> h` is its own filter; a reified remainder's line lives in the k record, shared by that k's resumptions as every heap write of the remainder is; a top-level fn's line — its record being the module's immutable data record — rides an instance global allocated at start, one per emitted twin, so a generic recurrence reached at Int and at Float ticks two lines at two widths; and a `<~` directly in a module value let's init is static the same way, its line owned by the module's init function, while a fn nested in that init is a closure minted there and keeps its lines in its record (real, 2026-09-28 — module scope is a frame). A filter that must exist once per signal is therefore a MAKER: lib/dsp's `lowpass_filter(sr)`, `highpass_filter(sr)`, `dc_blocker()` and `envelope_follower(attack, release, sr)` each return the stage, and each stage minted owns its line — they were top-level fns until 2026-09-28, one line per program, so a stereo pair through one filter shared one memory. Until this landed the line was N module globals keyed by the site alone: two closures from one lambda, two installs of one handler and two twins of one generic shared one register (the Float twin wrote f64 into an i32 line and refused to assemble), and a deep line was N global moves per tick (`tests/micros/mn-feedback-closure-instances.mn`, `mn-feedback-arm-instances.mn`, `mn-feedback-twin-width.mn`, `mn-feedback-deep-line.mn`, each measured on boot 542ea5a3 before the fix). **The `!Alloc` row survives the cycle (2026-09-25).** The RHS is checked as a `FeedbackSpec` VALUE — its type is what the site reads — but its construction never executes: emit discards the lowered spec and the prior is a register read off the ring, so the site judges the spec in a frame whose row is dropped. Until that landing the constructor's allocation charged the frame: `fn cycle() with !Alloc` around `((prev) => ramp(prev)) <~ Delay(3)` refused with `!Alloc + Any vs Memory + Alloc`, and arming `E_EffectMismatch` turned that false charge into a false refusal of a correct program, which is what closed it (tests/frontier/mn-feedback-transport.mn pins it). The surface question behind it stays open and is the smaller artifact: whether the RHS should stop being an expression and become a static depth annotation, which is what the emit already treats it as (`Hβ.effects.feedback-row-substitutes`, branch B).
 
 **The depth must be a LITERAL.** A line is a fixed set of slots, so a depth the medium can only read at runtime is a depth it cannot hold — and handing such a site one slot is precisely the silent wrong the depth read exists to end. `delay(n - 1)` is **`E_ComputedDelayDepth`**, armed at the `<~` site. A runtime-sized line wants the image-backed sequence rather than a register file, which is `Hβ.dataflow.delay-line-runtime-depth`, riding the value ontology's own view/slice work.
 
@@ -758,7 +975,7 @@ Mentl records are **structural**: a record TYPE is `{name: T1, age: T2}` — no 
 {name: "Morgan", age: 30}
 ```
 
-Fields separated by commas. Each field is `name: value`. Trailing comma allowed (recommended for multi-line):
+Fields separated by commas. Each field is `name: value`. A literal that fits the line renders inline; one past the width, or one whose field carries a comment, renders one field per line, each closed by its comma, so adding a field at the end is a one-line diff — the call-argument law at the record altitude (`mentl fmt` wrote a fourteen-field literal on one 300-column line until 2026-09-28):
 ```
 {
   name: "Morgan",
@@ -826,6 +1043,16 @@ symptom), and `record-field-through-list`. A row that nothing closes still
 refuses — `tests/floors/mn-unprovable-offset`, where the receiver is
 main's own parameter.
 
+**The SECOND field reached the same class again (closed 2026-09-28).** A
+body reading two fields met them as two open rows and wrote each side's
+missing fields as the other's whole remainder, leaving no variable to
+generalize, so `fn pick(u) = u.x * 10 + u.y` over `{x: 1, y: 2}` and `{a:
+5, x: 3, y: 4}` read one layout for both and answered 54 for 46, silently
+(`tests/micros/mn-row-two-fields-two-shapes.mn`). The unseen rest of a
+record is always a row variable now, never an assumed remainder: two open
+rows meet at one fresh variable both continue into, so every record shape
+still mints its own twin.
+
 ### Nominal record types
 
 When a brand is wanted (distinct identity, not just shape):
@@ -840,6 +1067,11 @@ let p = Person{name: "Morgan", age: 30}
 let c = Customer{name: "Morgan", age: 30}
 // p and c have different types; cannot be unified
 ```
+
+A nominal record's declared field types are claimed where the record is
+built, as a constructor's arguments are: `R{den: 0}` under `type R = {den:
+Positive}` refuses at the `0`, and a function placed at a function-typed
+field crosses into it (real, 2026-10-02 — both compiled clean before).
 
 **Brace-header slots close at `{` — the construction never extends a header.**
 Three grammar slots parse an expression whose own terminator is `{`: an `if`
@@ -870,6 +1102,17 @@ Everywhere else — bindings, arguments, arm bodies, operands — `TypeName{...}
 extends as written. Layout is never consulted (principle 1); the slot, not
 whitespace, decides.
 
+**Every other brace reads its `{` through ONE discrimination** (real,
+2026-09-28): `...` opens an update, a pattern ending at `=>` opens an arm
+list (§«Function literals»), a field name followed by `:`, `,` or `}` opens a
+record, and anything else opens a block. A function body is such a slot, so
+`fn origin() = {x: 0, y: 0}` returns a record and needs no parens, and `fn
+f() = {x}` is the punned one-field record — never a block holding `x`, which
+the formatter lifts to `fn f() = x` (`E_RedundantBraces`). Until 2026-09-28 a
+fn body carried its own copy of the decision that read every `{` as a block,
+the formatter wrapped body records in parens to compensate, and `fn f() = {
+field: v }` failed to parse on a page written by hand.
+
 ### Pattern syntax for records
 
 ```
@@ -879,10 +1122,26 @@ let {name: n, age: a} = morgan // bind to renamed locals
 ```
 
 The record-pattern REST is real (2026-07-30): `{name, ...rest}` binds `rest`
-to a fresh record of the remaining fields — the residual resolved through the
-receiver's type at lower, built by copying the residual slots at emit, and
+to a fresh record of the remaining fields, each copied at its own width, and
 `rest`'s own field accesses read the residual's layout. `..._` keeps the
-open-acceptance without a bind, exactly as in list patterns.
+open-acceptance without a bind, exactly as in list patterns. Binding a rest
+BUILDS that record, so it charges `Memory + Alloc` in the frame the pattern
+stands in, and `with !Alloc` refuses it (real, 2026-09-30 — it was unrowed
+before; `tests/micros/mn-record-rest-alloc.mn`).
+
+**A record pattern reads its fields BY NAME** through its receiver's whole
+field set, which the twin of each caller proves: a parameter's record may
+carry fields the pattern never names, sorted before or after the ones it
+does, and `fn pick(u) = { let {zeta} = u; zeta }` answers `9` over `{alpha:
+7, zeta: 9}` (real, 2026-09-28). Until then a pattern through a parameter
+read the slot of its own field index and answered `7`, silently, and its
+rest trapped (`tests/syntax/record-pattern-param`, `-param-rest`). And the
+rest's OWN reads spell the residual's layout (real, 2026-09-30): `fn f(u) =
+{ let {a, ...rest} = u; rest.b }` over `{a: 1, b: 2, c: 3}` answers `2`. It
+answered `3` — the receiver's `c` slot — and `rest.c` a virgin `0`, because
+the twin's pair for the row variable was the whole record the call proved
+while the rest's chain starts past the named fields; the pair is the
+residual past them now (`tests/micros/mn-record-rest-through-param.mn`).
 
 ### Field access
 
@@ -892,6 +1151,8 @@ nested.outer.inner
 ```
 
 Field access lowers to `LFieldLoad` with offset resolved at compile time from the record's type. O(1) load.
+
+A record literal written as a field of another is its own record: `let r = {inner: {den: 5}}` reads `r.inner.den` as 5 (real, 2026-10-02 — until then every record literal parked its base pointer in one shared scratch, so the outer literal answered the inner's pointer and `r.inner.den` read 0 with no diagnostic).
 
 ### Record update — spread into new record
 
@@ -960,7 +1221,7 @@ let nothing = None
 let tree = Branch(Leaf, 1, Branch(Leaf, 2, Leaf))
 ```
 
-Same syntax as function calls. Inference disambiguates by looking up the name in env: if it's a `ConstructorScheme`, it lowers to `LMakeVariant` with the constructor's tag_id; if a `FnScheme`, to `LCall`.
+Same syntax as function calls. Inference disambiguates by looking up the name in env: if it's a `ConstructorScheme`, it lowers to `LMakeVariant` with the constructor's tag_id; if a `FnScheme` (a declared fn), to a direct call of its symbol; if a `ValueScheme` (a let, pattern or state binding), to a call through the closure the value holds.
 
 ### Pattern matching
 
@@ -981,6 +1242,8 @@ Diagnostic: **`E_PatternInexhaustive`** at the `match` keyword:
 > "match on Option does not cover variant: None. Add `None => ...` arm or `_ => ...` wildcard."
 
 Quick Fix: insert stubs for missing variants.
+
+An arm covers what its top pattern covers: an alternation every branch, an as-pattern `name @ pat` what `pat` does (`whole @ Leaf(_)` covers `Leaf`). The refusal is armed (real, 2026-10-03): a match missing a variant no longer compiles to a program that traps when the variant arrives. Until then the class narrated and emitted, and an as-pattern was read as covering nothing, so `whole @ Leaf(_)` beside `Pair(a, b)` reported a false "misses 1 of 2".
 
 ### Type aliases
 
@@ -1018,8 +1281,12 @@ type Pixels    = Int repr v128            // four packed lanes
 after any type-decl base) and the bare-width parameter pin (`s: f64`, `s: f32`,
 `i64`, `v128`) mints the same `TReprPin` in type-atom position. The pin types
 transparently — identity is the base's; `repr_of`'s own arm is the one width
-reader — and the formatter renders the bare atom back bare, the alias form with
-its suffix. The i64/f32/v128 pins carry full vocabulary; their emission
+reader — and since both spellings parse to one pin, the formatter decides the
+spelling by POSITION: a pin at a type declaration's right-hand side renders with
+its suffix (`type Coeff = Float repr f64`) and a pin in an annotation renders
+bare (`s: f64`). Until 2026-09-28 a canonical pair rendered bare everywhere, and
+a declaration written as this section writes it came back as `type Coeff = f64`.
+The i64/f32/v128 pins carry full vocabulary; their emission
 cash-outs ride the named wide-producer residue (the RF64 path is fully live).
 
 `repr <width>` is a **gradient INPUT — a PIN, not a constructor** (the peer of
@@ -1038,7 +1305,11 @@ memcpy-serializability are invariant under the pin.
 
 `mentl where` projects the chosen width as a derived badge — `s : Float @ f32
 (pinned)` when authored, `c : Float @ f64 (inferred)` when the gradient reached it
-— output, never input. A pin that names the width the gradient would already infer
+— output, never input. Every parameter and local answers it, and a function
+answers its head with its inferred row and the address it is declared at
+(`inv(n)  at main:11`) before its parameters' and return's widths; a value
+whose type is still a variable reads `a : a @ per instantiation`, since every
+instantiation is specialized and takes its own width (real, 2026-10-02). A pin that names the width the gradient would already infer
 is `W_RedundantRepr` (drop it; the gradient reaches it anyway). A pin equal to the
 floor on an integral type is likewise vacuous. **The same `repr` pin is a
 parameter annotation** (the Intent-Boundary peer of `own`/`ref` — §"The Intent
@@ -1089,6 +1360,148 @@ let s: Sample = 0.5      // Verify discharges -1.0 <= 0.5 && 0.5 <= 1.0 statical
 let p: ValidPort = 8080  // statically discharged
 let bad: Sample = 1.5    // E_RefinementRejected — 1.5 violates the Sample bounds
 ```
+
+**A claim over a join decides as the AND over its tails** (real,
+2026-09-28). `fn note_hz(k: Int) -> Hz = match k { 0 => 220.0, 1 => 261.63,
+_ => 440.0 }` discharges because every arm folds inside the bound; one arm
+at `30000.0` refuses at the claim; an arm that is not a constant (`_ => f *
+2.0`) leaves the claim honest `V_Pending`. `if`, `match` and a block's final
+expression are read by STRUCTURE, never by guessing which arm runs, so a dead
+arm that writes an out-of-bound constant refuses too — the claim covers every
+tail. Until this landed a claim over a join was never decided, and a
+note table of eight literals carried eight pending obligations.
+
+**A refinement crossing a function-typed argument is judged** (real,
+2026-09-28). The argument's RESULT, where the callee hands it to a refined
+position, is judged on the lambda's own body: with `fn run(f) =
+alpha(f())` and `alpha(c: Hz)`, `run(() => 30000.0)` refuses and `run(() =>
+440.0)` discharges. The argument's PARAMETERS, where it demands a
+refinement, discharge when the callee's own type says it passes one (`fn
+drive(f, c: Hz) = f(c)`) and are honest `V_Pending` otherwise — the values
+a callee passes are made inside the callee, and judging them there is
+refinement variables' work (`Hβ.verify.higher-order-refinement`). Until
+this landed the refinement was DROPPED at the crossing: a 70,900 Hz sweep
+reached an `Hz` filter and `mentl check` was clean.
+
+**A refinement is a fact a VALUE carries, read along the edges it flowed —
+never a property of its type** (real, 2026-10-01, P0). A value is what its
+sources are: a constant is its point, a reference reads its binder (a
+parameter's refinement, a `let`'s annotation, a constructor field's declared
+contract), a join takes every tail, a call is its callee's declared return,
+and a part a pattern destructured is the argument at that position where its
+whole was built. A computation inherits nothing: `fn dec(x: Positive) ->
+Positive = x - 1` leaves `0 < x - 1` honest `V_Pending`, and `let d = if c {
+n } else { 0 }` is the join of `n` and `0`, never `n`'s refinement. Until this
+landed refinements rode the unification class, so every join and every
+operator that met a refined value carried its refinement onto the result:
+six `with !Trap` programs checked clean and trapped at run time, and `ratio(t,
+n: Positive)` demanded Positive of `t` (boot 13e8484a).
+
+**A parameter's refinement is a PRECONDITION, and what it guards travels to
+the caller.** Inside the body it is assumed; every call owes it as a claim at
+the argument. A row fact the body proves BY the precondition is the
+precondition's to guard — `fn inv(n: Positive) with !Trap = 100 / n`
+accepts, and `Trap` waits on `n` — and a caller pays it exactly when its own
+claim is open: `inv(5)` owes nothing, `inv(m + 1)` charges `Trap` to its
+caller, and a caller passing its own `p: Positive` hands the guard on to its
+callers. A parameter with no annotation, handed straight into a refined
+position, learns the precondition (`fn wrap(x) = inv(x)` owes `Positive` of
+its callers). A function with no authored return publishes the contract every
+return tail carries, a self-call read as returning what the others do.
+
+**A `let` annotation is a CLAIM its value owes**, decided where the value is
+made and never a fact laid over it: `let k: Positive = e - 1` leaves `0 < e -
+1` open, and `100 / k` charges `Trap`. A reader of `k` may stand on the
+annotation for another claim — the debt is carried once, at the let — and
+never for a row fact.
+
+**A structured contract is claimed part by part where the structure is
+built, as it is assumed part by part where it is taken apart** (real,
+2026-10-02, S4). Under `r: {den: Positive}` a field read or a pattern
+assumes `r.den` is `Positive`, so every construction handed there owes it
+of the part it builds: `den_inv({den: 0})` refuses at the `0`, a list
+literal owes `[Positive]`'s contract of every element, a tuple its
+position's, and a nominal contract its constructors' fields read at the
+type's arguments — `Option(Positive)` owes `Positive` of `Some`'s field and
+nothing of `None`, and `Result(Positive, String)` nothing of `Err`'s. A part
+of a value built out of sight is read off the value: held where every
+source states it at that part — a parameter's precondition, a declared
+return, a let's claim — and owed otherwise, the row its precondition guards
+paid where the claim is open. An index read is a part read (`100 / xs[0]`
+under `xs: [Positive]` is total), and `let xs: [Positive] = [0]` refuses
+where it is written. Until this landed a structure's claim crossed only its
+function parts, so seven shapes of this checked clean under `!Trap` and
+divided by zero.
+
+**A function's contract travels with the function** (real, 2026-10-01, P0·H).
+A lambda's parameter learns its precondition as a declared one does —
+`(c) => alpha(c)` demands `Hz` of every value it is called with — and every
+application owes it: a call through the value, a function crossing, and a
+pipe stage, which applies its stage and so claims of the piped value what a
+call's argument would owe (`30000.0 |> alpha` refuses as `alpha(30000.0)`
+does). A function-typed parameter learns from how its body applies it: the
+values every application hands each position — `fn drive(f, c: Hz) = f(c)`
+hands its function `c`'s values, which are `Hz`, and `fn feed(f) = f(440.0)`
+hands it `440.0` — and what a refined position demands of the result — `fn
+run(f) = alpha(f())` publishes `f: () -> Hz` — so a caller's crossing judges
+the function it hands in: a lambda's body against the demanded result, its
+own demands against the values the callee hands it. A `<~` cycle binds its
+lambda's parameter with no application to raise a claim, so that parameter
+learns nothing and a demand inside the body stays the body's debt. Until this
+landed the pipe raised no claim at all, and `0 |> inv` under `!Trap` checked
+clean and divided by zero (boot 13e8484a).
+
+**A function value is every function it can be** (real, 2026-10-02, H4). A
+join of two functions, a list or a record of them, a function a pattern took
+apart, a function a generic call returns: applying the value owes the
+precondition of every function it can be, conjoined per position, and the
+row each one guards — `pick(false)(0)` over `fn pick(c) = if c { inv2 } else
+{ inv }` owes `inv`'s `Positive` whichever branch comes first. What a body
+HANDS a function is never what that function DEMANDS: a function handed to
+`fn outer(g) = drive(g, 440.0) + g(30000.0)` is judged against both values it
+will be handed, not against `drive`'s `Hz` as a demand of its own. A function
+moving through a GENERIC callee is judged by the callee's signature alone —
+parametricity, the callee's body never read: `fold(0, (acc, f) => acc +
+f(0), [inv])` hands the list's `inv` to the callback, which applies it at 0,
+and refuses; a nominal type's arguments carry their values the same way, so
+`opt_apply({ g => g(0) }, Some(inv))` refuses through `Option(a)`. And what a
+body cannot see is never assumed: a function parameter it returns, hands to
+another function its caller chose, or places where the contract is a type
+variable is judged as handed values nothing there can name. Until this landed
+a function's contract rode its type, which unification merged and kept one
+side of: the join and the `fold` shapes checked clean under `!Trap` and
+divided by zero, and `g(30000.0)` refused a correct program (boot e23392f6).
+
+**A function's contract is never lost at a position** (real, 2026-10-02,
+S6). A declaration or a lambda returning functions publishes, at every
+position of its return that holds one, the meet of every function the
+position can hold: `fn pick(c) = if c { {f: succ} } else { {f: inv} }`
+makes `pick(c).f` demand `Positive` whichever branch runs — through a tuple,
+an `Option`, a list, a relay, a module value and a parameter alike. A
+position whose type is STATED is crossed by every function placed there,
+which pays there the guard of each demand the position does not provide: an
+authored return (`fn mk() -> (Int) -> Int = inv`), a nominal record's
+declared field (`Ops{f: inv}` under `{f: (Int) -> Int}`), an op's declared
+return at `resume` (`resume(inv)` into `get_fn() -> (Int) -> Int`), and the
+functions inside a function's result where it crosses into a parameter that
+applies them. Until this landed a published return kept the first branch's
+contract, a stated position was unified and never claimed, and an authored
+return's payment was dropped outside its declaration's frame: each shape
+checked clean under `!Trap` and divided by zero (pin 85218488).
+
+**A tee's value is every value its install can answer** (real, 2026-10-03).
+The value walk reads a `~>` node as the body's tails and each arm's tails of
+the installed handler — an arm whose tail is the `resume` hands the
+remainder's answer through and adds no value of its own — so `100 / (({ let _
+= ask(); 5 }) ~> zero)` with `zero`'s arm answering `0` is refuted
+(`E_RefinementRejected`), and with the arm answering `5` it is proven under
+`!Trap` and runs; the flow label reads the same leaves, so an arm answering a
+classified value classifies the install and its splice refuses. Until this
+landed every walk read a tee as nothing it could read: the refutation was
+debt, the proof was a refusal the program did not owe, and the classified
+arm's splice compiled clean on boot cf8a6d50
+(`tests/micros/mn-refine-install-answer.mn`,
+`mn-refine-install-answer-proven.mn`, `tests/frontier/mn-ifc-tee-arm-leak.mn`).
 
 The predicate is a compile-time obligation; at gradient-top it erases entirely (no runtime check). `Verify`'s default ledger accrues what it cannot discharge statically (`V_Pending`); the Arc F.1 SMT handler swap discharges those by residual theory — same source, deeper proof engine.
 
@@ -1147,6 +1560,34 @@ bare call in context. No bespoke recognizer, no format-lift class —
 by the typed-resume law (`resume : R -> S`), and names the
 continuation — a value the call site cannot otherwise reach.
 
+**A perform costs what a call costs** (real, 2026-09-30). An op's
+arguments cross at the widths the site proves and its result comes back at
+the width the site proves, exactly as a closure call's do — a Float op costs
+a Float call — and the arm that answers is the one twinned at the install's
+instance, which is the site's own instance, so no cell is built at an
+effect's type variable: `fn walk(xs: [Float]) with !Alloc = { put(xs[0]);
+put(xs[1]) }` under `handler total with s = 0.0 { put(v) => resume() with s
+= s + v }` runs and allocates nothing. Until this landed the op's DECLARED
+signature was the call's face, so a value at a variable's position was boxed
+into a fresh cell on every perform, 8 bytes under a row that said nothing of
+it, and a `fold` over Floats paid it per element. A perform under `!Alloc`
+is therefore admitted exactly when the op's own row is — and a held or
+multi-shot op's row says `Memory + Alloc`, because reifying the remainder is
+what such a perform builds (§«Resume discipline»).
+
+**A wide value crosses a continuation in a register, never a cell** (real,
+2026-10-03). The caller of a continuation, and the driver that runs a
+multi-shot arm, are blind to the types they call through — one word-arity
+face serves every chain — so a Float resumed into a continuation, or answered
+by a multi-shot arm, crosses in a per-instance register beside the word slot,
+set immediately before the call and read immediately after it (the machine
+ABI's own shape: words in the integer slots, a double in a float register),
+and a multi-shot op's arguments cross in the yield's record at their widths.
+Nothing is boxed and no row changes: the same two-resumption program at Int
+and at Float grows the heap by the same bytes
+(`tests/micros/mn-multishot-float-answer-no-box.mn`); until this landed the
+driver read a wide answer as a word and such a program did not assemble.
+
 ### Unit return omission
 
 If an effect op returns unit `()`, the `-> ()` clause may be omitted:
@@ -1162,7 +1603,11 @@ Both forms are accepted; absence is the idiomatic short form. Non-unit returns M
 (`abort() -> !` — the control cut the Abandon discipline reads; a bare type
 variable `fail(msg: String) -> a` is the bottom-producing sibling whose return
 unifies with any consumer). The form parses and checks clean (probed at pin
-62542a59, the Phase 3 felt walk — zero diagnostics).
+62542a59, the Phase 3 felt walk — zero diagnostics). `proc_exit(Int) -> !` is the
+WASI op's own declaration (lib/io.mn, 2026-10-03): the host ends the process,
+so the op answers a bare variable and an arm ending in it answers any
+install — which is what makes `fail_exit` installable over a body of any type
+now that an install meets its arms' answer (§«Handler declarations»).
 
 ### Calling resume with unit
 
@@ -1192,7 +1637,7 @@ effect Budget(limit: Int) {
 }
 ```
 
-The effect name itself carries arguments. **Row algebra treats `Sample(44100)` and `Sample(48000)` as distinct effects.** Equality requires name AND argument value match (scalar literal equality for Int / Bool / String args; structural equality for compound types).
+The effect name itself carries arguments. **Row algebra treats `Sample(44100)` and `Sample(48000)` as distinct effects**, and a body that performs both carries both, in either order: `fast() + slow()` under `!Sample(44100)` refuses exactly as `slow() + fast()` does. Two instances are two row members exactly when they are PROVABLY distinct — the question a negation asks, so the set and the negation cannot disagree — and an instance whose argument nothing grounds (an operand node) stands for every instance it might equal. Until 2026-09-28 a row kept the first of two same-named instances and the verdict depended on the order of the calls (`tests/crown/leak-instance-order.mn`). A TYPE argument is not a value instance: an effect's type variables are shared across its ops, so one handler serves one instantiation and the install unifies the performs; a generic op quantified per perform is `Hβ.effects.two-instances-of-one-effect-do-not-join`.
 
 ### Installation in `with` clauses
 
@@ -1201,15 +1646,19 @@ fn audio_loop() with Sample(44100) + IO + !Alloc =
   ...
 ```
 
-The argument is evaluated at install time and frozen. Two functions declared with `Sample(44100)` and `Sample(48000)` cannot interoperate without an explicit handler bridge.
+The argument is evaluated at install time and frozen. Two functions declared with `Sample(44100)` and `Sample(48000)` cannot interoperate without an explicit handler bridge — at the ROW, today. A handler does not yet pin its instance: `~> sample_at(48000)` answers a `Sample(44100)` perform, so the rate rule a program states is a negation on its path (`render_frame … with !Sample(44100)`), and the install that refuses a foreign instance is `Hβ.effects.handler-pins-its-instance`.
 
 ### Resume discipline — inferred, not annotated
 
 Resume cardinality is **inferred from each handler arm body** at handler-decl time; the developer never types `@resume=`. The infer pass walks the arm body collecting resume call sites; classifies via control-flow ancestry + branch-disjointness:
 
-- **`OneShot`** (inferred when zero or one resume site, not under loop ancestor; or multiple sites all in branch-disjoint paths) — continuation lives on the stack; no heap capture; performance is direct-call equivalent. Compile error never fires here because the inference produces the correct kind from the body's structure.
-- **`MultiShot`** (inferred when one or more resume sites under loop/recursion ancestry, or two sites both reachable from one path) — continuation captured to the heap as a closure. Enables backtracking, non-determinism, generators.
+- **`OneShot`** (inferred when zero or one resume site, not under loop ancestor — or multiple sites all in branch-disjoint paths — AND the one use sits at the arm's RESULT position: the arm's value on every path is the resume itself, through `if`/`match`/block tails and a tail call into a helper that resumes at its own tail) — continuation lives on the stack; no heap capture; performance is direct-call equivalent. Compile error never fires here because the inference produces the correct kind from the body's structure.
+- **The held single resume** (inferred when the one resume site is INTERIOR — bound by `let`, an operand, an argument, an element, a lambda body — so the arm keeps computing after the remainder returns: `ask() => { let r = resume(1); r * 2 }`) — the remainder is reified as the continuation record and called once; the code after `resume` runs when the remainder returns, and the arm's value is what the install answers (`ask() + 1` under that arm is 4). *Real 2026-09-27: the count alone chose the representation before, so this shape lowered as the stack return, the code after the resume was dead, and the install answered 2 — measured on boot 83428bcc by `tests/micros/mn-oneshot-nontail-resume.mn`. The grade is `ResumeUse` (types.mn): multiplicity × position, ownership's return-transfer distinction read on the continuation.* The record is the honest cost of holding a continuation; dropping it after its one call, O(1), is `Hβ.lower.held-resume-record-is-not-reclaimed`. A held resume runs the remainder INSIDE the frame that calls it — the arm, or a callee the arm hands a resuming lambda to — so that frame's row carries the remainder's (real, 2026-10-01): the resume performs its continuation's world, the handler's remainder, and every install judges what the frames it runs through forbid against its own body minus what it absorbs. `fn apply(f) with !Log = f() + 0` refuses `apply(() => resume(1))` under an install whose body performs `Log` after the perform; until then the resume charged nothing and `apply` ran the remainder's `Log` under its own `!Log` (`tests/crown/leak-resume-remainder.mn`). When that remainder performs one of the handler's own ops again, the resume re-drives the handler where it stands, deep semantics at any depth (`tests/micros/mn-held-resume-*-reyield.mn` — an address or a trap on every boot through 477bb667).
+- **`MultiShot`** (inferred when one or more resume sites under loop/recursion ancestry, or two sites both reachable from one path) — continuation captured to the heap as a closure. Enables backtracking, non-determinism, generators. **A MultiShot op's row carries `Memory + Alloc`**: the perform site reifies the remainder as a heap record, so performing the op IS an allocation, and a `!Alloc` declaration around such a perform refuses (`tests/micros/mn-multishot-perform-alloc.mn`; it compiled clean with a Pure row until 2026-09-27 — `Hβ.effects.multishot-perform-allocates-unrowed`). The op's discipline and cost are settled at pre-registration, from parse structure, so they never depend on whether the handler precedes its performers in source order.
 - **`Either`** (inferred when callers pin distinct kinds at different install sites; gradient-undecided at the EffectOpScheme) — handler arms may use either; loses some optimization headroom.
+- **`Abandon`** (inferred when the arm never resumes — zero resume sites, whatever the op's declared return) — the arm's value is the install's value and the continuation is DEAD: the perform UNWINDS, and nothing after it runs, in its own frame or in any frame between it and the install whose arm answers. The unwind is structured, never a bare return past a bracket: a frame leaves by its innermost landing — an install body's block, so the install's driver runs (its own op dispatches the arm; a foreign one bubbles) and its world restore follows; an arena body's block, so the arena EXITS as any extent does, the perform's arguments moving out of the region through their leaves (their slots in the argument area were journaled where they were stored) and the rest reclaimed — only a LIVE continuation suspends an arena; or the function's own return. Every boundary a raised flag can cross checks after it: a call whose callee's row may abandon, a direct arm call of a handler whose arms may, an install or an arena off the frame's tail, a fanout's spawn and join. An abandoning perform allocates nothing — its arguments cross in a per-instance area allocated once at start — so `with !Alloc` holds over it (`tests/micros/mn-abandon-alloc.mn`). *Real 2026-10-03 (AN-2). Until then the grade read the op's declared return: an arm of an op answering a bare variable or unit (`fail -> a`) was OneShot, so its value flowed back into the performing frame as the op's result — `let s: String = fail("x"); len(s) + 100` answered 100 — an abandon in argument position called the callee with a dummy, a `let`-bound abandon did not assemble, a thread's abandon trapped at the thunk's floor, and the argument record was an allocation no row saw; ten fixtures measured on boot 311479e1.*
+
+**Where a continuation is captured** (real, 2026-10-03). A held or multi-shot perform suspends the computation around it, and the lowering captures the rest where the perform is the FIRST work its frame does — a function's, a block's, an arena's: the whole expression, or an operand of an operator chain whose earlier operands are plain values — and through every call or arena standing at such a position, which captures its own remainder and composes it with the callee's. A perform anywhere else — `{ let v = pick(); v + 1 }` — is `E_ContinuationUncapturable`, said where the emitted program holds it and never in a body nothing runs: until then it compiled clean and trapped (exit 134 on every boot through 10cd1956, `tests/micros/mn-perform-off-spine-refuses.mn`). A CALL standing anywhere else whose callee's row proves an op whose handler resumes it is refused the same way, naming the callee and the op (real, 2026-10-03: `let x = inner()` over `fn inner() = choose() * 10` compiled and trapped at the floor); a callee whose row is open proves nothing, and that boundary keeps the runtime check it always had. An abandoning op, whose arm never resumes, has no remainder to capture: it performs from any position and unwinds (§«Resume discipline»). Capturing at every position is `Hβ.lower.offspine-perform-is-the-frame-not-in-the-image`.
 
 The cardinality is **load-bearing on type+lower** — it's why Mentl can express real-time DSP and constraint-search backtracking under one effect algebra (and why a persisted multi-shot continuation is `memcpy`-serializable while a one-shot is a stack frame). But the **annotation form is drift**: authoring `@resume=` would declare what the body already proves. The body IS the contract — and because a fact this load-bearing must be legible ("systems explain themselves", `PLAN.md §0`), the cursor **projects** it read-only: `mentl where` shows the op's `TCont` as `R ->1 S` (one-shot) or `R ->* S` (multi-shot), a derived badge — never an authored annotation. The body remains the contract; the projection is output, not input.
 
@@ -1221,6 +1670,21 @@ fn pure_op(x: Int) -> Int with !Alloc + !IO =
 ```
 
 `!E` proves ABSENCE of effect E. Stronger than not-mentioning E because it propagates transitively through the call graph: any callee that performs E causes the whole declaration to fail with `E_EffectMismatch`.
+
+**And through the declaration's own parameters (real, 2026-09-27).** A
+negation on a function that calls a callback is a GATE on that callback's
+row: `fn run(f) with !E = f()` refuses `run(() => op())` at the call, and the
+refusal names `run`'s declaration — under polymorphism, through a `~>`
+mask (`fn run(f) with !E + !F = (f()) ~> h` with `h` absorbing E gates `f`
+with `!F` alone), across forward references, sig'd recursion and stored
+callbacks, and instance-precisely (`!Sample(44100)` admits a callback
+performing `Sample(48000)`). A callback that is only RETURNED, never called,
+performs nothing in the declaring body and stays admissible. The same gate
+is what an authored negation on a function-TYPE parameter is: `f: () -> Int
+with !E` constrains `f`'s row at every call of `f`, and beside it a sibling
+parameter's row is judged on its own. Until this landed the negation over a
+body whose row was a parameter's was vacuous — the program compiled and
+ran.
 
 When used alone (e.g., `with !Mutate`), it creates a **negative capability stance** representing "anything except this effect" (universe-minus). This is how Mentl expresses region-freezes and borrows (`ref`) mathematically without a separate borrow-checker.
 
@@ -1246,8 +1710,8 @@ handler name(cfg_p1: T1, cfg_p2: T2) with state_a = init_a, state_b = init_b {
 
 Three parts:
 1. **Config parameters** in `(...)` — closure-captured at install site.
-2. **State** after `with` — internal state evolving across arms.
-3. **Op arms** in `{...}` — one arm per effect operation handled.
+2. **State** after `with` — internal state evolving across arms. The same slot, read by position, may instead carry the handler's own effect row (`handler h with !F { … }` — §«Negation guards on handlers»): a `!`, or a name not followed by `=`, opens a row; a name followed by `=` opens the state inits.
+3. **Op arms** in `{...}` — one arm per effect operation, EVERY operation of every effect the arms answer (§«A handler is exhaustive» below).
 
 ### Examples
 
@@ -1286,6 +1750,74 @@ handler bounded_log(prefix: String) with count = 0, max = 100 {
 }
 ```
 
+A state init may read the handler's config — `handler window(size) with buf = make_list(size)`, `with n = cfg.x` — because each install builds its state from the config it was given, as a function of its own record, before the handler is installed: an init performs in the installer's world, and one that performs its own handler's ops is `E_InitPerformsOwnOp`. *(Real 2026-09-28, R0c: until then the install lowered the declaration's inits in its own scope, where the config does not exist, so only a bare `with n = cfg` worked and anything more reached a floor and trapped.)*
+
+### A handler is exhaustive
+
+An effect declaration is a sum of requests and a handler is the arm list over
+it, so the match law (§«Exhaustiveness») binds a handler as it binds a
+`match`: **the arms answer EVERY op of every effect they answer.** A handler
+with an arm for `inc` and none for `get` is `E_HandlerInexhaustive` at the
+`handler` keyword, naming the ops no arm answers — ARMED, never a narration.
+
+The law is what makes the install's row exact. `expr ~> h` subtracts from
+`expr`'s row the effects `h`'s arms answer, by name; a perform of an op with
+no arm would walk past the install at runtime and reach whatever is outside
+it, which the row never saw. Measured 2026-09-30, and the last known hole
+under `!E`: `fn f() with !State = (get() + inc()) ~> only_inc`, `only_inc`
+answering `inc` alone, compiled clean under the negation and trapped reading
+the evidence at the root (`tests/micros/mn-handler-partial-refuses.mn`).
+
+A handler that means to answer some ops of an effect FORWARDS the rest — an
+arm that performs its own op resolves to the enclosing handler (deep-handler
+semantics), and the row carries what it forwards:
+
+```
+handler only_inc {
+  inc() => resume(1),
+  get() => resume(get()),      // forwarded to the handler around this one
+}
+
+fn f() = (get() + inc()) ~> only_inc      // row: State — `get` escapes f
+fn main() = (f()) ~> both                 // 20 + 1
+```
+
+`fn f() with !State` over that body refuses (`E_EffectMismatch`: the
+forwarded `get` escapes), which is exactly what the partial handler hid. The
+other honest form declares the ops the handler answers as their own effect.
+Koka and Effekt require the same; the split-effect pair — two handlers
+covering one effect's disjoint op sets — is written as two effects.
+
+### An arm's value is the install's value — `Handler(instance, answer)`
+
+A handler is typed by what it handles and by what it answers: `Handler(E,
+A)`, the effect's instance and the ANSWER — the cell every arm's body is
+judged into, quantified with the instance when the arms leave it free, and
+met at every install by the body's own answer. An arm that resumes answers
+the install with what the remainder answered, so its value is the body's;
+an arm that does not resume answers the install itself, so its value must
+be the body's: `handler h { bail() => "not a number" }` installed over
+`(bail() + 1) ~> h` refuses `E_TypeMismatch` at the install — `Int vs
+List(Byte) — ~> pipe → at 15:13-15:27: inferred from the arm bail of handler
+h`, the Reason the unify was asked with, which names the arm whose value is
+its own (a `resume` tail hands the remainder's answer through, so a handler
+whose every arm resumes answers its install's body) — and the caret's Why at
+the tee walks to that arm. `mentl where` says what a handler answers beside
+what it absorbs (`handler zero absorbs Ask, answers Int`; `handler ticker
+absorbs Tick, answers a`, the variable under the name a developer writes)
+and what each install in a function answers (`~> ticker absorbs Tick, answers
+Int at 12:28-12:46`). The arms are keyed at the answer as at the instance, so an
+arm that observes its answer (`a ++ b` over two resumptions) runs at the
+answer its install gives it, and a multi-shot handler answering a Float
+assembles (real, 2026-10-03). Until then the handler's type carried its
+instance alone and no install ever met the arms' answer: the String arm
+above compiled and ran, the observing arm refused `E_ShapeUnprovable`, and
+the Float answer did not assemble (`tests/micros/mn-arm-answer-is-the-install.mn`,
+`mn-arm-answer-observed.mn`, `mn-multishot-float-answer.mn`, each measured
+on boot cf8a6d50). A never-returning op answers a bare variable
+(`proc_exit(Int) -> !`), so an arm ending in one — `fail_exit`'s
+`proc_exit(1)` — answers any install.
+
 ### State updates via `with` on resume
 
 When an arm wants to evolve state, it uses a `with` clause on `resume`:
@@ -1294,7 +1826,9 @@ When an arm wants to evolve state, it uses a `with` clause on `resume`:
 inc() => resume() with n = n + 1
 ```
 
-The `with` clause lists state updates by field name. Unlisted state stays unchanged.
+The `with` clause lists state updates by field name. Unlisted state stays unchanged. A name that is not one of the handler's state fields is refused (`E_MissingVariable`, "state field: m") — the write would reach nothing anything reads (real, 2026-10-02; until then `resume(0) with m = n + 1` beside `with n = 0` compiled clean and dropped the write).
+
+**A state is every value written into it** (real, 2026-10-02, S5). At any read in an arm, a state field holds its init or whatever some arm last wrote, so everything the medium proves of it is proven of all of them: `100 / d` over `with d = 5` owes `d != 0` of every write — `with d = d - 5` in another arm leaves the division's claim open and refuses under `!Trap`, and `with d = 0` in another arm REFUTES it where it stands (`E_RefinementRejected`, real 2026-10-03: a writer that is the fatal point fails the claim as a join's `0` tail does; it was owed, never refuted, before) — a classified write makes the state classified, and a function written into it is applied under every function it can be. A state no arm writes is its init at every read and proves what the init proves. A write that reads the state it writes (`with d = d + 1`) reads it there as unknown, so a counter's bound is owed rather than proven; reading it as the claim's own hypothesis — an inductive invariant — is the named next step (`Hβ.verify.state-reads-its-invariant`). Until this landed the proof read a state as its init alone, and all three of those shapes checked clean and failed at run.
 
 ### Installation
 
@@ -1329,7 +1863,9 @@ handler affine_ledger with !Consume {
 }
 ```
 
-`with !Consume` on the handler itself means: the arms cannot recurse through `consume`. Boolean effect algebra gates this at compile time.
+`with !Consume` on the handler itself is the handler's own row — the same signed clause a fn signature carries, verified the same way — and it binds at TWO altitudes (A5, 2026-09-27, LENS §2.4's arm-world rule): the ARMS may not perform `Consume` themselves (the registration-time gate), and at every install the REMAINDER the arms resume into — the tee body's row with what this handler absorbs removed — may not perform it either, because resuming inside an arm continues that remainder under the handler. So `handler h with !F { op() => resume(1) }` installed over `op() + fop()` refuses at the install, naming `h`; installed over `op() + op()`, or over a body whose `fop()` an inner install absorbs, it holds; and `handler h with !E` over the ops it handles has nothing to check, since the absorption removes them. The check is per install — the body is read where it is known, never joined across installs into the handler's one row.
+
+*(Until 2026-09-27 the parser SKIPPED a handler's effect-row `with` to the arms as "WAT-invisible", so this clause bound nothing: `handler h with !F` accepted a remainder performing F with no diagnostic, measured RED on boot 39b00d84 by `tests/crown/leak-arm-resume-remainder.mn`. The clause rides the `HandlerDeclStmt` now and the formatter renders it back.)*
 
 ---
 
@@ -1384,31 +1920,46 @@ document's own:
 3. **It buries the signal.** `!E` is the crown. In a nineteen-name row the one
    negation worth reading is a needle in a haystack the author typed.
 
-**The form, and it needs no new syntax.** A row is a type-level value, so a
-capability is a `type` alias (above), and the alias is transparent — the checked
-row is identical, nothing proven is lost. The wheel's own worst seven signatures
-shared a sixteen-name core that had never been named; `type Judging = …` gave it
-one, and they became:
+**The form, and it needs no new syntax — it is the ABSENCE of the clause.**
+The POSITIVE row is inferred and PROJECTED (real, 2026-09-27, A4): what a
+signature authors is a decision — a negation, an instance pin, `Pure` — and the
+full positive row is read at the address surface (`mentl <file:line>` renders
+`-> T with Memory + Alloc`) the way `repr` width and resume cardinality already
+are. So the normal signature is `with !Alloc + !Thread`: shorter *and* the part
+worth reading. Three mechanisms carry it:
 
-```
-fn driver_check_module(ref entry) with Judging = …
-fn driver_entry_scoped(ref m, scope) with Judging + Filesystem = …
-fn driver_compile_entry(ref m) with Judging + Filesystem + Persist + Fail = …
-```
+- **`T_RowInventory`** narrates a clause whose bare positive names are exactly
+  what the body proves — or whose body row is OPEN (a callback's row rides
+  its tail), where a positive cap installs no gate and so constrains nothing.
+  `T_OverDeclared` keeps the case where a declared name is beyond the proven
+  row, and reads the positive half only: a negation-only signature is never
+  "over-declared" (it used to narrate `!Mutate + Any` against a Pure body).
+- **`mentl tighten`** writes each narrated clause's RESIDUE — its negations and
+  instance pins, or no clause at all — never the proven row (the old form
+  wrote type-instances the grammar cannot read back). The medium authored its
+  own migration: 1,490 clauses over five runs, the wheel judging clean through
+  the inferred rows with zero `E_EffectMismatch` — its negations had been true
+  all along.
+- **`mentl verify` bounds the shape** (`CsAuthoredPositiveRow`, `src/board.mn`)
+  at ZERO on the wheel, seen RED at 164 through the half-swept tree. The
+  sixteen-name capability `type Judging` that the first landing named (the
+  wide-row count, 19 → 12) lost its last user and is deleted: a capability
+  nobody authors needs no name.
 
-What survives on the page is what a reader should read: `+ Filesystem` where a
-pass touches disk, `+ Persist` where it writes an image, `+ Fail` where it can
-refuse. `+ Intern` was never a decision. `mentl verify` bounds the shape
-(`CsWideRow`, `src/board.mn`), so this is a count that must fall rather than a
-style note that can be ignored.
-
-**The endpoint, which takes the count to zero:** the POSITIVE row is inferred
-and PROJECTED, and only negations, instance pins and genuine narrowings are
-authored — `with !Alloc + !Thread` as the normal signature, shorter *and* the
-part worth reading, with the full positive row available at the address surface
-the way `repr` width and resume cardinality already are. The peer is
-`Hβ.syntax.positive-row-is-authored-by-hand`; the migration is the medium's own
-work, since `mentl tighten` already authors row patches.
+**A positive row that survives is a CAP, and the cap is a gate (real,
+2026-09-27, A3-pos).** `fn run(f) with E = f()` says `run`'s body, callbacks
+included, performs at most E: the argument edge for `run(() => op_f())`
+refuses `E_EffectMismatch` naming `run`'s declaration, exactly as a negation
+does, and a `~>` mask inside the body widens what reaches the gate (`Pg ∪
+mask` on the push: `fn run2(f) with E = ((f()) ~> hf) + op_e()` admits a
+callback performing F, because `hf` absorbs it before the gate). Before this
+landing a positive cap installed nothing — only its negation half did — and
+that program compiled. So a positive row on a HOF is a decision the medium
+enforces; write one when the cap is meant, and let inference project the row
+otherwise. The two micros that carried `with Abort` on a try/catch HOF whose
+thunks allocate and choose refused on arming and lost their caps — the class
+LENS §2.2 predicted (`try_with_abort_catch`: a row "to allow the outer scope's
+effects to flow", which a positive row cannot say).
 
 **Dissolved:** the `capability` keyword and the `TCapability` token. `capability X
 = <row>` was structurally `type X = <row>` (the doc's own prior admission, peer
@@ -1516,7 +2067,12 @@ let [first, second, ...rest] = items
 List rest uses the same `...rest` surface as record rest. `rest` is
 optional in the AST; no rest means exact-length match, while `..._`
 accepts any remaining tail without binding it. `|` remains pattern
-alternation / type-variant separation and is never list-cons syntax.
+alternation / type-variant separation and is never list-cons syntax. A
+bound list rest is CUT — the elements past the prefix, as a slice — so it
+costs what `slice` costs, `Memory + Alloc`, in the frame the match stands
+in, and `with !Alloc` refuses it (real, 2026-09-30: sixteen of the wheel's
+own rests were unrowed until the allocation audit's first run;
+`tests/micros/mn-list-rest-alloc.mn`). `..._` cuts nothing.
 
 ### Exhaustiveness
 
@@ -1767,10 +2323,18 @@ case (what was `str_eq`):
 
 | Operand shape                              | Structural-eq projection                          |
 |--------------------------------------------|---------------------------------------------------|
-| scalar (`Int`, `Bool`, byte, nullary tag)  | `i32.eq` / `i32.ne` — value equality IS structural |
+| scalar (`Int`, `Bool`, byte, nullary tag, address) | `i32.eq` / `i32.ne` — value equality IS structural |
 | sequence (`[a]`, incl. `String = [Byte]`)  | length-then-element recursion (`[Byte]` case is byte-compare) |
 | product (record / tuple)                   | field-wise recursion over the sorted field set    |
 | sum (ADT)                                  | tag-equality then payload recursion               |
+
+The ordering operators `<` `<=` `>` `>=` are the same derivation with a 3-way
+leaf: a word orders by its value (an address by its magnitude, §«Addresses»),
+a sequence length-then-element, a product field-wise, and a sum by its
+variants' DECLARATION order first and its payloads second — so over `type T =
+B(Int) | A`, `B(5) < A` holds (real, 2026-10-03: the generated compare had
+ranked a nullary variant's word against the other operand's address, and that
+program answered the opposite with no diagnostic).
 
 **Drift-refusal preserved:** `==` on a heap value never emits pointer comparison —
 pointer-eq lying as structural equality is the silent fallback
@@ -1779,11 +2343,15 @@ node-kinds** (the `Hβ.eq.structural-deep` peer is this general definition reali
 not a carve-out); `str_eq` is the byte-sequence instance the surface `==` lowers
 to, never a developer-facing primitive.
 
-**TWO MEASURED HOLES IN THAT TOTALITY, both named rather than implied.** The
-paragraph above is the surface law and the lathe is not yet turned to all of
-it. (1) An operand whose type is still a VARIABLE at emit falls to a one-word
-compare — right for a word, an address lie for anything else — and says so as
-`T_EqTypeUnprovable` (`Hβ.emit.eq-on-unresolved-operand-is-pointer-eq`).
+**TWO MEASURED HOLES IN THAT TOTALITY, both CLOSED.** (1) An operand whose
+type is still a VARIABLE where the comparison is emitted has no structure to
+read, and the one-word compare it would fall to is an address lie for
+anything but a word. It REFUSES (real, 2026-09-28): `E_ShapeUnprovable`,
+armed, said at the comparison before a byte of the module exists — the same
+refusal a show, a hash and a `++` of such an operand take
+(`Hβ.emit.eq-on-unresolved-operand-is-pointer-eq`, closed). It had narrated
+as `T_EqTypeUnprovable` since 2026-09-18, and the class could not arm while
+it was decided during emission, after the gate had read the ledger.
 (2) A POLYMORPHIC sum compared its payload by ADDRESS — `Some(BInt(7)) ==
 Some(BInt(7))` was false while the monomorphic `BInt(7) == BInt(7)` was true —
 because the generated helper was keyed on the nominal name alone and the
@@ -1797,6 +2365,142 @@ blindness is the transferable half: (2) was invisible to (1)'s census, whose
 count held unchanged across the whole discovery, because the unprovable
 operand sat inside a generated leaf rather than at an authored comparison. A
 census that measures one surface does not see the same class one layer in.
+
+### Arithmetic operators
+
+`+ - * / %` and unary `-` unify their operands and DEMAND one more thing of
+them: a number. The demand is a constraint on the operand's type CELL — the
+gate mechanism's second arm, beside the row gate (§«Negation in `with`
+clauses») — and the operand's cell decides:
+
+| Operand's cell                                | Arithmetic's verdict                           |
+|-----------------------------------------------|------------------------------------------------|
+| bound to a word (`Int`, `Float`, `Byte`, an alias or refinement of one, a `repr` pin) | the instruction at the operand's repr — `i32.*` at the floor, `f64.*`/`f32.*`/`i64.*` where the gradient or a pin says so |
+| still FREE at the operator                    | the cell carries the demand (a `NumericGate`); the one writer judges whatever later enters it — a word passes, a variable inherits the gate, an aggregate refuses — and instantiation copies it onto the fresh var, so a generic `a * b` refuses `{x: 1}` at the CALL that instantiates it |
+| bound to a product / sum / sequence / function / continuation / unit, or an address | `E_ArithOnAggregate` REFUSES at the judgment — arithmetic on an aggregate has no meaning the value ontology gives it; the operands are addresses, and an address moves by `addr_at` (§«Addresses») |
+
+**THE THIRD MEASURED HOLE, closed 2026-09-27 in its second form.** The
+arithmetic arm of the emit read only the operands' emitted WIDTHS, so a
+record floored to a word and `{x: 1} * {x: 2}` multiplied the two ADDRESSES
+with zero diagnostics, then trapped at run time reading a field off the
+product (boot 5bf55b68, exit 134). The first form classified the operand's
+TYPE at lower and again at emit under the twin bracket, narrated the
+variable case and added a second gate after the emit for the generic one;
+it passed every test, and the artifact refuted it twice before it was
+pinned: `mentl check` still accepted both programs (only the executable
+refused), and the wheel's own compile narrated the floor twin of a generic
+`Option(t)` add "unproven" over a `t` the judgment had already seen added —
+the emit re-deriving a fact inference held. The demand belongs to the
+JUDGMENT, as a gate on the cell: `{x: 1} * {x: 2}` refuses at the operator
+(`tests/frontier/mn-arith-on-aggregate.mn`); `scale({x: 1}, {x: 2})` over
+`fn scale(a, b) = a * b` refuses at the argument edge that binds the copied
+gate, naming `*`'s site (`mn-arith-on-aggregate-twin.mn`); a copy minted
+before the demand — a signature'd fn's self-reference — is reached through
+the instance column (`mn-arith-on-aggregate-instance.mn`); and `mentl check`
+says so in every case. At emit nothing is decided: a word emits at its
+type's repr, and a variable still free there is a FLOOR twin's quantified
+var — every wide instantiation, through a reference included
+(`tests/micros/mn-arith-generic-ref-float.mn`), minted its own twin and
+bound the var under it — so it is a word at the floor width by
+construction, and the arithmetic narration class the first form minted no
+longer exists. Arithmetic on a USER type is not pointer arithmetic and not
+a trait: it arrives as a numeric projection's rules
+(`Hβ.lower.ad-is-a-demanded-projection`), the same mechanism that makes a
+chain differentiable.
+
+### Addresses — the word that names memory
+
+An address names memory: the raw memory operations read from and write to
+one (lib/memory.mn's `Memory`). Its type is `Addr`, and it is a word in every
+machine respect — one i32, equal by identity, hashed as itself — and NOT a
+number (real, 2026-10-03). `alloc` and `heap_mark` answer one, `Cast`'s `addr`
+answers the address a value lives at, and every raw load and store takes one:
+
+| An address…                       | …is                                                         |
+|-----------------------------------|-------------------------------------------------------------|
+| compared `==` / `!=`              | identity: two allocations are two addresses                 |
+| ordered `<` `<=` `>` `>=`         | by MAGNITUDE — wasm32's memory runs to 4 GB, so one past 2 GB is above one below it, where the signed order of an Int would put it under |
+| shown (`"{p}"`)                   | the unsigned number it names (`4294967280`, never `-16`)    |
+| in arithmetic (`p + 8`, `8 + p`)  | refused, one `E_ArithOnAggregate` at the operator whichever side it stands on: it moves by `addr_at(p, 8)` and is measured by `addr_diff(q, p)` |
+| read and written                  | `load_addr` / `store_addr`; a byte, a word or a float at it through the raw loads and stores |
+| at a word slot                    | `addr_word` / `word_addr`, the identity on the machine, where a value crosses the runtime's word protocol |
+
+The type is what an arena's exit reads (§`~>` — lib/arena.mn): an address of
+the arena's region found where the exit looks — the arena's value, a field, an
+element, a slot `store_addr` wrote into older memory — keeps the region, since
+nothing can say what the address names; held as an Int it was copied as a
+number and the cell reclaimed under it, silently. What stays the program's
+own claim is a NUMBER made from an address — a pun through `addr_word`, or a
+distance added to one — since a number names nothing an exit could read.
+
+A raw copy carries bits, and bits carry no type, so the exit never reads one
+as an address: a `mem_copy` that writes memory older than an open arena keeps
+that arena's region whatever the bytes were. A store that says what it
+stores is how a program keeps an arena reclaiming past it — a float into a
+packed list moves nothing on its account, and neither does a byte, a word
+or a float stored through the raw stores.
+
+---
+
+### Partiality — a primitive's precondition is a claim, and an open claim is a row fact
+
+Integer `/` and `%` are PARTIAL: the substrate traps on a zero divisor, and
+`/` also on `INT_MIN / -1`, the one quotient a signed word cannot hold (`%`
+answers 0 there). The medium never totalizes them — a fabricated 0 for a
+division by zero is the surrender fallback `CLAUDE.md` forbids — and it never
+lets a trap hide either. Each site raises its precondition as the claim it
+is, decided by `Verify`'s fragment from what the graph holds about the two
+operands, with three outcomes (real, 2026-09-30):
+
+| The claim at `a / b` | Outcome |
+|---|---|
+| a constant divisor that is not 0 (and, for `/`, not -1 — or a constant dividend that is not INT_MIN) | PROVEN — the site charges nothing |
+| a constant zero divisor (`1 / 0`), or `INT_MIN / -1` by constants | REFUSED — `E_RefinementRejected` at the site: the program's meaning is a trap |
+| a divisor one of whose sources IS the fatal point — a join's tail (`100 / (if c { 5 } else { 0 })`), an installed arm's answer (`100 / ((…) ~> zero)` with `zero` answering `0`) | REFUSED — the text writes the trap on that tail, as a claim over a join refuses at the tail that folds false (real, 2026-10-03; such a tail answered OPEN before, debt where the refutation names the cause) |
+| a divisor whose every source EXCLUDES the fatal point — a constant, a length, or a parameter whose refinement does (`Positive` (`0 < self`) excludes 0 and -1; `NonZero` (`self != 0`) excludes 0, so it proves `%` outright and `/` only beside a dividend that cannot be INT_MIN) | PROVEN — and where it stands on a parameter's refinement, the `Trap` waits in that parameter's guard, paid by a caller whose argument claim is open |
+| a module value bound to a constant (`let lanes = 4`) | PROVEN — the fragment reads the let's own node |
+| anything else — a parameter nothing bounds, a local, a call | OPEN — the site charges **`Trap`** into the row |
+
+`Trap` is the effect the substrate performs when a partial primitive's
+precondition fails (`effect Trap {}`, the prelude — no operations, nothing
+handles it, and its absence is the whole point of naming it). It is a row
+fact like `Alloc`: inferred and projected (`fn ratio(t, n) = t / n` renders
+`-> Int with Trap` at the address surface), transitive through calls, and
+provable absent — `fn ratio(t, n) with !Trap = t / n` refuses
+`E_EffectMismatch`, `fn ratio(t, n: Positive) with !Trap = t / n` accepts.
+The gradient PROPOSES the annotation (real, 2026-10-02): at `fn inv(n) =
+100 / n` the Teach facet names `n: NonZero` — the refinement in the module's
+reach that discharges the claim and that every call of `inv` satisfies — and
+`mentl accept <file>:<line>:<col>` at the declaration writes it, over a
+written `n: Int` too; where two refinements prove the same and the calls
+cannot choose between them it asks which is meant, and where none in reach
+states the claim it says the predicate the parameter needs. The refinement
+on the divisor is the input that unlocks the proof — lib/dsp's six
+divisions by a hop or a grid width are proven by one refinement on the
+parameter (`hop: Positive`,
+`num_high: Positive`), and each caller pays the claim once, at the
+argument: a literal folds, and a computed value is honest debt that pays the
+guarded `Trap` at the call (`inv(m + 1)` under `!Trap` refuses; P0,
+§«Refinement types»). Whether the type excludes a point is asked of
+the refinement itself — its predicate decided with `self` bound to that
+point — so any refinement the fragment can decide at a constant serves,
+never a name-allowlist of "nonzero-ish" types.
+
+The e-graph reads the same fact: `x * 0 ≡ 0` drops its operand only when the
+operand's subtree row is pure, and a division whose claim stays open is not,
+so `(1 / n) * 0` traps at `n = 0` as written. Until this landed the purity
+gate read the operand's SHAPE — arithmetic over a literal and a variable —
+and that program answered 0 (measured on boot 21f8e691).
+
+What the fragment cannot yet read, named: a guard on the PATH (`if b == 0 {
+None } else { a / b }` — the narrowing the walk computes and never writes,
+`Hβ.verify.partiality-reads-the-path-narrowing`; the wheel's five open
+claims, in `fold_int`, `litval_arith` and `pick_from_pool`, are all of this
+shape), and the other partial
+primitives — an index out of range (`xs[i]`, whose precondition needs the
+same path read), a slice past its sequence — which are the same law one
+primitive over (`Hβ.effects.index-partiality-is-a-row-fact`). Non-termination
+is not a trap and not in the row (`Hβ.effects.divergence-is-a-row-fact`).
 
 ---
 
@@ -1869,6 +2573,8 @@ The parser accepts any whitespace; the precedence table alone draws the tree (ch
 
 **Render rule** (canonical):
 - The formatter renders code in canonical 2-space / 4-space form on save.
+- **A render that would lose what the author wrote is not written** (real, 2026-09-28). `mentl fmt` lexes its render beside the source and spends every identifier, literal (by value, so `48_000` and `48000` are one) and prose line of the source against the render's; anything left unpaid is a loss, the verb names it with its line, leaves the file untouched, and exits nonzero. Until then the gate counted prose alone and wrote whatever it rendered: it deleted an effect parameter's annotation (`rate: Int`), an op parameter's name (`msg: String`) and a pinned alias's base (`Float repr f64`) while reporting "prose conserved", and it wrote a lossy render of a file that did not parse.
+- **The head of a postfix form keeps its parens** (real, 2026-09-28). A call, a field read and an index bind tighter than every operator, so a callee, a receiver or an indexed value that is anything but an atom renders parenthesized: `(r |> keep).level`, `((a, b) => a * b)(2, 3)`, `([1, 2] ++ [3, 4])[2]`. Rendered bare, the re-parse takes the postfix onto the head's last operand — `(run() ~> h).beta` came back as `run() ~> h.beta`, an install of `h.beta`, under "names conserved", because no name was lost. The census of names cannot see a moved operand; a render that re-parses to a different tree is not yet refused (`Hβ.fmt.render-must-parse-to-the-same-tree`).
 - The `Format` effect at `src/format.mn` declares `format_program` / `format_at_handle` / `format_chain` ops; `format_default` is the canonical handler.
 - `mentl edit` (built-in) auto-formats continuously — keystroke triggers parse → format → render. The developer never sees badly-indented code because the medium normalizes before display.
 - The LSP transport (external editors via VS Code / vim / Emacs) provides format-on-save through the same `format_default` handler, different transport.
@@ -1903,6 +2609,11 @@ A `.mn` file is a sequence of top-level statements. Each is one of:
 A `.mn` file with no `main` function is a LIBRARY module — its declarations are imported by other modules. Compilation produces a WAT module whose `_start` is a clean exit.
 
 A `.mn` file with `fn main()` is an EXECUTABLE — `_start` invokes `main`.
+Its module value lets run first, so what an init performs is the
+executable's: an effect no handler serves refuses at the let as it would in
+`main` (real, 2026-10-02 — `let x = op()` compiled and trapped at init
+before). `main`'s declared row judges `main` alone
+(`Hβ.effects.executable-row-includes-inits`).
 
 ---
 
@@ -2152,20 +2863,25 @@ token, so there is nothing to lift.*
 
 | Code                  | Trigger                                       | Applicability        | Quick Fix                                      |
 |-----------------------|-----------------------------------------------|----------------------|-------------------------------------------------|
-| `E_PatternInexhaustive` | match missing variants, no wildcard         | `HasPlaceholders`    | insert stubs for missing variants              |
-| `E_RefinementRejected`| value violates refinement predicate           | `Unspecified`        | adjust value or widen refinement               |
+| `E_PatternInexhaustive` | match missing variants, no wildcard — an alternation covers its branches, an as-pattern its inner pattern. ARMED 2026-10-03 (refuses the executable) | `HasPlaceholders`    | insert stubs for missing variants              |
+| `E_RefinementRejected`| value violates refinement predicate — or a partial primitive's precondition refuted by constants (`1 / 0`, `INT_MIN / -1`; §«Partiality») | `Unspecified`        | adjust value or widen refinement               |
 | `E_EffectMismatch`    | declared row doesn't subsume body row         | `MaybeIncorrect`     | widen declaration OR install absorbing handler |
 | `E_PurityViolated`    | `with Pure` body performs non-empty effects   | `MaybeIncorrect`     | remove `with Pure` or absorb the effect        |
 | `E_FeedbackNoContext` | `<~` used without iterative context — DECLARED, zero construction sites by design: the ambient-context requirement is a Faust inheritance the substrate never adopted (a `<~` prior is a per-site register advanced by the enclosing fn's next call), so firing it would refuse correct code. It becomes real when the clock is INFERRED (`Hβ.dataflow.clock-calculus-sample-rate`) | `MaybeIncorrect` | install an `Iterate`-class handler (`Sample`/`Tick`/`Clock`)        |
 | `E_ZeroDelayFeedback` | `x <~ delay(0)` — a cycle with no delay: the prior would be the value being computed. ARMED (refuses the executable); one arm of the depth read, both the `delay` and `Delay` spellings | `MaybeIncorrect` | raise the delay to at least 1 |
 | `E_ComputedDelayDepth` | `x <~ delay(n - 1)` — the depth is a runtime value. A feedback line is a fixed set of declared slots, so an unreadable depth cannot be held, and the site would silently get one slot. ARMED, the sibling arm of the same read | `MaybeIncorrect` | write the depth as a literal, or hold the history yourself |
 | `E_OwnershipViolation`| `own` consumed twice / escapes ref scope      | `Unspecified`        | restructure to single-consume or use `ref`     |
-| `E_UseAfterMove`      | a borrow-READ of a name the affine ledger already moved — the read half of affine beside `E_OwnershipViolation`'s consume half. ARMED 2026-09-15: it narrated while its own census held at zero (the arming law its decl and fixture both stated), and a narration held at zero is a counter standing in for a proof. Sound today only by accident — the bump heap never frees — so it is a use-after-free the day §5.O layer 3's arena gives `Consume` a real reclaim | `Unspecified` | drop the read, or restructure so the move happens after it — never a patch |
+| `E_UseAfterMove`      | a borrow-READ of a name the affine ledger already moved — the read half of affine beside `E_OwnershipViolation`'s consume half. ARMED 2026-09-15: it narrated while its own census held at zero (the arming law its decl and fixture both stated), and a narration held at zero is a counter standing in for a proof. Sound today only by accident: the heap frees only where an extent ends — an arena's exit, a reset — never at a `Consume`, so it is a use-after-free the day a `Consume` reclaims | `Unspecified` | drop the read, or restructure so the move happens after it — never a patch |
 | `E_HandlerUninstallable` | handler arms need effects context disallows | `MaybeIncorrect`   | widen ambient row or restructure handler       |
+| `E_HandlerInexhaustive` | a handler's arms answer some ops of an effect and not others (§«A handler is exhaustive») — an install absorbs every op of the effects its arms answer, so the missing op would escape the row and reach nothing at runtime. ARMED at birth, 2026-09-30, born at wheel-zero; the shape it refuses was a false absence proof that trapped | `HasPlaceholders` | add the arm; forward the op outward (`op(…) => resume(op(…))`); or declare the ops this handler answers as their own effect |
+| `E_ThreadedBranchEffect` | under a threaded schedule, a branch's row carries an effect whose covering handler at the fanout's frame — or, for a fanout a caller's schedule demands, along the demand's chain of installs, the callback parameter's row read at the instantiating site — writes its state (`resume … with`), lies beyond the frame fence with no demand reaching it, or reaches such a handler through its own arms (§`><`). ARMED, born at wheel-zero | `MaybeIncorrect` | install a handler that writes no state at the fanout's frame, or install the handler inside the branch |
+| `E_ContinuationUncapturable` | a held or multi-shot perform standing where its continuation cannot be captured: not the first work of its function, block or arena — bound by a `let`, past a statement, after an operand that does work (§«Where a continuation is captured») — or a CALL standing there whose callee's row proves such an op (the message names the callee, whose row carries the op). An abandoning perform never triggers it: a dead continuation unwinds from any position. Said at the settle point over the emitted reach, so a body nothing runs is never refused. ARMED at birth, 2026-10-03: it compiled clean and trapped at a runtime floor no diagnostic named (exit 134); the call face the same day (AN-2) | `MaybeIncorrect` | move the perform or the call to the front of its function, block or arena, or move what precedes it into a function the perform's function calls |
+| `E_DerivativeUnreachable` | a `d(v)` under a derivative reading whose argument's tangent was lost — into an aggregate, across a multi-shot perform, off a line ticked by forward code or a line a closure record owns, or through another `d` — a mint, an install or a state write under the reading that would store a lost tangent into a record, or a reading whose seed is not a Float variable in scope (§`~>`). The message names the loss site. ARMED at birth: the alternative is a slope of zero the program never has | `Unspecified` | keep the value out of the aggregate until it is asked for, or seed the reading at a Float variable |
 | `E_MissingVariable`   | name not in scope                             | `MaybeIncorrect`     | check spelling; check imports                  |
 | `E_ImportNameCollision` | two selective imports bind the same name    | `MaybeIncorrect`     | narrow the selective sets so each name binds one edge |
+| `E_MissingImport`     | a name resolves only because the whole link carries it: declared at module level in a module the referencing module never imports, directly or transitively (the prelude's closure is ambient — the driver links it into every compile). ARMED at birth, 2026-09-27: the per-module solo sweep as one read of the one judgment, naming both modules at the reference | `MaybeIncorrect` | add `import <declaring module>` to the referencing module |
 | `E_UnknownArgLabel`   | a labeled arg names no declared parameter     | `MaybeIncorrect`     | check the label against the parameter names    |
-| `E_TypeMismatch`      | unification failed                            | `Unspecified`        | adjust types; widen / narrow                   |
+| `E_TypeMismatch`      | unification failed — the message carries the Reason the unify was asked with, past the diagnostic's own span (`Int vs List(Byte) — ~> pipe → at 15:13-15:27: inferred from the arm bail of handler h`; real 2026-10-03 — the reporter had taken the reason and dropped it, so a mismatch said its two types and nothing of why they met) | `Unspecified`        | adjust types; widen / narrow                   |
 | `E_OccursCheck`       | infinite type                                 | `Unspecified`        | restructure to break cycle                     |
 | `E_OrphanHandlerAttach` | `~>` with no preceding chain                | `Unspecified`        | delete `~>` or supply body                     |
 | `E_PipeIntoComplete`  | `x \|> f(…)` where `f(…)` has no hole (already a complete value, not a `A -> B`) | `MaybeIncorrect` | leave a hole for the piped value (drop an arg or mark it `??`) |
@@ -2176,16 +2892,19 @@ token, so there is nothing to lift.*
 | `E_ResumeWorldMismatch` | two continuations (`TCont(R, S, discipline, world)`) unify with incompatible resume DISCIPLINES — OneShot and MultiShot are distinct representations (stack frame vs heap record), so the mismatch is hard; `Either` unifies with either. The WORLD half is the row unification in the same TCont arm (`!E` lifted to the TIME axis, §4③); its dedicated runtime raise (`E_ResumeWorldMismatchWorld`) is declared but not yet wired — lathe-lag, band B | `MaybeIncorrect` | align the handler arms' resume cardinality; for a world clash, re-install the absorbing handler before the resume OR widen the continuation's world |
 | `E_ConcatTypeMismatch` | `++` operands' element types fail to unify (e.g. `[Int] ++ [Bool]`) | `MaybeIncorrect` | unify the element types |
 | `E_DeclaredRowContradiction` | one authored clause asserts a name present AND absent (`with E + !E`, instance-aware — a bare present beside an instance absent stays a refinement). Reported at the signed fold BEFORE the meet's drop; ARMED (refuses the executable): the pre-diagnostic meet let a performing body check clean under a declared `!E` | `MachineApplicable` | drop one side of the contradiction |
+| `E_ArithOnAggregate`  | `+ - * / %` or unary `-` whose operand is a product, sum, sequence, function, continuation or unit — the operands are addresses and the arithmetic would be on where the values live. ARMED at birth (the wheel's census is zero): judged at the operator for a bound operand and at the one writer for a gated cell bound later (a `NumericGate` on the cell, copied at instantiation, reached through the instance column), so the judgment refuses, `mentl check` says so, and no WAT streams. Until 2026-09-27 it compiled and multiplied the addresses | `Unspecified` | give the operand a number (a word) or read the field you meant |
 | `E_UnresolvedHole`    | compiling an EXECUTABLE whose reachable emitted tree carries an authored value-position `??` (§«Partial application» — a hole is productive for check/edit, never an executable value; a parameter-product `??` is an executable suspension and runs). Raised by the executable gate between reachability and emit: nonzero exit, zero WAT bytes, the authored weave span on the diagnostic | `HasPlaceholders` | fill the hole (accept a Synth survivor) or suspend it into a parameter product |
+| `E_FieldOffsetUnprovable` | a field read or a record pattern whose receiver's row never closed where the body is emitted — no field set, so no slot. Said at the SETTLE POINT: the plan's emitted reach asks it of every body under the bracket that body is emitted in, a base at the floor and a twin under its own pairs, before the gate reads the ledger, so the compile exits 1 with zero WAT bytes. ARMED 2026-09-28 at wheel-zero. It narrated as `T_FieldOffsetUnprovable` from 2026-09-15 and could not arm while it was decided during emission, after the gate: a program carrying one compiled clean and trapped at the instruction that admits it (`tests/micros/mn-payload3.mn`, exit 134 on every boot before the arming) | `MaybeIncorrect` | close the receiver's row — annotate it at its Intent Boundary, or give the call site a shape its specialization can key on |
+| `E_ShapeUnprovable` | a comparison, a show, a hash or a `++` whose operand is still a type VARIABLE where it is emitted: nothing proves the shape the read needs, and the word reading it would fall to is an address lie for anything but a word. Said at the settle point beside its row sibling and ARMED with it (2026-09-28). The eq and show narrations it replaces (`T_EqTypeUnprovable`, `T_ShowTypeUnprovable`) counted two sites on the wheel, both `list_compare_loop` reading its elements through the typed `list_index`; it reads the words the emit's by-name call guarantees, and the count is zero | `MaybeIncorrect` | prove the operand — give the call site a shape its specialization can key on, or name the type at its Intent Boundary |
+| `E_InstantiationDepth` | a reference eight instantiations deep in a recursion whose type grows with every call, reaching a callee that READS the growing structure (a comparison, a show, a field — or a number). Monomorphization cannot specialize without bound, and the ninth level would read the structure as a word, so the settle point refuses there. ARMED at birth (2026-09-28): two ten-deep lists compared unequal and a nested show printed an address before it. A wide value nothing reads crosses the word protocol boxed and back, and is admitted | `Unspecified` | recurse over a type that keeps its shape, or leave the growing part unread |
 
 ### Gradient narration (teaching surfaces)
 
 | Code                  | Trigger                                       | Applicability        | Action                                          |
 |-----------------------|-----------------------------------------------|----------------------|-------------------------------------------------|
-| `T_OverDeclared`      | declared row wider than body uses             | `MachineApplicable`  | tighten the signature to unlock capabilities    |
-| `T_FieldOffsetUnprovable` | a reachable field access whose slot the graph cannot prove — the receiver's row never closed, so emit has no offset and writes `(unreachable)`. The diagnostic renders the selector and the receiver's own live type at the receiver's span. BORN 2026-09-15, and the shape of its birth is the lesson: the floor had been emitted since the offset read existed and was never REPORTED, so a program carrying one compiled clean, passed `mentl check`, and trapped at the instruction that admits it — §0's "nothing executes unproven" inverted at the one boundary that claimed it. Pre-arm (the wheel's own census is four); `tests/frontier/mn-field-offset-unprovable.mn` holds the contract and moves to a refusal in the commit that arms it | `MaybeIncorrect` | close the receiver's row — annotate it at its Intent Boundary, or give the call site a shape the twin can key on |
-| `T_EqTypeUnprovable` | a comparison (`==`, `!=`, `<`, …) whose operand type is still a variable at emit — no structure to read, so it falls to a one-word compare: value-equality for a word, an ADDRESS lie for anything else. The diagnostic carries the operator and the operand's live type at the operand's span. BORN 2026-09-18 as narration: a handler arm over quantified op parameters answered `"ab" != "ab"` (`tests/frontier/mn-eq-in-arm-pointer.mn`, declared red), and the wheel carries such compares itself — the trap form was refuted by the wheel dying on its own compile. Pre-arm; `eq_type_unprovable_max` in tools/verify-baseline.txt is the count's one home and the countdown, `T_FieldOffsetUnprovable`'s sibling on the same ladder. IT SEES ONE ALTITUDE ONLY, and the limit is measured rather than suspected: a polymorphic sum's payload compared by address inside a GENERATED leaf, where no authored comparison stands for this diagnostic to attach to, so the count held unchanged across that defect's whole discovery. That one is closed (`Hβ.eq.polymorphic-sum-payload-is-pointer-eq`); the altitude limit is not, and the generated leaf's own refusal is `Hβ.emit.generated-leaf-swallows-an-unresolved-payload` | `MaybeIncorrect` | prove the operand — give the call site a shape the twin can key on, or name the type at its Intent Boundary |
-| `T_Gradient`          | an annotation INPUT would narrow the cursor's projection | `MachineApplicable` | accept the suggestion to narrow             |
+| `T_OverDeclared`      | a declared bare positive name beyond the proven row (the positive half only — a negation is a proof claim, never over-declared) | `MachineApplicable`  | `mentl tighten` writes the clause's residue |
+| `T_RowInventory`      | a declared clause whose bare positive names are exactly what the body proves, or a positive cap over an OPEN body row (which installs no gate and so constrains nothing) — the projected row written by hand (§«A signature is not an inventory») | `MachineApplicable` | `mentl tighten` writes the residue — negations, instance pins, or no clause |
+| `T_WordSlotBox`       | a wide value (a Float) boxed into a fresh cell to cross a callee's slot sized for a word — a list primitive's element (`list_set`) — inside a unit whose row does not say `Alloc`: the representation's cost, not the program's, until the slot takes the value's own width (`Hβ.value.seq-element-stride-carrier`). Said at the settle point by the allocation audit, which refuses every allocation that IS the program's | `MaybeIncorrect` | keep the value at a word's width where the slot is one, or wait for the carrier |
 | `W_Suggestion`        | probable Quick Fix available                  | `MaybeIncorrect`     | (Mentl-proposed)                                |
 | `W_RedundantWhere`    | `type X = Y where true` — vacuous predicate   | `MachineApplicable`  | drop the `where true`; alias is transparent     |
 | `W_EmptyRow`          | a named row (`type X = <row>`) resolves to `Pure` | `MaybeIncorrect`     | drop the alias; the row IS `Pure` already       |

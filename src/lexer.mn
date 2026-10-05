@@ -41,7 +41,7 @@ fn is_whitespace(b) with Pure = b == 32 || b == 9 || b == 13
 //
 // Keyword classification — returns `Some(TokenKind)` if `word` is a
 // reserved keyword; `None` otherwise (caller emits `TIdent(word)`).
-fn keyword_kind(ref word) with Memory + Alloc = if word == "fn" {
+fn keyword_kind(ref word) = if word == "fn" {
   Some(TFn)
 } else if word == "let" {
   Some(TLet)
@@ -86,7 +86,7 @@ else if word == "Pure" {
 // no string comparison.
 //
 // ==
-fn two_char_kind(a, b) with Memory + Alloc = if a == 61 && b == 61 {
+fn two_char_kind(a, b) = if a == 61 && b == 61 {
   Some(TEqEq)
 }
 // !=
@@ -150,7 +150,7 @@ else if a == 63 && b == 63 {
 
 // Returns `Some(TokenKind)` if `b` is a recognized punctuation byte,
 // `None` otherwise (caller skips the character).
-fn single_char_kind(b) with Memory + Alloc = if b == 40 {
+fn single_char_kind(b) = if b == 40 {
   Some(TLParen)
 } else if b == 41 {
   Some(TRParen)
@@ -283,7 +283,7 @@ fn lex_from(ref source, n: ValidOffset, pos: ValidOffset, line, col, own buf, co
     // common to all lines is stripped (indentation-aware). The closing
     // `"""` terminates. scan_triple_string materializes the de-indented
     // body once, then scans it through the same splice machinery.
-    match scan_triple_string(source, n, pos + 3, line, col + 3, buf, count) {
+    match scan_triple_string(source, n, pos + 3, line, col + 3, line, col, buf, count) {
       (new_pos, new_line, new_col, b1, c1) => lex_from(source, n, new_pos, new_line, new_col, b1, c1, term_byte, depth),
     }
   } else if b == 34 {
@@ -294,7 +294,7 @@ fn lex_from(ref source, n: ValidOffset, pos: ValidOffset, line, col, own buf, co
     // spanning newlines resumes the loop at the TRUE line.
     // Per Hβ.lex.scan-string-on-to-on-restructure: scan-to-break +
     // single str_slice per chunk, replacing per-byte acc-concat.
-    match scan_string(source, n, pos + 1, line, col + 1, buf, count) {
+    match scan_string(source, n, pos + 1, line, col + 1, line, col, buf, count) {
       (new_pos, new_line, new_col, b1, c1) => lex_from(source, n, new_pos, new_line, new_col, b1, c1, term_byte, depth),
     }
   } else if is_digit(b) {
@@ -454,8 +454,15 @@ else if b == 33 {
   false
 }
 
-fn scan_string(ref source, n: ValidOffset, pos: ValidOffset, line, col, own buf, count) =
-  scan_string_chunk(source, n, pos, pos, line, col, buf, count)
+// `sline`/`scol` is where the chunk's TOKEN begins — the opening quote for
+// the first chunk, the byte after a splice's `}` for each later one — so a
+// part's span is its extent in the source, start through end. It used to be
+// the END alone (the closing quote, or a zero-width point at a `{`), and a
+// string literal's node covered one column: a caret anywhere inside
+// `"hello world"` reached the declaration around it (measured on boot
+// 8b071ba3).
+fn scan_string(ref source, n: ValidOffset, pos: ValidOffset, line, col, sline, scol, own buf, count) =
+  scan_string_chunk(source, n, pos, pos, line, col, sline, scol, buf, count)
 
 // chunk_start carries the start-byte of the current literal chunk;
 // pos advances byte-by-byte without allocation until a break-byte
@@ -471,9 +478,9 @@ fn scan_string(ref source, n: ValidOffset, pos: ValidOffset, line, col, own buf,
 // before completion. Future peer: Hβ.runtime.zero-copy-string-view
 // represents TStringPart payload as (offset, length) into source,
 // eliminating the slice-alloc entirely — O(1) per chunk.
-fn scan_string_chunk(ref source, n: ValidOffset, chunk_start: ValidOffset, pos: ValidOffset, line, col, own buf, count) = if pos >= n {
+fn scan_string_chunk(ref source, n: ValidOffset, chunk_start: ValidOffset, pos: ValidOffset, line, col, sline, scol, own buf, count) = if pos >= n {
   let part = str_unescape(str_slice(source, chunk_start, pos))
-  match push_tok(buf, count, mk_tok(TStringPart(part), line, col, line, col)) {
+  match push_tok(buf, count, mk_tok(TStringPart(part), sline, scol, line, col)) {
     (b1, c1) => (pos, line, col, b1, c1),
   }
 } else {
@@ -481,7 +488,7 @@ fn scan_string_chunk(ref source, n: ValidOffset, chunk_start: ValidOffset, pos: 
   if b == 34 {
     // closing "
     let part = str_unescape(str_slice(source, chunk_start, pos))
-    match push_tok(buf, count, mk_tok(TStringPart(part), line, col, line, col + 1)) {
+    match push_tok(buf, count, mk_tok(TStringPart(part), sline, scol, line, col + 1)) {
       (b1, c1) => (pos + 1, line, col + 1, b1, c1),
     }
   } else if b == 10 {
@@ -494,10 +501,10 @@ fn scan_string_chunk(ref source, n: ValidOffset, chunk_start: ValidOffset, pos: 
     // productive-under-error at the lexical layer.
     report(PUnclosedConstruct(
       "string literal spans a raw newline — close the quote on its line, or use the multi-line \"\"\" form",
-      Span(line, col, line, col)
+      Span(sline, scol, line, col)
     ))
     let part = str_unescape(str_slice(source, chunk_start, pos))
-    match push_tok(buf, count, mk_tok(TStringPart(part), line, col, line, col)) {
+    match push_tok(buf, count, mk_tok(TStringPart(part), sline, scol, line, col)) {
       (b1, c1) => (pos, line, col, b1, c1),
     }
   } else if b == 123 && pos + 1 < n && is_splice_start_byte(byte_at(source, pos + 1)) {
@@ -506,7 +513,7 @@ fn scan_string_chunk(ref source, n: ValidOffset, chunk_start: ValidOffset, pos: 
     // `"{"` and `"{}"` are literal strings, not splices. Matches the
     // seed's scan_string behavior exactly.
     let part = str_unescape(str_slice(source, chunk_start, pos))
-    match push_tok(buf, count, mk_tok(TStringPart(part), line, col, line, col)) {
+    match push_tok(buf, count, mk_tok(TStringPart(part), sline, scol, line, col)) {
       (b1, c1) => match push_tok(b1, c1, mk_tok(TStringSplice, line, col, line, col + 1)) {
         (b2, c2) => scan_string_after_splice(source, n, pos + 1, line, col + 1, b2, c2),
       },
@@ -518,10 +525,10 @@ fn scan_string_chunk(ref source, n: ValidOffset, chunk_start: ValidOffset, pos: 
     // unchanged so `\"` does not falsely close the string. The
     // prior per-escape TStringPart flush was the design flaw the
     // parser then had to un-coalesce — deleted, not decorated.
-    scan_string_chunk(source, n, chunk_start, pos + 2, line, col + 2, buf, count)
+    scan_string_chunk(source, n, chunk_start, pos + 2, line, col + 2, sline, scol, buf, count)
   } else {
     // non-break byte — advance pos; chunk_start unchanged.
-    scan_string_chunk(source, n, chunk_start, pos + 1, line, col + 1, buf, count)
+    scan_string_chunk(source, n, chunk_start, pos + 1, line, col + 1, sline, scol, buf, count)
   }
 }
 
@@ -531,7 +538,7 @@ fn scan_string_chunk(ref source, n: ValidOffset, chunk_start: ValidOffset, pos: 
 // Nested splices (depth > 0) handled by `lex_from`'s depth tracking;
 // peer sub-handle B.12.5.2 extends this to multiple nesting levels.
 fn scan_string_after_splice(ref source, n: ValidOffset, pos: ValidOffset, line, col, own buf, count) = match lex_from(source, n, pos, line, col, buf, count, 125, 0) {
-  (new_pos, new_line, new_col, b1, c1) => scan_string(source, n, new_pos, new_line, new_col, b1, c1),
+  (new_pos, new_line, new_col, b1, c1) => scan_string(source, n, new_pos, new_line, new_col, new_line, new_col, b1, c1),
 }
 
 // scan_triple_string — the multi-line `"""..."""` variant of the one
@@ -542,7 +549,12 @@ fn scan_string_after_splice(ref source, n: ValidOffset, pos: ValidOffset, line, 
 // `ci` whitespace bytes are skipped as a position gap — no buffer rewrite,
 // so splice expressions still slice the real source. A leading newline
 // directly after the opening `"""` is dropped (content starts next line).
-fn scan_triple_string(ref source, n: ValidOffset, pos: ValidOffset, line, col, own buf, count) = {
+// `sline`/`scol` is the opening `"""`, where the first part's token begins.
+// A stripped indent is a position GAP, not a column reset: the scan's column
+// is where the byte it stands on sits in the source, so a splice on a
+// de-indented line lexes at its true column (it used to restart at 1 after
+// every stripped indent).
+fn scan_triple_string(ref source, n: ValidOffset, pos: ValidOffset, line, col, sline, scol, own buf, count) = {
   let body_start = if pos < n && byte_at(source, pos) == 10 { pos + 1 } else { pos }
   let body_line = if pos < n && byte_at(source, pos) == 10 { line + 1 } else { line }
   let body_col = if pos < n && byte_at(source, pos) == 10 { 1 } else { col }
@@ -552,7 +564,19 @@ fn scan_triple_string(ref source, n: ValidOffset, pos: ValidOffset, line, col, o
   // there is nothing to strip, so a zero common-indent is the honest read.
   let strip = if ci == 2147483647 { 0 } else { ci }
   let after_first = triple_skip_indent(source, n, body_start, strip, 0)
-  scan_triple_chunk(source, n, after_first, after_first, body_line, body_col, strip, buf, count)
+  scan_triple_chunk(
+    source,
+    n,
+    after_first,
+    after_first,
+    body_line,
+    body_col + (after_first - body_start),
+    sline,
+    scol,
+    strip,
+    buf,
+    count
+  )
 }
 
 // scan_triple_end — position of the opening byte of the closing `"""`
@@ -605,16 +629,16 @@ fn triple_skip_indent(ref source, n: ValidOffset, pos: ValidOffset, strip, count
 // newline (to skip the next line's common indent as a position gap). The
 // backslash escape (`\X`, `\{`/`\}`, `\xHH`) is resolved by str_unescape
 // at flush, exactly as in the single-line form.
-fn scan_triple_chunk(ref source, n: ValidOffset, chunk_start: ValidOffset, pos: ValidOffset, line, col, strip, own buf, count) = if pos + 2 < n && byte_at(source, pos) == 34 && byte_at(source, pos + 1) == 34 && byte_at(source, pos + 2) == 34 {
+fn scan_triple_chunk(ref source, n: ValidOffset, chunk_start: ValidOffset, pos: ValidOffset, line, col, sline, scol, strip, own buf, count) = if pos + 2 < n && byte_at(source, pos) == 34 && byte_at(source, pos + 1) == 34 && byte_at(source, pos + 2) == 34 {
   // closing """
   let part = str_unescape(str_slice(source, chunk_start, pos))
-  match push_tok(buf, count, mk_tok(TStringPart(part), line, col, line, col + 3)) {
+  match push_tok(buf, count, mk_tok(TStringPart(part), sline, scol, line, col + 3)) {
     (b1, c1) => (pos + 3, line, col + 3, b1, c1),
   }
 } else if pos >= n {
   // unterminated — flush what we have; parser surfaces P_UnclosedConstruct.
   let part = str_unescape(str_slice(source, chunk_start, pos))
-  match push_tok(buf, count, mk_tok(TStringPart(part), line, col, line, col)) {
+  match push_tok(buf, count, mk_tok(TStringPart(part), sline, scol, line, col)) {
     (b1, c1) => (pos, line, col, b1, c1),
   }
 } else {
@@ -623,32 +647,33 @@ fn scan_triple_chunk(ref source, n: ValidOffset, chunk_start: ValidOffset, pos: 
     // newline — flush the chunk through the newline, then skip the next
     // line's common indent as a position gap (the indentation strip).
     let part = str_unescape(str_slice(source, chunk_start, pos + 1))
-    match push_tok(buf, count, mk_tok(TStringPart(part), line, col, line + 1, 1)) {
+    match push_tok(buf, count, mk_tok(TStringPart(part), sline, scol, line + 1, 1)) {
       (b1, c1) => {
         let after = triple_skip_indent(source, n, pos + 1, strip, 0)
-        scan_triple_chunk(source, n, after, after, line + 1, 1, strip, b1, c1)
+        let at_col = 1 + (after - pos - 1)
+        scan_triple_chunk(source, n, after, after, line + 1, at_col, line + 1, at_col, strip, b1, c1)
       },
     }
   } else if b == 123 && pos + 1 < n && is_splice_start_byte(byte_at(source, pos + 1)) {
     // { — interpolation splice (live in triple-quoted strings too).
     let part = str_unescape(str_slice(source, chunk_start, pos))
-    match push_tok(buf, count, mk_tok(TStringPart(part), line, col, line, col)) {
+    match push_tok(buf, count, mk_tok(TStringPart(part), sline, scol, line, col)) {
       (b1, c1) => match push_tok(b1, c1, mk_tok(TStringSplice, line, col, line, col + 1)) {
         (b2, c2) => scan_triple_after_splice(source, n, pos + 1, line, col + 1, strip, b2, c2),
       },
     }
   } else if b == 92 && pos + 1 < n {
     // backslash escape — not a chunk break; resolved by str_unescape.
-    scan_triple_chunk(source, n, chunk_start, pos + 2, line, col + 2, strip, buf, count)
+    scan_triple_chunk(source, n, chunk_start, pos + 2, line, col + 2, sline, scol, strip, buf, count)
   } else {
-    scan_triple_chunk(source, n, chunk_start, pos + 1, line, col + 1, strip, buf, count)
+    scan_triple_chunk(source, n, chunk_start, pos + 1, line, col + 1, sline, scol, strip, buf, count)
   }
 }
 
 // scan_triple_after_splice — lex the splice expression (term_byte=125),
 // then resume the triple-quoted chunk scan past the closing `}`.
 fn scan_triple_after_splice(ref source, n: ValidOffset, pos: ValidOffset, line, col, strip, own buf, count) = match lex_from(source, n, pos, line, col, buf, count, 125, 0) {
-  (new_pos, new_line, new_col, b1, c1) => scan_triple_chunk(source, n, new_pos, new_pos, new_line, new_col, strip, b1, c1),
+  (new_pos, new_line, new_col, b1, c1) => scan_triple_chunk(source, n, new_pos, new_pos, new_line, new_col, new_line, new_col, strip, b1, c1),
 }
 
 // ── The numeric literal's own vocabulary ────────────────────────────────

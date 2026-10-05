@@ -1,0 +1,18 @@
+// CROWN refinement (S6, 2026-10-02): a declaration returning functions
+// publishes, at every position of its return, the meet of every function the
+// position can hold. `pick` returns `succ` or `inv` at `f`, so `.f` demands
+// `Positive`; the argument is a computation, the claim is open, and its
+// `Trap` reaches `!Trap`. The published return kept the first branch's
+// contract, so this checked clean and divided by zero on boots 1a68ecc0,
+// 53f7404b and 85218488. Expect E_EffectMismatch.
+type Positive = Int where 0 < self
+
+fn inv(n: Positive) = 100 / n
+
+fn succ(n) = n + 1
+
+fn pick(c) = if c { {f: succ} } else { {f: inv} }
+
+fn less_one(n) = n - 1
+
+fn main() with !Trap = pick(false).f(less_one(1))

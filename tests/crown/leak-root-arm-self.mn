@@ -1,0 +1,9 @@
+// A handler arm performing an op of the effect it handles asks an OUTER
+// install to serve it (an arm's performs resolve outer, never self — the
+// arm runs in the install's own world). With one install there is no outer
+// handler: the row re-adds E through row(h) at the tee, E reaches the root,
+// and the executable refuses. The boot accepted it (installed-somewhere) and
+// the program aborted inside the arm.
+effect E { op() -> Int, twice() -> Int }
+handler h { op() => resume(10), twice() => resume(op() + op()) }
+fn main() = (twice()) ~> h

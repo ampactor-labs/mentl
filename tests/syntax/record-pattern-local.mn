@@ -5,11 +5,9 @@
 // irrelevant (fields sort alphabetically at parse), so a pattern naming
 // the alphabetically-later field must still read that field's value.
 //
-// The receiver here is a LOCAL binding, which is the half that holds.
-// The same pattern against a FUNCTION-PARAMETER receiver reads the wrong
-// field silently — `Hβ.lower.record-pattern-param-receiver-slot`, whose
-// repro lands with its fix rather than banking a wrong value here (§9.11:
-// nine micros once canonized a wrong-slot read as their expectation).
+// The receiver here is a LOCAL binding. The same pattern over a
+// FUNCTION-PARAMETER receiver is record-pattern-param, and its rest is
+// record-pattern-param-rest (`Hβ.lower.record-pattern-param-receiver`).
 fn main() = {
   let r = {alpha: 7, zeta: 9}
   let {zeta} = r

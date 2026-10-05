@@ -1,0 +1,13 @@
+// CROWN root (S6, 2026-10-02): a module value let's init runs before `main`,
+// so what it performs is the executable's, and an effect no handler serves
+// refuses at the let as it would in `main`. The init was judged in no frame
+// and the root gate read `main`'s row alone, so `let x = op()` compiled and
+// trapped at init on pin 85218488 while `fn main() = op()` refused.
+// Expect E_EffectUnhandled.
+effect E {
+  op() -> Int
+}
+
+let x = op()
+
+fn main() = x + 1

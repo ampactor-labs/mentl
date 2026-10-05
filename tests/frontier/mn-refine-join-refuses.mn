@@ -1,0 +1,17 @@
+// A claim over a join covers every tail it writes, and one of these tails
+// is outside the bound: 30000.0 is not an `Hz` below 24000.0. The claim
+// decides FALSE from the constants alone, so the compile REFUSES with
+// E_RefinementRejected and emits no module. On boot 43aeb30f the claim
+// over the match was never decided — the program compiled, carried one
+// pending obligation, and returned 30000.0 from a function that said
+// `-> Hz`.
+
+type Hz = Float where 0.0 < self && self < 24000.0
+
+fn note_hz(k: Int) -> Hz = match k {
+  0 => 220.0,
+  1 => 30000.0,
+  _ => 440.0,
+}
+
+fn main() = if note_hz(1) > 0.0 { 0 } else { 1 }

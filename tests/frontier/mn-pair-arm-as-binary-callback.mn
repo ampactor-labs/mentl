@@ -1,0 +1,14 @@
+// A pair-destructuring arm literal handed where a two-argument callback is
+// called REFUSES (E_TypeMismatch — the function-arity face). The literal
+// takes ONE parameter, the pair its arm matches; `apply2` calls its
+// callback with two. Until 2026-09-27 the unification of the callback's
+// type against the parameter's decomposed the tuple element-wise and the
+// program checked clean — then trapped at the indirect call. This is the
+// shape that found the class: the wheel's own build wrote it into a fold
+// and the new m2 died at the callback. Measured RED-first on boot
+// b145b836: exit 0, no diagnostic, `indirect call type mismatch` at run.
+// Sibling of tests/frontier/mn-tuple-into-binary.mn; both turn green only
+// at `Hβ.lower.parameter-product-calling-convention`.
+fn apply2(g) = g(1, 2)
+
+fn main() = apply2({ (a, x) => a + x })

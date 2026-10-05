@@ -1,0 +1,10 @@
+// expect: 56
+// A record literal written as a field of another: the outer literal's base
+// pointer parked in the one scratch local every record literal shared, the
+// inner literal overwrote it, and `r` was bound to the INNER record —
+// `r.inner.den` read 0, with no diagnostic, on every boot through 1a68ecc0.
+// Each literal parks in its own scratch now, as a variant and a tuple do.
+fn main() = {
+  let r = {inner: {den: 5, num: 6}}
+  r.inner.den * 10 + r.inner.num
+}

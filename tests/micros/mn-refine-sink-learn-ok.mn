@@ -1,0 +1,10 @@
+// expect: 20
+// The same callback applying the handed function at 5: the provision is an
+// edge to `inv`, the usage an edge to `5`, and `0 < 5` folds — no guard owed.
+type Positive = Int where 0 < self
+
+fn inv(n: Positive) = 100 / n
+
+fn run_with(g) = fold(0, g, [inv])
+
+fn main() with !Trap = run_with((acc, f) => acc + f(5))

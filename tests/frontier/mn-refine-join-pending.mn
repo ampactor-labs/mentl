@@ -1,0 +1,16 @@
+// One tail of this match is not a constant, so the claim over the match
+// stays OPEN: the constant arm proves it and the computed arm cannot, and
+// the AND of a proof and an unknown is an unknown. The compile surfaces the
+// V_Pending projection and runs — honest debt, never a refusal and never an
+// assume-true. The control beside mn-refine-join-discharges.mn: the
+// distribution over tails decides what the constants decide and nothing
+// more.
+
+type Hz = Float where 0.0 < self && self < 24000.0
+
+fn scaled(k: Int, f: Float) -> Hz = match k {
+  0 => 220.0,
+  _ => f * 2.0,
+}
+
+fn main() = if scaled(1, 100.0) > 0.0 { 0 } else { 1 }

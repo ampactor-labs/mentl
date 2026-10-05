@@ -1,0 +1,15 @@
+// expect: 20
+// The precision the nominal channel buys: the callback applies the
+// function it is handed at 5, so `inv` crossing into it owes nothing and
+// `!Trap` holds. Boot e23392f6 refused it (E_EffectMismatch), reading the
+// class where the function met the callback's parameter.
+type Positive = Int where 0 < self
+
+fn inv(n: Positive) = 100 / n
+
+fn opt_apply(f, o) = match o {
+  Some(x) => f(x),
+  None => 0,
+}
+
+fn main() with !Trap = opt_apply({ g => g(5) }, Some(inv))

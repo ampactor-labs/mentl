@@ -1,0 +1,28 @@
+// expect: 7
+// mn-arm-key-keeps-the-face — the op boundary keeps its declared face when
+// the key moves an arm's width.
+//
+// `log`'s parameter is a type variable of the `Log` effect, so the performer
+// boxes the Float it passes and the op's declared face is a word. `fmt`
+// shares that variable, so the install keys the arm at Float: the twin reads
+// `x` as f64 and hands it to `show_it` natively, and the perform reaches the
+// twin through its word-face wrapper, which unboxes. Until R0c the install
+// kept the declared arm at this key (the face rule), which only carried the
+// value by reference.
+effect Log {
+  log(x: a)
+}
+
+handler logger(fmt) {
+  log(x) => {
+    fmt(x)
+    resume()
+  },
+}
+
+fn show_it(v: Float) -> () = ()
+
+fn main() -> Int = {
+  log(1.5) ~> logger(show_it)
+  7
+}

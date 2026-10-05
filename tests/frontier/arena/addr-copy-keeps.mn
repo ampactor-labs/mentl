@@ -1,0 +1,23 @@
+// An address a typed store wrote into a young buffer, copied by `mem_copy`
+// into a slot older than the arena. Copied bytes carry no type, so a copy
+// that writes memory older than the arena keeps its region, and the exit
+// reads none of the bytes: the string the copied address names reads back
+// whole. Exit 42 when it does and the exit was a keep. With no barrier on a
+// raw copy, the compiler answered 1 for 42, with no diagnostic.
+fn build(n) = if n == 0 { [] } else { build(n - 1) ++ [n] }
+
+fn fill(old) = {
+  let s = "hello" ++ "world"
+  let tmp = alloc(8)
+  store_addr(tmp, addr(s))
+  mem_copy(old, tmp, 4)
+  len(s) + len(build(50))
+}
+
+fn main() = {
+  let old = alloc(8)
+  let k = fill(old) ~> arena
+  let junk = build(400)
+  let t = str_of_buf(load_addr(old))
+  if k == 60 && t == "helloworld" && len(junk) == 400 && arena_stat(ArKept) == 1 { 42 } else { 1 }
+}

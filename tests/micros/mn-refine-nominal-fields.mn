@@ -1,0 +1,19 @@
+// expect: refuse E_RefinementRejected
+// A user nominal type's argument reaches every field of the construction
+// in sight — which field a type argument types is the constructor's
+// declaration (Hβ.verify.type-arg-part-reads-every-field) — so both
+// functions `P(twice, inv)` carries cross into the callback, and `inv`
+// applied at 0 refuses. Boot e23392f6 refused it as effect debt.
+type Positive = Int where 0 < self
+
+type Pair = P(a, a)
+
+fn inv(n: Positive) = 100 / n
+
+fn twice(n: Int) = n * 2
+
+fn pair_apply(f, p) = match p {
+  P(x, y) => f(x) + f(y),
+}
+
+fn main() with !Trap = pair_apply({ g => g(0) }, P(twice, inv))

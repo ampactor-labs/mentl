@@ -1,0 +1,16 @@
+// CROWN refinement (H4·D, 2026-10-01): a function handed a FUNCTION. `run2`
+// hands its callback `inv`, and the lambda handed to `run2` applies what it
+// is handed at `k + 1`: `inv` crosses into that usage and owes its
+// precondition. Boot e23392f6 refuses this too, through the class the call's
+// unification built — this crucible pins the edge-read path that replaced
+// the class read (it is a regression guard, never seen red on that boot).
+// Expect E_EffectMismatch.
+type Positive = Int where 0 < self
+
+fn inv(n: Positive) = 100 / n
+
+fn run2(g) = g(inv)
+
+fn run(k) with !Trap = run2({ h => h(k + 1) })
+
+fn main() = run(0 - 1)

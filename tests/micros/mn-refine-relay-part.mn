@@ -1,0 +1,12 @@
+// expect: refuse E_RefinementRejected
+// A structure handed straight through an unannotated parameter: `relay`
+// learns `{den: Positive}` from `den_inv`, and its caller owes the field.
+// Checked clean under `!Trap` and divided by zero on boots e23392f6 and
+// 1a68ecc0 (exit 134).
+type Positive = Int where 0 < self
+
+fn den_inv(r: {den: Positive}) = 100 / r.den
+
+fn relay(r) = den_inv(r)
+
+fn main() with !Trap = relay({den: 0})

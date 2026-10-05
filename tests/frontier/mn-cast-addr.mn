@@ -1,14 +1,13 @@
-// The Cast capability's word-face projection: addr yields a heap value's
-// word — its address under the current allocator. The assertions are
-// word-ness facts an address must satisfy (positive; stable across two
-// reads of one value; distinct values distinct), never a literal address.
-// Lower erases the perform to its operand, so this runs with zero Cast
-// emission — the row carries the whole meaning.
+// The Cast capability: addr yields a heap value's address under the current
+// allocator. The assertions are facts an address must satisfy (above the null
+// address; stable across two reads of one value; distinct values distinct),
+// never a literal address. Lower erases the perform to its operand, so this
+// runs with zero Cast emission — the row carries the whole meaning.
 fn main() with Cast + Memory + Alloc = {
   let xs = [1, 2, 3]
   let a1 = addr(xs)
   let a2 = addr(xs)
   let ys = [4, 5]
   let b = addr(ys)
-  if a1 == a2 && a1 > 0 && b != a1 { 42 } else { 1 }
+  if a1 == a2 && a1 > null_addr() && b != a1 { 42 } else { 1 }
 }

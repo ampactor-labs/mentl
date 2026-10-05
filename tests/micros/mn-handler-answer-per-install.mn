@@ -1,0 +1,17 @@
+// expect: 42
+// A handler's answer is its install's: one tail-resumptive handler installed
+// over an Int body and over a String body answers each at its own type, so
+// the answer is quantified per install and never shared between two.
+effect Give {
+  give() -> Int
+}
+
+handler seven {
+  give() => resume(7),
+}
+
+fn main() = {
+  let a = (give() + 1) ~> seven
+  let s = (int_to_str(give())) ~> seven
+  if a == 8 && s == "7" { 42 } else { 1 }
+}

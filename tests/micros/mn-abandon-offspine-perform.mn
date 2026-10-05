@@ -1,0 +1,19 @@
+// expect: 5
+// AN-2 — an abandoning perform at a `let`: the frame unwinds from the perform
+// itself, so the position needs no value and no remainder. On boot 311479e1
+// the module did not assemble ("expected i32 but nothing on stack" — the
+// deadened block had no value).
+effect Ab {
+  ab() -> Int
+}
+
+handler h {
+  ab() => 5,
+}
+
+fn f() = {
+  let v = ab()
+  v + 1
+}
+
+fn main() = (f()) ~> h

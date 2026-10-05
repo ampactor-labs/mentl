@@ -1,0 +1,42 @@
+// A GENERIC helper stores the young value into a buffer older than the
+// arena. Its claim names the parameter it stores into, the arm hands it the
+// handler's state, and the install wraps an arena, so the value's type is a
+// demand on the helper: its twin journals the slot with the leaf the value
+// moves through, and nothing names the buffer. Without the demand the
+// helper's one body journals the slot opaque and the arena keeps its region.
+effect Stash {
+  put([Int])
+  get(Int) -> [Int]
+}
+
+fn store_at(xs, i, v) = list_set(xs, i, v)
+
+handler stash with buf = make_list(8), n = 0 {
+  put(x) => {
+    let _ = store_at(buf, n, x)
+    resume() with n = n + 1
+  },
+  get(i) => resume(buf[i]),
+}
+
+fn build(n) = if n == 0 { [] } else { build(n - 1) ++ [n] }
+
+fn add_int(a, b) = a + b
+
+fn work() = {
+  let junk = build(300)
+  put(build(10))
+  put(build(20))
+  len(junk)
+}
+
+fn main() = {
+  let k = work() ~> arena
+  let a = get(0)
+  let b = get(1)
+  if k == 300 && fold(0, add_int, a) == 55 && fold(0, add_int, b) == 210 && arena_stat(ArExits) == 1 && arena_stat(ArKept) == 0 {
+    42
+  } else {
+    1
+  }
+} ~> stash

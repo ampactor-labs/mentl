@@ -1,0 +1,12 @@
+// CROWN — two uses of one gated HOF: the quiet callback passes, the
+// performing one refuses at ITS argument edge (each use instantiates the
+// gated cell fresh, so the first use's binding never reaches the second).
+// Accepted by boot 2974547b (adv-twice-called ran 8). Expect
+// E_EffectMismatch.
+effect E { op() -> Int }
+handler h { op() => resume(7) }
+fn run(f) with !E = f()
+fn main() = {
+  let a = run(() => 1)
+  (a + run(() => op())) ~> h
+}

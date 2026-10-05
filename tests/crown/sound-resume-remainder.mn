@@ -1,0 +1,10 @@
+// CROWN — the same held resume through `apply`'s `!Log`, over a remainder
+// that performs nothing apply forbids: the install's remainder is `□ + 2`,
+// whose row carries the op's own multi-shot cost and no Log. Expect NO
+// E_EffectMismatch.
+effect Cell { bump() -> Int }
+effect Log { note(x: Int) -> Int }
+fn apply(f) with !Log = f() + 0
+handler cell { bump() => apply(() => resume(1)) }
+fn body() = bump() + 2
+fn main() = { body() } ~> cell

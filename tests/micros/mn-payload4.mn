@@ -1,23 +1,24 @@
-// expect: 134
-// EXPECTATION TRUED (2026-07-25, the resolved-or-loud offset landing): the
-// old banked value was the PARTIAL-SET offset read — the arm's demanded
-// {beta | rho} summed offsets over {beta} alone, so .beta read offset 0,
-// the receiver's first SORTED field (alpha). resolve_field_offset now
-// resolves the full set through the row residual or floors LOUDLY; this
-// arm's rho is genuinely free (the op param is polymorphic across
-// performs), so the trap is the honest answer until arm specialization
-// (the spec-twin machinery at handler arms) closes the payload residual.
+// expect: refuse E_FieldOffsetUnprovable
+// EXPECTATION TRUED TWICE. 2026-07-25 (the resolved-or-loud offset
+// landing): the old banked value was the PARTIAL-SET offset read — the
+// arm's demanded {beta | rho} summed offsets over {beta} alone, so .beta
+// read offset 0, the receiver's first SORTED field (alpha); the full set
+// resolves through the row residual or floors LOUDLY. This arm's rho is
+// genuinely free — the op param is polymorphic across performs, so no
+// install's key closes it — and the floor trapped at run time (134).
+// 2026-09-28 (R0″): the floor is said at the settle point and the compile
+// refuses with zero bytes, where it had trapped.
 // Rung 3b: cross-arm state flow with a RECORD state (no list). If this works
 // but rung 3 (list state) traps, the break is the list element flowing through
 // state. If this ALSO traps, it's cross-arm state flow in general.
 effect P {
-  set(x) -> ()
+  set(x)
   rd() -> a
 }
 
 handler h with s = {alpha: 0, beta: 0, gamma: 0} {
   set(v) => resume() with s = v,
-  rd() => resume(s)
+  rd() => resume(s),
 }
 
 fn run() with P + Memory + Alloc = {

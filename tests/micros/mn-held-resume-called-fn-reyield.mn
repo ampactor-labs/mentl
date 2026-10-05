@@ -1,0 +1,24 @@
+// expect: 200
+// A held resume in a CALLED top-level fn, whose remainder performs again.
+// `drive` resumes and computes after it; the second `pick` yields inside the
+// first resume and re-drives the handler from inside `drive`. Deep
+// semantics: the second arm's resume answers 1 + 1 = 2 and its drive 20, so
+// the first resume answers 20 and the first drive 200.
+effect Choice {
+  pick() -> Int
+}
+
+fn drive() = {
+  let a = resume(1)
+  a * 10
+}
+
+handler once {
+  pick() => drive(),
+}
+
+fn body() = pick() + pick()
+
+fn main() = {
+  body()
+} ~> once

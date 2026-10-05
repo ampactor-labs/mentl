@@ -1,0 +1,21 @@
+// An address the arena allocated, returned as the arena's value. Nothing can
+// say what an address names, so the exit keeps the region rather than move
+// the cell out from under it: the word stored there reads back after the
+// exit and after allocation that would have landed on a reclaimed region.
+// Exit 42 when it does and the exit was a keep. This program with the
+// address held as an Int had its cell reclaimed and read 0 for 42 on boot
+// 0a096302, with no diagnostic; typed, it did not compile there.
+fn build(n) = if n == 0 { [] } else { build(n - 1) ++ [n] }
+
+fn cell(v) = {
+  let p = alloc(8)
+  store_i32(p, v)
+  let _ = build(50)
+  p
+}
+
+fn main() = {
+  let p = cell(42) ~> arena
+  let junk = build(400)
+  if load_i32(p) == 42 && len(junk) == 400 && arena_stat(ArKept) == 1 { 42 } else { 1 }
+}

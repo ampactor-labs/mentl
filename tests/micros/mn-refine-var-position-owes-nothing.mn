@@ -1,0 +1,17 @@
+// expect: 3
+// A function in sight placed where the contract is a type variable owes
+// nothing there: it carries its own contract on to wherever it is applied.
+// The variable arm crossed it into the shape it was unified with and paid
+// its guard, so `Some(inv)` and `id(inv)` under `!Trap` refused on boot
+// e23392f6 and every H4 build before the hand-off rule, and `id([inv])`
+// refused on the first form of that rule.
+type Positive = Int where 0 < self
+
+fn inv(n: Positive) = 100 / n
+
+fn main() with !Trap = {
+  let a = Some(inv)
+  let b = id(inv)
+  let c = id([inv])
+  3
+}

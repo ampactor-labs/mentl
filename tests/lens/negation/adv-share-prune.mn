@@ -1,0 +1,8 @@
+// expect: 8
+effect E { op() -> Int }
+handler h { op() => resume(7) }
+fn sh(f, g) = 1 <| (f, g)
+fn main() with !E = {
+  let (a, b) = (sh((x) => op(), (x) => x)) ~> h
+  a + b
+}

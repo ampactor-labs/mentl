@@ -1,0 +1,8 @@
+// expect: 25
+// A module value bound to a constant is a constant the fragment reads at
+// the let's own node: `total / lanes` is total because 4 is.
+let lanes = 4
+
+fn per_lane(total) with !Trap = total / lanes
+
+fn main() = per_lane(100)

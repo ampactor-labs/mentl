@@ -25,6 +25,6 @@ handler counter with s = 10 {
   }
 }
 
-fn body() with Choice = pick() + 1
+fn body() = pick() + 1
 
 fn main() = { body() } ~> counter

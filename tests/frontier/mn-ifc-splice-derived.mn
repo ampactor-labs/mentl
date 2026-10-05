@@ -1,0 +1,35 @@
+// The DCC gate's DERIVED face: a value built from a classified one is as
+// classified as what it was built from — an operator's result, a record's
+// field, a computation over a classified parameter, a part destructured
+// from a constructor or a tuple. Five splices, five refusals. The label is
+// read along the edges the value flowed; until P0 it rode the value's
+// unification class, and on the P0 tree before the influence read every
+// one of the five splices read Public and checked clean.
+type Vault = String where classified(self)
+
+fn classified(s) = true
+
+fn getpw() -> Vault = "hunter2"
+
+fn concat_leak() = {
+  let pw = getpw() ++ "x"
+  "msg: {pw}"
+}
+
+fn field_leak() = {
+  let r = {pw: getpw()}
+  "msg: {r.pw}"
+}
+
+fn param_leak(p: Vault) = "msg: {p ++ "!"}"
+
+fn ctor_leak() = match Some(getpw()) {
+  Some(v) => "msg: {v}",
+  None => "",
+}
+
+fn tuple_leak() = match (getpw(), "morgan") {
+  (pw, _) => "pw: {pw}",
+}
+
+fn main() = 0

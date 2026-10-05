@@ -1,0 +1,8 @@
+import helper
+
+// No function in this module fits the stage, so the search widens to the
+// module it IMPORTS and stops there: `triple` fills. The prelude's `id` and
+// the runtime's word helpers are in scope only because the link flattens
+// every module into one env, and they are never judged beside it.
+// Measured 2026-09-25, PROGRAM C3.
+fn main() -> Int = 5 |> ??

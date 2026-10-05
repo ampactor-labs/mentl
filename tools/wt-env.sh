@@ -88,14 +88,27 @@ wt_run() { "$WT" run "${WT_RUN_FLAGS[@]}" "$@"; }
 # FAIL lines said green). The tests/micros loop this replaced spawned an
 # assembler and a runtime per fixture (3N processes, ~71s); the medium's
 # own verdict takes ~12s. Dissolves with this file at `mentl verify`.
+#
+# A battery's verdict is a function of the compiler BYTES, not of which name
+# the compiler goes by, so its memo key hashes the artifact and never the
+# words "boot" or "m2". After a clean repin the new boot IS the m2 the
+# contract battery already judged, and the post-repin run answers from that
+# (the gate memo at the end of this file).
 wt_battery() {
-  local compiler="$1" dir="$2" label="${3:-$2}" out rc want seen bad
-  out=$(wt_run --dir . "$compiler" test "$dir" 2>/dev/null); rc=$?
+  local compiler="$1" dir="$2" label="${3:-$2}" out rc want seen bad key leg
   want=$(ls "$dir"/*.mn 2>/dev/null | wc -l)
+  leg="battery-${dir//\//_}"
+  key=$(wt_memo_key_run "$compiler" "$dir" lib)
+  if wt_memo_hit "$leg" "$key" >/dev/null; then
+    echo "✓ battery $label: $want/$want fixture contracts hold (memo — these compiler bytes already judged these fixtures)"
+    return 0
+  fi
+  out=$(wt_run --dir . "$compiler" test "$dir" 2>/dev/null); rc=$?
   seen=$(printf '%s\n' "$out" | grep -cE '^(PASS|REFUSE|FAIL[A-Za-z()]*|NOEXPECT) ' || true)
   bad=$(printf '%s\n' "$out" | grep -cE '^(FAIL[A-Za-z()]*|NOEXPECT) ' || true)
   if [ "$rc" -eq 0 ] && [ "$bad" -eq 0 ] && [ "$seen" -eq "$want" ]; then
     echo "✓ battery $label: $seen/$want fixture contracts hold (compiled, run and judged by the medium)"
+    wt_memo_put "$leg" "$key" "green $seen/$want"
     return 0
   fi
   echo "✗ battery $label: exit=$rc, $bad broken contract(s), $seen/$want fixtures judged"
@@ -242,3 +255,59 @@ wt_m2_place() {  # copy the cached m2 trio into a consumer's dir so its
   local C="$1" D="$2" f
   for f in m2.wat m2.wasm m2.err; do cp -f "$C/$f" "$D/$f"; done
 }
+
+# ── THE UNIFORM GATE MEMO (Hβ.tools.gate-stamp-is-uniform) ─────────────────
+# A gate leg's verdict is a pure function of what it reads: the compiler bytes
+# it runs, the fixtures it feeds them, the scripts that judge them. A GREEN
+# verdict is stored under the hash of exactly those inputs, and a later run
+# with the same inputs answers from it instead of re-deriving it. Measured
+# 2026-09-25: a repin whose compiler came out byte-identical to the pinned one
+# still paid a second full board — the Carried-Truth Law broken at the process
+# layer, the one place this project had not applied it. Only green is stored,
+# so a red leg always re-runs; FORCE_GATES=1 bypasses every memo.
+#
+# The key names INPUTS, never outputs, and an input missing from a key is the
+# one bug this can have (a stale green) — so each caller lists what its leg
+# actually opens, and a directory contributes every file under it. Scripts and
+# the baseline enter without whole-line comments, the rule wt_state_key already
+# settled: prose cannot change what bash executes or what a ceiling is.
+WT_MEMO_DIR=".build/gate/memo"
+wt_memo_key() {  # wt_memo_key <input>... — a file, a directory, or =literal
+  local x
+  for x in "$@"; do
+    case "$x" in
+      =*) printf 'S %s\n' "${x#=}" ;;
+      *.sh|*verify-baseline.txt)
+        printf 'F %s\n' "$x"
+        [ -f "$x" ] && sed -e '/^[[:space:]]*#/d' -e '/^[[:space:]]*$/d' "$x" ;;
+      *)
+        if [ -d "$x" ]; then
+          find "$x" -type f ! -path '*/node_modules/*' ! -path '*/target/*' -print0 \
+            | LC_ALL=C sort -z | xargs -0 -r sha256sum
+        elif [ -f "$x" ]; then
+          # CONTENT ONLY for a named file: the same compiler bytes reached as
+          # boot/mentl.wasm or as .build/m2cache/m2.wasm are one input.
+          sha256sum < "$x"
+        else
+          printf 'M %s\n' "$x"
+        fi ;;
+    esac
+  done | sha256sum | cut -d' ' -f1
+}
+
+wt_memo_hit() {  # wt_memo_hit <leg> <key> — prints the stored verdict when this key last ran green
+  [ "${FORCE_GATES:-0}" = 1 ] && return 1
+  local f="$WT_MEMO_DIR/$1"
+  [ -f "$f" ] && [ "$(head -1 "$f")" = "$2" ] || return 1
+  tail -n +2 "$f"
+}
+
+wt_memo_put() {  # wt_memo_put <leg> <key> <verdict text>
+  mkdir -p "$WT_MEMO_DIR"
+  { printf '%s\n' "$2"; printf '%s\n' "$3"; } > "$WT_MEMO_DIR/$1.tmp" && mv "$WT_MEMO_DIR/$1.tmp" "$WT_MEMO_DIR/$1"
+}
+
+# The key of a leg that RUNS a compiler: the standing inputs every such leg
+# shares (the runner binary, its flags, this file) plus the caller's own — the
+# compiler artifact and the fixtures it feeds it.
+wt_memo_key_run() { wt_memo_key "$WT" "=${WT_RUN_FLAGS[*]}" tools/wt-env.sh "$@"; }

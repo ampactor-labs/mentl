@@ -1,0 +1,17 @@
+// expect: 5
+// A PARTIAL OVER A LOCAL CALLEE. `add` is a let-bound closure of two
+// parameters, so `add(1)` is the product with one hole — a value awaiting
+// its second field — and filling it runs the closure. The partial's
+// synthesized body reaches the callee through its closure record: the
+// callee value rides the record as its last field, beside the supplied
+// argument, and the body calls it. On boot 523f1732 this was a floor: the
+// partial's callee form was read off the module env by name, a local has no
+// entry there, and the executable refused `partial over non-global callee
+// shape` (Hβ.lower.callee-resolved-by-name-in-the-module-env).
+fn run() -> Int = {
+  let add = (a, b) => a * b
+  let inc = add(1)
+  inc(5)
+}
+
+fn main() -> Int = run()

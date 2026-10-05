@@ -1,0 +1,11 @@
+// CROWN — an authored `!E` on a function-type parameter is a GATE on
+// that parameter's cell, not a universe value: `f()` charges a gated free
+// row, the sibling terminal g survives the fold, and `!F` is judged on
+// what the body performs. Boot 2974547b refused this program falsely
+// (`!F + Any vs Any`) because f's row was `EtAll` and the fold dropped
+// g. Expect NO E_EffectMismatch.
+effect E { op() -> Int }
+effect F { fop() -> Int }
+handler h { op() => resume(7) }
+fn both(f: () -> Int with !E, g) with !F = f() + g()
+fn main() = (both(() => 1, () => op())) ~> h

@@ -1,0 +1,11 @@
+// expect: 10
+// A module-scope `let` bound to a function literal IS the declaration `fn
+// inc(x) = x + 1`, born as one at parse: called directly, and passed as
+// a value like any declared fn. Boot 2d18aedd judged it a value, emitted the
+// function as `lambda_<handle>`, and called `$inc`, which did not exist —
+// `mentl check` clean, the module unassemblable.
+let inc = (x) => x + 1
+
+fn twice(f, x) = f(f(x))
+
+fn main() = twice(inc, 3) + inc(4)

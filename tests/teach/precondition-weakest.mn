@@ -1,0 +1,14 @@
+// teach 12: add n: NonZero
+// D4: the gradient proposes the refinement that makes the division total,
+// and the weakest one in reach. Both aliases exclude zero, so both
+// discharge the division's claim; Positive also refuses the call with -3,
+// which never traps, so it asks more than the body needs. On boot 6f62b7c4
+// the Teach facet here answered `with !Alloc`, and the division that can
+// trap went unnamed.
+type NonZero = Int where !(self == 0)
+
+type Positive = Int where 0 < self
+
+fn inv(n) = 100 / n
+
+fn main() = inv(5) + inv(0 - 3)

@@ -44,7 +44,7 @@
 //                           on it; not stacked single-concern wrappers.
 //   Drift 6 (special):      Each candidate (Empty/SuggestEffectRow/
 //                           Constructor-fill/Lambda-shape) goes through
-//                           the SAME verify_candidate gate; no special-
+//                           the SAME `candidate_proven` gate; no special-
 //                           case for "easy" cases.
 //   Drift 7 (parallel arr): Candidate is one record-shape with Node +
 //                           Reason; not parallel (asts[], reasons[]).
@@ -84,12 +84,24 @@ import query
 type ProposerKind
   // type-directed enumeration over the constraint space
   = ProposerEnumerative
+  // the in-scope vocabulary, searched outward from the hole's module, and
+  // the ring the name was found in
+  | ProposerVocabulary(VocabRing)
   // SMT solver via Verify-handler-swap (Arc F.1)
   | ProposerSMT
-  // wrap-handler suggestions per H5 AWrapHandler
+  // the handler catalog: an install proposed at a `?? ~> h` hole, named and
+  // not yet built. A wrap changes what the body means, so it is a fill
+  // judged here when it lands, never an annotation the gradient offers
   | ProposerHandlerCatalog
   // seeds the developer supplies at the position
   | ProposerUser
+
+// Where the vocabulary search found a name, nearest first. The hole's own
+// module is what the developer wrote; an authored import is vocabulary they
+// chose to reach; the rest of the link — the pre-imported prelude and the
+// runtime floor under it — is in scope by name only because the link
+// flattens every module into one env.
+type VocabRing = OwnModule | AuthoredImport | Linked
 
 // ─── EnrichedCandidate — Candidate + provenance ────────────────────
 //
@@ -102,7 +114,20 @@ type ProposerKind
 // to a literal's made-up 0.3) and rode stale when extraction swapped
 // the node — `rank_of` now reads the LIVE node at sort time, once per
 // candidate, through the same env/refs reads the gradient owns.
-type EnrichedCandidate = EnrichedCandidate({node: Node, origin: ProposerKind, reason: Reason})
+type EnrichedCandidate
+  = EnrichedCandidate({node: Node, origin: ProposerKind, reason: Reason, writes: [(Int, ContextFact)]})
+
+// WHAT A CANDIDATE TAUGHT THE CONTEXT (C6): the context cells its segment
+// bound, each with the meaning the cell held before the rollback undid it —
+// a type chased deep, a row resolved. Empty until the candidate is judged;
+// a proven survivor is sealed with its segment's writes, and the divergence
+// between two survivors is read here first.
+type ContextFact = FactTy(Ty) | FactRow(EffRow)
+
+// One candidate's verdict from its segment: proven or not, the Reason the
+// verdict carries (the candidate's own when proven, the medium's refusal
+// otherwise), and the context writes the segment carried out.
+type SegmentVerdict = SegmentVerdict({proven: Bool, reason: Reason, writes: [(Int, ContextFact)]})
 
 // AST fragment
 //
@@ -118,8 +143,8 @@ type EnrichedCandidate = EnrichedCandidate({node: Node, origin: ProposerKind, re
 //   refinement-aware SMT (0.7) · type-directed enumeration (0.5)
 //   — each a `~>`-installed Synth peer, named, post-first-light.
 //
-// Each proposer's arm calls verify_candidate to gate its output;
-// only proven candidates reach the parent. The chain composes via
+// Each proposer's output is gated by `candidate_proven` inside the segment
+// walk; only proven candidates reach the parent. The chain composes via
 // `~>` per primitive #2 (handlers); same kernel; one effect.
 //
 // Per PLAN §1: dead variants WIDEN the
@@ -127,48 +152,55 @@ type EnrichedCandidate = EnrichedCandidate({node: Node, origin: ProposerKind, re
 // vocabulary. Each proposer emits CANDIDATES; the kernel's
 // verify_after_apply is the proof gate.
 handler synth_default {
-  synth_propose(allowed_effects, context) => // The TARGET is read from the hole's own cell, once, at entry — the
-  // Context carries the handle and the type is one dereference away.
-  // Threading it locally is a binding; carrying it across the op
-  // boundary was a copy.
-  match context_target_ty(context) {
-    target_ty => // The in-scope VOCABULARY first (PLAN §1's second moat: type-directed
-    // search over what is already in scope, pruned by the row at every
-    // step), then the shape enumerators; every candidate through the ONE
-    // proof gate. Row-rejected vocabulary keeps its Reasons.
-    // The candidate space's own frontier, read BEFORE any enumeration
-    // mints into it: the form half saturates exactly the range this propose
-    // minted (PLAN §5's fork/merge duality — the range is what keeps merging
-    // cheap at a cursor position).
-    match graph_next() {
-      cand_start => match enumerate_vocabulary_calls(target_ty, allowed_effects, context) {
-        (vocab, row_rejected) => {
-          let enriched = concat_candidates(vocab, enumerate_typed(target_ty, allowed_effects, context))
-          match verify_each_enriched(enriched, context_hole_handle(context), cand_start) {
-            (verified, type_rejected) => {
-              let survivors = verified |> rank_sort(context_hole_span(context)) |> map_to_proposals
-              // Both refusal channels, one list: the ROW pruned a candidate
-              // before it was ever judged, the CELL refused one that was.
-              // A developer auditing the proposal sees every name the medium
-              // considered and why each is not here.
-              resume(Proposal({rejected: row_rejected ++ type_rejected, verdict: verdict_of(survivors, target_ty, context)}))
+  synth_propose(allowed_effects, context) => {
+    // Every candidate is minted INTO THE HOLE'S MODULE. The judgment leaves
+    // whichever module it entered last in force, so a candidate born after
+    // it read as that stranger's: its diagnostics landed at `strings:0:0`,
+    // and once the import gate read module identity every same-module
+    // reference was refused as a cross-module one (F0b's first frontier
+    // run: twelve legs, one root). The hole's column is the fact.
+    graph_module_enter(graph_module_of(context_hole_handle(context)))
+    // The TARGET is read from the hole's own cell, once, at entry — the
+    // Context carries the handle and the type is one dereference away.
+    // Threading it locally is a binding; carrying it across the op
+    // boundary was a copy.
+    match context_target_ty(context) {
+      target_ty => // The in-scope VOCABULARY first (PLAN §1's second moat: type-directed
+      // search over what is already in scope, pruned by the row at every
+      // step), then the shape enumerators; every candidate through the ONE
+      // proof gate. Row-rejected vocabulary keeps its Reasons.
+      // The candidate space's own frontier, read BEFORE any enumeration
+      // mints into it: the form half saturates exactly the range this propose
+      // minted (PLAN §5's fork/merge duality — the range is what keeps merging
+      // cheap at a cursor position).
+      match graph_next() {
+        cand_start => match enumerate_vocabulary_calls(
+          target_ty,
+          allowed_effects,
+          context,
+          vocabulary_rings(context_hole_handle(context))
+        ) {
+          (vocab, row_rejected) => match search_outward(vocab, row_rejected, context_hole_handle(context), cand_start) {
+            (found, vocab_refused) => match verify_each_enriched(
+              enumerate_typed(target_ty, allowed_effects, context),
+              context_hole_handle(context),
+              cand_start
+            ) {
+              (shaped, shape_refused) => {
+                let survivors =
+                  concat_candidates(found, shaped) |> collapse_equivalent |> rank_sort(context_hole_handle(context)) |> reference_before_mint
+                // Both refusal channels, one list: the ROW pruned a candidate
+                // before it was ever judged, the CELL refused one that was.
+                // A developer auditing the proposal sees every name the medium
+                // considered and why each is not here — in the rings the
+                // search reached, never the whole link.
+                resume(Proposal({rejected: vocab_refused ++ shape_refused, verdict: verdict_of(survivors, target_ty, context)}))
+              },
             },
-          }
+          },
         },
       },
-    },
-  },
-  verify_candidate(candidate, hole_h) => // The real proof gate (PLAN.md §1: checkpoint -> INFER -> Verify ->
-  // rollback). The candidate is a real minted node in the graph; run
-  // the SAME infer walk that types all source over it, then UNIFY its
-  // cell with the hole's own, and discharge the hole's refinement
-  // against it — an NBound(TInt) alone proved only well-typedness, so
-  // every integer seed survived a `0 < self` target. The caller's
-  // checkpoint isolates this; rollback reverts the binds.
-  match candidate {
-    Candidate(node, reason) => // Through candidate_proven — the ONE definition, shared with the
-    // segment walk.
-    resume(candidate_proven(node, hole_h, reason)),
+    }
   },
 }
 
@@ -189,13 +221,15 @@ handler synth_default {
 // Each strategy yields a small set; verify_each_enriched discards
 // candidates whose tentative apply doesn't unify under the
 // allowed_effects row.
-fn enumerate_typed(target_ty, allowed_effects, context) with EnvRead + Memory + Alloc + GraphRead + WASI + GraphWrite + LookupTy = match target_ty {
+fn enumerate_typed(target_ty, allowed_effects, context) = match target_ty {
   TName(name, args) => enumerate_constructors(name, args, context),
   TFun(params, ret, row) => enumerate_lambdas(params, ret, row, context),
   TInt => enumerate_int_literals(context),
   TByte => enumerate_int_literals(context),
   TFloat => enumerate_float_literals(context),
   TUnit => one_unit_candidate(context),
+  TAddr => // an address has no literal: only the ops that answer one mint it
+  [],
   TVar(_) => one_hole_candidate(context),
   TRecord(fields) => enumerate_records(fields, context),
   TRecordOpen(fields, rest) => enumerate_records(fields, context),
@@ -223,40 +257,61 @@ fn enumerate_typed(target_ty, allowed_effects, context) with EnvRead + Memory + 
 // list is a fold's tuple component, whose element type the graph cannot
 // prove at the ++ site (the [LowExpr] precedent — the author states the
 // element identity once, both operands ground).
-fn concat_candidates(a: [EnrichedCandidate], b: [EnrichedCandidate]) -> [EnrichedCandidate] with Alloc + Memory =
-  a ++ b
+fn concat_candidates(a: [EnrichedCandidate], b: [EnrichedCandidate]) -> [EnrichedCandidate] = a ++ b
 
 // ─── The vocabulary enumerator — the finite in-scope call space ──────
 //
-// Every ZERO-ARGUMENT fn in scope whose return matches the target is a
-// call candidate; the ALLOWED row (the enclosing fn's authored constraint)
-// gates each through the crown's own subsumption. Three outcomes per name:
-//   admitted  — a call node, minted with its Why, into the proof gate;
+// Every in-scope fn that could fill the hole is a candidate: a
+// ZERO-ARGUMENT fn as a call whose return fits the target, and at a
+// FUNCTION-typed hole a fn of the target's shape as a REFERENCE (SYNTAX
+// §«Function literals»: a function value is reached by reference, or
+// minted). The ALLOWED row — what the enclosing declaration may perform at
+// the hole (`allowed_row_at`) — gates each through the crown's own
+// subsumption; a reference's row is charged where the stage applies it, so
+// the same gate judges it. Three outcomes per name, each tagged with the
+// ring the name was found in:
+//   admitted  — a node, minted with its Why, into the proof gate;
 //   rejected  — the row refused it; the (name, Reason) pair SURVIVES to
 //               the projection (the rejection teaches);
 //   excluded  — its free-name closure reaches the enclosing decl:
 //               proposing choose() inside choose, or main() where main
 //               calls choose, is nontermination by construction (silent —
 //               a structural impossibility, not a teaching moment).
-// Arg-bearing fns are the recursive-hole general form
+// Calls that take arguments are the recursive-hole general form
 // (Hβ.synth.vocabulary-arg-holes); the reach walk's O(1) form is the
 // call-edge index (Hβ.synth.vocabulary-reach-index).
-fn enumerate_vocabulary_calls(target_ty, allowed_row, context) with GraphRead + WASI + GraphWrite + Intern + Alloc + Memory + !Mutate = match context {
+fn enumerate_vocabulary_calls(target_ty, allowed_row, context, rings) with !Mutate = match context {
   Context(scope_bindings, _active, enclosing, _hole_h) => fold(
     ([], []),
     (acc, entry) => match acc {
       (accepted, rejected) => match entry {
         (name, scheme, reason, kind) => match kind {
-          FnScheme => match judgment_ty(scheme) {
+          FnScheme | ValueScheme => // A value binding of function type is vocabulary exactly as a
+          // declared fn is: a reference to it fills a function-typed hole.
+          match judgment_ty(scheme) {
             TFun(params, ret, row) => if len(params) == 0 && heads_may_unify(ret, target_ty) && !reaches_decl(name, enclosing, []) {
               if row_subsumes(row, allowed_row) {
                 // drift-audit: ignore — bounded by the in-scope zero-arg vocabulary, not a loop accumulator
-                (accepted ++ [vocabulary_call_candidate(name, row, allowed_row)], rejected)
+                (accepted ++ [vocabulary_call_candidate(name, row, allowed_row, ring_of_name(rings, name))], rejected)
               } else {
                 (
                   accepted,
                   // drift-audit: ignore — bounded by the in-scope zero-arg vocabulary, not a loop accumulator
-                  rejected ++ [(name, Inferred("performs {show_effrow(row)} — refused by the target row {show_effrow(allowed_row)}"))]
+                  rejected ++ [(name, Inferred("performs {show_effrow(row)} — refused by the target row {show_effrow(allowed_row)}"), ring_of_name(rings, name))]
+                )
+              }
+            } else if fn_heads_may_unify(params, ret, target_ty) && !reaches_decl(name, enclosing, []) {
+              // A FUNCTION-typed hole is filled first by a REFERENCE to a
+              // function already in scope. The reference's row is charged
+              // where the stage applies, so the same row gate judges it.
+              if row_subsumes(row, allowed_row) {
+                // drift-audit: ignore — bounded by the in-scope vocabulary of one arity, not a loop accumulator
+                (accepted ++ [vocabulary_ref_candidate(name, row, allowed_row, ring_of_name(rings, name))], rejected)
+              } else {
+                (
+                  accepted,
+                  // drift-audit: ignore — bounded by the in-scope vocabulary of one arity, not a loop accumulator
+                  rejected ++ [(name, Inferred("performs {show_effrow(row)} when applied — refused by the target row {show_effrow(allowed_row)}"), ring_of_name(rings, name))]
                 )
               }
             } else {
@@ -270,6 +325,120 @@ fn enumerate_vocabulary_calls(target_ty, allowed_row, context) with GraphRead + 
     },
     scope_bindings
   ),
+}
+
+// ─── The vocabulary is searched OUTWARD from the hole ─────────────────
+//
+// PLAN §1: the medium proposes by GUIDED search, proximity among its
+// priors, pruned by proof at every step. The search judges the hole's own
+// module first and stops at the first ring that proves a survivor; a
+// farther ring is judged only when every nearer one proved nothing, and its
+// refusals are listed only then, because a name the search never reached
+// is not part of this answer. Measured 2026-09-25 at `5 |> ??` in
+// tests/frontier/mn-pipe-stage-fill.mn, whose one function sits above the
+// hole: the whole link was one ring, so `decode_stride`, `hex_val`,
+// `escape_len`, `escape_tail`, `hash` and `id` — reachable from the program
+// only because the link flattens every module into one env — tied with it,
+// and the hole could never fill.
+fn search_outward(vocab, row_rejected, hole_h, cand_start) =
+  [OwnModule, AuthoredImport, Linked] |> fold(([], []), search_ring(vocab, row_rejected, hole_h, cand_start))
+
+fn search_ring(vocab, row_rejected, hole_h, cand_start, acc, ring) = match acc {
+  (found, refused) => if len(found) > 0 {
+    acc
+  } else {
+    match verify_each_enriched(vocab |> filter(found_in(ring)), hole_h, cand_start) {
+      (verified, cell_refused) => (verified, refused ++ (row_rejected |> filter(refused_in(ring)) |> map(refusal_words)) ++ cell_refused),
+    }
+  },
+}
+
+fn found_in(ring, c) with Pure = match c {
+  EnrichedCandidate(cr) => match cr.origin {
+    ProposerVocabulary(r) => r == ring,
+    _ => false,
+  },
+}
+
+// `ring: VocabRing` is the Intent Boundary carrying the eq PROOF: the
+// refusal is a bare triple, so without it `r == ring` compared a type
+// variable at emit and fell to a one-word compare.
+fn refused_in(ring: VocabRing, refusal) with Pure = match refusal {
+  (_, _, r) => r == ring,
+}
+
+fn refusal_words(refusal) = match refusal {
+  (name, reason, _) => (name, reason),
+}
+
+// The ring a name is found in: declared by the hole's own module, by a
+// module it reaches through an AUTHORED import, or only by the link.
+fn ring_of_name(rings, name: String) = if any({ n => n == name }, rings.home) {
+  OwnModule
+} else if any({ n => n == name }, rings.imported) {
+  AuthoredImport
+} else {
+  Linked
+}
+
+// The rings, read once per proposal from the hole's own module node: the
+// names its decls declare, and the names declared by every module it
+// reaches through authored import edges. The driver PRE-imports the
+// prelude rather than drawing an edge anyone wrote, so the prelude and the
+// runtime floor under it stay in the outer ring unless the program imports
+// them by name.
+//
+// The membership is read BY NAME because the env entry the vocabulary
+// enumerates carries no edge to its decl: a judged fn is published as
+// `Frozen(qs, ty)` by `generalize`, so the handle `graph_module_of` would
+// read is gone by the time anything enumerates the env (PLAN §7, "Schemes
+// are VALUES, not edges"). When the binding keeps its decl handle, the ring
+// is one column read and these name lists are deleted.
+fn vocabulary_rings(hole_h) = match graph_node_body(graph_module_of(hole_h)) {
+  NModule(m) => {
+    let cells = module_cells()
+    let reached = authored_reach(cells, import_paths_of_decls(m.decls), [])
+    {
+      home: map(stmt_decl_name, m.decls),
+      imported: cells |> filter(cell_reached(reached)) |> map(cell_decl_names) |> flatten,
+    }
+  },
+  _ => {
+    // The module column is written only with NModule handles, so a hole
+    // whose module is anything else was minted outside every module — a
+    // defect in the caller, which traps rather than answering with an
+    // empty vocabulary nobody could tell from a real one.
+    out_of_range()
+    {home: [], imported: []}
+  },
+}
+
+// The module paths the hole's module reaches through authored import edges,
+// read from the cells' own decls so the walk never rescans the weave.
+fn authored_reach(cells, frontier, seen) = if len(frontier) == 0 {
+  seen
+} else if contains_path(seen, last(frontier)) {
+  authored_reach(cells, drop_last(frontier), seen)
+} else {
+  authored_reach(
+    cells,
+    drop_last(frontier) ++ cell_imports(cells, last(frontier)),
+    push(seen, last(frontier))
+  )
+}
+
+fn cell_imports(cells, path: String) = fold([], cell_imports_pick(path), cells)
+
+fn cell_imports_pick(path: String, acc, c) = match c {
+  (_h, p, _s, d) => if p == path { import_paths_of_decls(d) } else { acc },
+}
+
+fn cell_reached(reached, c) = match c {
+  (_h, p, _s, _d) => contains_path(reached, p),
+}
+
+fn cell_decl_names(c) = match c {
+  (_h, _p, _s, d) => map(stmt_decl_name, d),
 }
 
 // Answers whether two types COULD unify, from their head constructors alone —
@@ -339,8 +508,36 @@ fn same_head(a, b) with Pure = match a {
 // every other expression in the language — by unifying the candidate's own
 // cell with the hole's, inside the segment, with rollback. The proof
 // becomes the dispatch.
-fn vocabulary_call_candidate(name, row, allowed_row) with GraphRead + GraphWrite + Intern + !Mutate + Alloc + Memory =
-  EnrichedCandidate({node: synth_node(CallExpr(synth_node(VarRef(name)), [])), origin: ProposerEnumerative, reason: Inferred("an in-scope call {name}() — row {show_effrow(row)} admitted by {show_effrow(allowed_row)}")})
+fn vocabulary_call_candidate(name, row, allowed_row, ring) with !Mutate = EnrichedCandidate({
+  node: synth_node(CallExpr(synth_node(VarRef(name)), [])),
+  origin: ProposerVocabulary(ring),
+  reason: Inferred("an in-scope call {name}() — row {show_effrow(row)} admitted by {show_effrow(allowed_row)}"),
+  writes: [],
+})
+
+fn vocabulary_ref_candidate(name, row, allowed_row, ring) with !Mutate = EnrichedCandidate({
+  node: synth_node(VarRef(name)),
+  origin: ProposerVocabulary(ring),
+  reason: Inferred("the in-scope function {name} — row {show_effrow(row)} admitted by {show_effrow(allowed_row)}"),
+  writes: [],
+})
+
+// Could a function of this arity, parameters and return fill a
+// function-typed hole? The sound index again: equal arity (a function type
+// of another arity never unifies), and every parameter and the return
+// head-compatible — never a rejected unifiable pair, and it keeps the
+// prelude's whole function vocabulary from being judged, and listed as
+// refused, at every stage hole. `same_head` alone treats every two function
+// types alike, which is right for a head and too wide for a reference.
+fn fn_heads_may_unify(params, ret, target_ty) = match target_ty {
+  TFun(tparams, tret, _) => len(params) == len(tparams) && heads_may_unify(ret, tret) && all(params_heads_agree, zip(params, tparams)),
+  TAlias(_, inner) => fn_heads_may_unify(params, ret, inner),
+  _ => false,
+}
+
+fn params_heads_agree(pair) with Pure = match pair {
+  (a, b) => heads_may_unify(param_ty(a), param_ty(b)),
+}
 
 // candidate_rank — the gradient reading LOCAL intent (PLAN §5's felt
 // endpoint: the Reason chains carrying upstream why, proximity, the
@@ -353,24 +550,57 @@ fn vocabulary_call_candidate(name, row, allowed_row) with GraphRead + GraphWrite
 // is the field's FIRST reader — cost was a write-only literal before
 // (the resume_kinds pattern: a score claiming gradient-ness that read
 // nothing).
-fn candidate_rank(name, decl_reason, hole_span) with GraphRead + !Mutate + Alloc + Memory = {
-  let decl_near = scope_distance_decay(hole_span, caret_span_from_reason(decl_reason))
-  // The sites carry their module now, and destructuring them SURFACES a
-  // defect this fold has always had: scope_distance_decay compares two line
-  // coordinates, so a use in ANOTHER file scored as though it sat that many
-  // lines from the hole — a ref at line 12 of any module read as maximally
-  // near. Behaviour is preserved here rather than quietly re-ranked, because
-  // the honest fix needs the HOLE's module and a span is not an address
-  // (Hβ.synth.proximity-compares-across-modules; it closes with the same
-  // positions-are-handles work the Why chain waits on).
-  let use_near = fold(
-    0.0,
-    (acc, s) => match s {
-      (_, sp) => acc + scope_distance_decay(hole_span, sp),
-    },
-    refs_of_name(name)
-  )
+//
+// Every term is the cursor's own proximity between two HANDLES — the hole,
+// the name's declaration, each use — so a use in another file is as far as
+// its module is from the hole's. Until 2026-10-01 the terms compared bare
+// spans, and a reference at line 12 of any module read as maximally near a
+// hole at line 12 (Hβ.synth.proximity-compares-across-modules). A name with
+// no declaration node (a primitive) sits at the farthest tier: the gradient
+// never reaches zero, and a position nothing places is never near.
+fn candidate_rank(name: String, hole_h, reach, decls) with !Mutate = {
+  let decl_near = match smap_get(decls, name) {
+    Some(dh) => position_proximity(hole_h, dh, reach),
+    None => cross_module_weight(),
+  }
+  let use_near =
+    fold(0.0, (acc, h) => acc + position_proximity(hole_h, h, reach), ref_handles_of(name))
   0.5 + decl_near + use_near
+}
+
+// Every module's top-level declarations by the names they bind — a
+// function or handler by its own name, a type's constructors and an
+// effect's ops by theirs, each at its declaration's node — built once per
+// proposal so a candidate's declaration is a handle the proximity reads.
+// The env cannot answer this: a judged binding is published as a scheme
+// VALUE with no edge back to its declaration
+// (Hβ.synth.vocabulary-ring-is-read-by-name).
+fn decl_index() with !Mutate = fold(smap_new(), decl_index_cell, module_cells())
+
+fn decl_index_cell(acc, c) = match c {
+  (_h, _p, _s, decls) => fold(acc, decl_index_node, decls),
+}
+
+fn decl_index_node(acc, d) = match d {
+  N(body, _, h) => match body {
+    NStmt(FnStmt(name, _, _, _, _)) => smap_add(acc, name, h),
+    NStmt(HandlerDeclStmt(hname, _, _, _, _, _)) => smap_add(acc, hname, h),
+    NStmt(TypeDefStmt(_, variants)) => fold(
+      acc,
+      (a, v) => match v {
+        (vname, _, _) => smap_add(a, vname, h),
+      },
+      variants
+    ),
+    NStmt(EffectDeclStmt(_, _, ops)) => fold(
+      acc,
+      (a, op) => match op {
+        (oname, _, _, _) => smap_add(a, oname, h),
+      },
+      ops
+    ),
+    _ => acc,
+  },
 }
 
 // rank_of — RANK IS A PROJECTION of the LIVE candidate (the resolved
@@ -383,20 +613,17 @@ fn candidate_rank(name, decl_reason, hole_span) with GraphRead + !Mutate + Alloc
 // constants, and a swapped e-class member rode a stale number).
 // Computed ONCE per candidate at sort entry — the same refs walk the
 // stored form paid at enrichment, moved to the read point.
-fn rank_of(c, hole_span) with GraphRead + EnvRead + !Mutate + Alloc + Memory = match c {
+fn rank_of(c, hole_h, reach, decls) with !Mutate = match c {
   EnrichedCandidate(cr) => match cr.node {
     N(body, _, _) => match body {
       NExpr(CallExpr(callee, _)) => match callee {
         N(cb, _, _) => match cb {
-          NExpr(VarRef(name)) => match env_lookup(name) {
-            Some(entry) => match entry {
-              (_, decl_reason, _) => candidate_rank(name, decl_reason, hole_span),
-            },
-            None => 0.5,
-          },
+          NExpr(VarRef(name)) => candidate_rank(name, hole_h, reach, decls),
           _ => 0.5,
         },
       },
+      NExpr(VarRef(name)) => // A reference ranks by the same local-intent read as a call of it.
+      candidate_rank(name, hole_h, reach, decls),
       _ => 0.5,
     },
   },
@@ -406,15 +633,32 @@ fn context_hole_handle(context) with Pure = match context {
   Context(_, _, _, hole_h) => hole_h,
 }
 
-// The hole's span and the hole's type are both READS of its handle, never
-// fields beside it. parse_span_of and the live node kind answer each one
-// at the moment it is asked, so neither can describe a cell that has since
-// moved.
-fn context_hole_span(context) with GraphRead = parse_span_of(context_hole_handle(context))
+// The hole's type is a READ of its handle, never a field beside it: the
+// live node kind answers at the moment it is asked, so it cannot describe
+// a cell that has since moved (and the rank reads the handle itself, its
+// module and its declaration, never a span copied out of it).
+//
+// Read RESOLVED: a hole's cell can be bound to a type whose parts are
+// themselves cells the judgment has since bound, and the head index reads
+// heads. Unresolved, the pipe stage in `5 |> ??` read `a -> b` though the
+// graph had proved `Int -> Int`, so every one-parameter fn in the link
+// passed the index and ~70 were judged or listed as refused at one hole
+// (measured 2026-09-25) — the index answering from less than the graph knew.
+//
+// The cell holds a SHAPE (P0): a refinement is a fact a value carries, and
+// a hole carries none, so what the hole DEMANDS is the contract a claim
+// raised over it — a return, an argument, a let annotation (graph_claims_of,
+// noted where the claim was raised). That contract is the target the
+// enumerators read, refinement and all; a hole nothing claimed answers its
+// shape.
+fn context_target_ty(context) = hole_demand(context_hole_handle(context))
 
-fn context_target_ty(context) with GraphRead + Memory + Alloc = match context_hole_handle(context) {
-  hole_h => match graph_chase(hole_h) {
-    GNode(kind, _) => ty_of_kind(hole_h, kind),
+// What a hole demands, the one read the proposer's target and the address
+// surface's Query line share: the contract claimed of it, else its cell.
+fn hole_demand(hole_h) = match graph_claims_of(hole_h) {
+  [claimed, ..._] => chase_deep(claimed),
+  [] => match graph_chase(hole_h) {
+    GNode(kind, _) => chase_deep(ty_of_kind(hole_h, kind)),
   },
 }
 
@@ -423,11 +667,16 @@ fn context_target_ty(context) with GraphRead + Memory + Alloc = match context_ho
 // (the survivor set is small by construction — the in-scope zero-arg
 // vocabulary plus the shape enumerators). The ORDER is the only thing
 // rank decides; a constraint-tie still teaches (the render's collapse
-// line is unchanged — rank is a prior, never a guess).
-fn rank_sort(hole_span, cands) with GraphRead + EnvRead + !Mutate + Memory + Alloc =
-  cands |> map((c) => (rank_of(c, hole_span), c)) |> fold([], rank_insert) |> map({ (_, c) => c })
+// line is unchanged — rank is a prior, never a guess). The hole's module
+// reach and the declarations' index are read once here, for every
+// candidate the sort ranks.
+fn rank_sort(hole_h, cands) with !Mutate = {
+  let reach = module_reach_of(graph_module_of(hole_h))
+  let decls = decl_index()
+  cands |> map((c) => (rank_of(c, hole_h, reach, decls), c)) |> fold([], rank_insert) |> map({ (_, c) => c })
+}
 
-fn rank_insert(sorted, rc) with Memory + Alloc = match sorted {
+fn rank_insert(sorted, rc) = match sorted {
   [] => [rc],
   [h, ...rest] => match rc {
     (r, _) => match h {
@@ -439,42 +688,52 @@ fn rank_insert(sorted, rc) with Memory + Alloc = match sorted {
 
 // Does `name`'s free-name closure reach `target`? collect_free_vars
 // over-approximates the call edge (a reference without a call also
-// excludes — the safe direction). `seen` breaks cycles.
-fn reaches_decl(name: String, target: String, seen) with GraphRead + Memory + Alloc + !Mutate = if target == "" {
+// excludes — the safe direction). `seen` breaks cycles. The walk runs over
+// the DECLARATION, so its parameters bind its body: walked over the body
+// alone, a parameter named like a declaration read as a call to it.
+fn reaches_decl(name: String, target: String, seen) with !Mutate = if target == "" {
   false
 } else if name == target {
   true
 } else if contains_name(seen, name) {
   false
 } else {
-  match fn_body_by_name(name) {
+  match fn_decl_by_name(name) {
     None => false,
-    Some(body) => // drift-audit: ignore — bounded by call-graph depth (the seen set), not a loop accumulator
-    any((n) => reaches_decl(n, target, [name] ++ seen), collect_free_vars(body, [])),
+    Some((params, body)) => // drift-audit: ignore — bounded by call-graph depth (the seen set), not a loop accumulator
+    any(
+      (n) => reaches_decl(n, target, [name] ++ seen),
+      collect_free_vars(body, free_vars_param_names(params))
+    ),
   }
 }
 
-fn contains_name(names, target: String) with Memory + Alloc = any((n) => n == target, names)
+fn contains_name(names, target: String) = any((n) => n == target, names)
 
-// A named fn's body node, read from the program weave directly — the
-// same walk enclosing_fn_decl_at does, keyed by name instead of span.
-// (The NModule-decls indirection read a projection the edit session's
+// A named fn's parameters and body, read from the program weave directly by
+// name. (The NModule-decls indirection read a projection the edit session's
 // weave does not always carry — main() leaked past the reach exclusion
 // because its body was unreachable through it; the weave is the one
 // truth both walks read.)
-fn fn_body_by_name(name: String) with GraphRead + !Mutate + Memory + Alloc = {
+fn fn_decl_by_name(name: String) with !Mutate = {
   let snapshot = graph_snapshot()
   match snapshot {
-    Graph(next, _spans) => fn_body_scan(name, 0, next),
+    Graph(next, _spans) => fn_decl_scan(name, 0, next),
   }
 }
 
-fn fn_body_scan(name: String, i, n) with GraphRead + !Mutate + Memory + Alloc = if i >= n {
+// The first CURRENT declaration of the name — a superseded generation's
+// `main` calls what the program used to call (graph_node_current).
+fn fn_decl_scan(name: String, i, n) with !Mutate = if i >= n {
   None
 } else {
   match graph_node_body(i) {
-    NStmt(FnStmt(fname, _params, _ret, _effs, body)) => if fname == name { Some(body) } else { fn_body_scan(name, i + 1, n) },
-    _ => fn_body_scan(name, i + 1, n),
+    NStmt(FnStmt(fname, params, _ret, _effs, body)) => if fname == name && graph_node_current(i) {
+      Some((params, body))
+    } else {
+      fn_decl_scan(name, i + 1, n)
+    },
+    _ => fn_decl_scan(name, i + 1, n),
   }
 }
 
@@ -485,7 +744,7 @@ fn fn_body_scan(name: String, i, n) with GraphRead + !Mutate + Memory + Alloc = 
 // ConstructorScheme entries whose scheme result type is
 // TName(type_name, _). Read the live env snapshot and filter — never
 // a second env-access effect (the EnvLookup re-derivation is dissolved).
-fn enumerate_constructors(type_name, args, context) with EnvRead + GraphRead + WASI + GraphWrite + Alloc + !Mutate + Memory = match env_snapshot() {
+fn enumerate_constructors(type_name, args, context) with !Mutate = match env_snapshot() {
   Env(entries) => ctors_of_type(entries, type_name, context),
 }
 
@@ -497,12 +756,12 @@ fn enumerate_constructors(type_name, args, context) with EnvRead + GraphRead + W
 // Forward walk preserves the enrichment's effect order (oldest entry
 // enriched first, exactly as the rest-before-head recursion ran);
 // reverse restores the newest-first result order consumers saw.
-fn ctors_of_type(entries, type_name, context) with GraphRead + WASI + GraphWrite + Memory + Alloc + !Mutate = {
+fn ctors_of_type(entries, type_name, context) with !Mutate = {
   let n = len(entries)
   reverse(ctors_of_type_from(entries, type_name, 0, n, make_list(n), 0))
 }
 
-fn ctors_of_type_from(entries, type_name, i, n, own buf, count) with GraphRead + WASI + GraphWrite + Memory + Alloc + !Mutate = if i >= n {
+fn ctors_of_type_from(entries, type_name, i, n, own buf, count) with !Mutate = if i >= n {
   slice(buf, 0, count)
 } else {
   match list_index(entries, i) {
@@ -521,16 +780,24 @@ fn ctors_of_type_from(entries, type_name, i, n, own buf, count) with GraphRead +
   }
 }
 
-fn ctor_to_enriched_candidate(name, scheme, reason) with GraphRead + WASI + GraphWrite + !Mutate + Memory + Alloc =
-  EnrichedCandidate({node: synthesize_ctor_call_node(name, scheme), origin: ProposerEnumerative, reason: VarLookup(name, reason)})
+fn ctor_to_enriched_candidate(name, scheme, reason) with !Mutate = EnrichedCandidate({
+  node: synthesize_ctor_call_node(name, scheme),
+  origin: ProposerEnumerative,
+  reason: VarLookup(name, reason),
+  writes: [],
+})
 
-fn enumerate_lambdas(params, ret, row, context) with Alloc + Memory + GraphWrite = {
+fn enumerate_lambdas(params, ret, row, context) = {
   // Single anonymous-fn candidate: (param_names) => ?? body. The
   // body becomes a nested Synth invocation; the chain re-enters
   // recursively at parse-time when the user accepts.
   let buf = make_list(1)
-  let candidate =
-    EnrichedCandidate({node: synthesize_lambda_node(params, ret), origin: ProposerEnumerative, reason: Inferred("an anonymous fn matching the hole's shape; its body is the next hole")})
+  let candidate = EnrichedCandidate({
+    node: synthesize_lambda_node(params, ret),
+    origin: ProposerEnumerative,
+    reason: Inferred("an anonymous fn matching the hole's shape; its body is the next hole"),
+    writes: [],
+  })
   list_set(buf, 0, candidate)
   buf
 }
@@ -555,7 +822,7 @@ fn enumerate_lambdas(params, ret, row, context) with Alloc + Memory + GraphWrite
 // than propose silence. That projection is named residue
 // (`Hβ.synth.empty-domain-teaches`), and until it lands the empty seed set
 // falls through to the vocabulary, which is honest but quiet.
-fn enumerate_domain(ty, allowed_effects, context) with GraphRead + Memory + Alloc + GraphWrite + !Mutate + EnvRead + WASI + LookupTy = {
+fn enumerate_domain(ty, allowed_effects, context) with !Mutate = {
   let d = ty_domain(ty)
   match d {
     DFinite(vs) => vs |> map(lit_candidate),
@@ -569,7 +836,7 @@ fn enumerate_domain(ty, allowed_effects, context) with GraphRead + Memory + Allo
 
 // The bounds themselves, plus the interior value nearest zero — deduped, so a
 // bound that IS that value yields one seed rather than two of it.
-fn domain_bounds_seeds(lo, hi) with Memory + Alloc = {
+fn domain_bounds_seeds(lo, hi) = {
   let ends = [] |> push_opt(lo) |> push_opt(hi)
   match interior_near_zero(lo, hi) {
     Some(z) => if ends |> any(int_same(z, ??)) { ends } else { ends ++ [z] },
@@ -577,7 +844,7 @@ fn domain_bounds_seeds(lo, hi) with Memory + Alloc = {
   }
 }
 
-fn push_opt(v, xs) with Memory + Alloc = match v {
+fn push_opt(v, xs) = match v {
   Some(n) => xs ++ [n],
   None => xs,
 }
@@ -586,17 +853,27 @@ fn int_same(a, b) with Pure = a == b
 
 // Zero when the range admits it; otherwise the open end has no interior to
 // name and the closed end already seeded it.
-fn interior_near_zero(lo, hi) with Memory + Alloc =
+fn interior_near_zero(lo, hi) =
   if bound_admits_lo(lo, 0) && bound_admits_hi(hi, 0) { Some(0) } else { None }
 
-fn lit_candidate(v) with GraphRead + GraphWrite + !Mutate + Memory + Alloc = match v {
+fn lit_candidate(v) with !Mutate = match v {
   LVInt(n) => int_literal_candidate(n),
   LVFloat(f) => float_literal_candidate(f),
-  LVString(s) => EnrichedCandidate({node: synthesize_string_literal_node(s), origin: ProposerEnumerative, reason: Inferred("the type's string inhabitants")}),
-  LVBool(b) => EnrichedCandidate({node: synth_node(LitBool(b)), origin: ProposerEnumerative, reason: Inferred("the type's boolean inhabitants")}),
+  LVString(s) => EnrichedCandidate({
+    node: synthesize_string_literal_node(s),
+    origin: ProposerEnumerative,
+    reason: Inferred("the type's string inhabitants"),
+    writes: [],
+  }),
+  LVBool(b) => EnrichedCandidate({
+    node: synth_node(LitBool(b)),
+    origin: ProposerEnumerative,
+    reason: Inferred("the type's boolean inhabitants"),
+    writes: [],
+  }),
 }
 
-fn enumerate_int_literals(context) with Alloc + Memory + GraphWrite = {
+fn enumerate_int_literals(context) = {
   // Literal seeds: 0, 1, -1. Three candidates per the Numerical
   // Survey discipline (least-trivial inhabitants of TInt).
   let buf = make_list(3)
@@ -606,93 +883,141 @@ fn enumerate_int_literals(context) with Alloc + Memory + GraphWrite = {
   buf
 }
 
-fn int_literal_candidate(n) with GraphRead + GraphWrite + !Mutate + Memory + Alloc =
-  EnrichedCandidate({node: synthesize_int_literal_node(n), origin: ProposerEnumerative, reason: Inferred("the type's integer inhabitants")})
+fn int_literal_candidate(n) with !Mutate = EnrichedCandidate({
+  node: synthesize_int_literal_node(n),
+  origin: ProposerEnumerative,
+  reason: Inferred("the type's integer inhabitants"),
+  writes: [],
+})
 
-fn enumerate_float_literals(context) with Alloc + Memory + GraphWrite = {
+fn enumerate_float_literals(context) = {
   let buf = make_list(2)
   list_set(buf, 0, float_literal_candidate(0.0))
   list_set(buf, 1, float_literal_candidate(1.0))
   buf
 }
 
-fn float_literal_candidate(f) with GraphRead + GraphWrite + !Mutate + Memory + Alloc =
-  EnrichedCandidate({node: synthesize_float_literal_node(f), origin: ProposerEnumerative, reason: Inferred("the type's float inhabitants")})
+fn float_literal_candidate(f) with !Mutate = EnrichedCandidate({
+  node: synthesize_float_literal_node(f),
+  origin: ProposerEnumerative,
+  reason: Inferred("the type's float inhabitants"),
+  writes: [],
+})
 
-fn enumerate_string_literals(context) with Alloc + Memory + GraphWrite = {
+fn enumerate_string_literals(context) = {
   let buf = make_list(1)
   list_set(
     buf,
     0,
-    EnrichedCandidate({node: synthesize_string_literal_node(""), origin: ProposerEnumerative, reason: Inferred("the type's string inhabitants")})
+    EnrichedCandidate({
+      node: synthesize_string_literal_node(""),
+      origin: ProposerEnumerative,
+      reason: Inferred("the type's string inhabitants"),
+      writes: [],
+    })
   )
   buf
 }
 
-fn one_unit_candidate(context) with Alloc + Memory + GraphWrite = {
+fn one_unit_candidate(context) = {
   let buf = make_list(1)
   list_set(
     buf,
     0,
-    EnrichedCandidate({node: synthesize_unit_literal_node(), origin: ProposerEnumerative, reason: Inferred("the unit type's one inhabitant")})
+    EnrichedCandidate({
+      node: synthesize_unit_literal_node(),
+      origin: ProposerEnumerative,
+      reason: Inferred("the unit type's one inhabitant"),
+      writes: [],
+    })
   )
   buf
 }
 
-fn one_hole_candidate(context) with Alloc + Memory + GraphWrite = {
+fn one_hole_candidate(context) = {
   // ?? at unbound positions. The recursive case: hole-fills-with-
   // hole, leaving the gradient to narrow further at the next layer.
   let buf = make_list(1)
   list_set(
     buf,
     0,
-    EnrichedCandidate({node: synthesize_hole_node(), origin: ProposerEnumerative, reason: Inferred("a nested ?? — the shape narrows, the fill recurses")})
+    EnrichedCandidate({
+      node: synthesize_hole_node(),
+      origin: ProposerEnumerative,
+      reason: Inferred("a nested ?? — the shape narrows, the fill recurses"),
+      writes: [],
+    })
   )
   buf
 }
 
-fn one_continuation_candidate(context) with Alloc + Memory + GraphWrite = {
+fn one_continuation_candidate(context) = {
   let buf = make_list(1)
   list_set(
     buf,
     0,
-    EnrichedCandidate({node: synthesize_resume_node(), origin: ProposerEnumerative, reason: Inferred("the continuation's own resume(...)")})
+    EnrichedCandidate({
+      node: synthesize_resume_node(),
+      origin: ProposerEnumerative,
+      reason: Inferred("the continuation's own resume(...)"),
+      writes: [],
+    })
   )
   buf
 }
 
-fn enumerate_records(fields, context) with Alloc + Memory + GraphWrite = {
+fn enumerate_records(fields, context) = {
   let buf = make_list(1)
   list_set(
     buf,
     0,
-    EnrichedCandidate({node: synthesize_record_node(fields), origin: ProposerEnumerative, reason: Inferred("the type's record construction")})
+    EnrichedCandidate({
+      node: synthesize_record_node(fields),
+      origin: ProposerEnumerative,
+      reason: Inferred("the type's record construction"),
+      writes: [],
+    })
   )
   buf
 }
 
-fn enumerate_list_candidates(elem, context) with Alloc + Memory + GraphWrite = {
+fn enumerate_list_candidates(elem, context) = {
   // Two candidates: empty list, single-element with elem-hole.
   let buf = make_list(2)
   list_set(
     buf,
     0,
-    EnrichedCandidate({node: synthesize_empty_list_node(), origin: ProposerEnumerative, reason: Inferred("the type's list inhabitants — the empty list")})
+    EnrichedCandidate({
+      node: synthesize_empty_list_node(),
+      origin: ProposerEnumerative,
+      reason: Inferred("the type's list inhabitants — the empty list"),
+      writes: [],
+    })
   )
   list_set(
     buf,
     1,
-    EnrichedCandidate({node: synthesize_singleton_list_node(elem), origin: ProposerEnumerative, reason: Inferred("the type's list inhabitants — one element, itself a hole")})
+    EnrichedCandidate({
+      node: synthesize_singleton_list_node(elem),
+      origin: ProposerEnumerative,
+      reason: Inferred("the type's list inhabitants — one element, itself a hole"),
+      writes: [],
+    })
   )
   buf
 }
 
-fn enumerate_tuple_candidates(elems, context) with Alloc + Memory + GraphWrite = {
+fn enumerate_tuple_candidates(elems, context) = {
   let buf = make_list(1)
   list_set(
     buf,
     0,
-    EnrichedCandidate({node: synthesize_tuple_node(elems), origin: ProposerEnumerative, reason: Inferred("the type's tuple construction — each element a hole")})
+    EnrichedCandidate({
+      node: synthesize_tuple_node(elems),
+      origin: ProposerEnumerative,
+      reason: Inferred("the type's tuple construction — each element a hole"),
+      writes: [],
+    })
   )
   buf
 }
@@ -733,13 +1058,21 @@ fn enumerate_tuple_candidates(elems, context) with Alloc + Memory + GraphWrite =
 // frontier at
 // the arm's head, ahead of enumeration), so `graph_rollback`'s MFreshNode
 // shrink never un-allocates the node being judged.
-fn segment_verify(candidates, hole_h) = if len(candidates) == 0 {
+fn segment_verify(candidates, hole_h, below) = if len(candidates) == 0 {
   []
 } else {
   let base = env_base_view()
   let seed = consume_base()
   let iseed = intern_seed()
-  candidates |> map(judge_in_segment(hole_h, base, seed, iseed))
+  // THE FAN IS A FANOUT (C9, PLAN §11.1): the candidates fan through their
+  // judgment as independent branches, and the width is whatever schedule
+  // governs the propose — none installed, so the walk is sequential by
+  // PROPERTY, never by a constant. A `~> parallel_compose` over a propose
+  // is refused where it stands: each branch writes the one graph through
+  // `graph_handler`, a stateful handler beyond this frame, which is the
+  // race rule's own verdict and 9.2's deterministic partition stated as a
+  // gate (`Hβ.lower.schedule-specialized-callee`).
+  candidates |> fanout(judge_in_segment(hole_h, base, seed, iseed, below))
 }
 
 // Judges one candidate inside its own trail segment and joins its facts to the
@@ -753,19 +1086,35 @@ fn segment_verify(candidates, hole_h) = if len(candidates) == 0 {
 // branch, never the developer's program being wrong. Replaying it would
 // make the proposer print errors about code nobody wrote. So the join is
 // the proven branch's alone; the refutation survives as the verdict.
-fn judge_in_segment(hole_h, base, seed, iseed, candidate) = {
-  let cp = graph_push_checkpoint()
-  let w = world_top()
-  let outcome =
-    segment_judge(candidate_node(candidate), hole_h, candidate_reason(candidate), base, seed, iseed)
-  graph_rollback(cp)
-  world_restore(w)
+//
+// The segment is an arena (lib/arena.mn): the candidate's judgment
+// allocates as much as a declaration's, and what crosses its exit is the
+// outcome it carries out — the branch's facts, the context cells it moved —
+// and what it stored into older memory that the rollback did not undo.
+fn judge_in_segment(hole_h, base, seed, iseed, below, candidate) = {
+  let outcome = {
+    let cp = graph_push_checkpoint()
+    let w = world_top()
+    let judged = segment_judge(
+      candidate_node(candidate),
+      hole_h,
+      candidate_reason(candidate),
+      base,
+      seed,
+      iseed,
+      cp,
+      below
+    )
+    graph_rollback(cp)
+    world_restore(w)
+    judged
+  } ~> arena
   match outcome {
-    (proven, inner) => if proven {
+    (proven, inner, writes) => if proven {
       branch_join(inner)
-      (true, candidate_reason(candidate))
+      SegmentVerdict({proven: true, reason: candidate_reason(candidate), writes: writes})
     } else {
-      (false, refusal_reason(inner))
+      SegmentVerdict({proven: false, reason: refusal_reason(inner), writes: []})
     },
   }
 }
@@ -779,7 +1128,7 @@ fn judge_in_segment(hole_h, base, seed, iseed, candidate) = {
 // developer cannot see refused is a guess they cannot audit (the same
 // sentence the row prune has carried since it was written). The medium's
 // OWN rendering of what went wrong is the reason; nothing is invented here.
-fn refusal_reason(inner) with GraphRead + Memory + Alloc + !Mutate + Intern = match inner {
+fn refusal_reason(inner) with !Mutate = match inner {
   (_, dfacts, _, _) => if len(dfacts) == 0 {
     Inferred("the hole's refinement is not satisfied")
   } else {
@@ -805,7 +1154,7 @@ fn refusal_reason(inner) with GraphRead + Memory + Alloc + !Mutate + Intern = ma
 // through the same report path every other expression uses, so an empty
 // list IS "this candidate unified". Reading the medium's own voice beats
 // any comparison standing beside it.
-fn segment_judge(node, hole_h, reason, base, seed, iseed) = {
+fn segment_judge(node, hole_h, reason, base, seed, iseed, cp, below) = {
   let body = () => {
     consume_seed(seed)
     let admitted = candidate_proven(node, hole_h, reason)
@@ -813,18 +1162,56 @@ fn segment_judge(node, hole_h, reason, base, seed, iseed) = {
     let clog = consume_log()
     let pubs = env_publishes()
     let dfacts = diag_lines_taken()
-    (admitted && len(dfacts) == 0, (pubs, dfacts, vdebt, clog))
+    // The context cells this candidate bound, read while the binds are
+    // still live — the rollback that follows is exactly why the segment
+    // carries them out as facts (C6).
+    let writes = context_writes(cp, below)
+    (admitted && len(dfacts) == 0, (pubs, dfacts, vdebt, clog), writes)
   }
   segment_bracket(body, base, iseed)
 }
 
-fn keep_survivors(candidates, verdicts) with Memory + Alloc =
-  candidates |> enumerate |> filter(verdict_at(verdicts)) |> map(indexed_value)
+// Each moved context cell with what it now means: a type chased deep (an
+// in-segment variable left inside it is a fresh cell of this segment,
+// which the comparison reads up to renaming), a row resolved. A cell the
+// bind left FREE, or a record-row residual, carries no fact to compare.
+fn context_writes(cp, below) = graph_written_since(cp, below) |> fold([], context_write_step)
 
-fn verdict_at(verdicts, indexed) with Memory + Alloc = match indexed {
-  (i, _) => match verdicts[i] {
-    (ok, _) => ok,
+fn context_write_step(acc, h) = match context_fact(h) {
+  Some(f) => push(acc, (h, f)),
+  None => acc,
+}
+
+fn context_fact(h) = match graph_chase(h) {
+  GNode(kind, _) => match kind {
+    NBound(ty) => Some(FactTy(chase_deep(ty))),
+    NRowBound(row) => Some(FactRow(resolve_row(row))),
+    NFree(_) => None,
+    NRowFree(_) => None,
+    NRecordRowBound(_, _) => None,
+    NErrorHole(_) => None,
   },
+}
+
+// The proven candidates, each SEALED with its segment's context writes —
+// the one place a candidate's record learns what its judgment taught.
+fn keep_survivors(candidates, verdicts) =
+  candidates |> enumerate |> filter(verdict_at(verdicts)) |> map(sealed_value(verdicts))
+
+fn verdict_at(verdicts, indexed) = match indexed {
+  (i, _) => match verdicts[i] {
+    SegmentVerdict(v) => v.proven,
+  },
+}
+
+fn sealed_value(verdicts, indexed) = match indexed {
+  (i, cand) => match verdicts[i] {
+    SegmentVerdict(v) => with_writes(cand, v.writes),
+  },
+}
+
+fn with_writes(candidate, writes) = match candidate {
+  EnrichedCandidate(c) => EnrichedCandidate({node: c.node, origin: c.origin, reason: c.reason, writes: writes}),
 }
 
 // The NAMED candidates a segment refused, each with the medium's own words
@@ -832,30 +1219,28 @@ fn verdict_at(verdicts, indexed) with Memory + Alloc = match indexed {
 // callee_name_of answers None — so only vocabulary refusals surface, which
 // is the honest line: the developer can act on "empty() was refused
 // because …" and cannot act on "the one-element list shape was refused".
-fn named_refusals(candidates, verdicts) with Memory + Alloc =
+fn named_refusals(candidates, verdicts) =
   candidates |> enumerate |> fold([], keep_named_refusal(verdicts))
 
-fn keep_named_refusal(verdicts, acc, indexed) with Memory + Alloc = match indexed {
+fn keep_named_refusal(verdicts, acc, indexed) = match indexed {
   (i, cand) => match verdicts[i] {
-    (ok, reason) => if ok {
+    SegmentVerdict(v) => if v.proven {
       acc
     } else {
       match candidate_head_name(candidate_node(cand)) {
         Some(name) => // drift-audit: ignore — bounded by the candidate set, not a loop accumulator
-        acc ++ [(name, reason)],
+        acc ++ [(name, v.reason)],
         None => acc,
       }
     },
   },
 }
 
-fn indexed_value(indexed) with Memory + Alloc = match indexed {
-  (_, v) => v,
-}
-
 // Decides whether a candidate inhabits the hole: infer the candidate, `unify`
-// its cell with the hole's own, then discharge the hole's refinement against
-// what the cell now says.
+// its cell with the hole's own, then discharge every contract claimed of the
+// hole against the candidate. The cell holds the shape and the claims hold
+// the refinements (P0) — the cell used to be read for both, and once it held
+// a shape every integer seed survived a `0 < self` return.
 //
 // THE PROOF GATE, one home, and the hole is a TERM CELL in it.
 //
@@ -885,20 +1270,13 @@ fn indexed_value(indexed) with Memory + Alloc = match indexed {
 fn candidate_proven(node, hole_h, reason) = {
   {
     infer_expr(node)
-  } ~> infer_ctx ~> fresh_for_inference ~> resume_summaries_ctx
+  } ~> row_gate ~> store_ages ~> infer_ctx ~> fresh_for_inference ~> resume_summaries_ctx
   match node {
     N(_, span, h) => {
       unify(hole_h, h, span, reason)
-      verify_after_apply(h) && refinement_admits(hole_ty_live(hole_h), h)
+      verify_after_apply(h) && all(refinement_admits(??, h), graph_claims_of(hole_h))
     },
   }
-}
-
-// The hole's type AFTER the unify — read live, because the unify may have
-// bound it and the refinement must be discharged against what the cell now
-// says, never against what it said before the candidate arrived.
-fn hole_ty_live(hole_h) with GraphRead + Memory + Alloc = match graph_chase(hole_h) {
-  GNode(kind, _) => ty_of_kind(hole_h, kind),
 }
 
 // ─── Verification — every candidate through the one gate ────────────
@@ -924,8 +1302,8 @@ fn hole_ty_live(hole_h) with GraphRead + Memory + Alloc = match graph_chase(hole
 // and that loss IS the measurement: nothing spawns a task any more, so the
 // judgment no longer reaches the threading vocabulary at all. The medium
 // named it (`T_OverDeclared`) the moment the spawn left.
-fn verify_each_enriched(candidates, hole_h, cand_start) with GraphRead + GraphWrite + LookupTy + Memory + Alloc + EnvRead + EnvWrite + Consume + Verify + Intern + WASI + BranchEnv + Diagnostic + !Mutate = {
-  let verdicts = segment_verify(candidates, hole_h)
+fn verify_each_enriched(candidates, hole_h, cand_start) with !Mutate = {
+  let verdicts = segment_verify(candidates, hole_h, cand_start)
   let refusals = named_refusals(candidates, verdicts)
   let survivors = keep_survivors(candidates, verdicts)
   // The form half — only over the range this propose minted (it keeps a
@@ -944,14 +1322,11 @@ fn verify_each_enriched(candidates, hole_h, cand_start) with GraphRead + GraphWr
 // fires only on a REAL disagreement of meaning. Keyed on the extracted
 // handle — the e-class root the canon weave already carries, never a
 // re-derived structural compare.
-fn collapse_equivalent(cands) with Memory + Alloc = cands |> fold(
-  [],
-  (acc, c) => if acc |> any((k) => node_handle(candidate_node(k)) == node_handle(candidate_node(c))) {
-    acc
-  } else {
-    acc ++ [c]
-  }
-)
+fn collapse_equivalent(cands) = fold([], collapse_step, cands)
+
+fn collapse_step(acc, c) = if any(same_node_as(c), acc) { acc } else { acc ++ [c] }
+
+fn same_node_as(c, k) with Pure = node_handle(candidate_node(k)) == node_handle(candidate_node(c))
 
 fn candidate_node(candidate) with Pure = match candidate {
   EnrichedCandidate(c) => c.node,
@@ -970,7 +1345,7 @@ fn candidate_reason(candidate) with Pure = match candidate {
 // here — a refused `MkBox(…)` is exactly the kind of refusal a developer
 // needs to see, and it has an arg. A skeleton with no head name teaches
 // nothing and stays out.
-fn candidate_head_name(node) with Memory + Alloc = match node {
+fn candidate_head_name(node) = match node {
   N(body, _, _) => match body {
     NExpr(CallExpr(callee, _)) => match callee {
       N(cb, _, _) => match cb {
@@ -987,7 +1362,7 @@ fn candidate_head_name(node) with Memory + Alloc = match node {
 // e-class. The extraction is a live chase of the canon weave (the same
 // union-find the type layer uses); an unmoved handle keeps the node it
 // already had, so a candidate with no cheaper equivalent pays nothing.
-fn extract_optimal(candidate) with GraphRead + Memory + Alloc = match candidate {
+fn extract_optimal(candidate) = match candidate {
   EnrichedCandidate(c) => {
     let h = node_handle(c.node)
     let cheapest = egraph_extract(h)
@@ -1002,7 +1377,12 @@ fn extract_optimal(candidate) with GraphRead + Memory + Alloc = match candidate 
       // EDGE — the one kernel write that carries no Reason today
       // (Hβ.egraph.canon-edge-carries-reason); until it does, the
       // candidate's seed Reason is the honest chain.
-      EnrichedCandidate({node: N(graph_node_body(cheapest), node_span(c.node), cheapest), origin: c.origin, reason: c.reason})
+      EnrichedCandidate({
+        node: N(graph_node_body(cheapest), node_span(c.node), cheapest),
+        origin: c.origin,
+        reason: c.reason,
+        writes: c.writes,
+      })
     }
   },
 }
@@ -1016,8 +1396,36 @@ fn node_span(node) with Pure = match node {
 //    in the candidate record — the node's own GNode reason is only its
 //    mint-span record — so dropping the pair dropped the Why from every
 //    rendered survivor.
-fn map_to_proposals(enriched) with Alloc + Memory =
-  map({ EnrichedCandidate(c) => (c.node, c.reason) }, enriched)
+// REFERENCE BEFORE MINT (SYNTAX §«Function literals»): at a function-typed
+// hole the empty lambda skeleton is the medium saying "write one", and it is
+// offered only when no function already in scope is proven there. It used to
+// stand beside every reference, so `5 |> ??` with one fitting function in
+// scope could never fill — the skeleton always tied with it.
+fn reference_before_mint(survivors) = if any(is_reference_candidate, survivors) {
+  filter(is_not_lambda_candidate, survivors)
+} else {
+  survivors
+}
+
+fn is_reference_candidate(c) with Pure = match c {
+  EnrichedCandidate(cr) => match cr.node {
+    N(body, _, _) => match body {
+      NExpr(VarRef(_)) => true,
+      _ => false,
+    },
+  },
+}
+
+fn is_not_lambda_candidate(c) with Pure = match c {
+  EnrichedCandidate(cr) => match cr.node {
+    N(body, _, _) => match body {
+      NExpr(LambdaExpr(_, _)) => false,
+      _ => true,
+    },
+  },
+}
+
+fn map_to_proposals(enriched) = map({ EnrichedCandidate(c) => (c.node, c.reason) }, enriched)
 
 // ─── The verdict — computed ONCE, where the survivors are known ──────
 //
@@ -1027,45 +1435,167 @@ fn map_to_proposals(enriched) with Alloc + Memory =
 // was unsure and withheld it exactly when the developer was most likely to
 // take the fill on faith. `VFill` holds the Reason because the constructor
 // admits no other shape.
-fn verdict_of(survivors, target_ty, context) = match survivors {
+fn verdict_of(survivors, target_ty, context) = match distinct_by_canon(survivors, []) {
   [] => VNone,
-  [only] => match only {
-    (node, reason) => VFill(node, reason),
-  },
-  _ => VAsk(divergence_of(survivors, target_ty, context), survivors),
+  [only] => VFill(candidate_node(only), candidate_reason(only)),
+  distinct => VAsk(divergence_of(distinct, target_ty, context), map_to_proposals(distinct)),
 }
 
-// WHERE the survivors diverge, in the precedence types.mn's `Divergence`
-// states. Every read is LIVE at question time — a callee's row from the very
-// env entry the vocabulary enumerator admitted it through, a denotation from
-// the callee's own body — so nothing rides on the candidate record and
-// nothing can go stale between the enumeration and the question.
-//
-// The nodes arrive RANK-SORTED, so a row split is reported as the top
-// survivor against the first one that may do something it may not.
-fn divergence_of(survivors, target_ty, context) = {
-  let nodes = map(proposal_node, survivors)
-  match first_row_split(context, nodes) {
-    Some(split) => match split {
-      (a, b) => DivRow(a, b),
-    },
-    None => {
-      let denotations = map(candidate_denotation([]), nodes)
-      if any(denotation_unread, denotations) {
-        // A survivor that is not a constant at all makes this a choice
-        // between structures, and the domain has nothing to say about it.
-        DivShape
-      } else if denotations_alike(denotations) {
-        DivName
-      } else {
-        DivValue(ty_domain(target_ty))
-      }
-    },
+// SAME DENOTATION BY CANONICAL ROOT (C5): two survivors the e-graph has
+// joined are one meaning in two forms, and a form tie is free (PLAN §5's
+// duality) — the first spelling stands and the question is never asked
+// about it. This is the e-graph's one role in the proposal: to DECIDE
+// same-denotation cheaply, by the canon column the medium already keeps.
+// It moves nothing today — every enumerator mints an atom and every rule
+// matches a binary shape, so a survivor's root is itself
+// (`Hβ.synth.fan-extraction-needs-a-feeder`) — and it is the read the
+// first fusing rule will fall through.
+fn distinct_by_canon(cands, acc) = if len(cands) == 0 {
+  acc
+} else {
+  let root = egraph_extract(node_handle(candidate_node(cands[0])))
+  if any({ c => egraph_extract(node_handle(candidate_node(c))) == root }, acc) {
+    distinct_by_canon(rest(cands), acc)
+  } else {
+    distinct_by_canon(rest(cands), push(acc, cands[0]))
   }
 }
 
-fn proposal_node(pair) with Pure = match pair {
-  (node, _) => node,
+// WHERE the survivors diverge — the trail first, then the term (C6).
+fn divergence_of(survivors, target_ty, context) = match first_context_split(survivors) {
+  Some(d) => d,
+  None => divergence_of_terms(map(candidate_node, survivors), target_ty, context),
+}
+
+// THE TRAIL FIRST: the earliest context cell the top survivor's segment
+// bound that another survivor's segment bound to something else — in the
+// top survivor's own write order, which is the order its judgment reached
+// the context. A survivor that never wrote the cell is read at the cell's
+// live value now (the pre-segment meaning every rollback restored); a cell
+// one of them left free is no divergence, since a candidate that constrains
+// the position less asks nothing of the developer.
+fn first_context_split(survivors) = match survivors {
+  [] => None,
+  [top, ...others] => first_split_over(candidate_writes(top), others),
+}
+
+fn first_split_over(writes, others) = match writes {
+  [] => None,
+  [(h, fact), ...more] => match fold(None, first_some(split_against(h, fact)), others) {
+    Some(d) => Some(d),
+    None => first_split_over(more, others),
+  },
+}
+
+fn first_some(f, acc, x) = match acc {
+  Some(d) => Some(d),
+  None => f(x),
+}
+
+// The divergence at cell `h` between the fact one survivor wrote and what
+// another survivor's segment left there — None when they agree, when the
+// other left the cell free, or when the two facts are of different sorts
+// (a cell has one sort; a sort clash is no question for the developer).
+fn split_against(h, fact, other) = match fact_at(other, h) {
+  None => None,
+  Some(theirs) => fact_split(h, fact, theirs),
+}
+
+fn fact_at(candidate, h) = match find({ (k, _) => k == h }, candidate_writes(candidate)) {
+  Some(entry) => match entry {
+    (_, f) => Some(f),
+  },
+  None => context_fact(h),
+}
+
+fn fact_split(h, mine, theirs) = match mine {
+  FactTy(a) => match theirs {
+    FactTy(b) => if ty_agree(a, b) { None } else { Some(DivType(a, b, graph_reason_at(h))) },
+    FactRow(_) => None,
+  },
+  FactRow(a) => match theirs {
+    FactRow(b) => if row_differs(a, b) { Some(DivRow(a, b)) } else { None },
+    FactTy(_) => None,
+  },
+}
+
+// Alpha-equivalence over the chased types: the variables a segment left
+// inside a fact are its own fresh cells, comparable only up to renaming.
+fn ty_agree(a, b) = match ty_alpha_eq(a, b, []) {
+  (ok, _) => ok,
+}
+
+fn candidate_writes(candidate) with Pure = match candidate {
+  EnrichedCandidate(c) => c.writes,
+}
+
+// THE TERM: no context cell separates the survivors, so the question is
+// about what stands at the position, in the precedence types.mn's
+// `Divergence` states — row, then denotation, then value, then shape.
+// Every read is LIVE at question time — a callee's row from the very env
+// entry the vocabulary enumerator admitted it through, a denotation from the
+// callee's own body — so nothing rides on the candidate record and nothing
+// can go stale between the enumeration and the question.
+//
+// The nodes arrive RANK-SORTED, so a row split is reported as the top
+// survivor against the first one that may do something it may not.
+fn divergence_of_terms(nodes, target_ty, context) = match first_row_split(context, nodes) {
+  Some(split) => match split {
+    (a, b) => DivRow(a, b),
+  },
+  None => match target_ty {
+    TFun(_, _, _) => // At a function-typed hole the survivors are different COMPUTATIONS of
+    // one type: no denotation read separates them, and "shape" was the
+    // wrong word for two functions with the same shape.
+    DivBehavior,
+    _ => divergence_by_denotation(nodes, target_ty),
+  },
+}
+
+fn divergence_by_denotation(nodes, target_ty) = {
+  let denotations = map(candidate_denotation([]), nodes)
+  if any(denotation_unread, denotations) {
+    // A survivor that is not a constant at all makes this a choice
+    // between structures, and the domain has nothing to say about it —
+    // unless every survivor is a nullary constructor of the target: those
+    // ARE the type's values, and the question is which one (C7: Circle
+    // against Square, True against False, asked as shape before).
+    match nullary_ctor_names(nodes) {
+      Some(names) => DivVariants(names),
+      None => DivShape,
+    }
+  } else if denotations_alike(denotations) {
+    DivName
+  } else {
+    DivValue(ty_domain(target_ty))
+  }
+}
+
+// Every survivor's constructor name when each is a bare nullary constructor
+// reference — read from the env entry the reference resolves to — else None.
+fn nullary_ctor_names(nodes) = fold(Some([]), nullary_ctor_step, nodes)
+
+fn nullary_ctor_step(acc, node) = match acc {
+  None => None,
+  Some(names) => match nullary_ctor_name(node) {
+    Some(name) => Some(push(names, name)),
+    None => None,
+  },
+}
+
+fn nullary_ctor_name(node) = match node {
+  N(body, _, _) => match body {
+    NExpr(VarRef(name)) => match env_lookup(name) {
+      Some(entry) => match entry {
+        (_, _, kind) => match kind {
+          ConstructorScheme(_, _) => Some(name),
+          _ => None,
+        },
+      },
+      None => None,
+    },
+    _ => None,
+  },
 }
 
 // Rows compare by MUTUAL subsumption — the crown's own algebra, never a
@@ -1123,9 +1653,9 @@ fn candidate_denotation(seen, node) = match callee_name_of(node) {
   Some(name) => if contains_name(seen, name) {
     None
   } else {
-    match fn_body_by_name(name) {
+    match fn_decl_by_name(name) {
       None => None,
-      Some(body) => // drift-audit: ignore — bounded by call-graph depth (the seen set), not a loop accumulator
+      Some((_, body)) => // drift-audit: ignore — bounded by call-graph depth (the seen set), not a loop accumulator
       candidate_denotation([name] ++ seen, body),
     }
   },
@@ -1173,33 +1703,25 @@ fn denotes_value(first: LitValue, d: Option(LitValue)) = match d {
 // Each helper produces a Node value the verify gate can apply to the
 // graph. The actual construction reuses parser_infra's nexpr/nstmt
 // constructors via the wheel's existing Node ADT (types.mn:376-379).
-fn synthesize_int_literal_node(n) with GraphRead + GraphWrite + !Mutate + Memory + Alloc =
-  synth_node(LitInt(n))
+fn synthesize_int_literal_node(n) with !Mutate = synth_node(LitInt(n))
 
-fn synthesize_float_literal_node(f) with GraphRead + GraphWrite + !Mutate + Memory + Alloc =
-  synth_node(LitFloat(f))
+fn synthesize_float_literal_node(f) with !Mutate = synth_node(LitFloat(f))
 
-fn synthesize_string_literal_node(s) with GraphRead + GraphWrite + !Mutate + Memory + Alloc =
-  synth_node(LitString(s))
+fn synthesize_string_literal_node(s) with !Mutate = synth_node(LitString(s))
 
-fn synthesize_unit_literal_node() with GraphRead + GraphWrite + !Mutate + Memory + Alloc =
-  synth_node(LitUnit)
+fn synthesize_unit_literal_node() with !Mutate = synth_node(LitUnit)
 
-fn synthesize_hole_node() with Memory + Alloc + GraphWrite = synth_hole_node()
+fn synthesize_hole_node() = synth_hole_node()
 
-fn synthesize_resume_node() with GraphRead + GraphWrite + !Mutate + Memory + Alloc =
-  synth_node(ResumeExpr(synth_unit_node(), []))
+fn synthesize_resume_node() with !Mutate = synth_node(ResumeExpr(synth_unit_node(), []))
 
-fn synthesize_empty_list_node() with GraphRead + GraphWrite + !Mutate + Memory + Alloc =
-  synth_node(MakeListExpr([]))
+fn synthesize_empty_list_node() with !Mutate = synth_node(MakeListExpr([]))
 
-fn synthesize_singleton_list_node(elem) with GraphRead + GraphWrite + !Mutate + Memory + Alloc =
-  synth_node(MakeListExpr([synth_hole_node()]))
+fn synthesize_singleton_list_node(elem) with !Mutate = synth_node(MakeListExpr([synth_hole_node()]))
 
-fn synthesize_tuple_node(elems) with GraphRead + GraphWrite + !Mutate + Memory + Alloc =
-  synth_node(MakeTupleExpr(synth_holes_for(elems)))
+fn synthesize_tuple_node(elems) with !Mutate = synth_node(MakeTupleExpr(synth_holes_for(elems)))
 
-fn synthesize_record_node(fields) with GraphRead + GraphWrite + !Mutate + Memory + Alloc =
+fn synthesize_record_node(fields) with !Mutate =
   synth_node(MakeRecordExpr(synth_record_holes_for(fields)))
 
 // Builds a constructor candidate: a bare `VarRef` when the scheme is nullary,
@@ -1221,7 +1743,7 @@ fn synthesize_record_node(fields) with GraphRead + GraphWrite + !Mutate + Memory
 // constructor filter already reads (nullary ctors carry TName directly;
 // fielded ones carry TFun(_, TName, _)), so this is a read, never a new
 // fact: SYNTAX's own surface says `let nothing = None`.
-fn synthesize_ctor_call_node(name, scheme) with GraphRead + WASI + GraphWrite + !Mutate + Memory + Alloc = match judgment_ty(scheme) {
+fn synthesize_ctor_call_node(name, scheme) with !Mutate = match judgment_ty(scheme) {
   TFun(params, _, _) => synth_node(CallExpr(synth_node(VarRef(name)), synth_holes_for(params))),
   _ => synth_node(VarRef(name)),
 }
@@ -1229,8 +1751,17 @@ fn synthesize_ctor_call_node(name, scheme) with GraphRead + WASI + GraphWrite + 
 // params arrive as the scheme's own [TParam] — LambdaExpr's exact
 // carrier; rebuilding name lists from them was the mismatch the
 // converged judge caught (the param-product law reaching synth).
-fn synthesize_lambda_node(params, ret) with GraphRead + GraphWrite + !Mutate + Memory + Alloc =
-  synth_node(LambdaExpr(params, synth_hole_node()))
+fn synthesize_lambda_node(params, ret) with !Mutate =
+  synth_node(LambdaExpr(map(proposed_param, params), synth_hole_node()))
+
+// A proposed lambda's parameter carries the NAME the hole's type gives it
+// and a fresh cell for its type: the judgment binds the cell when the
+// skeleton meets the hole, and the render stays bare — a lambda parameter
+// takes no annotation on the page, so a skeleton carrying the target's
+// ground types rendered `(_: String, _: Bool) => ??`, which no parse reads
+// (measured at the proposal battery's birth, C7).
+fn proposed_param(p) =
+  mk_param(param_name(p), TVar(graph_fresh_ty(Inferred("a proposed lambda's parameter"))))
 
 // ─── Synthesis primitives — structured Node construction ───────────
 //
@@ -1239,18 +1770,16 @@ fn synthesize_lambda_node(params, ret) with GraphRead + GraphWrite + !Mutate + M
 // births every node through. The fabricated handle-0 form was the
 // load-bearing gap: a candidate with no handle cannot be inferred or
 // chased, so the proof gate verified a fixed meaningless node. Minting
-// edge-links the body into the graph weave so verify_candidate's
+// edge-links the body into the graph weave so the proof gate's
 // infer_expr walk binds the candidate's own handle (Carried-Truth: the
 // graph holds the node; the gate reads it live).
-fn synth_node(expr_body) with GraphRead + GraphWrite + !Mutate + Memory + Alloc =
-  mint_node(NExpr(expr_body), span_zero())
+fn synth_node(expr_body) with !Mutate = mint_node(NExpr(expr_body), span_zero())
 
-fn synth_unit_node() with Memory + Alloc + GraphWrite = synth_node(LitUnit)
+fn synth_unit_node() = synth_node(LitUnit)
 
-fn synth_hole_node() with GraphRead + GraphWrite + !Mutate + Memory + Alloc =
-  mint_node(NHole(0), span_zero())
+fn synth_hole_node() with !Mutate = mint_node(NHole(0), span_zero())
 
-fn synth_holes_for(elems) with Memory + Alloc + GraphWrite = if len(elems) == 0 {
+fn synth_holes_for(elems) = if len(elems) == 0 {
   []
 } else {
   let n = len(elems)
@@ -1258,7 +1787,7 @@ fn synth_holes_for(elems) with Memory + Alloc + GraphWrite = if len(elems) == 0 
   synth_holes_loop(0, n, buf)
 }
 
-fn synth_holes_loop(i, n, buf) with Memory + Alloc + GraphWrite = if i >= n {
+fn synth_holes_loop(i, n, buf) = if i >= n {
   buf
 } else {
   list_set(buf, i, synth_hole_node())
@@ -1268,8 +1797,7 @@ fn synth_holes_loop(i, n, buf) with Memory + Alloc + GraphWrite = if i >= n {
 // A record literal's carrier is the parser's (name, value) pair list —
 // bare holes lost the names (the converged judge's catch); each demanded
 // field keeps its name with a hole as its value.
-fn synth_record_holes_for(fields) with Memory + Alloc + GraphWrite =
-  map({ (fname, _) => (fname, synth_hole_node()) }, fields)
+fn synth_record_holes_for(fields) = map({ (fname, _) => (fname, synth_hole_node()) }, fields)
 
 // ─── Composition with cursor_default + delta_default ────────────────
 //

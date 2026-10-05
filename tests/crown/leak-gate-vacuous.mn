@@ -1,0 +1,10 @@
+// CROWN — THE VACUOUS NEGATION. `run`'s body row is its parameter's row,
+// a free cell at run's exit, and a declared `!E` over it used to constrain
+// nothing: `run(() => op())` compiled clean and ran (exit 7, measured
+// 2026-08-18 and again 2026-09-27 on boot 2974547b). The gate now rides
+// f's row cell; the argument edge that binds the instance to `[E]` is the
+// write that refuses, naming run's declaration. Expect E_EffectMismatch.
+effect E { op() -> Int }
+handler h { op() => resume(7) }
+fn run(f) with !E = f()
+fn main() = (run(() => op())) ~> h

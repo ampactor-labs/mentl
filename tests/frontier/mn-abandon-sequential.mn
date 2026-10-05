@@ -1,0 +1,16 @@
+// AN-2 — the same fanout under the degree-1 schedule: `sequential_compose`'s
+// spawn arm runs the thunk inline, the thunk's abandon returns into the arm
+// with the flag raised, the arm's call boundary unwinds it, the spawn
+// perform's check unwinds the fanout, and the install whose arm answers `ab`
+// gives the tuple. Expected exit: 5.
+effect Ab {
+  ab() -> Int
+}
+
+handler h {
+  ab() => (5, 0),
+}
+
+fn main() = match (0 <| ({ _ => ab() }, { _ => 10 })) ~> sequential_compose ~> h {
+  (a, b) => a + b,
+}

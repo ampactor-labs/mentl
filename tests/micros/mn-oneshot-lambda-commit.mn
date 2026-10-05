@@ -18,6 +18,6 @@ handler cell with s = 10 {
   read_it() => resume(s)
 }
 
-fn body() with Cell = { let first = bump(); first + read_it() }
+fn body() = { let first = bump(); first + read_it() }
 
 fn main() = { body() } ~> cell

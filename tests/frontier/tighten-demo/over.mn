@@ -1,6 +1,7 @@
 // The tighten fixture: helper reserves Memory + Alloc while its body
 // performs nothing, so T_OverDeclared carries the proven Pure row and
-// the tighten verb rewrites this clause to `with Pure`.
+// the tighten verb writes the clause's residue — here nothing survives, so
+// the clause is deleted and the row is projected (A4).
 fn helper() with Memory + Alloc = 42
 
 fn main() = helper()

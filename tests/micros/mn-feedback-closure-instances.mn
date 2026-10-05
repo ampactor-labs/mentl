@@ -1,0 +1,17 @@
+// expect: 40
+// Two closures minted from one lambda own two lines: `f` and `g` are two
+// filters, the two-channel shape every stereo stage writes. The line
+// lives in the closure record, past the captures, so each mint carries
+// its own. On boot 542ea5a3 the lambda's site had one module line, so
+// `g`'s first tick read `f`'s prior and `f`'s second tick read `g`'s
+// (exit 41 with zero diagnostics).
+fn make(a) = (x) => ((prev) => a * x + prev) <~ delay(1)
+
+fn main() = {
+  let f = make(1)
+  let g = make(100)
+  let a1 = f(1)
+  let b1 = g(1)
+  let a2 = f(1)
+  if a1 == 1 && b1 == 100 && a2 == 2 { 40 } else { 41 }
+}

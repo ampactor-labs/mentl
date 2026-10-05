@@ -1,0 +1,18 @@
+// The tie whose question is the TYPE — the first divergence read off the
+// trail (C6). The hole's own cell is FREE: nothing in `main` narrows `x`, so
+// each survivor's segment binds that cell — `one()` to Int, `word()` to
+// String — and the cell is the first thing the two segments disagree on.
+// The question is therefore the position's type, not a value question
+// about `1` and "a" (which is what the survivors' own reads answered on
+// boot b1637650: "differ in VALUE and nothing here bounds the value").
+//
+// A PROJECTION fixture (it carries an authored hole, so it is never an
+// executable); the gate reads its Propose facet.
+fn one() = 1
+
+fn word() = "a"
+
+fn main() = {
+  let x = ??
+  0
+}

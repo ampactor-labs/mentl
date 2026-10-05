@@ -1,0 +1,10 @@
+// CROWN — the gate propagates OUTWARD: `outer(k) = run(k)` copies run's
+// gated cell and binds the copy to k's row, so k's cell carries `!E` in
+// outer's published scheme (`∀r. (E ∉ r) ⇒ …`, Gaster–Jones `lacks`), and
+// main's callback refuses at outer's argument edge. Accepted by boot
+// 2974547b (exit 7). Expect E_EffectMismatch.
+effect E { op() -> Int }
+handler h { op() => resume(7) }
+fn run(f) with !E = f()
+fn outer(k) = run(k)
+fn main() = (outer(() => op())) ~> h

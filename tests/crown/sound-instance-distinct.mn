@@ -4,4 +4,7 @@
 effect Sample(rate: Int) { tick() -> Int }
 fn inner() with Sample(48000) = tick()
 fn ok() with !Sample(44100) = inner()
-fn main() = ok()
+// The handler at main makes the program EXECUTABLE (the root gate reads
+// the row alone, 2026-09-27).
+handler h { tick() => resume(1) }
+fn main() = (ok()) ~> h

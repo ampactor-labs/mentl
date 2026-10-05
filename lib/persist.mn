@@ -89,7 +89,7 @@ effect Persist {
 // in. Every wire read lands in a local before the swap; after image_restore
 // returns, this process's pre-swap heap values are dead — the caller reads
 // its typed roots (the restored top-level lets), never its own old heap.
-fn image_resume(path) with Memory + Alloc + WASI + Fail = {
+fn image_resume(path) = {
   let wire = fs_read_file_impl(path)
   let p = str_payload(wire)
   if load_i32(p) != image_key() {
@@ -136,21 +136,24 @@ fn image_resume(path) with Memory + Alloc + WASI + Fail = {
 // is what must be built out here. The EXTENT carries no world at all — it is
 // just the bytes at [0, size) — so the arm writes it, and nothing has to be
 // copied to get it there.
-fn image_header(k) with Memory + Alloc = {
-  let size = heap_mark()
+// The extent's size is the heap line's distance from the null address — a
+// byte count, which a signed word carries to 2 GB (the write below refuses
+// past it).
+fn image_header(k) = {
+  let size = addr_diff(heap_mark(), null_addr())
   let gsz = globals_area()
   let hdr = bytes_buf(16 + gsz)
-  let p = hdr + 8
+  let p = addr_at(hdr, 8)
   store_i32(p, image_key())
-  store_i32(p + 4, k)
-  store_i32(p + 8, size)
-  store_i32(p + 12, gsz / 8)
+  store_addr(addr_at(p, 4), k)
+  store_i32(addr_at(p, 8), size)
+  store_i32(addr_at(p, 12), gsz / 8)
   // globals_save runs AFTER the header allocation, so slot 0 holds the bumped
   // line; the patch puts back the extent this wire actually carries, which is
   // what restore must rewind to. The old pack had the same two lines for the
   // same reason — the bump it was correcting was just image-sized.
-  globals_save(p + 16)
-  store_i32(p + 16, size)
+  globals_save(addr_at(p, 16))
+  store_i32(addr_at(p, 16), size)
   str_of_buf(hdr)
 }
 
@@ -174,10 +177,10 @@ fn image_header(k) with Memory + Alloc = {
 //
 // So the write states its own outcome and the file only survives if the
 // extent it declares is the extent that landed.
-fn image_write_wire(ref hdr, ref path) with Memory + Alloc + WASI = {
+fn image_write_wire(ref hdr, ref path) = {
   let p = str_payload(hdr)
-  let size = load_i32(p + 8)
-  if fs_write_image_impl(path, p, byte_len(hdr), 0, size) {
+  let size = load_i32(addr_at(p, 8))
+  if fs_write_image_impl(path, p, byte_len(hdr), null_addr(), size) {
     ()
   } else {
     eprint_string("warm: image not persisted — the judgment line is {int_to_str(size)} byte(s), past what one extent can carry; the next run derives cold\n")
@@ -207,7 +210,7 @@ fn image_write_wire(ref hdr, ref path) with Memory + Alloc + WASI = {
 // `Hβ.persist.branch-world-tag` exactly, now with the measurement the peer
 // never had: the same shape on the `persist` arm trapped warm-inc at
 // ev_declaring_node, Persist slot 0.
-fn persist_write(k, ref path) with Memory + Alloc + WASI = image_write_wire(image_header(k), path)
+fn persist_write(k, ref path) = image_write_wire(image_header(k), path)
 
 // persist_to_disk — the default disk policy for the rooted-image wire.
 handler persist_to_disk with branch_results = [] {
@@ -235,3 +238,13 @@ handler persist_to_disk with branch_results = [] {
     PersistHandle(idx) => resume(list_index(branch_results, idx)),
   },
 }
+
+// THE SEQUENCE FANOUT UNDER A PERSIST-CLASS SCHEDULE — `fanout(f, xs)`
+// reached by a `~> persist_to_disk` install: each element's branch
+// checkpointed and run through `persist_branch`, every handle joined in
+// order (the `><` Persist arm over a runtime sequence, selected by the
+// lowering as that arm is). The loops are `map`'s, sequential by
+// construction.
+fn fanout_persisted(f, xs) = xs |> map(persist_branch_of(f)) |> map(join_persist)
+
+fn persist_branch_of(f, x) = persist_branch(() => f(x))

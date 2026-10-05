@@ -1,0 +1,9 @@
+// CROWN A5 (LENS §2.4), the sound twin of leak-arm-resume-remainder: h
+// declares !F and is installed over a body whose remainder performs only
+// op — which h itself absorbs — so the resume continues into nothing h
+// forbids. Expect NO E_EffectMismatch.
+effect E { op() -> Int }
+effect F { fop() -> Int }
+handler h with !F { op() => resume(1) }
+fn work() = op() + op()
+fn main() = (work()) ~> h

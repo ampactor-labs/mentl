@@ -1,0 +1,13 @@
+// expect: 20
+// A nominal contract's constructor field is its declared type read at the
+// contract's arguments: `Option(Positive)` at `Some`'s field is `Positive`,
+// assumed by the pattern and owed by `Some(5)`, which proves it. Boot
+// 1a68ecc0 read nothing at the field and refused this (E_EffectMismatch).
+type Positive = Int where 0 < self
+
+fn opt_inv(o: Option(Positive)) = match o {
+  Some(d) => 100 / d,
+  None => 0,
+}
+
+fn main() with !Trap = opt_inv(Some(5))

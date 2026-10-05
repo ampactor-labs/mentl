@@ -1,0 +1,22 @@
+// expect: 21
+// A resume handed to a thunk whose CALLER is not tail-transparent is HELD:
+// `plus_one` computes after the thunk returns, so the arm keeps computing
+// after the remainder returns, and the install answers the arm's value.
+// bump resumes with 10 → the remainder (`bump() * 2`) answers 20 → the thunk
+// returns 20 → plus_one answers 21 → the install answers 21. Measured
+// 2026-09-27 on boot 83428bcc: exit 22 — the lambda-wrapped resume lowered as
+// the stack return, so plus_one added 1 to the RESUMED value and handed 11
+// to the perform site (11 * 2). The sibling mn-oneshot-lambda-commit keeps
+// the stack return because `call_thunk` is PROVEN tail-transparent
+// (tail_transparent_params); this caller is proven not to be.
+effect Cell { bump() -> Int }
+
+fn plus_one(f) = f() + 1
+
+handler cell with s = 10 {
+  bump() => plus_one(() => resume(s))
+}
+
+fn body() = bump() * 2
+
+fn main() = { body() } ~> cell

@@ -1,0 +1,19 @@
+// CROWN refinement (S6, 2026-10-02): an op's declared return is a stated
+// position the resumed value crosses into. `get_fn` states `(Int) -> Int`, the
+// arm resumes `inv`, which demands `Positive`, so the guard `inv`'s division
+// left is paid at the resume, in the handler's row, and reaches `!Trap`
+// through the install. The resume only unified the shapes, so this checked
+// clean and divided by zero on pin 85218488. Expect E_EffectMismatch.
+type Positive = Int where 0 < self
+
+fn inv(n: Positive) = 100 / n
+
+effect E {
+  get_fn() -> (Int) -> Int
+}
+
+handler h {
+  get_fn() => resume(inv),
+}
+
+fn main() with !Trap = get_fn()(0) ~> h

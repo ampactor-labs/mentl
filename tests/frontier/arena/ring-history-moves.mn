@@ -1,0 +1,33 @@
+// A `<~` line whose prior is a pointer, ticked inside an arena: the ring is
+// older than the arena, so each tick journals the slot with its type, and
+// the history the line holds moves out with the arena's value.
+type Hist = Empty | Cell(Int, Hist)
+
+fn hist_len(h) = match h {
+  Empty => 0,
+  Cell(_, rest) => 1 + hist_len(rest),
+}
+
+fn hist_sum(h) = match h {
+  Empty => 0,
+  Cell(v, rest) => v + hist_sum(rest),
+}
+
+fn remember(x) = ((prev) => Cell(x, prev)) <~ delay(1)
+
+fn feed(n) = if n == 0 {
+  Empty
+} else {
+  let _ = feed(n - 1)
+  remember(n)
+}
+
+fn main() = {
+  let h = feed(10) ~> arena
+  let h2 = remember(11)
+  if hist_sum(h) == 55 && hist_len(h2) == 11 && hist_sum(h2) == 66 && arena_stat(ArExits) == 1 && arena_stat(ArKept) == 0 {
+    42
+  } else {
+    1
+  }
+}

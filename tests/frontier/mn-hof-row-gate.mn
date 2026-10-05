@@ -3,21 +3,14 @@
 // negation row judges, never binds — where the old equality-unify arm
 // reported a false mismatch on EVERY closed-row argument (a Pure thunk
 // "failed" the universe-minus row it plainly satisfies). The quiet thunk
-// is admitted and the program runs; the noisy (printing) thunk reports
-// exactly one mismatch at its own edge. Both faces in one compile.
-// Expected: exit 42 with exactly one E_EffectMismatch (the noisy edge).
+// is admitted and the program runs. The noisy face lives in
+// mn-hof-row-gate-noisy.mn since E_EffectMismatch was ARMED (2026-09-25):
+// the two faces can no longer share a compile, because the noisy edge is
+// a refusal now, not a report beside a run.
+// Expected: exit 42 with zero E_EffectMismatch.
 
 fn quiet() = 42
 
-fn noisy() = {
-  println("boom")
-  42
-}
-
 fn accept_thunk(f: () -> Int with !WASI) -> Int with !WASI = f()
 
-fn main() = {
-  let a = accept_thunk(quiet)
-  let b = accept_thunk(noisy)
-  a
-}
+fn main() = accept_thunk(quiet)

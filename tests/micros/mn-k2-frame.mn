@@ -22,8 +22,8 @@ handler twice {
   }
 }
 
-fn step() with Choice = pick() + 3
+fn step() = pick() + 3
 
-fn outer() with Choice = step() + 10
+fn outer() = step() + 10
 
 fn main() = { outer() } ~> twice

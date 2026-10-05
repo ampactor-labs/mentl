@@ -1,0 +1,11 @@
+// B4 (2026-09-30): the sequence fanout under a caller's schedule. `ids` fans
+// its list out through a branch that asks the thread's id; `main` installs
+// `parallel_compose` over the call, so each element's branch runs on its own
+// spawned instance and every id is nonzero. Boot 6f2ce437 had no `fanout`.
+// Expected exit: 3.
+fn ids(xs) = fanout({ _ => current_id() }, xs)
+fn nonzero(n) = if n > 0 { 1 } else { 0 }
+fn main() = match (ids([1, 2, 3])) ~> parallel_compose {
+  [a, b, c] => nonzero(a) + nonzero(b) + nonzero(c),
+  _ => 0,
+}

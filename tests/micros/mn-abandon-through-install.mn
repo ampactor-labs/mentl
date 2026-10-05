@@ -1,0 +1,24 @@
+// expect: 5
+// AN-2 control — an abandon crossing a FOREIGN install on its way out: the
+// inner install's landing takes the unwind, its world restore runs, and the
+// flag bubbles to the install whose arm answers. Correct on boot 311479e1
+// (the spine composed it); the landing block keeps it so.
+effect Ab {
+  ab() -> Int
+}
+
+effect Log {
+  note(n: Int) -> Int
+}
+
+handler h {
+  ab() => 5,
+}
+
+handler quiet {
+  note(n) => resume(n),
+}
+
+fn inner() = ab() + 1
+
+fn main() = ((inner() + note(1)) ~> quiet) ~> h

@@ -1,0 +1,26 @@
+// A list of addresses the arena allocated, returned as its value. The list
+// moves by its element type, and an address is an element no leaf can move,
+// so the exit keeps the region and every cell reads back. Exit 42 when they
+// do and the exit was a keep. Held as Ints the list moved and its cells were
+// reclaimed, their sum reading 2 for 12 on boot 0a096302 with no diagnostic;
+// typed, it did not compile there.
+fn build(n) = if n == 0 { [] } else { build(n - 1) ++ [n] }
+
+fn cell(v) = {
+  let p = alloc(8)
+  store_i32(p, v)
+  p
+}
+
+fn cells() = {
+  let ps = [cell(3), cell(4), cell(5)]
+  let _ = build(50)
+  ps
+}
+
+fn main() = {
+  let ps = cells() ~> arena
+  let junk = build(400)
+  let total = load_i32(ps[0]) + load_i32(ps[1]) + load_i32(ps[2])
+  if total == 12 && len(junk) == 400 && arena_stat(ArKept) == 1 { 42 } else { 1 }
+}

@@ -1,0 +1,10 @@
+// expect: 7
+// A generic list pattern binds its element at the width of the twin it runs
+// in: `head_or` at Float binds `h` as a float, at Int as a word. Measured on
+// boots 0bc8383e and 2d784560: did not assemble (`$h.f64` undefined).
+fn head_or(xs, d) = match xs {
+  [h, ..._] => h,
+  [] => d,
+}
+
+fn main() = if head_or([2.5, 1.0], 0.0) > 2.0 && head_or([3, 4], 0) == 3 { 7 } else { 1 }

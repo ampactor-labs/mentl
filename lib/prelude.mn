@@ -19,6 +19,15 @@ import lists
 
 import threading
 
+// PARTIALITY IS A ROW FACT. The substrate traps a partial primitive whose
+// precondition fails — an integer division by zero, INT_MIN / -1 — and a
+// site whose precondition the judgment cannot prove performs Trap, so
+// `with !Trap` claims a function divides by nothing it has not bounded.
+// Nothing handles a trap: it has no operations, and its absence is the point.
+effect Trap {
+  
+}
+
 // ─── Vocabulary Types ───────────────────────────────────────
 // The algebraic bedrock every program speaks.
 //
@@ -98,12 +107,10 @@ fn map_result(f, res) = match res {
 // One effect.  Every collection operation is a handler on it.
 effect Iterate {
   yield(element)
-  // result() DELIVERS the handler's collected value — the accumulator for
-  // fold, [b] for map, the count for count — so its return type IS the
-  // handler's result, polymorphic in `r` (the case rule; `r` = a type param).
-  // Declared `-> ()` it forced every `resume(<value>)` arm to Unit, collapsing
-  // fold's accumulator to () — the bug infer_seq_op existed to override.  With
-  // `-> r` each collection op DERIVES its own type from its handler's resume.
+  // result() delivers the handler's collected value — the accumulator for
+  // fold, the mapped list for map, the count for count — so its return type
+  // is a type parameter, and each collection op derives its own type from
+  // what its handler resumes with.
   result() -> r
 }
 
@@ -126,14 +133,14 @@ effect Iterate {
 // the Iterate instance args died exactly there, orphaning every
 // fold-family element.  Source order kills this instance; the class
 // (order-independent verdicts) is the named peer in PLAN.
-fn iterate_from(xs, i, n) with Memory + Iterate = if i < n {
+fn iterate_from(xs, i, n) = if i < n {
   yield(xs[i])
   iterate_from(xs, i + 1, n)
 } else {
   ()
 }
 
-fn iterate(xs) with Iterate + Alloc + Memory = iterate_from(list_to_flat(xs), 0, len(xs))
+fn iterate(xs) = iterate_from(list_to_flat(xs), 0, len(xs))
 
 // ─── Collection Operations (single fused handlers on Iterate) ────────
 // One handler per `~>` install: transform + materialize fused into
@@ -218,6 +225,18 @@ fn map(f, xs) = {
   result()
 } ~> map_collector(f)
 
+// The SEQUENCE FANOUT — `><` over a runtime sequence: `f` applied to each
+// element as an INDEPENDENT branch, the results collected in order. With no
+// schedule governing the site it is `map`, which is this body; where a
+// schedule does (an install of parallel_compose or persist_to_disk over the
+// call, in this frame or reaching it through a direct call) the lowering
+// selects the form that owns it — fanout_threaded in lib/threading,
+// fanout_persisted in lib/persist — so every element's branch runs on its
+// own instance. One declaration, one inferred row, the schedule a
+// projection at each site; `map` itself stays a sequential loop, since only
+// a fanout declares its applications independent.
+fn fanout(f, xs) = map(f, xs)
+
 fn filter(p, xs) = {
   iterate(xs)
   result()
@@ -245,11 +264,16 @@ handler fold_handler(f, init) with acc = init {
   result() => resume(acc),
 }
 
+// Exhaustive over `Iterate` like its siblings: `each` collects nothing, so
+// its `result` is unit. The arm answered `yield` alone before 2026-09-30,
+// when the exhaustive-handler rule (E_HandlerInexhaustive) refused it — an
+// install of a half-handler subtracts the WHOLE effect from the row.
 handler each_handler(f) {
   yield(elem) => {
     f(elem)
     resume()
   },
+  result() => resume(),
 }
 
 handler any_handler(pred) with found = false {
@@ -281,9 +305,7 @@ fn fold(init, f, xs) = {
   result()
 } ~> fold_handler(f, init)
 
-fn each(f, xs) = {
-  iterate(xs)
-} ~> each_handler(f)
+fn each(f, xs) = iterate(xs) ~> each_handler(f)
 
 fn any(pred, xs) = {
   iterate(xs)
@@ -331,7 +353,7 @@ fn reduce(xs, f) = fold(head(xs), f, rest(xs))
 // under thousands of compile frames and sat ~1,000 fns from that death
 // (found 2026-08-07 by the total-twinning forensics; mn-zip-deep pins
 // 200,000 on a fresh stack).  Declared callee-first (iterate_from's law).
-fn zip_with_fill(f, xs, ys, buf, i, n) with Memory =
+fn zip_with_fill(f, xs, ys, buf, i, n) =
   if i < n { zip_with_fill(f, xs, ys, list_set(buf, i, f(xs[i], ys[i])), i + 1, n) } else { buf }
 
 fn zip_with(f, xs, ys) = {
@@ -372,21 +394,18 @@ fn max_by(f, xs) = reduce(xs, (a, b) => if f(a) >= f(b) { a } else { b })
 fn min_by(f, xs) = reduce(xs, (a, b) => if f(a) <= f(b) { a } else { b })
 
 // ─── Composition ────────────────────────────────────────────
-// compose IS <> for when you need a function instead of syntax.
-// id is the identity element: f <> id = f, id <> f = f.
-// build_pipeline folds a list of functions into one composed pipeline.
-//
-// compose matches <> — f first, then g.  Left to right.
-// x |> (f <> g) = x |> f |> g
+// compose is the pipe as a value: f first, then g, so
+// `x |> compose(f, g)` is `x |> f |> g`. id is its identity element:
+// compose(f, id) and compose(id, f) both behave as f.
 fn compose(f, g) = (x) => g(f(x))
 
 fn id(x) with Pure = x
 
 fn not(x) with Pure = if x { false } else { true }
 
-// Build a pipeline from a list of functions.  Fold with compose.
-// build_pipeline([f, g, h]) = f <> g <> h
-fn build_pipeline(steps) = fold(id, (acc, step) => (x) => step(acc(x)), steps)
+// A pipeline from a list of functions, composed left to right:
+// `x |> build_pipeline([f, g, h])` is `x |> f |> g |> h`.
+fn build_pipeline(steps) = fold(id, compose, steps)
 
 // ─── Safe access ────────────────────────────────────────────
 fn nth(xs, n, default) = if n >= 0 && n < len(xs) { xs[n] } else { default }
@@ -430,7 +449,7 @@ fn sort(xs) = if len(xs) <= 1 {
 // the plainest line a beginner writes: unannotated params leave the
 // element type free, so `acc ++ sep ++ xs[i]` reaches `++`'s no-guess
 // floor — the refusal is RIGHT (a representation cannot be guessed) and
-// its FORM was an `unreachable` in shipped library code.  `join(["ab",
+// its FORM was a wasm unreachable in shipped library code.  `join(["ab",
 // "cd"], "-")` exited 134 with zero diagnostics until 2026-07-31.  The
 // comment that stood here claimed "explicit str_concat threads the String
 // type directly through the loop" — a repair that was never in the body;

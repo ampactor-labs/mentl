@@ -11,11 +11,11 @@
 // it. With that write gone and free_in_ty no longer calling a BOUND row free,
 // the call's proof reaches pick and the residual projects as what it is.
 //
-// Its assumed twin is not banked beside it, and that absence is measured
-// rather than assumed: two shapes were built to produce a genuine union of
-// partial sets — an open callee reached from a differently-known open caller,
-// and a receiver nothing closes — and neither renders an assumed remainder at
-// a decl's projection now. The first floors, the second stays free. If a
-// shape that does turns up, it lands here with `// residual: assumed`.
+// There is no assumed twin to bank beside it, because since 2026-09-28 there
+// is no assumed remainder: two open rows that meet each learn what the other
+// knew and continue at ONE fresh variable for what neither has seen, so an
+// unproven remainder is always a variable and projects open. The file keeps
+// its name for the ledger entries that cite it.
 fn pick(u: {zeta: Int, ...}) = u.zeta
+
 fn main(q) = pick({alpha: 7, zeta: 9})

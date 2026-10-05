@@ -3,17 +3,20 @@
 // isolates one flow step between a refined mint and a call-boundary
 // obligation; the instrument is the pending ledger on stderr, read on
 // a COLD compile (the warm image suppresses re-derived obligations —
-// `Hβ.verify.warm-image-pending-suppression`). Measured map: a rung
-// whose flow carries a refined fact var-connected to the boundary is
-// SILENT (S1-S7, S11 — the echo-stop reads the alias off the chased
-// class); a bare-first flow accrues its honest first claim (S8, S12,
-// S13, S14); a free-arg forward relocates the obligation to its own
-// published boundary (S9 — the call site's unify-then-discharge order,
-// the precondition any class-upgrade mechanism must invert first); a
-// GROUNDING interior breaks propagation at its published-ground scheme
-// (S10 — rung 3's domain). Not wired to a gate; a corpus for the next
-// flow dig.
-
+// `Hβ.verify.warm-image-pending-suppression`). The map, re-measured cold
+// on the P0 tree (2026-10-01), where a refinement is read along the
+// value's own edges and never off its unification class: a call whose
+// callee DECLARES the refinement, a let over one, a comparison first and an
+// annotated parameter are SILENT (S1-S5 — the echo finds the callee's
+// return or the parameter's precondition); a free parameter forwarded
+// into the boundary infers the precondition and relocates the claim to
+// its own callers (S9); a tuple destructure answers nothing
+// (S6, S7 — Hβ.verify.provenance-through-destructure); an unannotated
+// producer or interior proves no contract its callers could stand on
+// (S8, S10, S11 — S11 was silent on the class model, where the identity
+// interior unified the caller's refined class through); and a bare
+// producer or a computation accrues its honest first claim (S12, S13,
+// S14). Not wired to a gate; a corpus for the next flow dig.
 type Nat = Int where 0 <= self
 
 fn mk(x) -> Nat = 7
@@ -70,9 +73,8 @@ fn s8(x) = {
 
 // S9 — the relocation probe: an UNANNOTATED fn forwards its raw param
 // into the refined boundary. No pending surfaces at the consume — the
-// call unify plants the alias into the free param BEFORE the echo-stop
-// reads it (unify-then-discharge order), and the obligation relocates
-// to s9's own published boundary.
+// param learns the precondition (precondition inference), and the
+// obligation relocates to s9's own callers.
 fn s9(x) = consume(x)
 
 // S10 — the GROUNDING interior: judged at its own decl, the comparison
@@ -82,8 +84,9 @@ fn interior2(p) = if p > 0 { p } else { 0 }
 
 fn s10(x) = consume(interior2(mk(x)))
 
-// S11 — the var-connected interior: identity keeps the param free at
-// its own decl; the caller's refined class flows through by var union.
+// S11 — the identity interior: the param is free at its own decl, so its
+// return proves no contract, and the caller's refinement does not cross
+// it (refinement polymorphism is not in the fragment).
 fn interior3(p) = p
 
 fn s11(x) = consume(interior3(mk(x)))
@@ -93,7 +96,7 @@ fn ret_int(x) = 42
 
 fn s12(x) = consume(ret_int(x))
 
-// S13 — a computation arg: value_flows_class refuses the echo-stop,
+// S13 — a computation arg: a product has no leaf the walk can bound,
 // and BMul has no interval leg — accrues and pends.
 fn s13(x) = {
   let w = x * 2
@@ -107,4 +110,5 @@ fn s14(x) = {
   consume(r)
 }
 
-fn main() = s1(1) + s2(1) + s3(1) + s4(7) + s5(7) + s6(1) + s7(1) + s8(1) + s9(7) + s10(1) + s11(1) + s12(1) + s13(1) + s14(1)
+fn main() =
+  s1(1) + s2(1) + s3(1) + s4(7) + s5(7) + s6(1) + s7(1) + s8(1) + s9(7) + s10(1) + s11(1) + s12(1) + s13(1) + s14(1)

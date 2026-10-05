@@ -1,0 +1,14 @@
+// expect: refuse E_EffectMismatch
+// A NESTED FN IS MINTED: a `fn` declared inside a body is a closure record
+// built where it is declared — its captures, or an empty record with none —
+// so the declaring frame performs `Memory + Alloc`, and a fn declaring
+// `!Alloc` around it is a false absence proof. Every maker that returns its
+// nested stage (`fn lowpass_filter(sr) = { fn stage(x) = …; stage }`) built
+// one with a row of `Pure` until the allocation audit's first frontier run
+// (Hβ.effects.allocation-audit-at-the-settle-point).
+fn adder(k) with !Alloc = {
+  fn add(x) = x + k
+  add
+}
+
+fn main() = adder(40)(2)

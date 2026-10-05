@@ -1,0 +1,21 @@
+// The facets that read what a program SAYS and WRITES rather than what it
+// calls, each asked of this file by the frontier: the text facet finds the
+// one literal holding facet-literal-marker, the prose facet finds the one
+// comment holding facet-prose-marker, and the writes facet finds the two
+// values written into the counter's state, its init and its update.
+effect Count {
+  add(Int)
+  total() -> Int
+}
+
+handler counter with sum = 0 {
+  add(n) => resume() with sum = sum + n,
+  total() => resume(sum),
+}
+
+fn main() = {
+  add(2)
+  add(3)
+  let marker = "facet-literal-marker"
+  total() + len(marker)
+} ~> counter

@@ -1,0 +1,8 @@
+// CROWN — a callback RETURNED uncalled performs nothing in make's
+// evaluation: f's cell is no terminal of make's body row (abstraction is
+// pure), so `!E` gates nothing and the performing callback is admitted —
+// the crown's latent/performed rule. Expect NO E_EffectMismatch.
+effect E { op() -> Int }
+handler h { op() => resume(7) }
+fn make(f) with !E = () => f()
+fn main() = ((make(() => op()))()) ~> h

@@ -1,0 +1,4 @@
+// expect: refuse E_RefinementRejected
+// A constant zero divisor decides the precondition FALSE — the program's
+// meaning is a trap, and a claim proven false refuses at the site.
+fn main() = 1 / 0

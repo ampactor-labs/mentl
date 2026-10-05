@@ -1,0 +1,13 @@
+// expect: 5
+// A lambda in sight that never uses the list it is handed owes nothing for
+// the functions in it. The first form of the variable-position hand-off
+// resolved the parameter's variable all the way down and crossed `inv` into
+// its own type, refusing this; boot e23392f6 runs it.
+type Positive = Int where 0 < self
+
+fn inv(n: Positive) = 100 / n
+
+fn main() with !Trap = {
+  let fold = (init, f, xs) => init
+  fold(5, (acc, f) => acc + f(0), [inv])
+}

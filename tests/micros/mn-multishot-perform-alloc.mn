@@ -1,0 +1,19 @@
+// expect: refuse E_EffectMismatch
+// A MULTI-SHOT PERFORM ALLOCATES: the perform site reifies the remainder as a
+// heap record (LMakeContinuation → emit_alloc), so an op with a two-resume
+// handler performs Alloc, and a fn declaring `!Alloc` around it is a false
+// absence proof. Measured 2026-09-27 on boot 83428bcc: compiled and ran to 3
+// with zero diagnostics (Hβ.effects.multishot-perform-allocates-unrowed).
+effect Flip { flip() -> Int }
+
+handler both {
+  flip() => {
+    let a = resume(1)
+    let b = resume(2)
+    a + b
+  }
+}
+
+fn quiet() with !Alloc = flip()
+
+fn main() = { quiet() } ~> both

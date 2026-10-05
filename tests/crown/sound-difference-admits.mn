@@ -19,4 +19,8 @@ fn run(f) with OnlyA = f()
 
 fn good() = run(() => opa())
 
-fn main() = good()
+// The handler at main makes the program EXECUTABLE (the root gate reads
+// the row alone, 2026-09-27).
+handler ha { opa() => resume(1) }
+
+fn main() = (good()) ~> ha

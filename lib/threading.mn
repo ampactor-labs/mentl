@@ -4,8 +4,10 @@
 // declares spawn/join/identity; `SharedMemory` declares the atomic
 // instruction surface; the schedule handlers (`parallel_compose` /
 // `sequential_compose`) give the ONE fanout verb its execution strategy,
-// read live from the `~>` chain at lower (SYNTAX §`><`). `<|` and `><`
-// are both parallelism — the structural difference is input ownership
+// read live from the `~>` chain at lower where the fanout stands, and
+// reaching a callee's fanout by DEMAND through a direct call — the callee
+// emitted as a twin under the caller's schedule (SYNTAX §`><`). `<|` and
+// `><` are both parallelism — the structural difference is input ownership
 // (`<|` ref-borrows one shared input; `><` own-consumes independent
 // inputs), never serial-vs-parallel. Output tuple order is source order
 // regardless of completion order — determinism is the verb's.
@@ -36,12 +38,18 @@ effect Thread {
 // `!SharedMemory` proves no cross-instance synchronization; `Pure +
 // !SharedMemory` is the strictest parallelizable-no-sync contract.
 effect SharedMemory {
-  atomic_load_i32(Int) -> Int
-  atomic_store_i32(Int, Int)
-  atomic_rmw(Int, RmwOp, Int) -> Int
-  atomic_cmpxchg(Int, Int, Int) -> Int
-  wait_i32(Int, Int, Int) -> WaitResult
-  notify(Int, Int) -> Int
+  // (addr) -> value
+  atomic_load_i32(Addr) -> Int
+  // (addr, value)
+  atomic_store_i32(Addr, Int)
+  // (addr, op, operand) -> the word before
+  atomic_rmw(Addr, RmwOp, Int) -> Int
+  // (addr, expected, replacement) -> the word before
+  atomic_cmpxchg(Addr, Int, Int) -> Int
+  // (addr, expected, timeout)
+  wait_i32(Addr, Int, Int) -> WaitResult
+  // (addr, count) -> the waiters woken
+  notify(Addr, Int) -> Int
   fence()
 }
 
@@ -104,6 +112,20 @@ handler sequential_compose with results = [] {
   },
   current_id() => resume(0),
 }
+
+// THE SEQUENCE FANOUT UNDER A THREAD-CLASS SCHEDULE. `fanout(f, xs)` is
+// `><` over a runtime sequence (SYNTAX §`><`): each application an
+// independent branch, the results collected in order. Under a `Thread`
+// install it runs as this fn — every element's branch spawned through the
+// installed handler, then every handle joined in source order — reached
+// by the lowering exactly as a `><` under the same install is: the site's
+// form for the schedule, never a name the program writes. Under no
+// install a sequence fanout IS `map`. The loops here are `map`'s own,
+// which is sequential by construction — a fanout never fans its own
+// bookkeeping.
+fn fanout_threaded(f, xs) = xs |> map(spawn_branch(f)) |> map(thread_join)
+
+fn spawn_branch(f, x) = spawn(() => f(x))
 
 // ─── Connection to the kernel ─────────────────────────────────────────
 //

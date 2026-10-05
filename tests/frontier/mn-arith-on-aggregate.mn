@@ -1,0 +1,13 @@
+// A product is not a number. `{x: 1} * {x: 2}` type-checks (arithmetic
+// unifies its operands) and, until 2026-09-27, emitted i32.mul over the two
+// record ADDRESSES with zero diagnostics — measured on boot 5bf55b68:
+// compiled, then TRAPPED at run time reading a field off the product of two
+// addresses (exit 134). Arithmetic now DEMANDS a number of its operand at
+// the judgment (infer.mn numeric_demand): the operand is bound to a record
+// when `*` is judged, so the refusal lands at the operator, `mentl check`
+// says so, and no WAT streams (E_ArithOnAggregate, armed at birth;
+// Hβ.emit.arith-on-aggregate-is-pointer-arith).
+fn main() = {
+  let p = {x: 1} * {x: 2}
+  p.x
+}

@@ -11,9 +11,10 @@
 //
 // THE FEEDBACK: `lp_step` is the canonical one-pole recurrence
 // y[n] = a·x[n] + (1-a)·y[n-1] drawn with `<~`. `(prev)` binds the prior
-// output y[n-1], read live from the per-site state global; the sample-by-sample
+// output y[n-1], read live from the site's line — a top-level function's, so
+// one per program run, which is all one pass needs; the sample-by-sample
 // `filter_loop` advances the recurrence across the whole signal. This is the
-// float form of lib/dsp/feedback.mn's lowpass_iir. Every float accumulator
+// recurrence lib/dsp/feedback.mn's `lowpass_filter` makes. Every float accumulator
 // threaded across a tail-recursive loop is annotated `: Float` (the DFT's
 // re/im, the loop counters carry Int) — the representation pin the gradient
 // needs at a polymorphic boundary (§4①, the CFC discipline).

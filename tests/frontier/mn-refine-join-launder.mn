@@ -1,14 +1,12 @@
 // expect: refuse E_RefinementRejected
-// BANKED RED (unregistered — the verify audit's F1, 2026-07-31: the
-// flow-face launder). A refined return over a JOIN self-discharges
-// through the class alias: value_flows_class tests only the TOP node's
-// shape (if/match/block = "flow"), and body↔ret↔annotation unified
-// before the constraint read, so the annotation proves itself. Measured
-// through the pinned boot: exit 0, ZERO verify lines — a fn that
-// plainly returns -5 through a `0 <= self` return produces no pending,
-// no rejection. Greens when the echo-stop becomes a per-leaf coverage
-// verdict over the join spine: the literal branch ground-decides
-// `0 <= -5` FALSE and refuses at the branch — sharper than honesty.
+// A refined return over a JOIN is a claim about each value the join can
+// take, and each tail is read for what it is: `v` stands on its own
+// precondition, `0 - 5` folds to -5 and `0 <= -5` decides FALSE, so the
+// literal branch refuses. Banked RED from the verify audit's F1
+// (2026-07-31) until P0: the return's annotation and the body shared one
+// unification class, so the echo found the alias on the class and the
+// annotation proved itself — exit 0 and zero verify lines for a fn that
+// plainly returns -5 through a `0 <= self` return.
 type Nat = Int where 0 <= self
 
 fn bad(v: Nat, c) -> Nat = if c { v } else { 0 - 5 }

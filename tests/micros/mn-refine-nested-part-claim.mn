@@ -1,0 +1,11 @@
+// expect: refuse E_RefinementRejected
+// A part that is itself a structure is claimed at its own parts. Checked
+// clean under `!Trap` on boots e23392f6 and 1a68ecc0 and divided by zero
+// (exit 134) — though there the nested literal read 0 for any field value,
+// the record emit's own defect (`mn-record-nested-literal`), so the trap was
+// that defect's as much as the claim's.
+type Positive = Int where 0 < self
+
+fn den_inv(r: {inner: {den: Positive}}) = 100 / r.inner.den
+
+fn main() with !Trap = den_inv({inner: {den: 0}})

@@ -1,0 +1,9 @@
+// CROWN — the gate is instance-precise: `!Sample(44100)` on f's cell
+// admits a callback performing `Sample(48000)` (provably distinct), the
+// same eff_forbids the declared-row check reads. Expect NO
+// E_EffectMismatch.
+effect Sample(rate: Int) { tick() -> Int }
+handler h { tick() => resume(1) }
+fn cb() with Sample(48000) = tick()
+fn run(f) with !Sample(44100) = f()
+fn main() = (run(cb)) ~> h

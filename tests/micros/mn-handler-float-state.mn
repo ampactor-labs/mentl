@@ -1,0 +1,25 @@
+// expect: 0
+// mn-handler-float-state — a Float config copied into state and compared.
+//
+// `acc` is generic in its config, so the install at `5.0` and `-1.0` keys
+// its arms at Float. The state `sum` starts as a copy of `init` and falls
+// by 1.0 per tick: 3.0 after two ticks, which is not above 5.0.
+//
+// RED on boot b29e319b: 1. The arms compared the two values' boxes by
+// address, and the state init copied the config's box pointer instead of
+// taking a cell of its own, so every commit through `sum` rewrote `init`.
+effect Tick {
+  tick()
+  total() -> Int
+}
+
+handler acc(init, step) with sum = init {
+  tick() => resume() with sum = sum + step,
+  total() => resume(if sum > init { 1 } else { 0 }),
+}
+
+fn main() -> Int = {
+  tick()
+  tick()
+  total()
+} ~> acc(5.0, -1.0)

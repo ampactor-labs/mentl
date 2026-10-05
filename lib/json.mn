@@ -58,7 +58,7 @@ fn json_is_digit(b) with Pure = b >= 48 && b <= 57
 // json_skip_ws — advance position past JSON whitespace. Tail-recursive;
 // returns the position of the first non-whitespace byte (or end of
 // string).
-fn json_skip_ws(src, pos) with Memory = if pos >= byte_len(src) {
+fn json_skip_ws(src, pos) = if pos >= byte_len(src) {
   pos
 } else {
   let b = byte_at(src, pos)
@@ -70,7 +70,7 @@ fn json_skip_ws(src, pos) with Memory = if pos >= byte_len(src) {
 // json_parse — entry point. Skip leading whitespace, dispatch to
 // parse_value, return JsonResult. Trailing whitespace is permissive
 // (LSP messages may have trailing whitespace within Content-Length).
-fn json_parse(src) with Memory + Alloc = {
+fn json_parse(src) = {
   let p0 = json_skip_ws(src, 0)
   parse_value(src, p0)
 }
@@ -81,7 +81,7 @@ fn json_parse(src) with Memory + Alloc = {
 // parse_string / parse_number / parse_object / parse_array /
 // parse_keyword. Per drift mode 6: explicit byte-class enumeration;
 // no Bool-cased dispatch.
-fn parse_value(src, pos) with Memory + Alloc = if pos >= byte_len(src) {
+fn parse_value(src, pos) = if pos >= byte_len(src) {
   JErr("unexpected end of input", pos)
 } else {
   let b = byte_at(src, pos)
@@ -116,7 +116,7 @@ fn parse_value(src, pos) with Memory + Alloc = if pos >= byte_len(src) {
 // parse_keyword — match the literal `kw` string at position; on
 // match, return `value` and advance past the keyword. On mismatch,
 // JErr. H6-via-string-comparison via byte-by-byte loop.
-fn parse_keyword(src, pos, kw, value) with Memory + Alloc = {
+fn parse_keyword(src, pos, kw, value) = {
   let kw_len = byte_len(kw)
   if pos + kw_len > byte_len(src) {
     JErr("unexpected end matching keyword", pos)
@@ -127,7 +127,7 @@ fn parse_keyword(src, pos, kw, value) with Memory + Alloc = {
   }
 }
 
-fn keyword_matches(src, pos, kw, i, n) with Memory = if i >= n {
+fn keyword_matches(src, pos, kw, i, n) = if i >= n {
   true
 } else if byte_at(src, pos + i) == byte_at(kw, i) {
   keyword_matches(src, pos, kw, i + 1, n)
@@ -145,7 +145,7 @@ fn keyword_matches(src, pos, kw, i, n) with Memory = if i >= n {
 // State: start position; scan until non-numeric byte; build via
 // digit accumulation. No allocation in the scan loop (substrate
 // idiom).
-fn parse_number(src, pos) with Memory + Alloc = match json_scan_number(src, pos, pos, false) {
+fn parse_number(src, pos) = match json_scan_number(src, pos, pos, false) {
   (end, _is_float) => if end == pos {
     JErr("expected number", pos)
   } else {
@@ -156,7 +156,7 @@ fn parse_number(src, pos) with Memory + Alloc = match json_scan_number(src, pos,
 
 // json_scan_number — advance past digits, optional decimal point, optional
 // exponent. Returns (end_pos, is_float). Tail-recursive.
-fn json_scan_number(src, start, pos, is_float) with Memory + Alloc = if pos >= byte_len(src) {
+fn json_scan_number(src, start, pos, is_float) = if pos >= byte_len(src) {
   (pos, is_float)
 } else {
   let b = byte_at(src, pos)
@@ -188,7 +188,7 @@ fn json_scan_number(src, start, pos, is_float) with Memory + Alloc = if pos >= b
 // fractional part after. Honest substrate for LSP scope; full IEEE
 // round-trip is JSON.precise peer sub-handle when scientific
 // computation needs it.
-fn number_from_substring(src, start, end) with Memory + Alloc = match if byte_at(src, start) == 45 { (0.0 - 1.0, start + 1) } else { (1.0, start) } {
+fn number_from_substring(src, start, end) = match if byte_at(src, start) == 45 { (0.0 - 1.0, start + 1) } else { (1.0, start) } {
   (sign, p0) => match scan_int_part(src, p0, end, 0.0) {
     (int_part, p1) => match if p1 < end && byte_at(src, p1) == 46 {
       scan_frac_part(src, p1 + 1, end, 0.0, 0.1)
@@ -200,7 +200,7 @@ fn number_from_substring(src, start, end) with Memory + Alloc = match if byte_at
   },
 }
 
-fn scan_int_part(src, pos, end, acc) with Memory + Alloc = if pos >= end {
+fn scan_int_part(src, pos, end, acc) = if pos >= end {
   (acc, pos)
 } else {
   let b = byte_at(src, pos)
@@ -212,7 +212,7 @@ fn scan_int_part(src, pos, end, acc) with Memory + Alloc = if pos >= end {
   }
 }
 
-fn scan_frac_part(src, pos, end, acc, place) with Memory + Alloc = if pos >= end {
+fn scan_frac_part(src, pos, end, acc, place) = if pos >= end {
   (acc, pos)
 } else {
   let b = byte_at(src, pos)
@@ -232,20 +232,20 @@ fn scan_frac_part(src, pos, end, acc, place) with Memory + Alloc = if pos >= end
 // peer sub-handle (rare in LSP traffic). Honest scope.
 //
 // Returns the unescaped String content (without quotes) on success.
-fn parse_string(src, pos) with Memory + Alloc = if byte_at(src, pos) != 34 {
+fn parse_string(src, pos) = if byte_at(src, pos) != 34 {
   JErr("expected string opening quote", pos)
 } else {
   scan_string_body(src, pos + 1)
 }
 
-fn scan_string_body(src, pos) with Memory + Alloc = {
+fn scan_string_body(src, pos) = {
   let buf = bytes_buf(256)
   store_i32(buf, 0)
   let result = scan_string_loop(src, pos, buf, 0, 256)
   result
 }
 
-fn scan_string_loop(src, pos, buf, written, cap) with Memory + Alloc = if pos >= byte_len(src) {
+fn scan_string_loop(src, pos, buf, written, cap) = if pos >= byte_len(src) {
   JErr("unexpected end of string literal", pos)
 } else {
   let b = byte_at(src, pos)
@@ -257,23 +257,23 @@ fn scan_string_loop(src, pos, buf, written, cap) with Memory + Alloc = if pos >=
   } else {
     match grow_buf_if_needed(buf, written, cap) {
       (buf2, cap2) => {
-        store_i8(buf2 + 8 + written, b)
+        store_i8(addr_at(buf2, 8 + written), b)
         scan_string_loop(src, pos + 1, buf2, written + 1, cap2)
       },
     }
   }
 }
 
-fn grow_buf_if_needed(buf, written, cap) with Memory + Alloc = if written < cap {
+fn grow_buf_if_needed(buf, written, cap) = if written < cap {
   (buf, cap)
 } else {
   let new_cap = cap * 2
   let new_buf = bytes_buf(new_cap)
-  mem_copy(new_buf + 8, buf + 8, written)
+  mem_copy(addr_at(new_buf, 8), addr_at(buf, 8), written)
   (new_buf, new_cap)
 }
 
-fn handle_escape(src, pos, buf, written, cap) with Memory + Alloc = if pos >= byte_len(src) {
+fn handle_escape(src, pos, buf, written, cap) = if pos >= byte_len(src) {
   JErr("escape sequence cut off", pos)
 } else {
   let e = byte_at(src, pos)
@@ -281,7 +281,7 @@ fn handle_escape(src, pos, buf, written, cap) with Memory + Alloc = if pos >= by
     (b_out, ok) => if ok {
       match grow_buf_if_needed(buf, written, cap) {
         (buf2, cap2) => {
-          store_i8(buf2 + 8 + written, b_out)
+          store_i8(addr_at(buf2, 8 + written), b_out)
           scan_string_loop(src, pos + 1, buf2, written + 1, cap2)
         },
       }
@@ -296,7 +296,7 @@ fn handle_escape(src, pos, buf, written, cap) with Memory + Alloc = if pos >= by
 // JSON.unicode peer.
 //
 // \"
-fn decode_escape(e) with Memory + Alloc = if e == 34 {
+fn decode_escape(e) = if e == 34 {
   (34, true)
 }
 // \\
@@ -335,7 +335,7 @@ else if e == 102 {
 // parse_array — opening `[`, comma-separated values, closing `]`.
 // Empty array `[]` returns JArr([]). Per drift mode 11: cons-prepend
 // during parse, reverse before return (avoids O(N²) loop append).
-fn parse_array(src, pos) with Memory + Alloc = if byte_at(src, pos) != 91 {
+fn parse_array(src, pos) = if byte_at(src, pos) != 91 {
   JErr("expected array opening bracket", pos)
 } else {
   let p0 = json_skip_ws(src, pos + 1)
@@ -346,7 +346,7 @@ fn parse_array(src, pos) with Memory + Alloc = if byte_at(src, pos) != 91 {
   }
 }
 
-fn parse_array_elements(src, pos, acc_rev) with Memory + Alloc = match parse_value(src, pos) {
+fn parse_array_elements(src, pos, acc_rev) = match parse_value(src, pos) {
   JErr(m, p) => JErr(m, p),
   JOk(v, p1) => {
     let p2 = json_skip_ws(src, p1)
@@ -372,7 +372,7 @@ fn parse_array_elements(src, pos, acc_rev) with Memory + Alloc = match parse_val
 // parse_object — opening `{`, comma-separated `"key": value` pairs,
 // closing `}`. Empty object `{}` returns JObj([]). Same cons-then-
 // reverse pattern as arrays.
-fn parse_object(src, pos) with Memory + Alloc = if byte_at(src, pos) != 123 {
+fn parse_object(src, pos) = if byte_at(src, pos) != 123 {
   JErr("expected object opening brace", pos)
 } else {
   let p0 = json_skip_ws(src, pos + 1)
@@ -383,7 +383,7 @@ fn parse_object(src, pos) with Memory + Alloc = if byte_at(src, pos) != 123 {
   }
 }
 
-fn parse_object_pairs(src, pos, acc_rev) with Memory + Alloc = match parse_string(src, pos) {
+fn parse_object_pairs(src, pos, acc_rev) = match parse_string(src, pos) {
   JErr(m, p) => JErr(m, p),
   JOk(key_val, p1) => {
     let key = match key_val {
@@ -430,7 +430,7 @@ fn parse_object_pairs(src, pos, acc_rev) with Memory + Alloc = match parse_strin
 // whitespace, no trailing newlines. Object keys appear in their
 // JObj list order (per Insight #9 record-shape: order is data, not
 // formatting choice). Reusable for any consumer wanting JSON output.
-fn json_serialize(v) with Memory + Alloc = match v {
+fn json_serialize(v) = match v {
   JNull => "null",
   JBool(true) => "true",
   JBool(false) => "false",
@@ -440,64 +440,52 @@ fn json_serialize(v) with Memory + Alloc = match v {
   JObj(fields) => serialize_object(fields),
 }
 
-fn serialize_string(s) with Memory + Alloc = "\"{escape_string(s)}\""
+fn serialize_string(s) = "\"{escape_string(s)}\""
 
-// escape_string — escape JSON-special bytes (\, ", control chars).
-// Builds a fresh buffer; caller frees nothing (bump allocator).
-fn escape_string(s) with Memory + Alloc = {
-  let n = byte_len(s)
-  let buf = bytes_buf(n * 2)
-  store_i32(buf, 0)
-  let written = escape_string_loop(s, 0, n, buf, 0, n * 2)
-  store_i32(buf, written)
-  str_of_buf(buf)
+// escape_string — the JSON spelling of a byte string: the bytes RFC 8259
+// requires escaped (quote, reverse solidus, every control byte) take their
+// escape, and the rest stand as themselves. Two passes as topology, the
+// str_escape form: a fold counts the escaped length for the one
+// allocation, then `each` streams every byte's spelling into the ByteSink
+// whose cursor is the handler's state. The buffer is the length it needs,
+// so no pass grows it.
+fn escape_string(s) = {
+  let ptr = s |> fold(0, json_escape_len_acc) |> bytes_buf
+  s |> each(json_escape_emit) ~> byte_sink(ptr)
+  str_of_buf(ptr)
 }
 
-fn escape_string_loop(s, i, n, buf, written, cap) with Memory + Alloc = if i >= n {
-  written
-} else {
-  let b = byte_at(s, i)
-  match grow_buf_if_needed(buf, written + 2, cap) {
-    (buf1, cap1) => // "
-    if b == 34 {
-      store_i8(buf1 + 8 + written, 92)
-      store_i8(buf1 + 8 + written + 1, 34)
-      escape_string_loop(s, i + 1, n, buf1, written + 2, cap1)
-    }
-    // \
-    else if b == 92 {
-      store_i8(buf1 + 8 + written, 92)
-      store_i8(buf1 + 8 + written + 1, 92)
-      escape_string_loop(s, i + 1, n, buf1, written + 2, cap1)
-    }
-    // newline
-    else if b == 10 {
-      store_i8(buf1 + 8 + written, 92)
-      store_i8(buf1 + 8 + written + 1, 110)
-      escape_string_loop(s, i + 1, n, buf1, written + 2, cap1)
-    }
-    // CR
-    else if b == 13 {
-      store_i8(buf1 + 8 + written, 92)
-      store_i8(buf1 + 8 + written + 1, 114)
-      escape_string_loop(s, i + 1, n, buf1, written + 2, cap1)
-    }
-    // tab
-    else if b == 9 {
-      store_i8(buf1 + 8 + written, 92)
-      store_i8(buf1 + 8 + written + 1, 116)
-      escape_string_loop(s, i + 1, n, buf1, written + 2, cap1)
-    } else {
-      store_i8(buf1 + 8 + written, b)
-      escape_string_loop(s, i + 1, n, buf1, written + 1, cap1)
-    },
+fn json_escape_len_acc(acc, b) with Pure = acc + json_escape_len(b)
+
+// The short escapes are two bytes; any other control byte is the six-byte
+// `\u00XX`; everything else is itself.
+fn json_escape_len(b) with Pure =
+  if b == 34 || b == 92 || b == 10 || b == 13 || b == 9 { 2 } else if b < 32 { 6 } else { 1 }
+
+fn json_escape_emit(b) = {
+  let k = json_escape_len(b)
+  if k == 1 {
+    emit_byte(b)
+  } else if k == 2 {
+    emit_byte(92)
+    emit_byte(json_escape_tail(b))
+  } else {
+    emit_byte(92)
+    emit_byte(117)
+    emit_byte(48)
+    emit_byte(48)
+    emit_byte(hex_nibble(i32_and(b / 16, 15)))
+    emit_byte(hex_nibble(i32_and(b, 15)))
   }
 }
 
-fn serialize_array(items) with Memory + Alloc =
-  "[{serialize_array_inner(items, 0, len(items), "")}]"
+// The letter after the backslash of a two-byte escape.
+fn json_escape_tail(b) with Pure =
+  if b == 10 { 110 } else if b == 13 { 114 } else if b == 9 { 116 } else { b }
 
-fn serialize_array_inner(items, i, n, acc) with Memory + Alloc = if i >= n {
+fn serialize_array(items) = "[{serialize_array_inner(items, 0, len(items), "")}]"
+
+fn serialize_array_inner(items, i, n, acc) = if i >= n {
   acc
 } else {
   let item = list_index(items, i)
@@ -507,10 +495,9 @@ fn serialize_array_inner(items, i, n, acc) with Memory + Alloc = if i >= n {
   serialize_array_inner(items, i + 1, n, next_acc)
 }
 
-fn serialize_object(fields) with Memory + Alloc =
-  "\{{serialize_object_inner(fields, 0, len(fields), "")}\}"
+fn serialize_object(fields) = "\{{serialize_object_inner(fields, 0, len(fields), "")}\}"
 
-fn serialize_object_inner(fields, i, n, acc) with Memory + Alloc = if i >= n {
+fn serialize_object_inner(fields, i, n, acc) = if i >= n {
   acc
 } else {
   let pair = list_index(fields, i)
@@ -529,7 +516,7 @@ fn serialize_object_inner(fields, i, n, acc) with Memory + Alloc = if i >= n {
 // json_obj_get — find a field by key in a JObj. Returns Option(JsonValue).
 // Linear scan; LSP messages are small. H6 over JsonValue (JObj only;
 // other variants return None as type-safety).
-fn json_obj_get(v, key) with Memory + Alloc = match v {
+fn json_obj_get(v, key) = match v {
   JObj(fields) => json_obj_get_loop(fields, key, 0, len(fields)),
   JNull => None,
   JBool(_) => None,
@@ -538,7 +525,7 @@ fn json_obj_get(v, key) with Memory + Alloc = match v {
   JArr(_) => None,
 }
 
-fn json_obj_get_loop(fields, key, i, n) with Memory + Alloc = if i >= n {
+fn json_obj_get_loop(fields, key, i, n) = if i >= n {
   None
 } else {
   let pair = list_index(fields, i)

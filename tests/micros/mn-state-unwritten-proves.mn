@@ -1,0 +1,12 @@
+// expect: 20
+// A state no arm writes holds its init at every read, so `100 / d` over
+// `with d = 5` is total — the control beside the written-state refusals.
+effect Ask {
+  ask() -> Int
+}
+
+handler h with d = 5 {
+  ask() => resume(100 / d),
+}
+
+fn main() with !Trap = ask() ~> h

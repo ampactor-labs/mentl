@@ -1,0 +1,18 @@
+// expect: refuse E_EffectMismatch
+// A function a caller chose, applied here and handed back: what this body
+// hands it (5) is not what its caller will. The return crosses into the
+// caller's use, which nothing here can see, so the parameter learns that
+// each position is also handed values nothing here can name. Before that
+// rule the H4 tree read the provision 5 alone, the crossing at `wrap(inv)`
+// held, and `wrap(inv)(0)` divided by zero (exit 134); boot e23392f6
+// refused it only because a constant argument provided nothing there.
+type Positive = Int where 0 < self
+
+fn inv(n: Positive) = 100 / n
+
+fn wrap(g) = {
+  let _ = g(5)
+  g
+}
+
+fn main() with !Trap = wrap(inv)(0)

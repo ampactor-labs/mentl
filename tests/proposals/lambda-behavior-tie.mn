@@ -1,0 +1,6 @@
+// propose 4:26: ask behavior
+// A function-typed hole: every in-scope Int -> Int function is a different
+// computation of one type.
+fn f() -> (Int) -> Int = ??
+
+fn main() = 0

@@ -1,0 +1,18 @@
+// An address stored where a word goes: `addr` answers an address and
+// `store_i32` stores a word, so the program is refused where it mixes them
+// (E_TypeMismatch). With the cast answering an Int, on boot 2198ed97 with
+// that pin's library, it compiled and answered 1 for 42: the store was a word
+// store the journal never saw, and the exit reclaimed the string under it.
+fn fill(old) = {
+  let s = "hello" ++ "world"
+  store_i32(old, addr(s))
+  len(s)
+}
+
+fn main() = {
+  let old = alloc(8)
+  let k = fill(old) ~> arena
+  let junk = "abcdefghij" ++ "klmnopqrstuvwxyz"
+  let t = str_of_buf(load_i32(old))
+  if k == 10 && t == "helloworld" && len(junk) == 26 { 42 } else { 1 }
+}

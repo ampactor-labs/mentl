@@ -1,0 +1,3 @@
+// The division below leaves its claim open on line 3 of THIS module.
+//
+fn ratio(t, n) = t / n

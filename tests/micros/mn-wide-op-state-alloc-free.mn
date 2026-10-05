@@ -1,0 +1,42 @@
+// expect: 40
+// A Float effect op and a handler's Float state cost nothing on the heap: a
+// thousand performs through an op the medium dispatches INDIRECTLY (two
+// handlers declare it, so the arm is reached through the install's record)
+// leave the heap line where it started, and the state the arm commits on
+// every resume is written in place. The op's declared signature is the ABI —
+// every arm signs it and the performer speaks it — and a wide state lives in
+// the one cell its install boxed. On boot 43aeb30f this program did not
+// ASSEMBLE: the arm signed its params f64 and its result as the handler's
+// answer (a word) while the performer boxed every argument, and a commit
+// stored the f64 into the word slot itself.
+effect Shape {
+  shape(Float, Float) -> Float
+}
+
+handler accumulate_shape with total = 0.0 {
+  shape(x, drive) => {
+    let next = total + x * drive
+    resume(next) with total = next
+  },
+}
+
+// Declared and never installed — its presence makes `shape` dispatch through
+// the install's record rather than to one statically known arm.
+handler triple_shape {
+  shape(x, drive) => resume(x * drive * 3.0),
+}
+
+fn run(i: Int, acc: Float) -> Float = if i == 0 { acc } else { run(i - 1, acc + shape(0.5, 1.0)) }
+
+// The growth is read before the result tuple is built — a tuple's record is
+// allocated before its fields are evaluated.
+fn measured() = {
+  let before = heap_mark()
+  let r = run(1000, 0.0)
+  let grown = addr_diff(heap_mark(), before)
+  (grown, r)
+}
+
+fn main() = match measured() ~> accumulate_shape {
+  (grown, r) => if grown == 0 && r == 250250.0 { 40 } else { 41 },
+}

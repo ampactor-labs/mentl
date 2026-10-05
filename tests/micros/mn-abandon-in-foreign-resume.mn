@@ -1,0 +1,30 @@
+// expect: 5
+// AN-2 — a held resume whose continuation ABANDONS a foreign op: the
+// remainder `1 + step2()` unwinds out of the continuation, the arm's code
+// after its `resume` never runs, the driver that called the arm bubbles the
+// flag, and the install whose arm answers `bail` gives the value. On boot
+// 311479e1 the bare-variable op was graded OneShot: `step2()` answered the
+// arm's 5 to the remainder, `1 + 5` reached `dbl`'s arm, and the program
+// answered 12.
+effect Ask {
+  ask() -> Int
+}
+
+effect Bail {
+  bail(v: Int) -> a
+}
+
+handler dbl {
+  ask() => {
+    let r = resume(1)
+    r * 2
+  },
+}
+
+handler catcher {
+  bail(v) => v,
+}
+
+fn step2() = bail(5)
+
+fn main() = ((ask() + step2()) ~> dbl) ~> catcher

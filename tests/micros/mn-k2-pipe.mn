@@ -21,10 +21,10 @@ handler twice {
   }
 }
 
-fn step(x) with Choice = pick() + x
+fn step(x) = pick() + x
 
 fn dbl(v) = v * 2
 
-fn chain() with Choice = 5 |> step |> dbl
+fn chain() = 5 |> step |> dbl
 
 fn main() = { chain() } ~> twice

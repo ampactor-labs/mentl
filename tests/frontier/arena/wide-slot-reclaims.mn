@@ -1,0 +1,18 @@
+// A float list built before the arena and written inside it. A wide slot
+// holds a number — a wide representation is never an address — so the store
+// copies the scalar as one and the exit reclaims past it, where a raw
+// `mem_copy` of the slot's bytes would keep the region. Exit 42 when the
+// value reads back and no exit kept.
+fn build(n) = if n == 0 { [] } else { build(n - 1) ++ [n] }
+
+fn fill(xs) = {
+  list_set(xs, 1, 2.5)
+  len(build(50))
+}
+
+fn main() = {
+  let xs = [0.5, 1.5, 3.5]
+  let k = fill(xs) ~> arena
+  let junk = build(400)
+  if k == 50 && xs[1] == 2.5 && len(junk) == 400 && arena_stat(ArKept) == 0 { 42 } else { 1 }
+}

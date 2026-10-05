@@ -1,0 +1,18 @@
+// expect: 42
+// mn-row-open-caller-reads — two helpers read one record, and the caller
+// that hands it to both never names its shape.
+//
+// `peek` and `moved` each learn part of the record `fix` holds; the call
+// from `main` is the only place the whole record is written. Every read
+// must land on that record's slots: (2·10 + 1) + (2·10 + 1).
+//
+// RED on boot 730e097a: an address (11534541). The caller's row met each
+// helper's as two open rows, the helpers' unions were written as whole
+// rows, and the closed record `main` passes never reached them.
+fn peek(c) = c.x + c.y
+
+fn moved(prev, next) = prev.x * 10 + prev.y + next.x * 10 + next.y
+
+fn fix(prev) = peek(prev) - peek(prev) + moved(prev, {v: [1], w: [2], x: 2, y: 1})
+
+fn main() -> Int = fix({v: [], w: [], x: 2, y: 1})

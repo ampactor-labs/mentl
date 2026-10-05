@@ -1,0 +1,25 @@
+// expect: 0
+// The twin cap meters DIVERGENCE, not breadth. It counted a base's twins
+// across the whole program, so the ninth distinct instantiation of `outer`
+// floored its interior references to base names, and base `inner` reads a
+// row that never closed: T_FieldOffsetUnprovable and a trap (boot
+// 30a35888: exit 134; eight shapes ran). The cap counts a base along the
+// lineage that demanded it now, which grows only under polymorphic
+// recursion, so ten shapes through a two-level chain each read their own.
+fn inner(u) = u.x * 10 + u.y
+
+fn outer(u) = inner(u)
+
+fn main() = {
+  let a = outer({x: 1, y: 2})
+  let b = outer({a: 0, x: 1, y: 2})
+  let c = outer({b: 0, x: 1, y: 2})
+  let d = outer({c: 0, x: 1, y: 2})
+  let e = outer({d: 0, x: 1, y: 2})
+  let f = outer({e: 0, x: 1, y: 2})
+  let g = outer({f: 0, x: 1, y: 2})
+  let h = outer({g: 0, x: 1, y: 2})
+  let i = outer({h: 0, x: 1, y: 2})
+  let j = outer({i: 0, x: 1, y: 2})
+  a + b + c + d + e + f + g + h + i + j - 120
+}

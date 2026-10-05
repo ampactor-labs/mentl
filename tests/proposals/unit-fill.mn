@@ -1,0 +1,5 @@
+// propose 3:16: fill ()
+// The unit type's one inhabitant fills, rendered as its source.
+fn f() -> () = ??
+
+fn main() = 0

@@ -1,0 +1,5 @@
+// propose 5:25: fill double
+// A stage hole fills by reference (C3).
+fn double(x) = x * 2
+
+fn main() -> Int = 5 |> ??

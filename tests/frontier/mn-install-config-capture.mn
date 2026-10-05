@@ -1,11 +1,21 @@
 // expect: 12
-// BANKED RED (Hβ.lower.install-config-capture-read): an install-config
-// argument that references a CLOSURE CAPTURE reads 0 — the install-init
-// emission resolves locals but not captures, so the arm writes to fd 0
-// and the file stays empty (measured exit 0 today; 12 when the init
-// path rides the same capture-resolution ladder ordinary exprs use).
-// The let-local control shape is wat_to_file's documented caveat; this
-// fixture graduates to a registered leg with the root fix.
+// A config argument that is a CAPTURED variable of the installing closure
+// arrives intact: `fd` is the thunk's capture, referenced only in the
+// install's config, and the arm writes through it, so the file holds 12
+// bytes.
+//
+// It arrived as 0 from the day this fixture was banked until R0c, and the
+// banked diagnosis ("the install-init emission resolves locals but not
+// captures") was half wrong: the capture resolved, to an `LUpval` of the
+// thunk's record. The install wrote its config arguments and the handler's
+// state inits from ONE list, and that list's emit read every `LUpval` as the
+// install record's own slot — the path a bare `with n = cfg` state init took
+// — so the config slot was written with itself (boot 30a35888:
+// `(local.get $__hstate_4070)(i32.load offset=8)(i32.store offset=8)`) and
+// the arm wrote to fd 0. The state inits are the handler's own init fn now,
+// a function of the record, so the config arguments are plain expressions
+// of the installing frame. It rotted unregistered in between: A3-pos made
+// its authored positive rows caps, which refused its own WASI callback.
 import io
 
 effect Out {
@@ -16,22 +26,25 @@ handler to_fd(fd) {
   put(s) => {
     fd_write_bytes(fd, str_payload(s), byte_len(s))
     resume()
-  }
+  },
 }
 
 // A second handler for the op keeps put() on the evidence walk — the
 // dispatch shape the wheel's own wat_emit takes with three sinks.
 handler to_void {
-  put(s) => resume()
+  put(s) => resume(),
 }
 
-fn ctx(body) with Memory + Alloc = body()
+fn ctx(body) = body()
 
-fn main() with WASI + Memory + Alloc = {
+fn main() = {
   let fd = fs_create_impl("/tmp/config-capture-probe.txt")
   // fd is a CAPTURE of this thunk, referenced ONLY in the install's
   // config args — the failing shape.
-  ctx(() => { put("hello ") put("world\n") } ~> to_fd(fd))
+  ctx(() => {
+    put("hello ")
+    put("world\n")
+  } ~> to_fd(fd))
   fs_close_impl(fd)
   proc_exit(byte_len(fs_read_file_impl("/tmp/config-capture-probe.txt")))
 }

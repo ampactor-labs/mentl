@@ -1,0 +1,7 @@
+// CROWN — the mask satisfies the negation: `(f()) ~> h` absorbs E on f's
+// path, so the gate pushed onto f's cell is `!E` minus E — nothing — and
+// a callback performing E is admitted. Expect NO E_EffectMismatch.
+effect E { op() -> Int }
+handler h { op() => resume(7) }
+fn run(f) with !E = (f()) ~> h
+fn main() = run(() => op())

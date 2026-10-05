@@ -1,0 +1,17 @@
+// expect: refuse E_EffectMismatch
+// A function crossing into a parameter crosses its result's function parts
+// too: `run` applies `g`'s result's `f` where nothing states what it hands
+// it, so `pick`'s `f`, which demands `Positive`, pays its guard at
+// `run(pick)` and `Trap` reaches `!Trap`. A result's function parts crossed
+// nothing, so this divided by zero on pin 85218488 (exit 134).
+type Positive = Int where 0 < self
+
+fn inv(n: Positive) = 100 / n
+
+fn succ(n) = n + 1
+
+fn pick(c) = if c { {f: succ} } else { {f: inv} }
+
+fn run(g) = g(false).f(0)
+
+fn main() with !Trap = run(pick)

@@ -1,0 +1,14 @@
+// An extent's memory is reclaimed by an arena and by nothing else: there is
+// no raw rewind of the heap line beside `heap_mark`, so no program can drop
+// a region that something older still points into. RED on every boot through
+// f950ebfd, where `heap_reset(m)` rewound the line and this ran to 42; the
+// reclaim it tested is the arena's own contract (arena/dropped-is-reclaimed).
+fn main() with Memory + Alloc = {
+  let a = alloc(8)
+  // drift-audit: ignore — sequenced effectful read (the mark IS the live bump pointer, read before the region body)
+  let m = heap_mark()
+  let b = alloc(8)
+  heap_reset(m)
+  let c = alloc(8)
+  if c == b { 42 } else { 1 }
+}

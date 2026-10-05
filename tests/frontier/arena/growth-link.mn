@@ -1,0 +1,38 @@
+// A buffer written in place inside an arena and then replaced by its own
+// growth: every store journals its slot with the type it stores, whichever
+// buffer it lands in, and the state commit that installs the grown buffer
+// journals the state's slot with the state's type — so the old buffer's
+// slots, the new buffer and its slots all move, and nothing names either.
+effect Grow {
+  grow_put([Int])
+  grow_get(Int) -> [Int]
+}
+
+handler grower with buf = make_list(4), n = 0 {
+  grow_put(x) => {
+    let grown = list_extend_to(buf, n + 1)
+    let _ = list_set(grown, n, x)
+    resume() with buf = grown, n = n + 1
+  },
+  grow_get(i) => resume(buf[i]),
+}
+
+fn build(n) = if n == 0 { [] } else { build(n - 1) ++ [n] }
+
+fn add_int(a, b) = a + b
+
+fn put_built(i) = grow_put(build(i))
+
+fn main() = {
+  let k = {
+    each(put_built, [10, 4, 4, 4, 4, 4])
+    7
+  } ~> arena
+  let a = grow_get(0)
+  let b = grow_get(5)
+  if k == 7 && fold(0, add_int, a) == 55 && fold(0, add_int, b) == 10 && arena_stat(ArExits) == 1 && arena_stat(ArKept) == 0 {
+    42
+  } else {
+    1
+  }
+} ~> grower

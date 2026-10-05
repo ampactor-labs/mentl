@@ -1,0 +1,6 @@
+// The under-importing module: it calls `helper` without importing `a`. The
+// whole link (entry imports both) resolves the name; on its own this module
+// would not compile — which is exactly what E_MissingImport says at the
+// reference, where the per-module solo sweep used to spend a process per
+// module to find it (F0b, 2026-09-27). Accepted by boot b145b836.
+fn use_it(x) = helper(x) * 2

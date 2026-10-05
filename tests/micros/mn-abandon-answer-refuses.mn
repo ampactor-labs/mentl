@@ -1,0 +1,13 @@
+// expect: refuse E_TypeMismatch
+// An abandoning arm answers its install with an Int while the install's body
+// answers a String. On boot cf8a6d50 it compiled clean and the String the
+// program then read was the Int 5, an address no string lives at.
+effect Ab {
+  ab() -> Int
+}
+
+handler h {
+  ab() => 5,
+}
+
+fn main() = len((int_to_str(ab())) ~> h)

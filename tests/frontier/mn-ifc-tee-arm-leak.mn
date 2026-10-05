@@ -1,0 +1,20 @@
+// A tee's value is every value its install can answer, for the flow label
+// as for every reader of a value's leaves: an arm answering a classified
+// value classifies the install, so splicing the tee's value refuses at the
+// splice (E_RefinementRejected). On boot cf8a6d50 the label walk read a tee
+// as the join of its children — the perform and the handler's name, both
+// Public — and the leak compiled clean.
+type Vault = String where classified(self)
+fn classified(s) = true
+fn getpw() -> Vault = "hunter2"
+effect Ask {
+  ask() -> String
+}
+handler reveal {
+  ask() => getpw(),
+}
+fn leak() = {
+  let s = (ask()) ~> reveal
+  "msg: {s}"
+}
+fn main() = 0

@@ -7,11 +7,24 @@
 # re-founding). Green is STAMPED on wt_state_key, so re-runs on an unchanged
 # tree (above all the pre-commit hook) answer instantly; FORCE_VERIFY=1 re-runs.
 #
-# Usage: tools/verify.sh
+# Usage: tools/verify.sh [--wheel | --preflight]
 # Exit:  0 thesis holds, 1 thesis violated, 2 invocation error.
+#
+# --wheel judges the WHEEL UNDER TEST before it is pinned: every leg that
+# measures m2 or the source, none that measures the pinned boot, no doc-truth
+# (the pin's narrative is not written yet) and no stamp. `MARCH_REPIN=1 march`
+# runs it between the m2 and m3 legs, so a ratchet breach refuses in seconds.
+# It ran LAST until 2026-09-25, after the board, and two stray `ref` markers
+# cost a second full board to learn what a text count knew at second one.
+#
+# --preflight runs only the ratchets that read text (the quiet gate, the
+# scaffold count, the sugar vocabulary), no compiler: march runs it before m2.
 set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
+WHEEL_ONLY=0; PREFLIGHT_ONLY=0
+[[ "${1:-}" == "--wheel" ]] && WHEEL_ONLY=1
+[[ "${1:-}" == "--preflight" ]] && PREFLIGHT_ONLY=1
 
 BASELINE="tools/verify-baseline.txt"
 source "$ROOT/tools/wt-env.sh"   # WT, WT_RUN_FLAGS, W2W — the one home
@@ -27,7 +40,100 @@ say() { printf '%s\n' "$*"; }
 fail=0
 
 [[ -f "$BASELINE" ]] || { say "verify: baseline missing: $BASELINE"; exit 2; }
-[[ -x "$WT" ]] || { say "verify: the runner is not built at $WT (cargo build --release --manifest-path tools/runner/Cargo.toml)"; exit 2; }
+[[ "$PREFLIGHT_ONLY" -eq 1 || -x "${WT:-}" ]] || { say "verify: the runner is not built at ${WT:-tools/runner} (cargo build --release --manifest-path tools/runner/Cargo.toml)"; exit 2; }
+
+# ── THE TEXT LEGS — the ratchets that read only text (2026-09-26) ─────────
+# The quiet gate, the scaffold count and the sugar vocabulary need no compiler,
+# so they run FIRST in every mode and alone under --preflight, which
+# `MARCH_REPIN=1 march` runs before the m2 leg: a marker the inference should
+# have graded refuses in a second, not after a generation.
+text_legs() {
+  # THE SCAFFOLD RATCHET (CLAUDE.md ⟳ — every scaffold's destiny is ABSORPTION
+  # into a verb, never permanence). The loop prompt is imperative prose telling
+  # an agent how to behave, which is the one thing PLAN §0 proves cannot
+  # enforce itself; so what is measured is how much of the loop is still NOT
+  # the medium's: the count of distinct tools/*.sh scripts the prompt must name
+  # to run one iteration. Monotone DOWN, and it falls only when a VERB actually
+  # replaces a script — rewording cannot move it, which is why this is the
+  # metric and a line count is not. At zero the medium runs its own loop and
+  # tools/loop-prompt.md is deleted rather than archived.
+  csref=$(grep -ohE 'tools/[a-z0-9_-]+\.(sh|py)' tools/loop-prompt.md | sort -u | wc -l)
+  srmax=$(grep -E '^loop_scaffold_refs_max:' "$BASELINE" | head -1 | cut -d: -f2 | tr -d ' ')
+  say "· loop scaffolds: $csref script(s) the loop still needs — the medium's un-absorbed remainder"
+  if [[ -n "$srmax" && "$csref" -gt "$srmax" ]]; then
+    say "✗ scaffold RATCHET: rose $srmax -> $csref — the loop leans on MORE shell, not less;"
+    say "  absorb the step into a verb or drop the reference."
+    fail=1
+  elif [[ -n "$srmax" && "$csref" -lt "$srmax" ]]; then
+    say "  ↓ loop scaffolds FELL $srmax -> $csref — lower loop_scaffold_refs_max in $BASELINE to hold it."
+  fi
+  # The QUIET gate (§4⑤'s Hylo bar, PLAN §11 4.4 — Hβ.ownership.quiet-
+  # empirical-gate): authored own/ref markers in src/, monotone DOWN. The
+  # measured invariant is "if the developer has to think about it, the
+  # inference failed" — a RISING count IS the inference failing, measured
+  # instead of felt. Text-pattern tier (param-position anchored); the
+  # census-shape absorption is the named refinement.
+  cown=$(grep -roE '[(,] *own [a-z_]' src/ | wc -l)
+  cref=$(grep -roE '[(,] *ref [a-z_]' src/ | wc -l)
+  omax=$(grep -E '^authored_own_max:' "$BASELINE" | head -1 | cut -d: -f2 | tr -d ' ')
+  refmax=$(grep -E '^authored_ref_max:' "$BASELINE" | head -1 | cut -d: -f2 | tr -d ' ')
+  say "· quiet gate: $cown authored own, $cref authored ref in src/ — the Hylo bar's counts"
+  # MONOTONE DOWN needs BOTH halves. This gate had only the rise arm for
+  # five weeks, so a marker the inference retired left the ceiling where it
+  # was and the slack accumulated invisibly — a ratchet that can only be
+  # breached, never tightened, is measuring nothing between breaches (§11
+  # tripwire 4, the same shape as the crown's eleven quiet entries). Every
+  # other ratchet in this file prints its fall; these two now do too.
+  if [[ -n "$omax" && "$cown" -gt "$omax" ]]; then
+    say "✗ quiet-gate RATCHET: authored own rose $omax -> $cown — the inference failed somewhere; teach it, do not annotate around it."
+    fail=1
+  elif [[ -n "$omax" && "$cown" -lt "$omax" ]]; then
+    say "  ↓ authored own FELL $omax -> $cown — lower authored_own_max in $BASELINE to hold it."
+  fi
+  if [[ -n "$refmax" && "$cref" -gt "$refmax" ]]; then
+    say "✗ quiet-gate RATCHET: authored ref rose $refmax -> $cref — the inference failed somewhere; teach it, do not annotate around it."
+    fail=1
+  elif [[ -n "$refmax" && "$cref" -lt "$refmax" ]]; then
+    say "  ↓ authored ref FELL $refmax -> $cref — lower authored_ref_max in $BASELINE to hold it."
+  fi
+  # The SUGAR VOCABULARY contract (Hβ.driver.link-is-reachability's seed).
+  # The prelude names the compiler MINTS as literals are the seed set a
+  # demand-link must carry: reachability from written names alone would miss
+  # them, so the day that set changes is the day the seed must change with
+  # it. This is the SIZE of the intersection between what lib/ publishes and
+  # what the five desugar-capable modules quote, held EXACT.
+  # WHAT IT CATCHES, stated precisely because the first draft of this comment
+  # oversold it and the RED tests said so: a name ENTERING or LEAVING the
+  # vocabulary — a new name-keyed dependency on the prelude that nobody
+  # reviewed (seen RED: 43 -> 44), or the last mint of a name going away.
+  # WHAT IT DOES NOT CATCH: one broken mint among several of the same name,
+  # because this is set membership, not occurrence counting (measured — a
+  # deliberately corrupted "list_to_flat" left the count at 43). And a
+  # prelude decl RENAMED outright breaks the wheel's own compile long before
+  # this line runs, so that case never reaches here either.
+  # The set is complete as a literal scan: all 55 SPLICED names were measured
+  # compiler-synthesized (__hstate_, __fb_, lambda_, tuple_{handle} …), none
+  # able to collide with prelude vocabulary.
+  sv_pre=$(mktemp); sv_min=$(mktemp)
+  { grep -hoE '^fn [a-z_][A-Za-z0-9_]*' lib/prelude.mn lib/*.mn | sed 's/^fn //'
+    grep -hoE '^type [A-Z][A-Za-z0-9_]*|^  = [A-Z][A-Za-z0-9_]*|^  \| [A-Z][A-Za-z0-9_]*' lib/prelude.mn lib/*.mn | sed -E 's/^(type|  = |  \| )//'
+  } | sort -u > "$sv_pre"
+  grep -hoE '"[A-Za-z_][A-Za-z0-9_]*"' src/lower.mn src/backends/wasm.mn src/parser.mn src/infer.mn src/pipeline.mn | tr -d '"' | sort -u > "$sv_min"
+  csugar=$(comm -12 "$sv_pre" "$sv_min" | wc -l)
+  rm -f "$sv_pre" "$sv_min"
+  svmax=$(grep -E '^desugar_vocabulary:' "$BASELINE" | head -1 | cut -d: -f2 | tr -d ' ')
+  say "· sugar vocabulary: $csugar prelude name(s) minted by the desugar — the lowering's name-keyed contract with lib/"
+  if [[ -n "$svmax" && "$csugar" != "$svmax" ]]; then
+    say "✗ sugar-vocabulary CONTRACT: $svmax -> $csugar — the demand-link's seed set changed. A prelude name entered or left the desugar vocabulary; re-derive the set, decide whether the seed follows it, and move the baseline in the same commit."
+    fail=1
+  fi
+}
+
+if [[ "$PREFLIGHT_ONLY" -eq 1 ]]; then
+  text_legs
+  if [[ "$fail" -eq 0 ]]; then say "verify --preflight: the text ratchets hold"; exit 0; fi
+  exit 1
+fi
 
 # ── the GREEN STAMP — verify is idempotent on an unchanged tree ─────────────
 # The verdict is a pure function of the gate-relevant state (wt_state_key:
@@ -50,20 +156,35 @@ if [[ "${FORCE_VERIFY:-0}" != 1 && "$(cat "$GATE_STAMP" 2>/dev/null)" == "$STATE
   exit 0
 fi
 
+text_legs
+
 # 1. The compiler exists: the pinned fixpoint wheel (boot/ — first light
 #    2026-07-10; boot/PROVENANCE.md). The hand-WAT seed is DELETED (7401c4b);
 #    the cold-ladder recipe lives at tag first-light (band J archaeology).
 BOOT="boot/mentl.wasm"
 [[ -f "$BOOT" ]] || { say "verify: compiler missing: $BOOT"; exit 2; }
 export MENTL_BOOT="$BOOT"
-say "✓ compiler: $BOOT"
+if [[ "$WHEEL_ONLY" -eq 1 ]]; then
+  # The candidate is m2 — boot compiling this tree — so every leg that runs a
+  # compiler runs THAT one (run-micro.sh reads MENTL_BOOT). A clean repin then
+  # pins these same bytes, and the full run after it answers from the memos.
+  WC=$(wt_m2_ensure) || { say "✗ the wheel under test did not build (tail $WT_M2CACHE/m2.err)"; tail -3 "$WT_M2CACHE/m2.err"; exit 1; }
+  export MENTL_BOOT="$WC/m2.wasm"
+  say "✓ compiler under test: $MENTL_BOOT (--wheel: the candidate, not the pinned boot)"
+else
+  say "✓ compiler: $BOOT"
+fi
 
 # 2. Micro battery — the medium's own `test` verb against the pinned boot:
 #    every fixture compiled, run through the runner's exec seam and judged
 #    against its own `// expect:` contract in ONE process (wt_battery reads
-#    the verdict and holds the exit + every-fixture-judged contract).
-say "· micro battery (tests/micros through the pinned boot)..."
-if ! wt_battery "$BOOT" tests/micros "micros-through-boot"; then fail=1; fi
+#    the verdict and holds the exit + every-fixture-judged contract). Under
+#    --wheel the contract battery below judges the same fixtures through the
+#    candidate, so this leg has nothing of its own to measure.
+if [[ "$WHEEL_ONLY" -eq 0 ]]; then
+  say "· micro battery (tests/micros through the pinned boot)..."
+  if ! wt_battery "$BOOT" tests/micros "micros-through-boot"; then fail=1; fi
+fi
 
 # 2b. The contract battery — the medium enforcing every fixture's own
 #     contract (run AND refuse grammars) in one process. A FAILC / FAILR /
@@ -94,6 +215,19 @@ if C=$(wt_m2_ensure); then
   # So: capture the status, and require the verb to have judged every fixture
   # it was handed.
   if ! wt_battery "$C/m2.wasm" tests/micros "contract battery (this tree's wheel)"; then fail=1; fi
+  # 2b. THE NEGATION PROBES (LENS §2.6 / §7.1, tests/lens/negation): the
+  #     thirty-seven programs the crown's declared-negation design was refuted
+  #     and rebuilt against — the vacuous gate, the two-parameter body, the
+  #     masked tee, the sig'd and cycle-member self-references, the stored
+  #     callback, the prune shapes, and (A7, 2026-09-30) the three-walks
+  #     witness: two callers of one masked HOF, the quantifier reaching the
+  #     callback's cell behind the mask as the flatten does. Each carries its
+  #     own `// expect:` contract
+  #     (a refusal class or a run value) since the gate landing turned every
+  #     leak into a refusal; before that they were a bash table in EXPECT.md
+  #     (`Hβ.test.lens-probes-are-a-bash-loop`). The medium judges them like
+  #     the micros: one process, the verb's own verdict.
+  if ! wt_battery "$C/m2.wasm" tests/lens/negation "negation probes (LENS §2.6, this tree's wheel)"; then fail=1; fi
   # 2c. The SYNTAX conformance battery (PLAN §11 Phase 0.4) — fixtures for
   #     forms SYNTAX declares and the WHEEL NEVER WRITES. That is the whole
   #     point: every other leg on this board measures what the wheel does, so
@@ -112,6 +246,16 @@ if C=$(wt_m2_ensure); then
   #     only that verb, went green against a deliberately wrong expectation,
   #     and was a gate that could not fail (Law 11). run-micro.sh is the
   #     execution the micro loop above already uses.
+  #
+  #     THE THREE FIXTURE LEGS (2c, 2c floors, 2d) answer from their memo when
+  #     the compilers they run and the fixtures they read are bytes a green run
+  #     already judged — the block below the `else` is the legs, unchanged.
+  syn_n=0; syn_bad=0; man_bad=0; flr_n=0; flr_bad=0; rm_n=0; rm_bad=0
+  fxkey=$(wt_memo_key_run "$MENTL_BOOT" "$C/m2.wasm" tests/syntax tests/floors tests/rows tests/micros/mn-findtag.mn lib tools/run-micro.sh)
+  if fxmemo=$(wt_memo_hit fixture-legs "$fxkey"); then
+    printf '%s\n' "$fxmemo"
+    say "  (memo: these compilers already judged these fixtures green)"
+  else
   syn_n=0; syn_bad=0
   for sf in tests/syntax/*.mn; do
     [[ -e "$sf" ]] || continue
@@ -169,27 +313,31 @@ if C=$(wt_m2_ensure); then
 
   # 2c. THE FLOOR CONTRACT — an unprovable field offset REFUSES, and says
   #     which. Two halves, because either alone is a gate that cannot fail:
-  #     the trap (never a guessed offset 0 reading a foreign field) and the
-  #     marker's TEXT (the selector and the receiver's live row). The text
-  #     half is what turns a floor census from a count into an inventory,
-  #     and this arc re-derived the blocking row by hand four times before
-  #     the emit was asked to speak it.
+  #     the refusal (never a guessed offset 0 reading a foreign field, and
+  #     since the settle point armed the class on 2026-09-28, never a trap
+  #     either: zero bytes, exit 1) and the refusal's TEXT (the selector and
+  #     the receiver's live row). The text half is what turns a floor census
+  #     from a count into an inventory, and this arc re-derived the blocking
+  #     row by hand four times before the emit was asked to speak it.
   flr_n=0; flr_bad=0
   for ff in tests/floors/*.mn; do
     [[ -e "$ff" ]] || continue
     flr_n=$((flr_n+1))
     f=$(basename "$ff" .mn)
-    fwant=$(sed -n '1s|^// expect: \([0-9]\+\)$|\1|p' "$ff")
+    fwant=$(sed -n '1s|^// expect: refuse \(E_[A-Za-z]\+\)$|refuse:\1|p' "$ff")
     fout=$(tools/run-micro.sh "$ff" "$fwant" "${RTLIBS[@]}" 2>/dev/null | grep -E '^(PASS|FAIL)' | tail -1)
     if [[ "$fout" != PASS* ]]; then
       say "✗ floor $f: ${fout:-no output}"; flr_bad=$((flr_bad+1)); continue
     fi
-    fwat="${TMPDIR:-/tmp}/$f.wat"
-    if ! grep -q "field offset unprovable: field '" "$fwat"; then
-      say "✗ floor $f: the marker does not name its selector"; flr_bad=$((flr_bad+1)); continue
+    ferr="${TMPDIR:-/tmp}/$f.err"
+    if [[ -s "${TMPDIR:-/tmp}/$f.wat" ]]; then
+      say "✗ floor $f: refused, but WAT reached stdout"; flr_bad=$((flr_bad+1)); continue
     fi
-    grep -q "field offset unprovable: field '[^']*' on " "$fwat" \
-      || { say "✗ floor $f: the marker does not name the receiver's row"; flr_bad=$((flr_bad+1)); }
+    if ! grep -q "E_FieldOffsetUnprovable error: field '" "$ferr"; then
+      say "✗ floor $f: the refusal does not name its selector"; flr_bad=$((flr_bad+1)); continue
+    fi
+    grep -q "E_FieldOffsetUnprovable error: field '[^']*' on " "$ferr" \
+      || { say "✗ floor $f: the refusal does not name the receiver's row"; flr_bad=$((flr_bad+1)); }
   done
   if [[ "$flr_n" -eq 0 ]]; then
     say "✗ floor contract: no fixtures — an emit floor with no gate is a marker nobody reads"
@@ -203,62 +351,56 @@ if C=$(wt_m2_ensure); then
 
   # 2d. THE RESIDUAL MARK — the projection must say which KIND of remainder
   #     it holds, and each fixture declares the kind it expects on a
-  #     `// residual: proven|assumed` header. Both readings are gated,
-  #     because a projection saying "assumed" everywhere or nowhere passes a
-  #     one-sided check.
+  #     `// residual: proven|free` header. Both readings are gated, because a
+  #     projection saying "open" everywhere or nowhere passes a one-sided
+  #     check.
   #
-  #     The header replaced a bare "must contain assumed" on 2026-09-03, and
-  #     the reason is the finding rather than a convenience: the mark that
-  #     check asserted was itself manufactured. absorb_into_residual bound
-  #     `[] assumed` onto cells that knew nothing, so a decl's own row
-  #     rendered "assumed" because a guess had been written on it. With that
-  #     write gone a decl's unclosed row projects FREE — honestly — and a
-  #     residual the call proves projects its fields. The gate now tests the
-  #     projection's honesty in whichever state the graph is actually in.
+  #     There were three kinds until 2026-09-28. The third, "assumed", was
+  #     the union of two partial sets written as a whole row with nothing
+  #     standing for the rest — and it was the defect, not a state: every
+  #     caller of a helper that reads two fields shared one such residual.
+  #     Two open rows now continue at one fresh variable, so an unproven
+  #     remainder is always a variable and projects open.
   rm_n=0; rm_bad=0
   for rf in tests/rows/*.mn; do
     [[ -e "$rf" ]] || continue
     rm_n=$((rm_n+1))
     r=$(basename "$rf" .mn)
     rwant=$(sed -n '1s|^// expect: \([0-9]\+\)$|\1|p' "$rf")
-    rkind=$(sed -nE 's#^// residual: (proven|assumed|free)$#\1#p' "$rf" | head -1)
+    rkind=$(sed -nE 's#^// residual: (proven|free)$#\1#p' "$rf" | head -1)
     if [[ -z "$rkind" ]]; then
-      say "✗ row $r: no '// residual: proven|assumed|free' header — the expected mark is the gate"
+      say "✗ row $r: no '// residual: proven|free' header — the expected mark is the gate"
       rm_bad=$((rm_bad+1)); continue
     fi
     rout=$(tools/run-micro.sh "$rf" "$rwant" "${RTLIBS[@]}" 2>/dev/null | grep -E '^(PASS|FAIL)' | tail -1)
     [[ "$rout" == PASS* ]] || { say "✗ row $r: ${rout:-no output}"; rm_bad=$((rm_bad+1)); continue; }
     rproj=$(wt_run --dir . "$C/m2.wasm" query "$rf" "type pick" 2>/dev/null)
-    # Three states, not two. A remainder is PROVEN (rendered as its fields),
-    # ASSUMED (rendered with the mark), or genuinely FREE — and the third was
-    # invisible while absorb_into_residual stamped `[] assumed` onto cells that
-    # knew nothing, which is what made "assumed" look like the only unproven
-    # state there was.
+    # Two states. A remainder is PROVEN (rendered as its fields) or FREE
+    # (rendered open, `| r…`), and a free one is a variable each caller closes.
     case "$rkind:$rproj" in
-      assumed:*assumed*) ;;
-      assumed:*) say "✗ row $r: declares an assumed remainder, projection does not mark one"; rm_bad=$((rm_bad+1)) ;;
-      proven:*assumed*) say "✗ row $r: declares a proven remainder, projection marks it assumed"; rm_bad=$((rm_bad+1)) ;;
       proven:*'|'*) say "✗ row $r: declares a proven remainder, projection still shows an open row"; rm_bad=$((rm_bad+1)) ;;
       proven:*) ;;
-      free:*assumed*) say "✗ row $r: declares a free remainder, projection marks it assumed — a guess was written on it"; rm_bad=$((rm_bad+1)) ;;
       free:*'|'*) ;;
       free:*) say "✗ row $r: declares a free remainder, projection shows it resolved"; rm_bad=$((rm_bad+1)) ;;
     esac
   done
   ctl=$(wt_run --dir . "$C/m2.wasm" query tests/micros/mn-findtag.mn "type pick" 2>/dev/null)
   case "$ctl" in
-    *assumed*) say "✗ row control: findtag's proven residual is marked assumed"; rm_bad=$((rm_bad+1)) ;;
     *region_id*) ;;
     *) say "✗ row control: findtag's residual did not project at all"; rm_bad=$((rm_bad+1)) ;;
   esac
   if [[ "$rm_n" -eq 0 ]]; then
-    say "✗ residual mark: no fixtures — proven and assumed remainders need both sides"
+    say "✗ residual mark: no fixtures — a remainder's kind needs a declared fixture"
     fail=1
   elif [[ "$rm_bad" -eq 0 ]]; then
-    say "✓ residual mark: $rm_n assumed remainder(s) project as assumed; the proven control does not"
+    say "✓ residual mark: $rm_n fixture(s) project the remainder they declare; the proven control resolves"
   else
     say "✗ residual mark: $rm_bad check(s) failed"
     fail=1
+  fi
+  if [[ "$syn_n" -gt 0 && "$syn_bad" -eq 0 && "$man_bad" -eq 0 && "$flr_n" -gt 0 && "$flr_bad" -eq 0 && "$rm_n" -gt 0 && "$rm_bad" -eq 0 ]]; then
+    wt_memo_put fixture-legs "$fxkey" "$(printf '✓ syntax battery: %s declared-form fixture(s) run true and check clean through the manifest\n✓ floor contract: %s unprovable-offset fixture(s) refuse and name what blocked them\n✓ residual mark: %s fixture(s) project the remainder they declare' "$syn_n" "$flr_n" "$rm_n")"
+  fi
   fi
 else
   say "✗ contract battery: the wheel did not build"
@@ -290,6 +432,40 @@ fi
 #    Reads the ONE keyed boot(wheel) artifact (wt_m2_ensure — shared with
 #    march/march-gate, .build/m2cache).
 if C=$(wt_m2_ensure); then
+  # THE SECTION IS ONE MEMO (Hβ.tools.gate-stamp-is-uniform, 2026-09-26). Every
+  # line below is a function of the compiler under test, its stderr on the
+  # wheel, the source, the baseline and this script, so a green on exactly
+  # those answers again: a byte-identical repin paid ~56s here re-asking a
+  # judged wheel the questions it had already answered. The pinned boot rides
+  # the key because the freshness line compares against it. FORCE_GATES=1
+  # re-runs.
+  census_key=$(wt_memo_key_run "$C/m2.wasm" "$C/m2.err" boot/mentl.wasm src lib tools/loop-prompt.md "$BASELINE" tools/verify.sh)
+  if cmemo=$(wt_memo_hit census-legs "$census_key"); then
+    printf '%s\n' "$cmemo"
+    say "  (memo: this compiler already judged this source against these bounds)"
+  else
+  census_out=$(mktemp); census_fail_before=$fail
+  {
+  # ONE JUDGMENT ANSWERS THREE LEGS, launched first so it overlaps the
+  # effect-seam queries below. `mentl verify` links through the real import
+  # DAG under ScopeAll, so its stderr carries every module's diagnostics —
+  # the comment-reference count and any missing name — and its stdout is the
+  # board. The gate used to ask it twice as `verify` and once more as
+  # `check`: three whole-wheel judgments for one graph's answers.
+  vj_out=$(mktemp); vj_err=$(mktemp)
+  wt_run --dir . "$C/m2.wasm" verify src/main.mn > "$vj_out" 2> "$vj_err" &
+  vj_pid=$!
+  # The effect seam's nine refs questions fly beside it, one cursor each
+  # (each is a whole judgment until the seam is a board bound in
+  # src/board.mn, where one graph would answer all nine).
+  fs_seam_out=$(mktemp)
+  printf '%s\n' fs_exists_impl fs_read_file_impl fs_write_file_impl fs_mkdir_impl \
+         fs_open_impl fs_create_impl fs_close_impl fs_unlink_impl fs_rename_impl \
+    | FS_ROOT="$ROOT" FS_C="$C/m2.wasm" xargs -P "${FRONTIER_POOL:-$(nproc)}" -I{} bash -c '
+        source "$FS_ROOT/tools/wt-env.sh" >/dev/null 2>&1
+        wt_run --dir "$FS_ROOT" "$FS_C" query src/main.mn "refs of {}" 2>/dev/null \
+          | grep -oE "^  at [a-z_/]+:" | grep -vcE "^  at (pipeline|io):" || true' > "$fs_seam_out" &
+  fs_seam_pid=$!
   errors=$(grep -cE '(^|: )E_[A-Za-z_]+ error: ' "$C/m2.err")    # the wheel prefixes stages ('infer: E_…')
   warns=$(grep -cE '(^|: )(E_|W_|P_)[A-Za-z_]+ Warning: ' "$C/m2.err")
   max=$(grep -E '^census_errors_max:' "$BASELINE" | head -1 | cut -d: -f2 | tr -d ' ')
@@ -316,7 +492,8 @@ if C=$(wt_m2_ensure); then
   # `mentl verify` links through the real import DAG and runs ScopeAll, so the
   # medium's own board sees every module's prose — the reader the driver's
   # hardcoded narrowing had left with no way to ask.
-  crefs=$(wt_run --dir . "$C/m2.wasm" verify src/main.mn 2>&1 >/dev/null | grep -cE 'W_CommentRefUnresolved')
+  wait "$vj_pid"; brc=$?
+  crefs=$(grep -cE 'W_CommentRefUnresolved' "$vj_err" || true)
   cmax=$(grep -E '^comment_refs_max:' "$BASELINE" | head -1 | cut -d: -f2 | tr -d ' ')
   say "· comment-refs: $crefs unresolved — the medium's verdict on its own prose"
   if [[ -n "$cmax" && "$crefs" -gt "$cmax" ]]; then
@@ -331,49 +508,16 @@ if C=$(wt_m2_ensure); then
   # 2026-09-17 with the pass it gauged: one judgment has no trial→final
   # override to count, and a ratchet whose instrument is gone reads a phantom
   # zero forever — the mute-gate class, never green.
-  # THE UNPROVABLE-FIELD-OFFSET RATCHET — same stderr, and it reads a class
-  # that did not exist before 2026-09-15 because the floor was emitted
-  # silently. Every count here is an `(unreachable)` the wheel ships inside
-  # itself; the class arms when this reaches 0 (diag_refuses' wheel-zero
-  # licence), so this is a countdown, not a tolerance. A RISE is a new
-  # landmine.
-  #
-  # LIKE movers ABOVE, THIS IS THE PINNED BOOT'S SELF-REPORT, and on the
-  # landing that BIRTHS the class the pin predates it, so the read is 0 and
-  # the FELL notice below fires once against a compiler that could not have
-  # counted. The ceiling is 4 because 4 is what the NEW compiler measured
-  # running on the wheel (the m3 leg), not what the old one failed to say.
-  # After the repin the two agree and the notice is real.
-  fou=$(grep -c 'T_FieldOffsetUnprovable Warning:' "$C/m2.err" 2>/dev/null || true); fou=${fou:-0}
-  fmax=$(grep -E '^field_offset_unprovable_max:' "$BASELINE" | head -1 | cut -d: -f2 | tr -d ' ')
-  say "· field-offset floors: $fou unprovable slot(s) the wheel ships as (unreachable) — 0 arms the class"
-  if [[ -n "$fmax" && "$fou" -gt "$fmax" ]]; then
-    say "✗ field-offset RATCHET: rose $fmax -> $fou — a new silent trap entered the wheel."
-    say "  Close the receiver's row at the reported span; the diagnostic names the field and the type."
-    fail=1
-  elif [[ -n "$fmax" && "$fou" -lt "$fmax" ]]; then
-    say "  ↓ field-offset floors FELL $fmax -> $fou — lower field_offset_unprovable_max in $BASELINE;"
-    say "    at 0, rename TFieldOffsetUnprovable to E_, flip it to SError, add it to diag_refuses, and move the fixture to run_refusal."
-  fi
-  # THE UNPROVABLE-COMPARISON ratchet — the floor class one operator over
-  # (2026-09-18): `==`/`!=`/`<`… on an operand whose type is still a
-  # variable at emit REPORTS T_EqTypeUnprovable and writes the trap instead
-  # of i32.eq on two addresses. Same ladder as the field-offset floor above:
-  # the pinned boot's self-report on the wheel, a countdown to 0, at which
-  # the class arms (E_, SError, diag_refuses) and the eq-in-arm-pointer leg
-  # turns green by PROVING its arm — never by the annotation the fixture
-  # deliberately omits.
-  equ=$(grep -c 'T_EqTypeUnprovable Warning:' "$C/m2.err" 2>/dev/null || true); equ=${equ:-0}
-  eqmax=$(grep -E '^eq_type_unprovable_max:' "$BASELINE" | head -1 | cut -d: -f2 | tr -d ' ')
-  say "· unprovable comparisons: $equ operand(s) still a variable at emit — 0 arms the class"
-  if [[ -n "$eqmax" && "$equ" -gt "$eqmax" ]]; then
-    say "✗ unprovable-comparison RATCHET: rose $eqmax -> $equ — a new address compare entered the wheel."
-    say "  Prove the operand at the reported span; the diagnostic names the operator and the type."
-    fail=1
-  elif [[ -n "$eqmax" && "$equ" -lt "$eqmax" ]]; then
-    say "  ↓ unprovable comparisons FELL $eqmax -> $equ — lower eq_type_unprovable_max in $BASELINE;"
-    say "    at 0, rename TEqTypeUnprovable to E_, flip it to SError, add it to diag_refuses, and move the fixture to run_refusal."
-  fi
+  # THE THREE UNPROVABLE-FLOOR RATCHETS ARE RETIRED (2026-09-28, R0″) — the
+  # classes are ARMED. They counted T_FieldOffsetUnprovable,
+  # T_EqTypeUnprovable and T_ShowTypeUnprovable on the wheel's own compile
+  # and held the counts so they could only fall, because the classes were
+  # decided during emission, after the gate had read the ledger, and could
+  # not refuse. The plan's settle point asks all three before the first
+  # byte, so each is an armed refusal now (E_FieldOffsetUnprovable,
+  # E_ShapeUnprovable) and a wheel carrying one cannot compile at all. A
+  # ratchet beside an armed class is a weaker second copy of the refusal
+  # (the use-after-move precedent below).
   # THE USE-AFTER-MOVE RATCHET IS RETIRED (2026-09-15) — the class is ARMED.
   # It counted T_UseAfterMove narrations on the wheel's own compile and held
   # them at ZERO so that diag_refuses' wheel-zero arming licence stayed
@@ -407,54 +551,6 @@ if C=$(wt_m2_ensure); then
       say "  every boot-suite gate below is a verdict on the OLD wheel; repin to measure this one"
     fi
   fi
-  # THE SCAFFOLD RATCHET (CLAUDE.md ⟳ — every scaffold's destiny is ABSORPTION
-  # into a verb, never permanence). The loop prompt is imperative prose telling
-  # an agent how to behave, which is the one thing PLAN §0 proves cannot
-  # enforce itself; so what is measured is how much of the loop is still NOT
-  # the medium's: the count of distinct tools/*.sh scripts the prompt must name
-  # to run one iteration. Monotone DOWN, and it falls only when a VERB actually
-  # replaces a script — rewording cannot move it, which is why this is the
-  # metric and a line count is not. At zero the medium runs its own loop and
-  # tools/loop-prompt.md is deleted rather than archived.
-  csref=$(grep -ohE 'tools/[a-z0-9_-]+\.(sh|py)' tools/loop-prompt.md | sort -u | wc -l)
-  srmax=$(grep -E '^loop_scaffold_refs_max:' "$BASELINE" | head -1 | cut -d: -f2 | tr -d ' ')
-  say "· loop scaffolds: $csref script(s) the loop still needs — the medium's un-absorbed remainder"
-  if [[ -n "$srmax" && "$csref" -gt "$srmax" ]]; then
-    say "✗ scaffold RATCHET: rose $srmax -> $csref — the loop leans on MORE shell, not less;"
-    say "  absorb the step into a verb or drop the reference."
-    fail=1
-  elif [[ -n "$srmax" && "$csref" -lt "$srmax" ]]; then
-    say "  ↓ loop scaffolds FELL $srmax -> $csref — lower loop_scaffold_refs_max in $BASELINE to hold it."
-  fi
-  # The QUIET gate (§4⑤'s Hylo bar, PLAN §11 4.4 — Hβ.ownership.quiet-
-  # empirical-gate): authored own/ref markers in src/, monotone DOWN. The
-  # measured invariant is "if the developer has to think about it, the
-  # inference failed" — a RISING count IS the inference failing, measured
-  # instead of felt. Text-pattern tier (param-position anchored); the
-  # census-shape absorption is the named refinement.
-  cown=$(grep -roE '[(,] *own [a-z_]' src/ | wc -l)
-  cref=$(grep -roE '[(,] *ref [a-z_]' src/ | wc -l)
-  omax=$(grep -E '^authored_own_max:' "$BASELINE" | head -1 | cut -d: -f2 | tr -d ' ')
-  refmax=$(grep -E '^authored_ref_max:' "$BASELINE" | head -1 | cut -d: -f2 | tr -d ' ')
-  say "· quiet gate: $cown authored own, $cref authored ref in src/ — the Hylo bar's counts"
-  # MONOTONE DOWN needs BOTH halves. This gate had only the rise arm for
-  # five weeks, so a marker the inference retired left the ceiling where it
-  # was and the slack accumulated invisibly — a ratchet that can only be
-  # breached, never tightened, is measuring nothing between breaches (§11
-  # tripwire 4, the same shape as the crown's eleven quiet entries). Every
-  # other ratchet in this file prints its fall; these two now do too.
-  if [[ -n "$omax" && "$cown" -gt "$omax" ]]; then
-    say "✗ quiet-gate RATCHET: authored own rose $omax -> $cown — the inference failed somewhere; teach it, do not annotate around it."
-    fail=1
-  elif [[ -n "$omax" && "$cown" -lt "$omax" ]]; then
-    say "  ↓ authored own FELL $omax -> $cown — lower authored_own_max in $BASELINE to hold it."
-  fi
-  if [[ -n "$refmax" && "$cref" -gt "$refmax" ]]; then
-    say "✗ quiet-gate RATCHET: authored ref rose $refmax -> $cref — the inference failed somewhere; teach it, do not annotate around it."
-    fail=1
-  elif [[ -n "$refmax" && "$cref" -lt "$refmax" ]]; then
-    say "  ↓ authored ref FELL $refmax -> $cref — lower authored_ref_max in $BASELINE to hold it."
-  fi
   # The EFFECT-SEAM gate (Hβ.io.fs-close-op-is-bypassed, closed 2026-09-04).
   # An effect exists so a handler can intercept the operation. A caller that
   # reaches past the op to the implementation keeps the behaviour and loses
@@ -470,13 +566,13 @@ if C=$(wt_m2_ensure); then
   # The count is the medium's own refs answer, never a grep — a grep cannot
   # tell a call from a name written in a comment, which is the lesson the
   # imports facet already paid for.
-  fsbp=0
-  for impl in fs_exists_impl fs_read_file_impl fs_write_file_impl fs_mkdir_impl \
-              fs_open_impl fs_create_impl fs_close_impl fs_unlink_impl fs_rename_impl; do
-    n=$(wt_run --dir . "$C/m2.wasm" query src/main.mn "refs of $impl" 2>/dev/null \
-        | grep -oE '^  at [a-z_/]+:' | grep -vcE '^  at (pipeline|io):' || true)
-    fsbp=$((fsbp + n))
-  done
+  wait "$fs_seam_pid"
+  fsbp=$(awk '{s+=$1} END{print s+0}' "$fs_seam_out"); fs_seam_n=$(grep -c . "$fs_seam_out" || true)
+  rm -f "$fs_seam_out"
+  if [[ "$fs_seam_n" != 9 ]]; then
+    say "✗ effect seam: $fs_seam_n of 9 refs questions answered — the flight dropped a result"
+    fail=1
+  fi
   fsmax=$(grep -E '^fs_impl_bypass_max:' "$BASELINE" | head -1 | cut -d: -f2 | tr -d ' ')
   say "· effect seam: $fsbp filesystem impl call(s) outside the handler that owns them"
   if [[ -n "$fsmax" && "$fsbp" -gt "$fsmax" ]]; then
@@ -484,37 +580,6 @@ if C=$(wt_m2_ensure); then
     fail=1
   elif [[ -n "$fsmax" && "$fsbp" -lt "$fsmax" ]]; then
     say "  ↓ effect seam TIGHTENED $fsmax -> $fsbp — lower fs_impl_bypass_max in $BASELINE to hold it."
-  fi
-  # The SUGAR VOCABULARY contract (Hβ.driver.link-is-reachability's seed).
-  # The prelude names the compiler MINTS as literals are the seed set a
-  # demand-link must carry: reachability from written names alone would miss
-  # them, so the day that set changes is the day the seed must change with
-  # it. This is the SIZE of the intersection between what lib/ publishes and
-  # what the five desugar-capable modules quote, held EXACT.
-  # WHAT IT CATCHES, stated precisely because the first draft of this comment
-  # oversold it and the RED tests said so: a name ENTERING or LEAVING the
-  # vocabulary — a new name-keyed dependency on the prelude that nobody
-  # reviewed (seen RED: 43 -> 44), or the last mint of a name going away.
-  # WHAT IT DOES NOT CATCH: one broken mint among several of the same name,
-  # because this is set membership, not occurrence counting (measured — a
-  # deliberately corrupted "list_to_flat" left the count at 43). And a
-  # prelude decl RENAMED outright breaks the wheel's own compile long before
-  # this line runs, so that case never reaches here either.
-  # The set is complete as a literal scan: all 55 SPLICED names were measured
-  # compiler-synthesized (__hstate_, __fb_, lambda_, tuple_{handle} …), none
-  # able to collide with prelude vocabulary.
-  sv_pre=$(mktemp); sv_min=$(mktemp)
-  { grep -hoE '^fn [a-z_][A-Za-z0-9_]*' lib/prelude.mn lib/*.mn | sed 's/^fn //'
-    grep -hoE '^type [A-Z][A-Za-z0-9_]*|^  = [A-Z][A-Za-z0-9_]*|^  \| [A-Z][A-Za-z0-9_]*' lib/prelude.mn lib/*.mn | sed -E 's/^(type|  = |  \| )//'
-  } | sort -u > "$sv_pre"
-  grep -hoE '"[A-Za-z_][A-Za-z0-9_]*"' src/lower.mn src/backends/wasm.mn src/parser.mn src/infer.mn src/pipeline.mn | tr -d '"' | sort -u > "$sv_min"
-  csugar=$(comm -12 "$sv_pre" "$sv_min" | wc -l)
-  rm -f "$sv_pre" "$sv_min"
-  svmax=$(grep -E '^desugar_vocabulary:' "$BASELINE" | head -1 | cut -d: -f2 | tr -d ' ')
-  say "· sugar vocabulary: $csugar prelude name(s) minted by the desugar — the lowering's name-keyed contract with lib/"
-  if [[ -n "$svmax" && "$csugar" != "$svmax" ]]; then
-    say "✗ sugar-vocabulary CONTRACT: $svmax -> $csugar — the demand-link's seed set changed. A prelude name entered or left the desugar vocabulary; re-derive the set, decide whether the seed follows it, and move the baseline in the same commit."
-    fail=1
   fi
   # THE BOARD — the medium's own standing bounds, read from its own graph.
   #
@@ -533,10 +598,13 @@ if C=$(wt_m2_ensure); then
   # rather than reporting twelve confident zeros — the vacuity it was caught
   # committing on its first run, which is `Hβ.query.unreadable-source-refusal`
   # at a second surface.
-  bout=$(wt_run --dir . "$C/m2.wasm" verify src/main.mn 2>/dev/null)
-  brc=$?
+  bout=$(cat "$vj_out")
   printf '%s\n' "$bout" | sed -n 's/^  /· board /p'
-  if [[ "$brc" -ne 0 ]]; then
+  if grep -q 'did not judge clean' "$vj_err"; then
+    say "✗ BOARD: the wheel did not judge clean under ScopeAll, so no bound was measured:"
+    grep -E '(^|: )E_[A-Za-z_]+ error: ' "$vj_err" | head -8 | sed 's/^/  /'
+    fail=1
+  elif [[ "$brc" -ne 0 ]]; then
     say "✗ BOARD: a bound the medium keeps about itself was breached (mentl verify exit $brc)."
     fail=1
   elif ! printf '%s' "$bout" | grep -q 'bound(s) hold'; then
@@ -554,12 +622,54 @@ if C=$(wt_m2_ensure); then
   # defined in a module M never imports but another module's closure
   # carries) needs env-entry module attribution — the named deeper
   # instrument.
-  mmiss=$(wt_run --dir . "$C/m2.wasm" check src/main.mn 2>&1 >/dev/null | grep -cE 'E_MissingVariable' || true)
-  say "· manifest: $mmiss missing name(s) on the wheel's own DAG judgment"
+  # Read off the same ScopeAll judgment as the board: every module's missing
+  # names, where `check` saw the entry's narrowed report.
+  mmiss=$(grep -cE 'E_MissingVariable|E_MissingImport' "$vj_err" || true)
+  rm -f "$vj_out" "$vj_err"
+  say "· manifest: $mmiss missing name(s) on the wheel's own DAG judgment (E_MissingImport: a name a module reaches only through the whole link)"
   if [[ "$mmiss" -gt 0 ]]; then
     say "✗ MANIFEST: a name resolves in the blob but not the import DAG — a module"
     say "  is missing an import edge (the canon.mn class). Probe: mentl check src/main.mn"
     fail=1
+  fi
+  # THE ISLANDS — modules the entry never links. The per-module solo sweep
+  # (63 processes, ~2 min per source change) is gone: a reference whose
+  # binding was declared in a module its own module never imports refuses
+  # E_MissingImport inside the ONE judgment above (F0b, 2026-09-27), so
+  # every module the entry links is judged there. What that judgment cannot
+  # see is a module NOBODY links from the entry — lib/combinators and the
+  # tutorials today — and each of those is its own closure's root: one
+  # small check per island, judged by the same wheel, memoized like the rest.
+  islkey=$(wt_memo_key_run "$C/m2.wasm" src lib)
+  if islmemo=$(wt_memo_hit islands "$islkey"); then
+    say "$islmemo (memo)"
+  else
+    isl_linked=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$C/m2.wasm" query src/main.mn modules 2>/dev/null | grep -oE '[A-Za-z_][A-Za-z_0-9/.-]*' | sort -u)
+    isl_bad=0; isl_n=0
+    for islf in src/*.mn src/backends/*.mn lib/*.mn lib/dsp/*.mn lib/ml/*.mn lib/tutorial/*.mn; do
+      islm=${islf#src/}; islm=${islm#lib/}; islm=${islm%.mn}
+      if ! printf '%s\n' "$isl_linked" | grep -qx "$islm"; then
+        isl_n=$((isl_n + 1))
+        isl_miss=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$C/m2.wasm" check "$islf" 2>&1 | grep -cE 'E_MissingVariable|E_MissingImport')
+        if [[ "$isl_miss" -gt 0 ]]; then
+          isl_bad=$((isl_bad + 1))
+          say "✗ island $islf: $isl_miss missing name(s) on its own closure"
+        fi
+      fi
+    done
+    islline="· islands: $isl_n module(s) the entry never links, each judged as its own root — $isl_bad with a missing name"
+    if [[ "$isl_bad" -eq 0 ]]; then
+      say "$islline"
+      wt_memo_put islands "$islkey" "$islline"
+    else
+      say "✗ $islline"
+      fail=1
+    fi
+  fi
+  } > "$census_out"
+  cat "$census_out"
+  [[ "$fail" -eq "$census_fail_before" ]] && wt_memo_put census-legs "$census_key" "$(cat "$census_out")"
+  rm -f "$census_out"
   fi
 else
   say "✗ compiler TRAPPED compiling the wheel (tail $WT_M2CACHE/m2.err):"; tail -3 "$WT_M2CACHE/m2.err"; fail=1
@@ -569,7 +679,9 @@ fi
 #    ARE (pin shas, ledger pins, named commands). Prose drifts; this is the
 #    mechanical floor under it (tools/doc-truth.sh; dissolves into
 #    docs-as-projection + mentl audit).
-if ! bash tools/doc-truth.sh >/dev/null 2>&1; then
+if [[ "$WHEEL_ONLY" -eq 1 ]]; then
+  : # the candidate has no pin yet, so there is no narrative for doc-truth to read
+elif ! bash tools/doc-truth.sh >/dev/null 2>&1; then
   say "✗ doc-truth: a doc claims what the artifact refutes —"
   bash tools/doc-truth.sh 2>&1 | sed 's/^/  /'
   fail=1
@@ -583,6 +695,10 @@ if [[ "$fail" -ne 0 ]]; then
   say "census ratchet caught the medium making more claims about itself that it does"
   say "not believe. Fix it (carry the handle, read live; rewrite in residue form)."
   exit 1
+fi
+if [[ "$WHEEL_ONLY" -eq 1 ]]; then
+  say "verify --wheel: the candidate holds every wheel-side invariant (the pinned-boot legs and doc-truth run after the pin)."
+  exit 0
 fi
 say "verify: thesis invariants hold."
 # Stamp the green — keyed on the state captured at ENTRY, so an edit made

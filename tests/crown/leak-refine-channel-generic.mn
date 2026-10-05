@@ -1,0 +1,14 @@
+// CROWN refinement (H4·D, 2026-10-01): the channel through a generic callee
+// defined beside it. `feed`'s signature hands its list's elements to its
+// callback, so the callback applying what it is handed at `k + 1` applies
+// `inv`. Checked clean and divided by zero on boot 13e8484a and pin
+// e23392f6. Expect E_EffectMismatch.
+type Positive = Int where 0 < self
+
+fn inv(n: Positive) = 100 / n
+
+fn feed(f, xs) = f(xs[0])
+
+fn run(k) with !Trap = feed({ g => g(k + 1) }, [inv])
+
+fn main() = run(0 - 1)

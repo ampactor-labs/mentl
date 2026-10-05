@@ -1,0 +1,7 @@
+// propose 5:25: ask shape
+// None against Some(??) — the fielded constructor offered with its field as
+// the next hole (a minted hole in argument position is a value, never the
+// partial's marker); the two constructions differ in structure.
+fn f() -> Option(Int) = ??
+
+fn main() = 0

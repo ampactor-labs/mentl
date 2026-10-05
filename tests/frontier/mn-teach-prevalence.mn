@@ -3,7 +3,11 @@
 // never by env enumeration order. Rare is declared and performed FIRST
 // (enumeration order would propose !Rare); Common is performed by three
 // fns (prevalence proposes !Common). main performs only Noise, so both
-// severances are provable and the winner exposes the ranking.
+// severances are provable and the winner exposes the ranking. main is
+// UNDECLARED since 2026-09-25: it declared `with Noise`, a closed row that
+// already implies `!Common` and `!Rare`, and teach now reads the authored
+// row — so the declared form correctly suggests nothing, and the ranking
+// under test needs a declaration with no row.
 effect Rare {
   rare_op() -> Int
 }
@@ -24,4 +28,4 @@ fn c2() with Common = common_op()
 
 fn c3() with Common = common_op()
 
-fn main() with Noise = noise_op()
+fn main() = noise_op()

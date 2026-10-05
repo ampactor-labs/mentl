@@ -1,0 +1,53 @@
+// shape.mn — the derivative of the distortion scene 1 ships, against the
+// finite difference of the same function.
+//
+// `adaptive_shape` (lib/dsp/spectral.mn) is the waveshaper Pulse runs per
+// sample: three transfer functions — tanh, an asymmetric tanh and a sine
+// fold, each a range-reduced series in lib/math.mn — crossfaded by clamped
+// weights of the spectral flux. Its slope with respect to the drive and with
+// respect to the flux is read by two readings, `~> grad(drive)` and
+// `~> grad(flux)`, over a grid that visits all three crossfade regimes and
+// both signs of the sample.
+//
+// The oracle is the central difference of the SAME function in the same
+// program, (f(p + h) − f(p − h)) / 2h with h = 1e-5: it differentiates the
+// series approximations exactly as the derivative program does, so the two
+// agree to the difference's own error (≈ h²·f‴, well under the tolerance)
+// and a disagreement is the derivative program being wrong, never the
+// series being approximate. No point sits on a clamp's kink or on a range
+// reduction's step.
+//
+// EXIT 42 iff every one of the 36 slopes (18 points × two seeds) agrees with
+// its difference to 1e-6 relative; otherwise 10 plus the number that missed.
+
+fn close(a: Float, b: Float) -> Bool = abs(a - b) <= 0.000001 * (1.0 + abs(b))
+
+fn slope_drive(x: Float, drive: Float, flux: Float) -> Float = d(adaptive_shape(x, drive, flux)) ~> grad(drive)
+
+fn slope_flux(x: Float, drive: Float, flux: Float) -> Float = d(adaptive_shape(x, drive, flux)) ~> grad(flux)
+
+fn diff_drive(x: Float, drive: Float, flux: Float) -> Float =
+  (adaptive_shape(x, drive + 0.00001, flux) - adaptive_shape(x, drive - 0.00001, flux)) / 0.00002
+
+fn diff_flux(x: Float, drive: Float, flux: Float) -> Float =
+  (adaptive_shape(x, drive, flux + 0.00001) - adaptive_shape(x, drive, flux - 0.00001)) / 0.00002
+
+fn misses_at(x: Float, drive: Float, flux: Float) -> Int = {
+  let a = if close(slope_drive(x, drive, flux), diff_drive(x, drive, flux)) { 0 } else { 1 }
+  let b = if close(slope_flux(x, drive, flux), diff_flux(x, drive, flux)) { 0 } else { 1 }
+  a + b
+}
+
+// The grid: three samples of each sign's shape, two drives, three fluxes —
+// 0.1 (warm dominates), 0.5 (asymmetric alone) and 0.9 (fold dominates).
+fn misses_over(i: Int) -> Int = {
+  let x = if i % 3 == 0 { 0.0 - 0.6 } else if i % 3 == 1 { 0.25 } else { 0.8 }
+  let drive = if (i / 3) % 2 == 0 { 0.7 } else { 2.3 }
+  let flux = if i / 6 == 0 { 0.1 } else if i / 6 == 1 { 0.5 } else { 0.9 }
+  misses_at(x, drive, flux)
+}
+
+fn main() -> Int = {
+  let missed = range(0, 18) |> fold(0, (acc, i) => acc + misses_over(i))
+  if missed == 0 { 42 } else { 10 + missed }
+}

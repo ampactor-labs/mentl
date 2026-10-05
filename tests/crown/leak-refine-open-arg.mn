@@ -1,0 +1,14 @@
+// CROWN refinement (P0, 2026-10-01): `inv` is total only on its domain —
+// its division is proven by its parameter's precondition — so a call whose
+// argument claim is OPEN is a call outside the proven domain, and the row
+// the precondition guards is the caller's to pay. The open claim surfaced as
+// debt and the caller's row stayed Pure. Boot 13e8484a: one pending
+// obligation, `!Trap` accepted, trap at run (caller(-1)). Expect
+// E_EffectMismatch at caller.
+type Positive = Int where 0 < self
+
+fn inv(n: Positive) = 100 / n
+
+fn caller(m) with !Trap = inv(m + 1)
+
+fn main() = caller(0 - 1)

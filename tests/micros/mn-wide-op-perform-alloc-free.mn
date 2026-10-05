@@ -1,0 +1,33 @@
+// expect: 42
+// A PERFORM SPEAKS ITS SITE'S FACE. `put`'s parameter is the effect's type
+// variable, so its declared face is a word; performing it at Float used to
+// box the value into a fresh cell for the arm's word face — 8 bytes per
+// perform under a row that never said so, every `fold` over Floats paying it
+// per element (Hβ.emit.generic-op-box-is-unrowed). The site's vector picks
+// the face now, as a closure call's does: the arm twinned at the install's
+// instance is reached at the table's native face, and nothing is built. The
+// allocation audit is the witness — it refused this program at the perform
+// on the compiler that boxed, and is silent on the one that does not.
+effect Emit {
+  put(v: a)
+  done() -> Float
+}
+
+handler total with s = 0.0 {
+  put(v) => resume() with s = s + v,
+  done() => resume(s),
+}
+
+fn walk(xs: [Float]) with !Alloc = {
+  put(xs[0])
+  put(xs[1])
+}
+
+fn main() = if ({
+  walk([1.5, 2.5])
+  done()
+} ~> total) == 4.0 {
+  42
+} else {
+  0
+}

@@ -1,0 +1,14 @@
+// expect: 8
+// A DEFAULT IS THE CALLEE'S, AND THE CALLEE IS THE ONE THE CALL RESOLVES TO.
+// `run`'s parameter `f` shadows the top-level `f`, whose second parameter
+// carries a default. The judgment types `f(7)` against the parameter and
+// passes one argument; the lowering used to read the module `f`'s
+// parameters by name and splice its default in, calling the one-parameter
+// callback with two arguments — checked clean, then `indirect call type
+// mismatch` at run time (boot 523f1732). The product the judgment wrote is
+// the one the lowering reads.
+fn f(a: Int, b: Int = 100) -> Int = a + b
+
+fn run(f) = f(7)
+
+fn main() -> Int = run({ n => n + 1 })

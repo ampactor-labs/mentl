@@ -1,0 +1,8 @@
+// expect: refuse E_InstantiationDepth
+// The show sibling of mn-instantiation-depth-eq: past the cap the base
+// renders the growing structure as the word it is, so boot dbbfd107 printed
+// an address where ten nested lists belonged. Refused at the ninth level's
+// call (R0″, 2026-09-28).
+fn deep(x, n) = if n == 0 { "{x}" } else { deep([x], n - 1) }
+
+fn main() = byte_len(deep(7, 10))

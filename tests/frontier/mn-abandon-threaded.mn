@@ -1,0 +1,18 @@
+// AN-2 — an abandoning op performed inside a THREADED branch: the thread's
+// entry banks the op and its argument area in the task record, the join
+// RE-RAISES it in the joiner (first in join order wins), and the unwind
+// continues from the join to the install whose arm answers — the arm's
+// tuple is the fanout install's value, and the join never delivers the
+// branch's dummy. Expected exit: 5. On boot 311479e1 the branch thread
+// trapped at the thunk's floor (exit 134).
+effect Ab {
+  ab() -> Int
+}
+
+handler h {
+  ab() => (5, 0),
+}
+
+fn main() = match (0 <| ({ _ => ab() }, { _ => 10 })) ~> parallel_compose ~> h {
+  (a, b) => a + b,
+}

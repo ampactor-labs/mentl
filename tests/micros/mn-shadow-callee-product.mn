@@ -1,0 +1,16 @@
+// expect: 6
+// A CALL'S ARGUMENT PRODUCT IS THE JUDGMENT'S, READ WHERE THE CALL STANDS.
+// The prelude's `fold_handler` arm calls its config parameter `f(acc,
+// elem)`; this program declares a top-level `f` of one parameter. The
+// judgment resolves the arm's product in the arm's own scope — the config
+// parameter, no declared params, positional passthrough — and the lowering
+// used to resolve it again by NAME against the module env, meeting the
+// user's `f` and refusing a false arity mismatch at a span inside the
+// library the program never wrote (measured on boot 523f1732:
+// `E_TypeMismatch: function arity mismatch: 1 param(s) vs 2 param(s)` at
+// the prelude's line). The product is a fact of the call node now, written
+// once by the judgment and read by the lowering
+// (Hβ.lower.callee-resolved-by-name-in-the-module-env).
+fn f(x: Int) -> Int = x * 100
+
+fn main() -> Int = [1, 2, 3] |> fold(0, (acc, i) => acc + i)

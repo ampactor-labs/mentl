@@ -1,0 +1,6 @@
+// expect: refuse E_EffectUnhandled
+effect E { op() -> Int }
+effect F { fop() -> Int }
+handler h { op() => resume(7) }
+fn run(f) = (f()) ~> h
+fn main() = run(() => fop())

@@ -1,0 +1,13 @@
+// THE ESCAPED CLOSURE CALLED OUTSIDE ANY INSTALL (the root gate reads the
+// row alone, 2026-09-27). E rides the closure's value row out of `escaped`;
+// the bare call at main performs it with no enclosing install, so E is in
+// main's row and the executable refuses (E_EffectUnhandled). The boot
+// accepted this program because h was installed SOMEWHERE, and the call
+// aborted at the runtime walk (exit 134) — sound-escape-birth-evidence's
+// old premise, the "static singleton" direct call, described tiers that no
+// longer exist. Its sound twin calls the escaped closure under h.
+effect E { op() -> Int }
+handler h { op() => resume(1) }
+fn make() = () => op()
+fn escaped() = (make()) ~> h
+fn main() = escaped()()

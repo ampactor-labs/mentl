@@ -1,0 +1,14 @@
+// expect: refuse E_EffectMismatch
+// A function moving through a generic callee is the function its callback
+// is handed (H4·D, the channel). `fold` hands the list's elements to its
+// callback by its signature alone — its body hands the callback to a
+// handler — so the callback's `f(k + 1)` applies `inv`, whose precondition
+// guards a Trap the open claim on `k + 1` pays. On boot 13e8484a and pin
+// e23392f6 this checked clean under `!Trap` and divided by zero.
+type Positive = Int where 0 < self
+
+fn inv(n: Positive) = 100 / n
+
+fn run(k) with !Trap = fold(0, (acc, f) => acc + f(k + 1), [inv])
+
+fn main() = run(0 - 1)

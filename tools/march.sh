@@ -155,6 +155,30 @@ board_reported() {  # board_reported <frontier line>. verify is the caller's, an
 emit_provenance() {  # emit_provenance <gen> <verdict> <lines> <census>
   local gen="$1" verdict="$2" lines="$3" census="$4" sha block tmp board redmark
   sha=$(sha256sum boot/mentl.wasm | awk '{print $1}')
+  # A PIN THAT DID NOT MOVE WRITES NOTHING (2026-09-26). The narrated head
+  # block already blesses these exact bytes, and the board legs are memoized
+  # by the same bytes, so a second block would record one event twice — the
+  # first byte-identical repin under the memo stacked a copy of the C3(i)
+  # block's sha under a fresh placeholder. The narrated head is the first
+  # sha line outside an unnarrated block.
+  local head_sha
+  head_sha=$(awk '
+    /^- source: ‹NARRATIVE UNWRITTEN/ { skip=1 }
+    skip && /^---$/ { skip=0; next }
+    !skip && /^- boot\/mentl\.wasm  sha256 / { print $4; exit }
+  ' boot/PROVENANCE.md)
+  if [ "$sha" = "$head_sha" ]; then
+    local frontier_same selfrun_same
+    selfrun_same=$(board_self_run)
+    frontier_same="$(board_frontier)"
+    case "$selfrun_same$frontier_same" in
+      *RED*) printf '%s\n  - frontier: %s\n' "$selfrun_same" "$frontier_same"
+             echo "✗ the pin did not move, and the board is RED on it — the tree changed a gate's inputs; fix that, the boot is not the defect"
+             exit 1 ;;
+    esac
+    echo "· PROVENANCE: the pin did not move (${sha:0:16}… is the narrated head) — the board is green on it, nothing to write"
+    return
+  fi
   local selfrun
   selfrun=$(board_self_run)
   # $( ) strips the trailing newline board_self_run ends with, so the join
@@ -217,9 +241,28 @@ pin_trap() {  # pin_trap <wasm> <err> — auto-disassemble the trap site from th
   find src -name '*.mn' | sort | xargs cat; } > "$WHEEL"
 echo "wheel: $(wc -l < "$WHEEL") lines"
 
+# A previous run's m3 module outlives this one on a CLEAN march, which
+# compares WAT and never re-assembles it — measured 2026-09-25: a probe run
+# against .build/march/m3.wasm after a CLEAN march exercised the PRIOR
+# wheel (20:55 beside a 21:50 m3.wat) and reported a fixed defect as still
+# present. Every artifact this run may leave is cleared first, so a file in
+# $OUT is always this run's.
+rm -f "$OUT/m3.wasm" "$OUT/m3w.err" "$OUT/m4.wat" "$OUT/m4.err" "$OUT/m4.time"
+
 BOOT=boot/mentl.wasm
 [ -f "$BOOT" ] || { echo "✗ no $BOOT (boot/PROVENANCE.md)"; exit 1; }
 echo "✓ boot: $BOOT (the pinned fixpoint wheel)"
+
+# The text ratchets first: a count that needs no compiler refuses before one
+# runs (verify --preflight — the quiet gate, the scaffold count, the sugar
+# vocabulary).
+if [ "${MARCH_REPIN:-0}" = 1 ]; then
+  if ! pre=$(bash tools/verify.sh --preflight 2>&1); then
+    echo "✗ REPIN REFUSED BEFORE THE m2 LEG: a text ratchet is breached —"
+    printf '%s\n' "$pre" | grep -E '^ *✗' | head -6
+    exit 1
+  fi
+fi
 
 # ── m2: the boot compiler compiles the wheel ──
 # Reads the ONE keyed boot(wheel) artifact (wt_m2_ensure — shared with
@@ -251,9 +294,18 @@ m2lines=$(wc -l < "$OUT/m2.wat" 2>/dev/null | tr -d ' ')
 # different binary than the one that wrote m2.wat. The line count is captured
 # above rather than re-read, because the verb WRITES $OUT/m2.wat itself.
 if [ "$m2rc" = 0 ]; then
-  vm=$(timeout 9000 "$WT" run "${WT_RUN_FLAGS[@]}" --dir . boot/mentl.wasm march 2> "$OUT/verb.err")
-  vrc=$?
+  # Memoized by what the verb reads — boot's bytes and the source it
+  # concatenates — so an unchanged pair answers without a second 30s
+  # generation of the m2 the leg above already produced.
+  vkey=$(wt_memo_key_run boot/mentl.wasm src lib)
+  if vmemo=$(wt_memo_hit verb-parity "$vkey"); then
+    vm="$vmemo"; vrc=0
+  else
+    vm=$(timeout 9000 "$WT" run "${WT_RUN_FLAGS[@]}" --dir . boot/mentl.wasm march 2> "$OUT/verb.err")
+    vrc=$?
+  fi
   vlines=$(printf '%s\n' "$vm" | sed -n 's/^march: .* · \([0-9]*\) wat lines · census.*/\1/p')
+  [ "$vrc" = 0 ] && [ "$vlines" = "$m2lines" ] && wt_memo_put verb-parity "$vkey" "$(printf '%s\n' "$vm" | grep -E '^march: ')"
   if [ "$vrc" != 0 ]; then
     echo "✗ VERB PARITY: \`mentl march\` exits $vrc — the medium cannot judge its own generation:"
     printf '%s\n' "$vm" | tail -3
@@ -265,6 +317,24 @@ if [ "$m2rc" = 0 ]; then
   else
     echo "✓ verb parity: \`mentl march\` reproduces the m2 leg ($m2lines wat lines)"
   fi
+fi
+
+# CHEAPEST FIRST (2026-09-26). A repin judges the candidate's wheel-side
+# invariants — every census ratchet, the contract, syntax, floor and residual
+# batteries, the per-module solo sweep — BEFORE the m3 leg and the board, so a
+# breach refuses in seconds rather than after them. Measured 2026-09-25:
+# verify ran last, and two stray `ref` markers cost a second full board to
+# learn what a text count knew at second one. Its legs are memoized by the
+# bytes they judge, so the full verify after the pin answers from them.
+if [ "${MARCH_REPIN:-0}" = 1 ]; then
+  if ! bash tools/verify.sh --wheel > "$OUT/wheel-verify.log" 2>&1; then
+    echo "✗ REPIN REFUSED BEFORE THE BOARD: the candidate breaks a wheel-side invariant —"
+    grep -E '^ *✗' "$OUT/wheel-verify.log" | head -8
+    echo "  (the whole report: $OUT/wheel-verify.log)"
+    exit 1
+  fi
+  echo "✓ wheel-side invariants hold for the candidate (verify --wheel; $OUT/wheel-verify.log)"
+  MARCH_VERIFY="${MARCH_VERIFY:-wheel-side green before the board (verify --wheel); the pinned-boot battery and doc-truth follow the narrative}"
 fi
 
 if [ -n "${PROBE:-}" ]; then
@@ -286,8 +356,8 @@ echo "m3: exit=$m3rc, $(wc -l < "$OUT/m3.wat" 2>/dev/null) lines, census=$(grep 
 # the battery does — the verdict stays a correctness fact.
 costok=1
 BASELINE=tools/verify-baseline.txt
-read_cost() {  # read_cost <leg> — sets MARCH_COST from $OUT/<leg>.time, ratchets the peak
-  local leg="$1" wall rss_kb peak_max
+read_cost() {  # read_cost <leg> <compiler> — sets MARCH_COST from $OUT/<leg>.time, ratchets the peak
+  local leg="$1" compiler="$2" wall rss_kb peak_max
   [ -s "$OUT/$leg.time" ] || return 0
   read -r wall rss_kb < <(tail -1 "$OUT/$leg.time")
   MARCH_COST="$leg leg ${wall}s wall · $(( ${rss_kb:-0} / 1024 ))MB peak RSS (${rss_kb:-0} KB)"
@@ -306,11 +376,14 @@ read_cost() {  # read_cost <leg> — sets MARCH_COST from $OUT/<leg>.time, ratch
   # measured run-variance — which is the reading that named the defect. The
   # answer to a noisy gate is a better estimator, never a raised ceiling:
   # bumping it launders jitter as headroom and the ratchet stops meaning
-  # anything. Hβ.tools.cost-ratchet-reads-one-sample.)
+  # anything. Hβ.tools.cost-ratchet-reads-one-sample.) The re-reads run the
+  # LEG'S OWN compiler: until 2026-09-28 they always ran m2, so an m4 breach
+  # was "re-measured" on the previous generation's footprint and the minimum
+  # could clear a peak the m4 leg genuinely held.
   local best="$rss_kb" i r_wall r_rss
   echo "· peak ${rss_kb}KB over the ${peak_max}KB ceiling — re-measuring before convicting"
   for i in 1 2; do
-    gen "$OUT/m2.wasm" "$OUT/$leg-recheck.wat" "$OUT/$leg-recheck.err"
+    gen "$compiler" "$OUT/$leg-recheck.wat" "$OUT/$leg-recheck.err"
     if [ -s "$OUT/$leg-recheck.time" ]; then
       read -r r_wall r_rss < <(tail -1 "$OUT/$leg-recheck.time")
       echo "·   re-read $i: ${r_rss}KB"
@@ -326,7 +399,7 @@ read_cost() {  # read_cost <leg> — sets MARCH_COST from $OUT/<leg>.time, ratch
     MARCH_COST="$leg leg ${wall}s wall · $(( best / 1024 ))MB peak RSS (${best} KB, min of 3)"
   fi
 }
-read_cost m3
+read_cost m3 "$OUT/m2.wasm"
 # ── the CENSUS gate (the 25-divergence lesson, 2026-08-08): a repin with a
 # rising census rode the TRANSITION path — verify's ratchet caught it only
 # post-pin, after the boot was already blessed. The march reads the same
@@ -403,7 +476,7 @@ elif [ "$m3rc" = 0 ]; then
     if "${W2W[@]}" "$OUT/m3.wat" -o "$OUT/m3.wasm" 2> "$OUT/m3w.err"; then
       gen "$OUT/m3.wasm" "$OUT/m4.wat" "$OUT/m4.err"; m4rc=$?; m4done=1
       echo "m4: exit=$m4rc, $(wc -l < "$OUT/m4.wat" 2>/dev/null) lines"
-      read_cost m4
+      read_cost m4 "$OUT/m3.wasm"
       if [ "$m4rc" = 0 ] && diff -q "$OUT/m3.wat" "$OUT/m4.wat" >/dev/null 2>&1; then
         echo "✓✓ TRANSITION: m3 == m4 — the NEW wheel reproduces itself; the m2/m3 diff was the emit change crossing one generation."
         if [ "${MARCH_REPIN:-0}" = 1 ]; then

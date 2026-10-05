@@ -1,0 +1,5 @@
+import helper
+
+fn total() = 5
+
+fn main() = total() + ratio(10, 2)

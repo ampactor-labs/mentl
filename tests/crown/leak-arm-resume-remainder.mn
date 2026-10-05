@@ -1,0 +1,13 @@
+// CROWN A5 (LENS §2.4, the arm-world rule): resuming inside an arm of h
+// continues the REMAINDER under h, so a handler's own declared negation
+// binds what the remainder performs minus what h absorbs. h declares !F
+// and is installed over a body whose remainder performs F after op: the
+// arm's resume continues into F, so the install REFUSES (E_EffectMismatch
+// naming h). RED-first on boot 39b00d84: accepted, no diagnostic — the
+// handler's negation bound only the arms' own performs.
+effect E { op() -> Int }
+effect F { fop() -> Int }
+handler h with !F { op() => resume(1) }
+handler hf { fop() => resume(2) }
+fn work() = op() + fop()
+fn main() = ((work()) ~> h) ~> hf

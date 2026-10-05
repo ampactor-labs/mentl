@@ -1,0 +1,20 @@
+// expect: 116
+// A list pattern tests each element at its own position: `[1, y]` asks
+// whether element 0 is 1. The test walker paired its sub-patterns from the
+// wrong end, so a literal at position 0 was compared against element 1,
+// silently, through a parameter (the indexed read) and on a literal matched
+// in place (the raw read) alike. Measured on boot 2d784560: 65.
+fn f(xs) = match xs {
+  [1, y] => y,
+  [x, y] => x + y + 10,
+  _ => 0,
+}
+
+fn main() = {
+  let direct = match [5, 1] {
+    [1, y] => y,
+    [x, y] => x + y + 10,
+    _ => 0,
+  }
+  f([1, 5]) * 20 + direct
+}

@@ -9,16 +9,42 @@ let gain = 0.5
 
 fn ticks(x) = x + tick()
 
-fn handled(x) with !Tick = (ticks(x)) ~> ticker
+fn handled(x) with !Tick = ticks(x) ~> ticker
 
-fn fanned(a, b) = ((a) >< (b)) ~> parallel_compose
+fn fanned(a, b) = a >< b ~> parallel_compose
 
-fn bare(a, b) = (a) >< (b)
+fn bare(a, b) = a >< b
+
+// B4: a callee's fanout runs under the schedule its callers install —
+// `twice` demands `shared` threaded; the badge names the demand.
+fn shared(a, b) = a >< b
+
+fn twice() = shared(1, 2) ~> parallel_compose
 
 effect Tick {
   tick() -> Int
 }
+
 handler ticker {
   tick() => resume(1),
 }
+
 fn main() = 0
+
+// D5 (2026-10-02): what SYNTAX promises the badges say. A parameter's and a
+// local's width (`s : Float @ f32 (pinned)` is SYNTAX's own example), a
+// function's head with its inferred row in place of an empty line, and each
+// fanout site as its author wrote it with the branches it spawns. Appended
+// after main so every line the legs above read stays where it was.
+fn area(w: Coeff) = {
+  let scale = 2.0
+  w * scale
+}
+
+fn gain2(s: f32, k: f32) = s * k
+
+fn three(a, b, c) = a >< b >< c ~> parallel_compose
+
+fn spread(x) = x <| ((v) => v + 1, (v) => v * 2)
+
+fn doubled_each(xs) = fanout((x) => x * 2, xs)

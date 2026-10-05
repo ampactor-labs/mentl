@@ -1,0 +1,9 @@
+// expect: refuse E_EffectMismatch
+// `NonZero` admits -1, and an unbounded dividend may be INT_MIN: the one
+// quotient a signed word cannot hold. The zero face is proven; the overflow
+// face stays open, so `/` still charges `Trap` and `!Trap` refuses.
+type NonZero = Int where !(self == 0)
+
+fn ratio(total, n: NonZero) with !Trap = total / n
+
+fn main() = ratio(100, 4)

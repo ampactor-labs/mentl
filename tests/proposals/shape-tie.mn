@@ -1,0 +1,9 @@
+// propose 7:31: ask shape
+// Two unread bodies never read as agreement.
+fn scaled() -> Int with Pure = if 2 > 1 { 40 } else { 4 }
+
+fn stepped() -> Int with Pure = if 3 > 1 { 40 } else { 5 }
+
+fn total() -> Int with Pure = ??
+
+fn main() = total()

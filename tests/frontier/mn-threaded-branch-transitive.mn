@@ -1,0 +1,16 @@
+// B1's race rule, the TRANSITIVE refusal: `h` absorbs the branch's E at the
+// fanout's frame and is stateless — but its arm performs `bump`, an arm runs
+// in the performing (spawned) instance, and its performs resolve OUTER of
+// its own install, so both branches reach ONE `counter` state record one hop
+// further out. The first form of the rule accepted this (it stopped at the first
+// stateless handler) and the program compiled and ran — 11 on six runs, a
+// race that happened to serialize. The walk follows each covering handler's
+// own residual row down the stack now.
+// Expected: REFUSE E_ThreadedBranchEffect (naming Counter through `h`).
+effect E { op() -> Int }
+effect Counter { bump() -> Int }
+handler counter with n = 5 { bump() => resume(n) with n = n + 1 }
+handler h { op() => resume(bump()) }
+fn main() = match (0 <| ({ _ => op() }, { _ => op() })) ~> parallel_compose ~> h ~> counter {
+  (a, b) => a + b,
+}

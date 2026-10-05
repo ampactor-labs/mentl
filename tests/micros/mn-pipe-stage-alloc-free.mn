@@ -1,0 +1,23 @@
+// expect: 40
+// What mints nothing stays `!Alloc` and leaves the heap where it was: a lambda
+// or an arm list standing as a pipe's stage is the piped value bound to its
+// parameter (lowered in place, no closure), and a top-level fn passed as a
+// value is its static record. A thousand calls, zero growth.
+fn apply(g, v) = g(v)
+
+fn inc(v) = v + 1
+
+fn step(x) with !Alloc = {
+  let a = x |> ((v) => v * 2 + 1)
+  let b = a |> ({ 0 => 1, n => n - 1 })
+  apply(inc, b)
+}
+
+fn run(n, acc) = if n == 0 { acc } else { run(n - 1, step(acc) % 1000) }
+
+fn main() -> Int = {
+  let before = heap_mark()
+  let r = run(1000, 3)
+  let grown = addr_diff(heap_mark(), before)
+  if grown == 0 && r >= 0 { 40 } else { 41 }
+}

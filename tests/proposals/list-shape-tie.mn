@@ -1,0 +1,6 @@
+// propose 4:19: ask shape
+// The empty list against a one-element list (each rendered as source): a
+// structure question.
+fn f() -> [Int] = ??
+
+fn main() = 0

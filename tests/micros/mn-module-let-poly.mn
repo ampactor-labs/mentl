@@ -1,0 +1,8 @@
+// expect: 5
+// A module-scope let bound to a function literal is generalized as a fn is:
+// one `ident` serves an Int and a String. Boot 2d18aedd bound the let
+// monomorphically and refused the second use (E_TypeMismatch, Int vs
+// List(Byte)).
+let ident = (x) => x
+
+fn main() = ident(3) + byte_len(ident("ab"))

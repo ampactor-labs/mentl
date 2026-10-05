@@ -318,11 +318,13 @@
   </div></main>
 <div class="wavefront" id="wavefront"></div>
 <footer>
-  <span><b>compiler</b> mentl-ide.wasm — the live spawning boot; a Worker per judged stmt</span>
+  <span><b>compiler</b> boot/mentl.wasm — the pinned fixpoint itself, unmodified, judging in a Worker</span>
+  <span><b>session</b> one resident instance holds the graph; the caret reads it, an edit re-judges its cone</span>
   <span><b>loop</b> keystroke → compile → project → the live CursorView</span>
   <span><b>server</b> mentl space — mentl, serving mentl</span>
   <span><b>run</b> download .wat + wat2wasm — in-page run lands with binary emit (band N)</span>
 </footer>
+<script src="session-client.js"></script>
 <script>
 "use strict";
 const $ = id => document.getElementById(id);
@@ -635,9 +637,10 @@ function projectAspects(parse, off, diags){
 
 /* ── the wheel's execution host — ide/wheel-worker.js ─────────────────────
    The pinned boot is a SPAWNING module (shared-image import +
-   wasi.thread-spawn; the converged judgment spawns a host thread per
-   stmt), and the task join's memory.atomic.wait32 is FORBIDDEN on the
-   browser main thread — so the page NEVER instantiates the module. Every
+   wasi.thread-spawn — the substrate `~> Thread` schedules through; the
+   judgment itself spawns nothing since pin 7c9dc538, judge once), and the
+   task join's memory.atomic.wait32 is FORBIDDEN on the browser main
+   thread — so the page NEVER instantiates the module. Every
    run posts to a fresh worker (ide/wheel-worker.js, the same file the
    node twin drives), whose shim spawns nested workers per task and
    provides the WASI surface: compile-stdin when argv is empty, the
@@ -656,60 +659,24 @@ function runWheel(req, timeoutMs = 90000){
   });
 }
 
-/* ── The Resident Space Session — live graph transport in Web Worker ────── */
-let RESIDENT_WORKER = null, sessReadyPromise = null, sessCallId = 1;
-const sessPending = new Map();
-
-function ensureResidentSession(){
-  if (RESIDENT_WORKER) return sessReadyPromise;
-  RESIDENT_WORKER = new Worker("wheel-worker.js");
-  sessReadyPromise = new Promise(resolve => {
-    RESIDENT_WORKER.onmessage = e => {
-      if (e.data.k === "session-ready") {
-        resolve();
-      } else if (e.data.k === "session-reply") {
-        const p = sessPending.get(e.data.id);
-        if (p) {
-          sessPending.delete(e.data.id);
-          p(e.data);
-        }
-      }
-    };
-    RESIDENT_WORKER.onerror = e => {
-      console.error("Resident worker error:", e);
-    };
-    RESIDENT_WORKER.postMessage({
-      role: "session-init",
-      module: MODULE,
-      memPages: 16384,
-      vfs: VFS,
-      dbg: location.search.includes("dbg")
-    });
+/* ── The Resident Space Session — ONE instance, its graph kept (E2) ───────
+   ide/session-client.js is the host side the node twin drives too: the page
+   asks `mentl` verbs of one wheel instance that derived the program once, and
+   every caret read is a read of that graph; an edit rides the next request as
+   a delta and re-judges only its cone. A verb the session does not serve, or
+   a refusal (whose reason and exit code the session's wire cannot carry), is
+   answered cold by runWheel. Each reply carries `ms` and `resident`. */
+let SESSION = null;
+function residentSession(){
+  if (!SESSION) SESSION = new MentlSession.Session({
+    spawn: () => {
+      const w = new Worker("wheel-worker.js");
+      return { post: m => w.postMessage(m), terminate: () => w.terminate(), onError: fn => { w.onerror = e => fn(e.message || e); } };
+    },
+    module: MODULE, vfs: VFS, memPages: 16384,
+    runCold: req => runWheel(req),
   });
-  return sessReadyPromise;
-}
-
-function callResidentSession(argv, stdin = null, vfsDelta = null, timeoutMs = 30000){
-  return ensureResidentSession().then(() => {
-    return new Promise(resolve => {
-      const id = sessCallId++;
-      const t = setTimeout(() => {
-        sessPending.delete(id);
-        resolve({ exit: 1, out: "", err: "timeout", trapped: "timeout", tasks: 0 });
-      }, timeoutMs);
-      sessPending.set(id, res => {
-        clearTimeout(t);
-        resolve(res);
-      });
-      RESIDENT_WORKER.postMessage({
-        role: "session-call",
-        id,
-        argv,
-        stdin,
-        vfsDelta
-      });
-    });
-  });
+  return SESSION;
 }
 // the facet lines render_at emits (src/main.mn) → the ring's aspect keys. Propose
 // is aspect 2 (handler/propose): at a ?? hole render_at surfaces the proven
@@ -827,7 +794,7 @@ async function boot(){
   try {
     if (!crossOriginIsolated) throw new Error("page is not cross-origin isolated — start it with `mentl space` (the compiler's shared memory needs COOP/COEP headers)");
     const [wasm, ...texts] = await Promise.all([
-      fetch("mentl-ide.wasm").then(r => { if(!r.ok) throw new Error("mentl-ide.wasm missing"); return r.arrayBuffer(); }),
+      fetch("../boot/mentl.wasm").then(r => { if(!r.ok) throw new Error("boot/mentl.wasm missing — `mentl space` serves it from the repo root"); return r.arrayBuffer(); }),
       ...VFS_LIBS.map(([, u]) => fetch(u).then(r => r.ok ? r.text() : "")),
     ]);
     const byKey = {};
@@ -860,10 +827,25 @@ async function compile(){
   render(user, r.out, r.err, ms, rtLines, r.exit, r.trapped || null);
   // the headless gate's wire: ?smoke logs the compile verdict to console
   // (chrome --headless --enable-logging=stderr reads it; tools/ide-gate.sh)
-  if (location.search.includes("smoke"))
+  if (location.search.includes("smoke")){
     console.log(`SMOKE exit=${r.trapped ? "trap:" + r.trapped : r.exit} tasks=${r.tasks} watlines=${r.out ? r.out.split("\n").length : 0} ms=${ms}`);
+    if (!SMOKED_SESSION){ SMOKED_SESSION = true; smokeSession(user); }
+  }
   busy = false;
   if (again){ again = false; compile(); }
+}
+
+/* the headless gate's second wire: the resident session in a real browser —
+   the first call opens it (one derivation), the second is a read of its graph;
+   both timed, and `resident` says which route answered */
+let SMOKED_SESSION = false;
+async function smokeSession(user){
+  const lines = user.split("\n");
+  const at = lines.findIndex(l => l.startsWith("fn ")) + 1;
+  const s = residentSession();
+  const a = await s.call(["mentl", `main.mn:${at}:4`], { "main.mn": te.encode(user) });
+  const b = await s.call(["mentl", `main.mn:${at}:4`]);
+  console.log(`SMOKE-SESSION open=${a.ms.toFixed(0)} read=${b.ms.toFixed(1)} resident=${!!(a.resident && b.resident)} query=${/^Query: /m.test(b.out)}${a.why ? " why=" + a.why.split("\n")[0] : ""}`);
 }
 
 /* ── diagnostics parse (PRESERVED + applicability) ────────────────────────── */
@@ -1022,14 +1004,47 @@ function renderProposal(){
 
 function acceptProposal(){
   const p = PROPOSAL; if (!p) return false;
-  const ta = $("src");
   if (p.kind === "fix"){ applyFix(p.code, p.line); }
-  else {
-    ta.setRangeText(p.now, p.at, p.at + 2, "end");
-    ta.dispatchEvent(new Event("input")); compile();
-  }
+  else acceptHole(p);
   PROPOSAL = null; renderProposal();
   return true;
+}
+
+/* THE ACCEPT IS A GRAPH WRITE, AND THE TEXT IS ITS PROJECTION (C4). The
+   hole's Tab used to be a client-side splice — `setRangeText` — so the
+   compiler never learned that the value was proposed and accepted, and the
+   Why at that position read "int literal" as if the developer had typed
+   it. The gesture routes through the wheel now: `mentl accept main.mn:L:C`
+   draws the accept edge (the survivor's proof rides it), re-derives the
+   module, and projects the graph back to the file — the reply's `written`
+   channel carries the new text, and its stdout is the address projection
+   at the accepted position, whose Why walks to the proposal. */
+async function acceptHole(p){
+  const ta = $("src");
+  const { line, col } = lineColAt(p.at);
+  const vfsDelta = { "main.mn": te.encode(ta.value) };
+  $("dot").className = "busy";
+  const r = await residentSession().call(["mentl", "accept", `main.mn:${line}:${col}`], vfsDelta);
+  const wrote = r.written && r.written["main.mn"];
+  if (r.exit !== 0 || r.trapped || !wrote){
+    // nothing was drawn: the medium said why on stderr (a tie, a filled
+    // position); the page shows it and keeps the source as it was.
+    $("dot").className = "bad";
+    RESULT = Object.assign({}, RESULT || {}, { accept: (r.err || r.trapped || "").trim() });
+    renderProposal();
+    return;
+  }
+  ta.value = new TextDecoder().decode(wrote);
+  ta.setSelectionRange(p.at, p.at);
+  $("hl").innerHTML = highlight(ta.value);
+  renderTopology();
+  // the accepting process already projected the position over the
+  // re-derived graph — its Why names the accepted proposal
+  REAL = parseFacets(r.out); REAL_AT = p.at;
+  $("dot").className = "ok";
+  if (Object.keys(REAL).length) octopus("proven");
+  projectCursor();
+  compile();
 }
 
 /* the Ledger — the effect rows + the proof surface (negative space) */
@@ -1128,7 +1143,7 @@ async function projectReal(off){
   const { line, col } = lineColAt(off);
   realBusy = true; $("dot").className = "busy";
   const vfsDelta = { "main.mn": te.encode($("src").value) };
-  const r = await callResidentSession(["mentl", `main.mn:${line}:${col}`], null, vfsDelta);
+  const r = await residentSession().call(["mentl", `main.mn:${line}:${col}`], vfsDelta);
   realBusy = false; $("dot").className = RESULT?.trapped ? "bad" : "ok";
   const real = (r.exit === 0 && !r.trapped) ? parseFacets(r.out) : {};
   REAL = real; REAL_AT = off;

@@ -1,0 +1,9 @@
+// CROWN — a two-edge body row: `f() + g()` chases to no single terminal,
+// so the first form of the exit check (a chase to NRowFree) never fired
+// for it; the install walks EVERY free terminal of the resolved row and
+// the second argument refuses. Accepted by boot 2974547b (exit 8). Expect
+// E_EffectMismatch.
+effect E { op() -> Int }
+handler h { op() => resume(7) }
+fn both(f, g) with !E = f() + g()
+fn main() = (both(() => 1, () => op())) ~> h

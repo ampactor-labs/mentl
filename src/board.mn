@@ -56,7 +56,7 @@ type Standing = Within([(String, Span)]) | Over([(String, Span)])
 // which is visible, where a shape measured against a missing bound would be
 // a silent pass. Each entry's prose is its justification — the `why` the old
 // file kept 1,669 lines away from the number it belonged to.
-fn board_bounds() with Memory + Alloc = [
+fn board_bounds() = [
   // Zero because an eta-wrapper is a REFERENCE written as a MINT: the name it
   // wraps already exists, so the lambda re-mints what a handle would have
   // carried. Retires when the shape is a refusal rather than a count.
@@ -90,16 +90,64 @@ fn board_bounds() with Memory + Alloc = [
   // own subject for a full landing before anyone read the WITHIN line — which
   // is the argument for a board that reports the counts it is inside, not
   // only the ones it is over.
-  Bound({ceiling: 236, shape: CsEffectfulLambda}),
-  // A record pattern whose receiver row never closes reads a field offset
-  // the graph cannot prove. `T_FieldOffsetUnprovable` reports that class at
-  // the receiver now; this line retires when that diagnostic arms.
-  Bound({ceiling: 0, shape: CsRecordPatternOpen}),
-  // Drift mode 10 — the nine survivors are documented sentinels, not masked
+  //
+  // 236 -> 234 (2026-09-28, L3): the landing minted three (a second copy of
+  // the specialization bracket for call vectors, an `each` over a param
+  // list, and Verify's per-arm join), the board refused 238, and all three
+  // became references — the two brackets one `spec_bracketed` taken as a
+  // two-hole partial, which retired the pre-existing copy's lambda too.
+  //
+  // 234 -> 231 (2026-09-28, R0d): the count read 232 at pin 0bc8383e, two
+  // under the ceiling the landing before left, and one more left with the
+  // untyped pattern lowering R0d deleted.
+  //
+  // 231 -> 230 (2026-09-30, R0j): the per-fn emission's bracket became a
+  // reference (`emit_function_bracketed` as a one-hole partial), and the
+  // allocation audit's walkers were written as references and index walks
+  // from the start.
+  //
+  // 230 -> 229 (2026-10-01, P0): the landing minted two — the cycle guards'
+  // settlement folded with two accumulator lambdas — and the board refused
+  // 231; both became references (`member_owed_late` as a one-hole partial,
+  // `param_owed_late` mapped and joined by `row_join`), and the count fell
+  // one below the ceiling it entered under.
+  //
+  // 229 -> 228 (2026-10-02, E2): the count read 227 at pin 713745c6, two
+  // under the ceiling the landing before left. The session's banked brackets
+  // minted four thunks and the board refused 230; the three around the
+  // address projection are one function (`session_address`), and the
+  // discovery fold's accumulator lambda became a reference
+  // (`range_of_entry`), so the landing adds one — the address projection's
+  // and the accept's draw remain — and the ceiling holds the 228 it measures.
+  //
+  // 228 -> 225 (2026-10-02, E4): the Propose context reads the one path from
+  // the declaration to the hole, so the two containment walks that searched
+  // each level's children for the hole (`find` and `any` over a lambda that
+  // re-walked the subtree) are deleted with the scan they served; the
+  // caret's Verify line prints through a named function from its first form;
+  // and the declaration around a position is read up the parent edges, so
+  // the span scan that found it, and the lambda it searched with, are gone.
+  //
+  // 225 -> 223 (2026-10-03, #126): the exhaustiveness check's three readers
+  // of an arm's top pattern read one projection (`pat_tops`), and the two
+  // accumulator lambdas that walked arms and alternations became references
+  // (`arm_tags`, `top_tag`).
+  //
+  // 223 -> 222 (2026-10-03, AN-2): the landing minted three and the board
+  // refused 225 — two readers of an effect's ops each testing a discipline
+  // through a lambda, and the fold demanding each perform argument's leaf —
+  // and all three became references (`op_disc_holds` as a one-hole partial
+  // over `effect_op_names`, `fold_acc_evac_expr` by name, which the store's
+  // own demand reads too); the yield-record store the landing deleted took
+  // one with it, so the count fell one below the ceiling it entered under.
+  Bound({ceiling: 222, shape: CsEffectfulLambda}),
+  // Drift mode 10 — the seven survivors are documented sentinels, not masked
   // cases. Every wildcard that is NOT one of them is a variant the author
   // declined to enumerate, and the medium cannot tell the difference, which
-  // is exactly why the bound is a count and not zero.
-  Bound({ceiling: 9, shape: CsWildcardZero}),
+  // is exactly why the bound is a count and not zero. 9 -> 7 (2026-09-28,
+  // R0d): the count read 7 at pin 0bc8383e, so the bound admitted two new
+  // masked cases nobody would have seen.
+  Bound({ceiling: 7, shape: CsWildcardZero}),
   // Drift mode 13 — a bug is zero or it is blocking; a masked failure is the
   // surrender-fallback Anchor 2 deletes rather than wraps.
   Bound({ceiling: 0, shape: CsFailureMask}),
@@ -127,34 +175,25 @@ fn board_bounds() with Memory + Alloc = [
   // Drift mode 2 — scope as a parent-pointer frame stack. Env lookup is an
   // effect op; a frame walk is that op re-implemented where the handler was.
   Bound({ceiling: 0, shape: CsEnvFrame}),
-  // THE SECOND LINE ON THIS ROSTER THAT IS A REAL COUNTDOWN, and it was an
-  // OPINION until it was a number.
+  // THE SECOND LINE ON THIS ROSTER THAT IS A REAL COUNTDOWN, and it reached
+  // its endpoint on 2026-09-27 (A4). It began as the WIDE-row count: a
+  // signature past eight names is a capability nobody named, and naming
+  // one (`type Judging`, src/driver.mn) moved it 19 → 12 in one landing.
+  // Under that sat the deeper claim — the POSITIVE row is inferred and
+  // projected, and only negations, instance pins and Pure are authored —
+  // and that claim is the shape now: a signature that authors ANY bare
+  // positive name. `mentl tighten` wrote the residue of every such clause
+  // on the wheel (1,336 clauses carried positive names; 290 were already
+  // negation-only or Pure), so the wheel's signatures read as decisions:
+  // `with !Mutate`, `with Pure`, `with Sample(44100)`. What survives on the
+  // page is what a reader should read, and the full row is at the address
+  // surface beside repr width and resume cardinality.
   //
-  // A signature past `wide_row_width` names more effects than a reader can
-  // hold — nineteen, at the worst site on this wheel. The conviction is not
-  // that long rows are ugly. It is that each one is a capability nobody
-  // named: SYNTAX's §«Named effect rows» already provides the form, so a
-  // 17-name row becoming `with Judging + !Network` retires a site while
-  // losing no proven fact. Under it sits the deeper claim — that the
-  // POSITIVE row should be inferred and projected, and only negations, pins
-  // and genuine narrowings authored — at which point the count reaches zero
-  // and this line deletes itself like every other one here is supposed to.
-  //
-  // It was seen RED at 18 against its measured 19 before it was trusted,
-  // which is the only reason it is on the board: a bound nobody has watched
-  // fail is a decoration (§9.11). Then it MOVED in the same landing, 19 → 12,
-  // and the move is the argument rather than the number. Seven of the
-  // nineteen were the same sixteen-name core spelled seven times — the
-  // whole-program judgment's capability, which had no name. `type Judging =
-  // …` (src/driver.mn) gave it one, and the seven signatures became
-  // `with Judging`, `+ Filesystem`, `+ Persist`, `+ Fail` — every remaining
-  // name a decision a reader should read. No proven fact was lost; a row
-  // alias is transparent, so the checked row is identical.
-  //
-  // The remaining twelve are emit, cursor, infer and synth_proposer, whose
-  // cores differ from this one and from each other — each is its own unnamed
-  // capability, and naming them is what walks this to zero.
-  Bound({ceiling: 12, shape: CsWideRow})
+  // The ceiling is the measured count after the sweep — the clauses the
+  // verb could not rewrite (a multi-line signature head) plus the caps a
+  // developer keeps on purpose — and it only falls. A new inventory refuses
+  // the pin: the count is the law's gate, the prose above its residue.
+  Bound({ceiling: 0, shape: CsAuthoredPositiveRow})
 ]
 
 // The board: every bound answered by one live walk.
@@ -164,9 +203,9 @@ fn board_bounds() with Memory + Alloc = [
 // ran this same walk, printed "N site(s)", and then asked a regex what N was,
 // so a change to the SENTENCE could break the GATE. Nothing here can drift
 // from the walk, because there is nothing between them.
-fn board_read() with GraphRead + !Mutate + Alloc + Memory = board_bounds() |> map(bound_standing)
+fn board_read() with !Mutate = board_bounds() |> map(bound_standing)
 
-fn bound_standing(b) with GraphRead + !Mutate + Alloc + Memory = match b {
+fn bound_standing(b) with !Mutate = match b {
   Bound(r) => {
     let sites = census_sites(r.shape)
     (b, if len(sites) > r.ceiling { Over(sites) } else { Within(sites) })
@@ -176,7 +215,7 @@ fn bound_standing(b) with GraphRead + !Mutate + Alloc + Memory = match b {
 // One line, in the medium's voice: the shape, what it found, and — when the
 // bound is breached — the fact that a count rose rather than a rule fired,
 // which is the honest description of what a ratchet knows.
-fn board_line(entry) with Memory + Alloc = match entry {
+fn board_line(entry) = match entry {
   (b, standing) => match b {
     Bound(r) => match standing {
       Within(sites) => "  · {int_to_str(len(sites))} {census_label(r.shape)} — within {int_to_str(r.ceiling)}\n",
@@ -188,9 +227,9 @@ fn board_line(entry) with Memory + Alloc = match entry {
   },
 }
 
-fn board_sites(sites) with Memory + Alloc = sites |> map(board_site_line) |> str_concat_all
+fn board_sites(sites) = sites |> map(board_site_line) |> str_concat_all
 
-fn board_site_line(site) with Memory + Alloc = match site {
+fn board_site_line(site) = match site {
   (module, span) => "      {module}:{show_span(span)}\n",
 }
 

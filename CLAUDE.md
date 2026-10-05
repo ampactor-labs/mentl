@@ -432,7 +432,7 @@
 >   by ACCIDENT (zero-reads true only because monotonic allocation never
 >   reuses wasm's zero-init pages) is a bug the first new capability
 >   exposes — name the accident, then make it a CONTRACT at the one writer
->   (heap_reset now restores virginity).
+>   (the arena's exit zeroes what it reclaims).
 > - **wasm-tools FIRST — the mechanical instruments, before any hand-reading of a
 >   backtrace (proven 2026-07-08; the emit-diff was the biggest under-use).** The
 >   self-hosting bug class is ALWAYS "m2 works, m2's emit of the wheel (m3)
@@ -487,17 +487,42 @@
 > `mentl query <entry> unreferenced` (one hop) · `unreachable` (transitive
 > from main, fn decls — partitioned into modules CARRYING dead weight, with
 > their reached/unreached ratio, and modules the entry links WHOLE and never
-> calls into) · `refs of NAME` · `census <shape>` · `decls` ·
+> calls into) · `refs of NAME` · `census <shape>` · `decls` (each of
+> these, and `text`/`prose` below, also answers over a DIRECTORY of
+> independent programs — `mentl query tests/frontier/arena "refs of X"` —
+> every program judged on its own link, its own sites kept) ·
+> `variants NAME` (an ADT's constructors, or an effect's operations, with
+> their arities) · `ghosts`
+> (every cell the parser minted and the judgment never bound) ·
 > `modules` / `imports` / `performs` / `orphan-claims` · `smt` (every
-> undischarged obligation as an SMT-LIB assertion — what Phase 8.3's solver
-> swap will be handed, readable today); `mentl verify`
+> undischarged obligation as an SMT-LIB assertion — the set Phase 8.3's own
+> solver decides, readable today) · `text NEEDLE` (every string literal
+> containing it, spaces included — the emit's WAT is string literals, which
+> no identifier edge reaches) · `prose NEEDLE` (every comment containing it,
+> at the comment — prose is graph content, attached to the node it
+> precedes) · `writes of FIELD` (every value written into
+> a handler state field of that name, off the writers the judgment noted) ·
+> `provider of OP` (every handler declaring an arm for it, at the arm's
+> line); `mentl verify`
 > (the standing bounds on a program's own source, read off one judged
 > graph — a breach refuses); `mentl
 > <file:line>` (the line's ROOT — widest node) and `<file:line:col>` (the
-> TIGHTEST node — a `??`, a lambda's param) for the eight-aspect read with
-> the Lede; `mentl why/where <file> <name>`; `mentl doc <module>` for the
-> decl roster with types and ledes. A question none of these answers is
-> the facet to grow — in the same landing, never a grep absorbed into habit.
+> CHARACTER under the caret, so the TIGHTEST node — a `??`, a lambda's
+> param) for the eight-aspect read with the Lede; `mentl where <file>
+> <name>` (the declaration's head, row, widths and address — a type's, an
+> effect's or an alias's too, every one the name names) and `mentl why
+> <file> <name>`; `mentl doc <module>` for the decl roster with types and
+> ledes. A question none of these answers is the facet to grow — in the
+> same landing, never a grep absorbed into habit. **This is a GATE now, not
+> a resolution** (2026-10-02, after a session that knew this paragraph
+> grepped `.mn` source for what `where` and `refs of` answered by edge):
+> `tools/hooks/medium_first.py`, a PreToolUse hook checked in through
+> `.claude/settings.json`, refuses the Grep tool or a shell search scoped
+> to `.mn` source and any shell write to it. A question no verb answers
+> passes with `# verb-gap: <the missing facet>` on the command, the line
+> lands in `.build/verb-gaps.log`, and the logged facet is grown in the same
+> landing — E4's `where` address was the first, confessed three times in an
+> hour before it was built.
 >
 > **The self-build audit runs at every landing:** which step of THIS landing
 > did Claude or Morgan perform that the medium could have performed? What is
@@ -535,9 +560,11 @@
 > the Synth gate tomorrow): proposer-invariant, converging into `mentl
 > audit`:**
 > (1) **Source edits go through the Edit tool, never a python/sed write** —
-> the drift-audit and cursor-projection hooks fire on Edit-tool writes ONLY;
-> a heredoc `open().write()` edits the wheel OUTSIDE the medium's own gate
-> (a full day's comment-arc edits ran unaudited before the catch). (2) **The
+> the drift audit fires on Edit-tool writes (`tools/hooks/post_edit_drift.sh`,
+> the checked-in PostToolUse hook), and a heredoc `open().write()` edits the
+> wheel OUTSIDE the medium's own gate (a full day's comment-arc edits ran
+> unaudited before the catch) — so the medium-first gate refuses a shell
+> write to `.mn` source outright. (2) **The
 > medium's projection FIRST — as an order, not a preference**: the opening
 > probe of ANY dig is a verb on the artifact (`mentl query/check/at
 > <address>`, the census's spans, the verbs' own reports); a shell read or
@@ -638,8 +665,9 @@
 8. **String-keyed** — `mode == 0/1/2`; every flag is an ADT
 9. **Deferred-by-omission** — claiming done while sub-handles uncommitted
 
-(`tools/drift-audit.sh` runs as a PostToolUse hook and catches these + the
-extended catalog, e.g. drift 38: `mentl <tentacle>` as a CLI verb — tentacles
+(`tools/drift-audit.sh` runs on every Edit-tool write to `.mn` through the
+checked-in PostToolUse hook and again at the pre-commit hook, and catches
+these + the extended catalog, e.g. drift 38: `mentl <tentacle>` as a CLI verb — tentacles
 fire AT-CURSOR, not as subcommands. A flag = a named drift = the law violated;
 rewrite in residue form inline.)
 

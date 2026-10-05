@@ -1,0 +1,8 @@
+// The sound twin of leak-root-inner-install: `he` installed OUTSIDE hf, so
+// hf's arm's `op` resolves outward to it. Row: E absorbed at the outer tee.
+// Accepted, and runs to 11.
+effect E { op() -> Int }
+effect F { f_op() -> Int }
+handler hf { f_op() => resume(op() + 1) }
+handler he { op() => resume(10) }
+fn main() = (f_op()) ~> hf ~> he

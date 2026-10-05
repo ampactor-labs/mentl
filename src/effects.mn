@@ -30,26 +30,32 @@ import strings
 // enforce the invariant the algebra depends on.
 //
 // ─── the canonical triple's constructors ────────────────────────────
-// row = present ∪ (tail ∖ absent). Invariants enforced HERE, once, so
-// every flowing row is canonical at birth and no read ever normalizes:
-// present and absent each deduped. present ∩ absent is COHERENT under
-// the reading law — present ADDS a name now, absent FILTERS it from the
-// tail; both at once means "performs it here, and the tail's copy is
-// subtracted" (exactly what a caller's teaching join into a `~>` mask
-// cell produces). The former `absent ∖= present` canonicalization
-// conflated the AUTHORED contradiction (`with A + !A`, a decl-site
-// meet — build_declared_row's business) with a representation
-// invariant, and every join/fold that unioned a present into a masked
-// row silently DELETED the mask — the pending `~>` subtraction dying at
-// the collision, GraphRead/Intern surviving every bracket into the
-// wheel's own root row (the mask-inversion class, third face).
+// row = present ∪ ⋃ (edge cell ∖ edge mask), or present ∪ (everything ∖
+// absent) under EtAll. Invariants enforced HERE, once, so every flowing
+// row is canonical at birth and no read ever normalizes: present and
+// absent each deduped, and under EtOpen the absent set is pushed onto
+// every edge's mask and stored empty — a mask filters the path it was
+// written on, so the row keeps no mask of its own to spill onto an edge
+// it never covered. present ∩ a mask is COHERENT under the reading law —
+// present ADDS a name now, the mask FILTERS it from that edge; both at
+// once means "performs it here, and the edge's copy is subtracted"
+// (exactly what a caller's teaching join into a `~>`-masked row
+// produces). The former `absent ∖= present` canonicalization conflated
+// the AUTHORED contradiction (`with A + !A`, a decl-site meet —
+// build_declared_row's business) with a representation invariant, and
+// every join/fold that unioned a present into a masked row silently
+// DELETED the mask (the mask-inversion class, third face).
 //
-// The absent set survives EVERY tail form: under EtClosed it is vacuous
-// for the row's READING (no tail to mask) but load-bearing as the
-// crown's PROOF-OF-ABSENCE record — `with A + !B` gates carry B here,
-// and subsumption checks a body's presents against it transitively.
-fn ef_make(ref present, ref absent, tail) with !Mutate =
-  EfRow(name_set_canonicalize(present), name_set_canonicalize(absent), tail_canonical(tail))
+// The absent set survives the other two tail forms: under EtAll it is the
+// universe's mask, and under EtClosed it is vacuous for the READING but
+// load-bearing as the crown's PROOF-OF-ABSENCE record — `with A + !B`
+// gates carry B here, and subsumption checks a body's presents against
+// it transitively.
+fn ef_make(ref present, ref absent, tail) with !Mutate = match tail_canonical(tail) {
+  EtOpen(es) => EfRow(name_set_canonicalize(present), [], EtOpen(edges_masked(es, name_set_canonicalize(absent)))),
+  EtClosed => EfRow(name_set_canonicalize(present), name_set_canonicalize(absent), EtClosed),
+  EtAll => EfRow(name_set_canonicalize(present), name_set_canonicalize(absent), EtAll),
+}
 
 // EtOpen([]) IS EtClosed — a union of zero edges contributes nothing
 // beyond the present set, so the empty open form never survives its
@@ -65,35 +71,118 @@ fn tail_canonical(tail) = match tail {
   EtAll => EtAll,
 }
 
-// ─── the edge set — §4①'s sorted-handle-set at the tail ─────────────
-// Ascending, deduped; sets are small (a frame accumulates a handful of
-// open callees). STRUCTURAL RECURSION, deliberately not the fold/filter
-// vocabulary: the row algebra is MECHANISM (graph.mn's chase discipline)
-// and runs inside unify inside every judgment — the vocabulary form put
-// the resolver ON the Iterate handler machinery, and its first real
-// multi-edge walk floored the k2 yield boundary from inside a fold's
-// own yield arm (measured at m3's first trial unify, 2026-08-01: a
-// row-polymorphic call inside a yield arm's dynamic extent reads the
-// in-flight flag). The [Int] pins are the ++ floor's Intent Boundaries.
-fn tail_set_insert(ref vs: [Int], v: Int) with Memory + Alloc = match vs {
-  [] => [v],
-  [h, ...rest] => if v < h { [v] ++ vs } else if v == h { vs } else { [h] ++ tail_set_insert(rest, v) },
+// ─── the edge set — §4①'s sorted set at the tail, one entry per cell ──
+// Ascending by cell, deduped; sets are small (a frame accumulates a
+// handful of open callees). STRUCTURAL RECURSION, deliberately not the
+// fold/filter vocabulary: the row algebra is MECHANISM (graph.mn's chase
+// discipline) and runs inside unify inside every judgment — the
+// vocabulary form put the resolver ON the Iterate handler machinery, and
+// its first real multi-edge walk floored the k2 yield boundary from
+// inside a fold's own yield arm (measured at m3's first trial unify,
+// 2026-08-01: a row-polymorphic call inside a yield arm's dynamic extent
+// reads the in-flight flag). The [RowEdge] pins are the ++ floor's Intent
+// Boundaries.
+// The receiver is pinned to `RowEdge` at the boundary: a bare field read
+// generalizes over every record that carries the field, and the
+// instantiations the row walks reach never closed that row (two field-offset
+// floors, measured — a class that refuses now, E_FieldOffsetUnprovable).
+fn edge_cell(e: RowEdge) = e.cell
+
+fn edge_mask(e: RowEdge) = e.mask
+
+// The one construction of an edge.
+fn row_edge(v, m) = RowEdge{cell: v, mask: m}
+
+// ONE empty mask for every unmasked edge: an edge is minted per open row,
+// and a fresh `[]` per mint allocated a list that said nothing. Masks are
+// never mutated (every name-set op builds its result), so sharing is safe.
+let no_mask = []
+
+fn bare_edge(v) = row_edge(v, no_mask)
+
+// One cell reached on two paths keeps what BOTH subtract: the names one
+// path lets through reach the row, so only a name masked on every path
+// stays masked.
+fn tail_set_insert(ref vs: [RowEdge], e) = match vs {
+  [] => [e],
+  [h, ...rest] => if edge_cell(e) < edge_cell(h) {
+    [e] ++ vs
+  } else if edge_cell(e) == edge_cell(h) {
+    [edge_meet(h, e)] ++ rest
+  } else {
+    [h] ++ tail_set_insert(rest, e)
+  },
 }
 
-fn tail_set_union(ref vs: [Int], ref ws: [Int]) with Memory + Alloc = match ws {
+// The two paths' meet, reusing whichever edge already IS it — an unmasked
+// path is the meet, so the common case allocates nothing.
+fn edge_meet(h, e) = if len(edge_mask(h)) == 0 {
+  h
+} else if len(edge_mask(e)) == 0 {
+  e
+} else {
+  row_edge(edge_cell(h), name_set_intersect(edge_mask(h), edge_mask(e)))
+}
+
+fn tail_set_union(ref vs: [RowEdge], ref ws: [RowEdge]) = match ws {
   [] => vs,
   [h, ...rest] => tail_set_union(tail_set_insert(vs, h), rest),
 }
 
-fn tail_set_has(ref vs: [Int], v: Int) with Pure = match vs {
-  [] => false,
-  [h, ...rest] => if h == v { true } else { tail_set_has(rest, v) },
+fn tail_set_has(ref vs: [RowEdge], v: Int) with !Alloc + !Mutate = tail_set_has_from(vs, v, 0)
+
+fn tail_set_has_from(vs, v, i) =
+  i < len(vs) && (edge_cell(list_index(vs, i)) == v || tail_set_has_from(vs, v, i + 1))
+
+fn tail_set_diff(ref vs: [RowEdge], ref ws: [RowEdge]) = match vs {
+  [] => [],
+  [h, ...rest] => if tail_set_has(ws, edge_cell(h)) {
+    tail_set_diff(rest, ws)
+  } else {
+    [h] ++ tail_set_diff(rest, ws)
+  },
 }
 
-fn tail_set_diff(ref vs: [Int], ref ws: [Int]) with Memory + Alloc = match vs {
+// Every edge subtracts `m` too — the subtraction's own move, and ef_make's
+// push of a row-level absent onto the edges it filters.
+fn edges_masked(es: [RowEdge], m) = if len(m) == 0 { es } else { edges_masked_walk(es, m) }
+
+fn edges_masked_walk(es: [RowEdge], m) = match es {
   [] => [],
-  [h, ...rest] => if tail_set_has(ws, h) { tail_set_diff(rest, ws) } else { [h] ++ tail_set_diff(rest, ws) },
+  [e, ...rest] => [row_edge(edge_cell(e), name_set_union(edge_mask(e), m))] ++ edges_masked_walk(rest, m),
 }
+
+// Two edge sets over the same cells, whatever their masks — the unify
+// arm's "one tail" test.
+fn edges_same_cells(es: [RowEdge], fs: [RowEdge]) = match es {
+  [] => len(fs) == 0,
+  [e, ...rest] => match fs {
+    [] => false,
+    [f, ...frest] => edge_cell(e) == edge_cell(f) && edges_same_cells(rest, frest),
+  },
+}
+
+// No path subtracts anything — every edge reads its cell whole.
+fn edges_unmasked(es: [RowEdge]) = match es {
+  [] => true,
+  [e, ...rest] => len(edge_mask(e)) == 0 && edges_unmasked(rest),
+}
+
+// What every edge still subtracts, starting from `acc` — the universe
+// fold's bound: (ALL ∖ X) ∪ ⋃ (v ∖ m) ⊆ ALL ∖ (X ∩ ⋂ m).
+fn edges_mask_meet(es: [RowEdge], acc) = match es {
+  [] => acc,
+  [e, ...rest] => edges_mask_meet(rest, name_set_intersect(acc, edge_mask(e))),
+}
+
+// A fold's result: the open residual, or — when some edge's content was
+// the universe — the universe minus what every path still subtracts. That
+// bound drops the residual edges, so it is sound and not exact; the
+// universe reaches a row VALUE only through a supply-side EtAll, which
+// the ETALL law forbids and the cell-carried gate removes
+// (`Hβ.infer.declared-row-vacuous-against-a-free-body-row`).
+fn row_of_fold(p, am, res: [RowEdge], saw_all) =
+  if saw_all { ef_make(p, edges_mask_meet(res, am), EtAll) } else { ef_make(p, [], EtOpen(res)) }
 
 fn absent_minus_present(ref a, ref p) with !Mutate =
   filter((entry) => !any((pe) => absent_contradicted_by(entry, pe), p), a)
@@ -121,7 +210,7 @@ fn report_row_contradictions(absent, present) = match absent {
 // pairs (bare/bare, or instances not provably distinct) and an
 // instance-present under a bare-absent (the severance blocking its own
 // positive) are contradictions.
-fn absent_contradicted_by(absent, present) with Memory = if eff_name_handle(absent) != eff_name_handle(present) {
+fn absent_contradicted_by(absent, present) = if eff_name_handle(absent) != eff_name_handle(present) {
   false
 } else {
   match absent {
@@ -135,9 +224,9 @@ fn absent_contradicted_by(absent, present) with Memory = if eff_name_handle(abse
   }
 }
 
-fn mk_ef_closed(ref names) with Memory + Alloc = ef_make(names, [], EtClosed)
+fn mk_ef_closed(ref names) = ef_make(names, [], EtClosed)
 
-fn mk_ef_open(ref names, v) with Memory + Alloc = ef_make(names, [], EtOpen([v]))
+fn mk_ef_open(ref names, v) = ef_make(names, [], EtOpen([bare_edge(v)]))
 
 // ONE pure row for the whole image — the identity element as a module
 // value, every read a global load, zero allocation. This is the wheel's
@@ -148,7 +237,7 @@ let ef_pure_row = EfRow([], [], EtClosed)
 fn mk_ef_pure() with Pure = ef_pure_row
 
 // The crown's negative capability: !B = anything except B.
-fn mk_ef_neg(ref names) with Memory + Alloc = ef_make([], names, EtAll)
+fn mk_ef_neg(ref names) = ef_make([], names, EtAll)
 
 // ─── The signed-clause fold — authored `with` terms to ONE row ───────
 // The parsed triples (EffName, negated, EConn) build the canonical
@@ -273,10 +362,9 @@ fn neg_names_of(name, seen) = match row_alias_triples(name) {
   None => [name],
 }
 
-fn row_name_seen(seen, name) with Memory + Alloc + Intern =
-  row_name_seen_at(seen, eff_name_str(name), 0, len(seen))
+fn row_name_seen(seen, name) = row_name_seen_at(seen, eff_name_str(name), 0, len(seen))
 
-fn row_name_seen_at(seen, target: String, i, n) with Memory = if i >= n {
+fn row_name_seen_at(seen, target: String, i, n) = if i >= n {
   false
 } else {
   if list_index(seen, i) == target { true } else { row_name_seen_at(seen, target, i + 1, n) }
@@ -287,14 +375,14 @@ fn row_tail_closed(t) with Pure = match t {
   _ => false,
 }
 
-fn mk_record_open(ref fields, v) with Memory + Alloc = TRecordOpen(field_canonicalize(fields), v)
+fn mk_record_open(ref fields, v) = TRecordOpen(field_canonicalize(fields), v)
 
-fn field_canonicalize(ref fields) with Memory + Alloc = {
+fn field_canonicalize(ref fields) = {
   let n = len(fields)
   field_canonicalize_loop(fields, 0, n, [])
 }
 
-fn field_canonicalize_loop(ref fields, i, n, own acc) with Memory + Alloc = if i >= n {
+fn field_canonicalize_loop(ref fields, i, n, own acc) = if i >= n {
   acc
 } else {
   match list_index(fields, i) {
@@ -304,7 +392,7 @@ fn field_canonicalize_loop(ref fields, i, n, own acc) with Memory + Alloc = if i
 
 // Insert (name, ty) into sorted-by-name list; if name already present,
 // replace (last write wins).
-fn field_insert(ref sorted, ref name: String, ref ty) with Memory + Alloc = {
+fn field_insert(ref sorted, ref name: String, ref ty) = {
   let n = len(sorted)
   let pos = field_find_pos(sorted, name, 0, n)
   if pos < n {
@@ -339,7 +427,7 @@ fn field_insert(ref sorted, ref name: String, ref ty) with Memory + Alloc = {
 // Dissolves with band D (== reads the operand proof at the eq-fold).
 fn field_name_eq(a: String, b: String) with Pure = a == b
 
-fn field_find_pos(ref sorted, ref name, i, n) with Memory = if i >= n {
+fn field_find_pos(ref sorted, ref name, i, n) = if i >= n {
   n
 } else {
   match list_index(sorted, i) {
@@ -347,7 +435,7 @@ fn field_find_pos(ref sorted, ref name, i, n) with Memory = if i >= n {
   }
 }
 
-fn field_copy_suffix_shifted(ref src, own dst, src_idx, dst_idx, n) with Memory = if src_idx >= n {
+fn field_copy_suffix_shifted(ref src, own dst, src_idx, dst_idx, n) = if src_idx >= n {
   dst
 } else {
   field_copy_suffix_shifted(
@@ -362,21 +450,19 @@ fn field_copy_suffix_shifted(ref src, own dst, src_idx, dst_idx, n) with Memory 
 // ─── the triple algebra — fieldwise, canonical, no rewrite passes ──
 //
 // Identity until PROGRESS: resolution folds every tail EDGE into the
-// head (THE ABSENT-MASK LAW, PLAN's settled laws) —
-// r = p ∪ (each edge's content ∖ a); a bound edge contributes
-//   p' = p ∪ (cp ∖ a),  a' = a ∪ ca,  and its residual tail merges on
-// (Closed adds nothing, an open set unions into the residual, EtAll
-// absorbs — the mask rides the absent field even at the universe). A
-// free edge survives into the residual set; a row with no bound edge
-// returns UNTOUCHED (identity until progress, preserved exactly).
-fn resolve_row(row) with Memory + Alloc + GraphRead = match row {
+// head (THE ABSENT-MASK LAW, PLAN's settled laws, per edge) — a bound
+// edge (v, m) whose content is (cp, ca, ct) contributes cp ∖ m to the
+// presents, and its own open edges join the residual carrying m ∪ ca
+// FORWARD ONTO THEMSELVES; a universe content narrows the fold's universe
+// mask (row_of_fold). A mask never becomes the row's: until 2026-09-26
+// the fold took a' = a ∪ ca and filtered every SIBLING edge with a mask
+// its install never covered — `f() + ((g()) ~> h)` read as
+// `(r_f + r_g) − E`. A free edge survives into the residual set; a row
+// with no bound edge returns UNTOUCHED (identity until progress).
+fn resolve_row(row) = match row {
   EfRow(p, a, t) => match t {
-    EtOpen(vs) => match resolve_edges(vs, (p, a, [], false, false)) {
-      (rp, ra, res, saw_all, progressed) => if progressed {
-        if saw_all { ef_make(rp, ra, EtAll) } else { ef_make(rp, ra, EtOpen(res)) }
-      } else {
-        row
-      },
+    EtOpen(vs) => match resolve_edges(edges_masked(vs, a), (p, [], [], false, false)) {
+      (rp, am, res, saw_all, progressed) => if progressed { row_of_fold(rp, am, res, saw_all) } else { row },
     },
     _ => row,
   },
@@ -386,34 +472,38 @@ fn resolve_row(row) with Memory + Alloc + GraphRead = match row {
 // fold/Iterate vocabulary (the resolver runs inside unify inside every
 // judgment; the handler form floored the k2 yield boundary from inside
 // its own dispatch — the 2026-08-01 m3 trap).
-fn resolve_edges(ref vs: [Int], acc) with GraphRead + Memory + Alloc = match vs {
+fn resolve_edges(ref vs: [RowEdge], acc) = match vs {
   [] => acc,
-  [v, ...rest] => resolve_edges(rest, resolve_edge(acc, v)),
+  [e, ...rest] => resolve_edges(rest, resolve_edge(acc, e)),
 }
 
-// One edge of the reading fold: acc = (p, a, residual, saw_all,
-// progressed). Progress means at least one edge was bound — the
+// One edge of the reading fold: acc = (presents, universe mask, residual,
+// saw_all, progressed). Progress means at least one edge was bound — the
 // no-progress row returns by identity above.
-fn resolve_edge(acc, v) with GraphRead + Memory + Alloc = match acc {
-  (p, a, res, saw_all, progressed) => match graph_chase(v) {
+fn resolve_edge(acc, e) = match acc {
+  (p, am, res, saw_all, progressed) => match graph_chase(edge_cell(e)) {
     GNode(kind, _) => match edge_row_of(kind) {
-      Some(inner) => edge_content_into(p, a, res, saw_all, resolve_row(inner)),
-      None => (p, a, tail_set_insert(res, v), saw_all, progressed),
+      Some(inner) => edge_content_into(p, am, res, saw_all, edge_mask(e), resolve_row(inner)),
+      None => (p, am, tail_set_insert(res, e), saw_all, progressed),
     },
   },
 }
 
-// A resolved edge's content enters the accumulator — the one assembly
-// every edge fold shares (resolve, compress, chase-face, subst). The
-// residual set unions in order (the sorted-set invariant).
-fn edge_content_into(ref p, ref a, ref res, saw_all, ri) with Memory + Alloc = match ri {
+// A resolved edge's content enters the accumulator under THAT edge's mask
+// — the one assembly every edge fold shares (resolve, compress,
+// chase-face, subst, the stored flatten). The residual set unions in
+// order (the sorted-set invariant), and a universe content narrows the
+// universe mask the fold carries: (ALL ∖ X) ∪ (ALL ∖ Y) = ALL ∖ (X ∩ Y).
+fn edge_content_into(ref p, am, ref res, saw_all, m, ri) = match ri {
   EfRow(cp, ca, ct) => {
-    let p2 = name_set_union(p, name_set_diff(cp, a))
-    let a2 = name_set_union(a, ca)
+    let p2 = name_set_union(p, name_set_diff(cp, m))
     match ct {
-      EtClosed => (p2, a2, res, saw_all, true),
-      EtAll => (p2, a2, res, true, true),
-      EtOpen(ws) => (p2, a2, tail_set_union(res, ws), saw_all, true),
+      EtClosed => (p2, am, res, saw_all, true),
+      EtAll => {
+        let um = name_set_union(ca, m)
+        (p2, if saw_all { name_set_intersect(am, um) } else { um }, res, true, true)
+      },
+      EtOpen(ws) => (p2, am, tail_set_union(res, edges_masked(ws, name_set_union(ca, m))), saw_all, true),
     }
   },
 }
@@ -429,38 +519,36 @@ fn edge_content_into(ref p, ref a, ref res, saw_all, ri) with Memory + Alloc = m
 // the root's sequential walks compress the web).
 fn resolve_row_compress(row) = match row {
   EfRow(p, a, t) => match t {
-    EtOpen(vs) => match resolve_edges_compress(vs, (p, a, [], false, false)) {
-      (rp, ra, res, saw_all, progressed) => if progressed {
-        if saw_all { ef_make(rp, ra, EtAll) } else { ef_make(rp, ra, EtOpen(res)) }
-      } else {
-        row
-      },
+    EtOpen(vs) => match resolve_edges_compress(edges_masked(vs, a), (p, [], [], false, false)) {
+      (rp, am, res, saw_all, progressed) => if progressed { row_of_fold(rp, am, res, saw_all) } else { row },
     },
     _ => row,
   },
 }
 
-fn resolve_edges_compress(ref vs: [Int], acc) = match vs {
+fn resolve_edges_compress(ref vs: [RowEdge], acc) = match vs {
   [] => acc,
-  [v, ...rest] => resolve_edges_compress(rest, resolve_edge_compress(acc, v)),
+  [e, ...rest] => resolve_edges_compress(rest, resolve_edge_compress(acc, e)),
 }
 
-// The compressing fold's edge: resolve, REBIND the edge to its terminal
-// (the one-hop web later reads ride), then fold the content in.
-fn resolve_edge_compress(acc, v) = match acc {
-  (p, a, res, saw_all, progressed) => match graph_chase(v) {
+// The compressing fold's edge: resolve, REBIND the edge's cell to its
+// terminal (the one-hop web later reads ride), then fold the content in
+// under the edge's own mask — the rebind is the cell's value, the mask is
+// the path's, so compression never moves one into the other.
+fn resolve_edge_compress(acc, e) = match acc {
+  (p, am, res, saw_all, progressed) => match graph_chase(edge_cell(e)) {
     GNode(kind, _) => match kind {
       NRowBound(inner) => {
         let ri = resolve_row_compress(inner)
-        graph_compress_row(v, ri)
-        edge_content_into(p, a, res, saw_all, ri)
+        graph_compress_row(edge_cell(e), ri)
+        edge_content_into(p, am, res, saw_all, edge_mask(e), ri)
       },
       k => // A fn-typed edge FOLDS its row but is NEVER compressed: the cell's
       // binding IS the function type, and a compress write here would
       // overwrite the TFun with a row (the cell serves the type reads too).
       match edge_row_of(k) {
-        Some(inner) => edge_content_into(p, a, res, saw_all, resolve_row_compress(inner)),
-        None => (p, a, tail_set_insert(res, v), saw_all, progressed),
+        Some(inner) => edge_content_into(p, am, res, saw_all, edge_mask(e), resolve_row_compress(inner)),
+        None => (p, am, tail_set_insert(res, e), saw_all, progressed),
       },
     },
   },
@@ -477,22 +565,9 @@ fn resolve_edge_compress(acc, v) = match acc {
 // identity is the instance's own record — conservative: an unshared
 // equal fragment coexists as a copy, and coexistence is the safe side.
 // Bare names and absent sets are genuine name-sets; tails join as ever.
-fn row_join(ref a, ref b) with !Mutate + Memory + Alloc = match a {
+fn row_join(ref a, ref b) with !Mutate = match a {
   EfRow(pa, aa, ta) => match b {
-    EfRow(pb, ab, tb) => {
-      let p = frag_union(pa, pb)
-      let absent = match ta {
-        EtClosed => match tb {
-          EtClosed => [],
-          _ => ab,
-        },
-        _ => match tb {
-          EtClosed => aa,
-          _ => name_set_union(aa, ab),
-        },
-      }
-      ef_make(p, absent, tail_join(ta, tb))
-    },
+    EfRow(pb, ab, tb) => rows_joined(frag_union(pa, pb), aa, ta, ab, tb),
   },
 }
 
@@ -503,13 +578,13 @@ fn row_join(ref a, ref b) with !Mutate + Memory + Alloc = match a {
 // share that escaped freshening, and the join's coexistence is the
 // confluence net that keeps it deterministic while the census drives
 // the leak class to zero.
-fn row_frag_collision(ref a, ref b) with Memory + Alloc = match a {
+fn row_frag_collision(ref a, ref b) = match a {
   EfRow(pa, _, _) => match b {
     EfRow(pb, _, _) => frag_collision_walk(pa, pb, 0),
   },
 }
 
-fn frag_collision_walk(ref pa, ref pb, i) with Memory + Alloc = if i >= len(pb) {
+fn frag_collision_walk(ref pa, ref pb, i) = if i >= len(pb) {
   false
 } else {
   let hit = match list_index(pb, i) {
@@ -519,7 +594,7 @@ fn frag_collision_walk(ref pa, ref pb, i) with Memory + Alloc = if i >= len(pb) 
   if hit { true } else { frag_collision_walk(pa, pb, i + 1) }
 }
 
-fn frag_name_clash(ref pa, h2, args2, j) with Memory + Alloc = if j >= len(pa) {
+fn frag_name_clash(ref pa, h2, args2, j) = if j >= len(pa) {
   false
 } else {
   let hit = match list_index(pa, j) {
@@ -533,10 +608,10 @@ fn frag_name_clash(ref pa, h2, args2, j) with Memory + Alloc = if j >= len(pa) {
 // is already present. Bare ENamed dedups by handle (one instance per bare
 // effect by construction); EParameterized dedups by the instance's GRAPH
 // identity (frag_args_same — the instance IS the fragment).
-fn frag_union(ref pa, ref pb) with Memory + Alloc =
+fn frag_union(ref pa, ref pb) =
   fold(pa, (acc, e) => if frag_present(acc, e, 0) { acc } else { acc ++ [e] }, pb)
 
-fn frag_present(ref acc, e, i) with Memory + Alloc = if i >= len(acc) {
+fn frag_present(ref acc, e, i) = if i >= len(acc) {
   false
 } else {
   let hit = match (list_index(acc, i), e) {
@@ -560,49 +635,88 @@ fn frag_present(ref acc, e, i) with Memory + Alloc = if i >= len(acc) {
 // the reconciled instance IS the install's identity — the same channel the
 // crown's instance-precise negation keys on (install provenance, the
 // world-chain hkey: designed here once, consumed by the modal crown).
-fn frag_args_same(ref a1, ref a2) with Memory + Alloc =
-  len(a1) == len(a2) && frag_args_same_walk(a1, a2, 0)
+fn frag_args_same(ref a1, ref a2) = len(a1) == len(a2) && frag_args_same_walk(a1, a2, 0)
 
-fn frag_args_same_walk(ref a1, ref a2, i) with Memory + Alloc = if i >= len(a1) {
+fn frag_args_same_walk(ref a1, ref a2, i) = if i >= len(a1) {
   true
+} else if frag_arg_same(list_index(a1, i), list_index(a2, i)) {
+  frag_args_same_walk(a1, a2, i + 1)
 } else {
-  let same = match (list_index(a1, i), list_index(a2, i)) {
-    (EAInt(x), EAInt(y)) => x == y,
-    (EAFloat(x), EAFloat(y)) => x == y,
-    (EAString(x), EAString(y)) => x == y,
-    (EAType(tx), EAType(ty2)) => match (tx, ty2) {
-      (TVar(hx), TVar(hy)) => hx == hy,
+  false
+}
+
+// One argument position. Nested matches, never a pair scrutinee: since the
+// row dedup asks this of every same-named instance pair, a tuple per
+// comparison was a heap record per call on inference's hottest path.
+fn frag_arg_same(x, y) = match x {
+  EAInt(p) => match y {
+    EAInt(q) => p == q,
+    _ => false,
+  },
+  EAFloat(p) => match y {
+    EAFloat(q) => p == q,
+    _ => false,
+  },
+  EAString(p) => match y {
+    EAString(q) => p == q,
+    _ => false,
+  },
+  EAType(tx) => match tx {
+    TVar(hx) => match y {
+      EAType(ty2) => match ty2 {
+        TVar(hy) => hx == hy,
+        _ => false,
+      },
       _ => false,
     },
-    (EANode(nx), EANode(ny)) => nx == ny,
-    (EAEffect(hx), EAEffect(hy)) => // The registration fold's constants: one interned identity each, so
+    _ => false,
+  },
+  EANode(nx) => match y {
+    EANode(ny) => nx == ny,
+    _ => false,
+  },
+  EAEffect(hx) => match y {
+    EAEffect(hy) => // The registration fold's constants: one interned identity each, so
     // sameness is the word compare (eff_arg_scalar_unequal's dual).
     hx == hy,
-    (EACon(hx), EACon(hy)) => hx == hy,
     _ => false,
-  }
-  if same { frag_args_same_walk(a1, a2, i + 1) } else { false }
+  },
+  EACon(hx) => match y {
+    EACon(hy) => hx == hy,
+    _ => false,
+  },
 }
 
 // Union (`+` and the accumulation of performs): presents union; a name
 // present ANYWHERE escapes every mask, so the joint absent set drops it;
 // tails join Closed < Var < All, first var kept (unification constrains).
-fn union_row(ref a, ref b) with Memory + Alloc = match a {
+fn union_row(ref a, ref b) = match a {
   EfRow(pa, aa, ta) => match b {
-    EfRow(pb, ab, tb) => {
-      let p = name_set_union(pa, pb)
-      let absent = match ta {
-        EtClosed => match tb {
-          EtClosed => [],
-          _ => ab,
-        },
-        _ => match tb {
-          EtClosed => aa,
-          _ => name_set_union(aa, ab),
-        },
-      }
-      ef_make(p, absent, tail_join(ta, tb))
-    },
+    EfRow(pb, ab, tb) => rows_joined(name_set_union(pa, pb), aa, ta, ab, tb),
+  },
+}
+
+// The tails of a union, with each side's absent set read as what it is on
+// that side: a closed row's absent masks nothing, an open row's is pushed
+// onto its own edges (ef_make), and a universe's is its mask. Two masks
+// meet by INTERSECTION — a name one side lets through is in the union —
+// which is why the absents are never unioned here: the union of two masks
+// claimed an absence neither side proved (`!E ∪ !F` read as `!E + !F`).
+fn rows_joined(p, aa, ta, ab, tb) = match ta {
+  EtClosed => match tb {
+    EtClosed => ef_make(p, [], EtClosed),
+    EtOpen(ws) => ef_make(p, ab, EtOpen(ws)),
+    EtAll => ef_make(p, ab, EtAll),
+  },
+  EtOpen(vs) => match tb {
+    EtClosed => ef_make(p, aa, EtOpen(vs)),
+    EtOpen(ws) => ef_make(p, [], EtOpen(tail_set_union(edges_masked(vs, aa), edges_masked(ws, ab)))),
+    EtAll => ef_make(p, edges_mask_meet(edges_masked(vs, aa), ab), EtAll),
+  },
+  EtAll => match tb {
+    EtClosed => ef_make(p, aa, EtAll),
+    EtOpen(ws) => ef_make(p, edges_mask_meet(edges_masked(ws, ab), aa), EtAll),
+    EtAll => ef_make(p, name_set_intersect(aa, ab), EtAll),
   },
 }
 
@@ -618,47 +732,26 @@ fn union_row(ref a, ref b) with Memory + Alloc = match a {
 // merges (the writer census's Class B), so the set union is the join
 // the lattice always wanted: a second callee's edge SURVIVES where the
 // first-var drop discarded it. mn-two-tail-accumulation is the
-// acceptance.
-fn tail_join(ta, tb) with Memory + Alloc + !Mutate = match ta {
-  EtClosed => tb,
-  EtOpen(vs) => match tb {
-    EtAll => EtAll,
-    EtOpen(ws) => EtOpen(tail_set_union(vs, ws)),
-    EtClosed => EtOpen(vs),
-  },
-  EtAll => EtAll,
-}
-
-// Difference (`-` and the `~>` subtraction): an EAGER LITERAL DIFFERENCE
-// into the fields — b's present names leave a's present and join a's
-// absent, masking the tail FOREVER (the subtraction cannot be dropped by
-// a later tail grounding: it is a field of the row, not a rewrite step).
+// acceptance; rows_joined above is that union.
 //
-// A VAR tail's mask goes INTO THE GRAPH, not the field: union's absent is
-// the mask INTERSECTION (set-correct — each mask scopes only its own
-// tail), so a top-level mask on a var-tailed row VANISHES the moment the
-// absorbed row unions into a frame (the multieffect leak: `run() ~>
-// buffer` in let position lost Emit's subtraction at the frame union).
-// Minting a fresh var BOUND to the masked triple over the original tail
-// makes the mask an EDGE resolve_row folds through — unions carry vars
-// untouched, so the subtraction survives every union by construction.
-fn diff_row(ref a, ref b) with GraphWrite + Memory + !Mutate + Alloc = match a {
+// Difference (`-` and the `~>` subtraction): an EAGER LITERAL DIFFERENCE
+// into the fields — b's present names leave a's present and join the mask
+// of EVERY edge a carries, and of a's universe or its closed proof record
+// (ef_make places the absent by tail). The subtraction is a field of each
+// edge, never a rewrite step, so no later grounding or union can drop it
+// and no sibling edge a union later brings in can inherit it.
+//
+// It used to mint a fresh row CELL bound to the masked triple, so the
+// mask could ride unions as one opaque edge — a graph write inside the
+// algebra, needed only because the row had one absent set for all its
+// edges. The stored flatten then folded that cell's absent back into the
+// row's, and the mask covered every sibling (`fn run(f, g) = f() +
+// ((g()) ~> h)` published `!E + r_f + r_g`; run(() => op(), …) compiled
+// clean and trapped, measured 2026-09-26). The edge carries its own mask
+// now, and the cell, its write and its Reason are gone.
+fn diff_row(ref a, ref b) with !Mutate = match a {
   EfRow(pa, aa, ta) => match b {
-    EfRow(pb, _, _) => match ta {
-      EtOpen(vs) => {
-        // The mask edge wraps the WHOLE original edge set — one fresh
-        // cell bound to the masked triple over every surviving edge, so
-        // the subtraction rides any union as a single opaque edge.
-        let masked = graph_fresh_row(Inferred("~> subtraction mask"))
-        graph_bind_row(
-          masked,
-          EfRow([], name_set_union(aa, pb), EtOpen(vs)),
-          Inferred("pending tail subtraction")
-        )
-        ef_make(name_set_diff(pa, pb), [], EtOpen([masked]))
-      },
-      _ => ef_make(name_set_diff(pa, pb), name_set_union(aa, pb), ta),
-    },
+    EfRow(pb, _, _) => ef_make(name_set_diff(pa, pb), name_set_union(aa, pb), ta),
   },
 }
 
@@ -666,7 +759,7 @@ fn diff_row(ref a, ref b) with GraphWrite + Memory + !Mutate + Alloc = match a {
 // the pure-negation form (p=[], tail=All) is the difference; the
 // var-tailed general meet is the modal frontier — the LOUD refusal names
 // it instead of mushing (the crucible that reaches it is the witness).
-fn inter_row(ref a, ref b) with Memory + Alloc + GraphWrite = match a {
+fn inter_row(ref a, ref b) = match a {
   EfRow(pa, aa, ta) => match b {
     EfRow(pb, ab, tb) => match ta {
       EtAll => if len(pa) == 0 { diff_row(b, mk_ef_closed(aa)) } else { EfRow(pa, aa, ta) },
@@ -711,7 +804,7 @@ fn absorb_row(ref body_row, ref handled_row, ref extra_row) with !Mutate =
 // ONLY with the row half landed whole: edge-set tails (D3) + gates and
 // drains at the group's completion event (D4). Until then this freeze
 // is the sound form.
-fn row_without_self(row, self_h) with Memory + Alloc + GraphRead = match resolve_row(row) {
+fn row_without_self(row, self_h) = match resolve_row(row) {
   EfRow(p, a, t) => match t {
     EtOpen(vs) => {
       // The cut drops every edge chasing to the fn's OWN cell; the
@@ -724,12 +817,12 @@ fn row_without_self(row, self_h) with Memory + Alloc + GraphRead = match resolve
   },
 }
 
-fn edges_without_self(ref vs: [Int], self_root: Int) with Memory + Alloc + GraphRead = match vs {
+fn edges_without_self(ref vs: [RowEdge], self_root: Int) = match vs {
   [] => [],
-  [v, ...rest] => if graph_chase_handle(v) == self_root {
+  [e, ...rest] => if graph_chase_handle(edge_cell(e)) == self_root {
     edges_without_self(rest, self_root)
   } else {
-    [v] ++ edges_without_self(rest, self_root)
+    [e] ++ edges_without_self(rest, self_root)
   },
 }
 
@@ -763,7 +856,7 @@ fn edges_without_self(ref vs: [Int], self_root: Int) with Memory + Alloc + Graph
 // root: signature_free_roots reads THROUGH the live cells at exit,
 // deep-chased — that read is load-bearing. Record:
 // `Hβ.infer.hof-param-row-never-reaches-enclosing` in RESIDUE.md.
-fn row_keep_completion(row, ceiling: Int, sig_keep: [Int]) with Memory + Alloc + GraphRead = if ceiling == 0 {
+fn row_keep_completion(row, ceiling: Int, sig_keep: [Int]) = if ceiling == 0 {
   row
 } else {
   match row {
@@ -777,9 +870,9 @@ fn row_keep_completion(row, ceiling: Int, sig_keep: [Int]) with Memory + Alloc +
   }
 }
 
-fn edges_keep_completion(ref vs: [Int], ceiling: Int, sig_keep: [Int]) with Memory + Alloc + GraphRead = match vs {
+fn edges_keep_completion(ref vs: [RowEdge], ceiling: Int, sig_keep: [Int]) = match vs {
   [] => [],
-  [v, ...rest] => match graph_chase(v) {
+  [e, ...rest] => match graph_chase(edge_cell(e)) {
     GNode(kind, _) => // "A bound edge is a content link — KEPT (reads fold it)" holds for
     // BOTH row-bearing bindings (edge_row_of, the one projection): a row
     // cell, and a cell bound to a FUNCTION type — the caller's freshened
@@ -788,13 +881,13 @@ fn edges_keep_completion(ref vs: [Int], ceiling: Int, sig_keep: [Int]) with Memo
     // above-ceiling transient, and the callee's effects died with it
     // (the under-publish peer's layer two).
     match edge_row_of(kind) {
-      Some(_) => [v] ++ edges_keep_completion(rest, ceiling, sig_keep),
+      Some(_) => [e] ++ edges_keep_completion(rest, ceiling, sig_keep),
       None => {
-        let r = graph_chase_handle(v)
+        let r = graph_chase_handle(edge_cell(e))
         if r < ceiling {
-          [v] ++ edges_keep_completion(rest, ceiling, sig_keep)
+          [e] ++ edges_keep_completion(rest, ceiling, sig_keep)
         } else if any((k) => k == r, sig_keep) {
-          [v] ++ edges_keep_completion(rest, ceiling, sig_keep)
+          [e] ++ edges_keep_completion(rest, ceiling, sig_keep)
         } else {
           edges_keep_completion(rest, ceiling, sig_keep)
         }
@@ -813,7 +906,7 @@ fn edges_keep_completion(ref vs: [Int], ceiling: Int, sig_keep: [Int]) with Memo
 //   gate tail Closed: body must be closed with present ⊆ gate.present.
 //   gate tail Open:   the gate is polymorphic — body's knowns must fit
 //                    the gate's knowns; the tails unify later.
-fn row_subsumes(ref body_row, ref gate_row) with Memory + Alloc + GraphRead = {
+fn row_subsumes(ref body_row, ref gate_row) = {
   // Subsumption is a READ — resolve without compressing. The graph has ONE
   // writer (inference); a gate check runs from every projection (egraph
   // is_pure, the gradient's narrowing read, the census), and a read that
@@ -892,18 +985,282 @@ fn row_subsumes(ref body_row, ref gate_row) with Memory + Alloc + GraphRead = {
 fn unify_row(ref a, ref b, ref span, ref reason) with !Mutate =
   unify_row_canonical(resolve_row_compress(a), resolve_row_compress(b), span, reason)
 
+// ─── the gate — a declared negation, carried by the cell ─────────────
+//
+// A gate is an upper bound on a cell's solutions: `G ⊆ U`, read as
+// `!E` (`([], [E], EtAll)` — everything but E) or as the empty closed cap
+// (`with Pure` — nothing). The invariant every writer keeps is that a
+// gated cell never holds a row outside its gate, and it holds in two
+// halves at each write of a value `(P, EtOpen(edges))` into a gated cell:
+//   ground — `P ⊆ G`, checked now on the FOLDED value (row_subsumes);
+//   push   — each free terminal `(v, m)` of the value receives `G ∪ m`,
+//            since `σ(v) ∖ m ⊆ G ⟺ σ(v) ⊆ G ∪ m`: a negation loses the
+//            names the path absorbs, a closed cap gains them (LENS §2.3,
+//            derived rather than asserted; the mask rides the edge so the
+//            push is exact per path).
+// A cell carries a LIST of gates (each with its declaring Reason) and is
+// judged against every one — two declarations meeting on one cell need no
+// meet operation, and a refusal names the declaration it violates. The
+// gate follows the cell's aliases (an alias's write pushes onto its
+// terminal), its instances (every copy build_inst_mapping minted while the
+// declaration was open, through the instance column), and its content (a
+// copy bound before its root was gated is judged at the install). This is
+// what makes `fn run(f) with !E = f()` refuse `run(() => op())` at the
+// argument edge, under polymorphism, through masks, across forward
+// references and sig'd recursion
+// (Hβ.infer.declared-row-vacuous-against-a-free-body-row).
+fn gate_row(g: Gate) = g.row
+
+fn gate_reason(g: Gate) = g.reason
+
+fn mk_gate(row, reason) = Gate{reason: reason, row: row}
+
+// The gates a WRITE into `cell` must satisfy: the cell's own and its
+// root's (a single-edge alias chases to the terminal that installs
+// carry to; a write into the alias is read through it).
+fn gates_at(cell) = {
+  let own_gates = graph_gates_of(cell)
+  let r = graph_chase_handle(cell)
+  if r == cell {
+    own_gates
+  } else {
+    let root_gates = graph_gates_of(r)
+    if len(own_gates) == 0 {
+      root_gates
+    } else if len(root_gates) == 0 {
+      own_gates
+    } else {
+      own_gates ++ root_gates
+    }
+  }
+}
+
+// Dedup at the install, BY ROW: a gate is a bound, and a bound already
+// held enters no second time — the same declaration reaching one cell on
+// two paths (a two-path meet, a re-finalize, the alias hop), and two
+// declarations stating one bound (a parameter typed `() -> a with !E`
+// inside a body declared `!E`: the param's gate and the exit's install
+// coincide on the parameter's cell). The first declaring Reason is the
+// bound's; a second witness of the same bound would refuse the same edge
+// twice for one violation (the noisy hof-gate face measured two).
+fn gate_present(gs: [Gate], g: Gate) = match gs {
+  [] => false,
+  [h, ...rest] => if gate_row(h) == gate_row(g) { true } else { gate_present(rest, g) },
+}
+
+// The gate as it reaches a terminal through the edge's mask: a negation
+// forgets the masked names (an absorbed name never reaches the row); a
+// closed cap admits them. A gate whose forbidden set the mask exhausts is
+// satisfied by the mask alone and pushes nothing.
+fn gate_through_mask(g: Gate, m) = match gate_row(g) {
+  EfRow(p, a, t) => match t {
+    EtAll => {
+      let a2 = name_set_diff(a, m)
+      if len(a2) == 0 { None } else { Some(mk_gate(ef_make(p, a2, EtAll), gate_reason(g))) }
+    },
+    EtClosed => Some(mk_gate(ef_make(name_set_union(p, m), name_set_diff(a, m), EtClosed), gate_reason(g))),
+    EtOpen(_) => None,
+  },
+}
+
+// Judge a FOLDED value against one gate — the ground half; the refusal
+// carries the gate's own reason so it names the declaration it violates.
+fn gate_judge(g: Gate, v, span) = if row_subsumes(v, gate_row(g)) {
+  ()
+} else {
+  report_effect_mismatch(gate_row(g), v, span, gate_reason(g))
+}
+
+// The push half: every free terminal of the folded value takes the gate
+// through its own mask. Structural walk (the resolver's discipline).
+fn gate_push(g: Gate, v, span) = match v {
+  EfRow(_, _, t) => match t {
+    EtOpen(vs) => gate_push_edges(g, vs, span),
+    _ => (),
+  },
+}
+
+fn gate_push_edges(g: Gate, vs: [RowEdge], span) = match vs {
+  [] => (),
+  [e, ...rest] => {
+    match gate_through_mask(g, edge_mask(e)) {
+      Some(g2) => gate_install(edge_cell(e), g2, span),
+      None => (),
+    }
+    gate_push_edges(g, rest, span)
+  },
+}
+
+fn gate_judge_push(g: Gate, v, span) = {
+  gate_judge(g, v, span)
+  gate_push(g, v, span)
+}
+
+fn gates_judge_push(gs: [Gate], v, span) = match gs {
+  [] => (),
+  [g, ...rest] => {
+    gate_judge_push(g, v, span)
+    gates_judge_push(rest, v, span)
+  },
+}
+
+// Install a gate on a cell: enter it, judge what the cell ALREADY holds
+// (a copy bound before its root was gated — the sig'd self-reference
+// whose recursive call instantiated the scheme before the declaration's
+// exit), reach every noted instance, and follow a single-edge alias to
+// the free terminal the writes land on. The entry precedes the recursion
+// so a copy bound back to its own root (a recursive call passing its own
+// callback parameter straight through) terminates at the dedup.
+fn gate_install(cell, g: Gate, span) = if gate_present(graph_gates_of(cell), g) {
+  ()
+} else {
+  graph_gate_add(cell, g)
+  match graph_chase(cell) {
+    GNode(kind, _) => match edge_row_of(kind) {
+      Some(content) => gate_judge_push(g, resolve_row(content), span),
+      None => (),
+    },
+  }
+  gate_install_instances(graph_instances_of(cell), g, span)
+  let r = graph_chase_handle(cell)
+  if r == cell { () } else if row_var_is_free_cell(r) { gate_install(r, g, span) } else { () }
+}
+
+fn gate_install_instances(is, g: Gate, span) = match is {
+  [] => (),
+  [i, ...rest] => {
+    gate_install(i, g, span)
+    gate_install_instances(rest, g, span)
+  },
+}
+
+// A free cell of either sort in row position (the NFree tolerance
+// row_var_is_free names in infer.mn, read here at the mechanism layer).
+fn row_var_is_free_cell(v) = match graph_chase(v) {
+  GNode(NRowFree(_), _) => true,
+  GNode(NFree(_), _) => true,
+  _ => false,
+}
+
+// THE CHECKING WRITER's half, before the raw bind: every gate on the
+// target judges the incoming value and rides its free terminals, and the
+// target's noted instances follow the alias the bind draws (a note taken
+// under a pre-registered cell must be reachable from the judgment cell it
+// is bound to, or the declaration's exit install misses the copy). A cell
+// with neither gates nor notes — the common case — costs two bucket reads.
+fn gate_check_push(cell, row, span) = {
+  let gs = gates_at(cell)
+  let notes = graph_instances_of(cell)
+  if len(gs) == 0 && len(notes) == 0 {
+    ()
+  } else {
+    let v = resolve_row(row)
+    gates_judge_push(gs, v, span)
+    notes_follow(notes, v)
+  }
+}
+
+fn notes_follow(notes, v) = match v {
+  EfRow(_, _, t) => match t {
+    EtOpen(vs) => notes_follow_edges(notes, vs),
+    _ => (),
+  },
+}
+
+fn notes_follow_edges(notes, vs: [RowEdge]) = match vs {
+  [] => (),
+  [e, ...rest] => {
+    notes_enter(graph_chase_handle(edge_cell(e)), notes)
+    notes_follow_edges(notes, rest)
+  },
+}
+
+fn notes_enter(root, notes) = match notes {
+  [] => (),
+  [i, ...rest] => {
+    graph_instance_note(root, i)
+    notes_enter(root, rest)
+  },
+}
+
+// THE JUDGED WRITER IS AN INSTALL. Every row write the judgment performs
+// reaches this handler before the graph: a bind or a finalize is judged
+// against every gate its target cell carries and the gates ride the value's
+// free terminals (`gate_check_push`), then the raw write is forwarded
+// outward to `graph_handler` (an arm's own perform resolves outer). So
+// LENS §2.3 lemma (i)'s premise — every writer refuses a violating write and
+// pushes as stated — is a fact of this install's extent, not of a wrapper a
+// writer remembers to call: inside a judgment a raw `graph_bind_row` is
+// unsayable, because the perform resolves here first. Installed innermost
+// at every judgment chain (`infer_context`, `segment_bracket`, the fan's
+// segment). A compression stores the cell's own resolved content and is
+// forwarded unjudged. Exhaustive over `RowWrite` by its three arms. The
+// check reads the write's own reason for its coordinates: every writer
+// locates its reason, and an unlocated one reports at the zero span, which
+// is what `reason_span_or_zero` says.
+handler row_gate {
+  graph_bind_row(cell, row, reason) => {
+    gate_check_push(cell, row, reason_span_or_zero(reason))
+    graph_bind_row(cell, row, reason)
+    resume()
+  },
+  graph_finalize_row(cell, row, reason) => {
+    gate_check_push(cell, row, reason_span_or_zero(reason))
+    graph_finalize_row(cell, row, reason)
+    resume()
+  },
+  graph_compress_row(cell, row) => {
+    graph_compress_row(cell, row)
+    resume()
+  },
+}
+
 // Bind one row into EVERY edge of a set — the multi-edge bind the five
-// unify arms share. Structural walk (mechanism layer, the resolver's
-// own discipline).
-fn bind_edges_to(ref ws: [Int], row, ref span, ref reason) with Memory + Alloc + GraphWrite = match ws {
+// unify arms share. The write is judged by `row_gate`, the install every
+// judgment runs under, never here. Structural walk (mechanism layer, the
+// resolver's own discipline).
+fn bind_edges_to(ref ws: [RowEdge], row, ref span, ref reason) = match ws {
   [] => (),
   [w, ...rest] => {
-    graph_bind_row(w, row, Located(span, reason))
+    graph_bind_row(edge_cell(w), row, Located(span, reason))
     bind_edges_to(rest, row, span, reason)
   },
 }
 
-fn unify_row_canonical(ref a, ref b, ref span, ref reason) with Memory + Alloc + Intern + GraphRead + Diagnostic + GraphWrite = match a {
+// The negative capability carried onto each edge — as a GATE on the
+// edge's cell, minus what the edge's own mask already subtracts (a name
+// the path absorbs never reaches the row). This used to BIND the cell to
+// `([], forbidden, EtAll)`: a universe VALUE in the graph, which every
+// fold beside it then read as "anything", dropping sibling terminals
+// (`fn both(f: () -> Int with !E, g) with !F = f() + g()` refused
+// `!F + Any vs Any` for a g that performed nothing forbidden — measured
+// 2026-09-27). The cell stays free; the constraint is the gate.
+fn bind_edges_neg(ws: [RowEdge], forbidden, span, reason) = match ws {
+  [] => (),
+  [w, ...rest] => {
+    let f2 = name_set_diff(forbidden, edge_mask(w))
+    if len(f2) == 0 {
+      ()
+    } else {
+      gate_install(edge_cell(w), mk_gate(mk_ef_neg(f2), Located(span, reason)), span)
+    }
+    bind_edges_neg(rest, forbidden, span, reason)
+  },
+}
+
+// Each name must reach the row through SOME edge whose mask lets it pass:
+// a name every edge's path subtracts cannot be delivered by the tail at all.
+fn names_deliverable(names, ws: [RowEdge]) = match names {
+  [] => true,
+  [n, ...rest] => edges_admit_name(ws, n) && names_deliverable(rest, ws),
+}
+
+fn edges_admit_name(ws: [RowEdge], n) = match ws {
+  [] => false,
+  [w, ...rest] => forbidden_names_disjoint([n], edge_mask(w)) || edges_admit_name(rest, n),
+}
+
+fn unify_row_canonical(ref a, ref b, ref span, ref reason) = match a {
   EfRow(pa, aa, ta) => match b {
     EfRow(pb, ab, tb) => match ta {
       EtClosed => match tb {
@@ -914,9 +1271,10 @@ fn unify_row_canonical(ref a, ref b, ref span, ref reason) with Memory + Alloc +
         // exactly A; binding each to the residual-closed row is the
         // maximal solution, and each cell's OTHER referents learn the
         // same closed bound (the singleton case is today's unique
-        // solution verbatim). A masked name demanded by A is a genuine
-        // mismatch.
-        if forbidden_names_disjoint(pa, ab) {
+        // solution verbatim). A name A demands that B does not perform
+        // must pass SOME edge's mask; one every path subtracts is a
+        // genuine mismatch.
+        if names_deliverable(name_set_diff(pa, pb), wbs) {
           bind_edges_to(wbs, ef_make(name_set_diff(pa, pb), [], EtClosed), span, reason)
         } else {
           report_effect_mismatch(a, b, span, reason)
@@ -935,7 +1293,7 @@ fn unify_row_canonical(ref a, ref b, ref span, ref reason) with Memory + Alloc +
         if row_subsumes(a, b) { () } else { report_effect_mismatch(a, b, span, reason) },
       },
       EtOpen(was) => match tb {
-        EtClosed => if forbidden_names_disjoint(pb, aa) {
+        EtClosed => if names_deliverable(name_set_diff(pb, pa), was) {
           bind_edges_to(was, ef_make(name_set_diff(pb, pa), [], EtClosed), span, reason)
         } else {
           report_effect_mismatch(a, b, span, reason)
@@ -949,26 +1307,24 @@ fn unify_row_canonical(ref a, ref b, ref span, ref reason) with Memory + Alloc +
         // set — no bound edge appears in its own binding's tail
         // (a-only ∉ wbs), so the occurs guard has nothing to cut.
         // a ⊆ b degenerates to the identical case's name check (the
-        // one-way teach — D5's decl→site direction — as today).
-        if was == wbs {
+        // one-way teach — D5's decl→site direction — as today). The
+        // residual keeps each of b's edges WITH its mask: what b's paths
+        // subtract, the a-private cells inherit as b's reading.
+        if edges_same_cells(was, wbs) {
           if name_set_eq(pa, pb) { () } else { report_effect_mismatch(a, b, span, reason) }
         } else {
           let only_a = tail_set_diff(was, wbs)
           if len(only_a) == 0 {
             if name_set_eq(pa, pb) { () } else { report_effect_mismatch(a, b, span, reason) }
           } else {
-            bind_edges_to(
-              only_a,
-              ef_make(name_set_diff(pb, pa), name_set_diff(ab, pa), EtOpen(wbs)),
-              span,
-              reason
-            )
+            bind_edges_to(only_a, ef_make(name_set_diff(pb, pa), [], EtOpen(wbs)), span, reason)
           }
         },
         EtAll => // Open ~ !B: the SOUND modal closure — every edge carries the
-        // negative capability forward; the knowns must avoid B.
+        // negative capability forward, less what its own path absorbs;
+        // the knowns must avoid B.
         if forbidden_names_disjoint(pa, ab) {
-          bind_edges_to(was, EfRow([], ab, EtAll), span, reason)
+          bind_edges_neg(was, ab, span, reason)
         } else {
           report_effect_mismatch(a, b, span, reason)
         },
@@ -980,7 +1336,7 @@ fn unify_row_canonical(ref a, ref b, ref span, ref reason) with Memory + Alloc +
           report_effect_mismatch(a, b, span, reason)
         },
         EtOpen(wbs) => if forbidden_names_disjoint(pb, aa) {
-          bind_edges_to(wbs, EfRow([], aa, EtAll), span, reason)
+          bind_edges_neg(wbs, aa, span, reason)
         } else {
           report_effect_mismatch(a, b, span, reason)
         },
@@ -992,13 +1348,11 @@ fn unify_row_canonical(ref a, ref b, ref span, ref reason) with Memory + Alloc +
   },
 }
 
-// The reason rides to the report site so the mismatch can NAME its
-// construction (it pinned the E_EffectMismatch quartet to one call form
-// in a single read). Carrying it into the rendered diagnostic is the
-// named peer Hβ.diag.effect-mismatch-reason — DiagKind's ctor widens
-// with a Reason field and diag_message renders it through show_reason.
+// The reason rides INTO the diagnostic: a gate's refusal at a call site
+// names the declaration whose negation it violates, and a unify arm's
+// names its construction (Hβ.diag.effect-mismatch-reason, first face).
 fn report_effect_mismatch(ref a, ref b, ref span, ref reason) with !Mutate =
-  report(EEffectMismatch(a, b, span))
+  report(EEffectMismatch(a, b, reason, span))
 
 // Ground: no open edge anywhere the dispatch would need resolved.
 fn row_is_ground(ref row) with Pure = match row {
@@ -1008,7 +1362,7 @@ fn row_is_ground(ref row) with Pure = match row {
   },
 }
 
-fn sort_unique(ref names) with Memory + Alloc = name_set_canonicalize(names)
+fn sort_unique(ref names) = name_set_canonicalize(names)
 
 // The comparison KEY — name identity as the interned handle (one word;
 // §5.O layer 1 landed). An effect declaration's name and a negation
@@ -1029,7 +1383,7 @@ fn eff_name_handle(name: EffName) -> Int with Pure = match name {
 // The RENDER projection — handle → canonical spelling, read live from the
 // intern table. Comparisons never come here (eff_name_handle is the key);
 // diagnostics, show, and lower's ename extraction do.
-fn eff_name_str(name: EffName) -> String with Intern = match name {
+fn eff_name_str(name: EffName) -> String = match name {
   ENamed(h) => intern_name_of(h),
   EParameterized(h, _) => intern_name_of(h),
   EPure => "",
@@ -1041,7 +1395,7 @@ fn eff_name_str(name: EffName) -> String with Intern = match name {
 fn forbidden_names_disjoint(ref body, ref forbidden) with !Mutate =
   forbidden_names_disjoint_loop(body, forbidden, 0, len(body))
 
-fn forbidden_names_disjoint_loop(ref body, ref forbidden, i, n) with Memory = if i >= n {
+fn forbidden_names_disjoint_loop(ref body, ref forbidden, i, n) = if i >= n {
   true
 } else if name_in_forbidden(forbidden, list_index(body, i), 0, len(forbidden)) {
   false
@@ -1049,7 +1403,7 @@ fn forbidden_names_disjoint_loop(ref body, ref forbidden, i, n) with Memory = if
   forbidden_names_disjoint_loop(body, forbidden, i + 1, n)
 }
 
-fn name_in_forbidden(ref forbidden, present, i, n) with Memory = if i >= n {
+fn name_in_forbidden(ref forbidden, present, i, n) = if i >= n {
   false
 } else if eff_forbids(list_index(forbidden, i), present) {
   true
@@ -1069,7 +1423,7 @@ fn name_in_forbidden(ref forbidden, present, i, n) with Memory = if i >= n {
 // absent-minus-present — so `Sample(48000) + !Sample(44100)` holds the
 // severance it declares instead of the by-name dedup silently deleting
 // it at row construction.
-fn eff_forbids(forbidden: EffName, present: EffName) with Memory = if eff_name_handle(forbidden) != eff_name_handle(present) {
+fn eff_forbids(forbidden: EffName, present: EffName) = if eff_name_handle(forbidden) != eff_name_handle(present) {
   false
 } else {
   match forbidden {
@@ -1093,7 +1447,7 @@ fn eff_forbids(forbidden: EffName, present: EffName) with Memory = if eff_name_h
 // dims, so a surviving argument difference IS a different instance — and
 // refuses a bare charge (it could be any instance; conservative, the
 // same frame eff_forbids holds on the negation side).
-fn eff_admits(gate_name: EffName, body_name: EffName) with Memory + Alloc = if eff_name_handle(gate_name) != eff_name_handle(body_name) {
+fn eff_admits(gate_name: EffName, body_name: EffName) = if eff_name_handle(gate_name) != eff_name_handle(body_name) {
   false
 } else {
   match gate_name {
@@ -1107,10 +1461,9 @@ fn eff_admits(gate_name: EffName, body_name: EffName) with Memory + Alloc = if e
   }
 }
 
-fn present_admitted(ref bp, ref gp) with Memory + Alloc =
-  all((b) => any((g) => eff_admits(g, b), gp), bp)
+fn present_admitted(ref bp, ref gp) = all((b) => any((g) => eff_admits(g, b), gp), bp)
 
-fn eff_args_provably_distinct(ref a, ref b, i) with Memory = if len(a) != len(b) {
+fn eff_args_provably_distinct(ref a, ref b, i) = if len(a) != len(b) {
   // Differing arity never proves distinctness — an effect has ONE
   // declared signature, so the pair is ill-formed and the instance
   // typing owns the refusal; the negation stays conservative.
@@ -1161,9 +1514,9 @@ fn eff_arg_scalar_unequal(fa, pa) with Pure = match fa {
 // types, so they get different comparisons. The elements are words
 // (list_index erases the type), so str_eq explicitly — a bare `==` would
 // floor to the same pointer-eq name_set_contains just shed.
-fn string_in_list(ref lst, s: String) with Memory = string_in_list_loop(lst, s, 0, len(lst))
+fn string_in_list(ref lst, s: String) = string_in_list_loop(lst, s, 0, len(lst))
 
-fn string_in_list_loop(ref lst, s: String, i, n) with Memory = if i >= n {
+fn string_in_list_loop(ref lst, s: String, i, n) = if i >= n {
   false
 }
 // drift-audit: ignore — the String case of ==; nameable-sequence leaf, band D
@@ -1171,6 +1524,37 @@ else if str_eq(list_index(lst, i), s) {
   true
 } else {
   string_in_list_loop(lst, s, i + 1, n)
+}
+
+// WHAT AN INSTALL DOES TO ITS EXTENT — the one read of a handler's class,
+// from the effects its arms answer. Most handlers are DISPATCHED to: a
+// perform finds them and runs an arm, and the install builds the record it
+// runs against. Three classes are PROJECTIONS instead, readings the lowering
+// applies to the extent itself: a schedule decides how a `><` inside it runs,
+// the derivative reading decides what the extent computes beside its value
+// (`~> grad(w)`, lib/ml/grad.mn), and an arena — a handler of its body's
+// allocation (`~> arena`, lib/arena.mn) — decides how long the body's values
+// live: past the exit, only what its publication reaches. The class is
+// recognized by the effect a handler answers, so a program that declares its
+// own Thread or Derivative effect gets the same reading. The judgment and the
+// lowering read this one roster: what an install costs and what it lowers to
+// are one decision.
+type Projection = PDispatch | PSchedule(Schedule) | PDerivative | PArena
+
+fn projection_of_effects(enames) = if string_in_list(enames, "Thread") {
+  PSchedule(Threaded)
+} else if string_in_list(enames, "Simd") {
+  PSchedule(Simd)
+} else if string_in_list(enames, "Gpu") {
+  PSchedule(Gpu)
+} else if string_in_list(enames, "Persist") {
+  PSchedule(Persisted)
+} else if string_in_list(enames, "Derivative") {
+  PDerivative
+} else if string_in_list(enames, "Alloc") {
+  PArena
+} else {
+  PDispatch
 }
 
 // EffName equality is the ONE structural `==` (the value-layer fold's sum-eq
@@ -1202,7 +1586,7 @@ else if str_eq(list_index(lst, i), s) {
 // copied the whole accumulator per step — at row sizes the asymptotics are
 // moot (rows are small), but the copy VOLUME ran millions of times per
 // pass; this family is on the inf_add_row hot path.
-fn name_set_canonicalize(ref names) with Memory + Alloc = {
+fn name_set_canonicalize(ref names) = {
   let n = len(names)
   // Identity fast path — a duplicate-free input IS its canonical form, so
   // return it UNSHARED-COPY-FREE. Rows are 0–3 names almost everywhere; the
@@ -1220,7 +1604,7 @@ fn name_set_canonicalize(ref names) with Memory + Alloc = {
 }
 
 // Is the list already duplicate-free (by-name, the same leaf as dedup)?
-fn name_set_is_dedup(ref names, i, n) with Memory = if i >= n {
+fn name_set_is_dedup(ref names, i, n) = if i >= n {
   true
 } else if name_set_prefix_contains(names, i, list_index(names, i)) {
   false
@@ -1228,26 +1612,21 @@ fn name_set_is_dedup(ref names, i, n) with Memory = if i >= n {
   name_set_is_dedup(names, i + 1, n)
 }
 
-fn name_set_dedup_into(ref names, i, n, own buf, count) with Memory + Alloc = if i >= n {
+fn name_set_dedup_into(ref names, i, n, own buf, count) = if i >= n {
   slice(buf, 0, count)
 } else {
   let x = list_index(names, i)
   let at = name_set_prefix_index(buf, count, x)
   if at >= 0 {
-    // A name collision UPGRADES bare -> parameterized in place: the
-    // instance carries the payload truth the bare name only gestures at
-    // (bare ∪ instance = instance). Keeping the first-arrived bare
-    // erased the instance args wherever a declared pre-row met the
-    // body's inferred instance (iterate_from's recursive self-call
-    // unioned its bare pre-scheme Iterate over the parameterized one —
-    // the fold-family element severance). Two parameterized instances
-    // keep the first (the instance-precision residue,
-    // parameterized-negation-instance).
+    // A name collision can UPGRADE the held entry in place
+    // (collision_upgrades): a bare name to its instance — keeping the
+    // first-arrived bare erased the instance args wherever a declared
+    // pre-row met the body's inferred instance (iterate_from's recursive
+    // self-call unioned its bare pre-scheme Iterate over the parameterized
+    // one, the fold-family element severance) — and a ground instance to
+    // one it cannot be proven distinct from.
     let held = list_index(buf, at)
-    let upgraded = match (held, x) {
-      (ENamed(_), EParameterized(_, _)) => list_set(buf, at, x),
-      _ => buf,
-    }
+    let upgraded = if collision_upgrades(held, x) { list_set(buf, at, x) } else { buf }
     name_set_dedup_into(names, i + 1, n, upgraded, count)
   } else {
     name_set_dedup_into(names, i + 1, n, list_set(buf, count, x), count + 1)
@@ -1259,33 +1638,86 @@ fn name_set_dedup_into(ref names, i, n, own buf, count) with Memory + Alloc = if
 fn name_set_prefix_index(ref buf, count, ref name) with !Mutate =
   name_set_prefix_index_loop(buf, name, 0, count)
 
-fn name_set_prefix_index_loop(ref buf, ref name, i, n) with Memory = if i >= n {
+fn name_set_prefix_index_loop(ref buf, ref name, i, n) = if i >= n {
   0 - 1
-} else if eff_name_handle(list_index(buf, i)) == eff_name_handle(name) {
+} else if row_entry_collides(list_index(buf, i), name) {
   i
 } else {
   name_set_prefix_index_loop(buf, name, i + 1, n)
+}
+
+// Do two row entries name ONE member of the row's set? Two instances are two
+// members exactly when they are PROVABLY DISTINCT — the negation's own
+// predicate (eff_args_provably_distinct), so the set and `eff_forbids` can
+// never disagree about what a row holds. Until 2026-09-28 every same-named
+// pair collided and the loops kept the first, so `fast() + slow()` — a 48 kHz
+// reader then a 44.1 kHz one — carried Sample(48000) alone and a declared
+// `!Sample(44100)` admitted the 44.1 kHz perform, while `slow() + fast()`
+// refused: the verdict depended on the order of two calls. Collision is the
+// complement of provable distinctness, not structural sameness — instances
+// over type variables are one member, or rows grow by a fresh variable per
+// instantiation and a fixpoint over them never settles (the first form did;
+// the wheel's compile hung). Nested matches, never a pair scrutinee: this runs
+// for every entry pair every row operation meets, and a tuple is a heap
+// record per call.
+fn row_entry_collides(a: EffName, b: EffName) = if eff_name_handle(a) != eff_name_handle(b) {
+  false
+} else {
+  match a {
+    EParameterized(_, xa) => match b {
+      EParameterized(_, xb) => !eff_args_provably_distinct(xa, xb, 0),
+      _ => true,
+    },
+    _ => true,
+  }
+}
+
+// Of two colliding entries, which does the set keep? The one that says
+// less. A bare name upgrades to its instance — the instance carries the
+// argument lowering reads, the fold family's element types (see the dedup
+// loops) — and of two instances not provably distinct, one with an argument
+// nothing grounds stands for both: keeping the ground one would let a
+// negation prove distinct what the other may equal.
+fn collision_upgrades(held: EffName, x: EffName) = match held {
+  ENamed(_) => match x {
+    EParameterized(_, _) => true,
+    _ => false,
+  },
+  EParameterized(_, hargs) => match x {
+    EParameterized(_, xargs) => all(eff_arg_ground, hargs) && !all(eff_arg_ground, xargs),
+    _ => false,
+  },
+  EPure => false,
+}
+
+// A scalar the argument names outright — the only kind distinctness reads.
+fn eff_arg_ground(a) with Pure = match a {
+  EAInt(_) => true,
+  EAFloat(_) => true,
+  EAString(_) => true,
+  EAEffect(_) => true,
+  EACon(_) => true,
+  EAType(_) => false,
+  EANode(_) => false,
 }
 
 // Membership against the WRITTEN PREFIX of a buffer under construction.
 fn name_set_prefix_contains(ref buf, count, ref name) with !Mutate =
   name_set_prefix_contains_loop(buf, name, 0, count)
 
-fn name_set_prefix_contains_loop(ref buf, ref name, i, n) with Memory = if i >= n {
+fn name_set_prefix_contains_loop(ref buf, ref name, i, n) = if i >= n {
   false
 }
-// By NAME, like the membership leaf (name_set_contains_loop) and the
-// negation gate — this is the DEDUP twin (name_set_dedup_into), and it
-// was still `==` (pointer-eq) after cc487f8 fixed membership, so two
-// byte-equal ENamed from distinct sites still failed to dedup HERE, and
-// rows kept bloating past the membership fix. The two must agree.
-else if eff_name_handle(list_index(buf, i)) == eff_name_handle(name) {
+// The DEDUP twin (name_set_dedup_into) — the same collision law, so the
+// identity fast path and the rebuild can never disagree about whether a
+// row is already a set.
+else if row_entry_collides(list_index(buf, i), name) {
   true
 } else {
   name_set_prefix_contains_loop(buf, name, i + 1, n)
 }
 
-fn name_set_union(ref a, ref b) with Memory + Alloc = {
+fn name_set_union(ref a, ref b) = {
   let na = len(a)
   let nb = len(b)
   // Identity fast paths: X ∪ ∅ = canonical X (zero-alloc when X already is).
@@ -1306,46 +1738,40 @@ fn name_set_union(ref a, ref b) with Memory + Alloc = {
 // UPGRADES a held bare to the parameterized instance (bare ∪ instance =
 // instance) — one law at every dedup twin, or the instance args die on
 // whichever accumulation path a bare reaches first.
-fn name_set_dedup_count(ref names, i, n, own buf, count) with Memory + Alloc = if i >= n {
+fn name_set_dedup_count(ref names, i, n, own buf, count) = if i >= n {
   count
 } else {
   let x = list_index(names, i)
   let at = name_set_prefix_index(buf, count, x)
   if at >= 0 {
     let held = list_index(buf, at)
-    let upgraded = match (held, x) {
-      (ENamed(_), EParameterized(_, _)) => list_set(buf, at, x),
-      _ => buf,
-    }
+    let upgraded = if collision_upgrades(held, x) { list_set(buf, at, x) } else { buf }
     name_set_dedup_count(names, i + 1, n, upgraded, count)
   } else {
     name_set_dedup_count(names, i + 1, n, list_set(buf, count, x), count + 1)
   }
 }
 
-fn name_set_union_rest(ref b, i, n, own buf, count) with Memory + Alloc = if i >= n {
+fn name_set_union_rest(ref b, i, n, own buf, count) = if i >= n {
   slice(buf, 0, count)
 } else {
   let x = list_index(b, i)
   let at = name_set_prefix_index(buf, count, x)
   if at >= 0 {
     let held = list_index(buf, at)
-    let upgraded = match (held, x) {
-      (ENamed(_), EParameterized(_, _)) => list_set(buf, at, x),
-      _ => buf,
-    }
+    let upgraded = if collision_upgrades(held, x) { list_set(buf, at, x) } else { buf }
     name_set_union_rest(b, i + 1, n, upgraded, count)
   } else {
     name_set_union_rest(b, i + 1, n, list_set(buf, count, x), count + 1)
   }
 }
 
-fn name_set_intersect(ref a, ref b) with Memory + Alloc = {
+fn name_set_intersect(ref a, ref b) = {
   let n = len(a)
   name_set_intersect_into(a, b, 0, n, make_list(n), 0)
 }
 
-fn name_set_intersect_into(ref a, ref b, i, n, own buf, count) with Memory + Alloc = if i >= n {
+fn name_set_intersect_into(ref a, ref b, i, n, own buf, count) = if i >= n {
   slice(buf, 0, count)
 } else {
   let x = list_index(a, i)
@@ -1356,7 +1782,7 @@ fn name_set_intersect_into(ref a, ref b, i, n, own buf, count) with Memory + All
   }
 }
 
-fn name_set_diff(ref a, ref b) with Memory + Alloc = {
+fn name_set_diff(ref a, ref b) = {
   let n = len(a)
   // Identity fast paths: ∅ ∖ Y = ∅; X ∖ ∅ = canonical X (zero-alloc when
   // X already is — ef_make's absent-minus-present with empty present).
@@ -1369,7 +1795,7 @@ fn name_set_diff(ref a, ref b) with Memory + Alloc = {
   }
 }
 
-fn name_set_diff_into(ref a, ref b, i, n, own buf, count) with Memory + Alloc = if i >= n {
+fn name_set_diff_into(ref a, ref b, i, n, own buf, count) = if i >= n {
   slice(buf, 0, count)
 } else {
   let x = list_index(a, i)
@@ -1380,9 +1806,9 @@ fn name_set_diff_into(ref a, ref b, i, n, own buf, count) with Memory + Alloc = 
   }
 }
 
-fn name_set_subset(ref sub, ref sup) with Memory = name_set_subset_loop(sub, sup, 0, len(sub))
+fn name_set_subset(ref sub, ref sup) = name_set_subset_loop(sub, sup, 0, len(sub))
 
-fn name_set_subset_loop(ref sub, ref sup, i, n) with Memory = if i >= n {
+fn name_set_subset_loop(ref sub, ref sup, i, n) = if i >= n {
   true
 } else if name_set_contains(sup, list_index(sub, i)) {
   name_set_subset_loop(sub, sup, i + 1, n)
@@ -1396,7 +1822,7 @@ fn name_set_eq(ref a, ref b) with !Mutate =
 fn name_set_contains(ref set, ref name) with !Mutate =
   name_set_contains_loop(set, name, 0, len(set))
 
-fn name_set_contains_loop(ref set, ref name, i, n) with Memory = if i >= n {
+fn name_set_contains_loop(ref set, ref name, i, n) = if i >= n {
   false
 }
 // Match by NAME, exactly as the negation gate does (name_in_forbidden,

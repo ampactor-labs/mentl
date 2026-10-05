@@ -1,0 +1,12 @@
+// expect: 42
+// A FORWARD REFERENCE WITH NO CYCLE: `first` calls `second`, declared after
+// it, which reads the enclosing parameter. Callee-first, `second` is judged
+// before `first`; at run time `first`'s record holds `second`'s, minted after
+// it in the same run.
+fn answer(base) = {
+  fn first() = second() + 1
+  fn second() = base
+  first()
+}
+
+fn main() = answer(41)

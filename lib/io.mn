@@ -39,31 +39,51 @@ import strings
 //
 // Every op mirrors a WASI preview1 import 1:1; the host runtime IS
 // the handler (lower maps each op to its `wasi_snapshot_preview1`
-// import — the import IS the handler install). Errno returns are
-// Int per the WASI ABI; refinement of errno spaces is Verify's
-// post-L2 work.
+// import — the import IS the handler install). A parameter the host
+// reads or writes memory through is an Addr; errno returns are Int per
+// the WASI ABI, and refinement of errno spaces is Verify's post-L2 work.
 effect WASI {
-  fd_write(Int, Int, Int, Int) -> Int
-  fd_read(Int, Int, Int, Int) -> Int
+  // (fd, iovs, iovs_len, nwritten)
+  fd_write(Int, Addr, Int, Addr) -> Int
+  // (fd, iovs, iovs_len, nread)
+  fd_read(Int, Addr, Int, Addr) -> Int
   fd_close(Int) -> Int
-  fd_prestat_get(Int, Int) -> Int
-  fd_prestat_dir_name(Int, Int, Int) -> Int
-  fd_fdstat_get(Int, Int) -> Int
-  fd_readdir(Int, Int, Int, Int, Int) -> Int
-  path_open(Int, Int, Int, Int, Int, Int, Int, Int, Int) -> Int
-  path_create_directory(Int, Int, Int) -> Int
-  path_filestat_get(Int, Int, Int, Int, Int) -> Int
-  path_unlink_file(Int, Int, Int) -> Int
-  path_rename(Int, Int, Int, Int, Int, Int) -> Int
+  // (fd, prestat)
+  fd_prestat_get(Int, Addr) -> Int
+  // (fd, path, path_len)
+  fd_prestat_dir_name(Int, Addr, Int) -> Int
+  // (fd, fdstat)
+  fd_fdstat_get(Int, Addr) -> Int
+  // (fd, buf, buf_len, cookie, bufused)
+  fd_readdir(Int, Addr, Int, Int, Addr) -> Int
+  // (dirfd, dirflags, path, path_len, oflags, rights_base, rights_inheriting,
+  // fdflags, opened_fd)
+  path_open(Int, Int, Addr, Int, Int, Int, Int, Int, Addr) -> Int
+  // (dirfd, path, path_len)
+  path_create_directory(Int, Addr, Int) -> Int
+  // (dirfd, flags, path, path_len, filestat)
+  path_filestat_get(Int, Int, Addr, Int, Addr) -> Int
+  // (dirfd, path, path_len)
+  path_unlink_file(Int, Addr, Int) -> Int
+  // (old_dirfd, old_path, old_len, new_dirfd, new_path, new_len)
+  path_rename(Int, Addr, Int, Int, Addr, Int) -> Int
   // The socket pair (2026-07-10, mentl serves natively): the host preopens
   // the LISTENER (wasmtime -S tcplisten); sock_accept yields a connection fd
   // the fd_* ops above already speak; poll_oneoff is the honest blocking
   // wait both nonblocking ends demand (lib/net.mn wraps them).
-  sock_accept(Int, Int, Int) -> Int
-  poll_oneoff(Int, Int, Int, Int) -> Int
-  args_sizes_get(Int, Int) -> Int
-  args_get(Int, Int) -> Int
-  proc_exit(Int)
+  //
+  // (fd, flags, accepted_fd)
+  sock_accept(Int, Int, Addr) -> Int
+  // (subscriptions, events, nsubscriptions, nevents)
+  poll_oneoff(Addr, Addr, Int, Addr) -> Int
+  // (argc, argv_buf_size)
+  args_sizes_get(Addr, Addr) -> Int
+  // (argv, argv_buf)
+  args_get(Addr, Addr) -> Int
+  // Never returns: the host ends the process, so the op answers a bare
+  // variable — any install an arm ending in it answers (SYNTAX
+  // §«Unit return omission»). Its emit is `(call $proc_exit)(unreachable)`.
+  proc_exit(Int) -> !
 }
 
 // Host — the medium's own host seam beside preview1, served by tools/runner
@@ -75,10 +95,10 @@ effect WASI {
 // no in-image collecting sink is sound for a whole module), and host_exec
 // assembles, instantiates and runs the streamed module in its own instance
 // over its own memory, returning its exit as a value (a trap answers 134).
-// (ptr, len) pairs, the fd_write_bytes idiom; argv is NUL-joined.
+// (address, len) pairs, the fd_write_bytes idiom; argv is NUL-joined.
 effect Host {
-  host_wat_write(Int, Int)
-  host_exec(Int, Int) -> Int
+  host_wat_write(Addr, Int)
+  host_exec(Addr, Int) -> Int
 }
 
 // wasi_args — the process argv as a [String], read live from the host at
@@ -89,23 +109,23 @@ effect Host {
 // each argv[i] is a C-string materialized into a flat [len][bytes] Mentl string
 // (the read_stdin buffer→string layout). argv[0] is the program name, so the
 // self-compile (`m2 < wheel`, argc=1) still parses to VCompileStdin (len < 2).
-fn cstr_len(cstr, i) with Memory = if load_i8(cstr + i) == 0 { i } else { cstr_len(cstr, i + 1) }
+fn cstr_len(cstr, i) = if load_i8(addr_at(cstr, i)) == 0 { i } else { cstr_len(cstr, i + 1) }
 
-fn cstr_to_string(cstr) with Memory + Alloc = {
+fn cstr_to_string(cstr) = {
   let n = cstr_len(cstr, 0)
   let s = bytes_buf(n)
-  mem_copy(s + 8, cstr, n)
+  mem_copy(addr_at(s, 8), cstr, n)
   str_of_buf(s)
 }
 
-fn wasi_args_build(argv_ptr, argc, i, acc) with Memory + Alloc = if i >= argc {
+fn wasi_args_build(argv_ptr, argc, i, acc) = if i >= argc {
   acc
 } else {
-  let cstr = load_i32(argv_ptr + i * 4)
+  let cstr = load_addr(addr_at(argv_ptr, i * 4))
   wasi_args_build(argv_ptr, argc, i + 1, push(acc, cstr_to_string(cstr)))
 }
 
-fn wasi_args() with Memory + Alloc + WASI = {
+fn wasi_args() = {
   let argc_ptr = alloc(4)
   let bufsz_ptr = alloc(4)
   args_sizes_get(argc_ptr, bufsz_ptr)
@@ -149,30 +169,30 @@ handler fail_exit {
 
 // ─── The one syscall-marshal pair ──────────────────────────────
 //
-// fd_write_bytes — ONE fd_write over the contiguous span [ptr, ptr+len).
-// The iov + nwritten record is the syscall's argument marshaling,
+// fd_write_bytes — ONE fd_write over the contiguous span of len bytes from
+// ptr. The iov + nwritten record is the syscall's argument marshaling,
 // alloc'd per call: [ptr@0][len@4][nwritten@8]. Returns the host's
 // bytes-written count; the print family discards it (a stdout short-
 // write has no recovery worth a loop at this altitude), stream writers
 // that must drain loop on it (net.mn's sock_write_all owns the socket
 // contract — partial writes + EAGAIN — so it marshals its own).
-fn fd_write_bytes(fd, ptr, len) with Memory + Alloc + WASI = {
+fn fd_write_bytes(fd, ptr, len) = {
   let iov = alloc(12)
-  store_i32(iov, ptr)
-  store_i32(iov + 4, len)
-  fd_write(fd, iov, 1, iov + 8)
-  load_i32(iov + 8)
+  store_addr(iov, ptr)
+  store_i32(addr_at(iov, 4), len)
+  fd_write(fd, iov, 1, addr_at(iov, 8))
+  load_i32(addr_at(iov, 8))
 }
 
 // read_chunk — ONE fd_read of up to `size` bytes into buf. The twin
 // marshal record: [ptr@0][len@4][nread@8]. Returns bytes actually
 // read (0 = EOF).
-fn read_chunk(fd, buf, size) with Memory + Alloc + WASI = {
+fn read_chunk(fd, buf, size) = {
   let iov = alloc(12)
-  store_i32(iov, buf)
-  store_i32(iov + 4, size)
-  fd_read(fd, iov, 1, iov + 8)
-  load_i32(iov + 8)
+  store_addr(iov, buf)
+  store_i32(addr_at(iov, 4), size)
+  fd_read(fd, iov, 1, addr_at(iov, 8))
+  load_i32(addr_at(iov, 8))
 }
 
 // Stdout
@@ -181,19 +201,19 @@ fn read_chunk(fd, buf, size) with Memory + Alloc + WASI = {
 // materialization boundary in the gradient: str_payload flattens a
 // rope/slice (and repacks a wider-stride byte record) to the contiguous
 // stride-1 span the syscall wants; a flat string passes through untouched.
-fn print_string(s) with Memory + Alloc + WASI = {
+fn print_string(s) = {
   fd_write_bytes(1, str_payload(s), byte_len(s))
   ()
 }
 
 // print_int — convert n to a decimal string and write to stdout.
-fn print_int(n) with Memory + Alloc + WASI = {
+fn print_int(n) = {
   let s = int_to_str(n)
   print_string(s)
 }
 
 // print_newline — write a single newline character (0x0A) to stdout.
-fn print_newline() with Memory + Alloc + WASI = {
+fn print_newline() = {
   let cell = alloc(1)
   store_i8(cell, 10)
   fd_write_bytes(1, cell, 1)
@@ -201,7 +221,7 @@ fn print_newline() with Memory + Alloc + WASI = {
 }
 
 // println — write a string + newline to stdout.
-fn println(s) with Memory + Alloc + WASI = {
+fn println(s) = {
   print_string(s)
   print_newline()
 }
@@ -210,7 +230,7 @@ fn println(s) with Memory + Alloc + WASI = {
 //
 // eprint_string — write a Mentl string to stderr (fd=2). The same
 // str_payload materialization boundary print_string reads.
-fn eprint_string(s) with Memory + Alloc + WASI = {
+fn eprint_string(s) = {
   fd_write_bytes(2, str_payload(s), byte_len(s))
   ()
 }
@@ -222,19 +242,19 @@ fn eprint_string(s) with Memory + Alloc + WASI = {
 // [count][tag][bytes] byte record (bytes_buf). ONE loop serves stdin
 // (read_stdin) and opened files (fs_read_file_impl) — the stream does
 // not care where the fd came from.
-fn fd_read_all(fd) with Memory + Alloc + WASI = {
+fn fd_read_all(fd) = {
   let initial_cap = 65536
   let buf = alloc(initial_cap)
   match fd_read_loop(fd, buf, 0, initial_cap) {
     (final_buf, total) => {
       let str = bytes_buf(total)
-      mem_copy(str + 8, final_buf, total)
+      mem_copy(addr_at(str, 8), final_buf, total)
       str_of_buf(str)
     },
   }
 }
 
-fn fd_read_loop(fd, buf, offset, capacity) with Memory + Alloc + WASI = {
+fn fd_read_loop(fd, buf, offset, capacity) = {
   let chunk_size = 65536
   match if offset + chunk_size > capacity {
     let new_cap = capacity * 2
@@ -245,14 +265,14 @@ fn fd_read_loop(fd, buf, offset, capacity) with Memory + Alloc + WASI = {
     (buf, capacity)
   } {
     (cur_buf, cur_cap) => {
-      let nread = read_chunk(fd, cur_buf + offset, chunk_size)
+      let nread = read_chunk(fd, addr_at(cur_buf, offset), chunk_size)
       if nread == 0 { (cur_buf, offset) } else { fd_read_loop(fd, cur_buf, offset + nread, cur_cap) }
     },
   }
 }
 
 // read_stdin — slurp all of stdin (fd 0). The compiler's input path.
-fn read_stdin() with Memory + Alloc + WASI = fd_read_all(0)
+fn read_stdin() = fd_read_all(0)
 
 // read_one_byte — read exactly 1 byte from stdin. Returns the byte
 // value (0..255) or -1 on EOF. Substrate primitive for boundary-
@@ -260,7 +280,7 @@ fn read_stdin() with Memory + Alloc + WASI = fd_read_all(0)
 // can't know the boundary until it sees the byte. Honest: per-byte
 // syscalls are slow for bulk data but correct for interactive prompts
 // and ~50-byte header sections; bulk paths use read_chunk directly.
-fn read_one_byte() with Memory + Alloc + WASI = {
+fn read_one_byte() = {
   let cell = alloc(1)
   let nread = read_chunk(0, cell, 1)
   if nread == 0 { 0 - 1 } else { load_i8(cell) }
@@ -270,19 +290,19 @@ fn read_one_byte() with Memory + Alloc + WASI = {
 // discipline: one human action per line). Accumulates bytes until
 // 0x0A or EOF; the newline is consumed, not returned. Returns a flat
 // [count][tag][bytes] Mentl string.
-fn read_stdin_line() with Memory + Alloc + WASI = {
+fn read_stdin_line() = {
   let initial_cap = 256
   let buf = alloc(initial_cap)
   match read_line_loop(buf, 0, initial_cap) {
     (final_buf, total) => {
       let str = bytes_buf(total)
-      mem_copy(str + 8, final_buf, total)
+      mem_copy(addr_at(str, 8), final_buf, total)
       str_of_buf(str)
     },
   }
 }
 
-fn read_line_loop(buf, offset, capacity) with Memory + Alloc + WASI = match if offset + 1 > capacity {
+fn read_line_loop(buf, offset, capacity) = match if offset + 1 > capacity {
   let new_cap = capacity * 2
   let new_buf = alloc(new_cap)
   mem_copy(new_buf, buf, offset)
@@ -298,7 +318,7 @@ fn read_line_loop(buf, offset, capacity) with Memory + Alloc + WASI = match if o
       if b == 10 {
         (cur_buf, offset)
       } else {
-        store_i8(cur_buf + offset, b)
+        store_i8(addr_at(cur_buf, offset), b)
         read_line_loop(cur_buf, offset + 1, cur_cap)
       }
     }
@@ -314,7 +334,7 @@ fn read_line_loop(buf, offset, capacity) with Memory + Alloc + WASI = match if o
 // paths carry explicit lengths; str_payload materializes a rope/slice
 // exactly here, and a flat path is zero-copy — the bytes already sit
 // where the syscall wants them.
-fn fs_path_view(s) with Memory + Alloc = (str_payload(s), byte_len(s))
+fn fs_path_view(s) = (str_payload(s), byte_len(s))
 
 // fs_dir_fd — the preopened DIRECTORY's fd, read live from the preopen
 // table: fd_prestat_get answers 0 with tag 0 (dir) for a dir preopen; a
@@ -323,9 +343,9 @@ fn fs_path_view(s) with Memory + Alloc = (str_payload(s), byte_len(s))
 // stole fd 3 the first time mentl served with both preopens (2026-07-10)
 // and every path syscall hit the socket. Scan exhausted = no dir
 // preopened: return the first slot so the syscall itself errors loudly.
-fn fs_dir_fd() with Memory + Alloc + WASI = fs_dir_fd_from(3)
+fn fs_dir_fd() = fs_dir_fd_from(3)
 
-fn fs_dir_fd_from(fd) with Memory + Alloc + WASI = if fd >= 16 {
+fn fs_dir_fd_from(fd) = if fd >= 16 {
   3
 } else {
   let prestat = alloc(8)
@@ -341,7 +361,7 @@ fn fs_dir_fd_from(fd) with Memory + Alloc + WASI = if fd >= 16 {
 // directory. A relative path opens against the FIRST dir preopen (the shim
 // preopens the caller's cwd first); no prefix match falls to the first dir
 // so the syscall itself errors loudly, exactly as fs_dir_fd always did.
-fn fs_at(path_str) with Memory + Alloc + WASI = match fs_path_view(path_str) {
+fn fs_at(path_str) = match fs_path_view(path_str) {
   (pp, plen) => if plen == 0 || load_i8(pp) != 47 {
     (fs_dir_fd(), pp, plen)
   } else {
@@ -349,8 +369,9 @@ fn fs_at(path_str) with Memory + Alloc + WASI = match fs_path_view(path_str) {
       (best_fd, best_len) => if best_fd == 0 {
         (fs_dir_fd(), pp, plen)
       } else {
-        let skip = if best_len < plen && load_i8(pp + best_len) == 47 { best_len + 1 } else { best_len }
-        (best_fd, pp + skip, plen - skip)
+        let skip =
+          if best_len < plen && load_i8(addr_at(pp, best_len)) == 47 { best_len + 1 } else { best_len }
+        (best_fd, addr_at(pp, skip), plen - skip)
       },
     }
   },
@@ -358,12 +379,12 @@ fn fs_at(path_str) with Memory + Alloc + WASI = match fs_path_view(path_str) {
 
 // The longest-prefix scan over the preopen table (dir fds live in 3..16;
 // fd 0 is the no-match sentinel — a real dir preopen is never below 3).
-fn fs_best_preopen(pp, plen, fd, best_fd, best_len) with Memory + Alloc + WASI = if fd >= 16 {
+fn fs_best_preopen(pp, plen, fd, best_fd, best_len) = if fd >= 16 {
   (best_fd, best_len)
 } else {
   let prestat = alloc(8)
   if fd_prestat_get(fd, prestat) == 0 && load_i8(prestat) == 0 {
-    let nlen = load_i32(prestat + 4)
+    let nlen = load_i32(addr_at(prestat, 4))
     let nbuf = alloc(nlen)
     if fd_prestat_dir_name(fd, nbuf, nlen) == 0 && fs_preopen_prefix(nbuf, nlen, pp, plen) && nlen > best_len {
       fs_best_preopen(pp, plen, fd + 1, fd, nlen)
@@ -378,19 +399,19 @@ fn fs_best_preopen(pp, plen, fd, best_fd, best_len) with Memory + Alloc + WASI =
 // The guest name is a prefix of the path AND the boundary is exact (the
 // path ends there or continues with '/'); the root name "/" matches every
 // absolute path.
-fn fs_preopen_prefix(nbuf, nlen, pp, plen) with Memory = if nlen == 1 && load_i8(nbuf) == 47 {
+fn fs_preopen_prefix(nbuf, nlen, pp, plen) = if nlen == 1 && load_i8(nbuf) == 47 {
   true
 } else if nlen > plen {
   false
 } else if !fs_bytes_eq(nbuf, pp, nlen, 0) {
   false
 } else {
-  nlen == plen || load_i8(pp + nlen) == 47
+  nlen == plen || load_i8(addr_at(pp, nlen)) == 47
 }
 
-fn fs_bytes_eq(a, b, n, i) with Memory = if i >= n {
+fn fs_bytes_eq(a, b, n, i) = if i >= n {
   true
-} else if load_i8(a + i) != load_i8(b + i) {
+} else if load_i8(addr_at(a, i)) != load_i8(addr_at(b, i)) {
   false
 } else {
   fs_bytes_eq(a, b, n, i + 1)
@@ -401,7 +422,7 @@ fn fs_bytes_eq(a, b, n, i) with Memory = if i >= n {
 // projects the welcome; a pipe or file IS the compile-stdin contract
 // (`mentl < wheel.mn` — the fixpoint path, byte-identical). The fdstat
 // record is 24 bytes; filetype is the u8 at offset 0.
-fn stdin_is_tty() with Memory + Alloc + WASI = {
+fn stdin_is_tty() = {
   let stat = alloc(24)
   fd_fdstat_get(0, stat) == 0 && load_i8(stat) == 2
 }
@@ -413,9 +434,9 @@ fn stdin_is_tty() with Memory + Alloc + WASI = {
 // the low word (the fd_readdir import's RI64 slot zero-extends it — the
 // wait_i32 precedent); a buffer-boundary-truncated entry resumes the
 // loop from the last whole entry's d_next.
-fn fs_list_dir_names() with Memory + Alloc + WASI = fs_dir_fd() |> fs_readdir_loop(??, 0, [])
+fn fs_list_dir_names() = fs_dir_fd() |> fs_readdir_loop(??, 0, [])
 
-fn fs_readdir_loop(fd, cookie, acc) with Memory + Alloc + WASI = {
+fn fs_readdir_loop(fd, cookie, acc) = {
   let bufsz = 8192
   let buf = alloc(bufsz)
   let nread_cell = alloc(4)
@@ -434,16 +455,16 @@ fn fs_readdir_loop(fd, cookie, acc) with Memory + Alloc + WASI = {
   }
 }
 
-fn fs_parse_dirents(buf, end, off, acc, last_cookie, saw_whole) with Memory + Alloc = if off + 24 > end {
+fn fs_parse_dirents(buf, end, off, acc, last_cookie, saw_whole) = if off + 24 > end {
   (acc, last_cookie, saw_whole)
 } else {
-  let d_next = load_i32(buf + off)
-  let namlen = load_i32(buf + off + 16)
+  let d_next = load_i32(addr_at(buf, off))
+  let namlen = load_i32(addr_at(buf, off + 16))
   if off + 24 + namlen > end {
     (acc, last_cookie, saw_whole)
   } else {
     let name = bytes_buf(namlen)
-    mem_copy(name + 8, buf + off + 24, namlen)
+    mem_copy(addr_at(name, 8), addr_at(buf, off + 24), namlen)
     fs_parse_dirents(buf, end, off + 24 + namlen, push(acc, str_of_buf(name)), d_next, true)
   }
 }
@@ -453,7 +474,7 @@ fn fs_parse_dirents(buf, end, off, acc, last_cookie, saw_whole) with Memory + Al
 // then the same fd_readdir loop the cwd projection drives, then close. None
 // = the path is not an openable directory — the discriminator `mentl test`
 // uses to fork battery-mode (a directory) from the check chain (a module).
-fn fs_list_dir_impl(path_str) with Memory + Alloc + WASI = match fs_at(path_str) {
+fn fs_list_dir_impl(path_str) = match fs_at(path_str) {
   (dfd, pp, plen) => {
     let fd_cell = alloc(4)
     let open_errno = path_open(dfd, 0, pp, plen, 2, 16384, 0, 0, fd_cell)
@@ -471,7 +492,7 @@ fn fs_list_dir_impl(path_str) with Memory + Alloc + WASI = match fs_at(path_str)
 // fs_exists — path_filestat_get returns 0 on success, errno otherwise.
 // The 64-byte filestat_t record is alloc'd and discarded; existence is
 // the boolean.
-fn fs_exists_impl(path_str) with Memory + Alloc + WASI = match fs_at(path_str) {
+fn fs_exists_impl(path_str) = match fs_at(path_str) {
   (dfd, pp, plen) => {
     let stat = alloc(64)
     let errno = path_filestat_get(dfd, 0, pp, plen, stat)
@@ -481,7 +502,7 @@ fn fs_exists_impl(path_str) with Memory + Alloc + WASI = match fs_at(path_str) {
 
 // fs_mkdir — path_create_directory relative to the dir preopen.
 // Idempotent at the handler level (errno-17 EEXIST ignored).
-fn fs_mkdir_impl(path_str) with Memory + Alloc + WASI = match fs_at(path_str) {
+fn fs_mkdir_impl(path_str) = match fs_at(path_str) {
   (dfd, pp, plen) => {
     path_create_directory(dfd, pp, plen)
     ()
@@ -491,7 +512,7 @@ fn fs_mkdir_impl(path_str) with Memory + Alloc + WASI = match fs_at(path_str) {
 // fs_read_file — path_open (read flag) + fd_read_all + fd_close.
 // Returns the file bytes as a flat Mentl String. On open failure
 // returns an empty string; caller should distinguish via fs_exists.
-fn fs_read_file_impl(path_str) with Memory + Alloc + WASI = match fs_at(path_str) {
+fn fs_read_file_impl(path_str) = match fs_at(path_str) {
   (dfd, pp, plen) => {
     let fd_cell = alloc(4)
     // path_open(base_fd, dirflags=0, path_ptr, path_len, oflags=0,
@@ -511,7 +532,7 @@ fn fs_read_file_impl(path_str) with Memory + Alloc + WASI = match fs_at(path_str
 
 // fs_write_file — path_open (write+create+trunc) + fd_write + fd_close.
 // Overwrites any existing file at path.
-fn fs_write_file_impl(path_str, bytes_str) with Memory + Alloc + WASI = match fs_at(path_str) {
+fn fs_write_file_impl(path_str, bytes_str) = match fs_at(path_str) {
   (dfd, pp, plen) => {
     let fd_cell = alloc(4)
     // path_open with FS_OFLAGS_CREAT|FS_OFLAGS_TRUNC = 0x9, FS_RIGHTS_WRITE = 0x40
@@ -546,7 +567,7 @@ fn fs_write_file_impl(path_str, bytes_str) with Memory + Alloc + WASI = match fs
 // A length that does not fit a signed word is refused here rather than handed
 // to the syscall as a negative — the honest bound of the word this interface
 // is built from, named where it bites.
-fn fs_write_image_impl(path_str, hdr_ptr, hdr_len, base, len) with Memory + Alloc + WASI = {
+fn fs_write_image_impl(path_str, hdr_ptr, hdr_len, base, len) = {
   let fd = fs_create_impl(path_str)
   if fd == 0 {
     false
@@ -571,7 +592,7 @@ fn fs_write_image_impl(path_str, hdr_ptr, hdr_len, base, len) with Memory + Allo
 // fs_open_impl — path_open for read+write+create. Returns WASI fd
 // integer or 0 on failure (caller checks via fs_exists for distinction).
 // FS_OFLAGS_CREAT = 0x1; FS_RIGHTS_READ|WRITE = 0x42.
-fn fs_open_impl(path_str) with Memory + Alloc + WASI = match fs_at(path_str) {
+fn fs_open_impl(path_str) = match fs_at(path_str) {
   (dfd, pp, plen) => {
     let fd_cell = alloc(4)
     let open_errno = path_open(dfd, 0, pp, plen, 1, 66, 66, 0, fd_cell)
@@ -583,7 +604,7 @@ fn fs_open_impl(path_str) with Memory + Alloc + WASI = match fs_at(path_str) {
 // streaming half of fs_write_file (same flags), for writers that emit
 // through the fd across a long extent instead of banking one buffer.
 // 0 on failure (the fs_open_impl convention).
-fn fs_create_impl(path_str) with Memory + Alloc + WASI = match fs_at(path_str) {
+fn fs_create_impl(path_str) = match fs_at(path_str) {
   (dfd, pp, plen) => {
     let fd_cell = alloc(4)
     let open_errno = path_open(dfd, 0, pp, plen, 9, 64, 64, 0, fd_cell)
@@ -593,14 +614,14 @@ fn fs_create_impl(path_str) with Memory + Alloc + WASI = match fs_at(path_str) {
 
 // fs_close_impl — fd_close; errno absorbed (idempotent at runtime
 // per WASI errno-9 EBADF semantics).
-fn fs_close_impl(fd) with WASI = {
+fn fs_close_impl(fd) = {
   fd_close(fd)
   ()
 }
 
 // fs_unlink_impl — path_unlink_file relative to the dir preopen.
 // Errno surfaced as Bool (true on success). H6 binary outcome.
-fn fs_unlink_impl(path_str) with Memory + Alloc + WASI = match fs_at(path_str) {
+fn fs_unlink_impl(path_str) = match fs_at(path_str) {
   (dfd, pp, plen) => {
     let errno = path_unlink_file(dfd, pp, plen)
     errno == 0
@@ -611,7 +632,7 @@ fn fs_unlink_impl(path_str) with Memory + Alloc + WASI = match fs_at(path_str) {
 // path crosses as its own payload view; the old adjacent-scratch
 // packing (new at 256 + old_len + 1) died with the scratch. Errno
 // surfaced as Bool.
-fn fs_rename_impl(old_str, new_str) with Memory + Alloc + WASI = match fs_at(old_str) {
+fn fs_rename_impl(old_str, new_str) = match fs_at(old_str) {
   (ofd, op, olen) => match fs_at(new_str) {
     (nfd, np, nlen) => {
       let errno = path_rename(ofd, op, olen, nfd, np, nlen)

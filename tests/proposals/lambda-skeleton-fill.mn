@@ -1,0 +1,6 @@
+// propose 4:37: fill (_, _) => ??
+// A function type nothing in scope fits: the lambda skeleton is the one
+// candidate, its body the next hole.
+fn f() -> (String, Bool) -> Float = ??
+
+fn main() = 0

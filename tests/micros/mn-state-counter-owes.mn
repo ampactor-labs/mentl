@@ -1,0 +1,17 @@
+// expect: refuse E_EffectMismatch
+// A write that reads the state it writes is a cycle the proof cuts: inside
+// its own write the state is unknown, so `100 / d` over a counter that only
+// ever adds 1 is owed, and `!Trap` refuses. That is the program's truth, not
+// only the proof's: an `Int` is a word, and the counter wraps through 0.
+// Compiled clean under `!Trap` on pin 53f7404b (exit 16).
+effect Ask {
+  ask() -> Int
+  tick() -> Int
+}
+
+handler h with d = 5 {
+  ask() => resume(100 / d),
+  tick() => resume(0) with d = d + 1,
+}
+
+fn main() with !Trap = tick() + ask() ~> h

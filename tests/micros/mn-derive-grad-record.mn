@@ -1,0 +1,30 @@
+// expect: 28
+// A product seed answers its gradient in ONE reverse sweep. `ws` is a record
+// of two Floats, so `d(v)` is the gradient of `v` in both, read by
+// destructuring where it is asked: each field binds to the adjoint of its
+// seed, and no record is built. With y = a·x + b at a = 2, b = 1, x = 3
+// (y = 7), the loss y² has ∂/∂a = 2·y·x = 42 and ∂/∂b = 2·y = 14; the
+// program answers their difference, 28. The boot refused the seed (a seed
+// had to be a Float variable).
+//
+// The declarations are lib/ml/grad.mn's, repeated because a micro links only
+// the runtime floor.
+effect Derivative {
+  d(v: Float) -> t
+}
+
+handler grad(w) {
+  d(v) => resume(tangent_of(v, w)),
+}
+
+fn main() -> Int = {
+  let ws = {a: 2.0, b: 1.0}
+  let x = 3.0
+  let r = {
+    let y = ws.a * x + ws.b
+    match d(y * y) {
+      {a: ga, b: gb} => ga - gb,
+    }
+  } ~> grad(ws)
+  float_to_int(r)
+}

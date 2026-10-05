@@ -1,0 +1,4 @@
+// CROWN — the control for leak-gate-pure: a quiet callback satisfies the
+// empty cap. Expect NO E_EffectMismatch.
+fn run(f) with Pure = f()
+fn main() = run(() => 1)

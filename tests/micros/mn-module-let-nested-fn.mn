@@ -1,0 +1,11 @@
+// expect: 11
+// A fn declared inside a module-scope let's block is a closure minted in
+// $__init_lets, qualified by the binding it sits in, exactly as it would be
+// inside a fn of that name. Boot 2d18aedd refused it (`f` had no binding the
+// lowering could see — the init had no frame to bind it in).
+let total = {
+  fn f(x) = x + 1
+  f(4) + f(5)
+}
+
+fn main() = total

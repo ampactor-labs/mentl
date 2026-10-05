@@ -47,25 +47,64 @@ world-index is open. The map renders THREE states — provably absent / present 
 not yet provable — with the third counted and ratcheting. A two-colour map is
 the lie.
 
-`Hβ.syntax.positive-row-is-authored-by-hand` — OPEN, BORN 2026-09-21, MEASURED.
-132 signatures declare four effects, 155 declare five, and a tail runs 13, 14,
-16, 17 (four), 18, 19. Every name in a declared row is a hand-copy of a fact
-inference computed — SYNTAX's own words are that the declared row is "a
-CONSTRAINT verified against the row inferred from the body" — so a wide row is a
-re-derivation, is not intent under the Intent Boundary Rule, and buries the one
-`!E` worth reading.
-STEP ONE IS LANDED AND MEASURED: `CsWideRow` counts signatures past
-`wide_row_width` (eight, read off the corpus's own gap), `src/board.mn` bounds
-it, seen RED at 18 against its measured 19 — and the count moved **19 → 12** in
-the same landing by naming the capability seven of them shared (`type Judging`,
-src/driver.mn). The remaining twelve are emit, cursor, infer and synth_proposer:
-four more unnamed capabilities, each one landing.
-STEP TWO IS THIS PEER: the positive row becomes INFERRED AND PROJECTED, and only
-negations, instance pins and genuine narrowings are authored, so `with !Alloc +
-!Thread` is the normal signature and the full row is read at the address surface
-beside repr width and resume cardinality. The migration is the medium's own —
-`mentl tighten` already authors row patches — and the count reaching zero is
-what retires the board line.
+`Hβ.syntax.positive-row-is-authored-by-hand` — CLOSED 2026-09-27 (A4; LEDGER
+carries the pin). BORN 2026-09-21, MEASURED: 132 signatures declared four
+effects, 155 five, and a tail ran 13, 14, 16, 17 (four), 18, 19. Every name in
+a declared row is a hand-copy of a fact inference computed — SYNTAX's own
+words are that the declared row is "a CONSTRAINT verified against the row
+inferred from the body" — so a wide row is a re-derivation, is not intent
+under the Intent Boundary Rule, and buries the one `!E` worth reading. STEP
+ONE (`CsWideRow`, `type Judging`, 19 → 12) was the count of a symptom. STEP
+TWO is landed: `T_RowInventory` narrates a clause whose bare names the body
+proves exactly or whose body row is open (a positive cap installs no gate);
+`mentl tighten` writes the RESIDUE — negations and instance pins, or no
+clause; `CsAuthoredPositiveRow` bounds the wheel at ZERO (seen RED at 164
+through the half-swept tree). The medium authored its own migration — 1,148 +
+157 + 164 + 21 patches over five runs (the patcher learned the line-ending
+`=` on the second, and the modules the entry never links — combinators — on
+the third) — and 529 clauses remain, 273 negation-only and 256 `Pure`. The
+wheel judged clean through the fully inferred rows with ZERO
+`E_EffectMismatch`; the m3 leg's warnings fell 161 → 62; `type Judging` lost
+its last user and is deleted. A positive cap on a HOF stays legal user intent,
+and since A3-pos (the same day) it is a GATE: `declared_gate` installs the
+closed row itself, so a callback performing beyond the cap refuses at the
+argument edge — crown `leak-cap-callback` / `sound-cap-admits`.
+
+`Hβ.frontier.census-judge-races-its-pool` — OPEN, OBSERVED ONCE 2026-09-27
+(A3-pos's pre-march frontier, `--compiler fresh`, while the crown and the
+micro battery ran beside it). `run_census` judged `record-pattern` and
+`record-pattern-open` — the two shapes that share line 40 of
+`mn-census-verbs` — as "misses its own site", and the children's output
+files read afterwards carry `mn-census-verbs:40:1-40:43`, exactly what the
+judge greps for; no `.rc` was written, so neither query died. The re-run
+alone was green (404/0/2). The judge `cat`s every `census-40*.out` after
+`xargs -P` returns, so a child finishing late is not the mechanism on paper;
+what is, is unmeasured — a stale-file read, a write not yet flushed to the
+name the judge globs, or the pool's exit racing the redirect. Not a fix:
+the observation, kept so a second sighting has a first. Line 40 carries one
+shape since R0d retired `record-pattern-open` (2026-09-28), so a second
+sighting there would say the race is not the shared line.
+
+`Hβ.infer.ground-differs-by-route` — OPEN, NAMED 2026-09-27 by A4's sweep.
+The stdin compile (the whole wheel as ONE module, `find lib src | cat`)
+judged sixteen rows GROUND — `edges_masked`, `edges_masked_walk`,
+`tail_set_insert`, `tail_set_union`, `row_of_fold`, `edge_content_into`
+(effects.mn), `build_string_index`, `string_index_add`, `hash_node_of`,
+`show_hash_ty`, `show_node_of`, `field_sel_offset`,
+`field_offset_unprovable_why`, `report_cmp_unprovable` (backends/wasm.mn),
+`chase_probe_tag` (infer.mn) — where the entry's weave judgment (`mentl
+tighten main`, per-module through the import DAG) left the same rows OPEN,
+so the stdin route narrated `T_RowInventory` on clauses the weave route
+never banked. The narration's open-row arm dissolved the difference for the
+sweep, and the divergence stands: the same declaration's row is ground on
+one route and open on the other, which is an order- or grouping-dependent
+"is this row resolved" — the one-judge question (PLAN §11's "order-
+independent verdicts on the DAG path") at the row's ground read. Design:
+compile the wheel both ways and diff the rows at every declaration exit
+(`row_is_ground` per fn, both routes, one fixture); the route that leaves a
+row open where nothing free remains is re-deriving a quantified var it
+should have chased. Every one of the sixteen is a helper in a mutual
+recursion pair or an SCC of two.
 
 `Hβ.march.determinism-is-never-probed` — OPEN, BORN 2026-09-21, MEASURED.
 `march.sh --fixpoint` forces the m4 leg on a clean run, and **nothing invokes
@@ -251,7 +290,88 @@ arm by construction, and performing it there would mint exactly the defect
 `Hβ.effects.reachable-perform-with-no-install-compiles` names. The gradient
 has to arrive WITH the `propose` that asks for it: the performer holds it,
 the arm reads it. That is a signature change to the `propose` op and is the
-build.
+build. D4 retyped the field to the gradient's own answer (`Teaching`), so the
+voice can say a question or a need as well as an annotation; the writer still
+passes `TeachNone`.
+THE OTHER HALF OF THE BUILD, found on D5's walk (2026-10-02): filling the
+field is not enough, because the surface it feeds cannot act on it. The
+LSP's code actions are `CodeAction(title, edit)` with the edit always the
+empty string, built from the voice line's literal slots
+(`code_actions_from_slots`, src/lsp.mn), and the JSON projection drops the
+edit entirely (`map_code_actions_to_json` writes a title and a kind), so a
+filled `gradient_next` would put a proposal in the editor's menu that does
+nothing when chosen — a suggestion the developer cannot accept is the
+surface lying about what it offers. The close is two moves in one landing:
+(1) the performer holds the gradient — `handle_code_action` asks the
+declaration at the position for its `Teaching` (`decl_teaching`, the answer
+`mentl teach` and `mentl accept` read) and hands it to the `propose` it
+performs, so the arm renders what the performer proved rather than
+performing what its world cannot reach; (2) an ADD carries the edit `mentl
+accept` writes — the formatter's head render over the declaration's head
+span in its own module's file (`render_fn_head`, `splice_decl_head`, the
+conservation census guarding it), projected as an LSP `TextEdit` in the
+client's coordinates — while an ASK and a NEED carry no edit and render as
+the question or the predicate, never as an action. The witness: the IDE
+twin asks for code actions at `fn inv(n) = 100 / n`, applies the one
+returned, and the document then checks with no open claim.
+
+`Hβ.voice.free-variables-render-as-handles` — OPEN, BORN 2026-10-02 (D5),
+the TYPE face closed at `where` and every other reader still open. A
+variable still free in a type renders through `show_handle` as its debug
+handle — `t14162@e15942`, the forensic projection's honest "unresolved at
+epoch e" — and every reader-facing surface used that render: `mentl doc`
+printed `bare : (a: t14162@e15942 own — inferred, …) -> (t14162@e15942,
+t14163@e15942)`, `type of` the same, and the first D5 build's `where` badge
+`a : t14162@e15942 @ per instantiation`. A variable a declaration
+quantifies is GENERIC, not unresolved, and the surface's own spelling of a
+type parameter is a lowercase name (SYNTAX §«Generic type parameters»: the
+case rule is the declaration). `where` names them now (`name_type_vars`,
+src/query.mn): inside a checkpoint each free type variable is bound to the
+name it was declared with (`a` in `f: a -> b`, its cell minted with that
+name as its reason by `quantify_ctor_ty`) or the first letter not taken,
+the one renderer runs, and the rollback leaves the graph as the projection
+found it — `bare(a, b)` / `a : a @ per instantiation` / `-> (a, b)`. A raw
+bind on purpose: no judgment reads a display binding, so no demand on the
+cell is consulted, and the width read treats a lowercase type name as the
+type parameter the case rule says it is.
+REMAINING, one move per reader, each a bracket around its own render: the
+`doc` roster's signature lines, `type of`, the address projection's Query
+line and the LSP hover (the render runs after `ask` returns, so the
+bracket wraps the render there), and the diagnostic messages that print a
+type (`E_TypeMismatch` among them). THE ROW FACE is the same class one sort
+over and has no surface spelling to borrow: `fanned(a, b) with Memory +
+Alloc + WasiThreads(c, r9430@e386)` — the instance of an effect whose
+generic ops share a type variable and a thunk's row — keeps its row
+variable's handle. Its design is `Hβ.diag.raw-row-variables-in-mismatch`'s:
+a reader is owed the names and the count of what is still open, so an open
+tail renders as what it is open to (what the callback performs) rather
+than as a handle, and the `where` header and the mismatch message read the
+one rendering. The forensic projection keeps the handle: `mentl query
+<file> unresolved` is the surface that asks "unresolved at which epoch".
+
+`Hβ.query.name-keyed-verbs-miss-locals` — OPEN, BORN 2026-10-02 (D5), named
+when `where` learned to find a local and its siblings did not. `type of`,
+`why` and `flow of` read `env_lookup(name)` alone, and the env at the end of
+a judgment holds module-level names, so every parameter, `let`, pattern part
+and function literal's parameter answers "not found" (measured on boot
+b400dc74 over `let scale = 2.0`: `mentl why … scale` and `query … "type of
+scale"`). `where` reads a local the way the judgment drew it — each
+reference to the name in the module the question is about (`graph_refs_at`,
+filtered by `graph_module_of`) along its link (`graph_link_of`) to the cell
+it reads — with the question carrying its module (`QWhere(name, scope)`,
+`parse_query_string(scope, q)`). THE CLOSE: `QTypeOf`, `QWhy` and `QFlowOf`
+take the scope the same way and fall to the one binder read when the env
+has no entry — `binder_badges`' reads factored as the shared resolution:
+`type of` answers each binder's type, `why` walks each binder cell's own
+Reason, `flow of` reads each binder's label (`binder_flow_label`), several
+binders each with where they are first read. AND ITS SECOND FACE, the one
+the edge cannot reach: a binder nothing reads has no reference, so no link
+leads to it, and `where` answers "not found" for an unused `let` or
+parameter. The close is the refs column's definition-side sibling — a
+binders column written where the env extends a local (`env_extend` with a
+`ValueScheme` or `ParamScheme` entry): name → binder handle, read by the
+same resolution, priced against the self-compile peak before it lands (one
+name-map entry per local binder, the order of the refs column's own cost).
 
 `Hβ.oracle.ranked-queue-is-a-second-frontier` — OPEN, BORN 2026-09-21, found by
 pointing the medium's own reachability facet at the medium.
@@ -286,8 +406,16 @@ whose silence rule ("Mentl is silent only when the project queue is empty")
 must be re-expressed against the frontier before its caller at voice:1177
 loses it, or the voice loses its silence gate rather than its dead queue.
 
-`Hβ.effects.reachable-perform-with-no-install-compiles` — OPEN, BORN 2026-09-21,
-MEASURED while deleting the peer above.
+`Hβ.effects.reachable-perform-with-no-install-compiles` — CLOSED 2026-09-27
+with `Hβ.effects.root-gate-credits-an-install-that-had-not-opened`: the
+executable root gate reads main's row and the emit's demand census alone,
+so a reachable perform with no install anywhere is a name present at the
+root with no enclosing install and refuses `E_EffectUnhandled` before a byte
+of WAT (crown `leak-root-direct`, `leak-root-escape`). The wheel's own case
+(`silence_predicate`'s `query_project_queue`) was already gone with its
+caller by the time the credit was deleted; the wheel refused on four OTHER
+names at its root the moment the credit went, each a real latent trap
+(LEDGER 2026-09-27). BORN 2026-09-21, MEASURED while deleting the peer above.
 With `ic_compile_loop` removed, `project_queue_merger` has NO install site
 anywhere in the tree, and `silence_predicate` (src/voice.mn) — reachable, called
 from a handler arm at voice:1177 — performs `query_project_queue`. **`mentl check
@@ -808,12 +936,19 @@ rather than the address surface, and `report_at` already takes a module name
 so a report whose handle is known can name its module. The open question is the
 reports raised where no handle is in hand — a zero span is a report that never
 had an address, not one that lost it.
+THE MODULE HALF CLOSED 2026-09-27 (the F0b pin): `synth_propose` enters the
+hole's module before it mints, so every candidate node is born where the hole
+is, its diagnostics name that module, and the import gate reads a candidate's
+reference as the hole's own. That is how the half was found — with module
+identity load-bearing, twelve frontier legs refused every same-module candidate
+as a stranger's. The SPAN half stands: a candidate is minted at `span_zero()`,
+so a report against it still lands at the hole's module at `0:0-0:0`.
 CLOSE: a fixture whose refuted candidate raises a located diagnostic, asserting
 the report names the module the candidate was judged in; and a `0:0-0:0` span
 reaching a user-facing report becomes a refusal rather than a coordinate.
 
-`Hβ.cursor.module-of-a-span-is-containment` — OPEN, BORN 2026-09-19 out of the
-address fix. `module_path_of_span` (graph.mn) answers "which module is this span
+`Hβ.cursor.module-of-a-span-is-containment` — CLOSED 2026-10-01 (D3), BORN
+2026-09-19 out of the address fix. `module_path_of_span` (graph.mn) answers "which module is this span
 in?" by scanning every node for an NModule whose span CONTAINS it. That was
 right while spans were offsets into one concatenated weave. It is not right now:
 each module's spans are its own 1-based coordinates, so an NModule span covers
@@ -836,6 +971,68 @@ decay is not reachable from user code. CLOSE: a rank fixture whose caret and
 candidate sit in different modules at a line both files reach, asserting the
 cross-module weight rather than the same-module one — seen RED first, which is
 also what turns the derivation into a measurement.
+CLOSED 2026-10-01 (D3), and the derivation became a measurement the moment a
+felt walk reached the decay from user code: on boot 9387fea1, `mentl edit main`
+over a two-module program opened on the PRELUDE's `unwrap_or` (61:1), accepting
+it wrote `  with Pure` above main.mn's first line, and `mentl main.mn:0` listed
+the helper's `twice` and `total` under main's coordinates beside main's own
+source lines. The scan and the by-path import walk it served are deleted.
+Proximity takes two HANDLES (`position_proximity`, cursor.mn): their modules are
+column reads, the enclosing declaration is a containment test inside ONE module
+(where spans share coordinates), and cross-module nearness is one module's row
+of the reach table (`module_reach_of`). tests/frontier/gradient-module-demo
+holds it, both legs RED on the boot.
+
+`Hβ.felt.accepted-clause-carries-its-proof` — OPEN, NAMED 2026-10-01 (D3). A
+hole's accept draws an edge before its text (C4), so the Why at the accepted
+value walks to the proposal that proved it. An accepted CLAUSE is written by the
+formatter (`render_fn_head` spliced over the declaration's head, the
+conservation census guarding it) and draws no edge: the re-derived
+declaration's row reads as authored, and nothing says the medium proposed it or
+what proved it (`narrow_row_proven`'s subsumption). CLOSE: the accept notes the
+clause as `graph_accept_note` notes a fill, the declared row's reason wraps
+`Accepted`, and `mentl <file>:<line>` at the declaration walks its Why to the
+proof. D4 widens it: an accepted precondition (`n: NonZero`) or return
+contract (`-> Positive`) is written by the same head render and draws no edge
+either, so the Why at the parameter reads it as authored.
+
+`Hβ.teach.leverage-reads-direct-applications` — OPEN, BORN 2026-10-02 with
+D4. The precondition bracket counts what a candidate does to the program's
+applications of the declaration — the calls it refuses and the calls it
+leaves open — over the applications the judgment drew in `call_owes`: a
+call, a pipe stage, a call through a local that holds the declaration. Two
+applications are not on that edge: a PARTIAL's supplied argument, claimed
+where the partial is built, and the declaration handed to another function
+as a VALUE, whose applications are that function's and reach the contract
+through the crossing machinery (H4). A candidate one of those would refuse
+ranks as if it refused nothing: `fn main() = len(map(inv, [5, 0 - 3]))`
+with NonZero and Positive in reach ASKS between them (measured on the D4
+tree), where `inv(5) + inv(0 - 3)` answers NonZero. Never unsound — the
+written head is judged again — but the ranking is told less than the
+judgment knows. THE FORM: the bracket re-judges the CONE of the annotation,
+every application, partial and crossing whose judgment read the parameter's
+precondition — the incremental judgment's cone (PLAN §7: what is missing is
+the CONE); before it, a partial's construction and a crossing's channel
+noted on the same edge. CLOSE: the map form answers `add n: NonZero`.
+
+`Hβ.cursor.proximity-reads-the-call-graph` — OPEN, NAMED 2026-10-01 (D3).
+Inside one module the decay is three steps — the position itself, its
+declaration, the rest of the module — so a declaration the caret's own calls,
+or that calls it, is as far as any other. The graph holds those edges (the refs
+column), and nearness by reference distance is the gradient inside a file: the
+annotation on a callee is often the one that unlocks the caller's. CLOSE: a
+fixture where the caret's callee outranks an unrelated declaration of equal
+gates, seen RED on the step decay.
+
+`Hβ.felt.session-caret-never-moves` — OPEN, NAMED 2026-10-01 (D3). The edit
+session's caret opens at the entry's module node and never moves: the terminal
+transport reads accept and defer only, so the action ADT's override and
+caret-move arms are produced by no transport, and the same-declaration tier of
+the proximity is unreachable from the CLI session (the page reaches positions
+through the address route instead). Those arms resolve their span inside the
+caret's module now (`handle_at_span`), so they are correct when a transport
+produces them. CLOSE: a transport that delivers the developer's caret, and a
+leg where moving it reorders the field.
 
 `Hβ.graph.mutation-delta-is-write-only` — OPEN, BORN 2026-09-19. `graph_mutated(Int,
 Mutation)` (types.mn) carries `MSetNode(Int, GNode)` — *(handle, prior value)* —
@@ -887,35 +1084,190 @@ payloads compare structurally (`Hβ.eq.polymorphic-sum-payload-is-pointer-eq`
 closed the equality half on 2026-09-18). CLOSE: the two survivors above
 classify as `DivName` and the fixture asserts that line.
 
-`Hβ.lower.schedule-specialized-callee` — OPEN, and BORN HERE 2026-09-19 after
-living for months as a forward reference: `PLAN.md §5.R` band E cites it and
-`docs/SYNTAX.md` §`><` names it as the answer to caller-selectable fanout
-inside a reusable helper, while this catalog — the one home — did not carry it
-at all. A peer that exists only in the documents that POINT at it is the
-hidden-gap law violated one level up.
-THE SHAPE. `><` is a SYNTACTIC N-ary construct: the parser builds a
-`FanoutExpr` from branches written on the page, so its width is a property of
-the source text. A candidate list is a RUNTIME sequence whose length is
-whatever the enumerator proved, and there is no surface form for "fan this
-sequence." That is why the ??-fan reached for `spawn_task` directly and why
-`judge_window` existed at all — a constant standing in for a width the
-language could not say. The missing form is the sequence fanout: a `><` over a
-runtime sequence, lowered to the same `run_fanout_thunks` machinery
-(lower.mn) the syntactic form already uses, with the strategy read LIVE from
-the enclosing `~> Schedule` install (`Seq | Thread | Simd | Gpu`) exactly as
-SYNTAX says every fanout reads it.
-WHY IT CANNOT BE A HELPER TODAY, which is the peer's whole content: the
-schedule resolves at the fanout's own install site, never across a call
-boundary, so a `><` inside a reusable fn is permanently `Seq` while its name
-promises otherwise — the same measurement that dissolved `parallel_map`
-(`Hβ.prelude.parallel-map-dissolves-into-schedule`). A callee specialized on
-its caller's installed schedule is what makes the reusable form honest.
-CLOSE: `segment_verify` (synth_proposer.mn) is written as a fanout over its
-candidate sequence under `~> Schedule`, the width is a handler decision at the
-propose site, and a width-8 fixture proves m3 == m4 — determinism under any
-width is a TRUST law, not fixpoint hygiene. DEP: 9.2's deterministic handle
-partition and atomic join writes, because concurrent segments over one graph
-need `(arena, offset)` cells before two branches may write at once.
+`Hβ.lower.schedule-specialized-callee` — CLOSED 2026-09-30 (B4 + C9), BORN
+2026-09-19 after living for months as a forward reference: `PLAN.md §5.R` band
+E cited it and `docs/SYNTAX.md` §`><` named it as the answer to
+caller-selectable fanout inside a reusable helper, while this catalog — the one
+home — did not carry it at all. A peer that exists only in the documents that
+POINT at it is the hidden-gap law violated one level up.
+THE SHAPE IT NAMED. `><` is a SYNTACTIC N-ary construct, so a candidate list —
+a RUNTIME sequence — had no fanout to stand in, which is why the ??-fan reached
+for `spawn_task` directly and why `judge_window` existed at all; and the
+schedule resolved at the fanout's own install site, never across a call
+boundary, so a `><` inside a reusable fn was permanently `Seq` while its name
+promised otherwise — the measurement that dissolved `parallel_map`
+(`Hβ.prelude.parallel-map-dissolves-into-schedule`).
+THE FORM, AS LANDED. The schedule reaches a callee's fanout BY DEMAND through
+direct calls. A call standing under a spawning install — its own frame's
+(`site_schedule`: noted by the lowering at the one global-call arm, read by
+`twin_call_key` before the bracket) or the one inherited from the twin it is
+emitted in — demands the callee as a schedule TWIN, keyed by the site's
+instantiation with the schedule as a trailing letter of the enc (`T` / `P`,
+`enc_sched`), emitted beside the instantiation twins by the same plan.
+`fanout_reach_names` (graph.mn) is the ONE reach rule — a fn reaches a fanout
+through direct calls; a fn declared `!Thread` neither takes a demand nor hands
+one on, the negation read where it is AUTHORED, since a ground body's declared
+negation leaves nothing in the published row — asked of ONE NAME by the emit
+(`fanout_reach_of`: the walk from that name outward and no further, its answers
+settled across asks; a cycle's member settles only where the walk began or
+where a fanout was found) and read whole by `mentl where` (`>< [Seq; Thread
+demanded via twice]`). A fanout site carries what its
+own frame installs (`Option(Schedule)`: an installed `sequential_compose`
+governs, none inherits) and one lowered FORM per schedule it can run under;
+`fanout_form` selects at the site's schedule or the bracket's, every walker
+descends into the selected form and no other, and construction keeps every
+form's callee live through the callees the lowering noted (`fanout_form_note`
+/ `fanout_form_drain`), since a form the lowering introduced names a
+declaration no source name reaches. A nested record keeps
+the letter only where it cannot outlive the install (a thunk, an arm, an
+init); a lambda, a partial, a nested fn or a remainder keeps the
+instantiation alone (`nested_twin` — the one spelling the plan, the
+allocation audit and the closure mint read; at the floor it is the base
+record, emitted once under the floor bracket).
+THE SEQUENCE FANOUT. `fanout(f, xs)` is declared in the prelude as `map(f,
+xs)` — its type inferred, the sequential reading its body — and a call with
+both fields supplied is the fanout node at the lowering (`lower_global_call`,
+or `completed_call` where a pipe supplies the second field): `map` under
+`Seq`, `fanout_threaded` (lib/threading) and `fanout_persisted` (lib/persist)
+under the spawning schedules, `E_InternalInvariant` naming an unlinked
+implementation otherwise. C9: `segment_verify` (synth_proposer.mn) is
+`candidates |> fanout(judge_in_segment(...))` — width a handler decision at
+the propose site, sequential by property; a `~> parallel_compose` over it is
+REFUSED by the race rule through the callee (`graph_handler` is stateful),
+which is 9.2's DEP stated as a gate rather than as a constant.
+THE RACE RULE THROUGH A CALLEE (`race_check_demands`, at the settle point):
+from each direct call under a spawning schedule in a base unit, walk into the
+callee with the site's install path and its ROW PAIRS (each free row cell of
+the callee's scheme at a function-typed position bound to the site's resolved
+row, `row_pairs_at`), recursing into fanning callees; each inheriting fanout
+checks its branches' rows through the pairs (`threaded_effect_check`).
+Base-unit fanouts stay checked at lower (B1).
+MEASURED on boot 6f2ce437 first: reaches-callee exited 1 (both ids 0), the
+race refusal RAN to 11 with zero diagnostics, the readonly twin 10, `fanout`
+unknown (E_MissingVariable) and — once the prelude declared it — values 12
+(the control) and threaded 0, the thread-op branch 134; through the new
+compiler 14 / refuse / 10 / 12 / 3 / 14, the `!Thread` control 1, the caller
+refusal kept. Seven frontier legs.
+KILLS, inline (no refuter was dispatched): (1) a dynamic Schedule EFFECT
+read at runtime dies at the race rule — the schedule must be static per site
+for the branch-row check to mean anything; (2) `map` as the sequence fanout
+dies at granularity — a per-element spawn in every map of the extent; (3)
+bracketing into lambda bodies or value references dies at the escape — a
+spawn carried out of the install finds no handler
+(`Hβ.lower.schedule-through-a-value`); (4) a settle-point rewrite of the
+callee dies at the missing forty-arm rebuild walker and emit-time perform
+construction; (5) a new bracket state is unneeded — the enc already flows to
+every walker; (6) `fanout` as a PRIMITIVE with a hand-written `Frozen` scheme
+died at the boot: the boot cannot compile a wheel that names a primitive it
+lacks, and the scheme was a copy of `map`'s — the prelude declaration is
+inferred and one home. FOUND ON THE WAY, each seen first: the demand was never
+SEEDED (the letter propagated twin to twin and no install minted the first —
+the site note); a fanout under an installed `sequential_compose` inside a
+threaded twin must not inherit (the site fact became `Option(Schedule)`); a
+lambda nested in a monomorphic fn's schedule twin was named `$sp0` under an
+enc the audit never walked (`nested_twin`); a form's callee had no
+declaration to reach (construction enqueues the callees the lowering noted
+for every form); and a Thread op inside a spawned branch had trapped on every
+boot since B1 (`Hβ.threads.task-record-carries-the-arm-world`, closed below).
+THE COST RATCHET SHAPED THE REST, and its kills are the record. The march
+refused the candidate twice — the sugar vocabulary (41 → 45, the fanout call's
+own lowered forms; `desugar_vocabulary` moved with its justification) and the
+peak, 924 MB against the 873 MB ceiling. The fixed-input probe (boot and
+candidate over the IDENTICAL wheel source, under GNU time) put the boot at
+874–877 MB and the candidate at 924–932, so ~50 MB was the compiler's own.
+Cut in order: the race walk gated on a noted threaded site
+(`threaded_site_noted`, 3.8 MB), the form callees noted at construction
+rather than walked for, the stack entries classed once at push
+(`lower_handler_push` carries the `Projection`) with an index walk, and the
+reach computed at first ask rather than at `emit_plan` (908 → 891–898 MB).
+Per-step heap marks over the plan — a probed copy of the HEAD compiler beside
+the candidate on one input — put the whole remaining 22 MB inside
+`emit_reach`, every other step within noise, and a subtraction probe over
+`twin_call_key` blamed the site's schedule perform: (7) KILLED by the artifact
+— the emitted WAT allocates nothing on a miss, and the per-ask heap delta
+read 0 bytes over 32,576 asks (8 hits, 8 bytes each). The truth was one probe
+over: lib/persist's four Persist-class sites ask the reach, so the
+whole-program walk (`fanout_reach_names`, a child list per node of every
+body) ran on every wheel compile. The emit asks the rule of ONE NAME now
+(`fanout_reach_of`, the decl index read once off the decls column), and the
+reach's mark stands as its own `heap:` line beside pipeline's phase lines
+(`reach_heap_line`). (8) The first per-name form memoized nothing a cycle had
+touched and re-walked the runtime's mutual recursion once per path — the
+wheel's compile reached 4.3 GB and never planned; a name is entered once per
+ask now, a chain that finds a fanout settles true as it returns, and a root
+that finds none settles every name it entered. On the wheel the four asks are
+the driver's `mentl resume` block (pipeline.mn, under `persist_to_disk`),
+whose callees are the compiler itself, so the first ask walks the compile's
+reach once and settles it false — the same walk the whole-program form paid,
++6 MB for the seen set and the settle: the O(1) form is the reach as a column
+the judgment writes (`Hβ.lower.reach-edge-on-node`), and the ceiling moved
+873,000 → 890,000 KB with the fixed-input measurement in its justification.
+
+`Hβ.threads.task-record-carries-the-arm-world` — CLOSED 2026-09-30 (B4), found
+by the first fixture whose branch asked its own thread id. B1 made a branch
+run in the world it was spawned in by storing `$world_g` into the task record
+at `$spawn_task_impl` — which the `spawn` ARM calls, and an arm runs under the
+deep-handler law with `$world_g` set to the world OUTSIDE its own install. So
+the record carried every handler outside the schedule and not the schedule
+itself: a branch could reach `k` in `~> parallel_compose ~> k` and could not
+reach `parallel_compose` for `current_id()` or a nested `spawn`;
+`ev_declaring_node` faulted at 0xffffffff (exit 134) on every boot since B1,
+at the installing frame itself — `((current_id()) >< (current_id())) ~>
+parallel_compose`, measured on 6f2ce437. The persist.mn lesson one effect
+over: a world captured inside an arm excludes the handler doing the
+capturing. Every dispatch saves the PERFORMER's world beside its own swap in
+a per-instance global (`$perform_world_g`, restored to the enclosing perform's
+value after the arm returns), and the task record stores that;
+`tests/frontier/mn-threaded-branch-thread-op.mn` runs to 14.
+
+`Hβ.lower.schedule-through-a-value` — NAMED 2026-09-30 (B4). A value that can
+outlive its install — a lambda, a partial, a nested fn, a reified remainder —
+keeps its instantiation alone and runs its fanouts at its own frame's
+schedule: a `><` inside a callback passed into a threaded extent runs
+sequentially on the instance that calls it. The demand crosses only DIRECT
+calls, because a call is where the extent is known and a value's call site is
+not; a spawn carried out of the install would find no handler on the chain,
+a trap the row never promised. The honest reach is the chain the VALUE was
+minted under — its record could carry its creating frame's schedule as it
+carries captures, priced by the same race rule — a representation the lowering
+has not built. RETIREMENT: a closure record carries its minting frame's
+schedule and its fanouts read it.
+
+`Hβ.lower.twin-key-is-a-product` — NAMED 2026-10-01 (from B4's review). A
+schedule twin's key is its instantiation's enc STRING with the schedule as a
+trailing LETTER (`sched_suffix`), and the schedule is read back by looking at
+the string's last byte (`enc_sched`: 84 is Threaded, 80 Persisted) and cut
+off again for the type part (`enc_type_part`). That is position-as-identity
+at the representation layer, the shape §11 corrected in the packed handle:
+two facts — which instantiation, which schedule — live in one string, and a
+reader that forgets the letter keys a schedule twin as its type twin. THE
+FORM: the twin key is a product, `{pairs, schedule}`, and the mangled symbol
+is its render, spelled once where the emit names a symbol; every reader of
+the key reads the field it asks about. RETIREMENT: `enc_sched` and
+`enc_type_part` delete, and no reader of a twin key inspects bytes.
+
+`Hβ.lower.race-rule-obligation-flows-to-callers` — NAMED 2026-09-30 (B4). A
+base unit whose own frame installs a threaded schedule over a fanout whose
+branch effects only a CALLER handles refuses at the callee (B1's fence: "an
+install beyond the frame fence — a caller's — is not provable from here";
+`mn-threaded-branch-caller` is that refusal). B4 built the converse walk —
+from a spawning caller into its callees — so the obligation could flow the
+other way: a fanout whose branch row names an effect its frame cannot cover
+could publish the obligation on its row and let each caller discharge it
+against its own installs, as the row gate does for a negation. Named, not
+built: the refusal stays conservative and at the callee.
+
+`Hβ.persist.sequence-fanout-replay-barrier` — NAMED 2026-09-30 (B4).
+`persist_branch`'s parameter row severs image-external effects (`!WASI +
+!Filesystem + !Network`) so a re-run branch cannot fire a packet twice;
+`fanout(f, xs)`'s scheme is `map`'s and carries no such gate, and the
+persisting form is selected at the emit, after the judgment, so an
+IO-performing `f` under a persisting schedule reaches `fanout_persisted`'s
+`persist_branch(() => f(x))` with nothing having asked. The program's row is
+true (it says IO); what is unchecked is the REPLAY barrier at a sequence
+fanout. RETIREMENT: the settle-point walk that checks branch rows under a
+threaded demand checks them against the replay barrier under a persisting
+one, or the judgment gates `f` where the site's schedule is its own frame's.
 
 `Hβ.lower.closure-continuation-partial-are-one-record` — NAMED 2026-09-09 by
 the same interrogation. The reification landing routed a bare name into the
@@ -1093,9 +1445,28 @@ runtime message carrying no number — 502 produces the identical message. The
 law that the number form of a claim must be READ FROM THE ARTIFACT applies
 to a number you reasoned your way to just as much as to one you remembered.
 
-`Hβ.effects.an-arm-may-not-perform-its-own-handlers-ops` — NAMED 2026-09-10,
-MEASURED, and OPEN. The uniform world bracket made the deep-handler law true
-everywhere, and the wheel does not obey it.
+`Hβ.effects.an-arm-may-not-perform-its-own-handlers-ops` — CLOSED 2026-09-27,
+and not by the lexical refusal the form below asked for: the ROW already says
+it. An arm's performs resolve outer of its install, `row(expr ~> h) = row(expr)
+- handled(h) + row(h)` re-adds exactly what the arms perform, so an arm asking
+for an op only its own handler declares carries that effect to the enclosing
+install and, with none, to the executable root — where the root gate reads the
+row alone now and refuses `E_EffectUnhandled` (crown `leak-root-arm-self`,
+`leak-root-inner-install`; the sound twin `sound-root-outer` installs the
+serving handler OUTSIDE). The wheel's sites, found by the refusal and
+restructured as the deletion below prescribes: `interrogate_all` mapping the
+`interrogate_at` OP (a plain fn both arms call), the voice's run arms asking
+`file_text` (moved beside the handles table they read). The sub-question — is
+re-installing (`~> self`) a legitimate second form — is answered for the row
+and open for the world: `((twice()) ~> h) ~> h` runs to 20 (the inner arm's
+ask reaches the outer install) and REFUSES, because the row cannot see that
+the outer install's own arms are shadowed for its whole extent. That was
+called install identity (`Hβ.effects.arm-world-static-rule`, A5/A6) and
+measured 2026-09-30 as effect-granular PRECISION — the inner install
+absorbs `E` for the whole extent and Koka refuses the same program
+(`Hβ.effects.op-granular-arm-reach`); the wheel needs no such nesting.
+NAMED 2026-09-10, MEASURED. The uniform world bracket
+made the deep-handler law true everywhere, and the wheel did not obey it.
 
 THE MEASUREMENT, from the frontier against pin f862677e (368 pass / 10 red;
 five of the ten are this one root, `mentl fmt` and `mentl session` and the
@@ -1477,11 +1848,47 @@ somewhere, disagreed.
 bytes, which is the better k anyway) and did not paper it: this entry is the
 record, band A owns the fix, and the repro is two `addr` calls at different
 types in one body.
+▶ RE-MEASURED 2026-09-28 (Pulse scene 1) — TWO FACES, ONE CLOSED. The VALUE
+face was a dedup collapse and is CLOSED: the row set kept the first of two
+same-named instances, so `fast() + slow()` (48 kHz then 44.1 kHz) escaped a
+declared `!Sample(44100)` while `slow() + fast()` refused. Collision is now
+the complement of provable distinctness (`row_entry_collides`), and
+`tests/crown/leak-instance-order.mn` holds it. The TYPE face is not a dedup
+bug and stays open here: `register_effect_ops` shares an effect's type
+variables by name across its ops, so `Cast` is `Cast(a)` and a handler serves
+ONE `a` — the install unifies every instance (`unify_instances_to`), which is
+the refusal this entry first measured. Two instantiations of a generic op in
+one extent are a type error by the effect's own declaration. The direct probe
+(`addr(p) + addr(xs)`, `Pt` and `[Int]`) checks clean on boot 43aeb30f and on
+this landing's m2 only because `addr` is substrate-lowered and meets no
+install; what it does show is the projection under-reporting — with both
+parameters annotated, `T_OverDeclared` narrates "body only uses Cast(Pt)",
+the merged member rendering as its first instance. THE FORM: a type variable
+the handler's arm is polymorphic in is quantified per PERFORM (the op is
+generic, like a polymorphic function), and one the arms share — State's `s`,
+read by `get` and written by `set` — stays the effect's parameter. The
+handler declaration decides it, since only the arms know whether they hold
+the type fixed.
+▶ A THIRD FACE, CLOSED 2026-10-03 (#129, pin 10cd1956fefa7abf): an install frame joined
+the same-named instances of EVERY effect its body performed, where the join
+the type face describes belongs only to the effects its handler answers. Two
+`Cast`s at two types inside an unrelated handler's install refused with
+`List(Int) vs () -> Int` at `main:0:0` on boot 2198ed97
+(`tests/micros/mn-cast-two-types-one-install.mn`, 42 now). The frame joins
+only what its handler answers (`inf_install_absorbs`); the type face above
+stands.
 
 `Hβ.tools.cost-ratchet-reads-one-sample` — RESOLVED 2026-09-07, the banked
 fix built as prescribed. `read_cost` (tools/march.sh) no longer convicts on
 one reading: a sample over the ceiling triggers two more m3 legs and the
-ratchet rules on the MINIMUM of three. Peak RSS is a one-sided measurement —
+ratchet rules on the MINIMUM of three. ▶ THE RE-READS RAN THE WRONG
+COMPILER FOR THE m4 LEG until 2026-09-28 (R0c): the recheck always ran
+m2, so an m4 breach was re-measured on the previous generation's
+footprint and the minimum could clear a peak the m4 leg held. It would
+have cleared R0c's: its m4 leg reads 857,452–864,524 KB, where m2 over the
+same source reads ~827 MB, because the m4 compiler is a 3.14 MB module to
+m2's 2.54 MB and the host pays that difference. `read_cost` takes the
+leg's own compiler now. Peak RSS is a one-sided measurement —
 allocator and OS jitter can only push an OBSERVED peak ABOVE the true
 requirement, never below — so the lone sample is biased HIGH and the minimum
 is the honest estimator; a genuine regression survives it undiminished. The
@@ -1519,36 +1926,85 @@ of megabytes is invisible, which is both failure modes at once. It also makes
 one measured fact hard to use: comments are GRAPH CONTENT in Mentl, so prose
 has a real footprint, and today it cannot be separated from the noise.
 
-`Hβ.tools.gate-stamp-is-uniform` — NAMED 2026-08-18. The frontier keeps a
-stamp (`.build/frontier-stamp`, the boot sha256 written on a 0-red run),
-so the board can say whether it measured THIS boot and the pre-commit
-perimeter can refuse a wheel commit without it. Crown, proof-exactness,
-effect-identity and instrument keep none, so nothing — not the board, not
-the hook, not PROVENANCE — can distinguish "green" from "not run since
-the pin moved" for four of the six boot-suite gates. That is the exact
-shape §11 tripwire 4 records: the crown went eleven ledger entries
-unmentioned while a leak rode the arc, and nothing written was false. The
-stamp is six lines in frontier-gate.sh; the work is making it one thing
-every gate does rather than four copies, which is why it is named rather
-than pasted. Its own destiny is `mentl verify` owning the suite and the
-stamp being a graph fact about the pin instead of a file. Until then
-`state.sh` prints the four as explicitly unstamped, because a blank you
-can see is worth more than a silence.
-A FIFTH, MEASURED 2026-09-19 AND WORSE THAN THE FOUR, because it reads
-like a channel while being a constant. Every provenance block march has
-ever written carries `micros+census: NOT RUN (run tools/verify.sh)` —
-every one, at every pin, back to the first. The line is
-`${MARCH_VERIFY:-NOT RUN …}` (march.sh) and **`MARCH_VERIFY` has no
-writer anywhere in the tree**, so the slot has never once held a
-verdict. Meanwhile verify.sh stamps `.build/gate/verify.green` keyed to
-the exact boot it measured — the fact the slot wants exists, one
-directory over, and the block cannot see it. This is NOT patched here,
-deliberately: march.sh and verify.sh are both condemned by `mentl verify`
-owning the suite (`boot/board.mn` written at repin), and improving a
-structure a named peer sentences to deletion is Anchor 2's roadmap face.
-It is named so the replacement inherits the requirement: every board line
-is a READ of the gate's own stamp, and a slot no writer feeds is a
-compile error, not a default string.
+`Hβ.tools.gate-stamp-is-uniform` — NAMED 2026-08-18, CLOSED 2026-09-26
+(PROGRAM F0, no repin). The frontier kept a stamp and crown,
+proof-exactness, effect-identity and instrument kept none, so "green" and
+"not run since the pin moved" were indistinguishable for four of six
+boot-suite gates; and the provenance slot `micros+census` had no writer at
+all. The closing form is one mechanism rather than four stamps: a leg's green
+is stored under the sha of exactly what it reads (`wt_memo_key` /
+`wt_memo_hit` / `wt_memo_put`, tools/wt-env.sh; a compiler artifact hashes by
+CONTENT, so boot and an identical m2 share a key; `FORCE_GATES=1` re-runs).
+Crown, proof-exactness, effect-identity, the frontier, the micro battery, the
+fixture legs, the solo sweep, verify's census section and the march's
+verb-parity leg all read it. `MARCH_VERIFY` is written now (`verify --wheel`
+runs before m3 under `MARCH_REPIN`), and a repin whose sha is the narrated
+head writes no block. Measured: a byte-identical repin paid ~20 min before,
+647 s with every memo cold, 22 s memoized; full verify 3 s.
+What stays open, named: the instrument, thread and IDE gates keep no memo,
+and the effect seam still asks nine whole-wheel `refs of` questions (in
+parallel now) where a census shape in src/board.mn would answer all nine off
+the one judged graph — the absorption the scaffold's destiny names. The
+destiny is unchanged: `mentl verify` owning the suite, the memo a graph fact
+about the pin rather than a directory of files.
+
+`Hβ.verify.solo-sweep-is-one-judgment` — CLOSED 2026-09-27 (LEDGER, the F0b
+pin). With the board memoized, the slowest thing a source change still paid
+was the per-module solo sweep: 63 separate `check` judgments (~2 minutes on
+four cores) to learn whether any module used a name it never imported although
+the whole link resolved it. It is one read of the ScopeAll judgment now: a
+reference whose declaring module is outside its own module's import closure
+reports `E_MissingImport` at the reference, naming both modules — ARMED at
+birth (the wheel measures zero; the sweep it replaces held
+`solo_violations_max: 0`). The sweep, its memo and that key are deleted; what
+verify.sh keeps is the islands leg — the modules the entry never links
+(lib/combinators, the tutorials), each checked as its own closure's root.
+THE DESIGN AS NAMED HERE WAS REFUTED BY THE WHEEL, and the record is the
+transferable half. "Every env entry records the module that declared it" was
+built first — a fifth tuple field set per statement — and the wheel's linked
+judgment answered 3,541 refusals: 3,413 named the runtime libraries (every
+module reaches `lists`, `memory`, `strings` and `prelude` without importing
+them, because the driver links the prelude into every compile unasked — so its
+closure is the ambient world, unioned into every module's), and the rest named
+a PUBLISHER, not a declarer: an entry is re-published wherever a later
+judgment refines it — a handler's registration re-publishes its ops under the
+handler's module, a caller's resolution re-publishes a HOF's row — so
+`graph_chase` read as declared in `graph` and `lowpat_has_tuple` in
+`backends/wasm`. The declarer is the statement's own column, so the fact is a
+table built once per judgment off each module's decls (`inf_decl_module`); the
+env carries no module at all, and whether a resolution is module-level is the
+env's own answer by position (`env_lookup_is_global`), never a guess from the
+name. Three more things the build found, each closed in the same landing: the
+diagnostic's module names came from a per-call walk over every graph node
+(3,541 reports took 101 s and 4.3 GB where the boot checks the wheel in 5 s;
+the O(1) column read `module_name_of_handle` already existed); the warm route
+re-judged its cone under module PATHS while restored cells carried NAMES, so a
+cone module's one import named nothing — the import edges ride the NModule as
+identities the driver resolved, and the cone judges under the name; and the
+proposer minted every candidate under whichever module the judgment entered
+last, so twelve frontier legs refused same-module candidates as a stranger's
+(`Hβ.synth.leaked-diagnostic-lands-in-a-stranger`, its module half).
+
+`Hβ.lower.parameter-product-calling-convention` — OPEN, NAMED 2026-09-27 by
+the deletion that refuses its absence. `pair_fn_params` carried a second
+unification rule — "parameters ARE tuples": a single tuple-typed or free
+parameter decomposed against N parameters so a pipe could deliver a pair to a
+two-parameter function without a splat — and the emit never realized it on any
+shape. Measured the day a pair-destructuring arm literal handed to `fold`
+trapped inside the wheel's own build: `(1, 2) |> add` checked clean and trapped
+`indirect call type mismatch`; `add((1, 2))` returned 0 silently; `apply2({ (a,
+x) => a + x })` with `apply2(g) = g(1, 2)` trapped; a two-parameter fn passed
+where a pair-taking callback is called trapped — four programs that executed
+unproven. The rule is deleted, the shapes refuse (`E_FnArityMismatch`, armed
+the same day; the wheel carries none), and two frontier legs hold the contract
+(`tests/frontier/mn-tuple-into-binary.mn`,
+`tests/frontier/mn-pair-arm-as-binary-callback.mn`). What this names is the
+capability the rule promised: a function of N parameters and a function of one
+N-tuple are ONE value at the CALLING CONVENTION — the parameter product SYNTAX
+§«Labeled call arguments» describes, realized at lower as one representation
+(or one adapter minted where the two meet), so that a pair really can pipe into
+`add`. Until then the surface says what the emit does: a call's argument count
+is its callee's parameter count, and a pair is one argument.
 
 `Hβ.repr.option-of-word-niche` — NAMED 2026-08-18, by the landing that
 made the cost real. `base_digit(base, byte)` answers IS-this-a-digit and
@@ -1866,8 +2322,12 @@ repeated move (put the per-handle fact in a column, write it at the one
 writer, migrate the readers, delete the side-structure) is exactly the
 shape here — the body scan IS the side-structure.
 
-`Hβ.ifc.flowlabel-inference-in-hm` — STAMPED 2026-08-08 (the C chain's
-second step; build-ready design, not yet built). TRACED, against the
+`Hβ.ifc.flowlabel-inference-in-hm` — SUPERSEDED 2026-10-02 (PLAN §4⑥, Phase
+7): the row element below is a second home for a fact the value walk (P0),
+the state writers (S5) and the parent edge (E4) already carry; flow is a
+refinement over provenance and a sink's precondition, and the label lattice
+deletes. Kept as the record of the design it replaces. STAMPED 2026-08-08
+(the C chain's second step; build-ready design, never built). TRACED, against the
 artifact: today's FlowLabel is COMPUTED per query (query_flow_label
 reads a Ty's refinement-predicate NAMES — secret/classified/sensitive),
 and the one enforcement is construction-site (every splice ⊑ Public).
@@ -1986,6 +2446,25 @@ invisible while the construction check stands (the splice already
 refuses), and retiring the construction check without a sink edge lets
 every classified splice through — a regression the leak fixture would
 catch. Coupled means coupled; neither half is a landing on its own.
+THE PROPAGATION HALF IS A READ NOW, NOT A TYPE (P0, 2026-10-01), and (b)
+above is history. The SOURCE read was the type's: a classified value's
+label lived in its refinement, so it spread by class merging to every
+value unified with it — the boot refused all five derived splices of
+tests/frontier/mn-ifc-splice-derived.mn that way — and once P0 stripped
+refinements from cells it reached none of them (zero of five on the P0
+tree before the read). The label is an influence read along value-flow
+edges (`value_flow_label`, verify.mn): a constant is Public; a reference
+reads its binder — a parameter's declared contract, a let's value and the
+claims noted on it, a destructured part at its position in its whole's
+construction; a join reads every tail; a call joins its declared return
+with its arguments; anything else joins its children. So a derived string
+IS classified downstream with no `TRefined` binding, and the public half
+of a mixed tuple stays Public (mn-ifc-splice-part-public, the precision
+control). The query projection reads the same edges (`name_flow_label`,
+query.mn). What stays open is exactly the sink half: `splice_flow_check`
+still refuses every classified splice at construction, and the row
+charge at observation edges with the sink-edge move is this entry's
+build — the coupling above now has its propagation side in hand.
 
 `Hβ.ifc.dcc-noninterference-gate` — FIRST FACE LANDED 2026-08-08 (pin
 a025c3523a84; the C chain's head, banked here at its stamp). TRACED: the
@@ -2015,7 +2494,16 @@ predicate-NAME heuristic until that same landing. (3) PC-labels
 integrity dual, robust declassification, and the TCont flow-world
 follow in the banked band-C order. PRICED: the first face was one
 infer read-through + two fixtures + one leg; each following chain step
-is its own stamped landing.
+is its own stamped landing. TWO MORE FACES (P0, 2026-10-01), each a
+frontier leg seen RED on the P0 tree before the influence read: a value
+a `let` annotated classified refuses at its splice (the claim noted on
+the let, read through the binder — mn-ifc-splice-let-annotation, 0
+refusals before, 1 after), and a value BUILT from a classified one — an
+operator's result, a record's field, a computation over a classified
+parameter, a constructor's or a tuple's part — refuses at its splice
+(mn-ifc-splice-derived, 0 of 5 before, 5 of 5 after), beside the
+precision control that a mixed tuple's public half stays public. The
+check's site is unchanged: still construction, still sink-blind.
 
 `Hβ.syntax.effarg-node-in-with-clause` — RESOLVED 2026-08-08 by
 measurement (the peer was PLAN-named at 6.2 but never banked here; this
@@ -2147,8 +2635,1275 @@ rule attributed to it must be read out of the paper first.
 
 ### Named-residue index (entry-born peers not yet in a §5.R band — one home each)
 
-`Hβ.emit.eq-on-unresolved-operand-is-pointer-eq` — OPEN, measured 2026-09-18,
-RED contract banked the same day. The eq leaf's wildcard arm (`emit_eq_for_ty`,
+`Hβ.felt.candidate-render-is-format` — CLOSED 2026-09-30 (C7; LEDGER carries
+the pin). Named in cursor_transport.mn's own comment since C4 and never
+entered here — a hidden gap, entered at its closure. A survivor rendered
+through a literal renderer with a hole-marker floor, so every structured
+candidate — the unit value, a record or tuple construction, a list, a
+lambda skeleton, a fielded constructor — showed as `??`: the medium showing
+a proposal it could not name, and the accept splicing `??` over `??`.
+`render_candidate_source` is the formatter's own token projection of the
+candidate node now (`render_body_tokens`): `()`, `{x: ??, y: ??}`,
+`(??, ??)`, `[]` and `[??]`, `(_, _) => ??`, `Box(??)`, `Some(??)` — each
+the source the accept splices and the developer reads. The lambda
+skeleton's parameters carry fresh cells rather than the target's ground
+types, because a lambda parameter takes no annotation on the page and the
+skeleton had rendered `(_: String, _: Bool) => ??`, which no parse reads.
+
+`Hβ.synth.vocabulary-arg-holes` — the CONSTRUCTOR half CLOSED 2026-09-30
+(C7); the call half OPEN. A fielded constructor was enumerated as
+`Box(??)` and REFUSED against the `Box` hole it was built for — "Box vs
+(_0: Int) -> Box" — because a `??` in argument position is the partial
+application's field marker by the language's own rule, so the candidate
+judged as `Box` awaiting its field. A hole the proposer MINTS (id 0) is a
+VALUE the next fill supplies, never the marker; the judgment's two
+partial-application reads (`call_hole_index`, `hole_params`) say so, and
+`Option(Int)` asks `None` against `Some(??)` where it filled `None` alone —
+a guess wearing a unique survivor's clothes (`tests/proposals/
+option-shape-tie.mn`, `pair-shape-tie.mn`, `box-fill.mn`). A vocabulary
+CALL with arguments is still not enumerated: `f(??, ??)` for an in-scope
+`fn f(a, b)` whose result fits the hole is the general recursive form, and
+this entry keeps it.
+
+`Hβ.synth.linked-ring-offers-substrate-internals` — OPEN, BORN 2026-09-30
+(C7, measured on boot 2fcad4e9). The Linked ring offers the substrate's
+own helpers as vocabulary: at a `String` hole `hex_glyphs()` (lib/strings'
+hex-glyph table) ties with `""`; at a `[Int]` hole it stands beside `[]`
+and `[??]`; at an `(Int) -> Int` hole `seq_stride`, `seq_tag` and `seq_sc`
+are refused by name, and six survivors that are the prelude's own
+Int-to-Int helpers tie. A ring that reaches the link reaches every
+top-level name the link carries, and the substrate's implementation
+vocabulary is not a developer's. The form: a module's exported SURFACE —
+what an `import` brings into scope is what the ring may offer — read off
+the import edges the manifest judgment already draws (`E_MissingImport`,
+F0b), so the Linked ring offers what a `lib` module exports and never what
+it keeps. `tests/proposals/string-value-tie.mn` carries the survivor as a
+value tie; its contract moves to a fill when this lands.
+
+`Hβ.infer.arm-body-cell-is-free-at-propose` — OPEN, BORN 2026-09-30 (C7,
+measured on boot 2fcad4e9). At `handler h { ask() => ?? }` over `effect
+Ask { ask() -> Int }` the hole's cell is FREE ("still free: annotate…"),
+so the vocabulary fills it with `hex_glyphs()` — a String for an Int op.
+An arm's value is the install's answer (the `S` of the op's `TCont`), and
+the judgment does not connect the arm body's cell to it at registration,
+so nothing narrows the hole; the same read renders the position's source
+as `??,` (the arm's span swallows the trailing comma). Two findings, one
+site; the fixture stays in the scratchpad until the arm's cell is the
+answer's, since the battery holds no declared reds.
+
+`Hβ.egraph.per-expr-effect-row` — CLOSED 2026-09-30 (C5; LEDGER carries
+the pin). It was named in egraph.mn's own comment and cited by PLAN §11 5.5
+since 2026-08-08 and had no entry here — a hidden gap, entered at its
+closure. Not as the spine column its entry named, and the reason is the
+transferable half: a dense per-node row column would have paid a slot per
+node for a fact fewer than a fifth of nodes carry, while the frame join
+already had every charge in hand. The judgment's one writer notes each
+charge on the node that makes it in the same move it joins the frame
+(`inf_add_row_at`, `graph_row_note` — a LIFO multi-map under the handle,
+trailed as `MRowNote`), and a subtree's row is a READ over structure
+(`row_of_subtree`, graph.mn: own notes joined over children's, with a
+lambda, a nested fn, a handler declaration and a `~>` tee answering their
+own notes alone, and a hole answering nothing). egraph's `is_pure` reads it;
+`body_is_pure` and `effs_at` — the shape guess and the type-row read that
+stood in for it — are deleted.
+
+`Hβ.verify.partiality-reads-the-path-narrowing` — OPEN, BORN 2026-09-30
+with C5. The partiality claim decides from constants, module constants
+and the operand's refined type; it does not read the PATH. `fn fold_int(op,
+a, b) = … if b == 0 { None } else { Some(a / b) }` (src/egraph.mn) and
+`litval_arith`'s twin (src/verify.mn) guard the divisor and still carry an
+open claim, as does `pick_from_pool`'s `hash % n` under `if n == 0`
+(src/voice.mn) — the wheel's five open partiality obligations, every one
+of this shape (`mentl query src/main.mn smt` renders each as a `distinct`
+assertion; lib/dsp's six divisions by a hop or a grid width discharge
+through `Positive` on the parameter, cfc.mn). The narrowing walk (`walk_refinement`, infer.mn) COMPUTES the
+path predicate at every node and writes it nowhere: its one write was
+found dead on 2026-07-18 (`narrowing_pred_handle` descended to the seed;
+the column reads 0 everywhere; lower's `list_index_proven` elision has
+never fired). The form: the narrowing written at every node under a
+non-trivial path — a node's proven path predicate beside its type — and
+`node_excludes` asking it as it asks the refinement (decide the path
+predicate with `self` bound to the fatal point). The same read is what an
+index's precondition needs.
+
+`Hβ.effects.index-partiality-is-a-row-fact` — OPEN, BORN 2026-09-30. `xs[i]`
+traps out of range (`list_index` refuses a bad index loudly, lib/lists.mn),
+and a slice past its sequence likewise; neither charges `Trap`. The same
+law as the division's, one primitive over: the precondition `0 <= i && i <
+len(xs)` raised as a claim, discharged by a refinement the fragment can
+decide (`ValidIndex(xs)`, SYNTAX's dependent form, which the parser does
+not carry yet) or by the path narrowing above, and open otherwise. Until it
+lands, `!Trap` is a proof about division alone and says so here.
+
+`Hβ.effects.divergence-is-a-row-fact` — OPEN, BORN 2026-09-30. A function
+that does not terminate (`fn loop() = loop()`) is Pure and total in the
+row, and the absorb rewrite may drop a call to it — which changes a program
+that hangs into one that answers. Koka's `div` effect is the field's name
+for it. The honest form is an effect charged by any recursion the judgment
+cannot prove structural (a fold over a shape terminates; an index-threaded
+self-call is the iteration-shape tier's own conviction), provable absent as
+`!Diverge`; named here so the e-graph's gate is read with its one remaining
+blind spot known.
+
+`Hβ.verify.refinement-rides-the-class` — CLOSED 2026-10-01 (P0; LEDGER
+carries the mechanism and the kills). Refinements rode the unification
+class, so a join or an operator that met a refined value laundered its
+refinement onto the result — six `with !Trap` programs checked clean and
+trapped on boot 13e8484a, and the same merging refused a correct program
+(`mn-refine-sibling-operand`). A cell holds a shape (`shape_of` at
+`graph_bind`); a refinement is read by one walk along the value's edges
+(verify.mn `value_leaves`), a parameter's refinement is a precondition whose
+guard row is paid by an open caller, a claim is noted on its value's node
+(`graph_claims_of`), and destructuring is an edge (`PartFact`). What the
+walk does not read yet is named in the entries below; function values —
+merged, moved through data and through generic callees — are read along
+their edges since H4 (2026-10-02), and what that read leaves is named
+beside it.
+
+`Hβ.verify.pipe-stage-raises-no-claim` — CLOSED 2026-10-01 (P0·H), found
+the day it closed. A `|>` stage is an application, and the pipe's judgment
+unified the stage with `(value) -> r` and raised nothing: `fn main() with
+!Trap = 0 |> inv` checked clean and divided by zero (exit 134), and `30000.0
+|> alpha` handed a value past `Hz`'s ceiling to a parameter that said `Hz` —
+measured alike on boot 13e8484a and the P0 tree, at the form CLAUDE.md calls
+never optional. The pipe now claims of the piped value what the stage's
+parameter demands (`discharge_arg`, as a call's argument), pays the guard
+where the claim is open, and a parameter stage learns what it is handed
+(`learn_provision`); the value walk reads a pipe's result as its stage's, the
+same application. A partial standing as a stage carried its callee's own
+parameter at the open slot all along, so `x |> clamp(0, ??, 255)` owes the
+slot's contract with no change of its own. Crown `leak-refine-pipe`, micros
+`mn-refine-pipe-stage` and `mn-refine-pipe-partial` (each RED on 13e8484a),
+`mn-refine-pipe-proven` the control.
+
+`Hβ.verify.interval-fragment-assumes-unbounded-int` — OPEN, BORN 2026-10-01
+with P0. The Add fold (`lo_add`, verify.mn) proves `0 <= v + 1` over `v:
+Nat`, while the i32 floor wraps `2147483647 + 1` to the least word. A claim
+may stand on the fold (the `LSum` leaf), so a refined return over `v + 1`
+discharges a claim false at the boundary — `mn-verify-interval`'s `bump`
+canonizes it; a row fact never does (`leaf_excludes` refuses `LSum`), so no
+`Trap` is mis-charged. THE FORM: the fold reads both ends — the Domain read
+already carries the upper bound — and a sum is bounded below only where the
+operands' upper bounds prove it cannot wrap; or Int becomes the
+mathematical integer with overflow a row fact (`Trap` on overflow, the
+partiality law one primitive over), which is the decision the
+representation gradient owes. THE GRADIENT WAITS ON IT TOO (D4): a
+representation pin narrows a width, and a pin the gradient proposes must be
+PROVEN to hold every value the position sees — an interval read on both
+ends, this entry's own form. The gradient proposes `repr` where the fragment
+can say a value's interval fits the width; until then it proposes none,
+rather than a pin nothing proves.
+
+`Hβ.verify.row-facts-trust-proven-postconditions` — OPEN, BORN 2026-10-01
+with P0. A row fact stands on constants, lengths and preconditions, never on
+a postcondition (`LPost`), even one its callee PROVED strictly at its exit:
+`fn mk() -> Positive = 5` with `fn f() with !Trap = 100 / mk()` refuses
+(measured on the P0 tree), since the reader cannot tell a proven return from
+an owed one. The class model accepted it — and accepted the owed case too,
+which was a leak. THE FORM: the callee's exit records whether its return
+claim held strictly — on constants, lengths and its own preconditions, never
+on another postcondition or the Add fold — beside the return it publishes,
+and a call reads it: a strictly proven return is a row fact at the call, its
+preconditions' guards travelling to the call's arguments by the carry rule
+the argument claims already use (`carry_guard`).
+
+`Hβ.verify.proven-return-over-products-and-cycles` — OPEN, BORN 2026-10-01
+with P0. A declaration with no authored return publishes the contract every
+return tail carries (`proven_return`) — only an ALIAS contract every tail
+shares, and only a SELF-call read co-inductively. Two shapes prove nothing:
+a PRODUCT return, whose positions each carry a contract (the lexer's
+scanners return `(pos, line, col, buf, count)` with a `ValidOffset` at
+`pos` on every tail), and a CYCLE, where a member's return is still a free
+cell while another member's body is judged. The wheel's eleven
+`lex_from`/`scan_string`/`scan_triple_chunk`/`num_lit_end` pendings at pin
+e23392f6 (two at the one call that passes `new_pos` twice) are both at
+once: `new_pos` destructured from a mutually recursive scanner's tuple.
+THE FORM: the proven return computed per position for a product (each
+position's contract every tail carries there, read through `part_nodes` on
+each tail's construction), and per cycle unit at its completion — beside
+`settle_unit_guards` — each member's free return read co-inductively across
+the unit.
+
+`Hβ.verify.contracts-through-parametric-calls` — OPEN, BORN 2026-10-01 with
+P0. A cell holds a shape, so a generic callee's instantiated result carries
+no refinement: `list_index(ranked, i)` over a `ranked: [(Float, Handle)]`
+(the declared return of `rank_positions`) reads nothing at `.1`, and
+`cursor_at_handle(ph)` pends at four sites in main.mn — the class used to
+carry the element's refinement through the instantiation. Parametricity
+makes carrying it SOUND: a function of type `([a], Int) -> a` returns one of
+the list's elements, so its result at `a`'s positions is drawn from its
+arguments at `a`'s positions. THE FORM: `call_leaves` for a callee whose
+SCHEME returns a quantified variable reads the arguments' leaves at that
+variable's positions — an argument typed `[a]` projected to its element
+(`PartElem`), one typed `a` read whole — instead of the instantiation's
+shape. THE FUNCTION FACE IS BUILT (H4, 2026-10-02): a generic call's result
+that is a function is read off its arguments at the result's variable
+(`result_leaves`), and a function an argument hands in at a variable crosses
+into every callback the variable reaches (the channel, `channel_at`), both
+through the callee's declared signature (`declared_scheme`); `id(if c {
+inv2 } else { inv })(k + 1)` and `fold(0, (acc, f) => acc + f(k + 1),
+[inv])` under `!Trap` refuse where both checked clean and trapped. The VALUE
+face above — a refinement a value carries through a generic call — is the
+same occurrence walk read with `value_leaves` instead of `fn_leaves`, and is
+what this entry still owes.
+
+`Hβ.verify.provenance-through-destructure` — MOSTLY CLOSED 2026-10-01 (P0)
+and 2026-10-02 (S4). Every pattern binder for a part carries its whole and
+its position (`PartFact`, infer.mn `note_part`), and a field read and an
+index read name their receiver (`xs[i]` the element, a tuple's constant
+index its position): a part is the construction's argument at that position
+where the whole was built in sight — a tuple, a constructor call, a record,
+a list literal, through lets and every join tail, a part of a part composed
+— and the whole's contract projected to the position where it was not (a
+tuple's, a record's or a list's declared contract, and a nominal contract's
+constructor field grounded at the contract's arguments, `Option(Positive)`
+at `Some`'s field being `Positive`: `contract_part`). The `!Flow` seed reads
+the same edge, so the public half of a mixed tuple is public
+(`mn-ifc-splice-part-public`). And since S4 a structure is CLAIMED part by
+part where it is built (`cross_parts`), so what a pattern assumes is what a
+construction owed: until then `let xs: [Positive] = [0]` compiled clean and
+`den_inv({den: 0})` under `!Trap` divided by zero on pin e23392f6 and boot
+1a68ecc0 alike. OPEN: a join one of whose tails is not a construction reads
+every tail off the whole's leaves — its built tails' parts unknown at a
+pattern and owed at a claim, where reading each as it was built would prove
+them. THE FORM: the part read answers both halves — the nodes a part can be
+where its tail was built, and the tails out of sight to project — so a
+pattern reads each and a claim claims the built nodes where they stand and
+owes only the rest.
+
+`Hβ.verify.handler-state-reads-only-its-init` — CLOSED 2026-10-02 (S5),
+born the same day after S4's march. A handler's state name was bound to its
+INIT's cell, so every reference's link reached the init expression and every
+walk that reads a binder answered the init alone; a `resume … with` write was
+unified into the cell's shape and read by nothing. Measured on pin 53f7404b
+and boot 1a68ecc0 alike: `handler h with d = 5 { ask() => resume(100 / d),
+shrink() => resume(0) with d = d - 5 }` checked clean under `!Trap` and
+divided by zero (exit 134), as did `inv(d)` over `n: Positive` and a function
+written into state applied at 0; a classified write into a public-initialized
+state spliced clean. A state field binds where its init stands, a binder
+fact names every writer (`StateFact`, noted by a pre-pass over the arms
+before any arm is judged), and every walk that reads a binder reads the join
+of the writers under a handler chain of the states entered (`StateWalk`), a
+re-entered state reading as unknown; the part walk applies its reader inside
+every state it entered (`path_read`). Found and closed with it: an update
+naming no field of its handler was dropped with no diagnostic, and is
+refused. Micros `mn-state-*`, crown `leak-state-write` /
+`sound-state-unwritten`.
+
+`Hβ.verify.state-reads-its-invariant` — OPEN, BORN 2026-10-02 with S5. A
+state re-entered inside its own writers reads as unknown, so a write that
+reads the state proves nothing of it: `with d = d + 1` from 5 owes `d != 0`
+at `100 / d` (true of the program, an `Int` wrapping through 0, but the same
+cut leaves a state whose every write keeps its bound owing it too). And a
+writer in an arm judged after the claim reads unknown where its references
+have no link yet, so the verdict follows arm order: with `reset() => { let v
+= 7; resume(0) with d = v }` after `ask() => resume(100 / d)` the division is
+owed, with `reset` first it is proven (exit 14; both measured on the S5
+tree). Sound both ways. THE FORM: a claim over a state is decided at the
+handler's exit, every writer judged, by induction — it holds of the init
+and every write preserves it, the state read inside its writers AS the
+claim's hypothesis rather than as unknown — once per (state, predicate); and
+an authored state annotation (`with d: Positive = 5`), a claim every writer
+owes and every reader may stand on, as a let's annotation is.
+
+`Hβ.verify.class-read-keeps-one-contract` — CLOSED 2026-10-02 (S6), born
+with S5. With `fn pick(c) = if c { {f: succ} } else { {f: inv} }`,
+`pick(false).f(0)` under `!Trap` checked clean and divided by zero (exit
+134) on boots 1a68ecc0, 53f7404b and 85218488, and refused with the branches
+swapped. The form this entry proposed — the class merging contracts as a
+lattice at unify — was refuted by reading unify: two bound roots never link
+and each keeps its own type; only a FREE cell aliases the first, and the
+class a reader meets out of sight is always a PUBLISHED or STATED type. The
+census over twenty-three probes found three mechanisms. An inferred return
+published its class: a declaration or a lambda returning functions now
+publishes, at every function position of its return, the meet of every
+function the position can hold (`publish_position`, the path writer one home
+`fn_at_path`). A charge with no frame was dropped: the authored return's
+claim ran after its frame's exit and is raised inside it
+(`claim_authored_return`), and a module value let's init — judged in no
+frame — answers to the root gate off its nodes' charges
+(`report_unhandled_init`). A stated position was unified and never claimed:
+a nominal record's construction, a `resume` into an op's declared return,
+and a function's RESULT parts where it crosses into a parameter
+(`cross_result_fns`) each claim now. Crown `leak-fn-part-returned`,
+`leak-resume-fn-crosses`, `leak-authored-return-crosses`,
+`leak-nominal-field-crosses`, `leak-root-module-init`; micros `mn-fn-part-*`,
+`mn-fn-authored-option-return`, `mn-resume-record-of-fns`,
+`mn-nominal-field-refuted`.
+
+`Hβ.verify.op-return-is-a-contract` — OPEN, BORN 2026-10-02 with S6,
+PRECISION. A performer never stands on an op's declared refined return:
+`effect E { get_pos() -> Positive }` resumed with `5` refuses `100 /
+get_pos()` under `!Trap` (E_EffectMismatch, the division's claim left
+open), measured on the S6 tree. Sound: the value is never trusted, so
+nothing unproven runs. The resume
+claims the op's declared return as a stated position since S6, but the
+continuation's cell holds SHAPES, so a refined value return reaches the
+claim as its base and claims nothing. THE FORM: the arm carries the op's
+declared return beside its continuation (`inf_enter_arm`), every resume
+claims it — the resume in a called fn first, which has no arm types
+(`Hβ.infer.resume-in-a-called-fn-has-no-arm-types`) — and the value walk
+reads an op call's result as a declared function's return is read.
+
+`Hβ.effects.executable-row-includes-inits` — OPEN, BORN 2026-10-02 with S6,
+DESIGN. A module value let's init runs before `main`, so the executable
+performs what its inits perform, but nothing states what an init may
+perform: `let x = 100 / zero()` traps at init under `fn main() with !Trap`
+(exit 134 on the S6 tree), `main`'s negation judging `main` alone. Since S6
+an init's unhandled effect refuses at the root as `main`'s does. THE FORM:
+an executable's declared row is `main`'s, and its negations bind the inits
+too — an executable is its inits, then `main` — read at the root gate off
+each init's nodes as the unhandled check reads them; the init's row
+projected at the let's address beside its type.
+
+`Hβ.fmt.nominal-record-renders-its-variant` — OPEN, BORN 2026-10-02 with S6.
+`mentl fmt` renders `type R = {den: Positive}` as `type R = R({den:
+Positive})`: both spellings parse to one single-variant tree and the render
+writes the variant, so names are conserved while SYNTAX's documented form —
+`type X = {f1: T1, …}` — is never written, and principle 2 rejects the
+redundant one. The wheel's own records carry the variant form because fmt
+wrote them (`Gate`, `StateFact`, `SegmentVerdict`). THE FORM: the render
+reads the single-record shape (a lone variant named as its type, its one
+payload a record) and writes the record form; one re-render of the wheel.
+
+`Hβ.synth.candidate-row-is-unjudged` — OPEN, BORN 2026-10-02 with S6. The
+proof gate never judges a candidate's own row: at a hole in `fn mk() -> Box
+with !Alloc`, the medium proposes `Box(??)`, whose construction allocates,
+and accepting it refuses (measured on the S6 tree). The candidate is judged
+with no frame open, so its charges are noted on its nodes and read by
+nothing; the vocabulary filter re-derives each call's row from the callee's
+declared scheme instead. THE FORM: `candidate_proven` reads the candidate's
+row off its nodes (`row_of_subtree`) against the hole's allowed row — and
+decides first what an undeclared declaration's hole may widen to, since its
+closed inferred row is Pure for a body that is only a hole and would refuse
+every construction (`tests/proposals/record-fill.mn`): substrate cost
+admitted unless declared absent, every other effect the closed row's.
+
+`Hβ.emit.nested-record-literal-answers-the-inner-pointer` — CLOSED
+2026-10-02 (S4), found by the nested-part claim's fixture. A record literal
+parked its base pointer in one scratch local every record literal shared,
+so a literal written as a field of another overwrote the outer's pointer
+and the outer answered the INNER's: `let r = {inner: {den: 5}}` bound `r`
+to `{den: 5}`, and `r.inner.den` read 0 with no diagnostic on every boot
+through 1a68ecc0. Variants and tuples had parked in their own scratch since
+July; a record parks in `$record_<h>` now, and the dead shared declarations
+went with it (5,129 functions declared both; the same source assembles
+126,323 bytes smaller). Micro `mn-record-nested-literal` (56).
+
+`Hβ.verify.relational-provision` — OPEN, BORN 2026-10-02 with H4. A learning
+parameter's provisions are what its OWN body hands it, so a use that leaves
+the body — the parameter returned to the caller, handed to another learning
+callee or to one out of sight — teaches it that its positions are also
+handed values nothing here can name (`hand_on_value`), and a function a
+receiver hands that is its own learning parameter is judged at its callers'
+crossing (`cross_provided`). Sound, and imprecise exactly where the relation
+is decidable one frame out: `wrap(inv)(7)` over `fn wrap(g) = { let _ = g(5);
+g }` refuses under `!Trap` though the caller applies the returned `inv` at 7,
+and `run({ k => k(7) }, inv)` over `fn run(g, h) = { let _ = h(5); g(h) }`
+refuses though the callback applies `h` at 7 (both measured on the H4 tree
+and on boot e23392f6, which refuses them too). THE FORM: a provision that
+names the relation instead of erasing it — `h` is handed whatever `g`'s
+function hands its argument; the result IS `g` — resolved at the caller's
+crossing, where both functions are in sight. A generic callee already has
+this from its scheme (the channel), so the relational provision is the
+channel for a callee whose signature is not parametric in the function.
+A third measured shape (D4's walk): `apply(inv, 0)` over `fn apply(f, x) =
+f(x)` and `fn inv(n: Positive) with !Trap = 100 / n` leaves the crossing's
+claim on `apply`'s parameter open at the call — main's row carries `Trap`
+and a `!Trap` there refuses, so it is sound — where the argument at that
+position is 0 and the claim is decidable one frame out.
+
+`Hβ.verify.channel-depth-one` — OPEN, BORN 2026-10-02 with H4. The channel
+reads a quantified variable at a callback's position, never at a position
+of a function nested inside one (`end_occurrences`): `fn with_applier(cb, v)
+= cb({ f => f(v) })` hands its callback a function that applies what it is
+handed at `v`, and `with_applier({ ap => ap(inv) }, 5)` refuses under
+`!Trap` as debt though `inv` is applied at 5 — the provision through the
+nested function is out of the channel's reach, so it is judged as values
+nothing here can name. Sound (the same program at 0 refuses), imprecise on
+both trees (boot e23392f6 refuses both). THE FORM: occurrences carry a path
+of ends — a variable at a position of a function at a position of a
+callback — and the crossing walks the usage at the same path.
+
+`Hβ.verify.channel-through-callback-results` — OPEN, BORN 2026-10-02 with
+H4, NOT YET WITNESSED. A callback's RESULT is a source of the variable it
+returns (`result_sources`): a lambda's body and a declared function's return
+contract are read, and a callback that is a learning parameter hands back
+nothing nameable — its own caller chose it. `fn run_map(mk) = fold(0, (acc,
+f) => acc + f(0), map(mk, [1]))` with `run_map({ _ => inv })` refuses with
+the exact class and its twin at `f(5)` runs (it ran and trapped on boot
+e23392f6, so the shape this face was feared for is closed); the face stands
+where the learning callback's result is the only source and nothing else
+links the two. THE FORM: the learning callback learns that its result is
+applied where the source reaches — the sink half of the channel — rather
+than the source being unknown.
+
+`Hβ.verify.generic-callee-scheme-read-by-name` — OPEN, BORN 2026-10-02 with
+H4. The channel and a generic call's result read the callee's DECLARED
+signature with its quantified variables, and a reference holds an instance,
+never the scheme, so `declared_scheme` reads it through the env by the
+reference's name — the name read §2 calls the canonical re-derivation, a
+global's only. A let-bound or parameter callee has no scheme to read and its
+channel is not drawn (its functions judged as values nothing here can
+name). THE FORM: the instantiation records its scheme on the reference's
+node at the one writer (the instance column already holds the copy edges),
+so the channel reads the edge.
+
+`Hβ.verify.type-arg-part-reads-every-field` — OPEN, BORN 2026-10-02 with H4,
+NARROWED 2026-10-02 at S4 to FUNCTION parts. A nominal type's argument is a
+container of its values (`PartTypeArg`), and a construction in sight answers
+EVERY field for it (`construction_part`), since the function crossing does
+not ask which field a type argument types. Sound — the true sources are
+among them — and imprecise where a field of another type holds a function:
+with `type Tagged = T((Int) -> Int, a)` and `fn tag_apply(f, t) = match t {
+T(g, x) => f(x) + g(1) }`, `tag_apply({ h => h(0) }, T(inv, inv2))` refuses
+under `!Trap`, `inv` in the first field crossing into the callback's `h(0)`
+though only `inv2` reaches it (measured; boot e23392f6 refuses it as effect
+debt). Precise on `T(0, inv)` (a non-function field crosses nothing) and on
+`Option`, `Result` and a two-field `Pair`. A VALUE part's claim no longer
+reads every field: S4 grounds the contract's constructors at its arguments
+and claims the fields whose declared type the arguments changed
+(`argument_fields`), so `res_inv(Err("bad"))` under `Result(Positive,
+String)` owes nothing of `Positive`. THE FORM: the same grounded read at the
+function crossing — the fields whose declared type mentions the argument's
+parameter (`variant_named_specs_at`, in types.mn below the judgment since
+S4).
+
+`Hβ.verify.crossing-guard-carries-to-the-provision` — OPEN, BORN 2026-10-02
+with H4. A function crossing into a position whose provision stands on a
+PRECONDITION is held, and the guard its own demand protects is paid where it
+crosses: `fn wrap(m: Positive) with !Trap = drive(inv, m)` over `fn
+drive(f, c: Positive) = f(c)` refuses, though `drive` hands `inv` only
+values its own precondition guarantees and `wrap`'s `m: Positive` proves
+it (both trees refuse). THE FORM: a held verdict carries the crossing's
+guard to the guard of the precondition it stood on — `drive`'s `c` — exactly
+as an argument claim held on a caller's own parameter carries (`carry_guard`),
+so `wrap`'s strict claim on `m` pays nothing.
+
+`Hβ.infer.tuple-index-through-an-unannotated-parameter` — OPEN, MEASURED
+2026-10-02. `fn call_second(p) = p[1](0)` judges `p[1]` before any caller
+and infers a list, so `call_second((inv2, inv))` refuses `E_TypeMismatch`
+— a tuple is not a list — on both trees. SYNTAX §«Indexing» gives `[i]` to
+both and decides by the receiver's inferred type, which an unannotated
+parameter does not have where the index is judged. THE FORM: an index
+over an unresolved receiver is a CONSTRAINT on the receiver's cell (a gate,
+the A3 mechanism one more sort over) decided when the cell is bound — a list
+reads an element, a tuple of known arity reads the position.
+
+`Hβ.lower.pipe-stage-completed-call-carries-the-stage-handle` — CLOSED
+2026-10-02 (H4), found by the channel's pipe-stage fixtures. A `|>` stage
+completed in place is the PIPE's value, and the lowering built it with the
+STAGE's handle, whose type is the partial's arrow: every reader of the
+value's type read a function. `(xs |> map({ x => x + 1 })) ++ [7]` refused
+as a shape it could not prove, `(2.0 |> scale(3.0)) > 5.0` checked clean and
+did not assemble (`i32.gt_s` over two f64s), and `(2 |> wrap(3)) == [3, 2]`
+compared two addresses and answered false — 1, silently (boot e23392f6).
+The completed call, partial and variant carry the pipe node's handle
+(`lower_pipe_stage`); micros `mn-pipe-stage-{concat,float-compare,eq}`.
+
+`Hβ.effects.row-self-bind-skip-drops-names` — OPEN, BORN 2026-10-01 from
+P0's dig, NOT YET WITNESSED. `graph_bind_row` skips a write whole when the
+incoming row reaches the cell (`occurs_in_row` → `resume()`), on the
+argument that `v = names ∪ v` never grows. That holds for a FREE cell (a
+free row variable has no lower bound to store, and the skip leaves it
+open); on a cell already BOUND it drops the `names` the incoming row adds
+beside the self edge. P0's write-time fold already drops a self-reaching
+edge (`flatten_row_stored(…, written)`), so for a bound cell the skip can
+become the join it skipped. The next output is a witness program — a
+recursive declaration whose frame row is bound before its self-call adds an
+effect — not an edit.
+
+`Hβ.fmt.keyword-binder-renders-as-wildcard` — OPEN, BORN 2026-09-30,
+measured on boot 21f8e691 while building C5. A binder spelled with a
+KEYWORD — `let own = …`, written by mistake — parses under recovery as a
+wildcard binder, and `mentl fmt` WROTE the recovered tree: `let _ = …`,
+under "prose and names conserved", because the conservation gate spends
+identifiers and a keyword is not one. The reads of `own` below it then
+refused `E_MissingVariable`, which is how it was found. A render that
+parses to a different tree than its source is the class
+`Hβ.fmt.render-must-parse-to-the-same-tree` already names; this is its
+keyword face, and the fix is the same: refuse the write when the reparse
+differs, never count names alone.
+
+`Hβ.diag.type-mismatch-is-unarmed` — CLOSED 2026-09-25 at pin 3cc9fdec (armed; the battery and the frontier refused nothing). Measured 2026-09-25. The first
+build of the nested-frame fix left two frame-record literals without the
+new `params` field; the compile reported `E_TypeMismatch` twice (`{…,
+params: List(Int), …} vs {…}`) and EMITTED anyway, and the resulting compiler
+trapped (exit 134) on every program, including `fn main() = 3`. A type error
+in the compiler's own source became a silently broken compiler because the
+class narrates rather than refuses. The arming licence is met the same way
+E_EffectMismatch's was: the wheel's census is ZERO (the blob compile carries
+none; `mentl check src/main.mn` answers no diagnostics). What arming must
+measure first is the frontier: fixtures that ran beside a narrated type
+mismatch are banked expectations to re-derive by hand (§9.11), exactly as
+`mn-hof-row-gate` and the MCP refusal count were at E_EffectMismatch's
+arming.
+
+`Hβ.test.lens-probes-are-a-bash-loop` — CLOSED 2026-09-27, in the gate
+landing exactly as banked. The 36 negation probes carry `// expect:`
+headers (23 `refuse E_EffectMismatch`, 6 `refuse E_EffectUnhandled`, 7 run
+values) and tools/verify.sh's negation leg runs them through `mentl test`
+beside the micros, 36/36. The first battery run through the pinned boot
+found that the two fanout probes' banked "56" was a TUPLE'S HEAP ADDRESS
+(the in-process exec seam answered 1048632, the same address one megabyte
+up) — a run value nobody had read as one; they return `a + b` now. The
+bash loop and EXPECT.md's hand table are history; EXPECT.md keeps the
+before/after measurement with the battery named as the live contract.
+
+`Hβ.infer.mycroft-recheck-one-round-short` — OPEN, BORN 2026-09-27, measured
+while landing the gate's Mycroft transfer. `infer_fn_speculative` runs
+K = 3 rounds: plain, assumed, recheck-under-the-round-2-result, and the
+stability belt (`ty_alpha_eq`) refuses the accept unless round 3 publishes
+the round-2 scheme up to renaming. On `fn run(f, x) with !E = if depth(x)
+> 0 { run(() => op(), [x]) } else { f() }` round 2 publishes `(f: () -> v,
+x: t) -> v` — the assumed scheme connects nothing, so the self-call's
+result stays a var — and round 3, instantiating THAT result, unifies the
+callback's `-> Int` through to the return and publishes `(f: () -> Int, x:
+t) -> Int`: more specific, not alpha-equal, refused; the plain re-run
+then judges the body MONO (f's cell shared with the self-call's argument),
+which is why the shape refused on the boot and why `sound`/`leak` pairs
+on it were never exercising the accept path. A fourth round under the
+round-3 result would publish the same scheme and stabilize. The
+fixtures landed with `f() + 0`, which grounds round 2 and makes the accept
+run; the general form is iterate-to-fixpoint (compare round n+1 against
+round n, bounded by K), and the belt's own comment names the row half as
+the v1 boundary. Not a soundness hole: the fallback is HM's mono floor,
+and it refuses correctly by sharing — it is the accept path silently
+unreachable on one shape, and a shape the poly-recursion fragment claims.
+
+`Hβ.diag.effect-mismatch-reason` — FIRST FACE LANDED 2026-09-27.
+`EEffectMismatch` carries a Reason beside its two rows, and `diag_message`
+renders it: a gate's refusal at a call site reads `!E + Any vs E — at
+<decl span>: declared as run`, and an authored negation on a function-type
+parameter reads `param 0 of both → inferred from param of 'both'` (the
+gate's reason is the parameter cell's own). What remains: the two spans as
+two LOCATIONS the address surface can walk (the declaration and the
+writing site are one line today), and the unify arms' construction
+reasons (`Inferred("…")`) rendered as the developer's own words rather
+than the algebra's.
+
+`Hβ.infer.nested-frame-prune-drops-parameter-row` — CLOSED 2026-09-25 (the
+pin that armed E_EffectMismatch), and its SIBLING closed 2026-09-27: the
+keep-set now carries the ENCLOSING frames' own row cells too. A mono
+self-reference inside a lambda charges the enclosing declaration's live
+accumulator — a judgment-era free cell in no signature — and the prune
+dropped it as scratch, so `() => a(1)` inside `fn a(n) = if n > 0 { op() }
+else { run(() => a(1)) }` published Pure while calling a fn that performs
+E; with run's `!E` gate live the push reached nothing (adv-self-arg, the
+one probe still running 7 after the gate). The declaration's own exit
+still cuts the edge to itself. The completion prune ran at EVERY frame
+exit with the frame's OWN signature as its keep-set — the tee body and both
+fanout thunks passed nothing, the lambda its own params — so a parameter's
+row cell, which escapes through the ENCLOSING declaration's signature, was
+dropped as judgment scratch before that declaration's gate could read it.
+`fn run(f) = (f()) ~> h` published Pure; `fn run(f) = (() => f())()`
+published Pure; `main = run(() => fop())` with no `F` handler passed
+`mentl check` and TRAPPED (exit 134) at the root. No negation was involved:
+the root gate — the one refusal the crown relies on — was blind to what it
+could not see. Two forms were built on scratch copies before one landed.
+Pass-through (no prune at nested exits) fixed the lambda and fanout shapes
+and was REFUTED BY THE WHEEL: judgment scratch kept behind the tee's mask
+cell was neither dropped by the declaration's prune (a bound edge is kept
+whole) nor quantified, and the first caller whose context bound it wrote
+that caller's effects into the library's published rows — 163
+E_EffectMismatch across 18 modules, `GraphRead` inside lib/lists.mn. The
+inherited keep-set (each frame records its signature cells; every exit
+prunes with the union over the frame stack) keeps the parameter and drops
+the scratch: all five prune shapes refuse at the root, one under-declared
+wheel signature exposed (`verify_each_enriched` lacked `Cast`), zero other
+rows moved. The tee had a second drop one line later: `read_bound_row`'s
+`_ => mk_ef_pure()` catch-all read a frame row whose whole content is one
+free edge as Pure (the single-edge alias chase lands on the free cell);
+it answers the edge now. Fixtures: tests/lens/negation (36, with the
+before/after table in EXPECT.md). The theorem's lemma (v), exit-bind
+completeness, is what this closes.
+
+`Hβ.effects.mask-spills-onto-sibling-edges` — CLOSED 2026-09-26, the A3
+prerequisite. A row held ONE absent set for every edge of its open tail,
+and `diff_row` kept a `~>` mask from reaching siblings only by minting a
+cell bound to the masked triple. The flat-cell law's stored flatten
+(graph.mn `flatten_row_edges`, a second copy of the fold arithmetic) and
+the read fold (`edge_content_into`) then folded that cell with `a' = a ∪
+ca`, so the mask became the row's and covered edges its install never
+enclosed. Measured on the pinned boot: `fn run(f, g) = f() + ((g()) ~> h)`
+published `!E + r_f + r_g`; `((f()) ~> h) + ((g()) ~> k)` published `!E +
+!F + r_f + r_g`, and passing an F-performing f and an E-performing g
+compiled clean and trapped (134); a caller declaring `!E` over
+`run(() => op(), …)` was ACCEPTED — a false absence proof with no negation
+needed to create the hole, only to observe it. A fourth shape rode the same
+fold: an edge whose content was the universe (a `with !E` fn-typed
+parameter, called) set `saw_all`, dropped its sibling edges and unioned the
+masks, so `f() + g()` with an E-performing g read `!E + Any`.
+The fix is the representation, not the fold: the mask belongs to the EDGE
+(`EtOpen([RowEdge])`, `RowEdge({cell, mask})`, read `P ∪ ⋃ (cell ∖
+mask)` — a tagless product, one shared empty mask), `ef_make`
+pushes a row-level absent onto its open edges, `diff_row` is one line and
+mints nothing, a cell reached on two paths keeps the intersection of the
+masks, and two universes (or a universe beside open edges) meet by
+intersection — the old union of their absents claimed an absence neither
+side proved. graph.mn's copy of the fold is deleted into the one assembly.
+The universe-beside-an-edge case is a sound bound (`Any`), not exact: it
+drops the sibling edges, and it exists only while a supply-side EtAll
+reaches a row value, which the cell-carried gate removes. Fixtures:
+tests/crown/leak-mask-sibling, leak-mask-twin-tee,
+leak-mask-universe-sibling (all three accepted on the prior boot) and
+their controls sound-mask-sibling, sound-mask-twin-tee; crown 67/67.
+What it does NOT close: the executable root gate still clears a name when
+any install of it exists anywhere, so twin-tee without a declared negation
+still compiles and traps — the row is now true, and the gate is
+`Hβ.effects.root-gate-credits-an-install-that-had-not-opened`'s to fix.
+
+`Hβ.effects.declared-positive-rows-under-count-callbacks` — CLOSED 2026-09-27
+(A4, with `Hβ.syntax.positive-row-is-authored-by-hand`): every positive row on
+the wheel is deleted, the under-counting caps included — `T_RowInventory`'s
+open-row arm narrates a cap that installs no gate, and the sweep wrote its
+residue. Measured 2026-09-25, DECIDED (Morgan): the positive row is inferred
+and projected; only negations, instance pins and deliberate narrowings stay
+authored. The nested-frame prune had hidden, at every HOF whose
+parameter is invoked inside a lambda, a tee or a fanout, the effects that
+parameter's callbacks perform — so the wheel's declared positive rows are
+systematically narrower than what the code does. The pass-through scratch
+build measured the exposure at 163 declarations (a lower bound: cascades
+through callers); the landed form exposes one (`Cast(GNode)` at
+src/synth_proposer.mn `verify_each_enriched`, fixed in the same commit). Under
+the gate (LENS §2.2, A3) a positive row on a HOF becomes a CAP on its
+callbacks and `try_with_abort_catch`'s `with Abort` refuses by the theorem;
+deleting positive rows on HOFs is the fix, never widening 163 hand-copies.
+
+`Hβ.threads.perform-inside-spawned-branch-traps` — CLOSED 2026-09-27 (the
+pin after bbc0cc2c; LEDGER carries it). Measured 2026-09-25:
+`fn work() = { let r = burn(7e8, 0); current_id() * 10 }` as both branches of
+`(work()) >< (work()) ~> parallel_compose` trapped in the spawned thread:
+`wasi-thread-1 trapped: memory fault at 0x100000000 … ev_declaring_node ←
+work ← compose_0 ← wasi_thread_start`. The identity fixture
+(`mn-real-spawn-identity`, exit 60) passed only because `thread_id()` is a
+direct WASI op; an EFFECT op performed inside a spawned branch dispatched
+through per-instance state (the world chain top) that the fresh instance
+started at zero. Parallelism itself is real and measured (two
+1.5e9-iteration branches: bare 4.50 s wall / 4.47 s user; threaded 2.31 s /
+4.57 s). CLOSED as designed: the task record carries the spawning frame's
+world (`[closure@0][completion@4][result@8][world@12]`, `$spawn_task_impl`
+stores `$world_g`, `$wasi_thread_start` installs it before the thunk runs —
+the chain and every handler record live in the shared image, so the walk
+reads them from any instance). `tests/frontier/mn-threaded-branch-stateless`
+(two branches performing `op` into a handler installed at the fanout's
+frame) exits 14 where the prior boot exited 134. What sharing the chain
+exposes is refused at lowering, `E_ThreadedBranchEffect` (armed at birth,
+born at wheel-zero — the wheel installs no threaded schedule): for each
+effect a branch's row carries, the handler the walk reaches must be
+installed at the fanout's own frame, before the frame fence, and STATELESS,
+and the walk is TRANSITIVE through each covering handler's own residual row
+— an arm runs in the spawned instance and its performs resolve outer, so a
+stateless front over a stateful back (`~> h ~> counter`,
+`mn-threaded-branch-transitive`) is the same race one hop later; the first
+form stopped at the first stateless handler and that program compiled and
+ran (11 on six runs, serialized by luck). A stateful handler at the frame
+(`-stateful`), an install beyond the fence (`-caller`) and the transitive
+shape refuse; each branch installing its own counter (`-inner-install`)
+runs to 10. The rule reads WRITES, not declarations: a handler is stateful
+when an arm carries a `resume … with` update (the one writer SYNTAX gives
+state), read off the decl's arms through the one total child projection —
+which moved from query.mn to graph.mn beside `node_handle` for it — so a
+state only read (`-readonly-state`, `handler k with n = 5 { bump() =>
+resume(n) }`) shares one immutable record across instances and runs to 10.
+And the rule fires only when the schedule handler SPAWNS — its residual
+row carries `WasiThreads`, which `parallel_compose`'s `spawn` arm performs
+and `sequential_compose`'s (each task inline, in this instance) does not;
+the first form read the schedule CLASS and refused the sequential twin on
+the frontier's scheduled-effect leg (exit 25) before the pin.
+
+`Hβ.threads.gate-counts-host-clones` — CLOSED 2026-09-28 (the R0e board).
+The thread gate's ratchet (`judge_spawn_delta_max: 0`) counted `clone` under
+strace as the delta between a 61-declaration and a 1-declaration compile,
+and went RED three times with no wheel change: "1 decl 10, 61 decls 11" in
+a fresh container (2026-09-25), the same on the F0b pin's board and then
+delta 0 on every re-draw (2026-09-27), and "1 decl 9, 61 decls 10" on the
+R0e board (2026-09-28). The third red is the stop, and the root was in the
+boot's own import section: since 9f766769 (the fan stopped spawning,
+2026-09-19) the wheel imports no `wasi.thread-spawn`, so the compile CANNOT
+create a guest thread, and every clone the delta saw was the host's. The
+gate reads two exact facts now and requires them to agree: the ARTIFACT (a
+module imports `wasi.thread-spawn` exactly when its reached tree performs
+`spawn_task`, and the runner creates a guest thread only through that
+import) and the CLAIM (`main`'s row carries `WasiThreads`, through `mentl
+query <file> "type main"`). The positive control reads both for the
+real-spawn fixture and its sequential twin, which must split SPAWN/NONE;
+strace, the delta and `judge_spawn_delta_max` are deleted. Seen RED the day
+it landed, on the tree at b0edc631 (the last boot that spawned), and the red
+was not the one predicted: the boot imported `wasi.thread-spawn` while the
+row at `main` rendered no `WasiThreads` — the source's claim about its own
+width was false at that pin, which is the disagreement the gate exists to
+catch. Where that row lost the effect was not measured; `E_EffectMismatch`
+was not armed until 2026-09-25 and authored rows were inventories until A4.
+What remains is the projection: `Hβ.march.concurrency-is-a-projection`.
+
+`Hβ.ide.session-call-reinstantiates-per-call` — CLOSED 2026-10-02 (E2;
+LEDGER carries pin 8b071ba3). The per-call roles are deleted: the worker's
+`session` role runs `mentl session` once and blocks inside the wheel's own
+read of stdin on a SharedArrayBuffer channel (Atomics.wait in the worker,
+Atomics.waitAsync on the host), so one instance answers every call for the
+session's life and an edit is re-judged in it. The timer exists: the node
+twin's leg 4 times each read resident against the same read cold (5.2–9.4 ms
+against 216 ms at the pin), and the browser reports `SMOKE-SESSION
+open=130 read=5.6`. The record of the open follows.
+`ide/wheel-worker.js:278-288` re-instantiates the wasm and zero-fills
+memory on every `session-call`, with `tasks:0` hard-coded (`:296`); a
+"delta update" is a whole-file replace in a JS map. So PLAN §11.2's
+"session alive across actions" holds for the Worker and not for the graph,
+and "sub-50 ms address projections" has no measurement anywhere (each
+projection is a full `_start`; the browser's only recorded number is a
+0.9–2.0 s compile). Measured the same day: both IDE gate legs GREEN — leg 2
+(headless Chromium over `mentl space`: `SMOKE exit=0 tasks=259 ms=2049`) had
+skipped on every prior board because `tools/ide-gate.sh:20` tests for the
+literal command name `google-chrome`; a two-line wrapper un-skips it.
+
+`Hβ.ide.pinned-wasm-lags-boot` — CLOSED 2026-09-27 (the pin after bbc0cc2c;
+LEDGER carries it). Read 2026-09-25: `ide/mentl-ide.wasm` was the 2026-07-29
+wheel (1.79 MB, pinned at fe5b2c05) while `boot/mentl.wasm` was two months
+and one megabyte newer; the page demoed a compiler the tree no longer had,
+and the copy existed because the wheel declared a 65536-page memory minimum
+no browser will allocate. CLOSED at the root: the wheel declares a 32-page
+minimum and `$alloc` grows the memory on demand (`$memory_reach`, in the
+shared and the single-instance allocator and before `$image_restore`'s
+copy — a failed `memory.grow` is `unreachable`, a loud OOM, never a silent
+wrap); the page fetches `../boot/mentl.wasm` through `mentl space` and the
+node twin loads the same file; the copy and the README's derivation recipe
+are deleted. The pin IS the boot by construction now. Still unverified,
+PROGRAM E5's: the headless screenshot shows the editor's code with its
+spaces collapsed (`fnmain()withMemory+Alloc=`) — a font artifact or a CSS
+defect, to check in a real browser.
+
+`Hβ.teach.one-kind-and-a-constant-facet` — CLOSED 2026-10-02 (D4; the
+first half 2026-09-25, the pin after 3cc9fdec; LEDGER carries both). D4
+closed the rest: the annotation space is a precondition, a return contract
+and the row clause, each PROVEN in its bracket; the rank reads what each
+proves (debt, refused calls, open calls, absences) instead of counting
+labels; the answer is one `Teaching` (add, ask, need, none); the kinds no
+candidate was ever minted for are deleted (an ownership marker is an intent
+boundary the inference grades, a wrap is a fill); `T_Gradient` (a catalog row
+with no constructor) is deleted from SYNTAX's table, the gradient's answer
+being the Teach facet; a representation pin waits on the interval fragment's
+overflow (`Hβ.verify.interval-fragment-assumes-unbounded-int`); and the
+voice's field carries the same answer, still never filled
+(`Hβ.voice.situation-gradient-is-never-filled`). The record of the first
+half follows. Teach now reads what the
+declaration says and what the judgment proved: it teaches only at an
+unannotated declaration (a declared fn is taught the T_OverDeclared
+tightening the judgment banked), the literal ladder became a count of
+concrete capabilities (Pure leads when it proves; CProvenAbsence counts
+zero), the unproven own/ref candidates left, and the address facet names
+the annotation and its capabilities instead of one constant sentence, at
+declarations only. Measured on src/effects.mn: 93 identical "add `!X`"
+lines became 11 tightenings, 1 Pure and 12 severances. STILL OPEN: the
+score (`score_one_position`) is `gates × proximity` over positions that
+include other modules, with two opposite tie-break orders; the annotation
+space is still one kind (no refinement, repr or return-type candidate);
+`T_Gradient` has no emitter; the voice's `gradient_next` is always None —
+PROGRAM D3, D4, D5. Measured 2026-09-25 (the
+gradient, read at the code). The only numeric gradient is
+`score_one_position` (src/cursor.mn) = `gates × proximity`, and `gates` was
+1 in 165 of 165 measured suggestions while `proximity` is five constants, so
+the "argmax" ties on every position and is broken by handle order in two
+opposite directions (`cursor.mn` first-wins, `main.mn:1095` last-wins):
+`mentl edit tests/frontier/mn-where-badges.mn` focuses `decode_stride` in
+lib/lists.mn, outside the file. `mentl teach` proposes exactly one kind —
+`!E` severance (src/effects.mn: 43 `!GraphRead`, 31 `!Alloc` …; lib/prelude.mn:
+54 `!SharedMemory`) chosen by a literal ladder then "first proven"; it
+ignores the authored row (`fn step(x) with !Alloc` is told to add `!Alloc`)
+and never reads the MachineApplicable proposal the judgment already banks
+(`T_OverDeclared`/`tightenables()`). `ARefined`, `AWrapHandler`,
+`SuggestReturnType` have no constructor site; no repr candidate exists;
+`T_Gradient` has no emitter. The `Teach:` facet of the address projection
+discards its suggestion and prints a constant (`main.mn:1545-1548`), and
+fires at any TFun-typed node including call sites. The voice's
+`gradient_next` is always `None` (`voice.mn:825`). Track D of
+docs/PROGRAM-2026-09-25.md carries the landings.
+
+`Hβ.synth.acceptance-is-a-text-patch` — CLOSED 2026-09-30 (C4; LEDGER
+carries the pin). The accept is a `GraphWrite` first: `accept_fill`
+(src/cursor_transport.mn) performs `graph_accept_note(module path, the
+extent the rendered text will occupy, the text, the survivor's Reason)`
+before `replace_span`, the column lives in `graph_handler`'s state, and
+`graph_bind` reads it at the one writer — a node minted at that extent is
+bound with `Accepted(text, proof, inner)` wrapped under its `Located`, so
+`mentl why` and the address surface walk from the value to the proposal
+(`Why: accepted \`1\` — proposed: inferred from the type's integer
+inhabitants`). The entry's own sentence — "it must survive the
+re-derivation through the persisted image" — measured in two halves: the
+column survives the IN-PROCESS re-derivation by being handler state
+rather than a node (the edit session and `mentl accept` both project it
+after the splice), and the image would carry it by memcpy (handler state
+is in the heap) — but no address-route verb restores an image, which is
+`Hβ.felt.accept-outlives-the-process` below. `render_candidate_source`
+still renders lambdas, lists and records as `??` (the candidate-render
+peer); the verb refuses those as "no proposal" rather than splicing a
+hole over a hole.
+
+`Hβ.synth.accepted-edge-keyed-by-position` — OPEN, BORN 2026-09-30 with
+C4. The accepted column is keyed by (module path, extent) because the
+transport RE-PARSES the module after the splice and the accepted value's
+node is minted anew: a handle would name the dead generation's hole. The
+key rots exactly where a position does — an edit ABOVE the accepted line
+moves every extent below it, and the edge then names nothing while the
+value keeps an authored-looking reason. It dies with E2's resident graph,
+where an edit is a delta on the live node and the edge rides the node —
+the same law `Hβ.cursor.session-weave-epoch-scope` named for the session's
+hole generations. Until then the honest reading: an acceptance is
+provenance for the SESSION that made it, and the board holds exactly that
+(the twin's leg 6, the frontier's accept leg). E2 (2026-10-02) kept the
+graph and still re-judges an edit's cone by re-parsing it, so the accepted
+value's node is minted anew and the position key stands; it dies when an
+edit is a delta on the live node.
+
+`Hβ.felt.accept-outlives-the-process` — OPEN, BORN 2026-09-30, measured
+at C4's first probe. `mentl accept hole.mn:9:37` writes the edge, splices
+the file and projects `Why: accepted \`1\` …`; a SECOND process — `mentl
+hole.mn:9:37` — parses cold and answers `Why: int literal, at hole:9`.
+The provenance is in the image's handler state and would restore by
+memcpy, but the address route (`at_run`, `accept_run`, the edit session)
+never restores an image: only the compile route has a warm start, keyed
+by entry and world. E2's on-disk face is every verb restoring the entry's
+image and re-deriving the changed cone; the accept's durability is then
+`persist = memcpy`'s, by construction, with nothing to add here. The
+page's form of the same gap CLOSED with E2 (2026-10-02): the session
+answers the accept, the edge lands in the graph the session keeps, and
+every later read in that session walks to it (the twin's leg 6, the
+frontier's session-accept leg). The CLI's form stands as written above.
+
+`Hβ.felt.edit-session-reads-one-action` — OPEN, BORN 2026-09-30 from
+C4's felt walk on boot 4bc10808. `printf 'n\ny\n' | mentl edit two.mn`
+rendered ONE cycle and read ONE action: the `<~ accumulate` loop
+(`cursor_session`, src/cursor_transport.mn) advances the state once per
+invocation, so a session is one cycle long and the second action is never
+read. The argmax also opened on `pick`'s tie rather than the caret's
+line-1 position (the caret biases, the gradient decides — PROGRAM D3–D5's
+score). E2's session is where the loop becomes a loop; the CLI's one-cycle
+form is what `mentl accept <address>` exists beside.
+
+`Hβ.session.answer-scratch-outlives-the-answer` — CLOSED 2026-10-03
+(Arena·P2, pin 912577160150bf94), BORN 2026-10-02 with E2. Each answer runs
+in `~> arena` (`session_line_loop`, `session_sock_loop`, `mcp_loop`),
+publishing the next (tree, ranges, manifest); what it stores into older
+memory — a spine page a mint opened, a name-keyed column's entry, an
+accept's edge — is journaled where it is stored and moves at the exit, which
+answers the objection below without a trail. `session_current`'s raw region
+and the `resettable` flag beside it are deleted. Measured over one project,
+the same six verb lines through boot f950ebfd and the closing pin, answers
+byte-identical: a read kept 344,536 B and keeps 24, a hole read 950,304 and
+120, an edit 8,044,080 and 119,600, the accept 9,031,664 and 119,664. The
+record as it stood: Every answer the resident session gives keeps what it minted. A
+reset at the answer's end is unsound while an answer can grow graph state:
+a mint inside a read can open a spine page, and the graph handler's
+name-keyed columns take heap pointers that are not trail-backed. Measured
+on the pinned boot's stdin session: a plain read keeps 420 KB, a hole read
+2.2 MB, an edit 8.6–10.1 MB, the accept 10.9 MB. So the image grows with
+every answer for the session's whole life, and when the memory the host
+allows is spent the session traps; the client closes it loudly and the next
+call opens a fresh one, a whole derivation the developer feels as one slow
+answer. The form is §5.O layer 3's image/scratch boundary (Arc C,
+`Hβ.perf.per-decl-arena`): the graph's durable writes — pages, columns,
+handler state — allocate in the image, an answer's scratch in a region
+dropped when the answer is written. The unmoved tree's check, which already
+drops its region, is the first instance of the second. THE MECHANISM EXISTS
+SINCE 2026-10-03: an answer can run in `~> arena`, its publication the text
+it writes and the edges it draws — the edges are graph writes, so their
+stores into the graph's older buffers journal and move — and what is left
+is the placement (`Hβ.arena.extents-beyond-the-judgment`).
+
+`Hβ.arena.extents-beyond-the-judgment` — CLOSED 2026-10-03 (Arena·P2, pin
+912577160150bf94). Each statement's lowering and the lowering's three
+pre-passes, each demand walk of the emitted reach, each emitted function,
+twin, wrapper and leaf, each session answer, each battery fixture and each
+speculation run in an arena, and `heap_reset` is deleted from `Alloc`.
+Over the wheel's source, the previous boot (f950ebfd) against the candidate
+it compiles: the heap when lowering ends 590,975,608 B → 354,415,592, when
+the module is written 741,519,312 → 437,965,368; peak 870,088 / 871,608 KB
+→ 575,228 / 574,564; the census 19,772 exits, 0 kept, 609,951 KB
+reclaimed, 54,768 KB moved. The record as it stood: The judgment's binding groups each run in an arena; the
+lowering's, the emission's and the resident session's extents run in none,
+so their scratch lives for the compile. Measured on the pinned boot over the
+wheel: the heap stands at 288 MB at the judgment's high-water, 591 MB when
+lowering ends and 741 MB when the module is written — the whole rise past
+the judgment is extents no exit reclaims. The mechanism is built; what each
+placement must answer is where its publication goes: a declaration's
+lowering publishes into the lowering's registries (handler states, so their
+commits journal), an emitted unit publishes bytes into the sink, and an
+answer publishes its text and the edges it drew. The session's face is
+`Hβ.session.answer-scratch-outlives-the-answer`.
+
+`Hβ.arena.suspended-by-a-continuation` — CLOSED 2026-10-03 (C×A). An op
+performed inside an arena and answered by a handler outside it suspends what
+the arena encloses — the continuation the arm holds and the perform's
+arguments live in the arena's region — and the exit ran on the way out
+anyway, reclaiming both from under the arm. Eight fixtures measured it on
+boot 10cd1956 (`tests/frontier/arena/`, the census clause stripped since the
+stat is new): a held resume, a multi-shot resume, a perform in a callee
+whose rest builds after it, an arena standing where its value is used, a
+rest storing into older memory and a rest performing again each trapped
+(exit 134 — the exit had reclaimed the continuation, or the arena's tail
+call met the floor); an abandoning arm read an argument the exit had
+reclaimed, and a list-valued arena came back empty (exit 1 each). THE FORM: the exit is flag-aware — a yield unwinding
+through it SUSPENDS the arena (the region kept and joined to the extent
+around it, the journal compacted to the parent, `ArSuspended` counted) and
+wraps the yielded continuation in `$__k_arena`, whose every resumption opens
+a fresh arena around the WHOLE wrapped chain before any of it runs and exits
+it where the body ends, moving the value out by its leaf. The arena body
+stays its own frame, and its tee is a capture point in the enclosing frame
+(a k2 junction, as a call that may suspend is), so the rest of that frame
+resumes at the arena's value. Measured on the candidate: all eight 42; under
+an arm resuming three times, `fn step() = work() ~> arena` over `fn work() =
+pick() + len(build(200)) - 200` grows the heap 96 bytes against 19,240 with
+no arena. KILLS. (1) A crossing test comparing open arena marks with the
+serving install record's address at every reified perform: the yield
+unwinding through an exit IS the crossing, so the exit reads `$yield_flag`
+— the live fact — and no arena stack is kept to compare against. (2)
+Reopening per segment, where each frame re-enters: a callee's rest after the
+perform is an inner segment that runs before the arena's own frame
+re-enters, so it would run outside the fresh arena; the wrap is taken at the
+exit, around everything the arena enclosed. (3) Hoisting the arena into its
+enclosing frame's spine: every tee body is already a reification frame, and
+the hoist would have been a second spine grammar for one fact — the tee
+became a junction instead. (4) The census line read `430777 suspended` on
+m2: m2's runtime is written by its parent, whose stat table has five arms,
+so the sixth read the default; the line is right from m3 on (the Arena·P2
+lesson, read again). Beside it, the floor the suspension exposed REPORTS now
+(`Hβ.lower.offspine-perform-is-the-frame-not-in-the-image`).
+▶ CORRECTED 2026-10-03 (AN-2): only a LIVE continuation suspends an arena. A
+DEAD one — an abandoning arm's — holds nothing of the region beyond what the
+perform's arguments reach, and those are a publication of the extent, so the
+exit RUNS: the arguments' slots in the per-instance area are journaled where
+the perform stores them, with their leaves, and the sweep moves what they
+reach; the rest is reclaimed and the arena's own boundary check unwinds on.
+The first form of that exit stored the slots unjournaled, and the frontier's
+`abort-suspends` leg read a reclaimed list (len 0 for 10) — the red that
+named the journal entry. The leg is `abort-exits` now, re-derived by hand
+under the arena's one law: no suspension, two exits, nothing kept, the arm's
+10 intact.
+
+`Hβ.lower.arm-remainder-after-a-foreign-live-yield` — OPEN, BORN 2026-10-03
+(AN-2). A held resume whose continuation yields a FOREIGN op that is LIVE —
+its handler resumes it — returns into the arm with the flag raised and
+`$yield_k` set, and the arm's code after its `resume` is in no continuation:
+an arm's remainder is never reified, so the dummy flows into it. Measured on
+boot 311479e1 as a trap inside the arm (`dbl { ask() => { let r = resume(1);
+r * 2 } }` under `twice { pick() => resume(10) + resume(20) }` over `ask() +
+pick()`, whose deep-handler answer is 64). A DEAD foreign yield unwinds the
+arm since AN-2 (`lower_resume_callk`'s dead path); the live one keeps the
+floor it had. The form: the arm's remainder after a resume is a continuation
+segment of its own, composed onto the foreign yield as a frame's remainder is
+(`LKExtend` at the resume) — capture at every position, one frame over
+(`Hβ.lower.offspine-perform-is-the-frame-not-in-the-image`).
+
+`Hβ.emit.unwind-by-engine-exceptions` — OPEN, BORN 2026-10-03 (AN-2). The
+unwind is a FLAG PROTOCOL: every boundary a raised flag can cross reads
+`$yield_flag` after the call and branches — one global read and a conditional
+each, 2,661 sites on the wheel — the portable form on a substrate with no
+non-local exit. Wasm's exception handling (`throw` / `try_table`) and a native
+backend's unwinder (PLAN §11 10.1) make the fast path free: an abandon THROWS,
+a landing CATCHES, and no boundary reads anything. The landings and the law
+are one home either way; the engine form replaces the emission of the checks,
+never the protocol.
+
+`Hβ.threads.join-performs-the-branch-row` — OPEN, BORN 2026-10-03 (AN-2). A
+thread's abandon is re-raised at the join BY NAME: `WasiThreads.join_task` is
+a boundary the lowering knows (`effect_joins_a_thread`, lower.mn; the
+`join_task` call's own check, wasm.mn), and every op of a handler whose arms
+join is registered as unwinding. The typed form: a task handle carries the
+branch's ROW — a `TCont`-shaped type minted at the spawn — so the join's row
+IS the branch's and every check falls out of `can_yield` with no name read;
+the race rule reads the same row. The first-wins rule (a flag already raised
+keeps its op) is the join ORDER's; the row form makes the choice a value the
+program can see.
+
+`Hβ.lower.diverging-provider-direct-call` — OPEN, BORN 2026-10-03 (AN-2). An
+op every provider of which never returns — the wheel's `fail`, served by
+`fail_exit` alone, which ends the process — needs no unwind at all: its arm
+could be called directly and nothing after the call would ever run, so no
+boundary need check for it. The wheel pays the general form: one driver, 286
+install landings, 26 arena landings and 2,661 checks for an op that never
+comes back. The medium has no bottom type to say "never returns" of a
+handler's ARM (`proc_exit(Int) -> !` answers a bare variable), so a
+provider's divergence is not a fact the lowering can read; with it, an op
+whose every provider diverges lowers its perform as a direct call and the
+wheel's checks vanish by construction.
+
+`Hβ.arena.closure-evac-face` — OPEN, BORN 2026-10-03. A function value or a
+continuation has no leaf: its type does not say what its record captures,
+so an exit that finds one of the region's in a journaled slot keeps the
+whole region, nothing moved (`closure-keeps` pins it; the wheel's census
+reads 0 kept, so the wheel never stores one into older memory inside a
+group). The form: the captures are known where the record is minted, each
+at its own type, so the code pointer can name its capture layout — the fn
+table maps a closure's code to its move leaf, and the exit moves a closure
+by what it captured.
+
+`Hβ.arena.per-instance-regions` — OPEN, BORN 2026-10-03. In a module that
+spawns, globals are per instance while the heap line is one shared cell, so
+an instance's region interleaves with every other instance's allocations;
+the arena there runs its body and reclaims nothing
+(`spawning-module-runs-the-body`). The form: each instance owns a segment of
+the line carved from the shared cell, with its own journal, so an exit
+reclaims its own instance's region — §5.O layer 4's per-thread arenas.
+
+`Hβ.arena.region-typed-mutation` — OPEN, BORN 2026-10-03. The journal decides
+at run time what a row could prove at compile time: `Mutate` indexed by the
+region it writes, with outlives constraints between regions, would elide the
+barrier where a target provably lives in the store's own region and refuse
+at the store a value no leaf can move into an older one, instead of keeping
+the region at the exit. A language arc of its own — region polymorphism in
+rows — never a precondition of the journal's soundness.
+
+`Hβ.arena.cast-addr-crosses-the-journal` — CLOSED 2026-10-03 (#129, two
+pins: 2198ed97, then 10cd1956fefa7abf), measured. An arena's exit moves a value by its
+type, and every address was typed Int: an address held where the exit looks
+was copied as a number, and the cell it named was reclaimed under it. Five
+probes measured it silent on boot 0a096302 — the arena's value 109 for 14, a
+slot written raw 1 for 42, a record's field 1 for 6, a list's element 7 for
+12, bits copied by `mem_copy` 1 for 42 — and boot 2198ed97 with its own
+library answered all five the same. THE FIRST PIN: `Addr` is a type of its
+own (`TAddr`) — a word that is not a number, compared by identity, ordered by
+magnitude, shown unsigned — and its move is opaque, so an address of the
+region where the exit looks keeps the region; `Memory` carries the ops that
+move, measure, read and write one, `store_addr` journaled with no leaf. THE
+SECOND PIN, by the compiler the first one is (the boot reads an undeclared
+`Addr` as a nominal with no variants, so the library cannot name the type
+until a compiler that knows it compiles it): the library's raw code typed —
+`alloc`, `heap_mark` and `Cast`'s `addr` answering an address, the raw loads
+and stores taking one, `str_payload`'s face an address and `str_of_buf`
+taking one, the list runtime's node links addresses and its element words
+behind the two puns, the virgin-slot tests `slot_present`, the deliberate
+out-of-bounds reads one helper. On it the arena's value and the record's
+field keep the region (14, 6); the slot written raw and the list's element
+are refused as written, an address stored where a word goes and one among
+numbers (`arena/addr-stored-as-word-refuses`,
+`arena/addr-among-numbers-refuses`), and their typed forms answer 42 and 12.
+THE COPY REFUTED THIS ENTRY'S OWN BOUNDARY. It said bits `mem_copy` copies
+stay the program's own claim, and an address a typed store wrote into a
+young buffer, copied by `mem_copy` into older memory, answered 1 for 42
+through the second pin's compiler: the program wrote no pun, its bytes just
+carried no type. A raw copy is OPAQUE: a copy that writes memory older than
+the open arena journals its destination with a leaf that keeps the region
+(`$mem_copy_j`), and the exit reads no copied byte — `arena/addr-copy-keeps`
+answers 42, and 1 on boot 2198ed97 compiling this pin's library, whose emit
+has no barrier on a copy. The form built first READ the copy: every word it
+wrote was journaled raw and the exit checked each at all four byte offsets
+for a value of the region — a conservative collector's scan, the shape the
+arena's design refused at its first kill, guessing addresses from numbers
+in the very pin whose law is that a number names nothing. It was marched,
+questioned before it was committed, and deleted. Every `mem_copy` in the
+wheel writes a buffer allocated just before it but one: the wide arm of
+`store_strided`, which copied a float's bytes into a packed list slot that
+may be older — opaque, that keeps the region on every wide `list_set` into
+an older list (`arena/wide-slot-reclaims`, exit 1 for 42 on that form). A
+wide slot holds a number by the value ontology, so it is copied as one
+(`scalar_copy`: `store_f64` of what `load_f64` read), and nothing in the
+wheel or the library journals a copy. What stays the program's claim is a
+NUMBER made from an address — a pun through `addr_word`, a distance added
+to one — since a number names nothing the exit could read.
+
+`Hβ.emit.sum-order-ranks-a-sentinel-against-an-address` — CLOSED 2026-10-03
+(#129, pin 2198ed97). A sum's generated compare took a nullary variant's
+sentinel, when either operand was one, and compared it as a word against the
+other operand — a fielded variant's ADDRESS — so every nullary variant ranked
+below every fielded one whatever their declaration order: `B(5) < A` was
+false over `type T = B(Int) | A`, and the program answered 1 for 10 on boot
+0a096302 with no diagnostic. A value's tag is read uniformly now — the
+sentinel itself, or the record's first word — tags order first, and equal
+tags name one variant, so two sentinels answer 0 and two records compare
+their payloads (`emit_one_compare_sum_helper`). The wheel's own 28 sum
+compares took it. `tests/micros/mn-sum-order-tag-first.mn`.
+
+`Hβ.infer.arith-refusal-beside-a-mismatch` — CLOSED 2026-10-03 (#129, pin
+10cd1956fefa7abf). Arithmetic unified its operands before it demanded a number of them,
+so `p + 8` over an address reported the mismatch of `Addr` with `Int` and
+then `E_ArithOnAggregate` — two diagnostics for one mistake, as any aggregate
+operand beside a number took — and `8 + p` reported only mismatches, at the
+operator and again where its result was used, the demand being read off the
+left operand (both measured on the first pin's m2). The demand is judged on
+both operands before they meet now (`arith_refuses`), and a refusal stands
+for the site: the result is a hole and the unify is skipped, so `p + 8` and
+`8 + p` each report one `E_ArithOnAggregate` and nothing downstream
+(measured on the second pin's m2; `tests/micros/mn-addr-arith-refuses.mn`).
+
+`Hβ.memory.word-arithmetic-is-memory` — OPEN, BORN 2026-10-03 (imprecision,
+sound). `Memory` declares the operations that compute on a word beside those
+that read and write memory: `i32_and`, `i32_or`, `i32_xor`, `i32_shl`, and
+since #129 `addr_at`, `addr_diff`, `null_addr` and the two puns. None of them
+touches memory, so a function doing only word arithmetic is charged `Memory`
+and cannot be `Pure` — `wav_data`, an offset from a buffer's address, lost
+its `with Pure` at #129's second pin. THE FORM: word arithmetic is a
+primitive the compiler registers, as it registers `float_of_int`, and
+`Memory` holds the operations that read and write memory and nothing else.
+TWO PINS by the bootstrap seam: the compiler learns the primitives while the
+library still declares the ops (the declaration shadows them, so nothing
+moves), then the library deletes its declarations. The retype of every
+fixture that computes on an address is the census its first move needs, and
+`mentl query <dir> "refs of NAME"` (grown at #129's second pin) answers it
+across the fixture directories without a grep.
+
+`Hβ.arena.claims-of-a-cycle` — OPEN, BORN 2026-10-03 (imprecision, sound).
+A function's age claim is a least fixpoint over its own recursive calls; a
+call into a member of its binding group that has not published yet reads as
+unknown, and the store it reaches demands the move — more twins than the
+program needs. The form: one fixpoint over the group, every member's claim
+published together, the shape the group's completion fold already has.
+
+`Hβ.arena.constructor-results-are-fresh` — OPEN, BORN 2026-10-03
+(imprecision, sound). A claim's `returns` names the parameters a function's
+result may be, or nothing; a function whose result it allocated publishes
+nothing, so a caller's store into that result reads as a store into older
+memory and demands the move, though the result is the caller's scope's own.
+The form: `returns` distinguishes fresh from unknown, and a fresh result
+transports as fresh.
+
+`Hβ.arena.closure-parameter-stores` — OPEN, BORN 2026-10-03 (imprecision,
+sound). Claims are published for declared functions and transported at
+direct calls. A lambda's parameters have no claim, and a function reached as
+a value journals its parameter stores from its base body, where the stored
+value's type is a variable and so has no leaf: the exit keeps the region.
+`list_set` reached as a value is the same case at the primitive, through its
+table face. Until the form lands, the exit asks such a slot's word whether it
+lies in the region: the stored VALUE's own word face, a handle or a scalar,
+read conservatively — a scalar that happens to fall there keeps the region,
+never the reverse. It is the one place the exit still reads a word whose
+type it does not know (a raw copy's bytes are never read since #129's second
+pin: the copy is opaque and keeps). The form: a reference at a known
+instantiation demands the callee's moved-shape twin exactly as a direct call
+does — a reference is a use site with an instantiation — and the typed twin
+deletes the read.
+
+`Hβ.infer.nested-fn-siblings-do-not-hoist` — CLOSED 2026-10-03 (#126).
+SYNTAX promised that a block's nested fns are hoisted into a local letrec
+scope, and the judgment refused `odd` inside its sibling `even` with
+`E_MissingVariable` (measured on boot 9ec6db48 and again on 91257716). A
+block's statements are read in RUNS now (`Run`, `runs_of`, `stmt_runs`):
+consecutive `fn` declarations join one run, any other statement stands
+alone. Three readers take the runs through that one rule. The free-name walk
+binds every name of a run for every body of it. The judgment pre-registers
+the run's members (`pre_register_fn_once`, the module's own refusal of a
+duplicate) and walks the run's binding groups callee-first exactly as the
+module's (`judge_fn_run`), keeping the members' pre-registered cells across
+every exit while the run is open (`inf_keep_open`). The lowering binds every
+member's register before it mints any (`lower_run_into`). The emit mints a
+body's adjacent closure bindings in two phases — every record allocated,
+headed and bound before any is filled (`emit_minted_bindings`) — which
+absorbs the self-capture special case: the early bind and
+`self_capture_name` are deleted. A statement between two fns ends the run,
+because a later fn may capture what it computes. Eight `mn-nested-run-*`
+fixtures RED on the boot, the derivative reading among them, and green on
+the new tree; the run-break control refuses on both.
+
+Two defects found on the way, both closed in the landing. A nested fn's
+emitted symbol was `{outer}_{name}`: two declarations one path names — a
+name shadowed across runs, the same helper in two branches — and `a`'s `f`
+beside a sibling `a_f` all emitted as one symbol, and the emit refused the
+program as the compiler's own naming collision. The symbol is a projection
+of the declaration now (`ls_fn_symbol`): the path joined by `.`, which no
+identifier contains, with `$k` on a repeated path, kept by declaration
+(`mn-nested-same-name-branches`, `mn-nested-symbol-path`,
+`mn-nested-run-shadow-across`, each RED on the boot). And the exhaustiveness
+check read an as-pattern as covering nothing: three readers of an arm's top
+pattern each walked it themselves, and all three knew alternations and none
+knew `@`. One projection answers them (`pat_tops`), and
+`E_PatternInexhaustive` is armed, its census on the wheel zero. Its fixture
+(`mn-as-pattern-exhaustive`) could not be RED on the boot by its contract —
+the class narrated there, so the program ran to 42 beside one false error
+(`diags=1`, `diags=0` on the new tree); armed, it fails the fixture if the
+false error ever returns.
+
+What the measurement found beside it: the module's free-name walk
+(`stmt_frees`) ran outside every arena, so all the scratch it built
+outlived it. In an arena now it reclaims 60.3 MB of the judgment's heap on
+the wheel (288.58 → 228.25 MB on one input). The block runs are
+materialized by each of their three readers — the parser could carry them
+on the block once (`Hβ.parser.block-runs-read-by-each-reader`).
+
+`Hβ.parser.block-runs-read-by-each-reader` — OPEN, born 2026-10-03 with
+#126. A block's runs are computed by one rule (`stmt_runs`) and
+materialized three times, by the free-name walk, the judgment and the
+lowering. Every reader but the module free-name walk runs inside an arena,
+so the copies die at once; the cost is the walk itself, O(statements) per
+reader. The form: the parser builds the runs once and the block carries
+them (`BlockExpr` over `[Run(Node, Node)]`), so the three readers and
+every walker of a block read the same list. That is a representation
+change to every `BlockExpr` reader, and it rides with positions becoming
+cells (#108), where a block's statements become graph edges anyway.
+
+`Hβ.emit.memory-gc-handler` — OPEN, named in §11's Phase 10 and given its
+home here on 2026-10-03, when the arena narrowed it. A collector strategy
+for what no extent's exit reclaims: a region an exit KEEPS (a value no leaf
+moves — `Hβ.arena.closure-evac-face`), and a program whose allocation has no
+extent at all (a server loop that grows one state forever). Everything an
+arena's exit moves, the collector would have to trace; what is left is
+exactly what the arena cannot see, so the collector is its complement,
+never a second strategy for the same heap.
+
+`Hβ.session.edit-pays-for-the-program` — OPEN, BORN 2026-10-02 with E2. An
+edit re-judges only its cone and still pays for the whole program twice
+over. Discovery re-reads every module's file and re-lexes its imports to
+rebuild the DAG, though the manifest check has just hashed every one and
+found which moved. And each supersession purges the superseded module's
+entries by scanning every bucket of the refs and applications columns. The
+form: an unmoved module's import edges ride its current module node, so
+discovery reads and lexes only the modules whose hash moved and any module
+a new import names; and each note records its bucket under the module that
+made it, so a supersession touches exactly that module's entries. Then an
+edit costs its cone.
+
+`Hβ.session.answer-is-out-err-and-exit` — OPEN, BORN 2026-10-02 with E2.
+A resident answer is its stdout alone. A verb that refuses answers MISS,
+and the cold route re-derives the whole program to say the refusal — its
+stderr and its exit code (the twin's leg 7 at pin 8b071ba3: 167 ms cold
+where a read is 5–9 ms). The form: the answer is the record `(exit, out,
+err)`. The console
+bank captures the verb's stderr beside its stdout, and each transport
+frames all three: the worker's reply already carries `out` and `err`, the
+exit code rides the session's per-answer line, and the socket gains a
+header. A refusal is then answered resident.
+
+`Hβ.synth.trail-segment-discarded-at-rollback` — OPEN, read 2026-09-25. The
+trail records handle + prior value per write (`Mutation`, src/types.mn), so
+the first-divergence question (§11.1) is computable — but a candidate's
+segment is readable only between its judgment and `graph_rollback` at
+src/synth_proposer.mn:761, where `trail_len` returns to the checkpoint and
+the next candidate's first append overwrites it. No `GraphRead` op exposes
+the trail. The op: copy `trail[cp .. trail_len)` before the rollback,
+filtering path-compression writes; the fixture: a hole whose cell is
+genuinely free at propose time (the existing fixtures bind it to the return
+cell, so the diff is empty).
+
+`Hβ.voice.dead-abort-stub` — CLOSED 2026-09-25. `mentl_voice_filesystem`'s
+`tree_list` arm resumed `unimplemented_arm("tree_list")`, a stub that
+performs `abort()`; the op had zero callers. Invisible while the prune
+dropped its row, it surfaced the moment the prune was fixed: the root gate
+refused the wheel's own `main` with `Abort(List(TreeEntry))` reaching the
+executable with no `catch_abort` on its chain. A stub that aborts at runtime
+is the silent-fallback class in a stub's costume; the op, the `TreeEntry`
+type and the stub are deleted, and the directory-listing gap stays a named
+peer rather than an arm.
+
+`Hβ.emit.eq-on-unresolved-operand-is-pointer-eq` — ✅ CLOSED 2026-09-28 (R0″,
+pin in LEDGER). An operand still a variable where the comparison is emitted
+REFUSES: `E_ShapeUnprovable`, armed, asked by the plan's settle point under
+the bracket the body is emitted in, before the gate reads the ledger and
+before a byte (`Hβ.emit.emit-time-class-cannot-refuse`, closed the same
+landing). The census reached zero first: its last two were
+`list_compare_loop`'s `<` and `>`, which read their elements through the
+typed `list_index` in a body the emit only ever calls by name for WORD lists;
+the loop reads `list_index_unchecked` now, as `list_eq_loop` always did. What
+the entry predicted and the count confirmed: in an executable a base body with
+a compared variable is reached only by name (the runtime contract) or through
+the twin cap, since R0d keys every compared variable by its structure — the
+cap is its own class now (`E_InstantiationDepth`). THE REMAINDER is step (3)
+and (4) below, EXECUTABLE for the first time because the refusal is live:
+delete the `: String` annotations and let each refusal name a site the twin
+does not reach, then bound what survives as `CsBaseTypeAnnotation`
+(`Hβ.syntax.base-type-annotation-sweep`). The record as it stood: OPEN,
+measured 2026-09-18, RED contract banked the same day. ▶ THE ARM CASE CLOSED 2026-09-28 (R0c),
+step (2) below as written: the handler's arms twin at the install's
+instance, so `eq-in-arm-pointer` runs green with the fixture unannotated and
+left the declared-red list. The bulk the entry renamed below (comparisons
+out of containers the graph never closed) stands. The eq leaf's wildcard arm (`emit_eq_for_ty`,
 backends/wasm.mn) answers an operand whose type is still a VARIABLE at emit with
 `i32.eq` — "a handle IS a word" — so two byte-equal Strings compare by ADDRESS
 wherever no call-site twin reaches the compare. The `++` arm beside it refuses
@@ -2337,8 +4092,8 @@ own direction — the row grounds through the same positions the types do, and
 the walk's two pass-through arms become substitutions. Named at the code so
 the omission is a decision rather than an oversight.
 
-`Hβ.synth.divergence-from-the-trail` — OPEN, named 2026-09-18 at the landing
-that made the question computable. `Divergence` (types.mn) classifies WHAT
+`Hβ.synth.divergence-from-the-trail` — CLOSED 2026-09-30 (C6; LEDGER carries
+the pin), named 2026-09-18 at the landing that made the question computable. `Divergence` (types.mn) classifies WHAT
 separates two proven survivors — row, denotation, value, shape — and renders
 the proposition the developer never stated. Its SOURCE today is each
 survivor's own live reads: the callee's declared row from the env entry the
@@ -2369,6 +4124,31 @@ WHAT DOES NOT CHANGE when it lands: the four arms, their precedence, and their
 voice. Only which cell the classifier is handed. CLOSE: the fan runs as trail
 segments, the row and value arms read the diverging CELL's own Reason rather
 than the survivors' shapes, and the four fixtures hold their lines unchanged.
+THE CLOSURE (2026-09-30). The fixture this entry owed exists and was RED
+first: `tests/frontier/mn-type-tie.mn` — `let x = ??` beside `one()` and
+`word()`, the hole's cell genuinely free — answered "differ in VALUE and
+nothing here bounds the value" on boot b1637650, and `mn-cell-tie.mn`, where
+`y + x` puts the hole, the binder, the parameter and the return in one class,
+answered the same. The mechanism: `graph_written_since(cp, below)` (GraphRead)
+folds the trail's MSetNode / MSetRow entries since the checkpoint for the
+cells below the enumeration's frontier, a slice view over the live tail;
+`context_writes` reads each such cell's meaning INSIDE the segment (a type
+chased deep, a row resolved — the rollback that follows is why the segment
+carries them out as facts); `keep_survivors` seals the proven candidate with
+them; and `divergence_of` reads the first cell the top survivor bound that
+another survivor bound differently, in the top survivor's write order,
+classifying it by the cell — `DivType(a, b, graph_reason_at(h))`, so the
+position's own cell renders "placeholder at 16:11-16:13" and a shared class
+renders "return of pick → inferred from return of 'pick'" — before any term
+read. Path-compression writes need no filter: a fact is the chased meaning,
+which compression does not change. Two things the trail cannot carry, stated
+rather than hidden: a declaration's row is a scheme VALUE once finalized, so a
+candidate's charge lands in the segment's own frame and never moves the
+declaration's cell — the term-level row split stays the survivors' read (the
+env's scheme, which since A4 IS the judged row) until
+`Hβ.infer.schemes-are-edges`; and a segment's own mints collide numerically
+after rollback, so the diff reads context cells alone until
+`Hβ.native.deterministic-handle-partition`.
 
 `Hβ.effects.install-chain-as-value` — OPEN, named 2026-09-18 from the audit
 of rung B's own lambdas. `compile_context(body) = infer_context(() =>
@@ -2734,9 +4514,84 @@ preserved rather than quietly re-ranked, because the honest fix needs the HOLE's
 module and a span is not an address. CLOSE CONDITION: rides positions-are-handles
 with the Why chain's own coordinate work — the gradient's first real ranking
 signal should not be a coincidence of line numbering.
+NARROWED 2026-09-25 (PROGRAM C3): the vocabulary is now searched in RINGS read
+from the hole's HANDLE — its module is the column `graph_module_of` reads, and
+the rings are that module's own decls, the modules it reaches through authored
+import edges, and the rest of the link — and the search stops at the first ring
+that proves a survivor. So a name from another module no longer competes with
+the hole's own module at all. What stays open is the rank WITHIN one outer ring,
+which can hold several modules whose spans this fold still compares by line.
+CLOSED 2026-10-01 (D3): `candidate_rank` reads the cursor's own handle
+proximity — the hole, the name's declaration, each use — so a use in another
+module is as far as its module is from the hole's. The declaration is a handle
+from an index of every module's own declarations by the names they bind
+(`decl_index`, synth_proposer.mn — functions, handlers, constructors, ops), the
+uses are the refs collector's handles (`ref_handles_of`), and a name with no
+declaration node (a primitive) sits at the farthest tier.
 
-`Hβ.infer.declared-row-vacuous-against-a-free-body-row` — **STAMPED
-2026-08-18, and the fork it was banked as is ANSWERED.** Morgan's
+`Hβ.synth.vocabulary-ring-is-read-by-name` — OPEN, BORN 2026-09-25 with the
+ring search (src/synth_proposer.mn `vocabulary_rings`). The ring of a
+vocabulary name is decided by membership in NAME lists — the names the hole's
+module declares, and the names its authored imports declare — because the env
+entry the vocabulary enumerates carries no edge to its decl: `generalize`
+publishes a judged fn as `Frozen(qs, ty)`, so the handle that
+`graph_module_of` would read is gone by the time anything enumerates the env.
+That is PLAN §7's "Schemes are VALUES, not edges" showing through at a new
+reader. CLOSE: when a binding keeps its decl handle, the ring is one column
+read plus the import reach, and the name lists are deleted.
+2026-10-01 (D3): the proposer's rank builds the name → declaration index this
+entry's CLOSE asks for, from the module cells' own declarations
+(`decl_index`); the rings still read name lists, and reading a candidate's
+ring off its declaration's module through that index is the remaining move.
+
+`Hβ.parser.field-name-after-dot-drops-keyword` — CLOSED 2026-09-25 in the
+landing that found it. The record LITERAL reads a contextual keyword as a field
+name (`ident_or_kw_at`: `{own: 7}` has a field `own`), and field ACCESS read
+with `ident_at`, whose answer for anything but an identifier is "". So `r.own`
+parsed to a field with an empty name and surfaced layers later as `{ : t } vs
+{ own: Int }` — measured while building the ring search, whose record had an
+`own` field. Access now reads names the way the literal does, and a token that
+is not name-shaped reports `P_ExpectedToken` at its own span.
+tests/syntax/record-field-keyword-name.mn holds it (the boot refuses it with
+the mismatch; the landing runs it to 7).
+
+`Hβ.parser.ident-sentinel-is-an-empty-name` — OPEN, BORN 2026-09-25 as the
+class the field-access instance belongs to. `ident_at` and `ident_or_kw_at`
+answer "" for a token that is not name-shaped, and their comment says the
+parent "already verified the variant". The field-access caller had not, and
+there are twenty more callers in src/parser.mn (declaration names, effect op
+names, record rest names, repr width names); each is either verified by its
+parent or a silent empty name waiting for input nobody has typed yet. CLOSE:
+the extractors answer `Option(String)`, and every caller that can meet a
+non-name refuses at the token's own span — the census is the caller list, and
+the wildcard-fabricates count drops by the two `""` arms.
+
+`Hβ.infer.declared-row-vacuous-against-a-free-body-row` — **CLOSED
+2026-09-27 (PROGRAM A3; LEDGER carries the mechanism and the kills).** The
+gate is carried by the CELL: a declaration's exit installs its negation
+(or its empty cap) on every free terminal of its resolved body row,
+through each edge's mask, and every writer into a gated cell judges the
+folded value and pushes the gate onto the value's free terminals — the
+argument edge, the unify arms, the three finalizes, a function type bound
+onto a gated type cell. Copies minted while the declaration is open are
+noted under their root and reached by the install; every other copy
+carries its root's gates from the mint; the Mycroft accept transfers gates
+onto the assumed scheme's cells. `fn run(f) with !E = f()` refuses
+`run(() => op())` at the argument edge naming run's declaration; so do the
+two-parameter body, the masked tee's second negation, the sig'd and
+cycle-member self-references, the three-member chain, the outer wrapper,
+the stored HOF and callback, the instance-precise negation (bare and same
+instance refuse, a provably distinct one is admitted). Crown 89/89, the 36
+probes a 36/36 battery, the wheel at zero diagnostics through the new
+wheel. What stays open beside it: the executable root gate's install-
+anywhere credit (`Hβ.effects.root-gate-credits-an-install-that-had-not-
+opened` — CLOSED 2026-09-27), the positive cap (A3-pos — LANDED
+2026-09-27 after A4: the closed declared row is the gate), and
+`Hβ.diag.row-polymorphic-body`. The entry below is the record of the dig
+that priced it, kept whole because its kills are what made the landing's
+form legible; the "fork" it ends on was answered as branch A and branch A
+turned out to be the Carried-Truth Law, not a choice.
+THE STAMP OF 2026-08-18, and the fork it was banked as, ANSWERED. Morgan's
 criterion (SOTA-surpassing, most empowering to Mentl's own parts, most
 empowering to developers, exemplary of the ultimate form) resolves it to
 branch A — a declared row constrains its params' rows — and A turns out
@@ -2747,7 +4602,7 @@ DISCARDED constraint, not a missing feature, so the fix is less
 machinery rather than more. Branch B (the modal capability-at-tee) is
 not the alternative — it answers escape and persisted worlds, the TIME
 half — and doing A spends none of its budget.
-THE MEASUREMENTS, all this turn:
+THE MEASUREMENTS, all that turn:
   · `fn run(f) with Pure = f()` + `run(() => op())` → 0 errors, runs 7.
   · The same with `with !E` → 0 errors, runs 7. **The negation leaks
     identically**, which the entry below never recorded — this is
@@ -2916,7 +4771,16 @@ SYNTAX §«Named effect rows» is not wrong here and must not be edited to
 match the artifact: the identity `E - F = E & !F` is the intended
 semantics and the lathe has not been turned to it.
 
-`Hβ.lower.record-pattern-param-receiver` — A SILENT WRONG AND A TRAP,
+`Hβ.lower.record-pattern-param-receiver` — **CLOSED 2026-09-28 (R0d),
+pin 2d7845607e804eb4**, by the first of the two forks this entry names:
+record twinning keyed by type. A record pattern is a structural read of its
+receiver's row, so each caller's twin is keyed by the record it passes, and
+the emit places each named field and builds the rest by name through that
+twin (`Hβ.emit.twin-key-is-what-the-body-reads`); the fabricated-index
+branch went with the untyped lowering. Both repros landed with the fix, as
+the entry required: `tests/syntax/record-pattern-param` (7 for 9 on
+0bc8383e) and `record-pattern-param-rest` (a trap). The record as measured
+follows. A SILENT WRONG AND A TRAP,
 BOTH GATED ON ONE VARIABLE: whether the destructured record arrived as a
 FUNCTION PARAMETER. Measured 2026-08-17 at pin a6e900f35888, each half
 against its own control.
@@ -3159,6 +5023,11 @@ types, so the resume in a called fn types against the R and S its caller
 proves. That is continuation-polymorphism at the fn boundary, not a patch
 to the check. Until then the class stays behind the wildcard and the
 fixture keeps carrying two honest false reports.
+The same judgment standalone means a resume in a called fn charges no WORLD
+(2026-10-01): its remainder reaches no gate of a callee it is handed to, so a
+`!E` callee of such a resume is judged against nothing. Its runtime re-drive
+holds since that landing (tests/micros/mn-held-resume-called-fn-reyield.mn,
+200), through the record the arm passes as the bound fn's trailing param.
 
 `Hβ.cursor.cached-argmax-keyed-by-epoch-and-caret` — THE CACHED CURSOR IS
 UNBUILT, and the sketch that stood in for it was inert. Opened
@@ -3370,6 +5239,616 @@ across the concatenated weave). If it does, ordering is a second problem
 and the refusal waits on it; if it never does, the refusal is free. That
 measurement is the gate and it has not been taken.
 
+`Hβ.emit.handler-arms-specialize-per-install` — **CLOSED 2026-09-28 (R0b),
+pin 30a3588811818aa8.** An install is a reference site. The install column
+carries its config arguments' handles (`InstallOf(hname, cfg_hs, groups)`,
+read by `graph_install_at`, graph.mn), and `arm_site_pairs` (lower.mn) walks
+the handler scheme's config parameters against those arguments' types — the
+walk a call's pairs take — so the arms an install runs are twinned under
+exactly its instantiation, and `emit_arm_writes` stores the twins' indices
+in the record. The emitted reach demands them through `RefArm(install,
+arm)`; a frame-resolved perform calls its install's own twin
+(`perform_target`); a handler whose config can key dispatches every perform
+through the record's slot, since two installs may run two arm sets
+(`handler_may_key`); and the multi-shot driver reads its arm through the
+slot for the same reason (`arm_slot_offset`). The declaration's state inits
+evaluate under the install's key. THE FACE RULE that stood here — a key binding a
+multi-shot arm's answer to a wide scalar keeps the base arms — is DELETED
+with AN-1 (2026-10-03): the answer keys the arms and crosses the driver in
+a register (`Hβ.continuations.redrive-reads-the-answer-as-a-word`). Gates, each
+RED on boot b29e319b: micros `mn-arm-config-two-shapes` (46; 134),
+`-walked` (46; 134), `-multishot` (30; 134), `mn-handler-float-state` (0;
+1), `mn-handler-config-annotated` (0; 1); frontier `mn-arm-config-record`
+(42; 134) and `mn-arm-config-show-float` (1; 0 — the arm printed `1048592`
+for `2.5`); `mn-arm-key-keeps-the-face` (7) holds the face rule.
+▶ FOUND BY THE BUILD, both closed with it: a state init copying a config
+read it at handle 0, as a word, so a wide config's state SHARED the
+config's cell and every commit rewrote the config (the read carries the
+reference's handle now); and a handler's config ANNOTATIONS were dropped —
+`mint_handler_config_tparams` minted a fresh variable per parameter and
+never read `param_ty` (the caret projection rendered `step, : t7516`), so
+`acc(init: Float, step: Float)` had free config types.
+▶ WHAT IT EXPOSED: `Hβ.emit.twin-cap-meters-breadth-not-divergence`, and
+the root of `Hβ.lower.handler-state-init-reads-config` and
+`Hβ.lower.install-config-capture-read` (one root; both entries carry it).
+THE ENTRY AS WRITTEN AT R0: A HANDLER IS GENERIC AND ITS
+ARMS ARE NOT. `handler facting(cfg) { facts_now() => … cfg.x … }` reads its
+config through an open row, and an install `(…) ~> facting(prev)` proves
+the whole record at the install the way a call proves an argument — but the
+install instantiates the handler's scheme, lowers to ONE set of arm fns
+(`op_facting_facts_now`) and stores their indices, so every install runs
+arms judged against the DECLARATION's own open row. One field floors loudly
+(a3: `resume(cfg.x)` over `{w: 9, x: 3}` traps with
+`T_FieldOffsetUnprovable`); before R0 two fields baked an assumed union
+and were silently right or wrong by the shape of the record, and since R0
+they floor too. Measured on the R0 m2: `mn-row-config-read-in-arm`
+(banked in the scratchpad for this landing) exits 134 where 42 is right.
+THE FORM: the install site IS a reference site. The handler name at the
+install carries its instantiated type; its spec pairs come from the same
+walk a call's do (`spec_site_pairs_resolved`, which answers `[]` for a
+`HandlerKind` today); a non-floor key demands a twin of every arm fn under
+those pairs, and the install stores the twins' indices. The derivative
+reading needs it: `derive.mn`'s `deriving(prev, …)` reads its config's
+fields in five arms. Gates: the e2 fixture and a3 turn green, and two
+installs of one handler with two config shapes each read their own.
+
+`Hβ.emit.arm-twin-converts-at-its-face` — **CLOSED: the instance half
+2026-09-28 (R0c), pin 0bc8383e8b6ced84; the answer half 2026-10-03 (AN-1),
+with `Hβ.continuations.redrive-reads-the-answer-as-a-word` — an install
+keys its arms at its answer as at its instance (`Handler(instance,
+answer)`), and the face rule's answer clause is deleted with
+`arm_face_roots`.** *(The adapter this
+entry describes is DELETED 2026-09-30, R0j: a perform speaks its SITE'S
+face, as a closure call does, and the arm twinned at the install's instance
+is that face by construction — `Hβ.emit.generic-op-box-is-unrowed` carries
+the record. The instance keying below stands; the "called at the op's
+declared face" rule does not.)* An install keys its
+arms at its effect's instance: its handler expression is typed
+`Handler(inst)` and `InstallOf` carries that expression's handle, so a
+handler with no config keys too. An arm's header reads the op's types at
+the handler's instance (`op_instance_subst`, lower.mn), which a twin then
+substitutes. The performer and every slot dispatch call at the op's
+DECLARED face (`op_abi`), so where an arm's own signature differs from it
+the arm is reached through its op-face adapter `$of$<arm>`: a direct
+perform calls it, and it holds the arm's native table slot, the half a
+dispatch through a wide declared vector reads. The emit entry carries the
+op an arm answers (`EfkArm(op)`), which is what `adapter_op` reads; the
+old note that recovering an arm's op meant splitting its composed name is
+answered by the kind. THE ADAPTER IS NOT A TWIN MECHANISM, and the build
+said so before the design did: the first form compared a twin against its
+BASE's published signature, the base was no longer emitted (R0′), so its
+face floored to all words, and the adapter was wrong for `put(x: Float, y:
+a)`. Asking what the base's face actually IS found a second defect of the
+same law, pre-existing: a handler whose instance is GROUND Float (`handler
+fsum with s = 0.5`) over an op parameter typed by the effect's variable did
+not assemble on 30a35888 (`undefined local variable "$x.f64"`: the header
+signed the op's word while the body read f64), and signing the header at
+the instance only moved the mismatch to the call. Both are one rule: an arm
+is called at its op's declared face and runs at its instance. Gates, RED on
+30a35888: `mn-arm-instance-float-sum` (1; 134), `mn-arm-instance-mixed-face`
+(1; 134, a direct perform and a walked one through the native half),
+`mn-arm-ground-instance-face` (1; does not assemble), and
+`mn-arm-instance-configless` (1; 0). Fixed by it: `mn-payload`,
+`mn-payload2` and `mn-payloaddirect` (a configless `collect` reading
+`v.beta` off a performed record) re-banked from 134 to 2: each header had
+named arm specialization as what would close its trap, and the first had
+written down 2. The wheel's one adapter is its Float `fold_handler`'s
+`result()` twin boxing into the op's word face.
+THE ENTRY AS WRITTEN AT R0b: R0b's named remainder. An arm
+signs its op's DECLARED signature: a performer converts to it, and a slot
+dispatch calls through it. Every type variable an op mentions is an
+argument of its effect's instance, so an install whose key binds one of
+those — or the answer a multi-shot or abandon arm hands its driver — to a
+wide scalar would move a width that boundary does not convert. Such an
+install keeps the BASE arms (`arm_pairs_of` answers `[]`), and the base
+arm is NOT correct there. ▶ MEASURED the hour R0b pinned, on 30a35888 and
+b29e319b alike: `effect Acc { add(x: a); get() -> a }` under `handler
+keep_sum(init) with s = init { add(x) => resume() with s = s + x, … }`
+installed at `1.5` — the base arm emits `(i32.load offset=12)(local.get
+$x)(i32.add)`, the sum of two BOX POINTERS, with no diagnostic, and the
+program traps (134); the same handler at Int answers 6. L1's emit law — a
+variable still free at emit is a floor twin's quantified var, a word by
+construction, because every wide instantiation mints its own twin — is
+false for arms: the face rule is an instantiation that mints no twin. What
+passes through the arm untouched (a callback's argument,
+`mn-arm-key-keeps-the-face`, 7) is right; what the arm computes on is not.
+THE FORM, and most of it exists: a wide symbol's table slot already holds
+its `$wf$` word-face wrapper, so a SLOT dispatch into a wide arm twin
+crosses the op boundary at the word face with no new mechanism. Only the
+frame-resolved direct call names the twin itself. So: key the arms under
+the instance variables too, and have that direct call name the twin's
+word face when the twin is wide — one rule at the op boundary, no face
+exception. The answer a multi-shot or abandon arm hands its driver stays
+facing until the redrive's own protocol carries a wide answer (measure
+first: base arms under a wide answer may already refuse at assembly).
+`eq-in-arm-pointer`'s declared-standing failure is this class on
+comparison; it should close with it. R0c's third part.
+
+`Hβ.continuations.redrive-reads-the-answer-as-a-word` — **CLOSED
+2026-10-03 (AN-1), pin 311479e1144cc884.** THE FORM BUILT is neither of the two
+the entry below weighed: one driver per handler, as the first kept, and no
+allocation, as the second kept. The handler's type is `Handler(instance,
+answer)` — the answer the cell every arm's value is judged into, minted once
+at pre-registration and read by the registration as its row cells are,
+quantified with the instance, met at every install by the body's answer
+(`install_answer`, infer.mn) — so the answer keys the arm twins as the
+instance does (`arm_pairs_of`, lower.mn; the face-roots exclusion deleted)
+and an arm observing its answer runs at the answer its install gives it.
+THE CONTINUATION FACE (wasm.mn): a continuation, and an arm its driver
+answers, are called through one word-arity face by code blind to their
+types, and a wide value crosses it in a per-instance register beside the
+word slot — `$__lane_f64`, `emit_to_continuation` / `emit_from_continuation`
+— set immediately before the call and read immediately after it, the
+`$__dt` register's protocol one width over and the machine ABI's own shape
+(words in the integer slots, a double in a float register); the runtime
+helpers between two segments (`$__k_compose`, `$__k_arena`, the arena's
+sweep and close) touch no register, so what one segment answers reaches
+the next as it left. A multi-shot op's ARGUMENTS cross in the yield's
+record at their widths — 8-byte slots, each stored at its own width
+(`emit_yield_arg_stores`), the driver pushing each slot's word and the
+arm's continuation face reading a wide one from the record — where the
+record had parked every argument through an i32 scratch and a Float
+argument refused to assemble (`expected i32, found f64`). The arena
+re-entry's leaf for a wide value is a word, nothing to move
+(`face_leaf`), and `$__k_arena`'s box8 arm — correct by accident, since
+`ar_young(0)` is false and `ar_final(0)` is 0 — is deleted by contract.
+`proc_exit(Int) -> !` (lib/io.mn): a never-returning op answers a bare
+variable, so `fail_exit`'s arm answers any install now that an install
+meets its arms' answer. KILLS: (1) "the answer is a word the driver can
+read" — the Float fixture refused to assemble on cf8a6d50; (2) "box at the
+face" — a cell per crossing, 16 B per resumed value and answer, under no
+row (`mn-multishot-float-answer-no-box` holds the heap-growth equality);
+(3) "keep the base arms when a face root is wide" (`arm_face_roots`, R0c's
+compromise) — deleted; (4) the re-entry's box8 arm; (5) "N positional
+lanes" for a multi-shot op's wide arguments — the record is a product and
+takes its widths; (6) "two mints, one answer" — the registration reads the
+pre-registered cell; (7) "the tee's value walk proves from the body alone"
+— refuted on the boot before a line: a tee read as unknown was DEBT, so
+the precise form (the body's tails and each arm's tails, a `resume` tail
+adding none — `install_arm_tails`, verify.mn) is a refutation where debt
+stood and a proof where a refusal stood, and the IFC face is the one hole
+(an arm answering a classified value spliced clean — `mn-ifc-tee-arm-leak`);
+(8) the install column is the lowering's, written after every claim is
+decided, so the verify walk reads the handler off the tee's right node;
+(9) the arm header read the handler's instance through a one-argument
+`Handler` match (`handler_decl_instance`), signing every arm twin's op
+parameters at the word floor under a body reading f64; (10) the resume
+scratches were declared at the resume node — the answer's type — and read
+at the value's, one name while the answer was free and two once an install
+bound it; (11) `mn-backtrack-full` ran on a type confusion (an Int wearing
+an Option's type, a `None` arm over an Int body) the law refuses — it
+answers the Option its arms do now; (12) the Int-op/Float-answer shape has
+no spine form until capture at every position; (13) a duplicate
+`fn_record_name` and a one-argument call of the wrapper emitter refused the
+first m2; (14) the two `__k` resolvers named the k local at the RESUME
+node's type — under the law the install's answer — so a Float answer
+declared `$__k.f64` where the arm's parameter is `$__k` and three wide
+multi-shot fixtures did not assemble: a continuation is a record pointer, a
+word, read at handle 0 as `__hrec` is (`resolve_resume_k`, `resume_k_arg`);
+(15) `E_InitPerformsOwnOp` rode the dispatch's NAMED arm, which
+`handler_may_key` withholds from every handler whose scheme quantifies a
+variable — every resuming handler, once its answer does — so the two
+init-refusal fixtures fell to the root gate alone; the uniqueness of an
+op's provider is the op's own fact (`lower_op_default_handler`), the
+inits' scope reads it at the demand, and `visit_direct_perform` is deleted
+with its two announcements; (16) the claim decider read a tee through the
+join's tails alone, so `100 / (({ let _ = ask(); 5 }) ~> zero)` stayed OPEN
+under `!Trap` — debt, the row refusal — where the arm's `0` refutes it:
+`value_tails` (verify.mn) is the one home every value walk reads structure
+through, the three tee arms written on the way deleted, a claim noted over
+a value staying with the join's own tails since a handler's arms are every
+install's; an arm installing its own handler is a re-entry that adds no
+tail (the least fixed point, exact), the walk's scope keyed by the
+handler's residual row cell; (17) that guard's first key, `decl_named`,
+was a by-name scan declared in query.mn, which verify cannot import without
+a cycle — `E_MissingImport` refused it before a line ran, and the identity
+was on the env entry already; (18) the resume's answer scratch was
+declared a word while the face hands the answer back at its width
+(`local.set` expected i32, got f64) — declared and named at the answer's
+repr now, the one decider every local reads; (19) a leaf that IS the
+fatal point answered OPEN, never a refutation (`leaves_exclude` was a
+Bool), so the arm's `0` was debt — the leaves decide three-valued
+(`leaf_excludes : Option(Bool)` under `and_decide`), a point leaf at the
+fatal point refuting as a join's tail that folds false does — which
+flipped S5's `mn-state-reset-owes` (an arm writing `d = 0` beside
+`100 / d`) from owed to REFUTED, the stronger verdict by S5's own law
+("owes `d != 0` of every write") on a program that divided by zero on the
+pin that banked it; re-banked by hand (Law 11). THE FELT CHECKS, run
+after the gates were green and each a fill: (20) the install's refusal said
+`Int vs List(Byte)` and nothing of the arm — `install_answer` asked its
+unify with a Reason naming the law, and the mismatch reporter's own
+signature confessed the drop (`type_mismatch(a, b, span, reason)` reported
+`ETypeMismatch(a, b, span)`); the diagnostic carries the Reason its unify
+was asked with now (`ETypeMismatch(Ty, Ty, Reason, Span)`, `reason_line`
+rendering it past the diagnostic's own span), and the install's reason is
+the arm whose value is its own (`install_reason` / `answer_reason`: the
+first arm with a tail past every `resume`, located at the arm; the
+attachment itself when every arm resumes), the one reason the tee node is
+bound with, so the refusal reads `Int vs List(Byte) — ~> pipe → at
+15:13-15:27: inferred from the arm bail of handler h` and the caret's Why at
+the tee reaches the arm; (21) `where` rendered a handler without what it
+answers and a function's install line without what the install answers —
+`handler zero absorbs Ask, answers Int`, `handler ticker absorbs Tick,
+answers a` (a free answer under the name a developer writes), `~> ticker
+absorbs Tick, answers Int at 12:28-12:46` now (`handler_answer_of`, the
+one reader `prereg_answer_cell` reads through); (22) the first reader of
+"an arm with a value of its own" was named `arm_answers`, which query.mn
+declares with two parameters for the `provider of` facet — infer.mn's own
+link judged clean and the boot refused query.mn's at `arms_for_op` with
+three type errors: one namespace, one name (`arm_own_value`); (23)
+`infer_pipe` kept a PTee arm binding the tee's reason a second time under
+"today we don't have handler-value typing" — unreachable since
+`infer_pipe_tee` took the dispatch, a second home, deleted. GATES, each
+RED on boot cf8a6d50: the frontier's where legs (`answers Int` on `zero`
+and on `handled`'s install, `answers a` on `ticker`, the refusal naming the
+arm — no answer in the type, the reason dropped); micros
+`mn-arm-answer-is-the-install` (refuse E_TypeMismatch; compiled and ran),
+`mn-arm-answer-observed` (5; E_ShapeUnprovable), `mn-multishot-float-answer`
+(42; did not assemble), `mn-multishot-float-answer-no-box` (42),
+`mn-abandon-answer-refuses` (refuse), `mn-multishot-float-arg` (42; did not
+assemble), `mn-refine-install-answer` (refuse `E_RefinementRejected`; debt on
+the boot) and `-proven` (20; refused on the boot), the control
+`mn-handler-answer-per-install` (42, green on both); frontier
+`arena/float-value-reenters` (42), `mn-never-op-answer` (exit 1,
+io-linked), and the dcc block's `mn-ifc-tee-arm-leak` / `-public`. THE ENTRY AS WRITTEN: A MULTI-SHOT
+INSTALL WHOSE ANSWER IS WIDE DOES NOT ASSEMBLE, after a clean check.
+Measured 2026-09-28 on 30a35888 and on R0c's m2 alike: `effect C {
+choose() -> Float }` under `handler both(cfg) { choose() => resume(cfg.x) +
+resume(cfg.y) }`, installed over `choose() * 10.0`, fails at `(call
+$op___redrive_both)` with `expected [i32, i32] but got [i32, f64]`; so does
+an Int op under a Float answer (`both(init)` with `init = 0.25`). The
+install parks its body's result at the tee's representation (`$__hres_<h>`,
+f64 here) and hands it to the driver, whose accumulator is a word, as the
+k's result is; the redrive speaks the word protocol it was written in. The
+Int twin of the same program answers 35 on both compilers, so the protocol
+works and only its width is missing. This is the clause the arm face rule
+still keeps (`arm_face_roots`, lower.mn): a key that binds a multi-shot or
+abandon arm's answer to a wide scalar keeps the base arms, and no program
+can reach that path until this lands. THE FORM: the answer crosses the
+driver at the tee's representation, as an op's value crosses at its
+declared face: a wide answer is boxed where the install parks it and
+unboxed where the install reads the driver's result, or the redrive and
+the k are minted per answer representation. The first keeps one driver per
+handler and costs an allocation per yield on a wide answer, which the row
+must price (L0's Memory + Alloc on a multi-shot perform already charges the
+k record); the second allocates nothing. Gates: the two programs above,
+RED today by assembly; then the face rule's answer clause deletes, and
+`arm_face_roots` with it. ▶ THE SAME CLAUSE FROM ITS OTHER SIDE, measured
+2026-10-03 on boot 10cd1956 and the C×A m2 alike: an arm that OBSERVES its
+answer refuses even where the answer is a word. `handler two { gen() => {
+let a = resume([1, 2]); let b = resume([3]); a ++ b } }` installed over
+`gen() ++ [9]` is `E_ShapeUnprovable` — "`++` on t7615@e16435, emitting
+op_two_gen" — because the BASE arm is what is emitted: the answer is no
+part of the arm's key, so no install's answer ever reaches the arm's body.
+Width was never the root; the key is. Both faces close when an install keys
+its arms at its answer as it keys them at its effect's instance.
+
+`Hβ.emit.twin-key-is-what-the-body-reads` — **CLOSED 2026-09-28 (R0d),
+pin 2d7845607e804eb4.** A twin is keyed by what its body reads: a variable
+whose STRUCTURE the body reads keys by that structure (`observed_code`, the
+fold_sig), and every other one by its representation digit, and the
+substitution a twin is emitted under is the same fact — an observed variable
+and an unobserved wide one are bound, an unobserved word stays free, so a
+read the judgment missed floors where a census counts it instead of reusing
+another shape's layout (`twin_key`, lower.mn). The read is a DEMAND ON THE
+TYPE CELL, L1's numeric gate one kind over: one column (`TypeDemand =
+DemandNumber(NumericGate) | DemandShape(ShapeRead)`, types.mn); a
+comparison, a show, a hash and `to_string` read the WHOLE shape, a concat, a
+field load, a record update's base and a record pattern the OUTER one; the
+shape is entered where the judgment sees the read, pushed at unify's var
+binds and record-row writes, ridden across an alias, copied at instantiation
+— which is what carries a callee's read into every caller — and reached
+through the instance column. `twin_key` reads one cell per pair
+(`var_structure_read`).
+▶ THE FIRST FORM WAS A TABLE and the table was the re-derivation: a walk of
+every base body after lowering and a fixpoint over the call graph re-running
+what instantiation and unification had already carried. It was correct
+(census 0) and cost 152.5 MB of emit scratch, 66 MB once its reads went live
+and its fixpoint a worklist; deleted whole for the cell. Kills on the way,
+each measured: (1) an observed Int keyed at the floor digit folded back into
+the base, which reads it free (eq 34 → 42) — an observed variable keys by
+fold_sig; (2) an open row's rest left unpaired at an open site told its
+caller nothing (field floors 0 → 2) — the rest is a cell and carries its own
+mark; (3) root-only marking recursed until the stack ran out through an
+instance aliased back to its bound root — a bound cell keeps the mark as its
+visit, and only where it has instances.
+▶ WHAT THE KEY EXPOSED: every product layout reader read its widths at the
+floor, and a merged twin had hidden it. A field load, a tuple offset, a
+constructor payload, a record pattern and a construction store each asked
+`repr_of` outside the bracket; `slot_repr` (lower.mn) is the one width a
+product slot has, read through the twin. A record pattern resolves at emit
+by name (`LPRecord` carries its receiver's type and its fields by name, the
+emit reads the whole field set through `record_full_fields`), which closed
+`Hβ.lower.record-pattern-param-receiver` beside it.
+▶ MEASURED on fixed input: the boot (0bc8383e) compiled its own source at
+859,840 KB; the new compiler on that SAME source reads 764,132–769,204 KB —
+the judgment's high-water +17.5 MB for the demand marks, the written module
+−101.6 MB. Twin functions 3,033 → 120 and defined functions 6,680 → 4,291 by
+one count (every `(func` whose name carries `$sp`); WAT 459,524 → 389,596
+lines. Comparisons unprovable at emit 34 → 2 (`list_compare_loop`'s `<` and
+`>`, the word-list leaf the emit calls by name), shows 1 → 0, field offsets
+0. Fixtures, each RED on 0bc8383e: micros `mn-record-float-fields` (does not
+assemble), `mn-record-pattern-open-row` (155 for 47),
+`mn-record-pattern-through-callee` (67 for 48), `mn-record-update-float` (0
+for 9), `mn-record-rest-float` (1 for 4), `mn-record-rest-generic` (134 at a
+floor, no diagnostic), `mn-arm-config-pattern` (65 for 46),
+`mn-payload-generic-float-twin` (3 for 10); `mn-twin-observes-guard` holds
+the key itself and was seen RED only through a copy of this landing's
+compiler with every shape mark stubbed out (134).
+
+`Hβ.lower.bind-handle-typed-subpattern` — **CLOSED 2026-09-28 (R0e), pin
+dbbfd10784e308c3**, its last half. A sub-pattern's binder is declared at the width of
+the type its position matched: a constructor's payload (2026-09-18), a
+record's field (R0d), and now a list's element. `LPList` carries its
+element type (`list_elem_ty`, read in `lower_pat_at`), the binder side
+reads the same type, and the emit declares and binds each element at its
+slot width under the twin; a wide element's word face is its address, so
+the read loads its width through it (`emit_wide_deref` at the `PIdx` leaf).
+The raw read of a proven-flat list became an emit-time decision
+(`list_elem_read`), because the element's width is the twin's: a generic
+list literal matched in place is born packed at eight bytes a slot under a
+Float twin, and a license decided at lower would have read it at four.
+Witnesses, each failing to assemble on boots 0bc8383e and 2d784560 with
+`mentl check` clean: micros `mn-list-pattern-float-let` (`$a.f64`),
+`-float-match` (`$y.f64`), `-generic-float` (`$h.f64`), `-flat-twin`
+(`$x.f64`).
+▶ THE BUILD FOUND A SILENT WRONG BESIDE IT, on every boot: the list
+pattern's TEST walker paired its sub-patterns from the wrong end, so `[1,
+y]` compared element 1 against 1 — through a parameter and on a literal
+matched in place alike. `f([1, 5]) * 20 + direct` answered 65 for 116
+(`mn-list-pattern-literal-position`, measured on 2d784560). The bind walker
+beside it had been corrected for exactly this, its comment naming "the
+wrong-end class"; the test walker had not. It survived every board because
+none of the wheel's 177 list-pattern arms carries a refutable sub-pattern
+— §11 tripwire 3, the board blind to what the wheel never writes. The test
+and the bind are one walk each over the enumerated sub-patterns, in element
+order, and the raw and indexed reads are one `ElemRead` value rather than
+two copies of each walker.
+
+`Hβ.infer.record-update-closes-an-open-base` — OPEN, NAMED 2026-09-28
+(R0d). A record update over a generic base types its result as the base's
+KNOWN fields, closed, so a caller's other fields do not survive it: `fn
+bump(r) = {...r, a: r.a + 1}` with `bump({a: 5, c: 6, z: 1}).c` refuses
+`E_TypeMismatch: { c: t } vs { a: Int }` at the update. Loud — the
+judgment refuses and nothing runs wrong — which is why it was named rather
+than fixed inside R0d. THE FORM: the result is the base's row with the
+overrides written in and its REST kept — the base `{a: t | ρ}` updates to
+`{a: t' | ρ}` — so a caller's fields flow through an update exactly as
+through a parameter. The base is already an outer-shape read (R0d), so each
+caller's twin knows the whole field set, and the emit copies every field
+by name through `record_full_fields` under the twin, the machinery a record
+pattern's rest runs. An update that ADDS a field the base may already carry
+meets the same row question as a record extension and is answered there,
+not by a second rule. Gate: `bump({a: 1, b: 2}).a + bump({a: 5, c: 6, z:
+1}).c` answers 8, refused today.
+
+`Hβ.emit.twin-cap-meters-breadth-not-divergence` — **CLOSED 2026-09-28
+(R0c), pin 0bc8383e8b6ced84.** A twin demand carries its LINEAGE, the twin bases whose
+body scans produced it (`DemandTwin`'s fifth field, backends/wasm.mn), and
+the cap reads the base's count ON ITS OWN LINEAGE (`lineage_depth`), which
+grows only when a body reaches itself at a new key; a base scan starts a
+fresh lineage, since a base body's keys are fixed by its source types.
+Membership is a name map beside the accepted buffer, so
+`spec_buf_demanded`'s scan and `spec_buf_base_count` are deleted. Gates:
+`mn-twin-breadth-past-eight` (0; 134 on 30a35888), and the sig'd
+polymorphic-recursion leg stays green (its chain still caps). ▶ WHAT IT
+COST, measured on fixed input: the boot compiled its own source at 739,028
+KB; R0c's compiler on that SAME source reads 813,888–819,448 KB, so the
+machinery is the cost, not the source. Defined fns went 5,036 -> 6,661
+(`map_collector`'s arms from 8 twins to 192), and half the twin mass is
+copies, which is `Hβ.emit.twin-key-is-what-the-body-reads`.
+THE ENTRY AS WRITTEN: THE CAP COUNTS THE
+WRONG THING. `emit_reach_fix` caps a twin when its base already has eight
+accepted twins anywhere in the program (`spec_buf_base_count`); past the
+cap the twin still registers, but every reference in its body demands a
+BASE name. The cap exists for polymorphic recursion — its own comment says
+"a self-instantiating chain mints a fresh mangle per nesting level" — and
+breadth is not recursion. Measured 2026-09-28: the wheel's `map` has 188
+twins and 180 run their interiors at the floor (which is why every
+iteration handler emits exactly eight arm twins); and `fn inner(u) = u.x *
+10 + u.y`, `fn outer(u) = inner(u)` over ten record shapes floors the
+ninth and tenth `outer` twins into base `inner`, whose row never closed —
+two `T_FieldOffsetUnprovable` and exit 134, on boot b29e319b and on R0b's
+pin alike; eight shapes run. R0″ would turn that floor into a refusal of a
+valid program, so this lands first. THE FORM: a demand carries its
+LINEAGE, the twin bases whose body scans produced it; a base appears twice
+on one lineage only when its body reaches itself at a NEW key (the
+mangle dedup swallows every same-key recursion), so its count on its own
+lineage is the recursion depth, and the cap reads that. A base body's
+keys are fixed by its own source types, so a base scan starts a fresh
+lineage. Membership becomes a name map (the linear scan would grow with
+the twin set). Gates: the ten-shape micro (0; 134 on 30a35888), and the
+sig'd polymorphic-recursion leg stays green (`depth([x], n - 1)` still
+caps, now along its own chain).
+
+`Hβ.emit.dead-base-emitted-beside-its-twins` — **CLOSED 2026-09-28 (R0′),
+pin b29e319b99990abf.** The emitted reach (`emit_reach`, backends/wasm.mn) reads
+the references lower's reach reads — ONE walker now, `low_refs` (lower.mn),
+where two carried the same edges and the second also collected operand
+handles nothing had read since the worthiness gate died — at the altitude
+where the keys exist: from main, the runtime contract, argv and the value
+lets, a base body's references resolve unbracketed and a twin's under its
+own pairs, arms are keyed by name through their container, lambdas live
+with their decl, and a top-level decl no live reference reaches is not
+emitted. A twin of an unemitted base still takes its strings, lines, host
+ops, yields and performs from the base's body (`names_not_emitted` absorbs
+only the base's names), and a twin's static lines are read off its base's
+line homes (`LhStatic`) instead of re-deriving top-levelness.
+▶ MEASURED at the pin: the wheel emits 408,868 WAT lines where it
+emitted 449,015 (−9%), its field-offset floors fall 8 → 0, and the m4 leg
+runs 9.67s at 717MB peak where the prior pin's ran 13.22s at 791MB. The
+new compiler's own compile of the wheel also reads 34 unprovable
+comparisons where the prior read 57, and one unprovable show where it
+read 22: those floors sat in dead bases and went with them.
+▶ THE PREDICTION BELOW WAS WRONG, and the direction is the lesson: it said
+the census would fall "by exactly the dead bases' floors", four. It fell by
+all eight. The four floors the wheel carried before R0 were in dead bases
+too, once R0 made their row variable real: the value-passed sites
+`2026-09-16`'s retraction found selecting the bases now key twins.
+▶ THE COST THE FIRST FORM PAID, and how it was found: the first reach
+peaked at 858MB, 43MB OVER the ceiling. The judgment's heap line held
+(315MB), so the growth was after it, and marks at emit's phase boundaries
+named it — `dedup_fn_records` compared every record with every earlier one
+and built a tuple per comparison, 60MB per dedup, and the reach had made
+two of them. Both dedups are one pass over a name map now, and the marks
+graduated into two `heap:` lines beside the judgment's (lowering's end, the
+module's end). KILLED on the way: "the second record walk is the cost" —
+collecting records per decl instead cost +70MB, because every scan of a
+concat tree materializes it (`iterate`'s list_to_flat) and each twin demand
+scanned one.
+▶ WHAT IT EXPOSED: the field-offset class is at zero on the wheel and
+cannot arm by the verify recipe, because it is raised during emission,
+after the gate read the refusals and after bytes streamed
+(`Hβ.emit.emit-time-class-cannot-refuse`).
+THE ENTRY AS WRITTEN AT R0: A BASE BODY WHOSE EVERY
+REFERENCE RESOLVED TO A TWIN IS EMITTED ANYWAY. Total monomorphization
+twins every keyed call site, but reachability runs at lower, on plain
+names, before the keys exist — so the base (floor) body of a generic
+function is emitted beside its twins even when nothing calls it, carrying
+floors for every open row it reads. Measured at R0 on the m3 leg: four of
+the eight field-offset floors sit in such bases (`ring_of_name` is called
+only from a base lambda of `enumerate_vocabulary_calls`, whose own base is
+never called; `emitted_sig_of_entry`'s base is never called), which is
+what lifted `field_offset_unprovable_max` 4 → 8. THE FORM: reachability
+over the EMITTED graph — each body's references resolved under its own
+bracket, from main and the init lets — so a base is emitted only when some
+reference names it; "nothing is derived that was not demanded" at the
+emit. The census falls by exactly the dead bases' floors.
+
+`Hβ.emit.emit-time-class-cannot-refuse` — ✅ CLOSED 2026-09-28 (R0″, pin in
+LEDGER). THE PLAN SETTLES BEFORE THE GATE READS. The module is decided whole
+before a byte of it is written — `emit_plan` (backends/wasm.mn) is the emitted
+reach, the twins and their brackets, the settled signatures, the fold
+closures, the emit-state projections, the line owners, the drivers and the
+call vectors, returned as one record — and `emit_planned` only writes it.
+Every route runs one gate between them (`gated_plan`, pipeline.mn: the
+judgment's reads, then the plan over a clean judgment, then the ledger again),
+so the CLI, the battery and the MCP judge refuse with zero bytes on the same
+law. The reach is the walk that already holds each emitted body's bracket, so
+it SETTLES each body as it scans it — a base unbracketed, a twin under its
+own pairs, a value let's init at module scope — asking what emission would
+otherwise decide mid-stream: a field offset or a record pattern's field set
+(`E_FieldOffsetUnprovable`), a comparison's, a show's, a hash's or a `++`'s
+operand shape (`E_ShapeUnprovable`), a reference past the twin cap whose key
+keeps a variable the callee reads (`E_InstantiationDepth`, born here), and the
+compiler's own invariants that emission used to report after the first byte —
+a boundary lowering could not build (`LInvariantFailure`, which had written
+its trap WITHOUT a word), arithmetic on an ungated variable, a static `<~`
+home in a minted record. All armed at wheel-zero; emission writes each floor
+silently, and only where nothing runs it (a library's whole-emit, which no
+caller settles). WHAT THE AUDIT OF EMISSION-TIME REPORTS FOUND, beside the
+three classes it set out to arm: the static-home belt was guarding a live
+hole — a `fn` nested in a module-scope `let` block is lowered with no frame,
+so it took a static home while its closure is minted at run time, and the
+module did not assemble (`Hβ.lower.module-scope-has-no-frame`, three more
+shapes, R0f). The payload micros moved from a banked trap (134) to a compile
+refusal; the frontier's field-offset leg to `run_refusal`; the three ratchet
+keys retired. The design as banked, for the record: the three questions join
+the walk that already walks every emitted body under its own bracket, and the
+emit refuses when the settle raised an armed class. What the build changed:
+the walk is the REACH rather than the fold collection (the reach is where a
+body's bracket and its liveness are both known; the settle walks each emitted
+body once, beside the reach's own reference scan of it, through the generic
+child projection `low_children`, whose per-node lists measured +16 MB at the
+self-compile's peak), and refusing needed the plan split from the write,
+because an armed report raised after the gate is counted by nothing.
+
+`Hβ.lower.module-scope-has-no-frame` — ✅ CLOSED 2026-09-28 (R0f). Module
+scope is a frame: a value let's init is lowered inside the frame of
+`$__init_lets`, named for its binding, with static lines (lower.mn
+`lower_module_init`), so a block local is that function's local, a nested fn
+is a closure minted there with slot lines, and a `<~` directly in an init
+owns an instance ring under `$__init_lets` (wasm.mn `init_lets_lines`, one
+more owner of `static_line_owners`, and the inits emit under that site).
+The fourth shape was not a lowering fact at all: the parser now births a
+module-scope `let name = <function literal>` as the `FnStmt` it is (parser.mn
+`let_at_scope`), which also made it recursive and generalized — both were
+refusals on boot 2d18aedd — and `mentl fmt` writes it as `fn`, except the
+arm-list form, which keeps `let name = { … }` because its parameter is
+minted. **A FIFTH SHAPE, found by the landing's own probes:** a module VALUE
+holding a closure (`let add3 = make_adder(3)`) was called as `call $add3`,
+because every value binding was registered as `FnScheme` — the kind lower
+cashes into a direct call of the declared symbol — while two lower comments
+already spoke of "a value binding" and "value schemes" as a different kind.
+Value bindings carry `ValueScheme` now (types.mn), at their six writers.
+**Kills.** (1) "The kind change is local to calls": the partial
+fork read `FnScheme` too, and the boot ran `add3(1, ??)` over a module value
+(exit 6) through the closure — the first build floored it, seen on the
+landing's own probe before the pin; the partial arm takes `ValueScheme`, and
+at lower time only module entries answer there, a local's binding having
+left the env with its scope. (2) "Desugar block-scope lets as well": a block
+`let f = (x) => f(x) * 10` calls the `f` bound before it (measured 30), and
+as a letrec declaration that `f` would call itself. Found on the way: the
+comment-ref index held no module value let, so a comment naming one
+resolved nowhere; it holds them now. The four shapes and the fifth run to
+the values their sources compute (tests/micros/mn-module-let-*.mn,
+mn-module-value-closure.mn). The record as it stood: OPEN, measured
+2026-09-28 (R0″). A module-scope value let's init is lowered with NO
+frame, and every fact a frame carries is wrong inside it. Four shapes, each
+checking clean and each broken on boot dbbfd107: (1) a block local —
+`let total = { let a = 3; let f = (x) => x + a; f(4) + a }` — resolves as a
+global, so the lowering writes its missing-name floor and the program trapped
+(134); R0″'s settle refuses it now as the invariant it is
+(tests/micros/mn-module-let-block-local.mn). (2) A `fn` nested in such a
+block takes a STATIC `<~` home, because `project_nested_fn` reads "frame depth
+0" as "top-level decl", while its closure is minted at run time — refused now
+as the same invariant. (3) A `<~` directly in a let init reads the global
+`$__line_<h>_module scope`, which has a space in its name and is declared by
+nothing (assembly failure, unrefused). (4) `let inc = (x) => x + 1` at module
+scope is called as `call $inc`, but the function emitted is `lambda_<h>`
+(assembly failure, unrefused — the plainest of the four). THE FORM: module
+scope is a frame — the frame of `$__init_lets`, the function the value lets
+run in, whose lines are static and owned by that name (`static_line_owners`
+gains it, and the init lets emit under that site); a nested fn inside it is
+then at depth one and minted with slot lines; and a module-scope
+`let name = (params) => body` IS `fn name(params) = body` (SYNTAX's own
+sugar rule, read at the top level), projected by the same path and named
+for its binding, its lines static. CLOSE: the four shapes run to the values
+their sources compute, the two refusal contracts flip to runs, m3 == m4.
+
+`Hβ.emit.cap-tail-carries-its-structure` — OPEN, named 2026-09-28 (R0″).
+Past the twin cap the settle point refuses a reference whose callee reads a
+structure the recursion grows (`E_InstantiationDepth`), because the base it
+would reach reads that structure as a word. Monomorphization cannot
+specialize without bound, and Rust refuses the same programs at its
+instantiation limit; the medium can do better. The tail past the cap can
+carry its structure at run time — a descriptor per growing variable, built
+at the capped call from the twin's own proven type and read by a base
+compiled against descriptors rather than words (the show, compare, hash and
+field leaves dispatching on it) — so a deep-enough recursion pays a
+descriptor read where it now refuses. Until then the refusal is the honest
+floor: `deep(7, 7, 7)` refuses though its run would stay under the cap,
+because nothing proves the depth the program will reach.
+
+`Hβ.emit.check-sees-emit-classes` — OPEN, named 2026-09-28 (R0″). The
+settle point's classes (`E_FieldOffsetUnprovable`, `E_ShapeUnprovable`,
+`E_InstantiationDepth`) are decided by the plan, which `mentl check` never
+runs — check judges and does not lower — so a program check calls clean can
+still be refused by compile. The plan is a read over the lowered program with
+no sink, so check can run it (lower, reach, settle) and say the same refusals
+without writing a byte. CLOSE: `mentl check` on the payload micros names
+`E_FieldOffsetUnprovable`.
+
+`Hβ.infer.main-param-is-the-argument-list` — OPEN, named 2026-09-28 (R0″).
+`main`'s parameter is the host's argument list (the runtime passes
+`wasi_args`), but the judgment never says so: an unannotated `q` stays a
+type variable, and a read of its structure at `main` refuses at the settle
+point (`E_ShapeUnprovable` on `byte_len("{q}")`,
+tests/micros/mn-shape-unprovable-main-param.mn), where boot dbbfd107 printed
+the list's address. The executable boundary is a judgment fact: main's
+parameter unifies with `[String]` where main is judged, and the fixture flips
+to a run.
+
+`Hβ.syntax.base-type-annotation-sweep` — OPEN, executable from 2026-09-28
+(R0″), named from `Hβ.emit.eq-on-unresolved-operand-is-pointer-eq`'s steps
+(3) and (4). With a comparison on an unproven operand REFUSED rather than
+compared by address, the `: String` parameter annotations the wheel carries
+to route `==` to `str_eq` can be deleted and the compile left to name each
+site the twin does not reach; what survives is a real Intent Boundary, and
+`CsBaseTypeAnnotation` (a parameter whose authored annotation is a base type,
+neither refinement nor ownership nor a repr pin) bounds it on the board,
+ratcheted down.
+
 `Hβ.emit.field-offset-floor-is-never-reported` — RESOLVED 2026-09-15. THE
 FLOOR WAS WRITTEN AND NEVER SAID. `emit_expr`'s `LFieldLoad` arm answered an
 unprovable offset with `(unreachable)` plus a WAT comment naming the field,
@@ -3497,10 +5976,63 @@ bare `unreachable`.
 `(sites, ophs)` and every caller destructures the second half to `_o`. The
 operand handles were the worthiness predicate's input; 5.1a deleted the
 predicate and left the collection. A collected-and-never-read accumulator half
-is the write-only-ledger shape at the emit layer.
+is the write-only-ledger shape at the emit layer. RESOLVED 2026-09-28 (R0′):
+the scan is deleted, and one walker (`low_refs`) carries the references both
+reaches read. The self-recursion gap above resolved the same way: a
+reachability from roots never demands a base that only its own tail call
+names.
 
-`Hβ.infer.record-row-vars-are-not-unioned` — RECORD ROW VARS ARE SECOND
-CLASS IN THE UNION-FIND, and that is what survives the offset fix below.
+`Hβ.infer.record-row-vars-are-not-unioned` — **CLOSED 2026-09-28 (R0),
+pin c5439637261f50ab.** The unseen rest of a record is a ROW VARIABLE, and there is
+no third answer: `RecordRowTail = RowClosed | RowContinues(Int)`, the
+assumed tail deleted. Two open rows that meet are read to their ends
+(`record_row_full`, graph.mn — the one walk every reader and writer
+takes), their shared fields unify, and each free rest learns what the other
+side knew: an alias when both know the same fields, one side continuing at
+the other's rest when one knows nothing more, otherwise both continuing at
+ONE fresh variable (`rows_meet`, infer.mn). Only free terminals are ever
+written, so no chain fact is overwritten (open-against-closed used to bind
+the row's HEAD and replaced whatever residual it held). Instantiation walks
+the chain mapping-first at every link (`subst_row_walk`) — `subst_ty`
+stopped at the head and SHARED every link past it across all callers —
+and the twin key, `spec_subst_pairs`, the offset read, `spec_resolve`, the
+occurs guard, the free-variable collection and Mycroft's alpha-equality all
+read the same flattened row.
+▶ THE MEASURED CLASS WAS WIDER THAN THIS ENTRY KNEW, and it was found by
+L4a's own code: the derivative reading's fixpoint trapped in the compiler's
+`facts_moved` twin, which laid `prev` out as the five fields it names while
+the record held eight. Reduced on boot 730e097a to the most basic
+row-polymorphic program there is — `fn pick(u) = u.x * 10 + u.y` over
+`{x: 1, y: 2}` and `{a: 5, x: 3, y: 4}` answered 54 for 46, silently
+(`tests/micros/mn-row-two-fields-two-shapes.mn`). Any helper reading TWO
+fields of an unannotated record, called with two record shapes, read the
+wrong slots for every shape but the last, because the second access met the
+first as two open rows and wrote their union as the whole row: no variable
+to generalize, so every caller shared one residual. The one-field case the
+2026-09-01 fix covered keeps a free variable and was sound; the second field
+is what reached this. Also RED before and GREEN after:
+`mn-row-through-caller` (the same through an unannotated caller, 54 → 46)
+`mn-row-open-caller-reads` (two helpers reading one record an open
+caller holds: an address → 42) and `mn-row-nominal-and-anonymous` (a
+nominal and an anonymous record through one helper: 115 → 46).
+▶ KILLS ON THE WAY, each by a probe: a name collision between a handler's
+config parameter and a function's parameter (renamed, still wrong);
+recursion (the minimal form has none); the one-field handler-config floor
+(a3 — the known LOUD floor, not this); "two open-row params" as the shape
+(r1, r2, r3 pass — the trigger is a second FIELD read through one
+parameter together with a second record SHAPE or an open caller; one field,
+or two fields at one shape, stayed right).
+▶ WHAT IT EXPOSED, named: (1) a handler arm reading its CONFIG's fields has
+no twin per install, so the e2 shape (`mn-row-config-read-in-arm`, banked
+for its own landing) moved from a silent wrong read to the known loud floor
+— `Hβ.emit.handler-arms-specialize-per-install`. (2) Four base bodies that
+used to bake offsets from an assumed union now floor, every one in a base
+nothing calls; the census rose 4 → 8 by honest accounting
+(`Hβ.emit.dead-base-emitted-beside-its-twins`).
+▶ THE HISTORY BELOW IS THE RECORD OF HOW THE ROOT WAS FOUND, kept because
+the three refuted repairs and the discriminator defect are the instructive
+part. RECORD ROW VARS WERE SECOND CLASS IN THE UNION-FIND, and that is what
+survived the offset fix below.
 **THIS ENTRY IS THE ROOT AFTER ALL.** It was briefly re-rooted onto emit
 hygiene on 2026-09-16 and that claim was RETRACTED the same day by building
 the prune and measuring 0 dropped: the four floor bases are referenced and
@@ -4169,6 +6701,14 @@ into a trap, which is measured, so the answer is not "floor on assumed".
 The two candidates are narrowing the assumed row at the call site so the
 question never arises, and specializing the receiver's layout per call
 site. Both are the standing fork, and the fork is Morgan's.
+▶ THE FORK DISSOLVED (2026-09-28, R0 — `Hβ.infer.record-row-vars-are-not-
+unioned`'s closing). It was never a choice between two readings of the
+assumed residual, because the assumed residual was the defect: a union of
+partial sets with nothing standing for the rest. The rest is a variable
+now, so the question "what should an assumed remainder do" has no subject
+— a remainder is proven or it is a variable each caller closes, which is
+both candidates at once: the call site narrows the variable, and the
+narrowing keys the receiver's twin.
 ▶ A GREEN GATE LANDED FOR THE ADJACENT SHAPE, because the class needs
 oracles on both sides of the line. `tests/micros/mn-open-row-second-field`
 runs findtag's exact flow but reads `region_id`, the SECOND-sorting field,
@@ -4304,7 +6844,12 @@ READ repr"), met at the record.
 
 `Hβ.query.record-pattern-open-receiver` — ✅ RESOLVED 2026-08-17, pin
 4ce9914b7360, as `CsRecordPatternOpen` with the ratchet
-`record_pattern_open_max: 0`. Its build is worth keeping for the KILL:
+`record_pattern_open_max: 0` — and RETIRED 2026-09-28 (R0d) before its
+written condition, the field-offset diagnostic's arming. An open receiver
+is the ordinary polymorphic form now, resolved by name under each caller's
+twin, so a zero bound on it would refuse correct code; what stays
+unresolvable is `T_FieldOffsetUnprovable`'s, held at zero by
+`field_offset_unprovable_max`. Its build is worth keeping for the KILL:
 the first draft filtered only let bindings, marched, and answered 0 for
 the wheel — which read as confirmation that the previous pin's
 annotations had worked. Falsification refused that reading, because
@@ -4615,7 +7160,1694 @@ extent analysis to sharpen, and the two want different builds.
 emit boundary, independent of the modal install-identity frontier that
 the entry below is blocked on.
 
-`Hβ.effects.root-gate-credits-an-install-that-had-not-opened` — AN OP
+`Hβ.effects.root-gate-credits-an-install-that-had-not-opened` — CLOSED
+2026-09-27: THE CREDIT IS DELETED. `report_unhandled_names` (pipeline.mn)
+reads main's resolved row and the emit's demand census, nothing else; the
+census's install half — read by nothing but the credit — is deleted with it.
+The 2026-08-18 refutation below ("deleting the credit is refuted: the wheel
+refused on GraphRead") was a measurement of the WHEEL, not of the gate, and
+the wheel was wrong: with the credit gone it refused FOUR names at its root
+— Interrogate, Interact, WasmOut, GraphRead — and every one was a latent
+trap the credit had covered. Measured first at four micros on the boot
+(compile clean, abort 134): an arm asking its own handler for a sibling op
+with one install; an arm asking for an effect whose handler is installed
+INSIDE it; the wheel's own emit-context shape (a strategy handler outside
+the body's sink); an escaped closure called bare. The wheel's four:
+`interrogate_all` mapped the `interrogate_at` OP over every position (a
+plain fn `interrogation_at` now, both arms call it); the voice's run arms
+asked `file_text` of a handler the documented composition installs inside
+them (moved into `mentl_voice_filesystem`, reading its own table); the
+allocation strategy stood in emit_context OUTSIDE every sink a march or a
+battery installs inside (it installs where the emitter allocates — the
+per-fn brackets, the init lets, and now the fold leaves — and the
+whole-compile install is deleted; the gate named EmitMemory the moment it
+went and the fold-leaf bracket answered it); `verify_ledger` at main read
+the graph outside graph_handler's extent (inside the dispatch chain now).
+The crown judge counted only `E_EffectMismatch`; counting the root's
+`E_EffectUnhandled` too showed seven sound crucibles refusing on every
+boot since their birth for lack of any handler (executable now), and
+`sound-escape-birth-evidence`'s premise — the escaped closure served by a
+"static singleton direct call" — described tiers that no longer exist (the
+bare call aborted 134 on the boot; `leak-root-escape` is its refusal).
+The frontier's `effect-escaped-install` leg is a compile-time refusal where
+it pinned a runtime 134 and reserved the static verdict for band A — it was
+never band A's. Five root crucibles, three red on the prior boot; crown
+94/94. What the row cannot see is named at
+`Hβ.effects.arm-world-static-rule`.
+
+`Hβ.effects.arm-world-static-rule` — RULE HALF LANDED 2026-09-27 (A5, pin
+83428bcc2900c881; LEDGER carries it), IDENTITY HALF OPEN for A6. Born the
+same day as the one shape the row-only root gate refuses that runs:
+`((twice()) ~> h) ~> h` where h's `twice` arm performs `op()`. The inner
+install's arm ask resolves to the outer install (legal forwarding, exit
+20), and the outer install's own `twice` arm can never run — every perform
+inside the outer extent is inside the inner one — but the row re-adds
+`row(h)` at the outer tee and E reaches the root. Seeing THAT needs install
+identity (A6, LENS §2.5); the crucible is the removed `sound-root-nested`,
+to return with that landing. The wheel does not need the nesting:
+dispatch_invocation's row carried no GraphRead once the graph_handler's
+arms stopped asking their own handler, so the nested graph installs were
+never load-bearing for the row.
+THE RULE HALF, AS BUILT. LENS §2.4's rule — resuming inside an arm of h
+continues the remainder under h, so the arm's row must carry the remainder's
+requirement minus h's absorption — is enforced PER INSTALL, where the
+remainder is known: `remainder_gates_check` judges the tee body's row minus
+what the handler absorbs against the handler's own declared negation, which
+its registration stores on the residual cell (`enforce_handler_clause`) and
+pushes onto the body row's free terminals. The per-op join the first form
+implied (charge every perform site's remainder into the handler's ONE row
+at `resume`) was refuted before a line was written: the wheel's
+`graph_handler` is installed at eleven sites whose remainders carry every
+effect the wheel performs, and one row joining them would re-add all of it
+at every tee. The boundary's captured world became the rule's value too —
+`inf_remainder_world` unions the frames from the perform site up to the
+nearest enclosing tee that absorbs the effect, read off install marks that
+now carry what each tee absorbs — projected by the continuation's render,
+read by no resume until band B's first-class `k`.
+WHAT THE BUILD FOUND: the handler's `with` row was never there. `parse_
+handler_decl` skipped `with !E` and `with E [+ E]` to the arms' `{` as
+"WAT-invisible" (its own comment named the confession peer
+`Hβ.parser-handler-effect-row-record`), so SYNTAX's "negation guards on
+handlers" described a mechanism with no substrate: `handler h with !F {
+op() => resume(1) }` over `op() + fop()` compiled clean on boot 39b00d84.
+The clause rides `HandlerDeclStmt` now (a sixth field, twenty-seven
+destructures), the formatter renders it back at its fixpoint, and it is
+judged at registration exactly as a fn's clause is. Crucibles:
+`tests/crown/leak-arm-resume-remainder` (seen RED), `sound-arm-resume-
+remainder`, `sound-arm-resume-remainder-masked`, `sound-arm-negates-own-op`;
+the wheel authors no handler clause, so the census is zero at birth.
+THE IDENTITY HALF, MEASURED 2026-09-30 (L5) — NOT A HOLE. Four probes on
+boot 16286d94 before a line of A6 was written: (1) `((twice()) ~> h) ~> h`
+refuses at the root, and that is the row being EXACT, not blind — the inner
+install absorbs `E` for the whole extent, its arm's own `E` perform resolves
+outer, so the outer install's arms are unreachable and E reaches the root;
+Koka refuses the same program. What a finer verdict would need is op-granular
+arm reach, named below, never identity. (2) A recursive fn installing the
+same handler per level runs (exit 2) under dynamic innermost dispatch, as
+SYNTAX documents. (3) A closure escaping from one install of `h` into a
+second install of the same `h` runs (exit 7) the same way. No capture, no
+silent wrong. (4) THE HOLE THE WALK FOUND was the PARTIAL HANDLER — closed
+the same day as `Hβ.effects.handler-must-be-exhaustive`. Install identity as
+a mechanism (a row carrying `E(install)`, install-precise masks, evidence
+naming the install) is therefore not owed by any measurement; its felt face
+is `Hβ.effects.served-by-projection`, and its TIME face stays band B's
+(`Hβ.continuations.world-widening-resume`). `sound-root-nested` stays out
+of the crown: it is a correct refusal.
+
+`Hβ.effects.handler-must-be-exhaustive` — CLOSED 2026-09-30 (L5; LEDGER
+carries the pin). THE SHAPE: `effect State { inc() -> Int; get() -> Int }`,
+`handler only_inc { inc() => resume(1) }`, `fn f() with !State = (get() +
+inc()) ~> only_inc`. On boot 16286d94 the program compiled CLEAN under the
+negation and trapped at the root (exit 134): the install subtracted the whole
+of `State` from the body's row by name, while `get`, answered by no arm,
+walked past the install at runtime to the end of the chain. §0's property (2)
+false at a shape any program writes, and the last known hole under `!E`.
+THE LAW: a handler is exhaustive over every effect its arms answer — the
+match-exhaustiveness law at a handler (an effect is a sum of requests, a
+handler its arm list), Koka/Effekt parity. `E_HandlerInexhaustive(handler,
+effect, missing ops, span)` at registration, category effects, ARMED at
+birth, `HasPlaceholders`; the lowering's op-keyed dispatch walk (2026-09-09)
+stays and its empty-arm-slot skip is unconstructible. The two honest partial
+forms: a FORWARDING arm (`get() => resume(get())` — an arm's own perform
+resolves outer, the row carries the forwarding, so `!State` over that body
+refuses as it should: `tests/micros/mn-handler-forwarding-arm.mn` answers 21
+under an enclosing `both`, `-refuses.mn` refuses), or the ops the handler
+answers declared as their own effect. THE FIRST CENSUS, five partial handlers
+in the wheel and its runtime, every one a place `!E` was false: lib/prelude's
+`each_handler` (no `result` arm — the floor every micro links; it answers
+unit now), src/infer's `summaries_frozen` (read-only over a read/write
+effect), src/backends/wasm's `preinstall_init_scope` (two census ops) and
+`names_not_emitted` (two drains) — both forward now — and src/voice's
+`Interact`, ONE effect whose two implementers answered disjoint halves, split
+into `Workspace` (files, edit, runs) and `Interact` (attention, voice,
+session). THE KILL worth the record: `summaries_frozen`'s first fix was a
+forwarding arm, and the ROW killed it before any gate ran — the frozen round
+is installed where no standing ctx encloses it, so the forwarded write
+reached the executable root and the boot refused the wheel
+(`E_EffectUnhandled`). A forwarding arm CLAIMS an enclosing handler; where
+none exists the honest form is the split, and `ResumeSummariesWrite` is the
+write capability on its own. The two frontier split-effect fixtures
+(`mn-split-effect-op-key`, `mn-split-effect-evidence`) were exactly the
+refused shape and are refusal contracts now; `mn-handler-partial-refuses`
+holds the first shape.
+
+`Hβ.effects.row-write-outside-the-judgment` — NAMED 2026-09-30 (A7), the
+residue of the judged writer becoming an install. The row writes are their
+own effect (`RowWrite`), answered judged by `row_gate` innermost at every
+judgment chain and raw by `graph_handler` at the root, so inside a judgment
+a raw write is unsayable: the perform reaches the judged handler first. A
+`RowWrite` perform OUTSIDE every judgment chain — none exists (`mentl query
+src/main.mn "refs of graph_bind_row"` names the writers, all inside the
+judgment) — would be served raw by `graph_handler`, and the medium cannot
+refuse it, because the raw capability must be nameable by the handler that
+holds the spine and Mentl has no module-private declaration to hide it
+behind. The form that closes it is a capability nameable only by its
+holder; until then the projection above is the standing census, and the
+kernel law that only inference writes (PLAN §2) is what such a perform would
+violate.
+
+`Hβ.effects.op-granular-arm-reach` — NAMED 2026-09-30 (L5). The row is
+effect-granular: a tee subtracts an effect by NAME, so `((twice()) ~> h) ~>
+h` (h answering `twice` by performing `op()`, both ops of E) refuses at the
+root although it runs to 20 — the inner install absorbs E whole, the arm's
+`op()` resolves to the outer install, and the row re-adds `row(h)` there. A
+finer row would carry which OPS of an effect an extent still performs, so an
+arm's forwarding of one op is subtracted by the outer install's arm for
+exactly that op. It is precision, not soundness (the coarse verdict refuses,
+never admits), and it is the Links-style op-granular row one altitude below
+the effect-granular one §4③ chose; it lands only if a real program needs the
+nested shape — the wheel does not, and the exhaustive-handler rule makes the
+shape's usual motive (a partial inner handler) unwritable.
+
+`Hβ.effects.served-by-projection` — NAMED 2026-09-30 (L5). The felt face of
+"which install serves this perform": `mentl why <file:line>` at a perform
+site names the install that answers it under the static-singleton tier, or
+says the answer is dynamic (the innermost install at runtime) and lists the
+candidates the row admits. Rides `Hβ.query.why-of-a-root-row-name`'s walk;
+the per-install cost charge of `Hβ.effects.multishot-perform-allocates-
+unrowed`'s precise form reads the same fact.
+
+`Hβ.voice.run-ops-have-no-performer` — OPEN, BORN 2026-09-27. `Workspace`'s
+`run_compile`, `run_check`, `run_audit` (Interact's until the 2026-09-30
+split) are performed by nobody (`mentl query src/main.mn performs`, measured
+before the split: Interact 8/21 ops performed), and `run_audit` hands
+the file's TEXT to `audit(entry_module)`, which wants a module path — a wrong
+call that no execution has ever reached. The arms were moved beside the
+handles table so they no longer ask their own effect; the surface they were
+designed for (MV.2.e, the IDE/MCP run ops) either gets a performer or the
+three ops retire.
+
+`Hβ.query.why-of-a-root-row-name` — OPEN, BORN 2026-09-27, the projection
+this landing paid for by hand. `mentl why src/main.mn GraphRead` answered
+"declared as GraphRead": the Why of an EFFECT NAME resolves the declaration,
+not the reason the name is in a row. What the dig needed — which perform,
+through which arm or install, put E in main's row — was read from `mentl doc
+<module>` rows one declaration at a time and from a hand scan of handler arms
+for their own ops. The verb: `mentl why <entry> <Effect>` at the root walks
+the row element's provenance to the perform sites and the tee that re-added
+it, so a root refusal names its path the way a gate refusal names its
+declaration.
+
+`Hβ.lower.oneshot-nontail-resume-drops-post-code` — CLOSED 2026-09-27 (L0
+of the Pulse sprint, pin 5bf55b682d952871). THE SHAPE: `handler dbl { ask() => { let r
+= resume(1); r * 2 } }` over `fn body() = ask() + 1` answered 2; the
+deep-handler contract says 4 (tests/micros/mn-oneshot-nontail-resume.mn,
+RED on boot 83428bcc at exit 2). THE ROOT: `resume_grade` graded every
+resume `UOne`, `arm_disc_of` mapped it to `OneShot`, and
+`lower_resume_oneshot` is `LReturn` — a wasm `return` at the resume — so
+every statement after a held resume was dead and the install answered the
+remainder's own value. One-shot was conflated with tail-resumptive (Koka
+separates `fun` from `ctl`; Mentl carried no position fact). Found by the
+adversarial pass over the first Pulse-differentiation design
+(`Hβ.lower.ad-is-a-demanded-projection` below), which died on it. THE FORM:
+the classifier's grade is `ResumeUse = RNone | RTail | RDeep | RMany`
+(types.mn) — the multiplicity lattice extended by the POSITION of the one
+use, ownership's return-transfer distinction read on the continuation; every
+construct that consumes a child's value wraps it in `resume_interior`,
+every sequence folds `resume_seq` in source order, and a held single use
+(`RDeep`) takes the reified path (`arm_disc_of` → MultiShot: the record is
+the representation, and it is called once). MEASURED on the wheel: the emit
+is unchanged in every k fn, redrive driver and twin (3 / 0 / 1,407 before
+and after) — no wheel arm held a resume — and the micros battery's eleven
+multi-shot fixtures lost their positive caps (the sibling entry). THE
+REMAINDER, named: `Hβ.lower.held-resume-record-is-not-reclaimed` — the held
+one-shot record is allocated per perform and dropped after its one call
+with nothing reclaiming it; with frames in the image (PLAN §11 10.1
+keystone 1) the reclaim is O(1), and the spine grammar (`k_spine_next` — a
+perform inside a `let` is off-spine and parks at `k2_floor_wrap`) is the
+same limit the MultiShot path already carries.
+
+`Hβ.effects.multishot-perform-allocates-unrowed` — CLOSED 2026-09-27 (L0,
+pin 5bf55b682d952871). A MultiShot perform emits `LMakeContinuation` through
+`emit_alloc` and NO row charged it (every `construction_row()` caller was a
+literal or constructor site), so `fn quiet() with !Alloc = flip()` under a
+two-resume handler compiled clean and ran to 3 — §0's property (2) false at
+a shape the crown never wrote (tests/micros/mn-multishot-perform-alloc.mn,
+RED on boot 83428bcc). THE FORM: the op's PUBLISHED ROW carries the
+remainder record — `scheme_with_disc_cost` unions `Memory + Alloc` into the
+op's TFun row at the discipline join in `draw_op_edges`, so every reader of
+the op's row (the call site, the address surface, the root gate) sees it
+with no per-site logic. AND THE FACT IS SETTLED BEFORE ANY BODY IS JUDGED:
+`infer_program_once` classifies before it pre-registers, and
+`pre_register_handler_sig` draws the op edges, so an op's discipline and
+cost no longer depend on whether its handler precedes its performers in
+source order (they did — the edges were drawn only at the walk's
+registration). FALLOUT, honest: twelve fixtures (eleven micros and the
+frontier's `world-resume-frozen`) declared `with Choice` / `with Cell` /
+`with Pick + Emitt` over MultiShot ops — inventories written when the op's
+row read the op's own name alone — and refused `Choice vs Choice + Memory +
+Alloc`; the caps are deleted (the positive row is inferred and projected,
+A4) and every one runs to its banked exit. NOT charged, named rather than guessed: an Abandon
+op's dummy-k yield (`Hβ.lower.multishot-uzero-abort`'s path), unmeasured —
+MEASURED 2026-10-03 (AN-2): that yield allocated its argument record under a
+row that said nothing (the boot answered 100 for 3 on
+`tests/micros/mn-abandon-alloc.mn`), and the dummy-k yield is gone whole: an
+abandoning perform allocates nothing, its arguments crossing in the
+per-instance area, so `!Alloc` holds over it and the peer is closed.
+HOW THE MOST POWERFUL MEDIUM DOES IT, and where this form stops short: the
+charge here is the JOIN over every handler of the op, so an op served by
+one two-resume handler and one tail-resumptive handler carries `Alloc` at
+every perform, including the ones the tail handler serves for free. The
+cost of a perform is a fact of the INSTALL that serves it — under the
+static-singleton tier the tee knows which handler that is — so the precise
+form charges at the `~>` edge, per install, which needs the install a
+perform is served by as a static fact (`Hβ.effects.served-by-projection`;
+the static-singleton tier already knows it at the tee). The op-level join is
+sound (it over-approximates) and is the waypoint; the per-install charge
+is the form.
+
+`Hβ.emit.feedback-line-shared-across-twins` — CLOSED 2026-09-27 (L2 of the
+Pulse sprint, pin 43aeb30f3bcc3848), WITH ITS TWO SIBLING FACES, named and
+closed in the same landing: `Hβ.emit.feedback-line-shared-across-closure-
+instances` and `Hβ.emit.feedback-line-shared-across-installs`. THE SHAPE: a
+`<~` site's line was N module globals `$s<h>` … `$s<h>_<N−1>` keyed by the
+site handle ALONE, declared once at the floor's width and shifted N−1 global
+moves per tick. One root, three silent wrongs, each measured on boot
+542ea5a3 before the fix: two twins of one generic recurrence shared one line
+(`fn step(x, a) = ((prev) => a * x + prev) <~ delay(1)` at `(1, 2)` and
+`(1.5, 2.0)` — the Float twin's `local.set` of an f64 into the i32 line
+refused to ASSEMBLE); two closures minted from one lambda shared the lambda's
+line (`let f = make(1); let g = make(100)` answered 41 with zero diagnostics,
+`g`'s first tick reading `f`'s prior — the two-channel bug every stereo
+stage writes); two installs of one handler shared the arm's line (a second
+`~> smooth` carried on at 4, 5, 6 where a fresh filter reads 1, 2, 3); and
+`delay(24_000)` was 24,070 globals, 2.48 MB of WAT and 0.44–0.52 s for
+50,000 ticks. THE FORM: handler = state = closure, read at the site — a
+cycle's memory belongs to the record of the function that contains it.
+`LineHome = LhStatic | LhSlot(Int)` (types.mn): the lower frame carries
+`line_base` (a closure's capture count; an arm's fence plus the lines of the
+arms lowered before it, threaded through the arm fold; a k's captures plus
+its three-word tail; −1 for a top-level fn's frame) and its `lines`, a site
+takes the innermost frame's next slot before its body lowers
+(`ls_line_slot`), and the `LowFn`'s seventh field carries the `(handle,
+depth, home)` triples every record minter reads: `LMakeClosure` and
+`LMakeContinuation` allocate one `[head][slot × depth]` ring per site at the
+site's repr under the active bracket and store its address at the site's
+slot (`emit_line_mints`); `LHandleWith` sizes the install record by the sum
+over the handler's arm fns (`handler_arm_lines`, from the `line_registry`
+the one emit-state walk seeds) and mints past the arms; a top-level fn's
+site — its record the module's immutable data record, which wasi-threads
+re-applies on every spawn — reads an instance global `$__line_<site>_<symbol>`,
+one per emitted twin, filled by `$__init_lines` in `_start` and
+`$wasi_thread_start`. The tick is a load, a store and a bounded increment at
+any depth: 2,000,000 ticks at depth 24,000 in ~20 ms wall including the
+process floor (`tests/frontier/mn-feedback-deep-line.mn`, exit 84; the leg
+prints ticks per second, never ratcheting a wall clock). Micros
+`mn-feedback-{twin-width,closure-instances,arm-instances,deep-line}`. THE
+KILLS: the refusal banked for arms and remainders (`E_FeedbackInHandlerArm`)
+died at the install layout — the arm's `__state` IS the install record, the
+line's natural owner; a positional `(handle, depth)` list died at the
+install's per-effect arm order against lower's declaration order (the triple
+carries the slot); the remainder-owned line, built by the same rule, has no
+witness — a let-bound multi-shot perform is off the k2 spine and floors
+before any line ticks (L0's `Hβ.lower.held-resume-record-is-not-reclaimed`
+neighbourhood; the spine grammar). The `ref` the init-lines body copied
+from its sibling tripped the quiet-gate ratchet (721 → 722) and went.
+
+`Hβ.threads.closure-line-shared-across-branches` — NAMED 2026-09-27 (L2).
+A closure or install record reached from two threaded branches shares its
+`<~` ring — the record is one image record — and the race rule
+(`E_ThreadedBranchEffect`) reads a branch's EFFECT row, not the cycle state
+its body writes, so `(f(1)) >< (f(1)) ~> parallel_compose` over one
+recurrence-bearing closure `f` races on the ring with no diagnostic. The
+rule's next arm: a cycle's tick is a write the row must see (the inferred
+clock, `Hβ.dataflow.clock-calculus-sample-rate`, is what makes it an effect
+the row carries), and then the same walk that refuses a stateful handler
+refuses a shared line. Fixture to write RED: the fanout above, expecting
+the refusal.
+
+`Hβ.threads.static-line-is-per-instance` — NAMED 2026-09-27 (L2). A
+top-level fn's `<~` line rides an instance global (a mutable word cannot
+live in the module's data record under wasi-threads, which re-applies data
+segments on every spawn), so each spawned instance allocates its own set in
+`$wasi_thread_start` — the semantics the module globals always had, now
+stated: two branches calling one top-level recurrence run two independent
+lines with no diagnostic. Whether that is the right reading (each branch its
+own clock) or a silent split of one filter is the inferred clock's question
+— the same peer as above, from the other side.
+
+`Hβ.emit.arith-on-aggregate-is-pointer-arith` — CLOSED 2026-09-27 (L1 of
+the Pulse sprint, pin 542ea5a353823b76). THE SHAPE: `emit_binop_for`'s arithmetic arm
+dispatched on a WIDTH join of the operands' emitted reprs, and `repr_of`
+floors every non-word to RI32, so `{x: 1} * {x: 2}` type-checked
+(arithmetic unifies its operands and asks nothing else), emitted `i32.mul`
+over the two ADDRESSES with zero diagnostics, and trapped at run time
+reading a field off the product (boot 5bf55b68, exit 134) — the
+`T_EqTypeUnprovable` class one operator over, the comparison arm having
+been fixed for it nine days earlier and the arithmetic arm beside it not.
+Found by the refuter over the first Pulse-differentiation design. THE FORM
+IT TOOK FIRST, AND THE KILLS: a classification of the operand's TYPE read
+at lower (a bound aggregate refused before the executable gate) and at
+emit under the twin bracket (a variable narrated; an aggregate reached
+through a generic fn reported and a gate after the emit refused by exit
+code). It passed every gate and repinned CLEAN at 1ff80ffb, and the
+artifact killed it three times: `mentl check` accepted both programs with
+exit 0 (only the executable refused); the narration's "born at zero" had
+been read off the L0 boot's m2.err — an artifact that could not carry the
+class — and the first march whose boot carried it went RED at ONE, the
+floor twin of verify.mn's `lo_add` narrated "unproven" over a `t` the
+judgment had already seen added; so the emit was re-deriving a fact
+inference held, and every piece of that form was a compensation for
+inference not knowing that `+` demands a number. THE FORM: the demand is a
+GATE ON THE TYPE CELL — `NumericGate({op, span})` (types.mn), the gate
+mechanism's second arm beside A3's row gate, a trailed column of
+`graph_handler` (`graph_numeric_gate_add` / `graph_numeric_gates_of`,
+`MSetNumericGate` on rollback). `numeric_demand` at `infer_binop`'s
+arithmetic arm and at unary negation judges a bound operand on the spot
+(`arith_operand_class`, which carries the variable's handle out as
+`AoUnproven(h)`) and enters the gate on a free cell (`numeric_gate_install`
+— dedup by site, judge what the cell already holds, reach every noted
+instance, follow an alias to the free terminal); the one writer — the two
+var-alias binds in `unify` (`numeric_check_alias`) and the free-root bind
+in `unify_types` — judges every type entering a gated cell
+(`numeric_judge_push`: a word passes, a variable inherits, an aggregate
+refuses once naming the demand's site); `build_inst_mapping` copies the
+gates onto the fresh var (`numeric_gates_copy`, the qualified-type reading
+`∀t. numeric(t) ⇒ …`). `E_ArithOnAggregate` refuses at the judgment, armed
+at birth (wheel census 0); `mentl check` says so. AT EMIT NOTHING IS
+DECIDED: a word emits at its type's repr; a free variable is a floor
+twin's quantified var — a wide instantiation mints its own twin and binds
+the var under its bracket, THROUGH A REFERENCE INCLUDED (measured:
+`fold(0.0, add, [1.5, 2.5])` over a generic `add` answers 4.0 on both
+boots, `tests/micros/mn-arith-generic-ref-float.mn`) — so it is a word at
+the floor width by construction, its gate's absence an
+`E_InternalInvariant` (now a refusing class); an aggregate at emit is the
+same invariant. DELETED: the lower check, the narration class
+`T_ArithTypeUnprovable` and its ratchet, the emit's report, the post-emit
+gate (a second read of the ledger after the emit — verification happens
+ONCE), and the gate script's emit-time contract. MEASURED: the wheel
+compiles itself with zero errors and no invariant report; m2 ≠ m3 at
+exactly the four pre-arm field-offset floors, whose `(unreachable)`
+comment renders a row var's display id with the judgment's epoch (the
+gates move it) — the transition m3 == m4 rules. HOW THE MOST POWERFUL
+MEDIUM DOES IT: a user type's arithmetic is neither pointer arithmetic nor
+a trait — it is a numeric projection's RULES read at the install
+(`Hβ.lower.ad-is-a-demanded-projection`), the same mechanism that makes a
+chain differentiable, so `Dual * Dual` gets a meaning the moment a
+projection supplies one and a refusal until then. FACE KEPT BY THE
+COMPARISON CLASS: a generic fn's floor twin narrates its compares even
+when every call resolves to a specialized twin (`lo_join` beside
+`lo_add`), because `==` on a floor twin genuinely has no structure to read
+where `+` on one has a proof; and a twin-bracket narration renders at
+`<stdin>:0:0-0:0` (`Hβ.cursor.module-of-a-span-is-containment`'s
+neighbourhood).
+
+`Hβ.lower.classifier-rerun-at-lower` — OPEN, NAMED 2026-09-27.
+`resume_bindings` (lower.mn) calls `classify_fixpoint(stmts)` a second time
+over the statements infer already classified (`infer_program_once` →
+`set_summaries`). The op DISCIPLINE lower reads is the published scheme
+(Carried-Truth), but the per-fn summaries that drive `bind_closure` are
+re-derived: one judgment, read twice. The summaries belong on the fn's
+scheme, or cross the infer→lower seam as a value, never as a second walk.
+
+`Hβ.infer.tail-transparency-is-the-ownership-grade` — OPEN, NAMED
+2026-09-27 at the landing that built its seed. `tail_transparent_params`
+(infer.mn) is a syntactic, first-order walker: a parameter qualifies when
+every mention of it is a callee at a tail position of the body. That is a
+second walker computing what the ownership grade already knows one lattice
+over — a parameter called at the tail is RETURN-TRANSFERRED (own.mn's
+`usage_of`, the mode-paired `(consume, read)` walk; `Hβ.own.region-return-
+transfer`), and a continuation captured in a closure handed to it is
+consumed exactly once, at the result. The most powerful medium reads the
+one grade: the closure's `own` transfer through the callee IS the proof
+that its resume is the arm's tail, transitively (`fn call_thunk(f) =
+run(f)` qualifies when `run` transfers), where the syntactic walk stops at
+the first indirection. The walker dissolves into `usage_of` when the
+ownership grade is read on continuation values; until then it is the seed,
+named rather than absorbed into habit.
+
+`Hβ.lower.offspine-perform-is-the-frame-not-in-the-image` — OPEN, NAMED
+2026-09-27, sharpened from the `k2_floor_wrap` comment's own confession
+("the off-spine k2 boundary's positive-form home until its spine form
+lands"). A reified op performed anywhere but the frame's first-evaluated
+chain (`k_spine_next`: bare position, BinOp left-descent, statement-free
+block) parks at a runtime `$yield_flag` trap with no diagnostic — a
+`let`-bound perform of a held-resume op exits 134 and says nothing. The
+spine grammar is a compensation for continuations living on the wasm call
+stack: the remainder builder can only re-create what it can name. The
+most powerful medium keeps FRAMES IN THE IMAGE (PLAN §11 10.1 keystone 1,
+written for native and true one substrate earlier): a frame is a record,
+a continuation is that record's extent, capture is a copy and any
+position reifies — which also makes a checkpoint inside an arm resumable
+(the refuter's F correction) and the held record's reclaim O(1)
+(`Hβ.lower.held-resume-record-is-not-reclaimed` closes with it). THE
+FLOOR REPORTS since 2026-10-03 (C×A): a held or multi-shot perform off the
+spine is `E_ContinuationUncapturable` at the perform, armed at birth and
+said at the settle point over the emitted reach — the R0″ shape — so a
+body nothing runs is never refused. The first form said it at lowering and
+refused a perform in a function nothing calls
+(`tests/micros/mn-perform-off-spine-dead.mn` holds 1 now); the boot compiled
+`tests/micros/mn-perform-off-spine-refuses.mn` clean and trapped at 134.
+▶ THE DEAD HALF CLOSED 2026-10-03 (AN-2): a continuation nothing resumes needs
+no capture, so an abandoning perform unwinds from ANY position — a `let`, an
+argument, an operand, a branch — through every landing to the install whose
+arm answers (`LAbandon`, `LUnwind`); the floor stood only for the live half.
+And the live half's CALL face reports: a call off the spine whose callee's
+row proves an op whose handler resumes it is `E_ContinuationUncapturable`
+naming the callee and the op (`settle_unwind`), where the boot compiled
+`let x = inner()` over `fn inner() = choose() * 10` and trapped. What stays
+open is the peer itself: any position reifies a live continuation.
+
+`Hβ.lower.ad-is-a-demanded-projection` — FORWARD MODE LANDED 2026-09-28
+(L4a of the Pulse sprint, pin 0976f1d7da263d74); the derivative across dynamic
+dispatch LANDED 2026-09-30 (L4a′, `Hβ.derive.closure-twins` /
+`Hβ.derive.arm-twins`, both CLOSED); reverse mode and the product seed LANDED
+2026-09-30 (L4b, `Hβ.derive.transpose` / `Hβ.derive.gradient-of-a-product-seed`,
+both CLOSED — one linear program, two projections). It supersedes and RETRACTS
+`Hβ.ml.autodiff-as-multishot`, which named the wrong axis: differentiation
+needs no multi-shot resumption, it needs a projection. THE CLAIM: one chain
+is a real-time-safe effect under its ordinary reading and a differentiable
+model under `~> grad(w)`, without being written twice.
+AS BUILT. The surface is the QUERY form (lib/ml/grad.mn): `effect Derivative
+{ d(v: Float) -> t }` and `handler grad(w)`; `(w - rate * d(loss(w, xs))) ~>
+grad(w)` is a training step, `d(v)` is ∂v/∂w with every other free variable
+of the extent held fixed, and the tee's value is its body's value — the pair
+form `(value, dvalue/dw)` was refused in design because a tuple allocates,
+which would make the `!Alloc` training step unwritable. Lower recognizes the
+install through ONE roster of projection classes (`type Projection =
+PDispatch | PSchedule(Schedule) | PDerivative`, read off the effects a
+handler's arms answer — `projection_of`, which the Schedule read now shares)
+and lowers it to `LDerive(h, seed, body)`: no record, no world push, and the
+projection's arms are never lowered. src/derive.mn runs at emit's settle
+point, after the spec demands and before the signatures publish, and expands
+each `LDerive` into the body's JVP: every primal node kept, in order, beside
+tangent arithmetic over closed vocabulary (lane add, sub, negate, scale by a
+residual, zero, local, a twin call's register, a line's tangent prior).
+Activity is a three-point lattice, `Act = AInactive | AActive | ALost(Int,
+LostWhy)`; a lost tangent refuses only where `d` consumes it
+(`E_DerivativeUnreachable`, armed at birth, naming the loss site), so
+`(y, d(y))` and aggregates in general are admissible. A known function the
+active computation calls directly gets a JVP twin keyed by its Float
+parameters' activity, returning its tangent through the per-instance f64
+register `$__dt`, demanded to a fixpoint. A `<~` line inside a twin ticks
+its base line (one filter, two readings, one state) and a tangent ring of
+the same geometry indexed by the primal head, zeroed at the reading's entry
+(`LhStaticJvp`); an extent whose reach holds a dynamic call or a
+line-reaching perform marks every line's tangent lost. The arm of `grad`
+states only the answer's type until the boot knows the primitive
+(`Hβ.derive.arm-states-its-meaning`); lib/ml/autodiff.mn's tape is deleted.
+THE FALSIFIERS, each seen RED on boot 51f332d7: forward identity over a
+97-point sweep crossing a branch, a division and a recursive series
+(tests/micros/mn-derive-forward-identity.mn, 42); the slope of scene 1's
+distortion (`adaptive_shape`) in the drive and in the flux, by two readings,
+against the central difference of the same function at 18 points over all
+three crossfade regimes (tests/frontier/derive-crucible/shape.mn, 42; 46 on
+the boot, and 28 when the drive slope is checked against the flux
+difference); dy3/da = 3 through one `<~ delay(1)` over three ticks, with the
+tick after the extent continuing the same line (mn-derive-feedback.mn, 30);
+a `!Alloc` training step whose derivative program leaves the heap line where
+it started across a thousand steps (mn-derive-train-alloc-free.mn, 40 — the
+heap measurement is the witness, and since R0i the row charges an ordinary
+install too, so a dispatched install there would refuse,
+`Hβ.effects.install-allocates-unrowed`); the
+adaptive crucible's LMS rule re-derived as `d(e * e)` and judged by its own
+oracle facts (tests/frontier/derive-crucible/lms.mn, 42; 10 on the boot, and
+a divergence trap with the step's sign flipped); a tangent lost through a
+closure call refuses (mn-derive-lost-refuses.mn). Its callees are reached
+by DEMAND (the jvp twins) — the shape the schedule took when
+`Hβ.lower.schedule-specialized-callee` closed (2026-09-30).
+THE KILLS, banked because the refutation was the design's whole value: (1)
+"arithmetic is topology like `><`" — `><` is zero effects in the ROW yet
+lowers to `spawn`/`join` performs the row never sees; the precedent is a row
+blind spot compensated by a lower-time gate. (2) "the word projection
+dispatches on `lookup_ty`" — the arithmetic arm of `emit_binop_for`
+dispatches on a WIDTH join; a record operand emits `i32.mul` on addresses
+(`Hβ.emit.arith-on-aggregate-is-pointer-arith`, L1). (3) "post-resume code
+runs as the unwinding" — dead on the one-shot tier (the entry above; L0).
+(4) "no tape, no side-ledger" — `wmap_add` is an in-place `store_i32` into a
+mutable table; the tape was renamed. (5) "the chain's row stays `!Alloc`
+under both readings" — MultiShot performs allocated unrowed (the entry
+above; L0). (6) "forward denotation bit-identical under a runtime
+`reverse_mode`" — unmeasurable while (3) held. (7) "BPTT through `<~` is
+handle identity" — the prior is a `global.get` at the feedback node's own
+repr, and the line is shared across twins
+(`Hβ.emit.feedback-line-shared-across-twins`, L2). (8) "the projection is a
+monomorphization axis picked by the install" — the twin key is the
+quantified vars' encoding; a monomorphic Float stage has no key; 1,407 `$sp`
+twins in m2.wat, none keyed by an install. (9) "a closure crossing worlds
+falls to the polymorphic tier" — `PdWalk` needs an effect NAME; a nameless
+op has no runtime tier. (10) "`grad_of` reads the outer state after the
+install closes" — with (3) dead nothing was ever written. (11) "interval,
+units, fixed-point are handlers on the same aspect" — they are width and
+refinement facts the gradient already carries. (12) "`RHandled` is one more
+Repr selected on the lower stack" — `repr_of` is `with Pure` over `Ty` with
+no stack in scope, read at 34 emit sites after the lower stack is gone.
+(13) the `<~` line is keyed on the site handle alone, declared once at
+module scope at the floor's width, shared by every twin. (14) "`~> Simd`
+changes a `><` tuple's repr without changing its type" — `LSimdLanes` leaves
+a v128 under a `TTuple` node whose `repr_of` reads RI32; scaffold. (15)
+"autodiff-as-multishot names the deeper form" — the wrong axis. What HELD:
+the A5 arm-world rule at runtime and at the install; per-branch installs
+under `~> Thread`; the Schedule read as a lower-time lexical precedent;
+persist between steps (a mid-arm checkpoint is unresumable by the world
+law). This list also said `E_EffectMismatch` refuses `!Alloc` at the install
+site; that was RETRACTED on 2026-09-28, because the row charged no install's
+own record, and it is TRUE since R0i the same day, which charges it
+(`Hβ.effects.install-allocates-unrowed`).
+
+`Hβ.effects.install-allocates-unrowed` — CLOSED 2026-09-28 (R0i), and the
+census it opened was wider than the install. Installing a handler allocates
+its record and pushes its world, and no row said so: `fn step(w: Float) with
+!Alloc = (ask(w) + 1.0) ~> scaled(w)` checked clean and grew the heap 48
+bytes per call. Probing every construct that could build a record found SIX
+that allocated unrowed, each measured on the heap line of boot 0976f1d7: an
+install (40 bytes, stateless or stateful), a lambda mint (16 bytes with one
+capture, 8 with none), a partial application (16), an interpolation (48 for
+`"v{x}"`), a splice show, and both fanouts (56 for `(x + 1) >< (x + 2)`,
+whose "zero effects" sentence in SYNTAX described what it performs and not
+what it costs). THE FORM, as built: each construct charges what it builds in
+the frame that builds it — the construction row for the mint, the partial,
+the show and the fanouts, the concat callees' own rows for an
+interpolation's seams, and for an install a cost read off the one
+projection roster (`install_cost`, src/infer.mn, over the roster that moved
+to src/effects.mn so the judgment and the lowering read one decision): a
+dispatched install and a schedule allocate, a derivative reading allocates
+nothing. A lambda the lowering applies in place mints nothing and is
+charged nothing, and the two readers share one test (`inlinable_lambda`):
+the left of `<~`, whose parameter binds the prior, and — new in this landing
+— the right of `|>`, whose parameter binds the piped value and whose body
+lowers in the pipe's own frame (`lower_applied_in_place`). A call standing
+as a pipe's stage is completed in place and charges no partial. The wheel
+held THIRTEEN false `with Pure` clauses over interpolation (spec_mangle,
+arm_fn_name, the formatter's `spaces`, …), deleted; `channel_strip`'s
+`!Alloc` in lib/dsp held only once its stage lambda inlined; two micros and
+two crown caps that installed or minted lost claims that had been true only
+while those costs were unrowed (`with Pure` → `with !Ping`, caps naming
+`Memory + Alloc`). Fixtures, each RED on boot 0976f1d7: seven refusals, one
+per construct (tests/micros/mn-{install,lambda-mint,partial,interp,show,
+fanout,share}-alloc.mn), and a control that proves the inlined stages and a
+top-level fn passed as a value `!Alloc` AND measures zero heap growth over a
+thousand calls (mn-pipe-stage-alloc-free.mn — 41 on the boot, whose closures
+grew the heap under the same `!Alloc`). THE KILLS: "a static record makes a
+stateless install free" — true of the representation, never of the row, so
+it stays the named peer below; "the census is the six sites" — it is six
+sites a hand census found, which is why the settle-point audit below is the
+next landing rather than a follow-up. Found on the way and closed in the
+same landing: the shadowing-register class, the sugar-callee order, and the
+intern vocabulary a proposal's view could not find — their own entries
+below.
+
+`Hβ.lower.shadowing-binder-clobbers-its-register` — CLOSED 2026-09-28
+(R0i), found by the pipe-stage inlining's premise probe. A binder's
+register was its spelling and a frame's locals were searched OLDEST-first,
+so four shapes went wrong with zero diagnostics, measured on boot 0976f1d7:
+a nested block's `let x` over a parameter `x` wrote the parameter's
+register, and the parameter read 5 after the block (`f(100)` answered 11
+for 106); a match arm's `Some(x)` did the same; a sequential shadow at
+another width (`let x = n; let x = float_of_int(x) * 2.5`) resolved its
+reads to the older binder's type and did not assemble after a clean
+`mentl check`; and a Float arm binder over an Int parameter likewise. The
+`<~` prior was the same class on a second stack checked before every frame:
+a `let prev` inside the recurrence body was invisible (the run answered 3
+for 7), and a lambda there read `$__fb_prev_<h>` from its own function,
+which never declares it, and did not assemble. THE FORM: a frame's local
+side is ONE list of binders in binding order (`LocalBind`, src/lower.mn:
+a local with its register, or a `<~` prior), resolved innermost-first; a
+binder whose name the frame already holds takes a register of its own
+(`name$<position>` — `$` is no identifier character); `RLocal` carries the
+register, so every read writes it. A match arm's pattern binds and lowers
+in ONE walk (`lower_pat_at(bind, …)`) — the second walk that bound it
+(`bind_pat_locals`, its zip and rest helpers) is deleted, as are the
+`<~` prior stack, `ls_unbind_fb_prior` and the frame's parallel name and
+handle lists; an alternation's later branches write the registers the
+first branch took. Fixtures, each RED on boot 0976f1d7:
+tests/micros/mn-shadow-{block-keeps-outer,arm-keeps-outer,width,arm-width}.mn
+and mn-feedback-prior-{shadowed,captured}.mn. A binder still has no node of
+its own (a ground binder's handle is 0 and its reads type at their uses);
+`Hβ.lower.binder-is-a-node` is that form and stays open.
+
+`Hβ.infer.sugar-callee-judged-after-its-caller` — CLOSED 2026-09-28 (R0i).
+`++`, an interpolation's seams and `xs[i]` CALL the concat primitives and
+`list_index`, and the judgment reads those callees' rows live — but the
+free-name walk that orders the judgment drew no edge to them, so a fn whose
+only call was `++` could be judged before `str_concat`, read a signature not
+yet judged, and refuse under `!Alloc` at the PRIMITIVES' declarations, twice
+(lists:461 and strings:161), never at the developer's line — measured with
+`fn label(x: String) with !Alloc = x ++ "v"` on boot 0976f1d7. The sugar's
+callees have one home beside the operators (`concat_callees`,
+`subscript_callee`, src/types.mn), the free-name walk draws them as uses at
+the sugar node, and the judgment reads the same names: one refusal, at the
+declaration that made the claim. The `unreachable` facet sees the primitives
+as reached by every `++`, which they are.
+
+`Hβ.intern.medium-vocabulary-is-born-with-the-table` — CLOSED 2026-09-28
+(R0i), found by the frontier's stage-ring leg the moment a closure mint was
+charged. A proposal's candidate is judged under a READ-ONLY intern view
+whose contract is that the walk is pre-warmed, so a miss traps rather than
+fork identity — and the judgment's own vocabulary broke it: a
+construction's row names `Memory` and `Alloc` by literal, and those names
+were interned by whoever asked first. The ring demo's link under the gate's
+mounts is two files (`stage`, `helper` — `mentl query stage.mn modules`
+answers three weave entries there), its table held exactly their seven
+identifiers (measured by a binary-patch probe at `intern_seed` and at the
+view's miss: 8, `Memory`), and the lambda skeleton a stage hole proposes
+asked for `Memory` from inside the view. Every table is BORN holding the
+medium's vocabulary now (`medium_vocabulary`, `interned`, src/intern.mn —
+the one installer the process table and each judgment's table go through),
+so those handles are the same in every table and the view always finds
+them. KILLS: "a warm image restored the judgment without lexing" (the
+address path never takes the warm route, and the demo directory has no
+`.build`); "the library arrives as a frozen image slice whose table is not
+the live one" (the library is not in this link at all); "two live tables
+fork effect identity on the address path" (one table, seven names — the
+program's own). One instrument stayed unexplained and is recorded as such:
+a print in the lexer's miss branch showed nothing although the seven names
+were minted — the decision rests on the seed count, the view's miss and the
+weave, never on that silence. What still holds the rule only in prose is
+the rule itself — "a literal intern names a vocabulary word" — and its gate
+is a census shape over `intern_str`'s literal arguments measured against the
+list (`Hβ.intern.literal-intern-outside-the-vocabulary`, OPEN): today a
+violation traps loudly, and only in a view.
+
+`Hβ.effects.allocation-audit-at-the-settle-point` — ✅ CLOSED 2026-09-30 (R0j,
+the pin in LEDGER). The gate R0i's hand census needed. At emit's settle point
+every unit the module will emit is walked under the bracket it is emitted in
+(`alloc_audit`, src/backends/wasm.mn — the reached tree at the floor, each
+twin under its own pairs), and each construct whose emission builds a record
+asks the unit's row for `Alloc`, the row read once off the unit's enumeration
+entry (a fn's own at its origin, a handler's for its arms, the install's for
+a state init, module scope for the init lets, the parent's for a thunk or a
+remainder); a silent row is `E_InternalInvariant` at the construct's span,
+before a byte is written. The emission holds the other direction: every
+allocation a unit's code makes goes through `EmitMemory`, and
+`emit_memory_audited` reports a unit the walk read as building nothing that
+allocates anyway. RED on the wheel at birth: SIXTEEN list-pattern rests cut
+a slice with no row saying so (the rest charges `slice`'s row now,
+`list_rest_callee`, and a record's rest `construction_row()`), and two false
+`with Pure` clauses fell to the charge (`tail_set_has`, `list_contains_str`).
+Zero on the wheel since; tests/micros/mn-list-rest-alloc.mn and
+mn-record-rest-alloc.mn hold the refusals. THEN THE FRONTIER, where the
+wheel's shape stops being the language's (§11 tripwire 3): the first m2
+refused seven micros and seventeen legs, and the four classes behind them
+each resolved in the landing — a generic op's perform boxed its wide
+argument at the word face (`Hβ.emit.generic-op-box-is-unrowed`, CLOSED: the
+perform speaks its site's face); a nested `fn` was minted with no row saying
+so (charged at the block, `nested_fns_charge`, src/infer.mn —
+tests/micros/mn-nested-fn-mint-alloc.mn); `ialloc` was asked for `Alloc`
+where it is rowed under `ImageAlloc` (a unit's row is read once, resolved,
+and asked for the site's OWN effect — `RowRead`, `alloc_asks`); and the
+continuation machinery in a spine callee's k twin was refused against a row
+that is not where the cost belongs (recorded as built, never refused — the
+open half is `Hβ.continuations.spine-callee-row-is-blind-to-the-held-resume`).
+A wide argument boxed into a list primitive's word slot is narrated
+(`T_WordSlotBox`), never refused: the slot is the representation's
+(`Hβ.value.seq-element-stride-carrier`). What it does NOT see, named: the
+JVP twins (`emit_jvp_twin` renders outside the audited bracket), a library's
+whole-emit (nothing settles it, so nothing is walked), the generated leaves
+and the runtime family (no unit's row answers for them), and `mentl check`
+— the audit lives in the plan, so a program it would refuse checks clean and
+refuses only at the executable, the check-vs-executable class again. Its
+structural remainder is the peer below.
+
+`Hβ.emit.allocation-census-is-the-emission-itself` — OPEN, the audit's
+ultimate form. The walk is a MODEL of the emit: a per-`LowExpr` prediction
+of what the emission builds, some four hundred lines re-deriving
+`direct_callee_widths`, `op_abi`, `wide_ref_allocates` and the list
+literal's callee — a THIRD reading beside the judgment's charge and the
+emission's own `emit_alloc`, and the cross-check that keeps the model honest
+reports AFTER the unit's bytes (`emit_memory_audited`), a compiler-bug
+tripwire rather than a refusal. One reading: render each unit to its string
+under a handler that records whether `emit_alloc` fired, BEFORE the gate
+reads the ledger, hold that flag against the row, and the walk deletes — the
+refusal becomes the emission's own word, and the emission's site handles
+carry the construct the report names. What it costs is holding every
+rendered unit past its region: the per-fn `heap_mark`/`heap_reset` exists so
+emission scratch never accumulates, and a text kept past the reset lives in
+the scratch it was rendered from — the image/scratch split
+(`Hβ.perf.per-decl-arena`, Arc C). Until then the walk stands, and the wheel
+at zero under both readings is the measurement that the model is faithful
+today.
+
+`Hβ.lower.row-terminal-pair-is-the-whole-record` — ✅ CLOSED 2026-09-30 (R0j).
+A twin's pair for a record row variable was the site's WHOLE record
+(`spec_pairs_key_rest` paired the chain's free terminal with `TRecord(full)`),
+and both readers of a paired terminal — `spec_subst_pairs`' `TRecordOpen`
+arm and `record_full_fields`' free-end arm — returned the pair as the whole
+field set. Right for a receiver, whose chain starts at its own named fields;
+wrong for any type whose chain starts past some and shares the terminal —
+a record pattern's rest binder, `{| ρ}`. So a rest through an unannotated
+parameter read its field at the RECEIVER's slot: `fn f(u) = { let {a,
+...rest} = u; rest.b }` over `{a: 1, b: 2, c: 3}` answered 3 and `rest.c` a
+virgin 0, silently, on every boot since the rest was built at the residual's
+layout — found by R0j's record-rest fixture running to 1 for 3, and blind
+to tests/syntax/record-pattern-param-rest, which never reads a rest field.
+The pair is the RESIDUAL past the fields the chain learned before the
+terminal (`record_fields_diff(full, sall)` at the mint — what unify writes at
+the instance's own terminal), and each reader spells `learned ++ residual`
+from its own start (`spec_subst_pairs`, `record_full_fields`,
+`spec_resolve`, the substituted field list built once). A twin's name
+encodes the residual, so the wheel's 18 row-keyed twins renamed
+(TRANSITION). tests/micros/mn-record-rest-through-param.mn: 3 on boot
+5d267d26, 62 after.
+
+`Hβ.continuations.spine-callee-row-is-blind-to-the-held-resume` — CLOSED
+2026-10-01 (S2), and the entry's own claim and its banked form both died on
+the way. The claim: `plus_one`'s frame allocates when the fixture runs. After
+the redrive fix below, the fixture's single-perform remainder (`□ * 2`)
+allocates nothing inside plus_one; the static extension path fires only when a
+yield crosses the frame. The banked form: charge the callee's row at an
+argument position its tail-transparency proof does not cover. Measuring the
+general shape refuted it twice: a let-bound or stored resuming callback never
+stands at the call, a TAIL-TRANSPARENT callee's extent still runs a held
+remainder (the arm called the record, and the remainder runs before the
+callee returns), and what the remainder brings is its whole row, not its
+allocation — `fn apply(f) with !Log = f() + 0` accepted `apply(() =>
+resume(1))` while `□ + note(2)` performed Log inside apply, ran to 3 on boot
+477bb667 (tests/crown/leak-resume-remainder.mn). THE FORM: a held
+continuation is a record the resume CALLS, so the resume performs the
+continuation's WORLD in the frame that holds it. An arm's world is its
+handler's remainder-world cell — `HandlerKind`'s second field, minted at
+pre-registration below the mint ceiling and named in the handler frame's
+signature so no completion prune drops it, never bound — and its discipline
+the op's joined one, the representation the lowering calls
+(`continuation_held`). A callee's gate reaches the cell by A3's push through
+the callback's row; every install judges the cell's gates against its own
+remainder, body minus handled, by A5's `remainder_gates_check`; and the
+handler's exit cuts the cell out of its own residual (`inf_cut_edge`), so it
+reaches no installer and never carries the handler's clause onto the body.
+MEASURED: the fixture refuses naming plus_one and left
+frontier_expected_red; crown 104/104, the leak crucible RED on the boot
+(103/1); the sound twin (`□ + 2` under the same `!Log`) accepts. What it does
+not reach is named: a resume in a called top-level fn charges no world
+(`Hβ.infer.resume-in-a-called-fn-has-no-arm-types`), the remainder judged is
+the whole body (`Hβ.effects.remainder-row-is-flow-insensitive`), and a
+closure carrying a resume out of its arm carries the cell free
+(`Hβ.continuations.escaped-resume-carries-its-world-free`).
+
+`Hβ.lower.redrive-drives-the-frame-record` — CLOSED 2026-10-01 (S2), a
+silent wrong found while measuring the entry above. A held resume whose
+remainder performs one of its handler's ops again re-drives the handler from
+the resume's own frame (`lower_resume_callk`'s flag check), and the driver's
+record was that frame's own `$__state` — the install record only when the
+resume stands directly in the arm. In a lambda it is the closure record, in
+a called fn the static record. Over `bump() + bump()`, measured on boot
+477bb667: a resume in a let-bound lambda, through a non-transparent callee
+and through a tail-transparent one printed 1049025, 1049033 and 1049025 for
+22 (exit 5); a stateless handler and a called top-level fn trapped (134 for 22
+and for 200). The redrive's own comment claimed both callers passed the
+install record. The driver now carries the record it drives
+(`PdDriver(name, record)`, read through `resolve_hrec`), and every arm that may
+re-drive binds the record ladder whether or not it has state
+(`disc_redrives`): tests/micros/mn-held-resume-*-reyield.mn, five, RED-first.
+
+`Hβ.effects.remainder-row-is-flow-insensitive` — NAMED 2026-10-01 (S2). An
+install judges the gates a held resume carries against its whole body minus
+what it absorbs, so everything the body performs BEFORE the perform counts as
+remainder — including the perform's own multi-shot cost. A `!Alloc` callee a
+resume runs through therefore refuses even when the remainder allocates
+nothing (`spine-callee-alloc` is that case: its remainder is `□ * 2`). This is
+the flow-insensitivity every row in the medium has, read at one more place;
+the precise remainder is the row after the perform site, which a row does
+not carry. RETIREMENT: the perform site's continuation boundary carries the
+row of what runs after it, and the install judges each resume's gates against
+the remainders of the performs its handler answers.
+
+`Hβ.continuations.escaped-resume-carries-its-world-free` — NAMED 2026-10-01
+(S2). A closure that holds a held resume and escapes its arm — returned as the
+install's answer, written into handler state — carries the handler's
+remainder-world cell in its row as a free edge, and a frame that calls it
+outside the install gates a cell no install will judge for that call. The
+remainder world is a per-handler cell judged per install, not instantiated per
+install. RETIREMENT: the cell is quantified in the handler's scheme and each
+install instantiates it, or an escaping resume is refused at the escape.
+
+`Hβ.lower.captureless-nested-fn-is-static` — OPEN, NAMED 2026-09-30 (R0j),
+a representation follow-up. A `fn` declared in a block is minted as a
+closure record where it is declared (`LMakeClosure` at the declaration,
+src/lower.mn), captures or none, and the judgment charges the mint at the
+block (`nested_fns_charge`, src/infer.mn) — so `fn adder(k) with !Alloc = {
+fn add(x) = x + k; add }` refuses, which is what its emit does. A nested fn
+that captures NOTHING is a module-level fn in a narrower scope, and the
+module's own form for that is the static closure record baked into the data
+segment, costing nothing at the site. Lowering it as one (the enumeration
+entry knows its capture count) lets the charge follow the representation to
+zero for that shape, by the same law that keeps the two together everywhere
+else: the row charge follows what the emit builds, never the reverse.
+
+`Hβ.value.seq-element-stride-carrier` — OPEN; named in PLAN §11 5.4 as the
+value ontology's true keystone and cited by two entries here, it had no home
+of its own until 2026-09-30 (R0j) — the 2026-09-17 class again, a peer PLAN
+cites and RESIDUE never held. The record: a sequence's element slot is a
+WORD wherever a generic body reads it — the list primitives' settled faces
+declare a word at the element position (`direct_callee_widths` answers RI32
+for `list_set`'s value, `list_copy_into`'s, `store_strided`'s), so a Float
+element crosses into them boxed (`emit_wide_ref`), one fresh cell per store,
+under a row that never said so. R0j's allocation audit found fifteen such
+sites across the frontier's Float fixtures (`fill_row`, `gen_x`, `gen_y`,
+`filter_loop`, `fill_signal`, `build_signal`, …) and NARRATES them,
+`T_WordSlotBox` naming the callee and the unit, because the cost is the
+slot's, not the program's: a refusal would refuse every Float list a
+program builds. The form is the one PLAN names: the sequence carries its
+element stride — a fat header read at access, so a body compiled once over
+a TVar element reads and writes at the element's own width — or the
+primitive is twinned at the element's width as user fns already are, and
+the narration retires with the last word slot. `Hβ.value.seq-addr-downcast`
+and `Hβ.infer.seq-op-signature-driven` ride the same landing (PLAN §11 5.4).
+
+`Hβ.lower.install-record-in-the-frame` — OPEN, the representation half of
+the install's cost. An install whose record provably never outlives its
+extent (no `k` captures it, no closure minted inside escapes with it) needs
+no heap record: it can live in the frame, LIFO with the extent, and cost
+nothing — so the install's cost becomes a fact of its escape as well as its
+class, read off the same graph the ownership grade reads. The row charge
+follows the representation, never the reverse: the cost moves to zero only
+where the lowering stops allocating, and the settle-point audit above holds
+the two together.
+
+`Hβ.lower.callee-resolved-by-name-in-the-module-env` — ✅ CLOSED 2026-09-30
+(R0g); the dispatch face closed 2026-09-28 (L4a). Lowering read a call's
+callee NAME against the module env at three sites, blind to its own scope,
+so a parameter, local or capture that shadows a module-level name was
+lowered as that name. THE DISPATCH FACE (L4a): `fn apply(result, x: Int) ->
+Int = result(x)` lowered `result(x)` as a perform of the prelude's `Iterate`
+op, and on boot 51f332d7 the module did not assemble
+(tests/micros/mn-param-shadows-op.mn, 7); found in the compiler's own
+src/derive.mn, whose parameter of that name aborted its first derivative
+through a twin. The callee is resolved once per call and the resolution
+decides (`lower_call_dispatch`). THE ARGUMENT-PRODUCT FACE (R0g): the
+judgment writes each call's positional product — labels resolved, defaults
+filled, an authored `??` in place, and past them a cell per slot a partial
+leaves open (`open_slot_cells`) — at the call node (`CallProduct`, the
+spine's `products` column; `graph_product_note`, trailed as `MSetProduct`
+so a rolled-back judgment leaves nothing at a reused handle), against the
+parameters the CALLEE NODE carries (`callee_params_at`: the arrow at
+`lookup_ty(fh)`, never the env by name), and the lowering reads it
+(`call_product_at`). A bare `~> h` of a config'd handler writes its
+default-filled product at the reference (`note_bare_handler_product`); a
+bare constructor or op name in value position writes the all-holes product
+there (`bare_reference_product`, `RefUse` telling a callee reference from a
+value one), so `scheme_ref_fun_arity` — the use site asking the env scheme
+by name for an arity — is deleted with `callee_params`. Measured on boot
+523f1732, each RED then green through m2: the prelude's `fold_handler` arm
+`f(acc, elem)` resolved against a user's `fn f(x: Int)` refused a false
+arity mismatch inside the library (mn-shadow-callee-product, 6); `fn run(f)
+= f(7)` beside a top-level `f(a, b = 100)` spliced the module's default
+into the callback's call and trapped at the indirect call
+(mn-shadow-callee-default, 8); `g(b = 1, a = 5)` on a let-bound `g` ran as
+`g(1, 5)` — exit 252 for 4, zero diagnostics (mn-labeled-args-local-lambda);
+and `r.f(7)` on a record field read the module `f`'s parameters, the
+JUDGMENT's own name read (`callee_params(callee_name(func))`), which is how
+the field named itself (mn-field-callee-product, 8). THE PARTIAL FACE
+(R0g): `partial_callee_form` resolves by SCOPE first, as the saturated
+dispatch does — a local callee's value rides the partial's record as its
+last capture (`PcfLocal`) and the synthesized body calls it — so `let inc =
+add(1)` over a let-bound `add` calls the local (mn-partial-local-callee, 5,
+a floor before; mn-partial-local-shadows-fn, 5, where the top-level `add`
+answered 6). Two more faces found in the build, both width: a partial's
+open TAIL slot was typed by the partial node — the arrow's word — so
+`fadd(1.5)` over a Float pair declared its parameter f64, read it as a word
+and did not assemble (mn-partial-wide-result, 42; typed by its own cell
+now); and a closure call's result face was read off the call node, which
+for a partial's synthesized body is the arrow — it is the CALLEE's return
+(`call_result_repr`, one home for `tail_expr_repr`, the vector collector
+and the call's emit), so a partial over a Float lambda answers a Float
+(mn-partial-local-wide, 42). `Hβ.lower.partial-local-callee` closes with
+it.
+
+`Hβ.derive.closure-twins` — ✅ CLOSED 2026-09-30 (L4a′). A function value
+is reached through a record the reading cannot see past statically, so the
+record carries what the reading knows: under a reading every record with
+captures — a closure's, an install's — holds one LANE per capture, an epoch
+word and an f64, sixteen bytes per capture BEFORE the header at
+`rec − 16·(n − i)` for capture i of the n the record already counts at
+offset 4 (so no capture, line or k-tail offset the emit ever wrote moves,
+and a module with no reading allocates none — Law 7). A mint under the
+reading writes each active Float capture's tangent into its lane
+(`mint_lanes`, src/derive.mn) and a twin reads its captures' lanes
+(`lane_read`) where a top-level twin reads its parameters' tangents; a
+lane's epoch is compared with the reading's (`$__dt_epoch`, advanced where
+each `LDerive` opens), so a lane no reading wrote, or an earlier one did,
+reads as zero — captures and state that live past the extent enter it held
+fixed, which is the declared semantics measured (mn-derive-closure-captures:
+a mint under the reading answers 3, the same body minted before it 0).
+Every symbol a call through a value can reach carries a DERIVATIVE FACE:
+the twin keyed at every Float parameter (`face_facts`), a third table half
+past the word and native faces (`$jvp_face`, `emit_fn_table`), demanded for
+every symbol whose signature is a site's (`dv_face`, matched by the
+signature's repr code — the same over-approximation `call_indirect` makes,
+and its structural match refuses loudly where a face is reached that was
+never demanded: `$__jvp_absent`). A call through a value under the reading
+(`jvp_call`) reaches `fn_ptr + $jvp_face`, passes every Float's tangent
+beside it (zero where the value does not move) and reads a Float result's
+tangent from the register, at any depth of dynamic dispatch; a tail call
+keeps its tail form, the callee writing the register. A function value's
+activity is its own kind now (`f` in a twin's key: it carries its tangents
+in its record, no slot beside it), where `at_width` had made every active
+non-Float value lost. Measured: mn-derive-closure-call (6, the program that
+was mn-derive-lost-refuses), mn-derive-closure-captures (30),
+mn-derive-fold (60 — the closure through the prelude's fold, its record
+stored in the handler's config and called from the arm), and the
+scheme's one refusal, kept static: a mint under the reading whose capture's
+tangent was lost refuses at the mint, whether or not a `d` ever asks
+(mn-derive-lost-capture-refuses), because the record's later readers could
+not know. A `<~` line a closure record owns has no tangent ring the reading
+reaches (`Hβ.derive.closure-line-tangent`); the face demand by type is the
+named over-approximation (`Hβ.derive.face-demand-is-by-type`).
+
+`Hβ.derive.arm-twins` — ✅ CLOSED 2026-09-30 (L4a′). A perform enters its
+arm under the reading. A dispatch that names the install it answers from
+(`PdFrame`) calls the arm's derivative twin directly — demanded at the
+perform (`dv_arm_face`), keyed by the install, the op and the bracket, read
+by the emit through `arm_face_at` — and a walking dispatch (`PdWalk`,
+either target) reaches whatever record the world chain finds and calls its
+arm at the derivative face, `arm_idx + $jvp_face`, so an arm twinned per
+install (R0b) is reached at its own instance. The install record's lanes
+carry the config and state tangents: an install under the reading writes
+each active Float config's tangent beside the config (`jvp_install`) and
+runs the declaration's init as its derivative twin, so a state field born
+from a config carries the config's tangent from its first read
+(mn-derive-fold's `acc = init`); a `resume … with` write carries the value's
+tangent into the field's lane — zero when the value does not move, so an
+earlier write's tangent is never read again as the new value's — and a
+`resume(v)` hands the tangent back through the register. State the reading
+did not write reads as zero (the epoch), which is how an install outside the
+reading enters held fixed and is differentiated from the first write inside
+(mn-derive-state-outside, 40, against 50 for a reading that credited the
+earlier write; mn-derive-state-inside, 70). A multi-shot install, and a
+driver's perform, stay forward code the reading does not enter (the
+remainder is a continuation), and a perform with a lost argument runs its
+arm forward, its result lost. Measured beside the micros
+(mn-derive-perform-args, 90: the direct form from the installing frame and
+the walking form from a callee): tests/frontier/derive-crucible/distort.mn,
+scene 1's distortion PERFORM under `spectral_flux_distort`, in the drive and
+in the first sample — whose influence on every later sample runs only
+through the envelopes the arm keeps in its state — against the central
+difference of the same chain under fresh installs, 12 of 12 to 1e-5 (the
+boot refused it: the tangent stopped at the perform). What it cost: the
+`touching` set counts every perform and every call through a value, so a
+callee that performs is twinned wherever the extent calls it — necessary,
+since any arm may hold active state.
+
+`Hβ.derive.closure-line-tangent` — NAMED 2026-09-30 (L4a′). A `<~` line a
+closure record owns (`LhSlot`) has its ring in the record past the captures
+(L2); its tangent ring would sit beside it, allocated with the record and
+zeroed where a reading opens, exactly as a static line's rides an instance
+global (`LhStaticJvp`). Until it does, a value passing through such a line
+under the reading is lost there (`LwClosureLine`) and a `d` of it refuses.
+Scene 1's filter makers return closures with `<~` lines, so a reading over
+a filtered chain meets this first.
+
+`Hβ.derive.face-demand-is-by-type` — NAMED 2026-09-30 (L4a′). A site's
+derivative face is demanded of every symbol whose signature matches the
+site's — the same over-approximation `call_indirect` itself makes, so a
+face twin is generated for a function the site could never reach, and a
+refusal inside such a twin (a continuation standing in it, a lost capture
+at a mint in it) refuses a program that never runs it. The ultimate form
+reads which mints reach which sites off the graph — the closure-flow edge
+the judgment could draw (`Hβ.derive.derivative-is-source`'s territory) —
+and demands exactly those; until it does, a refusal inside a face twin
+names the twin and the site's signature.
+
+`Hβ.derive.transpose` — ✅ CLOSED 2026-09-30 (L4b). ONE LINEAR PROGRAM, TWO
+PROJECTIONS. src/derive.mn's header had promised "the rules are each
+construct's partials, written once — read forward here, read backward by the
+transpose", and the artifact baked the partials into forward tangent code
+(`Tan = TZero | TVal(LowExpr)`), so nothing could read them backward. The walk
+over a body (`jvp`) writes a LINEAR PROGRAM once now: `Lin` is the tangent of
+one value over the primal's residuals — zero, one, a tangent name, add, sub,
+negate, scale by a residual, quotient by a residual, a record's lane, the
+register — and `Beside` the statements beside the primal's: a primal statement
+kept in order, a tangent bound, a choice whose branches hold both kinds, a
+query, a twin's exit, a call into a known function's twin, a tail exit
+through one. The FORWARD projection (`lower_forward`) lowers it to the tangent
+program the reading emitted before, and the byte oracle says so: every L4a /
+L4a′ micro and crucible through the new compiler differs from the boot's
+emit by the mode comment at the install and one local per query (5–10 lines
+each), every value unchanged. The REVERSE projection (`rv_stmts`,
+`rv_backward`) runs the primal statements first — each test and scrutinee
+named as a residual local, a call into a known function as the primal call
+— and answers each query by a backward sweep over the statements before it:
+every adjoint zeroed, the queried tangent's adjoint one, each linear
+statement transposed against the adjoint its name holds (`rv_transpose`: a
+sum gives both sides the adjoint, a scale gives its operand c·g, a quotient
+g/c, a name accumulates) and CLEARED as the sweep consumes its definition,
+so a name bound twice keeps its two definitions apart. A call into a known
+function runs its ADJOINT TWIN, `sym$vjp<key>`: the callee's parameters and
+the adjoint of its result (`__g`), the callee recomputed to its exit in its
+own frame — its residuals are frame locals, no tape, no allocation — its
+exit's tangent transposed from `__g`, and each active Float parameter's
+adjoint handed back through a register of its own (`$__da0`, `$__da1`, …;
+`adjoint_out`, `adjoint_in`), read by the caller the instant the twin
+returns: the return register's shape, one per position. The choice is by
+COST, never authored: a scalar seed is answered forward (one pass answers
+every query), a product seed in reverse where the reverse projection carries
+the extent's whole reach. What it does not carry is a MARK the walk leaves
+where it stands (`dv_forward_only`: a call through a function value, a
+perform entering an arm, a `<~` line carrying a tangent, a record carrying
+tangents, an install, an early return, a query inside a twin) and a
+recursion anywhere in the reach (`reverse_blocker`, over the calls the
+passes record); a product seed reaching one refuses naming
+`Hβ.derive.vector-forward`. MEASURED: seven micros RED-first on boot 8ee3d09a
+— mn-derive-grad-record (28: ∂(a·x + b)² in both fields), -tuple (32: the
+seed destructured at the extent, two queries each its own sweep), -branch
+(48: through an `if` and a `match`, both arms taken across two calls), -call
+(28: the adjoint twin of `loss` calling the adjoint twin of `sq`, whose body
+chooses), -alloc-free (40: a `!Alloc` gradient norm, a thousand sweeps at
+zero heap growth), -vector-refuses and -value-refuses; the frontier's
+`derive-grad` (36 of 36 partials of a rational waveshaper against the
+central differences of the same function) and `derive-grad-series` (the same
+seed over `adaptive_shape` REFUSES: its series recurse). KILLS, in the order
+the artifact made them: (1) the statement type was named `Stmt` and the
+wheel refused the second `type Stmt` (types.mn's AST statement) — it is
+`Beside`. (2) A choice at a twin's exit was bound to a local, and a body
+ending in a let returns nothing (`lexpr_leaves_value`): a choice at a body's
+exit stands in place, its local the empty name. (3) The seed destructured at
+the extent (`let (a, b) = ws`) read the seed whole — lost, as a seed handed
+to a callee is — and both queries of mn-derive-grad-tuple refused on the
+first m2; a pattern over the seed itself binds each field to its lane
+(`scrutinee_carried`). (4) The tangent twins a reverse extent demanded while
+it was read (the walk demands `sym$jvp` before the mode is chosen) were
+EMITTED uncalled; the kept set is the calls fixpoint from the programs with
+the faces' twins as roots (`twins_called`), so a twin generated for its facts
+alone is not emitted. (5) The planned frontier leg — the two-seed reading of
+scene 1's distortion in the drive and the flux — cannot be reverse today:
+`adaptive_shape` reaches tanh, exp and sin, each a series written as a
+recursion, so the leg is the REFUSAL contract and a fixed-chain waveshaper
+carries the value contract. (6) A carried form for a record's lane (`CExpr`)
+survived the rewrite with no constructor site and was deleted. (7) The
+cost ratchet REFUSED the first repin at 980,228 KB, and the census it
+forced found a compiler defect rather than the landing's: the path-local
+wide-sequence type walk, asked at every `++`
+(`Hβ.lower.wide-seq-walk-was-path-local`, CLOSED in this landing). THE
+REMAINDER, each named: `Hβ.derive.vector-forward`,
+`Hβ.derive.transpose-through-iteration`,
+`Hβ.derive.transpose-through-the-record`, `Hβ.derive.bptt-priced-by-the-row`,
+`Hβ.derive.gradient-as-a-value`.
+
+`Hβ.derive.gradient-of-a-product-seed` — ✅ CLOSED 2026-09-30 (L4b). A record
+or tuple of Floats seeds the reading: one lane per Float field
+(`seed_lanes`, `__seed{h}_{i}$d`), a field read of the seed (`ws.a`) and a
+pattern over the seed itself (`let (a, b) = ws`) bind to the field's lane,
+and `d(v)` answers the gradient — the seed's shape — READ BY DESTRUCTURING
+where it is asked (`grad_destructure`: one arm, a record or tuple pattern
+naming the seed's Float fields, each binder the adjoint local of its field,
+no record built). The effect's `t` is one instantiation per program
+(`Hβ.effects.two-instances-of-one-effect-do-not-join`), so a program seeds
+one type. A seed handed WHOLE to a callee (`loss(ws, x)`) is lost at the
+call — its lanes do not ride the record — and a `d` of the callee's value
+refuses; `Hβ.derive.transpose-through-the-record` carries the record form.
+Any other seed refuses naming the two shapes (`E_DerivativeUnreachable`).
+
+`Hβ.derive.vector-forward` — NAMED 2026-09-30 (L4b). A product seed answered
+FORWARD, D lanes through one pass: lanes sized (8 + 8·D)·n on every record,
+D registers, D tangent parameters beside every active Float — the reading
+that carries a product seed through a face, a ring, an install or a
+recursion, where the reverse projection cannot. Until it exists, a product
+seed reaching one of those refuses naming this peer
+(mn-derive-grad-vector-refuses; the frontier's derive-grad-series).
+
+`Hβ.derive.transpose-through-iteration` — NAMED 2026-09-30 (L4b). A
+recursion in the extent's reach — every series in lib/math.mn, every tail
+loop — needs the residuals of every step for the backward sweep: a residual
+stack priced by the row (`!Alloc` refused where its depth is unbounded), or
+logarithmic checkpoint-and-recompute. The reverse projection refuses a
+recursion today (`unit_cyclic`).
+
+`Hβ.derive.transpose-through-the-record` — NAMED 2026-09-30 (L4b). Adjoint
+lanes on a closure's or an install's record, and the derivative face under
+the reverse projection, so a call through a function value and a perform
+entering an arm transpose as the forward reading crosses them (L4a′); with
+it, a seed record handed whole to a callee carries its lanes. Refused today
+(the `LwClosureCall`, `LwPerform` and `LwInstall` marks).
+
+`Hβ.derive.bptt-priced-by-the-row` — NAMED 2026-09-30 (L4b). The transpose
+of the tangent ring: a `<~` line's history over the extent's ticks, the
+prior's adjoint flowing into the previous tick — backpropagation through
+time as a graph fact, its memory the ring's depth times the ticks, priced by
+the row. A line carrying a tangent refuses reverse today (`LwLine`).
+
+`Hβ.derive.gradient-as-a-value` — NAMED 2026-09-30 (L4b). `let g = d(v)` of a
+product seed would build the seed's record — an allocation the extent's row
+never saw — so it refuses (mn-derive-grad-value-refuses); the form is the
+gradient as a VALUE whose construction the row prices, or the unboxed
+product return `Hβ.derive.derivative-is-source` needs.
+
+`Hβ.lower.wide-seq-walk-was-path-local` — ✅ CLOSED 2026-09-30 (L4b, found
+by the cost ratchet). The march REFUSED L4b's first repin at 980,228 KB —
++148 MB over the L4a′ pin for a thousand net lines, five times the measured
+rate of ~33 KB per line — and the fixed-input probe ruled the compiler OUT
+(the boot and the new m2 on identical input differed by 48 bytes at every
+mark), so the rise was the source's SHAPE. Two probes named it, one choke
+point each: phase marks between the judgment and the module (saturation,
+the lowering's pre-passes, lowering, plan, write — the first two are new
+and stay, `compile_remainder`, src/pipeline.mn) showed the declarations'
+own lowering grown 3 MB while the reachability walk around them grew 68 MB
+and the plan 66 MB; a per-declaration census of the reach walk (`low_refs`
+bytes per decl) put 12.9 MB on `jvp_tail`, 5.5 MB each on `jvp`, `jvp_arith`,
+`jvp_query`, `grad_destructure` and `seq_values_from`, in QUANTA of 1.84 MB
+— one per construct. The construct was `++`: `wide_binop_seed` asked
+`ty_has_wide_seq` of the left operand's type at EVERY binary operator (only
+six of them read the answer), and the walk was PATH-LOCAL — its `seen` list
+grew per descent, so a nominal type reached through many paths was walked
+once per path, allocating its variant specs each time; a list of the
+reading's statements reaches LowExpr, LowPat, Lin and Ty through dozens of
+paths, so each `++` on one cost 1.84 MB, at some forty sites. THE FORM: the
+fact is one per nominal type — settled once in the lowering state
+(`ls_wide_memo`, `wide_reach_name`, src/lower.mn) and read at every later
+site — with the cycle cut by the names the walk stands inside, exact for
+the name being walked (a walk cut only by its own name settles it; one cut
+by an ancestor's settles nothing and answers for its site, the ancestor
+settling when its own walk ends), and only the six minting operators ask.
+MEASURED through the fixed compiler on the same source: the L4a′ wheel
+713,798,672 bytes written at 812,600 KB (the boot: 729,203,240 / 831,632
+KB), its emit byte-identical to the boot's; the landed wheel 744,479,808
+bytes at 846,468 KB (the boot: 886,213,368 / 980,228 KB). A defect that had
+cost every compile since the walk was written, and that only a landing
+whose types reach the whole LowExpr universe through a list could make
+visible: the ratchet is the silence detector, and this is what it was
+built to hear.
+
+`Hβ.lower.per-decl-cost-census` — NAMED 2026-09-30 (L4b). The probe that
+named the walk above — the heap delta of each declaration's lowering, and
+of each stage of its reach walk, printed per declaration — answered in one
+compile what the whole-program marks could not, and was deleted after it
+answered: nine thousand lines per compile is not a channel the default
+report carries. Its projection is a verb facet (`mentl query <entry> cost`,
+per declaration, per phase, sorted) so the next silent superlinearity is
+read off the medium rather than re-instrumented by hand.
+
+`Hβ.lower.esc-row-on-node` — NAMED (PLAN §5.O has cited it since
+2026-07-13; this is its home, measured 2026-09-30). The escaping-row
+pre-pass (`compute_escaping_rows`, src/lower.mn) is a name-keyed
+side-ledger rebuilt per compile: +12.3 MB (49.2 → 61.5 MB) for +1.8% more
+declarations at L4b's phase marks, a superlinearity beside the one closed
+above. The form is a FIELD on the function's node, read live — the
+side-ledger deleted.
+
+`Hβ.derive.global-seed` — OPEN. A top-level binding as the seed: a callee's
+read of the global during the extent is a read of the binder, which lexical
+seeding misses, so it refuses today rather than answer a partial slope.
+
+`Hβ.derive.second-order` — OPEN. A reading inside a reading: `d` of a `d`.
+The inner query's result is marked lost ("second order") so asking for its
+tangent refuses instead of answering zero; nesting the tangent spaces is
+the form.
+
+`Hβ.derive.arm-states-its-meaning` — OPEN, ONE LANDING. lib/ml/grad.mn's arm
+reads `d(v) => resume(w)`: the reading answers every op of `Derivative` by
+its argument's tangent and never reads the arm, so the body only fixes the
+answer's type, and the pinned boot that compiles the library as part of the
+wheel registers no `tangent_of`. The arm states the meaning, `resume(tangent_of(v,
+w))`, in the landing after the boot carries the primitive.
+
+`Hβ.own.redundant-marker-has-no-verb` — OPEN, MEASURED 2026-09-28. The quiet
+gate refused the L4a repin at 766 authored `ref` markers against 708: the
+new stage carried 58 on parameters the inference grades as borrows by
+itself — all 58 were deleted by hand and the wheel judged clean. The medium
+knows the inferred grade at each parameter, so it can say which authored
+marker states what inference already proves; the missing projection is a
+narration beside `T_RowInventory` and a `mentl tighten` arm that deletes the
+marker, the same shape the positive row's sweep took.
+
+`Hβ.lower.capture-of-a-ground-local-stores-at-the-floor` — CLOSED 2026-09-28
+(L3 of the Pulse sprint, the felt walk's first find). `fn make(fb: Float) =
+(x) => x + fb` passed `mentl check` and the module did not ASSEMBLE (`unknown
+local $fb`, the param being `$fb.f64`). A ground-typed binder's handle is 0
+(`ty_handle_of` — a ground type is a value, not a node), and the compensation
+— read the local at the USE node's handle, sound because a local is
+monomorphic — sat inline at every reader but one: the capture store. The
+free-name walk now returns uses (`collect_free_uses` → `(name, use handle)`),
+and ONE projection, `local_ty_handle(binder_h, use_h)`, answers which handle
+types a read; VarRef, both `__k` resolvers, the k-hole read and the capture
+store call it. Kills on the way: none — the backtrace named the store.
+`tests/micros/mn-capture-ground-wide.mn` (RED on boot 43aeb30f). The root it
+compensates for is `Hβ.lower.binder-is-a-node`.
+
+`Hβ.lower.binder-is-a-node` — OPEN, NAMED 2026-09-28. A binder of ground type
+has handle 0, so every read of a local asks `local_ty_handle` which node
+carries its type. The finished medium gives every binder a graph node and a
+cell of its own; the conditional deletes, and so does the use-handle channel
+the capture walk grew to feed it.
+
+`Hβ.emit.match-scrutinee-parks-in-the-word-scratch` — CLOSED 2026-09-28 (L3).
+A match on a Float did not assemble: `$scrut_tmp` was a fixed i32 prologue
+local, the root binders were declared at RI32, and the float-literal
+predicate read the root f64-wide. Every arm-list literal over a Float is a
+match on its parameter, so the first `{ x => … }` over a sample refused. One
+decider — `sr = tail_expr_repr(scrutinee)` — and every root reader takes it
+(`scrut_local(sr)`, the binds, the literal predicates, the postmortem,
+`walk_locals_expr`'s declaration); deeper paths start from the word scratch,
+because every step past the root is a pointer chase. Byte-identical wherever
+`sr` is RI32, which is the whole wheel. `tests/micros/mn-match-float-scrutinee.mn`.
+
+`Hβ.verify.claim-over-a-join-never-decided` — CLOSED 2026-09-28 (L3). `fn
+note_hz(k) -> Hz = match k { 0 => 220.0, … }` stayed V_Pending over eight
+literals: the constant fragment folded literals, `self` and arithmetic and had
+no arm for `if` / `match` / block, while the interval fragment beside it
+already joined over exactly those. `PWithSelf` now decides through
+`decide_with_self`: a join decides as the three-valued AND of the claim over
+its tails — true when every tail proves it, false the moment one refutes it,
+open otherwise. Structure only, so the contamination law holds. A tail the
+text writes is judged even where no execution reaches it: the signature
+claims every tail. `tests/frontier/mn-refine-join-{discharges,refuses,pending}.mn`,
+legs in tools/proof-exactness-gate.sh.
+
+`Hβ.emit.wide-value-boxed-at-every-indirect-call` — CLOSED 2026-09-28 (L3).
+The indirect call spoke the 2026-07-21 word protocol everywhere: arity
+`$ftN`, every wide argument spilled to a fresh 8-byte cell, every wide callee
+reached through its `$wf$` wrapper, which spilled its result into another.
+So `fn step(f, x: Float) with !Alloc = f(x)` compiled clean and allocated 16
+bytes per call (measured on boot: 16,000 bytes over a thousand calls) — the
+absence proof false at the closure boundary — and a handler whose op carries
+a Float did not ASSEMBLE (the arm signed its params f64 and its result as the
+handler's answer while the performer boxed). THE FORM — TWO FACES, ONE INDEX:
+a closure's `fn_ptr` names its WORD face, which a caller blind to its type
+reaches (a generic handler arm, `$__k_compose`, a resume); a site that PROVES
+a wide vector reaches the NATIVE face `$native_face` past it and passes its
+values as themselves (`emit_closure_call`); the native half exists only in a
+module with such a site, so the wheel's table is unchanged. An op's DECLARED
+signature is its ABI (`op_abi`): every arm signs it, the performer speaks it,
+and only an effect type variable's position boxes. A wide handler state
+commits in place through the cell its install boxed. The reader of a wide
+list element is named, so it is a direct call at its own signature. THE KILL,
+recorded because it shaped the form: the first build typed EVERY indirect
+site by its vector and broke eleven frontier Float runs with `indirect call
+type mismatch` — floor callers and `list_index` by value had been reaching
+wide callees through the word face all along, and the fix was a second face,
+not a second protocol. `tests/micros/mn-wide-closure-call-alloc-free.mn`,
+`mn-wide-op-state-alloc-free.mn`. The remainder: `Hβ.emit.generic-op-box-is-unrowed`
+— CLOSED 2026-09-30 (R0j), and closing it corrected the sentence above: the
+declared signature is NOT the ABI. An arm's face is its instance's, a
+perform speaks its site's, and the effect-variable position boxes nothing.
+
+`Hβ.emit.generic-op-box-is-unrowed` — ✅ CLOSED 2026-09-30 (R0j, the pin in
+LEDGER), in its ultimate form. NAMED 2026-09-28: an op whose declared
+parameter is an effect TYPE VARIABLE was signed at the word floor, so a
+performer handing it a Float boxed the value into a fresh cell — 8 bytes per
+perform, no row charging it, every `fold` over Floats paying it per element —
+and an arm whose instance was wider than the op's declaration was reached
+through an op-face adapter. The allocation audit found it on its first
+frontier run (six performs, `iterate_from` and `feed`). A perform speaks its
+SITE'S face now, exactly as a closure call does (`call_site_vector`,
+src/backends/wasm.mn): its arguments at the widths the site proves, its
+result at the width the perform node proves, the native table half where
+the vector is wide. The arm it reaches is twinned at the install's instance
+(R0b), and the site's types are that instance's — the tee unifies every
+perform with the handler's — so the two faces agree by construction, and
+`call_indirect`'s structural match traps loudly where they ever do not. The
+adapters (`$of$<arm>`, `adapter_op`, the declared-face helpers `op_abi` /
+`emit_args_at_abi` / `emit_result_from_abi`) are deleted whole; a driver is
+not an op and keeps the word protocol it was written in.
+tests/micros/mn-wide-op-perform-alloc-free.mn: 42 on boot 5d267d26 boxing
+silently, refused by the audit through the first m2, 42 and silent through
+the second. The one shape where a site's face and its arm's still differed —
+an install keeping its base arms for a wide driver answer — closed
+2026-10-03 (`Hβ.continuations.redrive-reads-the-answer-as-a-word`): the
+answer keys the arms and crosses the driver in a register.
+
+`Hβ.driver.warm-image-restores-a-foreign-world` — CLOSED 2026-09-28 (L3).
+`mentl run x.mn` then `mentl compile x.mn` printed zero lines of WAT, and the
+reverse order printed the module and executed nothing (exit 134). THE CAUSE,
+measured by the reverse-order prediction before a line changed: a persisted
+image carries the handler world that wrote it — handler = state, so the
+graph's own handlers must return with the graph — and with them the
+persisting verb's OUTPUT sink; the warm path was filed under the entry
+alone, so a second verb resumed the first verb's world. Images are filed
+under `world_key()` beside the entry hash: the install chain from
+`world_top()` hashed over each node's effect key and its handler's slot-0 arm
+word, so two compositions answer two keys and the same composition the same
+key whatever its state (lib/memory.mn, ordinary Mentl over `load_i32` — the
+first build emitted it as a new substrate intrinsic, which the boot could not
+compile in one rung). It is the image-level instance of the continuation's
+world law (`E_ResumeWorldMismatch`): an image resumes only into its own world.
+`mentl resume <image>` is unchanged — it re-enters an image's world whole, by
+intent.
+
+`Hβ.verify.refinement-dropped-at-a-function-crossing` — CLOSED 2026-09-28 in
+its decidable form (L3); the rest is `Hβ.verify.higher-order-refinement`.
+Unification meets a refined position with a concrete base by checking the base
+alone — it holds no value to judge — so a refinement riding a function-typed
+argument was dropped in both directions: `run(() => 30000.0)` into `fn run(f)
+= alpha(f())` checked clean over an `Hz` parameter, and Pulse's filter took a
+70,900 Hz sweep and checked clean. `fun_refinement_crossing` (infer.mn), at the
+argument construction site: the RESULT the callee demands is judged on the
+lambda's own body, join-aware, at the body's span (or covered by a
+declaration naming the same refinement); a PARAMETER refinement the argument
+demands and the callee's position does not carry is honest V_Pending at the
+edge. The wheel's pending set is unchanged (16, identical). Legs:
+`tests/frontier/mn-refine-fn-{result-refuses,result-discharges,param-pending,param-discharges}.mn`.
+
+`Hβ.verify.higher-order-refinement` — OPEN (PLAN §11 8.2 has cited it; this is
+its first home). THE FORM: refinement VARIABLES on function-typed parameters —
+a HOF's parameter `f: (Float) -> r` carries a template `(v: Float | κ)`, the
+calls of `f` inside the body generate `value ⊨ κ` at each value's own site,
+and a call of the HOF with a function demanding `P` solves `κ ⇒ P` — so the
+debt the crossing writes today becomes value-bearing obligations decided
+where each value is made (Liquid Types' κ, carried as a gate on the cell: the
+A3 mechanism's third arm, beside the row gate and `NumericGate`). THE
+MEASURED FACES it owns: (1) the parameter-side debt above; (2) CLOSED
+2026-10-01 by P0 — ARITHMETIC SPREAD A REFINEMENT TO ITS OPERANDS: `+`
+unified its operands and a refined alias rode the class, so `fn f(fb: Gain,
+x) = x + fb * 2.0` refused `f(0.5, -3.0)` and `ratio(t, n: Positive)` typed
+`t` Positive; a cell holds a shape now (`mn-refine-sibling-operand`, red on
+boot 13e8484a); (3) CLOSED 2026-10-02 by H4 — A RECORD OF FUNCTIONS: a
+structure crossing into a contract whose parts hold functions crosses part
+by part (`cross_parts`), and a function at a part of a parameter teaches the
+parameter's contract at that path (crown `leak-refine-field-param`,
+`leak-refine-elem-param`); (4) CLOSED 2026-10-02 by H4 — MERGED FUNCTION
+VALUES (P0's felt walk): `fn pick(c) = if c { inv2 } else { inv }` under
+`fn main() with !Trap = pick(false)(0)` checked clean and divided by zero
+while the other order refused (alike on boot 13e8484a and the P0 tree); a
+function value is every function it can be (`fn_leaves`) and an application
+owes each one's precondition, conjoined per position — the meet, read along
+edges rather than solved as κ₁ ∧ κ₂ (crown
+`leak-refine-merged-{return,let,list}`); (5) CLOSED 2026-10-02 by H4 — A
+FUNCTION TYPE'S INTERIOR CONFLATED WHAT IS PROVIDED WITH WHAT IS DEMANDED:
+`drive`'s published `f: (Hz) -> r`, unified into `outer`'s `g` by `fn
+outer(g) = drive(g, 440.0) + g(30000.0)`, made `g(30000.0)` owe `Hz` and
+refused a correct program (alike on boot 13e8484a and pin e23392f6); a
+provision is its own predicate now (`PProvides`, an edge to the values
+handed), never the function's demand (`mn-refine-provided-not-demanded`).
+FACE (1) MOVED AT P0·H, in a learned form rather than as κ: a function-typed
+parameter learns what its body hands each position and what a refined
+position demands of its result, and a lambda's parameter learns its
+precondition. Since H4 what a position is handed is an EDGE to the values,
+read live, so a constant provides itself: `fn feed(f) = f(440.0)`
+discharges a lambda demanding `Hz` and the same at 30000.0 refuses with the
+exact class (boot e23392f6 left both as debt). What the learned form still
+leaves: a second, different demand on one result stays the body's own claim
+rather than meeting into the first; a crossing pays a function parameter's
+guard whatever the passed function proves of its result; and what H4 names
+beside it (`Hβ.verify.relational-provision`, `Hβ.verify.channel-depth-one`,
+`Hβ.verify.crossing-guard-carries-to-the-provision`). κ — a demand variable
+per position, solved by the functions callers hand in and checked against
+what the body provides — is still the one form that would answer all of
+them at once.
+
+`Hβ.effects.distinct-instances-collapse-in-the-row` — CLOSED 2026-09-28 (L3).
+The row's name-set dedup keyed on the effect NAME and kept the first of two
+instances, so `fn bad() with !Sample(44100) = fast() + slow()` — a 48 kHz
+reader then a 44.1 kHz one — carried `Sample(48000)` alone and ADMITTED the
+instance it forbids, while `slow() + fast()` refused: a negation's verdict
+depended on the order of two calls, found when Pulse's rate twin compiled
+clean. `row_entry_collides`: two instances are two members exactly when they
+are PROVABLY DISTINCT — the negation's own predicate, so the set and
+`eff_forbids` cannot disagree — and `collision_upgrades` keeps the one that
+says less. KILLS, two, both measured on the wheel's own compile: the first
+form collided on structural sameness (`frag_args_same`), and instances over
+type variables — a fresh variable per instantiation — stopped merging, so the
+rows grew each round and a fixpoint over them never settled (the wheel's
+compile hung at 99% CPU for ten minutes); and both first forms matched on a
+PAIR scrutinee, a heap tuple per comparison on inference's hottest path,
+which ran the compile out of memory before it could hang. Crown
+`leak-instance-order` (RED on boot) / `sound-instance-order`. The type-argument
+face — two instances UNIFYING rather than deduping — stays
+`Hβ.effects.two-instances-of-one-effect-do-not-join`.
+
+`Hβ.effects.handler-pins-its-instance` — OPEN, NAMED 2026-09-28 (Pulse). An
+install serves every instance of its effect: `~> sample_at(48_000)` answers a
+`Sample(44100)` reader with 48,000, so a chain mixing rates compiles unless a
+negation stands above it, and Pulse writes its rate rule as `!Sample(44100)`
+on the per-sample path. The form: a handler's config parameter named in the
+instance position (`handler sample_at(rate)` serves `Sample(rate)`), the tee
+subtracting that instance alone — a perform of another rate beneath it is
+unhandled at the root. It is the instance face of what install identity
+was taken to be before the 2026-09-30 measurement resolved that half
+(`Hβ.effects.arm-world-static-rule`); this peer stands on its own.
+MEASURED 2026-10-01, and it is a CAPABILITY, not a soundness hole — put
+ahead of the queue as one and retracted on reading: under today's rule an
+install serves every instance of its effect and the runtime agrees (the walk
+dispatches innermost by key), so `fn path() with !Sample(44100) = (read44())
+~> sample_at(48000)` is TRUE — nothing escapes path — while the 44.1 kHz
+reader is handed 48,000. What is missing is the sentence "this install serves
+Sample(48000)". THE DESIGN QUESTION the measurement found: a row is a set of
+POSSIBLE members, and two colliding instances keep the one that says less
+(`collision_upgrades`), so `read44() + current_sample()` carries
+`Sample(placeholder)` alone and the 44,100 claim is gone — a pin check that
+reads the row cannot see the claim it exists to refuse. The candidate form
+keeps dispatch as it is (innermost by key) and makes the pin a static
+compatibility check at the install — refuse a provably distinct claim, serve
+an unclaimed instance — which needs claims kept where they enter (or rows
+that keep a ground claim beside the unknown it collided with), and a gate arm
+that pushes the pin through a HOF body's free terminals the way A3 pushes a
+negation. A surface for it: `handler sample_at(rate) with Sample(rate), count
+= 0` — the handler clause and its state in one `with`, which the parser does
+not take today (a handler carries a row clause or state, never both).
+THE BUILD-READY DESIGN (banked 2026-10-02 after a felt walk on boot b400dc74;
+built with Pulse scene 2, its first consumer). Measured, exit codes mod 256:
+`(read44()) ~> sample_at(48000)` runs to 48,000 (128) — the 44.1 kHz reader
+handed the wrong rate; `read48` and an unannotated reader run to 48,000,
+correctly; `read44() + sample_rate()` under the same install runs to 96,000
+(0) — the collision rule dropped the 44,100 claim, exactly the case above;
+`run(read44)` through `fn run(f) = f()` runs to 48,000. FIVE PIECES, each
+forced. (1) THE SURFACE IS A SERVED ROW, NOT THE `with` CLAUSE: A5 gave a
+handler's `with` row its meaning — a bound on what the ARMS perform — so
+`with Sample(rate)` would cap the arms at Sample, not say what the install
+serves. The served instance is the handler's result, written where a
+function writes its result: `handler sample_at(rate) -> Sample(rate) with
+count = 0 { … }`, a row of instances whose arguments are literals or config
+parameters; an omitted clause serves every instance of every effect the arms
+answer (today's meaning), and a served name the arms do not answer refuses
+at registration. HandlerDeclStmt and HandlerKind each gain the field — a
+coordinated arity edit, about fifty destructure sites — carrying `type
+ServedArg = SAFixed(EffArg) | SAConfig(Int)` per argument, resolved against
+the config parameters once, at registration. (2) THE PIN IS A GATE, AND THE
+GATE ALREADY EXISTS: an EtAll gate row's PRESENT set is ignored by
+`row_subsumes` today; giving it meaning makes `EfRow([Sample(48000)], [],
+EtAll)` the pin — a member of a named effect PROVABLY DISTINCT from the
+pinned instance is refused, an unclaimed member is served — and the whole A3
+machinery carries it unchanged: installed on the tee body's row cell after the
+body is judged (`gate_install` judges the ground content: `read44()` refuses
+at the install; `run(read44)` resolves through the call's instantiation and
+refuses there), pushed onto free terminals (`fn with48(f) = (f()) ~>
+sample_at(48000)` refuses `with48(read44)` at the argument edge), and
+`gate_through_mask` drops a pin whose name an inner install masks (that
+install serves those performs). A pin whose config argument is not ground —
+`~> sample_at(rate)` with `rate` a parameter — proves nothing distinct and
+admits everything: honest, not vacuous by accident. (3) THE COLLISION RULE
+KEEPS GROUND CLAIMS: two instances collide only when they are not provably
+distinct AND have the same groundness; a ground instance beside an ungrounded
+one is kept as a second member. The row is still an upper bound for a
+negation — the ungrounded member already covers every value — and the set
+stays finite (one member per ground literal the program writes, one
+ungrounded member per name), so the fixpoint the type-variable collision
+protects is untouched; `collision_upgrades`' ground-to-ungrounded arm dies.
+Only lib/dsp/clock.mn declares a value-parameterized effect, so the wheel's
+rows do not move. (4) DISPATCH STAYS innermost by key: a provably distinct
+claim beneath an install is REFUSED rather than allowed to escape, which is
+what keeps the runtime walk correct without instance keys at dispatch. (5)
+THE REFUSAL IS ITS OWN CLASS, armed at birth, born at wheel-zero:
+`E_InstanceNotServed(handler, served, performed, span)` — "`sample_at(48000)`
+serves Sample(48000), and the body performs Sample(44100) beneath it" — read
+from the pin gate's shape in `gate_judge` (a negation keeps
+`E_EffectMismatch`). FIXTURES, red on b400dc74: the four refusing shapes above
+(direct, collision, HOF call, HOF install) and the two serving controls, plus
+Pulse's per-sample path with its `!Sample(44100)` negations removed — the
+install alone refusing the 44.1 kHz stage is the scene-2 demonstration.
+
+`Hβ.parser.body-brace-has-its-own-discrimination` — CLOSED 2026-09-28 (L3).
+`fn rig() = { lead: saw() }` parsed as a BLOCK and refused its field names as
+unexpected tokens: the fn-body slot held its own copy of the brace decision
+that knew arm lists and blocks only, while every expression brace went through
+`parse_brace_expr`. One home, `brace_form` (update / arm list / record /
+block), read by both slots; a body differs only in its block parser, which
+reports a statement-free block. The formatter's projection of the gap went
+with it: a body record had been wrapped in parens the parser consumed, and a
+long record never broke (Pulse's rig rendered as one 300-column line);
+`render_record` breaks past the width, one field per line, each closed by its
+comma — SYNTAX §«Records»' own layout.
+
+`Hβ.fmt.literal-spelling-is-intent` — OPEN, MEASURED 2026-09-28. `mentl fmt`
+renders a numeric literal from its VALUE: `0x46464952` became `1179011410`,
+`48_000` became `48000`, `0b1010` became `10`. The radix and the grouping are
+the author's, and the lexeme is gone by the time the literal is a node. The
+wheel writes no such literal, so its fixpoint never saw this. THE FORM: a
+literal's authored spelling is surface content the way prose is — the lexer
+holds the lexeme, the weave carries it by span onto the literal's node, and the
+renderer writes it back when it re-lexes to the same value. A float is worse
+than a lost spelling (measured 2026-09-28): `0.00001` renders as `1.0e-5`,
+which the lexer does not read, so the conservation gate refuses to write the
+file at all (tests/frontier/derive-crucible/shape.mn) — the render cannot
+round-trip its own output.
+
+`Hβ.lang.lambda-param-annotation` — OPEN (Pulse). `(freq: Float, vib) =>` is
+`P_ExpectedToken`: a lambda's parameter takes no annotation, so a refinement
+or a width cannot be written on a closure's parameter, and a closure cannot
+declare its row. A nested `fn` is the closure that can, and every maker in
+lib/dsp/feedback.mn and Pulse is written that way. SYNTAX §«Function literals»
+decides whether the binder form grows annotations or the nested fn is the one
+annotated closure.
+
+`Hβ.dataflow.delay-tap` — OPEN (Pulse). A `<~` site hands its body only its
+OWN prior, and a bare-expression LHS computes on the current input, so a pure
+delay tap — `x[n−D]`, Faust's `@` — is not expressible: FIR filters, the
+textbook allpass and a chorus all need one. Pulse's reverb writes the allpass
+through the comb it contains (`w[n] = x[n] + g·w[n−D]`, `y = ((1 − g²)·w −
+x) / g`, the same transfer function one line deep). The form is a site whose
+stored value and returned value may differ.
+
+`Hβ.diag.effect-mismatch-at-the-call` — OPEN (M1's second test). An allocation
+added beneath `render_frame` refuses with `E_EffectMismatch` at the
+DECLARATION's span; the test asks for the Reason at the allocating call.
+The gate's Reason already names the allocation's home in the library
+(`lists:461`); the refusal's primary span should be the call in the
+declaring body that reaches it.
+
+`Hβ.diag.raw-row-variables-in-mismatch` — OPEN (Pulse). `E_EffectMismatch`
+prints row variables (`r18196@e608 + r18802@e837`) beside the named effects;
+a reader needs the names and the count of what is still open, never the
+variables' handles.
+
+`Hβ.dsp.hz-ceiling-ambient-sample-rate` — OPEN (PLAN cites it; this is its
+first home). `type Hz` (lib/dsp/signal.mn) caps at 22,050 — 44.1 kHz's
+Nyquist — whatever rate the program runs at; at 48 kHz the true ceiling is
+24,000. The form reads the ceiling off the installed `Sample(rate)` instance,
+a refinement over an effect argument.
+
+`Hβ.lower.multishot-float-answer-redrive` — OPEN (L3·D's probes). A multi-shot
+handler whose remainder answers a Float does not assemble: the redrive driver
+is typed at the word answer (`$op___redrive_<h>` takes `(i32, i32)` where the
+answer is f64), and a `let`-bound perform of it floors off the k2 spine before
+that (`Hβ.lower.offspine-perform-is-the-frame-not-in-the-image`). Its sibling:
+a resume inside a nested fn used at an interior position types the nested fn's
+return at the word (`type mismatch in return, expected [f64] but got [i32]`).
+Both refuse at the assembler, never silently.
+
+`Hβ.dsp.per-instance-feedback-state` — CLOSED 2026-09-28 (L2's ring ownership
+plus L3's makers). It lived only in lib/dsp/signal.mn's comment: a `<~` site
+was one module global, so filtering one signal after another carried the
+first's tail into the second. A cycle's memory belongs to the record that
+holds it, and the library's filters are makers — the bandpass mints a fresh
+four-section stage per pass. `tests/repro-wf/fb-state-leak.mn` still exits 7,
+by design: a TOP-LEVEL recurrence is one line per program instance.
+
+`Hβ.tools.crown-judge-counts-a-foreign-refusal` — CLOSED 2026-09-28 (L3). The
+crown judge counted `E_EffectMismatch` or `E_EffectUnhandled` for every leak
+crucible, and 24 negation crucibles install no handler, so each refused at the
+root whether or not its negation held — a negation regression would have
+passed unseen. A leak refuses by its own class now: `leak-root-*` by
+`E_EffectUnhandled`, every other leak by `E_EffectMismatch`; a sound crucible
+raises neither.
+
+`Hβ.infer.occurs-check-walks-row-paths` — CLOSED 2026-09-28 (L3), found by
+the cost ratchet. The m3 leg's peak rose from 1,049,152 KB to 1,328,912 KB
+when the formatter learned to break a record, and the judgment's high-water
+(the `heap:` line) went from 565 MB to 835 MB on the SAME boot, so the cost
+was in judging the new source. Bisected by source, then by per-group heap
+marks patched into the probe binary: one SCC, the formatter's 46 members,
+cost 272 MB where every other group of that size cost about 4 MB, and one
+more member (`render_field_lines`, which renders a field through
+`render_tokens_for` and so joined the cycle) doubled it to 537 MB. Per
+member, `render_pred_node` — a one-line body — held 531 MB of it. A census
+of every function's calls across that one member's judgment named the walk:
+45 occurs checks entered `occurs_in_edges` 17.4 million times and flat-copied
+a names list 20.9 million times. The occurs check descended into every bound
+row edge with no memory of the cells it had entered, and a binding group's
+rows reach one another along every call path of the cycle, so the walk was
+exponential in the group's depth. It keeps a table of entered roots now,
+made where a row walk begins; a cell's content answers the same question
+however it was reached, so a second arrival reads only the edge's own mask.
+The m3 leg's judgment high-water fell to 313,704,904 bytes — 44% under the
+previous pin's 565 MB, which had been paying 266 MB for this walk since
+before the landing — and peak RSS to 816,960 KB (−22% on the pin). KILLS,
+four, each one probe: the row resolution walking paths (73 `resolve_edge`
+calls in the member); instantiation cloning a huge scheme (3 calls); the
+row half of the deep chase (2 calls); a few huge buffers (no single
+allocation over 1 MB inside the member). The three vars-of-a-row walks
+still differ in HOW they traverse: `free_in_row` and `subst_row` were cold
+here and carry no table.
+
+`Hβ.fmt.render-deletes-authored-intent` — CLOSED 2026-09-28 (L3), found by
+the Pulse render leg going red after its library was formatted: `mentl fmt`
+had turned `effect Sample(rate: Int)` into `effect Sample(rate)`, and the
+declared `Sample(48000)` then refused against a bare variable. Three
+deletions, one class: an effect's and a handler's head rendered each
+parameter's NAME alone (a lesser copy of `render_one_param`, deleted into
+it); an effect op's parameter names were consumed by the parser (the op
+stored `[Ty]`; it stores `[TParam]` now, `_` for a bare type as a function
+type's params already are, and the scheme keeps `_0`, `_1` for those); and a
+pinned alias rendered bare (`Float repr f64` → `f64`; the position decides
+the spelling now). The class-level fix is the gate: fmt spends every
+identifier and literal of the source against its render's and refuses to
+write on any loss, naming each, where it had counted prose lines and written
+regardless. Seen firing on the op-name probe (`lost: msg`, `lost: times`)
+before the names were carried; a census of every `.mn` in the tree under the
+gate then found the three shapes above and nothing else but two correct
+refusals: a fixture that does not parse (fmt used to write a lossy render of
+it) and `2166136261` rendering as `-2128831035`
+(`Hβ.fmt.literal-spelling-is-intent`, the value kept and the spelling not).
+Fixing the head render exposed `render_param_list`'s result as a free
+variable at a new call site inside the formatter's cycle, spliced as an
+integer (`handler find_handler(66036)`); written as `join` over `map` its
+result is the library's and the site resolved — the show floor below.
+
+`Hβ.fmt.render-must-parse-to-the-same-tree` — OPEN, measured 2026-09-28
+(R0″) as the conservation gate's blind side. `mentl fmt` rewrote
+`fn main(q) = (run() ~> hold).beta` as `run() ~> hold.beta` in three micros
+and printed "prose and names conserved" — every name and literal survived,
+and the program became an install of `hold.beta`. The postfix forms rendered
+their heads (a call's callee, a field read's receiver, an index's receiver)
+with no precedence inverse, so any head that was an operator expression lost
+its parens; `render_postfix_head` (format.mn) wraps every head that is not an
+atom, the fmt behavioral fixture (tests/frontier/fmt-demo/rich.mn) carries
+all three shapes and was seen RED through the pinned boot's fmt (the render
+no longer typechecked — five `E_TypeMismatch`). The defect is a BIRTH
+defect, not a regression: every boot sampled from the first that wrote a
+file (0c64c05f, 2026-07-26 — 8c625aa1 has no `fmt` verb, the 07-24/25 boots
+trap before writing) through dbbfd107 drops the parens. History cannot
+convict a file the hook formatted at birth, since the authored text never
+reached a commit; what it can show, it clears: over the 654 commits since,
+no `.mn` line was rewritten into the same text with a pair of parens
+dropped before a postfix (a hunk-level search, seen to find the payload
+micros' rewrite in a scratch repository first). The first answer written here — "live six commits,
+searched" — was a range picked from the recent boots and never measured
+against the older ones. THE GENERAL GUARD, which the atom
+census cannot be: a render whose re-parse is a different TREE is not
+written. fmt already re-parses its first render (the fixpoint), so the
+missing read is a structural fingerprint compared across the two parses —
+each node's constructor and its non-child payload (operator, name, literal,
+field) folded over `expr_child_handles` and its statement and pattern
+siblings, spans and handles excluded. CLOSE: the fingerprint compare refuses
+a render that moved an operand, with a fixture that hands fmt a shape the
+render gets wrong on purpose.
+
+`Hβ.emit.show-free-floor` — ✅ CLOSED 2026-09-28 (R0″): a show or a hash of
+an operand still a variable where it is emitted refuses as
+`E_ShapeUnprovable` at the settle point, beside the comparison it shares the
+class with, and the count it had was zero from R0d on. The record as it
+stood: OPEN, homed 2026-09-28 (it was cited in
+wasm.mn, LEDGER and PROVENANCE and held nowhere here). A show or
+interpolation splice whose operand type is still a variable at emit falls to
+`int_to_str` of the word: right for an Int, an address printed as a number
+for anything else. It had a WAT comment (`;; show on unresolved operand`,
+52 on the wheel once, 22 at pin 43aeb30f) and no voice, so a 23rd entered
+this landing unseen until a handler head rendered as `(66036)`. It narrates
+`T_ShowTypeUnprovable` now, the eq sibling's ladder one leaf over, and
+`show_type_unprovable_max: 22` holds the count (tools/verify-baseline.txt).
+Most of the 22 are floor twins of generics never executed at a non-word
+type — `argv_wire`'s String twin is correct — which is why it is a countdown
+rather than a list of bugs. The live shape this landing met is a call inside
+a binding group whose result the judgment never connected to the member it
+names (the declaration projected `-> String`, the call `t54540`); the
+disconnected-reference class the group's mono views exist to prevent, seen
+here at one site and not yet explained.
+
+`Hβ.continuations.remainder-row-charged-at-perform-site` — OPEN, BORN
+2026-09-27, the row-only root gate's one measured INCOMPLETENESS. A
+multi-shot remainder's effects are charged at their PERFORM site's frames
+(tests/micros/mn-backtrack-full: `abort()` inside `attempt`, inside `body`)
+and flow outward past the install of the handler that captured them (`~>
+bt` handles Choice, not Abort), so Abort reaches the root in the row — while
+every execution of that abort runs inside a resumption under the arm's own
+`~> my_catch` bracket and is served. The remainder ALSO rides the resume
+(`try_fn()`'s row carries it, twac's bracket absorbs it), so the row
+double-charges: once where the perform is written, once where it runs. The
+gate refused the program; the fixture installs `~> my_catch` at the root as
+the honest declaration of who serves an escaping Abort (exit 30 unchanged —
+the innermost live my_catch is twac's at every actual abort). The precise
+verdict is band B's: `TCont`'s world minted at the resume site, the
+remainder's effects charged in the world its resumptions run in and
+subtracted at the capturing install when every resume site absorbs them.
+Until then a multi-shot program whose remainder performs an effect only the
+arm's bracket serves declares a root handler, and the medium's refusal names
+the effect (`E_EffectUnhandled`) rather than trapping.
+The arm side's half landed 2026-10-01: an arm's continuation world IS the
+remainder now (the handler's remainder-world cell, judged per install), and a
+held resume performs it where it stands
+(`Hβ.continuations.spine-callee-row-is-blind-to-the-held-resume`, CLOSED). The
+perform-site charge this entry names is untouched by it.
+
+The record as it was: AN OP
 BEFORE THE EXTENT OPENS IS THE MIRROR OF THE ONE AFTER IT CLOSES, and only
 one of them is caught. Measured 2026-08-18 at pin c3410610ce41: four runs,
 three projections. SUPERSEDED IN AIM by the entry above — the shape it
@@ -4647,6 +8879,13 @@ subtracting handled(h), and an init runs before its install exists.
 Rows two and three carry the same shape of fact and differ only in
 whether a handler for that effect exists in scope. The row is sufficient
 in all four; the gate is what varies.
+▶ A MONOMORPHIC WITNESS, measured 2026-09-26: `fn main() = op() + ((op())
+~> h)` needs no state init and no HOF. main's row is `E`, correctly — the
+first op() sits outside the only install — and the program compiles clean
+and traps (134), because `h` is installed somewhere in main. With the mask
+now carried per edge (`Hβ.effects.mask-spills-onto-sibling-edges`), every
+row the gate reads is true, and this credit is the one remaining reason a
+program that performs an unhandled effect compiles.
 ▶ THE CONDITION IS FOUND AND IS DELIBERATE.
 `report_unhandled_names` (pipeline.mn) clears a name when
 `!string_in_list(strict, ename) && string_in_list(installed, ename)`, and
@@ -5117,7 +9356,47 @@ THE GATE LANDS WITH THE FIX. The fixture is RED today by construction,
 and gating today's behaviour GREEN would canonize the bug — §9.11's own
 warning that a banked expectation can be the bug canonized.
 
-`Hβ.lower.handler-state-init-reads-config` — the SYMPTOM of the root
+`Hβ.lower.handler-state-init-reads-config` — **CLOSED 2026-09-28 (R0c), pin
+0bc8383e8b6ced84, by the form below.** A stateful handler's inits lower once, at the
+declaration, in the arms' frame, into `<hname>$init` (`lower_init_decl`,
+lower.mn): each field stores at its slot through `LStateInit`, a wide value
+in a cell of its own, and the init fn is keyed exactly as the arms are. The
+install writes its config arguments as ordinary expressions
+(`emit_config_writes`) and calls the init with its record before its world
+push, so an init still performs in the installer's world, and
+`E_InitPerformsOwnOp` still refuses at the site, because the init's value
+walk runs inside `preinstall_init_scope`. Both special cases are deleted
+(`lower_state_init`'s bare-config `LUpval`, `emit_state_init_writes`), with
+`lookup_handler_state_inits_of`, and so is `spec_ctx_active`, which existed
+so the install could evaluate its inits under its own key's bracket inside
+the enclosing one. Found by the build: the multi-shot k2
+floor's dummy value baked its width at lower, and a twin whose bracket
+widened it did not assemble (`if (result f64)` over `(i32.const 0)`); the
+dummy is `LZero` now, the zero of the representation its handle reads at
+emit (`emit_zero_at`). Gate: `mn-handler-init-reads-config` (35; 134 on
+30a35888).
+THE ROOT AS MEASURED
+2026-09-28 at R0b's pin (the fix is R0c's second half): the install
+LOWERS THE DECLARATION'S STATE INITS AT EVERY INSTALL, in the
+INSTALLER's scope (`lookup_handler_state_inits_of`, lower.mn). A handler
+declaration is top-level and its inits are judged with its config bound,
+so they name only the config and globals — and in the installer's scope
+the config names do not exist. `with n = cfg` worked only through two
+special cases (`lower_state_init` mapped a bare config name to `LUpval`,
+and `emit_state_init_writes` read every `LUpval` as the install record's
+own slot); `with n = cfg.x` lowers `cfg` to `(unreachable) ;;
+executable-boundary invariant: unbound name cfg — infer proved it missing`,
+a comment that is false here, silently (exit 134 on 30a35888, no
+diagnostic; the boot before printed a field-offset warning about a second
+floor on the same path). THE FORM: handler = state = closure — the arms
+are functions of the install record, and so are the inits. Lower them
+once, at the declaration, in the arms' frame (config names are captures at
+slots 0..nconfig-1), as one fn per handler keyed like its arms; the
+install writes its config arguments as ordinary expressions and calls the
+init with the record before its world push, so an init still performs in
+the installer's world. Both special cases delete. RED fixture:
+`mn-handler-init-reads-config` (35 over two shapes; 134).
+THE ENTRY AS WRITTEN 2026-08-17: the SYMPTOM of the root
 above, bisected 2026-08-17 to an exact four-variant repro before the
 root was found. A handler's STATE INITIALIZER cannot read that
 handler's own CONFIG PARAMETER. Four marches, one variable each, on
@@ -5154,7 +9433,39 @@ alternative route stands if the substrate fix proves deep — put the
 region fact in a spine column (§11 5.5's test) and the per-install fill
 has nothing left to fill.
 
-`Hβ.own.region-index-per-install` — MEASURED and its first fix REFUTED,
+`Hβ.lower.install-config-capture-read` — **CLOSED 2026-09-28 (R0c), pin
+0bc8383e8b6ced84, with `Hβ.lower.handler-state-init-reads-config`.** The config
+arguments are installer-frame expressions now, so a captured `fd` reads
+the enclosing closure's record like any capture. `march_emit`'s `let
+sink_fd = fd + 0` and the CONFIG CAVEAT at `wat_to_file` are deleted.
+Gate: the frontier leg `install-config-capture` (12; 0 on 30a35888).
+THE ENTRY AS WRITTEN: a config argument that is a
+CAPTURED variable of the installing closure arrives as 0. Banked in the
+march_emit dig (the unregistered fixture `tests/frontier/mn-install-
+config-capture.mn`, expect 12), with a diagnosis that was half wrong:
+"the install-init emission resolves locals but not captures". Captures
+resolve — the argument lowers to `LUpval`, a read of the ENCLOSING
+closure's record. ▶ THE ROOT, MEASURED 2026-09-28 in the boot's WAT: the
+config arguments ride the same list as the state inits, and
+`emit_state_init_writes` reads EVERY `LUpval` in that list as a self-read
+of the INSTALL record, so the captured `fd` is written with the record's
+own unwritten slot — `(local.get $__hstate_4070)(local.get
+$__hstate_4070)(i32.load offset=8)(i32.store offset=8)`, 0 from a fresh
+alloc. One root with `Hβ.lower.handler-state-init-reads-config`, and one
+fix: with the inits a function of the record, the config arguments are
+ordinary installer-frame expressions and the special case deletes. The
+wheel's workarounds go with it — `march_emit`'s `let sink_fd = fd + 0`
+and the CONFIG CAVEAT at `wat_to_file`. The fixture had rotted
+unregistered: A3-pos made its authored positive rows caps, and they
+refuse its own WASI callback; de-capped it exits 0 on 30a35888 where 12
+is right, and it registers as a frontier leg with the fix.
+
+`Hβ.own.region-index-per-install` — UNBLOCKED 2026-09-28 (R0c): a
+handler's init now reads its config (`Hβ.lower.handler-state-init-reads-config`,
+closed), so `region_tracker(n)` sizing its own index from `n` is a program
+the medium compiles. The bisection below was never run and is no longer
+needed; the next move is the config param and a march.
+MEASURED and its first fix REFUTED,
 2026-08-17, pin 5a61fc4eba. With the branch spawn deleted the profile is
 unambiguous: `branch_bracket` 55.95% inclusive, `list_filled_from`
 specialised on Span 25.91% SELF, and 24.04% of the whole run reached
@@ -5191,18 +9502,18 @@ spine column, written at the one writer, and the per-install fill has
 nothing left to fill.
 
 `Hβ.march.concurrency-is-a-projection` — the thread gate's own retirement,
-banked 2026-09-06 the hour the gate landed. `tools/thread-gate.sh` counts
-the compile's guest OS threads from OUTSIDE, at clone/clone3 under strace,
-as a delta between a 61-declaration program and a 1-declaration one. Every
-line of it is a hand tool standing where a projection belongs: the medium
-performs `wasi_thread_spawn` through its own WasiThreads effect, so it
-already holds the number the script reconstructs from syscalls, and the
-honest form is `mentl march` printing concurrency beside the cost line it
-prints today — the row made visible, one more fact the self-compile reports
-about itself. Until then the gate is the scaffold tier and says so in its
-own header. The DEP is small and named: a spawn counter on the WasiThreads
-handler, read at march time; it rides Phase 9.2, where the number stops
-being 0 and starts being the width the parallel walk is supposed to have.
+banked 2026-09-06 the hour the gate landed. `tools/thread-gate.sh` counted
+the compile's OS threads from OUTSIDE, at clone/clone3 under strace, until
+2026-09-28, when three host-thread reds retired the count
+(`Hβ.threads.gate-counts-host-clones`); it reads the boot's import section
+and `main`'s row now. Half of that is already the medium — the row is
+`mentl query`'s answer — and the import read is still a hand tool standing
+where a projection belongs: the emit decides the spawn import from the
+module's own proof and no verb says so. The honest form is `mentl march`
+printing the width beside the cost line it prints today — the row and the
+import made one visible fact the self-compile reports about itself. It rides
+Phase 9.2, where the width stops being one instance and starts being the
+width the parallel walk is supposed to have.
 WHY IT IS WORTH BUILDING RATHER THAN LEAVING TO BASH: the class it guards
 (`Hβ.infer.serialized-judge-still-spawns`, below) was invisible for ten days
 to a wholly green board, and the reason is exactly that nothing on the board
@@ -5651,7 +9962,21 @@ reds against current source without touching boot, so the previous
 iteration's pin-revert was unnecessary work. The instrument existed; the
 probe did not know it.
 
-`Hβ.effects.feedback-row-substitutes` — THE DROP HALF IS FIXED
+`Hβ.effects.feedback-row-substitutes` — THE ADD HALF IS CLOSED BY BRANCH A
+(2026-09-25, pin 13df4844). Arming E_EffectMismatch turned the false charge
+into a false REFUSAL: tests/micros/mn-feedback-iir (`with Sample`, a correct
+IIR accumulator) refused with `Sample vs Memory + Alloc` and the march's
+repin battery refused the pin. The fork below stopped being a preference at
+that moment, and A is the branch that changes nothing on the surface: the
+`<~` arm judges the RHS in a frame of its own whose row is dropped
+(src/infer.mn, the PFeedback arm of infer_expr), the spec is still checked
+as a FeedbackSpec value by infer_pipe, and `!Alloc` survives a cycle —
+tests/frontier/mn-feedback-transport.mn is wired as a frontier leg the same
+day. B remains open and remains Morgan's: it is still the smaller artifact
+(delete `lower_expr(right)` and the four pre-pass walks, the depth read with
+one home), and A does not foreclose it — B deletes the construction A only
+stops charging.
+THE DROP HALF IS FIXED
 (2026-08-17, unpinned): `inf_add_row(lam_row)` at the `PFeedback` arm of
 `infer_pipe`, where the recurrence lambda's row went to `_row` and was
 discarded. Measured through a fresh m2: the negation crucible refuses
@@ -5916,13 +10241,13 @@ controls held: `add(??, 41)(1)` → 42 and `5 |> add(37)` → 42. CLEAN,
 m2 == m3, census 0. Gate: tests/syntax/partial-prefix-application.mn,
 seen RED as `type mismatch in call, expected [i32, i32, i32] but got
 [i32, i32]`.
-THE ONE OPEN FACE is the LOCAL callee — `let g = (a, b) => a + b; g(1)`
-still exits 134, which is `partial_callee_form` returning None and the
-typed floor firing, loudly and by contract. That is
-`Hβ.lower.partial-local-callee`, unchanged by this landing except that
-it is now the only unlit face of the family. Its honest gap is that a
-floor is a bare trap where a diagnostic belongs: the medium knows the
-callee is a local closure and can say so.
+THE ONE OPEN FACE was the LOCAL callee — `let g = (a, b) => a + b; g(1)`
+exited 134, which was `partial_callee_form` returning None and the typed
+floor firing, loudly and by contract (`Hβ.lower.partial-local-callee`,
+the last unlit face of the family). It is lit since 2026-09-30 (R0g): the
+callee is resolved by scope, and a local's value rides the partial's
+record as its last capture
+(`Hβ.lower.callee-resolved-by-name-in-the-module-env`).
 
 `Hβ.infer.mixed-positional-labeled-call` — **RETRACTED 2026-08-18, the
 day after it was named.** Six shapes measured clean the next iteration:
@@ -6219,7 +10544,19 @@ banked from kill 5: `Hβ.verify.warm-image-pending-suppression` —
 the warm path restores the analyzed image but re-derivation does
 not re-surface unchanged-decl obligations, so the daily loop's
 pending projection under-reports (cold = truth; the march is cold).
-TagId's 0..255 and the float intervals stay the SMT tier's.
+TagId's 0..255 and the float intervals stay the SMT tier's. THE CLASS READS
+ARE GONE (P0, 2026-10-01): the two-face read, the flow licence and the
+self-call IH's slot read were compensations for a refinement riding the
+unification class, and `node_lo_tr`, `node_lo_op`, `ty_lo`, `ty_lo_at`,
+`type_excludes`, `refinement_pred_of`, `ty_refinement`, `value_flows_class`
+and `inferred_alias_name` were deleted with it. A claim's lower bound is
+read off the value's leaves (`leaves_lo`, verify.mn), and the IH is a leaf:
+the recursive call reads the declaration's authored return off its TFun as
+a contract (`seek` discharges, `wild` pends — the frontier leg still wants
+exactly one). The OTHER HALF above is overtaken: `scan_for_span` no longer
+exists, and the `render_at` flow pends at pin e23392f6 as
+`cursor_at_handle(ph)`, one of the four sites
+`Hβ.verify.contracts-through-parametric-calls` carries.
 
 `Hβ.lower.lowering-is-a-column` — STEP (ii) OPENED 2026-09-07: THE
 ENUMERATION GOT ITS FIRST READER, and a walker family left with it. The
@@ -7292,8 +11629,11 @@ one home; full reports + the cross-fleet synthesis in
 .build/research/audit-*-2026-07-31.md and fleet-synthesis-2026-07-31.md,
 each finding artifact-grounded with its own calibration section):
 
-`Hβ.verify.echo-stop-reads-per-leaf` — THE FLOW-FACE LAUNDER, probed
-live: a refined return over a JOIN self-discharges through the class
+`Hβ.verify.echo-stop-reads-per-leaf` — CLOSED 2026-10-01 by P0: the echo
+reads the value's leaves and the class holds a shape, so the literal branch
+decides `0 <= -5` FALSE and refuses at the branch, exactly as the fix below
+asked; `mn-refine-join-launder` is a registered refusal leg. The record as
+banked: THE FLOW-FACE LAUNDER, probed live: a refined return over a JOIN self-discharges through the class
 alias, so `fn bad(v: Nat, c) -> Nat = if c { v } else { 0 - 5 }`
 compiles with ZERO verify lines and returns -5 through `0 <= self`.
 `value_flows_class` tests only the TOP node's shape while
@@ -7834,6 +12174,51 @@ reset reads. Every other push-banking handler in the wheel updates during
 inference, where no region is open today; the day one opens there, this
 record is the first thing to re-measure.
 
+▶ LANDED 2026-10-03 (pins d7d9da55 and fb8921e3, TRANSITION each) IN THE
+FORM THIS RECORD PRICED AS (i) AND PASSED OVER — EVACUATION — with the three
+objections to it answered by the artifact rather than argued. The walker
+cost: the leaves are generated per type by the fold (`$evac_<sig>` /
+`$scan_<sig>`, the fifth leaf beside eq, cmp, hash and show), so no hand
+serializer exists. Shared identity: a forwarding bitmap and the copy's
+address in the original's first word, so a value reached twice moves once.
+The pointer-write publish channel that refuted site classification (THE
+CORE REFUTATION above): every store into memory older than the arena
+writes a JOURNAL entry where it happens — the slot and the leaf its value
+moves through — at the three typed store sites (a direct `list_set`, a
+handler's state commit, a `<~` tick); a store whose type no leaf names (a
+function, a continuation, `list_set` reached as a value) journals with
+none, and the exit keeps the region rather than move it. The judgment's
+age claim says which stores can reach older memory at all (fresh, a
+parameter its callers answer for, a state its installs answer for, or
+older), so only those bodies are twinned by the leaf they need. The column
+arc is therefore NOT a prerequisite for a sound reset
+(`Hβ.graph.column-pointees-are-words` is superseded as a soundness
+precondition; it remains the Carried-Truth form for a column's values).
+The reset is the extent's: `(body) ~> arena`, the region install absorbing
+`Alloc` that this record's gate peer named
+(`Hβ.infer.region-on-tee-alloc-absorb`, CLOSED by the same landing); the
+judgment's binding groups each run in one. The paragraph above asked for a
+re-measure "the day one opens there" — that day is this landing, and the
+law it states is answered by the state commit's barrier: a handler whose
+arms run inside an arena it was installed outside of has every cell they
+store demanded at its install, so a state written in the region journals
+its value and the value moves at the exit (the census reads 0 kept across
+the wheel's 4,487 exits, and m3 == m4). The dormant `emit_memory_arena`
+and its never-moved `$arena_ptr` are DELETED (the second pin), and with
+them `Hβ.emit.memory-strategy-body-swap`'s arena face: an arena reclaims on
+the one bump line, so the allocator keeps one body. MEASURED: the boot
+that carried it, over the source it pinned, peaks 863,636–874,384 KB
+against the prior boot's 1,061,396–1,065,228 KB on that source, the
+judgment's high-water 288.0 MB against 511.3 MB, the census 4,487 exits,
+0 kept, 206,870 KB reclaimed, 49,914 KB moved; the ceiling 1,050,000 →
+884,000. Open, each named: the extents beyond the judgment
+(`Hβ.arena.extents-beyond-the-judgment`, closed the same day by
+Arena·P2), `Hβ.arena.closure-evac-face`,
+`Hβ.arena.per-instance-regions`, `Hβ.arena.region-typed-mutation`,
+`Hβ.arena.cast-addr-crosses-the-journal` (closed by #129's two pins),
+`Hβ.arena.claims-of-a-cycle`, `Hβ.arena.constructor-results-are-fresh`,
+`Hβ.arena.closure-parameter-stores`.
+
 `Hβ.own.use-after-move` — BUILT (2026-08-07, pin 8ba768c810c4, before
 the arena exactly as prescribed). The mechanism was one leg's ORDER:
 the ledger's consume arm checked `borrow_depth > 0` before the
@@ -8268,11 +12653,13 @@ must not die at the assembler; the diagnostic belongs at the site, and
 the emit belongs at the arity the product proves. Measured 2026-08-12
 with a two-param named fn under `map`.
 THE NAMED REMAINDER is `Hβ.dataflow.delay-line-runtime-depth` — a line
-whose depth is a runtime value, which wants the image-backed sequence
-(a view whose start advances IS the ring) rather than a register file,
-and therefore rides the value ontology's view/slice work (5.4) and the
-arena (4.3). Until it lands the refusal is the honest surface: the
-medium says it cannot hold that line instead of quietly holding a
+whose depth is a runtime value. Since L2 (2026-09-27) every line IS a ring
+in the image — `[head][slot × depth]`, owned by the record of the function
+that holds the cycle — so a runtime depth is the same ring with a cap word
+beside the head and the site's modulus read from the record instead of an
+`i32.const`: it no longer waits on the view/slice work or the arena, only
+on a program that needs it. Until then the refusal is the honest surface:
+the medium says it cannot hold that line instead of quietly holding a
 different one. `Hβ.fold.show-leaf`'s sibling shape applies to LF.2/LF.3
 (Accumulate's typed carrier, FilterSpec's taps), which are the same
 read growing arms, not new machinery.
@@ -8312,6 +12699,20 @@ second half builds: env_extend (the tag), the driver (the closure
 masks from the DAG it already walks), env_lookup (the filter,
 context-threaded), the check/query/fmt verbs (the asking-module
 context), and the sweep leg's ceiling falling to 0.
+▶ MEASURED ON A PROGRAM THAT IS NOT THE COMPILER (2026-09-28, Pulse scene
+1). The renderer declared `fn envelope`, and dsp/processors declares
+`handler envelope`; in the one link the user's declaration shadowed the
+library's, so the LIBRARY's own reference resolved to the renderer's fn —
+the silent-rebinding shape the overlay exists to make impossible. It did
+not stay silent: `E_MissingImport` (F0b) refused the reference, because
+the resolved declarer (the renderer) is outside dsp/processors' import
+closure. The refusal is right and its words are wrong — it blamed
+dsp/processors for a missing import when the defect is a shadow — and the
+overlay is what makes the reference resolve to the declaration its own
+closure holds. The same link held a second collision inside the library:
+dsp/feedback's new filter maker `lowpass` met processors' `handler
+lowpass` (`E_TypeMismatch Handler(DSP) vs …`), and the maker is named
+`lowpass_filter` rather than waiting on the overlay.
 
 `Hβ.types.named-effect-rows` — BUILT 2026-08-07 against this stamp (pin
 6768ffac9dfa; the fixture's alias-of-alias `Both - B` grouping case
@@ -8425,6 +12826,21 @@ inverts for this name), the frontier leg + fixture (three badges
 asserted: a pinned repr, an op cardinality, a scheduled and an
 unscheduled fanout). The gate seen RED first: the fixture's `where`
 queries answer unknown-verb through the prior pin.
+WIDENED 2026-10-02 (D5, pin 713745c6) to what SYNTAX promises, and one
+claim above retracted: "the static walk is EXACT … the schedule never
+crosses a call boundary" stopped being true at B4, when a caller's install
+began reaching a callee's fanout by demand; the badge has named the demand
+since then and reads it by the emit's own rule now (`fanout_reach_ask` over
+the decls column). A site badges its author's glyph and its branch count
+(`>< [Thread ×4]`, `<| [Seq ×2]`, `fanout [Thread, a branch per element]`)
+with its schedule read through the one projection roster; a function
+badges its head with its inferred row, each parameter and its return; a
+local is found along each reference's link in the asked module; a free type
+variable shows as the name a developer writes, its width per
+instantiation. The PRICED line above no longer holds for the demand note:
+it walks every declaration's body once per question (the seeds), where the
+O(answer) form is the demand as a column the lowering writes when it
+notes a site's schedule.
 
 `Hβ.parser.pcompose-nary` — BUILT 2026-08-07 against this stamp (pin
 05fd2307ff43; the mn-fanout-nary micro runs 9 where the prior pin
@@ -8688,9 +13104,12 @@ named residual: recursion that survives is sig-priced (the
 signature-price law generalized — the price of name-keyed recursion,
 period).
 
-`Hβ.dsp.state-element-install-once` — the `<~` RHS's construction is a
-lower-time constant (named 2026-08-01, the constructor-charge landing's
-DSP decision). A feedback site's state-element spec (`delay(1)`,
+`Hβ.dsp.state-element-install-once` — CLOSED (the 2026-09-25 feedback
+transport made the judgment read the spec as the constant it is; confirmed
+2026-09-28, when every stage lib/dsp/feedback.mn's makers mint declares
+`!Alloc` over its `<~` line and compiles). The record as it stood: the `<~`
+RHS's construction is a lower-time constant (named 2026-08-01, the
+constructor-charge landing's DSP decision). A feedback site's state-element spec (`delay(1)`,
 `accumulate(init)`, `filter_spec(...)`) constructs ONCE per site at the
 register's establishment, never per tick — but the constructor-row
 charge reads the RHS ctor call as a per-call construction, so the six
@@ -10916,7 +15335,7 @@ via soft_clip` line — the refined alias's provenance chain at the return
 position).
 
 `Hβ.synth.vocabulary-arg-holes` · `Hβ.synth.vocabulary-reach-index` ·
-`Hβ.cursor.enclosing-decl-edge` (band M kin) ·
+`Hβ.cursor.enclosing-decl-edge` (CLOSED 2026-10-02, E4: a parent edge drawn at the one writer; the declaration around a position is read up it, and the span scan, the downward path search and four whole-graph scans are deleted) ·
 `Hβ.cursor.session-weave-epoch-scope` (DISSOLVED by the peer audit — the
 session `<~` loop deletes the re-parse that created it; §11) ·
 `Hβ.infer.alias-preserving-unify` (LANDED 2026-07-17 — not a unify-peel bug:
@@ -10928,7 +15347,10 @@ re-tag under region polymorphism is the arena increment) ·
 partial-effectful-callee + partial-local-callee: the mint routes through
 the LambdaExpr machinery) / `.partial-prefix-arity` (lower.mn floors,
 typed) ·
-`Hβ.lower.k2-remainder-fncall` · `Hβ.lower.abandon-with-resume-arm` ·
+`Hβ.lower.k2-remainder-fncall` · `Hβ.lower.abandon-with-resume-arm` (CLOSED
+2026-10-03, AN-2: an abandoning arm beside a resuming one is one handler with
+a driver, the dead continuation unwinding to it —
+`tests/micros/mn-abandon-in-foreign-resume.mn`) ·
 `Hβ.lower.stateful-install-crossing-yield` (band B kin) ·
 `Hβ.cli.audit-row-var-render` (cosmetic) ·
 `Hβ.emit.int-splice-empty` · `Hβ.emit.f64-closure-capture-box` ·

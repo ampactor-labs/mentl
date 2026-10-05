@@ -1,0 +1,19 @@
+// expect: 3
+// AN-2 — an abandoning perform with an argument under `!Alloc` allocates
+// nothing: the argument crosses in the instance's area, allocated once at
+// start, never a record per perform. The arm measures the heap between the
+// mark `main` took before the call and its own entry: 0 answers 3, any
+// growth answers 100. On boot 311479e1 the perform allocated its 8-byte
+// argument record under the `!Alloc` the judgment had accepted — a false
+// absence proof — and the program answered 100.
+effect Bail {
+  bail(mark: Addr) -> Int
+}
+
+handler h {
+  bail(m) => if addr_diff(heap_mark(), m) == 0 { 3 } else { 100 },
+}
+
+fn risky(m, n) with !Alloc = if n > 2 { bail(m) } else { n }
+
+fn main() = ({ let m = heap_mark(); risky(m, 7) }) ~> h

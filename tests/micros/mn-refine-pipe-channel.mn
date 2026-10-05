@@ -1,0 +1,10 @@
+// expect: refuse E_EffectMismatch
+// The channel through a pipe stage: the partial `fold(0, …)` completed by
+// the piped list is the same application as the saturated call.
+type Positive = Int where 0 < self
+
+fn inv(n: Positive) = 100 / n
+
+fn run(k) with !Trap = [inv] |> fold(0, (acc, f) => acc + f(k + 1))
+
+fn main() = run(0 - 1)

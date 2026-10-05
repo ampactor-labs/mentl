@@ -1,0 +1,7 @@
+import helper
+
+fn build(n) = [n, twice(n)]
+
+fn add(a, b) = a + b
+
+fn main() = total(build(add(1, 2)))

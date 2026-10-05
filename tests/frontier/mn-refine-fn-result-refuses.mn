@@ -1,0 +1,17 @@
+// A function crossing an argument edge carries its RESULT's refinement
+// across: `run` hands whatever its callback returns to `alpha`, so it
+// demands an `Hz` of that result, and the lambda returns 30000.0. The claim
+// is judged on the lambda's own body, decides FALSE from the constant, and
+// the compile REFUSES with E_RefinementRejected, emitting no module. On
+// boot 43aeb30f unification met the lambda's Float result with the `Hz`
+// position, checked the Float base alone and dropped the predicate: the
+// program compiled clean, with no debt, and handed 30000.0 to a parameter
+// that said `Hz`.
+
+type Hz = Float where 0.0 < self && self < 22050.0
+
+fn alpha(c: Hz) -> Float = c * 2.0
+
+fn run(f) = alpha(f())
+
+fn main() = if run(() => 30000.0) > 0.0 { 0 } else { 1 }

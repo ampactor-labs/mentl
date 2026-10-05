@@ -1,0 +1,10 @@
+// teach 8: add n: NonZero
+// A parameter written with a plain type states no precondition, and the
+// refinement that makes the division total is written over it: NonZero's
+// base is Int, so the type the developer wrote survives in the alias. On
+// the gradient's first build the open claim went unnamed (`with !Memory`).
+type NonZero = Int where !(self == 0)
+
+fn inv(n: Int) = 100 / n
+
+fn main() = inv(5)

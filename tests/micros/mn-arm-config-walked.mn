@@ -1,0 +1,22 @@
+// expect: 46
+// mn-arm-config-walked — the same two installs, answered through a walk.
+//
+// `ask` performs `q` outside any install in its own frame, so the perform
+// walks the world chain to the install that is running and calls the arm
+// that install's record holds. The two installs key their arms at two
+// record layouts, so there is no ONE arm a direct call could name.
+//
+// RED on boot b29e319b: exit 134. The walked perform called the arm the
+// handler declares by name, and that arm reads its config through the
+// declaration's open row.
+effect Q {
+  q() -> Int
+}
+
+handler h(cfg) {
+  q() => resume(cfg.x * 10 + cfg.y),
+}
+
+fn ask() -> Int = q()
+
+fn main() -> Int = (ask() ~> h({x: 1, y: 2})) + (ask() ~> h({a: 7, x: 3, y: 4}))

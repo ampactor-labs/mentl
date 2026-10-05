@@ -1,0 +1,12 @@
+// expect: 3
+// Only the fields a contract's arguments reach are claimed: `Err("bad")`
+// under `Result(Positive, String)` owes nothing of `Positive` — its field is
+// the second argument's. Boot 1a68ecc0 refused this (E_EffectMismatch).
+type Positive = Int where 0 < self
+
+fn res_inv(r: Result(Positive, String)) = match r {
+  Ok(d) => 100 / d,
+  Err(_) => 3,
+}
+
+fn main() with !Trap = res_inv(Err("bad"))

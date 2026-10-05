@@ -1,0 +1,90 @@
+// wav.mn — a 16-bit PCM WAV file as one byte sequence
+//
+// A WAV file is a 44-byte RIFF header followed by interleaved little-endian
+// 16-bit samples. Both halves are plain byte writes into one buffer the
+// caller sizes ONCE (`wav_alloc`) before a single sample renders, so a
+// render loop that has sworn `!Alloc` can fill the buffer sample by sample
+// (`store_i8` is a Memory write, never an allocation) and the finished
+// file is the buffer itself — a String, because a String IS a byte
+// sequence (PLAN §4①), handed to `print` or `fs_write_file` unchanged.
+//
+// The header says what it is: a tag is written as the four characters it
+// is, and a field as the little-endian integer of its width. WASM memory is
+// little-endian, so a 32-bit field is one `store_i32`.
+import io
+
+import dsp/signal
+
+// The size of the sample frame this module writes: two channels, two bytes
+// each. One home for the number the header and the frame writer both need.
+fn wav_bytes_per_frame() with Pure = 4
+
+// The whole file, allocated once: 44 header bytes and `frames` stereo
+// frames of 16-bit PCM. The buffer is the raw byte record every string
+// builder in lib/strings.mn fills (`bytes_buf`: an 8-byte length/stride
+// header the sequence readers use, then the bytes at +8) — an address the
+// writers move through directly and `wav_bytes` returns as the String it is.
+fn wav_alloc(frames: Int) = bytes_buf(44 + frames * wav_bytes_per_frame())
+
+// The address of the file's first byte inside the buffer record.
+fn wav_data(buf: Addr) -> Addr = addr_at(buf, 8)
+
+// Write the 44-byte header for `frames` stereo 16-bit frames at `rate`.
+//
+//   RIFF <size-8> WAVE fmt <16> <PCM=1> <channels=2> <rate> <byte rate>
+//   <block align=4> <bits=16> data <data size>
+fn wav_header(buf, frames: Int, rate: Int) = {
+  let p = wav_data(buf)
+  let data_size = frames * wav_bytes_per_frame()
+  store_tag(p, "RIFF")
+  store_i32(addr_at(p, 4), 36 + data_size)
+  store_tag(addr_at(p, 8), "WAVE")
+  store_tag(addr_at(p, 12), "fmt ")
+  store_i32(addr_at(p, 16), 16)
+  store_u16(addr_at(p, 20), 1)
+  store_u16(addr_at(p, 22), 2)
+  store_i32(addr_at(p, 24), rate)
+  store_i32(addr_at(p, 28), rate * wav_bytes_per_frame())
+  store_u16(addr_at(p, 32), wav_bytes_per_frame())
+  store_u16(addr_at(p, 34), 16)
+  store_tag(addr_at(p, 36), "data")
+  store_i32(addr_at(p, 40), data_size)
+  buf
+}
+
+// A four-character tag, as its four bytes.
+fn store_tag(p: Addr, tag: String) = {
+  store_i8(p, byte_at(tag, 0))
+  store_i8(addr_at(p, 1), byte_at(tag, 1))
+  store_i8(addr_at(p, 2), byte_at(tag, 2))
+  store_i8(addr_at(p, 3), byte_at(tag, 3))
+}
+
+// A 16-bit field, little-endian.
+fn store_u16(p: Addr, v: Int) = {
+  store_i8(p, v % 256)
+  store_i8(addr_at(p, 1), v / 256)
+}
+
+// A sample in [-1, 1] as the 16-bit signed integer the file carries. The
+// clamp is the last line of defence — the chain upstream keeps the signal
+// inside the unit range, and `float_to_int` truncates toward zero.
+fn pcm16(x: Float) -> Int with Pure = float_to_int(clamp(x, 0.0 - 1.0, 1.0) * 32767.0)
+
+// Write one 16-bit sample at address `p`: a negative sample is its
+// two's-complement 16-bit pattern.
+fn store_pcm16(p: Addr, s: Int) = store_u16(p, if s < 0 { s + 65536 } else { s })
+
+// Write stereo frame `i` — left then right — into the buffer. Two Memory
+// writes per channel and nothing else: this is what a `!Alloc` render
+// loop calls once per frame. The channels are `Sample`s: the file holds
+// only what the unit range bounds, and a caller hands in a claim, not a
+// hope — a constant outside the range refuses where it is written.
+fn wav_frame(buf, i: Int, left: Sample, right: Sample) = {
+  let p = addr_at(wav_data(buf), 44 + i * wav_bytes_per_frame())
+  store_pcm16(p, pcm16(left))
+  store_pcm16(addr_at(p, 2), pcm16(right))
+}
+
+// The finished file as the byte sequence it already is.
+fn wav_bytes(buf) with Pure = str_of_buf(buf)

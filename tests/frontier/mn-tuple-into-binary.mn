@@ -1,0 +1,13 @@
+// A pair piped into a two-parameter function REFUSES (E_TypeMismatch —
+// the function-arity face): the parameter lists pair arity for arity, and
+// this program's do not. Until 2026-09-27 a unification rule decomposed the
+// single tuple against the two parameters ("parameters ARE tuples") and
+// the program checked clean — then trapped at the indirect call, because
+// the emit never carried that rule into the calling convention. Measured
+// RED-first on boot b145b836: exit 0, no diagnostic, `indirect call type
+// mismatch` at run. The capability this refusal names is
+// `Hβ.lower.parameter-product-calling-convention`; this file turns green
+// only by that landing, never by re-admitting the shape at the type layer.
+fn add(a, b) = a + b
+
+fn main() = (1, 2) |> add

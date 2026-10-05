@@ -1,0 +1,29 @@
+// An arena whose value is a Float, suspended by a multi-shot op: each
+// resumption's fresh arena exits with an f64 that crosses the continuation
+// in a register rather than a heap cell, so the exit has nothing of the
+// value's to move. Expected (1.0 + 0.0) + (2.0 + 0.0) = 3.0, one suspension,
+// two exits, nothing kept.
+effect Fp {
+  fp() -> Float
+}
+
+handler both {
+  fp() => {
+    let a = resume(1.0)
+    let b = resume(2.0)
+    a + b
+  },
+}
+
+fn build(n) = if n == 0 { [] } else { build(n - 1) ++ [n] }
+
+fn body() = fp() + float_of_int(len(build(20)) - 20) ~> arena
+
+fn main() = {
+  let r = body() ~> both
+  if r == 3.0 && arena_stat(ArSuspended) == 1 && arena_stat(ArExits) == 2 && arena_stat(ArKept) == 0 {
+    42
+  } else {
+    1
+  }
+}

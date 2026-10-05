@@ -1,0 +1,12 @@
+// CROWN — a three-member cycle with the negation on one member: `a`'s
+// exit gates b's pre-registered cell; b's judgment pushes it to b's cell,
+// then to c's pre-registered cell; c's finalize writes `[E]` into a gated
+// cell and refuses, naming a's declaration. Accepted by boot 2974547b
+// (exit 7 — the transitive perform through two co-members). Expect
+// E_EffectMismatch.
+effect E { op() -> Int }
+handler h { op() => resume(7) }
+fn a(n) with !E = b(n)
+fn b(n) = c(n)
+fn c(n) = if n > 0 { a(n - 1) } else { op() }
+fn main() = (a(1)) ~> h

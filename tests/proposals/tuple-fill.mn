@@ -1,0 +1,5 @@
+// propose 3:24: fill (??, ??)
+// A tuple hole fills with the construction, each element the next hole.
+fn f() -> (Int, Int) = ??
+
+fn main() = 0

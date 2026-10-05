@@ -1,0 +1,12 @@
+// CROWN — a POSITIVE declared row is a CAP on the callbacks it invokes
+// (A3-pos, 2026-09-27): `with E` on `run` says its body, callbacks
+// included, performs at most E. The callback performs F, so the argument
+// edge violates the cap. Accepted by boot d27fc81d, where a positive row
+// installed no gate (only its negation half did).
+// Expect E_EffectMismatch.
+effect E { op_e() -> Int }
+effect F { op_f() -> Int }
+handler he { op_e() => resume(1) }
+handler hf { op_f() => resume(10) }
+fn run(f) with E = f() + op_e()
+fn main() = (run(() => op_f())) ~> he ~> hf

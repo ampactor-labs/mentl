@@ -1,0 +1,16 @@
+// expect: refuse E_EffectMismatch
+// A parameter holding functions in a list learns what the generic callee's
+// callback does with its elements: `apply_all`'s list is handed to `fold`,
+// whose callback applies each element at `k`, so the list's elements are
+// applied at a value the caller cannot see, and `inv` crossing into it
+// owes its precondition. Checked clean and divided by zero on boot 13e8484a
+// and pin e23392f6.
+type Positive = Int where 0 < self
+
+fn inv(n: Positive) = 100 / n
+
+fn apply_all(fs, k) = fold(0, (acc, f) => acc + f(k), fs)
+
+fn run(k) with !Trap = apply_all([inv], k + 1)
+
+fn main() = run(0 - 1)

@@ -1,0 +1,16 @@
+// expect: 42
+// A multi-shot op's wide argument crosses the yield's argument record at its
+// own width: the record is a product and takes its widths. On boot cf8a6d50
+// the record parked every argument through a word scratch and this program
+// did not assemble.
+effect Ch {
+  choose(x: Float) -> Float
+}
+
+handler twice {
+  choose(x) => resume(x) + resume(x * 2.0),
+}
+
+fn body() = choose(1.5) + 0.5
+
+fn main() = if (body() ~> twice) == 5.5 { 42 } else { 1 }

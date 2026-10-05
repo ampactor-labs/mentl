@@ -1,0 +1,24 @@
+// expect: 60
+// The derivative crosses the prelude's fold. The stage is a closure over the
+// seed, the accumulator is the fold handler's state, and the elements arrive
+// through a perform from a callee three calls down; the reading follows all
+// of it — the closure through its record's lanes, the state through the
+// install record's, the perform into the arm's derivative twin — so
+// d(Σ w·x) over [1, 2, 3] is 6. Links the runtime floor (fold lives in the
+// prelude).
+//
+// The declarations are lib/ml/grad.mn's, repeated because a micro links only
+// the runtime floor.
+effect Derivative {
+  d(v: Float) -> t
+}
+
+handler grad(w) {
+  d(v) => resume(tangent_of(v, w)),
+}
+
+fn main() -> Int = {
+  let w = 2.0
+  let xs = [1.0, 2.0, 3.0]
+  float_to_int(d(fold(0.0, (a, x) => a + w * x, xs)) * 10.0 ~> grad(w))
+}

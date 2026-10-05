@@ -1,0 +1,35 @@
+// expect: 90
+// A perform whose argument is active enters its arm under the reading: the
+// arm's derivative twin takes the argument's tangent beside the value and
+// hands its result's back through the register. From the installing frame
+// the dispatch names the arm, a direct call to its twin; through a callee it
+// walks the world chain to the same record and calls the twin at the arm's
+// derivative face. d(sq(w)) + d(go(w)) = 2w + 4w = 9 at w = 1.5.
+//
+// The declarations are lib/ml/grad.mn's, repeated because a micro links only
+// the runtime floor.
+effect Derivative {
+  d(v: Float) -> t
+}
+
+handler grad(w) {
+  d(v) => resume(tangent_of(v, w)),
+}
+
+effect Sq {
+  sq(v: Float) -> Float
+}
+
+handler sqh {
+  sq(v) => resume(v * v),
+}
+
+fn go(w: Float) -> Float = sq(w) * 2.0
+
+fn main() -> Int = {
+  let w = 1.5
+  let slope = {
+    d(sq(w)) + d(go(w))
+  } ~> sqh ~> grad(w)
+  float_to_int(slope * 10.0)
+}

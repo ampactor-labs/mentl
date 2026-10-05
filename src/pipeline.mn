@@ -27,7 +27,7 @@
 //   mentl_default       → mentl.mn
 //   query_default       → query.mn
 //   affine_ledger       → own.mn
-//   clock_real, tick_real, sample_real, deadline_real → clock.mn
+//   clock_real, tick_real, sample_at, deadline_real → clock.mn
 import graph
 
 import types
@@ -41,6 +41,8 @@ import intern
 import infer
 
 import lower
+
+import derive
 
 import backends/wasm
 
@@ -124,15 +126,28 @@ import egraph
 // (§2 cached-cursor mode), and cross-run skip is the image-persist
 // peer (Hβ.persist.module-image-cache).
 fn infer_context(body) =
-  body() ~> affine_ledger ~> region_tracker ~> verify_ledger ~> lookup_ty_graph ~> env_handler(make_list(0), 0, env_index_new()) ~> graph_handler([], 0, []) ~> mutate_sink ~> diagnostics_handler ~> intern_table
+  interned(() => body() ~> affine_ledger ~> region_tracker ~> verify_ledger ~> lookup_ty_graph ~> env_handler(make_list(0), 0, env_index_new(), 0) ~> no_state_walked ~> graph_handler([], 0, []) ~> mutate_sink ~> diagnostics_handler)
 
 // The LOWERING/EMIT stack's one home — infer_context's peer on the far side
 // of the cursor. Every route that lowers installs exactly this: string_table
-// (compile-time interned string offsets), emit_memory_bump (the swap point
-// for emit_memory_arena), mentl_default, lower_scope,
+// (compile-time interned string offsets), mentl_default, lower_scope,
 // lower_handler_stack_ctx (the lexical evidence fence's own stack),
 // arm_state_ctx, spec_registry. A caller supplies only its SINK and its
 // filesystem/persist prefix, because that is the only part that ever differs.
+//
+// The allocation strategy (emit_memory_bump, or emit_memory_audited where a
+// planned unit is emitted) is NOT in this chain. Its arm performs `wat_emit`, and
+// an arm's performs resolve OUTER of its own install — so a strategy
+// installed here wrote to whatever sink enclosed this chain, and every route
+// that installs its sink inside the body (a march's file, a battery's host
+// buffer, the MCP judge's fd) had the strategy asking a handler that was not
+// there. The row said so: WasmOut re-added at this tee reached the executable
+// root on every lowering route, and the root gate's one-row read refused the
+// wheel (2026-09-27). The strategy installs where the emitter ALLOCATES,
+// inside whatever sink is live there: each per-fn bracket beside its own
+// `wat_to_string` (backends/wasm.mn), the init lets' bracket, and the fold
+// leaves' emission in `emit_planned`. One home per fact — the emitter owns how
+// it allocates — and the sink is the caller's alone.
 //
 // It exists because its absence was already paid for: seven routes
 // hand-copied this chain, `mentl march`'s copy omitted
@@ -141,7 +156,7 @@ fn infer_context(body) =
 // its own generation while tools/march.sh, which the board actually calls,
 // stayed green. A chain with one home cannot lose a handler to a copy.
 fn emit_context(body) =
-  body() ~> string_table ~> emit_memory_bump ~> mentl_default ~> lower_scope ~> lower_handler_stack_ctx ~> arm_state_ctx([], OneShot, "") ~> spec_registry ~> emit_site_module
+  body() ~> string_table ~> line_registry ~> mentl_default ~> lower_scope ~> lower_handler_stack_ctx ~> arm_state_ctx([], OneShot, "") ~> spec_registry ~> derived_registry ~> arena_registry ~> emit_site_module
 
 // A route that LOWERS installs both stacks, emit inside analysis, and that
 // nesting order is itself a fact — so it has one home too rather than being
@@ -174,7 +189,7 @@ wasi_filesystem)
 // reads source from stdin. Skips driver_check + fs_read_file (no
 // module-graph; no path); reads the entire stdin via read_stdin
 // (lib/io.mn:83 — fd_read loop with grow-on-headroom buffer);
-// pipes through frontend → lower_program → emit_module. Same handler
+// pipes through frontend → lower_program → the plan and its write. Same handler
 // chain as compile() — emission to stdout via wat_stdout, all the
 // substrate handlers attached.
 //
@@ -184,9 +199,9 @@ wasi_filesystem)
 // deterministic AND substrate-aligned across seed + wheel.
 // THE EXECUTABLE GATE (SYNTAX §«Partial application» — a hole is productive,
 // never executable; §0's "nothing executes unproven" at its honest scope).
-// Runs BETWEEN reachability and emit — wat_stdout streams every emit
-// immediately, so the refusal must precede the first one; refusing here
-// leaves stdout with ZERO WAT bytes. Two reads, one law each:
+// Runs BETWEEN reachability and the first byte — wat_stdout streams every
+// emit immediately, so the refusal must precede the first one; refusing here
+// leaves stdout with ZERO WAT bytes. Three reads, one law each:
 //   HOLES REFUSE. An authored value-position hole surviving in the
 //   reachable set (the value-holes COLUMN read — call-arg holes became
 //   partial params, pipe holes were spliced/unnoted, so survival IS
@@ -201,14 +216,18 @@ wasi_filesystem)
 //   refuse the medium itself (the fleet's measured refutation of the
 //   blanket form). The ledger projects one summary diagnostic; the
 //   per-entry projections stay query/edit surfaces.
+//   THE PLAN SETTLES. A clean judgment is planned (`emit_plan`), and the
+//   plan's settle point says every floor the module would carry — an offset,
+//   a shape or a specialization it cannot prove where the body is emitted,
+//   a boundary lowering could not build — so an armed one refuses here too,
+//   before the byte that would have carried it.
 // `check` never routes here — the productive surfaces admit holes; only an
 // EXECUTABLE refuses to exist around one.
 // gate_reads — the gate LAW's judge half, one home for its three policies:
-// executable_gate (refuse + proc_exit — the CLI compile, one process one
-// verdict), battery_compile (batch: count and continue), and the mcp
-// judge (serve: verdict as data, the server outlives every refusal). The
-// reports land before the diag_refusals read — the teaching precedes the
-// tally it feeds.
+// the CLI compile (refuse + proc_exit, one process one verdict),
+// battery_compile (batch: count and continue), and the mcp judge (serve:
+// verdict as data, the server outlives every refusal). The reports land
+// before the diag_refusals read — the teaching precedes the tally it feeds.
 fn gate_reads(lowered) = {
   report_verify_debt(verify_debt())
   report_unhandled_effects(lowered)
@@ -229,18 +248,32 @@ fn gate_reads(lowered) = {
   verdict
 }
 
-fn executable_gate(lowered) = match gate_reads(lowered) {
-  (nholes, refused) => if nholes == 0 && refused == 0 {
-    lowered
+// The gate's verdict: the plan a module is written from, or the module
+// withheld with the holes and the claims that stopped it — the holes apart,
+// since each is its own report and the tally never counts one twice.
+type Emission = Planned(p) | Withheld(Int, Int)
+
+// The gate whole, for every route: the judgment's reads first, and the plan
+// only over a judgment they left clean, since planning a refused program
+// would narrate floors the refusal already explains. The plan's own reports
+// are then the only refusals the ledger can have gained.
+fn gated_plan(lowered) = match gate_reads(lowered) {
+  (nholes, refused) => if nholes > 0 || refused > 0 {
+    Withheld(nholes, refused)
   } else {
-    if refused > 0 {
-      eprint_string("mentl: refusing to emit — {int_to_str(refused)} claim(s) the medium could not discharge\n")
-    }
-    proc_exit(1)
-    // proc_exit never returns (the emit appends unreachable after it);
-    // the tail value only closes the type of the branch.
-    lowered
+    let plan = emit_plan(lowered)
+    let settled = diag_refusals()
+    if settled > 0 { Withheld(0, settled) } else { Planned(plan) }
   },
+}
+
+// The CLI's refusal: say the count when there are claims, and exit 1 with
+// nothing on stdout.
+fn refuse_to_emit(refused) = {
+  if refused > 0 {
+    eprint_string("mentl: refusing to emit — {int_to_str(refused)} claim(s) the medium could not discharge\n")
+  }
+  proc_exit(1)
 }
 
 // ─── The evidence hole — the gate's third read ──────────────────────
@@ -276,23 +309,37 @@ fn report_unhandled_effects(lowered) = match env_lookup("main") {
           let census = {
             walk_lemit(lowered)
             drain_effect_census()
-          } ~> effect_census_collector ~> fn_names_collector ~> top_fn_names_collector ~> string_literal_collector ~> state_slots_collector ~> yield_seen_collector ~> wasi_ops_collector
-          match census {
-            (demands, installed) => report_unhandled_names(
-              p,
-              0,
-              len(p),
-              demands_to_enames(demands, 0, []),
-              installed,
-              reason_span_or_zero(reason)
-            ),
-          }
+          } ~> effect_census_collector ~> fn_names_collector ~> top_fn_names_collector ~> string_literal_collector ~> fn_lines_collector ~> yield_seen_collector ~> wasi_ops_collector
+          let performed = demands_to_enames(census, 0, [])
+          report_unhandled_names(p, 0, len(p), performed, reason_span_or_zero(reason))
+          lowered |> each(report_unhandled_init(performed, ??))
         },
       },
       _ => (),
     },
   },
   None => (),
+}
+
+// A module value let's init runs in `$__init_lets` before `main`, so what it
+// performs is the executable's as much as what `main` performs, and it meets
+// the same two conjuncts at the let. Its row is the charges its subtree's
+// nodes carry (`row_of_subtree`): a module value let is judged in no
+// declaration's frame, so no frame row holds it. `let x = op()` with no
+// handler compiled and trapped at init, where `fn main() = op()` refused
+// (pin 852184886f52a848, S6).
+fn report_unhandled_init(performed, stmt) = match stmt {
+  LLet(h, _, _) => if reach_decl_name(stmt) == "" {
+    match row_of_subtree(h) {
+      Some(row) => match row {
+        EfRow(p, _, _) => report_unhandled_names(p, 0, len(p), performed, graph_span_of(h)),
+      },
+      None => (),
+    }
+  } else {
+    ()
+  },
+  _ => (),
 }
 
 // A drained demand is an ename already (the floor's ekey) or a yield's
@@ -331,7 +378,7 @@ fn demands_to_enames(ref demands, i, acc) = if i >= len(demands) {
   demands_to_enames(demands, i + 1, if string_in_list(acc, en) { acc } else { push(acc, en) })
 }
 
-fn report_unhandled_names(ref names, i, n, ref performed, ref installed, ref span) = if i >= n {
+fn report_unhandled_names(ref names, i, n, ref performed, ref span) = if i >= n {
   ()
 } else {
   let ename = eff_name_str(list_index(names, i))
@@ -343,28 +390,22 @@ fn report_unhandled_names(ref names, i, n, ref performed, ref installed, ref spa
   // declared-but-never-performed row (`with Sample`, SYNTAX's own lowpass)
   // is the iterative-class canon, never an evidence hole.
   //
-  // AND the `installed` licence, which survives BY MEASUREMENT after being
-  // deleted and refuted in one build. Deleting it looked right — the row is
-  // authoritative, and a per-candidate `~>` is lexically present where it
-  // runs — but the wheel refused on `GraphRead`: `graph_handler`'s arms
-  // perform sibling GraphRead ops, and that is legal FORWARDING, because the
-  // wheel NESTS graph installs (dispatch_invocation installs one, each
-  // compile installs another that shadows it), so an inner arm's sibling
-  // perform reaches the outer handler. The row cannot see that nesting — it
-  // is a whole-program fact about install identity, which is band A's seat
-  // exactly as this file already said. So an install anywhere still clears.
-  //
-  // What that licence therefore CANNOT catch is the same shape with no outer
-  // install: `format_default` re-emits `Format` from its own arm, reaching
-  // the root, cleared because format_default is "installed somewhere" — it
-  // compiled clean and trapped in `mentl fmt`. That gap is real and named
-  // (Hβ.effects.handler-re-emits-what-it-handles); the decl-site narration
-  // below is what makes it visible today, and band A is what refuses it.
+  // There is no third conjunct. An "installed somewhere" licence stood here
+  // and cleared a name because a handler for it was installed ANYWHERE in
+  // the post-reach tree — no extent, no nesting — and it let `fn main() =
+  // op() + ((op()) ~> h)` compile and trap, and `format_default` re-emit
+  // `Format` from its own arm into `mentl fmt`'s trap. The row already
+  // models what the runtime does: an arm's performs resolve OUTER, never
+  // self (the arm dispatch runs the arm in the install's own world), and
+  // `row(expr ~> h) = row(expr) - handled(h) + row(h)` re-adds exactly
+  // what the arms perform, so an arm asking for an op of the effect it
+  // handles reaches the enclosing install in the row as at runtime. The
+  // wheel's own nested graph installs are legal by that same rule — the
+  // inner arm's sibling perform reaches the outer handler — and the root
+  // row carries only what the OUTERMOST install's arms ask of nobody.
   if effect_ops_substrate_grounded(ename) {
     ()
   } else if !string_in_list(performed, ename) {
-    ()
-  } else if string_in_list(installed, ename) {
     ()
   } else {
     // Sequenced effectful read BEFORE the construction (the record-
@@ -373,37 +414,7 @@ fn report_unhandled_names(ref names, i, n, ref performed, ref installed, ref spa
     let proposal = absorbing_proposal(ename)
     report(EEffectUnhandled(ename, proposal, span))
   }
-  report_unhandled_names(names, i + 1, n, performed, installed, span)
-}
-
-// Every op of the effect projects to a substrate instruction (the
-// Memory/Alloc table, the WASI import set) — or the name owns no ops at
-// all (a compiler attribution: a row fact, never an evidence dispatch).
-fn effect_ops_substrate_grounded(ename: String) = match env_snapshot() {
-  Env(bindings) => grounded_scan(bindings, 0, len(bindings), ename),
-}
-
-fn grounded_scan(ref bindings, i, n, ename: String) = if i >= n {
-  true
-} else {
-  match list_index(bindings, i) {
-    (opname, _, _, kind) => {
-      let ok = match kind {
-        EffectOpScheme(op_effect, _, _, _) => // Substrate projection or WASI import only. A DEFAULT HANDLER does
-        // NOT ground: the perform's singleton tier direct-calls it, but a
-        // STATEFUL default with no live install reads its zero state
-        // global — the silent-wrong the runtime guard refuses
-        // (SingletonUninstalled; in the retired keyed-evidence era the
-        // same shape broke at assembly, the sst build's ev_lookup).
-        // The intrinsic families (to_string/hash) never reach the perform
-        // dispatch, so they ground through the not-performed conjunct,
-        // never through a default field.
-        if op_effect == ename { is_substrate_mem_op(opname) || is_wasi_import_op(opname) } else { true },
-        _ => true,
-      }
-      if ok { grounded_scan(bindings, i + 1, n, ename) } else { false }
-    },
-  }
+  report_unhandled_names(names, i + 1, n, performed, span)
 }
 
 // The teaching half: which declared handlers absorb this effect — read
@@ -432,7 +443,7 @@ fn absorb_scan(ref bindings, i, n, ename: String, own acc) = if i >= n {
   match list_index(bindings, i) {
     (hname, _, _, kind) => {
       let hit = match kind {
-        HandlerKind(_, _, _, arms) => handler_arms_touch(arms, 0, len(arms), ename),
+        HandlerKind(_, _, _, _, arms) => handler_arms_touch(arms, 0, len(arms), ename),
         _ => false,
       }
       // The flat env carries a handler at several layers (pre_register + the
@@ -490,9 +501,54 @@ fn report_holes(holes, i) = if i >= len(holes) {
 // The compile's projection half — everything after the analyzed graph.
 // ONE home: the cold path, the warm path, and the resume verb all run
 // exactly this remainder over their ast (the persisted image's typed
-// root included), so the three routes cannot drift.
-fn compile_remainder(ast) =
-  ast |> saturate_pass |> lower_program |> reachable_from_main |> executable_gate |> emit_module
+// root included), so the three routes cannot drift. Under the whole-link
+// scope it says where the heap stands when saturation ends, when the
+// lowering's pre-passes end, when lowering ends, when the module is planned
+// and when it is written, beside the judgment's own line, then the arenas'
+// census, so the compile's cost reads as six phases rather than one peak,
+// and what its extents reclaimed as one count — the emit's share was
+// found by exactly these marks (2026-09-28: two quadratic dedups, 120MB),
+// the plan's by the one added when the allocation audit joined it, and the
+// reach walk's by the two added when the cost ratchet refused a landing
+// whose declarations had grown 3 MB and whose lowering had grown 90
+// (2026-09-30: the path-local wide-sequence type walk).
+fn compile_remainder(ast) = {
+  let sat = saturate_pass(ast)
+  heap_line("when saturation ends")
+  let pre = lower_program(sat)
+  heap_line("when the lowering pre-passes end")
+  let lowered = reachable_from_main(pre)
+  heap_line("when lowering ends")
+  match gated_plan(lowered) {
+    Planned(plan) => {
+      heap_line("when the module is planned")
+      emit_planned(plan)
+      heap_line("when the module is written")
+      arena_line()
+    },
+    Withheld(_, refused) => {
+      arena_line()
+      refuse_to_emit(refused)
+    },
+  }
+}
+
+fn heap_line(at: String) = match diag_scope_of() {
+  ScopeAll => eprint_string("heap: {heap_mark()} byte(s) {at}\n"),
+  ScopeNone => (),
+  ScopeModule(_) => (),
+}
+
+// The arenas' census for the whole compile — every exit the judgment's
+// groups, the lowering's declarations and the emitted reach's demands made,
+// and every arena a suspended computation left — read where the compile
+// ends, once the module is written or before a refusal says why it was not,
+// so one line counts them all.
+fn arena_line() = match diag_scope_of() {
+  ScopeAll => eprint_string("arena: {int_to_str(arena_stat(ArExits))} exit(s), {int_to_str(arena_stat(ArKept))} kept, {int_to_str(arena_stat(ArFreed))} KB reclaimed, {int_to_str(arena_stat(ArMoved))} KB moved, line peak {int_to_str(arena_stat(ArHigh))} KB, {int_to_str(arena_stat(ArSuspended))} suspended\n"),
+  ScopeNone => (),
+  ScopeModule(_) => (),
+}
 
 // `mentl resume <img>` — the image IS the process: swap it in and run
 // the compile remainder over the restored typed root, the source not
@@ -544,42 +600,88 @@ fn compile_source(source) =
 
 fn check_source(source) = infer_context(() => source |> infer_program_converged ~> mentl_default)
 
-fn query(entry_module, question) = infer_context(() => {
-  // COLD by the swap-crossing law (Hβ.session.resident-verbs — the
-  // measured refutation is in the §7 ledger): a mid-verb image restore
-  // kills every pre-swap heap value — the caller's own argv strings,
-  // the chain's own handler records — and survives only by allocation
-  // coincidence. The warm form for the projection verbs is the
-  // RESIDENT SESSION (the image as the session's own memory, no swap —
-  // the named peer carries the measured constraints); fresh derivation
-  // here IS the sound form for a per-process verb.
-  // The WEAVE judgment — `driver_entry_with_ranges` is the ONE discovery
-  // home, because a module judged SOLO is judged without its layer's
-  // vocabulary (the per-module-env-overlay residue) and every query over
-  // it runs against a partially-broken env.
+fn query(entry_module, question) = match query_judged(entry_module, query_render(question, ??)) {
+  None => {
+    // The ENTRY never joined the weave (E_MissingModule already reported at
+    // the walk): there is no judged source to project, and a confident
+    // answer over the empty weave is the silent-fallback class
+    // (Hβ.query.unreadable-source-refusal — the census printed "0 sites"
+    // for a file the judge could not read). Productive-under-error stays for
+    // JUDGED files; a missing entry refuses the question itself.
+    eprint_string("mentl query: no source to project — {entry_module} never joined the weave\n")
+    1
+  },
+  Some(_) => 0,
+}
+
+fn query_render(question, m: String) =
+  ask(parse_query_string(m, question)) |> render_query_result |> println
+
+// The entry judged and read: `read` runs over the judged graph, inside the
+// chain that judged it, and None says the entry never joined the weave.
+//
+// COLD by the swap-crossing law (Hβ.session.resident-verbs — the measured
+// refutation is in the §7 ledger): a mid-verb image restore kills every
+// pre-swap heap value — the caller's own argv strings, the chain's own
+// handler records — and survives only by allocation coincidence. The warm
+// form for the projection verbs is the RESIDENT SESSION (the image as the
+// session's own memory, no swap — the named peer carries the measured
+// constraints); fresh derivation here IS the sound form for a per-process
+// verb. The WEAVE judgment — `driver_entry_with_ranges` is the ONE discovery
+// home, because a module judged SOLO is judged without its layer's
+// vocabulary (the per-module-env-overlay residue) and every query over it
+// runs against a partially-broken env.
+fn query_judged(entry_module: String, read) = infer_context(() => {
   match driver_entry_with_ranges(entry_module) {
     (_ast, ranges) => match range_of_module(ranges, entry_module) {
-      None => {
-        // The ENTRY never joined the weave (E_MissingModule already
-        // reported at the walk): there is no judged source to project,
-        // and a confident answer over the empty weave is the
-        // silent-fallback class (Hβ.query.unreadable-source-refusal —
-        // the census printed "0 sites" for a file the judge could not
-        // read). Productive-under-error stays for JUDGED files; a
-        // missing entry refuses the question itself.
-        eprint_string("mentl query: no source to project — {entry_module} never joined the weave\n")
-        1
-      },
-      Some(_) => {
-        let q = parse_query_string(question)
-        ask(q) |> render_query_result |> println
-        0
-      },
+      None => None,
+      Some(_) => Some(read(entry_module)),
     },
   }
 } ~>
 // the derivation's fs_read — handled in-chain, as compile/check do
 wasi_filesystem ~> query_default ~> mentl_default ~> arm_state_ctx([], OneShot, "") ~> spec_registry)
+
+// One program's answer to a SITE facet, kept to the program's own module —
+// what `mentl query <dir> …` asks of each program in a directory, since the
+// library every program links would otherwise answer once per program. None
+// is an entry that never joined the weave; Some(None) a facet that answers
+// something other than located sites, which has no meaning across programs.
+fn query_sites(entry_module: String, question) =
+  query_judged(entry_module, own_sites_of(question, ??))
+
+fn own_sites_of(question, m: String) = own_sites(ask(parse_query_string(m, question)), m)
+
+fn own_sites(answer, m: String) = match answer {
+  QRRefs(sites) => Some(("reference(s)", filter(site_in_module(m, ??), sites))),
+  QRCensus(label, sites) => Some((label, filter(site_in_module(m, ??), sites))),
+  QRDecls(sites) => Some(("judged decl(s)", filter(site_in_module(m, ??), sites))),
+  QRType(_, _) => None,
+  QRIntent(_) => None,
+  QRUnresolved(_) => None,
+  QRChain(_) => None,
+  QREffects(_) => None,
+  QROwnership(_) => None,
+  QRWhy(_) => None,
+  QRVerifyDebt(_) => None,
+  QRSmt(_) => None,
+  QRHandlerProvider(_) => None,
+  QRFlowLabel(_, _) => None,
+  QRModules(_) => None,
+  QRImports(_) => None,
+  QRUnreferenced(_) => None,
+  QRUnreachable(_) => None,
+  QRPerforms(_) => None,
+  QROrphanClaims(_) => None,
+  QRCost(_, _, _) => None,
+  QRGhosts(_) => None,
+  QRWhere(_, _) => None,
+  QRError(_) => None,
+}
+
+fn site_in_module(m: String, site) = match site {
+  (sm, _) => sm == m,
+}
 
 // ─── The tightening bank — T_OverDeclared as a live frontier fact ────
 //
@@ -587,14 +689,16 @@ wasi_filesystem ~> query_default ~> mentl_default ~> arm_state_ctx([], OneShot, 
 // declared row, the proven body row, the fn name, and the decl span,
 // MachineApplicable); this collector banks each one as the judgment
 // fires it, so the tighten verb AND the frontier field read the same
-// candidates live. tighten_reset clears the bank at a generation
-// boundary — the living session re-derives on a moved tree, and stale
-// generations' candidates must not shadow the current truth.
+// candidates live. tighten_forget clears the bank at a generation
+// boundary for the modules about to be re-judged — the living session
+// re-judges a moved tree's cone, and a stale generation's candidates must
+// not shadow the current truth while a module outside the cone keeps its
+// own.
 effect Tighten {
   // the MODULE rides each candidate: `mentl tighten` edits a FILE, and a
   // local span names a line without naming which file's line it is.
   tightenables() -> [(EffRow, EffRow, String, Span, String)]
-  tighten_reset()
+  tighten_forget([String])
 }
 
 // The collecting forwarder over the Diag effect: TOverDeclared
@@ -614,13 +718,22 @@ handler tighten_collector with found = [] {
     diag_report(diag, line, dmod)
     match diag {
       TOverDeclared(declared, used, name, span) => resume() with found = push(found, (declared, used, name, span, dmod)),
+      TRowInventory(declared, used, name, span) => // An inventory is a tightening too (A4): the patch for both is the
+      // clause's residue, so both bank in the one place the verb reads.
+      resume() with found = push(found, (declared, used, name, span, dmod)),
       _ => resume(),
     }
   },
   diag_errors() => resume(diag_errors()),
   diag_refusals() => resume(diag_refusals()),
   tightenables() => resume(found),
-  tighten_reset() => resume() with found = [],
+  tighten_forget(modules) => resume() with found = filter(tightening_outside(modules), found),
+}
+
+// A banked tightening survives a forget unless its module is about to be
+// re-judged. `modules: [String]` carries the eq proof the name compare needs.
+fn tightening_outside(modules: [String], entry) = match entry {
+  (_, _, _, _, dmod) => !any((m) => m == dmod, modules),
 }
 
 // analyze_fns — the shared analysis-verb cursor: load+check the module,
@@ -663,8 +776,10 @@ wasi_filesystem ~> mentl_default ~> arm_state_ctx([], OneShot, "") ~> spec_regis
 // address_project law at the analysis verbs): the CLI derives an ast
 // then projects; the session projects the living ast it already holds.
 // Transport stays the caller's — analyze_fns prints, the session banks.
-fn teach_project(ast) =
-  map_fn_stmts(ast, (name, handle) => (name, teach_gradient(handle))) |> render_gradients
+fn teach_project(ast) = {
+  let tights = tightenables()
+  map_fn_stmts(ast, (name, handle) => (name, teach_gradient(handle))) |> render_gradients(tights)
+}
 
 // The banks the judgment already holds, read ONCE and attributed per
 // fn: pending proof obligations by decl EXTENT — this decl's span start
@@ -675,11 +790,11 @@ fn teach_project(ast) =
 fn audit_project(ast) =
   map_fn_stmts(ast, (name, handle) => (name, handle)) |> audit_walk(verify_debt(), tightenables(), 0) |> render_audit
 
-fn decl_start_line(handle) with GraphRead = match parse_span_of(handle) {
+fn decl_start_line(handle) = match parse_span_of(handle) {
   Span(sl, _, _, _) => sl,
 }
 
-fn audit_walk(debt, tights, i, fns) with GraphRead + EnvRead + LookupTy + Memory + Alloc + Intern + WASI = if i >= len(fns) {
+fn audit_walk(debt, tights, i, fns) = if i >= len(fns) {
   []
 } else {
   match fns[i] {
@@ -881,10 +996,10 @@ fn map_fn_stmts(ast, project) = ast |> map({
 // only use is the splice, so unpinned the fn generalizes and the floor
 // renders every fn's teach line under a pointer numeral instead of its
 // name.
-fn render_gradients(gradients: [(String, Option(AnnotationSuggestion))]) = if len(gradients) == 0 {
+fn render_gradients(tights, gradients: [(String, Teaching)]) = if len(gradients) == 0 {
   "All functions are at maximum annotation density.\n"
 } else {
-  gradients |> map({ (name, result) => render_gradient_line(name, result) }) |> str_concat_all
+  gradients |> map({ (name, result) => render_gradient_line(name, result, tights) }) |> str_concat_all
 }
 
 // The name pin is an Intent Boundary at the line's ONE mint (spec_mangle's
@@ -892,21 +1007,36 @@ fn render_gradients(gradients: [(String, Option(AnnotationSuggestion))]) = if le
 // element was still free, and the show floor read the word — every teach
 // line rendered under a pointer numeral. The named call anchors the
 // binder to String before the splice judges.
-fn render_gradient_line(name: String, result) = "{name}: {render_gradient_result(result)}\n"
+fn render_gradient_line(name: String, result, tights) =
+  "{name}: {teach_result_text(name, result, tights)}\n"
 
-fn render_gradient_result(result) = match result {
-  None => "(no next-step annotation suggested)",
-  Some(suggestion) => match suggestion {
-    AnnotationSuggestion(_kind, ann_text, unlocks, _reason) => "→ add {ann_text} to unlock {join_unlock_labels(unlocks)}",
+// One fn's teach: the gradient's proven annotation when it has one, else
+// the tightening the judgment already proved and banked for it (a
+// declaration with an authored row is taught only that), else the plain
+// statement that nothing is suggested.
+fn teach_result_text(name: String, result, tights) = match result {
+  TeachNone => match banked_tightening(name, tights) {
+    Some(t) => match t {
+      (declared, used) => "→ tighten: declares {show_effrow(declared)}, the body proves {show_effrow(used)} (`mentl tighten` applies it)",
+    },
+    None => "→ {show_teaching(result)}",
   },
+  TeachAdd(_) => "→ {show_teaching(result)}",
+  TeachAsk(_) => "→ {show_teaching(result)}",
+  TeachNeed(_, _, _) => "→ {show_teaching(result)}",
 }
 
-fn join_unlock_labels(labels) with Memory + Alloc = if len(labels) == 0 {
-  "(no capabilities)"
-} else {
-  let first = head(labels)
-  let rest = rest(labels)
-  fold(first, (acc, label) => acc ++ ", " ++ label, rest)
+// The judgment's banked T_OverDeclared for a declaration, by the name the
+// collector banked it under (the audit's attribution, `audit_walk`).
+fn banked_tightening(name: String, tights) = match find(tightening_named(name), tights) {
+  Some(t) => match t {
+    (declared, used, _, _, _) => Some((declared, used)),
+  },
+  None => None,
+}
+
+fn tightening_named(name: String, t) = match t {
+  (_, _, n, _, _) => n == name,
 }
 
 // H5: AuditReport record per fn — the structured projection Mentl's
@@ -982,27 +1112,24 @@ fn audit_severable(entry) = match entry {
 // carries only what the module's fact does not already prove. A developer
 // reading `severs module-wide: Network` learns the whole module is
 // sandboxable — which 98 repetitions of that sentence actively hid.
-fn module_severance(entries) with Memory + Alloc = match entries {
+fn module_severance(entries) = match entries {
   [] => [],
   [first, ...more] => more |> fold(audit_severable(first), intersect_severance),
 }
 
-fn intersect_severance(acc, entry) with Memory + Alloc =
-  acc |> filter({ e => name_in_list(audit_severable(entry), e) })
+fn intersect_severance(acc, entry) = acc |> filter({ e => name_in_list(audit_severable(entry), e) })
 
 // A function's own severance ABOVE its module's — the delta, which is the
 // only part of its candidate set that is news.
-fn severance_beyond(module_sev, sev) with Memory + Alloc =
-  sev |> filter({ e => not_in_names(module_sev, e) })
+fn severance_beyond(module_sev, sev) = sev |> filter({ e => not_in_names(module_sev, e) })
 
-fn not_in_names(names, target: EffName) with Memory + Alloc = !name_in_list(names, target)
+fn not_in_names(names, target: EffName) = !name_in_list(names, target)
 
 // The candidates whose absence buys a NAMED capability — the teaching half.
 // The rest are true and carry nothing to act on, so they ride as one count
 // at the module, where they describe the capability MAP's gap rather than
 // the developer's code.
-fn severance_named(sev) with Memory + Alloc + Intern =
-  sev |> filter({ e => len(capabilities_for_severance(e)) > 0 })
+fn severance_named(sev) = sev |> filter({ e => len(capabilities_for_severance(e)) > 0 })
 
 // Severance candidates: every effect DECLARED in scope that the body
 // does not reach — adding `!E` for each is provable and unlocks what
@@ -1016,7 +1143,7 @@ fn severance_named(sev) with Memory + Alloc + Intern =
 // own "this name is an effect" edge (register_effect_ops draws it);
 // reading it live means a newly-declared effect enters the audit by
 // construction, and the literal list (with its drift marker) deletes.
-fn severance_vocabulary() with EnvRead + Intern + Memory + Alloc = match env_snapshot() {
+fn severance_vocabulary() = match env_snapshot() {
   Env(bindings) => bindings |> fold(
     [],
     (acc, b) => match b {
@@ -1091,7 +1218,7 @@ fn render_audit(entries) = {
 // — effects every body provably never reaches that no capability names. The
 // second line is a statement about the MEDIUM, not about the code, which is
 // why it belongs here once and nowhere per function.
-fn render_module_severance(module_sev) with Memory + Alloc + Intern + GraphRead = {
+fn render_module_severance(module_sev) = {
   let named = severance_named(module_sev)
   let unnamed = len(module_sev) - len(named)
   let named_line = if len(named) == 0 {
@@ -1204,10 +1331,9 @@ fn audit_report_lines(fn_name: String, row_str: String, beyond, referenced_by: [
 // from the graph: the span is the node's own coordinate, the module is the
 // column's. This is what span_render_local produced by scanning every
 // module's range for one containing a weave line — one read now, no scan.
-fn render_census_sites(ref sites) with GraphRead + Memory + Alloc =
-  sites |> map(census_site_line) |> str_concat_all
+fn render_census_sites(ref sites) = sites |> map(census_site_line) |> str_concat_all
 
-fn census_site_line(site) with Memory + Alloc = match site {
+fn census_site_line(site) = match site {
   (path, s) => "\n  at {path}:{show_span(s)}",
 }
 
@@ -1216,17 +1342,15 @@ fn census_site_line(site) with Memory + Alloc = match site {
 // The seam walk is GONE: the span is already the developer's own coordinate
 // and the module rides the obligation, so a line is one read and a name, with
 // no containment scan over every node to place it.
-fn render_debt_lines(obligations) with GraphRead + Memory + Alloc =
-  obligations |> map(render_debt_line) |> str_concat_all
+fn render_debt_lines(obligations) = obligations |> map(render_debt_line) |> str_concat_all
 
-fn render_debt_line(ob) with GraphRead + Memory + Alloc = match ob {
+fn render_debt_line(ob) = match ob {
   (modh, s, pred, _) => "\n  {show_predicate(pred)} at {module_name_of_handle(modh)}:{show_span(s)}",
 }
 
-fn render_smt_lines(obligations) with GraphRead + Memory + Alloc + Diagnostic + Intern =
-  obligations |> map(render_smt_line) |> str_concat_all
+fn render_smt_lines(obligations) = obligations |> map(render_smt_line) |> str_concat_all
 
-fn render_smt_line(ob) with GraphRead + Memory + Alloc + Diagnostic + Intern = match ob {
+fn render_smt_line(ob) = match ob {
   (modh, s, pred, _) => "\n; {module_name_of_handle(modh)}:{show_span(s)}\n{predicate_to_smt_lib(pred)}",
 }
 
@@ -1235,7 +1359,7 @@ fn render_smt_line(ob) with GraphRead + Memory + Alloc + Diagnostic + Intern = m
 // not guessed from text, which is the whole reason the facet exists: a grep
 // cannot tell a used name from one mentioned in a comment, and 52 of these
 // sat unseen behind exactly that.
-fn render_import_row(row) with Pure = match row {
+fn render_import_row(row) = match row {
   (m, imported, used) => {
     let mark = if used { "used" } else { "DEAD" }
     "  {mark}  {m} -> import {imported}"
@@ -1246,7 +1370,7 @@ fn import_row_is_dead(row) with Pure = match row {
   (_, _, used) => !used,
 }
 
-fn render_import_rows(rows) with Memory + Alloc =
+fn render_import_rows(rows) =
   "→ {int_to_str(len(rows))} import edge(s); {int_to_str(count(import_row_is_dead, rows))} bring nothing the importing module references\n{str_join_indented(map(render_import_row, rows))}"
 
 // The declared names rendered as the roster's dead half. The header states
@@ -1255,7 +1379,7 @@ fn render_import_rows(rows) with Memory + Alloc =
 // unreachable — it is the direct reference, measured, and a name reached
 // through an edge the graph does not draw surfaces here as exactly that
 // finding, never as noise to tune away.
-fn render_unref_row(row) with Pure = match row {
+fn render_unref_row(row) = match row {
   (m, name, _) => "  UNREFERENCED  {m} -> {name}",
 }
 
@@ -1279,7 +1403,7 @@ fn unref_row_is_dead(row) with Pure = match row {
 // standing beside unreached ones is carrying weight. No path convention
 // decides it — not `src/` versus `lib/`, which is a directory habit the graph
 // knows nothing about — the reachability walk does, from edges it already has.
-fn render_unreach_rows(rows) with Memory + Alloc = {
+fn render_unreach_rows(rows) = {
   let groups = unreach_groups(rows)
   let carrying = groups |> filter(group_carries_dead)
   let surface = groups |> filter(group_is_surface)
@@ -1303,22 +1427,22 @@ fn render_unreach_rows(rows) with Memory + Alloc = {
 // render its two-space step compounds: the module rows printed at 2, 4, 4 and
 // their decls at 6, 8, 8, which is what the first run of this projection did
 // and what renamed that helper.
-fn render_carrying_group(g) with Memory + Alloc = match g {
+fn render_carrying_group(g) = match g {
   (m, total, dead) => "  {m} — {int_to_str(len(dead))} of {int_to_str(total)} unreached\n{dead |> map(render_unreach_name) |> str_concat_all}",
 }
 
-fn render_unreach_name(name: String) with Memory + Alloc = "      {name}\n"
+fn render_unreach_name(name: String) = "      {name}\n"
 
-fn render_surface_group(g) with Memory + Alloc = match g {
+fn render_surface_group(g) = match g {
   (m, total, _) => "  {m} — all {int_to_str(total)}\n",
 }
 
 // One pass over the rows, which arrive in module order because the cells do.
 // `last` / `drop_last` are the snoc end's O(1) reads, so extending the open
 // group costs nothing per row (SYNTAX §Vocabulary — the names say which end).
-fn unreach_groups(rows) with Memory + Alloc = rows |> fold([], unreach_group_add)
+fn unreach_groups(rows) = rows |> fold([], unreach_group_add)
 
-fn unreach_group_add(acc, row) with Memory + Alloc = match row {
+fn unreach_group_add(acc, row) = match row {
   (m, name, hit) => if len(acc) == 0 {
     [(m, 1, unreach_dead_one(name, hit))]
   } else {
@@ -1336,19 +1460,19 @@ fn unreach_group_add(acc, row) with Memory + Alloc = match row {
 // for: both operands arrive free out of a tuple destructure, and a bare `==`
 // on an unproven operand word-floors to pointer-eq — every group would open
 // fresh and the roster would read one module per decl.
-fn same_module_path(a: String, b: String) with Memory + Alloc = a == b
+fn same_module_path(a: String, b: String) = a == b
 
-fn unreach_dead_one(name, hit) with Memory + Alloc = if hit == 0 { [name] } else { [] }
+fn unreach_dead_one(name, hit) = if hit == 0 { [name] } else { [] }
 
-fn group_carries_dead(g) with Memory + Alloc = match g {
+fn group_carries_dead(g) = match g {
   (_, total, dead) => len(dead) > 0 && len(dead) < total,
 }
 
-fn group_is_surface(g) with Memory + Alloc = match g {
+fn group_is_surface(g) = match g {
   (_, total, dead) => len(dead) > 0 && len(dead) == total,
 }
 
-fn render_unref_rows(rows) with Memory + Alloc =
+fn render_unref_rows(rows) =
   "→ {int_to_str(len(rows))} declared name(s); {int_to_str(count(unref_row_is_dead, rows))} that nothing outside their own declaration references\n{str_join_indented(map(render_unref_row, filter(unref_row_is_dead, rows)))}"
 
 // Each effect with how many of its ops anything performs. A handler ARM is
@@ -1357,7 +1481,7 @@ fn render_unref_rows(rows) with Memory + Alloc =
 // body names only the rest, because a surface at k<n is either half built,
 // bypassed at its callers, or dead with its handler still installed, and
 // those three are the finds of the last three landings.
-fn render_perform_row(row) with Memory + Alloc = match row {
+fn render_perform_row(row) = match row {
   (m, name, total, done) => {
     let mark = if done == 0 { "NONE" } else { "PART" }
     "  {mark}  {m} -> {name}  {int_to_str(done)}/{int_to_str(total)} ops performed"
@@ -1368,19 +1492,23 @@ fn perform_row_is_partial(row) with Pure = match row {
   (_, _, total, done) => done < total,
 }
 
-fn render_perform_rows(rows) with Memory + Alloc =
+fn render_perform_rows(rows) =
   "→ {int_to_str(len(rows))} effect(s); {int_to_str(count(perform_row_is_partial, rows))} with ops nothing performs\n{str_join_indented(map(render_perform_row, filter(perform_row_is_partial, rows)))}"
 
 // A declaration nothing references, carrying prose that explains how it is
 // used. The bytes are the weight of the belief; the zero is the graph
 // disagreeing with it. Read the prose to decide — this names the sites, it
 // does not judge them.
-fn render_orphan_row(row) with Memory + Alloc = match row {
+fn render_orphan_row(row) = match row {
   (m, name, bytes) => "  CLAIMED  {m} -> {name}  ({int_to_str(bytes)} bytes of prose, 0 references)",
 }
 
-fn render_orphan_rows(rows) with Memory + Alloc =
+fn render_orphan_rows(rows) =
   "→ {int_to_str(len(rows))} declaration(s) explained at length and referenced by nothing\n{str_join_indented(map(render_orphan_row, rows))}"
+
+fn render_provider_site(site) = match site {
+  (hname, address) => "\n  {hname}{address}",
+}
 
 fn render_query_result(result) = match result {
   QRType(ty, reason) => "→ {show_type(ty)}\n  Reason: {show_reason(reason)}",
@@ -1420,14 +1548,15 @@ fn render_query_result(result) = match result {
   // `predicate_to_smt_lib` is verify.mn's own serializer — this render is
   // its first reader, and Phase 8.3's handler swap is its second.
   "→ {int_to_str(len(obligations))} obligation(s) as SMT-LIB{render_smt_lines(obligations)}",
-  QRHandlerProvider(provider) => match provider {
-    Some(name) => "→ handled by {name}",
-    None => "→ no handler installed",
+  QRHandlerProvider(sites) => if len(sites) == 0 {
+    "→ no handler declares an arm for it"
+  } else {
+    "→ {int_to_str(len(sites))} handler(s) declare an arm for it{str_concat_all(map(render_provider_site, sites))}"
   },
   QRFlowLabel(label, reason) => "→ {show_flow_label(label)}\n  Reason: {show_reason(reason)}",
   QRCensus(label, sites) => "→ {int_to_str(len(sites))} {label}{render_census_sites(sites)}",
-  QRDecls(sites) => // The decls column's projection — the oracle queue's own seed set,
-  // rendered located so the seed is inspectable at the CLI.
+  QRDecls(sites) => // The decls column's projection: every declaration the judgment
+  // noted, located.
   "→ {int_to_str(len(sites))} judged decl(s){render_census_sites(sites)}",
   QRModules(paths) => "→ {int_to_str(len(paths))} module(s) in the weave\n  {str_join_indented(paths)}",
   QRImports(rows) => render_import_rows(rows),
@@ -1436,6 +1565,7 @@ fn render_query_result(result) = match result {
   QRPerforms(rows) => render_perform_rows(rows),
   QROrphanClaims(rows) => render_orphan_rows(rows),
   QRCost(mods, lines, nodes) => "→ {int_to_str(mods)} module(s) · {int_to_str(lines)} source line(s) · {int_to_str(nodes)} node(s) minted",
+  QRGhosts(sites) => "→ {int_to_str(len(sites))} cell(s) minted and never judged{render_census_sites(sites)}",
   QRWhere(lines, sites) => "→ {str_join_indented(lines)}{render_where_sites(sites)}",
   QRError(msg) => "error: {msg}",
 }
@@ -1448,7 +1578,7 @@ fn render_query_result(result) = match result {
 // `drop_last` replaced them (SYNTAX §Vocabulary). The callers
 // that want the indent name it; a caller that wants whole lines concatenates
 // them itself.
-fn str_join_indented(lines) with Pure = match lines {
+fn str_join_indented(lines) = match lines {
   [] => "",
   [one] => one,
   [h, ...t] => "{h}\n  {str_join_indented(t)}",
@@ -1457,12 +1587,27 @@ fn str_join_indented(lines) with Pure = match lines {
 // The site badges: the schedule word at the fanout's own line —
 // `>< [Thread] at file:line` — the exact fact lower reads ambiently,
 // projected statically (the where stamp's exactness law).
-fn render_where_sites(sites) with GraphRead + Memory + Alloc = render_where_sites_from(sites)
+// A fanout site in SYNTAX's own form, `>< [Thread ×4]`: the verb its author
+// wrote, the schedule its frame installs with how many branches it spawns,
+// then the callers that demand it threaded where its frame installs none.
+fn render_where_sites(sites) = sites |> map(where_site_line) |> str_concat_all
 
-fn render_where_sites_from(sites) with Memory + Alloc = match sites {
-  [] => "",
-  [(word, s), ...t] => "\n  >< [{word}] at {show_span(s)}{render_where_sites_from(t)}",
+fn where_site_line(site) = match site {
+  WhereSite(s) => "\n  {site_glyph(s.shape)} [{schedule_word(s.schedule)}{site_width(s.shape)}{site_demand(s.vias)}] at {show_span(s.span)}",
 }
+
+fn site_glyph(shape) = match shape {
+  Branches(FanShare, _) => "<|",
+  Branches(FanDistribute, _) => "><",
+  PerElement => "fanout",
+}
+
+fn site_width(shape) = match shape {
+  Branches(_, n) => " ×{int_to_str(n)}",
+  PerElement => ", a branch per element",
+}
+
+fn site_demand(vias) = if len(vias) == 0 { "" } else { "; Thread demanded via {join(", ", vias)}" }
 
 // show_flow_label — defined in types.mn alongside flow_label_join/flow_le.
 //
@@ -1494,7 +1639,11 @@ type QueryVerb
   | QVPerforms
   | QVOrphanClaims
   | QVCost
+  | QVGhosts
   | QVSmt
+  | QVText
+  | QVProse
+  | QVWrites
   | QVUnknownVerb
 
 fn classify_query_verb(w: String) with Pure = if w == "type" {
@@ -1537,29 +1686,41 @@ fn classify_query_verb(w: String) with Pure = if w == "type" {
   QVOrphanClaims
 } else if w == "cost" {
   QVCost
+} else if w == "ghosts" {
+  QVGhosts
 } else if w == "smt" {
   QVSmt
+} else if w == "text" {
+  QVText
+} else if w == "prose" {
+  QVProse
+} else if w == "writes" {
+  QVWrites
 } else {
   QVUnknownVerb
 }
 
-fn parse_query_string(q) = {
-  // split returns a slice VIEW; the list-pattern match assumes the flat
-  // [len][elems] contract, so flatten once before matching (§7 face 13)
-  // — and read words ONCE, never re-split per arm (Carried-Truth).
-  let words = list_to_flat(split(" ", q))
+// `scope` is the module the question is about — the file the developer
+// named — and "" when it is about every module (a resident tool, the REPL).
+// Only a question that reads locals needs it: a local is found where it is
+// read, and the link's other modules read names of their own.
+fn parse_query_string(scope: String, q) = {
+  // read words ONCE, never re-split per arm (Carried-Truth); a list pattern
+  // reads any representation through the one length header, so the split's
+  // slice is matched as it is
+  let words = split(" ", q)
   match words {
     [] => QUnknown(q),
-    [w0] => build_question(classify_query_verb(w0), "", q),
-    [w0, w1] => build_question(classify_query_verb(w0), w1, q),
-    _ => build_question(classify_query_verb(query_head(words)), query_last(words), q),
+    [w0] => build_question(classify_query_verb(w0), "", q, scope),
+    [w0, w1] => build_question(classify_query_verb(w0), w1, q, scope),
+    _ => build_question(classify_query_verb(query_head(words)), query_last(words), q, scope),
   }
 }
 
 // build_question — pair the classified verb with its argument. Nullary verbs
 // (unresolved/verification) ignore the arg; unary verbs carry it. A verb whose
 // arity its arg cannot satisfy projects to QUnknown(raw) — the honest unknown.
-fn build_question(verb, arg, raw) with Memory + Alloc = match verb {
+fn build_question(verb, arg, raw, scope: String) = match verb {
   QVUnresolved => QUnresolved,
   QVVerification => QVerifyDebt,
   QVType => QTypeOf(arg),
@@ -1573,7 +1734,7 @@ fn build_question(verb, arg, raw) with Memory + Alloc = match verb {
     Some(shape) => QCensus(shape),
     None => QUnknown(raw),
   },
-  QVWhere => QWhere(arg),
+  QVWhere => QWhere(arg, scope),
   QVDecls => QDecls,
   QVVariants => QVariants(arg),
   QVModules => QModules,
@@ -1583,16 +1744,24 @@ fn build_question(verb, arg, raw) with Memory + Alloc = match verb {
   QVPerforms => QPerforms,
   QVOrphanClaims => QOrphanClaims,
   QVCost => QCost,
+  QVGhosts => QGhosts,
   QVSmt => QSmt,
+  QVText => // The needle is everything after the verb, spaces included: a WAT
+  // fragment such as `(type $ft1)` is one question, never its last word.
+  QCensus(CsText(words_after_the_verb(raw))),
+  QVProse => QCensus(CsProse(words_after_the_verb(raw))),
+  QVWrites => QStateWrites(arg),
   QVUnknownVerb => QUnknown(raw),
 }
+
+fn words_after_the_verb(q: String) = join(" ", rest(split(" ", q)))
 
 // The shape classifier at the grammar's one boundary: a named judgment
 // shape, "anonymous", or one of the five glyphs matched THROUGH
 // show_pipe_kind (the one glyph projection — the constructor roster
 // appears exactly here, where the external string enters). An
 // unrecognized shape is the honest QUnknown.
-fn census_shape_of(arg) with Memory + Alloc = if arg == "anonymous" {
+fn census_shape_of(arg) = if arg == "anonymous" {
   Some(CsAnonymous)
 } else if arg == "eta" {
   Some(CsEta)
@@ -1622,12 +1791,10 @@ fn census_shape_of(arg) with Memory + Alloc = if arg == "anonymous" {
   Some(CsDefaultParam)
 } else if arg == "declared-row-hof" {
   Some(CsDeclaredRowHof)
-} else if arg == "wide-row" {
-  Some(CsWideRow)
+} else if arg == "positive-row" {
+  Some(CsAuthoredPositiveRow)
 } else if arg == "record-pattern" {
   Some(CsRecordPattern)
-} else if arg == "record-pattern-open" {
-  Some(CsRecordPatternOpen)
 } else {
   match find(
     (k) => show_pipe_kind(k) == arg,
@@ -1641,6 +1808,6 @@ fn census_shape_of(arg) with Memory + Alloc = if arg == "anonymous" {
 // The verb is the FIRST word (`<verb> [arg]` — the documented query
 // grammar); the prior read of last(ws) made every 3+-word query's verb
 // and argument the SAME final word.
-fn query_head(ws) with Memory = if len(ws) == 0 { "" } else { head(ws) }
+fn query_head(ws) = if len(ws) == 0 { "" } else { head(ws) }
 
-fn query_last(ws) with Memory = if len(ws) == 0 { "" } else { list_index(ws, len(ws) - 1) }
+fn query_last(ws) = if len(ws) == 0 { "" } else { list_index(ws, len(ws) - 1) }

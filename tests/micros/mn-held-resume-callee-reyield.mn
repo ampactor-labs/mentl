@@ -1,0 +1,21 @@
+// expect: 22
+// The same re-yield, the lambda handed to a callee that computes after it
+// returns (`plus_one` is not tail-transparent in `f`, so the arm is held).
+// The resume inside the lambda re-drives the handler when the remainder
+// performs again, through the install record the arm was born holding.
+// Measured 2026-10-01 on boot 477bb667: 1049033 printed, exit 5.
+effect Cell {
+  bump() -> Int
+}
+
+fn plus_one(f) = f() + 1
+
+handler cell with s = 10 {
+  bump() => plus_one(() => resume(s)),
+}
+
+fn body() = bump() + bump()
+
+fn main() = {
+  body()
+} ~> cell

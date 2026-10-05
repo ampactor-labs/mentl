@@ -1,0 +1,27 @@
+// expect: 21
+// The honest form of a handler that answers some ops of an effect: it
+// forwards the rest. An arm that performs its own op resolves OUTER of its
+// install (deep-handler semantics), so `only_inc`'s `get` arm hands `get`
+// to whatever encloses it — here `both`, answering 20 — and `inc` is its
+// own, 1. The row sees the forwarding: `only_inc`'s install re-adds
+// `State`, so a `!State` over `f`'s body would refuse
+// (tests/micros/mn-handler-forwarding-arm-refuses.mn), which is what the
+// partial handler never let it do.
+effect State {
+  inc() -> Int
+  get() -> Int
+}
+
+handler both {
+  inc() => resume(10),
+  get() => resume(20),
+}
+
+handler only_inc {
+  inc() => resume(1),
+  get() => resume(get()),
+}
+
+fn f() -> Int = get() + inc() ~> only_inc
+
+fn main() -> Int = f() ~> both

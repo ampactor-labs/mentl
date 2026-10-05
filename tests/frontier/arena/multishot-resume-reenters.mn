@@ -1,0 +1,26 @@
+// A multi-shot handler outside an arena, its op performed inside. Each
+// resumption runs the rest of the arena's body again, so each one is an
+// arena instance of its own: it opens where the resumption starts and exits
+// where the body ends, reclaiming what that resumption built, while the
+// continuation both resumptions share lives past every one of them.
+// Expected (0 + 10) + (1 + 10) = 21, one suspension, two exits.
+effect Pick {
+  pick() -> Int
+}
+
+handler both {
+  pick() => {
+    let a = resume(0)
+    let b = resume(1)
+    a + b
+  },
+}
+
+fn build(n) = if n == 0 { [] } else { build(n - 1) ++ [n] }
+
+fn inner(xs) = pick() + len(xs) + len(build(40)) - 40 ~> arena
+
+fn main() = {
+  let r = inner(build(10)) ~> both
+  if r == 21 && arena_stat(ArSuspended) == 1 && arena_stat(ArExits) == 2 { 42 } else { 1 }
+}

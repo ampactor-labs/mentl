@@ -1,0 +1,13 @@
+// expect: 10
+// A generic constructor's payload widths are the instantiation's, so a
+// pattern under a Float twin finds the second payload after an 8-byte first
+// one. The payload types the pattern carries are the body's own variables,
+// and the offset fold read them without the twin's instantiation, as words.
+// Measured on boot 0bc8383e: 3 — `second(Pair(1.5, 7))` read half of 1.5.
+type P = Pair(a, b)
+
+fn second(p) = match p {
+  Pair(_, y) => y,
+}
+
+fn main() = second(Pair(1.5, 7)) + second(Pair(2, 3))

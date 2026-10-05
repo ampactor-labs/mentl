@@ -1,0 +1,13 @@
+// teach 11: add m: NonNegative
+// The open claim is that m + 1 is Positive, read through the sum's lower
+// bound. A precondition of 0 <= m makes it hold, and so does 0 < m, but the
+// call with 0 proves only the first.
+type Positive = Int where 0 < self
+
+type NonNegative = Int where 0 <= self
+
+fn inv(n: Positive) = 100 / n
+
+fn f(m) = inv(m + 1)
+
+fn main() = f(4) + f(0)

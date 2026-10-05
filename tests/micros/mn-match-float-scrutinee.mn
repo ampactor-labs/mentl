@@ -1,0 +1,29 @@
+// expect: 40
+// A match on a FLOAT scrutinee binds and compares at the scrutinee's own
+// width. The arm-list literal `{ v => … }` IS a match applied (SYNTAX
+// §«Function literals»), so this is the canonical single-parameter
+// lambda over a float — the shape every DSP stage writes. On boot
+// 43aeb30f the scrutinee was parked in the i32 scratch and the binder
+// declared i32 while its reads were `$v.f64`: the module refused to
+// ASSEMBLE after `mentl check` had passed it clean.
+fn twice(x: Float) -> Float = match x { v => v * 2.0 }
+
+fn is_half(x: Float) -> Int = match x {
+  0.5 => 1,
+  _ => 0,
+}
+
+// An as-binder at the root binds the whole value at the root's width.
+fn quad_if_half(x: Float) -> Float = match x {
+  h @ 0.5 => h * 4.0,
+  _ => 0.0,
+}
+
+fn main() = {
+  let a = twice(0.5)
+  let b = ({ v => v + 0.25 })(0.5)
+  let c = is_half(0.5)
+  let d = is_half(0.25)
+  let e = quad_if_half(0.5)
+  if a == 1.0 && b == 0.75 && c == 1 && d == 0 && e == 2.0 { 40 } else { 41 }
+}

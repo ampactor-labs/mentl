@@ -1,0 +1,10 @@
+// The handler that serves the arm's ask is installed INSIDE the asking
+// handler's extent: hf's arm performs `op`, and `he` sits under hf. The arm
+// resolves outer of hf, where no E handler is; the row says exactly that
+// (row(hf) carries E past the inner install to the root). Refused. The boot
+// accepted it and the run aborted at the walk.
+effect E { op() -> Int }
+effect F { f_op() -> Int }
+handler hf { f_op() => resume(op() + 1) }
+handler he { op() => resume(10) }
+fn main() = (f_op()) ~> he ~> hf

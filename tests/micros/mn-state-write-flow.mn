@@ -1,0 +1,22 @@
+// expect: refuse E_RefinementRejected
+// A state is as classified as everything written into it: `v` starts public,
+// `stash` writes a classified value, so splicing `v` into a string is a
+// flow of a secret. The label read the init alone, so this checked clean on
+// pin 53f7404b and boot 1a68ecc0, where a classified INIT refused.
+type Vault = String where classified(self)
+
+fn classified(s) = true
+
+fn getpw() -> Vault = "hunter2"
+
+effect Keep {
+  stash() -> Int
+  show_it() -> String
+}
+
+handler keeper with v = "public" {
+  stash() => resume(0) with v = getpw(),
+  show_it() => resume("msg: {v}"),
+}
+
+fn main() = stash() + len(show_it()) ~> keeper

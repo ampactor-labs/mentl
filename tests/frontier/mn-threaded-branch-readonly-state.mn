@@ -1,0 +1,11 @@
+// B1's race rule reads WRITES, not declarations: `k` declares state but no
+// arm writes it (no `resume … with`), so two spawned instances reading one
+// record cannot race — the rule admits it, where a rule keyed on "declares
+// state" would refuse a program that is a config parameter in costume.
+// The stateful refusal (mn-threaded-branch-stateful) differs from this one
+// only by `with n = n + 1` on the resume. Expected exit: 10.
+effect Counter { bump() -> Int }
+handler k with n = 5 { bump() => resume(n) }
+fn main() = match (0 <| ({ _ => bump() }, { _ => bump() })) ~> parallel_compose ~> k {
+  (a, b) => a + b,
+}

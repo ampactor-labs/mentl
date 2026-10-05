@@ -1,13 +1,16 @@
 // The intent ranker's contract: the fan orders survivors by LOCAL
 // INTENT read from the graph — a name already USED near the hole
 // outranks a nearer-declared but unused sibling. kerning is declared
-// AFTER width so enumeration order alone would surface kerning first;
-// the use edge at banner's first line lifts width above it.
-fn kerning() -> Int with Pure = 2
-fn width() -> Int with Pure = 40
+// BEFORE width so enumeration order alone would surface kerning first;
+// the use edge at banner's first line lifts width above it. The hole is
+// Positive so the integer ladder contributes one member (1) and the tie
+// stays three wide — the width the surface still lists (C2).
+type Positive = Int where 0 < self
+fn kerning() -> Positive with Pure = 2
+fn width() -> Positive with Pure = 40
 fn banner() -> Int with Pure = {
   let pad = width() / 10
-  let total = ?? + pad
-  total
+  let base: Positive = ??
+  base + pad
 }
 fn main() = banner()

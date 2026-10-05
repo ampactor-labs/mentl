@@ -1,0 +1,8 @@
+// expect: 20
+// The overflow face is a DISJUNCTION: a constant dividend that is not INT_MIN
+// proves it whatever the divisor, so `NonZero` suffices here.
+type NonZero = Int where !(self == 0)
+
+fn share(n: NonZero) with !Trap = 100 / n
+
+fn main() = share(5)

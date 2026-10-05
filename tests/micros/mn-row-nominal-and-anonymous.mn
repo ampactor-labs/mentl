@@ -1,0 +1,17 @@
+// expect: 46
+// mn-row-nominal-and-anonymous — one helper reads two fields of a nominal
+// record and of an anonymous one.
+//
+// `Person` brands three fields; the anonymous record has two. `pick`
+// learns only `x` and `y`, so each call site keys its own layout: the
+// nominal record's slots sit behind `w`, the anonymous one's do not.
+// (2·10 + 3) + (2·10 + 3).
+//
+// RED on boot 730e097a: 115. The helper's two fields met as two open
+// rows and each was written as the other's whole remainder, so one layout
+// served both call sites.
+type Person = {w: Int, x: Int, y: Int}
+
+fn pick(u) = u.x * 10 + u.y
+
+fn main() -> Int = pick(Person{w: 9, x: 2, y: 3}) + pick({x: 2, y: 3})

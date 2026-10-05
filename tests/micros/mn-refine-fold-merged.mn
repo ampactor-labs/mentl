@@ -1,0 +1,14 @@
+// expect: refuse E_EffectMismatch
+// The H4 tree's regression witness: the callback merges its parameter with
+// `inv` into a list, and the class that merge built had carried `inv`'s
+// contract into the parameter, so the pin refused this by accident. H4 read
+// the parameter as a learning one, which demands nothing, and accepted it;
+// the channel judges it for the reason it is wrong — the list handed in
+// holds `inv`.
+type Positive = Int where 0 < self
+
+fn inv(n: Positive) = 100 / n
+
+fn run(k) with !Trap = fold(0, (acc, f) => { let g = [f, inv]; acc + f(k + 1) }, [inv])
+
+fn main() = run(0 - 1)

@@ -1,0 +1,7 @@
+// propose 5:17: fill Box(??)
+// One fielded constructor fills as the construction awaiting its next hole.
+type Box = Box(Int)
+
+fn f() -> Box = ??
+
+fn main() = 0

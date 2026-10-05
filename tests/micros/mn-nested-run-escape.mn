@@ -1,0 +1,11 @@
+// expect: 42
+// THE RUN'S RECORDS OUTLIVE THEIR FRAME: `mk` returns `ping`, whose record
+// holds `pong`'s, which holds `ping`'s and `k`. The cycle lives in the
+// records themselves, so it answers wherever the value is called.
+fn mk(k) = {
+  fn ping(n) = if n == 0 { k } else { pong(n - 1) }
+  fn pong(n) = if n == 0 { k } else { ping(n - 1) }
+  ping
+}
+
+fn main() = mk(42)(5)

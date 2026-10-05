@@ -1,0 +1,17 @@
+// CROWN refinement (H4, 2026-10-01): a function value merged at a join owes
+// every precondition a branch can bring. `pick` returns `inv2` or `inv`, so a
+// caller applying what it returns owes `inv`'s `n: Positive` — and the
+// `Trap` that precondition guards when the claim is open. The class kept the
+// first branch's contract: on boot 13e8484a and pin e23392f6 this checked
+// clean and divided by zero. Expect E_EffectMismatch at run.
+type Positive = Int where 0 < self
+
+fn inv(n: Positive) = 100 / n
+
+fn inv2(n) = n + 1
+
+fn pick(c) = if c { inv2 } else { inv }
+
+fn run(k) with !Trap = pick(false)(k + 1)
+
+fn main() = run(0 - 1)

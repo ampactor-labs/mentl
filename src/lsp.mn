@@ -107,7 +107,7 @@ type Location = Location(String, Int, Int, Int, Int)
 // Per drift mode 6: explicit shape detection (request has id+method;
 // notification has method no id; response has id+result no method).
 // Anything else is an LspUnknown notification with empty params.
-fn parse_lsp_message(v) with Memory + Alloc = {
+fn parse_lsp_message(v) = {
   let method_opt = json_obj_get(v, "method")
   let id_opt = json_obj_get(v, "id")
   let params = match json_obj_get(v, "params") {
@@ -145,7 +145,7 @@ fn parse_lsp_message(v) with Memory + Alloc = {
 // ADT. The ONE place where strings cross into the dispatch substrate;
 // downstream is ADT-only. Per drift mode 8: input strings are
 // projected, not stored.
-fn classify_method(method) with Memory + Alloc = if method == "initialize" {
+fn classify_method(method) = if method == "initialize" {
   LspInitialize
 } else if method == "initialized" {
   LspInitialized
@@ -182,7 +182,7 @@ fn classify_method(method) with Memory + Alloc = if method == "initialize" {
 // dispatch_request — request methods (require response). H6
 // exhaustive over LspMethodKind. Notification-shaped methods that
 // arrive as requests get LspNullResp (graceful protocol tolerance).
-fn dispatch_request(kind, params) with Interact + Memory + Alloc + Intern + GraphRead + EnvRead = match kind {
+fn dispatch_request(kind, params) = match kind {
   LspInitialize => handle_initialize(params),
   LspShutdown => LspNullResp,
   LspTextDocHover => handle_hover(params),
@@ -225,7 +225,7 @@ fn dispatch_notification(kind, params) = match kind {
 //
 // lsp_extract_uri — pull `params.textDocument.uri` String. Default
 // empty when missing.
-fn lsp_extract_uri(params) with Memory + Alloc = match json_obj_get(params, "textDocument") {
+fn lsp_extract_uri(params) = match json_obj_get(params, "textDocument") {
   None => "",
   Some(td) => match json_obj_get(td, "uri") {
     None => "",
@@ -235,7 +235,7 @@ fn lsp_extract_uri(params) with Memory + Alloc = match json_obj_get(params, "tex
 
 // lsp_extract_position — pull `params.position.{line, character}`.
 // Returns (line, character) Ints. Default (0, 0) on missing.
-fn lsp_extract_position(params) with Memory + Alloc = match json_obj_get(params, "position") {
+fn lsp_extract_position(params) = match json_obj_get(params, "position") {
   None => (0, 0),
   Some(p) => {
     let line = json_int_or_default(json_obj_get_unwrap(p, "line"), 0)
@@ -244,7 +244,7 @@ fn lsp_extract_position(params) with Memory + Alloc = match json_obj_get(params,
   },
 }
 
-fn json_obj_get_unwrap(v, key) with Memory + Alloc = match json_obj_get(v, key) {
+fn json_obj_get_unwrap(v, key) = match json_obj_get(v, key) {
   None => JNull,
   Some(x) => x,
 }
@@ -253,8 +253,8 @@ fn json_obj_get_unwrap(v, key) with Memory + Alloc = match json_obj_get(v, key) 
 // are 0-indexed; Mentl spans 1-indexed. v1 produces a zero-width span
 // at (line+1, char+1); refined ranges (selection-aware) land as
 // MV-LSP.range peer sub-handle.
-fn position_to_span(pos) with Memory + Alloc = match pos {
-  (line, ch) => Span(line + 1, ch + 1, line + 1, ch + 1),
+fn position_to_span(pos) = match pos {
+  (line, ch) => caret_span(line + 1, ch + 1),
 }
 
 // ─── handle_* — LSP method bodies ─────────────────────────────────────
@@ -263,7 +263,7 @@ fn position_to_span(pos) with Memory + Alloc = match pos {
 // capabilities (text-sync = full; hover; completion; codeAction;
 // diagnostic; definition; references). Project root extracted from
 // rootUri or workspaceFolders.
-fn handle_initialize(_params) with Interact + Memory + Alloc = {
+fn handle_initialize(_params) = {
   project_root()
   let caps = JObj([
     // 1 = Full
@@ -281,7 +281,7 @@ fn handle_initialize(_params) with Interact + Memory + Alloc = {
 }
 
 // handle_hover — focus + ask(QTypeAt) → HoverContent. Per MV §2.8 AT1.
-fn handle_hover(params) with Memory + Alloc + Interact + GraphRead + Intern = {
+fn handle_hover(params) = {
   let uri = lsp_extract_uri(params)
   let pos = lsp_extract_position(params)
   let span = position_to_span(pos)
@@ -302,7 +302,7 @@ fn handle_hover(params) with Memory + Alloc + Interact + GraphRead + Intern = {
 // returned VoiceLine's slots to CompletionItems. The cursor's Propose
 // tentacle IS the completion source (PLAN §2 proposing-cursor): one
 // propose, the SIdent slots become items. Silence → empty list.
-fn handle_completion(params) with Interact + Alloc + Memory = {
+fn handle_completion(params) = {
   let uri = lsp_extract_uri(params)
   let pos = lsp_extract_position(params)
   let span = position_to_span(pos)
@@ -318,7 +318,7 @@ fn handle_completion(params) with Interact + Alloc + Memory = {
 // offering slots to CodeActions. Same propose path as completion (MV
 // §2.7.6: codeAction and completion both surface Propose-tentacle
 // voice). SLit slots (offering closers) become the quick-fix actions.
-fn handle_code_action(params) with Interact + Alloc + Memory = {
+fn handle_code_action(params) = {
   let uri = lsp_extract_uri(params)
   let pos = lsp_extract_position(params)
   let span = position_to_span(pos)
@@ -334,7 +334,7 @@ fn handle_code_action(params) with Interact + Alloc + Memory = {
 // obligations the graph holds; project each (span, predicate, reason)
 // to an LSP LspDiagnostic. The verify-debt IS the diagnostic set (the
 // graph proved it) — read live, never an empty []-fabrication.
-fn handle_diagnostic(params) with Memory + Alloc + Interact + GraphRead + Intern = {
+fn handle_diagnostic(params) = {
   let uri = lsp_extract_uri(params)
   ensure_doc_open(uri)
   match consult(QVerifyDebt) {
@@ -351,7 +351,7 @@ fn handle_diagnostic(params) with Memory + Alloc + Interact + GraphRead + Intern
 // its binding span LIVE from the env entry's Located Reason (the graph
 // proved where the name lives). No echo of the cursor's own position;
 // the defining span IS the goto target. None when unresolved.
-fn handle_definition(params) with Memory + Alloc + Interact + GraphRead + !Mutate + EnvRead = {
+fn handle_definition(params) with !Mutate = {
   let uri = lsp_extract_uri(params)
   let pos = lsp_extract_position(params)
   let span = position_to_span(pos)
@@ -370,7 +370,7 @@ fn handle_definition(params) with Memory + Alloc + Interact + GraphRead + !Mutat
 // consult(QRefsOf(name)) for the live use-edge set (every VarRef the
 // parser wove). Each span projects to a Location. This [Location] IS
 // the rename edit set — read live, never an empty []-fabrication.
-fn handle_references(params) with Memory + Alloc + Interact + GraphRead + !Mutate = {
+fn handle_references(params) with !Mutate = {
   let uri = lsp_extract_uri(params)
   let pos = lsp_extract_position(params)
   let span = position_to_span(pos)
@@ -390,16 +390,15 @@ fn handle_references(params) with Memory + Alloc + Interact + GraphRead + !Mutat
 }
 
 // span_to_location — project a Mentl Span to an LSP Location at the doc URI.
-fn span_to_location(uri, span) with Memory + Alloc = match span {
+fn span_to_location(uri, span) = match span {
   Span(sl, sc, el, ec) => Location(uri, sl, sc, el, ec),
 }
 
 // spans_to_locations — project each reference Span to a Location (buffer-rev
 // accumulate; the projection is order-stable over the use-edge set).
-fn spans_to_locations(spans, uri) with Memory + Alloc =
-  map_spans_to_locations(spans, uri, 0, len(spans), [])
+fn spans_to_locations(spans, uri) = map_spans_to_locations(spans, uri, 0, len(spans), [])
 
-fn map_spans_to_locations(spans, uri, i, n, acc_rev) with Memory + Alloc = if i >= n {
+fn map_spans_to_locations(spans, uri, i, n, acc_rev) = if i >= n {
   reverse(acc_rev)
 } else {
   let loc = span_to_location(uri, list_index(spans, i))
@@ -410,10 +409,10 @@ fn map_spans_to_locations(spans, uri, i, n, acc_rev) with Memory + Alloc = if i 
 // predicate, reason) to an LSP LspDiagnostic. severity 1 = Error (a refinement
 // the path could not discharge). The predicate's text is the message; the
 // span is the obligation site (read live from the debt the graph holds).
-fn diagnostics_from_debt_lsp(debt, uri) with Memory + Alloc + GraphRead + !Mutate + Intern =
+fn diagnostics_from_debt_lsp(debt, uri) with !Mutate =
   map_debt_to_diagnostics(debt, 0, len(debt), [])
 
-fn map_debt_to_diagnostics(debt, i, n, acc_rev) with Memory + Alloc + GraphRead + !Mutate + Intern = if i >= n {
+fn map_debt_to_diagnostics(debt, i, n, acc_rev) with !Mutate = if i >= n {
   reverse(acc_rev)
 } else {
   match list_index(debt, i) {
@@ -457,14 +456,14 @@ fn handle_did_open(params) = {
 // re-adds .mn and resolves it (its DIRECT-read arm accepts an absolute or
 // relative path as itself), so an editor's file://<abs>/foo.mn reaches foo.mn
 // from any directory — the same resolver `mentl check <path>` rides.
-fn uri_to_module(uri) with Memory + Alloc = match uri_to_path(uri) {
+fn uri_to_module(uri) = match uri_to_path(uri) {
   Path(p) => if ends_with(p, ".mn") { str_slice(p, 0, byte_len(p) - 3) } else { p },
 }
 
 // handle_did_change — text-sync = Full; replace cached text via edit.
 // v1 uses re-open semantics as the honest fallback (edit substrate
 // gates on MV.2.e.P.edit peer sub-handle which lands separately).
-fn handle_did_change(params) with Memory + Alloc + Interact = {
+fn handle_did_change(params) = {
   let uri = lsp_extract_uri(params)
   ensure_doc_open(uri)
   ()
@@ -472,7 +471,7 @@ fn handle_did_change(params) with Memory + Alloc + Interact = {
 
 // handle_did_save — save_file on the cached FileHandle. The
 // mentl_voice_filesystem handler's save arm writes cached text to disk.
-fn handle_did_save(params) with Memory + Alloc + Interact = {
+fn handle_did_save(params) = {
   let uri = lsp_extract_uri(params)
   let fh = ensure_doc_open(uri)
   save_file(fh)
@@ -487,12 +486,12 @@ fn handle_did_close(_params) with Pure = ()
 // The lsp_adapter caches uri ↔ FileHandle mappings so didOpen + subsequent
 // hover/completion/etc. share the same handle. ensure_doc_open looks
 // up or opens. The cache lives in lsp_adapter handler state; access
-// here is via Interact.open_file which mentl_voice_filesystem handles.
+// here is via Workspace.open_file which mentl_voice_filesystem handles.
 //
 // v1 simplification: every ensure_doc_open performs open_file
 // unconditionally; mentl_voice_filesystem's handles_table grows
 // monotonically. Cache eviction is MV-LSP.doctable-evict peer.
-fn ensure_doc_open(uri) with Memory + Alloc + Interact = {
+fn ensure_doc_open(uri) = {
   let path = uri_to_path(uri)
   open_file(path)
 }
@@ -500,7 +499,7 @@ fn ensure_doc_open(uri) with Memory + Alloc + Interact = {
 // uri_to_path — strip "file://" prefix; pass through other schemes.
 // v1 supports file: scheme only; richer URI parsing (file:///host/...,
 // percent-encoding) is MV-LSP.uri-parse peer.
-fn uri_to_path(uri) with Memory + Alloc = {
+fn uri_to_path(uri) = {
   let prefix = "file://"
   let plen = byte_len(prefix)
   if byte_len(uri) > plen && uri_starts_with(uri, prefix, 0, plen) {
@@ -510,7 +509,7 @@ fn uri_to_path(uri) with Memory + Alloc = {
   }
 }
 
-fn uri_starts_with(uri, prefix, i, n) with Memory = if i >= n {
+fn uri_starts_with(uri, prefix, i, n) = if i >= n {
   true
 } else if byte_at(uri, i) == byte_at(prefix, i) {
   uri_starts_with(uri, prefix, i + 1, n)
@@ -519,23 +518,22 @@ fn uri_starts_with(uri, prefix, i, n) with Memory = if i >= n {
 }
 
 // ─── HoverContent / CompletionItem / CodeAction projection ────────────
-fn hover_from_type(ty, _reason) with Memory + Alloc + GraphRead + !Mutate + Intern = {
+fn hover_from_type(ty, _reason) with !Mutate = {
   let type_text = show_type(ty)
   HoverContent("`{type_text}`")
 }
 
-fn hover_from_row(row, _reason) with Memory + Alloc + GraphRead + !Mutate + Intern = {
+fn hover_from_row(row, _reason) with !Mutate = {
   let row_text = show_effrow(row)
   HoverContent("Effect row: `{row_text}`")
 }
 
-fn hover_from_reason(reason) with Memory + Alloc + GraphRead + !Mutate + Intern =
-  HoverContent("Reason: {show_reason(reason)}")
+fn hover_from_reason(reason) with !Mutate = HoverContent("Reason: {show_reason(reason)}")
 
 // completion_items_from_slots — project VoiceLine slots to LSP
 // CompletionItems. SIdent slots become items (label = ident,
 // kind=14 = Keyword as v1 placeholder). Other slot kinds skipped.
-fn completion_items_from_slots(slots) with Alloc + Memory = flatten(map(
+fn completion_items_from_slots(slots) = flatten(map(
   {
     SIdent(name) => [CompletionItem(name, "", 14)],
     SType(_) => [],
@@ -551,7 +549,7 @@ fn completion_items_from_slots(slots) with Alloc + Memory = flatten(map(
 
 // code_actions_from_slots — project VoiceLine slots to LSP
 // CodeActions. SLit slots carrying suggestion text become actions.
-fn code_actions_from_slots(slots) with Alloc + Memory = flatten(map(
+fn code_actions_from_slots(slots) = flatten(map(
   {
     SLit(text) => [CodeAction(text, "")],
     SIdent(_) => [],
@@ -569,7 +567,7 @@ fn code_actions_from_slots(slots) with Alloc + Memory = flatten(map(
 //
 // response_to_json — project the typed response shape to JsonValue
 // for serialization. H6 over LspResponseBody.
-fn response_to_json(body) with Memory + Alloc = match body {
+fn response_to_json(body) = match body {
   LspNullResp => JNull,
   LspHoverResp(None) => JNull,
   LspHoverResp(Some(content)) => hover_content_to_json(content),
@@ -582,11 +580,11 @@ fn response_to_json(body) with Memory + Alloc = match body {
   LspInitializeResp(result) => result,
 }
 
-fn hover_content_to_json(content) with Memory + Alloc = match content {
+fn hover_content_to_json(content) = match content {
   HoverContent(md) => JObj([("contents", JObj([("kind", JStr("markdown")), ("value", JStr(md))]))]),
 }
 
-fn map_completion_items_to_json(items, i, n, acc_rev) with Memory + Alloc = if i >= n {
+fn map_completion_items_to_json(items, i, n, acc_rev) = if i >= n {
   reverse(acc_rev)
 } else {
   let item = list_index(items, i)
@@ -599,7 +597,7 @@ fn map_completion_items_to_json(items, i, n, acc_rev) with Memory + Alloc = if i
   }
 }
 
-fn map_code_actions_to_json(actions, i, n, acc_rev) with Memory + Alloc = if i >= n {
+fn map_code_actions_to_json(actions, i, n, acc_rev) = if i >= n {
   reverse(acc_rev)
 } else {
   let action = list_index(actions, i)
@@ -611,7 +609,7 @@ fn map_code_actions_to_json(actions, i, n, acc_rev) with Memory + Alloc = if i >
   }
 }
 
-fn map_diagnostics_to_json(diags, i, n, acc_rev) with Memory + Alloc = if i >= n {
+fn map_diagnostics_to_json(diags, i, n, acc_rev) = if i >= n {
   reverse(acc_rev)
 } else {
   let d = list_index(diags, i)
@@ -624,18 +622,18 @@ fn map_diagnostics_to_json(diags, i, n, acc_rev) with Memory + Alloc = if i >= n
   }
 }
 
-fn map_locations_to_json(locs, i, n, acc_rev) with Memory + Alloc = if i >= n {
+fn map_locations_to_json(locs, i, n, acc_rev) = if i >= n {
   reverse(acc_rev)
 } else {
   let loc = list_index(locs, i)
   map_locations_to_json(locs, i + 1, n, [location_to_json(loc)] ++ acc_rev)
 }
 
-fn location_to_json(loc) with Memory + Alloc = match loc {
+fn location_to_json(loc) = match loc {
   Location(uri, sl, sc, el, ec) => JObj([("uri", JStr(uri)), ("range", range_to_json(sl, sc, el, ec))]),
 }
 
-fn range_to_json(sl, sc, el, ec) with Memory + Alloc =
+fn range_to_json(sl, sc, el, ec) =
   JObj([("start", JObj([("line", JNum(float_of_int(sl - 1))), ("character", JNum(float_of_int(sc - 1)))])), ("end", JObj([("line", JNum(float_of_int(el - 1))), ("character", JNum(float_of_int(ec - 1)))]))])
 
 // ─── lsp_adapter handler + session loop ───────────────────────────────

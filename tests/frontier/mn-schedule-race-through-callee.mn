@@ -1,0 +1,14 @@
+// B4 (2026-09-30): THE RACE RULE THROUGH A CALLEE, at the polymorphic HOF.
+// `tally`'s branches perform whatever its callback performs — a row
+// variable at the fanout — and the callback `main` passes bumps a stateful
+// counter installed beside the schedule. The demand reaches `tally` through
+// the call, so the branch row is read at the INSTANTIATING site: two spawned
+// instances resuming `with n = n + 1` on one record. Boot 6f2ce437 ran
+// `tally`'s fanout sequentially (11) with zero diagnostics.
+// Expected: REFUSE E_ThreadedBranchEffect.
+effect Counter { bump() -> Int }
+handler counter with n = 5 { bump() => resume(n) with n = n + 1 }
+fn tally(f) = (f()) >< (f())
+fn main() = match (tally(() => bump())) ~> parallel_compose ~> counter {
+  (a, b) => a + b,
+}

@@ -36,9 +36,9 @@
 // The per-module overlay family is DELETED (2026-07-25): graph_fork
 // never performed anywhere in the tree, so the module partition never
 // existed at runtime — every mint registered into one "global" row
-// feeding a filter nobody called. Module-of-position reads LIVE through
-// NModule span containment (module_path_of_span below), never a
-// per-mint side-ledger.
+// feeding a filter nobody called. Module-of-position is the module column
+// stamped at each node's mint (graph_module_of), never a side-ledger and
+// never a span — every module numbers its lines from 1.
 import types
 
 import effects
@@ -69,7 +69,7 @@ import io
 // Reverse projection over the comment-ref pairs: which comment owners
 // reference this node. Linear over the pair list — the pair count is the
 // program's authored cross-references, small by construction.
-fn comment_ref_owners(ref pairs, referent, i, acc) with Memory + Alloc = if i >= len(pairs) {
+fn comment_ref_owners(ref pairs, referent, i, acc) = if i >= len(pairs) {
   acc
 } else {
   match list_index(pairs, i) {
@@ -106,46 +106,54 @@ fn spine_slot(h) = h % spine_slots
 // {nodes, ...} receiver computes field offsets over the partial demanded set
 // (the trecordopen-wrong-field class — measured here as `.nodes` reading
 // offset 0, the boundaries column, before the annotation).
-fn spine_page(ref spine, h) -> SpinePage with Memory = list_index(spine, spine_band(h))
+fn spine_page(ref spine, h) -> SpinePage = list_index(spine, spine_band(h))
 
 // Open bands through band b — the MINT path only: every other write lands
 // at an already-minted handle, whose band is open by construction. Returns
 // the (possibly grown) table and the new open count; the table grows by
 // list_extend_to (rare — once per 16384 mints), the pages themselves never
 // move.
-fn spine_ensure(own spine, spine_open, b) with Memory + Alloc + ImageAlloc = if b < spine_open {
+fn spine_ensure(own spine, spine_open, b) = if b < spine_open {
   (spine, spine_open)
 } else {
-  // IMAGE family (1) of six (arena 2a-ii, Hβ.perf.per-decl-arena): the
-  // spine's pages OUTLIVE every per-decl reset — the bracket classifies
-  // the whole growth extent (table + pages) and feeds the census delta.
-  image_enter()
-  let grown = spine_open_loop(list_extend_to(spine, b + 1), spine_open, b)
-  image_exit()
-  grown
+  spine_open_loop(list_extend_to(spine, b + 1), spine_open, b)
 }
 
-fn spine_open_loop(own spine, opened, b) with Memory + Alloc = if opened > b {
+fn spine_open_loop(own spine, opened, b) = if opened > b {
   (spine, opened)
 } else {
-  let page =
-    SpinePage{bind: make_list(spine_slots), boundaries: make_list(spine_slots), canon: make_list(spine_slots), comments: make_list(spine_slots), dispatch: make_list(spine_slots), installs: make_list(spine_slots), module: make_list(spine_slots), narrowing: make_list(spine_slots), nodes: make_list(spine_slots), program: make_list(spine_slots), slots: make_list(spine_slots), spans: make_list(spine_slots)}
+  let page = SpinePage{
+    bind: make_list(spine_slots),
+    boundaries: make_list(spine_slots),
+    canon: make_list(spine_slots),
+    comments: make_list(spine_slots),
+    dispatch: make_list(spine_slots),
+    installs: make_list(spine_slots),
+    module: make_list(spine_slots),
+    narrowing: make_list(spine_slots),
+    nodes: make_list(spine_slots),
+    parent: make_list(spine_slots),
+    products: make_list(spine_slots),
+    program: make_list(spine_slots),
+    slots: make_list(spine_slots),
+    spans: make_list(spine_slots),
+  }
   spine_open_loop(list_set(spine, opened, page), opened + 1, b)
 }
 
 // In-place cell writes — the page never moves, so no write returns a new
 // spine and no handler-state rebind rides a cell store.
-fn spine_put_node(ref spine, h, own node) with Memory = {
+fn spine_put_node(ref spine, h, own node) = {
   let _ = list_set(spine_page(spine, h).nodes, spine_slot(h), node)
   ()
 }
 
-fn spine_put_body(ref spine, h, own body) with Memory = {
+fn spine_put_body(ref spine, h, own body) = {
   let _ = list_set(spine_page(spine, h).program, spine_slot(h), body)
   ()
 }
 
-fn spine_put_comment(ref spine, h, own cell) with Memory = {
+fn spine_put_comment(ref spine, h, own cell) = {
   let _ = list_set(spine_page(spine, h).comments, spine_slot(h), cell)
   ()
 }
@@ -155,7 +163,7 @@ fn spine_put_comment(ref spine, h, own cell) with Memory = {
 // discarded whole, and a re-mint at the same handle restamps — there is no
 // state to invert. The column is TOTAL by construction: a mint always runs
 // inside some module, because entering one is what parsing a file IS.
-fn spine_put_module(ref spine, h, m) with Memory = {
+fn spine_put_module(ref spine, h, m) = {
   let _ = list_set(spine_page(spine, h).module, spine_slot(h), m)
   ()
 }
@@ -166,104 +174,227 @@ fn spine_put_module(ref spine, h, m) with Memory = {
 // of its own install (the wrong-instance class this guard family already
 // pays for) and because charging GraphRead into this handler's residual is
 // the row leak its comment names.
-fn spine_module_name(ref spine, spine_open, m) with Memory + Cast + Alloc = match spine_body_at(spine, spine_open, m) {
+fn spine_module_name(ref spine, spine_open, m) = match spine_body_at(spine, spine_open, m) {
   NModule(mm) => mm.path,
   _ => {
-    load_i32(0 - 1)
+    out_of_range()
     ""
   },
 }
 
-fn spine_put_canon(ref spine, h, to) with Memory = {
+// The module a node was born in — ONE cell read, the mechanism-layer form
+// the graph_module_of arm and the accept read share. TOTAL: every node is
+// born inside some module, including stdin's, so there is no absent case
+// to encode. A virgin cell here means a node was minted with no module in
+// force, which is a defect in the caller, and it traps loudly rather than
+// answering a fabricated 0 that every reader downstream would have to
+// re-check (the surrender-fallback this column exists to end).
+fn spine_module_at(spine, spine_open, handle) = {
+  if spine_band(handle) >= spine_open { out_of_range() } else { 0 }
+  // The cell holds the module handle BIASED BY ONE — the Option-niche word
+  // this file already uses for mint_high's "0 = unlimited". It is not
+  // decoration: a fresh graph's FIRST mint is handle 0, so the first module
+  // node IS handle 0, and an unbiased column could not tell "born in module
+  // 0" from "never stamped" — measured, the day this column landed, as a
+  // trap on handle 1 whose module really was 0.
+  let cell = list_index(spine_page(spine, handle).module, spine_slot(handle))
+  if cell == 0 { out_of_range() } else { 0 }
+  cell - 1
+}
+
+// Whether the node at `handle` belongs to its module's CURRENT generation:
+// the module node it was born in has not been superseded by a later parse of
+// the same path (graph_register_node's one write), so the answer is the
+// module column's word and one probe of the superseded set.
+fn spine_current(spine, spine_open, superseded, handle) =
+  module_unsuperseded(superseded, spine_module_at(spine, spine_open, handle))
+
+// Whether a MODULE node is its path's latest parse. A module node's own
+// module column names the module that was open when it was minted, never
+// itself, so the question is asked of the handle directly.
+fn module_unsuperseded(superseded, module) = match wmap_get(superseded, module) {
+  Some(_) => false,
+  None => true,
+}
+
+// The purge's question at a supersession: was the node at `handle` born
+// anywhere but in the module node being superseded?
+fn born_outside(spine, spine_open, module: Int, handle) =
+  spine_module_at(spine, spine_open, handle) != module
+
+fn handle_is_not(module: Int, handle: Int) = handle != module
+
+// The tree's own edge, child to parent: drawn here, where a parent's body
+// registers, for every node that body holds — a module's declarations
+// included. The cell is BIASED BY ONE like the module column's, since a
+// module node may be handle 0, and a virgin cell reads as no parent. Not
+// trail-backed, for the module column's reason: a candidate a rolled-back
+// segment minted held only nodes minted in that segment, and a re-mint at
+// the same handle redraws its edge when its own parent registers. The last
+// registration wins, which is the tree a desugaring leaves (a `let`'s value
+// is a child of the match its block becomes).
+fn spine_put_parents(spine, parent, body) = match body {
+  NModule(m) => m.decls |> map(node_handle) |> each(spine_put_parent(spine, ??, parent)),
+  _ => body_child_handles(body) |> each(spine_put_parent(spine, ??, parent)),
+}
+
+fn spine_put_parent(spine, h, parent) = {
+  let _ = list_set(spine_page(spine, h).parent, spine_slot(h), parent + 1)
+  ()
+}
+
+fn spine_parent_at(spine, spine_open, h) = if spine_band(h) >= spine_open {
+  None
+} else {
+  let cell = list_index(spine_page(spine, h).parent, spine_slot(h))
+  if cell == 0 { None } else { Some(cell - 1) }
+}
+
+// THE ACCEPT EDGE, read at the one writer (C4). A node bound at an extent
+// the accepted column holds — same module, same span — takes its reason
+// wrapped in `Accepted`, so every projection of the reason cell (the Why
+// facet, the chain render, the address surface) walks from the value to
+// the proposal that proved it without a second read. The column is empty
+// on every compile that is not an edit session, so the bind pays one
+// length read; a non-empty column costs one span compare per entry, at
+// felt cadence. `Located` stays OUTERMOST because every span reader
+// (span_of_reason, the caret's authored-hole test) reads the reason's
+// head, and an acceptance must not unlocate the node it names. A cell
+// already carrying the edge keeps it — the wrap is idempotent.
+fn accepted_reason(accepted, spine, spine_open, handle, reason) = if len(accepted) == 0 {
+  reason
+} else {
+  let sp = spine_span_at(spine, spine_open, handle)
+  let path = spine_module_name(spine, spine_open, spine_module_at(spine, spine_open, handle))
+  match find({ (p, asp, _t, _r) => accepted_here(p, path, asp, sp) }, accepted) {
+    Some(entry) => match entry {
+      (_p, _asp, text, proof) => accept_wrap(reason, text, proof),
+    },
+    None => reason,
+  }
+}
+
+// `p: String` pins the compare: two module paths minted by different
+// parses are byte-equal and pointer-distinct, the class a bare `==` on
+// names falls to (PLAN §9's pointer-eq lesson).
+fn accepted_here(p: String, path: String, asp, sp) = p == path && span_eq(asp, sp)
+
+fn accept_wrap(reason, text, proof) = match reason {
+  Located(sp, inner) => match inner {
+    Accepted(_, _, _) => reason,
+    _ => Located(sp, Accepted(text, proof, inner)),
+  },
+  Accepted(_, _, _) => reason,
+  _ => Accepted(text, proof, reason),
+}
+
+fn spine_put_canon(ref spine, h, to) = {
   let _ = list_set(spine_page(spine, h).canon, spine_slot(h), to)
   ()
 }
 
-fn spine_put_narrowing(ref spine, h, pred) with Memory = {
+fn spine_put_narrowing(ref spine, h, pred) = {
   let _ = list_set(spine_page(spine, h).narrowing, spine_slot(h), pred)
   ()
 }
 
-fn spine_put_boundary(ref spine, h, own boundary) with Memory = {
+fn spine_put_boundary(ref spine, h, own boundary) = {
   let _ = list_set(spine_page(spine, h).boundaries, spine_slot(h), boundary)
   ()
 }
 
-fn spine_put_bind(ref spine, h, bh) with Memory = {
+fn spine_put_bind(ref spine, h, bh) = {
   let _ = list_set(spine_page(spine, h).bind, spine_slot(h), bh)
   ()
 }
 
-fn spine_put_dispatch(spine, h, dt) with Memory = {
+fn spine_put_dispatch(spine, h, dt) = {
   let _ = list_set(spine_page(spine, h).dispatch, spine_slot(h), dt)
   ()
 }
 
-fn spine_put_slots(spine, h, sh) with Memory = {
+fn spine_put_slots(spine, h, sh) = {
   let _ = list_set(spine_page(spine, h).slots, spine_slot(h), sh)
   ()
 }
 
-fn spine_put_install(spine, h, ish) with Memory = {
+fn spine_put_install(spine, h, ish) = {
   let _ = list_set(spine_page(spine, h).installs, spine_slot(h), ish)
   ()
 }
 
-fn spine_put_span(ref spine, h, own span) with Memory = {
+fn spine_put_product(spine, h, p) = {
+  let _ = list_set(spine_page(spine, h).products, spine_slot(h), p)
+  ()
+}
+
+fn spine_put_span(ref spine, h, own span) = {
   let _ = list_set(spine_page(spine, h).spans, spine_slot(h), span)
   ()
 }
 
 // The sparse-column reads, each answering its absent-contract for a closed
 // band or a virgin cell.
-fn spine_body_at(ref spine, spine_open, h) with Memory + Cast + Alloc = if spine_band(h) >= spine_open {
+fn spine_body_at(ref spine, spine_open, h) = if spine_band(h) >= spine_open {
   NHole(0)
 } else {
   let cell = list_index(spine_page(spine, h).program, spine_slot(h))
-  if addr(cell) == 0 { NHole(0) } else { cell }
+  if slot_present(cell) { cell } else { NHole(0) }
 }
 
 // The birth-span column read — a virgin cell (never parse-indexed) is
 // span_zero, the same absent-contract every position consumer already
 // treats as "no source site".
-fn spine_span_at(ref spine, spine_open, h) with Memory + Cast + Alloc = if spine_band(h) >= spine_open {
+fn spine_span_at(ref spine, spine_open, h) = if spine_band(h) >= spine_open {
   span_zero()
 } else {
   let cell = list_index(spine_page(spine, h).spans, spine_slot(h))
-  if addr(cell) == 0 { span_zero() } else { cell }
+  if slot_present(cell) { cell } else { span_zero() }
 }
 
-fn spine_comment_at(ref spine, spine_open, h) with Memory + Alloc + Cast = if spine_band(h) >= spine_open {
+fn spine_comment_at(ref spine, spine_open, h) = if spine_band(h) >= spine_open {
   ("", span_zero())
 } else {
   let cell = list_index(spine_page(spine, h).comments, spine_slot(h))
-  if addr(cell) == 0 { ("", span_zero()) } else { cell }
+  if slot_present(cell) { cell } else { ("", span_zero()) }
 }
 
-fn spine_canon_at(ref spine, spine_open, h) with Memory = if spine_band(h) >= spine_open {
+fn spine_canon_at(ref spine, spine_open, h) = if spine_band(h) >= spine_open {
   h
 } else {
   let to = list_index(spine_page(spine, h).canon, spine_slot(h))
   if to == 0 { h } else { to }
 }
 
-fn spine_narrowing_at(ref spine, spine_open, h) with Memory = if spine_band(h) >= spine_open {
+fn spine_narrowing_at(ref spine, spine_open, h) = if spine_band(h) >= spine_open {
   0
 } else {
   list_index(spine_page(spine, h).narrowing, spine_slot(h))
 }
 
-fn spine_boundary_at(ref spine, spine_open, h) with Memory = if spine_band(h) >= spine_open {
+fn spine_boundary_at(ref spine, spine_open, h) = if spine_band(h) >= spine_open {
   NoBoundary
 } else {
   list_index(spine_page(spine, h).boundaries, spine_slot(h))
+}
+
+fn spine_install_at(spine, spine_open, h) = if spine_band(h) >= spine_open {
+  NoInstall
+} else {
+  list_index(spine_page(spine, h).installs, spine_slot(h))
+}
+
+fn spine_product_at(spine, spine_open, h) = if spine_band(h) >= spine_open {
+  NoProduct
+} else {
+  list_index(spine_page(spine, h).products, spine_slot(h))
 }
 
 // The op-based face of the state-passed occurs family — for bracketed
 // pre-check sites (unify's typed-render occurs report), which hold no
 // spine: one seed read, then a zero-op walk. The arms call the family
 // directly with their own state and never come here.
-fn occurs_in_live(handle, ref ty) with GraphRead + Memory + Alloc + Cast + !Mutate = match graph_branch_seed() {
+fn occurs_in_live(handle, ref ty) with !Mutate = match graph_branch_seed() {
   (spine, _open, _spans) => occurs_in(spine, graph_next(), handle, ty),
 }
 
@@ -271,19 +402,29 @@ fn occurs_in_live(handle, ref ty) with GraphRead + Memory + Alloc + Cast + !Muta
 // reads, because the arm that speaks it cannot see its own instance (an
 // arm's performs resolve OUTER). A real infinite type still deserves its
 // span (SYNTAX principle 5); the typed render lives at unify's pre-check.
-fn occurs_guard_line(handle, reason) with Memory + Alloc =
+fn occurs_guard_line(handle, reason) =
   "infer: E_OccursCheck error: infinite type at t{handle} (the graph write guard) at {show_span(reason_span_or_zero(reason))}\n"
 
 // The teach's line beside the refusal — coordinates + name only, the
 // guard's own render discipline (no graph ops from the arm).
-fn poly_teach_line(owner: String, reason) with Memory + Alloc =
+fn poly_teach_line(owner: String, reason) =
   "infer: T_PolyRecursionSignature Warning: the infinite type runs through '{owner}''s own parameter or return — if '{owner}' calls itself at a different type (polymorphic recursion), a FULL signature on '{owner}' buys the poly self-call at {show_span(reason_span_or_zero(reason))}\n"
 
 // Config: a BRANCH CURSOR (the parallel fan's per-thread instance) installs
 // over the SHARED spine with a private planned range — the root install is
 // bare and the defaults are the empty graph. Handler state records live in
 // shared heap; the install chain stays per-instance, correctly private.
-handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spine_open = spine_open0, trail = [], trail_len = 0, epoch = 0, next = 0, span_index = span_index0, checkpoint_stack = [], comment_refs = [], refs_col = smap_new(), decls_col = [], emitfns_col = [], emitfns_idx = [], emitfns_idx_covers = 0, sigs_col = [], holes_pend = [], holes_col = [], cur_module = 0, guard_diags = [] {
+// The gate and instance columns are SPARSE — a handle-keyed multi-map each
+// (lib/imap.mn's wmap, the own.mn region_index precedent), because a gate
+// sits on the few cells a declared negation reaches and an instance note on
+// the few copies a still-open declaration hands out; a dense spine column
+// would pay 64KB per page for either. Both are allocated at the install,
+// not lazily at the first write: every graph_handler install is a ROOT
+// install (eleven, all at verb entries), never per decl, so the eager table
+// costs one 4KB word-list per process and no write tests for it — and a
+// table minted lazily inside a speculation would be copied out of the
+// speculation's arena at its exit, a cost the eager one never pays.
+handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spine_open = spine_open0, trail = [], trail_len = 0, epoch = 0, next = 0, span_index = span_index0, checkpoint_stack = [], comment_refs = [], refs_col = smap_new(), apps_col = smap_new(), decls_col = [], emitfns_col = [], emitfns_idx = [], emitfns_idx_covers = 0, sigs_col = [], holes_pend = [], holes_col = [], cur_module = 0, guard_diags = [], gates = wmap_new(1024), instances = wmap_new(1024), demands = wmap_new(1024), accepted = [], rows = wmap_new(1024), binders = wmap_new(1024), late = wmap_new(1024), claims = wmap_new(1024), modules_now = smap_new(), superseded = wmap_new(64), modules_col = [] {
   graph_chase(handle) => // checkpoint_stack tracks active speculation depth. Each
   // graph_push_checkpoint pushes the current trail_len; each
   // graph_rollback pops. When the stack is empty, writes are at the
@@ -307,26 +448,12 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
   graph_snapshot() => resume(Graph(next, span_index)),
   graph_node_body(handle) => resume(spine_body_at(spine, spine_open, handle)),
   graph_span_of(handle) => resume(spine_span_at(spine, spine_open, handle)),
-  graph_module_of(handle) => // The module a node was born in — ONE cell read, never the containment
-  // scan that module_path_of_span ran over every node (whose own comment
-  // named its "O(1) destiny"; this is that destiny). TOTAL: every node is
-  // born inside some module, including stdin's, so there is no absent case
-  // to encode. A virgin cell here means a node was minted with no module in
-  // force, which is a defect in the caller, and it traps loudly rather than
-  // answering a fabricated 0 that every reader downstream would have to
-  // re-check (the surrender-fallback this column exists to end).
-  {
-    if spine_band(handle) >= spine_open { load_i32(0 - 1) } else { 0 }
-    // The cell holds the module handle BIASED BY ONE — the Option-niche word
-    // this file already uses for mint_high's "0 = unlimited". It is not
-    // decoration: a fresh graph's FIRST mint is handle 0, so the first module
-    // node IS handle 0, and an unbiased column could not tell "born in module
-    // 0" from "never stamped" — measured, the day this column landed, as a
-    // trap on handle 1 whose module really was 0.
-    let cell = list_index(spine_page(spine, handle).module, spine_slot(handle))
-    if cell == 0 { load_i32(0 - 1) } else { 0 }
-    resume(cell - 1)
-  },
+  graph_module_of(handle) => // The module a node was born in — ONE cell read, never a containment
+  // scan over module spans (the last one, the proximity rank's, deleted
+  // 2026-10-01). The read is spine_module_at's, shared with the accept
+  // read at graph_bind.
+  resume(spine_module_at(spine, spine_open, handle)),
+  graph_parent_of(handle) => resume(spine_parent_at(spine, spine_open, handle)),
   graph_module_current() => // Enter a module: every subsequent mint is attributed to it. The module
   // node attributes ITSELF, which is what makes the column total without a
   // sentinel — the first stamp has no earlier module to inherit, so it is
@@ -350,7 +477,15 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
   {
     resume(trail_len) with checkpoint_stack = push(
       checkpoint_stack,
-      {comment_refs: comment_refs, next: next, span_index: span_index, spine: spine, spine_open: spine_open, trail: trail, trail_len: trail_len}
+      {
+        comment_refs: comment_refs,
+        next: next,
+        span_index: span_index,
+        spine: spine,
+        spine_open: spine_open,
+        trail: trail,
+        trail_len: trail_len,
+      }
     )
   },
   graph_fresh_ty(reason) => // ─── Write ops ───────────────────────────────────────────────────
@@ -371,9 +506,10 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
       (sp, so) => {
         spine_put_node(sp, next, GNode(NFree(epoch), reason))
         spine_put_module(sp, next, cur_module + 1)
-        let new_trail = trail_append(trail, trail_len, MFreshNode(next))
-        if len(checkpoint_stack) == 0 { graph_mutated(epoch, MFreshNode(next)) }
-        resume(next) with spine = sp, spine_open = so, next = next + 1, trail = new_trail, trail_len = trail_len + 1
+        let m = MFreshNode(next)
+        let j = journaling(checkpoint_stack)
+        if !j { graph_mutated(epoch, m) }
+        resume(next) with spine = sp, spine_open = so, next = next + 1, trail = trail_after(trail, trail_len, j, m), trail_len = trail_len_after(trail_len, j)
       },
     }
   },
@@ -381,9 +517,10 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
     (sp, so) => {
       spine_put_node(sp, next, GNode(NRowFree(epoch), reason))
       spine_put_module(sp, next, cur_module + 1)
-      let new_trail = trail_append(trail, trail_len, MFreshNode(next))
-      if len(checkpoint_stack) == 0 { graph_mutated(epoch, MFreshNode(next)) }
-      resume(next) with spine = sp, spine_open = so, next = next + 1, trail = new_trail, trail_len = trail_len + 1
+      let m = MFreshNode(next)
+      let j = journaling(checkpoint_stack)
+      if !j { graph_mutated(epoch, m) }
+      resume(next) with spine = sp, spine_open = so, next = next + 1, trail = trail_after(trail, trail_len, j, m), trail_len = trail_len_after(trail_len, j)
     },
   },
   graph_register_node(handle, body) => // Edge-link a node's body into the one graph at its handle — the program
@@ -394,9 +531,34 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
   // parse-written program projection, distinct from the mutable
   // union-find type cell in the same page's nodes column — one handle, one
   // page, six columns. In-place cell write: no trail, no state rebind.
+  //
+  // A MODULE node's registration is also where its generation turns over:
+  // the path's previous module node is SUPERSEDED here, the one moment the
+  // fact exists, so every read after it can ask "is this node current?" in
+  // one word (graph_node_current) instead of walking the graph for module
+  // cells and keeping the last. The module column takes the handle in
+  // registration order, which is the order the walk it replaces kept, and
+  // the name-keyed columns drop what the superseded node's generation noted
+  // here too — once per supersession, so a read returns its column as it
+  // stands. Filtering at every read copied the column at every read, and
+  // the proof fragment reads the decls column at every global name it folds
+  // (module_let_const): the judgment ran 154 MB higher on the wheel's own
+  // source, where nothing is ever superseded.
   {
     spine_put_body(spine, handle, body)
-    resume()
+    spine_put_parents(spine, handle, body)
+    match body {
+      NModule(m) => match smap_get(modules_now, m.path) {
+        Some(old) => if old == handle {
+          resume()
+        } else {
+          let keep = born_outside(spine, spine_open, old, ??)
+          resume() with modules_now = smap_add(modules_now, m.path, handle), superseded = wmap_add(superseded, old, 1), modules_col = push(filter(handle_is_not(old, ??), modules_col), handle), decls_col = filter(keep, decls_col), refs_col = smap_retain(refs_col, keep), apps_col = smap_retain(apps_col, keep)
+        },
+        None => resume() with modules_now = smap_add(modules_now, m.path, handle), modules_col = push(modules_col, handle),
+      },
+      _ => resume(),
+    }
   },
   graph_attach_comment(handle, text, span) => // The comment column — parse-attached prose in the handle's own page. A
   // comment is graph content (SYNTAX.md Comments): the parser attaches each
@@ -488,10 +650,10 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
     let old_boundary = spine_boundary_at(spine, spine_open, site_handle)
     spine_put_boundary(spine, site_handle, boundary)
     let mutation = MSetBoundary(site_handle, old_boundary)
-    let new_trail = trail_append(trail, trail_len, mutation)
+    let j = journaling(checkpoint_stack)
     let new_epoch = epoch + 1
-    if len(checkpoint_stack) == 0 { graph_mutated(new_epoch, mutation) }
-    resume() with epoch = new_epoch, trail = new_trail, trail_len = trail_len + 1
+    if !j { graph_mutated(new_epoch, mutation) }
+    resume() with epoch = new_epoch, trail = trail_after(trail, trail_len, j, mutation), trail_len = trail_len_after(trail_len, j)
   },
   graph_bind(handle, ty, reason) => // The guard reads THIS instance's state DIRECTLY: the occurs family is
   // mechanism-layer (state-passed, zero ops), so the check can neither
@@ -539,11 +701,19 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
     resume() with guard_diags = g2
   } else {
     let old_node = graph_node_at(spine, next, handle)
-    spine_put_node(spine, handle, GNode(NBound(ty), reason))
-    let new_trail = trail_append(trail, trail_len, MSetNode(handle, old_node))
+    // The cell takes the SHAPE: a refinement is a fact about a value, read
+    // along its flow edges, and a cell is the class union-find merges
+    // values into (types.mn shape_of).
+    spine_put_node(
+      spine,
+      handle,
+      GNode(NBound(shape_of(ty)), accepted_reason(accepted, spine, spine_open, handle, reason))
+    )
+    let m = MSetNode(handle, old_node)
+    let j = journaling(checkpoint_stack)
     let new_epoch = epoch + 1
-    if len(checkpoint_stack) == 0 { graph_mutated(new_epoch, MSetNode(handle, old_node)) }
-    resume() with epoch = new_epoch, trail = new_trail, trail_len = trail_len + 1
+    if !j { graph_mutated(new_epoch, m) }
+    resume() with epoch = new_epoch, trail = trail_after(trail, trail_len, j, m), trail_len = trail_len_after(trail_len, j)
   },
   graph_bind_hole(handle, reason) => // The productive-under-error poison write (infer.mn:24's law, given its
   // graph op): the node becomes an OBSERVED FAILURE. No occurs check — a hole
@@ -552,10 +722,11 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
   {
     let old_node = graph_node_at(spine, next, handle)
     spine_put_node(spine, handle, GNode(NErrorHole(reason), reason))
-    let new_trail = trail_append(trail, trail_len, MSetNode(handle, old_node))
+    let m = MSetNode(handle, old_node)
+    let j = journaling(checkpoint_stack)
     let new_epoch = epoch + 1
-    if len(checkpoint_stack) == 0 { graph_mutated(new_epoch, MSetNode(handle, old_node)) } else { () }
-    resume() with epoch = new_epoch, trail = new_trail, trail_len = trail_len + 1
+    if !j { graph_mutated(new_epoch, m) }
+    resume() with epoch = new_epoch, trail = trail_after(trail, trail_len, j, m), trail_len = trail_len_after(trail_len, j)
   },
   graph_bind_row(handle, row, reason) => // A row is a SET, so a row var referencing itself (v = names ∪ v) is
   // idempotent — the least fixed point is `names`, v contributes nothing new,
@@ -604,11 +775,16 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
     // THE FLAT-CELL LAW at the teaching write: the joined value folds
     // before it stores, so the cell holds depth-1 truth and every
     // read is a flat lookup (flatten_row_stored's own header).
-    spine_put_node(spine, handle, GNode(NRowBound(flatten_row_stored(spine, next, stored)), reason))
-    let new_trail = trail_append(trail, trail_len, MSetRow(handle, old_node))
+    spine_put_node(
+      spine,
+      handle,
+      GNode(NRowBound(flatten_row_stored(spine, next, stored, handle)), reason)
+    )
+    let m = MSetRow(handle, old_node)
+    let j = journaling(checkpoint_stack)
     let new_epoch = epoch + 1
-    if len(checkpoint_stack) == 0 { graph_mutated(new_epoch, MSetRow(handle, old_node)) }
-    resume() with epoch = new_epoch, trail = new_trail, trail_len = trail_len + 1
+    if !j { graph_mutated(new_epoch, m) }
+    resume() with epoch = new_epoch, trail = trail_after(trail, trail_len, j, m), trail_len = trail_len_after(trail_len, j)
   },
   graph_finalize_row(handle, row, reason) => // The decl-exit REPLACE — inf_exit_fn publishing the frame's accumulated
   // row as the fn's verdict. Not a join: the frame's accumulation is the
@@ -620,11 +796,16 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
     let old_node = graph_node_at(spine, next, handle)
     // The finalize stores flat too (THE FLAT-CELL LAW — the published
     // verdict is a depth-1 value every caller reads without recursion).
-    spine_put_node(spine, handle, GNode(NRowBound(flatten_row_stored(spine, next, row)), reason))
-    let new_trail = trail_append(trail, trail_len, MSetRow(handle, old_node))
+    spine_put_node(
+      spine,
+      handle,
+      GNode(NRowBound(flatten_row_stored(spine, next, row, handle)), reason)
+    )
+    let m = MSetRow(handle, old_node)
+    let j = journaling(checkpoint_stack)
     let new_epoch = epoch + 1
-    if len(checkpoint_stack) == 0 { graph_mutated(new_epoch, MSetRow(handle, old_node)) }
-    resume() with epoch = new_epoch, trail = new_trail, trail_len = trail_len + 1
+    if !j { graph_mutated(new_epoch, m) }
+    resume() with epoch = new_epoch, trail = trail_after(trail, trail_len, j, m), trail_len = trail_len_after(trail_len, j)
   },
   graph_compress_row(v, row) => // Path compression at the row sort — an OPTIMIZATION write, distinct
   // from the judgment bind by OP so the policy lives where the band facts
@@ -646,12 +827,47 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
     {
       let old_node = graph_node_at(spine, next, v)
       spine_put_node(spine, v, GNode(NRowBound(row), Inferred("row path compression")))
-      let new_trail = trail_append(trail, trail_len, MSetRow(v, old_node))
+      let m = MSetRow(v, old_node)
+      let j = journaling(checkpoint_stack)
       let new_epoch = epoch + 1
-      if len(checkpoint_stack) == 0 { graph_mutated(new_epoch, MSetRow(v, old_node)) }
-      resume() with epoch = new_epoch, trail = new_trail, trail_len = trail_len + 1
+      if !j { graph_mutated(new_epoch, m) }
+      resume() with epoch = new_epoch, trail = trail_after(trail, trail_len, j, m), trail_len = trail_len_after(trail_len, j)
     }
   },
+  graph_gate_add(handle, gate) => // The gate column's one write: a LIFO push under the cell's handle,
+  // trailed as MSetGate(handle) so a checkpoint's rollback pops it — a
+  // speculative judgment (the ??-fan's candidate, a Mycroft round) that
+  // installs gates and is rejected leaves none behind. In place, like every
+  // cell write: the table never moves, so no state rebind rides the store
+  // beyond the trail's own.
+  {
+    wmap_add(gates, handle, gate)
+    let m = MSetGate(handle)
+    let j = journaling(checkpoint_stack)
+    let new_epoch = epoch + 1
+    if !j { graph_mutated(new_epoch, m) }
+    resume() with epoch = new_epoch, trail = trail_after(trail, trail_len, j, m), trail_len = trail_len_after(trail_len, j)
+  },
+  graph_instance_note(root, fresh) => {
+    wmap_add(instances, root, fresh)
+    let j = journaling(checkpoint_stack)
+    resume() with trail = trail_after(trail, trail_len, j, MInstanceNote(root)), trail_len = trail_len_after(trail_len, j)
+  },
+  graph_gates_of(handle) => resume(wmap_get_all(gates, handle)),
+  graph_instances_of(handle) => resume(wmap_get_all(instances, handle)),
+  graph_demand_add(handle, demand) => // The demand column's one write — the row gate column's twin over TYPE
+  // cells: a LIFO push under the cell's handle, trailed as
+  // MSetDemand(handle) so a rejected speculation leaves no demand
+  // behind.
+  {
+    wmap_add(demands, handle, demand)
+    let m = MSetDemand(handle)
+    let j = journaling(checkpoint_stack)
+    let new_epoch = epoch + 1
+    if !j { graph_mutated(new_epoch, m) }
+    resume() with epoch = new_epoch, trail = trail_after(trail, trail_len, j, m), trail_len = trail_len_after(trail_len, j)
+  },
+  graph_demands_of(handle) => resume(wmap_get_all(demands, handle)),
   graph_bind_record_row(handle, fields, tail, reason) => // The record-row residual bind — a `...R` rest's remaining fields, under
   // its OWN node kind (NRecordRowBound). Binding residuals under NRowBound
   // made the row slot an untagged EffRow-or-Ty union every row walk's
@@ -667,10 +883,11 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
       // proven, continuing, or assumed. It is never re-derived here, because
       // the fields alone cannot say which of the three produced them.
       spine_put_node(spine, handle, GNode(NRecordRowBound(fields, tail), reason))
-      let new_trail = trail_append(trail, trail_len, MSetRow(handle, old_node))
+      let m = MSetRow(handle, old_node)
+      let j = journaling(checkpoint_stack)
       let new_epoch = epoch + 1
-      if len(checkpoint_stack) == 0 { graph_mutated(new_epoch, MSetRow(handle, old_node)) }
-      resume() with epoch = new_epoch, trail = new_trail, trail_len = trail_len + 1
+      if !j { graph_mutated(new_epoch, m) }
+      resume() with epoch = new_epoch, trail = trail_after(trail, trail_len, j, m), trail_len = trail_len_after(trail_len, j)
     }
   },
   graph_index_span(span, handle) => // ─── Rollback — the oracle's undo ────────────────────────────────
@@ -680,6 +897,9 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
   //   MSetRow(h, old)  → restore the nodes cell at h to old
   //   MSetBoundary(h, old) -> restore the boundaries cell at h
   //   MFreshNode(h)    → decrement next (un-allocate)
+  //   MSetGate(h)      → pop the newest gate entered on h
+  //   MInstanceNote(h) → pop the newest instance noted under h
+  //   MSetDemand(h)    → pop the newest demand entered on h
   // Reset trail_len = target; entries above are stale and get
   // overwritten on next append — no slicing, no allocation. Epoch is
   // NOT rolled back — it stays monotonic so query observers keyed on
@@ -700,12 +920,27 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
   // read-side zero-skip/dedup already drops (the same discipline the
   // whole-graph scan applied to judgment re-mints).
   resume() with refs_col = smap_add(refs_col, name, ref_handle),
-  graph_refs_at(name) => resume(smap_get_all(refs_col, name)),
+  graph_refs_at(name) => // The name-keyed columns answer for the CURRENT generation: the
+  // registration that supersedes a module drops what its generation noted
+  // (graph_register_node), because a reader handed a re-judged module's older
+  // references, applications or declarations counts a program that no longer
+  // exists (the generation oracle, 2026-10-02: `refs twice` answered 2 where
+  // the tree held 1, `unreferenced` one short, `decls` twelve long).
+  resume(smap_get_all(refs_col, name)),
+  graph_apply_note(name, app_handle) => // The application edge's write, the refs column's own contract: one
+  // O(1) prepend per application, not trail-backed — a rolled-back
+  // segment's note can name a handle a later mint reuses, and the reader
+  // re-reads the application there.
+  resume() with apps_col = smap_add(apps_col, name, app_handle),
+  graph_applies_at(name) => resume(smap_get_all(apps_col, name)),
   graph_decl_note(decl_handle) => // The refs column's decl-granularity sibling — same append-only
   // telemetry contract (not trail-backed; judgment rounds re-note the
   // same handle, readers dedup by handle).
   resume() with decls_col = push(decls_col, decl_handle),
   graph_decls_at() => resume(decls_col),
+  graph_node_current(h) => resume(spine_current(spine, spine_open, superseded, h)),
+  graph_module_now(path) => resume(smap_get(modules_now, path)),
+  graph_modules() => resume(modules_col),
   graph_hole_note(h) => // The value-holes column's pending half: lower's authored-hole arm is
   // the one writer (value-position is a lowering decision); the pair
   // lands at the next entry drain.
@@ -723,6 +958,74 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
   if len(guard_diags) == 0 { resume([]) } else { resume(guard_diags) with guard_diags = [] },
   graph_hole_unnote(h) => resume() with holes_pend = holes_pend_without(holes_pend, h),
   graph_holes_at() => resume(holes_col),
+  graph_row_note(h, row) => // THE ROW NOTE's write (C5): what a construct charges, under the node
+  // that charges it — the frame join's per-node twin, LIFO under the
+  // handle like the gates, trailed as MRowNote so a rolled-back
+  // judgment's notes go with its bindings. In place, no state rebind
+  // beyond the trail's own.
+  {
+    wmap_add(rows, h, row)
+    let m = MRowNote(h)
+    let j = journaling(checkpoint_stack)
+    let new_epoch = epoch + 1
+    if !j { graph_mutated(new_epoch, m) }
+    resume() with epoch = new_epoch, trail = trail_after(trail, trail_len, j, m), trail_len = trail_len_after(trail_len, j)
+  },
+  graph_rows_at(h) => resume(wmap_get_all(rows, h)),
+  graph_binder_note(h, fact) => // THE BINDER FACT's write (P0): newest first under the binder's handle,
+  // trailed as MBinderFact — a binder minted inside a speculative judgment
+  // is a handle the rollback hands out again, so its fact must go with it.
+  {
+    wmap_add(binders, h, fact)
+    let m = MBinderFact(h)
+    let j = journaling(checkpoint_stack)
+    let new_epoch = epoch + 1
+    if !j { graph_mutated(new_epoch, m) }
+    resume() with epoch = new_epoch, trail = trail_after(trail, trail_len, j, m), trail_len = trail_len_after(trail_len, j)
+  },
+  graph_binder_of(h) => resume(wmap_get(binders, h)),
+  graph_owe_late(g, payer) => // THE LATE PAYERS' write (P0): a frame called through a guard cell its
+  // declaration has not written yet. Newest first under the cell, trailed
+  // as MOweLate, so a rolled-back judgment's payments go with it.
+  {
+    wmap_add(late, g, payer)
+    let m = MOweLate(g)
+    let j = journaling(checkpoint_stack)
+    let new_epoch = epoch + 1
+    if !j { graph_mutated(new_epoch, m) }
+    resume() with epoch = new_epoch, trail = trail_after(trail, trail_len, j, m), trail_len = trail_len_after(trail_len, j)
+  },
+  graph_late_payers(g) => resume(wmap_get_all(late, g)),
+  graph_claim_note(h, contract) => // THE CLAIMS' write (P0): a contract claimed of the value at a node,
+  // newest first under its handle, trailed as MClaimNote so a rolled-back
+  // judgment's claims go with it.
+  {
+    wmap_add(claims, h, contract)
+    let m = MClaimNote(h)
+    let j = journaling(checkpoint_stack)
+    let new_epoch = epoch + 1
+    if !j { graph_mutated(new_epoch, m) }
+    resume() with epoch = new_epoch, trail = trail_after(trail, trail_len, j, m), trail_len = trail_len_after(trail_len, j)
+  },
+  graph_claims_of(h) => resume(wmap_get_all(claims, h)),
+  graph_link_of(h) => resume(match graph_node_at(spine, next, h) {
+    GNode(NBound(TVar(b)), _) => Some(b),
+    _ => None,
+  }),
+  graph_written_since(cp, below) => // The segment's write set, read off the trail's live tail — a slice
+  // view (no copy) from the checkpoint to the logical length, folded for
+  // the cells a bind moved. Entries above trail_len are stale by the
+  // logical-length discipline and never enter the slice.
+  resume(written_since(slice(trail, cp, trail_len), below)),
+  graph_accept_note(path, span, text, proof) => // THE ACCEPT EDGE's write (C4): an outermost-boundary fact. A human
+  // accepted a proposal; nothing speculative writes here, and a rollback
+  // must never lose it — so a non-empty checkpoint stack is a defect in
+  // the caller and traps rather than storing a fact the trail cannot
+  // carry. Not trailed for the same reason. The read is graph_bind's.
+  {
+    if len(checkpoint_stack) > 0 { out_of_range() } else { 0 }
+    resume() with accepted = push(accepted, (path, span, text, proof))
+  },
   graph_bind_note(use_handle, bh) => // The bind-home column (lowering-is-a-column
   // step i): an in-place spine cell store at the USE node's handle — no
   // state rebind, non-trailed (lowering runs post-judgment; a re-lower
@@ -746,6 +1049,20 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
     spine_put_install(spine, h, ish)
     resume()
   },
+  graph_install_at(h) => resume(spine_install_at(spine, spine_open, h)),
+  graph_product_note(h, nodes, open) => // The call-product column's one write — the judgment's, so it is
+  // trailed: a candidate or a Mycroft round that noted a product and is
+  // rolled back leaves the cell as it found it.
+  {
+    let old = spine_product_at(spine, spine_open, h)
+    spine_put_product(spine, h, ProductOf(nodes, open))
+    let mutation = MSetProduct(h, old)
+    let j = journaling(checkpoint_stack)
+    let new_epoch = epoch + 1
+    if !j { graph_mutated(new_epoch, mutation) }
+    resume() with epoch = new_epoch, trail = trail_after(trail, trail_len, j, mutation), trail_len = trail_len_after(trail_len, j)
+  },
+  graph_product_at(h) => resume(spine_product_at(spine, spine_open, h)),
   graph_emitfn_note(entry) => // The emittable-fn
   // enumeration (the no-mint resolution): one append per synthesized-fn
   // construction, in lower's deterministic walk order. Non-trailed by
@@ -811,7 +1128,23 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
       // inverse lands on its live cell — and MFreshNode entries count next
       // back down. Bands stay open (cells above the restored next are
       // stale-and-overwritten at re-mint, the logical-length discipline).
-      let new_next = revert_trail(spine, spine_open, trail, trail_len, target_idx, next)
+      let new_next = revert_trail(
+        spine,
+        spine_open,
+        trail,
+        trail_len,
+        target_idx,
+        next,
+        {
+          binders: binders,
+          claims: claims,
+          demands: demands,
+          gates: gates,
+          instances: instances,
+          late: late,
+          rows: rows,
+        }
+      )
       resume() with next = new_next, trail_len = target_idx
     } else {
       // Walk the CURRENT trail backward, undoing each write in place into
@@ -823,24 +1156,51 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
       // closes in-fork bands by COUNT (their table cells are stale above
       // it and get overwritten at the next band-open).
       let cp = last(checkpoint_stack)
-      revert_trail_into(cp.spine, cp.spine_open, trail, trail_len, target_idx)
-      // drop_last, never slice: the pop runs BEFORE the caller's
-      // heap_reset, so a slice node minted here dies with the
-      // region and the next fork walks a zeroed cell. On the
-      // always-snoc stack drop_last is the parent READ — the pop
-      // allocates nothing and the surviving value is pre-fork.
+      revert_trail_into(
+        cp.spine,
+        cp.spine_open,
+        trail,
+        trail_len,
+        target_idx,
+        {
+          binders: binders,
+          claims: claims,
+          demands: demands,
+          gates: gates,
+          instances: instances,
+          late: late,
+          rows: rows,
+        }
+      )
+      // drop_last, never slice: on the always-snoc stack drop_last is
+      // the parent READ — the pop allocates nothing and the surviving
+      // value is the pre-fork stack, so the fork's arena has nothing of
+      // it to move (a slice minted here would be copied out at the exit).
       resume() with spine = cp.spine, spine_open = cp.spine_open, next = cp.next, trail = cp.trail, trail_len = target_idx, span_index = cp.span_index, comment_refs = cp.comment_refs, checkpoint_stack = drop_last(checkpoint_stack)
     }
   },
   graph_commit_checkpoint(_target_idx) => // The ACCEPT half of speculation: drop the newest checkpoint record
   // WITHOUT restoring — every write since the push stands as truth, the
-  // trail keeps its entries (an enclosing checkpoint's rollback still
-  // walks them), and mutation events resume when the stack empties. An
-  // empty stack is a benign no-op (the push/commit pair's belt).
+  // trail keeps its entries while an enclosing checkpoint's rollback can
+  // still walk them, and mutation events resume when the stack empties.
+  // Committing the OUTERMOST checkpoint leaves nothing that can read an
+  // entry, so the trail is dropped whole: it is the speculation's scratch,
+  // empty whenever no checkpoint is open, so each speculation grows its own
+  // inside the extent it runs in and an arena reclaims it with the rest.
+  // Reusing one buffer across speculations wrote every entry into memory
+  // older than the arena, and a buffer the growth had replaced was a slot
+  // no owner names — the region was kept (seven of the wheel's nine keeps,
+  // 2026-10-02). An empty stack is a benign no-op (the push/commit pair's
+  // belt).
   if len(checkpoint_stack) == 0 {
     resume()
   } else {
-    resume() with checkpoint_stack = drop_last(checkpoint_stack)
+    let rest = drop_last(checkpoint_stack)
+    if len(rest) == 0 {
+      resume() with checkpoint_stack = rest, trail = [], trail_len = 0
+    } else {
+      resume() with checkpoint_stack = rest
+    }
   },
 }
 
@@ -902,10 +1262,11 @@ fn chase_node(ref spine, mint_bound, handle, depth) with !Mutate = if depth > 10
         // the root-row gate refused the wheel's own main). A SINGLE edge
         // is a chain link and the chase follows it; a MULTI-edge tail is
         // not a chain — the cell is its own terminal, and every content
-        // read rides resolve's fold (which walks each edge).
+        // read rides resolve's fold (which walks each edge). The link's
+        // own mask joins the masks carried forward: it is this path's.
         if len(edges) == 1 {
-          let next = last(edges)
-          chase_node(spine, mint_bound, next, depth + 1) |> merge_chased_row(??, names, absents, next)
+          let next = edge_cell(last(edges))
+          chase_node(spine, mint_bound, next, depth + 1) |> merge_chased_row(??, names, name_set_union(absents, edge_mask(last(edges))), next)
         } else {
           GNode(kind, reason)
         },
@@ -956,7 +1317,11 @@ fn chase_handle(ref spine, mint_bound, handle, depth) with !Mutate = if depth > 
       // reach this arm; a MULTI-edge tail has no single root, so the
       // cell is its own canonical handle (content reads ride resolve).
       match row {
-        EfRow(_, _, EtOpen(edges)) => if len(edges) == 1 { chase_handle(spine, mint_bound, last(edges), depth + 1) } else { handle },
+        EfRow(_, _, EtOpen(edges)) => if len(edges) == 1 {
+          chase_handle(spine, mint_bound, edge_cell(last(edges)), depth + 1)
+        } else {
+          handle
+        },
         _ => handle,
       },
       _ => handle,
@@ -968,7 +1333,7 @@ fn chase_handle(ref spine, mint_bound, handle, depth) with !Mutate = if depth > 
 // fold the known names forward through the chain. free_handle is the
 // handle we chased INTO — needed to reconstruct the var-tailed triple
 // when the chain terminates at NRowFree (the free variable).
-fn merge_chased_row(ref chased, ref names, ref absents, free_handle) with Memory + Alloc = match chased {
+fn merge_chased_row(ref chased, ref names, ref absents, free_handle) = match chased {
   GNode(ck, cr) => match ck {
     NRowBound(inner) => GNode(NRowBound(merge_row(names, absents, inner)), cr),
     _ => // EVERY non-bound terminal preserves the accumulated reading — the
@@ -982,7 +1347,7 @@ fn merge_chased_row(ref chased, ref names, ref absents, free_handle) with Memory
     if len(names) == 0 && len(absents) == 0 {
       chased
     } else {
-      GNode(NRowBound(ef_make(names, absents, EtOpen([free_handle]))), cr)
+      GNode(NRowBound(ef_make(names, absents, EtOpen([bare_edge(free_handle)]))), cr)
     },
   },
 }
@@ -992,7 +1357,7 @@ fn merge_chased_row(ref chased, ref names, ref absents, free_handle) with Memory
 // former EtAll special case (return the deeper row whole) was
 // reading-equal only when this level carried no absents — with the
 // masks riding, the uniform arm is the truth for it too.
-fn merge_row(ref names, ref absents, ref row) with Memory + Alloc = match row {
+fn merge_row(ref names, ref absents, ref row) = match row {
   EfRow(p, a, t) => ef_make(name_set_union(names, name_set_diff(p, absents)), name_set_union(absents, a), t),
 }
 
@@ -1001,41 +1366,98 @@ fn merge_row(ref names, ref absents, ref row) with Memory + Alloc = match row {
 // the two write ops, so reads are depth-1 by invariant and no read
 // path ever recurses stored chains (the hub-cell wall's cure: the
 // fold's cost is paid once per write, never per read). Free edges
-// survive into the residual; EtAll absorbs; masks filter under the
-// reading law — the same arithmetic merge_row states one level up.
+// survive into the residual carrying their masks; a bound edge's content
+// enters through edge_content_into, the one assembly every fold shares —
+// this file held a second copy of that arithmetic, and the copy is where
+// a `~>` mask became the whole row's: its `a' = a ∪ ca` filtered every
+// sibling edge with an install that never covered it (measured
+// 2026-09-26, `f() + ((g()) ~> h)` stored as `(r_f + r_g) − E`).
+//
+// AND NO CELL'S STORED ROW REACHES THE CELL. The fold runs before the put,
+// on `written`'s current content, so a chain may pass THROUGH the cell being
+// written, and a free terminal's edge was kept as its chain head: `D := D ∪
+// [G]` with `G → D → T` stored `D = [T, G]`, and the next fold through D
+// walked G → D → G until the stack ran out (measured 2026-10-01, two
+// mutually recursive callers' precondition guards; the occurs check had
+// compared the edge's first cell and its root, never the cells between). A
+// row is a set, so what reaches the cell adds nothing to it: such an edge
+// keeps its chain's terminal, and an edge that is the cell, or ends at it,
+// keeps nothing.
 // Mechanism-layer: state-passed, structural, zero ops.
-fn flatten_row_stored(ref spine, mint_bound, row) with !Mutate = match row {
+fn flatten_row_stored(ref spine, mint_bound, row, written) with !Mutate = match row {
   EfRow(p, a, t) => match t {
-    EtOpen(vs) => match flatten_row_edges(spine, mint_bound, vs, (p, a, [], false)) {
-      (rp, ra, res, saw_all) => if saw_all { ef_make(rp, ra, EtAll) } else { ef_make(rp, ra, EtOpen(res)) },
+    EtOpen(vs) => match flatten_row_edges(spine, mint_bound, edges_masked(vs, a), (p, [], [], false), written) {
+      (rp, am, res, saw_all) => row_of_fold(rp, am, res, saw_all),
     },
     _ => row,
   },
 }
 
-fn flatten_row_edges(ref spine, mint_bound, ref vs: [Int], acc) with !Mutate + Memory + Alloc + Cast = match vs {
+fn flatten_row_edges(ref spine, mint_bound, ref vs: [RowEdge], acc, written) with !Mutate = match vs {
   [] => acc,
-  [v, ...rest] => match acc {
-    (p, a, res, saw_all) => {
-      let next = match chase_node(spine, mint_bound, v, 0) {
-        GNode(kind, _) => match edge_row_of(kind) {
-          Some(inner) => match flatten_row_stored(spine, mint_bound, inner) {
-            EfRow(cp, ca, ct) => {
-              let p2 = name_set_union(p, name_set_diff(cp, a))
-              let a2 = name_set_union(a, ca)
-              match ct {
-                EtClosed => (p2, a2, res, saw_all),
-                EtAll => (p2, a2, res, true),
-                EtOpen(ws) => (p2, a2, tail_set_union(res, ws), saw_all),
-              }
+  [e, ...rest] => match acc {
+    (p, am, res, saw_all) => {
+      let next = if edge_cell(e) == written {
+        acc
+      } else {
+        match chase_node(spine, mint_bound, edge_cell(e), 0) {
+          GNode(kind, _) => match edge_row_of(kind) {
+            Some(inner) => match edge_content_into(
+              p,
+              am,
+              res,
+              saw_all,
+              edge_mask(e),
+              flatten_row_stored(spine, mint_bound, inner, written)
+            ) {
+              (p2, am2, r2, s2, _) => (p2, am2, r2, s2),
             },
+            None => (p, am, kept_edge(spine, mint_bound, res, e, written), saw_all),
           },
-          None => (p, a, tail_set_insert(res, v), saw_all),
-        },
+        }
       }
-      flatten_row_edges(spine, mint_bound, rest, next)
+      flatten_row_edges(spine, mint_bound, rest, next, written)
     },
   },
+}
+
+// A free terminal's edge as the fold keeps it: the chain head, through which
+// a later write anywhere along the chain still reaches the row — unless the
+// chain passes through the cell being written, when it names the terminal
+// instead, or nothing when the terminal is that cell. The chase reached the
+// terminal with no names and no masks on the way (either would have bound
+// the result), so the edge's own mask is the whole path's.
+fn kept_edge(spine, mint_bound, res, e, written) with !Mutate = if chain_passes(spine, mint_bound, edge_cell(e), written, 0) {
+  let t = chase_handle(spine, mint_bound, edge_cell(e), 0)
+  if t == written { res } else { tail_set_insert(res, row_edge(t, edge_mask(e))) }
+} else {
+  tail_set_insert(res, e)
+}
+
+// Does the link chain from `v` reach `written`? `chase_handle`'s walk, with
+// the comparison at every cell rather than at the root alone.
+fn chain_passes(spine, mint_bound, v, written, depth) with !Mutate = if v == written {
+  true
+} else if depth > 100 {
+  false
+} else {
+  match graph_node_at(spine, mint_bound, v) {
+    GNode(kind, _) => match kind {
+      NBound(ty) => match ty {
+        TVar(n) => chain_passes(spine, mint_bound, n, written, depth + 1),
+        _ => false,
+      },
+      NRowBound(row) => match row {
+        EfRow(_, _, EtOpen(edges)) => if len(edges) == 1 {
+          chain_passes(spine, mint_bound, edge_cell(last(edges)), written, depth + 1)
+        } else {
+          false
+        },
+        _ => false,
+      },
+      _ => false,
+    },
+  }
 }
 
 // The one nodes read. Every minted handle's cell was written at its own
@@ -1043,11 +1465,11 @@ fn flatten_row_edges(ref spine, mint_bound, ref vs: [Int], acc) with !Mutate + M
 // final mints running under its trial measure — the cell stays virgin);
 // the word-face guard answers those and any never-minted defensive read
 // with the synthesized NFree, and a live handle reads its cell directly.
-fn graph_node_at(ref spine, mint_bound, idx) with Memory + Alloc + Cast = if idx >= mint_bound {
+fn graph_node_at(ref spine, mint_bound, idx) = if idx >= mint_bound {
   GNode(NFree(0), Fresh(idx))
 } else {
   let cell = list_index(spine_page(spine, idx).nodes, spine_slot(idx))
-  if addr(cell) == 0 { GNode(NFree(0), Fresh(idx)) } else { cell }
+  if slot_present(cell) { cell } else { GNode(NFree(0), Fresh(idx)) }
 }
 
 // Occurs check
@@ -1070,6 +1492,7 @@ fn occurs_in(spine, mint_bound, handle, ref ty) with !Mutate = match ty {
   TFloat => false,
   TUnit => false,
   TByte => false,
+  TAddr => false,
   TVar(id) => // The leaf answers "does handle occur in the type GRAPH reachable from
   // here" — three tiers, each a hole the selfapply fixture found trapping
   // the compiler (f(f) spun chase_deep/subst_ty to stack exhaustion with
@@ -1092,7 +1515,7 @@ fn occurs_in(spine, mint_bound, handle, ref ty) with !Mutate = match ty {
     } else {
       match chase_node(spine, mint_bound, root, 0) {
         GNode(NBound(inner), _) => occurs_in(spine, mint_bound, handle, inner),
-        GNode(NRecordRowBound(fields, _), _) => occurs_in_fields(spine, mint_bound, handle, fields),
+        GNode(NRecordRowBound(fields, tail), _) => occurs_in_fields(spine, mint_bound, handle, fields) || occurs_in_row_tail(spine, mint_bound, handle, tail),
         _ => false,
       }
     }
@@ -1109,8 +1532,12 @@ fn occurs_in(spine, mint_bound, handle, ref ty) with !Mutate = match ty {
     if vroot == handle {
       true
     } else {
+      // The row is a CHAIN, and the guard walks all of it — the same links
+      // record_row_full reads, so the three walks of a record row (free
+      // variables, substitution, occurs) agree about where it ends.
       match chase_node(spine, mint_bound, vroot, 0) {
-        GNode(NRecordRowBound(rest, _), _) => occurs_in_fields(spine, mint_bound, handle, rest),
+        GNode(NRecordRowBound(rest, tail), _) => occurs_in_fields(spine, mint_bound, handle, rest) || occurs_in_row_tail(spine, mint_bound, handle, tail),
+        GNode(NBound(inner), _) => occurs_in(spine, mint_bound, handle, inner),
         _ => false,
       }
     }
@@ -1179,7 +1606,21 @@ fn occurs_in_fields_loop(spine, mint_bound, handle, ref fields, i, n) with !Muta
 // ONE triple, one walk: the names on both fields plus the tail var —
 // the three vars-of-a-row walks (free/occurs/subst) agree by having
 // one shape to agree about.
-fn occurs_in_row(spine, mint_bound, handle, ref eff) with !Mutate = match eff {
+// ONE WALK VISITS EACH ROW CELL ONCE. A row is a graph, not a tree: the
+// cells of a binding group's rows are reached through one another along
+// every call path of the cycle, so a walk that re-entered a cell per path
+// was exponential in the group's depth. Measured 2026-09-28 on the wheel:
+// the formatter's 46-member group spent 266 MB of the judgment's 565 MB
+// high-water in one member's occurs checks (45 of them walked 17.4 million
+// edges), and one more member doubled it. A cell's content answers the same
+// question however it was reached, so the walk keeps a table of the roots
+// already entered and a second arrival reads only the edge's own mask. The
+// table is made where a row walk begins, which most occurs checks never
+// reach.
+fn occurs_in_row(spine, mint_bound, handle, ref eff) with !Mutate =
+  occurs_in_row_seen(spine, mint_bound, handle, eff, wmap_new(16))
+
+fn occurs_in_row_seen(spine, mint_bound, handle, eff, seen) with !Mutate = match eff {
   EfRow(p, a, t) => if occurs_in_eff_names(spine, mint_bound, handle, p) {
     true
   } else {
@@ -1192,28 +1633,39 @@ fn occurs_in_row(spine, mint_bound, handle, ref eff) with !Mutate = match eff {
         // reach the same leaves through EVERY edge (the trio law over
         // rows — any edge occurring is the row occurring). Structural
         // walk — the mechanism layer's own discipline.
-        occurs_in_edges(spine, mint_bound, handle, vs),
+        occurs_in_edges(spine, mint_bound, handle, vs, seen),
         _ => false,
       }
     }
   },
 }
 
-fn occurs_in_edges(spine, mint_bound, handle, ref vs: [Int]) with !Mutate = match vs {
+fn occurs_in_edges(spine, mint_bound, handle, ref vs: [RowEdge], seen) with !Mutate = match vs {
   [] => false,
-  [v, ...rest] => {
+  [e, ...rest] => {
+    let v = edge_cell(e)
     let r = chase_handle(spine, mint_bound, v, 0)
+    // The mask is part of the edge's structure (a parameterized name can
+    // carry a payload type), so the cycle guard reads it as subst does.
     let here = if v == handle || r == handle {
       true
+    } else if occurs_in_eff_names(spine, mint_bound, handle, edge_mask(e)) {
+      true
     } else {
-      match chase_node(spine, mint_bound, r, 0) {
-        GNode(kind, _) => match edge_row_of(kind) {
-          Some(inner) => occurs_in_row(spine, mint_bound, handle, inner),
-          None => false,
+      match wmap_get(seen, r) {
+        Some(_) => false,
+        None => {
+          wmap_add(seen, r, r)
+          match chase_node(spine, mint_bound, r, 0) {
+            GNode(kind, _) => match edge_row_of(kind) {
+              Some(inner) => occurs_in_row_seen(spine, mint_bound, handle, inner, seen),
+              None => false,
+            },
+          }
         },
       }
     }
-    if here { true } else { occurs_in_edges(spine, mint_bound, handle, rest) }
+    if here { true } else { occurs_in_edges(spine, mint_bound, handle, rest, seen) }
   },
 }
 
@@ -1229,9 +1681,13 @@ fn occurs_in_record_fields(spine, mint_bound, handle, ref fields) with !Mutate =
 // continues at the very handle being bound is the row sort's own infinite
 // type, and subst would walk it forever. The other two arms carry no
 // handle, so there is nothing to close.
+fn occurs_in_row_tail(spine, mint_bound, handle, tail) with !Mutate = match tail {
+  RowClosed => false,
+  RowContinues(next) => occurs_in(spine, mint_bound, handle, TRecordOpen([], next)),
+}
+
 fn record_row_tail_is(tail, handle) with Pure = match tail {
   RowClosed => false,
-  RowAssumed => false,
   RowContinues(v) => v == handle,
 }
 
@@ -1287,7 +1743,13 @@ fn occurs_in_eff_args_loop(spine, mint_bound, handle, ref args, i, n) with !Muta
 // open-count guard — its page dies with the region, and writing into it
 // would resurrect the doomed-allocation class. MFreshNode needs no step
 // here: the checkpoint restores `next` wholesale.
-fn revert_trail_into(ref spine, spine_open, ref trail, current, target) with Memory = if current <= target {
+// The LIFO note columns (gates, instances, demands, row notes, parameter
+// facts) are NOT paged, so their arms carry no open-band guard: a pop lands
+// on the live table whatever band the handle is in, and the table itself
+// outlives every fork (allocated at the root install). They travel as ONE
+// record — each was a parameter of its own threaded through every arm of
+// both walks, and a fifth column would have been a fifth.
+fn revert_trail_into(ref spine, spine_open, ref trail, current, target, cols) = if current <= target {
   ()
 } else {
   let idx = current - 1
@@ -1295,24 +1757,56 @@ fn revert_trail_into(ref spine, spine_open, ref trail, current, target) with Mem
   match mutation {
     MSetNode(h, old) => {
       if spine_band(h) < spine_open { spine_put_node(spine, h, old) }
-      revert_trail_into(spine, spine_open, trail, idx, target)
+      revert_trail_into(spine, spine_open, trail, idx, target, cols)
     },
     MSetRow(h, old) => {
       if spine_band(h) < spine_open { spine_put_node(spine, h, old) }
-      revert_trail_into(spine, spine_open, trail, idx, target)
+      revert_trail_into(spine, spine_open, trail, idx, target, cols)
     },
     MSetBoundary(h, old) => {
       if spine_band(h) < spine_open { spine_put_boundary(spine, h, old) }
-      revert_trail_into(spine, spine_open, trail, idx, target)
+      revert_trail_into(spine, spine_open, trail, idx, target, cols)
     },
-    MFreshNode(_) => revert_trail_into(spine, spine_open, trail, idx, target),
+    MSetProduct(h, old) => {
+      if spine_band(h) < spine_open { spine_put_product(spine, h, old) }
+      revert_trail_into(spine, spine_open, trail, idx, target, cols)
+    },
+    MFreshNode(_) => revert_trail_into(spine, spine_open, trail, idx, target, cols),
+    MRowNote(h) => {
+      wmap_pop(cols.rows, h)
+      revert_trail_into(spine, spine_open, trail, idx, target, cols)
+    },
+    MSetGate(h) => {
+      wmap_pop(cols.gates, h)
+      revert_trail_into(spine, spine_open, trail, idx, target, cols)
+    },
+    MInstanceNote(h) => {
+      wmap_pop(cols.instances, h)
+      revert_trail_into(spine, spine_open, trail, idx, target, cols)
+    },
+    MSetDemand(h) => {
+      wmap_pop(cols.demands, h)
+      revert_trail_into(spine, spine_open, trail, idx, target, cols)
+    },
+    MBinderFact(h) => {
+      wmap_pop(cols.binders, h)
+      revert_trail_into(spine, spine_open, trail, idx, target, cols)
+    },
+    MOweLate(h) => {
+      wmap_pop(cols.late, h)
+      revert_trail_into(spine, spine_open, trail, idx, target, cols)
+    },
+    MClaimNote(h) => {
+      wmap_pop(cols.claims, h)
+      revert_trail_into(spine, spine_open, trail, idx, target, cols)
+    },
   }
 }
 
 // The unpaired walker: same in-place undo (every touched band is open —
 // the guard is kept uniform as the belt), with MFreshNode counting `next`
 // back down.
-fn revert_trail(ref spine, spine_open, ref trail, current, target, next_handle) with Memory = if current <= target {
+fn revert_trail(ref spine, spine_open, ref trail, current, target, next_handle, cols) = if current <= target {
   next_handle
 } else {
   let idx = current - 1
@@ -1320,17 +1814,49 @@ fn revert_trail(ref spine, spine_open, ref trail, current, target, next_handle) 
   match mutation {
     MSetNode(h, old) => {
       if spine_band(h) < spine_open { spine_put_node(spine, h, old) }
-      revert_trail(spine, spine_open, trail, idx, target, next_handle)
+      revert_trail(spine, spine_open, trail, idx, target, next_handle, cols)
     },
     MSetRow(h, old) => {
       if spine_band(h) < spine_open { spine_put_node(spine, h, old) }
-      revert_trail(spine, spine_open, trail, idx, target, next_handle)
+      revert_trail(spine, spine_open, trail, idx, target, next_handle, cols)
     },
     MSetBoundary(h, old) => {
       if spine_band(h) < spine_open { spine_put_boundary(spine, h, old) }
-      revert_trail(spine, spine_open, trail, idx, target, next_handle)
+      revert_trail(spine, spine_open, trail, idx, target, next_handle, cols)
     },
-    MFreshNode(_) => revert_trail(spine, spine_open, trail, idx, target, next_handle - 1),
+    MSetProduct(h, old) => {
+      if spine_band(h) < spine_open { spine_put_product(spine, h, old) }
+      revert_trail(spine, spine_open, trail, idx, target, next_handle, cols)
+    },
+    MFreshNode(_) => revert_trail(spine, spine_open, trail, idx, target, next_handle - 1, cols),
+    MRowNote(h) => {
+      wmap_pop(cols.rows, h)
+      revert_trail(spine, spine_open, trail, idx, target, next_handle, cols)
+    },
+    MSetGate(h) => {
+      wmap_pop(cols.gates, h)
+      revert_trail(spine, spine_open, trail, idx, target, next_handle, cols)
+    },
+    MInstanceNote(h) => {
+      wmap_pop(cols.instances, h)
+      revert_trail(spine, spine_open, trail, idx, target, next_handle, cols)
+    },
+    MSetDemand(h) => {
+      wmap_pop(cols.demands, h)
+      revert_trail(spine, spine_open, trail, idx, target, next_handle, cols)
+    },
+    MBinderFact(h) => {
+      wmap_pop(cols.binders, h)
+      revert_trail(spine, spine_open, trail, idx, target, next_handle, cols)
+    },
+    MOweLate(h) => {
+      wmap_pop(cols.late, h)
+      revert_trail(spine, spine_open, trail, idx, target, next_handle, cols)
+    },
+    MClaimNote(h) => {
+      wmap_pop(cols.claims, h)
+      revert_trail(spine, spine_open, trail, idx, target, next_handle, cols)
+    },
   }
 }
 
@@ -1339,6 +1865,37 @@ fn revert_trail(ref spine, spine_open, ref trail, current, target, next_handle) 
 // relevant tier's first sweep).
 fn trail_append(trail, trail_len, own mutation) =
   list_set(list_extend_to(trail, trail_len + 1), trail_len, mutation)
+
+// Whether a write is journaled: an undo entry is read only by an open
+// checkpoint's rollback (or a segment's written-set), so with no checkpoint
+// open nothing can ever read it. Every write of the whole compile used to be
+// journaled regardless — the trail grew with the program and was the largest
+// single class the crossing census found beside a declaration's own scratch
+// (2026-10-02).
+fn journaling(checkpoint_stack) = len(checkpoint_stack) > 0
+
+// The trail and its logical length after one write, as one decision: the
+// entry lands only while it is journaled.
+fn trail_after(trail, trail_len, journaled, mutation) =
+  if journaled { trail_append(trail, trail_len, mutation) } else { trail }
+
+fn trail_len_after(trail_len, journaled) = if journaled { trail_len + 1 } else { trail_len }
+
+// The cells a run of trail entries BOUND, below a handle frontier, each
+// once in first-write order: the type and row overwrites are the writes
+// that change what a cell means; a fresh mint, a gate, a note, a demand, an
+// instance note, a boundary and a call product leave the cell's meaning
+// where it was, so they are not divergences between two segments.
+fn written_since(entries, below) = fold([], written_step(below), entries)
+
+fn written_step(below, acc, m) = match m {
+  MSetNode(h, _) => note_written(acc, h, below),
+  MSetRow(h, _) => note_written(acc, h, below),
+  MSetBoundary(_, _) | MFreshNode(_) | MSetGate(_) | MInstanceNote(_) | MSetDemand(_) | MSetProduct(_, _) | MRowNote(_) | MBinderFact(_) | MOweLate(_) | MClaimNote(_) => acc,
+}
+
+fn note_written(acc, h, below) =
+  if h < below && !any({ x => x == h }, acc) { push(acc, h) } else { acc }
 
 // Effect-name set ops (H3.1)
 // merge_row routes through `name_set_union` from effects.mn — the
@@ -1355,109 +1912,309 @@ fn node_handle(node) = match node {
   N(_, _, h) => h,
 }
 
+// ── the one total child projection — the weave's tree edge ──────────
+//
+// Homed beside `node_handle` (moved from query.mn 2026-09-27): the census's
+// tree walks, the enclosing-decl descent and lower's race rule (a handler's
+// arms walked for a state write) all read THIS edge, never a per-altitude
+// copy.
+//
+// expr_child_handles — the type-handles of an Expr's direct child Nodes.
+// One arm per Expr variant that carries children (the row algebra over
+// the value space — H6 exhaustive); leaf literals carry none.
+fn expr_child_handles(e) = match e {
+  BinOpExpr(_, l, r) => [node_handle(l), node_handle(r)],
+  UnaryOpExpr(_, n) => [node_handle(n)],
+  CallExpr(f, args) => [node_handle(f)] ++ map(node_handle, args),
+  LambdaExpr(_, body) => [node_handle(body)],
+  IfExpr(c, t, f) => [node_handle(c), node_handle(t), node_handle(f)],
+  BlockExpr(stmts, fin) => // order-free: membership test only
+  [node_handle(fin)] ++ map(node_handle, stmts),
+  MatchExpr(scrut, arms) => // an arm's BODY is a child node — dropping the arms left the
+  // projection partial and tree containment blind below any match
+  // (the enclosing-decl guard's measured hole).
+  [node_handle(scrut)] ++ map({ (_, b) => node_handle(b) }, arms),
+  ResumeExpr(v, updates) => // A resume-with update is the parser's {name, init} record — the handle
+  // lives on its init edge (record_field_handle's exact sibling).
+  [node_handle(v)] ++ map(record_field_handle, updates),
+  MakeListExpr(elems) => map(node_handle, elems),
+  MakeTupleExpr(elems) => map(node_handle, elems),
+  MakeRecordExpr(fields) => // Record LITERALS carry the parser's (name, value) tuples
+  // (parse_record_fields); only resume updates are {name, init} records.
+  map(tuple_field_handle, fields),
+  RecordUpdateExpr(base, flds) => [node_handle(base)] ++ map(tuple_field_handle, flds),
+  NamedRecordExpr(_, flds) => map(tuple_field_handle, flds),
+  IndexExpr(recv, idx) => [node_handle(recv), node_handle(idx)],
+  MakeStringExpr(frags) => map(node_handle, frags),
+  ShowExpr(inner) => [node_handle(inner)],
+  FieldExpr(recv, _) => [node_handle(recv)],
+  PipeExpr(_, l, r) => [node_handle(l), node_handle(r)],
+  FanoutExpr(branches) => map(node_handle, branches),
+  LabeledArg(_, v) => // the labeled value is a child node
+  [node_handle(v)],
+  _ => // LitInt/LitFloat/LitString/LitBool/LitUnit/VarRef/ExprPlaceholder — no child Nodes
+  [],
+}
+
+// The field IS the parser's {name, init} record — read the init edge by
+// name (the tuple destructure read a record as positions and met Node).
+fn record_field_handle(field) with Pure = node_handle(field.init)
+
+fn tuple_field_handle(field) with Pure = match field {
+  (_, v) => node_handle(v),
+}
+
+// stmt_child_handles — expr_child_handles' Stmt sibling (the projection
+// made TOTAL, Hβ.cursor.enclosing-decl-edge's dep): the VALUE-position
+// child nodes of a statement. Type-level carriers (a variant's or op's
+// comment node, an import, a refinement's predicate) hold no value
+// holes and contribute none.
+fn stmt_child_handles(s) = match s {
+  LetStmt(_pat, value, ann) => match ann {
+    N(NTypeAnn(_), _, _) => // the annotation channel is a child only when it IS one: the absent
+    // form ALIASES the value node (the parser's no-fresh-mint sentinel,
+    // all three LetStmt mints), so listing the alias double-visits every
+    // unannotated let's value subtree — measured as count_var_uses
+    // doubling through statement-position lets. Same read infer makes
+    // (its NTypeAnn arm skips a non-annotation node).
+    [node_handle(value), node_handle(ann)],
+    _ => [node_handle(value)],
+  },
+  FnStmt(_name, _params, _ret, _effs, body) => [node_handle(body)],
+  ExprStmt(e) => [node_handle(e)],
+  HandlerDeclStmt(_hname, _ename, _config, states, arms, _effs) => map(record_field_handle, states) ++ map(arm_body_handle, arms),
+  TypeDefStmt(_, _) => [],
+  EffectDeclStmt(_, _, _) => [],
+  ImportStmt(_) => [],
+  RefineStmt(_, _, _) => [],
+  AliasStmt(_, _) => [],
+  RowAliasStmt(_, _) => [],
+}
+
+fn arm_body_handle(arm) with Pure = node_handle(arm.body)
+
+// body_child_handles — the ONE total child projection over NodeBody:
+// tree walks (containment, the enclosing-decl descent) read this,
+// never a per-altitude copy.
+// THE ROW OF A SUBTREE — a read over structure (C5). The judgment charges
+// every construct's cost on the node that builds it (the row notes,
+// graph_row_note) and joins the same charges into the FRAME's row cell; a
+// sub-expression's row was never readable, because the frame cell holds the
+// whole declaration's total. It is a fold now: a node's own notes, resolved
+// live, joined over its children's — with four constructs answering their
+// OWN notes alone, or with one child, since what is under them does not run
+// when they are evaluated (a lambda and a nested fn mint a record whose body
+// is latent; a handler declaration installs nothing; a `<~` ticks its
+// recurrence and never evaluates its delay spec, which is judged in a frame
+// whose row is dropped — folding it made the caret say `Memory + Alloc` at
+// a cycle `!Alloc` accepts) or is already summarized (a `~>` tee's note IS
+// its body's row with the handler's absorption removed, so descending would
+// re-add what the install absorbs). A hole answers None:
+// an authored absence performs whatever the position may, and a reader
+// asking "is this provably pure?" must hear no. The e-graph's absorb gate
+// reads it; a sub-expression's Effects facet can.
+fn row_of_subtree(h) with !Mutate = {
+  let here = fold(mk_ef_pure(), (acc, r) => union_row(acc, resolve_row(r)), graph_rows_at(h))
+  match graph_node_body(h) {
+    NHole(_) => None,
+    NExpr(LambdaExpr(_, _)) => Some(here),
+    NStmt(FnStmt(_, _, _, _, _)) => Some(here),
+    NStmt(HandlerDeclStmt(_, _, _, _, _, _)) => Some(here),
+    NExpr(PipeExpr(PTee, _, _)) => Some(here),
+    NExpr(PipeExpr(PFeedback, l, _)) => row_of_child(Some(here), node_handle(l)),
+    body => fold(Some(here), row_of_child, body_child_handles(body)),
+  }
+}
+
+fn row_of_child(acc, c) = match acc {
+  None => None,
+  Some(row) => match row_of_subtree(c) {
+    None => None,
+    Some(cr) => Some(union_row(row, cr)),
+  },
+}
+
+fn body_child_handles(body) = match body {
+  NExpr(e) => expr_child_handles(e),
+  NStmt(s) => stmt_child_handles(s),
+  NPat(_) => [],
+  NHole(_) => [],
+  NModule(_) => [],
+  NTypeAnn(_) => [],
+}
+
+// ── THE FANOUT REACH — one rule, asked one name at a time ────────────
+//
+// Whether a function reaches a fanout through DIRECT calls: its own body
+// holds a `><`, a `<|` or a `fanout(f, xs)` call, or it directly calls a fn
+// that does — never through a fn declared `!Thread`, which keeps its own
+// frame's schedule and hands no demand on. A schedule an install demands
+// crosses a call exactly this far (lower's `spec_call_name`), so the emit
+// asks this rule before it demands a callee's schedule twin, and `mentl
+// where` asks it, the same way, to say which callers' installs reach a
+// fanout site. A lambda's or a nested fn's body is its own frame and never
+// the enclosing fn's own fanout (`Hβ.lower.schedule-through-a-value`); a
+// call inside one is not a direct call of the enclosing fn.
+//
+// The whole-program closure that stood here beside this rule had one
+// reader, the `where` verb, which scanned every graph handle to build it
+// and every handle again to find a body by name; both read the decls
+// column now and the closure is gone (2026-10-02, D5).
+//
+// Whether a declaration's clause negates the named effect (`!Thread`) —
+// the authored negation, read off the FnStmt it stands on.
+fn declares_absent(clause, ename: String) =
+  any({ (en, negated, _) => negated && str_eq(eff_name_str(en), ename) }, clause)
+
+// ONE ASK of the rule with the answers settled across asks carried in
+// `memo`: an ask that found no fanout from its root settles every name it
+// entered false (`fanout_reach_settle`), the root's reach being whole. The
+// emit's spec registry and `where`'s demand walk both ask through here.
+fn fanout_reach_ask(memo, decls, name: String) = match fanout_reach_of({entered: [], memo: memo, seen: smap_new()}, decls, name) {
+  (found, st) => (found, if found { st.memo } else { fold(st.memo, fanout_reach_settle, st.entered) }),
+}
+
+// THE RULE WALKED FROM ONE NAME and no further. The memo carries the
+// answers settled across asks; a name is entered ONCE per ask (the seen
+// set, with the entered list its order), and a second meeting — a cycle,
+// or a callee two paths share — answers false without walking again, since
+// the ask's root settles it: a chain that found a fanout settles true as it
+// returns, and a root that found none settles every name it entered false.
+// The whole-program closure it replaced answered each ask by walking every
+// body — 22 MB on the wheel, for lib/persist's four Persist-class sites
+// (2026-09-30) — and the first per-name form memoized nothing a cycle had
+// touched and re-walked the runtime's mutual recursion once per path,
+// exponentially: the wheel's compile reached 4.3 GB and never planned.
+fn fanout_reach_of(st, decls, name: String) = match smap_get(st.memo, name) {
+  Some(v) => (v == 1, st),
+  None => if smap_has(st.seen, name) {
+    (false, st)
+  } else {
+    match smap_get(decls, name) {
+      None => // a primitive, an op, a constructor or a local: no body to reach
+      // through
+      (false, st),
+      Some(h) => match graph_node_body(h) {
+        NStmt(FnStmt(_, _, _, clause, body)) => if declares_absent(clause, "Thread") {
+          (false, {entered: st.entered, memo: smap_add(st.memo, name, 0), seen: st.seen})
+        } else {
+          match fanout_fact((false, []), node_handle(body)) {
+            (has_own, callees) => if has_own {
+              (true, {entered: st.entered, memo: smap_add(st.memo, name, 1), seen: st.seen})
+            } else {
+              match fold(
+                (false, {entered: push(st.entered, name), memo: st.memo, seen: smap_add(st.seen, name, 1)}),
+                fanout_reach_callee(decls, ??, ??),
+                callees
+              ) {
+                (found, inner) => (found, {
+                  entered: inner.entered,
+                  memo: if found { smap_add(inner.memo, name, 1) } else { inner.memo },
+                  seen: inner.seen,
+                }),
+              }
+            },
+          }
+        },
+        _ => (false, st),
+      },
+    }
+  },
+}
+
+fn fanout_reach_callee(decls, acc, callee) = match acc {
+  (true, _) => acc,
+  (false, st) => fanout_reach_of(st, decls, callee),
+}
+
+// An ask that found no fanout from its root settles every name it entered.
+fn fanout_reach_settle(memo, name: String) = smap_add(memo, name, 0)
+
+// The fn declarations by name, read once off the decls column, so the
+// reach can find a callee's clause and body by the name a call carries.
+fn fanout_decls_index() = fold(smap_new(), fanout_decls_step, graph_decls_at())
+
+fn fanout_decls_step(acc, h) = match graph_node_body(h) {
+  NStmt(FnStmt(name, _, _, _, _)) => smap_add(acc, name, h),
+  _ => acc,
+}
+
+// ONE pass over a body: whether it holds a fanout of its own and the names
+// it calls directly, both at its own frame — a lambda or a nested fn starts
+// another. A fold stage over `(own, callees)`, the accumulator first.
+fn fanout_fact(acc, h) = {
+  let body = graph_node_body(h)
+  match body {
+    NExpr(FanoutExpr(_)) => fold(fact_own(acc), fanout_fact, body_child_handles(body)),
+    NExpr(PipeExpr(PFanout(_), _, _)) => fold(fact_own(acc), fanout_fact, body_child_handles(body)),
+    NExpr(CallExpr(f, _)) => fold(fact_call(acc, f), fanout_fact, body_child_handles(body)),
+    NExpr(LambdaExpr(_, _)) => acc,
+    NStmt(FnStmt(_, _, _, _, _)) => acc,
+    other => fold(acc, fanout_fact, body_child_handles(other)),
+  }
+}
+
+fn fact_own(acc) = match acc {
+  (_, callees) => (true, callees),
+}
+
+// A call of the prelude's `fanout` is a fanout of the body's own.
+fn fact_call(acc, f) = match f {
+  N(NExpr(VarRef(name)), _, _) => match acc {
+    (has_own, callees) => (has_own || callee_is_fanout(f), push(callees, name)),
+  },
+  _ => acc,
+}
+
+fn callee_is_fanout(f) = match f {
+  N(NExpr(VarRef(name)), _, _) => str_eq(name, "fanout"),
+  _ => false,
+}
+
 // The MINT span of a handle — the reverse read of the span_index weave
 // (fresh_handle writes (span, handle) at every mint). A node's REASON span
 // can be overwritten by a later bind (a hole's reason becomes its binder's
 // "declared as ..."), so a patch target must read the weave, never the
 // reason. O(n) scan at felt cadence (once per accepted action); the O(1)
 // form is the handle-indexed span weave (the §5.O name-is-handle sibling).
-// The module path enclosing a span: the NModule weave entry whose span
-// contains this span. "" when no module wraps it (single-unit weave).
-// DAG-homed here (oracle and cursor both read it; both import graph) —
-// module-of-position is a LIVE projection of the NModule spans, never a
-// per-mint side-ledger. The O(next) scan's O(1) destiny is the
-// handle-indexed span weave (the §5.O name-is-handle sibling).
-fn module_path_of_span(span) with GraphRead + !Mutate = {
-  let snapshot = graph_snapshot()
-  match snapshot {
-    Graph(next, _spans) => scan_for_enclosing_module(span, 0, next),
-  }
-}
-
-fn scan_for_enclosing_module(target, i, n) with GraphRead + !Mutate = if i >= n {
-  ""
-} else {
-  match graph_node_body(i) {
-    NModule(m) => if span_contains(m.span, target) { m.path } else { scan_for_enclosing_module(target, i + 1, n) },
-    _ => scan_for_enclosing_module(target, i + 1, n),
-  }
-}
-
-// Every module in this weave, in weave order — the same NModule cells
-// module_path_of_span narrows by containment, read whole instead.
+//
+// Every module in this weave, in weave order. A position's module is never
+// derived from these cells by span containment: every module numbers its
+// lines from 1, so a span alone lies inside every file long enough to reach
+// it, and the scan that answered that way (the proximity rank's, until
+// 2026-10-01) read a decl on line 1 of any module as the caret's own. A
+// node's module is the column `graph_module_of` reads.
 //
 // The DAG is a fact the driver PROVES on every invocation and then could not
 // show anyone: answering "which modules does this entry pull?" meant a shell
 // transitive-closure loop over `grep '^import'`, re-deriving by name what the
 // graph holds by edge. That hand walk is what this projection retires, and it
 // is a read of the weave, never a second walk of the filesystem.
-// ONE CELL PER MODULE, keyed by PATH. The trial and the final each parse, so
-// each mints its own NModule node for the same file — two cells, one module.
-// Every consumer of this projection was therefore double-counting: the cost
-// facet reported 107 modules and 119,128 source lines for a 53-module,
-// 59,501-line wheel, exactly 2n+1 (the link root is minted once). A module's
-// identity is what it RESOLVES TO, never the node that happens to represent
-// it — the same law driver_collect_visit's visited set keys on, and the same
-// one the census dedup needed. LAST wins, matching env_snapshot's dedup-to-
-// latest for the same reason: the final generation is the judged one.
-fn module_cells() with Memory + Alloc + GraphRead + !Mutate = {
-  let snapshot = graph_snapshot()
-  match snapshot {
-    Graph(next, _spans) => dedup_module_cells(collect_module_cells(0, next), []),
-  }
-}
-
-// Keep the LAST cell for a path by skipping any that a later one supersedes.
-// The walk is handle-ascending, so the last cell is the FINAL generation's —
-// the judged one, whose decls are the nodes the returned ast actually holds.
-// Keeping the first would hand every consumer the trial's shadow tree.
-fn dedup_module_cells(ref cells, acc) with Memory + Alloc = if len(cells) == 0 {
-  acc
-} else {
-  match cells[0] {
-    (_h, path, _s, _d) => dedup_module_cells(
-      rest(cells),
-      if cell_path_in(rest(cells), path, 0) { acc } else { push(acc, cells[0]) }
-    ),
-  }
-}
-
-fn cell_path_in(ref acc, ref path: String, i) with Memory + Alloc = if i >= len(acc) {
-  false
-} else {
-  match acc[i] {
-    (_h, p, _s, _d) => if p == path { true } else { cell_path_in(acc, path, i + 1) },
-  }
-}
-
-// Every NModule node in the weave, as `(handle, path, span, decls)`.
+// ONE CELL PER MODULE, as `(handle, path, span, decls)`, read off the module
+// column graph_register_node writes: every current module node, in the order
+// the modules were registered. A module's identity is what it RESOLVES TO,
+// never the node that happens to represent it — a later parse of a path
+// supersedes its earlier node at registration, so no consumer is handed two
+// cells for one module. This walked every handle in the graph for module
+// bodies and kept the last per path with a quadratic dedup, once per query —
+// and a resident session's walk lengthened with every generation it kept.
 //
 // The HANDLE leads because it is the module's identity and the other three
-// are projections of the node it names — this walk is standing on it at `i`
-// and used to drop it, which `driver_module_ast`'s own comment had already
-// confessed ("discards the minted handle — reading the node instead of
-// re-filtering is the O(1) form once the mint keeps an edge to it"). Its
-// first consumer is `module_handle_of_path`, which is what lets an address
-// name a module by the edge rather than by containment: spans are per-module
-// 1-based, so a line number alone is not an address, and the caret projection
-// was answering `src/synth_proposer.mn:733` with `scan_number` from
-// `src/lexer.mn`.
-//
-// The cell's DECLS ride out with its path and span. Dropping them made
-// every consumer that wanted a module's own content re-derive it from
-// text — which is how 52 dead imports sat unseen: a grep cannot tell a
-// used name from one named in a comment, and the graph can.
-fn collect_module_cells(i, n) with Memory + Alloc + GraphRead + !Mutate = if i >= n {
-  []
-} else {
-  match graph_node_body(i) {
-    NModule(m) => [(i, m.path, m.span, m.decls)] ++ collect_module_cells(i + 1, n),
-    _ => collect_module_cells(i + 1, n),
-  }
+// are projections of the node it names; the cell's DECLS ride out with its
+// path and span. Dropping them made every consumer that wanted a module's own
+// content re-derive it from text — which is how 52 dead imports sat unseen: a
+// grep cannot tell a used name from one named in a comment, and the graph
+// can.
+fn module_cells() with !Mutate = graph_modules() |> fold([], module_cell_of)
+
+// A module handle's cell. The column holds only handles registered as module
+// nodes, so the other arm keeps nothing.
+fn module_cell_of(acc, h) with !Mutate = match graph_node_body(h) {
+  NModule(m) => push(acc, (h, m.path, m.span, m.decls)),
+  _ => acc,
 }
 
-fn module_paths() with Memory + Alloc + GraphRead + !Mutate =
-  map({ (_h, p, _s, _d) => p }, module_cells())
+fn module_paths() with !Mutate = map({ (_h, p, _s, _d) => p }, module_cells())
 
 // The module handle a path names — the inverse of `module_name_of_handle`,
 // read from the same deduped cells, so it lands on the JUDGED generation's
@@ -1472,28 +2229,12 @@ fn module_paths() with Memory + Alloc + GraphRead + !Mutate =
 // word compare against that handle — never a path re-matched per candidate,
 // and never span CONTAINMENT, which stopped being able to answer the question
 // the moment each module's spans became its own 1-based coordinates.
-// LAST wins, matching `module_cells`' own dedup-to-latest: the cells arrive in
-// mint order and the final generation is the judged one.
-fn module_handle_of_path(path: String) with Memory + Alloc + GraphRead + !Mutate =
-  fold(None, module_handle_pick(path), module_cells())
-
-fn module_handle_pick(path: String, acc, c) with Memory + Alloc = match c {
-  (h, p, _s, _d) => if p == path { Some(h) } else { acc },
-}
-
-// The path a module HANDLE names — `module_handle_of_path` read the other
-// way, over the same cells, so the two directions cannot disagree.
-fn module_path_of_handle(mh) with Memory + Alloc + GraphRead + !Mutate =
-  fold("", module_path_pick(mh), module_cells())
-
-// `mh: Int` is the Intent Boundary carrying the eq PROOF, not decoration:
-// the fold's accumulator leaves `mh` a bare variable at emit, so `h == mh`
-// falls to a one-word compare and `T_EqTypeUnprovable` says so — right for
-// a handle by luck, an address lie by construction. The sibling
-// `module_handle_pick` annotates `path: String` for the same reason.
-fn module_path_pick(mh: Int, acc, c) with Memory + Alloc = match c {
-  (h, p, _s, _d) => if h == mh { p } else { acc },
-}
+// The CURRENT node is read where its registration superseded the last one
+// (graph_module_now). This walked every handle in the graph for module cells
+// and kept the last per path — once per address a caret asked for, so a
+// resident session paid a whole-graph walk on every read, a longer one for
+// every generation it had kept.
+fn module_handle_of_path(path: String) with !Mutate = graph_module_now(path)
 
 // ─── Import reachability — can module A see module B's names? ────────
 //
@@ -1505,38 +2246,81 @@ fn module_path_pick(mh: Int, acc, c) with Memory + Alloc = match c {
 // wrong one: resolution fell back to the whole link's FLATTENED env,
 // where a name resolves whether or not the module writing it can reach
 // that name. Measured 2026-09-20: 0 unresolved on the entry link against
-// 57 per module. It is homed here beside `module_path_of_span` for the
-// reason that comment already gives — graph.mn is the DAG bottom, so
-// every reader imports it.
+// 57 per module. It is homed in graph.mn because graph.mn is the DAG
+// bottom, so every reader imports it.
 //
-// A HANDLE-facing entry, because that is what callers hold: a node's
-// module is stamped at its mint, so both sides arrive as handles and the
-// same-module case is one word compare with no path materialized at all.
-fn module_reaches(from_mh, target_mh) with GraphRead + Alloc + Memory + !Mutate = if from_mh == target_mh {
-  true
-} else {
-  module_imports(module_path_of_handle(from_mh), module_path_of_handle(target_mh), [])
+// Every reader asks it as HANDLES: the judgment's (the comment-reference
+// gate, the F0b import check) through infer_ctx's cached table below, the
+// cursor's proximity and the proposer's rank through one module's row of
+// it (`module_reach_of`). The by-path walk the proximity rank used per call
+// is deleted with the span-read decay it served (2026-10-01).
+//
+// The whole module DAG's reachability in ONE graph walk (F0b, 2026-09-27):
+// every module cell, its direct import paths read off its own decls, and
+// each module's closure by a walk over that small graph. Built once per
+// judgment (infer_ctx caches it) so the per-reference import check is a
+// table read, never a graph scan per VarRef.
+fn module_reach_table() with !Mutate = {
+  let cells = module_cells()
+  let ambient = ambient_closure(cells)
+  fold(wmap_new(64), reach_table_add(cells, ambient), cells)
 }
 
-// Does module `from` import `target` (transitively)? Reads the live
-// ImportStmt edges in `from`'s NModule decls; the `seen` accumulator
-// breaks import cycles. The module graph IS graph content — no side-ledger.
-fn module_imports(from, target, seen) with GraphRead + Alloc + Memory + !Mutate = if from == "" || contains_path(seen, from) {
-  false
-} else {
-  let direct = module_import_paths(from)
-  if contains_path(direct, target) { true } else { any_imports(direct, target, [from] ++ seen) }
+// The prelude is linked into every compile unasked (driver_collect_dag
+// seeds it before the entry), so its closure is every module's — the
+// ambient world, absent only where no prelude resolves.
+fn ambient_closure(cells) = match fold([], cell_handle_for("prelude"), cells) {
+  [] => [],
+  [ph, ..._] => module_closure(ph, cells),
 }
 
-fn any_imports(paths, target, seen) with GraphRead + Alloc + Memory + !Mutate = if len(paths) == 0 {
-  false
-} else if module_imports(last(paths), target, seen) {
-  true
-} else {
-  any_imports(drop_last(paths), target, seen)
+// One module's row of the table: the modules it reaches through import
+// edges, the ambient world included — for a reader asking of one module,
+// which builds no table for the rest.
+fn module_reach_of(mh: Int) with !Mutate = {
+  let cells = module_cells()
+  module_closure(mh, cells) ++ ambient_closure(cells)
 }
 
-fn contains_path(paths, target) with Memory + Alloc = if len(paths) == 0 {
+fn reach_table_add(cells, ambient, table, cell) = match cell {
+  (h, _p, _s, _d) => wmap_add(table, h, module_closure(h, cells) ++ ambient),
+}
+
+fn module_closure(h, cells) = closure_walk(cells, [h], [])
+
+fn closure_walk(cells, frontier, seen) = match frontier {
+  [] => seen,
+  [m, ...rest] => if handles_contain(seen, m) {
+    closure_walk(cells, rest, seen)
+  } else {
+    closure_walk(cells, rest ++ direct_import_handles(m, cells), push(seen, m))
+  },
+}
+
+// A module's direct imports are the identities the driver resolved and
+// carried onto its NModule — read by identity against the cells, never an
+// authored spelling re-resolved here.
+fn direct_import_handles(m: Int, cells) = match graph_node_body(m) {
+  NModule(mod) => paths_to_handles(mod.imports, cells),
+  _ => [],
+}
+
+fn paths_to_handles(paths, cells) = fold([], path_handle_join(cells), paths)
+
+fn path_handle_join(cells, acc, path: String) = fold(acc, cell_handle_for(path), cells)
+
+fn cell_handle_for(path: String, acc, c) = match c {
+  (h, p, _s, _d) => if p == path { push(acc, h) } else { acc },
+}
+
+fn handles_contain(xs, h: Int) = any({ x => x == h }, xs)
+
+fn reach_table_has(table, from: Int, to: Int) = match wmap_get(table, from) {
+  None => false,
+  Some(closure) => handles_contain(closure, to),
+}
+
+fn contains_path(paths, target) = if len(paths) == 0 {
   false
 } else if last(paths) == target {
   true
@@ -1544,26 +2328,9 @@ fn contains_path(paths, target) with Memory + Alloc = if len(paths) == 0 {
   contains_path(drop_last(paths), target)
 }
 
-// The direct import paths declared in module `path`'s NModule decls.
-fn module_import_paths(path) with GraphRead + !Mutate + Alloc + Memory = {
-  let snapshot = graph_snapshot()
-  match snapshot {
-    Graph(next, _spans) => scan_module_imports(path, 0, next),
-  }
-}
+fn import_paths_of_decls(decls) = decls |> filter_map_imports
 
-fn scan_module_imports(path, i, n) with GraphRead + !Mutate + Alloc + Memory = if i >= n {
-  []
-} else {
-  match graph_node_body(i) {
-    NModule(m) => if m.path == path { import_paths_of_decls(m.decls) } else { scan_module_imports(path, i + 1, n) },
-    _ => scan_module_imports(path, i + 1, n),
-  }
-}
-
-fn import_paths_of_decls(decls) with Alloc + Memory = decls |> filter_map_imports
-
-fn filter_map_imports(decls) with Alloc + Memory = if len(decls) == 0 {
+fn filter_map_imports(decls) = if len(decls) == 0 {
   []
 } else {
   let head_imports = match node_body_of(last(decls)) {
@@ -1592,7 +2359,7 @@ fn node_body_of(node) with Pure = match node {
 // too small does not go red; it goes BLIND, and accepts every rise beneath the
 // number it now reports (§11 tripwire 4). Summing the per-module extents is
 // what "total source" meant all along; it is only now that the two differ.
-fn weave_line_extent() with Memory + Alloc + GraphRead + !Mutate = fold(
+fn weave_line_extent() with !Mutate = fold(
   0,
   (acc, c) => match c {
     (_h, _p, s, _d) => match s {
@@ -1611,7 +2378,14 @@ fn weave_line_extent() with Memory + Alloc + GraphRead + !Mutate = fold(
 // allocation-free scan then measured O(n^2) over the snoc-spined log
 // (a 600s timeout at the same scale). The column is the same one write
 // projected by handle — the log survives for containment scans.
-fn parse_span_of(handle) with GraphRead = graph_span_of(handle)
+//
+// It is the one place a position comes from. A span is a MINT fact: a chase
+// follows the binding chain (a hole unified with a call's result answered the
+// chase terminal's span), and even a node's own reason cell rebinds when
+// inference resolves it (a hole's last-bind reason carried the enclosing
+// binop's span — both measured). Only the birth index never moves. A miss
+// answers span_zero, which is what tells an authored hole from scaffolding.
+fn parse_span_of(handle) = graph_span_of(handle)
 
 // The ONLY route from a TypeHandle to a resolved Ty. Delegates to
 // graph_chase. No cache. No staleness. Every observer reads live.
@@ -1628,6 +2402,7 @@ effect LookupTy {
   spec_ctx_set([(Int, Ty)], String)
   spec_ctx_clear()
   spec_enc_active() -> String
+  spec_pairs_active() -> [(Int, Ty)]
 }
 
 // ─── the specialization projection — lookup_ty under a twin's pairs ──
@@ -1636,11 +2411,36 @@ effect LookupTy {
 // by root handle — tiny, and maximally shared: every word instantiation IS
 // the floor emission ([Int], String, records — byte-identical, Law 7); only
 // a genuinely wide var mints a twin ($min$sp2 = min with its one var at f64).
-fn spec_pairs_find(pairs, root) with Memory + Alloc = match find({ (v, _) => v == root }, pairs) {
+fn spec_pairs_find(pairs, root) = match find({ (v, _) => v == root }, pairs) {
   Some(p) => match p {
     (_, t) => Some(t),
   },
   None => None,
+}
+
+// A RECORD ROW READ TO ITS END: every field its chain has learned, and what
+// lies past them — nothing, proven, or the one free row variable the rest
+// still is. Unify writes the chain and every reader walks it here (the
+// offset, the twin key, the substitution, the free-variable collection), so
+// no reader can stop one link short and call a partial set the whole.
+type RowEnd = RowEndClosed | RowEndFree(Int)
+
+fn record_row_full(fields, v) = match graph_chase(v) {
+  GNode(kind, _) => match kind {
+    NRecordRowBound(residual, RowClosed) => (fields ++ residual, RowEndClosed),
+    NRecordRowBound(residual, RowContinues(next)) => record_row_full(fields ++ residual, next),
+    NBound(t) => match t {
+      TRecordOpen(more, next) => record_row_full(fields ++ more, next),
+      TRecord(more) => (fields ++ more, RowEndClosed),
+      _ => // A row cell bound to any other type is ill-sorted; its rest is not
+      // known, and a reader that needs it floors.
+      (fields, RowEndFree(graph_chase_handle(v))),
+    },
+    NFree(_) => (fields, RowEndFree(graph_chase_handle(v))),
+    NRowFree(_) => (fields, RowEndFree(graph_chase_handle(v))),
+    NErrorHole(_) => (fields, RowEndFree(graph_chase_handle(v))),
+    NRowBound(_) => (fields, RowEndFree(graph_chase_handle(v))),
+  },
 }
 
 // Exact root-keyed substitution — the twin's one rule. Sound since the
@@ -1651,12 +2451,12 @@ fn spec_pairs_find(pairs, root) with Memory + Alloc = match find({ (v, _) => v =
 // floor TVar. This is the precision the interim free-leaf rule (every free =
 // the one wide type) could not have, and it lifts the one-wide-type demand
 // guard: multi-type generics (a := Float, b := Int) twin correctly.
-fn spec_pair_or_var(u, pairs) with GraphRead + Memory + Alloc = match spec_pairs_find(pairs, graph_chase_handle(u)) {
+fn spec_pair_or_var(u, pairs) = match spec_pairs_find(pairs, graph_chase_handle(u)) {
   Some(c) => c,
   None => TVar(u),
 }
 
-fn spec_subst_pairs(t, pairs) with GraphRead + Memory + Alloc = match t {
+fn spec_subst_pairs(t, pairs) = match t {
   TVar(u) => match graph_chase(u) {
     GNode(kind, _r) => match kind {
       NBound(t2) => spec_subst_pairs(t2, pairs),
@@ -1667,12 +2467,10 @@ fn spec_subst_pairs(t, pairs) with GraphRead + Memory + Alloc = match t {
       NRecordRowBound(_, _) => // A RECORD row var is a quantified var like any other, and the site that
       // closed it proved the whole field set. Returning it verbatim left the
       // substitution unable to answer for the one var whose binding decides
-      // every field offset, so the TRecordOpen arm below had to work around it
-      // — and an INTERIOR site, a call inside another twin's own body, went
-      // through neither and read the decl's unlearned row again. Unpaired,
-      // spec_pair_or_var answers TVar(u), which is exactly what these arms
-      // returned; paired, it answers the record that was proven.
-      spec_pair_or_var(u, pairs),
+      // every field offset — and an INTERIOR site, a call inside another
+      // twin's own body, read the decl's unlearned row again. A bound cell is
+      // a link in a chain, so it answers as the record the chain spells.
+      spec_subst_pairs(TRecordOpen([], u), pairs),
       NRowFree(_) => spec_pair_or_var(u, pairs),
     },
   },
@@ -1685,16 +2483,31 @@ fn spec_subst_pairs(t, pairs) with GraphRead + Memory + Alloc = match t {
   ),
   TName(n, args) => TName(n, map((x) => spec_subst_pairs(x, pairs), args)),
   TRecord(fs) => TRecord(map({ (n, ft) => (n, spec_subst_pairs(ft, pairs)) }, fs)),
-  TRecordOpen(fs, v) => // A row var is a var, and the site that closed it proved the WHOLE field
-  // set. Substituting the known fields' types while keeping `v` verbatim
-  // discarded that proof, and the discard is what the wrong-slot class was
-  // made of: the receiver stayed open in the twin, so the offset came from
-  // the known set's own ordering instead of the record's. Paired, the open
-  // row resolves to the closed record it was proven to be, and every offset
-  // downstream reads the full sorted set.
-  match spec_pairs_find(pairs, graph_chase_handle(v)) {
-    Some(closed) => closed,
-    None => mk_record_open(map({ (n, ft) => (n, spec_subst_pairs(ft, pairs)) }, fs), v),
+  TRecordOpen(fs, v) => // A row var is a var, and its pair is the RESIDUAL the site proved past
+  // it. The row is read to its END first: a key sits on the chain's free
+  // terminal, never on a link, so a receiver whose row learned fields
+  // across several unifies answers as the one record every link spells —
+  // the fields its chain learned, then the residual the site proved past
+  // the terminal (`spec_pairs_key_rest`). Two types sharing one terminal
+  // start their chains at different points (a receiver at its named
+  // fields, its pattern's rest binder past them), and each spells its own
+  // record from its own start. Unpaired, the row stays open at its
+  // terminal; closed, it is the record.
+  match record_row_full(fs, v) {
+    (all, end) => {
+      let learned = map({ (n, ft) => (n, spec_subst_pairs(ft, pairs)) }, all)
+      match end {
+        RowEndFree(t) => match spec_pairs_find(pairs, t) {
+          Some(residual) => match residual {
+            TRecord(rfs) => TRecord(field_canonicalize(learned ++ rfs)),
+            other => // only `spec_pairs_key_rest` pairs a row terminal, always as a closed record
+            other,
+          },
+          None => mk_record_open(learned, t),
+        },
+        RowEndClosed => TRecord(field_canonicalize(learned)),
+      }
+    },
   },
   TRefined(b, p) => TRefined(spec_subst_pairs(b, pairs), p),
   TAlias(n, i) => TAlias(n, spec_subst_pairs(i, pairs)),
@@ -1720,6 +2533,7 @@ handler lookup_ty_graph with spec_pairs = [], spec_enc = "" {
   spec_ctx_set(prs, e) => resume() with spec_pairs = prs, spec_enc = e,
   spec_ctx_clear() => resume() with spec_pairs = [], spec_enc = "",
   spec_enc_active() => resume(spec_enc),
+  spec_pairs_active() => resume(spec_pairs),
   lookup_ty(h) => match graph_chase(h) {
     GNode(kind, reason) => if len(spec_pairs) > 0 {
       match kind {
@@ -1728,7 +2542,16 @@ handler lookup_ty_graph with spec_pairs = [], spec_enc = "" {
         NErrorHole(_) => resume(spec_pair_or_var(h, spec_pairs)),
         NRowBound(_) => resume(TUnit),
         NRecordRowBound(_, _) => resume(TUnit),
-        NRowFree(_) => resume(TUnit),
+        NRowFree(_) => // A free RECORD row the site paired answers with the residual the site
+        // proved past it, as a type variable answers its pair — its reader
+        // spells the chain's learned fields before it; an effect row is never
+        // in the pair space and keeps the unit it always read. Answering unit
+        // for the paired row too left every open record a twin had closed
+        // still open to `spec_resolve`, which reads a row's end through this op.
+        resume(match spec_pairs_find(spec_pairs, graph_chase_handle(h)) {
+          Some(c) => c,
+          None => TUnit,
+        }),
       }
     } else {
       match kind {

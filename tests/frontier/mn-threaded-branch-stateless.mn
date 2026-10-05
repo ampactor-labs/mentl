@@ -1,0 +1,13 @@
+// B1 (2026-09-27): an effect performed INSIDE a spawned branch. The branch
+// runs in the world it was spawned in — the task record carries the live
+// install chain, the fresh instance installs it before the closure runs —
+// so `op()` in each branch walks to `h`, installed at the fanout's own
+// frame OUTSIDE the schedule. The race rule admits it: h is stateless
+// (`resume(7)` writes no state record), so two instances resuming into it
+// share nothing. Before this landing the branch started at world 0 and the
+// first perform faulted at the 0x100000000 belt. Expected exit: 14.
+effect E { op() -> Int }
+handler h { op() => resume(7) }
+fn main() = match (0 <| ({ _ => op() }, { _ => op() })) ~> parallel_compose ~> h {
+  (a, b) => a + b,
+}

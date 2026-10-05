@@ -1,0 +1,7 @@
+// expect: 7
+// The same root under structural equality: the completed stage's value read
+// as a function, so the lists compared by address and answered false — 1,
+// silently, on boot e23392f6.
+fn wrap(k, x) = [k, x]
+
+fn main() = if (2 |> wrap(3)) == [3, 2] { 7 } else { 1 }

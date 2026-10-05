@@ -1,0 +1,14 @@
+// expect: refuse E_EffectMismatch
+// A lambda's body is read at each function part of its result where it
+// crosses: `run` applies the result's `f`, and the arm-list literal can
+// return `inv` there, whose guard is paid at the crossing. On pin 85218488
+// this divided by zero (exit 134).
+type Positive = Int where 0 < self
+
+fn inv(n: Positive) = 100 / n
+
+fn succ(n) = n + 1
+
+fn run(g) = g(false).f(0)
+
+fn main() with !Trap = run({ c => if c { {f: succ} } else { {f: inv} } })

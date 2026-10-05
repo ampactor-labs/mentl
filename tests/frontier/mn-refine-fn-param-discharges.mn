@@ -1,0 +1,14 @@
+// The control beside mn-refine-fn-param-pending.mn: the callee states the
+// claim on its OWN parameter. `drive` takes `c: Hz` and hands it to its
+// callback, so the callback's `Hz` demand meets an `Hz` position — the claim
+// crosses as a fact, not debt — and `drive`'s own argument is a constant the
+// compiler decides at the call. No pending obligation anywhere; the program
+// runs. The claim lives where the value is made.
+
+type Hz = Float where 0.0 < self && self < 22050.0
+
+fn alpha(c: Hz) -> Float = c * 2.0
+
+fn drive(f, c: Hz) = f(c)
+
+fn main() = if drive((c) => alpha(c), 440.0) == 880.0 { 40 } else { 41 }

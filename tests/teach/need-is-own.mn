@@ -1,0 +1,13 @@
+// teach 13: add with !Memory
+// An obligation can lean on another declaration's parameter: the crossing
+// of `inv` into `apply` claims Positive of what `apply` hands its callback,
+// which is the parameter x of `apply`, and the claim stays open here. That
+// parameter is no position the head of `main` can state, so it is never
+// named as its need (D4: it was, on the gradient's first build).
+type Positive = Int where 0 < self
+
+fn inv(n: Positive) = 100 / n
+
+fn apply(f, x) = f(x)
+
+fn main() = apply(inv, 0)

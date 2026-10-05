@@ -16,11 +16,15 @@ Threshold bracket, all math-only link sets (RTLIBS + math), all fully annotated:
 - `wf-15fn-fails.mn` — a full demodulation comodulogram (~15 wide fns). Traps
   `call stack exhausted` in `wf$atan_series`.
 
-`fb-state-leak.mn` is separate: it proves the `<~ delay(1)` per-site state global
-leaks across independent passes (filter a ones signal, then a zeros signal
-through one `<~` site, and the zeros output carries the leaked tail — exit 7).
-That is why `lib/dsp/signal.mn`'s bandpass is a single-instance conditioner and
-the comodulogram's per-bin analysis is the windowed DFT, not a `<~` bank.
+`fb-state-leak.mn` is separate: it proves that a TOP-LEVEL function's `<~` line
+is one per program instance and carries across independent passes (filter a
+ones signal, then a zeros signal through one top-level recurrence, and the
+zeros output carries the leaked tail — exit 7). That is the ownership rule, not
+a defect: a cycle's memory belongs to the record of the function that contains
+it (SYNTAX §`<~`), and a top-level function's record is the module's. A filter
+that must start fresh is MADE — `lib/dsp/signal.mn`'s bandpass mints a new
+four-section stage per pass, and `lib/dsp/feedback.mn`'s filters are all
+makers.
 
 Run one through the pinned boot: source `tools/wt-env.sh`, then
 `cat lib/{memory,strings,lists,threading}.mn lib/prelude.mn

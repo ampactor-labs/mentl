@@ -1,0 +1,10 @@
+// expect: refuse E_EffectMismatch
+// A RECORD PATTERN'S REST IS BUILT: binding `...rest` copies the fields the
+// pattern leaves into a record of their own, so the binding performs
+// `Memory + Alloc`, and a fn declaring `!Alloc` around it is a false absence
+// proof (Hβ.effects.allocation-audit-at-the-settle-point).
+fn without_a(u) with !Alloc = match u {
+  {a, ...rest} => rest.b + a,
+}
+
+fn main() = without_a({a: 1, b: 2})

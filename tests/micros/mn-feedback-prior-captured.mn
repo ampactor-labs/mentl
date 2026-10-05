@@ -1,0 +1,14 @@
+// expect: 3
+// A lambda inside a recurrence body that reads the prior CAPTURES it, and
+// reads the capture in its own frame. The ticks: 0 → 1, 1 → 2, 2 → 3.
+// Measured 2026-09-28 on boot 0976f1d7: the prior resolved in every frame,
+// so the lambda's function read `$__fb_prev_<h>`, a register only the
+// enclosing function declares, and the module did not assemble after a
+// clean `mentl check` (Hβ.lower.shadowing-binder-clobbers-its-register).
+fn step(x) = ((prev) => apply((v) => v + prev, x)) <~ delay(1)
+
+fn apply(f, v) = f(v)
+
+fn run(n, acc) = if n == 0 { acc } else { run(n - 1, step(1)) }
+
+fn main() = run(3, 0)

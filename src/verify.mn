@@ -35,15 +35,19 @@ import io
 // load-bearing across the swap.
 handler verify_ledger with debt = [] {
   verify(modh, span, predicate, reason) => match predicate_decide(predicate) {
-    Some(true) => resume(),
-    Some(false) => {
-      report_refinement_rejected(predicate, span, reason)
-      resume()
-    },
-    None => resume() with debt = [(modh, span, predicate, reason)] ++ debt,
+    Some(true) => resume(Some(true)),
+    Some(false) => resume(Some(false)),
+    None => resume(None) with debt = [(modh, span, predicate, reason)] ++ debt,
   },
   verify_debt() => resume(debt),
-  verify_reset() => resume() with debt = [],
+  verify_forget(superseded) => resume() with debt = filter(debt_outside(superseded), debt),
+}
+
+// An obligation survives a forget unless it was raised in one of the module
+// nodes the caller is about to supersede by re-judging. `superseded: [Int]` is
+// the Intent Boundary carrying the eq proof the handle compare needs.
+fn debt_outside(superseded: [Int], entry) = match entry {
+  (modh, _, _, _) => !any((h) => h == modh, superseded),
 }
 
 // Compile-time decidable discharge. Returns Some(true) when the predicate
@@ -57,33 +61,210 @@ handler verify_ledger with debt = [] {
 // (node_const_at). litval_compare folds the comparison; cross-kind equality is
 // Some(false), cross-kind ordering is None. PAnd/POr/PNot recurse with
 // three-valued short-circuit; PWithSelf rebinds `self` over its inner predicate.
-fn predicate_decide(ref pred) with GraphRead + Memory + Alloc = predicate_decide_at(pred, 0)
+fn predicate_decide(ref pred) = predicate_decide_at(pred, NoSelf)
 
-// self_h is the value-node handle `self` resolves to (0 = no `self` in scope,
-// so `self` is undecidable). PWithSelf(sh, inner) rebinds it over inner.
-fn predicate_decide_at(ref pred, self_h) with GraphRead + Memory + Alloc = match pred {
+// What `self` resolves to while a predicate is decided: nothing (a bare
+// claim — `self` is undecidable), the VALUE NODE a claim was raised over
+// (PWithSelf's binder, read live through its joins), or a GROUND CONSTANT
+// — the implication read, which asks a refinement whether it admits one
+// point (`contract_excludes`). It was a handle with 0 for "none", the
+// flag-as-int the drift catalog names; the three readings are three
+// constructors now.
+type SelfBind = NoSelf | SelfNode(Int) | SelfVal(LitValue)
+
+fn predicate_decide_at(ref pred, bind) = match pred {
   PTrue => Some(true),
-  PCompare(op, l, r) => compare_decide_at(op, l, r, self_h),
-  PAnd(a, b) => and_decide(predicate_decide_at(a, self_h), predicate_decide_at(b, self_h)),
-  POr(a, b) => or_decide(predicate_decide_at(a, self_h), predicate_decide_at(b, self_h)),
-  PNot(inner) => not_decide(predicate_decide_at(inner, self_h)),
+  PCompare(op, l, r) => compare_decide_at(op, l, r, bind),
+  PAnd(a, b) => and_decide(predicate_decide_at(a, bind), predicate_decide_at(b, bind)),
+  POr(a, b) => or_decide(predicate_decide_at(a, bind), predicate_decide_at(b, bind)),
+  PNot(inner) => not_decide(predicate_decide_at(inner, bind)),
   PBoolNode(_) => // a bool expr node — the SMT tier resolves it live
   None,
   PPatternMatch(_, _) => // match-narrowing — the SMT tier evaluates
   None,
   PFlowLe(a, b) => // IFC: finite lattice, always decidable
   Some(flow_le(a, b)),
-  PWithSelf(sh, inner) => // bind `self` = sh over inner
-  predicate_decide_at(inner, sh),
+  PWithSelf(sh, inner) => // bind `self` = sh over inner, through its tails when sh is a join
+  decide_with_self(inner, SelfNode(sh)),
+  PTotalDiv(op, a, b) => total_div_decide(op, a, b, bind),
+  PProvides(_) => // a provision states what arrives at a position, never a demand on it
+  Some(true),
+}
+
+// ─── Partiality — a primitive's precondition decided as a claim (C5) ──
+//
+// Integer `/` and `%` trap on a zero divisor, and `/` on INT_MIN / -1 (the
+// one quotient a signed word cannot hold). The claim decides from what the
+// graph holds about the two operands: a constant decides a face outright,
+// and a face a constant refutes REFUSES (`1 / 0` is never the program's
+// meaning); a non-constant operand asks its refined type whether it EXCLUDES
+// the fatal point — `Positive` excludes 0 and -1, a NonZero refinement
+// excludes 0 alone, a NonNegative one on the dividend excludes INT_MIN —
+// and an operand nothing bounds leaves the face open, which is the row
+// fact `Trap` at the site. The answer is a ROW fact, so it stands only on
+// what is proven or assumed under contract (`leaves_exclude`), never on a
+// postcondition still owed or on the overflow-blind Add fold.
+fn total_div_decide(op, a, b, bind) = match op {
+  BMod => node_excludes(b, 0, bind),
+  BDiv => and_decide(
+    node_excludes(b, 0, bind),
+    or_decide(node_excludes(b, 0 - 1, bind), node_excludes(a, i32_min(), bind))
+  ),
+  _ => Some(true),
+}
+
+// Is the value at `h` provably not `k`? A constant answers outright (equal
+// is Some(false) — the refutation); otherwise the leaves decide as a claim
+// over a join does: every leaf excluding the point proves it, a leaf that IS
+// the point refutes it (a join's tail, an arm's answer at an install — the
+// text writes the trap), anything else leaves it open. Until 2026-10-03 a
+// leaf at the point answered open, so `100 / ((…) ~> zero)` was debt under
+// `!Trap` where the arm's `0` refutes it.
+fn node_excludes(h, k, bind) = match node_const_at(h, bind) {
+  Some(v) => not_decide(litval_eq(v, LVInt(k))),
+  None => leaves_exclude(value_leaves(h, bind), k),
+}
+
+// THE IMPLICATION READ: a contract excludes a point exactly when one of its
+// predicates decides FALSE with `self` bound to that point — `0 < self` at 0
+// is false, so `Positive` excludes 0; `self % 2 == 0` at 0 is true, so an
+// Even refinement admits it. Every predicate down the alias chain is asked,
+// since a refinement of a refinement holds both. No implication engine: the
+// fragment that decides claims decides this one, over the ground constant
+// the SelfVal binding carries.
+fn contract_excludes(c, k) = match c {
+  TAlias(_, inner) => contract_excludes(inner, k),
+  TRefined(base, pred) => pred_excludes(pred, k) || contract_excludes(base, k),
+  TReprPin(_, base) => contract_excludes(base, k),
+  _ => false,
+}
+
+fn pred_excludes(pred, k) = match predicate_decide_at(pred, SelfVal(LVInt(k))) {
+  Some(false) => true,
+  _ => false,
+}
+
+// The least signed word: the one dividend whose quotient by -1 does not fit.
+fn i32_min() with Pure = 0 - 2147483647 - 1
+
+// A claim about a JOIN's value is a claim about every value the join can
+// take, and an `if`, a `match` or a block takes exactly its tails' values —
+// so a claim over one decides as the AND of the claim over each tail
+// (`and_decide`: true when every tail proves it, false the moment one
+// refutes it, open otherwise). It reads STRUCTURE only, as the value walk
+// below does; a join's leaves (`value_leaves`) are the same AND one altitude
+// over, at the constant fragment.
+// A tail the text writes is judged even where no execution reaches it: the
+// signature claims every tail. Until 2026-09-27 a claim over a join was
+// never decided, so `fn note_hz(k) -> Hz = match k { 0 => 220.0, … }` left a
+// pending obligation behind every literal-armed match.
+fn decide_with_self(inner, bind) = match bind {
+  SelfNode(sh) => match value_tails(sh) {
+    Some(tails) => fold(Some(true), decide_tail(inner, ??, ??), tails),
+    None => predicate_decide_at(inner, bind),
+  },
+  _ => predicate_decide_at(inner, bind),
+}
+
+fn decide_tail(inner, acc, tail) = and_decide(acc, decide_with_self(inner, SelfNode(tail)))
+
+// A JOIN's tails: the nodes whose values the join takes — an `if`'s two
+// branches, every `match` arm's body, a block's final expression; None for
+// a node that is not a join. One home for the structure that the claim
+// decided over a join, the value walk and the claim noted over a join each
+// fold.
+fn join_tails(h) = match graph_node_body(h) {
+  NExpr(IfExpr(_, t, e)) => Some([node_handle(t), node_handle(e)]),
+  NExpr(MatchExpr(_, arms)) => Some(arms |> map(tail_of_arm)),
+  NExpr(BlockExpr(_, final_expr)) => Some([node_handle(final_expr)]),
+  _ => None,
+}
+
+fn tail_of_arm(arm) = match arm {
+  (_, body) => node_handle(body),
+}
+
+// A VALUE's tails: a join's, or a tee's — the body it governs and every arm
+// of the handler it installs (`install_arm_tails`). The one home the claim
+// decider, the leaves, the path read, the flow label and the function-value
+// walk read a value's structure through. A claim NOTED over a value stays
+// with the join's own tails (`note_claim`): a handler's arms are shared by
+// every install, and a note there would claim for all of them.
+fn value_tails(h) = match join_tails(h) {
+  Some(tails) => Some(tails),
+  None => match graph_node_body(h) {
+    NExpr(PipeExpr(PTee, left, right)) => match install_arm_tails(right) {
+      Some(tails) => Some([node_handle(left)] ++ tails),
+      None => None,
+    },
+    _ => None,
+  },
+}
+
+// A TEE's value is every value its install can answer: the body's tails —
+// the body completing, or a resuming arm's remainder answering, which is
+// the body's own value — and each arm's tails of its own. An arm whose tail
+// is the `resume` hands the remainder's answer through and adds no value;
+// any other tail is a value of the install's. A handler's arms met again
+// while they are being read add nothing: an arm installing its own handler
+// makes the tails a fixed point whose least solution is the body's, so the
+// re-entry is exact, never a floor. The walk's dynamic scope (`StateWalk`)
+// knows the handler by its residual row cell — minted once at
+// pre-registration, the one cell every reference to the handler reads it
+// through, so the declaration's identity is on the env entry and no name
+// is scanned for it. None when the install's handler is not a declaration
+// the graph noted, so each walk keeps its own floor. Until 2026-10-03
+// every walk read a tee as nothing it could read, so `100 / ((…) ~> h)`
+// was debt whatever `h` answered.
+fn install_arm_tails(right) = match env_lookup(tee_handler_name(right)) {
+  Some(entry) => match entry {
+    (_, _, kind) => match kind {
+      HandlerKind(r_handle, _, _, _, arms) => if walking_state(r_handle) {
+        Some([])
+      } else {
+        Some(arms |> flat_map({ arm => arm_tails(node_handle(arm.body)) }) ~> walking_state_of(r_handle))
+      },
+      _ => None,
+    },
+  },
+  None => None,
+}
+
+// The handler a tee installs, by the name its right side carries — a bare
+// reference, or a configured handler applied to its arguments — read off the
+// node, since the install column is the lowering's, written after every
+// claim is decided. A tee whose handler expression is not a named reference
+// has no name to classify: "" is the frame-fence sentinel
+// `schedule_installed` itself reads (lower.mn: a "" stack entry is the
+// fence), not a fabrication — no declaration answers it, so its class is a
+// dispatch and the schedule read walks past it. One home for the judgment,
+// the query and the caret.
+fn tee_handler_name(r) = match graph_node_body(node_handle(r)) {
+  NExpr(VarRef(n)) => n,
+  NExpr(CallExpr(callee, _)) => match graph_node_body(node_handle(callee)) {
+    NExpr(VarRef(n)) => n,
+    _ => // drift-audit: ignore — the frame-fence sentinel, documented above
+    "",
+  },
+  _ => // drift-audit: ignore — the frame-fence sentinel, documented above
+  "",
+}
+
+fn arm_tails(h) = match value_tails(h) {
+  Some(tails) => tails |> flat_map(arm_tails),
+  None => match graph_node_body(h) {
+    NExpr(ResumeExpr(_, _)) => [],
+    _ => [h],
+  },
 }
 
 // A comparison decides iff BOTH operands reduce to ground constants under the
 // current `self` binding — or, with a ground LEFT and a structural right, the
 // interval fragment proves `n <= X` from X's lower bound; otherwise None.
-fn compare_decide_at(op, lh, rh, self_h) with GraphRead + Memory + Alloc = match node_const_at(lh, self_h) {
-  Some(lv) => match node_const_at(rh, self_h) {
+fn compare_decide_at(op, lh, rh, bind) = match node_const_at(lh, bind) {
+  Some(lv) => match node_const_at(rh, bind) {
     Some(rv) => litval_compare(op, lv, rv),
-    None => interval_ge_decide(op, lv, rh, self_h),
+    None => interval_ge_decide(op, lv, rh, bind),
   },
   None => None,
 }
@@ -91,8 +272,8 @@ fn compare_decide_at(op, lh, rh, self_h) with GraphRead + Memory + Alloc = match
 // `n <= X` / `n < X` with ground left: proves when X's structural LOWER BOUND
 // reaches n. PROVES only, never refutes — a bound that fails to reach n says
 // nothing about X's values (None keeps the obligation live and honest).
-fn interval_ge_decide(ref op, ref lv, rh, self_h) with GraphRead + Memory + Alloc = match lv {
-  LVInt(n) => match node_lo_tr(rh, self_h) {
+fn interval_ge_decide(ref op, ref lv, rh, bind) = match lv {
+  LVInt(n) => match leaves_lo(value_leaves(rh, bind)) {
     Some(lo) => match op {
       BLe => if n <= lo { Some(true) } else { None },
       BLt => if n < lo { Some(true) } else { None },
@@ -110,107 +291,664 @@ fn interval_ge_decide(ref op, ref lv, rh, self_h) with GraphRead + Memory + Allo
 // negates its ground operand. NO node is minted — every leaf is read live and
 // folded in place (the e-graph const-fold mints nodes and runs AFTER Verify;
 // this is a pure read-and-fold at the proof gate). Carry the handle, read live.
-fn node_const(handle) with GraphRead + Memory + Alloc = node_const_at(handle, 0)
+fn node_const(handle) = node_const_at(handle, NoSelf)
 
-fn node_const_at(handle, self_h) with GraphRead + Memory + Alloc = match graph_node_body(handle) {
+fn node_const_at(handle, bind) = match graph_node_body(handle) {
   NExpr(LitInt(n)) => Some(LVInt(n)),
   NExpr(LitFloat(f)) => Some(LVFloat(f)),
   NExpr(LitString(s)) => Some(LVString(s)),
   NExpr(LitBool(b)) => Some(LVBool(b)),
-  NExpr(VarRef(name)) => resolve_self_operand(name, self_h),
+  NExpr(VarRef(name)) => resolve_self_operand(name, bind),
   NExpr(BinOpExpr(op, l, r)) => match l {
     N(_, _, lh) => match r {
-      N(_, _, rh) => litval_arith_opt(op, node_const_at(lh, self_h), node_const_at(rh, self_h)),
+      N(_, _, rh) => litval_arith_opt(op, node_const_at(lh, bind), node_const_at(rh, bind)),
     },
   },
   NExpr(UnaryOpExpr(op, x)) => match x {
-    N(_, _, xh) => litval_unary_opt(op, node_const_at(xh, self_h)),
+    N(_, _, xh) => litval_unary_opt(op, node_const_at(xh, bind)),
   },
   _ => None,
 }
 
-// `self` resolves to the bound value node (read as a ground constant); any other
-// free variable is genuinely non-constant. self_h == 0 means no `self` is in
-// scope — undecidable, never a chase of handle 0.
-fn resolve_self_operand(name: String, self_h) with GraphRead + Memory + Alloc =
-  if name == "self" { if self_h == 0 { None } else { node_const_at(self_h, 0) } } else { None }
+// `self` resolves through its binding — the value node, read as a ground
+// constant, or the constant itself; a bare claim has no `self`. Any OTHER
+// name is a constant exactly when it is a MODULE VALUE bound to one
+// (`module_let_const`): `let spine_slots = 16384` is a fact the graph holds
+// at the let's own node, and a division by it is total for that reason.
+fn resolve_self_operand(name: String, bind) = if name == "self" {
+  match bind {
+    NoSelf => None,
+    SelfNode(h) => node_const_at(h, NoSelf),
+    SelfVal(v) => Some(v),
+  }
+} else {
+  module_let_const(name)
+}
 
-// ─── The interval fragment — a lower-bound read over node structure ──
+// A module-level `let` bound to a constant — the innermost binding of the
+// name must be the module's (a local of the same name shadows it, and the
+// env answers which is in force), and the let's own node is in the decls
+// column, judged before any reader of the name by the callee-first order.
+// The newest note for the name is the judged generation's. A local let is
+// path-sensitive and stays honest debt.
+fn module_let_const(name: String) =
+  if env_lookup_is_global(name) { module_let_scan(name, graph_decls_at()) } else { None }
+
+fn module_let_scan(name: String, decls) = if len(decls) == 0 {
+  None
+} else {
+  match graph_node_body(last(decls)) {
+    NStmt(LetStmt(PVar(n), value, _)) => if n == name {
+      node_const_at(node_handle(value), NoSelf)
+    } else {
+      module_let_scan(name, drop_last(decls))
+    },
+    _ => module_let_scan(name, drop_last(decls)),
+  }
+}
+
+// ─── The value walk — what a value is, read along the edges it flowed ──
 //
-// The range fragment WITH inference (PLAN §11 Arc 3), scoped to LOWER
-// bounds: every integer refinement the wheel carries is `0 <= self`-
-// shaped (TagId's upper half and the float intervals stay the SMT
-// tier's). Each leg is a graph READ, minting nothing:
-//   · a literal is its point
-//   · an if / match / block joins its branches (min — every path bounds)
-//   · len / byte_len are >= 0 by the sequence representation itself
-//   · Add sums its operands' bounds
-//   · type reads only ACROSS a class boundary (the two-face law below —
-//     a first draft read the obligation target's own chased type and
-//     proved the annotation from itself, measured re-laundering `v - 1`)
-// TWO FACES, one contamination law: the obligation's target node and
-// every type-TRANSPARENT position under it (if/match/block joins — their
-// cells unify with the target's) sit in the SAME union-find class the
-// annotation just entered, so a type read there proves the annotation
-// FROM the annotation (measured: `v - 1` laundered through its own
-// `0 <= self` this way). The transparent face therefore reads STRUCTURE
-// only; type reads live where the class boundary is crossed — a BinOp's
-// operands (their cells merge with the arith ground, never the
-// target's), and a call's bound is read off the CALLEE's own published
-// TFun return (the assume-the-signature induction — the callee's fact,
-// not the site's class).
-fn node_lo_tr(handle, self_h) with GraphRead + Memory + Alloc = match graph_node_body(handle) {
-  NExpr(LitInt(n)) => Some(n),
-  NExpr(VarRef(name)) => if name == "self" { if self_h == 0 { None } else { node_lo_tr(self_h, 0) } } else { None },
-  NExpr(IfExpr(_, t, e)) => lo_join(node_lo_tr(node_handle(t), self_h), node_lo_tr(node_handle(e), self_h)),
-  NExpr(MatchExpr(_, arms)) => arms_lo(arms, self_h, 0, None),
-  NExpr(BlockExpr(_, final_expr)) => node_lo_tr(node_handle(final_expr), self_h),
-  NExpr(BinOpExpr(op, l, r)) => match op {
-    BAdd => lo_add(node_lo_op(node_handle(l), self_h), node_lo_op(node_handle(r), self_h)),
-    _ => None,
+// A refinement is a fact about a VALUE, and the edges the value flowed
+// through say what it is. Its unification class says nothing: a cell holds
+// a shape (types.mn `shape_of`), because union-find merges every value a
+// join can take and every operand an operator meets — the class model
+// typed `x - 1` over `x: Positive` as Positive and `if c { n } else { 0 }`
+// as Positive (P0, 2026-10-01). The walk reads a value as its LEAVES, each
+// a graph READ minting nothing:
+//   · a constant is its point (node_const_at folds literals, module
+//     constants and the arithmetic over them at the word's own wrap)
+//   · a reference reads its binder through its own link — a declared
+//     parameter's precondition, a let's value, the claim's `self`
+//   · an if / match / block is every tail's leaves — a join is all of them
+//   · len / byte_len are lengths, by the sequence representation itself
+//   · a call — and a pipe stage, the same application — is its callee's
+//     declared return, or a function-typed parameter's contract on its
+//     result
+//   · Add folds its operands' lower bounds
+// and each reader asks its own question of the leaves: a ROW fact
+// (partiality, a guard) stands on constants, lengths and preconditions
+// alone; a CLAIM's bound and echo may stand on a postcondition, which its
+// callee owes at its declaration, and on the Add fold, which models Int as
+// unbounded where the i32 floor wraps
+// (Hβ.verify.interval-fragment-assumes-unbounded-int). It replaced the
+// class reads and three compensations for them: a two-face "contamination
+// law" that read types only where a class boundary was crossed, a licence
+// refusing the echo to computation nodes, and a rebind exposing a let
+// annotation on its value's class.
+type Leaf
+  // a constant — exact, at the word's own wrap
+  = LPoint(LitValue)
+  // a declared parameter's precondition: assumed here, owed by every
+  // caller, and the parameter whose guard a row fact standing on it grows
+  | LParam(Int, Ty)
+  // a callee's declared return: the callee owes it at its own declaration,
+  // and it is debt there until proven
+  | LPost(Ty)
+  // the Add fold's lower bound for a sum — overflow-blind
+  | LSum(Option(Int))
+  // len / byte_len: a length, never below zero
+  | LLength
+  // a callee's return still a free cell — nothing to any reader but the
+  // summary of the declaration whose return it is, where a self-call is
+  // the claim being proven (`proven_return`)
+  | LRet(Int)
+  // a value under a contract claimed of it where it was made — a `let`'s
+  // annotation, a constructor field's declared refinement — owed there: a
+  // claim may stand on the contract, a row fact only on the leaf beneath
+  | LClaimed(Ty, Leaf)
+  // nothing this walk can read
+  | LUnknown
+
+fn value_leaves(h, bind) = match node_const_at(h, bind) {
+  Some(v) => [LPoint(v)],
+  None => match value_tails(h) {
+    Some(tails) => tails |> flat_map(value_leaves(??, bind)),
+    None => match graph_node_body(h) {
+      NExpr(VarRef(name)) => if name == "self" { self_leaves(bind) } else { binder_leaves(h) },
+      NExpr(BinOpExpr(op, l, r)) => match op {
+        BAdd => [LSum(lo_add(leaves_lo(value_leaves(node_handle(l), bind)), leaves_lo(value_leaves(node_handle(r), bind))))],
+        _ => [LUnknown],
+      },
+      NExpr(CallExpr(callee, _)) => call_leaves(callee),
+      NExpr(PipeExpr(PForward, _, stage)) => call_leaves(stage),
+      NExpr(FieldExpr(recv, fname)) => part_leaves(node_handle(recv), PartField(fname)),
+      NExpr(IndexExpr(recv, idx)) => part_leaves(node_handle(recv), index_step(node_handle(recv), idx)),
+      _ => [LUnknown],
+    },
   },
-  NExpr(CallExpr(callee, _)) => call_lo(callee),
-  _ => None,
 }
 
-// The opaque face — the node's cell is outside the target's class, so
-// its chased type is its OWN producer's fact and reads soundly.
-fn node_lo_op(handle, self_h) with GraphRead + Memory + Alloc = match graph_node_body(handle) {
-  NExpr(LitInt(n)) => Some(n),
-  NExpr(BinOpExpr(op, l, r)) => match op {
-    BAdd => lo_add(node_lo_op(node_handle(l), self_h), node_lo_op(node_handle(r), self_h)),
-    _ => ty_lo_at(handle),
+fn self_leaves(bind) = match bind {
+  SelfNode(sh) => value_leaves(sh, NoSelf),
+  SelfVal(v) => [LPoint(v)],
+  NoSelf => [LUnknown],
+}
+
+// A reference's binder, through the reference's OWN link (graph_link_of),
+// never its class.
+fn binder_leaves(use_h) = match graph_link_of(use_h) {
+  Some(b) => leaves_at_binder(b),
+  None => [LUnknown],
+}
+
+// What a binder answers: a declared parameter its precondition; a
+// destructured part what its whole was built from at that position (a
+// field's declared contract, owed where the value was built, over it); a
+// let its value under every contract the let claimed of it. Any other
+// binder — a lambda's parameter — answers nothing.
+fn leaves_at_binder(b) = match graph_binder_of(b) {
+  Some(fact) => match fact {
+    ParamFact(f) => match pre_contract(f.pre) {
+      Some(c) => [LParam(b, c)],
+      None => [LUnknown],
+    },
+    PartFact(f) => match f.declared {
+      Some(c) => claimed_under(part_leaves(f.whole, f.step), c),
+      None => part_leaves(f.whole, f.step),
+    },
+    StateFact(f) => state_leaves(b, f.writes),
   },
-  NExpr(CallExpr(callee, _)) => call_lo(callee),
-  _ => ty_lo_at(handle),
-}
-
-// A call's bound comes from the CALLEE's published function type — its
-// declared return read through the callee node's chase, never the call
-// site's class. len/byte_len bound by the sequence representation.
-fn call_lo(ref callee) with GraphRead + Memory + Alloc = match graph_node_body(node_handle(callee)) {
-  NExpr(VarRef(cname)) => if cname == "len" || cname == "byte_len" { Some(0) } else { callee_ret_lo(node_handle(callee)) },
-  _ => callee_ret_lo(node_handle(callee)),
-}
-
-fn callee_ret_lo(ch) with GraphRead + Memory + Alloc = match graph_chase(ch) {
-  GNode(kind, _) => match kind {
-    NBound(TFun(_, ret, _)) => ty_lo(ret),
-    _ => None,
+  None => match graph_node_body(b) {
+    NExpr(_) => graph_claims_of(b) |> fold(value_leaves(b, NoSelf), claimed_under),
+    _ => [LUnknown],
   },
 }
 
-// The join of two branch bounds — min, both must answer.
-fn lo_join(ea, eb) with Memory + Alloc = match ea {
-  Some(a) => match eb {
-    Some(b) => if a < b { Some(a) } else { Some(b) },
+// A handler's state is every value written into it, each writer read as the
+// expression it is — the init's node is the state's binder, so reading it as
+// one would enter the state again. Inside its own writers the state is
+// unknown: sound, and short of the inductive reading, which would assume
+// there what every write must preserve.
+fn state_leaves(b, writes) = if walking_state(b) {
+  [LUnknown]
+} else {
+  writes |> flat_map(value_leaves(??, NoSelf)) ~> walking_state_of(b)
+}
+
+// No state entered: the root every value walk runs under, installed where
+// the graph is.
+handler no_state_walked {
+  walking_state(_) => resume(false),
+}
+
+// Inside state `b`'s writers: `b` answers yes, and any other state is asked
+// of the handler around this one — an arm's own perform resolves outward.
+handler walking_state_of(b) {
+  walking_state(x) => resume(x == b || walking_state(x)),
+}
+
+fn claimed_under(leaves, contract) = leaves |> map(LClaimed(contract, ??))
+
+// A claim pending over an authored hole is the hole's DEMAND, not a proof
+// of its own: the fill discharges it, and the hole's position carries it.
+fn claim_is_a_holes_demand(pred) = match pred {
+  PWithSelf(h, _) => match graph_node_body(h) {
+    NHole(_) => true,
+    _ => false,
+  },
+  _ => false,
+}
+
+// The leaves of whatever stands at a handle: a binder's (a destructured
+// part's, a parameter's) or an expression's.
+fn node_leaves(h) = match graph_binder_of(h) {
+  Some(_) => leaves_at_binder(h),
+  None => value_leaves(h, NoSelf),
+}
+
+// ── Destructuring — a part read off its whole (P0) ──────────────────────
+//
+// A pattern's binder for a part of the value it matched carries the edge to
+// that value (PartFact), and a field read names its receiver. The part's
+// value is read off the whole: where the whole was BUILT in sight — a tuple,
+// a constructor call, a record, a list literal, through a let's value and
+// every tail of a join — the part IS the argument at that position; where it
+// was not, the whole's own contracts are projected to the position (a
+// parameter's `(Int, Positive)` precondition answers `Positive` at its
+// second element).
+fn part_leaves(whole, step) = match part_read(whole, step, node_leaves_read) {
+  Some(leaves) => leaves,
+  None => match step {
+    PartRest => [LUnknown],
+    _ => node_leaves(whole) |> map(project_leaf(??, step)),
+  },
+}
+
+fn node_leaves_read(n) = Some(node_leaves(n))
+
+// The nodes a part can BE, read off its whole's construction, each read by
+// `read` where the walk stands; None when the whole was not built where the
+// walk sees. A constructor call of another constructor holds no such part —
+// the arm cannot match it — and answers no nodes at all. The reader runs
+// INSIDE every state the walk entered on the way, so a reader that meets one
+// of them again is cut there: a state's writer can read the state it writes
+// (`with acc = {count: acc.count + 1}`), and a walk that handed its nodes
+// back to be read after it returned recursed until the stack ran out.
+fn part_read(whole, step, read) = path_read(whole, [step], read)
+
+// The value at a path inside a whole. A destructured part's binder extends
+// the path into its own whole, so the reader is only ever forwarded and
+// applied where the path ends.
+fn path_read(whole, path, read) = match path {
+  [] => read(whole),
+  [step, ...rest] => match step {
+    PartWhole => path_read(whole, rest, read),
+    _ => match graph_binder_of(whole) {
+      Some(fact) => match fact {
+        PartFact(f) => path_read(f.whole, [f.step] ++ path, read),
+        ParamFact(_) => None,
+        StateFact(f) => state_path_read(whole, f.writes, path, read),
+      },
+      None => expr_path_read(whole, step, rest, read),
+    },
+  },
+}
+
+// The path into an expression: through each tail, or its construction.
+fn expr_path_read(whole, step, rest, read) = match value_tails(whole) {
+  Some(tails) => read_all(tails, path_read(??, [step] ++ rest, read)),
+  None => built_path_read(whole, step, rest, read),
+}
+
+// A state's path is each writer's, read off the writer as an expression;
+// inside its own writers the state is out of sight.
+fn state_path_read(b, writes, path, read) = if walking_state(b) {
+  None
+} else {
+  read_all(writes, writer_path_read(path, read, ??)) ~> walking_state_of(b)
+}
+
+fn writer_path_read(path, read, w) = match path {
+  [step, ...rest] => expr_path_read(w, step, rest, read),
+  [] => read(w),
+}
+
+// A reference's path is its binder's; a constructor named bare is a
+// construction with no fields; any other construction continues at the node
+// in the step's position.
+fn built_path_read(whole, step, rest, read) = match graph_node_body(whole) {
+  NExpr(VarRef(name)) => if constructor_named(name) {
+    nodes_path_read(bare_construction_part(step), rest, read)
+  } else {
+    match graph_link_of(whole) {
+      Some(b) => path_read(b, [step] ++ rest, read),
+      None => None,
+    }
+  },
+  _ => nodes_path_read(built_part(whole, step), rest, read),
+}
+
+fn nodes_path_read(found, rest, read) = match found {
+  Some(nodes) => read_all(nodes, path_read(??, rest, read)),
+  None => None,
+}
+
+fn read_all(hs, read) = hs |> fold(Some([]), gather_read(read, ??, ??))
+
+fn gather_read(read, acc, h) = match acc {
+  Some(found) => match read(h) {
+    Some(more) => Some(found ++ more),
     None => None,
   },
   None => None,
 }
 
+fn built_part(whole, step) = match graph_node_body(whole) {
+  NExpr(MakeTupleExpr(elems)) => match step {
+    PartIndex(i) => nth_handle(elems, i),
+    _ => None,
+  },
+  NExpr(CallExpr(callee, args)) => match graph_node_body(node_handle(callee)) {
+    NExpr(VarRef(made)) => if constructor_named(made) { construction_part(made, args, step) } else { None },
+    _ => None,
+  },
+  NExpr(MakeRecordExpr(fields)) => field_part(fields, step),
+  NExpr(NamedRecordExpr(_, fields)) => field_part(fields, step),
+  NExpr(MakeListExpr(elems)) => match step {
+    PartElem => Some(elems |> map(node_handle)),
+    _ => None,
+  },
+  _ => None,
+}
+
+// A construction's part: the argument at its constructor's field, and none at
+// another constructor's — a pattern naming that one cannot match this value,
+// so it holds no such part, never one read off the whole. A type argument's
+// values are among the fields: every field, since which field a type
+// argument types is the constructor's declaration, out of this walk's reach
+// (Hβ.verify.type-arg-part-reads-every-field).
+fn construction_part(made: String, args, step) = match step {
+  PartCtor(cname, i) => if made == cname { nth_handle(args, i) } else { Some([]) },
+  PartTypeArg(_) => Some(args |> map(node_handle)),
+  _ => None,
+}
+
+// A constructor named bare is a construction with no fields.
+fn bare_construction_part(step) = match step {
+  PartCtor(_, _) => Some([]),
+  PartTypeArg(_) => Some([]),
+  _ => None,
+}
+
+fn nth_handle(nodes, i) =
+  if i < len(nodes) { Some([node_handle(list_index(nodes, i))]) } else { None }
+
+fn field_part(fields, step) = match step {
+  PartField(name) => match find({ (n, _) => n == name }, fields) {
+    Some((_, v)) => Some([node_handle(v)]),
+    None => None,
+  },
+  _ => None,
+}
+
+// A whole's leaf read at a position: a contract projects to the position's
+// contract — assumed if the whole's was, owed if the whole's was — and a
+// position that carries no refinement answers nothing.
+fn project_leaf(leaf, step) = match leaf {
+  LParam(b, c) => match refined_part(c, step) {
+    Some(pc) => LParam(b, pc),
+    None => LUnknown,
+  },
+  LPost(c) => match refined_part(c, step) {
+    Some(pc) => LPost(pc),
+    None => LUnknown,
+  },
+  LClaimed(c, beneath) => match refined_part(c, step) {
+    Some(pc) => LClaimed(pc, project_leaf(beneath, step)),
+    None => project_leaf(beneath, step),
+  },
+  LPoint(_) => // a constant, a sum, a length or a free return has no parts
+  LUnknown,
+  LSum(_) => LUnknown,
+  LLength => LUnknown,
+  LRet(_) => LUnknown,
+  LUnknown => LUnknown,
+}
+
+fn refined_part(c, step) = match contract_part(c, step) {
+  Some(pc) => if ty_carries_refinement(pc) { Some(pc) } else { None },
+  None => None,
+}
+
+fn contract_part(c, step) = match c {
+  TAlias(_, inner) => contract_part(inner, step),
+  TReprPin(_, base) => contract_part(base, step),
+  TTuple(es) => match step {
+    PartIndex(i) => if i < len(es) { Some(list_index(es, i)) } else { None },
+    _ => None,
+  },
+  TRecord(fs) => field_contract(fs, step),
+  TRecordOpen(fs, _) => field_contract(fs, step),
+  TList(e) => match step {
+    PartElem => Some(e),
+    _ => None,
+  },
+  TName(_, args) => match step {
+    PartTypeArg(k) => if k < len(args) { Some(list_index(args, k)) } else { None },
+    PartCtor(cname, i) => ctor_field_contract(c, cname, i),
+    _ => None,
+  },
+  TRefined(base, _) => contract_part(base, step),
+  _ => None,
+}
+
+// A nominal contract at a constructor's field: the field's declared type with
+// the type's parameters read at the contract's arguments — `Option(Positive)`
+// at `Some`'s field is `Positive` (types.mn `variant_named_specs_at`). A
+// value built with `Some` owes it where it is claimed, and a pattern over a
+// value under the contract may assume it.
+fn ctor_field_contract(c, cname: String, i) = match find(spec_named(cname), variant_named_specs_at(c)) {
+  Some(spec) => match spec {
+    (_, _, tys) => if i < len(tys) { Some(list_index(tys, i)) } else { None },
+  },
+  None => None,
+}
+
+fn field_contract(fs, step) = match step {
+  PartField(name) => match find({ (n, _) => n == name }, fs) {
+    Some((_, t)) => Some(t),
+    None => None,
+  },
+  _ => None,
+}
+
+// A call is a length when the callee is len / byte_len; any other call is
+// its callee's return — declared, or proven at the callee's exit — when
+// that return states a refinement.
+fn call_leaves(ref callee) = match graph_node_body(node_handle(callee)) {
+  NExpr(VarRef(cname)) => if cname == "len" || cname == "byte_len" { [LLength] } else { applied_leaves(node_handle(callee)) },
+  _ => applied_leaves(node_handle(callee)),
+}
+
+// ── The declared parameter a value IS, and where in it (H4·D) ───────────
+//
+// A value flows from a parameter when it is the parameter, a part of it — an
+// element of a list parameter, a field of a record one, a position of a
+// tuple one, read by an index, a field access or a pattern that
+// destructured it — or a let of one of those. The path names the part, so a
+// parameter can learn what its body does with the function at `fs[0]` as
+// it learns what it does with the parameter itself. A join or a computation is not
+// the parameter's value, and a variant's field or a list's rest carries no
+// position a contract states.
+fn flow_param_path(h) = match graph_node_body(h) {
+  NExpr(VarRef(name)) => if name == "self" {
+    None
+  } else {
+    match graph_link_of(h) {
+      Some(b) => binder_path(b),
+      None => None,
+    }
+  },
+  NExpr(IndexExpr(recv, idx)) => path_step(flow_param_path(node_handle(recv)), index_step(node_handle(recv), idx)),
+  NExpr(FieldExpr(recv, fname)) => path_step(flow_param_path(node_handle(recv)), PartField(fname)),
+  NExpr(BlockExpr(_, f)) => flow_param_path(node_handle(f)),
+  _ => None,
+}
+
+// What an index reads: a list's element, or — a literal index over a
+// tuple — that position (SYNTAX §«Indexing»).
+fn index_step(recv_h, idx) = match graph_node_body(node_handle(idx)) {
+  NExpr(LitInt(k)) => match graph_chase(recv_h) {
+    GNode(NBound(TTuple(_)), _) => PartIndex(k),
+    _ => PartElem,
+  },
+  _ => PartElem,
+}
+
+fn binder_path(b) = match graph_binder_of(b) {
+  Some(fact) => match fact {
+    ParamFact(_) => Some((b, [])),
+    PartFact(f) => path_step(whole_path(f.whole), f.step),
+    StateFact(_) => None,
+  },
+  None => match graph_node_body(b) {
+    NExpr(_) => flow_param_path(b),
+    _ => None,
+  },
+}
+
+// A destructured part's whole: an enclosing part's binder, or the node the
+// pattern matched.
+fn whole_path(w) = match graph_binder_of(w) {
+  Some(_) => binder_path(w),
+  None => flow_param_path(w),
+}
+
+fn path_step(at, step) = match at {
+  Some(found) => match found {
+    (b, path) => match step {
+      PartWhole => Some((b, path)),
+      PartIndex(_) => Some((b, path ++ [step])),
+      PartField(_) => Some((b, path ++ [step])),
+      PartElem => Some((b, path ++ [step])),
+      PartTypeArg(_) => Some((b, path ++ [step])),
+      PartCtor(_, _) => None,
+      PartRest => None,
+    },
+  },
+  None => None,
+}
+
+// The contract a structure states at a path.
+fn contract_at(c, path) = match path {
+  [] => Some(c),
+  [step, ...rest] => match contract_part(c, step) {
+    Some(part) => contract_at(part, rest),
+    None => None,
+  },
+}
+
+// A function-typed parameter applied — the parameter itself or a function at
+// a part of it: its result under the return contract the parameter carries
+// there, stated or learned from the demand its result meets, assumed here as
+// a precondition is and owed where a caller hands the function in, so a row
+// fact standing on it grows the parameter's guard. Any other callee: its
+// return.
+fn applied_leaves(ch) = match param_result(ch) {
+  Some(leaf) => [leaf],
+  None => post_leaves(ch),
+}
+
+fn param_result(ch) = match flow_param_path(ch) {
+  Some(at) => match at {
+    (b, path) => match graph_binder_of(b) {
+      Some(fact) => match fact {
+        ParamFact(f) => match pre_contract(f.pre) {
+          Some(c) => match contract_at(c, path) {
+            Some(t) => match t {
+              TFun(_, ret, _) => if ty_carries_refinement(ret) { Some(LParam(b, ret)) } else { None },
+              _ => None,
+            },
+            None => None,
+          },
+          None => None,
+        },
+        PartFact(_) => None,
+        StateFact(_) => None,
+      },
+      None => None,
+    },
+  },
+  None => None,
+}
+
+fn post_leaves(ch) = match graph_chase(ch) {
+  GNode(NBound(TFun(_, ret, _)), _) => if ty_carries_refinement(ret) {
+    [LPost(ret)]
+  } else {
+    match ret {
+      TVar(r) => [LRet(r)],
+      _ => [LUnknown],
+    }
+  },
+  _ => [LUnknown],
+}
+
+// The return a declaration PROVES when it authored none: the contract every
+// return tail's leaves carry, a self-call read co-inductively — it returns
+// what the other tails return, or it never returns. None when a tail
+// carries nothing, or every tail is the self-call. Published as the
+// callee's return, it is a postcondition to its callers: a claim may stand
+// on it, a row fact never (the arguments that made it true are owed by
+// those same callers).
+fn proven_return(body_h, ret_h) = {
+  let root = graph_chase_handle(ret_h)
+  value_leaves(body_h, NoSelf) |> filter({ l => !leaf_is_ret(root, l) }) |> leaves_contract
+}
+
+// The contract every leaf carries, named by one alias — the first leaf's,
+// when every leaf names it. None when a leaf carries none. What a return
+// proves of every tail and what an application provides at a position are
+// this one read.
+fn leaves_contract(leaves) = match leaves {
+  [] => None,
+  [first, ..._] => match leaf_contract(first) {
+    Some(c) => match contract_alias(c) {
+      Some(a) => if all(leaf_carries(a, ??), leaves) { Some(c) } else { None },
+      None => None,
+    },
+    None => None,
+  },
+}
+
+fn leaf_is_ret(root, leaf) = match leaf {
+  LRet(r) => graph_chase_handle(r) == root,
+  _ => false,
+}
+
+fn leaf_contract(leaf) = match leaf {
+  LParam(_, c) => Some(c),
+  LPost(c) => Some(c),
+  LClaimed(c, _) => Some(c),
+  _ => None,
+}
+
+// The alias a contract is named by, through refinements and width pins.
+fn contract_alias(c) = match c {
+  TAlias(n, _) => Some(n),
+  TRefined(base, _) => contract_alias(base),
+  TReprPin(_, base) => contract_alias(base),
+  _ => None,
+}
+
+// ── What the leaves answer — each reader asks its own question ──────────
+//
+// A ROW fact, three-valued over the leaves (`and_decide`): proven when every
+// leaf excludes the point, on what is proven (a constant, a length) or
+// assumed under contract (a parameter's precondition) — never on a
+// postcondition still owed or on the Add fold; REFUTED when a leaf is the
+// point itself; open otherwise, and open over no leaves at all.
+fn leaves_exclude(leaves, k) =
+  if len(leaves) == 0 { None } else { fold(Some(true), leaf_exclude_step(k, ??, ??), leaves) }
+
+fn leaf_exclude_step(k, acc, leaf) = and_decide(acc, leaf_excludes(k, leaf))
+
+fn leaf_excludes(k, leaf) = match leaf {
+  LPoint(v) => not_decide(litval_eq(v, LVInt(k))),
+  LParam(_, c) => if contract_excludes(c, k) { Some(true) } else { None },
+  LLength => if k < 0 { Some(true) } else { None },
+  LClaimed(_, beneath) => leaf_excludes(k, beneath),
+  LPost(_) => None,
+  LSum(_) => None,
+  LRet(_) => None,
+  LUnknown => None,
+}
+
+// A CLAIM's lower bound: the least of every leaf's, each answering — a
+// postcondition and the Add fold included, since a claim's own debt is the
+// ledger's to carry.
+fn leaves_lo(leaves) =
+  if len(leaves) == 0 { None } else { leaves |> fold(Some(int_max_word()), leaf_lo_meet) }
+
+fn leaf_lo_meet(acc, leaf) = match acc {
+  Some(a) => match leaf_lo(leaf) {
+    Some(b) => Some(int_min(a, b)),
+    None => None,
+  },
+  None => None,
+}
+
+fn leaf_lo(leaf) = match leaf {
+  LPoint(v) => match v {
+    LVInt(n) => Some(n),
+    _ => None,
+  },
+  LParam(_, c) => domain_lo(ty_domain(c)),
+  LPost(c) => domain_lo(ty_domain(c)),
+  LClaimed(c, beneath) => // both hold of the one value, so the bounds MEET
+  bound_meet(int_max, domain_lo(ty_domain(c)), leaf_lo(beneath)),
+  LSum(lo) => lo,
+  LLength => Some(0),
+  LRet(_) => None,
+  LUnknown => None,
+}
+
+// The largest signed word — the identity of the lower bound's meet.
+fn int_max_word() with Pure = 2147483647
+
 // The sum of two operand bounds — both must answer.
-fn lo_add(ea, eb) with Memory + Alloc = match ea {
+fn lo_add(ea, eb) = match ea {
   Some(a) => match eb {
     Some(b) => Some(a + b),
     None => None,
@@ -218,75 +956,155 @@ fn lo_add(ea, eb) with Memory + Alloc = match ea {
   None => None,
 }
 
-// Min over every match arm's bound; None until the first arm answers,
-// None the moment any arm cannot.
-fn arms_lo(ref arms, self_h, i, acc) with GraphRead + Memory + Alloc = if i >= len(arms) {
-  acc
-} else {
-  match arms[i] {
-    (_, body) => match node_lo_tr(node_handle(body), self_h) {
-      Some(lo) => arms_lo(
-        arms,
-        self_h,
-        i + 1,
-        match acc {
-          Some(best) => if best < lo { Some(best) } else { Some(lo) },
-          None => Some(lo),
-        }
-      ),
-      None => None,
-    },
-  }
+// A CLAIM's echo: every leaf names the refinement — a parameter's
+// precondition or a callee's postcondition carrying the alias — so the
+// value is already a member, and its obligation was owed where the leaf
+// was made.
+fn value_carries_alias(h, aname: String) = leaves_carry_alias(value_leaves(h, NoSelf), aname)
+
+fn leaves_carry_alias(leaves, aname: String) =
+  len(leaves) > 0 && all(leaf_carries(aname, ??), leaves)
+
+// A value's leaves read at a path into it — each projected one step at a
+// time, as a destructured part reads its whole (`project_leaf`).
+fn path_leaves(h, path) = path |> fold(node_leaves(h), project_leaves)
+
+fn project_leaves(leaves, step) = leaves |> map(project_leaf(??, step))
+
+fn leaf_carries(aname: String, leaf) = match leaf {
+  LParam(_, c) => ty_names_alias(c, aname),
+  LPost(c) => ty_names_alias(c, aname),
+  LClaimed(c, beneath) => ty_names_alias(c, aname) || leaf_carries(aname, beneath),
+  _ => false,
 }
 
-// The type-identity leg: the node's chased type already carries the
-// bound as its own refinement — read it, never re-derive it.
-fn ty_lo_at(handle) with GraphRead + Memory + Alloc = match graph_chase(handle) {
-  GNode(kind, _) => match kind {
-    NBound(ty) => ty_lo(ty),
-    _ => None,
+fn ty_names_alias(ty, aname: String) = match ty {
+  TAlias(n, inner) => n == aname || ty_names_alias(inner, aname),
+  TRefined(base, _) => ty_names_alias(base, aname),
+  TReprPin(_, base) => ty_names_alias(base, aname),
+  _ => false,
+}
+
+// What a held claim STANDS ON, for the row it guards: the parameters whose
+// preconditions it leaned on (the guard travels to them), and whether it
+// leaned on anything that is not a row fact — a postcondition still owed,
+// or the Add fold — in which case the guard is paid where the claim stands.
+fn leaves_params(leaves) = leaves |> flat_map(leaf_param)
+
+fn leaf_param(leaf) = match leaf {
+  LParam(b, _) => [b],
+  LClaimed(_, beneath) => leaf_param(beneath),
+  _ => [],
+}
+
+fn leaves_unproven(leaves) = leaves |> any(leaf_unproven)
+
+// A let's claim is owed where the let stands, and nothing says the claim
+// decided here did not stand on it.
+fn leaf_unproven(leaf) = match leaf {
+  LPost(_) => true,
+  LSum(_) => true,
+  LClaimed(_, _) => true,
+  _ => false,
+}
+
+// ── The flow label a value carries (§4⑥'s seed) ─────────────────────────
+//
+// A value is as classified as everything it was BUILT FROM, read along the
+// edges it flowed and never off its class, which holds a shape since P0: a
+// constant is Public; a reference reads its binder — a parameter's
+// precondition, a destructured part's whole (at the position, where the
+// whole was built in sight), a let's value joined with every contract the
+// let claimed of it; a join is all of its tails; a call is its callee's
+// declared return joined with its arguments; any other expression joins
+// what it was computed from. On the P0 tree before this walk, `pw ++ "x"`,
+// a record's classified field, `p ++ "!"` over a classified parameter and a
+// value destructured from `Some(pw)` each read Public at a splice — the
+// class had carried them, by the same merging that laundered refinements.
+fn value_flow_label(h) = match node_const_at(h, NoSelf) {
+  Some(_) => Public,
+  None => match value_tails(h) {
+    Some(tails) => labels_join(tails),
+    None => match graph_node_body(h) {
+      NExpr(VarRef(_)) => match graph_link_of(h) {
+        Some(b) => binder_flow_label(b),
+        None => Public,
+      },
+      NExpr(CallExpr(callee, args)) => flow_label_join(leaves_flow_label(call_leaves(callee)), labels_join(args |> map(node_handle))),
+      NExpr(FieldExpr(recv, fname)) => part_flow_label(node_handle(recv), PartField(fname)),
+      body => labels_join(body_child_handles(body)),
+    },
   },
 }
 
-fn ty_lo(ty) with GraphRead + Memory + Alloc = match ty {
-  TAlias(_, inner) => ty_lo(inner),
-  TRefined(base, pred) => lo_best(ty_lo(base), domain_lo(pred_domain(pred))),
-  TReprPin(_, base) => // A width pin narrows representation, never value bounds.
-  ty_lo(base),
-  TVar(h) => // A type-slot VAR carries the handle; the bound is the CELL's live
-  // fact, one chase away (Carried-Truth). The decl's own TFun carries
-  // its return as TVar(ret_handle), so the rec-call IH — callee_ret_lo
-  // reading the callee's return bound — was refused at exactly the slot
-  // that holds it (probe-measured 2026-08-12: the interval fixture's
-  // seek decide chased ret=TVar, answered None). ty_lo_at reads NBound
-  // and recurses; a
-  // free or chain-end cell still answers None, so the read only ever
-  // ADDS proofs the cell already carries.
-  ty_lo_at(h),
-  _ => None,
+fn labels_join(hs) = hs |> map(node_flow_label) |> fold(Public, flow_label_join)
+
+fn node_flow_label(h) = match graph_binder_of(h) {
+  Some(_) => binder_flow_label(h),
+  None => value_flow_label(h),
 }
 
-// Either source may carry the bound; the tighter (larger) lower bound wins,
-// which is the meet with the larger-of-two pick.
-fn lo_best(ea, eb) with Memory + Alloc = bound_meet(int_max, ea, eb)
+fn binder_flow_label(b) = match graph_binder_of(b) {
+  Some(fact) => match fact {
+    ParamFact(f) => match pre_contract(f.pre) {
+      Some(c) => query_flow_label(c),
+      None => Public,
+    },
+    PartFact(f) => flow_label_join(declared_label(f.declared), part_flow_label(f.whole, f.step)),
+    StateFact(f) => state_flow_label(b, f.writes),
+  },
+  None => match graph_node_body(b) {
+    NExpr(_) => graph_claims_of(b) |> map(query_flow_label) |> fold(value_flow_label(b), flow_label_join),
+    _ => Public,
+  },
+}
 
-// The domain a TYPE states about its inhabitants — the same walk `ty_lo`
-// makes, answering the whole fact instead of one end. An alias is transparent,
-// a refinement meets its base with its predicate's reading, a width pin
-// narrows representation and never values, and a var reads the cell live.
-fn ty_domain(ty) with GraphRead + Memory + Alloc = match ty {
+// A state is as classified as everything written into it, each writer read
+// as the expression it is. Inside its own writers it adds nothing, and that
+// is exact: a write's label joins the state's with what the write adds, so
+// the least label is the init's joined with every write's.
+fn state_flow_label(b, writes) = if walking_state(b) {
+  Public
+} else {
+  writes |> map(value_flow_label) |> fold(Public, flow_label_join) ~> walking_state_of(b)
+}
+
+fn declared_label(declared) = match declared {
+  Some(c) => query_flow_label(c),
+  None => Public,
+}
+
+// A part is as classified as the nodes it can be where its whole was built
+// in sight, and as its whole where it was not.
+fn part_flow_label(whole, step) = match part_read(whole, step, flow_label_read) {
+  Some(labels) => labels |> fold(Public, flow_label_join),
+  None => node_flow_label(whole),
+}
+
+fn flow_label_read(n) = Some([node_flow_label(n)])
+
+fn leaves_flow_label(leaves) = leaves |> map(leaf_flow_label) |> fold(Public, flow_label_join)
+
+fn leaf_flow_label(leaf) = match leaf {
+  LParam(_, c) => query_flow_label(c),
+  LPost(c) => query_flow_label(c),
+  LClaimed(c, beneath) => flow_label_join(query_flow_label(c), leaf_flow_label(beneath)),
+  LPoint(_) => Public,
+  LSum(_) => Public,
+  LLength => Public,
+  LRet(_) => Public,
+  LUnknown => Public,
+}
+
+// The domain a CONTRACT states about its inhabitants. An alias is
+// transparent, a refinement meets its base with its predicate's reading, a
+// width pin narrows representation and never values; a variable is a cell,
+// and a cell holds a shape, so it states nothing.
+fn ty_domain(ty) = match ty {
   TAlias(_, inner) => ty_domain(inner),
   TRefined(base, pred) => domain_meet(ty_domain(base), pred_domain(pred)),
   TReprPin(_, base) => ty_domain(base),
-  TVar(h) => ty_domain_at(h),
   _ => dom_top(),
-}
-
-fn ty_domain_at(handle) with GraphRead + Memory + Alloc = match graph_chase(handle) {
-  GNode(kind, _) => match kind {
-    NBound(ty) => ty_domain(ty),
-    _ => dom_top(),
-  },
 }
 
 // ── The DOMAIN read — what a predicate states about `self` ───────────
@@ -294,13 +1112,13 @@ fn ty_domain_at(handle) with GraphRead + Memory + Alloc = match graph_chase(hand
 // The whole fact, in one walk: both ends of what a refinement admits, read
 // together. A walk that answers one end alone forces any consumer wanting the
 // other to grow a mirror family beside it — two walks over one fact, the
-// parallel-arrays drift at the function layer. `ty_lo` is this read projected
-// through `domain_lo`, and the bound-meet is `domain_meet` at the domain
-// altitude.
+// parallel-arrays drift at the function layer. A leaf's lower bound
+// (`leaf_lo`) is this read projected through `domain_lo`, and the bound-meet
+// is `domain_meet` at the domain altitude.
 //
 // It is an OVER-approximation by contract (Domain, types.mn): the reader may
 // decide what to construct from it, never what to admit.
-fn pred_domain(pred) with GraphRead + Memory + Alloc = match pred {
+fn pred_domain(pred) = match pred {
   PTrue => dom_top(),
   PCompare(op, lh, rh) => compare_domain(op, lh, rh),
   PAnd(a, b) => domain_meet(pred_domain(a), pred_domain(b)),
@@ -314,11 +1132,14 @@ fn pred_domain(pred) with GraphRead + Memory + Alloc = match pred {
   // may be — the domain is untouched, which is a reading, not a gap.
   dom_top(),
   PWithSelf(_, inner) => pred_domain(inner),
+  PTotalDiv(_, _, _) => // a precondition on two operands states nothing about `self`
+  dom_top(),
+  PProvides(_) => dom_top(),
 }
 
-fn dom_top() with Memory + Alloc = DRange(None, None)
+fn dom_top() = DRange(None, None)
 
-fn is_self_node(handle) with GraphRead + Memory + Alloc = match graph_node_body(handle) {
+fn is_self_node(handle) = match graph_node_body(handle) {
   NExpr(VarRef(name)) => name == "self",
   _ => false,
 }
@@ -326,7 +1147,7 @@ fn is_self_node(handle) with GraphRead + Memory + Alloc = match graph_node_body(
 // One comparison, read from whichever side `self` stands on: the other side
 // must fold to a ground constant, or the fragment stops (DUndecided) rather
 // than guessing.
-fn compare_domain(op, lh, rh) with GraphRead + Memory + Alloc = if is_self_node(lh) {
+fn compare_domain(op, lh, rh) = if is_self_node(lh) {
   match node_const(rh) {
     Some(v) => self_op_const(op, v),
     None => DUndecided,
@@ -353,7 +1174,7 @@ fn flip_cmp(op) with Pure = match op {
 // `self OP v`. The strict bounds step by one, which is why DRange is integral;
 // a non-Int operand answers DUndecided for the ordering ops and still answers
 // exactly for equality, where no predecessor is needed.
-fn self_op_const(op, v) with Memory + Alloc = match op {
+fn self_op_const(op, v) = match op {
   BEq => DFinite([v]),
   BNe => // The complement of one point is not a range; top is the honest superset.
   dom_top(),
@@ -382,7 +1203,7 @@ fn self_op_const(op, v) with Memory + Alloc = match op {
 // side yields to the readable one: the intersection is a SUBSET of either side,
 // so keeping the decided side stays the over-approximation the contract
 // requires, and nothing real is cut.
-fn domain_meet(a, b) with Memory + Alloc = match a {
+fn domain_meet(a, b) = match a {
   DUndecided => b,
   DFinite(vs) => match b {
     DUndecided => a,
@@ -400,7 +1221,7 @@ fn domain_meet(a, b) with Memory + Alloc = match a {
 // must COVER it. Two ranges give their hull; two finite sets give their
 // concatenation, which is exact; anything mixed or unreadable widens to the
 // top, because a bound that cannot cover the union would cut inhabitants.
-fn domain_join(a, b) with Memory + Alloc = match a {
+fn domain_join(a, b) = match a {
   DUndecided => dom_top(),
   DFinite(vs) => match b {
     DFinite(ws) => DFinite(vs ++ ws),
@@ -414,16 +1235,16 @@ fn domain_join(a, b) with Memory + Alloc = match a {
   },
 }
 
-fn lit_same(a, b) with Memory + Alloc = match litval_eq(a, b) {
+fn lit_same(a, b) = match litval_eq(a, b) {
   Some(x) => x,
   None => false,
 }
 
-fn lit_in(v, ws) with Memory + Alloc = ws |> any(lit_same(v, ??))
+fn lit_in(v, ws) = ws |> any(lit_same(v, ??))
 
 // A value outside the range is cut; a value the integral range cannot speak
 // about is KEPT, because the meet may only over-approximate.
-fn lit_in_range(v, lo, hi) with Memory + Alloc = match v {
+fn lit_in_range(v, lo, hi) = match v {
   LVInt(n) => bound_admits_lo(lo, n) && bound_admits_hi(hi, n),
   _ => true,
 }
@@ -445,7 +1266,7 @@ fn bound_admits_hi(hi, n) with Pure = match hi {
 // combined is the comparator, not a flag — the four near-identical combiners
 // this replaces differed by one glyph each and were a family where a pair of
 // higher-order reads belongs.
-fn bound_meet(pick, ea, eb) with Memory + Alloc = match ea {
+fn bound_meet(pick, ea, eb) = match ea {
   Some(a) => match eb {
     Some(b) => Some(pick(a, b)),
     None => ea,
@@ -453,7 +1274,7 @@ fn bound_meet(pick, ea, eb) with Memory + Alloc = match ea {
   None => eb,
 }
 
-fn bound_join(pick, ea, eb) with Memory + Alloc = match ea {
+fn bound_join(pick, ea, eb) = match ea {
   Some(a) => match eb {
     Some(b) => Some(pick(a, b)),
     None => None,
@@ -468,13 +1289,13 @@ fn int_min(a, b) with Pure = if a < b { a } else { b }
 // The bounds a domain states, for the readers that want one end. A finite set
 // bounds itself; a member the integral bound cannot speak about leaves the end
 // open rather than inventing one.
-fn domain_lo(d) with Memory + Alloc = match d {
+fn domain_lo(d) = match d {
   DRange(lo, _) => lo,
   DFinite(vs) => if vs |> all(is_lv_int) { vs |> fold(None, min_of_lit) } else { None },
   DUndecided => None,
 }
 
-fn domain_hi(d) with Memory + Alloc = match d {
+fn domain_hi(d) = match d {
   DRange(_, hi) => hi,
   DFinite(vs) => if vs |> all(is_lv_int) { vs |> fold(None, max_of_lit) } else { None },
   DUndecided => None,
@@ -488,7 +1309,7 @@ fn is_lv_int(v) with Pure = match v {
 // The guard above admits only integral members, so the other arm carries the
 // accumulator untouched rather than inventing a bound for a value it cannot
 // read.
-fn min_of_lit(acc, v) with Memory + Alloc = match v {
+fn min_of_lit(acc, v) = match v {
   LVInt(n) => match acc {
     Some(a) => if n < a { Some(n) } else { Some(a) },
     None => Some(n),
@@ -496,7 +1317,7 @@ fn min_of_lit(acc, v) with Memory + Alloc = match v {
   _ => acc,
 }
 
-fn max_of_lit(acc, v) with Memory + Alloc = match v {
+fn max_of_lit(acc, v) = match v {
   LVInt(n) => match acc {
     Some(a) => if n > a { Some(n) } else { Some(a) },
     None => Some(n),
@@ -511,7 +1332,7 @@ fn max_of_lit(acc, v) with Memory + Alloc = match v {
 // instead — PWithSelf(value_handle, pred) — and predicate_decide_at threads it
 // into every node_const_at. One binder resolves every `self`, top-level and
 // nested, the same way; carry the handle, read live, mint nothing.
-fn subst_self(pred, value_handle) with Memory + Alloc = PWithSelf(value_handle, pred)
+fn subst_self(pred, value_handle) = PWithSelf(value_handle, pred)
 
 // The candidate gate's refinement half: a candidate SURFACES only when the
 // target's refinement DECIDES true on it (PLAN §5 sample-then-filter — the
@@ -519,22 +1340,19 @@ fn subst_self(pred, value_handle) with Memory + Alloc = PWithSelf(value_handle, 
 // proof, and assume-true is the Dafny {:axiom} cautionary the ledger
 // exists to refuse. Transparent aliases recurse; an unrefined target
 // admits by type alone.
-fn refinement_admits(ty, value_handle) with GraphRead + Memory + Alloc = match ty {
-  TAlias(aname, inner) => // A candidate whose INFERRED type is the SAME refined alias is admitted
-  // by TYPED IDENTITY — which proves the callee's DECLARATION, never its
-  // discharge. The layering is deliberate, each proof question at its one
-  // home: the callee's return obligation lives in the ledger AT ITS decl
+fn refinement_admits(ty, value_handle) = match ty {
+  TAlias(aname, inner) => // A candidate whose every leaf already NAMES the refinement — a
+  // parameter's precondition, a callee's declared return — is admitted
+  // by that identity, which proves the declaration, never its discharge.
+  // The layering is deliberate, each proof question at its one home: a
+  // callee's return obligation lives in the ledger AT ITS decl
   // (discharged, pending, or refuted THERE); a refuted callee already
   // fails the program's own check leg (E_RefinementRejected at the decl),
   // so admitting its call here changes nothing observable; and executable
   // refusal on remaining debt is R5's gate at the emit boundary. The synth
   // gate answers only "does this filling fit the target type" — it never
   // re-decides a proof another site owns.
-  if value_flows_class(value_handle) && inferred_alias_name(value_handle) == aname {
-    true
-  } else {
-    refinement_admits(inner, value_handle)
-  },
+  value_carries_alias(value_handle, aname) || refinement_admits(inner, value_handle),
   TRefined(base, pred) => refinement_admits(base, value_handle) && match predicate_decide(subst_self(pred, value_handle)) {
     Some(decided) => decided,
     None => false,
@@ -542,41 +1360,23 @@ fn refinement_admits(ty, value_handle) with GraphRead + Memory + Alloc = match t
   _ => true,
 }
 
-// The typed-identity echo-stop's licence: it holds for value-FLOW nodes
-// (a var, a call result, a join — the value IS a class member's value,
-// so the member's own boundary obligation covers it) and NEVER for a
-// COMPUTATION (BinOp/UnaryOp mint a NEW value whose class membership is
-// a theorem, not a flow — the arith unify puts `v - 1` in v's refined
-// class, and reading that as proof laundered a runtime -1 through a
-// `0 <= self` return, measured 2026-07-30). A computation raises; the
-// ground fold and the interval fragment prove the provable.
-fn value_flows_class(value_handle) with GraphRead = match graph_node_body(value_handle) {
-  NExpr(BinOpExpr(_, _, _)) => false,
-  NExpr(UnaryOpExpr(_, _)) => false,
-  _ => true,
-}
-
-// The alias NAME of a value node's inferred type ("" when unaliased) —
-// read live through the chase after the candidate's infer pass.
-fn inferred_alias_name(value_handle) with GraphRead = match graph_chase(value_handle) {
-  GNode(kind, _) => match kind {
-    NBound(TAlias(aname, _)) => aname,
-    _ => // drift-audit: ignore — "" IS the documented no-alias sentinel this projection's one caller compares against (an alias name is never empty)
-    "",
-  },
-}
-
 // Fold a comparison over two constant operand values.
-fn litval_compare(ref op, ref a, ref b) with Memory + Alloc = match op {
+// Total over the comparison operators: the three the grammar spells the
+// other way round are the same three questions with the operands swapped
+// or the answer negated, and `self != 0` is what a NonZero refinement says.
+fn litval_compare(ref op, ref a, ref b) = match op {
   BEq => litval_eq(a, b),
+  BNe => not_decide(litval_eq(a, b)),
   BLt => litval_lt(a, b),
   BLe => litval_le(a, b),
+  BGt => litval_lt(b, a),
+  BGe => litval_le(b, a),
   _ => None,
 }
 
 // Equality over constants. Same-kind compares; cross-kind is Some(false)
 // (different-kind constants are unequal — a stronger refusal than None).
-fn litval_eq(ref a, ref b) with Memory + Alloc = match a {
+fn litval_eq(ref a, ref b) = match a {
   LVInt(na) => match b {
     LVInt(nb) => Some(na == nb),
     LVFloat(_) => Some(false),
@@ -605,7 +1405,7 @@ fn litval_eq(ref a, ref b) with Memory + Alloc = match a {
 
 // Strict order over numeric constants; strings/bools carry no order
 // here (None — defer); cross-kind numeric is None.
-fn litval_lt(ref a, ref b) with Memory + Alloc = match a {
+fn litval_lt(ref a, ref b) = match a {
   LVInt(na) => match b {
     LVInt(nb) => Some(na < nb),
     LVFloat(_) => None,
@@ -622,7 +1422,7 @@ fn litval_lt(ref a, ref b) with Memory + Alloc = match a {
   LVBool(_) => None,
 }
 
-fn litval_le(ref a, ref b) with Memory + Alloc = match a {
+fn litval_le(ref a, ref b) = match a {
   LVInt(na) => match b {
     LVInt(nb) => Some(na <= nb),
     LVFloat(_) => None,
@@ -641,7 +1441,7 @@ fn litval_le(ref a, ref b) with Memory + Alloc = match a {
 
 // Fold an arithmetic BinOp over two OPTIONAL ground operands (the decidable
 // fragment); either None makes the fold None.
-fn litval_arith_opt(op, ref ea, ref eb) with Memory + Alloc = match ea {
+fn litval_arith_opt(op, ref ea, ref eb) = match ea {
   Some(a) => match eb {
     Some(b) => litval_arith(op, a, b),
     None => None,
@@ -659,7 +1459,7 @@ fn litval_arith_opt(op, ref ea, ref eb) with Memory + Alloc = match ea {
 // one would LIE; None keeps the obligation live and honest). Float folds use the
 // compiler's own f64 ops (identical wasm IEEE-754 semantics; f64 `/ 0.0` is
 // inf/nan, not a trap). No float modulo; a comparison/logical op defers to None.
-fn litval_arith(ref op, ref a, ref b) with Memory + Alloc = match a {
+fn litval_arith(ref op, ref a, ref b) = match a {
   LVInt(na) => match b {
     LVInt(nb) => match op {
       BAdd => Some(LVInt(na + nb)),
@@ -692,12 +1492,12 @@ fn litval_arith(ref op, ref a, ref b) with Memory + Alloc = match a {
 // Fold a unary op over an OPTIONAL ground operand. UNeg negates a numeric
 // constant (the source of `-1.0` / `-3`); UNot is boolean, outside the
 // arithmetic fragment (defer to None).
-fn litval_unary_opt(op, ref e) with Memory + Alloc = match e {
+fn litval_unary_opt(op, ref e) = match e {
   Some(v) => litval_unary(op, v),
   None => None,
 }
 
-fn litval_unary(ref op, ref v) with Memory + Alloc = match op {
+fn litval_unary(ref op, ref v) = match op {
   UNeg => match v {
     LVInt(n) => Some(LVInt(0 - n)),
     LVFloat(f) => Some(LVFloat(0.0 - f)),
@@ -712,7 +1512,7 @@ fn litval_unary(ref op, ref v) with Memory + Alloc = match op {
 // decides true; mixed Some(true) + None defers to None (the unknown
 // branch is still load-bearing); Some(true) + Some(true) is the only
 // fully-decidable true.
-fn and_decide(ref ea, ref eb) with Memory + Alloc = match ea {
+fn and_decide(ref ea, ref eb) = match ea {
   Some(false) => Some(false),
   Some(true) => match eb {
     Some(false) => Some(false),
@@ -726,7 +1526,7 @@ fn and_decide(ref ea, ref eb) with Memory + Alloc = match ea {
   },
 }
 
-fn or_decide(ref ea, ref eb) with Memory + Alloc = match ea {
+fn or_decide(ref ea, ref eb) = match ea {
   Some(true) => Some(true),
   Some(false) => match eb {
     Some(true) => Some(true),
@@ -740,10 +1540,28 @@ fn or_decide(ref ea, ref eb) with Memory + Alloc = match ea {
   },
 }
 
-fn not_decide(ref e) with Memory + Alloc = match e {
+fn not_decide(ref e) = match e {
   Some(true) => Some(false),
   Some(false) => Some(true),
   None => None,
+}
+
+// THE LEDGER DECIDES, THE SITE NARRATES (C5). A claim's one perform: the
+// installed ledger answers its verdict (proven, refused, open) and the
+// SITE reports a refusal — from the body, inside every capture bracket
+// the judgment installed. The arms used to report it themselves, and an
+// arm's performs resolve OUTER of its own install, so the refusal sailed
+// past the battery's class capture: `mn-div-const-zero-refuses` counted
+// one error and banked no class, the exact shape
+// `Hβ.diag.an-arms-report-escapes-an-inner-capture` names at the occurs
+// belt. An arm may note; only the body may narrate.
+fn verify_claim(modh, span, pred, reason) = {
+  let verdict = verify(modh, span, pred, reason)
+  match verdict {
+    Some(false) => report_refinement_rejected(pred, span, reason),
+    _ => (),
+  }
+  verdict
 }
 
 // Compile-time refusal at the construction site. The verifier proved
@@ -784,7 +1602,7 @@ fn debt_lines(ref debt, ref scope, i) = if i >= len(debt) {
 } else {
   match debt[i] {
     (modh, dspan, pred, _) => if debt_in_scope(modh, scope) {
-      eprint_string("verify: pending {classify_predicate(pred)} {show_predicate(pred)} at {module_name_of_handle(modh)}:{show_span(dspan)}\n")
+      eprint_string("verify: {obligation_text(modh, dspan, pred)}\n")
     } else {
       ()
     },
@@ -792,7 +1610,12 @@ fn debt_lines(ref debt, ref scope, i) = if i >= len(debt) {
   debt_lines(debt, scope, i + 1)
 }
 
-fn debt_in_scope(modh, ref scope) with GraphRead + Memory + Alloc = match scope {
+// One open obligation said once: the ledger's summary lines and the Verify
+// facet at a caret read the same sentence.
+fn obligation_text(modh, dspan, pred) =
+  "pending {classify_predicate(pred)} {show_predicate(pred)} at {module_name_of_handle(modh)}:{show_span(dspan)}"
+
+fn debt_in_scope(modh, ref scope) = match scope {
   ScopeAll => true,
   ScopeNone => false,
   ScopeModule(name) => module_name_of_handle(modh) == name,
@@ -810,6 +1633,8 @@ fn classify_predicate(pred) with Pure = match pred {
   "ifc-flow",
   PWithSelf(_, inner) => // the binder classifies as its body
   classify_predicate(inner),
+  PTotalDiv(_, _, _) => "partiality",
+  PProvides(_) => "provision",
 }
 
 type SmtResult = SmtSat(String) | SmtUnsat | SmtUnknown
@@ -820,11 +1645,8 @@ effect SmtSolver {
 
 handler verify_smt with witnesses = [], debt = [] {
   verify(modh, span, predicate, reason) => match predicate_decide(predicate) {
-    Some(true) => resume(),
-    Some(false) => {
-      report_refinement_rejected(predicate, span, reason)
-      resume()
-    },
+    Some(true) => resume(Some(true)),
+    Some(false) => resume(Some(false)),
     None => // Only OPEN predicates reach the solver (predicate_decide short-circuits
     // ground ones above), so validity is the question — and validity is the
     // NEGATION's unsatisfiability. Solving the predicate itself and reading
@@ -833,17 +1655,14 @@ handler verify_smt with witnesses = [], debt = [] {
     // SAT(¬P) hands back the violating assignment — a COUNTEREXAMPLE the
     // cursor surfaces at the rejection, not proof-evidence.
     match smt_solve(predicate_to_smt_lib(PNot(predicate))) {
-      SmtUnsat => resume(),
-      SmtSat(counterexample) => {
-        report_refinement_rejected(predicate, span, reason)
-        resume() with witnesses = [(modh, span, predicate, counterexample)] ++ witnesses
-      },
+      SmtUnsat => resume(Some(true)),
+      SmtSat(counterexample) => resume(Some(false)) with witnesses = [(modh, span, predicate, counterexample)] ++ witnesses,
       SmtUnknown => // SmtUnknown is a GENUINELY undischarged obligation — accrue it as
       // pending debt (never silently resume, which would discharge an
       // obligation the solver could not prove; the no-silent-fallback law
       // at the proof gate). It lives in the SAME debt ledger verify_ledger
       // keeps, so verify_debt projects it live.
-      resume() with debt = [(modh, span, predicate, reason)] ++ debt,
+      resume(None) with debt = [(modh, span, predicate, reason)] ++ debt,
     },
   },
   verify_debt() => // verify_debt projects the SMT handler's residual LIVE (Carried-Truth — the
@@ -853,11 +1672,11 @@ handler verify_smt with witnesses = [], debt = [] {
   // SmtUnknown obligations are retained debt. Both flow back as the residual,
   // never dropped.
   resume(verify_residual(debt, witnesses)),
-  verify_reset() => // The generation clear drops the pending debt; the SAT witnesses stay —
-  // a counterexample is a PROOF (of violation), not an obligation, and a
-  // re-derivation that removed the violating claim simply never re-raises
-  // it.
-  resume() with debt = [],
+  verify_forget(superseded) => // The generation clear drops the superseded modules' pending debt; the SAT
+  // witnesses stay — a counterexample is a PROOF (of violation), not an
+  // obligation, and a re-derivation that removed the violating claim simply
+  // never re-raises it.
+  resume() with debt = filter(debt_outside(superseded), debt),
 }
 
 // The SMT handler's residual: undischarged debt PLUS the SAT-witness ledger
@@ -866,13 +1685,12 @@ handler verify_smt with witnesses = [], debt = [] {
 // list, read live — the cursor's projection of what the solver established
 // and what it could not. (Surpasses Dafny/F*: the witness is a walkable Reason
 // edge, not a separate counterexample dump.)
-fn verify_residual(ref debt, ref witnesses) with Memory + Alloc =
+fn verify_residual(ref debt, ref witnesses) =
   debt ++ map({ (modh, span, pred, model) => (modh, span, pred, VerifyWitness(model)) }, witnesses)
 
-fn predicate_to_smt_lib(ref pred) with Memory + Alloc + GraphRead + Diagnostic + Intern =
-  "(assert {predicate_to_smt(pred)})\n(check-sat)"
+fn predicate_to_smt_lib(ref pred) = "(assert {predicate_to_smt(pred)})\n(check-sat)"
 
-fn predicate_to_smt(ref pred) with GraphRead + Memory + Alloc + Diagnostic + Intern = match pred {
+fn predicate_to_smt(ref pred) = match pred {
   PTrue => "true",
   PCompare(op, l, r) => "({smt_cmp_op(op)} {handle_to_smt(l)} {handle_to_smt(r)})",
   PAnd(a, b) => smt_logop("and", a, b),
@@ -885,17 +1703,24 @@ fn predicate_to_smt(ref pred) with GraphRead + Memory + Alloc + Diagnostic + Int
   // (the solver's declared variable), exactly the diagnostic's reading.
   if flow_le(a, b) { "true" } else { "false" },
   PWithSelf(_, inner) => predicate_to_smt(inner),
+  PTotalDiv(op, a, b) => match op {
+    BMod => "(distinct {handle_to_smt(b)} 0)",
+    _ => "(and (distinct {handle_to_smt(b)} 0) (or (distinct {handle_to_smt(b)} (- 1)) (distinct {handle_to_smt(a)} (- 2147483648))))",
+  },
+  PProvides(_) => "true",
 }
 
 fn smt_cmp_op(ref op) with Pure = match op {
   BEq => "=",
+  BNe => "distinct",
   BLt => "<",
   BLe => "<=",
+  BGt => ">",
+  BGe => ">=",
   _ => "=",
 }
 
-fn smt_logop(ref op, ref a, ref b) with GraphRead + Memory + Alloc + Diagnostic + Intern =
-  "({op} {predicate_to_smt(a)} {predicate_to_smt(b)})"
+fn smt_logop(ref op, ref a, ref b) = "({op} {predicate_to_smt(a)} {predicate_to_smt(b)})"
 
 // ONE SMT-render projection, keyed on HANDLES throughout (Carried-Truth: the
 // predicate's operands ARE handles into the one graph; every operand — top-
@@ -920,7 +1745,7 @@ fn smt_logop(ref op, ref a, ref b) with GraphRead + Memory + Alloc + Diagnostic 
 // moved but stayed wrong), which is the only reason this one is trustworthy.
 //
 // The one read, inline, exactly as the sibling does it.
-fn handle_to_smt(handle) with GraphRead + Memory + Alloc + Diagnostic + Intern = match graph_node_body(handle) {
+fn handle_to_smt(handle) = match graph_node_body(handle) {
   NExpr(LitInt(n)) => int_to_str(n),
   NExpr(LitFloat(f)) => float_to_str(f),
   NExpr(LitString(s)) => "\"{s}\"",
@@ -948,7 +1773,7 @@ fn handle_to_smt(handle) with GraphRead + Memory + Alloc + Diagnostic + Intern =
 // (the operand-Node channel PCompare already uses); the fname is the callee's
 // name read live from its node body, or the unencodable sentinel if it is not a
 // bare name reference.
-fn smt_call(callee, args) with GraphRead + Memory + Alloc + Diagnostic + Intern = match callee {
+fn smt_call(callee, args) = match callee {
   N(cbody, _, _) => {
     let fname = match cbody {
       NExpr(VarRef(n)) => n,
@@ -963,7 +1788,7 @@ fn smt_call(callee, args) with GraphRead + Memory + Alloc + Diagnostic + Intern 
 
 // Each arg is a handle — map through handle_to_smt and join (map/fold, never an
 // imperative i/n counter; Anchor 6).
-fn smt_arg_terms(args) with GraphRead + Memory + Alloc + Diagnostic + Intern = fold(
+fn smt_arg_terms(args) = fold(
   "",
   (acc, arg) => match arg {
     N(_, _, h) => "{acc} {handle_to_smt(h)}",
@@ -971,13 +1796,13 @@ fn smt_arg_terms(args) with GraphRead + Memory + Alloc + Diagnostic + Intern = f
   args
 )
 
-fn smt_binop(op, l, r) with GraphRead + Memory + Alloc + Diagnostic + Intern = match l {
+fn smt_binop(op, l, r) = match l {
   N(_, _, lh) => match r {
     N(_, _, rh) => "({smt_binop_sym(op)} {handle_to_smt(lh)} {handle_to_smt(rh)})",
   },
 }
 
-fn smt_unop(op, x) with GraphRead + Memory + Alloc + Diagnostic + Intern = match x {
+fn smt_unop(op, x) = match x {
   N(_, _, xh) => match op {
     UNot => "(not {handle_to_smt(xh)})",
     UNeg => "(- {handle_to_smt(xh)})",

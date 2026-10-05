@@ -1,0 +1,11 @@
+// expect: refuse E_RefinementRejected
+// A pipe stage is an application: `alpha`'s `c: Hz` claims of the piped
+// value what a call's argument would owe, and 30000.0 is past Hz's ceiling,
+// so the compile refuses at the pipe. On boot 13e8484a the pipe raised no
+// claim: this compiled clean and handed 30000.0 to a parameter that said
+// `Hz`.
+type Hz = Float where 0.0 < self && self < 22050.0
+
+fn alpha(c: Hz) -> Float = c * 2.0
+
+fn main() = if (30000.0 |> alpha) > 0.0 { 0 } else { 1 }

@@ -1,0 +1,12 @@
+// A self-recursive call pays its own precondition's guard. `n: Positive`
+// proves `100 / n` total inside the body, so the division charges nothing
+// there and its Trap is guarded by the precondition instead. The recursive
+// call hands `k - 1`, which nothing proves Positive, so the call owes what
+// the guard holds — and the guard is the declaration's own, unwritten
+// while its body is judged. countdown(5, 3) reaches countdown(0, 0) and
+// divides by zero.
+type Positive = Int where 0 < self
+
+fn countdown(n: Positive, k) = if k <= 0 { 100 / n } else { countdown(k - 1, k - 1) }
+
+fn main() with !Trap = countdown(5, 3)

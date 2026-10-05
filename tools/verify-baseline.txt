@@ -708,26 +708,18 @@ comment_refs_max: 0
 # is a mute gate. The regrowth alarm is structural — a second pass would
 # have to be written back into infer.mn.
 
-# THE UNPROVABLE-FIELD-OFFSET CENSUS — the wheel's own count of reachable
-# field accesses whose slot the graph could not prove. Each one is an
-# `(unreachable)` the emit writes into the shipping module, and until
-# 2026-09-15 each one was written and never SAID: `mentl check` passed, the
-# compile exited 0, and the program trapped at the instruction that admits
-# it. Four of them rode the wheel. One was the unconditional else-branch of
-# emitfns_index_build, and the march found it the only way a silent floor is
-# ever found — the m4 leg died at a bare `wasm trap: unreachable` with no
-# diagnostic anywhere in the run.
-#
-# This is a ratchet toward an ARMING, not a standing tolerance. E_FieldOffset
-# Unprovable is declared and reported but NOT in diag_refuses, because that
-# licence is a wheel census of ZERO (types.mn states it: "the medium never
-# violates it on ITSELF, so enforcing it on everyone cannot refuse the
-# medium"). Each of the four is a receiver whose row never closed —
-# emitfns_index_build's `col` reads List({ name: String | r }) in the full
-# wheel though the op that fills it declares EmitFnEntry, which is the
-# Carried-Truth Law at the element type. Drive them to zero, then arm, then
-# this line and the pre-arm fixture both retire.
-field_offset_unprovable_max: 4
+# field_offset_unprovable_max, eq_type_unprovable_max and
+# show_type_unprovable_max — RETIRED 2026-09-28 (R0″), by their own words.
+# Each was a countdown to an ARMING, held because its class was decided
+# during emission, after the gate that reads refusals, so no count could
+# ever refuse. The plan's settle point asks all three under each body's own
+# bracket before the first byte, so they refuse now (E_FieldOffsetUnprovable
+# and E_ShapeUnprovable, armed at wheel-zero: the comparison count's last
+# two were `list_compare_loop` reading its elements through the typed
+# `list_index`, and it reads the words the emit's by-name call guarantees).
+# A ratchet beside an armed class is a weaker second copy of the refusal.
+# LEDGER carries each count's descent (4 → 8 → 0; 56 → 60 → 58 → 57 → 34 →
+# 2 → 0; 22 → 1 → 0).
 
 # The effect seam: filesystem impl calls outside the handler that owns them.
 # MEASURED 24 before this landing and 13 after (both read from the artifact,
@@ -813,48 +805,6 @@ field_offset_unprovable_max: 4
 # entry above was written and the ceiling was left at 8 to spare a gate cycle.
 fs_impl_bypass_max: 7
 
-# 2026-08-07: the PER-MODULE ratchet (PLAN §11 Phase 3.5's first half) —
-# E_MissingVariable across every src module's SOLO check, monotone DOWN.
-# Seeded 36 after the two one-line import fixes (verify→graph+io killed
-# 12+1, format→parser killed 5; the sweep measured 53 before them). The
-# residual 36 IS two architectural seams, not under-imports: the
-# infer→pipeline handler pair (env_handler/intern_view installed in
-# infer.mn:2310 but declared a layer up — the declarations relocate DOWN,
-# ~20 violations across nine closures) and the mcp→main verb grammar
-# (parse_cli_args + VerbSpec shared across two transports but declared
-# at the entry — the grammar relocates to a home both import, 16
-# violations). The frontier's solo-sweep leg enforces this ceiling; it
-# reaches 0 when the seams close and the per-module check becomes the
-# drift-catalog retirement gate.
-# RATCHETED DOWN 36 → 16 at the handler relocation (env_handler + the
-# env machinery → src/env.mn; intern_table/intern_view + intern_probe →
-# src/intern.mn; infer imports both, healing all nine closures at once).
-# RATCHETED DOWN 16 → 0 at the verb-grammar relocation (EntryVerb, the
-# VerbSpec table, parse_cli_args + address/target helpers → src/cli.mn;
-# main and mcp both import it — one grammar, two transports, one home).
-# ZERO IS THE FLOOR AND THE CONTRACT: every module's solo check resolves
-# every name through its own declared imports. Per §11 3.5 this gates
-# the drift-catalog retirement.
-# INTERROGATED 2026-09-15 and KEPT — the measurement is recorded so the
-# next session does not re-derive it. The day E_UseAfterMove was armed and
-# use_after_move_max retired, this key was the obvious next candidate: it
-# reads ZERO, and the thing it counts (E_MissingVariable) is ALREADY in
-# diag_refuses, which looks exactly like a counter standing beside a proof.
-# It is not. E_MissingVariable refuses the program the wheel actually
-# LINKS — one concatenated blob in which every name resolves whether or
-# not its module declared the dep. This sweep checks each module ALONE,
-# which is a judgment the wheel never performs on itself, so the zero here
-# is not a held invariant but a genuine measurement of something otherwise
-# unobserved. That is §11 tripwire (3) — the board is blind to what the
-# wheel never does — and lib/** joining the sweep in 2026-08-16 found 20
-# unresolved names the very first run, which is the proof that retiring it
-# would delete a real channel rather than a duplicate. Its honest
-# retirement is the per-module env overlay (§7: "CLOSED at entry, OPEN
-# per-module … the overlay is the stamped second half",
-# Hβ.driver.per-module-env-overlay), after which the link itself judges
-# per module and the sweep has nothing left to discover.
-solo_violations_max: 0
-
 # 2026-08-07: the ANONYMITY ratchet (PLAN §11 Phase 2.5, second half) —
 # the census tier's convictions on the wheel link, monotone DOWN. Two
 # keys, not one, because the classes fall differently: an eta-wrapper
@@ -913,13 +863,13 @@ solo_violations_max: 0
 # count MEANS at zero is that no named fn in the wheel hides behind a lambda
 # that only forwards to it.
 frontier_expected_red: why-coordinates
-# 2026-09-18: `==` on an operand whose type is still a variable at emit (a
-# handler arm over quantified op parameters — no call-site twin reaches it)
-# emits i32.eq on two heap addresses; tests/frontier/mn-eq-in-arm-pointer.mn
-# answers 1 for two byte-equal Strings with no diagnostic. Declared RED the day
-# it was measured; retires when the eq leaf refuses the unresolved operand
-# (Hβ.emit.eq-on-unresolved-operand-is-pointer-eq) and the gate SAYS so.
-frontier_expected_red: eq-in-arm-pointer
+# 2026-09-18 → 2026-09-28: `eq-in-arm-pointer` was declared RED here — `==`
+# in a handler arm over its op's quantified parameters compared two
+# byte-equal Strings by ADDRESS, because no twin reached the arm. RETIRED by
+# R0c: an install's handler expression is typed `Handler(inst)`, the arms are
+# twinned at that instance, and a twin wide where the op declares words is
+# reached through its word face, so the compare reads String and the leg
+# answers its contract (0).
 # 2026-09-18: `eq-polymorphic-sum` was declared RED here for one landing and
 # RETIRED by proof in the next — the whole life of an expected-red entry, in a
 # day. It read: `==` on a POLYMORPHIC sum compares its payload by ADDRESS,
@@ -930,44 +880,9 @@ frontier_expected_red: eq-in-arm-pointer
 # the gate's other direction refused the stale declaration the moment it
 # passed, which is what that contract is for.
 
-# 2026-09-18: THE UNPROVABLE-COMPARISON census (T_EqTypeUnprovable, the
-# field-offset floor's sibling): a `==`/`!=`/`<`… whose operand type is still a
-# variable at emit falls to a one-word compare, right for a word and an address
-# lie for anything else. The first form wrote a trap and the wheel compiled by
-# it died compiling the wheel (m4 exit 134): the wheel carries 56 of these,
-# measured on the m3 leg the day the class was born — 15 at authored spans
-# (word and handle membership, two `<` on Option payloads, and Strings compared
-# by interned address, e.g. in_owner_names) and 41 on synthesized nodes at span
-# 0, unattributed until the report carries the nearest authored span.
-# Countdown to 0 (twins reaching the site; an Intent Boundary naming the type
-# where the polymorphism is over words); at 0 the class arms and the
-# eq-in-arm-pointer leg turns green by proving its arm. A RISE is a new
-# address compare entering the wheel.
-# 56 -> 60 at pin 8798566e: the Domain walk (verify.mn) is new generic
-# code, and EVERY generic comparison in this wheel lands in this class, because
-# a word-repr instantiation mints no twin (spec_enc_is_floor skips an all-word
-# key) so the floor body compares two type vars. Measured by diffing the site
-# names: `bound_admits_lo`, `bound_admits_hi`, `int_same`, `int_max`, `int_min`
-# entered; `lo_best`, `hi_best`, `lo_hull`, `hi_hull` left, because four
-# near-identical bound-combiners collapsed into one meet and one join
-# parameterized by the comparator. The rise is +4 rather than +6 for that
-# reason, and it is a rise the countdown cannot avoid by writing less code —
-# only by the twin reaching word-typed instantiations, which is step (2) of
-# Hβ.emit.eq-on-unresolved-operand-is-pointer-eq.
-# 2026-09-21: 60 -> 58. Two left with src/oracle.mn — a whole module deleted
-# takes its unprovable compares with it, which is the cheapest way this
-# counter ever falls and the least instructive: the class is unchanged.
-eq_type_unprovable_max: 58
-
-# record_pattern_open_max — record patterns whose RECEIVER row is open, so
-# their field offsets come from the pattern's own index rather than the
-# receiver's full sorted field set. Born at ZERO (pin 4ce9914b7360), which
-# is a contract rather than a tolerance: the wheel's two sites were open
-# until their receivers were annotated one pin earlier, and they were
-# correct only by an author's promise the graph could not check — a
-# complete pattern over an open row is structurally identical to a partial
-# one. Seen RED by falsification: removing one annotation moves the count
-# 0 → 1 with the site located. Class: Hβ.lower.record-pattern-param-receiver.
+# loop_scaffold_refs_max — the distinct tools/*.sh scripts tools/loop-prompt.md
+# still names to run one iteration; monotone DOWN, falling only when a verb
+# replaces a script (the argument is verify.sh's scaffold ratchet).
 loop_scaffold_refs_max: 3
 
 # 2026-08-07: the QUIET gate (§4⑤'s Hylo bar as a banked ceiling, PLAN
@@ -1010,7 +925,33 @@ loop_scaffold_refs_max: 3
 # the intersection, so removing them moves nothing. The number falls to zero
 # when Hβ.driver.link-is-reachability lands and an emit-minted name demands
 # its defining module the way an import does.
-desugar_vocabulary: 41
+# 2026-09-30 · 41 -> 45 · RE-DERIVED, and the seed does NOT follow, because
+# the four names are minted at the LOWERING, not blind at the emit. The
+# sequence fanout's site (B4 + C9) carries one lowered FORM per schedule it
+# can run under, each a direct call the lowering names — `map` for the
+# sequential reading, `fanout_threaded` (lib/threading) and
+# `fanout_persisted` (lib/persist) for the spawning schedules — and `fanout`
+# itself is the prelude declaration the site recognizes. Every one is a
+# LowExpr node the construction walk (`construct_refs`, every form) and the
+# emit reach (`low_refs`, the selected form) both see, so reachability
+# finds them from the site; `emit_runtime_contract` seeds only what the
+# emit mints with no node to walk, and it is unchanged. The set diffed
+# against pin 6f2ce437 is exactly those four in, none out.
+# 2026-10-03 · 45 -> 46 · RE-DERIVED, and the seed does NOT follow. One
+# substrate operation entered with the arena: `arena_stat`, the census read
+# a program and the compiler's own census line ask of the exits. It is
+# declared in lib/memory.mn with its no-arena meaning, which is all the boot
+# can compile, and the lowering recognizes the name as the substrate
+# operation (`is_substrate_mem_op`, the fanout precedent); every use is the
+# name written in source, so reachability finds the declaration from the
+# use and the emit mints none. The arena's journal entries are NOT
+# vocabulary: they are typed where the store happens — `list_set` reached
+# by a direct call is emitted as the journaling store with its element's
+# leaf, and a state commit or a `<~` tick journals at its own emission —
+# so no library name stands between the store and the journal, and none
+# can be renamed out from under it. The set diffed against pin 9d27c325 is
+# exactly `arena_stat` in, none out.
+desugar_vocabulary: 46
 
 # 2026-09-11 · 812 -> 811 · the gate's own DOWN arm, held. Bisected with the
 # gate's regex to pin 0bd0525e, and the retired marker is `ref strict` in
@@ -1024,7 +965,10 @@ desugar_vocabulary: 41
 # 2026-09-18 · 67 -> 63 · the fan's copy machinery took four `own` markers
 # with it (`fan_blocks`/`fan_spawn`/`fan_join`'s accumulators and
 # `keep_proven`'s). A judgment on the live graph accumulates nothing to own.
-authored_own_max: 63
+# 2026-10-03 · 62 -> 61 · the count fell at #126 (a3bcc7e0, the block-run
+# rework) and the ceiling stood at 62 through #129's first pin, the fall
+# printed and not held; held here.
+authored_own_max: 61
 # 2026-09-17: 807 -> 805. Two markers retired with the duplicate map
 # primitive's deletion — the honest grade needs no marker where there is no
 # second copy to annotate.
@@ -1038,7 +982,39 @@ authored_own_max: 63
 # oracle's deletion; four more were dropped from the SMT helpers while
 # refuting them as a cause of the pointer-render defect — they were not the
 # cause, and they were also not needed, which is the grade doing its job.
-authored_ref_max: 729
+# 724 -> 723 (2026-09-27): report_unhandled_names lost its `ref installed`
+# parameter with the install-anywhere credit.
+# 723 -> 722 (2026-09-27, the same day): grounded_scan moved from pipeline.mn
+# to lower.mn for the race rule and its `ref bindings` moved with it — the
+# per-file quiet gate refused lower.mn's rise, and the grade reads the
+# parameter's two uses without the marker.
+# 721 -> 719 (2026-09-28, L3): the landing's new functions copied the `ref`
+# convention of their neighbours (the parser's brace discrimination, the
+# formatter's record render, fmt's name census, the occurs walk's table,
+# Verify's join decision) and the ratchet refused them at 731. Every one was
+# dropped and the grade reads each parameter without it; the head render's
+# lesser copy and the index-threaded param render left with two more.
+# 719 -> 717 (2026-09-28, R0′): `spec_rec_name_seen`'s two markers left with
+# it — the twin-record dedup is one pass over a name map now, not a scan.
+# 717 -> 715 (2026-09-28, R0c): the demand buffer's two `ref dbuf` params
+# left with `spec_buf_demanded` and `spec_buf_base_count` — the twin cap reads
+# the demand's own lineage, so nothing scans the buffer.
+# 715 -> 708 (2026-09-28, R0d): seven left with the record pattern's
+# lower-time offsets and rest specs, which the emit reads by name now; the
+# emit's two new field-width reads carry none.
+# 708 -> 704 (2026-10-01, D3): the insert-above-line patch and its indent
+# helper left with three, the span-start compare and the comment census
+# lost three when they moved beside their readers, and the head splice that
+# replaced the patch carries two.
+# 704 -> 703 (2026-10-01, P0): the interval fragment's arm walk left with its
+# one marker; the new helpers the ratchet refused at 710 — the written-cell
+# chain walk and the cycle's late settlement — carry none, the grade reading
+# each parameter.
+# 703 -> 698 (2026-10-02, E2): the module cells read the registration
+# column, so the cell walk's lookup, dedup and path scan left with six
+# markers and the warm split with the two it threaded an unread ast and
+# the cells through; the session's cone discovery carries three.
+authored_ref_max: 698
 
 # 2026-08-08: the DRIFT-SHAPE ratchet (PLAN §11 5.6's absorption,
 # enforcement half) — the three absorbed drift modes counted by the
@@ -1069,6 +1045,20 @@ authored_ref_max: 729
 # regression (a judgment regression is tens of MB — the second pass was 1.3 GB)
 # while refusing to convict the instrument.
 #
+# RAISED AGAIN 2026-09-26, 1,010,000 -> 1,022,000, and this one IS about a
+# landing: the `~>` mask moved onto each row edge (RowEdge({cell, mask}),
+# Hβ.effects.mask-spills-onto-sibling-edges), which closed a false-absence
+# proof and costs one 8-byte record per open-row edge. Measured by the
+# judgment's own heap line on the same source: 559,300,184 -> 562,350,760
+# bytes at the high-water (+3,050,576, +0.55%). The first form (a tagged
+# one-constructor variant plus a fresh `[]` per edge) read 1,014,424 min of
+# 3 and was cut to the tagless record and one shared empty mask; the landed
+# form reads 1,009,996 (m3 leg) and 1,011,840 (m4 leg, the binary that
+# becomes the boot) — so the old line would convict every later landing on
+# noise. Same rule as before: ~1% over the highest min-of-3. The two ways
+# DOWN are named: the per-decl arena below, and a word niche that lets an
+# unmasked edge be its bare cell handle (Hβ.repr.option-of-word-niche).
+#
 # THE RAISE IS NOT THE FINDING. The number has gone 993,832 -> 996,920 ->
 # 998,596 -> ~1,000,000 across four pins, and NONE of those landings was about
 # memory. That creep is the per-decl arena's absence (PLAN §5.O layer 3,
@@ -1078,25 +1068,308 @@ authored_ref_max: 729
 # §5.O's own accounting — and a ceiling that only ever rises to meet a breach
 # has stopped ratcheting. Raising it is an explicit in-commit act, which is
 # what this paragraph is; the next move on this line should be down.
-selfcompile_peak_kb_max: 1010000
-
-# ── the compile's CONCURRENCY WIDTH (tools/thread-gate.sh) ────────────────
-# Guest OS threads the compile creates, counted at clone/clone3, as the
-# DELTA between a 61-declaration program and a 1-declaration one. The delta
-# and not an absolute: wasmtime's own host threads are identical in both and
-# cancel, while guest layer-branch spawns scale with the branch count — so
-# this ratchet measures US and stays true across runner upgrades, where an
-# absolute ceiling would go red on somebody else's implementation detail.
 #
-# The line above ratcheted the MEMORY the 433-thread defect cost. Nothing
-# ratcheted the threads themselves, which is why judge_window = 1 could sit
-# beside a spawn-per-branch for ten days with the whole board green — the
-# gate that would have caught it on day one is this one, and it did not
-# exist. Zero is the honest floor today (measured: 5 clones at 1 decl, 5 at
-# 61, both host overhead) because a singleton judge block runs BrDirect.
-#
-# WHEN PHASE 9.2 RESTORES judge_window = 8 THIS IS RE-BASELINED, NOT DELETED:
-# the number becomes the width the parallel walk is supposed to have, and the
-# gate goes on answering the same question one octave up. Seen RED at ceiling
-# -1 before it was trusted.
-judge_spawn_delta_max: 0
+# RAISED 2026-09-27, 1,022,000 -> 1,042,000, for the gate carried by the cell
+# (PROGRAM A3), and the accounting is a 2x2 measured before the raise, not a
+# guess: the new compiler on the OLD source reads 1,017,580–1,018,372 (three
+# runs) — at or under the boot's own readings — so the machinery's RUNTIME
+# cost is nil, and its counters say why: 2,302 gates and 2,039 instance
+# notes on the whole self-compile, a few hundred KB of records and trail.
+# The new compiler on the NEW source reads 1,028,104–1,031,596 (five runs,
+# the march's m4 leg among them), and the judgment's own handle count says
+# why: 251,993 -> 254,375 (+2,382, +0.95%) — the wheel grew by the gate
+# machinery's own thirty functions, and every phase paid its per-node cost
+# (heap at the high-water +2.4 MB, lower +0.4, reachability +2.1, emit
+# +2.5, the rest host-side), the source growth's bill compounded through
+# a compiler that reclaims nothing. Same rule: ~1% over the highest reading.
+# The way down is unchanged and named above: the per-decl arena.
+# RAISED 1,042,000 -> 1,058,000 at L1 of the Pulse sprint (2026-09-27): the
+# numeric gate on the type cell. Fixed-input measurement first, as above:
+# the new compiler on the OLD source (the prior commit's src+lib) reads
+# 1,033,860–1,038,344 (two runs) against the prior boot's own 1,032,440 —
+# the machinery's RUNTIME cost is a few MB at most: a gate record per
+# arithmetic site whose operand is still free, a copy per instantiation of
+# such a var, a trail entry per entry, and an allocation-free bucket read
+# at every var bind (wmap_get_all answers an empty bucket with the shared
+# empty list). The new compiler on the NEW source reads 1,039,328–1,046,964
+# (five runs, the march's m3/m4 legs among them; the m3 leg's min of three
+# was 1,042,508, over the ceiling by 508 KB) — the wheel grew by the gate's
+# own fifteen functions and their comments, and every phase paid its
+# per-node cost through a compiler that reclaims nothing. Same rule: ~1%
+# over the highest reading. The way down is unchanged: the per-decl arena.
+# LOWERED 1,058,000 -> 820,000 at L3 of the Pulse sprint (2026-09-28), and
+# not by the arena. This ceiling REFUSED the landing first — 1,328,912 KB
+# with the formatter's record render in the source — and the refusal was
+# worth more than the feature: bisected to one binding group whose occurs
+# checks walked row paths with no memory of the cells they had entered,
+# exponential in the group's depth, and already costing about 266 MB of the
+# previous pin's 565 MB judgment high-water. With a table of entered cells
+# the judgment's high-water is 313,704,904 bytes and the march read the m3
+# leg at 815,228 KB and the m4 leg at 816,024 KB. Held ~0.5% over the
+# higher reading, inside the measured noise band recorded above.
+# RAISED 820,000 -> 873,000 at R0c (2026-09-28): the twin cap meters
+# recursion along each demand's lineage instead of breadth, so a generic fn
+# reached at its ninth distinct instantiation gets its own twin rather than
+# the silently-wrong capped base (mn-twin-breadth-past-eight, 134 on the
+# boot). Fixed input first: the boot (30a35888) compiled its own source at
+# 739,028 KB; the new compiler on that SAME source reads 813,888–819,448 KB
+# (two runs), so the machinery is the cost, not the source. The new
+# compiler on the new source reads 827,168–827,448 KB (m3 leg) and
+# 857,452–864,524 KB (m4 leg, the binary that becomes the boot). The guest
+# heap lines of the two legs are byte-identical (318,118,184 at the
+# judgment's high-water, 722,382,360 when the module is written), so the
+# m4 leg's extra ~35 MB is host-side: JIT-compiling a 3.14 MB module where
+# the boot was 2.53 MB. Defined fns went 5,036 -> 6,661, and HALF the twins'
+# mass is copies: 3,030 twins, 98,976 lines, 975 distinct bodies once the
+# names are normalized, 49,348 duplicate lines (`map_collector$init`: 192
+# twins, one body). That is the way down, named: key a twin by what its
+# body observes (Hβ.emit.twin-key-is-what-the-body-reads). Same rule: ~1%
+# over the highest reading.
+# LOWERED 873,000 -> 775,000 at R0d (2026-09-28): a twin is keyed by what
+# its body observes. Fixed input first: the boot (0bc8383e) compiled its
+# own source at 859,840 KB; the new compiler on that SAME source reads
+# 764,132–769,204 KB (two runs), so the machinery is the saving — the
+# judgment's high-water rose 17.5 MB (318.1 -> 335.6 MB, the demand marks on
+# the cells) and the written module fell 101.6 MB (722.4 -> 620.8 MB), twin
+# functions 3,033 -> 120. The new compiler on the new source reads
+# 761,252–766,488 KB (m3 legs) and 723,768 KB (m4 leg, the binary that
+# becomes the boot: 2,168,067 bytes where the prior boot was 3,137,880).
+# Same rule: ~1% over the highest reading.
+# RAISED 775,000 -> 800,000 at L4a (2026-09-28): the derivative reading
+# enters the wheel (src/derive.mn; the wheel's input grew 64,994 -> 67,085
+# lines). Fixed input first: the boot (51f332d7) compiled its own source at
+# 733,792–742,512 KB (four runs); the new compiler on that SAME source reads
+# 739,512–739,816 KB, and its heap sits within 0.22 MB of the boot's at every
+# mark (the judgment 341.18 MB both; lowering's end 548.46 against 548.25;
+# the module written 645.08 against 644.86), so the machinery is not the
+# cost. The boot on the NEW source reads 781,188–785,668 KB — the source is
+# the cost: the judgment's high-water +16.4 MB, lowering's end +34.5 MB, the
+# written module +47.8 MB for 2,091 lines, about twice the wheel's mass per
+# line (derive.mn is walkers over the forty LowExpr constructors, each an
+# explicit enumeration). The new compiler on the new source reads
+# 785,932–790,728 KB. Two measurements put this landing's machinery back in
+# the boot's band before the source was charged: the projection roster
+# rebuilt a handler's arm groups five times per install (+3.48 MB at
+# lowering's end on the unchanged source; now one pass over the arms), and
+# the call dispatch resolved each callee name twice (+0.11 MB; now once).
+# Same rule: ~1% over the highest reading (the first march's m3 leg,
+# 792,076 KB, before either fix).
+# RAISED 800,000 -> 810,000 at R0j (2026-09-30): the allocation audit walks
+# every emitted unit at the settle point (`alloc_audit`, src/backends/wasm.mn)
+# and holds its reading against the row the judgment gave the unit. Fixed
+# input first: the boot (5d267d26) compiled the landed source at 367.75 /
+# 596.59 / 702.21 MB at the judgment's high-water, lowering's end and the
+# module written; the new compiler on that SAME source reads 367.87 / 596.83
+# / 705.58 MB — within 0.23 MB at the first two marks, and the +3.37 MB at
+# the last is the audit: heap marks around the walk, removed before the pin,
+# read 3,130,752 bytes (2,435,736 the base tree, 645,392 the 132 twins). The
+# first cut carried an +8 MB judgment growth that was NOT the audit — `any`
+# and `flat_map` allocating on every match inside the parser's free-use walk
+# — and it was deleted, not paid for. The new compiler on the new source
+# read 802,020 KB (m3 leg, /usr/bin/time) against the pin's 796,084 KB m4
+# leg at the third cut, which is what asked for 810,000; the FOURTH cut —
+# a perform speaking its site's face, the op-face adapters and the walk's
+# declared-face model deleted with them — landed at 797,276 KB (the march's
+# m3 leg) and 796,472 KB (the m4 leg that became boot 523f1732), so the
+# ceiling is 805,000: ~1% over the highest reading of the landed form. A
+# raise bought by a cost the same landing then deleted is not kept.
+# RAISED 805,000 -> 832,000 at L4a′ (2026-09-30): the derivative crosses a
+# function value and a handler's arms through the record (tangent lanes
+# before a record's header, a third fn-table face, src/derive.mn's face and
+# touching walks — every one behind `derivative_demanded()`, so a module with
+# no reading runs none of it). Fixed input first: the boot (0bc95063)
+# compiled the landed source at 374,525,640 / 618,737,888 / 729,186,584
+# bytes at the judgment's high-water, lowering's end and the module written,
+# peak 822,908–823,844 KB — the boot itself over the old ceiling on this
+# source; the new compiler on that SAME source reads 374,525,712 /
+# 618,737,960 / 729,203,272 — +72 bytes at the first two marks and +16.7 KB
+# at the last, the empty derivative registry every plan carries — at
+# 821,316–823,860 KB (the march's m3 leg and its two re-reads). The rise is
+# the source: +759 net wheel lines (src/derive.mn +432,
+# src/backends/wasm.mn +315, src/lower.mn +12), +25,068 KB over the pin's
+# 798,792 KB, ~33 KB per line through a compiler that reclaims nothing.
+# Same rule: ~1% over the highest reading of the landed form, the m3 leg's
+# 823,860 KB.
+# RAISED 832,000 -> 855,000 at L4b (2026-09-30): the linear program, its
+# transpose and the product seed (src/derive.mn +973 net lines, the adjoint
+# registers in src/backends/wasm.mn). The ratchet REFUSED the first march at
+# 980,228 KB (min of three) — +148 MB for a thousand lines, five times the
+# measured rate — and the phase marks located it: the declarations' own
+# lowering had grown 3 MB, the reachability walk around them 68 MB and the
+# plan 66 MB. The per-declaration census named the walk: the wide-sequence
+# type walk (`ty_has_wide_seq`, src/lower.mn) was path-local — a nominal
+# type reached through many paths was walked once per path, its variant
+# specs allocated each time — and every binary operator asked it, so each
+# `++` on a list of the reading's statements cost 1.8 MB, at some forty
+# sites. The fact is one per nominal type now, settled once in the lowering
+# state, and only the six operators that mint ask it. Fixed input, the fixed
+# compiler on the SAME source: the L4a′ wheel compiles to 713,798,672 bytes
+# written at 812,600 KB peak where the boot read 729,203,240 / 831,632 KB,
+# and its emit is byte-identical to the boot's; the landed source compiles
+# to 744,479,808 bytes written at 846,468 KB where the boot read
+# 886,213,368 / 980,228 KB. What remains of the rise is the source: +1,029
+# net wheel lines at ~33 KB per line, +33,868 KB over the L4a′ wheel through
+# the same compiler. Same rule: ~1% over the highest reading of the landed
+# form, the m3 leg's 850,488 KB at pin 16286d94.
+# RAISED 859,000 -> 873,000 at C6 + C7 (2026-09-30): the segment's context
+# write set read off the trail (src/graph.mn, src/synth_proposer.mn — +174
+# net wheel lines at C6) and the proposal battery facet with the formatter's
+# candidate render and the variant question (src/main.mn, src/synth_proposer.mn,
+# src/types.mn, src/infer.mn — +167 net at C7). Fixed input: the previous boot
+# (2fcad4e9) compiling the landed source reads 853,304 / 857,508 KB over two
+# runs; the new boot (6f2ce437) on the SAME source 856,452 / 864,576 — a
+# min-of-two gap of 3.1 MB inside the ±4 MB run-to-run band either compiler
+# shows on its own, so nothing the compiler does on its own input grew. The
+# rise is the source: +338 net wheel lines since the C5 pin's 853,024 KB at
+# ~33 KB per line; the board's min-of-three read 862,004 KB and the march's
+# m3 leg 857,168 KB. Same rule: ~1% over the highest reading of the landed
+# form, 864,576 KB.
+# 2026-09-30 (B4 + C9): 873000 -> 890000. Fixed-input measurement — the
+# BOOT compiling the candidate's own source measures 873,720–877,620 KB, so
+# ~4 MB of the rise is source growth (the sequence fanout, the schedule twins,
+# the race rule through a callee, the perform-world global); the candidate on
+# the identical input measures 873,028–888,140 KB across runs (run variance
+# ~15 MB on one binary), its deterministic heap high-water 780.3 MB against
+# HEAD's 771.5 MB at the module's end — +8.8 MB, of which +6 MB is the reach
+# rule asked of one name (`fanout_reach_of`: the driver's `mentl resume`
+# block stands under `persist_to_disk`, so its four callees are asked and the
+# compile's reach is walked once, settled false) and the rest the allocation
+# audit's nested brackets and the schedule forms. The whole-program walk it
+# replaced cost 22 MB on every wheel compile; the O(1) form is the reach as a
+# column the judgment writes (`Hβ.lower.reach-edge-on-node`).
+# 2026-10-01 (P0): 890000 -> 954000. The pin's m3 leg read 882,660 KB (min
+# of three); P0's reads 944,536 / 932,340 / 938,764 KB. Fixed input — HEAD's
+# wheel source through both compilers: the boot 885,800 KB with the
+# judgment's heap high-water at 399.1 MB, P0 915,584 / 925,192 KB at 427.3 MB
+# (deterministic). So ~28 MB is the compiler carrying what the class used to
+# smuggle — a binder fact per declared parameter and per destructured part
+# (its whole and position), a guard cell per declared parameter with its
+# owed row and late payers, a claim noted per refinement claim and join
+# tail, the value walk's leaves and the influence read at every splice. The
+# rest of the rise is the source: +~1,100 net wheel lines, 915–925 →
+# 932–944 MB through one compiler. Same rule: ~1% over the highest reading
+# of the landed form.
+# 2026-10-02 (H4): 954000 -> 985000. Fixed input — the candidate's own wheel
+# source through both compilers: the boot 963,944 KB with the judgment's heap
+# high-water at 449.3 MB, the candidate 971,828 / 970,956 / 974,784 KB at
+# 456.7 MB (deterministic across the three) — +7.4 MB of judgment for what an
+# application owes when its callee is a function value read along its edges.
+# Probe compilers on an earlier form attributed the call tail: 9.8 MB against
+# the boot's 3.9 MB for its own, the channel gate 1.1 MB of it and the
+# container crossing 0.2 MB. Two forms were cut before the pin: the first
+# cost +14.7 MB (a one-function application folded its one leaf through
+# three handler installs, and the channel gate ran at every application,
+# pipe stages included — `call_owes`), and the nominal arms first measured
+# +11.0 MB, 3.6 MB of it the deep type of every value handed on, built to
+# find no function in it — `value_fn_positions` asks first. The rest of the
+# rise is the source: +1,543 net wheel lines, the pin's 934,912 KB → the
+# boot's 963,944 KB on the new source. Same rule: ~1% over the highest
+# reading of the landed form.
+# 2026-10-02 (S4): 985000 -> 995000. Fixed input — the candidate's own wheel
+# source through both compilers: the boot (1a68ecc0) 975,036 KB with the
+# judgment's heap high-water at 458.3 MB, the candidate 978,744 / 979,344 /
+# 984,892 KB at 459.8 MB (deterministic across the three, its output
+# byte-identical run to run) — +1.5 MB of judgment for the structure parts a
+# claim now claims: each value part's claim and the claim noted on it, a
+# nominal contract's variants grounded at its arguments, the leaves a guard
+# is paid on, and three obligations the class had hidden (the wheel's open
+# claims 34 → 37). The rest is spread: 6.1 MB across three identical runs of
+# one binary. The source's own growth (+175 net wheel lines) reads inside
+# it — the boot on this source 975,036 KB against the H4 pin's m3 leg
+# 978,500 KB. Same rule: ~1% over the highest reading of the landed form.
+# 2026-10-02 (S5): 995000 -> 1000000. Fixed input — the candidate's own
+# wheel source through both compilers: the boot (53f7404b) 979,780 KB with
+# the judgment's heap high-water at 461.3 MB, the candidate 976,060 /
+# 977,788 / 989,188 KB at 464.2 MB (deterministic across the three) — +2.8
+# MB of judgment for the state walk: a writers fact per state field, a
+# handler install around each state's writers on every read, and the part
+# walk's reader carried down its path. The rest is spread, 13.1 MB across
+# three identical runs of one binary. Same rule: ~1% over the highest
+# reading of the landed form.
+# 2026-10-02 (D5): 1000000 -> 1014000. Fixed input — the candidate's own
+# wheel source through both compilers: the boot (b400dc74) 993,204 /
+# 1,007,728 / 994,648 KB, the candidate 1,002,888 / 1,003,488 / 1,003,132
+# KB, and the heap trace of the two identical to the byte but for 16 at the
+# judgment's high-water (469,652,320 against 469,652,336) and 48 when the
+# module is written (893,365,448 against 893,365,496); their outputs are
+# byte-identical. So the compiler grew nothing on its own input, and the
+# boot itself crossed the old ceiling on one of three runs of this source:
+# the rise is the source (the where projection's badges, its decls-column
+# reads and the type-variable naming), inside a 14.5 MB spread across three
+# identical runs of one binary. Same rule: ~1% over the highest reading of
+# the landed form.
+# 2026-10-02 (E4): 1014000 -> 1050000, AND THE ARENA OWES IT BACK. Fixed
+# input — the candidate's own wheel source through both compilers: the boot
+# (8b071ba3) 1,004,360 KB with the judgment's heap high-water at 473.8 MB,
+# the candidate 1,030,344 / 1,040,132 / 1,028,572 KB at 499.7 MB (identical
+# to the byte across the three). A variant of the candidate with the parent
+# edge's writes removed read 1,005,616 KB at 476.0 MB, so 23.7 MB of the
+# 25.9 is the write: each registration builds its node's child list and a
+# closure to walk it, writes the edges, and drops both — scratch no reader
+# ever reaches, which the arena (the next landing, PLAN §11) reclaims at the
+# extent's end. That landing lowers this ceiling below 1,010,000 or says why
+# it cannot. Same rule otherwise: ~1% over the highest reading.
+# 2026-10-03 (THE ARENA): 1050000 -> 1080000 FOR THE MARCH THAT PINS IT, and
+# lowered in the same commit once the pin carries the arena (the next entry).
+# The march's m3 leg is the OLD boot's compile of the source, and the old
+# boot predates `~> arena`, so that leg runs no arena and reclaims nothing.
+# Fixed input — the candidate's own wheel source through both compilers: the
+# boot (9d27c325) 1,065,228 / 1,061,396 KB with the judgment's heap
+# high-water at 511,293,968 B and 955,252,656 B when the module is written;
+# the candidate 1,066,020 / 1,070,320 KB at 499,810,024 B and 952,492,688 B.
+# The candidate is CHEAPER than the boot on its own input by 11.5 MB at the
+# judgment and 2.8 MB at the end (the false seventeen-member cycle the
+# parameter edge closed is gone); the rise is the source — the arena's
+# runtime, its leaves and the age analysis — and the boot crosses the old
+# ceiling on it too. Same rule: ~1% over the highest reading.
+# 2026-10-03 (THE ARENA, the pin carrying it): 1080000 -> 884000, the debt
+# E4's entry named paid with 126 MB to spare. The new boot (d7d9da55) over
+# the source it pinned, three runs: 874,384 / 863,636 / 869,816 KB, beside
+# the march's own m4 leg of the same compiler on the same source at
+# 857,616 KB; the heap trace identical to the byte across the three — the
+# judgment's high-water 288,018,688 B against the old boot's 511,293,968,
+# 740,839,304 B when the module is written against 955,252,656, and the
+# arena census 4,487 exits, 0 kept, 206,870 KB reclaimed, 49,914 KB moved.
+# The two pins after it read their m3 legs at 867,132 and 869,872 KB under
+# this ceiling. Same rule: ~1% over the highest reading of the landed form.
+# 2026-10-03 (Arena·P2): 884000 -> 594000. The arena placed at the extents
+# beyond the judgment — each declaration's lowering, the lowering's
+# pre-passes, each emitted reach demand, each emitted function, twin,
+# wrapper and leaf, each session answer, each speculation — and the raw
+# rewind deleted. Fixed input, the wheel's own source through the previous
+# boot (f950ebfd, which carries the exit's slide guard and no new arena)
+# and through the candidate it compiles: 870,088 / 871,608 KB with the heap
+# at 741,519,312 B when the module is written, against 575,228 / 574,564 KB
+# at 437,965,368 B, the arena census 19,772 exits, 0 kept, 609,951 KB
+# reclaimed, 54,768 KB moved. The pinning march read its m3 leg at 579,940
+# KB and its m4 leg — the landed form compiling itself — at 587,688 KB. The
+# previous boot crosses this ceiling on this input. Same rule: ~1% over the
+# highest reading of the landed form.
+# 2026-10-03 (#126): 594000 -> 529000. A block's run of fn declarations is
+# one letrec scope, and the module's free-name walk (`stmt_frees`), which ran
+# outside every arena, runs in one: its scratch no longer outlives it. Fixed
+# input, the wheel's own source through the previous boot (91257716) and
+# through the boot this landing pins (0a096302), two runs each: 581,804 /
+# 584,476 KB against 519,548 / 517,784 KB; the judgment's heap 288,583,160 B
+# against 228,258,576 B, the heap when the module is written 439,536,560 B
+# against 379,216,504 B. The pinning march read its m3 leg at 523,740 KB and
+# its m4 leg — the landed form compiling itself — at 520,840 KB. The
+# previous boot crosses this ceiling on this input. Same rule: ~1% over the
+# highest reading of the landed form.
+# AN-1 (2026-10-03): the handler's answer in its type, the arms keyed at it,
+# the continuation face's register, the install's reason naming the arm.
+# Fixed input, the wheel's own source (the AN-1 tree) through the previous
+# boot (cf8a6d50) and through the candidate m2 (ea30a8f3), three runs each
+# under the same concurrent load, the minimum being the honest estimator
+# (a peak sample is biased high — the single first readings spread
+# 534,596 / 537,792 / 531,004 KB for the boot and 541,844 / 531,536 /
+# 532,908 KB for the candidate): boot 531,004 KB against candidate 531,536
+# KB, the compiler at parity (+532 KB, 0.1%); the judgment's heap
+# 231,805,736 B against 231,862,352 B (+55 KB), the heap when the module is
+# written 384,840,064 B against 387,541,248 B (+2.6 MB: 9,787 more WAT
+# lines, the arm twins keyed per install at their answer and the lane-faced
+# wrappers). The previous boot crosses the 529,000 ceiling on this input,
+# so the rise is the source's (the compiler grew by the landing's own
+# code), not the compiler's. Same rule: ~1% over the highest reading of
+# the landed form, read as the minimum of three.
+selfcompile_peak_kb_max: 539000

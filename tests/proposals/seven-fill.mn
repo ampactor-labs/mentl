@@ -1,0 +1,7 @@
+// propose 5:19: fill 7
+// A refinement with one inhabitant fills.
+type Seven = Int where self == 7
+
+fn f() -> Seven = ??
+
+fn main() = 0

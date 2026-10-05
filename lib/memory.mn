@@ -17,39 +17,66 @@
 // Memory — linear memory read/write. Operations on WASM's linear
 // memory. Each maps to one instruction. The developer writes the
 // intent; the substrate emits the opcode.
-// The structure-forgetting DOWN-cast (§5.R band D's seq-addr-downcast,
-// landed as phase-A vocabulary): addr projects any value's word face —
-// for a heap value that word IS its address ("a handle IS a word").
-// Sound in the negative position only (a concrete Int comes OUT; no
-// from_addr up-cast exists, ever — str_of_buf stays the one localized
-// coercion). Capability-gated by the row: `with Cast` admits it and a
-// declared `!Cast` severs it transitively, the user-effect class. Lower
-// ERASES the perform to its operand (identity at the word level, zero
-// emission), so the substrate is the handler and no census demand ever
-// reaches the executable gate — the row is the entire point. Zero
-// readers in the wheel; the first consumer is the arena-gated
-// signature-driven seq-op landing.
+// Cast — a value's address. A heap value's word IS the address of its
+// record ("a handle IS a word"), and addr answers it as one, typed, so it
+// stays an address wherever it goes: an arena's exit that finds one of its
+// region's addresses keeps the region rather than reclaim what it names.
+// The way back from an address to a structured value is str_of_buf alone,
+// the one localized coercion. Capability-gated by the row: `with Cast`
+// admits it and a declared `!Cast` severs it transitively, the user-effect
+// class. Lower erases the perform to its operand (identity at the word
+// level, zero emission), so the row is the entire point.
 effect Cast {
-  addr(a) -> Int
+  addr(a) -> Addr
 }
 
 effect Memory {
   // 32-bit store/load — full i32 word at address
   //
   // (addr, value)
-  store_i32(Int, Int)
+  store_i32(Addr, Int)
   // (addr) -> value
-  load_i32(Int) -> Int
+  load_i32(Addr) -> Int
   // 8-bit store/load — single byte at address
   //
   // (addr, byte)
-  store_i8(Int, Int)
+  store_i8(Addr, Int)
   // (addr) -> byte (0-255)
-  load_i8(Int) -> Int
-  // Bulk memory copy — src to dst, n bytes
+  load_i8(Addr) -> Int
+  // Bulk memory copy — src to dst, n bytes, as bits. Bits carry no type,
+  // so a copy that writes memory older than an open arena keeps that
+  // arena's region, and no copied byte is ever read as an address; a store
+  // that says what it stores is how a program keeps an arena reclaiming.
   //
   // (dst, src, n)
-  mem_copy(Int, Int, Int)
+  mem_copy(Addr, Addr, Int)
+  // ─── Addresses ───────────────────────────────────────────────────────
+  // An address is the word that names memory: what an allocation answers,
+  // what a load reads from and a store writes to. It is a word in every
+  // machine respect and not a number — it moves by addr_at, never by
+  // arithmetic, and orders by magnitude — and its type is what an arena's
+  // exit reads: an address of its region found where the exit looks (its
+  // value, a field, an element, a slot its barriers journaled) keeps the
+  // region whole, since nothing can say what the address names. The
+  // guarantee is about values: a word computed from an address is the
+  // program's own claim, and bits copied by mem_copy are opaque — written
+  // into older memory, they keep the arena.
+  //
+  // (addr, bytes) -> the address that many bytes on
+  addr_at(Addr, Int) -> Addr
+  // (a, b) -> the bytes from b to a
+  addr_diff(Addr, Addr) -> Int
+  // (addr) -> the address stored there
+  load_addr(Addr) -> Addr
+  // (addr, value) — journaled where the slot is older than an open arena
+  store_addr(Addr, Addr)
+  // The address no allocation answers, which a virgin slot reads.
+  null_addr() -> Addr
+  // An address's word, and the address a word names: the puns where a value
+  // crosses the runtime's word protocol (a list slot holds its element as a
+  // word). Each is the identity on the machine.
+  addr_word(Addr) -> Int
+  word_addr(Int) -> Addr
   // The live world — the top of the install chain ($world_g; emit projects
   // the global read, the heap_mark shape). 0 = the empty world. A Memory
   // read, not an Alloc verb: the perform path reads it on every dispatch.
@@ -68,9 +95,9 @@ effect Memory {
   // width at a typed site. Project 1:1 to f64.load / f64.store.
   //
   // (addr, value)
-  store_f64(Int, Float)
+  store_f64(Addr, Float)
   // (addr) -> value
-  load_f64(Int) -> Float
+  load_f64(Addr) -> Float
   // ─── The rooted-image persist substrate (§4④: persist = memcpy) ────
   // The image [0, heap-line) plus the mutable globals IS the whole program
   // state (wasm call frames live engine-side, outside linear memory), so a
@@ -90,13 +117,13 @@ effect Memory {
   // globals_save — write every mutable global to an 8-byte-slot record at
   // dst. Slot 0 is the heap line (the persist packer patches it to the
   // image extent so restore rewinds allocation to the persisted moment).
-  globals_save(Int)
+  globals_save(Addr)
   // image_restore — the whole-image swap: stage the wire's globals+image
   // above both heaps, copy the image down over [0, size), restore the
   // globals, return the wire's named continuation address. Raw preamble
   // choreography (no allocation may interleave; the caller's heap values
   // die under it — read everything you need into locals first).
-  image_restore(Int) -> Int
+  image_restore(Addr) -> Addr
   // Integer XOR — two i32 values, returns i32
   // Lowers to WASM's i32.xor. Not a bitwise operator in the
   // language — a substrate primitive. Used by hash functions.
@@ -116,6 +143,14 @@ effect Memory {
   i32_shl(Int, Int) -> Int
 }
 
+// The arenas' census: how many exits ran, how many kept their region, the
+// KB reclaimed and moved, the highest line an exit reached (KB), and how
+// many arenas a suspended computation left open — what the emitter reads
+// where an arena lives, and zero where none does.
+fn arena_stat(s: ArenaStat) = 0
+
+type ArenaStat = ArExits | ArKept | ArFreed | ArMoved | ArHigh | ArSuspended
+
 // Alloc — heap allocation. Bump allocator in WASM linear memory.
 // alloc(n) advances the heap pointer by n bytes (8-byte aligned)
 // and returns the old pointer. No free. No GC. Region-based
@@ -126,62 +161,44 @@ effect Memory {
 // this distinction is load-bearing for real-time audio paths where
 // allocation is forbidden.
 effect Alloc {
-  // (size) -> ptr
-  // The REGION verbs — the arena's first grain (§5.O layer 3). A batch
-  // boundary (one micro's compile inside `mentl test`, one decl inside the
-  // future per-decl arena) marks the bump pointer, does its work, and resets:
-  // everything the region allocated is dead by construction at the boundary,
-  // and determinism IMPROVES — each region starts at the same watermark
-  // regardless of its predecessors. Reset to a mark you did not take (or
-  // with live handles above it) is the caller's ownership obligation — the
-  // same contract every region system carries.
-  alloc(Int) -> Int
-  heap_mark() -> Int
-  // rewinds AND zeroes [mark, bump): the post-reset world is
-  // bit-identical to the never-allocated world, so every
-  // zero-read (the Option-niche slot_present, unwritten
-  // make_list slots) stays true under reuse — virginity is
-  // the reset's CONTRACT, not monotonicity's accident
-  heap_reset(Int)
+  // (size) -> the address of the fresh bytes
+  alloc(Int) -> Addr
+  // Where the heap line stands: the cost lines measure from it, and an arena
+  // opens at it. There is no rewind beside it — reclaiming an extent is the
+  // arena's (lib/arena.mn), which keeps what the extent published and zeroes
+  // the memory behind it, so no reclaim depends on its caller knowing that
+  // nothing older points into what it drops.
+  heap_mark() -> Addr
 }
 
-// ImageAlloc — the IMAGE space's allocator (the arena's classification
-// layer, Hβ.perf.per-decl-arena §11 4.3). A record that OUTLIVES the
-// per-decl mark/reset — a spine page, an env or intern growth, a
-// published scheme, an output buffer, a banked diagnostic — allocates
-// through ialloc, and the writer's own row says so: `with ImageAlloc`
-// IS the classification (never a runtime tag), and `!ImageAlloc` proves
-// a path never publishes. The image [0, image-line) is band B's persist
-// set — scratch excluded from snapshots by construction. Emission in
-// the step-1..2 form rides the one bump (a call to $alloc; with no
-// reset live the spaces are indistinguishable); step 3 forks the
-// pointer when the image-map fold draws the image/scratch boundary,
-// and the per-decl reset lands with it.
-effect ImageAlloc {
-  // (size) -> ptr
-  ialloc(Int) -> Int
-  // The bracket pair — an extent whose allocations belong to the image
-  // (the classification's one seam for constructor-built structures: a
-  // spine page or an env bucket allocates through the emitted
-  // constructors, so no wheel-source alloc() call exists to swap; the
-  // EXTENT carries the fact). Depth-counted like borrow_enter/exit —
-  // nested brackets each add one. The census rides the EXTENT DELTA,
-  // never the allocator's hot path: the outermost enter saves the bump
-  // mark, the matching exit adds (bump - mark) to the image-bytes
-  // account — everything an extent allocated is image-classified by
-  // the extent rule, so the delta IS the measurement. The allocator
-  // forks on the depth at step 2b's TRANSITION, and the `~>` absorb
-  // spelling is the gate peer's refinement once installs reach the
-  // substrate allocator.
-  image_enter()
-  image_exit()
-  // The census read — the accumulated image-classified bytes (2a-ii's
-  // measurement). ZERO performers today: the driver's print beside the
-  // movers line is the NAMED NEXT LANDING of the arena chain
-  // (Hβ.perf.per-decl-arena's corrected DEP chain, step 1), not a live
-  // mechanism — 2b's image/scratch boundary is fixed from that measured
-  // number once the print exists.
-  image_bytes() -> Int
+// A deliberate trap: a word read at the last address, which no memory a
+// wasm32 instance can grow to holds, so the read faults wherever it runs —
+// the one home of the out-of-range refusal the runtime makes where a
+// structural contract breaks.
+fn out_of_range() = load_i32(word_addr(0 - 1))
+
+// The live world's identity: the install chain from world_top() down, hashed
+// over each node's effect key and its handler's slot-0 arm word — a table
+// index, so two handlers of one effect differ and two installs of one handler
+// agree whatever state they hold. A persisted image carries the world that
+// wrote it (handler = state: the graph's own handlers return with the graph,
+// and the persisting verb's output sink with them), so it may resume only
+// into that world; the driver files warm images under this key. A world is
+// the word of its chain's top node, so the walk reads it as the address it
+// names.
+fn world_key() = world_key_from(word_addr(world_top()), -2128831035)
+
+fn world_key_from(n, h) = if n == null_addr() {
+  h
+} else {
+  let entry = load_addr(addr_at(n, 4))
+  let record = load_addr(entry)
+  let arm =
+    load_i32(addr_at(record, 8 + 4 * (load_i32(addr_at(record, 4)) + load_i32(addr_at(entry, 4)))))
+  world_key_from(
+    load_addr(addr_at(n, 8)),
+    i32_xor(i32_xor(h, load_i32(n)) * 16777619, arm) * 16777619
+  )
 }
 
 // Pure — the empty effect row. Pure is not an effect with operations
@@ -214,50 +231,7 @@ effect ImageAlloc {
 // dynamic fact. A perform miss is a BROKEN PROMISE and traps here, key in
 // hand: the sought key's interned offset goes to scratch word 0 (the
 // postmortem window), then a deterministic out-of-bounds load traps — the
-// backtrace names the perform site, the scratch word the effect.
-//
-// THE WALK ITSELF IS NOT HERE, and this file is not where it belonged. It is
-// `$ev_declaring_node`, emitted into the module preamble beside its own twin
-// $world_push (backends/wasm.mn) — one mechanism, one home. It lived here
-// as ordinary Mentl with ZERO Mentl callers, reached only by emit minting its
-// name, and a name minted at emit links only if the module that defines it is
-// in the program's set. The wheel imports this file so the wheel was fine; a
-// small program that installs a handler and performs is not, and the day more
-// performs took the linked path than before, eleven frontier legs read RED on
-// `undefined function variable "$ev_declaring_node"` for programs whose only
-// crime was being small. The push was never exposed to that because it was
-// always in the preamble. `Hβ.driver.link-is-reachability` is the general
-// answer — an emit-minted name demands its defining module the way an import
-// does — and until it lands, the effect runtime lives in one place rather
-// than half in each.
-//
-// WHAT FOLLOWS IS THE CROSSING GENERATION'S COPY, and it is deleted the pin
-// after this one. boot compiles m2, and boot's emit still mints a call to
-// this name expecting to find it here; the preamble version exists only in
-// what the NEW wheel emits. So m2 links these and m3 does not — nothing in
-// the new wheel reaches them, so reachability prunes them, and if it ever
-// failed to the assembler would say so loudly (two definitions of one
-// symbol). The same constraint cost a whole build the day the reification
-// landed; it is not a hedge, it is the ladder having two rungs.
-fn world_declaring_from(n, target, slot) with Memory = if n == 0 {
-  0
-} else if load_i32(n) == target && node_arm_at(n, slot) != 0 {
-  n
-} else {
-  world_declaring_from(load_i32(n + 8), target, slot)
-}
+// backtrace names the perform site, the scratch word the effect. The walk
+// itself is the preamble's $ev_declaring_node, emitted beside its dual
+// $world_push (backends/wasm.mn) — one mechanism, one home.
 
-fn node_arm_at(n, slot) with Memory = {
-  let entry = load_i32(n + 4)
-  let record = load_i32(entry)
-  let base = load_i32(entry + 4)
-  load_i32(record + 8 + 4 * load_i32(record + 4) + 4 * (base + slot))
-}
-
-fn ev_declaring_node(top, target, slot) with Memory = match world_declaring_from(top, target, slot) {
-  0 => {
-    store_i32(0, target)
-    load_i32(0 - 1)
-  },
-  node => node,
-}

@@ -1,0 +1,12 @@
+// expect: 40
+// The control beside mn-refine-pipe-stage and mn-refine-pipe-partial: the
+// same two stages handed a value inside the bound. Each claim is decided
+// TRUE from the constant where the pipe applies the stage, and the program
+// runs.
+type Hz = Float where 0.0 < self && self < 22050.0
+
+fn alpha(c: Hz) -> Float = c * 2.0
+
+fn scale(k: Float, c: Hz) -> Float = k * c
+
+fn main() = if (440.0 |> alpha) + (440.0 |> scale(2.0)) == 1760.0 { 40 } else { 41 }

@@ -1,0 +1,6 @@
+// expect: 4
+// And under `++`: the completed stage's value read as a function, so the
+// concatenation refused a shape it could not prove (boot e23392f6).
+fn occ(xs) = (xs |> map({ x => x + 1 })) ++ [7]
+
+fn main() = len(occ([0, 5, 2]))

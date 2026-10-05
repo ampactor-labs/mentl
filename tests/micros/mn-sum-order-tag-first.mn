@@ -1,0 +1,12 @@
+// expect: 10
+// A sum orders by its variants' declaration order first and its payloads
+// second. Here the fielded variant is declared before the nullary one, so
+// `B(5) < A` holds and `A < B(5)` does not. The generated compare once ranked
+// a nullary variant's sentinel against the other operand's ADDRESS, which put
+// every nullary variant below every fielded one whatever their order: this
+// program answered 1 on boot 0a096302, with no diagnostic.
+type T = B(Int) | A
+
+fn rank(x, y) = if x < y { 1 } else { 0 }
+
+fn main() = rank(B(5), A) * 10 + rank(A, B(5))

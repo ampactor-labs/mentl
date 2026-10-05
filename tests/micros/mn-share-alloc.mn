@@ -1,0 +1,13 @@
+// expect: refuse E_EffectMismatch
+// A SHARED FANOUT builds the tuple of its branches' results, the same cost
+// `><` pays. Measured 2026-09-28 on boot 0976f1d7: `!Alloc` accepted
+// `x <| (inc, dec)` with zero diagnostics (Hβ.effects.install-allocates-unrowed).
+fn inc(v) = v + 1
+
+fn dec(v) = v - 1
+
+fn pair(x) with !Alloc = x <| (inc, dec)
+
+fn main() = match pair(3) {
+  (a, b) => a + b,
+}

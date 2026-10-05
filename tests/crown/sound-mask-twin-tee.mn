@@ -1,0 +1,10 @@
+// CROWN — the control for leak-mask-twin-tee: each callback performs the
+// effect its own tee absorbs, so both masks hold and the declared
+// !E + !F is sound. Expect NO E_EffectMismatch.
+effect E { op() -> Int }
+effect F { fop() -> Int }
+handler h { op() => resume(7) }
+handler k { fop() => resume(9) }
+fn run(f, g) = ((f()) ~> h) + ((g()) ~> k)
+fn good() with !E + !F = run(() => op(), () => fop())
+fn main() = good()

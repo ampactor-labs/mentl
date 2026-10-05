@@ -1,0 +1,47 @@
+# Proposed .github/workflows/board.yml — THE BOARD, run by a machine on every push.
+#
+# Every command below was run in a fresh Ubuntu container during the
+# 2026-09-25 audit and passed: runner build (4m16s), verify.sh, march.sh
+# (fixpoint holds, m3 leg 15.6s / 978MB), absence 13/13, crown 62/0,
+# proof-exactness 9/0. The only environment gaps found were GNU `time`
+# (march.sh's gen() needs /usr/bin/time) and WABT — both installed here.
+#
+# Once this is green on two consecutive pushes, delete the local stamp
+# machinery (.build/frontier-stamp, .build/gate/verify.green, the STAMPS
+# block in tools/state.sh): stamps exist to avoid re-running by hand, and a
+# machine that always runs needs none.
+name: board
+on:
+  push:
+  pull_request:
+jobs:
+  board:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: toolchain (WABT for the march, GNU time for the cost line)
+        run: sudo apt-get update && sudo apt-get install -y wabt time
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: tools/runner
+      - name: runner (the wasmtime embedding; cached by Cargo.lock)
+        run: cargo build --release --manifest-path tools/runner/Cargo.toml
+      - name: mentl on PATH
+        run: |
+          bash tools/install.sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: verify (micros + syntax battery + doc-truth)
+        run: FORCE_VERIFY=1 bash tools/verify.sh
+      - name: march (boot → m2 → m3; m2 == m3)
+        run: bash tools/march.sh
+      - name: absence (the negative is provable, 13 programs)
+        run: bash benchmarks/absence/run.sh
+      - name: crown (!E soundness crucibles)
+        run: bash tools/crown-gate.sh
+      - name: proof-exactness (hole refuses · debt surfaces · suspension runs)
+        run: bash tools/proof-exactness-gate.sh
+      # frontier-gate.sh (3,336 lines, the scheduled matrix) and ide-gate.sh
+      # (needs Chrome) join as separate jobs once their runtime is measured
+      # here; a gate that is too slow for every push runs nightly, never never.

@@ -1,0 +1,21 @@
+// mn-arm-config-show-float — a handler shows the Float it was installed
+// with. Expect 1: the op answers "2.5".
+//
+// `keep` is generic in its config, so the install at `2.5` keys its arm at
+// Float and the splice renders the value.
+//
+// RED on boot b29e319b: 0. The arm rendered the config through the
+// declaration's free variable, a word, so it printed the address of the
+// install's box as an integer.
+effect Q {
+  q() -> String
+}
+
+handler keep(c) {
+  q() => resume("{c}"),
+}
+
+fn main() -> Int = {
+  let s = q() ~> keep(2.5)
+  if s == "2.5" { 1 } else { 0 }
+}

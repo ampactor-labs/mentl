@@ -1,0 +1,25 @@
+// expect: 22
+// A HELD RESUME INSIDE A LAMBDA, WHOSE REMAINDER PERFORMS AGAIN. The second
+// `bump` yields inside the first arm's resume; the resume's own flag check
+// re-drives this handler (the deep-handler equation), and the redrive needs
+// the INSTALL record. Inside a lambda the frame's own `$__state` is the
+// closure record, so the redrive dispatched through the wrong record and the
+// install answered an address — measured 2026-10-01 on boot 477bb667: 1049025
+// printed, exit 5. Deep semantics: the second arm resumes into `10 + 10` and
+// answers 21, so the first resume answers 21 and the first arm answers 22.
+effect Cell {
+  bump() -> Int
+}
+
+handler cell with s = 10 {
+  bump() => {
+    let g = () => resume(s)
+    g() + 1
+  },
+}
+
+fn body() = bump() + bump()
+
+fn main() = {
+  body()
+} ~> cell

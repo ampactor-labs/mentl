@@ -1,0 +1,15 @@
+// expect: 41
+// A Float arm binder over an Int parameter of the same name: the arm reads
+// its own Float register and the parameter keeps its Int one. Measured
+// 2026-09-28 on boot 0976f1d7: the arm's reads resolved to the parameter
+// and the module did not assemble after a clean `mentl check`
+// (Hβ.lower.shadowing-binder-clobbers-its-register).
+fn f(x) = {
+  let g = match Some(2.5) {
+    Some(x) => if x > 2.0 { 1 } else { 0 },
+    None => 0,
+  }
+  x + g
+}
+
+fn main() = f(40)

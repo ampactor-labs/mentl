@@ -1,0 +1,17 @@
+// expect: 20
+// A learning parameter built into a construction is a source of the
+// nominal channel too: `Some(f)` hands `f` to the callback, so `f` learns
+// it is applied at 5, and `wrap_opt(inv)` crosses into that. Boot e23392f6
+// refused it as effect debt.
+type Positive = Int where 0 < self
+
+fn inv(n: Positive) = 100 / n
+
+fn opt_apply(f, o) = match o {
+  Some(x) => f(x),
+  None => 0,
+}
+
+fn wrap_opt(f) = opt_apply({ g => g(5) }, Some(f))
+
+fn main() with !Trap = wrap_opt(inv)

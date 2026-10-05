@@ -1,0 +1,8 @@
+// expect: 7
+// A pipe stage completed in place is the PIPE's value, so it carries the
+// pipe node's handle. It carried the stage's, whose type is the partial's
+// arrow, and the comparison read its operand as a word: this checked clean
+// and did not assemble on boot e23392f6 (`i32.gt_s` over two f64s).
+fn scale(k: Float, x: Float) = k * x
+
+fn main() = if (2.0 |> scale(3.0)) > 5.0 { 7 } else { 1 }

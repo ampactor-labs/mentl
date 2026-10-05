@@ -1,0 +1,11 @@
+// expect: 9
+// A record update copies each field it does not override, and the copy is a
+// field load under the UPDATE's own handle, which types the whole record: the
+// copy of `a` was a word wide, so `s` held half of 1.5, and the load of `s.b`
+// read at the word offset the copy's construction had used. The two wrongs
+// cancelled for `b` and not for `a`. Measured on boot 0bc8383e: 0.
+fn main() = {
+  let r = {a: 1.5, b: 7}
+  let s = {...r, b: 9}
+  if s.a > 1.0 { s.b } else { 0 }
+}

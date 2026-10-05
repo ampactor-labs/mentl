@@ -1,0 +1,8 @@
+// CROWN — one cell reached on two paths keeps the meet: the direct `f()`
+// pushes `!E`, the masked `(f()) ~> h` pushes nothing, and the unmasked
+// call correctly forbids E. Accepted by boot 2974547b. Expect
+// E_EffectMismatch.
+effect E { op() -> Int }
+handler h { op() => resume(7) }
+fn run(f) with !E = f() + ((f()) ~> h)
+fn main() = (run(() => op())) ~> h

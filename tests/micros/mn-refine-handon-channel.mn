@@ -1,0 +1,16 @@
+// expect: refuse E_EffectMismatch
+// The same hand-off through a generic callee's channel: `fold` hands the
+// list's function to its callback, and the callback is `run`'s caller's
+// choice. A learning callback learns what the channel hands it, and each
+// learning function among those sources is handed on. The H4 tree before
+// that rule ran this to a trap (exit 134).
+type Positive = Int where 0 < self
+
+fn inv(n: Positive) = 100 / n
+
+fn run(g, h) = {
+  let _ = h(5)
+  fold(0, g, [h])
+}
+
+fn main() with !Trap = run((acc, k) => acc + k(0), inv)

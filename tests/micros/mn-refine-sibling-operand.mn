@@ -1,0 +1,12 @@
+// expect: 7
+// A refinement on one operand says nothing about its sibling: `n: Positive`
+// proves the division total, and `t` may be anything — 0 here. The
+// arithmetic unification used to carry `n`'s refinement onto `t`'s class,
+// so `ratio` published `(t: Positive, n: Positive)` and `ratio(0, 5)` was
+// REFUSED (E_RefinementRejected on the 0) — a correct program rejected
+// because a sibling was over-demanded (P0, boot 13e8484a).
+type Positive = Int where 0 < self
+
+fn ratio(t, n: Positive) with !Trap = t / n
+
+fn main() = ratio(0, 5) + 7

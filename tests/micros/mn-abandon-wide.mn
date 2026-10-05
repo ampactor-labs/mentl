@@ -1,0 +1,19 @@
+// expect: 42
+// AN-2 control — an abandoning arm answering a Float: the install's value
+// crosses the continuation face in the lane, the landing block carries the
+// width, and the unwind's dummy is a zero at the frame's width. Correct on
+// boot 311479e1.
+effect Fb {
+  fb() -> Float
+}
+
+handler h {
+  fb() => 2.5,
+}
+
+fn inner() = fb() + 1.0
+
+fn main() = {
+  let r = (inner()) ~> h
+  if r == 2.5 { 42 } else { 1 }
+}

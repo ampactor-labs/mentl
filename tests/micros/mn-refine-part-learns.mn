@@ -1,0 +1,12 @@
+// expect: refuse E_RefinementRejected
+// An unannotated parameter placed in a refined part learns the precondition,
+// as one handed straight in does: `pass` owes `Positive` of `k`, and
+// `pass(0)` refutes it. Checked clean under `!Trap` and divided by zero
+// on boots e23392f6 and 1a68ecc0 (exit 134).
+type Positive = Int where 0 < self
+
+fn den_inv(r: {den: Positive}) = 100 / r.den
+
+fn pass(k) with !Trap = den_inv({den: k})
+
+fn main() = pass(0)

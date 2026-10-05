@@ -1,0 +1,6 @@
+// propose 4:20: ask value
+// The empty string beside a Linked-ring call that answers a String (a substrate
+// helper the ring offers as vocabulary — Hβ.synth.linked-ring-offers-substrate-internals).
+fn f() -> String = ??
+
+fn main() = 0

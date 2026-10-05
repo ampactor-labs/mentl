@@ -1,0 +1,14 @@
+// CROWN refinement (S4, 2026-10-02): a list's elements under a refined
+// element contract, one taken by a pattern. The element `k + 1` owes
+// `Positive`, and the open claim pays the guarded `Trap`. Checked clean and
+// divided by zero on boots e23392f6 and 1a68ecc0. Expect E_EffectMismatch.
+type Positive = Int where 0 < self
+
+fn head_inv(xs: [Positive]) = match xs {
+  [d, ..._] => 100 / d,
+  _ => 0,
+}
+
+fn run(k) with !Trap = head_inv([k + 1])
+
+fn main() = run(0 - 1)

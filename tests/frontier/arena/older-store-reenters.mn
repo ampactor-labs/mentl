@@ -1,0 +1,43 @@
+// The resumed rest stores a list it built into a handler's state, which is
+// older than the arena: the store is journaled, and the list moves out at
+// the re-entry's exit rather than die with the region. Read after both
+// resumptions and after more allocation. Expected 1 * 100 + (1 + … + 5) =
+// 115, two exits, nothing kept.
+effect Pick {
+  pick() -> Int
+}
+
+effect Keep {
+  put(xs: [Int]) -> Int
+  got() -> [Int]
+}
+
+handler both {
+  pick() => {
+    let a = resume(0)
+    let b = resume(1)
+    a + b
+  },
+}
+
+handler keep with s = [] {
+  put(xs) => resume(0) with s = xs,
+  got() => resume(s),
+}
+
+fn total(xs) = fold(0, (t, x) => t + x, xs)
+
+fn build(n) = if n == 0 { [] } else { build(n - 1) ++ [n] }
+
+fn body() = pick() + put(build(5)) + len(build(40)) - 40 ~> arena
+
+fn run() = {
+  let r = body() ~> both
+  let junk = build(60)
+  r * 100 + total(got()) + 0 * len(junk)
+}
+
+fn main() = {
+  let v = run() ~> keep
+  if v == 115 && arena_stat(ArExits) == 2 && arena_stat(ArKept) == 0 { 42 } else { 1 }
+}

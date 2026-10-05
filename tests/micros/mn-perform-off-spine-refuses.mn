@@ -1,0 +1,26 @@
+// expect: refuse E_ContinuationUncapturable
+// A multi-shot op performed where its continuation cannot be captured yet:
+// the perform's value is bound by a `let`, and the code after it is a
+// statement suffix the remainder builder does not rebuild. Every perform of a
+// multi-shot op suspends, so this one always would — and the lowering parked
+// it at a runtime floor no diagnostic named: on boot 10cd1956 the program
+// compiled clean and trapped at the floor (exit 134). The refusal names the
+// perform; `pick() + 1` as the body's own value is the shape that resumes.
+effect Pick {
+  pick() -> Int
+}
+
+handler both {
+  pick() => {
+    let a = resume(0)
+    let b = resume(1)
+    a + b
+  },
+}
+
+fn body() = {
+  let v = pick()
+  v + 1
+}
+
+fn main() = body() ~> both

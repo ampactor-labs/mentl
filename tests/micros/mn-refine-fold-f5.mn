@@ -1,0 +1,8 @@
+// expect: 20
+// The channel decides against the value the callback hands: `fold`'s
+// callback applies the list's `inv` at 5, which proves its precondition.
+type Positive = Int where 0 < self
+
+fn inv(n: Positive) = 100 / n
+
+fn main() with !Trap = fold(0, (acc, f) => acc + f(5), [inv])

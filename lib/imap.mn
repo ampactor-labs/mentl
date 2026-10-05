@@ -27,45 +27,85 @@
 // ─── wmap: the primitive ─────────────────────────────────────────────────
 // `n` is the bucket count and MUST be a power of two — the bucket index is a
 // mask, not a modulo, so a non-power-of-two silently loses the high keys.
-fn wmap_new(n) with Memory + Alloc = list_filled(n, [])
+//
+// A bucket is a SNOC STACK: add pushes at the END, the reads scan from the
+// end (newest first), and wmap_pop drops the newest entry by reading the
+// snoc's parent — the same push-at-END / drop_last discipline every Mentl
+// stack keeps (graph_handler's checkpoint_stack). That discipline is what
+// lets a trail-backed map be undone inside a speculation for nothing: the
+// pop allocates nothing and the surviving bucket is the pre-add object, so
+// once the rollback has run the speculation's arena finds no bucket of its
+// own to move (a rebuilt bucket would be minted inside and copied out at
+// the exit).
+fn wmap_new(n) = list_filled(n, [])
 
-fn wmap_bucket(ref idx, k) with Memory = i32_and(k, len(idx) - 1)
+// The key is pinned `Int` at every entry: the primitive's own law is that
+// the key IS a word, and the pin is what makes the bucket's key compare a
+// proven word compare rather than an address compare over the erased
+// tuple (the unprovable-comparison class, refused now as E_ShapeUnprovable
+// — the collect walk entered the wheel's count the day it gained a caller).
+fn wmap_bucket(ref idx, k: Int) = i32_and(k, len(idx) - 1)
 
-fn wmap_add(idx, k, val) with Memory + Alloc = {
+fn wmap_add(idx, k: Int, val) = {
   let b = wmap_bucket(idx, k)
-  list_set(idx, b, [(k, val)] ++ list_index(idx, b))
+  list_set(idx, b, push(list_index(idx, b), (k, val)))
 }
 
-fn wmap_get(ref idx, k) with Memory + Alloc =
-  wmap_bucket_scan(list_index(idx, wmap_bucket(idx, k)), k, 0)
+fn wmap_get(ref idx, k: Int) = {
+  let bucket = list_index(idx, wmap_bucket(idx, k))
+  wmap_bucket_scan(bucket, k, len(bucket) - 1)
+}
 
-fn wmap_bucket_scan(ref bucket, k, i) with Memory + Alloc = if i >= len(bucket) {
+fn wmap_bucket_scan(ref bucket, k: Int, i) = if i < 0 {
   None
 } else {
   match list_index(bucket, i) {
-    (bk, val) => if bk == k { Some(val) } else { wmap_bucket_scan(bucket, k, i + 1) },
+    (bk, val) => if bk == k { Some(val) } else { wmap_bucket_scan(bucket, k, i - 1) },
   }
 }
 
-// The MULTI-map read — every value entered under K, newest first (add
-// prepends), collected in one bucket scan: O(bucket), never O(map).
-fn wmap_get_all(ref idx, k) with Memory + Alloc =
-  wmap_bucket_collect(list_index(idx, wmap_bucket(idx, k)), k, 0, [])
+// ONE empty result for every miss: the multi-map read runs at the graph's
+// hottest writers (every row bind asks a cell for its gates and its
+// notes), and a fresh `[]` per miss was an allocation that said nothing —
+// the same law as effects.mn's shared empty mask. A hit pushes onto it,
+// which allocates the snoc and never touches the shared list.
+let wmap_none = []
 
-fn wmap_bucket_collect(ref bucket, k, i, acc) with Memory + Alloc = if i >= len(bucket) {
+// The MULTI-map read — every value entered under K, newest first,
+// collected in one bucket scan: O(bucket), never O(map).
+fn wmap_get_all(ref idx, k: Int) = {
+  let bucket = list_index(idx, wmap_bucket(idx, k))
+  wmap_bucket_collect(bucket, k, len(bucket) - 1, wmap_none)
+}
+
+fn wmap_bucket_collect(ref bucket, k: Int, i, acc) = if i < 0 {
   acc
 } else {
   match list_index(bucket, i) {
-    (bk, val) => wmap_bucket_collect(bucket, k, i + 1, if bk == k { push(acc, val) } else { acc }),
+    (bk, val) => wmap_bucket_collect(bucket, k, i - 1, if bk == k { push(acc, val) } else { acc }),
   }
 }
 
+// The LIFO undo: drop the newest entry, which the caller asserts was
+// entered under K. Only a trail walked BACKWARD calls this, so every add
+// that landed in the bucket after K's was undone first and the bucket's
+// last entry is K's — a different key here is a trail out of order, and
+// it traps rather than silently dropping someone else's entry.
+fn wmap_pop(idx, k: Int) = {
+  let b = wmap_bucket(idx, k)
+  let bucket = list_index(idx, b)
+  match last(bucket) {
+    (bk, _) => if bk == k { 0 } else { out_of_range() },
+  }
+  list_set(idx, b, drop_last(bucket))
+}
+
 // ─── smap: the String projection ─────────────────────────────────────────
-fn smap_new() with Memory + Alloc = list_filled(4096, [])
+fn smap_new() = list_filled(4096, [])
 
-fn smap_build(pairs) with Memory + Alloc = smap_build_from(pairs, len(pairs) - 1, smap_new())
+fn smap_build(pairs) = smap_build_from(pairs, len(pairs) - 1, smap_new())
 
-fn smap_build_from(pairs, i, idx) with Memory + Alloc = if i < 0 {
+fn smap_build_from(pairs, i, idx) = if i < 0 {
   idx
 } else {
   match list_index(pairs, i) {
@@ -73,17 +113,17 @@ fn smap_build_from(pairs, i, idx) with Memory + Alloc = if i < 0 {
   }
 }
 
-fn smap_add(idx, name: String, val) with Memory + Alloc = {
+fn smap_add(idx, name: String, val) = {
   let b = i32_and(str_hash(name), 4095)
   list_set(idx, b, [(name, val)] ++ list_index(idx, b))
 }
 
-fn smap_get(ref idx, name: String) with Memory + Alloc = {
+fn smap_get(ref idx, name: String) = {
   let b = i32_and(str_hash(name), 4095)
   smap_bucket_scan(list_index(idx, b), name, 0)
 }
 
-fn smap_bucket_scan(ref bucket, name: String, i) with Memory + Alloc = if i >= len(bucket) {
+fn smap_bucket_scan(ref bucket, name: String, i) = if i >= len(bucket) {
   None
 } else {
   match list_index(bucket, i) {
@@ -91,16 +131,49 @@ fn smap_bucket_scan(ref bucket, name: String, i) with Memory + Alloc = if i >= l
   }
 }
 
+// Membership alone — the read a set wants, answered without building the
+// Option `smap_get` hands back, so a hot membership test allocates nothing.
+fn smap_has(ref idx, name: String) = {
+  let b = i32_and(str_hash(name), 4095)
+  smap_bucket_has(list_index(idx, b), name, 0)
+}
+
+fn smap_bucket_has(ref bucket, name: String, i) =
+  i < len(bucket) && (smap_pair_named(list_index(bucket, i), name) || smap_bucket_has(bucket, name, i + 1))
+
+fn smap_pair_named(pair, name: String) = match pair {
+  (bn, _) => bn == name,
+}
+
+// Keep the entries whose VALUE `keep` holds. A bucket with nothing to drop
+// stays the object it was, so a purge allocates only where it removes —
+// what lets a column drop one module's entries at the moment that module is
+// superseded rather than filtering itself at every read.
+fn smap_retain(idx, keep) = fold(idx, smap_bucket_retain(keep, ??, ??), range(0, len(idx)))
+
+fn smap_bucket_retain(keep, idx, b) = {
+  let bucket = list_index(idx, b)
+  if all(smap_value_kept(keep, ??), bucket) {
+    idx
+  } else {
+    list_set(idx, b, filter(smap_value_kept(keep, ??), bucket))
+  }
+}
+
+fn smap_value_kept(keep, pair) = match pair {
+  (_, val) => keep(val),
+}
+
 // The MULTI-map read — every value entered under NAME, newest first
 // (add prepends). The reverse-edge column's read face: N smap_add calls
 // per name are N bucket entries, and this collects them all in one
 // bucket scan — O(bucket), never O(map).
-fn smap_get_all(ref idx, name: String) with Memory + Alloc = {
+fn smap_get_all(ref idx, name: String) = {
   let b = i32_and(str_hash(name), 4095)
   smap_bucket_collect(list_index(idx, b), name, 0, [])
 }
 
-fn smap_bucket_collect(ref bucket, name: String, i, acc) with Memory + Alloc = if i >= len(bucket) {
+fn smap_bucket_collect(ref bucket, name: String, i, acc) = if i >= len(bucket) {
   acc
 } else {
   match list_index(bucket, i) {

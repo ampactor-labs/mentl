@@ -100,7 +100,7 @@ handler pick_first {
 // Note: try_fn and catch_fn are both `with Abort` to allow the
 // outer scope's effects to flow. For backtrack's call site, both
 // thunks are closures over the surrounding try_each state.
-fn try_with_abort_catch(try_fn, catch_fn) with Abort = {
+fn try_with_abort_catch(try_fn, catch_fn) = {
   let attempted = try_fn() ~> catch_abort
   match attempted {
     Some(value) => value,

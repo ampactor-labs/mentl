@@ -1,0 +1,11 @@
+// B4 (2026-09-30): the SEQUENCE FANOUT. `fanout(f, xs)` applies `f` to each
+// element as an independent branch and collects the results in order; with
+// no schedule installed it runs sequentially and IS `map` — the prelude
+// declares it as exactly that, so this leg is the VALUES control (boot
+// 6f2ce437 runs it through the prelude's body once the declaration
+// exists); the schedule's witness is mn-fanout-seq-threaded.
+// Expected exit: 12.
+fn main() = match fanout({ x => x * 2 }, [1, 2, 3]) {
+  [a, b, c] => a + b + c,
+  _ => 0,
+}

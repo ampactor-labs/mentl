@@ -1,0 +1,32 @@
+// expect: 32
+// A tuple seed, destructured at the extent, and TWO queries of it: each
+// query is its own backward sweep over the statements before it, so the
+// second reads the same residuals and starts its adjoints fresh. With
+// y = a·x + b at a = 2, b = 1, x = 3 (y = 7): d(y) = (x, 1) = (3, 1) and
+// d(y²) = (2·y·x, 2·y) = (42, 14); the program answers 42 − 14 + 3 + 1 = 32.
+//
+// The declarations are lib/ml/grad.mn's, repeated because a micro links only
+// the runtime floor.
+effect Derivative {
+  d(v: Float) -> t
+}
+
+handler grad(w) {
+  d(v) => resume(tangent_of(v, w)),
+}
+
+fn main() -> Int = {
+  let ws = (2.0, 1.0)
+  let x = 3.0
+  let r = match ws {
+    (a, b) => {
+      let y = a * x + b
+      match d(y) {
+        (g1, g2) => match d(y * y) {
+          (h1, h2) => h1 - h2 + g1 + g2,
+        },
+      }
+    },
+  } ~> grad(ws)
+  float_to_int(r)
+}

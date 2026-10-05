@@ -1,0 +1,2 @@
+// A stage the entry reaches through an authored import edge.
+fn triple(x) = x * 3

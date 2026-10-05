@@ -6,6 +6,18 @@ set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
+source "$ROOT/tools/wt-env.sh"
+
+# The memo (Hβ.tools.gate-stamp-is-uniform): the declaration census reads src
+# and lib, the micro runs through one compiler — a green run on exactly these
+# answers again. FORCE_GATES=1 re-runs.
+M="${GATE_WASM:-${MENTL_BOOT:-boot/mentl.wasm}}"
+ei_key=$(wt_memo_key_run "$M" src lib tests/micros/mn-effect-identity.mn tools/run-micro.sh tools/effect-identity-gate.sh)
+if ei_memo=$(wt_memo_hit effect-identity "$ei_key"); then
+  printf '%s\n' "$ei_memo"
+  echo "  (memo: these inputs already passed — FORCE_GATES=1 re-runs)"
+  exit 0
+fi
 
 fail=0
 
@@ -29,7 +41,6 @@ expect_count 'fail_exit handlers' 1 '^handler fail_exit\b'
 expect_count 'abort_exit handlers' 0 '^handler abort_exit\b'
 expect_count 'DSP alloc_buffer residue' 0 '\balloc_buffer\b'
 
-M="${GATE_WASM:-${MENTL_BOOT:-boot/mentl.wasm}}"
 RTLIBS=(
   lib/memory.mn
   lib/strings.mn
@@ -45,4 +56,5 @@ else
   fail=1
 fi
 
+[[ "$fail" -eq 0 ]] && wt_memo_put effect-identity "$ei_key" "effect-identity: the declaration census and the dispatch micro pass"
 exit "$fail"

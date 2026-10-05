@@ -1,0 +1,41 @@
+// expect: 40
+// A gradient that allocates nothing, proven by its row and measured on its
+// heap. `grad_norm` declares `!Alloc` and reads the gradient of its loss in
+// both seed fields: the reverse sweep holds every adjoint in a local, the
+// adjoint twin of `loss` recomputes the callee in its own frame, and the
+// gradient is read by destructuring, so no record is ever built — a
+// thousand steps leave the heap line where it started.
+//
+// With a = 2, b = 1, x = 3, want = 10: e = want − (a·x + b) = 3, and the loss
+// e² has ∂/∂a = −2·e·x = −18 and ∂/∂b = −2·e = −6, so the squared norm is
+// 324 + 36 = 360, and a thousand of them 360,000.
+//
+// The declarations are lib/ml/grad.mn's, repeated because a micro links only
+// the runtime floor.
+effect Derivative {
+  d(v: Float) -> t
+}
+
+handler grad(w) {
+  d(v) => resume(tangent_of(v, w)),
+}
+
+fn loss(a: Float, b: Float, x: Float, want: Float) -> Float = {
+  let e = want - (a * x + b)
+  e * e
+}
+
+fn grad_norm(ws: {a: Float, b: Float}, x: Float, want: Float) -> Float with !Alloc = match d(loss(ws.a, ws.b, x, want)) {
+  {a: ga, b: gb} => ga * ga + gb * gb,
+} ~> grad(ws)
+
+fn spin(ws: {a: Float, b: Float}, x: Float, want: Float, i: Int, acc: Float) -> Float =
+  if i == 0 { acc } else { spin(ws, x, want, i - 1, acc + grad_norm(ws, x, want)) }
+
+fn main() -> Int = {
+  let ws = {a: 2.0, b: 1.0}
+  let before = heap_mark()
+  let total = spin(ws, 3.0, 10.0, 1000, 0.0)
+  let grown = addr_diff(heap_mark(), before)
+  if grown == 0 && float_to_int(total + 0.5) == 360000 { 40 } else { 41 }
+}

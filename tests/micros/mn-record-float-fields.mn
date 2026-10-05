@@ -1,0 +1,17 @@
+// expect: 21
+// A record with a Float field is laid out with the field f64-wide, and every
+// reader of the layout has to agree. The load `r.b` read `a` at its type
+// variable's word default and looked for `b` at 4 where the construction
+// stored it at 8; the let destructure took its offsets from the pattern's
+// field indices; the match form declared its binders a word and did not
+// assemble. Measured on boot 0bc8383e: this program did not assemble
+// (`$a.f64` undefined), and the load alone and the let destructure alone
+// each returned 0.
+fn main() = {
+  let r = {a: 1.5, b: 7}
+  let {a, b} = r
+  let c = match r {
+    {a, b} => if a > 1.0 { b } else { 0 },
+  }
+  r.b + b + c
+}

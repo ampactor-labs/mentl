@@ -1,0 +1,12 @@
+// CROWN refinement (P0, 2026-10-01): a declared return is a postcondition,
+// and `g`'s is open — its else tail is a parameter nothing bounds. The
+// caller's division trusted the declaration and charged nothing. Boot
+// 13e8484a: one pending obligation (at g), `!Trap` accepted at f, trap at
+// run. A row fact may lean only on what is proven; expect E_EffectMismatch.
+type Positive = Int where 0 < self
+
+fn g(c, e) -> Positive = if c { 1 } else { e }
+
+fn f(c, e) with !Trap = 100 / g(c, e)
+
+fn main() = f(false, 0)

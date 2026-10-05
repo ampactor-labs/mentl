@@ -1,0 +1,15 @@
+// The DCC gate's PRECISION control beside mn-ifc-splice-derived: the
+// public half of a tuple that also holds a classified value is public. A
+// destructured part is read at its position in the tuple it was built
+// from, never as the whole. Expect NO diagnostics.
+type Vault = String where classified(self)
+
+fn classified(s) = true
+
+fn getpw() -> Vault = "hunter2"
+
+fn show_name() = match (getpw(), "morgan") {
+  (_, name) => "user: {name}",
+}
+
+fn main() = 0

@@ -1,0 +1,15 @@
+// A module that spawns shares one heap line between its instances, so no
+// instance owns a region: its arena runs the body and moves nothing, the
+// program is correct, and no exit is counted (`Hβ.arena.per-instance-regions`).
+fn build(n) = if n == 0 { [] } else { build(n - 1) ++ [n] }
+
+fn add_int(a, b) = a + b
+
+fn widen(x) = x * 15
+
+fn main() = match 2 <| (widen, widen) ~> parallel_compose {
+  (a, b) => {
+    let xs = build(20) ~> arena
+    if a + b == 60 && fold(0, add_int, xs) == 210 && arena_stat(ArExits) == 0 { 42 } else { 1 }
+  },
+}

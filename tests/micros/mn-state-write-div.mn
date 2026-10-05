@@ -1,0 +1,18 @@
+// expect: refuse E_EffectMismatch
+// A handler's state is a value with many writers: `d` is 5 at the install
+// and whatever an arm last wrote, so `100 / d` owes `d != 0` of every write.
+// `shrink` writes `d - 5`, which nothing bounds, so the division's claim is
+// open and its `Trap` reaches `main`'s `!Trap`. The proof read the init
+// alone, so this checked clean and divided by zero on pin 53f7404b and boot
+// 1a68ecc0 (exit 134).
+effect Ask {
+  ask() -> Int
+  shrink() -> Int
+}
+
+handler h with d = 5 {
+  ask() => resume(100 / d),
+  shrink() => resume(0) with d = d - 5,
+}
+
+fn main() with !Trap = shrink() + ask() ~> h

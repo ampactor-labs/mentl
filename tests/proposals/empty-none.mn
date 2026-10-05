@@ -1,0 +1,7 @@
+// propose 5:19: none
+// An uninhabited refinement: nothing proves, and the verdict says so.
+type Empty = Int where self < 0 && 0 < self
+
+fn f() -> Empty = ??
+
+fn main() = 0

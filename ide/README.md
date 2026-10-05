@@ -1,15 +1,14 @@
 # mentl edit — the web IDE (band M's first artifact)
 
-The page runs THE FIXPOINT COMPILER ITSELF in your browser: mentl-ide.wasm
-is the LIVE SPAWNING BOOT (shared-image import + `wasi.thread-spawn`; the
-converged judgment spawns a host thread per stmt) with one derived change —
-the memory import's declared minimum shrunk from 4GB to 512MB (the page
-provides 1GB; the 4GB line exists for wheel-scale self-compiles).
-Derivation, reproducible from the committed boot:
-
-    wasm2wat --enable-threads --enable-tail-call boot/mentl.wasm -o mentl-ide.wat
-    sed -i 's/(import "env" "memory" (memory (;0;) 65536 65536 shared))/(import "env" "memory" (memory (;0;) 8192 65536 shared))/' mentl-ide.wat
-    wat2wasm --debug-names --enable-threads --enable-tail-call mentl-ide.wat -o ide/mentl-ide.wasm
+The page runs THE FIXPOINT COMPILER ITSELF in your browser: boot/mentl.wasm,
+the pinned boot, unmodified — the page fetches it at `../boot/mentl.wasm`
+through `mentl space`, and the node twin loads the same file. It used to
+run a hand-derived copy (`ide/mentl-ide.wasm`) with the memory import's
+minimum shrunk from 4GB to 512MB, because the wheel declared a 4GB minimum
+no browser will allocate; that copy lagged the boot by eight weeks. The
+wheel declares a 32-page minimum now and its allocator grows the memory on
+demand (2026-09-27), so the page supplies its 1GB shared memory and the
+boot grows into it as it judges.
 
 THE EXECUTION HOST IS ide/wheel-worker.js — the runner pattern at the
 browser host (`Hβ.ops.wasmtime-runner-migration`'s browser leg, landed
@@ -70,9 +69,10 @@ modes, not features. Five surfaces:
   The badge is `real` ONLY for a fact the compiler graph actually returned.
 - **The Lens** — the real `stderr` diagnostics, gradient-ranked to one teaching
   step in Mentl's voice, click-to-jump, with genuine text-fixes for the
-  canonicalizations the parser reports (`E_RedundantBraces`,
-  `E_RedundantPerform`) and for `T_OverDeclared` (the tightening — the
-  message carries the proven row, the same patch `mentl tighten` authors).
+  canonicalizations the parser reports (`E_RedundantBraces`) and for
+  `T_OverDeclared` / `T_RowInventory` (the tightening — the clause's
+  residue, the same patch `mentl tighten` authors; the positive row is
+  projected, never written back).
 - **The Proposal strip** — the cursor line's standing MachineApplicable
   patch as a ghost preview under the editor (was → now), accepted with
   Tab (no proposal: Tab indents — the copilot convention). An
@@ -114,11 +114,13 @@ own IDE.
 
 The gate is `bash tools/ide-gate.sh`: the node twin (`node
 ide/test-shim.mjs`) drives ide/wheel-worker.js — the SAME execution host
-the page uses — through four faces (the stub-spawn RED control, which
-must REFUSE the spawning boot; compile-stdin through real spawned tasks;
-the address CursorView; the ?? Propose socket), then headless chrome
-loads the served page with `?smoke` and the page's own console wire
-reports the compile verdict. If the page ever misbehaves, the twin
+the page uses — through its faces (compile-stdin; the stub-spawn RED
+control, armed only while the judgment spawns — it has spawned nothing
+since the fan's direct spawn was deleted at pin 7c9dc538, so the control
+says VACUOUS rather than passing, and re-arms when the judgment schedules;
+the address CursorView; the ?? Propose socket; the resident session), then
+headless chrome loads the served page with `?smoke` and the page's own
+console wire reports the compile verdict. If the page ever misbehaves, the twin
 discriminates shim-vs-DOM in one command; `?smoke&dbg` opens the
 worker's debug channel (the probe that found the postMessage-flush
 hazard, kept as an instrument).

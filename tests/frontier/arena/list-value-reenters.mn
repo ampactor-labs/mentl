@@ -1,0 +1,31 @@
+// An arena whose value is a list built after the perform, under an arm that
+// resumes twice and keeps the first answer: each resumption's fresh instance
+// moves its list out by the list's leaf, and the first answer must survive
+// the second resumption's exit whole. Expected [1, 2, 1, 2, 3, 4, 5]: length
+// 7, total 18, two exits, one suspension.
+effect Gen {
+  gen() -> [Int]
+}
+
+handler two {
+  gen() => {
+    let a = resume([1, 2])
+    let b = resume([3])
+    a
+  },
+}
+
+fn total(xs) = fold(0, (s, x) => s + x, xs)
+
+fn build(n) = if n == 0 { [] } else { build(n - 1) ++ [n] }
+
+fn body() = gen() ++ build(5) ~> arena
+
+fn main() = {
+  let r = body() ~> two
+  if len(r) == 7 && total(r) == 18 && arena_stat(ArExits) == 2 && arena_stat(ArSuspended) == 1 {
+    42
+  } else {
+    1
+  }
+}

@@ -1,0 +1,12 @@
+// propose 8:11: ask type
+// The cell that moves is a parameter's class (C6).
+fn one() = 1
+
+fn half() = 0.5
+
+fn pick(x) = {
+  let y = ??
+  y + x
+}
+
+fn main() = pick(1)

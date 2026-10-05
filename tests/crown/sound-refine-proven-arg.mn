@@ -1,0 +1,11 @@
+// CROWN refinement (P0, 2026-10-01): the control. A literal argument proves
+// `inv`'s precondition at the call, a proven precondition discharges the
+// guard, and a parameter carried to another Positive parameter carries its
+// guard with it. `!Trap` holds at every declaration. Must not refuse.
+type Positive = Int where 0 < self
+
+fn inv(n: Positive) = 100 / n
+
+fn caller(m: Positive) with !Trap = inv(m)
+
+fn main() with !Trap = caller(4) + inv(5)

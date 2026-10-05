@@ -11,7 +11,7 @@ import lexer
 
 import strings
 
-fn intern_probe(ref bucket, ref src, s, e, i, n) with Memory + Alloc = if i >= n {
+fn intern_probe(ref bucket, ref src, s, e, i, n) = if i >= n {
   None
 } else {
   let row = list_index(bucket, i)
@@ -27,17 +27,10 @@ handler intern_table with buckets = list_filled(4096, []), entries = make_list(1
     match intern_probe(bucket, src, s, e, 0, len(bucket)) {
       Some(row) => resume(row),
       None => {
-        // IMAGE family (3) of six (arena 2a-ii): the canonical flat, its
-        // entries slot and bucket cons all outlive every per-decl reset —
-        // the bracket classifies the whole miss extent and feeds the
-        // census delta. State computes inside the bracket so the resume's
-        // with-values allocate under the same extent.
-        image_enter()
         let canonical = list_to_flat(str_slice(src, s, e))
         let row = (canonical, count, keyword_kind(canonical))
         let nbuckets = list_set(buckets, b, [row] ++ bucket)
         let nentries = list_set(list_extend_to(entries, count + 1), count, canonical)
-        image_exit()
         resume(row) with buckets = nbuckets, entries = nentries, count = count + 1
       },
     }
@@ -51,13 +44,10 @@ handler intern_table with buckets = list_filled(4096, []), entries = make_list(1
         (_canonical, h, _kw) => resume(h),
       },
       None => {
-        // IMAGE family (3): the str-form miss, same extent rule.
-        image_enter()
         let canonical = list_to_flat(s)
         let row = (canonical, count, keyword_kind(canonical))
         let nbuckets = list_set(buckets, b, [row] ++ bucket)
         let nentries = list_set(list_extend_to(entries, count + 1), count, canonical)
-        image_exit()
         resume(count) with buckets = nbuckets, entries = nentries, count = count + 1
       },
     }
@@ -66,20 +56,43 @@ handler intern_table with buckets = list_filled(4096, []), entries = make_list(1
   intern_seed() => resume((buckets, entries, count)),
 }
 
+// THE MEDIUM'S OWN VOCABULARY — the names the wheel itself interns by
+// literal: the effects the judgment charges by name (a construction's
+// `Memory + Alloc`, an arena's `Arena`) and the ones the teaching surface
+// classifies (`IO`, `Network`). Every table is BORN holding them (`interned`), through the
+// table's own op, so their handles are the same in every table and a
+// read-only view always finds them. Until 2026-09-28 they were interned by
+// whoever asked first, which held only while every program that judged a
+// candidate had judged a literal before it: a program with no literal and no
+// library (the frontier's stage-ring demo, whose link is two files) asked for
+// `Memory` from inside a proposal once a closure mint was charged, and the
+// view trapped. A literal intern anywhere in the wheel names one of these.
+fn medium_vocabulary() = ["Memory", "Alloc", "IO", "Network", "Trap", "Arena"]
+
+fn intern_word(w: String) = intern_str(w)
+
+// A fresh intern table over `body`, born holding the medium's vocabulary —
+// the one way the wheel installs a table (the process's and each judgment's).
+fn interned(body) = {
+  each(intern_word, medium_vocabulary())
+  body()
+} ~> intern_table
+
 // The branch cursor's READ-ONLY intern view (the fan): serves probe
 // hits and name_of over the root's live table; a MISS traps loudly —
 // a view-minted handle would fork identity (its entry absent from the
 // root's table, rendering garbage wherever it escaped), and the walk
-// is pre-warmed by parse, so a miss IS a counterexample worth the
-// loud stop. intern_span is unreachable in a branch (lex is
-// root-side); its arm carries the same trap for totality.
+// is pre-warmed by parse and by the table's birth (`medium_vocabulary`),
+// so a miss IS a counterexample worth the loud stop. intern_span is
+// unreachable in a branch (lex is root-side); its arm carries the same
+// trap for totality.
 handler intern_view(buckets0, entries0, count0) {
   intern_span(src, s, e) => {
     let b = i32_and(str_hash_loop(src, s, e, -2128831035), 4095)
     match intern_probe(list_index(buckets0, b), src, s, e, 0, len(list_index(buckets0, b))) {
       Some(row) => resume(row),
       None => {
-        load_i32(0 - 1)
+        out_of_range()
         resume(("", 0, None))
       },
     }
@@ -91,7 +104,7 @@ handler intern_view(buckets0, entries0, count0) {
       Some(row) => match row {
         (_canonical, h, _kw) => resume(h),
       },
-      None => resume(load_i32(0 - 1)),
+      None => resume(out_of_range()),
     }
   },
   intern_name_of(h) => resume(list_index(entries0, h)),

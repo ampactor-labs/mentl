@@ -1,0 +1,12 @@
+// expect: refuse E_RefinementRejected
+// A list's elements under `[Positive]`, one taken by a list pattern: every
+// element the literal holds is owed the contract. Checked clean under
+// `!Trap` and divided by zero on boots e23392f6 and 1a68ecc0 (exit 134).
+type Positive = Int where 0 < self
+
+fn head_inv(xs: [Positive]) = match xs {
+  [d, ..._] => 100 / d,
+  _ => 0,
+}
+
+fn main() with !Trap = head_inv([0])

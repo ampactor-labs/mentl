@@ -1,0 +1,18 @@
+// expect: refuse E_RefinementRejected
+// A generic call's result is one of the values its arguments hand in at the
+// result's variable, and a nominal argument hands in its type argument's
+// values: `pick_or(Some(inv), inv2)` returns `inv` or `inv2`, so applying
+// the result at 0 owes `inv`'s precondition, and the constant refutes it.
+// Boot e23392f6 refused it as effect debt, reading the call's class.
+type Positive = Int where 0 < self
+
+fn inv(n: Positive) = 100 / n
+
+fn inv2(n: Int) = n + 1
+
+fn pick_or(o, d) = match o {
+  Some(v) => v,
+  None => d,
+}
+
+fn main() with !Trap = pick_or(Some(inv), inv2)(0)

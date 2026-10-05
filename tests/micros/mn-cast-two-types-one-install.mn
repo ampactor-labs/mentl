@@ -1,0 +1,25 @@
+// expect: 42
+// Two casts of different types inside one install whose handler answers
+// neither. The install's body frame joined every same-named effect instance
+// its calls brought in, answered or not, so a list's Cast and a thunk's Cast
+// were unified there and the program refused with a mismatch at no position.
+// Only an install's own effect is one install's instance; Cast meets no
+// handler, and its two instances stand side by side.
+effect Ping {
+  ping() -> Int
+}
+
+handler pong {
+  ping() => resume(1),
+}
+
+fn of_list(xs) = addr_word(addr(xs))
+
+fn of_thunk(f) = addr_word(addr(f))
+
+fn main() = {
+  let xs = [1, 2]
+  let f = () => 3
+  let r = if of_list(xs) != of_thunk(f) { 41 + ping() } else { 0 } ~> pong
+  r
+}

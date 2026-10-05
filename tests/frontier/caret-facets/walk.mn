@@ -1,0 +1,36 @@
+type Positive = Int where 0 < self
+
+effect Tick {
+  tick() -> Int
+}
+
+handler ticker with n = 0 {
+  tick() => resume(n) with n = n + 1,
+}
+
+fn inv(n: Positive) = 100 / n
+
+fn ramp(x) = ((prev) => prev + x) <~ delay(1)
+
+fn both(x) = ((x + 1) >< (x + 2)) |> { (a, b) => a + b }
+
+fn stage(x) = x |> inv |> inv
+
+fn ticks() = (tick() + tick()) ~> ticker
+
+fn open(k) = 100 / (k - 1)
+
+fn raw() = tick()
+
+fn later() = (apply_now(() => tick())) ~> ticker
+
+fn apply_now(f) = f()
+
+fn greeting() = "hello world"
+
+fn stored() = {
+  let f = () => tick()
+  0
+}
+
+fn main() = both(3) + stage(5) + ticks() + ramp(2) + open(9) + later() + len(greeting()) + stored()

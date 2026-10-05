@@ -1,0 +1,9 @@
+// CROWN A5 (LENS §2.4): the remainder's requirement is the BODY's row as
+// the tee reads it — F performed inside an inner install that absorbs it
+// never reaches h's remainder, so h's !F holds. Expect NO E_EffectMismatch.
+effect E { op() -> Int }
+effect F { fop() -> Int }
+handler h with !F { op() => resume(1) }
+handler hf { fop() => resume(2) }
+fn work() = ((fop()) ~> hf) + op()
+fn main() = (work()) ~> h

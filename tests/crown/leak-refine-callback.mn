@@ -1,0 +1,12 @@
+// CROWN refinement (P0, 2026-10-01): a function with a guarded precondition
+// handed to a caller that will call it with values nothing proves — `apply`
+// names no refinement on its callback's parameter, so the crossing carries
+// the demand as debt, and the trap that demand guards is the crossing's to
+// charge. Expect E_EffectMismatch at main.
+type Positive = Int where 0 < self
+
+fn inv(n: Positive) = 100 / n
+
+fn apply(f, x) = f(x)
+
+fn main() with !Trap = apply(inv, 0)

@@ -1,0 +1,14 @@
+// Everything an arena's body allocated and did not publish is reclaimed:
+// the line returns to where the arena opened, and the memory above it is
+// zero again.
+fn build(n) = if n == 0 { [] } else { build(n - 1) ++ [n] }
+
+fn churn(n) = if n == 0 { 0 } else { len(build(50)) + churn(n - 1) }
+
+fn main() = {
+  let before = heap_mark()
+  let s = churn(100) ~> arena
+  let after = heap_mark()
+  let virgin = load_i32(after) == 0 && load_i32(addr_at(after, 4096)) == 0
+  if s == 5000 && after == before && virgin { 42 } else { 1 }
+}

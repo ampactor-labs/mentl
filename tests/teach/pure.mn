@@ -1,0 +1,5 @@
+// teach 3: add with Pure
+// A body that performs nothing is taught the strongest clause it proves.
+fn add(a, b) = a + b
+
+fn main() = add(1, 2)

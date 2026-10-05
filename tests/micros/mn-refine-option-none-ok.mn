@@ -1,0 +1,12 @@
+// expect: 7
+// A construction of another constructor holds no such field: `None` owes
+// nothing under `Option(Positive)`, and `Some`'s arm is dead for it. Boot
+// 1a68ecc0 refused this (E_EffectMismatch).
+type Positive = Int where 0 < self
+
+fn opt_inv(o: Option(Positive)) = match o {
+  Some(d) => 100 / d,
+  None => 7,
+}
+
+fn main() with !Trap = opt_inv(None)

@@ -1,8 +1,10 @@
-// expect: 134
+// expect: refuse E_FieldOffsetUnprovable
 // A field read whose receiver's row NOTHING closes: it is main's own
 // parameter, so no literal anywhere in the program proves the shape. The
-// layout is genuinely unknowable and the emit must REFUSE it — a trap, never
-// a guessed offset 0. The gate's other half is the marker's TEXT: it names
+// layout is genuinely unknowable and the compile must REFUSE it — never a
+// guessed offset 0, and since 2026-09-28 never a trap either: the settle
+// point says it before a byte, where it had trapped at run time (134). The
+// gate's other half is the refusal's TEXT: it names
 // the selector and the receiver's live row, so a floor census is an
 // inventory and not a count.
 //

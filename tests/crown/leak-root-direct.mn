@@ -1,0 +1,9 @@
+// THE EXECUTABLE ROOT GATE READS THE ROW AND NOTHING ELSE (PROGRAM Step 2,
+// 2026-09-27). `op()` performed OUTSIDE the `~> h` extent: main's row is
+// `E`, correct, and the executable must refuse — E reaches the root with
+// no enclosing install. Accepted by the boot before this landing: the gate
+// cleared E because a handler for it was installed SOMEWHERE in the tree,
+// and the program compiled and trapped at the first op.
+effect E { op() -> Int }
+handler h { op() => resume(3) }
+fn main() = op() + ((op()) ~> h)

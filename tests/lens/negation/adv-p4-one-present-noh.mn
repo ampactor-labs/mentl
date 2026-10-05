@@ -1,0 +1,6 @@
+// expect: refuse E_EffectMismatch
+effect E { op() -> Int }
+effect F { fop() -> Int }
+handler hf { fop() => resume(3) }
+fn one(f) with !E = f() + fop()
+fn main() = (one(() => op())) ~> hf

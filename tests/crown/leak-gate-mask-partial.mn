@@ -1,0 +1,11 @@
+// CROWN — a mask covers ITS names only: `!E + !F` over `(f()) ~> h` with
+// h absorbing E gates f's cell with `!F` alone, and a callback performing
+// F refuses. Trapped at run time on boot 2974547b (adv-mask-partial-
+// nohandler); the gate refuses at the argument edge. Expect
+// E_EffectMismatch.
+effect E { op() -> Int }
+effect F { fop() -> Int }
+handler h { op() => resume(7) }
+handler k { fop() => resume(3) }
+fn run(f) with !E + !F = (f()) ~> h
+fn main() = (run(() => fop())) ~> k

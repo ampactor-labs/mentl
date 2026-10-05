@@ -1,0 +1,29 @@
+// expect: refuse E_DerivativeUnreachable
+// A derivative the reading cannot carry refuses rather than answer zero. A
+// tuple built from the seed stores the seed's tangent where the reading does
+// not follow it — an aggregate's components carry no tangent of their own —
+// so a piece destructured out of it has a tangent that was lost at the
+// tuple, and `d` of a value computed from that piece asks for a tangent that
+// is gone. Answering 0 would be a slope the program never has; the refusal
+// names where the tangent was lost. The product seed, where the reading
+// carries one lane per component, is Hβ.derive.gradient-of-a-product-seed.
+//
+// The declarations are lib/ml/grad.mn's, repeated because a micro links only
+// the runtime floor.
+effect Derivative {
+  d(v: Float) -> t
+}
+
+handler grad(w) {
+  d(v) => resume(tangent_of(v, w)),
+}
+
+fn main() -> Int = {
+  let x = 3.0
+  float_to_int({
+    let p = (x, 1.0)
+    match p {
+      (a, _) => d(a * a),
+    }
+  } ~> grad(x))
+}

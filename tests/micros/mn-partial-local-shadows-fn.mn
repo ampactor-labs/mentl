@@ -1,0 +1,16 @@
+// expect: 5
+// A PARTIAL OVER A LOCAL THAT SHADOWS A MODULE FUNCTION calls the LOCAL.
+// The let-bound `add` multiplies; the top-level `add` adds. The partial
+// `add(1)` is over the local, so `inc(5)` is 5. On boot 523f1732 the
+// partial's callee form was read by name off the module env, which held
+// the top-level `add`, and the synthesized body called it: 6, with zero
+// diagnostics (Hβ.lower.callee-resolved-by-name-in-the-module-env).
+fn add(a, b) = a + b
+
+fn run() -> Int = {
+  let add = (a, b) => a * b
+  let inc = add(1)
+  inc(5)
+}
+
+fn main() -> Int = run()

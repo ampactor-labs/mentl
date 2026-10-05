@@ -1,0 +1,19 @@
+// expect: 11
+// A BLOCK'S FREE NAMES ARE READ IN SOURCE ORDER. `let a = x` reads the
+// OUTER `x` — the `let x = 1` after it binds only what follows — so the
+// lambda captures `x` and answers 10 + 1. Measured 2026-10-03 on boot
+// 9d27c325: the free-name walk ran from the last statement back, so the later
+// `let x` bound the name over the earlier read, the lambda captured nothing,
+// and the lowering refused the program (E_InternalInvariant: `x` has no
+// binding the lowering can see).
+fn main() = {
+  let x = 10
+  let f = {
+    _ => {
+      let a = x
+      let x = 1
+      a + x
+    },
+  }
+  f(0)
+}

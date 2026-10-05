@@ -44,11 +44,11 @@ sc=$(git status --short); echo "    uncommitted: $([ -z "$sc" ] && echo none || 
 # PROVENANCE, a visible blank nobody was looking at, and the first thing
 # an iteration runs was the right place to look.
 #
-# A stamp is the gate's word that it ran against THIS boot. Only the
-# frontier keeps one today; the rest are named unstamped rather than
-# silently omitted, because an unreported gate stops being run (PLAN §11
-# tripwire 4 — the crown went eleven ledger entries unmentioned while a
-# leak rode the whole arc).
+# A stamp is the gate's word that it ran against THIS boot. The frontier
+# keeps one; the board legs memoize by their inputs (below); the gates with
+# neither are named rather than silently omitted, because an unreported gate
+# stops being run (PLAN §11 tripwire 4 — the crown went eleven ledger entries
+# unmentioned while a leak rode the whole arc).
 echo "▸ STAMPS (which boot-suite gates have measured THIS boot)"
 # THE PERIMETER ITSELF IS A GATE, and it was the one nobody reported. Every
 # line below asks whether a gate has RUN; none asked whether the gate that
@@ -76,8 +76,13 @@ else
   echo "              bash tools/frontier-gate.sh  ·  the pre-commit perimeter refuses a"
   echo "              wheel commit without it, so this blank is a landing you cannot make"
 fi
-echo "    crown · proof-exactness · effect-identity · instrument · threads · ide: no"
-echo "              stamp kept — running them is the only way to know (Hβ.tools.gate-stamp-is-uniform)"
+# Since 2026-09-26 the march's board legs memoize their green under the sha of
+# exactly what they read (.build/gate/memo, tools/wt-env.sh wt_memo_*), so
+# running one costs nothing when nothing it reads changed — the honest
+# answer to "has it run?" is to run it.
+echo "    crown · proof-exactness · effect-identity · frontier: memoized by what they read —"
+echo "              a run answers in ~0s when its inputs are unchanged (.build/gate/memo)"
+echo "    instrument · threads · ide: no memo kept — running them is the only way to know"
 # DETERMINISM IS NOT ON THIS BOARD, and saying so is the whole point of the line.
 # `march.sh` asserts m2 == m3, which IS the fixed point in the boot era. On a
 # CLEAN march the m4 leg is deductively redundant — if m2 == m3 byte-for-byte

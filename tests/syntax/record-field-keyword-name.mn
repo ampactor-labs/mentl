@@ -1,0 +1,10 @@
+// expect: 7
+// SYNTAX §«Records»: the record literal reads a contextual keyword as a
+// field NAME (`{own: …}`), so field ACCESS reads it the same way. Measured
+// 2026-09-25: `r.own` parsed to a field named "" — the parser's fallback
+// for a token that is not an identifier — and surfaced as a record type
+// mismatch against a field with no name, `{ : t } vs { own: Int }`.
+// Exit 7 is the field read back.
+fn owned(r) = r.own
+
+fn main() = owned({own: 7})

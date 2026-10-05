@@ -1,0 +1,10 @@
+// expect: refuse E_RefinementRejected
+// A `let` annotation over a structure is a claim of each of its parts: the
+// list `[0]` owes `Positive` at its element. Boots e23392f6 and 1a68ecc0
+// compiled this clean, the annotation's element never claimed.
+type Positive = Int where 0 < self
+
+fn main() = {
+  let xs: [Positive] = [0]
+  len(xs)
+}

@@ -1,0 +1,19 @@
+// Nested arenas: the inner one's value moves into the outer region, the
+// outer one's value moves out of both.
+fn build(n) = if n == 0 { [] } else { build(n - 1) ++ [n] }
+
+fn add_int(a, b) = a + b
+
+fn inner(n) = {
+  let junk = build(100)
+  let keep = build(n) ~> arena
+  len(junk) + 0 * len(keep)
+  keep
+}
+
+fn main() = {
+  let before = heap_mark()
+  let xs = inner(30) ~> arena
+  let grew = addr_diff(heap_mark(), before)
+  if fold(0, add_int, xs) == 465 && grew < 4000 && arena_stat(ArExits) == 2 { 42 } else { 1 }
+}

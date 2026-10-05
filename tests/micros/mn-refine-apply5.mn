@@ -1,0 +1,12 @@
+// expect: 20
+// What an application hands a position is an EDGE to the value, read live
+// where a function crosses in: `apply5` hands its function `5`, and `inv`'s
+// `0 < self` decides against it. The pin copied a contract off the value's
+// leaves, which a constant never has, and refused this under `!Trap`.
+type Positive = Int where 0 < self
+
+fn inv(n: Positive) = 100 / n
+
+fn apply5(f) = f(5)
+
+fn main() with !Trap = apply5(inv)

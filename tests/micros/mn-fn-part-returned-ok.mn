@@ -1,0 +1,13 @@
+// expect: 100
+// The control beside the published-meet refusals: `pick(true)` returns
+// `inv` at `f` and `1` proves the `Positive` the meet demands, so the
+// program runs.
+type Positive = Int where 0 < self
+
+fn inv(n: Positive) = 100 / n
+
+fn succ(n) = n + 1
+
+fn pick(c) = if c { {f: inv} } else { {f: succ} }
+
+fn main() with !Trap = pick(true).f(1)

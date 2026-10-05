@@ -1,0 +1,15 @@
+// expect: refuse E_EffectMismatch
+// A callback that is the caller's own parameter learns what the generic
+// callee hands it: `run_with`'s callback is handed `inv` at its second
+// position, so the lambda its caller passes, applying that position at
+// `k + 1`, owes `inv`'s precondition. Checked clean and divided by zero on
+// boot 13e8484a and pin e23392f6.
+type Positive = Int where 0 < self
+
+fn inv(n: Positive) = 100 / n
+
+fn run_with(g) = fold(0, g, [inv])
+
+fn run(k) with !Trap = run_with((acc, f) => acc + f(k + 1))
+
+fn main() = run(0 - 1)

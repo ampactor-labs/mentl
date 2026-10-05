@@ -1,0 +1,11 @@
+// teach 7: add -> Positive
+// A caller's open claim rests on this result, and the body proves the
+// contract — stating it lets the caller's claim stand (P0: a claim may stand
+// on a contract its callee owes). On boot 6f62b7c4 it answered `with Pure`.
+type Positive = Int where 0 < self
+
+fn five() = 5
+
+fn inv(n: Positive) = 100 / n
+
+fn main() = inv(five())

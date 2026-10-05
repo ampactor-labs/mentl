@@ -1,0 +1,32 @@
+// `list_set` reached as a VALUE inside an arena, storing lists the arena
+// allocates into a buffer older than it. The store's barrier is written at a
+// direct call, where the stored type is known; through a function value the
+// type is not known there, so the slot's table face journals the store with
+// no leaf, and the exit keeps the whole region rather than move a value it
+// cannot read. Exit 42 when the stored lists read back whole and the exit
+// was a keep.
+fn build(n) = if n == 0 { [] } else { build(n - 1) ++ [n] }
+
+fn add_int(a, b) = a + b
+
+fn apply3(f, a, b, c) = f(a, b, c)
+
+fn fill(buf) = {
+  let junk = build(300)
+  let _ = apply3(list_set, buf, 0, build(10))
+  let _ = apply3(list_set, buf, 1, build(20))
+  len(junk)
+}
+
+fn main() = {
+  let buf = make_list(4)
+  let k = fill(buf) ~> arena
+  let a = buf[0]
+  let b = buf[1]
+  let junk2 = build(400)
+  if k == 300 && fold(0, add_int, a) == 55 && fold(0, add_int, b) == 210 && len(junk2) == 400 && arena_stat(ArKept) == 1 {
+    42
+  } else {
+    1
+  }
+}

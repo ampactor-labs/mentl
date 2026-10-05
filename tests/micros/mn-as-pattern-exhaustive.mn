@@ -1,0 +1,19 @@
+// expect: 42
+// AN AS-PATTERN COVERS WHAT ITS INNER PATTERN COVERS: `whole @ Leaf(_)`
+// answers for `Leaf`, so the two arms are every variant of `Shape`, and the
+// class refuses now, so a false "misses" would fail this fixture. Measured
+// 2026-10-03 on boot 91257716: the exhaustiveness check read an as-pattern
+// as covering nothing and reported the match (E_PatternInexhaustive: misses
+// 1 of 2 variants); the class did not refuse yet, so the program ran to 42
+// beside one false error.
+type Shape = Leaf(Int) | Pair(Int, Int)
+
+fn total(s) = match s {
+  Pair(a, b) => a + b,
+  whole @ Leaf(_) => match whole {
+    Leaf(n) => n,
+    Pair(_, _) => 0,
+  },
+}
+
+fn main() = total(Leaf(40)) + total(Pair(1, 1))

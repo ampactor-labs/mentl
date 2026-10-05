@@ -1,0 +1,16 @@
+// expect: 7
+// AN-2 control — a bare-variable op abandoning at a frame's tail: the arm's
+// value is the install's value. Correct on boot 311479e1 (the perform was the
+// whole frame, so its OneShot grading had nowhere to flow the 7 into);
+// `mn-abandon-bottom-arm` is the shape that was not.
+effect Boom {
+  boom(msg: String) -> a
+}
+
+handler h {
+  boom(m) => 7,
+}
+
+fn f() = boom("x")
+
+fn main() = (f()) ~> h

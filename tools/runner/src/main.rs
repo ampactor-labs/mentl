@@ -619,10 +619,13 @@ fn instance_linker(
 // 134 (128+SIGABRT) and the micro battery banks that number, so the runner
 // speaks the same status — for the root instance and for an exec'd child.
 fn exit_status_of(e: &wasmtime::Error) -> i32 {
+    // The trap is PRINTED as well as coded: its frames (the module's name
+    // section) are the one instrument that pins a trap site, and a silent
+    // 134 sent every trap hunt into a probe cycle the backtrace answers.
+    eprintln!("Error: {e:?}");
     if e.downcast_ref::<wasmtime::Trap>().is_some() {
         134
     } else {
-        eprintln!("Error: {e:?}");
         1
     }
 }

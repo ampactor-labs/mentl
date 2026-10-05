@@ -1,0 +1,15 @@
+// CROWN refinement (P0, 2026-10-01): a computation's result is a NEW value,
+// and `x - 1` over `x: Positive` is not Positive — `dec(1)` is 0. The
+// refinement rode the arithmetic unification into the result's class, so
+// `dec` published `-> Positive`, the argument edge at `inv(dec(1))` saw a
+// value already of `inv`'s refinement and raised nothing, and the division
+// inside `inv` was proven by a parameter whose precondition no caller paid.
+// Boot 13e8484a: zero pending obligations, `!Trap` accepted, trap at run.
+// Expect E_EffectMismatch (Trap) at main.
+type Positive = Int where 0 < self
+
+fn dec(x: Positive) = x - 1
+
+fn inv(n: Positive) = 100 / n
+
+fn main() with !Trap = inv(dec(1))

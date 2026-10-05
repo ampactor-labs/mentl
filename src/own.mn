@@ -178,15 +178,14 @@ handler affine_ledger with used = [], used_sites = [], branches = [], fn_saved =
 
 // The declared-own projection: names only (the gate reports at the
 // CAPTURE site's span; the name carries the teaching).
-fn declared_own_names(ref declared) with Memory + Alloc = map({ (name, _) => name }, declared)
+fn declared_own_names(ref declared) = map({ (name, _) => name }, declared)
 
 // The double-consume message's one mint, String-pinned (the comment at
 // the consume arm carries the why).
-fn consume_twice_msg(name: String, first) with GraphRead + Memory + Alloc =
-  "'{name}' consumed twice (first at {show_span(first)})"
+fn consume_twice_msg(name: String, first) = "'{name}' consumed twice (first at {show_span(first)})"
 
 // The read-after-move message's mint, String-pinned like its sibling.
-fn read_after_move_msg(name: String, first) with GraphRead + Memory + Alloc =
+fn read_after_move_msg(name: String, first) =
   "'{name}' read after move (moved at {show_span(first)}) — the value this name owned has been consumed"
 
 // THE RELEVANT TIER'S REPORT — every authored `own` the body declared
@@ -195,7 +194,7 @@ fn read_after_move_msg(name: String, first) with GraphRead + Memory + Alloc =
 // findings, not failures, until the count is 0. The message states the
 // obligation rather than the rule: what the developer promised to
 // finish, and did not.
-fn report_unconsumed(ref declared, ref used, i) with Diagnostic + GraphRead + Memory + Alloc + Intern = if i >= len(declared) {
+fn report_unconsumed(ref declared, ref used, i) = if i >= len(declared) {
   ()
 } else {
   match declared[i] {
@@ -205,7 +204,7 @@ fn report_unconsumed(ref declared, ref used, i) with Diagnostic + GraphRead + Me
 }
 
 // The message's one mint, String-pinned like its double-consume sibling.
-fn unconsumed_msg(name: String) with Memory + Alloc =
+fn unconsumed_msg(name: String) =
   "'{name}' is declared own but never consumed on this path — an owned resource with no finalization"
 
 // Flat-array union across all branch deltas. Every delta is already
@@ -220,7 +219,7 @@ fn union_all_deltas(ref deltas) with !Mutate = fold([], set_union, deltas)
 // branches surfaces as (1,2), (1,3), (2,3) triples, each naming the
 // branch pair in its own diagnostic. Span is the branching verb's
 // span — the site where the violation becomes observable.
-fn report_branch_collisions(ref deltas, ref span) with Memory + Alloc + Intern + GraphRead + Diagnostic = {
+fn report_branch_collisions(ref deltas, ref span) = {
   let n = len(deltas)
   each(
     (i) => each(
@@ -377,7 +376,7 @@ handler region_tracker with region_stack = [], next_region = 0, region_index = w
 // self-compile (perf, 2026-07-13; the O(N²) alloc-check scan, §5.O). The handle
 // is a dense Int, so i32.eq buckets — no str_eq. Returns Some(tag) / None, exactly
 // as find did.
-fn lookup_tag(ref idx, handle) with Memory + Alloc = wmap_get(idx, handle)
+fn lookup_tag(ref idx, handle) = wmap_get(idx, handle)
 
 // The bucket count is the INDEX'S OWN, read live from its header.
 //
@@ -410,9 +409,9 @@ fn lookup_tag(ref idx, handle) with Memory + Alloc = wmap_get(idx, handle)
 // config param "trapped m3 at exit 134 with zero bytes … unexplained".
 //
 // That exit-134-with-no-diagnostic is the silent-floor signature, and it is
-// now cheap to test rather than guess: T_FieldOffsetUnprovable reports as of
-// this landing, so parameterising the handler and reading the diagnostic
-// says whether the open-row field-offset class is what refused it. Until
+// now cheap to test rather than guess: the open-row field-offset class
+// refuses with its reason (E_FieldOffsetUnprovable), so parameterising the
+// handler and reading the diagnostic says whether it is what refused it. Until
 // that probe runs, the cause is unmeasured and these constants stay what
 // they are — named residue, not a fix.
 //
@@ -425,14 +424,13 @@ let region_buckets_program = 65536
 
 let region_buckets_branch = 1024
 
-fn region_on_stack(ref stack, rid) with Memory + Alloc =
-  any({ Region(rid_on_stack, _) => rid_on_stack == rid }, stack)
+fn region_on_stack(ref stack, rid) = any({ Region(rid_on_stack, _) => rid_on_stack == rid }, stack)
 
 // H4.1: join field regions with current region — returns the MAX
 // (innermost) region_id. Untagged fields (scalars, never alloc'd)
 // contribute region 0 (global lifetime, doesn't bound the join).
 // The result is the composite's pinning region.
-fn join_field_regions(ref tags, ref fields, current) with Memory + Alloc = fold(
+fn join_field_regions(ref tags, ref fields, current) = fold(
   current,
   (acc, fh) => {
     let field_rid = match lookup_tag(tags, fh) {
@@ -446,16 +444,15 @@ fn join_field_regions(ref tags, ref fields, current) with Memory + Alloc = fold(
   fields
 )
 
-fn report_each_collision(ref names, ref span) with Diagnostic + Memory + Alloc + GraphRead + Intern =
+fn report_each_collision(ref names, ref span) =
   each((name) => report(EOwnershipViolation(parallel_collision_msg(name), span)), names)
 
 // The collision message's one mint, String-pinned (spec_mangle's law —
 // the each-lambda judges datum-last while the set element is still
 // free, so the pin anchors at the named call, consume_twice_msg's twin).
-fn parallel_collision_msg(name: String) with Memory + Alloc =
-  "'{name}' consumed in two parallel branches"
+fn parallel_collision_msg(name: String) = "'{name}' consumed in two parallel branches"
 
-fn find_first_span(ref sites, ref name: String) with Alloc + Memory = {
+fn find_first_span(ref sites, ref name: String) = {
   let hits = filter({ (entry_name, _) => entry_name == name }, sites)
   if len(hits) == 0 {
     span_zero()
@@ -501,7 +498,7 @@ fn find_first_span(ref sites, ref name: String) with Alloc + Memory = {
 // the Usage lattice unification the types.mn ADT comment names): never
 // consumed and never read → `Unmarked`; never consumed but read → `Ref`;
 // consumed exactly once on every path → `Own`; consumed more → `Ref`.
-fn infer_ownership(ref params, ref body) with Memory + Alloc + EnvRead + GraphRead = map(
+fn infer_ownership(ref params, ref body) = map(
   (p) => {
     let inferred = match param_authored(p) {
       Unmarked => classify_usage(param_name(p), body),
@@ -516,7 +513,7 @@ fn infer_ownership(ref params, ref body) with Memory + Alloc + EnvRead + GraphRe
   list_to_flat(params)
 )
 
-fn classify_usage(ref name, ref body) with Memory + Alloc + EnvRead + GraphRead = match usage_of(name, body, MConsume) {
+fn classify_usage(ref name, ref body) = match usage_of(name, body, MConsume) {
   (consume, read) => match consume {
     UZero => match read {
       UZero => Unmarked,
@@ -562,7 +559,7 @@ fn pair_join(a, b) = match a {
 // (infer.mn) is this walk's sibling over the same lattice — they stay two
 // walks because resume carries call-substitution this walk must not, and
 // this walk carries mode resume must not (the stamped two-walks ruling).
-fn usage_of(ref name: String, ref node, mode) with Memory + Alloc + EnvRead + GraphRead = match node {
+fn usage_of(ref name: String, ref node, mode) = match node {
   N(body, _, _) => match body {
     NExpr(VarRef(n)) => if n == name { use_leaf(mode) } else { pair_zero() },
     NExpr(CallExpr(f, args)) => pair_seq(usage_of(name, f, MRead), usage_args(name, args, callee_borrow_params(f), 0)),
@@ -624,7 +621,7 @@ fn usage_of(ref name: String, ref node, mode) with Memory + Alloc + EnvRead + Gr
     pair_zero(),
     NStmt(TypeDefStmt(_, _)) => pair_zero(),
     NStmt(EffectDeclStmt(_, _, _)) => pair_zero(),
-    NStmt(HandlerDeclStmt(_, _, _, _, _)) => pair_zero(),
+    NStmt(HandlerDeclStmt(_, _, _, _, _, _)) => pair_zero(),
     NStmt(ImportStmt(_)) => pair_zero(),
     NStmt(RefineStmt(_, _, _)) => pair_zero(),
     NStmt(AliasStmt(_, _)) => pair_zero(),
@@ -642,14 +639,14 @@ fn usage_of(ref name: String, ref node, mode) with Memory + Alloc + EnvRead + Gr
 // shape of resume_grade's grade_nodes (a named walk, not a fold lambda:
 // usage_of performs EnvRead, and an effectful lambda is the anonymity
 // tier's own conviction).
-fn usage_elems(ref name, ref nodes, mode) with Memory + Alloc + EnvRead + GraphRead = if len(nodes) == 0 {
+fn usage_elems(ref name, ref nodes, mode) = if len(nodes) == 0 {
   pair_zero()
 } else {
   pair_seq(usage_of(name, last(nodes), mode), usage_elems(name, drop_last(nodes), mode))
 }
 
 // ⊔ over match arms ((pat, body) tuples): exactly one arm runs.
-fn usage_arms(ref name, ref arms, mode) with Memory + Alloc + EnvRead + GraphRead = if len(arms) == 0 {
+fn usage_arms(ref name, ref arms, mode) = if len(arms) == 0 {
   pair_zero()
 } else {
   match last(arms) {
@@ -658,7 +655,7 @@ fn usage_arms(ref name, ref arms, mode) with Memory + Alloc + EnvRead + GraphRea
 }
 
 // ⊗ over record fields ((name, value) tuples).
-fn usage_flds(ref name, ref flds, mode) with Memory + Alloc + EnvRead + GraphRead = if len(flds) == 0 {
+fn usage_flds(ref name, ref flds, mode) = if len(flds) == 0 {
   pair_zero()
 } else {
   match last(flds) {
@@ -682,7 +679,7 @@ fn usage_flds(ref name, ref flds, mode) with Memory + Alloc + EnvRead + GraphRea
 // ref, and the second judgment flipped it to own. With one judgment
 // (2026-09-17) the read is the shape at this moment, and the callee-first
 // walk makes it an arrow for every acyclic callee before its callers ask.
-fn callee_borrow_params(ref f) with !Mutate + GraphRead + EnvRead + Memory + Alloc = match f {
+fn callee_borrow_params(ref f) with !Mutate = match f {
   N(fb, _, _) => match fb {
     NExpr(VarRef(cn)) => match env_lookup(cn) {
       Some(entry) => match entry {
@@ -702,7 +699,7 @@ fn callee_borrow_params(ref f) with !Mutate + GraphRead + EnvRead + Memory + All
 // A cell's arrow, one hop: the params when the bound node is a function,
 // None when it is anything else. Shared by the live posture and the frozen
 // TVar, which are the same read taken at two moments.
-fn chased_borrow_params(h) with GraphRead + Memory + Alloc = match graph_chase(h) {
+fn chased_borrow_params(h) = match graph_chase(h) {
   GNode(NBound(TFun(ps, _, _)), _) => Some(ps),
   _ => None,
 }
@@ -711,7 +708,7 @@ fn chased_borrow_params(h) with GraphRead + Memory + Alloc = match graph_chase(h
 // slot pairing is positional (infer_call_arg_list's own idiom); a labeled
 // arg resolves its param by NAME, exactly as resolve_call_args does one
 // phase earlier.
-fn usage_args(ref name, ref args, borrow_slots, i) with Memory + Alloc + EnvRead + GraphRead = if i >= len(args) {
+fn usage_args(ref name, ref args, borrow_slots, i) = if i >= len(args) {
   pair_zero()
 } else {
   let arg = list_index(args, i)

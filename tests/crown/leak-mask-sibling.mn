@@ -1,0 +1,11 @@
+// CROWN — a `~>` mask covers the computation it encloses and nothing
+// beside it. `run`'s row is f's row joined with g's row MINUS E: the tee
+// absorbs E for g only, so a caller passing an E-performing f under a
+// declared !E must refuse. Until 2026-09-26 the stored row folded the
+// tee's mask into the whole row (`!E + r_f + r_g`), masked f's E too, and
+// this was accepted. Expect E_EffectMismatch.
+effect E { op() -> Int }
+handler h { op() => resume(7) }
+fn run(f, g) = f() + ((g()) ~> h)
+fn bad() with !E = run(() => op(), () => 1)
+fn main() = (bad()) ~> h
