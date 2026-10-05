@@ -1,4 +1,4 @@
-# mentl edit — the web IDE (band M's first artifact)
+# Mentl Space — the web IDE (band M's first artifact)
 
 The page runs THE FIXPOINT COMPILER ITSELF in your browser: boot/mentl.wasm,
 the pinned boot, unmodified — the page fetches it at `../boot/mentl.wasm`

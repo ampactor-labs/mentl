@@ -44,6 +44,3 @@ art/
 .codex
 __pycache__/
 .heavy-lock
-
-# Node host dependencies — installed on demand by wt-env.sh
-tools/host-node/node_modules/

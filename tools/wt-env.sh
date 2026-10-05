@@ -27,74 +27,31 @@
 # once at source time so both run (validated 2026-07-23: wheel self-compile
 # byte-identical and battery 113/113 through BOTH binaries —
 # Hβ.ops.wasmtime-runner-migration step 1).
-# THE HOST IS A SEAM, NOT AN ENGINE. The wasmtime CLI was a dead end twice
-# over: measured 2026-09-06, the same spawning module answers exit 60 through
-# wasmtime 36's CLI and `Error: the -Sthreads flag is no longer supported`
-# through 47's; and since the wheel performs the exec seam (2026-09-17) every
-# Mentl module imports `mentl_host`, which no CLI defines — 36's
-# `-W unknown-imports-trap` is applied after its wasi-threads shim has already
-# instantiated, so the boot cannot even start there. A host must provide the
-# SEAM CONTRACT: WASI preview1, the shared env.memory import, mentl_host
-# (wat_write/exec), wasi/thread-spawn, and the -S tcplisten= socket. Two
-# hosts honor it:
-#   - tools/runner (Rust/wasmtime embedding) — the reference; the gates are
-#     measured against it. Preferred when built.
-#   - tools/host-node (Node.js) — zero Rust; the same contract on Node's
-#     engine (wabt for the exec seam's assemble step). Preferred when the
-#     runner is absent and node is present.
-# The fallback is EXPLICIT, never silent: sourcing this file prints which
-# host was selected when it isn't the runner.
+# THE EMBEDDED RUNNER IS THE ENGINE — the only one. The wasmtime CLI was a
+# dead end twice over: measured 2026-09-06, the same spawning module answers
+# exit 60 through wasmtime 36's CLI and `Error: the -Sthreads flag is no
+# longer supported` through 47's; and since the wheel performs the exec seam
+# (2026-09-17) every Mentl module imports `mentl_host`, which no CLI defines
+# — 36's `-W unknown-imports-trap` is applied after its wasi-threads shim has
+# already instantiated, so the boot cannot even start there. tools/runner
+# registers wasi.thread-spawn itself, creates the shared memory, executes
+# the streamed WAT of `mentl run` and the battery, and owns the listening
+# socket (`-S tcplisten=`, the p1 socket protocol lib/net.mn speaks — the
+# CLI's legacy tcplisten, served by the runner; Hβ.ops.runner-owns-the-p1-socket).
+# There is no fallback engine to fall back to, so a missing runner REFUSES
+# here, loudly, with the build command — never a silent downgrade.
 #
 # One capability the runner drops: `-D coredump=` is parsed and ignored, so a
 # trapped m3 leg writes no coredump for the autopsy. Named here rather than
 # discovered at the next trap.
-_wt_here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-_wt_runner="${MENTL_RUNNER:-$_wt_here/runner/target/release/mentl-runner}"
-_wt_node_host="$_wt_here/host-node/mentl-host.mjs"
-
-# Host selection. MENTL_HOST forces one: `node` (zero-Rust) or `runner`
-# (refusing when absent, the old behavior). Unset: the runner when built —
-# it is the reference the gates are measured against — else the Node host.
-_wt_want="${MENTL_HOST:-auto}"
-case "$_wt_want" in
-  runner)
-    if [ ! -x "$_wt_runner" ]; then
-      echo "wt-env: MENTL_HOST=runner but no runner at $_wt_runner — build it: cargo build --release --manifest-path tools/runner/Cargo.toml" >&2
-      return 2 2>/dev/null || exit 2
-    fi
-    WT="$_wt_runner"; WT_RUN_FLAGS=(-W threads=y -W tail-call=y); WT_ENGINE="runner" ;;
-  node)
-    _wt_use_node=1 ;;
-  auto)
-    if [ -x "$_wt_runner" ]; then
-      WT="$_wt_runner"; WT_RUN_FLAGS=(-W threads=y -W tail-call=y); WT_ENGINE="runner"
-    else
-      _wt_use_node=1
-    fi ;;
-  *) echo "wt-env: unknown MENTL_HOST=$_wt_want (want node|runner)" >&2; return 2 2>/dev/null || exit 2 ;;
-esac
-
-if [ -n "${_wt_use_node:-}" ]; then
-  if ! command -v node >/dev/null 2>&1; then
-    echo "wt-env: no runner at $_wt_runner and no node for the Node host." >&2
-    echo "wt-env: build the runner: cargo build --release --manifest-path tools/runner/Cargo.toml" >&2
-    echo "wt-env: or install node (>=20) for the zero-Rust host." >&2
-    return 2 2>/dev/null || exit 2
-  fi
-  if [ ! -d "$_wt_here/host-node/node_modules/wabt" ]; then
-    echo "wt-env: installing the Node host's assembler (wabt)..." >&2
-    (cd "$_wt_here/host-node" && npm install --no-audit --no-fund >&2) || {
-      echo "wt-env: npm install failed in tools/host-node" >&2
-      return 2 2>/dev/null || exit 2
-    }
-  fi
-  WT="$_wt_node_host"
-  WT_RUN_FLAGS=()
-  WT_ENGINE="node"
-  if [ "$_wt_want" = "auto" ]; then
-    echo "wt-env: runner not built — using the Node host. The gates are measured against the runner; MENTL_HOST=runner forces it." >&2
-  fi
+_wt_runner="${MENTL_RUNNER:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/runner/target/release/mentl-runner}"
+if [ ! -x "$_wt_runner" ]; then
+  echo "wt-env: no runner at $_wt_runner — build it: cargo build --release --manifest-path tools/runner/Cargo.toml" >&2
+  return 2 2>/dev/null || exit 2
 fi
+WT="$_wt_runner"
+WT_RUN_FLAGS=(-W threads=y -W tail-call=y)
+WT_ENGINE="runner"
 # MENTL_WT_EXTRA — extra runner flags, word-split, appended to every wt_run and
 # every shim invocation. It exists for ONE thing the canonical flags cannot
 # express and the shim therefore could not reach: attaching a profiler.
@@ -105,8 +62,7 @@ fi
 #   MENTL_WT_EXTRA=--profile=perfmap perf record -g -- mentl check <file>
 # Empty by default, so every gate and every march runs byte-identical flags.
 # shellcheck disable=SC2206 — the split is the point; this file is sourced by bash.
-# Runner-only: profiler attachment has no meaning on the Node host.
-if [ -n "${MENTL_WT_EXTRA:-}" ] && [ "${WT_ENGINE:-}" = "runner" ]; then
+if [ -n "${MENTL_WT_EXTRA:-}" ]; then
   WT_RUN_FLAGS+=($MENTL_WT_EXTRA)
 fi
 WABT_FEATURE_FLAGS=(--enable-threads --enable-tail-call)

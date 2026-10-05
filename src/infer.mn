@@ -3052,17 +3052,6 @@ fn infer_fn(name, params, body_node, ret_ann, effs, handle, span: ValidSpan, pol
         let resolved_effs = resolve_declared_instances(declared_effs)
         check_instance_args(resolved_effs, span)
         let declared_row = build_declared_row(resolved_effs)
-        // ─── Branch A: the declared row constrains its params' rows ───
-        // (Hβ.infer.declared-row-vacuous-against-a-free-body-row,
-        // STAMPED 2026-08-18.) The gate below is a READ by contract;
-        // the constraint belongs HERE, where inference owns the write.
-        // Each function-typed param with an open-tailed latent row is
-        // capped with the declared absences (or pure), so a later call
-        // unifying an effectful row refuses at the call site instead of
-        // the negation leaking through a free tail.
-        match declared_row {
-          EfRow(_, da, _) => cap_params_for_declared(inferred_params, da, has_pure, Located(span, Declared(name))),
-        }
         // THE GATE RUNS ON THE RESOLVED ROW, at every exit — a cycle
         // member's, a HOF's, a solo's alike. It used to PARK a cycle
         // member's gate until the group's chains closed, because the
@@ -3241,34 +3230,6 @@ fn pin_scalar_or_keep(barg, darg) = match darg {
 // The pin (the entry's unknowable value dim becomes the declared scalar)
 // is a decl-exit REPLACE on the STORED row — a finalize, judged like
 // every replace — and runs first so the reading below sees it.
-// ─── Branch A of Hβ.infer.declared-row-vacuous-against-a-free-body-row ───
-// Walk the inferred params; for each function-typed param whose latent row
-// is an open tail, cap it with the declared absences (or pure) via
-// cap_row_for_declared's mask edge. The param types are live TVar(h)
-// cells, so rebinding h preserves liveness for every reader of the
-// param's type — the scheme that generalize builds, and every call site
-// that instantiates it, see the cap. A later call unifying an effectful
-// row into the capped var refuses AT THE CALL SITE.
-fn cap_params_for_declared(ref params, ref da, is_pure, reason) with Memory + Alloc + GraphRead + GraphWrite =
-  match params {
-    [] => (),
-    [p, ...rest] => {
-      match param_ty(p) {
-        TVar(h) => match graph_chase(h) {
-          GNode(NBound(TFun(pp, pr, row)), _) =>
-            if row_needs_declared_cap(row, da, is_pure) {
-              graph_bind(h, TFun(pp, pr, cap_row_for_declared(row, da, is_pure, reason)), reason)
-            } else {
-              ()
-            },
-          _ => (),
-        },
-        _ => (),
-      }
-      cap_params_for_declared(rest, da, is_pure, reason)
-    },
-  }
-
 fn enforce_row_gate(name: String, declared_row, has_pure, row_handle, span: ValidSpan) = {
   let why = Located(span, Declared(name))
   match graph_chase(row_handle) {
