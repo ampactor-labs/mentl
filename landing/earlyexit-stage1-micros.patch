@@ -1,0 +1,112 @@
+diff --git a/tests/micros/mn-mixed-arm-answers.mn b/tests/micros/mn-mixed-arm-answers.mn
+new file mode 100644
+index 0000000..710a46c
+--- /dev/null
++++ b/tests/micros/mn-mixed-arm-answers.mn
+@@ -0,0 +1,23 @@
++// expect: 100
++// An arm that resumes on one path and answers on the other — the
++// OneShotOrAbandon grade. `ask(m, 5)` takes the answering path: its value is
++// the install's, nothing after the perform runs, and the early exit builds
++// nothing, so the arm reads the heap exactly where `main` marked it and
++// answers 100 (50 had anything been allocated on the way). On boot 4228ff71
++// the grade joined the answering branch into the tail resume, the arm's 100
++// came back to the performer as the op's result, and the program answered
++// 1 + 100 = 101.
++effect Ask {
++  ask(m: Addr, x: Int) -> Int
++}
++
++handler h {
++  ask(m, x) => if x > 2 { if addr_diff(heap_mark(), m) == 0 { 100 } else { 50 } } else { resume(x) },
++}
++
++fn f(m) with !Alloc = ask(m, 1) + ask(m, 5)
++
++fn main() = {
++  let m = heap_mark()
++  f(m)
++} ~> h
+diff --git a/tests/micros/mn-mixed-across-handlers.mn b/tests/micros/mn-mixed-across-handlers.mn
+new file mode 100644
+index 0000000..c4ce103
+--- /dev/null
++++ b/tests/micros/mn-mixed-across-handlers.mn
+@@ -0,0 +1,22 @@
++// expect: 106
++// One op, two handlers: `giveup` never resumes and `echo` resumes at its
++// tail, so the op is OneShotOrAbandon — each install's arm is called by the
++// performer, `echo`'s resume is the stack return and `giveup`'s value
++// answers its own install. 100 + (1 + 5). On boot 4228ff71 the join made the
++// op Abandon, `echo`'s resume was dispatched by the driver with a dead
++// continuation, and the program trapped (`uninitialized element`, exit 134).
++effect Ask {
++  ask(x: Int) -> Int
++}
++
++handler giveup {
++  ask(x) => 100,
++}
++
++handler echo {
++  ask(x) => resume(x),
++}
++
++fn f() = ask(1) + ask(5)
++
++fn main() = (f() ~> giveup) + (f() ~> echo)
+diff --git a/tests/micros/mn-answer-names-its-install.mn b/tests/micros/mn-answer-names-its-install.mn
+new file mode 100644
+index 0000000..7bcd486
+--- /dev/null
++++ b/tests/micros/mn-answer-names-its-install.mn
+@@ -0,0 +1,20 @@
++// expect: 5
++// An answer lands at the install whose arm gave it, named by the record the
++// arm ran against — not at the innermost install of the handler. `ask(7)`
++// answers the inner install (30), and `ask(9)`, performed beside it under
++// the outer install, answers the outer one (5), which is the program's.
++// On boot 4228ff71 both answers came back to their performers as the op's
++// result: (1 + 30) + 5 = 36.
++effect Ask {
++  ask(x: Int) -> Int
++}
++
++handler h(tag) {
++  ask(x) => if x > 2 { tag } else { resume(x) },
++}
++
++fn inner() = ask(1) + ask(7)
++
++fn outer() = (inner() ~> h(30)) + ask(9)
++
++fn main() = outer() ~> h(5)
+diff --git a/tests/micros/mn-answer-through-held-resume.mn b/tests/micros/mn-answer-through-held-resume.mn
+new file mode 100644
+index 0000000..d516a8d
+--- /dev/null
++++ b/tests/micros/mn-answer-through-held-resume.mn
+@@ -0,0 +1,23 @@
++// expect: 20
++// A held resume's remainder performs an op whose arm answers: under the deep
++// handler the answer is the value of handling the remainder, so `resume(1)`
++// returns 10 and the held arm answers 10 * 2. The answer is taken where the
++// resume re-drives its handler (the same driver the install runs). On boot
++// 4228ff71 the answer came back to `x(9)` as its result, the remainder
++// returned 1 + 10, and the program answered 22.
++effect E {
++  y() -> Int
++  x(v: Int) -> Int
++}
++
++handler h {
++  y() => {
++    let r = resume(1)
++    r * 2
++  },
++  x(v) => if v > 5 { 10 } else { resume(v) },
++}
++
++fn body() = y() + x(9)
++
++fn main() = body() ~> h

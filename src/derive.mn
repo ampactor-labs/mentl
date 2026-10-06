@@ -728,6 +728,11 @@ fn jvp(e, env, cx) = match e {
   match seq_values(h, jvp_list(args, env, cx)) {
     (pre, vals, _) => jv(pre, LAbandon(h, op, vals), LinZero, AInactive),
   },
+  LAnswer(h, v, rec) => // An answer leaves the extent the same way; the install it lands at is not
+  // entered by the reading (`jvp_install`), so its value carries no tangent.
+  match seq_values(h, jvp_list([v, rec], env, cx)) {
+    (pre, vals, _) => jv(pre, LAnswer(h, list_index(vals, 0), list_index(vals, 1)), LinZero, AInactive),
+  },
   LUnwind(_) => // A boundary check: the frame leaves when the flag is up, and the position
   // carries no value the reading could differentiate.
   jv_plain(e),
@@ -1215,6 +1220,7 @@ fn leaves_value(e) = match e {
   LYield(_, _, _, _) => true,
   LKExtend(_, _) => true,
   LAbandon(_, _, _) => true,
+  LAnswer(_, _, _) => true,
   LUnwind(_) => true,
   LMakeContinuation(_, _, _, _, _) => true,
   LIf(_, _, _, _) => true,
@@ -1884,8 +1890,10 @@ fn body_of(h, jb) =
 // inside, at their derivative twins (`jvp_op`). A config whose tangent was
 // lost has no lane to ride, and the install refuses rather than let an arm
 // read it as fixed. A multi-shot install reifies remainders the reading does
-// not enter. An install carrying tangents is the forward projection's alone.
-fn jvp_install(h, b, hn, hname: String, inits, arms, env, cx) = if len(multishot_ops_of(hname)) > 0 {
+// not enter, and an answer crosses to its install in the instance's area,
+// where no tangent rides. An install carrying tangents is the forward
+// projection's alone.
+fn jvp_install(h, b, hn, hname: String, inits, arms, env, cx) = if handler_drives(hname) {
   jvp_unentered(h, LHandleWith(h, b, hn, hname, inits, arms))
 } else {
   let jinits = jvp_list(inits, env, cx)
@@ -2619,6 +2627,7 @@ fn node_touches(e) = match e {
   LYield(_, _, _, _) => false,
   LKExtend(_, _) => false,
   LAbandon(_, _, _) => false,
+  LAnswer(_, _, _) => false,
   LUnwind(_) => false,
   LMakeContinuation(_, _, _, _, _) => false,
   LDeclareFn(_) => false,
@@ -2672,6 +2681,7 @@ fn callee_of(e) = match e {
   LYield(_, _, _, _) => [],
   LKExtend(_, _) => [],
   LAbandon(_, _, _) => [],
+  LAnswer(_, _, _) => [],
   LUnwind(_) => [],
   LMakeContinuation(_, _, _, _, _) => [],
   LDeclareFn(_) => [],
@@ -2828,6 +2838,7 @@ fn seed_lanes(h, seed) = match seed {
   LYield(_, _, _, _) => None,
   LKExtend(_, _) => None,
   LAbandon(_, _, _) => None,
+  LAnswer(_, _, _) => None,
   LUnwind(_) => None,
   LMakeContinuation(_, _, _, _, _) => None,
   LDeclareFn(_) => None,

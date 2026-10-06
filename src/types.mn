@@ -742,8 +742,10 @@ type ResumeDiscipline
   = OneShot
   | MultiShot
   | Either
-  // M4 — the arm NEVER resumes AND returns a meaningful value: it delivers that value as the INSTALL's, abandoning the continuation (a UZero grade over a concrete return; `abort() -> Option`). A dead continuation, so the perform yields with a dummy k and the remainder deadens — distinct from MultiShot (live k, off-spine unsupportable → floor) and OneShot (bottom/noreturn: `fail -> a`, no value to abandon)
+  // the arm never resumes: its value is the install's (AN-1), the continuation is dead, and the perform unwinds to the install, whose driver runs the arm (AN-2)
   | Abandon
+  // the arm resumes at its result on some paths and answers the install on others (an `RTailOrAbandon` arm, or a resuming arm in one handler and an abandoning one in another): the performer calls the arm directly as for OneShot, a resuming path returns the resumed value as the stack return, and an answering path stores its value beside the install's record and unwinds the performer to that install (`LAnswer`) — early exit with no continuation built
+  | OneShotOrAbandon
 
 // ─── Usage — the coeffect multiplicity grade {0, 1, ω} ─────────────
 // How many times a value is used, as a join-semilattice. THE shared
@@ -807,52 +809,109 @@ fn usage_join(a, b) = match a {
 // transferred; a value used inside is consumed), so this is the
 // multiplicity lattice extended by the position mode: RNone/RTail/RDeep/
 // RMany project onto Usage as UZero/UOne/UOne/UMany.
-type ResumeUse = RNone | RTail | RDeep | RMany
+//
+// The grade has an EXIT dimension too — whether some path of the arm reaches
+// its result WITHOUT resuming, so the arm's value there answers the install
+// (AN-1) — and it was lost in the join until 2026-10-06: RNone ⊔ RTail was
+// RTail, so `ask(x) => if x > 2 { 100 } else { resume(x) }` lowered as the
+// stack return on both paths and its 100 came back to the performer as the
+// op's result (`ask(1) + ask(5)` answered 101 where the install answers 100;
+// tests/micros/mn-mixed-arm-answers.mn). The dimension matters at exactly one
+// point of ResumeUse × MayAbandon: a held or many-shot arm already answers
+// through its own value, and an arm that never resumes is Abandon, so the
+// product's one new point is `RTailOrAbandon` — every resume at the arm's
+// result, and some path answering instead. It is a SPINE fact: a branch of
+// an if or a match at the arm's result that never resumes; any use held by
+// code after it, or an answer inside another frame (a callee, a lambda),
+// is the held grade, which answers through the record path.
+type ResumeUse = RNone | RTail | RTailOrAbandon | RDeep | RMany
 
 // `a` then `b`, with `b` at the result position of the sequence: any use in
 // `a` has code after it, so a tail use in `a` becomes a held one, and two
-// uses on one path are many. Not symmetric — the fold that applies it runs
+// uses on one path are many. A path of `a` that answered is not at the
+// sequence's result — it is a value the sequence goes on from — so `a`'s
+// exit dimension ends here. Not symmetric — the fold that applies it runs
 // in source order.
 fn resume_seq(a, b) = match a {
   RNone => b,
   RMany => RMany,
-  RTail => match b {
-    RNone => RDeep,
-    RTail => RMany,
-    RDeep => RMany,
-    RMany => RMany,
-  },
+  RTail => resume_after_tail(b),
+  RTailOrAbandon => resume_after_tail(b),
   RDeep => match b {
     RNone => RDeep,
     RTail => RMany,
+    RTailOrAbandon => RMany,
     RDeep => RMany,
     RMany => RMany,
   },
 }
 
-// Alternatives — exactly one branch runs, so the grades join, never add.
-fn resume_join(a, b) = match a {
-  RNone => b,
+// A tail use followed by `b`: the use is held now.
+fn resume_after_tail(b) = match b {
+  RNone => RDeep,
+  RTail => RMany,
+  RTailOrAbandon => RMany,
+  RDeep => RMany,
   RMany => RMany,
-  RTail => match b {
-    RNone => RTail,
-    RTail => RTail,
+}
+
+// Alternatives — exactly one branch runs, so the grades join, never add. A
+// branch that never resumes beside one that resumes at the result is the
+// exit dimension: that branch ANSWERS. Every fold that applies it joins only
+// real alternatives (`grade_join_arms` starts at its first arm, never at an
+// RNone identity, which would read as a branch that answers).
+fn resume_join(a, b) = match a {
+  RNone => match b {
+    RNone => RNone,
+    RTail => RTailOrAbandon,
+    RTailOrAbandon => RTailOrAbandon,
     RDeep => RDeep,
     RMany => RMany,
   },
-  RDeep => match b {
-    RNone => RDeep,
-    RTail => RDeep,
+  RMany => RMany,
+  RTail => match b {
+    RNone => RTailOrAbandon,
+    RTail => RTail,
+    RTailOrAbandon => RTailOrAbandon,
     RDeep => RDeep,
     RMany => RMany,
+  },
+  RTailOrAbandon => match b {
+    RDeep => RDeep,
+    RMany => RMany,
+    RNone => RTailOrAbandon,
+    RTail => RTailOrAbandon,
+    RTailOrAbandon => RTailOrAbandon,
+  },
+  RDeep => match b {
+    RMany => RMany,
+    RNone => RDeep,
+    RTail => RDeep,
+    RTailOrAbandon => RDeep,
+    RDeep => RDeep,
   },
 }
 
 // The value is consumed at an interior position — an operand, an argument,
-// an element, a lambda body — so a tail use becomes a held one.
+// an element, a lambda body — so a tail use becomes a held one, and a path
+// that answered there answered only the interior position.
 fn resume_interior(a) = match a {
   RNone => RNone,
   RTail => RDeep,
+  RTailOrAbandon => RDeep,
+  RDeep => RDeep,
+  RMany => RMany,
+}
+
+// A grade read off ANOTHER frame — a callee's summary, a lambda handed to a
+// callee that calls it at its tail. A resume at that frame's result is still
+// the arm's stack return, but a path there that answers ends in a frame the
+// arm cannot lower: only the arm's own spine can lower an answer as the
+// unwind, so a mixed grade from elsewhere is the held one.
+fn resume_from_frame(a) = match a {
+  RTailOrAbandon => RDeep,
+  RNone => RNone,
+  RTail => RTail,
   RDeep => RDeep,
   RMany => RMany,
 }
@@ -4458,6 +4517,14 @@ effect LowerScope {
   // enter a nominal type's structure; leave it
   ls_wide_enter(String)
   ls_wide_leave()
+  // the resume grades at the classifier's fixpoint — (fn name, grade) and
+  // (fn name, tail-transparent parameter indices) — computed once at
+  // lower_program, where an answering arm's lowering reads them
+  ls_register_grades([(String, ResumeUse)], [(String, [Int])])
+  // a node's resume grade, read through those summaries — the judgment's own
+  // `resume_grade`, so the arm the judgment graded RTailOrAbandon is lowered
+  // by the same leaves it graded
+  ls_resume_grade(Node) -> ResumeUse
 }
 
 // Every refinement unification performs verify(span, pred, reason).
@@ -4910,6 +4977,7 @@ fn show_discipline(d) with Pure = match d {
   MultiShot => "MultiShot",
   Either => "Either",
   Abandon => "Abandon",
+  OneShotOrAbandon => "OneShotOrAbandon",
 }
 
 fn show_field(ref field: (String, Ty)) with !Mutate = match field {

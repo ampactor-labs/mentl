@@ -689,6 +689,7 @@ fn settle_node(site: String, expr) = match expr {
   LYield(h, op, _, _) => settle_yield(h, op),
   LKExtend(_, _) => (),
   LAbandon(_, _, _) => (),
+  LAnswer(_, _, _) => (),
   LUnwind(h) => settle_unwind(h),
   LIf(_, _, _, _) => (),
   LBlock(_, _) => (),
@@ -1327,6 +1328,12 @@ fn alloc_walk(unit, e) = match e {
     below || rest
   },
   LAbandon(_, _, args) => alloc_walk_list(unit, args, 0),
+  LAnswer(_, v, rec) => {
+    // the answer crosses in the area allocated once at start: no record
+    let a = alloc_walk(unit, v)
+    let b = alloc_walk(unit, rec)
+    a || b
+  },
   LUnwind(_) => false,
   LKExtend(_, k) => {
     // the continuation's extension: the op's cost, recorded
@@ -2987,6 +2994,14 @@ fn walk_lemit_expr(expr) = match expr {
     visit_effect_demand(op_name)
     walk_lemit_list(args)
   },
+  LAnswer(_, v, rec) => // An answer is no perform: it demands no op and interns no key — the
+  // value and the record cross in two slots of the area.
+  {
+    visit_yield()
+    visit_yield_args(2)
+    walk_lemit_expr(v)
+    walk_lemit_expr(rec)
+  },
   LUnwind(_) => // A boundary check reads the yield globals.
   visit_yield(),
   LKExtend(_, k) => // band B M1.3: a k2 boundary needs the yield machinery (globals + the
@@ -3065,6 +3080,12 @@ fn walk_lemit_expr(expr) = match expr {
       },
       multishot_ops_of(hname)
     )
+    // An answering handler's driver reads the yield globals and the area's
+    // two answer slots.
+    if handler_takes_answers(hname) {
+      visit_yield()
+      visit_yield_args(2)
+    }
   },
   LDerive(_h, seed, b) => // The derivative reading's forward body is what its expansion keeps, in
   // order — every string, name, line and perform the projections collect
@@ -3261,6 +3282,13 @@ fn emit_line_globals(owners) = each(
 // the install drivers compare), $yield_k (the reified continuation record).
 // Emitted only when the module yields (the sixth projection). Beside them the
 // LANE a wide value crosses the continuation face in (`emit_to_continuation`).
+// The $yield_op word an ANSWER carries (`LAnswer`): an op's key is its name's
+// interned offset, which is positive, so -1 is no op's — every driver it
+// passes bubbles it, and only the install whose record it names takes it. It
+// is nonzero, so a branch thread's record re-raises it at the join as it
+// re-raises an abandon.
+fn answer_key() = 0 - 1
+
 fn emit_yield_globals() = {
   wat_emit("  (global $yield_flag (mut i32) (i32.const 0))\n")
   wat_emit("  (global $yield_op (mut i32) (i32.const 0))\n")
@@ -3445,7 +3473,7 @@ fn redrive_handlers(table_names, twin_base_set) = {
   filter(
     (hname) => all(
       { (op, _arity) => arm_in_module(table_names, twin_base_set, arm_fn_name(hname, op)) },
-      multishot_ops_of(hname)
+      driven_ops_of(hname)
     ),
     hnames
   )
@@ -3490,11 +3518,7 @@ fn ms_handler_names_at(entries, i, acc) = if i == 0 {
   match list_index(entries, i - 1) {
     (name, _scheme, _reason, kind) => {
       let acc2 = match kind {
-        HandlerKind(_row, _world, _config, _state, _arms) => if len(multishot_ops_of(name)) > 0 && ls_find_str_local(acc, name, 0) < 0 {
-          [name] ++ acc
-        } else {
-          acc
-        },
+        HandlerKind(_row, _world, _config, _state, _arms) => if handler_drives(name) && ls_find_str_local(acc, name, 0) < 0 { [name] ++ acc } else { acc },
         _ => acc,
       }
       ms_handler_names_at(entries, i - 1, acc2)
@@ -3508,6 +3532,27 @@ fn emit_one_redrive(hname) = {
   wat_emit(" (param $__state i32) (param $acc i32) (result i32) (local $k i32)\n")
   wat_emit("    (block $rdone (loop $rdrive\n")
   wat_emit("      (global.get $yield_flag)(i32.eqz)(br_if $rdone)\n")
+  // AN ANSWER for this install — an arm of a OneShotOrAbandon op answered on
+  // a path that never resumed, naming the record it ran against: the flag
+  // clears and the value is the install's, in both of the face's channels
+  // (the word, and the lane a wide answer is read from — the driver is blind
+  // to the answer's width, and the reader takes the one it speaks). One for
+  // another install bubbles on, as a foreign op does. Reached here from a
+  // held resume's flag check too, where it is that resume's value: the deep
+  // handler's remainder answered.
+  if handler_takes_answers(hname) {
+    wat_emit("      (global.get $yield_op)(i32.const {int_to_str(answer_key())})(i32.eq)\n")
+    wat_emit("      (if (then\n")
+    wat_emit("        (br_if $rdone (i32.ne (i32.load offset=8 (global.get $yield_args)) (local.get $__state)))\n")
+    wat_emit("        (i32.const 0)(global.set $yield_flag)\n")
+    wat_emit("        (global.set $__lane_f64 (f64.load (global.get $yield_args)))\n")
+    wat_emit("        (local.set $acc (i32.load (global.get $yield_args)))\n")
+    // The slot is dead once taken, and it is older than every arena: an exit
+    // that still found the answer there would keep or move its region for a
+    // value nothing will read again.
+    wat_emit("        (i64.store (global.get $yield_args) (i64.const 0))\n")
+    wat_emit("        (br $rdone)))\n")
+  }
   each(
     {
       (op, arity) => {
@@ -4383,6 +4428,7 @@ fn collect_call_vectors_expr(expr, acc) = match expr {
   LYield(_h, _op, args, k) => collect_call_vectors_expr(k, collect_call_vectors_list(args, acc)),
   LKExtend(_h, k) => collect_call_vectors_expr(k, acc),
   LAbandon(_h, _op, args) => collect_call_vectors_list(args, acc),
+  LAnswer(_h, v, rec) => collect_call_vectors_list([v, rec], acc),
   LUnwind(_h) => acc,
   LDeclareFn(LFn(_n, _a, _p, body, _f, _l)) => collect_call_vectors_list(body, acc),
   LIf(_h, c, t, e) => collect_call_vectors_list(e, collect_call_vectors_list(t, collect_call_vectors_expr(c, acc))),
@@ -5597,6 +5643,7 @@ fn collect_fn_emit_records_expr(expr) = match expr {
   LYield(_h, _op, args, k) => collect_fn_emit_records(args) ++ collect_fn_emit_records_expr(k),
   LKExtend(_h, k) => collect_fn_emit_records_expr(k),
   LAbandon(_h, _op, args) => collect_fn_emit_records(args),
+  LAnswer(_h, v, rec) => collect_fn_emit_records([v, rec]),
   LUnwind(_h) => [],
   LDeclareFn(LFn(name, _arity, param_names, body, fence, _lines)) => [(name, param_names, body, fence)] ++ collect_fn_emit_records(body),
   LLet(_h, _n, inner) => collect_fn_emit_records_expr(inner),
@@ -5784,6 +5831,7 @@ fn walk_locals_expr(expr, acc) = match expr {
   // area through the operand stack, so a yield declares nothing of its own.
   walk_locals_expr(k, walk_locals_list(args, acc)),
   LAbandon(_, _, args) => walk_locals_list(args, acc),
+  LAnswer(_, v, rec) => walk_locals_list([v, rec], acc),
   LUnwind(_) => acc,
   LKExtend(_, k) => // same boundary rule; the extend's own emit is a call + a const
   walk_locals_expr(k, acc),
@@ -5834,8 +5882,8 @@ fn walk_locals_expr(expr, acc) = match expr {
     // band B k1/M2b: a MultiShot-armed install parks the body result
     // ($__hres, the install node's proven width) and hands it to the
     // redrive — the caught k lives in the redrive's own local now. Same
-    // multishot_ops_of decider the emit reads — mirror-true by construction.
-    let with_ms = if len(multishot_ops_of(hname)) > 0 {
+    // decider the emit reads (`handler_drives`) — mirror-true by construction.
+    let with_ms = if handler_drives(hname) {
       ["__hres_{int_to_str(h)} {repr_wat(repr_of(lookup_ty(h)))}"] ++ with_groups
     } else {
       with_groups
@@ -6811,8 +6859,9 @@ fn emit_install(h, body, hname, inits, arm_names, lanes) = {
   // install to the enclosing driver (or the _start backstop).
   // Gated on the ONE multishot_ops_of decider (walk_locals reads it
   // identically); an all-OneShot install emits the pre-k1 bytes exactly.
-  let ms_ops = multishot_ops_of(hname)
-  if len(ms_ops) > 0 {
+  // An answering handler runs it too: the answer that names this install's
+  // record is taken there (`emit_one_redrive`).
+  if handler_drives(hname) {
     // band B M2b — the driver IS one redrive call: park the body result,
     // hand (record, parked) to $op___redrive_<hname> (the dispatch loop's
     // ONE home, shared with every resume flag-arm). A flag still raised
@@ -7254,6 +7303,24 @@ fn emit_expr(expr) = match expr {
     wat_emit("    (i32.const ")
     wat_emit(int_to_str(string_offset(op_name)))
     wat_emit(") (global.set $yield_op)\n")
+    wat_emit("    (i32.const 1) (global.set $yield_flag)\n")
+    emit_unwind()
+  },
+  LAnswer(_h, v, rec) => // The answering path of a OneShotOrAbandon arm: the value into the area's
+  // first slot at its width (journaled as a publication of the extents the
+  // unwind leaves, as a perform's arguments are), the install record into
+  // the second, the answer key, a dead continuation and the flag — and the
+  // arm leaves by its landing. The record is the arm's own $__state, which
+  // its performer passed, so the install it names is the one the install
+  // chain reached at the perform, whatever frames lie between.
+  {
+    emit_yield_arg_push(v)
+    emit_yield_slot_store((0, v))
+    wat_emit("    (global.get $yield_args)\n")
+    emit_expr(rec)
+    wat_emit("    (i32.store offset=8)\n")
+    wat_emit("    (i32.const 0) (global.set $yield_k)\n")
+    wat_emit("    (i32.const {int_to_str(answer_key())}) (global.set $yield_op)\n")
     wat_emit("    (i32.const 1) (global.set $yield_flag)\n")
     emit_unwind()
   },
@@ -8513,6 +8580,7 @@ fn collect_fold_tys_expr(expr, acc: {cmp: [Ty], eq: [Ty], evac: [Ty], hash: [Ty]
   collect_fold_tys_expr(k, collect_fold_tys_list(args, fold_acc_evac_args(acc, args))),
   LKExtend(_h, k) => collect_fold_tys_expr(k, acc),
   LAbandon(_h, _op, args) => collect_fold_tys_list(args, fold_acc_evac_args(acc, args)),
+  LAnswer(_h, v, rec) => collect_fold_tys_list([v, rec], fold_acc_evac_args(acc, [v])),
   LUnwind(_h) => acc,
   LDeclareFn(LFn(_n, _a, _p, body, _f, _l)) => collect_fold_tys_list(body, acc),
   LIf(_h, c, t, e) => collect_fold_tys_list(e, collect_fold_tys_list(t, collect_fold_tys_expr(c, acc))),

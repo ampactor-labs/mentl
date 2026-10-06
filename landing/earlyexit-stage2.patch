@@ -1,0 +1,133 @@
+diff --git a/lib/prelude.mn b/lib/prelude.mn
+index c5fd08f..6d0f828 100644
+--- a/lib/prelude.mn
++++ b/lib/prelude.mn
+@@ -186,13 +186,20 @@ handler filter_collector(pred) with buf = make_list(16), count = 0 {
+   result() => resume(list_to_flat(slice(buf, 0, count))),
+ }
+ 
++// The n-th element taken ANSWERS: the walk stops there, so `take(3, xs)`
++// reads three elements of any list, where the arm that resumed past its
++// count walked the whole input after it had what it wanted.
+ handler take_collector(n) with buf = make_list(16), count = 0, remaining = n {
+   yield(elem) => if remaining > 0 {
+     let extended = list_extend_to(buf, count + 1)
+     let written = list_set(extended, count, elem)
+-    resume() with buf = written, count = count + 1, remaining = remaining - 1
++    if remaining > 1 {
++      resume() with buf = written, count = count + 1, remaining = remaining - 1
++    } else {
++      list_to_flat(slice(written, 0, count + 1))
++    }
+   } else {
+-    resume()
++    list_to_flat(slice(buf, 0, count))
+   },
+   result() => resume(list_to_flat(slice(buf, 0, count))),
+ }
+@@ -276,22 +283,26 @@ handler each_handler(f) {
+   result() => resume(),
+ }
+ 
+-handler any_handler(pred) with found = false {
+-  yield(elem) => if pred(elem) { resume() with found = true } else { resume() },
+-  result() => resume(found),
++// The first hit ANSWERS (an arm that resumes on one path and answers on the
++// other — the OneShotOrAbandon grade): the walk stops at it, so `any` IS
++// the fold of `||` — `p(x0) || p(x1) || …`, the right operand evaluated only
++// when the left is false, exactly as the operator short-circuits — and
++// `all` the fold of `&&`. Each resumed on every element until 2026-10-06,
++// so `any` ran its predicate past the hit (five calls where `||` makes three,
++// tests/micros/mn-any-stops-at-the-hit.mn).
++handler any_handler(pred) {
++  yield(elem) => if pred(elem) { true } else { resume() },
++  result() => resume(false),
+ }
+ 
+-handler all_handler(pred) with ok = true {
+-  yield(elem) => if pred(elem) { resume() } else { resume() with ok = false },
+-  result() => resume(ok),
++handler all_handler(pred) {
++  yield(elem) => if pred(elem) { resume() } else { false },
++  result() => resume(true),
+ }
+ 
+-handler find_handler(pred) with found = None {
+-  yield(elem) => match found {
+-    Some(_) => resume(),
+-    None => if pred(elem) { resume() with found = Some(elem) } else { resume() },
+-  },
+-  result() => resume(found),
++handler find_handler(pred) {
++  yield(elem) => if pred(elem) { Some(elem) } else { resume() },
++  result() => resume(None),
+ }
+ 
+ handler count_handler(pred) with n = 0 {
+diff --git a/tests/micros/mn-any-stops-at-the-hit.mn b/tests/micros/mn-any-stops-at-the-hit.mn
+new file mode 100644
+index 0000000..87a6151
+--- /dev/null
++++ b/tests/micros/mn-any-stops-at-the-hit.mn
+@@ -0,0 +1,23 @@
++// expect: 3
++// `any` is the fold of `||`: the predicate runs until the first hit and not
++// after it, as `p(1) || p(2) || p(3) || …` evaluates its right operand only
++// when the left is false. The counter sees three calls over five elements.
++// On boot 4228ff71 `any_handler` resumed on every element, the predicate ran
++// five times, and the program answered 5.
++effect Tick {
++  tick()
++  ticks() -> Int
++}
++
++handler counter with n = 0 {
++  tick() => resume() with n = n + 1,
++  ticks() => resume(n),
++}
++
++fn main() = {
++  let _ = any((x) => {
++    tick()
++    x > 2
++  }, [1, 2, 3, 4, 5])
++  ticks()
++} ~> counter
+diff --git a/tests/micros/mn-search-stops-at-the-hit.mn b/tests/micros/mn-search-stops-at-the-hit.mn
+new file mode 100644
+index 0000000..c258c90
+--- /dev/null
++++ b/tests/micros/mn-search-stops-at-the-hit.mn
+@@ -0,0 +1,32 @@
++// expect: 6
++// `find` and `all` stop at their first hit and `take` at its count: three
++// predicate calls each over five elements, `find` answering Some(3) and
++// `all` false at the 3, and two elements taken. On boot 4228ff71 `all`
++// resumed past its first false and its predicate ran over every element:
++// 3 + 5 = 8.
++effect Tick {
++  tick()
++  ticks() -> Int
++}
++
++handler counter with n = 0 {
++  tick() => resume() with n = n + 1,
++  ticks() => resume(n),
++}
++
++fn main() = {
++  let found = find((x) => {
++    tick()
++    x > 2
++  }, [1, 2, 3, 4, 5])
++  let small = all((x) => {
++    tick()
++    x < 3
++  }, [1, 2, 3, 4, 5])
++  let taken = take(2, [7, 8, 9])
++  let v = match found {
++    Some(n) => n,
++    None => 0,
++  }
++  if v == 3 && !small && taken == [7, 8] { ticks() } else { 100 }
++} ~> counter
