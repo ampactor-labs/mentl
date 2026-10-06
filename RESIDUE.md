@@ -10114,7 +10114,7 @@ long record never broke (Pulse's rig rendered as one 300-column line);
 `render_record` breaks past the width, one field per line, each closed by its
 comma — SYNTAX §«Records»' own layout.
 
-### `Hβ.fmt.literal-spelling-is-intent` — OPEN
+### `Hβ.fmt.literal-spelling-is-intent` — CLOSED 2026-10-06
 
 MEASURED 2026-09-28. `mentl fmt`
 renders a numeric literal from its VALUE: `0x46464952` became `1179011410`,
@@ -10135,6 +10135,8 @@ render cannot round-trip its own output.
 THE 2026-10-06 PROGRAM, landing F (PLAN §11, THE STANDING CURSOR) — the program's own text, moved here at the §0.3 integration (the whole program is at commit 42a94dc0):
 
 F closes it (`Hβ.fmt.the-project-is-canonical`): a literal's radix and digit grouping are intent its own span holds, and the render keeps them.
+
+CLOSED by F (pin 50da761228ba3eef): `respell` (src/format.mn) gives each rendered numeric literal its authored spelling back from the literal's own span — radix and digit grouping are intent the span holds — so `48_000`, `0x811C9DC5` and `0.00001` survive a render; a negative LitInt renders as the unsigned word it wraps from.
 
 ### `Hβ.lang.lambda-param-annotation` — OPEN
 
@@ -18179,6 +18181,8 @@ SURFACE: SYNTAX §«Unit return omission», §«Calling resume with unit», the 
 
 **Builds:** `E_DuplicateImport` `E_StatementSemicolon` `.build/fmt.stamps` `fmt_file`
 
+LANDED IN PART 2026-10-06 (pin 50da761228ba3eef, LEDGER carries the arc): `mentl fmt [--check] [path…]` with no path renders every `.mn` under the working directory; the render is a parse (one arena per file, `frontend` deleted, no judgment); the project write is atomic over a conservation proof with stated equivalences (`lifted_atoms`); `.build/fmt.stamps` keys each file's canonical bytes; `mn_files` is the one tree walk; `E_DuplicateImport` is armed and fmt's lift; `0 - <literal>` and `-> ()` lift; literals keep their spelling. REMAINING, this peer's design unchanged: decoration-run stripping, the sole-parameter binder as an arm list, the ownership marker before the name, the batteries addressed by identity (so tests/ can be canonical), the pre-commit rung as `mentl fmt --check`, the board line, the three-module/duplicate-import/`48_000` frontier legs, and the tree sweep.
+
 ### `Hβ.syntax.parameter-product-has-identity` — OPEN
 
 BORN 2026-10-06 — the 2026-10-06 program, landing N1 (PLAN §11, THE STANDING CURSOR). The design below is the program's own text for this landing, moved here verbatim at the §0.3 integration; its section references (§2–§7) are the program's own numbering, and the whole program, with the seven audit lenses' answers, is at commit 42a94dc0 (docs/record/2026-10-06/).
@@ -20116,6 +20120,14 @@ BORN 2026-10-06 (N2). A row with a masked edge renders `(e - E)` and the row gra
 
 BORN 2026-10-06 (N2). An effect argument is one token (`parse_one_eff_arg`), so a function type as an effect's type argument (`Cast(() -> a with e)`) renders and does not parse: 6 of the heads leg's 92. THE FORM: a type argument parses as a type.
 
-### `Hβ.infer.if-condition-is-not-bool` — OPEN
+### `Hβ.infer.if-condition-is-not-bool` — CLOSED 2026-10-06
 
-BORN 2026-10-06 (found by the render lane, measured on its m2). `if c` does not constrain `c` to `Bool`: `fn g(c) = if c { 1 } else { 2 }` with `g([1, 2])` checks clean and runs to 1. A silent wrong. THE FORM: the condition is unified with `Bool` at the `if`, as a `match`'s scrutinee is with its patterns; a fixture RED first.
+BORN 2026-10-06 (found by the render lane, measured on its m2). `if c` did not constrain `c` to `Bool`: `fn g(c) = if c { 1 } else { 2 }` with `g([1, 2])` checked clean and ran to 1. A silent wrong. The `if` judgment wrote `Bool` into the condition NODE's own cell (`graph_bind`), overwriting the edge a reference's node carries to its binder, so the parameter the condition read never learned it was a Bool. CLOSED in the F landing: the condition is unified with `Bool` (`unify_types(TVar(ch), …)`), so the constraint reaches what the condition flows from. `tests/micros/mn-if-condition-is-bool.mn` refuses `E_TypeMismatch` at the argument, checked clean on boot 82063322. The fix found one wheel instance of the class, swept over all 954 programs in the tree: `float_is_negative` (lib/strings.mn) answered `1`/`0` and stood as two `if` conditions in `float_to_str` — a flag-as-int (drift 8); it answers `Bool` now (`f < 0.0 || float_is_negative_zero(f)`).
+
+### `Hβ.driver.resolver-fabricates-a-path` — CLOSED 2026-10-06
+
+BORN AND CLOSED 2026-10-06, found integrating the fmt lane. `driver_module_path` answered a FABRICATED path for a module with no file — its last branch was `else { lib_path }`, and its own comment said why: "on a total miss the repo-relative lib path returns so the E_MissingModule diagnostic stays as before". A message's convenience became a path every caller acted on. Measured on boot c0b2828c: `mentl fmt no_such_module` in a directory with an empty `lib/` exited 0 and wrote `lib/no_such_module.mn` — 115,575 bytes holding `lib/memory.mn`'s text, the first module of the weave rendered under the missing one's name; a second run then judged that file as real source. Three callers already wrapped the resolver in `fs_exists(...)`, each a confession of the fabrication.
+
+THE FORM: `driver_module_path(name) -> Option(String)` — the first of `module_probes(name)` that exists, or None — and every caller says what absence means: the DAG walk records the module as missing with the places it searched (`E_MissingModule` now reads "searched …", never "expected at" one guessed path), an import that names nothing draws no edge (`module_path_list`), every write of a module's text goes through `module_write`, which refuses aloud, and `fmt` turns a target that names no directory, file or module into a refused verdict (`FmtNothing`), so the project write holds back and the exit is nonzero. The three `fs_exists` wrappers are deleted. Frontier leg "fmt refuses a target that names nothing, and writes no file", RED on the boot.
+
+Open beneath it: `fs_read_file` still answers `""` for a file it cannot open — the host boundary's own fabrication, `Hβ.io.filesystem-impl-bypasses-the-effect` (N3).

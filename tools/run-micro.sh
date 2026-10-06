@@ -36,7 +36,11 @@ case "${EXPECT:-}" in
     exit 1 ;;
 esac
 
-cat "${LIBS[@]}" "$MICRO" 2>/dev/null | wt_run "$BOOT" > "$base.wat" 2> "$base.err"
+# The micro is an ENTRY: the named runtime modules are its imports, woven from
+# the tree (wt_entry), never concatenated ahead of it.
+mods=()
+for l in "${LIBS[@]}"; do l="${l#lib/}"; mods+=("${l%.mn}"); done
+wt_entry "$MICRO" "${mods[@]}" | wt_rooted "$BOOT" > "$base.wat" 2> "$base.err"
 compile_exit=$?
 # Every diagnostic is PHASE-PREFIXED — `effects: E_EffectMismatch error: …`,
 # `parser: E_RedundantBraces Warning: …` — so the old anchored `^[EW]_` could

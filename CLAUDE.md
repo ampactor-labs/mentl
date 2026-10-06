@@ -110,10 +110,34 @@
 > artifact obsoletes it (the comment-ref ratchet is this law at the prose
 > boundary; the ledger's retractions are it at the corpus boundary).
 >
+> **A GATE IS OBEYED, NEVER SATISFIED** (Morgan, 2026-10-06, after one
+> integration made every satisfying move in turn: a stray file deleted
+> instead of the resolver that wrote it fixed, a ghost ceiling raised with a
+> careful per-module attribution, four defects written into RESIDUE instead
+> of fixed, a red board met with "find the leg" when the leg was the third
+> link model the program had already named). When a gate goes red, the work
+> is the thing it MEASURES — never the gate. Five moves turn a gate green
+> without changing what it measures, and `tools/obey-gate.py` refuses each at
+> the commit with no flag that lets it through: a CEILING RAISED (board
+> bounds, every `*_max` ratchet, cost included), a BOUND DROPPED, a red leg
+> DECLARED EXPECTED, a gate SILENCED (`drift-audit: ignore`), a contained
+> defect PARKED as an OPEN peer. The sixth has no mechanical form and is the
+> same move: a symptom DELETED where its cause is fixable — the stray file,
+> the failing fixture, the noisy line. Prose that justifies a raise is the
+> confession, not the license; a careful attribution is still a raise. A
+> bound that a CORRECT landing must raise is the wrong shape (the ghost count
+> grew with every honest line until positions are cells, and its own comment
+> told each landing to raise it): reshape the bound or pay its debt down in
+> the same landing — the ghost bound fell 19,747 → 10,604 the day this law
+> landed, because the parameter binders it was counting became judged cells. A
+> defect found inside the arc is fixed inside the arc; RESIDUE holds only
+> what needs a foundation no landing in reach provides, and opening one
+> entry means closing another.
+>
 > **The standing charge is AMBIENT — it need never be re-typed:** ultimate,
 > SOTA-surpassing, novel, Mentl-empowered design is the only acceptable
-> move at every scale; no deferrals, no named-gaps without their COMPLETE
-> build-ready design banked; challenge every "canonical" shape on sight;
+> move at every scale; no deferrals, and a gap found in the arc is built in
+> the arc (the obey gate holds RESIDUE's open count); challenge every "canonical" shape on sight;
 > comments must be TRUE (an entity that can be wrong wrote them — the
 > graph's carried truth outranks them); never dodge incomplete inference
 > with annotations (Mentl infers, teaches, proposes — annotations are
@@ -239,9 +263,11 @@
 > 2. **Ultimate ≠ complete.** The frontier (modal §4③, IFC §4⑥, native, the
 >    deepest optimizations) sequenced after first-light and named in POSITIVE FORM
 >    is ultimate (`PLAN.md §5`). A hidden gap or a silent fabrication is drift.
-> 3. **Honest-and-sequenced, never hidden.** A named positive-form peer IS the
->    ultimate form; a silent fallback is the betrayal — at the exact moment it is
->    cheapest to betray.
+> 3. **Fixed in the arc, never parked.** A silent fallback is the betrayal — at
+>    the exact moment it is cheapest to betray — and a named peer is not its
+>    cure: naming a defect the arc could fix is the same betrayal written down.
+>    A peer is honest only for work that needs a foundation the arc cannot
+>    reach, and the obey gate holds their count (⚖ "A gate is obeyed").
 >
 > **The inverse trap — perfectionism-as-paralysis — is drift too.** "Ultimate" is
 > NOT "every frontier feature built before first-light." The REAL aspect (`§5`) is
@@ -700,6 +726,7 @@ rewrite in residue form inline.)
 | "Look up X by name" (ledger / index / map) | If a `~>` edge or the env already connects it → re-derivation (Anchor 1); follow the edge, read the live node |
 | Presenting "Option A (ultimate) vs Option B (safer/lower-risk)" — to me OR to the user | The fork IS the drift; the thesis already answers it. Ultimate form wins; DECIDE it, don't outsource a thesis-answered call; never hedge the wheel against the seed |
 | "It's a big change, so later" / "today was good" | Forbidden. Keep going; report result + next move |
+| A red gate, and the move that turns it green is a number, a list entry, a marker, a RESIDUE entry or a deleted file | SATISFYING, not obeying (⚖ "A gate is obeyed"). Find what the gate measures and fix that; `tools/obey-gate.py` refuses the five mechanical forms at the commit, and the deleted symptom is the sixth |
 | "This fixes the symptom / unblocks the path / is the smallest correct change" | **SUFFICIENT IS NOT ULTIMATE** (Morgan, 2026-09-06, after two non-ultimate builds in one session). A fix that works is not thereby the form. Ask what the thing WOULD be if nothing around it were assumed; sufficiency is the ultimate form's most convincing costume because it passes every test you thought to run |
 | Defining "ultimate" relative to the structures already there | **THE SURROUNDING CODE IS NOT A PREMISE.** Much of it was written by an intelligence nobody vets line-by-line, so an "ultimate given X" where X is unverified is X's drift laundered through your judgment. Verify X first, and ask whether X should exist — the ultimate form of a compensation is its DELETION |
 | Building the foundational-looking piece first because it is tractable | **HARDEST FIRST, no deferrals.** The easy piece is easy because it assumes the hard one's answer; build it first and you will build it twice. Name the hardest question, answer it, then everything downstream is forced |

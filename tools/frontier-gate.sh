@@ -84,32 +84,28 @@ if frontier_memo=$(wt_memo_hit "frontier-$selection" "$frontier_key"); then
   exit 0
 fi
 
-RTLIBS=(
-  "$ROOT/lib/memory.mn"
-  "$ROOT/lib/strings.mn"
-  "$ROOT/lib/lists.mn"
-  "$ROOT/lib/threading.mn"
-  "$ROOT/lib/prelude.mn"
-)
+# The prelude edge is every link's (driver_seeded): its closure — memory,
+# strings, lists, threading — needs no import of its own.
+RTLIBS=()
 
 # The persist fixture additionally needs the WASI fs layer and the Persist
 # handler itself; its runs preopen /tmp for the checkpoint files.
 PERSIST_RTLIBS=(
   "${RTLIBS[@]}"
-  "$ROOT/lib/io.mn"
-  "$ROOT/lib/persist.mn"
+  io
+  persist
 )
 
 # The CFC pipeline links the DSP math substrate (math.mn), the comodulogram
 # (dsp/cfc.mn, whose read_recording crosses the WASI boundary → io.mn), and
-# the synthetic-signal generator (cfc-demo/gen.mn). The demo builds its
+# the synthetic-signal generator (cfc_demo/gen.mn). The demo builds its
 # signal inline, so its run preopens nothing.
 CFC_RTLIBS=(
   "${RTLIBS[@]}"
-  "$ROOT/lib/io.mn"
-  "$ROOT/lib/math.mn"
-  "$ROOT/lib/dsp/cfc.mn"
-  "$ROOT/tests/frontier/cfc-demo/gen.mn"
+  io
+  math
+  dsp/cfc
+  tests/frontier/cfc_demo/gen
 )
 
 # The signal-crucible link set: the CFC substrate plus lib/dsp/signal.mn (the
@@ -119,10 +115,10 @@ CFC_RTLIBS=(
 # bandpass sit on top. The run preopens /tmp for the recording.
 SIGNAL_RTLIBS=(
   "${RTLIBS[@]}"
-  "$ROOT/lib/io.mn"
-  "$ROOT/lib/math.mn"
-  "$ROOT/lib/dsp/cfc.mn"
-  "$ROOT/lib/dsp/signal.mn"
+  io
+  math
+  dsp/cfc
+  dsp/signal
 )
 
 # The data-validator lib set: the base runtime plus the WASI fs layer (io.mn),
@@ -130,7 +126,7 @@ SIGNAL_RTLIBS=(
 # runs preopen /tmp for the fixture.
 IO_RTLIBS=(
   "${RTLIBS[@]}"
-  "$ROOT/lib/io.mn"
+  io
 )
 
 # The real-workload crucible lib set: the base runtime plus the transcendental
@@ -139,7 +135,7 @@ IO_RTLIBS=(
 # nothing.
 MATH_RTLIBS=(
   "${RTLIBS[@]}"
-  "$ROOT/lib/math.mn"
+  math
 )
 
 # The derivative-reading lib set (L4a, 2026-09-28): the signal set plus the
@@ -148,15 +144,15 @@ MATH_RTLIBS=(
 # copies of them.
 DERIVE_RTLIBS=(
   "${SIGNAL_RTLIBS[@]}"
-  "$ROOT/lib/dsp/spectral.mn"
-  "$ROOT/lib/ml/grad.mn"
+  dsp/spectral
+  ml/grad
 )
 
 # The arena lib set (2026-10-03): the base runtime plus lib/arena.mn's
 # `arena` handler and the `Arena` effect its install charges.
 ARENA_RTLIBS=(
   "${RTLIBS[@]}"
-  "$ROOT/lib/arena.mn"
+  arena
 )
 
 total_pass=0
@@ -291,8 +287,8 @@ capture_runtime_shadow() {
   local compiler="$1" dir="$2"
   local wat="$dir/runtime-shadow.wat" err="$dir/runtime-shadow.err"
 
-  { cat "${RTLIBS[@]}"; printf '\nfn main() = 0\n'; } \
-    | wt_run "$compiler" > "$wat" 2> "$err"
+  printf 'fn main() = 0\n' | wt_entry - "${RTLIBS[@]}" \
+    | wt_rooted "$compiler" > "$wat" 2> "$err"
   local rc=$?
   if [ "$rc" -ne 0 ]; then
     fail "runtime shadow compile (exit=$rc; see $err)"
@@ -313,27 +309,27 @@ run_program() {
 
   case "$link_runtime" in
     yes)
-      cat "${RTLIBS[@]}" "$source" | wt_run "$compiler" > "$wat" 2> "$cerr" ;;
+      wt_entry "$source" "${RTLIBS[@]}" | wt_rooted "$compiler" > "$wat" 2> "$cerr" ;;
     persist)
-      cat "${PERSIST_RTLIBS[@]}" "$source" | wt_run "$compiler" > "$wat" 2> "$cerr"
+      wt_entry "$source" "${PERSIST_RTLIBS[@]}" | wt_rooted "$compiler" > "$wat" 2> "$cerr"
       run_flags=(--dir /tmp) ;;
     cfc)
-      cat "${CFC_RTLIBS[@]}" "$source" | wt_run "$compiler" > "$wat" 2> "$cerr" ;;
+      wt_entry "$source" "${CFC_RTLIBS[@]}" | wt_rooted "$compiler" > "$wat" 2> "$cerr" ;;
     cfc-rec)
-      cat "${CFC_RTLIBS[@]}" "$source" | wt_run "$compiler" > "$wat" 2> "$cerr"
+      wt_entry "$source" "${CFC_RTLIBS[@]}" | wt_rooted "$compiler" > "$wat" 2> "$cerr"
       run_flags=(--dir "$dir::/tmp") ;;
     signal)
-      cat "${SIGNAL_RTLIBS[@]}" "$source" | wt_run "$compiler" > "$wat" 2> "$cerr"
+      wt_entry "$source" "${SIGNAL_RTLIBS[@]}" | wt_rooted "$compiler" > "$wat" 2> "$cerr"
       run_flags=(--dir "$dir::/tmp") ;;
     io-rec)
-      cat "${IO_RTLIBS[@]}" "$source" | wt_run "$compiler" > "$wat" 2> "$cerr"
+      wt_entry "$source" "${IO_RTLIBS[@]}" | wt_rooted "$compiler" > "$wat" 2> "$cerr"
       run_flags=(--dir "$dir::/tmp") ;;
     math)
-      cat "${MATH_RTLIBS[@]}" "$source" | wt_run "$compiler" > "$wat" 2> "$cerr" ;;
+      wt_entry "$source" "${MATH_RTLIBS[@]}" | wt_rooted "$compiler" > "$wat" 2> "$cerr" ;;
     derive)
-      cat "${DERIVE_RTLIBS[@]}" "$source" | wt_run "$compiler" > "$wat" 2> "$cerr" ;;
+      wt_entry "$source" "${DERIVE_RTLIBS[@]}" | wt_rooted "$compiler" > "$wat" 2> "$cerr" ;;
     arena)
-      cat "${ARENA_RTLIBS[@]}" "$source" | wt_run "$compiler" > "$wat" 2> "$cerr" ;;
+      wt_entry "$source" "${ARENA_RTLIBS[@]}" | wt_rooted "$compiler" > "$wat" 2> "$cerr" ;;
     *)
       wt_run "$compiler" < "$source" > "$wat" 2> "$cerr" ;;
   esac
@@ -416,7 +412,7 @@ run_persist_image() {
   local cerr="$dir/$label.compile.err" aerr="$dir/$label.assemble.err"
   local pdir="$dir/$label.tmp" rc
 
-  cat "${PERSIST_RTLIBS[@]}" "$src" | wt_run "$compiler" > "$wat" 2> "$cerr"
+  wt_entry "$src" "${PERSIST_RTLIBS[@]}" | wt_rooted "$compiler" > "$wat" 2> "$cerr"
   rc=$?
   local normalized="$dir/$label.normalized" unexpected="$dir/$label.unexpected"
   normalize_errors "$cerr" > "$normalized"
@@ -489,7 +485,7 @@ run_persist_arena() {
   local wat="$dir/$label.wat" wasm="$dir/$label.wasm"
   local cerr="$dir/$label.compile.err" aerr="$dir/$label.assemble.err"
   local pdir="$dir/$label.tmp" rc
-  cat "${PERSIST_RTLIBS[@]}" "$ROOT/lib/arena.mn" "$src" | wt_run "$compiler" > "$wat" 2> "$cerr"
+  wt_entry "$src" "${PERSIST_RTLIBS[@]}" arena | wt_rooted "$compiler" > "$wat" 2> "$cerr"
   rc=$?
   local normalized="$dir/$label.normalized" unexpected="$dir/$label.unexpected"
   normalize_errors "$cerr" > "$normalized"
@@ -830,11 +826,11 @@ run_refusal_linked() {
   # by default, the derivative-reading set for a refusal the reading makes.
   case "$link_runtime" in
     derive)
-      cat "${DERIVE_RTLIBS[@]}" "$source" | wt_run "$compiler" > "$wat" 2> "$err" ;;
+      wt_entry "$source" "${DERIVE_RTLIBS[@]}" | wt_rooted "$compiler" > "$wat" 2> "$err" ;;
     arena)
-      cat "${ARENA_RTLIBS[@]}" "$source" | wt_run "$compiler" > "$wat" 2> "$err" ;;
+      wt_entry "$source" "${ARENA_RTLIBS[@]}" | wt_rooted "$compiler" > "$wat" 2> "$err" ;;
     *)
-      cat "${RTLIBS[@]}" "$source" | wt_run "$compiler" > "$wat" 2> "$err" ;;
+      wt_entry "$source" "${RTLIBS[@]}" | wt_rooted "$compiler" > "$wat" 2> "$err" ;;
   esac
   rc=$?
   count=$(grep -c "$expected_code error:" "$err" 2>/dev/null || true)
@@ -945,8 +941,8 @@ capture_persist_shadow() {
   local compiler="$1" dir="$2"
   local wat="$dir/persist-shadow.wat" err="$dir/persist-shadow.err"
 
-  { cat "${PERSIST_RTLIBS[@]}"; printf '\nfn main() = 0\n'; } \
-    | wt_run "$compiler" > "$wat" 2> "$err"
+  printf 'fn main() = 0\n' | wt_entry - "${PERSIST_RTLIBS[@]}" \
+    | wt_rooted "$compiler" > "$wat" 2> "$err"
   local rc=$?
   if [ "$rc" -ne 0 ]; then
     fail "persist shadow compile (exit=$rc; see $err)"
@@ -964,8 +960,8 @@ capture_cfc_shadow() {
   local compiler="$1" dir="$2"
   local wat="$dir/cfc-shadow.wat" err="$dir/cfc-shadow.err"
 
-  { cat "${CFC_RTLIBS[@]}"; printf '\nfn main() = 0\n'; } \
-    | wt_run "$compiler" > "$wat" 2> "$err"
+  printf 'fn main() = 0\n' | wt_entry - "${CFC_RTLIBS[@]}" \
+    | wt_rooted "$compiler" > "$wat" 2> "$err"
   local rc=$?
   if [ "$rc" -ne 0 ]; then
     fail "cfc shadow compile (exit=$rc; see $err)"
@@ -983,8 +979,8 @@ capture_signal_shadow() {
   local compiler="$1" dir="$2"
   local wat="$dir/signal-shadow.wat" err="$dir/signal-shadow.err"
 
-  { cat "${SIGNAL_RTLIBS[@]}"; printf '\nfn main() = 0\n'; } \
-    | wt_run "$compiler" > "$wat" 2> "$err"
+  printf 'fn main() = 0\n' | wt_entry - "${SIGNAL_RTLIBS[@]}" \
+    | wt_rooted "$compiler" > "$wat" 2> "$err"
   local rc=$?
   if [ "$rc" -ne 0 ]; then
     fail "signal shadow compile (exit=$rc; see $err)"
@@ -998,7 +994,7 @@ capture_signal_shadow() {
 
 # The STFT + `<~` bandpass + comodulogram (lib/dsp/signal.mn) on a REAL on-disk
 # recording + a python cross-validation. The recording carries a 4 Hz-phase ->
-# 50 Hz-amplitude coupling — a DIFFERENT pair than cfc-demo (6->40) and cfc-rec
+# 50 Hz-amplitude coupling — a DIFFERENT pair than cfc_demo (6->40) and cfc-rec
 # (6->60), so the pipeline is proven to find a coupling it was never tuned to, not
 # to memorize one grid cell.
 #   (1) Mentl reads the recording (WASI fs -> parse_float -> native [Float]),
@@ -1073,8 +1069,8 @@ capture_io_shadow() {
   local compiler="$1" dir="$2"
   local wat="$dir/io-shadow.wat" err="$dir/io-shadow.err"
 
-  { cat "${IO_RTLIBS[@]}"; printf '\nfn main() = 0\n'; } \
-    | wt_run "$compiler" > "$wat" 2> "$err"
+  printf 'fn main() = 0\n' | wt_entry - "${IO_RTLIBS[@]}" \
+    | wt_rooted "$compiler" > "$wat" 2> "$err"
   local rc=$?
   if [ "$rc" -ne 0 ]; then
     fail "io shadow compile (exit=$rc; see $err)"
@@ -1093,8 +1089,8 @@ capture_math_shadow() {
   local compiler="$1" dir="$2"
   local wat="$dir/math-shadow.wat" err="$dir/math-shadow.err"
 
-  { cat "${MATH_RTLIBS[@]}"; printf '\nfn main() = 0\n'; } \
-    | wt_run "$compiler" > "$wat" 2> "$err"
+  printf 'fn main() = 0\n' | wt_entry - "${MATH_RTLIBS[@]}" \
+    | wt_rooted "$compiler" > "$wat" 2> "$err"
   local rc=$?
   if [ "$rc" -ne 0 ]; then
     fail "math shadow compile (exit=$rc; see $err)"
@@ -1111,8 +1107,8 @@ capture_derive_shadow() {
   local compiler="$1" dir="$2"
   local wat="$dir/derive-shadow.wat" err="$dir/derive-shadow.err"
 
-  { cat "${DERIVE_RTLIBS[@]}"; printf '\nfn main() = 0\n'; } \
-    | wt_run "$compiler" > "$wat" 2> "$err"
+  printf 'fn main() = 0\n' | wt_entry - "${DERIVE_RTLIBS[@]}" \
+    | wt_rooted "$compiler" > "$wat" 2> "$err"
   local rc=$?
   if [ "$rc" -ne 0 ]; then
     fail "derive shadow compile (exit=$rc; see $err)"
@@ -1129,8 +1125,8 @@ capture_arena_shadow() {
   local compiler="$1" dir="$2"
   local wat="$dir/arena-shadow.wat" err="$dir/arena-shadow.err"
 
-  { cat "${ARENA_RTLIBS[@]}"; printf '\nfn main() = 0\n'; } \
-    | wt_run "$compiler" > "$wat" 2> "$err"
+  printf 'fn main() = 0\n' | wt_entry - "${ARENA_RTLIBS[@]}" \
+    | wt_rooted "$compiler" > "$wat" 2> "$err"
   local rc=$?
   if [ "$rc" -ne 0 ]; then
     fail "arena shadow compile (exit=$rc; see $err)"
@@ -1539,8 +1535,8 @@ for i in "${!compilers[@]}"; do
   # (4096 samples @ 512 Hz) run through the comodulogram over low=[4,6,8,10]
   # high=[30,40,50,60]. Exit 42 iff the coupled cell is (6, 40) — the phase-
   # amplitude coupling built into the signal (peak/median MVL ratio ≈ 5.9).
-  run_program "$compiler" cfc-demo \
-    "$ROOT/tests/frontier/cfc-demo/demo.mn" 42 cfc "$dir"
+  run_program "$compiler" cfc_demo \
+    "$ROOT/tests/frontier/cfc_demo/demo.mn" 42 cfc "$dir"
   # The same pipeline on a REAL on-disk recording, cross-validated against numpy
   # (a distinct 6→60 coupling, flat 7). The felt research payoff + the
   # representation oracle the fixpoint cannot be (see run_cfc_rec).
@@ -2054,8 +2050,8 @@ for i in "${!compilers[@]}"; do
   # !Cast severance REFUSES (E_EffectMismatch at the declaration — ARMED
   # 2026-09-25, the crown's own verdict; before that it reported and the
   # program ran). The leg asserts the diagnostic fires.
-  cat "${RTLIBS[@]}" "$ROOT/tests/frontier/mn-cast-refused.mn" \
-    | wt_run "$compiler" > /dev/null 2> "$dir/cast-refused.err"
+  wt_entry "$ROOT/tests/frontier/mn-cast-refused.mn" "${RTLIBS[@]}" \
+    | wt_rooted "$compiler" > /dev/null 2> "$dir/cast-refused.err"
   if grep -q "E_EffectMismatch error" "$dir/cast-refused.err"; then
     pass "cast-refused severance reported (E_EffectMismatch at the decl)"
   else
@@ -2156,7 +2152,7 @@ for i in "${!compilers[@]}"; do
   # and the escaped thunk's `ping()` is in main's row with no enclosing
   # install — E_EffectUnhandled names Ping, no WAT, nonzero exit. The runtime
   # walk's 134 stays as the belt beneath it, never reached from this program.
-  cat "${RTLIBS[@]}" "$ROOT/tests/frontier/mn-effect-escaped-install.mn" | wt_run "$compiler" > "$dir/effect-escaped-install.wat" 2> "$dir/effect-escaped-install.err"
+  wt_entry "$ROOT/tests/frontier/mn-effect-escaped-install.mn" "${RTLIBS[@]}" | wt_rooted "$compiler" > "$dir/effect-escaped-install.wat" 2> "$dir/effect-escaped-install.err"
   esc_rc=$?
   if [ "$esc_rc" != "0" ] && [ ! -s "$dir/effect-escaped-install.wat" ] && grep -q 'E_EffectUnhandled.*Ping' "$dir/effect-escaped-install.err"; then
     pass "effect-escaped-install refuses at COMPILE (E_EffectUnhandled names Ping, no WAT)"
@@ -2306,7 +2302,7 @@ for i in "${!compilers[@]}"; do
   # bind always sticks. The fix returns row_subsumes(body_row, narrowing)
   # from the apply — the fn-finalize gate's own engine. The control leg
   # keeps the TRUE proposal alive.
-  cat "${RTLIBS[@]}" "$ROOT/tests/frontier/mn-teach-alloc-honest.mn" | wt_run "$compiler" teach - > "$dir/teach-alloc.out" 2>/dev/null
+  wt_entry "$ROOT/tests/frontier/mn-teach-alloc-honest.mn" "${RTLIBS[@]}" | wt_rooted "$compiler" teach - > "$dir/teach-alloc.out" 2>/dev/null
   # Judge main's OWN line: teach projects every fn in the linked blob, and
   # the runtime's non-allocating fns legitimately earn !Alloc lines.
   if grep '^main:' "$dir/teach-alloc.out" | grep -q '!Alloc'; then
@@ -2320,7 +2316,7 @@ for i in "${!compilers[@]}"; do
   # (memoize, compile-time eval, parallelize), and the ladder had ranked it
   # LAST — Pure won 0 of 165 measured suggestions. The leg still guards what
   # it was born to guard: a non-allocating body keeps a true proposal.
-  cat "${RTLIBS[@]}" "$ROOT/tests/frontier/mn-teach-pure-control.mn" | wt_run "$compiler" teach - > "$dir/teach-pure.out" 2>/dev/null
+  wt_entry "$ROOT/tests/frontier/mn-teach-pure-control.mn" "${RTLIBS[@]}" | wt_rooted "$compiler" teach - > "$dir/teach-pure.out" 2>/dev/null
   if grep '^main:' "$dir/teach-pure.out" | grep -q 'with Pure'; then
     pass "teach-pure-control (a pure body is taught its strongest proven claim, with Pure)"
   else
@@ -2415,7 +2411,7 @@ for i in "${!compilers[@]}"; do
   # MODULE now and a function's own line carries only its delta above it
   # (`severs beyond the module:`), so `severable:` no longer appears per fn.
   # The invariant is unchanged and is what this leg is for.
-  cat "${RTLIBS[@]}" "$ROOT/tests/frontier/mn-audit-severance-honest.mn" | wt_run "$compiler" audit - > "$dir/audit-sev.out" 2>/dev/null
+  wt_entry "$ROOT/tests/frontier/mn-audit-severance-honest.mn" "${RTLIBS[@]}" | wt_rooted "$compiler" audit - > "$dir/audit-sev.out" 2>/dev/null
   if grep -A1 '^allocates :' "$dir/audit-sev.out" | grep -qE 'Alloc[^—]* — unlocks Real-time safe'; then
     fail "audit-severance-honest (an allocating row was offered Alloc severance)"
   elif grep -A1 '^quiet :' "$dir/audit-sev.out" | grep -qE 'Alloc[^—]* — unlocks Real-time safe'; then
@@ -2440,7 +2436,7 @@ for i in "${!compilers[@]}"; do
   # The verb-shape tier (audit): a 2-step single-use let-chain invites the
   # |> pipe; a twice-used name (`<|` territory) and a one-step let (the
   # law's own exception) stay silent — both faces asserted.
-  cat "${RTLIBS[@]}" "$ROOT/tests/frontier/mn-audit-pipe-shape.mn" | wt_run "$compiler" audit - > "$dir/audit-pipe.out" 2>/dev/null
+  wt_entry "$ROOT/tests/frontier/mn-audit-pipe-shape.mn" "${RTLIBS[@]}" | wt_rooted "$compiler" audit - > "$dir/audit-pipe.out" 2>/dev/null
   if grep -A4 '^chained :' "$dir/audit-pipe.out" | grep -q 'verb-shape: 2-step'; then
     if grep -A4 '^forked :' "$dir/audit-pipe.out" | grep -q 'verb-shape' \
        || grep -A4 '^single :' "$dir/audit-pipe.out" | grep -q 'verb-shape'; then
@@ -2545,13 +2541,13 @@ for i in "${!compilers[@]}"; do
   fdemo2="$dir/fmt-demo"
   mkdir -p "$fdemo2"
   cp "$ROOT/tests/frontier/fmt-demo/rich.mn" "$fdemo2/rich.mn"
-  cat "${RTLIBS[@]}" "$fdemo2/rich.mn" | wt_run "$compiler" > "$fdemo2/pre.wat" 2>/dev/null \
+  wt_entry "$fdemo2/rich.mn" "${RTLIBS[@]}" | wt_rooted "$compiler" > "$fdemo2/pre.wat" 2>/dev/null \
     && wt_asm "$fdemo2/pre.wat" "$fdemo2/pre.wasm" 2>/dev/null \
     && "$WT" run "${WT_RUN_FLAGS[@]}" "$fdemo2/pre.wasm" >/dev/null 2>&1
   fmt_pre=$?
   (cd "$fdemo2" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$fdemo2" --dir /tmp "$compiler" fmt rich.mn) >"$dir/fmt.out" 2>&1
   fmt_rc=$?
-  cat "${RTLIBS[@]}" "$fdemo2/rich.mn" | wt_run "$compiler" > "$fdemo2/post.wat" 2>/dev/null \
+  wt_entry "$fdemo2/rich.mn" "${RTLIBS[@]}" | wt_rooted "$compiler" > "$fdemo2/post.wat" 2>/dev/null \
     && wt_asm "$fdemo2/post.wat" "$fdemo2/post.wasm" 2>/dev/null \
     && "$WT" run "${WT_RUN_FLAGS[@]}" "$fdemo2/post.wasm" >/dev/null 2>&1
   fmt_post=$?
@@ -2609,17 +2605,30 @@ for i in "${!compilers[@]}"; do
   else
     fail "fmt prose/annotation carry"
   fi
+  # ── a target that names no file and no module is refused, and no file
+  # appears. RED on boot c0b2828c: the resolver answered a fabricated
+  # `lib/<name>.mn` for a module with no file, and fmt wrote ANOTHER
+  # module's render there (lib/--check.mn held lib/memory.mn's text).
+  mkdir -p "$fdemo2/lib"
+  (cd "$fdemo2" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$fdemo2" --dir /tmp "$compiler" fmt no_such_module) >"$dir/fmt-nothing.out" 2>&1
+  nothing_rc=$?
+  if [ $nothing_rc -ne 0 ] && [ ! -e "$fdemo2/lib/no_such_module.mn" ] && [ ! -e "$fdemo2/no_such_module.mn" ] \
+     && grep -q 'no_such_module' "$dir/fmt-nothing.out"; then
+    pass "fmt refuses a target that names nothing, and writes no file"
+  else
+    fail "fmt wrote or accepted a target that names nothing (rc=$nothing_rc; see $dir/fmt-nothing.out, $fdemo2/lib)"
+  fi
   # ── fmt rungs 1/2/4 (the census's universal blockers) — RED pre-fix:
   # the signed with-clause rendered «invalid-effect», every handler decl
   # trapped in render_handler_arms, and authored `-> RetTy` dropped.
   cp "$ROOT/tests/frontier/fmt-demo/voicey.mn" "$fdemo2/voicey.mn"
-  cat "${RTLIBS[@]}" "$fdemo2/voicey.mn" | wt_run "$compiler" > "$fdemo2/vpre.wat" 2>/dev/null \
+  wt_entry "$fdemo2/voicey.mn" "${RTLIBS[@]}" | wt_rooted "$compiler" > "$fdemo2/vpre.wat" 2>/dev/null \
     && wt_asm "$fdemo2/vpre.wat" "$fdemo2/vpre.wasm" 2>/dev/null \
     && "$WT" run "${WT_RUN_FLAGS[@]}" "$fdemo2/vpre.wasm" >/dev/null 2>&1
   vfmt_pre=$?
   (cd "$fdemo2" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$fdemo2" --dir /tmp "$compiler" fmt voicey.mn) >"$dir/vfmt.out" 2>&1
   vfmt_rc=$?
-  cat "${RTLIBS[@]}" "$fdemo2/voicey.mn" | wt_run "$compiler" > "$fdemo2/vpost.wat" 2>/dev/null \
+  wt_entry "$fdemo2/voicey.mn" "${RTLIBS[@]}" | wt_rooted "$compiler" > "$fdemo2/vpost.wat" 2>/dev/null \
     && wt_asm "$fdemo2/vpost.wat" "$fdemo2/vpost.wasm" 2>/dev/null \
     && "$WT" run "${WT_RUN_FLAGS[@]}" "$fdemo2/vpost.wasm" >/dev/null 2>&1
   vfmt_post=$?
@@ -3445,7 +3454,7 @@ for i in "${!compilers[@]}"; do
   # row construction (the by-name dedup used to delete it silently) and
   # blocks conservatively — same instance and bare performs report,
   # a provably-distinct sibling instance is admitted and runs.
-  cat "${RTLIBS[@]}" "$ROOT/tests/frontier/mn-effect-instance-sibling.mn" | wt_run "$compiler" > "$dir/inst-sib.wat" 2> "$dir/inst-sib.err" \
+  wt_entry "$ROOT/tests/frontier/mn-effect-instance-sibling.mn" "${RTLIBS[@]}" | wt_rooted "$compiler" > "$dir/inst-sib.wat" 2> "$dir/inst-sib.err" \
     && wt_asm "$dir/inst-sib.wat" "$dir/inst-sib.wasm" 2>/dev/null \
     && "$WT" run "${WT_RUN_FLAGS[@]}" "$dir/inst-sib.wasm"
   sib_rc=$?
@@ -3454,13 +3463,13 @@ for i in "${!compilers[@]}"; do
   else
     fail "instance sibling (rc=$sib_rc; see $dir/inst-sib.err)"
   fi
-  cat "${RTLIBS[@]}" "$ROOT/tests/frontier/mn-effect-instance-severed.mn" | wt_run "$compiler" > /dev/null 2> "$dir/inst-sev.err"
+  wt_entry "$ROOT/tests/frontier/mn-effect-instance-severed.mn" "${RTLIBS[@]}" | wt_rooted "$compiler" > /dev/null 2> "$dir/inst-sev.err"
   if grep -q 'E_EffectMismatch' "$dir/inst-sev.err"; then
     pass "instance negation severs the same instance (mismatch reported)"
   else
     fail "instance severed (no mismatch; see $dir/inst-sev.err)"
   fi
-  cat "${RTLIBS[@]}" "$ROOT/tests/frontier/mn-effect-instance-bare.mn" | wt_run "$compiler" > /dev/null 2> "$dir/inst-bare.err"
+  wt_entry "$ROOT/tests/frontier/mn-effect-instance-bare.mn" "${RTLIBS[@]}" | wt_rooted "$compiler" > /dev/null 2> "$dir/inst-bare.err"
   if grep -q 'E_EffectMismatch' "$dir/inst-bare.err"; then
     pass "instance negation blocks the bare perform (conservative)"
   else
@@ -3471,13 +3480,13 @@ for i in "${!compilers[@]}"; do
   # ground type disagrees reports the mismatch; wrong arity reports the
   # constructor-arity class. Both RED on the prior boot (silent admits;
   # the head itself only parse-recovered there).
-  cat "${RTLIBS[@]}" "$ROOT/tests/frontier/mn-effect-instance-argty.mn" | wt_run "$compiler" > /dev/null 2> "$dir/inst-argty.err"
+  wt_entry "$ROOT/tests/frontier/mn-effect-instance-argty.mn" "${RTLIBS[@]}" | wt_rooted "$compiler" > /dev/null 2> "$dir/inst-argty.err"
   if grep -q 'E_TypeMismatch' "$dir/inst-argty.err" && ! grep -q 'P_' "$dir/inst-argty.err"; then
     pass "instance arg typing (wrong scalar type reports; the head parses clean)"
   else
     fail "instance argty (see $dir/inst-argty.err)"
   fi
-  cat "${RTLIBS[@]}" "$ROOT/tests/frontier/mn-effect-instance-arity.mn" | wt_run "$compiler" > /dev/null 2> "$dir/inst-arity.err"
+  wt_entry "$ROOT/tests/frontier/mn-effect-instance-arity.mn" "${RTLIBS[@]}" | wt_rooted "$compiler" > /dev/null 2> "$dir/inst-arity.err"
   if grep -q 'E_ConstructorArity' "$dir/inst-arity.err"; then
     pass "instance arg arity (wrong count reports)"
   else
@@ -3506,7 +3515,7 @@ for i in "${!compilers[@]}"; do
   # ride beside the quiet face's run. The old single-fixture form banked
   # "exit 42 with exactly one mismatch" — a real `!WASI` leak the unarmed
   # era let run (§9.11).
-  cat "${RTLIBS[@]}" "$ROOT/lib/io.mn" "$ROOT/tests/frontier/mn-hof-row-gate.mn" | wt_run "$compiler" > "$dir/hof-gate.wat" 2> "$dir/hof-gate.err" \
+  wt_entry "$ROOT/tests/frontier/mn-hof-row-gate.mn" "${RTLIBS[@]}" io | wt_rooted "$compiler" > "$dir/hof-gate.wat" 2> "$dir/hof-gate.err" \
     && wt_asm "$dir/hof-gate.wat" "$dir/hof-gate.wasm" 2>/dev/null \
     && "$WT" run "${WT_RUN_FLAGS[@]}" "$dir/hof-gate.wasm" > /dev/null
   hof_rc=$?
@@ -3515,7 +3524,7 @@ for i in "${!compilers[@]}"; do
   else
     fail "hof row gate (rc=$hof_rc mismatches=$(grep -c 'E_EffectMismatch' "$dir/hof-gate.err"); see $dir/hof-gate.err)"
   fi
-  cat "${RTLIBS[@]}" "$ROOT/lib/io.mn" "$ROOT/tests/frontier/mn-hof-row-gate-noisy.mn" | wt_run "$compiler" > "$dir/hof-gate-noisy.wat" 2> "$dir/hof-gate-noisy.err"
+  wt_entry "$ROOT/tests/frontier/mn-hof-row-gate-noisy.mn" "${RTLIBS[@]}" io | wt_rooted "$compiler" > "$dir/hof-gate-noisy.wat" 2> "$dir/hof-gate-noisy.err"
   hofn_rc=$?
   if [ "$hofn_rc" != "0" ] && [ ! -s "$dir/hof-gate-noisy.wat" ] && [ "$(grep -c 'E_EffectMismatch' "$dir/hof-gate-noisy.err")" = "1" ]; then
     pass "hof row gate, noisy face (REFUSED: exactly one mismatch at the printing edge, no WAT)"
@@ -3527,7 +3536,7 @@ for i in "${!compilers[@]}"; do
   # RE-RUNS its thunk — §4④): the replay-exact branch is admitted by
   # subsumption and the whole checkpoint+run+join loop runs; a printing
   # branch reports the mismatch naming the severed row at its own edge.
-  cat "${PERSIST_RTLIBS[@]}" "$ROOT/tests/frontier/mn-persist-branch-clean.mn" | wt_run "$compiler" > "$dir/pb-clean.wat" 2> "$dir/pb-clean.err" \
+  wt_entry "$ROOT/tests/frontier/mn-persist-branch-clean.mn" "${PERSIST_RTLIBS[@]}" | wt_rooted "$compiler" > "$dir/pb-clean.wat" 2> "$dir/pb-clean.err" \
     && wt_asm "$dir/pb-clean.wat" "$dir/pb-clean.wasm" 2>/dev/null \
     && "$WT" run "${WT_RUN_FLAGS[@]}" --dir /tmp "$dir/pb-clean.wasm" > /dev/null
   pb_rc=$?
@@ -3536,7 +3545,7 @@ for i in "${!compilers[@]}"; do
   else
     fail "persist branch clean (rc=$pb_rc; see $dir/pb-clean.err)"
   fi
-  cat "${PERSIST_RTLIBS[@]}" "$ROOT/tests/frontier/mn-persist-branch-external.mn" | wt_run "$compiler" > /dev/null 2> "$dir/pb-ext.err"
+  wt_entry "$ROOT/tests/frontier/mn-persist-branch-external.mn" "${PERSIST_RTLIBS[@]}" | wt_rooted "$compiler" > /dev/null 2> "$dir/pb-ext.err"
   if grep -q 'E_EffectMismatch' "$dir/pb-ext.err" && grep -q '!WASI' "$dir/pb-ext.err"; then
     pass "persist branch barrier reports the replaying external (severed row named)"
   else
@@ -3547,7 +3556,7 @@ for i in "${!compilers[@]}"; do
   # re-consumed per resumed run — T_OwnAcrossReplay names it at the call
   # edge (narration: the loop still runs 42); the self-contained sibling
   # thunk stays silent (exactly one line).
-  cat "${PERSIST_RTLIBS[@]}" "$ROOT/tests/frontier/mn-own-across-replay.mn" | wt_run "$compiler" > "$dir/pb-own.wat" 2> "$dir/pb-own.err" \
+  wt_entry "$ROOT/tests/frontier/mn-own-across-replay.mn" "${PERSIST_RTLIBS[@]}" | wt_rooted "$compiler" > "$dir/pb-own.wat" 2> "$dir/pb-own.err" \
     && wt_asm "$dir/pb-own.wat" "$dir/pb-own.wasm" 2>/dev/null \
     && "$WT" run "${WT_RUN_FLAGS[@]}" --dir /tmp "$dir/pb-own.wasm" > /dev/null
   pbo_rc=$?

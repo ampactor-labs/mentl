@@ -11,17 +11,17 @@
 // transport; tentacles are already here.
 import types
 
-import graph
-
 import effects
 
-import parser
+import format
 
-import infer
+import graph
 
 import imap
 
-import format
+import infer
+
+import parser
 
 // The structural census (Hβ.query.structural-census — PLAN §11 Phase 0.3):
 // ONE projection taking a structural shape, answering count + located
@@ -2170,7 +2170,7 @@ fn head_failures(decl) = match decl {
 
 // The head parsed as the declaration it spells, then rendered by the
 // formatter: empty when it comes back as itself.
-fn round_trip_failure(face: String, head: String) = match frontend("{head} 0") ~> diag_quiet {
+fn round_trip_failure(face: String, head: String) = match "{head} 0" |> lex |> parse_program ~> diag_quiet {
   [N(NStmt(FnStmt(n, ps, r, es, b)), _, _)] => {
     let back = render_fn_head(n, ps, r, es, b)
     if back == head { [] } else { ["{face}: {head}  ⇢  {back}"] }

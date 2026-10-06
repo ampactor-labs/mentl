@@ -109,9 +109,50 @@ handler format_default {
 // and for every helper the arms call. Rows stay inferred (Intent Boundaries
 // only), and the arms become one line each.
 fn render_program(ast) = {
-  let stmts = ast_top_level_stmts(ast)
+  let stmts = ast_top_level_stmts(ast) |> imports_in_path_order
   let rendered = stmts |> map(format_one_stmt)
   join_lines(rendered)
+}
+
+// A module's imports are a set (the parse keeps one edge per module), and a
+// set has no authored order — each run of import statements renders in path
+// order, so an unrelated edit never churns the block. An import that carries
+// prose stays where its author put it — the module's header rides the first
+// statement, and a comment naming why an import is there anchors it — so a
+// commented import closes the run before it and stands on its own.
+fn imports_in_path_order(stmts) = match fold(([], []), import_run_step, stmts) {
+  (out, run) => out ++ imports_sorted(run),
+}
+
+fn import_run_step(acc, stmt) = match acc {
+  (out, run) => match import_path_of(stmt) {
+    Some(_) => if graph_comment_at(node_handle(stmt)) == "" {
+      (out, push(run, stmt))
+    } else {
+      (out ++ imports_sorted(run) ++ [stmt], [])
+    },
+    None => (out ++ imports_sorted(run) ++ [stmt], []),
+  },
+}
+
+fn import_path_of(stmt) = match ast_kind_of(stmt) {
+  NStmt(ImportStmt(path)) => Some(path),
+  _ => None,
+}
+
+fn imports_sorted(run) = fold([], import_inserted, run)
+
+fn import_inserted(sorted, stmt) = match import_path_of(stmt) {
+  Some(p) => {
+    let before = filter(import_before(p, ??), sorted)
+    before ++ [stmt] ++ drop(len(before), sorted)
+  },
+  None => push(sorted, stmt),
+}
+
+fn import_before(p: String, s) = match import_path_of(s) {
+  Some(q) => !str_lt(p, q),
+  None => true,
 }
 
 // ─── render_node_at — render one node ─────────────────────────────
@@ -386,20 +427,24 @@ fn render_body_tokens(body) with !Mutate = match body {
 }
 
 fn render_expr_tokens(e) with !Mutate = match e {
-  LitInt(n) => // int_to_str(INT_MIN) prints its own minus, which re-parses as a unary
-  // minus over the WRAPPING positive literal and accretes one `-` per fmt
-  // pass. The wrapping spelling IS the authored surface (the lexer wraps
-  // 2147483648 back to INT_MIN) — value-identical, idempotent. Every
-  // other negative is stable: `-5` re-parses UNeg(5) and re-renders `-5`.
-  if n == 0 - 2147483648 { "2147483648" } else { int_to_str(n) },
-  LitFloat(f) => float_to_str(f),
+  LitInt(n) => // A negative literal node is a literal the lexer WRAPPED — `0x811C9DC5`,
+  // `2147483648` — since an authored `-5` parses as UNeg(5). int_to_str
+  // prints its minus, which re-parses as a unary minus over a different
+  // literal: INT_MIN accreted one `-` per pass, and `0x811C9DC5` became
+  // two tokens the conservation census could not pair. The wrapping
+  // spelling IS the value — the unsigned word the lexer wraps back — one
+  // token, idempotent, and the authored radix returns through `respell`.
+  if n < 0 { unsigned_word_text(n) } else { int_to_str(n) },
+  LitFloat(f) => float_literal_text(f),
   LitString(s) => "\"{str_escape(s)}\"",
   LitBool(b) => if b { "true" } else { "false" },
   LitUnit => "()",
   VarRef(name) => name,
   BinOpExpr(op, l, r) => {
     let rc = graph_comment_at(node_handle(r))
-    if rc == "" {
+    if lifts_zero_minus(op, l, r) {
+      "-{render_tokens_for(r)}"
+    } else if rc == "" {
       "{render_operand(l, binop_prec(op), false)} {binop_to_str(op)} {render_operand(r, binop_prec(op), true)}"
     } else {
       "{render_operand(l, binop_prec(op), false)} {binop_to_str(op)}\n{render_operand(r, binop_prec(op), true)}"
@@ -757,7 +802,7 @@ fn render_operand(child, parent_prec, is_right) with !Mutate = {
 fn render_postfix_head(head) with !Mutate = render_operand(head, 100, false)
 
 fn expr_prec_of(node) with Pure = match ast_kind_of(node) {
-  NExpr(BinOpExpr(op, _, _)) => binop_prec(op),
+  NExpr(BinOpExpr(op, l, r)) => if zero_minus_literal(op, l, r) { 90 } else { binop_prec(op) },
   NExpr(PipeExpr(k, _, _)) => pipe_prec(k),
   NExpr(FanoutExpr(_)) => pipe_prec(fanout_distribute_kind),
   NExpr(UnaryOpExpr(_, _)) => 90,
@@ -1187,9 +1232,155 @@ fn render_handler_arms(ref arms, i) with !Mutate = if i >= len(arms) {
 
 fn render_lit_value(lv) = match lv {
   LVInt(n) => int_to_str(n),
-  LVFloat(f) => float_to_str(f),
+  LVFloat(f) => float_literal_text(f),
   LVString(s) => "\"{str_escape(s)}\"",
   LVBool(b) => if b { "true" } else { "false" },
+}
+
+// `0 - <literal>` is unary minus spelled as a subtraction (SYNTAX principle
+// 2): the render writes `-<literal>` wherever the literal's own kind makes the
+// two one value. An Int is exact at every literal — negation IS `0 - x` in
+// the word. A Float is exact at every literal but zero: `0.0 - 0.0` is +0.0
+// and `-(0.0)` is -0.0, so that one keeps its subtraction. Over a variable
+// the kind needs the judgment, which fmt does not run — that rewrite is
+// tighten's, and a Float variable's is MaybeIncorrect for the same zero.
+// The census reads this one predicate for the `0` it lifts (`lifted_atoms`).
+fn zero_minus_literal(op, l, r) with Pure = match op {
+  BSub => match ast_kind_of(l) {
+    NExpr(LitInt(0)) => match ast_kind_of(r) {
+      NExpr(LitInt(_)) => true,
+      _ => false,
+    },
+    NExpr(LitFloat(z)) => match ast_kind_of(r) {
+      NExpr(LitFloat(f)) => z == 0.0 && f != 0.0,
+      _ => false,
+    },
+    _ => false,
+  },
+  _ => false,
+}
+
+// The lift as the render takes it: never across prose, which rides the
+// operand it is attached to.
+fn lifts_zero_minus(op, l, r) =
+  zero_minus_literal(op, l, r) && graph_comment_at(node_handle(l)) == "" && graph_comment_at(node_handle(r)) == ""
+
+// ─── The stated equivalences — what a lift removes, and what still carries it
+//
+// The census is a multiset: a canonicalization that removes an atom would
+// read as a loss — the second `import verify` leaves one `verify` unpaid, a
+// lifted `0 - 5` one `0`. Each lift therefore STATES what it removes, read off
+// the parse it was rendered from, and the census counts each stated atom as
+// present: a dropped duplicate import is carried by the import of the same
+// module the parse kept; a lifted zero by the negation it became. A real loss
+// is still a loss, since nothing else is stated. The parse's nodes are the
+// handles it minted, [from, to); `kept` is the statement list it returned.
+fn lifted_atoms(from, to, kept) = flat_map(lifted_at(kept, ??), range_list(from, to))
+
+fn lifted_at(kept, h) = match graph_node_body(h) {
+  NStmt(ImportStmt(path)) => if any(has_handle(h, ??), kept) { [] } else { path_atoms(path) },
+  NExpr(BinOpExpr(op, l, r)) => if lifts_zero_minus(op, l, r) {
+    match ast_kind_of(l) {
+      NExpr(LitInt(_)) => ["#0"],
+      _ => ["#{float_to_str(0.0)}"],
+    }
+  } else {
+    []
+  },
+  _ => [],
+}
+
+fn has_handle(h, stmt) = node_handle(stmt) == h
+
+// An import path's atoms — its segments, each a name the lexer reads.
+fn path_atoms(path: String) = path_atoms_from(path, 0, 0, [])
+
+fn path_atoms_from(path: String, i, start, acc) = if i >= byte_len(path) {
+  push(acc, str_slice(path, start, i))
+} else if byte_at(path, i) == 47 {
+  path_atoms_from(path, i + 1, i + 1, push(acc, str_slice(path, start, i)))
+} else {
+  path_atoms_from(path, i + 1, start, acc)
+}
+
+fn range_list(from, to) = range_from(from, to, [])
+
+fn range_from(i, to, acc) = if i >= to { acc } else { range_from(i + 1, to, push(acc, i)) }
+
+// A negative word as the unsigned decimal it wraps from, n + 2^32, computed
+// in halves so no step leaves the word: 2^32 + n = 2^31 + a with
+// a = n + 2^31, and 2^31 = 214748364 * 10 + 8.
+fn unsigned_word_text(n) = {
+  let a = n + 2147483647 + 1
+  let low = a % 10 + 8
+  "{int_to_str(214748364 + a / 10 + low / 10)}{int_to_str(low % 10)}"
+}
+
+// A float as a literal the lexer reads back. The voice renders a small or
+// large magnitude in scientific form (`1.0e-5`), which no Mentl literal
+// spells, so a page rendered through it did not re-lex: `0.00001` came back
+// as `1.0e-5`, three tokens, and the conservation gate refused the file
+// (measured 2026-09-28 on tests/frontier/derive-crucible). Moving the point
+// is exact — the digits are the same faithful run, so the literal parses to
+// the same value.
+fn float_literal_text(f) = {
+  let s = float_to_str(f)
+  match byte_index_from(s, 101, 0) {
+    None => s,
+    Some(e) => if byte_at(s, 0) == 45 {
+      "-{fixed_of_scientific(str_slice(s, 1, e), signed_int_of(str_slice(s, e + 1, byte_len(s))))}"
+    } else {
+      fixed_of_scientific(str_slice(s, 0, e), signed_int_of(str_slice(s, e + 1, byte_len(s))))
+    },
+  }
+}
+
+fn fixed_of_scientific(mantissa: String, exp) = {
+  let dot = match byte_index_from(mantissa, 46, 0) {
+    Some(d) => d,
+    None => byte_len(mantissa),
+  }
+  let digits =
+    str_slice(mantissa, 0, dot) ++ str_slice(mantissa, min(dot + 1, byte_len(mantissa)), byte_len(mantissa))
+  let point = dot + exp
+  let n = byte_len(digits)
+  if point <= 0 {
+    trim_fraction_zeros("0.{float_zero_pad(0 - point)}{digits}")
+  } else if point >= n {
+    "{digits}{float_zero_pad(point - n)}.0"
+  } else {
+    trim_fraction_zeros("{str_slice(digits, 0, point)}.{str_slice(digits, point, n)}")
+  }
+}
+
+// Trailing zeros after the point are no digit of the value; one stays, so
+// the literal keeps its point.
+fn trim_fraction_zeros(s: String) = {
+  let n = byte_len(s)
+  if n >= 2 && byte_at(s, n - 1) == 48 && byte_at(s, n - 2) != 46 {
+    trim_fraction_zeros(str_slice(s, 0, n - 1))
+  } else {
+    s
+  }
+}
+
+fn signed_int_of(s: String) = if byte_len(s) > 0 && byte_at(s, 0) == 45 {
+  0 - digits_value(s, 1, 0)
+} else if byte_len(s) > 0 && byte_at(s, 0) == 43 {
+  digits_value(s, 1, 0)
+} else {
+  digits_value(s, 0, 0)
+}
+
+fn digits_value(s: String, i, acc) =
+  if i >= byte_len(s) { acc } else { digits_value(s, i + 1, acc * 10 + (byte_at(s, i) - 48)) }
+
+fn byte_index_from(s: String, b, i) = if i >= byte_len(s) {
+  None
+} else if byte_at(s, i) == b {
+  Some(i)
+} else {
+  byte_index_from(s, b, i + 1)
 }
 
 fn render_plist_inner(ref ps, rest: Option(String)) = {
@@ -1257,9 +1448,12 @@ fn render_authored_eff_name(name) with !Mutate =
 // annotation renders nothing.
 // A function-typed return before the head's own `with` keeps the parens
 // that group it: the type grammar's `with` is greedy, so without them the
-// head's clause re-parses as the returned function's row.
+// head's clause re-parses as the returned function's row. An explicit
+// `-> ()` is the unit return written out, which SYNTAX's unit-return rule
+// omits.
 fn render_retty(retty, effs) with !Mutate = match retty {
   N(b, _, _) => match b {
+    NTypeAnn(TUnit) => "",
     NTypeAnn(ann_ty) => match ann_ty {
       TFun(_, _, _) => if len(effs) > 0 {
         " -> ({render_type_tokens(ann_ty)})"
@@ -1390,6 +1584,101 @@ fn atom_key(t) = match token_kind(t) {
   TStringLit(s) => Some("\"{s}"),
   TStringPart(s) => Some("\"{s}"),
   _ => None,
+}
+
+// ─── A literal's authored spelling — intent the source holds ─────────
+//
+// A numeric literal's radix and digit grouping are the author's: `48_000`,
+// `0x811C9DC5` and `0.00001` each say something `48000`, `-2128831035` and
+// a shortest decimal do not. The parse keeps the value and drops the lexeme,
+// so a render written from the parse alone spelled every literal by value —
+// Pulse's prose said `Sample(48_000)` over code fmt had rewritten to
+// `Sample(48000)`. This pass gives each rendered literal its authored
+// spelling back: the source's numeric literals, keyed as the census keys
+// them (kind and value), queued in source order, and each rendered literal of
+// a key takes the next one. A spelling of the same key always re-lexes to the
+// same value, so the swap is exact by construction; a key the render holds
+// more often than the source keeps its value spelling for the extra ones.
+// One pass serves every position a literal can stand in — an expression, a
+// pattern, an effect's instance argument — because it reads the text both
+// sides lex to, not the tree.
+fn respell(src: String, out: String) = {
+  let authored =
+    fold(smap_new(), spelling_queued, flat_map(literal_spelled(src, line_starts(src), ??), lex(src)))
+  let rendered = flat_map(literal_spelled(out, line_starts(out), ??), lex(out))
+  match fold((authored, smap_new(), []), literal_swap, rendered) {
+    (_, _, swaps) => splice_swaps(out, swaps, 0, 0, ""),
+  }
+}
+
+// A numeric literal token as (its census key, its byte range, its text).
+fn literal_spelled(text: String, starts, t) = match numeric_key(t) {
+  Some(k) => match span_range(starts, token_span(t)) {
+    (s, e) => [(k, (s, e), str_slice(text, s, e))],
+  },
+  None => [],
+}
+
+fn spelling_queued(m, lit) = match lit {
+  (k, _, spelled) => smap_add(m, k, push(spellings_of(m, k), spelled)),
+}
+
+fn numeric_key(t) = match token_kind(t) {
+  TIntLit(_) => atom_key(t),
+  TFloatLit(_) => atom_key(t),
+  _ => None,
+}
+
+fn spellings_of(m, k: String) = match smap_get(m, k) {
+  Some(q) => q,
+  None => [],
+}
+
+// The render's literal takes the next authored spelling of its key.
+fn literal_swap(acc, lit) = match acc {
+  (authored, used, swaps) => match lit {
+    (k, range, now) => {
+      let i = atom_count(used, k)
+      let q = spellings_of(authored, k)
+      if i >= len(q) {
+        acc
+      } else {
+        let spelled = q[i]
+        let used_next = smap_add(used, k, i + 1)
+        if spelled == now {
+          (authored, used_next, swaps)
+        } else {
+          (authored, used_next, push(swaps, (range, spelled)))
+        }
+      }
+    },
+  },
+}
+
+// The rendered text with each swapped range replaced, in offset order.
+fn splice_swaps(out: String, swaps, i, from, acc) = if i >= len(swaps) {
+  acc ++ str_slice(out, from, byte_len(out))
+} else {
+  match swaps[i] {
+    ((s, e), spelled) => splice_swaps(out, swaps, i + 1, e, acc ++ str_slice(out, from, s) ++ spelled),
+  }
+}
+
+// A token's byte range from its span: lines count from 1, columns from 1,
+// and the end column is one past the last byte.
+fn span_range(starts, sp) = match sp {
+  Span(l, c, el, ec) => (starts[l - 1] + c - 1, starts[el - 1] + ec - 1),
+}
+
+// The byte offset each line starts at.
+fn line_starts(s: String) = list_to_flat(line_starts_from(s, 0, [0]))
+
+fn line_starts_from(s: String, i, acc) = if i >= byte_len(s) {
+  acc
+} else if byte_at(s, i) == 10 {
+  line_starts_from(s, i + 1, push(acc, i + 1))
+} else {
+  line_starts_from(s, i + 1, acc)
 }
 
 // One TComment token per authored prose line — the lexical census the

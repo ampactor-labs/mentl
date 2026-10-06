@@ -11,11 +11,11 @@
 // an NHole; parsing continues. Ten syntax errors → ten holes.
 import types
 
+import canon
+
 import effects
 
 import graph
-
-import canon
 
 import lexer
 
@@ -345,7 +345,7 @@ fn attach_comment_weave(ref tokens, h_from) = {
   // parse, multiplied by every re-frontend the convergence runs (measured
   // 2026-07-26: 98% of the WHOLE self-compile inside cw_scan_index's
   // list_index_unchecked — the crc_scope disease at the weave layer).
-  let runs = list_to_flat(cw_collect_runs(tokens, 0, 0 - 1, make_list(0)))
+  let runs = list_to_flat(cw_collect_runs(tokens, 0, -1, make_list(0)))
   if len(runs) == 0 {
     ()
   } else {
@@ -434,7 +434,7 @@ fn cw_scan_index(ref idx, i, h_from, ref runs: [CwRun], leads, trails) = if i >=
         Span(sl, sc, el, ec) => {
           let tk = cw_find_run_on_line(runs, 0, len(runs) - 1, sl)
           if tk >= 0 { cw_compete_trail(trails, tk, sl, sc, el, ec, h) } else { () }
-          let lk = cw_find_run_before(runs, 0, len(runs) - 1, sl, 0 - 1)
+          let lk = cw_find_run_before(runs, 0, len(runs) - 1, sl, -1)
           if lk >= 0 { cw_compete_lead(leads, lk, sl, sc, el, ec, h) } else { () }
           cw_scan_index(idx, i + 1, h_from, runs, leads, trails)
         },
@@ -446,7 +446,7 @@ fn cw_scan_index(ref idx, i, h_from, ref runs: [CwRun], leads, trails) = if i >=
 // bsearch: the run whose start_line == line (runs are token-ordered, so
 // start lines are strictly increasing).
 fn cw_find_run_on_line(ref runs: [CwRun], lo, hi, line) = if lo > hi {
-  0 - 1
+  -1
 } else {
   let mid = (lo + hi) / 2
   let r = runs[mid]
@@ -557,6 +557,31 @@ fn parse_program(ref tokens) = {
       slice(final_buf, 0, final_count)
     },
   }
+}
+
+// A module's imports are a SET of edges: the parse keeps the first statement
+// naming each module and reports every later one at its own node
+// (`E_DuplicateImport`, armed) — a second line drawing an edge that exists
+// is a form that makes no graph, SYNTAX principle 2's rejected redundancy.
+// The statement leaves the tree, so `mentl fmt`'s render is the lift. Read
+// per MODULE (`parse_one_module`), the unit an import list belongs to: a
+// concatenated blob — the march's wheel, a battery's `libs ++ src` — repeats
+// every file's imports because it is many modules spelled as one text.
+fn import_set(stmts) = match fold((smap_new(), []), import_kept, stmts) {
+  (_, kept) => kept,
+}
+
+fn import_kept(acc, stmt) = match acc {
+  (seen, kept) => match stmt {
+    N(NStmt(ImportStmt(path)), span, h) => match smap_get(seen, path) {
+      Some(_) => {
+        report_at(h, EDuplicateImport(path, span))
+        acc
+      },
+      None => (smap_add(seen, path, 1), push(kept, stmt)),
+    },
+    _ => (seen, push(kept, stmt)),
+  },
 }
 
 fn parse_stmt_list(ref tokens, pos, own buf, count) = {

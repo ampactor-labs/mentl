@@ -29,33 +29,33 @@
 // judge reads the proposal alone (the stdin contract), no lib weave.
 import types
 
+import backends/wasm
+
 import cli
 
 import driver
 
-import infer
-
-import query
-
-import pipeline
-
-import lower
-
 import egraph
 
-import mentl
-
-import backends/wasm
-
-import json
+import infer
 
 import io
 
-import strings
+import json
 
 import lists
 
+import lower
+
 import memory
+
+import mentl
+
+import pipeline
+
+import query
+
+import strings
 
 // The session's collecting console — the address projection's transport
 // at the MCP surface. The SAME core that narrates to stdout on the CLI
@@ -474,7 +474,7 @@ fn mcp_loop(ast, ranges, manifest, at_read, current) = {
 // Filesystem, slot 0, pinned at 0xafd83 in session_run). The installs
 // cost nothing on the path that reports no project.
 fn session_run(answer) = infer_context(() => {
-  if !fs_exists(driver_module_path("main")) {
+  if driver_module_path("main") == None {
     eprint_string("mentl session: no resolvable main here — the session holds a project's living graph; run it in a project directory\n")
     1
   } else {
@@ -580,7 +580,7 @@ fn mcp_run(at_read) = {
     // touched no filesystem while it created directories.
     fs_mkdir(".build")
     fs_mkdir(".build/mcp")
-    if fs_exists(driver_module_path("main")) {
+    if driver_module_path("main") != None {
       match driver_entry_with_ranges("main") {
         (ast, ranges) => {
           eprint_string("session: graph resident — {int_to_str(len(ranges))} modules; queries answer live\n")

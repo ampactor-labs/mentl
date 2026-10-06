@@ -25,7 +25,9 @@ type EntryVerb
   // JSON (space.mn); bare `mentl space` is the page, the mentl command's
   | VSpace(Option((String, Int, Int)))
   | VTighten(Option(String))
-  | VFmt(String)
+  // the paths to render canonical — none is the project, the working
+  // directory's tree; `--check` writes nothing and lists what is not
+  | VFmt(FmtMode, [String])
   // target REQUIRED — carried non-optionally
   | VCompile(String)
   // a persisted image path — the file IS the argument
@@ -227,13 +229,9 @@ fn verb_specs() = [VerbSpec(
   "author each declared row's residue — its negations and pins; the positive row is projected"
 ), VerbSpec(
   "fmt",
-  "<path>",
-  (a) => if len(a) >= 3 {
-    Invocation(VFmt(a[2]))
-  } else {
-    ParseError("fmt needs a target: mentl fmt <path>")
-  },
-  "render the file canonical — layout is projection, never contract"
+  "[--check] [path…]",
+  fmt_verb_args,
+  "render the project canonical (no path: this directory's tree) — layout is projection, never contract; --check writes nothing and lists what is not"
 ), VerbSpec("repl", "", (a) => Invocation(VRepl), "line REPL"), VerbSpec(
   "march",
   "",
@@ -332,7 +330,7 @@ fn parse_address(ref s) = {
 
 // The first ':' at or after i; -1 when none.
 fn addr_colon_from(ref s, i, n) =
-  if i >= n { 0 - 1 } else if byte_at(s, i) == 58 { i } else { addr_colon_from(s, i + 1, n) }
+  if i >= n { -1 } else if byte_at(s, i) == 58 { i } else { addr_colon_from(s, i + 1, n) }
 
 // The all-digits segment [i, end) as Some(value); None when empty or any
 // non-digit byte (so `web:site.mn` never parses as an address).
@@ -343,6 +341,19 @@ fn addr_int_loop(ref s, i, end, acc) = if i >= end {
 } else {
   let ch = byte_at(s, i)
   if ch >= 48 && ch <= 57 { addr_int_loop(s, i + 1, end, acc * 10 + (ch - 48)) } else { None }
+}
+
+// What `mentl fmt` does with a render that differs from its source: write
+// it, or name it and write nothing — the form a commit hook and the board
+// read.
+type FmtMode = FmtWrite | FmtCheck
+
+// `fmt [--check] [path…]` — the paths are files or directories, kept as
+// written, since fmt reads files and judges no module.
+fn fmt_verb_args(a) = if len(a) >= 3 && a[2] == "--check" {
+  Invocation(VFmt(FmtCheck, drop(3, a)))
+} else {
+  Invocation(VFmt(FmtWrite, drop(2, a)))
 }
 
 // optional_target — for verbs where target is optional (edit / doc

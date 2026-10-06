@@ -22,63 +22,43 @@
 // (Hβ.driver.per-module-env-overlay).
 import types
 
-import parser
-
-import lexer
-
 import infer
-
-import strings
 
 import io
 
+import lexer
+
+import parser
+
 import persist
+
+import strings
 
 import verify
 
-// Resolve a module name to a file path — four homes, tried in order:
-//   the DIRECT read (an arg naming an existing file resolves as itself —
-//     `mentl check foo` beside foo.mn in ANY directory; `sub/thing` and
-//     absolute paths ride the same read),
-//   `src/{name}.mn` then `lib/{name}.mn` (the repo layout),
-//   `/mentl-home/{src,lib}/{name}.mn` — the well-known guest path when
-//     running OUTSIDE the repo: the install shim (tools/install.sh) maps
-//     $MENTL_HOME there, so a user project's `import prelude` reaches the
-//     pinned boot's own vocabulary — and its transitive `import types` (the
-//     substrate effect decls live in src/types.mn) — with zero
-//     configuration (the shim is a pointer to the live boot; the mapping
-//     is an address, not an env var). In-repo the src/lib homes win
-//     first — byte-identical behavior; on a total miss the repo-relative
-//     lib path returns so the E_MissingModule diagnostic stays as before.
-// The String pin is an Intent Boundary, load-bearing since splices
-// stopped forcing String (spec_mangle's law): unpinned, module_name's
-// only uses ARE splices, the fn generalizes, and a free-typed caller
-// (the tree scan's erased list) routes the word floor — paths minted as
-// pointer numerals, fs_exists false for every module, the warm manifest
-// all zeros, and the incremental compile blind to every edit.
-fn driver_module_path(ref module_name: String) = {
-  let direct = "{module_name}.mn"
-  if fs_exists(direct) {
-    direct
-  } else {
-    let src_path = "src/{module_name}.mn"
-    if fs_exists(src_path) {
-      src_path
-    } else {
-      let lib_path = "lib/{module_name}.mn"
-      if fs_exists(lib_path) {
-        lib_path
-      } else {
-        let home_src = "/mentl-home/src/{module_name}.mn"
-        if fs_exists(home_src) {
-          home_src
-        } else {
-          let home_lib = "/mentl-home/lib/{module_name}.mn"
-          if fs_exists(home_lib) { home_lib } else { lib_path }
-        }
-      }
-    }
-  }
+// Where a module's source can live, in the order a name is resolved: the
+// DIRECT read (`mentl check foo` beside foo.mn in any directory; `sub/thing`
+// and absolute paths ride it), the repository's `src/` and `lib/`, then the
+// same two under `/mentl-home`, where the install shim (tools/install.sh)
+// maps $MENTL_HOME so a project outside the repo reaches the pinned boot's
+// own vocabulary with no configuration.
+// The String pin is an Intent Boundary: unpinned, module_name's only uses
+// are splices, the fn generalizes, and a free-typed caller routes the word
+// floor — paths minted as pointer numerals.
+fn module_probes(module_name: String) =
+  ["{module_name}.mn", "src/{module_name}.mn", "lib/{module_name}.mn", "/mentl-home/src/{module_name}.mn", "/mentl-home/lib/{module_name}.mn"]
+
+// The file a module's name resolves to: the first probe that exists, or
+// None. A module with no file has no path, so nothing reads or writes one
+// in its name; each caller says what the absence means, and the refusal
+// names every place it looked (`module_probes`).
+fn driver_module_path(module_name: String) = find(fs_exists, module_probes(module_name))
+
+// A resolved module's path as a list — empty where the name resolves to no
+// file, so an import that names nothing draws no edge.
+fn module_path_list(module_name: String) = match driver_module_path(module_name) {
+  Some(path) => [path],
+  None => [],
 }
 
 // Module DAG collection — depth-first post-order walk from entry.
@@ -102,24 +82,42 @@ fn driver_module_path(ref module_name: String) = {
 // heap stood at 75.6 MB once the wheel's link was discovered, of which the
 // module texts are 3.7 MB, and the judgment carried the other 72 MB to its
 // end.
-fn driver_collect_dag(ref entry_module) = {
-  let buf = make_list(16)
-  let visited = []
-  // The seed is conditional on RESOLUTION: the prelude is pre-imported where
-  // the stdlib is reachable (the repo, an installed MENTL_HOME); a bare
-  // scratch context with no lib/ compiles bare programs — seeding an
-  // unresolvable prelude there would hand the ARMED E_MissingModule a
-  // phantom and refuse every driver-path compile.
-  match if fs_exists(driver_module_path("prelude")) {
-    driver_collect_visit("prelude", (buf, 0), visited)
-  } else {
-    ((buf, 0), visited)
-  } {
-    (seeded, seeded_visited) => match driver_collect_visit(entry_module, seeded, seeded_visited) {
-      ((final_buf, final_count), _final_visited) => slice(final_buf, 0, final_count),
+fn driver_collect_dag(ref entry_module) = match driver_seeded() {
+  (seeded, seeded_visited) => match driver_collect_visit(entry_module, seeded, seeded_visited) {
+    ((final_buf, final_count), _final_visited) => slice(final_buf, 0, final_count),
+  },
+} ~> arena
+
+// A program read from stdin is an entry like a file is: its import lines are
+// edges the same walk follows, after the same prelude seed, and the text itself
+// is the last module, named `<stdin>`. It used to be judged ALONE — its imports
+// drew nothing, so every gate that fed a program on stdin concatenated the
+// library files ahead of it, a third link model beside the DAG, and the blob's
+// repeated imports were one module's duplicates once a duplicate import refused.
+fn driver_collect_text(text) = {
+  let imports = driver_extract_imports(text)
+  match driver_seeded() {
+    (seeded, seeded_visited) => match driver_collect_visit_list(imports, seeded, seeded_visited) {
+      ((buf, count), _visited) => {
+        let extended = list_extend_to(buf, count + 1)
+        slice(list_set(extended, count, ("<stdin>", "<stdin>", Some(text), imports)), 0, count + 1)
+      },
     },
   }
 } ~> arena
+
+// The prelude edge every link starts from. The seed is conditional on
+// RESOLUTION: the prelude is pre-imported where the stdlib is reachable (the
+// repo, an installed MENTL_HOME); a bare scratch context with no lib/ compiles
+// bare programs — seeding an unresolvable prelude there would hand the ARMED
+// E_MissingModule a phantom and refuse every compile.
+fn driver_seeded() = {
+  let buf = make_list(16)
+  match driver_module_path("prelude") {
+    Some(_) => driver_collect_visit("prelude", (buf, 0), []),
+    None => ((buf, 0), []),
+  }
+}
 
 // collected is a (buf, count) pair threaded through DAG traversal.
 // Post-order: append self AFTER visiting deps.
@@ -149,36 +147,43 @@ fn driver_collect_dag(ref entry_module) = {
 // the check and the set keys the path, so a second edge to a module
 // already walked is the no-op that drawing an existing edge is.
 fn driver_collect_visit(ref module_name, own collected, own visited) with !Diagnostic = {
-  let path = driver_module_path(module_name)
-  if set_contains(visited, path) {
+  let resolved = driver_module_path(module_name)
+  // A module with no file is keyed by its name: a name never ends in `.mn`,
+  // so it cannot meet a path.
+  let key = unwrap_or(resolved, module_name)
+  if set_contains(visited, key) {
     (collected, visited)
   } else {
-    let visited2 = set_insert(visited, path)
-    if !fs_exists(path) {
-      // Module source missing — treat as terminal (no further deps).
-      // Driver's per-module check will surface E_MissingModule when
-      // it tries to process this name.
+    let visited2 = set_insert(visited, key)
+    match resolved {
+      None => // No file: a terminal with no source and no deps, its path the places
+      // the resolver looked — E_MissingModule names them where the entry is
+      // checked.
       match collected {
         (buf, count) => {
           let extended = list_extend_to(buf, count + 1)
-          let written = list_set(extended, count, (module_name, path, None, []))
+          let searched = join(", ", module_probes(module_name))
+          let written = list_set(extended, count, (module_name, searched, None, []))
           ((written, count + 1), visited2)
         },
-      }
-    } else {
-      let source = fs_read_file(path)
-      let imports = driver_extract_imports(source)
-      // Visit dependencies first, then add self (post-order).
-      match driver_collect_visit_list(imports, collected, visited2) {
-        (after_deps_collected, after_deps_visited) => match after_deps_collected {
-          (buf, count) => {
-            let extended = list_extend_to(buf, count + 1)
-            let written = list_set(extended, count, (module_name, path, Some(source), imports))
-            ((written, count + 1), after_deps_visited)
-          },
-        },
-      }
+      },
+      Some(path) => driver_collect_present(module_name, path, collected, visited2),
     }
+  }
+}
+
+fn driver_collect_present(module_name, path, collected, visited2) = {
+  let source = fs_read_file(path)
+  let imports = driver_extract_imports(source)
+  // Visit dependencies first, then add self (post-order).
+  match driver_collect_visit_list(imports, collected, visited2) {
+    (after_deps_collected, after_deps_visited) => match after_deps_collected {
+      (buf, count) => {
+        let extended = list_extend_to(buf, count + 1)
+        let written = list_set(extended, count, (module_name, path, Some(source), imports))
+        ((written, count + 1), after_deps_visited)
+      },
+    },
   }
 }
 
@@ -215,8 +220,11 @@ fn module_imports_of(entry) with Pure = match entry {
 fn entry_import_names(modules, name: String) = match find((e) => module_name_of(e) == name, modules) {
   Some(entry) => fold(
     [],
-    (acc, spelling) => match entry_name_of_path(modules, driver_module_path(spelling)) {
-      Some(dep) => push(acc, dep),
+    (acc, spelling) => match driver_module_path(spelling) {
+      Some(path) => match entry_name_of_path(modules, path) {
+        Some(dep) => push(acc, dep),
+        None => acc,
+      },
       None => acc,
     },
     module_imports_of(entry)
@@ -394,7 +402,19 @@ fn driver_entry_scoped(ref entry_module, dscope) = {
   // for imports) and REPORTS (E_MissingModule). Nothing in a compile runs
   // outside a module, so no reader carries an "if any" arm.
   enter_link_root()
-  let modules = driver_collect_dag(entry_module)
+  driver_weave(driver_collect_dag(entry_module), dscope)
+}
+
+// The stdin program's link: the same discovery register and link root as a
+// file entry's, the same weave after it.
+fn driver_text_scoped(text, dscope) = {
+  diag_scope(ScopeNone)
+  enter_link_root()
+  driver_weave(driver_collect_text(text), dscope)
+}
+
+// What discovery found, judged as ONE program in the walk's order.
+fn driver_weave(modules, dscope) = {
   let discovered = heap_mark()
   // THE WEAVE IS GONE. This fold used to concatenate every module into one
   // text and account line offsets so five later machines could put the module
@@ -472,7 +492,7 @@ fn driver_scan_of(ref modules) = {
     (entry) => match module_source_of(entry) {
       Some(text) => (module_path_of(entry), str_hash(text), filter(
         (dep_path) => contains_module(paths, dep_path),
-        map(driver_module_path, module_imports_of(entry))
+        flat_map(module_path_list, module_imports_of(entry))
       ), module_name_of(entry)),
       None => (module_path_of(entry), 0, [], module_name_of(entry)),
     },
@@ -839,7 +859,7 @@ fn driver_collect_dag_with_deps(ref entry_module) = {
   map(
     (entry) => (entry, filter(
       (dep_path) => contains_module(paths, dep_path),
-      map(driver_module_path, module_imports_of(entry))
+      flat_map(module_path_list, module_imports_of(entry))
     )),
     modules
   )

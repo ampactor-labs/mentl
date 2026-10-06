@@ -27,29 +27,25 @@ import graph
 
 import arena
 
-import verify
-
-import env
-
-import intern
-
-import lexer
+import canon
 
 import effects
 
-import types
-
-import canon
-
-import own
+import env
 
 import imap
 
+import intern
+
 import io
+
+import lexer
+
+import own
 
 import parser
 
-import io
+import types
 
 import verify
 
@@ -185,7 +181,7 @@ handler infer_ctx with stack = [], arm_stack = [], install_marks = [], mint_ceil
   inf_keep_open(cells) => resume() with kept = push(kept, cells),
   inf_keep_close() => if len(kept) == 0 { resume() } else { resume() with kept = drop_last(kept) },
   inf_exit_fn() => if len(stack) == 0 {
-    resume(([], 0 - 1, mk_ef_pure(), span_zero()))
+    resume(([], -1, mk_ef_pure(), span_zero()))
   } else {
     let frame = last(stack)
     // The published row is COMPUTED here and FINALIZED by the caller
@@ -1410,15 +1406,6 @@ fn infer_program_once(stmts, parse_start, parse_end) = {
   comment_refs_check(stmts, parse_start, parse_end)
 } ~> row_gate ~> store_ages ~> infer_ctx ~> fresh_for_inference ~> resume_summaries_ctx
 
-// No private ledgers. The trial installed its own affine_ledger /
-// region_tracker / verify_ledger so its undischarged debt would die with
-// its bracket instead of doubling the final's V_Pending. One judgment has
-// nothing to double: its obligations ARE the program's, and they land in
-// the pipeline's ambient ledgers where every reader expects them.
-//
-// frontend — lex |> parse, the judgment's input boundary
-fn frontend(source) = source |> lex |> parse_program
-
 // Reports said to no one: the discovery parse's import read (the weave
 // parse reports every lex diagnostic again, placeably) and the gradient's
 // dry claims (a proposal judged on a scratch ledger, its refutation the
@@ -1530,7 +1517,7 @@ fn parse_one_module(m) = match m {
       N(_, _, h) => h,
     }
     graph_module_enter(mh)
-    let stmts = lex(text) |> parse_program
+    let stmts = lex(text) |> parse_program |> import_set
     graph_register_node(mh, NModule({decls: stmts, imports: imports, path: path, span: mspan}))
     stmts
   },
@@ -3505,7 +3492,7 @@ fn infer_expr(ref node) = match node {
           N(_, _, th) => match else_e {
             N(_, _, eh) => match else_e {
               N(else_body, _, _) => {
-                graph_bind(ch, TName("Bool", []), Located(span, IfBranch(Inferred("condition"))))
+                unify_types(TVar(ch), TName("Bool", []), span, IfBranch(Inferred("condition")))
                 // E_IfMissingElse per SYNTAX.md: detect synthesized-LitUnit else
                 // (parser produces LitUnit when no else clause — src/parser.mn:1275).
                 // If the then-branch produces a non-unit value, the missing else
@@ -5197,7 +5184,7 @@ fn infer_pipe_tee(left, right, handle, span: ValidSpan) = {
       infer_expr(left)
       exit_frame()
       if opens_arena {
-        ages_depth(0 - 1)
+        ages_depth(-1)
         // A body that suspends leaves the arena's frame, and the rest of THIS
         // frame resumes at the arena's value — the arena is a boundary as a
         // call is, staged while this frame is the live one.
@@ -7503,8 +7490,8 @@ fn target_is_param(t) = match t {
 
 fn target_param_index(params, t) = match t {
   TgParam(b) => handle_position(params, b),
-  TgState(_) => 0 - 1,
-  TgOlder => 0 - 1,
+  TgState(_) => -1,
+  TgOlder => -1,
 }
 
 fn store_at_index(params, entry) = match entry {
@@ -7515,7 +7502,7 @@ fn handle_position(params, b) = match find(pair_at_handle(b, ??), enumerate(para
   Some(pair) => match pair {
     (i, _) => i,
   },
-  None => 0 - 1,
+  None => -1,
 }
 
 fn pair_at_handle(b, pair) = match pair {
@@ -9517,6 +9504,11 @@ fn mint_params(params, owner_name, span: ValidSpan) = map(
 // unannotated param is a bare TVar; its handle IS its fresh var (quantified).
 // Without the shared conversion a lowercase TName is a RIGID nominal that
 // mismatches every concrete arg (recovered, word-floored) — the pureElem class.
+fn param_cell_is_free(ph) = match graph_chase(ph) {
+  GNode(NFree(_), _) => true,
+  _ => false,
+}
+
 fn build_param_types(params, handles) = match build_param_types_loop(params, handles, [], 0) {
   (tys, _qmap) => tys,
 }
@@ -9528,7 +9520,19 @@ fn build_param_types_loop(params, handles, qmap, i) = if i >= len(params) {
     TParam(name, declared, auth, res, default, prow) => {
       let h = list_index(handles, i)
       match match declared {
-        TVar(_) => (TVar(h), qmap),
+        TVar(ph) => // The parser minted this cell at the parameter's name; it IS the
+        // parameter, so it is bound to the cell the judgment carries rather
+        // than left behind unjudged (a ghost the caret and `refs of` could
+        // only answer with nothing). The first judgment of a signature binds
+        // it; a later one finds it bound and reads through it.
+        {
+          if ph != h && param_cell_is_free(ph) {
+            graph_bind(ph, TVar(h), Located(span_zero(), Declared(name)))
+          } else {
+            ()
+          }
+          (TVar(h), qmap)
+        },
         _ => match quantify_ctor_ty(declared, qmap, graph_reason_at(h)) {
           (conv, q) => {
             graph_bind(h, conv, Located(span_zero(), Declared(name)))
@@ -12899,18 +12903,19 @@ fn classify_rounds(decls, tidx, entries) = {
   // threads evidence through its own calls.
   let idx = smap_build(entries)
   let next = list_to_flat({
-    classify_grade_all(decls, 0)
+    classify_grade_all(decls)
   } ~> summaries_frozen(idx, tidx))
   if usage_entries_eq(entries, next, 0) { next } else { classify_rounds(decls, tidx, next) }
 }
 
-fn classify_grade_all(decls, i) = if i >= len(decls) {
-  []
-} else {
-  match list_index(decls, i) {
-    (n, b, _, _) => // drift-audit: ignore — prepend-cons recursion, O(N) total
-    [(n, resume_grade(b))] ++ classify_grade_all(decls, i + 1),
-  }
+// One grade per declaration — a map, so no frame per declaration: the
+// prepend-cons recursion it replaces held one for each, and the boot that
+// carries it exhausted the engine's stack compiling a wheel ~70
+// declarations larger (measured 2026-10-06).
+fn classify_grade_all(decls) = map(grade_entry, decls)
+
+fn grade_entry(d) = match d {
+  (n, b, _, _) => (n, resume_grade(b)),
 }
 
 // ─── Tail-transparent parameters — a proof, never an accident ─────────

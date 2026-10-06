@@ -1,6 +1,6 @@
 // rec-demo.mn — the CFC pipeline on a REAL on-disk recording.
 //
-// The synthetic demo (../cfc-demo) BUILDS its signal inline; this one READS a
+// The synthetic demo (../cfc_demo) BUILDS its signal inline; this one READS a
 // recording from disk — a completely different value origin. The path crosses
 // WASI (fs_read_file_impl), splits on newlines into VIEW strings, and parses
 // 4096 decimal lines into a native [Float] list (read_recording). If parse_float

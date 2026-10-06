@@ -111,11 +111,6 @@ if [ "${H0:-0}" != "0" ]; then
   exit 1
 fi
 
-# The trio + prelude: strings.mn's parse_int_base calls prelude's
-# parse_int, so the honest link set includes it — m2 emits the whole
-# input (no reachability-from-main yet, unlike the seed), so an
-# under-linked dependency surfaces as an undefined global at assemble.
-RT="${MENTL_RT_LIBS[*]}"
 pass=0; fail=0
 fail_m=0
 # fail_m is the MICRO tier's counter and must exist outside the micros
@@ -177,12 +172,12 @@ fn get(o) = match o {
 fn main() = get(Some(4))
 EOF
 
-# rungs below carry the runtime trio (the vocabulary — every real
-# program links it; verify.sh RTLIBS convention)
+# rungs below are entries read with the tree preopened, so the walk seeds the
+# prelude — the vocabulary every real program links (driver_seeded)
 rungrt() {
   local name="$1" want="$2" src="$G/$1.mn"
-  { cat $RT; cat; } > "$src"
-  "$WT" run "${WT_RUN_FLAGS[@]}" "$GATE_WASM" < "$src" > "$G/$1.wat" 2> "$G/$1.err"
+  cat > "$src"
+  wt_rooted "$GATE_WASM" < "$src" > "$G/$1.wat" 2> "$G/$1.err"
   local rc=$?
   if [ $rc -ne 0 ]; then
     echo "✗ $name(+rt): m2 COMPILE trap=$(grep -m1 -oE '!\S+' "$G/$1.err" | head -1)"

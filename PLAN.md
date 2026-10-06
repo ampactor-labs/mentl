@@ -643,8 +643,11 @@ read corrects). The arena's win landed as that ceiling FALLING — 1,050,000
 → 884,000 KB on 2026-10-03, read off three runs of the boot that carried
 it, and 884,000 → 594,000 the same day once every extent ran in one.
 state.sh
-still shows the footprint; raising any ceiling stays an explicit
-in-commit act, the census pattern applied to cost. Paid for by measurement: the judgment's peak moved
+still shows the footprint. A ceiling never rises (2026-10-06): a landing
+whose cost breaches it pays the cost down — the B4 + C9 breach found a
+whole-program walk re-run per ask, the L4b one a path-local walk asked at
+every `++` — and `tools/obey-gate.py` refuses a raised ceiling at the commit
+(CLAUDE.md ⚖ "A gate is obeyed"). Paid for by measurement: the judgment's peak moved
 563MB → 3,044MB (07-25 → 07-29) across unmeasured landings and fell 823MB at
 the rounds deletion, also unmeasured; a frontier edit-leg holding generations
 in the never-free image reached 2,366MB and was the process the kernel killed
@@ -3699,7 +3702,7 @@ and Wave C (tier 5) follow.
 
 *Tier 1 · the safety net, before anything wide.*
 - **G2 · Every gate can fail, the board bounds answers, and the project is
-  the unit of every gate** (`Hβ.board.every-gate-can-fail`). The board
+  the unit of every gate** (`Hβ.board.every-gate-can-fail`; LANDED 2026-10-06, pin dcf884c1). The board
   bounds a located question, not only a census shape — open obligations at
   39, iteration costumes at 490, prose coordinates at 34, ghosts at 18,681,
   prose by class — each a falling line seen RED one below its ceiling;
@@ -3709,7 +3712,9 @@ and Wave C (tier 5) follow.
   every later landing is verified through these gates, and the obligations
   rose across L-C with nothing to refuse it.
 - **M9 · One link model, read from the DAG**
-  (`Hβ.driver.link-is-reachability`). Every compile — the fixed point,
+  (`Hβ.driver.link-is-reachability`; LANDED 2026-10-06, pin 8ab9b567 — the
+  frontier's own blob followed at F, where stdin became an entry module).
+  Every compile — the fixed point,
   `mentl compile`, a battery fixture, a lesson — is the import DAG from an
   entry plus the prelude edge, so the march judges the wheel `mentl compile`
   builds instead of a lib-first blob; a TRANSITION. It needs no M1 (the DAG
@@ -3718,7 +3723,7 @@ and Wave C (tier 5) follow.
 
 *Tier 2 · the false proofs a user can hit, smallest blast radius first.*
 - **RACE · The race rule reads every write, and a spawned instance shares
-  the module's values** (`Hβ.threads.race-rule-reads-every-write`). What an
+  the module's values** (`Hβ.threads.race-rule-reads-every-write`; LANDED 2026-10-06 with SPACE.1, pin ac3ec166). What an
   arm writes becomes one published fact — its `resume … with` updates plus
   every store the age claim resolves to handler state — read by the race
   rule and the arena alike, and a spawned instance takes the root's module
@@ -3727,7 +3732,8 @@ and Wave C (tier 5) follow.
   and its two instruments (the in-place-store crucible, the module-value
   pair) are measured on the boot first.
 - **TRAP · Traps are in the row**
-  (`Hβ.effects.index-partiality-is-a-row-fact`). The deliberate trap's one
+  (`Hβ.effects.index-partiality-is-a-row-fact`; LANDED 2026-10-06, pin
+  9ba7f087). The deliberate trap's one
   home answers `!` and charges `Trap`; an index, a slice and a byte read
   raise their precondition as C5's division does; and a capability label
   states only the absences it was proven from, so "Total" is not claimed
@@ -3740,7 +3746,11 @@ and Wave C (tier 5) follow.
 - **N2 + N4 · One type renderer, and the never type**
   (`Hβ.voice.free-variables-render-as-handles`, its round trip
   `Hβ.fmt.render-must-parse-to-the-same-tree`, and
-  `Hβ.types.never-is-quantified-per-perform`). Every surface that shows a
+  `Hβ.types.never-is-quantified-per-perform`; LANDED 2026-10-06, pin
+  c0b2828c — the heads leg's 92 open round trips are three grammar peers,
+  `Hβ.syntax.named-record-rest-is-dropped`,
+  `Hβ.syntax.row-grammar-has-no-grouping` and
+  `Hβ.syntax.effect-arg-type-is-one-token`). Every surface that shows a
   type renders through one projection — no `_:`, no `-> ()`, no `t…@e…`, no
   `WASI(a)` — the head round trip `parse(render(head)) == head` is a board
   leg, `doc` lists an effect's ops, and `!` is quantified per perform, never
@@ -3749,7 +3759,11 @@ and Wave C (tier 5) follow.
   projection never writes the graph) rides with it.
 - **F · `mentl fmt` makes the project canonical, cargo-style**
   (`Hβ.fmt.the-project-is-canonical`, closing
-  `Hβ.fmt.literal-spelling-is-intent`). No target renders the project and
+  `Hβ.fmt.literal-spelling-is-intent`; LANDED IN PART 2026-10-06, pin
+  50da7612 — the verb, the parse-only render, the atomic write, the stamps,
+  `E_DuplicateImport` and the spelling; the rest stays the peer's. Its
+  integration also made stdin an entry module and built the obey gate,
+  `tools/obey-gate.py`). No target renders the project and
   writes what is not canonical, and `--check` writes nothing and exits
   nonzero; each file is a parse in its own arena, never a judgment, and the
   write is atomic across the project; a duplicate import is a syntax error

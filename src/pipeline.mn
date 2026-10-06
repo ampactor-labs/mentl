@@ -30,41 +30,41 @@
 //   clock_real, tick_real, sample_at, deadline_real → clock.mn
 import graph
 
-import types
-
-import effects
-
-import env
-
-import intern
-
-import infer
-
-import lower
+import backends/wasm
 
 import derive
 
-import backends/wasm
-
-import lexer
-
-import parser
-
-import own
-
-import verify
-
-import mentl
-
-import query
+import driver
 
 import dsp/clock
 
-import driver
+import effects
+
+import egraph
+
+import env
+
+import infer
+
+import intern
 
 import io
 
-import egraph
+import lexer
+
+import lower
+
+import mentl
+
+import own
+
+import parser
+
+import query
+
+import types
+
+import verify
 
 // The spine — entry points as |> + ~> topology
 // Read top-to-bottom: source flows DOWN through `|>`; handlers wrap
@@ -564,9 +564,16 @@ fn resume_image(img_path) = compile_context(() => {
   compile_remainder(warm_program())
 } ~> wat_stdout ~> persist_to_disk ~> fail_exit ~> wasi_filesystem)
 
+// The program on stdin is an entry: its import lines weave the DAG the walk
+// draws from it, as a file's do (`driver_text_scoped`), and every module of
+// the link narrates, as the stdin route always has.
 fn compile_stdin() = compile_context(() => {
-  read_stdin() |> infer_program_converged |> compile_remainder
+  read_stdin() |> stdin_link |> compile_remainder
 } ~> wat_stdout ~> wasi_filesystem)
+
+fn stdin_link(text) = match driver_text_scoped(text, ScopeAll) {
+  (ast, _mods) => ast,
+}
 
 // pipeline_check returns its own ERROR COUNT, because it owns the handler that
 // does the counting (the diagnostics_handler at the foot of this chain).
@@ -780,7 +787,9 @@ fn analyze_fns(entry_module, projection) = infer_context(() => {
   // carried a second cost: the route installed no diagnostic scope, so it
   // narrated every dependency at a developer who had named one file.
   let ast = if entry_module == "-" {
-    read_stdin() |> infer_program_converged
+    match driver_text_scoped(read_stdin(), ScopeModule("<stdin>")) {
+      (ast_all, _mods) => driver_module_ast(ast_all, "<stdin>"),
+    }
   } else {
     match driver_entry_with_ranges(entry_module) {
       (ast_all, _ranges) => driver_module_ast(ast_all, entry_module),

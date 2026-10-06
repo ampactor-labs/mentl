@@ -75,7 +75,14 @@ if [ -z "$_wt_engine" ] || [ ! -x "$_wt_engine" ]; then
   return 2 2>/dev/null || exit 2
 fi
 WT="$_wt_engine"
-WT_RUN_FLAGS=(-C cache=y -W threads=y -W tail-call=y -S threads=y)
+# max-wasm-stack: the pinned boot grades resume cardinality by a recursion
+# one frame per declaration of the program it compiles (classify_grade_all,
+# src/infer.mn — the wheel's own copy is a map from 2026-10-06), so the
+# wheel's declaration count is bounded by the engine's 512 KiB default:
+# measured 2026-10-06, the fmt landing's ~70 new declarations took the boot
+# compiling the wheel to `call stack exhausted`, and 4 MiB compiled it. The
+# flag retires once a boot with the map is pinned.
+WT_RUN_FLAGS=(-C cache=y -W threads=y -W tail-call=y -S threads=y -W max-wasm-stack=4194304)
 # MENTL_WT_EXTRA — extra engine flags, word-split, appended to every wt_run and
 # every shim invocation. It exists for ONE thing the canonical flags cannot
 # express and the shim therefore could not reach: attaching a profiler.
@@ -92,15 +99,36 @@ fi
 WABT_FEATURE_FLAGS=(--enable-threads --enable-tail-call)
 W2W=(wat2wasm --debug-names "${WABT_FEATURE_FLAGS[@]}")
 
-# MENTL_RT_LIBS — the runtime-link set every battery fixture concatenates.
-# One home: verify.sh and march-gate.sh both linked the same four modules
-# from their own definitions, the parallel-arrays drift at gate scale.
+# MENTL_RT_LIBS — the runtime modules a micro run by run-micro.sh imports (the
+# prelude's closure, which the walk's seed draws on its own; verify.sh names
+# them for the legs that pass a set).
 MENTL_RT_LIBS=(lib/memory.mn lib/strings.mn lib/lists.mn lib/prelude.mn)
 
 # wt_run <wasm> [args…] — run a wasm module under the canonical flags. Stdin/
 # stdout/stderr pass through untouched, so callers pipe the wheel in and capture
 # the WAT out exactly as before.
 wt_run() { "$WT" run "${WT_RUN_FLAGS[@]}" "$@"; }
+
+# wt_entry <source|-> [module…] — a program as an ENTRY: its text, then an
+# import line for each named module the text does not already import. Piped
+# into wt_rooted, the compiler reads it on stdin and the walk weaves those
+# imports and the prelude from the tree, the link `mentl compile` draws from a
+# file (driver_collect_text). This replaced concatenating the library files
+# ahead of the program — a third link model, whose repeated imports were one
+# module's duplicates once a duplicate import refused. The imports follow the
+# text so a fixture's own coordinates stay its own.
+wt_entry() {
+  local src="$1" m text; shift
+  if [ "$src" = - ]; then text=$(cat); else text=$(cat "$src"); fi
+  printf '%s\n' "$text"
+  for m in "$@"; do
+    grep -qx "import $m" <<<"$text" || printf 'import %s\n' "$m"
+  done
+}
+
+# wt_rooted <compiler> [arg…] — run the compiler with the working directory
+# preopened, so a stdin entry's imports resolve against the tree it runs in.
+wt_rooted() { "$WT" run "${WT_RUN_FLAGS[@]}" --dir . "$@"; }
 
 # wt_battery_host — the host's half of the battery. `mentl test` judges every
 # fixture in one process and, for a run contract, hands the module over

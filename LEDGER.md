@@ -35,6 +35,89 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-10-06 · pin 50da761228ba3eef (TRANSITION m3 == m4) · MENTL FMT MAKES THE PROJECT CANONICAL (F); ONE LINK MODEL AT STDIN; A GATE IS OBEYED, NEVER SATISFIED:
+  The fmt lane built:
+  - `mentl fmt [--check] [path…]` (cli.mn FmtMode, VFmt(mode, [paths])): no path renders
+    every .mn under the working directory; a directory its tree; a file itself; a
+    non-path resolves as a module. --check writes nothing, names each file not
+    canonical with its first changed line, exits 1.
+  - The render is a PARSE: fmt_render_file parses each file inside its own module
+    (parse_one_module) under a fresh infer_context per file, one arena per file
+    (fmt_judge). `frontend` deleted (zero callers).
+  - Atomic project write: every file judged first; any conservation refusal writes
+    nothing anywhere, exit 1. A file whose parse errors (MachineApplicable classes
+    aside) is FmtUnparsed: named, never rendered, never blocks other files.
+  - .build/fmt.stamps: path -> str_hash:len, first line the build's image_key; an
+    unchanged canonical file costs a hash.
+  - One tree walk: mn_files(root, Reach = Level | Tree) (main.mn), read by fmt, the
+    march, the battery and query_dir.
+  - respell (format.mn): each rendered numeric literal takes its authored spelling
+    back (48_000, 0x811C9DC5, 0.00001); a negative LitInt renders as the unsigned
+    word it wraps from.
+  - E_DuplicateImport (armed, MachineApplicable); parse_one_module keeps one edge per
+    module; uncommented import runs render in path order.
+  - Stated equivalences: lifted_atoms names atoms a lift removes -> lost_atoms_beside.
+  - `0 - <literal>` renders `-<literal>` (Int always; Float unless 0.0); `-> ()` omitted.
+  - classify_grade_all is a map; WT_RUN_FLAGS gains -W max-wasm-stack=4194304.
+  FOUND AND FIXED AT THE ROOT while integrating:
+  - The resolver fabricated a path: driver_module_path answered lib/<name>.mn for a
+    module with no file, and the boot's fmt wrote ANOTHER module's render there
+    (`mentl fmt no_such_module`: exit 0, 115,575 bytes of memory.mn). It answers
+    Option(String) over module_probes; E_MissingModule says where it searched;
+    module_write refuses aloud; fmt refuses a target that names nothing (FmtNothing);
+    three fs_exists wrappers deleted. Frontier leg RED on c0b2828c.
+  - THE FRONTIER JUDGED A THIRD LINK MODEL. Its legs piped `cat LIBS SRC` into the
+    compiler — a blob M9 had removed from the march but not from the frontier — and
+    F's E_DuplicateImport refused the blob's repeated imports (the persist shadow
+    went red). stdin is an entry module now (`<stdin>`): driver_collect_text weaves
+    its imports from the tree when the compiler runs with a preopen, the prelude seed
+    shared with driver_collect_dag (driver_seeded); compile_stdin and the `-` route
+    read through driver_text_scoped. tools/wt-env.sh gains wt_entry (the source plus
+    `import m` per module not already imported) and wt_rooted (--dir .); every one
+    of the frontier's 42 blob sites, run-micro.sh and march-gate's rung route send
+    module names instead of file text. Kills: `-` in an import path (cfc-demo ->
+    cfc_demo); a fixture's `effect Fail` shadowed the prelude's `fail` once the link
+    was real (arena/abort-exits -> `Bail`, F0b's E_MissingImport the witness).
+  - AN `if` CONDITION WAS NEVER A BOOL. The judgment wrote `Bool` into the condition
+    node's own cell (graph_bind), overwriting the edge a reference carries to its
+    binder, so `fn g(c) = if c { 1 } else { 2 }` accepted `g([1, 2])` and ran to 1.
+    The condition is unified with Bool now; mn-if-condition-is-bool refuses
+    (E_TypeMismatch), checked clean on 82063322. Swept over all 954 programs in the
+    tree: one instance, float_is_negative (strings.mn) answering 1/0 into two `if`s —
+    a flag-as-int; it answers Bool.
+  - A PARAMETER'S PARSER CELL WAS A GHOST. Every unannotated parameter's placeholder
+    (`TVar(fresh_handle(span))`) was replaced by the judgment's FnParam cell and left
+    free; build_param_types binds the parser's cell to the parameter's
+    (param_cell_is_free). ghosts 19,710 (the bound at c0b2828c) -> 10,604 on the wheel; the
+    bound falls with it (src/board.mn QGhosts ceiling 10604).
+  A GATE IS OBEYED, NEVER SATISFIED (Morgan, 2026-10-06). The landing's first form
+  raised the ghost ceiling 19710 -> 19734 to fit its own growth and parked four
+  defects as OPEN peers; both moves turned a red gate green without changing what it
+  measured. tools/obey-gate.py (pre-commit Gate −1, no bypass flag) refuses them
+  against HEAD: a ceiling raised (board Bound and every *_max), a bound dropped, an
+  expected-red declared, a `drift-audit: ignore` added, an OPEN peer added — seen
+  RED at QGhosts 19710 -> 19734, then green after the parameter-cell binding paid it
+  down. CLAUDE.md ⚖ and PLAN §5.O carry the law; a ceiling never rises.
+  NOT built, the F peer's remainder (Hβ.fmt.the-project-is-canonical): decoration-run
+  stripping, sole-parameter binder -> arm list, the ownership marker before the
+  name, batteries by identity, the pre-commit rung as `mentl fmt --check`, the board
+  line, the frontier's three fmt legs, the tree sweep.
+  Measured: boot fmt per file over 984 tracked .mn: 480 not canonical (all under
+  tests/ and benchmarks/), 8 refused, 1m54s ×4 cores; candidate --check over the
+  tree in one process 30.0 s; parse-only vs judged render byte-identical on 981/984
+  (the 3 are refuse fixtures the boot overwrote at exit 0). The board at the
+  pin: crown, proof-exactness and effect-identity green; frontier 630 pass / 0 red /
+  2 expected-red; ghosts 10,604 on the new boot.
+  Kills: "frontend's EnvRead makes a parse-only render differ" (0 of 984); the first
+  parse-only route rendered 2 bytes (format_default outside the per-file graph);
+  parse diagnostics trapped in module_name_of_handle (no module entered); a two-hole
+  partial passed to fold refused at compile (single-hole partials); the import sort
+  moved infer.mn's header prose (a commented import is a boundary); the persist
+  shadow's E_DuplicateImport read as fmt's fault (it was the frontier's blob); the
+  cost-free reading "the wheel's compile would have flagged float_is_negative" (the
+  boot that compiled m2 carried no fix; m2's own m3 leg is the one that judges it).
+  Cost: m3 leg 25.65s wall · 425MB peak RSS (435692 KB); m4 leg 26.75s · 522MB (534864 KB).
+
 - 2026-10-06 · pin c0b2828c18113ec2 (CLEAN m2 == m3) · ONE TYPE RENDERER, AND THE NEVER TYPE (N2 + N4):
   Committed with --no-verify: the pre-commit battery runs through the PINNED
   boot, and the boot fails exactly one contract — the new RED-first fixture

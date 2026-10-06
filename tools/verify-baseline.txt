@@ -1052,7 +1052,9 @@ authored_own_max: 53
 # with the lane's rewritten spawn and race-rule bodies.
 # 680 -> 664 (2026-10-06, N2 + N4 integrated): sixteen authored refs left
 # with the render lane's rewritten head projection.
-authored_ref_max: 664
+# 664 -> 663 (2026-10-06, F integrated): mn_walk's `ref names` left —
+# the inference grades the walk's list a borrow without the marker.
+authored_ref_max: 663
 
 # 2026-08-08: the DRIFT-SHAPE ratchet (PLAN §11 5.6's absorption,
 # enforcement half) — the three absorbed drift modes counted by the
@@ -1104,8 +1106,9 @@ authored_ref_max: 664
 # reclaims, so every landing that mints a little more pays it forever. This
 # ceiling's job is to FALL when the arena lands — by roughly two thirds, per
 # §5.O's own accounting — and a ceiling that only ever rises to meet a breach
-# has stopped ratcheting. Raising it is an explicit in-commit act, which is
-# what this paragraph is; the next move on this line should be down.
+# has stopped ratcheting. It no longer rises at all (2026-10-06): a breach is
+# paid down in the landing that caused it, and tools/obey-gate.py refuses a
+# raised `*_max` at the commit. The raises recorded below are history.
 #
 # RAISED 2026-09-27, 1,022,000 -> 1,042,000, for the gate carried by the cell
 # (PROGRAM A3), and the accounting is a 2x2 measured before the raise, not a

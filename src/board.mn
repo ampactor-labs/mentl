@@ -246,14 +246,15 @@ fn board_bounds() = [
   // (`mentl query <entry> ghosts`): names, parameters, predicates and
   // annotations that are not yet cells inference writes, which is why `refs
   // of` misses a type annotation and a claim sits at the application rather
-  // than at its value. 18,681 at E4 and 19,609 on the boot G2 was built on:
-  // every landing that adds declarations adds ghosts until positions are
-  // cells (#108), so a landing that raises this says so in its commit, and
-  // #108 drives it to zero. G2 raised it by 85 — the board's own new lines,
-  // the prose classes and the project check are that many names and
-  // parameters the parser mints. Its integration raised it by 16 more: the
-  // decls facet's names (`named_at`, `inner_decl_names`) landed beside it.
-  Bound({ceiling: 19710, question: QGhosts}),
+  // than at its value. It never rises: new code mints ghosts at the rate it
+  // writes names, so a landing that adds code binds a class of them in the
+  // same landing — the bound is how positions become cells (#108), one class
+  // at a time. Its comment once told each landing to raise it, and four
+  // landings did (18,681 → 19,734). The first class paid: an unannotated
+  // parameter's parser cell is bound to the parameter's own cell
+  // (`build_param_types`), 19,747 → 10,604. The next is the absent-return
+  // sentinel, a unit literal minted at every unannotated function's name.
+  Bound({ceiling: 10604, question: QGhosts}),
   // ─ PROSE BY CLASS (SA-5, MOD-13). A comment is graph content, so what
   // SYNTAX §Comments says a comment is not is a census, never a review
   // finding. Each class falls as the module carrying it is touched; F strips
