@@ -66,7 +66,7 @@ if [ "$DO_BUILD" = 1 ]; then
   # march.sh): instant when another gate already compiled this state.
   echo "── m2 (boot — the pinned fixpoint wheel — compiles the wheel) ──"
   C=$(wt_m2_ensure) || { echo "✗ m2 generation TRAPPED (see $WT_M2CACHE/m2.err)"; tail -3 "$WT_M2CACHE/m2.err"; exit 1; }
-  wt_m2_place "$C" "$OUT"; cp -f "$C/wheel.mn" "$OUT/wheel.mn"
+  wt_m2_place "$C" "$OUT"
   echo "m2: boot(wheel) via $C — $(wc -l < "$OUT/m2.wat") lines (key $(cut -c1-12 "$C/key"))"
   echo "✓ m2.wasm ($(stat -c%s "$OUT/m2.wasm") bytes)"
 elif [ -z "${GATE_WASM:-}" ]; then
@@ -81,7 +81,7 @@ elif [ -z "${GATE_WASM:-}" ]; then
     exit 1
   fi
   if ! cmp -s "$WT_M2CACHE/m2.wasm" "$OUT/m2.wasm"; then
-    wt_m2_place "$WT_M2CACHE" "$OUT"; cp -f "$WT_M2CACHE/wheel.mn" "$OUT/wheel.mn"
+    wt_m2_place "$WT_M2CACHE" "$OUT"
     echo "m2: the probe copy was older than the source — placed the cache's current m2"
   fi
 fi

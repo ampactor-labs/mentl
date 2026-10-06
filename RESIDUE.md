@@ -6177,9 +6177,9 @@ re-measured 2026-10-06.
 ▶ WHAT IS TRUE (2026-10-06, the medium's `refs of` each implementation).
 TWELVE calls reach a WASI implementation outside the handler that owns it.
 `fs_read_file_impl` seven times: `image_resume` (lib/persist.mn:93),
-`battery_libs` ×4 (src/main.mn:1062), `battery_step` (src/main.mn:1390),
+the battery's library read ×4 (left with M9), `battery_step` (src/main.mn:1390),
 `read_recording` (lib/dsp/cfc.mn:277). `fs_list_dir_impl` four times:
-`march_walk` ×2 (src/main.mn:362 and 378), the test verb's directory probe
+the march's directory walk ×2 (left with M9), the test verb's directory probe
 (src/main.mn:1042), `query_run` (src/main.mn:1473). `fs_write_image_impl`
 once: `image_write_wire` (lib/persist.mn:183). The last two back no op at
 all — `Filesystem` declares nine (src/types.mn), and none lists a directory
@@ -6199,7 +6199,7 @@ and directories — and the effect's own comment (src/types.mn) promises
 severance on exactly that row ("audit-driven linker severance can drop
 path_open / fd_close / etc."). The proof is sound about the substrate and
 wrong about the capability. The Severance Map (L-E, PLAN §11) inherits it:
-it would band `query_run` and `march_walk` Filesystem-free while they read
+it would band `query_run` Filesystem-free while they read
 directories, which is the map's own falsifiable failure, so this closes
 before the map ships.
 ▶ THE ROOT, two facts that close in one place. The implementations are
@@ -18089,8 +18089,10 @@ STANDS ON nothing; it leads the order because every later landing's safety is re
 
 **Builds:** `CsProseCoordinate`
 
-### `Hβ.driver.link-is-reachability` — OPEN
+### `Hβ.driver.link-is-reachability` — CLOSED 2026-10-06
 
+
+CLOSED by M9 (pin 8ab9b567): every compile — the fixed point, `mentl compile`, a battery fixture — is the import DAG from an entry plus the prelude edge, with verb parity on the march. The declaration-grain demand rides M1's reference link (`Hβ.lower.reach-edge-on-node`).
 BORN as PLAN §11 Arc D's name, cited in PLAN, in LEDGER and in six RESIDUE entries, its banked design living inside `Hβ.gate.sweep-rederives-the-prelude`; homed 2026-10-06 (the program of 2026-10-06, landing M9, tier 1; finding MOD-4; convergence 17). It holds two faces of one law — every compile is the import DAG from an entry, and only what that DAG reaches is read, judged and emitted — and M9 builds the first.
 
 ▶ THREE LINK MODELS JUDGE THREE WHEELS (MOD-4, measured on boot c8ba5799). (1) The march's wheel is a blob: tools/march.sh:240–241 concatenates `find lib -name '*.mn' -not -path '*/tutorial/*' | sort` and then `find src … | sort`, and tools/wt-env.sh's wheel assembly (248–249) does the same — every lib module, lib first. (2) `mentl compile src/main.mn` weaves src/main.mn's import DAG, src first (`driver_canonical_order`, keyed by `driver_module_order_key`, which ranks with `str_contains(p, "src/")`), under a comment (src/driver.mn:297–306) claiming the two build paths "read one input". (3) The battery's run contract joins a hand-listed four-file text prefix (`battery_libs`, src/main.mn:1061; `battery_compile(libs ++ src, stem)` at :1401), a hand copy of the prelude's closure that leaves out threading, which the prelude imports — while the battery's propose and teach contracts already compile by module path through the driver (1397–1400). What three models cost: the blob judges lib/combinators.mn (329 lines), lib/audio/wav.mn (90) and lib/ml/grad.mn (34), which the DAG never links, and PLAN's record of the refused single-pass cut lists filter_list, filter_loop, map_list, map_loop and min_by_key among its 13 unresolved row gates — five lib/combinators functions (combinators 181, 205, 212, 227, 234), so dead library code shaped a landing's census. `Hβ.infer.order-independent-verdicts` records the blob switching to lib-before-src on 2026-07-23 precisely because verdicts depended on order, so `mentl compile` weaves in the order the fixed point abandoned. Three hardcoded `tutorial` exclusions (src/main.mn:374 in `march_wheel_files`, tools/march.sh:240, tools/wt-env.sh:249) keep a course inside the runtime library out of its walk.
@@ -18143,7 +18145,7 @@ THE FORM.
 
 ▶ WHY IT IS FAST, A LAW AND NOT A TUNE. Layout is a projection of the PARSE: the formatter (src/format.mn imports types, effects, graph, parser and strings — no inference) renders a module from its own parse and comment weave. A parse judges nothing, so it narrates nothing but the file's own parse, and the scoping problem the weave route was taken to solve does not arise. The verb reads the file, runs `frontend(source)` (src/infer.mn:1420, lex then parse), renders, and judges nothing: the cost of an operation is the size of its answer (PLAN §5.O). ONE FACT IS MEASURED BEFORE THE CUT: `frontend` performs `EnvRead` (the parser reads the env somewhere under `parse_type_atom`, parser:3329), so a parse-only render may differ from a judged one wherever the parse consults a judged name. The instrument is the whole tree rendered both ways and byte-compared; each difference names a parse that depends on the judgment, a layering defect to remove, never a reason to keep judging.
 
-▶ ONE TREE WALK. `march_walk` (src/main.mn), generalized to a root and read by fmt, `march_wheel_files`, the battery and `query_dir` alike: one home for "the `.mn` files under a directory", skipping .build/ and dot-directories.
+▶ ONE TREE WALK. The march's directory walk left with its blob assembly at M9 (the fixed point reads the DAG); fmt grows the one walk over a root, read by fmt, the battery and `query_dir` alike: one home for "the `.mn` files under a directory", skipping .build/ and dot-directories.
 
 ▶ ONE ARENA PER FILE. `(fmt_file(p)) ~> arena` — parse, render, re-parse, census — so a project pass holds one file's scratch at a time.
 

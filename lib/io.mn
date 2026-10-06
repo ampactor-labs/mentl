@@ -485,25 +485,53 @@ fn fs_mkdir_impl(path_str) = match fs_at(path_str) {
   },
 }
 
-// fs_read_file — path_open (read flag) + fd_read_all + fd_close.
-// Returns the file bytes as a flat Mentl String. On open failure
+// fs_read_file — path_filestat_get + path_open (read flag) + one sized read +
+// fd_close. Returns the file bytes as a flat Mentl String. On open failure
 // returns an empty string; caller should distinguish via fs_exists.
+//
+// A FILE STATES ITS SIZE, so it is read into the one byte record that size
+// names, and nothing else is allocated. It used to be read through
+// fd_read_all, the stream loop a pipe needs: a doubling buffer from 64 KB
+// and a final copy, so reading 18.7 MB touched 87 MB against an 18 MB
+// floor (measured 2026-10-06, M9, on the wheel's march verb reading back its own
+// emission — 72 MB of the verb's peak). The filestat_t record's size is the
+// u64 at +32, read as its low word: a Mentl string's length is a word.
 fn fs_read_file_impl(path_str) = match fs_at(path_str) {
   (dfd, pp, plen) => {
+    let stat = alloc(64)
     let fd_cell = alloc(4)
     // path_open(base_fd, dirflags=0, path_ptr, path_len, oflags=0,
     //   rights_base=FS_RIGHTS_READ, rights_inheriting=FS_RIGHTS_READ,
     //   fdflags=0, fd_out_ptr)
-    let open_errno = path_open(dfd, 0, pp, plen, 0, 2, 2, 0, fd_cell)
-    if open_errno != 0 {
+    // lookupflags=1 (symlink-follow): the size is the file's, never a link's.
+    if path_filestat_get(dfd, 1, pp, plen, stat) != 0 {
+      str_of_buf(bytes_buf(0))
+    } else if path_open(dfd, 0, pp, plen, 0, 2, 2, 0, fd_cell) != 0 {
       str_of_buf(bytes_buf(0))
     } else {
       let fd = load_i32(fd_cell)
-      let bytes = fd_read_all(fd)
+      let bytes = fd_read_sized(fd, load_i32(addr_at(stat, 32)))
       fd_close(fd)
       bytes
     }
   },
+}
+
+// The file's bytes at the size its stat named. A file that shrank between
+// the stat and the read answers what it held at the read; one that grew
+// answers its first `size` bytes — a read is not a snapshot either way, and
+// the stat is the moment this one names.
+fn fd_read_sized(fd, size) = {
+  let str = bytes_buf(size)
+  let got = fd_read_into(fd, addr_at(str, 8), 0, size)
+  if got == size { str_of_buf(str) } else { str_slice(str_of_buf(str), 0, got) }
+}
+
+fn fd_read_into(fd, dst, off, size) = if off >= size {
+  off
+} else {
+  let n = read_chunk(fd, addr_at(dst, off), size - off)
+  if n == 0 { off } else { fd_read_into(fd, dst, off + n, size) }
 }
 
 // fs_write_file — path_open (write+create+trunc) + fd_write + fd_close.

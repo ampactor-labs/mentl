@@ -35,6 +35,70 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-10-06 · pin 8ab9b567585d11aa (TRANSITION m3 == m4) · ONE LINK MODEL, READ FROM THE DAG (M9):
+  Built:
+  - src/driver.mn: driver_canonical_order, its order key and insertion sort
+    deleted; the weave is the DAG walk's own post-order (prelude closure first,
+    entry last). The walk (driver_collect_dag) runs in an arena. A
+    `heap: … when the link is discovered` phase line under ScopeAll.
+  - src/main.mn: the "shipped surface" imports deleted (dsp/feedback,
+    dsp/signal, dsp/spectral, ml/tensor, math). `mentl march` judges
+    src/main.mn's DAG cold (driver_entry_scoped, ScopeAll) and prints
+    `march: link <modules>`; march_wheel_files, march_walk*, the sort and
+    march_read_files (with the in-wheel `tutorial` exclusion) deleted.
+    battery_libs deleted: a run/refuse fixture compiles from its module path.
+  - lib/io.mn: fs_read_file_impl reads at the file's stated size
+    (path_filestat_get, symlink-follow) into one record; fd_read_all's doubling
+    loop stays for pipes.
+  - tools/wt-env.sh: wt_wheel (the blob) deleted; wt_wheel_digest keys;
+    wt_wheel_root / wt_wheel_compile run a compile cold in a hermetic root
+    (copy of src/ lib/, fresh .build, so no warm image is ever restored);
+    wt_m2_ensure compiles boot's `compile src/main.mn` there.
+  - tools/march.sh: the blob assembly deleted; generation legs run the
+    compiler's `march` verb in a hermetic root. New parity leg with its own
+    `parityok` (gates repin and verdict): the module set the verb's link judged
+    must equal `mentl query src/main.mn modules`, and `mentl compile
+    src/main.mn` must reproduce the verb's bytes. The old parity leg could not
+    refuse: it set fixok=0 and the fixpoint block reset fixok=1 before reading.
+  - tools/verify.sh: islands leg walks every .mn (the hand-listed globs missed
+    lib/audio/) and judges each root clean (any E_ error), not only missing
+    names. march-gate.sh: wheel.mn copies dropped.
+  - Prose: 12 backticked `Hz`/`Positive` example names in infer/types/verify
+    resolved only through the surface imports' lib/dsp link; written as
+    named examples.
+  - verify-baseline: fs_impl_bypass_max 7 -> 2, authored_ref_max 684 -> 682
+    (both measured falling by verify).
+
+  Measured (this session):
+  - RED first on the base: the blob judged 55 files, `query modules` 52 —
+    fixed point only: audio/wav, combinators, ml/grad; boot's `march` verb
+    prints no link line.
+  - Base: boot stdin blob 26.75s / 395956 KB; boot `compile src/main.mn` (DAG,
+    persists a 390 MB warm image) 32.39s / 832976 KB.
+  - Discovery held 75.6 MB at its exit (texts 3.7 MB); in an arena 9.0 MB;
+    judgment end 305.1 -> 238.5 MB (blob: 233.9).
+  - Same compiler (p3): stdin blob 395 MB, DAG verb 478 MB, DAG compile
+    634 MB. Boot's own blob verb 468 MB vs its stdin 396 MB: the verb route's
+    +72 MB was its read-back of its 18.7 MB emission — a probe reading that
+    file: 87 MB vs 18 MB floor. Sized read: verb 424 MB warm; p5 == p6.
+  - Full march (no repin): m3 leg 27.61s / 519424 KB (inside 539000), census
+    0, verb parity + one link model green (46 modules), m2 != m3, m4 28.50s /
+    519260 KB, TRANSITION m3 == m4.
+  - march-gate --micros: rungs 8/8, battery 377/377 through m2.
+
+  Kills: "the DAG link costs +71 MB in the judgment" -> it was the discovery
+  walk's scratch; "the verb's RSS is the DAG" -> it was fd_read_all's doubling.
+
+  NOT done: verify.sh re-run after the comment-ref and baseline edits (it was
+  RED at comment-refs 0 -> 12 before them); frontier, crown, proof-exactness,
+  effect-identity, ide-gate, `mentl check` re-run after the last edits;
+  landing/m9.md; merge of the base; record drafts.
+
+  Next: run §4's verify set, write landing/m9.md, merge
+  origin/claude/mentl-design-audit-m1mptf.
+  INTEGRATED by the session that merged the swarm's lanes in the program's order: TRANSITION m3 == m4 — the fixed point now judges src/main.mn's DAG (46 modules), with verb parity against `mentl compile`. Conflicts with G2 resolved: the state key reads wt_wheel_digest beside G2's fixture list.
+  Cost: m4 leg 40.18s wall · 509MB peak RSS (521784 KB).
+
 - 2026-10-06 · pin dcf884c183480c87 (CLEAN m2 == m3) · EVERY GATE CAN FAIL, AND THE BOARD BOUNDS ANSWERS (G2):
   BUILT (wheel + tools; m2 built from this tree compiles clean, rc=0):
   - src/board.mn: Bound({ceiling, question: Question}). The board asks the

@@ -98,7 +98,7 @@ fn predicate_decide_at(ref pred, bind) = match pred {
 // graph holds about the two operands: a constant decides a face outright,
 // and a face a constant refutes REFUSES (`1 / 0` is never the program's
 // meaning); a non-constant operand asks its refined type whether it EXCLUDES
-// the fatal point — `Positive` excludes 0 and -1, a NonZero refinement
+// the fatal point — a Positive refinement excludes 0 and -1, a NonZero refinement
 // excludes 0 alone, a NonNegative one on the dividend excludes INT_MIN —
 // and an operand nothing bounds leaves the face open, which is the row
 // fact `Trap` at the site. The answer is a ROW fact, so it stands only on
@@ -127,7 +127,7 @@ fn node_excludes(h, k, bind) = match node_const_at(h, bind) {
 
 // THE IMPLICATION READ: a contract excludes a point exactly when one of its
 // predicates decides FALSE with `self` bound to that point — `0 < self` at 0
-// is false, so `Positive` excludes 0; `self % 2 == 0` at 0 is true, so an
+// is false, so a Positive refinement excludes 0; `self % 2 == 0` at 0 is true, so an
 // Even refinement admits it. Every predicate down the alias chain is asked,
 // since a refinement of a refinement holds both. No implication engine: the
 // fragment that decides claims decides this one, over the ground constant
@@ -505,7 +505,7 @@ fn node_leaves(h) = match graph_binder_of(h) {
 // a constructor call, a record, a list literal, through a let's value and
 // every tail of a join — the part IS the argument at that position; where it
 // was not, the whole's own contracts are projected to the position (a
-// parameter's `(Int, Positive)` precondition answers `Positive` at its
+// parameter's `(Int, Positive)` precondition answers Positive at its
 // second element).
 fn part_leaves(whole, step) = match part_read(whole, step, node_leaves_read) {
   Some(leaves) => leaves,
@@ -695,7 +695,7 @@ fn contract_part(c, step) = match c {
 
 // A nominal contract at a constructor's field: the field's declared type with
 // the type's parameters read at the contract's arguments — `Option(Positive)`
-// at `Some`'s field is `Positive` (types.mn `variant_named_specs_at`). A
+// at `Some`'s field is the Positive refinement (types.mn `variant_named_specs_at`). A
 // value built with `Some` owes it where it is claimed, and a pattern over a
 // value under the contract may assume it.
 fn ctor_field_contract(c, cname: String, i) = match find(spec_named(cname), variant_named_specs_at(c)) {
