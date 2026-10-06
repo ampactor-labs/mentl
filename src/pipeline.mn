@@ -537,6 +537,7 @@ fn heap_line(at: String) = match diag_scope_of() {
   ScopeAll => eprint_string("heap: {heap_mark()} byte(s) {at}\n"),
   ScopeNone => (),
   ScopeModule(_) => (),
+  ScopeLink => (),
 }
 
 // The arenas' census for the whole compile — every exit the judgment's
@@ -548,6 +549,7 @@ fn arena_line() = match diag_scope_of() {
   ScopeAll => eprint_string("arena: {int_to_str(arena_stat(ArExits))} exit(s), {int_to_str(arena_stat(ArKept))} kept, {int_to_str(arena_stat(ArFreed))} KB reclaimed, {int_to_str(arena_stat(ArMoved))} KB moved, line peak {int_to_str(arena_stat(ArHigh))} KB, {int_to_str(arena_stat(ArSuspended))} suspended\n"),
   ScopeNone => (),
   ScopeModule(_) => (),
+  ScopeLink => (),
 }
 
 // `mentl resume <img>` — the image IS the process: swap it in and run
@@ -589,7 +591,12 @@ fn pipeline_check(entry_module) = infer_context(() => {
   // E_MissingVariable noise on a clean program. The per-module env
   // overlay (Hβ.driver.per-module-env-overlay) is that walk's sequenced
   // refinement; until it lands, the weave IS the check.
-  driver_entry_with_ranges(entry_module)
+  //
+  // THE PROJECT IS THE UNIT (G2): every module of the link narrates, each
+  // report once at its own module. The entry-scoped register this read
+  // through hid eight refuted `own` markers in graph, infer and lexer behind
+  // a check that said zero, because it reported the entry alone.
+  driver_entry_scoped(entry_module, ScopeLink)
   diag_errors()
 } ~> wasi_filesystem ~> mentl_default)
 
@@ -638,9 +645,11 @@ fn query_judged(entry_module: String, read) = infer_context(() => {
       Some(_) => Some(read(entry_module)),
     },
   }
-} ~>
-// the derivation's fs_read — handled in-chain, as compile/check do
-wasi_filesystem ~> query_default ~> mentl_default ~> arm_state_ctx([], OneShot, "") ~> spec_registry)
+} ~> query_default ~> mentl_default ~> arm_state_ctx([], OneShot, "") ~> spec_registry ~>
+// the derivation's fs_read — handled in-chain, as compile/check do; outermost,
+// because a query arm reads the filesystem too and an arm's performs resolve
+// outer of its own install
+wasi_filesystem)
 
 // One program's answer to a SITE facet, kept to the program's own module —
 // what `mentl query <dir> …` asks of each program in a directory, since the
@@ -652,31 +661,13 @@ fn query_sites(entry_module: String, question) =
 
 fn own_sites_of(question, m: String) = own_sites(ask(parse_query_string(m, question)), m)
 
-fn own_sites(answer, m: String) = match answer {
-  QRRefs(sites) => Some(("reference(s)", filter(site_in_module(m, ??), sites))),
-  QRCensus(label, sites) => Some((label, filter(site_in_module(m, ??), sites))),
-  QRDecls(sites) => Some(("judged decl(s)", filter(site_in_module(m, ??), sites))),
-  QRType(_, _) => None,
-  QRIntent(_) => None,
-  QRUnresolved(_) => None,
-  QRChain(_) => None,
-  QREffects(_) => None,
-  QROwnership(_) => None,
-  QRWhy(_) => None,
-  QRVerifyDebt(_) => None,
-  QRSmt(_) => None,
-  QRHandlerProvider(_) => None,
-  QRFlowLabel(_, _) => None,
-  QRModules(_) => None,
-  QRImports(_) => None,
-  QRUnreferenced(_) => None,
-  QRUnreachable(_) => None,
-  QRPerforms(_) => None,
-  QROrphanClaims(_) => None,
-  QRCost(_, _, _) => None,
-  QRGhosts(_) => None,
-  QRWhere(_, _) => None,
-  QRError(_) => None,
+// The program's own sites are the located answer kept to its module — the
+// same `located_answer` the board bounds, so which questions are answered by
+// place is said once (this was a second enumeration of the result kinds).
+fn own_sites(answer, m: String) = map_option(sites_in_module(m, ??), located_answer(answer))
+
+fn sites_in_module(m: String, found) = match found {
+  (label, sites) => (label, filter(site_in_module(m, ??), sites)),
 }
 
 fn site_in_module(m: String, site) = match site {
@@ -711,6 +702,7 @@ handler diag_bank with banked = [] {
   },
   diag_errors() => resume(diag_errors()),
   diag_refusals() => resume(diag_refusals()),
+  diag_narrations() => resume(diag_narrations()),
   diag_banked() => resume(banked),
   diag_forget(modules) => resume() with banked = filter(diag_outside(modules), banked),
 }
@@ -733,6 +725,17 @@ fn tightenables() = fold([], tightening_of, diag_banked())
 fn tightening_of(acc, entry) = match entry {
   (TOverDeclared(declared, used, name, span), _, dmod) => push(acc, (declared, used, name, span, dmod)),
   (TRowInventory(declared, used, name, span), _, dmod) => push(acc, (declared, used, name, span, dmod)),
+  _ => acc,
+}
+
+// The ownership markers the judgment refuted, read off the same bank: each
+// an authored `own` no path consumes, released by `mentl tighten` to the
+// grade the inference reads from use (PLAN §4⑤ — if the developer has to
+// think about it, the inference failed). (parameter, decl span, module).
+fn own_releases() = fold([], own_release_of, diag_banked())
+
+fn own_release_of(acc, entry) = match entry {
+  (TOwnUnconsumed(name, span), _, dmod) => push(acc, (name, span, dmod)),
   _ => acc,
 }
 
@@ -868,7 +871,7 @@ handler wasi_filesystem {
 // outermost in every route. The message arrives rendered at the report
 // boundary (diag_report_at, types.mn), so the arm composes the printed line
 // from the kind (diag_line), a pure read.
-handler diagnostics_handler with errors = 0, refusals = 0, scope = ScopeAll {
+handler diagnostics_handler with errors = 0, refusals = 0, narrations = 0, scope = ScopeAll {
   diag_report(diag, msg, dmod) => // The message arrives MADE (rendered at the report boundary, in the
   // reporter's own world) — this arm's projections (severity, refuses,
   // the line, the register's scope) are pure ctor/string reads, so the
@@ -890,15 +893,30 @@ handler diagnostics_handler with errors = 0, refusals = 0, scope = ScopeAll {
     // about. The comparison is on the module the report CARRIES, not on a
     // line range — spans are local now, so every file starts at line 1 and a
     // range names nothing.
+    //
+    // The count is every narration ONCE: ScopeNone is the discovery parse's
+    // duplicate copy, which the weave parse reports again where it can be
+    // placed, so it is neither printed nor counted; a narration the module
+    // register scoped away still counts, because the board reads the project.
     match scope {
-      ScopeAll => eprint_string(diag_line(diag, msg, dmod)),
-      ScopeNone => (),
-      ScopeModule(target) => if dmod == target { eprint_string(diag_line(diag, msg, dmod)) } else { () },
+      ScopeAll => {
+        eprint_string(diag_line(diag, msg, dmod))
+        resume() with narrations = narrations + 1
+      },
+      ScopeNone => resume(),
+      ScopeModule(target) => {
+        if dmod == target { eprint_string(diag_line(diag, msg, dmod)) } else { () }
+        resume() with narrations = narrations + 1
+      },
+      ScopeLink => {
+        eprint_string(diag_line(diag, msg, dmod))
+        resume() with narrations = narrations + 1
+      },
     }
-    resume()
   },
   diag_errors() => resume(errors),
   diag_refusals() => resume(refusals),
+  diag_narrations() => resume(narrations),
   diag_scope(sc) => resume() with scope = sc,
   diag_scope_of() => resume(scope),
 }
@@ -1266,6 +1284,10 @@ fn census_site_line(site) = match site {
   (path, s) => "\n  at {path}:{show_span(s)}",
 }
 
+fn roster_line(row) = match row {
+  (name, label, n) => "\n  {name}  {int_to_str(n)} {label}",
+}
+
 // One line per undischarged obligation: the predicate the graph holds,
 // at the developer's own coordinates — the debt facet's site list.
 // The seam walk is GONE: the span is already the developer's own coordinate
@@ -1484,6 +1506,7 @@ fn render_query_result(result) = match result {
   },
   QRFlowLabel(label, reason) => "→ {show_flow_label(label)}\n  Reason: {show_reason(reason)}",
   QRCensus(label, sites) => "→ {int_to_str(len(sites))} {label}{render_census_sites(sites)}",
+  QRCensusRoster(rows) => "→ {int_to_str(len(rows))} census shape(s) — ask one as `census <name>`{rows |> map(roster_line) |> str_concat_all}",
   QRDecls(sites) => // The decls column's projection: every declaration the judgment
   // noted, located.
   "→ {int_to_str(len(sites))} judged decl(s){render_census_sites(sites)}",
@@ -1659,9 +1682,13 @@ fn build_question(verb, arg, raw, scope: String) = match verb {
   QVRefs => QRefsOf(arg),
   QVProvider => QHandlerProvider(arg),
   QVFlow => QFlowOf(arg),
-  QVCensus => match census_shape_of(arg) {
-    Some(shape) => QCensus(shape),
-    None => QUnknown(raw),
+  QVCensus => if arg == "" {
+    QCensusRoster
+  } else {
+    match census_shape_named(arg) {
+      Some(shape) => QCensus(shape),
+      None => QUnknown(raw),
+    }
   },
   QVWhere => QWhere(arg, scope),
   QVDecls => QDecls,
@@ -1684,55 +1711,6 @@ fn build_question(verb, arg, raw, scope: String) = match verb {
 }
 
 fn words_after_the_verb(q: String) = join(" ", rest(split(" ", q)))
-
-// The shape classifier at the grammar's one boundary: a named judgment
-// shape, "anonymous", or one of the five glyphs matched THROUGH
-// show_pipe_kind (the one glyph projection — the constructor roster
-// appears exactly here, where the external string enters). An
-// unrecognized shape is the honest QUnknown.
-fn census_shape_of(arg) = if arg == "anonymous" {
-  Some(CsAnonymous)
-} else if arg == "eta" {
-  Some(CsEta)
-} else if arg == "effectful-lambda" {
-  Some(CsEffectfulLambda)
-} else if arg == "iteration" {
-  Some(CsIterationCostume)
-} else if arg == "wildcard-zero" {
-  Some(CsWildcardZero)
-} else if arg == "failure-mask" {
-  Some(CsFailureMask)
-} else if arg == "print-in-report" {
-  Some(CsPrintInReport)
-} else if arg == "wildcard-fabricates" {
-  Some(CsWildcardFabricates)
-} else if arg == "underscore-retain" {
-  Some(CsUnderscoreRetain)
-} else if arg == "flag-as-int" {
-  Some(CsFlagAsInt)
-} else if arg == "parallel-arrays" {
-  Some(CsParallelArrays)
-} else if arg == "vtable-record" {
-  Some(CsVtableRecord)
-} else if arg == "env-frame" {
-  Some(CsEnvFrame)
-} else if arg == "default-param" {
-  Some(CsDefaultParam)
-} else if arg == "declared-row-hof" {
-  Some(CsDeclaredRowHof)
-} else if arg == "positive-row" {
-  Some(CsAuthoredPositiveRow)
-} else if arg == "record-pattern" {
-  Some(CsRecordPattern)
-} else {
-  match find(
-    (k) => show_pipe_kind(k) == arg,
-    [PForward, PFanout(FanShare), PFanout(FanDistribute), PTee, PFeedback]
-  ) {
-    Some(k) => Some(CsVerb(k)),
-    None => None,
-  }
-}
 
 // The verb is the FIRST word (`<verb> [arg]` — the documented query
 // grammar); the prior read of last(ws) made every 3+-word query's verb

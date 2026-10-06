@@ -120,7 +120,44 @@ type CensusShape
   // precedes, so the site is the comment's own span, read off the cell the
   // parse attached. Confessed as a missing facet four times in a day — every
   // audit of the prose went to a grep because no verb read comments.
+  //
+  // THE NEEDLE IS A TOKEN, NOT A SUBSTRING (G2): an end of the needle that is
+  // a word byte must meet a non-word byte in the comment, so a needle naming
+  // one representation answers at that name and never inside a longer one
+  // (the substring read found V1 inside `RV128`).
   | CsProse(String)
+  // A comment of one PROSE CLASS — what SYNTAX §Comments says a comment is not
+  // (a place, a lifecycle, archaeology, decoration, a silenced gate), read by
+  // class rather than by a needle the reader has to know to ask for. The
+  // board bounds each class at its measured count, falling as each module
+  // carrying one is touched.
+  | CsProseClass(ProseClass)
+
+// The prose classes, each the comment-paradigm law it breaks. The needles
+// each class reads live in string literals beside its matcher (prose_needles),
+// never in this prose, so the definition does not count itself.
+type ProseClass
+  // a module coordinate — a file name and a line number, where the
+  // declaration's NAME was the edge; a line number rots at the first edit
+  // above it
+  = PcCoordinate
+  // a repository path that names no file — a deleted module was cited for
+  // weeks after it was gone
+  | PcPathNoFile
+  // a hex commit token — history lives in LEDGER and git, not on the node
+  | PcCommit
+  // a numbered citation of the archived spec corpus, out of the read-path
+  | PcSpecCitation
+  // what was rather than what is — the lifecycle vocabulary SYNTAX forbids
+  | PcLifecycle
+  // the archaeology vocabulary of the seed era and its design notes
+  | PcArchaeology
+  // a decoration run — three or more box-drawing glyphs or equals signs in a
+  // row; the declaration's name IS the heading
+  | PcBanner
+  // the drift audit's suppression marker — a comment that silences a gate,
+  // which SYNTAX says a comment never does
+  | PcSilencer
 
 // Sum type covering every forensic question `mentl query` can pose.
 // Each variant corresponds to one `ask(Q)` arm in `query_default`.
@@ -159,6 +196,9 @@ type Question
   | QFlowOf(String)
   // "census <shape>" — count + sites of a structural shape in the weave
   | QCensus(CensusShape)
+  // "census" — the roster itself: every shape the census knows, by the name
+  // a question asks it with, and its count over this program
+  | QCensusRoster
   // "decls" — the decls column's projection: every declaration the
   // judgment noted, located
   | QDecls
@@ -242,6 +282,8 @@ type QueryResult
   // module names whose line it is — the two halves the weave used to fuse
   // into one global coordinate and three readers had to take apart again.
   | QRCensus(String, [(String, Span)])
+  // (the name a question asks it with, its label, its count) per shape
+  | QRCensusRoster([(String, String, Int)])
   // the judged decl sites (count = len)
   // (module, span) pairs, for the same reason the census carries them.
   | QRDecls([(String, Span)])
@@ -388,6 +430,7 @@ handler query_default {
       },
     },
     QCensus(shape) => resume(QRCensus(census_label(shape), census_sites(shape))),
+    QCensusRoster => resume(QRCensusRoster(census_roster() |> map(roster_row))),
     QWhere(name, scope) => resume(where_badges(name, scope)),
     QVariants(tname) => resume(variants_of(tname)),
     QModules => // A module SET, rendered in the order of its names: the cells arrive in
@@ -1115,6 +1158,108 @@ fn census_label(shape) = match shape {
   CsRecordPattern => "record pattern(s)",
   CsText(needle) => "string literal(s) containing `{needle}`",
   CsProse(needle) => "comment(s) containing `{needle}`",
+  CsProseClass(c) => "comment(s) carrying {prose_class_label(c)}",
+}
+
+fn prose_class_label(c) = match c {
+  PcCoordinate => "a module coordinate",
+  PcPathNoFile => "a path that names no file",
+  PcCommit => "a hex commit token",
+  PcSpecCitation => "a spec citation",
+  PcLifecycle => "lifecycle prose",
+  PcArchaeology => "archaeology",
+  PcBanner => "a decoration run",
+  PcSilencer => "a gate silenced",
+}
+
+// The name a question asks a shape by — the one home the query grammar reads
+// (census_shape_of) and the roster prints, so a shape is spelled once.
+fn census_name(shape) = match shape {
+  CsAnonymous => "anonymous",
+  CsVerb(k) => show_pipe_kind(k),
+  CsEta => "eta",
+  CsEffectfulLambda => "effectful-lambda",
+  CsIterationCostume => "iteration",
+  CsWildcardZero => "wildcard-zero",
+  CsFailureMask => "failure-mask",
+  CsPrintInReport => "print-in-report",
+  CsWildcardFabricates => "wildcard-fabricates",
+  CsUnderscoreRetain => "underscore-retain",
+  CsFlagAsInt => "flag-as-int",
+  CsParallelArrays => "parallel-arrays",
+  CsVtableRecord => "vtable-record",
+  CsEnvFrame => "env-frame",
+  CsDefaultParam => "default-param",
+  CsDeclaredRowHof => "declared-row-hof",
+  CsAuthoredPositiveRow => "positive-row",
+  CsRecordPattern => "record-pattern",
+  CsText(needle) => "text {needle}",
+  CsProse(needle) => "prose {needle}",
+  CsProseClass(c) => "prose-{prose_class_name(c)}",
+}
+
+fn prose_class_name(c) = match c {
+  PcCoordinate => "coordinate",
+  PcPathNoFile => "path",
+  PcCommit => "commit",
+  PcSpecCitation => "spec",
+  PcLifecycle => "lifecycle",
+  PcArchaeology => "archaeology",
+  PcBanner => "banner",
+  PcSilencer => "silencer",
+}
+
+fn prose_classes() =
+  [PcCoordinate, PcPathNoFile, PcCommit, PcSpecCitation, PcLifecycle, PcArchaeology, PcBanner, PcSilencer]
+
+// THE ROSTER — every shape the census answers without a needle, listable
+// (`mentl query <entry> census`). It answered "unknown query" until G2, so
+// the only way to learn the shapes was to read this file.
+fn census_roster() =
+  [CsAnonymous, CsEta, CsEffectfulLambda, CsIterationCostume] ++ drift_roster() ++ [CsDefaultParam, CsDeclaredRowHof, CsAuthoredPositiveRow, CsRecordPattern] ++ map(CsVerb, [PForward, PFanout(FanShare), PFanout(FanDistribute), PTee, PFeedback]) ++ map(CsProseClass, prose_classes())
+
+fn roster_row(shape) = (census_name(shape), census_label(shape), len(census_sites(shape)))
+
+// A shape by the name a question asks it with: the roster read, never a
+// second spelling of it.
+fn census_shape_named(arg: String) = find(census_named(arg), census_roster())
+
+fn census_named(arg: String, shape) = census_name(shape) == arg
+
+// A LOCATED answer: the label and the (module, span) sites of a question the
+// medium answers by place — the shape the board bounds. A question answered
+// by a type, a reason or a table has no sites, and the board refuses a bound
+// over it rather than counting nothing.
+fn located_answer(r) = match r {
+  QRCensus(label, sites) => Some((label, sites)),
+  QRGhosts(sites) => Some(("cell(s) minted and never judged", sites)),
+  QRVerifyDebt(obligations) => Some(("open obligation(s)", map(debt_site, obligations))),
+  QRSmt(obligations) => Some(("open obligation(s)", map(debt_site, obligations))),
+  QRDecls(sites) => Some(("judged decl(s)", sites)),
+  QRRefs(sites) => Some(("reference(s)", sites)),
+  QRType(_, _) => None,
+  QRIntent(_) => None,
+  QRUnresolved(_) => None,
+  QRChain(_) => None,
+  QREffects(_) => None,
+  QROwnership(_) => None,
+  QRWhy(_) => None,
+  QRHandlerProvider(_) => None,
+  QRFlowLabel(_, _) => None,
+  QRCensusRoster(_) => None,
+  QRModules(_) => None,
+  QRImports(_) => None,
+  QRUnreferenced(_) => None,
+  QRUnreachable(_) => None,
+  QRPerforms(_) => None,
+  QROrphanClaims(_) => None,
+  QRCost(_, _, _) => None,
+  QRWhere(_, _) => None,
+  QRError(_) => None,
+}
+
+fn debt_site(ob) = match ob {
+  (modh, s, _, _) => (module_name_of_handle(modh), s),
 }
 
 fn census_sites(shape) with !Mutate = match graph_snapshot() {
@@ -1167,6 +1312,7 @@ fn census_walk(shape, i, n, acc) with !Mutate = if i >= n {
 // which stands where the comment does.
 fn census_site_at(shape, h) with !Mutate = match shape {
   CsProse(_) => graph_comment_span_at(h),
+  CsProseClass(_) => graph_comment_span_at(h),
   _ => span_of_node_raw(h),
 }
 
@@ -1399,11 +1545,121 @@ fn census_matches(shape: CensusShape, h, body: NodeBody) with !Mutate = match sh
     _ => false,
   },
   CsProse(needle) => prose_holds(graph_comment_at(h), needle),
+  CsProseClass(c) => prose_class_holds(c, graph_comment_at(h)),
 }
 
 // A node with no comment holds no prose, so an empty needle lists every
 // comment and never every node.
-fn prose_holds(t: String, needle: String) = byte_len(t) > 0 && str_contains(t, needle)
+fn prose_holds(t: String, needle: String) =
+  byte_len(t) > 0 && (byte_len(needle) == 0 || holds_token(t, needle))
+
+// THE TOKEN-BOUNDED READ: some occurrence of the needle whose word-byte ends
+// meet non-word bytes. The comment split at the needle puts each occurrence
+// between two neighbouring parts, so the boundary test reads the part before
+// it and the part after it — no index walked.
+fn holds_token(t: String, needle: String) = {
+  let parts = split(needle, t)
+  zip(parts, rest(parts)) |> any(bounded_between(needle))
+}
+
+fn bounded_between(needle: String, pair) = match pair {
+  (before, after) => start_bounded(needle, before) && end_bounded(needle, after),
+}
+
+fn start_bounded(needle: String, before: String) =
+  !is_alnum(byte_at(needle, 0)) || byte_len(before) == 0 || !is_alnum(byte_at(before, byte_len(before) - 1))
+
+fn end_bounded(needle: String, after: String) =
+  !is_alnum(byte_at(needle, byte_len(needle) - 1)) || byte_len(after) == 0 || !is_alnum(byte_at(after, 0))
+
+// A class's read of one comment.
+fn prose_class_holds(c, t: String) = byte_len(t) > 0 && match c {
+  PcCoordinate => holds_followed_by_digit(t, ".mn:"),
+  PcPathNoFile => comment_tokens(t) |> any(names_no_file),
+  PcCommit => comment_tokens(t) |> any(is_commit_token),
+  PcSpecCitation => holds_followed_by_digit(t, "spec "),
+  PcLifecycle => any(holds_token(t), ["no longer", "previously", "legacy"]) || holds_followed_by_digit(t, "Until 20"),
+  PcArchaeology => any(holds_token(t), ["walkthrough", "walkthroughs", "seed's", "DELETED"]),
+  PcBanner => decoration_run(t) >= 3,
+  PcSilencer => str_contains(t, "drift-audit: ignore"),
+}
+
+// An occurrence, start-bounded, that a digit follows: a coordinate's line, a
+// spec's number, a year.
+fn holds_followed_by_digit(t: String, needle: String) = {
+  let parts = split(needle, t)
+  zip(parts, rest(parts)) |> any(digit_follows(needle))
+}
+
+fn digit_follows(needle: String, pair) = match pair {
+  (before, after) => start_bounded(needle, before) && byte_len(after) > 0 && is_digit(byte_at(after, 0)),
+}
+
+// The comment's whitespace-separated words, each trimmed of the punctuation
+// prose wraps around a token — a backtick, a paren, a trailing comma.
+fn comment_tokens(t: String) = t |> words |> map(token_core)
+
+fn token_core(w: String) = if byte_len(w) == 0 {
+  w
+} else if !token_byte(byte_at(w, 0)) {
+  token_core(str_slice(w, 1, byte_len(w)))
+} else if !token_byte(byte_at(w, byte_len(w) - 1)) {
+  token_core(str_slice(w, 0, byte_len(w) - 1))
+} else {
+  w
+}
+
+fn token_byte(b) with Pure = is_alnum(b)
+
+// A commit token: seven to forty lowercase hex bytes, with a digit and a
+// letter both — a count is all digits and a word is all letters.
+fn is_commit_token(w: String) =
+  byte_len(w) >= 7 && byte_len(w) <= 40 && all(is_hex_lower, w) && any(is_digit, w) && any(is_hex_letter, w)
+
+fn is_hex_lower(b) with Pure = is_digit(b) || is_hex_letter(b)
+
+fn is_hex_letter(b) with Pure = b >= 97 && b <= 102
+
+// A repository path is a token rooted in one of the tree's own directories
+// and ending in a file extension; it names no file when the filesystem the
+// question runs over holds none at it. A glob or a template (a placeholder in
+// braces or angle brackets) names a pattern, never a file.
+fn names_no_file(w: String) =
+  repo_rooted(w) && has_extension(w) && !names_a_pattern(w) && !fs_exists(w)
+
+fn names_a_pattern(w: String) = any(str_contains(w), ["*", "\{", "<", ">"])
+
+fn repo_rooted(w: String) =
+  any(starts_with(w), ["src/", "lib/", "tools/", "tests/", "docs/", "ide/", "examples/", "boot/"])
+
+fn has_extension(w: String) = any(
+  ends_with(w),
+  [".mn", ".sh", ".md", ".py", ".js", ".mjs", ".tsv", ".txt", ".json", ".wasm", ".wat", ".html", ".css"]
+)
+
+// The longest run of decoration glyphs in a comment: box-drawing (U+2500 to
+// U+257F, three bytes each, lead 0xE2 then 0x94 or 0x95) or an equals sign.
+// The fold carries (run, best, where the byte stands inside a glyph).
+fn decoration_run(t: String) = match fold((0, 0, GlyphBetween), decoration_step, t) {
+  (_, best, _) => best,
+}
+
+// Where a byte stands relative to a three-byte box-drawing glyph.
+type GlyphPhase = GlyphBetween | GlyphAfterLead | GlyphAfterBlock
+
+fn decoration_step(state, b) = match state {
+  (run, best, phase) => match phase {
+    GlyphAfterLead => if b == 148 || b == 149 { (run, best, GlyphAfterBlock) } else { (0, best, GlyphBetween) },
+    GlyphAfterBlock => (run + 1, max(best, run + 1), GlyphBetween),
+    GlyphBetween => if b == 226 {
+      (run, best, GlyphAfterLead)
+    } else if b == 61 {
+      (run + 1, max(best, run + 1), GlyphBetween)
+    } else {
+      (0, best, GlyphBetween)
+    },
+  },
+}
 
 // The match half of CsRecordPattern, walked by index the way this file's
 // sibling arm-walkers are.

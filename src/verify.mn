@@ -1619,6 +1619,7 @@ fn debt_in_scope(modh, ref scope) = match scope {
   ScopeAll => true,
   ScopeNone => false,
   ScopeModule(name) => module_name_of_handle(modh) == name,
+  ScopeLink => true,
 }
 
 fn classify_predicate(pred) with Pure = match pred {

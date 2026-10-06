@@ -143,17 +143,17 @@ fn spine_open_loop(own spine, opened, b) = if opened > b {
 
 // In-place cell writes — the page never moves, so no write returns a new
 // spine and no handler-state rebind rides a cell store.
-fn spine_put_node(ref spine, h, own node) = {
+fn spine_put_node(ref spine, h, node) = {
   let _ = list_set(spine_page(spine, h).nodes, spine_slot(h), node)
   ()
 }
 
-fn spine_put_body(ref spine, h, own body) = {
+fn spine_put_body(ref spine, h, body) = {
   let _ = list_set(spine_page(spine, h).program, spine_slot(h), body)
   ()
 }
 
-fn spine_put_comment(ref spine, h, own cell) = {
+fn spine_put_comment(ref spine, h, cell) = {
   let _ = list_set(spine_page(spine, h).comments, spine_slot(h), cell)
   ()
 }
@@ -309,7 +309,7 @@ fn spine_put_narrowing(ref spine, h, pred) = {
   ()
 }
 
-fn spine_put_boundary(ref spine, h, own boundary) = {
+fn spine_put_boundary(ref spine, h, boundary) = {
   let _ = list_set(spine_page(spine, h).boundaries, spine_slot(h), boundary)
   ()
 }
@@ -339,7 +339,7 @@ fn spine_put_product(spine, h, p) = {
   ()
 }
 
-fn spine_put_span(ref spine, h, own span) = {
+fn spine_put_span(ref spine, h, span) = {
   let _ = list_set(spine_page(spine, h).spans, spine_slot(h), span)
   ()
 }
@@ -1847,7 +1847,7 @@ fn revert_trail(ref spine, spine_open, ref trail, current, target, next_handle, 
 // The trail buffer is not `own`: list_extend_to borrows it and the
 // (possibly fresh) owner returns — this fn finishes nothing (the
 // relevant tier's first sweep).
-fn trail_append(trail, trail_len, own mutation) =
+fn trail_append(trail, trail_len, mutation) =
   list_set(list_extend_to(trail, trail_len + 1), trail_len, mutation)
 
 // Whether a write is journaled: an undo entry is read only by an open

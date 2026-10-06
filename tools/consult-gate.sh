@@ -1,23 +1,20 @@
 #!/usr/bin/env bash
 # THE CONSULT GATE — no write to wheel source the medium was not asked about.
 #
-# The logic lives here, in the tracked tree, because .claude/ is gitignored:
-# the hooks that call this are local wiring, and an enforcement that exists
-# only in one working copy is not an enforcement. Two entry points, both
-# driven by the Claude Code hook contract:
+# The logic lives here and the wiring beside it, both tracked:
+# tools/hooks/consult.sh reads the Claude Code hook payload and calls the two
+# entry points below, and .claude/settings.json installs it — `require` before
+# every Edit|Write|MultiEdit, `record` after every Bash command that ran a
+# `mentl` verb.
 #
 #   record <command>   a medium verb ran — mark every wheel path it named
 #   require <path>     about to write <path> — exit 2 unless it was marked
 #
-# OFF THE BOARD BY DESIGN, AND THE COST IS REAL. tools/state.sh does not run
-# this and must not: it is not a gate over the tree, it is a per-edit hook
-# with two entry points the Claude Code contract calls. But the wiring that
-# calls it lives in .claude/, which is gitignored — so on a FRESH CLONE this
-# file is present and inert, and the enforcement its own header calls "not an
-# enforcement" when it exists in one working copy is exactly what a new
-# checkout gets. Measured 2026-09-21 on a container clone: no .claude/ at all.
-# The absence is named here rather than discovered again; the fix is the hook
-# contract landing in the tracked tree, not this file moving to the board.
+# WIRED BY NOTHING UNTIL G2 (2026-10-06): the settings that call it lived in a
+# gitignored .claude/, so every fresh clone carried this law and no caller,
+# and RESIDUE called it resolved. It is not on the board, because it is not a
+# gate over the tree: it is a per-edit refusal the session's hook contract
+# runs.
 #
 # THE LAW: an edit to src/**.mn or lib/**.mn is refused until a medium verb
 # has named that path this session. Any verb satisfies it — check, audit,

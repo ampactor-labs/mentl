@@ -2177,6 +2177,7 @@ fn reach_heap_line() = match diag_scope_of() {
   ScopeAll => eprint_string("heap: {heap_mark()} byte(s) when the emitted reach settles\n"),
   ScopeNone => (),
   ScopeModule(_) => (),
+  ScopeLink => (),
 }
 
 fn emit_plan(program) = {

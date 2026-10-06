@@ -545,9 +545,18 @@ fn tighten_run(target_opt) = {
   infer_context(() => match driver_entry_with_ranges(entry_module) {
     (_ast, ranges) => {
       let cands = tightenables()
+      // The refuted ownership markers first: a release rewrites one word of
+      // a head and moves no line, so the clause patches below read the same
+      // line numbers whichever runs first.
+      let released = own_releases() |> fold(0, apply_own_release)
       if len(cands) == 0 {
-        print_string("mentl tighten: nothing to tighten — no declared row is an inventory or over-declared\n")
-        0
+        if released > 0 {
+          print_string("tighten: {int_to_str(released)} ownership marker(s) released — the medium authored these; verify with a fresh check + the gates\n")
+          0
+        } else {
+          print_string("mentl tighten: nothing to tighten — no declared row is an inventory or over-declared, and no `own` is refuted\n")
+          0
+        }
       } else {
         // Batch-apply: every proposal was computed against the CURRENT
         // declarations, and the patch is the clause's RESIDUE — the
@@ -658,6 +667,46 @@ fn patch_clause_residue(ref text, line1, ref declared) = {
       let new_line = "{str_slice(line, 0, wi)}{clause}{str_slice(after, eq, byte_len(after))}"
       Some("{str_slice(text, 0, ls)}{new_line}{str_slice(text, le, byte_len(text))}")
     }
+  }
+}
+
+// One refuted marker released: the head line of the declaration loses the
+// `own` before the parameter the judgment named, and the parameter keeps the
+// grade its uses infer. A head that does not carry the marker on its first
+// line (a parameter list broken over lines) is skipped and named, never
+// mangled.
+fn apply_own_release(applied, release) = match release {
+  (name, span, dmod) => match span {
+    Span(sl, _, _, _) => {
+      let path = driver_module_path(dmod)
+      let text = fs_read_file(path)
+      match release_own_marker(text, sl, name) {
+        Some(t2) => {
+          fs_write_file(path, t2)
+          print_string("tighten: `own {name}` ({path}:{int_to_str(sl)})  →  `{name}` — no path consumes it\n")
+          applied + 1
+        },
+        None => {
+          eprint_string("mentl tighten: `own {name}` at {path}:{int_to_str(sl)} — not on the head's first line; skipped\n")
+          applied
+        },
+      }
+    },
+  },
+}
+
+fn release_own_marker(text, line1, name: String) = {
+  let ls = line_start_offset(text, line1)
+  let le = line_end_offset(text, ls)
+  let line = str_slice(text, ls, le)
+  let marker = "own {name}"
+  let at = index_of(line, marker)
+  let after = at + byte_len(marker)
+  if at < 0 || after < byte_len(line) && is_alnum(byte_at(line, after)) {
+    None
+  } else {
+    let new_line = "{str_slice(line, 0, at)}{str_slice(line, at + 4, byte_len(line))}"
+    Some("{str_slice(text, 0, ls)}{new_line}{str_slice(text, le, byte_len(text))}")
   }
 }
 
@@ -837,7 +886,16 @@ fn run_run(target) = {
 // installs wasi_filesystem / graph_handler / mutate_sink / diagnostics_handler
 // at its own foot, so those were shadowed duplicates, and the surviving
 // expression is pure arithmetic over the count.
-fn check_run(target) = if pipeline_check(target) > 0 { 1 } else { 0 }
+//
+// No target is the PROJECT, whose entry is `main` wherever the resolver finds
+// it — the same default the board and the session open on.
+fn check_run(target_opt) = {
+  let entry_module = match target_opt {
+    Some(t) => t,
+    None => "main",
+  }
+  if pipeline_check(entry_module) > 0 { 1 } else { 0 }
+}
 
 // ─── at_run — the cursor-address transport (`mentl <file>:L[:C]`)
 //
@@ -1603,11 +1661,24 @@ fn verify_run(target_opt) = infer_context(() => {
   }
 } ~> stdout_console ~> wasi_filesystem ~> mentl_default)
 
+// THE PROJECT LINE beside the bounds: every narration the judgment made over
+// every module of the link, counted once whether or not a register rendered
+// it. The wheel carries zero — a warning anywhere in the link refuses, so the
+// eight refuted `own` markers the entry-scoped check hid can never return
+// unseen.
 fn verify_board(entry_module: String) = {
-  let board = board_read()
+  let board = board_read() ~> query_default
+  let narrated = diag_narrations()
   print_string("verify: the medium's verdict on {entry_module}\n")
   each(print_board_line, board)
-  let breached = len(filter(board_breached, board))
+  let narration_breach = if narrated > 0 {
+    print_string("  ✗ {int_to_str(narrated)} narration(s) over every module of the link — ROSE past 0 (they print above, each at its module)\n")
+    1
+  } else {
+    print_string("  · 0 narration(s) over every module of the link — within 0\n")
+    0
+  }
+  let breached = len(filter(board_breached, board)) + narration_breach
   if breached > 0 {
     print_string("verify: {int_to_str(breached)} bound(s) breached — a count the medium keeps about itself rose.\n")
     1
@@ -1658,9 +1729,10 @@ fn teach_run(target_opt) = {
   // chain was the eighth found missing the analysis handlers, by design
   // pass not by trap; query_default's env_lookup / env_snapshot resolve
   // into the bracket's env).
-  infer_context(() => teach(entry_module) ~> stdout_console ~> wasi_filesystem ~> mentl_voice_default ~>
-  // mentl_voice_default's consult/run_query bubble Query.ask here
-  query_default)
+  infer_context(() => teach(entry_module) ~> stdout_console ~> mentl_voice_default ~>
+  // mentl_voice_default's consult/run_query bubble Query.ask here; the
+  // filesystem stands outside it because a query arm reads it
+  query_default ~> wasi_filesystem)
   0
 }
 
@@ -1676,7 +1748,7 @@ fn teach_run(target_opt) = {
 fn repl_run() = {
   // The line-eval runs infer; the core installs as the one bracket (the
   // driverless-zero-state class the bounds trap unmasked lives in its law).
-  infer_context(() => repl_eval_line(read_stdin_line()) ~> stdout_console ~> wasi_filesystem ~> mentl_voice_default ~> query_default)
+  infer_context(() => repl_eval_line(read_stdin_line()) ~> stdout_console ~> mentl_voice_default ~> query_default ~> wasi_filesystem)
   0
 }
 
