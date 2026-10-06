@@ -48,6 +48,8 @@ import voice
 
 import json
 
+import lexer
+
 import strings
 
 import lists
@@ -88,14 +90,22 @@ fn viewed(ranges, target: String) = match range_of_module(ranges, target) {
   },
 }
 
-// The View at a resolved position: the ring at the node, and the Lens and
-// Ledger of its module. The caret the request named rides along, so the
-// painter knows which read it is painting.
-fn space_view(v, h, pspan, line, col) = View({
+// The View at a resolved position: the ring at the node, the Lens and
+// Ledger of its module, and the references a find asks for — the needle's
+// when one was typed, else what the node at the caret names, by its edge.
+// The caret the request named rides along, so the painter knows which read
+// it is painting. A caret carries no canvas: moving it changes no fact of
+// the text.
+fn space_view(v, h, pspan, line, col, needle) = View({
   at: ViewAt({col: col, h: h, line: line, module: v.name, span: pspan}),
+  canvas: NoCanvas,
   field: [],
   ledger: ledger_of(v, h),
   lens: lens_of(v.name),
+  refs: match needle {
+    Some(n) => found_needle(v.name, n),
+    None => refs_at(h, v),
+  },
   ring: ring_of(cursor_at_handle(h), h, pspan, v),
 })
 
@@ -114,11 +124,632 @@ fn space_field_view(v) = {
   let grads = map(field_gradient(v, ??), rank_positions(enumerate_gradient_positions(v.node), caret0))
   View({
     at: ViewAt({col: 0, h: v.node, line: 0, module: v.name, span: parse_span_of(v.node)}),
+    canvas: NoCanvas,
     field: holes ++ grads,
     ledger: ledger_of(v, v.node),
     lens: lens_of(v.name),
+    refs: FoundNothing,
     ring: [],
   })
+}
+
+// The module View as the page paints it: the field View with its canvas —
+// the text's own projection, read off the facts the field and the Ledger
+// already hold and the graph of the module — and the needle's references
+// when a find asked for them. The terminal's field reads none of it, so
+// only the page's projection pays for it.
+fn space_module_view(v, needle) = match space_field_view(v) {
+  View(w) => View({
+    ...w,
+    canvas: canvas_of(v, w.field, w.ledger, w.lens),
+    refs: match needle {
+      Some(n) => found_needle(v.name, n),
+      None => FoundNothing,
+    },
+  }),
+}
+
+// ─── The canvas — the text's own projection (L-D) ────────────────────
+//
+// Everything the page draws on the code, read once from the module the
+// View stands in: the tokens (the one lexer's, over the text the judgment
+// read), the aspect strip, the verb frames, the proof marks and the traces
+// of owned values.
+fn canvas_of(v, field, ledger, lens) = {
+  let nodes = module_handles(v.node)
+  let frames = nodes |> map(frames_at) |> flatten
+  let decided = filter(decided_here(v.node, ??), verify_decided())
+  let owed = module_pending(v.node)
+  let uses = nodes |> map(param_uses) |> flatten
+  let traces = nodes |> map(own_traces(uses, ??)) |> flatten
+  let cells =
+    (nodes |> map(node_cells(v, ??)) |> flatten) ++ (field |> map(field_cell) |> flatten) ++ (ledger |> map(ledger_cell) |> flatten) ++ (frames |> map(frame_cells) |> flatten) ++ map(decided_cell, decided) ++ map(owed_cell, owed) ++ (traces |> map(trace_cells) |> flatten) ++ (lens |> filter(lens_in_module(v.name)) |> map(diag_cell))
+  Canvas({
+    frames: frames,
+    lines: count_lines(v.text) + 1,
+    marks: map(decided_mark, decided) ++ map(owed_mark, owed),
+    strip: strip_of(cells),
+    tokens: canvas_tokens(v.text),
+    traces: traces,
+  })
+}
+
+// ── The tokens — the one lexer, read again over the text the judgment read.
+// A token's class is the kernel role its hue names: a keyword, a
+// discipline word, a verb, a hole, a string and its splices, a number, a
+// comment, a nominal name (the case rule IS the declaration), the name a
+// declaration introduces, `self`, a negation, any other name, punctuation.
+// The lexer's reports were said when the judgment read the same text, so
+// they are quiet here.
+fn canvas_tokens(text: String) = {
+  let toks = list_to_flat(lex(text) ~> diag_quiet)
+  fold([], canvas_token_step(toks, ??, ??), range(0, len(toks)))
+}
+
+fn canvas_token_step(toks, acc, i) = match toks[i] {
+  Tok(kind, sp) => match token_class(kind, token_kind_at(toks, i - 1), token_kind_at(toks, i + 1)) {
+    Some(c) => push(acc, CanvasToken(sp, c)),
+    None => acc,
+  },
+}
+
+fn token_kind_at(toks, i) = if i < 0 || i >= len(toks) {
+  None
+} else {
+  match toks[i] {
+    Tok(k, _) => Some(k),
+  }
+}
+
+fn token_class(kind, prev, next) = match kind {
+  TFn => Some(TkKeyword),
+  TLet => Some(TkKeyword),
+  TIf => Some(TkKeyword),
+  TElse => Some(TkKeyword),
+  TMatch => Some(TkKeyword),
+  TType => Some(TkKeyword),
+  TEffect => Some(TkKeyword),
+  THandler => Some(TkKeyword),
+  TWith => Some(TkKeyword),
+  TImport => Some(TkKeyword),
+  TWhere => Some(TkKeyword),
+  TTrue => Some(TkKeyword),
+  TFalse => Some(TkKeyword),
+  TResume => Some(TkDiscipline),
+  TOwn => Some(TkDiscipline),
+  TRef => Some(TkDiscipline),
+  TPure => Some(TkDiscipline),
+  TIdent(w) => Some(ident_class(w, prev)),
+  TIntLit(_) => Some(TkNumber),
+  TFloatLit(_) => Some(TkNumber),
+  TStringLit(_) => Some(TkString),
+  TStringPart(_) => Some(TkString),
+  TStringSplice => Some(TkSplice),
+  TComment(_) => Some(TkComment),
+  TPipeGt => Some(TkVerb),
+  TLtPipe => Some(TkVerb),
+  TGtLt => Some(TkVerb),
+  TTildeGt => Some(TkVerb),
+  TLtTilde => Some(TkVerb),
+  THole => Some(TkHole),
+  TBang => Some(if names_a_type(next) { TkNegation } else { TkPunct }),
+  TEqEq => Some(TkPunct),
+  TBangEq => Some(TkPunct),
+  TLtEq => Some(TkPunct),
+  TGtEq => Some(TkPunct),
+  TArrow => Some(TkPunct),
+  TFatArrow => Some(TkPunct),
+  TPlusPlus => Some(TkPunct),
+  TAndAnd => Some(TkPunct),
+  TOrOr => Some(TkPunct),
+  TLParen => Some(TkPunct),
+  TRParen => Some(TkPunct),
+  TLBrace => Some(TkPunct),
+  TRBrace => Some(TkPunct),
+  TLBracket => Some(TkPunct),
+  TRBracket => Some(TkPunct),
+  TComma => Some(TkPunct),
+  TDot => Some(TkPunct),
+  TColon => Some(TkPunct),
+  TSemicolon => Some(TkPunct),
+  TPlus => Some(TkPunct),
+  TMinus => Some(TkPunct),
+  TStar => Some(TkPunct),
+  TSlash => Some(TkPunct),
+  TPercent => Some(TkPunct),
+  TEq => Some(TkPunct),
+  TLt => Some(TkPunct),
+  TGt => Some(TkPunct),
+  TAmp => Some(TkPunct),
+  TPipe => Some(TkPunct),
+  TAt => Some(TkPunct),
+  TNewline => None,
+  TEof => None,
+}
+
+// A name: `self`; the name a declaration introduces, read off the keyword
+// before it; the name a negation negates; a nominal name, by its case; any
+// other.
+fn ident_class(w: String, prev) = if w == "self" {
+  TkSelf
+} else {
+  match prev {
+    Some(TFn) => TkDecl,
+    Some(THandler) => TkDecl,
+    Some(TEffect) => TkDecl,
+    Some(TType) => TkDecl,
+    Some(TBang) => if is_nominal(w) { TkNegation } else { TkName },
+    Some(_) => if is_nominal(w) { TkType } else { TkName },
+    None => if is_nominal(w) { TkType } else { TkName },
+  }
+}
+
+fn names_a_type(next) = match next {
+  Some(TIdent(w)) => is_nominal(w),
+  Some(TPure) => true,
+  Some(_) => false,
+  None => false,
+}
+
+// The case rule (SYNTAX §Generic type parameters): an uppercase first letter
+// is a nominal name.
+fn is_nominal(w: String) = byte_len(w) > 0 && byte_at(w, 0) >= 65 && byte_at(w, 0) <= 90
+
+// ── The frames — each verb site with what it composes, read off the node.
+// A `|>` chain is one site however many pipes nest in it: the chain's head
+// (a pipe no `|>` above holds as its left side) carries the source and
+// every stage; an inner pipe of the chain draws nothing of its own.
+fn frames_at(h) = match graph_node_body(h) {
+  NExpr(PipeExpr(PForward, _, _)) => if is_chain_prefix(h) { [] } else { [Frame(h, CvPipe, map(parse_span_of, chain_elements(h)))] },
+  NExpr(PipeExpr(PTee, l, r)) => [Frame(h, CvTee, [parse_span_of(node_handle(l)), parse_span_of(node_handle(r))])],
+  NExpr(PipeExpr(PFeedback, l, r)) => [Frame(h, CvLoop, [parse_span_of(node_handle(l)), parse_span_of(node_handle(r))])],
+  NExpr(PipeExpr(PFanout(_), l, r)) => [Frame(h, CvShare, [parse_span_of(node_handle(l))] ++ map(parse_span_of, shared_branches(r)))],
+  NExpr(FanoutExpr(branches)) => [Frame(h, CvFan, map(branch_span, branches))],
+  _ => [],
+}
+
+// A `|>` that is the LEFT side of the `|>` above it is that chain's prefix.
+fn is_chain_prefix(h) = match graph_parent_of(h) {
+  Some(p) => match graph_node_body(p) {
+    NExpr(PipeExpr(PForward, l, _)) => node_handle(l) == h,
+    _ => false,
+  },
+  None => false,
+}
+
+// A `<|` shares its input across the elements of the tuple on its right; a
+// right side that is not a tuple is the one branch.
+fn shared_branches(r) = match graph_node_body(node_handle(r)) {
+  NExpr(MakeTupleExpr(elems)) => map(node_handle, elems),
+  _ => [node_handle(r)],
+}
+
+fn branch_span(n) = parse_span_of(node_handle(n))
+
+fn canvas_verb_word(verb) = match verb {
+  CvPipe => "|>",
+  CvShare => "<|",
+  CvFan => "><",
+  CvTee => "~>",
+  CvLoop => "<~",
+}
+
+// What each composed span is, in the verb's words — the topology facet's
+// own sentences (verb_role_text), so the cell and the ring say one thing.
+fn frame_role(verb, k, n) = match verb {
+  CvPipe => if k == 0 { ChainSource } else { ChainStage(k, n - 1) },
+  CvShare => if k == 0 { FanInput } else { ShareBranch(k - 1, n - 1) },
+  CvFan => FanBranch(k, n),
+  CvTee => if k == 0 { InstallBody } else { InstallHandler },
+  CvLoop => if k == 0 { Recurrence } else { FeedbackDelay },
+}
+
+// ── The strip — one entry per fact, then grouped: per line, per aspect,
+// the strongest state wins (a refusal over an open fact over a narration
+// over a proof), the first of equals kept.
+fn strip_of(cells) = {
+  let flat = list_to_flat(cells)
+  let order = range(0, len(flat)) |> map(strip_key(flat, ??)) |> sort
+  fold([], strip_step(flat, ??, ??), order)
+}
+
+fn strip_key(flat, i) = match flat[i] {
+  (line, arm, cell) => (line, arm_index(arm), 0 - cell_strength(cell), i),
+}
+
+fn strip_step(flat, lines, key) = match key {
+  (line, ai, _, i) => match flat[i] {
+    (_, _, cell) => match last_line(lines) {
+      Some(StripLine(l, cs)) => if l == line {
+        if is_some(cs[ai]) {
+          lines
+        } else {
+          push(drop_last(lines), StripLine(l, list_set(list_to_flat(cs), ai, Some(cell))))
+        }
+      } else {
+        push(lines, StripLine(line, list_set(empty_cells(), ai, Some(cell))))
+      },
+      None => push(lines, StripLine(line, list_set(empty_cells(), ai, Some(cell)))),
+    },
+  },
+}
+
+fn last_line(lines) = if len(lines) == 0 { None } else { Some(last(lines)) }
+
+fn empty_cells() = list_to_flat([None, None, None, None, None, None, None, None])
+
+fn arm_index(arm) = match arm {
+  OnQuery => 0,
+  OnPropose => 1,
+  OnTopology => 2,
+  OnEffects => 3,
+  OnOwnership => 4,
+  OnVerify => 5,
+  OnTeach => 6,
+  OnWhy => 7,
+}
+
+fn cell_strength(cell) = match cell {
+  StripCell(state, _, _, _) => match state {
+    CellRefused => 3,
+    CellOpen => 2,
+    CellWarned => 1,
+    CellProven => 0,
+  },
+}
+
+fn span_line(sp) = match sp {
+  Span(sl, _, _, _) => sl,
+}
+
+fn cell_at(arm, state, word: String, sp, text: String) =
+  (span_line(sp), arm, StripCell(state, word, sp, text))
+
+// What a node says on its own line: a declaration's type, the prose
+// attached to it or the accept that drew it, the effect a perform needs and
+// who grants it, and the effects an install grants.
+fn node_cells(v, h) = {
+  let body = graph_node_body(h)
+  let sp = parse_span_of(h)
+  let decl = if is_top_decl(h) || is_nested_fn(body) {
+    match graph_chase(h) {
+      GNode(kind, _) => [cell_at(OnQuery, CellProven, decl_word(body), sp, node_query_line(h, kind))],
+    }
+  } else {
+    []
+  }
+  let prose = graph_comment_at(h)
+  let lede = if byte_len(prose) > 0 {
+    [cell_at(OnWhy, CellProven, "lede", sp, first_sentence(prose))]
+  } else {
+    []
+  }
+  let accepted = match graph_reason_at(h) {
+    Located(_, Accepted(text, _, _)) => [cell_at(OnWhy, CellProven, "accepted", sp, "accepted `{text}`")],
+    _ => [],
+  }
+  let served = match served_at(h) {
+    Some((en, s)) => [served_cell(en, s, sp, v.name)],
+    None => [],
+  }
+  let granted = match body {
+    NExpr(PipeExpr(PTee, _, r)) => [cell_at(
+      OnEffects,
+      CellProven,
+      tee_handler_name(r),
+      parse_span_of(node_handle(r)),
+      "~> {tee_handler_name(r)} grants what its arms answer"
+    )],
+    _ => [],
+  }
+  decl ++ lede ++ accepted ++ served ++ granted
+}
+
+fn is_nested_fn(body) = match body {
+  NStmt(FnStmt(_, _, _, _, _)) => true,
+  _ => false,
+}
+
+// A perform an install on its path serves is GRANTED here — the filled
+// glyph; one no install serves is REQUIRED of the callers — the hollow
+// glyph, a refusal where nothing grants it at the root (the Lens says so,
+// and the refusal's cell outranks this one).
+fn served_cell(en: String, s, sp, target: String) = match s {
+  ServedBy(_, _) => cell_at(OnEffects, CellProven, en, sp, show_served(en, s, target)),
+  ServedWhereCalled(_) => cell_at(OnEffects, CellOpen, en, sp, show_served(en, s, target)),
+  ServedByCaller(_) => cell_at(OnEffects, CellOpen, en, sp, show_served(en, s, target)),
+}
+
+// The field's positions: a hole with its verdict, a gradient position with
+// the step it proposes — each said in its aspect's own sentence.
+fn field_cell(f) = match f {
+  FieldHole(_, sp, ring) => match fold(None, socket_step, ring) {
+    Some(sk) => [cell_at(OnPropose, CellOpen, socket_word(sk), sp, socket_text(sk))],
+    None => [],
+  },
+  FieldGradient(_, sp, ring) => match fold(None, teach_step, ring) {
+    Some((text, mode)) => if teach_says(mode) { [cell_at(OnTeach, CellOpen, teach_word(mode), sp, text)] } else { [] },
+    None => [],
+  },
+}
+
+fn socket_word(sk) = match sk {
+  SkFill(_, _) => "fill",
+  SkAsk(_) => "ask",
+  SkNone => "none",
+  SkSilent => "silent",
+}
+
+fn socket_step(acc, f) = match f {
+  RingFact(APropose(sk), _) => Some(sk),
+  RingFact(_, _) => acc,
+}
+
+fn teach_step(acc, f) = match f {
+  RingFact(ATeach(text, mode), _) => Some((text, mode)),
+  RingFact(_, _) => acc,
+}
+
+fn teach_says(mode) = match mode {
+  TmAdd => true,
+  TmAsk => true,
+  TmNeed => true,
+  TmTighten => true,
+  TmNone => false,
+}
+
+fn teach_word(mode) = match mode {
+  TmAdd => "add",
+  TmAsk => "ask",
+  TmNeed => "need",
+  TmTighten => "tighten",
+  TmNone => "none",
+}
+
+// The Ledger's tightenings are steps the gradient proposes at their
+// declarations.
+fn ledger_cell(f) = match f {
+  LedgerTighten(name, text, sp) => [cell_at(OnTeach, CellOpen, "tighten", sp, text)],
+  LedgerDecl(_, _, _, _, _, _) => [],
+  LedgerObligation(_, _, _, _, _) => [],
+}
+
+// A frame's composed spans, each on its own line, after the first: the
+// stage, the branch, the handler, the delay — the verb glyph at the line
+// the author wrote it on.
+fn frame_cells(f) = match f {
+  Frame(_, verb, spans) => range(1, len(spans)) |> map(frame_cell(verb, spans, ??)),
+}
+
+fn frame_cell(verb, spans, k) = cell_at(
+  OnTopology,
+  CellProven,
+  canvas_verb_word(verb),
+  spans[k],
+  verb_role_text(frame_role(verb, k, len(spans)))
+)
+
+// The claims the ledger decided, in this module: proven or refuted. A
+// provision (what a body hands a function) and the trivial claim are facts
+// of the walk, not claims a developer wrote, so they mark nothing.
+fn decided_here(mh, entry) = match entry {
+  (m, _, pred, _) => m == mh && claim_is_marked(pred),
+}
+
+fn claim_is_marked(pred) = match pred {
+  PTrue => false,
+  PProvides(_) => false,
+  PCompare(_, _, _) => true,
+  PAnd(_, _) => true,
+  POr(_, _) => true,
+  PNot(_) => true,
+  PBoolNode(_) => true,
+  PPatternMatch(_, _) => true,
+  PFlowLe(_, _) => true,
+  PWithSelf(_, inner) => claim_is_marked(inner),
+  PTotalDiv(_, _, _) => true,
+}
+
+fn decided_state(proven) = if proven { CellProven } else { CellRefused }
+
+fn decided_cell(entry) = match entry {
+  (_, sp, pred, proven) => cell_at(
+    OnVerify,
+    decided_state(proven),
+    if proven { "proven" } else { "refuted" },
+    sp,
+    show_predicate(pred)
+  ),
+}
+
+fn decided_mark(entry) = match entry {
+  (_, sp, pred, proven) => ProofMark(decided_state(proven), sp, show_predicate(pred)),
+}
+
+fn owed_cell(entry) = match entry {
+  (_, sp, pred, _) => cell_at(OnVerify, CellOpen, "pending", sp, show_predicate(pred)),
+}
+
+fn owed_mark(entry) = match entry {
+  (_, sp, pred, _) => ProofMark(CellOpen, sp, show_predicate(pred)),
+}
+
+// A diagnostic of the module, in the column of the aspect it speaks for: a
+// refusal refuses there, a narration narrates.
+fn diag_cell(f) = match f {
+  (d, msg, _) => cell_at(
+    diag_arm(d),
+    if diag_refuses(d) { CellRefused } else { CellWarned },
+    diag_code(d),
+    diag_span(d),
+    msg
+  ),
+}
+
+// ── The traces of owned values: every parameter a declaration's judged
+// type grades `own`, from the declaration's head through each use in the
+// body to the last — the use that consumes it. A use is a reference whose
+// own link names a parameter's binder; the module's uses are read once,
+// each with the declaration that holds it and the name it reads.
+fn own_traces(uses, h) = match graph_node_body(h) {
+  NStmt(FnStmt(name, _, _, _, _)) => if at_module_level(h) {
+    match env_lookup(name) {
+      Some((scheme, _, _)) => match judgment_ty(scheme) {
+        TFun(params, _, _) => params |> filter(param_is_owned) |> map(trace_of(uses, h, ??)) |> filter(trace_has_uses),
+        _ => [],
+      },
+      None => [],
+    }
+  } else {
+    []
+  },
+  _ => [],
+}
+
+fn param_is_owned(p) = match param_resolved(p) {
+  Own => true,
+  Ref => false,
+  Unmarked => false,
+}
+
+fn trace_of(uses, decl, p) = match p {
+  TParam(pname, _, _, _, _, _) => OwnTrace(decl, pname, parse_span_of(decl), uses |> filter(use_of(decl, pname, ??)) |> map(use_site)),
+}
+
+fn trace_has_uses(t) = match t {
+  OwnTrace(_, _, _, sites) => len(sites) > 0,
+}
+
+fn use_of(decl, pname: String, u) = match u {
+  (d, n, _) => d == decl && n == pname,
+}
+
+fn use_site(u) = match u {
+  (_, _, sp) => sp,
+}
+
+// A parameter's use — a reference whose own link names a parameter's
+// binder, inside a declaration: the declaration, the name it reads, its
+// site. Every other node is no use.
+fn param_uses(h) = match graph_node_body(h) {
+  NExpr(VarRef(n)) => if links_a_param(h) {
+    match decl_path_to(h) {
+      [] => [],
+      [top, ..._] => [(top, n, parse_span_of(h))],
+    }
+  } else {
+    []
+  },
+  _ => [],
+}
+
+fn links_a_param(h) = match graph_link_of(h) {
+  Some(b) => match graph_binder_of(b) {
+    Some(ParamFact(_)) => true,
+    Some(_) => false,
+    None => false,
+  },
+  None => false,
+}
+
+fn trace_cells(t) = match t {
+  OwnTrace(_, pname, head, uses) => [cell_at(
+    OnOwnership,
+    CellProven,
+    "own",
+    head,
+    "{pname} is owned — consumed at line {int_to_str(span_line(last(uses)))}"
+  ), cell_at(OnOwnership, CellProven, "consume", last(uses), "{pname} is consumed here")],
+}
+
+// ── Find by edge: what the node at the caret names, followed along its
+// edge. A reference to a local — its own link names a binder the parse
+// minted inside a declaration — answers every reference in the module that
+// links the same binder; a name a declaration introduces answers every
+// reference the graph noted under it (the refs column — the reverse edge).
+fn refs_at(h, v) = match graph_node_body(h) {
+  NExpr(VarRef(name)) => match graph_link_of(h) {
+    Some(b) => if is_local_binder(b) {
+      FoundRefs(name, local_uses(v, b) |> map(site_in_view(v.name, ??)), [])
+    } else {
+      FoundRefs(name, refs_of_name(name), [])
+    },
+    None => FoundRefs(name, refs_of_name(name), []),
+  },
+  NStmt(s) => match stmt_declared_name(s) {
+    Some(name) => FoundRefs(name, refs_of_name(name), []),
+    None => FoundNothing,
+  },
+  _ => FoundNothing,
+}
+
+fn stmt_declared_name(s) = match s {
+  FnStmt(name, _, _, _, _) => Some(name),
+  TypeDefStmt(name, _) => Some(name),
+  EffectDeclStmt(name, _, _) => Some(name),
+  HandlerDeclStmt(name, _, _, _, _, _) => Some(name),
+  RefineStmt(name, _, _) => Some(name),
+  AliasStmt(name, _) => Some(name),
+  RowAliasStmt(name, _) => Some(name),
+  LetStmt(_, _, _) => None,
+  ImportStmt(_) => None,
+  ExprStmt(_) => None,
+}
+
+// A binder a declaration's body holds: a parameter, a part a pattern took
+// apart, a handler's state — or a node the parse minted below a
+// declaration (a let's pattern).
+fn is_local_binder(b) = match graph_binder_of(b) {
+  Some(_) => true,
+  None => len(decl_path_to(b)) > 1,
+}
+
+fn local_uses(v, b) = module_handles(v.node) |> filter(links_to(??, b)) |> map(parse_span_of)
+
+fn site_in_view(m: String, sp) = (m, sp)
+
+fn links_to(u, b) = match graph_node_body(u) {
+  NExpr(VarRef(_)) => match graph_link_of(u) {
+    Some(x) => x == b,
+    None => false,
+  },
+  _ => false,
+}
+
+// A needle a find typed: the references the graph noted under it, and the
+// string literals holding it — the medium's own `refs of` and `text`
+// answers, never a second search.
+fn found_needle(m: String, needle: String) = FoundRefs(
+  needle,
+  sites_of(ask(parse_query_string(m, "refs of {needle}"))),
+  sites_of(ask(parse_query_string(m, "text {needle}")))
+) ~> query_default
+
+fn sites_of(answer) = match answer {
+  QRRefs(sites) => sites,
+  QRCensus(_, sites) => sites,
+  QRDecls(sites) => sites,
+  QRType(_, _) => [],
+  QRIntent(_) => [],
+  QRUnresolved(_) => [],
+  QRChain(_) => [],
+  QREffects(_) => [],
+  QROwnership(_) => [],
+  QRWhy(_) => [],
+  QRVerifyDebt(_) => [],
+  QRSmt(_) => [],
+  QRHandlerProvider(_) => [],
+  QRFlowLabel(_, _) => [],
+  QRModules(_) => [],
+  QRImports(_) => [],
+  QRUnreferenced(_) => [],
+  QRUnreachable(_) => [],
+  QRPerforms(_) => [],
+  QROrphanClaims(_) => [],
+  QRCost(_, _, _) => [],
+  QRGhosts(_) => [],
+  QRWhere(_, _) => [],
+  QRError(_) => [],
 }
 
 fn field_hole(v, ranked) = match ranked {
@@ -486,7 +1117,74 @@ fn rank_back(flat, key) = match key {
 // so an aspect, a note or a fact the wheel grows cannot be left off the
 // wire — the serializer refuses to compile without its arm.
 fn view_json(view) = match view {
-  View(v) => json_serialize(JObj([("at", at_json(v.at)), ("ring", JArr(map(ring_json, v.ring))), ("field", JArr(map(field_json, v.field))), ("lens", JArr(map(lens_json, v.lens))), ("ledger", JArr(map(ledger_json, v.ledger)))])),
+  View(v) => json_serialize(JObj([("at", at_json(v.at)), ("ring", JArr(map(ring_json, v.ring))), ("field", JArr(map(field_json, v.field))), ("lens", JArr(map(lens_json, v.lens))), ("ledger", JArr(map(ledger_json, v.ledger))), ("canvas", canvas_json(v.canvas)), ("refs", found_json(v.refs))])),
+}
+
+// The canvas on the wire. A token is the five-word tuple
+// [line, col, end_line, end_col, class] — the one shape a module's every
+// token takes, so it rides as an array rather than an object per token.
+// Columns are the text's bytes, the lexer's own columns.
+fn canvas_json(c) = match c {
+  NoCanvas => JNull,
+  Canvas(cv) => JObj([("lines", jnum(cv.lines)), ("tokens", JArr(map(token_json, cv.tokens))), ("strip", JArr(map(strip_line_json, cv.strip))), ("frames", JArr(map(frame_json, cv.frames))), ("marks", JArr(map(mark_json, cv.marks))), ("traces", JArr(map(trace_json, cv.traces)))]),
+}
+
+fn token_json(t) = match t {
+  CanvasToken(Span(sl, sc, el, ec), cls) => JArr([jnum(sl), jnum(sc), jnum(el), jnum(ec), JStr(token_class_word(cls))]),
+}
+
+fn token_class_word(cls) = match cls {
+  TkKeyword => "kw",
+  TkDiscipline => "disc",
+  TkVerb => "verb",
+  TkHole => "hole",
+  TkString => "str",
+  TkSplice => "spl",
+  TkNumber => "num",
+  TkComment => "cm",
+  TkType => "ty",
+  TkDecl => "fn",
+  TkSelf => "self",
+  TkNegation => "neg",
+  TkName => "id",
+  TkPunct => "op",
+}
+
+fn strip_line_json(s) = match s {
+  StripLine(line, cells) => JObj([("line", jnum(line)), ("cells", JArr(map(cell_json, cells)))]),
+}
+
+fn cell_json(c) = match c {
+  None => JNull,
+  Some(StripCell(state, word, sp, text)) => JObj([("glyph", JStr(cell_state_word(state))), ("word", JStr(word)), ("site", span_json(sp)), ("text", JStr(text))]),
+}
+
+fn cell_state_word(state) = match state {
+  CellProven => "proven",
+  CellOpen => "open",
+  CellRefused => "refused",
+  CellWarned => "warned",
+}
+
+fn frame_json(f) = match f {
+  Frame(h, verb, spans) => JObj([("h", jnum(h)), ("verb", JStr(canvas_verb_word(verb))), ("stages", JArr(map(span_json, spans)))]),
+}
+
+fn mark_json(m) = match m {
+  ProofMark(state, sp, text) => JObj([("glyph", JStr(cell_state_word(state))), ("site", span_json(sp)), ("text", JStr(text))]),
+}
+
+fn trace_json(t) = match t {
+  OwnTrace(h, name, head, uses) => JObj([("h", jnum(h)), ("name", JStr(name)), ("head", span_json(head)), ("uses", JArr(map(span_json, uses)))]),
+}
+
+fn found_json(f) = match f {
+  FoundNothing => JNull,
+  FoundRefs(name, sites, texts) => JObj([("needle", JStr(name)), ("sites", JArr(map(site_json, sites))), ("texts", JArr(map(site_json, texts)))]),
+}
+
+fn site_json(s) = match s {
+  (m, sp) => JObj([("module", JStr(m)), ("site", span_json(sp))]),
 }
 
 // A field position: its kind, handle and site, and the ring its address
@@ -630,14 +1328,14 @@ fn address_project(ranges, target: String, line, col) = match address_locate(ran
 
 // The space verb's projection — `mentl space <file>:<line>[:<col>]`: the
 // View as one JSON line on stdout; the same resolution, the same refusals.
-fn space_project(ranges, target: String, line, col) = match address_locate(ranges, target, line, col) {
+fn space_project(ranges, target: String, line, col, needle) = match address_locate(ranges, target, line, col) {
   AddressRefused => 1,
   AddressField(Viewed(v)) => {
-    print("{view_json(space_field_view(v))}\n")
+    print("{view_json(space_module_view(v, needle))}\n")
     0
   },
   AddressNode(Viewed(v), pspan, ph) => {
-    print("{view_json(space_view(v, ph, pspan, line, col))}\n")
+    print("{view_json(space_view(v, ph, pspan, line, col, needle))}\n")
     0
   },
 }

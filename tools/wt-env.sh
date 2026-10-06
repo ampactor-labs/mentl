@@ -75,7 +75,14 @@ if [ -z "$_wt_engine" ] || [ ! -x "$_wt_engine" ]; then
   return 2 2>/dev/null || exit 2
 fi
 WT="$_wt_engine"
-WT_RUN_FLAGS=(-C cache=y -W threads=y -W tail-call=y -S threads=y)
+# max-wasm-stack: the pinned boot grades every declaration's resume use by a
+# recursion one frame per declaration of the whole program
+# (classify_grade_all), and the wheel's own count crossed the engine's
+# default 512 KiB stack on 2026-10-06 — the boot's compile of the wheel
+# trapped at 9,300 frames when one landing added a hundred declarations. The
+# source walks them with `map` now; the room stays until the boot the next
+# repin pins carries that walk, then this word deletes.
+WT_RUN_FLAGS=(-C cache=y -W threads=y -W tail-call=y -S threads=y -W max-wasm-stack=8388608)
 # MENTL_WT_EXTRA — extra engine flags, word-split, appended to every wt_run and
 # every shim invocation. It exists for ONE thing the canonical flags cannot
 # express and the shim therefore could not reach: attaching a profiler.

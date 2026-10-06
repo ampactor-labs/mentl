@@ -6,12 +6,14 @@
 // It opens the staged site at ?smoke, prints the page's console wire — the
 // SMOKE lines the page logs (ide/index.html smoke()) and any uncaught page
 // error as PAGE-ERROR — as each arrives, captures a screenshot once the
-// product leg has run (the page as the developer sees it, caret projected),
+// canvas leg, the last, has run (the page as the developer sees it: the
+// canvas fixture painted from the wheel's spans, its strip, frames and marks,
+// the caret projected),
 // then opens the parchment ground and captures it when the page says
 // SPACE-READY. Chrome's own --screenshot cannot do this: it captures at the
 // load event, before the wheel has booted, and under --virtual-time-budget
 // it never returns on this page (the session's worker blocks inside the
-// wheel's read). The exit code is the product leg's: 0 when SMOKE-PRODUCT
+// wheel's read). The exit code is the last leg's: 0 when SMOKE-CANVAS
 // printed, 1 otherwise, with whatever lines arrived on stdout.
 import { spawn } from "node:child_process";
 import { mkdtempSync, writeFileSync, rmSync, mkdirSync } from "node:fs";
@@ -86,9 +88,9 @@ async function shot(sessionId, path) {
 let ok = false;
 try {
   const sep = base.includes("?") ? "&" : "?";
-  const a = await open(`${base}${sep}smoke&theme=obsidian`, (t) => /^SMOKE-PRODUCT|^SMOKE-BOOT-FAIL/.test(t), 150000);
-  if (a.line === null) console.log("SMOKE-TIMEOUT the page printed no SMOKE-PRODUCT line in 150 s");
-  ok = !!(a.line && a.line.startsWith("SMOKE-PRODUCT"));
+  const a = await open(`${base}${sep}smoke&theme=obsidian`, (t) => /^SMOKE-CANVAS|^SMOKE-BOOT-FAIL/.test(t), 240000);
+  if (a.line === null) console.log("SMOKE-TIMEOUT the page printed no SMOKE-CANVAS line in 240 s");
+  ok = !!(a.line && a.line.startsWith("SMOKE-CANVAS"));
   await shot(a.sessionId, join(shotDir, "space.png"));
   const b = await open(`${base}${sep}theme=parchment`, (t) => /^SPACE-READY/.test(t), 60000);
   if (b.line !== null) await shot(b.sessionId, join(shotDir, "space-parchment.png"));

@@ -6,13 +6,17 @@
 #   the stub-spawn RED control (armed only while the judgment spawns —
 #   VACUOUS and said so otherwise: the judgment has spawned nothing since
 #   pin 7c9dc538), the address CursorView, the ?? Propose socket, and the
-#   resident session. The twin loads boot/mentl.wasm itself (2026-09-27).
+#   resident session, the View, and the canvas (legs 11–13, L-D: the
+#   tokens cover the text, the strip reads the graph per line, find by
+#   edge). The twin loads boot/mentl.wasm itself (2026-09-27).
 # Leg 2: the browser itself — the staged site served with the isolation
 #   headers, headless chrome loads ?smoke, and the page's own console wire
 #   reports the VIEW (the first lesson's View from the page's resident
 #   session — eight ring facts, no refusing diagnostic, open and read
 #   timed, the bytes counted) and then the PRODUCT (what the page painted:
-#   fidelity, no undefined, eight real rows, the Lens structural). The page
+#   fidelity, no undefined, eight real rows, the Lens structural), then
+#   the CANVAS (painted from the wheel's spans, the strip, frames, marks,
+#   find by edge, fmt on idle, the accept an undo step). The page
 #   parses nothing the wheel prints; it paints the record `mentl space
 #   <address>` answers (src/space.mn). Skipped, loudly, when
 #   no browser or the mentl shim is absent. The browser is FOUND, not
@@ -49,6 +53,10 @@ if [ -n "$browser" ]; then
   port="${MENTL_IDE_GATE_PORT:-7397}"
   stage=".build/space"
   bash tools/space-stage.sh "$stage" >/dev/null || { echo "  staging FAILED"; fail=1; }
+  # A candidate compiler (MENTL_IDE_WASM — the twin's seam too) replaces the
+  # staged boot, so a wheel landing's page is judged against the wheel it
+  # carries before the repin makes that wheel the boot.
+  if [ -n "${MENTL_IDE_WASM:-}" ]; then cp "$MENTL_IDE_WASM" "$stage/boot/mentl.wasm" && echo "  candidate: $MENTL_IDE_WASM"; fi
   python3 tools/space-serve.py "$stage" "$port" &
   sp=$!
   sleep 1
@@ -65,10 +73,12 @@ if [ -n "$browser" ]; then
   vline=$(printf '%s\n' "$lines" | grep -m1 '^SMOKE-VIEW')
   jline=$(printf '%s\n' "$lines" | grep -m1 '^SMOKE-PROJECT')
   pline=$(printf '%s\n' "$lines" | grep -m1 '^SMOKE-PRODUCT')
+  cline=$(printf '%s\n' "$lines" | grep -m1 '^SMOKE-CANVAS')
   printf '%s\n' "$lines" | grep -E '^(PAGE-ERROR|BROWSER-LEG-ERROR|SMOKE-BOOT-FAIL|SMOKE-TIMEOUT)' | sed 's/^/  /'
   echo "  $vline"
   echo "  $jline"
   echo "  $pline"
+  echo "  $cline"
   # THE PROJECT (L-C): a folder of modules the manifest names opens in the
   # same session — its main.mn the entry, every module editable under its
   # own name — and its View comes from the resident session, eight facts,
@@ -109,11 +119,35 @@ if [ -n "$browser" ]; then
     *"fidelity=true undefined=false"*"lens-warning-at-line=true lens-mismatch-at-site=true"*)
       ring=$(field ring-real "$pline")
       if [ "${ring:-0}" -ge 8 ]; then
-        echo "  product leg: PASS — fidelity, no undefined, 8 real rows from the View, the Lens structural; screenshots .build/space.png (obsidian, caret projected) and .build/space-parchment.png"
+        echo "  product leg: PASS — fidelity, no undefined, 8 real rows from the View, the Lens structural; screenshots .build/space.png (obsidian, the canvas fixture, caret projected) and .build/space-parchment.png"
       else
         echo "  product leg: FAIL — ring-real=${ring:-0}"; fail=1
       fi ;;
     *) echo "  product leg: FAIL — ${pline:-no SMOKE-PRODUCT line}"; fail=1 ;;
+  esac
+  # THE CANVAS (L-D) — the text painted from the wheel's own projection:
+  # no tokenizer in the page; every painted token the source sliced at the
+  # span the canvas names (a count, never "some"); every strip cell painted
+  # the View's own cell at its line; frames and proof marks drawn from the
+  # canvas; the references at a caret drawn where the View puts them, and a
+  # needle's listed; the formatter's canon on idle; the accept one step of
+  # the native undo. RED on the page before L-D: it carried its own lexer
+  # and printed no canvas line; and with the pinned boot under the new page,
+  # tokens=0 and no refs (the boot answers no canvas).
+  num() { echo "$cline" | grep -oE "(^| )$1=[^ ]+" | head -1 | cut -d= -f2; }
+  case "$cline" in
+    "SMOKE-CANVAS no-page-lexer=true "*)
+      tk=$(num tokens); sp=$(num spans); st=$(num strip); fr=$(num frames); mk=$(num marks)
+      rc=$(num refs-at-caret); rd=$(num refs-drawn); nd=$(num needle); nl=$(num needle-listed)
+      fmtv=$(num fmt); und=$(num undone); acc=$(num accepted)
+      if [ "${tk:-0}" -gt 0 ] && [[ "$sp" =~ ^[0-9]+$ ]] && [[ "$st" =~ ^[0-9]+$ ]] && [ "${fr:-0}" -gt 0 ] && [ "${mk:-0}" -gt 0 ] \
+         && [ "${rc:--1}" -gt 0 ] && [ "${rd:-0}" -eq "${rc:--1}" ] && [ "${nd:--1}" -gt 0 ] && [ "${nl:-0}" -eq "${nd:--1}" ] \
+         && [ "$fmtv" = true ] && [ "$acc" = true ] && [ "$und" = true ]; then
+        echo "  canvas leg: PASS — $tk tokens from the wheel, $sp painted spans and $st strip cells faithful, $fr frames, $mk marks, $rc reference(s) at the caret drawn, $nd for the needle listed, fmt on idle, the accept one undo step"
+      else
+        echo "  canvas leg: FAIL — $cline"; fail=1
+      fi ;;
+    *) echo "  canvas leg: FAIL — ${cline:-no SMOKE-CANVAS line}"; fail=1 ;;
   esac
 else
   echo "── ide gate · leg 2 SKIPPED (no browser found — set MENTL_CHROME) ──"

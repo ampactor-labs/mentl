@@ -270,8 +270,8 @@ fn space_run(addr) = match addr {
     eprint_string("mentl space: the page is served by the mentl command — from the repo, `bash tools/space-stage.sh && python3 tools/space-serve.py`, then open http://127.0.0.1:7397/ (the deployed page is https://space.ampactor.dev/); `mentl space <file>:<line>[:<col>]` answers the View at an address\n")
     2
   },
-  Some((target, line, col)) => infer_context(() => match driver_entry_with_ranges(target) {
-    (_ast, ranges) => space_project(ranges, target, line, col),
+  Some(SpaceAt(target, line, col, needle)) => infer_context(() => match driver_entry_with_ranges(target) {
+    (_ast, ranges) => space_project(ranges, target, line, col, needle),
   } ~> patch_to_file ~> terminal_transport ~> cursor_default ~> synth_default ~> interrogate_default ~> mentl_default ~> stdout_console ~> wasi_filesystem ~> diag_bank),
 }
 
@@ -934,7 +934,7 @@ fn session_answer(line, ast, ranges, manifest) = match parse_cli_args(session_ar
 fn session_read(verb, ast, ranges) = match verb {
   VAt(target, l, c) => session_whole(session_address(ranges, target, l, c)),
   VSpace(addr) => match addr {
-    Some((target, l, c)) => session_whole(session_banked(() => space_project(ranges, target, l, c))),
+    Some(SpaceAt(target, l, c, needle)) => session_whole(session_banked(() => space_project(ranges, target, l, c, needle))),
     None => session_miss(),
   },
   VQuery(target, q) => if target == "main" {

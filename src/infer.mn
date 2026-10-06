@@ -12801,18 +12801,18 @@ fn classify_rounds(decls, tidx, entries) = {
   // threads evidence through its own calls.
   let idx = smap_build(entries)
   let next = list_to_flat({
-    classify_grade_all(decls, 0)
+    decls |> map(classify_grade)
   } ~> summaries_frozen(idx, tidx))
   if usage_entries_eq(entries, next, 0) { next } else { classify_rounds(decls, tidx, next) }
 }
 
-fn classify_grade_all(decls, i) = if i >= len(decls) {
-  []
-} else {
-  match list_index(decls, i) {
-    (n, b, _, _) => // drift-audit: ignore — prepend-cons recursion, O(N) total
-    [(n, resume_grade(b))] ++ classify_grade_all(decls, i + 1),
-  }
+// One declaration's grade. The walk over the declarations is a `map`: it
+// was a prepend-cons recursion one frame per declaration of the program,
+// and the wheel's own count crossed the engine's stack on 2026-10-06 — the
+// compile of the wheel trapped with 9,300 frames of it, when one landing
+// added a hundred declarations.
+fn classify_grade(d) = match d {
+  (n, b, _, _) => (n, resume_grade(b)),
 }
 
 // ─── Tail-transparent parameters — a proof, never an accident ─────────

@@ -1904,7 +1904,80 @@ type ViewAt = ViewAt({col: Int, h: Int, line: Int, module: String, span: Span})
 // message, its module); the lead sentence the page prints over them is a
 // projection of that fact, never a fact of its own.
 type View
-  = View({at: ViewAt, field: [FieldFact], ledger: [LedgerFact], lens: [(DiagKind, String, String)], ring: [RingFact]})
+  = View({at: ViewAt, canvas: Canvas, field: [FieldFact], ledger: [LedgerFact], lens: [(DiagKind, String, String)], refs: Found, ring: [RingFact]})
+
+// ─── The canvas — the text's own projection (L-D) ────────────────────
+//
+// What the page draws ON the code, read off the graph of the module the
+// View stands in: every token at its span with its class (the one lexer —
+// the page holds none), the aspect strip in the gutter, the verb frames,
+// the proof marks at their claims and the traces of owned values. A View at
+// the module altitude (line 0) carries it; a caret's View carries none,
+// since a caret moving changes no fact of the text.
+//
+// Which of the eight aspects a cell, or a diagnostic, speaks for — the
+// strip's column and the ring's row.
+type Arm = OnQuery | OnPropose | OnTopology | OnEffects | OnOwnership | OnVerify | OnTeach | OnWhy
+
+// What a cell says of its aspect on its line: a fact the graph proved (a
+// declaration's type, a discharged claim, an effect an install grants), a
+// fact still open (a hole, a pending claim, an effect the line requires of
+// its callers, a step the gradient proposes), a diagnostic of the aspect
+// that refuses the program there, or one that narrates without refusing.
+type CellState = CellProven | CellOpen | CellRefused | CellWarned
+
+// One cell of the strip: its state, its word (the verb, the effect, the
+// grade, the verdict), its site — the address a click projects — and the
+// sentence the aspect says there.
+type StripCell = StripCell(CellState, String, Span, String)
+
+// A line's eight cells in the kernel's order, None where its aspect has
+// nothing to say on the line. Only lines with a cell are listed.
+type StripLine = StripLine(Int, [Option(StripCell)])
+
+// A token's class — the kernel role its hue names.
+type TokenClass
+  = TkKeyword
+  | TkDiscipline
+  | TkVerb
+  | TkHole
+  | TkString
+  | TkSplice
+  | TkNumber
+  | TkComment
+  | TkType
+  | TkDecl
+  | TkSelf
+  | TkNegation
+  | TkName
+  | TkPunct
+
+type CanvasToken = CanvasToken(Span, TokenClass)
+
+// The five verbs, as a frame draws them.
+type CanvasVerb = CvPipe | CvShare | CvFan | CvTee | CvLoop
+
+// A verb site with the spans of what it composes, in order: a `|>` chain's
+// source and stages, a fanout's input and branches, a `~>`'s body and
+// handler, a `<~`'s recurrence and delay.
+type Frame = Frame(Int, CanvasVerb, [Span])
+
+// A proof mark at a claim's site: proven, open or refuted, and the predicate.
+type ProofMark = ProofMark(CellState, Span, String)
+
+// An owned parameter's trace: the declaration it is a parameter of, its
+// name, the declaration's head, and every use in order — the last its
+// consume.
+type OwnTrace = OwnTrace(Int, String, Span, [Span])
+
+type Canvas
+  = NoCanvas
+  | Canvas({frames: [Frame], lines: Int, marks: [ProofMark], strip: [StripLine], tokens: [CanvasToken], traces: [OwnTrace]})
+
+// Find by edge: the references a View carries — none, or the name they
+// reference with every site, the string literals that hold a needle among
+// them when one was asked.
+type Found = FoundNothing | FoundRefs(String, [(String, Span)], [(String, Span)])
 
 // The wire's word for a diagnostic's applicability — the automation axis
 // (SYNTAX.md), spelled as the catalog spells it.
@@ -3756,6 +3829,88 @@ fn diag_source(d) with Pure = match d {
   EReplayExhausted(_) => "clock",
 }
 
+// The aspect a diagnostic speaks for — the column of the aspect strip its
+// site's line carries it in, and the ring row it concerns: what is bound
+// (the parse and the types), what is proposed at a hole, the verbs, the
+// row, ownership, a claim, a step the gradient takes, a Reason's prose.
+fn diag_arm(d) with Pure = match d {
+  PExpectedToken(_, _) => OnQuery,
+  POrphanDocstring(_) => OnWhy,
+  PUnclosedConstruct(_, _) => OnQuery,
+  PUnexpectedToken(_, _) => OnQuery,
+  ERedundantBraces(_) => OnTeach,
+  EBlockNeedsBraces(_) => OnTeach,
+  ELambdaFence(_) => OnQuery,
+  ERedundantFnOnLambda(_) => OnQuery,
+  ELambdaAsOrOr(_) => OnQuery,
+  EOrphanHandlerAttach(_) => OnTopology,
+  ENotAKeyword(_, _) => OnTopology,
+  EEffArgNotLiteral(_) => OnEffects,
+  EInternalInvariant(_, _) => OnQuery,
+  WRedundantWhere(_) => OnTeach,
+  WCommentRefUnresolved(_, _, _) => OnWhy,
+  ETypeMismatch(_, _, _, _) => OnQuery,
+  ETypeArityMismatch(_, _, _) => OnQuery,
+  EConstructorArity(_, _, _, _) => OnQuery,
+  EHandlerArmArity(_, _, _, _) => OnEffects,
+  EFnArityMismatch(_, _, _) => OnQuery,
+  EOccursCheck(_, _, _) => OnQuery,
+  EMissingVariable(_, _) => OnQuery,
+  EMissingImport(_, _, _, _) => OnQuery,
+  ENotARecordType(_, _) => OnQuery,
+  EResumeOutsideArm(_) => OnEffects,
+  EResumeAmbiguousOp(_, _) => OnEffects,
+  EResumeWorldMismatch(_, _, _) => OnEffects,
+  EUnknownArgLabel(_, _) => OnQuery,
+  EFeedbackNoContext(_) => OnTopology,
+  EZeroDelayFeedback(_) => OnTopology,
+  EInitPerformsOwnOp(_, _, _) => OnEffects,
+  EHandlerInexhaustive(_, _, _, _) => OnEffects,
+  EComputedDelayDepth(_) => OnTopology,
+  ERestOutsideDestructure(_) => OnQuery,
+  ERowAliasCycle(_, _) => OnEffects,
+  EDeclaredRowContradiction(_, _) => OnEffects,
+  EMalformedNumericLiteral(_, _, _) => OnQuery,
+  ERowAliasNegation(_, _) => OnEffects,
+  ERecordFieldExtra(_, _, _) => OnQuery,
+  ERecordFieldMissing(_, _, _) => OnQuery,
+  EPatternInexhaustive(_, _, _) => OnQuery,
+  EPatternAlternationBindingMismatch(_, _) => OnQuery,
+  EIfMissingElse(_) => OnQuery,
+  TOverDeclared(_, _, _, _) => OnTeach,
+  TRowInventory(_, _, _, _) => OnTeach,
+  TWordSlotBox(_, _, _) => OnTeach,
+  TPolyRecursionSignature(_, _) => OnTeach,
+  TOwnUnconsumed(_, _) => OnOwnership,
+  TOwnAcrossReplay(_, _) => OnOwnership,
+  EUseAfterMove(_, _) => OnOwnership,
+  EEffectMismatch(_, _, _, _) => OnEffects,
+  EPurityViolated(_, _) => OnEffects,
+  ERefinementRejected(_, _) => OnVerify,
+  EVerifyUnencodable(_) => OnVerify,
+  VPending(_, _) => OnVerify,
+  EOwnershipViolation(_, _) => OnOwnership,
+  ERegionEscape(_, _) => OnOwnership,
+  EMissingModule(_, _, _) => OnQuery,
+  EHandlerStateShadowsOp(_, _, _) => OnEffects,
+  EFnShadowsOp(_, _, _) => OnEffects,
+  EOpShadowsOp(_, _, _, _) => OnEffects,
+  EDuplicateFnName(_, _) => OnQuery,
+  EDuplicateTypeName(_, _) => OnQuery,
+  EEmittedNameCollision(_, _) => OnQuery,
+  EUnresolvedType(_, _, _) => OnQuery,
+  EEffectUnhandled(_, _, _) => OnEffects,
+  EThreadedBranchEffect(_, _, _) => OnEffects,
+  EContinuationUncapturable(_, _, _) => OnEffects,
+  EDerivativeUnreachable(_, _) => OnTopology,
+  EUnresolvedHole(_, _) => OnPropose,
+  EFieldOffsetUnprovable(_, _) => OnQuery,
+  EShapeUnprovable(_, _) => OnQuery,
+  EInstantiationDepth(_, _) => OnQuery,
+  EArithOnAggregate(_, _) => OnQuery,
+  EReplayExhausted(_) => OnTopology,
+}
+
 // The wire code — the stable identifier (`docs/errors/<CODE>.md`).
 fn diag_code(d) with Pure = match d {
   PExpectedToken(_, _) => "P_ExpectedToken",
@@ -4475,6 +4630,11 @@ effect Verify {
   // decide, never a second decide beside the ledger's.
   verify(Int, Span, Predicate, Reason) -> Option(Bool)
   verify_debt() -> [(Int, Span, Predicate, Reason)]
+  // Every claim the ledger DECIDED, with its verdict — true proven, false
+  // refuted — at the module and span it was raised in. The canvas marks
+  // them at their sites; the decision was made once, here, and kept rather
+  // than discarded the moment it was returned.
+  verify_decided() -> [(Int, Span, Predicate, Bool)]
   // The generation boundary's clear, for the modules about to be re-judged:
   // the obligations raised in each one's CURRENT node are dropped before its
   // judgment re-accrues them, and every other module's stand, because a

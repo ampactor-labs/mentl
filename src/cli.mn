@@ -21,9 +21,10 @@ type EntryVerb
   = VEdit(Option(String))
   | VDoc(Option(String))
   | VServe
-  // the View at an address — `mentl space <path>:<line>[:<col>]` writes it as
-  // JSON (space.mn); bare `mentl space` is the page, the mentl command's
-  | VSpace(Option((String, Int, Int)))
+  // the View at an address — `mentl space <path>:<line>[:<col>] [<needle>]`
+  // writes it as JSON (space.mn); bare `mentl space` is the page, the mentl
+  // command's
+  | VSpace(Option(SpaceAt))
   | VTighten(Option(String))
   | VFmt(String)
   // target REQUIRED — carried non-optionally
@@ -124,13 +125,19 @@ fn accept_verb_args(a) = if len(a) >= 3 {
   ParseError("accept needs an address: mentl accept <path>:<line>:<col>")
 }
 
+// Where a View is asked for: the module, the line and column, and the needle
+// a find typed — the name whose references the View carries, beside the
+// string literals holding it — when one was.
+type SpaceAt = SpaceAt(String, Int, Int, Option(String))
+
 // The space verb's subject is an ADDRESS when one is given — the same shape
 // the bare address form reads — and nothing otherwise (the page). A word
-// that is not an address names no position and says so.
+// that is not an address names no position and says so. A word after the
+// address is a needle to find.
 fn space_verb_args(a) = if len(a) >= 3 {
   match parse_address(a[2]) {
     Some(addr) => match addr {
-      (target, line, col) => Invocation(VSpace(Some((path_to_module(target), line, col)))),
+      (target, line, col) => Invocation(VSpace(Some(SpaceAt(path_to_module(target), line, col, if len(a) >= 4 { Some(a[3]) } else { None })))),
     },
     None => ParseError("space takes an address: mentl space <path>:<line>[:<col>] — the page itself is `mentl space` with no argument"),
   }
@@ -213,9 +220,9 @@ fn verb_specs() = [VerbSpec(
   "the resident graph — read verbs answer live; run it in a project"
 ), VerbSpec("serve", "", (a) => Invocation(VServe), "the transport server"), VerbSpec(
   "space",
-  "[<path>:<line>[:<col>]]",
+  "[<path>:<line>[:<col>] [needle]]",
   space_verb_args,
-  "the ide — bare, the mentl command stages the page (ide/space.manifest) and serves it; at an address, the View the page paints, as JSON"
+  "the ide — bare, the mentl command stages the page (ide/space.manifest) and serves it; at an address, the View the page paints, as JSON (line 0 carries the canvas; a needle, its references)"
 ), VerbSpec(
   "tighten",
   "[path]",

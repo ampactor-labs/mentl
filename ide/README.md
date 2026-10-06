@@ -39,11 +39,27 @@ The surfaces, each a projection of the compiler's own answer (docs/MENTL_SPACE.m
 is the interaction architecture; docs/DESIGN_SYSTEM.md the tokens, which live in
 `ide/tokens.css`):
 
-- **The Canvas** — the program, every glyph in its kernel role's hue (the five
-  verbs sky, types gold, keywords blue, `own`/`ref`/`resume` magenta, literals
-  and `!E` and the `??` socket vermillion). The highlight layer slices the
-  source between tokens, so every character the hand typed is on the screen.
-  Line numbers in the gutter; the verb spines drawn beside the chains.
+- **The Canvas** — the program painted from the wheel's own projection of
+  it (`mentl space main.mn:0`, the module's View, carries the canvas;
+  `canvas_of`, src/space.mn): every token at the span the one lexer answers,
+  in its kernel role's hue (the five verbs sky, types gold, keywords blue,
+  `own`/`ref`/`resume` magenta, literals and `!E` and the `??` socket
+  vermillion). The page holds no lexer; it slices the source at the wheel's
+  spans, so every character the hand typed is on the screen, and paints only
+  the lines in view. The gutter carries THE ASPECT STRIP — eight cells a
+  line, one per aspect (τ a declaration's type, ⬡ a hole, a verb glyph for
+  each stage, ◇ an effect the line requires of its callers and ◆ one an
+  install grants, ●/○ an owned parameter and its consume, ✓ ◌ ✗ a claim
+  proven, open or refuted, ↑ the gradient's step, ¶ a lede or an accept; ✗ in
+  any column a refusal of that aspect) — each a door into the ring, then the
+  line numbers. Over the text: the verb frames and the `~>` enclosure read
+  from the graph's verb sites, the proof marks at their claims, the amber
+  trace of an owned value down to its consume, the references a find
+  follows. Find by edge: the caret's View carries the references of what it
+  names; the find box asks `mentl space main.mn:L:C <name>` for a name's
+  references and the string literals holding it (the Refs tab). On idle the
+  formatter's canon replaces the buffer; the accept and the formatter write
+  as ONE native undo step each.
 - **The Aspect ring** — the eight facets at the caret, read off the View the
   wheel renders (`mentl space main.mn:L:C` → `space_view`, src/space.mn — the
   same facts `mentl main.mn:L:C` prints as text): graph
@@ -71,9 +87,9 @@ is the interaction architecture; docs/DESIGN_SYSTEM.md the tokens, which live in
 
 What deliberately does not exist yet, each named: RUNNING the compiled program
 in the page needs the assembler in the wheel (`Hβ.felt.ide-run-in-page` — until
-then download the .wat); the canvas's tokens and verb geometry from the
-wheel, and the aspect strip in the gutter (PLAN §11, L-D); fill-and-resume and reality scrubbing (band B); the transitive `!E`
-proof (band A's crown).
+then download the .wat); the row-flow tint and the sealed `!E` wall over the
+canvas (docs/MENTL_SPACE.md §8, named next); fill-and-resume and reality
+scrubbing (band B); the transitive `!E` proof (band A's crown).
 
 The gate is `bash tools/ide-gate.sh`: the node twin (`node ide/test-shim.mjs`)
 drives ide/wheel-worker.js and ide/session-client.js — the SAME execution
@@ -86,7 +102,11 @@ ring facts, no refusing lens fact), the project's (`SMOKE-PROJECT`: Pulse
 opened as a project, its member mounted at its path, zero refusals) and the
 product's (`SMOKE-PRODUCT`: render fidelity, no `undefined` in the chrome,
 eight real ring rows, a Warning in the Lens at its line, a mismatch at its
-own site) — and captures the loaded
+own site) and the canvas's (`SMOKE-CANVAS`: no tokenizer in the page,
+every painted token the source sliced at the canvas's span, every strip cell
+the View's own, frames and marks drawn, the references at a caret drawn and
+a needle's listed, the formatter's canon on idle, the accept one undo step)
+— and captures the loaded
 page in both grounds (`.build/space.png`, `.build/space-parchment.png`) once
 the page says `SPACE-READY`. (Chrome's own `--screenshot` captures the load
 event, before the wheel has booted, and never returns under a virtual-time
