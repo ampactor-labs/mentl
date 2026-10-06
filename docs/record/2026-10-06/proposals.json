@@ -1,0 +1,291 @@
+{
+ "lens": "proposals",
+ "summary": "I ran 28 read-only mentl reads on the wheel's own proposal, gradient and proof facets. One more read failed: `mentl check /dev/stdin` refuses, because check takes a module path. Debt: smt lists 39 open obligations. The pre-L-C answer in the session scratchpad listed 37, and PLAN S6 says 'hold at 37'. Teaching: `mentl teach` over six modules (egraph, synth_proposer, lib/lists, main, lexer, space) covers 427 declarations. 367 got a row-lock answer and 59 printed '(no next-step annotation)'. There was 1 need, and it was wrong. There were 0 preconditions, 0 return contracts and 0 questions, although those modules own 22 of the 39 open obligations. Audit: its 'pending' attribution ignores which module a span belongs to. main.mn shows 37 pending lines but owns 3 obligations. A prediction made before running was confirmed exactly: egraph's last declaration was charged 3 obligations from other modules. Census: 490 index-threaded recursions, with no bound on the board. Traps: 14 deliberate-trap call sites carry no Trap in their rows, while the audit advertises 'Total (proven never to trap)'. Proposer: it never offers a binder that is in scope, and it ranks a substrate helper first at a String hole. The smt facet renders each claim un-negated and with undeclared symbols, and the handler it was written for is unreferenced. `unreferenced` lists Ty, Node, Option and Alloc as dead (465 of 6533 names). Shape of the answer: the proof machinery finds real debt, but the teaching layer cannot name a fix for most of it, for five reasons. Containment is computed by comparing spans. The annotation space has no parts and no paths. The constant folder and the decision procedure exist twice. Rows say nothing about deliberate traps. The board bounds census shapes, not answers.",
+ "commands": [
+  "mentl query src/main.mn smt",
+  "mentl teach src/egraph.mn",
+  "mentl src/egraph.mn:195:42",
+  "mentl src/egraph.mn:195:44",
+  "mentl teach src/synth_proposer.mn",
+  "mentl audit src/main.mn",
+  "mentl query src/main.mn 'refs of span_overlaps'",
+  "mentl query src/main.mn 'census iteration'",
+  "mentl verify",
+  "mentl teach lib/lists.mn",
+  "mentl teach src/main.mn",
+  "mentl src/main.mn:237:22",
+  "mentl teach src/lexer.mn",
+  "mentl teach src/space.mn",
+  "mentl src/voice.mn:503:4",
+  "mentl query src/main.mn 'prose .mn:'",
+  "mentl query src/main.mn 'refs of span_contains'",
+  "mentl tests/proposals/string-value-tie.mn:4:20",
+  "mentl query src/main.mn unreferenced",
+  "mentl tests/proposals/cell-tie.mn:8:11",
+  "mentl src/egraph.mn:0",
+  "printf 'fn main() = (0x80000000 / (0 - 1)) / 2' | mentl check /dev/stdin  (refused: E_MissingModule — check takes a module path)",
+  "mentl audit src/egraph.mn",
+  "mentl query src/main.mn 'refs of out_of_range'",
+  "mentl src/lexer.mn:298:47",
+  "mentl src/lexer.mn:298:55",
+  "mentl query src/main.mn 'text ownership-resolved'",
+  "mentl where src/infer.mn infer_refinement_narrowing",
+  "read: scratchpad doc answers for synth_proposer, mentl, query, lexer, io, memory, dsp/clock; scratchpad imports_main.txt (another auditor's imports answer this session) and head-smt.txt (pre-L-C smt, 37)",
+  "read: src/egraph.mn whole; verify.mn:1420-1509,1580-1829; voice.mn:470-530; pipeline.mn:780-859,1060-1340,1560-1742; query.mn:1-280,540-1219,2555-2594; mentl.mn:320-498,930-1145; cursor.mn:880-901; infer.mn:1-60,585-604,2975-3019,13280-13368; lexer.mn:280-359,536-543,664-683,700-845; space.mn:95-139,600-649,770-809; main.mn:90-402,884-899,1228-1241; synth_proposer.mn:1-359,1040-1196; board.mn whole; canon.mn, lib/search.mn and lib/dsp/clock.mn whole; tests/proposals and tests/teach heads; RESIDUE.md synth/teach/egraph entries; LEDGER.md newest four entries; git diff of src/synth_proposer.mn and src/mentl.mn; git show --stat 3eec1b62"
+ ],
+ "findings": [
+  {
+   "id": "P1",
+   "title": "Containment is checked by comparing bare spans, so the audit, imports and unreferenced facets attribute facts to the wrong module",
+   "sites": [
+    "pipeline:813-834 (audit_walk: the filter binds `_modh` and drops it; the extent runs to the next declaration's start line, and the last declaration's runs to line 1000000000)",
+    "query:666-679 (any_name_referenced_in / refs_inside — the imports facet)",
+    "query:1058-1061 (ref_is_outside — unreferenced, performs, orphan-claims)",
+    "mentl:355-366 (owed_at — the module-checked twin, with its comment stating the law)",
+    "cursor:887-901 (pending_in — module-checked, the law restated in its comment)",
+    "infer:590-598 (crc_scope_at — module-checked, the law restated)",
+    "query:551-556 (collect_ref_sites — module-checked, the law restated)"
+   ],
+   "class_size": "`refs of span_overlaps` = 4 sites: 3 ignore the module (pipeline:829, query:678, query:1060) and 1 checks it (mentl:365). `refs of span_contains` = 4 sites, each guarded by a hand-written module compare. Four separate comments restate that a span is not an address without its module.",
+   "current": "`let extent = Span(decl_start_line(handle), 0, extent_end, 0)` then `filter({ (_modh, dspan, _, _) => span_overlaps(extent, dspan) }, debt)` (pipeline:828-829). `if sp != span_zero() && span_overlaps(extent, sp) { true }` runs over reference sites from every module in the link (query:678).",
+   "ideal": "A site is a NODE, and containment follows the parent edge E4 drew — never span arithmetic. `fn owner_decl(h) = decl_path_to(h) |> first` · `fn open_obligations(h) = verify_debt() |> filter({ ob => owner_decl(ob.node) == h })`, one home that teach, audit, the caret and the Ledger all read · `fn ref_is_outside(decl, site) = owner_decl(site) != decl` · `fn import_is_used(cell, imported) = declared_names(imported) |> any({ n => graph_refs_at(n) |> any({ s => graph_module_of(s) == cell.module }) })`. A debt entry carries its claim node: `type Obligation = Obligation({node: Handle, pred: Predicate, reason: Reason})`. Module and span become reads of that node, never copies stored beside it. audit_walk, its 1000000000 sentinel and the four restated comments are deleted.",
+   "law": "PLAN §7: a position that is not module-qualified is not an address. Three such machines are closed; this is the fourth. PLAN §2 Carried-Truth: the `_modh` binder holds the fact and throws it away. CLAUDE.md working discipline (5): one uniform pass beats a family of per-site guards.",
+   "evidence": "`mentl audit src/main.mn` prints 37 'pending' lines over 21 main.mn functions: march_run 8, project_directory 5, main 2, and `answer_is_not_sites : Pure` 1. `mentl query src/main.mn smt` lists only main:237, main:896 and main:1238 in main. Before running `mentl audit src/egraph.mn` I predicted `apply_rules_from` (egraph:286-292, no claim) would show 'pending: 3', the obligations at graph:447, types:1958 and types:1989 caught by the last declaration's extent; the run printed exactly 'apply_rules_from … pending: 3', and fold_int printed its own 2. Imports: the imports answer marks `egraph -> import io` as used. egraph.mn, read whole, references nothing lib/io declares; its `out_of_range` comes from lib/memory. A reference elsewhere at a line inside egraph's 1..292, for example main:234's eprint_string, satisfies the module-blind overlap.",
+   "gate": "Make the cross-module compare unsayable by type: `span_of_node_raw(h)` answers `Site({module, span})`, and span_overlaps / span_contains take Sites and answer false across modules. Alternatively, delete span containment between handles and bound `refs of span_overlaps` at the uses inside one module's own index. RED-first fixture: two modules where module B's obligation falls on a line inside module A's last declaration; audit, imports and unreferenced must all attribute it to B.",
+   "leverage": "high"
+  },
+  {
+   "id": "P2",
+   "title": "Guarded divisions: the teaching is wrong, the guard is never read, and the compiler's two constant folders share an INT_MIN / -1 hole",
+   "sites": [
+    "egraph:191-198 (fold_int)",
+    "verify:1462-1490 (litval_arith)",
+    "voice:503-507 (pick_from_pool)",
+    "mentl:420-424 (predicate_leans: a PTotalDiv claim also leans on the dividend)",
+    "infer:3005-3011 and infer:13281-13349 (infer_refinement_narrowing: computes the path predicate and writes nothing)",
+    "lexer:788-820 (literal accumulation wraps silently, so 0x80000000 is INT_MIN)"
+   ],
+   "class_size": "5 of the 39 open obligations are divisions under an explicit zero guard (egraph:195, egraph:196, verify:1468, verify:1469, voice:506). 2 of the 5 (egraph:195, verify:1468) also carry an overflow face the guard does not cover. 2 constant folders implement the same fold.",
+   "current": "Both folders write `BDiv => if b == 0 { None } else { Some(a / b) }` (verify:1468 as `LVInt(na / nb)`). Teach at fold_int says: '`b` must make b != 0 (the divisor of a % b) hold (line 196), and no refinement in reach states it — declare one and annotate `b`'. That precondition would change fold_int's contract. At pick_from_pool the Teach facet says: '`hash` must make n != 0 (the divisor of hash % n) hold … annotate `hash`'. `hash` is the dividend; n = len(pool) is a local. The field view offers 'a ground witness or a refinement collapses it' and never mentions the guard.",
+   "ideal": "Read the path up the parent edge at the moment the claim is decided, with no walk and no column: `fn path_at(h) = ancestry(h) |> fold(PTrue, branch_fact(h, ??, ??))`. An if's then-branch contributes its condition, its else-branch the negation, a match arm its pattern. Verify decides `path_at(h) ⇒ claim`. infer_refinement_narrowing, its walkers and graph_narrow_set are deleted. Keep one folder: `fn fold_int(op, a, b) = if claim_holds(PTotalDiv(op, lit(a), lit(b))) { Some(apply_int(op, a, b)) } else { None }`. The e-graph asks the same claim it raises of user code, both guards are deleted, the overflow face closes by that one decision, and Verify reads its constants off the canon weave (litval_arith's Int arm is deleted). Make leans operator-aware: `PTotalDiv(BMod, _, b) => value_leans(b)`; for `/`, the zero face leans on b and the overflow face on (a, b). Where the overflow face stays open, the gradient asks the meaning question: 'fold_int(BDiv, -2147483648, -1) traps — should the fold answer None as it does for a zero divisor?'",
+   "law": "PLAN §5: a tie in meaning-space is a question, not a guess. SYNTAX §Partiality: `/` traps on INT_MIN / -1. RESIDUE: Hβ.verify.partiality-reads-the-path-narrowing and Hβ.verify.congruence-is-the-egraph. Anchor 1: two folders for one fact is the duplication.",
+   "evidence": "`mentl query src/main.mn smt` renders egraph:195 and verify:1468 as `(and (distinct b 0) (or (distinct b (- 1)) (distinct a (- 2147483648))))`. `mentl teach src/egraph.mn`, `mentl src/voice.mn:503:4` and `mentl src/egraph.mn:0` give the answers quoted above. `mentl where src/infer.mn infer_refinement_narrowing` answers 'with Memory + Alloc … -> ()'. That row proves the walk writes no graph fact, while infer:3005-3010 and infer:13295-13297 say it writes graph_narrow_set for lower's graph_narrow_at. The unreferenced facet lists graph_narrow_set and list_index_proven, and infer:13340-13349 records that the write was removed on 2026-07-18. RESIDUE says the five claims are 'every one of this shape'; that holds only for the zero face. Unmeasured (this audit writes no files): whether `fn main() = (0x80000000 / (0 - 1)) / 2` traps the compiler inside litval_arith or fold_int. The instrument is that fixture run through mentl check and mentl compile. tests/micros has no constant-overflow fixture; only mn-div-const-zero-refuses covers division by a constant, and only its zero face.",
+   "gate": "Add a teach fixture `// teach N: none` on a guarded division in fold_int's shape, and one `// teach N: ask …` at the open overflow face. Add a frontier leg where `(0x80000000 / (0 - 1)) / 2` refuses with E_RefinementRejected at the inner division and the compiler does not trap. `refs of litval_arith` goes to 0. The obligation bound from P13 falls 39 → 36 as the three zero-face claims discharge.",
+   "leverage": "high"
+  },
+  {
+   "id": "P3",
+   "title": "Teach cannot name a refinement at a PART of a value, and 20 of the 39 open obligations rest on one",
+   "sites": [
+    "lexer:287, 298, 321, 327, 337, 355, 541, 676 (twice) — new_pos destructured from a scanner's returned tuple",
+    "lexer:312, 332 — NumInt / NumNoDigits payload (type NumScan, lexer:706)",
+    "main:237 — the Some payload of module_handle_of_path, which returns Option(Int)",
+    "main:896, main:1238 — the Some payload of address_node",
+    "space:626, space:640 — the AddressNode payload",
+    "space:125, space:129 — the second element of rank_positions' pairs",
+    "space:112 — the v.node record field",
+    "mentl.mn param_candidates / writable_over and return_suggestions / value_calls / ret_fits"
+   ],
+   "class_size": "20 of 39 open obligations, checked by reading each site: 12 in lexer, 5 in space, 3 in main. Teach discharged none of the 22 obligations owned by the six modules it was run on.",
+   "current": "Annotation = APure | ANotEffect | ARefined (a whole parameter) | AReturns (a whole return). param_candidates admits a refinement only over a parameter whose whole type is the alias's base. return_suggestions reads only a call, a pipe stage, a let or a join's tails, never a part. A claim that leans on a part finds no position, so the answer falls back to a row lock. At the claim itself, `mentl src/lexer.mn:298:55` says only 'Verify: pending comparison 0 <= self at lexer:298:47-298:120'. It names no argument, no producer and no remedy, and its Why is about the call's tuple type.",
+   "ideal": "Add `APart({site: AtParam(i) | AtReturn | AtField(type, ctor, i), path: [PartStep], alias})`. Generate it by walking the claim's leaf back through PartFact to its producer, prove it in D4's bracket with S4's cross_parts, and rank it by the obligations it discharges across the program. Concretely: `type NumScan = NumInt(ValidOffset, Int, Int) | NumFloat(ValidOffset, Int) | NumNoDigits(ValidOffset, Int, NumBase)`; `fn lex_from(…) -> (ValidOffset, Int, Int, [Token], Int)` and the same for its scanners; `fn address_node(…) -> Option(Handle)`; `AddressNode(Viewed, Span, Handle)`. One statement at each producer discharges the claim at every consumer.",
+   "law": "PLAN §11 D4: the gradient proposes what the program owes. S4: a structure is claimed part by part where it is built. §0 property (1). The intent-boundary rule: a refinement is a decision the medium proposes and the developer accepts.",
+   "evidence": "`mentl teach src/lexer.mn`: 24 row locks and 7 none. `mentl teach src/space.mn`: 84 row clauses and 2 none; field_hole and field_gradient each owe a claim and are told `with !GraphWrite`. `mentl teach src/main.mn`: 102 of 102 answers are row locks; mentl_edit_session owes main:237 and is told `with !WasmOut`. `mentl src/main.mn:237:22` shows the callee `entry_start_caret : (mh: Handle …)`, whose parameter learned Handle from Caret's first field. Each claim site was read in lexer.mn:286-356, 536-542, 664-677; main.mn:232-248, 884-899, 1233-1240; space.mn:95-130, 616-643.",
+   "gate": "Teach fixtures `part-return` (a tuple position), `part-option` (an Option payload) and `part-field` (a constructor field), each `// teach N: add …` and seen RED first. The obligation bound from P13 falls as the producers accept.",
+   "leverage": "high"
+  },
+  {
+   "id": "P4",
+   "title": "The medium's own deliberate trap is invisible in the row, and 'Total (proven never to trap)' is advertised where a trap is certain",
+   "sites": [
+    "lib/memory out_of_range (row: Memory)",
+    "lists:86, 164, 220, 222",
+    "types:4676",
+    "egraph:52",
+    "graph:180, 193, 201, 1010",
+    "imap:98",
+    "intern:95, 107",
+    "synth_proposer:411",
+    "mentl:963-978 (capabilities_for_severance: Trap → CTotal)",
+    "mentl:1066-1073 (show_capability)"
+   ],
+   "class_size": "14 call sites of out_of_range, none charging Trap. Every audit line 'unlocks … Total (proven never to trap)' rests on `!Trap` alone, which covers division only.",
+   "current": "`out_of_range : () -> Int with Memory`, documented in lib/memory as 'A deliberate trap: a word read at the last address'. The capability map has `Trap => [CTotal]` and `CTotal => 'Total (proven never to trap)'`.",
+   "ideal": "`fn out_of_range() -> ! with Trap`: the deliberate trap's one home charges the effect it performs, so every reach is a row fact. Index and slice raise their precondition the way division does: `PInBounds(receiver, index)`, decided from the path (P2) and the leaves, charging Trap while open. A capability is a conjunction of proven absences (`CTotal` ⇔ `!Trap` ∧ `!Diverge`; `CRealTime` ⇔ `!Alloc` ∧ `!Diverge`), and its label states exactly that conjunction.",
+   "law": "§0 property (2): the negative is provable. SYNTAX §Partiality: 'Until it lands, `!Trap` is a proof about division alone'. CLAUDE.md: never fabricate a fact.",
+   "evidence": "`mentl query src/main.mn 'refs of out_of_range'` → 14 references (the sites above). `mentl audit src/egraph.mn` prints 'extract_chase : Memory + GraphRead — severs beyond the module: Alloc + Trap — unlocks Real-time safe (proven zero allocation), Total (proven never to trap)'. But egraph.mn:51-53 calls out_of_range() at depth > 1000, and its own comment (egraph.mn:42-48) says the chase traps there. `mentl audit src/main.mn` marks march_walk_entries 'Total' while main.mn:370 indexes `names[i]`.",
+   "gate": "Crown crucibles `leak-index-trap` (`fn f(xs) with !Trap = xs[5]` refuses) and `sound-index-proven` (a guarded index accepts). A frontier leg asserts that extract_chase's row carries Trap.",
+   "leverage": "high"
+  },
+  {
+   "id": "P5",
+   "title": "The gradient's default answer is a row lock chosen by how common the effect is in the link, not by what depends on it",
+   "sites": [
+    "mentl.mn severance_negations (its doc: 'most-performed first — the tie-ranking')",
+    "mentl:333-353 (row_suggestion, clause_absences)",
+    "mentl:1105 (TeachNone renders '(no next-step annotation)')"
+   ],
+   "class_size": "367 of 427 declarations across six modules were taught a row clause: egraph 20/21, synth_proposer 80/128 (47 of them `!GraphRead`), lib/lists 57/59, main 102/102, lexer 24/31, space 84/86. 59 printed '(no next-step annotation)'. There were 0 preconditions, 0 return contracts and 0 questions, and 1 need (fold_int, wrong per P2).",
+   "current": "is_zero: '→ add `with !Memory`'. push_opt: '→ add `with !GraphRead` — locks Proven absence of GraphRead'. alloc_list: '→ add `with !SharedMemory`'. main: '→ add `with !GraphRead`'.",
+   "ideal": "An absence's leverage is the set of proofs that stand on it, read along reverse call edges: `fn absence_dependents(f, e) = callers_star(f) |> filter({ g => declares_negation(g, e) || gates_on(g, e) })`. A lock is taught only when it has dependents, and the answer names them: 'add `with !Alloc` — render_frame's `!Alloc` rests on it through 3 calls'. With no dependents the answer is TeachNone, and TeachNone renders nothing.",
+   "law": "RESIDUE Hβ.teach.severance-vocabulary-from-link: provability without informativeness. SYNTAX §A signature is not an inventory: a clause is a decision. PLAN §1: the question beats the guess.",
+   "evidence": "The six `mentl teach` runs, counted line by line. Example lines: 'egraph … is_zero: → add `with !Memory` — locks Proven absence of Memory'; 'synth_proposer … push_opt: → add `with !GraphRead`'; 'lists … alloc_list: → add `with !SharedMemory`'.",
+   "gate": "Teach fixtures `lock-protects-a-caller` (`// teach N: add with !Alloc`) and `lock-nothing-depends` (`// teach N: none`). A board bound holds lock teachings with zero dependents at 0.",
+   "leverage": "medium"
+  },
+  {
+   "id": "P6",
+   "title": "490 index-threaded recursions: the audit names each one, no verb writes the fold, and no bound holds the count",
+   "sites": [
+    "census sites, for example main:367 (march_walk_entries), egraph:286 (apply_rules_from), query:1145 (census_walk), synth_proposer:727 and 764",
+    "board.mn:59-204 (the roster has no iteration bound)",
+    "board.mn:94-149 (eight landings where the board refused and lambdas were turned into references by hand)",
+    "git diff src/synth_proposer.mn (L-C rewrote `dfacts[0]` under a length test into `[first, ..._]` by hand)"
+   ],
+   "class_size": "490 sites (`census iteration`). Beside them, 220 effectful lambdas under the board's only falling bound, converted by hand in 8 recorded landings.",
+   "current": "`fn apply_rules_from(i, bound, acc) = if i >= bound { acc } else { … apply_rules_from(i + 1, bound, if fired { acc + 1 } else { acc }) }`. The audit says 'iteration-shape: … a fold/each/iterate stage serves' and writes nothing.",
+   "ideal": "Treat each costume as an instance of a recursion SCHEMA whose stage form is a theorem proven once. An instance is a schema match plus side conditions the judgment decides: the receiver is loop-invariant, the bound stays within len by path or refinement, the step's row fits the stage's callback row, and the trap behaviour is the same. The proposal is the stage form, shaped like `range(0, bound) |> fold(0, { (acc, i) => acc + fired_at(i) })`. This is a form-space rewrite (one meaning, so no question), accepted at the declaration through `mentl accept`, with the formatter's conservation census as the safety check. The lambda-to-reference conversions the board forces use the same mechanism: lift the lambda into a named function over its captures, and ask for the name only when candidate names compete.",
+   "law": "CLAUDE.md Anchor 6: ITERATION IS TOPOLOGY. The ⟳ self-build ratchet: each landing leaves the medium authoring more of itself. PLAN §5: a tie in form-space is free.",
+   "evidence": "`mentl query src/main.mn 'census iteration'` → '490 iteration-costume fn(s)'. `mentl verify` shows 12 bounds, none on iteration. `mentl audit src/main.mn` flags 15 main.mn functions 'iteration-shape'. board.mn:94-149 records the hand conversions (for example AN-2: 'the board refused 225 … all three became references').",
+   "gate": "Add `Bound({ceiling: 490, shape: CsIterationCostume})` to board_bounds, falling with each accepted rewrite. A frontier leg asserts that an accepted form re-judges to the same type, row and obligation set.",
+   "leverage": "high"
+  },
+  {
+   "id": "P7",
+   "title": "The proposer never offers a binder in scope, offers substrate internals, and never builds a call with arguments",
+   "sites": [
+    "synth_proposer:283-328 (enumerate_vocabulary_calls admits only function-typed entries; line 292 requires `len(params) == 0`)",
+    "synth_proposer:104 (VocabRing has no lexical ring)",
+    "synth_proposer:26-58, 140-153 (stale headers)",
+    "RESIDUE:4105 (Hβ.synth.trail-segment-discarded-at-rollback, still marked OPEN)"
+   ],
+   "class_size": "Every non-function local, parameter and pattern binder: there is no path by which one becomes a candidate. Measured on 2 fixtures.",
+   "current": "At `fn pick(x) = { let y = ??; y + x }` the proposal is 'one() / half() … these differ in TYPE — Int against Float: which type does this position hold?', and `x` never appears. At `fn f() -> String = ??` the proposal is 'hex_glyphs() … ' ranked above the empty-string literal, then 'which one does this position mean?'.",
+   "ideal": "`type VocabRing = Lexical | OwnModule | AuthoredImport | Linked`, with the Lexical ring read up the parent edge (parameters, lets, pattern binders, handler state). A binder whose cell is already in the hole's union-find class is proven before it is judged. The Linked ring offers a module's surface: names referenced from another module, or brought in by an authored import, read off module-correct references (P1). hex_glyphs, referenced only inside strings.mn, is then never offered. A call `f(??, ??)` whose result head fits the hole is a candidate, its argument holes the next fills.",
+   "law": "PLAN §1: the medium is the best next-move proposer, by guided search over the typed graph. §11.1: propagation precedes enumeration. RESIDUE: Hβ.synth.linked-ring-offers-substrate-internals, Hβ.synth.vocabulary-arg-holes.",
+   "evidence": "`mentl tests/proposals/cell-tie.mn:8:11` and `mentl tests/proposals/string-value-tie.mn:4:20`, as quoted. synth_proposer.mn:292 reads `if len(params) == 0 && heads_may_unify(ret, target_ty)`. RESIDUE re-grounding: Hβ.synth.trail-segment-discarded-at-rollback is closed in fact. judge_in_segment reads `context_writes(cp, below) = graph_written_since(cp, below)` before `graph_rollback(cp)` (synth_proposer.mn:1096-1109, 1159, 1169), yet RESIDUE:4105 still marks it OPEN. ProposerSMT, ProposerHandlerCatalog and ProposerUser are UNREFERENCED. The header (synth_proposer.mn:140-153) still describes four ranked proposer handlers and calls verify_after_apply 'the proof gate', while mentl.mn:999 says that check 'is NOT the proof'.",
+   "gate": "A self-proposal leg over the wheel: at every bare-variable argument in N wheel declarations, replace the argument with a hole and require the authored binder among the survivors. The hit rate is 0 today for non-function binders, by construction, and ratchets up. string-value-tie's contract moves to `fill` with the empty-string literal.",
+   "leverage": "high"
+  },
+  {
+   "id": "P8",
+   "title": "The `smt` facet renders the claim, not the obligation, and the handler it was written for is dead",
+   "sites": [
+    "pipeline:1280-1284 (render_smt_line)",
+    "verify:1691 (predicate_to_smt_lib)",
+    "verify:1646-1680 (verify_smt: negates the claim; unreferenced)",
+    "verify:1713-1721 (smt_cmp_op ends in a wildcard answering the `=` symbol)",
+    "verify:1812-1814 (its sibling's comment forbidding exactly that fallback)",
+    "query:223-235 (comment: the text goes to Z3/CVC5)"
+   ],
+   "class_size": "39 obligations rendered, with 0 declarations, 0 hypotheses and 0 negations. verify_smt, SmtSolver and SmtResult are unreferenced. lexer:676 prints twice at one span, because the two arguments' claims are located at the call rather than at each argument.",
+   "current": "The facet prints `(assert (<= 0 self)) (check-sat)` with `self`, `span_valid`, `b` and `nb` undeclared. That asks whether the claim is satisfiable, which is the inverted-polarity hole verify_smt's own comment (verify:1651-1656) names; the handler itself sends `predicate_to_smt_lib(PNot(predicate))`.",
+   "ideal": "Render the obligation once, beside the one decision: `fn obligation_smt(ob) = '{declarations(ob)}{hypotheses(ob)}(assert (not {predicate_to_smt(ob.pred)})) (check-sat)'`. Declarations come from the leaves' types, hypotheses from the path (P2) and the leaves' facts, and the expected answer is unsat. The facet and an external proposer's slot (PLAN 8.3 as re-scoped) read the same text. verify_smt and SmtSolver are deleted, and smt_cmp_op enumerates its six comparisons.",
+   "law": "PLAN §0: proof beats review. PLAN 8.3: an external solver is a proposer whose certificate the kernel checks. CLAUDE.md: no fabricated `_ =>` fallback (the wildcard-fabricates census shape). Carried-Truth: two renders of one obligation with opposite polarity.",
+   "evidence": "`mentl query src/main.mn smt` → '39 obligation(s) as SMT-LIB', every entry `(assert …) (check-sat)`, with `; lexer:676:43-676:142` twice. The unreferenced facet lists verify_smt, SmtSolver and SmtResult. The code at verify.mn:1640-1721 and pipeline.mn:1280-1284 was read.",
+   "gate": "A frontier leg reads the facet's output and refuses an undeclared symbol or a missing `not`. The wildcard-fabricates bound falls 21 → 20.",
+   "leverage": "medium"
+  },
+  {
+   "id": "P9",
+   "title": "Comments assert architecture that the medium's own rows and references refute, and they cite coordinates that rot",
+   "sites": [
+    "infer:3005-3010 and infer:13295-13297 (say the narrowing walk writes graph_narrow_set)",
+    "synth_proposer:26-34 and 140-153 (coordinate tally; four ranked proposer handlers)",
+    "search.mn:35-36, 44, 54, 77 (`src/types.mn:637`, `src/own.mn:31`, `src/oracle.mn (commit f87abf3 …)`)",
+    "query.mn:38-40 (a sentence ending in ':' whose referent, the width constant, was deleted)",
+    "mentl.mn:1127-1128 (L-C re-pointed render_why_hops → why_lines by hand after the ratchet refused)"
+   ],
+   "class_size": "34 comment cells contain '.mn:' (prose facet). 3 of them were checked against the source and are wrong. The narrowing comments are refuted by the medium's own row.",
+   "current": "infer:3005-3010 says the walk writes the narrowing edge into the graph (graph_narrow_set) and lower's graph_narrow_at elides checks. The walk's inferred row is Memory + Alloc and it returns (). search.mn:35 says Abort lives at src/types.mn:637; that line now opens the TParam projections. The handler is at own.mn:32, not :31, and src/oracle.mn does not exist.",
+   "ideal": "Prose cites by EDGE: a backticked name the comment-ref gate keeps true, never a file:line. The orphan-claims facet grows two shapes the medium can already decide: a comment naming an op that the adjacent call's inferred row cannot perform, and a coordinate citation. The fix is MachineApplicable: rewrite the coordinate to the backticked name of the declaration that stood there (through the generation operand, Hβ.query.generation-operand), or delete it when nothing stands there.",
+   "law": "CLAUDE.md: fluency and correctness are independent. SYNTAX §What a comment TRENDS TO. RESIDUE Hβ.query.refs-reads-edges-not-occurrences.",
+   "evidence": "`mentl query src/main.mn 'prose .mn:'` → '34 comment(s) containing `.mn:`'. `mentl where src/infer.mn infer_refinement_narrowing` → 'with Memory + Alloc … -> ()'. The unreferenced facet lists graph_narrow_set, list_index_proven, ProposerSMT, ProposerHandlerCatalog and ProposerUser. Reads: types.mn:635-639 is the TParam section, own.mn:32 is `handler catalog_abort` — rather, `handler catch_abort` — and `ls src/oracle.mn` reports no such file. `git diff src/mentl.mn` shows the hand re-point. LEDGER L-H records two backticked template words in voice.mn rewritten by hand.",
+   "gate": "A census shape `CsProseCoordinate` bounded at 34 and falling. orphan-claims narrates a mention of an op the adjacent call's row cannot perform, seen RED first on infer:3005.",
+   "leverage": "medium"
+  },
+  {
+   "id": "P10",
+   "title": "At a declaration, the medium's Why is a pass label, its Lede a section banner, and its Query a sliced body",
+   "sites": [
+    "infer:2992-3004 (rebinds the declaration with `Inferred(\"ownership-resolved params of '{name}'\")`)",
+    "egraph:58, 78, 176, 227, 240 (`───` banner comments rendered as ledes)",
+    "space.mn node_query_line (the Query line)"
+   ],
+   "class_size": "All 21 egraph declarations answer the Why 'ownership-resolved params of …'. 5 of the 21 ledes are `───` banners. The phrase has 1 writer (`text ownership-resolved` finds 1 literal).",
+   "current": "'Why: ownership-resolved params of 'fold_int', at egraph:191'. 'Lede: ─── Effect gating ───…'. 'Query: fn fold_int(op, a, b) = match op { : (op: BinOp ref — inferred, …'.",
+   "ideal": "The declaration's reason is its signature's own: `Located(span, Signature({params: map(param_reason, published), ret: ret_reason, row: row_reason}))`. The Why at a declaration then walks why each component is what it is: a learned precondition to its use, the return to its tails, a row name to the call that charged it. A `───` rule is decoration SYNTAX forbids, so the comment weave never attaches it as a lede, and fmt deletes it. The Query line renders the head the formatter renders (render_fn_head), never a slice of the first source line.",
+   "law": "PLAN §0 properties (3) intent is lossless and (5) systems explain themselves. SYNTAX §Comments: not a markup language; the declaration's name is the heading. Anchor 1: a later pass's label overwrites the declaration's own reason.",
+   "evidence": "`mentl src/egraph.mn:0`: every one of 21 entries ends 'Why: ownership-resolved params of …', ledes include '─── Effect gating', '─── Rewrite rules', '─── Constant folding', '─── Saturation' and '─── The FORM half', and the Query lines carry the body slice. `mentl query src/main.mn 'text ownership-resolved'` → 1 literal at infer:3003. infer.mn:2992-3004 was read.",
+   "gate": "A fixture where the Why at a declaration's line names the return's tails and one row charge, RED today. `text ownership-resolved` goes to 0. A census of banner ledes bounded at 0.",
+   "leverage": "medium"
+  },
+  {
+   "id": "P11",
+   "title": "A module may import the same module twice and keep dead imports; the formatter and the facet say nothing",
+   "sites": [
+    "infer:30 and infer:54 (verify, twice)",
+    "infer:48 and infer:52 (io, twice)",
+    "infer:42 and parser's import of canon (both DEAD)",
+    "src/canon.mn:17 (`let ty_string = …`, the module's only declaration)"
+   ],
+   "class_size": "2 duplicate import edges in infer.mn and 2 DEAD edges, out of the 258 edges in the link.",
+   "current": "The imports answer prints 'used infer -> import io' twice and 'used infer -> import verify' twice, with no diagnostic. 'DEAD infer -> import canon' and 'DEAD parser -> import canon' stay in the tree. Per P1, every other 'used' verdict is unreliable.",
+   "ideal": "The import list is a SET. `mentl fmt` renders imports deduplicated and ordered, so a duplicate is unsayable (principle 2: two forms of one graph; a graph-present token, so a format-liftable code). A DEAD edge, judged by the module-correct facet from P1, is a proposal `mentl tighten` writes and the judgment re-proves; E_MissingImport refuses a wrong deletion.",
+   "law": "SYNTAX governing principle 2 (no redundant form) and the format-liftable band. Carried-Truth: one edge drawn twice. CLAUDE.md ⟳: a step the medium could author.",
+   "evidence": "infer.mn:26-54 read. imports_main.txt (another auditor's `imports` answer, read whole this session): '→ 258 import edge(s); 2 bring nothing the importing module references'. canon.mn read whole.",
+   "gate": "fmt canonicalizes the import set. A count of duplicate import edges bounded at 0. Removal of dead edges is proposed only after P1's module-correct facet lands.",
+   "leverage": "low"
+  },
+  {
+   "id": "P12",
+   "title": "`unreferenced` prints types, effects and constructors as dead, so it cannot serve as a deletion instruction",
+   "sites": [
+    "query:697-705 (the facet's own stated limits)",
+    "query:763-770 ('A dead-code report is a DELETION INSTRUCTION')",
+    "query:1058-1061 (ref_is_outside; also ignores the module, per P1)"
+   ],
+   "class_size": "465 of 6533 declared names are listed. The list includes Ty, Node, Reason, EffRow, Expr, LowExpr, Question, Option, Bool, Alloc, Memory, WASI, Teach and Synth. Type, effect and constructor names were not counted separately.",
+   "current": "'→ 6533 declared name(s); 465 that nothing outside their own declaration references', then 'UNREFERENCED types -> Ty', 'UNREFERENCED prelude -> Option', 'UNREFERENCED memory -> Alloc', and so on.",
+   "ideal": "Positions become cells (PLAN §11 order 2): a type annotation, a pattern constructor and a name in a with-clause are reference edges. Until then the facet answers 'not measured' for those kinds instead of 'UNREFERENCED'. A deletion verb reads `unreachable` plus module-correct references, and proves each deletion by re-judging.",
+   "law": "query.mn:767-770: under-reporting reachability is the one direction a dead-code report may never be wrong in. PLAN §11 order (2), positions are cells (the ghosts ratchet).",
+   "evidence": "`mentl query src/main.mn unreferenced`, read whole.",
+   "gate": "A fixture where a type used only in annotations is not listed, RED today. A ghost-count bound on the board.",
+   "leverage": "medium"
+  },
+  {
+   "id": "P13",
+   "title": "Open proof debt has no bound: L-C added two obligations unnoticed, because the board bounds only census shapes",
+   "sites": [
+    "board.mn:38 (`type Bound = Bound({ceiling: Int, shape: CensusShape})`)",
+    "board.mn:59-204 (12 bounds)",
+    "pipeline own_sites_of / query_sites (located answers for any question already exist)"
+   ],
+   "class_size": "Open obligations went 37 → 39 at L-C. The pre-L-C answer had 6 in main; now main has 3 and space has 5. Nothing refused the rise.",
+   "current": "PLAN S6 records 'The wheel's obligations hold at 37'. There is no bound on the verification question, and the L-C ledger entry does not mention the count.",
+   "ideal": "`type Bound = Bound({ceiling: Int, question: Question})`, so any located facet is a bound: `verification` (39), `census iteration` (490), `prose .mn:` (34), dead imports, ghosts. Census shapes become one kind of question. Raising a ceiling stays an explicit act inside the commit.",
+   "law": "PLAN §10.2: the census is a zero-tolerance ratchet. CLAUDE.md: a law that can become a gate must.",
+   "evidence": "The session scratchpad's head-smt.txt (the pre-L-C tree) reads '→ 37 obligation(s)', with main:235, 838, 873, 992, 1129, 1917. `mentl query src/main.mn smt` now reads '→ 39 obligation(s)'. `mentl verify` lists 12 bounds, none on debt.",
+   "gate": "The bound itself, seen RED at ceiling 38 on the current tree before it is set to 39 and ratcheted down.",
+   "leverage": "high"
+  }
+ ],
+ "root_designs": [
+  "A site is a node, and containment is the parent edge. owner_decl(h), read up E4's edge, replaces every span comparison between handles: audit attribution, imports, unreferenced, and the path a claim stands under. A debt entry carries its claim node instead of a copied (module, span). `Site({module, span})` makes a cross-module span comparison a type error. audit_walk's extent, the four restated comments and the narrowing walk are deleted.",
+  "Every claim is decided and taught as ONE obligation value: its node, its predicate, hypotheses read from its ancestry, and its leaves with their producers. The caret, teach, audit, the Ledger and smt render that one value. Teach's annotation space is every refinement position a type has (parameters, returns, nominal fields, and their parts), generated from the leaf chain, proven in D4's bracket, and ranked by obligations discharged across the program.",
+  "One decision procedure licenses every fold. The e-graph folds a partial op only when the claim it would raise of user code holds (`claim_holds(PTotalDiv …)`), and Verify reads constants off the canon weave. The second folder and the overflow hole both folders share are deleted.",
+  "Rows are honest about every trap the medium can make. out_of_range, the deliberate trap's one home, charges Trap. Index and slice raise claims the way division does. Capabilities are conjunctions of proven absences, and each label states its conjunction.",
+  "The board bounds answers, not just shapes. Any located question becomes a bound (obligations, iteration costumes, prose coordinates, dead imports, ghosts), so any class the medium can locate is a class it can ratchet.",
+  "Refactoring is proposal at a node the developer did not mark. A form-space survivor is accepted through `mentl accept` without a question: an e-class member carrying its rule as Reason, or a recursion schema's stage form proven by its theorem. A meaning change asks. The wheel itself is the proposer's benchmark: a self-proposal hit rate over holed wheel positions ratchets up."
+ ],
+ "verb_gaps": [
+  "`mentl query <entry> rewrites`: every node the e-graph canonicalized to another member, located, with its rule as the Reason (needs Hβ.egraph.canon-edge-carries-reason). Today nothing shows whether the six rules in apply_rules_from fire anywhere in the wheel.",
+  "Why at an obligation: why it is open, meaning its open leaves, the producer and part each leans on, and the path it stands under. The caret's Verify line says only 'pending comparison 0 <= self'.",
+  "A self-proposal facet: replace an existing node with a hole and report whether the authored filler survives and what was asked. This is the proposer's leave-one-out test on real code.",
+  "`census prose-coordinate`: comments citing path:line. Today only the substring facet `prose .mn:` exists (34 cells), and it cannot tell a citation from ordinary prose.",
+  "`census unnamed-op-param`: effect ops that declare a parameter with no name, for example dsp/clock.mn:37 `clock_sleep(Duration)` and search.mn:71 `choose([a])`. The proposal is the name their handlers' arms already bind: `clock_sleep(d)`, `choose(options)`.",
+  "A duplicate-import facet, or fmt canonicalizing the import set. infer.mn imports verify and io twice and no verb says so.",
+  "A board bound over any question (`Bound({ceiling, question})`); open obligations cannot be ratcheted today.",
+  "A module-correct per-declaration obligation count. The audit's 'pending' tier is not module-correct (P1)."
+ ]
+}

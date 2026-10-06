@@ -1,0 +1,363 @@
+{
+ "lens": "syntax alignment \u2014 where the .mn corpus departs from docs/SYNTAX.md (boot c8ba5799 + the uncommitted L-C tree)",
+ "summary": "I measured the corpus with the medium's own read verbs. All 119 mentl processes ran one at a time, each answer was saved whole and read whole, and the MemAvailable floor was checked before every run.\n\n**(1) Effect-op parameters, the class Morgan anchored on.**\n- Method: `mentl where <module> <Effect>` for every effect the doc rosters list, 93 runs.\n- Result: 88 effects, 391 ops, 437 parameters rendered `_: T`, 1 named (`Derivative.d(v: Float)`).\n- I read three effects from source:\n  - InferCtx (infer.mn:62-134): 23 ops, 17 unnamed.\n  - Console (io.mn:121): 1 unnamed.\n  - StateWalk (types.mn:1441): 1 named.\n- Total: 455 of 457 op parameters are unnamed, across 91 effects and 416 ops (src/types 200, lib 121, other src 134).\n- `provider of fs_write_file` and `provider of graph_bind` show that the names exist in the arm binders: wasi_filesystem binds `path`, `bytes`, `fd`, `old_p`, `new_p`.\n- `where` also renders `-> ()` on 149 of the 391 ops.\n\n**(2) The comment paradigm.** 18 `prose NEEDLE` questions over the src/main.mn link:\n\n| Needle | Comments |\n|---|---|\n| `\u2500\u2500\u2500` | 372 |\n| walkthrough | 32 |\n| `(spec ` | 30 |\n| `SYNTAX.md:` | 14 |\n| DELETED | 34 |\n| `List<` | 7 |\n| `seed's` | 32 |\n| `handle {` | 2 |\n| no longer | 23 |\n| previously | 2 |\n| legacy | 1 |\n| `Until 20` | 19 |\n| `drift-audit: ignore` | 134 |\n| `\u2550\u2550\u2550` | 1 |\n\n- Deduplicated unions: 145 archaeology comments, 44 lifecycle comments, 516 decorated, archaeological or lifecycle comments in all.\n- `V1` (18 hits) and `used to` (84 hits) are not reported as counts: the facet is substring-only, so `V1` matches inside `RV128` and `used to` matches the purpose sense.\n\n**(3) Lambdas.** From the census earlier in this session:\n- anonymous: 279\n- eta: 0\n- effectful-lambda: 220\n- underscore-retain, positive-row, default-param: 0\n- `refs of arm_list_of` shows that format.mn:464 renders a lambda as an arm list only when its body is `match p {\u2026}`.\n\n**(4) Formatter scope and conservation, read from source.**\n- fmt_run (main.mn:433-487) renders and writes one module.\n- cli.mn:224-231 requires a target.\n- lost_atoms (format.mn:1440-1464) is a multiset, so a render that drops a duplicate import line would be refused.\n\n**(5) Stage Law.**\n- lib/dsp/signal.mn documents \"data-first for |> chains\".\n- feedback.mn:84 needs the wrapper `((y) => lp(y, cutoff))`.\n- `refs of clip|gain|mix`: 0 on main; on Pulse only one direct `mix` call, plus `gain` hits that are a parameter and a local of that name.\n\n**(6) Imports.** The imports facet reports 258 edges. Both of infer's duplicate lines are marked \"used\", and two false DEAD verdicts remain against `ty_string`'s 24 references.\n\n**(7) The course seed.** The whole of examples/pulse/render/main.mn read by hand:\n- 43 base-typed parameters on 25 declaration lines, and 18 `-> Float` returns\n- 7 `0.0 - x`\n- 17 binder lambdas in `<~` recurrences\n- three literal spellings where the prose disagrees with the code\n\n**Shape of the answer.** Nearly every departure is the same disease: a fact the graph already holds (a name, a projection, an equivalence, a rule) is restated somewhere the gates cannot see \u2014 a comment, a positional slot, a second renderer, or a hand-kept line. The fixes are graph projections plus census bounds, and most of them delete code.",
+ "commands": [
+  "mentl help",
+  "mentl where src/types.mn Filesystem  (and 92 more: one `mentl where <module> <Effect>` per effect in the doc rosters \u2014 21 in src/types.mn, src/backends/wasm.mn x14, src/lower.mn x4, src/infer.mn x4, src/derive.mn x2, src/voice.mn x2, src/mentl.mn x2, src/cursor_transport.mn x2, src/graph.mn, src/verify.mn, src/cursor.mn, src/mcp.mn, src/pipeline.mn, src/query.mn, src/format.mn, src/eight_loop.mn, lib/memory.mn x3, lib/threading.mn x3, lib/dsp/clock.mn x6, lib/prelude.mn x3, lib/dsp/signal.mn x3, lib/dsp/cfc.mn x2, lib/io.mn, lib/arena.mn, lib/ml/grad.mn, lib/search.mn, lib/strings.mn, lib/combinators.mn, lib/persist.mn, lib/test.mn, lib/dsp/spectral.mn, lib/tutorial/02-handlers.mn, lib/tutorial/03-verbs.mn, lib/tutorial/06-refinement.mn, lib/tutorial/09-all.mn)",
+  "mentl query src/main.mn \"prose \u2500\u2500\u2500\"",
+  "mentl query src/main.mn \"prose walkthrough\"",
+  "mentl query src/main.mn \"prose (spec \"",
+  "mentl query src/main.mn \"prose SYNTAX.md:\"",
+  "mentl query src/main.mn \"prose DELETED\"",
+  "mentl query src/main.mn \"prose List<\"",
+  "mentl query src/main.mn \"prose V1\"",
+  "mentl query src/main.mn \"prose v1 \"",
+  "mentl query src/main.mn \"prose LLM\"",
+  "mentl query src/main.mn \"prose seed's\"",
+  "mentl query src/main.mn \"prose handle {\"",
+  "mentl query src/main.mn \"prose no longer\"",
+  "mentl query src/main.mn \"prose previously\"",
+  "mentl query src/main.mn \"prose legacy\"",
+  "mentl query src/main.mn \"prose used to\"",
+  "mentl query src/main.mn \"prose drift-audit: ignore\"",
+  "mentl query src/main.mn \"prose \u2550\u2550\u2550\"",
+  "mentl query src/main.mn \"prose Until 20\"",
+  "mentl query src/main.mn \"provider of fs_write_file\"",
+  "mentl query src/main.mn \"provider of graph_bind\"",
+  "mentl query src/main.mn \"refs of arm_list_of\"",
+  "mentl query src/main.mn \"refs of lambda_is_written_as_a_mint\"",
+  "mentl query src/main.mn \"refs of VFmt\"",
+  "mentl query src/main.mn \"refs of clip\"",
+  "mentl query src/main.mn \"refs of gain\"",
+  "mentl query src/main.mn \"refs of mix\"",
+  "mentl query examples/pulse/render/main.mn \"refs of clip\"",
+  "mentl query examples/pulse/render/main.mn \"refs of gain\"",
+  "mentl query examples/pulse/render/main.mn \"refs of mix\"",
+  "mentl where src/main.mn fmt_run",
+  "mentl where src/format.mn lost_atoms",
+  "mentl query src/main.mn \"census anonymous\"",
+  "mentl query src/main.mn \"census eta\"",
+  "mentl query src/main.mn \"census effectful-lambda\"",
+  "mentl query src/main.mn \"census underscore-retain\"",
+  "mentl query src/main.mn \"census positive-row\"",
+  "mentl query src/main.mn \"census declared-row-hof\"",
+  "mentl query src/main.mn \"census default-param\"",
+  "mentl query src/main.mn \"census iteration\"",
+  "mentl query src/main.mn census   (answered: unknown query \u2014 the roster is not listable)",
+  "mentl query src/main.mn imports",
+  "mentl query src/main.mn \"refs of ty_string\"",
+  "mentl doc <module> for src/cursor.mn, src/cursor_transport.mn, src/driver.mn, src/lsp.mn, src/mcp.mn, src/main.mn, src/pipeline.mn, src/space.mn, src/voice.mn, src/query.mn, src/mentl.mn, src/synth_proposer.mn, src/parser.mn, src/format.mn, src/lower.mn, src/infer.mn, src/backends/wasm.mn, src/derive.mn, src/canon.mn, lib/threading.mn, lib/ml/tensor.mn",
+  "mentl check src/main.mn",
+  "Read: src/infer.mn:1-163, src/types.mn:1368-1375,1428-1443,2318-2347,4240-4299,4560-4599, src/cli.mn:60-99,140-268, src/format.mn:440-489,650-680,1190-1260,1430-1490, src/parser.mn:193-197,723-728,2518-2557,3108-3133, src/query.mn:1788-1832, src/main.mn:100-189,418-492, src/pipeline.mn:836-875, src/graph.mn:660-671, src/mentl.mn:1-12,85-90, src/lsp.mn:72-76, src/lower.mn:3166-3207, src/synth_proposer.mn:290-317, src/canon.mn, lib/io.mn:112-127, lib/prelude.mn:326-420, lib/dsp/signal.mn:1-100,140-200, lib/dsp/feedback.mn (whole), lib/dsp/processors.mn:1-75, examples/pulse/render/main.mn (whole), tests/syntax/{arm-list-literal,labeled-args,import-path-spelling}.mn",
+  "Grep docs/SYNTAX.md for the cited example lines (66, 102, 131, 232, 259, 961, 1516, 1596-1600, 1625, 1631, 2888)"
+ ],
+ "findings": [
+  {
+   "id": "SA-1",
+   "title": "Effect-op parameters are positional bare types: 455 of the 457 op parameters in the medium have no name",
+   "sites": [
+    "src/types.mn:4576 (Filesystem \u2014 Morgan's anchor)",
+    "src/types.mn:3049 (GraphWrite, 69 unnamed)",
+    "src/types.mn:2892 (GraphRead, 31)",
+    "src/types.mn:4407 (LowerScope, 29)",
+    "src/types.mn:3498 (diag_report(_: DiagKind, _: String, _: String))",
+    "lib/io.mn:45-78 (WASI, 52 \u2014 names kept only in `//` comments at io.mn:491-521)",
+    "lib/memory.mn:33 (Memory, 32)",
+    "src/derive.mn:2301 (Deriving, 28)",
+    "src/infer.mn:62-134 (InferCtx, 17)",
+    "lib/threading.mn:40 (SharedMemory, 14 \u2014 names in comments above each op)",
+    "lib/io.mn:121 (Console: print(String))",
+    "lib/prelude.mn:52 (Fail: fail(String) -> a)"
+   ],
+   "current": "`effect Filesystem { fs_exists(String) -> Bool  fs_read_file(String) -> String  fs_write_file(String, String)  \u2026  fs_rename(String, String) -> Bool }` (types.mn:4576-4599). `where` renders it as `fs_write_file(_: String, _: String) -> ()`. The one provider supplies the names the declaration lacks: `fs_write_file(path, bytes) => \u2026` and `fs_rename(old_p, new_p) => \u2026` (pipeline.mn:849-864). Likewise infer_ctx binds `inf_module_reaches(from, to)` and `inf_enter_fn(h, answer_h, fn_span, effs)` (infer.mn:138-149) over `inf_module_reaches(Int, Int)` and `inf_enter_fn(Int, Int, Span, [(EffName, Bool, EConn)])`. Three further homes paper over the missing names: `op_scheme_param` invents `_0`, `_1`; `render_op_param` (format.mn:1238) prints a bare type for `_`; and EHandlerArmArity checks only how many names an arm binds.",
+   "ideal": "An op's parameter list is a parameter product like every other product, named the way SYNTAX already writes it: `print(msg: String)`, `fail(msg: String) -> a`, `effect Sample(rate: Int)`. So `fs_write_file(path: String, bytes: String)` and `diag_report(kind: DiagKind, message: String, module: String)`. The name is the key:\n- a perform may be labeled;\n- an arm binds by name and is checked by name;\n- `where`, `doc`, hover and the Why engine read the names;\n- a multi-shot yield record carries field names a time-travel debugger can show.\n\nDeletions: the bare-type op-parameter grammar, `_0`/`_1` synthesis, the `_` branch of render_op_param, and the WASI/SharedMemory comment-name tables.",
+   "law": "SYNTAX \u00a7\u00abLabeled call arguments\u00bb \u2014 identity, not position: \"the field's NAME is the key; the order is a projection\". SYNTAX's own effect examples. Carried-Truth: each name lives in one home (the declaration), not in arm binders and comments.",
+   "evidence": "- 88 `mentl where` answers parsed: 391 ops, 437 `_:` parameters, 1 named (`d(v: Float)`).\n- Source reads: InferCtx has 23 ops and 17 unnamed parameters; Console has 1 unnamed; StateWalk's `walking_state(b: Int)` is the second named parameter.\n- `provider of fs_write_file` \u2192 wasi_filesystem at pipeline:849; `provider of graph_bind` \u2192 graph_handler at graph:664.",
+   "gate": "1. A census shape `CsUnnamedOpParam` on `mentl verify`, born at 455 and ratcheted to 0.\n2. A medium-authored naming sweep, tighten-style. Where every provider's arm binds the same name, it writes that name. Where providers disagree, it asks the question (C6/C7 style) instead of guessing. The comment-held WASI and SharedMemory names enter through the same sweep, and then the comments delete.\n3. At zero, delete the bare-type op-parameter production in the parser, so the form is unsayable, and extend EHandlerArmArity to compare names.",
+   "leverage": "high",
+   "class_size": "455 unnamed of 457 op parameters, 416 ops, 91 effects: src/types 200, lib 121, other src 134."
+  },
+  {
+   "id": "SA-2",
+   "title": "`mentl fmt` is single-file and target-required, so there is no project-wide canonical form",
+   "sites": [
+    "src/cli.mn:224-232",
+    "src/main.mn:433-487 (fmt_run)",
+    "examples/pulse/render/main.mn:35,101,241,369 vs :105,:248,:378 (literal spelling)"
+   ],
+   "current": "`VerbSpec(\"fmt\", \"<path>\", (a) => if len(a) >= 3 { Invocation(VFmt(a[2])) } else { ParseError(\"fmt needs a target: mentl fmt <path>\") }, \u2026)`. fmt_run renders only `driver_module_ast(ast_all, entry_module)` and writes one path. Bare `mentl fmt` is a ParseError, and no project or `--check` mode exists. The render keys literals by value, so Pulse's prose says `Sample(48_000)`, `delay(12_000)` and `!Sample(44_100)` while its code says `48000`, `12000` and `44100` (`H\u03b2.fmt.literal-spelling-is-intent`).",
+   "ideal": "Bare `mentl fmt` is the project's canonical projection (cargo-style, and stronger):\n- The project is the directory's modules, or the entry's import closure.\n- Every module whose source differs from its canonical render is rendered.\n- Modules whose source hash equals their last canonical render are skipped, so the cost is the changed set (\u00a75.O).\n- The write is atomic: no file is written if any module's render fails the conservation proof.\n- One line is printed per module written.\n- `--check` is the same answer as a `verify` bound.\n\nThe canonicalizations are exactly the graph-preserving band: layout, braces, duplicate imports, `-> ()`, decoration runs, and the import-block projection. Spelling the graph should carry, such as digit grouping, is preserved, not erased.",
+   "law": "SYNTAX principle 1 (layout is projection, never contract). \u00a75.O: the cost of an operation is the size of its answer. The conservation law in format.mn:1440 (\"what a render may never lose\").",
+   "evidence": "Read cli.mn:224-232 and main.mn:433-487. `refs of VFmt` \u2192 cli:228 and main:147 only. Read all of Pulse main.mn for the three spelling divergences.",
+   "gate": "A frontier leg on a fixture project of three modules (one with a duplicate import, one with `-> ()`):\n- bare `mentl fmt` writes both files;\n- a second run writes nothing;\n- a module whose render would lose an atom leaves every file untouched, with nonzero exit.\n\n`verify` carries a canonical-form bound per module.",
+   "leverage": "high",
+   "class_size": "1 verb. Every module in the tree is formatted only by an explicit single-file run."
+  },
+  {
+   "id": "SA-3",
+   "title": "Duplicate imports reach no gate; the imports facet double-counts them, and the conservation census would refuse fmt's fix",
+   "sites": [
+    "src/infer.mn:30 and :54 (import verify \u00d72)",
+    "src/infer.mn:48 and :52 (import io \u00d72)",
+    "tests/syntax/import-path-spelling.mn:2-7",
+    "src/format.mn:1440-1464 (lost_atoms / lost_atoms_beside)",
+    "src/canon.mn:17 (let ty_string \u2014 the target of two false DEAD verdicts)"
+   ],
+   "current": "The imports facet reports \"258 import edge(s)\" and lists `used infer -> import io` twice and `used infer -> import verify` twice. It gives `DEAD infer -> import canon` and `DEAD parser -> import canon` although `refs of ty_string` returns 24 references (23 in infer, 1 in parser); the facet misses module-let references. The fixture states the semantics: \"drawing an edge that exists is a no-op, because that is what an edge is\". So the graph is right, the page is redundant, and nothing says so. lost_atoms is \"a count rather than a set\": an fmt that dropped the second `import verify` would leave one `verify` atom unpaid and refuse to write.",
+   "ideal": "A duplicate import is a redundant form (SYNTAX principle 2). `E_DuplicateImport` is reported by `check` as a refusal (Morgan: a syntax error) with a MachineApplicable fix that fmt applies. The conservation census learns stated equivalences: a canonicalization names each atom it removes and the surviving node that still carries it, generalizing lost_atoms_beside's `stated` list. Beyond that, the import block itself becomes a projection (see root design R3).",
+   "law": "SYNTAX Governing principle 2 (\"If two syntactic forms produce the same graph, one is rejected\", :66). The format-liftable band (\"MachineApplicable \u2227 the redundant form has no graph node\").",
+   "evidence": "Read infer.mn:1-56, the imports facet answer, `refs of ty_string`, canon.mn, and format.mn:1440-1490.",
+   "gate": "Arm E_DuplicateImport at wheel-zero, after the two infer lines are removed. A `verify` bound on DEAD imports at 0, once the facet reads module-let references. A fixture where fmt removes a duplicate and the conservation gate passes.",
+   "leverage": "high",
+   "class_size": "2 duplicate lines on the wheel (infer); 2 false DEAD verdicts; 258 facet edges counted per statement."
+  },
+  {
+   "id": "SA-4",
+   "title": "The Stage Law is inverted in the library the course imports, in the prelude, and in SYNTAX's own examples",
+   "sites": [
+    "lib/dsp/signal.mn:3-5,69-75 (clip/gain/mix \"pipeable, data-first\")",
+    "lib/dsp/signal.mn:174 (bandpass(xs, lo_hz, hi_hz, sr))",
+    "lib/dsp/feedback.mn:32,43,83-84,99 (stage(x, cutoff) and the wrapper lambda)",
+    "lib/prelude.mn:347,378,411,418 (reduce(xs, f), scanl(xs, init, f), nth(xs, n, default), clamp(x, lo, hi))",
+    "examples/pulse/render/main.mn:404,409,411,418,419 (rig.*(signal, cutoff))",
+    "src/cli.mn:85 (req_target(argv, mk, msg))",
+    "docs/SYNTAX.md:259 and :2888 (`x |> clamp(0, ??, 255)`)"
+   ],
+   "current": "signal.mn:3-5 describes \"the pipeable pure-processor vocabulary (clip / gain / mix \u2026) and the DSP effect, data-first for `|>` chains (x |> gain(0.8) |> soft_clip)\", over `fn gain(x: Float, factor: Float)` and `fn clip(x: Float, threshold: Float)`.\n- SYNTAX's fill rule (\"x |> f(a) fills f(a)'s remaining hole\") binds 0.8 to `x` and pipes into `factor`.\n- For clip, the same rule makes `-2.0 |> clip(0.5)` compute `clamp(0.5, 2.0, -2.0)` = -2.0, where the answer should be -0.5. This is derived from the rule and not run; the read-only lens forbids `run`.\n- Nothing executes the idiom: `refs of clip|gain|mix` = 0 on the main link. On Pulse there is one direct `mix(echo, dry, 0.35)`, and the `gain` hits are a parameter and a local of that name.\n- feedback.mn:84 has to write `x |> dc |> ((y) => lp(y, cutoff)) |> soft_clip`, because the filter stage is (x, cutoff).",
+   "ideal": "Configuration first, datum last, wherever a value flows:\n- `gain(factor, x)`, `clip(threshold, x)`, filter stages `stage(cutoff, x)`;\n- `reduce(f, xs)`, `scanl(f, init, xs)`, `nth(n, default, xs)`, `clamp(lo, hi, x)`.\n\nThen `x |> dc |> lp(cutoff) |> soft_clip` and `x |> clamp(0, 255)` need no `??` and no wrapper. SYNTAX's own clamp examples adopt the datum-last signature, so its `??` example becomes a stage that genuinely is not a stage.",
+   "law": "SYNTAX \u00a7\u00abThe Stage Law\u00bb: \"a `??` inside a pipe becomes a SIGNAL \u2026 the fix is the SIGNATURE, never decoration at N call sites\". \"No `??`, no wrapper lambdas, no argument gymnastics.\"",
+   "evidence": "Read signal.mn:1-100 and 140-200, feedback.mn whole, prelude.mn:326-420, Pulse main.mn whole, and the SYNTAX lines by grep. Six `refs of` answers.",
+   "gate": "1. A census shape `CsPipeShim` (a pipe stage that is a lambda or carries an explicit `??`), counted on `verify` and ratcheted.\n2. A teach narration `T_StageOrder` at a declaration when its pipe sites wrap or hole the same parameter.\n3. A medium-authored reorder, run as a tighten-style sweep: the signature plus every call site read off `refs of`, positional calls permuted, labeled calls untouched. It is proven by re-judging inside the D4 checkpoint bracket.",
+   "leverage": "high",
+   "class_size": "13 datum-first signatures read. The class is uncounted: there is no census for it (verb gap)."
+  },
+  {
+   "id": "SA-5",
+   "title": "The comment paradigm's own forbidden forms, measured by the medium: 516 decorated, archaeological or lifecycle comments, and 134 comments that silence a gate",
+   "sites": [
+    "372 comments containing `\u2500\u2500\u2500` (types 33, backends/wasm 25, infer 24, derive 23, main 23, format 18, voice 17, query 16, synth_proposer 14, prelude 12 \u2026)",
+    "src/mentl.mn:87 (`// \u2550\u2550\u2550 Synth effect \u2014 proposers as handlers \u2550\u2550\u2550  // drift-audit: ignore \u2014 D.1.R reserved block; decoration removal is a separate sub-handle`)",
+    "src/types.mn:4570-4589 (Filesystem: \"v1 takes preopen fd 3\", \"Original 4 ops (FS walkthrough; commit 1debfdc)\", \"lands when \u2026\")",
+    "src/parser.mn:3112-3130 (\"SYNTAX.md:1599\" plus six `// drift-audit: ignore` interleaved between the `||` operands of is_foreign_keyword)",
+    "src/types.mn:4244-4297 (suppressions inside DiagKind message arms)",
+    "src/lower.mn:3171-3202 and src/synth_proposer.mn:294-313 (suppressions on non-loop `++ [x]`)",
+    "src/format.mn:1430 (`_ => // drift-audit: ignore \u2026 0`)",
+    "lib/dsp/processors.mn:4,23-26,34-39"
+   ],
+   "current": "- Archaeology needles over the main link: walkthrough 32, `(spec ` 30, `SYNTAX.md:` 14, DELETED 34, `List<` 7, `seed's` 32, `handle {` 2 \u2014 145 distinct comments.\n- Lifecycle needles: no longer 23, previously 2, legacy 1, `Until 20` 19 \u2014 44 distinct.\n- Banners: 372. Union of all three: 516 distinct comments.\n- `drift-audit: ignore`: 134 comments.\n- processors.mn:4 teaches `warm_filter |> peak_tracker`; handlers do not pipe.\n- processors.mn:23 claims \"the inline `handle {} with` spelling is format-lifted\"; no such lift exists, since `handle` is not a keyword (SYNTAX \u00a7\u00abInstallation\u00bb).\n- processors.mn:34-39 tells history: \"used to be fatal \u2026 The walk keys on the OP now\".",
+   "ideal": "SYNTAX \u00a7Comments: no decoration (\"the declaration's name IS the heading\"); \"a comment shows what IS, not what was\"; a residue names its retirement condition; \"Not a gate. A comment adds, never silences\". Sections are a projection (doc groups by module and kind). History lives in LEDGER and git. A mechanism claim is checked through its edges. A gate is never muted by prose: the 134 markers suppress text-level drift rows (keyword-looking string literals, message strings, a one-shot `++ [x]`) that a structural census reads correctly, because a string literal is `text` and a non-loop concat is not an accumulator.",
+   "law": "SYNTAX \u00abWhat a comment is NOT\u00bb and \u00abWhat a comment TRENDS TO\u00bb. CLAUDE.md: a law that can become a gate must; prose never overrides one.",
+   "evidence": "18 `prose NEEDLE` answers over src/main.mn, read whole, with span unions computed from the saved answers. Read the sampled sites. Sampled suppressions (21 of 134) were foreign-keyword string literals, DiagKind message strings, and non-loop `++ [x]`.",
+   "gate": "1. fmt strips box-drawing decoration runs. This is graph-preserving: the prose line survives, and the conservation census counts lines.\n2. `mentl verify` carries prose-census bounds ratcheted to 0 for `Until 20`, `no longer`, `previously`, `walkthrough`, `(spec `, `seed's`, `DELETED`, and box-drawing.\n3. The `drift-audit: ignore` count is bounded and falls as each muted text row becomes a structural census shape. At zero, the marker's grammar deletes, and a comment can no longer silence anything.",
+   "leverage": "high",
+   "class_size": "516 distinct comments (372 banners \u222a 145 archaeology \u222a 44 lifecycle), plus 134 suppression comments, in the main link."
+  },
+  {
+   "id": "SA-6",
+   "title": "The binder-lambda residue is wider than SYNTAX claims, and the census misses its commonest shape",
+   "sites": [
+    "src/parser.mn:2535-2550 (arm_list_of)",
+    "src/format.mn:464-471 (the only arm-literal render path)",
+    "src/query.mn:1798-1823 (lambda_is_written_as_a_mint, lambda_is_eta)",
+    "src/cli.mn:149-257 (20 lambdas)",
+    "lib/dsp/feedback.mn:84",
+    "lib/ml/tensor.mn:26,28,39",
+    "docs/SYNTAX.md:961"
+   ],
+   "current": "- Census: anonymous 279, eta 0, effectful-lambda 220.\n- `lambda_is_eta` requires the arguments to equal the parameters exactly, so references-with-a-hole written as mints count nowhere: `(a) => req_target(a, VCheck, \"\u2026\")` (cli:149/154/178), `(row) => dot(row, x)` (tensor:26), `((y) => lp(y, cutoff))` (feedback:84).\n- fmt renders an arm list only when arm_list_of matches, which needs a sole parameter, a `match p {\u2026}` body, and p not free in the arms. So `(x) => x + 1` keeps its binder, although SYNTAX \u00a7\u00abThe residue\u00bb says a sole-parameter lambda renders as its arms. SYNTAX's own `<~` example (:961) uses the binder form.\n- Six cli builders ignore their argument: `(a) => Invocation(VSession)` and five like it.\n- effectful-lambda now counts allocation (R0i), so cli's 20 constructors all count as \"effectful\".",
+   "ideal": "Two operations, as SYNTAX says:\n- a reference with holes: `dot(??, x)`, `scalar_mul(??, b)`, `req_target(??, VCheck, msg)`, and `lp(cutoff)` once the stage is datum-last;\n- or an arm list `{ p => body }`.\n\nThe parser builds a one-arm list with an irrefutable binder pattern as the same LambdaExpr the binder form builds: one graph, no match node. fmt then renders every sole-parameter mint as `{ x => x + 1 }`, and resugar_head's single-parameter path deletes. Multi-parameter lambdas become references (`fold(0, add, xs)`), per `H\u03b2.syntax.multi-param-lambda-is-a-reference`.",
+   "law": "SYNTAX \u00a7\u00abFunction literals\u00bb (a function value is reached by exactly two operations). Anchor 6.",
+   "evidence": "Census answers for anonymous, eta and effectful-lambda. `refs of arm_list_of` \u2192 query:1798, format:665, format:464. Read parser.mn:2518-2557, format.mn:440-489 and 650-680, query.mn:1788-1832, and cli.mn:140-268.",
+   "gate": "1. A census shape `CsPartialEta`: a lambda whose body is one call that uses each parameter exactly once as a whole argument. A medium-authored rewrite turns it into the reference-with-hole, bounded to 0.\n2. `CsSoleParamBinder`, format-liftable to 0 once the parser equivalence lands.\n3. effectful-lambda excludes the construction charge, or retires as a proxy.",
+   "leverage": "high",
+   "class_size": "279 anonymous functions; partial-eta not counted (verb gap); 20 in cli alone."
+  },
+  {
+   "id": "SA-7",
+   "title": "Three projections of one declaration head disagree with each other and with SYNTAX",
+   "sites": [
+    "src/format.mn:1221-1242 (render_effect_ops: TUnit \u2192 \"\"; render_op_param: a bare type for `_`)",
+    "`mentl where` (`_: T`, and `-> ()` on 149 of 391 ops)",
+    "`mentl doc` (every effect as `E : ()`, e.g. `CursorRead : ()`, `DiagBank : ()`; instances as `WASI(t148105@e167038)`)",
+    "lib/threading.mn:29 (where: `spawn(_: () -> a with a)`)",
+    "lib/persist.mn:52 (where: `persist_branch(_: () -> a with !WASI + !Filesystem + !Network + Any)`)",
+    "docs/SYNTAX.md:1596-1600, :1625, :1631"
+   ],
+   "current": "One op is spelled four ways:\n- source and fmt: `fs_write_file(String, String)`\n- where: `fs_write_file(_: String, _: String) -> ()`\n- doc: `Filesystem : ()`, with no ops at all\n- where on fmt_run: `WASI(a)`; doc: `WASI(t148105@e167038)`\n\n`spawn`'s thunk row variable and its type variable both render as `a`. `Any` is not a SYNTAX token. SYNTAX itself contradicts: :1600 accepts both `-> ()` and its omission, while :1625 rejects `resume(())` by \"No redundant form\", and :1631 writes `tick() -> ()`.",
+   "ideal": "One head projection \u2014 the formatter's head render \u2014 serves fmt, where, doc, the space View and hover, and every rendered head re-parses to the declaration it came from. `-> ()` is a format-liftable redundant form that no projection writes. Row variables use a lowercase alphabet disjoint from the head's type variables: the case rule extended to row position, e.g. `spawn(f: () -> a with e)`. `Any` and `t\u2026@e\u2026` never render. `doc` lists an effect's ops.",
+   "law": "SYNTAX Governing principle 2 (:66). Carried-Truth: one home per projection. SYNTAX's case rule (lowercase in type position is a parameter).",
+   "evidence": "88 where answers, the format.mn:1190-1260 read, doc rosters from this session, and the SYNTAX lines by grep.",
+   "gate": "1. A round-trip board leg: for every declaration in the link, parse(where-head) and parse(fmt-head) equal the declaration (`H\u03b2.fmt.render-must-parse-to-the-same-tree`, applied to heads).\n2. A census of explicit `-> ()` at 0.\n3. SYNTAX:1596-1600 rewritten to name `-> ()` a format-liftable redundant form, and :1631 corrected.",
+   "leverage": "high",
+   "class_size": "149 `-> ()` renders across 391 where-ops; all 91 effects render without ops in doc."
+  },
+  {
+   "id": "SA-8",
+   "title": "The course seed, the library it imports, and SYNTAX's own examples teach non-canonical forms",
+   "sites": [
+    "examples/pulse/render/main.mn (the only examples/**/*.mn)",
+    "docs/SYNTAX.md:232 (fn spawn_task(...))",
+    "tests/syntax/labeled-args.mn:11-17",
+    "docs/SYNTAX.md:102,131,232 (three ownership-marker spellings)",
+    "docs/SYNTAX.md:259,961,1631,2888",
+    "lib/tutorial/*.mn (10 files, 481 lines \u2014 to be replaced by Pulse)"
+   ],
+   "current": "Pulse scene 1, read whole:\n- 43 base-typed parameters on 25 declaration lines, and 18 `-> Float` returns, e.g. `fn adsr(tn: Float, len: Float, attack: Float, decay: Float, sustain: Float, release: Float) -> Float with Pure` whose body forces Float anyway\n- 7 `0.0 - x` (:146,152,154,159,204,418,419)\n- 17 binder lambdas in `<~` recurrences\n- datum-first filter stage calls\n- a compensation comment for a defect P0 closed (make_echo :244-246)\n- prose literal spellings that disagree with the code\n\nSYNTAX's examples depart from SYNTAX:\n- `fn spawn_task(...)` names a WasiThreads op, which E_FnShadowsOp refuses; the battery renamed it.\n- `clamp(0, ??, 255)` violates the Stage Law.\n- The `<~` example uses the binder form.\n- `tick() -> ()` is written in the non-idiomatic form.\n- The ownership marker is written before the name (:102, :232) and before the type (:131).\n\nWasatch is not in the tree; examples/ holds only pulse/render.",
+   "ideal": "The course \u2014 Pulse's chapters, then Wasatch \u2014 is born canonical and held there by the same bounds the wheel answers to. `mentl verify` runs over examples/, each program on its own link, with every census in this lens at 0. SYNTAX's fenced examples are battery fixtures: doc-truth extracts each one and checks that it parses, judges, and is at fmt fixpoint. One ownership-marker position is chosen; the other parses and is format-lifted.",
+   "law": "SYNTAX is the authority (\"where they disagree, the parser is wrong\" \u2014 and so is any example). The teachability face of PLAN \u00a711 Phase 11.3 (\"the surface IS the course\").",
+   "evidence": "Read Pulse main.mn whole, the SYNTAX lines by grep, labeled-args.mn, and the lib/tutorial listing (wc).",
+   "gate": "doc-truth gains an example leg over SYNTAX's code fences, and examples/ joins the board's census pass.",
+   "leverage": "high",
+   "class_size": "Pulse: 43 + 18 + 7 + 17 sites; SYNTAX: 6 example sites read."
+  },
+  {
+   "id": "SA-9",
+   "title": "Positional products whose field meanings live in comments",
+   "sites": [
+    "src/cli.mn:68-80 (VerbSpec(String, String, builder, String))",
+    "src/types.mn:1370-1375 (type Graph = Graph(Int, [(ValidSpan, Int)]), with field docs after the type)",
+    "src/types.mn:2336-2340 (type Region = Region(Int, Span))",
+    "src/infer.mn:64-68 (inf_exit_fn() -> ([(EffName, Bool, EConn)], Int, EffRow, Span))",
+    "src/types.mn:4407 (ls_enter_frame(_: String, _: List(String), _: List(Int), _: List(String), _: List(Int), _: Int))",
+    "src/types.mn:2849 (env_base_view() -> (List(\u2026), Int, List(List((String, Int))), Int))",
+    "src/types.mn:2871 (intern_seed()), src/types.mn:2892 (graph_branch_seed())"
+   ],
+   "current": "`type VerbSpec = VerbSpec(String, String, ([String]) -> EntryHandlerInvocation, String)`, documented by a comment: \"A VerbSpec carries the verb's name, its argument hint \u2026, the BUILDER \u2026, and its one-line description\". The two leading Strings differ only by position. The usage string is restated three times per verb: in the hint, in `len(a) >= 3`, and in the ParseError text. `ls_enter_frame` passes two parallel (List(String), List(Int)) pairs.",
+   "ideal": "Named records: `type VerbSpec = {name: String, hint: String, build: ([String]) -> EntryHandlerInvocation, describe: String}`. Better still, the verb's argument grammar becomes data (an ADT of argument shapes) from which the builder, the hint and the error are projected. Op results with three or four positional fields become records. Parallel lists become one list of records (drift 7). Field documentation attaches to field names.",
+   "law": "SYNTAX \u00a7\u00abRecords\u00bb and \u00abIdentity, not position\u00bb. CLAUDE drift 7 (parallel arrays). Carried-Truth: prose standing in as the field-name table.",
+   "evidence": "Read cli.mn:60-99 and 140-268, types.mn:1368-1375 and 2318-2347, and infer.mn:56-135. Where answers for LowerScope, BranchEnv, Intern and GraphRead.",
+   "gate": "A census shape `CsPositionalProduct` (a constructor or op signature with two or more unnamed fields of the same type, or a tuple of three or more) on `verify`, ratcheted. teach proposes the record, taking field names from the adjacent comment and the destructuring binders at use sites.",
+   "leverage": "medium",
+   "class_size": "8 instances read; the class is uncounted (verb gap)."
+  },
+  {
+   "id": "SA-10",
+   "title": "Base-type pins whose written justification is a closed defect",
+   "sites": [
+    "examples/pulse/render/main.mn:244-248 (make_echo)",
+    "lib/dsp/feedback.mn:16-17,32,43",
+    "lib/dsp/signal.mn:153,174,179",
+    "src/query.mn:1820 (arg_is_var(a, n: String))",
+    "src/format.mn:1458,1471,1483 (stated: [String], k: String)",
+    "src/backends/wasm.mn fold_acc_eq and walk_install_groups ledes (doc roster)",
+    "src/lower.mn group_arms, split_group_by_ename, names_concat and spec_mangle ledes (doc roster)",
+    "PLAN.md \u00a79 bug-class line (\"annotate the name param `: String`\")"
+   ],
+   "current": "make_echo's comment: \"The signal parameter is declared a Float: the stage accepts any signal, and saying so keeps the feedback gain's `Decay` bound from spreading, through the sum, onto the input\". P0 closed that spreading (refinements ride value edges, not the class).\n\nwasm's fold_acc_eq cites `H\u03b2.lower.trecordopen-wrong-field`, which R0 closed. walk_install_groups cites `H\u03b2.lower.record-pattern-param-receiver`, closed 2026-09-28. The String pins cite the pointer-eq era, which E_ShapeUnprovable and observation-keyed twins closed. PLAN \u00a79 still instructs authors to add the pin.",
+   "ideal": "The Intent Boundary Rule: annotate a refinement, an ownership marker or a repr pin, never a base type the body already proves. An annotation equal to what inference derives without it is an inventory, handled exactly as T_RowInventory handles rows: narrated, and then removed by the medium.",
+   "law": "SYNTAX \u00abThe Intent Boundary Rule for Parameters\u00bb. CLAUDE: \"never dodge incomplete inference with annotations\". The A4 precedent.",
+   "evidence": "Read Pulse whole, feedback.mn whole, signal.mn and query.mn excerpts, and format.mn:1452-1486. Doc roster ledes from this session.",
+   "gate": "T_TypeInventory narration: the type with the annotation removed, judged in the D4 checkpoint bracket, equals the annotation. tighten writes the residue. A `CsTypeInventory` bound on verify. The PLAN \u00a79 sentence is rewritten so it stops producing new pins.",
+   "leverage": "medium",
+   "class_size": "Pulse: 43 base-typed parameters plus 18 base returns. The corpus is uncounted (verb gap)."
+  },
+  {
+   "id": "SA-11",
+   "title": "Ledes land on the wrong node, modules have no lede slot, and comment edges are judged on the narrow link",
+   "sites": [
+    "lib/threading.mn:1-21 (the file header becomes ThreadHandle's lede)",
+    "src/types.mn:1372-1375 (Graph's field doc attaches to the next declaration)",
+    "src/format.mn (canonical_indent_depth's lede: \"node_handle() \u2014 see src/infer.mn\")",
+    "src/lower.mn roster tail (ls_find_str_local \u2190 make_list_sc; seq_elem_face \u2190 \"W7 calling convention\"; variant_specs_of \u2190 \"WAT data string escape\"; emit_runtime_contract \u2190 \"\u2500\u2500 DAG-homed here \u2026\")",
+    "src/infer.mn roster (\"Statement inference\", \"Pattern inference\" and \"Utilities\" as ledes)",
+    "src/backends/wasm.mn (emit_binop_repr_unsupported lede cut at \"\u2026repr (e.g.\")",
+    "where answers: 34 W_CommentRefUnresolved before every types.mn answer; graph 12, infer 22, lower 28"
+   ],
+   "current": "`mentl where src/types.mn Filesystem` takes 0.82 s and prints 34 warnings before a 10-line answer. Every one is a backticked name that resolves in the whole link but not in types.mn's narrow link (e.g. `RowWrite` \u2192 `graph_handler`). The warnings name anonymous owners by handle (\"comment on `node 6118`\", \"`node 979`\") and repeat once per backtick occurrence: judging infer alone, `ages_close_fn`\u2192`dst`, `fun_refinement_crossing`\u2192`Hz` and `node 39596`\u2192`acc` each print twice.",
+   "ideal": "- The comment before a module's first import attaches to the module node, and `doc <module>` prints it first.\n- A section comment followed by a blank line attaches to no declaration.\n- Field docs attach to field names.\n- The lede is the first sentence, not a cut at \"e.g.\".\n- Comment edges resolve against the project's declarations (`H\u03b2.voice.comment-ref-gate-reads-the-flattened-link`).\n- A diagnostic names the declaration that owns a node, and reports each (comment, name) pair once.",
+   "law": "SYNTAX \u00abWhat a comment IS\u00bb (\"First sentence = lede\"; \"attaches to the immediately-following declaration\"). CLAUDE \u27f3 item (6): verify prose by projecting it.",
+   "evidence": "Doc rosters for format, lower, infer, wasm and threading from this session. Read the full prefixes of where/Filesystem, where/LookupTy and where/PolyCapture.",
+   "gate": "A doc battery: no declaration's lede starts with box-drawing or a section title. A `CsMisattachedLede` census. Comment-ref resolution over the project, with the narrow-link count at 0.",
+   "leverage": "medium",
+   "class_size": "113 narrow-link warnings across 11 modules (types 34, lower 28, infer 22, graph 12, verify 6, query 5, mentl 5, pipeline 2, format 2, wasm 1, io 1). Misattachments are uncounted."
+  },
+  {
+   "id": "SA-12",
+   "title": "Effect membership contradicts the effect names: reads in GraphWrite, writes in GraphRead, pure arithmetic in Memory",
+   "sites": [
+    "src/types.mn:2892 (GraphRead: graph_push_checkpoint() -> Int; graph_attach_comment_ref(_: Int, _: Int) -> ())",
+    "src/types.mn:3049 (GraphWrite: graph_install_at(_: Int) -> InstallShape; graph_product_at(_: Int) -> CallProduct)",
+    "lib/memory.mn:33 (Memory: i32_xor/i32_or/i32_and/i32_shl, addr_word/word_addr)",
+    "src/infer.mn roster (trial_group_walk, trial_judge_group \u2014 vocabulary of the deleted pass)"
+   ],
+   "current": "A function that only reads install shapes performs GraphWrite, so `!GraphWrite` cannot be proven of it. A function that attaches comment references or pushes a checkpoint can still be judged `!GraphWrite`. A function doing only bit arithmetic cannot be Pure.",
+   "ideal": "An op lives in the effect its behaviour belongs to, so the row tells the truth and `!E` stays a proof. Pure word arithmetic is not an effect (the named peer `H\u03b2.memory.word-arithmetic-is-memory`). Names of the deleted trial pass are renamed.",
+   "law": "\u00a70 property 2 (the negative is provable). SYNTAX \u00a7Vocabulary (\"A name must not lie\").",
+   "evidence": "Where answers for GraphRead (38 ops), GraphWrite (39) and Memory (24), read whole.",
+   "gate": "A census of ops in a *Write effect whose providers never write \u2014 readable from `writes of FIELD` and `provider of OP` \u2014 and the converse, bounded at 0.",
+   "leverage": "medium",
+   "class_size": "4 misplaced graph ops; 6 arithmetic or pun ops in Memory."
+  },
+  {
+   "id": "SA-13",
+   "title": "Eight authored `own` markers the inference refutes, invisible from the entry's check",
+   "sites": [
+    "src/graph.mn:146,151,156,312,342,1850",
+    "src/infer.mn:1700 (members)",
+    "src/lexer.mn:238"
+   ],
+   "current": "Judging graph.mn alone prints six `T_OwnUnconsumed Warning: 'node' is declared own but never consumed on this path` (node, body, cell, boundary, span, mutation). Judging infer alone prints `members`. `mentl check src/main.mn` scopes its report to the entry module and shows none of them, so PLAN's \"the wheel's source carries zero diagnostics\" is measured on main.mn alone.",
+   "ideal": "Ownership at the Hylo-quiet bar: an authored `own` that the medium proves unconsumed is an annotation the inference refutes. tighten removes it, or proposes `ref`. A project-wide check reports each module's diagnostics once, at their own module.",
+   "law": "PLAN \u00a74\u2464 (\"if the developer has to think about it, the inference failed\"). Annotations are inputs verified against inference.",
+   "evidence": "Full prefixes of where/LookupTy (graph) and where/PolyCapture (infer). The main-link check from this session.",
+   "gate": "T_OwnUnconsumed counted over every module of the project and bounded on verify at 0. One ownership-marker position chosen in SYNTAX.",
+   "leverage": "medium",
+   "class_size": "8 sites."
+  },
+  {
+   "id": "SA-14",
+   "title": "Unary minus spelled `0 - x`, including inside a refinement predicate",
+   "sites": [
+    "examples/pulse/render/main.mn:146,152,154,159,204,418,419",
+    "lib/dsp/feedback.mn:26,66",
+    "lib/dsp/signal.mn:48 (type Sample = Float where 0.0 - 1.0 <= self && self <= 1.0),70,154",
+    "lib/io.mn:262,552"
+   ],
+   "current": "`exp(0.0 - th / 0.035)`, `pan_left(0.0 - 0.2)`, and `if ph < 0.5 { 1.0 } else { 0.0 - 1.0 }`. SYNTAX's own Sample example writes `-1.0 <= self`, and lib/ml/tensor.mn:46 `exp(-x)` shows unary minus works.",
+   "ideal": "`-x`, using SYNTAX's unary `-` (which binds tighter than every binary operator).",
+   "law": "SYNTAX principle 2 (no redundant form) and the precedence table.",
+   "evidence": "Read Pulse whole, feedback.mn, signal.mn, and io.mn sites from this session.",
+   "gate": "A census `CsZeroMinus` on verify. fmt lifts `0 - x` to `-x` where the rewrite is exact: an Int operand, or a Float literal. teach narrates a Float variable, because `0.0 - 0.0` is +0.0 while `-(0.0)` is -0.0 \u2014 a MaybeIncorrect rewrite.",
+   "leverage": "low",
+   "class_size": "14 sites read; the class is uncounted."
+  },
+  {
+   "id": "SA-15",
+   "title": "Underscore-named parameters escape the underscore-retain census",
+   "sites": [
+    "src/lower.mn bind_again(_ty), none_of(_i)",
+    "src/backends/wasm.mn emit_concat_unresolved(_ty), emit_binop_repr_unsupported(_w, _op)"
+   ],
+   "current": "`census underscore-retain` \u2192 \"0 underscore-retain let(s)\". It counts lets only. Parameters named `_x`, i.e. named and marked unused, are not counted.",
+   "ideal": "A parameter nothing reads is `_` (PWild) or is not a parameter at all, so the signature changes. An `_name` is the underscore-retain drift (mode 15) at the parameter position.",
+   "law": "CLAUDE drift mode 15 (underscore-retain). SYNTAX `_` as PWild.",
+   "evidence": "Census answer. Doc rosters for lower and wasm from this session.",
+   "gate": "Extend CsUnderscoreRetain to parameters and pattern binders; it would be born at its measured count and ratcheted.",
+   "leverage": "low",
+   "class_size": "4 parameters read; parameter class uncounted."
+  }
+ ],
+ "root_designs": [
+  "R1 \u2014 ONE PARAMETER-PRODUCT GRAMMAR FOR EVERY HEAD. A fn's parameters, an arm list's pattern, an effect op's parameters, a handler's config, an effect's instance arguments, a constructor's fields and an op's multi-field result are one product: keyed by name, typed by inference unless the type is a decision, defaulted and marked the same way, and rendered by one head projection. This deletes the bare-type op grammar (455 unnamed parameters), `op_scheme_param`'s invented `_0` and `_1`, `render_op_param`'s `_` branch, and comment-held field tables such as VerbSpec's and the WASI comments. In exchange the medium gains labeled performs, arms checked by name, field-level documentation, Why-chains through op parameters as binders, and named fields in the multi-shot yield record a time-travel debugger reads.",
+  "R2 \u2014 `mentl fmt` IS THE PROJECT'S CANONICAL PROJECTION, cargo-style and stronger.\n- Bare `fmt` renders every module of the project (the directory or the entry's import closure) whose source differs from its canonical render. A module whose source hash matches its last render is skipped, so the cost is the changed set.\n- It writes atomically, under the conservation proof.\n- Its canonicalizations are exactly the graph-preserving band: layout, braces, duplicate imports, `-> ()`, decoration runs, an exact `0 - x`, and the import-block projection (R3).\n- Each canonicalization is also a census bound on `verify`. So `check` and CI refuse a non-canonical tree \u2014 the 'syntax error' Morgan asked for \u2014 and fmt is that error's MachineApplicable fix.\n- The conservation census learns stated equivalences: each canonicalization names the atoms it removes and the node that keeps them. Without that, the multiset census refuses every deduplication.",
+  "R3 \u2014 THE IMPORT BLOCK IS A PROJECTION OF REFERENCE EDGES (A4's law applied to modules). fmt writes one sorted line per declaring module the references reach. An authored import survives only where it decides something, such as a selective set narrowing a collision. Duplicates, dead imports and missing imports (E_MissingImport) become unsayable on the canonical page. This requires the imports facet to read module-let references; today it calls infer\u2192canon DEAD over 24 references.",
+  "R4 \u2014 GRAPH-CHANGING REWRITES ARE PROPOSALS, NOT FORMATTING. The rewrites are:\n- a Stage-Law reorder: signature plus every call site, read off `refs of`;\n- partial-eta to a reference with a hole;\n- a multi-parameter lambda to a reference;\n- base-type inventory removal;\n- op-parameter naming taken from provider arm binders;\n- refuted `own` markers;\n- the field names of a positional product.\n\nEach is narrated by teach, authored by tighten or accept inside a checkpoint bracket that re-judges the program, and bounded by a census on `verify`. A4's sweep \u2014 1,490 clauses authored by the medium and judged clean \u2014 is the template. Where proposals tie, the medium asks the question instead of guessing.",
+  "R5 \u2014 ONE HEAD PROJECTION WITH A ROUND-TRIP GATE. fmt, where, doc, the space View and hover render every declaration head through the formatter's head render. parse(render(head)) == head is a board leg over the whole link. Row variables and type variables render in disjoint lowercase alphabets: SYNTAX's case rule extended to row position. `-> ()`, `Any` and `t\u2026@e\u2026` never render. doc lists an effect's ops.",
+  "R6 \u2014 THE COMMENT PARADIGM MADE MECHANICAL.\n- A module-lede slot.\n- Field docs attach to field names.\n- Box-drawing decoration is a format-lift.\n- Lifecycle and archaeology needles become prose-census bounds on `verify`.\n- Comment edges resolve against the project's declarations: no narrow-link noise, no `node N` owners, one report per edge.\n- A comment never silences a gate: the 134 `drift-audit: ignore` markers delete as the text rows they mute become structural census shapes, which already distinguish a string literal (`text`) from code and a one-shot `++` from an accumulator.",
+  "R7 \u2014 THE PROJECT IS THE UNIT OF EVERY GATE. `check`, `fmt` and `verify` operate on every module of the project and report each diagnostic once, at its own module. A claim such as 'the wheel carries zero diagnostics' is measured over all modules, not the entry. SYNTAX's fenced examples, and the course (Pulse's chapters, then Wasatch), are battery members under the same bounds, born canonical."
+ ],
+ "verb_gaps": [
+  "No facet enumerates every effect with its ops and parameter names. `doc` renders an effect as `E : ()`; `where` answers one name per process, so measuring the corpus took 93 separate processes; `variants NAME` gives arities, not names.",
+  "The census roster is not listable: `mentl query src/main.mn census` \u2192 'unknown query'.",
+  "No census shapes exist for: unnamed op parameters, positional products, partial-eta (a reference written as a mint), a lambda or `??` in a pipe stage (the Stage Law's signal), base-type inventory annotations, `0 - x`, explicit `-> ()`, duplicate imports, misattached ledes, and ops whose providers' write behaviour contradicts the effect name.",
+  "`census underscore-retain` counts `let _x =` only, not underscore-named parameters or pattern binders.",
+  "`prose NEEDLE` is substring-only: `V1` matches inside `RV128`, and `used to` matches the purpose sense. A word- or token-bounded form is needed.",
+  "`refs of NAME` is keyed by name: on Pulse, `refs of gain` returns a parameter and a local that happen to be called `gain`, not the library function (which has 0 references).",
+  "`imports` gives no duplicate verdict (its 258 edges count infer's two duplicate lines as two used edges) and misses module-let references (false DEAD for infer\u2192canon and parser\u2192canon against `ty_string`'s 24 references).",
+  "`fmt` requires a target, writes exactly one module, and has neither a project mode nor `--check`.",
+  "`check <entry>` scopes to the entry module; no project-wide check exists (graph \u00d76, infer \u00d71 and lexer \u00d71 T_OwnUnconsumed never reach the board).",
+  "`where <module>` prints the module's narrow-link comment-ref warnings before its answer (34 for types.mn). Those warnings name anonymous owners as `node N` and repeat once per backtick occurrence.",
+  "`doc` misses module lets (`doc src/canon.mn` is empty) and renders non-parseable instance heads (`WASI(t148105@e167038)`).",
+  "The lede projection truncates at abbreviations ('\u2026repr (e.g.' on emit_binop_repr_unsupported)."
+ ]
+}

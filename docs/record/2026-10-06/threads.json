@@ -1,0 +1,376 @@
+{
+ "lens": "threads",
+ "summary": "Not done: nothing could be built or run, because this was a plan-mode audit. This is a read-only audit of the threads (SPACE) axis. It used 25 medium invocations: 22 whole-wheel judgments of src/main.mn plus help, an audit of lib/threading.mn and teach on Pulse. Every run was preceded by a MemAvailable check, which always read above 11.7 GB. I also read the source and the precomputed doc answers. The wheel is single-threaded by construction. The link is 53 modules, 79,003 lines and 366,285 nodes. The census found 1 `><` (lib/dsp/feedback.mn:99, which Pulse does not call), 2 `<|` (cursor.mn:471, eight_loop.mn:190) and 1 fanout (the ??-fan at synth_proposer.mn:1075, reported as `fanout [Seq, a branch per element]`). `performs` reports Thread 2/3 and SharedMemory 1/7, both only inside lib/threading. Four things block every wheel phase from threading, in dependency order. (1) Any spawn turns off every arena in the module, and allocation then goes through one compare-exchanged cell (wasm.mn:2345, 4694-4698). So the wheel's first threaded schedule would give up what PLAN §7 credits the arenas with: a self-compile peak down from 1,065,228 KB to 519,548 KB, under a 529,000 KB ceiling. (2) The race rule, which the whole threading design depends on, counts `resume … with` as the only state writer and lets Memory pass unchecked. The judgment's own age claim already records an arm's in-place `list_set` into handler state (infer.mn:4332-4334, 7548-7550). By the rule's text, two branches bumping a counter kept in a state buffer would be accepted. This is unmeasured, because plan mode forbids writing the test fixture. (3) The graph has one cursor, one undo trail and one mint counter, and twelve hand-written speculation brackets write to it. (4) The sequence fanout spawns one instance per element, and every instance re-runs the module's value-let initializers. Once those are fixed, the first phase to thread is emission (6,660 units; its 'share no state' comment is contradicted by its own row). Next is the resume classifier's per-round rounds: the race rule already accepts them, but they are an index-threaded loop justified by a comment whose stated gap the lowering's frame fence (lower.mn:170-185) was built to close. Then the judgment's level sets: the largest phase, whose only level partition lives in a second judge. No verb splits wall time by phase (verb gap V3), so every speed-up here is a design with a named measurement, not a number. Disclosure: once this session I piped precomputed doc answers (src/lower.mn, src/egraph.mn) through awk and cut, against the read-whole rule. I then read the lower doc whole; the egraph doc was seen only through that pipe. The infer doc was read whole (1,212 lines) before this answer.",
+ "commands": [
+  "grep MemAvailable /proc/meminfo (before every medium run)",
+  "mentl help",
+  "mentl query src/main.mn performs",
+  "mentl query src/main.mn 'refs of EThreadedBranchEffect'",
+  "mentl where src/main.mn emit_wasi_thread_start",
+  "mentl query src/main.mn 'refs of graph_push_checkpoint'",
+  "mentl where src/main.mn emit_functions",
+  "mentl query src/main.mn 'text spawn_task_impl'",
+  "mentl query src/main.mn cost",
+  "mentl where src/main.mn segment_verify",
+  "mentl audit lib/threading.mn",
+  "mentl teach examples/pulse/render/main.mn",
+  "mentl query src/main.mn 'census ><'",
+  "mentl query src/main.mn 'census <|'",
+  "mentl query src/main.mn 'refs of fanout'",
+  "mentl where src/main.mn graph_handler",
+  "mentl query src/main.mn 'refs of driver_check'",
+  "mentl where src/main.mn string_table",
+  "mentl where src/main.mn classify_grade_all",
+  "mentl query src/main.mn 'text __hstate'",
+  "mentl where src/main.mn lower_resolve_handler_for_op",
+  "mentl query src/main.mn 'variants LowerHandlerStack'",
+  "mentl query src/main.mn 'refs of lower_handler_push'",
+  "mentl query src/main.mn 'refs of compute_escaping_rows'",
+  "mentl where src/main.mn ages_install",
+  "mentl query src/main.mn 'refs of ages_store'",
+  "python3 -I read-only section-table parse of boot/mentl.wasm (functions, globals, data segments)",
+  "grep over RESIDUE.md, PLAN.md, LEDGER.md (markdown) for peer anchors and landing history",
+  "Glob counts of tests/micros, proposals, teach, frontier, crown, syntax",
+  "Read of the precomputed doc answers in the scratchpad doc/ directory and of the source regions cited below"
+ ],
+ "findings": [
+  {
+   "id": "T1",
+   "title": "Any spawn turns off every arena in the module, and a spawning module allocates through one compare-exchanged heap cell",
+   "sites": [
+    "backends/wasm.mn:2340-2345",
+    "backends/wasm.mn:4694-4698",
+    "backends/wasm.mn:6274-6350",
+    "tests/frontier/arena/spawning-module-runs-the-body.mn:13",
+    "RESIDUE.md:3869-3874"
+   ],
+   "class_size": "One check controls every arena exit in a module. It is why no wheel phase can adopt a threaded schedule today: the first `~> parallel_compose` reachable in the wheel turns off all of the wheel's arenas. PLAN §7 credits those arenas with taking the self-compile peak from 1,065,228 KB to 519,548 KB, and the board's ceiling is 529,000 KB.",
+   "current": "`let arena_on = arena_demanded() && ls_find_str_local(wasi_ops, 'spawn_task', 0) < 0` (wasm.mn:2345). A module that demands spawn_task anywhere runs every `~> arena` body and reclaims nothing; the frontier fixture asserts `arena_stat(ArExits) == 0`. In that module `$alloc` (wasm.mn:4694-4698) is a compare-exchange loop on the one shared heap cell at address 64, executed for every allocation by every instance.",
+   "ideal": "Instance segments, the arena's SPACE face. The root hands each instance a segment with one atomic add per chunk, never one per allocation, and the instance bumps privately inside it. An arena's region is then a span of its own instance's segment, so exit, evacuation and reset work exactly as they do single-threaded. A segment id is the arena half of Phase 9.2's {arena, offset} handle. Deterministic chunk bases (worker, chunk ordinal) make addresses reproducible, which m3 == m4 needs under parallelism. The `spawn_task` condition at wasm.mn:2345 is then deleted.",
+   "law": "Carried-Truth at the substrate. Interleaved bumps make an arena's span unprovable, and the code responds by discarding every arena instead of localizing the span. PLAN §5.O orders layer 3 (arena) before layer 4 (parallel cursors), and this is the edge between them.",
+   "evidence": "Read wasm.mn:2340-2345 (the check, whose comment names Hβ.arena.per-instance-regions), 4694-4698 (the compare-exchange alloc) and 6274-6350 (_start sets up the shared cell and allocates the 2 MB arena journal only when arena_on). `mentl query src/main.mn performs` answered 'PART threading -> Thread 2/3 ops performed' and 'SharedMemory 1/7 ops performed'.",
+   "gate": "Delete the condition. Flip spawning-module-runs-the-body.mn to assert exits > 0 and the heap returning to its mark. Add a contention micro (K branches × 1e6 small allocations under parallel_compose) whose wall time prints beside the Seq run. The self-compile peak ratchet must hold on the first pin where the wheel installs a threaded schedule.",
+   "leverage": "high"
+  },
+  {
+   "id": "T2",
+   "title": "The race rule only counts `resume … with` as writing a handler's state, while the judgment already records an arm's in-place store into that state for the arena",
+   "sites": [
+    "lower.mn:3553-3566",
+    "lower.mn:3607",
+    "lower.mn:3674-3694",
+    "infer.mn:4332-4334",
+    "infer.mn:7368-7406",
+    "infer.mn:7540-7555",
+    "infer.mn:7660-7666",
+    "lib/lists.mn (list_set ... with Memory)"
+   ],
+   "class_size": "Every handler whose arms mutate a state-held buffer in place. SYNTAX's own example of handler state is `handler window(size) with buf = make_list(size)`. The count is unmeasured, because no verb projects the age claim's per-handler state stores (verb gap V5).",
+   "current": "handler_state_is_written (lower.mn:3681-3694) is `len(f.writes) > 1` over each field's StateFact, whose writers are the init plus `resume … with` updates. Its comment calls that 'the one writer SYNTAX gives state'. A `list_set(buf, …)` inside an arm is a second writer, and the judgment records it. infer.mn:4333-4334 calls `ages_store(list_index(ah, 0), [list_index(ah, 2)])`. binder_targets resolves a state binder to TgState, and ages_settle files the store under the handler (`AgeArm(hname, _) => ages_state_add(hname, cells)`). Only ages_install reads that fact, for the arena. The arm's own row is `Memory`, which the rule lets pass unchecked (`if effect_ops_substrate_grounded(ename) { () }`, lower.mn:3607). By the rule's text, two threaded branches bumping a counter kept in a state buffer are accepted.",
+   "ideal": "One fact, 'what an arm writes', published with the handler's env entry: its `resume … with` updates plus every store the age claim resolves to TgState. The arena and the race rule both read that one fact. Under a spawning schedule the substrate's write capability also stops passing unchecked. Memory's loads and its stores become two effects, which is L5's own lesson at infer.mn:12727-12736 ('A read capability and a write capability are two effects'). Then a branch's row says whether it stores, and the rule asks the age claim's store targets: a fresh value owes nothing; a captured, state or older value is refused.",
+   "law": "Carried-Truth: one fact with two homes, and the narrower home controls soundness. SYNTAX §`><` promises 'provably race-free'.",
+   "evidence": "Read lower.mn:3545-3704 and infer.mn:4300-4358 and 7330-7680. `refs of ages_store` answered infer:4334 and infer:7654, the only two writers of the store claim. `mentl where src/main.mn ages_install` answered infer:7663. The lists doc gives `list_set : (l: Addr own, idx: Int own, val: Int own) -> Addr with Memory`.",
+   "gate": "A RED-first crucible, not written because plan mode forbids it. `handler tally with buf = make_list(1) { bump() => { list_set(buf, 0, list_index(buf, 0) + 1); resume() } }`, with two branches each bumping 1e6 times under `~> tally ~> parallel_compose`, must refuse E_ThreadedBranchEffect and name the in-place store. A control whose arms only read buf must still run. Add a second crucible: two branches storing into one captured buffer.",
+   "leverage": "high"
+  },
+  {
+   "id": "T3",
+   "title": "Every spawned instance re-runs the module's value-let initializers",
+   "sites": [
+    "backends/wasm.mn:6352-6403",
+    "backends/wasm.mn:6357-6363",
+    "backends/wasm.mn:6384-6385",
+    "LEDGER.md:18677",
+    "tests/frontier/mn-real-spawn.mn:7-9",
+    "RESIDUE.md:7708-7728"
+   ],
+   "class_size": "Every module value let in every program that spawns. No fixture covers a module let under spawn (Glob over tests found none).",
+   "current": "emit_wasi_thread_start sets $tid_g and $world_g, allocates the yield area, then calls $__init_lines and $__init_lets (wasm.mn:6384-6385). Its comment says the spawned instance's let globals are zero until its own init runs. So an init that does I/O (a module-level `read_file`, for example) runs again in every branch. A branch also reads its own freshly initialized copy of a module buffer rather than the one the root has since changed in place, while under Seq the same branch reads the root's buffer. RESIDUE 7720-7726 records the same per-instance shape for static `<~` lines.",
+   "ideal": "Module values are image facts that the root initializes once. They already live in the shared image, so a spawned instance should take the root's values, via one pointer to the module-values record carried in the task record beside the world, and never run $__init_lets. A static `<~` line is either an explicit per-instance value the race rule reads, or it is shared and the rule treats it as state.",
+   "law": "'One source, two schedules' must mean one program, as mn-real-spawn.mn states. A fact initialized twice is a re-derivation whose second copy diverges.",
+   "evidence": "Read wasm.mn:6352-6403 and its comment. LEDGER 18677 says the spawned instance 'runs $__init_lets when lets exist'. `mentl where src/main.mn emit_wasi_thread_start` answered backends/wasm:6373.",
+   "gate": "A RED-first frontier pair. First, a module let whose init performs a handled op must perform it exactly once under both Seq and parallel_compose; under parallel_compose it currently runs once more per branch. Second, a module buffer the root updates with list_set before the fanout, read in both branches, must give equal results under both schedules.",
+   "leverage": "high"
+  },
+  {
+   "id": "T4",
+   "title": "The sequence fanout spawns one host instance per element, and a failed spawn traps",
+   "sites": [
+    "lib/threading.mn:126-128",
+    "lib/threading.mn:145-148",
+    "backends/wasm.mn:4741-4777",
+    "backends/wasm.mn:6352-6403"
+   ],
+   "class_size": "Every `fanout(f, xs)` under a Thread-class schedule: N elements become N wasi-thread instances. If the wheel itself spawned, each instance would instantiate boot's module: 10,299 globals and 7,351 active data segments (204,645 bytes), per a section read of boot/mentl.wasm. RESIDUE 7720-7726 says wasi-threads re-applies data segments on every spawn.",
+   "current": "`fn fanout_threaded(f, xs) = xs |> map(spawn_branch(f)) |> map(thread_join)`. threading.mn:145-148 refuses a processor-count op because preview1 exposes none, so 'the spawn degree is the fanout's own branch count'. $spawn_task_impl hits `unreachable` when wasi_thread_spawn fails (wasm.mn:4772, 4775), and every instance re-runs the module's inits (T3).",
+   "ideal": "The schedule owns a pool. `parallel_compose(workers)` takes the degree as config, since the host cannot be asked for it, and starts its workers once per install. A fanout of N becomes K worker loops that claim chunks of indices with one atomic add on a shared counter, write result i into slot i of a preallocated list, and are joined in source order. A spawn the host refuses runs its chunk inline (the sequential_compose path) instead of trapping.",
+   "law": "Where branches run is a schedule decision (`~>`), and an operation should cost the size of its answer. N instances for N elements makes instance setup the dominant cost of every fine-grained fanout.",
+   "evidence": "Read lib/threading.mn:91-148. `mentl audit lib/threading.mn` reports fanout_threaded's row and says nothing about degree. `mentl query src/main.mn 'text spawn_task_impl'` answered wasm:4772, 4775 and 7640. The section counts come from a python3 -I parse of boot/mentl.wasm.",
+   "gate": "`fanout(f, range(0, 100000)) ~> parallel_compose(4)` runs with at most 4 distinct thread ids and constant heap growth per element. A refused spawn completes inline.",
+   "leverage": "high"
+  },
+  {
+   "id": "T5",
+   "title": "The graph is one cursor with one undo trail and one mint counter; twelve hand brackets speculate on it, and three comments still describe the deleted parallel branch cursor",
+   "sites": [
+    "graph.mn:426",
+    "graph.mn:467-489",
+    "graph.mn:1736-1845",
+    "graph.mn:412-415",
+    "graph.mn:431",
+    "infer.mn:2036-2070",
+    "lib/search.mn:44-46",
+    "infer.mn:2734",
+    "infer.mn:2741",
+    "infer.mn:2757",
+    "mentl.mn:322",
+    "mentl.mn:572",
+    "mentl.mn:763",
+    "query.mn:1890",
+    "query.mn:1962",
+    "query.mn:2119",
+    "query.mn:2397",
+    "synth_proposer.mn:1096",
+    "lib/search.mn:133"
+   ],
+   "class_size": "12 speculation brackets (refs of graph_push_checkpoint), each hand-assembling checkpoint, world_top, rollback and world_restore, often with an arena. Plus 3 stale comment sites.",
+   "current": "graph_handler's state holds the spine, the trail and its length, the epoch, the mint counter `next`, the checkpoint stack and the columns. Speculation pushes a checkpoint on the one trail, writes live, and undoes in place through two 12-arm walkers (graph.mn:1736-1845); every mint takes the one counter. Two cursors on two threads would interleave trail entries and handle numbers, which is why graph_handler is the race rule's stated refusal for the ??-fan (synth_proposer.mn:1067-1074). graph.mn:412-415 still says a branch cursor 'installs over the SHARED spine with a private planned range'. graph.mn:431 and lib/search.mn:44-46 cite the deleted src/oracle.mn. infer.mn:2036-2070 describes planned ranges and a private overflow band that the 2026-09-19 pin deleted.",
+   "ideal": "A cursor is an arena with an overlay: `(body) ~> segment(base)`. Reads fall through to the base; writes and mints land in the segment's region with handles {segment, offset}. Rollback is the segment's exit dropping its region, with no trail walk. Commit publishes the segment's writes in order; the arena's journal already records stores into older memory. Two committing segments that bound one base cell differently produce C6's first divergence, which is a question to the developer, never a race. One primitive replaces the twelve brackets and the trail walkers.",
+   "law": "One graph, two operations. §11's hardest-first sentence: 'judge the context ONCE and let branches read it live'. This is Phase 9.2's keystone. Prose describing machinery that no longer exists is deleted when the artifact makes it obsolete.",
+   "evidence": "`refs of graph_push_checkpoint` answered the 12 sites listed. `mentl where src/main.mn graph_handler` answered graph:426, absorbing GraphRead + GraphWrite + RowWrite. Read graph.mn:405-499 and 1736-1859, and infer.mn:2036-2116.",
+   "gate": "A census shape for a hand checkpoint bracket outside the segment primitive, bounded at 0 in src/board.mn. A determinism leg: m3 compiled under Seq and under parallel_compose must be byte-identical.",
+   "leverage": "high"
+  },
+  {
+   "id": "T6",
+   "title": "The judgment walks its binding groups one at a time, and the only level partition lives in a second judge that labels every module '<stdin>'",
+   "sites": [
+    "infer.mn:1356-1411",
+    "infer.mn:1721-1726",
+    "infer.mn:1482-1485",
+    "driver.mn:263-269",
+    "driver.mn:279-280",
+    "driver.mn:875-902",
+    "lsp.mn:450",
+    "voice.mn:1414",
+    "pipeline.mn:583-594"
+   ],
+   "class_size": "Every binding group of every compile (the link is 53 modules, 79,003 source lines, 366,285 nodes, per `cost`). The judgment is the largest phase only by inference: the precomputed `mentl doc src/main.mn` answer reported 24.82 s for one judgment of the whole link, against LEDGER's 32.2-34.2 s self-compile. No verb splits time by phase (V3).",
+   "current": "`fn trial_group_walk(ref stmts, ref groups, g) = if g >= len(groups) { () } else { trial_judge_group(stmts, sort(groups[g])) ~> arena; trial_group_walk(stmts, groups, g + 1) }` is an index-threaded loop whose 'trial' name outlived the deleted two-pass judgment. driver_check does split the module DAG into levels (`each((layer) => each(driver_check_module, layer))`, driver.mn:279-280, the 'topological half' of Hβ.driver.level-set-par-walk). But it judges each module through infer_program_converged, which names it '<stdin>' (infer.mn:1482-1485). lsp.mn:450 and voice.mn:1414 still call it, while pipeline.mn:583-594 moved the check verb off it as noisy.",
+   "ideal": "Delete driver_check and driver_partition_layers. Inside the one judgment, the binding groups' callee-first DAG yields levels. Each level is `level |> fanout(judge_group ~> segment(base))`, and its commits run in group order, so the graph has the same bytes at any width. Group handles are {group ordinal, offset}, so numbering never depends on scheduling. The width is a `~> Schedule` decision.",
+   "law": "Iteration is topology (Anchor 6). One judgment, one home. §5.O layer 4.",
+   "evidence": "Read infer.mn:1356-1411, 1482-1485, 1594-1604 and 1721-1726; driver.mn:248-280 and 875-902; pipeline.mn:583-594. `refs of driver_check` answered lsp:450 and voice:1414.",
+   "gate": "Run the determinism leg on every landing (Hβ.march.determinism-is-never-probed): m3 under Seq must equal m3 under parallel_compose. Report the m3 leg's wall time on this 4-core machine.",
+   "leverage": "high"
+  },
+  {
+   "id": "T7",
+   "title": "Emission's comment says its records share no state; its row and its registries say they do",
+   "sites": [
+    "backends/wasm.mn:5374-5391",
+    "backends/wasm.mn:5381-5388",
+    "backends/wasm.mn:5564-5569",
+    "backends/wasm.mn:214-217",
+    "backends/wasm.mn:225-249",
+    "backends/wasm.mn:2182-2396",
+    "backends/wasm.mn:2407-2419"
+   ],
+   "class_size": "One unit per emitted function; boot's code section holds 6,660 functions.",
+   "current": "`fn emit_function_bracketed(units, r) = wat_emit(emit_one_fn_to_string(r, units)) ~> arena`, walked by `each`. The comment says the records share no state once the pre-passes have run. `mentl where src/main.mn emit_functions` gives the row Memory + Alloc + Arena + GraphRead + Intern + Diagnostic + Unwind + LookupTy + EnvRead + WASI + DerivedPrograms + ArenaLeaves + StringTable + SpecTwins + DerivativeDemand + LineRegistry + GraphWrite + WasmOut. string_table and spec_registry both write state, and spec_registry does so from inside emission (`resume(found) with reach = memo, decls = idx, decls_read = true`).",
+   "ideal": "The settle point already reports every floor before the first byte. It should also complete every registry (strings, twins, the reach memo, lines) and freeze each into a read-only view, following intern_view's shape (intern.mn:81-112) and L5's read/write split. emit_one_fn_to_string is then declared `with !GraphWrite + !Diagnostic` and returns its text as a value. The walk becomes `fn_records |> fanout(emit_one_fn_to_string(??, units)) |> each(wat_emit)`, written in record order, so the module's bytes do not depend on the width.",
+   "law": "Emission is a projection of the plan (one graph, two operations). A write during a projection is the defect that the comment's claim hides.",
+   "evidence": "Read wasm.mn:205-260, 2182-2419, 5370-5395 and 5560-5570. `mentl where` answered the emit_functions row above and string_table at wasm:214.",
+   "gate": "Declaring `with !GraphWrite + !Diagnostic` on emit_one_fn_to_string refuses today and passes after the fix. WAT is byte-identical under Seq and parallel_compose. Emission wall time is reported beside the plan's (V3).",
+   "leverage": "high"
+  },
+  {
+   "id": "T8",
+   "title": "The battery and directory queries re-judge the same library for every program, one program at a time; the only parallelism is in bash",
+   "sites": [
+    "main.mn:1061-1062",
+    "main.mn:1326-1357",
+    "main.mn:1381-1386",
+    "main.mn:1401",
+    "main.mn:1423",
+    "main.mn:1482-1484",
+    "main.mn:1501-1502",
+    "tools/wt-env.sh:153-159",
+    "RESIDUE.md:9930-9945"
+   ],
+   "class_size": "377 micros, 24 proposal and 11 teach fixtures run through the `test` verb, plus 238 frontier, 134 crown and 20 syntax fixtures (file counts). Each one re-judges memory + strings + lists + prelude.",
+   "current": "battery_compile(libs ++ src, stem) installs a fresh handler chain per fixture. battery_loop is an index-threaded `battery_step(...) ~> arena`, and query_dir maps query_program over programs one at a time. The only parallelism is bash running several processes. RESIDUE 9930-9945 retracted the in-medium parallel plan because '149 redundant derivations eight at a time hides the waste behind cores'.",
+   "ideal": "Answer the retraction rather than repeat it. Judge the library link once, read every fixture as a segment over that one judgment (T5's overlay), and fan the fixtures with `fixtures |> fanout(judge_fixture) |> each(print_verdict)` under the pool schedule: one derivation read N times, never N derivations.",
+   "law": "§5.O: an operation should cost the size of its answer. A library judged once per fixture is a re-derivation inside one run.",
+   "evidence": "Read main.mn:1055-1066, 1320-1430 and 1478-1505, and RESIDUE.md:9930-9945.",
+   "gate": "The battery's cost line shows one prelude judgment per run, the verdict text is byte-identical, and battery wall time is reported.",
+   "leverage": "high"
+  },
+  {
+   "id": "T9",
+   "title": "The one phase the race rule already accepts is an index-threaded loop justified by a gap the frame fence closes, and lower_program writes three independent pre-passes as a sequence",
+   "sites": [
+    "infer.mn:12727-12739",
+    "infer.mn:12771-12780",
+    "infer.mn:12785-12807",
+    "infer.mn:12809-12816",
+    "lower.mn:170-185",
+    "lower.mn:2128-2140",
+    "lower.mn:2056-2102",
+    "lower.mn:6364-6383"
+   ],
+   "class_size": "Two rounds-to-fixpoint passes over every fn declaration (the resume classifier and the escaping rows), plus the lowering's whole-program pre-passes.",
+   "current": "classify_rounds grades every declaration against the previous round under `summaries_frozen(idx, tidx)`. That is a config handler with no state: L5 split its write out into ResumeSummariesWrite because 'A read capability and a write capability are two effects'. Its walk is `[(n, resume_grade(b))] ++ classify_grade_all(decls, i + 1)`, marked `// drift-audit: ignore`. The comment at 12797-12801 says a lambda cannot be used because 'a perform inside a lambda under an install resolves Tier-1 to the enclosing frame's __hstate local'. lower.mn:170-185 is the fence built for exactly that case: a lambda is a new fn frame, so lexical resolution stops there and the perform walks the world chain. Its comment says 'the each-with-effects lambda gap is the same hole'. Separately, lower_program runs compute_escaping_rows, program_may_yield and resume_bindings one after another, and no result flows into another; each goes only to its own ls_register_* call.",
+   "ideal": "Write the classifier as `decls |> fanout({ (n, b, _, _) => (n, resume_grade(b)) })` inside `~> summaries_frozen(idx, tidx)`. Its covering handler is stateless and its other rows are substrate, which the race rule accepts as written. Write the pre-passes as `stmts <| (compute_escaping_rows, program_may_yield, resume_bindings)`, so the independence is on the page and a schedule decides. This is the proof for R3 that a phase whose handler only answers reads can already be shared.",
+   "law": "Iteration is topology (Anchor 6). A comment that justifies a compensation is a confession, and a drift-audit suppression is a census the author silenced.",
+   "evidence": "`mentl where src/main.mn classify_grade_all` answered infer:12809 with Memory + Alloc + ResumeSummaries. `text __hstate` answered 7 literals (wasm:5831 twice, 5833, 6703, 6870, 8081; lower:2643), so the frame-local still exists. `where lower_resolve_handler_for_op` answered lower:2110. `variants LowerHandlerStack` plus `refs of lower_handler_push` answered the fence push at lower:183 and the install push at lower:3239. `refs of compute_escaping_rows` answered lower:6372. Read the regions listed.",
+   "gate": "One RED-first micro settles the confession: a lambda performing the op of a handler installed in the same frame, mapped over a list. If it runs, the rewrite lands, the suppression is deleted and the audit's iteration-shape tier counts what remains. The classifier's per-round time (V3) decides whether its rounds are worth a pool.",
+   "leverage": "medium"
+  },
+  {
+   "id": "T10",
+   "title": "The ??-fan joins its results inside each branch, and the gradient's candidate proofs are filters rather than fanouts",
+   "sites": [
+    "synth_proposer.mn:1061-1076",
+    "synth_proposer.mn:1094-1120",
+    "mentl.mn:312-313",
+    "mentl.mn:321-329",
+    "mentl.mn:375-378",
+    "mentl.mn:499-501",
+    "mentl.mn:569-600",
+    "mentl.mn:709-716",
+    "mentl.mn:760-789"
+   ],
+   "class_size": "The only fanout in the wheel (refs of fanout: synth_proposer:1075:17), plus three teach proof fans.",
+   "current": "judge_in_segment checkpoints, judges, rolls back and restores the world, all `~> arena`, and then, when the candidate is proven, calls branch_join inside the branch. branch_join replays env publishes and diagnostics into the root chain. Branches read the base, seed and intern view captured before the fan (1064-1066), not the root that a join writes, which is what makes it safe to move the joins after the fan. The teach fans (row clauses, preconditions, returns) are `filter`/`flat_map` over the same hand bracket.",
+   "ideal": "`candidates |> fanout(judge_segment(...)) |> each(join_if_proven)`. Each branch returns its verdict and facts as a value, and the joins run in candidate order after the fan. Teach's three proof fans are written as fanouts too, so one schedule decision covers both proposing and teaching. After T5, graph_handler stops being the refusal and the race rule accepts the fan.",
+   "law": "A branch publishes nothing. In the fork/merge duality, alternatives are explored by forking, and the merge happens in order, outside the fork.",
+   "evidence": "`mentl where src/main.mn segment_verify` answered synth_proposer:1061 with its row and 'fanout [Seq, a branch per element] at 1075:17-1075:75'. `refs of fanout` answered one reference. Read synth_proposer.mn:1040-1170 and mentl.mn:300-330, 560-600 and 700-790.",
+   "gate": "Before T5, the race rule's verdict on `~> parallel_compose` over a propose names only graph_handler; after T5 it names nothing. tests/proposals and tests/teach are byte-identical under both schedules.",
+   "leverage": "medium"
+  },
+  {
+   "id": "T11",
+   "title": "Read-only projections bind type variables in the graph in order to render names",
+   "sites": [
+    "query.mn:1889-1895",
+    "query.mn:1959-1969",
+    "query.mn:2118-2124",
+    "query.mn:2396-2407",
+    "cursor.mn:468-492"
+   ],
+   "class_size": "4 projection sites among the 12 checkpoint brackets, plus the caret's `<|` aspects (propose_at, teach_gradient), which speculate.",
+   "current": "named_lines is declared `with !Mutate`, yet it does graph_push_checkpoint, name_type_vars and graph_rollback. decl_badges, named_badge and handler_line do the same. Two concurrent readers of one resident session would therefore interleave trail writes.",
+   "ideal": "A rendering is a pure function of the type and a renaming. `show_type_named(ty, names)` computes the names as a value and never writes the graph, so every read verb carries `!GraphWrite` and the resident session can answer reads in parallel.",
+   "law": "Two operations only. A read is a projection, and a projection that writes is a third operation in disguise.",
+   "evidence": "Read the four query.mn regions and cursor.mn:468-492. `refs of graph_push_checkpoint` lists query:1890, 1962, 2119 and 2397.",
+   "gate": "`!GraphWrite` on the read entry points of query.mn and the address surface. T5's census shape, bounded at 0, counts these four.",
+   "leverage": "medium"
+  },
+  {
+   "id": "T12",
+   "title": "Three of the four schedule kinds actually run sequentially, while a comment says all four backends are live",
+   "sites": [
+    "lower.mn:3452-3460",
+    "lower.mn:3763-3770",
+    "lower.mn:3771-3781",
+    "lower.mn:3782-3791",
+    "lib/persist.mn:228-236",
+    "lib/persist.mn:248"
+   ],
+   "class_size": "Simd, Gpu and Persisted: every fanout under them.",
+   "current": "Simd lowers to `LSimdLanes(handle, map(invoke_scheduled_boundary, branches))`: each branch is called as scalar code, one after another, and the results are packed into a lane. Gpu is the sequential tuple. persist_branch writes the whole image to /tmp/mn-persist-branch-N.k and runs the branch inline, while lower.mn:3782-3791 says the persisted schedule spawns each branch. lower.mn:3452 says 'All four backends are LIVE'; PLAN §7 says SIMD/GPU remain scaffold.",
+   "ideal": "Simd becomes SPMD lowering gated by the row: a branch body that performs nothing, calls through no function value and allocates nothing is emitted once over v128 lanes. Gpu is named as a planned peer until a device exists. A persisted branch checkpoints its own segment (T1) through the arena's evacuation leaves rather than dumping the whole image.",
+   "law": "A comment must be true. A schedule that runs sequentially under a parallel name overrides the program's intent; it is not a backend.",
+   "evidence": "Read lower.mn:3440-3460 and 3700-3800, and lib/persist.mn:220-250.",
+   "gate": "A Simd fixture whose emitted module carries f32x4/i32x4 arithmetic for a four-branch fanout. The comment at lower.mn:3452 rewritten to match the measured state.",
+   "leverage": "medium"
+  },
+  {
+   "id": "T13",
+   "title": "Pulse and lib/dsp never write a fanout: stereo pairs, comb banks and comodulogram cells are computed sequentially",
+   "sites": [
+    "examples/pulse/render/main.mn:277-280",
+    "examples/pulse/render/main.mn:292-295",
+    "examples/pulse/render/main.mn:378-431",
+    "examples/pulse/render/main.mn:436-441",
+    "lib/dsp/feedback.mn:96-101",
+    "lib/dsp/cfc.mn:142-186",
+    "RESIDUE.md:7708-7728"
+   ],
+   "class_size": "`census ><` finds 1 site in the whole link (lib/dsp/feedback.mn:99, stereo_strip, which Pulse does not call). `census <|` finds 2 (cursor.mn:471, eight_loop.mn:190). There is 1 fanout, the ??-fan.",
+   "current": "render_frame computes tone_l/tone_r, echo_l/echo_r and room_l/room_r as sequential lets and runs four combs as sequential `<~` stages. render_loop advances one sample per call. cfc.mn's columns, rows and matrix are index-threaded loops over independent cells.",
+   "ideal": "Render by block: `(left_chain(block)) >< (right_chain(block))` under `~> parallel_compose`, one block of samples at a time (a spawn per sample would cost more than the sample, see T4). Run the comb bank as `fanout(comb, banks)` under a Simd schedule once T12's SPMD exists, and the comodulogram as `cells |> fanout(cell_coupling)`. First the race rule must treat a closure's `<~` ring as state (Hβ.threads.closure-line-shared-across-branches).",
+   "law": "The five verbs make topology visible; a stereo pair written as two lets hides a `><`.",
+   "evidence": "`census ><` and `census <|` gave the answers above. `mentl teach examples/pulse/render/main.mn` proposed only row clauses ('render_frame: → (no next-step annotation)'). Read the Pulse and lib/dsp regions.",
+   "gate": "Pulse's WAV is byte-identical under Seq and parallel_compose (the frontier's pulse-render leg run twice), and render wall time is printed per schedule.",
+   "leverage": "medium"
+  },
+  {
+   "id": "T14",
+   "title": "The gradient proposes rows, refinements and return types, never a fanout",
+   "sites": [
+    "mentl.mn:265-270",
+    "mentl.mn:165-179",
+    "examples/pulse/render/main.mn:418-427"
+   ],
+   "class_size": "Every pair of independent computations a program writes in sequence; Pulse alone has three stereo pairs.",
+   "current": "suggestion_kind_of knows only SuggestEffectRow | SuggestRefinement | SuggestReturnType. Teach on Pulse proposed row clauses only.",
+   "ideal": "Add SuggestTopology. Where two lets share no data edge, their rows reach no handler that writes state (T2's one fact) and they capture distinct records, the medium proposes the `><`. The race rule is the proposal's proof gate, the schedule is proposed from measured cost, and `mentl accept` writes it through the formatter.",
+   "law": "Mentl proposes and the developer decides. The race rule is a proof, so it can filter proposals.",
+   "evidence": "Read mentl.mn:160-330, and the teach output above.",
+   "gate": "Teach fixtures: `// teach L: add ><` over a stereo pair, and `none` over a pair that shares a handler which writes state.",
+   "leverage": "medium"
+  },
+  {
+   "id": "T15",
+   "title": "A cold compile reads and lexes the module DAG twice",
+   "sites": [
+    "driver.mn:414-451",
+    "driver.mn:488-489",
+    "driver.mn:546-563",
+    "driver.mn:161-162",
+    "driver.mn:248",
+    "driver.mn:598",
+    "driver.mn:822-824"
+   ],
+   "class_size": "Every module of every cold compile is read twice.",
+   "current": "driver_compile_entry calls driver_entry_scoped (one DAG walk that reads and lexes each module) and then driver_tree_scan (a second walk). It also evaluates the persist arguments even when persistence is skipped.",
+   "ideal": "One walk yields (range, text) pairs, using `map(range_text_pair, ranges)`, the form driver.mn:822-824 already has, and both consumers read it. Parallelizing a duplicated walk would only hide the duplicate.",
+   "law": "Delete the re-derivation before scheduling it (RESIDUE 9930-9945's lesson).",
+   "evidence": "Read driver.mn:150-170, 240-280, 410-600 and 820-830.",
+   "gate": "A cost line counting modules read per compile, which must equal the link's module count.",
+   "leverage": "low"
+  },
+  {
+   "id": "T16",
+   "title": "Phase 9.2's parallelism peers have no entry in RESIDUE.md",
+   "sites": [
+    "PLAN.md (§11 Phase 9.2)",
+    "driver.mn:278",
+    "RESIDUE.md"
+   ],
+   "class_size": "8 of the 9 peers Phase 9.2 names have no entry head. Six appear nowhere in RESIDUE.md (level-set-par-walk, fanout-simd-lane-cashout, fanout-gpu-backend-handler, speculative-compile, f1.handler-substrates, native.effect-state-parallel-safety). work-stealing-via-gradient appears once in passing (line 15648), and deterministic-handle-partition only inside other entries. Only schedule-specialized-callee has an entry.",
+   "current": "PLAN's own rule is that a gap not in RESIDUE.md does not exist, yet code cites Hβ.driver.level-set-par-walk (driver.mn:278).",
+   "ideal": "Bank each peer's design (this audit's root designs supply most of them), or delete it from PLAN.",
+   "law": "One home per truth; a named peer without its design is a hidden gap.",
+   "evidence": "This session's grep of RESIDUE.md for each anchor's entry head.",
+   "gate": "doc-truth asserts that every Hβ anchor cited by PLAN or the source resolves to a RESIDUE entry head.",
+   "leverage": "low"
+  }
+ ],
+ "root_designs": [
+  "R1 INSTANCE SEGMENTS, the arena's SPACE face (T1, T3, T4). The image is split into per-instance segments, one atomic add per chunk, and each instance bumps privately. An arena's region is a span of its own instance's segment, so evacuation and reset work unchanged under spawn. A segment id is the arena half of the {arena, offset} handle, and deterministic chunk bases make addresses reproducible. Module values live once in the shared image: a spawned instance takes the root's module-values record through the task record and never re-runs inits.",
+  "R2 CURSOR = ARENA + OVERLAY (T5, T6, T8, T10, T11). `(body) ~> segment(base)`: reads fall through to the base graph, and writes and mints land in the segment with {segment, offset} handles. Rollback is the segment's exit; commit is an ordered publication through the arena's journal; a conflict between commits becomes the C6 question. This replaces the twelve checkpoint brackets, keeps the level-set judgment deterministic at any width, and lets N battery fixtures read one library judgment.",
+  "R3 READ AND WRITE ARE TWO CAPABILITIES, AND 'WHAT AN ARM WRITES' IS ONE FACT (T2, T7, T9, T11). L5 already split ResumeSummaries from ResumeSummariesWrite, and the frozen round can be shared as written. Generalize that: freeze the registries into read-only views at the settle point; make Memory's loads and stores two effects; have the race rule read the handler's published write set (`resume … with` updates plus the age claim's TgState stores) instead of `resume … with` alone.",
+  "R4 THE SCHEDULE IS A POOL (T4, T8, T13). `parallel_compose(workers)` takes its degree as config, starts K instances once per install, and runs a fanout of N as K chunked worker loops that write results by index and join in order. A refused spawn runs inline. Spawn cost becomes O(K) per install instead of O(N) per fanout, which is what makes block-rate DSP and per-fixture batteries worth threading.",
+  "R5 TOPOLOGY AS GRADIENT (T13, T14). The medium proposes `><` or `fanout` wherever independence is proven (no data edge, no handler reached that writes state, distinct records), with the race rule as the proposal's proof gate and the schedule proposed from measured cost; `mentl accept` writes it.",
+  "ORDER: R1 and R3 first. They are the substrate and the gate's soundness: without R1 the wheel cannot adopt a schedule without losing every arena, and without R3's one write fact the race rule is unsound. Then R4 and R1's module-values half, for correctness under spawn. Then R2. The first wheel phase to thread is emission (T7), then the classifier rounds (T9, which the race rule accepts today), then the judgment's level sets (T6, the largest win), then the battery (T8), then the user-facing surface (T13, T14). Each step is gated by m3 under Seq being byte-identical to m3 under parallel_compose."
+ ],
+ "verb_gaps": [
+  "V1: `mentl query <entry> 'why EFFECT in NAME'` should give the call path by which NAME's row carries EFFECT. This is needed to act on an E_ThreadedBranchEffect refusal and on emit_functions' 18-effect row; `refs of` and `effects of` cannot answer it.",
+  "V2: Work per binding group and per level (nodes minted, bytes, time), plus the DAG's critical path. That is T6's speed-up bound; `cost` answers only totals.",
+  "V3: Wall time per phase (judgment, classifier rounds, settle point, emission) beside the existing heap lines. The serial fraction is unmeasured, so every parallel win in this report stays a design until this exists.",
+  "V4: A dry-run race verdict at a fanout site. `mentl where` already prints 'fanout [Seq, a branch per element]'; it should also print, per effect, what the race rule would say under a spawning schedule (for example 'refused: graph_handler writes state') without editing the program.",
+  "V5: A projection of the age claim's per-handler state stores (a `stores of HANDLER` facet, or part of `where` on a handler), showing which arms write their state in place. This gives the class size of T2."
+ ]
+}

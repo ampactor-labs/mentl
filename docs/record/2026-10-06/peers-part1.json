@@ -1,0 +1,894 @@
+{
+ "part": "RESIDUE 1-3199",
+ "entries_read": 109,
+ "verdicts": [
+  {
+   "peer": "Hβ.space.view-is-graph-content",
+   "line": 31,
+   "status": "still-true",
+   "evidence": "Born at L-C (LEDGER 38-144 records the 14534-vs-7624 handle split). src/space.mn doc: space_view/ring_of compute the View per answer; no View node exists in the graph.",
+   "correction": "Status holds. Design note: the View-as-node is the IC cursor's epoch-keyed memo (PLAN §2 'cached cursor'), not a fresh node per read, and its identity across generations waits on positions-as-cells / (arena, offset).",
+   "next_landing": "L-D (the canvas), #108"
+  },
+  {
+   "peer": "Hβ.felt.project-picker-outside-chromium",
+   "line": 54,
+   "status": "still-true",
+   "evidence": "Born at L-C; LEDGER L-C records `project <dir>` manifest lines and `mentl space <dir>`; showDirectoryPicker remains Chromium-only.",
+   "correction": "",
+   "next_landing": "L-D"
+  },
+  {
+   "peer": "Hβ.graph.module-nodes-are-a-column",
+   "line": 62,
+   "status": "still-true",
+   "evidence": "Doc rosters show module_handles ('one word compare per node against the module stamped at its birth'), latest_generation (cursor.mn), spans_of_module, source_slice, nth_line_offset, line_end_from (space.mn) and lit_vocab_build (infer.mn) all present; no per-module column exists.",
+   "correction": "",
+   "next_landing": "#108 (positions are cells), #189"
+  },
+  {
+   "peer": "Hβ.diag.module-identity-is-a-name",
+   "line": 83,
+   "status": "still-true",
+   "evidence": "session_forget (mcp.mn: 'the banked reports of the named modules … go') and forget_claims (driver.mn) both present: the two-key generation clear the entry names.",
+   "correction": "",
+   "next_landing": "#108"
+  },
+  {
+   "peer": "Hβ.space.binding-lede-reads-the-line",
+   "line": 100,
+   "status": "still-true",
+   "evidence": "binding_ledes (space.mn) present, resolving the binding through its line (address_resolve/span_line_of also present).",
+   "correction": "",
+   "next_landing": "one developer-facing renderer, #108"
+  },
+  {
+   "peer": "Hβ.graph.a-handle-is-a-handle-at-its-source",
+   "line": 109,
+   "status": "design-superseded",
+   "evidence": "Defect real (the View keeps Int handles; graph_next/mint return Int). But #129 (2026-10-03) made Addr its own word type (TAddr: arithmetic on it refuses, cap_result_fn_row has a TAddr arm) and PLAN §11 states a handle IS a two-field product {arena, offset} pinned to one word.",
+   "correction": "A refinement `Int where 0 <= self` keeps a handle a NUMBER (h + 1 still judges). The Addr precedent is the better form: Handle its own type at the minting ops (an opaque word, or the {arena, offset} product with a repr pin), so every flow carries it by construction and arithmetic on a handle refuses; the source-refinement is at most a waypoint.",
+   "next_landing": "#108; 9.2's (arena, offset)"
+  },
+  {
+   "peer": "Hβ.audit.pending-tier-attributes-by-line-extent",
+   "line": 117,
+   "status": "still-true",
+   "evidence": "audit_walk (pipeline.mn) present with its line-extent tuple; enclosing_decl (cursor.mn), the edge form the entry names, exists.",
+   "correction": "",
+   "next_landing": "#108"
+  },
+  {
+   "peer": "Hβ.lib.search-answers-a-sentinel",
+   "line": 128,
+   "status": "still-true",
+   "evidence": "index_of : (s, sub) -> Int (prelude), find_char -> Int (strings), found_at : Int -> Option(Int) wrapper (space.mn).",
+   "correction": "Dependency to record: today Option(Int) costs a Some record per hit (base_digit shows Option(Int) is Memory + Alloc), so the honest form is cost-neutral only with Hβ.repr.option-of-word-niche; land them together or every search gains an allocation.",
+   "next_landing": "none listed (with L2193)"
+  },
+  {
+   "peer": "Hβ.cursor.handler-effects-reads-the-declaration",
+   "line": 135,
+   "status": "still-true",
+   "evidence": "Re-measured on boot c8ba5799: `mentl lib/persist.mn:216` answers `Effects: Pure` at handler persist_to_disk, whose arms write the image through WASI (image_write_wire).",
+   "correction": "",
+   "next_landing": "one developer-facing renderer, L-D"
+  },
+  {
+   "peer": "Hβ.viz.why-walk-elides-trivial-hops",
+   "line": 145,
+   "status": "still-true",
+   "evidence": "Re-measured at L-C (hops reach the page as NoteHop text); why_fact/chain_note/hop_line in space.mn render hops as strings.",
+   "correction": "",
+   "next_landing": "one developer-facing renderer, L-D"
+  },
+  {
+   "peer": "Hβ.viz.severance-map",
+   "line": 154,
+   "status": "still-true",
+   "evidence": "PLAN §11 Arc G unchanged; §4③ still lists the modal world-index open.",
+   "correction": "Add the measured false-green carriers in this range as the map's explicit preconditions (each must close or be counted in the third colour): variant-payload fn rows (L1983), inits outside main's negations (L3132), index partiality not rowed (L2913), divergence not rowed (L2922).",
+   "next_landing": "L-E"
+  },
+  {
+   "peer": "Hβ.syntax.positive-row-is-authored-by-hand",
+   "line": 173,
+   "status": "marked-closed-correctly",
+   "evidence": "src/board.mn:203 Bound({ceiling: 0, shape: CsAuthoredPositiveRow}); LEDGER pin d27fc81d (2026-09-27).",
+   "correction": "",
+   "next_landing": ""
+  },
+  {
+   "peer": "Hβ.frontier.census-judge-races-its-pool",
+   "line": 196,
+   "status": "still-true",
+   "evidence": "One sighting (LEDGER 4093-4098); run_census still at tools/frontier-gate.sh:1370; no second sighting recorded.",
+   "correction": "",
+   "next_landing": ""
+  },
+  {
+   "peer": "Hβ.infer.ground-differs-by-route",
+   "line": 211,
+   "status": "still-true",
+   "evidence": "Only birth mentions (LEDGER 4143-4149). The march still compiles the concatenated stdin wheel (march.sh:241, wt-env.sh wt_wheel) while every verb judges the weave, so two routes still exist; unmeasured since 2026-09-27.",
+   "correction": "Stronger form: retire the second route — compile the wheel through its import graph at the march — so the divergence is unconstructible; the grouping question then reduces to the cold-vs-cone equality E2/L-C already gate (the twin compares Views cold vs resident).",
+   "next_landing": "#189"
+  },
+  {
+   "peer": "Hβ.march.determinism-is-never-probed",
+   "line": 232,
+   "status": "already-closed",
+   "evidence": "Commit 99c0c663 (2026-09-21) made tools/state.sh print the determinism line from .build/gate/fixpoint-stamp (march.sh:523 writes it under --fixpoint); the stamp today holds c8ba5799… — the current boot — so m3 == m4 is confirmed at this pin.",
+   "correction": "Mark CLOSED: the visible blank and the on-demand cadence both landed.",
+   "next_landing": ""
+  },
+  {
+   "peer": "Hβ.cli.two-operations",
+   "line": 251,
+   "status": "still-true",
+   "evidence": "`mentl help` today lists 24 verbs (accept added since the measurement; why/where/query still verbs); tools/drift-patterns.tsv row 38 still carries the carve-out. L-C added `mentl space <file>:<line>` — the same project read rendered as JSON — which argues for the collapse.",
+   "correction": "",
+   "next_landing": ""
+  },
+  {
+   "peer": "Hβ.docs.laws-and-casebook",
+   "line": 272,
+   "status": "still-true",
+   "evidence": "CLAUDE.md still interleaves imperative laws with dated casebook paragraphs.",
+   "correction": "",
+   "next_landing": ""
+  },
+  {
+   "peer": "Hβ.syntax.normative-grammar-is-projectable",
+   "line": 293,
+   "status": "still-true",
+   "evidence": "`mentl query src/lexer.mn \"variants TokenKind\"` = 63 (the checksum holds today); `variants DiagKind` = 75 constructors, while SYNTAX's catalog names ten diagnostics no constructor carries: E_ConcatTypeMismatch, E_PipeIntoComplete, E_PipeHoleAmbiguous, E_HandlerUninstallable, E_ImportNameCollision, E_StatementSemicolon, W_Suggestion, W_EmptyRow, W_RedundantRepr, W_CapabilityEmpty. `mentl diagnostics` still on SYNTAX's lag list.",
+   "correction": "Status holds; the measured catalog drift is the evidence to bank.",
+   "next_landing": ""
+  },
+  {
+   "peer": "Hβ.parser.refine-stmt-frees-are-empty",
+   "line": 311,
+   "status": "still-true",
+   "evidence": "src/parser.mn:3794 `RefineStmt(_, _, _) => []`, its comment (3766) now citing predicate-is-expr; refine_roots (query.mn) still seeds the facet.",
+   "correction": "Not an independent landing: once a predicate is an expression node (Hβ.types.predicate-is-expr) collect_free_uses descends it purely and the GraphRead objection dissolves.",
+   "next_landing": "#109 (with predicate-is-expr), E1"
+  },
+  {
+   "peer": "Hβ.verify.smt-operand-read-must-be-inline",
+   "line": 342,
+   "status": "still-true",
+   "evidence": "`mentl query src/main.mn smt` renders dsp/signal:83 as (- 0.0 1.0) — the site fix holds; body_to_smt no longer exists (verify.mn doc); no probe at NodeBody's arity recorded in LEDGER.",
+   "correction": "",
+   "next_landing": "#109"
+  },
+  {
+   "peer": "Hβ.voice.voiceline-renders-to-nobody",
+   "line": 383,
+   "status": "design-superseded",
+   "evidence": "`mentl query src/main.mn unreachable` still lists render_voiceline, render_slots, render_slot, render_modifier (voice: 15 of 46 unreached).",
+   "correction": "L-C's View (src/space.mn: typed RingFact/LensFact/LedgerFact, projected as ring_text and view_json) is now the developer-facing tree. Wiring VoiceLine would mint a second renderer beside it; the close is the LSP and the voice projecting the View (completion and code actions read its Propose/Teach facts) and the VoiceLine render path deleted.",
+   "next_landing": "one developer-facing renderer"
+  },
+  {
+   "peer": "Hβ.voice.situation-gradient-is-never-filled",
+   "line": 398,
+   "status": "design-superseded",
+   "evidence": "compose_propose_situation(target_handle, target_reason, prior_turn) takes no gradient, so gradient_next is still TeachNone; code_actions_from_slots / map_code_actions_to_json unchanged (lsp.mn).",
+   "correction": "The View's Teach fact (teach_fact over decl_teaching) and accept_draw (main.mn: 'shared by the CLI verb and the resident session') already carry the gradient and its edit. The LSP code action should project the View's Teach fact and accept through accept_draw; Situation.gradient_next is a parallel home to delete, not fill.",
+   "next_landing": "one developer-facing renderer, L-D"
+  },
+  {
+   "peer": "Hβ.voice.free-variables-render-as-handles",
+   "line": 441,
+   "status": "still-true",
+   "evidence": "Every `mentl doc` roster read this session prints handles (mentl.mn gradient_next: `performed: List((EffName, t172290@e200091))`); re-measured at L-C at a Query line.",
+   "correction": "Rather than one bracket per reader, move name_type_vars' naming into the one developer-facing type renderer every surface calls (doc, type of, Query, LSP hover, E_TypeMismatch), keeping show_handle for `query unresolved` only.",
+   "next_landing": "one developer-facing renderer"
+  },
+  {
+   "peer": "Hβ.query.name-keyed-verbs-miss-locals",
+   "line": 477,
+   "status": "still-true",
+   "evidence": "On lib/tutorial/03-verbs.mn: `mentl why … n`, `query \"type of n\"` and `query \"flow of n\"` each answer 'not found: n'; `mentl where … n` finds both parameters (27:18, 31:13).",
+   "correction": "The banked 'binders column, name → binder handle' is a name-keyed second index. With E1 the env's own extend draws the binder edge, and with #108 binders are cells reached by the scope's parent edges (E4), so an unused binder is found without a name map.",
+   "next_landing": "E1 (the Env protocol), #108"
+  },
+  {
+   "peer": "Hβ.oracle.ranked-queue-is-a-second-frontier",
+   "line": 501,
+   "status": "marked-closed-correctly",
+   "evidence": "Commit 43e371c9; ic_compile_loop and project_queue_merger absent from the doc rosters.",
+   "correction": "",
+   "next_landing": ""
+  },
+  {
+   "peer": "Hβ.effects.reachable-perform-with-no-install-compiles",
+   "line": 537,
+   "status": "marked-closed-correctly",
+   "evidence": "LEDGER pin bbc0cc2c (2026-09-27); crown leak-root-direct and leak-root-escape present.",
+   "correction": "",
+   "next_landing": ""
+  },
+  {
+   "peer": "Hβ.verify.smt-lowering-built-and-never-run",
+   "line": 562,
+   "status": "stale-description",
+   "evidence": "Header reads OPEN, body says CLOSED. The smt facet rendered 39 obligations today, so the serializer is live; but `unreachable` still lists domain_hi, max_of_lit, verify_residual (verify: 3 of 149 unreached).",
+   "correction": "CLOSED for the serializer; three of the fourteen decls — the residual-discharge half (verify_residual, domain_hi, max_of_lit) — remain unreached and belong to 8.3's solver: consume or delete them there.",
+   "next_landing": "#109"
+  },
+  {
+   "peer": "Hβ.verify.bounds-are-the-wheels-not-the-targets",
+   "line": 583,
+   "status": "still-true",
+   "evidence": "src/board.mn's roster is one fixed list (CsEffectfulLambda 220, CsWildcardZero 7, CsWildcardFabricates 21, the rest 0) and census_sites(shape) takes no module scope.",
+   "correction": "Numbers stale: 367 → 220, 9 → 7, record-pattern-open retired at R0d. Scoping census_sites to the target's own modules is the module-as-scope read.",
+   "next_landing": "#189"
+  },
+  {
+   "peer": "Hβ.syntax.function-literal-is-an-arm-list",
+   "line": 607,
+   "status": "still-true",
+   "evidence": "format.mn re-sugars only minted params (resugar_walk via is_dp_name, module_arm_list via is_al_name, format.mn:627-708); the wheel carries both spellings in one file: cursor.mn:313 `map((h) => position_key(h, caret, reach))` beside :315 `find({ h => span_eq(…) }, …)`.",
+   "correction": "Entry accurate; SYNTAX §«The residue» (line 418) overclaims — it says sole-parameter lambdas render as arms and lists only two remainders, omitting this entry's third (the author-named, non-match sole-param lambda).",
+   "next_landing": "fmt cargo-style"
+  },
+  {
+   "peer": "Hβ.emit.param-list-is-not-a-product",
+   "line": 690,
+   "status": "marked-closed-correctly",
+   "evidence": "RETRACTED; SYNTAX now states a pair is ONE argument; the live idea is Hβ.lower.parameter-product-calling-convention (L2172).",
+   "correction": "",
+   "next_landing": ""
+  },
+  {
+   "peer": "Hβ.syntax.field-accessor-documented-never-built",
+   "line": 715,
+   "status": "marked-closed-correctly",
+   "evidence": "SYNTAX §«Partial application» records the deletion; no accessor parses.",
+   "correction": "",
+   "next_landing": ""
+  },
+  {
+   "peer": "Hβ.voice.comment-ref-gate-reads-the-flattened-link",
+   "line": 732,
+   "status": "still-true",
+   "evidence": "Re-measured at L-C (137/139 narrations in 19 modules). Every module-as-entry run this session narrated W_CommentRefUnresolved: types.mn 35, lower.mn 28, infer.mn 23, board.mn 10, mentl.mn 5, parser.mn 3, format.mn 2.",
+   "correction": "Design nuance for the sweep: most sampled misses are a lower module's prose naming a higher module's reader — a reverse edge `refs of` already projects — so by SYNTAX's deletion test they are confessions to delete, not references to re-point. The build stays the crc_resolve conjunct plus lib/io no longer importing src/types.mn.",
+   "next_landing": "#189 with #188's prose-edge cut"
+  },
+  {
+   "peer": "Hβ.verify.class-bound-cannot-tally-in-the-arm",
+   "line": 898,
+   "status": "stale-description",
+   "evidence": "tools/verify.sh:512-521: the three emit-time ratchets RETIRED at R0″ (armed as E_FieldOffsetUnprovable / E_ShapeUnprovable); census_errors_max and comment_refs_max remain stderr greps (verify.sh:472, 498). L-C added effect DiagBank / diag_bank, a forwarding handler installed outside the diagnostics arm that banks every report with kind and site (space/session/mcp chains).",
+   "correction": "The 'knot' — where class state can live without the arm allocating — is answered by DiagBank: install it in mentl verify's chain and the board reads the two remaining infer-time classes as located sites; the emit-time half needs nothing (armed).",
+   "next_landing": "none listed (board absorption)"
+  },
+  {
+   "peer": "Hβ.verify.class-bounds-stop-at-the-judgment",
+   "line": 943,
+   "status": "already-closed",
+   "evidence": "R0″ (pin 2d18aedd, 2026-09-28) moved both classes to the settle point and armed them; verify.sh:512 records the ratchets retired; verify-baseline.txt has no field-offset/eq-type keys.",
+   "correction": "Close: an armed class refuses the compile, so neither a bound nor an emit-measuring leg is owed.",
+   "next_landing": ""
+  },
+  {
+   "peer": "Hβ.syntax.multi-param-lambda-is-a-reference",
+   "line": 955,
+   "status": "still-true",
+   "evidence": "The wheel still writes two-parameter lambdas (parser.mn:3744 `(acc, upd) => …`, :3801).",
+   "correction": "Dependency: an arm list over a pair can serve every multi-param position only once Hβ.lower.parameter-product-calling-convention lands; with it, `(params) => body` deletes without naming every accumulator.",
+   "next_landing": "none listed (with L2172)"
+  },
+  {
+   "peer": "Hβ.syntax.handler-chain-is-a-value",
+   "line": 975,
+   "status": "still-true",
+   "evidence": "infer_context / compile_context present (pipeline.mn); src/board.mn's own record: 'infer_context takes a THUNK, so every route that judges pays one lambda' (L-C added two such routes).",
+   "correction": "",
+   "next_landing": ""
+  },
+  {
+   "peer": "Hβ.verify.board-is-not-yet-a-value",
+   "line": 992,
+   "status": "stale-description",
+   "evidence": "LEDGER pin d706ad6d (2026-09-20): a breached bound names its sites; src/board.mn:53 `Standing = Within([(String, Span)]) | Over([(String, Span)])`, board_sites.",
+   "correction": "The 'names its sites' half of the CLOSE shipped the same day; only the generation operand (Hβ.query.generation-operand) remains.",
+   "next_landing": ""
+  },
+  {
+   "peer": "Hβ.verify.bounds-outside-the-graph-stay-in-bash",
+   "line": 1028,
+   "status": "stale-description",
+   "evidence": "tools/verify-baseline.txt: 1,374 lines, nine keys (census_errors_max, comment_refs_max, fs_impl_bypass_max, frontier_expected_red, loop_scaffold_refs_max, desugar_vocabulary, authored_own_max, authored_ref_max, selfcompile_peak_kb_max).",
+   "correction": "Of the fourteen listed, the solo manifest (F0b), the field-offset/eq-type counts (R0″, armed) and the judge-spawn delta (the fan no longer spawns) are gone, and the micro battery runs as `mentl test` RUN lines judged by the host loop (L-H). Nine remain: census_errors/comment_refs become DiagBank reads, authored own/ref a census shape, fs_impl_bypass a census over the effect seam's nine `refs of` answers.",
+   "next_landing": "L-F (partly)"
+  },
+  {
+   "peer": "Hβ.cursor.address-drops-module-identity",
+   "line": 1048,
+   "status": "marked-closed-correctly",
+   "evidence": "tests/frontier/address-module-demo present.",
+   "correction": "",
+   "next_landing": ""
+  },
+  {
+   "peer": "Hβ.synth.leaked-diagnostic-lands-in-a-stranger",
+   "line": 1111,
+   "status": "still-true",
+   "evidence": "Span half open: no LEDGER change since F0b's module half; candidates still minted at span_zero.",
+   "correction": "",
+   "next_landing": "#108"
+  },
+  {
+   "peer": "Hβ.cursor.module-of-a-span-is-containment",
+   "line": 1134,
+   "status": "marked-closed-correctly",
+   "evidence": "position_proximity and module_reach_of present; tests/frontier/gradient-module-demo present.",
+   "correction": "",
+   "next_landing": ""
+  },
+  {
+   "peer": "Hβ.felt.accepted-clause-carries-its-proof",
+   "line": 1170,
+   "status": "still-true",
+   "evidence": "Only birth mention (LEDGER 1808); a declaration accept still writes through render_fn_head / splice_decl_head with no graph_accept_note.",
+   "correction": "",
+   "next_landing": "L-D"
+  },
+  {
+   "peer": "Hβ.teach.leverage-reads-direct-applications",
+   "line": 1183,
+   "status": "still-true",
+   "evidence": "applications_of (mentl.mn) still reads only the note_application edge.",
+   "correction": "",
+   "next_landing": ""
+  },
+  {
+   "peer": "Hβ.cursor.proximity-reads-the-call-graph",
+   "line": 1202,
+   "status": "still-true",
+   "evidence": "position_proximity / same_enclosing_decl (cursor.mn) carry no reference-distance term.",
+   "correction": "",
+   "next_landing": "L-D"
+  },
+  {
+   "peer": "Hβ.felt.session-caret-never-moves",
+   "line": 1211,
+   "status": "still-true",
+   "evidence": "entry_start_caret (main.mn) opens at the entry's module node; handle_at_span is the only resolver for transport-produced spans.",
+   "correction": "",
+   "next_landing": "L-D"
+  },
+  {
+   "peer": "Hβ.graph.mutation-delta-is-write-only",
+   "line": 1221,
+   "status": "design-superseded",
+   "evidence": "`provider of graph_mutated` → mutate_sink (graph:1221) and lsp_adapter (lsp:654), both `(_epoch, _mutation) => resume()`. The entry's 'one real IC consumer polls graph_epoch()' is stale — the queue merger is deleted (graph.mn's own comment says so). C6 reads the same (handle, prior) delta straight off the TRAIL (written_since / graph_written_since), and E2's cone is a per-module manifest diff.",
+   "correction": "The trail is the delta's home; the effect re-sends it to no one. Better form: delete graph_mutated (or keep it only as the transport's push channel) and have every delta consumer — the cone, the board's generation diff, the divergence question — read the trail. The cross-generation half needs stable identity, since a re-parse mints new handles.",
+   "next_landing": "#108, E2 remainder"
+  },
+  {
+   "peer": "Hβ.synth.denotation-of-a-nullary-constructor",
+   "line": 1251,
+   "status": "still-true",
+   "evidence": "synth_proposer.mn:1643 candidate_denotation follows zero-arg calls into node_const; `variants LitValue` = LVInt|LVFloat|LVString|LVBool (no constructor value); nullary_ctor_names (:1567) fires only for bare references, so none_of() vs None still falls through.",
+   "correction": "",
+   "next_landing": ""
+  },
+  {
+   "peer": "Hβ.lower.schedule-specialized-callee",
+   "line": 1271,
+   "status": "marked-closed-correctly",
+   "evidence": "fanout_reach_of, enc_sched, nested_twin, fanout_form present.",
+   "correction": "Minor: fanout_reach_names no longer exists (D5 deleted the whole-program closure), so 'read whole by mentl where' is history.",
+   "next_landing": ""
+  },
+  {
+   "peer": "Hβ.threads.task-record-carries-the-arm-world",
+   "line": 1390,
+   "status": "marked-closed-correctly",
+   "evidence": "tests/frontier/mn-threaded-branch-thread-op.mn present; no reopen recorded.",
+   "correction": "",
+   "next_landing": ""
+  },
+  {
+   "peer": "Hβ.lower.schedule-through-a-value",
+   "line": 1407,
+   "status": "still-true",
+   "evidence": "SYNTAX §`><` still cites it; no LEDGER change.",
+   "correction": "",
+   "next_landing": "rides #159's unified record"
+  },
+  {
+   "peer": "Hβ.lower.twin-key-is-a-product",
+   "line": 1420,
+   "status": "still-true",
+   "evidence": "enc_sched, enc_type_part and sched_suffix present (lower.mn doc).",
+   "correction": "",
+   "next_landing": ""
+  },
+  {
+   "peer": "Hβ.lower.race-rule-obligation-flows-to-callers",
+   "line": 1433,
+   "status": "still-true",
+   "evidence": "Only birth mention (LEDGER 1988).",
+   "correction": "",
+   "next_landing": ""
+  },
+  {
+   "peer": "Hβ.persist.sequence-fanout-replay-barrier",
+   "line": 1444,
+   "status": "still-true",
+   "evidence": "lib/persist.mn:84 `persist_branch(() -> a with !WASI + !Filesystem + !Network)`; :248 fanout_persisted(f, xs) and :250 persist_branch_of(f, x) = persist_branch(() => f(x)); the form is selected at emit, so the op's gate never meets the user's f at judgment.",
+   "correction": "",
+   "next_landing": ""
+  },
+  {
+   "peer": "Hβ.lower.closure-continuation-partial-are-one-record",
+   "line": 1456,
+   "status": "still-true",
+   "evidence": "`mentl query src/lower.mn \"variants LowExpr\"`: LMakeClosure/3 and LMakeContinuation/5 still separate, 42 constructors in all.",
+   "correction": "The 39-constructor count is now 42 (LYield, LKExtend, LAbandon, LUnwind, LDerive, LArena). Added reason: the arena's open closure-evac-face needs a typed layout for function values, which the one record gives.",
+   "next_landing": "#159 (capture at every position)"
+  },
+  {
+   "peer": "Hβ.driver.staleness-is-a-poll-not-an-edge",
+   "line": 1496,
+   "status": "still-true",
+   "evidence": "session_current (mcp.mn): 'before a message is answered, the tree's manifest recomputes and compares against the banked one'; driver_manifest hashes every woven module.",
+   "correction": "In the page the edit is itself the notification and can name the changed module; only the CLI session needs a poll.",
+   "next_landing": "L-D, E1"
+  },
+  {
+   "peer": "Hβ.kernel.staging-is-an-epoch-not-a-mode",
+   "line": 1515,
+   "status": "still-true",
+   "evidence": "Its falsifiable test is unmet: resolve_in_stack (lower.mn) is still the compile-time walk beside the emitted runtime walk. L4a's projection roster (PDispatch | PSchedule | PDerivative) and the arena's LArena show the mechanism a `~> Stage` class would join.",
+   "correction": "",
+   "next_landing": ""
+  },
+  {
+   "peer": "Hβ.effects.lexical-tier-omits-the-world-bracket",
+   "line": 1588,
+   "status": "stale-description",
+   "evidence": "Pinned at f862677e the same day (LEDGER 6482: 'RESOLVED BY CONSTRUCTION').",
+   "correction": "Drop 'boot not yet re-pinned'.",
+   "next_landing": ""
+  },
+  {
+   "peer": "Hβ.effects.an-arm-may-not-perform-its-own-handlers-ops",
+   "line": 1632,
+   "status": "marked-closed-correctly",
+   "evidence": "Crown leak-root-arm-self, leak-root-inner-install, sound-root-outer present.",
+   "correction": "",
+   "next_landing": ""
+  },
+  {
+   "peer": "Hβ.effects.one-walk-three-implementations",
+   "line": 1702,
+   "status": "already-closed",
+   "evidence": "LEDGER pin f862677e (2026-09-10): LPerform(Int, PerformDispatch, [LowExpr]) with PdLexical/PdResolved/PdWalked/PdSelfState; $world_find deleted; `variants LowExpr` shows LPerform/3.",
+   "correction": "Header should read CLOSED at f862677e. The 'one definition, two evaluation times' form it banked is not reached (resolve_in_stack beside the runtime walk) and lives on in L1515.",
+   "next_landing": ""
+  },
+  {
+   "peer": "Hβ.emit.fn-table-index-zero-aliased-the-absence",
+   "line": 1720,
+   "status": "marked-closed-correctly",
+   "evidence": "Nested in the one-walk entry; resolved in the same landing (slot 0 reserved null, LEDGER 6514-6527).",
+   "correction": "",
+   "next_landing": ""
+  },
+  {
+   "peer": "Hβ.emit.reified-op-needs-a-declaring-set-walk",
+   "line": 1801,
+   "status": "marked-closed-correctly",
+   "evidence": "Superseded as a face of one-walk, which landed with eta 3 → 0.",
+   "correction": "",
+   "next_landing": ""
+  },
+  {
+   "peer": "Hβ.emit.nonfn-binding-as-function-value",
+   "line": 1848,
+   "status": "marked-closed-correctly",
+   "evidence": "One-walk closed the ambiguous remainder (eta 0); R0g deleted the use-site arity read (scheme_ref_arity absent from the docs); mn-ctor-as-value / mn-op-as-value present.",
+   "correction": "",
+   "next_landing": ""
+  },
+  {
+   "peer": "Hβ.emit.nonfn-binding-as-function-value (original text)",
+   "line": 1871,
+   "status": "marked-closed-correctly",
+   "evidence": "Historical record of the peer resolved at L1848.",
+   "correction": "Its 'eta_max: 11' is history; fold into L1848.",
+   "next_landing": ""
+  },
+  {
+   "peer": "Hβ.effects.return-position-fn-row-is-a-var",
+   "line": 1926,
+   "status": "already-closed",
+   "evidence": "cap_result_fn_row (infer.mn:12095) is total over Ty — lists, tuples, records, alias, refinement, repr pin; crown leak-resume-latent, -in-list, -in-tuple, -via-alias present.",
+   "correction": "'It still RUNS: E_EffectMismatch is not armed' is stale — armed since 2026-09-25. The one carrier left is L1983.",
+   "next_landing": ""
+  },
+  {
+   "peer": "Hβ.effects.variant-payload-fn-row",
+   "line": 1983,
+   "status": "still-true",
+   "evidence": "infer.mn:12091-12094 names this peer, and :12111 `TName(n, args) => TName(n, args)`; crown has only the generic-payload leak-variant-latent, nothing for a declared fn-typed payload through an op's result.",
+   "correction": "",
+   "next_landing": "L-E (a false green under !E)"
+  },
+  {
+   "peer": "Hβ.tools.micro-battery-link-is-the-blob",
+   "line": 1996,
+   "status": "still-true",
+   "evidence": "battery_libs (main.mn): 'compile each against the runtime lib set'; wt_battery runs `mentl test tests/micros` (L-H moved execution to the host, not the link).",
+   "correction": "",
+   "next_landing": "#189"
+  },
+  {
+   "peer": "Hβ.effects.two-instances-of-one-effect-do-not-join",
+   "line": 2014,
+   "status": "still-true",
+   "evidence": "TYPE face open; RESIDUE 8486 (L4b): 'The effect's t is one instantiation per program … so a program seeds one type' — the face now limits derive; the third face closed at #129.",
+   "correction": "",
+   "next_landing": "W1, L-E"
+  },
+  {
+   "peer": "Hβ.tools.cost-ratchet-reads-one-sample",
+   "line": 2065,
+   "status": "marked-closed-correctly",
+   "evidence": "read_cost's minimum-of-three in march.sh; numbers in it are history (ceiling now selfcompile_peak_kb_max: 539000).",
+   "correction": "",
+   "next_landing": ""
+  },
+  {
+   "peer": "Hβ.tools.gate-stamp-is-uniform",
+   "line": 2113,
+   "status": "marked-closed-correctly",
+   "evidence": "Named remainder still true: state.sh prints 'instrument · threads · ide: no memo kept'; verify.sh:459 still flies the effect seam's nine `refs of` questions.",
+   "correction": "",
+   "next_landing": ""
+  },
+  {
+   "peer": "Hβ.verify.solo-sweep-is-one-judgment",
+   "line": 2135,
+   "status": "marked-closed-correctly",
+   "evidence": "verify.sh keeps only the islands leg (636-664); EMissingImport/4 in DiagKind.",
+   "correction": "",
+   "next_landing": ""
+  },
+  {
+   "peer": "Hβ.lower.parameter-product-calling-convention",
+   "line": 2172,
+   "status": "still-true",
+   "evidence": "`variants DiagKind` includes EFnArityMismatch/3; SYNTAX: 'a pair is ONE argument, at every altitude'.",
+   "correction": "Also the enabler that lets L955 delete `(params) => body`.",
+   "next_landing": "none listed (W1 may exercise)"
+  },
+  {
+   "peer": "Hβ.repr.option-of-word-niche",
+   "line": 2193,
+   "status": "still-true",
+   "evidence": "base_digit : (b, byte) -> Option(Int) with Memory + Alloc (lexer.mn doc).",
+   "correction": "The arena now reclaims the per-digit records, but the row still says Alloc, so the niche remains the form; L128 depends on it.",
+   "next_landing": ""
+  },
+  {
+   "peer": "Hβ.query.cost-per-module",
+   "line": 2210,
+   "status": "still-true",
+   "evidence": "`mentl query lib/tutorial/00-hello.mn cost` → '9 module(s) · 8855 source line(s) · 27910 node(s) minted' — one sum; hello links types and threading.",
+   "correction": "The arena's per-extent heap lines make per-module bytes readable beside lines.",
+   "next_landing": "#189"
+  },
+  {
+   "peer": "Hβ.verify.comment-ref-ratchet-is-dark",
+   "line": 2223,
+   "status": "stale-description",
+   "evidence": "Its 'next probe' was answered 2026-09-20 in L732's entry: the ratchet reads .build/m2cache/m2.err of the wheel compiled as ONE concatenated module, and the gate judges only the entry module's comments.",
+   "correction": "Fold into L732 (one home).",
+   "next_landing": "#189"
+  },
+  {
+   "peer": "Hβ.teach.severance-vocabulary-from-link",
+   "line": 2257,
+   "status": "marked-closed-correctly",
+   "evidence": "gradient_candidates and performed_names_of_link (prevalence) present in mentl.mn.",
+   "correction": "pick_highest_leverage / unlock_capability, named in the entry, were deleted by D4.",
+   "next_landing": ""
+  },
+  {
+   "peer": "Hβ.types.predicate-is-expr",
+   "line": 2309,
+   "status": "still-true",
+   "evidence": "SYNTAX §Refinement still documents opaque acceptance of comparison chains; parser.mn:3766 cites it as RefineStmt's blocker.",
+   "correction": "",
+   "next_landing": "#109"
+  },
+  {
+   "peer": "Hβ.emit.unused-wide-param-floor (RESOLVED WHOLE)",
+   "line": 2328,
+   "status": "marked-closed-correctly",
+   "evidence": "param_repr_from_body and find_local_handle_* absent from the docs.",
+   "correction": "",
+   "next_landing": ""
+  },
+  {
+   "peer": "Hβ.emit.unused-wide-param-floor (RESOLVED FOR THE PROVEN CLASS)",
+   "line": 2349,
+   "status": "already-closed",
+   "evidence": "Superseded by the RESOLVED WHOLE record at L2328.",
+   "correction": "Fold into L2328.",
+   "next_landing": ""
+  },
+  {
+   "peer": "Hβ.emit.unused-wide-param-floor (TRAP PINNED)",
+   "line": 2420,
+   "status": "already-closed",
+   "evidence": "Superseded by the RESOLVED WHOLE record at L2328.",
+   "correction": "Fold into L2328.",
+   "next_landing": ""
+  },
+  {
+   "peer": "Hβ.emit.arm-wide-arg-face",
+   "line": 2466,
+   "status": "already-closed",
+   "evidence": "L3 (pin 730e097a, 2026-09-28) made an arm reading Float op args assemble (micro mn-wide-op-state-alloc-free); R0j (pin 523f1732, 2026-09-30) made a perform speak its site's face (mn-wide-op-perform-alloc-free: the arm reads the wide arg in `s + v`); emit_args_word no longer exists. tests/frontier/mn-arm-wide-op-arg.mn exists and is still not wired (no frontier-gate.sh reference).",
+   "correction": "Mark CLOSED; wire the fixture (expect 11) as a regression leg or delete it.",
+   "next_landing": ""
+  },
+  {
+   "peer": "Hβ.ifc.flowlabel-inference-in-hm",
+   "line": 2509,
+   "status": "marked-closed-correctly",
+   "evidence": "SUPERSEDED 2026-10-02 per PLAN §4⑥ / Phase 7.",
+   "correction": "",
+   "next_landing": ""
+  },
+  {
+   "peer": "Hβ.ifc.dcc-noninterference-gate",
+   "line": 2653,
+   "status": "design-superseded",
+   "evidence": "PLAN §4⑥ / Phase 7 (2026-10-02): no Flow row element, no label lattice; check_splice_flow_labels, query_flow_label and predicate_flow_label still present.",
+   "correction": "Remainder (1)'s 'labels riding the union-find, constraint moving to the sink edge' is replaced: a sink's demand is a refinement precondition on its parameter (exec(cmd: Trusted)), a leak is E_RefinementRejected at the argument, implicit flow is E4's ancestry; the construction-site splice check and FlowLabel/QFlowOf delete.",
+   "next_landing": "Phase 7 (none of the listed)"
+  },
+  {
+   "peer": "Hβ.syntax.effarg-node-in-with-clause",
+   "line": 2692,
+   "status": "marked-closed-correctly",
+   "evidence": "Crucibles sound-instance-ctor-distinct, sound-instance-effarg-distinct, leak-instance-node present.",
+   "correction": "Remainder still open: compound constant args and the fn-TYPE with-row's parse-time EANode.",
+   "next_landing": ""
+  },
+  {
+   "peer": "Hβ.query.unreadable-source-refusal",
+   "line": 2750,
+   "status": "marked-closed-correctly",
+   "evidence": "tools/frontier-gate.sh:1416-1425 still runs the unreadable-entry refusal leg.",
+   "correction": "",
+   "next_landing": ""
+  },
+  {
+   "peer": "Hβ.infer.hof-param-row-never-reaches-enclosing",
+   "line": 2767,
+   "status": "marked-closed-correctly",
+   "evidence": "Crown leak-hof-named-arg, leak-hof-annotated present.",
+   "correction": "",
+   "next_landing": ""
+  },
+  {
+   "peer": "Hβ.felt.candidate-render-is-format",
+   "line": 2822,
+   "status": "marked-closed-correctly",
+   "evidence": "Proposal fixtures fill `Box(??)`, `{x: ??, y: ??}`, `(??, ??)`, `()`, `(_, _) => ??`.",
+   "correction": "",
+   "next_landing": ""
+  },
+  {
+   "peer": "Hβ.synth.vocabulary-arg-holes",
+   "line": 2837,
+   "status": "still-true",
+   "evidence": "Call half open: the 24-fixture proposal battery fills references and constructors only (stage-fill fills `double`).",
+   "correction": "",
+   "next_landing": ""
+  },
+  {
+   "peer": "Hβ.synth.linked-ring-offers-substrate-internals",
+   "line": 2852,
+   "status": "still-true",
+   "evidence": "`mentl tests/proposals/string-value-tie.mn:4:20` today: a tie between hex_glyphs() and \"\".",
+   "correction": "",
+   "next_landing": "#189 (a module's exported surface read off its import edges)"
+  },
+  {
+   "peer": "Hβ.infer.arm-body-cell-is-free-at-propose",
+   "line": 2867,
+   "status": "design-superseded",
+   "evidence": "AN-1 (pin 311479e1, 2026-10-03): Handler(instance, answer) — every arm's value is judged into the answer cell minted at pre-registration (prereg_answer_cell), quantified with the instance and met at each install (install_answer).",
+   "correction": "The 'not connected at registration' premise is gone: the arm's cell IS the answer cell, genuinely polymorphic in an uninstalled handler, so a free hole there is correct. The honest proposals are answer-polymorphic — above all `resume(<the op's R>)`, the canonical arm body — or the answer each install in reach gives. What remains: the arm's span swallowing the trailing comma, and L2852's ring.",
+   "next_landing": ""
+  },
+  {
+   "peer": "Hβ.egraph.per-expr-effect-row",
+   "line": 2878,
+   "status": "marked-closed-correctly",
+   "evidence": "row_of_subtree present (graph.mn).",
+   "correction": "",
+   "next_landing": ""
+  },
+  {
+   "peer": "Hβ.verify.partiality-reads-the-path-narrowing",
+   "line": 2894,
+   "status": "still-true",
+   "evidence": "The smt facet today shows exactly five partiality assertions (voice:506, egraph:195/196, verify:1468/1469); spine_put_narrowing (graph) and list_index_proven (lists) are both unreached.",
+   "correction": "",
+   "next_landing": "#109"
+  },
+  {
+   "peer": "Hβ.effects.index-partiality-is-a-row-fact",
+   "line": 2913,
+   "status": "still-true",
+   "evidence": "Only birth mention (LEDGER 2181).",
+   "correction": "",
+   "next_landing": "#109, L-E"
+  },
+  {
+   "peer": "Hβ.effects.divergence-is-a-row-fact",
+   "line": 2922,
+   "status": "still-true",
+   "evidence": "Only birth mention (LEDGER 2183).",
+   "correction": "",
+   "next_landing": "#109, L-E"
+  },
+  {
+   "peer": "Hβ.verify.refinement-rides-the-class",
+   "line": 2932,
+   "status": "marked-closed-correctly",
+   "evidence": "value_leaves (verify.mn) present.",
+   "correction": "",
+   "next_landing": ""
+  },
+  {
+   "peer": "Hβ.verify.pipe-stage-raises-no-claim",
+   "line": 2947,
+   "status": "marked-closed-correctly",
+   "evidence": "Crown leak-refine-pipe present.",
+   "correction": "",
+   "next_landing": ""
+  },
+  {
+   "peer": "Hβ.verify.interval-fragment-assumes-unbounded-int",
+   "line": 2963,
+   "status": "still-true",
+   "evidence": "lo_add present (verify.mn); no later LEDGER change.",
+   "correction": "",
+   "next_landing": "#109"
+  },
+  {
+   "peer": "Hβ.verify.row-facts-trust-proven-postconditions",
+   "line": 2981,
+   "status": "still-true",
+   "evidence": "leaf_excludes and carry_guard present; no later LEDGER change.",
+   "correction": "",
+   "next_landing": "#109"
+  },
+  {
+   "peer": "Hβ.verify.proven-return-over-products-and-cycles",
+   "line": 2994,
+   "status": "still-true",
+   "evidence": "The smt facet today shows the eleven lexer obligations (lexer:676 twice, 541, 355, 337, 332, 327, 321, 312, 298, 287).",
+   "correction": "",
+   "next_landing": "#109"
+  },
+  {
+   "peer": "Hβ.verify.contracts-through-parametric-calls",
+   "line": 3011,
+   "status": "still-true",
+   "evidence": "Value face open; today's cursor_at_handle(ph) obligations sit at main:896 and main:1238 (two, not four) plus space:125, 129, 626 (moved there by L-C) and cursor:313 (rank_positions).",
+   "correction": "Count stale: 'four sites in main.mn' is now two in main.mn and three in space.mn.",
+   "next_landing": "#109"
+  },
+  {
+   "peer": "Hβ.verify.provenance-through-destructure",
+   "line": 3034,
+   "status": "still-true",
+   "evidence": "Open half (a join with a non-construction tail) unchanged; contract_part, note_part, cross_parts present.",
+   "correction": "",
+   "next_landing": "#109"
+  },
+  {
+   "peer": "Hβ.verify.handler-state-reads-only-its-init",
+   "line": 3058,
+   "status": "marked-closed-correctly",
+   "evidence": "Crown leak-state-write, sound-state-unwritten present.",
+   "correction": "",
+   "next_landing": ""
+  },
+  {
+   "peer": "Hβ.verify.state-reads-its-invariant",
+   "line": 3077,
+   "status": "still-true",
+   "evidence": "AN-1's kill (19) made a writer that IS the fatal point refute (mn-state-reset-owes → REFUTED), but the inductive write (d = d + 1) and the arm-order dependence are untouched.",
+   "correction": "",
+   "next_landing": "#109"
+  },
+  {
+   "peer": "Hβ.verify.class-read-keeps-one-contract",
+   "line": 3093,
+   "status": "marked-closed-correctly",
+   "evidence": "Crown leak-fn-part-returned, leak-resume-fn-crosses, leak-authored-return-crosses, leak-nominal-field-crosses, leak-root-module-init present.",
+   "correction": "",
+   "next_landing": ""
+  },
+  {
+   "peer": "Hβ.verify.op-return-is-a-contract",
+   "line": 3118,
+   "status": "still-true",
+   "evidence": "Only birth mention (LEDGER 1358).",
+   "correction": "",
+   "next_landing": "#109"
+  },
+  {
+   "peer": "Hβ.effects.executable-row-includes-inits",
+   "line": 3132,
+   "status": "still-true",
+   "evidence": "Only birth mention (LEDGER 1359).",
+   "correction": "",
+   "next_landing": "L-E"
+  },
+  {
+   "peer": "Hβ.fmt.nominal-record-renders-its-variant",
+   "line": 3143,
+   "status": "still-true",
+   "evidence": "src/board.mn:38 `type Bound = Bound({ceiling: Int, shape: CensusShape})` — the variant spelling fmt writes.",
+   "correction": "",
+   "next_landing": "fmt cargo-style"
+  },
+  {
+   "peer": "Hβ.synth.candidate-row-is-unjudged",
+   "line": 3153,
+   "status": "still-true",
+   "evidence": "Only birth mentions (LEDGER 1338, 1361); candidate_proven present.",
+   "correction": "",
+   "next_landing": ""
+  },
+  {
+   "peer": "Hβ.emit.nested-record-literal-answers-the-inner-pointer",
+   "line": 3166,
+   "status": "marked-closed-correctly",
+   "evidence": "Micro tests/micros/mn-record-nested-literal.mn present (S4, pin 53f7404b).",
+   "correction": "",
+   "next_landing": ""
+  },
+  {
+   "peer": "Hβ.verify.relational-provision",
+   "line": 3177,
+   "status": "still-true",
+   "evidence": "hand_on_value and cross_provided present; only birth mention (LEDGER 1634).",
+   "correction": "",
+   "next_landing": "#109"
+  }
+ ],
+ "cross_cutting": [
+  "THE BLOB LINK IS ONE ROOT UNDER FOUR ENTRIES. The march (march.sh:241, wt_wheel), the micro battery (battery_libs in src/main.mn) and the frontier/effect-identity legs (RTLIBS) compile a concatenated stdin module, while every developer verb judges the weave through the import graph. L211 (rows ground on one route, open on the other), L732's first face and L2223 (comment-refs: 0 because the blob has one module) and L1996 (micros linked as a blob) are that one fact. #189's module-as-scope import graph is where the second route can be deleted rather than diffed.",
+  "THE VIEW AND DIAGBANK (L-C) SUPERSEDE PARALLEL HOMES IN THIS RANGE. VoiceLine/render_voiceline (L383), Situation.gradient_next feeding LSP code actions (L398), a type-variable naming bracket per reader (L441) and a class tally inside the diagnostics arm (L898) were each waiting for a structured developer-facing tree or a structured report bank; L-C built both. The 'one developer-facing renderer' landing should project the View and delete the older structures rather than wire them.",
+  "STATUS HEADERS LAG THE ARTIFACT. OPEN headers sit on peers the artifact closed: L232 (determinism stamped at c8ba5799), L562 (its body already says CLOSED), L943 (R0″ armed both classes), L1926 (E_EffectMismatch armed since 2026-09-25), L2466 (closed by L3 + R0j). 'Boot not yet re-pinned' sits on peers pinned at f862677e (L1588, L1702). Counts have moved: L583's 367/9, L1028's fourteen keys now nine, L1456's 39 LowExpr constructors now 42, L3011's four sites now two plus three. A header is prose about state; until a facet stamps closure from the pin, each landing's LEDGER entry should name the RESIDUE lines it closes.",
+  "ONE PEER, SEVERAL HOMES INSIDE THE FILE. Hβ.emit.unused-wide-param-floor has three headed records (L2328, L2349, L2420), Hβ.emit.nonfn-binding-as-function-value two (L1848, L1871), and L2223 restates L732's root. One home per truth means folding each into its resolved record.",
+  "AN-1 AND THE FACE WORK RESHAPED THIS RANGE WITHOUT THE ENTRIES NOTICING. AN-1's Handler(instance, answer) dissolved L2867's premise (the arm cell IS the answer cell) and its kill (19) sharpened S5's state claims (L3077). L3 + R0j (the table's native face; a perform speaks its site's face) closed L2466. AN-2 closes nothing here but makes L2922 more visible: an abandoning perform is now rowed and unwinds, while a non-terminating call is still Pure.",
+  "THE ARENA closes no entry here outright; it changes prices. L2193's per-digit Some records are reclaimed but the row still says Alloc, so the niche stays the form (and L128's Option-returning searches depend on it). L1456 gains a reason: the arena's closure-evac-face needs a typed layout for function values, which the one closure/continuation/partial record supplies. L2210's per-module cost becomes readable in bytes as well as lines.",
+  "L-E's PRECONDITIONS LIVE IN THIS RANGE. The Severance Map's falsifiable test (green while performing) is met today by L1983 (a fn-typed variant payload resumed out of an op checks clean under !E), L3132 (inits run outside main's negations), L2913 (!Trap proves division only) and L2922 (divergence unrowed). Each must close or be counted in the third colour before the map ships.",
+  "#109 OWNS THE P0 FAMILY: L342, L562, L2309 (with L311), L2894, L2913, L2922, L2963, L2981, L2994, L3011, L3034, L3077, L3118, L3177. The smt facet today shows 39 open obligations whose classes map onto these entries: five path-guarded partiality claims, eleven lexer product returns, the cursor_at_handle element reads.",
+  "#108 OWNS THE IDENTITY FAMILY: L31, L83, L100, L109, L117, L1111 and L1221's cross-generation half. Each keys a fact by a name, a line or a session handle where a cell or a stable (arena, offset) identity belongs.",
+  "NAME- AND STRING-KEYED RESIDUE recurs at five sites: env_lookup(name) for locals (L477), the twin key's trailing letter (L1420), census_sites unscoped by module (L583), cdix name hits (L732), and reports keyed by module name (L83). This is the name-is-handle law at five sites.",
+  "THE DELTA AND THE REPORTS ALREADY HAVE HOMES. C6 reads (handle, prior) off the trail (written_since), so graph_mutated's payload is a second home (L1221). The DiagBank already carries every report with its kind and site, so verify.sh's stderr greps for census_errors and comment_refs are third homes (L898, L1028).",
+  "SYNTAX DRIFT FOUND IN PASSING (evidence for L293). §«The residue» says sole-parameter lambdas render as arms, but format.mn re-sugars only minted names, and the wheel writes `(h) => …` beside `{ h => … }` in one file (cursor.mn:313/315). The diagnostic catalog names ten diagnostics that are not DiagKind constructors: E_ConcatTypeMismatch, E_PipeIntoComplete, E_PipeHoleAmbiguous, E_HandlerUninstallable, E_ImportNameCollision, E_StatementSemicolon, W_Suggestion, W_EmptyRow, W_RedundantRepr, W_CapabilityEmpty.",
+  "PER-MODULE ENTRY RUNS ARE NOISY. Every module judged as its own entry narrated W_CommentRefUnresolved this session (types 35, lower 28, infer 23, board 10, mentl 5, parser 3, format 2), and lexer/infer also narrated T_OwnUnconsumed. What a developer sees on `mentl where src/<module>.mn` is L732's census, which raises its priority for the felt surface.",
+  "PROTOCOL NOTE: one mentl answer (`variants LitValue` and `variants Divergence` on src/types.mn) was piped through grep -v to drop its W_CommentRefUnresolved lines; those 35 lines had been read whole in the preceding unfiltered run on the same module. Twenty-one mentl runs in all, six of them wheel-scale; nothing was written outside this plan file."
+ ]
+}
