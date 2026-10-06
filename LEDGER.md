@@ -35,6 +35,161 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-10-06 · pin ac3ec166febcdae3 (CLEAN m2 == m3) · THE RACE RULE READS EVERY WRITE, AND A SPAWNED INSTANCE OWNS ITS RUN (RACE + SPACE.1):
+  The race rule counted only `resume … with` as writing a handler's state,
+  while the arena's store claim already recorded an arm's in-place store
+  into it; two threaded branches bumping a count kept in a state buffer ran.
+  StateFact now carries both writers (commits and in-place stores), the
+  StoreAges side-ledger is deleted, and the race rule and the arena's
+  install demand read the one fact; the refusal names the store.
+
+  A spawned instance re-ran every module init (an init that printed printed
+  once per branch; a branch read a fresh copy of the root's buffer). The
+  root writes its module values once into a record the task record carries,
+  and the thread entry loads them.
+
+  Instance segments: each instance bumps privately in its own run, one
+  atomic add per 64 KB chunk on the frontier; an arena's region is a span of
+  its run, so arenas reclaim in spawning modules (the spawn_task conjunct on
+  arena_on is deleted). Thread-free modules emit byte-identically.
+
+  March CLEAN (m2 == m3), m3 396,960 KB; frontier 620/0/2xred, crown 134/0,
+  proof-exactness 30/0, battery 377/377, verify green. The captured-buffer
+  race is declared red (needs Memory's stores as an effect). Report:
+  landing/threads.md.
+  INTEGRATED by the session that merged the swarm's lanes in the program's order: CLEAN m2 == m3, m3 == m4. Integration: one lifecycle comment in the module-values emit rewritten to present tense (the prose bound rose 44 → 45 and refused the first march); authored_ref_max 682 → 680.
+  Cost: m3 leg 36.14s wall · 418MB peak RSS (428916 KB).
+
+  THE LANE'S RECORD, folded from its landing doc:
+
+  **Verdicts (each read in this session).**
+  - **march** (no repin): `✓✓ FIXED POINT holds: m2 == m3` — CLEAN.
+    `cost: m3 leg 27.66s wall · 387MB peak RSS (396960 KB)` against the
+    529,000 KB ceiling. (The container lacked `/usr/bin/time`; the first march
+    ran m3 at exit 127 with an empty leg. `apt-get install time` — environment
+    only — and the second march is the verdict.)
+  - **battery** (`march-gate.sh --micros`): rungs 8 / 0; `377/377 fixture
+    contracts hold` through m2.
+  - **frontier** (`--compiler fresh`): `620 pass / 0 red / 2 expected-red`
+    (`threaded-branch-captured-store`, declared here; `why-coordinates`,
+    standing).
+  - **crown**: `134 pass / 0 fail`.
+  - **proof-exactness** (`fresh`): `30 pass / 0 red`.
+  - **effect identity** (m2): `exit=81 (expected 81) diags=0`, both residue
+    rows 0.
+  - **IDE gate**: not run — the lane touches no `ide/`, `src/space.mn`,
+    `src/mcp.mn` or session code.
+  - **check** `src/main.mn`: zero diagnostics. **verify**: `thesis invariants
+    hold`, census 0 / 0, comment-refs 0 (it refused once at 0 → 2 — two stale
+    backticked names in my own `StateFact` comment, renamed mid-build; fixed).
+  - **fmt**: every edited `.mn` renders canonical, names and prose conserved
+    (the fixtures were normalized by it; re-running is a no-op).
+
+  **RED first (pinned boot c8ba5799).**
+  | Fixture | Boot | Candidate |
+  |---|---|---|
+  | `mn-threaded-branch-state-store` (TH-2 crucible) | compiled and ran, exit 3 | refuses `E_ThreadedBranchEffect` ×2: "WRITES its state from an arm (an in-place store into `buf` at 10:22-10:44)" |
+  | `mn-threaded-branch-state-read` (control) | exit 14 | exit 14 |
+  | `mn-spawn-module-buffer` (TH-3 b) | exit 0 (each branch read a fresh zero buffer) | exit 18 |
+  | `mn-spawn-module-init-once` (TH-3 a) | `init` printed 3×, exit 10 | `init` once, exit 10 |
+  | `mn-spawn-module-values-yielding` (the record past the abandon words) | exit 3 | exit 17 |
+  | `arena/spawning-module-runs-the-body` (TH-1, contract flipped) | exit 1 | exit 42 |
+  | `mn-spawn-alloc-contention` vs `-seq` (run only, 3 runs) | threaded 278 / 278 / 300 ms, seq 48 / 50 / 57 ms | threaded 23 / 23 / 25 ms, seq 49 / 60 / 50 ms |
+  | `mn-threaded-branch-captured-store` | exit 3 (accepted) | exit 3 — declared red, see Open |
+
+  **What landed.**
+  **RACE — the race rule reads every write.** `StateFact` carries a second
+  writer, `stores`: every value an arm stores in place into what a state field
+  holds, as the cells a move of it demands (types.mn). The arena's store claim
+  notes it where it resolves a target to `TgState` (`state_store_note`,
+  infer.mn), directly or through a callee storing into its parameter
+  (`ages_transport`). A `resume … with` commit is already the field's write and
+  notes nothing more (`commit_settle`), so the fact has one home per writer.
+  The two readers read it: the install's arena demand
+  (`ages_install` → `handler_state_writes` = writes past the init ++ stores)
+  and the race rule (`handler_state_writer`, lower.mn), whose refusal now says
+  which writer — "an in-place store into `buf` at L:C" or "`resume … with`
+  updates `n`". **Deleted:** the StoreAges side-ledger — `ages_state_add`,
+  `ages_state_cells`, the handler's `states` smap and `cells_of`; and
+  `handler_state_is_written` / `state_field_written` (replaced by the writer
+  read). `writes of FIELD` projects the stores too (query.mn), so the fact has
+  a verb.
+
+  **RACE — a spawned instance shares the module's values.** A spawning module
+  with value lets declares `$mvals_g`; the root's `_start`, after
+  `$__init_lets`, writes every let's word into one record; `$spawn_task_impl`
+  stores it in the task record past the world (and past the abandon words in a
+  yielding module — `task_mvals_offset`, the layout's one home); the thread
+  entry loads each let global from it and **never calls `$__init_lets`**. The
+  `value_lets` projection moved up so `emit_memory_decl` can read it.
+
+  **SPACE.1 — instance segments.** In a spawning module every instance bumps
+  privately in its own run `[$seg_base, $seg_end)` (`$heap_ptr` is the
+  instance's line, starting at 0) and touches the shared frontier cell at 64
+  once per chunk (`$seg_refill`: one `i32.atomic.rmw.add`, at least 64 KB; a
+  chunk that begins at the run's end extends it, any other starts a new run).
+  The root takes its first chunk in `_start`. The arena runtime reads the
+  instance's line (`emit_arena_runtime(spawns)`), and three spawn-only rules
+  keep it sound: a region below the run's base keeps (a jump, or a spawn while
+  the arena was open — `$spawn_task_impl` sets `seg_base` to the line, since a
+  child's records lie outside the young range and may hold the extent's
+  values); the exit's scratch must fit in the run or extend it in place
+  (`$seg_extend`, a cmpxchg on the frontier), else keep; a store is journaled
+  unless its slot lies inside the region itself. A spawned instance allocates
+  its journal at its first arena (below the mark); a restored image resets the
+  run to empty at the restored line. **Deleted:** the `spawn_task` conjunct on
+  `arena_on` and the per-allocation compare-exchange `$alloc`. Thread-free
+  modules — the wheel among them — emit byte-identically (m2 == m3).
+
+  `heap_mark` stays the IMAGE's frontier in a spawning module, not the
+  instance's line: lib/persist reads the image extent through it, and the wheel
+  imports persist, so a new Memory op would cross the bootstrap seam (the boot
+  would compile it as an unhandled perform and m2's warm-image write would
+  trap). The doc on `heap_mark` (lib/memory.mn) says so; the arena reads its
+  line in the runtime.
+
+  Files: `src/types.mn`, `src/infer.mn`, `src/lower.mn`, `src/query.mn`,
+  `src/backends/wasm.mn`, `lib/memory.mn`, `docs/SYNTAX.md` (§`><` race rule
+  and module values, §`~>` arena under spawn), `tools/frontier-gate.sh`,
+  `tools/verify-baseline.txt`, eight new frontier fixtures, the arena fixture's
+  contract rewritten.
+
+  **Kills.**
+  1. "The arm-state store race can be closed without touching Memory" — held
+     (the age claim already resolved the store; only the reader was narrow).
+  2. "The crucible's refusal text can reuse the commit wording" — killed by the
+     first m2: `counter`'s `resume … with` read as "an in-place store into `n`",
+     because `ages_store_binder` filed the commit through the same settle. The
+     commit is the field's write already; it now notes nothing (`commit_settle`).
+  3. "The captured-buffer race falls to the same fact" — killed: two branches
+     storing into one captured buffer run (exit 3) on boot and candidate; no
+     handler stands between, and the branch row says only `Memory`.
+  4. "`heap_mark` can become the instance's line" — killed by reading persist:
+     `image_header` sizes the image by it, and a new op to separate the two
+     would trap m2 at the bootstrap seam.
+  5. "The root's arena after the join reclaims KB" (first fixture) — killed by
+     a probe: 1 exit, 0 kept, 0 KB freed, because that arena published the
+     whole list; publishing a sum, it frees. Branch arenas: 1 exit, 0 kept,
+     3 KB freed.
+  6. "The root's run starts at 1 MB from the global's initializer" — killed by
+     reading the invariant: `seg_end - heap_ptr` underflows when `heap_ptr`
+     starts above an empty run; the line now starts at 0 and the root refills
+     in `_start`.
+
+  **Measurements.**
+  March m3 leg 27.66 s, 396,960 KB. Contention (4 × 1e6 allocations, run only):
+  boot threaded 278–300 ms vs seq 48–57 ms; candidate threaded 23–25 ms vs seq
+  49–60 ms; the frontier leg printed 19 ms / 48 ms. Stress probe (8-element
+  `fanout` of branches whose arenas publish lists across chunk refills, under a
+  root arena enclosing the spawns): 361200 three runs out of three, the root
+  arena 1 exit / 1 kept.
+
+  **Bounds moved.**
+  `frontier_expected_red: threaded-branch-captured-store` (tools/
+  verify-baseline.txt), with its justification line: the race is real, the rule
+  cannot read it while Memory's loads and stores are one effect; it retires
+  loudly the day it refuses. No ceiling raised.
+
 - 2026-10-06 · pin 8ab9b567585d11aa (TRANSITION m3 == m4) · ONE LINK MODEL, READ FROM THE DAG (M9):
   Built:
   - src/driver.mn: driver_canonical_order, its order key and insertion sort

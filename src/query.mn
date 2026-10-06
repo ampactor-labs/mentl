@@ -2777,8 +2777,9 @@ fn arm_site(hname: String, arm) with !Mutate = (hname, decl_at(node_handle(arm.b
 //
 // The judgment notes a state field's writers on its init before any arm is
 // judged (`StateFact`): the init and each `resume … with` update of the
-// field. The facet reads that fact for every handler declaring a field of
-// the name, each writer as its first source line at its address.
+// field — and every value an arm stores into it in place. The facet reads
+// that fact for every handler declaring a field of the name, each writer as
+// its first source line at its address.
 fn state_write_lines(field: String) with !Mutate =
   flat_map(field_write_lines(field, ??), graph_decls_at())
 
@@ -2790,12 +2791,17 @@ fn field_write_lines(field: String, h) with !Mutate = match graph_node_body(h) {
 fn state_named(field: String, st) = st.name == field
 
 fn state_writes(hname: String, st) with !Mutate = match graph_binder_of(node_handle(st.init)) {
-  Some(StateFact(f)) => ["{hname}.{st.name}: {int_to_str(len(f.writes))} write(s)"] ++ map(write_line, f.writes),
+  Some(StateFact(f)) => ["{hname}.{st.name}: {int_to_str(len(f.writes))} write(s), {int_to_str(len(f.stores))} in-place store(s)"] ++ map(write_line, f.writes) ++ map(store_line, f.stores),
   _ => ["{hname}.{st.name}: no writers noted — the handler was never judged"],
 }
 
 fn write_line(w) with !Mutate =
   "  {head(split("\n", render_body_tokens(graph_node_body(w))))}{decl_at(w)}"
+
+// An in-place store, as the value it stores (or the argument a callee
+// stores through).
+fn store_line(c) with !Mutate =
+  "  store {head(split("\n", render_body_tokens(graph_node_body(c))))}{decl_at(c)}"
 
 // ─── Span → name — the inverse use-edge read (goto/rename anchor) ──
 //

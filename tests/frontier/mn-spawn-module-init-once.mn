@@ -1,0 +1,15 @@
+// A module let's init runs once, in the root, before main: a spawned
+// instance takes the root's module values and never re-runs an init. The
+// init here prints, so a re-run is visible on stdout as a second line.
+// Expected exit: 10, and exactly one "init" line. Linked with lib/io (the
+// frontier's io leg).
+let seed = {
+  println("init")
+  5
+}
+
+fn widen(x) = x + seed
+
+fn main() = match 0 <| (widen, widen) ~> parallel_compose {
+  (a, b) => a + b,
+}

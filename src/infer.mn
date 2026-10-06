@@ -7393,24 +7393,15 @@ effect StoreAges {
   ages_put(AgeScope)
   ages_publish(String, AgeSummary)
   ages_summary(String) -> Option(AgeSummary)
-  ages_state_add(String, [Int])
-  ages_state_cells(String) -> [Int]
 }
 
-handler store_ages with scopes = [], fns = smap_new(), states = smap_new() {
+handler store_ages with scopes = [], fns = smap_new() {
   ages_open(kind) => resume() with scopes = scopes ++ [AgeScope({depth: 0, kind: kind, lets: [], stores: []})],
   ages_pop() => resume() with scopes = drop_last(scopes),
   ages_top() => resume(if len(scopes) == 0 { None } else { Some(last(scopes)) }),
   ages_put(s) => resume() with scopes = drop_last(scopes) ++ [s],
   ages_publish(name, s) => resume() with fns = smap_add(fns, name, s),
   ages_summary(name) => resume(smap_get(fns, name)),
-  ages_state_add(name, cells) => resume() with states = smap_add(states, name, cells ++ cells_of(states, name)),
-  ages_state_cells(name) => resume(cells_of(states, name)),
-}
-
-fn cells_of(states, name: String) = match smap_get(states, name) {
-  Some(cells) => cells,
-  None => [],
 }
 
 // A declared function's scope at its top level, a closure's anywhere else: a
@@ -7534,10 +7525,18 @@ fn ages_store(target_h, cells) = match ages_top() {
   None => each(demand_move, cells),
 }
 
-// A store into a binder itself — a state commit's.
+// A store into a binder itself — a state commit's. A commit into the arm's
+// own state is already the field's write (`StateFact.writes`, noted before
+// any arm was judged), so it notes nothing more: the install reads it there.
 fn ages_store_binder(b, cells) = match ages_top() {
-  Some(scope) => each(ages_settle(scope, cells, ??), binder_targets(b, scope)),
+  Some(scope) => each(commit_settle(scope, cells, ??), binder_targets(b, scope)),
   None => each(demand_move, cells),
+}
+
+fn commit_settle(scope, cells, t) = match t {
+  TgState(_) => (),
+  TgParam(_) => ages_settle(scope, cells, t),
+  TgOlder => ages_settle(scope, cells, t),
 }
 
 fn ages_settle(scope, cells, t) = match t {
@@ -7548,9 +7547,9 @@ fn ages_settle(scope, cells, t) = match t {
     },
     None => each(demand_move, cells),
   },
-  TgState(_) => match scope {
+  TgState(b) => match scope {
     AgeScope(r) => match r.kind {
-      AgeArm(hname, _) => ages_state_add(hname, cells),
+      AgeArm(_, _) => state_store_note(b, cells),
       AgeFn(_) => each(demand_move, cells),
       AgeClosure => each(demand_move, cells),
     },
@@ -7558,6 +7557,40 @@ fn ages_settle(scope, cells, t) = match t {
 }
 
 fn demand_move(cell) = shape_demand(cell, MovedShape)
+
+// An arm's in-place store into a state field is the field's second writer:
+// the cells join the field's own fact, where the install's arena demand and
+// the race rule read it (types.mn `StateFact`).
+fn state_store_note(b, cells) = match graph_binder_of(b) {
+  Some(fact) => match fact {
+    StateFact(f) => graph_binder_note(b, StateFact({...f, stores: f.stores ++ cells})),
+    ParamFact(_) => each(demand_move, cells),
+    PartFact(_) => each(demand_move, cells),
+  },
+  None => each(demand_move, cells),
+}
+
+// Every cell an arm of `hname` writes into its state, by either writer — the
+// values its commits write past the init, and what it stores in place — read
+// off the state fields' facts: what an install's arena must move.
+fn handler_state_writes(hname: String) = match env_lookup(hname) {
+  Some(entry) => match entry {
+    (_, _, kind) => match kind {
+      HandlerKind(_, _, _, state, _) => flat_map(state_field_written_cells, state),
+      _ => [],
+    },
+  },
+  None => [],
+}
+
+fn state_field_written_cells(sf) = match graph_binder_of(node_handle(state_field_init(sf))) {
+  Some(fact) => match fact {
+    StateFact(f) => drop(1, f.writes) ++ f.stores,
+    ParamFact(_) => [],
+    PartFact(_) => [],
+  },
+  None => [],
+}
 
 // The targets a store into the value at `h` reaches, read from the scope the
 // store stands in — none when the scope allocated it.
@@ -7663,7 +7696,7 @@ fn ages_transport(args, entry) = match entry {
 // An install answers for its handler's state: one whose body can open an
 // arena runs the arms inside an arena the state predates, so every cell the
 // arms store into the state is a move.
-fn ages_install(hname: String, body_row) = match ages_state_cells(hname) {
+fn ages_install(hname: String, body_row) = match handler_state_writes(hname) {
   [] => (),
   cells => if row_may_open_arena(body_row) { each(demand_move, cells) } else { () },
 }
@@ -12653,7 +12686,7 @@ fn bind_handler_state_name(updates, hname: String, span: ValidSpan, bind) = matc
     )
     graph_binder_note(
       ih,
-      StateFact({writes: [ih] ++ (updates |> filter(update_names(name, ??)) |> map(update_value))})
+      StateFact({stores: [], writes: [ih] ++ (updates |> filter(update_names(name, ??)) |> map(update_value))})
     )
   },
 }

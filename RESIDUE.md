@@ -4450,7 +4450,7 @@ at its own type, so the code pointer can name its capture layout — the fn
 table maps a closure's code to its move leaf, and the exit moves a closure
 by what it captured.
 
-### `Hβ.arena.per-instance-regions` — OPEN
+### `Hβ.arena.per-instance-regions` — CLOSED 2026-10-06
 
 BORN 2026-10-03. In a module that
 spawns, globals are per instance while the heap line is one shared cell, so
@@ -18105,7 +18105,7 @@ STANDS ON: face one on the driver's DAG walk alone; face two on M1's links. HAND
 
 **Builds:** no new names; face one deletes, face two reads M1's links.
 
-### `Hβ.threads.race-rule-reads-every-write` — OPEN
+### `Hβ.threads.race-rule-reads-every-write` — CLOSED 2026-10-06
 
 BORN 2026-10-06 (the program of 2026-10-06, landing RACE, tier 2; findings TH-2 and TH-3). It preempts like TRAP, because SYNTAX §`><` promises "provably race-free". Two silent wrongs in threaded programs, both read off the source and neither run, because the audit could not write a fixture.
 
@@ -20051,3 +20051,49 @@ carries each row as the facet produced it — a name beside its site where
 the facet has one — lets the RESIDUE gate ask one directory question for
 the examples and the library modules the compiler's link does not reach,
 where it asks each program in turn today.
+
+### `Hβ.threads.captured-store-race` — OPEN
+
+BORN 2026-10-06 (the threads lane). two threaded branches storing in place
+into one buffer they both capture (`0 <| (bump(buf), bump(buf))` under
+`parallel_compose`) compile and race (exit 3). The arm-state face is closed;
+this face has no handler between. Build-ready design: Memory's stores become
+their own effect (MemoryWrite: `store_i32`, `store_i8`, `store_f64`,
+`store_addr`, `mem_copy`, and `list_set`'s row), read only where a spawning
+schedule stands, and the race rule asks every store a branch's reach makes
+for the age claim's target classified at the BRANCH boundary (a branch scope
+kind beside `AgeFn`/`AgeClosure`/`AgeArm`): a target the branch allocated owes
+nothing; a capture, a parameter of a partial branch, a state, a module value
+or anything older refuses `E_ThreadedBranchEffect` naming the store. EFF's move
+of ops between effects is where the split lands; it reads this lane's
+`StateFact.stores`. Gate: the frontier leg, declared red today.
+
+### `Hβ.arena.extent-spanning-a-spawn-keeps` — OPEN
+
+BORN 2026-10-06 (the threads lane). an arena open across a spawn
+its instance makes, or across a refill that could not extend its run, keeps
+its region (sound, reclaims nothing). Design: a run per arena extent — the
+refill under an open arena first tries `$seg_extend`, and the young range
+becomes the instance's chunk list since the mark (a span set, not one
+interval), with the exit scanning a joined child's run as part of the extent
+when the join happens inside it. Gate: a root arena enclosing a fanout whose
+branches return lists of the extent's values reclaims with `ArKept == 0`.
+
+### `Hβ.threads.segment-bases-are-not-deterministic` — OPEN
+
+BORN 2026-10-06 (the threads lane). chunk bases come from
+the order of atomic adds, so addresses differ run to run under parallelism.
+9.2's `{arena, offset}` handle: the segment id is the instance's spawn ordinal
+and the chunk ordinal within it, mapped to a base reserved per instance, so
+m3 == m4 holds when the wheel first threads. Gate: two runs of a threaded
+program print identical heap addresses.
+
+### `Hβ.memory.instance-line-and-image-extent-are-two-reads` — OPEN
+
+BORN 2026-10-06 (the threads lane). in a spawning
+module `heap_mark` answers the image frontier (persist's extent) while the
+arena reads the instance line in the runtime; a program cannot ask its own
+line. Design: an `image_extent()` op beside `image_key` that persist reads,
+landed across the bootstrap seam in two pins (op support first, repin, then
+persist and `heap_mark` switch). Gate: `heap_mark()` returns to its mark
+after an arena in a spawning module.

@@ -1428,7 +1428,16 @@ type BinderFact
   // the writers. Noted before any arm is judged; until then a state was read
   // as its init, so `100 / d` over `with d = 5` checked clean under `!Trap`
   // while an arm wrote `d - 5`.
-  | StateFact({writes: [Int]})
+  //
+  // `stores` is the field's OTHER writer: every value an arm stores IN PLACE
+  // into what the field holds (`list_set(buf, …)`, directly or through a
+  // callee storing into its parameter), as the cells a move of it demands —
+  // noted by the arena's store claim where it resolves the target to this
+  // field (infer.mn `ages_settle`). The writes replace the record's word; the
+  // stores mutate what it names. The arena's install demand and the race
+  // rule read the two together as what an arm writes, one fact with one home
+  // (`handler_state_writes`, `handler_state_writer`).
+  | StateFact({stores: [Int], writes: [Int]})
 
 // A value walk's dynamic scope: the state binders whose writers it is
 // reading, and the handler declarations whose arms it is reading. A write

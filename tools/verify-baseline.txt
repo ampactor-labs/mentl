@@ -868,6 +868,15 @@ fs_impl_bypass_max: 2
 # count MEANS at zero is that no named fn in the wheel hides behind a lambda
 # that only forwards to it.
 frontier_expected_red: why-coordinates
+# 2026-10-06 (RACE): two threaded branches storing in place into ONE buffer
+# both capture compile and run (exit 3 on boot c8ba5799 and through the RACE
+# candidate) — the arm-state store is refused now, but a branch's own row
+# says only `Memory`, which carries loads, stores and word arithmetic alike,
+# so the rule cannot ask whether a branch stores into memory older than the
+# branch. The cut is Memory's stores as their own effect read against the
+# age claim's targets, EFF's move of ops between effects
+# (Hβ.threads.captured-store-race). Retires loudly the day it refuses.
+frontier_expected_red: threaded-branch-captured-store
 # 2026-09-18 → 2026-09-28: `eq-in-arm-pointer` was declared RED here — `==`
 # in a handler arm over its op's quantified parameters compared two
 # byte-equal Strings by ADDRESS, because no twin reached the arm. RETIRED by
@@ -1027,7 +1036,9 @@ authored_own_max: 53
 # render and one bank; the driver's three changed bodies and kept theirs.
 # 684 -> 682 (2026-10-06, M9): march_walk_entries' `ref names` and
 # march_read_files' `ref files` left with the blob assembly they walked.
-authored_ref_max: 682
+# 682 -> 680 (2026-10-06, RACE + SPACE.1 integrated): two authored refs left
+# with the lane's rewritten spawn and race-rule bodies.
+authored_ref_max: 680
 
 # 2026-08-08: the DRIFT-SHAPE ratchet (PLAN §11 5.6's absorption,
 # enforcement half) — the three absorbed drift modes counted by the

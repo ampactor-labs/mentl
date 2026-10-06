@@ -650,9 +650,25 @@ spawned instance and its performs resolve outer, so the walk follows each
 handler's own residual row down the stack). The fix is stated in the refusal:
 install a stateless handler at the fanout's frame, or install the handler
 inside the branch, where each instance gets its own state record. The rule
-reads WRITES, not declarations: a handler is stateful when an arm carries a
-`resume … with` update (the one writer this document gives state), so a
-state that is only read is shared read-only across instances and runs.
+reads WRITES, not declarations: a handler is stateful when an arm writes its
+state by either of a field's two writers — a `resume … with` update, which
+replaces the record's word, or an in-place store into what the field holds
+(`list_set(buf, 0, …)`, directly or through a callee that stores into its
+parameter), the same fact an install's arena reads — so a state that is only
+read is shared read-only across instances and runs (real, 2026-10-06: until
+then the rule read the updates alone, and two branches bumping a count kept
+in a state buffer ran; the refusal names the store). Two branches storing in
+place into one buffer both capture race with no handler between, and the rule
+does not see it yet: a branch's row says only `Memory`, which carries loads and
+stores alike (`Hβ.threads.captured-store-race`).
+
+**A spawned instance shares the module's values** (real, 2026-10-06). A
+module value let is the root's: its init runs once, in the root, before
+`main`, and every spawned instance reads the root's values through the task
+record — a branch reads the module buffer the root updated in place, and an
+init that prints prints once. Until then each spawned instance re-ran every
+init, so a branch read a fresh copy and the two schedules answered
+differently.
 
 **A branch's abandon is re-raised at the join** (real, 2026-10-03). A branch
 whose perform never resumes leaves its thread with the op and its arguments
@@ -912,8 +928,15 @@ function, a continuation, a store through `list_set` reached as a value — is
 never moved: the exit keeps the whole region instead, correct for any program
 and reclaiming nothing (`Hβ.arena.closure-evac-face`). Reclamation is
 reachability from the publication, never a `Consume`: ownership's regions stay
-compile-time facts. In a module that spawns, the arena runs its body and
-reclaims nothing (`Hβ.arena.per-instance-regions`).
+compile-time facts. In a module that spawns, each instance allocates in a run
+of its own — one atomic add per 64 KB chunk on the image's frontier, a private
+bump inside — so an arena's region is a span of its own instance's run and
+reclaims in a spawned branch as in the root (real, 2026-10-06; until then a
+spawn anywhere in a module turned every arena in it off). An arena open across
+a spawn its instance makes, or across a chunk that could not extend its run,
+keeps its region: a spawned child's records lie in the child's run, where the
+exit never looks, and may hold the extent's values
+(`Hβ.arena.extent-spanning-a-spawn-keeps`).
 
 **A suspended arena keeps its region, and each resumption is an arena of its
 own** (real, 2026-10-03). An op performed inside an arena and answered by a
