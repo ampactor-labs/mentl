@@ -35,6 +35,73 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-10-06 · pin 9ba7f0878da33f32 (CLEAN m2 == m3) · TRAPS ARE IN THE ROW (TRAP):
+  BUILT (this commit is pin A; it marches CLEAN on the pinned boot):
+  - One integer folder (types.mn int_fold / int_op_defined / i32_min), read by
+    verify's litval_arith and the e-graph's rw_const_fold; egraph fold_int and
+    verify's i32_min deleted. total_div_decide's constant face asks the same home.
+  - PInBounds(receiver, index): Predicate ctor + every match (show, smt, domain,
+    classify, flow label, query names, leans, format). verify.mn
+    in_bounds_decide: index leaves' lower bound, receiver lengths along edges
+    (literal count, string literal, let value via link, join tails).
+    infer_index_force raises the claim, writes the verdict on the index node
+    (graph_narrow_set both ways), charges subscript_callee(proven)'s row.
+    lower reads the verdict -> list_index_unchecked. lib list_index_proven
+    (dead wrapper) deleted. Free-name walk draws both callees.
+  - effect Trap moved to lib/memory.mn with op `trap() -> Int`, lowered to
+    (unreachable), listed in is_substrate_mem_op. out_of_range NOT yet changed.
+  - Capability CTotal -> CTrapFree ("Trap-free ... termination unproven").
+  - verify.sh's sugar-vocabulary scan reads types.mn; baseline 46 -> 46
+    justified (list_index_proven out, list_index_unchecked in).
+  - Two frontier legs (trap-in-the-row, trap-free-label) declared
+    frontier_expected_red against the boot; they go STALE at the repins.
+
+  NOT BUILT:
+  - Pin B: `fn out_of_range() = trap()`. The pinned boot cannot compile it:
+    measured, boot's root gate refuses the wheel with E_EffectUnhandled
+    "effect Trap" (it does not know `trap` is substrate). Pin B lands only
+    after this commit is repinned. After B: list_index et al. carry Trap by
+    inference; count and sweep the !Trap / Pure fallout; crown
+    leak-index-trap turns green.
+  - `-> !` on trap: measured, the parser's `!` var is shared by the effect,
+    so rows carried Trap(Int) beside bare Trap. Waits on N4 (render lane);
+    draft peer Hβ.types.never-is-quantified-per-perform (named in
+    memory.mn's comment, not yet in RESIDUE).
+  - slice is total (it clamps; measured from lib/lists.mn slice_raw), so it
+    raises no claim. byte_at = list_index; a String `s[i]` is the same read.
+  - Open index claims accrue ledger debt like division's; their count on the
+    wheel is unmeasured (needs pin B's tree).
+  - landing/trap.md not written; no merge of the base yet.
+
+  MEASURED (this session):
+  - Boot 4228ff71: `fn main() = (0x80000000 / (0 - 1)) / 2` traps the
+    compiler, integer overflow in litval_arith, exit 134, check and compile.
+    Tree-A m2: E_RefinementRejected at the inner division.
+  - march on tree A: CLEAN, m2 == m3, m3 leg 25.72s / 481MB (earlier run
+    24.40s / 388MB).
+  - micros through m2: 378/378. crown (m2): 137 pass / 1 fail
+    (leak-index-trap, waits for pin B).
+  - frontier against boot: 599 pass / 0 red / 3 expected-red.
+
+  KILLS: `trap() -> !` as the form for this pin (Trap(Int) pollution);
+  putting the fold fixture in tests/micros (the boot battery dies on it,
+  67/378 judged — it now lives as crown leak-claim-int-min-fold).
+
+  RED-FIRST on boot 4228ff71: leak-index-trap (accepted, no mismatch),
+  leak-claim-index-past-literal (accepted), leak-claim-int-min-fold (compiler
+  trap 134), audit offers "Total (proven never to trap)", where extract_chase
+  "with Memory + GraphRead". sound-index-proven is the control (accepts).
+
+  NEXT: repin this commit; apply pin B (out_of_range = trap()); measure the
+  !Trap fallout with `mentl check`; drop the two expected-red lines as they go
+  STALE; §4 gates; landing/trap.md; merge the base.
+
+  Committed with --no-verify on the recovery instruction (no wheel-scale
+  gates this turn); the pre-commit verify had passed on this tree before the
+  frontier-gate and baseline edits.
+  INTEGRATED by the session that merged the swarm's lanes in the program's order: Integrated in three marches. Pin A (the lane's commit) repinned 29a1066f with the open-obligation ceiling raised 39 → 212 on the record: every index whose bound PInBounds cannot yet decide is debt the row now states rather than a trap it hid. Pin B (`out_of_range = trap()`, compilable only by pin A's boot) repinned eec1fc0d, and its crown stayed red: the crucibles compile solo, with no library, so the index's Trap rode only list_index's row. Fixed at the root, as C5's division does it: an open bounds claim charges Trap at its own site (infer_index_force), pinned 9ba7f087. The fallout was swept honestly. Eight micros and about thirty frontier caps (`with Memory`, `with Memory + Alloc [+ WASI]`) were inventories that now meet Trap, and they were dropped. One crucible (sound-refine-elem-strict) reads its element by a total list pattern instead of an open index. The runtime-shadow fingerprint moved on the record: the libs judged alone carry V_Pending. audit-severance-honest's anchor was widened from `Alloc — unlocks` to the claim. teach-accept reads each fixture's debt against a bare program's over the same link. KILL: the expected-red lines trap-free-label and trap-in-the-row, which the lane declared, went green at pin B and are deleted. Crown 138/138, frontier 628/0/2.
+  Cost: m3 leg 36.15s wall · 420MB peak RSS (430336 KB).
+
 - 2026-10-06 · pin ac3ec166febcdae3 (CLEAN m2 == m3) · THE RACE RULE READS EVERY WRITE, AND A SPAWNED INSTANCE OWNS ITS RUN (RACE + SPACE.1):
   The race rule counted only `resume … with` as writing a handler's state,
   while the arena's store claim already recorded an arm's in-place store

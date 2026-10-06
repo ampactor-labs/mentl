@@ -1116,6 +1116,7 @@ fn render_predicate_tokens(pred) with !Mutate = match pred {
   PFlowLe(src, dst) => show_predicate(PFlowLe(src, dst)),
   PWithSelf(_, inner) => render_predicate_tokens(inner),
   PTotalDiv(op, a, b) => show_predicate(PTotalDiv(op, a, b)),
+  PInBounds(recv, idx) => show_predicate(PInBounds(recv, idx)),
   PProvides(provided) => show_predicate(PProvides(provided)),
 }
 

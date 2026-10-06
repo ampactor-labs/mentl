@@ -24,7 +24,7 @@
 // strings ([-1][buf][start][len]); str_concat("", line) materializes each into
 // a flat [len][bytes] parse_float can read, and byte_len reads a view's real
 // length. A trailing newline leaves one empty view, skipped.
-fn parse_float_lines(strs, num: Int, out, i: Int, w: Int) with Memory + Alloc = {
+fn parse_float_lines(strs, num: Int, out, i: Int, w: Int) ={
   if i >= num { slice(out, 0, w) }
   else {
     let line = str_concat("", strs[i])
@@ -36,7 +36,7 @@ fn parse_float_lines(strs, num: Int, out, i: Int, w: Int) with Memory + Alloc = 
   }
 }
 
-fn read_floats(path) with Memory + Alloc + WASI = {
+fn read_floats(path) = {
   let strs = lines(fs_read_file_impl(path))
   parse_float_lines(strs, len(strs), make_list(len(strs)), 0, 0)
 }
@@ -45,10 +45,10 @@ fn read_floats(path) with Memory + Alloc + WASI = {
 // call site), so the fold is sound over [Float] with no annotation. The row
 // carries fold's truth: iterate flattens its input (list_to_flat allocates),
 // so Alloc rides the declaration — the callee row read live, instances intact.
-fn fsum(xs) with Memory + Alloc = fold(0.0, (acc, x) => acc + x, xs)
+fn fsum(xs) =fold(0.0, (acc, x) => acc + x, xs)
 
 // argmin / argmax — comparison-reduction with an annotated running best value.
-fn argmin_loop(xs, i: Int, best_i: Int, best_v: Float) with Memory = {
+fn argmin_loop(xs, i: Int, best_i: Int, best_v: Float) ={
   if i >= len(xs) { best_i }
   else {
     let v = xs[i]
@@ -56,9 +56,9 @@ fn argmin_loop(xs, i: Int, best_i: Int, best_v: Float) with Memory = {
     else { argmin_loop(xs, i + 1, best_i, best_v) }
   }
 }
-fn argmin(xs) with Memory = argmin_loop(xs, 1, 0, xs[0])
+fn argmin(xs) =argmin_loop(xs, 1, 0, xs[0])
 
-fn argmax_loop(xs, i: Int, best_i: Int, best_v: Float) with Memory = {
+fn argmax_loop(xs, i: Int, best_i: Int, best_v: Float) ={
   if i >= len(xs) { best_i }
   else {
     let v = xs[i]
@@ -66,19 +66,19 @@ fn argmax_loop(xs, i: Int, best_i: Int, best_v: Float) with Memory = {
     else { argmax_loop(xs, i + 1, best_i, best_v) }
   }
 }
-fn argmax(xs) with Memory = argmax_loop(xs, 1, 0, xs[0])
+fn argmax(xs) =argmax_loop(xs, 1, 0, xs[0])
 
 // Count of samples strictly above a float threshold.
-fn count_above_loop(xs, thresh: Float, i: Int, acc: Int) with Memory = {
+fn count_above_loop(xs, thresh: Float, i: Int, acc: Int) ={
   if i >= len(xs) { acc }
   else {
     let inc = if xs[i] > thresh { 1 } else { 0 }
     count_above_loop(xs, thresh, i + 1, acc + inc)
   }
 }
-fn count_above(xs, thresh: Float) with Memory = count_above_loop(xs, thresh, 0, 0)
+fn count_above(xs, thresh: Float) =count_above_loop(xs, thresh, 0, 0)
 
-fn main() with Memory + Alloc + WASI = {
+fn main() = {
   let xs = read_floats("/tmp/mentl-stats-data.txt")
   let n = len(xs)
   let mean = fsum(xs) / float_of_int(n)

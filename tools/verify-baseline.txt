@@ -965,6 +965,18 @@ loop_scaffold_refs_max: 3
 # so no library name stands between the store and the journal, and none
 # can be renamed out from under it. The set diffed against pin 9d27c325 is
 # exactly `arena_stat` in, none out.
+# 2026-10-06 · 46 -> 46 · RE-DERIVED, the SET changed and the count did not,
+# and the seed does NOT follow. TRAP: a sequence read whose bounds claim is
+# proven lowers to `list_index_unchecked`, named by the subscript callee's
+# one home (types.mn `subscript_callee`) — so `list_index_unchecked` entered
+# — and `list_index_proven`, a lib wrapper whose only reader was lower's
+# dead elision branch, is deleted, so it left. The scan did not read
+# types.mn, where the sugar's callees have lived since R0i, so it would have
+# counted the exit and missed the entry (46 -> 45, measured); it reads
+# types.mn now, which adds exactly `list_index_unchecked` and nothing else
+# (`list_index`, `slice`, `str_concat`, `list_concat` were already quoted by
+# the five). Both names are reached from the read the free-name walk draws
+# (`subscript_callees`), so reachability finds them and the emit mints none.
 desugar_vocabulary: 46
 
 # 2026-09-11 · 812 -> 811 · the gate's own DOWN arm, held. Bisected with the

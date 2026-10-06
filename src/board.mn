@@ -228,9 +228,11 @@ fn board_bounds() = [
   // The open proof obligations — every claim Verify could neither prove nor
   // refute, at its own site (`mentl query <entry> verification`). They rose
   // 37 → 39 across L-C with nothing to refuse it, five of them new in
-  // src/space.mn. Falls as a claim gains its proof: a precondition, a path
-  // read (#109), a refinement at a part (T1).
-  Bound({ceiling: 39, question: QVerifyDebt}),
+  // src/space.mn, then 39 → 212 at TRAP, every one an index whose bound
+  // claim `PInBounds` raises and the fragment cannot yet decide — debt the
+  // row now states rather than a trap it hid. Falls as a claim gains its
+  // proof: a precondition, a path read (#109), a refinement at a part (T1).
+  Bound({ceiling: 212, question: QVerifyDebt}),
   // The iteration costumes — a function that threads an incremented index
   // through its own self-call, the imperative loop in recursion's costume
   // (CLAUDE.md Anchor 6). 390 when the detector was born on 2026-07-30, 490

@@ -19,15 +19,6 @@ import lists
 
 import threading
 
-// PARTIALITY IS A ROW FACT. The substrate traps a partial primitive whose
-// precondition fails — an integer division by zero, INT_MIN / -1 — and a
-// site whose precondition the judgment cannot prove performs Trap, so
-// `with !Trap` claims a function divides by nothing it has not bounded.
-// Nothing handles a trap: it has no operations, and its absence is the point.
-effect Trap {
-  
-}
-
 // ─── Vocabulary Types ───────────────────────────────────────
 // The algebraic bedrock every program speaks.
 //

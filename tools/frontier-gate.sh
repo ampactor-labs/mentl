@@ -201,8 +201,12 @@ BOOT_RUNTIME_SHADOW=""
 # when the libs compiled without src/. The two-altitude split (list_to_flat
 # joins the seq-op table as [a] -> [a]; flat_raw is the raw body — the
 # make_list/alloc_list precedent) deleted the class at its origin. The libs
-# now compile in isolation with ZERO diagnostics.
-EXPECTED_RUNTIME_SHADOW_SHA256="e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+# now compile in isolation with ZERO diagnostics. TRAP (2026-10-06) moved it
+# once, on the record: every runtime index read whose bound nothing in sight
+# proves is an open PInBounds claim, so the libs judged alone carry the one
+# class V_Pending (the debt the row now states; #109's path read proves the
+# guarded ones and returns this to the empty multiset).
+EXPECTED_RUNTIME_SHADOW_SHA256="2c3b4947f8a331994032bdb27e1ff7ecb72e9450cb9d40eabe119ed969fae920"
 
 pass() {
   echo "  PASS $*"
@@ -2412,13 +2416,26 @@ for i in "${!compilers[@]}"; do
   # (`severs beyond the module:`), so `severable:` no longer appears per fn.
   # The invariant is unchanged and is what this leg is for.
   cat "${RTLIBS[@]}" "$ROOT/tests/frontier/mn-audit-severance-honest.mn" | wt_run "$compiler" audit - > "$dir/audit-sev.out" 2>/dev/null
-  if grep -A1 '^allocates :' "$dir/audit-sev.out" | grep -q 'Alloc — unlocks Real-time safe'; then
+  if grep -A1 '^allocates :' "$dir/audit-sev.out" | grep -qE 'Alloc[^—]* — unlocks Real-time safe'; then
     fail "audit-severance-honest (an allocating row was offered Alloc severance)"
-  elif grep -A1 '^quiet :' "$dir/audit-sev.out" | grep -q 'Alloc — unlocks Real-time safe'; then
+  elif grep -A1 '^quiet :' "$dir/audit-sev.out" | grep -qE 'Alloc[^—]* — unlocks Real-time safe'; then
     pass "audit-severance-honest (Alloc never offered on an allocating row; the pure control keeps it)"
   else
     fail "audit-severance-honest (the pure control lost its true severance offer)"
   fi
+
+  # TRAP (2026-10-06): the deliberate trap is in the row. extract_chase traps
+  # at depth > 1000 by its own comment, and its row must say so; the audit's
+  # !Trap offer states what !Trap proves and never "Total". RED on boot
+  # 4228ff71: `extract_chase(handle, depth) with Memory + GraphRead`, and the
+  # audit offered "Total (proven never to trap)" over it.
+  trap_where=$(wt_run --dir "$ROOT" "$compiler" where "$ROOT/src/main.mn" extract_chase 2>/dev/null | head -1)
+  trap_row_ok=0
+  printf '%s' "$trap_where" | grep -qE '^→ extract_chase\(handle, depth\) with .*\bTrap\b' && trap_row_ok=1
+  judge trap-in-the-row "$trap_row_ok" "trap in the row (extract_chase's row carries Trap) (got: $trap_where)"
+  trap_label_ok=1
+  grep -q 'Total (proven' "$dir/audit-sev.out" && trap_label_ok=0
+  judge trap-free-label "$trap_label_ok" "trap-free label (no \"Total\" offer on the audit while termination is unrowed)"
 
   # The verb-shape tier (audit): a 2-step single-use let-chain invites the
   # |> pipe; a twice-used name (`<|` territory) and a one-step let (the
@@ -3036,7 +3053,18 @@ for i in "${!compilers[@]}"; do
   taret=$?
   wt_run --dir "$tadir::." --dir "$ROOT::/mentl-home" "$compiler" accept plain.mn:8:1 > /dev/null 2>"$dir/teach-accept-plain.err"
   taplain=$?
-  tadebt=$( { wt_run --dir "$tadir::." --dir "$ROOT::/mentl-home" "$compiler" compile pre.mn 2>&1 >/dev/null; wt_run --dir "$tadir::." --dir "$ROOT::/mentl-home" "$compiler" compile ret.mn 2>&1 >/dev/null; wt_run --dir "$tadir::." --dir "$ROOT::/mentl-home" "$compiler" compile plain.mn 2>&1 >/dev/null; } | grep -c 'pending\| error' || true)
+  # The debt is the fixture's own: since TRAP the linked runtime carries open
+  # index claims of its own, so each file's pending count is read against a
+  # bare program's over the same link, and any error counts outright.
+  printf 'fn main() = 0\n' > "$tadir/bare.mn"
+  ta_pending() { wt_run --dir "$tadir::." --dir "$ROOT::/mentl-home" "$compiler" compile "$1" 2>&1 >/dev/null \
+    | awk '/ error/ {e++} /verification obligations pending/ {for (i=1;i<=NF;i++) if ($i ~ /^[0-9]+$/) p=$i} END {print (e+0) " " (p+0)}'; }
+  read -r _ tabase <<<"$(ta_pending bare.mn)"
+  tadebt=0
+  for taf in pre.mn ret.mn plain.mn; do
+    read -r tae tap <<<"$(ta_pending "$taf")"
+    tadebt=$((tadebt + tae + tap - tabase))
+  done
   if [ "$tapre" = 0 ] && [ "$taret" = 0 ] && [ "$taplain" = 0 ] \
      && [ "$(sed -n 12p "$tadir/pre.mn")" = "fn inv(n: NonZero) = 100 / n" ] \
      && [ "$(sed -n 7p "$tadir/ret.mn")" = "fn five() -> Positive = 5" ] \

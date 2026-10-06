@@ -6125,7 +6125,7 @@ fn grounded_scan(bindings, i, n, ename: String) = if i >= n {
 // language meets the instruction set (the wasi-import list's sibling;
 // the op names ARE the identity, declared in one home).
 fn is_substrate_mem_op(name: String) with Pure =
-  name == "store_i32" || name == "load_i32" || name == "store_i8" || name == "load_i8" || name == "store_f64" || name == "load_f64" || name == "mem_copy" || name == "addr_at" || name == "addr_diff" || name == "load_addr" || name == "store_addr" || name == "null_addr" || name == "addr_word" || name == "word_addr" || name == "i32_xor" || name == "i32_or" || name == "i32_and" || name == "i32_shl" || name == "alloc" || name == "heap_mark" || name == "world_top" || name == "world_restore" || name == "image_key" || name == "globals_area" || name == "globals_save" || name == "image_restore" || name == "arena_stat"
+  name == "store_i32" || name == "trap" || name == "load_i32" || name == "store_i8" || name == "load_i8" || name == "store_f64" || name == "load_f64" || name == "mem_copy" || name == "addr_at" || name == "addr_diff" || name == "load_addr" || name == "store_addr" || name == "null_addr" || name == "addr_word" || name == "word_addr" || name == "i32_xor" || name == "i32_or" || name == "i32_and" || name == "i32_shl" || name == "alloc" || name == "heap_mark" || name == "world_top" || name == "world_restore" || name == "image_key" || name == "globals_area" || name == "globals_save" || name == "image_restore" || name == "arena_stat"
 
 // The Cast capability's one op — erased at lower to its operand (the
 // identity at the word level; memory.mn carries the decl and the law).
@@ -6162,14 +6162,14 @@ fn lower_index(handle, receiver, index) = match receiver {
   },
 }
 
-// A list index lowers to the runtime list_index call. When infer proved the
-// index in-range (the refinement-narrowing weave carries a path-predicate at the
-// index handle — graph_narrow_at ≠ 0), the access is a PROVEN-valid load:
-// list_index_proven, the elision variant that skips the redundant bounds path
-// the proof already discharged (§4⑥; SYNTAX.md «Indexing»: "the compiler elides
-// the bounds check"). Carried-Truth: the proof is READ live from the graph, never
-// re-derived; an un-narrowed index (the 0 default) stays the checked list_index,
-// byte-identical to the prior form.
+// A list index lowers to the runtime list_index call. When the judgment proved
+// the read in range (its `PInBounds` claim held — the verdict the judgment
+// wrote on the index node, graph_narrow_at ≠ 0), the access is the traversal
+// beneath the check, list_index_unchecked (SYNTAX.md «Indexing»: "the compiler
+// elides the bounds check"), whose row carries no Trap — exactly what the
+// judgment charged (`subscript_callee`, one home for both reads). Until TRAP
+// (2026-10-06) nothing wrote the verdict, so this branch's elision wrapper
+// was never called; the wrapper is deleted.
 //
 // The reader is a NAMED function, so it is called DIRECTLY at its own
 // signature (LDirectCall), never through its static closure as a value: its
@@ -6180,7 +6180,7 @@ fn lower_index(handle, receiver, index) = match receiver {
 // moment a closure call stopped boxing, and every `[Float]` index trapped.
 fn lower_index_runtime(handle, receiver, index) = match index {
   N(_, _, ih) => {
-    let callee = if graph_narrow_at(ih) != 0 { "list_index_proven" } else { "list_index" }
+    let callee = subscript_callee(graph_narrow_at(ih) != 0)
     LDirectCall(handle, handle, callee, false, [lower_expr(receiver), lower_expr(index)])
   },
 }

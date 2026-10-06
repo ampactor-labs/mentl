@@ -17,7 +17,7 @@
 // EXIT 42 iff the argmax cell is (6, 60). Otherwise exit the flat index, naming
 // which pair won — a teaching code, never a silent pass.
 
-fn main() with Memory + Alloc + WASI = {
+fn main() = {
   let sr = 512
   let signal = read_recording("/tmp/mentl-cfc-recording.txt")
   let low_freqs = [4, 6, 8, 10]

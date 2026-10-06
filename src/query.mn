@@ -849,6 +849,7 @@ fn predicate_names(pred) = match pred {
   PFlowLe(_, _) => [],
   PWithSelf(_, inner) => predicate_names(inner),
   PTotalDiv(_, a, b) => handle_var_names(a) ++ handle_var_names(b),
+  PInBounds(recv, idx) => handle_var_names(recv) ++ handle_var_names(idx),
   PProvides(provided) => match provided {
     ProvidedAt(nodes) => nodes |> flat_map(handle_var_names),
     ProvidedBeyond(nodes) => nodes |> flat_map(handle_var_names),

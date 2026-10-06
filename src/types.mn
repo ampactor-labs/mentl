@@ -1533,6 +1533,42 @@ type UnaryOp
   // unary `!` per SYNTAX.md
   | UNot
 
+// THE ONE INTEGER FOLDER: an arithmetic `BinOp` over two ground words, read
+// by the proof gate (verify.mn `litval_arith`) and the e-graph (egraph.mn
+// `rw_const_fold`) alike. A partial operator folds exactly where its claim
+// holds at the two points (`int_op_defined`), so neither folder traps on the
+// program it reads: `0x80000000 / (0 - 1)` folded by the host's own `i32.div_s`
+// trapped the compiler under `mentl check` until TRAP (2026-10-06), and the
+// two copies of the folder shared the hole. Where the claim fails the fold is
+// None — the trap is the program's meaning, which the claim refutes at its
+// site, never a constant either folder may write.
+fn int_fold(op, a, b) = if int_op_defined(op, a, b) {
+  match op {
+    BAdd => Some(a + b),
+    BSub => Some(a - b),
+    BMul => Some(a * b),
+    BDiv => Some(a / b),
+    BMod => Some(a % b),
+    _ => None,
+  }
+} else {
+  None
+}
+
+// The division claim (`PTotalDiv`) decided at two points: `%` is defined
+// where the divisor is not 0, `/` where it is not 0 and the quotient fits a
+// signed word (not `INT_MIN / -1`). Every other operator is total. The one
+// home the folder and the claim's constant face both ask (verify.mn
+// `total_div_decide`).
+fn int_op_defined(op, a, b) = match op {
+  BMod => b != 0,
+  BDiv => b != 0 && (b != 0 - 1 || a != i32_min()),
+  _ => true,
+}
+
+// The least signed word: the one dividend whose quotient by -1 does not fit.
+fn i32_min() with Pure = 0 - 2147483647 - 1
+
 type BinOpKind
   // +, -, *, /, %
   = BKArith
@@ -1555,7 +1591,12 @@ type BinOpKind
 // primitive's declaration, twice, instead of at the developer's line.
 fn concat_callees() = ["str_concat", "list_concat"]
 
-fn subscript_callee() with Pure = "list_index"
+// `xs[i]` calls the checked read where its bounds claim is open and the
+// traversal beneath it where the fragment proved the claim (`PInBounds`,
+// TRAP) — what the lowering performs, so what the judgment charges.
+fn subscript_callee(proven) with Pure = if proven { "list_index_unchecked" } else { "list_index" }
+
+fn subscript_callees() = [subscript_callee(false), subscript_callee(true)]
 
 fn list_rest_callee() with Pure = "slice"
 
@@ -2711,6 +2752,15 @@ type Predicate
   // provision states what ARRIVES, never what is demanded: read as a claim
   // it holds. Inference mints it; it has no surface spelling.
   | PProvides(Provided)
+  // A SEQUENCE READ's precondition (TRAP, 2026-10-06): the receiver node
+  // and the index node of `xs[i]` — a String's byte read is the same read,
+  // since a String IS `[Byte]`. The read traps where `0 <= i < len(xs)`
+  // fails; the claim decides from the index's constants and lower bound and
+  // from the receiver's length read along its edges (a literal's own count,
+  // through every tail of a join), refuses where a constant index is out of
+  // a length the text fixes, and where it stays open the site charges
+  // `Trap` — the division's law one primitive over.
+  | PInBounds(Int, Int)
 
 // What one position of a function is handed: nothing yet — no application
 // has reached it, the identity of the join — the values at these nodes, or
@@ -3066,7 +3116,7 @@ effect GraphWrite {
   graph_clear_comment(Int)
   // draw the e-graph equivalence edge from ≡ to — point the from-side's canonical pointer at the cheaper target. The union-find union step over the equivalence weave; saturation reads it back via graph_canon_at (find). Idempotent: re-pointing an already-rooted source overwrites in place (one cell), never grows a ledger.
   graph_canon_set(Int, Int)
-  // draw the refinement-narrowing edge — point the program point's narrowing pointer at the path-predicate's bool-node proven to hold there (§4⑥). One co-indexed weave like the canon column; idempotent (one cell per handle), read back via graph_narrow_at by lower's check-elision.
+  // write what the judgment proved at a program point — a sequence read's index node carries 1 where its bounds claim held (TRAP). One co-indexed weave like the canon column; one cell per handle, written both ways by every judgment of the read, read back via graph_narrow_at by lower's check-elision.
   graph_narrow_set(Int, Int)
   // draw/replace one fanout's executable edges; trail-backed because inference runs under speculative checkpoints
   graph_boundary_set(Int, ExecutableBoundary)
@@ -5095,6 +5145,7 @@ fn show_predicate(ref pred) = match pred {
     _ => "{show_pred_operand(b)} != 0 && {show_pred_atom(a)} / {show_pred_atom(b)} fits (never INT_MIN / -1)",
   },
   PProvides(provided) => show_provided(provided),
+  PInBounds(recv, idx) => "0 <= {show_pred_operand(idx)} && {show_pred_operand(idx)} < len({show_pred_operand(recv)})",
 }
 
 fn show_provided(provided) = match provided {
@@ -5372,6 +5423,8 @@ fn predicate_flow_label(ref pred) = match pred {
   PWithSelf(_, inner) => // the `self` binder is transparent to flow
   predicate_flow_label(inner),
   PTotalDiv(_, _, _) => // a primitive's precondition: not a secrecy annotation
+  Public,
+  PInBounds(_, _) => // a primitive's precondition: not a secrecy annotation
   Public,
   PProvides(_) => // a provision names the values handed, not a secrecy annotation
   Public,

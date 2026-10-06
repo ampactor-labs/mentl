@@ -1,0 +1,11 @@
+// CROWN partiality (TRAP, 2026-10-06): a constant index past a length the
+// text fixes is the trap written down, so its claim is refuted at the read —
+// here on one tail of a join, which the claim covers as it covers every
+// tail. Compiled clean and trapped on boot 4228ff71. Expect
+// E_RefinementRejected.
+fn pick(c) = {
+  let ys = if c { [1, 2] } else { [3, 4, 5] }
+  ys[2]
+}
+
+fn main() = pick(true)

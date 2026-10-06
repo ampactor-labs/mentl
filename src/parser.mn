@@ -3688,7 +3688,7 @@ fn free_vars_expr(e, h, bound) = match e {
   MakeStringExpr(fragments) => free_uses_merge(callee_uses(concat_callees(), h, bound), free_vars_list(fragments, bound)),
   ShowExpr(inner) => collect_free_uses(inner, bound),
   IndexExpr(receiver, index) => free_uses_merge(
-    callee_uses([subscript_callee()], h, bound),
+    callee_uses(subscript_callees(), h, bound),
     free_uses_merge(collect_free_uses(receiver, bound), collect_free_uses(index, bound))
   ),
   MakeRecordExpr(flds) => free_vars_record_fields(flds, bound),

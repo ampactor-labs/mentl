@@ -28,12 +28,12 @@
 // x is centered on the sample mean (15.5) so the slope and intercept modes
 // decouple and the descent is well-conditioned. resid is a small periodic,
 // roughly mean-zero deterministic perturbation on the ground-truth line.
-fn gen_x(out, i: Int, n: Int) with Memory = {
+fn gen_x(out, i: Int, n: Int) ={
   if i >= n { out }
   else { gen_x(list_set(out, i, float_of_int(i) - 15.5), i + 1, n) }
 }
 
-fn gen_y(out, i: Int, n: Int) with Memory = {
+fn gen_y(out, i: Int, n: Int) ={
   if i >= n { out }
   else {
     let x = float_of_int(i) - 15.5
@@ -45,7 +45,7 @@ fn gen_y(out, i: Int, n: Int) with Memory = {
 // One batch pass: accumulate Σ e_i·x_i and Σ e_i across every point, where
 // e_i = (w·x_i + b) − y_i is the current residual. Both accumulators pin
 // `: Float`; the caller scales the returned sums by 2/N to form the gradient.
-fn grad_loop(xs, ys, w: Float, b: Float, i: Int, n: Int, gw: Float, gb: Float) with Memory + Alloc = {
+fn grad_loop(xs, ys, w: Float, b: Float, i: Int, n: Int, gw: Float, gb: Float) ={
   if i >= n { (gw, gb) }
   else {
     let e = w * xs[i] + b - ys[i]
@@ -55,7 +55,7 @@ fn grad_loop(xs, ys, w: Float, b: Float, i: Int, n: Int, gw: Float, gb: Float) w
 
 // One descent step: form the batch gradient, take a fixed-rate step, return
 // the new (w, b) as a float pair (the record path stores its f64 fields exactly).
-fn gd_step(xs, ys, w: Float, b: Float, n: Int, lr: Float) with Memory + Alloc = {
+fn gd_step(xs, ys, w: Float, b: Float, n: Int, lr: Float) ={
   let (sw, se) = grad_loop(xs, ys, w, b, 0, n, 0.0, 0.0)
   let gw = 2.0 * sw / float_of_int(n)
   let gb = 2.0 * se / float_of_int(n)
@@ -64,7 +64,7 @@ fn gd_step(xs, ys, w: Float, b: Float, n: Int, lr: Float) with Memory + Alloc = 
 
 // The outer descent: a fixed iteration count via tail recursion, threading the
 // coefficients (w, b) as annotated float accumulators.
-fn gd_run(xs, ys, w: Float, b: Float, iter: Int, iters: Int, n: Int, lr: Float) with Memory + Alloc = {
+fn gd_run(xs, ys, w: Float, b: Float, iter: Int, iters: Int, n: Int, lr: Float) ={
   if iter >= iters { (w, b) }
   else {
     let (w2, b2) = gd_step(xs, ys, w, b, n, lr)
@@ -75,7 +75,7 @@ fn gd_run(xs, ys, w: Float, b: Float, iter: Int, iters: Int, n: Int, lr: Float) 
 // round-to-nearest for a positive value: truncate(v + 0.5).
 fn round_pos(v: Float) with Pure = float_to_int(v + 0.5)
 
-fn main() with Memory + Alloc = {
+fn main() ={
   let n = 32
   let xs = gen_x(make_list(n), 0, n)
   let ys = gen_y(make_list(n), 0, n)

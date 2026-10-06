@@ -3310,7 +3310,7 @@ writes it nowhere: its one write was found dead on 2026-07-18 and deleted
 and had it fired it would have recorded predicates that say nothing about an
 index — `Hβ.infer.narrowing-write-requires-discharge`), so the column's
 write op `graph_narrow_set` has no performer, `graph_narrow_at` reads 0
-everywhere, and the elision it would select (`list_index_proven`,
+everywhere, and the elision it would select (`list_index_unchecked`,
 lib/lists.mn) has never fired. The form: `node_excludes` asks the path
 predicate as it asks the refinement (decide it with `self` bound to the
 fatal point). Since E4 the predicate is a READ, never a column: a node's
@@ -3319,7 +3319,7 @@ branch condition and match arm it stands under, so the claim reads the path
 where it is decided, and a per-node column written beside the type would be
 that read's cache. The same read is what an index's precondition needs.
 
-### `Hβ.effects.index-partiality-is-a-row-fact` — OPEN
+### `Hβ.effects.index-partiality-is-a-row-fact` — CLOSED 2026-10-06
 
 BORN 2026-09-30. `xs[i]`
 traps out of range (`list_index` refuses a bad index loudly, lib/lists.mn),
@@ -17608,7 +17608,7 @@ narrowing_pred_handle descends PAnd's left conjunct to PTrue, handle 0, never
 fires; delete the dead machinery, then the real form: record only when the
 path predicate discharges BOTH 0<=i AND i<len(receiver)
 
-RE-GROUNDED 2026-10-06 (design-superseded): narrowing_pred_handle is gone from the docs. The lists doc lede for `list_index_proven` says 'nothing writes the weave today, so lower always selects the checked entry'. `graph_narrow_set` is dormant (LEDGER 7735). Don't write a narrowing column. An index is a partial primitive, so its precondition is a claim (C5's PTotalDiv shape). Verify decides it by reading the path up E4's parent edge (Hβ.verify.partiality-reads-the-path-narrowing). Lower selects `list_index_proven` where the ledger answers PROVEN, so the proof becomes the dispatch. Then `graph_narrow_set`/`graph_narrow_at` can be deleted. Next: #109 (Verify's own solver: path narrowing).
+RE-GROUNDED 2026-10-06 (design-superseded): narrowing_pred_handle is gone from the docs. The lists doc lede for `list_index_unchecked` says 'nothing writes the weave today, so lower always selects the checked entry'. `graph_narrow_set` is dormant (LEDGER 7735). Don't write a narrowing column. An index is a partial primitive, so its precondition is a claim (C5's PTotalDiv shape). Verify decides it by reading the path up E4's parent edge (Hβ.verify.partiality-reads-the-path-narrowing). Lower selects `list_index_unchecked` where the ledger answers PROVEN, so the proof becomes the dispatch. Then `graph_narrow_set`/`graph_narrow_at` can be deleted. Next: #109 (Verify's own solver: path narrowing).
 
 RE-GROUNDED 2026-10-06: the artifact no longer declares narrowing_pred_handle; the prose above names them as history, not as references.
 

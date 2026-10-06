@@ -225,8 +225,9 @@ fn list_index(ref list, i) = if i < 0 {
 }
 
 // The raw traversal — every entry already carries a discharged bounds
-// obligation (list_index's boundary check, or list_index_proven's proof).
-// Exhaustive on all four tags — no fallback sentinel.
+// obligation: list_index's boundary check, or the judgment's proof of a
+// sequence read's bounds claim, where `xs[i]` lowers here directly (TRAP).
+// Exhaustive on all four tags — no fallback sentinel, and no Trap in its row.
 //
 // The tag WORD is read ONCE and both projections (tag, stride) derive
 // locally from it. The accessor-call form re-read the same word three
@@ -274,14 +275,6 @@ fn list_index_unchecked(ref list, i) = {
     },
   }
 }
-
-// list_index_proven — the elision variant lower selects when the refinement-
-// narrowing weave discharges the index in-range (graph_narrow_at ≠ 0; §4⑥ —
-// the write side is the named peer Hβ.infer.narrowing-write-requires-discharge;
-// nothing writes the weave today, so lower always selects the checked entry).
-// The proof discharges the bounds obligation, so the raw traversal runs with
-// no check — the proof IS the dispatch, the ++/== precedent at the index layer.
-fn list_index_proven(list, i) = list_index_unchecked(list, i)
 
 // Structural equality — the sequence case of the one == derivation.
 //

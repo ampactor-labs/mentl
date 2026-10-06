@@ -626,12 +626,13 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
     resume(spine_canon_at(spine, spine_open, handle))
   },
   graph_narrow_set(handle, pred_handle) => // The refinement-narrowing column — in the handle's page beside canon.
-  // graph_narrow_set(handle, pred_handle) records that the path-predicate at
-  // bool-node `pred_handle` is proven to hold AT program-point `handle` (§4⑥).
-  // graph_narrow_at reads it back — 0 = no narrowing proven (the default for
-  // every handle, so an un-narrowed program is byte-identical: lower elides
-  // nothing). One cell per handle (idempotent), no side-ledger, no trail — the
-  // narrowing is a `|>` stage at infer, read by lower's verify-obligation.
+  // graph_narrow_set(handle, verdict) records what the judgment proved AT
+  // program-point `handle`: a sequence read's index node carries 1 where its
+  // bounds claim held (TRAP), and lower reads it to emit the unchecked
+  // traversal. graph_narrow_at reads it back — 0 = nothing proven (the
+  // default). One cell per handle, no trail: every judgment of a read writes
+  // its verdict both ways, so a cell a rolled-back speculation wrote is
+  // overwritten by the judgment of the node that holds the handle now.
   {
     spine_put_narrowing(spine, handle, pred_handle)
     resume()

@@ -20,7 +20,7 @@ fn pac_sample(i: Int, sr: Int) -> Float with Pure = {
   envelope * carrier + noise
 }
 
-fn fill_signal(sr: Int, num: Int, out, i: Int) with Memory = {
+fn fill_signal(sr: Int, num: Int, out, i: Int) = {
   if i >= num { out }
   else {
     let out2 = list_set(out, i, pac_sample(i, sr))
@@ -28,5 +28,5 @@ fn fill_signal(sr: Int, num: Int, out, i: Int) with Memory = {
   }
 }
 
-fn build_pac_signal(sr: Int, num: Int) with Memory + Alloc =
+fn build_pac_signal(sr: Int, num: Int) =
   fill_signal(sr, num, make_list(num), 0)
