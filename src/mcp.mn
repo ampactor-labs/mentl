@@ -488,7 +488,11 @@ fn session_run(answer) = infer_context(() => {
     }
     0
   }
-} ~> wasi_filesystem ~> query_default ~> mentl_default ~> arm_state_ctx([], OneShot, "") ~> spec_registry ~> diag_bank)
+} ~>
+// The filesystem is the OUTERMOST install: an arm's performs resolve outer
+// of its own install, and the query handler's arms read the filesystem (the
+// census's path class asks whether a cited path names a file).
+query_default ~> mentl_default ~> arm_state_ctx([], OneShot, "") ~> spec_registry ~> diag_bank ~> wasi_filesystem)
 
 // What an answer cost the image, on the session's log. Each answer is an
 // arena (lib/arena.mn), so this is what it PUBLISHED: the nodes a question
@@ -591,6 +595,6 @@ fn mcp_run(at_read) = {
     } else {
       mcp_loop([], [], [], at_read, (a, r, m) => (a, r, m))
     }
-  } ~> wasi_filesystem ~> query_default ~> mentl_default ~> arm_state_ctx([], OneShot, "") ~> spec_registry ~> diag_bank)
+  } ~> query_default ~> mentl_default ~> arm_state_ctx([], OneShot, "") ~> spec_registry ~> diag_bank ~> wasi_filesystem)
   0
 }

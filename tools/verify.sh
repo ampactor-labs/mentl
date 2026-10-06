@@ -158,6 +158,25 @@ fi
 
 text_legs
 
+# 0. Every fixture directory a leg reads is in the green stamp's key
+#    (WT_VERIFY_FIXTURE_DIRS, tools/wt-env.sh — G2). The key under-included a
+#    battery twice because a leg could name a directory the key never heard
+#    of; this reads the legs' own executable lines and refuses that.
+key_gap=$(sed -e '/^[[:space:]]*#/d' "${BASH_SOURCE[0]}" | grep -oE 'tests/[a-z_-]+(/[a-z_-]+)?' | sort -u \
+  | while read -r d; do
+      inkey=0
+      for k in "${WT_VERIFY_FIXTURE_DIRS[@]}"; do
+        case "$d" in "$k"|"$k"/*) inkey=1 ;; esac
+      done
+      [ "$inkey" = 1 ] || echo "$d"
+    done)
+if [[ -n "$key_gap" ]]; then
+  say "✗ a verify leg reads fixtures the green stamp's key does not hash: $(echo $key_gap) — add them to WT_VERIFY_FIXTURE_DIRS"
+  fail=1
+else
+  say "· stamp key: every fixture directory a leg reads is hashed (${#WT_VERIFY_FIXTURE_DIRS[@]} directories)"
+fi
+
 # 1. The compiler exists: the pinned fixpoint wheel (boot/ — first light
 #    2026-07-10; boot/PROVENANCE.md). The hand-WAT seed is DELETED (7401c4b);
 #    the cold-ladder recipe lives at tag first-light (band J archaeology).

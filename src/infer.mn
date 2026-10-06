@@ -1428,6 +1428,7 @@ handler diag_quiet {
   diag_report(_d, _msg, _dmod) => resume(),
   diag_errors() => resume(0),
   diag_refusals() => resume(0),
+  diag_narrations() => resume(0),
 }
 
 // diag_branch — the branch cursor's per-statement collector: each report
@@ -1453,6 +1454,7 @@ handler diag_branch with lines = make_list(16), count = 0, errors = 0, refusals 
   },
   diag_errors() => resume(errors),
   diag_refusals() => resume(refusals),
+  diag_narrations() => resume(count - errors),
   diag_lines_taken() => resume(list_to_flat(slice(lines, 0, count))),
 }
 
@@ -1473,6 +1475,7 @@ handler poly_capture with held = [] {
   diag_report(diag, msg, dmod) => resume() with held = push(held, (diag, msg, dmod)),
   diag_errors() => resume(diag_errors()),
   diag_refusals() => resume(diag_refusals()),
+  diag_narrations() => resume(diag_narrations()),
   poly_captured() => resume(held),
 }
 
@@ -1697,7 +1700,7 @@ fn scc_edge_one(ref frees_all, ref name_idx, st, v, free) = match smap_get(name_
   },
 }
 
-fn scc_pop(st, v, own members) = match st {
+fn scc_pop(st, v, members) = match st {
   (ctr, groups, idx, low, onstk, sp, stk) => {
     let w = stk[sp - 1]
     let members2 = push(members, w)
@@ -2949,7 +2952,7 @@ fn infer_fn(name, params, body_node, ret_ann, effs, handle, span: ValidSpan, pol
   // needs nothing the return unify below adds.
   claim_authored_return(ret_ann, body_node, name, span)
   settle_own_guards(param_handles, row_handle)
-  consume_exit_fn()
+  report_unconsumed(consume_exit_fn())
   let declared_effs = exit_frame()
   // Unify body's type with the declared return.
   match body_node {

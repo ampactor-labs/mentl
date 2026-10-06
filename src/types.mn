@@ -3382,7 +3382,9 @@ type DiagKind
   | TPolyRecursionSignature(String, Span)
   // The relevant tier: an authored `own` never consumed on this path —
   // affine's exactly-once half. Narration until the wheel's own count
-  // reaches 0 (the census arming law).
+  // reaches 0 (the census arming law). It carries the PARAMETER'S NAME,
+  // never a rendered sentence, so `mentl tighten` can release the marker it
+  // names; the message is a read of the kind like every other.
   | TOwnUnconsumed(String, Span)
   // The persist value gate: a replay-boundary thunk captures an own
   // whose finish obligation is still open — the image memcpy carries
@@ -3523,6 +3525,11 @@ effect Diagnostic {
   diag_errors() -> Int
   // only the ARMED classes (diag_refuses). The emit gate.
   diag_refusals() -> Int
+  // every report that is NOT an error — warnings and teachings — counted in
+  // every scope, whether the register rendered it or not. The board's
+  // project line: the wheel carries zero diagnostics over every module it
+  // links, and a narration the render scoped away still counts.
+  diag_narrations() -> Int
 }
 
 // The render REGISTER (SYNTAX: how much surfaces is the gradient reading
@@ -3550,7 +3557,13 @@ effect Diagnostic {
 // range names nothing; the module does. The register stamps each report with
 // the module in force when it fired (graph_module_current), and the filter
 // compares that, which is one read instead of a containment test.
-type DiagScope = ScopeAll | ScopeNone | ScopeModule(String)
+// ScopeLink is the PROJECT: every module of the link narrates, each report
+// once at its own module, and the instruments stay silent because they are
+// the census's channel, not the developer's. `mentl check` reads it, so the
+// wheel's "zero diagnostics" is measured over every module it links, never
+// over the entry alone (eight refuted `own` markers in three modules sat
+// behind ScopeModule's narrowing until G2).
+type DiagScope = ScopeAll | ScopeNone | ScopeModule(String) | ScopeLink
 
 // Armed on the root diagnostics_handler only (the register lives where
 // the render lives); a separate effect so the quiet trial, the branch
@@ -4190,9 +4203,11 @@ fn diag_applicability(d) with Pure = match d {
   TRowInventory(_, _, _, _) => MachineApplicable,
   TWordSlotBox(_, _, _) => MaybeIncorrect,
   TPolyRecursionSignature(_, _) => HasPlaceholders,
-  TOwnUnconsumed(_, _) => // Not mechanically applicable: the fix is a consume the developer
-  // must place (or an honest widening to `ref`), never a patch.
-  Unspecified,
+  TOwnUnconsumed(_, _) => // The marker the inference refutes is released to the inferred grade
+  // (`mentl tighten`): the honest form when nothing consumes. Maybe
+  // incorrect, because the developer may have meant a consume they did
+  // not write — the release makes the refusal visible rather than silent.
+  MaybeIncorrect,
   TOwnAcrossReplay(_, _) => Unspecified,
   EUseAfterMove(_, _) => // The fix is structural — drop the read or restructure so the
   // move happens after it — never a patch.
@@ -4287,7 +4302,7 @@ fn diag_message(d) with !Mutate = match d {
   TRowInventory(declared, used, name, _) => "function '{name}' declares {show_effrow(declared)}, which is exactly what the body proves ({show_effrow(used)}) — an inventory: the positive row is projected at the address surface, so author only what inference cannot say (a negation, an instance pin, Pure, or a cap on a callback's row); `mentl tighten` writes the residue",
   TWordSlotBox(what, unit, _) => "{what} is boxed into a fresh cell in `{unit}`, whose row does not say `Alloc` — a wide value crossing a slot sized for a word: the representation's cost, not the program's, until the slot takes the value's own width (Hβ.value.seq-element-stride-carrier)",
   TPolyRecursionSignature(name, _) => "the infinite type runs through '{name}''s own parameter or return — if '{name}' calls itself at a different type (polymorphic recursion), a FULL signature on '{name}' (every parameter and the return annotated) buys the poly self-call",
-  TOwnUnconsumed(msg, _) => msg,
+  TOwnUnconsumed(name, _) => "'{name}' is declared own but never consumed on this path — an owned resource with no finalization; `mentl tighten` releases the marker to the inferred grade",
   TOwnAcrossReplay(msg, _) => msg,
   EUseAfterMove(msg, _) => msg,
   EEffectMismatch(declared, inferred, why, _) => "effect row mismatch: {show_effrow(declared)} vs {show_effrow(inferred)} — {show_reason(why)}",
@@ -4521,7 +4536,11 @@ effect Consume {
   // not per body). Re-entrant for nested fn decls: enter pushes a fresh
   // frame, exit restores the parent's.
   consume_enter_fn()
-  consume_exit_fn()
+  // Answers the authored owns the closing body never consumed, which the
+  // DECLARATION reports in its own world — an arm's report resolves outer
+  // of its install and skipped every bank inside it, so no tool reading
+  // the bank (tighten, the View, the session) ever saw one (G2).
+  consume_exit_fn() -> [(String, Span)]
   // THE RELEVANT TIER (at-most-once gains its exactly-once half). The
   // ledger is AFFINE: it reports a name consumed twice and says nothing
   // about a name never consumed, so an `own` resource opened and dropped

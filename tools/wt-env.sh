@@ -266,6 +266,15 @@ wt_wheel() {
 # the cache inode). Dissolves with this file at `mentl verify` (the IC cursor
 # makes caching the semantics, not a bolt-on).
 
+# THE FIXTURE DIRECTORIES VERIFY'S LEGS READ — one home (G2). wt_state_key
+# hashes exactly these, and verify.sh refuses any leg that names a tests/
+# directory outside them, so a battery added to a leg without entering the
+# stamp's key is a red verify rather than a stale green. It was a hand list in
+# wt_state_key, and it under-included twice: three directories in 2026-08,
+# and tests/lens/negation from its birth until G2.
+WT_VERIFY_FIXTURE_DIRS=(tests/micros tests/lens/negation tests/syntax tests/floors tests/rows)
+wt_verify_fixtures() { find "${WT_VERIFY_FIXTURE_DIRS[@]}" -name '*.mn' 2>/dev/null | LC_ALL=C sort; }
+
 wt_state_key() {  # the gate-relevant tree state, hashed. Over-inclusion is a
                   # spurious re-run; under-inclusion is the bug — include every
                   # file whose change can change the verdict.
@@ -296,8 +305,8 @@ wt_state_key() {  # the gate-relevant tree state, hashed. Over-inclusion is a
   # comment has no such hazard. Fixtures and the wheel stay WHOLE, because a
   # `.mn` comment IS graph content (SYNTAX §Comments) and can change a verdict.
   { wt_wheel lib src
-    cat boot/mentl.wasm tests/micros/*.mn tests/syntax/*.mn tests/rows/*.mn \
-        tests/floors/*.mn 2>/dev/null
+    cat boot/mentl.wasm 2>/dev/null
+    wt_verify_fixtures | xargs cat 2>/dev/null
     sed -e '/^[[:space:]]*#/d' -e '/^[[:space:]]*$/d' \
         tools/verify.sh tools/run-micro.sh tools/wt-env.sh \
         tools/verify-baseline.txt 2>/dev/null

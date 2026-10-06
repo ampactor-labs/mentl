@@ -34,7 +34,9 @@ type EntryVerb
   // target, then the program's own argv (everything after the target — the
   // executor hands it to the program as its args, NUL-joined at the seam)
   | VRun(String, [String])
-  | VCheck(String)
+  // no target judges the PROJECT (its `main`, wherever the resolver finds it);
+  // a target judges that entry's link — every module of it reports either way
+  | VCheck(Option(String))
   // the cursor-address form — `mentl lib/tutorial/09-all.mn:40:20`: target, line, col (0 = whole-line). Drift-38's endpoint: the address IS the surface; verbs are transports
   | VAt(String, Int, Int)
   // the accept form — `mentl accept <path>:<line>:<col>`: the second graph
@@ -79,11 +81,13 @@ type EntryHandlerInvocation = Invocation(EntryVerb) | ParseError(String)
 // runner arm in dispatch_invocation.
 type VerbSpec = VerbSpec(String, String, ([String]) -> EntryHandlerInvocation, String)
 
-// req_target — the shared shape of the target-REQUIRED verbs (compile / run /
-// check / audit): argv[2] resolved to a module, or a ParseError that names the
+// req_target — the shared shape of the target-REQUIRED verbs (compile /
+// audit): argv[2] resolved to a module, or a ParseError that names the
 // verb and shows its usage. `mk` builds the variant from the resolved module.
 fn req_target(argv, mk, msg) =
   if len(argv) >= 3 { Invocation(mk(path_to_module(argv[2]))) } else { ParseError(msg) }
+
+fn check_verb_args(a) = Invocation(VCheck(optional_target(a, 2)))
 
 // The run verb keeps everything after its target: those words are the
 // PROGRAM's argv, not the wheel's, and the executor passes them through.
@@ -145,9 +149,9 @@ fn verb_specs() = [VerbSpec(
   "compile, prove, execute — the mentl command runs the module (a hole or refuted claim REFUSES)"
 ), VerbSpec(
   "check",
-  "<path>",
-  (a) => req_target(a, VCheck, "check needs a target: mentl check <path>"),
-  "diagnostics only, no emit"
+  "[path]",
+  check_verb_args,
+  "diagnostics over every module of the link, no emit — no path: the project"
 ), VerbSpec(
   "compile",
   "<path>",

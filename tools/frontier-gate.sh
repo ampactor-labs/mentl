@@ -1452,14 +1452,16 @@ run_lsp_hover() {
   } > "$frames"
   timeout 30 "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT" "$compiler" serve < "$frames" > "$sout" 2> "$serr"
   local src=$?
-  if grep -q '"contents"' "$sout"; then
+  # THE LEG PASSES ON CONTENTS AND NOTHING ELSE (G2). It used to pass on a
+  # clean exit with no hover at all ("the next rung"), so the one thing it
+  # names could vanish and the frontier stay green. A hover whose value is
+  # empty is no hover.
+  if grep -qE '"contents":\{"kind":"markdown","value":"[^"]+"' "$sout"; then
     pass "$label lsp serve hover returned a type (contents present)"
   elif grep -q 'parse_number' "$serr"; then
     fail "$label lsp serve REGRESSED to the json float trap (Hβ.emit.float-evidence-ft returned; see $serr)"
-  elif [ "$src" -eq 0 ]; then
-    pass "$label lsp serve clears the json float blocker (no parse_number trap; hover-response emission is the next rung, Hβ.lsp.transport-runs-frontend)"
   else
-    fail "$label lsp serve trapped (exit=$src; see $serr)"
+    fail "$label lsp serve answered no hover contents (exit=$src; see $sout, $serr)"
   fi
 }
 
@@ -2298,13 +2300,12 @@ for i in "${!compilers[@]}"; do
     fail "teach-authored (teach: $(printf '%s' "$ta_out" | grep -E '^(step|helper|add):' | tr '\n' ' ') decl: $(printf '%s' "$ta_decl" | grep Teach) call: $(printf '%s' "$ta_call" | grep Teach))"
   fi
 
-  # Hβ.emit.under-application-suspension's standing crucible (2026-08-09):
-  # bare under-application must be LOUD-OR-CORRECT, never silent-wrong.
-  # Green today (invalid WAT refuses at assemble), green when the fix
-  # lands (the suspension runs, exit 42), RED only if the emit ever
-  # produces a runnable executable with any other value — the
-  # silent-wrong transition this leg exists to catch. Tighten to
-  # demand-42-only when the peer's fix lands.
+  # Hβ.emit.under-application-suspension's crucible: a bare
+  # under-application (one field absent, no ?? marker) is the partial it
+  # names, and the program RUNS as the suspension, exit 42. Nothing else
+  # passes (G2): the leg accepted "loud at assemble" as green for as long as
+  # the fix was unbuilt, and kept accepting it after the fix landed, so the
+  # suspension could regress to invalid WAT under a green frontier.
   ua_dir="$dir/under-app"
   mkdir -p "$ua_dir"
   wt_run "$compiler" < "$ROOT/tests/frontier/mn-under-application-loud.mn" > "$ua_dir/ua.wat" 2> "$ua_dir/ua.compile.err"
@@ -2312,12 +2313,12 @@ for i in "${!compilers[@]}"; do
     "$WT" run "${WT_RUN_FLAGS[@]}" "$ua_dir/ua.wasm" > "$ua_dir/ua.run.out" 2> "$ua_dir/ua.run.err"
     ua_rc=$?
     if [ "$ua_rc" = "42" ]; then
-      pass "under-application crucible: the suspension RUNS (the peer's fix is live — tighten this leg to 42-only)"
+      pass "under-application: the suspension runs (exit 42)"
     else
-      fail "under-application crucible: a bare under-application RAN with exit $ua_rc — the silent-wrong transition (see $ua_dir)"
+      fail "under-application: a bare under-application RAN with exit $ua_rc, not 42 — the silent-wrong transition (see $ua_dir)"
     fi
   else
-    pass "under-application crucible: loud at assemble (invalid WAT refused; the banked peer names the suspension fix)"
+    fail "under-application: the suspension no longer assembles (see $ua_dir/ua.assemble.err)"
   fi
 
   # The arena census (2026-10-02, replacing the image-classified byte count
@@ -3878,16 +3879,24 @@ for i in "${!compilers[@]}"; do
   [ "$w_ok" = 1 ] && pass "where: repr, cardinality, schedule with width, tee, head, parameter and local badges narrate (output, never input)"
 
   # ─── The lambda list-pattern parameter (PLAN §11 Phase 3.3) ─────────
-  # `([h, ...t]) => h` parses and checks clean — the cover-grammar rest
-  # closed the second-weaker-copy gap. The RUN half is the banked peer
-  # Hβ.lower.list-rest-binding-runtime's gate (the fixture's own header
-  # carries the expected value for that day).
+  # A list pattern with a rest as a literal's parameter parses, checks clean AND RUNS to 7. The leg gated the
+  # check alone (G2): the run half's peer (Hβ.lower.list-rest-binding-runtime)
+  # closed and the leg never learned, so a regression in the binding would
+  # have stayed green.
   lp_chk=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" check "$ROOT/tests/frontier/mn-lambda-list-param.mn" 2>&1)
   lp_n=$(printf '%s' "$lp_chk" | grep -cE 'P_(Unexpected|Expected)Token|E_.* error')
-  if [ "$lp_n" = "0" ]; then
-    pass "lambda list-pattern param: ([h, ...t]) => parses and checks clean"
+  lp_dir="$dir/lambda-list-param"
+  mkdir -p "$lp_dir"
+  lp_rc=x
+  if wt_run --dir "$ROOT" "$compiler" compile "$ROOT/tests/frontier/mn-lambda-list-param.mn" > "$lp_dir/lp.wat" 2> "$lp_dir/lp.err" \
+     && wt_asm "$lp_dir/lp.wat" "$lp_dir/lp.wasm" 2>> "$lp_dir/lp.err"; then
+    "$WT" run "${WT_RUN_FLAGS[@]}" "$lp_dir/lp.wasm" > /dev/null 2>> "$lp_dir/lp.err"
+    lp_rc=$?
+  fi
+  if [ "$lp_n" = "0" ] && [ "$lp_rc" = "7" ]; then
+    pass "lambda list-pattern param: { [h, ...t] => h } parses, checks clean and runs to 7"
   else
-    fail "lambda list-pattern param ($lp_n diagnostics; the six-warning refusal is back)"
+    fail "lambda list-pattern param ($lp_n diagnostics, exit $lp_rc, want 0 and 7; see $lp_dir)"
   fi
 
   # ─── Named effect rows (PLAN §11 Phase 3.3, Hβ.types.named-effect-rows) ─
@@ -4414,6 +4423,14 @@ for i in "${!compilers[@]}"; do
   # failing.
   run_program "$compiler" eq-polymorphic-sum "$ROOT/tests/frontier/mn-eq-polymorphic-sum.mn" 0 yes "$dir"
   run_program "$compiler" payload-instantiation "$ROOT/tests/frontier/mn-payload-instantiation.mn" 0 yes "$dir"
+
+  # TWO FIXTURES THAT SAT IN tests/frontier/ WITH NO LEG (registered at G2).
+  # An unregistered fixture is a gate that cannot fail: the mutual-negation
+  # witness rotted to a type error when `addr` began answering an address
+  # and nothing noticed, and the arm-wide-op-arg pair named a closed peer no
+  # leg ran. Each runs to its header's value now.
+  run_program "$compiler" mutual-negation-gate "$ROOT/tests/frontier/mn-mutual-negation-gate.mn" 42 yes "$dir"
+  run_program "$compiler" arm-wide-op-arg "$ROOT/tests/frontier/mn-arm-wide-op-arg.mn" 11 yes "$dir"
 
   # (The per-module solo sweep moved to tools/verify.sh on 2026-09-26: it is a
   # census of the wheel's own source, and it was the one leg here that read

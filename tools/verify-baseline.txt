@@ -968,7 +968,7 @@ desugar_vocabulary: 46
 # 2026-10-03 · 62 -> 61 · the count fell at #126 (a3bcc7e0, the block-run
 # rework) and the ceiling stood at 62 through #129's first pin, the fall
 # printed and not held; held here.
-authored_own_max: 61
+authored_own_max: 53
 # 2026-09-17: 807 -> 805. Two markers retired with the duplicate map
 # primitive's deletion — the honest grade needs no marker where there is no
 # second copy to annotate.
@@ -1020,7 +1020,7 @@ authored_own_max: 61
 # forms reading each parameter through the grade; infer.mn's
 # `branch_replay_diags` left with its one when the diagnostic became one
 # render and one bank; the driver's three changed bodies and kept theirs.
-authored_ref_max: 684
+authored_ref_max: 682
 
 # 2026-08-08: the DRIFT-SHAPE ratchet (PLAN §11 5.6's absorption,
 # enforcement half) — the three absorbed drift modes counted by the
