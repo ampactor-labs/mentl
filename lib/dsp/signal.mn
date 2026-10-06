@@ -2,7 +2,8 @@
 //
 // Two layers share this file. The lower layer is the pipeable pure-processor
 // vocabulary (clip / gain / mix / soft_clip / db_to_linear / linear_to_db) and
-// the DSP effect, data-first for `|>` chains (x |> gain(0.8) |> soft_clip). The
+// the DSP effect, each a stage with its datum LAST, so a pipe fills the signal
+// (`x |> gain(0.8) |> clip(0.9) |> soft_clip`, SYNTAX §«The Stage Law»). The
 // upper layer is the cross-frequency-coupling research pipeline — a real STFT, a
 // bandpass filter bank drawn with the `<~` feedback verb, and a comodulogram
 // that composes them: phase from the low band (atan2 of a quadrature pair),
@@ -66,12 +67,19 @@ effect Network {
   fetch_param(String) -> String
 }
 
-// ── Pure Processors (pipeable, data-first) ───────────────────
-fn clip(x: Float, threshold: Float) -> Float with Pure = clamp(x, 0.0 - threshold, threshold)
+// ── Pure processors — stages, the signal last ────────────────
+//
+// Each takes its configuration first and the signal last, so the pipe fills
+// the signal and `x |> clip(0.9)` clips x. They were written signal-first
+// while this header promised `x |> gain(0.8)`, so a pipe filled the
+// THRESHOLD: `(0 - 2) |> clip(0.5)` answered 0.5, and `gain` was right only
+// because multiplication commutes. `mix` blends two signals, so a pair built
+// where it is piped — `(wet) >< (dry)` — fills both (the merge).
+fn clip(threshold: Float, x: Float) -> Float with Pure = clamp(x, 0.0 - threshold, threshold)
 
-fn gain(x: Float, factor: Float) -> Float with Pure = x * factor
+fn gain(factor: Float, x: Float) -> Float with Pure = x * factor
 
-fn mix(wet: Float, dry: Float, amount: Float) -> Float with Pure =
+fn mix(amount: Float, wet: Float, dry: Float) -> Float with Pure =
   dry * (1.0 - amount) + wet * amount
 
 // Soft saturation into the open unit interval: x / (1 + |x|). Every finite

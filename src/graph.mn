@@ -2155,6 +2155,125 @@ fn callee_is_fanout(f) = match f {
   _ => false,
 }
 
+// ── A PRODUCT BUILT AT A SITE, AND WHAT TAKES IT APART THERE ──────────
+//
+// A VERB NEVER COSTS MORE THAN ITS DESUGARING. A product a site builds and
+// takes apart there is its parts, in registers, exactly as the `let`
+// spelling is — only a product that ESCAPES (returned, stored, passed,
+// captured, spawned) is a record. Two consumers take one apart where it
+// stands: the one-arm positional destructure (`match p { (a, b) => … }`,
+// which a tuple `let` desugars to at parse) and the N-ary stage a `|>`
+// fills (PLAN §4②'s "merge folds into `|> merge_fn`", Faust's `,` then
+// `:`). The JUDGMENT reads this to charge the product only where the
+// record is built; the LOWERING reads it to bind the parts; so the two
+// cannot disagree about what a fanout costs.
+//
+// How many parts the product at `h` has, and −1 for a value that is not one
+// built here: a tuple literal's elements, a fanout's branches.
+fn product_arity_at(h) = match graph_node_body(h) {
+  NExpr(MakeTupleExpr(elems)) => len(elems),
+  NExpr(FanoutExpr(branches)) => len(branches),
+  NExpr(PipeExpr(PFanout(fan_own), _, right)) => match fan_own {
+    FanDistribute => 2,
+    FanShare => fanshare_arity(right),
+  },
+  _ => 0 - 1,
+}
+
+// A `<|`'s branch count: the tuple of stages it fans into, or the one
+// stage of the degenerate form (lower and infer normalize the same way).
+fn fanshare_arity(right) = match right {
+  N(NExpr(MakeTupleExpr(elems)), _, _) => len(elems),
+  _ => 1,
+}
+
+// The one arm whose tuple pattern binds every part of the product it
+// scrutinizes — a binder or a wildcard at each position, so the match IS
+// the destructuring and no arm can fail. `None` where the match is a real
+// dispatch, which keeps its tuple.
+fn destructure_subs(arms, n) = if n < 2 {
+  None
+} else {
+  match arms {
+    [(PTuple(subs), _)] => if len(subs) == n && all(pat_binds_only, subs) { Some(subs) } else { None },
+    _ => None,
+  }
+}
+
+fn pat_binds_only(p) = match p {
+  PVar(_) => true,
+  PWild => true,
+  PLit(_) => false,
+  PCon(_, _) => false,
+  PTuple(_) => false,
+  PList(_, _) => false,
+  PRecord(_, _) => false,
+  PAlt(_) => false,
+  PAs(_, _) => false,
+}
+
+// The arm's body, where the arms ARE that destructure.
+fn destructure_body(arms) = match arms {
+  [(_, body)] => Some(body),
+  _ => None,
+}
+
+// Whether the product at `h` is taken apart where it is built. Read UP the
+// parent edge, so the product's own lowering can ask it without the
+// consumer telling it. The types are settled by then; the JUDGMENT asks
+// `product_fate` instead, because a pipe's stage is judged after its left.
+fn product_consumed_in_place(h) = match graph_parent_of(h) {
+  None => false,
+  Some(p) => match graph_node_body(p) {
+    NExpr(MatchExpr(scrut, arms)) => node_handle(scrut) == h && is_some(destructure_subs(arms, product_arity_at(h))),
+    NExpr(PipeExpr(PForward, left, right)) => node_handle(left) == h && product_fills_stage(h, right),
+    _ => false,
+  },
+}
+
+// WHO DECIDES whether a product is a record. A positional destructure is an
+// AST fact, so the product's own judgment reads it; a pipe's merge turns on
+// the stage's ARROW, which is judged after the product, so the PIPE charges
+// its left (`infer_pipe`) once it knows. Everything else escapes and is
+// charged where it is built.
+type ProductFate = PfConsumed | PfByPipe | PfEscapes
+
+fn product_fate(h) = match graph_parent_of(h) {
+  None => PfEscapes,
+  Some(p) => match graph_node_body(p) {
+    NExpr(MatchExpr(scrut, arms)) => if node_handle(scrut) == h && is_some(destructure_subs(arms, product_arity_at(h))) {
+      PfConsumed
+    } else {
+      PfEscapes
+    },
+    NExpr(PipeExpr(PForward, left, _)) => if node_handle(left) == h && product_arity_at(h) > 1 { PfByPipe } else { PfEscapes },
+    _ => PfEscapes,
+  },
+}
+
+// THE MERGE: a product of N fills a stage whose N slots are still open —
+// the trailing holes the Stage Law puts the datum in, N of them. A stage
+// with one hole takes the product WHOLE (an ordinary pipe), so the merge
+// asks for exact agreement and never guesses.
+fn product_fills_stage(h, right) = {
+  let n = product_arity_at(h)
+  n > 1 && stage_open_slots(right) == n
+}
+
+// A stage's open slots: the parameters of its own arrow, read live — a bare
+// reference's whole parameter list, a partial's remaining ones (the partial
+// node's type IS the remaining arrow), and −1 where nothing proves an arrow.
+// A LITERAL stage says its own count on the page, which is what lets the
+// merge be known before the literal is judged (the judgment reaches a pipe's
+// left first).
+fn stage_open_slots(right) = match right {
+  N(NExpr(LambdaExpr(params, _)), _, _) => len(params),
+  N(_, _, rh) => match lookup_ty(rh) {
+    TFun(ps, _, _) => len(ps),
+    _ => 0 - 1,
+  },
+}
+
 // The MINT span of a handle — the reverse read of the span_index weave
 // (fresh_handle writes (span, handle) at every mint). A node's REASON span
 // can be overwritten by a later bind (a hole's reason becomes its binder's

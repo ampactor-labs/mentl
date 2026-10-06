@@ -1544,6 +1544,12 @@ for i in "${!compilers[@]}"; do
   # against a python oracle (PLAN §11 col 4's research half, filter-based).
   capture_signal_shadow "$compiler" "$dir" || continue
   run_signal_crucible "$compiler" "$dir"
+  # THE STAGE LAW IN lib/dsp (V2): configuration first, the datum last, so
+  # `(0 - 2) |> clip(0.5)` clips the signal and a fanout merges into `mix`.
+  # Born RED on boot d956687d: the processors were datum-first, the pipe
+  # filled the threshold (clip(0.5, -2.0) = 0.5), and a pair could not fill
+  # a two-slot stage at all (arity mismatch).
+  run_program "$compiler" stage-law-dsp "$ROOT/tests/frontier/mn-stage-law-dsp.mn" 40 signal "$dir"
   # Two more on-disk data validators, cross-validated against numpy/python (the
   # representation-stress the m3==m4 fixpoint is structurally blind to):
   #  - native [Float] statistics: fold-sum mean, comparison-reduction argmin/

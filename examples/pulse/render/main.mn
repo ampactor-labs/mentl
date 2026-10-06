@@ -272,32 +272,36 @@ fn comb_sum(c1: Float, c2: Float, c3: Float, c4: Float) -> Float with Pure =
 
 fn allpass_out(w: Float, x: Float) -> Float with Pure = (0.51 * w - x) / 0.7
 
+// The room is drawn in the verbs: the input fans to four combs (`<|`, each
+// branch a cycle of its own whose line belongs to this stage's record), the
+// four merge into `comb_sum`, and each allpass is the comb and the signal it
+// combs, side by side, merged into `allpass_out`. No tuple is built — a fanout
+// taken apart where it stands costs what its lets would — so the room keeps
+// its `!Alloc`.
 fn room_left() = {
   fn stage(x: Float) -> Float with !Alloc = {
-    let c1 = ((prev) => x + 0.872 * prev) <~ delay(1426)
-    let c2 = ((prev) => x + 0.843 * prev) <~ delay(1781)
-    let c3 = ((prev) => x + 0.828 * prev) <~ delay(1973)
-    let c4 = ((prev) => x + 0.818 * prev) <~ delay(2098)
-    let combs = comb_sum(c1, c2, c3, c4)
-    let w1 = ((prev) => combs + 0.7 * prev) <~ delay(240)
-    let d1 = allpass_out(w1, combs)
-    let w2 = ((prev) => d1 + 0.7 * prev) <~ delay(82)
-    allpass_out(w2, d1)
+    let combs = (x <| (
+      (v) => ((prev) => v + 0.872 * prev) <~ delay(1426),
+      (v) => ((prev) => v + 0.843 * prev) <~ delay(1781),
+      (v) => ((prev) => v + 0.828 * prev) <~ delay(1973),
+      (v) => ((prev) => v + 0.818 * prev) <~ delay(2098),
+    )) |> comb_sum
+    let d1 = (combs <| ((v) => ((prev) => v + 0.7 * prev) <~ delay(240), (v) => v)) |> allpass_out
+    (d1 <| ((v) => ((prev) => v + 0.7 * prev) <~ delay(82), (v) => v)) |> allpass_out
   }
   stage
 }
 
 fn room_right() = {
   fn stage(x: Float) -> Float with !Alloc = {
-    let c1 = ((prev) => x + 0.871 * prev) <~ delay(1449)
-    let c2 = ((prev) => x + 0.842 * prev) <~ delay(1804)
-    let c3 = ((prev) => x + 0.827 * prev) <~ delay(1996)
-    let c4 = ((prev) => x + 0.817 * prev) <~ delay(2121)
-    let combs = comb_sum(c1, c2, c3, c4)
-    let w1 = ((prev) => combs + 0.7 * prev) <~ delay(263)
-    let d1 = allpass_out(w1, combs)
-    let w2 = ((prev) => d1 + 0.7 * prev) <~ delay(105)
-    allpass_out(w2, d1)
+    let combs = (x <| (
+      (v) => ((prev) => v + 0.871 * prev) <~ delay(1449),
+      (v) => ((prev) => v + 0.842 * prev) <~ delay(1804),
+      (v) => ((prev) => v + 0.827 * prev) <~ delay(1996),
+      (v) => ((prev) => v + 0.817 * prev) <~ delay(2121),
+    )) |> comb_sum
+    let d1 = (combs <| ((v) => ((prev) => v + 0.7 * prev) <~ delay(263), (v) => v)) |> allpass_out
+    (d1 <| ((v) => ((prev) => v + 0.7 * prev) <~ delay(105), (v) => v)) |> allpass_out
   }
   stage
 }
@@ -332,7 +336,7 @@ fn make_limiter(sr: Int) = {
 // the soft clip that lands every sample strictly inside the unit range —
 // which is what the WAV writer's `Sample` parameters demand.
 fn channel(dry: Float, echo: Float, room: Float, gain: Float) -> Sample with Pure =
-  soft_clip(gain * (mix(echo, dry, 0.35) + 0.3 * room))
+  soft_clip(gain * (mix(0.35, echo, dry) + 0.3 * room))
 
 // ─── The rig — every stateful stage, built once ───────────────────────
 //
@@ -401,30 +405,28 @@ fn render_frame(buf, rig) with !Alloc + !Sample(44100) = {
   let lead = distort(voiced * lead_shape(tn, len), 2.5)
   // The bass through its own low-pass — one filter of the library's, its
   // memory its own.
-  let bass = rig.bass_tone(rig.bass(bass_hz(k)) * bass_shape(tn, len), 320.0)
-  // The drums. One noise source feeds two high-passes: at 7 kHz it is a
-  // hi-hat, at 1.8 kHz over a sine body it is a snare. The kick is a sine
-  // voice driven by a falling pitch.
+  let bass = rig.bass(bass_hz(k)) * bass_shape(tn, len) |> rig.bass_tone(320.0)
+  // The drums. One noise source fans to two high-passes (`<|`): at 7 kHz it
+  // is a hi-hat, at 1.8 kHz over a sine body it is a snare. The kick is a
+  // sine voice driven by a falling pitch.
   let noise = rig.hiss()
-  let hats = rig.hat_tone(noise * hat_shape(th, hat), 7000.0)
-  let snare =
-    (0.7 * rig.snare_tone(noise, 1800.0) + 0.5 * rig.snare_body(185.0, 0.0)) * snare_level(tb, beat)
+  let (hats, hiss_band) = noise <| ((v) => v * hat_shape(th, hat) |> rig.hat_tone(7000.0), rig.snare_tone(1800.0))
+  let snare = (0.7 * hiss_band + 0.5 * rig.snare_body(185.0, 0.0)) * snare_level(tb, beat)
   let kick = rig.kick(kick_pitch(tb), 0.0) * kick_level(tb)
   let drums = 0.9 * kick + 0.35 * snare
   // Placement: the lead a little left, the bass and the drums centred, the
   // hats right. The swept filter runs per channel — two filters, one maker
-  // — over the tonal voices; the drums bypass it.
+  // — over the tonal voices, the two channels a stereo pair (`><`); the
+  // drums bypass it.
   let cutoff = cutoff_at(t)
-  let tone_l = rig.sweep_l(lead * pan_left(0.0 - 0.2) + 0.8 * bass * pan_left(0.0), cutoff)
-  let tone_r = rig.sweep_r(lead * pan_right(0.0 - 0.2) + 0.8 * bass * pan_right(0.0), cutoff)
+  let (tone_l, tone_r) = (lead * pan_left(0.0 - 0.2) + 0.8 * bass * pan_left(0.0) |> rig.sweep_l(cutoff))
+    >< (lead * pan_right(0.0 - 0.2) + 0.8 * bass * pan_right(0.0) |> rig.sweep_r(cutoff))
   let dry_l = tone_l + drums * pan_left(0.0) + 0.3 * hats * pan_left(0.6)
   let dry_r = tone_r + drums * pan_right(0.0) + 0.3 * hats * pan_right(0.6)
-  // Two echoes, two rooms: the right echo feeds back harder, so the image
-  // opens as each note rings out.
-  let echo_l = rig.echo_l(dry_l)
-  let echo_r = rig.echo_r(dry_r)
-  let room_l = rig.room_l(dry_l)
-  let room_r = rig.room_r(dry_r)
+  // Each channel fans to its echo and its room (`<|`): the right echo feeds
+  // back harder, so the image opens as each note rings out.
+  let (echo_l, room_l) = dry_l <| (rig.echo_l, rig.room_l)
+  let (echo_r, room_r) = dry_r <| (rig.echo_r, rig.room_r)
   let gain = rig.limiter(dry_l + room_l, dry_r + room_r)
   wav_frame(buf, n, channel(dry_l, echo_l, room_l, gain), channel(dry_r, echo_r, room_r, gain))
   advance()

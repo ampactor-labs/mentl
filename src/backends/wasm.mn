@@ -6258,6 +6258,14 @@ fn emit_value_run(run) = match run {
 // the arms enumerated here are the forms whose emission consumes its
 // own result (local.set / store / decl) or never falls through.
 fn lexpr_leaves_value(e) = match e {
+  LFanout(_, lex, _, forms) => // The form the site runs IS its emission: one that binds its parts to a
+  // consumer's registers leaves no word, exactly as the `let` spelling it
+  // costs the same as does.
+  lexpr_leaves_value(fanout_form(lex, forms)),
+  LBlock(_, stmts) => // A block is its last statement's emission (`emit_body`), so a block of
+  // lets — a product's parts bound to its consumer's registers — leaves no
+  // word either.
+  if len(stmts) == 0 { false } else { lexpr_leaves_value(last(stmts)) },
   LLet(_, _, _) => false,
   LStateSlotStore(_, _, _, _) => false,
   LStateInit(_, _, _, _) => false,
