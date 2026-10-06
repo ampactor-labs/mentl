@@ -44,8 +44,11 @@ type Capability
   | CIsolated
   // !Network: it reaches no network
   | CSandbox
-  // !Trap: no partial primitive it reaches can fail
-  | CTotal
+  // !Trap: no partial primitive it reaches can fail. Not "total": a function
+  // that never returns is `!Trap` too, and termination is in no row
+  // (`Hβ.effects.divergence-is-a-row-fact`); totality is the conjunction of
+  // `!Trap` with a proven `!Diverge`, which that peer names.
+  | CTrapFree
   // Pure: it performs nothing at all
   | CPure
   // !E for an effect with no domain meaning: the absence itself
@@ -419,6 +422,7 @@ fn lean_at_slot(b, name: String, ip) = match ip {
 
 fn predicate_leans(pred) = match pred {
   PTotalDiv(_, a, b) => value_leans(b) ++ value_leans(a),
+  PInBounds(recv, idx) => value_leans(idx) ++ value_leans(recv),
   PWithSelf(h, _) => value_leans(h),
   _ => [],
 }
@@ -968,7 +972,7 @@ fn capabilities_for_severance(name) = match name {
   } else if h == intern_str("Network") {
     [CSandbox]
   } else if h == intern_str("Trap") {
-    [CTotal]
+    [CTrapFree]
   } else {
     []
   },
@@ -1067,7 +1071,7 @@ fn show_capability(cap) = match cap {
   CRealTime => "Real-time safe (proven zero allocation)",
   CIsolated => "Isolated (proven no file or console I/O)",
   CSandbox => "Sandbox (proven no network access)",
-  CTotal => "Total (proven never to trap)",
+  CTrapFree => "Trap-free (proven: no partial primitive it reaches can fail; termination unproven)",
   CPure => "Pure (proven to perform no effect at all)",
   CProvenAbsence(name) => "Proven absence of {name} (the transitive !{name})",
 }

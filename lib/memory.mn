@@ -171,6 +171,23 @@ effect Alloc {
   heap_mark() -> Addr
 }
 
+// PARTIALITY IS A ROW FACT. The substrate traps a partial primitive whose
+// precondition fails — an integer division by zero, INT_MIN / -1, an index
+// past its sequence — and a site whose precondition the judgment cannot
+// prove performs Trap, so `with !Trap` claims a function reaches no trap it
+// has not bounded. Its one operation is the instruction that stops the
+// machine: the substrate answers it (no handler is written in Mentl, as for
+// Memory), it never returns, and nothing intercepts it — its absence is the
+// point. Termination is not in this row: a function that never returns is
+// `!Trap` too (`Hβ.effects.divergence-is-a-row-fact`). The op answers a word
+// it never produces: written `-> !`, the parser's fresh variable is shared by
+// the effect, which made every row it reached carry `Trap(Int)` beside the
+// bare `Trap` a division charges (measured at this landing); it takes `-> !`
+// when `!` is quantified per perform (`Hβ.effects.never-is-quantified-per-perform`).
+effect Trap {
+  trap() -> Int
+}
+
 // A deliberate trap: a word read at the last address, which no memory a
 // wasm32 instance can grow to holds, so the read faults wherever it runs —
 // the one home of the out-of-range refusal the runtime makes where a

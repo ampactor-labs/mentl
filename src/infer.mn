@@ -3644,9 +3644,9 @@ fn infer_expr(ref node) = match node {
                 },
                 _ => // a runtime-variable index cannot type a heterogeneous
                 // product — the list force below reports the honest mismatch
-                infer_index_force(rh, handle, span),
+                infer_index_force(rh, ih, handle, span),
               },
-              _ => infer_index_force(rh, handle, span),
+              _ => infer_index_force(rh, ih, handle, span),
             }
           },
         },
@@ -6952,12 +6952,30 @@ fn index_receiver_shallow(rh) = match graph_chase(rh) {
   _ => TUnit,
 }
 
-fn infer_index_force(rh, handle, span: ValidSpan) = {
+fn infer_index_force(rh, ih, handle, span: ValidSpan) = {
   let elem_h = mint(Inferred("subscript element"))
   let exp_r = mint(Inferred("subscript receiver"))
   graph_bind(exp_r, TList(TVar(elem_h)), Located(span, Inferred("subscript receiver")))
   unify(rh, exp_r, span, Inferred("subscript receiver"))
   graph_bind(handle, TVar(elem_h), Located(span, Inferred("subscript result")))
+  // PARTIALITY IS A ROW FACT, one primitive over (TRAP): the read traps
+  // where `0 <= i < len(xs)` fails, so the site raises that precondition as
+  // the claim it is (PInBounds) and reads the ledger's verdict — proven, the
+  // read is the unchecked traversal and charges no Trap; refuted, the ledger
+  // refuses at the site; open, the checked read's own row carries the Trap.
+  // The verdict is written on the index node where the lowering reads which
+  // read to emit, both ways, so a handle a rolled-back judgment wrote is
+  // overwritten by the judgment of the node that holds it now.
+  let proven = match verify_claim(
+    graph_module_current(),
+    span,
+    PInBounds(rh, ih),
+    Located(span, Inferred("a sequence read is partial"))
+  ) {
+    Some(held) => held,
+    None => false,
+  }
+  graph_narrow_set(ih, if proven { 1 } else { 0 })
   // The sugar charges what its lowering performs: `xs[i]` emits the
   // list_index call, so the judgment charges list_index's own declared
   // row — read live from the env, never a literal (the seq-op charge's
@@ -6966,7 +6984,7 @@ fn infer_index_force(rh, handle, span: ValidSpan) = {
   // teaching surface lying about a memory-touching fn (the four-face
   // probe, 2026-08-01). The tuple-const route stays chargeless: its
   // extraction is compile-time.
-  match env_lookup(subscript_callee()) {
+  match env_lookup(subscript_callee(proven)) {
     Some((sch, _, _)) => match judgment_ty(sch) {
       TFun(_, _, lrow) => inf_add_row_at(handle, lrow),
       _ => (),
@@ -13345,8 +13363,9 @@ fn walk_refinement(node, path_pred) = match node {
     // xs[i] }`) — an unsound elision licence. The real write requires a
     // structural discharge that the path predicate implies BOTH `0 <= index`
     // AND `index < len(receiver)` — the named peer
-    // Hβ.infer.narrowing-write-requires-discharge. The weave (graph_narrow_set
-    // /at) stays as its substrate; lower reads 0 → the checked entry.
+    // Hβ.infer.narrowing-write-requires-discharge. The weave's writer is the
+    // read's own bounds claim since TRAP (infer_index_force); the path half
+    // waits on `Hβ.verify.partiality-reads-the-path-narrowing`.
     {
       walk_refinement(receiver, path_pred)
       walk_refinement(index, path_pred)

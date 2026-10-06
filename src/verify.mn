@@ -87,6 +87,7 @@ fn predicate_decide_at(ref pred, bind) = match pred {
   PWithSelf(sh, inner) => // bind `self` = sh over inner, through its tails when sh is a join
   decide_with_self(inner, SelfNode(sh)),
   PTotalDiv(op, a, b) => total_div_decide(op, a, b, bind),
+  PInBounds(recv, idx) => in_bounds_decide(recv, idx, bind),
   PProvides(_) => // a provision states what arrives at a position, never a demand on it
   Some(true),
 }
@@ -104,13 +105,119 @@ fn predicate_decide_at(ref pred, bind) = match pred {
 // fact `Trap` at the site. The answer is a ROW fact, so it stands only on
 // what is proven or assumed under contract (`leaves_exclude`), never on a
 // postcondition still owed or on the overflow-blind Add fold.
-fn total_div_decide(op, a, b, bind) = match op {
+// Two ground operands decide at their points through the one home the
+// integer folder asks (types.mn `int_op_defined`), so the claim and the fold
+// cannot disagree about which constants trap.
+fn total_div_decide(op, a, b, bind) = match node_const_at(a, bind) {
+  Some(LVInt(na)) => match node_const_at(b, bind) {
+    Some(LVInt(nb)) => Some(int_op_defined(op, na, nb)),
+    _ => total_div_faces(op, a, b, bind),
+  },
+  _ => total_div_faces(op, a, b, bind),
+}
+
+fn total_div_faces(op, a, b, bind) = match op {
   BMod => node_excludes(b, 0, bind),
   BDiv => and_decide(
     node_excludes(b, 0, bind),
     or_decide(node_excludes(b, 0 - 1, bind), node_excludes(a, i32_min(), bind))
   ),
   _ => Some(true),
+}
+
+// A sequence read's precondition (TRAP): `0 <= i` and `i < len(xs)`, each
+// decided as the division's faces are — a ROW fact, so it stands on
+// constants, lengths and preconditions alone. The index's lower face reads
+// its leaves' lower bounds; the upper face pairs every constant the index can
+// be with every length the receiver can have, read along the receiver's
+// edges (`seq_lengths`). A pair the text fixes out of range refutes — a
+// join's tail that reads past its own literal is the trap written down — and
+// an index or a length nothing here bounds leaves the claim open, which is
+// the row fact `Trap` at the site. A guarded read (`if i < len(xs)`) stays
+// open until the path narrowing is read
+// (`Hβ.verify.partiality-reads-the-path-narrowing`).
+fn in_bounds_decide(recv, idx, bind) = {
+  let ileaves = value_leaves(idx, bind)
+  and_decide(leaves_nonneg(ileaves), below_lengths(ileaves, seq_lengths(recv)))
+}
+
+fn leaves_nonneg(leaves) =
+  if len(leaves) == 0 { None } else { fold(Some(true), nonneg_step, leaves) }
+
+fn nonneg_step(acc, leaf) = and_decide(acc, leaf_nonneg(leaf))
+
+fn leaf_nonneg(leaf) = match leaf {
+  LPoint(v) => match v {
+    LVInt(n) => Some(n >= 0),
+    _ => None,
+  },
+  LLength => Some(true),
+  LParam(_, c) => match domain_lo(ty_domain(c)) {
+    Some(lo) => if lo >= 0 { Some(true) } else { None },
+    None => None,
+  },
+  LClaimed(_, beneath) => leaf_nonneg(beneath),
+  LPost(_) => None,
+  LSum(_) => None,
+  LRet(_) => None,
+  LUnknown => None,
+}
+
+// `i < len(xs)` over every constant the index can be and every length the
+// receiver can have: proven when each pair is in range, refuted the moment
+// one is not, open where either side has a value nothing here fixes.
+fn below_lengths(ileaves, lengths) = if len(ileaves) == 0 || len(lengths) == 0 {
+  None
+} else {
+  fold(Some(true), below_step(lengths, ??, ??), ileaves)
+}
+
+fn below_step(lengths, acc, leaf) = and_decide(acc, leaf_below(leaf, lengths))
+
+fn leaf_below(leaf, lengths) = match leaf {
+  LPoint(v) => match v {
+    LVInt(k) => fold(Some(true), point_step(k, ??, ??), lengths),
+    _ => None,
+  },
+  LClaimed(_, beneath) => leaf_below(beneath, lengths),
+  _ => None,
+}
+
+fn point_step(k, acc, n) = and_decide(acc, point_below(k, n))
+
+fn point_below(k, n) = match n {
+  Some(m) => Some(k < m),
+  None => None,
+}
+
+// The lengths a sequence can have, read along its edges: a list literal's
+// own count, a string literal's bytes, a let's value through the reference's
+// link, every tail of a join; None for a length nothing here fixes (a
+// parameter, a call, a built value). One entry per value the receiver can
+// be, so a join answers each of its tails.
+fn seq_lengths(h) = match node_const_at(h, NoSelf) {
+  Some(LVString(s)) => [Some(len(s))],
+  _ => match value_tails(h) {
+    Some(tails) => tails |> flat_map(seq_lengths),
+    None => match graph_node_body(h) {
+      NExpr(MakeListExpr(elems)) => [Some(len(elems))],
+      NExpr(VarRef(_)) => match graph_link_of(h) {
+        Some(b) => binder_lengths(b),
+        None => [None],
+      },
+      _ => [None],
+    },
+  },
+}
+
+// A let's binder is its value node; a parameter, a part or a handler state
+// fixes no length here.
+fn binder_lengths(b) = match graph_binder_of(b) {
+  Some(_) => [None],
+  None => match graph_node_body(b) {
+    NExpr(_) => seq_lengths(b),
+    _ => [None],
+  },
 }
 
 // Is the value at `h` provably not `k`? A constant answers outright (equal
@@ -143,9 +250,6 @@ fn pred_excludes(pred, k) = match predicate_decide_at(pred, SelfVal(LVInt(k))) {
   Some(false) => true,
   _ => false,
 }
-
-// The least signed word: the one dividend whose quotient by -1 does not fit.
-fn i32_min() with Pure = 0 - 2147483647 - 1
 
 // A claim about a JOIN's value is a claim about every value the join can
 // take, and an `if`, a `match` or a block takes exactly its tails' values —
@@ -1134,6 +1238,7 @@ fn pred_domain(pred) = match pred {
   PWithSelf(_, inner) => pred_domain(inner),
   PTotalDiv(_, _, _) => // a precondition on two operands states nothing about `self`
   dom_top(),
+  PInBounds(_, _) => dom_top(),
   PProvides(_) => dom_top(),
 }
 
@@ -1455,19 +1560,17 @@ fn litval_arith_opt(op, ref ea, ref eb) = match ea {
 // operands are bound through the LVInt/LVFloat PATTERN — exactly like
 // litval_lt/litval_le — so na/nb are Int and fa/fb are Float; a bare helper
 // param defaults to the i32 floor and stores an int where an f64 belongs.
-// Int div/mod GUARD the zero divisor (the runtime traps on Int `/ 0` — folding
-// one would LIE; None keeps the obligation live and honest). Float folds use the
+// Int folds through the one integer folder (types.mn `int_fold`), which folds
+// a division only where its claim holds at the two points — folding one that
+// traps would LIE, and folding it with the host's own division trapped the
+// compiler. Float folds use the
 // compiler's own f64 ops (identical wasm IEEE-754 semantics; f64 `/ 0.0` is
 // inf/nan, not a trap). No float modulo; a comparison/logical op defers to None.
 fn litval_arith(ref op, ref a, ref b) = match a {
   LVInt(na) => match b {
-    LVInt(nb) => match op {
-      BAdd => Some(LVInt(na + nb)),
-      BSub => Some(LVInt(na - nb)),
-      BMul => Some(LVInt(na * nb)),
-      BDiv => if nb == 0 { None } else { Some(LVInt(na / nb)) },
-      BMod => if nb == 0 { None } else { Some(LVInt(na % nb)) },
-      _ => None,
+    LVInt(nb) => match int_fold(op, na, nb) {
+      Some(v) => Some(LVInt(v)),
+      None => None,
     },
     LVFloat(_) => None,
     LVString(_) => None,
@@ -1634,6 +1737,7 @@ fn classify_predicate(pred) with Pure = match pred {
   PWithSelf(_, inner) => // the binder classifies as its body
   classify_predicate(inner),
   PTotalDiv(_, _, _) => "partiality",
+  PInBounds(_, _) => "partiality",
   PProvides(_) => "provision",
 }
 
@@ -1707,6 +1811,7 @@ fn predicate_to_smt(ref pred) = match pred {
     BMod => "(distinct {handle_to_smt(b)} 0)",
     _ => "(and (distinct {handle_to_smt(b)} 0) (or (distinct {handle_to_smt(b)} (- 1)) (distinct {handle_to_smt(a)} (- 2147483648))))",
   },
+  PInBounds(recv, idx) => "(and (<= 0 {handle_to_smt(idx)}) (< {handle_to_smt(idx)} (len {handle_to_smt(recv)})))",
   PProvides(_) => "true",
 }
 

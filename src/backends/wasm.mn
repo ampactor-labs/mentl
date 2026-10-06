@@ -7550,6 +7550,11 @@ fn emit_expr(expr) = match expr {
       }
       if import_name == "store_i32" {
         wat_emit("    (i32.store)(i32.const 0)\n")
+      } else if import_name == "trap" {
+        // Trap's one op (memory.mn): the instruction that stops the machine.
+        // It never returns, so the stack after it is polymorphic and any
+        // result the site expects validates.
+        wat_emit("    (unreachable)\n")
       } else if import_name == "load_i32" {
         wat_emit("    (i32.load)\n")
       } else if import_name == "store_i8" {

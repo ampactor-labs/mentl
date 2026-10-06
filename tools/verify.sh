@@ -101,7 +101,9 @@ text_legs() {
   # demand-link must carry: reachability from written names alone would miss
   # them, so the day that set changes is the day the seed must change with
   # it. This is the SIZE of the intersection between what lib/ publishes and
-  # what the five desugar-capable modules quote, held EXACT.
+  # what the desugar-capable modules quote, held EXACT — the five that
+  # mint, and types.mn, where the sugar's callees have one home since R0i
+  # (`concat_callees`, `subscript_callee`, `list_rest_callee`).
   # WHAT IT CATCHES, stated precisely because the first draft of this comment
   # oversold it and the RED tests said so: a name ENTERING or LEAVING the
   # vocabulary — a new name-keyed dependency on the prelude that nobody
@@ -118,7 +120,7 @@ text_legs() {
   { grep -hoE '^fn [a-z_][A-Za-z0-9_]*' lib/prelude.mn lib/*.mn | sed 's/^fn //'
     grep -hoE '^type [A-Z][A-Za-z0-9_]*|^  = [A-Z][A-Za-z0-9_]*|^  \| [A-Z][A-Za-z0-9_]*' lib/prelude.mn lib/*.mn | sed -E 's/^(type|  = |  \| )//'
   } | sort -u > "$sv_pre"
-  grep -hoE '"[A-Za-z_][A-Za-z0-9_]*"' src/lower.mn src/backends/wasm.mn src/parser.mn src/infer.mn src/pipeline.mn | tr -d '"' | sort -u > "$sv_min"
+  grep -hoE '"[A-Za-z_][A-Za-z0-9_]*"' src/lower.mn src/backends/wasm.mn src/parser.mn src/infer.mn src/pipeline.mn src/types.mn | tr -d '"' | sort -u > "$sv_min"
   csugar=$(comm -12 "$sv_pre" "$sv_min" | wc -l)
   rm -f "$sv_pre" "$sv_min"
   svmax=$(grep -E '^desugar_vocabulary:' "$BASELINE" | head -1 | cut -d: -f2 | tr -d ' ')

@@ -2363,6 +2363,19 @@ for i in "${!compilers[@]}"; do
     fail "audit-severance-honest (the pure control lost its true severance offer)"
   fi
 
+  # TRAP (2026-10-06): the deliberate trap is in the row. extract_chase traps
+  # at depth > 1000 by its own comment, and its row must say so; the audit's
+  # !Trap offer states what !Trap proves and never "Total". RED on boot
+  # 4228ff71: `extract_chase(handle, depth) with Memory + GraphRead`, and the
+  # audit offered "Total (proven never to trap)" over it.
+  trap_where=$(wt_run --dir "$ROOT" "$compiler" where "$ROOT/src/main.mn" extract_chase 2>/dev/null | head -1)
+  trap_row_ok=0
+  printf '%s' "$trap_where" | grep -qE '^→ extract_chase\(handle, depth\) with .*\bTrap\b' && trap_row_ok=1
+  judge trap-in-the-row "$trap_row_ok" "trap in the row (extract_chase's row carries Trap) (got: $trap_where)"
+  trap_label_ok=1
+  grep -q 'Total (proven' "$dir/audit-sev.out" && trap_label_ok=0
+  judge trap-free-label "$trap_label_ok" "trap-free label (no \"Total\" offer on the audit while termination is unrowed)"
+
   # The verb-shape tier (audit): a 2-step single-use let-chain invites the
   # |> pipe; a twice-used name (`<|` territory) and a one-step let (the
   # law's own exception) stay silent — both faces asserted.
