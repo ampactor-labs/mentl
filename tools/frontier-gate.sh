@@ -682,6 +682,50 @@ run_project() {
   fi
 }
 
+# The environment protocol (E1): tests/frontier/env-protocol reads MN_A and
+# MN_B through lib/environ.mn's host install. Three contracts, through the
+# host's own steps with --env as `mentl run` passes it: both set, the program
+# prints their sum and answers it; MN_B unset, the module's launch gate exits
+# 1 naming MN_B and the line that reads it, and main printed nothing; and
+# `query env` names both reads with their sites. RED on boot 4228ff71: the
+# program did not compile (the WASI root gate knew no environ op).
+run_env_protocol() {
+  local compiler="$1" dir="$2" label="env-protocol"
+  local pdir="$dir/$label.proj" rc out
+  rm -rf "$pdir"
+  mkdir -p "$pdir"
+  cp "$ROOT/tests/frontier/env-protocol/main.mn" "$pdir/main.mn"
+  if ! wt_run --dir "$pdir::." --dir "$ROOT::/mentl-home" "$compiler" compile main \
+      > "$pdir/main.wat" 2> "$dir/$label.err" \
+      || ! wt_asm "$pdir/main.wat" "$pdir/main.wasm" 2>> "$dir/$label.err"; then
+    fail "$label: did not compile (see $dir/$label.err)"
+    return
+  fi
+  out=$(wt_run --env MN_A=30 --env MN_B=12 --dir "$pdir::." "$pdir/main.wasm" 2>> "$dir/$label.err")
+  rc=$?
+  if [ "$rc" -eq 42 ] && [ "$out" = "sum 42" ]; then
+    pass "$label: both variables set — runs to 42"
+  else
+    fail "$label: both set, exit=$rc out='$out', want 42 and 'sum 42'"
+  fi
+  # The refusal is fail_exit's, which speaks on stdout; main's own line
+  # (`sum …`) must not appear beside it.
+  out=$(wt_run --env MN_A=30 --dir "$pdir::." "$pdir/main.wasm" 2> "$dir/$label.unset.err")
+  rc=$?
+  if [ "$rc" -eq 1 ] && printf '%s\n' "$out" | grep -q '^MN_B is read at main:7:' && ! printf '%s\n' "$out" | grep -q '^sum'; then
+    pass "$label: MN_B unset — the launch gate names it and its read site, nothing of main ran"
+  else
+    fail "$label: MN_B unset, exit=$rc out='$out' (see $dir/$label.unset.err)"
+  fi
+  wt_run --dir "$pdir::." --dir "$ROOT::/mentl-home" "$compiler" query main env > "$dir/$label.query" 2>/dev/null
+  if grep -q '2 environment read(s)' "$dir/$label.query" && grep -q 'MN_A  read at main:7:' "$dir/$label.query" \
+      && grep -q 'MN_B  read at main:7:' "$dir/$label.query"; then
+    pass "$label: query env names both reads at their sites"
+  else
+    fail "$label: query env (see $dir/$label.query)"
+  fi
+}
+
 # The warm world: a compile persists its analyzed image, and a second compile
 # of the same file restores it and must still emit the WHOLE module — the
 # contract that caught a restored image carrying a foreign world's output
@@ -1825,6 +1869,9 @@ for i in "${!compilers[@]}"; do
   # one-byte string serialized as a NUL, a quote as two, a control byte with
   # no short spelling crossed raw. RED on boot 2198ed97: exit 1.
   run_project "$compiler" "$dir" json-escape-total "$ROOT/tests/frontier/mn-json-escape-total.mn" 42
+  # Configuration is an effect and the demand is the manifest (E1,
+  # run_env_protocol's header).
+  run_env_protocol "$compiler" "$dir"
   # Real host-thread spawn over the shared image (the task-record substrate:
   # import-shape memory, shared-cell allocator, $spawn_task_impl/$join_task_impl).
   # Seen RED on the pre-task-record boot: 134, unaligned atomic in the join.

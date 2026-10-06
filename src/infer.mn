@@ -3092,7 +3092,7 @@ fn resolve_one_eff_arg(arg) = match arg {
     NExpr(VarRef(nm)) => match env_lookup(nm) {
       Some(entry) => match entry {
         (sch, _, kind) => match kind {
-          EffectDeclKind(_) => EAEffect(intern_str(nm)),
+          EffectDeclKind(_, _) => EAEffect(intern_str(nm)),
           ConstructorScheme(_, _) => match judgment_ty(sch) {
             TName(_, _) => // nullary ctor: the scheme's result IS the TName (fielded
             // ctors carry TFun — scheme_result_is' own reading)
@@ -3396,7 +3396,7 @@ fn check_instance_args(effs, span: ValidSpan) = each(
     (ename, _negated, _conn) => match ename {
       EParameterized(h, args) => match env_lookup(intern_name_of(h)) {
         Some(entry) => match entry {
-          (sch, _, EffectDeclKind(_)) => match judgment_ty(sch) {
+          (sch, _, EffectDeclKind(_, _)) => match judgment_ty(sch) {
             TTuple(ptys) => if len(args) != len(ptys) {
               report(EConstructorArity(intern_name_of(h), len(ptys), len(args), span))
             } else {
@@ -3417,8 +3417,12 @@ fn check_instance_args(effs, span: ValidSpan) = each(
   effs
 )
 
+// A string literal's type is the String sequence, which is no ground scalar,
+// so the ground compare alone refused every `!E("A")` against its own
+// `effect E(name: String)` ("String vs String", measured on boot 50258e2);
+// the stripped types are compared structurally beside it.
 fn check_one_instance_arg(arg, pty, span: ValidSpan) = match instance_arg_scalar_ty(arg) {
-  Some(aty) => if same_ground(aty, fold_strip(pty)) {
+  Some(aty) => if same_ground(aty, fold_strip(pty)) || fold_strip(aty) == fold_strip(pty) {
     ()
   } else {
     report(ETypeMismatch(aty, pty, Inferred("a parameterized effect's instance argument"), span))
@@ -4898,7 +4902,7 @@ fn infer_call_saturated(args, fh, handle, span: ValidSpan, cname) = {
   // a second callee's edge survive the frame's accumulation. The
   // unify-failure path charges nothing (the mismatch already reported).
   match graph_chase(fh) {
-    GNode(NBound(TFun(_, _, crow)), _) => inf_add_row_unified_at(handle, crow),
+    GNode(NBound(TFun(_, _, crow)), _) => inf_add_row_unified_at(handle, grounded_perform_row(cname, crow, args, span)),
     _ => (),
   }
   // The call boundary is a refinement CONSTRUCTION site: each declared
@@ -4915,6 +4919,111 @@ fn infer_call_saturated(args, fh, handle, span: ValidSpan, cname) = {
   ages_call(fh, cname, arg_handles)
   stage_continuation_boundary(cname, handle)
 }
+
+// THE PERFORM GROUNDS ITS INSTANCE (E1). An op parameter that shares its name
+// with one of its effect's own parameters IS that parameter at the perform:
+// under `effect Environ(name: String) { env(name: String) -> String }`,
+// `env("PORT")` charges `Environ("PORT")`. The op's registered row carries one
+// opaque value dim per effect parameter (`register_effect_ops`), whose only
+// writer was the declaration's pin (`pin_declared_instances`) — so the
+// instance had to be written twice, once at the read and once in a `with`
+// clause, with nothing checking they agree. The perform's literal argument is
+// the second writer, into the charge, after the arguments are judged. A
+// computed argument leaves the dim opaque: an ungrounded instance, provably
+// distinct from none, so a negation over it holds exactly when the reads it
+// guards are literal.
+fn grounded_perform_row(cname: String, crow, args, span: ValidSpan) = match perform_dim_slots(cname) {
+  None => crow,
+  Some((en, slots)) => {
+    let dims = map(perform_slot_value(args, ??), slots)
+    if env_read_is_ungrounded(en, cname, dims) { report(EEnvNameUngrounded(span)) } else { () }
+    match crow {
+      EfRow(ps, ab, t) => ef_make(map(perform_ground_entry(intern_str(en), dims, ??), ps), ab, t),
+    }
+  },
+}
+
+// The (argument position, dim position) pairs an op grounds, with its
+// effect's name — None for a callee that is no op, or an op none of whose
+// parameters names its effect's.
+fn perform_dim_slots(cname: String) = match env_lookup(cname) {
+  Some(entry) => match entry {
+    (sch, _, EffectOpScheme(en, _, _, _)) => match judgment_ty(sch) {
+      TFun(ps, _, _) => {
+        let dims = effect_dim_names(en)
+        let slots = fold([], perform_slot_of(dims, ??, ??), enumerate(ps))
+        if len(slots) == 0 { None } else { Some((en, slots)) }
+      },
+      _ => None,
+    },
+    _ => None,
+  },
+  None => None,
+}
+
+fn effect_dim_names(en: String) = match env_lookup(en) {
+  Some(entry) => match entry {
+    (_, _, EffectDeclKind(_, ds)) => ds,
+    _ => [],
+  },
+  None => [],
+}
+
+fn perform_slot_of(dims, acc, ip) = match ip {
+  (ai, p) => match find({ (_, d) => d == param_name(p) }, enumerate(dims)) {
+    Some((di, _)) => push(acc, (ai, di)),
+    None => acc,
+  },
+}
+
+// A slot's value at this perform: the argument's literal, or None where the
+// argument is computed (or the call leaves the slot to a default or a hole).
+fn perform_slot_value(args, slot) = match slot {
+  (ai, di) => (di, if ai < len(args) { literal_eff_arg(list_index(args, ai)) } else { None }),
+}
+
+fn literal_eff_arg(arg) = match arg {
+  N(NExpr(LitString(s)), _, _) => Some(EAString(s)),
+  N(NExpr(LitInt(k)), _, _) => Some(EAInt(k)),
+  N(NExpr(LitFloat(f)), _, _) => Some(EAFloat(f)),
+  N(_, _, _) => None,
+}
+
+fn perform_ground_entry(enh, dims, e) = match e {
+  EParameterized(n, eargs) => if n == enh {
+    EParameterized(n, map({ (i, a) => perform_ground_dim(dims, i, a) }, enumerate(eargs)))
+  } else {
+    e
+  },
+  ENamed(_) => e,
+  EPure => e,
+}
+
+// Only an opaque dim takes the literal: a type dim is the install flow's, and
+// a scalar already there keeps its own truth.
+fn perform_ground_dim(dims, i, a) = match a {
+  EANode(_) => match find({ (d, _) => d == i }, dims) {
+    Some((_, v)) => match v {
+      Some(lit) => lit,
+      None => a,
+    },
+    None => a,
+  },
+  EAType(_) => a,
+  EAInt(_) => a,
+  EAFloat(_) => a,
+  EAString(_) => a,
+  EAEffect(_) => a,
+  EACon(_) => a,
+}
+
+// A REQUIRED environment read must name its variable at the read: lib's
+// `env` op of `Environ` (lib/environ.mn) — host vocabulary the medium names, as
+// it names `Alloc` and `Trap` — with its name dim left opaque has no name the
+// launch gate can check (`env_demand_check`). `env_opt`, the optional read,
+// takes any name.
+fn env_read_is_ungrounded(en: String, cname: String, dims) =
+  en == "Environ" && cname == "env" && any({ (_, None) => true, (_, Some(_)) => false }, dims)
 
 // What an application owes the functions its callee can be: each learning
 // parameter among them learns what the application hands it
@@ -5367,7 +5476,7 @@ fn op_effect_of(cname: String) = match env_lookup(cname) {
       FnScheme => None,
       ConstructorScheme(_, _) => None,
       RecordSchemeKind(_) => None,
-      EffectDeclKind(_) => None,
+      EffectDeclKind(_, _) => None,
       HandlerKind(_, _, _, _, _) => None,
       ParamScheme(_) => None,
       RowAliasKind(_) => None,
@@ -8373,7 +8482,7 @@ fn op_instance_in_names(names) = {
 fn effect_instance_arity(ename) = {
   let ops = match env_lookup(ename) {
     Some(entry) => match entry {
-      (_, _, EffectDeclKind(o)) => o,
+      (_, _, EffectDeclKind(o, _)) => o,
       _ => [],
     },
     None => [],
@@ -11985,7 +12094,7 @@ fn register_effect_ops(effect_name, params, ops) = {
     effect_name,
     Frozen([], TTuple(map(param_ty, params))),
     Declared(effect_name),
-    EffectDeclKind(op_names)
+    EffectDeclKind(op_names, map(param_name, params))
   )
   // THE EFFECT'S COMPLETE TYPE-VAR STRUCTURE: the free type vars across ALL
   // its ops' signatures (params + returns), deduped — the effect's type
@@ -12180,7 +12289,7 @@ fn register_one_op(effect_name, eff_name, op) = match op {
           // an op name can never collide with one of these.
           (),
           RecordSchemeKind(_) => (),
-          EffectDeclKind(_) => (),
+          EffectDeclKind(_, _) => (),
           TypeVariants(_) => (),
           RowAliasKind(_) => (),
           ParamScheme(_) => // A parameter binding is scoped to its own fn and cannot stand as
@@ -12274,7 +12383,7 @@ fn handler_missing_ops(en: String, arms) = filter(
 // An effect declaration's ops, read off its env entry.
 fn effect_op_names(en: String) = match env_lookup(en) {
   Some(entry) => match entry {
-    (_, _, EffectDeclKind(ops)) => ops,
+    (_, _, EffectDeclKind(ops, _)) => ops,
     _ => [],
   },
   None => [],

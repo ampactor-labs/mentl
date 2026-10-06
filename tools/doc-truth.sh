@@ -199,6 +199,25 @@ elif printf '%s' "$cursor_block" | grep -qE '(crown|frontier|proof-exactness|mic
   fail=1
 fi
 
+# THE TOOLCHAIN'S VARIABLES HAVE ONE HOME — the table in tools/wt-env.sh's
+# header (E1, 2026-10-06). Thirteen MENTL_ names were read across a dozen
+# scripts with their defaults stated nowhere together; every one the host
+# side reads must be a row of that table, so a new variable lands with its
+# default and its reader or the verify refuses it. A doc file's name
+# (docs/MENTL_SPACE.md) is a path, never a variable.
+env_table=$(awk '/^# THE TOOLCHAIN.S OWN VARIABLES/{f=1; next} f && /^#   MENTL_/{print $2} f && !/^#/{exit}' tools/wt-env.sh)
+if [ -z "$env_table" ]; then
+  echo "doc-truth: tools/wt-env.sh's toolchain-variable table did not parse — the check cannot fail, so it fails"
+  fail=1
+else
+  for v in $(grep -rhoE 'MENTL_[A-Z0-9_]+(\.md)?' tools ide .githooks 2>/dev/null | grep -v '\.md$' | sort -u); do
+    if ! printf '%s\n' "$env_table" | grep -qx "$v"; then
+      echo "doc-truth: $v is read by the toolchain ($(grep -rlE "\\b$v\\b" tools ide .githooks | head -3 | tr '\n' ' '))and is not a row of tools/wt-env.sh's variable table"
+      fail=1
+    fi
+  done
+fi
+
 if [ $fail -eq 0 ]; then
   echo "doc-truth: the docs' checkable claims verify against the artifact"
 fi

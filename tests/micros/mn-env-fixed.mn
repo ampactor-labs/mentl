@@ -1,0 +1,19 @@
+// expect: 42
+// A literal read grounds its instance at the perform, so a negation of a
+// different variable holds over it: `port` reads PORT and is proven never to
+// read SECRET. On boot 4228ff71 the read's instance was the effect's one
+// opaque dim, never provably distinct, and the negation refused.
+effect Environ(name: String) {
+  env(name: String) -> String
+}
+
+handler fixed(pairs) {
+  env(name) => match find({ (k, _) => k == name }, pairs) {
+    Some((_, v)) => resume(v),
+    None => resume("0"),
+  },
+}
+
+fn port() with !Environ("SECRET") = parse_int(env("PORT"))
+
+fn main() = port() ~> fixed([("PORT", "42"), ("SECRET", "7")])

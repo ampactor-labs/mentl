@@ -57,7 +57,7 @@ mentl_wasm() {
   done
   "\$WT" run "\${WT_RUN_FLAGS[@]}" \\
     --dir "\$PWD" --dir /tmp --dir "\$MENTL_HOME::/mentl-home" "\${extra[@]}" \\
-    "\$MENTL_HOME/boot/mentl.wasm" "\$@"
+    "\${MENTL_BOOT:-\$MENTL_HOME/boot/mentl.wasm}" "\$@"
 }
 if [ "\${1:-}" = "run" ] && [ -n "\${2:-}" ]; then
   # mentl run <module> [args…] — compile, assemble, execute: the host's three
@@ -72,7 +72,24 @@ if [ "\${1:-}" = "run" ] && [ -n "\${2:-}" ]; then
   trap 'rm -rf "\$stage"' EXIT
   mentl_wasm compile "\$module" > "\$stage/module.wat" || exit \$?
   wt_asm "\$stage/module.wat" "\$stage/module.wasm" || exit \$?
-  "\$WT" run "\${WT_RUN_FLAGS[@]}" --dir "\$PWD" --dir /tmp "\$stage/module.wasm" "\$@"
+  # The environment the program reads, and nothing else of the shell's: the
+  # roster is the medium's (\`mentl query <module> env\`, the reads beneath a
+  # host install), each name taken from the shell, else from the project's
+  # .env (KEY=VALUE lines, # comments). A name set in neither is passed as
+  # nothing — the module's own launch gate names it and its read site. The
+  # shim checks nothing: the compile environment is not the run environment.
+  envs=()
+  dotenv="\$(mentl_arg_dir "\$module.mn" 2>/dev/null || mentl_arg_dir "\$module" 2>/dev/null || pwd)/.env"
+  while read -r name; do
+    [ -n "\$name" ] || continue
+    if [ -n "\${!name+set}" ]; then
+      envs+=(--env "\$name=\${!name}")
+    elif [ -f "\$dotenv" ]; then
+      line="\$(grep -E "^[[:space:]]*\$name=" "\$dotenv" | tail -1)"
+      [ -n "\$line" ] && envs+=(--env "\$name=\${line#*=}")
+    fi
+  done < <(mentl_wasm query "\$module" env 2>/dev/null | sed -n 's/^ *\\([A-Za-z_][A-Za-z0-9_]*\\)  read at .*/\\1/p' | sort -u)
+  "\$WT" run "\${WT_RUN_FLAGS[@]}" \${envs[@]+"\${envs[@]}"} --dir "\$PWD" --dir /tmp "\$stage/module.wasm" "\$@"
   exit \$?
 fi
 if [ "\${1:-}" = "space" ]; then

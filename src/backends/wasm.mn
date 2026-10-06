@@ -25,6 +25,8 @@ import derive
 
 import strings
 
+import query
+
 // WasmOut effect — the output sink. Every character of emitted WAT goes
 // through perform wat_emit(s). Default handler writes to stdout; test
 // handler collects into a buffer; format handler pretty-prints.
@@ -1525,7 +1527,7 @@ fn args_spill_at(declared, args, i) = if i >= len(args) {
 // The reach whole: the accepted twin demands, each decl's liveness by
 // source index, and whether the module is settled — an executable is, a
 // library's whole-emit is not (no caller reaches its floors).
-fn emit_reach(program, recs) = {
+fn emit_reach(program, recs, roster: String) = {
   let n = len(program)
   let keys = emit_keys(program, 0, n, smap_new())
   let library = match smap_get(keys, "main") {
@@ -1535,7 +1537,10 @@ fn emit_reach(program, recs) = {
   match emit_reach_roots(program, library, 0, n, list_filled(n, Unreached), []) {
     (live0, root_refs) => {
       let argv = if main_param_count() > 0 { ["wasi_args"] } else { [] }
-      let entry = if library { [] } else { map(demand_base, ["main"] ++ emit_runtime_contract() ++ argv) }
+      // The launch gate `_start` calls before main, where the program has one.
+      let gate = if byte_len(roster) > 0 { ["env_demand_check"] } else { [] }
+      let entry =
+        if library { [] } else { map(demand_base, ["main"] ++ emit_runtime_contract() ++ argv ++ gate) }
       match emit_reach_fix(
         entry ++ map(ref_demand([], ??), root_refs),
         (make_list(64), 0, smap_new(), live0, false),
@@ -2194,9 +2199,12 @@ fn emit_plan(program) = {
   // leg +70MB.
   let all_records = flatten(decl_records) |> dedup_fn_records
   let n = len(program)
+  // The program's demand on its host, read once (`env_demand`, query.mn):
+  // the launch gate's roster, a root of the reach where it is non-empty.
+  let roster = env_launch_roster()
   // The emitted reach (above): the twin demands, and which decls a live
   // reference reaches — the only ones emitted below.
-  match emit_reach(program, all_records) {
+  match emit_reach(program, all_records, roster) {
     (spec_demands, live, settles) => {
       reach_heap_line()
       // Every name a twin was demanded of — the unreached decls whose bodies
@@ -2209,13 +2217,24 @@ fn emit_plan(program) = {
         all_records,
         spec_demands,
         twin_base_set,
-        settles
+        settles,
+        roster
       )
     },
   }
 }
 
-fn plan_reached(lowered, fn_records, twin_bases, all_records, spec_demands, twin_base_set, settles) = {
+// THE LAUNCH GATE'S ROSTER: every required environment read beneath a host
+// install (`env_demand`), one line each, for `env_demand_check` to hold
+// against what the host passed before main runs. Empty — no gate, nothing
+// emitted — where the program reads no variable from a host, or links no
+// library that could check one.
+fn env_launch_roster() = match env_lookup("env_demand_check") {
+  Some(_) => env_demand_roster(env_demand()),
+  None => "",
+}
+
+fn plan_reached(lowered, fn_records, twin_bases, all_records, spec_demands, twin_base_set, settles, roster: String) = {
   // Named-generic twins (the emitted reach above): each demand's record is
   // the BASE record renamed — the same body, emitted under the spec_pairs
   // state so every repr read resolves through the site's instantiation.
@@ -2324,7 +2343,7 @@ fn plan_reached(lowered, fn_records, twin_bases, all_records, spec_demands, twin
   // data section, the leaf emission below reads all four.
   // (fold collection moved below the spec demand analysis — a twin's body is
   // re-collected under its bracket so its substituted aggregate sigs exist)
-  match project_emit_state(lowered, twin_bases, fold_closures) {
+  match project_emit_state(lowered, twin_bases, fold_closures, roster) {
     (all_fn_names, top_fn_names, string_entries, fn_lines, wasi_ops, yield_seen, yield_arity) => {
       // band B M1.2 (the k2/k3 bank, Ruling 1) — the composer is CALLED INDIRECT
       // (it is the fn_ptr@0 of every composed k record), so unlike every other
@@ -2364,6 +2383,7 @@ fn plan_reached(lowered, fn_records, twin_bases, all_records, spec_demands, twin
         adjoint_registers: derived.adjoint_registers,
         alloc_units: alloc_units,
         arena_on: arena_on,
+        env_roster: roster,
         fn_records: fn_records,
         fold_closures: fold_closures,
         jvp_faces: jvp_face_map(derived.faces),
@@ -2405,7 +2425,7 @@ fn k_helper_names(yields, arena_on) =
 // reads was settled before the gate, and the registries the writes consult
 // (the twins, the string offsets, the per-fn lines) were seeded by the plan.
 fn emit_planned(plan) = match plan {
-  {adjoint_registers, alloc_units, arena_on, fn_records, fold_closures, jvp_faces, jvp_names, jvp_recs, jvp_wide, line_owners, lowered, redrives, spec_names, spec_recs, spec_wide, string_entries, table_fn_names, tangent_rings, top_fn_names, vectors, wasi_ops, wide_fn_names, yield_arity, yield_seen} => {
+  {adjoint_registers, alloc_units, arena_on, env_roster, fn_records, fold_closures, jvp_faces, jvp_names, jvp_recs, jvp_wide, line_owners, lowered, redrives, spec_names, spec_recs, spec_wide, string_entries, table_fn_names, tangent_rings, top_fn_names, vectors, wasi_ops, wide_fn_names, yield_arity, yield_seen} => {
     let line_globals = line_global_slots(line_owners)
     emit_header()
     emit_type_section(vectors, yield_seen)
@@ -2533,7 +2553,8 @@ fn emit_planned(plan) = match plan {
       yield_seen,
       yield_slots,
       spawns,
-      arena_on
+      arena_on,
+      env_roster
     )
     emit_footer()
   } ~> unwind_scope(yield_seen > 0),
@@ -2787,7 +2808,7 @@ fn slot_already_recorded(entries, target: String, i, n) = if i >= n {
 // page (address 12 — below every region mark, never reset, holding a stale
 // pointer into the region; the cross-compile trap of 2026-07-22). The walk's
 // row names the ops; the bracket is the row's dynamic-extent obligation.
-fn project_emit_state(lowered, twin_bases, closures: {cmp: [Ty], eq: [Ty], evac: [Ty], hash: [Ty], show: [Ty]}) = {
+fn project_emit_state(lowered, twin_bases, closures: {cmp: [Ty], eq: [Ty], evac: [Ty], hash: [Ty], show: [Ty]}, roster: String) = {
   walk_lemit(lowered)
   // A twin whose base the module does not emit is still that base's body,
   // so the base owes it every fact the body carries — its strings, its
@@ -2802,6 +2823,9 @@ fn project_emit_state(lowered, twin_bases, closures: {cmp: [Ty], eq: [Ty], evac:
   // The set of literals is a projection of the collected show types (the graph
   // IS the index — the same type closure the unified fold walk collects).
   register_show_literals(closures.show)
+  // The launch gate's roster is a literal `_start` hands its check, laid in
+  // the data section through the channel every literal takes.
+  if byte_len(roster) > 0 { visit_string(roster) } else { () }
   let names = drain_fn_names() |> dedup_names
   let tops = drain_top_fn_names()
   let strs = drain_string_literals()
@@ -4507,48 +4531,6 @@ fn emit_one_wasi_import(op) = match host_import(op) {
 fn host_import(op) = match wasi_import_reprs(op) {
   Some((preprs, res)) => Some(("wasi_snapshot_preview1", op, preprs, res)),
   None => None,
-}
-
-// The WASI preview1 ABI signatures — the FFI boundary's external facts as
-// DATA (Repr vectors), keyed on the op name LWasiCall carries. ONE home,
-// two projections: the import-decl string (wasi_import_sig) and the
-// call-site arg widths (emit_wasi_args_at_widths — a word arg filling an
-// i64 param extends at the boundary). None = not a preview1 import.
-fn wasi_import_reprs(op) = if op == "proc_exit" {
-  Some(([RI32], None))
-} else if op == "fd_write" {
-  Some(([RI32, RI32, RI32, RI32], Some(RI32)))
-} else if op == "fd_read" {
-  Some(([RI32, RI32, RI32, RI32], Some(RI32)))
-} else if op == "fd_close" {
-  Some(([RI32], Some(RI32)))
-} else if op == "fd_prestat_get" {
-  Some(([RI32, RI32], Some(RI32)))
-} else if op == "fd_prestat_dir_name" {
-  Some(([RI32, RI32, RI32], Some(RI32)))
-} else if op == "fd_fdstat_get" {
-  Some(([RI32, RI32], Some(RI32)))
-} else if op == "path_open" {
-  Some(([RI32, RI32, RI32, RI32, RI32, RI64, RI64, RI32, RI32], Some(RI32)))
-} else if op == "path_create_directory" {
-  Some(([RI32, RI32, RI32], Some(RI32)))
-} else if op == "path_filestat_get" {
-  Some(([RI32, RI32, RI32, RI32, RI32], Some(RI32)))
-} else if op == "path_unlink_file" {
-  Some(([RI32, RI32, RI32], Some(RI32)))
-} else if op == "path_rename" {
-  Some(([RI32, RI32, RI32, RI32, RI32, RI32], Some(RI32)))
-} else if op == "fd_readdir" {
-  Some(([RI32, RI32, RI32, RI64, RI32], Some(RI32)))
-}
-// argv, read live at _start — (argc_ptr, buf_size_ptr) and (argv_ptr, buf_ptr),
-// both returning errno. This is what makes `mentl <verb>` reach a verb.
-else if op == "args_sizes_get" {
-  Some(([RI32, RI32], Some(RI32)))
-} else if op == "args_get" {
-  Some(([RI32, RI32], Some(RI32)))
-} else {
-  None
 }
 
 fn wat_frag_concat(a: String, b: String) -> String = a ++ b
@@ -6271,7 +6253,7 @@ fn lexpr_leaves_value(e) = match e {
 // where every perform is argless, so the area is a record of its own.
 fn yield_area_slots(arity) = if arity > 1 { arity } else { 1 }
 
-fn emit_start(top_fn_names, value_lets, has_lines, main_params, yield_seen, yield_slots, threaded, arena_on) = {
+fn emit_start(top_fn_names, value_lets, has_lines, main_params, yield_seen, yield_slots, threaded, arena_on, env_roster: String) = {
   // Top-level closures are static data; the static `<~` rings allocate
   // through $__init_lines and top-level VALUE lets initialize through
   // $__init_lets, run FIRST in program order — rings before lets, since an
@@ -6293,6 +6275,13 @@ fn emit_start(top_fn_names, value_lets, has_lines, main_params, yield_seen, yiel
   // that could perform (`emit_yield_arg_stores`).
   if yield_slots > 0 {
     wat_emit("    (global.set $yield_args (call $alloc (i32.const {int_to_str(8 * yield_slots)})))\n")
+  }
+  // THE LAUNCH GATE: every variable the program reads from its host is
+  // checked against what the host passed before anything of the program
+  // runs, its initializers included (`env_launch_roster`) — a missing one is
+  // named with its read site and the process exits 1.
+  if byte_len(env_roster) > 0 && ls_find_str_local(top_fn_names, "main", 0) >= 0 {
+    wat_emit("    (call $env_demand_check (i32.const 0) (i32.const {int_to_str(string_offset(env_roster))}))\n    (drop)\n")
   }
   if has_lines { wat_emit("    (call $__init_lines (i32.const 0))\n    (drop)\n") }
   if len(value_lets) > 0 { wat_emit("    (call $__init_lets (i32.const 0))\n    (drop)\n") }

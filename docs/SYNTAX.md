@@ -1695,6 +1695,39 @@ When used alone (e.g., `with !Mutate`), it creates a **negative capability stanc
 fn pure_op(x) with Pure = x + 1
 ```
 
+### The perform grounds its instance
+
+An op parameter that shares its NAME with one of its effect's parameters is that parameter at the perform: the op's argument there is the instance's argument, so a literal grounds the instance where the operation is performed and the row carries it (real, 2026-10-06):
+
+```
+effect Environ(name: String) {
+  env(name: String) -> String
+}
+
+fn port() with !Environ("SECRET") = env("PORT") |> parse_int   // accepted: Environ("PORT") is provably not Environ("SECRET")
+fn leak() with !Environ("SECRET") = env("SECRET")              // E_EffectMismatch
+fn read(n) with !Environ("SECRET") = env(n)                    // E_EffectMismatch: a computed name grounds nothing, and an ungrounded instance is distinct from none
+```
+
+Until this landed the instance was read off a declaration's `with` clause alone, so a read had to state its variable twice — `fn port() with Environ("PORT") = env("PORT")` — with nothing checking the two agreed, and an authored string instance (`!Environ("SECRET")`) was refused as `String vs String` against its own `effect Environ(name: String)`. A computed argument leaves the instance ungrounded, which is honest: the negation holds exactly when the reads it guards are literal.
+
+### Configuration — the environment is an effect
+
+The process environment is read through `lib/environ.mn`, where the variable's name is the instance:
+
+```
+import environ
+
+fn main() = (env("PORT") |> parse_int |> serve) ~> env_from_host
+```
+
+- **`env(name)` is a required read**, and its name is written at the read: a computed name is `E_EnvNameUngrounded`, because the program's demand on its host could not be stated before it runs. **`env_opt(name)`** is the optional read of any name, answering `Option(String)` (`env_or(name, fallback)` over it).
+- **The demand is a projection, never a file.** `mentl query <entry> env` names every variable the program reads beneath an install that crosses the host boundary (`env_from_host`), with the line that reads it — the manifest a `.env.example` would hand-copy, read off the proof. It is read at the perform sites, since a row is free of `Environ` the moment the install absorbs it.
+- **Nothing runs unproven at the boundary.** The compiler writes that roster into the module's start: before any of the program runs, its initializers included, every variable the host did not pass is named with its read site and the process exits 1 (`PORT is read at main:3:14 (in main) and is not set`). The check is the module's own, so it holds under any preview1 host.
+- **The host passes exactly the roster.** `mentl run` takes each roster name from the shell, else from the project's `.env` (`KEY=VALUE`, `#` comments), and passes those as `--env` — nothing else of the developer's environment enters the program.
+- **A secret is a name the program never reads.** A persisted image is the program's memory, so a value the program holds is in every checkpoint; a key belongs to the host, which applies it on the program's behalf (the program's data names the variable), and `!Environ("API_KEY")` over the whole program is the proof that it never entered the image.
+- `env_fixed(pairs)` serves fixed variables for a fixture and asks no host, so nothing read under it is demanded.
+
 ---
 
 ## Handler declarations
@@ -2877,6 +2910,7 @@ token, so there is nothing to lift.*
 | `E_ThreadedBranchEffect` | under a threaded schedule, a branch's row carries an effect whose covering handler at the fanout's frame — or, for a fanout a caller's schedule demands, along the demand's chain of installs, the callback parameter's row read at the instantiating site — writes its state (`resume … with`), lies beyond the frame fence with no demand reaching it, or reaches such a handler through its own arms (§`><`). ARMED, born at wheel-zero | `MaybeIncorrect` | install a handler that writes no state at the fanout's frame, or install the handler inside the branch |
 | `E_ContinuationUncapturable` | a held or multi-shot perform standing where its continuation cannot be captured: not the first work of its function, block or arena — bound by a `let`, past a statement, after an operand that does work (§«Where a continuation is captured») — or a CALL standing there whose callee's row proves such an op (the message names the callee, whose row carries the op). An abandoning perform never triggers it: a dead continuation unwinds from any position. Said at the settle point over the emitted reach, so a body nothing runs is never refused. ARMED at birth, 2026-10-03: it compiled clean and trapped at a runtime floor no diagnostic named (exit 134); the call face the same day (AN-2) | `MaybeIncorrect` | move the perform or the call to the front of its function, block or arena, or move what precedes it into a function the perform's function calls |
 | `E_DerivativeUnreachable` | a `d(v)` under a derivative reading whose argument's tangent was lost — into an aggregate, across a multi-shot perform, off a line ticked by forward code or a line a closure record owns, or through another `d` — a mint, an install or a state write under the reading that would store a lost tangent into a record, or a reading whose seed is not a Float variable in scope (§`~>`). The message names the loss site. ARMED at birth: the alternative is a slope of zero the program never has | `Unspecified` | keep the value out of the aggregate until it is asked for, or seed the reading at a Float variable |
+| `E_EnvNameUngrounded` | a required environment read (`env`, lib/environ.mn) whose name is not a literal at the read — the program's demand on its host could not be stated before it runs, so its launch gate could not check it (§«Configuration — the environment is an effect»). ARMED at birth, 2026-10-06, born at wheel-zero | `MaybeIncorrect` | write the variable's name at the read, or ask `env_opt` and decide what an absent value means |
 | `E_MissingVariable`   | name not in scope                             | `MaybeIncorrect`     | check spelling; check imports                  |
 | `E_ImportNameCollision` | two selective imports bind the same name    | `MaybeIncorrect`     | narrow the selective sets so each name binds one edge |
 | `E_MissingImport`     | a name resolves only because the whole link carries it: declared at module level in a module the referencing module never imports, directly or transitively (the prelude's closure is ambient — the driver links it into every compile). ARMED at birth, 2026-09-27: the per-module solo sweep as one read of the one judgment, naming both modules at the reference | `MaybeIncorrect` | add `import <declaring module>` to the referencing module |

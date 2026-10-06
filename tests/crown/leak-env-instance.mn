@@ -1,0 +1,14 @@
+// CROWN env (E1) — `!Env("A")` refuses `env("A")`: the op's argument names
+// the effect's parameter, so the perform's literal grounds the instance and
+// the row carries Env("A"). Expect E_EffectMismatch.
+effect Env(name: String) {
+  env(name: String) -> Int
+}
+
+fn port() with !Env("A") = env("A")
+
+handler fixed {
+  env(name) => resume(7),
+}
+
+fn main() = port() ~> fixed
