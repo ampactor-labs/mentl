@@ -8305,6 +8305,28 @@ fn infer_one_handler_arm(arm: {args: [String], body: Node, op_name: String}, res
   }
 }
 
+// An arm may not resume an op declared `-> !` (`EResumeOfNever`): its result
+// is quantified per perform, so the value the arm would hand back has no one
+// type every performer can receive.
+fn never_resume_check(hname: String, arm: {args: [String], body: Node, op_name: String}) = if op_never_returns(arm.op_name) && resume_grade(arm.body) != RNone {
+  report(EResumeOfNever(hname, arm.op_name, span_of_node(arm.body)))
+}
+
+// An op whose result is a variable its own scheme quantifies and nothing else
+// in it names — not a parameter, not the effect's instance: the never type,
+// minted per occurrence and quantified per perform. The structure IS the
+// declaration's `!`; no marker is kept beside it.
+fn op_never_returns(op: String) = match env_lookup(op) {
+  Some(entry) => match entry {
+    (scheme, _, EffectOpScheme(_, _, _, _)) => match judgment_pair(scheme) {
+      (qs, TFun(params, TVar(r), row)) => any({ q => q == r }, qs) && !any({ v => v == r }, free_in_params(params) ++ free_in_row(row)),
+      _ => false,
+    },
+    _ => false,
+  },
+  None => false,
+}
+
 // Arm params take the op's declared param types, positionally. An
 // arity mismatch reports EHandlerArmArity FIRST; the aligned prefix
 // still binds (productive-under-error).
@@ -12001,8 +12023,16 @@ fn register_effect_ops(effect_name, params, ops) = {
   // iterate's buffer) goes `[free]` and the iteration machinery ERASES the
   // element — the §4① value-ontology violation at the effect boundary, and the
   // root of both the list-as-Int erasure and the emitter's heap-dump.
-  let qops = quantify_effect_ops(ops)
-  let eff_vars = unique(effect_type_vars(qops))
+  // A `-> !` result is quantified per PERFORM, never at the effect: the
+  // effect's parameters are the variables its ops NAME (the qmap), and the
+  // never type names none — it mints a fresh variable per occurrence. Only
+  // the op's own scheme quantifies it, so each perform instantiates its own,
+  // which is sound exactly because a `-> !` op never resumes
+  // (`EResumeOfNever`). Made the effect's parameter, it rode every row in
+  // the program as `WASI(a)` and joined two performs at two result types.
+  let quantified = quantify_effect_ops(ops)
+  let qops = quantified.ops
+  let eff_vars = qops |> effect_type_vars |> unique |> filter(var_is_named(quantified.named, ??))
   let enh = intern_str(effect_name)
   // The instance's VALUE dimensions — one opaque node per declared effect
   // param (`effect Sample(rate: Int)` carries one), FIRST so an authored
@@ -12037,8 +12067,16 @@ fn register_effect_ops(effect_name, params, ops) = {
 // ops (Mentl solves Mentl). Uppercase leaves (`Int`) stay nominal, so Memory's
 // `load_i32(Int)` correctly does NOT parameterize.
 fn quantify_effect_ops(ops) = match quantify_effect_ops_loop(ops, [], 0) {
-  (qops, _) => qops,
+  (qops, qmap) => {named: map(qmap_handle, qmap), ops: qops},
 }
+
+fn qmap_handle(entry) = match entry {
+  (_, h) => h,
+}
+
+// A variable the effect's ops named (or a stored function's row tail they
+// wrote): every one but the never type's.
+fn var_is_named(named, v) = any({ n => n == v }, named)
 
 fn quantify_effect_ops_loop(ops, qmap, i) = if i >= len(ops) {
   ([], qmap)
@@ -12468,6 +12506,7 @@ fn register_handler(hname, ename_parsed, config, state, arms, effs, span: ValidS
       env_scope_enter()
       // drift-audit: ignore — s_h (arm result) and inst_h (effect instance) are distinct, not parallel arrays
       infer_one_handler_arm(arm, s_h, inst_h, w_handle)
+      never_resume_check(hname, arm)
       env_scope_exit()
     },
     arms

@@ -1306,10 +1306,21 @@ memcpy-serializability are invariant under the pin.
 `mentl where` projects the chosen width as a derived badge — `s : Float @ f32
 (pinned)` when authored, `c : Float @ f64 (inferred)` when the gradient reached it
 — output, never input. Every parameter and local answers it, and a function
-answers its head with its inferred row and the address it is declared at
-(`inv(n)  at main:11`) before its parameters' and return's widths; a value
+answers its head — as SYNTAX writes one, its parameters' types and its
+inferred row, each parameter's ownership grade before its name — and the
+address it is declared at (`inv(own n: Int) -> Int with Trap  at main:11`) before its parameters' and return's widths; a value
 whose type is still a variable reads `a : a @ per instantiation`, since every
-instantiation is specialized and takes its own width (real, 2026-10-02). A pin that names the width the gradient would already infer
+instantiation is specialized and takes its own width (real, 2026-10-02).
+Every surface that shows a type — `where`, `doc`, `query … type of`, the
+caret, the View, hover, every diagnostic — renders it through one projection,
+the formatter's, with each free variable named by the render as a developer
+would write it: a type variable by the name it was declared with, else the
+first free letter; a row variable `e`, `e1`, … from an alphabet the type
+variables never use, so `spawn(f: () -> a with e)` reads which is which. A
+unit result writes no arrow, a parameter no author named shows its bare type,
+and naming writes nothing into the graph (real, 2026-10-06; the head of every
+module-level function comes back as itself through `parse∘render`, counted by
+`mentl query <entry> heads`). A pin that names the width the gradient would already infer
 is `W_RedundantRepr` (drop it; the gradient reaches it anyway). A pin equal to the
 floor on an integral type is likewise vacuous. **The same `repr` pin is a
 parameter annotation** (the Intent-Boundary peer of `own`/`ref` — §"The Intent
@@ -1599,15 +1610,25 @@ effect Console { print(msg: String) -> () } // equivalent, explicit
 
 Both forms are accepted; absence is the idiomatic short form. Non-unit returns MUST be declared explicitly: `read() -> String`. This mirrors the fn-declaration rule where `-> RetTy` is optional on inferred fns but REQUIRED when declared.
 
-**Never-returning ops** declare `-> !`: the op's handler arm never resumes
-(`abort() -> !` — the control cut the Abandon discipline reads; a bare type
-variable `fail(msg: String) -> a` is the bottom-producing sibling whose return
-unifies with any consumer). The form parses and checks clean (probed at pin
-62542a59, the Phase 3 felt walk — zero diagnostics). `proc_exit(Int) -> !` is the
-WASI op's own declaration (lib/io.mn, 2026-10-03): the host ends the process,
-so the op answers a bare variable and an arm ending in it answers any
-install — which is what makes `fail_exit` installable over a body of any type
-now that an install meets its arms' answer (§«Handler declarations»).
+**Never-returning ops** declare `-> !`, the never type: the op never returns
+to its performer, so its arm never resumes — `abort() -> !` (the control cut
+the Abandon discipline reads), `fail(String) -> !`, and WASI's
+`proc_exit(Int) -> !` (the host ends the process). `!` is quantified per
+PERFORM, never at the effect (real, 2026-10-06): each perform meets a result
+variable of its own, so one function may perform `fail` where a list stands
+and where an Int stands, and an effect whose only non-ground op returns `!`
+carries no type parameter — `Fail`, `WASI` and `Abort` read as bare names in
+every row. That is sound exactly because the arm never resumes: an arm that
+resumes a `-> !` op is `E_ResumeOfNever`, armed at birth. An arm ending in a
+never op answers any install, which is what makes `fail_exit` installable
+over a body of any type (§«Handler declarations»). Until this landed the `!`
+was the effect's parameter: every row touching WASI rendered `WASI(a)`, two
+performs of `fail` at two result types collapsed into one instance, and an
+arm resuming `halt() -> !` compiled clean and returned from an op its
+declaration says never returns (`tests/micros/mn-resume-of-never-refuses.mn`,
+`mn-never-two-result-types.mn`). A bare variable result (`ask() -> a`) is the
+effect's own parameter, as before: the install fixes it and the arm resumes
+a value of it.
 
 ### Calling resume with unit
 
@@ -1798,7 +1819,7 @@ the install with what the remainder answered, so its value is the body's;
 an arm that does not resume answers the install itself, so its value must
 be the body's: `handler h { bail() => "not a number" }` installed over
 `(bail() + 1) ~> h` refuses `E_TypeMismatch` at the install — `Int vs
-List(Byte) — ~> pipe → at 15:13-15:27: inferred from the arm bail of handler
+[Byte] — ~> pipe → at 15:13-15:27: inferred from the arm bail of handler
 h`, the Reason the unify was asked with, which names the arm whose value is
 its own (a `resume` tail hands the remainder's answer through, so a handler
 whose every arm resumes answers its install's body) — and the caret's Why at
@@ -2874,6 +2895,7 @@ token, so there is nothing to lift.*
 | `E_UseAfterMove`      | a borrow-READ of a name the affine ledger already moved — the read half of affine beside `E_OwnershipViolation`'s consume half. ARMED 2026-09-15: it narrated while its own census held at zero (the arming law its decl and fixture both stated), and a narration held at zero is a counter standing in for a proof. Sound today only by accident: the heap frees only where an extent ends — an arena's exit, a reset — never at a `Consume`, so it is a use-after-free the day a `Consume` reclaims | `Unspecified` | drop the read, or restructure so the move happens after it — never a patch |
 | `E_HandlerUninstallable` | handler arms need effects context disallows | `MaybeIncorrect`   | widen ambient row or restructure handler       |
 | `E_HandlerInexhaustive` | a handler's arms answer some ops of an effect and not others (§«A handler is exhaustive») — an install absorbs every op of the effects its arms answer, so the missing op would escape the row and reach nothing at runtime. ARMED at birth, 2026-09-30, born at wheel-zero; the shape it refuses was a false absence proof that trapped | `HasPlaceholders` | add the arm; forward the op outward (`op(…) => resume(op(…))`); or declare the ops this handler answers as their own effect |
+| `E_ResumeOfNever` | a handler arm resumes an op declared `-> !` (§«Never-returning ops») — the never type is quantified per perform, so no value the arm hands back is one every performer can receive. ARMED at birth, 2026-10-06; the boot compiled the shape clean and returned from the op | `MaybeIncorrect` | end the arm with the value the install answers, or declare the op's result type if it does return |
 | `E_ThreadedBranchEffect` | under a threaded schedule, a branch's row carries an effect whose covering handler at the fanout's frame — or, for a fanout a caller's schedule demands, along the demand's chain of installs, the callback parameter's row read at the instantiating site — writes its state (`resume … with`), lies beyond the frame fence with no demand reaching it, or reaches such a handler through its own arms (§`><`). ARMED, born at wheel-zero | `MaybeIncorrect` | install a handler that writes no state at the fanout's frame, or install the handler inside the branch |
 | `E_ContinuationUncapturable` | a held or multi-shot perform standing where its continuation cannot be captured: not the first work of its function, block or arena — bound by a `let`, past a statement, after an operand that does work (§«Where a continuation is captured») — or a CALL standing there whose callee's row proves such an op (the message names the callee, whose row carries the op). An abandoning perform never triggers it: a dead continuation unwinds from any position. Said at the settle point over the emitted reach, so a body nothing runs is never refused. ARMED at birth, 2026-10-03: it compiled clean and trapped at a runtime floor no diagnostic named (exit 134); the call face the same day (AN-2) | `MaybeIncorrect` | move the perform or the call to the front of its function, block or arena, or move what precedes it into a function the perform's function calls |
 | `E_DerivativeUnreachable` | a `d(v)` under a derivative reading whose argument's tangent was lost — into an aggregate, across a multi-shot perform, off a line ticked by forward code or a line a closure record owns, or through another `d` — a mint, an install or a state write under the reading that would store a lost tangent into a record, or a reading whose seed is not a Float variable in scope (§`~>`). The message names the loss site. ARMED at birth: the alternative is a slope of zero the program never has | `Unspecified` | keep the value out of the aggregate until it is asked for, or seed the reading at a Float variable |
@@ -2881,7 +2903,7 @@ token, so there is nothing to lift.*
 | `E_ImportNameCollision` | two selective imports bind the same name    | `MaybeIncorrect`     | narrow the selective sets so each name binds one edge |
 | `E_MissingImport`     | a name resolves only because the whole link carries it: declared at module level in a module the referencing module never imports, directly or transitively (the prelude's closure is ambient — the driver links it into every compile). ARMED at birth, 2026-09-27: the per-module solo sweep as one read of the one judgment, naming both modules at the reference | `MaybeIncorrect` | add `import <declaring module>` to the referencing module |
 | `E_UnknownArgLabel`   | a labeled arg names no declared parameter     | `MaybeIncorrect`     | check the label against the parameter names    |
-| `E_TypeMismatch`      | unification failed — the message carries the Reason the unify was asked with, past the diagnostic's own span (`Int vs List(Byte) — ~> pipe → at 15:13-15:27: inferred from the arm bail of handler h`; real 2026-10-03 — the reporter had taken the reason and dropped it, so a mismatch said its two types and nothing of why they met) | `Unspecified`        | adjust types; widen / narrow                   |
+| `E_TypeMismatch`      | unification failed — the message carries the Reason the unify was asked with, past the diagnostic's own span (`Int vs [Byte] — ~> pipe → at 15:13-15:27: inferred from the arm bail of handler h`; real 2026-10-03 — the reporter had taken the reason and dropped it, so a mismatch said its two types and nothing of why they met) | `Unspecified`        | adjust types; widen / narrow                   |
 | `E_OccursCheck`       | infinite type                                 | `Unspecified`        | restructure to break cycle                     |
 | `E_OrphanHandlerAttach` | `~>` with no preceding chain                | `Unspecified`        | delete `~>` or supply body                     |
 | `E_PipeIntoComplete`  | `x \|> f(…)` where `f(…)` has no hole (already a complete value, not a `A -> B`) | `MaybeIncorrect` | leave a hole for the piped value (drop an arg or mark it `??`) |

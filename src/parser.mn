@@ -3290,17 +3290,13 @@ fn first_char_code(s) = if byte_len(s) == 0 { 0 } else { byte_at(s, 0) }
 // The function's effect row is an OPEN row var — the annotation names the
 // shape, and the bound value's effects flow in by a normal-call unify (the
 // mechanism that lets declared functor signatures replace infer_seq_op).
-fn parse_type_ty(ref tokens, pos) = match parse_type_atom(tokens, pos) {
-  (base, p) => {
+fn parse_type_ty(ref tokens, pos) = match type_head_items(tokens, pos) {
+  (items, base, p) => {
     let pa = skip_ws(tokens, p)
     if at(tokens, pa, TArrow) {
       match parse_type_ty(tokens, skip_ws(tokens, pa + 1)) {
         (ret, p2) => {
-          let param_tys = match base {
-            TTuple(elems) => elems,
-            TUnit => [],
-            _ => [base],
-          }
+          let param_tys = items
           // Optional `with <row>` — the fn TYPE's authored effect row
           // (TFun's third field, at last parseable: `() -> a with !WASI`
           // is the resume barrier's whole vocabulary — a param demanding
@@ -3323,6 +3319,18 @@ fn parse_type_ty(ref tokens, pos) = match parse_type_atom(tokens, pos) {
     } else {
       (base, p)
     }
+  },
+}
+
+// A type's head: its parenthesized group's items as written, or the one
+// atom — the parameter list a following `->` reads — beside the type the
+// head is when no arrow follows.
+fn type_head_items(tokens, pos) = match kind_at(tokens, pos) {
+  TLParen => match parse_paren_types(tokens, pos) {
+    (items, p) => (items, paren_group_type(items), p),
+  },
+  _ => match parse_type_atom(tokens, pos) {
+    (base, p) => ([base], base, p),
   },
 }
 
@@ -3383,27 +3391,8 @@ fn parse_type_atom(ref tokens, pos) = match kind_at(tokens, pos) {
   // per occurrence: bottom unifies with every consumer, exactly the
   // bottom-producing sibling `fail(msg) -> a` spelled as intent.
   (TName("!", []), pos + 1),
-  TLParen => {
-    let p = skip_ws(tokens, pos + 1)
-    if at(tokens, p, TRParen) {
-      (TUnit, p + 1)
-    } else {
-      match parse_type_ty(tokens, p) {
-        (first, p2) => {
-          let p3 = skip_ws(tokens, p2)
-          if at(tokens, p3, TComma) {
-            let buf = make_list(4)
-            match push_node(buf, 0, first) {
-              (b1, c1) => match parse_type_ty_tail(tokens, skip_ws(tokens, p3 + 1), b1, c1) {
-                (final_buf, final_count, p4) => (TTuple(slice(final_buf, 0, final_count)), p4),
-              },
-            }
-          } else {
-            (first, expect(tokens, p3, TRParen))
-          }
-        },
-      }
-    }
+  TLParen => match parse_paren_types(tokens, pos) {
+    (items, p) => (paren_group_type(items), p),
   },
   TLBrace => // Structural record type `{name: Ty, age: Ty}` (closed) or open
   // `{name: Ty, ...}` / `{name: Ty, ...R}` (accepts any record with AT
@@ -3433,6 +3422,40 @@ fn parse_type_atom(ref tokens, pos) = match kind_at(tokens, pos) {
     report(PUnexpectedToken("unexpected token in type position — expected a type", span_at(tokens, pos)))
     (TUnit, pos + 1)
   },
+}
+
+// A parenthesized type group: the types between `(` and `)`, comma-separated,
+// as written. Before `->` the group IS the parameter list, one parameter per
+// item, so `((a, b)) -> c` takes ONE pair where `(a, b) -> c` takes two —
+// the pair-is-one-argument law at the type grammar. Anywhere else it is a
+// type: `()` unit, one item the item, several a tuple.
+fn parse_paren_types(tokens, pos) = {
+  let p = skip_ws(tokens, pos + 1)
+  if at(tokens, p, TRParen) {
+    ([], p + 1)
+  } else {
+    match parse_type_ty(tokens, p) {
+      (first, p2) => {
+        let p3 = skip_ws(tokens, p2)
+        if at(tokens, p3, TComma) {
+          let buf = make_list(4)
+          match push_node(buf, 0, first) {
+            (b1, c1) => match parse_type_ty_tail(tokens, skip_ws(tokens, p3 + 1), b1, c1) {
+              (final_buf, final_count, p4) => (slice(final_buf, 0, final_count), p4),
+            },
+          }
+        } else {
+          ([first], expect(tokens, p3, TRParen))
+        }
+      },
+    }
+  }
+}
+
+fn paren_group_type(items) = match items {
+  [] => TUnit,
+  [one] => one,
+  _ => TTuple(items),
 }
 
 fn parse_type_ty_tail(ref tokens, pos, own buf, count) = {

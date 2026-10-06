@@ -746,22 +746,36 @@ fn doc_render_cell(entry_module: String, cell) = match cell {
   (_h, path, _, decls) => if path == entry_module { each(doc_render_decl, decls) } else { () },
 }
 
+// Each declaration as the one head projection renders it: a function its
+// head (`name(p: T) -> R with row`), a module value its type, a type its
+// constructors and an effect its ops — the lines `mentl where` gives them —
+// each followed by its lede.
 fn doc_render_decl(d) = match d {
-  N(NStmt(FnStmt(name, _, _, _, _)), _, h) => doc_render_line(name, h),
-  N(NStmt(HandlerDeclStmt(name, _, _, _, _, _)), _, h) => doc_render_line(name, h),
-  N(NStmt(TypeDefStmt(name, _)), _, h) => doc_render_line(name, h),
-  N(NStmt(EffectDeclStmt(name, _, _)), _, h) => doc_render_line(name, h),
+  N(NStmt(FnStmt(name, _, _, _, _)), _, h) => doc_render_lines([doc_value_line(name)], h),
+  N(NStmt(LetStmt(_, _, _)), _, h) => match body_decl_name(graph_node_body(h)) {
+    "" => (),
+    name => doc_render_lines([doc_value_line(name)], h),
+  },
+  N(NStmt(HandlerDeclStmt(name, _, _, _, _, _)), _, h) => doc_render_lines([doc_value_line(name)], h),
+  N(NStmt(TypeDefStmt(_, _)), _, h) => doc_render_lines(type_level_lines(h), h),
+  N(NStmt(EffectDeclStmt(_, _, _)), _, h) => doc_render_lines(type_level_lines(h), h),
   _ => (),
 }
 
-fn doc_render_line(name: String, h) = {
-  let ty = match env_lookup(name) {
-    Some((sch, _, _)) => " : {show_type(judgment_ty(sch))}",
-    None => "",
-  }
+// A value's line: a function's head, anything else `name : T`, its free
+// variables named as a developer writes them.
+fn doc_value_line(name: String) = match env_lookup(name) {
+  Some((sch, _, _)) => match chase_type_deep(judgment_ty(sch)) {
+    TFun(params, ret, row) => show_head(name, params, ret, row),
+    ty => "{name} : {show_type(ty)}",
+  },
+  None => name,
+}
+
+fn doc_render_lines(lines, h) = {
   let prose = graph_comment_at(h)
   let lede = if len(prose) > 0 { "\n    {first_sentence(prose)}" } else { "" }
-  print("{name}{ty}{lede}\n")
+  print("{join("\n", lines)}{lede}\n")
 }
 
 // Rendering this roster through md / html / llms handlers is the named

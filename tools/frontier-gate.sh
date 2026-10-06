@@ -2149,9 +2149,9 @@ for i in "${!compilers[@]}"; do
   ug_fin=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" query "$ROOT/tests/frontier/mn-usage-grade.mn" "type finish" 2>/dev/null)
   ug_stmt=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" query "$ROOT/tests/frontier/mn-usage-grade.mn" "type stmt_use" 2>/dev/null)
   if [ "$ug_false" = "0" ] \
-    && printf '%s' "$ug_fin" | grep -q 'xs: [^,]* own — inferred' \
-    && printf '%s' "$ug_fin" | grep -q 'c: [^)]* ref — inferred' \
-    && printf '%s' "$ug_stmt" | grep -q 'xs: [^,]* own — inferred'; then
+    && printf '%s' "$ug_fin" | grep -q 'own xs: ' \
+    && printf '%s' "$ug_fin" | grep -q 'ref c: ' \
+    && printf '%s' "$ug_stmt" | grep -q 'own xs: '; then
     pass "usage grade: join and mode hold (no false narration; Own/Ref badges true)"
   else
     fail "usage grade (false-narrations=$ug_false; finish='$(printf '%s' "$ug_fin" | head -1)' stmt='$(printf '%s' "$ug_stmt" | head -1)')"
@@ -2629,7 +2629,7 @@ for i in "${!compilers[@]}"; do
   # the decl's prose as its lede.
   dout=$(cd "$ldemo" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ldemo" --dir /tmp "$compiler" doc lede 2>"$dir/doc.err")
   derr=$(grep -c ' error: ' "$dir/doc.err" || true)
-  if [ "$derr" = 0 ] && printf '%s' "$dout" | grep -q '^compute : ' && printf '%s' "$dout" | grep -q 'The outer prose'; then
+  if [ "$derr" = 0 ] && printf '%s' "$dout" | grep -q '^compute(' && printf '%s' "$dout" | grep -q 'The outer prose'; then
     pass "doc projection (decls with types and ledes, no diagnostics)"
   else
     fail "doc projection (errors=$derr; see $dir/doc.err; got: $(printf '%s' "$dout" | head -3))"
@@ -2650,7 +2650,7 @@ for i in "${!compilers[@]}"; do
   admemo="$ROOT/tests/frontier/address-module-demo"
   adout=$(cd "$admemo" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$admemo" --dir /tmp "$compiler" addr.mn:4 2>"$dir/addr-module.err")
   if printf '%s' "$adout" | grep -q "of 'entry_at_four'" \
-     && printf '%s' "$adout" | grep -q '(n: Int own' \
+     && printf '%s' "$adout" | grep -q '(own n: Int' \
      && ! printf '%s' "$adout" | grep -q 'helper_at_four'; then
     pass "cursor-address carries its module (line 4 is the entry's own decl, not the widest stranger's)"
   else
@@ -2693,7 +2693,7 @@ for i in "${!compilers[@]}"; do
     fail "caret why (got: $(printf '%s' "$cpar" | grep -A1 '^Why'); see $dir/caret.err)"
   fi
   cwhere=$( (cd "$cdemo" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$cdemo" --dir /tmp "$compiler" where walk.mn inv 2>>"$dir/caret.err") | head -1)
-  if [ "$cwhere" = "→ inv(n)  at walk:11" ]; then
+  if [ "$cwhere" = "→ inv(own n: Positive) -> Int  at walk:11" ]; then
     pass "where answers where (the declaration's address beside its head)"
   else
     fail "where answers where (got: $cwhere; see $dir/caret.err)"
@@ -2881,6 +2881,23 @@ for i in "${!compilers[@]}"; do
   else
     fail "hole row absorbed (got: $(printf '%s' "$qa" | grep -E 'eff_one|Propose|against' | head -3 | tr '\n' ' '))"
   fi
+  # ONE RENDERER FOR THE DEVELOPER'S EYE (render lane, 2026-10-06). `doc`
+  # and `where` render every type through the formatter's projection with
+  # free variables named by the render context: no forensic handle (`@e`),
+  # no `_:` for a parameter nobody named, no `-> ()` on a unit result, and
+  # no `WASI(a)` — the never type is quantified per perform, so an effect
+  # with a `-> !` op carries no phantom parameter. RED on boot 4228ff71:
+  # `doc` printed `Option : Option(t8090@e76)` and `unwrap : (opt:
+  # Option(t11349@e7593) ref — inferred) -> … with Fail(t11349@e7593)`.
+  rd=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT::." --dir /tmp "$compiler" doc lib/prelude.mn 2>/dev/null)
+  rf=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT::." --dir /tmp "$compiler" where src/main.mn Filesystem 2>/dev/null)
+  rr=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT::." --dir /tmp "$compiler" where src/main.mn fmt_run 2>/dev/null)
+  rall="$rd$rf$rr"
+  if [[ -n "$rd" && -n "$rf" && -n "$rr" ]] && ! printf '%s' "$rall" | grep -qE '@e[0-9]|_: |-> \(\)|WASI\(a\)'; then
+    pass "one renderer: doc and where print no handle, no _:, no -> () and no WASI(a)"
+  else
+    fail "one renderer (got: $(printf '%s' "$rall" | grep -E '@e[0-9]|_: |-> \(\)|WASI\(a\)' | head -3 | tr '\n' ' '))"
+  fi
   # A PIPE STAGE IS PROPOSED BY REFERENCE, searched outward from the hole's
   # module (PROGRAM C3). Born RED 2026-09-25 on all three: `5 |> ??` offered
   # only the empty lambda skeleton — the vocabulary enumerated zero-argument
@@ -3036,7 +3053,7 @@ for i in "${!compilers[@]}"; do
   # resolves the callee's FINAL scheme and the check REFUSES.
   fwd_out=$(cd "$ROOT" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT" --dir /tmp "$compiler" check tests/frontier/mn-check-forward-order.mn 2>&1)
   fwd_rc=$?
-  fwd_count=$(printf '%s' "$fwd_out" | grep -Fc 'E_TypeMismatch error: (Int, String) vs List(Byte)' || true)
+  fwd_count=$(printf '%s' "$fwd_out" | grep -Fc 'E_TypeMismatch error: (Int, String) vs [Byte]' || true)
   if [ "$fwd_rc" -ne 0 ] && [ "$fwd_count" -ge 1 ]; then
     pass "check-forward-order (the DAG path judges converged: forward tuple-into-[String] refuses)"
   else
@@ -3185,7 +3202,7 @@ for i in "${!compilers[@]}"; do
      && grep -q '"name":"at"' "$ses_dir/out.jsonl" \
      && grep -q '"name":"audit"' "$ses_dir/out.jsonl" \
      && grep -q '"name":"teach"' "$ses_dir/out.jsonl" \
-     && grep -q 'x: Int own' "$ses_dir/out.jsonl" \
+     && grep -q 'own x: Int' "$ses_dir/out.jsonl" \
      && grep -q 'declared as main' "$ses_dir/out.jsonl" \
      && grep -q 'Query: fn double' "$ses_dir/out.jsonl" \
      && grep -q 'double : Pure' "$ses_dir/out.jsonl" \
@@ -3788,7 +3805,7 @@ for i in "${!compilers[@]}"; do
   w_head=$(wt_run --dir "$ROOT" "$compiler" where "$wdoc" ticks 2>/dev/null)
   # E4: the head carries the declaration's address (RED on boot 8b071ba3,
   # whose head stopped at the row).
-  printf '%s' "$w_head" | grep -q '^→ ticks(x) with Tick  at .*mn-where-badges:10$' || { w_ok=0; fail "where head with its inferred row and address (got: $w_head)"; }
+  printf '%s' "$w_head" | grep -q '^→ ticks(own x: Int) -> Int with Tick  at .*mn-where-badges:10$' || { w_ok=0; fail "where head with its inferred row and address (got: $w_head)"; }
   printf '%s' "$w_head" | grep -q '^  x : Int @ i32 (inferred)$' || { w_ok=0; fail "where parameter badge (got: $w_head)"; }
   w_pin=$(wt_run --dir "$ROOT" "$compiler" where "$wdoc" s 2>/dev/null)
   printf '%s' "$w_pin" | grep -q '^→ s : Float @ f32 (pinned)$' || { w_ok=0; fail "where pinned parameter, SYNTAX's own example (got: $w_pin)"; }
@@ -3810,10 +3827,10 @@ for i in "${!compilers[@]}"; do
   printf '%s' "$w_zero" | grep -q '^→ handler zero absorbs Ask, answers Int  at .*mn-refine-install-answer:12$' || { w_ok=0; fail "where handler answer (got: $w_zero)"; }
   # The install's refusal carries the reason its unify was asked with — the
   # mismatch reporter had taken the reason and dropped it — so a body and an
-  # arm disagreeing names the arm: `Int vs List(Byte) — ~> pipe → at 15:…:
+  # arm disagreeing names the arm: `Int vs [Byte] — ~> pipe → at 15:…:
   # inferred from the arm bail of handler h`. RED on cf8a6d50 (compiled clean).
   w_arm=$(wt_run --dir "$ROOT" "$compiler" check "$ROOT/tests/micros/mn-arm-answer-is-the-install.mn" 2>&1 >/dev/null)
-  printf '%s' "$w_arm" | grep -q 'E_TypeMismatch error: Int vs List(Byte) — ~> pipe → at 15:[0-9]*-15:[0-9]*: inferred from the arm bail of handler h at' || { w_ok=0; fail "install refusal names the arm (got: $w_arm)"; }
+  printf '%s' "$w_arm" | grep -q 'E_TypeMismatch error: Int vs \[Byte\] — ~> pipe → at 15:[0-9]*-15:[0-9]*: inferred from the arm bail of handler h at' || { w_ok=0; fail "install refusal names the arm (got: $w_arm)"; }
   # B4 (2026-09-30): a fanout site reports the schedules its CALLERS demand
   # of it through direct calls — `shared`'s own frame installs none (Seq),
   # and `twice` calls it under `parallel_compose`, so its site runs threaded
@@ -3827,7 +3844,7 @@ for i in "${!compilers[@]}"; do
   # d956687d, which put `heads` at line 6, the local in `one` (judged first,
   # since `heads` calls it); the function stands at line 10.
   w_shadow=$(wt_run --dir "$ROOT" "$compiler" where "$ROOT/tests/frontier/mn-where-shadowed-local.mn" heads 2>/dev/null)
-  printf '%s' "$w_shadow" | grep -q '^→ heads(xs) with Memory  at .*mn-where-shadowed-local:10$' || { w_ok=0; fail "where address of a function a local shares its name with (got: $w_shadow)"; }
+  printf '%s' "$w_shadow" | grep -q '^→ heads(ref xs: \[a\]) -> Int with Memory  at .*mn-where-shadowed-local:10$' || { w_ok=0; fail "where address of a function a local shares its name with (got: $w_shadow)"; }
   # The bare why verb (SYNTAX's lag list, first name retired): the
   # Reason-chain walk as its own verb. Born RED 2026-08-08 (the prior
   # boot answered unknown-verb).

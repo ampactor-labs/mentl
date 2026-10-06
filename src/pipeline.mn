@@ -1569,6 +1569,7 @@ type QueryVerb
   | QVOrphanClaims
   | QVCost
   | QVGhosts
+  | QVHeads
   | QVSmt
   | QVText
   | QVProse
@@ -1617,6 +1618,8 @@ fn classify_query_verb(w: String) with Pure = if w == "type" {
   QVCost
 } else if w == "ghosts" {
   QVGhosts
+} else if w == "heads" {
+  QVHeads
 } else if w == "smt" {
   QVSmt
 } else if w == "text" {
@@ -1674,6 +1677,7 @@ fn build_question(verb, arg, raw, scope: String) = match verb {
   QVOrphanClaims => QOrphanClaims,
   QVCost => QCost,
   QVGhosts => QGhosts,
+  QVHeads => QHeads,
   QVSmt => QSmt,
   QVText => // The needle is everything after the verb, spaces included: a WAT
   // fragment such as `(type $ft1)` is one question, never its last word.

@@ -647,7 +647,7 @@ fn render_fn_decl(name, params, retty, effs, body) with !Mutate = match match re
 // A declaration's head through its binder — the one shape the whole
 // declaration's render and an accepted clause's splice share.
 fn fn_head_text(name, plist, retty, effs) with !Mutate =
-  "fn {name}({plist}){render_retty(retty)}{render_with_clause(effs)} ="
+  "fn {name}({plist}){render_retty(retty, effs)}{render_with_clause(effs)} ="
 
 // The head ALONE, for a reader that writes a declaration's signature back
 // without its body: the same param re-sugaring the whole render does.
@@ -1036,7 +1036,7 @@ fn render_variants_inline(ref variants, i) with !Mutate = if i >= len(variants) 
 } else {
   match variants[i] {
     (vname, tys, _) => {
-      let one = if len(tys) == 0 { vname } else { "{vname}({render_ty_list(tys, 0)})" }
+      let one = if len(tys) == 0 { vname } else { "{vname}({render_ty_list(tys)})" }
       if i == len(variants) - 1 { one } else { "{one} | {render_variants_inline(variants, i + 1)}" }
     },
   }
@@ -1047,7 +1047,7 @@ fn render_variants_vertical(ref variants, i) with !Mutate = if i >= len(variants
 } else {
   match variants[i] {
     (vname, tys, cn) => {
-      let one = if len(tys) == 0 { vname } else { "{vname}({render_ty_list(tys, 0)})" }
+      let one = if len(tys) == 0 { vname } else { "{vname}({render_ty_list(tys)})" }
       let lead = if i == 0 { "=" } else { "|" }
       let tail = if i == len(variants) - 1 { "" } else { "\n{render_variants_vertical(variants, i + 1)}" }
       "{render_stmt_comment(cn)}{lead} {one}{tail}"
@@ -1055,43 +1055,14 @@ fn render_variants_vertical(ref variants, i) with !Mutate = if i >= len(variants
   }
 }
 
-// ─── The SURFACE-type projection — the parse's inverse over authored
-// type syntax, the formatter's ONE type renderer. show_type is the VOICE
-// (diagnostics: List(T) spellings, tN@eN free-var handles, every row
-// rendered) and borrowing it here leaked internals into rendered source —
-// an effect op's fn-typed param rendered `with t45323@e23311`, which the
-// second fmt pass misparsed into three bogus op declarations. Surface
-// rules: [T] never List(T); fn-type params are TYPES (a type position
-// carries no names — the voice's `_:` invention does not parse); a row
-// renders only its AUTHORED content (present + !absent), because a bare
-// parse-minted tail var IS authored absence.
-fn render_type_tokens(ref ty) with !Mutate = match ty {
-  TInt => "Int",
-  TFloat => "Float",
-  TUnit => "()",
-  TByte => "Byte",
-  TAddr => "Addr",
-  TList(elem) => "[{render_type_tokens(elem)}]",
-  TTuple(elems) => "({render_type_list(elems, 0)})",
-  TFun(params, ret, row) => "({render_tparam_types(params, 0)}) -> {render_type_tokens(ret)}{render_row_surface(row)}",
-  TVar(id) => render_type_handle(id),
-  TName(name, args) => if len(args) == 0 { name } else { "{name}({render_type_list(args, 0)})" },
-  TRecord(fields) => "\{{render_type_fields(fields, 0)}\}",
-  TRecordOpen(fields, _) => "\{{render_type_fields(fields, 0)}, ...\}",
-  TRefined(base, pred) => "{render_type_tokens(base)} where {render_predicate_tokens(pred)}",
-  TCont(input, answer, disc, world) => show_type(TCont(input, answer, disc, world)),
-  TAlias(name, _) => name,
-  TReprPin(r, base) => // Parse-inverse: a pin whose base is the width's own bare atom
-  // renders bare (`f32` — the atom mints exactly this pair); any other
-  // pairing renders the authored `repr` suffix.
-  match (r, base) {
-    (RF64, TFloat) => "f64",
-    (RF32, TFloat) => "f32",
-    (RI64, TInt) => "i64",
-    (RV128, TInt) => "v128",
-    _ => "{render_type_tokens(base)} repr {repr_wat(r)}",
-  },
-}
+// ─── The SURFACE-type projection — the parse's inverse over authored type
+// syntax: the one renderer every surface shares (`render_ty`), under the
+// authored face. A row renders only what an author wrote (present and
+// `!absent`), because a bare parse-minted tail IS authored absence; a free
+// variable has no spelling on a page and renders as its forensic handle,
+// loud in fmt's own re-parse; a refinement's predicate is the parse's own
+// inverse (`render_predicate_tokens`), never the voice's compression.
+fn render_type_tokens(ty) with !Mutate = render_ty(ty) ~> authored_names(render_predicate_tokens)
 
 // The formatter's OWN predicate projection — the parse's inverse, never
 // the voice: show_predicate compresses a call operand to `(...)` (the
@@ -1140,83 +1111,7 @@ fn pred_prec(pred) with Pure = match pred {
 
 fn render_pred_node(h) with !Mutate = render_body_tokens(graph_node_body(h))
 
-fn render_type_list(ref tys, i) with !Mutate = if i >= len(tys) {
-  ""
-} else if i == len(tys) - 1 {
-  render_type_tokens(tys[i])
-} else {
-  "{render_type_tokens(tys[i])}, {render_type_list(tys, i + 1)}"
-}
-
-fn render_tparam_types(ref params, i) with !Mutate = if i >= len(params) {
-  ""
-} else if i == len(params) - 1 {
-  render_type_tokens(param_ty(params[i]))
-} else {
-  "{render_type_tokens(param_ty(params[i]))}, {render_tparam_types(params, i + 1)}"
-}
-
-fn render_type_fields(ref fields: [(String, Ty)], i) with !Mutate = if i >= len(fields) {
-  ""
-} else {
-  match fields[i] {
-    (name, fty) => {
-      let one = "{name}: {render_type_tokens(fty)}"
-      if i == len(fields) - 1 { one } else { "{one}, {render_type_fields(fields, i + 1)}" }
-    },
-  }
-}
-
-// A bound var renders its binding (the resolved surface); a free or
-// row-state handle has NO parseable surface spelling, so it delegates to
-// the voice — loud in the idempotence gate if it ever reaches source,
-// never silently absorbed.
-fn render_type_handle(h) with !Mutate = match graph_chase(h) {
-  GNode(NBound(ty), _) => render_type_tokens(ty),
-  GNode(NRecordRowBound(fields, _), _) => render_type_tokens(TRecord(fields)),
-  GNode(NFree(_), _) => show_handle(h),
-  GNode(NRowBound(_), _) => show_handle(h),
-  GNode(NRowFree(_), _) => show_handle(h),
-  GNode(NErrorHole(_), _) => show_handle(h),
-}
-
-// The row's AUTHORED face: present and absent sets render; the tail never
-// does (no surface syntax spells a tail — an open var is authored absence,
-// and a Pure-closed empty row is the identity `with Pure` canonically
-// drops).
-fn render_row_surface(ref row) with !Mutate = match row {
-  EfRow(p, a, _) => if len(p) == 0 && len(a) == 0 {
-    ""
-  } else {
-    let pos = render_row_names(p, 0, "")
-    let joined = render_row_negs(a, 0, pos)
-    " with {joined}"
-  },
-}
-
-fn render_row_names(ref names, i, acc) with !Mutate = if i >= len(names) {
-  acc
-} else {
-  let one = render_authored_eff_name(names[i])
-  let next = if acc == "" { one } else { "{acc} + {one}" }
-  render_row_names(names, i + 1, next)
-}
-
-fn render_row_negs(ref names, i, acc) with !Mutate = if i >= len(names) {
-  acc
-} else {
-  let one = "!{render_authored_eff_name(names[i])}"
-  let next = if acc == "" { one } else { "{acc} + {one}" }
-  render_row_negs(names, i + 1, next)
-}
-
-fn render_ty_list(ref tys, i) with !Mutate = if i >= len(tys) {
-  ""
-} else if i == len(tys) - 1 {
-  render_type_tokens(tys[i])
-} else {
-  "{render_type_tokens(tys[i])}, {render_ty_list(tys, i + 1)}"
-}
+fn render_ty_list(tys) with !Mutate = join(", ", map(render_type_tokens, tys))
 
 fn render_effect_ops(ref ops: [(String, [TParam], Ty, Node)], i) with !Mutate = if i >= len(ops) {
   ""
@@ -1351,28 +1246,27 @@ fn render_signed_effs(ref effs, i) with !Mutate = if i >= len(effs) {
   }
 }
 
-fn render_authored_eff_name(name) with !Mutate = match name {
-  EPure => // drift-audit: ignore — the ADT match RENDERING the surface keyword, not a string-keyed dispatch
-  "Pure",
-  ENamed(h) => intern_name_of(h),
-  EParameterized(h, args) => "{intern_name_of(h)}({render_authored_eff_args(args, 0)})",
-}
-
-// The instance args render through show_eff_arg — the ONE arg renderer
-// (the diagnostics voice and the formatter speak the same projection).
-fn render_authored_eff_args(ref args, i) with !Mutate = if i >= len(args) {
-  ""
-} else {
-  let one = show_eff_arg(args[i])
-  if i == len(args) - 1 { one } else { "{one}, {render_authored_eff_args(args, i + 1)}" }
-}
+// An authored effect name — the one name renderer (`render_eff_name`, the
+// voice's and the page's alike) under the authored face.
+fn render_authored_eff_name(name) with !Mutate =
+  render_eff_name(name) ~> authored_names(render_predicate_tokens)
 
 // An authored `-> RetTy` carries back verbatim (the fmt census's blocker
 // 4: the discarded binder silently dropped 91 authored heads); the absent
 // annotation renders nothing.
-fn render_retty(retty) with !Mutate = match retty {
+// A function-typed return before the head's own `with` keeps the parens
+// that group it: the type grammar's `with` is greedy, so without them the
+// head's clause re-parses as the returned function's row.
+fn render_retty(retty, effs) with !Mutate = match retty {
   N(b, _, _) => match b {
-    NTypeAnn(ann_ty) => " -> {render_type_tokens(ann_ty)}",
+    NTypeAnn(ann_ty) => match ann_ty {
+      TFun(_, _, _) => if len(effs) > 0 {
+        " -> ({render_type_tokens(ann_ty)})"
+      } else {
+        " -> {render_type_tokens(ann_ty)}"
+      },
+      _ => " -> {render_type_tokens(ann_ty)}",
+    },
     _ => // drift-audit: ignore — the documented absent-annotation contract (an inferred return renders no clause)
     "",
   },
