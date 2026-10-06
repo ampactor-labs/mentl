@@ -94,7 +94,7 @@ reading the diff, nothing else.
 ## Where things are
 
 `MILESTONE.md` · `DESIGN.md` · `docs/decisions/` · `docs/SYNTAX.md` ·
-`docs/MENTL_EDIT.md` (the IDE) · `docs/NATIVE.md` · `docs/POSITIONING.md` ·
+`docs/MENTL_SPACE.md` (the IDE) · `docs/NATIVE.md` · `docs/POSITIONING.md` ·
 `docs/archive/` (history; not read at session start) · GitHub issues (every
 named gap) · `.claude/rules/model-opus.md`, `model-fable.md` (twenty-line
 per-model notes; this file is model-neutral)

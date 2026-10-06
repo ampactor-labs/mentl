@@ -35,7 +35,7 @@ move alone is a read of the graph the session already holds (~20 ms). The
 emitted WebAssembly text is rendered on demand (the Module tab), never per
 keystroke.
 
-The surfaces, each a projection of the compiler's own answer (docs/MENTL_EDIT.md
+The surfaces, each a projection of the compiler's own answer (docs/MENTL_SPACE.md
 is the interaction architecture; docs/DESIGN_SYSTEM.md the tokens, which live in
 `ide/tokens.css`):
 

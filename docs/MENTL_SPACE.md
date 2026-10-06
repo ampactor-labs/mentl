@@ -1,4 +1,4 @@
-# mentl edit — the interaction architecture
+# Mentl Space — the interaction architecture
 
 > *The cursor, felt.*
 >
@@ -24,7 +24,7 @@
 
 Every IDE ever built is an application wrapped around a text buffer: panels
 *about* the code, a compiler *behind* the code, an assistant *beside* the code.
-mentl edit inverts this once, cleanly. **The IDE is the program's own
+Mentl Space inverts this once, cleanly. **The IDE is the program's own
 self-projection, pointed at a human.** There is one graph. Inference is its one
 writer. The cursor is its one reader. Everything on screen (the text, the
 topology lines, the row matrix, the Why chain, the proposals) is that single
@@ -50,7 +50,7 @@ That loop is the whole product. Files are a serialization of the graph, not the
 mental model; the loop is where a person lives.
 
 And the closing move, the one that makes the design future-proof rather than
-merely good: **mentl edit is itself a Mentl program**, the loop SYNTAX.md writes
+merely good: **Mentl Space is itself a Mentl program**, the loop SYNTAX.md writes
 in its own composition sketch.
 
 ```
@@ -69,19 +69,21 @@ handler on `Verify`. Extending the IDE and writing Mentl are one act, so every
 extension is proven under the same rows as everything else, so a plugin cannot
 reach the network unseen (`!Network` is checkable) and cannot lie about what it
 touches. VS
-Code's extension market is a trust problem; mentl edit's is a theorem.
+Code's extension market is a trust problem; Mentl Space's is a theorem.
 
 **And the form that makes the sentence literal (decided 2026-10-05, PLAN §11
 the Space pivot): THE VIEW IS A PROJECTION — the page is a host, the wheel
 renders the IDE.** One resident session per page (`ide/wheel-worker.js`'s
 session role over a shared-memory channel, `ide/session-client.js`). Each
-input event — the caret moved, the text changed, an accept, the Teach knob —
-goes to the session as one line, and the answer is the VIEW: a structured
-tree carrying the ring's eight facets with their spans and provenance, the
-Lens (the ranked teaching step and the diagnostics with their addresses), the
-Ledger's bands, the map, the gutter cells, the token spans and the verb
-geometry — computed in `src/space.mn` from the reads that exist (`CursorView`,
-the diag bank, `audit`, `where`, `query`, `why`, `verify`). The JavaScript
+input event — a project opened, the caret moved, the text changed, an accept,
+a surface chosen — goes to the session as one line, and the answer is the
+VIEW: a structured tree carrying the ring's eight facets with their spans and
+provenance, the Lens (the ranked teaching step and the diagnostics with their
+addresses), the Ledger's bands, the module map, the gutter cells, the token
+spans, the verb geometry and the trail — computed in `src/space.mn` from the
+reads that exist (`CursorView`, the diag bank, `audit`, `where`, `query`,
+`why`, `verify`), each fact carrying the DEGREE OF INTEREST the page draws it
+at (§3). The JavaScript
 that remains is a host: the WASI shim, the channel, the textarea and ONE
 generic painter keyed by element id. The CLI's stdio session and the LSP are
 the other two transports of the same projections, so a facet the wheel grows
@@ -92,10 +94,25 @@ wheel's answer first, and every intermediate ships.
 
 ---
 
+## 0.5 · The five surfaces — the map of this document
+
+Everything the page shows is one of five surfaces, each a reading of the one
+cursor; a proposal that fits none of them is decoration (§9).
+
+| Surface | What it projects | Cursor mode · aspect | Where |
+|---|---|---|---|
+| **The canvas** | the text, the aspect strip in its gutter, the overlays on it, the socket at a hole | projected · all eight | §3 |
+| **The program's shape** | the five verbs' geometry — chains, fans, enclosures, sealed `!E` walls, loops — with the rows flowing over it, at every altitude from a declaration to a module | projected · verb·topology + row·unlock | §4.2 |
+| **The codebase's shape** | the module map banded in three colours (provably absent · present · not yet provable), the dead weight, the ghosts, the imports as the project's manifest | verified · graph·query | §4.3 |
+| **The time axis** | the trail with its forks — the fan's survivors, a schedule's branches, a continuation's suspensions — and persisted images as bookmarks you reopen | forked · handler·propose | §4.4 |
+| **The Why ink** | provenance drawn from any fact back to the edit, install or axiom that minted it, trivial hops elided | reasoned · reason·why | §3.5 |
+
+---
+
 ## 1 · The essence — a lens you look through
 
-Hold the whole design to one sentence. **You should look *through* mentl edit at
-your program, never *at* mentl edit.** The program is visible; the language is
+Hold the whole design to one sentence. **You should look *through* Mentl Space at
+your program, never *at* Mentl Space.** The program is visible; the language is
 invisible. When it works, a developer forgets the medium is there the way you
 forget a clean window is there, and sees only what is on the far side: their
 computation, its shape, its promises, and the one place it is waiting for them.
@@ -118,9 +135,12 @@ its place by obeying all four.
 
 3. **The shape is the meaning.** Layout is the formatter's projection of the
    topology, never something you type. The five verbs draw the program's form on
-   the page, and the page defends that form (topology resist). You read the
-   computation graph directly off the indentation, so the notation stops being a
-   thing to parse and becomes the thing itself.
+   the page, and the formatter restores that form on idle and at save — never
+   against the hand (the projection must not take the keyboard away: the
+   editor that fought its users' keystrokes was rated their tool's worst
+   part and removed). You read the computation graph directly off the
+   indentation, so the notation stops being a thing to parse and becomes the
+   thing itself.
 
 4. **Silence is the default; proof is the only reason to speak.** The medium
    surfaces one proven thing or nothing at all (voice.mn's `silence_predicate`
@@ -150,6 +170,8 @@ a missing kernel fact; Mentl has the fact, so the fixture dissolves.
 | **The AI chat panel** | generation without verification | The socket: proposals are multi-shot candidates that *survived checkpoint → infer → Verify → rollback* before you ever see one. No prompt box, no transcript, no apology. The unit of conversation is the constraint, not the token (PLAN §1). |
 | **Plugin marketplace** | the tool can't express its own extensions | Handlers (§0). |
 | **Settings JSON** | configuration outside the medium | Config is handler *state*: inspectable, typed, `mentl why`-able like everything else. |
+| **A density slider, a "simple mode", view toggles** | the tool cannot tell what matters at this position | A degree of interest the graph computes per fact (§3): proximity to the caret along the graph, proof state, the trail's recency. The page draws what scores; nothing is configured. |
+| **Build telemetry in the chrome** (ms, exit codes, heap lines, a WAT pane) | the compiler is a thing beside the program | The compiler is a PROJECT the page opens like any other (§3.8); its cost lines are the Effects and Verify facets of the program under the caret when that program is the compiler, and chrome carries no number. |
 
 The rule behind the table: **if a surface exists because text-as-truth lost
 information, delete the surface and read the graph.** The Carried-Truth Law,
@@ -160,9 +182,22 @@ applied to UI.
 ## 3 · The live surface — the editing loop's ultimate form
 
 This is the surface you *write into*. It is not more true than the graph views
-of §4, only more writable. Everything here is a reading of the one cursor; the
-Teach knob (DESIGN_SYSTEM §9) is the single density control, so the interface's
-information volume scales with what is *proven*, never with what is *configured*.
+of §4, only more writable. Everything here is a reading of the one cursor, and its DENSITY IS
+COMPUTED, never configured (decided 2026-10-05: the Teach knob — a
+three-position density switch — and the Wavefront's why/trail/cost strip,
+the compiler/session footer, the judged-in-ms status bar and the WAT Module
+pane were a compiler-builder's instruments on a page meant for every
+developer, and they go). Every fact the view carries scores a DEGREE OF
+INTEREST (Furnas's fisheye: a priori importance minus distance from the
+focus). Distance is graph proximity to the caret — the hop count D3's
+`position_proximity` already ranks the field by. Importance is proof state (a
+refutation outranks a pending claim, which outranks a proven one), recency on
+the trail, and whether the fact is the gradient's one next step. The page
+draws what scores above the surface's threshold, in place — the gutter cell,
+the inline mark, the overlay — and folds the rest into the ring at the caret,
+where everything is always readable. So the volume on screen scales with what
+is *proven* and *near*, the way a map shows the streets around you and the
+highways everywhere.
 
 ### 3.1 · The loop, on the page
 
@@ -189,16 +224,28 @@ re-projects. There is no separate "apply" pathway to keep in sync.
 The Canvas is the text, center stage, and **its layout is never yours to type.**
 On idle, `format_default` re-renders the canonical shape (`format.mn`:
 left-edge `|>` and `~>` at `left_edge_indent = 2`, indented-center `><` and `<~`
-at `indented_center = 4`). You break the verb grammar and the text *resists*:
-the elastic snap-back toward canonical form (DESIGN_SYSTEM §4.5, topology
-resist), because the shape on the page is the computation graph and the page
-defends its own truthfulness. Faint sky lines physically connect the stages of a
-`|>` / `<|` chain, so a pipeline reads as a literal diagram; a `~>` handler
-renders as a soft enclosure around the chain it governs, so a capability
-*visibly wraps* its scope; an `own` value carries the amber trace that drains on
-consume. Format-liftable ceremony vanishes at parse (`perform`, redundant
-braces, semicolons via `E_RedundantPerform` / `E_RedundantBraces`), so the
-developer sees canon always and never a nag about it.
+at `indented_center = 4`). The text is yours while you type and canon when you pause: the formatter's
+render replaces the buffer on idle and at save, never mid-keystroke. The
+buffer is the browser's own text facility — line numbers, native undo kept
+(`setRangeText`, never `value=`), find by EDGE (`query refs of`, `text`,
+`prose`) rather than by string — under the wheel's own token projection: the
+render slices the source at the spans the lexer answers, so a space cannot
+vanish and no second lexer exists in the page. Faint sky lines physically
+connect the stages of a `|>` / `<|` chain, so a pipeline reads as a literal
+diagram; a `~>` handler renders as a soft enclosure around the chain it
+governs, so a capability *visibly wraps* its scope; a declared `!E` draws its
+enclosure as a SEALED WALL — the negative space no stage inside may break, the
+refusal drawn before the call is finished; an `own` value carries the amber
+trace that drains on consume. The gutter is THE ASPECT STRIP: eight
+one-character cells per line, one per aspect in its hue — a type ghost, a hole
+or a proposal, a verb stage, the ambient-world glyph (hollow `E` = this line
+REQUIRES it, filled = the ambient world GRANTS it, a hollow with no filled twin
+IS the refusal), a consume or a borrow, an obligation's ✓ ◌ ✗, the gradient's
+one next step, a Reason worth reading — each a live read, each a door into the
+ring, each drawn only when its degree of interest clears the strip's
+threshold. Format-liftable ceremony vanishes at parse (redundant braces,
+semicolons — `E_RedundantBraces`, `E_StatementSemicolon`), so the developer
+sees canon always and never a nag about it.
 
 The keystroke→graph latency budget is the whole feel. The current artifact
 already compiles small programs in about half a second on every keystroke with a
@@ -218,9 +265,10 @@ with today at `main.mn`'s `cursor_at_handle`). One calm panel, eight facets,
 each in its primitive's color, each a *door*: click `why` and the Why walk opens
 on this chain; click `row` and the Ledger scopes to this position; click `??`
 and the socket fires on the one next move. It is the hover and inspect surface,
-and it is one octagonal identity, because the architecture is one: the octopus
-has eight arms because the kernel has eight primitives, and Mentl Mono ligates
-`??` into the octagonal socket glyph so the shape recurs at every scale.
+and it is one octagonal identity, because the architecture is one: the kernel
+has eight aspects, the ring has eight vertices, and the socket's frame is the
+same octagon — a shape in the chrome, never a ligature, so the source renders
+as the same two characters in every editor, diff and terminal.
 
 Each facet renders under a strict provenance contract, always visible, so the
 surface never dresses a guess as the compiler's graph truth: `surface` (the
@@ -290,10 +338,8 @@ from the use-count grade. The refinement obligations are each `V_Pending` debt
 with its state (`verify.mn`'s `verify_debt()`), the sound-incomplete ledger
 surfaced, never a silent assume-true. And the armed refusals are the classes the
 medium now *enforces* on itself and everyone (`types.mn`'s `diag_refuses`, the
-emit gate): `E_UnresolvedHole`, `E_MissingModule`, `E_HandlerStateShadowsOp`,
-`E_DuplicateFnName`, `E_RefinementRejected`, `E_OwnershipViolation`,
-`E_MissingVariable`, `E_OccursCheck`. A refusal here is a promise the medium
-keeps, projected.
+emit gate) — read from it, never listed here. A refusal here is a promise
+the medium keeps, projected.
 
 The surface the machine-code age actually needs is the **absence proof**: every
 `!E` claim in scope with its transitive proof walkable ("this whole subtree
@@ -326,6 +372,28 @@ proven ways through; delete a `~> Thread` and the fanout's badge falls back to
 emitted-code pane. The developer stops editing implementations and starts editing
 promises, watching implementations rearrange to keep them.
 
+### 3.8 · The project — the page opens a folder, and the compiler is one of them
+
+*(sequential cursor · graph·query)*
+
+Mentl Space is not a page for building Mentl. It opens a PROJECT: a folder of
+`.mn` files, whose module graph is read off the imports the judgment drew
+(`mentl query <entry> modules` / `imports`), whose entry is the file with
+`main` or the one you point at, and whose drafts persist as the files
+themselves plus the session's image. In the browser the folder is one you pick
+or drop (the host's file-system access where it has it, a zip or the shipped
+lessons otherwise); in the terminal it is `mentl space <dir>`; the lessons
+that ship with the page are a project like any other. The compiler's own
+source is ALSO a project — open `src/main.mn` and the same ring, map and trail
+read the wheel — and that is the whole relationship: nothing in the page is
+written for the compiler. The compiler is the program that happens to be under
+the caret when its author is working, and its cost lines (`heap:`, `arena:`)
+are that program's Effects and Verify facets, never chrome. What was on the
+page before this rule — a density knob, a why/trail/cost strip, a
+compiler/session footer, a judged-in-ms status, a WAT pane — was the builder's
+instrument panel, and it is deleted; the facts it carried are projections of
+the project under the caret, drawn when they score.
+
 ---
 
 ## 4 · The graph made visible
@@ -346,11 +414,24 @@ edge is not a line but a labeled claim you can click to walk (§3.5). This is
 to "what is this connected to, and why," rendered as structure instead of prose.
 Substrate is live; the view is rendering work, no new kernel.
 
-### 4.2 · The effect-row flow overlay
+### 4.2 · The program's shape — the verb geometry, and the rows flowing over it
 
-*(verified cursor · row·unlock over verb·topology)*
+*(projected cursor · verb·topology, then verified cursor · row·unlock over it)*
 
-Overlay the rows onto the five-verb layout and watch capability *flow*. A row
+The five verbs are a diagram grammar, and the page draws it. A declaration's
+verb path (the Topology facet, `VerbFrame`) renders as the shape it means — a
+`|>` chain as stages joined by one line, a `<|` fan as one input opening to
+its branches, a `><` as the bowtie of independent pipelines joined, a `~>` as
+the enclosure around everything to its left, a `<~` as the loop from a stage's
+output back to its input with its depth written on the loop — at three
+altitudes of one geometry: inline on the canvas as the faint lines §3.2
+describes, as a card when you lift a declaration out, and tiled at module
+altitude, where a module is its declarations' diagrams and a call is an edge
+between them. The geometry is never a second drawing: it is the formatter's
+layout (SYNTAX's canon — left-edge sequential verbs, indented-center
+convergent ones) read as lines instead of indentation, so what the diagram
+shows and what the text says cannot disagree. The rows flow over it:
+overlay the rows onto the five-verb layout and watch capability *flow*. A row
 accumulates down a `|>` chain, unions across a `<|` fan, and hits an **absorption
 point** at each `~> h`, where `handled(h)` is subtracted and `h`'s own row added
 (`effects.mn`'s `absorb_row`). The overlay tints each stage by what it carries
@@ -360,23 +441,59 @@ declared `with !Thread` shows its negative space as a shaded enclosure that no
 stage inside may break. Live for declared and inferred rows today; the transitive
 proof shading is gated on the crown (band A).
 
-### 4.3 · The fork tree — exploration made visible
+### 4.3 · The codebase's shape — the module map in three colours
 
-*(forked cursor · handler·propose)*
+*(verified cursor · graph·query + row·unlock)*
 
-When Synth multi-shots a `??` or you ask for realities, the exploration is not
-hidden inside the compiler; it is drawn. N forked cursors appear as N live
-branches on the Wavefront, each a resumable image over the shared graph with its
-own trail, each pruned or kept by the proof (`graph.mn`'s checkpoint/rollback is
-the branch substrate). Scrub between branches and the Canvas morphs; pin two
-side-by-side and the Ledger diffs their *promises* (this branch stays `!Alloc`,
-that one buys speed with an arena); `Tab` commits one and the rest dissolve.
-Exploration stops being "try, undo, try" and becomes *holding the alternatives at
-once*, the way the oracle already does internally, one fork per cursor. Gated on
-band B (the multi-shot producer landed through the fixpoint; the fused N-branch
-search over it, and its render, is the open reach).
+Zoom out past a declaration and the program is its modules: the import graph
+the judgment drew (`mentl query <entry> modules` / `imports`), each module a
+tile sized by its reached declarations and placed by its imports — never a
+hairball, because layout is projection and the import edges are the topology.
+The map is THE SEVERANCE MAP (PLAN §11 Arc G): every tile and every
+declaration banded in exactly three colours for the capability you ask about
+— provably absent (the row proves `!E` for the whole subtree), present
+(something inside performs it, and the Reason names the call), and NOT YET
+PROVABLE (the cells no gate reached; counted, on the board, ratcheting to
+zero). Select a subtree and it states the minimal sufficient capability set
+with the cut line where the `~>` goes; add one networking call and the band
+turns red with the Reason — the thirty-second demo, a compile rendered as an
+event. Two colours would be a lie; three is the instrument. Beside it the map
+carries what `mentl query` already partitions: the dead weight (`unreachable`
+— modules carrying unreached declarations, with their ratio, against modules
+the entry links whole and never calls into), the ghosts (cells the parser
+minted and the judgment never bound), and the project's manifest, which is the
+import closure itself — a file the map shows is a file the project has, and a
+module the entry never links is drawn as an island. The same map, pointed at a
+running fleet, is the security posture (§6).
 
-### 4.4 · The fixpoint, in motion — the `!Outside` seal
+### 4.4 · The time axis — the trail and its forks
+
+*(forked cursor · handler·propose, over the whole ring)*
+
+Program time is a surface, not a log. The trail (`graph.mn`'s
+checkpoint/rollback substrate) is drawn as one axis: every edit a tick, every
+re-judgment a tick, and at the ticks where the medium held more than one
+reality, a FORK — the proposal fan's candidates (each judged in a checkpoint
+bracket on the one graph, pruned or kept by the proof; C6's first divergence
+between two survivors is the label on the fork), a schedule's branches (a `><`
+under `~> parallel_compose`, each branch's row beside it, the race rule's
+verdict at the join), and a continuation's suspensions (a held resume, a
+multi-shot redrive, an arena suspended by a yield — each a dormant record you
+can inspect, because it is in the image). Scrub the axis and the canvas morphs
+to the graph at that tick; pin two forks side by side and the Ledger diffs
+their PROMISES (this branch stays `!Alloc`, that one buys speed with an
+arena); `Tab` commits one and the rest dissolve; undo is a walk along the
+axis, across projections. A persisted image (`persist = memcpy`, real) is a
+BOOKMARK on the axis: a named moment you reopen as a value, cursor where it
+was, forks still held — a bug report is one of these, the suspended moment
+itself. The derivative reading rides the same axis: a training loop's steps
+scrub like ticks. Exploration stops being "try, undo, try" and becomes holding
+the alternatives at once, the way the medium already does internally. The
+fused N-branch search over the multi-shot producer (band B) widens a fork from
+one judged candidate at a time to N live cursors; until then the forks the
+axis draws are the ones the medium held, never a canned branch.
+
+### 4.5 · The fixpoint, in motion — the `!Outside` seal
 
 *(the whole graph read at the closure, L7)*
 
@@ -390,12 +507,9 @@ visible: a medium whose means of improvement is a move inside it, drawn as a
 seal that closes. It bridges to the static portraits (§7.4), because it is the
 one image that lands the whole thesis in a breath.
 
-The Wavefront is the strip that hosts §4.3 and this view together: three
-registers on one axis: the Why-DAG (provenance of the fact at the cursor), the
-trail (program time, scrub execution back and forth through the forked cursor),
-and realities (the live branches at a hole). Past, cause, and possibility are one
-axis with three tick-marks, because in the kernel they are one mechanism: the
-resumable continuation (§4④).
+The time axis (§4.4) hosts this view too, as its last tick: the medium's own
+history. Past, cause and possibility are one axis, because in the kernel they
+are one mechanism: the resumable continuation (§4④).
 
 ---
 
@@ -414,16 +528,56 @@ carries domain meaning gets a domain *projection*, in place, live.
   <= 1.0` renders as a slider whose ends *are* the refinement. Dragging it is a
   graph edit; every projection downstream updates live. The Bret-Victor dream,
   with the slider's bounds proven rather than decorated.
-- **Autodiff-as-multishot** (band B) makes training loops scrubbable the same
-  way: gradient flow is edge-flow on the same graph, the Wavefront scrubs epochs
-  the way it scrubs execution, and a diverging loss is a fact with a Why chain
-  like any other.
+- **The derivative reading** (`~> grad(w)`, real since 2026-09-28) makes
+  training loops scrubbable the same way: the derivative program is a
+  projection of the extent, drawn beside the forward chain at the caret, the
+  time axis scrubs steps the way it scrubs ticks, and a diverging loss is a
+  fact with a Why chain like any other.
 
 The rule: **domain tooling is not an extension category; it is the type system
 reaching the screen.** A new domain arrives by declaring its types and handlers,
 and the projections follow. This is the research half of the production bar
 (PLAN §11): the cross-frequency-coupling pipeline on a real recording, seen
 inside the medium.
+
+## 5.5 · The course is a program — Pulse, ten lessons on one chain
+
+*(the whole ring, read by a developer who has never seen an effect row)*
+
+The tutorial is not an app beside the editor; it is a PROJECT the page opens
+(§3.8), and the project is Pulse (`examples/pulse`, the flagship: stages
+minted by makers, live `<~` lines, `render_frame` proven `!Alloc`, ten
+seconds of 48 kHz stereo). Each lesson is one growing program a new developer
+HEARS, and each exists because the medium has something to PROVE at that step,
+so the lesson's text is the program's own prose — comments are graph content,
+the Lede renders them — and its exercise is a hole:
+
+1. a sine through `|>` to the speaker — the sequential verb, the chain as a
+   diagram;
+2. `<~` a filter — the cycle, its depth written on the loop, the ring the
+   record owns;
+3. `<|` and `><` — a send bus and a stereo pair, the two glyphs of one fanout
+   read through ownership;
+4. `~>` the effect rack — a handler IS an audio effect, the enclosure visibly
+   wrapping its scope;
+5. `!Alloc` on the per-sample path — the refusal you would otherwise hear as
+   a dropout, drawn as a sealed wall before the call is finished;
+6. `Sample(48000)` — the instance pin, the canonical audio bug refused per
+   instance;
+7. `Hz` and `Sample` refinements — a slider whose ends are the proof, and an
+   out-of-band sweep refused at the claim;
+8. the hole — `??` at a stage, the proven survivors as ghost text, the tie
+   that asks its computed question instead of guessing;
+9. the effect that learns — `~> grad(w)`, the derivative program drawn beside
+   the chain, a stage trained in place with the heap not moving;
+10. voices `><` under `~> parallel_compose` — threads with the race rule
+    holding, the join on the time axis.
+
+Running a lesson in the page needs L-F (`mentl asm`: the worker instantiates
+the emitted bytes under its WASI shim and the samples reach the page's audio
+output); until it lands, the ten lessons under `lib/tutorial/` are the
+course's text-first form, each fmt-canonical at zero self-diagnostics, and
+Pulse renders through `mentl run` in the terminal.
 
 ---
 
@@ -441,7 +595,7 @@ inside the medium.
   their text serialization would be. A collaborator's cursor is a second
   attention point whose Aspect ring you can peek; teaching is *sharing a Why
   walk*.
-- **At scale, mentl edit is the oversight console** (PLAN §0 pt 5). The same
+- **At scale, Mentl Space is the oversight console** (PLAN §0 pt 5). The same
   surfaces, pointed at a running fleet: the Ledger's absence proofs as the
   security posture, live; the Wavefront's trail as the incident scrubber; a hole
   in production as a suspended incident waiting for a proven fill, deployed as a
@@ -455,7 +609,8 @@ inside the medium.
 How Mentl appears in a README, a talk slide, or a paper figure. Each is
 specified below as a buildable spec (mermaid where the shape is a graph, SVG
 where the shape is geometric), and each inherits `DESIGN_SYSTEM.md` §4 tokens:
-obsidian ground, the Okabe–Ito hues by kernel role, Mentl Mono for labels.
+obsidian ground, the Okabe–Ito hues by kernel role, the code font (JetBrains
+Mono, self-hosted, ligatures off) for labels.
 
 ### 7.1 · One graph, two operations
 
@@ -484,14 +639,14 @@ and no more.
 
 ### 7.2 · The eight arms — one octagonal identity
 
-The kernel has eight primitives; the octopus has eight arms; the chakana has
-eight steps; the socket has eight edges (DESIGN_SYSTEM §3). One figure carries
-all four readings: an octagon, eight labeled vertices in their kernel hues,
-an octagonal `??` socket at the center. Build as SVG.
+The kernel has eight aspects; the ring has eight vertices; the socket has
+eight edges (DESIGN_SYSTEM §3). One figure carries all three readings: an
+octagon, eight labeled vertices in their kernel hues, an octagonal `??` socket
+at the center. Build as SVG.
 
 ```svg
 <svg viewBox="0 0 300 300" xmlns="http://www.w3.org/2000/svg"
-     font-family="'Mentl Mono', ui-monospace, monospace">
+     font-family="'JetBrains Mono', ui-monospace, monospace">
   <rect width="300" height="300" fill="#0D0B0E"/>
   <!-- outer octagon: the kernel boundary (gold, restrained) -->
   <polygon points="150,44 225,75 256,150 225,225 150,256 75,225 44,150 75,75"
@@ -529,15 +684,14 @@ an octagonal `??` socket at the center. Build as SVG.
 ```
 
 The figure reads as a confident geometric glyph at favicon scale and as the
-"all eight" ring at poster scale. The center socket is the mark's living eye; in
-an animated context a single arm curls toward a faint floating proposal
-(DESIGN_SYSTEM §6). Never a ninth arm; never a seventh.
+"all eight" ring at poster scale. The center socket is the mark's one hole.
+Never a ninth vertex; never a seventh.
 
 ### 7.3 · The five verbs — topology cards
 
 Five cards, one per verb, each *drawing the shape it means* (DESIGN_SYSTEM §5's
 layout canon is the contract). All verb glyphs render in `accent/sky` on
-`obsidian/canvas`; labels in Mentl Mono. The build spec per card:
+`obsidian/canvas`; labels in the code font. The build spec per card:
 
 | Card | Glyph | Shape the card draws | Layout rule it demonstrates |
 |---|---|---|---|
@@ -552,7 +706,7 @@ same 200×110 frame and the layout rule in the table:
 
 ```svg
 <svg viewBox="0 0 200 110" xmlns="http://www.w3.org/2000/svg"
-     font-family="'Mentl Mono', ui-monospace, monospace">
+     font-family="'JetBrains Mono', ui-monospace, monospace">
   <rect width="200" height="110" rx="10" fill="#0D0B0E" stroke="#2A2428"/>
   <!-- left pipeline -->
   <rect x="18" y="20" width="64" height="26" rx="6" fill="none" stroke="#56B4E9"/>
@@ -579,7 +733,7 @@ Build as SVG.
 
 ```svg
 <svg viewBox="0 0 260 260" xmlns="http://www.w3.org/2000/svg"
-     font-family="'Mentl Mono', ui-monospace, monospace">
+     font-family="'JetBrains Mono', ui-monospace, monospace">
   <rect width="260" height="260" fill="#0A0809"/>
   <!-- the seal ring -->
   <circle cx="130" cy="130" r="96" fill="none" stroke="#E69F00" stroke-width="1.5" opacity="0.55"/>
@@ -638,10 +792,11 @@ over the page's console wire, with the product legs: render fidelity, no
   obligations at the caret. Its bands (`audit`, `query performs`, `where`) are
   L-E.
 - **The Lens** ranks the diagnostics to one teaching step and jumps to the
-  address; telemetry (`heap:`, `arena:`, `session:`) is cost on the trail at
-  high Teach, never a diagnostic.
-- **The Module** renders the emitted WebAssembly text on demand (a cold
-  `mentl compile` over the page's tree), downloadable as `.wat`.
+  address; the compile's cost lines (`heap:`, `arena:`, `session:`) render as
+  cost on the Wavefront's strip today, never as a diagnostic — and the strip,
+  the Teach knob, the footer, the status bar and the Module pane (the emitted
+  WebAssembly text on demand) are the compiler-builder's instruments, deleted
+  in L-C (§3.8).
 
 ### Named next — the substrate work each surface needs, in positive form
 
@@ -649,7 +804,11 @@ over the page's console wire, with the product legs: render fidelity, no
   verb's event→view answer over the session; the Ring, the Lens and the Ledger
   move first and their JavaScript deletes; the page compiles through the
   session's living check instead of a cold worker per edit
-  (`Hβ.session.edit-pays-for-the-program`).
+  (`Hβ.session.edit-pays-for-the-program`). With it the deletions §3.8
+  decides (the knob, the instrument strip, the footer, the status bar, the
+  Module pane), density as a degree of interest carried on every fact the
+  view answers, and the project form — a folder opened, its module graph the
+  manifest, drafts persisted.
 - **The Canvas as the formatter's projection** (L-D): the wheel's own tokens
   and spans (the page's tokenizer deletes — a second lexer is the
   Carried-Truth violation, and it is where the lost-space bug bred), `mentl
@@ -662,10 +821,12 @@ over the page's console wire, with the product legs: render fidelity, no
   (`Hβ.viz.severance-map`, PLAN §11 Arc G), the ambient-world gutter
   (`Hβ.viz.ambient-world-gutter`), the cursor neighborhood overlay, the Ledger's
   bands, the Why walk with trivial hops elided
-  (`Hβ.viz.why-walk-elides-trivial-hops`).
+  (`Hβ.viz.why-walk-elides-trivial-hops`) — the codebase's shape (§4.3) and
+  the time axis (§4.4) as surfaces.
 - **Running the program in the page** (L-F): the assembler in the wheel
   (`Hβ.felt.ide-run-in-page`), the worker's run role for user programs, WABT
-  out of every gate, the fixpoint seal in motion on the page.
+  out of every gate, the fixpoint seal in motion on the page; the Pulse
+  course (§5.5) once the samples reach the page's audio output.
 - **Fill-and-resume, reality scrubbing, the fork tree** need band B (the
   re-execution driver and the fused search over the multi-shot producer).
   Until then the Wavefront draws them as honest dormant gates, never a canned
@@ -706,6 +867,9 @@ IDE-land.
 | Spinners and progress bars | The medium is either current (IC) or shows *which region* is re-projecting, on the Canvas itself |
 | "Sync" indicators for collab | One graph; presence is a second cursor, not a sync state |
 | A dashboard as a separate app | Ambient chrome that re-projects around the cursor; never a second data model |
+| A density slider, a "simple mode" | Degree of interest computed from the graph; the page shows what scores at the caret, and nothing is configured |
+| Build telemetry in the chrome (ms, exit codes, heap lines, a WAT pane) | The compile's cost is a facet of the program under the caret, and the compiler is one project the page opens; chrome carries no number |
+| A tutorial app beside the editor | The course is a project: ten lessons on one growing program, each a lesson because the medium has something to prove at its hole |
 | Feature-count growth | Projection-count growth; every new surface must name the read it projects and the cursor mode it runs in |
 
 The keystone, restated for interaction: **every affordance is a read or a

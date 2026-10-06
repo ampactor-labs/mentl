@@ -3081,7 +3081,7 @@ form the whole time. The arcs, in order:
   wearing a linking costume and is refused wherever offered.
 - **Arc E · Space session end-to-end.** ITS DESIGN DOCS ARE
   `docs/DESIGN_SYSTEM.md` (brand, tokens, visual language — read first) and
-  `docs/MENTL_EDIT.md` (the interaction architecture, which assumes it).
+  `docs/MENTL_SPACE.md` (the interaction architecture, which assumes it).
   They are LIVE, not archaeology, and were reachable from nothing until
   2026-09-05 — a session working this arc would not have found them.
   The substrate largely exists
@@ -3132,7 +3132,7 @@ form the whole time. The arcs, in order:
   address re-measured by the medium). Kills: `undefined=true` in the DOM was
   the smoke's own census reading the page's `<script>` source; the local
   server died under a re-stage because it had ENTERED the directory it
-  served. `docs/MENTL_EDIT.md` §0 carries the view-as-projection form and §8
+  served. `docs/MENTL_SPACE.md` §0 carries the view-as-projection form and §8
   what the page serves today. Next: L-H (no Rust — the stock engine hosts
   the boot), then L-C (the view is a projection).
   **L-H LANDED 2026-10-05 — no Rust in the codebase: the stock engine is

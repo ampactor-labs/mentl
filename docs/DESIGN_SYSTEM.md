@@ -9,7 +9,7 @@
 **Status:** trued 2026-10-05 against the built page (`ide/`). The tokens have
 ONE home, `ide/tokens.css`; this document is the rationale behind them and the
 record of what was decided against. The interaction architecture is
-`docs/MENTL_EDIT.md`, which assumes this file. Both are design artifacts of the
+`docs/MENTL_SPACE.md`, which assumes this file. Both are design artifacts of the
 felt aspect (PLAN §5.2, band M), not read-path: interrogate them, never absorb.
 
 ---
@@ -106,7 +106,7 @@ glyph, no avatar, no "the system says".
 | The chakana (stepped cross) as the icon and grid grammar | the octagon ring is the one geometry | a sacred symbol borrowed as texture says nothing true to a developer; the octagon says exactly what is true |
 | Cursor breath, topology resist | gone | an animating caret burns attention for no fact; fighting the keyboard is the projectional editor's grave (the formatter projects on idle and save, never against the hand) |
 | Grey tokens wearing brand names (the 2026-07-23 strip) | the semantic palette restored, both grounds | three greys for six roles deleted the information layer, not the decoration |
-| Build / run chrome, link-runtime toggles | always live, always linked | the build-and-run mental model is the import MENTL_EDIT §9 refuses |
+| Build / run chrome, link-runtime toggles | always live, always linked | the build-and-run mental model is the import MENTL_SPACE §9 refuses |
 
 ---
 
@@ -261,7 +261,7 @@ idle and on save, never against a keystroke.
 **In the canvas** faint sky spines connect the stages of a chain so a pipeline
 reads as the diagram it is. The spines are drawn from the compiler's Topology
 facet (the verb path at the caret), never from a regular expression over
-leading glyphs — the page keeps no second parser (MENTL_EDIT §2).
+leading glyphs — the page keeps no second parser (MENTL_SPACE §2).
 
 **The `??` socket** is the sixth signature glyph: an opening, productive under
 error. It renders as the two characters in vermillion inside an octagonal
@@ -330,7 +330,7 @@ safe; the body already proves it."*
 
 ## 8 · Mentl Space — the surface
 
-> The interaction architecture is `docs/MENTL_EDIT.md`; the sequence that
+> The interaction architecture is `docs/MENTL_SPACE.md`; the sequence that
 > builds the rest is PLAN §11 (the Space pivot). This section is what the page
 > IS today and the two layers it grows next.
 
