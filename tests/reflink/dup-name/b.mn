@@ -1,0 +1,3 @@
+// `helper` here is a parameter: a declaration of the same name as a's
+// function, in another module. Its references are its own.
+fn use_b(helper) = helper * 2 + helper

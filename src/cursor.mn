@@ -884,18 +884,9 @@ fn absorbed_step(path, acc, i) with !Mutate = match graph_node_body(list_index(p
 // render's anchor — the old map-to-Predicate discarded both (the
 // converged judge caught the slot mismatch it left).
 //
-// The subset is the handle's MODULE's: an obligation carries the module it
-// was raised in, and every module numbers its lines from 1, so a span alone
-// matched a stranger's claim on the same lines — a declaration on lines 3–5
-// of main.mn counted the pending claims on lines 3–5 of every module it
-// linked (D4's audit; the class D3 closed for positions).
-fn verify_pending_at(handle) with !Mutate =
-  verify_debt() |> filter(pending_in(graph_module_of(handle), parse_span_of(handle), ??))
-
-// An obligation is AT a node when its claim sits inside the node's extent —
-// the node's own and its sub-expressions'. Lines used to be compared, so every
-// node on a line answered the line's whole debt — the source of a `|>` chain
-// counted the claim its second stage owes (measured on boot 8b071ba3).
-fn pending_in(m, target, o) = match o {
-  (dm, debt_span, _, _) => dm == m && span_contains(target, debt_span),
-}
+// An obligation is AT a node when its claim sits inside the node's site —
+// the node's own and its sub-expressions', in its own module
+// (`debt_within`). Lines used to be compared, so every node on a line
+// answered the line's whole debt — the source of a `|>` chain counted the
+// claim its second stage owes (measured on boot 8b071ba3).
+fn verify_pending_at(handle) with !Mutate = debt_within(handle)

@@ -1,0 +1,3 @@
+fn helper(x) = x + 1
+
+fn use_a() = helper(1)

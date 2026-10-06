@@ -802,39 +802,20 @@ fn teach_project(ast) = {
 }
 
 // The banks the judgment already holds, read ONCE and attributed per
-// fn: pending proof obligations by decl EXTENT — this decl's span start
-// to the next decl's, parse_span_of being the O(1) spans-column read —
+// fn: a pending proof obligation belongs to the declaration whose SITE
+// holds the obligation's — its own module and its own span, so an
+// obligation in another module is never charged here whatever its line —
 // and tightenings by the name the collector banked. The audit and the
 // frontier are two projections of the same banks; this read keeps the
 // per-fn surface current with the medium's growth.
 fn audit_project(ast) =
-  map_fn_stmts(ast, (name, handle) => (name, handle)) |> audit_walk(verify_debt(), tightenables(), 0) |> render_audit
+  map_fn_stmts(ast, (name, handle) => (name, handle)) |> map(audit_one(tightenables(), ??)) |> render_audit
 
-fn decl_start_line(handle) = match parse_span_of(handle) {
-  Span(sl, _, _, _) => sl,
-}
-
-fn audit_walk(debt, tights, i, fns) = if i >= len(fns) {
-  []
-} else {
-  match fns[i] {
-    (name, handle) => {
-      // The next decl's handle by destructure — the index sugar forces
-      // its receiver to List, so tuple[k] on a var receiver mis-judges
-      // (SYNTAX's tuple-index claim vs the judge: a named lathe-lag).
-      let extent_end = if i + 1 >= len(fns) {
-        1000000000
-      } else {
-        match fns[i + 1] {
-          (_, nh) => decl_start_line(nh),
-        }
-      }
-      let extent = Span(decl_start_line(handle), 0, extent_end, 0)
-      let pending = filter({ (_modh, dspan, _, _) => span_overlaps(extent, dspan) }, debt)
-      let mine = filter({ (_, _, tname, _, _) => tname == name }, tights)
-      [build_audit_report(name, handle, lookup_ty(handle), pending, mine)] ++ audit_walk(debt, tights, i + 1, fns)
-    },
-  }
+fn audit_one(tights, decl) = match decl {
+  (name, handle) => {
+    let mine = filter({ (_, _, tname, _, _) => tname == name }, tights)
+    build_audit_report(name, handle, lookup_ty(handle), debt_within(handle), mine)
+  },
 }
 
 fn teach(entry_module) = analyze_fns(entry_module, teach_project)
