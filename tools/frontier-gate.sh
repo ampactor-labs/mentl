@@ -1546,6 +1546,16 @@ for i in "${!compilers[@]}"; do
   # against a python oracle (PLAN §11 col 4's research half, filter-based).
   capture_signal_shadow "$compiler" "$dir" || continue
   run_signal_crucible "$compiler" "$dir"
+  # THE STAGE LAW IN lib/dsp (V2): configuration first, the datum last, so
+  # `(0 - 2) |> clip(0.5)` clips the signal and a fanout merges into `mix`.
+  # Born RED on boot d956687d: the processors were datum-first, the pipe
+  # filled the threshold (clip(0.5, -2.0) = 0.5), and a pair could not fill
+  # a two-slot stage at all (arity mismatch).
+  run_program "$compiler" stage-law-dsp "$ROOT/tests/frontier/mn-stage-law-dsp.mn" 40 signal "$dir"
+  # The same law at the string vocabulary (`"a,b,c" |> split(",")` splits
+  # the data, never the separator). Written 2026-07-31 and run by nothing
+  # until the verbs landing found it unwired.
+  run_program "$compiler" stage-law-strings "$ROOT/tests/frontier/mn-stage-law-strings.mn" 42 yes "$dir"
   # Two more on-disk data validators, cross-validated against numpy/python (the
   # representation-stress the m3==m4 fixpoint is structurally blind to):
   #  - native [Float] statistics: fold-sum mean, comparison-reduction argmin/
@@ -1846,6 +1856,15 @@ for i in "${!compilers[@]}"; do
     "$ROOT/tests/frontier/mn-schedule-race-through-callee.mn" E_ThreadedBranchEffect "$dir"
   run_program "$compiler" schedule-race-callee-readonly \
     "$ROOT/tests/frontier/mn-schedule-race-callee-readonly.mn" 10 yes "$dir"
+  # A branch's `<~` line is the enclosing record's under a caller's spawning
+  # schedule too: the thunk's slot holds the line `step` owns (exit 7 when
+  # the thunk minted its own, reborn every call).
+  run_program "$compiler" fanout-branch-line-threaded \
+    "$ROOT/tests/frontier/mn-fanout-branch-line-threaded.mn" 40 yes "$dir"
+  # ...and one line whichever schedule a call runs under (exit 7 when the
+  # schedule twin's static line was keyed by its own symbol).
+  run_program "$compiler" fanout-branch-line-mixed \
+    "$ROOT/tests/frontier/mn-fanout-branch-line-mixed.mn" 40 yes "$dir"
   run_program "$compiler" scheduled-persist-float \
     "$ROOT/tests/frontier/mn-scheduled-fanout-persist-float.mn" 60 persist "$dir"
   # The rooted-image persist (B-i landing 1): ONE build, TWO processes. Leg A
@@ -2562,6 +2581,22 @@ for i in "${!compilers[@]}"; do
     pass "fmt is idempotent (second render byte-identical)"
   else
     fail "fmt idempotence"
+  fi
+  # A destructuring let renders as the let the author wrote, never as the
+  # one-arm match the parse makes of it (RED on boot 50da7612: every
+  # let became a match one level deeper per destructure). The fixture is
+  # canonical as written, and runs to 22.
+  cp "$ROOT/tests/frontier/fmt-demo/lets.mn" "$fdemo2/lets.mn"
+  (cd "$fdemo2" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$fdemo2" --dir /tmp "$compiler" fmt --check lets.mn) >"$dir/fmt-lets.out" 2>&1
+  lets_rc=$?
+  wt_entry "$fdemo2/lets.mn" "${RTLIBS[@]}" | wt_rooted "$compiler" > "$fdemo2/lets.wat" 2>/dev/null \
+    && wt_asm "$fdemo2/lets.wat" "$fdemo2/lets.wasm" 2>/dev/null \
+    && "$WT" run "${WT_RUN_FLAGS[@]}" "$fdemo2/lets.wasm" >/dev/null 2>&1
+  lets_run=$?
+  if [ $lets_rc -eq 0 ] && [ "$lets_run" = "22" ]; then
+    pass "fmt writes a destructuring let as a let (canonical as authored, runs to 22)"
+  else
+    fail "fmt destructuring let (check rc=$lets_rc run=$lets_run; see $dir/fmt-lets.out)"
   fi
   # The re-sugar: the fixture's destructure-param lambda must render as
   # its authored pattern, never the desugared __dp<handle> machine form

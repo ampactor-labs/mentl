@@ -35,6 +35,130 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-10-06 · pin b2920932c05947a6 (TRANSITION m3 == m4) · THE VERBS COST WHAT THEIR DESUGARING COSTS (V2); THE STAGE LAW IN LIB/DSP; A BRANCH'S LINE IS ITS RECORD'S UNDER EVERY SCHEDULE; A DECLARATION'S NODE CARRIES WHAT IT DECLARES:
+  The verbs lane built (integrated here):
+  - Under Seq, Simd and Gpu a fanout's branches are evaluated in the frame
+    (`fanout_at`); the thunk machinery runs only under a spawning schedule.
+  - A product taken apart where it is built binds its parts to registers
+    (`FanDest`); a product of N piped into a stage with N open slots merges into
+    it (`product_fills_stage`, one rule in graph.mn read by the judgment and the
+    lowering); a tuple is charged `Memory + Alloc` only where it escapes
+    (`charge_product`).
+  - lib/dsp's stages take the datum last; Pulse is rewritten in the verbs (the
+    stereo pairs `><`, the sends and rooms `<|`) and renders its baseline WAV
+    byte for byte (c77104261a06ca50, the oracle's 14 checks).
+  - Gates: mn-fanout-destructured-alloc-free, mn-product-merges-into-stage,
+    mn-fanout-branch-line (RED on boot d956687d), the frontier's stage-law-dsp,
+    and stage-law-strings — written 2026-07-31 and run by nothing until this
+    landing found it unwired.
+  Found integrating it, each closed here:
+  - Pulse in the verbs trapped at an indirect call in render_frame. A `|>` stage
+    whose callee's arrow was still a variable (`x |> rig.bass_tone(320.0)`, rig
+    an unannotated parameter) was judged as a complete call whose result the pipe
+    applied — the curried reading SYNTAX says the medium has no mechanism for.
+    A call knows it stands at a stage (`CallSite = AtCall | AtStage`) and a free
+    callee there takes the Stage Law's product (`bind_stage_product`).
+    mn-stage-free-callee (42) refused on the boot.
+  - The curried field had compiled clean against the two-argument field
+    build_rig supplies: a record parameter crossing a call kept the first field
+    its callee read and freshened the rest. The snapshot generalize takes
+    (`chase_deep_build`) read the head's fields over an unread rest, so the
+    quantifier collected later links' BOUND variables as free. It reads the row
+    to its end (`record_row_full`, `record_rest_moves`).
+    mn-record-chain-crosses-call refuses E_TypeMismatch (exit 134 on the boot,
+    zero diagnostics); its control answers 22 on both.
+  - `mentl fmt --check` over the project named only refused files and hid every
+    file that was not canonical behind them; `fmt_settle` names every file in
+    both modes.
+  - The formatter wrote each destructuring let as a one-arm match one level
+    deeper per let (render_frame's four destructured fanouts became a pyramid):
+    the parse made both spellings one graph and kept nothing of the author's.
+    The match a let becomes is born `LetBinding` (`mint_node_as`,
+    `pat_binder_names`) and the render writes the let back at the block's indent
+    (`let_born`, `render_let_chain`, `render_block_final`); a written match stays
+    a match. Frontier leg fmt-demo/lets.mn, RED on boot 50da7612.
+  - A tuple, a list and a `><` fanout never broke past the width (a four-branch
+    `<|` tuple rendered as one 240-column line); each takes the fits-or-breaks
+    rule now (`render_fanout_vertical` for SYNTAX §`><`'s vertical layout).
+  - The first march refused at the board: unjudged cells rose 10,604 → 10,665,
+    every new declaration one. Measured per module against HEAD's tree, the
+    risen cells were the declarations' NAMES — and the cell at a name was not
+    the name: the parser indexed a unit literal at every unannotated function's
+    name to stand for its absent return annotation, a fabricated position the
+    caret and the ghost census both found. An absent annotation is registered
+    and never indexed (`mint_absent`): 10,665 → 6,089, the class the bound's own
+    comment named next; the ceiling follows the measurement down.
+  - The board went red after the first march of this landing at three frontier
+    legs. Two were undefined `$compose_*_idx` symbols: the thunks of a schedule
+    twin were collected for emission with no bracket open, so the twin's own
+    fanout read its lexical schedule and named the base symbol's thunks. The
+    nested records are collected inside the twin's bracket now
+    (`spec_nested_records`). The third was `tuple-into-binary`, whose site-built
+    pair is the merge since this landing; the fixture moved to the value form
+    (`let p = (1, 2); p |> add` refuses), the merge being the one exception.
+  - A spawning schedule's thunks are a construction the allocation audit had
+    never walked: the twin's thunk mints and its join carrier refused against
+    `step`'s Pure row. A thunk is built and run by the spawning schedule, at the
+    cost of the install that runs it (`EfkThunk` grants it), and the audit walks
+    each thunk body as a unit of its own (`alloc_spawned`, `alloc_thunk`), the
+    sequence form as written. A function declared `!Alloc` takes no caller's
+    spawning demand, as one declared `!Thread` already did: a spawn builds its
+    thunks, and the in-frame form builds nothing.
+  - A threaded branch's `<~` line was reborn per call (exit 7 for 40,
+    mn-fanout-branch-line-threaded): the thunk owned a ring in its own record,
+    minted at every spawn. A branch literal's line is the ENCLOSING record's line
+    under every schedule (`LhShare(slot, from)`: the thunk's slot is filled from
+    the enclosing frame's home where the thunk is minted, `ls_line_home_of`,
+    `share_enclosing_line`, `emit_ring_address`).
+  - A static line was keyed by the emitted symbol, so a schedule twin ticked a
+    line of its own and a recurrence called once sequentially and once under a
+    caller's `parallel_compose` split in two (exit 7 for 40,
+    mn-fanout-branch-line-mixed). A static line is its instantiation's, never
+    its schedule's (`line_symbol` strips the schedule letter, `spec_unmangle`;
+    `owners_once` declares each line once).
+  - Which fanout form a bracket emits had two homes (`fanout_form`,
+    `fanout_form_under`); one function names the schedule (`fanout_schedule`)
+    and the form, the audit and the lowering read it.
+  - The second march refused at the board: unjudged cells 6,089 → 6,092. The
+    three were a new LineHome variant, a new LowerScope op and an arm-list
+    literal — three classes, each a position the judgment never bound, so the
+    landing paid the classes down rather than the three: a declaration's node
+    is bound where the judgment registers it (`bind_declared`: a variant to its
+    constructor — the caret at a constructor read `Circle : a` and reads
+    `(Int) -> Shape` now — an op to its operation, a handler to its type, any
+    other declaration to unit), a statement in a block carries its
+    expression's value as a let does, and a desugared parameter is one cell (a
+    lambda head's parameter IS the cover node the expression parse minted; a
+    minted parameter's name is spelled from its own cell's handle, where
+    `fresh_param_name` minted a cell for the name alone). 6,092 → 477, the
+    ceiling with it.
+  Kills:
+  - The lane's own names for the fanout's input sharing collided with the
+    PFanout kind's constructors once both trees met; renamed `InputSharing`.
+  - The lane reported a cycle-wrapper allocation under `!Alloc`; both probes
+    (c1, c2) refuse correctly on the integrated tree — not reproduced, not acted
+    on.
+  - Seven probes (p4–p10) narrowed Pulse's trap from "the fanout" to one stage
+    whose callee is a field of an unannotated parameter; every fanout shape
+    alone ran.
+  - My first SYNTAX example, `(l) >< (r) |> mix(0.35)`, pipes into the last
+    branch: `|>` binds tighter than `><`. Written parenthesized.
+  - A `drift-audit: ignore` marker written beside the stage product's slot
+    would have raised the silencer count the obey gate refuses; removed, and the
+    reason string trued instead.
+  - "The emitted reach walks every form" — refuted: walking all forms changed
+    nothing; the undefined symbols were the unbracketed collection.
+  - Three probe rounds measured the PINNED boot: the installed shim fixes its
+    home, so `MENTL_BOOT` is ignored; probes run through
+    `.build/m2cache/m2.wasm` directly now.
+  - The audit's first arm for the spawning form skipped the form whole, so the
+    thunk units were never walked ("the allocation audit never walked it");
+    the second skipped the sequence form (`lambda_7598`). Each red named the
+    next.
+  - A shell write edited src/backends/wasm.mn outside the Edit tool, past the
+    drift hook; the audit was run on the file by hand (clean) and every later
+    edit went through the tool.
+  Measured: micros 386/386 through m2; the march TRANSITION m3 == m4 (576,421 lines, census 0), the m3 leg 23.48 s and 439,384 KB peak (min of three); frontier 643 pass / 0 red / 2 expected-red on the candidate; crown, proof-exactness and effect identity green at the pin; unjudged cells 477.
 - 2026-10-06 · pin 50da761228ba3eef (TRANSITION m3 == m4) · MENTL FMT MAKES THE PROJECT CANONICAL (F); ONE LINK MODEL AT STDIN; A GATE IS OBEYED, NEVER SATISFIED:
   The fmt lane built:
   - `mentl fmt [--check] [path…]` (cli.mn FmtMode, VFmt(mode, [paths])): no path renders

@@ -414,7 +414,7 @@ weights |> filter({ (name, w) => w > 0 })
 
 **The literal takes exactly ONE parameter** — the value its arms match. Several arguments are a product the arms destructure (`{ (a, b) => a + b }` takes a pair), which is the parameter-list-as-product rule (§«Labeled call arguments») read at the literal.
 
-**And a pair is ONE argument, at every altitude.** A call's argument count is its callee's parameter count: `{ (a, b) => a + b }` is called as `f((1, 2))`, never `f(1, 2)`, and it is not a two-argument callback — `fold(0, { (acc, x) => … }, xs)` is refused, because `fold` calls its stage with two arguments; the binder form `(acc, x) => …` or a reference is the two-parameter value. Until 2026-09-27 the type layer decomposed a single tuple parameter against N parameters ("parameters ARE tuples") while the emit did not, so `(1, 2) |> add` checked clean and trapped at the indirect call; the rule is gone and the shapes refuse (`E_TypeMismatch`, its arity face). The calling convention that would make the two one value is `Hβ.lower.parameter-product-calling-convention`.
+**And a pair is ONE argument, at every altitude.** A call's argument count is its callee's parameter count: `{ (a, b) => a + b }` is called as `f((1, 2))`, never `f(1, 2)`, and it is not a two-argument callback — `fold(0, { (acc, x) => … }, xs)` is refused, because `fold` calls its stage with two arguments; the binder form `(acc, x) => …` or a reference is the two-parameter value. Until 2026-09-27 the type layer decomposed a single tuple parameter against N parameters ("parameters ARE tuples") while the emit did not, so a pair piped into `add(a, b)` checked clean and trapped at the indirect call; the rule is gone and the shapes refuse (`E_TypeMismatch`, its arity face) — `let p = (1, 2); p |> add` among them. A product BUILT where it is piped is the one exception, and it is not a decomposition: `(1, 2) |> add` is the merge, `add(1, 2)`, the tuple never built (§«`|>` — converge»). The calling convention that would make the two one value is `Hβ.lower.parameter-product-calling-convention`.
 
 **A brace opens a literal when a PATTERN ends at a `=>`.** That question is answered by a bounded token scan, never by parsing a pattern speculatively and never by layout: one pattern atom — an ident (optionally applied), a literal, or a balanced group — joined to further atoms only by `@` or `|`. Two adjacent atoms are never a pattern, so `{ setup()` newline `(x) => run(x) }` is the block it looks like. Record literal and block discrimination are unchanged and follow (§«Records», §«Function declarations»).
 
@@ -546,6 +546,10 @@ x |> double |> square
 
 **A stage is APPLIED, never minted.** A call standing as a stage is completed in place (its hole filled by the piped value), and a function literal standing as a stage — `x |> { v => v * 2 }`, `x |> { 0 => 1, n => n - 1 }` — is the piped value bound to its parameter, its body lowered in the frame the pipe stands in. Neither builds a closure, so neither costs the frame anything, and a stage-shaped chain inside a `with !Alloc` function stays allocation-free (real, 2026-09-28; before, each literal stage minted a closure per call under the same `!Alloc`). The parameter is a binder of that frame like any other: it may share a name with a local there, and the local reads its own value again once the stage closes.
 
+**A stage whose callee is not yet known is the Stage Law's product** (real, 2026-10-06). Where the callee's arrow is still a variable — a field of an unannotated record, a parameter, a forward local — `x |> rig.tone(320.0)` is judged as `rig.tone(320.0, x)`: the arguments written, then the piped value's slot. Until then the stage was judged as a complete call returning a function, so the field was typed `(Float) -> (Float) -> Float`, a curried reading the medium has no mechanism for, and Pulse's filter, built `(Hz, Float) -> Float`, was called with one argument and trapped at the indirect call. A callee whose arrow is known is completed by its own parameters, and one whose call is already complete and returns a function is applied whole.
+
+**A product built at the site fills a stage's open slots** (real, 2026-10-06). `((l) >< (r)) |> mix(0.35)` is `mix(0.35, l, r)` when `mix(0.35)` leaves exactly two slots — the parentheses are the precedence table's, since `|>` binds tighter than `><`: the merge, Faust's `,` then `:`, and the tuple is never built. A stage with one open slot takes the product whole, as it takes any value; the merge asks for exact agreement and never guesses.
+
 **Applying a stage owes what the stage demands.** The piped value fills the stage's parameter exactly as a call's argument fills it, so the parameter's refinement is claimed of the value at the pipe and the row its precondition guards is paid there when the claim is open: `30000.0 |> alpha` over `alpha(c: Hz)` refuses as `alpha(30000.0)` does, and a partial stage owes the contract of the slot it leaves open (real, 2026-10-01; the pipe raised no claim before, §«Refinement types»).
 
 ### `<|` — diverge (fanout)
@@ -615,10 +619,26 @@ a `mode == 0/1/2` int). The verb stays PURE TOPOLOGY in what it performs — it
 contributes no effect of its own to the row, and the schedule is not in it; the
 cursor reads the strategy from the live handler stack (the same `resolve_in_stack`
 every `perform` uses), exactly as persistence is a handler swap (`PLAN.md §4④`).
-What the verb COSTS is in the row: a fanout builds the tuple of its results (and
-`><` a thunk per branch), so both glyphs charge `Memory + Alloc` in the frame
-they stand in, and `with !Alloc` refuses `(x + 1) >< (x + 2)` (real, 2026-09-28;
-the row said nothing of it before, at 56 bytes per call).
+What the verb COSTS is what its let-spelling costs (real, 2026-10-06). Under a
+schedule that runs the branches in the frame (`Seq`, and `Simd` and `Gpu` until
+they have a device), each branch is evaluated where the fanout stands — no
+thunk, no carrier — and the tuple of results is built only where it ESCAPES: a
+fanout taken apart where it is made (`match (x + 1) >< (x + 2) { (a, b) => a * b
+}`) binds its parts to registers, and one piped into a stage with as many open
+slots MERGES into it (`((l) >< (r)) |> mix(0.35)` is `mix(0.35, l, r)`, §«`|>` —
+converge»), so neither allocates and `with !Alloc` accepts both. A fanout whose
+tuple escapes — returned, stored, handed whole to a call — builds it and charges
+`Memory + Alloc` in its frame, and `with !Alloc` refuses that (the row said
+nothing of a fanout's cost before 2026-09-28; until 2026-10-06 it charged every
+fanout, destructured or not, so lessons 3 and 5 of the course contradicted each
+other). A spawning schedule builds a thunk per branch at the cost of the install
+that runs it, charged where that install stands — so a callee declared
+`!Alloc`, like one declared `!Thread`, takes no caller's spawning demand and
+runs its in-frame form. A `<~` in a branch literal is the enclosing record's
+line under every schedule: a thunk minted per call holds that line in its slot
+instead of a ring of its own, so `step(1.0)` ticks one recurrence whether its
+caller installs `parallel_compose` or nothing (real, 2026-10-06; until then
+the spawned branch's line was reborn every call).
 **No `Schedule` installed → `Seq`** — inline-eval in source order, deterministic
 and debuggable, the invisible default. `~> Thread` runs the branches on parallel
 threads; `~> Simd` cashes a `[f32; 4]` branch tuple to a v128 lane (the
@@ -2636,6 +2656,8 @@ The parser accepts any whitespace; the precedence table alone draws the tree (Go
 - The formatter renders code in canonical 2-space / 4-space form on save.
 - **A render that would lose what the author wrote is not written** (real, 2026-09-28). `mentl fmt` lexes its render beside the source and spends every identifier, literal (by value, so `48_000` and `48000` are one) and prose line of the source against the render's; anything left unpaid is a loss, the verb names it with its line, leaves the file untouched, and exits nonzero. Until then the gate counted prose alone and wrote whatever it rendered: it deleted an effect parameter's annotation (`rate: Int`), an op parameter's name (`msg: String`) and a pinned alias's base (`Float repr f64`) while reporting "prose conserved", and it wrote a lossy render of a file that did not parse.
 - **The head of a postfix form keeps its parens** (real, 2026-09-28). A call, a field read and an index bind tighter than every operator, so a callee, a receiver or an indexed value that is anything but an atom renders parenthesized: `(r |> keep).level`, `((a, b) => a * b)(2, 3)`, `([1, 2] ++ [3, 4])[2]`. Rendered bare, the re-parse takes the postfix onto the head's last operand — `(run() ~> h).beta` came back as `run() ~> h.beta`, an install of `h.beta`, under "names conserved", because no name was lost. The census of names cannot see a moved operand; a render that re-parses to a different tree is not yet refused (`Hβ.fmt.render-must-parse-to-the-same-tree`).
+- **A destructuring let renders as the let** (real, 2026-10-06). The parse makes `let (a, b) = v` and the rest of its block one arm of a `match`, the same graph a hand-written one-arm `match` makes; the match a let becomes is born remembering it, so `mentl fmt` writes the let back at the block's indent and a written `match` stays a match. Until then every destructuring let came back as a match one level deeper per let.
+- **A tuple, a list or a `><` fanout past the width breaks** — one element per line, or §`><`'s vertical layout — as a call's arguments and a record do.
 - The `Format` effect at `src/format.mn` declares `format_program` / `format_at_handle` / `format_chain` ops; `format_default` is the canonical handler.
 - The editing surfaces format as a projection — keystroke → parse → format → render — so the developer never sees badly-indented code: the page's canvas re-renders the canonical form on idle, never mid-keystroke (the canvas landing), and `mentl edit` takes one action per invocation today (`Hβ.felt.edit-session-reads-one-action`).
 - The LSP transport (external editors via VS Code / vim / Emacs) answers no formatting request yet; its format-on-save is the same `format_default` read, one more method on the server's dispatch.

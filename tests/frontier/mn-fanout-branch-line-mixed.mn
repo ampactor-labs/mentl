@@ -1,0 +1,17 @@
+// A STATIC LINE IS ITS INSTANTIATION'S, NEVER ITS SCHEDULE'S. `step` is
+// called sequentially, then under a caller's `parallel_compose` (its schedule
+// twin), then sequentially again; all three ticks belong to one recurrence.
+// Its line was keyed by the emitted symbol, so the schedule twin ticked a
+// line of its own and the second call answered the first tick again: exit 7
+// on the candidate that first gave the threaded branch the enclosing line.
+// Expected exit: 40.
+fn step(x) = match x <| ((v) => ((p) => v + 0.5 * p) <~ delay(1), (v) => v * 2.0) {
+  (a, b) => a + b,
+}
+
+fn main() -> Int = {
+  let a = step(1.0)
+  let b = (step(1.0)) ~> parallel_compose
+  let c = step(1.0)
+  if a == 3.0 && b == 3.5 && c == 3.75 { 40 } else if a == 3.0 && b == 3.0 { 7 } else { 41 }
+}

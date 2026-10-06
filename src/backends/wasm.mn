@@ -15,13 +15,13 @@
 // or heap continuation structs by lower.mn.
 import types
 
-import graph
+import derive
 
 import effects
 
-import lower
+import graph
 
-import derive
+import lower
 
 import strings
 
@@ -869,6 +869,7 @@ fn settle_minted_lines(site: String, lines) = each(
         )
       ),
       LhSlot(_) => (),
+      LhShare(_, _) => (),
       LhStaticJvp => report_at(
         h,
         EInternalInvariant(
@@ -1104,7 +1105,15 @@ fn alloc_unit_named(name: String, sym: String, enc: String, parent) = match pare
         EfkPartial => AllocUnit({enc: enc, names: p.names, row: alloc_owner_row(OwnedByFn(e.origin)), sym: sym}),
         EfkArm(op, hname) => AllocUnit({enc: enc, names: "{hname}.{op}", row: alloc_owner_row(OwnedByHandler(hname)), sym: sym}),
         EfkInit(hname) => AllocUnit({enc: enc, names: hname, row: alloc_owner_row(OwnedByInstall(hname)), sym: sym}),
-        EfkThunk => AllocUnit({enc: enc, names: p.names, row: p.row, sym: sym}),
+        EfkThunk => // A branch thunk exists only under a spawning schedule: its carrier is
+        // that schedule's, and its body is the branch the frame's own row
+        // already answers for in the in-frame form.
+        AllocUnit({
+          enc: enc,
+          names: p.names,
+          row: RowGranted("a branch thunk is built and run by the spawning schedule, at the cost of the install that runs it"),
+          sym: sym,
+        }),
         EfkK => AllocUnit({enc: enc, names: p.names, row: p.row, sym: sym}),
       },
     },
@@ -1239,6 +1248,29 @@ fn alloc_site_text(s) = match s {
   AsAllocation => "an allocation",
   AsSpawn => "a spawned task's record",
   AsStateCell => "a handler state's cell",
+}
+
+// The branch thunks a spawning form mints, each body walked as the unit it
+// is emitted as; the mints themselves are the schedule's (the arm above).
+// A sequence fanout mints no thunk: its spawning form calls the library's
+// spawning fanout with the program's own function, walked as written.
+fn alloc_spawned(unit, branches, form) = match branches {
+  FanBranches(bs) => {
+    each(alloc_thunk(unit, ??), bs)
+    true
+  },
+  FanSeq(_) => alloc_walk(unit, form),
+}
+
+fn alloc_thunk(unit, b) = match b {
+  ScheduledBoundary(thunk, _, _, _, _, _) => match thunk {
+    LMakeClosure(_, LFn(name, _, _, body, _, _), _) => alloc_walk_nested(unit, name, body),
+    other => {
+      let _ = alloc_walk(unit, other)
+      ()
+    },
+  },
+  InvalidScheduledBoundary(_, _) => (),
 }
 
 // A unit's body walked, and its verdict recorded once, when the walk leaves.
@@ -1424,7 +1456,16 @@ fn alloc_walk(unit, e) = match e {
   },
   LBlock(_, stmts) => alloc_walk_list(unit, stmts, 0),
   LSimdLanes(_, lanes) => alloc_walk_list(unit, lanes, 0),
-  LFanout(_, lex, _, forms) => alloc_walk(unit, fanout_form(lex, forms)),
+  LFanout(_, lex, branches, forms) => // A spawning form's thunk records, spawn tickets and join are the
+  // schedule's construction, built at the cost of the install that runs it
+  // (charged where that install stands, here or at a demanding caller); each
+  // thunk's body is a unit of its own, judged against this unit's row. The
+  // in-frame forms build nothing of their own and are walked as written.
+  match fanout_schedule(lex, forms) {
+    Threaded => alloc_spawned(unit, branches, fanout_form(lex, forms)),
+    Persisted => alloc_spawned(unit, branches, fanout_form(lex, forms)),
+    _ => alloc_walk(unit, fanout_form(lex, forms)),
+  },
   LFieldLoad(_, rec, _) => alloc_walk(unit, rec),
   LConvert(_, _, operand) => alloc_walk(unit, operand),
   LStateSlotStore(_, _, v, record) => {
@@ -1697,6 +1738,16 @@ fn expansion_vectors(acc, x) = match x {
     spec_ctx_clear()
     acc2
   },
+}
+
+// The functions a twin's body holds, read under the twin's own bracket: a
+// schedule twin's fanout runs a spawning form whose branch thunks the base's
+// in-frame form never mints, so read unbracketed they would be lost.
+fn spec_nested_records(pairs, enc: String, body) = {
+  spec_ctx_set(pairs, enc)
+  let recs = collect_fn_emit_records(body)
+  spec_ctx_clear()
+  recs
 }
 
 // One twin's body walked under its own specialization bracket — the one
@@ -2248,7 +2299,7 @@ fn plan_reached(lowered, fn_records, twin_bases, all_records, spec_demands, twin
                 }
               },
             },
-            collect_fn_emit_records(body)
+            spec_nested_records(pairs, enc, body)
           ),
         },
         None => // record-less names are never worthy; unreachable by construction
@@ -3197,7 +3248,7 @@ fn line_global_name(h: Int, site: String) = "__line_{int_to_str(h)}_{site}"
 // for the module inits' own sites. A twin's static-ness is read off its
 // base's lines, where each site's home is recorded — so a base the module
 // does not emit still gives its twins their lines.
-fn static_line_owners(top_fn_names, fn_lines, spec_recs, init_lines) = filter(
+fn static_line_owners(top_fn_names, fn_lines, spec_recs, init_lines) = owners_once(filter(
   { (name, _lines, _p, _e) => ls_find_str_local(top_fn_names, name, 0) >= 0 },
   map({ (name, lines) => (name, lines, [], "") }, fn_lines)
 ) ++ flat_map(
@@ -3205,12 +3256,12 @@ fn static_line_owners(top_fn_names, fn_lines, spec_recs, init_lines) = filter(
     tw => match tw.rec {
       (m, _ps, _b, _f) => match filter(line_is_static, fn_lines_of(tw.base)) {
         [] => [],
-        lines => [(m, lines, tw.pairs, tw.enc)],
+        lines => [(line_symbol(m, tw.enc), lines, tw.pairs, tw.enc)],
       },
     },
   },
   spec_recs
-) ++ match init_lines {
+)) ++ match init_lines {
   [] => [],
   lines => [("__init_lets", lines, [], "")],
 }
@@ -3234,7 +3285,44 @@ fn line_is_static(line) = match line {
     LhStatic => true,
     LhSlot(_) => false,
     LhStaticJvp => true,
+    LhShare(_, _) => false,
   },
+}
+
+// The symbol a static line is owned by: its instantiation's. A schedule
+// twin is its instantiation run under a caller's schedule, so it ticks the
+// line the instantiation owns — the schedule never changes what a
+// recurrence remembers — while each instantiation keeps its own, sized at
+// its own width.
+fn line_symbol(sym: String, enc: String) = match enc_sched(enc) {
+  Seq => sym,
+  _ => {
+    let te = enc_type_part(enc)
+    let base = spec_unmangle(sym, enc)
+    if spec_enc_is_floor(te) { base } else { spec_mangle(base, te) }
+  },
+}
+
+// One owner per line symbol, the first kept: a schedule twin and its
+// instantiation name one set of lines.
+fn owners_once(owners) = match fold(([], smap_new()), owner_keep, owners) {
+  (kept, _) => reverse(kept),
+}
+
+fn owner_keep(acc, owner) = match acc {
+  (kept, seen) => match owner {
+    (sym, _, _, _) => if smap_has(seen, sym) { acc } else { ([owner] ++ kept, smap_add(seen, sym, 1)) },
+  },
+}
+
+// The address of a site's ring, pushed: a static line's instance global, or
+// the word at its slot of the record in `__state`. A shared line is read
+// where its slot is, and filled from its enclosing home at the mint.
+fn emit_ring_address(h: Int, home) = match home {
+  LhStatic => wat_emit("    (global.get ${line_global_name(h, line_symbol(emit_site(), spec_enc_active()))})\n"),
+  LhStaticJvp => wat_emit("    (global.get ${line_global_name(h, line_symbol(emit_site(), spec_enc_active()))})\n"),
+  LhSlot(slot) => wat_emit("    (i32.load offset={int_to_str(8 + slot * 4)} (local.get $__state))\n"),
+  LhShare(slot, _) => wat_emit("    (i32.load offset={int_to_str(8 + slot * 4)} (local.get $__state))\n"),
 }
 
 // Every static line global, as (name, "i32") — the ONE projection the
@@ -5171,7 +5259,14 @@ fn emit_arena_exit(hs, t, ev) = {
 // TEMP, and the value at its own width.
 fn arena_locals(h) = {
   let hs = int_to_str(h)
-  ["__ar_o_{hs} i32", "__ar_j_{hs} i32", "__ar_m_{hs} i32", "__ar_g_{hs} i32", "__ar_r_{hs} i32", "__ar_v_{hs} {repr_wat(repr_of(lookup_ty(h)))}"]
+  [
+    "__ar_o_{hs} i32",
+    "__ar_j_{hs} i32",
+    "__ar_m_{hs} i32",
+    "__ar_g_{hs} i32",
+    "__ar_r_{hs} i32",
+    "__ar_v_{hs} {repr_wat(repr_of(lookup_ty(h)))}"
+  ]
 }
 
 // ─── THE FIFTH FOLD LEAF — evacuation ──────────────────────────────────
@@ -5965,6 +6060,7 @@ fn walk_locals_expr(expr, acc) = match expr {
       LhStaticJvp => ["__tslot_{hs} i32", "__fb_dprev_{hs}.f64 f64"],
       LhStatic => [],
       LhSlot(_) => [],
+      LhShare(_, _) => [],
     }
     walk_locals_expr(
       s,
@@ -6360,6 +6456,14 @@ fn emit_value_run(run) = match run {
 // the arms enumerated here are the forms whose emission consumes its
 // own result (local.set / store / decl) or never falls through.
 fn lexpr_leaves_value(e) = match e {
+  LFanout(_, lex, _, forms) => // The form the site runs IS its emission: one that binds its parts to a
+  // consumer's registers leaves no word, exactly as the `let` spelling it
+  // costs the same as does.
+  lexpr_leaves_value(fanout_form(lex, forms)),
+  LBlock(_, stmts) => // A block is its last statement's emission (`emit_body`), so a block of
+  // lets — a product's parts bound to its consumer's registers — leaves no
+  // word either.
+  if len(stmts) == 0 { false } else { lexpr_leaves_value(last(stmts)) },
   LLet(_, _, _) => false,
   LStateSlotStore(_, _, _, _) => false,
   LStateInit(_, _, _, _) => false,
@@ -7590,23 +7694,7 @@ fn emit_expr(expr) = match expr {
     let hs = int_to_str(h)
     let r = repr_of(lookup_ty(h))
     let rw = repr_wat(r)
-    match home {
-      LhStatic => {
-        wat_emit("    (global.get $")
-        wat_emit(line_global_name(h, emit_site()))
-        wat_emit(")\n")
-      },
-      LhStaticJvp => {
-        wat_emit("    (global.get $")
-        wat_emit(line_global_name(h, emit_site()))
-        wat_emit(")\n")
-      },
-      LhSlot(slot) => {
-        wat_emit("    (i32.load offset=")
-        wat_emit(int_to_str(8 + slot * 4))
-        wat_emit(" (local.get $__state))\n")
-      },
-    }
+    emit_ring_address(h, home)
     wat_emit("    (local.set $__ring_{hs})\n")
     if depth > 1 {
       wat_emit("    (local.set $__fbp_{hs} (i32.add (local.get $__ring_{hs}) (i32.add (i32.const 8) (i32.mul (i32.load (local.get $__ring_{hs})) (i32.const {int_to_str(repr_width(r))})))))\n")
@@ -7622,6 +7710,7 @@ fn emit_expr(expr) = match expr {
       LhStaticJvp => true,
       LhStatic => false,
       LhSlot(_) => false,
+      LhShare(_, _) => false,
     }
     if jvp_tick {
       wat_emit("    (local.set $__tslot_{hs} (i32.add (global.get ${tline_global_name(h, emit_site())}) ")
@@ -10407,6 +10496,13 @@ fn emit_line_mints(lines, rec_local: String) = each(
         wat_emit(int_to_str(8 + slot * 4))
         wat_emit(")\n")
       },
+      LhShare(slot, from) => // a branch thunk's line is its enclosing frame's, read where the thunk
+      // is minted — this frame's `__state` or its static global
+      {
+        wat_emit("    (local.get ${rec_local})\n")
+        emit_ring_address(h, from)
+        wat_emit("    (i32.store offset={int_to_str(8 + slot * 4)})\n")
+      },
       LhStatic => // A minted record has no static line: the settle point refused the
       // module that would carry one (`settle_minted_lines`).
       (),
@@ -10475,7 +10571,7 @@ fn emit_variant_stores_acc(fields, i, n, off, local_name) = if i >= n {
 //
 // out of range — unprovable, never a silent 0
 fn variant_payload_offset(ptys, target, i, off) = if i >= len(ptys) {
-  0 - 1
+  -1
 } else {
   let r = slot_repr(fold_strip(list_index(ptys, i)))
   let here = align_for(off, r)

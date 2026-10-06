@@ -3769,7 +3769,9 @@ and Wave C (tier 5) follow.
   write is atomic across the project; a duplicate import is a syntax error
   (`E_DuplicateImport`, armed) whose fix is fmt's lift, and a literal keeps
   its authored spelling. Every later sweep writes through it.
-- **The course's prerequisites.** V2 · a verb never costs more than its
+- **The course's prerequisites** (V2 and the lib/dsp Stage Law LANDED
+  2026-10-06, pin b2920932c05947a6, with Pulse rewritten in the verbs rendering its
+  baseline WAV byte for byte; SPACE.1 landed with RACE). V2 · a verb never costs more than its
   desugaring (`Hβ.verbs.the-verbs-are-whole`): under Seq a fanout's branch
   literals are applied in the frame, so `<|` and `><` stop refusing under
   `!Alloc` — which today makes lessons 3 and 5 contradict each other. The

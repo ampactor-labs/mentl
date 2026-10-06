@@ -1,0 +1,20 @@
+// expect: refuse E_TypeMismatch
+// A record parameter's type crosses a call whole. `frame` reads two fields,
+// so its record is learned link by link, and `spin` instantiates it: every
+// field must arrive with the type `frame` gave it. `second` is called with
+// one argument and its result called again, while `build` puts a
+// two-argument function there, so the program refuses at the call into
+// `spin`. Until 2026-10-06 the instance kept the first field read and gave
+// every later field a fresh variable, so this compiled clean and trapped at
+// the indirect call (exit 134 on the boot).
+fn add(a, b) = a + b
+
+fn inc(a) = a + 1
+
+fn build() = {first: inc, second: add}
+
+fn frame(rig) = rig.first(1) + rig.second(3)(4)
+
+fn spin(rig, n) = if n == 0 { 0 } else { frame(rig) + spin(rig, n - 1) }
+
+fn main() = spin(build(), 2)

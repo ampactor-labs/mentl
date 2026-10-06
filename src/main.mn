@@ -493,7 +493,9 @@ fn fmt_target_verdict(stamps, target) = match target {
   FmtPath(path) => fmt_judge(stamps, path),
   FmtNothing(t) => FmtRefused(
     t,
-    ["names no directory, no file and no module (searched {join(", ", module_probes(path_to_module(t)))})"]
+    [
+      "names no directory, no file and no module (searched {join(", ", module_probes(path_to_module(t)))})"
+    ]
   ),
 }
 
@@ -588,7 +590,9 @@ fn fmt_losses(src: String, rendered: String, stated: [String]) = {
   if out_lines >= src_lines && len(lost) == 0 {
     []
   } else {
-    ["the canonical render ({int_to_str(byte_len(rendered))} bytes beside the source's {int_to_str(byte_len(src))}) loses {int_to_str(src_lines - out_lines)} of {int_to_str(src_lines)} prose line(s) and {int_to_str(len(lost))} authored name(s) or literal(s)"] ++ lost_comment_lines(src_toks, out_toks, 0, []) ++ map(lost_atom_line, take(8, lost))
+    [
+      "the canonical render ({int_to_str(byte_len(rendered))} bytes beside the source's {int_to_str(byte_len(src))}) loses {int_to_str(src_lines - out_lines)} of {int_to_str(src_lines)} prose line(s) and {int_to_str(len(lost))} authored name(s) or literal(s)"
+    ] ++ lost_comment_lines(src_toks, out_toks, 0, []) ++ map(lost_atom_line, take(8, lost))
   }
 }
 
@@ -618,33 +622,33 @@ fn lost_comment_lines(ref src_toks, ref out_toks, i, acc) = if i >= len(src_toks
 
 // The project's verdict. A refusal anywhere writes nothing anywhere: the
 // write is the project's, so a file that would lose an atom keeps every
-// other file as authored too, and the exit says so.
+// other file as authored too, and the exit says so. Every file the verb
+// judged is named whatever else it found — a refusal beside them never
+// hides a file that is not canonical, in either mode.
 fn fmt_settle(mode, key: String, stamps, verdicts) = {
   let refused = filter(fmt_is_refused, verdicts)
   let renders = filter(fmt_is_render, verdicts)
   each(fmt_print_unparsed, verdicts)
-  if len(refused) > 0 {
-    each(fmt_print_refused, refused)
-    print_string("fmt: nothing written — {int_to_str(len(refused))} file(s) refused\n")
-    1
-  } else {
-    match mode {
-      FmtCheck => {
-        each(fmt_print_would, renders)
-        fmt_stamps_write(key, stamps, verdicts)
-        if len(renders) > 0 {
-          print_string("fmt: {int_to_str(len(renders))} of {int_to_str(len(verdicts))} file(s) not canonical — `mentl fmt` writes them\n")
-          1
-        } else {
-          0
-        }
-      },
-      FmtWrite => {
-        each(fmt_write, renders)
-        fmt_stamps_write(key, stamps, map(fmt_written, verdicts))
+  each(fmt_print_refused, refused)
+  each(fmt_print_would, renders)
+  match mode {
+    FmtCheck => {
+      fmt_stamps_write(key, stamps, verdicts)
+      if len(renders) + len(refused) > 0 {
+        print_string("fmt: {int_to_str(len(renders))} of {int_to_str(len(verdicts))} file(s) not canonical, {int_to_str(len(refused))} refused — `mentl fmt` writes the first\n")
+        1
+      } else {
         0
-      },
-    }
+      }
+    },
+    FmtWrite => if len(refused) > 0 {
+      print_string("fmt: nothing written — {int_to_str(len(refused))} file(s) refused\n")
+      1
+    } else {
+      each(fmt_write, renders)
+      fmt_stamps_write(key, stamps, map(fmt_written, verdicts))
+      0
+    },
   }
 }
 

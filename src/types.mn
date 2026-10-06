@@ -4503,8 +4503,12 @@ type Resolution
 // derivative reading: the tick carries the line's TANGENT ring beside it
 // (`$__tline_<site>_<symbol>`, the same geometry at f64, indexed by the
 // primal ring's head), so a recurrence's sensitivity to the seed is itself
-// a recurrence — only derive (src/derive.mn) writes it.
-type LineHome = LhStatic | LhSlot(Int) | LhStaticJvp
+// a recurrence — only derive (src/derive.mn) writes it. `LhShare(i, from)`
+// is word `i` of a spawning schedule's branch thunk, read like `LhSlot(i)`
+// but filled at the mint with the line its enclosing frame owns at `from`:
+// a branch literal's line is the enclosing record's under every schedule,
+// so a thunk minted per call never restarts it.
+type LineHome = LhStatic | LhSlot(Int) | LhStaticJvp | LhShare(Int, LineHome)
 
 effect LowerScope {
   // fn_name, locals_names, locals_handles, captures_names, captures_handles,
@@ -4518,6 +4522,8 @@ effect LowerScope {
   ls_exit_frame() -> [(Int, Int, LineHome)]
   // a `<~` site (handle, depth) takes the innermost frame's next line slot
   ls_line_slot(Int, Int) -> LineHome
+  // the home the innermost frame already gave a `<~` site, if it holds one
+  ls_line_home_of(Int) -> Option(LineHome)
   // how many frames are open — 0 at a top-level declaration's own entry
   ls_frame_depth() -> Int
   // bind a local (name, type handle); returns the register the binder takes

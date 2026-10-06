@@ -20,8 +20,10 @@ import graph
 import lexer
 
 // Handle minting and node wrapping
-fn fresh_handle(span: ValidSpan) = {
-  let h = graph_fresh_ty(Placeholder(span))
+fn fresh_handle(span: ValidSpan) = fresh_handle_as(span, Placeholder(span))
+
+fn fresh_handle_as(span: ValidSpan, reason) = {
+  let h = graph_fresh_ty(reason)
   graph_index_span(span, h)
   h
 }
@@ -31,8 +33,23 @@ fn fresh_handle(span: ValidSpan) = {
 // registered AND carried in N — one heap object, two references (the AST
 // projection in N, the graph weave keyed by handle), never a copy — so
 // resolving the handle (graph_node_body) reads the same body the tree holds.
-fn mint_node(body, span: ValidSpan) = {
-  let h = fresh_handle(span)
+fn mint_node(body, span: ValidSpan) = mint_node_as(body, span, Placeholder(span))
+
+// An absent annotation — a declaration with no `-> T` — is a node its readers
+// read as absence (`LitUnit`), and it stands at no position: it is registered
+// and never indexed at a span, so the caret, the comment weave and the
+// census of unjudged cells never find a unit literal standing on the name.
+fn mint_absent(span: ValidSpan) = {
+  let h = graph_fresh_ty(Placeholder(span))
+  graph_register_node(h, NExpr(LitUnit))
+  N(NExpr(LitUnit), span, h)
+}
+
+// A node born with the reason its parse knows: the one-arm match a
+// destructuring let becomes is born `LetBinding`, so the formatter writes
+// the `let` the author wrote and a hand-written `match` stays a match.
+fn mint_node_as(body, span: ValidSpan, reason) = {
+  let h = fresh_handle_as(span, reason)
   graph_register_node(h, body)
   N(body, span, h)
 }
@@ -700,7 +717,7 @@ fn parse_fn(ref tokens, pos) = {
       match if at(tokens, p3, TArrow) {
         parse_type_expr(tokens, skip_ws(tokens, p3 + 1))
       } else {
-        (nexpr(LitUnit, start), p3)
+        (mint_absent(start), p3)
       } {
         (ret_node, p4) => {
           let p5 = skip_ws(tokens, p4)
@@ -874,13 +891,13 @@ fn parse_one_param(ref tokens, pos) = match match kind_at(tokens, pos) {
     let psp = span_at(tokens, p)
     if at(tokens, p, TLBrace) || at(tokens, p, TLBracket) || at(tokens, p, TLParen) {
       match parse_pat(tokens, p) {
-        (pat, p_pat) => {
-          let fresh = fresh_param_name(psp)
-          let param = TParam(fresh, TVar(fresh_handle(psp)), own_marker, own_marker, None, guards_nothing())
-          // reuse as the absent-annotation sentinel (byte-identical)
-          let vref = nexpr(VarRef(fresh), psp)
-          let bind = nstmt(LetStmt(pat, vref, vref), psp)
-          (param, Some(bind), p_pat)
+        (pat, p_pat) => match fresh_param_marked(dp_prefix, psp, own_marker) {
+          (fresh, param) => {
+            // reuse as the absent-annotation sentinel (byte-identical)
+            let vref = nexpr(VarRef(fresh), psp)
+            let bind = nstmt(LetStmt(pat, vref, vref), psp)
+            (param, Some(bind), p_pat)
+          },
         },
       }
     } else {
@@ -1086,7 +1103,7 @@ fn let_at_scope(stmt, scope) = match scope {
   AtModule => match stmt {
     LetStmt(PVar(name), val, ann) => if node_handle(ann) == node_handle(val) {
       match val {
-        N(NExpr(LambdaExpr(params, body)), vspan, _) => FnStmt(name, params, nexpr(LitUnit, vspan), [], body),
+        N(NExpr(LambdaExpr(params, body)), vspan, _) => FnStmt(name, params, mint_absent(vspan), [], body),
         _ => stmt,
       }
     } else {
@@ -1697,13 +1714,16 @@ fn parse_import_path(ref tokens, pos, own acc) = {
 fn import_edges(tokens) = match fold(
   (0, []),
   (acc, t) => match acc {
-    (i, out) => (i + 1, if kind_eq(token_kind(t), TImport) {
-      match parse_import_path(tokens, i + 1, "") {
-        (path, _) => out ++ [path],
+    (i, out) => (
+      i + 1,
+      if kind_eq(token_kind(t), TImport) {
+        match parse_import_path(tokens, i + 1, "") {
+          (path, _) => out ++ [path],
+        }
+      } else {
+        out
       }
-    } else {
-      out
-    }),
+    ),
   },
   tokens
 ) {
@@ -2123,13 +2143,14 @@ fn parse_primary(ref tokens, pos, slot) = {
 // desugar_block turns a destructuring let into a `match`. ONE pattern machinery
 // at let-bind AND param-bind; no new infer/lower path, no TParam shape change.
 //
-// A unique parameter name for a desugared destructure slot — keyed on the
-// pattern's fresh handle so it never collides with a source name. The two
-// prefixes, `dp_prefix` and `al_prefix`, live in types.mn beside the type
-// renderer, so the three readers that ask whether a name was minted — this
-// desugar, the formatter and the type renderer — reach one home.
-fn fresh_param_name(span: ValidSpan) = "{dp_prefix}{int_to_str(fresh_handle(span))}"
-
+// A desugared slot's parameter is named by its own cell's handle, so the name
+// never collides with a source name and costs no cell of its own: a handle
+// minted for the name alone was indexed at the slot's span and never judged,
+// one ghost per destructured parameter and per arm list. The two prefixes,
+// `dp_prefix` and `al_prefix`, live in types.mn beside the type renderer, so
+// the three readers that ask whether a name was minted — this desugar, the
+// formatter and the type renderer — reach one home.
+//
 // A fresh param under a caller-chosen PREFIX. The two surfaces that mint
 // one differ in what the name PROMISES, and conflating them is a silent
 // wrong rather than a naming preference. `dp_prefix` says "this param
@@ -2141,9 +2162,12 @@ fn fresh_param_name(span: ValidSpan) = "{dp_prefix}{int_to_str(fresh_handle(span
 // a WILDCARD — with nothing anywhere to say it had. Distinct prefixes
 // make that unsayable; fmt's own second render is what would otherwise
 // have found it in production.
-fn fresh_param_under(prefix: String, span: ValidSpan) = {
-  let nm = "{prefix}{int_to_str(fresh_handle(span))}"
-  (nm, TParam(nm, TVar(fresh_handle(span)), Unmarked, Unmarked, None, guards_nothing()))
+fn fresh_param_under(prefix: String, span: ValidSpan) = fresh_param_marked(prefix, span, Unmarked)
+
+fn fresh_param_marked(prefix: String, span: ValidSpan, marker) = {
+  let h = fresh_handle(span)
+  let nm = "{prefix}{int_to_str(h)}"
+  (nm, TParam(nm, TVar(h), marker, marker, None, guards_nothing()))
 }
 
 // Convert a parsed expr (a lambda param, already parsed as an expression) to a
@@ -2179,15 +2203,22 @@ fn record_fields_to_pat(flds) = map({ (nm, v) => (nm, expr_to_pat(v)) }, flds)
 // A param drawn from a Pat: PVar is the bare-name degenerate (no desugar);
 // any destructure pattern yields a fresh-named param plus the prepend-let
 // `let <pat> = <fresh>` that binds it at fn entry. Returns (TParam, Option(let)).
-fn pat_param_and_let(pat, span: ValidSpan) = match pat {
-  PVar(nm) => (TParam(nm, TVar(fresh_handle(span)), Unmarked, Unmarked, None, guards_nothing()), None),
-  PWild => (TParam("_", TVar(fresh_handle(span)), Unmarked, Unmarked, None, guards_nothing()), None),
-  _ => match fresh_param_under(dp_prefix, span) {
-    (fresh, param) => {
+//
+// The parameter's cell is the COVER node's own: a lambda's head is read as an
+// expression until its `=>` says it was a parameter list, so the node the
+// expression parse minted at the parameter is the parameter. A second cell
+// minted beside it left the first one unjudged, one ghost per lambda
+// parameter.
+fn pat_param_and_let(pat, cover) = match cover {
+  N(_, span, h) => match pat {
+    PVar(nm) => (TParam(nm, TVar(h), Unmarked, Unmarked, None, guards_nothing()), None),
+    PWild => (TParam("_", TVar(h), Unmarked, Unmarked, None, guards_nothing()), None),
+    _ => {
+      let fresh = "{dp_prefix}{int_to_str(h)}"
       // reuse as the absent-annotation sentinel (byte-identical)
       let vref = nexpr(VarRef(fresh), span)
       let bind = nstmt(LetStmt(pat, vref, vref), span)
-      (param, Some(bind))
+      (TParam(fresh, TVar(h), Unmarked, Unmarked, None, guards_nothing()), Some(bind))
     },
   },
 }
@@ -2208,12 +2239,10 @@ fn exprs_to_params(elems, i, n, own buf, count, own lbuf, lcount) = if i >= n {
   (slice(buf, 0, count), slice(lbuf, 0, lcount))
 } else {
   let e = list_index(elems, i)
-  match e {
-    N(_, esp, _) => match pat_param_and_let(expr_to_pat(e), esp) {
-      (param, opt_let) => match push_node(buf, count, param) {
-        (b1, c1) => match push_opt_let(lbuf, lcount, opt_let) {
-          (lb1, lc1) => exprs_to_params(elems, i + 1, n, b1, c1, lb1, lc1),
-        },
+  match pat_param_and_let(expr_to_pat(e), e) {
+    (param, opt_let) => match push_node(buf, count, param) {
+      (b1, c1) => match push_opt_let(lbuf, lcount, opt_let) {
+        (lb1, lc1) => exprs_to_params(elems, i + 1, n, b1, c1, lb1, lc1),
       },
     },
   }
@@ -2257,7 +2286,10 @@ fn parse_paren_or_tuple(ref tokens, pos, start_span) = {
                     },
                   }
                 } else {
-                  (nexpr(MakeTupleExpr(slice(final_buf, 0, final_count)), upto(tokens, start_span, final_pos)), final_pos)
+                  (
+                    nexpr(MakeTupleExpr(slice(final_buf, 0, final_count)), upto(tokens, start_span, final_pos)),
+                    final_pos
+                  )
                 }
               },
             },
@@ -2269,21 +2301,19 @@ fn parse_paren_or_tuple(ref tokens, pos, start_span) = {
             // `(e) => body` — single-param lambda; `first` reinterprets
             // as the param. A destructure (`({x,y}) => …`) binds its pattern at
             // entry via the same prepend-let machinery.
-            match first {
-              N(_, fsp, _) => match pat_param_and_let(expr_to_pat(first), fsp) {
-                (param, opt_let) => match parse_expr(tokens, skip_ws(tokens, p_after + 1)) {
-                  (raw_body, pb) => {
-                    let whole = upto(tokens, start_span, pb)
-                    let body = bind_param_destructures(
-                      match opt_let {
-                        Some(l) => [l],
-                        None => [],
-                      },
-                      raw_body,
-                      whole
-                    )
-                    (nexpr(LambdaExpr([param], body), whole), pb)
-                  },
+            match pat_param_and_let(expr_to_pat(first), first) {
+              (param, opt_let) => match parse_expr(tokens, skip_ws(tokens, p_after + 1)) {
+                (raw_body, pb) => {
+                  let whole = upto(tokens, start_span, pb)
+                  let body = bind_param_destructures(
+                    match opt_let {
+                      Some(l) => [l],
+                      None => [],
+                    },
+                    raw_body,
+                    whole
+                  )
+                  (nexpr(LambdaExpr([param], body), whole), pb)
                 },
               },
             }
@@ -2351,7 +2381,10 @@ fn parse_string_interpolation(ref tokens, pos, first_chunk, start_span) = match 
     let buf = make_list(4)
     match push_node(buf, 0, first_node) {
       (b1, c1) => match parse_string_interpolation_loop(tokens, p0, b1, c1) {
-        (final_buf, final_count, final_pos) => (nexpr(MakeStringExpr(slice(final_buf, 0, final_count)), upto(tokens, start_span, final_pos)), final_pos),
+        (final_buf, final_count, final_pos) => (
+          nexpr(MakeStringExpr(slice(final_buf, 0, final_count)), upto(tokens, start_span, final_pos)),
+          final_pos
+        ),
       },
     }
   } else {
@@ -2845,17 +2878,39 @@ fn desugar_block(stmts, final_e, span: ValidSpan) = match find_destructure_let(s
           N(_, rsp, _) => desugar_block(rest_stmts, final_e, span_join(rsp, span)),
         }
       }
-      let m = MatchExpr(v, [(pat, arm_body)])
+      let m = NExpr(MatchExpr(v, [(pat, arm_body)]))
       // A destructure at the head IS the match (no empty-prefix block); otherwise
-      // the prefix stmts carry the match as their final. Byte-for-byte a
-      // hand-written `match`.
+      // the prefix stmts carry the match as their final. The graph is a
+      // hand-written `match`'s; the birth reason is the let's.
+      let born = LetBinding(join(", ", pat_binder_names(pat)), Placeholder(lsp))
       if i == 0 {
-        nexpr(m, span)
+        mint_node_as(m, span, born)
       } else {
-        nexpr(BlockExpr(slice(stmts, 0, i), nexpr(m, span_join(lsp, span))), span)
+        nexpr(BlockExpr(slice(stmts, 0, i), mint_node_as(m, span_join(lsp, span), born)), span)
       }
     },
   },
+}
+
+// The names a pattern binds, in source order.
+fn pat_binder_names(pat) = match pat {
+  PVar(n) => [n],
+  PWild => [],
+  PLit(_) => [],
+  PCon(_, ps) => flat_map(pat_binder_names, ps),
+  PTuple(ps) => flat_map(pat_binder_names, ps),
+  PList(ps, rest) => flat_map(pat_binder_names, ps) ++ option_names(rest),
+  PRecord(fields, rest) => flat_map({ (_, p) => pat_binder_names(p) }, fields) ++ option_names(rest),
+  PAlt(branches) => match branches {
+    [first, ..._] => pat_binder_names(first),
+    [] => [],
+  },
+  PAs(n, inner) => [n] ++ pat_binder_names(inner),
+}
+
+fn option_names(rest) = match rest {
+  Some(n) => [n],
+  None => [],
 }
 
 fn find_destructure_let(stmts, i) = if i >= len(stmts) {
@@ -3938,7 +3993,10 @@ fn free_vars_run_step(acc, run) = match acc {
       }
     },
     Lone(stmt) => match stmt {
-      N(NStmt(LetStmt(pat, expr, _)), _, _) => (free_uses_merge(frees, collect_free_uses(expr, bound)), free_vars_merge(bound, free_vars_pat_binds(pat))),
+      N(NStmt(LetStmt(pat, expr, _)), _, _) => (
+        free_uses_merge(frees, collect_free_uses(expr, bound)),
+        free_vars_merge(bound, free_vars_pat_binds(pat))
+      ),
       _ => (free_uses_merge(frees, collect_free_uses(stmt, bound)), bound),
     },
   },
@@ -3948,10 +4006,13 @@ fn free_vars_run_step(acc, run) = match acc {
 // binds.
 fn free_vars_decl_step(acc, decl) = match acc {
   (frees, inner) => match decl {
-    N(NStmt(FnStmt(_, params, _, _, body_node)), _, _) => (free_uses_merge(
-      frees,
-      collect_free_uses(body_node, free_vars_merge(inner, free_vars_param_names(params)))
-    ), inner),
+    N(NStmt(FnStmt(_, params, _, _, body_node)), _, _) => (
+      free_uses_merge(
+        frees,
+        collect_free_uses(body_node, free_vars_merge(inner, free_vars_param_names(params)))
+      ),
+      inner
+    ),
     _ => // a run holds fn declarations only (`stmt_runs`)
     acc,
   },

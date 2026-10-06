@@ -252,9 +252,18 @@ fn board_bounds() = [
   // at a time. Its comment once told each landing to raise it, and four
   // landings did (18,681 → 19,734). The first class paid: an unannotated
   // parameter's parser cell is bound to the parameter's own cell
-  // (`build_param_types`), 19,747 → 10,604. The next is the absent-return
-  // sentinel, a unit literal minted at every unannotated function's name.
-  Bound({ceiling: 10604, question: QGhosts}),
+  // (`build_param_types`), 19,747 → 10,604. The second: an absent return
+  // annotation stands at no position (`mint_absent`), where a unit literal was
+  // indexed at every unannotated function's name, 10,665 → 6,089. The third,
+  // 6,092 → 477 when the verbs integration's line fixes rose it by three: a
+  // declaration's node is bound where the judgment registers it — a variant
+  // to its constructor, an op to its operation, a handler to its type, any
+  // other declaration to unit (`bind_declared`) — a statement in a block
+  // carries its expression's value as a let does, and a desugared parameter
+  // is ONE cell (the lambda head's cover node, or the one handle that also
+  // names it) where a second was minted beside it. Next are the return and
+  // parameter annotations, refinement predicates and `??` holes.
+  Bound({ceiling: 477, question: QGhosts}),
   // ─ PROSE BY CLASS (SA-5, MOD-13). A comment is graph content, so what
   // SYNTAX §Comments says a comment is not is a census, never a review
   // finding. Each class falls as the module carrying it is touched; F strips

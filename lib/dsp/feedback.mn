@@ -27,9 +27,10 @@ fn compute_alpha(cutoff: Hz, sr: Int) -> Float with Pure = {
 }
 
 // One-pole low-pass: y[n] = α·x[n] + (1 − α)·y[n−1]. The cutoff arrives with
-// every sample, so the filter can sweep; α follows it.
+// every sample, so the filter can sweep; α follows it. The signal is the
+// stage's LAST parameter, so `x |> lp(cutoff)` filters x (the Stage Law).
 fn lowpass_filter(sr: Int) = {
-  fn stage(x: Float, cutoff: Hz) -> Float with !Alloc = {
+  fn stage(cutoff: Hz, x: Float) -> Float with !Alloc = {
     let alpha = compute_alpha(cutoff, sr)
     ((prev) => alpha * x + (1.0 - alpha) * prev) <~ delay(1)
   }
@@ -40,7 +41,7 @@ fn lowpass_filter(sr: Int) = {
 // the LOW-pass state — the smoothed component — and the stage returns what
 // the smoothing left behind.
 fn highpass_filter(sr: Int) = {
-  fn stage(x: Float, cutoff: Hz) -> Float with !Alloc = {
+  fn stage(cutoff: Hz, x: Float) -> Float with !Alloc = {
     let alpha = compute_alpha(cutoff, sr)
     x - (((prev) => alpha * x + (1.0 - alpha) * prev) <~ delay(1))
   }
@@ -80,8 +81,7 @@ fn envelope_follower(attack: Hz, release: Hz, sr: Int) = {
 fn channel_strip(sr: Int) = {
   let dc = dc_blocker()
   let lp = lowpass_filter(sr)
-  fn stage(x: Float, cutoff: Hz) -> Sample with !Alloc =
-    x |> dc |> ((y) => lp(y, cutoff)) |> soft_clip
+  fn stage(cutoff: Hz, x: Float) -> Sample with !Alloc = x |> dc |> lp(cutoff) |> soft_clip
   stage
 }
 
@@ -90,13 +90,15 @@ fn channel_strip(sr: Int) = {
 // Two channel strips — two makers, two memories — and the two channels as
 // independent pipelines drawn with `><`. The verb is pure topology: whether
 // the branches run in sequence or on two threads is a `~> Schedule` handler
-// chosen at the install, never a change to these bodies. The pair it returns
-// is a tuple built per call, so this stage allocates and says so; a
-// real-time stereo path holds the two channels in its own frame instead.
+// chosen at the install, never a change to these bodies. A pair RETURNED is
+// a tuple built per call, so this stage allocates and says so; a real-time
+// path takes the pair apart where it is made — `match (l |> left(c)) ><
+// (r |> right(c)) { (a, b) => … }`, or a merge into the next stage — and
+// then the fanout costs what its two lets would: nothing.
 fn stereo_strip(sr: Int) = {
   let left = channel_strip(sr)
   let right = channel_strip(sr)
-  fn stage(l: Float, r: Float, cutoff: Hz) = left(l, cutoff) >< right(r, cutoff)
+  fn stage(cutoff: Hz, l: Float, r: Float) = (l |> left(cutoff)) >< (r |> right(cutoff))
   stage
 }
 

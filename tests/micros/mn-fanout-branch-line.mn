@@ -1,0 +1,20 @@
+// expect: 40
+// A `<~` INSIDE A BRANCH LITERAL IS A LINE OF THE ENCLOSING RECORD. The
+// branch is applied where the fanout stands (the `|>` stage's law, extended
+// to a branch), so its recurrence ticks the line its author wrote — one per
+// program instance for a top-level fn, accumulating across calls — and the
+// fanout costs the frame nothing. On boot d956687d the branch was a closure
+// minted per call, so the line was reborn with it and every call answered
+// the first tick, under an `!Alloc` the fanout refused anyway.
+fn step(x) with !Alloc = match x <| ((v) => ((p) => v + 0.5 * p) <~ delay(1), (v) => v * 2.0) {
+  (a, b) => a + b,
+}
+
+fn main() -> Int = {
+  let before = heap_mark()
+  let a = step(1.0)
+  let b = step(1.0)
+  let c = step(1.0)
+  let grown = addr_diff(heap_mark(), before)
+  if grown == 0 && a == 3.0 && b == 3.5 && c == 3.75 { 40 } else { 41 }
+}

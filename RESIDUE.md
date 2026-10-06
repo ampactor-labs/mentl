@@ -18737,6 +18737,18 @@ BORN 2026-10-06 — the 2026-10-06 program, landing V1–V4 (PLAN §11, THE STAN
   - Gates: `match (x + 1) >< (x + 2) { (a, b) => a * b }` under `!Alloc` grows
     the heap by 0. Pulse's `render_frame` and rooms, rewritten in the verbs,
     render a byte-identical WAV.
+  - **LANDED 2026-10-06 (the verbs lane, integrated).** Under Seq, Simd and Gpu
+    a fanout's branches are evaluated in the frame (`fanout_at`; the thunk
+    machinery runs only under a spawning schedule), a product taken apart where
+    it is built binds its parts to registers (`FanDest`), and a product of N
+    piped into a stage with N open slots merges into it (`product_fills_stage`,
+    one rule in graph.mn read by the judgment and the lowering); a tuple is
+    charged `Memory + Alloc` only where it escapes (`charge_product`). The
+    lib/dsp stages take the datum last. Gates: `mn-fanout-destructured-alloc-free`,
+    `mn-product-merges-into-stage`, `mn-fanout-branch-line` (RED on boot
+    d956687d), the frontier's `stage-law-dsp` and `stage-law-strings`, and
+    Pulse rewritten in the verbs rendering the baseline WAV byte for byte
+    (`c77104261a06ca50`). What remains of V is V1, V3 and V4.
 - **V3 · Every cycle has a driver.**
   - An input loop is a fold over an Iterate source, and quitting is the
     abandon. `mcp_loop` and `session_line_loop` become one, and
@@ -19371,6 +19383,23 @@ BORN 2026-10-06 — the 2026-10-06 program, landing #108 (PLAN §11, THE STANDIN
     - VERB-9's Scan handler rides the parser's rewrite.
     - PR-12's `unreferenced` is trued, and so is `performs` over types and
       effects.
+
+Paid so far, each against the board's ghost bound: an unannotated parameter's
+parser cell is bound to the parameter's own cell (19,747 → 10,604), and an
+absent return annotation is registered at no position (`mint_absent`, 10,665 →
+6,089, the verbs integration) — it had been a unit literal indexed at every
+unannotated function's name. Then 6,092 → 477, the same integration, when its
+line fixes rose the bound by three and the march refused: a declaration's node
+is bound where the judgment registers it (`bind_declared` — a variant to its
+constructor, so the caret at `Circle` reads `(Int) -> Shape` where it read
+`a`; an op to its operation; a handler to its type; any other declaration
+statement to unit), a statement in a block carries its expression's value as a
+let does, and a desugared parameter is ONE cell — a lambda head's parameter is
+the cover node the expression parse minted there, and a minted parameter's
+name is spelled from its own cell's handle — where a second cell had been
+minted beside it. What remains (477 on the wheel): return and parameter
+annotations, refinement predicates (`self` and its comparisons), `??` holes
+in partials, and the element nodes inside a destructured lambda head.
 
 ### `Hβ.verify.the-solver-is-the-search` — OPEN
 
@@ -20123,6 +20152,34 @@ BORN 2026-10-06 (N2). An effect argument is one token (`parse_one_eff_arg`), so 
 ### `Hβ.infer.if-condition-is-not-bool` — CLOSED 2026-10-06
 
 BORN 2026-10-06 (found by the render lane, measured on its m2). `if c` did not constrain `c` to `Bool`: `fn g(c) = if c { 1 } else { 2 }` with `g([1, 2])` checked clean and ran to 1. A silent wrong. The `if` judgment wrote `Bool` into the condition NODE's own cell (`graph_bind`), overwriting the edge a reference's node carries to its binder, so the parameter the condition read never learned it was a Bool. CLOSED in the F landing: the condition is unified with `Bool` (`unify_types(TVar(ch), …)`), so the constraint reaches what the condition flows from. `tests/micros/mn-if-condition-is-bool.mn` refuses `E_TypeMismatch` at the argument, checked clean on boot 82063322. The fix found one wheel instance of the class, swept over all 954 programs in the tree: `float_is_negative` (lib/strings.mn) answered `1`/`0` and stood as two `if` conditions in `float_to_str` — a flag-as-int (drift 8); it answers `Bool` now (`f < 0.0 || float_is_negative_zero(f)`).
+
+### `Hβ.infer.stage-with-a-free-callee-reads-curried` — CLOSED 2026-10-06
+
+BORN AND CLOSED 2026-10-06, found integrating the verbs lane: Pulse rewritten in the verbs trapped at an indirect call in `render_frame`. A `|>` stage whose callee's arrow was still a variable — `x |> rig.bass_tone(320.0)` with `rig` an unannotated parameter — was judged as an ordinary call: complete, its result the function the pipe then applied, so the field was typed `(Float) -> (Float) -> Float`, the curried reading SYNTAX says the medium has no mechanism for. THE FORM: a call at a stage knows it stands there (`type CallSite = AtCall | AtStage`, threaded from `infer_stage`), and where its callee is free its product is the Stage Law's — the arguments written, then the piped value's slot (`bind_stage_product`) — judged as the partial the pipe completes. A free callee at an ordinary call keeps the complete reading. `tests/micros/mn-stage-free-callee.mn` runs to 42; the boot refused it with an arity mismatch.
+
+### `Hβ.infer.record-chain-fields-freshen-at-instantiation` — CLOSED 2026-10-06
+
+BORN AND CLOSED 2026-10-06, found chasing why Pulse's curried field compiled clean against a two-argument field `build_rig` supplies. A record parameter crossing a call kept the type of the FIRST field its callee read and gave every later field a fresh variable: `frame(rig)` reading `rig.first(1)` then `rig.second(3)(4)`, called through `spin`, published `spin(rig: {first: …, second: a, …})`, so a `second` of the wrong arity was never refused and the program trapped (exit 134 on boot 50da7612, zero diagnostics). The canonical snapshot generalize takes (`chase_deep_build`) chased the head's fields and kept the row's rest unread; the quantifier (`free_in_record_row`) then walked the chain and collected each later link's BOUND field variables as free, and every instance freshened them without their binding. One of the three walks of a type's variables stopped where the other two read to the end. THE FORM: the snapshot reads the row to its end (`record_row_full`), every link's fields chased, the rest the free root or the proven close, and `record_rest_moves` makes the change test agree. `tests/micros/mn-record-chain-crosses-call.mn` refuses `E_TypeMismatch`; its control `-runs` answers 22 on both trees.
+
+### `Hβ.fmt.project-check-hides-what-is-not-canonical` — CLOSED 2026-10-06
+
+BORN AND CLOSED 2026-10-06, found integrating the verbs lane. `mentl fmt --check` over the project printed only the files it refused ("3 file(s) refused") and returned before naming a single file that was not canonical, so a gate reading it could not fail on layout while any fixture anywhere was refused; per-file checks of the same tree named three non-canonical files the project check never mentioned. `fmt_settle` names every file it judged — refused, unparsed and not canonical — in both modes; the write mode still writes nothing while any file is refused, and the check's verdict counts both.
+
+### `Hβ.fmt.destructuring-let-renders-as-a-match` — CLOSED 2026-10-06
+
+BORN AND CLOSED 2026-10-06, found formatting Pulse rewritten in the verbs. The parse makes `let pat = v` and the rest of its block one arm of a `match` (`desugar_block`), so the render, reading the graph, wrote every destructuring let as a match one level deeper per let: `render_frame`'s four destructured fanouts became a four-deep pyramid. One graph, two spellings, and the parse discarded the one the author chose. THE FORM: the match a let becomes is born `LetBinding` (`mint_node_as`; the binders named by `pat_binder_names`), a hand-written match is born a placeholder, and the render reads the birth reason (`let_born`): `let pat = v`, then the arm's statements and final at the block's own indent (`render_let_chain`, `render_block_final`). `tests/frontier/fmt-demo/lets.mn` is canonical as written under the candidate and runs to 22; the boot's `fmt --check` rewrote its first let into a match.
+
+### `Hβ.fmt.tuples-lists-and-fanouts-never-break` — CLOSED 2026-10-06
+
+BORN AND CLOSED 2026-10-06, the same walk. A tuple, a list and a `><` fanout rendered on one line whatever their width — a `<|` branch tuple of four recurrences became one 240-column line, and a stereo pair's `><` 190 — where a call's arguments, a record and an `if` already broke past the width. Each takes the fits-or-breaks rule now: a tuple or list one element per line, a fanout SYNTAX §`><`'s vertical layout (`render_fanout_vertical`).
+
+### `Hβ.lower.threaded-branch-line-reborn-per-call` — CLOSED 2026-10-06
+
+BORN AND CLOSED 2026-10-06, found integrating the verbs lane. Under a spawning schedule a branch literal is a thunk, and the thunk owned a `<~` ring in its own record, minted at every spawn, so a recurrence in a threaded branch began from zero on every call: `step` called three times under `~> parallel_compose` answered its first tick each time (exit 7 for 40, `tests/frontier/mn-fanout-branch-line-threaded.mn`). Sequentially the branch is applied in the frame and its line is the enclosing record's. THE FORM: a branch literal's line is the ENCLOSING record's line under every schedule — the thunk's slot is a share (`LhShare(slot, from)`), filled where the thunk is minted from the enclosing frame's own home (`ls_line_home_of`, `share_enclosing_line`), and every tick reads the ring through one address read (`emit_ring_address`).
+
+### `Hβ.emit.static-line-split-by-schedule-twin` — CLOSED 2026-10-06
+
+BORN AND CLOSED 2026-10-06, the same walk. A top-level function's static line was keyed by the EMITTED symbol, so the schedule twin a caller's `parallel_compose` demands ticked a line of its own: `step` called sequentially, then under the schedule, then sequentially again, answered its first tick at the second call (exit 7 for 40, `tests/frontier/mn-fanout-branch-line-mixed.mn`). A static line is its instantiation's, never its schedule's: the line's symbol strips the schedule letter (`line_symbol`, `spec_unmangle`), and the owners are declared once per symbol (`owners_once`).
 
 ### `Hβ.driver.resolver-fabricates-a-path` — CLOSED 2026-10-06
 

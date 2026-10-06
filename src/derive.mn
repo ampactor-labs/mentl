@@ -59,13 +59,13 @@
 // the one output this reading may not produce.
 import types
 
-import graph
-
 import effects
 
-import lower
+import graph
 
 import io
+
+import lower
 
 // The reading's program for each install, seeded once where emit settles the
 // module and read where an LDerive emits; and the arm twins a perform names
@@ -1386,7 +1386,10 @@ fn jvp_stmts_from(stmts, i, env, cx, out) = if i >= len(stmts) {
     },
     last_stmt => {
       let jl = jvp(last_stmt, env, cx)
-      (out ++ jv_pre(jl), Jvp({act: jv_act(jl), ans: jv_ans(jl), pre: [], tan: jv_tan(jl), val: jv_val(jl)}))
+      (
+        out ++ jv_pre(jl),
+        Jvp({act: jv_act(jl), ans: jv_ans(jl), pre: [], tan: jv_tan(jl), val: jv_val(jl)})
+      )
     },
   }
 } else {
@@ -1822,6 +1825,7 @@ fn jvp_feedback(h, depth, home, body, spec, env, cx) = match cx {
     // value's), have no tangent ring the reading can reach.
     let prior = match home {
       LhSlot(_) => unentered_from(h, site, LwClosureLine),
+      LhShare(_, _) => unentered_from(h, site, LwClosureLine),
       LhStatic => if field_name_eq(owner, "") { unentered_from(h, site, LwValueLine) } else { stale_or(site) },
       LhStaticJvp => site,
     }
@@ -1868,6 +1872,7 @@ fn is_static(home) = match home {
   LhStatic => true,
   LhStaticJvp => true,
   LhSlot(_) => false,
+  LhShare(_, _) => false,
 }
 
 fn body_of(h, jb) =
@@ -2176,12 +2181,14 @@ fn rv_back_stmt(s, qh) = match s {
   STan(h, n, l) => rv_transpose(l, LLocal(h, adj_name(n))) ++ [LLet(h, adj_name(n), LConst(h, LFloat(0.0)))],
   SIf(h, _, c, t, e) => {
     let ch = lexpr_handle(c)
-    [LIf(
-      h,
-      LLocal(ch, rv_pred(h)),
-      rv_backward(t, qh) ++ [rv_zero_of(h)],
-      rv_backward(e, qh) ++ [rv_zero_of(h)]
-    )]
+    [
+      LIf(
+        h,
+        LLocal(ch, rv_pred(h)),
+        rv_backward(t, qh) ++ [rv_zero_of(h)],
+        rv_backward(e, qh) ++ [rv_zero_of(h)]
+      )
+    ]
   },
   SMatch(h, _, sc, arms) => {
     let sh = lexpr_handle(sc)
@@ -2451,8 +2458,11 @@ fn face_fact(src) = match src {
   },
 }
 
-fn face_of_entry(sym: String, e) =
-  (sym, sig_code(map(param_slot_repr, e.params), slot_repr_of(e.ret)), join("", map(param_letter, e.params)))
+fn face_of_entry(sym: String, e) = (
+  sym,
+  sig_code(map(param_slot_repr, e.params), slot_repr_of(e.ret)),
+  join("", map(param_letter, e.params))
+)
 
 fn param_slot_repr(p) = match p {
   (_, t) => slot_repr_of(t),
@@ -2768,7 +2778,10 @@ fn expand_install(ld, owner: String) = match ld {
       dv_seed_set([])
       if len(fields) == 0 {
         match roots {
-          [(hs, tname), ..._] => (MForward, LBlock(h, [LLet(hs, tname, LConst(hs, LFloat(1.0)))] ++ lower_forward(jv_pre(jb)) ++ [jv_val(jb)])),
+          [(hs, tname), ..._] => (
+            MForward,
+            LBlock(h, [LLet(hs, tname, LConst(hs, LFloat(1.0)))] ++ lower_forward(jv_pre(jb)) ++ [jv_val(jb)])
+          ),
           [] => (MForward, body),
         }
       } else {

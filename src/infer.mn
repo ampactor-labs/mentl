@@ -1649,8 +1649,15 @@ fn scc_sweep(ref frees_all, ref name_idx, st, v) = if v >= len(frees_all) {
 
 fn scc_visit(ref frees_all, ref name_idx, st, v) = match st {
   (ctr, groups, idx, low, onstk, sp, stk) => {
-    let st1 =
-      (ctr + 1, groups, list_set(idx, v, ctr), list_set(low, v, ctr), list_set(onstk, v, 1), sp + 1, list_set(stk, sp, v))
+    let st1 = (
+      ctr + 1,
+      groups,
+      list_set(idx, v, ctr),
+      list_set(low, v, ctr),
+      list_set(onstk, v, 1),
+      sp + 1,
+      list_set(stk, sp, v)
+    )
     match scc_edges(frees_all, name_idx, st1, v, frees_all[v], 0) {
       (c2, g2, i2, l2, o2, s2, k2) => if l2[v] == i2[v] {
         scc_pop((c2, g2, i2, l2, o2, s2, k2), v, [])
@@ -2290,23 +2297,36 @@ fn infer_stmt(ref node) = match node {
       // commits round 1; only a poly-fingerprinted refusal retries.
       infer_fn_speculative(name, params, body_node, ret_ann, effs, handle, span)
     },
-    NStmt(TypeDefStmt(_, _)) => // The decls column's fourth writer: a type, an effect and an alias
+    NStmt(TypeDefStmt(name, _)) => // The decls column's fourth writer: a type, an effect and an alias
     // are declarations a name names, so `mentl where` finds them where it
     // finds a function — by what they declare, in the column — and the
     // decls facet lists them.
-    graph_decl_note(handle),
-    NStmt(EffectDeclStmt(_, _, _)) => graph_decl_note(handle),
+    declaration_noted(node, name),
+    NStmt(EffectDeclStmt(name, _, _)) => declaration_noted(node, name),
     NStmt(HandlerDeclStmt(hname, ename, config, state, arms, effs)) => {
       // The decls column, third writer. An ARM is an emittable entry whose
       // name is composed at lower and cannot be parsed back to (handler,
       // op), so the arm's origin is its handler decl's node — noted here,
-      // where the decl is judged.
+      // where the decl is judged. A handler declares a value, as a fn
+      // does, so its node carries the handler's type once registered.
       graph_decl_note(handle)
       register_handler(hname, ename, config, state, arms, effs, span)
+      match env_lookup(hname) {
+        Some((Frozen(_, ty), _, _)) => bind_declared(node, ty, hname),
+        _ => (),
+      }
     },
-    NStmt(ExprStmt(expr)) => infer_expr(expr),
-    NStmt(ImportStmt(_)) => (),
-    NStmt(RefineStmt(_, _, _)) => // Registered at pre_register_stmt (the one home — TAlias(name,
+    NStmt(ExprStmt(expr)) => {
+      infer_expr(expr)
+      // The statement's value IS its expression's, as a let statement's is:
+      // one union-find edge, so no statement in a block is a cell nothing
+      // judged.
+      match expr {
+        N(_, _, eh) => graph_bind(handle, TVar(eh), Located(span, Inferred("statement carries its value"))),
+      }
+    },
+    NStmt(ImportStmt(path)) => bind_declared(node, TUnit, path),
+    NStmt(RefineStmt(name, _, _)) => // Registered at pre_register_stmt (the one home — TAlias(name,
     // TRefined(base, pred)), so X and its base unify transparently and
     // the authored name travels for Reason chains). The declaration is a
     // SCHEMA — there is no value for `self` to bind, so it accrues NO
@@ -2315,15 +2335,24 @@ fn infer_stmt(ref node) = match node {
     // lives at CONSTRUCTION sites: apply_refinement_constraint substitutes
     // the live value node for self (value-proof R2) and decides or pends
     // against a value that exists. What is noted is the declaration.
-    graph_decl_note(handle),
-    NStmt(AliasStmt(_, _)) => // Transparent alias `type X = T`: registered at pre_register_stmt.
+    declaration_noted(node, name),
+    NStmt(AliasStmt(name, _)) => // Transparent alias `type X = T`: registered at pre_register_stmt.
     // No predicate, no Verify — the difference from RefineStmt is exactly
     // the absent `where` (SYNTAX.md §«Type aliases»).
-    graph_decl_note(handle),
-    NStmt(RowAliasStmt(_, _)) => // Named effect row: registered at pre_register_alias; expansion
+    declaration_noted(node, name),
+    NStmt(RowAliasStmt(name, _)) => // Named effect row: registered at pre_register_alias; expansion
     // at build_declared_row (Hβ.types.named-effect-rows).
-    graph_decl_note(handle),
+    declaration_noted(node, name),
     _ => (),
+  },
+}
+
+// A declaration with no value — a type, an effect, an alias — is noted in
+// the decls column and its statement evaluates to unit.
+fn declaration_noted(node, name: String) = match node {
+  N(_, _, h) => {
+    graph_decl_note(h)
+    bind_declared(node, TUnit, name)
   },
 }
 
@@ -2388,26 +2417,41 @@ fn ty_alpha_eq(t1, t2, m) = match t1 {
     TVar(y) => alpha_pairs_ok(m, x, y),
     _ => (false, m),
   },
-  TInt => (match t2 {
-    TInt => true,
-    _ => false,
-  }, m),
-  TFloat => (match t2 {
-    TFloat => true,
-    _ => false,
-  }, m),
-  TUnit => (match t2 {
-    TUnit => true,
-    _ => false,
-  }, m),
-  TByte => (match t2 {
-    TByte => true,
-    _ => false,
-  }, m),
-  TAddr => (match t2 {
-    TAddr => true,
-    _ => false,
-  }, m),
+  TInt => (
+    match t2 {
+      TInt => true,
+      _ => false,
+    },
+    m
+  ),
+  TFloat => (
+    match t2 {
+      TFloat => true,
+      _ => false,
+    },
+    m
+  ),
+  TUnit => (
+    match t2 {
+      TUnit => true,
+      _ => false,
+    },
+    m
+  ),
+  TByte => (
+    match t2 {
+      TByte => true,
+      _ => false,
+    },
+    m
+  ),
+  TAddr => (
+    match t2 {
+      TAddr => true,
+      _ => false,
+    },
+    m
+  ),
   TList(e1) => match t2 {
     TList(e2) => ty_alpha_eq(e1, e2, m),
     _ => (false, m),
@@ -3460,7 +3504,7 @@ fn infer_expr(ref node) = match node {
         N(_, _, ih) => infer_unaryop(handle, op, ih, span),
       }
     },
-    NExpr(CallExpr(func, args)) => match infer_call_node(func, args, handle, span) {
+    NExpr(CallExpr(func, args)) => match infer_call_node(func, args, handle, span, AtCall) {
       CallPartial(_) => // A partial application mints the closure that holds its supplied
       // fields, in the frame that forms it (16 bytes over one literal, and
       // `!Alloc` accepted it, measured 2026-09-28). A pipe's right-hand stage
@@ -3574,7 +3618,12 @@ fn infer_expr(ref node) = match node {
     },
     NExpr(MakeTupleExpr(elems)) => {
       infer_expr_list(elems)
-      inf_add_row_at(handle, construction_row())
+      // A product is a RECORD only where it escapes: one a consumer takes
+      // apart where it is built — a positional destructure, the N-ary stage
+      // a `|>` fills — is its parts in registers, which is what its `let`
+      // spelling costs (`product_consumed_in_place`, graph.mn; the lowering
+      // reads the same rule to bind them).
+      charge_product(handle)
       graph_bind(handle, TTuple(collect_tvar_types(elems)), Located(span, Inferred("tuple literal")))
       tag_alloc_join(handle, collect_handles(elems))
     },
@@ -3850,23 +3899,7 @@ fn infer_expr(ref node) = match node {
       PFanout(fan_own) => infer_fanout(fan_own, left, right, handle, span),
       PForward => {
         infer_expr(left)
-        // A call standing as the pipe's stage is completed in place — the
-        // piped value fills its hole — so it mints no partial; a lambda
-        // standing there is the piped value bound to its parameter, so it
-        // mints no closure.
-        match right {
-          N(NExpr(CallExpr(rf, rargs)), rspan, rh) => match infer_call_node(rf, rargs, rh, rspan) {
-            CallPartial(_) => (),
-            CallSaturated => (),
-            CallSubstrateHoled(_) => (),
-          },
-          _ => match inlinable_lambda(right) {
-            Some((params, body)) => match right {
-              N(_, rspan, rh) => infer_lambda(params, body, rh, rspan, BoundByCallers),
-            },
-            None => infer_expr(right),
-          },
-        }
+        infer_stage(right, pipe_stage_arity(left))
         infer_pipe(kind, left, right, handle, span)
       },
       PTee => infer_pipe_tee(left, right, handle, span),
@@ -4363,6 +4396,12 @@ fn infer_seq_op(cname, fh, args, handle, span: ValidSpan) = {
 // arguments (`open_slot_cells`), which ride the call node's product.
 type CallForm = CallSaturated | CallPartial([Int]) | CallSubstrateHoled([Int])
 
+// Where a call stands. A call at a STAGE — a `|>`'s right side, a `<|`
+// branch — is handed the piped value, and where its callee's arrow is not
+// yet known the Stage Law fixes its product: the arguments written, then
+// the datum's slot.
+type CallSite = AtCall | AtStage
+
 fn form_holes(form) = match form {
   CallSaturated => [],
   CallPartial(cells) => cells,
@@ -4370,7 +4409,7 @@ fn form_holes(form) = match form {
 }
 
 // A call node's judgment, returning which form it built.
-fn infer_call_node(func, args, handle, span: ValidSpan) = {
+fn infer_call_node(func, args, handle, span: ValidSpan, site) = {
   infer_callee(func)
   // The arg list is the callee's positional product: resolve labeled args
   // to positional order and fill absent fields with param defaults, against
@@ -4394,7 +4433,7 @@ fn infer_call_node(func, args, handle, span: ValidSpan) = {
   } else {
     infer_call_arg_list(pos_args, params, 0)
   }
-  let form = infer_call(func, pos_args, handle, span)
+  let form = infer_call(func, pos_args, handle, span, site)
   // The product is a fact of the call node: written once, here, and read
   // by the lowering (the call-product column) — the nodes in declaration
   // order, and the cells typing the slots a partial leaves open past them.
@@ -4408,7 +4447,7 @@ fn infer_call_node(func, args, handle, span: ValidSpan) = {
   form
 }
 
-fn infer_call(func, args, handle, span: ValidSpan) = match func {
+fn infer_call(func, args, handle, span: ValidSpan, site) = match func {
   N(_, _, fh) => {
     let cname = callee_name(func)
     // The substrate fast-path fires only for a SATURATED, hole-free call —
@@ -4478,14 +4517,52 @@ fn infer_call(func, args, handle, span: ValidSpan) = match func {
             infer_call_saturated(args, fh, handle, span, cname)
             CallSaturated
           },
-          _ => {
-            infer_call_saturated(args, fh, handle, span, cname)
-            CallSaturated
+          _ => // A stage whose callee's arrow is not yet known — a field of an
+          // unannotated record, a parameter, a forward local. Judged as an
+          // ordinary call it read COMPLETE and its result as the function the
+          // pipe applies, so `x |> rig.tone(320.0)` typed the field `(Float)
+          // -> (Float) -> Float`: the curried reading SYNTAX says the medium
+          // has no mechanism for. Pulse's filter field, built `(Hz, Float) ->
+          // Float`, was then called with one argument and trapped at the
+          // indirect call (2026-10-06).
+          match site {
+            AtStage => if call_hole_index(args, 0) < 0 {
+              bind_stage_product(fh, args, span, cname)
+              match graph_chase(fh) {
+                GNode(NBound(TFun(ps, pret, prow)), _) => CallPartial(infer_call_partial(args, ps, pret, prow, handle, span, cname)),
+                _ => {
+                  infer_call_saturated(args, fh, handle, span, cname)
+                  CallSaturated
+                },
+              }
+            } else {
+              infer_call_saturated(args, fh, handle, span, cname)
+              CallSaturated
+            },
+            AtCall => {
+              infer_call_saturated(args, fh, handle, span, cname)
+              CallSaturated
+            },
           },
         },
       }
     }
   },
+}
+
+// A stage's free callee takes the product the Stage Law reads: a parameter
+// per argument written, then the piped value's slot, last.
+fn bind_stage_product(fh, args, span: ValidSpan, cname) = {
+  let slot = mk_param("_", TVar(mint(InferredCallReturn(cname, Inferred("the piped value's slot")))))
+  let ps = build_inferred_params_masked(collect_handles(args), []) ++ [slot]
+  let row = mk_ef_open([], graph_fresh_row(InferredCallReturn(cname, Inferred("effects"))))
+  let ret = TVar(mint(InferredCallReturn(cname, Inferred("result"))))
+  unify_types(
+    TVar(fh),
+    TFun(ps, ret, row),
+    span,
+    InferredCallReturn(cname, Inferred("a stage: its arguments, then the piped value"))
+  )
 }
 
 // The record ctor's arrow VIEW, minted at the read — Some(handle bound to
@@ -5156,6 +5233,59 @@ fn inlinable_lambda(node) = match node {
   _ => None,
 }
 
+// A lambda a verb applies in place with N values to give it — the merge's
+// stage, whose parameters are the product's parts. One parameter is
+// `inlinable_lambda`'s own case; the test is the same one, read at the
+// arity the site supplies.
+fn inlinable_lambda_arity(node, n) = match node {
+  N(NExpr(LambdaExpr(params, body)), _, _) => if len(params) == n { Some((params, body)) } else { None },
+  _ => None,
+}
+
+// A STAGE — a `|>`'s right side, and each branch a `<|` applies to its one
+// borrowed input — is APPLIED where it stands: a call there is completed in
+// place, the value filling its hole, so it mints no partial; a literal there
+// is the value bound to its parameters, so it mints no closure. The
+// lowering applies it the same way (`lower_pipe_complete_many`), which is
+// what keeps the stage's cost in the row exactly what the emit builds.
+fn infer_stage(stage, arity) = match stage {
+  N(NExpr(CallExpr(rf, rargs)), rspan, rh) => match infer_call_node(rf, rargs, rh, rspan, AtStage) {
+    CallPartial(_) => (),
+    CallSaturated => (),
+    CallSubstrateHoled(_) => (),
+  },
+  _ => match inlinable_lambda_arity(stage, arity) {
+    Some((params, body)) => match stage {
+      N(_, rspan, rh) => infer_lambda(params, body, rh, rspan, BoundByCallers),
+    },
+    None => infer_expr(stage),
+  },
+}
+
+// How many values a pipe's stage is given: one, or the parts of a product
+// the site builds (the merge). The literal standing as that stage takes
+// exactly that many parameters and is applied in place, minting nothing.
+fn pipe_stage_arity(left) = match left {
+  N(_, _, lh) => {
+    let n = product_arity_at(lh)
+    if n > 1 { n } else { 1 }
+  },
+}
+
+// The parameters a pipe's stage is expected to take: the piped value's one,
+// or — where the left is a product the site builds and the stage's open
+// slots are exactly its parts — one per part, which is the merge.
+fn pipe_stage_params(lh, right) = if product_fills_stage(lh, right) {
+  match lookup_ty(lh) {
+    TTuple(ts) => map(product_slot_param, ts),
+    other => [mk_param("_", other)],
+  }
+} else {
+  [mk_param("_", TVar(lh))]
+}
+
+fn product_slot_param(t) = mk_param("_", t)
+
 fn infer_pipe_tee(left, right, handle, span: ValidSpan) = {
   let body_row_h = graph_fresh_row(Inferred("~> body row"))
   match left {
@@ -5733,7 +5863,13 @@ fn infer_pipe(kind, left, right, handle, span: ValidSpan) = match left {
           GNode(NBound(TFun(_, _, srow0)), _) => srow0,
           _ => mk_ef_open([], graph_fresh_row(InferredPipeResult("|>", Inferred("effects")))),
         }
-        let expected = TFun([mk_param("_", TVar(lh))], TVar(ret_h), erow)
+        // THE MERGE (PLAN §4②, Faust's `,` then `:`): a product the site
+        // BUILDS, piped into a stage whose N slots are open, fills them —
+        // `(a) >< (b) |> f` is `f(a, b)` and costs what it costs, since the
+        // tuple is never built (`product_fills_stage`, graph.mn, read here
+        // for the expectation and at lower for the splice). A stage with ONE
+        // open slot takes the product whole, as any value does.
+        let expected = TFun(pipe_stage_params(lh, right), TVar(ret_h), erow)
         let expected_h = mint(InferredPipeResult("|>", Inferred("expected fn")))
         graph_bind(expected_h, expected, Located(span, InferredPipeResult("|>", Inferred("expected"))))
         unify(rh, expected_h, span, InferredPipeResult("|>", Inferred("target")))
@@ -5745,6 +5881,15 @@ fn infer_pipe(kind, left, right, handle, span: ValidSpan) = match left {
         // learns what it is handed. The pipe raised nothing until P0·H:
         // `0 |> inv` under `!Trap` checked clean and divided by zero (boot
         // 13e8484a and the P0 tree alike).
+        // The left product's own charge, decided here because the stage's
+        // arrow is what decides it: a merge builds nothing, and a product
+        // the stage takes WHOLE is the record it was (`product_fate`'s
+        // `PfByPipe`, graph.mn).
+        if product_arity_at(lh) > 1 && !product_fills_stage(lh, right) {
+          inf_add_row_at(lh, construction_row())
+        } else {
+          ()
+        }
         call_owes(fn_leaves(rh), [lh], handle, span)
         // A pipe stage is an application; its result node is a suspension
         // boundary exactly as a CallExpr's is (lower's k2 spine keys the
@@ -5938,11 +6083,17 @@ fn infer_fanout_nary(branches, handle, span: ValidSpan) = {
   branch_enter(BParallel)
   let edges = infer_fanout_nary_branches(branches, span, 0, len(branches))
   branch_exit(span)
-  // The fanout builds the tuple of its results and a thunk per branch, in the
-  // frame it stands in: pure topology in what it performs, never in what it
-  // costs (`!Alloc` accepted `(x + 1) >< (x + 2)` at 56 bytes per call,
-  // measured 2026-09-28).
-  inf_add_row_at(handle, construction_row())
+  // THE VERB COSTS WHAT ITS DESUGARING COSTS. Under the sequential schedule
+  // the branches are evaluated in the frame the fanout stands in and the
+  // tuple of their results is a record only where it ESCAPES, so a fanout
+  // taken apart where it stands charges nothing — its `let` spelling
+  // charges nothing (`product_consumed_in_place`, graph.mn, the one rule
+  // the lowering reads to bind the parts). A spawning schedule's thunks and
+  // tickets are the install's cost, which the install itself charges, and
+  // a schedule TWIN demanded into a callee whose row does not say `Alloc`
+  // is refused at the settle point by the allocation audit
+  // (`Hβ.effects.schedule-twin-row`).
+  charge_product(handle)
   graph_boundary_set(handle, FanoutBoundary(edges))
   graph_bind(
     handle,
@@ -6045,9 +6196,9 @@ fn infer_fanout_share(left, right, handle, span: ValidSpan) = {
           branch_exit(span)
           inferred_edges
         }
-        // The tuple of the branches' results, built in the frame the fanout
-        // stands in (the same cost `><` pays).
-        inf_add_row_at(handle, construction_row())
+        // The tuple of the branches' results, a record only where it
+        // escapes — the same rule, and the same cost, `><` pays.
+        charge_product(handle)
         match right {
           N(_, _, rh) => {
             // Preserve the RHS as the tuple of STAGES it denotes. In the singleton
@@ -6110,7 +6261,9 @@ fn infer_fanout_apply_one(branch, input_h, span: ValidSpan) = match branch {
     //
     // drift-audit: ignore — two independent frame inputs (row handle, answer handle) — one frame record's fields, not parallel arrays
     inf_enter_fn(thunk_row_h, carrier_h, span, [])
-    infer_expr(branch)
+    // The branch is a STAGE applied to the borrowed input, judged as a `|>`
+    // stage is: completed or bound in place, minting nothing.
+    infer_stage(branch, 1)
     graph_bind(expected_h, expected, Located(span, Inferred("<| branch applied to the borrowed input")))
     unify(bh, expected_h, span, Inferred("<| branch borrows the shared input"))
     // The branch call's row flows into the boundary frame — the same
@@ -8519,7 +8672,10 @@ fn generalize_pair(handle) = {
         // ran). Only ROW-sort cells reachable solely through the top row
         // stay unquantified-and-shared.
         match body_ty {
-          TFun(dps, ret, frow) => (unique(free_in_params(dps) ++ free_in_ty(ret) ++ filter((h) => if is_row_handle(h) { false } else { true }, free_in_row(frow))), body_ty),
+          TFun(dps, ret, frow) => (
+            unique(free_in_params(dps) ++ free_in_ty(ret) ++ filter((h) => if is_row_handle(h) { false } else { true }, free_in_row(frow))),
+            body_ty
+          ),
           TCont(input, answer, _, world) => // The continuation's world is a row POSITION exactly as a fn's
           // top row is (TCont carries an EffRow): its row-sort roots are
           // live links instantiation must SHARE, its EAType payload vars
@@ -8527,7 +8683,10 @@ fn generalize_pair(handle) = {
           // split at the TIME altitude. H6: exhaustive Ty arms below —
           // the former wildcard quantified a continuation's world rows
           // and silently absorbed every future variant.
-          (unique(free_in_ty(input) ++ free_in_ty(answer) ++ filter((h) => if is_row_handle(h) { false } else { true }, free_in_row(world))), body_ty),
+          (
+            unique(free_in_ty(input) ++ free_in_ty(answer) ++ filter((h) => if is_row_handle(h) { false } else { true }, free_in_row(world))),
+            body_ty
+          ),
           TInt => ([], body_ty),
           TFloat => ([], body_ty),
           TUnit => ([], body_ty),
@@ -8661,7 +8820,7 @@ fn chase_changes(ty, d) = if d > 200 {
     TFun(params, ret, eff) => chase_params_changes(params, d + 1, 0, len(params)) || chase_changes(ret, d + 1) || chase_row_changes(eff, d + 1),
     TName(_, args) => chase_list_changes(args, d + 1, 0, len(args)),
     TRecord(fields) => chase_fields_changes(fields, d + 1, 0, len(fields)),
-    TRecordOpen(fields, _) => chase_fields_changes(fields, d + 1, 0, len(fields)),
+    TRecordOpen(fields, v) => chase_fields_changes(fields, d + 1, 0, len(fields)) || record_rest_moves(v),
     TRefined(base, _) => chase_changes(base, d + 1),
     TCont(input, answer, _, world) => chase_changes(input, d + 1) || chase_changes(answer, d + 1) || chase_row_changes(world, d + 1),
     TAlias(_, inner) => chase_changes(inner, d + 1),
@@ -8691,6 +8850,16 @@ fn chase_fields_changes(fields, d, i, n) = if i >= n {
   match list_index(fields, i) {
     (_, ty) => if chase_changes(ty, d) { true } else { chase_fields_changes(fields, d, i + 1, n) },
   }
+}
+
+// Whether the snapshot reads a record row's rest as anything but the rest
+// written: a link past it, or the free rest under another name — the cases
+// record_row_full walks.
+fn record_rest_moves(v) = match graph_chase(v) {
+  GNode(NRecordRowBound(_, _), _) => true,
+  GNode(NBound(TRecordOpen(_, _)), _) => true,
+  GNode(NBound(TRecord(_)), _) => true,
+  _ => graph_chase_handle(v) != v,
 }
 
 fn chase_row_changes(eff, d) = match eff {
@@ -8795,7 +8964,20 @@ fn chase_deep_build(ty, d) = if d > 200 {
     TFun(chase_params(params, d + 1), chase_deep_at(ret, d + 1), chase_row_deep(eff, d + 1)),
     TName(name, args) => TName(name, map_chase_ty(args, d + 1)),
     TRecord(fields) => TRecord(chase_fields(fields, d + 1)),
-    TRecordOpen(fields, v) => mk_record_open(chase_fields(fields, d + 1), v),
+    TRecordOpen(fields, v) => // The row is read to its END, as `free_in_record_row` and
+    // `subst_row_walk` read it: every link's fields chased, the rest the free
+    // root or the proven close. A snapshot that kept the head's fields over an
+    // unread rest carried each later link's field types raw, so the quantifier
+    // took their BOUND variables as free and every instance freshened them
+    // without their binding: a record parameter crossing a call kept the first
+    // field it read and lost the rest, and a field of the wrong arity was
+    // never refused (tests/micros/mn-record-chain-crosses-call.mn).
+    match record_row_full(fields, v) {
+      (all, end) => match end {
+        RowEndFree(t) => mk_record_open(chase_fields(all, d + 1), t),
+        RowEndClosed => TRecord(field_canonicalize(chase_fields(all, d + 1))),
+      },
+    },
     TRefined(base, pred) => TRefined(chase_deep_at(base, d + 1), pred),
     TCont(input, answer, disc, world) => TCont(chase_deep_at(input, d + 1), chase_deep_at(answer, d + 1), disc, chase_row_deep(world, d + 1)),
     TAlias(name, inner) => TAlias(name, chase_deep_at(inner, d + 1)),
@@ -11960,7 +12142,10 @@ fn quantify_tparam_list(params, qmap, owner) = if len(params) == 0 {
       (rest2, q2) => // default→None is a DELIBERATE quantification reset (NOT a Carried-Truth
       // drop): a generalized ctor scheme carries no call-site default. The other
       // four aspects are projected live; only the default slot is cleared.
-      ([TParam(param_name(p0), pty2, param_authored(p0), param_resolved(p0), None, param_row(p0))] ++ rest2, q2),
+      (
+        [TParam(param_name(p0), pty2, param_authored(p0), param_resolved(p0), None, param_row(p0))] ++ rest2,
+        q2
+      ),
     },
   }
 }
@@ -11995,8 +12180,21 @@ fn qmap_find(qmap, name: String) = if len(qmap) == 0 {
 // tuple-const READ charge nothing (immediate words, no allocation).
 fn construction_row() = mk_ef_closed([ENamed(intern_str("Memory")), ENamed(intern_str("Alloc"))])
 
+// A PRODUCT'S CHARGE: the record it builds, where it builds one. A tuple
+// literal and a fanout each answer a product, and a consumer that takes the
+// product apart where it stands — a one-arm positional destructure, the
+// N-ary stage a `|>` fills — reads its parts out of registers, so nothing is
+// built and nothing is charged. The lowering reads the SAME rule
+// (`product_consumed_in_place`, graph.mn) to bind those registers, which is
+// what keeps the row and the emit from disagreeing about the cost.
+fn charge_product(handle) = match product_fate(handle) {
+  PfConsumed => (),
+  PfByPipe => (),
+  PfEscapes => inf_add_row_at(handle, construction_row()),
+}
+
 fn register_one_variant(type_name: String, result_ty, qhandles, field_types, variant, tag_id, total) = match variant {
-  (ctor_name, _, _) => {
+  (ctor_name, _, vnode) => {
     // H2.3 nominal record: a single-variant type whose body is a
     // TRecord registers as RecordSchemeKind, not ConstructorScheme.
     // The env entry binds the type's name to TName directly (no
@@ -12013,11 +12211,16 @@ fn register_one_variant(type_name: String, result_ty, qhandles, field_types, var
     } else {
       false
     }
+    // The variant's own node carries what the name declares, so the caret at
+    // a constructor reads its type (it read `Circle : a`, a cell the parser
+    // minted and nothing judged).
+    let declared = if single_record_payload { result_ty } else { ctor_type(result_ty, field_types) }
+    bind_declared(vnode, declared, ctor_name)
     if single_record_payload {
       match list_index(field_types, 0) {
         TRecord(declared_fields) => env_extend(
           ctor_name,
-          Frozen(qhandles, result_ty),
+          Frozen(qhandles, declared),
           Declared(ctor_name),
           RecordSchemeKind(declared_fields)
         ),
@@ -12027,24 +12230,33 @@ fn register_one_variant(type_name: String, result_ty, qhandles, field_types, var
         (),
       }
     } else {
-      let kind = ConstructorScheme(tag_id, total)
-      if len(field_types) == 0 {
-        env_extend(ctor_name, Frozen(qhandles, result_ty), Declared(ctor_name), kind)
-      } else {
-        let params = build_ctor_params(field_types, 0)
-        // A payload ctor's arrow carries the construction row — the
-        // variant record allocates, and the call path then charges it
-        // through the one-way crow read like any callee (the ctor-probe
-        // face: payload_ctor published Pure under the mk_ef_pure arrow).
-        env_extend(
-          ctor_name,
-          Frozen(qhandles, TFun(params, result_ty, construction_row())),
-          Declared(ctor_name),
-          kind
-        )
-      }
+      env_extend(
+        ctor_name,
+        Frozen(qhandles, declared),
+        Declared(ctor_name),
+        ConstructorScheme(tag_id, total)
+      )
     }
   },
+}
+
+// A constructor's type: its result alone when it has no field, else the
+// arrow from its fields — which carries the construction row, since the
+// variant record allocates and the call path charges it through the one-way
+// crow read like any callee (the ctor-probe face: payload_ctor published
+// Pure under the mk_ef_pure arrow).
+fn ctor_type(result_ty, field_types) = if len(field_types) == 0 {
+  result_ty
+} else {
+  TFun(build_ctor_params(field_types, 0), result_ty, construction_row())
+}
+
+// A declaration's node carries what it declares, bound where the judgment
+// registers it: a variant its constructor, an op its operation, a statement
+// the unit it evaluates to. A declaration position nothing binds is a cell
+// the parser minted and nothing judged.
+fn bind_declared(node, ty, name: String) = match node {
+  N(_, span, h) => graph_bind(h, ty, Located(span, Declared(name))),
 }
 
 fn is_record_ty(ty) with Pure = match ty {
@@ -12291,6 +12503,8 @@ fn register_one_op(effect_name, eff_name, op) = match op {
       },
       None => (),
     }
+    // The op's own node carries the operation it declares (bind_declared).
+    bind_declared(op_node, TFun(params, ret_type, row), op_name)
     env_extend(
       op_name,
       Frozen(qvars, TFun(params, ret_type, row)),
