@@ -1050,7 +1050,9 @@ authored_own_max: 53
 # march_read_files' `ref files` left with the blob assembly they walked.
 # 682 -> 680 (2026-10-06, RACE + SPACE.1 integrated): two authored refs left
 # with the lane's rewritten spawn and race-rule bodies.
-authored_ref_max: 680
+# 680 -> 664 (2026-10-06, N2 + N4 integrated): sixteen authored refs left
+# with the render lane's rewritten head projection.
+authored_ref_max: 664
 
 # 2026-08-08: the DRIFT-SHAPE ratchet (PLAN §11 5.6's absorption,
 # enforcement half) — the three absorbed drift modes counted by the
@@ -1409,3 +1411,10 @@ authored_ref_max: 680
 # code), not the compiler's. Same rule: ~1% over the highest reading of
 # the landed form, read as the minimum of three.
 selfcompile_peak_kb_max: 539000
+# THE HEAD ROUND TRIP (render lane, 2026-10-06): module-level function heads,
+# formatter's and eye's, that do not come back as themselves through
+# parse∘render. Born at the measured 92 of 4,550 (the base renderer: 787 of
+# 4,534). What stands is grammar, each class named: 67 a named open-record
+# rest the parse drops, 19 a masked row edge the row grammar cannot group,
+# 6 a function type inside an effect instance's argument. Falls only.
+head_round_trip_max: 92

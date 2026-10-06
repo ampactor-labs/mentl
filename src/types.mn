@@ -2537,7 +2537,7 @@ type Stmt
   //   param_default through resolve_call_args
   // state:  List<{name: String, init: Node}> — per-arm scope; updates via `resume(...) with f = e`
   // The state element type is CARRIED in the ADT field
-  // (not bare `List`) so `.name`/`.init` resolve to sorted
+  // (not a bare list) so `.name`/`.init` resolve to sorted
   // offsets at lower-time — never field-offset-resolution's
   // silent offset-0 fabrication on an erased element type.
   // arms:   List<{args, body, op_name}>
@@ -3394,6 +3394,12 @@ type DiagKind
   // (measured 2026-09-30: `fn f() with !State = (get() + inc()) ~> only_inc`
   // compiled clean and trapped)
   | EHandlerInexhaustive(String, String, [String], Span)
+  // handler, op — an arm resumes an op declared `-> !`. The never type is
+  // quantified per perform, so every performer meets a result variable of
+  // its own and no value the arm hands back is one all of them can receive;
+  // the arm answers the install instead (N4, 2026-10-06: compiled clean and
+  // returned from an op its declaration says never returns)
+  | EResumeOfNever(String, String, Span)
   // `<~ delay(n)` where n is a runtime value. The line is a ring whose
   // depth the emit sizes from the literal, allocated where its owner is
   // built, so a depth the medium cannot read is a depth it cannot hold —
@@ -3703,6 +3709,7 @@ fn diag_span(d) with Pure = match d {
   EZeroDelayFeedback(s) => s,
   EInitPerformsOwnOp(_, _, s) => s,
   EHandlerInexhaustive(_, _, _, s) => s,
+  EResumeOfNever(_, _, s) => s,
   EComputedDelayDepth(s) => s,
   ERestOutsideDestructure(s) => s,
   ERowAliasCycle(_, s) => s,
@@ -3783,6 +3790,7 @@ fn diag_source(d) with Pure = match d {
   EZeroDelayFeedback(_) => "infer",
   EInitPerformsOwnOp(_, _, _) => "effects",
   EHandlerInexhaustive(_, _, _, _) => "effects",
+  EResumeOfNever(_, _, _) => "effects",
   EComputedDelayDepth(_) => "infer",
   ERestOutsideDestructure(_) => "infer",
   ERowAliasCycle(_, _) => "effects",
@@ -3862,6 +3870,7 @@ fn diag_code(d) with Pure = match d {
   EZeroDelayFeedback(_) => "E_ZeroDelayFeedback",
   EInitPerformsOwnOp(_, _, _) => "E_InitPerformsOwnOp",
   EHandlerInexhaustive(_, _, _, _) => "E_HandlerInexhaustive",
+  EResumeOfNever(_, _, _) => "E_ResumeOfNever",
   EComputedDelayDepth(_) => "E_ComputedDelayDepth",
   ERestOutsideDestructure(_) => "E_RestOutsideDestructure",
   ERowAliasCycle(_, _) => "E_RowAliasCycle",
@@ -4164,6 +4173,10 @@ fn diag_refuses(d) with Pure = match d {
   // and the runtime floor carry zero partial handlers, and the one shape
   // that admitted one was a false absence proof that trapped.
   true,
+  EResumeOfNever(_, _, _) => // ARMED at birth (2026-10-06): an arm's resume of an op its declaration
+  // says never returns, read off the op's own scheme. The wheel and the
+  // runtime floor resume no such op.
+  true,
   EInitPerformsOwnOp(_, _, _) => // ARMED at birth (2026-08-18): the judgment is STRUCTURAL, read from
   // the lowered install itself — a direct-perform inside `LHandleWith`'s
   // own inits list, naming that same install's handler. No resolution
@@ -4273,6 +4286,7 @@ fn diag_applicability(d) with Pure = match d {
   Unspecified,
   EPatternInexhaustive(_, _, _) => HasPlaceholders,
   EHandlerInexhaustive(_, _, _, _) => HasPlaceholders,
+  EResumeOfNever(_, _, _) => MaybeIncorrect,
   EEffectUnhandled(_, _, _) => MaybeIncorrect,
   EThreadedBranchEffect(_, _, _) => MaybeIncorrect,
   EContinuationUncapturable(_, _, _) => MaybeIncorrect,
@@ -4327,12 +4341,12 @@ fn diag_message(d) with !Mutate = match d {
   EInternalInvariant(note, _) => "internal invariant: {note}",
   WRedundantWhere(_) => "`where true` is a vacuous predicate — drop it",
   WCommentRefUnresolved(owner, name, _) => "comment on `{owner}` references `{name}`, which resolves nowhere — a backticked name is a reference; if this is prose, drop the backticks",
-  ETypeMismatch(a, b, reason, _) => "{show_type(a)} vs {show_type(b)} — {reason_line(reason)}",
+  ETypeMismatch(a, b, reason, _) => "{render_ty(a)} vs {render_ty(b)} — {reason_line(reason)}" ~> var_names,
   ETypeArityMismatch(a, b, _) => "type list arity mismatch: {int_to_str(a)} vs {int_to_str(b)}",
   EConstructorArity(name, declared, got, _) => "constructor {name} takes {int_to_str(declared)} fields; the pattern binds {int_to_str(got)}",
   EHandlerArmArity(name, declared, got, _) => "op {name} declares {int_to_str(declared)} params; the arm binds {int_to_str(got)}",
   EFnArityMismatch(a, b, _) => "function arity mismatch: {int_to_str(a)} param(s) vs {int_to_str(b)} param(s)",
-  EOccursCheck(h, ty, _) => "infinite type: {int_to_str(h)} occurs in {show_type(ty)}",
+  EOccursCheck(h, ty, _) => "infinite type: {render_var(h)} occurs in {render_ty(ty)}" ~> var_names,
   EMissingVariable(what, _) => what,
   EMissingImport(name, rm, dm, _) => "`{name}` resolves only because the whole link carries it: it is declared in `{dm}`, which `{rm}` never imports — on its own, `{rm}` would not compile. Add `import {dm}` to `{rm}`",
   ENotARecordType(name, _) => "{name} is not a record type",
@@ -4343,6 +4357,7 @@ fn diag_message(d) with !Mutate = match d {
   EFeedbackNoContext(_) => "`<~` used outside an iterative context",
   EZeroDelayFeedback(_) => "`<~ delay(0)` closes a cycle with no delay — the prior would be the value being computed. Raise the delay to at least 1",
   EInitPerformsOwnOp(hname, op, _) => "handler {hname} performs {op} while building itself — in a state init or a config default, both of which run before the install exists — and {hname} is what answers {op}, so nothing can absorb it. Move the perform into an arm, or compute the value from a handler installed around this one",
+  EResumeOfNever(hname, op, _) => "handler {hname} resumes {op}, which is declared `-> !`: the op never returns to its performer, and each perform meets a result type of its own, so no value can be handed back to all of them. End the arm with the value the install answers, or declare the op's result type if it does return",
   EHandlerInexhaustive(hname, en, missing, _) => "handler {hname} answers no {join(", ", missing)} of {en} — an install absorbs every op of the effects its arms answer, so a perform of the missing op would reach nothing and read garbage evidence. Add the arm; an arm that performs its own op forwards it to the enclosing handler (`op(…) => resume(op(…))`), and the ops this handler answers can be declared as their own effect",
   EComputedDelayDepth(_) => "the delay depth must be a literal — a feedback line is a fixed set of slots, and a depth read at runtime would silently get one. Write the depth, or hold the history yourself",
   ERestOutsideDestructure(_) => "`...` rest element outside a destructuring parameter — rest lives in patterns (`([h, ...t]) =>`, `let [h, ...t] =`), and `++` joins lists in expressions",
@@ -4357,14 +4372,14 @@ fn diag_message(d) with !Mutate = match d {
   EPatternInexhaustive(missing, total, _) => "match misses {int_to_str(missing)} of {int_to_str(total)} variants — add the missing arms or a wildcard",
   EPatternAlternationBindingMismatch(detail, _) => detail,
   EIfMissingElse(_) => "`if` without `else` requires a unit body",
-  TOverDeclared(declared, used, name, _) => "function '{name}' declares {show_effrow(declared)} but body only uses {show_effrow(used)} — tighten the signature to unlock capabilities",
-  TRowInventory(declared, used, name, _) => "function '{name}' declares {show_effrow(declared)}, which is exactly what the body proves ({show_effrow(used)}) — an inventory: the positive row is projected at the address surface, so author only what inference cannot say (a negation, an instance pin, Pure, or a cap on a callback's row); `mentl tighten` writes the residue",
+  TOverDeclared(declared, used, name, _) => "function '{name}' declares {render_row(declared)} but body only uses {render_row(used)} — tighten the signature to unlock capabilities" ~> var_names,
+  TRowInventory(declared, used, name, _) => "function '{name}' declares {render_row(declared)}, which is exactly what the body proves ({render_row(used)}) — an inventory: the positive row is projected at the address surface, so author only what inference cannot say (a negation, an instance pin, Pure, or a cap on a callback's row); `mentl tighten` writes the residue" ~> var_names,
   TWordSlotBox(what, unit, _) => "{what} is boxed into a fresh cell in `{unit}`, whose row does not say `Alloc` — a wide value crossing a slot sized for a word: the representation's cost, not the program's, until the slot takes the value's own width (Hβ.value.seq-element-stride-carrier)",
   TPolyRecursionSignature(name, _) => "the infinite type runs through '{name}''s own parameter or return — if '{name}' calls itself at a different type (polymorphic recursion), a FULL signature on '{name}' (every parameter and the return annotated) buys the poly self-call",
   TOwnUnconsumed(name, _) => "'{name}' is declared own but never consumed on this path — an owned resource with no finalization; `mentl tighten` releases the marker to the inferred grade",
   TOwnAcrossReplay(msg, _) => msg,
   EUseAfterMove(msg, _) => msg,
-  EEffectMismatch(declared, inferred, why, _) => "effect row mismatch: {show_effrow(declared)} vs {show_effrow(inferred)} — {show_reason(why)}",
+  EEffectMismatch(declared, inferred, why, _) => "effect row mismatch: {render_row(declared)} vs {render_row(inferred)} — {show_reason(why)}" ~> var_names,
   EPurityViolated(row, _) => "expected Pure but found effects: {show_effrow(row)}",
   ERefinementRejected(pred, _) => "refinement predicate proven false at compile time: {show_predicate(pred)}",
   EVerifyUnencodable(_) => // drift-audit: ignore — diagnostic message string
@@ -4756,38 +4771,222 @@ fn module_name_of_handle(h) = match graph_node_body(h) {
   },
 }
 
-// Every show_* that renders a Ty chases TVars through graph_chase.
-// A raw handle only appears when chase terminates on NFree/NRowFree —
-// the query layer reads that as "unresolved at epoch e." No cached
-// display. Same discipline as lowering: live observer, never mirror.
-fn show_type(ref ty) with !Mutate = match ty {
+// ─── THE ONE TYPE RENDERER ───────────────────────────────────────────
+// Every surface that shows a type — the formatter's page, `where`, `doc`,
+// `query … type of`, the caret, the View, hover, every diagnostic — renders
+// through `render_ty`, spelled as SYNTAX writes types (`[T]`, `{x: Int}`,
+// `f64`, `!E`), under a render context that is a handler, never a write: a
+// free variable asks the context for its name, the row face says whether a
+// row renders what inference proved or only what an author wrote, and a
+// refinement asks for its predicate's spelling. `var_names` is the
+// developer's eye: it names each free variable the first time the render
+// meets it, so one install is one consistent naming, and nothing is bound in
+// the graph to get there (the four rename brackets `where` used to open,
+// and roll back, are gone with this).
+type VarSort = SortType | SortRow
+
+// Which row a function type shows: what inference proved (presents,
+// negations and the open tails, named) or what an author wrote (presents and
+// negations; a parse-minted tail IS the authored absence of a clause).
+type RowFace = FaceInferred | FaceAuthored
+
+effect TypeRender {
+  ty_var_name(Int, VarSort) -> String
+  ty_row_face() -> RowFace
+  ty_pred(Predicate) -> String
+}
+
+// The developer's eye. A type variable takes the name it was declared with
+// (`a` in `fn map(f: a -> b, …)`) when no other variable holds it, else the
+// first free letter; a row variable takes e, then e1, e2 and on — the two
+// alphabets disjoint, so `spawn(f: () -> a with e)` reads which is which.
+handler var_names with taken = [] {
+  ty_var_name(h, sort) => match var_name_of(taken, h) {
+    Some(n) => resume(n),
+    None => {
+      let n = fresh_var_name(taken, h, sort)
+      resume(n) with taken = push(taken, (h, n))
+    },
+  },
+  ty_row_face() => resume(FaceInferred),
+  ty_pred(p) => resume(show_predicate(p)),
+}
+
+fn var_name_of(taken, h) = match find({ (v, _) => v == h }, taken) {
+  Some((_, n)) => Some(n),
+  None => None,
+}
+
+fn name_is_taken(taken, n: String) = any({ (_, t) => t == n }, taken)
+
+fn fresh_var_name(taken, h, sort) = match sort {
+  SortType => match declared_var_name(h) {
+    Some(d) => if name_is_taken(taken, d) { first_type_letter(taken, 0) } else { d },
+    None => first_type_letter(taken, 0),
+  },
+  SortRow => first_row_name(taken, 0),
+}
+
+// The name a type parameter was written with: its cell is minted with the
+// authored lowercase name as its reason (`quantify_ctor_ty`).
+fn declared_var_name(h) = match graph_reason_at(h) {
+  Declared(n) => if is_var_spelling(n) { Some(n) } else { None },
+  _ => None,
+}
+
+fn is_var_spelling(n: String) = byte_len(n) > 0 && byte_at(n, 0) >= 97 && byte_at(n, 0) <= 122
+
+// a, b, c, d, f, … z, then t26 onward — never `e`, the row alphabet's.
+fn first_type_letter(taken, i) = {
+  let n = if i < 26 { str_slice("abcdefghijklmnopqrstuvwxyz", i, i + 1) } else { "t{int_to_str(i)}" }
+  if n == "e" || name_is_taken(taken, n) { first_type_letter(taken, i + 1) } else { n }
+}
+
+fn first_row_name(taken, i) = {
+  let n = if i == 0 { "e" } else { "e{int_to_str(i)}" }
+  if name_is_taken(taken, n) { first_row_name(taken, i + 1) } else { n }
+}
+
+// The formatter's face: the page holds only what an author wrote, so no free
+// variable has a surface name there — one that reaches a page renders as its
+// forensic handle, loud in fmt's own re-parse, never silently absorbed.
+handler authored_names(pred_render) {
+  ty_var_name(h, _) => resume(show_handle_forensic(h)),
+  ty_row_face() => resume(FaceAuthored),
+  ty_pred(p) => resume(pred_render(p)),
+}
+
+// A type for the developer's eye, its free variables named in its own
+// extent. A message that shows several types renders the whole message under
+// ONE install (`ETypeMismatch`'s), so a variable they share reads as one
+// name.
+fn show_type(ref ty) with !Mutate = render_ty_top(ty) ~> var_names
+
+// Every render chases TVars through graph_chase; no cached display. Same
+// discipline as lowering: live observer, never mirror.
+fn render_ty(ty) with !Mutate = match ty {
   TInt => "Int",
   TFloat => "Float",
   TUnit => "()",
   TByte => "Byte",
   TAddr => "Addr",
-  TList(elem) => "List({show_type(elem)})",
-  TTuple(elems) => "({show_list(elems, show_type, ", ")})",
-  TFun(params, ret, row) => "({show_list(params, show_tparam, ", ")}) -> {show_type(ret)}{show_row_suffix(row)}",
-  TVar(id) => show_handle(id),
-  TName(name, args) => "{name}{show_type_args(args)}",
-  TRecord(fields) => "\{ {show_list(fields, show_field, ", ")} \}",
-  TRecordOpen(fields, v) => "\{ {show_list(fields, show_field, ", ")} | {show_handle(v)} \}",
-  TRefined(base, pred) => "{show_type(base)} where {show_predicate(pred)}",
-  TCont(input, answer, disc, world) => "Cont({show_type(input)} {show_discipline(disc)} {show_type(answer)}{show_row_suffix(world)})",
+  TList(elem) => "[{render_ty(elem)}]",
+  TTuple(elems) => "({show_list(elems, render_ty, ", ")})",
+  TFun(params, ret, row) => "({show_list(params, render_fn_param, ", ")}) -> {render_ty(ret)}{render_row_suffix(row)}",
+  TVar(id) => render_var(id),
+  TName(name, args) => if len(args) == 0 { name } else { "{name}({show_list(args, render_ty, ", ")})" },
+  TRecord(fields) => "\{{show_list(fields_by_name(fields), render_field, ", ")}\}",
+  TRecordOpen(fields, v) => render_open_record(fields, v),
+  TRefined(base, pred) => if pred_is_provision(pred) {
+    // What a body hands a function is the function's provision, never a
+    // contract on its type a developer would write: the type is its base.
+    render_ty(base)
+  } else {
+    "{render_ty(base)} where {ty_pred(pred)}"
+  },
+  TCont(input, answer, disc, world) => "Cont({render_ty(input)} {show_discipline(disc)} {render_ty(answer)}{render_row_suffix(world)})",
   TAlias(name, _) => // RN.1 — show the alias name (intent), not the resolved type
   name,
-  TReprPin(r, base) => "{show_type(base)} repr {repr_wat(r)}",
+  TReprPin(r, base) => // A pin whose base is the width's own bare atom renders bare (`f32` —
+  // the atom mints exactly this pair); any other pairing renders the
+  // `repr` suffix.
+  match (r, base) {
+    (RF64, TFloat) => "f64",
+    (RF32, TFloat) => "f32",
+    (RI64, TInt) => "i64",
+    (RV128, TInt) => "v128",
+    _ => "{render_ty(base)} repr {repr_wat(r)}",
+  },
 }
+
+// A record's fields in the order SYNTAX sorts them at parse, by name — a row
+// a unification assembled holds them in the order it met them, and the page
+// a developer reads is the order every parse of it gives back.
+fn fields_by_name(fields) =
+  fields |> map({ (n, _) => n }) |> sort |> unique |> flat_map({ n => filter({ (m, _) => m == n }, fields) })
+
+fn pred_is_provision(pred) = match pred {
+  PProvides(_) => true,
+  PWithSelf(_, inner) => pred_is_provision(inner),
+  PTrue => false,
+  PCompare(_, _, _) => false,
+  PAnd(_, _) => false,
+  POr(_, _) => false,
+  PNot(_) => false,
+  PBoolNode(_) => false,
+  PPatternMatch(_, _) => false,
+  PFlowLe(_, _) => false,
+  PTotalDiv(_, _, _) => false,
+  PInBounds(_, _) => false,
+}
+
+// A function type's parameter is its type alone, since a type position
+// carries no names (`f: (a) -> b`).
+fn render_fn_param(p) with !Mutate = render_ty(param_ty(p))
+
+// A type the eye is shown whole: when it is a function, it reads as the
+// signature it is — each parameter with its name and ownership grade, as a
+// head writes it, its grade before its name; the types inside it
+// stay types.
+fn render_ty_top(ty) with !Mutate = match ty {
+  TFun(params, ret, row) => "({show_list(params, render_tparam, ", ")}){render_ret(ret)}{render_row_suffix(row)}",
+  TVar(h) => match graph_chase(h) {
+    GNode(NBound(b), _) => render_ty_top(b),
+    _ => render_ty(ty),
+  },
+  _ => render_ty(ty),
+}
+
+fn render_field(field: (String, Ty)) with !Mutate = match field {
+  (name, ty) => "{name}: {render_ty(ty)}",
+}
+
+// A variable: its binding when bound, the context's name when free.
+fn render_var(h) with !Mutate = match graph_chase(h) {
+  GNode(NBound(ty), _) => render_ty(ty),
+  GNode(NRowBound(row), _) => render_row(row),
+  GNode(NRecordRowBound(fields, tail), _) => render_record_row_residual(fields, tail),
+  GNode(NFree(_), _) => ty_var_name(graph_chase_handle(h), SortType),
+  GNode(NRowFree(_), _) => ty_var_name(graph_chase_handle(h), SortRow),
+  GNode(NErrorHole(reason), _) => "!hole[{show_reason(reason)}]",
+}
+
+// An open record: its known fields, then the rest — `...e` for the row
+// variable that still stands for it, nothing past `...` when it was bound.
+// An author writes the rest as `...` alone, so the authored face never names
+// it.
+fn render_open_record(fields, v) with !Mutate = match graph_chase(v) {
+  GNode(NRecordRowBound(more, tail), _) => render_record_row_residual(fields ++ more, tail),
+  GNode(NRowFree(_), _) => match ty_row_face() {
+    FaceInferred => "\{{show_list(fields, render_field, ", ")}{rest_lead(fields)}...{ty_var_name(graph_chase_handle(v), SortRow)}\}",
+    FaceAuthored => "\{{show_list(fields, render_field, ", ")}{rest_lead(fields)}...\}",
+  },
+  _ => "\{{show_list(fields, render_field, ", ")}{rest_lead(fields)}...\}",
+}
+
+fn rest_lead(fields) = if len(fields) == 0 { "" } else { ", " }
 
 // A residual bind, rendered with WHAT ITS WRITER KNEW. The fields alone
 // cannot say whether a remainder was proven or merely unseen, and reading
 // them as though they could is the wrong-slot class at the projection
-// layer — `{ }` from a closed partner is a proof, `{ }` from two partial
+// layer — `{}` from a closed partner is a proof, `{...e}` from two partial
 // sets is a guess, and they used to print identically.
-fn show_record_row_residual(fields, tail) with !Mutate = match tail {
-  RowClosed => show_type(TRecord(fields)),
-  RowContinues(v) => "{show_type(TRecord(fields))} | {show_handle(v)}",
+fn render_record_row_residual(fields, tail) with !Mutate = match tail {
+  RowClosed => render_ty(TRecord(fields)),
+  RowContinues(v) => render_open_record(fields, v),
+}
+
+fn show_record_row_residual(fields, tail) with !Mutate =
+  render_record_row_residual(fields, tail) ~> var_names
+
+// The FORENSIC projection — a free handle as its raw identity and allocation
+// epoch, "unresolved at epoch e". Never a developer-facing name: the
+// developer's eye asks `var_names`; this is what a page that should never
+// hold a variable shows when one reaches it anyway.
+fn show_handle_forensic(h) with !Mutate = match graph_chase(h) {
+  GNode(NRowFree(epoch), _) => "r{int_to_str(h)}@e{int_to_str(epoch)}",
+  GNode(NFree(epoch), _) => "t{int_to_str(h)}@e{int_to_str(epoch)}",
+  _ => show_handle(h),
 }
 
 // show_handle — the live-chase projection. Resolved handles show the
@@ -4962,20 +5161,64 @@ fn name_has_prefix(nm, prefix) =
 // the name it carries exists in no source a developer can read.
 fn minted_param_name(nm) = name_has_prefix(nm, dp_prefix) || name_has_prefix(nm, al_prefix)
 
-fn show_tparam(ref tp) = {
-  let base = if minted_param_name(param_name(tp)) {
-    show_type(param_ty(tp))
-  } else {
-    "{param_name(tp)}: {show_type(param_ty(tp))}"
+// A parameter in a head, as SYNTAX writes one: its ownership marker before
+// the name — the authored one, else the grade the inference resolved, which
+// is a fact of the parameter as much as its type is — the name, its type. A
+// parameter with no name an author wrote — an op's or a constructor's bare
+// type (`_`, the positional `_0`, `_1` its scheme carries), or one a desugar
+// minted — renders as its type alone, never as `_:`.
+fn render_tparam(tp) with !Mutate = {
+  let marker = match param_authored(tp) {
+    Unmarked => ownership_marker(param_resolved(tp)),
+    authored => ownership_marker(authored),
   }
-  match param_authored(tp) {
-    Unmarked => match param_resolved(tp) {
-      Unmarked => base,
-      _ => "{base}{show_ownership(param_resolved(tp))} — inferred",
-    },
-    _ => "{base}{show_ownership(param_authored(tp))} — declared",
+  if param_is_unnamed(param_name(tp)) {
+    "{marker}{render_ty(param_ty(tp))}"
+  } else {
+    "{marker}{param_name(tp)}: {render_ty(param_ty(tp))}"
   }
 }
+
+fn ownership_marker(o) with Pure = match o {
+  Unmarked => "",
+  Own => "own ",
+  Ref => "ref ",
+}
+
+fn param_is_unnamed(nm: String) = nm == "_" || minted_param_name(nm) || positional_param_name(nm)
+
+// `_0`, `_1`, … — the names a scheme gives the fields an author left bare.
+fn positional_param_name(nm: String) =
+  byte_len(nm) > 1 && byte_at(nm, 0) == 95 && byte_at(nm, 1) >= 48 && byte_at(nm, 1) <= 57
+
+// A declaration's head for the developer's eye — the one head every
+// projection that shows a signature renders (`where`, `doc`, an op's line):
+// `name(p: T, …) -> R with row`, a unit result omitted as a declaration
+// omits it, the row the inference proved.
+fn render_head(name: String, params, ret, row) with !Mutate =
+  "{name}({show_list(params, render_tparam, ", ")}){render_ret(ret)}{render_row_suffix(row)}"
+
+// A function-typed result is parenthesized: a `with` after it would bind the
+// returned function's row, never the head's (SYNTAX §«Function
+// declarations»: greedy, parenthesize for the outer clause).
+fn render_ret(ret) with !Mutate = match chase_ret(ret) {
+  TUnit => "",
+  TFun(_, _, _) => " -> ({render_ty(ret)})",
+  _ => " -> {render_ty(ret)}",
+}
+
+// A result type read through the variables bound to it, so a unit bound to a
+// variable omits its arrow as a written unit does.
+fn chase_ret(t) = match t {
+  TVar(h) => match graph_chase(h) {
+    GNode(NBound(b), _) => chase_ret(b),
+    _ => t,
+  },
+  _ => t,
+}
+
+fn show_head(name: String, params, ret, row) with !Mutate =
+  render_head(name, params, ret, row) ~> var_names
 
 fn show_ownership(o) with Pure = match o {
   Unmarked => "",
@@ -4990,55 +5233,68 @@ fn show_discipline(d) with Pure = match d {
   Abandon => "Abandon",
 }
 
-fn show_field(ref field: (String, Ty)) with !Mutate = match field {
-  (name, ty) => "{name}: {show_type(ty)}",
+fn show_field(field: (String, Ty)) with !Mutate = render_field(field) ~> var_names
+
+// A function's row after its type: nothing when it performs nothing, else
+// `with` and the row — under the authored face only what an author wrote.
+fn render_row_suffix(row) with !Mutate = match ty_row_face() {
+  FaceAuthored => match row {
+    EfRow(p, a, _) => if len(p) == 0 && len(a) == 0 { "" } else { " with {render_row_head(p, a)}" },
+  },
+  FaceInferred => match row {
+    EfRow([], [], EtClosed) => "",
+    EfRow([], [], EtAll) => // Every effect may cross: the row states no constraint, and no
+    // clause spells that — a type with no `with` is unconstrained.
+    "",
+    _ => " with {render_row(row)}",
+  },
 }
 
-fn show_type_args(ref args) with !Mutate =
-  if len(args) == 0 { "" } else { "({show_list(args, show_type, ", ")})" }
+fn show_row_suffix(row) with !Mutate = render_row_suffix(row) ~> var_names
 
-fn show_row_suffix(ref row) with !Mutate = match row {
-  EfRow([], [], EtClosed) => "",
-  _ => " with {show_effrow(row)}",
-}
-
-// An edge in the row's own algebra: the cell alone, or `(r - E - F)` when a
+// An edge in the row's own algebra: the cell alone, or `(e - E - F)` when a
 // `~>` on its path subtracts — the difference SYNTAX already spells, so the
 // projection names which computation each absorption covered.
-fn show_row_edge(e: RowEdge) with !Mutate = if len(e.mask) == 0 {
-  show_handle(e.cell)
+fn render_row_edge(e: RowEdge) with !Mutate = if len(e.mask) == 0 {
+  render_var(e.cell)
 } else {
-  "({show_handle(e.cell)} - {show_list(e.mask, show_eff_name, " - ")})"
+  "({render_var(e.cell)} - {show_list(e.mask, render_eff_name, " - ")})"
 }
 
-// The triple's voice: presents joined with `+`, the absent set as `!X`
-// terms, the tail as its var handle; an empty closed row is Pure.   // drift-audit: ignore — human-facing rendering string for diagnostics/show; not an effect-keyed lookup; tracked by Hβ.perf.name-is-handle; effect-rendering normalization
-fn show_effrow(ref row) with !Mutate = match row {
+fn render_row_head(p, a) with !Mutate = {
+  let parts = show_list(p, render_eff_name, " + ")
+  let negs = show_list(a, (n) => "!{render_eff_name(n)}", " + ")
+  let joiner = if len(p) > 0 && len(a) > 0 { " + " } else { "" }
+  "{parts}{joiner}{negs}"
+}
+
+// The triple, as SYNTAX writes a row: presents joined with `+`, the absent
+// set as `!X` terms, each open tail by its name; an empty closed row is
+// Pure. A negation stands for "anything but", so `!E` is the whole of an
+// EtAll row and no Any is ever spelled.   // drift-audit: ignore — human-facing rendering string for diagnostics/show; not an effect-keyed lookup; tracked by Hβ.perf.name-is-handle; effect-rendering normalization
+fn render_row(row) with !Mutate = match row {
   EfRow(p, a, t) => {
-    let parts = show_list(p, show_eff_name, " + ")
-    let negs = show_list(a, (n) => "!{show_eff_name(n)}", " + ")
-    let joiner = if len(p) > 0 && len(a) > 0 { " + " } else { "" }
-    let head = "{parts}{joiner}{negs}"
+    let head = render_row_head(p, a)
     match t {
       EtClosed => // drift-audit: ignore — the renderer WRITES the surface word for the empty row (SYNTAX: Pure is the identity's spelling); no dispatch reads it
       if len(p) == 0 && len(a) == 0 { "Pure" } else { head },
-      EtAll => // A named EtAll row must render distinguishably from a closed one:
-      // reading = p ∪ (ALL ∖ a), so the tail carries "everything else" — the
-      // 2026-07-31 census read forty EtAll-vs-EtClosed refusals as phantom
-      // positives mismatches because this arm rendered `head` bare.
-      if len(p) == 0 && len(a) == 0 { "Any" } else { "{head} + Any" },
+      EtAll => // reading = p ∪ (ALL ∖ a): with a negation it IS `!E`'s reading;
+      // with none, every effect, which no clause spells but `!Pure`.
+      if len(p) == 0 && len(a) == 0 { "!Pure" } else { head },
       EtOpen(vs) => // every edge renders (the set is the tail); the empty set
       // reads as closed — ef_make canonicalizes it away, and the voice
       // stays total over it regardless (display-totality).
       if len(vs) == 0 {
         if len(p) == 0 && len(a) == 0 { "Pure" } else { head }
       } else {
-        let tails = show_list(vs, show_row_edge, " + ")
+        let tails = show_list(vs, render_row_edge, " + ")
         if len(p) == 0 && len(a) == 0 { tails } else { "{head} + {tails}" }
       },
     }
   },
 }
+
+fn show_effrow(row) with !Mutate = render_row(row) ~> var_names
 
 // What a refinement states about a type's inhabitants, said to a person. The
 // open-bounded arms name the side that IS bounded rather than inventing an
@@ -5074,8 +5330,8 @@ fn divergence_arm(d) with Pure = match d {
 // constraint collapses it" — that sentence was the same words at every tie,
 // which is a placeholder wearing a teaching voice.
 fn show_divergence(d) with !Mutate = match d {
-  DivRow(a, b) => "these differ in what they may DO — {show_effrow(a)} against {show_effrow(b)}: which capability does this position carry?",
-  DivType(a, b, r) => "these differ in TYPE — {show_type(a)} against {show_type(b)}: which type does this position hold? (the cell that moves: {show_reason(r)})",
+  DivRow(a, b) => "these differ in what they may DO — {render_row(a)} against {render_row(b)}: which capability does this position carry?" ~> var_names,
+  DivType(a, b, r) => "these differ in TYPE — {render_ty(a)} against {render_ty(b)}: which type does this position hold? (the cell that moves: {show_reason(r)})" ~> var_names,
   DivName => "every survivor denotes the same value — the question is which name carries the intent",
   DivValue(dom) => "the survivors differ in VALUE and {show_domain(dom)}: which one does this position mean?",
   DivVariants(names) => "the survivors are the type's own values — {join(" or ", names)}: which one does this position mean?",
@@ -5083,9 +5339,11 @@ fn show_divergence(d) with !Mutate = match d {
   DivBehavior => "these are different computations of the same type — an example of the result, or a refinement on it, decides which one this position means",
 }
 
-fn show_eff_name(ref name) with !Mutate = match name {
+fn show_eff_name(name) with !Mutate = render_eff_name(name) ~> var_names
+
+fn render_eff_name(name) with !Mutate = match name {
   ENamed(h) => intern_name_of(h),
-  EParameterized(h, args) => "{intern_name_of(h)}({show_list(args, show_eff_arg, ", ")})",
+  EParameterized(h, args) => "{intern_name_of(h)}({show_list(args, render_eff_arg, ", ")})",
   EPure => // drift-audit: ignore — variant→surface-label render, not a name key
   // DISPLAY-TOTALITY, not a data-drop. The mentl voice must be TOTAL — it can
   // never crash while REPORTING a diagnostic (a renderer that traps mid-report
@@ -5102,14 +5360,16 @@ fn show_eff_name(ref name) with !Mutate = match name {
   "«invalid-effect»",
 }
 
-fn show_eff_arg(ref arg) with !Mutate = match arg {
+fn show_eff_arg(arg) with !Mutate = render_eff_arg(arg) ~> var_names
+
+fn render_eff_arg(arg) with !Mutate = match arg {
   EAInt(n) => int_to_str(n),
   EAFloat(f) => float_to_str(f),
   EAString(s) => "\"{s}\"",
   EAType(t) => // The instance's payload IS a type the renderer already speaks — the
   // old opaque marker hid the exact instance the diagnostic exists to
   // teach (!Cast vs Cast(<type>) named the class live, 2026-07-24).
-  show_type(t),
+  render_ty(t),
   EANode(h) => // The operand node's own source spelling — the row render is the
   // developer's surface, and the debug form broke fmt's render→re-parse
   // fixpoint the day an EANode instance reached a with-clause (measured
@@ -5260,7 +5520,7 @@ fn show_reason(ref reason) with !Mutate = match reason {
   LetBinding(name, inner) => "let {name} = {show_reason(inner)}",
   Unified(a, b) => "{show_reason(a)} unified with {show_reason(b)}",
   Instantiation(name, inner) => "instantiate {name} → {show_reason(inner)}",
-  UnifyFailed(ta, tb) => "cannot unify {show_type(ta)} with {show_type(tb)}",
+  UnifyFailed(ta, tb) => "cannot unify {render_ty(ta)} with {render_ty(tb)}" ~> var_names,
   Placeholder(span) => "placeholder at {show_span(span)}",
   BinOpPlaceholder(op) => "binop {binop_to_str(op)}",
   MissingVar(name) => "unbound variable: {name}",

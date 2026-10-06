@@ -785,7 +785,7 @@ fn focus_reason(target) = match target {
 // Verify-tentacle (refinement obligations). H6 exhaustive over
 // Question's 15 variants via pattern alternation per SYNTAX.md L956.
 fn tentacle_for_question(question) with Pure = match question {
-  QTypeOf(_) | QTypeAt(_) | QIntentOf(_) | QUnresolved | QEffects(_) | QRefsOf(_) | QStateWrites(_) | QHandlerProvider(_) | QFlowOf(_) | QCensus(_) | QCensusRoster | QDecls | QWhere(_, _) | QVariants(_) | QModules | QImports | QUnreferenced | QUnreachable | QPerforms | QOrphanClaims | QCost | QGhosts | QUnknown(_) => TentQuery,
+  QTypeOf(_) | QTypeAt(_) | QIntentOf(_) | QUnresolved | QEffects(_) | QRefsOf(_) | QStateWrites(_) | QHandlerProvider(_) | QFlowOf(_) | QCensus(_) | QCensusRoster | QDecls | QWhere(_, _) | QVariants(_) | QModules | QImports | QUnreferenced | QUnreachable | QPerforms | QOrphanClaims | QCost | QGhosts | QHeads | QUnknown(_) => TentQuery,
   QOwnership(_) => TentTrace,
   QWhy(_) | QSubstChain(_) => TentWhy,
   QVerifyDebt | QSmt => TentVerify,
@@ -797,7 +797,7 @@ fn tentacle_for_question(question) with Pure = match question {
 // exhaustive over Question via pattern alternation.
 fn question_span(question) = match question {
   QTypeAt(s) => s,
-  QTypeOf(_) | QIntentOf(_) | QUnresolved | QSubstChain(_) | QEffects(_) | QOwnership(_) | QWhy(_) | QRefsOf(_) | QStateWrites(_) | QVerifyDebt | QSmt | QHandlerProvider(_) | QFlowOf(_) | QCensus(_) | QCensusRoster | QDecls | QWhere(_, _) | QVariants(_) | QModules | QImports | QUnreferenced | QUnreachable | QPerforms | QOrphanClaims | QCost | QGhosts | QUnknown(_) => span_zero(),
+  QTypeOf(_) | QIntentOf(_) | QUnresolved | QSubstChain(_) | QEffects(_) | QOwnership(_) | QWhy(_) | QRefsOf(_) | QStateWrites(_) | QVerifyDebt | QSmt | QHandlerProvider(_) | QFlowOf(_) | QCensus(_) | QCensusRoster | QDecls | QWhere(_, _) | QVariants(_) | QModules | QImports | QUnreferenced | QUnreachable | QPerforms | QOrphanClaims | QCost | QGhosts | QHeads | QUnknown(_) => span_zero(),
 }
 
 // compose_propose_situation — sparse Situation for a propose gesture.

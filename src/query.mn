@@ -239,6 +239,10 @@ type Question
   // "ghosts" — the cells the parser minted that the judgment never bound,
   // located: what the caret reads past, counted so the minting can stop
   | QGhosts
+  // "heads" — every declaration's head, rendered by the formatter and by the
+  // developer's eye, re-parsed and rendered again: a head that does not
+  // come back as itself is a render that does not say what was written
+  | QHeads
   | QUnknown(String)
 
 type QueryResult
@@ -323,9 +327,10 @@ effect Query {
 }
 
 // Read-only projection over the live graph and env. No handler-local
-// state; all data arrives through `GraphRead + EnvRead`. Pure
-// observation — write attempts fail at handler install via the row
-// subsumption gate.
+// state; data arrives through `GraphRead + EnvRead`. The projections that
+// must never write say so in their own rows (`where_badges`): a handler's
+// `!E` would also bind the remainder its arms resume into, which here is a
+// whole compile.
 handler query_default {
   ask(q) => match q {
     QTypeOf(name) => match env_lookup(name) {
@@ -446,6 +451,7 @@ handler query_default {
     QOrphanClaims => resume(QROrphanClaims(orphan_claim_report(module_cells()))),
     QCost => resume(QRCost(len(module_cells()), weave_line_extent(), graph_next())),
     QGhosts => resume(QRGhosts(ghost_sites())),
+    QHeads => resume(QRWhere(head_round_trip(), [])),
     QUnknown(q) => resume(QRError("unknown query: {q}")),
   },
 }
@@ -2103,7 +2109,7 @@ fn lambda_carries_row(h) with !Mutate = match graph_chase(h) {
 // declares a type and an effect both named Sample — so the answer is every
 // one of them, each at its address; a name no type-level declaration
 // claims answers as a value or a binder.
-fn where_badges(name: String, scope: String) with !Mutate = match graph_decls_at() |> filter(decl_is_named(name, ??)) |> flat_map(type_level_lines) {
+fn where_badges(name: String, scope: String) with !Mutate + !GraphWrite + !RowWrite = match graph_decls_at() |> filter(decl_is_named(name, ??)) |> flat_map(type_level_lines) {
   [] => value_where(name, scope),
   lines => QRWhere(lines, []),
 }
@@ -2115,13 +2121,8 @@ fn where_badges(name: String, scope: String) with !Mutate = match graph_decls_at
 // `tee_line`, read at the declaration).
 fn type_level_lines(h) with !Mutate = match graph_node_body(h) {
   NStmt(s) => match s {
-    TypeDefStmt(name, variants) => named_lines(flat_map(variant_tys, variants), "type {name}{decl_at(h)}", variant_badge, variants),
-    EffectDeclStmt(name, params, ops) => named_lines(
-      map(param_ty, params) ++ flat_map(op_tys, ops),
-      "effect {name}{effect_params_text(params)}{decl_at(h)}",
-      op_badge,
-      ops
-    ),
+    TypeDefStmt(name, variants) => named_lines("type {name}{decl_at(h)}", variant_badge, variants),
+    EffectDeclStmt(name, params, ops) => named_lines("effect {name}{effect_params_text(params)}{decl_at(h)}", op_badge, ops),
     RefineStmt(_, _, _) => ["{render_stmt_tokens(s)}{decl_at(h)}"],
     AliasStmt(_, _) => ["{render_stmt_tokens(s)}{decl_at(h)}"],
     RowAliasStmt(_, _) => ["{render_stmt_tokens(s)}{decl_at(h)}"],
@@ -2134,24 +2135,52 @@ fn type_level_lines(h) with !Mutate = match graph_node_body(h) {
   _ => [],
 }
 
+// THE HEAD ROUND TRIP — `parse(render(head)) == head`, for every function
+// declared at module level in the link, through both heads a developer reads:
+// the formatter's (what the page holds) and the eye's (what `where`, `doc` and
+// the caret show). Each is rendered, parsed as the declaration it spells, and
+// rendered again by the formatter; a head that comes back different is a
+// render that says something the parser does not read back. The answer's
+// first line is the count; each failing head follows with what it came back
+// as.
+fn head_round_trip() = {
+  let fns = graph_decls_at() |> filter(at_module_level) |> flat_map(fn_decl_of)
+  let failures = flat_map(head_failures, fns)
+  ["{int_to_str(len(fns))} head(s), {int_to_str(len(failures))} that do not round-trip"] ++ failures
+}
+
+fn fn_decl_of(h) = match graph_node_body(h) {
+  NStmt(FnStmt(name, params, retty, effs, body)) => [(name, params, retty, effs, body)],
+  _ => [],
+}
+
+fn head_failures(decl) = match decl {
+  (name, params, retty, effs, body) => {
+    let authored = render_fn_head(name, params, retty, effs, body)
+    let eye = match env_lookup(name) {
+      Some((sch, _, _)) => match chase_type_deep(judgment_ty(sch)) {
+        TFun(ps, ret, row) => "fn {show_head(name, ps, ret, row)} =",
+        _ => authored,
+      },
+      None => authored,
+    }
+    round_trip_failure("fmt", authored) ++ round_trip_failure("eye", eye)
+  },
+}
+
+// The head parsed as the declaration it spells, then rendered by the
+// formatter: empty when it comes back as itself.
+fn round_trip_failure(face: String, head: String) = match frontend("{head} 0") ~> diag_quiet {
+  [N(NStmt(FnStmt(n, ps, r, es, b)), _, _)] => {
+    let back = render_fn_head(n, ps, r, es, b)
+    if back == head { [] } else { ["{face}: {head}  ⇢  {back}"] }
+  },
+  _ => ["{face}: {head}  ⇢  does not parse as one declaration"],
+}
+
 // A type's or an effect's lines: the head, then one line per constructor
-// or op, its type variables named as a developer writes them (inside a
-// checkpoint, as a function's are).
-fn named_lines(tys, head: String, line, items) with !Mutate = {
-  let cp = graph_push_checkpoint()
-  name_type_vars(tys)
-  let lines = [head] ++ map(line, items)
-  graph_rollback(cp)
-  lines
-}
-
-fn variant_tys(v) = match v {
-  (_, fields, _) => fields,
-}
-
-fn op_tys(op) = match op {
-  (_, params, ret, _) => push(map(param_ty, params), ret),
-}
+// or op, under one naming, so a variable two lines share reads as one name.
+fn named_lines(head: String, line, items) with !Mutate = [head] ++ map(line, items) ~> var_names
 
 // The declaration a global name names: its one module-level declaration,
 // read off the decls column, which holds every judged declaration — a
@@ -2170,17 +2199,17 @@ fn decl_at(h) with !Mutate = match parse_span_of(h) {
 }
 
 fn variant_badge(v) with !Mutate = match v {
-  (ctor, fields, _) => if len(fields) == 0 { "  {ctor}" } else { "  {ctor}({join(", ", map(show_type, fields))})" },
+  (ctor, fields, _) => if len(fields) == 0 { "  {ctor}" } else { "  {ctor}({join(", ", map(render_ty, fields))})" },
 }
 
+// An op's line is its head: a unit result omitted, a parameter the author
+// left bare shown as its type.
 fn op_badge(op) with !Mutate = match op {
-  (name, params, ret, _) => "  {name}({join(", ", map(op_param_text, params))}) -> {show_type(ret)}",
+  (name, params, ret, _) => "  {name}({join(", ", map(render_tparam, params))}){render_ret(ret)}",
 }
-
-fn op_param_text(p) with !Mutate = "{param_name(p)}: {show_type(param_ty(p))}"
 
 fn effect_params_text(params) with !Mutate =
-  if len(params) == 0 { "" } else { "({join(", ", map(op_param_text, params))})" }
+  if len(params) == 0 { "" } else { "({join(", ", map(render_tparam, params))})" ~> var_names }
 
 fn value_where(name: String, scope: String) with !Mutate = match env_lookup(name) {
   None => binder_badges(name, scope),
@@ -2194,7 +2223,7 @@ fn value_where(name: String, scope: String) with !Mutate = match env_lookup(name
         let ty = judgment_ty(scheme)
         match chase_type_deep(ty) {
           TFun(params, ret, row) => decl_badges(name, params, ret, row),
-          _ => QRWhere([value_badge(name, ty)], []),
+          _ => QRWhere([value_badge(name, ty) ~> var_names], []),
         }
       },
     },
@@ -2210,64 +2239,18 @@ fn value_where(name: String, scope: String) with !Mutate = match env_lookup(name
 fn decl_badges(name: String, params, ret, row) with !Mutate = {
   let decl = module_decl(name)
   let body = decl_body(decl)
-  let cp = graph_push_checkpoint()
-  name_type_vars([TFun(params, ret, row)])
+  // One naming for the head, every badge and every install: the variables a
+  // developer would write, read off the render context (`var_names`), never
+  // bound in the graph.
   let lines =
-    [decl_head(name, params, row) ++ decl_address(decl)] ++ map(param_badge, params) ++ ["-> {value_type(ret)} @ {width_badge(ret)}"]
-  let tees = flat_map(tee_lines, body)
-  graph_rollback(cp)
-  QRWhere(lines ++ tees, body |> flat_map(fanout_sites(??, [])) |> demand_onto(name))
+    [render_head(name, params, ret, row) ++ decl_address(decl)] ++ map(param_badge, params) ++ ret_badge(ret) ++ flat_map(tee_lines, body) ~> var_names
+  QRWhere(lines, body |> flat_map(fanout_sites(??, [])) |> demand_onto(name))
 }
 
-// THE VARIABLES A DEVELOPER WOULD WRITE. A type variable still free renders
-// as its handle (`t9538@e599`), the forensic projection's "unresolved at
-// epoch e"; a badge is not forensic, and a variable a declaration
-// quantifies is generic, not unresolved. Inside a checkpoint each free type
-// variable is bound to the name a developer would write — the one it was
-// declared with (`a` in `f: a -> b`), else the first letter not taken —
-// so the one renderer shows names, and the caller's rollback leaves the
-// graph as the projection found it. A raw bind: no judgment reads it, and
-// no demand on the cell is consulted. A row variable keeps its handle
-// (`Hβ.voice.free-variables-render-as-handles`).
-fn name_type_vars(tys) with !Mutate = {
-  let vars = tys |> flat_map(free_type_vars) |> unique
-  let picked = fold([], pick_name(flat_map(declared_name, vars), ??, ??), vars)
-  vars |> enumerate |> each(bind_picked(picked, ??))
-}
-
-fn free_type_vars(ty) with !Mutate = ty |> chase_deep |> free_in_ty |> filter(is_type_cell)
-
-fn is_type_cell(v) with !Mutate = match graph_chase(v) {
-  GNode(NFree(_), _) => true,
-  _ => false,
-}
-
-// The name a type parameter was written with: its cell is minted with the
-// authored lowercase name as its reason (`quantify_ctor_ty`).
-fn declared_name(v) with !Mutate = match graph_reason_at(v) {
-  Declared(n) => if is_type_param_name(n) { [n] } else { [] },
-  _ => [],
-}
-
-fn is_type_param_name(n: String) =
-  byte_len(n) > 0 && first_char_code(n) >= 97 && first_char_code(n) <= 122
-
-// A variable's name in first-appearance order: its declared one, else the
-// first letter neither declared by another variable nor picked already.
-fn pick_name(declared, picked, v) with !Mutate = match declared_name(v) {
-  [d] => push(picked, d),
-  _ => push(picked, first_untaken(declared ++ picked, 0)),
-}
-
-fn bind_picked(picked, iv) with !Mutate = match iv {
-  (i, v) => graph_bind(v, TName(picked[i], []), Inferred("the name a developer would write")),
-}
-
-// The letters a to z, then t26, t27 and onward — the first not already
-// taken.
-fn first_untaken(taken, i) = {
-  let n = if i < 26 { str_slice("abcdefghijklmnopqrstuvwxyz", i, i + 1) } else { "t{int_to_str(i)}" }
-  if string_in_list(taken, n) { first_untaken(taken, i + 1) } else { n }
+// The result's badge; a unit result has none, as its head writes no arrow.
+fn ret_badge(ret) with !Mutate = match chase_ret(ret) {
+  TUnit => [],
+  _ => ["-> {value_type(ret)} @ {width_badge(ret)}"],
 }
 
 // A site whose own frame installs no schedule runs under the one its
@@ -2283,9 +2266,6 @@ fn site_is_seq(site) = match site {
 fn site_demanded(vias, site) = match site {
   WhereSite(s) => if schedule_is_seq(s.schedule) { WhereSite({...s, vias: vias}) } else { site },
 }
-
-fn decl_head(name: String, params, row) with !Mutate =
-  "{name}({join(", ", map(param_name, params))}){show_row_suffix(row)}"
 
 // Where the declaration stands, in the developer's coordinates: the module
 // its node registered under and the line the parser wrote. A function value
@@ -2319,19 +2299,16 @@ fn param_badge(p) with !Mutate = value_badge(param_name(p), param_ty(p))
 fn value_badge(name: String, ty) with !Mutate = "{name} : {value_type(ty)} @ {width_badge(ty)}"
 
 fn value_type(ty) with !Mutate = match chase_type_deep(ty) {
-  TReprPin(_, base) => show_type(base),
-  shown => show_type(shown),
+  TReprPin(_, base) => render_ty(base),
+  shown => render_ty(shown),
 }
 
 // A width as the gradient settled it. A type that is still a variable has
 // no one width: every instantiation is specialized and takes its own (the
 // total monomorphization), so the floor the variable would read is not
-// what any caller runs. Under `name_type_vars` the variable reads as the
-// lowercase name a type parameter is written with — the case rule's own
-// spelling, which no judged type holds otherwise.
+// what any caller runs.
 fn width_badge(ty) with !Mutate = match chase_type_deep(ty) {
   TVar(_) => "per instantiation",
-  TName(n, []) => if is_type_param_name(n) { "per instantiation" } else { known_width(TName(n, [])) },
   chased => known_width(chased),
 }
 
@@ -2366,13 +2343,7 @@ fn binder_badges(name: String, scope: String) with !Mutate = {
 
 // One binder's badge with its own variables named: binders of one name in
 // different scopes share no variables, so each line names its own.
-fn named_badge(name: String, b) with !Mutate = {
-  let cp = graph_push_checkpoint()
-  name_type_vars([TVar(b)])
-  let line = value_badge(name, TVar(b))
-  graph_rollback(cp)
-  line
-}
+fn named_badge(name: String, b) with !Mutate = value_badge(name, TVar(b)) ~> var_names
 
 fn read_in(scope: String, r) with !Mutate =
   byte_len(scope) == 0 || module_name_of_handle(graph_module_of(r)) == scope
@@ -2645,15 +2616,10 @@ fn tee_lines(h) with !Mutate = {
 // since a handler whose every arm resumes answers each install's body and
 // its answer is a variable of its scheme.
 fn handler_line(name: String, arms, h) with !Mutate = {
-  let cp = graph_push_checkpoint()
   let answer = match handler_answer_of(name) {
-    Some(a) => {
-      name_type_vars([a])
-      ", answers {value_type(a)}"
-    },
+    Some(a) => ", answers {value_type(a) ~> var_names}",
     None => "",
   }
-  graph_rollback(cp)
   "handler {name} absorbs {join(" + ", handler_effect_names(arms))}{answer}{decl_at(h)}"
 }
 

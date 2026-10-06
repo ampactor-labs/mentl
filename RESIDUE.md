@@ -591,7 +591,9 @@ one reader, `silence_predicate`, reading the same Teach fact. The witness:
 the IDE twin asks for code actions at `fn inv(n) = 100 / n`, applies the one
 returned, and the document then checks with no open claim.
 
-### `Hβ.voice.free-variables-render-as-handles` — OPEN
+### `Hβ.voice.free-variables-render-as-handles` — CLOSED 2026-10-06
+
+CLOSED at pin c0b2828c (N2): one renderer, `render_ty` under a render context (`var_names` names free variables on first sight, type and row alphabets disjoint; `authored_names` is the formatter's face); `doc`, `where` and every diagnostic read through it, and the frontier's "one renderer" leg holds no `@e`, `_:`, `-> ()` or `WASI(a)` on doc prelude, `where Filesystem` and `where fmt_run`. Its round trip is `Hβ.fmt.render-must-parse-to-the-same-tree`, still open at 92 heads.
 
 BORN 2026-10-02 (D5),
 the TYPE face closed at `where` and every other reader still open. A
@@ -10295,6 +10297,8 @@ result is the library's and the site resolved — the show floor below.
 
 ### `Hβ.fmt.render-must-parse-to-the-same-tree` — OPEN
 
+THE HEAD FACE IS A BOARD LEG since N2 (pin c0b2828c): `mentl query <entry> heads` checks parse(render(head)) == head for every module-level fn, bounded by `head_round_trip_max: 92` — 67 named open-record rests `...e` the parse drops, 19 masked row edges `(e - E)` the row grammar cannot group, 6 `Cast(() -> a with e)` effect-argument function types. Each class is a parser rule to grow; the bound falls with each.
+
 Measured 2026-09-28
 (R0″) as the conservation gate's blind side. `mentl fmt` rewrote
 `fn main(q) = (run() ~> hold).beta` as `run() ~> hold.beta` in three micros
@@ -18121,7 +18125,9 @@ STANDS ON: B1's world in the task record and S5's `StateFact`. HANDS ON: EFF rea
 
 **Builds:** no names fixed by the design; the published write fact is named where it lands.
 
-### `Hβ.types.never-is-quantified-per-perform` — OPEN
+### `Hβ.types.never-is-quantified-per-perform` — CLOSED 2026-10-06
+
+CLOSED at pin c0b2828c (N4): `register_effect_ops` keeps as effect parameters only the variables its ops name; the never type's variable is quantified by the op's own scheme; `fail(String) -> !`; `E_ResumeOfNever` armed at birth (`mn-resume-of-never-refuses` RED on the boot). Rows render `WASI`, never `WASI(a)`.
 
 BORN 2026-10-06 (the program of 2026-10-06, landing N4 with N2, tier 3). Every function that touches the host renders its row with a type argument no developer wrote: `mentl where src/main.mn fmt_run` answers `with Memory + Alloc + Trap + WASI(a) + Arena`, `run_run` answers `WASI(b)`, and `mentl doc` prints the same parameter as a debug handle (`WASI(t362504@e442776)`; elsewhere `WASI(t148105@e167038)`). No reading explains it. The only non-ground type among WASI's fifteen ops is `proc_exit(Int) -> !`, and the parser turns `!` into a type name that "resolves at quantify_ctor_ty to a FRESH quantified var per occurrence" (src/parser.mn:3381–3385) — fresh per occurrence in the declaration, then shared by every op of the effect, which makes the effect generic in it. `fail` (lib/prelude.mn:52, `fail(String) -> a`, the bare-variable sibling) is the same case.
 
@@ -20097,3 +20103,19 @@ line. Design: an `image_extent()` op beside `image_key` that persist reads,
 landed across the bootstrap seam in two pins (op support first, repin, then
 persist and `heap_mark` switch). Gate: `heap_mark()` returns to its mark
 after an arena in a spawning module.
+
+### `Hβ.syntax.named-record-rest-is-dropped` — OPEN
+
+BORN 2026-10-06 (N2, the heads leg). The parser drops the name of an open record type's rest: `{x: Int, ...R}` reads as `{x: Int, ...}`, so a rest shared between a parameter and a result (`fn extend(base: {name: String, ...R}) -> {..., ...R}`) is not shared, and the formatter refuses a file that writes one (the conservation census counts `R` lost). 67 of the 92 heads that do not round-trip (`head_round_trip_max`). THE FORM: the rest's name is a row variable the type node carries, bound once per signature, as SYNTAX §«Row polymorphism» writes it.
+
+### `Hβ.syntax.row-grammar-has-no-grouping` — OPEN
+
+BORN 2026-10-06 (N2). A row with a masked edge renders `(e - E)` and the row grammar has no parenthesized group, so the render does not parse back: 19 of the heads leg's 92. THE FORM: `( row )` is a row atom, the same precedence rule the expression grammar already has.
+
+### `Hβ.syntax.effect-arg-type-is-one-token` — OPEN
+
+BORN 2026-10-06 (N2). An effect argument is one token (`parse_one_eff_arg`), so a function type as an effect's type argument (`Cast(() -> a with e)`) renders and does not parse: 6 of the heads leg's 92. THE FORM: a type argument parses as a type.
+
+### `Hβ.infer.if-condition-is-not-bool` — OPEN
+
+BORN 2026-10-06 (found by the render lane, measured on its m2). `if c` does not constrain `c` to `Bool`: `fn g(c) = if c { 1 } else { 2 }` with `g([1, 2])` checks clean and runs to 1. A silent wrong. THE FORM: the condition is unified with `Bool` at the `if`, as a `match`'s scrutinee is with its patterns; a fixture RED first.

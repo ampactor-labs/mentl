@@ -398,11 +398,12 @@ if C=$(wt_m2_ensure); then
     [[ "$rout" == PASS* ]] || { say "✗ row $r: ${rout:-no output}"; rm_bad=$((rm_bad+1)); continue; }
     rproj=$(wt_run --dir . "$C/m2.wasm" query "$rf" "type pick" 2>/dev/null)
     # Two states. A remainder is PROVEN (rendered as its fields) or FREE
-    # (rendered open, `| r…`), and a free one is a variable each caller closes.
+    # (rendered open as SYNTAX writes it, `...`), and a free one is a
+    # variable each caller closes.
     case "$rkind:$rproj" in
-      proven:*'|'*) say "✗ row $r: declares a proven remainder, projection still shows an open row"; rm_bad=$((rm_bad+1)) ;;
+      proven:*'...'*) say "✗ row $r: declares a proven remainder, projection still shows an open row"; rm_bad=$((rm_bad+1)) ;;
       proven:*) ;;
-      free:*'|'*) ;;
+      free:*'...'*) ;;
       free:*) say "✗ row $r: declares a free remainder, projection shows it resolved"; rm_bad=$((rm_bad+1)) ;;
     esac
   done
@@ -694,6 +695,29 @@ if C=$(wt_m2_ensure); then
     else
       say "✗ $islline"
       fail=1
+    fi
+  fi
+  # THE HEAD ROUND TRIP — `parse(render(head)) == head` for every module-level
+  # function in the link, through the formatter's head and the developer's
+  # eye (`where`, `doc`, the caret): `mentl query src/main.mn heads` renders
+  # each, parses it as the declaration it spells and renders it again. A
+  # falling ratchet: what stands is the grammar's three gaps, each named
+  # (`Hβ.syntax.named-record-rest-is-dropped`,
+  # `Hβ.syntax.row-grammar-has-no-grouping`,
+  # `Hβ.syntax.effect-arg-type-is-one-token`). Seen RED: the base renderer
+  # failed 787 of 4,534.
+  hrt=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$C/m2.wasm" query src/main.mn heads 2>/dev/null | head -1 | grep -oE '[0-9]+ that do not' | grep -oE '^[0-9]+')
+  hrtmax=$(grep -E '^head_round_trip_max:' "$BASELINE" | head -1 | cut -d: -f2 | tr -d ' ')
+  if [[ -z "$hrt" ]]; then
+    say "✗ HEADS: mentl query src/main.mn heads answered nothing — the projection is broken, not clean."
+    fail=1
+  else
+    say "· heads: $hrt head(s) that do not round-trip through their own render"
+    if [[ -n "$hrtmax" && "$hrt" -gt "$hrtmax" ]]; then
+      say "✗ HEADS RATCHET: heads that do not round-trip rose $hrtmax -> $hrt — a render says something its own parse does not read back."
+      fail=1
+    elif [[ -n "$hrtmax" && "$hrt" -lt "$hrtmax" ]]; then
+      say "  ↓ heads TIGHTENED $hrtmax -> $hrt — lower head_round_trip_max in $BASELINE to hold it."
     fi
   fi
   } > "$census_out"
