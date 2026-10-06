@@ -140,7 +140,14 @@ fn board_bounds() = [
   // over `effect_op_names`, `fold_acc_evac_expr` by name, which the store's
   // own demand reads too); the yield-record store the landing deleted took
   // one with it, so the count fell one below the ceiling it entered under.
-  Bound({ceiling: 222, shape: CsEffectfulLambda}),
+  //
+  // 222 -> 220 (2026-10-06, L-C): the session's cone is one judgment, so the
+  // per-module loop that judged it and the two lambdas that mapped its
+  // modules and their imports to names left with it (`cone_module` as a
+  // one-hole partial); the space verb's argument parser is a named function
+  // (`space_verb_args`); and the two routes the landing added each pay the one
+  // thunk every judging route pays — the cold View and the session's.
+  Bound({ceiling: 220, shape: CsEffectfulLambda}),
   // Drift mode 10 — the seven survivors are documented sentinels, not masked
   // cases. Every wildcard that is NOT one of them is a variant the author
   // declined to enumerate, and the medium cannot tell the difference, which

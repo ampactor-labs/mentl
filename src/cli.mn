@@ -21,7 +21,9 @@ type EntryVerb
   = VEdit(Option(String))
   | VDoc(Option(String))
   | VServe
-  | VSpace
+  // the View at an address — `mentl space <path>:<line>[:<col>]` writes it as
+  // JSON (space.mn); bare `mentl space` is the page, the mentl command's
+  | VSpace(Option((String, Int, Int)))
   | VTighten(Option(String))
   | VFmt(String)
   // target REQUIRED — carried non-optionally
@@ -122,6 +124,20 @@ fn accept_verb_args(a) = if len(a) >= 3 {
   ParseError("accept needs an address: mentl accept <path>:<line>:<col>")
 }
 
+// The space verb's subject is an ADDRESS when one is given — the same shape
+// the bare address form reads — and nothing otherwise (the page). A word
+// that is not an address names no position and says so.
+fn space_verb_args(a) = if len(a) >= 3 {
+  match parse_address(a[2]) {
+    Some(addr) => match addr {
+      (target, line, col) => Invocation(VSpace(Some((path_to_module(target), line, col)))),
+    },
+    None => ParseError("space takes an address: mentl space <path>:<line>[:<col>] — the page itself is `mentl space` with no argument"),
+  }
+} else {
+  Invocation(VSpace(None))
+}
+
 fn verb_specs() = [VerbSpec(
   "run",
   "<path> [args…]",
@@ -197,9 +213,9 @@ fn verb_specs() = [VerbSpec(
   "the resident graph — read verbs answer live; run it in a project"
 ), VerbSpec("serve", "", (a) => Invocation(VServe), "the transport server"), VerbSpec(
   "space",
-  "",
-  (a) => Invocation(VSpace),
-  "the ide — the mentl command stages the page (ide/space.manifest) and serves it"
+  "[<path>:<line>[:<col>]]",
+  space_verb_args,
+  "the ide — bare, the mentl command stages the page (ide/space.manifest) and serves it; at an address, the View the page paints, as JSON"
 ), VerbSpec(
   "tighten",
   "[path]",

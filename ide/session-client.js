@@ -33,6 +33,11 @@
   const now = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
   const asText = (v) => (typeof v === "string" ? v : td.decode(v));
   const asBytes = (v) => (typeof v === "string" ? te.encode(v) : v);
+  const sameBytes = (a, b) => {
+    if (!a || a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+    return true;
+  };
 
   // Wait until word `i` moves off `seen`, up to `ms`. waitAsync where the host
   // has it (node, Chrome); a 1 ms poll where it does not.
@@ -98,7 +103,12 @@
     // files that changed. Resolves to the `run` role's reply shape with `ms`,
     // `resident` and, when the session could not answer, `why`.
     async call(argv, delta) {
-      for (const [p, v] of Object.entries(delta || {})) { this.vfs[p] = asBytes(v); this.unsent[p] = asText(v); }
+      // a file is news to the session only when its bytes differ from the
+      // tree the session already holds; an unchanged one rides no request
+      for (const [p, v] of Object.entries(delta || {})) {
+        const b = asBytes(v);
+        if (!sameBytes(this.vfs[p], b)) { this.vfs[p] = b; this.unsent[p] = asText(v); }
+      }
       const t0 = now();
       if (this.unavailable) return this.cold(argv, t0, this.unavailable);
       if (!this.worker) {

@@ -6,6 +6,8 @@
 #
 #   bash tools/march.sh             # boot → m2 → m3, ASSERT the fixpoint ratchet
 #   bash tools/march.sh --fixpoint  # force the m4 leg even on a clean m2 == m3
+#   MARCH_REPIN=1 bash tools/march.sh  # bless a green candidate; the m4 leg
+#                                      # runs first and refuses on m3 ≠ m4
 #
 # The ratchet arbitrates ITSELF: m2 == m3 is the fixpoint; on m2 ≠ m3 the march
 # runs the m4 leg automatically and rules TRANSITION (m3 == m4 — an emit/import
@@ -426,8 +428,35 @@ fi
 # m2 and m3 are BOTH wheel-emitted, so m2 == m3 is the fixed point —
 # asserted on every run (the ratchet law: every wheel change holds
 # m_n == m_{n+1}). --fixpoint extends the chain one more generation (m4)
-# for the paranoid triple.
+# for the paranoid triple, and EVERY REPIN runs that leg before it blesses.
 fixok=1; m4done=0
+# THE DETERMINISM LEG. On a clean march m4 is deductively redundant: m2 == m3
+# means m3 IS m2, so m4 == m3 follows. What the leg alone tests is that the
+# same wasm on the same input emits the same bytes. Until 2026-10-06 it ran
+# only under --fixpoint, and AFTER the clean repin had already copied m2 over
+# the boot — so a non-reproducing m4 set fixok=0 with the new boot in place,
+# and twelve clean pins in a row were never probed at all
+# (Hβ.march.determinism-is-never-probed). A repin now runs it before the bless.
+probe_m4() {  # 0 when m3 == m4; sets m4rc and m4done
+  if ! "${W2W[@]}" "$OUT/m3.wat" -o "$OUT/m3.wasm" 2> "$OUT/m3w.err"; then
+    echo "✗ m3 wat2wasm FAILED (the determinism leg cannot run):"; head -5 "$OUT/m3w.err"
+    return 1
+  fi
+  gen "$OUT/m3.wasm" "$OUT/m4.wat" "$OUT/m4.err"; m4rc=$?; m4done=1
+  if [ "$m4rc" = 0 ] && diff -q "$OUT/m3.wat" "$OUT/m4.wat" >/dev/null 2>&1; then
+    echo "✓✓ FIRST LIGHT: m3 == m4 (fixed point)"
+    return 0
+  fi
+  echo "· m3 ≠ m4 ($(diff "$OUT/m3.wat" "$OUT/m4.wat" 2>/dev/null | grep -c '^[<>]') diff lines; m4 exit=$m4rc)"
+  return 1
+}
+# The stamp is keyed to the boot sha it measured, exactly as the frontier
+# stamp is, so a later repin invalidates it by construction and state.sh can
+# report its absence as a visible blank.
+stamp_fixpoint() {
+  mkdir -p .build/gate
+  sha256sum boot/mentl.wasm 2>/dev/null | awk '{print $1}' > .build/gate/fixpoint-stamp
+}
 # SIZE-GUARD the compare (the empty-wat trap: two empty legs diff equal and a
 # gate that cannot fail reads as a fixpoint — 2026-07-22's own lesson).
 if [ ! -s "$OUT/m2.wat" ] || [ ! -s "$OUT/m3.wat" ]; then
@@ -436,7 +465,13 @@ if [ ! -s "$OUT/m2.wat" ] || [ ! -s "$OUT/m3.wat" ]; then
 elif [ "$m3rc" = 0 ]; then
   if diff -q "$OUT/m2.wat" "$OUT/m3.wat" >/dev/null 2>&1; then
     echo "✓✓ FIXED POINT holds: m2 == m3"
-    if [ "${MARCH_REPIN:-0}" = 1 ]; then
+    if [ "${MARCH_REPIN:-0}" = 1 ] && ! probe_m4; then
+      # THE DETERMINISM LEG GATES THE BLESSING (2026-10-06): a candidate that
+      # does not reproduce itself is not blessable, and the boot is untouched
+      # because nothing has been copied yet.
+      echo "✗ REPIN REFUSED: m3 ≠ m4 — the candidate does not reproduce itself; boot unchanged."
+      fixok=0
+    elif [ "${MARCH_REPIN:-0}" = 1 ]; then
       # THE BATTERY GATES THE BLESSING (2026-07-31): a pin the micros have
       # not judged is not blessable — the OOM'd session repinned mid-gate
       # and three red micros (findtag/mapelem/mapfield) rode hidden into
@@ -453,7 +488,8 @@ elif [ "$m3rc" = 0 ]; then
         # is the scaffold-tier fix; the key gaining the build identity is
         # the peer (Hβ.persist.image-key-compiler-build).
         rm -f .build/warm-compile-*.img
-        echo "· REPIN (clean): boot ← m2  sha256 $(sha256sum boot/mentl.wasm | cut -c1-16)…  (battery green)"
+        echo "· REPIN (clean): boot ← m2  sha256 $(sha256sum boot/mentl.wasm | cut -c1-16)…  (battery green; m3 == m4)"
+        stamp_fixpoint
         emit_provenance m2 "CLEAN m2 == m3" \
           "$(wc -l < "$OUT/m2.wat" 2>/dev/null)" \
           "$(grep -cE 'E_[A-Za-z]+ error' "$OUT/m3.err" 2>/dev/null)"
@@ -509,23 +545,7 @@ elif [ "$m3rc" = 0 ]; then
   fi
 fi
 if [ "$FIXPOINT" = 1 ] && [ "$m3rc" = 0 ] && [ "$m4done" = 0 ]; then
-  if "${W2W[@]}" "$OUT/m3.wat" -o "$OUT/m3.wasm" 2>/dev/null; then
-    gen "$OUT/m3.wasm" "$OUT/m4.wat" "$OUT/m4.err"; m4rc=$?
-    if [ "$m4rc" = 0 ] && diff -q "$OUT/m3.wat" "$OUT/m4.wat" >/dev/null 2>&1; then
-      echo "✓✓ FIRST LIGHT: m3 == m4 (fixed point)"
-      # STAMP THE DETERMINISM PROBE so state.sh can report it, and so its
-      # ABSENCE is a visible blank rather than a flag nobody passes. On a clean
-      # march m4 is deductively redundant (m2 == m3 means m3 IS m2, so m4 == m3
-      # follows); what this leg alone tests is that the same wasm on the same
-      # input emits the same bytes. Keyed to the boot sha it measured, exactly
-      # as the frontier stamp is, so a repin invalidates it by construction.
-      mkdir -p .build/gate
-      sha256sum boot/mentl.wasm 2>/dev/null | awk '{print $1}' > .build/gate/fixpoint-stamp
-    else
-      echo "· m3 ≠ m4 ($(diff "$OUT/m3.wat" "$OUT/m4.wat" 2>/dev/null | grep -c '^[<>]') diff lines; m4 exit=$m4rc)"
-      fixok=0
-    fi
-  fi
+  if probe_m4; then stamp_fixpoint; else fixok=0; fi
 fi
 # VERB PARITY — this script's own successor has to be able to run.
 #

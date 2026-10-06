@@ -772,43 +772,61 @@ over the page's console wire, with the product legs: render fidelity, no
 
 ### Served now — the loop the page runs
 
-- **The Aspect ring** reads the compiler's address projection (`mentl
-  main.mn:L:C` → `render_at`, src/main.mn) through the resident session: a
-  caret move is a read of the graph the session holds (~20 ms), an edit sends
-  the changed text with the caret's address and the session re-judges the
-  moved cone, answering the facets AND the program's diagnostics in one reply
-  (~100 ms). All eight rows are real since E4; `SURFACE` only before the first
-  read.
-- **The Why facet** renders the Reason chain as a row and as the Wavefront's
-  line. The walk's ink along the canvas is L-D.
+- **The View is rendered by the wheel** (L-C, 2026-10-06): `mentl space
+  <file>:<line>[:<col>]` answers the View — the Ring's eight facts in
+  primitive order, each with its provenance (surface · declared · real ·
+  socket) and its notes (a chain's hops, a proposal's survivors or computed
+  question, an obligation's state); the Lens, a lead sentence first and then
+  every banked diagnostic AS THE KIND IT IS at ITS OWN site, the caret's
+  module before the linked ones; the Ledger, the declarations nearest the
+  caret by the graph's own proximity, the open obligations and the
+  tightenings — one typed fact tree in src/space.mn whose two projections are
+  the terminal's text (`mentl <file:line>`, byte-identical to the render it
+  replaced) and the page's JSON through lib/json.mn. The page is a host with
+  ONE painter over that JSON: the WASI shim, the channel, the textarea, and
+  no parser of the wheel's prose anywhere (the regex facet and stderr
+  parsers, the Teach knob, the status bar, the footer, the Wavefront strip
+  and the Module pane are deleted, §3.8). A caret move is a read of the graph
+  the session holds (a lesson's View in ~8 ms resident, ~1 KB; the browser's
+  read ~44 ms), an edit sends the changed text under its own path and the
+  session re-judges the moved cone as ONE judgment — the changed modules and
+  everything downstream, through the cold route's own machine, so a chain's
+  order and a cycle of modules are the judgment's binding groups and never
+  the session's — answering the View in one reply (~45 ms for a
+  lesson's edit, ~500 ms for Pulse's seventeen stages).
+- **The project form**: `project <dir>` in `ide/space.manifest` (staged into
+  `member` lines, since a static host lists no folder), `mentl space <dir>`
+  for a folder on the command line, the select grouped by project, every
+  member mounted at its own path so an address targets its module, the edited
+  file riding the delta under its path, drafts per file. Pulse opens with
+  zero refusals; the worker's `fd_readdir` is true over the files it holds.
+- **The Why facet** renders the Reason chain as the ring's notes. The walk's
+  ink along the canvas is L-D.
 - **Accept is a graph edge** (C4): Tab at a `??` whose Propose facet returned
-  one proven survivor runs `mentl accept main.mn:L:C` in the session; the reply
-  carries the rewritten file, and the next read's Why says `accepted`. A tie
-  never proposes — the page renders the computed question.
+  one proven survivor runs `mentl accept <file>:L:C` in the session; the reply
+  carries the rewritten file, the page re-projects, and the next read's Why
+  says `accepted`. A tie never proposes — the page renders the computed
+  question from the proposal fact's notes.
 - **The session keeps its graph** (E2): one worker instance for the page's
   life, blocking in the wheel's own read between requests over a
-  SharedArrayBuffer; a refusal answers cold with its exit code.
-- **The Ledger, in part**: the authored rows, the proof surface and the open
-  obligations at the caret. Its bands (`audit`, `query performs`, `where`) are
-  L-E.
-- **The Lens** ranks the diagnostics to one teaching step and jumps to the
-  address; the compile's cost lines (`heap:`, `arena:`, `session:`) render as
-  cost on the Wavefront's strip today, never as a diagnostic — and the strip,
-  the Teach knob, the footer, the status bar and the Module pane (the emitted
-  WebAssembly text on demand) are the compiler-builder's instruments, deleted
-  in L-C (§3.8).
+  SharedArrayBuffer; a refusal answers cold with its exit code, and its
+  diagnostics still reach the Lens through the structured bank.
+- **The Ledger, in part**: declarations by proximity, the open obligations
+  and the tightenings at the caret. Its bands (`audit`, `query performs`,
+  `where`) are L-E.
+- **The Lens** carries a Warning as a Warning at its line and a mismatch at
+  its own site rather than its Reason's address (the two measured bugs of
+  the regex it replaced); the compile's cost lines (`heap:`, `arena:`,
+  `session:`) are cost, never a diagnostic, and render nowhere.
 
 ### Named next — the substrate work each surface needs, in positive form
 
-- **The view rendered by the wheel** (L-C): `src/space.mn` + the `space`
-  verb's event→view answer over the session; the Ring, the Lens and the Ledger
-  move first and their JavaScript deletes; the page compiles through the
-  session's living check instead of a cold worker per edit
-  (`Hβ.session.edit-pays-for-the-program`). With it the deletions §3.8
-  decides (the knob, the instrument strip, the footer, the status bar, the
-  Module pane), density as a degree of interest carried on every fact the
-  view answers, and the project form — a folder opened, its module graph the
-  manifest, drafts persisted.
+- **The View as graph content** (`Hβ.space.view-is-graph-content`): today a
+  per-answer arena value with a handle on every fact as the page's key; the
+  ultimate form is a graph node with a Why of its own. An edit still pays for
+  the program rather than its cone
+  (`Hβ.session.edit-pays-for-the-program`); a folder pick in the browser is
+  `Hβ.felt.project-picker-outside-chromium`.
 - **The Canvas as the formatter's projection** (L-D): the wheel's own tokens
   and spans (the page's tokenizer deletes — a second lexer is the
   Carried-Truth violation, and it is where the lost-space bug bred), `mentl

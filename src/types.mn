@@ -1817,6 +1817,104 @@ type RowFacet = Evaluates(EffRow) | WhenCalled(EffRow, EffRow) | HoleRow
 type CursorView
   = CursorView(NodeKind, Proposal, [VerbFrame], RowFacet, Ownership, [(Int, Span, Predicate, Reason)], Teaching, [Reason])
 
+// ─── The View — what Mentl Space paints, typed ───────────────────────
+//
+// The eight aspects at a position, each carrying the sentence the terminal
+// says for it and the value behind it (space.mn computes them from the one
+// cursor read; the terminal prints them and the page's JSON serializes
+// them, two projections of one walk). An ADT, exhaustive at every reader:
+// no word the page matches on exists in the wheel — the wire's words are
+// made in exactly one place, the serializer.
+type Aspect
+  // the addressed source, sliced to the node, and what is bound there
+  = AQuery(String)
+  // the socket's verdict at the position
+  | APropose(Socket)
+  // the verbs that hold the node, innermost first; empty where none does
+  | ATopology(String)
+  // what running the node performs — said at every position, Pure included
+  | AEffects(String)
+  // the grade the use-count inferred
+  | AOwnership(Ownership)
+  // the obligations standing open at the node — each one a note under it,
+  // so the aspect itself carries nothing a count of the notes would repeat
+  | AVerify
+  // the gradient's answer, said, and which kind of answer it is; at a
+  // declaration the gradient has nothing for, the tightening the judgment
+  // banked, when it banked one
+  | ATeach(String, TeachMode)
+  // the first hop of the node's Why; the deeper hops and the type chains
+  // are notes under it
+  | AWhy(String)
+
+// The socket's content at a position: the one proven fill as source with
+// its Reason; a tie's width (its members and the computed question are
+// notes); an authored hole nothing proved; and a filled position, which has
+// no proposal to report.
+type Socket = SkFill(String, String) | SkAsk(Int) | SkNone | SkSilent
+
+// Which answer the Teach aspect gives: an annotation to add, a question
+// between two, a predicate a parameter needs, a tightening the judgment
+// banked, or nothing.
+type TeachMode = TmAdd | TmAsk | TmNeed | TmTighten | TmNone
+
+// What stands under an aspect: the authored lede over the query; a tie's
+// member, the computed question, a name the medium would not offer with
+// its Why, and the install that serves a perform, under the proposal; an
+// open obligation at its own module and span, under verify; a hop of the
+// Why, and the chain a type is read from with its own hops.
+type Note
+  = NoteLede(String)
+  | NoteMember(String)
+  | NoteQuestion(String)
+  | NoteRefusal(String, String)
+  | NoteHandler(String)
+  | NoteObligation(String, String, Span)
+  | NoteHop(String)
+  | NoteTypeChain(String, [String])
+
+// One aspect of the ring with what stands under it.
+type RingFact = RingFact(Aspect, [Note])
+
+// The Ledger: the module's own facts, each with how much it matters at the
+// caret — a top-level declaration (its handle, its kind in the author's
+// word, its name, its query line, its span, its proximity to the caret), an
+// open obligation of the module (its sentence, the predicate owed, the Why
+// it is owed by, its module and span), a tightening the judgment banked.
+type LedgerFact
+  = LedgerDecl(Int, String, String, String, Span, Float)
+  | LedgerObligation(String, String, String, String, Span)
+  | LedgerTighten(String, String, Span)
+
+// A position the field lists — an authored hole or a gradient position, its
+// handle and span, with the ring its own address projects.
+type FieldFact = FieldHole(Int, Span, [RingFact]) | FieldGradient(Int, Span, [RingFact])
+
+// Where a View stands: the module, the line and column the request named,
+// the handle the address resolved to, and its span.
+type ViewAt = ViewAt({col: Int, h: Int, line: Int, module: String, span: Span})
+
+// The View at an address: the position, the eight-aspect ring at it, and
+// the Lens and the Ledger of its module. The page paints this and nothing
+// else; the terminal prints its ring. At line 0 the whole module is the
+// subject: the ring is empty and the field holds every hole and every
+// gradient position, ranked, each with its own ring — the work queue the
+// terminal prints with the Ledger's obligations and tightenings. The Lens
+// is the bank's own facts, each the report as it fired (the kind, its
+// message, its module); the lead sentence the page prints over them is a
+// projection of that fact, never a fact of its own.
+type View
+  = View({at: ViewAt, field: [FieldFact], ledger: [LedgerFact], lens: [(DiagKind, String, String)], ring: [RingFact]})
+
+// The wire's word for a diagnostic's applicability — the automation axis
+// (SYNTAX.md), spelled as the catalog spells it.
+fn applicability_text(a) = match a {
+  MachineApplicable => "MachineApplicable",
+  MaybeIncorrect => "MaybeIncorrect",
+  HasPlaceholders => "HasPlaceholders",
+  Unspecified => "Unspecified",
+}
+
 // query   propose  topology     row     trace      verify  teach    why
 // ─── SpinePage — the graph's columns, named ONCE ─────────────────────────
 // One band's worth of every per-handle fact, each column a flat array the
@@ -3045,11 +3143,11 @@ effect GraphWrite {
   // retries on, so held_has_poly was false and the Mycroft fragment never
   // ran (Hβ.diag.an-arms-report-escapes-an-inner-capture).
   //
-  // So the arm STORES the triple and inference DRAINS it at the judgment
-  // boundary, where the report lands in the body's world and every bracket
-  // that should see it does. Same shape as the holes pair above, one
-  // concern over: an arm may note, only the body may narrate.
-  graph_guard_drain() -> [(DiagKind, String, String)]
+  // So the arm STORES the refused fact with its module and inference DRAINS
+  // it at the judgment boundary, where the report is rendered in the body's
+  // world and every bracket that should see it does. Same shape as the holes
+  // pair above, one concern over: an arm may note, only the body may narrate.
+  graph_guard_drain() -> [(DiagKind, String)]
   // The pipe completion's retraction: a stage's `??` slot lowers (the
   // note fires at the visit) and is then spliced over by the piped
   // value — consumed, not surviving. The unnote removes it from the
@@ -3398,20 +3496,22 @@ type DiagKind
 // every surface (source/code/kind/message/span/applicability) from it.
 // !Diagnostic gates the handler, not the effect.
 effect Diagnostic {
-  // The op carries the RENDERED line beside the kind — the render runs at
-  // the PERFORM boundary (the `report` fn below), in the reporter's own
-  // world where graph and intern are live, never in an arm. An arm's
-  // performs resolve OUTER of its own install (the world law), so an
-  // arm-side diag_message chased a graph that was not in its world — the
+  // (kind, MESSAGE, the MODULE it is about). The message is the one part
+  // of a report that reads the graph, so it is rendered once, at the
+  // PERFORM boundary (the `report` fn below), in the reporter's own world
+  // where graph and intern are live, never in an arm. An arm's performs
+  // resolve OUTER of its own install (the world law), so an arm-side
+  // diag_message chases a graph that is not in its world — the
   // render-chases-wrong-instance class, and the row truth of it (the
   // handler residual carrying GraphRead + Intern past every bracket to
-  // main's root) is what the root-row gate refused. Arms buffer, tally,
-  // and print; the line arrives made.
-  // (kind, rendered line, the MODULE it is about). The module rides the
+  // main's root) is what the root-row gate refused. Everything else a
+  // report says is a pure read of the kind (diag_line), so an arm that
+  // prints composes its line from what it was handed, and an arm that
+  // banks keeps what it was handed — a fact replayed after a join or read
+  // after a rollback says what it said when it fired. The module rides the
   // report because the register's arm is deliberately graph-free — its row
   // rides every install — so it cannot look the module up itself, and a
-  // local span cannot name a file (two modules both have a line 8). The
-  // reporter has GraphRead and reads it live; the register just compares.
+  // local span cannot name a file (two modules both have a line 8).
   diag_report(DiagKind, String, String)
   // The two live reads of the ledger the handler already keeps. The exit code
   // and the emit gate were both RE-DERIVING this as 0 — the handler saw every
@@ -3479,19 +3579,17 @@ effect DiagRegister {
   diag_scope_of() -> DiagScope
 }
 
-// The branch cursor's diagnostic join surface (Phase C, C1c-2). A branch
-// RENDERS at collect — the projections read live values at the perform,
-// so a banked line is safe where a banked DiagKind would render against
-// post-join state — and the join re-prints the lines in stmt order, folding
-// diag_lines_taken is armed on diag_branch (the per-stmt collector).
-// A separate effect so tighten_collector and diag_quiet keep their arm
-// sets untouched. Each banked fact is (diag, rendered line): the line
-// renders AT THE PERFORM (live values), and the join RE-PERFORMS
-// diag_report per fact into the root chain — the root arm counts and
-// scope-registers off the diag itself, and every Diagnostic forwarder
-// sees the structure (the old absorb-fold reached only the one handler
-// carrying its arm, so a branch-fired T_OverDeclared bypassed the
-// tighten bank).
+// The branch cursor's diagnostic join surface: the facts a branch's
+// collector (diag_branch) holds, taken at the join. Each fact is what the
+// report carried — the kind, its message rendered at the perform against
+// the branch's live values, its module — so a fact read after the join,
+// or after a speculation's rollback, says what it said when it fired; a
+// DiagKind re-rendered there would read the post-join graph. The join
+// RE-PERFORMS diag_report per fact into the root chain, in statement
+// order, so the root arm counts and scope-registers off the kind itself
+// and every Diagnostic forwarder — the bank among them — sees the
+// structure. A separate effect so the forwarders and diag_quiet keep
+// their arm sets untouched.
 effect BranchDiag {
   diag_lines_taken() -> [(DiagKind, String, String)]
 }
@@ -4075,8 +4173,7 @@ fn diag_refuses(d) with Pure = match d {
   _ => False,
 }
 
-// The severity-class label the stderr line prints (the legacy `kind`
-// string position) — a projection of severity + code family.
+// The word a report's line prints for its severity.
 fn diag_kind(d) with Pure = match diag_severity(d) {
   SWarning => "Warning",
   SVerificationPending => "VerificationPending",
@@ -4128,6 +4225,11 @@ fn diag_applicability(d) with Pure = match d {
   Unspecified,
   _ => MaybeIncorrect,
 }
+
+// Whether the step a report names is one the medium takes by itself: the one
+// test for a step on offer. The Lens ranks such a report above a warning and
+// its lead offers the step exactly when the patch applies without a question.
+fn diag_applies_itself(d) = diag_applicability(d) == MachineApplicable
 
 // The rendered message — operands read LIVE from the constructor, never a
 // String copied at the call site. This is the Carried-Truth win: the fact
@@ -4216,13 +4318,9 @@ fn diag_message(d) with !Mutate = match d {
   EReplayExhausted(_) => "clock replay trace exhausted",
 }
 
-// Universal short-circuit / early return.
-// Flattens the "Option Monad" into the topological pipeline.
-// `abort` is inferred OneShot despite `-> !`: OneShot's semantics
-// is "at most once" (zero ≤ 1) and "continuation on stack, no
-// heap capture" — both true for a handler arm that never calls
-// resume. The infer pass counts zero resume sites in `catch_abort`-
-// shape arms and produces `OneShot` (count ≤ 1 → OneShot).
+// Early exit. An arm that never resumes abandons the computation around the
+// perform, and the install's value is the arm's (SYNTAX §«Resume
+// discipline»); `abort` returns `!` because nothing after it runs.
 effect Abort {
   abort() -> !
 }
@@ -4500,11 +4598,13 @@ effect Filesystem {
   fs_rename(String, String) -> Bool
 }
 
-// diag_line — THE diagnostic render, one home (moved beside diag_message,
-// its whole substance). Sequenced projections, then ONE splice-of-vars
-// line: a single 5-splice interpolation mis-rendered the LAST splice when
-// an earlier splice's evaluation allocated (the shared-scratch clobber
-// class, §9); a splice list of pre-built values has nothing to clobber.
+// diag_line — the line a report prints, one home: a pure read of the kind
+// around the message the report carried, so any arm can print it and none
+// re-renders the graph-reading part. Sequenced projections, then ONE
+// splice-of-vars line: a single 5-splice interpolation mis-rendered the
+// LAST splice when an earlier splice's evaluation allocated (the
+// shared-scratch clobber class, §9); a splice list of pre-built values has
+// nothing to clobber.
 // THE ADDRESS IS (MODULE, SPAN) — the same law the census site line and the
 // refs facet answer to. `at 4479:38` names a line in NO FILE, and `src` does
 // not rescue it: src is the PHASE (`infer`, `parser`), not the module, so a
@@ -4514,34 +4614,18 @@ effect Filesystem {
 // "rides along unread" — so this was a rendered fact one parameter from being
 // an address. Measured 2026-09-14 by a representation probe whose ~135 type
 // errors named lines in fifteen different files and no file at all.
-fn diag_line(diag, dmod) with !Mutate = {
+fn diag_line(diag, msg: String, dmod: String) with !Mutate = {
   let src = diag_source(diag)
   let code = diag_code(diag)
   let kindw = diag_kind(diag)
-  let msg = diag_message(diag)
   let sp = show_span(diag_span(diag))
   "{src}: {code} {kindw}: {msg} at {dmod}:{sp}\n"
 }
 
-// report — the ONE reporting boundary. The render runs HERE, in the
-// reporter's own world (graph and intern live under the analysis
-// brackets), and the finished line rides the op beside its kind; every
-// arm downstream buffers, tallies, or prints — never renders. This is
-// what dissolves the diagnostics/graph arm-dependency cycle the install
-// ORDER could only half-satisfy (diagnostics-outer-of-graph served the
-// occurs report and starved the render; the reverse starved the report).
-// The report carries the MODULE it is about, read live where GraphRead
-// already is. The register's arm stays graph-free (its row rides every
-// install), which is why the old filter could only compare LINE NUMBERS and
-// had to carry scope_localize to subtract a weave offset back off every
-// rendered span. Spans are local from birth now, so there is nothing to
-// subtract and nothing to localize — the only question left is which file a
-// report is about, and that is one cell read, carried here rather than
-// re-derived by scanning ranges for one that contains the line.
-// report_at — THE reporting boundary: a diagnostic AT a node. The module is
-// the node's own column read (graph_module_of, total by construction), never
-// the cursor's ambient position. That distinction is the whole reason this
-// boundary exists in this form. The ambient module is right exactly while a
+// A diagnostic AT a node: the module is the node's own column read
+// (graph_module_of, total by construction), never the cursor's ambient
+// position. That distinction is the whole reason this boundary exists in
+// this form. The ambient module is right exactly while a
 // walk is inside one file — the parse — and wrong the moment a walk spans the
 // program: emit visits every reachable fn in table order, so "the module in
 // force" is wherever the walk happens to be, and under the driver's
@@ -4569,10 +4653,15 @@ fn report_at(h, diag) = diag_report_at(diag, module_name_of_handle(graph_module_
 // the parse is reporting from the wrong place.
 fn report(diag) = report_at(graph_module_current(), diag)
 
-// The module is read ONCE and used twice — in the rendered address and as the
-// register's own scope key — so the render and the carried module cannot drift
-// apart into two answers about one report.
-fn diag_report_at(diag, dmod) = diag_report(diag, diag_line(diag, dmod), dmod)
+// The one place a report is rendered: its message, once, here in the
+// reporter's own world, where the graph and the intern are live, riding the
+// op beside its kind and its module. Every arm downstream composes its line
+// from those (diag_line), and buffers, tallies or prints it without reading
+// the graph, so no diagnostic arm depends on where the graph is installed.
+// The module is read once and rides beside the message, so the line an arm
+// prints and the scope it registers cannot drift apart into two answers
+// about one report.
+fn diag_report_at(diag, dmod) = diag_report(diag, diag_message(diag), dmod)
 
 // A module handle's own name, read from its node. The non-NModule arm REFUSES
 // rather than answering "": every value in the module column was written by
@@ -4639,22 +4728,17 @@ fn show_handle(h) with !Mutate = {
   }
 }
 
-// ─── The parameter list IS a positional product (SYNTAX.md §«Labeled call
-// arguments», §«Defaults...as a product node-kind») ──────────────────────
+// A call's arguments as the callee's positional PRODUCT: positionally, by
+// field (label), mixed, or with defaults filling absent fields, one machinery
+// with a record literal (SYNTAX §«Labeled call arguments»). This is the
+// judgment's one read; its answer is written at the call node (the
+// call-product column, `graph_product_note`) and the lowering reads that, so
+// the two see one product by construction. The LabeledArg wrappers and the
+// reorder are resolved away here; downstream sees only positional value
+// nodes.
 //
-// A call constructs its arg PRODUCT — positionally, by field (label), mixed,
-// or with defaults filling absent fields — ONE machinery, the same as a record
-// literal. resolve_call_args is the JUDGMENT's one read; its answer is written
-// at the call node (the call-product column, `graph_product_note`) and the
-// lowering reads that, so the two see one product by construction — one
-// truth, one writer, one reader, no re-derivation. The LabeledArg wrappers
-// and the reorder are resolved away here; downstream sees only positional
-// value nodes.
-//
-// Resolve a call's arg list (carrying optional LabeledArg wrappers) to the
-// callee's positional param order — PARAMS the callee's declared TParams,
-// read by the judgment off the callee NODE's own type (`callee_params_at`,
-// infer.mn), never by name. Positional args fill the next un-claimed slot
+// PARAMS are the callee's declared TParams, which the judgment reads off the
+// callee NODE's own type, never by name. Positional args fill the next un-claimed slot
 // left-to-right; a labeled arg claims its named slot (skip-over); a slot no
 // arg reaches is filled by the param's default node (the absent product
 // field's fallback construction). An unknown label is E_UnknownArgLabel —
@@ -4785,8 +4869,10 @@ fn collect_slot_nodes(params, slots, i, n, out, count) = if i >= n {
 // The prefixes a desugar mints a parameter's name under, one home for the
 // spelling: `dp_prefix` for a pattern written in parameter position,
 // `al_prefix` for the arm-list literal's one parameter. They are two because
-// the formatter may render only the first back into parameter position
-// (parser.mn `fresh_param_under` says why).
+// the formatter may render only the first back into parameter position: a
+// parameter-position pattern is one the parser could read as an expression,
+// while an arm's pattern is arbitrary, and rendering `{ 0 => 1 }` as a
+// parameter would turn its literal into a wildcard.
 let dp_prefix = "__dp"
 
 let al_prefix = "__al"
@@ -5112,10 +5198,8 @@ fn show_reason(ref reason) with !Mutate = match reason {
 
 // A diagnostic's reason on the diagnostic's own line: the outer address is
 // the span the diagnostic already carries, so it is dropped, and what
-// remains is the chain the unify was asked with. A mismatch used to drop
-// it at the reporter (`type_mismatch` took the reason and discarded it), so
-// `Int vs List(Byte)` at an install said nothing of the arm that answered
-// the second.
+// remains is the chain the unify was asked with, so `Int vs List(Byte)` at
+// an install says which arm answered the second.
 fn reason_line(reason) with !Mutate = match reason {
   Located(_, inner) => show_reason(inner),
   _ => show_reason(reason),

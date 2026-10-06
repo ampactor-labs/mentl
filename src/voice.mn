@@ -958,27 +958,14 @@ fn emitted_artifact_path(fh) = match fh {
   FileHandle(i) => Path(".build/unit-{int_to_str(i)}.wasm"),
 }
 
-// ─── render_voiceline / render_slot — the ONE terminal voice projection ─
-//
-// The cursor projecting the graph as the human-facing string. A VoiceLine's
-// [Slot] folds to text via render_slot, each slot dispatching to the ONE
-// canonical renderer (show_type / show_effrow / show_reason / show_span) — the
-// SAME renderers the compiler reads. So LSP hover / inlay / doc and a compile
-// error are byte-identical projections of one graph (PLAN §0: one cursor
-// projection, surpassing every LSP). Silence renders empty (the medium does
-// not fill space).
-//
-// THAT IS WHAT IT IS FOR, AND NOBODY CALLS IT — measured 2026-09-21 by
-// `mentl query src/main.mn unreachable`. The sentence that stood here said
-// "the slots a hover should show are NO LONGER computed then discarded —
-// this fn is the terminal read every voice surface shares", and the graph
-// refutes the second half: zero references. The `propose` arm below builds a
-// VoiceLine and banks it in a TurnRecord; the LSP projects slots its own way
-// through `completion_items_from_slots` (src/lsp.mn); nothing renders a
-// VoiceLine to text. So the medium composes its own voice and never speaks
-// it. This is a WIRING gap, not dead code — deleting the renderer would
-// delete the voice — and it is named rather than quietly kept:
-// `Hβ.voice.voiceline-renders-to-nobody`.
+// The voice as text: a VoiceLine's [Slot] folds through render_slot, each
+// slot through the one canonical renderer the compiler reads (show_type,
+// show_effrow, show_reason, show_span), so a hover and a compile error are
+// one projection of one graph; silence renders empty. Nothing calls it: the
+// `propose` arm below builds a VoiceLine and banks it in a TurnRecord, and
+// the LSP projects slots its own way (src/lsp.mn), so the medium composes
+// its voice and never speaks it. Deleting the renderer would delete the
+// voice, so the gap is named (`Hβ.voice.voiceline-renders-to-nobody`).
 fn render_voiceline(line) with !Mutate = match line {
   Silence => "",
   VoiceLine(_, _, slots, modif) => "{render_slots(slots)}{render_modifier(modif)}",
@@ -1488,4 +1475,18 @@ fn path_to_module_name(ref s) = {
   } else {
     stripped_prefix
   }
+}
+
+// The Lens's lead sentence over a diagnostic: the medium's own words for
+// what the top report means. A capability a row forbids, an effect nothing
+// handles, a name out of scope and a claim proven false each lead with their
+// sentence; a step the medium takes by itself is offered as one; every other
+// report leads with its message, which already says what it is.
+fn diag_lead(d, msg: String) = match d {
+  EEffectMismatch(_, _, _, _) => "this path performs a capability its row forbids. {msg}",
+  EPurityViolated(_, _) => "this path performs a capability its row forbids. {msg}",
+  EEffectUnhandled(_, _, _) => "this path performs an effect no handler around it answers. {msg}",
+  EMissingVariable(_, _) => "a name here isn't in scope — check the spelling or the import. {msg}",
+  ERefinementRejected(_, _) => "a claim is proven false — the value cannot meet its bound. {msg}",
+  _ => if diag_applies_itself(d) { "a step the medium can take: {msg}" } else { msg },
 }

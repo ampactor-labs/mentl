@@ -14,7 +14,7 @@
   body {
     background: var(--canvas); color: var(--primary);
     font-family: var(--sans); font-size: 13px; overflow: hidden;
-    display: grid; grid-template-rows: auto 1fr auto auto; height: 100vh;
+    display: grid; grid-template-rows: auto 1fr; height: 100vh;
   }
   ::selection { background: var(--selection); }
   ::-webkit-scrollbar { width: 10px; height: 10px; }
@@ -30,11 +30,7 @@
   .wordmark span { color: var(--muted); font-weight: 400; margin-left: 4px; }
   select { background: var(--raised2); color: var(--primary); border: 1px solid var(--border); border-radius: 7px; padding: 5px 10px; font: inherit; font-size: 12px; }
   select:hover { border-color: var(--border-lift); }
-  .status { font-size: 11.5px; color: var(--muted); display: flex; gap: 14px; align-items: baseline; }
-  .status b { color: var(--gold-b); font-weight: 600; font-family: var(--mono); }
   .grow { margin-left: auto; }
-  .knob { display: flex; align-items: center; gap: 8px; font-size: 10.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
-  .knob input { accent-color: var(--gold); width: 84px; }
   button.icon { background: transparent; border: 1px solid var(--border); color: var(--muted); border-radius: 7px; width: 28px; height: 28px; cursor: pointer; font-size: 14px; }
   button.icon:hover { color: var(--bright); border-color: var(--border-lift); }
   #dot { width: 9px; height: 9px; border-radius: 50%; background: var(--ghost); flex: none; transition: background .25s, box-shadow .25s; }
@@ -94,7 +90,7 @@
   .proposal .socket { display: inline-block; width: 10px; height: 10px; vertical-align: -1px; margin-right: 6px;
     background: var(--verm-b); clip-path: polygon(30% 0, 70% 0, 100% 30%, 100% 70%, 70% 100%, 30% 100%, 0 70%, 0 30%); }
 
-  /* ── the rail: the aspect ring, then Lens | Ledger | Module ─────────────── */
+  /* ── the rail: the aspect ring, then Lens | Ledger ──────────────────────── */
   .rail { display: grid; grid-template-rows: auto 1fr; border-left: 1px solid var(--border); background: var(--raised1); min-height: 0; }
   .aspect { border-bottom: 1px solid var(--border); padding: 12px 14px 14px; overflow: auto; max-height: 52vh; }
   .aspect h4 { font-size: 10px; font-weight: 600; letter-spacing: .13em; text-transform: uppercase; color: var(--faint); margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
@@ -118,6 +114,7 @@
   .facet .v .sub { display: block; color: var(--muted); font-size: 11px; margin-top: 2px; font-family: var(--sans); }
   .facet .v .lede { display: block; color: var(--muted); font-family: var(--sans); font-style: italic; font-size: 11.5px; margin-bottom: 3px; }
   .facet .v .hop { display: block; padding-left: 12px; color: var(--muted); }
+  .facet .v .hop[data-l] { cursor: pointer; }
   .facet.real .v { animation: surface .22s var(--e-surface); }
   .k-graph { color: var(--blue-b); } .k-hand { color: var(--green-b); } .k-verb { color: var(--sky-b); }
   .k-row { color: var(--gold-b); } .k-own { color: var(--mag-b); } .k-ref { color: var(--verm-b); }
@@ -131,17 +128,19 @@
   .tabs div.on { color: var(--gold-b); border-bottom-color: var(--gold); }
   .tabs div .n { margin-left: 6px; font-size: 10px; color: var(--abyss); background: var(--muted); border-radius: 8px; padding: 1px 6px; font-family: var(--mono); }
   .tabs div.on .n { background: var(--gold); }
+  .tabs .meta { margin-left: auto; color: var(--ghost); font-size: 10.5px; cursor: default; font-family: var(--mono); }
+  .tabs .meta:hover { color: var(--ghost); }
   .panel { overflow: auto; display: none; min-height: 0; }
   .panel.on { display: block; }
 
-  /* the Lens — the diagnostics, ranked to one teaching step */
-  .lead { padding: 12px 14px; border-bottom: 1px solid var(--border); background: var(--raised2); font-size: 12.5px; line-height: 1.5; }
+  /* the Lens — the diagnostics, as the kinds they are, under one lead */
+  .lead { padding: 12px 14px; border-bottom: 1px solid var(--border); background: var(--raised2); font-size: 12.5px; line-height: 1.5; white-space: pre-wrap; }
   .lead b { color: var(--bright); }
   .diag { padding: 10px 14px; border-bottom: 1px solid var(--line); cursor: pointer; }
   .diag:hover { background: var(--raised2); }
   .diag .row1 { display: flex; align-items: baseline; gap: 9px; }
   .diag .code { font-weight: 700; font-size: 12px; font-family: var(--mono); }
-  .diag.E .code { color: var(--verm-b); } .diag.W .code { color: var(--gold-b); } .diag.T .code { color: var(--sky-b); } .diag.P .code { color: var(--sky-b); } .diag.V .code { color: var(--mag-b); }
+  .diag .code { color: var(--gold-b); } .diag.sev-error .code { color: var(--verm-b); } .diag.sev-VerificationPending .code { color: var(--mag-b); } .diag.appl-MachineApplicable .code { color: var(--sky-b); }
   .diag .at { color: var(--ghost); font-size: 11px; }
   .diag .appl { margin-left: auto; font-size: 9.5px; color: var(--faint); border: 1px solid var(--border); border-radius: 5px; padding: 2px 6px; }
   .diag .msg { color: var(--muted); margin-top: 4px; font-size: 12px; line-height: 1.5; }
@@ -149,42 +148,26 @@
   .empty .big { font-size: 30px; margin-bottom: 12px; color: var(--green-b); }
   .empty .sub { font-size: 11px; color: var(--ghost); margin-top: 8px; }
 
-  /* the Ledger — rows and the proof surface */
+  /* the Ledger — the module's declarations, obligations and tightenings, ranked for the caret */
   .ledger { padding: 14px; }
   .ledger section { margin-bottom: 18px; }
   .ledger h5 { font-size: 10px; font-weight: 600; letter-spacing: .13em; text-transform: uppercase; color: var(--faint); margin-bottom: 9px; }
-  .rowchip { display: inline-flex; align-items: center; padding: 3px 9px; border-radius: 6px; font-size: 11.5px; margin: 0 5px 5px 0; border: 1px solid var(--border); background: var(--raised2); font-family: var(--mono); }
-  .rowchip.pos { color: var(--green-b); } .rowchip.neg { color: var(--verm-b); border-color: var(--verm); } .rowchip.pure { color: var(--mag-b); }
-  .proof { border: 1px solid var(--verm); border-radius: 10px; padding: 12px 14px; }
-  .proof .head { color: var(--verm-b); font-size: 12px; margin-bottom: 8px; font-weight: 600; }
-  .proof .item { font-size: 12px; color: var(--primary); padding: 3px 0; font-family: var(--mono); }
+  .ledger .decl { padding: 4px 6px; border-radius: 6px; cursor: pointer; font-size: 12px; line-height: 1.5; }
+  .ledger .decl:hover { background: var(--raised2); }
+  .ledger .decl .word { color: var(--blue-b); font-family: var(--mono); font-size: 11px; }
+  .ledger .decl .name { color: var(--green-b); font-weight: 600; }
+  .ledger .decl .text { color: var(--muted); font-family: var(--mono); font-size: 11.5px; display: block; padding-left: 8px; }
+  .ledger .item { font-size: 12px; color: var(--primary); padding: 3px 6px; font-family: var(--mono); cursor: pointer; border-radius: 6px; }
+  .ledger .item:hover { background: var(--raised2); }
+  .ledger .item .at { color: var(--ghost); font-size: 11px; margin-left: 6px; font-family: var(--sans); }
   .subtle { color: var(--faint); font-size: 11px; font-style: italic; line-height: 1.5; }
   .ledger code, .lead code, .diag code { color: var(--bright); background: var(--raised2); padding: 0 4px; border-radius: 4px; }
 
-  /* the Module — the emitted WAT, on demand */
-  .module-bar { display: flex; gap: 10px; padding: 9px 14px; border-bottom: 1px solid var(--border); align-items: center; }
-  .module-bar button { background: var(--raised2); color: var(--primary); border: 1px solid var(--border); border-radius: 7px; padding: 5px 10px; font: inherit; font-size: 12px; cursor: pointer; }
-  .module-bar button:hover { border-color: var(--gold); color: var(--gold-b); }
-  .module-bar span { color: var(--muted); font-size: 11px; }
-  #watout { padding: 12px 14px; white-space: pre; color: var(--muted); font-size: 12px; line-height: 1.55; font-family: var(--mono); }
-  #watout .w-key { color: var(--blue-b); } #watout .w-fn { color: var(--green-b); } #watout .w-str { color: var(--wheat); }
-
-  /* ── the wavefront — why at the caret, the trail of edits ───────────────── */
-  .wavefront { border-top: 1px solid var(--border); background: var(--abyss); padding: 8px 16px; display: flex; gap: 26px; overflow-x: auto; min-height: 36px; align-items: center; }
-  .wf-seg { display: flex; align-items: baseline; gap: 10px; font-size: 11px; color: var(--muted); white-space: nowrap; }
-  .wf-seg .lbl { font-size: 9.5px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--faint); }
-  .wf-seg .mono { color: var(--primary); }
-  footer { padding: 6px 16px; border-top: 1px solid var(--border); background: var(--abyss); color: var(--ghost); font-size: 10.5px; display: flex; gap: 18px; flex-wrap: wrap; }
-  footer b { color: var(--faint); font-weight: 600; }
-
-  /* teach density: 0 = terse, 1 = the facets, 2 = everything the graph says */
-  body[data-teach="0"] .facet .sub, body[data-teach="0"] .facet .lede, body[data-teach="0"] .wf-trail, body[data-teach="0"] .diag .msg { display: none; }
-  body[data-teach="1"] .wf-trail { display: none; }
   @media (prefers-reduced-motion: reduce) { *, ::before, ::after { animation: none !important; transition: none !important; } }
-  @media (max-width: 860px) { main { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; } .rail { border-left: 0; border-top: 1px solid var(--border); } header .status { display: none; } }
+  @media (max-width: 860px) { main { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; } .rail { border-left: 0; border-top: 1px solid var(--border); } }
 </style>
 </head>
-<body data-teach="1">
+<body>
 <header>
   <div class="mark">
     <svg viewBox="0 0 32 32" aria-hidden="true">
@@ -194,9 +177,7 @@
     <div class="wordmark">mentl<span>space</span></div>
   </div>
   <select id="program" title="the program — a lesson, or your own"></select>
-  <div class="status"><span>judged in <b id="ms">—</b></span><span>exit <b id="exit">—</b></span></div>
   <div class="grow"></div>
-  <label class="knob">teach<input id="teach" type="range" min="0" max="2" value="1" step="1"></label>
   <button class="icon" id="theme" title="obsidian / parchment">◐</button>
   <div id="dot" title="the compiler"></div>
 </header>
@@ -220,23 +201,13 @@
       <div class="tabs">
         <div data-p="plens" class="on">Lens <span class="n" id="ndiag">0</span></div>
         <div data-p="pledger">Ledger</div>
-        <div data-p="pmodule">Module</div>
+        <div class="meta" id="sessinfo" title="the session that answered, and what the answer cost">—</div>
       </div>
       <div class="panel on" id="plens"></div>
       <div class="panel" id="pledger"></div>
-      <div class="panel" id="pmodule">
-        <div class="module-bar"><button id="emit">render the module</button><button id="dl" disabled>download .wat</button><span id="modstat">the emitted WebAssembly text, on demand</span></div>
-        <div id="watout"></div>
-      </div>
     </div>
   </div>
 </main>
-<div class="wavefront" id="wavefront"></div>
-<footer>
-  <span><b>compiler</b> <span id="bootinfo">boot/mentl.wasm</span></span>
-  <span><b>session</b> <span id="sessinfo">—</span></span>
-  <span><b>host</b> this page — one worker holds the graph; nothing leaves the browser</span>
-</footer>
 <script src="session-client.js"></script>
 <script>
 "use strict";
@@ -265,7 +236,7 @@ async function ensureIsolated(){
 }
 
 /* ── the manifest — one home of what the page fetches ───────────────────── */
-let BASE = "../", WASM_PATH = "boot/mentl.wasm", LIBS = [], PROGRAMS = [];
+let BASE = "../", WASM_PATH = "boot/mentl.wasm", LIBS = [], PROGRAMS = [], PROJECTS = [];
 async function readManifest(){
   const r = await fetch("./space.manifest", { cache: "no-store" });
   if (!r.ok) throw new Error("space.manifest is missing beside the page");
@@ -276,6 +247,8 @@ async function readManifest(){
     else if (kind === "wasm") WASM_PATH = path;
     else if (kind === "lib") LIBS.push(path);
     else if (kind === "program") PROGRAMS.push(path);
+    else if (kind === "project") PROJECTS.push({ dir: path, members: [] });
+    else if (kind === "member" && PROJECTS.length) PROJECTS[PROJECTS.length - 1].members.push(path);
   }
 }
 async function fetchText(path){
@@ -423,177 +396,153 @@ function session(){
   return SESSION;
 }
 
-/* ── the answers, parsed: the facet lines render_at prints (src/main.mn) and
-   the diagnostics the judgment prints — both text today; the structured
-   view the wheel renders itself replaces these readers (L-C) ───────────── */
-function parseFacets(out){
-  const F = { propose: null, verify: [], why: [], refusals: [], members: [] }; let cur = null;
-  for (const raw of out.split("\n")){
-    const m = raw.match(/^(Lede|Query|Propose|Handler|Topology|Effects|Ownership|Verify|Teach|Tighten|Why): (.*)$/);
-    if (m){
-      cur = m[1];
-      if (cur === "Verify") F.verify.push(m[2]);
-      else if (cur === "Why") F.why.push(m[2]);
-      else if (cur === "Propose") F.propose = m[2];
-      else F[cur.toLowerCase()] = m[2];
-    } else if (cur === "Why" && raw.startsWith("     ") && raw.trim()) F.why.push(raw.trim());
-    else if (cur === "Propose" && raw.startsWith("  · refused ")) F.refusals.push(raw.trim().slice(2));
-    else if (cur === "Propose" && raw.startsWith("  ") && raw.trim()) F.members.push(raw.trim());
-  }
-  return F;
-}
-const APPL = { E_RedundantBraces:"MachineApplicable", E_BlockNeedsBraces:"MachineApplicable", T_OverDeclared:"MachineApplicable", T_RowInventory:"MachineApplicable",
-  W_RedundantWhere:"MachineApplicable", W_EmptyRow:"MaybeIncorrect", E_PatternInexhaustive:"HasPlaceholders", E_MissingVariable:"MaybeIncorrect",
-  E_EffectMismatch:"MaybeIncorrect", E_ImportNameCollision:"MaybeIncorrect", E_RefinementRejected:"Unspecified", E_EffectUnhandled:"MaybeIncorrect" };
-const SEV = { E:0, P:1, V:2, W:3, T:4 };
-// stderr carries three kinds of line: a diagnostic (stage: CODE kind: message … at L:C-L:C),
-// the compile's own telemetry (heap:, arena:, session:) and the verdict (mentl: …)
-function parseStderr(text){
-  const diags = [], cost = [], verdict = [];
-  for (const line of text.split("\n")){
-    if (!line.trim()) continue;
-    if (/^(heap|arena|session): /.test(line)){ cost.push(line); continue; }
-    if (/^mentl: /.test(line)){ verdict.push(line.slice(7)); continue; }
-    const m = line.match(/^(\w+): ([EWTPV]_\w+)(?: (?:error|warning|note))?: (.*)$/);
-    if (!m){ verdict.push(line); continue; }
-    const at = m[3].match(/\bat (?:[\w./<>-]+:)?(\d+):(\d+)(?:-(\d+):(\d+))?/);
-    diags.push({ stage: m[1], code: m[2], msg: m[3], line: at ? parseInt(at[1], 10) : null, col: at ? parseInt(at[2], 10) : null,
-                 endLine: at && at[3] ? parseInt(at[3], 10) : null, endCol: at && at[4] ? parseInt(at[4], 10) : null, appl: APPL[m[2]] || "Unspecified" });
-  }
-  diags.sort((a, b) => (SEV[a.code[0]] ?? 9) - (SEV[b.code[0]] ?? 9) || (a.line || 1e9) - (b.line || 1e9));
-  return { diags, cost, verdict };
-}
-
-/* ── state: one program, one session, one caret ─────────────────────────── */
+/* ── state: one program, one session, one caret, ONE View ──────────────────
+   THE VIEW IS A PROJECTION (src/space.mn). `mentl space <address>` answers
+   the record this page paints — the ring's eight facts at the caret, the
+   Lens (every diagnostic the judgment reported, as the kind it is, at its
+   own site, under one lead) and the Ledger (the module's declarations,
+   obligations and tightenings, ranked for the caret) — and the page keeps
+   no second model of truth: it parses nothing the wheel printed as prose.
+   A refusal answers whole on stderr with its exit code (the cold route's
+   law), and the page shows it as the Lens's lead. */
 let PROGRAM = null;          // the manifest path of the program in the editor, or "scratch"
-let FACETS = null, FACETS_AT = -1, DIAGS = [], COST = [], VERDICT = [], TRAIL = [];
-let WAT = "", PROPOSAL = null, busy = false, pendingEdit = false;
+let FILE = "main.mn";        // the path the editor's text holds in the session's tree — a lesson is main.mn; a project's module keeps its name
+let EXTRA_DELTA = {};        // a project's other modules, sent with the next edit so they stand beside the one in the editor
+let VIEW = null, VIEW_AT = -1, REFUSAL = null, PROJECTED = false, LAST = null;
+let PROPOSAL = null, busy = false, pendingEdit = false;
 const lineColAt = off => { const before = $("src").value.slice(0, off); const nl = before.lastIndexOf("\n"); return { line: before.split("\n").length, col: off - nl }; };
+const offsetOf = (line, col) => { const rows = $("src").value.split("\n"); let o = 0; for (let i = 0; i < line - 1 && i < rows.length; i++) o += rows[i].length + 1; return o + col - 1; };
 const getOffset = () => $("src").selectionStart;
+// a refusal crosses the wire as its stderr and exit code, and the compile's cost
+// lines ride the same stderr; telling them apart by spelling is the residue of
+// that text channel (Hβ.session.answer-is-out-err-and-exit names its end)
+const COST_LINE = /^(heap|arena|session): /;
 
 /* the loop: an edit re-judges the program in the resident session and
-   answers the caret's eight aspects AND the diagnostics in one call; a caret
-   move alone is a read of the graph the session already holds */
+   answers the View at the caret in one call; a caret move alone is a read
+   of the graph the session already holds */
 async function project(edited){
   if (!MODULE || busy){ if (edited) pendingEdit = true; return; }
   busy = true; $("dot").className = "busy";
   const off = getOffset(); const { line, col } = lineColAt(off);
-  const delta = edited ? { "main.mn": $("src").value } : undefined;
-  const t0 = performance.now();
-  const r = await session().call(["mentl", `main.mn:${line}:${col}`], delta);
-  const ms = performance.now() - t0;
-  if (edited || DIAGS === null){
-    const p = parseStderr(r.err || "");
-    DIAGS = p.diags; COST = p.cost; VERDICT = p.verdict;
-    TRAIL.push({ t: new Date(), ms, cost: p.cost.find(c => c.startsWith("session: the answer cost")) || "", resident: !!r.resident });
-    if (TRAIL.length > 40) TRAIL.shift();
-    $("ms").textContent = `${ms.toFixed(0)} ms`;
-    $("exit").textContent = r.trapped ? "trap" : String(r.exit);
-    if (r.trapped) DIAGS.unshift({ stage: "trap", code: "E_CompilerTrap", msg: String(r.trapped), line: null, appl: "Unspecified" });
-    BAD = new Set(DIAGS.filter(d => d.line).map(d => d.line));
-    WAT = ""; $("dl").disabled = true; $("modstat").textContent = "the program changed — render the module again";
+  const delta = edited ? Object.assign({}, EXTRA_DELTA, { [FILE]: $("src").value }) : undefined;
+  if (edited) EXTRA_DELTA = {};
+  const r = await session().call(["mentl", "space", `${FILE}:${line}:${col}`], delta);
+  VIEW = null; REFUSAL = null;
+  if (r.exit === 0 && !r.trapped){
+    try { VIEW = JSON.parse(r.out); }
+    catch (e) { REFUSAL = `the View did not parse — ${e.message}\n${(r.out || "").slice(0, 200)}`; }
+  } else {
+    REFUSAL = r.trapped ? `the compiler hit a wall on this input — ${r.trapped}` :
+      ((r.err || "").split("\n").filter(l => l.trim() && !COST_LINE.test(l)).join("\n") || `the address refused (exit ${r.exit})`);
   }
-  FACETS = (r.exit === 0 && !r.trapped) ? parseFacets(r.out || "") : null; FACETS_AT = off;
-  $("sessinfo").textContent = r.resident ? `resident · ${ms.toFixed(0)} ms` : `cold · ${ms.toFixed(0)} ms${r.why ? " · " + r.why.split("\n")[0] : ""}`;
-  $("dot").className = r.trapped ? "bad" : DIAGS.some(d => d.code.startsWith("E")) ? "diag" : "ok";
+  VIEW_AT = off; PROJECTED = true;
+  LAST = { ms: r.ms, resident: !!r.resident, bytes: (r.out || "").length, why: r.why || "" };
+  BAD = VIEW ? new Set(VIEW.lens.filter(f => f.kind === "diag" && f.module === VIEW.at.module).map(f => f.site.line)) : new Set();
+  $("sessinfo").textContent = `${LAST.resident ? "resident" : "cold"} · ${LAST.ms.toFixed(0)} ms · ${LAST.bytes.toLocaleString()} B`;
+  $("dot").className = REFUSAL ? "bad" : VIEW.lens.some(f => f.kind === "diag" && f.refuses) ? "diag" : "ok";
   busy = false;
   renderAll();
   if (pendingEdit){ pendingEdit = false; project(true); }
   else if (getOffset() !== off) project(false);
 }
 
-/* ── render: every surface, from the one state ──────────────────────────── */
+/* ── the painter: every surface, from the one View ──────────────────────── */
 function renderAll(){
   const src = $("src").value;
   CURSOR_LINE = lineColAt(getOffset()).line;
   $("hl").innerHTML = highlight(src); renderGutter(src); renderTopology(); syncScroll();
-  renderRing(); renderLens(); renderLedger(src); renderWavefront(); renderProposal();
-  $("ndiag").textContent = DIAGS.length;
+  renderRing(); renderLens(); renderLedger(); renderProposal();
 }
 const stub = txt => `<span class="stub">${esc(txt)}</span>`;
+// the eight aspects, in the kernel's order — the wire's kinds and the page's hues
+const ASPECTS = ["query", "propose", "topology", "effects", "ownership", "verify", "teach", "why"];
+const LABEL = { query: "graph", propose: "propose", topology: "topology", effects: "effects", ownership: "ownership", verify: "verify", teach: "teach", why: "why" };
+const HUE = { query: "graph", propose: "hand", topology: "verb", effects: "row", ownership: "own", verify: "ref", teach: "grad", why: "why" };
+const DOOR = { effects: "pledger", why: "plens" };
+// what an aspect with nothing to say means at this position
+const SILENCE = { query: "—", propose: "a ?? here is where the medium proposes; a perform says which install serves it", topology: "no verb holds this node",
+  effects: "—", ownership: "inferred from use-count — unmarked", verify: "no open obligation at this node", teach: "nothing to add here", why: "—" };
+// a note under an aspect, painted as its kind; a kind the page has not met still shows its text
+function noteHtml(n){
+  switch (n.kind){
+    case "lede": return `<span class="lede">${esc(n.text)}</span>`;
+    case "member": case "hop": return `<span class="hop">${esc(n.text)}</span>`;
+    case "question": return `<span class="sub">${esc(n.text)}</span>`;
+    case "refusal": return `<span class="sub">refused ${esc(n.name)} — ${esc(n.why)}</span>`;
+    case "handler": return `<span class="sub">${esc(n.text)}</span>`;
+    case "obligation": return `<span class="hop" data-l="${n.module === VIEW.at.module ? n.site.line : ""}">${esc(n.text)}</span>`;
+    case "type-chain": return `<span class="hop">its type: ${esc(n.text)}</span>` + n.hops.map(h => `<span class="hop">${esc(h)}</span>`).join("");
+    default: return `<span class="sub">${esc(n.text)}</span>`;
+  }
+}
 function renderRing(){
-  const off = getOffset(); const T = tokenize($("src").value);
-  const tok = T.find(t => off >= t.start && off <= t.end) || null;
-  $("asp-at").textContent = tok ? `${tok.kind}: ${tok.text.slice(0, 24)}` : "— place the caret —";
-  const F = (FACETS_AT === off && FACETS) ? FACETS : null;
-  const real = F !== null;
-  const rows = [
-    { k: "graph", label: "graph", v: F && F.query ? (F.lede ? `<span class="lede">${esc(F.lede)}</span>` : "") + esc(F.query) : stub(tok ? `${tok.text.slice(0, 30)} · ${tok.kind} (surface)` : "—") },
-    { k: "hand", label: "propose", v: F && F.propose ? esc(F.propose) + (F.members.length ? F.members.map(m => `<span class="hop">${esc(m)}</span>`).join("") : "") + (F.refusals.length ? `<span class="sub">${esc(F.refusals.join(" · "))}</span>` : "")
-                                     : F && F.handler ? esc(F.handler) : stub("a ?? here is where the medium proposes; a perform says which install serves it") },
-    { k: "verb", label: "topology", v: F && F.topology ? esc(F.topology) : stub("no verb holds this node") },
-    { k: "row", label: "effects", v: F && F.effects ? esc(F.effects) : stub("—"), door: "pledger" },
-    { k: "own", label: "ownership", v: F && F.ownership ? esc(F.ownership) : (F ? stub("inferred from use-count — unmarked") : stub("—")) },
-    { k: "ref", label: "verify", v: F ? (F.verify.length ? F.verify.map(v => `<span class="hop">${esc(v)}</span>`).join("") : stub("no open obligation at this node")) : stub("—") },
-    { k: "grad", label: "teach", v: F && (F.teach || F.tighten) ? esc(F.teach || F.tighten) : (F ? stub("nothing to add here") : stub("—")) },
-    { k: "why", label: "why", v: F && F.why.length ? F.why.map((w, i) => i ? `<span class="hop">${esc(w)}</span>` : esc(w)).join("") : stub("—"), door: "plens" },
-  ];
-  $("facets").innerHTML = rows.map(r => `<div class="facet k-${r.k}${real ? " real" : ""}${r.door ? " door" : ""}" ${r.door ? `data-door="${r.door}"` : ""}>
-      <div class="k k-${r.k}">${r.label}<span class="prov prov-${real ? "real" : "surface"}">${real ? "real" : "surface"}</span></div><div class="v">${r.v}</div></div>`).join("");
+  const V = (VIEW_AT === getOffset()) ? VIEW : null;
+  $("asp-at").textContent = V ? `${V.at.module}:${V.at.line}:${V.at.col}` : (REFUSAL && VIEW_AT === getOffset()) ? "— refused —" : "— place the caret —";
+  const rows = V ? V.ring.map(f => {
+    const ledes = f.notes.filter(n => n.kind === "lede"), rest = f.notes.filter(n => n.kind !== "lede");
+    const socket = f.kind === "propose" && (f.verdict === "fill" || f.verdict === "ask");
+    const text = f.text ? esc(f.text) : stub(SILENCE[f.kind] || "—");
+    return { k: HUE[f.kind] || "graph", label: LABEL[f.kind] || f.kind, prov: socket ? "socket" : "real", door: DOOR[f.kind] || null,
+             v: ledes.map(noteHtml).join("") + text + rest.map(noteHtml).join("") };
+  }) : ASPECTS.map(k => ({ k: HUE[k], label: LABEL[k], prov: "surface", door: null, v: stub("—") }));
+  $("facets").innerHTML = rows.map(r => `<div class="facet k-${r.k}${r.prov === "surface" ? "" : " real"}${r.door ? " door" : ""}" ${r.door ? `data-door="${r.door}"` : ""}>
+      <div class="k k-${r.k}">${r.label}<span class="prov prov-${r.prov}">${r.prov}</span></div><div class="v">${r.v}</div></div>`).join("");
   $("facets").querySelectorAll(".facet.door").forEach(el => el.onclick = () => openTab(el.dataset.door));
+  $("facets").querySelectorAll(".hop[data-l]").forEach(el => el.onclick = e => { e.stopPropagation(); jump(parseInt(el.dataset.l || "0", 10)); });
 }
 function renderLens(){
   const p = $("plens");
-  if (!DIAGS.length){
-    p.innerHTML = `<div class="empty"><div class="big">✓</div>${VERDICT.length ? esc(VERDICT[0]) : "clean — the graph is coherent"}<div class="sub">${PROGRAM ? esc(PROGRAM) : ""}</div></div>`;
+  if (REFUSAL){ $("ndiag").textContent = "!"; p.innerHTML = `<div class="lead"><b>Mentl:</b> ${esc(REFUSAL)}</div>`; return; }
+  if (!VIEW){ $("ndiag").textContent = "0"; p.innerHTML = `<div class="empty"><div class="big">…</div>projecting</div>`; return; }
+  // every fact carries its own lead; the sentence over the Lens is the first own fact's
+  const all = VIEW.lens.filter(f => f.kind === "diag");
+  // the program's own reports first, as the wheel ranks them; a linked
+  // module's (a library's comment citing a name this link never reaches)
+  // fold under a count — true, and not this developer's line to fix
+  const own = all.filter(d => d.module === VIEW.at.module), linked = all.filter(d => d.module !== VIEW.at.module);
+  $("ndiag").textContent = own.length;
+  if (!own.length){
+    p.innerHTML = `<div class="empty"><div class="big">✓</div>clean — the graph is coherent<div class="sub">${PROGRAM ? esc(PROGRAM) : ""}${linked.length ? ` · ${linked.length} report${linked.length > 1 ? "s" : ""} in linked modules` : ""}</div></div>`;
     return;
   }
-  const top = DIAGS[0];
-  const lead = `<div class="lead"><b>Mentl:</b> ${leadCopy(top)}${DIAGS.length > 1 ? `<span class="subtle" style="display:block;margin-top:4px">the gradient ranks — one step first, ${DIAGS.length - 1} more below</span>` : ""}</div>`;
-  const list = DIAGS.map(d => `<div class="diag ${d.code[0]}" data-l="${d.line || ""}">
-      <div class="row1"><span class="code">${esc(d.code)}</span><span class="at">${esc(d.stage)}${d.line ? " · line " + d.line : ""}</span><span class="appl">${esc(d.appl)}</span></div>
-      <div class="msg">${esc(d.msg)}</div></div>`).join("");
-  p.innerHTML = lead + list;
+  // the hue is the fact's: its severity, whether it refuses, and whether its step is one the medium takes itself
+  const row = d => `<div class="diag sev-${esc(d.severity)}${d.refuses ? " refuses" : ""} appl-${esc(d.applicability)}" data-l="${d.module === VIEW.at.module ? d.site.line : ""}">
+      <div class="row1"><span class="code">${esc(d.code)}</span><span class="at">${esc(d.source)} · ${esc(d.module)}:${d.site.line}:${d.site.col} · ${esc(d.severity)}</span><span class="appl">${esc(d.applicability)}</span></div>
+      <div class="msg">${esc(d.text)}</div></div>`;
+  p.innerHTML = `<div class="lead"><b>Mentl:</b> ${esc(own[0].lead || "")}${own.length > 1 ? `<span class="subtle" style="display:block;margin-top:4px">the gradient ranks — one step first, ${own.length - 1} more below</span>` : ""}</div>`
+    + own.map(row).join("")
+    + (linked.length ? `<details class="linked"><summary class="subtle" style="padding:8px 14px;cursor:pointer">${linked.length} report${linked.length > 1 ? "s" : ""} in linked modules</summary>${linked.map(row).join("")}</details>` : "");
   p.querySelectorAll(".diag").forEach(el => el.onclick = () => jump(parseInt(el.dataset.l || "0", 10)));
 }
-function leadCopy(d){
-  const c = d.code;
-  if (c === "E_CompilerTrap") return "the compiler hit a wall on this input — reduce it and I'll point at the spot.";
-  if (c.startsWith("E_Effect") || c === "E_PurityViolated") return `this path needs a capability the row forbids. ${esc(d.msg)}`;
-  if (c === "E_MissingVariable") return `a name here isn't in scope — check the spelling or the import. ${esc(d.msg)}`;
-  if (c === "E_RefinementRejected") return `a claim is proven false — the value cannot meet its bound. ${esc(d.msg)}`;
-  if (c.startsWith("T_")) return `a gradient step is available: ${esc(d.msg)}`;
-  return `${esc(d.msg)}`;
-}
-function renderLedger(src){
-  // declared rows and the negative space, read off the surface until the Ledger
-  // is the wheel's own read (L-E)
-  const decls = [];
-  for (const m of src.matchAll(/^(?:\s*)(fn|handler)\s+([A-Za-z_][A-Za-z0-9_]*)[^\n]*?\bwith\s+([^=\n{]+)/gm)) decls.push({ name: m[2], row: m[3].trim().replace(/\s+$/, "") });
-  const chips = row => row.split(/\s*[+&]\s*|\s+-\s+/).map(s => s.trim()).filter(Boolean).map(t =>
-    t.startsWith("!") ? `<span class="rowchip neg">${esc(t)}</span>` : t === "Pure" ? `<span class="rowchip pure">Pure</span>` : `<span class="rowchip pos">${esc(t)}</span>`).join("");
-  const negs = []; decls.forEach(d => (d.row.match(/!([A-Za-z0-9_()]+)/g) || []).forEach(n => negs.push({ fn: d.name, cap: n.slice(1) })));
-  let h = `<div class="ledger"><section><h5>declared rows</h5>`;
-  h += decls.length ? decls.map(d => `<div style="margin-bottom:8px"><span class="mono" style="color:var(--green-b)">${esc(d.name)}</span> &nbsp;${chips(d.row)}</div>`).join("")
-                    : `<div class="subtle">no authored <code>with</code> row in this program — every row here is inferred and projected (the effects facet reads it at the caret).</div>`;
-  h += `</section><section><h5>the proof surface — negative space</h5>`;
-  h += negs.length ? `<div class="proof"><div class="head">proven incapable, here:</div>${negs.map(n => `<div class="item">✗ <b>${esc(n.fn)}</b> cannot <b>${esc(n.cap)}</b></div>`).join("")}</div>`
-                   : `<div class="subtle">a <code>!E</code> in a row is a claim the compiler proves through every call, or refuses to build.</div>`;
-  h += `</section><section><h5>open obligations at the caret</h5>`;
-  h += FACETS && FACETS.verify.length ? FACETS.verify.map(v => `<div class="item mono" style="font-size:12px;padding:3px 0">${esc(v)}</div>`).join("") : `<div class="subtle">none at this node.</div>`;
+function renderLedger(){
+  const p = $("pledger");
+  if (!VIEW){ p.innerHTML = `<div class="ledger"><div class="subtle">${REFUSAL ? "the address refused — no ledger to read." : "projecting…"}</div></div>`; return; }
+  const decls = VIEW.ledger.filter(f => f.kind === "decl"), obls = VIEW.ledger.filter(f => f.kind === "obligation"), tights = VIEW.ledger.filter(f => f.kind === "tighten");
+  let h = `<div class="ledger"><section><h5>declarations — nearest the caret first</h5>`;
+  h += decls.length ? decls.map(d => `<div class="decl" data-l="${d.site.line}"><span class="word">${esc(d.word)}</span> <span class="name">${esc(d.name)}</span><span class="text">${esc(d.text)}</span></div>`).join("")
+                    : `<div class="subtle">no declaration in this module.</div>`;
+  h += `</section><section><h5>open obligations</h5>`;
+  h += obls.length ? obls.map(o => `<div class="item" data-l="${o.module === VIEW.at.module ? o.site.line : ""}">${esc(o.text)}<span class="at">${esc(o.module)}:${o.site.line}</span></div>`).join("")
+                   : `<div class="subtle">none — every claim in this module is discharged.</div>`;
+  h += `</section><section><h5>tightenings</h5>`;
+  h += tights.length ? tights.map(t => `<div class="item" data-l="${t.site.line}">${esc(t.text)}<span class="at">${esc(t.name)}</span></div>`).join("")
+                     : `<div class="subtle">none — every authored row is what its body proves, or a decision.</div>`;
   h += `</section></div>`;
-  $("pledger").innerHTML = h;
-}
-function renderWavefront(){
-  const why = FACETS && FACETS.why.length ? FACETS.why.join(" · ") : "";
-  const last = TRAIL[TRAIL.length - 1];
-  $("wavefront").innerHTML =
-    `<div class="wf-seg"><span class="lbl">why</span><span class="mono">${why ? esc(why) : "—"}</span></div>` +
-    (TRAIL.length ? `<div class="wf-seg wf-trail"><span class="lbl">trail</span><span>${TRAIL.length} judgment${TRAIL.length > 1 ? "s" : ""} this session · last ${last.ms.toFixed(0)} ms${last.cost ? " · " + esc(last.cost.replace("session: the answer cost ", "")) : ""}</span></div>` : "") +
-    (COST.length ? `<div class="wf-seg wf-trail"><span class="lbl">cost</span><span class="mono">${esc(COST.filter(c => !c.startsWith("session:")).join(" · "))}</span></div>` : "");
+  p.innerHTML = h;
+  p.querySelectorAll("[data-l]").forEach(el => el.onclick = () => jump(parseInt(el.dataset.l || "0", 10)));
 }
 
-/* ── the socket: the cursor line's one proven proposal; Tab accepts it through
-   `mentl accept` — a graph edge first, the text its projection (C4) ──────── */
+/* ── the socket: the one proven proposal at the hole under the caret; Tab
+   accepts it through `mentl accept` — a graph edge first, the text its
+   projection (C4); the next View read is the redraw ──────────────────────── */
 function proposalAt(off){
-  if (!FACETS || FACETS_AT !== off || !FACETS.propose) return null;
-  if (/proven survivors/.test(FACETS.propose) || /^no candidate/.test(FACETS.propose)) return null;
-  const src = $("src").value;
-  const back = src.lastIndexOf("??", off);
-  const h = (back >= 0 && off - back <= 2) ? back : (src.startsWith("??", off) ? off : -1);
-  if (h < 0) return null;
-  const [now, why] = FACETS.propose.split("  — ");
-  return { at: h, now: now.trim(), why: (why || "").trim() };
+  if (!VIEW || VIEW_AT !== off) return null;
+  const f = VIEW.ring.find(r => r.kind === "propose");
+  if (!f || f.verdict !== "fill") return null;
+  // a fill is proposed only at an authored hole (src/space.mn propose_fact), so the verdict is the whole test
+  const sp = VIEW.at.span;
+  return { at: offsetOf(sp.line, sp.col), line: sp.line, col: sp.col, now: f.fill, why: f.why };
 }
 function renderProposal(){
   const el = $("proposal"); PROPOSAL = proposalAt(getOffset());
@@ -604,95 +553,94 @@ function renderProposal(){
 }
 async function acceptProposal(){
   const p = PROPOSAL; if (!p) return false;
-  const ta = $("src"); const { line, col } = lineColAt(p.at);
+  const ta = $("src");
   $("dot").className = "busy";
-  const r = await session().call(["mentl", "accept", `main.mn:${line}:${col}`], { "main.mn": ta.value });
-  const wrote = r.written && r.written["main.mn"];
+  const r = await session().call(["mentl", "accept", `${FILE}:${p.line}:${p.col}`], Object.assign({}, EXTRA_DELTA, { [FILE]: ta.value }));
+  EXTRA_DELTA = {};
+  const wrote = r.written && r.written[FILE];
   if (r.exit !== 0 || r.trapped || !wrote){
-    $("dot").className = "bad"; VERDICT = [(r.err || r.trapped || "the accept drew nothing").trim().split("\n")[0]]; renderLens(); return true;
+    $("dot").className = "bad"; REFUSAL = (r.err || r.trapped || "the accept drew nothing").trim().split("\n").filter(l => !COST_LINE.test(l)).join("\n"); VIEW = null; renderLens(); renderLedger(); return true;
   }
   const text = typeof wrote === "string" ? wrote : td.decode(wrote);
   ta.focus(); ta.setSelectionRange(0, ta.value.length); ta.setRangeText(text, 0, ta.value.length, "end");   // native undo survives
   ta.setSelectionRange(p.at, p.at);
-  saveDraft(); project(true);
+  // the session wrote the text and re-judged it before it answered, so the redraw is a read
+  saveDraft(); project(false);
   return true;
 }
 
-/* ── the module, on demand ──────────────────────────────────────────────── */
-async function emitModule(){
-  $("modstat").textContent = "rendering…"; $("dot").className = "busy";
-  const vfs = Object.assign({}, VFS, { "main.mn": te.encode($("src").value) });
-  const t0 = performance.now();
-  const r = await runWheel({ argv: ["mentl", "compile", "main.mn"], vfs });
-  const ms = performance.now() - t0;
-  WAT = r.out || "";
-  const lines = WAT ? WAT.split("\n").length : 0;
-  $("modstat").textContent = r.trapped ? `trap: ${r.trapped}` : WAT ? `${lines} lines · ${(WAT.match(/\(func \$/g) || []).length} functions · ${ms.toFixed(0)} ms` : `nothing emitted — exit ${r.exit}`;
-  $("dl").disabled = !WAT;
-  const head = WAT.split("\n").slice(0, 400).map(l => esc(l)
-    .replace(/\b(module|func|param|result|local|memory|global|type|export|import|call|i32|i64|f64|data)\b/g, '<span class="w-key">$1</span>')
-    .replace(/(\$[A-Za-z0-9_.$]+)/g, '<span class="w-fn">$1</span>')).join("\n");
-  $("watout").innerHTML = WAT ? head + (lines > 400 ? `\n\n… ${lines - 400} more lines — download the .wat for the whole module` : "") : esc((r.err || "").split("\n").filter(l => !/^(heap|arena|session):/.test(l)).join("\n"));
-  $("dot").className = DIAGS.some(d => d.code.startsWith("E")) ? "diag" : "ok";
-  return { r, ms, lines };
-}
-
-/* ── programs: the lessons the manifest names, and your own scratch ─────── */
+/* ── programs: the lessons the manifest names (each a one-file project), the
+   projects it names (a folder of modules — the session's entry is its
+   main.mn, the rest its imports, every one editable), and your own scratch.
+   A project's modules are mounted in the session's tree under their own
+   names, so `import scene` resolves beside main.mn exactly as the terminal
+   resolves it beside the entry; the module in the editor rides the delta
+   under its own path and the address targets it. A draft is kept per file
+   in this browser until the files are the project's own (the File System
+   Access API, where a host has it). ───────────────────────────────────── */
 const programName = path => path.replace(/^lib\/tutorial\//, "").replace(/\.mn$/, "").replace(/^(\d\d)-/, "$1 · ");
-const draftKey = () => "mentl-space-draft:" + PROGRAM;
-function saveDraft(){ try { localStorage.setItem(draftKey(), $("src").value); } catch (e) {} }
-function loadProgram(path){
-  PROGRAM = path;
-  let text = path === "scratch" ? "fn main() = 42\n" : VFS_TEXT[path];
-  try { const d = localStorage.getItem(draftKey()); if (d !== null) text = d; } catch (e) {}
-  const ta = $("src"); ta.value = text; ta.setSelectionRange(0, 0);
-  DIAGS = null; FACETS = null; FACETS_AT = -1; TRAIL = []; WAT = ""; $("dl").disabled = true;
+const ENTRIES = [];   // what the select offers: { key, label, dir, path, file }
+const VFS_TEXT = {};
+const draftKey = path => "mentl-space-draft:" + path;
+function saveDraft(){ try { localStorage.setItem(draftKey(PROGRAM), $("src").value); } catch (e) {} }
+function draftOr(path){ try { const d = localStorage.getItem(draftKey(path)); if (d !== null) return d; } catch (e) {} return path === "scratch" ? "fn main() = 42\n" : VFS_TEXT[path]; }
+function openEntry(key){
+  const e = ENTRIES.find(x => x.key === key) || ENTRIES[0];
+  PROGRAM = e.path; FILE = e.file;
+  EXTRA_DELTA = {};
+  if (e.dir) for (const m of PROJECTS.find(p => p.dir === e.dir).members) if (m !== e.path) EXTRA_DELTA[m.slice(e.dir.length + 1)] = draftOr(m);
+  const ta = $("src"); ta.value = draftOr(e.path); ta.setSelectionRange(0, 0);
+  VIEW = null; REFUSAL = null; VIEW_AT = -1; PROJECTED = false;
   project(true);
 }
-const VFS_TEXT = {};
 
 /* ── wiring ─────────────────────────────────────────────────────────────── */
 function syncScroll(){ const ta = $("src"); $("hl").scrollTop = ta.scrollTop; $("hl").scrollLeft = ta.scrollLeft; $("gutter").scrollTop = ta.scrollTop; syncTopo(); }
 function jump(line){ if (!line) return; const ta = $("src"); const idx = ta.value.split("\n").slice(0, line - 1).join("\n").length + (line > 1 ? 1 : 0);
   ta.focus(); ta.setSelectionRange(idx, idx); ta.scrollTop = Math.max(0, (line - 6) * LH); project(false); }
-function openTab(p){ document.querySelectorAll(".tabs div").forEach(x => x.classList.toggle("on", x.dataset.p === p)); document.querySelectorAll(".panel").forEach(x => x.classList.toggle("on", x.id === p)); }
+function openTab(p){ document.querySelectorAll(".tabs div[data-p]").forEach(x => x.classList.toggle("on", x.dataset.p === p)); document.querySelectorAll(".panel").forEach(x => x.classList.toggle("on", x.id === p)); }
 let editDeb = null, caretDeb = null;
 $("src").addEventListener("scroll", syncScroll);
 $("src").addEventListener("input", () => { $("hl").innerHTML = highlight($("src").value); renderGutter($("src").value); renderTopology(); saveDraft(); clearTimeout(editDeb); editDeb = setTimeout(() => project(true), 180); });
-["click", "keyup"].forEach(ev => $("src").addEventListener(ev, () => { clearTimeout(caretDeb); caretDeb = setTimeout(() => { if (getOffset() !== FACETS_AT) project(false); else renderAll(); }, 40); }));
+["click", "keyup"].forEach(ev => $("src").addEventListener(ev, () => { clearTimeout(caretDeb); caretDeb = setTimeout(() => { if (getOffset() !== VIEW_AT) project(false); else renderAll(); }, 40); }));
 $("src").addEventListener("keydown", e => {
   if (e.key === "Tab"){ e.preventDefault(); if (PROPOSAL){ acceptProposal(); return; } const ta = e.target; ta.setRangeText("  ", ta.selectionStart, ta.selectionEnd, "end"); ta.dispatchEvent(new Event("input")); }
 });
-$("emit").onclick = emitModule;
-$("dl").onclick = () => { const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([WAT], { type: "text/plain" })); a.download = "main.wat"; a.click(); };
-document.querySelectorAll(".tabs div").forEach(t => t.onclick = () => openTab(t.dataset.p));
-$("teach").oninput = e => { document.body.dataset.teach = e.target.value; try { localStorage.setItem("mentl-space-teach", e.target.value); } catch (x) {} };
+document.querySelectorAll(".tabs div[data-p]").forEach(t => t.onclick = () => openTab(t.dataset.p));
 $("theme").onclick = () => { const cur = document.documentElement.dataset.theme; const next = cur === "parchment" ? "obsidian" : "parchment"; document.documentElement.dataset.theme = next; try { localStorage.setItem("mentl-space-theme", next); } catch (x) {} };
-$("program").onchange = e => loadProgram(e.target.value);
+$("program").onchange = e => openEntry(e.target.value);
 window.addEventListener("resize", () => { measureMetrics(); renderTopology(); });
-try { const qt = new URLSearchParams(location.search).get("theme"); if (qt) document.documentElement.dataset.theme = qt; const th = qt || localStorage.getItem("mentl-space-theme"); if (th) document.documentElement.dataset.theme = th; const tk = localStorage.getItem("mentl-space-teach"); if (tk){ $("teach").value = tk; document.body.dataset.teach = tk; } } catch (e) {}
+try { const qt = new URLSearchParams(location.search).get("theme"); if (qt) document.documentElement.dataset.theme = qt; const th = qt || localStorage.getItem("mentl-space-theme"); if (th) document.documentElement.dataset.theme = th; } catch (e) {}
 
 /* ── boot ───────────────────────────────────────────────────────────────── */
 const T_BOOT = performance.now();
+const settled = async (max = 400) => { for (let i = 0; i < max && (busy || !PROJECTED); i++) await new Promise(r => setTimeout(r, 50)); };
 async function boot(){
   try {
     await readManifest();
     if (!(await ensureIsolated())) throw new Error("the page is not cross-origin isolated and could not isolate itself — serve it with the two headers (tools/space-serve.py) or over https");
+    const MEMBERS = PROJECTS.flatMap(p => p.members);
     const [wasm, ...texts] = await Promise.all([
       fetch(BASE + WASM_PATH).then(r => { if (!r.ok) throw new Error(`${WASM_PATH} is missing (${r.status})`); return r.arrayBuffer(); }),
-      ...LIBS.map(fetchText), ...PROGRAMS.map(fetchText),
+      ...LIBS.map(fetchText), ...PROGRAMS.map(fetchText), ...MEMBERS.map(fetchText),
     ]);
     LIBS.forEach((k, i) => { VFS[k] = te.encode(texts[i]); });
     PROGRAMS.forEach((k, i) => { VFS_TEXT[k] = texts[LIBS.length + i]; });
-    $("bootinfo").textContent = `${WASM_PATH} · ${wasm.byteLength.toLocaleString()} bytes`;
+    MEMBERS.forEach((k, i) => { VFS_TEXT[k] = texts[LIBS.length + PROGRAMS.length + i]; });
     MODULE = await WebAssembly.compile(wasm);
     const sel = $("program");
-    for (const p of PROGRAMS){ const o = document.createElement("option"); o.value = p; o.textContent = programName(p); sel.appendChild(o); }
-    const o = document.createElement("option"); o.value = "scratch"; o.textContent = "scratch"; sel.appendChild(o);
+    const offer = (e, parent) => { ENTRIES.push(e); const o = document.createElement("option"); o.value = e.key; o.textContent = e.label; parent.appendChild(o); };
+    for (const p of PROGRAMS) offer({ key: p, label: programName(p), dir: null, path: p, file: "main.mn" }, sel);
+    for (const pr of PROJECTS){
+      const g = document.createElement("optgroup"); g.label = pr.dir;
+      for (const m of pr.members) offer({ key: m, label: m.slice(pr.dir.length + 1), dir: pr.dir, path: m, file: m.slice(pr.dir.length + 1) }, g);
+      sel.appendChild(g);
+    }
+    offer({ key: "scratch", label: "scratch", dir: null, path: "scratch", file: "main.mn" }, sel);
     $("dot").className = "ok"; measureMetrics();
-    loadProgram(PROGRAMS[0] || "scratch");
+    openEntry(ENTRIES[0].key);
     // the one line the page prints on every open: a headless driver (ide/browser-leg.mjs) waits on it
-    for (let i = 0; i < 400 && (busy || DIAGS === null); i++) await new Promise(r => setTimeout(r, 50));
+    await settled();
     console.log(`SPACE-READY boot=${(performance.now() - T_BOOT).toFixed(0)}ms program=${PROGRAM} theme=${document.documentElement.dataset.theme || "system"}`);
     if (location.search.includes("smoke")) smoke();
   } catch (e) {
@@ -704,29 +652,48 @@ async function boot(){
 
 /* ── the gate's wire (?smoke): the verdicts a headless browser can read ──── */
 async function smoke(){
-  // wait for the first judgment of the first program
-  for (let i = 0; i < 200 && (busy || DIAGS === null); i++) await new Promise(r => setTimeout(r, 50));
-  const { r, ms, lines } = await emitModule();
-  console.log(`SMOKE exit=${r.trapped ? "trap:" + r.trapped : r.exit} tasks=${r.tasks} watlines=${lines} ms=${ms.toFixed(0)}`);
-  // the resident session: the open was the first judgment; a second read must be resident and project
+  await settled(200);
+  // THE VIEW: the first lesson's View arrived from the session — eight ring
+  // facts, no refusing diagnostic, the ledger present — and a second read of
+  // it is resident and timed; its size in bytes is printed, never assumed
   const { line } = lineColAt($("src").value.indexOf("fn "));
-  const a = await session().call(["mentl", `main.mn:${line}:4`]);
-  const b = await session().call(["mentl", `main.mn:${line}:4`]);
-  console.log(`SMOKE-SESSION open=${(TRAIL[0] ? TRAIL[0].ms : a.ms).toFixed(0)} read=${b.ms.toFixed(1)} resident=${!!(a.resident && b.resident)} query=${/^Query: /m.test(b.out)}`);
-  // the product: what the page renders, measured — fidelity (the projection shows every character the hand typed),
-  // no undefined anywhere in the DOM, the ring carries every facet the compiler printed, the Lens holds no telemetry
-  jump(line); await new Promise(r => setTimeout(r, 400));
-  for (let i = 0; i < 100 && busy; i++) await new Promise(r => setTimeout(r, 50));
+  const a = await session().call(["mentl", "space", `${FILE}:${line}:4`]);
+  const b = await session().call(["mentl", "space", `${FILE}:${line}:4`]);
+  const diag = f => f.kind === "diag";
+  const viewOf = r => { try { return r.exit === 0 ? JSON.parse(r.out) : null; } catch (e) { return null; } };
+  let v = viewOf(b);
+  console.log(`SMOKE-VIEW open=${(session().opened ? session().opened.ms : a.ms).toFixed(0)} read=${b.ms.toFixed(1)} resident=${!!(a.resident && b.resident)} bytes=${b.out.length} ring=${v ? v.ring.length : 0} lens=${v ? v.lens.filter(diag).length : -1} refusing=${v ? v.lens.filter(f => diag(f) && f.refuses).length : -1} ledger=${v ? v.ledger.length : -1}`);
+  // THE PROJECT: a folder of modules the manifest names opens in the same
+  // session — its main.mn the entry, its View from the resident session
+  const pr = PROJECTS[0], pm = pr && ENTRIES.find(e => e.dir === pr.dir && e.file === "main.mn");
+  if (pm){
+    openEntry(pm.key); await settled(1200);
+    const pv = VIEW, members = pr.members.length;
+    console.log(`SMOKE-PROJECT dir=${pr.dir} members=${members} file=${FILE} resident=${!!(LAST && LAST.resident)} ring=${pv ? pv.ring.length : 0} refusing=${pv ? pv.lens.filter(f => diag(f) && f.refuses).length : -1} module=${pv ? pv.at.module : "-"}`);
+    openEntry(ENTRIES[0].key); await settled(400);
+  }
+  // THE PRODUCT: what the page renders, measured — fidelity (the projection
+  // shows every character the hand typed), no undefined anywhere in the chrome,
+  // eight real ring rows painted from the View, and the Lens structural: a
+  // Warning lands as a Warning at its own line and a mismatch at its own site
+  // (the two bugs the page's regexes had — the regex knew lowercase kinds
+  // only, and took the first address in a message, a Reason's, over the
+  // diagnostic's span)
+  jump(line); await new Promise(r => setTimeout(r, 400)); await settled(100);
   const fidelity = $("hl").textContent === $("src").value + "\n";
-  // the chrome alone: the editor layers, the module text and the page's own code are data, not the page's words
-  const chrome = document.body.cloneNode(true); for (const id of ["hl", "src", "watout"]) chrome.querySelector("#" + id)?.remove();
+  const realRows = document.querySelectorAll(".facet.real").length;
+  const ta = $("src");
+  ta.value = '// `nothing_here` is a reference that resolves nowhere\nfn f(x: Int) = x\n\nfn main() = f("x")\n';
+  ta.setSelectionRange(0, 0); PROJECTED = false; await project(true); await settled(100);
+  const warnAt = !!$("plens").querySelector(".diag.sev-Warning[data-l='1']");
+  const mismatchAt = !!$("plens").querySelector(".diag.sev-error[data-l='4']");
+  const diags = VIEW ? VIEW.lens.filter(diag).length : -1;
+  // the chrome alone: the editor layers and the page's own code are data, not the page's words
+  const chrome = document.body.cloneNode(true); for (const id of ["hl", "src"]) chrome.querySelector("#" + id)?.remove();
   chrome.querySelectorAll("script, style").forEach(e => e.remove());
   const html = chrome.innerHTML; const ui = html.indexOf("undefined");
   const undef = ui >= 0 ? JSON.stringify(html.slice(Math.max(0, ui - 70), ui + 12)) : false;
-  const printed = (b.out.match(/^(Lede|Query|Propose|Handler|Topology|Effects|Ownership|Verify|Teach|Tighten|Why): /gm) || []).length;
-  const realRows = document.querySelectorAll(".facet.real").length;
-  const lensTelemetry = /(heap|arena|session): /.test($("plens").textContent);
-  console.log(`SMOKE-PRODUCT fidelity=${fidelity} undefined=${undef} facets=${printed} ring-real=${realRows} lens-telemetry=${lensTelemetry} diags=${DIAGS.length} program=${PROGRAM}`);
+  console.log(`SMOKE-PRODUCT fidelity=${fidelity} undefined=${undef} ring-real=${realRows} lens-warning-at-line=${warnAt} lens-mismatch-at-site=${mismatchAt} diags=${diags} program=${PROGRAM}`);
 }
 boot();
 </script>

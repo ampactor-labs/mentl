@@ -1119,28 +1119,19 @@ fn judge_in_segment(hole_h, base, seed, iseed, below, candidate) = {
   }
 }
 
-// Renders why a segment refused its candidate, from the medium's own
-// `diag_message` rather than the banked line.
-//
-// A REFUSAL KEEPS ITS WHY, exactly as a row refusal always has. The branch
-// is rolled back and its diagnostics never reach the root, so without this
-// the medium would drop a candidate in silence — and a candidate the
-// developer cannot see refused is a guess they cannot audit (the same
-// sentence the row prune has carried since it was written). The medium's
-// OWN rendering of what went wrong is the reason; nothing is invented here.
+// Why a segment refused its candidate: the message its first report carried,
+// rendered where the report was made, inside the segment, before the
+// rollback undid the binds it describes. A refusal keeps its why. The
+// branch's reports never reach the root, so without this the medium would
+// drop a candidate in silence, and a candidate the developer cannot see
+// refused is a guess they cannot audit. The message is the part about the
+// candidate; a line's module and span are wherever the judgment stood.
 fn refusal_reason(inner) with !Mutate = match inner {
-  (_, dfacts, _, _) => if len(dfacts) == 0 {
-    Inferred("the hole's refinement is not satisfied")
-  } else {
-    // The DIAGNOSTIC's own message, read from the structural DiagKind the
-    // bank carries beside the rendered line. The rendered line is the wrong
-    // source here: it is stamped with a module and span belonging to
-    // wherever the judgment happened to be standing, so a candidate refused
-    // at this hole would cite a coordinate in a file the developer never
-    // opened. The message is the part that is about the candidate.
-    match dfacts[0] {
-      (diag, _, _) => Inferred(diag_message(diag)),
-    }
+  (_, dfacts, _, _) => match dfacts {
+    [] => Inferred("the hole's refinement is not satisfied"),
+    [first, ..._] => match first {
+      (_, msg, _) => Inferred(msg),
+    },
   },
 }
 

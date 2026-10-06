@@ -1902,8 +1902,13 @@ fn op_tys(op) = match op {
   (_, params, ret, _) => push(map(param_ty, params), ret),
 }
 
-// The declaration a name names, of any kind — read off the decls column.
-fn decl_named(name: String) with !Mutate = find(decl_is_named(name, ??), graph_decls_at())
+// The declaration a global name names: its one module-level declaration,
+// read off the decls column, which holds every judged declaration — a
+// block's `let`s and nested fns beside a module's own. A module-level name is
+// unique in the link (`E_DuplicateFnName`), so the first is the one.
+fn module_decl(name: String) with !Mutate = find(module_decl_named(name, ??), graph_decls_at())
+
+fn module_decl_named(name: String, h) = decl_is_named(name, h) && at_module_level(h)
 
 fn decl_is_named(name: String, h) = body_decl_name(graph_node_body(h)) == name
 
@@ -1952,11 +1957,12 @@ fn value_where(name: String, scope: String) with !Mutate = match env_lookup(name
 // function value with no declaration body (a module let holding a
 // closure, a constructor) answers its head, parameters and return.
 fn decl_badges(name: String, params, ret, row) with !Mutate = {
-  let body = decl_body(name)
+  let decl = module_decl(name)
+  let body = decl_body(decl)
   let cp = graph_push_checkpoint()
   name_type_vars([TFun(params, ret, row)])
   let lines =
-    [decl_head(name, params, row) ++ decl_address(name)] ++ map(param_badge, params) ++ ["-> {value_type(ret)} @ {width_badge(ret)}"]
+    [decl_head(name, params, row) ++ decl_address(decl)] ++ map(param_badge, params) ++ ["-> {value_type(ret)} @ {width_badge(ret)}"]
   let tees = flat_map(tee_lines, body)
   graph_rollback(cp)
   QRWhere(lines ++ tees, body |> flat_map(fanout_sites(??, [])) |> demand_onto(name))
@@ -2030,12 +2036,11 @@ fn site_demanded(vias, site) = match site {
 fn decl_head(name: String, params, row) with !Mutate =
   "{name}({join(", ", map(param_name, params))}){show_row_suffix(row)}"
 
-// Where the declaration stands, in the developer's coordinates: its node off
-// the decls column, the module that node registered under, the line the
-// parser wrote. A function value with no declaration of its own — a
-// constructor, a module let holding a closure — has no line to give, and the
-// head stands alone.
-fn decl_address(name: String) with !Mutate = match decl_named(name) {
+// Where the declaration stands, in the developer's coordinates: the module
+// its node registered under and the line the parser wrote. A function value
+// with no declaration of its own — a constructor, a module let holding a
+// closure — has no line to give, and the head stands alone.
+fn decl_address(decl) with !Mutate = match decl {
   Some(h) => decl_at(h),
   None => // drift-audit: ignore — no declaration node, so no address: the head is the whole answer
   "",
@@ -2081,10 +2086,10 @@ fn width_badge(ty) with !Mutate = match chase_type_deep(ty) {
 
 fn known_width(ty) with !Mutate = "{repr_name(repr_of(ty))} ({pin_word(ty_has_repr_pin(ty))})"
 
-// A declaration's body, read off the decls column by the index the emit
-// demands schedule twins through (`fanout_decls_index`), so the two cannot
-// disagree about which declaration a name is. A list: none, or one.
-fn decl_body(name: String) with !Mutate = match smap_get(fanout_decls_index(), name) {
+// A declaration's body: the expression its function holds, so the installs
+// and fanout sites `where` lists are the ones under the head it prints. A
+// list: none, or one.
+fn decl_body(decl) with !Mutate = match decl {
   Some(h) => match graph_node_body(h) {
     NStmt(FnStmt(_, _, _, _, body)) => [node_handle(body)],
     _ => [],

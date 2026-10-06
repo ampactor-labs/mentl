@@ -2433,6 +2433,86 @@ and this is the STATE.
   unobservable; the host loop refuses such a contract by name now. Open:
   `Hβ.cli.resident-session-over-fifos`, and WABT's `wat2wasm` in the shim
   and the gates until the wheel assembles its own output (L-F).
+- **THE VIEW IS A PROJECTION — CLOSED 2026-10-06 (L-C).** The page had
+  re-parsed the caret's text with regexes and the compile's stderr with
+  another, and two of them were measured wrong on boot 2175e015: the kind
+  regex knew lowercase kinds only, so every `Warning` landed in the verdict
+  strip and never in the Lens, and the address regex took the FIRST `at
+  L:C` in a message, so a diagnostic whose message carried a Reason's
+  address jumped to the Reason's line. One tree of typed facts now
+  (src/space.mn; the types beside `CursorView`): the Ring's eight aspects in
+  primitive order, each with its provenance and its notes; the Lens, a lead
+  sentence first and every banked diagnostic as the kind it is at its own
+  site, the caret's module before the linked ones; the Ledger, declarations
+  by the graph's own proximity, obligations and tightenings — read once
+  from the judged graph, never the disk, and projected twice: `mentl
+  <file:line>` is its text (on thirty lesson positions every line but the
+  lede is byte-identical to the render it replaced; the lede is the
+  comment's first sentence, each line read trimmed and joined by one space)
+  and `mentl space <file>:<line>[:<col>]` its JSON through lib/json.mn, cold
+  and resident, for any module in the link (the session's reads were pinned
+  to `main`). Diagnostics are a structured bank (`diag_bank`, in the
+  session's and the page's chains alike — the first derivation's reports had
+  stayed in the open reply, unread), each rendered once in the reporter's
+  world; each route clears one generation before it judges again
+  (`rederive_cone` runs the route's clear: the warm compile's claims, the
+  session's bank and claims), and a module that leaves the link is cleared
+  by the same function. The page is a host with ONE painter over the View;
+  the regex parsers, the Teach knob, the status bar, the footer, the
+  Wavefront strip and the Module pane are deleted; `project <dir>` lines in
+  the manifest (staged into `member` lines — a static host lists no folder),
+  `mentl space <dir>`, members mounted at their paths, and the worker's WASI
+  tree true (the preopen, directories, `fd_readdir`). Twin legs 9 and 10
+  were RED on the boot (five assertions), the twin compares every resident
+  View with the cold one, handles aside, and the browser's three smoke lines
+  read the painted DOM. WHAT THE FIRST REAL PROJECT THROUGH THE SESSION
+  FOUND: opening Pulse refused 56 times where the cold route refused
+  nothing, and the root was the session's cone, which re-judged its
+  modules ONE AT A TIME into the shared env — a new `a.mn` judged before
+  the `b.mn` it imports refused `two` as missing, and `dsp/signal` and
+  `dsp/processors`, which import each other, refused whichever came
+  second (nineteen `E_MissingVariable` at every arm over the library's
+  process op). The cone is ONE judgment now: `rederive_cone` hands every
+  module of the cone to `infer_modules_converged` at once, as the cold
+  route hands the link, and the judgment's callee-first walk over binding
+  groups — which already owns every dependency order and every cycle
+  inside a judgment — owns the cone's. Two forms were built over the
+  per-module loop before this one and are deleted with it: a post-order
+  scan (56 → 19, the cycle still refusing) and Tarjan groups over the
+  scan's dep edges (19 → 0, the binding-group law copied one layer up,
+  a second home). AND THE ONE JUDGMENT
+  EXPOSED A WALK FROM HANDLE ZERO: the prose gate and the continuation-
+  boundary finalize both walked [0, graph_next()) — exact for the cold
+  route, whose parse starts at 0, and wrong for the session's cone, which
+  judges into a graph holding every generation it has seen — so every edit
+  re-narrated every superseded generation's unresolved comment references
+  into the bank (39 → 79 → 119 on three cone judgments of one four-line
+  lesson, the same thirty-six sites of types.mn each time) and re-read a
+  program's worth of handles for the cone's few; both read the judgment's
+  own parse start now, the twin holds the bank at one across three edits
+  (RED on the m2 that first judged the cone whole), and the session's Lens
+  carries what the cold route's does. THE CLOSE FOUND THREE MORE, each by
+  asking the medium: `mentl where` printed a function's head at a
+  block-level `let` of the same name (its address and its body now come from
+  the one module-level declaration); the lede broke sentences with two
+  spaces; and the cold accept projected its View over the ranges it read
+  before its write, so the query slice printed `?` where the accepted `1`
+  stands. And the determinism leg became a gate: tools/march.sh runs m4
+  before every bless and refuses on m3 ≠ m4 with the boot untouched (it had
+  run only by flag, after a clean repin had already replaced the boot).
+  Measured at the close's pin (c8ba5799): the node twin's View 9.5 ms
+  resident at 1,096 bytes, a sibling module's 24.4 ms, a cycle's 23.0 ms, a
+  read 4.6–7.4 ms against 227 ms cold; the browser's open 538 ms and read
+  25.7 ms; Pulse's edit 221–278 ms and its read 41–61 ms over three runs,
+  zero refusals; the wheel's open obligations 37 → 39, five of them new in
+  src/space.mn, a rise no bound refused. Named: the View as graph content
+  and the Lens's density (`Hβ.space.view-is-graph-content`), a folder pick
+  outside Chromium (`Hβ.felt.project-picker-outside-chromium`), and the
+  comment-reference check's third face — a module judged in a cone resolves
+  its backticked names against the cone's statements alone, so a reference
+  into a module outside the cone narrates, 116 against 38 for `src/types.mn`
+  judged alone (`Hβ.voice.comment-ref-gate-reads-the-flattened-link`, whose
+  cut is M7 of the 2026-10-06 program).
 
 Everything else requires the board that measured it. A skipped, stale, or
 interrupted gate is UNKNOWN, never green.
@@ -2462,7 +2542,8 @@ mentl test tests/teach         # THE TEACH BATTERY (D4): each fixture's first li
 bash tools/proof-exactness-gate.sh  # hole refuses · debt surfaces · suspension runs
 bash tools/ide-gate.sh         # the resident session: the node twin over ide/wheel-worker.js, then headless Chrome over `mentl space` (leg 2 skips loudly without chrome)
 bash tools/doc-truth.sh        # the docs' checkable claims vs the artifact: PROVENANCE sha == boot sha, ledger head pin, named commands exist (runs inside verify — prose gets a mechanical floor)
-mentl space                    # the page in the browser (localhost:7397/) — the mentl command stages ide/space.manifest (tools/space-stage.sh) and serves the staged artifact with the isolation headers (tools/space-serve.py); the wheel serves no socket
+mentl space                    # the page in the browser (localhost:7397/) — the mentl command stages ide/space.manifest (tools/space-stage.sh) and serves the staged artifact with the isolation headers (tools/space-serve.py); the wheel serves no socket. `mentl space <dir>` stages that folder as the project
+mentl space <file>:<line>[:<col>]   # THE VIEW the page paints (src/space.mn): the ring, lens and ledger at an address as JSON — the wheel's, cold here and resident through the session; `mentl <file>:<line>[:<col>]` is its text projection
 #   (the seed + --from-seed are deleted, 7401c4b; the cold ladder lives at tag first-light)
 python3 tools/emit-diff.py m2.wat m3.wat        # the divergence pinner — run FIRST on any m3 trap (CLAUDE.md ⟲)
 python3 tools/emit-diff.py m2.wat m3.wat --trap # m3-side unreachable bodies m2 lacks (filter to comment-marked floors — bare else-unreachable is benign, SYNTAX §exhaustiveness)
@@ -3191,6 +3272,20 @@ form the whole time. The arcs, in order:
   Morgan's 2026-10-05 verdicts on the page folded in — the density knob and
   the compiler telemetry go, the page opens a project, Pulse is the course
   once L-F runs programs in the page.
+  **L-C LANDED 2026-10-06 — the view is a projection (pins
+  d956687d8ac29dfa and c8ba579971428cf1, CLEAN m2 == m3 each, the second
+  with m3 == m4 measured; §7's bullet of the same name carries the arc).** The wheel renders the IDE as one tree of typed facts (src/space.mn)
+  projected as the terminal's text and the page's JSON; the page is a host
+  with one painter and parses nothing; the density knob, the telemetry
+  footer, the status bar, the Wavefront strip and the Module pane are gone;
+  the page opens a project (`project <dir>`, `mentl space <dir>`); the
+  session's cone is one judgment, and the prose gate reads its own parse
+  start. Next: the 2026-10-06 program, recorded verbatim at commit 42a94dc0
+  (docs/record/2026-10-06), moves into this section in the order it was
+  reconsidered by impact and blast radius — the safety net first (G2, M9),
+  then the false proofs a user can hit (RACE, TRAP), then the surfaces every
+  developer touches (the renderer, fmt, the course, the page, E1), with the
+  wide foundations (M1 and the modules, T, V, AU) behind that net.
 - **Arc F · Proof faces on the page, repriced.** Flow refusals as sink
   preconditions over the influence walk (Phase 7 as re-scoped 2026-10-02 —
   no row element, the label lattice deleted) + Why-chain/refusal badges

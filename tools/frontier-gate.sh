@@ -3821,6 +3821,13 @@ for i in "${!compilers[@]}"; do
   # demands twins by. RED on boot 6f2ce437 (the badge knew only the frame).
   w_dem=$(wt_run --dir "$ROOT" "$compiler" where "$wdoc" shared 2>/dev/null)
   printf '%s' "$w_dem" | grep -q '>< \[Seq ×2; Thread demanded via twice\] at' || { w_ok=0; fail "where demanded-schedule badge (got: $w_dem)"; }
+  # L-C (2026-10-06): a function's address and body are its own module-level
+  # declaration's, never a block-level `let` that shares its name. The decls
+  # column holds both, and the address was the first of either: RED on boot
+  # d956687d, which put `heads` at line 6, the local in `one` (judged first,
+  # since `heads` calls it); the function stands at line 10.
+  w_shadow=$(wt_run --dir "$ROOT" "$compiler" where "$ROOT/tests/frontier/mn-where-shadowed-local.mn" heads 2>/dev/null)
+  printf '%s' "$w_shadow" | grep -q '^→ heads(xs) with Memory  at .*mn-where-shadowed-local:10$' || { w_ok=0; fail "where address of a function a local shares its name with (got: $w_shadow)"; }
   # The bare why verb (SYNTAX's lag list, first name retired): the
   # Reason-chain walk as its own verb. Born RED 2026-08-08 (the prior
   # boot answered unknown-verb).

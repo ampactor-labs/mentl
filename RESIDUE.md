@@ -28,6 +28,129 @@
 
 ---
 
+`Hβ.space.view-is-graph-content` — OPEN, BORN 2026-10-06 with L-C. The View
+(src/space.mn) is a typed fact tree — ring, lens, ledger — computed per
+answer inside the session's arena and projected twice (the terminal's text,
+the page's JSON); every fact carries the handle it was read from, which is the
+page's key. It is not a graph node: `mentl why` cannot walk a View, two Views
+of one position are two values, and the handle a fact carries is the
+SESSION's identity for the node (measured: 14534 resident against 7624 cold
+for one node — the twin compares Views handles-aside for that reason; the
+deterministic form is `(arena, offset)`, PLAN §11's keystone for 9.2). The
+form: a View is a node the judgment's own graph holds, with a Reason — "the
+projection of handle H at generation G" — so a read is an edge and a
+re-read of an unmoved position is the same node. Beside it, two measurements
+to carry: a lesson's View is ~1 KB and ~9 ms resident in the twin, and
+larger in the page, because the Lens carries every banked diagnostic of
+every linked module — the page links `src/types.mn`, whose comment
+references into modules it cannot reach narrate in every lesson's link
+(`Hβ.voice.comment-ref-gate-reads-the-flattened-link`) — so the density knob
+the page deleted is a degree of interest the View should carry per fact,
+and the host asks for what it will draw. And the accept answers the
+rewritten TEXT (`written` on the reply) and the address's text projection,
+not the View, so the page redraws with one more read of the graph the
+session already re-judged.
+
+`Hβ.felt.project-picker-outside-chromium` — OPEN, BORN 2026-10-06 with L-C.
+The page opens a project from the manifest (`project <dir>` staged into
+`member` lines) or from a folder the command line stages (`mentl space
+<dir>`); opening a folder from inside the browser needs the host's directory
+facility, which only Chromium ships (`showDirectoryPicker`). The form in a
+host without it is the manifest, and the worker's `fd_readdir` — true over
+the files it holds since L-C — is what a picked folder would mount into.
+
+`Hβ.graph.module-nodes-are-a-column` — OPEN, BORN 2026-10-06 with L-C (the
+audit that read the View against the graph). A module's own nodes are no
+column of its node, so every question of the form "this module's handles"
+filters the whole mint log. Four readers pay it: `spans_of_module` (the
+View's span index, once per View), `module_handles` and `latest_generation`
+(src/cursor.mn — the field's holes and gradient positions, and the filter
+that keeps the latest mint per source position, quadratic in the module's
+generations), and `lit_vocab_build` (src/infer.mn — the literal vocabulary
+the comment-reference gate reads, walked from handle 0, so in a session a
+word only an edited-away literal wrote still resolves a `$`-reference). The
+form: the registration that stamps a node's module (`spine_put_module` at
+`graph_register_node`) also pushes the handle onto its module node's column,
+trailed so a rollback pops it. A module node's column IS its generation (E2
+gives each re-judged module a new node), so `latest_generation` deletes,
+`module_handles` is a read, `spans_of_module` reads the column's spans, and
+the literal vocabulary walks the current modules' columns. The module text's
+line starts are the same family: `source_slice` (src/space.mn) finds the
+addressed line by an index-recursive byte walk over the judged text
+(`nth_line_offset`, `line_end_from`), where the lexer passed every line start
+once — a second column of the module node.
+
+`Hβ.diag.module-identity-is-a-name` — OPEN, BORN 2026-10-06 with L-C (A5). A
+report carries its module as a NAME — `diag_report(DiagKind, String, String)`,
+the message and the module's name — while the proof ledger carries the module
+NODE an obligation was raised in (`verify(Int, ...)`). The session's one
+generation clear reconciles the two keys: `session_forget` (src/mcp.mn)
+forgets the bank by name and `forget_claims` (src/driver.mn) maps each name to
+its current node. A name is a projection of the node, and a report about a
+superseded generation is indistinguishable from one about the current, which
+is why a clear must run before every re-judgment instead of following from
+the supersession itself. The form: the report carries the module node (read
+where `report_at` already reads it, `graph_module_of`), the printed line
+renders the node's name, and both ledgers are graph content keyed by node —
+the claims at the value nodes they claim (`POSITIONS ARE CELLS`, PLAN §11's
+order), the reports at the nodes they are about — so a generation's facts are
+unreachable the moment E2's registration supersedes its node, and no clear
+exists to forget.
+
+`Hβ.space.binding-lede-reads-the-line` — OPEN, BORN 2026-10-06 with L-C. The
+Why chain's binding hop renders the lede of what the binding names by
+resolving the binding's LINE (`binding_ledes`, src/space.mn:
+`address_resolve(v.spans, span_line_of(span), 0)`), the line's root — which
+is the binder only while the binder is that line's widest node. Two bindings
+on one line, or a binder inside a larger expression's line, read the other
+node's prose. The form: the binding's Reason carries the binder's handle, and
+the hop reads that node's comment cell directly.
+
+`Hβ.graph.a-handle-is-a-handle-at-its-source` — OPEN, BORN 2026-10-06 with L-C
+(A4). A handle is an `Int` everywhere it flows: typing the View's node handles
+as `Handle` (`Int where 0 <= self`) raised an open claim at every source that
+returns a plain `Int` — `graph_next`, `mint`, a parse's handles — so the View
+kept `Int`. The form is the refinement at the SOURCES: the graph's minting
+ops return `Handle`, so every flow from them carries it, and a reader that
+demands `Handle` is proven rather than owed.
+
+`Hβ.audit.pending-tier-attributes-by-line-extent` — OPEN, BORN 2026-10-06 with
+L-C. `mentl audit` attributes an open obligation to a function when the
+claim's span overlaps the function's line extent (`audit_walk`,
+src/pipeline.mn: the extent runs from the declaration's start line to the
+next's), over the WHOLE ledger and with the obligation's module ignored
+(`_modh` in the filter), so a claim in another module whose lines overlap a
+function's extent is reported against it. The form: the claim names the node
+it claims (`POSITIONS ARE CELLS`), and its function is that node's enclosing
+declaration, read up the parent edge E4 drew (`enclosing_decl`) — attribution
+by edge, never by line.
+
+`Hβ.lib.search-answers-a-sentinel` — OPEN, BORN 2026-10-06 with L-C (A4).
+The library's searches answer `-1` for absence (`index_of`, `find_char`,
+lib/strings.mn) where `Option` is the form, so each caller re-decides what a
+negative means — `first_sentence` (src/space.mn) wraps `index_of` in a local
+`found_at` to read it as an `Option`. The form: the searches answer
+`Option(Int)`; the `-1` convention and each caller's test delete.
+
+`Hβ.cursor.handler-effects-reads-the-declaration` — OPEN, BORN 2026-10-06 with
+L-C. At a handler declaration the Effects facet answers what evaluating the
+DECLARATION performs — `Pure` — where the fact a developer reads there is what
+an INSTALL of the handler performs: its residual row, `row(h)` in SYNTAX's
+install rule. Measured on boot d956687d over a handler whose `get` arm
+forwards outward: `Effects: Pure` at `handler only_inc`, while installing it
+performs `State`. The form: at a handler declaration the facet reads the
+handler's residual row cell (the one `HandlerKind` carries), beside what
+`mentl where` says it absorbs and answers.
+
+`Hβ.viz.why-walk-elides-trivial-hops` — OPEN, named 2026-09-21 in the Arc G
+survey (Pernosco's copy-skip: a backward explanation with trivial hops
+elided). Measured at L-C (2026-10-06): a Why hop reaches the page as TEXT
+(`NoteHop`), so the page can paint a hop and never jump from it — the site the
+chain renderer read from the hop's `Located` span is rendered into the
+sentence and dropped from the fact. The form: a hop carries its site
+(module and span) beside its sentence, as an obligation note already does,
+and the walk elides the hops that only copy a type forward.
+
 `Hβ.viz.severance-map` — OPEN, BORN 2026-09-21, the visualization frontier pick,
 chosen from a survey of the field rather than from taste. Full argument and the
 three-colour law: `PLAN.md §11` Arc G. Summary of why it is the one: `!E` is the
@@ -106,7 +229,16 @@ row open where nothing free remains is re-deriving a quantified var it
 should have chased. Every one of the sixteen is a helper in a mutual
 recursion pair or an SCC of two.
 
-`Hβ.march.determinism-is-never-probed` — OPEN, BORN 2026-09-21, MEASURED.
+`Hβ.march.determinism-is-never-probed` — CLOSED 2026-10-06 (L-C, pin
+c8ba5799), BORN 2026-09-21, MEASURED. Closed by a gate, not a cadence: on
+`MARCH_REPIN=1` the march runs the m4 leg BEFORE the bless and refuses on m3 ≠
+m4 with the boot untouched (`probe_m4`), and a probe that holds stamps the boot
+it measured (`stamp_fixpoint`), which `state.sh`'s STAMPS block reports. The
+order was wrong before it was absent: the `--fixpoint` leg ran after a clean
+repin had copied m2 over the boot. The first probes on a clean march were this
+pin's two (FIRST LIGHT, m3 == m4 each); the refusal branch has not been seen
+red — no candidate that fails to reproduce itself was at hand. The record of
+the gap follows.
 `march.sh --fixpoint` forces the m4 leg on a clean run, and **nothing invokes
 it**: not `state.sh`, not a hook, not `tools/ci/run-board.sh`; the only matches
 in the tree are comments in `frontier-gate.sh` describing what the fixpoint is
@@ -336,7 +468,9 @@ cell is consulted, and the width read treats a lowercase type name as the
 type parameter the case rule says it is.
 REMAINING, one move per reader, each a bracket around its own render: the
 `doc` roster's signature lines, `type of`, the address projection's Query
-line and the LSP hover (the render runs after `ask` returns, so the
+line (measured again 2026-10-06 at a forwarding arm's `resume(get())`:
+`Query: resume(get()) : t7628@e323`, the handler's answer quantified) and
+the LSP hover (the render runs after `ask` returns, so the
 bracket wraps the render there), and the diagnostic messages that print a
 type (`E_TypeMismatch` among them). THE ROW FACE is the same class one sort
 over and has no surface spelling to borrow: `fanned(a, b) with Memory +
@@ -373,7 +507,10 @@ binders column written where the env extends a local (`env_extend` with a
 same resolution, priced against the self-compile peak before it lands (one
 name-map entry per local binder, the order of the refs column's own cost).
 
-`Hβ.oracle.ranked-queue-is-a-second-frontier` — OPEN, BORN 2026-09-21, found by
+`Hβ.oracle.ranked-queue-is-a-second-frontier` — CLOSED (commit 43e371c9, "the
+superseded ranked-queue oracle is deleted whole": src/oracle.mn, its effect,
+its item type and its merger are gone, and `silence_predicate` reads the
+gradient field; the entry read OPEN until 2026-10-06). BORN 2026-09-21, found by
 pointing the medium's own reachability facet at the medium.
 `mentl query src/main.mn unreachable` named `ic_compile_loop` (src/pipeline.mn)
 as a fn decl the entry cannot reach, and it had ZERO callers anywhere in the
@@ -710,6 +847,62 @@ census shape the one judged graph carries, not a stderr scrape). Its deeper
 form retires with `Hβ.driver.link-is-reachability` (Arc D), where the demanded
 set is read from import edges rather than a flat env — at which point "resolves
 in the link" and "resolves from here" stop being two different questions.
+THE THIRD FACE, measured 2026-10-06 through the structured Lens (L-C),
+which is the first surface that carries every banked diagnostic with its
+module — and re-measured the same day after the session's cone became ONE
+judgment. The first reading: the referent index `cdix` is built from THE
+STATEMENTS OF THE JUDGMENT, so a module re-judged by the session's cone
+alone resolved its backticked names against itself (`src/types.mn` judged
+in the whole link narrates 38 unresolved references; judged as a cone of
+one, 116; Pulse's link through the per-module cone carried 331 against the
+cold route's 38). Two things were behind that number and both are gone:
+the per-module cone (the cone is one judgment now, every cross-module name
+inside it in one `cdix` and every name outside it answered by `env_lookup`
+/ `env_lookup_type`), and the prose gate walking its comment cells from
+handle 0 — exact for the cold route, wrong for a session whose graph holds
+every generation it has seen, so every edit re-narrated every superseded
+generation's unresolved references (39 → 79 → 119 across three cone
+judgments of one four-line lesson; the walk reads the judgment's own parse
+start now, and the twin's leg 10 holds the bank at one). What REMAINS is
+this peer's first face read at the bank: a module's reports are the
+verdict of the link it was judged in, and the link moves — `src/types.mn`
+judged in the lesson's link narrates 38, in Pulse's 35 (three names the
+dsp modules declare), and a session that opened on the lesson and then
+received Pulse keeps types.mn's 38 because types.mn did not move, where
+the cold route says 35. Resolution against the module's OWN import
+closure (the cut above) makes a module's count the same under every
+link, which is what makes the bank exact by construction.
+THE CUT WAS HALF MADE, read 2026-10-06 (L-C's audit, against the source):
+the reachability test this entry records as LANDED sits on the lazy path
+alone — `crc_judge_dollars` asks `inf_module_reaches` of a `$`-name and of a
+bare name that missed every other surface — while `crc_resolve`, which every
+bare backticked name meets first, draws the edge on any `cdix` hit with no
+test (src/infer.mn). So in the whole link a name resolves whether or not the
+writing module can reach it, and the board's `comment-refs: 0` measures the
+flattened link, not the law. THE CENSUS, each module checked as its own entry
+(its link is its import closure, which is the reachability question by
+construction), one command per module: 137 narrations in 19 modules, 139
+at L-C's pin (board.mn's own record of the effectful-lambda bound names two
+functions it does not reach) —
+types.mn 34, lower.mn 28, infer.mn 22, graph.mn 12, board.mn 10, verify.mn 6,
+query.mn 5, mentl.mn 5, parser.mn 3, effects.mn 3, pipeline.mn 2, format.mn
+2, one each in own.mn, cursor_transport.mn, backends/wasm.mn and lib/math,
+lib/io, lib/imap, lib/arena; the other 46 modules at 0. Every one sampled is
+a lower module's prose naming a higher module's declaration — a type's
+comment naming the judgment's function that reads it, which is a reverse
+edge `refs of` already projects. Five were trued in L-C's audit (types.mn's
+`catch_abort`, `callee_params_at`, `fresh_param_under`, `type_mismatch`;
+voice.mn's `completion_items_from_slots`). THE BUILD, one landing: the
+conjunct in `crc_resolve`'s `cdix` arm — the test the lazy path already
+asks, so one home — with `comment_refs_max` raised in the same commit to the
+count the wheel link then measures (this census is its justification), and
+the sweep, each reference pointed at what its own module reaches or said as
+prose, ratcheting it to 0. It matters beyond the board: the page links
+`src/types.mn`, so every lesson's Lens carries types.mn's narrations as
+reports in a linked module. The page links it because lib/io.mn imports
+src/types.mn for effect declarations: the runtime library stands on the
+compiler's metaschema, which is the same import graph read from the other
+side, and the landing that makes this cut moves those effects into lib.
 
 `Hβ.verify.class-bound-cannot-tally-in-the-arm` — OPEN, BORN 2026-09-21, and
 it is a REFUTATION of a build that was finished and working before the march
@@ -3893,7 +4086,16 @@ form: an unmoved module's import edges ride its current module node, so
 discovery reads and lexes only the modules whose hash moved and any module
 a new import names; and each note records its bucket under the module that
 made it, so a supersession touches exactly that module's entries. Then an
-edit costs its cone.
+edit costs its cone. ONE COST LEFT 2026-10-06 (L-C): the judgment's
+continuation-boundary finalize walked every handle from 0 on every cone
+judgment — a program's worth of reads for a cone of one module — and reads
+from the judgment's own parse start now (the same fix the prose gate took;
+Pulse's edit through the session 243 → 189 ms on one m2 source). AND A READ
+PAYS FOR THE PROGRAM TOO, read 2026-10-06: every message runs the living
+check, which reads and hashes every module's text (`session_current`,
+src/mcp.mn) to learn whether the tree moved, though the request's own delta
+names exactly the files that changed. The form: the request carries its
+moved paths, and the check re-hashes those alone.
 
 `Hβ.session.answer-is-out-err-and-exit` — OPEN, BORN 2026-10-02 with E2.
 A resident answer is its stdout alone. A verb that refuses answers MISS,
@@ -3904,7 +4106,10 @@ err)`. The console
 bank captures the verb's stderr beside its stdout, and each transport
 frames all three: the worker's reply already carries `out` and `err`, the
 exit code rides the session's per-answer line, and the socket gains a
-header. A refusal is then answered resident.
+header. A refusal is then answered resident. Its residue on the page
+(2026-10-06): a refusal's stderr arrives beside the compile's own cost lines
+(`heap:`, `arena:`, `session:`), and the page tells them apart by spelling
+(`COST_LINE`, ide/index.html) — deleted with the text channel.
 
 `Hβ.synth.trail-segment-discarded-at-rollback` — OPEN, read 2026-09-25. The
 trail records handle + prior value per write (`Mutation`, src/types.mn), so
@@ -11461,7 +11666,16 @@ seed set READ it; the name walks delete. DEP: identity-is-a-handle
 carrier) — the same arc, since a handle-keyed column cannot be written
 from a name-keyed walk. RED test banked: `mentl query src/main.mn
 unreachable` names 277 fn decls on the wheel at this pin; the column form
-must name the same set from a read.
+must name the same set from a read. A FOURTH NAME-KEYED READ, measured
+2026-10-06 (L-C): the emit's schedule demand finds a callee's body through
+`fanout_decls_index`, every judged `fn` keyed by its bare name with nested
+fns included, so a nested fn sharing a module-level function's name answers
+for it there. `where` read the same index for a function's body and the
+first declaration of ANY kind for its address — a block's `let` included —
+so it printed the prelude's `lines` beside a local `let lines` in the
+emitter. `where` now reads the one module-level declaration (`module_decl`,
+src/query.mn; `at_module_level`, src/graph.mn); the emit's index is the
+remainder, and the handle-keyed column dissolves both.
 
 `Hβ.parser.expr-interior-comment-attach` — measured 2026-09-17 rather than
 assumed: the weave attaches by SPAN to ANY node, so the anonymous case

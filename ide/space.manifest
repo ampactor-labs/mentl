@@ -1,7 +1,9 @@
 # ide/space.manifest — what Mentl Space is: the one home the page, the
 # staging script (tools/space-stage.sh), the deploy and the IDE gate read.
 # `root` is where the page finds these paths: `..` in the repo (the page
-# lives in ide/), `.` once staged beside the page.
+# lives in ide/), `.` once staged beside the page. A `program` is a
+# one-file project (the lessons); a `project` is a folder of modules, which
+# staging expands into `member` lines (a static host lists no folder).
 root ..
 wasm boot/mentl.wasm
 lib lib/memory.mn
@@ -10,7 +12,16 @@ lib lib/lists.mn
 lib lib/threading.mn
 lib lib/io.mn
 lib lib/prelude.mn
+lib lib/math.mn
+lib lib/dsp/clock.mn
+lib lib/dsp/feedback.mn
+lib lib/dsp/signal.mn
+lib lib/dsp/spectral.mn
+lib lib/dsp/cfc.mn
+lib lib/dsp/processors.mn
+lib lib/audio/wav.mn
 lib src/types.mn
+project examples/pulse/render
 program lib/tutorial/00-hello.mn
 program lib/tutorial/01-graph.mn
 program lib/tutorial/02-handlers.mn

@@ -7,11 +7,14 @@
 #   VACUOUS and said so otherwise: the judgment has spawned nothing since
 #   pin 7c9dc538), the address CursorView, the ?? Propose socket, and the
 #   resident session. The twin loads boot/mentl.wasm itself (2026-09-27).
-# Leg 2: the browser itself — mentl space serves the page, headless chrome
-#   loads /ide/?smoke, and the page's own console wire reports the compile
-#   verdict (exit, wat lines, spawned task count — reported) and then the
-#   resident session's (one open, one read, both timed, the read answered by
-#   the session rather than a fresh instance). Skipped, loudly, when
+# Leg 2: the browser itself — the staged site served with the isolation
+#   headers, headless chrome loads ?smoke, and the page's own console wire
+#   reports the VIEW (the first lesson's View from the page's resident
+#   session — eight ring facts, no refusing diagnostic, open and read
+#   timed, the bytes counted) and then the PRODUCT (what the page painted:
+#   fidelity, no undefined, eight real rows, the Lens structural). The page
+#   parses nothing the wheel prints; it paints the record `mentl space
+#   <address>` answers (src/space.mn). Skipped, loudly, when
 #   no browser or the mentl shim is absent. The browser is FOUND, not
 #   assumed: $MENTL_CHROME, then google-chrome / chromium /
 #   chromium-browser on PATH, then a Playwright chromium under
@@ -59,47 +62,56 @@ if [ -n "$browser" ]; then
   # captures the load event, before the wheel has booted.)
   lines=$(timeout 240 node ide/browser-leg.mjs "$browser" "http://127.0.0.1:$port/" .build 2>&1 | grep -E '^(SMOKE|SPACE-READY|PAGE-ERROR|BROWSER-LEG-ERROR)')
   kill "$sp" 2>/dev/null
-  line=$(printf '%s\n' "$lines" | grep -m1 '^SMOKE exit')
-  sline=$(printf '%s\n' "$lines" | grep -m1 '^SMOKE-SESSION')
+  vline=$(printf '%s\n' "$lines" | grep -m1 '^SMOKE-VIEW')
+  jline=$(printf '%s\n' "$lines" | grep -m1 '^SMOKE-PROJECT')
   pline=$(printf '%s\n' "$lines" | grep -m1 '^SMOKE-PRODUCT')
   printf '%s\n' "$lines" | grep -E '^(PAGE-ERROR|BROWSER-LEG-ERROR|SMOKE-BOOT-FAIL|SMOKE-TIMEOUT)' | sed 's/^/  /'
-  echo "  $line"
-  echo "  $sline"
+  echo "  $vline"
+  echo "  $jline"
   echo "  $pline"
-  case "$line" in
-    "SMOKE exit=0 "*)
-      tasks=$(echo "$line" | grep -oE 'tasks=[0-9]+' | cut -d= -f2)
-      watlines=$(echo "$line" | grep -oE 'watlines=[0-9]+' | cut -d= -f2)
-      # The WAT is the verdict; the task count is a measurement (the judgment
-      # spawns nothing by design since pin 7c9dc538 — judge once).
-      if [ "${watlines:-0}" -gt 1 ]; then
-        echo "  browser leg: PASS — the first lesson compiled in the page ($watlines wat lines; ${tasks:-0} worker tasks, reported)"
+  # THE PROJECT (L-C): a folder of modules the manifest names opens in the
+  # same session — its main.mn the entry, every module editable under its
+  # own name — and its View comes from the resident session, eight facts,
+  # no refusing diagnostic (examples/pulse/render judges clean in the page).
+  case "$jline" in
+    "SMOKE-PROJECT "*"resident=true"*)
+      pj_ring=$(echo "$jline" | grep -oE 'ring=[0-9]+' | cut -d= -f2); pj_ref=$(echo "$jline" | grep -oE 'refusing=-?[0-9]+' | cut -d= -f2)
+      if [ "${pj_ring:-0}" -eq 8 ] && [ "${pj_ref:--1}" -eq 0 ]; then
+        echo "  project leg: PASS — $(echo "$jline" | grep -oE 'dir=[^ ]+' | cut -d= -f2) opened in the session ($(echo "$jline" | grep -oE 'members=[0-9]+' | cut -d= -f2) modules), its View 8 facts, 0 refusing"
       else
-        echo "  browser leg: FAIL — exit 0 but no WAT came back (watlines=${watlines:-0})"; fail=1
+        echo "  project leg: FAIL — ring=${pj_ring:-0} refusing=${pj_ref:--1}"; fail=1
       fi ;;
-    *) echo "  browser leg: FAIL"; fail=1 ;;
+    *) echo "  project leg: FAIL — ${jline:-no SMOKE-PROJECT line}"; fail=1 ;;
   esac
-  # The resident session in the browser itself (E2): the page's own client
-  # opens one instance and reads its graph; the read must be answered by
-  # the session, not by a fresh instance, and must project.
-  case "$sline" in
-    *"resident=true query=true"*)
-      echo "  session leg: PASS — the page's session kept its graph (open $(echo "$sline" | grep -oE 'open=[0-9]+' | cut -d= -f2) ms, read $(echo "$sline" | grep -oE 'read=[0-9.]+' | cut -d= -f2) ms)" ;;
-    *) echo "  session leg: FAIL — ${sline:-no SMOKE-SESSION line}"; fail=1 ;;
+  # THE VIEW (L-C): the first lesson's View arrived from the page's own
+  # session — eight ring facts, no refusing diagnostic (the lesson judges
+  # clean), the ledger present — and a second read of it was answered by
+  # the session, not a fresh instance, with its size and time printed.
+  field() { echo "$2" | grep -oE "$1=[^ ]+" | cut -d= -f2; }
+  case "$vline" in
+    "SMOKE-VIEW "*"resident=true"*)
+      ring=$(field ring "$vline"); refusing=$(field refusing "$vline"); ledger=$(field ledger "$vline")
+      if [ "${ring:-0}" -eq 8 ] && [ "${refusing:--1}" -eq 0 ] && [ "${ledger:--1}" -ge 0 ]; then
+        echo "  view leg: PASS — the first lesson's View came from the session (open $(field open "$vline") ms, read $(field read "$vline") ms, $(field bytes "$vline") bytes; 8 ring facts, 0 refusing)"
+      else
+        echo "  view leg: FAIL — ring=${ring:-0} refusing=${refusing:--1} ledger=${ledger:--1}"; fail=1
+      fi ;;
+    *) echo "  view leg: FAIL — ${vline:-no SMOKE-VIEW line}"; fail=1 ;;
   esac
   # The product — what the page RENDERS, measured in the browser: the
   # projection shows every character the hand typed (a lost space was live
-  # in production for weeks), no \`undefined\` reaches the chrome, every
-  # facet line the compiler printed has a real ring row, and the Lens holds
-  # no telemetry dressed as a diagnostic.
+  # in production for weeks), no \`undefined\` reaches the chrome, eight real
+  # ring rows painted from the View, and the Lens STRUCTURAL — a Warning
+  # lands as a Warning at its own line and a mismatch at its own site (the
+  # page's regexes had both wrong: lowercase kinds only, and the first
+  # address in a message — a Reason's — over the diagnostic's span).
   case "$pline" in
-    *"fidelity=true undefined=false"*"lens-telemetry=false"*)
-      facets=$(echo "$pline" | grep -oE 'facets=[0-9]+' | cut -d= -f2)
-      ring=$(echo "$pline" | grep -oE 'ring-real=[0-9]+' | cut -d= -f2)
-      if [ "${facets:-0}" -gt 0 ] && [ "${ring:-0}" -ge 8 ]; then
-        echo "  product leg: PASS — fidelity, no undefined, $facets facet lines on 8 real rows, Lens clean; screenshots .build/space.png (obsidian, caret projected) and .build/space-parchment.png"
+    *"fidelity=true undefined=false"*"lens-warning-at-line=true lens-mismatch-at-site=true"*)
+      ring=$(field ring-real "$pline")
+      if [ "${ring:-0}" -ge 8 ]; then
+        echo "  product leg: PASS — fidelity, no undefined, 8 real rows from the View, the Lens structural; screenshots .build/space.png (obsidian, caret projected) and .build/space-parchment.png"
       else
-        echo "  product leg: FAIL — facets=${facets:-0} ring-real=${ring:-0}"; fail=1
+        echo "  product leg: FAIL — ring-real=${ring:-0}"; fail=1
       fi ;;
     *) echo "  product leg: FAIL — ${pline:-no SMOKE-PRODUCT line}"; fail=1 ;;
   esac

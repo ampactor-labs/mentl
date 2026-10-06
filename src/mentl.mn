@@ -1124,7 +1124,8 @@ fn tie_leverage(ss) = match ss {
 // walked a Reason DAG into an indented structural dump — no backticks on
 // those, because they no longer resolve and a reference that points nowhere
 // is the thing the comment-ref gate exists to refuse. `mentl why` never
-// called them: the live renderer is `render_why_hops` (src/main.mn), which walks
+// called them: the live renderer is `why_lines` (src/space.mn, the Why
+// facet's hops under the View), which walks
 // the same chain and renders file:line through the range map, each hop's
 // phrase, the binding's literal value read live from `node_const`, and the
 // author's attached `//` lede from `graph_comment_at`. One was a tree of

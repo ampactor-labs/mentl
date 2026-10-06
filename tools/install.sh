@@ -81,9 +81,24 @@ if [ "\${1:-}" = "space" ]; then
   # cross-origin-isolated document for the shared memory the session's
   # channel is). Port override: MENTL_SPACE_PORT. The deployed page is the
   # same artifact, served by GitHub Pages.
-  bash "\$MENTL_HOME/tools/space-stage.sh" || exit \$?
-  echo "mentl space: http://127.0.0.1:\${MENTL_SPACE_PORT:-7397}/" >&2
-  exec python3 "\$MENTL_HOME/tools/space-serve.py" "\$MENTL_HOME/.build/space" "\${MENTL_SPACE_PORT:-7397}"
+  #
+  # mentl space <file>:<line>[:<col>] is the WHEEL's: the View the page
+  # paints, as JSON (src/space.mn). The bare verb and \`mentl space <dir>\`
+  # (the page opened on that folder of modules, staged as a project) are the
+  # host's to serve; an address passes through to the module below.
+  case "\${2:-}" in
+    *:[0-9]*) ;;
+    *)
+      extra=()
+      if [ -n "\${2:-}" ]; then
+        [ -d "\$2" ] || { echo "mentl space: \$2 is neither a folder to open nor an address (<file>:<line>[:<col>])" >&2; exit 2; }
+        extra=("\$(cd "\$2" && pwd)")
+      fi
+      bash "\$MENTL_HOME/tools/space-stage.sh" "\$MENTL_HOME/.build/space" \${extra[@]+"\${extra[@]}"} || exit \$?
+      echo "mentl space: http://127.0.0.1:\${MENTL_SPACE_PORT:-7397}/" >&2
+      exec python3 "\$MENTL_HOME/tools/space-serve.py" "\$MENTL_HOME/.build/space" "\${MENTL_SPACE_PORT:-7397}"
+      ;;
+  esac
 fi
 exec_rc=0
 mentl_wasm "\$@" || exec_rc=\$?

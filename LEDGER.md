@@ -35,6 +35,197 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-10-06 · pin c8ba579971428cf1 (CLEAN m2 == m3; FIRST LIGHT m3 == m4) · THE VIEW IS A PROJECTION, CLOSED (L-C's second pin, over d956687d8ac29dfa — the entry below):
+  THE AUDIT BEFORE THE SECOND PIN read the View against the graph, nine
+  findings: (A1) one diagnostic render, in the reporter's own world
+  (`diag_report_at` renders the message once; `diag_line` composes every
+  arm's line from it), and the bank holds the op's own fact, so the wrapper
+  record the first pin carried is gone; (A2) the narration class has one
+  home; (A3) the View reads the judged graph — the query slice from the text
+  the judgment read, never the disk, the tightenings once per View, the spans
+  once per Why; (A4) the field is one View and the View a closed record, the
+  Teach facet rendered before the serializer, the Ledger ranked by one sort,
+  the lede the first sentence; (A5) one generation clear per route —
+  `rederive_cone` runs the route's clear before it judges, the warm compile's
+  `forget_claims` and the session's `session_forget` (the bank and the
+  claims), and a module that leaves the link is cleared by the same function
+  (`session_prune`); (A6) the prose the verbs flagged, trued; (A7) the page
+  reads facts, not spellings — the severity and applicability classes from
+  the wire, the client sending only bytes the session has not seen, and the
+  worker's WASI tree true (the preopen, directories, `path_open`'s semantics,
+  the streams answering an unknown file type); (A8) the twin compares every
+  resident View with the cold one, handles aside; (A9) the peers it found,
+  named (below).
+  THE CLOSE FOUND THREE MORE, each by asking the medium: `mentl where`
+  printed the prelude's `lines` at a local `let lines` in the emitter —
+  `decl_address` took the first declaration of ANY kind in the decls column
+  while `decl_body` took the emit's function index, so the address, the body
+  and the head could name three bindings; one module-level declaration is
+  read once now (`module_decl`, `at_module_level` beside the parent edge,
+  space.mn's own `top_level` deleted into it), RED on boot d956687d at line
+  6 of tests/frontier/mn-where-shadowed-local.mn where the function stands
+  at 10. The lede joined a comment's lines with the space after each `//`
+  and kept the first line's, so it read `Lede:  <~ …` and broke sentences
+  with two spaces; each line is read trimmed and joined by one. And the cold
+  accept projected its View with the ranges it read BEFORE its write, so the
+  query slice cut the new node's span out of the old text and printed
+  `Query: ? : Int` where `1` stands — the frontier's accept leg RED on this
+  landing's own candidate, since A3 had removed the disk read that masked
+  it; the write only writes now (`patch_written`) and the route derives once
+  and projects over what that returns, as the session's accept does.
+  THE DETERMINISM LEG IS A GATE: tools/march.sh ran its m4 leg only under
+  `--fixpoint`, and AFTER a clean repin had copied m2 over the boot, so a
+  non-reproducing m4 set `fixok=0` with the new boot already in place, and
+  twelve clean pins in a row were never probed (`Hβ.march.determinism-is-
+  never-probed`, CLOSED). The pin's first march ran it by flag (m3 == m4,
+  FIRST LIGHT, the first determinism probe on a clean march); every repin
+  now runs it BEFORE the bless and refuses on m3 ≠ m4 with the boot
+  untouched (`probe_m4`, `stamp_fixpoint`), and the close's own repin
+  ran it first — m3 == m4, then boot ← m2. The refusal branch has not been seen red: no candidate that fails
+  to reproduce itself was at hand, and one is not manufactured for it.
+  WHAT THE AUDIT MEASURED ABOUT THIS PIN: the wheel's open proof obligations
+  rose 37 → 39 across L-C (`mentl query src/main.mn smt`: src/space.mn 0 → 5, src/main.mn 6 → 3, every other module's count unchanged), and nothing refused the rise, because the board bounds census
+  shapes and never answers (G2 of the 2026-10-06 program bounds it).
+  MEASURED: the text projection against HEAD's boot 2175e015 on thirty lesson positions: six byte-identical, twenty-four differing on the Lede line alone. the node twin on the pinned boot: the session opens in 221 ms, a read 4.6–7.4 ms resident against 227 ms cold, an edit 48.1 ms, the accept 50.1 ms, the View 9.5 ms at 1,096 bytes, a sibling module's 24.4 ms, a cycle's 23.0 ms; the browser's open 538 ms and read 25.7 ms at 19,912 bytes. Pulse through the page's session path, three runs: the edit 221–278 ms, a read 41–61 ms, zero refusals. Micros 377/377; frontier 599/0/1;
+  crown, proof-exactness and effect-identity green; the effectful-lambda
+  bound 222 → 220 (the cone's per-module loop and its two mapping lambdas
+  deleted, the space verb's parser a named function, two judging thunks
+  added) and the authored-`ref` ratchet 698 → 684.
+  KILLS since the first pin, in order: the guard hand-rendered its lines;
+  the proposer re-rendered after the rollback; the bank's tuple order
+  differed from the op's; the record that wrapped the bank's fact; the `T_`
+  prefix overclaimed steps; the lead said "row forbids" for an unhandled
+  effect; the query read the disk; the tightenings re-read per ring; an
+  O(n²) insertion in the Ledger; the spans re-filtered per Why hop; the
+  field's text and JSON were two reads; the Teach facet rendered inside the
+  serializer; the lede took the first line; the depth cut was an
+  empty-string sentinel; the address walks were index-recursive; a
+  lifecycle word in a lede; the prune forgot the bank only (RED on the boot,
+  green on the candidate); the streams answering a character device made the
+  wheel read stdin as a terminal (twin leg 0); the comment-reference cut was
+  half made; the ranked-queue peer was mislabelled open; the "second
+  `lines`" this close first read was a local `let`, which the medium's whole
+  answer showed and a filtered one hid; `where`'s address; the lede's
+  spacing; the accept's stale ranges.
+  NAMED: `Hβ.graph.module-nodes-are-a-column`,
+  `Hβ.diag.module-identity-is-a-name`, `Hβ.space.binding-lede-reads-the-line`,
+  `Hβ.graph.a-handle-is-a-handle-at-its-source`,
+  `Hβ.audit.pending-tier-attributes-by-line-extent`,
+  `Hβ.lib.search-answers-a-sentinel`,
+  `Hβ.cursor.handler-effects-reads-the-declaration`, and the emit's bare-name
+  function index under `Hβ.lower.reach-edge-on-node`. The program planned the
+  same day — the seven-lens audit and its order — is recorded verbatim at
+  commit 42a94dc0 (docs/record/2026-10-06), and the next docs commit moves it
+  into PLAN §11 and RESIDUE. Records: PLAN §7 bullet and §11 Arc E,
+  docs/MENTL_SPACE.md §8. Cost: m3 leg 38.22s wall · 386MB peak RSS (395932 KB) at the close's repin (37.36 s · 395,776 KB at the first).
+
+- 2026-10-06 · pin d956687d8ac29dfa (CLEAN m2 == m3) · THE VIEW IS A PROJECTION (L-C):
+  THE WHEEL RENDERS THE IDE, AND THE PAGE IS A HOST WITH ONE PAINTER. The
+  page had re-parsed the caret's text with one regex family and the compile's
+  stderr with another, and two were measured wrong on boot 2175e015 before a
+  line was written: the kind regex knew `error|warning|note` in lowercase
+  while the wheel prints `Warning` and `VerificationPending`, so every
+  warning landed in the verdict strip and never in the Lens; and the address
+  regex took the FIRST `at L:C` in a message while the diagnostic's own span
+  rides LAST, so a Lens jump could land on a Reason's line. A third gap by
+  reading: the first derivation's diagnostics stayed in the open reply's
+  `err`, read by nothing. THE FORM: ONE tree of typed facts (src/space.mn;
+  `Aspect`, `Socket`, `Note`, `RingFact`, `LensFact`, `LedgerFact`,
+  `ViewAt`, `View` in types.mn) computed by one walk — `ring_of` from the
+  caret's `CursorView`, the lede, the serving install, the obligations and
+  the teaching; `lens_of` from the structured bank, the lead sentence first
+  (src/voice.mn's own), the caret's module before the linked ones, each
+  diagnostic AS THE KIND IT IS at ITS OWN site with source, code, severity,
+  applicability and whether it refuses; `ledger_of` from the declarations
+  nearest the caret by `position_proximity`, the open obligations and the
+  tightenings — and projected twice: `ring_text` is the terminal's `mentl
+  <file:line>` (byte-identical to the `render_at` it replaced, measured on
+  thirty lesson positions) and `view_json` the page's JSON through
+  lib/json.mn. THE WIRE: `mentl space <file>:<line>[:<col>]` (`VSpace`
+  carries an address; the shim intercepts only the bare verb and `mentl
+  space <dir>`), cold through `space_run`'s chain and resident through
+  `session_read`, for ANY module in the link — the session's `main`-only
+  guard is gone; `diag_bank` (`effect DiagBank`, forwarding every
+  `diag_report` outward) sits in `space_run`'s, `session_run`'s and
+  `mcp_run`'s chains, `session_forget` clears a cone's modules before their
+  re-judgment and `session_prune` drops the modules that left the link.
+  THE PAGE: `project(edited)` asks `mentl space FILE:L:C` with the edited
+  file under its own path, ONE painter draws the ring (note kinds, the
+  provenance badge), the lens (lead; own-module diagnostics; linked modules
+  folded under a count), the ledger and the proposal (a `fill` verdict at
+  the caret's span accepts through `mentl accept FILE:L:C`); deleted:
+  `parseFacets`, `parseStderr`, `APPL`, `SEV`, `leadCopy`, the Teach knob,
+  the status bar, the footer, the Wavefront strip and the Module pane.
+  THE PROJECT FORM: `project <dir>` in ide/space.manifest, expanded by
+  tools/space-stage.sh into `project` + `member` lines (a static host lists
+  no folder); `mentl space <dir>` stages a folder under `project/<basename>`;
+  the select groups by project, every member mounted at its path, drafts per
+  file; the worker's `fd_readdir` is true over the vfs (the dirent layout,
+  ENOTDIR for a file). GATES: twin legs 9 (the View resident under the bar;
+  the ring's eight kinds in order; lens sites typed; cold equals resident
+  handles-aside; a Warning as a Warning at line 1, a mismatch at its own
+  line 4, the lead first) and 10 (a sibling module's View; the text address;
+  deps-first; a cycle of modules), five assertions RED on boot 2175e015;
+  the browser's `SMOKE-VIEW`, `SMOKE-PROJECT` and `SMOKE-PRODUCT` read the
+  painted DOM and tools/ide-gate.sh judges them. WHAT THE FIRST REAL PROJECT
+  THROUGH THE SESSION FOUND — the root of 56 refusals when Pulse opened in
+  the page: the session's cone (E2) re-judged its modules ONE AT A TIME
+  into the shared env, so a new `a.mn` judged before the `b.mn` it imports
+  refused `two` as missing where the cold route judged clean, and
+  `dsp/signal` and `dsp/processors` IMPORT EACH OTHER, so whichever came
+  second refused the other's declarations (nineteen `E_MissingVariable`,
+  every arm over the library's process op). THE FORM: the cone is ONE
+  judgment — `rederive_cone` forgets each cone module's claims, hands every
+  module of the cone to `infer_modules_converged` at once (identity, the
+  scan's resolved deps, text — `cone_module`), and reads each module's
+  bucket off its node after (`cone_bucket`); the judgment's callee-first
+  walk over binding groups already owns every order and every cycle inside
+  a judgment, so the cone owes none. Two forms were built over the
+  per-module loop and are deleted with it: a post-order scan (56 → 19, the
+  cycle still refusing) and Tarjan groups over the scan's dep edges
+  (`scan_groups`/`rederive_group`; 19 → 0, the binding-group law copied one
+  layer up — a second home, Morgan's "solutions, not band-aids"). AND THE
+  ONE JUDGMENT EXPOSED A FROM-ZERO WALK: the prose gate and the boundary
+  finalize both walked [0, graph_next()) — the cold route's parse starts
+  at 0, the session's cone does not — so every edit re-narrated every
+  superseded generation's unresolved comment references into the bank
+  (39 → 79 → 119 on three cone judgments of one four-line lesson, the same
+  thirty-six sites of types.mn each time) and re-read a program's worth of
+  handles for the cone's few; both read the judgment's own parse start now
+  (`infer_modules_converged` marks it before `parse_modules`), the twin's
+  leg 10 holds the bank at one across three edits (RED on the m2 that
+  judged the cone whole). MEASURED on this pin's m2: a lesson's View 8.5 ms resident at 1,097
+  bytes; the sibling module 21 ms; the cycle 29 ms; the browser's open 541
+  ms, read 44 ms, 16,673 bytes (lens 39 — types.mn's comment-reference
+  warnings, the cold route's own count); Pulse via the session: edit 189 ms,
+  read 40 ms, zero refusals, 40 lens facts against the cold route's 38 (the
+  three are types.mn's reports from the lesson's link, the peer's first
+  face); micros 377/377; frontier 599/0/1; crown and proof-exactness green;
+  the project leg 56 → 19 → 0 across the two forms and 0 under the one
+  judgment. KILLS, in order: the
+  shim swallowed the address form (every `mentl space …` was the server);
+  the first View was a generic `Fact` record with string kinds — refuted by
+  the audit and by Morgan's question ("is that really the most empowering…
+  shape?") and rewritten as typed facts; a backticked `Warning` in a comment
+  resolved nowhere (the ratchet); `render_why_hops` named in a comment after
+  its deletion (the ratchet again, at the first march); `own` is a keyword, not a binder; a
+  two-hole partial handed to `fold` is not a two-parameter function; the
+  root gate refused the wheel — `mcp_run` performed `DiagBank` with no bank
+  installed (named by `mentl where` and the caret); "cold equals resident
+  byte for byte" failed on the handle alone (14534 vs 7624 — the session's
+  identity for a node, named under `Hβ.space.view-is-graph-content`); the
+  stale bank (modules that left the link kept their reports, 519 diagnostics
+  on a four-line lesson); the sorted cone; the module cycle; and the warning
+  multiplication (331 @ types for Pulse against 35 cold) was NOT the bank —
+  `comment_refs_check` resolves against the judgment's statements, a module
+  judged as a cone group narrates every cross-module reference (116 against
+  38 for types.mn alone), the third face of
+  `Hβ.voice.comment-ref-gate-reads-the-flattened-link`. Also fixed: an
+  unquoted heredoc in tools/install.sh ran a backticked `mentl space <dir>`
+  at install (the 464bad57 class). NAMED: `Hβ.space.view-is-graph-content`
+  (the View as a graph node; the Lens's density; the accept answering text),
+  `Hβ.felt.project-picker-outside-chromium`. Records: PLAN §7 bullet, §8's
+  verb lines, docs/MENTL_SPACE.md §8 trued. m3 leg 34.19s wall · 386MB peak RSS (395516 KB)
 - 2026-10-05 · pin 2175e0152fd1266f (CLEAN m2 == m3) · NO RUST IN THE CODEBASE (L-H):
   THE WHEEL ONLY EMITS, AND THE STOCK ENGINE IS THE TERMINAL'S HOST. Morgan's
   constraint, "at all!": the CLI's host had been an 800-line embedding of the

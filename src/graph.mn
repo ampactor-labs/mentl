@@ -250,6 +250,17 @@ fn spine_parent_at(spine, spine_open, h) = if spine_band(h) >= spine_open {
   if cell == 0 { None } else { Some(cell - 1) }
 }
 
+// A declaration stands at module level when this edge runs from it to a
+// module node. The decls column holds a block's `let`s and nested fns beside
+// a module's own declarations, and this is the one test that tells them apart.
+fn at_module_level(h) = match graph_parent_of(h) {
+  Some(p) => match graph_node_body(p) {
+    NModule(_) => true,
+    _ => false,
+  },
+  None => false,
+}
+
 // THE ACCEPT EDGE, read at the one writer (C4). A node bound at an extent
 // the accepted column holds — same module, same span — takes its reason
 // wrapped in `Accepted`, so every projection of the reason cell (the Why
@@ -397,18 +408,6 @@ fn spine_product_at(spine, spine_open, h) = if spine_band(h) >= spine_open {
 fn occurs_in_live(handle, ref ty) with !Mutate = match graph_branch_seed() {
   (spine, _open, _spans) => occurs_in(spine, graph_next(), handle, ty),
 }
-
-// The write guard's own line — coordinates only, zero graph or intern
-// reads, because the arm that speaks it cannot see its own instance (an
-// arm's performs resolve OUTER). A real infinite type still deserves its
-// span (SYNTAX principle 5); the typed render lives at unify's pre-check.
-fn occurs_guard_line(handle, reason) =
-  "infer: E_OccursCheck error: infinite type at t{handle} (the graph write guard) at {show_span(reason_span_or_zero(reason))}\n"
-
-// The teach's line beside the refusal — coordinates + name only, the
-// guard's own render discipline (no graph ops from the arm).
-fn poly_teach_line(owner: String, reason) =
-  "infer: T_PolyRecursionSignature Warning: the infinite type runs through '{owner}''s own parameter or return — if '{owner}' calls itself at a different type (polymorphic recursion), a FULL signature on '{owner}' buys the poly self-call at {show_span(reason_span_or_zero(reason))}\n"
 
 // Config: a BRANCH CURSOR (the parallel fan's per-thread instance) installs
 // over the SHARED spine with a private planned range — the root install is
@@ -663,38 +662,23 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
   // residual (the row leak that carried the render/guard ops past every
   // bracket into the wheel's own root row).
   if occurs_in(spine, next, handle, ty) {
-    // The write guard's report renders NO types: an arm's performs
-    // resolve OUTER of its own install, so a diag_message render here
-    // would chase a graph that is not in this arm's world (the
-    // wrong-instance class). The line carries coordinates only; the
-    // typed teaching render lives at unify's pre-check sites (the
-    // perform side, inside the analysis brackets), which fire first on
-    // every unification path — this belt guards the non-unify binds.
-    // STORED, NOT REPORTED. A diag_report here resolves OUTER of this
-    // install and sails past any capture bracket installed deeper — which
-    // is where speculation installs one, so the refusal the Mycroft retry
-    // keys on never reached it. The body drains and narrates
-    // (graph_guard_drain); this arm only notes.
-    let g1 = push(
-      guard_diags,
-      (EOccursCheck(handle, ty, reason_span_or_zero(reason)), occurs_guard_line(handle, reason), spine_module_name(spine, spine_open, cur_module))
-    )
-    // The poly-recursion teach rides the refusal (coordinates-only
-    // discipline as above — the mint reason is read from THIS
-    // instance's state, no outer-resolving render): an infinite type
-    // through a fn's OWN param/return mint is the
-    // self-call-at-a-different-type fingerprint; name the fn and the
-    // signature route.
+    // STORED, NOT REPORTED, AND NOT RENDERED. A report here resolves OUTER
+    // of this install, so it would sail past any capture bracket installed
+    // deeper (where speculation installs one, so the refusal the Mycroft
+    // retry keys on never reached it), and a render here would chase a
+    // graph that is not this arm's world. The arm notes the fact and its
+    // module; the body drains it at the judgment boundary and renders it
+    // there (graph_guard_drain). This belt guards the binds no unify
+    // pre-check saw.
+    let dm = spine_module_name(spine, spine_open, cur_module)
+    let g1 = push(guard_diags, (EOccursCheck(handle, ty, reason_span_or_zero(reason)), dm))
+    // The poly-recursion teach rides the refusal: an infinite type through
+    // a fn's OWN param or return mint (read from this instance's own
+    // state) is the self-call-at-a-different-type fingerprint.
     let g2 = match graph_node_at(spine, next, handle) {
       GNode(_, mint_r) => match mint_r {
-        FnParam(owner, _, _) => push(
-          g1,
-          (TPolyRecursionSignature(owner, reason_span_or_zero(reason)), poly_teach_line(owner, reason), spine_module_name(spine, spine_open, cur_module))
-        ),
-        FnReturn(owner, _) => push(
-          g1,
-          (TPolyRecursionSignature(owner, reason_span_or_zero(reason)), poly_teach_line(owner, reason), spine_module_name(spine, spine_open, cur_module))
-        ),
+        FnParam(owner, _, _) => push(g1, (TPolyRecursionSignature(owner, reason_span_or_zero(reason)), dm)),
+        FnReturn(owner, _) => push(g1, (TPolyRecursionSignature(owner, reason_span_or_zero(reason)), dm)),
         _ => g1,
       },
     }

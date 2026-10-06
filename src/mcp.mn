@@ -57,19 +57,6 @@ import lists
 
 import memory
 
-// GateLedger — the mcp face's own ledger read: the collector's banked
-// verdict lines, read once after the judge populates them (the Tighten
-// shape). Counts are NOT banked here — diag_errors/diag_refusals forward
-// to the bracket's diagnostics_handler, the one tally home.
-effect GateLedger {
-  // The banked diagnostic text, every reported line verbatim in report
-  // order (each line carries its own newline, as the stderr log prints it).
-  gate_facts() -> String
-  // THE CLASSES, not the prose: `diag_code(diag)` per report, in order — the
-  // refuse contract compares names, never a substring of rendered prose.
-  gate_classes() -> [String]
-}
-
 // The session's collecting console — the address projection's transport
 // at the MCP surface. The SAME core that narrates to stdout on the CLI
 // (address_project speaking Console's print) runs under this install
@@ -83,30 +70,6 @@ effect ConsoleBank {
 handler console_bank with lines = [] {
   print(msg) => resume() with lines = push(lines, msg),
   console_taken() => resume(lines),
-}
-
-// The collecting forwarder over Diag (tighten_collector's proven shape):
-// every diagnostic re-performs outward from the arm — an arm's own
-// performs resolve in the INSTALL's world, reaching the bracket's
-// diagnostics_handler (the stderr log), never re-entering this collector.
-// Branch-fired reports arrive HERE as live re-performs (the converged
-// judgment replays each banked diag through the root chain at the join),
-// so no separate absorb arm exists to fold them.
-//
-// A report raised inside an arena this install encloses — a judgment
-// group's, a declaration's lowering, an emitted fn's — banks like any
-// other: the state commit is journaled where it is stored, and the arena's
-// exit moves the class and the line out with it (lib/arena.mn).
-handler mcp_diag_collector with classes = [], lines = [] {
-  diag_report(diag, line, dmod) => {
-    // Forward outward with the SAME rendered line; the bank keeps it too.
-    diag_report(diag, line, dmod)
-    resume() with classes = push(classes, diag_code(diag)), lines = push(lines, line)
-  },
-  diag_errors() => resume(diag_errors()),
-  diag_refusals() => resume(diag_refusals()),
-  gate_facts() => resume(str_concat_all(lines)),
-  gate_classes() => resume(classes),
 }
 
 // mcp_judge — the canonical judgment over one proposal, batch-shaped at
@@ -133,12 +96,12 @@ fn mcp_judge(source, wat_path) = compile_context(() => {
       }
     },
   }
-  let text = gate_facts()
+  let text = banked_lines()
   let nerr = diag_errors()
   match verdict {
     (refused, emitted) => (text, nerr, refused, emitted),
   }
-} ~> mcp_diag_collector ~> wasi_filesystem)
+} ~> diag_bank ~> wasi_filesystem)
 
 // The verdict's head states exactly what the gate did — refused, emitted
 // with surfaced errors (unarmed classes; the sound-incomplete contract,
@@ -399,22 +362,47 @@ fn session_current(ast, ranges, manifest) = if len(ranges) == 0 {
   if driver_manifest(ranges) == manifest {
     (ast, ranges, manifest)
   } else {
-    // The generation boundary's clears, BEFORE the re-judgment and only for
-    // the cone: the new judgment re-fires every still-true T_OverDeclared
-    // and re-accrues every still-pending obligation of the modules it
-    // re-judges; a stale generation's entries must not shadow the current
-    // truth (their spans belong to a tree that no longer exists), and a
-    // module outside the cone keeps its own.
-    match driver_session_cone("main", ranges, tighten_forget) {
+    // The generation boundary's clear, BEFORE the re-judgment and only for
+    // the cone: the new judgment re-fires every report and re-accrues every
+    // obligation that still holds of the modules it re-judges; a stale
+    // generation's entries must not shadow the current truth (their spans
+    // belong to a tree that no longer exists), and a module outside the cone
+    // keeps its own.
+    match driver_session_cone("main", ranges, session_forget) {
       (cone, r2) => {
         eprint_string("session: tree moved — re-judged {names_join(cone)}; the graph is current\n")
-        // The bank re-hashes over the NEW range map (r2's paths) — the
-        // check above hashed the old module set. The entry's own decls are
-        // read off its NModule node, the cone's fresh one.
+        // The modules the old link held and the new one does not are cleared
+        // the same way. The entry's own decls are read off its NModule node,
+        // the cone's fresh one.
+        session_prune(ranges, r2)
         (driver_module_ast(ast, "main"), r2, driver_manifest(r2))
       },
     }
   }
+}
+
+// The session's generation clear: the banked reports of the named modules
+// and the obligations raised in their current nodes go, and every other
+// module's stand. Handed to the cone as a value, so the re-judgment and a
+// module leaving the link clear both ledgers through this one function.
+fn session_forget(modules) = {
+  diag_forget(modules)
+  forget_claims(modules)
+}
+
+// A module that LEFT the link keeps nothing. The cone's clear forgets what is
+// re-judged; a module the new tree no longer links is never re-judged, so its
+// reports and claims stood for the session's life — measured in the browser
+// 2026-10-06: a project opened over a lesson's session brought its libraries'
+// reports in, and the Lens over the next four-line lesson held 519 of them.
+// The modules that left are the old link's less the new one's.
+fn session_prune(ranges, r2) = {
+  let linked = map(range_module, r2)
+  ranges |> map(range_module) |> filter({ m => !module_in(linked, m) }) |> session_forget
+}
+
+fn range_module(r) = match r {
+  (m, _, _) => m,
 }
 
 // The serve loop — a RAW recursion over the session triple (ast,
@@ -500,7 +488,7 @@ fn session_run(answer) = infer_context(() => {
     }
     0
   }
-} ~> wasi_filesystem ~> query_default ~> mentl_default ~> arm_state_ctx([], OneShot, "") ~> spec_registry ~> tighten_collector)
+} ~> wasi_filesystem ~> query_default ~> mentl_default ~> arm_state_ctx([], OneShot, "") ~> spec_registry ~> diag_bank)
 
 // What an answer cost the image, on the session's log. Each answer is an
 // arena (lib/arena.mn), so this is what it PUBLISHED: the nodes a question
@@ -603,6 +591,6 @@ fn mcp_run(at_read) = {
     } else {
       mcp_loop([], [], [], at_read, (a, r, m) => (a, r, m))
     }
-  } ~> wasi_filesystem ~> query_default ~> mentl_default ~> arm_state_ctx([], OneShot, "") ~> spec_registry ~> tighten_collector)
+  } ~> wasi_filesystem ~> query_default ~> mentl_default ~> arm_state_ctx([], OneShot, "") ~> spec_registry ~> diag_bank)
   0
 }

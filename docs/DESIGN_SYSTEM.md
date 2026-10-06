@@ -25,7 +25,8 @@ felt aspect (PLAN §5.2, band M), not read-path: interrogate them, never absorb.
    presence in the editor.
 3. **Color is a projection of the kernel.** The Okabe–Ito palette, one hue per
    kernel role, measured for contrast on both grounds by a script in the gate.
-4. **Density lives ON the code**, scaled by the Teach knob, layered on the text
+4. **Density lives ON the code**, scaled by the computed degree of interest
+   (never a knob), layered on the text
    (gutter, inline marks, overlays), never as more panels.
 5. **The hero is Mentl Space**: the fixpoint compiler itself, unmodified, in a
    browser worker. No server, no toolchain, no chatbot.
@@ -334,11 +335,11 @@ safe; the body already proves it."*
 > builds the rest is PLAN §11 (the Space pivot). This section is what the page
 > IS today and the two layers it grows next.
 
-**Three layers around the code, as built:**
+**Two layers around the code, as built:**
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────┐
-│ ◯ mentl space   [ 00 · hello ▾ ]  judged in 429 ms  exit 0        TEACH ──●── ◐ │
+│ ◯ mentl space   [ 00 · hello ▾ ]                                              ◐ │
 ├──────────────────────────────────────────────┬───────────────────────────────┤
 │ 17  // Read it: mentl lib/tutorial/…:29:77     │ ASPECT RING            kw: fn │
 │ 19  import io                                  │ ● graph     REAL  …           │
@@ -347,13 +348,10 @@ safe; the body already proves it."*
 │ 32    greet("kernel")                          │ … effects · ownership · verify │
 │                                                │   · teach · why               │
 │   the canvas: a textarea under the highlight   ├───────────────────────────────┤
-│   layer, line numbers, the verb spines         │ Lens ⓪ · Ledger · Module      │
+│   layer, line numbers, the verb spines         │ Lens ⓪ · Ledger               │
 │                                                │   ✓ clean — the graph is      │
 │                                                │     coherent                  │
-├──────────────────────────────────────────────┴───────────────────────────────┤
-│ WHY  ownership-resolved params of 'greet', at main:29                          │
-│ compiler boot/mentl.wasm · 3,079,000 bytes   session resident · 35 ms   host … │
-└──────────────────────────────────────────────────────────────────────────────┘
+└──────────────────────────────────────────────┴───────────────────────────────┘
 ```
 
 1. **The Canvas (centre)** — the program in its kernel colours over a plain
@@ -362,18 +360,21 @@ safe; the body already proves it."*
    session, which re-judges the moved cone and answers the facets and the
    diagnostics in one reply (~100 ms); a caret move is a read of the graph the
    session holds (~20 ms). The emitted module is rendered on demand.
-2. **The rail (right)** — the **Aspect ring** (§6) above three tabs: the
-   **Lens** (the diagnostics ranked to one teaching step, click to jump; cost
-   lines are telemetry on the trail, never dressed as diagnostics), the
-   **Ledger** (the authored rows, the proof surface, the obligations at the
-   caret) and the **Module** (the WebAssembly text, downloadable).
-3. **The Wavefront (bottom)** — the Why chain at the caret; the trail of
-   judgments with their cost at high Teach.
+2. **The rail (right)** — the **Aspect ring** (§6) above the **Lens** (every
+   banked diagnostic as the kind it is at its own site, the caret's module
+   first and the linked modules folded under a count, the lead sentence the
+   wheel's own; click to jump — cost lines never enter the View) and the
+   **Ledger** (the declarations nearest the caret by the graph's proximity,
+   the open obligations, the tightenings). The Why chain is the ring's eighth
+   facet. Every row is a fact of the View the wheel renders (`mentl space
+   <file>:<line>[:<col>]`, src/space.mn); the page paints and never parses.
 
-The **Teach knob** is the one density control: it scales how much of each
-facet, the trail and the gutter shows. The **programs** are the lessons in
-`lib/tutorial/` plus the developer's drafts, kept in the browser; there is no
-sample-code dropdown that warns about itself.
+Density is **computed**, never configured: each fact scores a degree of
+interest from the caret (docs/MENTL_SPACE.md §3), and the knob, the status
+bar, the footer, the Wavefront strip and the Module pane are gone. The
+**programs** are the lessons in `lib/tutorial/`, the projects the manifest
+lists (`project <dir>`, or `mentl space <dir>`) and the developer's drafts,
+kept in the browser; there is no sample-code dropdown that warns about itself.
 
 **The next two layers, named (PLAN §11, L-D and L-E):** the **aspect strip** —
 at high Teach, eight one-character gutter cells per line, one per aspect in its

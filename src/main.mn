@@ -71,6 +71,8 @@ import cursor_transport
 
 import synth_proposer
 
+import space
+
 import eight_loop
 
 import test
@@ -146,7 +148,7 @@ fn dispatch_invocation(verb) = match verb {
   VEdit(target) => edit_run(target),
   VDoc(target) => doc_run(target),
   VServe => serve_run(),
-  VSpace => space_run(),
+  VSpace(addr) => space_run(addr),
   VTighten(target) => tighten_run(target),
   VFmt(target) => fmt_run(target),
   VCompile(target) => compile_run(target),
@@ -245,18 +247,32 @@ fn mentl_edit_session(entry_module) = match driver_entry_with_ranges(entry_modul
 fn entry_start_caret(mh) =
   Caret(mh, Located(Span(1, 1, 1, 1), Inferred("mentl edit session start — at the entry")))
 
-// ─── space_run — the ide is the page (`mentl space`)
+// ─── space_run — the ide is the page (`mentl space`), and the View at an
+// address (`mentl space <file>:<line>[:<col>]`)
 //
 // Mentl Space is static files: the page, the boot and the modules
 // ide/space.manifest names, served by any host that sets the two
 // cross-origin-isolation headers, or by the page's own service worker
 // where a host sets none. The wheel owns no listener — WASI p1 has no
-// bind/listen, and the medium carries no socket seam past it — so the verb
-// reached here says where the page is served from: the mentl command
+// bind/listen, and the medium carries no socket seam past it — so the bare
+// verb reached here says where the page is served from: the mentl command
 // stages the manifest and serves the staged directory.
-fn space_run() = {
-  eprint_string("mentl space: the page is served by the mentl command — from the repo, `bash tools/space-stage.sh && python3 tools/space-serve.py`, then open http://127.0.0.1:7397/ (the deployed page is https://space.ampactor.dev/)\n")
-  2
+//
+// At an address the verb answers the View the page paints — the ring at
+// the caret, the Lens and the Ledger of its module — as one JSON value on
+// stdout (`space_project`), through the chain the address form runs
+// (`at_run`) with the diagnostic bank installed, so a judgment's reports
+// reach the Lens as the kinds they are and its tightenings reach the Ledger.
+// The resident session answers the same verb over the graph it keeps
+// (`session_read`).
+fn space_run(addr) = match addr {
+  None => {
+    eprint_string("mentl space: the page is served by the mentl command — from the repo, `bash tools/space-stage.sh && python3 tools/space-serve.py`, then open http://127.0.0.1:7397/ (the deployed page is https://space.ampactor.dev/); `mentl space <file>:<line>[:<col>]` answers the View at an address\n")
+    2
+  },
+  Some((target, line, col)) => infer_context(() => match driver_entry_with_ranges(target) {
+    (_ast, ranges) => space_project(ranges, target, line, col),
+  } ~> patch_to_file ~> terminal_transport ~> cursor_default ~> synth_default ~> interrogate_default ~> mentl_default ~> stdout_console ~> wasi_filesystem ~> diag_bank),
 }
 
 // ─── march_run — the medium judges its own generation (`mentl march`)
@@ -516,10 +532,11 @@ fn comment_text_present(ref toks, t: String, i) -> Bool = if i >= len(toks) {
 // declaration can only shrink what callers accumulate, so it can create
 // new T_OverDeclared warnings (the next ratchet turns) but never an
 // E_EffectMismatch.
-// (effect Tighten + tighten_collector moved to pipeline.mn — the
-// analysis layer's own machinery, installable by the CLI chains here
-// AND the resident session's bracket in mcp.mn; imports flow
-// main → mcp → pipeline, so pipeline is the one visible home.)
+// (The bank the candidates are read from — diag_bank, and tightenables
+// over it — lives in pipeline.mn: the analysis layer's own machinery,
+// installable by the CLI chains here AND the resident session's bracket in
+// mcp.mn; imports flow main → mcp → pipeline, so pipeline is the one
+// visible home.)
 fn tighten_run(target_opt) = {
   let entry_module = match target_opt {
     Some(t) => t,
@@ -544,7 +561,7 @@ fn tighten_run(target_opt) = {
         if n > 0 { 0 } else { 1 }
       }
     },
-  } ~> tighten_collector ~> wasi_filesystem ~> mentl_default)
+  } ~> diag_bank ~> wasi_filesystem ~> mentl_default)
 }
 
 // The batch applier: locate every candidate (drop unmappable spans),
@@ -743,7 +760,7 @@ fn doc_render_line(name: String, h) = {
     None => "",
   }
   let prose = graph_comment_at(h)
-  let lede = if len(prose) > 0 { "\n    {comment_first_line(prose)}" } else { "" }
+  let lede = if len(prose) > 0 { "\n    {first_sentence(prose)}" } else { "" }
   print("{name}{ty}{lede}\n")
 }
 
@@ -822,128 +839,6 @@ fn run_run(target) = {
 // expression is pure arithmetic over the count.
 fn check_run(target) = if pipeline_check(target) > 0 { 1 } else { 0 }
 
-// A field tier renders in the ONE ranked order (`rank_positions`, the
-// order the session's argmax takes its head from), each position at its
-// own module's coordinates — a span is the module's own, so the line it
-// names is the line the developer reads.
-fn render_field_tier(ranked: [(Float, Handle)], target: String, i) = if i >= len(ranked) {
-  ()
-} else {
-  match list_index(ranked, i) {
-    (_, ph) => {
-      let pspan = parse_span_of(ph)
-      match pspan {
-        Span(sl, sc, _, _) => {
-          print("\n── {target}:{int_to_str(sl)}:{int_to_str(sc)}\n")
-          render_at(cursor_at_handle(ph), ph, pspan, target)
-          render_field_tier(ranked, target, i + 1)
-        },
-      }
-    },
-  }
-}
-
-// ─── render_field — the N-CURSOR read (`mentl <file>:0`) ────────────
-//
-// The whole absence field of ONE file, ranked and rendered: every
-// authored hole first (absence categorically outranks — the same tier
-// law cursor_argmax_compute states; filling a hole lifts the
-// executable's own refusal), then the annotation-gradient positions,
-// each tier in the ONE ranked order (`rank_positions`). Each position
-// renders through the SAME cursor_at_handle + render_at path the
-// single-address form uses — a hole's line carries its Propose fan (the
-// survivor space), an annotation position its Teach line. The argmax is
-// this list's head; the field is the argmax UNCOLLAPSED — the
-// multi-cursor read, sequential (the per-position `><` under
-// `~> Thread` rides Hβ.ops.wasmtime-runner-migration).
-//
-// Every tier is the FILE'S MODULE'S own, read by module identity: a
-// position by the module stamped at its mint, a debt row by the module
-// handle it carries, a tightening by the module it was reported in.
-// Until 2026-10-01 the tiers were filtered by LINE RANGE, and every
-// module numbers its lines from 1, so the field of `main` listed an
-// imported helper's declarations under main's coordinates beside main's
-// own source lines.
-fn render_field(target: String) = match module_handle_of_path(target) {
-  None => {
-    eprint_string("mentl: {target} is in the weave but minted no module node — no field to read\n")
-    1
-  },
-  Some(mh) => {
-    let caret0 = Caret(mh, Located(Span(1, 1, 1, 1), Inferred("field read")))
-    let holes = enumerate_hole_positions(mh)
-    // THE PROBLEM IS THE SOLUTION — absence is ONE node-kind, and the
-    // field ranks ALL of it: the pending proof obligations (the verify
-    // ledger's live debt — each a position whose resolution is the
-    // missing constraint) and the over-declared rows (each carrying its
-    // proven row, the MachineApplicable patch `mentl tighten` applies)
-    // join the holes and the gradient tier. The error list IS the work
-    // queue.
-    // A claim pending over a hole is the hole's demand, carried by the
-    // hole's own position — filling it discharges the claim — so it is
-    // not a second position beside it.
-    let pending =
-      filter({ (modh, _, pred, _) => modh == mh && !claim_is_a_holes_demand(pred) }, verify_debt())
-    let tights = filter({ (_, _, _, _, dmod) => dmod == target }, tightenables())
-    let grads = enumerate_gradient_positions(mh)
-    print("Field: {int_to_str(len(holes))} hole(s), {int_to_str(len(pending))} pending proof(s), {int_to_str(len(tights))} tightening(s), {int_to_str(len(grads))} gradient position(s) in {target}\n")
-    render_field_tier(rank_positions(holes, caret0), target, 0)
-    render_pending_tier(pending, target, 0)
-    render_tighten_tier(tights, target, 0)
-    render_field_tier(rank_positions(grads, caret0), target, 0)
-    0
-  },
-}
-
-// The pending tier — the verify ledger's debt rows of the file's module,
-// each rendered at its own span with the obligation and its Reason (the
-// Why-walk's edge). Ledger order IS accrual order ≈ source order.
-fn render_pending_tier(pending, target: String, i) = if i >= len(pending) {
-  ()
-} else {
-  match list_index(pending, i) {
-    (_modh, dspan, pred, reason) => match dspan {
-      Span(sl, sc, _, _) => {
-        print("\n── {target}:{int_to_str(sl)}:{int_to_str(sc)}\n")
-        print("Pending: {show_predicate(pred)} — undischarged; a ground witness or a refinement collapses it\n")
-        print("Why: {show_reason(reason)}\n")
-        render_pending_tier(pending, target, i + 1)
-      },
-    },
-  }
-}
-
-// The tightening tier — every T_OverDeclared the judgment banked in the
-// file's module: the declared row, the proven row, and the standing patch
-// invitation (`mentl tighten` authors it).
-fn render_tighten_tier(tights, target: String, i) = if i >= len(tights) {
-  ()
-} else {
-  match list_index(tights, i) {
-    (declared, used, name, tspan, _dmod) => match tspan {
-      Span(sl, sc, _, _) => {
-        print("\n── {target}:{int_to_str(sl)}:{int_to_str(sc)}\n")
-        print(tighten_line(name, declared, used))
-        print("  the proven row is the patch (mentl tighten authors it)\n")
-        render_tighten_tier(tights, target, i + 1)
-      },
-    },
-  }
-}
-
-// The name pin is an Intent Boundary at the line's ONE mint
-// (spec_mangle's law): destructured from the candidate tuple the
-// element is free at the splice, and the show floor rendered the fn
-// name as a pointer numeral — the named call anchors the binder.
-fn tighten_line(name: String, declared, used) = match declared_bare_row(declared) {
-  Some(bare) => if row_subsumes(bare, used) {
-    "Tighten: {name} declares {show_effrow(declared)}, which the body proves — the row is projected; author only its negations and pins\n"
-  } else {
-    "Tighten: {name} declares {show_effrow(declared)} — the body proves {show_effrow(used)}\n"
-  },
-  None => "Tighten: {name} declares {show_effrow(declared)} — the body proves {show_effrow(used)}\n",
-}
-
 // ─── at_run — the cursor-address transport (`mentl <file>:L[:C]`)
 //
 // The smallest transport of the one read: resolve the address to a graph
@@ -957,7 +852,7 @@ fn tighten_line(name: String, declared, used) = match declared_bare_row(declared
 // once, never a second ledger).
 fn at_run(target, line, col) = infer_context(() => match driver_entry_with_ranges(target) {
   (_ast, ranges) => address_project(ranges, target, line, col),
-} ~> patch_to_file ~> terminal_transport ~> cursor_default ~> synth_default ~> interrogate_default ~> mentl_default ~> stdout_console ~> wasi_filesystem ~> tighten_collector)
+} ~> patch_to_file ~> terminal_transport ~> cursor_default ~> synth_default ~> interrogate_default ~> mentl_default ~> stdout_console ~> wasi_filesystem ~> diag_bank)
 
 // accept_run — the second graph operation at the address surface (C4).
 // `mentl <address>` PROJECTS the position; `mentl accept <address>` DRAWS
@@ -971,26 +866,34 @@ fn at_run(target, line, col) = infer_context(() => match driver_entry_with_range
 // position draws nothing, says why on stderr, and exits 1.
 fn accept_run(target, line, col) = infer_context(() => match driver_entry_with_ranges(target) {
   (_ast, ranges) => accept_project(ranges, target, line, col),
-} ~> patch_to_file ~> terminal_transport ~> cursor_default ~> synth_default ~> interrogate_default ~> mentl_default ~> stdout_console ~> wasi_filesystem ~> tighten_collector)
+} ~> patch_written ~> terminal_transport ~> cursor_default ~> synth_default ~> interrogate_default ~> mentl_default ~> stdout_console ~> wasi_filesystem ~> diag_bank)
 
-fn accept_project(ranges, target: String, line, col) =
-  if accept_draw(target, line, col) == 0 { address_project(ranges, target, line, col) } else { 1 }
+// The draw writes the module's new text and nothing else; the projection is
+// over the module derived again from that text, its ranges included, as the
+// session's accept projects over the ranges its re-judgment returns. The
+// ranges read before the write carry the old text, and slicing the new
+// node's span out of it printed `?` where the accepted `1` stands.
+fn accept_project(ranges, target: String, line, col) = if accept_draw(ranges, target, line, col) == 0 {
+  match driver_entry_with_ranges(target) {
+    (_ast, after) => address_project(after, target, line, col),
+  }
+} else {
+  1
+}
 
 // The accept's DRAW — the position resolved by the address's own rule, the
 // edge drawn and the text written through whatever PatchWrite is installed —
 // shared by the CLI verb and the resident session, which differ only in what
 // re-judges the write. Answers the exit code the verb's verdict is.
-fn accept_draw(target: String, line, col) = if line <= 0 {
+fn accept_draw(ranges, target: String, line, col) = if line <= 0 {
   eprint_string("mentl accept: an accept names one position — {target}:<line>:<col>\n")
   1
 } else {
-  match address_pick(target, line, col) {
+  match address_node(ranges, target, line, col) {
     None => 1,
-    Some(pick) => match pick {
-      (_pspan, ph) => {
-        patch_set_target(target)
-        if accept_at(ph, cursor_at_handle(ph)) { 0 } else { 1 }
-      },
+    Some(ph) => {
+      patch_set_target(target)
+      if accept_at(ph, cursor_at_handle(ph)) { 0 } else { 1 }
     },
   }
 }
@@ -1001,8 +904,12 @@ fn accept_draw(target: String, line, col) = if line <= 0 {
 // (imports flow main → mcp, never back). The address (its eight aspects and
 // the line-0 field), the accept, query, audit and teach run the SAME
 // projection halves the cold verbs run, over the graph the session already
-// holds. A process-level verb, or a target other than the resident entry,
-// answers MISS and re-runs cold rather than answering about the wrong graph.
+// holds. A process-level verb answers MISS and re-runs cold rather than
+// answering about the wrong graph; an address names any module the link
+// carries (its spans are its own coordinates), and a module the link does
+// not carry refuses as the cold verb does, which is MISS as well. The
+// whole-link verbs — query, audit, teach — read the ENTRY's graph, so a
+// target other than the entry is the cold verb's to answer.
 //
 // THE ACCEPT ANSWERS HERE because its edge is the session's: drawn into the
 // resident graph, the provenance survives into every read the session
@@ -1016,18 +923,20 @@ fn session_answer(line, ast, ranges, manifest) = match parse_cli_args(session_ar
   ParseError(_) => // the cold route says a parse error whole: on stderr, exit 1
   (session_miss(), (ast, ranges, manifest)),
   Invocation(verb) => match verb {
-    VAccept(target, l, c) => if target == "main" {
-      session_accept(target, l, c, (ast, ranges, manifest))
-    } else {
-      (session_miss(), (ast, ranges, manifest))
-    },
+    VAccept(target, l, c) => session_accept(target, l, c, (ast, ranges, manifest)),
     _ => (session_read(verb, ast, ranges), (ast, ranges, manifest)),
   },
 }
 
-// The verbs that read the session without moving it.
+// The verbs that read the session without moving it. The address and the
+// View are one resolution with two projections (src/space.mn): the text the
+// terminal reads, and the JSON the page paints.
 fn session_read(verb, ast, ranges) = match verb {
-  VAt(target, l, c) => if target == "main" { session_whole(session_address(ranges, target, l, c)) } else { session_miss() },
+  VAt(target, l, c) => session_whole(session_address(ranges, target, l, c)),
+  VSpace(addr) => match addr {
+    Some((target, l, c)) => session_whole(session_banked(() => space_project(ranges, target, l, c))),
+    None => session_miss(),
+  },
   VQuery(target, q) => if target == "main" {
     "{render_query_result(ask(parse_query_string(target, q)))}\n"
   } else {
@@ -1049,7 +958,7 @@ fn session_read(verb, ast, ranges) = match verb {
 // motion an outside edit makes, through the one door that tracks the tree —
 // before the position is projected over the result.
 fn session_accept(target: String, l, c, held) = match held {
-  (ast, ranges, manifest) => match session_banked(() => accept_draw(target, l, c)) {
+  (ast, ranges, manifest) => match session_banked(() => accept_draw(ranges, target, l, c)) {
     (drawn, _) => if drawn != 0 {
       (session_miss(), held)
     } else {
@@ -1092,593 +1001,6 @@ fn session_address(ranges, target: String, l, c) =
 fn session_at_read(ranges, line, col) = match session_address(ranges, "main", line, col) {
   (_, lines) => lines,
 }
-
-// address_project — the ONE address core, shared by the CLI transport
-// (at_run above, the projection landing on stdout_console) and the
-// resident session's `at` tool (the same core under a collecting
-// console — the transport is the install, never the narration).
-// Productive under error IS the address contract (the README's own
-// voice.mn:9 answers OVER its unresolved `mix` — an env miss binds
-// NErrorHole and the graph still projects); the refusal paths speak on
-// stderr, the process log on every transport.
-fn address_project(ranges, target: String, line, col) = match range_of_module(ranges, target) {
-  None => {
-    eprint_string("mentl: {target} did not load — nothing to project\n")
-    1
-  },
-  Some(r) => match r {
-    (_m, _p, text) => // start is GONE: a module's first line is 1, because its spans are its
-    // own. The weave offset this used to add to every caret was the whole
-    // reason an address had two coordinate systems to reconcile.
-    {
-      let start = 1
-      let nlines = count_lines(text) + 1
-      if line == 0 {
-        render_field(target)
-      } else if line < 0 {
-        eprint_string("mentl: line {int_to_str(line)} — lines count from 1 (0 = the whole-file field)\n")
-        1
-      } else if line > nlines {
-        eprint_string("mentl: {target} has {int_to_str(nlines)} lines; {int_to_str(line)} is past the end\n")
-        1
-      } else {
-        match address_pick(target, start + line - 1, col) {
-          None => 1,
-          Some(pick) => match pick {
-            (pspan, ph) => {
-              render_at(cursor_at_handle(ph), ph, pspan, target)
-              0
-            },
-          },
-        }
-      }
-    },
-  },
-}
-
-// The ONE address resolution — the position's node, for the projection
-// (address_project) and for the accept (accept_project) alike, so an
-// accept lands exactly where the same address projects. Flattened ONCE
-// before the walk (the iterate-flattens-once law, fourth sighting): the log
-// is push-built, so a raw list_index walk pays O(depth) per probe —
-// tolerable for the cold verb's single generation, a measured 131s PER
-// CALL on the resident session whose log carries every converged
-// generation's parses.
-//
-// NARROWED TO THE ADDRESSED MODULE FIRST, and that is what makes the
-// three-case line rule an ADDRESS rather than a line-number lottery. A
-// module's spans are its OWN coordinates — every file starts at line 1 —
-// so the weave-wide index holds one entry per module per line number and
-// the rule's widest-node pick was answering whichever module's node
-// happened to be widest. Measured: `mentl src/synth_proposer.mn:733`
-// rendered `scan_number`'s type, effects, ownership and Lede from
-// `src/lexer.mn`, and its Why line said `at synth_proposer:733` — a
-// confident foreign answer at the one surface `PLAN §0` exists to make
-// impossible. Filtering HERE, once, rather than threading a module into
-// `address_case_a`/`find_tightest`/`address_case_c`, is what makes the
-// wrong answer unsayable in all three cases instead of refused in each.
-fn address_pick(target: String, gline, col) = match module_handle_of_path(target) {
-  None => {
-    eprint_string("mentl: {target} is in the weave but minted no module node — nothing to address\n")
-    None
-  },
-  Some(mh) => match address_resolve(spans_of_module(span_index_of_snapshot(), mh), gline, col) {
-    None => {
-      eprint_string("mentl: no node at {target}:{int_to_str(gline)} (a blank or comment-only line)\n")
-      None
-    },
-    Some(pick) => Some(pick),
-  },
-}
-
-fn span_index_of_snapshot() = match graph_snapshot() {
-  Graph(_x, spans) => spans,
-}
-
-// The addressed module's own span index, flat and in mint order.
-//
-// One word compare per entry against the module stamped at each node's mint
-// (`graph_module_of`) — the fact the graph already holds, never a path
-// re-matched per candidate or a span containment re-derived. The flatten is on
-// the OUTPUT because `filter` builds by push: the log it reads is iterated
-// once, and it is the result the three-case rule then indexes into.
-// The module NODE itself is excluded, and that is not tidying. Its span is
-// the whole file, so it covers every line trivially and wins the covering
-// case (b) at any line no decl reaches — a comment line between decls
-// answered `synth_proposer.mn — Hμ.synth-proposer peer handle` with the
-// module's own placeholder Why. "The file contains your line" is the one
-// thing an address never needed to be told, and the whole-file reading
-// already has its own spelling: `mentl <file>:0`, the ranked field, which
-// takes a different branch entirely. Excluding it lets case (c) do its job
-// and answer with the nearest real node instead.
-fn spans_of_module(spans, mh) = list_to_flat(filter(span_in_module(mh), spans))
-
-fn span_in_module(mh, e) = match e {
-  (_s, h) => h != mh && graph_module_of(h) == mh,
-}
-
-// The span's file:line through the module-range map — the render-side
-// inverse of the concatenation fold. (range_of_module lives in driver.mn,
-// beside the fold that mints the map.)
-// A span's file:line. It used to SEARCH the range map for the module whose
-// weave range contained the line — the render-side inverse of the
-// concatenation fold, and the fifth machine that fold required. The module is
-// the addressed one and the span is already its own coordinate, so the
-// question the search answered no longer has to be asked.
-fn file_line(ref target: String, ref span) = match span {
-  Span(sl, _, _, _) => "{target}:{int_to_str(sl)}",
-}
-
-// A site's address as the caret takes it: file, line and column.
-fn file_line_col(target: String, span) = match span {
-  Span(sl, sc, _, _) => "{target}:{int_to_str(sl)}:{int_to_str(sc)}",
-}
-
-// The Handler facet's sentence for a perform.
-fn show_served(en: String, served, target: String) with !Mutate = match served {
-  ServedBy(site, hname) => "{en} is served by `~> {hname}` at {file_line_col(target, parse_span_of(site))}",
-  ServedWhereCalled(site) => "{en} is performed when the function value at {file_line_col(target, parse_span_of(site))} is called — the install in force there serves it",
-  ServedByCaller(decl) => "no install inside `{body_decl_name(graph_node_body(decl))}` answers {en} — its row carries {en} to the callers",
-}
-
-// The three-case line rule (the panel's corrected form, deterministic):
-//  (a) among nodes whose span STARTS on the line (and, with a column,
-//      contains it) — `file:LINE` takes the WIDEST (the line's root),
-//      `file:L:C` the TIGHTEST containing the point; ties break leftward,
-//      identical spans to the latest mint (address_better_a is the rule's
-//      one home — this list used to say "smallest start column, then
-//      largest area", which was never what it did);
-//  (b) else the tightest node COVERING the point (a continuation line);
-//  (c) else the nearest node by start line (the no-Module-root top-level
-//      gap — blank lines between decls are ordinary addresses, not errors).
-fn address_resolve(ref spans, gline, col) = match address_case_a(spans, gline, col, 0, len(spans), None) {
-  Some(pick) => Some(pick),
-  None => match find_tightest(spans, caret_span(gline, if col > 0 { col } else { 1 }), None, 1000000000) {
-    Some(h) => span_pick_of(spans, h),
-    None => address_case_c(spans, gline, 0, len(spans), None),
-  },
-}
-
-fn address_case_a(ref spans, gline, col, i, n, best) = if i >= n {
-  best
-} else {
-  match list_index(spans, i) {
-    (s, h) => match s {
-      Span(sl, sc, _, _) => {
-        let hits = if sl == gline {
-          if col > 0 { span_contains(s, caret_span(gline, col)) } else { true }
-        } else {
-          false
-        }
-        let next = if hits { address_better_a(col, best, (s, h)) } else { best }
-        address_case_a(spans, gline, col, i + 1, n, next)
-      },
-    },
-  }
-}
-
-// The two address intents pick OPPOSITE extremes of the containing set.
-// `file:LINE` (col 0) means "the line" — its ROOT, the WIDEST node (the
-// statement/expression covering most of the line: `echo(mix, x)` over the
-// wet binder it feeds). `file:L:C` (col > 0) means "this exact position" —
-// the TIGHTEST node containing the point, so pointing at a `??` reaches
-// the hole node itself (and its Propose facet), never the enclosing decl
-// that also contains the column. Ties break leftward in both modes.
-fn address_better_a(col, best, cand) = match best {
-  None => Some(cand),
-  Some(b) => match b {
-    (bs, bh) => match cand {
-      (cs, ch) => match bs {
-        Span(_, bsc, _, _) => match cs {
-          Span(_, csc, _, _) => {
-            // A BOUND cell beats a ghost, above the area rule (column
-            // mode): a decl's head-anchored span loses tightness to a
-            // never-judged parse cell over its own NAME, and the
-            // projection then renders the ghost's free var (`t…@e0` at
-            // 1:4 — the measured placeholder face). Boundness is the
-            // graph's own "was anything proven here" read; a `??`
-            // node is typed, hence bound, so the hole's reach is
-            // untouched.
-            let cb = address_bound(ch)
-            let bb = address_bound(bh)
-            if col > 0 && cb != bb {
-              if cb { Some(cand) } else { best }
-            } else {
-              let narrower = if col > 0 { span_area(cs) < span_area(bs) } else { span_area(cs) > span_area(bs) }
-              if narrower {
-                Some(cand)
-              } else if span_area(cs) == span_area(bs) {
-                // Identical spans: the LATEST mint wins — mint order builds
-                // constituents before composites, so the later node is the more
-                // derived reading of the same position (a `??` mints its id cell
-                // first, then the NHole node over the same span; the address must
-                // reach the NHole, whose Propose facet speaks). Distinct starts
-                // keep the leftward tie-break.
-                if csc == bsc { Some(cand) } else if csc < bsc { Some(cand) } else { best }
-              } else {
-                best
-              }
-            }
-          },
-        },
-      },
-    },
-  },
-}
-
-// "Was anything proven here" is the node's OWN cell, read unchased: a mint
-// inference never visited still carries the Placeholder it was born with.
-// The chase terminal answered a different question — whether the TYPE is
-// ground — and a variable whose type is generic (a recurrence's prior, the
-// parameter spliced into an interpolation) lost the caret to the node around
-// it (measured on boot 8b071ba3). An authored hole is the one cell left free
-// on purpose: nothing binds `let x = ??` until a proposal is accepted, and
-// the caret on it is where the medium proposes. What is left is a ghost,
-// counted and located by the `ghosts` facet (`node_is_ghost`).
-fn address_bound(h) = !node_is_ghost(h)
-
-fn span_pick_of(ref spans, h) = match find({ (_, eh) => eh == h }, spans) {
-  Some(e) => match e {
-    (s, _) => Some((s, h)),
-  },
-  None => None,
-}
-
-fn address_case_c(ref spans, gline, i, n, best) = if i >= n {
-  best
-} else {
-  match list_index(spans, i) {
-    (s, h) => match s {
-      Span(sl, _, _, _) => {
-        let d = if sl > gline { sl - gline } else { gline - sl }
-        let next = match best {
-          None => Some((s, h)),
-          Some(b) => match b {
-            (bs, _) => match bs {
-              Span(bsl, _, _, _) => {
-                let bd = if bsl > gline { bsl - gline } else { gline - bsl }
-                if d < bd { Some((s, h)) } else { best }
-              },
-            },
-          },
-        }
-        address_case_c(spans, gline, i + 1, n, next)
-      },
-    },
-  }
-}
-
-// ─── the terse render — facet-silence at the terminal
-// One refusal, rendered: the name the medium would not offer and the Why it
-// kept for it.
-fn print_refusal(pair) = match pair {
-  (name, reason) => print("  · refused {name} — {show_reason(reason)}\n"),
-}
-
-// One open obligation at the caret, said as the ledger says it.
-fn print_obligation(entry) = match entry {
-  (m, sp, pred, _) => print("Verify: {obligation_text(m, sp, pred)}\n"),
-}
-
-fn render_at(view, h, pspan, target: String) = match view {
-  CursorView(kind, propose, topology, row, trace, verify, teach, why) => {
-    // The register-gated lede — the read side of the comment weave the
-    // parser fills: a node carrying authored prose speaks its first line
-    // before the Query facet, the same edge the Why engine walks.
-    // The voice performs `print` — WHERE it lands is the installed
-    // Console handler's decision (io.mn's own law): stdout for the CLI,
-    // the session's collecting console for the mcp `at` tool. A direct
-    // print_string here was the transport baked into the narration.
-    let prose = graph_comment_at(h)
-    if len(prose) > 0 { print("Lede: {comment_first_line(prose)}\n") } else { () }
-    print("Query: {source_slice(pspan, target)}{node_query_line(h, kind)}\n")
-    // The Propose facet — the socket's content at the address surface. The
-    // graph already computed it (propose_at runs synth at an authored hole;
-    // VNone everywhere else, so silence needs no second hole check). The
-    // VERDICT is read, never re-derived from a count: a fill arrives with
-    // the Reason its constructor carries — this arm dropped it while the
-    // tie arm below kept it, which showed the medium's reasoning exactly
-    // when it was least sure and withheld it exactly where a developer is
-    // most likely to accept on faith — and a tie TEACHES by naming what
-    // separates the survivors (never a hidden first-wins pick — PLAN §5's
-    // tie-break law at this surface too).
-    match propose {
-      Proposal(pr) => match pr.verdict {
-        VNone => // An authored hole nothing proved is SAID, never left blank: the
-        // refusals below it are the reasons, and the verdict is the line
-        // they explain (C7). A filled position has no proposal to report.
-        if authored_hole(h) { print("Propose: no candidate proved at this hole\n") } else { () },
-        VFill(survivor, reason) => print("Propose: {render_candidate_source(survivor)}  — {show_reason(reason)}\n"),
-        VAsk(divergence, survivors) => {
-          // A tie is a QUESTION, never a list (§11.1): the members render
-          // while a glance can hold them — three — and past that width the
-          // surface carries the count and the computed question alone. A
-          // five-member list under a question was the medium admitting it
-          // did not know and then reading the admission aloud (measured on
-          // the shape tie, 2026-09-27); the question is what the developer
-          // answers, and the count is what tells them how much it narrows.
-          print("Propose: {int_to_str(len(survivors))} proven survivors — a tie:\n")
-          if len(survivors) <= 3 {
-            each(
-              { (node, reason) => print("  {render_candidate_source(node)}  — {show_reason(reason)}\n") },
-              survivors
-            )
-          } else {
-            ()
-          }
-          print("  {show_divergence(divergence)}\n")
-        },
-      },
-    }
-    // THE REFUSALS, at the surface that shows the proposals. The Proposal
-    // has carried `rejected` since it was a pair of lists — every name the
-    // medium considered and would not offer, each with its Why — and this
-    // surface rendered none of them, so the audit trail existed and nobody
-    // could read it. A candidate the developer cannot see refused is a
-    // guess they cannot audit; that sentence was written for the row prune
-    // and applies to the surface just as hard.
-    match propose {
-      Proposal(pj) => each(print_refusal, pj.rejected),
-    }
-    // The Handler facet at a perform: which install serves the operation —
-    // the innermost `~>` on the declaration's path whose handler answers it.
-    match served_at(h) {
-      Some((en, served)) => print("Handler: {show_served(en, served, target)}\n"),
-      None => (),
-    }
-    // The Topology facet: the verbs that hold the node, innermost first. A
-    // node no verb holds has nothing to say here.
-    if len(topology) > 0 {
-      print("Topology: {show_verb_path(topology, file_line_col(target, ??))}\n")
-    } else {
-      ()
-    }
-    // The Effects facet is SAID at every position, Pure included: "performs
-    // nothing" is a proven fact, and its absence used to read as no answer.
-    print("Effects: {show_row_facet(row)}\n")
-    match trace {
-      Unmarked => (),
-      Own => print("Ownership: own\n"),
-      Ref => print("Ownership: ref\n"),
-    }
-    // Each open obligation at the node, said as the ledger says it — a count
-    // told the developer that something was owed and not what.
-    each(print_obligation, verify)
-    // The Teach facet says what it found. It printed one constant sentence
-    // for every position the predicate fired at — "an annotation here would
-    // unlock a capability", the suggestion itself discarded — so the facet
-    // named no annotation and no capability anywhere. A declaration with an
-    // authored row is taught the tightening the judgment proved instead.
-    match teach {
-      TeachAdd(_) => print("Teach: {show_teaching(teach)}\n"),
-      TeachAsk(_) => print("Teach: {show_teaching(teach)}\n"),
-      TeachNeed(_, _, _) => print("Teach: {show_teaching(teach)}\n"),
-      TeachNone => match graph_node_body(h) {
-        NStmt(FnStmt(name, _, _, _, _)) => match banked_tightening(name, tightenables()) {
-          Some(t) => match t {
-            (declared, used) => print(tighten_line(name, declared, used)),
-          },
-          None => (),
-        },
-        _ => (),
-      },
-    }
-    // The Why: the node's own chain, then the chain its type is read from
-    // when its cell links to another.
-    match why {
-      [] => (),
-      [here, ...types] => {
-        print("Why: ")
-        render_why_hops(here, target, 0)
-        each(render_type_chain(target, ??), types)
-      },
-    }
-  },
-}
-
-fn render_type_chain(target: String, chain) = {
-  print("     its type: ")
-  render_why_hops(chain, target, 0)
-}
-
-// A declaration node's own graph cell is a free var (the scheme lives in
-// the env — read it there, never render the raw t-var); every other node
-// shows its inferred type.
-//
-// EVERY declaration kind, not just the fn (2026-08-16). The law above was
-// written for FnStmt and the other six fell to the catch-all, which is
-// exactly the raw t-var the law forbids: a cursor on `handler counter`
-// answered `counter : t24295@e21654`, and one on `type Gain = Float where
-// self >= 0.0` or `type Coeff = Float repr f64` answered nothing at all.
-// Those are the authoring sites of arms 2, 6 and 7, so three of the eight
-// could not be read where a developer writes them (PLAN §2 says the eight
-// ARE the aspects of one read; PLAN §0 pt 5 says systems explain
-// themselves). Each arm below reads the declaration's OWN node — the
-// refinement's base and predicate, the alias's target, the handler's
-// effect and arm count — never a re-derivation.
-fn node_query_line(h, kind) = match graph_node_body(h) {
-  NStmt(FnStmt(name, _, _, _, _)) => match env_lookup(name) {
-    Some(entry) => match entry {
-      (scheme, _, _) => show_type(judgment_ty(scheme)),
-    },
-    None => show_type(ty_of_kind(h, kind)),
-  },
-  NStmt(RefineStmt(name, base, pred)) => "{name} = {show_type(base)} where {show_predicate(pred)}",
-  NStmt(AliasStmt(name, ty)) => "{name} = {show_type(ty)}",
-  NStmt(TypeDefStmt(name, variants)) => "{name} — {int_to_str(len(variants))} variant(s)",
-  NStmt(EffectDeclStmt(name, _, ops)) => "effect {name} — {int_to_str(len(ops))} op(s)",
-  NStmt(HandlerDeclStmt(name, _, _, state, arms, _)) => "handler {name} — {int_to_str(len(arms))} arm(s), {int_to_str(len(state))} state field(s)",
-  NStmt(RowAliasStmt(name, _)) => "{name} — a named effect row",
-  NHole(_) => // An UNDETERMINED hole never leaks the raw var — substrate
-  // vocabulary at the exact moment the medium should ASK (§1's law: the
-  // question beats the guess; the fan cannot enumerate an open type, so
-  // the missing constraint IS the answer). A typed hole renders what it
-  // DEMANDS — the contract a claim raised over it, refinement and all, or
-  // its cell's type where nothing claimed it (the cell holds a shape).
-  match hole_demand(h) {
-    TVar(_) => "_ — still free: annotate the enclosing function's param or result and the fan arrives with the type",
-    ty => show_type(ty),
-  },
-  NExpr(LitFloat(_)) => // A literal's type IS its body when the cell is still free (a top-level
-  // let's value node keeps its own cell unbound; the body already proves
-  // the answer — read it, never render the raw t-var).
-  "Float",
-  NExpr(LitInt(_)) => "Int",
-  NExpr(LitString(_)) => "String",
-  NExpr(LitBool(_)) => "Bool",
-  _ => show_type(ty_of_kind(h, kind)),
-}
-
-// The addressed source text itself, read back through the range map — the
-// line the user pointed at, sliced to the node's span. The file is the one
-// authority on its own text.
-// The addressed line's own text. The containment scan that placed a weave
-// line inside a module range is gone: the module is the one being addressed
-// and the line is its own, so this opens that file and reads that line.
-fn source_slice(ref span, ref target: String) = match span {
-  Span(sl, sc, el, ec) => {
-    let p = driver_module_path(target)
-    if fs_exists(p) {
-      let text = fs_read_file(p)
-      let lstart = nth_line_offset(text, sl - 1, 0, 0)
-      let lend = line_end_from(text, lstart)
-      let a = lstart + sc - 1
-      // A MULTI-LINE span ends on a DIFFERENT line, so its end column is not
-      // an offset into this one — slice to the end of the addressed line
-      // instead. The end line was discarded here until 2026-08-16, and once
-      // declarations carried their true extent a multi-line handler
-      // declaration rendered a two-character fragment of its own keyword.
-      // A span's end column is EXCLUSIVE and 1-based, so its byte offset is
-      // `ec - 1` past the line's start; reading `ec` sliced one character too
-      // many — a one-letter variable rendered with the space after it, a
-      // callee with its opening parenthesis (measured on boot 8b071ba3).
-      let b = if el > sl { lend } else { lstart + ec - 1 }
-      let lo = if a < lend { a } else { lstart }
-      let hi = if b <= lend { b } else { lend }
-      if hi > lo { "{str_slice(text, lo, hi)} : " } else { "" }
-    } else {
-      ""
-    }
-  },
-}
-
-// Byte offset of the k-th line (0-based) — a forward newline walk.
-fn nth_line_offset(ref text, k, i, line) = if line >= k {
-  i
-} else if i >= byte_len(text) {
-  i
-} else if byte_at(text, i) == 10 {
-  nth_line_offset(text, k, i + 1, line + 1)
-} else {
-  nth_line_offset(text, k, i + 1, line)
-}
-
-fn line_end_from(ref text, i) = if i >= byte_len(text) {
-  i
-} else if byte_at(text, i) == 10 {
-  i
-} else {
-  line_end_from(text, i + 1)
-}
-
-// The Why chain, one hop per line: file:line through the range map, the
-// hop's own phrase, and — where the graph carries them — the binding's
-// literal value (node_const at the let's value node, read live) and the
-// author's attached `//` lede (graph_comment_at). The prose rides the
-// same rails as the types: nothing here is stored twice.
-fn render_why_hops(reason, target: String, depth) = if depth > 7 {
-  print("\n")
-} else {
-  match reason {
-    Located(span, inner) => {
-      if depth > 0 { print("     ") } else { () }
-      print("{reason_phrase(inner)}, at {file_line(target, span)}{binding_ledes(span, inner)}\n")
-      render_why_deeper(inner, target, depth)
-    },
-    VarLookup(name, br) => {
-      if depth > 0 { print("     ") } else { () }
-      print("{name} read here\n")
-      render_why_hops(br, target, depth + 1)
-    },
-    _ => {
-      if depth > 0 { print("     ") } else { () }
-      print("{reason_phrase(reason)}\n")
-      render_why_deeper(reason, target, depth)
-    },
-  }
-}
-
-fn render_why_deeper(inner, target: String, depth) = match inner {
-  Accepted(_, _, br) => // The accept edge: its phrase names the proposal and its proof; the
-  // hop beneath is the binding's own reason, which the acceptance wraps.
-  render_why_hops(br, target, depth + 1),
-  VarLookup(_, br) => render_why_hops(br, target, depth + 1),
-  LetBinding(_, br) => render_why_hops(br, target, depth + 1),
-  FnReturn(_, br) => render_why_hops(br, target, depth + 1),
-  InferredCallReturn(_, br) => render_why_hops(br, target, depth + 1),
-  InferredPipeResult(_, br) => render_why_hops(br, target, depth + 1),
-  Unified(a, b) => // A unification joins TWO provenances — walk both (the second indented
-  // as its own branch), the DAG rendered as the tree it is.
-  {
-    render_why_hops(a, target, depth + 1)
-    render_why_hops(b, target, depth + 1)
-  },
-  OpConstraint(_, a, b) => {
-    render_why_hops(a, target, depth + 1)
-    render_why_hops(b, target, depth + 1)
-  },
-  IfBranch(br) => render_why_hops(br, target, depth + 1),
-  Instantiation(_, br) => render_why_hops(br, target, depth + 1),
-  _ => print_string(""),
-}
-
-// The value + comment ledes at a binding hop — both read LIVE from the
-// graph (the let's value node via node_const; the attached comment via
-// the comment weave). Empty strings when the graph carries neither.
-fn binding_ledes(span, inner) = match inner {
-  LetBinding(_, _) => {
-    let spans = span_index_of_snapshot()
-    match address_case_a(spans, span_line_of(span), 0, 0, len(spans), None) {
-      None => "",
-      Some(pick) => match pick {
-        (_, sh) => "{value_lede(sh)}{comment_lede(sh)}",
-      },
-    }
-  },
-  _ => // drift-audit: ignore — genuine String-null lede: a non-binding hop carries no value/comment lede by construction
-  "",
-}
-
-fn span_line_of(ref s) with Pure = match s {
-  Span(sl, _, _, _) => sl,
-}
-
-fn value_lede(sh) = match graph_node_body(sh) {
-  NStmt(LetStmt(_, value, _)) => match value {
-    N(_, _, vh) => match node_const(vh) {
-      Some(LVInt(n)) => " = {int_to_str(n)}",
-      Some(LVFloat(f)) => " = {float_to_str(f)}",
-      Some(LVString(s)) => " = \"{s}\"",
-      Some(LVBool(b)) => if b { " = true" } else { " = false" },
-      None => "",
-    },
-  },
-  _ => // drift-audit: ignore — genuine String-null lede: a non-let node has no binding value to render
-  "",
-}
-
-fn comment_lede(sh) = {
-  let c = graph_comment_at(sh)
-  if byte_len(c) == 0 { "" } else { ", {comment_first_line(c)}" }
-}
-
-fn comment_first_line(ref c) = {
-  let cut = addr_newline_at(c, 0, byte_len(c))
-  if cut < 0 { c } else { str_slice(c, 0, cut) }
-}
-
-fn addr_newline_at(ref s, i, n) =
-  if i >= n { 0 - 1 } else if byte_at(s, i) == 10 { i } else { addr_newline_at(s, i + 1, n) }
 
 // ─── test_run — Test effect handler chain
 //
@@ -1911,13 +1233,11 @@ fn battery_teach_step(stem, path: String, line, want) = match battery_view(path,
 // The eight-aspect view at a fixture's address — the one read both
 // contracts judge, built as the CLI's `mentl <file>:<line>:<col>` builds it.
 fn battery_view(path: String, line, col) = infer_context(() => match driver_entry_with_ranges(path) {
-  (_ast, _ranges) => match address_pick(path, line, col) {
+  (_ast, ranges) => match address_node(ranges, path, line, col) {
     None => None,
-    Some(pick) => match pick {
-      (_pspan, ph) => Some(cursor_at_handle(ph)),
-    },
+    Some(ph) => Some(cursor_at_handle(ph)),
   },
-} ~> cursor_default ~> synth_default ~> interrogate_default ~> mentl_default ~> tighten_collector)
+} ~> cursor_default ~> synth_default ~> interrogate_default ~> mentl_default ~> diag_bank)
 
 fn teach_meets(want, teach) = match want {
   WantAdd(text) => match teach {
@@ -2013,8 +1333,7 @@ fn battery_compile(src, stem) = compile_context(() => {
   // ev2 for an unarmed row mismatch the check verb tolerates). `gated_plan`
   // is the law's one home; this policy counts and continues where the CLI
   // compile proc_exits. The refuse contract judges the JUDGMENT through the
-  // collector's bank (mcp_diag_collector, the forwarder: every line still
-  // reaches stderr).
+  // bank, which forwards every report, so every line still reaches stderr.
   let left = match gated_plan(lowered) {
     Withheld(_, _) => BatteryRefused,
     Planned(plan) => {
@@ -2032,10 +1351,10 @@ fn battery_compile(src, stem) = compile_context(() => {
   }
   // THE CLASSES, never the rendered lines: the refuse contract compares
   // names, so no substring scan over prose decides a verdict.
-  let classes = gate_classes()
+  let classes = banked_classes()
   let nerr = diag_errors()
   (left, nerr, classes)
-} ~> mcp_diag_collector ~> wasi_filesystem)
+} ~> diag_bank ~> wasi_filesystem)
 
 fn battery_run(dir, names) = {
   // The libs and the fixture names are flat before the first micro: each

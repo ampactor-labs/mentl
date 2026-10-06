@@ -103,11 +103,20 @@ function makeShim({ mem, argv, stdin, vfs, spawnFn, pull }) {
   // session's input, is asked for the NEXT bytes the moment the wheel reads
   // past the end of these (null = EOF) — the resident session's frame.
   let src = stdin, srcPos = 0;
+  // The descriptor table: fd 3 is the tree's root, the one preopen, held in
+  // the table like every handle so each fd_* op reads it the same way; 0, 1
+  // and 2 are the streams.
   const fds = new Map(); let nextFd = 8;
+  if (vfs) fds.set(3, { name: ".", pos: 0, dir: 1, preopen: 1 });
   const args = (argv || []).map((s) => te.encode(s + "\0"));
   const argTotal = args.reduce((a, b) => a + b.length, 0);
   const readStr = (p, l) => td.decode(u8().slice(p, p + l));
   const norm = (p) => p.replace(/^\.\//, "").replace(/^\//, "");
+  // A path as the tree keys it: relative to the directory handle it was
+  // opened under (the root's name is "."), and a directory exists exactly
+  // when some file lies under it — the vfs holds files, never directories.
+  const under = (dirfd, rel) => { const h = fds.get(dirfd); const base = !h || h.name === "." ? "" : h.name + "/"; return norm(base + norm(rel)); };
+  const isDir = (nm) => nm === "" || nm === "." || Object.keys(vfs).some((k) => k.startsWith(nm + "/"));
   const stat = (ptr, ft, sz) => { const v = dv(); for (let i = 0; i < 64; i += 8) v.setBigUint64(ptr + i, 0n, true);
     v.setUint8(ptr + 16, ft); v.setBigUint64(ptr + 24, 1n, true); v.setBigUint64(ptr + 32, BigInt(sz), true); };
   const P = {
@@ -116,6 +125,7 @@ function makeShim({ mem, argv, stdin, vfs, spawnFn, pull }) {
     args_get(ap, bp) { let p = bp; args.forEach((a, i) => { dv().setUint32(ap + 4 * i, p, true); u8().set(a, p); p += a.length; }); return 0; },
     fd_write(fd, io, n, o) { const v = dv(); let t = 0;
       const h = fds.get(fd);
+      if (fd !== 1 && fd !== 2 && (!h || h.dir)) return 8;   // EBADF: no stream and no open file
       for (let i = 0; i < n; i++) { const p = v.getUint32(io + 8 * i, true), l = v.getUint32(io + 8 * i + 4, true), b = u8().slice(p, p + l);
         if (h && !h.dir) {
           // a FILE the wheel writes — `fs_write_file` after `mentl accept`
@@ -141,29 +151,64 @@ function makeShim({ mem, argv, stdin, vfs, spawnFn, pull }) {
         const k = Math.min(l, d.length - h.pos); u8().set(d.subarray(h.pos, h.pos + k), p); h.pos += k; t += k; }
       v.setUint32(o, t, true); return 0; },
     fd_close(fd) { fds.delete(fd); return 0; },
-    fd_seek(fd, off, w, o) { const h = fds.get(fd); if (!h) return 8;
+    fd_seek(fd, off, w, o) { const h = fds.get(fd); if (!h || h.dir) return 8;
       h.pos = w === 0 ? Number(off) : w === 1 ? h.pos + Number(off) : vfs[h.name].length + Number(off);
       dv().setBigUint64(o, BigInt(h.pos), true); return 0; },
-    fd_prestat_get(fd, p) { if (vfs && fd === 3) { dv().setUint8(p, 0); dv().setUint32(p + 4, 1, true); return 0; } return 8; },
-    fd_prestat_dir_name(fd, p) { if (vfs && fd === 3) { u8()[p] = 46; return 0; } return 8; },   // "."
-    path_open(b, df, pp, pl, of, rb, ri, ff, o) { if (!vfs) return 44; const nm = norm(readStr(pp, pl));
-      if (nm === "" || nm === ".") { const fd = nextFd++; fds.set(fd, { name: ".", pos: 0, dir: 1 }); dv().setUint32(o, fd, true); return 0; }
-      // WASI oflags: CREAT = 1, TRUNC = 8 — the wheel's fs_write_file opens
-      // with both (0x9). A create births the entry; a truncate empties it.
+    fd_prestat_get(fd, p) { const h = fds.get(fd); if (h && h.preopen) { dv().setUint8(p, 0); dv().setUint32(p + 4, 1, true); return 0; } return 8; },
+    fd_prestat_dir_name(fd, p) { const h = fds.get(fd); if (h && h.preopen) { u8()[p] = 46; return 0; } return 8; },   // "."
+    // WASI oflags: CREAT = 1, DIRECTORY = 2, EXCL = 4, TRUNC = 8 — the wheel's
+    // fs_write_file opens with CREAT|TRUNC (0x9). A directory opens as a
+    // handle readdir can list (a create or truncate of one is EISDIR); a
+    // create births a file's entry and a truncate empties it.
+    path_open(b, df, pp, pl, of, rb, ri, ff, o) { if (!vfs) return 44; const base = fds.get(b); if (!base || !base.dir) return 8;
+      const nm = under(b, readStr(pp, pl));
+      if (!(nm in vfs) && isDir(nm)) { if (of & 9) return 31; const fd = nextFd++; fds.set(fd, { name: nm === "" ? "." : nm, pos: 0, dir: 1 }); dv().setUint32(o, fd, true); return 0; }
+      if (of & 2) return nm in vfs ? 54 : 44;   // ENOTDIR / ENOENT: a directory was asked for
       if (!(nm in vfs)) { if (!(of & 1)) return 44; vfs[nm] = new Uint8Array(0); }
       if (of & 8) vfs[nm] = new Uint8Array(0);
       const fd = nextFd++; fds.set(fd, { name: nm, pos: 0 }); dv().setUint32(o, fd, true); return 0; },
-    path_filestat_get(fd, fl, pp, pl, s) { if (!vfs) return 44; const nm = norm(readStr(pp, pl)); if (!(nm in vfs)) return 44; stat(s, 4, vfs[nm].length); return 0; },
+    path_filestat_get(fd, fl, pp, pl, s) { if (!vfs) return 44; const nm = under(fd, readStr(pp, pl));
+      if (nm in vfs) { stat(s, 4, vfs[nm].length); return 0; } if (isDir(nm)) { stat(s, 3, 0); return 0; } return 44; },
     fd_filestat_get(fd, s) { const h = fds.get(fd); if (!h) return 8; stat(s, h.dir ? 3 : 4, h.dir ? 0 : vfs[h.name].length); return 0; },
-    fd_fdstat_get(fd, p) { if (vfs && fd === 3) { dv().setUint8(p, 3); return 0; } const h = fds.get(fd); if (h) { dv().setUint8(p, h.dir ? 3 : 4); return 0; } return 8; },
-    fd_readdir() { return vfs ? 0 : 8; },
+    // the streams are host buffers, neither a terminal nor a file: filetype
+    // unknown (0), so the wheel's terminal test (stdin_is_tty, lib/io.mn)
+    // reads a pipe and compiles what stdin holds
+    fd_fdstat_get(fd, p) { const h = fds.get(fd); if (h) { dv().setUint8(p, h.dir ? 3 : 4); return 0; } if (fd >= 0 && fd <= 2) { dv().setUint8(p, 0); return 0; } return 8; },
+    // A directory read over the vfs keys: the children of the handle's
+    // directory, each a preview1 dirent ([d_next u64][d_ino u64][d_namlen
+    // u32][d_type u8, 3 pad] + the name), the cookie the next index; a
+    // buffer the entries overflow is filled to its length, as the ABI says.
+    // It answered success with `bufused` never written until L-C — a lying
+    // stub the session never needed, since imports resolve by path_open.
+    fd_readdir(fd, buf, len, cookie, used) {
+      if (!vfs) return 8;
+      const h = fds.get(fd);
+      if (!h) return 8;
+      if (!h.dir) return 54;
+      const prefix = h.name === "." ? "" : h.name.replace(/\/?$/, "/");
+      const kids = new Map();
+      for (const k of Object.keys(vfs)) {
+        if (!k.startsWith(prefix)) continue;
+        const rest = k.slice(prefix.length), i = rest.indexOf("/"), nm = i < 0 ? rest : rest.slice(0, i);
+        if (nm && !kids.has(nm)) kids.set(nm, i < 0 ? 4 : 3);
+      }
+      const names = [...kids.keys()].sort(), parts = [];
+      for (let i = Number(cookie); i < names.length; i++) {
+        const nb = te.encode(names[i]), e = new Uint8Array(24 + nb.length), ev = new DataView(e.buffer);
+        ev.setBigUint64(0, BigInt(i + 1), true); ev.setBigUint64(8, BigInt(i + 1), true);
+        ev.setUint32(16, nb.length, true); ev.setUint8(20, kids.get(names[i])); e.set(nb, 24);
+        parts.push(e);
+      }
+      const all = cat(parts), n = Math.min(all.length, len);
+      u8().set(all.subarray(0, n), buf); dv().setUint32(used, n, true); return 0; },
     clock_time_get(id, pr, o) { dv().setBigUint64(o, 0n, true); return 0; },
     random_get(p, l) { u8().fill(0, p, p + l); return 0; },
     environ_sizes_get(a, b) { dv().setUint32(a, 0, true); dv().setUint32(b, 0, true); return 0; },
     environ_get() { return 0; },
     path_create_directory() { return 44; }, path_unlink_file() { return 44; }, path_rename() { return 44; },
   };
-  const proxy = new Proxy(P, { get(t, k) { return k in t ? t[k] : () => 8; } });
+  // an op the page does not implement answers ENOSYS (52), never a lie
+  const proxy = new Proxy(P, { get(t, k) { return k in t ? t[k] : () => 52; } });
   const writtenFiles = () => Object.fromEntries([...written].map((n) => [n, vfs[n]]));
   // What the instance said and wrote since the last take — one session
   // answer's stdout, stderr and files — and the slate cleared for the next.

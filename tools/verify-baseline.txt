@@ -1014,7 +1014,13 @@ authored_own_max: 61
 # column, so the cell walk's lookup, dedup and path scan left with six
 # markers and the warm split with the two it threaded an unread ast and
 # the cells through; the session's cone discovery carries three.
-authored_ref_max: 698
+# 698 -> 684 (2026-10-06, L-C): the caret's render left src/main.mn for
+# src/space.mn and its thirteen markers stayed behind — the address walks,
+# the source slice, the line scans, the lede's first line — the View's
+# forms reading each parameter through the grade; infer.mn's
+# `branch_replay_diags` left with its one when the diagnostic became one
+# render and one bank; the driver's three changed bodies and kept theirs.
+authored_ref_max: 684
 
 # 2026-08-08: the DRIFT-SHAPE ratchet (PLAN §11 5.6's absorption,
 # enforcement half) — the three absorbed drift modes counted by the

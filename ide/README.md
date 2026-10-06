@@ -44,32 +44,35 @@ is the interaction architecture; docs/DESIGN_SYSTEM.md the tokens, which live in
   and `!E` and the `??` socket vermillion). The highlight layer slices the
   source between tokens, so every character the hand typed is on the screen.
   Line numbers in the gutter; the verb spines drawn beside the chains.
-- **The Aspect ring** — the eight facets at the caret, read off the compiler's
-  address projection (`mentl main.mn:L:C` → `render_at`, src/main.mn): graph
+- **The Aspect ring** — the eight facets at the caret, read off the View the
+  wheel renders (`mentl space main.mn:L:C` → `space_view`, src/space.mn — the
+  same facts `mentl main.mn:L:C` prints as text): graph
   (the node's type, with its lede), propose (a `??`'s proven survivor, or the
   install that serves a perform), topology, effects, ownership, verify (every
   open obligation at the node), teach, why (the Reason chain). A row is `real`
   when the compiler answered it; `surface` only before the first read.
-- **The Lens** — the diagnostics, ranked to one teaching step, click to jump.
-  Telemetry (`heap:`, `arena:`, `session:`) is cost, shown on the trail at
-  high Teach, never dressed as a diagnostic.
+- **The Lens** — every banked diagnostic as the kind it is at its own site,
+  the caret's module first and the linked modules folded under a count, the
+  lead sentence the wheel's own; click to jump. Telemetry (`heap:`, `arena:`,
+  `session:`) is cost and never enters the View.
 - **The proposal strip** — at a `??` whose Propose facet returned ONE proven
   survivor, Tab accepts it through `mentl accept main.mn:L:C`: a graph edge
   first, the text its projection (the reply carries the rewritten file). A
   tie never proposes — the medium renders the computed question instead.
-- **The Ledger** — the authored rows and the proof surface (what a `!E` region
-  is proven incapable of), plus the open obligations at the caret.
-- **The Wavefront** — the Why chain at the caret; the trail of judgments and
-  their cost at high Teach.
+- **The Ledger** — the declarations nearest the caret by the graph's own
+  proximity, each with its inferred row, the open obligations and the
+  tightenings the medium would author. The Why chain is the ring's eighth
+  facet.
 - **The programs** — the lessons `lib/tutorial/00…09` and a scratch buffer;
-  drafts persist in the browser. The Teach knob scales density; ◐ switches
-  the ground (obsidian / parchment, the system preference by default).
+  drafts persist in the browser; a project's members (`project <dir>` in
+  ide/space.manifest, or `mentl space <dir>`) open under their own paths.
+  Density is computed from the caret, never configured; ◐ switches the
+  ground (obsidian / parchment, the system preference by default).
 
 What deliberately does not exist yet, each named: RUNNING the compiled program
 in the page needs the assembler in the wheel (`Hβ.felt.ide-run-in-page` — until
-then download the .wat); the view rendered by the wheel rather than by this
-page's JavaScript, and the aspect strip in the gutter (PLAN §11, the Space
-pivot); fill-and-resume and reality scrubbing (band B); the transitive `!E`
+then download the .wat); the canvas's tokens and verb geometry from the
+wheel, and the aspect strip in the gutter (PLAN §11, L-D); fill-and-resume and reality scrubbing (band B); the transitive `!E`
 proof (band A's crown).
 
 The gate is `bash tools/ide-gate.sh`: the node twin (`node ide/test-shim.mjs`)
@@ -78,9 +81,12 @@ host the page uses — through its faces (compile-stdin, the stub-spawn control,
 the address CursorView, the `??` Propose socket, the resident session); then
 `ide/browser-leg.mjs` drives headless Chrome over its debugging pipe: it loads
 the STAGED site at `/?smoke`, prints the page's own console wire as it arrives
-— the compile verdict (`SMOKE`), the session's (`SMOKE-SESSION`) and the
+— the View's (`SMOKE-VIEW`: the first lesson's View from the session, eight
+ring facts, no refusing lens fact), the project's (`SMOKE-PROJECT`: Pulse
+opened as a project, its member mounted at its path, zero refusals) and the
 product's (`SMOKE-PRODUCT`: render fidelity, no `undefined` in the chrome,
-every facet line on a real ring row, the Lens clean) — and captures the loaded
+eight real ring rows, a Warning in the Lens at its line, a mismatch at its
+own site) — and captures the loaded
 page in both grounds (`.build/space.png`, `.build/space-parchment.png`) once
 the page says `SPACE-READY`. (Chrome's own `--screenshot` captures the load
 event, before the wheel has booted, and never returns under a virtual-time

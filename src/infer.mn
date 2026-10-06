@@ -802,6 +802,9 @@ fn shed_underscores(ref s, i) = if i < byte_len(s) && byte_at(s, i) == 95 {
 
 // Every identifier run a literal writes joins the emitted vocabulary,
 // normalized the same way (sigils split runs; leading underscores shed).
+// The walk reads every generation the graph holds, so in a session a word
+// only an edited-away literal wrote still resolves: a module's current
+// handles are no column of its node (`Hβ.graph.module-nodes-are-a-column`).
 fn lit_vocab_build(h, n, idx) = if h >= n {
   idx
 } else {
@@ -1350,7 +1353,7 @@ fn pre_register_fn_sig(name, params, ret_ann, handle, span: ValidSpan) = {
 // gate now derives from its own signature. Both products replaced, the
 // pass deletes; its price was 67% of the judgment's heap and the 5% that
 // kept the wheel above the warm-start line.
-fn infer_program_once(stmts, parse_end) = {
+fn infer_program_once(stmts, parse_start, parse_end) = {
   register_primitives()
   // The summaries classify ONCE, here, BEFORE pre-registration — the grades
   // read arm STRUCTURE, which no pass changes, and the value is name-keyed
@@ -1390,10 +1393,21 @@ fn infer_program_once(stmts, parse_end) = {
   let name_idx = layer_name_index(map(stmt_decl_name, stmts), 0, smap_new())
   let groups = scc_groups(frees_all, name_idx)
   trial_group_walk(stmts, groups, 0)
-  finalize_continuation_boundaries(0, graph_next())
-  // The prose gate judges here, on the one generation of comment cells the
-  // parse minted — [0, parse_end) is exactly that generation.
-  comment_refs_check(stmts, 0, parse_end)
+  // Both walks below read THIS judgment's own cells and nothing older. The
+  // boundaries this walk recorded sit at handles the judgment minted, past
+  // its parse; the comment cells the prose gate judges are the one
+  // generation the parse minted, [parse_start, parse_end). The cold route
+  // parses from handle 0, so the two ranges used to start there — and the
+  // session's cone, which judges into a graph that already holds every
+  // generation the session has seen, walked every superseded generation's
+  // comment cells on every edit: three cone judgments of one four-line
+  // lesson narrated the SAME thirty-six unresolved references of types.mn
+  // three times over (the bank read 39, then 79, then 119), and the
+  // boundary walk re-read a program's worth of handles per edit for the
+  // cone's few. The lazy `$`-vocabulary (lit_vocab_build) still reads every
+  // generation's literals, which can only resolve more, never less.
+  finalize_continuation_boundaries(parse_start, graph_next())
+  comment_refs_check(stmts, parse_start, parse_end)
 } ~> row_gate ~> store_ages ~> infer_ctx ~> fresh_for_inference ~> resume_summaries_ctx
 
 // No private ledgers. The trial installed its own affine_ledger /
@@ -1405,37 +1419,28 @@ fn infer_program_once(stmts, parse_end) = {
 // frontend — lex |> parse, the judgment's input boundary
 fn frontend(source) = source |> lex |> parse_program
 
-// The quiet trial's diagnostics policy: the trial pass exists only to
-// finalize schemes; reports drop because the reporting pass re-renders
-// them (that second derivation is the condemned cadence — the resolved
-// design D8; this handler's OTHER consumers — branch brackets, the
-// discovery parse — outlive it). All three Diagnostic
-// ops carry arms (a partial-effect handler leaves zero fn slots; a perform
-// through one is a garbage dispatch — the tighten_collector constraint).
+// Reports said to no one: the discovery parse's import read (the weave
+// parse reports every lex diagnostic again, placeably) and the gradient's
+// dry claims (a proposal judged on a scratch ledger, its refutation the
+// answer and never a report). The counts answer zero, because nothing
+// here judges the program.
 handler diag_quiet {
-  diag_report(d, _line, _dmod) => resume(),
+  diag_report(_d, _msg, _dmod) => resume(),
   diag_errors() => resume(0),
   diag_refusals() => resume(0),
 }
 
-// diag_branch — the branch cursor's per-stmt collector (Phase C, C1c-2).
-// Same projections as the root arm, rendered AT THE PERFORM (live
-// values), banked as lines instead of printed; the local tally answers
-// any in-branch diag_errors/diag_refusals read with branch-local truth.
-// diag_lines_taken hands the whole fact set to the join.
+// diag_branch — the branch cursor's per-statement collector: each report
+// held as the fact it carried (the kind, its message rendered at the
+// perform against the branch's live values, its module); the local tally
+// answers any in-branch diag_errors/diag_refusals read with branch-local
+// truth; diag_lines_taken hands the facts to the join, which re-performs
+// each into the root chain, so every Diagnostic forwarder — the bank among
+// them — sees a branch report exactly as a live one.
 handler diag_branch with lines = make_list(16), count = 0, errors = 0, refusals = 0 {
-  diag_report(diag, line, dmod) => // The banked fact carries the DIAG STRUCTURALLY beside the rendered
-  // line — the join re-performs diag_report(diag, line, dmod) into the root
-  // chain, so every Diagnostic forwarder (tighten_collector, the mcp
-  // bank) sees a branch report exactly as a live one, and the root's
-  // scope register / tally read the diag itself. The old bank kept only
-  // (line, span-line, is-error): a branch-fired T_OverDeclared reached
-  // the collectors structure-less and the tighten bank read empty —
-  // measured the day the daily verbs went converged (every check now
-  // judges through the branch bracket).
-  {
+  diag_report(diag, msg, dmod) => {
     let iserr = diag_severity(diag) == SError
-    let grown = list_set(list_extend_to(lines, count + 1), count, (diag, line, dmod))
+    let grown = list_set(list_extend_to(lines, count + 1), count, (diag, msg, dmod))
     if iserr {
       if diag_refuses(diag) {
         resume() with lines = grown, count = count + 1, errors = errors + 1, refusals = refusals + 1
@@ -1460,13 +1465,12 @@ effect PolyCapture {
 
 // The speculative judgment's diag CAPTURE: an attempt runs under it so
 // a retried-and-succeeded judgment leaves no stain — reports HOLD in
-// state, structurally beside their rendered lines (the diag_branch
-// precedent); the ledger reads forward live (a mid-attempt reader sees
-// the enclosing counts — the v1 boundary, noted at the stamp); the
-// driver replays the held list outward on accept or drops it for the
-// honest re-run.
+// state as the facts they carried (the diag_branch precedent); the
+// ledger reads forward live (a mid-attempt reader sees the enclosing
+// counts — the v1 boundary, noted at the stamp); the driver replays the
+// held list outward on accept or drops it for the honest re-run.
 handler poly_capture with held = [] {
-  diag_report(diag, line, dmod) => resume() with held = push(held, (diag, line, dmod)),
+  diag_report(diag, msg, dmod) => resume() with held = push(held, (diag, msg, dmod)),
   diag_errors() => resume(diag_errors()),
   diag_refusals() => resume(diag_refusals()),
   poly_captured() => resume(held),
@@ -1588,9 +1592,10 @@ fn parse_one_module(m) = match m {
 // and go with it; the movers ratchet reads zero because there is nothing
 // left for a scheme to move between.
 fn infer_modules_converged(ref mods) = {
+  let parse_start = graph_next()
   let stmts = parse_modules(mods)
   let parse_end = graph_next()
-  infer_program_once(stmts, parse_end)
+  infer_program_once(stmts, parse_start, parse_end)
   match diag_scope_of() {
     ScopeAll => eprint_string("heap: {heap_mark()} byte(s) when the judgment ends\n"),
     _ => (),
@@ -2104,25 +2109,16 @@ fn branch_join(facts) = match facts {
     // the replay's ownership arg is Own by construction.
     branch_replay_consumes(clog, len(clog) - 1)
     branch_replay_verify(vdebt, len(vdebt) - 1)
-    // The diag replay is a RE-PERFORM, never a fold: each banked
-    // (diag, line) re-enters the root chain as a live report, so the
-    // root arm counts and scope-registers it and every forwarder
-    // (tighten_collector, the mcp bank) sees the structure — the old
-    // diag_absorb fold reached only the one handler that carried its
-    // arm, and a branch-fired report bypassed every collector.
-    branch_replay_diags(dfacts, 0)
+    // Each held report re-enters the root chain as a live one, so the
+    // root arm counts it and every forwarder (the bank among them) sees it.
+    each(replay_report, dfacts)
   },
 }
 
-fn branch_replay_diags(ref dl, i) = if i >= len(dl) {
-  ()
-} else {
-  match dl[i] {
-    (d, l, dm) => {
-      diag_report(d, l, dm)
-      branch_replay_diags(dl, i + 1)
-    },
-  }
+// A held report, performed again: its message was rendered where the report
+// was made, so the replay reads nothing and says what was true then.
+fn replay_report(fact) = match fact {
+  (d, msg, dmod) => diag_report(d, msg, dmod),
 }
 
 fn branch_replay_consumes(ref clog, i) = if i < 0 {
@@ -2355,12 +2351,6 @@ fn held_has_poly(held, name: String) = any(
 )
 
 fn held_has_error(held) = any({ (d, _, _) => diag_severity(d) == SError }, held)
-
-fn replay_one(p) = match p {
-  (d, line, dmod) => diag_report(d, line, dmod),
-}
-
-fn replay_held(held) = each(replay_one, held)
 
 // The Mycroft ASSUMPTION at round 2 — the name pre-bound poly over its
 // own FRESH cells (the sig'd path's shape with fresh vars standing for
@@ -2804,7 +2794,7 @@ fn infer_fn_speculative(name, params, body_node, ret_ann, effs, handle, span: Va
                     None => (),
                   }
                   graph_commit_checkpoint(cp3)
-                  replay_held(held3)
+                  each(replay_report, held3)
                 } else {
                   graph_rollback(cp3)
                   infer_fn(name, params, body_node, ret_ann, effs, handle, span, false)
@@ -2821,26 +2811,17 @@ fn infer_fn_speculative(name, params, body_node, ret_ann, effs, handle, span: Va
     }
   } else {
     graph_commit_checkpoint(cp)
-    replay_held(held)
+    each(replay_report, held)
   }
 }
 
-// One note, narrated: the triple the guard could not raise itself. It is a
-// NAMED decl rather than a lambda at the drain because the row IS the whole
-// content of the fn — Diagnostics with nowhere to live is exactly what the
-// anonymity tier convicts, and the tier is right: this is a stage.
-fn report_guard_note(t) = match t {
-  (d, line, dmod) => diag_report(d, line, dmod),
-}
-
-// THE JUDGMENT BOUNDARY IS WHERE THE GUARD'S REFUSALS GET NARRATED. graph's
-// occurs write-guard cannot report where it stands — a diagnostic performed
-// inside an arm resolves OUTER of its own install and sails past any capture
-// bracket installed deeper, which is exactly where infer_fn_speculative
-// installs poly_capture. So the arm notes and the judgment's own tail drains,
-// in the BODY's world, one statement after the match that provoked them.
-// Every bracket that should see the refusal now does, the Mycroft retry among
-// them (Hβ.diag.an-arms-report-escapes-an-inner-capture).
+// One declaration judged: its parameters and body inferred under a frame,
+// its row published, its scheme generalized and bound. Its tail reports what
+// the graph's write guard refused while it ran. The guard cannot report where
+// it stands, since an arm's report resolves OUTER and sails past the capture
+// bracket infer_fn_speculative installs, so the arm notes and this body
+// renders and reports each refusal in its own world, where every bracket that
+// should see it does (Hβ.diag.an-arms-report-escapes-an-inner-capture).
 fn infer_fn(name, params, body_node, ret_ann, effs, handle, span: ValidSpan, poly_hint) = {
   // The decls column, first writer: the FnStmt node handle, noted per
   // judgment (rounds re-note; readers dedup by handle). The let and
@@ -3073,6 +3054,12 @@ fn infer_fn(name, params, body_node, ret_ann, effs, handle, span: ValidSpan, pol
     },
   }
   each(report_guard_note, graph_guard_drain())
+}
+
+// A refusal the graph's write guard noted, rendered and reported here, beside
+// the graph the guard protected.
+fn report_guard_note(note) = match note {
+  (d, dmod) => diag_report_at(d, dmod),
 }
 
 // ─── The instance-argument REGISTRATION FOLD (RESIDUE effarg-node D1/D2) ──
