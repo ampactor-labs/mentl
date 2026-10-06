@@ -3304,6 +3304,10 @@ type DiagKind
   // it — declared in a module the referencing module never imports. Name,
   // the referencing module's path, the declaring module's path.
   | EMissingImport(String, String, String, Span)
+  // a module imported twice by one module: the module's path — the import
+  // list is a set of edges, so the second line draws nothing (SYNTAX
+  // principle 2), and `mentl fmt` is its fix
+  | EDuplicateImport(String, Span)
   // the type name
   | ENotARecordType(String, Span)
   | EResumeOutsideArm(Span)
@@ -3622,6 +3626,7 @@ fn diag_span(d) with Pure = match d {
   EOccursCheck(_, _, s) => s,
   EMissingVariable(_, s) => s,
   EMissingImport(_, _, _, s) => s,
+  EDuplicateImport(_, s) => s,
   ENotARecordType(_, s) => s,
   EResumeOutsideArm(s) => s,
   EResumeAmbiguousOp(_, s) => s,
@@ -3702,6 +3707,7 @@ fn diag_source(d) with Pure = match d {
   EOccursCheck(_, _, _) => "graph",
   EMissingVariable(_, _) => "infer",
   EMissingImport(_, _, _, _) => "infer",
+  EDuplicateImport(_, _) => "parser",
   ENotARecordType(_, _) => "infer",
   EResumeOutsideArm(_) => "infer",
   EResumeAmbiguousOp(_, _) => "lower",
@@ -3781,6 +3787,7 @@ fn diag_code(d) with Pure = match d {
   EOccursCheck(_, _, _) => "E_OccursCheck",
   EMissingVariable(_, _) => "E_MissingVariable",
   EMissingImport(_, _, _, _) => "E_MissingImport",
+  EDuplicateImport(_, _) => "E_DuplicateImport",
   ENotARecordType(_, _) => "E_NotARecordType",
   EResumeOutsideArm(_) => "E_ResumeOutsideArm",
   EResumeAmbiguousOp(_, _) => "E_ResumeAmbiguousOp",
@@ -4043,6 +4050,10 @@ fn diag_refuses(d) with Pure = match d {
   // sweep it replaces held `solo_violations_max: 0` across 63 modules — and
   // the class is exactly what that sweep ran 63 processes to find.
   True,
+  EDuplicateImport(_, _) => // ARMED at birth (F, 2026-10-06): a syntax error, as Rust and Go refuse
+  // a repeated import; born RED-first on a program the boot compiled clean,
+  // and at zero on the wheel once infer.mn's two repeated lines were lifted.
+  True,
   EMissingVariable(_, _) => // ARMED 2026-07-18, the manifest arc's dividend: wheel census 0, and the
   // user-path licence MEASURED — a no-import stdlib program (map / fold /
   // len / any) resolves via the DAG's prelude seed and runs; the stdin
@@ -4183,6 +4194,7 @@ fn diag_kind(d) with Pure = match diag_severity(d) {
 // Applicability — the automation axis (SYNTAX.md table), a projection.
 fn diag_applicability(d) with Pure = match d {
   ERedundantBraces(_) => MachineApplicable,
+  EDuplicateImport(_, _) => MachineApplicable,
   EBlockNeedsBraces(_) => MachineApplicable,
   WRedundantWhere(_) => MachineApplicable,
   WCommentRefUnresolved(_, _, _) => MaybeIncorrect,
@@ -4240,6 +4252,7 @@ fn diag_message(d) with !Mutate = match d {
   PUnclosedConstruct(detail, _) => detail,
   PUnexpectedToken(detail, _) => detail,
   ERedundantBraces(_) => "redundant braces around a non-block body",
+  EDuplicateImport(path, _) => "`import {path}` again: the edge is already drawn, so this line draws nothing — `mentl fmt` lifts it",
   EBlockNeedsBraces(_) => "statements require braces",
   ELambdaFence(_) => // drift-audit: ignore — diagnostic message prose, not Mentl syntax
   "`|params|` lambda fence — use `(params) => body`",

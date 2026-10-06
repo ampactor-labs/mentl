@@ -559,6 +559,31 @@ fn parse_program(ref tokens) = {
   }
 }
 
+// A module's imports are a SET of edges: the parse keeps the first statement
+// naming each module and reports every later one at its own node
+// (`E_DuplicateImport`, armed) — a second line drawing an edge that exists
+// is a form that makes no graph, SYNTAX principle 2's rejected redundancy.
+// The statement leaves the tree, so `mentl fmt`'s render is the lift. Read
+// per MODULE (`parse_one_module`), the unit an import list belongs to: a
+// concatenated blob — the march's wheel, a battery's `libs ++ src` — repeats
+// every file's imports because it is many modules spelled as one text.
+fn import_set(stmts) = match fold((smap_new(), []), import_kept, stmts) {
+  (_, kept) => kept,
+}
+
+fn import_kept(acc, stmt) = match acc {
+  (seen, kept) => match stmt {
+    N(NStmt(ImportStmt(path)), span, h) => match smap_get(seen, path) {
+      Some(_) => {
+        report_at(h, EDuplicateImport(path, span))
+        acc
+      },
+      None => (smap_add(seen, path, 1), push(kept, stmt)),
+    },
+    _ => (seen, push(kept, stmt)),
+  },
+}
+
 fn parse_stmt_list(ref tokens, pos, own buf, count) = {
   // skip_seps_only (not skip_ws/skip_sep) so a leading comment reaches
   // parse_stmt's TComment arm to be collected-and-attached — never skipped as

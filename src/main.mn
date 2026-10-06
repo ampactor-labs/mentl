@@ -536,28 +536,39 @@ fn fmt_file(stamps, path: String) = {
 // names the file it is about.
 fn fmt_render_file(path: String, src: String) = infer_context(() => {
   let module = path_to_module(path)
+  let from = graph_next()
   let ast = parse_one_module((module, [], src))
-  let parse_errors = diag_errors()
+  let to = graph_next()
+  let parse_errors = parse_refusals()
   if parse_errors > 0 {
     FmtUnparsed(path, parse_errors)
   } else {
-    let first = format_program(ast)
+    let first = respell(src, format_program(ast))
     let again = parse_one_module((module, [], first))
-    if diag_errors() > 0 {
+    if parse_refusals() > 0 {
       FmtRefused(path, ["the canonical render does not parse — the formatter's defect, reported above"])
     } else {
-      let rendered = format_program(again)
+      let rendered = respell(first, format_program(again))
       if rendered == src {
         FmtCanonical(path, fmt_stamp(src))
       } else {
-        match fmt_losses(src, rendered) {
+        match fmt_losses(src, rendered, lifted_atoms(from, to, ast)) {
           [] => FmtRenders(path, src, rendered),
           lines => FmtRefused(path, lines),
         }
       }
     }
   }
-} ~> format_default)
+} ~> format_default ~> diag_bank)
+
+// The parse's errors a render cannot fix. A MachineApplicable class is the
+// formatter's own lift — a duplicate import is a syntax error whose fix IS
+// this render — so it never holds the render back.
+fn parse_refusals() = len(filter(render_cannot_fix, diag_banked()))
+
+fn render_cannot_fix(entry) = match entry {
+  (d, _, _) => diag_severity(d) == SError && diag_applicability(d) != MachineApplicable,
+}
 
 // THE CONSERVATION GATE — the verb lexes its own render beside the source
 // and compares comment-token counts: the lexer emits one TComment per
@@ -571,12 +582,12 @@ fn fmt_render_file(path: String, src: String) = infer_context(() => {
 // `Sample(48000)` then refused, and this gate's sibling reported "prose
 // conserved" over the loss. A lossy render is NOT WRITTEN, prose or name:
 // the verb names what would be lost and leaves the file as authored.
-fn fmt_losses(src: String, rendered: String) = {
+fn fmt_losses(src: String, rendered: String, stated: [String]) = {
   let src_toks = lex(src)
   let out_toks = lex(rendered)
   let src_lines = count_comment_tokens(src_toks, 0, 0)
   let out_lines = count_comment_tokens(out_toks, 0, 0)
-  let lost = lost_atoms(src_toks, out_toks)
+  let lost = lost_atoms_beside(src_toks, out_toks, stated)
   if out_lines >= src_lines && len(lost) == 0 {
     []
   } else {

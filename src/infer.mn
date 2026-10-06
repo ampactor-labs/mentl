@@ -1518,7 +1518,7 @@ fn parse_one_module(m) = match m {
       N(_, _, h) => h,
     }
     graph_module_enter(mh)
-    let stmts = lex(text) |> parse_program
+    let stmts = lex(text) |> parse_program |> import_set
     graph_register_node(mh, NModule({decls: stmts, imports: imports, path: path, span: mspan}))
     stmts
   },
@@ -12792,18 +12792,19 @@ fn classify_rounds(decls, tidx, entries) = {
   // threads evidence through its own calls.
   let idx = smap_build(entries)
   let next = list_to_flat({
-    classify_grade_all(decls, 0)
+    classify_grade_all(decls)
   } ~> summaries_frozen(idx, tidx))
   if usage_entries_eq(entries, next, 0) { next } else { classify_rounds(decls, tidx, next) }
 }
 
-fn classify_grade_all(decls, i) = if i >= len(decls) {
-  []
-} else {
-  match list_index(decls, i) {
-    (n, b, _, _) => // drift-audit: ignore — prepend-cons recursion, O(N) total
-    [(n, resume_grade(b))] ++ classify_grade_all(decls, i + 1),
-  }
+// One grade per declaration — a map, so no frame per declaration: the
+// prepend-cons recursion it replaces held one for each, and the boot that
+// carries it exhausted the engine's stack compiling a wheel ~70
+// declarations larger (measured 2026-10-06).
+fn classify_grade_all(decls) = map(grade_entry, decls)
+
+fn grade_entry(d) = match d {
+  (n, b, _, _) => (n, resume_grade(b)),
 }
 
 // ─── Tail-transparent parameters — a proof, never an accident ─────────
