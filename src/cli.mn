@@ -28,6 +28,9 @@ type EntryVerb
   | VFmt(String)
   // target REQUIRED — carried non-optionally
   | VCompile(String)
+  // the WAT to assemble: a file path, or stdin when none — the path is the
+  // file's own, never a module name
+  | VAsm(Option(String))
   // a persisted image path — the file IS the argument
   | VResume(String)
   | VCompileStdin
@@ -102,6 +105,10 @@ fn where_verb_args(a) = if len(a) >= 4 {
   ParseError("where needs a target and a name: mentl where <path> <name>")
 }
 
+// The asm verb's subject is a FILE — the WAT to assemble, its own path, never
+// a module name — or stdin when none is named.
+fn asm_verb_args(a) = Invocation(VAsm(if len(a) >= 3 { Some(a[2]) } else { None }))
+
 // The bare why verb (SYNTAX's lag list, first name retired): the same
 // Reason-chain walk the query facet serves, surfaced as its own verb.
 fn why_verb_args(a) = if len(a) >= 4 {
@@ -153,6 +160,11 @@ fn verb_specs() = [VerbSpec(
   "<path>",
   (a) => req_target(a, VCompile, "compile needs a target: mentl compile <path>"),
   "emit WAT to stdout"
+), VerbSpec(
+  "asm",
+  "[file.wat]",
+  asm_verb_args,
+  "assemble WAT into the module's bytes on stdout — the medium's own projection, text to binary"
 ), VerbSpec(
   "resume",
   "<image>",

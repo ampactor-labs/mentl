@@ -60,13 +60,14 @@ mentl_wasm() {
     "\$MENTL_HOME/boot/mentl.wasm" "\$@"
 }
 if [ "\${1:-}" = "run" ] && [ -n "\${2:-}" ]; then
-  # mentl run <module> [args…] — compile, assemble, execute: the host's three
-  # steps, since a WASI module has no process to hand its emission to. The
-  # compile is the wheel's (its warm image makes a second run of an unchanged
-  # program cheap); the assembly is wat2wasm's until \`mentl asm\`; the run is
-  # the engine's, over the caller's cwd, with the program's own args and its
-  # own exit. A hole or a refuted claim refuses at the compile and nothing
-  # runs (the proof-exactness contract, tools/proof-exactness-gate.sh).
+  # mentl run <module> [args…] — compile, assemble, execute, since a WASI
+  # module has no process to hand its emission to. The compile and the
+  # assembly are the wheel's (\`mentl compile\`, its warm image making a second
+  # run of an unchanged program cheap, then \`mentl asm\` through wt_asm); the
+  # run alone is the engine's, over the caller's cwd, with the program's own
+  # args and its own exit. A hole or a refuted claim refuses at the compile
+  # and nothing runs (the proof-exactness contract,
+  # tools/proof-exactness-gate.sh).
   module="\$2"; shift 2
   stage="\$(mktemp -d "\${TMPDIR:-/tmp}/mentl-run.XXXXXX")"
   trap 'rm -rf "\$stage"' EXIT

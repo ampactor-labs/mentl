@@ -57,6 +57,8 @@ import infer
 
 import backends/wasm
 
+import asm
+
 import dsp/clock
 
 import voice
@@ -152,6 +154,7 @@ fn dispatch_invocation(verb) = match verb {
   VTighten(target) => tighten_run(target),
   VFmt(target) => fmt_run(target),
   VCompile(target) => compile_run(target),
+  VAsm(source) => asm_run(source),
   VResume(img) => resume_run(img),
   VCompileStdin => // The bare invocation forks on the ONE substrate fact that
   // distinguishes intent: fd 0's filetype. A pipe or file IS the
@@ -783,6 +786,33 @@ fn compile_run(target) = {
   // The dispatch exit-code contract: main's value IS the process exit.
   // Refusal paths already exit nonzero through the gate; success is 0.
   0
+}
+
+// `mentl asm [file.wat]` — the emitter's text projected to the module's
+// bytes (src/asm.mn), written to stdout; the text from the file, or stdin
+// when none is named. A refusal names the form and its line and column and
+// writes nothing.
+fn asm_run(source) = match source {
+  Some(path) => if fs_exists(path) {
+    asm_write(fs_read_file(path))
+  } else {
+    eprint_string("mentl asm: no file at {path}\n")
+    2
+  },
+  None => asm_write(read_stdin()),
+} ~> wasi_filesystem
+
+fn asm_write(wat) = match assemble(wat) {
+  Assembled(bytes) => {
+    print_string(bytes)
+    0
+  },
+  AsmRefused(msg, at) => match asm_line_col(wat, at) {
+    (line, col) => {
+      eprint_string("mentl asm: {msg} at {line}:{col}\n")
+      1
+    },
+  },
 }
 
 // `mentl resume <image>` — the compile projection re-entered from a

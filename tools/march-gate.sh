@@ -147,7 +147,7 @@ rung() {
   else echo "✗ $name: RUN exit=$got want=$want"; fail=$((fail+1)); fi
 }
 
-echo "── rungs (each: m2-compile → wat2wasm → run → exit) ──"
+echo "── rungs (each: m2-compile → assemble → run → exit) ──"
 rung one-main 7 <<'EOF'
 fn main() = 7
 EOF

@@ -89,6 +89,36 @@ WT_RUN_FLAGS=(-C cache=y -W threads=y -W tail-call=y -S threads=y)
 if [ -n "${MENTL_WT_EXTRA:-}" ]; then
   WT_RUN_FLAGS+=($MENTL_WT_EXTRA)
 fi
+# THE ASSEMBLER IS THE MEDIUM'S OWN (2026-10-06, L-F). `mentl asm`
+# (src/asm.mn) projects the emitter's text to the module's bytes, and
+# writes the module WABT's `wat2wasm --debug-names` writes from the same
+# text, byte for byte, name section included (tools/asm-gate.sh holds it to
+# that on the boot's own m2 and on a module of every form the table knows).
+# It is the pinned boot that assembles — the compiler that emitted the text
+# is the one that projects it — so every gate, the march and `mentl run`
+# assemble through wt_asm below and WABT is in none of them.
+#
+# THE TRANSITION, read off the artifact: a boot pinned before this landing
+# serves no `asm` verb (its verb table carries no "assemble WAT" line), so
+# for that one generation WABT assembles — no assembler exists inside the
+# medium until the boot carrying one is pinned (tools/asm-gate.sh and the
+# march's header say which assembled the run; wt_asm stays silent, since
+# gates read its stderr as the refusal).
+# The same boot judges with the per-declaration walk that recursed once per
+# function (`classify_grade_all`, a tail form since this landing), which
+# the wheel's own link outgrew at the engine's 512 KiB default; that
+# generation runs with a 1 MiB stack. Both seams close by construction at
+# the repin that pins an asm-carrying boot, and the branch below is then
+# dead and deleted (Hβ.asm.bootstrap-seam).
+if grep -qF "assemble WAT into the module" "$_wt_root/boot/mentl.wasm" 2>/dev/null; then
+  WT_ASM_SEAM=0
+else
+  WT_ASM_SEAM=1
+  WT_RUN_FLAGS+=(-W max-wasm-stack=1048576)
+fi
+# The assembler: the pinned boot, or a compiler named by MENTL_ASM (the asm
+# gate points it at a candidate m2 to judge the candidate's own projection).
+WT_ASM="${MENTL_ASM:-$_wt_root/boot/mentl.wasm}"
 WABT_FEATURE_FLAGS=(--enable-threads --enable-tail-call)
 W2W=(wat2wasm --debug-names "${WABT_FEATURE_FLAGS[@]}")
 
@@ -201,9 +231,23 @@ wt_battery() {
   return 1
 }
 
-# wt_asm <in.wat> <out.wasm> — assemble WAT→WASM under the canonical flags.
-# Returns wat2wasm's own exit code; caller redirects stderr as it likes.
-wt_asm() { "${W2W[@]}" "$1" -o "$2"; }
+# wt_asm <in.wat> <out.wasm> — the module's bytes, projected by the medium
+# (`mentl asm`, the text on stdin). Nonzero and no output file when the
+# assembler refuses; the refusal (form, line, column) on stderr, which the
+# caller redirects as it likes. The one assemble step of every gate.
+wt_asm() {
+  if [ "$WT_ASM_SEAM" = 1 ] && [ -z "${MENTL_ASM:-}" ]; then
+    "${W2W[@]}" "$1" -o "$2"
+    return
+  fi
+  if wt_run "$WT_ASM" asm < "$1" > "$2.part"; then
+    mv -f "$2.part" "$2"
+  else
+    local rc=$?
+    rm -f "$2.part"
+    return "$rc"
+  fi
+}
 
 # wt_validate <wasm> — validate a WASM module under the same feature set used
 # for assembly. Threads/tail-call are substrate facts, not per-script choices.
@@ -391,6 +435,7 @@ wt_memo_put() {  # wt_memo_put <leg> <key> <verdict text>
 }
 
 # The key of a leg that RUNS a compiler: the standing inputs every such leg
-# shares (the engine binary, its flags, this file) plus the caller's own — the
+# shares (the engine binary, its flags, this file, the assembler that turns
+# each emission into the module that runs) plus the caller's own — the
 # compiler artifact and the fixtures it feeds it.
-wt_memo_key_run() { wt_memo_key "$WT" "=${WT_RUN_FLAGS[*]}" tools/wt-env.sh "$@"; }
+wt_memo_key_run() { wt_memo_key "$WT" "=${WT_RUN_FLAGS[*]}" tools/wt-env.sh "$WT_ASM" "$@"; }
