@@ -3608,17 +3608,16 @@ fn threaded_effect_check(branch_h, stack, via: String, ename: String) = if effec
   ()
 } else {
   match threaded_handler_for(stack, ename) {
-    Some((hname, below)) => if handler_state_is_written(hname) {
-      report_at(
+    Some((hname, below)) => match handler_state_writer(hname) {
+      Some(how) => report_at(
         branch_h,
         EThreadedBranchEffect(
           ename,
-          "{via}the handler it reaches at the fanout's frame, `{hname}`, WRITES its state from an arm (`resume … with`) — one record, two instances",
+          "{via}the handler it reaches at the fanout's frame, `{hname}`, WRITES its state from an arm ({how}) — one record, two instances",
           parse_span_of(branch_h)
         )
-      )
-    } else {
-      each(
+      ),
+      None => each(
         {
           inner => threaded_effect_check(
             branch_h,
@@ -3628,7 +3627,7 @@ fn threaded_effect_check(branch_h, stack, via: String, ename: String) = if effec
           ),
         },
         handler_arm_effects(hname)
-      )
+      ),
     },
     None => report_at(
       branch_h,
@@ -3671,27 +3670,47 @@ fn handler_arm_effects(hname: String) = match env_lookup(hname) {
   None => [],
 }
 
-// A handler is stateful FOR THE RACE RULE when an arm WRITES the state
-// record — a `resume … with` update, the one writer SYNTAX gives state —
-// read off each field's state fact, which the judgment noted with every
-// writer before any arm was judged (infer.mn `bind_handler_state_name`), an
-// update naming no field refused there. Declaring state is not writing it: a
-// handler whose arms only read `n` shares one immutable record across
-// instances, exactly as a config parameter would.
-fn handler_state_is_written(hname: String) = match handler_decl_of(hname) {
-  Some((_, state, _)) => any(state_field_written, state),
-  None => false,
+// A handler is stateful FOR THE RACE RULE when an arm WRITES its state, by
+// either of a field's two writers, both read off the field's one fact
+// (types.mn `StateFact`): a `resume … with` update replaces the record's
+// word, and an in-place store (`list_set(buf, …)`, directly or through a
+// callee storing into its parameter) mutates what the field names — the
+// fact the arena's install demand reads too. Declaring state is not
+// writing it: a handler whose arms only read `n` shares one immutable
+// record across instances, exactly as a config parameter would. Until
+// 2026-10-06 the rule read the updates alone, and two branches bumping a
+// count kept in a state buffer ran.
+//
+// The answer says how, for the refusal: the first written field, by the
+// writer that writes it.
+fn handler_state_writer(hname: String) = match handler_decl_of(hname) {
+  Some((_, state, _)) => fold(None, state_writer_or, state),
+  None => None,
 }
 
-// A field is written when its fact names a writer beyond its init.
-fn state_field_written(sf) = match graph_binder_of(node_handle(state_field_init(sf))) {
-  Some(fact) => match fact {
-    StateFact(f) => len(f.writes) > 1,
-    ParamFact(_) => false,
-    PartFact(_) => false,
-  },
-  None => false,
+fn state_writer_or(acc, sf) = match acc {
+  Some(_) => acc,
+  None => state_field_writer(sf),
 }
+
+fn state_field_writer(sf) = match graph_binder_of(node_handle(state_field_init(sf))) {
+  Some(fact) => match fact {
+    StateFact(f) => if len(f.stores) > 0 {
+      Some("an in-place store into `{state_field_name(sf)}`{store_site(last(f.stores))}")
+    } else if len(f.writes) > 1 {
+      Some("`resume … with` updates `{state_field_name(sf)}`")
+    } else {
+      None
+    },
+    ParamFact(_) => None,
+    PartFact(_) => None,
+  },
+  None => None,
+}
+
+// Where the store stands in the arm: the last cell is the stored value, or
+// the state argument a storing callee was handed (infer.mn `ages_transport`).
+fn store_site(c) = " at {show_span(parse_span_of(c))}"
 
 // Run the exact zero-argument boundary and immediately project its one-field
 // carrier back to the semantic result representation. The scheduler only ever

@@ -167,7 +167,10 @@ effect Alloc {
   // opens at it. There is no rewind beside it — reclaiming an extent is the
   // arena's (lib/arena.mn), which keeps what the extent published and zeroes
   // the memory behind it, so no reclaim depends on its caller knowing that
-  // nothing older points into what it drops.
+  // nothing older points into what it drops. In a module that spawns, each
+  // instance allocates in a run of its own and this reads the IMAGE's
+  // frontier past every run, which is what a persisted image must hold; an
+  // arena reads its own instance's line in the runtime.
   heap_mark() -> Addr
 }
 

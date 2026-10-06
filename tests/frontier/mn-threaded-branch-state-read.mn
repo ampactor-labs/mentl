@@ -1,0 +1,14 @@
+// The control for mn-threaded-branch-state-store: the arm only READS the
+// state buffer, so two spawned instances share one immutable record and
+// cannot race — the rule admits it. Expected exit: 14.
+effect Tally {
+  bump() -> Int
+}
+
+handler tally with buf = [7] {
+  bump() => resume(list_index(buf, 0)),
+}
+
+fn main() = match 0 <| ({ _ => bump() }, { _ => bump() }) ~> parallel_compose ~> tally {
+  (a, b) => a + b,
+}

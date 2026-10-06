@@ -1763,6 +1763,62 @@ for i in "${!compilers[@]}"; do
     "$ROOT/tests/frontier/mn-spine-callee-alloc.mn" E_EffectMismatch "$dir"
   run_program "$compiler" threaded-branch-readonly-state \
     "$ROOT/tests/frontier/mn-threaded-branch-readonly-state.mn" 10 yes "$dir"
+  # ── RACE (2026-10-06): the race rule reads EVERY write an arm makes ──
+  # An arm's in-place store into its state (`list_set(buf, …)`) is the
+  # field's second writer, read off the same StateFact the arena's install
+  # demand reads; the refusal names the store. RED on boot c8ba5799: the
+  # store crucible compiled and ran (exit 3); the read control runs.
+  run_refusal_linked "$compiler" threaded-branch-state-store \
+    "$ROOT/tests/frontier/mn-threaded-branch-state-store.mn" E_ThreadedBranchEffect "$dir"
+  if grep -q 'an in-place store into `buf`' "$dir/threaded-branch-state-store.compile.err" 2>/dev/null; then
+    pass "threaded-branch-state-store names the in-place store"
+  else
+    fail "threaded-branch-state-store refusal does not name the in-place store (see $dir/threaded-branch-state-store.compile.err)"
+  fi
+  run_program "$compiler" threaded-branch-state-read \
+    "$ROOT/tests/frontier/mn-threaded-branch-state-read.mn" 14 yes "$dir"
+  # Two branches storing into ONE buffer they both capture: a race with no
+  # handler between, which a branch's row cannot say while Memory's loads
+  # and stores are one effect (Hβ.threads.captured-store-race, declared red).
+  run_refusal_linked "$compiler" threaded-branch-captured-store \
+    "$ROOT/tests/frontier/mn-threaded-branch-captured-store.mn" E_ThreadedBranchEffect "$dir"
+  # A spawned instance takes the ROOT's module values through the task
+  # record and never re-runs an init: the buffer the root updated reads the
+  # same in both branches (exit 0 on boot c8ba5799 — each branch read a
+  # fresh copy), an init that prints prints once (three times on the boot),
+  # and the record stands past the abandon words in a yielding module
+  # (exit 3 on the boot).
+  run_program "$compiler" spawn-module-buffer \
+    "$ROOT/tests/frontier/mn-spawn-module-buffer.mn" 18 yes "$dir"
+  run_program "$compiler" spawn-module-values-yielding \
+    "$ROOT/tests/frontier/mn-spawn-module-values-yielding.mn" 17 yes "$dir"
+  run_program "$compiler" spawn-module-init-once \
+    "$ROOT/tests/frontier/mn-spawn-module-init-once.mn" 10 io-rec "$dir"
+  init_lines=$(grep -c '^init$' "$dir/spawn-module-init-once.run.out" 2>/dev/null || true)
+  if [ "${init_lines:-0}" -eq 1 ]; then
+    pass "spawn-module-init-once: the init ran once across the root and both branches"
+  else
+    fail "spawn-module-init-once: the init ran ${init_lines:-0} time(s) — a spawned instance re-ran a module init"
+  fi
+  # ── SPACE.1 (2026-10-06): instance segments ──
+  # Four spawned branches of a million small allocations each, timed beside
+  # the same branches under sequential_compose. Each instance bumps in its
+  # own run and touches the shared frontier once per 64 KB chunk; on boot
+  # c8ba5799 every allocation was a compare-exchange on one cell and the
+  # threaded run took 278–300 ms against the sequential 48–57 ms. The wall
+  # clock is printed, never ratcheted; the answers are judged.
+  run_program "$compiler" spawn-alloc-contention \
+    "$ROOT/tests/frontier/mn-spawn-alloc-contention.mn" 4 yes "$dir"
+  run_program "$compiler" spawn-alloc-contention-seq \
+    "$ROOT/tests/frontier/mn-spawn-alloc-contention-seq.mn" 4 yes "$dir"
+  for leg in spawn-alloc-contention spawn-alloc-contention-seq; do
+    if [ -f "$dir/$leg.wasm" ]; then
+      t0=$(date +%s%N)
+      wt_run "$dir/$leg.wasm" > /dev/null 2>&1
+      t1=$(date +%s%N)
+      echo "  time $leg: $(( (t1 - t0) / 1000000 )) ms"
+    fi
+  done
   # ── B4: the schedule reaches a callee's fanout (2026-09-30) ──
   # A `~> parallel_compose` install reaches every `><` and `fanout` in its
   # extent's direct-call reach: the callee is emitted as a schedule twin

@@ -863,6 +863,15 @@ fs_impl_bypass_max: 7
 # count MEANS at zero is that no named fn in the wheel hides behind a lambda
 # that only forwards to it.
 frontier_expected_red: why-coordinates
+# 2026-10-06 (RACE): two threaded branches storing in place into ONE buffer
+# both capture compile and run (exit 3 on boot c8ba5799 and through the RACE
+# candidate) — the arm-state store is refused now, but a branch's own row
+# says only `Memory`, which carries loads, stores and word arithmetic alike,
+# so the rule cannot ask whether a branch stores into memory older than the
+# branch. The cut is Memory's stores as their own effect read against the
+# age claim's targets, EFF's move of ops between effects
+# (Hβ.threads.captured-store-race). Retires loudly the day it refuses.
+frontier_expected_red: threaded-branch-captured-store
 # 2026-09-18 → 2026-09-28: `eq-in-arm-pointer` was declared RED here — `==`
 # in a handler arm over its op's quantified parameters compared two
 # byte-equal Strings by ADDRESS, because no twin reached the arm. RETIRED by
