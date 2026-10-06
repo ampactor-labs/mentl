@@ -354,16 +354,11 @@ fn clause_absences(ann, performed_count) = match ann {
 
 // ── The open obligations a declaration owes ────────────────────────────
 //
-// The ledger's open claims raised inside the declaration's extent IN ITS
-// OWN MODULE — the obligation carries its module, and every module numbers
-// its lines from 1, so an extent alone matches a stranger's claim at the
-// same lines. A claim pending over an authored hole is the hole's demand,
-// paid by its fill, and is the proposer's to answer.
-fn open_obligations(h) = verify_debt() |> filter(owed_at(graph_module_of(h), parse_span_of(h), ??))
-
-fn owed_at(m, sp, o) = match o {
-  (dm, dsp, pred, _) => dm == m && span_overlaps(sp, dsp) && !claim_is_a_holes_demand(pred),
-}
+// The ledger's open claims at the declaration's site (`debt_within`). A
+// claim pending over an authored hole is the hole's demand, paid by its
+// fill, and is the proposer's to answer.
+fn open_obligations(h) =
+  debt_within(h) |> filter({ (_, _, pred, _) => !claim_is_a_holes_demand(pred) })
 
 // ── The precondition: an open obligation discharged ────────────────────
 //

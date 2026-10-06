@@ -129,6 +129,7 @@ fn spine_open_loop(own spine, opened, b) = if opened > b {
     comments: make_list(spine_slots),
     dispatch: make_list(spine_slots),
     installs: make_list(spine_slots),
+    links: make_list(spine_slots),
     module: make_list(spine_slots),
     narrowing: make_list(spine_slots),
     nodes: make_list(spine_slots),
@@ -401,6 +402,17 @@ fn spine_product_at(spine, spine_open, h) = if spine_band(h) >= spine_open {
   list_index(spine_page(spine, h).products, spine_slot(h))
 }
 
+// The reference link's forward cell: the declaration a reference resolved
+// to. A virgin cell reads 0, which is "links nothing" — no declaration is
+// handle 0, since the first mint of every graph is a module node.
+fn spine_put_link(spine, h, decl) = {
+  let _ = list_set(spine_page(spine, h).links, spine_slot(h), decl)
+  ()
+}
+
+fn spine_link_at(spine, spine_open, h) =
+  if spine_band(h) >= spine_open { 0 } else { list_index(spine_page(spine, h).links, spine_slot(h)) }
+
 // The op-based face of the state-passed occurs family — for bracketed
 // pre-check sites (unify's typed-render occurs report), which hold no
 // spine: one seed read, then a zero-op walk. The arms call the family
@@ -423,7 +435,7 @@ fn occurs_in_live(handle, ref ty) with !Mutate = match graph_branch_seed() {
 // costs one 4KB word-list per process and no write tests for it — and a
 // table minted lazily inside a speculation would be copied out of the
 // speculation's arena at its exit, a cost the eager one never pays.
-handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spine_open = spine_open0, trail = [], trail_len = 0, epoch = 0, next = 0, span_index = span_index0, checkpoint_stack = [], comment_refs = [], refs_col = smap_new(), apps_col = smap_new(), decls_col = [], emitfns_col = [], emitfns_idx = [], emitfns_idx_covers = 0, sigs_col = [], holes_pend = [], holes_col = [], cur_module = 0, guard_diags = [], gates = wmap_new(1024), instances = wmap_new(1024), demands = wmap_new(1024), accepted = [], rows = wmap_new(1024), binders = wmap_new(1024), late = wmap_new(1024), claims = wmap_new(1024), modules_now = smap_new(), superseded = wmap_new(64), modules_col = [] {
+handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spine_open = spine_open0, trail = [], trail_len = 0, epoch = 0, next = 0, span_index = span_index0, checkpoint_stack = [], comment_refs = [], linked = wmap_new(1024), apps_col = smap_new(), decls_col = [], emitfns_col = [], emitfns_idx = [], emitfns_idx_covers = 0, sigs_col = [], holes_pend = [], holes_col = [], cur_module = 0, guard_diags = [], gates = wmap_new(1024), instances = wmap_new(1024), demands = wmap_new(1024), accepted = [], rows = wmap_new(1024), binders = wmap_new(1024), late = wmap_new(1024), claims = wmap_new(1024), modules_now = smap_new(), superseded = wmap_new(64), modules_col = [] {
   graph_chase(handle) => // checkpoint_stack tracks active speculation depth. Each
   // graph_push_checkpoint pushes the current trail_len; each
   // graph_rollback pops. When the stack is empty, writes are at the
@@ -552,7 +564,7 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
           resume()
         } else {
           let keep = born_outside(spine, spine_open, old, ??)
-          resume() with modules_now = smap_add(modules_now, m.path, handle), superseded = wmap_add(superseded, old, 1), modules_col = push(filter(handle_is_not(old, ??), modules_col), handle), decls_col = filter(keep, decls_col), refs_col = smap_retain(refs_col, keep), apps_col = smap_retain(apps_col, keep)
+          resume() with modules_now = smap_add(modules_now, m.path, handle), superseded = wmap_add(superseded, old, 1), modules_col = push(filter(handle_is_not(old, ??), modules_col), handle), decls_col = filter(keep, decls_col), apps_col = smap_retain(apps_col, keep)
         },
         None => resume() with modules_now = smap_add(modules_now, m.path, handle), modules_col = push(modules_col, handle),
       },
@@ -896,21 +908,32 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
     spine_put_span(spine, handle, span)
     resume() with span_index = push(span_index, (span, handle))
   },
-  graph_ref_note(name, ref_handle) => // The reverse-edge column's write:
-  // one O(1) prepend into the smap bucket per reference (the multi-map
-  // form — smap_get_all collects every entry). NOT trail-backed: a
-  // reference note is append-only telemetry of the judgment's own walk,
-  // and a rolled-back speculative branch's notes are dead spans the
-  // read-side zero-skip/dedup already drops (the same discipline the
-  // whole-graph scan applied to judgment re-mints).
-  resume() with refs_col = smap_add(refs_col, name, ref_handle),
-  graph_refs_at(name) => // The name-keyed columns answer for the CURRENT generation: the
-  // registration that supersedes a module drops what its generation noted
-  // (graph_register_node), because a reader handed a re-judged module's older
-  // references, applications or declarations counts a program that no longer
-  // exists (the generation oracle, 2026-10-02: `refs twice` answered 2 where
-  // the tree held 1, `unreferenced` one short, `decls` twelve long).
-  resume(smap_get_all(refs_col, name)),
+  graph_ref_link(ref_handle, decl) => // THE REFERENCE LINK's write: the
+  // forward cell on the reference, the reverse entry under the declaration,
+  // trailed as one MRefLink. A reference judged again to the same
+  // declaration writes nothing, so neither face holds a duplicate.
+  {
+    let prior = spine_link_at(spine, spine_open, ref_handle)
+    if prior == decl {
+      resume()
+    } else {
+      spine_put_link(spine, ref_handle, decl)
+      wmap_add(linked, decl, ref_handle)
+      let m = MRefLink(ref_handle, decl, prior)
+      let j = journaling(checkpoint_stack)
+      let new_epoch = epoch + 1
+      if !j { graph_mutated(new_epoch, m) }
+      resume() with epoch = new_epoch, trail = trail_after(trail, trail_len, j, m), trail_len = trail_len_after(trail_len, j)
+    }
+  },
+  graph_refs_of(decl) => // The current generation's alone: a resident session holds a
+  // re-judged module's older references beside the new, and a reader handed
+  // them counts a program that no longer exists (the generation oracle,
+  // 2026-10-02: `refs twice` answered 2 where the tree held 1). A reference
+  // whose forward cell names another declaration now was re-linked, and the
+  // forward cell is the truth.
+  resume(wmap_get_all(linked, decl) |> filter((r) => spine_current(spine, spine_open, superseded, r) && spine_link_at(spine, spine_open, r) == decl)),
+  graph_ref_decl(ref_handle) => resume(spine_link_at(spine, spine_open, ref_handle)),
   graph_apply_note(name, app_handle) => // The application edge's write, the refs column's own contract: one
   // O(1) prepend per application, not trail-backed — a rolled-back
   // segment's note can name a handle a later mint reuses, and the reader
@@ -1126,6 +1149,7 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
           gates: gates,
           instances: instances,
           late: late,
+          links: linked,
           rows: rows,
         }
       )
@@ -1153,6 +1177,7 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
           gates: gates,
           instances: instances,
           late: late,
+          links: linked,
           rows: rows,
         }
       )
@@ -1784,6 +1809,11 @@ fn revert_trail_into(ref spine, spine_open, ref trail, current, target, cols) = 
       wmap_pop(cols.claims, h)
       revert_trail_into(spine, spine_open, trail, idx, target, cols)
     },
+    MRefLink(r, d, prior) => {
+      if spine_band(r) < spine_open { spine_put_link(spine, r, prior) }
+      wmap_pop(cols.links, d)
+      revert_trail_into(spine, spine_open, trail, idx, target, cols)
+    },
   }
 }
 
@@ -1841,6 +1871,11 @@ fn revert_trail(ref spine, spine_open, ref trail, current, target, next_handle, 
       wmap_pop(cols.claims, h)
       revert_trail(spine, spine_open, trail, idx, target, next_handle, cols)
     },
+    MRefLink(r, d, prior) => {
+      if spine_band(r) < spine_open { spine_put_link(spine, r, prior) }
+      wmap_pop(cols.links, d)
+      revert_trail(spine, spine_open, trail, idx, target, next_handle, cols)
+    },
   }
 }
 
@@ -1875,7 +1910,7 @@ fn written_since(entries, below) = fold([], written_step(below), entries)
 fn written_step(below, acc, m) = match m {
   MSetNode(h, _) => note_written(acc, h, below),
   MSetRow(h, _) => note_written(acc, h, below),
-  MSetBoundary(_, _) | MFreshNode(_) | MSetGate(_) | MInstanceNote(_) | MSetDemand(_) | MSetProduct(_, _) | MRowNote(_) | MBinderFact(_) | MOweLate(_) | MClaimNote(_) => acc,
+  MSetBoundary(_, _) | MFreshNode(_) | MSetGate(_) | MInstanceNote(_) | MSetDemand(_) | MSetProduct(_, _) | MRowNote(_) | MBinderFact(_) | MOweLate(_) | MClaimNote(_) | MRefLink(_, _, _) => acc,
 }
 
 fn note_written(acc, h, below) =
@@ -1894,6 +1929,20 @@ fn note_written(acc, h, below) =
 // through a forward import edge — the manifest tells the truth.
 fn node_handle(node) = match node {
   N(_, _, h) => h,
+}
+
+// THE SITE'S OWNER: the top-level statement whose body holds a node, read
+// up the parent edge — a site is a node, so "is this reference inside that
+// declaration" is a comparison of two handles and never of two spans, which
+// cannot be told apart across modules (a module numbers its lines from 1).
+// None for a module node and a node no statement holds; a statement owns
+// itself.
+fn owner_decl(h) with !Mutate = match graph_parent_of(h) {
+  None => None,
+  Some(p) => match graph_node_body(p) {
+    NModule(_) => Some(h),
+    _ => owner_decl(p),
+  },
 }
 
 // ── the one total child projection — the weave's tree edge ──────────
@@ -2370,6 +2419,18 @@ fn weave_line_extent() with !Mutate = fold(
 // binop's span — both measured). Only the birth index never moves. A miss
 // answers span_zero, which is what tells an authored hole from scaffolding.
 fn parse_span_of(handle) = graph_span_of(handle)
+
+// A node's SITE: its module and its birth span, the address every
+// containment question asks.
+fn site_of(handle) = Site({module: graph_module_of(handle), span: parse_span_of(handle)})
+
+// The ledger's open obligations whose claim stands inside a node's site —
+// the one home the audit, the caret's Verify aspect and the gradient read,
+// so a claim at the same lines of another module is never this node's.
+fn debt_within(handle) = {
+  let home = site_of(handle)
+  verify_debt() |> filter({ (m, sp, _, _) => site_within(home, Site({module: m, span: sp})) })
+}
 
 // The ONLY route from a TypeHandle to a resolved Ty. Delegates to
 // graph_chase. No cache. No staleness. Every observer reads live.

@@ -1,0 +1,5 @@
+import a
+
+import b
+
+fn main() = use_a() + use_b(3)

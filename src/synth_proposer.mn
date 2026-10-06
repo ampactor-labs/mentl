@@ -558,49 +558,21 @@ fn params_heads_agree(pair) with Pure = match pair {
 // hole at line 12 (Hβ.synth.proximity-compares-across-modules). A name with
 // no declaration node (a primitive) sits at the farthest tier: the gradient
 // never reaches zero, and a position nothing places is never near.
-fn candidate_rank(name: String, hole_h, reach, decls) with !Mutate = {
-  let decl_near = match smap_get(decls, name) {
-    Some(dh) => position_proximity(hole_h, dh, reach),
-    None => cross_module_weight(),
-  }
-  let use_near =
-    fold(0.0, (acc, h) => acc + position_proximity(hole_h, h, reach), ref_handles_of(name))
-  0.5 + decl_near + use_near
-}
-
-// Every module's top-level declarations by the names they bind — a
-// function or handler by its own name, a type's constructors and an
-// effect's ops by theirs, each at its declaration's node — built once per
-// proposal so a candidate's declaration is a handle the proximity reads.
-// The env cannot answer this: a judged binding is published as a scheme
-// VALUE with no edge back to its declaration
-// (Hβ.synth.vocabulary-ring-is-read-by-name).
-fn decl_index() with !Mutate = fold(smap_new(), decl_index_cell, module_cells())
-
-fn decl_index_cell(acc, c) = match c {
-  (_h, _p, _s, decls) => fold(acc, decl_index_node, decls),
-}
-
-fn decl_index_node(acc, d) = match d {
-  N(body, _, h) => match body {
-    NStmt(FnStmt(name, _, _, _, _)) => smap_add(acc, name, h),
-    NStmt(HandlerDeclStmt(hname, _, _, _, _, _)) => smap_add(acc, hname, h),
-    NStmt(TypeDefStmt(_, variants)) => fold(
-      acc,
-      (a, v) => match v {
-        (vname, _, _) => smap_add(a, vname, h),
-      },
-      variants
-    ),
-    NStmt(EffectDeclStmt(_, _, ops)) => fold(
-      acc,
-      (a, op) => match op {
-        (oname, _, _, _) => smap_add(a, oname, h),
-      },
-      ops
-    ),
-    _ => acc,
+//
+// The declaration is the one the name's env entry binds — the handle it
+// carries from registration — and the uses are the references LINKED to
+// that declaration, so a same-spelled name declared elsewhere lends this
+// candidate none of its uses. Until the link (2026-10-06) the declaration
+// came from a name index built per proposal, which kept one module's
+// declaration of a spelling, and the uses were every reference spelled
+// alike in any module.
+fn candidate_rank(name: String, hole_h, reach) with !Mutate = match env_lookup_linked(name) {
+  Some((_, _, _, decl)) => if decl == 0 {
+    0.5 + cross_module_weight()
+  } else {
+    0.5 + position_proximity(hole_h, decl, reach) + fold(0.0, (acc, h) => acc + position_proximity(hole_h, h, reach), graph_refs_of(decl))
   },
+  None => 0.5 + cross_module_weight(),
 }
 
 // rank_of — RANK IS A PROJECTION of the LIVE candidate (the resolved
@@ -613,17 +585,17 @@ fn decl_index_node(acc, d) = match d {
 // constants, and a swapped e-class member rode a stale number).
 // Computed ONCE per candidate at sort entry — the same refs walk the
 // stored form paid at enrichment, moved to the read point.
-fn rank_of(c, hole_h, reach, decls) with !Mutate = match c {
+fn rank_of(c, hole_h, reach) with !Mutate = match c {
   EnrichedCandidate(cr) => match cr.node {
     N(body, _, _) => match body {
       NExpr(CallExpr(callee, _)) => match callee {
         N(cb, _, _) => match cb {
-          NExpr(VarRef(name)) => candidate_rank(name, hole_h, reach, decls),
+          NExpr(VarRef(name)) => candidate_rank(name, hole_h, reach),
           _ => 0.5,
         },
       },
       NExpr(VarRef(name)) => // A reference ranks by the same local-intent read as a call of it.
-      candidate_rank(name, hole_h, reach, decls),
+      candidate_rank(name, hole_h, reach),
       _ => 0.5,
     },
   },
@@ -668,12 +640,10 @@ fn hole_demand(hole_h) = match graph_claims_of(hole_h) {
 // vocabulary plus the shape enumerators). The ORDER is the only thing
 // rank decides; a constraint-tie still teaches (the render's collapse
 // line is unchanged — rank is a prior, never a guess). The hole's module
-// reach and the declarations' index are read once here, for every
-// candidate the sort ranks.
+// reach is read once here, for every candidate the sort ranks.
 fn rank_sort(hole_h, cands) with !Mutate = {
   let reach = module_reach_of(graph_module_of(hole_h))
-  let decls = decl_index()
-  cands |> map((c) => (rank_of(c, hole_h, reach, decls), c)) |> fold([], rank_insert) |> map({ (_, c) => c })
+  cands |> map((c) => (rank_of(c, hole_h, reach), c)) |> fold([], rank_insert) |> map({ (_, c) => c })
 }
 
 fn rank_insert(sorted, rc) = match sorted {

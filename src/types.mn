@@ -1401,6 +1401,10 @@ type Mutation
   | MOweLate(Int)
   // a contract claimed of the value at a node (undo = pop the newest)
   | MClaimNote(Int)
+  // a reference linked to the declaration it resolved to: reference,
+  // declaration, the reference's prior link (undo = restore the prior link
+  // and pop the newest reference entered under the declaration)
+  | MRefLink(Int, Int, Int)
 
 // What the graph knows of a BINDER the value walk reads through (P0),
 // keyed by the binder's own handle; the walk reaches it through a
@@ -1933,7 +1937,7 @@ fn applicability_text(a) = match a {
 // copies of one type is the Carried-Truth Law at the declaration layer; the
 // name is its one home, and the next column is one line.
 type SpinePage
-  = SpinePage({bind: [BindHome], boundaries: [ExecutableBoundary], canon: [Int], comments: [(String, Span)], dispatch: [DispatchTier], installs: [InstallShape], module: [Int], narrowing: [Int], nodes: [GNode], parent: [Int], products: [CallProduct], program: [NodeBody], slots: [StateSlotHome], spans: [Span]})
+  = SpinePage({bind: [BindHome], boundaries: [ExecutableBoundary], canon: [Int], comments: [(String, Span)], dispatch: [DispatchTier], installs: [InstallShape], links: [Int], module: [Int], narrowing: [Int], nodes: [GNode], parent: [Int], products: [CallProduct], program: [NodeBody], slots: [StateSlotHome], spans: [Span]})
 
 // Newlines in a flat string — a module's own extent, sized at its parse.
 fn count_lines(ref s) = count_lines_from(s, byte_len(s), 0, 0)
@@ -2023,6 +2027,21 @@ fn caret_span(line, col) = Span(line, col, line, col + 1)
 fn span_contains(outer, inner) with Pure = match outer {
   Span(osl, osc, oel, oec) => match inner {
     Span(isl, isc, iel, iec) => (osl < isl || osl == isl && osc <= isc) && (oel > iel || oel == iel && oec >= iec),
+  },
+}
+
+// A SITE is a module-qualified position. Every module numbers its lines
+// from 1, so a span alone is no address, and two spans of different modules
+// compared by line numbers answer a question about neither (`mentl audit
+// src/egraph.mn` charged its last declaration with graph.mn's and types.mn's
+// obligations that way). A comparison between sites is false across modules
+// by construction, which is the only form in which such a comparison can be
+// asked at all.
+type Site = Site({module: Int, span: Span})
+
+fn site_within(outer, inner) with Pure = match outer {
+  Site(o) => match inner {
+    Site(i) => o.module == i.module && span_contains(o.span, i.span),
   },
 }
 
@@ -2806,13 +2825,15 @@ fn show_flow_label(label) with Pure = match label {
 // carries construction-origin metadata that lower dispatches on.
 // Scoped bindings via push/pop mark. Env is never passed as argument.
 // Every read performs env_lookup; every write performs env_extend.
-// Entries are 4-tuples (name, Binding, Reason, SchemeKind) — SchemeKind
-// carries construction-origin metadata that lower dispatches on. The
-// module a name is DECLARED in is deliberately not an entry field: an
-// entry is re-published wherever a judgment further on refines it (a handler's
-// registration re-publishes its ops, a caller's resolution a HOF's row),
-// so the publisher's module is not the declarer's. The declarer is the
-// statement's own column, read once per judgment (`inf_decl_module`, F0b).
+// The binding buffer holds 5-tuples (name, Binding, Reason, SchemeKind,
+// declaration) — SchemeKind carries construction-origin metadata that
+// lower dispatches on, and the declaration is the handle of the node that
+// declares the name: a statement for a module-level name, the binder's
+// own cell for a parameter, a let or a pattern, 0 for a primitive no
+// source declares. It is written where the entry is minted, because
+// registration stands on the node, and a re-publish carries it whole, so
+// the declarer's module is `graph_module_of` of it and never the
+// publisher's. A snapshot (`Env`) projects the first four.
 // The OP VOCABULARY declares HERE — the lowest module every performer
 // imports — while the handlers live at their subsystem (pipeline.mn);
 // the effects prepass phase (pre_register_effect) makes the pair
@@ -2825,6 +2846,11 @@ effect EnvRead {
   env_lookup_type(String) -> Option((Binding, Reason, SchemeKind))
   env_lookup_ctor(String) -> Option((Binding, Reason, SchemeKind))
   env_lookup_variants(String) -> Option((Binding, Reason, SchemeKind))
+  // The REFERENCE's resolution: the live entry `env_lookup` answers, with
+  // the handle of the declaration it binds — one probe, so the link a
+  // reference draws (`graph_ref_link`) and the scheme it instantiates are
+  // the same entry's.
+  env_lookup_linked(String) -> Option((Binding, Reason, SchemeKind, Int))
   // Whether the name's live binding is MODULE-LEVEL: published below every
   // open scope mark. The env is the scope stack, so the entry's position
   // is the fact — false for a parameter, a let, a nested fn, and for a
@@ -2834,7 +2860,7 @@ effect EnvRead {
 }
 
 effect EnvWrite {
-  env_extend(String, Binding, Reason, SchemeKind)
+  env_extend(String, Binding, Reason, SchemeKind, Int)
   env_scope_enter()
   env_scope_exit()
 }
@@ -2854,8 +2880,8 @@ effect BranchEnv {
   // The fourth component is the base's MODULE-LEVEL extent — the root's
   // first open scope mark, or its count when no scope is open — so a
   // branch instance answers env_lookup_is_global for a base hit exactly.
-  env_base_view() -> ([(String, Binding, Reason, SchemeKind)], Int, [[(String, Int)]], Int)
-  env_publishes() -> [(String, Binding, Reason, SchemeKind)]
+  env_base_view() -> ([(String, Binding, Reason, SchemeKind, Int)], Int, [[(String, Int)]], Int)
+  env_publishes() -> [(String, Binding, Reason, SchemeKind, Int)]
 }
 
 // The lex-name intern (§5.O layer 1) — an identifier's canonical String
@@ -2954,11 +2980,13 @@ effect GraphRead {
   // these with its stmt's planned range as (next0, limit0).
   graph_boundary_at(Int) -> ExecutableBoundary
   graph_branch_seed() -> ([SpinePage], Int, [(ValidSpan, Int)])
-  // The REVERSE-EDGE column's read: every reference handle noted under
-  // NAME (newest first — the column prepends). refs_of_name's whole-
-  // graph VarRef scan and the oracle's quadratic count_dependents both
-  // retire onto this O(bucket) read.
-  graph_refs_at(String) -> [Int]
+  // THE LINK's two reads. graph_refs_of: every reference linked to a
+  // declaration, newest first, the current generation's alone — the
+  // reverse edge, O(bucket). graph_ref_decl: the declaration a reference
+  // resolved to, one spine cell — 0 for a node that links nothing (a
+  // missing name, a primitive, a node that is no reference).
+  graph_refs_of(Int) -> [Int]
+  graph_ref_decl(Int) -> Int
   // The APPLICATION edge's read: every application handle noted under
   // NAME, newest first — the reverse call graph a reader follows where it
   // would otherwise scan the graph for call nodes (the gradient's bracket).
@@ -3095,12 +3123,15 @@ effect GraphWrite {
   // would suppress graph_mutated for the rest of the compile.
   graph_commit_checkpoint(Int)
   graph_index_span(ValidSpan, Int)
-  // The REVERSE-EDGE column's write (Hβ.graph.reverse-edge-and-bound-
-  // projection, the 5.5 column arc's opener): infer_var_ref — the ONE
-  // writer, where the use edge is drawn — notes (name → the reference's
-  // handle) into the smap column, O(1) prepend per reference. The read
-  // face is graph_refs_at; three whole-graph scans retire onto the pair.
-  graph_ref_note(String, Int)
+  // THE REFERENCE LINK: a reference records the declaration it resolved
+  // to — `graph_ref_link(reference, declaration)` — at the one writer,
+  // where the env entry it read hands over the declaration's handle
+  // (infer_var_ref, and a pattern's constructor). Trailed, so a
+  // speculation's links roll back with its bindings. The forward read is
+  // graph_ref_decl, one spine cell; the reverse is graph_refs_of. A name
+  // is never the key: two declarations of one spelling keep their own
+  // references, and the declarer's module is graph_module_of(declaration).
+  graph_ref_link(Int, Int)
   // The APPLICATION edge's write: `call_owes`, the one home where an
   // application fills a declaration's parameters, notes (the name applied →
   // the application's handle) for each top-level declaration its callee can
