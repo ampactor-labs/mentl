@@ -23,7 +23,6 @@ set -u
 cd "$(dirname "$0")/.." || exit 2
 source "$(dirname "$0")/wt-env.sh"   # WT, WT_RUN_FLAGS, W2W — the one home
 OUT="${MARCH_OUT:-$(pwd)/.build/march}"; mkdir -p "$OUT"
-WHEEL="$OUT/wheel.mn"
 # Boot from the PINNED FIXPOINT WHEEL (boot/mentl.wasm — boot/PROVENANCE.md).
 # m2 := boot(wheel) is wheel-emitted, so m2 == m3 IS the fixed point. The
 # hand-WAT seed is DELETED (7401c4b); the cold-ladder recipe lives at tag
@@ -48,7 +47,14 @@ trap_lines() { grep -nE 'out of bounds|wasm trap|undefined element|unreachable|o
 # it, the pin's mechanical block carries it, and selfcompile_peak_kb_max in
 # tools/verify-baseline.txt ratchets the peak — raising the ceiling is an
 # explicit in-commit act with a fixed-input justification.
-gen() { /usr/bin/time -f '%e %M' -o "${2%.wat}.time" timeout 9000 "$WT" run -D coredump="$OUT/$(basename "$2" .wat).coredump" "${WT_RUN_FLAGS[@]}" "$1" < "$WHEEL" > "$2" 2> "$3"; }  # coredump: one trap buys the whole heap autopsy (face 7 lesson)  # gen <wasm> <out.wat> <out.err>
+# The wheel is src/main.mn's import DAG, judged cold in a hermetic root
+# (wt_wheel_root): the march's input is the module tree, never an assembled
+# text. A generation leg runs the compiler's own `march` verb — the fixed
+# point's route, which persists no image — and harvests the emission it
+# writes; its report (`march: link …`) lands beside the wat. The boot's leg is
+# the m2 cache's (wt_m2_ensure), and the parity leg below holds the shipped
+# `compile` route to the same bytes.
+gen() { wt_wheel_root "$1" "${2%.wat}.verb" "$3" "${2%.wat}.time" "$OUT/$(basename "$2" .wat).coredump" ".build/march/m2.wat=$2" march; }  # coredump: one trap buys the whole heap autopsy (face 7 lesson)  # gen <wasm> <out.wat> <out.err>
 
 # WABT disassembly, cached on the wasm's mtime (objdump on 1.7MB is slow; the
 # 500k-line dump is reused across runs until m2.wasm is rebuilt). PLAN §8: pin the
@@ -238,10 +244,7 @@ pin_trap() {  # pin_trap <wasm> <err> — auto-disassemble the trap site from th
     p && n>34{exit}' "$dis" | grep -E 'load|store|local|global|call|func\[' | head -18
 }
 
-# ── wheel input: `find`, NOT `cat src/*.mn` (PLAN §6 — cat omits backends/) ──
-{ find lib -name '*.mn' -not -path '*/tutorial/*' | sort | xargs cat
-  find src -name '*.mn' | sort | xargs cat; } > "$WHEEL"
-echo "wheel: $(wc -l < "$WHEEL") lines"
+echo "wheel: src/main.mn's import DAG ($(find src lib -name '*.mn' | wc -l) modules in the tree it reads)"
 
 # A previous run's m3 module outlives this one on a CLEAN march, which
 # compares WAT and never re-assembles it — measured 2026-09-25: a probe run
@@ -271,55 +274,12 @@ fi
 # verify's census and march-gate; .build/m2cache): instant when another
 # gate already compiled this exact state.
 if C=$(wt_m2_ensure); then
-  wt_m2_place "$C" "$OUT"; m2rc=0
+  wt_m2_place "$C" "$OUT"
   echo "m2: boot(wheel) via $C — $(wc -l < "$OUT/m2.wat") lines (key $(cut -c1-12 "$C/key"))"
 else
   echo "✗ m2 generation TRAPPED (see $WT_M2CACHE/m2.err):"; trap_lines "$WT_M2CACHE/m2.err" | head -6; exit 1
 fi
 echo "✓ m2 assembles ($(stat -c%s "$OUT/m2.wasm") bytes)"
-m2lines=$(wc -l < "$OUT/m2.wat" 2>/dev/null | tr -d ' ')
-
-# VERB PARITY — this script's own successor has to be able to run.
-#
-# `mentl march` is what this file absorbs into (PLAN §11 10.3), and it was
-# DEAD: its hand-copied handler chain had lost lower_handler_stack_ctx, so the
-# frame fence's perform hit the unhandled floor on every march the verb ran.
-# Nothing caught it for as long as it was broken, because the board calls this
-# script and never the verb — a gate that stops being reported stops being run
-# (§11 tripwire 4), one layer up, where the scaffold's own existence was the
-# cover. The wheel is judged by its ability to judge itself.
-#
-# It runs HERE, right after the m2 leg and before any repin, because the verb
-# runs BOOT: what it reproduces is boot's own output, which is the m2 leg. Two
-# earlier placements were wrong and the leg said so both times — against m3 it
-# called an honest TRANSITION a verb failure, and after the repin it ran a
-# different binary than the one that wrote m2.wat. The line count is captured
-# above rather than re-read, because the verb WRITES $OUT/m2.wat itself.
-if [ "$m2rc" = 0 ]; then
-  # Memoized by what the verb reads — boot's bytes and the source it
-  # concatenates — so an unchanged pair answers without a second 30s
-  # generation of the m2 the leg above already produced.
-  vkey=$(wt_memo_key_run boot/mentl.wasm src lib)
-  if vmemo=$(wt_memo_hit verb-parity "$vkey"); then
-    vm="$vmemo"; vrc=0
-  else
-    vm=$(timeout 9000 "$WT" run "${WT_RUN_FLAGS[@]}" --dir . boot/mentl.wasm march 2> "$OUT/verb.err")
-    vrc=$?
-  fi
-  vlines=$(printf '%s\n' "$vm" | sed -n 's/^march: .* · \([0-9]*\) wat lines · census.*/\1/p')
-  [ "$vrc" = 0 ] && [ "$vlines" = "$m2lines" ] && wt_memo_put verb-parity "$vkey" "$(printf '%s\n' "$vm" | grep -E '^march: ')"
-  if [ "$vrc" != 0 ]; then
-    echo "✗ VERB PARITY: \`mentl march\` exits $vrc — the medium cannot judge its own generation:"
-    printf '%s\n' "$vm" | tail -3
-    trap_lines "$OUT/verb.err" | head -6
-    fixok=0
-  elif [ "$vlines" != "$m2lines" ]; then
-    echo "✗ VERB PARITY: \`mentl march\` emits ${vlines:-no} wat lines, the m2 leg $m2lines — the verb and the scaffold judge the same wheel differently"
-    fixok=0
-  else
-    echo "✓ verb parity: \`mentl march\` reproduces the m2 leg ($m2lines wat lines)"
-  fi
-fi
 
 # CHEAPEST FIRST (2026-09-26). A repin judges the candidate's wheel-side
 # invariants — every census ratchet, the contract, syntax, floor and residual
@@ -424,6 +384,61 @@ else
   echo "✓ GATE: m3 clean (no trap)"
 fi
 
+# ── VERB PARITY, AND ONE LINK MODEL (2026-10-06, M9) ──
+# `mentl march` is what this file absorbs into (PLAN §11 10.3), and it was
+# DEAD once: its hand-copied handler chain had lost lower_handler_stack_ctx,
+# and nothing caught it because the board calls this script and never the
+# verb (§11 tripwire 4, one layer up). The verb IS the generation legs now
+# (gen), so what this leg holds is the other two readers of the same link,
+# each a refusal:
+#   - the shipped route, `mentl compile src/main.mn` on the candidate, emits
+#     the m3 leg's bytes: one judgment of one link, read by the verb cold and
+#     by `compile` through its warm-image persist;
+#   - the module set the verb's link judged (`march: link …`) IS the set `mentl
+#     query src/main.mn modules` names. Three link models judged three wheels
+#     until this landing — the march's blob (every lib module, lib first),
+#     `mentl compile`'s DAG (src first) and the battery's four-file prefix —
+#     and the blob judged lib/combinators, lib/audio/wav and lib/ml/grad,
+#     which nothing links. One link model, read twice, answers one set.
+# The leg used to run boot's verb against the m2 leg's LINE COUNT and set
+# fixok=0 on a mismatch, which the fixpoint block below reset to 1 before
+# anything read it: it printed ✗ and refused nothing. It has its own verdict
+# now, and the repin and the final line read it.
+parityok=1
+if [ "$m3rc" = 0 ]; then
+  pkey=$(wt_memo_key_run "$OUT/m2.wasm" src lib)
+  if pmemo=$(wt_memo_hit verb-parity "$pkey"); then
+    echo "$pmemo (memo)"
+  else
+    wt_wheel_compile "$OUT/m2.wasm" "$OUT/compile.wat" "$OUT/compile.err"
+    crc=$?
+    wt_wheel_root "$OUT/m2.wasm" "$OUT/query.out" "$OUT/query.err" "" "" "" \
+      query src/main.mn modules
+    qrc=$?
+    sed -n 's/^march: link //p' "$OUT/m3.verb" | tr ' ' '\n' | sed '/^$/d' | sort > "$OUT/link.verb"
+    sed -n 's/^  \([^ <][^ ]*\)$/\1/p' "$OUT/query.out" | sort > "$OUT/link.query"
+    if [ "$qrc" != 0 ] || [ ! -s "$OUT/link.query" ] || [ ! -s "$OUT/link.verb" ]; then
+      echo "✗ ONE LINK MODEL: no module set to compare (the march verb named $(wc -l < "$OUT/link.verb") modules; query exit $qrc, $(wc -l < "$OUT/link.query") modules)"
+      parityok=0
+    elif ! diff -q "$OUT/link.verb" "$OUT/link.query" >/dev/null; then
+      echo "✗ ONE LINK MODEL: the fixed point judges a module set \`mentl query src/main.mn modules\` does not name:"
+      diff "$OUT/link.verb" "$OUT/link.query" | grep '^[<>]' | sed 's/^</  fixed point only:/; s/^>/  query only:/' | head -12
+      parityok=0
+    elif [ "$crc" != 0 ]; then
+      echo "✗ VERB PARITY: \`mentl compile src/main.mn\` exits $crc on the candidate:"
+      trap_lines "$OUT/compile.err" | head -6; tail -3 "$OUT/compile.err"
+      parityok=0
+    elif ! cmp -s "$OUT/compile.wat" "$OUT/m3.wat"; then
+      echo "✗ VERB PARITY: \`mentl compile src/main.mn\` emits $(wc -l < "$OUT/compile.wat") wat lines that differ from the march verb's $(wc -l < "$OUT/m3.wat") — two routes judge one link differently"
+      parityok=0
+    else
+      pline="✓ verb parity: \`mentl compile src/main.mn\` reproduces the march verb's generation byte for byte, over the one link \`mentl query src/main.mn modules\` names ($(wc -l < "$OUT/link.query") modules)"
+      echo "$pline"
+      wt_memo_put verb-parity "$pkey" "$pline"
+    fi
+  fi
+fi
+
 # ── the FIXPOINT RATCHET ──
 # m2 and m3 are BOTH wheel-emitted, so m2 == m3 is the fixed point —
 # asserted on every run (the ratchet law: every wheel change holds
@@ -480,7 +495,7 @@ elif [ "$m3rc" = 0 ]; then
       # red restores the prior boot and refuses.
       cp boot/mentl.wasm "$OUT/boot.prev.wasm"
       cp "$OUT/m2.wasm" boot/mentl.wasm
-      if [ "$costok" = 1 ] && [ "$censusok" = 1 ] && bash tools/march-gate.sh --micros > "$OUT/repin-battery.log" 2>&1; then
+      if [ "$costok" = 1 ] && [ "$censusok" = 1 ] && [ "$parityok" = 1 ] && bash tools/march-gate.sh --micros > "$OUT/repin-battery.log" 2>&1; then
         # A repin is a new build: the warm-compile images were written by
         # the old one, and their $build_key (table+strings+globals) does
         # NOT move on a body-only change — a key-matching stale image
@@ -495,7 +510,7 @@ elif [ "$m3rc" = 0 ]; then
           "$(grep -cE 'E_[A-Za-z]+ error' "$OUT/m3.err" 2>/dev/null)"
       else
         cp "$OUT/boot.prev.wasm" boot/mentl.wasm
-        echo "✗ REPIN REFUSED: the cost ratchet or the micro battery refused the candidate (the ✗ above names which) — boot restored."
+        echo "✗ REPIN REFUSED: the cost ratchet, verb parity or the micro battery refused the candidate (the ✗ above names which) — boot restored."
         tail -8 "$OUT/repin-battery.log"
         fixok=0
       fi
@@ -520,7 +535,7 @@ elif [ "$m3rc" = 0 ]; then
           # arm's comment) — through the candidate, restore-and-refuse on red.
           cp boot/mentl.wasm "$OUT/boot.prev.wasm"
           cp "$OUT/m3.wasm" boot/mentl.wasm
-          if [ "$costok" = 1 ] && [ "$censusok" = 1 ] && bash tools/march-gate.sh --micros > "$OUT/repin-battery.log" 2>&1; then
+          if [ "$costok" = 1 ] && [ "$censusok" = 1 ] && [ "$parityok" = 1 ] && bash tools/march-gate.sh --micros > "$OUT/repin-battery.log" 2>&1; then
             rm -f .build/warm-compile-*.img
             echo "· REPIN (transition): boot ← m3  sha256 $(sha256sum boot/mentl.wasm | cut -c1-16)…  (battery green; blessing m2 here is the trusting-trust mistake this arbitration exists to prevent)"
             emit_provenance m3 "TRANSITION m3 == m4" \
@@ -528,7 +543,7 @@ elif [ "$m3rc" = 0 ]; then
               "$(grep -cE 'E_[A-Za-z]+ error' "$OUT/m3.err" 2>/dev/null)"
           else
             cp "$OUT/boot.prev.wasm" boot/mentl.wasm
-            echo "✗ REPIN REFUSED: the cost ratchet or the micro battery refused the candidate (the ✗ above names which) — boot restored."
+            echo "✗ REPIN REFUSED: the cost ratchet, verb parity or the micro battery refused the candidate (the ✗ above names which) — boot restored."
             tail -8 "$OUT/repin-battery.log"
             fixok=0
           fi
@@ -547,14 +562,4 @@ fi
 if [ "$FIXPOINT" = 1 ] && [ "$m3rc" = 0 ] && [ "$m4done" = 0 ]; then
   if probe_m4; then stamp_fixpoint; else fixok=0; fi
 fi
-# VERB PARITY — this script's own successor has to be able to run.
-#
-# `mentl march` is what this file absorbs into (PLAN §11 10.3), and it was
-# DEAD: its hand-copied handler chain had lost lower_handler_stack_ctx, so the
-# frame fence's perform hit the unhandled floor on every march the verb ran.
-# Nothing caught it for as long as it was broken, because the board calls this
-# script and never the verb — a gate that stops being reported stops being run
-# (§11 tripwire 4), one layer up, where the scaffold's own existence was the
-# cover. The wheel is judged by its ability to judge itself, so the verb runs
-# here on the same generation and must agree with the m3 leg's line count.
-[ -z "$TRAP" ] && [ "$m3rc" = 0 ] && [ "$fixok" = 1 ] && [ "$costok" = 1 ] && [ "$censusok" = 1 ]
+[ -z "$TRAP" ] && [ "$m3rc" = 0 ] && [ "$fixok" = 1 ] && [ "$costok" = 1 ] && [ "$censusok" = 1 ] && [ "$parityok" = 1 ]

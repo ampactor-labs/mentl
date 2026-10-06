@@ -13,7 +13,7 @@
 #          wt_validate <wasm>                 # validate with the canonical flags
 #          wt_func <wasm> <fn-name>           # WABT disasm of ONE function
 #          wt_offsets <wat> <fn> <local>      # field-load offsets for a local
-#          wt_wheel <src|lib> [src|lib] > f   # canonical wheel input (find-order)
+#          wt_wheel_compile <wasm> <out.wat> <out.err>  # <wasm> compiles src/main.mn's DAG, cold
 #
 # The four constants — WT, WT_RUN_FLAGS, W2W, WT_WABT — are the single source of
 # truth. Point WT at another engine via MENTL_WASMTIME. Nothing here re-derives;
@@ -233,23 +233,62 @@ wt_offsets() {
     | grep -oE "\\\$$3\)\(i32.load offset=[0-9]+" | sort | uniq -c
 }
 
-# wt_wheel <part…> — emit the canonical wheel input to stdout. Each part is
-# `src` or `lib`; order is the argument order. `wt_wheel lib src` is the
-# CANONICAL build order — callee-first at module scale: lib declares the
-# vocabulary src consumes, so a src->lib reference is BACKWARD and reads the
-# final scheme (the src-first blob left every such call on the loose
-# pre-registered snapshot: 492 fully-bare published schemes, measured
-# 2026-07-23 — the order-conditional class at its true size). Uses `find`,
-# NEVER `cat src/*.mn` (PLAN §6 — cat omits backends/). Excludes lib/tutorial.
-wt_wheel() {
-  local part
-  for part in "$@"; do
-    case "$part" in
-      src) find src -name '*.mn' | sort | xargs cat ;;
-      lib) find lib -name '*.mn' -not -path '*/tutorial/*' | sort | xargs cat ;;
-      *) echo "wt-env: wt_wheel: unknown part '$part' (want src|lib)" >&2; return 2 ;;
-    esac
-  done
+# ONE LINK MODEL (2026-10-06, M9). The wheel is src/main.mn's import DAG plus
+# the prelude edge — what `mentl compile src/main.mn` weaves, what the battery
+# and a lesson weave, and what `mentl query src/main.mn modules` names. These
+# helpers used to assemble a BLOB instead: every .mn under lib/ (tutorials
+# excluded by a path test) then every .mn under src/, concatenated and fed on
+# stdin, so the fixed point judged lib/combinators, lib/audio/wav and
+# lib/ml/grad, which nothing links, in an order `mentl compile` never wove.
+#
+# wt_wheel_digest — what a wheel compile can read, as a value for a key: every
+# .mn under src/ and lib/, NAME and content (a rename moves the key). Over the
+# DAG's own set on purpose — a module the link stops importing still moves the
+# key, which is a spurious re-run, never a stale verdict.
+wt_wheel_digest() {
+  find src lib -name '*.mn' | sort | xargs sha256sum | sha256sum | cut -d' ' -f1
+}
+
+# wt_wheel_root <wasm> <out> <err> <time-file|""> <coredump|""> <harvest|""> <arg>…
+# — run <wasm> <arg>… in a HERMETIC ROOT: a scratch directory holding a copy of
+# src/ and lib/ and nothing else, the run's cwd and its one preopen, deleted
+# after. Hermetic because `compile` persists its analyzed image under the
+# cwd's .build (driver_warm_path) and a later run of the same compiler bytes
+# would RESTORE it — a CLEAN march's m4 leg is run by m3 == m2, so a shared
+# .build would make the fixpoint leg a warm re-derive measured as a cold one.
+# The time file, when named, receives GNU time's `<wall> <peak KB>`; a harvest
+# `<path-in-root>=<dest>` copies one file the run wrote out before the root
+# goes (the march verb writes its generation into the root's .build).
+wt_wheel_root() {
+  local wasm out err tf="$4" core="$5" harvest="$6" root rc
+  wasm=$(realpath "$1"); out=$(realpath -m "$2"); err=$(realpath -m "$3")
+  [ -n "$tf" ] && tf=$(realpath -m "$tf")
+  [ -n "$core" ] && core=$(realpath -m "$core")
+  shift 6
+  mkdir -p .build
+  root=$(mktemp -d "$(realpath .build)/wheel-root.XXXXXX")
+  cp -r src lib "$root"/
+  (
+    cd "$root" || exit 1
+    local -a time_pre=() core_flag=()
+    [ -n "$tf" ] && time_pre=(/usr/bin/time -f '%e %M' -o "$tf")
+    [ -n "$core" ] && core_flag=(-D coredump="$core")
+    exec "${time_pre[@]}" timeout 9000 "$WT" run "${core_flag[@]}" "${WT_RUN_FLAGS[@]}" --dir . "$wasm" "$@"
+  ) > "$out" 2> "$err"
+  rc=$?
+  if [ -n "$harvest" ]; then
+    if ! cp -f "$root/${harvest%%=*}" "$(realpath -m "${harvest#*=}")" 2>/dev/null; then
+      [ "$rc" = 0 ] && rc=1
+    fi
+  fi
+  rm -rf "$root"
+  return $rc
+}
+
+# wt_wheel_compile <compiler.wasm> <out.wat> <out.err> [<time-file> [<coredump>]]
+# — the compiler compiles src/main.mn's DAG to WAT, COLD, in a hermetic root.
+wt_wheel_compile() {
+  wt_wheel_root "$1" "$2" "$3" "${4:-}" "${5:-}" "" compile src/main.mn
 }
 
 # ── the ONE wheel-compile + the gate stamp — Carried-Truth for the tools ────
@@ -295,7 +334,7 @@ wt_state_key() {  # the gate-relevant tree state, hashed. Over-inclusion is a
   # introduced while fixing over-inclusion. A line that is nothing but a
   # comment has no such hazard. Fixtures and the wheel stay WHOLE, because a
   # `.mn` comment IS graph content (SYNTAX §Comments) and can change a verdict.
-  { wt_wheel lib src
+  { wt_wheel_digest
     cat boot/mentl.wasm tests/micros/*.mn tests/syntax/*.mn tests/rows/*.mn \
         tests/floors/*.mn 2>/dev/null
     sed -e '/^[[:space:]]*#/d' -e '/^[[:space:]]*$/d' \
@@ -306,12 +345,12 @@ wt_state_key() {  # the gate-relevant tree state, hashed. Over-inclusion is a
 }
 
 wt_m2_key() {  # what the cached boot(wheel) artifact depends on — nothing more
-  { wt_wheel lib src; cat boot/mentl.wasm; printf '%s' "${WT_RUN_FLAGS[*]}"; } \
+  { wt_wheel_digest; cat boot/mentl.wasm; printf '%s' "${WT_RUN_FLAGS[*]}"; } \
     | sha256sum | cut -d' ' -f1
 }
 
 WT_M2CACHE=".build/m2cache"
-wt_m2_ensure() {  # fill $WT_M2CACHE/{wheel.mn,m2.wat,m2.wasm,m2.err} for the
+wt_m2_ensure() {  # fill $WT_M2CACHE/{m2.wat,m2.wasm,m2.err} for the
                   # CURRENT tree; instant on a key hit. flock serializes
                   # concurrent gates (the second waits, then reads). Echoes the
                   # cache dir; returns 1 on a trapped/failed compile.
@@ -323,9 +362,8 @@ wt_m2_ensure() {  # fill $WT_M2CACHE/{wheel.mn,m2.wat,m2.wasm,m2.err} for the
       # re-check under the lock — a concurrent gate may have just filled it
       [ "$(cat "$WT_M2CACHE/key" 2>/dev/null)" = "$key" ] && [ -s "$WT_M2CACHE/m2.wasm" ] && exit 0
       : > "$WT_M2CACHE/key"   # invalidate before rebuilding (empty never matches a sha)
-      wt_wheel lib src > "$WT_M2CACHE/wheel.mn"
-      timeout 9000 "$WT" run -D coredump="$WT_M2CACHE/m2.coredump" "${WT_RUN_FLAGS[@]}" \
-        boot/mentl.wasm < "$WT_M2CACHE/wheel.mn" > "$WT_M2CACHE/m2.wat" 2> "$WT_M2CACHE/m2.err" || exit 1
+      wt_wheel_compile boot/mentl.wasm "$WT_M2CACHE/m2.wat" "$WT_M2CACHE/m2.err" \
+        "" "$WT_M2CACHE/m2.coredump" || exit 1
       wt_asm "$WT_M2CACHE/m2.wat" "$WT_M2CACHE/m2.wasm" 2> "$WT_M2CACHE/m2w.err" || exit 1
       printf '%s' "$key" > "$WT_M2CACHE/key"
     ) || return 1

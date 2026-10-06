@@ -400,7 +400,7 @@ fn inf_add_row_at(h, row) = {
 // PARTIALITY IS A ROW FACT (C5). Integer `/` and `%` trap on a zero
 // divisor, and `/` on INT_MIN / -1; the site raises the precondition as the
 // claim it is (PTotalDiv, decided by Verify's fragment from the operands'
-// constants and from what their refined types exclude — `Positive` proves
+// constants and from what their refined types exclude — a Positive refinement proves
 // both faces, a NonZero refinement the zero face, a constant either), and
 // reads the ledger's verdict: proven charges nothing, a refutation is
 // reported there (`1 / 0` refuses at the site), and a claim left OPEN
@@ -10232,7 +10232,7 @@ fn applied_path(h) = match graph_node_body(h) {
 // caller hands in is judged at that caller's crossing, against what this
 // body provides it. Its own type demands nothing here, and reading it as a
 // demand refused `g(30000.0)` in `fn outer(g) = drive(g, 440.0) +
-// g(30000.0)` because the callee PROVIDES `Hz` to its callback (higher-order
+// g(30000.0)` because the callee PROVIDES an Hz value to its callback (higher-order
 // face 5). An authored function type is the body's own promise, and binds.
 fn learning_param(h) = match learning_path(h) {
   Some(_) => true,
@@ -10454,7 +10454,7 @@ fn apply_refinement_constraint(ty, value_handle, span: ValidSpan) = match ty {
 // `fs[0]`, a part of a learning parameter teaching it, a part of any other
 // value read off its class, which is lossy. Until S4 a structure crossed its
 // function parts alone and answered held, while a callee ASSUMED its value
-// parts (`r.den` read `Positive` under `r: {den: Positive}`), so
+// parts (`r.den` read as Positive under `r: {den: Positive}`), so
 // `den_inv({den: 0})` under `!Trap` checked clean and divided by zero on boots
 // e23392f6 and 1a68ecc0 — and so did a tuple's part, a list's element taken
 // by a pattern, a nested record, and a record a `let` built or an
@@ -10678,8 +10678,8 @@ fn class_part(ct, pt, h, span: ValidSpan) = match fn_usage(pt) {
 // both directions. Unification meets a refined position with a concrete base
 // by checking the base alone — it holds no value to judge — so until
 // 2026-09-28 both directions were dropped: `run(() => 30000.0)` into `fn
-// run(f) = alpha(f())` checked clean over an `Hz` parameter, and so did a
-// filter demanding `Hz` handed a 70,900 Hz sweep through an inferred
+// run(f) = alpha(f())` checked clean over an Hz-refined parameter, and so did a
+// filter demanding Hz handed a 70,900 Hz sweep through an inferred
 // parameter (Pulse, measured). Each position is judged where its value is:
 // - the RESULT is the function's own value leaving it (covariant): a
 //   lambda's body is judged against the demanded refinement as a return is,
@@ -10974,7 +10974,7 @@ fn cross_result(aret, eret, body, value_handle, span: ValidSpan) = match fn_usag
 // other function's stated result at the path. A result's function parts
 // crossed nothing until S6: `run(pick)` over `fn run(g) = g(false).f(0)`
 // divided by zero under `!Trap` while the declaration handed in published,
-// at its result's `.f`, a function demanding `Positive` (pin
+// at its result's `.f`, a function demanding a Positive refinement (pin
 // 852184886f52a848).
 fn cross_result_fns(aret, eret, body, value_handle, span: ValidSpan) =
   fn_positions(0, eret, []) |> each(cross_result_fn(aret, eret, body, value_handle, span, ??))

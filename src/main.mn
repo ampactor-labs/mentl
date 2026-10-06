@@ -81,21 +81,7 @@ import mcp
 
 import io
 
-// The shipped surface — the stdlib the medium's binary carries whether or
-// not the compiler's own body reaches it: format's verb substrate, the DSP
-// vocabulary, the runtime families a user program may import. The DAG that
-// builds the medium IS the manifest of what the medium ships.
 import format
-
-import dsp/feedback
-
-import dsp/signal
-
-import dsp/spectral
-
-import ml/tensor
-
-import math
 
 import cli
 
@@ -277,10 +263,14 @@ fn space_run(addr) = match addr {
 
 // ─── march_run — the medium judges its own generation (`mentl march`)
 //
-// The wheel compiles IN-PROCESS through the canonical stdin chain with
-// the emission STREAMED through wat_to_file — bytes reach the host at
+// The wheel is src/main.mn's import DAG plus the prelude edge — the one
+// link model every compile reads (driver.mn), judged cold and in-process,
+// with the emission STREAMED through wat_to_file — bytes reach the host at
 // every segment, so the module's text is never held whole (the collecting
-// sink's scope lives at wat_to_string's decl). The fresh
+// sink's scope lives at wat_to_string's decl). The verb names the modules
+// its link judged (`march: link …`), which is what tools/march.sh holds
+// against `mentl query src/main.mn modules`: one link model, read twice,
+// must answer one set. The fresh
 // generation compares against the verb's OWN previous one
 // (.build/march/m2.wat, read before written). Never the keyed bash
 // cache: that cache equals this very emission whenever it is fresh — a
@@ -289,14 +279,12 @@ fn space_run(addr) = match addr {
 // generation this verb just emitted — a compiled module is run by the
 // mentl command, never by the compiler that reached it — and stays at
 // tools/march.sh, the whole-world bash march's audit role.
-fn march_run() = {
-  let files = march_wheel_files()
-  if len(files) == 0 {
-    print_string("march: no wheel source found — run beside the repo (lib/ + src/) or through the installed shim\n")
+fn march_run() = match march_entry() {
+  None => {
+    print_string("march: no wheel source found — run beside the repo (src/main.mn) or through the installed shim\n")
     1
-  } else {
-    let texts = march_read_files(files, 0, make_list(len(files)))
-    let source = str_concat_all(texts)
+  },
+  Some(entry) => {
     let gen_path = ".build/march/m2.wat"
     let new_path = ".build/march/m2.new"
     let prev = if fs_exists(gen_path) { fs_read_file(gen_path) } else { "" }
@@ -307,108 +295,71 @@ fn march_run() = {
       print_string("march: cannot open {new_path} — no fresh generation written\n")
       1
     } else {
-      let errors = march_emit(source, fd)
-      fs_close(fd)
-      if errors > 0 {
-        fs_unlink(new_path)
-        print_string("march: {int_to_str(len(files))} files · {int_to_str(count_newlines(source))} source lines · census {int_to_str(errors)}\n")
-        print_string("march: the judgment REFUSES — no verdict from a refused wheel\n")
-        1
-      } else {
-        let emission = fs_read_file(new_path)
-        fs_rename(new_path, gen_path)
-        print_string("march: {int_to_str(len(files))} files · {int_to_str(count_newlines(source))} source lines · {int_to_str(count_newlines(emission))} wat lines · census 0\n")
-        if byte_len(prev) == 0 {
-          print_string("march: baseline written ({gen_path}) — the next march compares against it\n")
-          0
-        } else if emission == prev {
-          print_string("march: the emission reproduces the last generation — CLEAN candidate; the exec legs (m3 == m4) arbitrate at the seam: tools/march.sh\n")
-          0
-        } else {
-          print_string("march: the emission DIVERGES from the last generation ({int_to_str(count_newlines(prev))} → {int_to_str(count_newlines(emission))} wat lines) — a change crossed; the exec legs arbitrate: tools/march.sh\n")
-          0
-        }
+      match march_emit(entry, fd) {
+        (mods, errors) => {
+          fs_close(fd)
+          let lines = fold(0, (n, m) => n + march_text_lines(m), mods)
+          print_string("march: link {join(" ", map(march_module_name, mods))}\n")
+          if errors > 0 {
+            fs_unlink(new_path)
+            print_string("march: {int_to_str(len(mods))} modules · {int_to_str(lines)} source lines · census {int_to_str(errors)}\n")
+            print_string("march: the judgment REFUSES — no verdict from a refused wheel\n")
+            1
+          } else {
+            let emission = fs_read_file(new_path)
+            fs_rename(new_path, gen_path)
+            print_string("march: {int_to_str(len(mods))} modules · {int_to_str(lines)} source lines · {int_to_str(count_newlines(emission))} wat lines · census 0\n")
+            if byte_len(prev) == 0 {
+              print_string("march: baseline written ({gen_path}) — the next march compares against it\n")
+              0
+            } else if emission == prev {
+              print_string("march: the emission reproduces the last generation — CLEAN candidate; the exec legs (m3 == m4) arbitrate at the seam: tools/march.sh\n")
+              0
+            } else {
+              print_string("march: the emission DIVERGES from the last generation ({int_to_str(count_newlines(prev))} → {int_to_str(count_newlines(emission))} wat lines) — a change crossed; the exec legs arbitrate: tools/march.sh\n")
+              0
+            }
+          }
+        },
       }
     }
-  }
+  },
 } ~> stdout_console ~> wasi_filesystem ~> no_iter_context ~> diagnostics_handler ~> no_state_walked ~> graph_handler([], 0, []) ~> mutate_sink
 
-// The canonical stdin chain with the streaming sink; the census count
-// reads INSIDE the same install (the count and the counter are one
-// handler — pipeline_check's own law).
-fn march_emit(source, fd) = compile_context(() => {
+// The DAG's judgment with the streaming sink, as `mentl compile` reads it
+// (driver_entry_scoped, cold: the fixed point never restores an image) and
+// under ScopeAll, so the census is the whole link's; the census count reads
+// INSIDE the same install (the count and the counter are one handler —
+// pipeline_check's own law).
+fn march_emit(entry, fd) = compile_context(() => {
   // body() ~> chain is infer_context's own idiom.
-  let body = () => {
-    source |> infer_program_converged |> compile_remainder
-    diag_errors()
+  let body = () => match driver_entry_scoped(entry, ScopeAll) {
+    (ast, mods) => {
+      compile_remainder(ast)
+      (mods, diag_errors())
+    },
   }
   body() ~> wat_to_file(fd) ~> wasi_filesystem
 })
 
-// The wheel's canonical file set: every .mn under lib then src (tutorials
-// excluded), each directory's entries sorted lexicographically — the DFS
-// order equals the flat byte-sort the bash blob uses (`find lib src | sort`)
-// because '/' sorts below every name byte. The repo resolves relative
-// (dev flow) or at the shim's well-known mount.
-fn march_wheel_files() = {
-  let local = march_walk("src", march_walk("lib", make_list(0)))
-  if len(local) > 0 {
-    local
-  } else {
-    march_walk("/mentl-home/src", march_walk("/mentl-home/lib", make_list(0)))
-  }
-}
-
-fn march_walk(dir, acc) = match fs_list_dir_impl(dir) {
-  None => acc,
-  Some(names) => march_walk_entries(dir, march_sort_names(names), 0, acc),
-}
-
-fn march_walk_entries(dir, ref names, i, acc) = if i >= len(names) {
-  acc
+// The wheel's entry: the repo's own main, or the installed shim's mount when
+// the verb runs outside the repo. The repo's is named as the CLI names it
+// (`main`, path_to_module's spelling), so the verb's link and
+// `mentl compile src/main.mn`'s are one link with one set of module names.
+fn march_entry() = if fs_exists("src/main.mn") {
+  Some("main")
+} else if fs_exists("/mentl-home/src/main.mn") {
+  Some("/mentl-home/src/main")
 } else {
-  let name = names[i]
-  // fd_readdir reports the self and parent links; a recursive walk that
-  // descends them loops "src/./." forever (measured: 3,000-byte paths,
-  // +2 per level, until the alloc ceiling). A tree walk visits children.
-  if name == "." || name == ".." || name == "tutorial" {
-    march_walk_entries(dir, names, i + 1, acc)
-  } else {
-    let path = "{dir}/{name}"
-    match fs_list_dir_impl(path) {
-      Some(sub) => march_walk_entries(dir, names, i + 1, march_walk_entries(path, march_sort_names(sub), 0, acc)),
-      None => if ends_with(name, ".mn") {
-        march_walk_entries(dir, names, i + 1, push(acc, path))
-      } else {
-        march_walk_entries(dir, names, i + 1, acc)
-      },
-    }
-  }
+  None
 }
 
-// Lexicographic insertion sort through str_lt directly — the typed
-// byte-compare — never the generic sort, whose word floor would order
-// a [String] by ADDRESS (the validator tier's measured class). The
-// readdir names arrive push-built (snoc), so the sort flattens first:
-// list_set's flat contract refused the chain loudly on the verb's very
-// first run — the gate catching its builder.
-fn march_sort_names(names) = march_sort_insert(list_to_flat(names), 1)
-
-fn march_sort_insert(names, i) =
-  if i >= len(names) { names } else { march_sort_insert(march_sift(names, i), i + 1) }
-
-fn march_sift(names, i) = if i == 0 {
-  names
-} else {
-  let a = names[i - 1]
-  let b = names[i]
-  if str_lt(b, a) { march_sift(list_set(list_set(names, i - 1, b), i, a), i - 1) } else { names }
+fn march_module_name(m) = match m {
+  (name, _, _) => name,
 }
 
-fn march_read_files(ref files, i, acc) = if i >= len(files) {
-  acc
-} else {
-  march_read_files(files, i + 1, list_set(acc, i, fs_read_file(files[i])))
+fn march_text_lines(m) = match m {
+  (_, _, text) => count_newlines(text),
 }
 
 fn count_newlines(s) = count_newlines_from(s, 0, byte_len(s), 0)
@@ -1051,16 +1002,13 @@ fn test_check_run(entry_module) =
 
 // ─── The battery: `mentl test <dir>` ────────────────────────────────────
 // The micro battery IS the medium reading its own gates: glob the directory,
-// read each micro's own `// expect: N` header, compile each against the
-// runtime lib set in ONE process, write the WATs, print the manifest. The
+// read each micro's own `// expect: N` header, compile each as its own link
+// in ONE process, write the WATs, print the manifest. The
 // refusal law holds batch-shaped: a micro whose ledger shows errors / holes /
 // armed refusals gets a FAILC line and NO WAT (the same
 // errors-holes-refusals read `gated_plan` makes for the CLI; here the
 // boundary is the batch, so the verdict is a manifest line instead of
 // proc_exit).
-fn battery_libs() -> String =
-  fs_read_file_impl("lib/memory.mn") ++ fs_read_file_impl("lib/strings.mn") ++ fs_read_file_impl("lib/lists.mn") ++ fs_read_file_impl("lib/prelude.mn")
-
 // The fixture's own contract, first line — the expectation lives ON the
 // artifact (SYNTAX §Comments), and the grammar mirrors the medium's own
 // two verdicts: `// expect: N` (the program compiles and its run answers
@@ -1323,9 +1271,17 @@ fn battery_wat_path(stem) = ".build/battery/{stem}.wat"
 // judges the exit (tools/wt-env.sh, wt_battery) — the compiler reached
 // directly can only emit, in the battery exactly as at `mentl run`.
 // Returns (what the compile left, error-count, banked classes).
-fn battery_compile(src, stem) = compile_context(() => {
-  let lowered =
-    src |> infer_program_converged |> saturate_pass |> lower_program |> reachable_from_main
+//
+// The fixture is a MODULE: its link is its import DAG plus the prelude edge,
+// judged as every compile judges one (driver.mn), so a run fixture compiles
+// from its module path exactly as a propose fixture is read at one. It used
+// to be text joined to a hand-listed four-file prefix — memory, strings,
+// lists, prelude — which was a copy of the prelude's closure that had
+// already lost threading, and which ignored a fixture's own imports.
+fn battery_compile(module: String, stem) = compile_context(() => {
+  let lowered = match driver_entry_scoped(module, ScopeAll) {
+    (ast, _) => ast |> saturate_pass |> lower_program |> reachable_from_main,
+  }
   // THE SAME law the CLI compile applies, batch-shaped: refusal = holes +
   // ARMED classes only, the plan's settle point included. Unarmed errors
   // surface on stderr and the compile proceeds — the sound-incomplete
@@ -1357,10 +1313,8 @@ fn battery_compile(src, stem) = compile_context(() => {
 } ~> diag_bank ~> wasi_filesystem)
 
 fn battery_run(dir, names) = {
-  // The libs and the fixture names are flat before the first micro: each
-  // compile reads `libs ++ src` and indexes the names, and a flat sequence
-  // answers both in one step.
-  let libs = str_concat("", battery_libs())
+  // The fixture names are flat before the first micro: each step indexes
+  // them, and a flat sequence answers in one step.
   let micros = list_to_flat(sort(filter(ends_with(??, ".mn"), names)))
   // The artifact directory exists before the first module is written; a
   // directory already there answers the same (EEXIST is absorbed). The op,
@@ -1369,7 +1323,7 @@ fn battery_run(dir, names) = {
     fs_mkdir(".build")
     fs_mkdir(".build/battery")
   } ~> wasi_filesystem
-  battery_loop(dir, libs, micros, 0, 0)
+  battery_loop(dir, micros, 0, 0)
 }
 
 // Each micro's compile is an ARENA (lib/arena.mn): what the compile
@@ -1378,14 +1332,14 @@ fn battery_run(dir, names) = {
 // set, never the sum, and a micro's output cannot depend on the micros
 // before it unless something it stored outlived it — which the arena's
 // census counts as moved.
-fn battery_loop(dir: String, libs, micros: [String], i, fails) = if i >= len(micros) {
+fn battery_loop(dir: String, micros: [String], i, fails) = if i >= len(micros) {
   fails
 } else {
-  let step = battery_step(dir, libs, micros[i]) ~> arena
-  battery_loop(dir, libs, micros, i + 1, fails + step)
+  let step = battery_step(dir, micros[i]) ~> arena
+  battery_loop(dir, micros, i + 1, fails + step)
 }
 
-fn battery_step(dir: String, libs, name: String) = {
+fn battery_step(dir: String, name: String) = {
   let stem = str_slice(name, 0, byte_len(name) - 3)
   let src = fs_read_file_impl("{dir}/{name}")
   match battery_expect(src) {
@@ -1398,7 +1352,7 @@ fn battery_step(dir: String, libs, name: String) = {
       // as the CLI's address form hands it over (path_to_module, cli.mn).
       battery_propose_step(stem, path_to_module("{dir}/{name}"), line, col, want),
       ExpectTeach(line, want) => battery_teach_step(stem, path_to_module("{dir}/{name}"), line, want),
-      ExpectRun(want) => match battery_compile(libs ++ src, stem) {
+      ExpectRun(want) => match battery_compile(path_to_module("{dir}/{name}"), stem) {
         (left, nerr, _) => match left {
           BatteryRefused => {
             print_string("FAILC {stem}\n")
@@ -1420,7 +1374,7 @@ fn battery_step(dir: String, libs, name: String) = {
           },
         },
       },
-      ExpectRefuse(cls) => match battery_compile(libs ++ src, stem) {
+      ExpectRefuse(cls) => match battery_compile(path_to_module("{dir}/{name}"), stem) {
         (_, nerr, classes) => // The contract judges the JUDGMENT: the named class reported as an
         // error. Armed classes also withhold the artifact; unarmed ones
         // surface-and-emit — both are the medium's own law, and the

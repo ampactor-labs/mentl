@@ -803,7 +803,12 @@ comment_refs_max: 0
 # impls and every one of these becomes an op the handler can see.
 # Held at the measured 7 the landing after — the board read 7 the night the
 # entry above was written and the ceiling was left at 8 to spare a gate cycle.
-fs_impl_bypass_max: 7
+# 7 -> 2 (2026-10-06, M9): the march verb's in-wheel blob assembly
+# (march_walk, its fs_list_dir_impl reads) and the battery's hand-listed
+# prefix (battery_libs, its fs_read_file_impl reads) are deleted; every
+# fixture and the fixed point read their modules through the driver's DAG
+# walk now.
+fs_impl_bypass_max: 2
 
 # 2026-08-07: the ANONYMITY ratchet (PLAN §11 Phase 2.5, second half) —
 # the census tier's convictions on the wheel link, monotone DOWN. Two
@@ -1020,7 +1025,9 @@ authored_own_max: 61
 # forms reading each parameter through the grade; infer.mn's
 # `branch_replay_diags` left with its one when the diagnostic became one
 # render and one bank; the driver's three changed bodies and kept theirs.
-authored_ref_max: 684
+# 684 -> 682 (2026-10-06, M9): march_walk_entries' `ref names` and
+# march_read_files' `ref files` left with the blob assembly they walked.
+authored_ref_max: 682
 
 # 2026-08-08: the DRIFT-SHAPE ratchet (PLAN §11 5.6's absorption,
 # enforcement half) — the three absorbed drift modes counted by the

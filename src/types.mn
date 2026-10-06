@@ -114,7 +114,7 @@ fn constructor_named(name: String) = match env_lookup(name) {
 // exactly what it read before and the emit does not move for it.
 //
 // The same read is a CONTRACT's at its constructor's fields: `Option(Positive)`
-// grounds `Some`'s payload to `Positive`, which is what a value built with
+// grounds `Some`'s payload to the Positive refinement, which is what a value built with
 // `Some` owes where it is claimed and what a pattern over it may assume
 // (verify.mn `contract_part`). It lives here, below lowering, because the
 // judgment reads it too.
@@ -2697,7 +2697,7 @@ type Predicate
   // contract learns, at each position, an EDGE to every node its
   // applications hand that position — read live wherever a function
   // crosses into the contract, so a demand is decided against the value
-  // handed (`5` proves `Positive`, `0` refutes it) rather than against a
+  // handed (`5` proves a Positive refinement, `0` refutes it) rather than against a
   // contract copied off the value's leaves, which a constant never had. A
   // provision states what ARRIVES, never what is demanded: read as a claim
   // it holds. Inference mints it; it has no surface spelling.

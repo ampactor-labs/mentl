@@ -485,8 +485,8 @@ if C=$(wt_m2_ensure); then
   # tools/comment-audit.sh + comment-ratchet.sh whole: the medium is the
   # classifier now, and the count rides the census compile — zero extra passes.
   # IT READS THE MANIFEST LINK, NOT THE BLOB, and that is the whole fix.
-  # This grepped "$C/m2.err" — the compile of .build/m2cache/wheel.mn, which
-  # is every module CONCATENATED INTO ONE FILE. One module means every name is
+  # This grepped "$C/m2.err" — the compile of the blob the fixed point read
+  # until 2026-10-06 (M9), which was every module CONCATENATED INTO ONE FILE. One module means every name is
   # local and a cross-module reference problem is UNCONSTRUCTIBLE, so the count
   # was not a measurement that read zero; it was one that could not read
   # anything else (measured 2026-09-20: 0 here against 58 across the modules).
@@ -638,27 +638,35 @@ if C=$(wt_m2_ensure); then
   # binding was declared in a module its own module never imports refuses
   # E_MissingImport inside the ONE judgment above (F0b, 2026-09-27), so
   # every module the entry links is judged there. What that judgment cannot
-  # see is a module NOBODY links from the entry — lib/combinators and the
-  # tutorials today — and each of those is its own closure's root: one
-  # small check per island, judged by the same wheel, memoized like the rest.
+  # see is a module NOBODY links from the entry — and that is what the medium
+  # SHIPS: since the fixed point stopped being a blob (2026-10-06, M9), the
+  # library roots a program may import (dsp/*, ml/*, audio/wav, combinators)
+  # and the tutorials are never the compiler's imports, so each is its own
+  # closure's root here: one small check per root, judged by the same wheel,
+  # memoized like the rest.
   islkey=$(wt_memo_key_run "$C/m2.wasm" src lib)
   if islmemo=$(wt_memo_hit islands "$islkey"); then
     say "$islmemo (memo)"
   else
     isl_linked=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$C/m2.wasm" query src/main.mn modules 2>/dev/null | grep -oE '[A-Za-z_][A-Za-z_0-9/.-]*' | sort -u)
     isl_bad=0; isl_n=0
-    for islf in src/*.mn src/backends/*.mn lib/*.mn lib/dsp/*.mn lib/ml/*.mn lib/tutorial/*.mn; do
+    # Every module the tree holds, read off the tree — the hand-listed
+    # directory globs this walked missed lib/audio/ (lib/audio/wav.mn was
+    # judged by nothing but the blob), and a root the board does not list is
+    # a root it does not judge. A root is judged CLEAN: no error of any class
+    # on its own link, never only its missing names.
+    for islf in $(find src lib -name '*.mn' | sort); do
       islm=${islf#src/}; islm=${islm#lib/}; islm=${islm%.mn}
       if ! printf '%s\n' "$isl_linked" | grep -qx "$islm"; then
         isl_n=$((isl_n + 1))
-        isl_miss=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$C/m2.wasm" check "$islf" 2>&1 | grep -cE 'E_MissingVariable|E_MissingImport')
-        if [[ "$isl_miss" -gt 0 ]]; then
+        isl_err=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$C/m2.wasm" check "$islf" 2>&1 | grep -cE 'E_[A-Za-z_]+ error')
+        if [[ "$isl_err" -gt 0 ]]; then
           isl_bad=$((isl_bad + 1))
-          say "✗ island $islf: $isl_miss missing name(s) on its own closure"
+          say "✗ island $islf: $isl_err error(s) on its own link"
         fi
       fi
     done
-    islline="· islands: $isl_n module(s) the entry never links, each judged as its own root — $isl_bad with a missing name"
+    islline="· islands: $isl_n module(s) the entry never links, each judged as its own root — $isl_bad with an error"
     if [[ "$isl_bad" -eq 0 ]]; then
       say "$islline"
       wt_memo_put islands "$islkey" "$islline"
