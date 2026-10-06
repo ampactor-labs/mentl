@@ -12801,17 +12801,22 @@ fn classify_rounds(decls, tidx, entries) = {
   // threads evidence through its own calls.
   let idx = smap_build(entries)
   let next = list_to_flat({
-    classify_grade_all(decls, 0)
+    classify_grade_all(decls, 0, [])
   } ~> summaries_frozen(idx, tidx))
   if usage_entries_eq(entries, next, 0) { next } else { classify_rounds(decls, tidx, next) }
 }
 
-fn classify_grade_all(decls, i) = if i >= len(decls) {
-  []
+// The grades in declaration order, accumulated, so the walk is a tail call
+// and its stack is one frame however many declarations the link holds. It
+// was `[(n, grade)] ++ recurse` until 2026-10-06, a frame per function: the
+// engine's default 512 KiB stack held 4,655 of them, and the wheel's own
+// link stood about sixty functions short of that wall the day a module of
+// 175 crossed it (`call stack exhausted` inside the boot's own judgment).
+fn classify_grade_all(decls, i, acc) = if i >= len(decls) {
+  acc
 } else {
   match list_index(decls, i) {
-    (n, b, _, _) => // drift-audit: ignore — prepend-cons recursion, O(N) total
-    [(n, resume_grade(b))] ++ classify_grade_all(decls, i + 1),
+    (n, b, _, _) => classify_grade_all(decls, i + 1, push(acc, (n, resume_grade(b)))),
   }
 }
 

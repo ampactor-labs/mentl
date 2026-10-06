@@ -1,0 +1,2514 @@
+// asm.mn — the medium assembles its own output: the emitter's WAT, as bytes.
+//
+// One emit and one projection. The emitter writes text, the canonical
+// artifact every gate diffs and the fixpoint compares; this module projects
+// that text into the binary module an engine instantiates, so nothing
+// outside the medium stands between a compile and a run. It reads the
+// emitter's dialect whole — every form `src/backends/wasm.mn` writes, the
+// folded s-expression at every instruction — and refuses anything else by
+// name and byte, never a guess.
+//
+// THE ORACLE IS BYTE IDENTITY. The module this projection writes is the
+// module WABT's wat2wasm writes from the same text, name section included:
+// implicit function types appended in index order after the declared ones,
+// the canonical LEB at every size, an empty `else` written as none, a local
+// names entry for every function and a subsection only for a space that
+// holds a name. The gate assembles the boot's own m2 both ways and compares
+// the files, then runs the projected one over the wheel.
+//
+// Two passes over one text. The INDEX pass walks the module's fields once,
+// skipping every body by a raw paren scan, and records where each field
+// stands and what each name resolves to. The ENCODE pass seeks to each
+// field in section order and writes it; a function's body is encoded inside
+// an arena, so the scratch a body costs dies with the body and its bytes
+// cross.
+import memory
+
+import strings
+
+import lists
+
+import imap
+
+import arena
+
+// ─── Tokens ───────────────────────────────────────────────────────────
+//
+// A token is a span of the text — the text is never copied to read it.
+type WTok = WOpen | WClose | WAtom(Int, Int) | WStr(Int, Int) | WEnd
+
+// The reader: the one cursor over the text, its position the handler's
+// state. `asm_skip_form` leaves the form it stands in by a raw paren scan,
+// which is how the index pass passes over a body without tokenizing it.
+effect AsmRead {
+  asm_next() -> WTok
+  asm_peek() -> WTok
+  asm_pos() -> Int
+  asm_seek(Int)
+  asm_skip_form()
+}
+
+handler asm_reader(p, n) with pos = 0 {
+  asm_next() => {
+    let i = asm_skip_ws(p, n, pos)
+    let t = asm_tok_at(p, n, i)
+    resume(t) with pos = asm_tok_after(i, t)
+  },
+  asm_peek() => resume(asm_tok_at(p, n, asm_skip_ws(p, n, pos))),
+  asm_pos() => resume(pos),
+  asm_seek(i) => resume() with pos = i,
+  asm_skip_form() => resume() with pos = asm_close_of(p, n, pos, 1),
+}
+
+// A refusal names what the text holds and the byte it stands at; the
+// verb renders the byte as a line and column.
+effect AsmRefuse {
+  asm_refuse(String, Int) -> a
+}
+
+type AsmOutcome = Assembled(String) | AsmRefused(String, Int)
+
+fn asm_is_space(b) = b == 32 || b == 10 || b == 9 || b == 13
+
+fn asm_byte(p, i) = load_i8(addr_at(p, i))
+
+fn asm_skip_ws(p, n, i) = if i >= n {
+  i
+} else {
+  let b = asm_byte(p, i)
+  if asm_is_space(b) {
+    asm_skip_ws(p, n, i + 1)
+  } else if b == 59 && i + 1 < n && asm_byte(p, i + 1) == 59 {
+    asm_skip_ws(p, n, asm_skip_line(p, n, i + 2))
+  } else if b == 40 && i + 1 < n && asm_byte(p, i + 1) == 59 {
+    asm_skip_ws(p, n, asm_skip_block_comment(p, n, i + 2, 1))
+  } else {
+    i
+  }
+}
+
+fn asm_skip_line(p, n, i) =
+  if i >= n { i } else if asm_byte(p, i) == 10 { i + 1 } else { asm_skip_line(p, n, i + 1) }
+
+// `(; … ;)` nests.
+fn asm_skip_block_comment(p, n, i, depth) = if depth == 0 {
+  i
+} else if i + 1 >= n {
+  n
+} else {
+  let b = asm_byte(p, i)
+  let c = asm_byte(p, i + 1)
+  if b == 59 && c == 41 {
+    asm_skip_block_comment(p, n, i + 2, depth - 1)
+  } else if b == 40 && c == 59 {
+    asm_skip_block_comment(p, n, i + 2, depth + 1)
+  } else {
+    asm_skip_block_comment(p, n, i + 1, depth)
+  }
+}
+
+fn asm_atom_end(p, n, i) = if i >= n {
+  i
+} else {
+  let b = asm_byte(p, i)
+  if asm_is_space(b) || b == 40 || b == 41 || b == 59 || b == 34 {
+    i
+  } else {
+    asm_atom_end(p, n, i + 1)
+  }
+}
+
+// The closing quote of a string whose body starts at i.
+fn asm_string_end(p, n, i) = if i >= n {
+  n
+} else {
+  let b = asm_byte(p, i)
+  if b == 92 {
+    asm_string_end(p, n, i + 2)
+  } else if b == 34 {
+    i
+  } else {
+    asm_string_end(p, n, i + 1)
+  }
+}
+
+fn asm_tok_at(p, n, i) = if i >= n {
+  WEnd
+} else {
+  let b = asm_byte(p, i)
+  if b == 40 {
+    WOpen
+  } else if b == 41 {
+    WClose
+  } else if b == 34 {
+    WStr(i + 1, asm_string_end(p, n, i + 1))
+  } else {
+    WAtom(i, asm_atom_end(p, n, i))
+  }
+}
+
+fn asm_tok_after(i, t) = match t {
+  WOpen => i + 1,
+  WClose => i + 1,
+  WStr(_, e) => e + 1,
+  WAtom(_, e) => e,
+  WEnd => i,
+}
+
+// The byte past the `)` closing the form whose `(` is depth levels out.
+fn asm_close_of(p, n, i, depth) = if i >= n {
+  n
+} else {
+  let b = asm_byte(p, i)
+  if b == 40 {
+    if i + 1 < n && asm_byte(p, i + 1) == 59 {
+      asm_close_of(p, n, asm_skip_block_comment(p, n, i + 2, 1), depth)
+    } else {
+      asm_close_of(p, n, i + 1, depth + 1)
+    }
+  } else if b == 41 {
+    if depth == 1 { i + 1 } else { asm_close_of(p, n, i + 1, depth - 1) }
+  } else if b == 34 {
+    asm_close_of(p, n, asm_string_end(p, n, i + 1) + 1, depth)
+  } else if b == 59 && i + 1 < n && asm_byte(p, i + 1) == 59 {
+    asm_close_of(p, n, asm_skip_line(p, n, i + 2), depth)
+  } else {
+    asm_close_of(p, n, i + 1, depth)
+  }
+}
+
+// ─── Reading forms ────────────────────────────────────────────────────
+fn asm_open() = match asm_next() {
+  WOpen => (),
+  _ => asm_refuse("expected `(`", asm_pos()),
+}
+
+fn asm_close() = match asm_next() {
+  WClose => (),
+  _ => asm_refuse("expected `)`", asm_pos()),
+}
+
+fn asm_atom() = match asm_next() {
+  WAtom(s, e) => (s, e),
+  _ => asm_refuse("expected a word", asm_pos()),
+}
+
+fn asm_string() = match asm_next() {
+  WStr(s, e) => (s, e),
+  _ => asm_refuse("expected a string", asm_pos()),
+}
+
+// The word the next form opens with, the `(` consumed; None and nothing
+// consumed when the next token is not `(`.
+fn asm_peek_head(p) = match asm_peek() {
+  WOpen => {
+    let save = asm_pos()
+    asm_next()
+    match asm_next() {
+      WAtom(s, e) => {
+        asm_seek(save)
+        Some((s, e))
+      },
+      _ => {
+        asm_seek(save)
+        None
+      },
+    }
+  },
+  _ => None,
+}
+
+// The next form opens with `word`: consume `(` and the word.
+fn asm_at_form(p, word) = match asm_peek_head(p) {
+  Some((s, e)) => if asm_span_is(p, s, e, word) {
+    asm_next()
+    asm_next()
+    true
+  } else {
+    false
+  },
+  None => false,
+}
+
+// An optional word right here, consumed when present.
+fn asm_opt_atom() = match asm_peek() {
+  WAtom(s, e) => {
+    asm_next()
+    Some((s, e))
+  },
+  _ => None,
+}
+
+// An optional `$name` right here.
+fn asm_opt_name(p) = match asm_peek() {
+  WAtom(s, e) => if asm_byte(p, s) == 36 {
+    asm_next()
+    Some((s, e))
+  } else {
+    None
+  },
+  _ => None,
+}
+
+fn asm_span_is(p, s, e, word) = e - s == byte_len(word) && asm_bytes_eq(p, s, word, 0, e - s)
+
+fn asm_bytes_eq(p, s, word, i, k) = if i >= k {
+  true
+} else if asm_byte(p, s + i) != byte_at(word, i) {
+  false
+} else {
+  asm_bytes_eq(p, s, word, i + 1, k)
+}
+
+fn asm_spans_eq(p, a, ae, b, be) = ae - a == be - b && asm_spans_eq_from(p, a, b, 0, ae - a)
+
+fn asm_spans_eq_from(p, a, b, i, k) = if i >= k {
+  true
+} else if asm_byte(p, a + i) != asm_byte(p, b + i) {
+  false
+} else {
+  asm_spans_eq_from(p, a, b, i + 1, k)
+}
+
+// A span's bytes as a String — the key a name table reads.
+fn asm_name(p, s, e) = {
+  let b = bytes_buf(e - s)
+  mem_copy(addr_at(b, 8), addr_at(p, s), e - s)
+  str_of_buf(b)
+}
+
+// A name without its `$`, which is what the name section carries.
+fn asm_bare(p, s, e) = asm_name(p, s + 1, e)
+
+// ─── Bytes out ────────────────────────────────────────────────────────
+//
+// The growing buffer every section, body and segment is written into; its
+// bytes come out once, as a flat String.
+effect AsmBytes {
+  out_byte(Int)
+  out_span(Addr, Int)
+  out_take() -> String
+}
+
+handler asm_bytes with buf = alloc(64), cap = 64, n = 0 {
+  out_byte(b) => if n < cap {
+    store_i8(addr_at(buf, n), b)
+    resume() with n = n + 1
+  } else {
+    let grown = alloc(cap * 2)
+    mem_copy(grown, buf, n)
+    store_i8(addr_at(grown, n), b)
+    resume() with buf = grown, cap = cap * 2, n = n + 1
+  },
+  out_span(src, k) => if n + k <= cap {
+    mem_copy(addr_at(buf, n), src, k)
+    resume() with n = n + k
+  } else {
+    let room = asm_room(cap * 2, n + k)
+    let grown = alloc(room)
+    mem_copy(grown, buf, n)
+    mem_copy(addr_at(grown, n), src, k)
+    resume() with buf = grown, cap = room, n = n + k
+  },
+  out_take() => {
+    let s = bytes_buf(n)
+    mem_copy(addr_at(s, 8), buf, n)
+    resume(str_of_buf(s))
+  },
+}
+
+fn asm_room(c, need) = if c >= need { c } else { asm_room(c * 2, need) }
+
+fn out_str(s) = out_span(str_payload(s), byte_len(s))
+
+// A logical shift right by 7, over the word's 32 bits.
+fn asm_lsr7(v) = i32_and((v - i32_and(v, 127)) / 128, 33554431)
+
+// An arithmetic shift right by 7.
+fn asm_asr7(v) = (v - i32_and(v, 127)) / 128
+
+fn out_uleb(v) = {
+  let low = i32_and(v, 127)
+  let rest = asm_lsr7(v)
+  if rest == 0 {
+    out_byte(low)
+  } else {
+    out_byte(i32_or(low, 128))
+    out_uleb(rest)
+  }
+}
+
+fn out_sleb(v) = {
+  let low = i32_and(v, 127)
+  let rest = asm_asr7(v)
+  let sign = i32_and(low, 64)
+  if rest == 0 && sign == 0 || rest == 0 - 1 && sign != 0 {
+    out_byte(low)
+  } else {
+    out_byte(i32_or(low, 128))
+    out_sleb(rest)
+  }
+}
+
+// A 64-bit signed LEB over the word pair (hi, lo).
+fn out_sleb64(hi, lo) = {
+  let low = i32_and(lo, 127)
+  let nlo = i32_or(asm_lsr7(lo), i32_shl(hi, 25))
+  let nhi = asm_asr7(hi)
+  let sign = i32_and(low, 64)
+  if nhi == 0 && nlo == 0 && sign == 0 || nhi == 0 - 1 && nlo == 0 - 1 && sign != 0 {
+    out_byte(low)
+  } else {
+    out_byte(i32_or(low, 128))
+    out_sleb64(nhi, nlo)
+  }
+}
+
+// A word's four bytes, least significant first.
+fn out_word(w) = {
+  out_byte(i32_and(w, 255))
+  out_byte(i32_and(asm_lsr(w, 8), 255))
+  out_byte(i32_and(asm_lsr(w, 16), 255))
+  out_byte(i32_and(asm_lsr(w, 24), 255))
+}
+
+// A logical shift right by k (1 ≤ k ≤ 24): the arithmetic quotient of the
+// word with its low bits cleared, masked to the bits that remain.
+fn asm_lsr(w, k) = {
+  let m = asm_pow2(k)
+  i32_and((w - i32_and(w, m - 1)) / m, asm_pow2(32 - k) - 1)
+}
+
+fn asm_pow2(k) = if k == 0 { 1 } else { 2 * asm_pow2(k - 1) }
+
+// A name's bytes as the binary writes them: its length, then itself.
+fn out_name_span(p, s, e) = {
+  out_uleb(e - s)
+  out_span(addr_at(p, s), e - s)
+}
+
+fn out_section(id, body) = {
+  out_byte(id)
+  out_uleb(byte_len(body))
+  out_str(body)
+}
+
+// ─── Numbers ──────────────────────────────────────────────────────────
+//
+// An integer is read as the machine word it names: a value past 2^31 wraps
+// to its two's complement, which is what `i32.const 4294967295` means.
+fn asm_int(p, s, e) = {
+  let neg = asm_byte(p, s) == 45
+  let start = if asm_byte(p, s) == 45 || asm_byte(p, s) == 43 { s + 1 } else { s }
+  let v = if e - start > 2 && asm_byte(p, start) == 48 && asm_byte(p, start + 1) == 120 {
+    asm_digits(p, start + 2, e, 16, 0, s)
+  } else {
+    asm_digits(p, start, e, 10, 0, s)
+  }
+  if neg { 0 - v } else { v }
+}
+
+fn asm_digit(b) = if b >= 48 && b <= 57 {
+  b - 48
+} else if b >= 97 && b <= 102 {
+  b - 87
+} else if b >= 65 && b <= 70 {
+  b - 55
+} else {
+  0 - 1
+}
+
+fn asm_digits(p, i, e, base, acc, at) = if i >= e {
+  acc
+} else {
+  let b = asm_byte(p, i)
+  if b == 95 {
+    asm_digits(p, i + 1, e, base, acc, at)
+  } else {
+    let d = asm_digit(b)
+    if d < 0 || d >= base {
+      asm_refuse("`{asm_name(p, at, e)}` is not a number", at)
+    } else {
+      asm_digits(p, i + 1, e, base, acc * base + d, at)
+    }
+  }
+}
+
+// A 64-bit integer as the word pair (hi, lo): four 16-bit limbs accumulate
+// the digits, so no intermediate leaves the word.
+fn asm_int64(p, s, e) = {
+  let neg = asm_byte(p, s) == 45
+  let start = if asm_byte(p, s) == 45 || asm_byte(p, s) == 43 { s + 1 } else { s }
+  let hex = e - start > 2 && asm_byte(p, start) == 48 && asm_byte(p, start + 1) == 120
+  let from = if hex { start + 2 } else { start }
+  let base = if hex { 16 } else { 10 }
+  let limbs = asm_limbs(p, from, e, base, 0, 0, 0, 0, s)
+  if neg { asm_negate64(limbs) } else { limbs }
+}
+
+fn asm_limbs(p, i, e, base, l0, l1, l2, l3, at) = if i >= e {
+  (i32_or(i32_shl(l3, 16), l2), i32_or(i32_shl(l1, 16), l0))
+} else {
+  let b = asm_byte(p, i)
+  if b == 95 {
+    asm_limbs(p, i + 1, e, base, l0, l1, l2, l3, at)
+  } else {
+    let d = asm_digit(b)
+    if d < 0 || d >= base {
+      asm_refuse("`{asm_name(p, at, e)}` is not a number", at)
+    } else {
+      let c0 = l0 * base + d
+      let c1 = l1 * base + c0 / 65536
+      let c2 = l2 * base + c1 / 65536
+      let c3 = l3 * base + c2 / 65536
+      asm_limbs(
+        p,
+        i + 1,
+        e,
+        base,
+        i32_and(c0, 65535),
+        i32_and(c1, 65535),
+        i32_and(c2, 65535),
+        i32_and(c3, 65535),
+        at
+      )
+    }
+  }
+}
+
+// Two's complement of a pair: invert both words, add one to the low word,
+// and carry when it wrapped to zero.
+fn asm_negate64(pair) = match pair {
+  (hi, lo) => {
+    let nlo = i32_xor(lo, 0 - 1) + 1
+    let nhi = i32_xor(hi, 0 - 1) + if nlo == 0 { 1 } else { 0 }
+    (nhi, nlo)
+  },
+}
+
+// ─── Floats, exactly ──────────────────────────────────────────────────
+//
+// A float's text names a rational; its bits are that rational rounded to
+// nearest, ties to even — the IEEE reading every assembler owes, so the
+// projection never depends on a float operation's own rounding. The
+// rational is held as two big naturals over 15-bit limbs, the quotient
+// taken one bit at a time to the format's precision plus a round bit, and
+// whatever remains is the sticky bit.
+//
+// A big natural is one record: [limb count @0][limbs @4…], least
+// significant limb first, the top limb never zero.
+fn big_len(a) = load_i32(a)
+
+fn big_limb(a, i) = if i >= 0 && i < big_len(a) { load_i32(addr_at(a, 4 + 4 * i)) } else { 0 }
+
+fn big_new(k) = {
+  let a = alloc(4 + 4 * k)
+  store_i32(a, k)
+  a
+}
+
+fn big_set(a, i, v) = store_i32(addr_at(a, 4 + 4 * i), v)
+
+// The record with its top zero limbs dropped.
+fn big_trim(a) = {
+  store_i32(a, big_top(a, big_len(a)))
+  a
+}
+
+fn big_top(a, k) = if k == 0 { 0 } else if big_limb(a, k - 1) == 0 { big_top(a, k - 1) } else { k }
+
+fn big_small(v) = {
+  let a = big_new(2)
+  big_set(a, 0, i32_and(v, 32767))
+  big_set(a, 1, v / 32768)
+  big_trim(a)
+}
+
+// a * m + add, for m and add below 2^15.
+fn big_mul_add(a, m, add) = {
+  let k = big_len(a)
+  let r = big_new(k + 2)
+  big_mul_add_from(a, m, r, 0, k + 2, add)
+  big_trim(r)
+}
+
+fn big_mul_add_from(a, m, r, i, k, carry) = if i >= k {
+  ()
+} else {
+  let c = big_limb(a, i) * m + carry
+  big_set(r, i, i32_and(c, 32767))
+  big_mul_add_from(a, m, r, i + 1, k, c / 32768)
+}
+
+fn big_bitlen(a) = {
+  let k = big_len(a)
+  if k == 0 { 0 } else { 15 * (k - 1) + asm_bits_of(big_limb(a, k - 1), 0) }
+}
+
+fn asm_bits_of(v, acc) = if v == 0 { acc } else { asm_bits_of(v / 2, acc + 1) }
+
+// a * 2^s.
+fn big_shl(a, s) = {
+  let whole = s / 15
+  let part = s - whole * 15
+  let k = big_len(a) + whole + 1
+  let r = big_new(k)
+  big_shl_from(a, r, whole, asm_pow2(part), 0, k)
+  big_trim(r)
+}
+
+fn big_shl_from(a, r, whole, m, i, k) = if i >= k {
+  ()
+} else {
+  let lo = big_limb(a, i - whole) * m
+  let carried = if i - whole - 1 >= 0 { big_limb(a, i - whole - 1) * m / 32768 } else { 0 }
+  big_set(r, i, i32_and(lo, 32767) + carried)
+  big_shl_from(a, r, whole, m, i + 1, k)
+}
+
+fn big_cmp(a, b) = if big_len(a) != big_len(b) {
+  if big_len(a) < big_len(b) { 0 - 1 } else { 1 }
+} else {
+  big_cmp_from(a, b, big_len(a) - 1)
+}
+
+fn big_cmp_from(a, b, i) = if i < 0 {
+  0
+} else if big_limb(a, i) != big_limb(b, i) {
+  if big_limb(a, i) < big_limb(b, i) { 0 - 1 } else { 1 }
+} else {
+  big_cmp_from(a, b, i - 1)
+}
+
+// a - b, for a ≥ b.
+fn big_sub(a, b) = {
+  let k = big_len(a)
+  let r = big_new(k)
+  big_sub_from(a, b, r, 0, k, 0)
+  big_trim(r)
+}
+
+fn big_sub_from(a, b, r, i, k, borrow) = if i >= k {
+  ()
+} else {
+  let d = big_limb(a, i) - big_limb(b, i) - borrow
+  if d < 0 {
+    big_set(r, i, d + 32768)
+    big_sub_from(a, b, r, i + 1, k, 1)
+  } else {
+    big_set(r, i, d)
+    big_sub_from(a, b, r, i + 1, k, 0)
+  }
+}
+
+fn big_pow(a, base, k) = if k == 0 { a } else { big_pow(big_mul_add(a, base, 0), base, k - 1) }
+
+// The float formats: precision (significand bits with the hidden one), the
+// exponent bias, and the all-ones exponent.
+type AsmFloat = AsmF32 | AsmF64
+
+fn asm_prec(f) = match f {
+  AsmF32 => 24,
+  AsmF64 => 53,
+}
+
+fn asm_bias(f) = match f {
+  AsmF32 => 127,
+  AsmF64 => 1023,
+}
+
+fn asm_emax(f) = match f {
+  AsmF32 => 255,
+  AsmF64 => 2047,
+}
+
+// A float's bits as the word pair (hi, lo); an f32's bits are the low word.
+fn asm_float(p, s, e, f) = {
+  let neg = asm_byte(p, s) == 45
+  let start = if asm_byte(p, s) == 45 || asm_byte(p, s) == 43 { s + 1 } else { s }
+  let sign = if neg { 1 } else { 0 }
+  if asm_span_is(p, start, e, "inf") {
+    asm_float_bits(f, sign, asm_emax(f), 0, 0)
+  } else if asm_span_is(p, start, e, "nan") {
+    asm_float_nan(f, sign)
+  } else if e - start > 4 && asm_span_is(p, start, start + 4, "nan:") {
+    asm_float_payload(f, sign, asm_int64(p, start + 4, e), p, s, e)
+  } else if e - start > 2 && asm_byte(p, start) == 48 && asm_byte(p, start + 1) == 120 {
+    asm_hex_float(p, start + 2, e, f, sign, s)
+  } else {
+    asm_dec_float(p, start, e, f, sign, s)
+  }
+}
+
+fn asm_float_nan(f, sign) = match f {
+  AsmF32 => (0, i32_or(i32_shl(sign, 31), 2143289344)),
+  AsmF64 => (i32_or(i32_shl(sign, 31), 2146959360), 0),
+}
+
+// A NaN's payload is nonzero and fits the fraction field, or the literal
+// names no NaN of its type.
+fn asm_float_payload(f, sign, pair, p, at, e) = match pair {
+  (hi, lo) => match f {
+    AsmF32 => if hi != 0 || lo == 0 || i32_and(lo, 8388607) != lo {
+      asm_out_of_range(p, at, e)
+    } else {
+      (0, i32_or(i32_or(i32_shl(sign, 31), 2139095040), lo))
+    },
+    AsmF64 => if hi == 0 && lo == 0 || i32_and(hi, 1048575) != hi {
+      asm_out_of_range(p, at, e)
+    } else {
+      (i32_or(i32_or(i32_shl(sign, 31), 2146435072), hi), lo)
+    },
+  },
+}
+
+// The decimal reading: every digit into one natural, the point and the
+// exponent folded into a power of ten on one side of the fraction.
+fn asm_dec_float(p, i, e, f, sign, at) = {
+  let r = asm_mantissa(p, i, e, 10, big_small(0), 0, false, at)
+  match r {
+    (num, frac, stop) => {
+      let exp = if stop < e && (asm_byte(p, stop) == 101 || asm_byte(p, stop) == 69) {
+        asm_int(p, stop + 1, e)
+      } else if stop < e {
+        asm_refuse("`{asm_name(p, at, e)}` is not a number", at)
+      } else {
+        0
+      }
+      let ten = exp - frac
+      if big_len(num) == 0 {
+        asm_float_bits(f, sign, 0, 0, 0)
+      } else if ten > 400 {
+        asm_out_of_range(p, at, e)
+      } else if ten < 0 - 400 {
+        asm_float_bits(f, sign, 0, 0, 0)
+      } else if ten >= 0 {
+        asm_round(f, sign, big_pow(num, 10, ten), big_small(1), p, at, e)
+      } else {
+        asm_round(f, sign, num, big_pow(big_small(1), 10, 0 - ten), p, at, e)
+      }
+    },
+  }
+}
+
+// The hexadecimal reading: the digits a natural, the binary exponent less
+// four for each fractional digit.
+fn asm_hex_float(p, i, e, f, sign, at) = {
+  let r = asm_mantissa(p, i, e, 16, big_small(0), 0, false, at)
+  match r {
+    (num, frac, stop) => {
+      let exp = if stop < e && (asm_byte(p, stop) == 112 || asm_byte(p, stop) == 80) {
+        asm_int(p, stop + 1, e)
+      } else if stop < e {
+        asm_refuse("`{asm_name(p, at, e)}` is not a number", at)
+      } else {
+        0
+      }
+      let two = exp - 4 * frac
+      if big_len(num) == 0 {
+        asm_float_bits(f, sign, 0, 0, 0)
+      } else if two > 2000 {
+        asm_out_of_range(p, at, e)
+      } else if two < 0 - 2000 {
+        asm_float_bits(f, sign, 0, 0, 0)
+      } else if two >= 0 {
+        asm_round(f, sign, big_shl(num, two), big_small(1), p, at, e)
+      } else {
+        asm_round(f, sign, num, big_shl(big_small(1), 0 - two), p, at, e)
+      }
+    },
+  }
+}
+
+// (digits as a natural, digits after the point, the byte where they stop).
+fn asm_mantissa(p, i, e, base, acc, frac, seen_point, at) = if i >= e {
+  (acc, frac, i)
+} else {
+  let b = asm_byte(p, i)
+  if b == 95 {
+    asm_mantissa(p, i + 1, e, base, acc, frac, seen_point, at)
+  } else if b == 46 && !seen_point {
+    asm_mantissa(p, i + 1, e, base, acc, frac, true, at)
+  } else {
+    let d = asm_digit(b)
+    if d < 0 || d >= base || base == 10 && d >= 10 {
+      (acc, frac, i)
+    } else {
+      asm_mantissa(
+        p,
+        i + 1,
+        e,
+        base,
+        big_mul_add(acc, base, d),
+        if seen_point { frac + 1 } else { frac },
+        seen_point,
+        at
+      )
+    }
+  }
+}
+
+// num / den rounded into the format. The quotient is taken with one bit
+// past the precision: e2 is chosen so it lands in [2^prec, 2^(prec+2)),
+// raised to the subnormal floor where the value is below the normal range,
+// and halved once if it came out a bit long. A literal that rounds past the
+// format's largest finite value is out of range — the text format's own
+// refusal, never an infinity it did not write.
+fn asm_round(f, sign, num, den, p, at, e) = {
+  let prec = asm_prec(f)
+  let k = big_bitlen(num) - big_bitlen(den)
+  let floor_e2 = 2 - asm_bias(f) - prec - 1
+  let natural = k - prec - 1
+  let e2 = if natural < floor_e2 { floor_e2 } else { natural }
+  if e2 > asm_emax(f) {
+    asm_out_of_range(p, at, e)
+  } else {
+    let n = if e2 >= 0 { num } else { big_shl(num, 0 - e2) }
+    let d = if e2 >= 0 { big_shl(den, e2) } else { den }
+    let qr = asm_divide(n, d, prec + 1, big_small(0))
+    match qr {
+      (q, rem) => match asm_place(f, sign, q, big_len(rem) != 0, e2) {
+        Some(bits) => bits,
+        None => asm_out_of_range(p, at, e),
+      },
+    }
+  }
+}
+
+fn asm_out_of_range(p, at, e) =
+  asm_refuse("`{asm_name(p, at, e)}` is out of range for its float type", at)
+
+// The quotient's bits from position `bit` down, with the remainder left.
+fn asm_divide(n, d, bit, q) = if bit < 0 {
+  (q, n)
+} else {
+  let shifted = big_shl(d, bit)
+  if big_cmp(n, shifted) >= 0 {
+    asm_divide(big_sub(n, shifted), d, bit - 1, big_mul_add(q, 2, 1))
+  } else {
+    asm_divide(n, d, bit - 1, big_mul_add(q, 2, 0))
+  }
+}
+
+fn asm_place(f, sign, q, sticky, e2) = {
+  let prec = asm_prec(f)
+  if big_bitlen(q) > prec + 1 {
+    asm_place(f, sign, big_half(q), sticky || i32_and(big_limb(q, 0), 1) == 1, e2 + 1)
+  } else {
+    let round_bit = i32_and(big_limb(q, 0), 1) == 1
+    let m = big_half(q)
+    let odd = i32_and(big_limb(m, 0), 1) == 1
+    let up = round_bit && (sticky || odd)
+    let m2 = if up { big_mul_add(m, 1, 1) } else { m }
+    // a carry out of the significand doubles the scale
+    if big_bitlen(m2) > prec {
+      asm_encode(f, sign, big_half(m2), e2 + 1)
+    } else {
+      asm_encode(f, sign, m2, e2)
+    }
+  }
+}
+
+fn big_half(a) = {
+  let k = big_len(a)
+  let r = big_new(k)
+  big_half_from(a, r, 0, k)
+  big_trim(r)
+}
+
+fn big_half_from(a, r, i, k) = if i >= k {
+  ()
+} else {
+  let carry = i32_and(big_limb(a, i + 1), 1) * 16384
+  big_set(r, i, big_limb(a, i) / 2 + carry)
+  big_half_from(a, r, i + 1, k)
+}
+
+// m * 2^(e2+1): normal when m carries the hidden bit, subnormal otherwise
+// (where e2 sits at the floor by construction); None past the largest
+// finite value.
+fn asm_encode(f, sign, m, e2) = {
+  let prec = asm_prec(f)
+  let lo =
+    i32_or(i32_or(big_limb(m, 0), i32_shl(big_limb(m, 1), 15)), i32_shl(i32_and(big_limb(m, 2), 3), 30))
+  let hi = i32_or(asm_lsr(big_limb(m, 2), 2), i32_shl(big_limb(m, 3), 13))
+  if big_bitlen(m) == prec {
+    let biased = prec + e2 + asm_bias(f)
+    if biased >= asm_emax(f) { None } else { Some(asm_float_bits(f, sign, biased, hi, lo)) }
+  } else {
+    Some(asm_float_bits(f, sign, 0, hi, lo))
+  }
+}
+
+// Sign, biased exponent and the significand's fraction bits (the hidden bit
+// masked off), packed as the format lays them out.
+fn asm_float_bits(f, sign, biased, hi, lo) = match f {
+  AsmF32 => (0, i32_or(i32_or(i32_shl(sign, 31), i32_shl(biased, 23)), i32_and(lo, 8388607))),
+  AsmF64 => (i32_or(i32_or(i32_shl(sign, 31), i32_shl(biased, 20)), i32_and(hi, 1048575)), lo),
+}
+
+// ─── Strings ──────────────────────────────────────────────────────────
+//
+// A string's escapes decode to the bytes they name: `\t \n \r \" \' \\`,
+// two hex digits, and `\u{…}` as UTF-8.
+fn out_string_bytes(p, i, e) = if i >= e {
+  ()
+} else {
+  let b = asm_byte(p, i)
+  if b != 92 {
+    out_byte(b)
+    out_string_bytes(p, i + 1, e)
+  } else {
+    let c = asm_byte(p, i + 1)
+    if c == 116 {
+      out_byte(9)
+      out_string_bytes(p, i + 2, e)
+    } else if c == 110 {
+      out_byte(10)
+      out_string_bytes(p, i + 2, e)
+    } else if c == 114 {
+      out_byte(13)
+      out_string_bytes(p, i + 2, e)
+    } else if c == 34 || c == 39 || c == 92 {
+      out_byte(c)
+      out_string_bytes(p, i + 2, e)
+    } else if c == 117 {
+      let close = asm_find_byte(p, i + 3, e, 125)
+      out_utf8(asm_digits(p, i + 3, close, 16, 0, i))
+      out_string_bytes(p, close + 1, e)
+    } else {
+      out_byte(asm_digit(c) * 16 + asm_digit(asm_byte(p, i + 2)))
+      out_string_bytes(p, i + 3, e)
+    }
+  }
+}
+
+fn asm_find_byte(p, i, e, b) =
+  if i >= e { e } else if asm_byte(p, i) == b { i } else { asm_find_byte(p, i + 1, e, b) }
+
+fn out_utf8(c) = if c < 128 {
+  out_byte(c)
+} else if c < 2048 {
+  out_byte(192 + c / 64)
+  out_byte(128 + i32_and(c, 63))
+} else if c < 65536 {
+  out_byte(224 + c / 4096)
+  out_byte(128 + i32_and(c / 64, 63))
+  out_byte(128 + i32_and(c, 63))
+} else {
+  out_byte(240 + c / 262144)
+  out_byte(128 + i32_and(c / 4096, 63))
+  out_byte(128 + i32_and(c / 64, 63))
+  out_byte(128 + i32_and(c, 63))
+}
+
+// A string as the binary writes it: its decoded length, then its bytes.
+fn out_string_vec(p, s, e) = {
+  let bytes = asm_string_text(p, s, e)
+  out_uleb(byte_len(bytes))
+  out_str(bytes)
+}
+
+fn asm_string_text(p, s, e) = {
+  out_string_bytes(p, s, e)
+  out_take()
+} ~> asm_bytes
+
+// ─── Value types ──────────────────────────────────────────────────────
+//
+// A signature is spelled as a short String — one letter per value type,
+// params then `:` then results — so two signatures are equal exactly when
+// their spellings are, and the type a function needs is found by name.
+fn asm_valtype_letter(p, s, e) = if asm_span_is(p, s, e, "i32") {
+  105
+} else if asm_span_is(p, s, e, "i64") {
+  73
+} else if asm_span_is(p, s, e, "f32") {
+  102
+} else if asm_span_is(p, s, e, "f64") {
+  70
+} else if asm_span_is(p, s, e, "v128") {
+  118
+} else if asm_span_is(p, s, e, "funcref") {
+  114
+} else if asm_span_is(p, s, e, "externref") {
+  101
+} else {
+  asm_refuse("`{asm_name(p, s, e)}` is not a value type", s)
+}
+
+fn asm_valtype_byte(letter) = if letter == 105 {
+  127
+} else if letter == 73 {
+  126
+} else if letter == 102 {
+  125
+} else if letter == 70 {
+  124
+} else if letter == 118 {
+  123
+} else if letter == 114 {
+  112
+} else {
+  111
+}
+
+// The params and results of a head, spelled as a signature. Stops before
+// the first form that is neither.
+fn asm_sig_text(p) = {
+  asm_read_params(p)
+  out_byte(58)
+  asm_read_results(p)
+  out_take()
+} ~> asm_bytes
+
+fn asm_read_params(p) = if asm_at_form(p, "param") {
+  match asm_opt_name(p) {
+    Some(_) => match asm_atom() {
+      (ts, te) => {
+        out_byte(asm_valtype_letter(p, ts, te))
+        asm_close()
+      },
+    },
+    None => asm_read_type_list(p),
+  }
+  asm_read_params(p)
+} else {
+  ()
+}
+
+fn asm_read_type_list(p) = match asm_next() {
+  WAtom(s, e) => {
+    out_byte(asm_valtype_letter(p, s, e))
+    asm_read_type_list(p)
+  },
+  WClose => (),
+  _ => asm_refuse("expected a value type", asm_pos()),
+}
+
+fn asm_read_results(p) = if asm_at_form(p, "result") {
+  asm_read_type_list(p)
+  asm_read_results(p)
+} else {
+  ()
+}
+
+// Past a head's results, reading nothing out of them.
+fn asm_skip_results(p) = if asm_at_form(p, "result") {
+  asm_skip_form()
+  asm_skip_results(p)
+} else {
+  ()
+}
+
+// A signature's type entry: 0x60, the params, the results.
+fn out_func_type(sig) = {
+  let colon = asm_sig_colon(sig, 0)
+  out_byte(96)
+  out_uleb(colon)
+  out_letters(sig, 0, colon)
+  out_uleb(byte_len(sig) - colon - 1)
+  out_letters(sig, colon + 1, byte_len(sig))
+}
+
+fn asm_sig_colon(sig, i) = if byte_at(sig, i) == 58 { i } else { asm_sig_colon(sig, i + 1) }
+
+fn out_letters(sig, i, e) = if i >= e {
+  ()
+} else {
+  out_byte(asm_valtype_byte(byte_at(sig, i)))
+  out_letters(sig, i + 1, e)
+}
+
+// ─── The index ────────────────────────────────────────────────────────
+//
+// What one walk over the fields learns: where each field stands, in its
+// space's index order, and what each name resolves to. A name slot holds
+// its span, or nothing for an unnamed entry.
+type AsmName = Named(Int, Int) | Unnamed
+
+type AsmFnTy = TySig(String) | TyRef(Int, Int)
+
+type AsmExport = XField(Int) | XInline(Int, Int, Int, Int)
+
+type AsmIx
+  = AsmIx({data_names: [AsmName], datas: [Int], elem_names: [AsmName], elems: [Int], exports: [AsmExport], func_names: [AsmName], func_tys: [AsmFnTy], funcs: [Int], global_names: [AsmName], globals: [Int], imports: [Int], mem_names: [AsmName], mems: [Int], starts: [Int], table_names: [AsmName], tables: [Int], type_names: [AsmName], type_sigs: [String]})
+
+// The index spaces a name is entered into, and where a field stands.
+type AsmSpace = SpFunc | SpTable | SpMem | SpGlobal
+
+type AsmField
+  = FImport(Int)
+  | FFunc(Int)
+  | FTable(Int)
+  | FMem(Int)
+  | FGlobal(Int)
+  | FElem(Int, AsmName)
+  | FData(Int, AsmName)
+  | FStart(Int)
+
+// The walk's own state: one list per space, grown as each field is met
+// and read whole at the end. An entry's index is the length of its space
+// when it is entered.
+effect AsmIndex {
+  ix_type(String, AsmName)
+  ix_enter(AsmSpace, AsmName) -> Int
+  ix_fn_ty(AsmFnTy)
+  ix_field(AsmField)
+  ix_export(AsmExport)
+  ix_defined() -> Int
+  ix_done() -> AsmIx
+}
+
+handler asm_indexer with type_sigs = [], type_names = [], imports = [], funcs = [], func_tys = [], func_names = [], tables = [], table_names = [], mems = [], mem_names = [], globals = [], global_names = [], exports = [], elems = [], elem_names = [], datas = [], data_names = [], starts = [] {
+  ix_type(sig, name) => resume() with type_sigs = push(type_sigs, sig), type_names = push(type_names, name),
+  ix_enter(space, name) => match space {
+    SpFunc => resume(len(func_names)) with func_names = push(func_names, name),
+    SpTable => resume(len(table_names)) with table_names = push(table_names, name),
+    SpMem => resume(len(mem_names)) with mem_names = push(mem_names, name),
+    SpGlobal => resume(len(global_names)) with global_names = push(global_names, name),
+  },
+  ix_fn_ty(ty) => resume() with func_tys = push(func_tys, ty),
+  ix_field(f) => match f {
+    FImport(at) => resume() with imports = push(imports, at),
+    FFunc(at) => resume() with funcs = push(funcs, at),
+    FTable(at) => resume() with tables = push(tables, at),
+    FMem(at) => resume() with mems = push(mems, at),
+    FGlobal(at) => resume() with globals = push(globals, at),
+    FElem(at, name) => resume() with elems = push(elems, at), elem_names = push(elem_names, name),
+    FData(at, name) => resume() with datas = push(datas, at), data_names = push(data_names, name),
+    FStart(at) => resume() with starts = push(starts, at),
+  },
+  ix_export(x) => resume() with exports = push(exports, x),
+  ix_defined() => resume(len(funcs) + len(tables) + len(mems) + len(globals)),
+  ix_done() => resume(AsmIx{
+    data_names: data_names,
+    datas: datas,
+    elem_names: elem_names,
+    elems: elems,
+    exports: exports,
+    func_names: func_names,
+    func_tys: func_tys,
+    funcs: funcs,
+    global_names: global_names,
+    globals: globals,
+    imports: imports,
+    mem_names: mem_names,
+    mems: mems,
+    starts: starts,
+    table_names: table_names,
+    tables: tables,
+    type_names: type_names,
+    type_sigs: type_sigs,
+  }),
+}
+
+fn asm_name_of(opt) = match opt {
+  Some((s, e)) => Named(s, e),
+  None => Unnamed,
+}
+
+// The index pass: `(module` then every field to the module's `)`.
+fn asm_index(p) = {
+  asm_open()
+  match asm_atom() {
+    (s, e) => if asm_span_is(p, s, e, "module") {
+      asm_opt_name(p)
+      {
+        asm_index_fields(p)
+        ix_done()
+      } ~> asm_indexer
+    } else {
+      asm_refuse("expected `(module`", s)
+    },
+  }
+}
+
+fn asm_index_fields(p) = match asm_next() {
+  WClose => (),
+  WOpen => {
+    let at = asm_pos()
+    match asm_atom() {
+      (s, e) => {
+        asm_index_field(p, at, s, e)
+        asm_index_fields(p)
+      },
+    }
+  },
+  _ => asm_refuse("expected a module field", asm_pos()),
+}
+
+// One field, its head word read; the reader ends past its `)`.
+fn asm_index_field(p, at, s, e) = if asm_span_is(p, s, e, "type") {
+  let name = asm_name_of(asm_opt_name(p))
+  asm_open()
+  match asm_atom() {
+    (fs, fe) => if !asm_span_is(p, fs, fe, "func") {
+      asm_refuse("a type is a `(func …)`", fs)
+    } else {
+      ix_type(asm_sig_text(p), name)
+      asm_close()
+      asm_close()
+    },
+  }
+} else if asm_span_is(p, s, e, "func") {
+  let idx = ix_enter(SpFunc, asm_name_of(asm_opt_name(p)))
+  asm_inline_exports(p, 0, idx)
+  if asm_at_form(p, "import") {
+    asm_refuse("an inline import — the dialect writes `(import … (func …))`", s)
+  } else {
+    ix_fn_ty(asm_fn_ty(p))
+    ix_field(FFunc(at))
+    asm_skip_form()
+  }
+} else if asm_span_is(p, s, e, "import") {
+  if ix_defined() > 0 {
+    asm_refuse("an import after a definition", s)
+  } else {
+    asm_string()
+    asm_string()
+    asm_open()
+    match asm_atom() {
+      (ks, ke) => {
+        let space = asm_import_space(p, ks, ke)
+        ix_enter(space, asm_name_of(asm_opt_name(p)))
+        match space {
+          SpFunc => ix_fn_ty(asm_fn_ty(p)),
+          SpTable => (),
+          SpMem => (),
+          SpGlobal => (),
+        }
+        ix_field(FImport(at))
+        asm_skip_form()
+        asm_close()
+      },
+    }
+  }
+} else if asm_span_is(p, s, e, "memory") {
+  asm_inline_exports(p, 2, ix_enter(SpMem, asm_name_of(asm_opt_name(p))))
+  ix_field(FMem(at))
+  asm_skip_form()
+} else if asm_span_is(p, s, e, "table") {
+  asm_inline_exports(p, 1, ix_enter(SpTable, asm_name_of(asm_opt_name(p))))
+  ix_field(FTable(at))
+  asm_skip_form()
+} else if asm_span_is(p, s, e, "global") {
+  asm_inline_exports(p, 3, ix_enter(SpGlobal, asm_name_of(asm_opt_name(p))))
+  ix_field(FGlobal(at))
+  asm_skip_form()
+} else if asm_span_is(p, s, e, "export") {
+  ix_export(XField(at))
+  asm_skip_form()
+} else if asm_span_is(p, s, e, "elem") {
+  ix_field(FElem(at, asm_name_of(asm_opt_name(p))))
+  asm_skip_form()
+} else if asm_span_is(p, s, e, "data") {
+  ix_field(FData(at, asm_name_of(asm_opt_name(p))))
+  asm_skip_form()
+} else if asm_span_is(p, s, e, "start") {
+  ix_field(FStart(at))
+  asm_skip_form()
+} else {
+  asm_refuse("`{asm_name(p, s, e)}` is not a module field", s)
+}
+
+fn asm_import_space(p, s, e) = if asm_span_is(p, s, e, "func") {
+  SpFunc
+} else if asm_span_is(p, s, e, "memory") {
+  SpMem
+} else if asm_span_is(p, s, e, "global") {
+  SpGlobal
+} else if asm_span_is(p, s, e, "table") {
+  SpTable
+} else {
+  asm_refuse("`{asm_name(p, s, e)}` is not an import kind", s)
+}
+
+// Every `(export "name")` a definition carries, each an export of kind at idx.
+fn asm_inline_exports(p, kind, idx) = if asm_at_form(p, "export") {
+  match asm_string() {
+    (s, e) => {
+      asm_close()
+      ix_export(XInline(s, e, kind, idx))
+      asm_inline_exports(p, kind, idx)
+    },
+  }
+} else {
+  ()
+}
+
+// A function's type: a `(type $t)` it names, or the signature its params
+// and results spell.
+fn asm_fn_ty(p) = if asm_at_form(p, "type") {
+  match asm_atom() {
+    (s, e) => {
+      asm_close()
+      TyRef(s, e)
+    },
+  }
+} else {
+  TySig(asm_sig_text(p))
+}
+
+// ─── Name tables ──────────────────────────────────────────────────────
+//
+// A space's names, read once into a table from name to index.
+fn asm_name_table(p, names) = asm_name_table_from(p, names, 0, len(names), smap_new())
+
+fn asm_name_table_from(p, names, i, n, acc) = if i >= n {
+  acc
+} else {
+  match names[i] {
+    Named(s, e) => asm_name_table_from(p, names, i + 1, n, smap_add(acc, asm_name(p, s, e), i)),
+    Unnamed => asm_name_table_from(p, names, i + 1, n, acc),
+  }
+}
+
+// Every function's type index, the implicit types appended in index order
+// after the declared ones (the order WABT gives them).
+fn asm_resolve_types(p, ix) = {
+  let names = asm_name_table(p, ix.type_names)
+  let sigs = asm_sig_table(ix.type_sigs, 0, len(ix.type_sigs), smap_new())
+  asm_resolve_from(p, ix.func_tys, 0, len(ix.func_tys), names, sigs, ix.type_sigs, [])
+}
+
+fn asm_sig_table(sigs, i, n, acc) = if i >= n {
+  acc
+} else if smap_has(acc, sigs[i]) {
+  asm_sig_table(sigs, i + 1, n, acc)
+} else {
+  asm_sig_table(sigs, i + 1, n, smap_add(acc, sigs[i], i))
+}
+
+// (every type's signature, every function's type index).
+fn asm_resolve_from(p, tys, i, n, names, sigs, types, out) = if i >= n {
+  (types, out)
+} else {
+  match tys[i] {
+    TyRef(s, e) => asm_resolve_from(
+      p,
+      tys,
+      i + 1,
+      n,
+      names,
+      sigs,
+      types,
+      push(out, asm_lookup(p, names, s, e, "type"))
+    ),
+    TySig(sig) => match smap_get(sigs, sig) {
+      Some(t) => asm_resolve_from(p, tys, i + 1, n, names, sigs, types, push(out, t)),
+      None => {
+        let t = len(types)
+        asm_resolve_from(p, tys, i + 1, n, names, smap_add(sigs, sig, t), push(types, sig), push(out, t))
+      },
+    },
+  }
+}
+
+// A reference: `$name` through its table, or the index written as a number.
+fn asm_lookup(p, table, s, e, space) = if asm_byte(p, s) == 36 {
+  match smap_get(table, asm_name(p, s, e)) {
+    Some(i) => i,
+    None => asm_refuse("no {space} named `{asm_name(p, s, e)}`", s),
+  }
+} else {
+  asm_int(p, s, e)
+}
+
+// ─── Instructions ─────────────────────────────────────────────────────
+//
+// An instruction is its opcode and the kind of immediate it reads. The
+// table holds every form the emitter writes and the families they belong
+// to whole: the core numeric set, loads and stores at every width, the
+// bulk-memory pair, the threads proposal's atomics, and the SIMD forms the
+// lane cash-out speaks.
+type AsmCode = Op(Int) | OpFC(Int) | OpFD(Int) | OpFE(Int)
+
+type AsmImm
+  = ImmNone
+  | ImmLocal
+  | ImmGlobal
+  | ImmFunc
+  | ImmLabel
+  | ImmLabels
+  | ImmCallIndirect
+  | ImmMem(Int)
+  | ImmI32
+  | ImmI64
+  | ImmF32
+  | ImmF64
+  | ImmV128
+  | ImmLane
+  | ImmZero
+  | ImmZeroZero
+  | ImmSelect
+  | ImmBlock
+  | ImmLoop
+  | ImmIf
+
+type AsmOp = AsmOp(AsmCode, AsmImm)
+
+fn asm_ops() = smap_build(asm_op_entries())
+
+fn asm_op_entries() =
+  asm_control_ops() ++ asm_memory_ops() ++ asm_numeric_ops() ++ asm_atomic_ops() ++ asm_simd_ops()
+
+fn asm_control_ops() =
+  [("unreachable", AsmOp(Op(0), ImmNone)), ("nop", AsmOp(Op(1), ImmNone)), ("block", AsmOp(Op(2), ImmBlock)), ("loop", AsmOp(Op(3), ImmLoop)), ("if", AsmOp(Op(4), ImmIf)), ("br", AsmOp(Op(12), ImmLabel)), ("br_if", AsmOp(Op(13), ImmLabel)), ("br_table", AsmOp(Op(14), ImmLabels)), ("return", AsmOp(Op(15), ImmNone)), ("call", AsmOp(Op(16), ImmFunc)), ("call_indirect", AsmOp(Op(17), ImmCallIndirect)), ("return_call", AsmOp(Op(18), ImmFunc)), ("return_call_indirect", AsmOp(Op(19), ImmCallIndirect)), ("drop", AsmOp(Op(26), ImmNone)), ("select", AsmOp(Op(27), ImmSelect)), ("local.get", AsmOp(Op(32), ImmLocal)), ("local.set", AsmOp(Op(33), ImmLocal)), ("local.tee", AsmOp(Op(34), ImmLocal)), ("global.get", AsmOp(Op(35), ImmGlobal)), ("global.set", AsmOp(Op(36), ImmGlobal)), ("i32.const", AsmOp(Op(65), ImmI32)), ("i64.const", AsmOp(Op(66), ImmI64)), ("f32.const", AsmOp(Op(67), ImmF32)), ("f64.const", AsmOp(Op(68), ImmF64))]
+
+// Loads and stores, each with its natural alignment (log2 bytes).
+fn asm_memory_ops() =
+  [("i32.load", AsmOp(Op(40), ImmMem(2))), ("i64.load", AsmOp(Op(41), ImmMem(3))), ("f32.load", AsmOp(Op(42), ImmMem(2))), ("f64.load", AsmOp(Op(43), ImmMem(3))), ("i32.load8_s", AsmOp(Op(44), ImmMem(0))), ("i32.load8_u", AsmOp(Op(45), ImmMem(0))), ("i32.load16_s", AsmOp(Op(46), ImmMem(1))), ("i32.load16_u", AsmOp(Op(47), ImmMem(1))), ("i64.load8_s", AsmOp(Op(48), ImmMem(0))), ("i64.load8_u", AsmOp(Op(49), ImmMem(0))), ("i64.load16_s", AsmOp(Op(50), ImmMem(1))), ("i64.load16_u", AsmOp(Op(51), ImmMem(1))), ("i64.load32_s", AsmOp(Op(52), ImmMem(2))), ("i64.load32_u", AsmOp(Op(53), ImmMem(2))), ("i32.store", AsmOp(Op(54), ImmMem(2))), ("i64.store", AsmOp(Op(55), ImmMem(3))), ("f32.store", AsmOp(Op(56), ImmMem(2))), ("f64.store", AsmOp(Op(57), ImmMem(3))), ("i32.store8", AsmOp(Op(58), ImmMem(0))), ("i32.store16", AsmOp(Op(59), ImmMem(1))), ("i64.store8", AsmOp(Op(60), ImmMem(0))), ("i64.store16", AsmOp(Op(61), ImmMem(1))), ("i64.store32", AsmOp(Op(62), ImmMem(2))), ("memory.size", AsmOp(Op(63), ImmZero)), ("memory.grow", AsmOp(Op(64), ImmZero)), ("memory.copy", AsmOp(OpFC(10), ImmZeroZero)), ("memory.fill", AsmOp(OpFC(11), ImmZero))]
+
+// A run of opcodes named prefix.word, consecutive from `first`.
+fn asm_family(prefix, words, first) = asm_family_from(prefix, words, first, 0, len(words), [])
+
+fn asm_family_from(prefix, words, first, i, n, acc) = if i >= n {
+  acc
+} else {
+  asm_family_from(
+    prefix,
+    words,
+    first,
+    i + 1,
+    n,
+    push(acc, (prefix ++ "." ++ words[i], AsmOp(Op(first + i), ImmNone)))
+  )
+}
+
+fn asm_numeric_ops() = {
+  let icmp = ["eq", "ne", "lt_s", "lt_u", "gt_s", "gt_u", "le_s", "le_u", "ge_s", "ge_u"]
+  let fcmp = ["eq", "ne", "lt", "gt", "le", "ge"]
+  let iarith =
+    ["clz", "ctz", "popcnt", "add", "sub", "mul", "div_s", "div_u", "rem_s", "rem_u", "and", "or", "xor", "shl", "shr_s", "shr_u", "rotl", "rotr"]
+  let farith =
+    ["abs", "neg", "ceil", "floor", "trunc", "nearest", "sqrt", "add", "sub", "mul", "div", "min", "max", "copysign"]
+  let convert =
+    ["i32.wrap_i64", "i32.trunc_f32_s", "i32.trunc_f32_u", "i32.trunc_f64_s", "i32.trunc_f64_u", "i64.extend_i32_s", "i64.extend_i32_u", "i64.trunc_f32_s", "i64.trunc_f32_u", "i64.trunc_f64_s", "i64.trunc_f64_u", "f32.convert_i32_s", "f32.convert_i32_u", "f32.convert_i64_s", "f32.convert_i64_u", "f32.demote_f64", "f64.convert_i32_s", "f64.convert_i32_u", "f64.convert_i64_s", "f64.convert_i64_u", "f64.promote_f32", "i32.reinterpret_f32", "i64.reinterpret_f64", "f32.reinterpret_i32", "f64.reinterpret_i64", "i32.extend8_s", "i32.extend16_s", "i64.extend8_s", "i64.extend16_s", "i64.extend32_s"]
+  let sat =
+    ["i32.trunc_sat_f32_s", "i32.trunc_sat_f32_u", "i32.trunc_sat_f64_s", "i32.trunc_sat_f64_u", "i64.trunc_sat_f32_s", "i64.trunc_sat_f32_u", "i64.trunc_sat_f64_s", "i64.trunc_sat_f64_u"]
+  [("i32.eqz", AsmOp(Op(69), ImmNone)), ("i64.eqz", AsmOp(Op(80), ImmNone))] ++ asm_family("i32", icmp, 70) ++ asm_family("i64", icmp, 81) ++ asm_family("f32", fcmp, 91) ++ asm_family("f64", fcmp, 97) ++ asm_family("i32", iarith, 103) ++ asm_family("i64", iarith, 121) ++ asm_family("f32", farith, 139) ++ asm_family("f64", farith, 153) ++ asm_bare_family(convert, 167, Op) ++ asm_bare_family(sat, 0, OpFC)
+}
+
+fn asm_bare_family(words, first, code) = asm_bare_family_from(words, first, code, 0, len(words), [])
+
+fn asm_bare_family_from(words, first, code, i, n, acc) = if i >= n {
+  acc
+} else {
+  asm_bare_family_from(
+    words,
+    first,
+    code,
+    i + 1,
+    n,
+    push(acc, (words[i], AsmOp(code(first + i), ImmNone)))
+  )
+}
+
+// The threads proposal: wait and notify, the fence, and the atomic loads,
+// stores and read-modify-writes at every width.
+fn asm_atomic_ops() = {
+  let widths =
+    [("i32.atomic.", "", 2), ("i64.atomic.", "", 3), ("i32.atomic.", "8", 0), ("i32.atomic.", "16", 1), ("i64.atomic.", "8", 0), ("i64.atomic.", "16", 1), ("i64.atomic.", "32", 2)]
+  let rmw = ["add", "sub", "and", "or", "xor", "xchg", "cmpxchg"]
+  [("memory.atomic.notify", AsmOp(OpFE(0), ImmMem(2))), ("memory.atomic.wait32", AsmOp(OpFE(1), ImmMem(2))), ("memory.atomic.wait64", AsmOp(OpFE(2), ImmMem(3))), ("atomic.fence", AsmOp(OpFE(3), ImmZero))] ++ asm_atomic_access(widths, "load", 16) ++ asm_atomic_access(widths, "store", 23) ++ asm_atomic_rmw(widths, rmw, 0, len(rmw), [])
+}
+
+// load/store: a narrow width reads `load8_u`, a store `store8`.
+fn asm_atomic_access(widths, verb, first) =
+  asm_atomic_access_from(widths, verb, first, 0, len(widths), [])
+
+fn asm_atomic_access_from(widths, verb, first, i, n, acc) = if i >= n {
+  acc
+} else {
+  match widths[i] {
+    (prefix, bits, align) => {
+      let suffix = if bits == "" || verb == "store" { "" } else { "_u" }
+      let name = prefix ++ verb ++ bits ++ suffix
+      asm_atomic_access_from(
+        widths,
+        verb,
+        first,
+        i + 1,
+        n,
+        push(acc, (name, AsmOp(OpFE(first + i), ImmMem(align))))
+      )
+    },
+  }
+}
+
+fn asm_atomic_rmw(widths, ops, k, n, acc) = if k >= n {
+  acc
+} else {
+  asm_atomic_rmw(
+    widths,
+    ops,
+    k + 1,
+    n,
+    asm_atomic_rmw_widths(widths, ops[k], 30 + 7 * k, 0, len(widths), acc)
+  )
+}
+
+fn asm_atomic_rmw_widths(widths, op, first, i, n, acc) = if i >= n {
+  acc
+} else {
+  match widths[i] {
+    (prefix, bits, align) => {
+      let name =
+        if bits == "" { prefix ++ "rmw." ++ op } else { prefix ++ "rmw" ++ bits ++ "." ++ op ++ "_u" }
+      asm_atomic_rmw_widths(
+        widths,
+        op,
+        first,
+        i + 1,
+        n,
+        push(acc, (name, AsmOp(OpFE(first + i), ImmMem(align))))
+      )
+    },
+  }
+}
+
+// The SIMD forms: whole-vector memory and constants, every shape's splat
+// and lane access, the bitwise set, and the arithmetic of the lane shapes
+// the representation gradient cashes out.
+fn asm_simd_ops() = {
+  let farith = ["abs", "neg", "", "sqrt", "add", "sub", "mul", "div", "min", "max"]
+  [("v128.load", AsmOp(OpFD(0), ImmMem(4))), ("v128.store", AsmOp(OpFD(11), ImmMem(4))), ("v128.const", AsmOp(OpFD(12), ImmV128)), ("i8x16.splat", AsmOp(OpFD(15), ImmNone)), ("i16x8.splat", AsmOp(OpFD(16), ImmNone)), ("i32x4.splat", AsmOp(OpFD(17), ImmNone)), ("i64x2.splat", AsmOp(OpFD(18), ImmNone)), ("f32x4.splat", AsmOp(OpFD(19), ImmNone)), ("f64x2.splat", AsmOp(OpFD(20), ImmNone)), ("i8x16.extract_lane_s", AsmOp(OpFD(21), ImmLane)), ("i8x16.extract_lane_u", AsmOp(OpFD(22), ImmLane)), ("i8x16.replace_lane", AsmOp(OpFD(23), ImmLane)), ("i16x8.extract_lane_s", AsmOp(OpFD(24), ImmLane)), ("i16x8.extract_lane_u", AsmOp(OpFD(25), ImmLane)), ("i16x8.replace_lane", AsmOp(OpFD(26), ImmLane)), ("i32x4.extract_lane", AsmOp(OpFD(27), ImmLane)), ("i32x4.replace_lane", AsmOp(OpFD(28), ImmLane)), ("i64x2.extract_lane", AsmOp(OpFD(29), ImmLane)), ("i64x2.replace_lane", AsmOp(OpFD(30), ImmLane)), ("f32x4.extract_lane", AsmOp(OpFD(31), ImmLane)), ("f32x4.replace_lane", AsmOp(OpFD(32), ImmLane)), ("f64x2.extract_lane", AsmOp(OpFD(33), ImmLane)), ("f64x2.replace_lane", AsmOp(OpFD(34), ImmLane)), ("v128.not", AsmOp(OpFD(77), ImmNone)), ("v128.and", AsmOp(OpFD(78), ImmNone)), ("v128.andnot", AsmOp(OpFD(79), ImmNone)), ("v128.or", AsmOp(OpFD(80), ImmNone)), ("v128.xor", AsmOp(OpFD(81), ImmNone)), ("v128.bitselect", AsmOp(OpFD(82), ImmNone)), ("i32x4.add", AsmOp(OpFD(174), ImmNone)), ("i32x4.sub", AsmOp(OpFD(177), ImmNone)), ("i32x4.mul", AsmOp(OpFD(181), ImmNone)), ("i64x2.add", AsmOp(OpFD(206), ImmNone)), ("i64x2.sub", AsmOp(OpFD(209), ImmNone)), ("i64x2.mul", AsmOp(OpFD(213), ImmNone))] ++ asm_simd_family("f32x4", farith, 224, 0, len(farith), []) ++ asm_simd_family("f64x2", farith, 236, 0, len(farith), [])
+}
+
+// A lane-shape family; an empty word is a hole in the opcode run.
+fn asm_simd_family(shape, words, first, i, n, acc) = if i >= n {
+  acc
+} else if words[i] == "" {
+  asm_simd_family(shape, words, first, i + 1, n, acc)
+} else {
+  asm_simd_family(
+    shape,
+    words,
+    first,
+    i + 1,
+    n,
+    push(acc, (shape ++ "." ++ words[i], AsmOp(OpFD(first + i), ImmNone)))
+  )
+}
+
+fn out_code(c) = match c {
+  Op(b) => out_byte(b),
+  OpFC(k) => {
+    out_byte(252)
+    out_uleb(k)
+  },
+  OpFD(k) => {
+    out_byte(253)
+    out_uleb(k)
+  },
+  OpFE(k) => {
+    out_byte(254)
+    out_uleb(k)
+  },
+}
+
+// ─── The encoder's environment ────────────────────────────────────────
+//
+// The text, every space's name table, and the function's own locals; the
+// label stack rides beside it as a parameter, since it grows with the body.
+type AsmEnv
+  = AsmEnv({funcs: [[(String, Int)]], globals: [[(String, Int)]], locals: [[(String, Int)]], mems: [[(String, Int)]], ops: [[(String, AsmOp)]], p: Addr, tables: [[(String, Int)]], types: [[(String, Int)]]})
+
+// The environment with a function's own locals.
+fn asm_env_with(x, locals) = AsmEnv{
+  funcs: x.funcs,
+  globals: x.globals,
+  locals: locals,
+  mems: x.mems,
+  ops: x.ops,
+  p: x.p,
+  tables: x.tables,
+  types: x.types,
+}
+
+// A label: the span of its `$name`, or none for an unnamed block.
+type AsmLabel = LabelNamed(Int, Int) | LabelAnon
+
+// An immediate read before the operands it follows on the page.
+type AsmArg
+  = ArgNone
+  | ArgIdx(Int)
+  | ArgPair(Int, Int)
+  | ArgI32(Int)
+  | ArgI64(Int, Int)
+  | ArgF32(Int)
+  | ArgF64(Int, Int)
+  | ArgLabels([Int])
+  | ArgBytes(String)
+  | ArgByte(Int)
+  | ArgSelect(Int)
+
+// An instruction's opcode and immediate; a `select` that names its result
+// type is the typed select, opcode 0x1C.
+fn out_instr(code, arg) = match arg {
+  ArgSelect(_) => {
+    out_byte(28)
+    out_arg(arg)
+  },
+  _ => {
+    out_code(code)
+    out_arg(arg)
+  },
+}
+
+fn out_arg(a) = match a {
+  ArgNone => (),
+  ArgIdx(i) => out_uleb(i),
+  ArgPair(x, y) => {
+    out_uleb(x)
+    out_uleb(y)
+  },
+  ArgI32(v) => out_sleb(v),
+  ArgI64(hi, lo) => out_sleb64(hi, lo),
+  ArgF32(w) => out_word(w),
+  ArgF64(hi, lo) => {
+    out_word(lo)
+    out_word(hi)
+  },
+  ArgLabels(ls) => {
+    out_uleb(len(ls) - 1)
+    out_labels(ls, 0, len(ls))
+  },
+  ArgBytes(b) => out_str(b),
+  ArgByte(b) => out_byte(b),
+  ArgSelect(t) => {
+    out_uleb(1)
+    out_byte(t)
+  },
+}
+
+fn out_labels(ls, i, n) = if i >= n {
+  ()
+} else {
+  out_uleb(ls[i])
+  out_labels(ls, i + 1, n)
+}
+
+// A sequence of instructions up to (not through) the `)` that ends it. The
+// emitter folds every instruction but one — `_start`'s `(then unreachable)`
+// — and a plain instruction written flat reads as WAT reads it: its
+// operands are already on the stack, its immediates follow the word.
+fn asm_seq(x, labels) = match asm_peek() {
+  WOpen => {
+    asm_next()
+    asm_folded(x, labels)
+    asm_seq(x, labels)
+  },
+  WClose => (),
+  WAtom(s, e) => {
+    asm_next()
+    asm_flat(x, labels, s, e)
+    asm_seq(x, labels)
+  },
+  WStr(s, _) => asm_refuse("a string where an instruction belongs", s),
+  WEnd => asm_refuse("the text ended inside a body", asm_pos()),
+}
+
+// One folded instruction, its `(` consumed: the operands first, then the
+// opcode and its immediates — post-order, the stack machine's own order.
+fn asm_folded(x, labels) = match asm_atom() {
+  (s, e) => match smap_get(x.ops, asm_name(x.p, s, e)) {
+    None => asm_refuse("`{asm_name(x.p, s, e)}` is not an instruction", s),
+    Some(AsmOp(code, imm)) => match imm {
+      ImmBlock => asm_block(x, labels, code),
+      ImmLoop => asm_block(x, labels, code),
+      ImmIf => asm_if(x, labels),
+      _ => {
+        let arg = asm_imm(x, labels, imm, s)
+        asm_seq(x, labels)
+        asm_close()
+        out_instr(code, arg)
+      },
+    },
+  },
+}
+
+// A flat plain instruction. A flat block, loop or if closes with an `end`
+// the emitter never writes, and is refused by name.
+fn asm_flat(x, labels, s, e) = match smap_get(x.ops, asm_name(x.p, s, e)) {
+  None => asm_refuse("`{asm_name(x.p, s, e)}` is not an instruction", s),
+  Some(AsmOp(code, imm)) => match imm {
+    ImmBlock => asm_refuse("a flat `block … end` — the emitter folds every block", s),
+    ImmLoop => asm_refuse("a flat `loop … end` — the emitter folds every loop", s),
+    ImmIf => asm_refuse("a flat `if … end` — the emitter folds every if", s),
+    _ => out_instr(code, asm_imm(x, labels, imm, s)),
+  },
+}
+
+fn asm_block(x, labels, code) = {
+  let label = asm_label_of(asm_opt_name(x.p))
+  let bt = asm_block_type(x.p)
+  out_code(code)
+  out_byte(bt)
+  asm_seq(x, push(labels, label))
+  asm_close()
+  out_byte(11)
+}
+
+// `(if label? (result t)? cond… (then …) (else …)?)`: the condition is the
+// folded forms before `(then`; an empty `(else)` writes nothing.
+fn asm_if(x, labels) = {
+  let label = asm_label_of(asm_opt_name(x.p))
+  let bt = asm_block_type(x.p)
+  asm_if_cond(x, labels)
+  out_byte(4)
+  out_byte(bt)
+  let inner = push(labels, label)
+  asm_seq(x, inner)
+  asm_close()
+  if asm_at_form(x.p, "else") {
+    match asm_peek() {
+      WClose => (),
+      _ => {
+        out_byte(5)
+        asm_seq(x, inner)
+      },
+    }
+    asm_close()
+  } else {
+    ()
+  }
+  asm_close()
+  out_byte(11)
+}
+
+fn asm_if_cond(x, labels) = if asm_at_form(x.p, "then") {
+  ()
+} else {
+  asm_open()
+  asm_folded(x, labels)
+  asm_if_cond(x, labels)
+}
+
+fn asm_label_of(opt) = match opt {
+  Some((s, e)) => LabelNamed(s, e),
+  None => LabelAnon,
+}
+
+// A block's type: one result's value type, or 0x40 for none.
+fn asm_block_type(p) = if asm_at_form(p, "result") {
+  match asm_atom() {
+    (s, e) => match asm_peek() {
+      WClose => {
+        asm_close()
+        asm_valtype_byte(asm_valtype_letter(p, s, e))
+      },
+      _ => asm_refuse("a block with more than one result — the dialect's blocks carry one", s),
+    },
+  }
+} else if asm_at_form(p, "param") {
+  asm_refuse("a block with params — the dialect's blocks carry none", asm_pos())
+} else {
+  64
+}
+
+// The depth of a label from the innermost block out.
+fn asm_label_depth(x, labels, s, e) = if asm_byte(x.p, s) == 36 {
+  asm_label_find(x, labels, s, e, len(labels) - 1)
+} else {
+  asm_int(x.p, s, e)
+}
+
+fn asm_label_find(x, labels, s, e, i) = if i < 0 {
+  asm_refuse("no label `{asm_name(x.p, s, e)}` encloses this branch", s)
+} else {
+  match labels[i] {
+    LabelNamed(ls, le) => if asm_spans_eq(x.p, ls, le, s, e) {
+      len(labels) - 1 - i
+    } else {
+      asm_label_find(x, labels, s, e, i - 1)
+    },
+    LabelAnon => asm_label_find(x, labels, s, e, i - 1),
+  }
+}
+
+// The immediate an instruction reads, from the words before its operands.
+fn asm_imm(x, labels, imm, at) = match imm {
+  ImmNone => ArgNone,
+  ImmZero => ArgByte(0),
+  ImmZeroZero => ArgPair(0, 0),
+  ImmLocal => match asm_atom() {
+    (s, e) => ArgIdx(asm_lookup(x.p, x.locals, s, e, "local")),
+  },
+  ImmGlobal => match asm_atom() {
+    (s, e) => ArgIdx(asm_lookup(x.p, x.globals, s, e, "global")),
+  },
+  ImmFunc => match asm_atom() {
+    (s, e) => ArgIdx(asm_lookup(x.p, x.funcs, s, e, "function")),
+  },
+  ImmLabel => match asm_atom() {
+    (s, e) => ArgIdx(asm_label_depth(x, labels, s, e)),
+  },
+  ImmLabels => ArgLabels(asm_label_list(x, labels, [])),
+  ImmCallIndirect => {
+    // the table it calls through when it names one, else the first
+    let table = match asm_opt_atom() {
+      Some((s, e)) => asm_lookup(x.p, x.tables, s, e, "table"),
+      None => 0,
+    }
+    if asm_at_form(x.p, "type") {
+      match asm_atom() {
+        (s, e) => {
+          asm_close()
+          ArgPair(asm_lookup(x.p, x.types, s, e, "type"), table)
+        },
+      }
+    } else {
+      asm_refuse("an indirect call names its `(type …)`", at)
+    }
+  },
+  ImmMem(align) => asm_memarg(x.p, align, 0),
+  ImmI32 => match asm_atom() {
+    (s, e) => ArgI32(asm_int(x.p, s, e)),
+  },
+  ImmI64 => match asm_atom() {
+    (s, e) => match asm_int64(x.p, s, e) {
+      (hi, lo) => ArgI64(hi, lo),
+    },
+  },
+  ImmF32 => match asm_atom() {
+    (s, e) => match asm_float(x.p, s, e, AsmF32) {
+      (_, lo) => ArgF32(lo),
+    },
+  },
+  ImmF64 => match asm_atom() {
+    (s, e) => match asm_float(x.p, s, e, AsmF64) {
+      (hi, lo) => ArgF64(hi, lo),
+    },
+  },
+  ImmV128 => ArgBytes(asm_v128_text(x.p, at)),
+  ImmLane => match asm_atom() {
+    (s, e) => ArgByte(asm_int(x.p, s, e)),
+  },
+  ImmSelect => if asm_at_form(x.p, "result") {
+    match asm_atom() {
+      (s, e) => {
+        asm_close()
+        ArgSelect(asm_valtype_byte(asm_valtype_letter(x.p, s, e)))
+      },
+    }
+  } else {
+    ArgNone
+  },
+  ImmBlock => asm_refuse("a block read as an operand", at),
+  ImmLoop => asm_refuse("a loop read as an operand", at),
+  ImmIf => asm_refuse("an if read as an operand", at),
+}
+
+// br_table's labels: every word before its operand.
+fn asm_label_list(x, labels, acc) = match asm_peek() {
+  WAtom(s, e) => {
+    asm_next()
+    asm_label_list(x, labels, push(acc, asm_label_depth(x, labels, s, e)))
+  },
+  _ => acc,
+}
+
+// `offset=N` and `align=N` in either order; the alignment is written as its
+// log2, the natural one when none is given.
+fn asm_memarg(p, align, offset) = match asm_peek() {
+  WAtom(s, e) => if e - s > 7 && asm_span_is(p, s, s + 7, "offset=") {
+    asm_next()
+    asm_memarg(p, align, asm_int(p, s + 7, e))
+  } else if e - s > 6 && asm_span_is(p, s, s + 6, "align=") {
+    asm_next()
+    asm_memarg(p, asm_bits_of(asm_int(p, s + 6, e), 0) - 1, offset)
+  } else {
+    ArgPair(align, offset)
+  },
+  _ => ArgPair(align, offset),
+}
+
+// `v128.const <shape> <lanes…>`: sixteen bytes, each lane little-endian.
+fn asm_v128_text(p, at) = {
+  asm_v128(p, at)
+  out_take()
+} ~> asm_bytes
+
+fn asm_v128(p, at) = match asm_atom() {
+  (s, e) => if asm_span_is(p, s, e, "i8x16") {
+    asm_v128_lanes(p, 16, 1, false)
+  } else if asm_span_is(p, s, e, "i16x8") {
+    asm_v128_lanes(p, 8, 2, false)
+  } else if asm_span_is(p, s, e, "i32x4") {
+    asm_v128_lanes(p, 4, 4, false)
+  } else if asm_span_is(p, s, e, "i64x2") {
+    asm_v128_wide(p, 2, false)
+  } else if asm_span_is(p, s, e, "f32x4") {
+    asm_v128_lanes(p, 4, 4, true)
+  } else if asm_span_is(p, s, e, "f64x2") {
+    asm_v128_wide(p, 2, true)
+  } else {
+    asm_refuse("`{asm_name(p, s, e)}` is not a vector shape", s)
+  },
+}
+
+fn asm_v128_lanes(p, k, width, float) = if k == 0 {
+  ()
+} else {
+  match asm_atom() {
+    (s, e) => {
+      let w = if float {
+        match asm_float(p, s, e, AsmF32) {
+          (_, lo) => lo,
+        }
+      } else {
+        asm_int(p, s, e)
+      }
+      out_lane(w, width)
+      asm_v128_lanes(p, k - 1, width, float)
+    },
+  }
+}
+
+fn out_lane(w, width) = if width == 1 {
+  out_byte(i32_and(w, 255))
+} else if width == 2 {
+  out_byte(i32_and(w, 255))
+  out_byte(i32_and(asm_lsr(w, 8), 255))
+} else {
+  out_word(w)
+}
+
+fn asm_v128_wide(p, k, float) = if k == 0 {
+  ()
+} else {
+  match asm_atom() {
+    (s, e) => {
+      let pair = if float { asm_float(p, s, e, AsmF64) } else { asm_int64(p, s, e) }
+      match pair {
+        (hi, lo) => {
+          out_word(lo)
+          out_word(hi)
+        },
+      }
+      asm_v128_wide(p, k - 1, float)
+    },
+  }
+}
+
+// ─── Sections ─────────────────────────────────────────────────────────
+//
+// Each section in the binary's order, read from the fields the index found;
+// each writes into a buffer of its own and answers its bytes.
+fn asm_types_section(sigs) = {
+  out_uleb(len(sigs))
+  each(out_func_type, sigs)
+  out_take()
+} ~> asm_bytes
+
+fn asm_imports_section(p, imports, fn_types) = {
+  out_uleb(len(imports))
+  asm_imports_from(p, imports, fn_types, 0, len(imports), 0)
+  out_take()
+} ~> asm_bytes
+
+// Each import's module and field, then what it brings: a function's type, a
+// memory's or table's limits, a global's type. `fi` counts functions.
+fn asm_imports_from(p, imports, fn_types, i, n, fi) = if i >= n {
+  ()
+} else {
+  asm_seek(imports[i])
+  asm_atom()
+  match asm_string() {
+    (ms, me) => match asm_string() {
+      (fs, fe) => {
+        out_string_vec(p, ms, me)
+        out_string_vec(p, fs, fe)
+        asm_open()
+        match asm_atom() {
+          (ks, ke) => {
+            asm_opt_name(p)
+            if asm_span_is(p, ks, ke, "func") {
+              out_byte(0)
+              out_uleb(fn_types[fi])
+              asm_imports_from(p, imports, fn_types, i + 1, n, fi + 1)
+            } else if asm_span_is(p, ks, ke, "memory") {
+              out_byte(2)
+              out_limits(p)
+              asm_imports_from(p, imports, fn_types, i + 1, n, fi)
+            } else if asm_span_is(p, ks, ke, "table") {
+              out_byte(1)
+              out_table_type(p)
+              asm_imports_from(p, imports, fn_types, i + 1, n, fi)
+            } else {
+              out_byte(3)
+              out_global_type(p)
+              asm_imports_from(p, imports, fn_types, i + 1, n, fi)
+            }
+          },
+        }
+      },
+    },
+  }
+}
+
+// min, max? and `shared`: the flag byte says which are present.
+fn out_limits(p) = match asm_atom() {
+  (s, e) => {
+    let min = asm_int(p, s, e)
+    let max = match asm_peek() {
+      WAtom(ms, me) => if asm_span_is(p, ms, me, "shared") {
+        None
+      } else {
+        asm_next()
+        Some(asm_int(p, ms, me))
+      },
+      _ => None,
+    }
+    let shared = match asm_peek() {
+      WAtom(ss, se) => if asm_span_is(p, ss, se, "shared") {
+        asm_next()
+        true
+      } else {
+        false
+      },
+      _ => false,
+    }
+    match max {
+      Some(m) => {
+        out_byte(if shared { 3 } else { 1 })
+        out_uleb(min)
+        out_uleb(m)
+      },
+      None => {
+        out_byte(if shared { 2 } else { 0 })
+        out_uleb(min)
+      },
+    }
+  },
+}
+
+// `min max? funcref`: the element type, then the limits.
+fn out_table_type(p) = match asm_atom() {
+  (s, e) => {
+    let min = asm_int(p, s, e)
+    match asm_atom() {
+      (ts, te) => if asm_span_is(p, ts, te, "funcref") || asm_span_is(p, ts, te, "externref") {
+        out_byte(asm_valtype_byte(asm_valtype_letter(p, ts, te)))
+        out_byte(0)
+        out_uleb(min)
+      } else {
+        let max = asm_int(p, ts, te)
+        match asm_atom() {
+          (rs, re) => {
+            out_byte(asm_valtype_byte(asm_valtype_letter(p, rs, re)))
+            out_byte(1)
+            out_uleb(min)
+            out_uleb(max)
+          },
+        }
+      },
+    }
+  },
+}
+
+// A value type, or `(mut …)` around one.
+fn out_global_type(p) = if asm_at_form(p, "mut") {
+  match asm_atom() {
+    (s, e) => {
+      asm_close()
+      out_byte(asm_valtype_byte(asm_valtype_letter(p, s, e)))
+      out_byte(1)
+    },
+  }
+} else {
+  match asm_atom() {
+    (s, e) => {
+      out_byte(asm_valtype_byte(asm_valtype_letter(p, s, e)))
+      out_byte(0)
+    },
+  }
+}
+
+fn asm_functions_section(fn_types, first) = {
+  out_uleb(len(fn_types) - first)
+  asm_functions_from(fn_types, first, len(fn_types))
+  out_take()
+} ~> asm_bytes
+
+fn asm_functions_from(fn_types, i, n) = if i >= n {
+  ()
+} else {
+  out_uleb(fn_types[i])
+  asm_functions_from(fn_types, i + 1, n)
+}
+
+// A field's head re-read: the reader seeks past its `(` and head word and
+// any `$name` and inline exports, standing where its contents begin.
+fn asm_enter(p, at) = {
+  asm_seek(at)
+  asm_atom()
+  asm_opt_name(p)
+  asm_skip_exports(p)
+}
+
+fn asm_skip_exports(p) = if asm_at_form(p, "export") {
+  asm_string()
+  asm_close()
+  asm_skip_exports(p)
+} else {
+  ()
+}
+
+fn asm_tables_section(p, tables) = {
+  out_uleb(len(tables))
+  each(asm_table_entry(p), tables)
+  out_take()
+} ~> asm_bytes
+
+fn asm_table_entry(p, at) = {
+  asm_enter(p, at)
+  out_table_type(p)
+}
+
+fn asm_memories_section(p, mems) = {
+  out_uleb(len(mems))
+  each(asm_memory_entry(p), mems)
+  out_take()
+} ~> asm_bytes
+
+fn asm_memory_entry(p, at) = {
+  asm_enter(p, at)
+  out_limits(p)
+}
+
+// A constant expression: the folded instructions, then `end`.
+fn asm_const_expr(x) = {
+  asm_open()
+  asm_folded(x, [])
+  out_byte(11)
+}
+
+fn asm_globals_section(x, globals) = {
+  out_uleb(len(globals))
+  each(asm_global_entry(x), globals)
+  out_take()
+} ~> asm_bytes
+
+fn asm_global_entry(x, at) = {
+  asm_enter(x.p, at)
+  out_global_type(x.p)
+  asm_const_expr(x)
+}
+
+fn asm_exports_section(x, exports) = {
+  out_uleb(len(exports))
+  each(asm_export(x), exports)
+  out_take()
+} ~> asm_bytes
+
+fn asm_export(x, ex) = match ex {
+  XInline(s, e, kind, idx) => {
+    out_string_vec(x.p, s, e)
+    out_byte(kind)
+    out_uleb(idx)
+  },
+  XField(at) => {
+    asm_seek(at)
+    asm_atom()
+    match asm_string() {
+      (s, e) => {
+        out_string_vec(x.p, s, e)
+        asm_open()
+        match asm_atom() {
+          (ks, ke) => match asm_atom() {
+            (rs, re) => if asm_span_is(x.p, ks, ke, "func") {
+              out_byte(0)
+              out_uleb(asm_lookup(x.p, x.funcs, rs, re, "function"))
+            } else if asm_span_is(x.p, ks, ke, "table") {
+              out_byte(1)
+              out_uleb(asm_lookup(x.p, x.tables, rs, re, "table"))
+            } else if asm_span_is(x.p, ks, ke, "memory") {
+              out_byte(2)
+              out_uleb(asm_lookup(x.p, x.mems, rs, re, "memory"))
+            } else if asm_span_is(x.p, ks, ke, "global") {
+              out_byte(3)
+              out_uleb(asm_lookup(x.p, x.globals, rs, re, "global"))
+            } else {
+              asm_refuse("`{asm_name(x.p, ks, ke)}` is not an export kind", ks)
+            },
+          },
+        }
+      },
+    }
+  },
+}
+
+fn asm_start_section(x, starts) = {
+  asm_seek(starts[0])
+  asm_atom()
+  match asm_atom() {
+    (s, e) => out_uleb(asm_lookup(x.p, x.funcs, s, e, "function")),
+  }
+  out_take()
+} ~> asm_bytes
+
+// `(elem $name? (i32.const N) func? $f…)`: an active segment of table 0,
+// the form whose flag byte is zero.
+fn asm_elems_section(x, elems) = {
+  out_uleb(len(elems))
+  each(asm_elem_entry(x), elems)
+  out_take()
+} ~> asm_bytes
+
+fn asm_elem_entry(x, at) = {
+  asm_enter(x.p, at)
+  out_byte(0)
+  asm_const_expr(x)
+  let refs = asm_func_refs(x, [])
+  out_uleb(len(refs))
+  each(out_uleb, refs)
+}
+
+fn asm_func_refs(x, acc) = match asm_next() {
+  WAtom(s, e) => if asm_span_is(x.p, s, e, "func") {
+    asm_func_refs(x, acc)
+  } else {
+    asm_func_refs(x, push(acc, asm_lookup(x.p, x.funcs, s, e, "function")))
+  },
+  WClose => acc,
+  _ => asm_refuse("an element segment holds function names", asm_pos()),
+}
+
+// `(data $name? (i32.const N) "…"…)`: an active segment of memory 0.
+fn asm_datas_section(x, datas) = {
+  out_uleb(len(datas))
+  each(asm_data_entry(x), datas)
+  out_take()
+} ~> asm_bytes
+
+fn asm_data_entry(x, at) = {
+  asm_enter(x.p, at)
+  out_byte(0)
+  asm_const_expr(x)
+  let bytes = asm_data_text(x.p)
+  out_uleb(byte_len(bytes))
+  out_str(bytes)
+}
+
+fn asm_data_text(p) = {
+  asm_data_strings(p)
+  out_take()
+} ~> asm_bytes
+
+fn asm_data_strings(p) = match asm_next() {
+  WStr(s, e) => {
+    out_string_bytes(p, s, e)
+    asm_data_strings(p)
+  },
+  WClose => (),
+  _ => asm_refuse("a data segment holds strings", asm_pos()),
+}
+
+// ─── Code ─────────────────────────────────────────────────────────────
+//
+// One body: its params' and locals' names into the function's own table,
+// its locals as runs of one type, its instructions, `end`. Encoded inside
+// an arena — what the body's tokens and tables cost dies with it, and the
+// two Strings it publishes cross: the body's bytes, and its local-names
+// entry for the name section.
+// (the section's bytes, each function's local-names entry).
+fn asm_code_section(x, funcs, first) = {
+  out_uleb(len(funcs))
+  let names = asm_code_from(x, funcs, 0, len(funcs), first, [])
+  (out_take(), names)
+} ~> asm_bytes
+
+fn asm_code_from(x, funcs, i, n, first, names) = if i >= n {
+  names
+} else {
+  let entry = asm_body(x, funcs[i], first + i) ~> arena
+  match entry {
+    (body, local_names) => {
+      out_uleb(byte_len(body))
+      out_str(body)
+      asm_code_from(x, funcs, i + 1, n, first, push(names, local_names))
+    },
+  }
+}
+
+// A local's slot: its index, its value type, and its name if it has one.
+type AsmLocal = AsmLocal(Int, Int, AsmName)
+
+fn asm_body(x, at, fidx) = {
+  asm_enter(x.p, at)
+  if asm_at_form(x.p, "type") {
+    asm_atom()
+    asm_close()
+  } else {
+    ()
+  }
+  let params = asm_params(x.p, [])
+  asm_skip_results(x.p)
+  let locals = asm_locals(x.p, len(params), [])
+  let slots = params ++ locals
+  let table = asm_local_table(x.p, slots, 0, len(slots), smap_new())
+  (asm_body_text(asm_env_with(x, table), locals), asm_local_names_text(x.p, fidx, slots))
+}
+
+// The body's bytes: the locals as runs, the instructions, `end`.
+fn asm_body_text(x, locals) = {
+  asm_local_runs(locals)
+  asm_seq(x, [])
+  asm_close()
+  out_byte(11)
+  out_take()
+} ~> asm_bytes
+
+fn asm_local_names_text(p, fidx, slots) = {
+  out_local_names(p, fidx, slots)
+  out_take()
+} ~> asm_bytes
+
+fn asm_params(p, acc) =
+  if asm_at_form(p, "param") { asm_params(p, asm_slots(p, len(acc), acc)) } else { acc }
+
+fn asm_locals(p, first, acc) = if asm_at_form(p, "local") {
+  asm_locals(p, first, asm_slots(p, first + len(acc), acc))
+} else {
+  acc
+}
+
+// One `(param …)` or `(local …)` form's slots: a named slot of one type, or
+// a run of unnamed types.
+fn asm_slots(p, next, acc) = match asm_opt_name(p) {
+  Some((s, e)) => match asm_atom() {
+    (ts, te) => {
+      asm_close()
+      push(acc, AsmLocal(next, asm_valtype_letter(p, ts, te), Named(s, e)))
+    },
+  },
+  None => asm_unnamed_slots(p, next, acc),
+}
+
+fn asm_unnamed_slots(p, next, acc) = match asm_next() {
+  WAtom(s, e) => asm_unnamed_slots(p, next + 1, push(acc, AsmLocal(next, asm_valtype_letter(p, s, e), Unnamed))),
+  WClose => acc,
+  _ => asm_refuse("expected a value type", asm_pos()),
+}
+
+fn asm_local_table(p, slots, i, n, acc) = if i >= n {
+  acc
+} else {
+  match slots[i] {
+    AsmLocal(idx, _, Named(s, e)) => asm_local_table(p, slots, i + 1, n, smap_add(acc, asm_name(p, s, e), idx)),
+    AsmLocal(_, _, Unnamed) => asm_local_table(p, slots, i + 1, n, acc),
+  }
+}
+
+// The locals as runs of one value type: the count of runs, then each.
+fn asm_local_runs(locals) = {
+  out_uleb(asm_run_count(locals, 0, len(locals), 0, 0))
+  out_runs(locals, 0, len(locals), 0, 0)
+}
+
+fn asm_letter_of(l) = match l {
+  AsmLocal(_, t, _) => t,
+}
+
+fn asm_run_count(ls, i, n, prev, acc) = if i >= n {
+  acc
+} else if asm_letter_of(ls[i]) == prev {
+  asm_run_count(ls, i + 1, n, prev, acc)
+} else {
+  asm_run_count(ls, i + 1, n, asm_letter_of(ls[i]), acc + 1)
+}
+
+fn out_runs(ls, i, n, start, prev) = if i >= n {
+  if i > start { out_run(i - start, prev) } else { () }
+} else if i > start && asm_letter_of(ls[i]) != prev {
+  out_run(i - start, prev)
+  out_runs(ls, i + 1, n, i, asm_letter_of(ls[i]))
+} else if i == start {
+  out_runs(ls, i + 1, n, start, asm_letter_of(ls[i]))
+} else {
+  out_runs(ls, i + 1, n, start, prev)
+}
+
+fn out_run(count, letter) = {
+  out_uleb(count)
+  out_byte(asm_valtype_byte(letter))
+}
+
+// The name section's entry for one function: its index, then each named
+// slot.
+fn out_local_names(p, fidx, slots) = {
+  out_uleb(fidx)
+  out_uleb(asm_named_count(slots, 0, len(slots), 0))
+  each(
+    {
+      AsmLocal(idx, _, Named(s, e)) => {
+        out_uleb(idx)
+        out_name_span(p, s + 1, e)
+      },
+      AsmLocal(_, _, Unnamed) => (),
+    },
+    slots
+  )
+}
+
+fn asm_named_count(slots, i, n, acc) = if i >= n {
+  acc
+} else {
+  match slots[i] {
+    AsmLocal(_, _, Named(_, _)) => asm_named_count(slots, i + 1, n, acc + 1),
+    AsmLocal(_, _, Unnamed) => asm_named_count(slots, i + 1, n, acc),
+  }
+}
+
+// ─── The name section ─────────────────────────────────────────────────
+//
+// Subsections in their id order, each written only where its space holds a
+// name: functions (1), locals (2 — an entry per function, its params and
+// locals as the code section read them; an import's entry is empty), types
+// (4), tables (5), memories (6), globals (7), element segments (8), data
+// segments (9).
+fn asm_names_section(p, ix, local_names, imported) = {
+  out_uleb(4)
+  out_str("name")
+  asm_name_map(p, 1, ix.func_names)
+  if len(ix.func_names) > 0 {
+    out_section(2, asm_locals_subsection(len(ix.func_names), imported, local_names))
+  } else {
+    ()
+  }
+  asm_name_map(p, 4, ix.type_names)
+  asm_name_map(p, 5, ix.table_names)
+  asm_name_map(p, 6, ix.mem_names)
+  asm_name_map(p, 7, ix.global_names)
+  asm_name_map(p, 8, ix.elem_names)
+  asm_name_map(p, 9, ix.data_names)
+  out_take()
+} ~> asm_bytes
+
+fn asm_locals_subsection(count, imported, local_names) = {
+  out_uleb(count)
+  asm_empty_locals(0, imported)
+  each(out_str, local_names)
+  out_take()
+} ~> asm_bytes
+
+fn asm_empty_locals(i, n) = if i >= n {
+  ()
+} else {
+  out_uleb(i)
+  out_uleb(0)
+  asm_empty_locals(i + 1, n)
+}
+
+fn asm_name_map(p, id, names) = {
+  let count = asm_named_names(names, 0, len(names), 0)
+  if count == 0 { () } else { out_section(id, asm_name_map_text(p, count, names)) }
+}
+
+fn asm_name_map_text(p, count, names) = {
+  out_uleb(count)
+  asm_name_entries(p, names, 0, len(names))
+  out_take()
+} ~> asm_bytes
+
+fn asm_named_names(names, i, n, acc) = if i >= n {
+  acc
+} else {
+  match names[i] {
+    Named(_, _) => asm_named_names(names, i + 1, n, acc + 1),
+    Unnamed => asm_named_names(names, i + 1, n, acc),
+  }
+}
+
+fn asm_name_entries(p, names, i, n) = if i >= n {
+  ()
+} else {
+  match names[i] {
+    Named(s, e) => {
+      out_uleb(i)
+      out_name_span(p, s + 1, e)
+    },
+    Unnamed => (),
+  }
+  asm_name_entries(p, names, i + 1, n)
+}
+
+// ─── The module ───────────────────────────────────────────────────────
+//
+// The text in, the module's bytes out, or the refusal that stopped it.
+fn assemble(text) = {
+  let p = str_payload(text)
+  let n = byte_len(text)
+  {
+    let ix = asm_index(p)
+    let resolved = asm_resolve_types(p, ix)
+    match resolved {
+      (sigs, fn_types) => Assembled(asm_module(p, ix, sigs, fn_types)),
+    }
+  } ~> asm_reader(p, n)
+} ~> asm_refused
+
+handler asm_refused {
+  asm_refuse(msg, at) => AsmRefused(msg, at),
+}
+
+// A byte offset as the (line, column) a reader finds it at, both from 1.
+fn asm_line_col(text, at) = asm_line_col_from(str_payload(text), 0, at, 1, 1)
+
+fn asm_line_col_from(p, i, at, line, col) = if i >= at {
+  (line, col)
+} else if asm_byte(p, i) == 10 {
+  asm_line_col_from(p, i + 1, at, line + 1, 1)
+} else {
+  asm_line_col_from(p, i + 1, at, line, col + 1)
+}
+
+fn asm_module(p, ix, sigs, fn_types) = {
+  let imported = len(ix.func_tys) - len(ix.funcs)
+  let x = AsmEnv{
+    funcs: asm_name_table(p, ix.func_names),
+    globals: asm_name_table(p, ix.global_names),
+    locals: smap_new(),
+    mems: asm_name_table(p, ix.mem_names),
+    ops: asm_ops(),
+    p: p,
+    tables: asm_name_table(p, ix.table_names),
+    types: asm_name_table(p, ix.type_names),
+  }
+  asm_module_text(x, ix, sigs, fn_types, imported)
+}
+
+// The magic and version, then each section that holds anything.
+fn asm_module_text(x, ix, sigs, fn_types, imported) = {
+  out_word(1836278016)
+  out_word(1)
+  out_section(1, asm_types_section(sigs))
+  if len(ix.imports) > 0 {
+    out_section(2, asm_imports_section(x.p, ix.imports, fn_types))
+  } else {
+    ()
+  }
+  if len(ix.funcs) > 0 { out_section(3, asm_functions_section(fn_types, imported)) } else { () }
+  if len(ix.tables) > 0 { out_section(4, asm_tables_section(x.p, ix.tables)) } else { () }
+  if len(ix.mems) > 0 { out_section(5, asm_memories_section(x.p, ix.mems)) } else { () }
+  if len(ix.globals) > 0 { out_section(6, asm_globals_section(x, ix.globals)) } else { () }
+  if len(ix.exports) > 0 { out_section(7, asm_exports_section(x, ix.exports)) } else { () }
+  if len(ix.starts) > 0 { out_section(8, asm_start_section(x, ix.starts)) } else { () }
+  if len(ix.elems) > 0 { out_section(9, asm_elems_section(x, ix.elems)) } else { () }
+  let local_names = if len(ix.funcs) > 0 {
+    match asm_code_section(x, ix.funcs, imported) {
+      (code, names) => {
+        out_section(10, code)
+        names
+      },
+    }
+  } else {
+    []
+  }
+  if len(ix.datas) > 0 { out_section(11, asm_datas_section(x, ix.datas)) } else { () }
+  out_section(0, asm_names_section(x.p, ix, local_names, imported))
+  out_take()
+} ~> asm_bytes
