@@ -242,9 +242,10 @@ type QueryResult
   // module names whose line it is — the two halves the weave used to fuse
   // into one global coordinate and three readers had to take apart again.
   | QRCensus(String, [(String, Span)])
-  // the judged decl sites (count = len)
-  // (module, span) pairs, for the same reason the census carries them.
-  | QRDecls([(String, Span)])
+  // every name the judged declarations declare (count = len), each beside
+  // its declaration's (module, span) site — a roster that answered
+  // addresses alone could not say what it listed.
+  | QRDecls([(String, (String, Span))])
   // the weave's module paths, in weave order (count = len)
   | QRModules([String])
   // (importing module, imported path, is any name it brings referenced here)
@@ -364,7 +365,7 @@ handler query_default {
       [] => resume(QRError("no handler declares a state field `{field}`")),
       lines => resume(QRWhere(lines, [])),
     },
-    QDecls => resume(QRDecls(map(decl_site_of, decl_handles()))),
+    QDecls => resume(QRDecls(flat_map(decl_names_at, decl_handles()))),
     QVerifyDebt => {
       let debt = verify_debt()
       resume(QRVerifyDebt(debt))
@@ -1063,29 +1064,22 @@ fn ref_is_outside(extent, site) with !Mutate = {
 // ─── The decls column's projection — one home, two readers ──────────
 //
 // decl_handles — the judged DECLARATION handles (fn, value binding,
-// handler, type, effect, alias), read from the graph's decls column and
-// deduped by handle (judgment rounds re-note the same decl); the "decls"
-// facet renders them located.
+// handler, type, effect, alias), read from the graph's decls column. A
+// speculative judgment's rounds re-note one declaration, so each handle is
+// kept at its first sight, read off a word map in one pass; the "decls"
+// facet renders them named and located.
 fn decl_handles() = {
   let hs = graph_decls_at()
-  dedup_handles(hs, 0, make_list(0))
-}
-
-fn dedup_handles(hs, i, acc) = if i >= len(hs) {
-  acc
-} else {
-  let h = hs[i]
-  if handle_in(acc, h, 0) {
-    dedup_handles(hs, i + 1, acc)
-  } else {
-    dedup_handles(hs, i + 1, push(acc, h))
+  match hs |> fold(([], wmap_new(len(hs) + 1)), first_sight) {
+    (kept, _) => kept,
   }
 }
 
-fn handle_in(acc, target, i) = if i >= len(acc) {
-  false
-} else {
-  if acc[i] == target { true } else { handle_in(acc, target, i + 1) }
+fn first_sight(acc, h) = match acc {
+  (kept, seen) => match wmap_get(seen, h) {
+    Some(_) => acc,
+    None => (push(kept, h), wmap_add(seen, h, ())),
+  },
 }
 
 // ─── The structural census — count + sites of a shape in the weave ──
@@ -2466,14 +2460,38 @@ fn schedule_word(s) = match s {
   Persisted => "Persisted",
 }
 
-// span_of_handle — the node's source span, read live from its Reason chain
-// (the parser/infer wrote Located(span, _) at the node). One graph_chase, the
 // A decl's site: its own module beside its own span, both read from the
 // columns the parser wrote. The span is the mint fact — a chased reason
 // answers the class representative's position, and a type declaration's
 // node is never bound at all, so its reason carries none.
 fn decl_site_of(handle) with !Mutate =
   (module_name_of_handle(graph_module_of(handle)), parse_span_of(handle))
+
+// Every name a declaration declares, each at the declaration's site: its
+// own (`body_decl_name`, the one reader of it), then a type's constructors,
+// an effect's operations and a handler's state fields — the names a program
+// can say that this declaration minted.
+fn decl_names_at(handle) with !Mutate = {
+  let body = graph_node_body(handle)
+  [body_decl_name(body)] ++ inner_decl_names(body) |> map(named_at(decl_site_of(handle)))
+}
+
+fn named_at(site, name) = (name, site)
+
+fn inner_decl_names(body) = match body {
+  NStmt(TypeDefStmt(_, variants)) => map(variant_name, variants),
+  NStmt(EffectDeclStmt(_, _, ops)) => map(op_decl_name, ops),
+  NStmt(HandlerDeclStmt(_, _, _, states, _, _)) => map(state_field_name, states),
+  _ => [],
+}
+
+fn variant_name(v) = match v {
+  (name, _, _) => name,
+}
+
+fn op_decl_name(op) = match op {
+  (name, _, _, _) => name,
+}
 
 fn span_of_reason(reason) = match reason {
   Located(sp, _) => sp,

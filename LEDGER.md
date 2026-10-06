@@ -35,6 +35,79 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-10-06 · pin 943d87cef250781e (CLEAN m2 == m3; FIRST LIGHT m3 == m4) · THE PROGRAM LIVES IN THE THREE DOCS (§0.3), AND `decls` ANSWERS NAMES:
+  THE INTEGRATION. The program planned on 2026-10-06 — recorded verbatim at
+  42a94dc0 under docs/record/2026-10-06 with the seven audit lenses' answers
+  and the 463 peer verdicts — moved into its homes, and the record directory
+  left the tree (git keeps it at 42a94dc0). PLAN §11's STANDING CURSOR is the
+  program's order now, tier by tier, each landing a paragraph citing its
+  RESIDUE entry; §7 carries what the audit measured; §9.1 carries the
+  surface law (the authored text holds the developer's decisions; every fact
+  the graph can compute is projected and maintained by the medium); §9.10
+  and CLAUDE.md ⧗/⟲ carry "the artifact is the refuter". SYNTAX is trued
+  where it contradicted itself and MENTL_SPACE §5.5 points at the course's
+  design; the sweep of every other file under docs/ did not run, and each
+  landing that touches a doc trues it.
+  RESIDUE, ONE HEADER PER PEER. The catalog had no entry headers at all: 508
+  lines opened with a backticked peer name, and nothing told an entry from a
+  continuation, so "a gap not in RESIDUE.md does not exist" was not
+  checkable. A normalizer wrote ``### `Hβ.x` — STATUS`` for 427 entries —
+  status words moved out of the prose into the header, list paragraphs split
+  into one entry per peer, sub-records merged under their peer — the
+  re-grounding's verdicts were applied in place: slices 1–4 by their agents,
+  up to the session limit that stopped all ten agents of this integration,
+  and slices 5 and 6 as 58 dated RE-GROUNDED notes (25 found closed, 20
+  stale, 13 superseded). 142 peers the docs cited without an entry were
+  homed, each entry saying where it is cited (129 OPEN, 12 CLOSED, 1
+  RETRACTED, read off LEDGER and the citations); the program's landings got
+  35 entries — 5 the designs agent wrote, 23 moved verbatim from the program
+  at 42a94dc0, 7 SPACE.2 peers — and 14 appends. 427 → 608 entries.
+  THE GATE, SEEN RED. tools/residue-truth.py, run by doc-truth: every peer
+  the read-path docs cite is an entry header; every status is from the
+  closed vocabulary (OPEN · CLOSED <date> · RETRACTED [<date>] · SUPERSEDED →
+  <peer>) and agrees with the closures LEDGER records; an OPEN entry's
+  backticked code names resolve to what the medium declares, to a path, or
+  to the entry's own `Builds:` line. RED on the tree it was written against:
+  1,570 citations of peers with no header; on the normalized tree 294
+  citations of 166 peers, 7 statuses outside the vocabulary, and 92 dead
+  code names in open entries (`judge_window`, `heap_reset`, `$world_find`,
+  `mint_overflow_quota`, `branch_bracket` …). GREEN after the splice, at 608 entries. The gate grew on the way: a name
+  prose wraps at a hyphen is joined, a prefix (`fs_`) and a facet's
+  name/arity answer are not references, and the tools' bash functions are
+  vocabulary.
+  THE FACET. The gate's third check needed the medium to say what it
+  declares, and `mentl query src/main.mn decls` answered 8,012 addresses and
+  no names, in 339.48 s at 452,536 KB on boot c8ba5799. The judgment is
+  22.4 s of that (`modules` answers in 22.38 s); the rest was the dedup —
+  a linear membership scan per handle over a list built by push, index-
+  threaded. It is one pass over a word map now, and the answer names every
+  name a declaration declares — its own, a type's constructors, an effect's
+  operations, a handler's state fields: 9,771 names in 22.54 s at 452,756
+  KB, 0.16 s above the judgment. The voice and the directory answer read the
+  site half.
+  KILLS: (1) the normalizer's first form matched headers only at a
+  paragraph's start, and four peers written as headers without a blank line
+  before them stayed buried in their neighbours — it splits at a status word
+  now; (2) the first timing of the new facet ran the BOOT: the installed
+  shim always runs boot/mentl.wasm, and an environment variable it does not
+  read changed nothing — measured again through `wt_run` on m2; (3) a helper
+  named `state_field_name` shadowed parser.mn's and `mentl fmt` reported
+  `E_MissingImport` from lower.mn — deleted, the parser's read; (4) the gate's
+  first roster was the compiler's link alone and flagged live names — a
+  Pulse function in examples/, the three registered primitives, WAT words
+  the emitter writes, a board key — so it reads every shipped program's
+  `decls`, the words at the `text $` and `text _` sites, and the baseline's
+  keys (102 → 92 before the sweep); (5) the first repin's board was RED on
+  one frontier leg, the decls facet's, which grepped the old answer's phrase
+  ("judged decl") — it asserts each of the fixture's three names once at
+  its line now, RED on c8ba5799 and green on 943d87ce, and the march ran
+  again, its block superseding the red one; (6) the ten agents running this
+  integration died at the account's session limit, and what they left was
+  recovered from disk, the rest moved mechanically from the program rather
+  than retyped.
+  NAMED: `Hβ.query.text-answers-the-literal`,
+  `Hβ.query.directory-answer-drops-the-name`.
+  Cost: m3 leg 34.32 s wall · 386 MB peak RSS (396,040 KB).
 - 2026-10-06 · pin c8ba579971428cf1 (CLEAN m2 == m3; FIRST LIGHT m3 == m4) · THE VIEW IS A PROJECTION, CLOSED (L-C's second pin, over d956687d8ac29dfa — the entry below):
   THE AUDIT BEFORE THE SECOND PIN read the View against the graph, nine
   findings: (A1) one diagnostic render, in the reporter's own world

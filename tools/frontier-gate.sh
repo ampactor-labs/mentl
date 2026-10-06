@@ -3999,16 +3999,19 @@ for i in "${!compilers[@]}"; do
   fi
 
   # ─── The decls facet (the bound-projection landing's gate) ──────────
-  # `query <fixture> "decls"` projects the decls COLUMN — the oracle
-  # queue's own seed set. Born RED 2026-08-07: the incumbent boot
-  # answered "error: unknown query: decls". The fixture's three decls
-  # (lines 7/9/11) must be listed located; the retired whole-handle
-  # NBound walk seeded every fn-typed MENTION alongside its decl.
+  # `query <fixture> "decls"` projects the decls COLUMN: every name the
+  # judged declarations declare, beside its declaration's site. Born RED
+  # 2026-08-07: the incumbent boot answered "error: unknown query: decls".
+  # Each of the fixture's three decls (lines 7/9/11) is listed ONCE, by
+  # name at its line — the retired whole-handle NBound walk seeded every
+  # fn-typed MENTION beside its decl, and the roster before 2026-10-06
+  # answered addresses alone, so it could not say what it listed.
   df_out=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" query "$ROOT/tests/frontier/mn-decls-facet.mn" "decls" 2>/dev/null)
-  if printf '%s' "$df_out" | grep -q "judged decl" && printf '%s' "$df_out" | grep -q "mn-decls-facet:7" && printf '%s' "$df_out" | grep -q "mn-decls-facet:9" && printf '%s' "$df_out" | grep -q "mn-decls-facet:11"; then
-    pass "decls facet: the column lists the fixture's three decls (7/9/11)"
+  df_once() { [ "$(printf '%s\n' "$df_out" | grep -cE "^  $1  at .*mn-decls-facet:$2:")" = 1 ]; }
+  if printf '%s' "$df_out" | grep -q "declared name(s)" && df_once inc 7 && df_once twice 9 && df_once main 11; then
+    pass "decls facet: each of the fixture's three decls listed once, by name at its line (7/9/11)"
   else
-    fail "decls facet (column projection; got: $(printf '%s' "$df_out" | tail -1))"
+    fail "decls facet (each decl once, by name at its line; got: $(printf '%s' "$df_out" | grep -E 'declared name|mn-decls-facet' | tr '\n' ' '))"
   fi
 
   # ─── The reading facets: text, prose, writes of ─────────────────────

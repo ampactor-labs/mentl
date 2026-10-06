@@ -88,9 +88,11 @@ that remains is a host: the WASI shim, the channel, the textarea and ONE
 generic painter keyed by element id. The CLI's stdio session and the LSP are
 the other two transports of the same projections, so a facet the wheel grows
 reaches the page by construction and every regular expression that parses the
-wheel's prose in the page deletes. Today (L-B) the page parses the address
-projection's lines; L-C moves the Ring, the Lens and the Ledger into the
-wheel's answer first, and every intermediate ships.
+wheel's prose in the page deletes. Since L-C (2026-10-06) the Ring, the Lens
+and the Ledger are the wheel's answer and the page parses none of the wheel's
+prose; the canvas's tokens and spans, the gutter cells and the verb geometry
+(L-D), and the module map and the trail (L-E) join the same answer next, and
+every intermediate ships.
 
 ---
 
@@ -210,11 +212,16 @@ writer) integrates it; the trail records it. Undo is trail-walk, so undo works
 *across projections*: undoing a change you made by dragging a topology edge and
 one you made by typing are the same operation in the same history.
 
-The whole loop is authored today in `cursor_transport.mn` (`cursor_session` /
-`cursor_step`, the `<~` at the human boundary); the surfacing cadence
-(real-time, idle-debounced, on-save, on-ask) is a transport handler choice, and
-the kernel substrate underneath is invariant. Accept *is* a graph write:
-`apply_suggestion` → `PatchWrite` → `splice_span` draws the edge and the loop
+The loop's one cycle is authored in `cursor_transport.mn` (`cursor_step`:
+project, render, read the human's action, fold it into the next state), and
+`cursor_session` writes the loop as the `<~` at the human boundary — but a `<~`
+with nothing to drive it ticks once, so the terminal's session reads one action
+per invocation today (`Hβ.felt.edit-session-reads-one-action`); the page's
+session is the resident one (§8). The surfacing cadence (real-time,
+idle-debounced, on-save, on-ask) is a transport handler choice, and the kernel
+substrate underneath is invariant. Accept *is* a graph write:
+`apply_suggestion` → `accept_fill` draws the edge first (`graph_accept_note`),
+and the splice that re-derives the module is its projection; the loop
 re-projects. There is no separate "apply" pathway to keep in sync.
 
 ### 3.2 · The Canvas — the formatter's projection
@@ -244,8 +251,8 @@ IS the refusal), a consume or a borrow, an obligation's ✓ ◌ ✗, the gradien
 one next step, a Reason worth reading — each a live read, each a door into the
 ring, each drawn only when its degree of interest clears the strip's
 threshold. Format-liftable ceremony vanishes at parse (redundant braces,
-semicolons — `E_RedundantBraces`, `E_StatementSemicolon`), so the developer
-sees canon always and never a nag about it.
+semicolons — SYNTAX's format-liftable band), and the canvas re-renders canon
+on idle, so the developer sees canon always and never a nag about it.
 
 The keystroke→graph latency budget is the whole feel. The current artifact
 already compiles small programs in about half a second on every keystroke with a
@@ -270,12 +277,15 @@ has eight aspects, the ring has eight vertices, and the socket's frame is the
 same octagon — a shape in the chrome, never a ligature, so the source renders
 as the same two characters in every editor, diff and terminal.
 
-Each facet renders under a strict provenance contract, always visible, so the
-surface never dresses a guess as the compiler's graph truth: `surface` (the
-page's own parse), `declared` (a `with` row read verbatim), `real` (a live
-compiler read: an inferred type, a diagnostic, a debt), and `socket` (a
-named-future gate that renders no value it cannot yet earn). The ring is where
-invariant 4 lives or dies: eight facets, never eight alarms.
+Each facet renders under a provenance badge, always visible, so the surface
+never dresses a guess as the compiler's graph truth: `real` (a live compiler
+read: an inferred type, a diagnostic, a debt), `socket` (a hole's row — a
+named-future gate that renders no value it cannot yet earn), and `surface` (the
+placeholder the page draws before the session's first answer; the page parses
+nothing). A fourth, `declared` (a `with` row read verbatim), is the form's and
+not yet the View's: today the page derives the badge from the fact's kind, and
+the ultimate form is the View stating each fact's provenance itself. The ring
+is where invariant 4 lives or dies: eight facets, never eight alarms.
 
 ### 3.4 · The socket — the gradient's mouth
 
@@ -294,7 +304,10 @@ step by the proof; it is the structural prior a token-sampler cannot have (PLAN
 The signature move is the tie-break. When two survivors satisfy every *expressed*
 constraint, the medium does not guess. It surfaces **the one missing
 constraint** (a refinement, a type, an example) that collapses the tie, then
-proposes the proven code (PLAN §5's `Hβ.felt.intent-ranker-gradient-plus-teaching`).
+proposes the proven code (PLAN §5's teaching tie-break). The question is
+computed, never canned: it is the first cell two survivors' trails bound
+differently, named through that cell's own Reason (C6), so it asks about what
+the developer was just writing.
 That is the teaching compiler: the disambiguating question is the ranker, and
 naming the missing bit is one keystroke, cheaper than guessing it. A learned
 code-body prior survives only as an optional last-resort `Synth` handler behind
@@ -579,6 +592,20 @@ output); until it lands, the ten lessons under `lib/tutorial/` are the
 course's text-first form, each fmt-canonical at zero self-diagnostics, and
 Pulse renders through `mentl run` in the terminal.
 
+The course's landing (PLAN §11, Tier 3) writes the ten lessons as
+`examples/pulse/course/01…10`, each a program `mentl run` renders to a WAV
+and each with a proposal contract at its hole, points the manifest at that
+one project, and deletes `lib/tutorial/`, since two homes for the course is
+one too many. It stands on V2 (a fanout costs no more than its
+desugaring, so lessons 3 and 5 stop contradicting each other), the Stage
+Law in lib/dsp (so lesson 1's `|>` fills the datum), SPACE.1 and RACE
+(lesson 10 spawns), and it is born canonical: SYNTAX's fenced examples are
+fixtures and examples/ joins the board. Lesson 6 states its rate through the
+negation on the render path until a handler pins its instance, and lesson
+8's second half — the developer's own `choose` under the medium's search —
+waits on AU6; each says so in its own prose. The design, whole, is
+`Hβ.course.pulse-is-the-course` in RESIDUE.
+
 ---
 
 ## 6 · Sessions, collaboration, and the console at scale
@@ -597,7 +624,7 @@ Pulse renders through `mentl run` in the terminal.
   walk*.
 - **At scale, Mentl Space is the oversight console** (PLAN §0 pt 5). The same
   surfaces, pointed at a running fleet: the Ledger's absence proofs as the
-  security posture, live; the Wavefront's trail as the incident scrubber; a hole
+  security posture, live; the time axis (§4.4) as the incident scrubber; a hole
   in production as a suspended incident waiting for a proven fill, deployed as a
   resume. The editor and the console are one artifact, because editing and
   overseeing are one read at two altitudes.
@@ -774,26 +801,25 @@ over the page's console wire, with the product legs: render fidelity, no
 
 - **The View is rendered by the wheel** (L-C, 2026-10-06): `mentl space
   <file>:<line>[:<col>]` answers the View — the Ring's eight facts in
-  primitive order, each with its provenance (surface · declared · real ·
-  socket) and its notes (a chain's hops, a proposal's survivors or computed
-  question, an obligation's state); the Lens, a lead sentence first and then
-  every banked diagnostic AS THE KIND IT IS at ITS OWN site, the caret's
-  module before the linked ones; the Ledger, the declarations nearest the
-  caret by the graph's own proximity, the open obligations and the
-  tightenings — one typed fact tree in src/space.mn whose two projections are
-  the terminal's text (`mentl <file:line>`, byte-identical to the render it
-  replaced) and the page's JSON through lib/json.mn. The page is a host with
-  ONE painter over that JSON: the WASI shim, the channel, the textarea, and
-  no parser of the wheel's prose anywhere (the regex facet and stderr
-  parsers, the Teach knob, the status bar, the footer, the Wavefront strip
-  and the Module pane are deleted, §3.8). A caret move is a read of the graph
-  the session holds (a lesson's View in ~8 ms resident, ~1 KB; the browser's
-  read ~44 ms), an edit sends the changed text under its own path and the
-  session re-judges the moved cone as ONE judgment — the changed modules and
-  everything downstream, through the cold route's own machine, so a chain's
-  order and a cycle of modules are the judgment's binding groups and never
-  the session's — answering the View in one reply (~45 ms for a
-  lesson's edit, ~500 ms for Pulse's seventeen stages).
+  primitive order, each with its notes (a chain's hops, a proposal's
+  survivors or computed question, an obligation's state); the Lens, a lead
+  sentence first and then every banked diagnostic AS THE KIND IT IS at ITS
+  OWN site, the caret's module before the linked ones; the Ledger, the
+  declarations nearest the caret by the graph's own proximity, the open
+  obligations and the tightenings — one typed fact tree in src/space.mn whose
+  two projections are the terminal's text (`mentl <file:line>`, every line but
+  the lede byte-identical to the render it replaced) and the page's JSON
+  through lib/json.mn. The page is a host with ONE painter over that JSON: the
+  WASI shim, the channel, the textarea, and no parser of the wheel's prose
+  anywhere (the regex facet and stderr parsers, the Teach knob, the status
+  bar, the footer, the Wavefront strip and the Module pane are deleted, §3.8).
+  A caret move is a read of the graph the session holds, and an edit sends the
+  changed text under its own path while the session re-judges the moved cone
+  as ONE judgment — the changed modules and everything downstream, through the
+  cold route's own machine, so a chain's order and a cycle of modules are the
+  judgment's binding groups and never the session's — answering the View in
+  one reply. PLAN §7's L-C bullet carries the reads and edits measured at the
+  close pin, the page's and Pulse's among them.
 - **The project form**: `project <dir>` in `ide/space.manifest` (staged into
   `member` lines, since a static host lists no folder), `mentl space <dir>`
   for a folder on the command line, the select grouped by project, every
@@ -847,13 +873,17 @@ over the page's console wire, with the product legs: render fidelity, no
   course (§5.5) once the samples reach the page's audio output.
 - **Fill-and-resume, reality scrubbing, the fork tree** need band B (the
   re-execution driver and the fused search over the multi-shot producer).
-  Until then the Wavefront draws them as honest dormant gates, never a canned
-  branch.
+  Until then the time axis draws only the forks the medium held (§4.4), never
+  a canned branch.
 - **Session-as-image**: `persist = memcpy` is built (PLAN §7); the page's face
   — an accept outliving the process, a session reopened as a value — is
   `Hβ.felt.accept-outlives-the-process`.
-- **The LSP transport** (external editors get the same projections):
-  `Hβ.lsp.transport-runs-frontend`, `Hβ.lsp.session-reinfer`.
+- **The LSP transport** (external editors get the same projections): the
+  server has run the frontend on an open document since 2026-07-19
+  (`Hβ.lsp.transport-runs-frontend`, closed); its hover asks the voice's
+  `consult` at a bare span (`handle_hover`, src/lsp.mn), and the gate leg over
+  it passes whether or not contents come back, which is the first thing to
+  make able to fail. The View is the projection every LSP answer should serve.
 - **The living runtime** — the canonical IDE as the keystroke→parse→format→
   render loop — is `Hβ.felt.mentl-edit-runtime`; IC-riding reactivity is
   `Hβ.felt.reactivity-typed-demand-driven`; time-travel over the trail is

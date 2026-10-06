@@ -885,9 +885,10 @@ fn query_result_to_answer(result) = match result {
   // the module half drops here and only here: this answer is consumed by
   // readers that already know the file they asked about.
   AnsRefs(map(census_site_span, sites), Inferred("census: {int_to_str(len(sites))} {label}")),
-  QRDecls(sites) => // The decls column's sites ride AnsRefs like the census — same shape,
-  // so the module half drops at the same boundary and for the same reason.
-  AnsRefs(map(census_site_span, sites), Inferred("decls: {int_to_str(len(sites))} judged decl(s)")),
+  QRDecls(names) => // The declared names' sites ride AnsRefs like the census — same shape
+  // once the name is set aside, so the module half drops at the same boundary
+  // and for the same reason.
+  AnsRefs(map(named_site_span, names), Inferred("decls: {int_to_str(len(names))} declared name(s)")),
   QRWhere(_, sites) => // The where badges' site list rides AnsRefs like the census; the
   // badge lines render at the CLI (the terminal projection's home).
   AnsRefs(site_spans(sites), Inferred("where: {int_to_str(len(sites))} fanout site(s)")),
@@ -935,6 +936,10 @@ fn where_site_span(site) = match site {
 // audit findings are the same obligations — the forensic surface is one read.
 fn census_site_span(site) with Pure = match site {
   (_m, s) => s,
+}
+
+fn named_site_span(named) with Pure = match named {
+  (_, (_m, s)) => s,
 }
 
 fn diagnostics_from_debt(debt) = if len(debt) == 0 {

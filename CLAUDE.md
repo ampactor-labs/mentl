@@ -287,19 +287,22 @@
 > - **Deep kernel / novel-concept reasoning → INLINE.** Holding the whole
 >   accumulated state (the seam, the ev-slots, the probes that disproved prior
 >   root-causes) is irreplaceable; the single conversation is the handler.
-> - **Verifying my OWN conclusions → ADVERSARIAL DISPATCH.** After reasoning
->   inline to a root-cause / design / fix, spawn independent agents to REFUTE it
->   ("default to refuted if uncertain"). A fresh mind does not share my
->   accumulated fluency-bias — the highest-leverage anti-fluency tool, and a
->   systematic proxy for the human-catches-the-drift loop (PLAN §0: prose can't
->   enforce itself). The old rule foreclosed this; embrace it.
+> - **A finding that shows the artifact can be better is BUILT — the artifact
+>   is the refuter** (Morgan, 2026-10-06: "if the artifact could be better then
+>   go right ahead"; this replaces the adversarial-dispatch rule). The build and
+>   the mechanical gates — the fixed point, the census bounds, the battery —
+>   refute a wrong form in seconds where a refuter pass costs an hour, and they
+>   are what makes breaking things safe: a broken boot stops all work, so a
+>   break cannot ship past them. Agents are dispatched for BREADTH, never as
+>   skeptics of a design before it is built; the fluency a fresh mind was sent
+>   to catch is caught by running something (⊕: when the reason is unmeasured,
+>   the output is the next instrument).
 > - **Breadth / exhaustive coverage → WORKFLOW fan-out** (audits, multi-file
->   sweeps, judge-panels of N independent approaches).
+>   sweeps, fixtures, reading).
 > - **Synthesis stays INLINE** — agents inform the conclusion; I hold it.
 >
 > Scope every dispatch so it does NOT need the live context (scout inline first,
-> hand a complete brief), OR use it precisely BECAUSE it is independent
-> (adversarial verify). Never hand off the live deep-reasoning thread on a cold
+> hand a complete brief). Never hand off the live deep-reasoning thread on a cold
 > brief — that is the one proven drift.
 >
 > **THE BASE-FRESHNESS CONTRACT (measured 2026-07-25, non-negotiable):** the
@@ -338,27 +341,32 @@
 ## ⟲ The proven pipeline — every label is a hypothesis until the BINARY confirms it ⟲
 
 > The loop that closed the dead-end-flanked central blocker (2026-06-29, after many
-> sessions failed it): **diagnose → converge → build → verify → RE-DERIVE.** One law
-> above the rest: **a label is a HYPOTHESIS until the ARTIFACT confirms it — the
-> VERIFIER's included.** Three were refuted in a row this session: the orchestrator's
-> own ev-index theory (a dropped effect, not a bad index), a "multi-handler" root (a
-> seed PARSER bug), and an independent verifier's "regression" verdict (a stale tree,
-> caught only by re-deriving the gate by hand). The last, load-bearing check is the
-> orchestrator running the gate ITSELF and committing only on a self-confirmed
-> result — never on a build's or a verifier's word.
+> sessions failed it), in the form it has had since 2026-10-06: **diagnose → design
+> → build → gate → RE-DERIVE.** One law above the rest: **a label is a HYPOTHESIS
+> until the ARTIFACT confirms it — the VERIFIER's included.** Three were refuted in
+> a row that session: the orchestrator's own ev-index theory (a dropped effect, not
+> a bad index), a "multi-handler" root (a seed PARSER bug), and an independent
+> verifier's "regression" verdict (a stale tree, caught only by re-deriving the gate
+> by hand). The last, load-bearing check is the orchestrator running the gate
+> ITSELF and committing only on a self-confirmed result — never on a build's or a
+> verifier's word.
 >
-> - **Diagnose-first**, binary-arbitrated, with an **adversarial pin** told to refute
->   the leading hypothesis — kill the ghost before a fix chases it.
-> - **Adversarial design-convergence BEFORE a byte changes.** Propose N mechanisms;
->   refute each against the dead-ends / blast-radius / layering. When N independent
->   proposals collapse onto ONE attractor, that convergence IS the truth signal — and
->   it catches the dead-end (the eager-pass that reproduces the 200-site regression)
->   in design, not in production.
-> - **Gated build UNCOMMITTED → independent verify → orchestrator RE-DERIVES** the
->   ground truth. Three checks, none trusted on faith; the build stops HONESTLY at a
->   verified state rather than forcing (no band-aid).
+> - **Diagnose-first, binary-arbitrated:** the leading hypothesis meets an
+>   instrument — a fixture, a probe, a verb's answer — before a fix chases it.
+>   Kill the ghost by running something.
+> - **Design INLINE against the artifact's records, then BUILD.** The design is
+>   read against what the artifact has already measured — the LEDGER's kills,
+>   RESIDUE's refuted forms, the dead-ends a probe has named — and is then built
+>   whole. No refuter pass and no design-convergence panel stands in front of the
+>   build (Morgan, 2026-10-06): the build and the gates refute a wrong form in
+>   seconds, and a just-built form that fails is the instrument finding the next
+>   fundamental (⟐).
+> - **Build UNCOMMITTED → the orchestrator runs the gates ITSELF before any
+>   commit** — the march, the board, the battery, each answer read whole on the
+>   tree it will commit, never on a builder's or an agent's word. The build stops
+>   HONESTLY at a verified state rather than forcing (no band-aid).
 > - **Synthesis stays INLINE** (the design is the orchestrator's, holding the
->   altitude); diagnosis, refutation, breadth dispatch out (power × anti-drift, ⧗).
+>   altitude); instruments and breadth dispatch out (power × anti-drift, ⧗).
 >
 > This loop IS `mentl audit` + the multi-shot oracle in larval form (`PLAN.md §0`) —
 > the human-catches-the-drift safeguard run as machinery. **As Mentl becomes real the
@@ -686,7 +694,7 @@ rewrite in residue form inline.)
 | `_ => <fabricated value>` / `_ => str_concat` | A silent surrender-fallback — DELETE it, don't wrap; explicit enumeration |
 | "I'll work around this gap" (direct-loop, catch-all) | That's a BOLT onto a non-ultimate form — do the ultimate restructure |
 | "ultimate form reachable now" / "realistic ultimate" / "the deeper ideal is a follow-up" | Equivocating "ultimate" DOWNWARD to fit the seed — the underhanded drift in the discipline's costume. Ultimate is substrate-INVARIANT; the SEED yields, the target NEVER lowers. Dream-code the true form; sequence the work (§5), never the target |
-| "DEP-gated on X" / "requires the arena first" / "a separate band" / "blocked on unbuilt Y" — as a reason to STOP and report | **A DEP-GATE IS NOT A STOP — IT IS THE NEXT THING TO BUILD.** When the ultimate form needs a fundamental that isn't ultimate yet (the arena, a representation, a primitive), you BUILD that fundamental too, in ONE continuous arc, as deep as the ultimate requires. Naming the DEP and handing it back as a question ("want me to scope X?") is the lowered-target drift wearing a sequencing costume — the adversarial pass that FINDS the DEP is the START of the build, never the end. Take the initiative; drive the whole arc. The point of every session is to realize the novel, unprecedented, SOTA-SURPASSING Mentl form — not a copy of Rust/Haskell/anyone; the new thing we are building — AS DEEP AS IT GOES. Report a landing + keep going; never a "here's the plan, shall I?" |
+| "DEP-gated on X" / "requires the arena first" / "a separate band" / "blocked on unbuilt Y" — as a reason to STOP and report | **A DEP-GATE IS NOT A STOP — IT IS THE NEXT THING TO BUILD.** When the ultimate form needs a fundamental that isn't ultimate yet (the arena, a representation, a primitive), you BUILD that fundamental too, in ONE continuous arc, as deep as the ultimate requires. Naming the DEP and handing it back as a question ("want me to scope X?") is the lowered-target drift wearing a sequencing costume — the pass that FINDS the DEP is the START of the build, never the end. Take the initiative; drive the whole arc. The point of every session is to realize the novel, unprecedented, SOTA-SURPASSING Mentl form — not a copy of Rust/Haskell/anyone; the new thing we are building — AS DEEP AS IT GOES. Report a landing + keep going; never a "here's the plan, shall I?" |
 | Reductive audit only ("delete the duplication") with no novel pass | Run the GENERATIVE question too: how do multi-shot (time) / threading (space) / WASM-memory (substrate) + the frontier improve this primitive AND the system? Seek the leap, not only less code |
 | Tracing a trap / symptom before auditing the structure | AUDIT FIRST — the structure may not belong; the first symptom is rarely the root |
 | "Look up X by name" (ledger / index / map) | If a `~>` edge or the env already connects it → re-derivation (Anchor 1); follow the edge, read the live node |
@@ -759,8 +767,9 @@ for new convergences; (5) consolidate proactively.
 - **What Mentl IS / kernel / resolved decisions / laws:** `PLAN.md` (§0 reframe,
   §2 kernel, §4 decisions, §9 laws). **Syntax / forms:** `SYNTAX.md`.
 - **Bootstrap / substrate / file-map / verification:** `PLAN.md` (§6, §8).
-- **The cursor / current work:** `PLAN.md §11` (THE PRODUCTION BAR — the
-  live roadmap) + `§7` (grounded state + the landing ledger) + `§5`
+- **The cursor / current work:** `PLAN.md §11` (THE STANDING CURSOR — the
+  program's order, one landing per paragraph, each pointing at its RESIDUE
+  design) + `§7` (grounded state; the landing record is `LEDGER.md`) + `§5`
   (real→felt→unsurpassable) + `§10` (resume).
 - **When drift happens:** re-read the three docs, run `state.sh`, ask "what does
   the ultimate medium do here?", and implement that.

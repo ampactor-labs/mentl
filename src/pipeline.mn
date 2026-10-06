@@ -655,7 +655,7 @@ fn own_sites_of(question, m: String) = own_sites(ask(parse_query_string(m, quest
 fn own_sites(answer, m: String) = match answer {
   QRRefs(sites) => Some(("reference(s)", filter(site_in_module(m, ??), sites))),
   QRCensus(label, sites) => Some((label, filter(site_in_module(m, ??), sites))),
-  QRDecls(sites) => Some(("judged decl(s)", filter(site_in_module(m, ??), sites))),
+  QRDecls(names) => Some(("declared name(s)", names |> map(name_site) |> filter(site_in_module(m, ??)))),
   QRType(_, _) => None,
   QRIntent(_) => None,
   QRUnresolved(_) => None,
@@ -681,6 +681,10 @@ fn own_sites(answer, m: String) = match answer {
 
 fn site_in_module(m: String, site) = match site {
   (sm, _) => sm == m,
+}
+
+fn name_site(named) = match named {
+  (_, site) => site,
 }
 
 // The diagnostic bank keeps every report its install encloses, as the
@@ -1266,6 +1270,12 @@ fn census_site_line(site) = match site {
   (path, s) => "\n  at {path}:{show_span(s)}",
 }
 
+fn render_named_sites(names) = names |> map(named_site_line) |> str_concat_all
+
+fn named_site_line(named) = match named {
+  (name, (path, s)) => "\n  {name}  at {path}:{show_span(s)}",
+}
+
 // One line per undischarged obligation: the predicate the graph holds,
 // at the developer's own coordinates — the debt facet's site list.
 // The seam walk is GONE: the span is already the developer's own coordinate
@@ -1484,9 +1494,9 @@ fn render_query_result(result) = match result {
   },
   QRFlowLabel(label, reason) => "→ {show_flow_label(label)}\n  Reason: {show_reason(reason)}",
   QRCensus(label, sites) => "→ {int_to_str(len(sites))} {label}{render_census_sites(sites)}",
-  QRDecls(sites) => // The decls column's projection: every declaration the judgment
-  // noted, located.
-  "→ {int_to_str(len(sites))} judged decl(s){render_census_sites(sites)}",
+  QRDecls(names) => // The decls column's projection: every name the judged declarations
+  // declare, beside where it is declared.
+  "→ {int_to_str(len(names))} declared name(s){render_named_sites(names)}",
   QRModules(paths) => "→ {int_to_str(len(paths))} module(s) in the weave\n  {str_join_indented(paths)}",
   QRImports(rows) => render_import_rows(rows),
   QRUnreferenced(rows) => render_unref_rows(rows),

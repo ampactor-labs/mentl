@@ -128,10 +128,12 @@ Mentl uses Hindley-Milner type inference. **You do not need to annotate base typ
 
 **Rule:** Parameter type annotations are strictly reserved for **Intent Boundaries**. Use them to explicitly declare:
 1. **Refinement Types** (e.g., `pos: ValidOffset`, `span: ValidSpan`) which encode predicates that `Verify` must discharge.
-2. **Ownership Markers** (e.g., `ast: own Node`, `env: ref Env`) which enforce linearity and aliasing.
+2. **Ownership Markers** (e.g., `own ast: Node`, `ref env: Env`, `ref nodes`) which enforce linearity and aliasing.
 3. **Representation Pins** (e.g., `s: f32`, `coeff: f64`) which PIN a width the gradient would otherwise infer — the representation peer of the ownership marker (§"Type aliases", representation-pinned alias). `s: f32` is the bare-width form of `s: Float repr f32`.
 
 Do not write `fn name(a: Int)` when the graph can infer it. Do write `fn name(pos: ValidOffset)` to erect a graph-backed semantic contract — and `fn name(s: f32)` only when a narrower-than-inferred width is the control decision.
+
+**An ownership marker has ONE position: before the parameter's name** — `ref nodes`, `own ast: Node`. It is the one spelling that reads the same with a type and without one, which is why the parser reads the marker there (`parse_one_param`). The marker after the colon (`ast: own Node`) is the redundant spelling of the same parameter, so it is format-liftable to the name's side; the parser refuses it in type position today (`P_UnexpectedToken`), and the formatter landing parses it and lifts it.
 
 ### Redundant braces — braces wrapping a non-BlockExpr
 
@@ -214,7 +216,7 @@ The `-> RetTy` clause is optional; absent = inferred. Most user code does NOT an
 Trailing parameters may have default values. Call sites may omit them or override via labeled args.
 
 ```
-fn compress(x: Sample, ratio: Float = 4.0, threshold: Float = -12.0) -> Sample = ...
+fn compress(x: Sample, ratio = 4.0, threshold = -12.0) -> Sample = ...
 
 compress(sample)                                    // ratio and threshold defaulted
 compress(sample, 8.0)                               // ratio overridden; threshold defaulted
@@ -229,16 +231,16 @@ A default **desugars once at the declaration** to a callee-scoped fill: when a c
 Any call may use `name = value` for trailing positional arguments. Positional-before-labeled order:
 
 ```
-fn spawn_task(priority: Int, ref config: Config, timeout_ms: Int = 1000) -> Handle = ...
+fn queue_task(priority, ref config: Config, timeout_ms = 1000) = ...
 
-spawn_task(5, config)                                            // positional only
-spawn_task(5, config, timeout_ms = 5000)                        // positional + labeled override
-spawn_task(priority = 5, config = current, timeout_ms = 5000)   // all labeled
+queue_task(5, config)                                            // positional only
+queue_task(5, config, timeout_ms = 5000)                        // positional + labeled override
+queue_task(priority = 5, config = current, timeout_ms = 5000)   // all labeled
 ```
 
 **Defaults and labeled args are not two features — they are the parameter list AS a product node-kind.** A parameter list is a positional product (`PLAN.md §2`, L1); like every product it may be constructed positionally (`f(a, b)`), by field (`f(x = a, y = b)`), or mixed (`f(a, y = b)`) — the identical machinery as record literals `{a, b}` / `{x: a, y: b}` (punning + field-naming), and a default is a product field's fallback construction (the identical machinery as a record-field default). There is no second call-site feature; the product node-kind mandates all four forms. Labels resolve against the declared parameter names; an unknown label is `E_UnknownArgLabel`. (Under threading/multi-shot a labeled call is order-independent at the product level — the cursor may fill fields in any order.)
 
-**Identity, not position — the field's NAME is the key; the order is a projection.** A parameter product is not the position-keyed disease (`CLAUDE.md` drift-8, evidence-by-row-slot, `mode == 0/1/2`, parallel arrays): those use position as a *fragile proxy* for an identity. A product's fields *have* identity — their names — exactly as record fields do (sorted by name at parse, source order irrelevant). `spawn_task(priority = 5, config = c)` resolves by name; the positional `spawn_task(5, c)` is a *convenience* that fills fields in declaration order and resolves immediately *to* the names. Position is a deterministic layout over an identity-keyed set, never the key itself.
+**Identity, not position — the field's NAME is the key; the order is a projection.** A parameter product is not the position-keyed disease (`CLAUDE.md` drift-8, evidence-by-row-slot, `mode == 0/1/2`, parallel arrays): those use position as a *fragile proxy* for an identity. A product's fields *have* identity — their names — exactly as record fields do (sorted by name at parse, source order irrelevant). `queue_task(priority = 5, config = c)` resolves by name; the positional `queue_task(5, c)` is a *convenience* that fills fields in declaration order and resolves immediately *to* the names. Position is a deterministic layout over an identity-keyed set, never the key itself.
 
 ### Partial application — the product with a hole
 
@@ -255,8 +257,8 @@ adults(new_signups)                        // reuse — a hole-product is a firs
 **The hole is keyed by IDENTITY, never by position.** `filter({ p => p.age > 18 })` leaves *the parameter `xs`* unfilled — "the parameter `xs`," not "slot 2." When exactly one field is a hole, it is unambiguous. When several are, the hole is named explicitly with `??` at the field it marks:
 
 ```
-between(??, 100)      // the FIRST field is the hole: (x) => between(x, 100)
-clamp(0, ??, 255)     // the MIDDLE field is the hole: (x) => clamp(0, x, 255)
+between(??, 100)        // the FIRST field is the hole: { x => between(x, 100) }
+list_set(xs, ??, v)     // the MIDDLE field is the hole: { i => list_set(xs, i, v) }
 ```
 
 `??` is the same absence marker as the gradient's hole (§«Token enumeration», `THole`): a field the cursor reads as *unsupplied*. What fills it depends on context — Synth proposes a candidate, a call supplies a value, the `|>` pipe supplies the flowing datum, a resumption supplies it later — but the marker is one, and it names *which* field, never a slot.
@@ -268,7 +270,7 @@ users |> filter({ p => p.age > 18 })              // fills xs → equals filter(
 users |> filter({ p => p.age > 18 }) |> map({ p => p.name }) |> sort
 ```
 
-The pipe's type rule (§«`|>` — converge») requires `right : A -> B` — a product with exactly one hole — and a partial application *is* exactly that. So the pipe is not a syntactic append; it is the product's one remaining hole filled by the piped value. This is why the five verbs compose: every stage is a product pre-filled with its configuration, its data field a hole the pipe completes. A stage with more than one hole must name the pipe's target with `??` (`x |> clamp(0, ??, 255)`); a stage with none is a complete value and `E_PipeIntoComplete` teaches the missing hole.
+The pipe's type rule (§«`|>` — converge») requires `right : A -> B` — a product with exactly one hole — and a partial application *is* exactly that. So the pipe is not a syntactic append; it is the product's one remaining hole filled by the piped value. This is why the five verbs compose: every stage is a product pre-filled with its configuration, its data field a hole the pipe completes — `x |> clamp(0, 255)` fills `clamp(lo, hi, x)`'s datum. A call that is genuinely not a stage names the pipe's target with `??` (`nodes |> list_set(??, i, v)`, §«The Stage Law»); a stage with more than one hole and none marked, or with no hole at all, is not an `A -> B`, and the pipe's unification refuses it (`E_PipeHoleAmbiguous` and `E_PipeIntoComplete` name the two shapes, §«Diagnostic catalog»).
 
 **One primitive, five surfaces.** Positional construction, field/labeled construction, defaults, the hole (partial application), and pipe-completion are ONE thing — the parameter-list product constructed by identity with any subset of fields supplied, defaulted, or left as holes. There is no currying mechanism distinct from the product: a "curried function" is a product-with-holes, and the arity is never fuzzy, because the holes are named fields, not a hidden nesting of one-argument functions.
 
@@ -314,7 +316,12 @@ either the callee is genuinely not a stage (the `??` says so, explicitly —
 a chain datum), or the signature violates the law — and the fix is the
 SIGNATURE, never decoration at N call sites. The standard vocabulary obeys
 it: `map(f, xs)` · `filter(p, xs)` · `each(f, xs)` · `fold(init, f, xs)` ·
-`take(n, xs)` · `drop(n, xs)` · `any/all/find/count(p, xs)`.
+`take(n, xs)` · `drop(n, xs)` · `any/all/find/count(p, xs)`. Four prelude
+signatures still take the datum first — `reduce(xs, f)`, `scanl(xs, init, f)`,
+`nth(xs, n, default)` and `clamp(x, lo, hi)` — so `x |> clamp(0, 255)` is the
+law the prelude catches up to, through a medium-authored reorder that reads
+every call off its product, permutes the positional ones, leaves labeled calls
+untouched, and re-judges the program before it writes.
 
 ### Vocabulary — names are read as intent, never as ceremony
 
@@ -333,7 +340,7 @@ projection; see §«What a comment TRENDS TO»). Three rulings:
 - **Execution strategy never lives in a name.** HOW a stage runs is a `~>`
   handler fact (`>< [Thread ×4]` is a derived badge, §`><`), so
   `parallel_map` was vocabulary drift over `map ~> Schedule` — DISSOLVED
-  2026-07-02 (`Hβ.prelude.parallel-map-dissolves-into-schedule`). The blocker
+  2026-07-02. The blocker
   was never map's fanout substrate landing (that landed at PLAN §5.U STEP 4);
   it was that a standalone helper can never reach `Thread` scheduling at all:
   the schedule is read LIVE at the fanout's own install site (§`><` — the
@@ -362,10 +369,8 @@ projection; see §«What a comment TRENDS TO»). Three rulings:
 
 ```
 fn check_exhaustive(patterns) = {
-  fn covers_all(pats, variants) = {
-    // inner helper; visible only inside check_exhaustive
-    all_match(variants, (v) => any_match(pats, (p) => matches(v, p)))
-  }
+  // inner helper; visible only inside check_exhaustive
+  fn covers_all(pats, variants) = all_match(variants, { v => any_match(pats, matches(v, ??)) })
   covers_all(patterns, known_variants())
 }
 ```
@@ -415,7 +420,7 @@ weights |> filter({ (name, w) => w > 0 })
 
 ### The residue — `(params) => body`
 
-The binder form still parses, and it is the last of the line that retired `perform`, `handle`, `capability`, the turbofish and `|x|`. `mentl fmt` no longer writes it wherever the arm list expresses the same graph — a sole-parameter lambda, including the param-position destructure `((a, b)) => e`, renders as its arms — so what survives on the page is the honest remainder:
+The binder form still parses, and it is the last of the line that retired `perform`, `handle`, `capability`, the turbofish and `|x|`. A sole-parameter lambda IS an arm list, so the binder is the redundant spelling of one. `mentl fmt` writes the arms wherever the lambda's body is a `match` on its parameter (`arm_list_of`) — every arm list reads back that way, and so does the param-position destructure `((a, b)) => e`. A sole-parameter lambda with any other body keeps its binder today (`(x) => x + 1`), because the parser builds `{ x => x + 1 }` as a `match` on a minted parameter rather than as the one `LambdaExpr` the binder form builds; the formatter landing makes them one node, and every sole-parameter mint then renders as its arms. What survives on the page after that is the honest remainder:
 
 - **multi-parameter** (`(a, b) => a * b`) — the arm list is one-parameter, so these retire by becoming REFERENCES (`fold(0, add, xs)`), which is rule 1 and needs no new form. `Hβ.syntax.multi-param-lambda-is-a-reference`.
 - **the zero-argument thunk** (`() => e`) — retires into a named handler chain rather than into a literal. `Hβ.syntax.handler-chain-is-a-value`.
@@ -452,18 +457,20 @@ Both are named in positive form with their measured counts in `RESIDUE.md`; neit
 
 **Block body:**
 ```
-(input) => {
-  let cleaned = input |> clean
-  cleaned |> transform
+{
+  input => {
+    let cleaned = input |> clean
+    cleaned |> transform
+  },
 }
 ```
 
 ### Rule — braces are the BlockExpr literal
 
-- **A single expression body** (even multi-line) needs no braces: `(x) => x + 1`, `(x) => if c { a } else { b }`.
-- **A body that introduces `let`-bindings/statements (a `BlockExpr`)** requires braces: `(x) => { let y = setup(x); y + 1 }`.
+- **A single expression body** (even multi-line) needs no braces: `{ x => x + 1 }`, `{ x => if c { a } else { b } }`.
+- **A body that introduces `let`-bindings/statements (a `BlockExpr`)** requires braces: `{ x => { let y = setup(x); y + 1 } }`.
 
-Identical to named-fn bodies (§"Function declarations"): the brace requirement keys on "is this a `BlockExpr`?", never on line count.
+Identical to named-fn bodies (§"Function declarations"): the brace requirement keys on "is this a `BlockExpr`?", never on line count. The literal's own braces are not a body's: they hold the arms, and an arm's body follows the rule like any other.
 
 ### Inline higher-order use
 
@@ -477,7 +484,7 @@ zip_with((a, b) => a * b, xs, ys)          // likewise
 ### Returned closures
 
 ```
-fn compose(f, g) = (x) => g(f(x))
+fn compose(f, g) = { x => g(f(x)) }
 fn id(x) with Pure = x
 ```
 
@@ -537,7 +544,7 @@ x |> double |> square
 
 **Type rule:** if `left: A` and `right: A -> B with E`, then `left |> right: B with E`. The chain's row unions all stage rows.
 
-**A stage is APPLIED, never minted.** A call standing as a stage is completed in place (its hole filled by the piped value), and a function literal standing as a stage — `x |> (v) => v * 2`, `x |> { 0 => 1, n => n - 1 }` — is the piped value bound to its parameter, its body lowered in the frame the pipe stands in. Neither builds a closure, so neither costs the frame anything, and a stage-shaped chain inside a `with !Alloc` function stays allocation-free (real, 2026-09-28; before, each literal stage minted a closure per call under the same `!Alloc`). The parameter is a binder of that frame like any other: it may share a name with a local there, and the local reads its own value again once the stage closes.
+**A stage is APPLIED, never minted.** A call standing as a stage is completed in place (its hole filled by the piped value), and a function literal standing as a stage — `x |> { v => v * 2 }`, `x |> { 0 => 1, n => n - 1 }` — is the piped value bound to its parameter, its body lowered in the frame the pipe stands in. Neither builds a closure, so neither costs the frame anything, and a stage-shaped chain inside a `with !Alloc` function stays allocation-free (real, 2026-09-28; before, each literal stage minted a closure per call under the same `!Alloc`). The parameter is a binder of that frame like any other: it may share a name with a local there, and the local reads its own value again once the stage closes.
 
 **Applying a stage owes what the stage demands.** The piped value fills the stage's parameter exactly as a call's argument fills it, so the parameter's refinement is claimed of the value at the pipe and the row its precondition guards is paid there when the claim is open: `30000.0 |> alpha` over `alpha(c: Hz)` refuses as `alpha(30000.0)` does, and a partial stage owes the contract of the slot it leaves open (real, 2026-10-01; the pipe raised no claim before, §«Refinement types»).
 
@@ -558,8 +565,8 @@ Or equivalently with stage chains in branches:
 ```
 input
   <| (
-    (x) => x |> stage_a1 |> stage_a2,
-    (x) => x |> stage_b1,
+    { x => x |> stage_a1 |> stage_a2 },
+    stage_b1,
     extract_c,
   )
 ```
@@ -762,8 +769,8 @@ type and one verdict (the quartet gate,
 requirement belongs to `<|` alone, where each branch is APPLIED to
 the borrowed input and a non-function branch fails that
 application's unification. The parser never inspects branch shape —
-parse-time form classification is the eager-form-commitment drift
-(`protocol_parse_is_eager_graph_projection.md`).
+parse-time form classification commits a form before the judgment has
+read it, which Governing principle 1 rules out.
 
 ### `~>` — tee (handler-attach)
 
@@ -948,20 +955,20 @@ signal
 
 **The causality rule (real, 2026-08-12):** a cycle with no delay has no computable value — the prior would be the very output being computed — so `x <~ delay(0)` is **`E_ZeroDelayFeedback`**, an ARMED refusal at the `<~` site (nonzero exit, zero WAT). Faust makes this unsayable by inserting its delay implicitly; Mentl names the depth, so the depth can be wrong, so the medium refuses it. The refusal is one ARM of the depth read below — the same read that sizes the line judges whether the size is sayable — and both `delay(0)` and `Delay(0)` convict, the two spellings of one FeedbackSpec variant.
 
-**The iterative context is the CLOCK, and the clock is inferred, not required** (measured 2026-08-12). An earlier reading of this section demanded "the structural presence of a cycle/iteration-resume handler in the enclosing stack," with `E_FeedbackNoContext` when absent. The substrate never realized that: a `<~` site is a per-site state register whose *previous iteration* is the enclosing function's next call, which is why the stage `bandpass_stage` mints (`lib/dsp/signal.mn`, four `<~` sites) carries no clock in its row and is correct. Requiring an ambient effect would refuse correct code — the wheel's own thirteen `<~` sites among it — so `E_FeedbackNoContext` has no construction site, deliberately. Its honest form is the inferred clock (`Hβ.dataflow.clock-calculus-sample-rate`, Lustre's clock calculus): when the medium *proves* what advances a cycle, "nothing advances this one" becomes a measurement, and the refusal is that measurement projected. `Sample`/`Tick`/`Clock` are instances of the class, never a name-allowlist (a name-allowlist would be the string-keyed drift at the handler layer); `IterContext` (`lib/dsp/clock.mn`) is the marker vocabulary waiting on that landing.
+**The iterative context is the CLOCK, and the clock is inferred, not required** (measured 2026-08-12). An earlier reading of this section demanded "the structural presence of a cycle/iteration-resume handler in the enclosing stack," with `E_FeedbackNoContext` when absent. The substrate never realized that: a `<~` site is a per-site state register whose *previous iteration* is the enclosing function's next call, which is why the stage `bandpass_stage` mints (`lib/dsp/signal.mn`, four `<~` sites) carries no clock in its row and is correct. Requiring an ambient effect would refuse correct code — every `<~` site in the wheel's own link among it — so `E_FeedbackNoContext` has no construction site, deliberately. Its honest form is the inferred clock (`Hβ.dataflow.clock-calculus-sample-rate`, Lustre's clock calculus): when the medium *proves* what advances a cycle, "nothing advances this one" becomes a measurement, and the refusal is that measurement projected. `Sample`/`Tick`/`Clock` are instances of the class, never a name-allowlist (a name-allowlist would be the string-keyed drift at the handler layer); `IterContext` (`lib/dsp/clock.mn`) is the marker vocabulary waiting on that landing.
 
 **The declared depth IS the line's depth (real, 2026-08-12), and the line is a RING OWNED BY THE RECORD OF THE FUNCTION THAT CONTAINS THE CYCLE (real, 2026-09-27).** `delay(N)` carries N priors: the site's line is an N-slot ring, the prior the cycle reads is its OLDEST slot — y[n−N] — and each tick stores the output over it and advances the head by one, so a tick is a load, a store and a bounded increment at any depth (`delay(24_000)` costs what `delay(1)` costs per tick; `tests/frontier/mn-feedback-deep-line.mn` drives 2,000,000 ticks at that depth and the frontier leg prints the ticks per second). `delay(1)` is the single register it always was; `delay(3)` is genuinely three deep, measured by the same recurrence driven six times answering 6 under `delay(1)` and 2 under `delay(3)`. The ring is allocated ONCE, where its owner is built — never per tick — and its owner is the record of the function the `<~` sits in (handler = state = closure, read at the site): a lambda's line lives in the closure record past its captures, so every closure minted from one lambda is its own filter (`let lp_l = lowpass(0.3)` and `let lp_r = lowpass(0.3)` are two lines, the two-channel shape every stereo stage writes); a handler arm's line lives in the install record past the arms, so every `~> h` is its own filter; a reified remainder's line lives in the k record, shared by that k's resumptions as every heap write of the remainder is; a top-level fn's line — its record being the module's immutable data record — rides an instance global allocated at start, one per emitted twin, so a generic recurrence reached at Int and at Float ticks two lines at two widths; and a `<~` directly in a module value let's init is static the same way, its line owned by the module's init function, while a fn nested in that init is a closure minted there and keeps its lines in its record (real, 2026-09-28 — module scope is a frame). A filter that must exist once per signal is therefore a MAKER: lib/dsp's `lowpass_filter(sr)`, `highpass_filter(sr)`, `dc_blocker()` and `envelope_follower(attack, release, sr)` each return the stage, and each stage minted owns its line — they were top-level fns until 2026-09-28, one line per program, so a stereo pair through one filter shared one memory. Until this landed the line was N module globals keyed by the site alone: two closures from one lambda, two installs of one handler and two twins of one generic shared one register (the Float twin wrote f64 into an i32 line and refused to assemble), and a deep line was N global moves per tick (`tests/micros/mn-feedback-closure-instances.mn`, `mn-feedback-arm-instances.mn`, `mn-feedback-twin-width.mn`, `mn-feedback-deep-line.mn`, each measured on boot 542ea5a3 before the fix). **The `!Alloc` row survives the cycle (2026-09-25).** The RHS is checked as a `FeedbackSpec` VALUE — its type is what the site reads — but its construction never executes: emit discards the lowered spec and the prior is a register read off the ring, so the site judges the spec in a frame whose row is dropped. Until that landing the constructor's allocation charged the frame: `fn cycle() with !Alloc` around `((prev) => ramp(prev)) <~ Delay(3)` refused with `!Alloc + Any vs Memory + Alloc`, and arming `E_EffectMismatch` turned that false charge into a false refusal of a correct program, which is what closed it (tests/frontier/mn-feedback-transport.mn pins it). The surface question behind it stays open and is the smaller artifact: whether the RHS should stop being an expression and become a static depth annotation, which is what the emit already treats it as (`Hβ.effects.feedback-row-substitutes`, branch B).
 
-**The depth must be a LITERAL.** A line is a fixed set of slots, so a depth the medium can only read at runtime is a depth it cannot hold — and handing such a site one slot is precisely the silent wrong the depth read exists to end. `delay(n - 1)` is **`E_ComputedDelayDepth`**, armed at the `<~` site. A runtime-sized line wants the image-backed sequence rather than a register file, which is `Hβ.dataflow.delay-line-runtime-depth`, riding the value ontology's own view/slice work.
+**The depth must be a LITERAL.** The literal is compiled into the line twice: it sizes the ring where its owner allocates it (`line_ring_bytes`, src/backends/wasm.mn — a two-word header, then the slots), and it is the modulus the head wraps at on every tick, an immediate in the emitted code. A depth the medium can only read at runtime is a depth today's line cannot hold — and handing such a site one slot is precisely the silent wrong the depth read exists to end. `delay(n - 1)` is **`E_ComputedDelayDepth`**, armed at the `<~` site. A runtime depth is the same ring with a cap word: the depth stored beside the head in the header's second word (padding today), the ring allocated at the size the value names, and the tick's modulus read from the ring instead of the immediate. That is `Hβ.dataflow.delay-line-runtime-depth`, and it waits on no other landing — only on a program that needs it.
 
-**Binding the prior — the recurrence form.** The LHS may be a single-param lambda `(prev) => body`; `prev` binds the **prior iteration's output**, read live, so a genuine IIR recurrence `y[n] = f(x[n], y[n-1])` is expressed (not approximated by a bare feed-forward LHS):
+**Binding the prior — the recurrence form.** The LHS may be a one-parameter function literal `{ prev => body }`; `prev` binds the **prior iteration's output**, read live, so a genuine IIR recurrence `y[n] = f(x[n], y[n-1])` is expressed (not approximated by a bare feed-forward LHS):
 
 ```
-fn lowpass(x: Sample, a: Float) -> Sample with Sample + Pure + !Alloc =
-  ((prev) => a * x + (1.0 - a) * prev) <~ delay(1)
+fn lowpass(x: Sample, a) -> Sample with !Alloc =
+  { prev => a * x + (1.0 - a) * prev } <~ delay(1)
 ```
 
-The prior is a **graph node** (the feedback site's own carried value), not a register copied into scope — `prev` resolves to `RFbPrior` → `LFeedbackPrior`, emitting a direct read of the site's prior local. The body is **inlined**, never a heap closure: a `<~` recurrence allocating per tick would defeat the `!Alloc` real-time row, so the prior is a register read. A bare-expression LHS (no lambda) is the feed-forward form — it computes on the current input only; the `(prev) =>` form is what carries `y[n-1]`. The surface surpasses Faust's untyped `~`: the prior carries the same refinement row (`Sample`/`Hz`/`Gain`) and the `!Alloc` proof as the forward path. (Surface kernel correspondence: primitive #3 the `<~` verb; primitive #5 the prior is owned-read, not aliased.)
+The prior is a **graph node** (the feedback site's own carried value), not a register copied into scope — the literal's parameter resolves to `RFbPrior` → `LFeedbackPrior`, emitting a direct read of the site's prior local, and `prev` binds it. The body is **inlined**, never a heap closure: a `<~` recurrence allocating per tick would defeat the `!Alloc` real-time row, so the prior is a register read. A bare-expression LHS (no literal) is the feed-forward form — it computes on the current input only; the literal's parameter is what carries `y[n-1]`. The binder spelling `((prev) => body) <~ delay(1)` builds the same recurrence and is the residue §«Function literals» names. The surface surpasses Faust's untyped `~`: the prior carries the same refinement row (`Sample`/`Hz`/`Gain`) and the `!Alloc` proof as the forward path. (Surface kernel correspondence: primitive #3 the `<~` verb; primitive #5 the prior is owned-read, not aliased.)
 
 ---
 
@@ -1310,8 +1317,9 @@ answers its head with its inferred row and the address it is declared at
 (`inv(n)  at main:11`) before its parameters' and return's widths; a value
 whose type is still a variable reads `a : a @ per instantiation`, since every
 instantiation is specialized and takes its own width (real, 2026-10-02). A pin that names the width the gradient would already infer
-is `W_RedundantRepr` (drop it; the gradient reaches it anyway). A pin equal to the
-floor on an integral type is likewise vacuous. **The same `repr` pin is a
+is redundant (drop it; the gradient reaches it anyway), and so is a pin equal to the
+floor on an integral type; the narration that would say so, `W_RedundantRepr`, is not
+yet born. **The same `repr` pin is a
 parameter annotation** (the Intent-Boundary peer of `own`/`ref` — §"The Intent
 Boundary Rule"): `fn gain(s: f32, k: f32) = s * k` pins the bare-width form (`f32`
 ≡ `Float repr f32` at the parameter altitude); the gradient infers every unpinned
@@ -1503,7 +1511,7 @@ arm's splice compiled clean on boot cf8a6d50
 (`tests/micros/mn-refine-install-answer.mn`,
 `mn-refine-install-answer-proven.mn`, `tests/frontier/mn-ifc-tee-arm-leak.mn`).
 
-The predicate is a compile-time obligation; at gradient-top it erases entirely (no runtime check). `Verify`'s default ledger accrues what it cannot discharge statically (`V_Pending`); the Arc F.1 SMT handler swap discharges those by residual theory — same source, deeper proof engine.
+The predicate is a compile-time obligation; at gradient-top it erases entirely (no runtime check). `Verify`'s default ledger accrues what it cannot discharge statically (`V_Pending`); Verify's own solver discharges more of it as its fragment grows (`PLAN.md §11` Phase 8.3: path narrowing, overflow-aware intervals, linear arithmetic, case splits by fork) — same source, deeper proof engine. An external solver plugs in only as a proposer whose certificate the kernel checks.
 
 ---
 
@@ -1523,7 +1531,9 @@ effect State {
 }
 ```
 
-Each operation declares its parameter types and return type (if non-unit). **Resume cardinality is INFERRED at handler-decl time from each arm body** — never declared on the effect op. The infer pass counts resume call sites under control-flow ancestry; the inferred cardinality attaches to the op's `TCont` continuation type and drives lower's tier selection (Tier 1 direct call vs Tier 3 heap continuation). See `protocol_cursor_is_the_substrate.md` for the discipline.
+Each operation declares its parameters and its return type (if non-unit). **Resume cardinality is INFERRED at handler-decl time from each arm body** — never declared on the effect op. The infer pass counts resume call sites under control-flow ancestry; the inferred cardinality attaches to the op's `TCont` continuation type and drives lower's tier selection (Tier 1 direct call vs Tier 3 heap continuation).
+
+**An op's parameters are a parameter product, named as a function's are** — `print(msg: String)`, `fail(msg: String) -> a`, `effect Sample(rate: Int)` — because the field's NAME is the key (§«Labeled call arguments»): a perform may be labeled, an arm binds by name, and every projection reads the name. The positional spelling (`fs_write_file(String, String)`, a bare type per parameter) still parses, and nearly every op in the medium's own source is written that way, its names living in the arms that bind them or in a comment above the op. That is the gap the naming sweep closes: the medium proposes each name from what its providers' arms bind (asking where they disagree), and once no op is left unnamed the bare form is refused.
 
 The graph type is `TCont(R, S, ResumeDiscipline, World)`: `R` is the value
 accepted by `resume`, `S` is the answer produced by the captured remainder,
@@ -1537,9 +1547,7 @@ An effect op is invoked as a **bare call** — the same surface as any
 function call:
 
 ```
-fn expect_true(value) = {
-  check(value, "expected true")     // canonical — check is the Test effect's op
-}
+fn expect_true(value) = check(value, "expected true")   // check is the Test effect's op
 ```
 
 The env binding proves op-ness (`EffectOpScheme`); the op's `TFun` row
@@ -1549,9 +1557,8 @@ sites. The reader who needs suspension points reads the row in the
 signature or the cursor's projection — the medium narrates what a
 keyword would only whisper.
 
-**`perform` is not a keyword** (dissolved 2026-08-08, the
-`Hβ.syntax.perform-dissolution` peer executed — the turbofish/`handle`
-precedent, third application): the word lexes as an ordinary
+**`perform` is not a keyword** (dissolved 2026-08-08 — the turbofish and
+`handle` precedent, applied a third time): the word lexes as an ordinary
 identifier, so a stale-fluency `perform check(...)` parses as ordinary
 expressions and the general unresolved-name diagnostic teaches the
 bare call in context. No bespoke recognizer, no format-lift class —
@@ -1590,14 +1597,13 @@ driver read a wide answer as a word and such a program did not assemble.
 
 ### Unit return omission
 
-If an effect op returns unit `()`, the `-> ()` clause may be omitted:
+An effect op that returns unit `()` declares no return:
 
 ```
 effect Console { print(msg: String) }       // returns ()
-effect Console { print(msg: String) -> () } // equivalent, explicit
 ```
 
-Both forms are accepted; absence is the idiomatic short form. Non-unit returns MUST be declared explicitly: `read() -> String`. This mirrors the fn-declaration rule where `-> RetTy` is optional on inferred fns but REQUIRED when declared.
+`-> ()` makes the same graph as its absence, so it is a redundant form (Governing principle 2) and format-liftable: `mentl fmt` writes an op's head without it (`render_effect_ops`), and a function's authored `-> ()`, which the render carries back today, lifts the same way at the formatter landing. A projection never writes it either: `mentl where` still prints `-> ()` on a unit op, and the one head renderer every surface reads through ends that. A non-unit return is written, because an op has no body to infer it from: `read() -> String`.
 
 **Never-returning ops** declare `-> !`: the op's handler arm never resumes
 (`abort() -> !` — the control cut the Abandon discipline reads; a bare type
@@ -1628,7 +1634,7 @@ Per the parameter-list-as-product rule (§"Labeled call arguments"), a zero-arg 
 
 ```
 effect Sample(rate: Int) {
-  tick() -> ()
+  tick()
   current_sample() -> Float
 }
 
@@ -1876,17 +1882,18 @@ first-class kernel value (`PLAN.md §2`), so **naming a row is what `type` alrea
 does** — there is no separate `capability` keyword:
 
 ```
-type File = read + write
-type Network = http + dns
+type File = Read + Write
+type Network = Http + Dns
 type ApiClient = File + Network
 ```
 
 `type Name = <row-expr>` is a transparent alias (§Type aliases): `Name` unpacks to
 its row at every site that takes a row, and `with File + Network` composes
-structurally. The RHS uses the full Boolean algebra `+ - & ! Pure`:
+structurally. Its terms are effect names, capitalized as every declared effect
+is. The RHS uses the full Boolean algebra `+ - & ! Pure`:
 
 - `+` **union** — `type ApiClient = File + Network`
-- `-` **difference** — `type ReadOnly = File - write` (admits `read`, rejects `write` at the structural gate)
+- `-` **difference** — `type ReadOnly = File - Write` (admits `Read`, rejects `Write` at the structural gate)
 - `&` **intersection** — `type Shared = ServiceA & ServiceB` (effects BOTH require — the natural typing of a `<|` divergent join); the identity `E - F = E & !F` holds (`inter_row`)
 - `!` **negation** — `!Alloc` (universe-minus; transitive proof-of-absence)
 
@@ -1897,9 +1904,18 @@ fn fetch(url) with ApiClient = {
 }
 ```
 
-A row that resolves to `Pure` (everything subtracted out) is `W_CapabilityEmpty`
-(the alias adds no constraint — drop it); a row referencing an undeclared effect
-surfaces `E_MissingVariable` at the unresolved name.
+A row alias is stored as its authored terms and expanded where a signature reads
+it (`row_alias_triples`, src/effects.mn), so an alias that resolves to `Pure`
+(everything subtracted out) simply IS `Pure` there: it adds no constraint and
+can be dropped. No narration says so yet — the catalog's `W_EmptyRow` is not yet
+born (§«Diagnostic catalog»). A cycle through an alias's own expansion refuses
+(`E_RowAliasCycle`), and so does a negated alias whose row is not positive and
+closed (`E_RowAliasNegation`). A row term that names no declared effect is a
+silent wrong today: the expansion takes an unknown name as an effect of that
+name, so `!Network` in a module that declares no `Network` checks clean and
+constrains nothing; the reference link refuses the unresolved name at the term
+(`Hβ.lower.reach-edge-on-node`, whose link carries every reference to its
+declaration).
 
 ### A SIGNATURE IS NOT AN INVENTORY — name the capability, author the negation
 
@@ -1928,12 +1944,15 @@ full positive row is read at the address surface (`mentl <file:line>` renders
 are. So the normal signature is `with !Alloc + !Thread`: shorter *and* the part
 worth reading. Three mechanisms carry it:
 
-- **`T_RowInventory`** narrates a clause whose bare positive names are exactly
-  what the body proves — or whose body row is OPEN (a callback's row rides
-  its tail), where a positive cap installs no gate and so constrains nothing.
-  `T_OverDeclared` keeps the case where a declared name is beyond the proven
-  row, and reads the positive half only: a negation-only signature is never
-  "over-declared" (it used to narrate `!Mutate + Any` against a Pure body).
+- **`T_RowInventory`** narrates a clause whose bare positive names the body's
+  row proves, every one, where that row is GROUND — a cell nothing charged, or
+  a resolved row with no free terminal (`enforce_row_gate`, src/infer.mn). Over
+  an OPEN body row (a callback's row rides its tail) the bare names are a CAP
+  and the cap is a gate (below), a decision rather than an inventory, so
+  nothing is narrated. `T_OverDeclared` keeps the ground case where a declared
+  name is beyond the proven row, and reads the positive half only: a
+  negation-only signature is never "over-declared" (it used to narrate
+  `!Mutate + Any` against a Pure body).
 - **`mentl tighten`** writes each narrated clause's RESIDUE — its negations and
   instance pins, or no clause at all — never the proven row (the old form
   wrote type-instances the grammar cannot read back). The medium authored its
@@ -1957,15 +1976,14 @@ landing a positive cap installed nothing — only its negation half did — and
 that program compiled. So a positive row on a HOF is a decision the medium
 enforces; write one when the cap is meant, and let inference project the row
 otherwise. The two micros that carried `with Abort` on a try/catch HOF whose
-thunks allocate and choose refused on arming and lost their caps — the class
-LENS §2.2 predicted (`try_with_abort_catch`: a row "to allow the outer scope's
-effects to flow", which a positive row cannot say).
+thunks allocate and choose refused on arming and lost their caps — a positive
+row cannot say what their comment asked of it (`try_with_abort_catch`: a row "to
+allow the outer scope's effects to flow").
 
 **Dissolved:** the `capability` keyword and the `TCapability` token. `capability X
-= <row>` was structurally `type X = <row>` (the doc's own prior admission, peer
-`Hβ.types.capability-as-row-alias`) — a row is a type-level value, so naming one IS
-a type alias, and a second keyword for it is the redundant form Governing Principle
-2 rejects. (Want *nominal* row identity — a row that does not unify with its
+= <row>` was structurally `type X = <row>` — a row is a type-level value, so naming
+one IS a type alias, and a second keyword for it is the redundant form Governing
+Principle 2 rejects. (Want *nominal* row identity — a row that does not unify with its
 structural equal? That is record-style branding; but capabilities want structural
 composition, so the transparent alias is the ultimate form.)
 
@@ -2121,7 +2139,7 @@ the match predicate is the inner pattern's alone.
 import path/to/module
 ```
 
-The path is a slash-separated module name. The `ModuleResolver` handler maps it to a file in `std/` or the project's source tree.
+The path is a slash-separated module name. The resolver (`driver_module_path`, src/driver.mn) maps it to a file: the path as written, then `src/` and `lib/` of the repository, then the same two under the installed home (`/mentl-home`). So a user program can import the compiler's own modules today, a layering the module graph is to refuse: a program resolves against its own project and the runtime library.
 
 ### Selective import
 
@@ -2129,7 +2147,7 @@ The path is a slash-separated module name. The `ModuleResolver` handler maps it 
 import path/to/module {name_a, name_b, name_c}
 ```
 
-Only the listed names are brought into scope.
+Only the listed names are brought into scope. The parser reads the path and stops today (`ImportStmt` carries the path alone), so the selective set, and the collision refusal below that rests on it, are the lathe's next turn — the module as a scope, `Hβ.driver.per-module-env-overlay`.
 
 ### No rename / alias
 
@@ -2302,12 +2320,12 @@ types unify** (ordinary HM unification) — never to choose the operator. So an
 operand of not-yet-resolved element type is an open `[?a]` that **still
 concatenates**; "unresolved operand" is not a failure mode. Element-type mismatch
 (`[Int] ++ [Bool]`) surfaces as an ordinary unification failure with a Reason
-chain back to the `++` site — **`E_ConcatTypeMismatch`**, a type error, not a
-dispatch artifact.
+chain back to the `++` site — `E_TypeMismatch`, its Reason naming the `++`
+(`infer_binop`): a type error, not a dispatch artifact.
 
 **Drift-refusal preserved:** `++` never fabricates a result for a genuinely
 untypable operand — it surfaces the unification failure with a Located reason (the
-no-silent-fallback law, `protocol_no_silent_fallback`). **Dissolved:** the
+no-silent-fallback law, `PLAN.md §9.2`). **Dissolved:** the
 `list_concat`-vs-`str_concat` dispatch table and `E_ConcatTypeUnresolved`
 (`(unreachable)` when lower couldn't pick a representation) — both existed only to
 choose between two representations the unified ontology does not have. A
@@ -2337,11 +2355,10 @@ ranked a nullary variant's word against the other operand's address, and that
 program answered the opposite with no diagnostic).
 
 **Drift-refusal preserved:** `==` on a heap value never emits pointer comparison —
-pointer-eq lying as structural equality is the silent fallback
-`protocol_no_silent_fallback` forbids. The derivation is **total over the five
-node-kinds** (the `Hβ.eq.structural-deep` peer is this general definition realized,
-not a carve-out); `str_eq` is the byte-sequence instance the surface `==` lowers
-to, never a developer-facing primitive.
+pointer-eq lying as structural equality is the silent fallback `PLAN.md §9.2`
+deletes. The derivation is **total over the five node-kinds** — this general
+definition, never a carve-out per shape; `str_eq` is the byte-sequence instance
+the surface `==` lowers to, never a developer-facing primitive.
 
 **TWO MEASURED HOLES IN THAT TOTALITY, both CLOSED.** (1) An operand whose
 type is still a VARIABLE where the comparison is emitted has no structure to
@@ -2569,15 +2586,15 @@ Mentl's canonical layout: 2-space indent for left-edge verbs (`|>`, `~>`, `<|`);
 - Each stage of a `|>` / `~>` chain renders at the SAME indent as its peers.
 - Within a `<|` branch tuple, branches render at the SAME indent as each other.
 
-The parser accepts any whitespace; the precedence table alone draws the tree (chain-link-5, `protocol_parse_is_eager_graph_projection.md`). Tabs are converted to spaces at save. Indent is a render decision, never a parse contract — there is no ill-indented program, only un-normalized source the formatter has not yet touched.
+The parser accepts any whitespace; the precedence table alone draws the tree (Governing principle 1). Tabs are converted to spaces at save. Indent is a render decision, never a parse contract — there is no ill-indented program, only un-normalized source the formatter has not yet touched.
 
 **Render rule** (canonical):
 - The formatter renders code in canonical 2-space / 4-space form on save.
 - **A render that would lose what the author wrote is not written** (real, 2026-09-28). `mentl fmt` lexes its render beside the source and spends every identifier, literal (by value, so `48_000` and `48000` are one) and prose line of the source against the render's; anything left unpaid is a loss, the verb names it with its line, leaves the file untouched, and exits nonzero. Until then the gate counted prose alone and wrote whatever it rendered: it deleted an effect parameter's annotation (`rate: Int`), an op parameter's name (`msg: String`) and a pinned alias's base (`Float repr f64`) while reporting "prose conserved", and it wrote a lossy render of a file that did not parse.
 - **The head of a postfix form keeps its parens** (real, 2026-09-28). A call, a field read and an index bind tighter than every operator, so a callee, a receiver or an indexed value that is anything but an atom renders parenthesized: `(r |> keep).level`, `((a, b) => a * b)(2, 3)`, `([1, 2] ++ [3, 4])[2]`. Rendered bare, the re-parse takes the postfix onto the head's last operand — `(run() ~> h).beta` came back as `run() ~> h.beta`, an install of `h.beta`, under "names conserved", because no name was lost. The census of names cannot see a moved operand; a render that re-parses to a different tree is not yet refused (`Hβ.fmt.render-must-parse-to-the-same-tree`).
 - The `Format` effect at `src/format.mn` declares `format_program` / `format_at_handle` / `format_chain` ops; `format_default` is the canonical handler.
-- `mentl edit` (built-in) auto-formats continuously — keystroke triggers parse → format → render. The developer never sees badly-indented code because the medium normalizes before display.
-- The LSP transport (external editors via VS Code / vim / Emacs) provides format-on-save through the same `format_default` handler, different transport.
+- The editing surfaces format as a projection — keystroke → parse → format → render — so the developer never sees badly-indented code: the page's canvas re-renders the canonical form on idle, never mid-keystroke (the canvas landing), and `mentl edit` takes one action per invocation today (`Hβ.felt.edit-session-reads-one-action`).
+- The LSP transport (external editors via VS Code / vim / Emacs) answers no formatting request yet; its format-on-save is the same `format_default` read, one more method on the server's dispatch.
 - Tabs in the on-disk file are converted to spaces at the next save; the renderer's indent-width preference is per-developer (editor setting), but the file on disk is canonical for L1 byte-identity and version-control determinism.
 
 **Composition**: the formatter is a `~>` handler in the cursor stack:
@@ -2591,7 +2608,7 @@ keystroke
     <~ accumulate(graph)
 ```
 
-Per `protocol_oracle_is_ic.md`: format is idempotent (`format(format(x)) == format(x)`), so the IC fixpoint converges in one iteration. The format problem dissolves into the cursor projection.
+Format is idempotent (`format(format(x)) == format(x)`), so the incremental cursor's fixpoint converges in one iteration, and `mentl fmt` writes its own fixpoint in one invocation (it renders, re-parses, re-renders, and writes the second render). The format problem dissolves into the cursor projection.
 
 ---
 
@@ -2649,18 +2666,20 @@ type TokenKind
   // Note: `loop`, `break`, `continue`, `return`, `for`, `in` are NOT
   // reserved keywords — Mentl has no imperative control flow constructs.
   // Iteration is via `|>` + `<~` + `Iterate` effect handlers.
-  // Early-exit is via `Abort` effect + `catch_abort` handler.
+  // Early exit is an arm that never resumes: its perform unwinds to the
+  // install whose arm answers (§«Resume discipline», `Abandon`).
   // The gradient teaches the substrate at the friction-point: when a user
   // types `for x in xs`, `E_NotAKeyword` surfaces a Quick Fix to the
-  // verb form `xs |> each((x) => ...)`.
+  // verb form `xs |> each({ x => ... })`.
   // ITERATION IS TOPOLOGY, stated whole (2026-07-30): structural walks
   // are derived folds/`each`/`map` over the data's shape, cycles are
   // `<~`, search is handler resumption. Named recursion stays LEGAL —
   // but an index-threaded self-call (`f(xs, i + 1, n)`) is the
   // imperative loop in recursion's costume (`mentl audit`'s
-  // iteration-shape tier names it), and polymorphic recursion prices a
-  // signature (the with-clause/annotated form — inference there is
-  // undecidable, the price is real math).
+  // iteration-shape tier names it), and polymorphic recursion infers
+  // within the decidable fragment the judgment's rounds reach, pricing a
+  // signature only past it (`T_PolyRecursionSignature` teaches it there —
+  // inference beyond the fragment is undecidable, the price is real math).
 
   // ─── Identifiers and literals (carry payload) ─────────────────────
   // Constructors share ONE namespace (env entries). The literal-token
@@ -2706,7 +2725,7 @@ type TokenKind
 | Variant         | Lexical form     | Payload   | Where parser expects it                       |
 |-----------------|------------------|-----------|------------------------------------------------|
 | **Keywords (17)** |                |           |                                                |
-| `TFn`           | `fn`             | —         | start of function declaration / lambda         |
+| `TFn`           | `fn`             | —         | start of a function declaration (never a literal's head — `E_RedundantFnOnLambda`) |
 | `TLet`          | `let`            | —         | start of let-binding                           |
 | `TIf`           | `if`             | —         | start of if-expression                         |
 | `TElse`         | `else`           | —         | between if branches                            |
@@ -2714,9 +2733,9 @@ type TokenKind
 | `TType`         | `type`           | —         | start of type declaration                      |
 | `TEffect`       | `effect`         | —         | start of effect declaration                    |
 | `THandler`      | `handler`        | —         | start of handler declaration                   |
-| `TWith`         | `with`           | —         | effect clauses, handler state, handle-with     |
+| `TWith`         | `with`           | —         | effect clauses, handler state, a resume's state update |
 | `TResume`       | `resume`         | —         | inside handler arm body                        |
-| *(removed)*     | —                | —         | `for`, `in`, `loop`, `break`, `continue`, `return`, and `perform` were previously reserved but are NOT Mentl keywords. Iteration uses pipe verbs + Iterate effect; early-exit uses Abort effect; ops are bare calls (`perform` dissolved 2026-08-08 — the peer executed). |
+| *(removed)*     | —                | —         | `for`, `in`, `loop`, `break`, `continue`, `return`, and `perform` are NOT Mentl keywords. Iteration uses the pipe verbs and the Iterate effect; early exit is an arm that never resumes; ops are bare calls (`perform` dissolved 2026-08-08). |
 | `TImport`       | `import`         | —         | top-level import statement                     |
 | `TWhere`        | `where`          | —         | refinement type clause                         |
 | `TOwn`          | `own`            | —         | parameter ownership marker                     |
@@ -2750,7 +2769,7 @@ type TokenKind
 | **Single-character operators and punctuation (23)** |  |           |                              |
 | `TLParen`       | `(`              | —         | grouping, params, tuples, calls                |
 | `TRParen`       | `)`              | —         | close grouping                                 |
-| `TLBrace`       | `{`              | —         | blocks, records, handler arms, type variants   |
+| `TLBrace`       | `{`              | —         | blocks, records, arm lists, effect and handler bodies |
 | `TRBrace`       | `}`              | —         | close LBrace                                   |
 | `TLBracket`     | `[`              | —         | list literals, list patterns                   |
 | `TRBracket`     | `]`              | —         | close LBracket                                 |
@@ -2808,7 +2827,7 @@ Diagnostic on non-unit if-without-else: **`E_IfMissingElse`** with Quick Fix sug
 
 Mentl's diagnostics are TEACHING surfaces, not punishment — and a diagnostic IS a
 **projection of the graph**, not a hand-maintained registry. Each is a `DiagKind`
-constructor (`type DiagKind = ERedundantBraces(Span) | EEffectMismatch(EffRow, EffRow, Span) | …`)
+constructor (`type DiagKind = ERedundantBraces(Span) | EEffectMismatch(EffRow, EffRow, Reason, Span) | …`)
 carrying its **Located Reason edge** (arm 8) and its **Applicability**
 (`type Applicability = MachineApplicable | MaybeIncorrect | HasPlaceholders | Unspecified`
 — an ADT, never a string). The live catalog is `mentl diagnostics` walking those
@@ -2823,10 +2842,14 @@ column** (drift-7 avoided): **severity** (error vs narration) and **applicabilit
 the IC cursor re-projects to show the resolved state and any newly-surfaced
 downstream Reason — the same `<~ accumulate(graph)` loop the formatter uses. The
 diagnostic surface IS a `~>` handler re-projecting the graph, exactly like
-`format_default`. (Relocating diagnostic IDENTITY fully onto the `DiagKind` ADT — so
-`report` takes a `DiagKind`, not strings, and these three tables become a projection
-of `types.mn` — is the unsurpassable form, sequenced as the
-`Hβ.diag.catalog-as-projection` follow-up.)
+`format_default`. Identity already lives on the ADT: `report` takes one
+`DiagKind`, and its source, severity, applicability and message are its
+projections (`diag_source`, `diag_kind`, `diag_applicability`, `diag_message`,
+src/types.mn). What remains is the tables: until they are the
+text of that projection (`mentl diagnostics`, `Hβ.diag.catalog-as-projection`),
+a row here can name a class no constructor declares. Each such row says so —
+**not yet born** — with what the shape does today, and that landing births the
+class or strikes the row.
 
 The three groupings below are **derived bands**, not authored law:
 - **Format-liftable** ≡ `MachineApplicable` ∧ the redundant form has no graph node (next section).
@@ -2845,19 +2868,21 @@ re-flow emits no token, so it carries no code — which is exactly why
 `E_IndentMismatch` does **not** exist (there is no ill-indented program, only
 un-normalized source the formatter has not yet touched).
 
-*The silent lift is the DESIGN; the artifact's state, probed 2026-08-07:
-`E_StatementSemicolon` is silent as designed, while `E_RedundantBraces`
-still surfaces as a warning — it retires when the formatter's canonical
-projection becomes the save path (the fmt sweep's payoff ratchet,
-`RESIDUE.md`'s fmt entry), never by muting the reporter.
-`E_RedundantPerform` is DELETED (2026-08-08): `perform` is no longer a
-token, so there is nothing to lift.*
+*The silent lift is the DESIGN. `E_RedundantBraces` still surfaces as a
+warning — it retires when the formatter's canonical projection becomes the
+save path (the fmt sweep's payoff ratchet, `RESIDUE.md`'s fmt entry), never by
+muting the reporter. `E_RedundantPerform` is DELETED (2026-08-08): `perform` is
+no longer a token, so there is nothing to lift.*
 
 | Code                  | Trigger (an emitted token, removed/transformed)         | Canonicalization                                 |
 |-----------------------|---------------------------------------------------------|--------------------------------------------------|
 | `E_RedundantBraces`   | braces wrapping a non-`BlockExpr` (no statements)       | drop the braces; user sees no diagnostic         |
 | `E_BlockNeedsBraces`  | statements (a `BlockExpr`) written without braces       | wrap the statements in `{ }`; user sees no diagnostic |
-| `E_StatementSemicolon`| `;` between statements                                  | lift to newline layout; canonical text has no `;` |
+| `E_StatementSemicolon`| `;` between statements. **Not yet born**: the parser skips the `;` as a separator (`skip_sep`) and the render writes newline layout, so the lift is real and silent, and no constructor names it | lift to newline layout; canonical text has no `;` |
+
+Two more redundant spellings lift the same way and have no class yet: an
+explicit `-> ()` (§«Unit return omission») and an ownership marker after the
+colon (`ast: own Node`, §«The Intent Boundary Rule»).
 
 ### Hard errors (substrate violations)
 
@@ -2869,28 +2894,28 @@ token, so there is nothing to lift.*
 | `E_PurityViolated`    | `with Pure` body performs non-empty effects   | `MaybeIncorrect`     | remove `with Pure` or absorb the effect        |
 | `E_FeedbackNoContext` | `<~` used without iterative context — DECLARED, zero construction sites by design: the ambient-context requirement is a Faust inheritance the substrate never adopted (a `<~` prior is a per-site register advanced by the enclosing fn's next call), so firing it would refuse correct code. It becomes real when the clock is INFERRED (`Hβ.dataflow.clock-calculus-sample-rate`) | `MaybeIncorrect` | install an `Iterate`-class handler (`Sample`/`Tick`/`Clock`)        |
 | `E_ZeroDelayFeedback` | `x <~ delay(0)` — a cycle with no delay: the prior would be the value being computed. ARMED (refuses the executable); one arm of the depth read, both the `delay` and `Delay` spellings | `MaybeIncorrect` | raise the delay to at least 1 |
-| `E_ComputedDelayDepth` | `x <~ delay(n - 1)` — the depth is a runtime value. A feedback line is a fixed set of declared slots, so an unreadable depth cannot be held, and the site would silently get one slot. ARMED, the sibling arm of the same read | `MaybeIncorrect` | write the depth as a literal, or hold the history yourself |
+| `E_ComputedDelayDepth` | `x <~ delay(n - 1)` — the depth is a runtime value. A feedback line's ring is sized and wrapped by its literal depth, so an unreadable depth cannot be held, and the site would silently get one slot. ARMED, the sibling arm of the same read | `MaybeIncorrect` | write the depth as a literal, or hold the history yourself |
 | `E_OwnershipViolation`| `own` consumed twice / escapes ref scope      | `Unspecified`        | restructure to single-consume or use `ref`     |
 | `E_UseAfterMove`      | a borrow-READ of a name the affine ledger already moved — the read half of affine beside `E_OwnershipViolation`'s consume half. ARMED 2026-09-15: it narrated while its own census held at zero (the arming law its decl and fixture both stated), and a narration held at zero is a counter standing in for a proof. Sound today only by accident: the heap frees only where an extent ends — an arena's exit, a reset — never at a `Consume`, so it is a use-after-free the day a `Consume` reclaims | `Unspecified` | drop the read, or restructure so the move happens after it — never a patch |
-| `E_HandlerUninstallable` | handler arms need effects context disallows | `MaybeIncorrect`   | widen ambient row or restructure handler       |
+| `E_HandlerUninstallable` | handler arms need effects context disallows. **Not yet born**: what an arm performs enters the install's row (`row(h)`, §«`~>` — tee»), so a context that forbids it refuses as `E_EffectMismatch` | `MaybeIncorrect`   | widen ambient row or restructure handler       |
 | `E_HandlerInexhaustive` | a handler's arms answer some ops of an effect and not others (§«A handler is exhaustive») — an install absorbs every op of the effects its arms answer, so the missing op would escape the row and reach nothing at runtime. ARMED at birth, 2026-09-30, born at wheel-zero; the shape it refuses was a false absence proof that trapped | `HasPlaceholders` | add the arm; forward the op outward (`op(…) => resume(op(…))`); or declare the ops this handler answers as their own effect |
 | `E_ThreadedBranchEffect` | under a threaded schedule, a branch's row carries an effect whose covering handler at the fanout's frame — or, for a fanout a caller's schedule demands, along the demand's chain of installs, the callback parameter's row read at the instantiating site — writes its state (`resume … with`), lies beyond the frame fence with no demand reaching it, or reaches such a handler through its own arms (§`><`). ARMED, born at wheel-zero | `MaybeIncorrect` | install a handler that writes no state at the fanout's frame, or install the handler inside the branch |
 | `E_ContinuationUncapturable` | a held or multi-shot perform standing where its continuation cannot be captured: not the first work of its function, block or arena — bound by a `let`, past a statement, after an operand that does work (§«Where a continuation is captured») — or a CALL standing there whose callee's row proves such an op (the message names the callee, whose row carries the op). An abandoning perform never triggers it: a dead continuation unwinds from any position. Said at the settle point over the emitted reach, so a body nothing runs is never refused. ARMED at birth, 2026-10-03: it compiled clean and trapped at a runtime floor no diagnostic named (exit 134); the call face the same day (AN-2) | `MaybeIncorrect` | move the perform or the call to the front of its function, block or arena, or move what precedes it into a function the perform's function calls |
 | `E_DerivativeUnreachable` | a `d(v)` under a derivative reading whose argument's tangent was lost — into an aggregate, across a multi-shot perform, off a line ticked by forward code or a line a closure record owns, or through another `d` — a mint, an install or a state write under the reading that would store a lost tangent into a record, or a reading whose seed is not a Float variable in scope (§`~>`). The message names the loss site. ARMED at birth: the alternative is a slope of zero the program never has | `Unspecified` | keep the value out of the aggregate until it is asked for, or seed the reading at a Float variable |
 | `E_MissingVariable`   | name not in scope                             | `MaybeIncorrect`     | check spelling; check imports                  |
-| `E_ImportNameCollision` | two selective imports bind the same name    | `MaybeIncorrect`     | narrow the selective sets so each name binds one edge |
+| `E_ImportNameCollision` | two selective imports bind the same name. **Not yet born**: the selective set does not parse yet (§«Imports»), and a link is one namespace, so two linked modules' functions of one name refuse link-wide (`E_DuplicateFnName`) | `MaybeIncorrect`     | narrow the selective sets so each name binds one edge |
 | `E_MissingImport`     | a name resolves only because the whole link carries it: declared at module level in a module the referencing module never imports, directly or transitively (the prelude's closure is ambient — the driver links it into every compile). ARMED at birth, 2026-09-27: the per-module solo sweep as one read of the one judgment, naming both modules at the reference | `MaybeIncorrect` | add `import <declaring module>` to the referencing module |
 | `E_UnknownArgLabel`   | a labeled arg names no declared parameter     | `MaybeIncorrect`     | check the label against the parameter names    |
 | `E_TypeMismatch`      | unification failed — the message carries the Reason the unify was asked with, past the diagnostic's own span (`Int vs List(Byte) — ~> pipe → at 15:13-15:27: inferred from the arm bail of handler h`; real 2026-10-03 — the reporter had taken the reason and dropped it, so a mismatch said its two types and nothing of why they met) | `Unspecified`        | adjust types; widen / narrow                   |
 | `E_OccursCheck`       | infinite type                                 | `Unspecified`        | restructure to break cycle                     |
 | `E_OrphanHandlerAttach` | `~>` with no preceding chain                | `Unspecified`        | delete `~>` or supply body                     |
-| `E_PipeIntoComplete`  | `x \|> f(…)` where `f(…)` has no hole (already a complete value, not a `A -> B`) | `MaybeIncorrect` | leave a hole for the piped value (drop an arg or mark it `??`) |
-| `E_PipeHoleAmbiguous` | `x \|> f(…)` where `f(…)` has more than one hole and none is marked `??` | `MaybeIncorrect` | mark the pipe's target field with `??` (`x \|> clamp(0, ??, 255)`) |
+| `E_PipeIntoComplete`  | `x \|> f(…)` where `f(…)` has no hole (already a complete value, not a `A -> B`). **Not yet born**: the stage meets the expected one-parameter function by unification (`infer_pipe`), so the shape refuses as `E_TypeMismatch` | `MaybeIncorrect` | leave a hole for the piped value (drop an arg or mark it `??`) |
+| `E_PipeHoleAmbiguous` | `x \|> f(…)` where `f(…)` has more than one hole and none is marked `??`. **Not yet born**: the same unification refuses it as `E_TypeMismatch`, its arity face | `MaybeIncorrect` | mark the pipe's target field with `??` (`nodes \|> list_set(??, i, v)`) |
 | `E_NotAKeyword`       | user typed `for`/`while`/`loop`/`break`/`continue`/`return` | `MaybeIncorrect` | rewrite as verb form per substrate             |
 | `E_PatternAlternationBindingMismatch` | branches in `\|` bind different names or types | `MaybeIncorrect` | adjust patterns to bind same names with unifiable types |
 | `E_ResumeOutsideArm`  | `resume` outside a handler-arm body           | `Unspecified`        | move the resume into an arm; the continuation only exists there |
-| `E_ResumeWorldMismatch` | two continuations (`TCont(R, S, discipline, world)`) unify with incompatible resume DISCIPLINES — OneShot and MultiShot are distinct representations (stack frame vs heap record), so the mismatch is hard; `Either` unifies with either. The WORLD half is the row unification in the same TCont arm (`!E` lifted to the TIME axis, §4③); its dedicated runtime raise (`E_ResumeWorldMismatchWorld`) is declared but not yet wired — lathe-lag, band B | `MaybeIncorrect` | align the handler arms' resume cardinality; for a world clash, re-install the absorbing handler before the resume OR widen the continuation's world |
-| `E_ConcatTypeMismatch` | `++` operands' element types fail to unify (e.g. `[Int] ++ [Bool]`) | `MaybeIncorrect` | unify the element types |
+| `E_ResumeWorldMismatch` | two continuations (`TCont(R, S, discipline, world)`) unify with incompatible resume DISCIPLINES — OneShot and MultiShot are distinct representations (stack frame vs heap record), so the mismatch is hard; `Either` unifies with either. The WORLD half is the row unification in the same TCont arm (`!E` lifted to the TIME axis, §4③). A resume under a changed world has no runtime refusal of its own yet: a persisted image restores the world it was written with, and `image_resume` (lib/persist.mn) refuses only an image of another build — the typed, located refusal of a changed-world resume is band B's, and no class names it yet | `MaybeIncorrect` | align the handler arms' resume cardinality; for a world clash, re-install the absorbing handler before the resume OR widen the continuation's world |
+| `E_ConcatTypeMismatch` | `++` operands' element types fail to unify (e.g. `[Int] ++ [Bool]`). **Not yet born**: the failure is `E_TypeMismatch`, its Reason naming the `++` (§«Concatenation operator») | `MaybeIncorrect` | unify the element types |
 | `E_DeclaredRowContradiction` | one authored clause asserts a name present AND absent (`with E + !E`, instance-aware — a bare present beside an instance absent stays a refinement). Reported at the signed fold BEFORE the meet's drop; ARMED (refuses the executable): the pre-diagnostic meet let a performing body check clean under a declared `!E` | `MachineApplicable` | drop one side of the contradiction |
 | `E_ArithOnAggregate`  | `+ - * / %` or unary `-` whose operand is a product, sum, sequence, function, continuation or unit — the operands are addresses and the arithmetic would be on where the values live. ARMED at birth (the wheel's census is zero): judged at the operator for a bound operand and at the one writer for a gated cell bound later (a `NumericGate` on the cell, copied at instantiation, reached through the instance column), so the judgment refuses, `mentl check` says so, and no WAT streams. Until 2026-09-27 it compiled and multiplied the addresses | `Unspecified` | give the operand a number (a word) or read the field you meant |
 | `E_UnresolvedHole`    | compiling an EXECUTABLE whose reachable emitted tree carries an authored value-position `??` (§«Partial application» — a hole is productive for check/edit, never an executable value; a parameter-product `??` is an executable suspension and runs). Raised by the executable gate between reachability and emit: nonzero exit, zero WAT bytes, the authored weave span on the diagnostic | `HasPlaceholders` | fill the hole (accept a Synth survivor) or suspend it into a parameter product |
@@ -2903,11 +2928,11 @@ token, so there is nothing to lift.*
 | Code                  | Trigger                                       | Applicability        | Action                                          |
 |-----------------------|-----------------------------------------------|----------------------|-------------------------------------------------|
 | `T_OverDeclared`      | a declared bare positive name beyond the proven row (the positive half only — a negation is a proof claim, never over-declared) | `MachineApplicable`  | `mentl tighten` writes the clause's residue |
-| `T_RowInventory`      | a declared clause whose bare positive names are exactly what the body proves, or a positive cap over an OPEN body row (which installs no gate and so constrains nothing) — the projected row written by hand (§«A signature is not an inventory») | `MachineApplicable` | `mentl tighten` writes the residue — negations, instance pins, or no clause |
+| `T_RowInventory`      | a declared clause whose bare positive names the body's GROUND row proves, every one — the projected row written by hand (§«A signature is not an inventory»). Over an OPEN body row the bare names are a cap the declaration installs as a gate, and nothing is narrated | `MachineApplicable` | `mentl tighten` writes the residue — negations, instance pins, or no clause |
 | `T_WordSlotBox`       | a wide value (a Float) boxed into a fresh cell to cross a callee's slot sized for a word — a list primitive's element (`list_set`) — inside a unit whose row does not say `Alloc`: the representation's cost, not the program's, until the slot takes the value's own width (`Hβ.value.seq-element-stride-carrier`). Said at the settle point by the allocation audit, which refuses every allocation that IS the program's | `MaybeIncorrect` | keep the value at a word's width where the slot is one, or wait for the carrier |
-| `W_Suggestion`        | probable Quick Fix available                  | `MaybeIncorrect`     | (Mentl-proposed)                                |
+| `W_Suggestion`        | probable Quick Fix available. **Not yet born**: a proposal reaches the developer through the Teach facet (`mentl teach`), and a narration that carries its fix is its own `T_` class | `MaybeIncorrect`     | (Mentl-proposed)                                |
 | `W_RedundantWhere`    | `type X = Y where true` — vacuous predicate   | `MachineApplicable`  | drop the `where true`; alias is transparent     |
-| `W_EmptyRow`          | a named row (`type X = <row>`) resolves to `Pure` | `MaybeIncorrect`     | drop the alias; the row IS `Pure` already       |
+| `W_EmptyRow`          | a named row (`type X = <row>`) resolves to `Pure`. **Not yet born**: the alias expands to `Pure` where a signature reads it and nothing is said (§«Named effect rows») | `MaybeIncorrect`     | drop the alias; the row IS `Pure` already       |
 | `P_ExpectedToken`     | parser expected one token kind, found another | `MaybeIncorrect`     | (parser-emitted; pre-substrate-classification)  |
 | `P_UnexpectedToken`   | token kind not valid at this position         | `MaybeIncorrect`     | restructure per the surrounding form            |
 | `P_UnclosedConstruct` | EOF inside a construct (block, match arms, etc.) before its closer | `MaybeIncorrect` | close the construct OR remove its opening token |
@@ -2917,8 +2942,8 @@ token, so there is nothing to lift.*
 
 ## What this document is NOT
 
-- NOT a tutorial. See `examples/` for tutorials.
-- NOT a reference for stdlib functions. See `std/` source + generated docs.
+- NOT a tutorial. The course is a program the page opens (`docs/MENTL_SPACE.md` §5.5); its text-first lessons are `lib/tutorial/` until Pulse's course replaces them.
+- NOT a reference for library functions. See `lib/` and `mentl doc <module>`.
 - NOT a description of the current parser. The parser implements this; where they disagree, the parser is wrong.
 - NOT an aspirational wishlist. Every form here is required to land in the parser — closing the gap between this spec and the parser is a standing obligation, not a someday (the parser is the lathe turned to SYNTAX.md; where they disagree, the parser is wrong).
 

@@ -16,6 +16,10 @@
 #      path; a command that does not exist is a broken promise. The §7
 #      landing ledger is HISTORY (a deletion record legitimately names the
 #      file it deleted) and is excluded from the sweep.
+#   4. RESIDUE's peers (tools/residue-truth.py): every peer the read-path
+#      docs cite is an entry, every entry's status is from the closed
+#      vocabulary and agrees with LEDGER's closures, and an open entry's
+#      code names resolve to what the medium declares.
 #
 # Scaffold tier (PLAN §6): dissolves into docs-as-projection + `mentl audit`
 # (the state sections generated from the graph make checks 1-2 vacuous; the
@@ -196,6 +200,20 @@ if [ -z "$cursor_block" ]; then
 elif printf '%s' "$cursor_block" | grep -qE '(crown|frontier|proof-exactness|micros|census) [0-9]+/[0-9]+'; then
   echo "doc-truth: PLAN §11's STANDING CURSOR carries a hard-coded board count —"
   echo "  the selector is read as CURRENT every iteration; the numbers live in state.sh (§7's law)"
+  fail=1
+fi
+
+# RESIDUE's peers held to the docs and the artifact (2026-10-06). PLAN §7 says
+# "a gap not in RESIDUE.md does not exist", and three claims in that sentence
+# are checkable: every peer the read-path docs cite is an entry header, every
+# status is from the closed vocabulary and agrees with the closures LEDGER
+# records, and an OPEN entry's code names resolve to what the medium declares
+# (`mentl query src/main.mn decls`), to a path, or to the entry's own Builds
+# line. Measured on its first run: 1,570 citations of peers with no header,
+# because RESIDUE had no entry headers at all — 508 lines opened with a peer
+# name and nothing told an entry from a continuation. One script, so the
+# roster parsing has one home.
+if ! python3 tools/residue-truth.py; then
   fail=1
 fi
 
