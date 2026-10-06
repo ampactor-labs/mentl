@@ -6519,6 +6519,7 @@ fn disciplines_compatible(a, b) with Pure = match a {
   OneShot => match b {
     OneShot => true,
     Either => true,
+    OneShotOrAbandon => true,
     MultiShot => false,
     Abandon => false,
   },
@@ -6527,6 +6528,7 @@ fn disciplines_compatible(a, b) with Pure = match a {
     Either => true,
     OneShot => false,
     Abandon => false,
+    OneShotOrAbandon => false,
   },
   Abandon => // M4 — Abandon (dead continuation) reconciles with itself or the
   // gradient-undecided Either; it is a distinct representation from the
@@ -6536,6 +6538,16 @@ fn disciplines_compatible(a, b) with Pure = match a {
     Either => true,
     OneShot => false,
     MultiShot => false,
+    OneShotOrAbandon => false,
+  },
+  OneShotOrAbandon => // A resume of it is the stack frame OneShot's is; an answer builds no
+  // continuation at all.
+  match b {
+    OneShotOrAbandon => true,
+    OneShot => true,
+    Either => true,
+    MultiShot => false,
+    Abandon => false,
   },
 }
 
@@ -12556,7 +12568,11 @@ fn draw_op_edges(arms, hname) = if len(arms) == 0 {
           // return — `arm_disc_of` carries the record of the bottom-return
           // hedge this replaced.
           let arm_disc = arm_disc_of(grade)
-          let disc = disc_join(cur_disc, arm_disc)
+          // The first handler drawn sets the discipline; every later one joins
+          // it. The scheme registers OneShot before any is drawn, and OneShot
+          // is not the join's identity once an abandoning arm exists: a resume
+          // beside an abandon is the mixed op.
+          let disc = if field_name_eq(cur_default, "") { arm_disc } else { disc_join(cur_disc, arm_disc) }
           // default/ambiguous evolve as before; disc always joins in.
           match if ambiguous || field_name_eq(cur_default, hname) {
             (cur_default, ambiguous)
@@ -12598,6 +12614,9 @@ fn scheme_with_disc_cost(scheme, disc) = match disc {
   OneShot => scheme,
   Either => scheme,
   Abandon => scheme,
+  OneShotOrAbandon => // The arm is called with the op's arguments as a call is, and an answer
+  // crosses in the instance's area, allocated once at start: no record.
+  scheme,
 }
 
 fn ty_with_row_added(ty, extra) = match ty {
@@ -12838,9 +12857,43 @@ fn classify_grade_all(decls, i) = if i >= len(decls) {
 // repin). Almost no declaration calls a parameter at its tail, so the tail
 // spine is read FIRST — an O(depth) walk with no allocation — and the
 // collection runs only for the parameters that appear there.
+// A callee with a tail path that calls none of them has an exit of its own —
+// `fn call_if(c, f) = if c { f() } else { 0 }` answers 0 where `f` is not
+// called — so a resume handed to it is not at the arm's result on every
+// path, and none of its parameters is transparent: the arm holds the resume
+// and answers through the record path (`call_if(c, () => resume(1))` was
+// the stack return, and its 0 came back to the performer as the op's
+// result).
 fn tail_transparent_params(params, body) = {
   let callees = tail_callee_names(body, [])
-  if len(callees) == 0 { [] } else { tail_transparent_loop(params, body, callees, 0, []) }
+  if len(callees) == 0 {
+    []
+  } else {
+    let ts = tail_transparent_loop(params, body, callees, 0, [])
+    if tail_paths_delegate(body, map(param_name_at(params), ts)) { ts } else { [] }
+  }
+}
+
+fn param_name_at(params, i) = param_name(list_index(params, i))
+
+fn arm_delegates(names, arm) = match arm {
+  (_, arm_body) => tail_paths_delegate(arm_body, names),
+}
+
+// Every tail path of `node` ends in a call of one of `names`.
+fn tail_paths_delegate(node, names) = match node {
+  N(b, _, _) => match b {
+    NExpr(BlockExpr(_, final)) => tail_paths_delegate(final, names),
+    NExpr(IfExpr(_, t, e)) => tail_paths_delegate(t, names) && tail_paths_delegate(e, names),
+    NExpr(MatchExpr(_, arms)) => all(arm_delegates(names), arms),
+    NExpr(CallExpr(f, _)) => match f {
+      N(fb, _, _) => match fb {
+        NExpr(VarRef(n)) => string_in_list(names, n),
+        _ => false,
+      },
+    },
+    _ => false,
+  },
 }
 
 fn tail_transparent_loop(params, body, callees, i, acc) = if i >= len(params) {
@@ -12926,6 +12979,10 @@ fn resume_use_eq(a, b) = match a {
   },
   RTail => match b {
     RTail => true,
+    _ => false,
+  },
+  RTailOrAbandon => match b {
+    RTailOrAbandon => true,
     _ => false,
   },
   RDeep => match b {
@@ -13053,23 +13110,44 @@ fn arm_disc_of(grade) = match grade {
   // after the resume (tests/micros/mn-oneshot-nontail-resume.mn).
   MultiShot,
   RTail => OneShot,
+  RTailOrAbandon => OneShotOrAbandon,
   RNone => Abandon,
 }
 
-// disc_join — the monotone op-level join: OneShot is the identity, MultiShot
-// absorbs. Either is never produced by resume_grade, so it passes b through.
+// disc_join — the monotone op-level join over the handlers of one op, the
+// first handler's discipline its start (`draw_op_edges`). A held arm
+// anywhere makes the op MultiShot: the remainder is a record every catch can
+// call. Otherwise a resume at the result beside an answer — in one arm, or
+// across two handlers — is OneShotOrAbandon: the performer calls whichever
+// arm the install chain reaches, and an answering path unwinds to its own
+// install. This read MultiShot in its comment and Abandon in its arms until
+// 2026-10-06, and the arms were wrong: a handler's `resume(x)` under an op
+// another handler abandons was dispatched by the driver with a dead k and
+// trapped (`uninitialized element`, tests/micros/mn-mixed-across-handlers.mn).
+// Either is never produced by resume_grade, so it passes b through.
 fn disc_join(a, b) = match a {
   MultiShot => MultiShot,
-  Abandon => // M4 — the join order is OneShot < Abandon < MultiShot: any resuming arm
-  // (MultiShot) dominates (the real-k path serves every catch); else any
-  // abandoning arm makes the op Abandon; else OneShot. So an op with one
-  // resume-once arm and one abandon arm in different handlers is MultiShot
-  // (the perform can't know at lower which catches → the live-k path).
-  match b {
+  Abandon => match b {
     MultiShot => MultiShot,
-    _ => Abandon,
+    Abandon => Abandon,
+    Either => Abandon,
+    OneShot => OneShotOrAbandon,
+    OneShotOrAbandon => OneShotOrAbandon,
   },
-  OneShot => b,
+  OneShotOrAbandon => match b {
+    MultiShot => MultiShot,
+    Abandon => OneShotOrAbandon,
+    Either => OneShotOrAbandon,
+    OneShot => OneShotOrAbandon,
+    OneShotOrAbandon => OneShotOrAbandon,
+  },
+  OneShot => match b {
+    Abandon => OneShotOrAbandon,
+    MultiShot => MultiShot,
+    Either => Either,
+    OneShot => OneShot,
+    OneShotOrAbandon => OneShotOrAbandon,
+  },
   Either => b,
 }
 
@@ -13082,6 +13160,7 @@ fn continuation_held(disc) = match disc {
   Abandon => true,
   OneShot => false,
   Either => false,
+  OneShotOrAbandon => false,
 }
 
 // The grade is a `ResumeUse` (types.mn): the multiplicity of the arm's
@@ -13113,10 +13192,18 @@ fn resume_grade(node) = match node {
         (callee_g, tails) => // Arguments in order, the callee's own uses, then the arguments the
         // callee calls at its tail — those run at the CALL's result
         // (tail_transparent_params), so a lambda there keeps its body's
-        // grade and a reference there contributes its summary.
+        // grade and a reference there contributes its summary. Both are
+        // grades of another frame, so an answer either holds is the held
+        // grade (`resume_from_frame`).
         resume_seq(
-          resume_seq(resume_seq(resume_grade(f), grade_args_interior(args, tails, 0, RNone)), callee_g),
-          grade_args_tail(args, tails, 0, RNone)
+          resume_seq(
+            resume_seq(resume_grade(f), grade_args_interior(args, tails, 0, RNone)),
+            resume_from_frame(callee_g)
+          ),
+          match grade_args_tail(args, tails, 0, None) {
+            Some(g) => resume_from_frame(g),
+            None => RNone,
+          }
         ),
       },
     },
@@ -13192,31 +13279,46 @@ fn grade_args_interior(args, tails, i, acc) = if i >= len(args) {
 // The arguments the callee calls only at its tail: a lambda's BODY grade
 // (its resume is at the call's result, not inside a value the arm holds),
 // a reference's summary. Joined — the callee's tail runs one of them per
-// path.
+// path, and every tail path runs one (`tail_transparent_params` keeps no
+// parameter of a callee with a tail path of its own). None where the call
+// hands none: the join starts at the first, since an RNone there would read
+// as a path that answers.
 fn grade_args_tail(args, tails, i, acc) = if i >= len(args) {
   acc
-} else {
-  let g = if int_in(tails, i, 0) {
-    match list_index(args, i) {
-      N(ab, _, _) => match ab {
-        NExpr(LambdaExpr(_, lbody)) => resume_grade(lbody),
-        NExpr(VarRef(an)) => summary_of(an),
-        _ => resume_grade(list_index(args, i)),
-      },
-    }
-  } else {
-    RNone
+} else if int_in(tails, i, 0) {
+  let g = match list_index(args, i) {
+    N(ab, _, _) => match ab {
+      NExpr(LambdaExpr(_, lbody)) => resume_grade(lbody),
+      NExpr(VarRef(an)) => summary_of(an),
+      _ => resume_grade(list_index(args, i)),
+    },
   }
-  grade_args_tail(args, tails, i + 1, resume_join(acc, g))
+  grade_args_tail(
+    args,
+    tails,
+    i + 1,
+    match acc {
+      Some(a) => Some(resume_join(a, g)),
+      None => Some(g),
+    }
+  )
+} else {
+  grade_args_tail(args, tails, i + 1, acc)
 }
 
 // Alternation over match arms ((pat, body) tuples): exactly one arm runs, so
 // ⊔-join their grades — two resumes in sibling arms is still one per path.
+// The fold starts at the first arm: an RNone base would be a phantom branch
+// that answers.
 fn grade_join_arms(arms) = if len(arms) == 0 {
   RNone
 } else {
   match last(arms) {
-    (_, b) => resume_join(resume_grade(b), grade_join_arms(drop_last(arms))),
+    (_, b) => if len(arms) == 1 {
+      resume_grade(b)
+    } else {
+      resume_join(resume_grade(b), grade_join_arms(drop_last(arms)))
+    },
   }
 }
 

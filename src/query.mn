@@ -2202,12 +2202,14 @@ fn op_resume_ty(scheme) with !Mutate = match chase_type_deep(judgment_ty(scheme)
 }
 
 // SYNTAX §«Resume discipline»: ->1 one-shot, ->* multi-shot, ->? either;
-// ->0 is Abandon — the arm never resumes, the continuation deadens.
+// ->0 is Abandon — the arm never resumes, the continuation deadens; ->0|1 is
+// an arm that resumes once on some paths and answers on the others.
 fn disc_glyph(disc) with Pure = match disc {
   OneShot => "->1",
   MultiShot => "->*",
   Either => "->?",
   Abandon => "->0",
+  OneShotOrAbandon => "->0|1",
 }
 
 fn repr_name(r) with Pure = match r {

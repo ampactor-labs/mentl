@@ -118,6 +118,36 @@ fn multishot_ops_of(hname) = match handler_decl_of(hname) {
   None => [],
 }
 
+// Whether some arm of the handler answers on a path its performer called it
+// on (`OneShotOrAbandon`) — the install then runs the driver, which takes the
+// answer that names its record.
+// It is the op's fact, read where the emit reads every discipline: an arm of
+// such an op in a handler that never answers (one resuming on every path,
+// beside another handler's that answers) still installs the driver, whose
+// first check finds the flag clear.
+fn handler_takes_answers(hname) = match handler_decl_of(hname) {
+  Some((_, _, arms)) => any(arm_op_answers, arms),
+  None => false,
+}
+
+// Whether an arm's op is one whose arms may answer their install.
+fn arm_op_answers(a) = op_disc_holds(disc_answers, handler_arm_op_name(a))
+
+// Whether the driver dispatches the arm, or takes what it answers.
+fn arm_is_driven(a) = op_answers_its_driver(handler_arm_op_name(a)) || arm_op_answers(a)
+
+// Whether an install of the handler runs its driver: an op it dispatches
+// there, or an answer it takes there.
+fn handler_drives(hname) = len(multishot_ops_of(hname)) > 0 || handler_takes_answers(hname)
+
+// Every op whose arm a module must hold for the handler's driver to exist —
+// the ones it dispatches and the ones whose answers it takes — as
+// (name, arity) pairs.
+fn driven_ops_of(hname) = match handler_decl_of(hname) {
+  Some((_, _, arms)) => arms |> filter(arm_is_driven) |> map((a) => (handler_arm_op_name(a), handler_arm_arity(a))),
+  None => [],
+}
+
 // How many `with` state fields a handler declares — 0 for an anonymous
 // install, which has no declaration to carry state.
 fn handler_state_count(hname) = match handler_decl_of(hname) {
@@ -254,6 +284,11 @@ type BoundaryInvariant
   // — a Thread-class handler declared beside no `fanout_threaded`. The
   // name is the implementation the schedule's vocabulary owes.
   | SequenceFanoutUnlinked(String)
+  // An answering arm's spine (`lower_answering`) met a node whose grade it
+  // cannot lower: a mixed grade on a node that is not an if, a match or a
+  // block, or a held grade inside an arm the judgment graded as answering.
+  // Unreachable by the grade's construction; the typed terminal keeps it loud.
+  | AnswerSpineShape(Int)
 
 fn show_boundary_invariant(invariant) = match invariant {
   MissingFanoutBoundary => "missing fanout boundary",
@@ -271,6 +306,7 @@ fn show_boundary_invariant(invariant) = match invariant {
   ProjectionOriginShape(h) => "column projection at {int_to_str(h)}: the program-column node is not the projector's shape",
   TangentOutsideReading => "tangent_of outside a derivative reading — refused at the call",
   SequenceFanoutUnlinked(impl) => "the sequence fanout runs under a schedule whose implementation `{impl}` is not linked — import the library that declares this schedule's vocabulary",
+  AnswerSpineShape(h) => "answering arm at {int_to_str(h)}: the grade is mixed or held where the spine has no branch to lower",
 }
 
 // Every value-bearing variant carries a source TypeHandle (Int), never a cached Ty.
@@ -336,6 +372,15 @@ type LowExpr
   // dummy and `let v = ab(); v + 1` left a block with no value on boot
   // 311479e1. No record is built, so `!Alloc` holds over an abandon.
   | LAbandon(Int, String, [LowExpr])
+  // The answering path of an arm that resumes on another path
+  // (`OneShotOrAbandon`): handle, the arm's value, the install record the arm
+  // runs against. The emit stores the value in the instance's area at its
+  // width and the record beside it, sets $yield_op to the answer key no op
+  // shares, $yield_k = 0 and $yield_flag, and unwinds — the arm returns, the
+  // performer's boundary check unwinds to the landings, and the install whose
+  // record it is takes the value as its own (`emit_one_redrive`). Nothing is
+  // re-run and nothing is built: early exit costs a store and a branch.
+  | LAnswer(Int, LowExpr, LowExpr)
   // The boundary check's raised-flag arm: the frame has nothing more to do.
   // A dead continuation ($yield_k == 0) unwinds to the innermost landing; a
   // live one is the floor (unreachable) — the frame cannot reify a remainder
@@ -668,6 +713,7 @@ fn lexpr_handle(e) with Pure = match e {
   LYield(h, _, _, _) => h,
   LKExtend(h, _) => h,
   LAbandon(h, _, _) => h,
+  LAnswer(h, _, _) => h,
   LUnwind(h) => h,
   LDeclareFn(_) => 0,
   LIf(h, _, _, _) => h,
@@ -1478,6 +1524,8 @@ fn disc_yields(d) = match d {
   Abandon => true,
   OneShot => false,
   Either => false,
+  OneShotOrAbandon => // an answering path unwinds its performer
+  true,
 }
 
 fn disc_live(d) = match d {
@@ -1485,6 +1533,7 @@ fn disc_live(d) = match d {
   Abandon => false,
   OneShot => false,
   Either => false,
+  OneShotOrAbandon => false,
 }
 
 // An op's discipline satisfies the predicate — the one test every reader of
@@ -1537,11 +1586,9 @@ fn resume_bind_assoc(binds, name: String, i) = if i >= len(binds) {
 // MultiShot context threads the "__resume" k evidence. A fn reached from
 // arms of TWO handlers is E_ResumeAmbiguousOp — narrow the call graph;
 // the first binding stands (productive-under-error).
-fn resume_bindings(stmts) = match classify_fixpoint(stmts) {
-  (summaries, _) => {
-    let decls = collect_fn_decls_list(stmts, [])
-    bind_from_handlers(stmts, summaries, decls, [])
-  },
+fn resume_bindings(stmts, summaries) = {
+  let decls = collect_fn_decls_list(stmts, [])
+  bind_from_handlers(stmts, summaries, decls, [])
 }
 
 fn bind_from_handlers(stmts, summaries, decls, binds) = if len(stmts) == 0 {
@@ -1629,6 +1676,7 @@ fn bind_closure(names, hname, summaries, decls, binds) = if len(names) == 0 {
 fn usage_is_marked(u) = match u {
   RNone => false,
   RTail => true,
+  RTailOrAbandon => true,
   RDeep => true,
   RMany => true,
 }
@@ -1667,7 +1715,13 @@ fn program_may_yield(stmts) = any(
 fn unwinding_ops(stmts) = flat_map(
   {
     N(body, _, _) => match body {
-      NStmt(HandlerDeclStmt(hname, _, _, _, arms, _)) => if handler_may_unwind(hname) { map(handler_arm_op_name, arms) } else { [] },
+      NStmt(HandlerDeclStmt(hname, _, _, _, arms, _)) => if handler_may_unwind(hname) {
+        map(handler_arm_op_name, arms)
+      } else {
+        // An arm that answers on one path returns from the performer's call
+        // with the flag raised.
+        filter(op_disc_holds(disc_answers), map(handler_arm_op_name, arms))
+      },
       _ => [],
     },
   },
@@ -2923,35 +2977,9 @@ fn lower_expr_body(e, handle, span) = match e {
     },
   },
   IfExpr(cond, then_e, else_e) => LIf(handle, lower_expr(cond), [lower_expr(then_e)], [lower_expr(else_e)]),
-  BlockExpr(stmts, final_e) => {
-    // M4 — an Abandon perform DIVERGES (it always yields, unwinding to its
-    // install's driver), so any statement/expression after it is DEAD. The
-    // block's value IS the diverging statement's yield; the remainder deadens
-    // (never lowered), so post-abort EFFECTFUL code cannot run. Without this
-    // the abort's LYield stands but `s; abort(); print(x)` would raise the
-    // flag and STILL run print before the frame propagates (the crucibles'
-    // pure `0` hid it). The prefix statements up to the divergence lower
-    // and drop as usual; the diverging one lowers as the block VALUE (not
-    // dropped, so its yield is the block's result the enclosing frame
-    // propagates).
-    let cp = ls_push_scope()
-    let result = match first_diverging(stmts, 0) {
-      Some(i) => {
-        let lo_prefix = lower_stmt_list(take(i, stmts))
-        let lo_diverge = lower_expr(diverging_expr(list_index(stmts, i)))
-        LBlock(handle, list_concat(lo_prefix, [lo_diverge]))
-      },
-      None => {
-        let lo_stmts = lower_stmt_list(stmts)
-        let lo_final = lower_expr(final_e)
-        LBlock(handle, list_concat(lo_stmts, [lo_final]))
-      },
-    }
-    ls_pop_scope(cp)
-    result
-  },
+  BlockExpr(stmts, final_e) => lower_block(BranchValue, handle, stmts, final_e),
   MatchExpr(scrutinee, arms) => match scrutinee {
-    N(_, _, sh) => LMatch(handle, lower_expr(scrutinee), lower_match_arms(sh, arms)),
+    N(_, _, sh) => LMatch(handle, lower_expr(scrutinee), lower_match_arms(BranchValue, sh, arms)),
   },
   MakeListExpr(elems) => LMakeList(handle, lower_expr_list(elems)),
   MakeTupleExpr(elems) => LMakeTuple(handle, lower_expr_list(elems)),
@@ -3061,19 +3089,18 @@ fn lower_expr_body(e, handle, span) = match e {
   match current_resume_discipline() {
     OneShot => lower_resume_oneshot(handle, val, state_updates),
     Either => lower_resume_oneshot(handle, val, state_updates),
+    OneShotOrAbandon => // the resuming path of an arm that answers on another — the stack return
+    lower_resume_oneshot(handle, val, state_updates),
     MultiShot => // MultiShot: resume(v) CALLS the k record the driver bound to the
     // arm's __k param — the W7 closure convention on fn_ptr@0, N times
     // (k is immutable data; the reification happened at the PERFORMING
     // frame's yield, lower_body_reified). The catching handler
     // (in-memory / oracle-rollback / persist) is the swap.
     lower_resume_callk(handle, val, state_updates),
-    Abandon => // M4 — a resume inside a pure-Abandon op's arm is the MIXED case (the
-    // op has an abandon arm AND a resume arm). It does not occur in the
-    // wheel or crucibles: abort/fail are single-handler UZero, so a
-    // resume under an Abandon-graded op is unreachable-by-construction (a
-    // UZero arm has no resume). If it ever arises, the op must reify k at
-    // the perform (become MultiShot — the abandon perform's dead k=0
-    // would trap here, loud, never silent): Hβ.lower.abandon-with-resume-arm.
+    Abandon => // Unreachable by construction: an op is Abandon only when every arm of
+    // every handler never resumes, and a resume beside an abandon makes it
+    // OneShotOrAbandon (`disc_join`). A resume here would call the dead k = 0
+    // and trap at its fn_ptr load, loud.
     lower_resume_callk(handle, val, state_updates),
   },
   FieldExpr(rec, field) => // W6: the field NAME rides the node; the offset projects at emit from
@@ -4447,8 +4474,74 @@ fn lower_fn_mint(name, params, body_node, handle, reg) = {
   }
 }
 
-// Pattern lowering
-fn lower_match_arms(scrut_h, arms) = {
+// Where a branch's value goes: an ordinary value position, or the result
+// spine of an answering arm, which its branches continue down
+// (`lower_answering`).
+type BranchAt = BranchValue | BranchAnswer
+
+fn lower_at(at, node) = match at {
+  BranchValue => lower_expr(node),
+  BranchAnswer => lower_answering(node),
+}
+
+// A block: its statements, then its value lowered where the block stands.
+//
+// M4 — an Abandon perform DIVERGES (it always yields, unwinding to its
+// install's driver), so any statement/expression after it is DEAD. The
+// block's value IS the diverging statement's yield; the remainder deadens
+// (never lowered), so post-abort EFFECTFUL code cannot run. Without this
+// the abort's LYield stands but `s; abort(); print(x)` would raise the
+// flag and STILL run print before the frame propagates (the crucibles'
+// pure `0` hid it). The prefix statements up to the divergence lower
+// and drop as usual; the diverging one lowers as the block VALUE (not
+// dropped, so its yield is the block's result the enclosing frame
+// propagates).
+fn lower_block(at, handle, stmts, final_e) = {
+  let cp = ls_push_scope()
+  let result = match first_diverging(stmts, 0) {
+    Some(i) => {
+      let lo_prefix = lower_stmt_list(take(i, stmts))
+      let lo_diverge = lower_expr(diverging_expr(list_index(stmts, i)))
+      LBlock(handle, list_concat(lo_prefix, [lo_diverge]))
+    },
+    None => {
+      let lo_stmts = lower_stmt_list(stmts)
+      let lo_final = lower_at(at, final_e)
+      LBlock(handle, list_concat(lo_stmts, [lo_final]))
+    },
+  }
+  ls_pop_scope(cp)
+  result
+}
+
+// THE ANSWERING ARM — the body of an arm whose op is OneShotOrAbandon,
+// lowered down its result spine by the judgment's own grade
+// (`ls_resume_grade`): a subtree that resumes on every path is the stack
+// return it always was; one that never resumes ANSWERS the install — its
+// value and the record the arm runs against into the instance's area, and
+// the frame unwinds (`LAnswer`); a mixed one is an `if`, a `match` or a
+// block whose branches are lowered the same way. Only those three are mixed
+// by construction: a mixed grade reached through a call or a lambda is the
+// held one (`resume_from_frame`), and an arm holding one is MultiShot.
+fn lower_answering(node) = match node {
+  N(b, _, h) => match ls_resume_grade(node) {
+    RNone => LAnswer(h, lower_expr(node), resolve_hrec(h)),
+    RTailOrAbandon => match b {
+      NExpr(IfExpr(c, t, e)) => LIf(h, lower_expr(c), [lower_answering(t)], [lower_answering(e)]),
+      NExpr(BlockExpr(stmts, final_e)) => lower_block(BranchAnswer, h, stmts, final_e),
+      NExpr(MatchExpr(scrutinee, arms)) => match scrutinee {
+        N(_, _, sh) => LMatch(h, lower_expr(scrutinee), lower_match_arms(BranchAnswer, sh, arms)),
+      },
+      _ => LInvariantFailure(h, AnswerSpineShape(h)),
+    },
+    RTail => lower_expr(node),
+    RDeep => LInvariantFailure(h, AnswerSpineShape(h)),
+    RMany => LInvariantFailure(h, AnswerSpineShape(h)),
+  },
+}
+
+// Pattern lowering — each arm's body lowered where the match stands.
+fn lower_match_arms(at, scrut_h, arms) = {
   // ONE scrutinee, ONE representation proof — hoisted out of the per-arm
   // map (the chase is per-value, never per-arm). Whether a flat list's
   // elements may be read raw is the emit's question: it depends on the
@@ -4465,7 +4558,7 @@ fn lower_match_arms(scrut_h, arms) = {
         // the emit places each slot by the SAME fold construction and
         // access run, under any twin.
         let lp = lower_pat_at(bind_fresh, pat, lookup_ty(scrut_h), srep, scrut_h)
-        let lo_body = lower_expr(body)
+        let lo_body = lower_at(at, body)
         ls_pop_scope(cp)
         (lp, lo_body)
       },
@@ -5025,8 +5118,12 @@ fn lower_one_arm_decl(arm: {args: [String], body: Node, op_name: String}, discri
   // redrive trapped (tests/micros/mn-held-resume-stateless-reyield.mn). The
   // bind runs BEFORE body lowering so nested mints resolve it; the LLet
   // materializes it below.
-  let hrec =
-    if len(captures_names) > 0 || disc_redrives(disc) { Some(ls_bind_local("__hrec", 0)) } else { None }
+  // An answering arm names its install by the same record (`LAnswer`).
+  let hrec = if len(captures_names) > 0 || disc_redrives(disc) || disc_answers(disc) {
+    Some(ls_bind_local("__hrec", 0))
+  } else {
+    None
+  }
   // Hβ.first-light.resume-with-state-mutation: install arm_state_ctx
   // around arm body lowering so lower_expr's ResumeExpr arm resolves
   // `with field = NEW` updates' slot offsets via current_state_fields()
@@ -5034,7 +5131,7 @@ fn lower_one_arm_decl(arm: {args: [String], body: Node, op_name: String}, discri
   //
   // Hβ.lower.tail-call-mark-pass — handler arm body is in tail; k2_guard floors off-spine boundaries (M1.3)
   let lo_body = k2_guard(mark_tail({
-    lower_expr(arm.body)
+    if disc_answers(disc) { lower_answering(arm.body) } else { lower_expr(arm.body) }
   } ~> arm_state_ctx(captures_names, disc, discriminator)))
   // The value-holes drain at the arm's own name — an arm hole pairs with
   // the entry reachability names (its container lowers to ""), so a
@@ -5075,6 +5172,17 @@ fn zeros_of_len(n) = map((_) => 0, range(0, n))
 fn disc_redrives(disc) = match disc {
   MultiShot => true,
   Abandon => true,
+  OneShot => false,
+  Either => false,
+  OneShotOrAbandon => false,
+}
+
+// Whether an arm of this discipline answers its install by the record it
+// runs against (`LAnswer`), so it binds that record as `__hrec` too.
+fn disc_answers(disc) = match disc {
+  OneShotOrAbandon => true,
+  MultiShot => false,
+  Abandon => false,
   OneShot => false,
   Either => false,
 }
@@ -5836,6 +5944,7 @@ fn k2_floor_guard(e, terminus) = match e {
   LYield(h, op, args, k) => LYield(h, op, k2_floor_list(args), k2_floor_guard(k, false)),
   LKExtend(h, k) => LKExtend(h, k2_floor_guard(k, false)),
   LAbandon(h, op, args) => LAbandon(h, op, k2_floor_list(args)),
+  LAnswer(h, v, rec) => LAnswer(h, k2_floor_guard(v, false), k2_floor_guard(rec, false)),
   LUnwind(_) => e,
   LDeclareFn(fn_) => LDeclareFn(fn_),
   LMakeList(h, es) => LMakeList(h, k2_floor_list(es)),
@@ -6378,9 +6487,17 @@ fn lower_program(stmts) = {
   // AN-2 — the ops whose direct performs are followed by the boundary
   // check; nothing unwinds in a program where nothing yields.
   ls_register_unwinding_ops(if yields { unwinding_ops(stmts) ~> arena } else { [] })
-  // THE CUT — the resume-capability bindings (dormant when no op grades
-  // MultiShot: zero arms seed the closure, the list is empty).
-  ls_register_resume_binds(resume_bindings(stmts) ~> arena)
+  // The classifier's fixpoint, once: the resume grades an answering arm's
+  // lowering reads leaf by leaf, and the bindings below.
+  let classified = classify_fixpoint(stmts) ~> arena
+  match classified {
+    (summaries, tails) => {
+      ls_register_grades(summaries, tails)
+      // THE CUT — the resume-capability bindings (dormant when no op grades
+      // MultiShot: zero arms seed the closure, the list is empty).
+      ls_register_resume_binds(resume_bindings(stmts, summaries) ~> arena)
+    },
+  }
   // No pre-register pass: every handler decl's (config, state, arms) is
   // already in the env's HandlerKind (register_handler), so an install
   // resolves its handler's decl live (handler_decl_of) regardless of source
@@ -6460,7 +6577,11 @@ fn push_name(buf, count, name) = {
 //
 // Records are stored with their fields sorted by name; Mentl source reads
 // them by `.field`, so the physical layout is the emit's business.
-handler lower_scope with frames = [], globals = [], esc_rows = smap_new(), may_yield = false, unwinding = [], resume_binds = [], wide = smap_new(), walking = [], fn_symbols = wmap_new(64), symbol_counts = smap_new() {
+handler lower_scope with frames = [], globals = [], esc_rows = smap_new(), may_yield = false, unwinding = [], resume_binds = [], wide = smap_new(), walking = [], fn_symbols = wmap_new(64), symbol_counts = smap_new(), grades = smap_new(), grade_tails = smap_new() {
+  ls_register_grades(gs, ts) => resume() with grades = smap_build(gs), grade_tails = smap_build(ts),
+  ls_resume_grade(node) => resume({
+    resume_grade(node)
+  } ~> summaries_frozen(grades, grade_tails)),
   ls_register_escaping(map) => // THE FLOW-CLOSURE map (name → escaping row), computed once at lower_program
   // and read live by THE SEAM. Some(row) for a top-level fn; None (→ the leaf)
   // for a nested fn / lambda / unknown name.
@@ -6792,6 +6913,7 @@ fn low_refs(acc, expr) = match expr {
   LKExtend(_h, k) => // A k2 boundary reaches through its frame_k record the same way.
   low_refs(acc, k),
   LAbandon(_h, _op, args) => low_refs_list(acc, args),
+  LAnswer(_h, v, rec) => low_refs(low_refs(acc, v), rec),
   LUnwind(_h) => acc,
   LDeclareFn(LFn(_n, _a, _p, body, _f, _l)) => low_refs_list(acc, body),
   LBlock(_h, stmts) => low_refs_list(acc, stmts),
@@ -6861,6 +6983,7 @@ fn frame_children(expr) = match expr {
   LYield(_, _, args, k) => args ++ [k],
   LKExtend(_, k) => [k],
   LAbandon(_, _, args) => args,
+  LAnswer(_, v, rec) => [v, rec],
   LUnwind(_) => [],
   LMakeContinuation(_, _, caps, _, _) => caps,
   LDeclareFn(_) => [],
@@ -8070,6 +8193,8 @@ fn op_answers_its_driver(op: String) = match op_resume_discipline(op) {
   MultiShot => true,
   Either => false,
   Abandon => true,
+  OneShotOrAbandon => // the performer calls it; its answer crosses in the area
+  false,
 }
 
 // The key an install's arms run under. They share one: every arm and the
