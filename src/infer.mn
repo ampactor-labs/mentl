@@ -1410,15 +1410,6 @@ fn infer_program_once(stmts, parse_start, parse_end) = {
   comment_refs_check(stmts, parse_start, parse_end)
 } ~> row_gate ~> store_ages ~> infer_ctx ~> fresh_for_inference ~> resume_summaries_ctx
 
-// No private ledgers. The trial installed its own affine_ledger /
-// region_tracker / verify_ledger so its undischarged debt would die with
-// its bracket instead of doubling the final's V_Pending. One judgment has
-// nothing to double: its obligations ARE the program's, and they land in
-// the pipeline's ambient ledgers where every reader expects them.
-//
-// frontend — lex |> parse, the judgment's input boundary
-fn frontend(source) = source |> lex |> parse_program
-
 // Reports said to no one: the discovery parse's import read (the weave
 // parse reports every lex diagnostic again, placeably) and the gradient's
 // dry claims (a proposal judged on a scratch ledger, its refutation the

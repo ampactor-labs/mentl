@@ -150,7 +150,7 @@ fn dispatch_invocation(verb) = match verb {
   VServe => serve_run(),
   VSpace(addr) => space_run(addr),
   VTighten(target) => tighten_run(target),
-  VFmt(target) => fmt_run(target),
+  VFmt(mode, targets) => fmt_run(mode, targets),
   VCompile(target) => compile_run(target),
   VResume(img) => resume_run(img),
   VCompileStdin => // The bare invocation forks on the ONE substrate fact that
@@ -346,41 +346,73 @@ fn march_emit(source, fd) = compile_context(() => {
 })
 
 // The wheel's canonical file set: every .mn under lib then src (tutorials
-// excluded), each directory's entries sorted lexicographically — the DFS
+// excluded — the march's own exclusion, which the one-link-model landing
+// deletes), each directory's entries sorted lexicographically — the DFS
 // order equals the flat byte-sort the bash blob uses (`find lib src | sort`)
 // because '/' sorts below every name byte. The repo resolves relative
 // (dev flow) or at the shim's well-known mount.
 fn march_wheel_files() = {
-  let local = march_walk("src", march_walk("lib", make_list(0)))
-  if len(local) > 0 {
-    local
-  } else {
-    march_walk("/mentl-home/src", march_walk("/mentl-home/lib", make_list(0)))
-  }
+  let local = march_wheel_under("")
+  if len(local) > 0 { local } else { march_wheel_under("/mentl-home/") }
 }
 
-fn march_walk(dir, acc) = match fs_list_dir_impl(dir) {
-  None => acc,
-  Some(names) => march_walk_entries(dir, march_sort_names(names), 0, acc),
+fn march_wheel_under(home) =
+  filter(outside_tutorial, mn_files("{home}lib", Tree) ++ mn_files("{home}src", Tree))
+
+fn outside_tutorial(path) = !str_contains(path, "/tutorial/")
+
+// How deep a walk reads: the directory's own entries, or its whole tree.
+type Reach
+  = Level
+  | Tree
+
+// THE ONE HOME for "the .mn files under a directory" — fmt's project, the
+// march's wheel, the battery's fixtures and a query over a directory of
+// programs all read it. Paths come back as the root joined to each entry
+// ("." joins as nothing, so the project's paths are the ones a developer
+// types), each directory's entries in byte order, so the walk is the flat
+// sort of the paths. A dot-named entry is never visited: the self and parent
+// links (a walk that descends them loops "src/./." forever — measured:
+// 3,000-byte paths, +2 per level, until the alloc ceiling), `.build`'s
+// artifacts and `.git`'s objects alike. A root that is not a directory
+// answers no files.
+fn mn_files(root, reach) = match fs_list_dir_impl(root) {
+  None => [],
+  Some(names) => mn_walk(root, reach, march_sort_names(names), 0, make_list(0)),
 }
 
-fn march_walk_entries(dir, ref names, i, acc) = if i >= len(names) {
+// A walked path's own name without its `.mn` — the stem a fixture's
+// verdict line and its artifact are filed under.
+fn path_stem(path: String) = {
+  let leaf = str_slice(path, after_last_slash(path, 0, 0), byte_len(path))
+  if ends_with(leaf, ".mn") { str_slice(leaf, 0, byte_len(leaf) - 3) } else { leaf }
+}
+
+fn after_last_slash(path: String, i, at) = if i >= byte_len(path) {
+  at
+} else if byte_at(path, i) == 47 {
+  after_last_slash(path, i + 1, i + 1)
+} else {
+  after_last_slash(path, i + 1, at)
+}
+
+fn mn_walk(dir, reach, ref names, i, acc) = if i >= len(names) {
   acc
 } else {
   let name = names[i]
-  // fd_readdir reports the self and parent links; a recursive walk that
-  // descends them loops "src/./." forever (measured: 3,000-byte paths,
-  // +2 per level, until the alloc ceiling). A tree walk visits children.
-  if name == "." || name == ".." || name == "tutorial" {
-    march_walk_entries(dir, names, i + 1, acc)
+  if starts_with(name, ".") {
+    mn_walk(dir, reach, names, i + 1, acc)
   } else {
-    let path = "{dir}/{name}"
+    let path = if dir == "." { name } else { "{dir}/{name}" }
     match fs_list_dir_impl(path) {
-      Some(sub) => march_walk_entries(dir, names, i + 1, march_walk_entries(path, march_sort_names(sub), 0, acc)),
+      Some(sub) => match reach {
+        Tree => mn_walk(dir, reach, names, i + 1, mn_walk(path, reach, march_sort_names(sub), 0, acc)),
+        Level => mn_walk(dir, reach, names, i + 1, acc),
+      },
       None => if ends_with(name, ".mn") {
-        march_walk_entries(dir, names, i + 1, push(acc, path))
+        mn_walk(dir, reach, names, i + 1, push(acc, path))
       } else {
-        march_walk_entries(dir, names, i + 1, acc)
+        mn_walk(dir, reach, names, i + 1, acc)
       },
     }
   }
@@ -430,85 +462,324 @@ fn count_newlines_from(s, i, n, acc) = if i >= n {
 // string content, so format∘parse is the identity the module's own
 // comment always claimed. Idempotence is the gate: the second render is
 // byte-identical to the first.
-fn fmt_run(target) = infer_context(() => {
-  // The verb convention: the arg normalizes to a MODULE name, and the
-  // write-back path is the resolver's own answer — one resolution
-  // home, never the raw argv string carried past it.
-  let entry_module = path_to_module(target)
-  let path = driver_module_path(entry_module)
-  // THE WEAVE, scoped to the entry — the same `driver_entry_with_ranges`
-  // that `check`, the address, `audit`, `teach` and the resident session
-  // read. fmt was the LAST verb on the solo entry route every other verb
-  // had already left, and that route's distinguishing property was an
-  // omission: it never installed a diagnostic scope, so it fell to
-  // `diagnostics_handler`'s default `ScopeAll` and narrated every
-  // dependency at a developer who had named one file. The
-  // measurement: `mentl check` on a one-function file printed one line and
-  // `mentl fmt` on the same file printed every prelude `T_OverDeclared` and
-  // `E_MissingVariable` in the tree. One question — whose diagnostics does
-  // this verb show? — answered in two places, the second by not answering.
-  let ast = match driver_entry_with_ranges(entry_module) {
-    (ast_all, _ranges) => driver_module_ast(ast_all, entry_module),
+//
+// THE PROJECT is the unit (cargo-style, and stronger): no path renders every
+// .mn under the working directory (`mn_files`), a directory its tree, a file
+// itself. THE RENDER IS A PARSE: layout is a projection of the parse, and
+// this module's formatter imports no inference, so the verb lexes, parses
+// and renders — it judges nothing, and so narrates nothing but each file's
+// own parse. (It used to judge the entry's whole weave first; the solo route
+// before that narrated every dependency's diagnostics at a developer who
+// named one file, and the weave was taken to scope them. A parse has nothing
+// to scope.) The cost of an operation is the size of its answer (PLAN §5.O),
+// and the cost of a file whose bytes the verb last saw canonical is one hash:
+// `.build/fmt.stamps` is the medium's memory of its own fixpoint, keyed by
+// content under this build's identity. Each file renders in its own arena,
+// so a project pass holds one file's scratch at a time.
+//
+// THE WRITE IS ATOMIC ACROSS THE PROJECT: every file is rendered and proven
+// before any is written, and one render that would lose what its author
+// wrote writes nothing at all. `--check` writes nothing either, and names
+// each file that is not canonical with its first changed line — the answer
+// a commit hook and the board read.
+fn fmt_run(mode, targets) = {
+  let files = fmt_targets(targets)
+  let key = "{int_to_str(image_key())}"
+  let stamps = fmt_stamps_read(key)
+  let verdicts = map(fmt_judge(smap_from_pairs(stamps), ??), files)
+  fmt_settle(mode, key, stamps, verdicts)
+} ~> wasi_filesystem ~> mentl_default
+
+// A file is what it names; a directory is its tree; a name that is neither
+// is a module, read where the resolver files it (`mentl fmt main`).
+fn fmt_targets(targets) =
+  if len(targets) == 0 { mn_files(".", Tree) } else { flat_map(fmt_target_files, targets) }
+
+fn fmt_target_files(t) = match fs_list_dir_impl(t) {
+  Some(_) => mn_files(dir_base(t), Tree),
+  None => if fs_exists(t) { [t] } else { [driver_module_path(path_to_module(t))] },
+}
+
+// One file's verdict, decided before anything is written.
+type FmtVerdict
+  // the source is its own render: the path and its stamp
+  = FmtCanonical(String, String)
+  // the path, the source and the canonical render
+  | FmtRenders(String, String, String)
+  // the path and why it will not be written, one line each
+  | FmtRefused(String, [String])
+  // the path and its parse's error count: a file the parser refuses has no
+  // canonical form to compare — a fixture that refuses on purpose, or a
+  // file mid-edit — so it is named, never rendered, and holds no other
+  // file's write back
+  | FmtUnparsed(String, Int)
+
+fn fmt_judge(stamps, path: String) = fmt_file(stamps, path) ~> arena
+
+fn fmt_file(stamps, path: String) = {
+  let src = fs_read_file(path)
+  let stamp = fmt_stamp(src)
+  match smap_get(stamps, path) {
+    Some(seen) => if seen == stamp { FmtCanonical(path, stamp) } else { fmt_render_file(path, src) },
+    None => fmt_render_file(path, src),
   }
-  // The verb writes its own FIXPOINT: render once, re-parse, render
-  // again — a mid-line prose attach moves to its line-start home in
-  // the first render and is stable from the second, so the WRITTEN
-  // file is idempotent in one invocation.
-  let first = format_program(ast)
-  let rendered = format_program(frontend(first))
-  // THE CONSERVATION GATE — the verb lexes its own render beside the
-  // source and compares comment-token counts: the lexer emits one
-  // TComment per authored line, so the difference IS the number of
-  // prose lines the round trip loses (this absorbed the hand-run
-  // comment census — ⟳; and the LEXICAL count sees lines the parse
-  // never attaches, which a weave-to-weave compare was blind to).
-  // AND THE NAMES: every identifier and literal the source lexes to must
-  // lex out of the render as well (`lost_atoms`). A render that drops one
-  // says something else — measured 2026-09-28, when the effect head's
-  // parameter render deleted `rate: Int`'s annotation, the declared
-  // `Sample(48000)` then refused, and this gate's sibling reported "prose
-  // conserved" over the loss. A lossy render is NOT WRITTEN, prose or name:
-  // the verb names what would be lost and leaves the file as authored.
-  let src_toks = lex(fs_read_file(path))
+}
+
+// The render. A file the parser refuses is never rendered: the parse is
+// productive under error, and a recovered tree written back would canonize
+// what the recovery dropped. The verb writes its own FIXPOINT: render once,
+// re-parse, render again — a mid-line prose attach moves to its line-start
+// home in the first render and is stable from the second, so the WRITTEN
+// file is idempotent in one invocation; a render that does not re-parse is
+// refused with the parse's own report. Each parse runs inside the file's
+// own module (`parse_one_module`), as every compile's does, so a report
+// names the file it is about.
+fn fmt_render_file(path: String, src: String) = infer_context(() => {
+  let module = path_to_module(path)
+  let ast = parse_one_module((module, [], src))
+  let parse_errors = diag_errors()
+  if parse_errors > 0 {
+    FmtUnparsed(path, parse_errors)
+  } else {
+    let first = format_program(ast)
+    let again = parse_one_module((module, [], first))
+    if diag_errors() > 0 {
+      FmtRefused(path, ["the canonical render does not parse — the formatter's defect, reported above"])
+    } else {
+      let rendered = format_program(again)
+      if rendered == src {
+        FmtCanonical(path, fmt_stamp(src))
+      } else {
+        match fmt_losses(src, rendered) {
+          [] => FmtRenders(path, src, rendered),
+          lines => FmtRefused(path, lines),
+        }
+      }
+    }
+  }
+} ~> format_default)
+
+// THE CONSERVATION GATE — the verb lexes its own render beside the source
+// and compares comment-token counts: the lexer emits one TComment per
+// authored line, so the difference IS the number of prose lines the round
+// trip loses (this absorbed the hand-run comment census — ⟳; and the LEXICAL
+// count sees lines the parse never attaches, which a weave-to-weave compare
+// was blind to). AND THE NAMES: every identifier and literal the source lexes
+// to must lex out of the render as well (`lost_atoms`). A render that drops
+// one says something else — measured 2026-09-28, when the effect head's
+// parameter render deleted `rate: Int`'s annotation, the declared
+// `Sample(48000)` then refused, and this gate's sibling reported "prose
+// conserved" over the loss. A lossy render is NOT WRITTEN, prose or name:
+// the verb names what would be lost and leaves the file as authored.
+fn fmt_losses(src: String, rendered: String) = {
+  let src_toks = lex(src)
   let out_toks = lex(rendered)
   let src_lines = count_comment_tokens(src_toks, 0, 0)
   let out_lines = count_comment_tokens(out_toks, 0, 0)
   let lost = lost_atoms(src_toks, out_toks)
-  if out_lines < src_lines || len(lost) > 0 {
-    print_string("fmt: {path} NOT written — the canonical render loses {int_to_str(src_lines - out_lines)} of {int_to_str(src_lines)} prose line(s) and {int_to_str(len(lost))} authored name(s) or literal(s)\n")
-    print_lost_comments(src_toks, out_toks, 0, 0)
-    each(print_lost_atom, take(8, lost))
-    1
+  if out_lines >= src_lines && len(lost) == 0 {
+    []
   } else {
-    fs_write_file(path, rendered)
-    print_string("fmt: {path} rendered canonical — prose and names conserved ({int_to_str(src_lines)} prose lines)\n")
-    0
+    ["the canonical render ({int_to_str(byte_len(rendered))} bytes beside the source's {int_to_str(byte_len(src))}) loses {int_to_str(src_lines - out_lines)} of {int_to_str(src_lines)} prose line(s) and {int_to_str(len(lost))} authored name(s) or literal(s)"] ++ lost_comment_lines(src_toks, out_toks, 0, []) ++ map(lost_atom_line, take(8, lost))
   }
-} ~> format_default ~> wasi_filesystem ~> mentl_default)
+}
 
-fn print_lost_atom(t) = match token_span(t) {
+fn lost_atom_line(t) = match token_span(t) {
   Span(line, _, _, _) => match atom_key(t) {
-    Some(k) => print_string("  lost: {k} (line {int_to_str(line)})\n"),
-    None => (),
+    Some(k) => "lost: {k} (line {int_to_str(line)})",
+    None => "lost: a token at line {int_to_str(line)}",
   },
 }
 
 // The gate NAMES its losses: each source comment line whose text appears
-// nowhere in the render's lex prints with its line number — the report
-// that retired the external diff for good (up to eight, the shape is
-// what matters).
-fn print_lost_comments(ref src_toks, ref out_toks, i, shown) = if i >= len(src_toks) || shown >= 8 {
-  ()
+// nowhere in the render's lex, with its line number — the report that
+// retired the external diff for good (up to eight, the shape is what
+// matters).
+fn lost_comment_lines(ref src_toks, ref out_toks, i, acc) = if i >= len(src_toks) || len(acc) >= 8 {
+  acc
 } else {
   match token_kind(src_toks[i]) {
     TComment(t) => if comment_text_present(out_toks, t, 0) {
-      print_lost_comments(src_toks, out_toks, i + 1, shown)
+      lost_comment_lines(src_toks, out_toks, i + 1, acc)
     } else {
-      print_string("  lost: //{t}\n")
-      print_lost_comments(src_toks, out_toks, i + 1, shown + 1)
+      lost_comment_lines(src_toks, out_toks, i + 1, push(acc, "lost: //{t}"))
     },
-    _ => print_lost_comments(src_toks, out_toks, i + 1, shown),
+    _ => lost_comment_lines(src_toks, out_toks, i + 1, acc),
   }
+}
+
+// The project's verdict. A refusal anywhere writes nothing anywhere: the
+// write is the project's, so a file that would lose an atom keeps every
+// other file as authored too, and the exit says so.
+fn fmt_settle(mode, key: String, stamps, verdicts) = {
+  let refused = filter(fmt_is_refused, verdicts)
+  let renders = filter(fmt_is_render, verdicts)
+  each(fmt_print_unparsed, verdicts)
+  if len(refused) > 0 {
+    each(fmt_print_refused, refused)
+    print_string("fmt: nothing written — {int_to_str(len(refused))} file(s) refused\n")
+    1
+  } else {
+    match mode {
+      FmtCheck => {
+        each(fmt_print_would, renders)
+        fmt_stamps_write(key, stamps, verdicts)
+        if len(renders) > 0 {
+          print_string("fmt: {int_to_str(len(renders))} of {int_to_str(len(verdicts))} file(s) not canonical — `mentl fmt` writes them\n")
+          1
+        } else {
+          0
+        }
+      },
+      FmtWrite => {
+        each(fmt_write, renders)
+        fmt_stamps_write(key, stamps, map(fmt_written, verdicts))
+        0
+      },
+    }
+  }
+}
+
+fn fmt_is_refused(v) = match v {
+  FmtRefused(_, _) => true,
+  _ => false,
+}
+
+fn fmt_is_render(v) = match v {
+  FmtRenders(_, _, _) => true,
+  _ => false,
+}
+
+fn fmt_print_refused(v) = match v {
+  FmtRefused(path, lines) => {
+    print_string("fmt: {path} NOT written\n")
+    each(fmt_print_reason, lines)
+  },
+  _ => (),
+}
+
+fn fmt_print_reason(line) = print_string("  {line}\n")
+
+fn fmt_print_unparsed(v) = match v {
+  FmtUnparsed(path, n) => print_string("fmt: {path} not rendered — its parse reports {int_to_str(n)} error(s)\n"),
+  _ => (),
+}
+
+// What would change, named at the first line that does — the source's line
+// and the render's beside it.
+fn fmt_print_would(v) = match v {
+  FmtRenders(path, src, rendered) => match first_changed_line(src, rendered) {
+    (n, was, now) => print_string("fmt: {path}:{int_to_str(n)} not canonical\n  - {was}\n  + {now}\n"),
+  },
+  _ => (),
+}
+
+fn fmt_write(v) = match v {
+  FmtRenders(path, _, rendered) => {
+    fs_write_file(path, rendered)
+    print_string("fmt: wrote {path}\n")
+  },
+  _ => (),
+}
+
+// After a write, every file the verb saw is canonical at its new bytes.
+fn fmt_written(v) = match v {
+  FmtRenders(path, _, rendered) => FmtCanonical(path, fmt_stamp(rendered)),
+  _ => v,
+}
+
+// The first line at which two texts differ, 1-based, with each side's line.
+fn first_changed_line(a: String, b: String) = first_changed_from(a, b, 0, 0, 1)
+
+fn first_changed_from(a: String, b: String, i, start, line) = {
+  let na = byte_len(a)
+  let nb = byte_len(b)
+  if i >= na || i >= nb || byte_at(a, i) != byte_at(b, i) {
+    (line, line_from(a, start), line_from(b, start))
+  } else if byte_at(a, i) == 10 {
+    first_changed_from(a, b, i + 1, i + 1, line + 1)
+  } else {
+    first_changed_from(a, b, i + 1, start, line)
+  }
+}
+
+fn line_from(s: String, start) = str_slice(s, start, line_end(s, start))
+
+fn line_end(s: String, i) =
+  if i >= byte_len(s) || byte_at(s, i) == 10 { i } else { line_end(s, i + 1) }
+
+// ─── .build/fmt.stamps — the medium's memory of its own fixpoint ─────
+//
+// A stamp is the content's hash beside its length, so a file whose bytes
+// changed cannot read as the bytes fmt last saw canonical. The whole file
+// carries this build's identity (`image_key`, a hash of the function table,
+// the interned data and the global census) on its first line: a different
+// formatter is a different build, and a stamp it never wrote is not read.
+fn fmt_stamp(src: String) = "{int_to_str(str_hash(src))}:{int_to_str(byte_len(src))}"
+
+fn fmt_stamps_path() = ".build/fmt.stamps"
+
+// The stamps as (path, stamp) pairs, empty when the file is absent or was
+// written by another build.
+fn fmt_stamps_read(key: String) = if fs_exists(fmt_stamps_path()) {
+  match text_lines(fs_read_file(fmt_stamps_path())) {
+    [head, ...rest] => if head == key { flat_map(stamp_pair, rest) } else { [] },
+    [] => [],
+  }
+} else {
+  []
+}
+
+// One line, `<stamp>\t<path>`.
+fn stamp_pair(line: String) = match tab_at(line, 0) {
+  Some(t) => [(str_slice(line, t + 1, byte_len(line)), str_slice(line, 0, t))],
+  None => [],
+}
+
+fn tab_at(s: String, i) = if i >= byte_len(s) {
+  None
+} else if byte_at(s, i) == 9 {
+  Some(i)
+} else {
+  tab_at(s, i + 1)
+}
+
+fn text_lines(s: String) = text_lines_from(s, 0, [])
+
+fn text_lines_from(s: String, start, acc) = if start >= byte_len(s) {
+  acc
+} else {
+  let e = line_end(s, start)
+  text_lines_from(s, e + 1, push(acc, str_slice(s, start, e)))
+}
+
+// The verdicts' stamps, and every earlier stamp for a path this run did not
+// read: a run over one file keeps what the project's last run learned.
+fn fmt_stamps_write(key: String, stamps, verdicts) = {
+  let fresh = flat_map(verdict_stamp, verdicts)
+  let seen = smap_from_pairs(fresh)
+  let kept = filter(stamp_unseen(seen, ??), stamps)
+  fs_mkdir(".build")
+  fs_write_file(fmt_stamps_path(), join("\n", [key] ++ map(stamp_line, fresh ++ kept)) ++ "\n")
+}
+
+fn verdict_stamp(v) = match v {
+  FmtCanonical(path, stamp) => [(path, stamp)],
+  _ => [],
+}
+
+fn stamp_unseen(seen, pair) = match pair {
+  (path, _) => smap_get(seen, path) == None,
+}
+
+fn stamp_line(pair) = match pair {
+  (path, stamp) => "{stamp}\t{path}",
+}
+
+fn smap_from_pairs(pairs) = fold(smap_new(), smap_add_pair, pairs)
+
+fn smap_add_pair(m, pair) = match pair {
+  (k, v) => smap_add(m, k, v),
 }
 
 fn comment_text_present(ref toks, t: String, i) -> Bool = if i >= len(toks) {
@@ -1040,7 +1311,7 @@ fn test_run(target_opt) = {
   // inner chain, which shadows these installs for its extent, unchanged.
   {
     match fs_list_dir_impl(entry_module) {
-      Some(names) => battery_run(entry_module, names),
+      Some(_) => battery_run(entry_module),
       None => test_check_run(entry_module),
     }
   } ~> stdout_console ~> wasi_filesystem ~> diagnostics_handler
@@ -1356,12 +1627,13 @@ fn battery_compile(src, stem) = compile_context(() => {
   (left, nerr, classes)
 } ~> diag_bank ~> wasi_filesystem)
 
-fn battery_run(dir, names) = {
-  // The libs and the fixture names are flat before the first micro: each
-  // compile reads `libs ++ src` and indexes the names, and a flat sequence
-  // answers both in one step.
+fn battery_run(dir) = {
+  // The libs and the fixture paths are flat before the first micro: each
+  // compile reads `libs ++ src` and indexes the paths, and a flat sequence
+  // answers both in one step. The fixtures are the directory's own .mn
+  // files, read by the one walk (`mn_files`).
   let libs = str_concat("", battery_libs())
-  let micros = list_to_flat(sort(filter(ends_with(??, ".mn"), names)))
+  let micros = list_to_flat(mn_files(dir_base(dir), Level))
   // The artifact directory exists before the first module is written; a
   // directory already there answers the same (EEXIST is absorbed). The op,
   // never its impl: the row names what the battery does to the host.
@@ -1369,7 +1641,7 @@ fn battery_run(dir, names) = {
     fs_mkdir(".build")
     fs_mkdir(".build/battery")
   } ~> wasi_filesystem
-  battery_loop(dir, libs, micros, 0, 0)
+  battery_loop(libs, micros, 0, 0)
 }
 
 // Each micro's compile is an ARENA (lib/arena.mn): what the compile
@@ -1378,16 +1650,16 @@ fn battery_run(dir, names) = {
 // set, never the sum, and a micro's output cannot depend on the micros
 // before it unless something it stored outlived it — which the arena's
 // census counts as moved.
-fn battery_loop(dir: String, libs, micros: [String], i, fails) = if i >= len(micros) {
+fn battery_loop(libs, micros: [String], i, fails) = if i >= len(micros) {
   fails
 } else {
-  let step = battery_step(dir, libs, micros[i]) ~> arena
-  battery_loop(dir, libs, micros, i + 1, fails + step)
+  let step = battery_step(libs, micros[i]) ~> arena
+  battery_loop(libs, micros, i + 1, fails + step)
 }
 
-fn battery_step(dir: String, libs, name: String) = {
-  let stem = str_slice(name, 0, byte_len(name) - 3)
-  let src = fs_read_file_impl("{dir}/{name}")
+fn battery_step(libs, path: String) = {
+  let stem = path_stem(path)
+  let src = fs_read_file_impl(path)
   match battery_expect(src) {
     None => {
       print_string("NOEXPECT {stem}\n")
@@ -1396,8 +1668,8 @@ fn battery_step(dir: String, libs, name: String) = {
     Some(contract) => match contract {
       ExpectPropose(line, col, want) => // The driver takes the MODULE path — the file without its `.mn`, exactly
       // as the CLI's address form hands it over (path_to_module, cli.mn).
-      battery_propose_step(stem, path_to_module("{dir}/{name}"), line, col, want),
-      ExpectTeach(line, want) => battery_teach_step(stem, path_to_module("{dir}/{name}"), line, want),
+      battery_propose_step(stem, path_to_module(path), line, col, want),
+      ExpectTeach(line, want) => battery_teach_step(stem, path_to_module(path), line, want),
       ExpectRun(want) => match battery_compile(libs ++ src, stem) {
         (left, nerr, _) => match left {
           BatteryRefused => {
@@ -1471,7 +1743,7 @@ fn audit_run(target) = {
 // of them (`query_dir`). The directory probe is a filesystem op, so the
 // bracket covers it, as the battery's does.
 fn query_run(target, question) = match fs_list_dir_impl(target) {
-  Some(names) => query_dir(dir_base(target), names, question),
+  Some(_) => query_dir(dir_base(target), question),
   None => query(target, question),
 } ~> stdout_console ~> wasi_filesystem ~> mentl_default ~> diagnostics_handler ~> no_state_walked ~> graph_handler([], 0, []) ~> mutate_sink
 
@@ -1479,9 +1751,9 @@ fn query_run(target, question) = match fs_list_dir_impl(target) {
 // an arena so the walk's peak is one judgment's live set, and asked the
 // question; the sites in each program's own module are the answer. A facet
 // that answers anything but sites refuses, naming the ones that do.
-fn query_dir(dir: String, names, question) = {
-  let programs = list_to_flat(sort(filter(ends_with(??, ".mn"), names)))
-  let answers = map(query_program(dir, question, ??), programs)
+fn query_dir(dir: String, question) = {
+  let programs = list_to_flat(mn_files(dir, Level))
+  let answers = map(query_program(question, ??), programs)
   if any(answer_is_not_sites, answers) {
     eprint_string("mentl query: a directory answers the site facets — refs of NAME, census SHAPE, text NEEDLE, prose NEEDLE, decls\n")
     1
@@ -1498,8 +1770,7 @@ fn query_dir(dir: String, names, question) = {
   }
 }
 
-fn query_program(dir: String, question, name: String) =
-  query_sites(path_to_module("{dir}/{name}"), question) ~> arena
+fn query_program(question, path: String) = query_sites(path_to_module(path), question) ~> arena
 
 fn dir_base(dir: String) =
   if ends_with(dir, "/") { str_slice(dir, 0, byte_len(dir) - 1) } else { dir }
