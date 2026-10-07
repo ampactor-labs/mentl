@@ -1417,7 +1417,7 @@ selfcompile_peak_kb_max: 539000
 # THE HEAD ROUND TRIP (render lane, 2026-10-06): module-level function heads,
 # formatter's and eye's, that do not come back as themselves through
 # parse∘render. Born at the measured 92 of 4,550 (the base renderer: 787 of
-# 4,534). What stands is grammar, each class named: 67 a named open-record
-# rest the parse drops, 19 a masked row edge the row grammar cannot group,
-# 6 a function type inside an effect instance's argument. Falls only.
-head_round_trip_max: 92
+# 4,534); 0 of 4,772 since the heads landing gave the clause grammar its
+# groups and row variables, a rest its name, and an effect argument a type.
+# Held at zero.
+head_round_trip_max: 0

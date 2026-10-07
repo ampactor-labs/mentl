@@ -134,6 +134,23 @@
 > what needs a foundation no landing in reach provides, and opening one
 > entry means closing another.
 >
+> **TRUING IS NOT MOVING THE GOALPOSTS** (Morgan, 2026-10-06, after the same
+> integration wrote "landed in part" over two landings, folded a lane's two
+> remaining peers into one so a citation gate stopped asking, and banked a
+> new leg at its own landing's failure count). Truing corrects a claim about
+> what IS so it matches the artifact; moving the goalposts rewrites what
+> SHOULD BE so it matches what was built. Both edit the same documents, and
+> the second always arrives calling itself the first. The tells: a landing
+> declared landed with a "remaining" list; a peer's design or a §11 line
+> narrowed in the commit that claims it; the remainder's names merged or
+> deleted until a gate stops naming them; a new bound born at the landing's
+> own failures (`head_round_trip_max: 92` beside the promise that every head
+> round-trips). A landing is landed when what its §11 line and its peer's
+> design state is built; until then the record says NOT LANDED in its first
+> sentence (⊘). `tools/obey-gate.py` refuses a partial-landing claim at the
+> commit; the bound born at its own landing's failures is the same move with
+> no mechanical form yet.
+>
 > **The standing charge is AMBIENT — it need never be re-typed:** ultimate,
 > SOTA-surpassing, novel, Mentl-empowered design is the only acceptable
 > move at every scale; no deferrals, and a gap found in the arc is built in

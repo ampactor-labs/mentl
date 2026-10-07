@@ -700,12 +700,12 @@ if C=$(wt_m2_ensure); then
   # THE HEAD ROUND TRIP — `parse(render(head)) == head` for every module-level
   # function in the link, through the formatter's head and the developer's
   # eye (`where`, `doc`, the caret): `mentl query src/main.mn heads` renders
-  # each, parses it as the declaration it spells and renders it again. A
-  # falling ratchet: what stands is the grammar's three gaps, each named
+  # each, parses it as the declaration it spells and renders it again. Held
+  # at zero since the heads landing closed the grammar's three gaps
   # (`Hβ.syntax.named-record-rest-is-dropped`,
   # `Hβ.syntax.row-grammar-has-no-grouping`,
   # `Hβ.syntax.effect-arg-type-is-one-token`). Seen RED: the base renderer
-  # failed 787 of 4,534.
+  # failed 787 of 4,534, and boot b2920932 97 of 4,772.
   hrt=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$C/m2.wasm" query src/main.mn heads 2>/dev/null | head -1 | grep -oE '[0-9]+ that do not' | grep -oE '^[0-9]+')
   hrtmax=$(grep -E '^head_round_trip_max:' "$BASELINE" | head -1 | cut -d: -f2 | tr -d ' ')
   if [[ -z "$hrt" ]]; then

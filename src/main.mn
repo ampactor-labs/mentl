@@ -256,8 +256,8 @@ fn space_run(addr) = match addr {
     eprint_string("mentl space: the page is served by the mentl command — from the repo, `bash tools/space-stage.sh && python3 tools/space-serve.py`, then open http://127.0.0.1:7397/ (the deployed page is https://space.ampactor.dev/); `mentl space <file>:<line>[:<col>]` answers the View at an address\n")
     2
   },
-  Some((target, line, col)) => infer_context(() => match driver_entry_with_ranges(target) {
-    (_ast, ranges) => space_project(ranges, target, line, col),
+  Some(SpaceAt(target, line, col, needle)) => infer_context(() => match driver_entry_with_ranges(target) {
+    (_ast, ranges) => space_project(ranges, target, line, col, needle),
   } ~> patch_to_file ~> terminal_transport ~> cursor_default ~> synth_default ~> interrogate_default ~> mentl_default ~> stdout_console ~> wasi_filesystem ~> diag_bank),
 }
 
@@ -507,10 +507,10 @@ type FmtVerdict
   | FmtRenders(String, String, String)
   // the path and why it will not be written, one line each
   | FmtRefused(String, [String])
-  // the path and its parse's error count: a file the parser refuses has no
-  // canonical form to compare — a fixture that refuses on purpose, or a
-  // file mid-edit — so it is named, never rendered, and holds no other
-  // file's write back
+  // the path and the count of its parse's reports no render can fix: a file
+  // the parser could not read has no canonical form to compare — a fixture
+  // that refuses on purpose, or a file mid-edit — so it is named, never
+  // rendered, and holds no other file's write back
   | FmtUnparsed(String, Int)
 
 fn fmt_judge(stamps, path: String) = fmt_file(stamps, path) ~> arena
@@ -560,13 +560,17 @@ fn fmt_render_file(path: String, src: String) = infer_context(() => {
   }
 } ~> format_default ~> diag_bank)
 
-// The parse's errors a render cannot fix. A MachineApplicable class is the
-// formatter's own lift — a duplicate import is a syntax error whose fix IS
-// this render — so it never holds the render back.
+// The parse's reports a render cannot fix: every report but the formatter's
+// own lifts. A MachineApplicable class is the lift — a duplicate import is a
+// syntax error whose fix IS this render — so it never holds the render back.
+// Any other report says the parse recovered from text it could not read, and
+// a render of what the recovery built is not what the author wrote, whatever
+// the report's severity: an unexpected token narrates, and the holes its
+// recovery minted were written back as `??` over the author's clause.
 fn parse_refusals() = len(filter(render_cannot_fix, diag_banked()))
 
 fn render_cannot_fix(entry) = match entry {
-  (d, _, _) => diag_severity(d) == SError && diag_applicability(d) != MachineApplicable,
+  (d, _, _) => diag_applicability(d) != MachineApplicable,
 }
 
 // THE CONSERVATION GATE — the verb lexes its own render beside the source
@@ -673,7 +677,7 @@ fn fmt_print_refused(v) = match v {
 fn fmt_print_reason(line) = print_string("  {line}\n")
 
 fn fmt_print_unparsed(v) = match v {
-  FmtUnparsed(path, n) => print_string("fmt: {path} not rendered — its parse reports {int_to_str(n)} error(s)\n"),
+  FmtUnparsed(path, n) => print_string("fmt: {path} not rendered — its parse recovered from {int_to_str(n)} problem(s) a render cannot fix\n"),
   _ => (),
 }
 
@@ -1285,7 +1289,7 @@ fn session_answer(line, ast, ranges, manifest) = match parse_cli_args(session_ar
 fn session_read(verb, ast, ranges) = match verb {
   VAt(target, l, c) => session_whole(session_address(ranges, target, l, c)),
   VSpace(addr) => match addr {
-    Some((target, l, c)) => session_whole(session_banked(() => space_project(ranges, target, l, c))),
+    Some(SpaceAt(target, l, c, needle)) => session_whole(session_banked(() => space_project(ranges, target, l, c, needle))),
     None => session_miss(),
   },
   VQuery(target, q) => if target == "main" {

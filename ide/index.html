@@ -30,6 +30,10 @@
   .wordmark span { color: var(--muted); font-weight: 400; margin-left: 4px; }
   select { background: var(--raised2); color: var(--primary); border: 1px solid var(--border); border-radius: 7px; padding: 5px 10px; font: inherit; font-size: 12px; }
   select:hover { border-color: var(--border-lift); }
+  #find { background: var(--raised2); color: var(--primary); border: 1px solid var(--border); border-radius: 7px; padding: 5px 10px; font: 12px var(--mono); width: 210px; }
+  #find::placeholder { color: var(--faint); font-family: var(--sans); }
+  #find:focus { outline: 0; border-color: var(--gold); }
+  .facet.lit { border-color: var(--gold); background: var(--raised2); }
   .grow { margin-left: auto; }
   button.icon { background: transparent; border: 1px solid var(--border); color: var(--muted); border-radius: 7px; width: 28px; height: 28px; cursor: pointer; font-size: 14px; }
   button.icon:hover { color: var(--bright); border-color: var(--border-lift); }
@@ -44,22 +48,34 @@
   main { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(360px, 1fr); min-height: 0; }
   .canvas-pane { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
   .edwrap { position: relative; flex: 1; min-height: 0; overflow: hidden; background: var(--canvas); }
-  /* the gutter (line numbers; the aspect strip grows here), the topology
+  /* the gutter (the aspect strip, then the line numbers), the topology
      layer, the highlighted projection and the textarea the hand types into
      share ONE font, ONE padding and ONE scroll — the textarea's text is
-     transparent, so the projection is what you see and the caret is real */
-  #gutter { position: absolute; left: 0; top: 0; bottom: 0; width: 48px; padding: 16px 0 40vh; font: 13px/1.62 var(--mono);
-    color: var(--ghost); text-align: right; user-select: none; overflow: hidden; border-right: 1px solid var(--line); background: var(--raised1); }
-  #gutter div { padding-right: 10px; white-space: pre; }
-  #gutter div.cur { color: var(--gold-b); }
-  #gutter div.bad { color: var(--verm-b); }
-  #topo { position: absolute; inset: 0; left: 48px; pointer-events: none; z-index: 1; overflow: visible; }
+     transparent, so the projection is what you see and the caret is real.
+     Only the lines in view are painted (the projection is virtualized): a
+     spacer above and below holds the scroll the textarea has. */
+  .edwrap { --gw: 132px; }
+  #gutter { position: absolute; left: 0; top: 0; bottom: 0; width: var(--gw); padding: 16px 0 40vh; font: 13px/1.62 var(--mono);
+    color: var(--ghost); user-select: none; overflow: hidden; border-right: 1px solid var(--line); background: var(--raised1); }
+  #gutter .gl { display: flex; align-items: center; white-space: pre; }
+  #gutter .strip { display: flex; padding-left: 6px; }
+  #gutter .cell { width: 9px; text-align: center; font-size: 10px; cursor: pointer; opacity: .9; }
+  #gutter .cell:hover { opacity: 1; filter: brightness(1.3); }
+  #gutter .cell.st-refused { color: var(--verm-b); font-weight: 700; }
+  #gutter .cell.st-warned { text-decoration: underline dotted; opacity: .7; }
+  #gutter .num { margin-left: auto; padding-right: 10px; }
+  #gutter .gl.cur .num { color: var(--gold-b); }
+  #gutter .gl.bad .num { color: var(--verm-b); }
+  .a-query { color: var(--blue-b); } .a-propose { color: var(--verm-b); } .a-topology { color: var(--sky-b); } .a-effects { color: var(--gold-b); }
+  .a-ownership { color: var(--mag-b); } .a-verify { color: var(--green-b); } .a-teach { color: var(--gold-b); } .a-why { color: var(--blue-b); }
+  #topo { position: absolute; inset: 0; left: var(--gw); pointer-events: none; z-index: 1; overflow: visible; }
   .edwrap pre, .edwrap textarea {
-    position: absolute; top: 0; right: 0; bottom: 0; left: 48px; padding: 16px 20px 40vh 16px; margin: 0;
+    position: absolute; top: 0; right: 0; bottom: 0; left: var(--gw); padding: 16px 20px 40vh 16px; margin: 0;
     font: 13px/1.62 var(--mono); font-variant-ligatures: none; white-space: pre; overflow: auto; tab-size: 2; border: 0; outline: 0; resize: none;
     letter-spacing: 0; scrollbar-width: thin;
   }
   .edwrap pre { pointer-events: none; color: var(--primary); z-index: 2; }
+  .edwrap pre .ln { white-space: pre; }
   .edwrap textarea { background: transparent; color: transparent; caret-color: var(--gold-b); z-index: 3; }
   .edwrap textarea::selection { background: var(--selection); }
   /* token colors — each hue IS its kernel role (tokens.css) */
@@ -75,8 +91,8 @@
   .tk-fn   { color: var(--green-b); }
   .tk-cm   { color: var(--comment); font-style: italic; }
   .tk-self { color: var(--verm-b); font-style: italic; }
-  .ln-bad  { background: linear-gradient(90deg, rgba(213,94,0,.16), transparent 70%); }
-  .ln-cur  { background: linear-gradient(90deg, rgba(230,159,0,.09), transparent 80%); }
+  .ln.ln-bad  { background: linear-gradient(90deg, rgba(213,94,0,.16), transparent 70%); }
+  .ln.ln-cur  { background: linear-gradient(90deg, rgba(230,159,0,.09), transparent 80%); }
 
   /* the proposal strip — the cursor line's one proven move; Tab accepts */
   .proposal { border-top: 1px solid var(--border); padding: 7px 16px; font-size: 12px; font-family: var(--mono);
@@ -177,6 +193,7 @@
     <div class="wordmark">mentl<span>space</span></div>
   </div>
   <select id="program" title="the program — a lesson, or your own"></select>
+  <input id="find" spellcheck="false" autocomplete="off" placeholder="find by edge — a name, then ⏎" title="the references the graph noted under a name, and the string literals holding it">
   <div class="grow"></div>
   <button class="icon" id="theme" title="obsidian / parchment">◐</button>
   <div id="dot" title="the compiler"></div>
@@ -201,10 +218,12 @@
       <div class="tabs">
         <div data-p="plens" class="on">Lens <span class="n" id="ndiag">0</span></div>
         <div data-p="pledger">Ledger</div>
+        <div data-p="prefs">Refs <span class="n" id="nrefs">0</span></div>
         <div class="meta" id="sessinfo" title="the session that answered, and what the answer cost">—</div>
       </div>
       <div class="panel on" id="plens"></div>
       <div class="panel" id="pledger"></div>
+      <div class="panel" id="prefs"></div>
     </div>
   </div>
 </main>
@@ -257,87 +276,99 @@ async function fetchText(path){
   return r.text();
 }
 
-/* ── the tokenizer: the page's own SURFACE read, for the color layer only.
-   The compiler's spans replace it (L-D); until then it must never lose a
-   character — the render slices the SOURCE between tokens, so every space
-   and tab the hand typed is on the screen. ─────────────────────────────── */
-const KEYWORDS = new Set(["fn","let","if","else","match","type","effect","handler","with","import","where","true","false"]);
-const DISCIPLINE = new Set(["own","ref","Pure","resume"]);
-const VERBS = ["|>","<|","><","~>","<~"];
-function tokenize(src){
-  const T = []; let i = 0;
-  const push = (kind, s, e) => T.push({ kind, text: src.slice(s, e), start: s, end: e });
-  while (i < src.length){
-    const c = src[i], s = i;
-    if (c === "\n" || c === " " || c === "\t" || c === "\r"){ i++; continue; }
-    if (c === "/" && src[i+1] === "/"){ while (i < src.length && src[i] !== "\n") i++; push("cm", s, i); continue; }
-    if (c === '"'){
-      const triple = src.startsWith('"""', i); i += triple ? 3 : 1;
-      while (i < src.length){
-        if (src[i] === "\\"){ i += 2; continue; }
-        if (triple && src.startsWith('"""', i)){ i += 3; break; }
-        if (!triple && src[i] === '"'){ i++; break; }
-        if (!triple && src[i] === "\n") break;
-        i++;
-      }
-      push("str", s, i); continue;
+/* ── the canvas: the wheel's own projection of the text (src/space.mn) ─────
+   `mentl space <file>:0` answers the module's canvas — every token at its
+   span and class (the ONE lexer: the page holds none), the aspect strip,
+   the verb frames, the proof marks and the ownership traces. The page
+   slices the SOURCE at the wheel's spans, so a character the hand typed
+   cannot vanish, and paints only the lines in view. Columns on the wire are
+   the text's BYTES (a lexer's columns); the page converts them per line,
+   which is the host's encoding, not a second reading of the program. */
+const ARMS = ["query", "propose", "topology", "effects", "ownership", "verify", "teach", "why"];
+const CLS = { kw:"tk-kw", disc:"tk-disc", verb:"tk-verb", hole:"tk-hole", str:"tk-str", spl:"tk-spl", num:"tk-num", cm:"tk-cm", ty:"tk-ty", fn:"tk-fn", self:"tk-self", neg:"tk-neg" };
+// one glyph per aspect and state — the strip's eight columns
+const GLYPH = {
+  query:     { proven: "τ", open: "τ" },
+  propose:   { proven: "⬡", open: "⬡" },
+  topology:  { "|>": "▸", "<|": "◂", "><": "⋈", "~>": "⊃", "<~": "↺" },
+  effects:   { proven: "◆", open: "◇" },
+  ownership: { proven: "●", open: "○" },
+  verify:    { proven: "✓", open: "◌" },
+  teach:     { proven: "↑", open: "↑" },
+  why:       { proven: "¶", open: "¶" },
+};
+const glyphOf = (arm, c) => c.glyph === "refused" ? "✗" : (arm === "topology" ? (GLYPH.topology[c.word] || "▸") : (GLYPH[arm][c.glyph] || GLYPH[arm].proven));
+let CANVAS = null, CANVAS_TEXT = null, CANVAS_FILE = null;   // the module View's canvas and the text it was read off
+let TOK = new Map(), STRIP = new Map();                        // canvas line → its tokens [byte start, byte end, class]; → its eight cells
+function takeCanvas(cv, text){
+  CANVAS = cv; CANVAS_TEXT = text; CANVAS_FILE = FILE; TOK = new Map(); STRIP = new Map();
+  if (!cv) return;
+  const lines = text.split("\n");
+  for (const [sl, sc, el, ec, cls] of cv.tokens){
+    for (let l = sl; l <= el; l++){
+      const from = l === sl ? sc : 1, to = l === el ? ec : te.encode(lines[l - 1] || "").length + 1;
+      if (!TOK.has(l)) TOK.set(l, []);
+      TOK.get(l).push([from, to, cls]);
     }
-    if (c === "?" && src[i+1] === "?"){ i += 2; push("hole", s, i); continue; }
-    const v = VERBS.find(g => src.startsWith(g, i));
-    if (v){ i += v.length; push("verb", s, i); continue; }
-    if (c === "!" && /[A-Z]/.test(src[i+1] || "")){ i++; while (/[A-Za-z0-9_]/.test(src[i] || "")) i++; push("neg", s, i); continue; }
-    if (/[0-9]/.test(c)){ while (/[0-9A-Fa-fxbo_.]/.test(src[i] || "")) i++; push("num", s, i); continue; }
-    if (/[A-Za-z_]/.test(c)){
-      while (/[A-Za-z0-9_]/.test(src[i] || "")) i++;
-      const w = src.slice(s, i);
-      push(w === "self" ? "self" : KEYWORDS.has(w) ? "kw" : DISCIPLINE.has(w) ? "disc" : /^[A-Z]/.test(w) ? "ty" : "id", s, i); continue;
-    }
-    const two = src.substr(i, 2);
-    if (["->","=>","++","==","!=","<=",">=","&&","||"].includes(two)){ i += 2; push("op", s, i); continue; }
-    i++; push("op", s, i);
   }
-  return T;
+  for (const s of cv.strip) STRIP.set(s.line, s.cells);
 }
-const CLS = { cm:"tk-cm", str:"tk-str", verb:"tk-verb", hole:"tk-hole", neg:"tk-neg", num:"tk-num", kw:"tk-kw", disc:"tk-disc", ty:"tk-ty", self:"tk-self" };
-function renderStr(text){
-  let h = "", i = 0;
-  while (i < text.length){
-    if (text[i] === "\\"){ h += esc(text.substr(i, 2)); i += 2; continue; }
-    if (text[i] === "{"){ let j = text.indexOf("}", i); if (j < 0) j = text.length - 1; h += `<span class="tk-spl">${esc(text.slice(i, j + 1))}</span>`; i = j + 1; continue; }
-    h += esc(text[i]); i++;
-  }
-  return h;
+// a byte column of a line (1-based) as the string index the DOM counts
+function byteIndex(line, col){
+  let b = 1, i = 0;
+  while (i < line.length && b < col){ const c = line.codePointAt(i); b += c < 0x80 ? 1 : c < 0x800 ? 2 : c < 0x10000 ? 3 : 4; i += c >= 0x10000 ? 2 : 1; }
+  return i;
 }
-let CURSOR_LINE = 0, BAD = new Set();
-function highlight(src){
-  const T = tokenize(src);
+// The canvas was read off the text of the last judgment; while the hand types,
+// a line that did not move keeps its facts — the lines above the edit, and the
+// lines below it shifted by the edit's height — and a moved line paints plain
+// until the next answer. 0 = a line the canvas does not know.
+function canvasLine(){
+  if (!CANVAS || CANVAS_FILE !== FILE) return () => 0;
+  const now = $("src").value;
+  if (now === CANVAS_TEXT) return n => n;
+  const a = now.split("\n"), b = CANVAS_TEXT.split("\n");
+  let p = 0; while (p < a.length && p < b.length && a[p] === b[p]) p++;
+  let q = 0; while (q < a.length - p && q < b.length - p && a[a.length - 1 - q] === b[b.length - 1 - q]) q++;
+  return n => n <= p ? n : (n > a.length - q ? n - (a.length - b.length) : 0);
+}
+let CURSOR_LINE = 0, BAD = new Set(), VIEW_RANGE = [1, 0];
+function paintLine(text, toks){
+  if (!toks || !toks.length) return esc(text);
   let html = "", pos = 0;
-  for (let k = 0; k < T.length; k++){
-    const t = T[k];
-    if (t.start > pos) html += esc(src.slice(pos, t.start));   // the gap — every space the hand typed
-    let cls = CLS[t.kind] || "";
-    if ((t.kind === "id" || t.kind === "ty") && k > 0 && T[k-1].kind === "kw" && (T[k-1].text === "fn" || T[k-1].text === "handler")) cls = "tk-fn";
-    const inner = t.kind === "str" ? renderStr(t.text) : esc(t.text);
-    html += cls ? `<span class="${cls}">${inner}</span>` : inner;
-    pos = t.end;
+  for (const [s, e, cls] of toks){
+    const i = byteIndex(text, s), j = byteIndex(text, e);
+    if (i > pos) html += esc(text.slice(pos, i));          // the gap — every space the hand typed
+    const k = CLS[cls];
+    html += k ? `<span class="${k}">${esc(text.slice(i, j))}</span>` : esc(text.slice(i, j));
+    pos = Math.max(pos, j);
   }
-  html += esc(src.slice(pos));
-  // line tints ride a second pass over the rendered lines, so the text itself is never re-flowed
-  return html.split("\n").map((h, idx) => {
-    const n = idx + 1;
-    const c = (n === CURSOR_LINE ? " ln-cur" : "") + (BAD.has(n) ? " ln-bad" : "");
-    return c ? `<span class="${c.trim()}">${h}</span>` : h;
-  }).join("\n") + "\n";
+  return html + esc(text.slice(pos));
 }
-function renderGutter(src){
-  const n = src.split("\n").length;
-  let h = "";
-  for (let i = 1; i <= n; i++) h += `<div class="${i === CURSOR_LINE ? "cur" : ""}${BAD.has(i) ? " bad" : ""}">${i}</div>`;
-  $("gutter").innerHTML = h;
+function visibleRange(n){
+  const ta = $("src"), first = Math.max(1, Math.floor((ta.scrollTop - PADT) / LH) + 1), count = Math.ceil(ta.clientHeight / LH) + 1;
+  return [Math.max(1, first - 40), Math.min(n, first + count + 40)];
+}
+function renderCanvas(){
+  const rows = $("src").value.split("\n"), n = rows.length, at = canvasLine();
+  const [a, b] = VIEW_RANGE = visibleRange(n);
+  let hl = `<div style="height:${(a - 1) * LH}px"></div>`, gut = `<div style="height:${(a - 1) * LH}px"></div>`;
+  for (let i = a; i <= b; i++){
+    const o = at(i), c = (i === CURSOR_LINE ? " ln-cur" : "") + (BAD.has(i) ? " ln-bad" : "");
+    hl += `<div class="ln${c}" data-n="${i}" style="height:${LH}px">${paintLine(rows[i - 1], o ? TOK.get(o) : null)}</div>`;
+    const cells = o ? STRIP.get(o) : null;
+    const strip = ARMS.map((arm, k) => { const x = cells && cells[k]; return x ? `<span class="cell a-${arm} st-${x.glyph}" data-arm="${arm}" data-l="${i}" data-c="${byteIndex(rows[i - 1], x.site.line === o ? x.site.col : 1) + 1}" title="${esc(arm + " · " + x.word + " — " + x.text)}">${glyphOf(arm, x)}</span>` : `<span class="cell"> </span>`; }).join("");
+    gut += `<div class="gl${i === CURSOR_LINE ? " cur" : ""}${BAD.has(i) ? " bad" : ""}" style="height:${LH}px"><span class="strip">${strip}</span><span class="num">${i}</span></div>`;
+  }
+  hl += `<div style="height:${(n - b) * LH}px"></div>`; gut += `<div style="height:${(n - b) * LH}px"></div>`;
+  $("hl").innerHTML = hl; $("gutter").innerHTML = gut;
+  $("gutter").querySelectorAll(".cell[data-arm]").forEach(el => el.onclick = () => openAspect(el.dataset.arm, +el.dataset.l, +el.dataset.c));
+  renderTopology(rows, at); syncScroll();
 }
 
-/* ── the topographic canvas — verb spines drawn from the surface (L-D reads
-   them off the graph's Topology facet instead) ─────────────────────────── */
+/* ── the topographic layer — every shape a read of the graph: the verb frames
+   (VerbFrame's sites with what each composes), the proof marks at their
+   claims, the traces of owned values, the references a find follows ─────── */
 let CW = 7.8, LH = 21.06, PADT = 16, PADL = 16;
 function measureMetrics(){
   const ta = $("src"); const cs = getComputedStyle(ta);
@@ -348,29 +379,48 @@ function measureMetrics(){
   CW = ruler.getBoundingClientRect().width / 100 || CW; ruler.remove();
 }
 const VERB_HUE = { "|>":"var(--sky-b)", "<|":"var(--sky-b)", "><":"var(--sky-b)", "~>":"var(--gold-b)", "<~":"var(--verm-b)" };
-function renderTopology(){
-  const g = $("topo-g"); const rows = $("src").value.split("\n");
-  const stages = [];
-  rows.forEach((row, idx) => { const m = row.match(/^(\s*)(\|>|<\||><|~>|<~)/); if (m) stages.push({ idx, col: m[1].length, verb: m[2] }); });
-  const chains = []; let run = null;
-  stages.forEach(st => { if (run && st.idx === run.at + 1){ run.stages.push(st); run.at = st.idx; } else { run = { stages: [st], at: st.idx }; chains.push(run); } });
+const MARK = { proven: ["✓", "var(--green-b)"], open: ["◌", "var(--mag-b)"], refused: ["✗", "var(--verm-b)"] };
+function renderTopology(rows, at){
+  const back = new Map(); for (let i = 1; i <= rows.length; i++){ const o = at(i); if (o) back.set(o, i); }
+  // a canvas site, placed on the current text: its line, and its column as an index
+  const place = (l, col) => { const i = back.get(l); return i ? { i, x: PADL + byteIndex(rows[i - 1], col) * CW } : null; };
+  const Y = i => PADT + (i - 1) * LH;
   let out = "";
-  const X = col => PADL + col * CW, Y = idx => PADT + idx * LH;
-  for (const ch of chains){
-    const first = ch.stages[0], last = ch.stages[ch.stages.length - 1];
-    const col = Math.min(...ch.stages.map(s => s.col)); const spineX = X(col) - 5;
-    let head = first.idx - 1; while (head >= 0 && rows[head].trim() === "") head--;
-    const topY = head >= 0 ? Y(head) + LH * .5 : Y(first.idx) - LH * .3, botY = Y(last.idx) + LH * .5;
-    if (ch.stages.some(s => s.verb === "~>")) out += `<rect x="${spineX - 6}" y="${topY - LH * .35}" width="${Math.max(CW * 10, 60)}" height="${botY - topY + LH * .7}" rx="9" fill="rgba(230,159,0,.04)" stroke="rgba(230,159,0,.25)"/>`;
-    out += `<line x1="${spineX}" y1="${topY}" x2="${spineX}" y2="${botY}" stroke="rgba(86,180,233,.45)" stroke-width="1.4"/>`;
-    out += `<circle cx="${spineX}" cy="${topY}" r="2.1" fill="var(--sky-b)" opacity=".7"/>`;
-    for (const s of ch.stages){
-      const y = Y(s.idx) + LH * .5;
-      out += `<circle cx="${spineX}" cy="${y}" r="3" fill="${VERB_HUE[s.verb]}"/>`;
-      if (s.verb === "<~") out += `<path d="M ${spineX} ${y} C ${spineX - 13} ${y}, ${spineX - 13} ${topY}, ${spineX} ${topY}" fill="none" stroke="var(--verm-b)" stroke-width="1.2" opacity=".55"/>`;
+  // the references a find follows, behind the text
+  if (VIEW && VIEW.refs && VIEW_TEXT === $("src").value){
+    for (const r of [...VIEW.refs.sites, ...VIEW.refs.texts]) if (r.module === VIEW.at.module){
+      const s = r.site, i = s.line, x0 = PADL + byteIndex(rows[i - 1] || "", s.col) * CW, x1 = PADL + byteIndex(rows[i - 1] || "", s.line === s.end_line ? s.end_col : 999) * CW;
+      out += `<rect class="ref" x="${x0 - 1}" y="${Y(i) + 1}" width="${Math.max(x1 - x0 + 2, CW)}" height="${LH - 2}" rx="3" fill="rgba(230,159,0,.16)" stroke="rgba(230,159,0,.55)"/>`;
     }
   }
-  g.innerHTML = out; syncTopo();
+  for (const f of (CANVAS && CANVAS_FILE === FILE ? CANVAS.frames : [])){
+    const pts = f.stages.map(s => place(s.line, s.col)).filter(Boolean);
+    if (pts.length < 2) continue;
+    const spineX = Math.min(...pts.map(p => p.x)) - 6, top = Y(pts[0].i) + LH * .5, bot = Y(pts[pts.length - 1].i) + LH * .5;
+    if (f.verb === "~>"){
+      const body = f.stages[0], b0 = place(body.line, body.col), b1 = back.get(body.end_line);
+      if (b0 && b1) out += `<rect class="frame" x="${b0.x - 8}" y="${Y(b0.i) + 1}" width="${Math.max(CW * 12, (Math.max(...rows.slice(b0.i - 1, b1).map(r => r.length)) - (b0.x - PADL) / CW) * CW + 16)}" height="${(b1 - b0.i + 1) * LH - 2}" rx="9" fill="rgba(230,159,0,.035)" stroke="rgba(230,159,0,.28)"/>`;
+    }
+    if (pts[0].i === pts[pts.length - 1].i) continue;   // a verb on one line draws no spine
+    out += `<line class="frame" x1="${spineX}" y1="${top}" x2="${spineX}" y2="${bot}" stroke="rgba(86,180,233,.45)" stroke-width="1.4"/>`;
+    for (const p of pts) out += `<circle cx="${spineX}" cy="${Y(p.i) + LH * .5}" r="2.8" fill="${VERB_HUE[f.verb]}"/>`;
+    if (f.verb === "<~") out += `<path d="M ${spineX} ${bot} C ${spineX - 13} ${bot}, ${spineX - 13} ${top}, ${spineX} ${top}" fill="none" stroke="var(--verm-b)" stroke-width="1.2" opacity=".55"/>`;
+  }
+  // the traces of owned values: from the declaration's head to the use that consumes it
+  for (const t of (CANVAS && CANVAS_FILE === FILE ? CANVAS.traces : [])){
+    const head = back.get(t.head.line), uses = t.uses.map(u => place(u.line, u.col)).filter(Boolean);
+    if (!head || !uses.length) continue;
+    const x = PADL - 9, end = uses[uses.length - 1];
+    out += `<line class="trace" x1="${x}" y1="${Y(head) + LH * .5}" x2="${x}" y2="${Y(end.i) + LH * .5}" stroke="var(--gold)" stroke-width="1.6" opacity=".5"/>`;
+    uses.forEach((u, k) => { out += `<circle class="trace" cx="${x}" cy="${Y(u.i) + LH * .5}" r="${k === uses.length - 1 ? 3.2 : 2}" fill="var(--gold)" opacity="${k === uses.length - 1 ? .25 : .7}"/>`; });
+  }
+  // the proof marks at their claims
+  for (const m of (CANVAS && CANVAS_FILE === FILE ? CANVAS.marks : [])){
+    const p = place(m.site.line, m.site.line === m.site.end_line ? m.site.end_col : m.site.col); if (!p) continue;
+    const [g, hue] = MARK[m.glyph] || MARK.open;
+    out += `<text class="mark mark-${m.glyph}" x="${p.x + 2}" y="${Y(p.i) + LH * .38}" font-size="9" fill="${hue}">${g}</text>`;
+  }
+  $("topo-g").innerHTML = out; syncTopo();
 }
 function syncTopo(){ const ta = $("src"); $("topo-g").setAttribute("transform", `translate(${-ta.scrollLeft}, ${-ta.scrollTop})`); }
 
@@ -408,7 +458,8 @@ function session(){
 let PROGRAM = null;          // the manifest path of the program in the editor, or "scratch"
 let FILE = "main.mn";        // the path the editor's text holds in the session's tree — a lesson is main.mn; a project's module keeps its name
 let EXTRA_DELTA = {};        // a project's other modules, sent with the next edit so they stand beside the one in the editor
-let VIEW = null, VIEW_AT = -1, REFUSAL = null, PROJECTED = false, LAST = null;
+let VIEW = null, VIEW_AT = -1, VIEW_TEXT = null, REFUSAL = null, PROJECTED = false, LAST = null;
+let NEEDLE = null;           // a name the find box asked for; the next caret move clears it
 let PROPOSAL = null, busy = false, pendingEdit = false;
 const lineColAt = off => { const before = $("src").value.slice(0, off); const nl = before.lastIndexOf("\n"); return { line: before.split("\n").length, col: off - nl }; };
 const offsetOf = (line, col) => { const rows = $("src").value.split("\n"); let o = 0; for (let i = 0; i < line - 1 && i < rows.length; i++) o += rows[i].length + 1; return o + col - 1; };
@@ -418,16 +469,26 @@ const getOffset = () => $("src").selectionStart;
 // that text channel (Hβ.session.answer-is-out-err-and-exit names its end)
 const COST_LINE = /^(heap|arena|session): /;
 
-/* the loop: an edit re-judges the program in the resident session and
-   answers the View at the caret in one call; a caret move alone is a read
-   of the graph the session already holds */
+/* the loop: an edit re-judges the program in the resident session and asks
+   the module's View — the canvas the text is painted from — then the View at
+   the caret; a caret move alone is a read of the graph the session already
+   holds, and so is a find */
 async function project(edited){
   if (!MODULE || busy){ if (edited) pendingEdit = true; return; }
   busy = true; $("dot").className = "busy";
   const off = getOffset(); const { line, col } = lineColAt(off);
-  const delta = edited ? Object.assign({}, EXTRA_DELTA, { [FILE]: $("src").value }) : undefined;
-  if (edited) EXTRA_DELTA = {};
-  const r = await session().call(["mentl", "space", `${FILE}:${line}:${col}`], delta);
+  // every request carries the text it is about; the session re-judges only
+  // bytes it has not seen, so a read with the same text stays a read, and a
+  // canvas is always labeled with the text the session judged
+  const text = $("src").value;
+  const delta = Object.assign({}, EXTRA_DELTA, { [FILE]: text });
+  EXTRA_DELTA = {};
+  if (edited || !CANVAS || CANVAS_FILE !== FILE || CANVAS_TEXT !== text){
+    const m = await session().call(["mentl", "space", `${FILE}:0`], delta);
+    try { if (m.exit === 0 && !m.trapped) takeCanvas(JSON.parse(m.out).canvas, text); } catch (e) {}
+  }
+  const ask = ["mentl", "space", `${FILE}:${line}:${col}`].concat(NEEDLE ? [NEEDLE] : []);
+  const r = await session().call(ask, delta);
   VIEW = null; REFUSAL = null;
   if (r.exit === 0 && !r.trapped){
     try { VIEW = JSON.parse(r.out); }
@@ -436,7 +497,7 @@ async function project(edited){
     REFUSAL = r.trapped ? `the compiler hit a wall on this input — ${r.trapped}` :
       ((r.err || "").split("\n").filter(l => l.trim() && !COST_LINE.test(l)).join("\n") || `the address refused (exit ${r.exit})`);
   }
-  VIEW_AT = off; PROJECTED = true;
+  VIEW_AT = off; VIEW_TEXT = text; PROJECTED = true;
   LAST = { ms: r.ms, resident: !!r.resident, bytes: (r.out || "").length, why: r.why || "" };
   BAD = VIEW ? new Set(VIEW.lens.filter(f => f.kind === "diag" && f.module === VIEW.at.module).map(f => f.site.line)) : new Set();
   $("sessinfo").textContent = `${LAST.resident ? "resident" : "cold"} · ${LAST.ms.toFixed(0)} ms · ${LAST.bytes.toLocaleString()} B`;
@@ -449,10 +510,9 @@ async function project(edited){
 
 /* ── the painter: every surface, from the one View ──────────────────────── */
 function renderAll(){
-  const src = $("src").value;
   CURSOR_LINE = lineColAt(getOffset()).line;
-  $("hl").innerHTML = highlight(src); renderGutter(src); renderTopology(); syncScroll();
-  renderRing(); renderLens(); renderLedger(); renderProposal();
+  renderCanvas();
+  renderRing(); renderLens(); renderLedger(); renderRefs(); renderProposal();
 }
 const stub = txt => `<span class="stub">${esc(txt)}</span>`;
 // the eight aspects, in the kernel's order — the wire's kinds and the page's hues
@@ -483,10 +543,10 @@ function renderRing(){
     const ledes = f.notes.filter(n => n.kind === "lede"), rest = f.notes.filter(n => n.kind !== "lede");
     const socket = f.kind === "propose" && (f.verdict === "fill" || f.verdict === "ask");
     const text = f.text ? esc(f.text) : stub(SILENCE[f.kind] || "—");
-    return { k: HUE[f.kind] || "graph", label: LABEL[f.kind] || f.kind, prov: socket ? "socket" : "real", door: DOOR[f.kind] || null,
+    return { kind: f.kind, k: HUE[f.kind] || "graph", label: LABEL[f.kind] || f.kind, prov: socket ? "socket" : "real", door: DOOR[f.kind] || null,
              v: ledes.map(noteHtml).join("") + text + rest.map(noteHtml).join("") };
-  }) : ASPECTS.map(k => ({ k: HUE[k], label: LABEL[k], prov: "surface", door: null, v: stub("—") }));
-  $("facets").innerHTML = rows.map(r => `<div class="facet k-${r.k}${r.prov === "surface" ? "" : " real"}${r.door ? " door" : ""}" ${r.door ? `data-door="${r.door}"` : ""}>
+  }) : ASPECTS.map(k => ({ kind: k, k: HUE[k], label: LABEL[k], prov: "surface", door: null, v: stub("—") }));
+  $("facets").innerHTML = rows.map(r => `<div class="facet k-${r.k}${r.prov === "surface" ? "" : " real"}${r.door ? " door" : ""}${r.kind === LIT ? " lit" : ""}" data-kind="${r.kind}" ${r.door ? `data-door="${r.door}"` : ""}>
       <div class="k k-${r.k}">${r.label}<span class="prov prov-${r.prov}">${r.prov}</span></div><div class="v">${r.v}</div></div>`).join("");
   $("facets").querySelectorAll(".facet.door").forEach(el => el.onclick = () => openTab(el.dataset.door));
   $("facets").querySelectorAll(".hop[data-l]").forEach(el => el.onclick = e => { e.stopPropagation(); jump(parseInt(el.dataset.l || "0", 10)); });
@@ -533,6 +593,23 @@ function renderLedger(){
   p.querySelectorAll("[data-l]").forEach(el => el.onclick = () => jump(parseInt(el.dataset.l || "0", 10)));
 }
 
+/* ── the references a find follows: at the caret, what its node names along
+   its edge; from the find box, a name's references and the string literals
+   holding it — the medium's own `refs of` and `text`, carried on the View ─ */
+function renderRefs(){
+  const p = $("prefs"), R = VIEW && VIEW.refs;
+  $("nrefs").textContent = R ? R.sites.length + R.texts.length : 0;
+  if (!R){ p.innerHTML = `<div class="ledger"><div class="subtle">place the caret on a name, or type one in the find box — the references are the graph's edges, never a text search.</div></div>`; return; }
+  const row = (r, kind) => `<div class="item" data-l="${r.module === VIEW.at.module ? r.site.line : ""}" data-c="${r.site.col}">${esc(kind)}<span class="at">${esc(r.module)}:${r.site.line}:${r.site.col}</span></div>`;
+  p.innerHTML = `<div class="ledger"><section><h5>references to <code>${esc(R.needle)}</code></h5>${R.sites.length ? R.sites.map(r => row(r, "reference")).join("") : `<div class="subtle">none in the judged graph.</div>`}</section>`
+    + (R.texts.length ? `<section><h5>string literals holding it</h5>${R.texts.map(r => row(r, "text")).join("")}</section>` : "") + `</div>`;
+  p.querySelectorAll("[data-l]").forEach(el => el.onclick = () => jump(parseInt(el.dataset.l || "0", 10), parseInt(el.dataset.c || "1", 10)));
+}
+// a strip cell is a door into the ring: the caret goes to the cell's site and
+// the aspect's row is lit when the View there arrives
+let LIT = null;
+function openAspect(arm, line, col){ LIT = arm; jump(line, col); }
+
 /* ── the socket: the one proven proposal at the hole under the caret; Tab
    accepts it through `mentl accept` — a graph edge first, the text its
    projection (C4); the next View read is the redraw ──────────────────────── */
@@ -562,11 +639,21 @@ async function acceptProposal(){
     $("dot").className = "bad"; REFUSAL = (r.err || r.trapped || "the accept drew nothing").trim().split("\n").filter(l => !COST_LINE.test(l)).join("\n"); VIEW = null; renderLens(); renderLedger(); return true;
   }
   const text = typeof wrote === "string" ? wrote : td.decode(wrote);
-  ta.focus(); ta.setSelectionRange(0, ta.value.length); ta.setRangeText(text, 0, ta.value.length, "end");   // native undo survives
+  writeBuffer(text);
   ta.setSelectionRange(p.at, p.at);
   // the session wrote the text and re-judged it before it answered, so the redraw is a read
   saveDraft(); project(false);
   return true;
+}
+
+/* ── the medium's writes into the buffer — an accept, the formatter's canon —
+   go through the browser's own editing command, so each is ONE step of the
+   undo the hand already has: ⌘Z takes the medium's step back. The trail as
+   undo, measured: `setRangeText` (the form before L-D) records nothing, and
+   the smoke's undo after an accept left the accepted text in place. */
+function writeBuffer(text){
+  const ta = $("src"); ta.focus(); ta.setSelectionRange(0, ta.value.length);
+  if (!document.execCommand("insertText", false, text)) ta.setRangeText(text, 0, ta.value.length, "end");
 }
 
 /* ── programs: the lessons the manifest names (each a one-file project), the
@@ -583,33 +670,68 @@ const ENTRIES = [];   // what the select offers: { key, label, dir, path, file }
 const VFS_TEXT = {};
 const draftKey = path => "mentl-space-draft:" + path;
 function saveDraft(){ try { localStorage.setItem(draftKey(PROGRAM), $("src").value); } catch (e) {} }
+// the caret and the scroll are kept with the draft, so a reopened file reopens where the hand left it
+function saveCaret(){ try { localStorage.setItem("mentl-space-caret:" + PROGRAM, JSON.stringify([$("src").selectionStart, $("src").scrollTop])); } catch (e) {} }
+function caretOf(path){ try { const c = JSON.parse(localStorage.getItem("mentl-space-caret:" + path) || "null"); if (Array.isArray(c)) return c; } catch (e) {} return [0, 0]; }
 function draftOr(path){ try { const d = localStorage.getItem(draftKey(path)); if (d !== null) return d; } catch (e) {} return path === "scratch" ? "fn main() = 42\n" : VFS_TEXT[path]; }
 function openEntry(key){
   const e = ENTRIES.find(x => x.key === key) || ENTRIES[0];
   PROGRAM = e.path; FILE = e.file;
   EXTRA_DELTA = {};
   if (e.dir) for (const m of PROJECTS.find(p => p.dir === e.dir).members) if (m !== e.path) EXTRA_DELTA[m.slice(e.dir.length + 1)] = draftOr(m);
-  const ta = $("src"); ta.value = draftOr(e.path); ta.setSelectionRange(0, 0);
-  VIEW = null; REFUSAL = null; VIEW_AT = -1; PROJECTED = false;
+  const ta = $("src"); ta.value = draftOr(e.path);
+  const [off, top] = caretOf(e.path); ta.setSelectionRange(Math.min(off, ta.value.length), Math.min(off, ta.value.length)); ta.scrollTop = top;
+  VIEW = null; REFUSAL = null; VIEW_AT = -1; PROJECTED = false; NEEDLE = null; CANVAS = null; TOK = new Map(); STRIP = new Map();
   project(true);
 }
 
 /* ── wiring ─────────────────────────────────────────────────────────────── */
 function syncScroll(){ const ta = $("src"); $("hl").scrollTop = ta.scrollTop; $("hl").scrollLeft = ta.scrollLeft; $("gutter").scrollTop = ta.scrollTop; syncTopo(); }
-function jump(line){ if (!line) return; const ta = $("src"); const idx = ta.value.split("\n").slice(0, line - 1).join("\n").length + (line > 1 ? 1 : 0);
-  ta.focus(); ta.setSelectionRange(idx, idx); ta.scrollTop = Math.max(0, (line - 6) * LH); project(false); }
+// the painted window follows the scroll: a scroll that leaves it repaints
+function onScroll(){ const [a, b] = VIEW_RANGE, n = $("src").value.split("\n").length, [c, d] = visibleRange(n);
+  if (c < a || d > b) renderCanvas(); else syncScroll(); saveCaret(); }
+function jump(line, col){ if (!line) return; const ta = $("src"); const idx = ta.value.split("\n").slice(0, line - 1).join("\n").length + (line > 1 ? 1 : 0) + Math.max(0, (col || 1) - 1);
+  ta.focus(); ta.setSelectionRange(idx, idx); if (line < VIEW_RANGE[0] + 3 || line > VIEW_RANGE[1] - 3 || ta.scrollTop > (line - 1) * LH) ta.scrollTop = Math.max(0, (line - 6) * LH); NEEDLE = null; project(false); }
 function openTab(p){ document.querySelectorAll(".tabs div[data-p]").forEach(x => x.classList.toggle("on", x.dataset.p === p)); document.querySelectorAll(".panel").forEach(x => x.classList.toggle("on", x.id === p)); }
 let editDeb = null, caretDeb = null;
-$("src").addEventListener("scroll", syncScroll);
-$("src").addEventListener("input", () => { $("hl").innerHTML = highlight($("src").value); renderGutter($("src").value); renderTopology(); saveDraft(); clearTimeout(editDeb); editDeb = setTimeout(() => project(true), 180); });
-["click", "keyup"].forEach(ev => $("src").addEventListener(ev, () => { clearTimeout(caretDeb); caretDeb = setTimeout(() => { if (getOffset() !== VIEW_AT) project(false); else renderAll(); }, 40); }));
+$("src").addEventListener("scroll", onScroll);
+$("src").addEventListener("input", () => { CURSOR_LINE = lineColAt(getOffset()).line; renderCanvas(); saveDraft(); clearTimeout(editDeb); editDeb = setTimeout(() => project(true), 180); scheduleFmt(); });
+["click", "keyup"].forEach(ev => $("src").addEventListener(ev, () => { saveCaret(); clearTimeout(caretDeb); caretDeb = setTimeout(() => { if (getOffset() !== VIEW_AT){ NEEDLE = null; LIT = null; project(false); } else renderAll(); }, 40); }));
+$("find").addEventListener("keydown", e => {
+  if (e.key === "Enter"){ e.preventDefault(); const n = $("find").value.trim(); NEEDLE = n || null; openTab("prefs"); project(false); }
+  if (e.key === "Escape"){ $("find").value = ""; NEEDLE = null; project(false); }
+});
+
+/* ── the formatter's canon on idle: when the hand pauses, `mentl fmt` renders
+   the file and the render replaces the buffer — never mid-keystroke, never
+   when fmt refuses (a render that would lose what the author wrote, or a
+   text that does not parse, writes nothing). The caret keeps its place among
+   the characters that are not layout, and the replacement is one step of the
+   native undo, so ⌘Z takes the formatter's step back. */
+let fmtDeb = null, fmtGen = 0, FMT_IDLE_MS = 1500;
+function scheduleFmt(){ clearTimeout(fmtDeb); if (FMT_IDLE_MS > 0) fmtDeb = setTimeout(fmtIdle, FMT_IDLE_MS); }
+async function fmtIdle(){
+  if (busy){ scheduleFmt(); return; }
+  const ta = $("src"), before = ta.value, gen = ++fmtGen;
+  const r = await session().call(["mentl", "fmt", FILE], Object.assign({}, EXTRA_DELTA, { [FILE]: before }));
+  if (gen !== fmtGen || ta.value !== before) return;                      // the hand moved: canon waits for the next pause
+  const w = r.written && r.written[FILE];
+  const text = w ? (typeof w === "string" ? w : td.decode(w)) : null;
+  if (!text || text === before) return;
+  const ink = s => s.replace(/\s/g, "").length;                          // the characters that are not layout
+  const k = ink(before.slice(0, ta.selectionStart));
+  let at = 0; for (let seen = 0; at < text.length && seen < k; at++) if (!/\s/.test(text[at])) seen++;
+  writeBuffer(text);
+  ta.setSelectionRange(at, at);
+  saveDraft(); project(true);
+}
 $("src").addEventListener("keydown", e => {
   if (e.key === "Tab"){ e.preventDefault(); if (PROPOSAL){ acceptProposal(); return; } const ta = e.target; ta.setRangeText("  ", ta.selectionStart, ta.selectionEnd, "end"); ta.dispatchEvent(new Event("input")); }
 });
 document.querySelectorAll(".tabs div[data-p]").forEach(t => t.onclick = () => openTab(t.dataset.p));
 $("theme").onclick = () => { const cur = document.documentElement.dataset.theme; const next = cur === "parchment" ? "obsidian" : "parchment"; document.documentElement.dataset.theme = next; try { localStorage.setItem("mentl-space-theme", next); } catch (x) {} };
 $("program").onchange = e => openEntry(e.target.value);
-window.addEventListener("resize", () => { measureMetrics(); renderTopology(); });
+window.addEventListener("resize", () => { measureMetrics(); renderCanvas(); });
 try { const qt = new URLSearchParams(location.search).get("theme"); if (qt) document.documentElement.dataset.theme = qt; const th = qt || localStorage.getItem("mentl-space-theme"); if (th) document.documentElement.dataset.theme = th; } catch (e) {}
 
 /* ── boot ───────────────────────────────────────────────────────────────── */
@@ -651,7 +773,9 @@ async function boot(){
 }
 
 /* ── the gate's wire (?smoke): the verdicts a headless browser can read ──── */
+const tick = ms => new Promise(r => setTimeout(r, ms));
 async function smoke(){
+  FMT_IDLE_MS = 0;   // the formatter's own leg below drives it; nothing else may reformat a fixture mid-measure
   await settled(200);
   // THE VIEW: the first lesson's View arrived from the session — eight ring
   // facts, no refusing diagnostic, the ledger present — and a second read of
@@ -669,32 +793,121 @@ async function smoke(){
   if (pm){
     openEntry(pm.key); await settled(1200);
     const pv = VIEW, members = pr.members.length;
-    console.log(`SMOKE-PROJECT dir=${pr.dir} members=${members} file=${FILE} resident=${!!(LAST && LAST.resident)} ring=${pv ? pv.ring.length : 0} refusing=${pv ? pv.lens.filter(f => diag(f) && f.refuses).length : -1} module=${pv ? pv.at.module : "-"}`);
+    console.log(`SMOKE-PROJECT dir=${pr.dir} members=${members} file=${FILE} resident=${!!(LAST && LAST.resident)} ring=${pv ? pv.ring.length : 0} refusing=${pv ? pv.lens.filter(f => diag(f) && f.refuses).length : -1} module=${pv ? pv.at.module : "-"} canvas-lines=${CANVAS ? CANVAS.lines : 0} painted=${document.querySelectorAll("#hl .ln").length}`);
     openEntry(ENTRIES[0].key); await settled(400);
   }
-  // THE PRODUCT: what the page renders, measured — fidelity (the projection
-  // shows every character the hand typed), no undefined anywhere in the chrome,
-  // eight real ring rows painted from the View, and the Lens structural: a
-  // Warning lands as a Warning at its own line and a mismatch at its own site
-  // (the two bugs the page's regexes had — the regex knew lowercase kinds
-  // only, and took the first address in a message, a Reason's, over the
-  // diagnostic's span)
-  jump(line); await new Promise(r => setTimeout(r, 400)); await settled(100);
-  const fidelity = $("hl").textContent === $("src").value + "\n";
-  const realRows = document.querySelectorAll(".facet.real").length;
+  // THE PRODUCT: what the page renders, measured — fidelity (every painted
+  // line shows every character the hand typed), no undefined anywhere in the
+  // chrome, eight real ring rows painted from the View, and the Lens
+  // structural: a Warning lands as a Warning at its own line and a mismatch
+  // at its own site
+  jump(line); await tick(400); await settled(100);
   const ta = $("src");
+  const fidelity = linesFaithful();
+  const realRows = document.querySelectorAll(".facet.real").length;
   ta.value = '// `nothing_here` is a reference that resolves nowhere\nfn f(x: Int) = x\n\nfn main() = f("x")\n';
   ta.setSelectionRange(0, 0); PROJECTED = false; await project(true); await settled(100);
   const warnAt = !!$("plens").querySelector(".diag.sev-Warning[data-l='1']");
   const mismatchAt = !!$("plens").querySelector(".diag.sev-error[data-l='4']");
   const diags = VIEW ? VIEW.lens.filter(diag).length : -1;
   // the chrome alone: the editor layers and the page's own code are data, not the page's words
-  const chrome = document.body.cloneNode(true); for (const id of ["hl", "src"]) chrome.querySelector("#" + id)?.remove();
+  const chrome = document.body.cloneNode(true); for (const id of ["hl", "src", "gutter"]) chrome.querySelector("#" + id)?.remove();
   chrome.querySelectorAll("script, style").forEach(e => e.remove());
   const html = chrome.innerHTML; const ui = html.indexOf("undefined");
   const undef = ui >= 0 ? JSON.stringify(html.slice(Math.max(0, ui - 70), ui + 12)) : false;
   console.log(`SMOKE-PRODUCT fidelity=${fidelity} undefined=${undef} ring-real=${realRows} lens-warning-at-line=${warnAt} lens-mismatch-at-site=${mismatchAt} diags=${diags} program=${PROGRAM}`);
+  // THE CANVAS (L-D): the text painted from the wheel's own spans — no
+  // tokenizer in the page, every painted token the source sliced at the
+  // span the canvas names, every strip cell the View's own cell at its line,
+  // the frames and marks drawn from the canvas; find by edge at a caret and
+  // from the box; the formatter's canon on idle; the medium's write a step
+  // of the native undo
+  ta.value = CANVAS_FIXTURE; ta.setSelectionRange(0, 0); PROJECTED = false; await project(true); await settled(100);
+  const lexer = typeof tokenize === "undefined" && typeof highlight === "undefined";
+  const spans = spansFaithful();
+  const strip = stripFaithful();
+  const frames = document.querySelectorAll("#topo .frame").length, marks = document.querySelectorAll("#topo .mark").length;
+  jump(2, 16); await tick(150); await settled(100);   // `x` in `x * 2`: the parameter's references, by its edge
+  const atCaret = VIEW && VIEW.refs ? VIEW.refs.sites.filter(r => r.module === VIEW.at.module).length : -1;
+  const refsDrawn = document.querySelectorAll("#topo .ref").length;
+  $("find").value = "double"; NEEDLE = "double"; await project(false); await settled(100);
+  const needle = VIEW && VIEW.refs && VIEW.refs.needle === "double" ? VIEW.refs.sites.length + VIEW.refs.texts.length : -1;
+  const listed = $("prefs").querySelectorAll(".item").length;
+  $("find").value = ""; NEEDLE = null;
+  // the formatter on idle: a pause renders the file canonical
+  ta.value = "fn main()  =  42\n"; ta.setSelectionRange(4, 4); PROJECTED = false; await project(true); await settled(100);
+  FMT_IDLE_MS = 200; ta.dispatchEvent(new Event("input"));
+  for (let i = 0; i < 100 && ta.value === "fn main()  =  42\n"; i++) await tick(100);
+  FMT_IDLE_MS = 0;
+  const fmt = ta.value === "fn main() = 42\n";
+  // the accept is one step of the undo the hand already has
+  ta.value = "type Positive = Int where 0 < self\n\nfn choose() -> Positive with Pure = ??\n\nfn main() = choose()\n";
+  ta.focus(); ta.setSelectionRange(0, 0); PROJECTED = false; await project(true); await settled(100);
+  const hole = ta.value.indexOf("??"); ta.setSelectionRange(hole, hole); await project(false); await settled(100);
+  const proposed = !!PROPOSAL; await acceptProposal(); await settled(100);
+  const accepted = !ta.value.includes("??");
+  document.execCommand("undo");
+  const undone = ta.value.includes("??");
+  // the page as the record's screenshot shows it: the canvas fixture, the caret on a stage of its chain
+  ta.value = CANVAS_FIXTURE; PROJECTED = false; await project(true); await settled(100); jump(19, 8); await tick(200); await settled(100);
+  console.log(`SMOKE-CANVAS no-page-lexer=${lexer} tokens=${CANVAS ? CANVAS.tokens.length : 0} spans=${spans} strip=${strip} frames=${frames} marks=${marks} refs-at-caret=${atCaret} refs-drawn=${refsDrawn} needle=${needle} needle-listed=${listed} fmt=${fmt} proposed=${proposed} accepted=${accepted} undone=${undone}`);
 }
+// every painted line is the source's line, character for character
+function linesFaithful(){
+  const rows = $("src").value.split("\n");
+  const painted = [...document.querySelectorAll("#hl .ln")];
+  return painted.length > 0 && painted.every(el => el.textContent === rows[+el.dataset.n - 1]);
+}
+// every painted token is the source sliced at the span the canvas names, in order
+function spansFaithful(){
+  if (!CANVAS || CANVAS_TEXT !== $("src").value) return "no-canvas";
+  const rows = $("src").value.split("\n"); let want = 0, bad = 0;
+  for (const el of document.querySelectorAll("#hl .ln")){
+    const n = +el.dataset.n, line = rows[n - 1];
+    const expect = (TOK.get(n) || []).filter(t => CLS[t[2]]).map(t => line.slice(byteIndex(line, t[0]), byteIndex(line, t[1])));
+    const got = [...el.querySelectorAll("span")].map(s => s.textContent);
+    want += expect.length; if (JSON.stringify(expect) !== JSON.stringify(got)) bad++;
+  }
+  return bad === 0 && want > 0 ? `${want}` : `bad${bad}/${want}`;
+}
+// every strip cell painted is the View's cell at its line, and every cell the View has is painted
+function stripFaithful(){
+  if (!CANVAS) return "no-canvas";
+  let want = 0, bad = 0;
+  for (const g of document.querySelectorAll("#gutter .gl")){
+    const n = +g.querySelector(".num").textContent, cells = STRIP.get(n) || [];
+    const painted = [...g.querySelectorAll(".cell")].map(c => c.dataset.arm ? `${c.dataset.arm}:${[...c.classList].find(k => k.startsWith("st-")).slice(3)}` : "");
+    const expect = ARMS.map((arm, k) => cells[k] ? `${arm}:${cells[k].glyph}` : "");
+    want += expect.filter(Boolean).length; if (JSON.stringify(painted) !== JSON.stringify(expect)) bad++;
+  }
+  return bad === 0 && want > 0 ? `${want}` : `bad${bad}/${want}`;
+}
+const CANVAS_FIXTURE = [
+  "// `double` doubles — the lede",
+  "fn double(x) = x * 2",
+  "",
+  "effect Ask {",
+  "  ask() -> Int",
+  "}",
+  "",
+  "handler one {",
+  "  ask() => resume(1),",
+  "}",
+  "",
+  "fn needs() = ask() + 1",
+  "",
+  "fn inv(n) = 100 / n",
+  "",
+  "fn main() = {",
+  "  let a = (ask() + needs()) ~> one",
+  "  let b = [1, 2, 3]",
+  "    |> map(double)",
+  "    |> len",
+  "  let c = 100 / 5",
+  "  a + b + c + inv(4) + (\"s{a}\" |> len)",
+  "}",
+  "",
+].join("\n");
 boot();
 </script>
 </body>

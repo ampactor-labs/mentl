@@ -33,19 +33,22 @@ import io
 // itself. Swap for `verify_smt` (Arc F.1) with zero source changes —
 // the swap targets the undecidable arm; the decidable arm here stays
 // load-bearing across the swap.
-handler verify_ledger with debt = [] {
+handler verify_ledger with debt = [], decided = [] {
   verify(modh, span, predicate, reason) => match predicate_decide(predicate) {
-    Some(true) => resume(Some(true)),
-    Some(false) => resume(Some(false)),
+    Some(true) => resume(Some(true)) with decided = [(modh, span, predicate, true)] ++ decided,
+    Some(false) => resume(Some(false)) with decided = [(modh, span, predicate, false)] ++ decided,
     None => resume(None) with debt = [(modh, span, predicate, reason)] ++ debt,
   },
   verify_debt() => resume(debt),
-  verify_forget(superseded) => resume() with debt = filter(debt_outside(superseded), debt),
+  verify_decided() => resume(decided),
+  verify_forget(superseded) => resume() with debt = filter(debt_outside(superseded), debt), decided = filter(debt_outside(superseded), decided),
 }
 
 // An obligation survives a forget unless it was raised in one of the module
 // nodes the caller is about to supersede by re-judging. `superseded: [Int]` is
-// the Intent Boundary carrying the eq proof the handle compare needs.
+// the Intent Boundary carrying the eq proof the handle compare needs. A
+// decided claim is the same four-place fact with its verdict where the debt
+// carries its Why, so one test serves both.
 fn debt_outside(superseded: [Int], entry) = match entry {
   (modh, _, _, _) => !any((h) => h == modh, superseded),
 }
@@ -120,7 +123,7 @@ fn total_div_faces(op, a, b, bind) = match op {
   BMod => node_excludes(b, 0, bind),
   BDiv => and_decide(
     node_excludes(b, 0, bind),
-    or_decide(node_excludes(b, 0 - 1, bind), node_excludes(a, i32_min(), bind))
+    or_decide(node_excludes(b, -1, bind), node_excludes(a, i32_min(), bind))
   ),
   _ => Some(true),
 }
@@ -511,7 +514,9 @@ fn value_leaves(h, bind) = match node_const_at(h, bind) {
     None => match graph_node_body(h) {
       NExpr(VarRef(name)) => if name == "self" { self_leaves(bind) } else { binder_leaves(h) },
       NExpr(BinOpExpr(op, l, r)) => match op {
-        BAdd => [LSum(lo_add(leaves_lo(value_leaves(node_handle(l), bind)), leaves_lo(value_leaves(node_handle(r), bind))))],
+        BAdd => [
+          LSum(lo_add(leaves_lo(value_leaves(node_handle(l), bind)), leaves_lo(value_leaves(node_handle(r), bind))))
+        ],
         _ => [LUnknown],
       },
       NExpr(CallExpr(callee, _)) => call_leaves(callee),
@@ -1748,10 +1753,10 @@ effect SmtSolver {
   smt_solve(String) -> SmtResult
 }
 
-handler verify_smt with witnesses = [], debt = [] {
+handler verify_smt with witnesses = [], debt = [], decided = [] {
   verify(modh, span, predicate, reason) => match predicate_decide(predicate) {
-    Some(true) => resume(Some(true)),
-    Some(false) => resume(Some(false)),
+    Some(true) => resume(Some(true)) with decided = [(modh, span, predicate, true)] ++ decided,
+    Some(false) => resume(Some(false)) with decided = [(modh, span, predicate, false)] ++ decided,
     None => // Only OPEN predicates reach the solver (predicate_decide short-circuits
     // ground ones above), so validity is the question — and validity is the
     // NEGATION's unsatisfiability. Solving the predicate itself and reading
@@ -1760,8 +1765,8 @@ handler verify_smt with witnesses = [], debt = [] {
     // SAT(¬P) hands back the violating assignment — a COUNTEREXAMPLE the
     // cursor surfaces at the rejection, not proof-evidence.
     match smt_solve(predicate_to_smt_lib(PNot(predicate))) {
-      SmtUnsat => resume(Some(true)),
-      SmtSat(counterexample) => resume(Some(false)) with witnesses = [(modh, span, predicate, counterexample)] ++ witnesses,
+      SmtUnsat => resume(Some(true)) with decided = [(modh, span, predicate, true)] ++ decided,
+      SmtSat(counterexample) => resume(Some(false)) with witnesses = [(modh, span, predicate, counterexample)] ++ witnesses, decided = [(modh, span, predicate, false)] ++ decided,
       SmtUnknown => // SmtUnknown is a GENUINELY undischarged obligation — accrue it as
       // pending debt (never silently resume, which would discharge an
       // obligation the solver could not prove; the no-silent-fallback law
@@ -1777,11 +1782,13 @@ handler verify_smt with witnesses = [], debt = [] {
   // SmtUnknown obligations are retained debt. Both flow back as the residual,
   // never dropped.
   resume(verify_residual(debt, witnesses)),
-  verify_forget(superseded) => // The generation clear drops the superseded modules' pending debt; the SAT
+  verify_decided() => resume(decided),
+  verify_forget(superseded) => // The generation clear drops the superseded modules' pending debt and
+  // their decided claims, which the re-judgment decides again; the SAT
   // witnesses stay — a counterexample is a PROOF (of violation), not an
   // obligation, and a re-derivation that removed the violating claim simply
   // never re-raises it.
-  resume() with debt = filter(debt_outside(superseded), debt),
+  resume() with debt = filter(debt_outside(superseded), debt), decided = filter(debt_outside(superseded), decided),
 }
 
 // The SMT handler's residual: undischarged debt PLUS the SAT-witness ledger

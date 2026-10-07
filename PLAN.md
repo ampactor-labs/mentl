@@ -3747,10 +3747,11 @@ and Wave C (tier 5) follow.
   (`Hβ.voice.free-variables-render-as-handles`, its round trip
   `Hβ.fmt.render-must-parse-to-the-same-tree`, and
   `Hβ.types.never-is-quantified-per-perform`; LANDED 2026-10-06, pin
-  c0b2828c — the heads leg's 92 open round trips are three grammar peers,
-  `Hβ.syntax.named-record-rest-is-dropped`,
+  c0b2828c; the heads leg's open round trips, three grammar peers, closed
+  at the heads landing — `Hβ.syntax.named-record-rest-is-dropped`,
   `Hβ.syntax.row-grammar-has-no-grouping` and
-  `Hβ.syntax.effect-arg-type-is-one-token`). Every surface that shows a
+  `Hβ.syntax.effect-arg-type-is-one-token` — with the leg held at 0 of
+  4,772 and a lowercase name in a clause a row variable at last). Every surface that shows a
   type renders through one projection — no `_:`, no `-> ()`, no `t…@e…`, no
   `WASI(a)` — the head round trip `parse(render(head)) == head` is a board
   leg, `doc` lists an effect's ops, and `!` is quantified per perform, never
@@ -3759,9 +3760,10 @@ and Wave C (tier 5) follow.
   projection never writes the graph) rides with it.
 - **F · `mentl fmt` makes the project canonical, cargo-style**
   (`Hβ.fmt.the-project-is-canonical`, closing
-  `Hβ.fmt.literal-spelling-is-intent`; LANDED IN PART 2026-10-06, pin
-  50da7612 — the verb, the parse-only render, the atomic write, the stamps,
-  `E_DuplicateImport` and the spelling; the rest stays the peer's. Its
+  `Hβ.fmt.literal-spelling-is-intent`; OPEN — the F lane's work integrated
+  2026-10-06, pin 50da7612: the verb, the parse-only render, the atomic
+  write, the stamps, `E_DuplicateImport` and the spelling; what F still owes
+  is the peer's, and F lands when it is built. Its
   integration also made stdin an entry module and built the obey gate,
   `tools/obey-gate.py`). No target renders the project and
   writes what is not canonical, and `--check` writes nothing and exits
@@ -3800,7 +3802,7 @@ and Wave C (tier 5) follow.
   the Severance Map over Pulse is L-E's. Its felt walk is the stranger test,
   never yet run: someone who has never seen the repository installs it and
   finishes lesson 1 from the README alone, each stumble a RESIDUE entry.
-- **The Space page.** L-D · the canvas (`Hβ.space.the-canvas`): tokens and
+- **The Space page.** L-D · the canvas (`Hβ.space.the-canvas`; OPEN — the canvas lane's work integrated 2026-10-06, what it still owes in the peer): tokens and
   spans come from the wheel and the page's tokenizer is deleted, with the
   aspect strip, find by edge, fmt on idle and the trail as undo. L-F · the
   medium assembles its own output (`Hβ.emit.the-medium-assembles-its-output`):

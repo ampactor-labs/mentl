@@ -2598,6 +2598,20 @@ for i in "${!compilers[@]}"; do
   else
     fail "fmt destructuring let (check rc=$lets_rc run=$lets_run; see $dir/fmt-lets.out)"
   fi
+  # A parse that recovered is never rendered: an unexpected token only
+  # narrates, and fmt wrote the recovery's holes back over the author's
+  # clause (RED on boot b2920932 and its candidate: `[e - E]` became
+  # `+  = e - E` with two `??` lines; a keyword binder became `let _`, RED
+  # since boot 21f8e691). The file stays byte for byte.
+  for rec in recovered keyword-binder; do
+    cp "$ROOT/tests/frontier/fmt-demo/$rec.mn" "$fdemo2/$rec.mn"
+    (cd "$fdemo2" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$fdemo2" --dir /tmp "$compiler" fmt "$rec.mn") >"$dir/fmt-$rec.out" 2>&1
+    if cmp -s "$ROOT/tests/frontier/fmt-demo/$rec.mn" "$fdemo2/$rec.mn"; then
+      pass "fmt never writes a parse it recovered ($rec.mn stays as authored)"
+    else
+      fail "fmt wrote a recovered parse (see $fdemo2/$rec.mn, $dir/fmt-$rec.out)"
+    fi
+  done
   # The re-sugar: the fixture's destructure-param lambda must render as
   # its authored pattern, never the desugared __dp<handle> machine form
   # (seen RED on the pre-resugar wheel: the fan's labeled branches baked

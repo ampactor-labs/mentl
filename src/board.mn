@@ -167,7 +167,10 @@ fn board_bounds() = [
   // the roster through a named predicate (`census_named` as a one-hole
   // partial), so the lambda the old if-chain's verb-glyph search minted left
   // with the chain.
-  Bound({ceiling: 219, question: QCensus(CsEffectfulLambda)}),
+  //
+  // 219 -> 213 (2026-10-06, the heads landing): the count the board read
+  // after the verbs, canvas and heads integrations, held where they left it.
+  Bound({ceiling: 213, question: QCensus(CsEffectfulLambda)}),
   // Drift mode 10 — the seven survivors are documented sentinels, not masked
   // cases. Every wildcard that is NOT one of them is a variant the author
   // declined to enumerate, and the medium cannot tell the difference, which
@@ -231,8 +234,11 @@ fn board_bounds() = [
   // src/space.mn, then 39 → 212 at TRAP, every one an index whose bound
   // claim `PInBounds` raises and the fragment cannot yet decide — debt the
   // row now states rather than a trap it hid. Falls as a claim gains its
-  // proof: a precondition, a path read (#109), a refinement at a part (T1).
-  Bound({ceiling: 212, question: QVerifyDebt}),
+  // proof: a precondition, a path read (#109), a refinement at a part (T1) —
+  // or as a walk stops reading by index at all: the canvas's strip, its
+  // tokens' neighbours, its frame roles and the field's ranking walk the
+  // data they read, and the space verb's needle is a list pattern, 212 → 204.
+  Bound({ceiling: 204, question: QVerifyDebt}),
   // The iteration costumes — a function that threads an incremented index
   // through its own self-call, the imperative loop in recursion's costume
   // (CLAUDE.md Anchor 6). 390 when the detector was born on 2026-07-30, 490
@@ -240,8 +246,10 @@ fn board_bounds() = [
   // because nothing refused it. Falls as each family migrates to the
   // vocabulary (AU2); the detector itself is re-founded at AU1, and the
   // ceiling resets to that count then. 490 -> 489 at its birth: the
-  // unconsumed-own report it was born beside became a filter.
-  Bound({ceiling: 489, question: QCensus(CsIterationCostume)}),
+  // unconsumed-own report it was born beside became a filter. 489 -> 471 at
+  // the heads landing: the canvas's walks and the space verb's argument read
+  // their data by `enumerate`, `zip`, `sort` and list patterns.
+  Bound({ceiling: 471, question: QCensus(CsIterationCostume)}),
   // The ghosts — cells the parser minted and the judgment never bound
   // (`mentl query <entry> ghosts`): names, parameters, predicates and
   // annotations that are not yet cells inference writes, which is why `refs
@@ -261,9 +269,13 @@ fn board_bounds() = [
   // other declaration to unit (`bind_declared`) — a statement in a block
   // carries its expression's value as a let does, and a desugared parameter
   // is ONE cell (the lambda head's cover node, or the one handle that also
-  // names it) where a second was minted beside it. Next are the return and
-  // parameter annotations, refinement predicates and `??` holes.
-  Bound({ceiling: 477, question: QGhosts}),
+  // names it) where a second was minted beside it. The fourth, 492 → 150 when
+  // the canvas's holes rose it by thirteen: a `??` is one cell whose id is its
+  // own handle (`nhole`), where a second cell was minted for the id alone,
+  // and a destructuring let's statement cell is the match it becomes
+  // (`desugar_block`). Next are the return and parameter annotations and
+  // refinement predicates.
+  Bound({ceiling: 150, question: QGhosts}),
   // ─ PROSE BY CLASS (SA-5, MOD-13). A comment is graph content, so what
   // SYNTAX §Comments says a comment is not is a census, never a review
   // finding. Each class falls as the module carrying it is touched; F strips
@@ -285,18 +297,20 @@ fn board_bounds() = [
   // Lifecycle prose — what was, where SYNTAX asks for what is.
   Bound({ceiling: 44, question: QCensus(CsProseClass(PcLifecycle))}),
   // Archaeology — the seed era's vocabulary and its design notes.
-  Bound({ceiling: 94, question: QCensus(CsProseClass(PcArchaeology))}),
+  Bound({ceiling: 93, question: QCensus(CsProseClass(PcArchaeology))}),
   // Decoration runs — the banners drift rows 128 and 131 policed by regex
   // (one over the dissolved triple-slash form, one over a glyph no banner
   // is drawn with, so neither could fail); both rows retired into this line,
-  // and F's decoration strip takes it to zero.
-  Bound({ceiling: 373, question: QCensus(CsProseClass(PcBanner))}),
+  // and F's decoration strip takes it to zero. 373 -> 346 as the modules the
+  // integrations touched were trued.
+  Bound({ceiling: 346, question: QCensus(CsProseClass(PcBanner))}),
   // A COMMENT NEVER SILENCES A GATE (SYNTAX §Comments). Each marker mutes a
   // text row of tools/drift-patterns.tsv that a structural census reads
   // correctly — a string literal is text, a one-shot concat is not an
   // accumulator — and each falls as its row becomes a shape. At zero the
-  // marker's grammar deletes from drift-audit.sh.
-  Bound({ceiling: 134, question: QCensus(CsProseClass(PcSilencer))})
+  // marker's grammar deletes from drift-audit.sh. 134 -> 132 at the heads
+  // landing.
+  Bound({ceiling: 132, question: QCensus(CsProseClass(PcSilencer))})
 ]
 
 // The board: every bound answered by the medium's own answer to its question.

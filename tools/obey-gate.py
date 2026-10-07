@@ -3,7 +3,7 @@
 satisfied by moving the gate.
 
 Run by .githooks/pre-commit against the staged tree. It compares what is
-staged with HEAD and refuses the five moves that turn a red gate green
+staged with HEAD and refuses the six moves that turn a red gate green
 without changing what it measures:
 
   1. a ceiling raised        — src/board.mn `Bound({ceiling: N, …})`, and every
@@ -13,6 +13,10 @@ without changing what it measures:
   3. a red leg declared      — a new `frontier_expected_red:` entry
   4. a gate silenced         — more `drift-audit: ignore` markers in the tree
   5. a defect parked         — more OPEN entries in RESIDUE.md
+  6. a landing claimed in part — more "landed in part" claims in PLAN.md,
+                               RESIDUE.md, LEDGER.md or docs/: the target
+                               rewritten to what was built (CLAUDE.md ⚖,
+                               "truing is not moving the goalposts")
 
 There is no flag that lets a commit through. A bound whose measurement a
 correct landing must raise is a gate of the wrong shape: it is reshaped, by
@@ -64,6 +68,19 @@ def open_residue(text):
     return len(re.findall(r"^### .*— OPEN", text, re.M))
 
 
+PARTIAL = re.compile(r"\b(landed in part|partially landed|landed partially)\b", re.I)
+RECORDS = ["PLAN.md", "RESIDUE.md", "LEDGER.md"]
+
+
+def partial_claims(rev):
+    """Every claim that a landing landed in part, across the records and the
+    design documents — a landing is landed or it is not."""
+    paths = list(RECORDS)
+    r = subprocess.run(["git", "ls-files", "--", "docs"], capture_output=True, text=True)
+    paths += [p for p in r.stdout.split() if p.endswith(".md")]
+    return sum(len(PARTIAL.findall(show(rev, p))) for p in paths)
+
+
 def silencers(rev):
     """The markers the drift audit obeys — in .mn source, the only place one
     silences anything; a document naming the marker is prose."""
@@ -104,6 +121,10 @@ def main():
     if now > was:
         refusals.append(f"RESIDUE.md: OPEN entries {was} -> {now}")
 
+    was, now = partial_claims("HEAD"), partial_claims(":")
+    if now > was:
+        refusals.append(f"a landing claimed in part {was} -> {now} — build what it states, or record it NOT LANDED")
+
     if refusals:
         print("✗ OBEY GATE — a red gate is obeyed by fixing what it measures:")
         for r in refusals:
@@ -112,7 +133,7 @@ def main():
         print("  remove the cause the marker hides). A bound a correct landing must raise is")
         print("  the wrong shape: reshape it — a raise is never the fix.")
         sys.exit(1)
-    print("✓ obey gate: no ceiling raised, no bound dropped, no red declared, nothing silenced or parked")
+    print("✓ obey gate: no ceiling raised, no bound dropped, no red declared, nothing silenced, parked or claimed in part")
 
 
 if __name__ == "__main__":

@@ -201,6 +201,8 @@ fn audio_stage(samples) with Sample(44100) + !Alloc + IO =
 
 `Pure` is the identity element of `+`. Writing `with Pure` is allowed (and an explicit purity declaration); `with Pure + IO` simplifies to `with IO`.
 
+**A lowercase name in a row is a row variable** — the case rule read at a row, as it is read at a type. `f: () -> a with e` takes a callback performing anything, and `e` written again anywhere in the same signature — another parameter's type, the declaration's own clause — is the same variable, as a type variable named twice is. A parenthesized group is a row term the clause folds whole, its outer connective applied to what it spells: `with Memory + Alloc + (e - Intern)` is the row of a body that absorbs `Intern` around the callback and pays for the install, and it is how the medium writes such a row back (real, 2026-10-06: a lowercase name was read as an EFFECT named `e`, so `run(() => op())` against `f: () -> Int with e` refused `E vs e`, and a group did not parse).
+
 **`with` is one keyword, not three.** It reads identically everywhere it appears — *"this construct is accompanied by / carries X"* — and the three surfaces are one concept, not overload: a function carries effects (`fn f() with E`); a handler carries state (`handler h with s = init`); a resume carries a state update (`resume(v) with s = s + 1`). The grammar disambiguates by position (a row after a signature, or `name = init` bindings after a handler/resume); the meaning is constant. (Handler *installation* is not a `with`-surface — it is the `~>` verb.)
 
 ### Return type omission
@@ -1064,9 +1066,9 @@ fn greet(u: {name: String, ...}) -> String =
   "Hello, " ++ u.name
 ```
 
-`...` is anonymous rest; `...R` binds the rest to a row variable `R` for further use:
+`...` is anonymous rest; `...r` binds the rest to a row variable `r`, lowercase by the case rule, and every `...r` of one signature is that one variable (real, 2026-10-06; until then the parse dropped the name, so two `...r` were two rows, and `fn sum_x(a: {x: Int, ...r}, b: {x: Int, ...r})` accepted records with different remainders):
 ```
-fn extend(base: {name: String, ...R}, age: Int) -> {name: String, age: Int, ...R} =
+fn extend(base: {name: String, ...r}, age: Int) -> {name: String, age: Int, ...r} =
   ...
 ```
 

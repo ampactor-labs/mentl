@@ -935,7 +935,7 @@ type SchemeKind
   // recursively builds the alias's row WHOLE, so grouping holds by
   // construction); the row algebra never sees the name, and Ty never
   // carries it.
-  | RowAliasKind([(EffName, Bool, EConn)])
+  | RowAliasKind([(RowTerm, Bool, EConn)])
   // tag 8 — the TYPE's own entry: (tag, ctor name, payload tys) per variant, minted at registration where the list is in hand — the variant_specs whole-env scan family's cure
   // HandlerKind (tag 6) is the full handler-effect type AND the handler's
   // identity: a handler is
@@ -1153,6 +1153,12 @@ type EConn
   | EcDiff
   // `&` — set intersection
   | EcInter
+
+// An authored row term: an effect name, or a parenthesized row the clause
+// folds whole, its outer connective applied to what the group spells — the
+// rule a named row's reference already follows. A group is how a masked
+// row variable reads back: `with Memory + (e - Intern)`.
+type RowTerm = RtEff(EffName) | RtGroup([(RowTerm, Bool, EConn)])
 
 // Substrate owned by graph.mn. The ADTs live here because every
 // consumer of the graph names them — Read/Write/Speculate effects,
@@ -1954,7 +1960,80 @@ type ViewAt = ViewAt({col: Int, h: Int, line: Int, module: String, span: Span})
 // message, its module); the lead sentence the page prints over them is a
 // projection of that fact, never a fact of its own.
 type View
-  = View({at: ViewAt, field: [FieldFact], ledger: [LedgerFact], lens: [(DiagKind, String, String)], ring: [RingFact]})
+  = View({at: ViewAt, canvas: Canvas, field: [FieldFact], ledger: [LedgerFact], lens: [(DiagKind, String, String)], refs: Found, ring: [RingFact]})
+
+// ─── The canvas — the text's own projection (L-D) ────────────────────
+//
+// What the page draws ON the code, read off the graph of the module the
+// View stands in: every token at its span with its class (the one lexer —
+// the page holds none), the aspect strip in the gutter, the verb frames,
+// the proof marks at their claims and the traces of owned values. A View at
+// the module altitude (line 0) carries it; a caret's View carries none,
+// since a caret moving changes no fact of the text.
+//
+// Which of the eight aspects a cell, or a diagnostic, speaks for — the
+// strip's column and the ring's row.
+type Arm = OnQuery | OnPropose | OnTopology | OnEffects | OnOwnership | OnVerify | OnTeach | OnWhy
+
+// What a cell says of its aspect on its line: a fact the graph proved (a
+// declaration's type, a discharged claim, an effect an install grants), a
+// fact still open (a hole, a pending claim, an effect the line requires of
+// its callers, a step the gradient proposes), a diagnostic of the aspect
+// that refuses the program there, or one that narrates without refusing.
+type CellState = CellProven | CellOpen | CellRefused | CellWarned
+
+// One cell of the strip: its state, its word (the verb, the effect, the
+// grade, the verdict), its site — the address a click projects — and the
+// sentence the aspect says there.
+type StripCell = StripCell(CellState, String, Span, String)
+
+// A line's eight cells in the kernel's order, None where its aspect has
+// nothing to say on the line. Only lines with a cell are listed.
+type StripLine = StripLine(Int, [Option(StripCell)])
+
+// A token's class — the kernel role its hue names.
+type TokenClass
+  = TkKeyword
+  | TkDiscipline
+  | TkVerb
+  | TkHole
+  | TkString
+  | TkSplice
+  | TkNumber
+  | TkComment
+  | TkType
+  | TkDecl
+  | TkSelf
+  | TkNegation
+  | TkName
+  | TkPunct
+
+type CanvasToken = CanvasToken(Span, TokenClass)
+
+// The five verbs, as a frame draws them.
+type CanvasVerb = CvPipe | CvShare | CvFan | CvTee | CvLoop
+
+// A verb site with the spans of what it composes, in order: a `|>` chain's
+// source and stages, a fanout's input and branches, a `~>`'s body and
+// handler, a `<~`'s recurrence and delay.
+type Frame = Frame(Int, CanvasVerb, [Span])
+
+// A proof mark at a claim's site: proven, open or refuted, and the predicate.
+type ProofMark = ProofMark(CellState, Span, String)
+
+// An owned parameter's trace: the declaration it is a parameter of, its
+// name, the declaration's head, and every use in order — the last its
+// consume.
+type OwnTrace = OwnTrace(Int, String, Span, [Span])
+
+type Canvas
+  = NoCanvas
+  | Canvas({frames: [Frame], lines: Int, marks: [ProofMark], strip: [StripLine], tokens: [CanvasToken], traces: [OwnTrace]})
+
+// Find by edge: the references a View carries — none, or the name they
+// reference with every site, the string literals that hold a needle among
+// them when one was asked.
+type Found = FoundNothing | FoundRefs(String, [(String, Span)], [(String, Span)])
 
 // The wire's word for a diagnostic's applicability — the automation axis
 // (SYNTAX.md), spelled as the catalog spells it.
@@ -2507,7 +2586,7 @@ type Stmt
   // unannotated let). Readers include the channel only when it is
   // NTypeAnn — infer's arm and stmt_child_handles both read it so.
   = LetStmt(Pat, Node, Node)
-  | FnStmt(String, [TParam], Node, [(EffName, Bool, EConn)], Node)
+  | FnStmt(String, [TParam], Node, [(RowTerm, Bool, EConn)], Node)
   // name, params (TParam), retty, effects, body
   | TypeDefStmt(String, [(String, [Ty], Node)])
   // name, then per variant its name + field types
@@ -2524,7 +2603,7 @@ type Stmt
   // same [TParam] product fn params and handler config ride; they
   // register as the effect's env scheme (the instance signature every
   // authored `Sample(44100)` judges against).
-  | HandlerDeclStmt(String, String, [TParam], [{init: Node, name: String}], [{args: [String], body: Node, op_name: String}], [(EffName, Bool, EConn)])
+  | HandlerDeclStmt(String, String, [TParam], [{init: Node, name: String}], [{args: [String], body: Node, op_name: String}], [(RowTerm, Bool, EConn)])
   // handler name, effect name, config-params, state-fields, arms, the
   // authored `with` row (the same signed triples a FnStmt carries — until
   // 2026-09-27 the parser skipped it to the arms, so a handler's `!F` bound
@@ -2552,7 +2631,7 @@ type Stmt
   // the RHS is the with-clause's own signed-triple grammar, stored
   // verbatim (Hβ.types.named-effect-rows — one grammar, one
   // representation; expansion at build_declared_row, never in Ty)
-  | RowAliasStmt(String, [(EffName, Bool, EConn)])
+  | RowAliasStmt(String, [(RowTerm, Bool, EConn)])
 
 // A sequence in its runs (`runs_of`): adjacent members that join make ONE
 // run and every other member stands alone. A block's `fn` declarations
@@ -3842,6 +3921,90 @@ fn diag_source(d) with Pure = match d {
   EReplayExhausted(_) => "clock",
 }
 
+// The aspect a diagnostic speaks for — the column of the aspect strip its
+// site's line carries it in, and the ring row it concerns: what is bound
+// (the parse and the types), what is proposed at a hole, the verbs, the
+// row, ownership, a claim, a step the gradient takes, a Reason's prose.
+fn diag_arm(d) with Pure = match d {
+  PExpectedToken(_, _) => OnQuery,
+  POrphanDocstring(_) => OnWhy,
+  PUnclosedConstruct(_, _) => OnQuery,
+  PUnexpectedToken(_, _) => OnQuery,
+  ERedundantBraces(_) => OnTeach,
+  EBlockNeedsBraces(_) => OnTeach,
+  ELambdaFence(_) => OnQuery,
+  ERedundantFnOnLambda(_) => OnQuery,
+  ELambdaAsOrOr(_) => OnQuery,
+  EOrphanHandlerAttach(_) => OnTopology,
+  ENotAKeyword(_, _) => OnTopology,
+  EEffArgNotLiteral(_) => OnEffects,
+  EInternalInvariant(_, _) => OnQuery,
+  WRedundantWhere(_) => OnTeach,
+  WCommentRefUnresolved(_, _, _) => OnWhy,
+  ETypeMismatch(_, _, _, _) => OnQuery,
+  ETypeArityMismatch(_, _, _) => OnQuery,
+  EConstructorArity(_, _, _, _) => OnQuery,
+  EHandlerArmArity(_, _, _, _) => OnEffects,
+  EFnArityMismatch(_, _, _) => OnQuery,
+  EOccursCheck(_, _, _) => OnQuery,
+  EMissingVariable(_, _) => OnQuery,
+  EMissingImport(_, _, _, _) => OnQuery,
+  ENotARecordType(_, _) => OnQuery,
+  EResumeOutsideArm(_) => OnEffects,
+  EResumeAmbiguousOp(_, _) => OnEffects,
+  EResumeWorldMismatch(_, _, _) => OnEffects,
+  EUnknownArgLabel(_, _) => OnQuery,
+  EFeedbackNoContext(_) => OnTopology,
+  EZeroDelayFeedback(_) => OnTopology,
+  EInitPerformsOwnOp(_, _, _) => OnEffects,
+  EHandlerInexhaustive(_, _, _, _) => OnEffects,
+  EComputedDelayDepth(_) => OnTopology,
+  ERestOutsideDestructure(_) => OnQuery,
+  ERowAliasCycle(_, _) => OnEffects,
+  EDeclaredRowContradiction(_, _) => OnEffects,
+  EMalformedNumericLiteral(_, _, _) => OnQuery,
+  ERowAliasNegation(_, _) => OnEffects,
+  ERecordFieldExtra(_, _, _) => OnQuery,
+  ERecordFieldMissing(_, _, _) => OnQuery,
+  EPatternInexhaustive(_, _, _) => OnQuery,
+  EPatternAlternationBindingMismatch(_, _) => OnQuery,
+  EIfMissingElse(_) => OnQuery,
+  TOverDeclared(_, _, _, _) => OnTeach,
+  TRowInventory(_, _, _, _) => OnTeach,
+  TWordSlotBox(_, _, _) => OnTeach,
+  TPolyRecursionSignature(_, _) => OnTeach,
+  TOwnUnconsumed(_, _) => OnOwnership,
+  TOwnAcrossReplay(_, _) => OnOwnership,
+  EUseAfterMove(_, _) => OnOwnership,
+  EEffectMismatch(_, _, _, _) => OnEffects,
+  EPurityViolated(_, _) => OnEffects,
+  ERefinementRejected(_, _) => OnVerify,
+  EVerifyUnencodable(_) => OnVerify,
+  VPending(_, _) => OnVerify,
+  EOwnershipViolation(_, _) => OnOwnership,
+  ERegionEscape(_, _) => OnOwnership,
+  EMissingModule(_, _, _) => OnQuery,
+  EHandlerStateShadowsOp(_, _, _) => OnEffects,
+  EFnShadowsOp(_, _, _) => OnEffects,
+  EOpShadowsOp(_, _, _, _) => OnEffects,
+  EDuplicateFnName(_, _) => OnQuery,
+  EDuplicateTypeName(_, _) => OnQuery,
+  EEmittedNameCollision(_, _) => OnQuery,
+  EUnresolvedType(_, _, _) => OnQuery,
+  EEffectUnhandled(_, _, _) => OnEffects,
+  EThreadedBranchEffect(_, _, _) => OnEffects,
+  EContinuationUncapturable(_, _, _) => OnEffects,
+  EDerivativeUnreachable(_, _) => OnTopology,
+  EUnresolvedHole(_, _) => OnPropose,
+  EFieldOffsetUnprovable(_, _) => OnQuery,
+  EShapeUnprovable(_, _) => OnQuery,
+  EInstantiationDepth(_, _) => OnQuery,
+  EArithOnAggregate(_, _) => OnQuery,
+  EReplayExhausted(_) => OnTopology,
+  EDuplicateImport(_, _) => OnTeach,
+  EResumeOfNever(_, _, _) => OnEffects,
+}
+
 // The wire code — the stable identifier (`docs/errors/<CODE>.md`).
 fn diag_code(d) with Pure = match d {
   PExpectedToken(_, _) => "P_ExpectedToken",
@@ -4583,6 +4746,11 @@ effect Verify {
   // decide, never a second decide beside the ledger's.
   verify(Int, Span, Predicate, Reason) -> Option(Bool)
   verify_debt() -> [(Int, Span, Predicate, Reason)]
+  // Every claim the ledger DECIDED, with its verdict — true proven, false
+  // refuted — at the module and span it was raised in. The canvas marks
+  // them at their sites; the decision was made once, here, and kept rather
+  // than discarded the moment it was returned.
+  verify_decided() -> [(Int, Span, Predicate, Bool)]
   // The generation boundary's clear, for the modules about to be re-judged:
   // the obligations raised in each one's CURRENT node are dropped before its
   // judgment re-accrues them, and every other module's stand, because a
@@ -4843,14 +5011,23 @@ fn fresh_var_name(taken, h, sort) = match sort {
     Some(d) => if name_is_taken(taken, d) { first_type_letter(taken, 0) } else { d },
     None => first_type_letter(taken, 0),
   },
-  SortRow => first_row_name(taken, 0),
+  SortRow => match declared_var_name(h) {
+    Some(d) => if name_is_taken(taken, d) { first_row_name(taken, 0) } else { d },
+    None => first_row_name(taken, 0),
+  },
 }
 
-// The name a type parameter was written with: its cell is minted with the
-// authored lowercase name as its reason (`quantify_ctor_ty`).
+// The name a variable was written with: its cell is minted with the authored
+// lowercase name as its reason — a type parameter's (`quantify_ctor_ty`), a
+// clause's row variable (`leaf_row_of`), a record's named rest.
 fn declared_var_name(h) = match graph_reason_at(h) {
   Declared(n) => if is_var_spelling(n) { Some(n) } else { None },
   _ => None,
+}
+
+fn is_named_var(h) = match declared_var_name(graph_chase_handle(h)) {
+  Some(_) => true,
+  None => false,
 }
 
 fn is_var_spelling(n: String) = byte_len(n) > 0 && byte_at(n, 0) >= 97 && byte_at(n, 0) <= 122
@@ -4866,11 +5043,15 @@ fn first_row_name(taken, i) = {
   if name_is_taken(taken, n) { first_row_name(taken, i + 1) } else { n }
 }
 
-// The formatter's face: the page holds only what an author wrote, so no free
-// variable has a surface name there — one that reaches a page renders as its
-// forensic handle, loud in fmt's own re-parse, never silently absorbed.
+// The formatter's face: the page holds only what an author wrote, so a free
+// variable has a surface name there only when an author named it (`with e`,
+// `...r`) — any other that reaches a page renders as its forensic handle,
+// loud in fmt's own re-parse, never silently absorbed.
 handler authored_names(pred_render) {
-  ty_var_name(h, _) => resume(show_handle_forensic(h)),
+  ty_var_name(h, _) => resume(match declared_var_name(h) {
+    Some(n) => n,
+    None => show_handle_forensic(h),
+  }),
   ty_row_face() => resume(FaceAuthored),
   ty_pred(p) => resume(pred_render(p)),
 }
@@ -4972,15 +5153,21 @@ fn render_var(h) with !Mutate = match graph_chase(h) {
 
 // An open record: its known fields, then the rest — `...e` for the row
 // variable that still stands for it, nothing past `...` when it was bound.
-// An author writes the rest as `...` alone, so the authored face never names
-// it.
+// The authored face names the rest only where its author did (`...r`).
 fn render_open_record(fields, v) with !Mutate = match graph_chase(v) {
   GNode(NRecordRowBound(more, tail), _) => render_record_row_residual(fields ++ more, tail),
-  GNode(NRowFree(_), _) => match ty_row_face() {
-    FaceInferred => "\{{show_list(fields, render_field, ", ")}{rest_lead(fields)}...{ty_var_name(graph_chase_handle(v), SortRow)}\}",
-    FaceAuthored => "\{{show_list(fields, render_field, ", ")}{rest_lead(fields)}...\}",
-  },
-  _ => "\{{show_list(fields, render_field, ", ")}{rest_lead(fields)}...\}",
+  GNode(NRowFree(_), _) => "\{{show_list(fields, render_field, ", ")}{rest_lead(fields)}...{rest_name(v)}\}",
+  _ => "\{{show_list(fields, render_field, ", ")}{rest_lead(fields)}...{authored_rest_name(v)}\}",
+}
+
+fn rest_name(v) with !Mutate = match ty_row_face() {
+  FaceInferred => ty_var_name(graph_chase_handle(v), SortRow),
+  FaceAuthored => authored_rest_name(v),
+}
+
+fn authored_rest_name(v) = match declared_var_name(graph_chase_handle(v)) {
+  Some(r) => r,
+  None => "",
 }
 
 fn rest_lead(fields) = if len(fields) == 0 { "" } else { ", " }
@@ -5258,7 +5445,23 @@ fn show_field(field: (String, Ty)) with !Mutate = render_field(field) ~> var_nam
 // `with` and the row — under the authored face only what an author wrote.
 fn render_row_suffix(row) with !Mutate = match ty_row_face() {
   FaceAuthored => match row {
-    EfRow(p, a, _) => if len(p) == 0 && len(a) == 0 { "" } else { " with {render_row_head(p, a)}" },
+    EfRow(p, a, t) => {
+      // An author writes a row variable by its name; the parse's own open
+      // tail — the absence of a clause — has none and renders nothing.
+      let named = match t {
+        EtOpen(vs) => filter({ e => is_named_var(e.cell) }, vs),
+        _ => [],
+      }
+      if len(p) == 0 && len(a) == 0 && len(named) == 0 {
+        ""
+      } else if len(named) == 0 {
+        " with {render_row_head(p, a)}"
+      } else if len(p) == 0 && len(a) == 0 {
+        " with {show_list(named, render_row_edge, " + ")}"
+      } else {
+        " with {render_row_head(p, a)} + {show_list(named, render_row_edge, " + ")}"
+      }
+    },
   },
   FaceInferred => match row {
     EfRow([], [], EtClosed) => "",

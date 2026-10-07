@@ -228,6 +228,9 @@ re-projects. There is no separate "apply" pathway to keep in sync.
 
 *(projected cursor · verb·topology)*
 
+*(L-D is open: §8 says what the page draws today, what the canvas lane built
+on 2026-10-06, and what of this section L-D still owes.)*
+
 The Canvas is the text, center stage, and **its layout is never yours to type.**
 On idle, `format_default` re-renders the canonical shape (`format.mn`:
 left-edge `|>` and `~>` at `left_edge_indent = 2`, indented-center `><` and `<~`
@@ -840,6 +843,32 @@ over the page's console wire, with the product legs: render fidelity, no
 - **The Ledger, in part**: declarations by proximity, the open obligations
   and the tightenings at the caret. Its bands (`audit`, `query performs`,
   `where`) are L-E.
+- **The canvas is the wheel's** (the canvas lane, 2026-10-06; L-D open): `mentl space <file>:0`
+  — the module's View — carries the canvas: every token of the text at its
+  span and class from the ONE lexer (the page's tokenizer, its keyword sets
+  and its string scanner are deleted), the aspect strip (eight cells a line,
+  kernel order, each the strongest fact of its aspect on that line: a
+  declaration's type, a hole's verdict, a verb stage, the effect a perform
+  requires — hollow ◇ — or an install grants — filled ◆ — a parameter owned
+  and consumed, a claim proven ✓, open ◌ or refuted ✗, the gradient's step,
+  a lede or an accept; every diagnostic in the column of the aspect it
+  speaks for, `diag_arm`), the verb frames (each site with the spans it
+  composes), the proof marks (the ledger keeps what it DECIDED now,
+  `verify_decided`, beside its debt) and the ownership traces. The page
+  slices the source at those spans and paints only the lines in view; a
+  line the hand has moved since the last judgment paints plain until the
+  next answer, the lines above and below it keep their facts. A strip cell
+  is a door: the caret goes to its site and the ring lights that aspect's
+  row. Find by edge: a caret's View carries the references of what its node
+  names (a local by its binder's link, a declaration by the graph's
+  references), and `mentl space <address> <needle>` a name's references
+  beside the string literals holding it, painted and listed in Refs. On
+  idle the formatter's canon replaces the buffer (`mentl fmt`, caret kept
+  among the characters that are not layout); the accept and the formatter
+  write through the browser's editing command, so each is ONE step of the
+  native undo — `setRangeText`, the form before, recorded nothing (measured:
+  ⌘Z after an accept left the accepted text). Drafts keep their caret and
+  scroll per file.
 - **The Lens** carries a Warning as a Warning at its line and a mismatch at
   its own site rather than its Reason's address (the two measured bugs of
   the regex it replaced); the compile's cost lines (`heap:`, `arena:`,
@@ -853,13 +882,14 @@ over the page's console wire, with the product legs: render fidelity, no
   the program rather than its cone
   (`Hβ.session.edit-pays-for-the-program`); a folder pick in the browser is
   `Hβ.felt.project-picker-outside-chromium`.
-- **The Canvas as the formatter's projection** (L-D): the wheel's own tokens
-  and spans (the page's tokenizer deletes — a second lexer is the
-  Carried-Truth violation, and it is where the lost-space bug bred), `mentl
-  fmt` on idle, the verb spines from the Topology facet's `VerbFrame` rather
-  than from leading glyphs, the aspect strip and the ambient-world glyphs in
-  the gutter, obligation marks (✓ ◌ ✗) at their sites, the ownership trace,
-  drafts persisted, the trail as undo.
+- **What L-D still owes** (`Hβ.space.the-canvas`, OPEN): the row-flow tint along a
+  chain (`absorb_row` at each `~>`) and a declared `!E` drawn as a SEALED
+  wall around what it governs; the tokens read off the parse that judged the
+  text rather than lexed again from it; the formatter on idle answered by the
+  resident session rather than a cold instance; a declaration's references by
+  its link rather than its name (M1's reference link); the trail of graph
+  writes across generations as its own undo (the time axis, §4.4). L-D lands
+  when each is built.
 - **The map and the ledger** (L-E): the Severance Map with the three-colour
   law and its "not yet provable" count on the board
   (`Hβ.viz.severance-map`, PLAN §11 Arc G), the ambient-world gutter

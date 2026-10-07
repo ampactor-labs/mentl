@@ -262,9 +262,27 @@ fn apply_connective(conn, acc, term) = match conn {
   EcInter => inter_row(acc, term),
 }
 
-fn has_pure_declared(effs) = any({ (name, _, _) => is_pure_eff_name(name) }, effs)
+fn has_pure_declared(effs) = any({ (t, _, _) => term_is_pure(t) }, effs)
 
-fn build_declared_row(effs) = build_row_seen(effs, [])
+fn term_is_pure(t) = match t {
+  RtEff(name) => is_pure_eff_name(name),
+  RtGroup(_) => false,
+}
+
+// Whether a term names the effect `ename`: the name itself, or a group that
+// adds it.
+fn term_spells(t, ename: String) = match t {
+  RtEff(n) => eff_name_str(n) == ename,
+  RtGroup(ts) => any({ (u, neg, conn) => !neg && conn == EcUnion && term_spells(u, ename) }, ts),
+}
+
+fn build_declared_row(effs) = build_row_seen(effs, [], [])
+
+// A signature's own clause: a lowercase name in it is a ROW VARIABLE, read
+// from the signature's scope `rvars` (name → cell) as a type variable is,
+// so `fn run(f: () -> a with e) with Memory + e` names one row in both
+// places. A name the scope does not hold mints a cell of its own.
+fn build_declared_row_in(effs, rvars) = build_row_seen(effs, [], rvars)
 
 // A name whose env kind is RowAliasKind builds ITS row WHOLE through
 // this same fold and the outer connective applies to the RESULT —
@@ -276,18 +294,18 @@ fn build_declared_row(effs) = build_row_seen(effs, [])
 // forbidden set; anything richer refuses the shorthand
 // (E_RowAliasNegation) — de Morgan over the full algebra is not a
 // shorthand's job.
-fn build_row_seen(effs, seen) = match fold(
+fn build_row_seen(effs, seen, rvars) = match fold(
   (mk_ef_pure(), [], false),
   (acc, eff) => match acc {
     (pos, negs, saw) => match eff {
-      (name, negated, conn) => if is_pure_eff_name(name) {
+      (t, negated, conn) => if term_is_pure(t) {
         (pos, negs, true)
       }
       // drift-audit: ignore — bounded by the authored clause length, not a loop accumulator
       else if negated {
-        (pos, negs ++ neg_names_of(name, seen), saw)
+        (pos, negs ++ term_neg_names(t, seen, rvars), saw)
       } else {
-        (apply_connective(conn, pos, leaf_row_of(name, seen)), negs, saw)
+        (apply_connective(conn, pos, term_row(t, seen, rvars)), negs, saw)
       },
     },
   },
@@ -335,14 +353,54 @@ fn row_alias_triples(name) = match env_lookup(eff_name_str(name)) {
   None => None,
 }
 
-fn leaf_row_of(name, seen) = match row_alias_triples(name) {
-  Some(triples) => if row_name_seen(seen, name) {
-    report(ERowAliasCycle(eff_name_str(name), span_zero()))
-    mk_ef_pure()
+// A term's row: an effect name's, or a group folded whole — its own
+// connectives first, the outer one applied to what it spells, the rule a
+// named row's reference follows.
+fn term_row(t, seen, rvars) = match t {
+  RtEff(name) => leaf_row_of(name, seen, rvars),
+  RtGroup(ts) => build_row_seen(ts, seen, rvars),
+}
+
+fn term_neg_names(t, seen, rvars) = match t {
+  RtEff(name) => if row_var_spelled(name) {
+    // A row variable stands for a set nothing here closes; its negation
+    // is no forbidden set at all.
+    report(ERowAliasNegation(eff_name_str(name), span_zero()))
+    []
   } else {
-    build_row_seen(triples, seen ++ [eff_name_str(name)])
+    neg_names_of(name, seen)
   },
-  None => mk_ef_closed([name]),
+  RtGroup(ts) => positive_closed_names(build_row_seen(ts, seen, rvars), "(…)"),
+}
+
+// The key a clause's row variable is held under in a signature's scope,
+// beside its type variables (held by their bare names) — a space no
+// identifier spells, so the two never meet.
+fn row_var_key(n: String) = "with {n}"
+
+// SYNTAX's case rule read at a row: an effect is capitalized, so a lowercase
+// name in a clause is a row variable.
+fn row_var_spelled(name) = match name {
+  ENamed(_) => is_var_spelling(eff_name_str(name)),
+  _ => false,
+}
+
+fn leaf_row_of(name, seen, rvars) = if row_var_spelled(name) {
+  let n = eff_name_str(name)
+  match find({ (k, _) => k == row_var_key(n) }, rvars) {
+    Some((_, cell)) => mk_ef_open([], cell),
+    None => mk_ef_open([], graph_fresh_row(Declared(n))),
+  }
+} else {
+  match row_alias_triples(name) {
+    Some(triples) => if row_name_seen(seen, name) {
+      report(ERowAliasCycle(eff_name_str(name), span_zero()))
+      mk_ef_pure()
+    } else {
+      build_row_seen(triples, seen ++ [eff_name_str(name)], [])
+    },
+    None => mk_ef_closed([name]),
+  }
 }
 
 fn neg_names_of(name, seen) = match row_alias_triples(name) {
@@ -350,16 +408,20 @@ fn neg_names_of(name, seen) = match row_alias_triples(name) {
     report(ERowAliasCycle(eff_name_str(name), span_zero()))
     []
   } else {
-    match build_row_seen(triples, seen ++ [eff_name_str(name)]) {
-      EfRow(pp, pa, pt) => if len(pa) == 0 && row_tail_closed(pt) {
-        pp
-      } else {
-        report(ERowAliasNegation(eff_name_str(name), span_zero()))
-        []
-      },
-    }
+    positive_closed_names(build_row_seen(triples, seen ++ [eff_name_str(name)], []), eff_name_str(name))
   },
   None => [name],
+}
+
+// A negated reference is sound only over a positive closed row: its present
+// names join the forbidden set; anything richer refuses the shorthand.
+fn positive_closed_names(row, label: String) = match row {
+  EfRow(pp, pa, pt) => if len(pa) == 0 && row_tail_closed(pt) {
+    pp
+  } else {
+    report(ERowAliasNegation(label, span_zero()))
+    []
+  },
 }
 
 fn row_name_seen(seen, name) = row_name_seen_at(seen, eff_name_str(name), 0, len(seen))
@@ -1639,7 +1701,7 @@ fn name_set_prefix_index(ref buf, count, ref name) with !Mutate =
   name_set_prefix_index_loop(buf, name, 0, count)
 
 fn name_set_prefix_index_loop(ref buf, ref name, i, n) = if i >= n {
-  0 - 1
+  -1
 } else if row_entry_collides(list_index(buf, i), name) {
   i
 } else {

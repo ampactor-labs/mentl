@@ -44,6 +44,8 @@ import egraph
 
 import env
 
+import format
+
 import infer
 
 import intern
@@ -1047,7 +1049,18 @@ fn build_audit_report(fn_name, handle, ty, pending, tightens) = {
   // an incremented index is the loop in recursion's costume — iteration
   // is topology (|> stages, <~ cycles, derived folds), and the audit
   // names the costume where it stands.
-  (fn_name, show_effrow(body_row), severable_all, referenced_by, pipe_shape_of(handle), recursion_shape_of(handle), anonymity_shape_of(handle), drift_shapes_of(handle), pending, tightens)
+  (
+    fn_name,
+    show_effrow(body_row),
+    severable_all,
+    referenced_by,
+    pipe_shape_of(handle),
+    recursion_shape_of(handle),
+    anonymity_shape_of(handle),
+    drift_shapes_of(handle),
+    pending,
+    tightens
+  )
 }
 
 // The severable candidates a report entry carries — the one field every
@@ -1482,20 +1495,7 @@ fn render_provider_site(site) = match site {
 
 fn render_query_result(result) = match result {
   QRType(ty, reason) => "→ {show_type(ty)}\n  Reason: {show_reason(reason)}",
-  QRIntent(effs) => {
-    let terms = effs |> map({
-      (name, negated, conn) => {
-        let sign = if negated { "!" } else { "" }
-        let symbol = match conn {
-          EcUnion => "+",
-          EcDiff => "-",
-          EcInter => "&",
-        }
-        "{symbol}{sign}{show_eff_name(name)}"
-      },
-    })
-    "→ {str_concat_all(terms)}"
-  },
+  QRIntent(effs) => "→ {render_signed_effs(effs, 0)}",
   QRUnresolved(entries) => "→ {int_to_str(len(entries))} unresolved entries",
   QRChain(hops) => "→ {int_to_str(len(hops))} hops in chain",
   QREffects(row) => "→ {show_effrow(row)}",

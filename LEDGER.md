@@ -35,6 +35,113 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-10-06 · pin d8f07fc05cae8c43 (TRANSITION m3 == m4) · THE CANVAS IS THE WHEEL'S (L-D, OPEN); EVERY HEAD COMES BACK AS ITSELF; A LOWERCASE NAME IN A CLAUSE IS A ROW VARIABLE; FMT NEVER WRITES A PARSE IT RECOVERED:
+  The canvas lane built (integrated here; `Hβ.space.the-canvas` stays OPEN
+  for what it owes):
+  - `mentl space <file>:0` — the module's View — carries the canvas
+    (src/space.mn `canvas_of`; the types beside the View): every token of the
+    text at its span and class from the one lexer; the aspect strip, eight
+    cells a line in kernel order, each the strongest fact of its aspect on that
+    line (`diag_arm` puts every diagnostic in the column of the aspect it
+    speaks for); the verb frames read off the graph's verb sites; the proof
+    marks; the ownership traces.
+  - The verify ledger banks what it DECIDED as well as what it owes
+    (`verify_decided`, in both `verify_ledger` and `verify_smt`), forgotten
+    with the debt.
+  - Find by edge: a caret's View carries the references of what its node names
+    (a local by its binder's link, a declaration by its references), and
+    `mentl space <address> <needle>` a name's references beside the string
+    literals holding it.
+  - The page: the JS tokenizer, keyword sets, string scanner and regex verb
+    spines are deleted; the text is painted from the canvas, virtualized to the
+    lines in view; the gutter is the aspect strip (each cell a door into the
+    ring) and line numbers; frames, the `~>` enclosure, proof marks, the
+    ownership trace and reference highlights in the SVG layer; a find box and
+    a Refs tab; fmt on idle; drafts keep caret and scroll; the accept and fmt
+    write through the browser's editing command, so each is one native undo
+    step.
+  - Gates: twin legs 11–13 and the browser's SMOKE-CANVAS leg, RED on boot
+    c8ba5799 (0 tokens, 223 uncovered bytes, no strip, no frames, no refs).
+  What L-D still owes, in its peer: tokens off the parse that judged the text,
+  fmt on idle through the resident session, the row-flow tint and the sealed
+  `!E` wall, references by the link (M1), the trail as undo (AU4).
+  The heads landing (H0), built here: every module-level head round-trips
+  through its own render, 97 of 4,772 → 0 on one tree (boot b2920932 over
+  this source, against the candidate), `head_round_trip_max` 92 → 0:
+  - A named open-record rest is one row (72 of the 97): the parse mints the
+    rest's cell with its name, a signature's quantification gives every
+    `...r` of it one cell, and the renderer names it where its author did.
+    `mn-named-rest-is-one-row` refuses `E_TypeMismatch`; the boot ran it to 4.
+    SYNTAX spelled its own example `...R`, which the case rule reads as a
+    nominal type; it is `...r`.
+  - A clause is a tree of terms and a group folds whole (19): `(e - E)` parses
+    back. And the meaning defect beneath it: a lowercase name in a clause was
+    an EFFECT named `e`, so `fn run(f: () -> Int with e) = f()` refused
+    `run(() => op())` on every boot through b2920932 — a row variable now, one
+    cell per name per signature. `mn-row-var-in-a-clause` (5),
+    `mn-row-var-shared-by-name` (7).
+  - An effect argument opening with `(`, `[` or `{` is a type (6):
+    `Cast(() -> a with e)` parses back.
+  - Found by the row variables, and closed: two callbacks sharing one row
+    variable refused `both(() => op(), () => 4)` with `E vs Pure` — the
+    argument edge bound the shared cell to the FIRST row it met and read it
+    back as a cap. Every flow position is collected first and the cell learns
+    the union of what its positions handed it (`learn_flow_rows`).
+    `mn-row-var-shared-flow-union` (7, refused on the first m2),
+    `mn-row-var-shared-flow-negation` (a `!E` caller still refuses).
+  Ghosts 495 → 150 on this tree (the boot against the candidate), the
+  ceiling 477 → 150: a `??` is one cell whose id is its own handle (`nhole`,
+  the parser's two recovery arms included), and a destructuring let's
+  statement cell IS the match it becomes, re-registered and born
+  `LetBinding` (`stmt_birth`, `desugar_block`). Open obligations 204, the
+  ceiling 212 → 204: the canvas's strip, token neighbours, frame cells and
+  ranking, and the space verb's argument walk, read their data by
+  `enumerate`/`zip`/`sort`/`fold` and list patterns rather than by index, so
+  no `PInBounds` claim is raised.
+  FMT NEVER WRITES A PARSE IT RECOVERED: the boot's own fmt, run over
+  `mn-row-var-shared-by-name.mn` (whose clause it cannot parse), wrote the
+  recovery — `+  = e - E` beside two `??` lines — because the refusal counted
+  Errors and a recovery is only a Warning. fmt refuses any parse report that
+  is not MachineApplicable (`render_cannot_fix`), which also closes
+  `Hβ.fmt.keyword-binder-renders-as-wildcard` (`let own = …` written as
+  `let _`, open since boot 21f8e691). The frontier's recovered-parse leg holds
+  two fixtures byte for byte.
+  Five bounds stood above what the board read and are lowered to it, since a
+  ratchet holds only where it measures: effectful lambdas 219 → 213,
+  iteration costumes 489 → 471, archaeology prose 94 → 93, decoration runs
+  373 → 346, silencing markers 134 → 132.
+  Found integrating the canvas lane, each closed here:
+  - HEAD and the lane fixed one stack exhaustion two ways (the classifier's
+    per-declaration recursion); the lane's `decls |> map(classify_grade)` is
+    the one kept, and the comment above it, which said a map could not stand
+    there, is trued. The engine stack flag both sides added retires with this
+    pin.
+  - `diag_arm` missed the two diagnostic classes HEAD added after the lane
+    branched (`E_DuplicateImport`, `E_ResumeOfNever`), and `claim_is_marked`
+    the index precondition TRAP added (`PInBounds`): each refused at the first
+    m2 by exhaustiveness.
+  - `sites_of` re-enumerated every query answer by hand and fell out of date
+    when an answer's shape moved; it reads the one projection of an answer to
+    its places (`located_answer`) now.
+  - The ghost and obligation ceilings refused the first march (492 > 477,
+    214 > 212); both were paid down at their causes above, never raised.
+  - A second march refused before its board on a bash syntax error at
+    tools/verify.sh:752: the script was edited while the march was reading
+    it (bash reads a script as it runs). Nothing in the tree was wrong; the
+    march re-ran untouched.
+  Kills: "the map source fix clears the m2 stack trap" (the trap was the
+  BOOT's recursion compiling the wheel); "setRangeText keeps native undo"
+  (undo after an accept left the accepted text); "the resident/cold refs
+  divergence is a stale generation" (the cold route judges a module as its own
+  entry); "the boot's fmt is safe over the new grammar" (it wrote a recovery
+  over a fixture, which is how the recovered-parse class was found); "a
+  backticked row variable is a reference" (`e` names no declaration, and the
+  comment-ref gate refused it). Mine: two shell writes reached `.mn` outside
+  the Edit tool (a python rewrite of infer.mn, a cp of a probe into
+  tests/frontier); the drift audit ran on every touched file by hand, clean,
+  and the stray copy was removed.
+  Measured: micros 391/391 through m2; heads 0 of 4,772; ghosts 150;
+  obligations 204; m3 == m4 at 592,391 lines, census 0; the m3 leg 25.40 s at 448,956 KB, the m4 leg 26.34 s at 538,696 KB; crown, proof-exactness and effect-identity green; frontier 645 pass / 0 red / 2 expected-red.
 - 2026-10-06 · pin b2920932c05947a6 (TRANSITION m3 == m4) · THE VERBS COST WHAT THEIR DESUGARING COSTS (V2); THE STAGE LAW IN LIB/DSP; A BRANCH'S LINE IS ITS RECORD'S UNDER EVERY SCHEDULE; A DECLARATION'S NODE CARRIES WHAT IT DECLARES:
   The verbs lane built (integrated here):
   - Under Seq, Simd and Gpu a fanout's branches are evaluated in the frame

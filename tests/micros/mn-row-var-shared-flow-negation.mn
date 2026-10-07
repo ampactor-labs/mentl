@@ -1,0 +1,17 @@
+// expect: refuse E_EffectMismatch
+// The union a shared row variable learns still answers to a negation above
+// it: `run` declares `!E`, and the effectful callback beside the pure one
+// carries E into `both`'s row.
+effect E {
+  op() -> Int
+}
+
+handler h {
+  op() => resume(3),
+}
+
+fn both(f: () -> Int with e, g: () -> Int with e) -> Int = f() + g()
+
+fn run() with !E = both(() => op(), () => 4)
+
+fn main() = run() ~> h

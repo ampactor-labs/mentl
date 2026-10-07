@@ -56,12 +56,12 @@ import verify
 // it live and inf_add_row joins it). On scope exit, the accumulated row
 // binds to the handle via `graph_bind_row`. One write; no conflict.
 effect InferCtx {
-  inf_enter_fn(Int, Int, Span, [(EffName, Bool, EConn)])
+  inf_enter_fn(Int, Int, Span, [(RowTerm, Bool, EConn)])
   // The frame's exit hands back what the CALLER finalizes — its authored
   // declaration, its row cell, the published row, its span — so the write
   // and the gate check that judges it run in the body's world (exit_frame),
   // never inside this handler's arm. A no-frame exit answers a negative cell.
-  inf_exit_fn() -> ([(EffName, Bool, EConn)], Int, EffRow, Span)
+  inf_exit_fn() -> ([(RowTerm, Bool, EConn)], Int, EffRow, Span)
   inf_frame_params([Int])
   // A block's run of fn declarations (`judge_fn_run`) pre-registers its
   // members mid-walk, above the pass's prereg ceiling, before any of their
@@ -1247,6 +1247,7 @@ fn pre_register_fn_sig(name, params, ret_ann, handle, span: ValidSpan) = {
   // duplicate the moment the incremental cursor re-registered a module
   // into the restored world).
   let param_handles = mint_param_placeholders(params, name)
+  let (param_tys, sig_scope) = build_param_scope(params, param_handles)
   // An authored `-> RetTy` is a CONSTRAINT the pre-scheme must CARRY, not
   // discard (the parse_let-annotation twin at the return position). Binding
   // it here grounds every FORWARD callsite: an unannotated forward ref
@@ -1270,7 +1271,7 @@ fn pre_register_fn_sig(name, params, ret_ann, handle, span: ValidSpan) = {
         // the raw syntactic TName made a refined alias look NOMINAL, so the
         // proposer enumerated constructors of Positive (zero) instead of
         // integer seeds under its refinement.
-        match quantify_ctor_ty(ann_ty, [], Located(span, Declared(name))) {
+        match quantify_ctor_ty(ann_ty, sig_scope, Located(span, Declared(name))) {
           (resolved_ret, _q) => {
             graph_bind(ret_handle, resolved_ret, Located(span, Declared(name)))
             resolved_ret
@@ -1296,11 +1297,8 @@ fn pre_register_fn_sig(name, params, ret_ann, handle, span: ValidSpan) = {
       // keeps prereg cells as the cycle channel, and the callee's own
       // judgment fills it with PROVEN content the caller reads live. The
       // declaration lives in the GATE alone (ruling (1)).
-      let fn_ty = TFun(
-        with_guards(build_param_types(params, param_handles), guard_cells(params, name)),
-        ret_component,
-        mk_ef_open([], row_handle)
-      )
+      let fn_ty =
+        TFun(with_guards(param_tys, guard_cells(params, name)), ret_component, mk_ef_open([], row_handle))
       graph_bind(handle, fn_ty, Located(span, Declared(name)))
       // Quantify the fresh param/return/row vars so a FORWARD reference — a fn used
       // before its own body is inferred (e.g. src/ inferred before lib/prelude, so
@@ -2873,12 +2871,11 @@ fn infer_fn(name, params, body_node, ret_ann, effs, handle, span: ValidSpan, pol
   // reads it, and its guard cell the pre-registration's own, so a call
   // judged against the registered signature charges the cell this judgment
   // fills.
-  let resolved_params = declare_params(
-    params,
-    build_param_types(params, param_handles),
-    param_handles,
-    judged_guards(handle, params, name)
-  )
+  // One scope per signature: a lowercase name means one variable in every
+  // parameter, the return and the clause (SYNTAX's case rule).
+  let (param_tys, sig_scope) = build_param_scope(params, param_handles)
+  let resolved_params =
+    declare_params(params, param_tys, param_handles, judged_guards(handle, params, name))
   // THE ASSUMED SIGNATURE RIDES THE SLOT AS A VALUE — prereg's own law
   // (pre_register_fn_sig: "a value inside the record cannot be
   // class-contaminated ... a chased ret VAR reaches the obligation's own
@@ -2895,7 +2892,7 @@ fn infer_fn(name, params, body_node, ret_ann, effs, handle, span: ValidSpan, pol
   // at prereg. Absent annotation ⇒ the fresh var, inferred as before.
   let authored_pin = match ret_ann {
     N(pin_body, pin_span, _) => match pin_body {
-      NTypeAnn(pin_ty) => match quantify_ctor_ty(pin_ty, [], Located(span, Declared(name))) {
+      NTypeAnn(pin_ty) => match quantify_ctor_ty(pin_ty, sig_scope, Located(span, Declared(name))) {
         (resolved_pin, _pq) => {
           graph_bind(ret_handle, resolved_pin, Located(pin_span, Declared(name)))
           Some(resolved_pin)
@@ -3066,7 +3063,7 @@ fn infer_fn(name, params, body_node, ret_ann, effs, handle, span: ValidSpan, pol
         // the row algebra's compares.
         let resolved_effs = resolve_declared_instances(declared_effs)
         check_instance_args(resolved_effs, span)
-        let declared_row = build_declared_row(resolved_effs)
+        let declared_row = build_declared_row_in(resolved_effs, sig_scope)
         // THE GATE RUNS ON THE RESOLVED ROW, at every exit — a cycle
         // member's, a HOF's, a solo's alike. It used to PARK a cycle
         // member's gate until the group's chains closed, because the
@@ -3112,7 +3109,12 @@ fn report_guard_note(note) = match note {
 fn resolve_declared_instances(effs) = map(resolve_instance_triple, effs)
 
 fn resolve_instance_triple(eff) = match eff {
-  (name, negated, conn) => (resolve_instance_name(name), negated, conn),
+  (t, negated, conn) => (resolve_instance_term(t), negated, conn),
+}
+
+fn resolve_instance_term(t) = match t {
+  RtEff(name) => RtEff(resolve_instance_name(name)),
+  RtGroup(ts) => RtGroup(resolve_declared_instances(ts)),
 }
 
 fn resolve_instance_name(name) = match name {
@@ -3427,7 +3429,8 @@ fn call_is_alloc_returning(func) = match func {
 // pass this ground check.
 fn check_instance_args(effs, span: ValidSpan) = each(
   {
-    (ename, _negated, _conn) => match ename {
+    (RtGroup(ts), _negated, _conn) => check_instance_args(ts, span),
+    (RtEff(ename), _negated, _conn) => match ename {
       EParameterized(h, args) => match env_lookup(intern_name_of(h)) {
         Some(entry) => match entry {
           (sch, _, EffectDeclKind(_)) => match judgment_ty(sch) {
@@ -4717,21 +4720,30 @@ fn hole_params(args, params, i) = if i >= len(args) {
 // An arg not yet TFun-bound keeps the symmetric path whole (a lambda
 // learns its shape FROM the param); an arity mismatch keeps it too (the
 // wholesale unify owns that refusal). Returns the masked positions.
-fn fn_arg_directional_positions(dps, arg_handles, span: ValidSpan, i) = if i >= len(dps) || i >= len(arg_handles) {
-  []
-} else {
-  let rest = fn_arg_directional_positions(dps, arg_handles, span, i + 1)
-  match fold_strip(chase_deep(param_ty(list_index(dps, i)))) {
-    TFun(pps, pret, prow) => // The directional meet fires only when the param's declared row is a
-    // CONCRETE cap (closed or the !-stance EtAll) — a VAR-tailed param
-    // row is the effect-polymorphic FLOW channel (map's f: the arg's
-    // row must UNIFY into the var so the caller carries it; masking it
-    // severed the flow and the wheel's census convicted 297 sites in
-    // one march), never a cap to subsume under.
-    if row_cap_form(prow) {
-      match graph_chase(list_index(arg_handles, i)) {
-        GNode(NBound(aty), _) => match fold_strip(chase_deep(aty)) {
-          TFun(aps, aret, arow) => if len(aps) == len(pps) {
+//
+// A flow position teaches its row variable only once every position has
+// spoken: two callbacks typed by one variable (`f: () -> Int with e, g: ()
+// -> Int with e`) hand it the union of their rows, a lower bound. Bound at
+// the first position met, the variable read as a closed cap at the next, and
+// a pure callback beside an effectful one refused the call.
+fn fn_arg_directional_positions(dps, arg_handles, span: ValidSpan) = {
+  let (masked, flows) = zip(dps, arg_handles) |> enumerate |> fold(([], []), directional_step(span, ??, ??))
+  learn_flow_rows(flows, span)
+  masked
+}
+
+fn directional_step(span: ValidSpan, acc, entry) = match acc {
+  (masked, flows) => match entry {
+    (i, (dp, ah)) => match fold_strip(chase_deep(param_ty(dp))) {
+      TFun(pps, pret, prow) => // The directional meet fires only when the param's declared row is a
+      // CONCRETE cap (closed or the !-stance EtAll) — a VAR-tailed param
+      // row is the effect-polymorphic FLOW channel (map's f: the arg's
+      // row must UNIFY into the var so the caller carries it; masking it
+      // severed the flow and the wheel's census convicted 297 sites in
+      // one march), never a cap to subsume under.
+      if row_cap_form(prow) {
+        match fn_arg_of(ah, len(pps)) {
+          Some((aps, aret, arow)) => {
             fn_arg_component_meet(aps, pps, aret, pret, span)
             if row_subsumes(arow, prow) {
               ()
@@ -4743,50 +4755,79 @@ fn fn_arg_directional_positions(dps, arg_handles, span: ValidSpan, i) = if i >= 
                 Inferred("a fn argument's row exceeds its param's declared cap")
               )
             }
-            [i] ++ rest
-          } else {
-            rest
+            (push(masked, i), flows)
           },
-          _ => rest,
-        },
-        _ => rest,
-      }
-    } else {
-      // B2 (rung 3, the arg edge goes TOTAL-directional): the pure-flow
-      // shape — the param's row resolving to EfRow([], [], EtOpen(vs)),
-      // every surviving edge free by the chase's own construction — masks
-      // the position and binds ONE-WAY: the instantiated caller-private
-      // param cells learn the arg's row (bind_edges_to), the arg's SHARED
-      // cell is never written, so a named fn passed to map's f stops
-      // teaching its own decl cell one edge per call site while the
-      // 297-site flow survives as a read. A MIXED open shape (presents or
-      // absents beside the var tail) keeps the symmetric path with the
-      // named census marker — expected zero on the wheel; a nonzero grep
-      // is the counter.
-      match chase_row_deep(prow, 0) {
-        EfRow(pres2, abs2, EtOpen(vs)) => if len(pres2) == 0 && len(abs2) == 0 && edges_unmasked(vs) {
-          match graph_chase(list_index(arg_handles, i)) {
-            GNode(NBound(aty), _) => match fold_strip(chase_deep(aty)) {
-              TFun(aps, aret, arow) => if len(aps) == len(pps) {
+          None => acc,
+        }
+      } else {
+        // B2 (rung 3, the arg edge goes TOTAL-directional): the pure-flow
+        // shape — the param's row resolving to EfRow([], [], EtOpen(vs)),
+        // every surviving edge free by the chase's own construction — masks
+        // the position and binds ONE-WAY: the instantiated caller-private
+        // param cells learn the arg's row (`learn_flow_rows`), the arg's
+        // SHARED cell is never written, so a named fn passed to map's f stops
+        // teaching its own decl cell one edge per call site while the
+        // 297-site flow survives as a read. A MIXED open shape (presents or
+        // absents beside the var tail) keeps the symmetric path with the
+        // named census marker — expected zero on the wheel; a nonzero grep
+        // is the counter.
+        match chase_row_deep(prow, 0) {
+          EfRow(pres2, abs2, EtOpen(vs)) => if len(pres2) == 0 && len(abs2) == 0 && edges_unmasked(vs) {
+            match fn_arg_of(ah, len(pps)) {
+              Some((aps, aret, arow)) => {
                 fn_arg_component_meet(aps, pps, aret, pret, span)
-                bind_edges_to(vs, arow, span, Inferred("the arg edge teaches the param's flow row"))
-                [i] ++ rest
-              } else {
-                rest
+                (push(masked, i), flows ++ map(flow_pair(arow, ??), vs))
               },
-              _ => rest,
-            },
-            _ => rest,
-          }
-        } else {
-          eprint_string("B2-mixed-open arg-edge\n")
-          rest
-        },
-        _ => rest,
-      }
+              None => acc,
+            }
+          } else {
+            eprint_string("B2-mixed-open arg-edge\n")
+            acc
+          },
+          _ => acc,
+        }
+      },
+      _ => acc,
     },
-    _ => rest,
+  },
+}
+
+// The argument at a function-typed position, when it is a bound function of
+// the position's arity: its parameters, return and row.
+fn fn_arg_of(ah, arity) = match graph_chase(ah) {
+  GNode(NBound(aty), _) => match fold_strip(chase_deep(aty)) {
+    TFun(aps, aret, arow) => if len(aps) == arity { Some((aps, aret, arow)) } else { None },
+    _ => None,
+  },
+  _ => None,
+}
+
+fn flow_pair(arow, w) = (edge_cell(w), arow)
+
+// Each flow cell learns, once, every row the call hands it: the one row when
+// one position flows into it, their union when several share it.
+fn learn_flow_rows(flows, span: ValidSpan) =
+  flows |> map(flow_cell) |> unique |> each(learn_flow_row(flows, span, ??))
+
+fn flow_cell(pair) = match pair {
+  (c, _) => c,
+}
+
+fn learn_flow_row(flows, span: ValidSpan, cell) = {
+  let rows = flows |> filter(flows_into(cell, ??)) |> map(flow_row)
+  let row = match rows {
+    [one] => one,
+    _ => fold(EfRow([], [], EtClosed), union_row, rows),
   }
+  graph_bind_row(cell, row, Located(span, Inferred("the arg edge teaches the param's flow row")))
+}
+
+fn flows_into(cell, pair) = match pair {
+  (c, _) => c == cell,
+}
+
+fn flow_row(pair) = match pair {
+  (_, r) => r,
 }
 
 // A declared param row is a CAP exactly when its tail is concrete —
@@ -4936,7 +4977,7 @@ fn infer_call_saturated(args, fh, handle, span: ValidSpan, cname) = {
       // runs the counts are equal by construction and the evidence is gone.
       // The refusal lives at that drop (src/types.mn place_positional).
       replay_barrier_gate(dps0, args, span, 0)
-      fn_arg_directional_positions(dps0, arg_handles, span, 0)
+      fn_arg_directional_positions(dps0, arg_handles, span)
     },
     _ => [],
   }
@@ -5475,7 +5516,7 @@ fn frame_edges(stack, i, top, acc) = if i > top {
 // Intent Boundary an INTERIOR field read needs: an element of the frame
 // stack arrives at emit with its row unresolved, and an unprovable offset
 // is a refusal (E_FieldOffsetUnprovable), never a read.
-fn frame_row_handle(frame: {accumulated_row: EffRow, answer_handle: Int, declared: [(EffName, Bool, EConn)], fn_span: Span, params: [Int], row_handle: Int}) -> Int =
+fn frame_row_handle(frame: {accumulated_row: EffRow, answer_handle: Int, declared: [(RowTerm, Bool, EConn)], fn_span: Span, params: [Int], row_handle: Int}) -> Int =
   frame.row_handle
 
 // The effect an op name performs; None for a name that is not an op (a
@@ -9691,9 +9732,15 @@ fn param_cell_is_free(ph) = match graph_chase(ph) {
   _ => false,
 }
 
-fn build_param_types(params, handles) = match build_param_types_loop(params, handles, [], 0) {
-  (tys, _qmap) => tys,
+fn build_param_types(params, handles) = match build_param_scope(params, handles) {
+  (tys, _scope) => tys,
 }
+
+// The parameters' types and the signature's scope they leave: every
+// variable a lowercase name declared (type variables by name, row variables
+// and named rests by their keys), so the return and the clause read the
+// same cells.
+fn build_param_scope(params, handles) = build_param_types_loop(params, handles, [], 0)
 
 fn build_param_types_loop(params, handles, qmap, i) = if i >= len(params) {
   ([], qmap)
@@ -12026,11 +12073,11 @@ fn quantify_ty_list(tys, qmap, owner) = if len(tys) == 0 {
   }
 }
 
-// quantify_ctor_row — re-mint a function field's OPEN row tail as a genuine row
-// variable and quantify it (push onto qmap; result_ty filters row handles out).
+// quantify_ctor_row — re-mint a function field's OPEN row edges as genuine row
+// variables and quantify them (push onto qmap; result_ty filters row handles out).
 // A CLOSED row (`-> B with IO`) is monomorphic — no polymorphic tail — so it
-// passes through unchanged; only the open tail (the default `-> B`, a triple
-// with a fresh open edge) becomes a quantified row var.
+// passes through unchanged; each open edge (the default `-> B`'s, or one an
+// author named, `with e`) becomes a quantified row var (`quantify_row_edge`).
 // AN AUTHORED NEGATION on a function type (`f: () -> Int with !E`) is a
 // GATED quantified row var, never a universe VALUE: it used to pass
 // through as `([], [E], EtAll)`, which every fold beside it read as
@@ -12043,9 +12090,8 @@ fn quantify_ty_list(tys, qmap, owner) = if len(tys) == 0 {
 // annotation belongs to, so the refusal at a call site can say so.
 fn quantify_ctor_row(row, qmap, owner) = match row {
   EfRow(names, ab, t) => match t {
-    EtOpen(_) => {
-      let rv = graph_fresh_row(Inferred("polymorphic effect row of a stored function"))
-      (ef_make(names, ab, EtOpen([bare_edge(rv)])), push(qmap, ("", rv)))
+    EtOpen(edges) => match fold(([], qmap), quantify_row_edge, edges) {
+      (edges2, q2) => (ef_make(names, ab, EtOpen(edges2)), q2),
     },
     EtAll => if len(names) == 0 {
       let rv = graph_fresh_row(Inferred("negation-gated effect row of a stored function"))
@@ -12055,6 +12101,25 @@ fn quantify_ctor_row(row, qmap, owner) = match row {
       (row, qmap)
     },
     EtClosed => (row, qmap),
+  },
+}
+
+// Each open edge becomes a quantified row variable, its mask kept: one the
+// author named (`with e`) is the signature's one cell for that name, the
+// parse's anonymous tail a cell of its own.
+fn quantify_row_edge(acc, e) = match acc {
+  (es, q) => match declared_var_name(edge_cell(e)) {
+    Some(n) => match qmap_find(q, row_var_key(n)) {
+      Some(rv) => (push(es, row_edge(rv, edge_mask(e))), q),
+      None => {
+        let rv = graph_fresh_row(Declared(n))
+        (push(es, row_edge(rv, edge_mask(e))), push(q, (row_var_key(n), rv)))
+      },
+    },
+    None => {
+      let rv = graph_fresh_row(Inferred("polymorphic effect row of a stored function"))
+      (push(es, row_edge(rv, edge_mask(e))), push(q, ("", rv)))
+    },
   },
 }
 
@@ -12129,6 +12194,22 @@ fn quantify_ctor_ty(ty, qmap, owner) = match ty {
   },
   TRecord(fields) => match quantify_field_list(fields, qmap, owner) {
     (fs2, q2) => (TRecord(fs2), q2),
+  },
+  TRecordOpen(fields, v) => // An open record's fields quantify as a closed one's; a rest its author
+  // named (`...r`) is the signature's one row variable for that name, so
+  // `{name: String, ...r} -> {name: String, age: Int, ...r}` carries the
+  // same remainder through.
+  match quantify_field_list(fields, qmap, owner) {
+    (fs2, q2) => match declared_var_name(v) {
+      Some(r) => match qmap_find(q2, "...{r}") {
+        Some(h) => (TRecordOpen(fs2, h), q2),
+        None => {
+          let h = graph_fresh_row(Declared(r))
+          (TRecordOpen(fs2, h), push(q2, ("...{r}", h)))
+        },
+      },
+      None => (TRecordOpen(fs2, v), q2),
+    },
   },
   _ => (ty, qmap),
 }
@@ -13110,25 +13191,22 @@ fn classify_fixpoint(stmts) = {
 }
 
 fn classify_rounds(decls, tidx, entries) = {
-  // A body-level RECURSION under the install, never a map-lambda: a perform
-  // inside a lambda under an install resolves Tier-1 to the enclosing
-  // frame's __hstate local — out of scope in the lambda's emitted body (the
-  // arm-internal-perform gap; the draw_op_edges precedent). The recursion
-  // threads evidence through its own calls.
+  // One round: every declaration graded under the frozen summaries, a `map`
+  // under the install — a perform inside the mapped function walks the live
+  // install chain like any other, so the round needs no hand recursion.
   let idx = smap_build(entries)
   let next = list_to_flat({
-    classify_grade_all(decls)
+    decls |> map(classify_grade)
   } ~> summaries_frozen(idx, tidx))
   if usage_entries_eq(entries, next, 0) { next } else { classify_rounds(decls, tidx, next) }
 }
 
-// One grade per declaration — a map, so no frame per declaration: the
-// prepend-cons recursion it replaces held one for each, and the boot that
-// carries it exhausted the engine's stack compiling a wheel ~70
-// declarations larger (measured 2026-10-06).
-fn classify_grade_all(decls) = map(grade_entry, decls)
-
-fn grade_entry(d) = match d {
+// One declaration's grade. The walk over the declarations is a `map`: it
+// was a prepend-cons recursion one frame per declaration of the program,
+// and the wheel's own count crossed the engine's stack on 2026-10-06 — the
+// compile of the wheel trapped with 9,300 frames of it, when one landing
+// added a hundred declarations.
+fn classify_grade(d) = match d {
   (n, b, _, _) => (n, resume_grade(b)),
 }
 

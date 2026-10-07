@@ -194,11 +194,26 @@ const READ_BAR_MS = 50;   // PLAN §11.2's felt bar, measured here rather than a
   // the Views are compared with the handles off; everything else is a fact
   // of the program and must agree to the byte. `(arena, offset)` is the
   // deterministic form (PLAN §11, 9.2's keystone).
-  const unhandled = (v) => JSON.stringify(v, (k, x) => (k === 'h' ? undefined : x));
+  //
+  // ONE field is compared as a containment, not an equality: the references
+  // at a declaration (`refs`, L-D). A cold process judges the link of the
+  // module it names, while the session holds the whole tree — `main`'s call
+  // of `twice` is a reference the cold route over `ops.mn` never judged, and
+  // the session's answer carries it (measured on the first L-D m2). So every
+  // site the cold route finds the session finds too, and the rest of the
+  // View agrees to the byte.
+  const unhandled = (v) => JSON.stringify(v, (k, x) => (k === 'h' || k === 'refs' ? undefined : x));
+  const siteKey = (s) => `${s.module}:${s.site.line}:${s.site.col}`;
+  const refsHold = (rv, cv) => {
+    if (!cv.refs) return !rv.refs;
+    if (!rv.refs || rv.refs.needle !== cv.refs.needle) return false;
+    const have = new Set([...rv.refs.sites, ...rv.refs.texts].map(siteKey));
+    return [...cv.refs.sites, ...cv.refs.texts].every((s) => have.has(siteKey(s)));
+  };
   const asCold = async (r, argv, label) => {
     const c = await runWheel({ argv, vfs: Object.assign({}, sess.vfs) });
     const rv = parseView(r), cv = parseView(c);
-    const same = r.resident && !!rv && !!cv && unhandled(rv) === unhandled(cv);
+    const same = r.resident && !!rv && !!cv && unhandled(rv) === unhandled(cv) && refsHold(rv, cv);
     console.log(`    ${label}: the same View cold equals it, handles aside: ${same ? 'PASS' : 'FAIL'}`);
     if (!same) { bad++; console.log(`      resident: ${JSON.stringify(r.out.slice(0, 200))}\n      cold:     ${JSON.stringify(c.out.slice(0, 200))}`); }
     return same;
@@ -312,6 +327,112 @@ const READ_BAR_MS = 50;   // PLAN §11.2's felt bar, measured here rather than a
     console.log(`    a module that left the link leaves no open claim behind: ${ms(rq)} -> ${okq ? 'PASS' : 'FAIL'}`);
     if (!okq) { bad++; console.log(`      resident: ${JSON.stringify(rq.out.slice(0, 200))}\n      cold:     ${JSON.stringify(cq.out.slice(0, 200))}`); }
   }
+  sess.close();
+}
+
+// ── Legs 11–13: THE CANVAS (L-D) — the text's own projection, from the wheel.
+// `mentl space <file>:0` (the module altitude) carries the canvas: every
+// token of the text at its own span and class, the aspect strip (eight cells
+// per line, each a live read of one aspect), the verb frames, the proof marks
+// and the ownership traces. The page's JavaScript tokenizer is deleted: a
+// span the wheel did not answer cannot be painted. RED on boot c8ba5799: the
+// View had no canvas, no refs at a caret and no needle find.
+{
+  const prog = [
+    '// `double` doubles — the lede',          //  1  a prose lede (non-ASCII: the column is a byte's)
+    'fn double(x) = x * 2',                     //  2
+    '',                                         //  3
+    'effect Ask {',                             //  4
+    '  ask() -> Int',                           //  5
+    '}',                                        //  6
+    '',                                         //  7
+    'handler one {',                            //  8
+    '  ask() => resume(1),',                    //  9
+    '}',                                        // 10
+    '',                                         // 11
+    'fn needs() = ask() + 1',                   // 12  performs Ask; no install on the path: the row carries it to callers
+    '',                                         // 13
+    'fn inv(n) = 100 / n',                      // 14  an open claim: n may be zero
+    '',                                         // 15
+    'fn main() = {',                            // 16
+    '  let a = (ask() + needs()) ~> one',       // 17  served here: the install grants Ask
+    '  let b = [1, 2, 3]',                      // 18
+    '    |> map(double)',                       // 19
+    '    |> len',                               // 20
+    '  let c = 100 / 5',                        // 21  a proven claim
+    '  a + b + c + inv(4) + ("s{a}" |> len)',   // 22  a splice
+    '}',                                        // 23
+    '',
+  ].join('\n');
+  const sess = new Session({ spawn: spawnWorker, module: MODULE, vfs: Object.assign({}, VFS, { 'main.mn': te.encode(prog) }), runCold: (req) => runWheel(req) });
+  const parseView = (r) => { try { return r.exit === 0 && !r.trapped ? JSON.parse(r.out) : null; } catch (e) { return null; } };
+  const r11 = await sess.call(['mentl', 'space', 'main.mn:0']);
+  const v = parseView(r11);
+  const cv = v && v.canvas;
+  // (a) THE TOKENS COVER THE TEXT: every byte that is not whitespace lies in
+  // exactly one token, tokens never overlap, and each token's class is a word
+  // of the wire's own vocabulary. Columns are the text's BYTES (a lexer's
+  // column), so the twin reads the text as bytes, as the page converts them.
+  const bytes = te.encode(prog);
+  const lineStarts = [0];
+  bytes.forEach((b, i) => { if (b === 10) lineStarts.push(i + 1); });
+  const off = (l, c) => lineStarts[l - 1] + c - 1;
+  const CLASSES = new Set(['kw', 'disc', 'verb', 'hole', 'str', 'spl', 'num', 'cm', 'ty', 'fn', 'self', 'neg', 'id', 'op']);
+  let covered = new Uint8Array(bytes.length), overlap = 0, badClass = 0;
+  for (const t of (cv && cv.tokens) || []) {
+    const [sl, sc, el, ec, cls] = t;
+    if (!CLASSES.has(cls)) badClass++;
+    for (let i = off(sl, sc); i < off(el, ec); i++) { if (covered[i]) overlap++; covered[i] = 1; }
+  }
+  let uncovered = 0;
+  bytes.forEach((b, i) => { if (b !== 32 && b !== 10 && b !== 9 && !covered[i]) uncovered++; });
+  const okTok = !!cv && cv.tokens.length > 0 && uncovered === 0 && overlap === 0 && badClass === 0 && cv.lines === 24;
+  console.log(`[11] the canvas's tokens cover the text exactly: ${ms(r11)} · ${cv ? cv.tokens.length : 0} tokens, ${uncovered} uncovered byte(s), ${overlap} overlapping, ${badClass} unknown class(es) -> ${okTok ? 'PASS' : 'FAIL'}`);
+  if (!okTok) { bad++; console.log('    ' + (v ? JSON.stringify(Object.keys(v)) : (r11.out || r11.err || '').trim().split('\n').slice(0, 3).join('\n    '))); }
+  // (b) THE STRIP: eight cells a line, in the kernel's order, each the read
+  // the line's own graph answers.
+  const ARMS = ['query', 'propose', 'topology', 'effects', 'ownership', 'verify', 'teach', 'why'];
+  const strip = new Map(((cv && cv.strip) || []).map((s) => [s.line, s.cells]));
+  const cell = (line, arm) => { const cs = strip.get(line); return cs ? cs[ARMS.indexOf(arm)] : null; };
+  const has = (line, arm, glyph) => { const c = cell(line, arm); return !!c && (!glyph || c.glyph === glyph); };
+  const checks = [
+    ['the declaration\'s type at 2', has(2, 'query', 'proven')],
+    ['the lede\'s Reason at 2', has(2, 'why', 'proven')],
+    ['a perform its row carries out, hollow, at 12', has(12, 'effects', 'open')],
+    ['the install that grants it, filled, at 17', has(17, 'effects', 'proven')],
+    ['the open claim at 14', has(14, 'verify', 'open')],
+    ['the proven claim at 21', has(21, 'verify', 'proven')],
+    ['a |> stage at 19 and 20', has(19, 'topology') && has(20, 'topology')],
+    ['the gradient\'s step at 14', has(14, 'teach', 'open')],
+    ['every line carries eight cells', [...strip.values()].every((cs) => cs.length === 8)],
+  ];
+  const failed = checks.filter(([, ok]) => !ok).map(([n]) => n);
+  console.log(`[12] the aspect strip reads the graph per line: ${checks.length - failed.length}/${checks.length} -> ${failed.length ? 'FAIL' : 'PASS'}`);
+  if (failed.length) { bad++; console.log('    missing: ' + failed.join('; ') + '\n    strip: ' + JSON.stringify([...strip.entries()].slice(0, 12))); }
+  const chain = ((cv && cv.frames) || []).find((f) => f.verb === '|>' && f.stages.length === 3);
+  const okF = !!chain && chain.stages[1].line === 19 && chain.stages[2].line === 20;
+  console.log(`    the |> chain's frame from the graph, stage by stage: ${okF ? 'PASS' : 'FAIL'}`);
+  if (!okF) { bad++; console.log('    frames: ' + JSON.stringify((cv && cv.frames) || null)); }
+  // (c) FIND BY EDGE: at a caret on a use, the View carries every reference
+  // to what it names — the parameter `x`, its use at 2:16, never another x;
+  // a needle names a declaration and the View answers its references and the
+  // string literals that hold it.
+  const r13 = await sess.call(['mentl', 'space', 'main.mn:2:16']);
+  const v13 = parseView(r13);
+  const refs = v13 && v13.refs;
+  const okR = !!refs && refs.sites.some((s) => s.module === 'main' && s.site.line === 2);
+  const r13b = await sess.call(['mentl', 'space', 'main.mn:22:3', 'double']);
+  const v13b = parseView(r13b);
+  const found = v13b && v13b.refs;
+  const okN = !!found && found.needle === 'double' && found.sites.some((s) => s.site.line === 19);
+  console.log(`[13] find by edge — the references at the caret: ${okR ? 'PASS' : 'FAIL'} · a needle's references: ${okN ? 'PASS' : 'FAIL'}`);
+  if (!okR || !okN) { bad++; console.log('    refs: ' + JSON.stringify(refs || null) + '\n    needle: ' + JSON.stringify(found || null) + '\n    ' + ((r13b.err || '').trim().split('\n').slice(0, 2).join(' | '))); }
+  // the canvas a session answers is the canvas a cold process answers, handles aside
+  const c11 = await runWheel({ argv: ['mentl', 'space', 'main.mn:0'], vfs: Object.assign({}, sess.vfs) });
+  const noH = (x) => JSON.stringify(x, (k, y) => (k === 'h' ? undefined : y));
+  const okC = !!v && r11.resident && !!parseView(c11) && noH(v) === noH(parseView(c11));
+  console.log(`    the canvas View cold equals it, handles aside: ${okC ? 'PASS' : 'FAIL'}`);
+  if (!okC) bad++;
   sess.close();
 }
 

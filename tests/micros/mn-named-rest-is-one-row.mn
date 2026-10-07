@@ -1,0 +1,8 @@
+// expect: refuse E_TypeMismatch
+// A rest its author named is one row variable of the signature: two
+// parameters written `{x: Int, ...r}` carry the SAME remainder, so records
+// with different remainders cannot both be handed in. Each `...r` was its
+// own anonymous rest, and this program ran to 4.
+fn sum_x(a: {x: Int, ...r}, b: {x: Int, ...r}) -> Int = a.x + b.x
+
+fn main() = sum_x({x: 1, y: 2}, {x: 3})

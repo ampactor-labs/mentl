@@ -2050,7 +2050,7 @@ fn body_child_handles(body) = match body {
 // Whether a declaration's clause negates the named effect (`!Thread`) —
 // the authored negation, read off the FnStmt it stands on.
 fn declares_absent(clause, ename: String) =
-  any({ (en, negated, _) => negated && str_eq(eff_name_str(en), ename) }, clause)
+  any({ (t, negated, _) => negated && term_spells(t, ename) }, clause)
 
 // ONE ASK of the rule with the answers settled across asks carried in
 // `memo`: an ask that found no fanout from its root settles every name it

@@ -19,9 +19,9 @@
 // on an effect the compiler exposes.
 import types
 
-import graph
-
 import effects
+
+import graph
 
 import infer
 
@@ -163,7 +163,7 @@ fn gradient_next(handle, performed) = match graph_node_body(handle) {
 // signature it was written with, the type it was judged at, and the reason
 // its suggestions anchor to.
 type Decl
-  = Decl({anchor: Reason, body: Node, effs: [(EffName, Bool, EConn)], handle: Int, name: String, params: [TParam], ret: Ty, retty: Node, ty: Ty})
+  = Decl({anchor: Reason, body: Node, effs: [(RowTerm, Bool, EConn)], handle: Int, name: String, params: [TParam], ret: Ty, retty: Node, ty: Ty})
 
 fn decl_teaching(d, performed) = match d {
   Decl(f) => {
@@ -590,14 +590,16 @@ fn prove_precondition(f, owed, b, i, name: String, alias) = match alias {
         []
       } else {
         let ann = ARefined({alias: aname, contract: contract, param: name})
-        [Proven(
-          SiteParam(i),
-          AnnotationSuggestion(
-            ann,
-            Leverage({absences: 0, discharged: discharged, locks: [], opened: opened, refuted: refuted}),
-            suggestion_reason(ann)
+        [
+          Proven(
+            SiteParam(i),
+            AnnotationSuggestion(
+              ann,
+              Leverage({absences: 0, discharged: discharged, locks: [], opened: opened, refuted: refuted}),
+              suggestion_reason(ann)
+            )
           )
-        )]
+        ]
       },
     }
   },
@@ -777,14 +779,16 @@ fn prove_return(f, resting, alias) = match alias {
     match counts {
       (body_holds, discharged, refuted) => if body_holds && discharged > 0 {
         let ann = AReturns({alias: aname, contract: contract})
-        [Proven(
-          SiteReturn,
-          AnnotationSuggestion(
-            ann,
-            Leverage({absences: 0, discharged: discharged, locks: [], opened: 0, refuted: refuted}),
-            suggestion_reason(ann)
+        [
+          Proven(
+            SiteReturn,
+            AnnotationSuggestion(
+              ann,
+              Leverage({absences: 0, discharged: discharged, locks: [], opened: 0, refuted: refuted}),
+              suggestion_reason(ann)
+            )
           )
-        )]
+        ]
       } else {
         []
       },

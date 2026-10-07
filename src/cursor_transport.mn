@@ -406,8 +406,8 @@ fn accept_annotation(handle, s) with !Mutate = match s {
 // clause joined to its row, a parameter's type set to the alias, or the
 // return set to it.
 fn annotated_head(ann, name: String, params, retty, effs, body) with !Mutate = match ann {
-  APure(_) => render_fn_head(name, params, retty, effs ++ [(EPure, false, EcUnion)], body),
-  ANotEffect(n, _) => render_fn_head(name, params, retty, effs ++ [(ENamed(intern_str(n)), true, EcUnion)], body),
+  APure(_) => render_fn_head(name, params, retty, effs ++ [(RtEff(EPure), false, EcUnion)], body),
+  ANotEffect(n, _) => render_fn_head(name, params, retty, effs ++ [(RtEff(ENamed(intern_str(n))), true, EcUnion)], body),
   ARefined(r) => render_fn_head(name, params |> map(restated_param(r.param, r.alias, ??)), retty, effs, body),
   AReturns(r) => render_fn_head(name, params, N(NTypeAnn(TName(r.alias, [])), span_zero(), 0), effs, body),
 }

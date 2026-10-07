@@ -56,9 +56,28 @@ fn mint_node_as(body, span: ValidSpan, reason) = {
 
 fn nexpr(e, span: ValidSpan) = mint_node(NExpr(e), span)
 
-fn nstmt(s, span: ValidSpan) = mint_node(NStmt(s), span)
+fn nstmt(s, span: ValidSpan) = mint_node_as(NStmt(s), span, stmt_birth(s, span))
 
-fn nhole(id, span: ValidSpan) = mint_node(NHole(id), span)
+// A destructuring let is born the match it becomes: `desugar_block` gives
+// that match this statement's own cell, so the cell carries the let's birth
+// reason from the start, and no second cell stands at the let's position for
+// the judgment never to reach.
+fn stmt_birth(s, span: ValidSpan) = match s {
+  LetStmt(pat, _, _) => if is_destructure_pat(pat) {
+    LetBinding(join(", ", pat_binder_names(pat)), Placeholder(span))
+  } else {
+    Placeholder(span)
+  },
+  _ => Placeholder(span),
+}
+
+// A hole is one cell, and its id is that cell's handle: the id names the
+// hole, so it needs no cell of its own beside it.
+fn nhole(span: ValidSpan) = {
+  let h = fresh_handle(span)
+  graph_register_node(h, NHole(h))
+  N(NHole(h), span, h)
+}
 
 // Token navigation
 // Tokens are typed: `Tok(TokenKind, Span)`. Helpers extract payload
@@ -970,32 +989,43 @@ fn parse_effect_list_from(ref tokens, pos, conn) = match parse_one_effect(tokens
   },
 }
 
-// Parse a single effect entry — bare `IO`, negated `!IO`,
-// parameterized `Sample(44100)`, or negated parameterized
-// `!Sample(44100)`. Args are scalar literals (int/float/string);
-// identifier / expression args land in a v2 walkthrough.
+// Parse a single row term — bare `IO`, negated `!IO`, parameterized
+// `Sample(44100)`, a lowercase row variable `e`, or a parenthesized group
+// `(e - Intern)` the clause folds whole — each optionally negated.
 fn parse_one_effect(ref tokens, pos) = match if at(tokens, pos, TBang) { (true, pos + 1) } else { (false, pos) } {
-  (negated, p) => // `Pure` lexes to TPure (a reserved word) — it IS the union identity, so the
-  // parser emits the EPure EffName directly. build_declared_row maps it to
-  // the pure row; the EPure variant replaces the old string-keyed Pure term (drift-3).   // drift-audit: ignore — describes the dissolution
-  if at(tokens, p, TPure) {
-    (EPure, negated, p + 1)
+  (negated, p) => if at(tokens, p, TLParen) {
+    match parse_effect_list(tokens, skip_ws(tokens, p + 1)) {
+      (inner, p_in) => (RtGroup(inner), negated, expect(tokens, skip_ws(tokens, p_in), TRParen)),
+    }
   } else {
-    let name = ident_at(tokens, p)
-    // The effect name's identity is its intern handle (the token's word is
-    // already canonical, so this probe is a hash + one pointer-fast compare;
-    // the token carrying its handle outright is the named next cut).
-    let nh = intern_str(name)
-    let p1 = p + 1
-    let p2 = skip_ws(tokens, p1)
-    if at(tokens, p2, TLParen) {
-      match parse_eff_args(tokens, skip_ws(tokens, p2 + 1)) {
-        (args, p3) => (EParameterized(nh, args), negated, p3),
-      }
-    } else {
-      (ENamed(nh), negated, p1)
+    match parse_effect_name(tokens, p) {
+      (name, p_name) => (RtEff(name), negated, p_name),
     }
   },
+}
+
+// An effect name, bare or with its instance arguments.
+//
+// `Pure` lexes to TPure (a reserved word) — it IS the union identity, so the
+// parser emits the EPure EffName directly. build_declared_row maps it to
+// the pure row; the EPure variant replaces the old string-keyed Pure term (drift-3).   // drift-audit: ignore — describes the dissolution
+fn parse_effect_name(tokens, p) = if at(tokens, p, TPure) {
+  (EPure, p + 1)
+} else {
+  let name = ident_at(tokens, p)
+  // The effect name's identity is its intern handle (the token's word is
+  // already canonical, so this probe is a hash + one pointer-fast compare;
+  // the token carrying its handle outright is the named next cut).
+  let nh = intern_str(name)
+  let p1 = p + 1
+  let p2 = skip_ws(tokens, p1)
+  if at(tokens, p2, TLParen) {
+    match parse_eff_args(tokens, skip_ws(tokens, p2 + 1)) {
+      (args, p3) => (EParameterized(nh, args), p3),
+    }
+  } else {
+    (ENamed(nh), p1)
+  }
 }
 
 fn parse_eff_args(ref tokens, pos) = {
@@ -1044,10 +1074,19 @@ fn parse_one_eff_arg(ref tokens, pos) = match kind_at(tokens, pos) {
       N(_, _, h) => (EANode(h), pos + 1),
     }
   },
+  TLParen => // A compound type is a TYPE argument (`Cast(() -> a with e)`, `Box([Int])`):
+  // no value spells with these openers at an argument's head.
+  type_eff_arg(tokens, pos),
+  TLBracket => type_eff_arg(tokens, pos),
+  TLBrace => type_eff_arg(tokens, pos),
   _ => {
     report(EEffArgNotLiteral(span_at(tokens, pos)))
     (EAInt(0), pos + 1)
   },
+}
+
+fn type_eff_arg(tokens, pos) = match parse_type_ty(tokens, pos) {
+  (ty, p) => (EAType(ty), p),
 }
 
 // Parse `let pat [: ty] = expr`.
@@ -1441,7 +1480,7 @@ fn parse_handler_decl(ref tokens, pos) = {
     match if at(tokens, skip_ws(tokens, p_after_config), TWith) {
       let p_w = skip_ws(tokens, p_after_config)
       let p_with = skip_ws(tokens, p_w + 1)
-      if at(tokens, p_with, TBang) || is_param_name_tok(tokens, p_with) && !at(tokens, skip_ws(tokens, p_with + 1), TEq) {
+      if at(tokens, p_with, TBang) || at(tokens, p_with, TLParen) || is_param_name_tok(tokens, p_with) && !at(tokens, skip_ws(tokens, p_with + 1), TEq) {
         match parse_effect_list(tokens, p_with) {
           (effs, p_after_row) => ([], effs, p_after_row),
         }
@@ -2050,10 +2089,7 @@ fn parse_primary(ref tokens, pos, slot) = {
       if is_foreign_keyword(name) { report(ENotAKeyword(name, span)) } else { () }
       (nexpr(VarRef(name), span), pos + 1)
     },
-    THole => {
-      let id = fresh_handle(span)
-      (nhole(id, span), pos + 1)
-    },
+    THole => (nhole(span), pos + 1),
     TLParen => parse_paren_or_tuple(tokens, pos + 1, span),
     TLBracket => parse_list_literal(tokens, pos + 1, span),
     TLBrace => parse_brace_expr(tokens, pos + 1, span),
@@ -2122,13 +2158,11 @@ fn parse_primary(ref tokens, pos, slot) = {
     // diagnostic, return hole, advance past the tee-arrow token.
     {
       report(EOrphanHandlerAttach(span))
-      let id = fresh_handle(span)
-      (nhole(id, span), pos + 1)
+      (nhole(span), pos + 1)
     },
     _ => {
       report(PUnexpectedToken("unexpected token: {show_token_kind(kind_at(tokens, pos))}", span))
-      let id = fresh_handle(span)
-      (nhole(id, span), pos + 1)
+      (nhole(span), pos + 1)
     },
   }
 }
@@ -2856,11 +2890,9 @@ fn parse_block_body(ref tokens, pos, own buf, count) = {
 // construction. The audit: a let-destructure RE-DERIVES match; unify it INTO
 // match at the node's birth, never re-derive it downstream.
 // (protocol_one_graph_two_operations.)
-// desugar_block returns the minted NODE (not a bare body): the
-// head-destructure match mints AT THE LET'S SPAN, so the weave pass's
-// span-tie rule (latest mint wins) resolves a body-head comment to the
-// LIVE match instead of the dissolved let — the last silent prose-drop
-// class the conservation gate named.
+// desugar_block returns the NODE (not a bare body), and the match it builds
+// is the let statement's own cell, standing at the let's position: a comment
+// above the let attaches to the match, since nothing else stands there.
 fn desugar_block(stmts, final_e, span: ValidSpan) = match find_destructure_let(stmts, 0) {
   None => nexpr(BlockExpr(stmts, final_e), span),
   Some(i) => match list_index(stmts, i) {
@@ -2879,14 +2911,15 @@ fn desugar_block(stmts, final_e, span: ValidSpan) = match find_destructure_let(s
         }
       }
       let m = NExpr(MatchExpr(v, [(pat, arm_body)]))
-      // A destructure at the head IS the match (no empty-prefix block); otherwise
-      // the prefix stmts carry the match as their final. The graph is a
-      // hand-written `match`'s; the birth reason is the let's.
-      let born = LetBinding(join(", ", pat_binder_names(pat)), Placeholder(lsp))
+      // The match is the let's own cell, born with the let's reason
+      // (`stmt_birth`): one construct, one cell, standing at the let the
+      // author wrote. A destructure at the head IS the match (no empty-prefix
+      // block); otherwise the prefix stmts carry the match as their final.
+      graph_register_node(lh, m)
       if i == 0 {
-        mint_node_as(m, span, born)
+        N(m, span, lh)
       } else {
-        nexpr(BlockExpr(slice(stmts, 0, i), mint_node_as(m, span_join(lsp, span), born)), span)
+        nexpr(BlockExpr(slice(stmts, 0, i), N(m, span_join(lsp, span), lh)), span)
       }
     },
   },
@@ -3593,27 +3626,27 @@ fn parse_type_args_loop(ref tokens, pos, own buf, count) = {
 // Returns (fields, rest_var, pos-after-`}`): rest_var is Some(row-handle)
 // for an open record (accepts any record with AT LEAST these fields),
 // None for a closed one. `...` mints a fresh anonymous row var; `...R`
-// binds the row var name R (the reuse of R across sites within one
-// signature is a named-row-var environment threaded through type-parse —
-// the structural peer Hβ.parser.named-row-var-reuse; here both mint a
-// fresh row var). The downstream substrate (TRecordOpen, unify_types'
-// row-poly arms) is already built; this parse closes the surface.
+// mints one named R, and the signature's quantification
+// (`quantify_ctor_ty`) gives every R in one signature one cell.
 fn parse_record_type_fields(ref tokens, pos) = {
   let p = skip_ws(tokens, pos)
   if at(tokens, p, TRBrace) {
     ([], None, p + 1)
   } else if at_ellipsis(tokens, p) {
     // `...` or `...R` rest — the open-row marker. A name after the three
-    // dots binds the row var (R); absent = anonymous. Both mint a fresh
-    // row-var handle; consume to the closing `}`.
+    // dots names the row variable, as a lowercase name in a clause names a
+    // row and in a type a type: the signature's quantification shares one
+    // cell per name. Absent, the rest is anonymous.
     let after_dots = p + 3
-    let named = match kind_at(tokens, after_dots) {
-      TIdent(_) => true,
-      _ => false,
+    let sp = span_at(tokens, p)
+    match kind_at(tokens, after_dots) {
+      TIdent(r) => (
+        [],
+        Some(fresh_handle_as(sp, Declared(r))),
+        expect(tokens, skip_ws(tokens, after_dots + 1), TRBrace)
+      ),
+      _ => ([], Some(fresh_handle(sp)), expect(tokens, skip_ws(tokens, after_dots), TRBrace)),
     }
-    let p_rest = if named { after_dots + 1 } else { after_dots }
-    let row_var = fresh_handle(span_at(tokens, p))
-    ([], Some(row_var), expect(tokens, skip_ws(tokens, p_rest), TRBrace))
   } else {
     let name = ident_at(tokens, p)
     let p1 = expect(tokens, p + 1, TColon)

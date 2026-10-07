@@ -35,19 +35,16 @@ import parser
 // through show_pipe_kind — the one glyph projection, never a second
 // table), and iteration-shape (CsIterationCostume — the audit tier's
 // detector living HERE, the census its home, the audit a reader).
-// The width past which a declared row stops being an annotation and starts
-// being an inventory. EIGHT, and the number is a reading rather than a taste:
 // A declared-row term that authors a bare positive name — the inventory
-// shape's one test, shared by the census and the audit tier.
+// shape's one test, shared by the census and the audit tier. A row variable
+// names a row the signature quantifies and a group states a mask; both are
+// decisions, never an inventory.
 fn term_is_bare_positive(term) = match term {
-  (name, negated, _) => if negated {
-    false
-  } else {
-    match name {
-      ENamed(_) => true,
-      _ => false,
-    }
+  (RtEff(name), false, _) => match name {
+    ENamed(_) => !row_var_spelled(name),
+    _ => false,
   },
+  _ => false,
 }
 
 type CensusShape
@@ -247,7 +244,7 @@ type Question
 
 type QueryResult
   = QRType(Ty, Reason)
-  | QRIntent([(EffName, Bool, EConn)])
+  | QRIntent([(RowTerm, Bool, EConn)])
   // [(name, ty, free-tvars)]
   | QRUnresolved([(String, Ty, [Ty])])
   // [(handle, GNode)]
@@ -1210,8 +1207,16 @@ fn prose_class_name(c) = match c {
   PcSilencer => "silencer",
 }
 
-fn prose_classes() =
-  [PcCoordinate, PcPathNoFile, PcCommit, PcSpecCitation, PcLifecycle, PcArchaeology, PcBanner, PcSilencer]
+fn prose_classes() = [
+  PcCoordinate,
+  PcPathNoFile,
+  PcCommit,
+  PcSpecCitation,
+  PcLifecycle,
+  PcArchaeology,
+  PcBanner,
+  PcSilencer
+]
 
 // THE ROSTER — every shape the census answers without a needle, listable
 // (`mentl query <entry> census`). It answered "unknown query" until G2, so
@@ -1635,7 +1640,21 @@ fn repo_rooted(w: String) =
 
 fn has_extension(w: String) = any(
   ends_with(w),
-  [".mn", ".sh", ".md", ".py", ".js", ".mjs", ".tsv", ".txt", ".json", ".wasm", ".wat", ".html", ".css"]
+  [
+    ".mn",
+    ".sh",
+    ".md",
+    ".py",
+    ".js",
+    ".mjs",
+    ".tsv",
+    ".txt",
+    ".json",
+    ".wasm",
+    ".wat",
+    ".html",
+    ".css"
+  ]
 )
 
 // The longest run of decoration glyphs in a comment: box-drawing (U+2500 to
@@ -1789,8 +1808,17 @@ fn subtree_calls_param_children(hs, pnames, fuel) with !Mutate = match hs {
 // newly absorbed mode joins by one entry here (the widening
 // count-tuple this replaced was the per-site family at seven arms —
 // the uniform pass, applied to the tier's own construction).
-fn drift_roster() =
-  [CsWildcardZero, CsFailureMask, CsPrintInReport, CsWildcardFabricates, CsUnderscoreRetain, CsFlagAsInt, CsParallelArrays, CsVtableRecord, CsEnvFrame]
+fn drift_roster() = [
+  CsWildcardZero,
+  CsFailureMask,
+  CsPrintInReport,
+  CsWildcardFabricates,
+  CsUnderscoreRetain,
+  CsFlagAsInt,
+  CsParallelArrays,
+  CsVtableRecord,
+  CsEnvFrame
+]
 
 fn drift_shapes_of(fn_handle) with !Mutate = {
   // The walk starts at the FN NODE, not its body: a shape can live ON
@@ -2216,7 +2244,9 @@ fn value_where(name: String, scope: String) with !Mutate = match env_lookup(name
   Some(entry) => match entry {
     (scheme, _, kind) => match kind {
       EffectOpScheme(ename, _, _, disc) => QRWhere(
-        ["{name} : {ename} op — resume {op_resume_ty(scheme)} {disc_glyph(disc)} answer{effect_address(ename)}"],
+        [
+          "{name} : {ename} op — resume {op_resume_ty(scheme)} {disc_glyph(disc)} answer{effect_address(ename)}"
+        ],
         []
       ),
       _ => {
@@ -2630,7 +2660,9 @@ fn tee_line(h, hn: String) with !Mutate = if byte_len(hn) == 0 {
   []
 } else {
   match handler_arms(hn) {
-    Some(arms) => ["~> {hn} absorbs {join(" + ", handler_effect_names(arms))}, answers {value_type(lookup_ty(h))} at {show_span(span_of_node_raw(h))}"],
+    Some(arms) => [
+      "~> {hn} absorbs {join(" + ", handler_effect_names(arms))}, answers {value_type(lookup_ty(h))} at {show_span(span_of_node_raw(h))}"
+    ],
     None => ["~> {hn} at {show_span(span_of_node_raw(h))} — no handler declaration by that name"],
   }
 }
@@ -2758,7 +2790,9 @@ fn field_write_lines(field: String, h) with !Mutate = match graph_node_body(h) {
 fn state_named(field: String, st) = st.name == field
 
 fn state_writes(hname: String, st) with !Mutate = match graph_binder_of(node_handle(st.init)) {
-  Some(StateFact(f)) => ["{hname}.{st.name}: {int_to_str(len(f.writes))} write(s), {int_to_str(len(f.stores))} in-place store(s)"] ++ map(write_line, f.writes) ++ map(store_line, f.stores),
+  Some(StateFact(f)) => [
+    "{hname}.{st.name}: {int_to_str(len(f.writes))} write(s), {int_to_str(len(f.stores))} in-place store(s)"
+  ] ++ map(write_line, f.writes) ++ map(store_line, f.stores),
   _ => ["{hname}.{st.name}: no writers noted — the handler was never judged"],
 }
 

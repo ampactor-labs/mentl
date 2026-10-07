@@ -3803,7 +3803,7 @@ become the join it skipped. The next output is a witness program — a
 recursive declaration whose frame row is bound before its self-call adds an
 effect — not an edit.
 
-### `Hβ.fmt.keyword-binder-renders-as-wildcard` — OPEN
+### `Hβ.fmt.keyword-binder-renders-as-wildcard` — CLOSED 2026-10-06
 
 BORN 2026-09-30,
 measured on boot 21f8e691 while building C5. A binder spelled with a
@@ -3816,6 +3816,8 @@ parses to a different tree than its source is the class
 `Hβ.fmt.render-must-parse-to-the-same-tree` already names; this is its
 keyword face, and the fix is the same: refuse the write when the reparse
 differs, never count names alone.
+
+CLOSED in the heads landing (H0), at the parse rather than the reparse: a recovery is a report, so `mentl fmt` refuses to render any parse whose reports are not MachineApplicable, whatever their severity (`render_cannot_fix`, src/main.mn) — `P_UnexpectedToken` is only a Warning, and the old test counted Errors alone. The same fix refused `fn f(x) with Memory + Alloc + [e - E] = x`, whose recovery fmt had written as `+  = e - E` beside two `??` lines. `tests/frontier/fmt-demo/keyword-binder.mn` and `recovered.mn` stay byte for byte under fmt (the frontier's recovered-parse leg); the reparse face of the class stays `Hβ.fmt.render-must-parse-to-the-same-tree`.
 
 ### `Hβ.diag.type-mismatch-is-unarmed` — CLOSED 2026-09-25
 
@@ -18181,7 +18183,7 @@ SURFACE: SYNTAX §«Unit return omission», §«Calling resume with unit», the 
 
 **Builds:** `E_DuplicateImport` `E_StatementSemicolon` `.build/fmt.stamps` `fmt_file`
 
-LANDED IN PART 2026-10-06 (pin 50da761228ba3eef, LEDGER carries the arc): `mentl fmt [--check] [path…]` with no path renders every `.mn` under the working directory; the render is a parse (one arena per file, `frontend` deleted, no judgment); the project write is atomic over a conservation proof with stated equivalences (`lifted_atoms`); `.build/fmt.stamps` keys each file's canonical bytes; `mn_files` is the one tree walk; `E_DuplicateImport` is armed and fmt's lift; `0 - <literal>` and `-> ()` lift; literals keep their spelling. REMAINING, this peer's design unchanged: decoration-run stripping, the sole-parameter binder as an arm list, the ownership marker before the name, the batteries addressed by identity (so tests/ can be canonical), the pre-commit rung as `mentl fmt --check`, the board line, the three-module/duplicate-import/`48_000` frontier legs, and the tree sweep.
+OPEN — what the F lane built, integrated 2026-10-06 (pin 50da761228ba3eef, LEDGER carries the arc): `mentl fmt [--check] [path…]` with no path renders every `.mn` under the working directory; the render is a parse (one arena per file, `frontend` deleted, no judgment); the project write is atomic over a conservation proof with stated equivalences (`lifted_atoms`); `.build/fmt.stamps` keys each file's canonical bytes; `mn_files` is the one tree walk; `E_DuplicateImport` is armed and fmt's lift; `0 - <literal>` and `-> ()` lift; literals keep their spelling. REMAINING, this peer's design unchanged: decoration-run stripping, the sole-parameter binder as an arm list, the ownership marker before the name, the batteries addressed by identity (so tests/ can be canonical), the pre-commit rung as `mentl fmt --check`, the board line, the three-module/duplicate-import/`48_000` frontier legs, and the tree sweep.
 
 ### `Hβ.syntax.parameter-product-has-identity` — OPEN
 
@@ -19349,6 +19351,25 @@ the Okabe–Ito roles; self-hosted OFL fonts (§2.7).
   from `VerbFrame`; the aspect strip and the ambient-world glyphs; obligation
   marks; the ownership trace; drafts persisted; the trail as undo.
 
+**OPEN — what the canvas lane built, integrated 2026-10-06.** `mentl space
+<file>:0` — the module's View — carries the canvas: every token at its span
+and class from the one lexer (the page's tokenizer, keyword sets and string
+scanner deleted), the aspect strip (eight cells a line in kernel order, each
+the strongest fact of its aspect there; every diagnostic in its aspect's
+column, `diag_arm`, exhaustive over the catalog), the verb frames, the proof
+marks (the ledger keeps what it decided, `verify_decided`, beside its debt)
+and the ownership traces; the page paints only the lines in view; find by edge
+(a caret's View carries its references, `mentl space <address> <needle>` a
+name's references and the string literals holding it); fmt on idle and the
+accept each one native undo step. Gates: twin legs 11–13 and the browser's
+SMOKE-CANVAS leg, each RED on boot c8ba5799. What L-D still owes, each this
+peer's, before it lands: the tokens read off the parse that judged the text rather
+than lexed again from it (the parse keeping its token stream — a position
+fact, #108's); the formatter on idle answered by the resident session rather
+than a cold instance; the row-flow tint along a chain and a declared `!E`
+drawn as a sealed wall; a declaration's references by its link (M1); the
+trail of graph writes as undo (AU4's speculation extent).
+
 ### `Hβ.emit.the-medium-assembles-its-output` — OPEN
 
 BORN 2026-10-06 — the 2026-10-06 program, landing L-F (PLAN §11, THE STANDING CURSOR). The design below is the program's own text for this landing, moved here verbatim at the §0.3 integration; its section references (§2–§7) are the program's own numbering, and the whole program, with the seven audit lenses' answers, is at commit 42a94dc0 (docs/record/2026-10-06/).
@@ -20137,17 +20158,23 @@ landed across the bootstrap seam in two pins (op support first, repin, then
 persist and `heap_mark` switch). Gate: `heap_mark()` returns to its mark
 after an arena in a spawning module.
 
-### `Hβ.syntax.named-record-rest-is-dropped` — OPEN
+### `Hβ.syntax.named-record-rest-is-dropped` — CLOSED 2026-10-06
 
-BORN 2026-10-06 (N2, the heads leg). The parser drops the name of an open record type's rest: `{x: Int, ...R}` reads as `{x: Int, ...}`, so a rest shared between a parameter and a result (`fn extend(base: {name: String, ...R}) -> {..., ...R}`) is not shared, and the formatter refuses a file that writes one (the conservation census counts `R` lost). 67 of the 92 heads that do not round-trip (`head_round_trip_max`). THE FORM: the rest's name is a row variable the type node carries, bound once per signature, as SYNTAX §«Row polymorphism» writes it.
+BORN 2026-10-06 (N2, the heads leg). The parser dropped the name of an open record type's rest: `{x: Int, ...r}` read as `{x: Int, ...}`, so a rest written in two places of one signature was two rows, and the formatter refused a file that wrote one (the conservation census counted the name lost). 72 of the 97 heads that did not round-trip once the canvas lane was merged. CLOSED in the heads landing (H0): the parse mints the rest's cell with its name (`parse_record_type_fields`), the signature's quantification gives every `...r` of one signature one cell (`quantify_ctor_ty`'s open-record arm, the scope `build_param_scope` threads through the parameters, the return and the clause), and the one renderer names it where its author did (`render_open_record`, `authored_rest_name`). `tests/micros/mn-named-rest-is-one-row.mn`: two parameters `{x: Int, ...r}` handed records with different remainders refuse `E_TypeMismatch`; boot b2920932 ran it to 4. SYNTAX's own example spelled the rest `...R`, uppercase, which the case rule reads as a nominal type; it is `...r` now.
 
-### `Hβ.syntax.row-grammar-has-no-grouping` — OPEN
+### `Hβ.syntax.row-grammar-has-no-grouping` — CLOSED 2026-10-06
 
-BORN 2026-10-06 (N2). A row with a masked edge renders `(e - E)` and the row grammar has no parenthesized group, so the render does not parse back: 19 of the heads leg's 92. THE FORM: `( row )` is a row atom, the same precedence rule the expression grammar already has.
+BORN 2026-10-06 (N2). A row with a masked edge renders `(e - E)` and the row grammar had no parenthesized group, so the render did not parse back: 19 of the heads leg's 97. And underneath the grammar sat a MEANING defect the round trip could not see: a lowercase name in a clause was read as an EFFECT named `e`, so `fn run(f: () -> Int with e) = f()` refused `run(() => op())` with `E vs e` at the argument (a false refusal, every boot through b2920932). CLOSED in the heads landing (H0): an authored clause is a tree of terms (`type RowTerm = RtEff(EffName) | RtGroup(...)`, src/types.mn), a group folds whole with its outer connective applied to what it spells — the rule a named row's reference already followed (`term_row`, src/effects.mn) — and a lowercase name is a ROW VARIABLE (`row_var_spelled`, `leaf_row_of`), one cell per name per signature, read from the scope the parameters leave (`build_declared_row_in`). The authored face renders a named row edge by its name and an anonymous tail not at all (`render_row_suffix`), and the clause renderer is one (`render_signed_effs`; `render_row_triples` deleted). `tests/micros/mn-row-var-in-a-clause.mn` (5, refused on the boot) and `mn-row-var-shared-by-name.mn` (7, the clause `Memory + Alloc + (e - E)` sharing the parameter's `e`; the boot misparsed it).
 
-### `Hβ.syntax.effect-arg-type-is-one-token` — OPEN
+### `Hβ.infer.shared-flow-row-binds-at-first-argument` — CLOSED 2026-10-06
 
-BORN 2026-10-06 (N2). An effect argument is one token (`parse_one_eff_arg`), so a function type as an effect's type argument (`Cast(() -> a with e)`) renders and does not parse: 6 of the heads leg's 92. THE FORM: a type argument parses as a type.
+BORN 2026-10-06 (the heads landing, measured on its m2). Two callbacks whose types name one row variable — `fn both(f: () -> Int with e, g: () -> Int with e) = f() + g()` — refuse `both(() => op(), () => 4)` with `E vs Pure` at the call. The argument edge's flow branch binds the instantiated param cell ONE-WAY to the first argument's row it meets (`fn_arg_directional_positions` walks the positions last first, so `g`'s Pure), and the next position then reads that cell as a CLOSED cap the effectful callback exceeds. Before the landing the program refused for any effect at all (`e` was an effect named `e`); now it refuses only when the callbacks' rows differ, and the pure callback is the one row polymorphism says fits any `e`. THE FORM: a flow row learns a LOWER bound from each argument — the union of every argument's row, the cell bound once all positions have spoken — never the first argument's row as an equality. Gate: the program above runs to 7 under `~> h`; a `!E` caller of `both` over an E-performing callback still refuses.
+
+CLOSED in the heads landing (H0). The argument edge collects every flow position before it binds anything (`fn_arg_directional_positions` folds the positions into the masked caps and the flow pairs, `directional_step`), and each param cell then learns the UNION of the rows its positions handed it (`learn_flow_rows`, `learn_flow_row`) — a lower bound, bound once, never the first argument's row read back as a cap. `tests/micros/mn-row-var-shared-flow-union.mn` runs to 7 (refused `E vs Pure` on the landing's first m2); `mn-row-var-shared-flow-negation.mn` keeps the refusal of a `!E` caller over an E-performing callback.
+
+### `Hβ.syntax.effect-arg-type-is-one-token` — CLOSED 2026-10-06
+
+BORN 2026-10-06 (N2). An effect argument was one token (`parse_one_eff_arg`), so a function type as an effect's type argument (`Cast(() -> a with e)`) rendered and did not parse: 6 of the heads leg's 97. CLOSED in the heads landing (H0): an argument opening with `(`, `[` or `{` parses as a type (`type_eff_arg`) — no value spells with those openers at an argument's head. What the argument says is a separate question: `Cast`'s operand variable rides every row that casts as one instance, which is `Hβ.effects.two-instances-of-one-effect-do-not-join`.
 
 ### `Hβ.infer.if-condition-is-not-bool` — CLOSED 2026-10-06
 

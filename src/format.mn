@@ -278,26 +278,6 @@ fn render_compose_chain(branches) = match branches {
   [h, ...t] => "{parenthesize(render_chain_node(h))}\n{spaces(indented_center())}><\n{render_compose_chain(t)}",
 }
 
-// A named row renders as its authored signed triples: the first term
-// bare, each subsequent led by its connective glyph, negation as `!` —
-// the with-clause's own grammar, round-trippable by construction.
-fn render_row_triples(effs, i) = if i >= len(effs) {
-  ""
-} else {
-  match list_index(effs, i) {
-    (name, negated, conn) => {
-      let bang = if negated { "!" } else { "" }
-      let glyph = match conn {
-        EcUnion => "+",
-        EcDiff => "-",
-        EcInter => "&",
-      }
-      let lead = if i == 0 { "" } else { " {glyph} " }
-      "{lead}{bang}{show_eff_name(name)}{render_row_triples(effs, i + 1)}"
-    },
-  }
-}
-
 // Every branch renders parenthesized, inline as in the vertical layout
 // (SYNTAX §`><`, the render rule): the parentheses are the branch's visual
 // boundary. Wrapped only where precedence demanded it, `((1 + 1) >< (2 + 2))`
@@ -613,7 +593,7 @@ fn render_stmt_tokens(s) with !Mutate = match s {
     _ => render_grouped_body(e),
   },
   AliasStmt(name, ty) => "type {name} = {render_decl_type(ty)}",
-  RowAliasStmt(name, effs) => "type {name} = {render_row_triples(effs, 0)}",
+  RowAliasStmt(name, effs) => "type {name} = {render_signed_effs(effs, 0)}",
   LetStmt(pat, value, ann) => {
     let lhead = "let {render_pat_tokens(pat)}{render_let_ann(ann)} ="
     let lv = render_tokens_for(value)
@@ -1295,7 +1275,7 @@ fn render_state_inits(ref states, i) with !Mutate = if i >= len(states) {
 // its own effect row when it authors one, else its state inits — the
 // parse's inverse over what the node carries.
 fn render_handler_clause(effs, states) with !Mutate =
-  if len(effs) > 0 { " with {render_row_triples(effs, 0)}" } else { render_state_inits(states, 0) }
+  if len(effs) > 0 { " with {render_signed_effs(effs, 0)}" } else { render_state_inits(states, 0) }
 
 fn render_handler_arms(ref arms, i) with !Mutate = if i >= len(arms) {
   ""
@@ -1481,12 +1461,12 @@ fn render_pat_fields(ref fields, i) = if i >= len(fields) {
   }
 }
 
-// The declared with-clause, rendered from the parser's SIGNED TRIPLES —
-// [(EffName, negated, EConn)] — verbatim: the authored surface is the only
-// faithful render (a closed-row rebuild cannot represent - / & connectors
-// or per-entry !, and feeding the triples to the row constructor read
-// tuples as bare EffNames — «invalid-effect» destroyed 41 declared rows
-// across the five pass-once files, the fmt census's blocker 1).
+// The declared with-clause — and a named row's right side, and a handler's
+// `with` — rendered from the parser's SIGNED TERMS verbatim: the first term
+// bare, each later one led by the connective its author joined it with,
+// negation as `!`, a group in its parentheses. The authored surface is the
+// only faithful render: a closed-row rebuild cannot represent `-` / `&`
+// connectors, per-term `!`, or a group.
 fn render_with_clause(effs) with !Mutate =
   if len(effs) == 0 { "" } else { " with {render_signed_effs(effs, 0)}" }
 
@@ -1494,7 +1474,7 @@ fn render_signed_effs(ref effs, i) with !Mutate = if i >= len(effs) {
   ""
 } else {
   match effs[i] {
-    (name, negated, conn) => {
+    (term, negated, conn) => {
       // The first entry's connector is its position; each later entry
       // carries the operator the author joined it with.
       let lead = if i == 0 {
@@ -1507,9 +1487,14 @@ fn render_signed_effs(ref effs, i) with !Mutate = if i >= len(effs) {
         }
       }
       let bang = if negated { "!" } else { "" }
-      "{lead}{bang}{render_authored_eff_name(name)}{render_signed_effs(effs, i + 1)}"
+      "{lead}{bang}{render_row_term(term)}{render_signed_effs(effs, i + 1)}"
     },
   }
+}
+
+fn render_row_term(t) with !Mutate = match t {
+  RtEff(name) => render_authored_eff_name(name),
+  RtGroup(ts) => "({render_signed_effs(ts, 0)})",
 }
 
 // An authored effect name — the one name renderer (`render_eff_name`, the

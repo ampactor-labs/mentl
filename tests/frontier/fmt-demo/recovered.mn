@@ -1,0 +1,6 @@
+// A clause the parser cannot read — a bracket where a row expects a name.
+// The parse recovers with holes, and fmt must never write what the recovery
+// built: the file stays exactly as the author wrote it.
+fn f(x) with Memory + Alloc + [e - E] = x
+
+fn main() = f(3)
