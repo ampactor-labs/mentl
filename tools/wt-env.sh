@@ -18,6 +18,27 @@
 # The four constants — WT, WT_RUN_FLAGS, W2W, WT_WABT — are the single source of
 # truth. Point WT at another engine via MENTL_WASMTIME. Nothing here re-derives;
 # every helper is a projection of the four constants.
+#
+# THE TOOLCHAIN'S OWN VARIABLES — one home, the file every script sources.
+# These configure the HOST side; the wheel does not implicitly consume them.
+# A program that asks env_opt for a computed name under env_from_host opts into
+# the whole process environment, which can include these MENTL_ values.
+# tools/doc-truth.sh refuses any MENTL_ name under tools/, ide/ or .githooks/
+# that this table does not carry.
+#   variable              default                          read by
+#   MENTL_HOME            the checkout holding tools/     install.sh (the shim), verify.sh
+#   MENTL_BOOT            boot/mentl.wasm                  the shim, run-micro.sh, crown-gate.sh, effect-identity-gate.sh, verify.sh
+#   MENTL_WASMTIME        .build/wasmtime, then PATH       wt-env.sh, wasmtime-get.sh, verify.sh
+#   MENTL_WT_EXTRA        (none)                           wt-env.sh — extra engine flags, e.g. --profile=perfmap
+#   MENTL_RT_LIBS         (set here, never read in)        wt-env.sh, verify.sh, march-gate.sh — the runtime floor's modules
+#   MENTL_BIN_DIR         ~/.local/bin                     install.sh — where the shim is written
+#   MENTL_SPACE_PORT      7397                             the shim's `mentl space`
+#   MENTL_CHROME          the usual names on PATH          ide-gate.sh — the browser leg's Chrome
+#   MENTL_IDE_GATE_PORT   7397                             ide-gate.sh
+#   MENTL_IDE_WASM        boot/mentl.wasm                  ide/test-shim.mjs — the node twin's wheel
+#   MENTL_HEAVY_LOCK      /tmp/mentl-heavy-lock.d          heavy-lock.sh — the machine-wide wheel-scale lock
+#   MENTL_HEAVY_TTL       1800                             heavy-lock.sh — seconds before a stale lock breaks
+#   MENTL_LOCK_OWNER      the checkout's top level         heavy-lock.sh
 
 # THE ENGINE IS THE STOCK WASMTIME BINARY, and nothing of Mentl is in it
 # (2026-10-05, L-H — Morgan: no Rust in the codebase, "at all!"). The boot

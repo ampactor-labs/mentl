@@ -1,0 +1,14 @@
+// CROWN env (E1) — `!Env("A")` refuses `env(name)`: a computed name leaves
+// the instance ungrounded, and an ungrounded instance is never provably
+// distinct from "A". Expect E_EffectMismatch.
+effect Env(name: String) {
+  env(name: String) -> Int
+}
+
+fn read(name) with !Env("A") = env(name)
+
+handler fixed {
+  env(name) => resume(7),
+}
+
+fn main() = read("B") ~> fixed

@@ -1,0 +1,14 @@
+// CROWN env (E1) — a computed optional name still carries an ungrounded
+// instance. `!Env("A")` cannot prove it distinct, even though absence is
+// optional. Expect E_EffectMismatch.
+effect Env(name: String) {
+  env_opt(name: String) -> Int
+}
+
+fn read_optional(name) with !Env("A") = env_opt(name)
+
+handler fixed {
+  env_opt(name) => resume(7),
+}
+
+fn main() = read_optional("B") ~> fixed

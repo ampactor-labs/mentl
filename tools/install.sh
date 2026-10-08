@@ -57,7 +57,7 @@ mentl_wasm() {
   done
   "\$WT" run "\${WT_RUN_FLAGS[@]}" \\
     --dir "\$PWD" --dir /tmp --dir "\$MENTL_HOME::/mentl-home" "\${extra[@]}" \\
-    "\$MENTL_HOME/boot/mentl.wasm" "\$@"
+    "\${MENTL_BOOT:-\$MENTL_HOME/boot/mentl.wasm}" "\$@"
 }
 if [ "\${1:-}" = "run" ] && [ -n "\${2:-}" ]; then
   # mentl run <module> [args…] — compile, assemble, execute: the host's three
@@ -72,7 +72,58 @@ if [ "\${1:-}" = "run" ] && [ -n "\${2:-}" ]; then
   trap 'rm -rf "\$stage"' EXIT
   mentl_wasm compile "\$module" > "\$stage/module.wat" || exit \$?
   wt_asm "\$stage/module.wat" "\$stage/module.wasm" || exit \$?
-  "\$WT" run "\${WT_RUN_FLAGS[@]}" --dir "\$PWD" --dir /tmp "\$stage/module.wasm" "\$@"
+  # Host access follows the medium's read-site roster. Required and optional
+  # literal names are passed only when present in the shell or project .env.
+  # A dynamic env_opt is explicitly marked as whole-environment access: its
+  # name cannot be narrowed before execution, so the host passes its
+  # environment plus .env values not already set in the shell. Only required
+  # names are checked by the module's pre-main launch gate.
+  envs=()
+  env_keys=()
+  env_add() {
+    local add_name="\$1" add_value="\$2" existing
+    [ -n "\$add_name" ] || return 0
+    for existing in "\${env_keys[@]}"; do
+      [ "\$existing" = "\$add_name" ] && return 0
+    done
+    env_keys+=("\$add_name")
+    envs+=(--env "\$add_name=\$add_value")
+  }
+  dotenv="\$(mentl_arg_dir "\$module.mn" 2>/dev/null || mentl_arg_dir "\$module" 2>/dev/null || pwd)/.env"
+  while IFS=\$'\t' read -r name mode; do
+    [ -n "\$name" ] || continue
+    if [ "\$mode" = "all optional" ]; then
+      while IFS= read -r -d '' entry; do
+        name="\${entry%%=*}"
+        value="\${entry#*=}"
+        env_add "\$name" "\$value"
+      done < <(env -0)
+      if [ -f "\$dotenv" ]; then
+        while IFS= read -r line || [ -n "\$line" ]; do
+          line="\${line#"\${line%%[![:space:]]*}"}"
+          [[ -z "\$line" || "\$line" == \\#* || "\$line" != *=* ]] && continue
+          name="\${line%%=*}"
+          value="\${line#*=}"
+          env_add "\$name" "\$value"
+        done < "\$dotenv"
+      fi
+    elif [[ "\$name" =~ ^[A-Za-z_][A-Za-z0-9_]*\$ ]]; then
+      if [ -n "\${!name+set}" ]; then
+        env_add "\$name" "\${!name}"
+      elif [ -f "\$dotenv" ]; then
+        while IFS= read -r line || [ -n "\$line" ]; do
+          line="\${line#"\${line%%[![:space:]]*}"}"
+          [[ -z "\$line" || "\$line" == \\#* || "\$line" != *=* ]] && continue
+          key="\${line%%=*}"
+          if [ "\$key" = "\$name" ]; then
+            env_add "\$name" "\${line#*=}"
+            break
+          fi
+        done < "\$dotenv"
+      fi
+    fi
+  done < <(mentl_wasm query "\$module" env 2>/dev/null | sed -n 's/^ *\\([^ ]*\\) \\[\\([^]]*\\)\\] read at .*/\\1\t\\2/p' | sort -u)
+  "\$WT" run "\${WT_RUN_FLAGS[@]}" \${envs[@]+"\${envs[@]}"} --dir "\$PWD" --dir /tmp "\$stage/module.wasm" "\$@"
   exit \$?
 fi
 if [ "\${1:-}" = "space" ]; then

@@ -3813,10 +3813,13 @@ and Wave C (tier 5) follow.
 - **E1 · Configuration and secrets are an effect**
   (`Hβ.env.configuration-is-an-effect`). A variable is read through
   `env(name)`, whose literal grounds the effect's instance at the perform;
-  the demand read at the perform sites is the manifest, a computed name is
-  `E_EnvNameUngrounded` (armed at birth), the launch gate refuses before
-  `main` naming every unset variable and its read site, and a secret never
-  enters guest memory.
+  the demand read at the perform sites is the manifest, a computed required
+  name is `E_EnvNameUngrounded` (armed at birth), and the launch gate refuses
+  before `main` naming every unset required variable and its read site.
+  Literal optional reads are listed without becoming launch requirements; a
+  computed `env_opt` is an explicit whole-environment capability. Any value
+  read into the guest is guest data and can enter a checkpoint. Opaque
+  host-held credentials remain open work.
 
 *Tier 4 · wide foundations, behind tier 1's net.*
 - **M1 · The reference link** (`Hβ.lower.reach-edge-on-node`). At the one

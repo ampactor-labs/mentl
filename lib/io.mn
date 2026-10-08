@@ -71,6 +71,10 @@ effect WASI {
   args_sizes_get(Addr, Addr) -> Int
   // (argv, argv_buf)
   args_get(Addr, Addr) -> Int
+  // (environc, environ_buf_size)
+  environ_sizes_get(Addr, Addr) -> Int
+  // (environ, environ_buf) — each entry a `NAME=VALUE` C-string
+  environ_get(Addr, Addr) -> Int
   // Never returns: the host ends the process, so the op answers a bare
   // variable — any install an arm ending in it answers (SYNTAX
   // §«Unit return omission»). Its emit is `(call $proc_exit)(unreachable)`.
@@ -110,6 +114,30 @@ fn wasi_args() = {
   let buf = alloc(load_i32(bufsz_ptr))
   args_get(argv_ptr, buf)
   wasi_args_build(argv_ptr, argc, 0, make_list(0))
+}
+
+// wasi_environ — the variables the host passed, as (NAME, VALUE) pairs, read
+// live in args' shape: environ_sizes_get writes (count, total-byte-size),
+// environ_get the pointer array and the buffer of `NAME=VALUE` C-strings,
+// split at the first `=`. The host decides what is here — `mentl run` passes
+// exactly the names the program's roster states (lib/environ.mn).
+fn wasi_environ() = {
+  let count_ptr = alloc(4)
+  let bufsz_ptr = alloc(4)
+  environ_sizes_get(count_ptr, bufsz_ptr)
+  let n = load_i32(count_ptr)
+  let ptrs = alloc(4 * n)
+  let buf = alloc(load_i32(bufsz_ptr))
+  environ_get(ptrs, buf)
+  range(0, n) |> map({ i => load_addr(addr_at(ptrs, 4 * i)) |> cstr_to_string |> environ_pair })
+}
+
+// One `NAME=VALUE` entry, split at its first `=`; an entry with none is a
+// name holding the empty value.
+fn environ_pair(kv: String) = {
+  let n = byte_len(kv)
+  let eq = find_char(kv, n, 0, 61)
+  if eq < 0 { (kv, "") } else { (str_slice(kv, 0, eq), str_slice(kv, eq + 1, n)) }
 }
 
 // ─── The Console effect — narration's output boundary ─────────
@@ -259,7 +287,7 @@ fn read_stdin() = fd_read_all(0)
 fn read_one_byte() = {
   let cell = alloc(1)
   let nread = read_chunk(0, cell, 1)
-  if nread == 0 { 0 - 1 } else { load_i8(cell) }
+  if nread == 0 { -1 } else { load_i8(cell) }
 }
 
 // read_stdin_line — read one line from stdin (interactive-prompt
@@ -577,7 +605,7 @@ fn fs_write_image_impl(path_str, hdr_ptr, hdr_len, base, len) = {
     false
   } else {
     let nh = fd_write_bytes(fd, hdr_ptr, hdr_len)
-    let nb = if len < 0 { 0 - 1 } else { fd_write_bytes(fd, base, len) }
+    let nb = if len < 0 { -1 } else { fd_write_bytes(fd, base, len) }
     fd_close(fd)
     if nh == hdr_len && nb == len {
       true

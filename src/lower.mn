@@ -2521,12 +2521,12 @@ fn grow_to_with_gaps(arms: [String], n: Int) =
   if len(arms) >= n { arms } else { grow_to_with_gaps(list_concat(arms, [""]), n) }
 
 // Look up the op names for an effect by reading the graph.
-// EffectDeclKind(op_names) carries effect→ops as a first-class
+// EffectDeclKind(op_names, _) carries effect→ops as a first-class
 // fact — registered at EffectDeclStmt by register_effect_ops.
 fn lookup_effect_op_names(eff_name) = match env_lookup(eff_name) {
   Some(entry) => match entry {
     (_, _, kind) => match kind {
-      EffectDeclKind(op_names) => op_names,
+      EffectDeclKind(op_names, _) => op_names,
       _ => // A non-effect entry under this name (a same-named TYPE shadowing the
       // effect — the Cursor/Patch collision class, healed by the
       // Graph/GraphRead naming convention; Sample still pairs by DSP
@@ -6352,8 +6352,66 @@ fn is_cast_erased_op(name) with Pure = name == "addr"
 // a real handler arm routes through the else branch
 // (lower_perform_dispatch); listing one here bridges it to a dangling
 // `(call $<op>)` with no import and no arm.
-fn is_wasi_import_op(name) with Pure =
-  name == "spawn_task" || name == "join_task" || name == "thread_id" || name == "fd_write" || name == "fd_read" || name == "fd_close" || name == "fd_prestat_get" || name == "fd_prestat_dir_name" || name == "fd_fdstat_get" || name == "path_open" || name == "path_create_directory" || name == "path_filestat_get" || name == "path_unlink_file" || name == "path_rename" || name == "fd_readdir" || name == "args_sizes_get" || name == "args_get" || name == "proc_exit" || name == "atomic_load_i32" || name == "atomic_store_i32" || name == "atomic_rmw" || name == "atomic_cmpxchg" || name == "wait_i32" || name == "notify" || name == "fence"
+//
+// The preview1 imports are READ off their one home, `wasi_import_reprs`: this
+// predicate held a hand copy of the same names, so a new host op added to the
+// ABI table (environ_sizes_get / environ_get, E1) was a perform here — the
+// executable root gate refused WASI at a program reading its environment on
+// the boot (measured 2026-10-06), while the emit knew the import.
+fn is_wasi_import_op(name: String) = name == "spawn_task" || name == "join_task" || name == "thread_id" || name == "atomic_load_i32" || name == "atomic_store_i32" || name == "atomic_rmw" || name == "atomic_cmpxchg" || name == "wait_i32" || name == "notify" || name == "fence" || match wasi_import_reprs(name) {
+  Some(_) => true,
+  None => false,
+}
+
+// The WASI preview1 ABI signatures — the FFI boundary's external facts as
+// DATA (Repr vectors), keyed on the op name LWasiCall carries. ONE home,
+// three readers: the import-decl string (wasi_import_sig), the call-site arg
+// widths (emit_wasi_args_at_widths — a word arg filling an i64 param extends
+// at the boundary), and which ops bridge to an import at all
+// (`is_wasi_import_op`). None = not a preview1 import.
+fn wasi_import_reprs(op: String) = if op == "proc_exit" {
+  Some(([RI32], None))
+} else if op == "fd_write" {
+  Some(([RI32, RI32, RI32, RI32], Some(RI32)))
+} else if op == "fd_read" {
+  Some(([RI32, RI32, RI32, RI32], Some(RI32)))
+} else if op == "fd_close" {
+  Some(([RI32], Some(RI32)))
+} else if op == "fd_prestat_get" {
+  Some(([RI32, RI32], Some(RI32)))
+} else if op == "fd_prestat_dir_name" {
+  Some(([RI32, RI32, RI32], Some(RI32)))
+} else if op == "fd_fdstat_get" {
+  Some(([RI32, RI32], Some(RI32)))
+} else if op == "path_open" {
+  Some(([RI32, RI32, RI32, RI32, RI32, RI64, RI64, RI32, RI32], Some(RI32)))
+} else if op == "path_create_directory" {
+  Some(([RI32, RI32, RI32], Some(RI32)))
+} else if op == "path_filestat_get" {
+  Some(([RI32, RI32, RI32, RI32, RI32], Some(RI32)))
+} else if op == "path_unlink_file" {
+  Some(([RI32, RI32, RI32], Some(RI32)))
+} else if op == "path_rename" {
+  Some(([RI32, RI32, RI32, RI32, RI32, RI32], Some(RI32)))
+} else if op == "fd_readdir" {
+  Some(([RI32, RI32, RI32, RI64, RI32], Some(RI32)))
+}
+// argv, read live at _start — (argc_ptr, buf_size_ptr) and (argv_ptr, buf_ptr),
+// both returning errno. This is what makes `mentl <verb>` reach a verb.
+else if op == "args_sizes_get" {
+  Some(([RI32, RI32], Some(RI32)))
+} else if op == "args_get" {
+  Some(([RI32, RI32], Some(RI32)))
+}
+// the environment, args' shape exactly — (count_ptr, buf_size_ptr) and
+// (environ_ptr, buf_ptr) — read once, at a program's own launch gate.
+else if op == "environ_sizes_get" {
+  Some(([RI32, RI32], Some(RI32)))
+} else if op == "environ_get" {
+  Some(([RI32, RI32], Some(RI32)))
+} else {
+  None
+}
 
 // lower_index — `xs[i]` dispatched on the RECEIVER's proven type (the proof IS
 // the dispatch, the ++/== precedent). A TTuple receiver with a CONSTANT index
@@ -8456,7 +8514,14 @@ fn reachable_from_main(stmts) = {
     let enq = make_list(n)
     let fbuf0 = list_set(list_extend_to(make_list(16), 1), 0, "main")
     let argv_root = if main_param_count() > 0 { ["wasi_args"] } else { [] }
-    match reach_enqueue(emit_runtime_contract() ++ argv_root, make_list(4), 0, fbuf0, 1) {
+    // The launch gate the module's start may call (lib/environ.mn): lowered
+    // wherever the program links it, and emitted only where the emit's
+    // roster is non-empty (`env_launch_roster`).
+    let gate_root = match env_lookup("env_demand_check") {
+      Some(_) => ["env_demand_check"],
+      None => [],
+    }
+    match reach_enqueue(emit_runtime_contract() ++ argv_root ++ gate_root, make_list(4), 0, fbuf0, 1) {
       (fbuf1, fc1) => match reach_seed_stmts(stmts, 0, n, outs, enq, make_list(4), fbuf1, fc1) {
         (fbuf2, fc2) => match reach_construct_loop(stmts, map, outs, enq, make_list(16), 0, fbuf2, fc2) {
           (rbuf, rn) => reach_collect(outs, rbuf, rn, 0, n, make_list(n), 0),

@@ -35,6 +35,24 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-10-08 · pin 4238496648090cb0 (CLEAN m2 == m3) · E1 — CONFIGURATION IS A HOST EFFECT WITH A READ-SITE MANIFEST; OPTIONAL BROAD DEMAND IS EXPLICIT; GUEST-READ VALUES MAY ENTER CHECKPOINTS:
+  Re-derived Claude's env WIP against the current kernel and found two
+  implementation gaps plus one false security claim. `env_opt` was absent
+  from the host demand roster, so a present optional value silently read as
+  `None`; literal optional names now join the narrow roster, while computed
+  optional names report `* [all optional]` and explicitly pass the whole
+  shell environment plus non-shadowed `.env` values. Missing optional values
+  do not block launch. Added an `env_opt` negation crucible so an ungrounded
+  optional instance cannot evade `!Environ("KEY")`. The WIP also omitted the
+  diagnostic renderer arm for `E_EnvNameUngrounded`; the wheel now renders it.
+  Corrected the false “secret never enters guest memory” claim: WASI returns
+  values into guest memory, and persistence may checkpoint them; opaque
+  host-held credentials remain open work. Kept the sugar vocabulary change
+  (`env_demand_check`) with its generated start routine, removed avoidable
+  comment-ratchet bumps, and aligned PLAN, SYNTAX, and RESIDUE with the
+  measured behavior. Verification: wheel-side verify green; frontier 656/0/2
+  (two named expected-reds); crown 143/0; `m2 == m3`, verb parity, and forced
+  `m3 == m4`; march measured m3 at 30.61s and 450664 KB peak RSS.
 - 2026-10-06 · pin d8f07fc05cae8c43 (TRANSITION m3 == m4) · THE CANVAS IS THE WHEEL'S (L-D, OPEN); EVERY HEAD COMES BACK AS ITSELF; A LOWERCASE NAME IN A CLAUSE IS A ROW VARIABLE; FMT NEVER WRITES A PARSE IT RECOVERED:
   The canvas lane built (integrated here; `Hβ.space.the-canvas` stays OPEN
   for what it owes):

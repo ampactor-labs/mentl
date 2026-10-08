@@ -10,21 +10,21 @@
 // one kernel, one voice grammar.
 import types
 
-import mentl
+import driver
+
+import egraph
 
 import graph
 
-import own
+import mentl
 
-import query
+import own
 
 import pipeline
 
-import driver
+import query
 
 import strings
-
-import egraph
 
 // Topic is the focus of one voice turn. Caret-of-attention projects
 // onto a Topic; Mentl reads the graph at that topic. Five variants
@@ -450,10 +450,24 @@ fn applicable_modifiers_for_tentacle(tentacle) = match tentacle {
   TentQuery => [ParenQualifier(" (L{N})"), ParenQualifier(" (graph-direct)")],
   TentPropose => [EmphasisClose(" fits here."), EmphasisClose(" — try it?")],
   TentTopology => [EmphasisClose(" draws it better."), EmphasisClose(" — try it?")],
-  TentUnlock => [TailConsequence(" — on the table."), TailConsequence(" — memoizable."), TailConsequence(" — real-time-safe."), TailConsequence(" — no allocation.")],
-  TentTrace => [EmphasisClose(" — can't have it both ways."), EmphasisClose(" — `ref` if you're reading only."), ParenQualifier(" (L{N})")],
+  TentUnlock => [
+    TailConsequence(" — on the table."),
+    TailConsequence(" — memoizable."),
+    TailConsequence(" — real-time-safe."),
+    TailConsequence(" — no allocation.")
+  ],
+  TentTrace => [
+    EmphasisClose(" — can't have it both ways."),
+    EmphasisClose(" — `ref` if you're reading only."),
+    ParenQualifier(" (L{N})")
+  ],
   TentVerify => [ParenQualifier(" (L{N})"), ParenQualifier(" (proven)"), ParenQualifier(" (pending verify)")],
-  TentTeach => [TailConsequence(" — on the table."), TailConsequence(" — memoizable."), TailConsequence(" — real-time-safe."), TailConsequence(" — cheaper direct.")],
+  TentTeach => [
+    TailConsequence(" — on the table."),
+    TailConsequence(" — memoizable."),
+    TailConsequence(" — real-time-safe."),
+    TailConsequence(" — cheaper direct.")
+  ],
   TentWhy => [TailConsequence(" — the graph says so."), ParenQualifier(" (L{N})")],
 }
 
@@ -559,7 +573,14 @@ fn render_query_arm(situation) = match situation {
     VoiceLine(
       TentQuery,
       FFactual,
-      [SIdent(name), SLit(" — bound at "), SSpan(topic_span_or_zero(s.topic)), SLit(". Row: "), row_slot, SLit(".")],
+      [
+        SIdent(name),
+        SLit(" — bound at "),
+        SSpan(topic_span_or_zero(s.topic)),
+        SLit(". Row: "),
+        row_slot,
+        SLit(".")
+      ],
       select_modifier(situation, s.register)
     )
   },
@@ -605,7 +626,11 @@ fn render_topology_arm(situation) = match situation {
     TopicFacts(f) => VoiceLine(
       TentTopology,
       FOffering,
-      [SLit("Nested-call depth "), SLit(int_to_str(f.nested_call_depth)), SLit(" — `|>` would draw the topology")],
+      [
+        SLit("Nested-call depth "),
+        SLit(int_to_str(f.nested_call_depth)),
+        SLit(" — `|>` would draw the topology")
+      ],
       select_modifier(situation, s.register)
     ),
   },
@@ -636,7 +661,11 @@ fn render_unlock_arm(situation) = match situation {
 fn render_trace_arm(situation) = match situation {
   Situation(s) => {
     let body = match s.ownership_at_topic {
-      Some(_) => [SLit("Ownership at "), SSpan(topic_span_or_zero(s.topic)), SLit(" — consumed; can't have it both ways")],
+      Some(_) => [
+        SLit("Ownership at "),
+        SSpan(topic_span_or_zero(s.topic)),
+        SLit(" — consumed; can't have it both ways")
+      ],
       None => [SLit("Row narrowing failed at "), SSpan(topic_span_or_zero(s.topic))],
     }
     VoiceLine(TentTrace, FRefutation, body, select_modifier(situation, s.register))
@@ -651,7 +680,13 @@ fn render_verify_arm(situation) = match situation {
   Situation(s) => VoiceLine(
     TentVerify,
     FRefinement,
-    [SLit("Refinements at "), SSpan(topic_span_or_zero(s.topic)), SLit(": "), SLit(int_to_str(len(s.refinements))), SLit(" obligations")],
+    [
+      SLit("Refinements at "),
+      SSpan(topic_span_or_zero(s.topic)),
+      SLit(": "),
+      SLit(int_to_str(len(s.refinements))),
+      SLit(" obligations")
+    ],
     select_modifier(situation, s.register)
   ),
 }
@@ -667,7 +702,12 @@ fn render_teach_arm(situation) = match situation {
     let body = match s.gradient_next {
       TeachNone => [SLit("")],
       TeachAdd(suggestion) => match suggestion {
-        AnnotationSuggestion(ann, _lev, reason) => [SLit("Next: add "), SAnnot(show_annotation(ann)), SLit(" on "), SSpan(suggestion_site_from_reason(reason))],
+        AnnotationSuggestion(ann, _lev, reason) => [
+          SLit("Next: add "),
+          SAnnot(show_annotation(ann)),
+          SLit(" on "),
+          SSpan(suggestion_site_from_reason(reason))
+        ],
       },
       TeachAsk(_) => [SLit("Next: " ++ show_teaching(s.gradient_next))],
       TeachNeed(_, _, _) => [SLit("Next: " ++ show_teaching(s.gradient_next))],
@@ -785,7 +825,7 @@ fn focus_reason(target) = match target {
 // Verify-tentacle (refinement obligations). H6 exhaustive over
 // Question's 15 variants via pattern alternation per SYNTAX.md L956.
 fn tentacle_for_question(question) with Pure = match question {
-  QTypeOf(_) | QTypeAt(_) | QIntentOf(_) | QUnresolved | QEffects(_) | QRefsOf(_) | QStateWrites(_) | QHandlerProvider(_) | QFlowOf(_) | QCensus(_) | QCensusRoster | QDecls | QWhere(_, _) | QVariants(_) | QModules | QImports | QUnreferenced | QUnreachable | QPerforms | QOrphanClaims | QCost | QGhosts | QHeads | QUnknown(_) => TentQuery,
+  QTypeOf(_) | QTypeAt(_) | QIntentOf(_) | QUnresolved | QEffects(_) | QRefsOf(_) | QStateWrites(_) | QHandlerProvider(_) | QFlowOf(_) | QCensus(_) | QCensusRoster | QDecls | QWhere(_, _) | QVariants(_) | QModules | QImports | QUnreferenced | QUnreachable | QPerforms | QEnv | QOrphanClaims | QCost | QGhosts | QHeads | QUnknown(_) => TentQuery,
   QOwnership(_) => TentTrace,
   QWhy(_) | QSubstChain(_) => TentWhy,
   QVerifyDebt | QSmt => TentVerify,
@@ -797,7 +837,7 @@ fn tentacle_for_question(question) with Pure = match question {
 // exhaustive over Question via pattern alternation.
 fn question_span(question) = match question {
   QTypeAt(s) => s,
-  QTypeOf(_) | QIntentOf(_) | QUnresolved | QSubstChain(_) | QEffects(_) | QOwnership(_) | QWhy(_) | QRefsOf(_) | QStateWrites(_) | QVerifyDebt | QSmt | QHandlerProvider(_) | QFlowOf(_) | QCensus(_) | QCensusRoster | QDecls | QWhere(_, _) | QVariants(_) | QModules | QImports | QUnreferenced | QUnreachable | QPerforms | QOrphanClaims | QCost | QGhosts | QHeads | QUnknown(_) => span_zero(),
+  QTypeOf(_) | QIntentOf(_) | QUnresolved | QSubstChain(_) | QEffects(_) | QOwnership(_) | QWhy(_) | QRefsOf(_) | QStateWrites(_) | QVerifyDebt | QSmt | QHandlerProvider(_) | QFlowOf(_) | QCensus(_) | QCensusRoster | QDecls | QWhere(_, _) | QVariants(_) | QModules | QImports | QUnreferenced | QUnreachable | QPerforms | QEnv | QOrphanClaims | QCost | QGhosts | QHeads | QUnknown(_) => span_zero(),
 }
 
 // compose_propose_situation — sparse Situation for a propose gesture.
@@ -910,6 +950,9 @@ fn query_result_to_answer(result) = match result {
   QRPerforms(rows) => // The effect rosters render at the CLI. A row names a module and an
   // effect, not a caret site, so the answer carries the count alone.
   AnsRefs([], Inferred("performs: {int_to_str(len(rows))} effect(s)")),
+  QREnv(rows) => // The manifest renders at the CLI; its sites are reads in any module,
+  // so the answer carries the count alone.
+  AnsRefs([], Inferred("env: {int_to_str(len(rows))} environment read(s)")),
   QROrphanClaims(rows) => // The orphan-claim rows render at the CLI. A row names a module and a
   // declaration, not a caret site, so the answer carries the count alone.
   AnsRefs([], Inferred("orphan-claims: {int_to_str(len(rows))} declaration(s)")),

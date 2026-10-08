@@ -682,6 +682,137 @@ run_project() {
   fi
 }
 
+# The environment protocol (E1): required reads refuse before main, while
+# optional literal reads are narrowly passed and computed optional reads
+# request the whole environment. Exercise the actual generated `mentl run`
+# shim as well as the module gate and demand query. RED on boot 4228ff71: the
+# program did not compile (the WASI root gate knew no environ op).
+run_env_protocol() {
+  local compiler="$1" dir="$2" label="env-protocol"
+  local pdir="$dir/$label.proj" rc out shim
+  rm -rf "$pdir"
+  mkdir -p "$pdir"
+  cp "$ROOT/tests/frontier/env-protocol/main.mn" "$pdir/main.mn"
+  if ! wt_run --dir "$pdir::." --dir "$ROOT::/mentl-home" "$compiler" compile main \
+      > "$pdir/main.wat" 2> "$dir/$label.err" \
+      || ! wt_asm "$pdir/main.wat" "$pdir/main.wasm" 2>> "$dir/$label.err"; then
+    fail "$label: did not compile (see $dir/$label.err)"
+    return
+  fi
+  out=$(wt_run --env MN_A=30 --env MN_B=12 --dir "$pdir::." "$pdir/main.wasm" 2>> "$dir/$label.err")
+  rc=$?
+  if [ "$rc" -eq 42 ] && [ "$out" = "sum 42" ]; then
+    pass "$label: both variables set — runs to 42"
+  else
+    fail "$label: both set, exit=$rc out='$out', want 42 and 'sum 42'"
+  fi
+  # The refusal is fail_exit's, which speaks on stdout; main's own line
+  # (`sum …`) must not appear beside it.
+  out=$(wt_run --env MN_A=30 --dir "$pdir::." "$pdir/main.wasm" 2> "$dir/$label.unset.err")
+  rc=$?
+  if [ "$rc" -eq 1 ] && printf '%s\n' "$out" | grep -q '^MN_B is read at main:7:' \
+      && ! printf '%s\n' "$out" | grep -q '^sum'; then
+    pass "$label: MN_B unset — the launch gate names it and its read site, nothing of main ran"
+  else
+    fail "$label: MN_B unset, exit=$rc out='$out' (see $dir/$label.unset.err)"
+  fi
+  wt_run --dir "$pdir::." --dir "$ROOT::/mentl-home" "$compiler" query main env > "$dir/$label.query" 2>/dev/null
+  if grep -q '2 environment read(s)' "$dir/$label.query" && grep -q 'MN_A \[required\] read at main:7:' "$dir/$label.query" \
+      && grep -q 'MN_B \[required\] read at main:7:' "$dir/$label.query"; then
+    pass "$label: query env names both reads at their sites"
+  else
+    fail "$label: query env (see $dir/$label.query)"
+  fi
+
+  # Install into the gate's own scratch tree, pointing the shim at the exact
+  # compiler under test. This covers the shell/.env projection and the start
+  # gate together without touching the user's global `mentl` command.
+  MENTL_BIN_DIR="$pdir/bin" bash "$ROOT/tools/install.sh" > "$dir/$label.install" 2>&1
+  shim="$pdir/bin/mentl"
+  out=$(env MN_A=30 MN_B=12 MENTL_BOOT="$compiler" "$shim" run "$pdir/main" 2> "$dir/$label.shim-set.err")
+  rc=$?
+  if [ "$rc" -eq 42 ] && [ "$out" = "sum 42" ]; then
+    pass "$label: mentl run passes the literal roster from the shell"
+  else
+    fail "$label: mentl run with variables set, exit=$rc out='$out' (see $dir/$label.shim-set.err)"
+  fi
+  out=$(env -u MN_B MN_A=30 MENTL_BOOT="$compiler" "$shim" run "$pdir/main" 2> "$dir/$label.shim-unset.err")
+  rc=$?
+  if [ "$rc" -eq 1 ] && printf '%s\n' "$out" | grep -Eq '^MN_B is read at .*/main:7:[0-9]+ \(in total\) and is not set$' \
+      && ! printf '%s\n' "$out" | grep -q '^sum'; then
+    pass "$label: mentl run preserves pre-main refusal for an unset required name"
+  else
+    fail "$label: mentl run with MN_B unset, exit=$rc out='$out' (see $dir/$label.shim-unset.err)"
+  fi
+
+  local opt="$dir/env-optional.proj"
+  rm -rf "$opt"
+  mkdir -p "$opt"
+  cp "$ROOT/tests/frontier/env-optional/main.mn" "$opt/main.mn"
+  if ! wt_run --dir "$opt::." --dir "$ROOT::/mentl-home" "$compiler" compile main \
+      > "$opt/main.wat" 2> "$dir/env-optional.compile.err" \
+      || ! wt_asm "$opt/main.wat" "$opt/main.wasm" 2>> "$dir/env-optional.compile.err"; then
+    fail "env-optional: did not compile (see $dir/env-optional.compile.err)"
+    return
+  fi
+  wt_run --dir "$opt::." --dir "$ROOT::/mentl-home" "$compiler" query main env > "$dir/env-optional.query" 2>/dev/null
+  if grep -q 'MN_OPTIONAL_FIXED \[optional\] read at main:' "$dir/env-optional.query" \
+      && grep -q '\* \[all optional\] read at' "$dir/env-optional.query"; then
+    pass "env-optional: query distinguishes literal and dynamic optional reads"
+  else
+    fail "env-optional: query demand (see $dir/env-optional.query)"
+  fi
+  printf 'MN_OPTIONAL_FIXED=20\nMN_OPTIONAL_DYNAMIC=22\n' > "$opt/.env"
+  out=$(env -u MN_OPTIONAL_FIXED -u MN_OPTIONAL_DYNAMIC MENTL_BOOT="$compiler" "$shim" run "$opt/main" 2> "$dir/env-optional.dotenv.err")
+  rc=$?
+  if [ "$rc" -eq 42 ]; then
+    pass "env-optional: mentl run supplies optional values from .env"
+  else
+    fail "env-optional: .env values, exit=$rc (see $dir/env-optional.dotenv.err)"
+  fi
+  rm -f "$opt/.env"
+  out=$(env -u MN_OPTIONAL_FIXED -u MN_OPTIONAL_DYNAMIC MENTL_BOOT="$compiler" "$shim" run "$opt/main" 2> "$dir/env-optional.absent.err")
+  rc=$?
+  if [ "$rc" -eq 0 ]; then
+    pass "env-optional: absent optional values return None without refusing"
+  else
+    fail "env-optional: absent optional values, exit=$rc (see $dir/env-optional.absent.err)"
+  fi
+
+  local lit="$dir/env-optional-literal.proj"
+  mkdir -p "$lit"
+  cp "$ROOT/tests/frontier/env-optional-literal/main.mn" "$lit/main.mn"
+  if ! wt_run --dir "$lit::." --dir "$ROOT::/mentl-home" "$compiler" compile main \
+      > "$lit/main.wat" 2> "$dir/env-optional-literal.compile.err" \
+      || ! wt_asm "$lit/main.wat" "$lit/main.wasm" 2>> "$dir/env-optional-literal.compile.err"; then
+    fail "env-optional-literal: did not compile (see $dir/env-optional-literal.compile.err)"
+    return
+  fi
+  wt_run --dir "$lit::." --dir "$ROOT::/mentl-home" "$compiler" query main env > "$dir/env-optional-literal.query" 2>/dev/null
+  if grep -q 'MN_OPTIONAL_LITERAL \[optional\] read at main:' "$dir/env-optional-literal.query" \
+      && ! grep -q '\* \[all optional\]' "$dir/env-optional-literal.query"; then
+    pass "env-optional-literal: query stays narrow"
+  else
+    fail "env-optional-literal: query demand (see $dir/env-optional-literal.query)"
+  fi
+  printf 'MN_OPTIONAL_LITERAL=42\n' > "$lit/.env"
+  out=$(env -u MN_OPTIONAL_LITERAL MENTL_BOOT="$compiler" "$shim" run "$lit/main" 2> "$dir/env-optional-literal.dotenv.err")
+  rc=$?
+  if [ "$rc" -eq 42 ]; then
+    pass "env-optional-literal: mentl run passes the named .env value"
+  else
+    fail "env-optional-literal: named .env value, exit=$rc (see $dir/env-optional-literal.dotenv.err)"
+  fi
+  rm -f "$lit/.env"
+  out=$(env -u MN_OPTIONAL_LITERAL MENTL_BOOT="$compiler" "$shim" run "$lit/main" 2> "$dir/env-optional-literal.absent.err")
+  rc=$?
+  if [ "$rc" -eq 0 ]; then
+    pass "env-optional-literal: absence returns None without widening access"
+  else
+    fail "env-optional-literal: absent value, exit=$rc (see $dir/env-optional-literal.absent.err)"
+  fi
+}
+
 # The warm world: a compile persists its analyzed image, and a second compile
 # of the same file restores it and must still emit the WHOLE module — the
 # contract that caught a restored image carrying a foreign world's output
@@ -1902,6 +2033,9 @@ for i in "${!compilers[@]}"; do
   # one-byte string serialized as a NUL, a quote as two, a control byte with
   # no short spelling crossed raw. RED on boot 2198ed97: exit 1.
   run_project "$compiler" "$dir" json-escape-total "$ROOT/tests/frontier/mn-json-escape-total.mn" 42
+  # Configuration is an effect and the demand is the manifest (E1,
+  # run_env_protocol's header).
+  run_env_protocol "$compiler" "$dir"
   # Real host-thread spawn over the shared image (the task-record substrate:
   # import-shape memory, shared-cell allocator, $spawn_task_impl/$join_task_impl).
   # Seen RED on the pre-task-record boot: 134, unaligned atomic in the join.

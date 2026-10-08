@@ -1,0 +1,13 @@
+// The environment protocol (E1): a program reading two variables through
+// its host. Run with both set it prints their sum and answers it; with one
+// unset its launch gate names that variable and the line that reads it, and
+// nothing of main runs.
+import environ
+
+fn total() = parse_int(env("MN_A")) + parse_int(env("MN_B"))
+
+fn main() = {
+  let t = total() ~> env_from_host
+  print_string("sum {int_to_str(t)}\n")
+  t
+}

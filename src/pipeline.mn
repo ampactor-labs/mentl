@@ -1120,7 +1120,7 @@ fn severance_vocabulary() = match env_snapshot() {
   Env(bindings) => bindings |> fold(
     [],
     (acc, b) => match b {
-      (name, _, _, EffectDeclKind(_)) => {
+      (name, _, _, EffectDeclKind(_, _)) => {
         // The flat env carries a decl at several layers (pre_register +
         // the main walk); each effect names itself once.
         let e = ENamed(intern_str(name))
@@ -1475,6 +1475,14 @@ fn perform_row_is_partial(row) with Pure = match row {
   (_, _, total, done) => done < total,
 }
 
+// The manifest: each variable the host must pass, at the line that reads it.
+fn render_env_rows(rows) =
+  "→ {int_to_str(len(rows))} environment read(s) beneath a host install\n  {str_join_indented(map(render_env_row, rows))}"
+
+fn render_env_row(row) = match row {
+  EnvDemand({decl, mode, name, site}) => "{name} [{mode}] read at {site} in {decl}",
+}
+
 fn render_perform_rows(rows) =
   "→ {int_to_str(len(rows))} effect(s); {int_to_str(count(perform_row_is_partial, rows))} with ops nothing performs\n{str_join_indented(map(render_perform_row, filter(perform_row_is_partial, rows)))}"
 
@@ -1534,6 +1542,7 @@ fn render_query_result(result) = match result {
   QRUnreferenced(rows) => render_unref_rows(rows),
   QRUnreachable(rows) => render_unreach_rows(rows),
   QRPerforms(rows) => render_perform_rows(rows),
+  QREnv(rows) => render_env_rows(rows),
   QROrphanClaims(rows) => render_orphan_rows(rows),
   QRCost(mods, lines, nodes) => "→ {int_to_str(mods)} module(s) · {int_to_str(lines)} source line(s) · {int_to_str(nodes)} node(s) minted",
   QRGhosts(sites) => "→ {int_to_str(len(sites))} cell(s) minted and never judged{render_census_sites(sites)}",
@@ -1608,6 +1617,7 @@ type QueryVerb
   | QVUnreferenced
   | QVUnreachable
   | QVPerforms
+  | QVEnv
   | QVOrphanClaims
   | QVCost
   | QVGhosts
@@ -1654,6 +1664,8 @@ fn classify_query_verb(w: String) with Pure = if w == "type" {
   QVUnreachable
 } else if w == "performs" {
   QVPerforms
+} else if w == "env" {
+  QVEnv
 } else if w == "orphan-claims" {
   QVOrphanClaims
 } else if w == "cost" {
@@ -1720,6 +1732,7 @@ fn build_question(verb, arg, raw, scope: String) = match verb {
   QVUnreferenced => QUnreferenced,
   QVUnreachable => QUnreachable,
   QVPerforms => QPerforms,
+  QVEnv => QEnv,
   QVOrphanClaims => QOrphanClaims,
   QVCost => QCost,
   QVGhosts => QGhosts,

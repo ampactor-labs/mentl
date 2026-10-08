@@ -903,7 +903,7 @@ type Binding = Frozen([Int], Ty) | Live(Int)
 // and preserves the fast path for always-one-shot ops (the vast majority).
 // Written by draw_op_edges, projected by lower's op_resume_discipline.
 //
-// EffectDeclKind(op_names) is the effect declaration itself.
+// EffectDeclKind(op_names, dims) is the effect declaration itself.
 // `env_lookup("Iterate")` reads this to know the effect's ops
 // (["yield", "result"]) — the graph carries effect→ops so
 // the world-chain dispatch resolves op→effect at perform sites,
@@ -922,8 +922,13 @@ type SchemeKind
   | EffectOpScheme(String, String, Bool, ResumeDiscipline)
   // tag 3 — [(field_name, ty)]
   | RecordSchemeKind([(String, Ty)])
-  // tag 5 — [op_name: String]  (cache byte 5; byte 4 retired with the dissolved capability)
-  | EffectDeclKind([String])
+  // tag 5 — ([op_name: String], [param_name: String]) — the ops, and the
+  // effect's own parameter names in declaration order (the instance's value
+  // dims, by position). An op parameter that shares one of these names
+  // grounds that dim at the perform (`effect Environ(name: String) {
+  // env(name: String) -> String }`: `env("PORT")` charges
+  // `Environ("PORT")`).
+  | EffectDeclKind([String], [String])
   // tag 6 — (residual_row_handle, remainder_world_handle, config params [the fn-param carrier: name + default ride the TParam, names project via lower_param_names], state fields, arms). The remainder world is the row a held resume of this handler RUNS — the cell its arms' continuations carry as their world, never bound: callees reached through a resume gate it, and every install judges those gates against its own remainder (`remainder_gates_check`). Typed payloads: a bare List here erased the element types the consumers prove (the 581a92f class), and the pattern-constraint unification surfaces the conflict as E_TypeMismatch at every destructure.
   | HandlerKind(Int, Int, [TParam], [{init: Node, name: String}], [{args: [String], body: Node, op_name: String}])
   // tag 7 — parameter binding carries authored ownership at the env edge
@@ -3614,6 +3619,10 @@ type DiagKind
   // derivative), or a construct the reading cannot enter. The loss site
   // rides the message (L4, 2026-09-28)
   | EDerivativeUnreachable(String, Span)
+  // a required environment read (`env`, lib/environ.mn) whose name is not a
+  // literal at the read: the instance stays ungrounded, so the program's
+  // demand on its host cannot be stated before it runs (E1, 2026-10-06)
+  | EEnvNameUngrounded(Span)
   // authored value-position hole surviving
   // into the reachable executable (SYNTAX
   // §«Partial application» — productive,
@@ -3831,6 +3840,7 @@ fn diag_span(d) with Pure = match d {
   EThreadedBranchEffect(_, _, s) => s,
   EContinuationUncapturable(_, _, s) => s,
   EDerivativeUnreachable(_, s) => s,
+  EEnvNameUngrounded(s) => s,
   EUnresolvedHole(_, s) => s,
   EFieldOffsetUnprovable(_, s) => s,
   EShapeUnprovable(_, s) => s,
@@ -3913,6 +3923,7 @@ fn diag_source(d) with Pure = match d {
   EThreadedBranchEffect(_, _, _) => "lower",
   EContinuationUncapturable(_, _, _) => "lower",
   EDerivativeUnreachable(_, _) => "lower",
+  EEnvNameUngrounded(_) => "infer",
   EUnresolvedHole(_, _) => "verify",
   EFieldOffsetUnprovable(_, _) => "lower",
   EShapeUnprovable(_, _) => "lower",
@@ -3953,6 +3964,7 @@ fn diag_arm(d) with Pure = match d {
   EResumeOutsideArm(_) => OnEffects,
   EResumeAmbiguousOp(_, _) => OnEffects,
   EResumeWorldMismatch(_, _, _) => OnEffects,
+  EEnvNameUngrounded(_) => OnEffects,
   EUnknownArgLabel(_, _) => OnQuery,
   EFeedbackNoContext(_) => OnTopology,
   EZeroDelayFeedback(_) => OnTopology,
@@ -4078,6 +4090,7 @@ fn diag_code(d) with Pure = match d {
   EThreadedBranchEffect(_, _, _) => "E_ThreadedBranchEffect",
   EContinuationUncapturable(_, _, _) => "E_ContinuationUncapturable",
   EDerivativeUnreachable(_, _) => "E_DerivativeUnreachable",
+  EEnvNameUngrounded(_) => "E_EnvNameUngrounded",
   EUnresolvedHole(_, _) => "E_UnresolvedHole",
   EFieldOffsetUnprovable(_, _) => "E_FieldOffsetUnprovable",
   EShapeUnprovable(_, _) => "E_ShapeUnprovable",
@@ -4246,6 +4259,10 @@ fn diag_refuses(d) with Pure = match d {
   // the perform ran and said nothing before — a program that compiled clean
   // and exited 134. Every perform of a multi-shot or held op suspends, so
   // the site is certain to reach the floor whenever it runs.
+  True,
+  EEnvNameUngrounded(_) => // ARMED at birth (2026-10-06), born at wheel-ZERO (the wheel reads no
+  // environment). A required read of a computed name has no name the launch
+  // gate can check, so the program would start and fail mid-run instead.
   True,
   EDerivativeUnreachable(_, _) => // ARMED at birth (2026-09-28), born at wheel-ZERO by construction (the
   // wheel installs no derivative reading). What it refuses is a derivative
@@ -4466,6 +4483,7 @@ fn diag_applicability(d) with Pure = match d {
   EThreadedBranchEffect(_, _, _) => MaybeIncorrect,
   EContinuationUncapturable(_, _, _) => MaybeIncorrect,
   EDerivativeUnreachable(_, _) => Unspecified,
+  EEnvNameUngrounded(_) => MaybeIncorrect,
   EUnresolvedHole(_, _) => HasPlaceholders,
   EFieldOffsetUnprovable(_, _) => MaybeIncorrect,
   EShapeUnprovable(_, _) => MaybeIncorrect,
@@ -4574,6 +4592,7 @@ fn diag_message(d) with !Mutate = match d {
   EEffectUnhandled(ename, proposal, _) => "effect {ename} reaches the executable root with no absorbing handler — calling one of its ops would read garbage evidence at runtime; nothing executes unproven. {proposal}",
   EThreadedBranchEffect(ename, why, _) => "effect {ename} is performed inside a threaded branch and {why} — two spawned instances would race, or reach a handler this site cannot see. Install a stateless handler for {ename} at the fanout's own frame, or install the handler inside the branch",
   EContinuationUncapturable(op, via, _) => "{uncapturable_subject(op, via)} suspends the computation around it — its handler resumes it more than once, or after doing more work — and the rest of the computation cannot be captured at this position yet: a continuation is captured where the perform or the call is the first work its function, block or arena does — the whole expression, or an operand of an operator chain whose earlier operands are plain values. Move it there, or move what precedes it into a function that is called before it",
+  EEnvNameUngrounded(_) => "`env` is a required read, and its name here is computed: the program's demand on its host cannot be stated before it runs, so nothing could check it at launch. Write the variable's name at the read — `env(\"PORT\")` — or ask `env_opt` and decide what an absent value means",
   EDerivativeUnreachable(why, _) => "{why} — the derivative reading would answer zero here, and zero is not what the program asked for; nothing is emitted rather than a wrong slope",
   EUnresolvedHole(h, _) => "unresolved value hole (handle {int_to_str(h)}) — fill it (accept a proven survivor) or suspend it into a parameter product",
   EFieldOffsetUnprovable(why, _) => "{why} — the receiver's row never closed where this is emitted, so there is no slot to read; close the row: annotate the receiver at its Intent Boundary, or give the call site a shape its specialization can key on",

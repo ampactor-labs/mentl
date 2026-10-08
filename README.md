@@ -25,6 +25,8 @@ Hello, octopus. The medium is reading you back.
 
 `mentl new hello` writes a one-file project `hello.mn` in the current directory and `mentl run hello` runs it; the file's imports are its manifest. A bare `mentl` at a terminal lists the `.mn` files in the directory and the verbs that apply to each. The shim is a pointer into the checkout, so after a re-pin of `boot/mentl.wasm` the installed command is the new compiler with no further step.
 
+The toolchain's own environment variables (the engine, the compiler under test, ports, the bin dir) are listed with their defaults and readers in one table at the head of `tools/wt-env.sh`; a program's environment is its own, read through `lib/environ.mn`, and `mentl run` passes it exactly the variables `mentl query <file> env` names, from the shell or the project's `.env`.
+
 ## Usage
 
 The verbs, as `mentl help` lists them (the table is `verb_specs` in `src/cli.mn`):

@@ -222,6 +222,9 @@ type Question
   // cannot reach over the frees DAG
   | QUnreachable
   | QPerforms
+  // "env" — every variable the program reads beneath a host install, with
+  // its read site and declaration (`env_demand`)
+  | QEnv
   | QOrphanClaims
   // "smt" — every undischarged obligation rendered as an SMT-LIB assertion,
   // the exact text Phase 8.3's `~> verify_smt` handler will hand a solver.
@@ -297,6 +300,7 @@ type QueryResult
   // (module, fn name, reached-from-entry: 1 or 0)
   | QRUnreachable([(String, String, Int)])
   | QRPerforms([(String, String, Int, Int)])
+  | QREnv([EnvDemand])
   | QROrphanClaims([(String, String, Int)])
   // modules linked, source lines processed, nodes minted
   | QRCost(Int, Int, Int)
@@ -445,6 +449,7 @@ handler query_default {
     QUnreferenced => resume(QRUnreferenced(unreferenced_report(module_cells()))),
     QUnreachable => resume(QRUnreachable(reach_report(module_cells()))),
     QPerforms => resume(QRPerforms(effect_report(module_cells()))),
+    QEnv => resume(QREnv(env_demand())),
     QOrphanClaims => resume(QROrphanClaims(orphan_claim_report(module_cells()))),
     QCost => resume(QRCost(len(module_cells()), weave_line_extent(), graph_next())),
     QGhosts => resume(QRGhosts(ghost_sites())),
@@ -1258,6 +1263,7 @@ fn located_answer(r) = match r {
   QRUnreferenced(_) => None,
   QRUnreachable(_) => None,
   QRPerforms(_) => None,
+  QREnv(_) => None,
   QROrphanClaims(_) => None,
   QRCost(_, _, _) => None,
   QRWhere(_, _) => None,
@@ -2666,6 +2672,118 @@ fn tee_line(h, hn: String) with !Mutate = if byte_len(hn) == 0 {
     None => ["~> {hn} at {show_span(span_of_node_raw(h))} — no handler declaration by that name"],
   }
 }
+
+// The program's demand on its host (E1).
+//
+// Every variable the program reads with `env` or `env_opt` (lib/environ.mn)
+// beneath an install whose handler crosses the host boundary, with the line
+// that reads it and the declaration that holds the line. A computed optional
+// name requests the whole host environment; it remains visible here instead
+// of silently becoming an empty read. One home, read twice: the `env`
+// facet (`mentl query <entry> env`, the manifest nobody writes) and the
+// emit's launch gate, which hands it to `env_demand_check` before main. It is
+// read at the PERFORM sites, never off a row: main's row is free of Env the
+// moment an install absorbs it, and a row meeting a ground instance beside an
+// ungrounded one keeps the ungrounded one. Required reads with computed names
+// are refused by the judgment; optional computed reads are explicitly marked
+// as broad host access.
+type EnvDemand = EnvDemand({decl: String, mode: String, name: String, site: String})
+
+fn env_demand() =
+  ["env", "env_opt"] |> flat_map({ op => graph_applies_at(op) }) |> unique |> sort |> fold([], env_demand_at)
+
+fn env_demand_at(acc, c) = match env_read_demand(c) {
+  None => acc,
+  Some((name, mode)) => if any(handler_crosses_host, serving_installs("Environ", c, [])) {
+    push(acc, EnvDemand({decl: enclosing_decl_name(c), mode: mode, name: name, site: env_read_site(c)}))
+  } else {
+    acc
+  },
+}
+
+// A literal read narrows host access to that name. A computed optional read
+// is honest about its dynamic demand: the host-crossing handler must receive the whole
+// environment for the op to preserve its Option(String) semantics.
+fn env_read_demand(c) = match graph_node_body(c) {
+  NExpr(CallExpr(callee, args)) => match graph_node_body(node_handle(callee)) {
+    NExpr(VarRef(op)) => if (op == "env" || op == "env_opt") && op_effect_of(op) == Some("Environ") {
+      match (op, args) {
+        ("env", [N(NExpr(LitString(s)), _, _), ..._]) => Some((s, "required")),
+        ("env", _) => None,
+        ("env_opt", [N(NExpr(LitString(s)), _, _), ..._]) => Some((s, "optional")),
+        ("env_opt", _) => Some(("*", "all optional")),
+      }
+    } else {
+      None
+    },
+    _ => None,
+  },
+  _ => None,
+}
+
+// The handlers that can serve an operation of EN performed at H: up the
+// parent edges, the innermost `~>` whose body holds H and whose handler
+// answers EN; past a lambda or a nested function, where it is minted (a value
+// that escapes its install's extent is read as served there — named,
+// `Hβ.env.demand-through-an-escaping-value`); at a declaration of the module,
+// every application of it, each served where it stands. SEEN keeps a
+// recursion from walking itself.
+fn serving_installs(en: String, h, seen) = serving_up(en, h, graph_parent_of(h), seen)
+
+fn serving_up(en: String, child, parent, seen) = match parent {
+  None => [],
+  Some(p) => match graph_node_body(p) {
+    NModule(_) => match graph_node_body(child) {
+      NStmt(FnStmt(name, _, _, _, _)) => if string_in_list(seen, name) {
+        []
+      } else {
+        graph_applies_at(name) |> unique |> flat_map(serving_installs(en, ??, push(seen, name)))
+      },
+      _ => [],
+    },
+    NExpr(PipeExpr(PTee, l, r)) => if node_handle(l) == child && handler_answers_effect(tee_handler_name(r), en) {
+      [tee_handler_name(r)]
+    } else {
+      serving_up(en, p, graph_parent_of(p), seen)
+    },
+    _ => serving_up(en, p, graph_parent_of(p), seen),
+  },
+}
+
+fn handler_answers_effect(hname: String, en: String) = match handler_arms(hname) {
+  Some(arms) => string_in_list(handler_effect_names(arms), en),
+  None => false,
+}
+
+// A handler crosses the host boundary when what its arms perform past what
+// it absorbs reaches WASI — env_from_host's do; env_fixed's never ask a host.
+fn handler_crosses_host(hname: String) = match env_lookup(hname) {
+  Some(entry) => match entry {
+    (_, _, HandlerKind(residual, _, _, _, _)) => match resolve_row(mk_ef_open([], residual)) {
+      EfRow(names, _, _) => any({ n => eff_name_str(n) == "WASI" }, names),
+    },
+    _ => false,
+  },
+  None => false,
+}
+
+fn enclosing_decl_name(h) = match graph_parent_of(h) {
+  None => "",
+  Some(p) => match graph_node_body(p) {
+    NModule(_) => body_decl_name(graph_node_body(h)),
+    _ => enclosing_decl_name(p),
+  },
+}
+
+fn env_read_site(c) = match parse_span_of(c) {
+  Span(l, col, _, _) => "{module_name_of_handle(graph_module_of(c))}:{int_to_str(l)}:{int_to_str(col)}",
+}
+
+// The roster as the launch gate reads it: name, mode, site and declaration
+// separated by tabs (`env_demand_check`, lib/environ.mn). Only `required`
+// rows participate in the launch refusal; optional rows shape host access.
+fn env_demand_roster(rows) =
+  join("\n", map({ EnvDemand({decl, mode, name, site}) => "{name}\t{mode}\t{site}\t{decl}" }, rows))
 
 fn handler_arms(hname: String) = match env_lookup(hname) {
   Some(entry) => match entry {

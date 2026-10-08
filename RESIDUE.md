@@ -18871,6 +18871,17 @@ demo.
 
 BORN 2026-10-06 — the 2026-10-06 program, landing E1 (PLAN §11, THE STANDING CURSOR). The design below is the program's own text for this landing, moved here verbatim at the §0.3 integration; its section references (§2–§7) are the program's own numbering, and the whole program, with the seven audit lenses' answers, is at commit 42a94dc0 (docs/record/2026-10-06/).
 
+**Artifact correction (2026-10-08, E1 re-derived against the wheel):**
+`env_opt` is also part of the demand. A literal optional read is passed by
+name and never blocks launch; a computed optional read appears as
+`* [all optional]` and deliberately grants the program the full shell
+environment plus `.env` values not shadowed by the shell. This preserves the
+surface's “any name” behavior while making its broad capability visible.
+Every value the guest reads is ordinary guest memory and may be checkpointed;
+the host-held opaque-secret design below was an unsupported claim and remains
+open work. Do not use `!Environ("KEY")` as evidence that no credential can
+reach the image through another name or channel.
+
 **1 · ENV — configuration and secrets are an effect, and the row is the manifest**
 
 **1.1 The ultimate form**
@@ -18901,9 +18912,9 @@ handler env_from_host { env(name) => resume(host_environ(name)) }   // the root 
   clause; `fn port() with Env("PORT") = env()` would be the lowered form and
   it is an INVENTORY — A4's law forbids making the developer write the row.)
 - **The demand is the manifest — read at the perform sites, never off a
-  collapsed row.** `mentl query <entry> env` renders every grounded `Env`
-  instance the program performs beneath an install whose handler crosses the
-  host boundary, with its read site — the `.env.example` nobody writes,
+  collapsed row.** `mentl query <entry> env` renders each required and
+  optional read the program performs beneath an install whose handler crosses
+  the host boundary, with its mode and read site — the `.env.example` nobody writes,
   projected from the proof; `mentl doc` carries it per module. Two artifact
   facts decide that it is read at the SITES (the Plan agent's refutation of
   "the row is the manifest" as first written): `main`'s row is Env-free the
@@ -18911,27 +18922,27 @@ handler env_from_host { env(name) => resume(host_environ(name)) }   // the root 
   meets a ground instance beside an ungrounded one keeps the UNGROUNDED one
   (`collision_upgrades`, src/effects.mn:1680 — piece (3) of
   `Hβ.effects.handler-pins-its-instance`). So the roster (`env_demand()`, one
-  home) walks the reachable `env` performs to their literal, span, module and
-  enclosing declaration and keeps those whose serving install (`served_at`,
+  home) walks reachable `env` and `env_opt` performs to their literal name
+  and mode, or the broad marker for computed optional access, plus span,
+  module and enclosing declaration; it keeps those whose serving install (`served_at`,
   src/main.mn:1428, the Handler facet's own read) is a host-crossing handler.
   A computed name reaching such an install is REFUSED at compile —
   `E_EnvNameUngrounded(span)`, armed at birth, teaching "write the name at
-  the read, or ask `env_opt`" — so `env` is total by construction and the
+  the read, or ask `env_opt`" — so required `env` is total by construction and the
   roster is exact.
 - **Nothing executes unproven at the boundary.** `emit_start`
   (src/backends/wasm.mn:6274–6350; the `$wasi_args` call at :6319 is the
   precedent) emits `(call $env_demand_check (i32.const <interned roster>))`
   before `main` whenever the roster is non-empty; `env_demand_check` lives in
-  lib/env.mn, reads `wasi_environ()` once and `fail`s under `~> fail_exit`
-  (lib/io.mn:137, the host-boundary failure policy) naming EVERY unset
-  variable with its read site — exit 1, nothing of `main` executed. The host's
-  half only NARROWS what it passes: `mentl run` asks the medium for the
-  roster (`mentl_wasm query "$module" env`), takes each name from the shell
-  environment, else from `<project>/.env` (`KEY=VALUE`, `#` comments —
-  `.gitignore` already ignores `.env`/`.env.*`; its `!.env.example` line
-  leaves, the file the protocol says never exists), and passes exactly those
-  as `--env NAME=VALUE` (measured on wasmtime 36.0.17: `run --env <NAME[=VAL]>`
-  beside `--dir`); nothing else of the developer's shell enters the image. A
+  lib/environ.mn, reads `wasi_environ()` once and `fail`s under `~> fail_exit`
+  (lib/io.mn:137, the host-boundary failure policy) naming every unset
+  required variable with its read site — exit 1, nothing of `main` executed.
+  Optional rows never refuse. `mentl run` asks the medium for the roster
+  (`mentl_wasm query "$module" env`), takes literal names from the shell
+  environment, else from `<project>/.env` (`KEY=VALUE`, `#` comments), and
+  passes those as `--env NAME=VALUE` (measured on wasmtime 36.0.17: `run
+  --env <NAME[=VAL]>` beside `--dir`). A computed optional read explicitly
+  widens this to all shell variables and non-shadowed `.env` values. A
   check in bash would be a second home (the compile environment is not the run
   environment), so the shim checks nothing — the module does, at its own
   boundary, under any preview1 host. The developer's loop: write
@@ -18949,25 +18960,18 @@ handler env_from_host { env(name) => resume(host_environ(name)) }   // the root 
   `Hβ.lib.parse-int-is-partial` (a `Decimal` precondition the gradient
   proposes), and the conversion the gradient could propose at a
   String-vs-Int mismatch is `Hβ.synth.conversion-proposal-at-type-mismatch`.
-- **A secret never enters guest memory.** `persist = memcpy` writes the whole
-  image to disk (lib/persist.mn:3–7), so any value the guest holds is in every
-  checkpoint; a secret therefore is NOT an `Env` read. It is a HOST-HELD
-  capability the host applies on the program's behalf — and since the guest has
-  no network, every use of a key is host-mediated already: the well's fetcher
-  (§2) reads `UTA_API_KEY` from the host environment and the guest sees only
-  the fetched file. The program's data declares the need (the well manifest
-  names the key's variable per source, §2.2), the host checks presence at
-  launch exactly as it checks `Env`, and `!Secret` is structural: a program
-  whose reach declares no keyed source cannot leak one, by construction, and
-  an image cannot carry what was never in memory. In the page the worker holds
-  keys in JS memory and applies them in its fetch — the same shape, one host
-  over. There is no `Secret` effect in the guest: adding one would be a second
-  home for a fact the source's own declaration carries.
+- **A secret never enters guest memory** was the proposed ultimate, not an
+  artifact-backed property of E1. `persist = memcpy` writes the whole image
+  to disk (lib/persist.mn:3–7), so a value returned by `env` or `env_opt` is
+  guest data and may be checkpointed. `!Environ("KEY")` proves absence of
+  that grounded read only. A host-held capability that applies a credential
+  without returning it to the guest needs an explicit host operation; the
+  proposed well fetcher and page worker do not establish that boundary yet.
 - **What the medium adds that dotenv / Vault / 12-factor cannot say:** provable
-  ABSENCE (`!Env`, `!Env("X")`) under polymorphism and transitively; the
-  manifest as a projection of the proof rather than a file kept beside the
-  code; the refusal carrying the Reason to the read site; images that cannot
-  leak a secret because the secret was never a value.
+  ABSENCE (`!Environ`, `!Environ("X")`) under polymorphism and transitively;
+  the manifest as a projection of the proof rather than a file kept beside
+  the code; the refusal carrying the Reason to the read site. Image secrecy
+  does not follow from environment effects and remains open work.
 - **The toolchain's own variables** (MENTL_HOME, MENTL_BOOT, MENTL_WASMTIME,
   MENTL_SPACE_PORT, MENTL_CHROME, MENTL_WT_EXTRA, MENTL_RT_LIBS, MENTL_BIN_DIR,
   MENTL_HEAVY_*, MENTL_IDE_*, MENTL_LOCK_OWNER — thirteen names, all shell,
@@ -18999,7 +19003,9 @@ handler env_from_host { env(name) => resume(host_environ(name)) }   // the root 
    the launch refusal below, never `""`; a computed name is
    `E_EnvNameUngrounded`), `env_opt` an optional read of any name (presence is
    the program's own question; `env_or(name, default)` is a library fn over
-   it); the roster reads the `env` performs alone. `handler env_from_host(vars)
+   it). Literal optional reads enter the roster without launch refusal; a
+   computed optional read is an explicit whole-environment demand. The roster
+   includes both operations. `handler env_from_host(vars)
    { env(name) => resume(env_value(vars, name)), env_opt(name) => … }`
    installed as `~> env_from_host(wasi_environ())` — a call in config position
    is UNMEASURED (`emit_config_writes`, wasm.mn:6410, emits any frame
@@ -19039,25 +19045,29 @@ handler env_from_host { env(name) => resume(host_environ(name)) }   // the root 
    distinct (`eff_args_provably_distinct` :1466), so `!Env("A")` refuses `env(x)`
    and admits `env("B")`, and two literal reads are two row members. One
    registration note, one write at the perform — no new row rule.
-3. **The roster, one home.** `env_demand()` in src/pipeline.mn: every
-   reachable `env` perform → its literal (or `E_EnvNameUngrounded` at the
-   site), its span and module (`decl_site_of`, src/query.mn), its enclosing
+3. **The roster, one home.** `env_demand()` in src/query.mn: every
+   reachable `env` and `env_opt` perform beneath a host-crossing install → its
+   literal name and required/optional mode, or `*` for computed optional
+   access, its span and module, and its enclosing
    declaration, and the install `served_at` (src/main.mn:1428) resolves to;
    kept only where the serving handler's arm row crosses `WASI`
    (`handler_arms`/`handler_effect_names`, src/query.mn:2420–2434). Read
    twice, never copied: by `QEnv` in src/query.mn (`Question` :122,
    `QueryResult` :207, the render :2380ff) and by `emit_start`'s prologue.
-4. **The launch gate.** `emit_start` (wasm.mn:6274–6350) emits `(call
-   $env_demand_check (i32.const <interned "NAME\tmodule:L:C\tdecl\n…">))`
+4. **The launch gate.** `emit_start` emits `(call
+   $env_demand_check (i32.const <interned "NAME\tMODE\tmodule:L:C\tdecl\n…">))`
    before `(call $main …)` (:6309) when the roster is non-empty;
-   `env_demand_check` (lib/env.mn) reads `wasi_environ()` once and `fail`s
-   under `~> fail_exit` with every unset name and its site — exit 1, nothing
-   of `main` run. The import roster is a projection of use
+   `env_demand_check` (lib/environ.mn) reads `wasi_environ()` once and `fail`s
+   under `~> fail_exit` with every unset required name and its site — exit 1,
+   nothing of `main` run. Optional rows do not refuse. A computed optional
+   row causes the host shim to pass all shell environment entries and `.env`
+   values not shadowed by the shell. The import roster is a projection of use
    (`emit_runtime_imports`, wasm.mn:4474–4482, emits an import iff the program
    performs the op), so the boot's own import set does not move. The shim's
    half (tools/install.sh `run` :59–76): the roster from `mentl_wasm query
-   "$module" env`, each name from the shell environment else `<project>/.env`,
-   passed as `--env NAME=VALUE`, nothing else. The page: the worker's
+   "$module" env`, literal names from the shell environment else
+   `<project>/.env`, passed as `--env NAME=VALUE`; broad dynamic optional
+   demand passes all shell variables plus non-shadowed `.env` names. The page: the worker's
    `environ_*` arms exist (ide/wheel-worker.js:162–163, answering an empty
    environment) and lack only an `environ` handed in like `argv` (:107) — the
    page's `.env` is `Hβ.felt.page-environ-from-project-dotenv`, landing with
@@ -19076,8 +19086,8 @@ handler env_from_host { env(name) => resume(host_environ(name)) }   // the root 
    `mentl query env` on it names both with sites.
 6. **Records.** SYNTAX: a new section after «Negation in `with` clauses» —
    "Configuration — the environment is an effect" (the op-argument grounding
-   rule, the demand projection, the launch gate, secrets as names the program
-   never reads, `.env` as the host's file); RESIDUE: `Hβ.effects.instance-
+   rule, the demand projection, the launch gate, `.env` as the host's file,
+   and the distinction between guest data and opaque host credentials); RESIDUE: `Hβ.effects.instance-
    grounded-through-call-argument` (the literal flowing through `fn read(name)
    = env(name)` at `read("PORT")` — the instance as a precondition on the
    parameter, P0's value walk one primitive over),

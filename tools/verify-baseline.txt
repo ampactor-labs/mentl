@@ -977,7 +977,14 @@ loop_scaffold_refs_max: 3
 # (`list_index`, `slice`, `str_concat`, `list_concat` were already quoted by
 # the five). Both names are reached from the read the free-name walk draws
 # (`subscript_callees`), so reachability finds them and the emit mints none.
-desugar_vocabulary: 46
+# 2026-10-08 · 46 -> 47 · RE-DERIVED; this time the seed follows. E1's
+# emitted start routine calls `env_demand_check` for a non-empty environment
+# roster, and lowering roots that declaration so link reachability includes
+# `lib/environ.mn`. There is no source call node for this generated entrypoint:
+# the literal is a real name-keyed runtime dependency. The env-protocol gate
+# exercises both the set-variable path and the refusal before main when one is
+# absent.
+desugar_vocabulary: 47
 
 # 2026-09-11 · 812 -> 811 · the gate's own DOWN arm, held. Bisected with the
 # gate's regex to pin 0bd0525e, and the retired marker is `ref strict` in
