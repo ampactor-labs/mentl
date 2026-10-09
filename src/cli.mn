@@ -31,6 +31,8 @@ type EntryVerb
   | VFmt(FmtMode, [String])
   // target REQUIRED — carried non-optionally
   | VCompile(String)
+  // the WAT file to assemble; absent means stdin
+  | VAsm(Option(String))
   // a persisted image path — the file IS the argument
   | VResume(String)
   | VCompileStdin
@@ -99,6 +101,9 @@ fn run_verb_args(a) = if len(a) >= 3 {
 } else {
   ParseError("run needs a target: mentl run <path> [args…]")
 }
+
+// Assembly takes a WAT file path as-is, or stdin when no file is named.
+fn asm_verb_args(a) = Invocation(VAsm(if len(a) >= 3 { Some(a[2]) } else { None }))
 
 // The verbs, in help-presentation order (the parser matches by name, so order
 // here is the human's reading order, never the dispatch order). A `""` hint is
@@ -174,6 +179,7 @@ fn verb_specs() = [
     (a) => req_target(a, VCompile, "compile needs a target: mentl compile <path>"),
     "emit WAT to stdout"
   ),
+  VerbSpec("asm", "[file.wat]", asm_verb_args, "assemble WAT to wasm bytes on stdout"),
   VerbSpec(
     "resume",
     "<image>",

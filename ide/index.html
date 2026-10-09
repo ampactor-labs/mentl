@@ -35,6 +35,9 @@
   #find:focus { outline: 0; border-color: var(--gold); }
   .facet.lit { border-color: var(--gold); background: var(--raised2); }
   .grow { margin-left: auto; }
+  button.action { background: var(--raised2); border: 1px solid var(--border); color: var(--gold-b); border-radius: 7px; padding: 5px 10px; cursor: pointer; font: 11px var(--mono); }
+  button.action:hover { border-color: var(--gold); background: var(--raised1); }
+  button.action:disabled, button.icon:disabled { cursor: wait; color: var(--ghost); border-color: var(--border); }
   button.icon { background: transparent; border: 1px solid var(--border); color: var(--muted); border-radius: 7px; width: 28px; height: 28px; cursor: pointer; font-size: 14px; }
   button.icon:hover { color: var(--bright); border-color: var(--border-lift); }
   #dot { width: 9px; height: 9px; border-radius: 50%; background: var(--ghost); flex: none; transition: background .25s, box-shadow .25s; }
@@ -178,6 +181,11 @@
   .ledger .item .at { color: var(--ghost); font-size: 11px; margin-left: 6px; font-family: var(--sans); }
   .subtle { color: var(--faint); font-size: 11px; font-style: italic; line-height: 1.5; }
   .ledger code, .lead code, .diag code { color: var(--bright); background: var(--raised2); padding: 0 4px; border-radius: 4px; }
+  .run-result { padding: 14px; font-family: var(--mono); font-size: 12px; line-height: 1.5; white-space: pre-wrap; }
+  .run-result .status { color: var(--gold-b); margin-bottom: 10px; }
+  .run-result .status.ok { color: var(--green-b); }
+  .run-result .status.bad { color: var(--verm-b); }
+  .run-result pre { margin-top: 10px; color: var(--primary); overflow: auto; }
 
   @media (prefers-reduced-motion: reduce) { *, ::before, ::after { animation: none !important; transition: none !important; } }
   @media (max-width: 860px) { main { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; } .rail { border-left: 0; border-top: 1px solid var(--border); } }
@@ -195,6 +203,9 @@
   <select id="program" title="the program — a lesson, or your own"></select>
   <input id="find" spellcheck="false" autocomplete="off" placeholder="find by edge — a name, then ⏎" title="the references the graph noted under a name, and the string literals holding it">
   <div class="grow"></div>
+  <button class="action" id="run" title="compile, assemble, and run the current program in this page">run</button>
+  <button class="icon" id="download" aria-label="download wasm" title="download the current program as a wasm module">⇩</button>
+  <button class="icon" id="seal" aria-label="seal the fixpoint" title="run the wheel's fixed-point seal in this page">◇</button>
   <button class="icon" id="theme" title="obsidian / parchment">◐</button>
   <div id="dot" title="the compiler"></div>
 </header>
@@ -219,11 +230,13 @@
         <div data-p="plens" class="on">Lens <span class="n" id="ndiag">0</span></div>
         <div data-p="pledger">Ledger</div>
         <div data-p="prefs">Refs <span class="n" id="nrefs">0</span></div>
+        <div data-p="prun">Run</div>
         <div class="meta" id="sessinfo" title="the session that answered, and what the answer cost">—</div>
       </div>
       <div class="panel on" id="plens"></div>
       <div class="panel" id="pledger"></div>
       <div class="panel" id="prefs"></div>
+      <div class="panel" id="prun"></div>
     </div>
   </div>
 </main>
@@ -256,6 +269,7 @@ async function ensureIsolated(){
 
 /* ── the manifest — one home of what the page fetches ───────────────────── */
 let BASE = "../", WASM_PATH = "boot/mentl.wasm", LIBS = [], PROGRAMS = [], PROJECTS = [];
+let WHEEL_ENTRY = null, WHEEL_FILES = [];
 async function readManifest(){
   const r = await fetch("./space.manifest", { cache: "no-store" });
   if (!r.ok) throw new Error("space.manifest is missing beside the page");
@@ -264,6 +278,8 @@ async function readManifest(){
     const [kind, path] = line.split(/\s+/, 2);
     if (kind === "root") BASE = path.replace(/\/?$/, "/");
     else if (kind === "wasm") WASM_PATH = path;
+    else if (kind === "wheel") WHEEL_ENTRY = path;
+    else if (kind === "wheel-member") WHEEL_FILES.push(path);
     else if (kind === "lib") LIBS.push(path);
     else if (kind === "program") PROGRAMS.push(path);
     else if (kind === "project") PROJECTS.push({ dir: path, members: [] });
@@ -461,9 +477,129 @@ let EXTRA_DELTA = {};        // a project's other modules, sent with the next ed
 let VIEW = null, VIEW_AT = -1, VIEW_TEXT = null, REFUSAL = null, PROJECTED = false, LAST = null;
 let NEEDLE = null;           // a name the find box asked for; the next caret move clears it
 let PROPOSAL = null, busy = false, pendingEdit = false;
+let EXECUTION = null, EXECUTING = false;
+let EXEC_STATE = { phase: "idle", text: "compile, assemble, and run the current program here." };
 const lineColAt = off => { const before = $("src").value.slice(0, off); const nl = before.lastIndexOf("\n"); return { line: before.split("\n").length, col: off - nl }; };
 const offsetOf = (line, col) => { const rows = $("src").value.split("\n"); let o = 0; for (let i = 0; i < line - 1 && i < rows.length; i++) o += rows[i].length + 1; return o + col - 1; };
 const getOffset = () => $("src").selectionStart;
+
+/* ── execution: the same three projections the terminal host performs.
+   Compile produces canonical WAT, `mentl asm` produces bytes, and the worker
+   instantiates those bytes under this page's WASI shim. The page keeps no
+   second compiler or assembler. ───────────────────────────────────────── */
+function currentProgramTree(){
+  const tree = Object.assign({}, VFS);
+  const project = PROJECTS.find(p => PROGRAM && PROGRAM.startsWith(p.dir + "/"));
+  if (project) for (const member of project.members) {
+    const local = member.slice(project.dir.length + 1);
+    tree[local] = te.encode(member === PROGRAM ? $("src").value : draftOr(member));
+  }
+  tree[FILE] = te.encode($("src").value);
+  return tree;
+}
+function executionKey(){
+  const project = PROJECTS.find(p => PROGRAM && PROGRAM.startsWith(p.dir + "/"));
+  const members = project ? project.members.filter(m => m !== PROGRAM).map(draftOr).join("\u0000") : "";
+  return [PROGRAM, FILE, $("src").value, members].join("\u0000");
+}
+function invalidateExecution(){ EXECUTION = null; EXEC_STATE = { phase: "idle", text: "the program changed; its next run will compile and assemble this version." }; renderRun(); }
+function executionProblem(label, r){
+  const detail = r && (r.trapped || r.err || `exit ${r.exit}`);
+  return new Error(`${label}: ${(detail || "no result").trim()}`);
+}
+function renderRun(){
+  const panel = $("prun"); if (!panel) return;
+  const state = EXEC_STATE || {};
+  const cls = state.phase === "ok" ? "ok" : state.phase === "bad" ? "bad" : "";
+  const output = state.output ? `<pre>${esc(state.output)}</pre>` : "";
+  panel.innerHTML = `<div class="run-result"><div class="status ${cls}">${esc(state.text || "")}</div>${output}</div>`;
+}
+function setExecutionBusy(on){
+  EXECUTING = on;
+  $("run").disabled = on;
+  $("download").disabled = on;
+  $("seal").disabled = on || !WHEEL_ENTRY || WHEEL_FILES.length === 0;
+  if (on) $("dot").className = "busy";
+}
+async function assembleCurrent(){
+  const key = executionKey();
+  if (EXECUTION && EXECUTION.key === key) return EXECUTION;
+  const tree = currentProgramTree();
+  EXEC_STATE = { phase: "working", text: "compiling the current program…" }; renderRun();
+  const compiled = await runWheel({ argv: ["mentl", "compile", FILE], vfs: tree }, 120000);
+  if (compiled.exit !== 0 || compiled.trapped) throw executionProblem("compile refused", compiled);
+  EXEC_STATE = { phase: "working", text: "assembling the compiler's WAT inside the page…" }; renderRun();
+  const assembled = await runWheel({ argv: ["mentl", "asm"], stdin: te.encode(compiled.out), binary: true }, 120000);
+  const bytes = assembled.outBytes instanceof Uint8Array ? assembled.outBytes
+    : assembled.outBytes ? new Uint8Array(assembled.outBytes) : new Uint8Array(0);
+  if (assembled.exit !== 0 || assembled.trapped || bytes.length < 8 || bytes[0] !== 0 || bytes[1] !== 97 || bytes[2] !== 115 || bytes[3] !== 109)
+    throw executionProblem("assembly refused", assembled);
+  let module;
+  try { module = await WebAssembly.compile(bytes); }
+  catch (e) { throw new Error(`the assembled bytes do not validate in this browser: ${e.message || e}`); }
+  EXECUTION = { key, tree, bytes, module, watBytes: te.encode(compiled.out) };
+  return EXECUTION;
+}
+async function runProgram(){
+  if (EXECUTING || busy) return;
+  setExecutionBusy(true); openTab("prun");
+  try {
+    const artifact = await assembleCurrent();
+    EXEC_STATE = { phase: "working", text: "running the assembled module in this page…" }; renderRun();
+    const result = await runWheel({ module: artifact.module, argv: [], vfs: artifact.tree }, 120000);
+    const output = [result.out, result.err, result.trapped ? `trap: ${result.trapped}` : ""].filter(Boolean).join("");
+    EXEC_STATE = result.exit === 0 || (!result.trapped && Number.isInteger(result.exit))
+      ? { phase: "ok", text: `the current program ran in this page — exit ${result.exit}; ${artifact.bytes.length.toLocaleString()} wasm bytes`, output }
+      : { phase: "bad", text: "the assembled program did not complete", output };
+  } catch (e) {
+    EXEC_STATE = { phase: "bad", text: "the current program could not run", output: String(e.message || e) };
+  }
+  setExecutionBusy(false); $("dot").className = EXEC_STATE.phase === "bad" ? "bad" : "ok"; renderRun();
+}
+async function downloadProgram(){
+  if (EXECUTING || busy) return;
+  setExecutionBusy(true); openTab("prun");
+  try {
+    const artifact = await assembleCurrent();
+    const href = URL.createObjectURL(new Blob([artifact.bytes], { type: "application/wasm" }));
+    const link = document.createElement("a");
+    link.href = href; link.download = (FILE.split("/").pop() || "program.mn").replace(/\.mn$/, ".wasm");
+    document.body.appendChild(link); link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(href), 0);
+    EXEC_STATE = { phase: "ok", text: `downloaded ${link.download} — ${artifact.bytes.length.toLocaleString()} wasm bytes from the current program` };
+  } catch (e) {
+    EXEC_STATE = { phase: "bad", text: "the current program could not assemble for download", output: String(e.message || e) };
+  }
+  setExecutionBusy(false); renderRun();
+}
+async function sealWheel(){
+  if (EXECUTING || busy) return false;
+  if (!WHEEL_ENTRY || WHEEL_FILES.length === 0) {
+    EXEC_STATE = { phase: "bad", text: "the staged page has no compiler source tree for the fixpoint seal" }; openTab("prun"); renderRun(); return false;
+  }
+  setExecutionBusy(true); openTab("prun");
+  try {
+    EXEC_STATE = { phase: "working", text: "the pinned wheel is compiling its source tree…" }; renderRun();
+    const m2 = await runWheel({ argv: ["mentl", "compile", WHEEL_ENTRY], vfs: VFS }, 240000);
+    if (m2.exit !== 0 || m2.trapped) throw executionProblem("the boot did not compile the wheel", m2);
+    EXEC_STATE = { phase: "working", text: "the wheel is assembling its own emitted bytes…" }; renderRun();
+    const assembled = await runWheel({ argv: ["mentl", "asm"], stdin: te.encode(m2.out), binary: true }, 240000);
+    const bytes = assembled.outBytes instanceof Uint8Array ? assembled.outBytes
+      : assembled.outBytes ? new Uint8Array(assembled.outBytes) : new Uint8Array(0);
+    if (assembled.exit !== 0 || assembled.trapped || bytes.length < 8) throw executionProblem("the wheel did not assemble", assembled);
+    const m2Module = await WebAssembly.compile(bytes);
+    EXEC_STATE = { phase: "working", text: "the wheel-emitted compiler is compiling the wheel again…" }; renderRun();
+    const m3 = await runWheel({ module: m2Module, argv: ["mentl", "compile", WHEEL_ENTRY], vfs: VFS }, 240000);
+    if (m3.exit !== 0 || m3.trapped) throw executionProblem("the assembled wheel did not compile the wheel", m3);
+    const same = m2.out === m3.out;
+    EXEC_STATE = same
+      ? { phase: "ok", text: `fixed point sealed in this page — m2 equals m3 (${m2.out.split("\n").length - 1} WAT lines; ${bytes.length.toLocaleString()} wasm bytes)` }
+      : { phase: "bad", text: "the page's fixed-point seal refused: m2 differs from m3" };
+  } catch (e) {
+    EXEC_STATE = { phase: "bad", text: "the page's fixed-point seal could not complete", output: String(e.message || e) };
+  }
+  setExecutionBusy(false); $("dot").className = EXEC_STATE.phase === "bad" ? "bad" : "ok"; renderRun();
+  return EXEC_STATE.phase === "ok";
+}
 // a refusal crosses the wire as its stderr and exit code, and the compile's cost
 // lines ride the same stderr; telling them apart by spelling is the residue of
 // that text channel (Hβ.session.answer-is-out-err-and-exit names its end)
@@ -512,7 +648,7 @@ async function project(edited){
 function renderAll(){
   CURSOR_LINE = lineColAt(getOffset()).line;
   renderCanvas();
-  renderRing(); renderLens(); renderLedger(); renderRefs(); renderProposal();
+  renderRing(); renderLens(); renderLedger(); renderRefs(); renderRun(); renderProposal();
 }
 const stub = txt => `<span class="stub">${esc(txt)}</span>`;
 // the eight aspects, in the kernel's order — the wire's kinds and the page's hues
@@ -652,6 +788,7 @@ async function acceptProposal(){
    undo, measured: `setRangeText` (the form before L-D) records nothing, and
    the smoke's undo after an accept left the accepted text in place. */
 function writeBuffer(text){
+  invalidateExecution();
   const ta = $("src"); ta.focus(); ta.setSelectionRange(0, ta.value.length);
   if (!document.execCommand("insertText", false, text)) ta.setRangeText(text, 0, ta.value.length, "end");
 }
@@ -682,6 +819,7 @@ function openEntry(key){
   const ta = $("src"); ta.value = draftOr(e.path);
   const [off, top] = caretOf(e.path); ta.setSelectionRange(Math.min(off, ta.value.length), Math.min(off, ta.value.length)); ta.scrollTop = top;
   VIEW = null; REFUSAL = null; VIEW_AT = -1; PROJECTED = false; NEEDLE = null; CANVAS = null; TOK = new Map(); STRIP = new Map();
+  invalidateExecution();
   project(true);
 }
 
@@ -695,7 +833,7 @@ function jump(line, col){ if (!line) return; const ta = $("src"); const idx = ta
 function openTab(p){ document.querySelectorAll(".tabs div[data-p]").forEach(x => x.classList.toggle("on", x.dataset.p === p)); document.querySelectorAll(".panel").forEach(x => x.classList.toggle("on", x.id === p)); }
 let editDeb = null, caretDeb = null;
 $("src").addEventListener("scroll", onScroll);
-$("src").addEventListener("input", () => { CURSOR_LINE = lineColAt(getOffset()).line; renderCanvas(); saveDraft(); clearTimeout(editDeb); editDeb = setTimeout(() => project(true), 180); scheduleFmt(); });
+$("src").addEventListener("input", () => { invalidateExecution(); CURSOR_LINE = lineColAt(getOffset()).line; renderCanvas(); saveDraft(); clearTimeout(editDeb); editDeb = setTimeout(() => project(true), 180); scheduleFmt(); });
 ["click", "keyup"].forEach(ev => $("src").addEventListener(ev, () => { saveCaret(); clearTimeout(caretDeb); caretDeb = setTimeout(() => { if (getOffset() !== VIEW_AT){ NEEDLE = null; LIT = null; project(false); } else renderAll(); }, 40); }));
 $("find").addEventListener("keydown", e => {
   if (e.key === "Enter"){ e.preventDefault(); const n = $("find").value.trim(); NEEDLE = n || null; openTab("prefs"); project(false); }
@@ -730,6 +868,9 @@ $("src").addEventListener("keydown", e => {
 });
 document.querySelectorAll(".tabs div[data-p]").forEach(t => t.onclick = () => openTab(t.dataset.p));
 $("theme").onclick = () => { const cur = document.documentElement.dataset.theme; const next = cur === "parchment" ? "obsidian" : "parchment"; document.documentElement.dataset.theme = next; try { localStorage.setItem("mentl-space-theme", next); } catch (x) {} };
+$("run").onclick = () => runProgram();
+$("download").onclick = () => downloadProgram();
+$("seal").onclick = () => sealWheel();
 $("program").onchange = e => openEntry(e.target.value);
 window.addEventListener("resize", () => { measureMetrics(); renderCanvas(); });
 try { const qt = new URLSearchParams(location.search).get("theme"); if (qt) document.documentElement.dataset.theme = qt; const th = qt || localStorage.getItem("mentl-space-theme"); if (th) document.documentElement.dataset.theme = th; } catch (e) {}
@@ -742,13 +883,17 @@ async function boot(){
     await readManifest();
     if (!(await ensureIsolated())) throw new Error("the page is not cross-origin isolated and could not isolate itself — serve it with the two headers (tools/space-serve.py) or over https");
     const MEMBERS = PROJECTS.flatMap(p => p.members);
+    // The staged manifest expands `wheel src/main.mn` into the source tree.
+    // Those files are available to the seal and to a user program that names
+    // the compiler, while the compiler itself still follows its own imports.
+    const SOURCE_FILES = [...new Set([...LIBS, ...WHEEL_FILES])];
     const [wasm, ...texts] = await Promise.all([
       fetch(BASE + WASM_PATH).then(r => { if (!r.ok) throw new Error(`${WASM_PATH} is missing (${r.status})`); return r.arrayBuffer(); }),
-      ...LIBS.map(fetchText), ...PROGRAMS.map(fetchText), ...MEMBERS.map(fetchText),
+      ...SOURCE_FILES.map(fetchText), ...PROGRAMS.map(fetchText), ...MEMBERS.map(fetchText),
     ]);
-    LIBS.forEach((k, i) => { VFS[k] = te.encode(texts[i]); });
-    PROGRAMS.forEach((k, i) => { VFS_TEXT[k] = texts[LIBS.length + i]; });
-    MEMBERS.forEach((k, i) => { VFS_TEXT[k] = texts[LIBS.length + PROGRAMS.length + i]; });
+    SOURCE_FILES.forEach((k, i) => { VFS[k] = te.encode(texts[i]); });
+    PROGRAMS.forEach((k, i) => { VFS_TEXT[k] = texts[SOURCE_FILES.length + i]; });
+    MEMBERS.forEach((k, i) => { VFS_TEXT[k] = texts[SOURCE_FILES.length + PROGRAMS.length + i]; });
     MODULE = await WebAssembly.compile(wasm);
     const sel = $("program");
     const offer = (e, parent) => { ENTRIES.push(e); const o = document.createElement("option"); o.value = e.key; o.textContent = e.label; parent.appendChild(o); };
@@ -760,6 +905,7 @@ async function boot(){
     }
     offer({ key: "scratch", label: "scratch", dir: null, path: "scratch", file: "main.mn" }, sel);
     $("dot").className = "ok"; measureMetrics();
+    $("seal").disabled = !WHEEL_ENTRY || WHEEL_FILES.length === 0;
     openEntry(ENTRIES[0].key);
     // the one line the page prints on every open: a headless driver (ide/browser-leg.mjs) waits on it
     await settled();

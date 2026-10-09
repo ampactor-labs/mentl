@@ -6,6 +6,7 @@
 # staging expands into `member` lines (a static host lists no folder).
 root ..
 wasm boot/mentl.wasm
+wheel src/main.mn
 lib lib/memory.mn
 lib lib/strings.mn
 lib lib/lists.mn

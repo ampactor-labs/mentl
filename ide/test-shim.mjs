@@ -77,6 +77,35 @@ if (spawned > 0) {
 const libs = ['lib/memory.mn', 'lib/strings.mn', 'lib/lists.mn', 'lib/threading.mn', 'lib/io.mn', 'lib/prelude.mn', 'src/types.mn'];
 const VFS = {};
 for (const p of libs) VFS[p] = new Uint8Array(await readFile(new URL(p, REPO)));
+
+// ── L-F: one in-page execution path — compile -> asm bytes -> instantiate.
+// The candidate wheel owns both projections.  `outBytes` is deliberately a
+// byte channel: decoding Wasm as text would silently change non-UTF-8 bytes.
+{
+  const help = await runWheel({ argv: ['mentl', 'help'] });
+  if (!help.out.includes('assemble WAT to wasm bytes on stdout')) {
+    console.log('[L-F] in-page assembly: TRANSITION — this boot predates `mentl asm`');
+  } else {
+    const source = 'fn main() = 42\n';
+    const vfs = Object.assign({}, VFS, { 'main.mn': te.encode(source) });
+    const compiled = await runWheel({ argv: ['mentl', 'compile', 'main.mn'], vfs });
+    const assembled = compiled.exit === 0 && !compiled.trapped
+      ? await runWheel({ argv: ['mentl', 'asm'], stdin: te.encode(compiled.out), binary: true })
+      : { exit: 1, outBytes: null, trapped: 'compile refused', err: compiled.err };
+    const bytes = assembled.outBytes instanceof Uint8Array ? assembled.outBytes
+      : assembled.outBytes ? new Uint8Array(assembled.outBytes) : new Uint8Array(0);
+    let run = { exit: 1, trapped: 'the assembler produced no module' };
+    try {
+      if (assembled.exit === 0 && !assembled.trapped && bytes[0] === 0 && bytes[1] === 97 && bytes[2] === 115 && bytes[3] === 109) {
+        run = await runWheel({ module: await WebAssembly.compile(bytes), argv: [], vfs });
+      }
+    } catch (e) { run = { exit: 1, trapped: String(e) }; }
+    const ok = compiled.exit === 0 && !compiled.trapped && assembled.exit === 0 && !assembled.trapped
+      && bytes.length > 8 && run.exit === 42 && !run.trapped;
+    console.log(`[L-F] in-page assembly and run: ${bytes.length} bytes · exit ${run.exit} -> ${ok ? 'PASS' : 'FAIL'}`);
+    if (!ok) { bad++; console.log('    ' + (compiled.err || assembled.err || run.trapped || '').trim().split('\n').slice(0, 4).join('\n    ')); }
+  }
+}
 {
   const vfs = Object.assign({}, VFS);
   vfs['main.mn'] = te.encode('fn main() with Memory + Alloc =\n  [1, 2, 3, 4, 5]\n    |> map((x) => x * x)\n    |> filter((x) => x > 3)\n    |> fold(0, (acc, x) => acc + x)\n');
@@ -438,4 +467,3 @@ const READ_BAR_MS = 50;   // PLAN §11.2's felt bar, measured here rather than a
 
 console.log(bad ? `\n${bad} FAILED` : '\nall surfaces green — the boot runs on the worker shim, and its session keeps its graph');
 process.exit(bad ? 1 : 0);
-

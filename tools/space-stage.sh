@@ -18,6 +18,11 @@
 # staged manifest carries one `member <path>` line per module under the
 # project line. A directory given on the command line (`mentl space <dir>`)
 # is staged the same way, under project/<its name>.
+#
+# A `wheel <entry>` line stages the compiler source tree once and records its
+# members. The page uses the entry for the in-browser fixpoint seal; the
+# compiler still follows its own import DAG when it runs, so shipping the
+# tree is availability, never a second link model.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 out="${1:-.build/space}"
@@ -42,15 +47,25 @@ stage_project() {  # stage_project <staged-dir> <source-dir> — the folder's mo
   done < <(find "$src" -maxdepth 1 -name '*.mn' | sort)
   [ "$n" -gt 0 ] || { echo "space-stage: $src holds no .mn module" >&2; exit 1; }
 }
+stage_wheel() {  # stage_wheel <entry> — compiler source available to the page seal
+  local entry="$1" f
+  [ -f "$entry" ] || { echo "space-stage: wheel entry $entry is not a file" >&2; exit 1; }
+  echo "wheel $entry"
+  while IFS= read -r f; do
+    stage_file "$f"
+    echo "wheel-member $f"
+  done < <(find src lib -name '*.mn' | sort)
+}
 {
   while IFS= read -r line; do
     case "$line" in
       ''|'#'*) echo "$line" ;;
       'root '*) echo "root ." ;;
       'project '*) stage_project "${line#project }" "${line#project }" ;;
+      'wheel '*) stage_wheel "${line#wheel }" ;;
       *) echo "$line"; stage_file "${line#* }" ;;
     esac
   done < ide/space.manifest
   for d in "$@"; do stage_project "project/$(basename "$d")" "$d"; done
 } > "$out/space.manifest"
-echo "space-stage: $out ← ide/ + $(grep -cE '^(wasm|lib|program|member) ' "$out/space.manifest") files"
+echo "space-stage: $out ← ide/ + $(grep -cE '^(wasm|lib|program|member|wheel-member) ' "$out/space.manifest") files"

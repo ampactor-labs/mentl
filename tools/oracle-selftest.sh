@@ -136,7 +136,7 @@ bank_crucible() {
         echo "  wt_run boot/mentl.wasm < \$d/$stem.mn   # see $stem.compile.err" ;;
       assemble-fail)
         echo "  wt_run boot/mentl.wasm < \$d/$stem.mn > \$d/$stem.wat"
-        echo "  wt_asm \$d/$stem.wat \$d/$stem.wasm   # wat2wasm rejects the emit — see $stem.assemble.err" ;;
+        echo "  wt_asm \$d/$stem.wat \$d/$stem.wasm   # the assembler refuses the emit — see $stem.assemble.err" ;;
       runtime-trap)
         echo "  wt_run boot/mentl.wasm < \$d/$stem.mn > \$d/$stem.wat"
         echo "  wt_asm \$d/$stem.wat \$d/$stem.wasm && wt_run \$d/$stem.wasm   # traps at runtime" ;;
@@ -250,7 +250,7 @@ run_skeleton() {
         fi
       else
         class="assemble-fail"
-        detail="wat2wasm rejected the emit: $(head -1 "$d/$stem.assemble.err" | sed -E 's/\x1b\[[0-9;]*m//g')"
+        detail="the assembler refused the emit: $(head -1 "$d/$stem.assemble.err" | sed -E 's/\x1b\[[0-9;]*m//g')"
         bank_crucible "$stem" "$class" "$detail" "$d" "$stem.wat" "$stem.assemble.err"
       fi
     fi

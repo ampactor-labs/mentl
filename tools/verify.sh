@@ -27,7 +27,7 @@ WHEEL_ONLY=0; PREFLIGHT_ONLY=0
 [[ "${1:-}" == "--preflight" ]] && PREFLIGHT_ONLY=1
 
 BASELINE="tools/verify-baseline.txt"
-source "$ROOT/tools/wt-env.sh"   # WT, WT_RUN_FLAGS, W2W — the one home
+source "$ROOT/tools/wt-env.sh"   # WT, WT_RUN_FLAGS, wt_asm — the one home
 # The runtime trio IS the vocabulary every real .mn program reaches for, so
 # a micro compiled WITHOUT it is the abnormal case, not the default. Link it for
 # every micro: a micro that calls str_concat/str_eq (strings) or ev_lookup (the

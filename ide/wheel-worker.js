@@ -26,9 +26,10 @@
    page and the headless gate (ide/test-shim.mjs) drive the SAME execution
    host and cannot drift. Three roles:
 
-     {role:"run", module, memPages?, argv, stdin?, vfs?, stubSpawn?}
+     {role:"run", module, memPages?, argv, stdin?, vfs?, stubSpawn?, binary?}
        (a reply carries `written`: the vfs files the wheel wrote — the
-        accept's projection of the module back to its text)
+       accept's projection of the module back to its text; `binary` carries
+       stdout as `outBytes`, never through a text decoder)
         -> creates the shared memory, instantiates, runs _start, drains the
            task fan, posts {k:"result", exit, out, err, trapped, tasks}
      {role:"session", module, memPages?, vfs, channel}
@@ -51,7 +52,7 @@ const HOST = NODE
       const { parentPort, Worker } = require("node:worker_threads");
       return {
         listen(fn) { parentPort.on("message", fn); },
-        post(m) { parentPort.postMessage(m); },
+        post(m, transfer) { parentPort.postMessage(m, transfer); },
         spawn() {
           const w = new Worker(__filename);
           return {
@@ -66,7 +67,7 @@ const HOST = NODE
     })()
   : {
       listen(fn) { self.onmessage = (e) => fn(e.data); },
-      post(m) { self.postMessage(m); },
+      post(m, transfer) { self.postMessage(m, transfer); },
       spawn() {
         const w = new Worker(self.location.href);
         return {
@@ -440,7 +441,7 @@ HOST.listen(async (msg) => {
     }
     await sessionServe({ module, mem, vfs: Object.assign({}, vfs || {}), channel });
   } else if (msg.role === "run") {
-    const { module, memPages, argv, stdin, vfs, stubSpawn } = msg;
+    const { module, memPages, argv, stdin, vfs, stubSpawn, binary } = msg;
     DEBUG = !!msg.dbg;
     let mem = null, trapped = null, exit = 0, fan = null, shim = null;
     try {
@@ -474,9 +475,19 @@ HOST.listen(async (msg) => {
         if (io.out) extraErr += "[task stdout] " + io.out;   // never interleaved into the wat stream
       }
     }
-    const out = shim ? td.decode(cat(shim.out)) : "";
+    // WAT is text, but `mentl asm` writes a binary module.  The host carries
+    // that projection as bytes so a U+FFFD substitution can never turn a
+    // valid module into a different one before WebAssembly instantiates it.
+    const outBytes = shim ? cat(shim.out) : new Uint8Array(0);
+    const out = binary ? "" : td.decode(outBytes);
     const err = (shim ? td.decode(cat(shim.err)) : "") + extraErr;
-    HOST.post({ k: "result", exit, out, err, trapped, tasks, written: shim ? shim.writtenFiles() : {} });
+    const result = { k: "result", exit, out, err, trapped, tasks, written: shim ? shim.writtenFiles() : {} };
+    if (binary) {
+      result.outBytes = outBytes;
+      HOST.post(result, [outBytes.buffer]);
+    } else {
+      HOST.post(result);
+    }
   } else if (msg.role === "arm") {
     // a pool worker: hold the run's module/memory/queue, consume tasks
     // until the run's drain kills the pool. Each task gets a FRESH

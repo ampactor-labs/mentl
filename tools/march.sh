@@ -21,7 +21,7 @@
 # box (it did, 2026-06-30). .build is on disk; override with MARCH_OUT=<dir>.
 set -u
 cd "$(dirname "$0")/.." || exit 2
-source "$(dirname "$0")/wt-env.sh"   # WT, WT_RUN_FLAGS, W2W — the one home
+source "$(dirname "$0")/wt-env.sh"   # WT, WT_RUN_FLAGS, wt_asm — the one home
 OUT="${MARCH_OUT:-$(pwd)/.build/march}"; mkdir -p "$OUT"
 # Boot from the PINNED FIXPOINT WHEEL (boot/mentl.wasm — boot/PROVENANCE.md).
 # m2 := boot(wheel) is wheel-emitted, so m2 == m3 IS the fixed point. The
@@ -453,8 +453,8 @@ fixok=1; m4done=0
 # and twelve clean pins in a row were never probed at all
 # (Hβ.march.determinism-is-never-probed). A repin now runs it before the bless.
 probe_m4() {  # 0 when m3 == m4; sets m4rc and m4done
-  if ! "${W2W[@]}" "$OUT/m3.wat" -o "$OUT/m3.wasm" 2> "$OUT/m3w.err"; then
-    echo "✗ m3 wat2wasm FAILED (the determinism leg cannot run):"; head -5 "$OUT/m3w.err"
+  if ! wt_asm "$OUT/m3.wat" "$OUT/m3.wasm" 2> "$OUT/m3w.err"; then
+    echo "✗ m3 did not assemble (the determinism leg cannot run):"; head -5 "$OUT/m3w.err"
     return 1
   fi
   gen "$OUT/m3.wasm" "$OUT/m4.wat" "$OUT/m4.err"; m4rc=$?; m4done=1
@@ -524,7 +524,7 @@ elif [ "$m3rc" = 0 ]; then
     # (m2) is the classic trusting-trust mistake — so the march arbitrates
     # itself instead of leaving the m4 leg to a human.
     echo "· RATCHET: m2 ≠ m3 ($(diff "$OUT/m2.wat" "$OUT/m3.wat" 2>/dev/null | grep -c '^[<>]') diff lines) — testing the TRANSITION form (m3 == m4)"
-    if "${W2W[@]}" "$OUT/m3.wat" -o "$OUT/m3.wasm" 2> "$OUT/m3w.err"; then
+    if wt_asm "$OUT/m3.wat" "$OUT/m3.wasm" 2> "$OUT/m3w.err"; then
       gen "$OUT/m3.wasm" "$OUT/m4.wat" "$OUT/m4.err"; m4rc=$?; m4done=1
       echo "m4: exit=$m4rc, $(wc -l < "$OUT/m4.wat" 2>/dev/null) lines"
       read_cost m4 "$OUT/m3.wasm"
@@ -555,7 +555,7 @@ elif [ "$m3rc" = 0 ]; then
         fixok=0
       fi
     else
-      echo "✗ m3 wat2wasm FAILED (transition leg cannot run):"; head -5 "$OUT/m3w.err"; fixok=0
+      echo "✗ m3 did not assemble (transition leg cannot run):"; head -5 "$OUT/m3w.err"; fixok=0
     fi
   fi
 fi
