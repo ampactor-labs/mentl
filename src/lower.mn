@@ -161,7 +161,7 @@ effect LowerHandlerStack {
 
 handler lower_handler_stack_ctx with stack = [] {
   lower_handler_push(name, install_handle, proj) => // drift-audit: ignore — O(1) push at the end last/drop_last read (the one stack law)
-  resume(0) with stack = stack ++ [{handle: install_handle, name: name, proj: proj}],
+  resume(0) with stack = stack ++ [{handle: install_handle, name, proj}],
   lower_handler_pop() => if len(stack) == 0 { resume(0) } else { resume(0) with stack = drop_last(stack) },
   lower_handler_stack_now() => // Head-first = innermost-first; resolution walks it as a plain fn.
   resume(stack),
@@ -2501,7 +2501,7 @@ fn split_group_by_ename(groups: [{arms: [String], ename: String}], ename: String
   split_group_loop([], groups, ename)
 
 fn split_group_loop(before: [{arms: [String], ename: String}], rest: [{arms: [String], ename: String}], ename: String) = if len(rest) == 0 {
-  (before, {arms: [], ename: ename}, [])
+  (before, {arms: [], ename}, [])
 } else if last(rest).ename == ename {
   (before, last(rest), drop_last(rest))
 } else {
@@ -3017,10 +3017,9 @@ fn lower_expr_body(e, handle, span) = match e {
   // or a list receiver, stays the runtime list_index call.
   lower_index(handle, receiver, index),
   MakeRecordExpr(fields) => LMakeRecord(handle, lower_record_field_values(fields)),
-  NamedRecordExpr(_type_name, fields) => // H2.3: nominal records lower identically to bare record
-  // literals — type identity is type-system-only, runtime sees
-  // raw fields. The type name is preserved in the AST for
-  // diagnostics and IDE projection but doesn't reach LIR.
+  NamedRecordExpr(head, fields) => // A nominal record lowers as a bare record literal does: its type's
+  // identity is the judgment's, and the head is a reference to the type,
+  // never a value the record holds.
   LMakeRecord(handle, lower_record_field_values(fields)),
   RecordUpdateExpr(base, overrides) => // {...base, f: v} — non-destructive update. The RESULT record's
   // field set is PROVEN by infer (base's fields ∪ overrides), read
@@ -5091,7 +5090,7 @@ fn lower_init_decl(discriminator, config, state: [{init: Node, name: String}], f
   let nconfig = len(config_names)
   graph_emitfn_note(EmitFnEntry{
     caps: [],
-    fence: fence,
+    fence,
     kind: EfkInit(discriminator),
     name: fn_name,
     origin: node_handle(list_index(state, 0).init),
@@ -5227,7 +5226,7 @@ fn lower_one_arm_decl(arm: {args: [String], body: Node, op_name: String}, discri
   }
   graph_emitfn_note(EmitFnEntry{
     caps: [],
-    fence: fence,
+    fence,
     kind: EfkArm(arm.op_name, discriminator),
     name: fn_name,
     origin: node_handle(arm.body),
@@ -6339,7 +6338,7 @@ fn grounded_scan(bindings, i, n, ename: String) = if i >= n {
 // language meets the instruction set (the wasi-import list's sibling;
 // the op names ARE the identity, declared in one home).
 fn is_substrate_mem_op(name: String) with Pure =
-  name == "store_i32" || name == "trap" || name == "load_i32" || name == "store_i8" || name == "load_i8" || name == "store_f64" || name == "load_f64" || name == "mem_copy" || name == "addr_at" || name == "addr_diff" || name == "load_addr" || name == "store_addr" || name == "null_addr" || name == "addr_word" || name == "word_addr" || name == "i32_xor" || name == "i32_or" || name == "i32_and" || name == "i32_shl" || name == "alloc" || name == "heap_mark" || name == "world_top" || name == "world_restore" || name == "image_key" || name == "globals_area" || name == "globals_save" || name == "image_restore" || name == "arena_stat"
+  name == "store_i32" || name == "trap" || name == "load_i32" || name == "store_i8" || name == "load_i8" || name == "store_f64" || name == "load_f64" || name == "mem_copy" || name == "addr_at" || name == "addr_diff" || name == "load_addr" || name == "store_addr" || name == "null_addr" || name == "addr_word" || name == "word_addr" || name == "i32_xor" || name == "i32_or" || name == "i32_and" || name == "i32_shl" || name == "i32_shr_u" || name == "i32_shr_s" || name == "i32_clz" || name == "alloc" || name == "heap_mark" || name == "world_top" || name == "world_restore" || name == "image_key" || name == "globals_area" || name == "globals_save" || name == "image_restore" || name == "arena_stat"
 
 // The Cast capability's one op — erased at lower to its operand (the
 // identity at the word level; memory.mn carries the decl and the law).
@@ -6799,8 +6798,8 @@ handler lower_scope with frames = [], globals = [], esc_rows = smap_new(), may_y
       capture_handles: captures_h,
       capture_order: captures_in,
       captures: set_canonicalize(captures_in),
-      fn_name: fn_name,
-      line_base: line_base,
+      fn_name,
+      line_base,
       lines: [],
       locals: set_canonicalize(locals_in),
     }

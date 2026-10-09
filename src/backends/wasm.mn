@@ -953,7 +953,7 @@ type RowRead = RowOf(EffRow, Bool) | RowGranted(String) | RowAbsent(String)
 // One unit in the walk: the row its code answers to, read once where the
 // walk enters it; the encoding its nested units' symbols are mangled with (a
 // twin's bracket); how a report names it; and the symbol it is emitted as.
-type AllocUnit = AllocUnit({enc: String, names: String, row: RowRead, sym: String})
+type AllocUnit = {enc: String, names: String, row: RowRead, sym: String}
 
 // What a construct's emission builds, named only when a refusal says it. The
 // continuation machinery — a remainder record, its extension, a multi-shot
@@ -1099,24 +1099,24 @@ fn alloc_walk_nested(unit, name: String, body) = match unit {
 // read here, once, and a thunk or remainder takes its parent's.
 fn alloc_unit_named(name: String, sym: String, enc: String, parent) = match parent {
   AllocUnit(p) => match graph_emitfn_at(name) {
-    [] => AllocUnit({enc: enc, names: name, row: alloc_owner_row(OwnedByNothing), sym: sym}),
+    [] => AllocUnit({enc, names: name, row: alloc_owner_row(OwnedByNothing), sym}),
     entries => match last(entries) {
       EmitFnEntry(e) => match e.kind {
-        EfkNested => AllocUnit({enc: enc, names: name, row: alloc_owner_row(OwnedByFn(e.origin)), sym: sym}),
-        EfkLambda => AllocUnit({enc: enc, names: p.names, row: alloc_owner_row(OwnedByFn(e.origin)), sym: sym}),
-        EfkPartial => AllocUnit({enc: enc, names: p.names, row: alloc_owner_row(OwnedByFn(e.origin)), sym: sym}),
-        EfkArm(op, hname) => AllocUnit({enc: enc, names: "{hname}.{op}", row: alloc_owner_row(OwnedByHandler(hname)), sym: sym}),
-        EfkInit(hname) => AllocUnit({enc: enc, names: hname, row: alloc_owner_row(OwnedByInstall(hname)), sym: sym}),
+        EfkNested => AllocUnit({enc, names: name, row: alloc_owner_row(OwnedByFn(e.origin)), sym}),
+        EfkLambda => AllocUnit({enc, names: p.names, row: alloc_owner_row(OwnedByFn(e.origin)), sym}),
+        EfkPartial => AllocUnit({enc, names: p.names, row: alloc_owner_row(OwnedByFn(e.origin)), sym}),
+        EfkArm(op, hname) => AllocUnit({enc, names: "{hname}.{op}", row: alloc_owner_row(OwnedByHandler(hname)), sym}),
+        EfkInit(hname) => AllocUnit({enc, names: hname, row: alloc_owner_row(OwnedByInstall(hname)), sym}),
         EfkThunk => // A branch thunk exists only under a spawning schedule: its carrier is
         // that schedule's, and its body is the branch the frame's own row
         // already answers for in the in-frame form.
         AllocUnit({
-          enc: enc,
+          enc,
           names: p.names,
           row: RowGranted("a branch thunk is built and run by the spawning schedule, at the cost of the install that runs it"),
-          sym: sym,
+          sym,
         }),
-        EfkK => AllocUnit({enc: enc, names: p.names, row: p.row, sym: sym}),
+        EfkK => AllocUnit({enc, names: p.names, row: p.row, sym}),
       },
     },
   },
@@ -2302,7 +2302,7 @@ fn plan_reached(lowered, fn_records, twin_bases, all_records, spec_demands, twin
     {
       (m, base, pairs, enc) => match spec_find_rec(all_records, base) {
         Some(rec) => match rec {
-          (_n, ps, body, f) => [{base: base, enc: enc, pairs: pairs, rec: (m, ps, body, f)}] ++ map(
+          (_n, ps, body, f) => [{base, enc, pairs, rec: (m, ps, body, f)}] ++ map(
             {
               (nn, nps, nbody, nf) => // A nested record takes the schedule only where it cannot
               // outlive the install (`nested_twin`): a branch thunk does, a
@@ -2434,35 +2434,35 @@ fn plan_reached(lowered, fn_records, twin_bases, all_records, spec_demands, twin
       ) ++ redrive_vectors(redrives)
       {
         adjoint_registers: derived.adjoint_registers,
-        alloc_units: alloc_units,
-        arena_on: arena_on,
+        alloc_units,
+        arena_on,
         env_roster: roster,
-        fn_records: fn_records,
-        fold_closures: fold_closures,
+        fn_records,
+        fold_closures,
         jvp_faces: jvp_face_map(derived.faces),
-        jvp_names: jvp_names,
-        jvp_recs: jvp_recs,
-        jvp_wide: jvp_wide,
+        jvp_names,
+        jvp_recs,
+        jvp_wide,
         line_owners: static_line_owners(
           top_fn_names,
           fn_lines,
           spec_recs,
           init_lets_lines(collect_top_value_lets(lowered))
         ),
-        lowered: lowered,
-        redrives: redrives,
-        spec_names: spec_names,
-        spec_recs: spec_recs,
-        spec_wide: spec_wide,
-        string_entries: string_entries,
-        table_fn_names: table_fn_names,
+        lowered,
+        redrives,
+        spec_names,
+        spec_recs,
+        spec_wide,
+        string_entries,
+        table_fn_names,
         tangent_rings: derived.rings,
-        top_fn_names: top_fn_names,
-        vectors: vectors,
-        wasi_ops: wasi_ops,
-        wide_fn_names: wide_fn_names,
-        yield_arity: yield_arity,
-        yield_seen: yield_seen,
+        top_fn_names,
+        vectors,
+        wasi_ops,
+        wide_fn_names,
+        yield_arity,
+        yield_seen,
       }
     },
   }
@@ -7808,6 +7808,12 @@ fn emit_expr(expr) = match expr {
         wat_emit("    (i32.and)\n")
       } else if import_name == "i32_shl" {
         wat_emit("    (i32.shl)\n")
+      } else if import_name == "i32_shr_u" {
+        wat_emit("    (i32.shr_u)\n")
+      } else if import_name == "i32_shr_s" {
+        wat_emit("    (i32.shr_s)\n")
+      } else if import_name == "i32_clz" {
+        wat_emit("    (i32.clz)\n")
       } else if import_name == "alloc" {
         emit_alloc_top()
       } else if import_name == "heap_mark" {
@@ -10402,22 +10408,21 @@ fn emit_closure_fill(captures, lines, rec_local: String) = {
 // sets, and the mint — its record's handle, its table entry, its captures
 // and `<~` lines, and the lane pairs a mint under a reading writes beside
 // its captures.
-type MintedBinding
-  = MintedBinding({caps: [LowExpr], entry: String, lines: [(Int, Int, LineHome)], pairs: [LowExpr], record: Int, reg: String})
+type MintedBinding = {
+  caps: [LowExpr],
+  entry: String,
+  lines: [(Int, Int, LineHome)],
+  pairs: [LowExpr],
+  record: Int,
+  reg: String,
+}
 
 // The closure a statement binds, read whole, or None for any other
 // statement.
 fn minted_binding(s) = match s {
   LLet(h, name, val) => match closure_mint(val) {
     Some((mint, pairs)) => match mint {
-      LMakeClosure(ch, LFn(entry, _, _, _, _, lines), caps) => Some(MintedBinding({
-        caps: caps,
-        entry: entry,
-        lines: lines,
-        pairs: pairs,
-        record: ch,
-        reg: local_wat_name(name, llet_repr(h, val)),
-      })),
+      LMakeClosure(ch, LFn(entry, _, _, _, _, lines), caps) => Some(MintedBinding({caps, entry, lines, pairs, record: ch, reg: local_wat_name(name, llet_repr(h, val))})),
       _ => None,
     },
     None => None,

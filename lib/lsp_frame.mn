@@ -108,7 +108,7 @@ fn parse_content_length(hdr_str) = {
   let kw_len = byte_len(kw)
   let pos = find_header(hdr_str, hdr_len, kw, kw_len, 0)
   if pos < 0 {
-    0 - 1
+    -1
   } else {
     let value_start = skip_header_spaces(hdr_str, hdr_len, pos + kw_len)
     parse_int_from_pos(hdr_str, hdr_len, value_start, 0)
@@ -116,7 +116,7 @@ fn parse_content_length(hdr_str) = {
 }
 
 fn find_header(src: String, src_len, kw: String, kw_len, pos) = if pos + kw_len > src_len {
-  0 - 1
+  -1
 } else if header_matches_at(src, kw, kw_len, pos, 0) {
   pos
 } else {

@@ -402,7 +402,7 @@ fn attach_comment_weave(ref tokens, h_from) = {
 // token's end line for the trailing test. The run is a NOMINAL record —
 // the brand pins the element type at every generic reader (the bsearch
 // walkers compile once; an open element row floored their field reads).
-type CwRun = CwRun({end_line: Int, run_span: Span, start_line: Int, text: String, trailing: Bool})
+type CwRun = {end_line: Int, run_span: Span, start_line: Int, text: String, trailing: Bool}
 
 fn cw_collect_runs(ref tokens, i, prev_line, acc) -> [CwRun] = if i >= len(tokens) {
   acc
@@ -411,13 +411,8 @@ fn cw_collect_runs(ref tokens, i, prev_line, acc) -> [CwRun] = if i >= len(token
     TComment(first) => match span_at(tokens, i) {
       Span(sl, _, _, _) => match cw_join_run(tokens, i + 1, first, sl) {
         (text, endl, j) => {
-          let run = CwRun{
-            end_line: endl,
-            run_span: span_at(tokens, i),
-            start_line: sl,
-            text: text,
-            trailing: prev_line == sl,
-          }
+          let run =
+            CwRun{end_line: endl, run_span: span_at(tokens, i), start_line: sl, text, trailing: prev_line == sl}
           cw_collect_runs(tokens, j, prev_line, push(acc, run))
         },
       },
@@ -1534,7 +1529,7 @@ fn parse_handler_state_fields(ref tokens, pos) = {
   let p_eq = expect(tokens, skip_ws(tokens, pos + 1), TEq)
   match parse_header_expr(tokens, skip_ws(tokens, p_eq)) {
     (init, p_after_init) => {
-      let field = {init: init, name: name}
+      let field = {init, name}
       let p_next = skip_ws(tokens, p_after_init)
       if at(tokens, p_next, TComma) {
         match parse_handler_state_fields(tokens, skip_ws(tokens, p_next + 1)) {
@@ -1562,7 +1557,7 @@ fn parse_resume_state_updates(ref tokens, pos) = {
   let p_eq = expect(tokens, skip_ws(tokens, pos + 1), TEq)
   match parse_expr(tokens, skip_ws(tokens, p_eq)) {
     (init, p_after_init) => {
-      let field = {init: init, name: name}
+      let field = {init, name}
       // The comma PROBE returns the pre-probe position on a miss (the
       // non-consuming probe law): the trailing marker on an update line —
       // the drift-audit suppressions live exactly there — stays for the
@@ -1620,7 +1615,7 @@ fn parse_handler_arms(ref tokens, pos) = {
                 // Per Ω.5 frame-record discipline + H1.4 future wiring,
                 // arms are records keyed by field name. New fields (e.g.,
                 // arm_fn_idx for handler arm fn indexing) land additively.
-                let arm = {args: args, body: body, op_name: op_name}
+                let arm = {args, body, op_name}
                 // (handler_arm_op_name below is this record's typed projection)
                 ([arm] ++ rest, p7)
               },
@@ -1974,19 +1969,8 @@ fn postfix_loop(ref tokens, e, first: ValidSpan, pos, slot) = match kind_at(toke
         },
       }
       if is_named_record {
-        let type_name = match body {
-          NExpr(VarRef(n)) => n,
-          _ => // drift-audit: ignore — unreachable: is_named_record proved body is VarRef; "" defensive
-          "",
-        }
         match parse_named_record_body(tokens, pos + 1) {
-          (sorted, p2) => postfix_loop(
-            tokens,
-            nexpr(NamedRecordExpr(type_name, sorted), upto(tokens, first, p2)),
-            first,
-            p2,
-            slot
-          ),
+          (sorted, p2) => postfix_loop(tokens, nexpr(NamedRecordExpr(e, sorted), upto(tokens, first, p2)), first, p2, slot),
         }
       } else {
         (e, pos)

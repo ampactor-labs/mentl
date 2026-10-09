@@ -671,21 +671,9 @@ fn query_sites(entry_module: String, question) =
 fn own_sites_of(question, m: String) = own_sites(ask(parse_query_string(m, question)), m)
 
 // The program's own sites are the located answer kept to its module — the
-// same `located_answer` the board bounds, so which questions are answered by
-// place is said once (this was a second enumeration of the result kinds).
-fn own_sites(answer, m: String) = map_option(sites_in_module(m, ??), located_answer(answer))
-
-fn sites_in_module(m: String, found) = match found {
-  (label, sites) => (label, filter(site_in_module(m, ??), sites)),
-}
-
-fn site_in_module(m: String, site) = match site {
-  (sm, _) => sm == m,
-}
-
-fn name_site(named) = match named {
-  (_, site) => site,
-}
+// same `sites_in` a scoped question reads and the same `located_answer` the
+// board bounds, so which answers are located is said once.
+fn own_sites(answer, m) = located_answer(sites_in(m, answer))
 
 // The diagnostic bank keeps every report its install encloses, as the
 // structured fact the report carried: the kind, the module it is about,
@@ -1699,7 +1687,11 @@ fn parse_query_string(scope: String, q) = {
     [] => QUnknown(q),
     [w0] => build_question(classify_query_verb(w0), "", q, scope),
     [w0, w1] => build_question(classify_query_verb(w0), w1, q, scope),
-    _ => build_question(classify_query_verb(query_head(words)), query_last(words), q, scope),
+    _ => if nth(words, len(words) - 2, "") == "in" {
+      QIn(parse_query_string(scope, join(" ", take(len(words) - 2, words))), last(words))
+    } else {
+      build_question(classify_query_verb(query_head(words)), query_last(words), q, scope)
+    },
   }
 }
 

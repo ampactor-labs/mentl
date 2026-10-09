@@ -1075,7 +1075,7 @@ fn gate_row(g: Gate) = g.row
 
 fn gate_reason(g: Gate) = g.reason
 
-fn mk_gate(row, reason) = Gate{reason: reason, row: row}
+fn mk_gate(row, reason) = Gate{reason, row}
 
 // The gates a WRITE into `cell` must satisfy: the cell's own and its
 // root's (a single-edge alias chases to the terminal that installs

@@ -45,8 +45,13 @@ import verify
 // The String pin is an Intent Boundary: unpinned, module_name's only uses
 // are splices, the fn generalizes, and a free-typed caller routes the word
 // floor — paths minted as pointer numerals.
-fn module_probes(module_name: String) =
-  ["{module_name}.mn", "src/{module_name}.mn", "lib/{module_name}.mn", "/mentl-home/src/{module_name}.mn", "/mentl-home/lib/{module_name}.mn"]
+fn module_probes(module_name: String) = [
+  "{module_name}.mn",
+  "src/{module_name}.mn",
+  "lib/{module_name}.mn",
+  "/mentl-home/src/{module_name}.mn",
+  "/mentl-home/lib/{module_name}.mn"
+]
 
 // The file a module's name resolves to: the first probe that exists, or
 // None. A module with no file has no path, so nothing reads or writes one
@@ -490,10 +495,15 @@ fn driver_scan_of(ref modules) = {
   let paths = map(module_path_of, modules)
   map(
     (entry) => match module_source_of(entry) {
-      Some(text) => (module_path_of(entry), str_hash(text), filter(
-        (dep_path) => contains_module(paths, dep_path),
-        flat_map(module_path_list, module_imports_of(entry))
-      ), module_name_of(entry)),
+      Some(text) => (
+        module_path_of(entry),
+        str_hash(text),
+        filter(
+          (dep_path) => contains_module(paths, dep_path),
+          flat_map(module_path_list, module_imports_of(entry))
+        ),
+        module_name_of(entry)
+      ),
       None => (module_path_of(entry), 0, [], module_name_of(entry)),
     },
     modules
@@ -787,13 +797,16 @@ fn cone_module(scan, entry) = match entry {
 fn cone_buckets(cone) = map(cone_bucket, cone)
 
 fn cone_bucket(entry) = match entry {
-  (path, _, _, name) => (path, match module_decls_now(name) {
-    Some(decls) => decls,
-    None => {
-      report(EInternalInvariant("the cone's module {name} has no node after its judgment", span_zero()))
-      []
-    },
-  }),
+  (path, _, _, name) => (
+    path,
+    match module_decls_now(name) {
+      Some(decls) => decls,
+      None => {
+        report(EInternalInvariant("the cone's module {name} has no node after its judgment", span_zero()))
+        []
+      },
+    }
+  ),
 }
 
 // The session's cone: driver_incremental re-judges the changed cone inside a
@@ -857,10 +870,13 @@ fn driver_collect_dag_with_deps(ref entry_module) = {
   let modules = driver_collect_dag(entry_module)
   let paths = map(module_path_of, modules)
   map(
-    (entry) => (entry, filter(
-      (dep_path) => contains_module(paths, dep_path),
-      flat_map(module_path_list, module_imports_of(entry))
-    )),
+    (entry) => (
+      entry,
+      filter(
+        (dep_path) => contains_module(paths, dep_path),
+        flat_map(module_path_list, module_imports_of(entry))
+      )
+    ),
     modules
   )
 }

@@ -11,9 +11,9 @@
 // written back into the function type for lower/query to read live.
 import types
 
-import strings
-
 import imap
+
+import strings
 
 // affine_ledger — the Consume handler. Installed per-function body.
 // State tracks consumed-names and the first-use span (for diagnostic

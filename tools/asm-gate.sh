@@ -2,7 +2,7 @@
 # tools/asm-gate.sh — the medium assembles its own output (L-F, 2026-10-06).
 #
 # `mentl asm` (src/asm.mn) projects the emitter's WAT to the module's bytes.
-# This gate holds the projection to four things, each a leg that can fail:
+# This gate holds the projection to three things, each a leg that can fail:
 #
 #   1. coverage — tests/asm/coverage.wat (every form the assembler's table
 #      knows, folded and flat, and the literal edges of every number type)
@@ -14,8 +14,10 @@
 #   3. self — the assembler under test projects the boot's own m2.wat (the
 #      wheel compiled by the pinned boot, .build/m2cache) to the bytes the
 #      gates assembled m2.wasm to; with WABT present, to wat2wasm's bytes too.
-#   4. fixpoint — that projected module instantiates and compiles the wheel
-#      to exactly the text m2.wasm compiles it to (the march's m3).
+#
+# A projected module byte-identical to m2.wasm compiles what m2.wasm compiles,
+# so whether the assembled wheel reproduces itself is the march's question
+# (m3 == m4), asked of the assembler once the march assembles through it.
 #
 # Usage: bash tools/asm-gate.sh [m2|boot|<compiler.wasm>]   (default m2: the
 # candidate's own assembler — the wheel this checkout compiles to). The
@@ -101,21 +103,6 @@ if asm_with "$A" "$M2/m2.wat" "$D/m2.asm.wasm" "$D/m2.asm.err"; then
   fi
 else
   echo "✗ self: the assembler refused or trapped on m2.wat: $(grep -v '^ ' "$D/m2.asm.err" | head -2)"; fail=1
-fi
-
-# ── 4 · fixpoint: the projected module compiles the wheel ─────────────────
-if [ -s "$D/m2.asm.wasm" ] && [ "$fail" = 0 ]; then
-  if wt_wheel_root "$D/m2.asm.wasm" "$D/m3.asm.wat" "$D/m3.asm.err" \
-      "$D/m3.asm.time" "" "" compile src/main.mn; then
-    read -r secs kb < "$D/m3.asm.time"
-    if cmp -s "$D/m3.asm.wat" "$M2/m2.wat"; then
-      echo "✓ fixpoint: the projected m2 compiles src/main.mn to the same $(wc -l < "$M2/m2.wat") lines as boot (${secs}s, peak ${kb} KB)"
-    else
-      echo "✗ fixpoint: the projected m2's compile differs from boot's $(cmp "$D/m3.asm.wat" "$M2/m2.wat" 2>&1 | head -1)"; fail=1
-    fi
-  else
-    echo "✗ fixpoint: the projected m2 refused to compile src/main.mn: $(head -2 "$D/m3.asm.err" | tr '\n' ' ')"; fail=1
-  fi
 fi
 
 if [ "$fail" = 0 ]; then

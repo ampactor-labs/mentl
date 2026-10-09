@@ -160,7 +160,7 @@ handler infer_ctx with stack = [], arm_stack = [], install_marks = [], mint_ceil
       accumulated_row: mk_ef_pure(),
       answer_handle: answer_h,
       declared: effs,
-      fn_span: fn_span,
+      fn_span,
       params: [],
       row_handle: h,
     }
@@ -1511,12 +1511,12 @@ fn parse_modules(ref mods) = mods |> map(parse_one_module) |> flatten
 fn parse_one_module(m) = match m {
   (path, imports, text) => {
     let mspan = Span(1, 0, count_lines(text) + 2, 0)
-    let mh = match mint_node(NModule({decls: [], imports: imports, path: path, span: mspan}), mspan) {
+    let mh = match mint_node(NModule({decls: [], imports, path, span: mspan}), mspan) {
       N(_, _, h) => h,
     }
     graph_module_enter(mh)
     let stmts = lex(text) |> parse_program |> import_set
-    graph_register_node(mh, NModule({decls: stmts, imports: imports, path: path, span: mspan}))
+    graph_register_node(mh, NModule({decls: stmts, imports, path, span: mspan}))
     stmts
   },
 }
@@ -3599,9 +3599,19 @@ fn infer_expr(ref node) = match node {
       // normally so its own-param moves record (the splice scanners'
       // false unconsumed, healed by the shared shape gate).
       infer_borrowed_read(scrutinee)
+      // The arms meet in a result cell the judgment mints, and the match
+      // node reads it, as an if's node reads its branches: an arm unified
+      // into the node itself made the node the class's root, carrying the
+      // reason the parser minted it with.
+      let result_h = mint(Located(span, Inferred("match result")))
       match scrutinee {
-        N(_, _, sh) => infer_match_arms(arms, sh, handle, span),
+        N(_, _, sh) => infer_match_arms(arms, sh, result_h, span),
       }
+      graph_bind(
+        handle,
+        TVar(result_h),
+        Located(span, MatchBranch(Inferred("arm body"), Inferred("result")))
+      )
     },
     NExpr(MakeListExpr(elems)) => {
       infer_expr_list(elems)
@@ -3781,24 +3791,31 @@ fn infer_expr(ref node) = match node {
         },
       }
     },
-    NExpr(NamedRecordExpr(type_name, fields)) => {
-      // H2.3: nominal record literal. Look up the type name's
-      // RecordSchemeKind to validate the field set and unify each
-      // value against the declared field type. Bind the handle to
-      // TName(type_name, []).
+    NExpr(NamedRecordExpr(head, fields)) => {
+      // A nominal record literal: the head names a record type, whose
+      // declared fields the literal's are checked against, and the head —
+      // a reference to that type — is the type it names.
       infer_record_field_values(fields)
       inf_add_row_at(handle, construction_row())
-      match env_lookup(type_name) {
-        None => report(EMissingVariable("record type: {type_name}", span)),
-        Some(entry) => match entry {
-          (_, _, kind) => match kind {
-            RecordSchemeKind(declared) => {
-              check_nominal_record_fields(declared, fields, type_name, span)
-              graph_bind(handle, TName(type_name, []), Located(span, Inferred("nominal record literal")))
+      match head {
+        N(NExpr(VarRef(type_name)), head_span, head_h) => match env_lookup(type_name) {
+          None => report(EMissingVariable("record type: {type_name}", head_span)),
+          Some(entry) => match entry {
+            (_, _, kind) => match kind {
+              RecordSchemeKind(declared) => {
+                check_nominal_record_fields(declared, fields, type_name, span)
+                graph_bind(
+                  head_h,
+                  TName(type_name, []),
+                  Located(head_span, Inferred("the record type '{type_name}'"))
+                )
+                graph_bind(handle, TName(type_name, []), Located(span, Inferred("nominal record literal")))
+              },
+              _ => report(ENotARecordType(type_name, head_span)),
             },
-            _ => report(ENotARecordType(type_name, span)),
           },
         },
+        N(body, head_span, head_h) => report(ENotARecordType("a head that names no type", head_span)),
       }
       tag_alloc_join(handle, record_field_handles(fields))
     },
@@ -5700,7 +5717,7 @@ fn handler_e_r(right) = match callee_name(right) {
         // edge), never a stored field — arms→op→EffectOpScheme carries it.
         // The config TParams ride along for the residual's install read, and
         // the remainder world for the install's judgment of its gates.
-        Some({config: config, ename: derive_handler_ename(arms, name), residual: r, world: w}),
+        Some({config, ename: derive_handler_ename(arms, name), residual: r, world: w}),
         _ => None,
       },
     },
@@ -7320,11 +7337,11 @@ fn numeric_demand(lh, op, span: ValidSpan) = {
   let root = graph_chase_handle(lh)
   match graph_chase(root) {
     GNode(kind, _) => match kind {
-      NFree(_) => numeric_gate_install(root, NumericGate({op: op, span: span}), span),
+      NFree(_) => numeric_gate_install(root, NumericGate({op, span}), span),
       NBound(ty) => match arith_operand_class(ty) {
         AoWord => (),
         AoAggregate => report(EArithOnAggregate("`{binop_to_str(op)}` on {show_type(ty)}", span)),
-        AoUnproven(v) => numeric_gate_install(v, NumericGate({op: op, span: span}), span),
+        AoUnproven(v) => numeric_gate_install(v, NumericGate({op, span}), span),
       },
       NErrorHole(_) => (),
       _ => (),
@@ -7691,13 +7708,13 @@ type AgeScopeKind = AgeFn([Int]) | AgeClosure | AgeArm(String, [Int])
 // A scope being judged: its kind, the lets it bound with the depth of the
 // arenas it had opened around each, the depth now, and the parameter stores
 // it has noted.
-type AgeScope = AgeScope({depth: Int, kind: AgeScopeKind, lets: [(Int, Int)], stores: [(Int, [Int])]})
+type AgeScope = {depth: Int, kind: AgeScopeKind, lets: [(Int, Int)], stores: [(Int, [Int])]}
 
 // A declared function's claim, published where its judgment ends: the
 // parameters its result may be (Some([]) a fresh result, None one older than
 // the call), and the parameters it stores into, by position, with the cells
 // a move demands.
-type AgeSummary = AgeSummary({returns: Option([Int]), stores: [(Int, [Int])]})
+type AgeSummary = {returns: Option([Int]), stores: [(Int, [Int])]}
 
 effect StoreAges {
   ages_open(AgeScopeKind)
@@ -7709,7 +7726,7 @@ effect StoreAges {
 }
 
 handler store_ages with scopes = [], fns = smap_new() {
-  ages_open(kind) => resume() with scopes = scopes ++ [AgeScope({depth: 0, kind: kind, lets: [], stores: []})],
+  ages_open(kind) => resume() with scopes = scopes ++ [AgeScope({depth: 0, kind, lets: [], stores: []})],
   ages_pop() => resume() with scopes = drop_last(scopes),
   ages_top() => resume(if len(scopes) == 0 { None } else { Some(last(scopes)) }),
   ages_put(s) => resume() with scopes = drop_last(scopes) ++ [s],
@@ -7750,7 +7767,7 @@ fn ages_close_fn(name: String, param_handles, body_h) = match ages_top() {
 }
 
 fn ages_claim_fixpoint(name: String, scope, body_h, params, stores, claim) = {
-  ages_publish(name, AgeSummary({returns: claim, stores: stores}))
+  ages_publish(name, AgeSummary({returns: claim, stores}))
   let next = returns_of(store_targets(body_h, scope), params)
   if same_claim(next, claim) {
     ()
@@ -8474,7 +8491,7 @@ fn bind_pcon_subpats(params, sub_pats, whole, span: ValidSpan, reason, ctor_name
         // refinement — owed by every construction where it was built.
         graph_binder_note(
           sub_h,
-          PartFact({declared: refined_or_none(param_ty(param)), step: PartCtor(ctor_name, i), whole: whole})
+          PartFact({declared: refined_or_none(param_ty(param)), step: PartCtor(ctor_name, i), whole})
         )
         infer_pat(sub_pat, sub_h, span)
       },
@@ -8487,8 +8504,7 @@ fn refined_or_none(ty) = if ty_carries_refinement(ty) { Some(ty) } else { None }
 
 // A destructured part's binder: the edge from the part to the whole it
 // was destructured from, where nothing declares the part's contract.
-fn note_part(sub_h, whole, step) =
-  graph_binder_note(sub_h, PartFact({declared: None, step: step, whole: whole}))
+fn note_part(sub_h, whole, step) = graph_binder_note(sub_h, PartFact({declared: None, step, whole}))
 
 fn infer_match_arms(arms, scrut, result_h, span: ValidSpan) = {
   // Match arms are ALTERNATIVE — exactly one runs — so an `own` value

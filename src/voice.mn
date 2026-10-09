@@ -95,7 +95,7 @@ type EnvEntry = EnvEntry(String, Binding, Reason, SchemeKind)
 // it here. Mentl's Unlock tentacle reads this to surface "this
 // handler is why `Alloc` is absorbed here."
 // Primitive: #2 + #4.
-type HandlerEntry = HandlerEntry({absorbs: EffRow, install_reason: Reason, install_span: Span, name: String})
+type HandlerEntry = {absorbs: EffRow, install_reason: Reason, install_span: Span, name: String}
 
 // Every speak op receives a Situation. All 13 fields are load-bearing.
 // No external state consulted — stateless-per-turn except
@@ -106,8 +106,23 @@ type HandlerEntry = HandlerEntry({absorbs: EffRow, install_reason: Reason, insta
 // turn.
 // Primitives: #1 (graph), #2 (handlers_installed), #4 (rows),
 // #5 (ownership), #6 (refinements), #7 (gradient_next), #8 (reason).
-type Situation
-  = Situation({env_snapshot: [EnvEntry], facts: TopicFacts, gradient_next: Teaching, handle: Option(Int), handlers_installed: [HandlerEntry], ownership_at_topic: Option(Ownership), prior_turn_tentacle: Option(Tentacle), prior_turn_topic: Option(Topic), reason_at_topic: Option(Reason), refinements: [Predicate], register: Register, row_at_topic: Option(EffRow), row_declared: Option(EffRow), tentacle: Tentacle, topic: Topic})
+type Situation = {
+  env_snapshot: [EnvEntry],
+  facts: TopicFacts,
+  gradient_next: Teaching,
+  handle: Option(Int),
+  handlers_installed: [HandlerEntry],
+  ownership_at_topic: Option(Ownership),
+  prior_turn_tentacle: Option(Tentacle),
+  prior_turn_topic: Option(Topic),
+  reason_at_topic: Option(Reason),
+  refinements: [Predicate],
+  register: Register,
+  row_at_topic: Option(EffRow),
+  row_declared: Option(EffRow),
+  tentacle: Tentacle,
+  topic: Topic,
+}
 
 // differs from row_at_topic → subsumption diag
 //
@@ -132,7 +147,7 @@ type Situation
 // row_declared) are NOT duplicated here — those stay on Situation
 // and silence_predicate reads them directly. TopicFacts holds only
 // the three truly-new computations.
-type TopicFacts = TopicFacts({error_code_at: Option(String), is_hole: Bool, nested_call_depth: Int})
+type TopicFacts = {error_code_at: Option(String), is_hole: Bool, nested_call_depth: Int}
 
 // TentPropose → TopicHandle(h): handle_is_hole(h)
 //
@@ -218,7 +233,7 @@ type VoiceLine = Silence | VoiceLine(Tentacle, FormKind, [Slot], Modifier)
 // keeps the last N turns, older entries drop. Ring size is a
 // handler-install parameter, not a substrate constant (configured
 // at handler install per H3.1 parameterized effects).
-type TurnRecord = TurnRecord({line: VoiceLine, span_at: Span, tentacle: Tentacle, topic: Topic})
+type TurnRecord = {line: VoiceLine, span_at: Span, tentacle: Tentacle, topic: Topic}
 
 // Path wraps a String. Nominal — distinguishes file-system paths from
 // arbitrary strings at the type layer. Construction is explicit:
@@ -829,6 +844,7 @@ fn tentacle_for_question(question) with Pure = match question {
   QOwnership(_) => TentTrace,
   QWhy(_) | QSubstChain(_) => TentWhy,
   QVerifyDebt | QSmt => TentVerify,
+  QIn(inner, m) => tentacle_for_question(inner),
 }
 
 // question_span — extract Span from Question. Only QTypeAt carries a
@@ -837,6 +853,7 @@ fn tentacle_for_question(question) with Pure = match question {
 // exhaustive over Question via pattern alternation.
 fn question_span(question) = match question {
   QTypeAt(s) => s,
+  QIn(inner, m) => question_span(inner),
   QTypeOf(_) | QIntentOf(_) | QUnresolved | QSubstChain(_) | QEffects(_) | QOwnership(_) | QWhy(_) | QRefsOf(_) | QStateWrites(_) | QVerifyDebt | QSmt | QHandlerProvider(_) | QFlowOf(_) | QCensus(_) | QCensusRoster | QDecls | QWhere(_, _) | QVariants(_) | QModules | QImports | QUnreferenced | QUnreachable | QPerforms | QEnv | QOrphanClaims | QCost | QGhosts | QHeads | QUnknown(_) => span_zero(),
 }
 
@@ -1196,8 +1213,7 @@ handler mentl_voice_default with caret_now = Caret(0, Inferred("session start"))
       Silence => TentQuery,
       VoiceLine(t, _, _, _) => t,
     }
-    let new_turn =
-      TurnRecord({line: voiceline, span_at: span_zero(), tentacle: tentacle, topic: TopicHandle(0)})
+    let new_turn = TurnRecord({line: voiceline, span_at: span_zero(), tentacle, topic: TopicHandle(0)})
     resume() with prior_turn = Some(new_turn), turns = [new_turn] ++ turns
   },
   run_query(question) => // ─── Run ops — MV.2.e.Run: run_query here; run_compile / run_check /

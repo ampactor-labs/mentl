@@ -127,8 +127,8 @@ fn sin_series(r2: Float, n: Int, term: Float, acc: Float) -> Float with Pure = i
 // to f64 precision).
 fn tanh(x: Float) -> Float with Pure = if x >= 20.0 {
   1.0
-} else if x < 0.0 - 20.0 {
-  0.0 - 1.0
+} else if x < -20.0 {
+  -1.0
 } else {
   let e2 = exp(2.0 * x)
   (e2 - 1.0) / (e2 + 1.0)

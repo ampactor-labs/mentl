@@ -69,7 +69,7 @@ fn store_u16(p: Addr, v: Int) = {
 // A sample in [-1, 1] as the 16-bit signed integer the file carries. The
 // clamp is the last line of defence — the chain upstream keeps the signal
 // inside the unit range, and `float_to_int` truncates toward zero.
-fn pcm16(x: Float) -> Int with Pure = float_to_int(clamp(x, 0.0 - 1.0, 1.0) * 32767.0)
+fn pcm16(x: Float) -> Int with Pure = float_to_int(clamp(x, -1.0, 1.0) * 32767.0)
 
 // Write one 16-bit sample at address `p`: a negative sample is its
 // two's-complement 16-bit pattern.

@@ -138,20 +138,7 @@ handler mentl_default with performed = [] {
 fn gradient_next(handle, performed) = match graph_node_body(handle) {
   NStmt(FnStmt(name, params, retty, effs, body)) => match graph_chase(handle) {
     GNode(NBound(ty), anchor) => match ty {
-      TFun(_, ret, _) => decl_teaching(
-        Decl({
-          anchor: anchor,
-          body: body,
-          effs: effs,
-          handle: handle,
-          name: name,
-          params: params,
-          ret: ret,
-          retty: retty,
-          ty: ty,
-        }),
-        performed
-      ),
+      TFun(_, ret, _) => decl_teaching(Decl({anchor, body, effs, handle, name, params, ret, retty, ty}), performed),
       _ => TeachNone,
     },
     _ => TeachNone,
@@ -162,8 +149,17 @@ fn gradient_next(handle, performed) = match graph_node_body(handle) {
 // One declaration as the gradient reads it: its handle and name, the
 // signature it was written with, the type it was judged at, and the reason
 // its suggestions anchor to.
-type Decl
-  = Decl({anchor: Reason, body: Node, effs: [(RowTerm, Bool, EConn)], handle: Int, name: String, params: [TParam], ret: Ty, retty: Node, ty: Ty})
+type Decl = {
+  anchor: Reason,
+  body: Node,
+  effs: [(RowTerm, Bool, EConn)],
+  handle: Int,
+  name: String,
+  params: [TParam],
+  ret: Ty,
+  retty: Node,
+  ty: Ty,
+}
 
 fn decl_teaching(d, performed) = match d {
   Decl(f) => {
@@ -589,13 +585,13 @@ fn prove_precondition(f, owed, b, i, name: String, alias) = match alias {
       (discharged, broken, refuted, opened) => if discharged == 0 || broken > 0 {
         []
       } else {
-        let ann = ARefined({alias: aname, contract: contract, param: name})
+        let ann = ARefined({alias: aname, contract, param: name})
         [
           Proven(
             SiteParam(i),
             AnnotationSuggestion(
               ann,
-              Leverage({absences: 0, discharged: discharged, locks: [], opened: opened, refuted: refuted}),
+              Leverage({absences: 0, discharged, locks: [], opened, refuted}),
               suggestion_reason(ann)
             )
           )
@@ -778,13 +774,13 @@ fn prove_return(f, resting, alias) = match alias {
     } ~> arena
     match counts {
       (body_holds, discharged, refuted) => if body_holds && discharged > 0 {
-        let ann = AReturns({alias: aname, contract: contract})
+        let ann = AReturns({alias: aname, contract})
         [
           Proven(
             SiteReturn,
             AnnotationSuggestion(
               ann,
-              Leverage({absences: 0, discharged: discharged, locks: [], opened: 0, refuted: refuted}),
+              Leverage({absences: 0, discharged, locks: [], opened: 0, refuted}),
               suggestion_reason(ann)
             )
           )

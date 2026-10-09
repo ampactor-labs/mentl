@@ -2163,27 +2163,22 @@ fn print_error_and_help(msg) = {
 // The verb catalog — ONE surface projected from the verb table, so the help a
 // user reads can never disagree with the parser that reads them. The bare
 // `mentl` line (the directory projection, not a named verb) frames the list;
-// every verb line is verb_specs()[i] rendered uniformly.
+// every verb line is one spec rendered uniformly.
 fn verb_catalog() =
-  "the verbs:\n  mentl                          — project this directory (a pipe compiles stdin)\n" ++ catalog_lines(verb_specs(), 0, len(verb_specs()), "") ++ "\na target is a module name or a file path, from any directory.\n" ++ "the surface: PLAN.md §11 (the production bar) · docs/SYNTAX.md (the language)\n"
+  "the verbs:\n  mentl                          — project this directory (a pipe compiles stdin)\n" ++ (verb_specs() |> map(catalog_line) |> str_concat_all) ++ "\na target is a module name or a file path, from any directory.\n" ++ "the surface: PLAN.md §11 (the production bar) · docs/SYNTAX.md (the language)\n"
 
 // One catalog line per spec: `  mentl <name> <hint>` padded to a column, then
-// `— <desc>`. The `++` accumulator IS the O(1) concat rope (§4①), not a loop
-// re-alloc — the string grows by pointer, never by copy.
-fn catalog_lines(specs, i, n, acc) = if i >= n {
-  acc
-} else {
-  match specs[i] {
-    VerbSpec(name, hint, _, desc) => {
-      let usage = if byte_len(hint) > 0 { name ++ " " ++ hint } else { name }
-      catalog_lines(specs, i + 1, n, acc ++ "  mentl " ++ pad_right(usage, 25) ++ "— " ++ desc ++ "\n")
-    },
-  }
+// `— <desc>`.
+fn catalog_line(spec) = match spec {
+  VerbSpec(name, hint, build, desc) => {
+    let usage = if byte_len(hint) > 0 { name ++ " " ++ hint } else { name }
+    "  mentl " ++ pad_right(usage, 25) ++ "— " ++ desc ++ "\n"
+  },
 }
 
-// pad_right — right-pad with spaces to width w (the alignment column). A no-op
-// once s already reaches w. Small, bounded, one home for the help alignment.
-fn pad_right(s, w) = if byte_len(s) >= w { s } else { pad_right(s ++ " ", w) }
+// Right-pad with spaces to width w (the alignment column); a string already
+// that wide is itself.
+fn pad_right(s, w) = s ++ join("", repeat(w - byte_len(s), " "))
 
 fn print_help() = eprint_string(verb_catalog())
 

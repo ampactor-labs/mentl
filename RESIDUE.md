@@ -1010,8 +1010,9 @@ there after lib prose reached a user's stderr, as its own comment records.
 Nobody compiling their file wants the prelude's prose warnings.
 **THE TRAP WAS THAT THE MAINTAINER HAD NO UNSUPPRESSED VIEW, AND THE ONE
 UNSUPPRESSED COMPILE HAD NO MODULES.** `tools/verify.sh` grepped
-`.build/m2cache/m2.err`, and `.build/m2cache/wheel.mn` is the whole wheel
-CONCATENATED INTO ONE FILE — 255 `import` lines inside a single module. One
+`.build/m2cache/m2.err`, and the wheel the m2 cache compiled was then the whole
+wheel CONCATENATED INTO ONE FILE — 255 `import` lines inside a single module
+(M9 made every compile the import DAG from an entry, and the file is gone). One
 module means `graph_module_of` is uniform and every name is local, so a
 cross-module reference problem is UNCONSTRUCTIBLE there. `comment-refs: 0` was
 not a measurement that happened to read zero; it was a measurement that could
@@ -10331,7 +10332,13 @@ each node's constructor and its non-child payload (operator, name, literal,
 field) folded over `expr_child_handles` and its statement and pattern
 siblings, spans and handles excluded. CLOSE: the fingerprint compare refuses
 a render that moved an operand, with a fixture that hands fmt a shape the
-render gets wrong on purpose.
+render gets wrong on purpose. The census it replaces is a multiset, so each
+canonicalization states the atoms it removes (`lifted_atoms`, src/format.mn):
+a duplicate import, a lifted `0 - 5`, and since L-F's first pin a nominal
+record's repeated name (`type X = X({…})` renders `type X = {…}`) and a punned
+field (`{at: at}` renders `{at}`). The fingerprint makes the statements
+unnecessary — a render that drops a name changes the tree — and deletes them
+with the census.
 
 THE 2026-10-06 PROGRAM, landing N2 (PLAN §11, THE STANDING CURSOR) — the program's own text, moved here at the §0.3 integration (the whole program is at commit 42a94dc0):
 
@@ -13193,7 +13200,15 @@ first declaration of ANY kind for its address — a block's `let` included —
 so it printed the prelude's `lines` beside a local `let lines` in the
 emitter. `where` now reads the one module-level declaration (`module_decl`,
 src/query.mn; `at_module_level`, src/graph.mn); the emit's index is the
-remainder, and the handle-keyed column dissolves both.
+remainder, and the handle-keyed column dissolves both. AND THE LINK IS A
+UNION-FIND EDGE TODAY, measured 2026-10-09: `graph_link_of` answers a
+reference's binder by reading the reference's cell as `NBound(TVar(b))`, so
+which of two free roots survives a unification is load-bearing — a union that
+kept the judged root over the parser's (built to end Why walks at the cell
+the judgment minted) linked binders to their uses, and m2 trapped reading a
+handle past the spine in `value_leaves`. One edge carries "these are equal"
+and "this use reads that binder"; the reference link records the second at
+the one writer, and the union is free to choose its root.
 
 THE 2026-10-06 PROGRAM, landing M1 (the reference link, the root of M2–M12) (PLAN §11, THE STANDING CURSOR) — the program's own text, moved here at the §0.3 integration (the whole program is at commit 42a94dc0):
 
@@ -19404,6 +19419,26 @@ BORN 2026-10-06 — the 2026-10-06 program, landing L-F (PLAN §11, THE STANDING
   programs; WABT out of the shim, the march and every gate; the fixpoint seal on
   the page; "download .wasm" and "run".
 
+NOT LANDED. The boot carries `mentl asm` since L-F's first pin (2026-10-09):
+src/asm.mn projects the boot's own m2.wat (21,080,357 bytes) to the module
+wat2wasm writes from it, byte for byte, in 1.45 s at a 289 MB peak; projects
+tests/asm/coverage.wat (every form its table knows, folded and flat, and each
+number type's literal edges) to the recorded module; and refuses ten malformed
+texts naming what each holds (`bash tools/asm-gate.sh`). It is written as a
+Mentl program: tokens are spans with a kind, an open's token is written once
+when its `)` says where the form ends, the index is a declared record, every
+op parameter is named, a refusal never returns, and long division, powers and
+rounding read their data; it owns no ghost, no costume and no open obligation
+(`mentl query src/main.mn "ghosts in asm"`, `"census iteration in asm"`, `"smt
+in asm"`). From that pin the gates assemble through the boot's verb, since
+`wt_asm`'s probe finds it. The pin also carries the word's shifts and count
+(`i32_shr_u`, `i32_shr_s`, `i32_clz`) unused, because a boot must serve a
+primitive before the wheel it compiles performs it. What remains: the
+assembler performs those three where it divides by powers of two
+(`asm_lsr7`, `asm_lsr8`, `asm_asr7`, `asm_bits_of`); WABT's fallback in
+`wt_asm`, its probe and the gate's wat2wasm cross-check delete; the worker's
+run role, the fixpoint seal on the page, download and run.
+
 ### `Hβ.graph.positions-are-cells` — OPEN
 
 BORN 2026-10-06 — the 2026-10-06 program, landing #108 (PLAN §11, THE STANDING CURSOR). The design below is the program's own text for this landing, moved here verbatim at the §0.3 integration; its section references (§2–§7) are the program's own numbering, and the whole program, with the seven audit lenses' answers, is at commit 42a94dc0 (docs/record/2026-10-06/).
@@ -19428,9 +19463,16 @@ statement to unit), a statement in a block carries its expression's value as a
 let does, and a desugared parameter is ONE cell — a lambda head's parameter is
 the cover node the expression parse minted there, and a minted parameter's
 name is spelled from its own cell's handle — where a second cell had been
-minted beside it. What remains (477 on the wheel): return and parameter
-annotations, refinement predicates (`self` and its comparisons), `??` holes
-in partials, and the element nodes inside a destructured lambda head.
+minted beside it. Then 492 → 150 at the canvas (a `??` is one cell whose id
+is its own handle), and 154 → 112 at L-F's first pin: a match's arms meet in
+a result cell the judgment mints and the match node reads it, as an if's node
+reads its branches — every arm had been unified into the node itself, which
+left the parser's cell the class's root and ended every Why walk through the
+class at "authored here" — and a nominal record literal holds its head, the
+type it names, where the parser had copied the name and dropped the node.
+What remains (112 on the wheel): return and parameter annotations,
+refinement predicates (`self` and its comparisons), `??` holes in partials,
+and the element nodes inside a destructured lambda head.
 
 ### `Hβ.verify.the-solver-is-the-search` — OPEN
 

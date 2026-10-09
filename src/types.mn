@@ -1028,11 +1028,10 @@ type EffTail
 // path to it — the `~>` installs between this edge's performs and the row
 // that reads them. The mask rides the edge through every fold, union,
 // instantiation and chase, so a handler's absorption reaches exactly the
-// computation it enclosed. A PRODUCT, not a sum: the record wrapper is the
-// wheel's one-constructor idiom (SpinePage, EmitFnEntry), which carries no
-// tag word — an edge is minted per open row, so the first form's tagged
+// computation it enclosed. A PRODUCT, not a sum: a nominal record carries
+// no tag word — an edge is minted per open row, so the first form's tagged
 // variant was a word per edge that said nothing.
-type RowEdge = RowEdge({cell: Int, mask: [EffName]})
+type RowEdge = {cell: Int, mask: [EffName]}
 
 // A GATE is a constraint carried by a row CELL — the negation half of a
 // declaration (`with !E` — `([], [E], EtAll)`, instance-aware through
@@ -1048,7 +1047,7 @@ type RowEdge = RowEdge({cell: Int, mask: [EffName]})
 // f()` accepted `run(() => op())` — because nothing was written that an
 // instantiation downstream could refuse; the gate is that write
 // (Hβ.infer.declared-row-vacuous-against-a-free-body-row).
-type Gate = Gate({reason: Reason, row: EffRow})
+type Gate = {reason: Reason, row: EffRow}
 
 // The ONE row-edge content read — every edge walk (resolve, flatten,
 // compress, occurs, free, subst, the lower readers) dispatches an
@@ -1367,8 +1366,15 @@ type EmitFnKind = EfkPartial | EfkLambda | EfkThunk | EfkNested | EfkArm(String,
 // learn, where None is a fact the type states and the reader floors on. The
 // ONE projection that must not vary by reader (the ABI) is settled once into
 // the sigs column at the emit boundary.
-type EmitFnEntry
-  = EmitFnEntry({caps: [(String, Int)], fence: Int, kind: EmitFnKind, name: String, origin: Int, params: [(String, Option(Ty))], ret: Option(Ty)})
+type EmitFnEntry = {
+  caps: [(String, Int)],
+  fence: Int,
+  kind: EmitFnKind,
+  name: String,
+  origin: Int,
+  params: [(String, Option(Ty))],
+  ret: Option(Ty),
+}
 
 // The snapshot carries exactly what its consumers read: the mint bound
 // and the span index. The node cells are NOT here — they live in the
@@ -1656,7 +1662,7 @@ fn binop_to_str(op) with Pure = match op {
 // site), instantiation copies it onto the fresh var, and a copy minted
 // before the demand is reached through the instance column. One gate per
 // arithmetic site; the op renders the refusal's operator.
-type NumericGate = NumericGate({op: BinOp, span: Span})
+type NumericGate = {op: BinOp, span: Span}
 
 // ─── TypeDemand — what an operation asks of its operand's type cell ────
 // One column carries every demand, and they share one mechanism: entered at
@@ -1809,7 +1815,7 @@ type Annotation
 // since it locks them all — with the guarantees they name. Debt discharged
 // is what makes a program more proven, so it ranks first; a lock changes no
 // proof today and ranks last.
-type Leverage = Leverage({absences: Int, discharged: Int, locks: [String], opened: Int, refuted: Int})
+type Leverage = {absences: Int, discharged: Int, locks: [String], opened: Int, refuted: Int}
 
 // What the gradient proposes at a position: the annotation PROVEN there,
 // what it buys, and why it leads. The annotation is the fact an accept
@@ -1953,7 +1959,7 @@ type FieldFact = FieldHole(Int, Span, [RingFact]) | FieldGradient(Int, Span, [Ri
 
 // Where a View stands: the module, the line and column the request named,
 // the handle the address resolved to, and its span.
-type ViewAt = ViewAt({col: Int, h: Int, line: Int, module: String, span: Span})
+type ViewAt = {col: Int, h: Int, line: Int, module: String, span: Span}
 
 // The View at an address: the position, the eight-aspect ring at it, and
 // the Lens and the Ledger of its module. The page paints this and nothing
@@ -1964,8 +1970,15 @@ type ViewAt = ViewAt({col: Int, h: Int, line: Int, module: String, span: Span})
 // is the bank's own facts, each the report as it fired (the kind, its
 // message, its module); the lead sentence the page prints over them is a
 // projection of that fact, never a fact of its own.
-type View
-  = View({at: ViewAt, canvas: Canvas, field: [FieldFact], ledger: [LedgerFact], lens: [(DiagKind, String, String)], refs: Found, ring: [RingFact]})
+type View = {
+  at: ViewAt,
+  canvas: Canvas,
+  field: [FieldFact],
+  ledger: [LedgerFact],
+  lens: [(DiagKind, String, String)],
+  refs: Found,
+  ring: [RingFact],
+}
 
 // ─── The canvas — the text's own projection (L-D) ────────────────────
 //
@@ -2066,8 +2079,22 @@ fn applicability_text(a) = match a {
 // files and finding out at the type error which one you missed. Three hand
 // copies of one type is the Carried-Truth Law at the declaration layer; the
 // name is its one home, and the next column is one line.
-type SpinePage
-  = SpinePage({bind: [BindHome], boundaries: [ExecutableBoundary], canon: [Int], comments: [(String, Span)], dispatch: [DispatchTier], installs: [InstallShape], module: [Int], narrowing: [Int], nodes: [GNode], parent: [Int], products: [CallProduct], program: [NodeBody], slots: [StateSlotHome], spans: [Span]})
+type SpinePage = {
+  bind: [BindHome],
+  boundaries: [ExecutableBoundary],
+  canon: [Int],
+  comments: [(String, Span)],
+  dispatch: [DispatchTier],
+  installs: [InstallShape],
+  module: [Int],
+  narrowing: [Int],
+  nodes: [GNode],
+  parent: [Int],
+  products: [CallProduct],
+  program: [NodeBody],
+  slots: [StateSlotHome],
+  spans: [Span],
+}
 
 // Newlines in a flat string — a module's own extent, sized at its parse.
 fn count_lines(ref s) = count_lines_from(s, byte_len(s), 0, 0)
@@ -2359,8 +2386,9 @@ type Expr
   // are the same product-field machinery as
   // MakeRecordExpr.
   | RecordUpdateExpr(Node, [(String, Node)])
-  // type_name + sorted fields — nominal record literal
-  | NamedRecordExpr(String, [(String, Node)])
+  // `WTok{at: s, …}` — the head, a reference to the record's type, and the
+  // sorted fields
+  | NamedRecordExpr(Node, [(String, Node)])
   // `xs[i]` semantic AST — receiver, index.
   // Infer dispatches on receiver's type:
   // TList → list_index (runtime); TTuple →
@@ -2741,7 +2769,7 @@ type Domain
 // Rejections sit beside the verdict rather than inside it: a lone survivor
 // coexists with three row-refused names, and the refusal teaches either way,
 // so repeating the list per arm would be the same fact in three homes.
-type Proposal = Proposal({rejected: [(String, Reason)], verdict: Verdict})
+type Proposal = {rejected: [(String, Reason)], verdict: Verdict}
 
 // A fill arrives WITH its reason because the constructor holds no other
 // shape — the render cannot drop what the type does not let it separate.

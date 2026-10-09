@@ -21,23 +21,23 @@
 // Interact substrate. No new effects; no new primitives.
 import types
 
-import mentl
-
-import voice
-
-import query
-
 import driver
+
+import egraph
+
+import io
 
 import json
 
 import lsp_frame
 
+import mentl
+
+import query
+
 import strings
 
-import io
-
-import egraph
+import voice
 
 // ─── LspMessage — incoming JSON-RPC message shape ─────────────────────
 //
@@ -615,8 +615,12 @@ fn map_diagnostics_to_json(diags, i, n, acc_rev) = if i >= n {
   let d = list_index(diags, i)
   match d {
     LspDiagnostic(sl, sc, el, ec, severity, code, msg) => {
-      let json =
-        JObj([("range", range_to_json(sl, sc, el, ec)), ("severity", JNum(float_of_int(severity))), ("code", JStr(code)), ("message", JStr(msg))])
+      let json = JObj([
+        ("range", range_to_json(sl, sc, el, ec)),
+        ("severity", JNum(float_of_int(severity))),
+        ("code", JStr(code)),
+        ("message", JStr(msg))
+      ])
       map_diagnostics_to_json(diags, i + 1, n, [json] ++ acc_rev)
     },
   }
@@ -633,8 +637,10 @@ fn location_to_json(loc) = match loc {
   Location(uri, sl, sc, el, ec) => JObj([("uri", JStr(uri)), ("range", range_to_json(sl, sc, el, ec))]),
 }
 
-fn range_to_json(sl, sc, el, ec) =
-  JObj([("start", JObj([("line", JNum(float_of_int(sl - 1))), ("character", JNum(float_of_int(sc - 1)))])), ("end", JObj([("line", JNum(float_of_int(el - 1))), ("character", JNum(float_of_int(ec - 1)))]))])
+fn range_to_json(sl, sc, el, ec) = JObj([
+  ("start", JObj([("line", JNum(float_of_int(sl - 1))), ("character", JNum(float_of_int(sc - 1)))])),
+  ("end", JObj([("line", JNum(float_of_int(el - 1))), ("character", JNum(float_of_int(ec - 1)))]))
+])
 
 // ─── lsp_adapter handler + session loop ───────────────────────────────
 //

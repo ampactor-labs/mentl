@@ -564,7 +564,7 @@ fn render_expr_tokens(e) with !Mutate = match e {
     },
   },
   MakeRecordExpr(fields) => render_record(fields, ""),
-  NamedRecordExpr(tname, fields) => "{tname}{render_record(fields, "")}",
+  NamedRecordExpr(head, fields) => "{render_tokens_for(head)}{render_record(fields, "")}",
   RecordUpdateExpr(base, fields) => render_record(fields, "...{render_tokens_for(base)}"),
   MakeStringExpr(parts) => // Interpolation is the parse's inverse: literal chunks re-escape,
   // every other fragment renders as a live splice.
@@ -603,7 +603,10 @@ fn render_stmt_tokens(s) with !Mutate = match s {
       "{lhead}\n{indent_block(lv)}"
     }
   },
-  TypeDefStmt(name, variants) => "type {name}{render_variants(variants, 0)}",
+  TypeDefStmt(name, variants) => match nominal_record_of(name, variants) {
+    Some(fields) => render_record_decl(name, fields),
+    None => "type {name}{render_variants(variants, 0)}",
+  },
   EffectDeclStmt(name, params, ops) => // An op's params carry the author's names (a bare type is the wildcard
   // `_`), so the render is the parse's inverse over both spellings. The
   // instance params render through the same product projection the
@@ -922,50 +925,36 @@ fn render_stmt_comment(n) with !Mutate = {
 fn render_record(fields: [(String, Node)], lead: String) with !Mutate = if len(fields) == 0 {
   "\{{lead}\}"
 } else {
-  let inline = if lead == "" {
-    "\{{render_field_inits(fields, 0)}\}"
-  } else {
-    "\{{lead}, {render_field_inits(fields, 0)}\}"
-  }
-  if fits_inline(inline) && !fields_carry_prose(fields, 0) {
+  let inits = fields |> map(field_init) |> join(", ", ??)
+  let inline = if lead == "" { "\{{inits}\}" } else { "\{{lead}, {inits}\}" }
+  if fits_inline(inline) && !any(field_carries_prose, fields) {
     inline
   } else {
-    let lines = render_field_lines(fields, 0)
+    // one field per line, each closed by its comma — SYNTAX §«Records»' own
+    // multi-line layout, so a field added at the end is a one-line diff
+    let lines = fields |> map(field_line) |> join("\n", ??)
     let body = if lead == "" { lines } else { "{lead},\n{lines}" }
     "\{\n{indent_block(body)}\n\}"
   }
 }
 
-// One field per line, each closed by its comma — SYNTAX §«Records»' own
-// multi-line layout, so a field added at the end is a one-line diff.
-fn render_field_lines(fields: [(String, Node)], i) with !Mutate = if i >= len(fields) {
-  ""
-} else {
-  match fields[i] {
-    (fname, v) => {
-      let one = "{fname}: {render_tokens_for(v)},"
-      if i == len(fields) - 1 { one } else { "{one}\n{render_field_lines(fields, i + 1)}" }
-    },
-  }
+// A field as a literal writes it: its name alone when the value is the
+// variable of that name (SYNTAX's field punning), else `name: value`.
+fn field_init(field) with !Mutate = match field {
+  (fname, v) => if field_puns(fname, v) { fname } else { "{fname}: {render_tokens_for(v)}" },
 }
 
-fn fields_carry_prose(fields: [(String, Node)], i) = if i >= len(fields) {
-  false
-} else {
-  match fields[i] {
-    (_, v) => if graph_comment_at(node_handle(v)) == "" { fields_carry_prose(fields, i + 1) } else { true },
-  }
+fn field_line(field) with !Mutate = "{field_init(field)},"
+
+// A value that is the variable its field is named for, with no prose of its
+// own to carry.
+fn field_puns(fname, v) = match ast_kind_of(v) {
+  NExpr(VarRef(n)) => n == fname && graph_comment_at(node_handle(v)) == "",
+  other => false,
 }
 
-fn render_field_inits(ref fields: [(String, Node)], i) with !Mutate = if i >= len(fields) {
-  ""
-} else {
-  match fields[i] {
-    (fname, v) => {
-      let one = "{fname}: {render_tokens_for(v)}"
-      if i == len(fields) - 1 { one } else { "{one}, {render_field_inits(fields, i + 1)}" }
-    },
-  }
+fn field_carries_prose(field) = match field {
+  (fname, v) => graph_comment_at(node_handle(v)) != "",
 }
 
 fn render_string_parts(ref parts, i) with !Mutate = if i >= len(parts) {
@@ -1111,6 +1100,33 @@ fn render_let_ann(ann) with !Mutate = match ast_kind_of(ann) {
   NTypeAnn(ty) => ": {render_type_tokens(ty)}",
   _ => // drift-audit: ignore — the ADT's own absence sentinel: LetStmt's ann node is LitUnit when unannotated (the LetStmt decl comment); any non-NTypeAnn body IS that absence, rendered as no clause
   "",
+}
+
+// The record a nominal record type IS: a lone variant named as its type,
+// its one payload a record, is what SYNTAX writes `type X = {f: T, …}`.
+// Both spellings parse to that one variant, so the render writes the
+// documented one — until 2026-10-09 it wrote `type X = X({f: T, …})`, the
+// redundant spelling principle 2 rejects. A variant carrying prose of its
+// own keeps the variant line the prose stands above.
+fn nominal_record_of(name, variants) = match variants {
+  [(vname, [TRecord(fields)], cn)] => if vname == name && graph_comment_at(node_handle(cn)) == "" { Some(fields) } else { None },
+  others => None,
+}
+
+// A record type's braces follow a record literal's law: inline when the
+// declaration fits the line, else one field per line, each closed by its
+// comma.
+fn render_record_decl(name, fields) with !Mutate = {
+  let inline = "type {name} = {render_type_tokens(TRecord(fields))}"
+  if fits_inline(inline) {
+    inline
+  } else {
+    "type {name} = \{\n{indent_block(fields |> map(record_type_field_line) |> join("\n", ??))}\n\}"
+  }
+}
+
+fn record_type_field_line(field) with !Mutate = match field {
+  (fname, ty) => "{fname}: {render_type_tokens(ty)},",
 }
 
 // A commented variant set renders VERTICAL (prose above each variant,
@@ -1341,7 +1357,27 @@ fn lifted_at(kept, h) = match graph_node_body(h) {
   } else {
     []
   },
+  NStmt(TypeDefStmt(name, variants)) => // `type X = X({f: T})` renders as `type X = {f: T}`: the variant's name is
+  // carried by the type's, which is the same name
+  match nominal_record_of(name, variants) {
+    Some(fields) => [name],
+    None => [],
+  },
+  NExpr(MakeRecordExpr(fields)) => // `{at: at}` renders as `{at}`: the value's name is carried by the field's
+  punned_names(fields),
+  NExpr(NamedRecordExpr(head, fields)) => punned_names(fields),
+  NExpr(RecordUpdateExpr(base, fields)) => punned_names(fields),
   _ => [],
+}
+
+fn punned_names(fields) = fields |> filter(field_puns_entry) |> map(field_name_of)
+
+fn field_puns_entry(field) = match field {
+  (fname, v) => field_puns(fname, v),
+}
+
+fn field_name_of(field) = match field {
+  (fname, v) => fname,
 }
 
 fn has_handle(h, stmt) = node_handle(stmt) == h

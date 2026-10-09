@@ -35,6 +35,71 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-10-09 · pin 99de278fa5bdfced (TRANSITION m3 == m4) · THE BOOT ASSEMBLES ITS OWN OUTPUT (L-F, NOT LANDED); A MATCH'S ARMS MEET IN A CELL OF THEIR OWN; EVERY VERB TAKES ITS WORDS APART BY PATTERN; A QUESTION KEEPS ONE MODULE'S SITES:
+  L-F is NOT LANDED. This pin integrates the swarm's assembler (frontier-audit
+  f9c70dd, a WIP that moved four board bounds up) and puts `mentl asm` in the
+  boot; WABT's fallback, the shifts the assembler should perform, the page's
+  run role and its fixpoint seal remain (`Hβ.emit.the-medium-assembles-its-output`).
+  THE ASSEMBLER: src/asm.mn projects the boot's own m2.wat (21,080,357 bytes)
+  to 3,527,836 bytes identical to m2.wasm and to wat2wasm's, in 1.45 s at a
+  288,812 KB peak (the WIP measured 6.30 s); tests/asm/coverage.wat to its
+  recorded 9,134 bytes; ten malformed texts refused, each naming what it
+  holds. Rewritten as a Mentl program: a token is `{at, end, kind}` and an
+  open's token is written once, when its `)` says where its form ends; every
+  op parameter is named and a refusal is `-> !`; the index is a declared
+  record (`AsmIx`); long division folds over its bit positions, a power is a
+  fold, the carry past the top limb is one limb by the 2^15 bound and its
+  recursion is deleted, `asm_pow2` is `i32_shl`, and the rounding halves a
+  long quotient once, which is all the quotient's range allows. It owns 0
+  ghosts, 0 costumes and 0 open obligations. The boot also carries
+  `i32_shr_u`, `i32_shr_s` and `i32_clz`, unused: a primitive must be the
+  boot's before the wheel performs it.
+  A QUESTION KEEPS ONE MODULE'S SITES: `mentl query <entry> "<facet> in
+  <module>"` — the census, ghosts, smt, verification, refs and decls kept to
+  one module's sites, through the one `sites_in` the directory form reads
+  too (`own_sites`); the query handler answers by calling `query_answer`, so
+  a scoped question answers its inner one without asking again. Built because
+  the board's breach list could not say which of 205 obligations or 154 ghosts
+  were the assembler's, and the next move was a grep.
+  WHAT THE BOARD ROSE ON, AND WHAT IT FELL TO: the four risen bounds were
+  closed where they arose, then past them. Ghosts 154 → 112: a match's arms
+  were unified INTO the match node, leaving the parser's cell the class's
+  root, so every Why walk through a handler arm's match ended at "authored
+  here"; the arms meet in a result cell the judgment mints now and the node
+  reads it, as an if's node reads its branches. A nominal record literal's
+  head is held and bound to the type it names, where the parser copied the
+  name and dropped the node. Obligations 205 → 184 and costumes 472 → 465:
+  the new one was the `asm` verb's `a[2]`, one of nine identical index reads,
+  so every verb's builder takes the words after the verb apart by list
+  pattern (`req_target`, `opt_target`, `bare_verb`, arm lists), the address
+  parse reads `index_of` and folds its digits, the help catalog maps the verb
+  table, and the session's argv trim reads `last`. Effectful lambdas
+  213 → 195, the rows' lambdas being references now. The ceilings fell to the
+  counts, and the prelude floor 2835 → 2829: the word's bit operations are one
+  paragraph over named parameters where each op carried a comment.
+  THE FORMATTER WRITES THE READABLE FORM: a nominal record type renders as
+  SYNTAX writes it, `type X = {…}`, broken past the width as a record literal
+  is, and a field whose value is its own name's variable is punned; both are
+  stated lifts in the census, which is a multiset
+  (`Hβ.fmt.render-must-parse-to-the-same-tree` names the fingerprint that
+  deletes the census and its statements). `mentl fmt src lib` wrote 35 files
+  canonical through the candidate.
+  KILLS: (1) keeping the judged root when two free roots unify, to end Why
+  walks at the cell the judgment minted — m2 trapped reading a handle past
+  the spine in `value_leaves`, because `graph_link_of` reads a reference's
+  binder off its union-find edge, so root choice is load-bearing; reverted,
+  and the coupling recorded on the reference link's peer
+  (`Hβ.lower.reach-edge-on-node`). (2) An arena around the lexer measured
+  382 MB against 285 MB without one; removed. (3) The formatter's census
+  refused the nominal render as "lost: X"; the variant's name is carried by
+  the type's, the same name, and the lift says so.
+  FOUND: the asm gate's fourth leg compared the projected m2's compile with
+  the BOOT's, RED on every transition and unable to fail for any reason
+  about the assembler once leg 3 proves the bytes identical; deleted. A
+  RESIDUE entry cited `.build/m2cache/wheel.mn`, a file M9 retired.
+  Cost: the m3 leg 18.02 s at 467,944 KB (the E1 pin's 450,664 KB; the
+  assembler is 2,762 lines).
+
 - 2026-10-08 · pin 4238496648090cb0 (CLEAN m2 == m3) · E1 — CONFIGURATION IS A HOST EFFECT WITH A READ-SITE MANIFEST; OPTIONAL BROAD DEMAND IS EXPLICIT; GUEST-READ VALUES MAY ENTER CHECKPOINTS:
   Re-derived Claude's env WIP against the current kernel and found two
   implementation gaps plus one false security claim. `env_opt` was absent

@@ -62,8 +62,13 @@ import voice
 // value, so none re-derives one of these facts from another, and none opens
 // the file the text came from: a session's text is the edit it judged,
 // which the file on disk need not be.
-type Viewed
-  = Viewed({name: String, node: Int, spans: [(Span, Int)], text: String, tights: [(EffRow, EffRow, String, Span, String)]})
+type Viewed = {
+  name: String,
+  node: Int,
+  spans: [(Span, Int)],
+  text: String,
+  tights: [(EffRow, EffRow, String, Span, String)],
+}
 
 // The module the address names, as the judgment left it, or a refusal on
 // stderr (the process log on every transport): a module not in the link,
@@ -83,7 +88,7 @@ fn viewed(ranges, target: String) = match range_of_module(ranges, target) {
         name: target,
         node: mh,
         spans: spans_of_module(span_index_of_snapshot(), mh),
-        text: text,
+        text,
         tights: module_tightenings(target),
       })),
     },
@@ -97,7 +102,7 @@ fn viewed(ranges, target: String) = match range_of_module(ranges, target) {
 // it is painting. A caret carries no canvas: moving it changes no fact of
 // the text.
 fn space_view(v, h, pspan, line, col, needle) = View({
-  at: ViewAt({col: col, h: h, line: line, module: v.name, span: pspan}),
+  at: ViewAt({col, h, line, module: v.name, span: pspan}),
   canvas: NoCanvas,
   field: [],
   ledger: ledger_of(v, h),
@@ -165,12 +170,12 @@ fn canvas_of(v, field, ledger, lens) = {
   let cells =
     (nodes |> map(node_cells(v, ??)) |> flatten) ++ (field |> map(field_cell) |> flatten) ++ (ledger |> map(ledger_cell) |> flatten) ++ (frames |> map(frame_cells) |> flatten) ++ map(decided_cell, decided) ++ map(owed_cell, owed) ++ (traces |> map(trace_cells) |> flatten) ++ (lens |> filter(lens_in_module(v.name)) |> map(diag_cell))
   Canvas({
-    frames: frames,
+    frames,
     lines: count_lines(v.text) + 1,
     marks: map(decided_mark, decided) ++ map(owed_mark, owed),
     strip: strip_of(cells),
     tokens: canvas_tokens(v.text),
-    traces: traces,
+    traces,
   })
 }
 

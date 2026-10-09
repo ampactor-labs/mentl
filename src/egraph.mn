@@ -32,9 +32,9 @@
 // mode (the canon-weave read), not a bolted-on pass.
 import types
 
-import graph
-
 import effects
+
+import graph
 
 import io
 

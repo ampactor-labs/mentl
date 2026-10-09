@@ -539,9 +539,11 @@
 > from main, fn decls — partitioned into modules CARRYING dead weight, with
 > their reached/unreached ratio, and modules the entry links WHOLE and never
 > calls into) · `refs of NAME` · `census <shape>` · `decls` (each of
-> these, and `text`/`prose` below, also answers over a DIRECTORY of
-> independent programs — `mentl query tests/frontier/arena "refs of X"` —
-> every program judged on its own link, its own sites kept) ·
+> these, and `text`/`prose`/`ghosts`/`verification`/`smt` below, also
+> answers over a DIRECTORY of independent programs — `mentl query
+> tests/frontier/arena "refs of X"` — every program judged on its own link,
+> its own sites kept; and a question ending `in <module>` keeps that module's
+> sites: `mentl query src/main.mn "census iteration in asm"`) ·
 > `variants NAME` (an ADT's constructors, or an effect's operations, with
 > their arities) · `ghosts`
 > (every cell the parser minted and the judgment never bound) ·

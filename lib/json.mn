@@ -188,7 +188,7 @@ fn json_scan_number(src, start, pos, is_float) = if pos >= byte_len(src) {
 // fractional part after. Honest substrate for LSP scope; full IEEE
 // round-trip is JSON.precise peer sub-handle when scientific
 // computation needs it.
-fn number_from_substring(src, start, end) = match if byte_at(src, start) == 45 { (0.0 - 1.0, start + 1) } else { (1.0, start) } {
+fn number_from_substring(src, start, end) = match if byte_at(src, start) == 45 { (-1.0, start + 1) } else { (1.0, start) } {
   (sign, p0) => match scan_int_part(src, p0, end, 0.0) {
     (int_part, p1) => match if p1 < end && byte_at(src, p1) == 46 {
       scan_frac_part(src, p1 + 1, end, 0.0, 0.1)

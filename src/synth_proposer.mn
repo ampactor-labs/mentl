@@ -58,27 +58,27 @@
 //                           graph checkpoint + heap region).
 import types
 
+import cursor
+
 import effects
 
+import egraph
+
 import graph
-
-import own
-
-import verify
-
-import mentl
-
-import parser
 
 import infer
 
 import lower
 
-import egraph
+import mentl
 
-import cursor
+import own
+
+import parser
 
 import query
+
+import verify
 
 // ─── ProposerKind — which proposer in the chain emitted a candidate ─
 type ProposerKind
@@ -114,8 +114,12 @@ type VocabRing = OwnModule | AuthoredImport | Linked
 // to a literal's made-up 0.3) and rode stale when extraction swapped
 // the node — `rank_of` now reads the LIVE node at sort time, once per
 // candidate, through the same env/refs reads the gradient owns.
-type EnrichedCandidate
-  = EnrichedCandidate({node: Node, origin: ProposerKind, reason: Reason, writes: [(Int, ContextFact)]})
+type EnrichedCandidate = {
+  node: Node,
+  origin: ProposerKind,
+  reason: Reason,
+  writes: [(Int, ContextFact)],
+}
 
 // WHAT A CANDIDATE TAUGHT THE CONTEXT (C6): the context cells its segment
 // bound, each with the meaning the cell held before the rollback undid it —
@@ -127,7 +131,7 @@ type ContextFact = FactTy(Ty) | FactRow(EffRow)
 // One candidate's verdict from its segment: proven or not, the Reason the
 // verdict carries (the candidate's own when proven, the medium's refusal
 // otherwise), and the context writes the segment carried out.
-type SegmentVerdict = SegmentVerdict({proven: Bool, reason: Reason, writes: [(Int, ContextFact)]})
+type SegmentVerdict = {proven: Bool, reason: Reason, writes: [(Int, ContextFact)]}
 
 // AST fragment
 //
@@ -292,12 +296,21 @@ fn enumerate_vocabulary_calls(target_ty, allowed_row, context, rings) with !Muta
             TFun(params, ret, row) => if len(params) == 0 && heads_may_unify(ret, target_ty) && !reaches_decl(name, enclosing, []) {
               if row_subsumes(row, allowed_row) {
                 // drift-audit: ignore — bounded by the in-scope zero-arg vocabulary, not a loop accumulator
-                (accepted ++ [vocabulary_call_candidate(name, row, allowed_row, ring_of_name(rings, name))], rejected)
+                (
+                  accepted ++ [vocabulary_call_candidate(name, row, allowed_row, ring_of_name(rings, name))],
+                  rejected
+                )
               } else {
                 (
                   accepted,
                   // drift-audit: ignore — bounded by the in-scope zero-arg vocabulary, not a loop accumulator
-                  rejected ++ [(name, Inferred("performs {show_effrow(row)} — refused by the target row {show_effrow(allowed_row)}"), ring_of_name(rings, name))]
+                  rejected ++ [
+                    (
+                      name,
+                      Inferred("performs {show_effrow(row)} — refused by the target row {show_effrow(allowed_row)}"),
+                      ring_of_name(rings, name)
+                    )
+                  ]
                 )
               }
             } else if fn_heads_may_unify(params, ret, target_ty) && !reaches_decl(name, enclosing, []) {
@@ -306,12 +319,21 @@ fn enumerate_vocabulary_calls(target_ty, allowed_row, context, rings) with !Muta
               // where the stage applies, so the same row gate judges it.
               if row_subsumes(row, allowed_row) {
                 // drift-audit: ignore — bounded by the in-scope vocabulary of one arity, not a loop accumulator
-                (accepted ++ [vocabulary_ref_candidate(name, row, allowed_row, ring_of_name(rings, name))], rejected)
+                (
+                  accepted ++ [vocabulary_ref_candidate(name, row, allowed_row, ring_of_name(rings, name))],
+                  rejected
+                )
               } else {
                 (
                   accepted,
                   // drift-audit: ignore — bounded by the in-scope vocabulary of one arity, not a loop accumulator
-                  rejected ++ [(name, Inferred("performs {show_effrow(row)} when applied — refused by the target row {show_effrow(allowed_row)}"), ring_of_name(rings, name))]
+                  rejected ++ [
+                    (
+                      name,
+                      Inferred("performs {show_effrow(row)} when applied — refused by the target row {show_effrow(allowed_row)}"),
+                      ring_of_name(rings, name)
+                    )
+                  ]
                 )
               }
             } else {
@@ -348,7 +370,10 @@ fn search_ring(vocab, row_rejected, hole_h, cand_start, acc, ring) = match acc {
     acc
   } else {
     match verify_each_enriched(vocab |> filter(found_in(ring)), hole_h, cand_start) {
-      (verified, cell_refused) => (verified, refused ++ (row_rejected |> filter(refused_in(ring)) |> map(refusal_words)) ++ cell_refused),
+      (verified, cell_refused) => (
+        verified,
+        refused ++ (row_rejected |> filter(refused_in(ring)) |> map(refusal_words)) ++ cell_refused
+      ),
     }
   },
 }
@@ -879,7 +904,7 @@ fn enumerate_int_literals(context) = {
   let buf = make_list(3)
   list_set(buf, 0, int_literal_candidate(0))
   list_set(buf, 1, int_literal_candidate(1))
-  list_set(buf, 2, int_literal_candidate(0 - 1))
+  list_set(buf, 2, int_literal_candidate(-1))
   buf
 }
 
@@ -1112,7 +1137,7 @@ fn judge_in_segment(hole_h, base, seed, iseed, below, candidate) = {
   match outcome {
     (proven, inner, writes) => if proven {
       branch_join(inner)
-      SegmentVerdict({proven: true, reason: candidate_reason(candidate), writes: writes})
+      SegmentVerdict({proven: true, reason: candidate_reason(candidate), writes})
     } else {
       SegmentVerdict({proven: false, reason: refusal_reason(inner), writes: []})
     },
@@ -1202,7 +1227,7 @@ fn sealed_value(verdicts, indexed) = match indexed {
 }
 
 fn with_writes(candidate, writes) = match candidate {
-  EnrichedCandidate(c) => EnrichedCandidate({node: c.node, origin: c.origin, reason: c.reason, writes: writes}),
+  EnrichedCandidate(c) => EnrichedCandidate({node: c.node, origin: c.origin, reason: c.reason, writes}),
 }
 
 // The NAMED candidates a segment refused, each with the medium's own words

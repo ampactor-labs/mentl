@@ -243,6 +243,10 @@ type Question
   // developer's eye, re-parsed and rendered again: a head that does not
   // come back as itself is a render that does not say what was written
   | QHeads
+  // "QUESTION in MODULE" — a site facet's answer kept to one module's sites:
+  // the link answers every module it judged, and a developer asking about the
+  // module they are writing reads that module's sites alone
+  | QIn(Question, String)
   | QUnknown(String)
 
 type QueryResult
@@ -314,7 +318,7 @@ type QueryResult
 // many it spawns, the schedule its own frame installs, the callers whose
 // installs demand it threaded (only where its own frame installs none),
 // and where it stands.
-type WhereSite = WhereSite({schedule: Schedule, shape: SiteShape, span: Span, vias: [String]})
+type WhereSite = {schedule: Schedule, shape: SiteShape, span: Span, vias: [String]}
 
 // A site's branches: a `><` or `<|` with the edges its boundary holds, or
 // the sequence fanout's one branch per element, counted at run time.
@@ -333,130 +337,154 @@ effect Query {
 // `!E` would also bind the remainder its arms resume into, which here is a
 // whole compile.
 handler query_default {
-  ask(q) => match q {
-    QTypeOf(name) => match env_lookup(name) {
-      None => resume(QRError("not found: {name}")),
-      Some(entry) => match entry {
-        (scheme, reason, _kind) => resume(QRType(scheme |> judgment_ty |> chase_type_deep, reason)),
-      },
-    },
-    QTypeAt(span) => // One live cursor read: tightest enclosing span → handle → the node's
-    // bound type, chased deep. No throwaway TName("Unknown") chase — the
-    // graph_chase below IS the live read; an unbound node's type IS its own
-    // TVar (the chase terminated there), so the projection is total over the
-    // NodeKind without a fabricated "Unresolved" name.
-    match graph_snapshot() {
-      Graph(_, span_index) => match find_tightest(span_index, span, None, 999999999) {
-        None => resume(QRError("no enclosing span found in AST index")),
-        Some(handle) => match graph_chase(handle) {
-          GNode(kind, reason) => match kind {
-            NBound(ty) => resume(QRType(chase_type_deep(ty), reason)),
-            NFree(_) => resume(QRType(TVar(handle), reason)),
-            NRowBound(_) => resume(QRType(TVar(handle), reason)),
-            NRecordRowBound(_, _) => resume(QRType(TVar(handle), reason)),
-            NRowFree(_) => resume(QRType(TVar(handle), reason)),
-            NErrorHole(_) => resume(QRType(TVar(handle), reason)),
-          },
-        },
-      },
-    },
-    QIntentOf(handle) => // The authored intent row is a field on the FnStmt node the handle
-    // names — read it LIVE (graph_node_body), never a parallel
-    // intent ledger re-found by scan (Carried-Truth). A non-fn node
-    // carries no authored intent.
-    match graph_node_body(handle) {
-      NStmt(FnStmt(_, _, _, effs, _)) => resume(QRIntent(effs)),
-      _ => // drift-audit: ignore
-      resume(QRError("no authored intent at handle {int_to_str(handle)}")),
-    },
-    QUnresolved => match env_snapshot() {
-      Env(entries) => resume(QRUnresolved(find_unresolved(entries))),
-    },
-    QSubstChain(handle) => resume(QRChain(walk_chain(handle, 0))),
-    QEffects(name) => match env_lookup(name) {
-      None => resume(QRError("not found: {name}")),
-      Some(entry) => match entry {
-        (scheme, _, _) => match chase_type_deep(judgment_ty(scheme)) {
-          TFun(_, _, row) => resume(QREffects(row)),
-          _ => resume(QRError("{name} is not a function")),
-        },
-      },
-    },
-    QOwnership(name) => match env_lookup(name) {
-      None => resume(QRError("not found: {name}")),
-      Some(entry) => match entry {
-        (scheme, _, _) => match chase_type_deep(judgment_ty(scheme)) {
-          TFun(params, _, _) => resume(QROwnership(params)),
-          _ => resume(QRError("{name} is not a function")),
-        },
-      },
-    },
-    QWhy(name) => match env_lookup(name) {
-      None => resume(QRError("not found: {name}")),
-      Some(entry) => match entry {
-        (_, reason, _) => // Walk the reason to ROOT — why_expand chases each Fresh(id) through
-        // the graph to its resolved reason, so intent is walkable, not a chain
-        // ending in dangling unification vars. The engine existed (mentl.mn:437)
-        // and only why_from_handle called it; the CLI `why` now performs it too.
-        resume(QRWhy(why_expand(reason, 0))),
-      },
-    },
-    QRefsOf(name) => // Every reference to NAME is a VarRef node in the one graph (the parser
-    // wrote each use into the program weave). refs-of is the projection of
-    // the inbound use-edges: scan the weave for NExpr(VarRef(name)) and
-    // collect each node's span — read live, never an "AST index required"
-    // surrender. This IS rename: the (module, span) sites are exactly the
-    // edit set, and a rename needs the module half — an edit set that names
-    // lines without naming files edits nothing.
-    resume(QRRefs(refs_of_name(name))),
-    QStateWrites(field) => match state_write_lines(field) {
-      [] => resume(QRError("no handler declares a state field `{field}`")),
-      lines => resume(QRWhere(lines, [])),
-    },
-    QDecls => resume(QRDecls(flat_map(decl_names_at, decl_handles()))),
-    QVerifyDebt => {
-      let debt = verify_debt()
-      resume(QRVerifyDebt(debt))
-    },
-    QSmt => // The same bank, handed to the render that speaks solver. Nothing is
-    // re-derived here and nothing may be: a second walk that collected the
-    // obligations again would be the violation this facet's own subject —
-    // the unreached serializer — was a symptom of.
-    resume(QRSmt(verify_debt())),
-    QHandlerProvider(op_name) => // The handler stack IS graph content (PLAN §2 — "the handler chain IS
-    // the capability stack"): each handler decl is a HandlerDeclStmt whose
-    // arms name the ops it provides. Which handlers provide OP are the decls
-    // with an arm for it, each answered at the arm's own line.
-    resume(QRHandlerProvider(handlers_providing_op(op_name))),
-    QFlowOf(name) => // The IFC tentacle: the FlowLabel NAME carries, read over the graph
-    // with no state of its own (`name_flow_label`).
-    match env_lookup(name) {
-      None => resume(QRError("not found: {name}")),
-      Some(entry) => match entry {
-        (scheme, reason, _kind) => resume(QRFlowLabel(name_flow_label(scheme), reason)),
-      },
-    },
-    QCensus(shape) => resume(QRCensus(census_label(shape), census_sites(shape))),
-    QCensusRoster => resume(QRCensusRoster(census_roster() |> map(roster_row))),
-    QWhere(name, scope) => resume(where_badges(name, scope)),
-    QVariants(tname) => resume(variants_of(tname)),
-    QModules => // A module SET, rendered in the order of its names: the cells arrive in
-    // mint order, which a resident session's re-judged modules leave
-    // behind the ones it kept, so the order had been the history of the
-    // session rather than a fact about the program.
-    resume(QRModules(module_paths() |> sort)),
-    QImports => resume(QRImports(import_report(module_cells()))),
-    QUnreferenced => resume(QRUnreferenced(unreferenced_report(module_cells()))),
-    QUnreachable => resume(QRUnreachable(reach_report(module_cells()))),
-    QPerforms => resume(QRPerforms(effect_report(module_cells()))),
-    QEnv => resume(QREnv(env_demand())),
-    QOrphanClaims => resume(QROrphanClaims(orphan_claim_report(module_cells()))),
-    QCost => resume(QRCost(len(module_cells()), weave_line_extent(), graph_next())),
-    QGhosts => resume(QRGhosts(ghost_sites())),
-    QHeads => resume(QRWhere(head_round_trip(), [])),
-    QUnknown(q) => resume(QRError("unknown query: {q}")),
-  },
+  ask(q) => resume(query_answer(q)),
 }
+
+// The answer to one question. A scoped question answers its inner question
+// and keeps the sites in the module it names, so the scope is one read over
+// the answer and never a second walk of the graph.
+fn query_answer(q) = match q {
+  QTypeOf(name) => match env_lookup(name) {
+    None => QRError("not found: {name}"),
+    Some(entry) => match entry {
+      (scheme, reason, _kind) => QRType(scheme |> judgment_ty |> chase_type_deep, reason),
+    },
+  },
+  QTypeAt(span) => // One live cursor read: tightest enclosing span → handle → the node's
+  // bound type, chased deep. No throwaway TName("Unknown") chase — the
+  // graph_chase below IS the live read; an unbound node's type IS its own
+  // TVar (the chase terminated there), so the projection is total over the
+  // NodeKind without a fabricated "Unresolved" name.
+  match graph_snapshot() {
+    Graph(_, span_index) => match find_tightest(span_index, span, None, 999999999) {
+      None => QRError("no enclosing span found in AST index"),
+      Some(handle) => match graph_chase(handle) {
+        GNode(kind, reason) => match kind {
+          NBound(ty) => QRType(chase_type_deep(ty), reason),
+          NFree(_) => QRType(TVar(handle), reason),
+          NRowBound(_) => QRType(TVar(handle), reason),
+          NRecordRowBound(_, _) => QRType(TVar(handle), reason),
+          NRowFree(_) => QRType(TVar(handle), reason),
+          NErrorHole(_) => QRType(TVar(handle), reason),
+        },
+      },
+    },
+  },
+  QIntentOf(handle) => // The authored intent row is a field on the FnStmt node the handle
+  // names — read it LIVE (graph_node_body), never a parallel
+  // intent ledger re-found by scan (Carried-Truth). A non-fn node
+  // carries no authored intent.
+  match graph_node_body(handle) {
+    NStmt(FnStmt(_, _, _, effs, _)) => QRIntent(effs),
+    _ => // drift-audit: ignore
+    QRError("no authored intent at handle {int_to_str(handle)}"),
+  },
+  QUnresolved => match env_snapshot() {
+    Env(entries) => QRUnresolved(find_unresolved(entries)),
+  },
+  QSubstChain(handle) => QRChain(walk_chain(handle, 0)),
+  QEffects(name) => match env_lookup(name) {
+    None => QRError("not found: {name}"),
+    Some(entry) => match entry {
+      (scheme, _, _) => match chase_type_deep(judgment_ty(scheme)) {
+        TFun(_, _, row) => QREffects(row),
+        _ => QRError("{name} is not a function"),
+      },
+    },
+  },
+  QOwnership(name) => match env_lookup(name) {
+    None => QRError("not found: {name}"),
+    Some(entry) => match entry {
+      (scheme, _, _) => match chase_type_deep(judgment_ty(scheme)) {
+        TFun(params, _, _) => QROwnership(params),
+        _ => QRError("{name} is not a function"),
+      },
+    },
+  },
+  QWhy(name) => match env_lookup(name) {
+    None => QRError("not found: {name}"),
+    Some(entry) => match entry {
+      (_, reason, _) => // Walk the reason to ROOT — why_expand chases each Fresh(id) through
+      // the graph to its resolved reason, so intent is walkable, not a chain
+      // ending in dangling unification vars.
+      QRWhy(why_expand(reason, 0)),
+    },
+  },
+  QRefsOf(name) => // Every reference to NAME is a VarRef node in the one graph (the parser
+  // wrote each use into the program weave). refs-of is the projection of
+  // the inbound use-edges: scan the weave for NExpr(VarRef(name)) and
+  // collect each node's span — read live, never an "AST index required"
+  // surrender. This IS rename: the (module, span) sites are exactly the
+  // edit set, and a rename needs the module half — an edit set that names
+  // lines without naming files edits nothing.
+  QRRefs(refs_of_name(name)),
+  QStateWrites(field) => match state_write_lines(field) {
+    [] => QRError("no handler declares a state field `{field}`"),
+    lines => QRWhere(lines, []),
+  },
+  QDecls => QRDecls(flat_map(decl_names_at, decl_handles())),
+  QVerifyDebt => QRVerifyDebt(verify_debt()),
+  QSmt => // The same bank, handed to the render that speaks solver. Nothing is
+  // re-derived here and nothing may be: a second walk that collected the
+  // obligations again would be the violation this facet's own subject —
+  // the unreached serializer — was a symptom of.
+  QRSmt(verify_debt()),
+  QHandlerProvider(op_name) => // The handler stack IS graph content (PLAN §2 — "the handler chain IS
+  // the capability stack"): each handler decl is a HandlerDeclStmt whose
+  // arms name the ops it provides. Which handlers provide OP are the decls
+  // with an arm for it, each answered at the arm's own line.
+  QRHandlerProvider(handlers_providing_op(op_name)),
+  QFlowOf(name) => // The IFC tentacle: the FlowLabel NAME carries, read over the graph
+  // with no state of its own (`name_flow_label`).
+  match env_lookup(name) {
+    None => QRError("not found: {name}"),
+    Some(entry) => match entry {
+      (scheme, reason, _kind) => QRFlowLabel(name_flow_label(scheme), reason),
+    },
+  },
+  QCensus(shape) => QRCensus(census_label(shape), census_sites(shape)),
+  QCensusRoster => QRCensusRoster(census_roster() |> map(roster_row)),
+  QWhere(name, scope) => where_badges(name, scope),
+  QVariants(tname) => variants_of(tname),
+  QModules => // A module SET, rendered in the order of its names: the cells arrive in
+  // mint order, which a resident session's re-judged modules leave
+  // behind the ones it kept, so the order had been the history of the
+  // session rather than a fact about the program.
+  QRModules(module_paths() |> sort),
+  QImports => QRImports(import_report(module_cells())),
+  QUnreferenced => QRUnreferenced(unreferenced_report(module_cells())),
+  QUnreachable => QRUnreachable(reach_report(module_cells())),
+  QPerforms => QRPerforms(effect_report(module_cells())),
+  QEnv => QREnv(env_demand()),
+  QOrphanClaims => QROrphanClaims(orphan_claim_report(module_cells())),
+  QCost => QRCost(len(module_cells()), weave_line_extent(), graph_next()),
+  QGhosts => QRGhosts(ghost_sites()),
+  QHeads => QRWhere(head_round_trip(), []),
+  QIn(inner, m) => query_answer(inner) |> sites_in(m),
+  QUnknown(raw) => QRError("unknown query: {raw}"),
+}
+
+// The sites of an answer that stand in module `m`, named as every site line
+// names its module. An answer that carries no sites has nothing to keep, and
+// says which facets a scope reads.
+fn sites_in(m, answer) = match answer {
+  QRRefs(sites) => QRRefs(filter(site_in_module(m, ??), sites)),
+  QRCensus(label, sites) => QRCensus(label, filter(site_in_module(m, ??), sites)),
+  QRGhosts(sites) => QRGhosts(filter(site_in_module(m, ??), sites)),
+  QRDecls(named) => QRDecls(filter(named_in_module(m, ??), named)),
+  QRVerifyDebt(debt) => QRVerifyDebt(filter(obligation_in_module(m, ??), debt)),
+  QRSmt(debt) => QRSmt(filter(obligation_in_module(m, ??), debt)),
+  QRError(msg) => QRError(msg),
+  unscoped => QRError("`in` keeps a site facet's sites: refs of, census, text, prose, ghosts, decls, verification, smt"),
+}
+
+fn site_in_module(m, site) = match site {
+  (path, span) => path == m,
+}
+
+fn named_in_module(m, named) = site_in_module(m, name_site(named))
+
+fn obligation_in_module(m, ob) = site_in_module(m, debt_site(ob))
 
 // The label a name carries: what its type names — a declaration's
 // return, a nominal type's predicate, a row's confinement — joined, for a
@@ -1246,7 +1274,7 @@ fn located_answer(r) = match r {
   QRGhosts(sites) => Some(("cell(s) minted and never judged", sites)),
   QRVerifyDebt(obligations) => Some(("open obligation(s)", map(debt_site, obligations))),
   QRSmt(obligations) => Some(("open obligation(s)", map(debt_site, obligations))),
-  QRDecls(names) => Some(("declared name(s)", names |> map({ (_, site) => site }))),
+  QRDecls(names) => Some(("declared name(s)", names |> map(name_site))),
   QRRefs(sites) => Some(("reference(s)", sites)),
   QRType(_, _) => None,
   QRIntent(_) => None,
@@ -1272,6 +1300,10 @@ fn located_answer(r) = match r {
 
 fn debt_site(ob) = match ob {
   (modh, s, _, _) => (module_name_of_handle(modh), s),
+}
+
+fn name_site(named) = match named {
+  (name, site) => site,
 }
 
 fn census_sites(shape) with !Mutate = match graph_snapshot() {
@@ -2300,7 +2332,7 @@ fn site_is_seq(site) = match site {
 }
 
 fn site_demanded(vias, site) = match site {
-  WhereSite(s) => if schedule_is_seq(s.schedule) { WhereSite({...s, vias: vias}) } else { site },
+  WhereSite(s) => if schedule_is_seq(s.schedule) { WhereSite({...s, vias}) } else { site },
 }
 
 // Where the declaration stands, in the developer's coordinates: the module
@@ -2519,7 +2551,7 @@ fn child_sites(body, tees) with !Mutate =
   body_child_handles(body) |> flat_map(fanout_sites(??, tees))
 
 fn where_site(h, shape, tees) with !Mutate =
-  WhereSite({schedule: schedule_of(tees), shape: shape, span: span_of_node_raw(h), vias: []})
+  WhereSite({schedule: schedule_of(tees), shape, span: span_of_node_raw(h), vias: []})
 
 // The branch edges the judgment drew at the site, one per branch (the
 // `><` and `<|` judgments both write a FanoutBoundary). A fanout the
@@ -2612,11 +2644,11 @@ fn demand_step(decls, name: String, acc, callee: String) with !Mutate = match ac
       (found, memo) => {
         let walked = smap_add(st.walked, callee, 1)
         if found && str_eq(callee, name) {
-          (true, next, {memo: memo, walked: walked})
+          (true, next, {memo, walked})
         } else if found {
-          (false, fold(next, push, direct_callees(decls, callee)), {memo: memo, walked: walked})
+          (false, fold(next, push, direct_callees(decls, callee)), {memo, walked})
         } else {
-          (false, next, {memo: memo, walked: walked})
+          (false, next, {memo, walked})
         }
       },
     }
@@ -2687,7 +2719,7 @@ fn tee_line(h, hn: String) with !Mutate = if byte_len(hn) == 0 {
 // ungrounded one keeps the ungrounded one. Required reads with computed names
 // are refused by the judgment; optional computed reads are explicitly marked
 // as broad host access.
-type EnvDemand = EnvDemand({decl: String, mode: String, name: String, site: String})
+type EnvDemand = {decl: String, mode: String, name: String, site: String}
 
 fn env_demand() =
   ["env", "env_opt"] |> flat_map({ op => graph_applies_at(op) }) |> unique |> sort |> fold([], env_demand_at)
@@ -2695,7 +2727,7 @@ fn env_demand() =
 fn env_demand_at(acc, c) = match env_read_demand(c) {
   None => acc,
   Some((name, mode)) => if any(handler_crosses_host, serving_installs("Environ", c, [])) {
-    push(acc, EnvDemand({decl: enclosing_decl_name(c), mode: mode, name: name, site: env_read_site(c)}))
+    push(acc, EnvDemand({decl: enclosing_decl_name(c), mode, name, site: env_read_site(c)}))
   } else {
     acc
   },

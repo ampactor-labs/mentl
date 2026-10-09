@@ -323,13 +323,13 @@ fn list_eq_loop(a, b, n, i) -> Bool = if i >= n {
 fn list_compare_loop(a, b, la, lb, i) -> Int = if i >= la && i >= lb {
   0
 } else if i >= la {
-  0 - 1
+  -1
 } else if i >= lb {
   1
 } else {
   let ea = list_index_unchecked(a, i)
   let eb = list_index_unchecked(b, i)
-  if ea < eb { 0 - 1 } else if ea > eb { 1 } else { list_compare_loop(a, b, la, lb, i + 1) }
+  if ea < eb { -1 } else if ea > eb { 1 } else { list_compare_loop(a, b, la, lb, i + 1) }
 }
 
 // The raw altitude end to end, as `list_eq` reads it: the emit calls this
@@ -394,13 +394,13 @@ fn list_compare_f64(a, b) -> Int = {
 fn list_compare_f64_loop(a, b, la, lb, i) -> Int = if i >= la && i >= lb {
   0
 } else if i >= la {
-  0 - 1
+  -1
 } else if i >= lb {
   1
 } else {
   let ea = load_f64(word_addr(list_index_unchecked(a, i)))
   let eb = load_f64(word_addr(list_index_unchecked(b, i)))
-  if ea < eb { 0 - 1 } else if ea > eb { 1 } else { list_compare_f64_loop(a, b, la, lb, i + 1) }
+  if ea < eb { -1 } else if ea > eb { 1 } else { list_compare_f64_loop(a, b, la, lb, i + 1) }
 }
 
 // Hash via the decimal rendering (the field-hash precedent: value-faithful —

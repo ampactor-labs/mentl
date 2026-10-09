@@ -474,18 +474,7 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
   // unconstructible in this representation). The record allocates BEFORE
   // the fork pair's heap_mark, so it survives the region.
   {
-    resume(trail_len) with checkpoint_stack = push(
-      checkpoint_stack,
-      {
-        comment_refs: comment_refs,
-        next: next,
-        span_index: span_index,
-        spine: spine,
-        spine_open: spine_open,
-        trail: trail,
-        trail_len: trail_len,
-      }
-    )
+    resume(trail_len) with checkpoint_stack = push(checkpoint_stack, {comment_refs, next, span_index, spine, spine_open, trail, trail_len})
   },
   graph_fresh_ty(reason) => // ─── Write ops ───────────────────────────────────────────────────
   // Each write appends a Mutation to the trail. The trail is the
@@ -1120,15 +1109,7 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
         trail_len,
         target_idx,
         next,
-        {
-          binders: binders,
-          claims: claims,
-          demands: demands,
-          gates: gates,
-          instances: instances,
-          late: late,
-          rows: rows,
-        }
+        {binders, claims, demands, gates, instances, late, rows}
       )
       resume() with next = new_next, trail_len = target_idx
     } else {
@@ -1147,15 +1128,7 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
         trail,
         trail_len,
         target_idx,
-        {
-          binders: binders,
-          claims: claims,
-          demands: demands,
-          gates: gates,
-          instances: instances,
-          late: late,
-          rows: rows,
-        }
+        {binders, claims, demands, gates, instances, late, rows}
       )
       // drop_last, never slice: on the always-snoc stack drop_last is
       // the parent READ — the pop allocates nothing and the surviving
@@ -1928,7 +1901,7 @@ fn expr_child_handles(e) = match e {
   // (parse_record_fields); only resume updates are {name, init} records.
   map(tuple_field_handle, fields),
   RecordUpdateExpr(base, flds) => [node_handle(base)] ++ map(tuple_field_handle, flds),
-  NamedRecordExpr(_, flds) => map(tuple_field_handle, flds),
+  NamedRecordExpr(head, flds) => [node_handle(head)] ++ map(tuple_field_handle, flds),
   IndexExpr(recv, idx) => [node_handle(recv), node_handle(idx)],
   MakeStringExpr(frags) => map(node_handle, frags),
   ShowExpr(inner) => [node_handle(inner)],
@@ -2056,7 +2029,7 @@ fn declares_absent(clause, ename: String) =
 // `memo`: an ask that found no fanout from its root settles every name it
 // entered false (`fanout_reach_settle`), the root's reach being whole. The
 // emit's spec registry and `where`'s demand walk both ask through here.
-fn fanout_reach_ask(memo, decls, name: String) = match fanout_reach_of({entered: [], memo: memo, seen: smap_new()}, decls, name) {
+fn fanout_reach_ask(memo, decls, name: String) = match fanout_reach_of({entered: [], memo, seen: smap_new()}, decls, name) {
   (found, st) => (found, if found { st.memo } else { fold(st.memo, fanout_reach_settle, st.entered) }),
 }
 

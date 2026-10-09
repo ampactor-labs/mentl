@@ -4621,7 +4621,10 @@ for i in "${!compilers[@]}"; do
   # 2835 (2026-10-06): ROSE 2833 → 2835 with N2's head projection, which
   # names the prelude's ops in the parameter products SYNTAX writes; the
   # parameters are the decisions the render now shows, two lines net.
-  cost_ceiling=2835
+  # 2829 (2026-10-09): FELL 2835 → 2829 at L-F, the word's bit operations
+  # one paragraph over their named parameters where each op carried its own
+  # comment, the three it gained (shr_u, shr_s, clz) included.
+  cost_ceiling=2829
   ct_out=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" query "$ROOT/tests/frontier/mn-bare-floor.mn" "cost" 2>/dev/null)
   ct_lines=$(printf '%s' "$ct_out" | grep -o '[0-9]* source line' | grep -o '[0-9]*' | head -1)
   if [ -n "$ct_lines" ] && [ "$ct_lines" -le "$cost_ceiling" ]; then

@@ -2761,6 +2761,26 @@ and this is the STATE.
   `int_to_str` comes from io, where strings declares it; and Pulse's prose
   spells literals the formatter rewrote. The course (§11, Tier 3) is born
   canonical and deletes lib/tutorial.
+- **THE BOOT ASSEMBLES ITS OWN OUTPUT — L-F NOT LANDED (2026-10-09, pin
+  99de278f).** `mentl asm` is the boot's: src/asm.mn projects the boot's own
+  m2.wat to the bytes wat2wasm writes from it, in 1.45 s, and the gates
+  assemble through it since this pin; WABT's fallback, the shifts the
+  assembler should perform (the boot carries `i32_shr_u`, `i32_shr_s` and
+  `i32_clz`, unused) and the page's run role remain
+  (`Hβ.emit.the-medium-assembles-its-output`). The assembler owns no ghost,
+  costume or open obligation, which `mentl query <entry> "<facet> in
+  <module>"` answers by itself now — a site facet keeps one module's sites.
+  Integrating it found three things wider than it: a match's arms were
+  unified into the match node, so the parser's cell became the class's root
+  and every Why walk through a handler arm's match ended at "authored here"
+  (the arms meet in a result cell the judgment mints, and the wheel's ghosts
+  fell 154 → 112); every cli verb read argv by index under a length guard
+  (each builder takes its words apart by pattern, and the open obligations
+  fell 205 → 184); and the reference link is the union-find edge
+  (`graph_link_of` reads `NBound(TVar(b))`), so which free root survives a
+  union is load-bearing until the reference link records it
+  (`Hβ.lower.reach-edge-on-node`). The formatter writes `type X = {…}` and
+  punned fields, and the wheel's source and library are at its fixpoint.
 
 Everything else requires the board that measured it. A skipped, stale, or
 interrupted gate is UNKNOWN, never green.
@@ -3805,9 +3825,10 @@ and Wave C (tier 5) follow.
 - **The Space page.** L-D · the canvas (`Hβ.space.the-canvas`; OPEN — the canvas lane's work integrated 2026-10-06, what it still owes in the peer): tokens and
   spans come from the wheel and the page's tokenizer is deleted, with the
   aspect strip, find by edge, fmt on idle and the trail as undo. L-F · the
-  medium assembles its own output (`Hβ.emit.the-medium-assembles-its-output`):
-  an `asm` verb, WABT out of the shim, the march and every gate, and in-page
-  run. L-E · the Severance Map (`Hβ.viz.severance-map`, Arc G above), its
+  medium assembles its own output (`Hβ.emit.the-medium-assembles-its-output`;
+  OPEN — the boot carries `mentl asm` since its first pin, 2026-10-09, what it
+  still owes in the peer): an `asm` verb, WABT out of the shim, the march and
+  every gate, and in-page run. L-E · the Severance Map (`Hβ.viz.severance-map`, Arc G above), its
   Why walk eliding trivial hops on day one
   (`Hβ.viz.why-walk-elides-trivial-hops`).
 - **E1 · Configuration and secrets are an effect**
