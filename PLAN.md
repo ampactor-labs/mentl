@@ -832,6 +832,29 @@ Ground FIRST: `bash tools/state.sh` (the whole board). State-as-PROJECTION is
 arbiter. Where a design section and this audit disagree, §4/§5 is the TARGET
 and this is the STATE.
 
+- **THE PROGRAM IS NOT YET THE GRAPH: ITS STRUCTURE IS NESTED VALUES
+  (measured 2026-10-10, Morgan's "what tree?").** The judgment is a graph:
+  every node has a handle, everything the judgment learns about a node is a
+  column at that handle (its type cell, span, parent, reason, comment,
+  charges, claims, gates, binder facts), and type and row variables are
+  union-find cells. The program is not. A node is a record `N(NodeBody,
+  ValidSpan, Int)`, and every `Expr` holds its children as whole records
+  (`BinOpExpr(BinOp, Node, Node)`), so what contains what lives in the
+  nesting, the graph's parent edge is computed from it at registration, and
+  the passes walk it: 288 sites build or take apart a record (infer 123,
+  lower 62, parser 27, the rest across twelve modules), 225 ask a record for
+  its handle, and 175 read a body through the graph. Three places already
+  hold what the graph does not: `desugar_block` re-registers a `let`'s handle
+  as the `match` it becomes and builds that node with a span the graph never
+  indexed, the head renderer is handed a node fabricated at handle 0, and the
+  proposer pairs the e-graph's cheapest body and handle with another node's
+  span. It costs every change that should be one write: installing a named
+  chain, a rename, the session's edit (which re-parses a module), a proposal
+  rewriting in place. A reference is a name (`VarRef(String)`, M1's link), a
+  type a value tree (`Ty`), a reason a value tree, and the lowered program a
+  second tree (`LowExpr`, 42 constructors): §11's one law in five faces. The
+  cut: a node IS its handle, a body holds its children as handles, and every
+  reader asks the graph (`Hβ.graph.positions-are-cells`, its first face).
 - **Regions are runtime since the arena** (2026-10-03, the bullet after
   E4's): `(body) ~> arena` reclaims an extent's allocations at its exit
   except what its publication reaches. Ownership's regions stay what they
@@ -3053,8 +3076,9 @@ table idx 0, so "prints WAT mid-inference" can mean "the parser ate my arm").
    prose disagrees, fix the prose. **A gate you did not run is not green** — the
    crown proved that over eleven landings.
 3. **The cursor is the ULTIMATE-FORM arc — write the `.mn` in full.** NOT a
-   first-light blocker to chase. Recent leaps that ARE the cursor: the whole AST
-   in the one graph (the fabric — every node a resolvable handle); the e-graph
+   first-light blocker to chase. Recent leaps that ARE the cursor: every node
+   of the AST a resolvable handle in the one graph (the fabric — its structure
+   is still nested records, §7's first bullet); the e-graph
    engine (effect-aware equality saturation) live in lower. The seed's weaker
    inference lags this and catches up ("then we make it work"); NEVER hedge the
    wheel against the seed — that fork (ultimate form vs safer-for-the-seed) IS
@@ -3132,10 +3156,17 @@ eleven consecutive ledger entries while the leak rode the whole arc; nothing
 written was false, the gate had merely gone quiet. Closed mechanically by Phase
 0.1: a gate not run is a visible blank, and a red one refuses the pin.
 
-**ONE LAW, FOUR FACES — AND THE ORACLE IS THEIR SUM (2026-09-06).** The
-board's four largest open items are not four projects. Each is the same
-violation — *a materialized view stored where an edge belonged* — and the
-oracle is what they add up to:
+**ONE LAW, FIVE FACES — AND THE ORACLE IS THEIR SUM (2026-09-06; the fifth
+2026-10-10).** The board's largest open items are not separate projects.
+Each is the same violation — *a materialized view stored where an edge
+belonged* — and the oracle is what they add up to:
+- **STRUCTURE** (`N(NodeBody, ValidSpan, Int)`, named 2026-10-10): the
+  program's own edges, what contains what, held as records nested inside
+  records. The graph's parent edge is computed from the nesting, every pass
+  walks the nesting, and so a write to the graph at one node is invisible to
+  its ancestors. It is the face under the other four: a scheme, a reason and
+  a position are each a fact ABOUT a node, and the node itself was a value
+  the graph pointed into (§7's first bullet carries the measurement).
 - **SCHEMES** (`Frozen`, rung 3): a decl's type frozen at its own exit, the
   moment the cell is least finished. The two-pass tower re-judges the gap;
   the movers line counts it.
@@ -3731,6 +3762,19 @@ lib/dsp Stage Law, E1, L-F, L-D, M1 and V1 — and one integration session
 merges each in this order; Wave B (the course, L-E and the rest of tier 4)
 and Wave C (tier 5) follow.
 
+**THE CUT IN FRONT OF THE ORDER — THE PROGRAM BECOMES THE GRAPH (Morgan,
+2026-10-10).** Asked how handlers SHOULD be installed, the design of a
+named chain (`handler judgment = … ~> …`, installed `work ~> judgment`) met
+the structure face: an install cannot become its members' installs after the
+parse, because the install's ancestors hold its old record (§7's first
+bullet). That is #108's first face, and every change the medium should make
+as one write rests on it — the chain, a rename, the session's edit, a
+proposal rewriting in place — so it runs now, ahead of the order and behind
+tier 1's net, which has landed. Its stages are its design
+(`Hβ.graph.positions-are-cells`). Handler installation follows on it: one
+install per extent, a handler's start state its own, a chain named once,
+nothing installed only to swallow an op nobody reads.
+
 *Tier 0 · protect the work.*
 - **§0.1 · The record** — DONE, commit 42a94dc0.
 - **§1 · L-C closes** — DONE (pins d956687d and c8ba5799): the m4 leg runs
@@ -3952,7 +3996,9 @@ and Wave C (tier 5) follow.
   positions M1 leaves, plus binders, patterns, annotations and predicates,
   become the cells inference binds: the ghosts (18,681 at E4) to zero,
   `refs of` a type or a pattern constructor answered, a claim located at the
-  value it claims. The widest blast radius of all.
+  value it claims. The widest blast radius of all. Its first face,
+  STRUCTURE — a node is its handle and a body holds its children as
+  handles — is the cut in front of the order (above).
 - **#109 · Verify's own solver** (`Hβ.verify.the-solver-is-the-search`, 8.3
   as re-scoped). Precision, not soundness: PR-2's one constant folder, the
   read of the path, the 23 peers the re-grounding routed there, and the
@@ -4840,8 +4886,9 @@ landed in 5–10; this phase is the finish that makes it FELT.
   next step. What survives intact: the first-divergence question needs
   provenance as EDGES — a diff is cheap over shared edges and absurd over
   duplicated trees — and the shared trail segment needs one judged context.
-  §11's "one law, four faces" still holds; the correction is which face is
-  load-bearing, and it is the PASS, not the freeze.
+  §11's one law still holds (its faces were four when this was written); the
+  correction is which face is load-bearing, and it is the PASS, not the
+  freeze.
 - **11.2 · `mentl edit` / `mentl space` polished.** The keystroke→parse→format→render loop
   continuous (`Hβ.felt.mentl-edit-runtime`), reactivity typed and
   demand-driven, the verification dashboard (live V_Pending / transitive

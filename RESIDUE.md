@@ -1272,8 +1272,8 @@ address, answering what differs. §11's own table says so.
 **THE CLOSE CONDITION WRITTEN HERE AT BIRTH WAS WRONG, CORRECTED 2026-09-20 BY
 MORGAN'S QUESTION — "isn't what changed handled by git?"** It read: *"the board
 is written at repin as a value the next run reads."* That is a MATERIALIZED
-VIEW stored where a derivation belonged — the exact disease §11's "one law,
-four faces" convicts, proposed by the entry that exists to delete it. A board
+VIEW stored where a derivation belonged — the exact disease §11's "one law"
+convicts, proposed by the entry that exists to delete it. A board
 is a pure function of (source, wheel); git holds both, and `persist = memcpy`
 already holds the judgment. A second store beside the image is a copy of a fact
 two artifacts already carry.
@@ -1812,7 +1812,7 @@ re-hash it, because `session_current` decides whether the resident tree
 moved by recomputing that manifest and comparing it to a banked copy. The
 fix was correct and the mechanism is not the ultimate form: a manifest is a
 materialized view of the world, recomputed per message and diffed against a
-stored snapshot, which is the exact shape §11's "ONE LAW, FOUR FACES"
+stored snapshot, which is the exact shape §11's "ONE LAW"
 convicts everywhere else. The medium asks "did any byte of any file change"
 and answers by reading every file, when what it needs is "which cells'
 inputs changed" — the changed cone, which the graph could carry as an edge
@@ -17400,7 +17400,7 @@ RE-GROUNDED 2026-10-06 (already-closed): Its prescription was executed: the move
 ### `Hβ.reason.provenance-is-a-value-tree` — OPEN
 
 THE PROVENANCE FACE OF THE ONE LAW
-(measured 2026-09-06; PLAN §11's ONE LAW, FOUR FACES block is the home for
+(measured 2026-09-06; PLAN §11's ONE LAW block is the home for
 the synthesis, this entry for the mechanism). `GNode(NodeKind, Reason)` puts
 a RECURSIVE VALUE TREE on every node. Classified against the artifact, the 24
 constructors carry: a copied EDGE (`Declared`, `VarLookup`, `FnReturn`,
@@ -19444,6 +19444,46 @@ remains: the worker's run role, the fixpoint seal on the page, download and
 run.
 
 ### `Hβ.graph.positions-are-cells` — OPEN
+
+**THE FIRST FACE — STRUCTURE (2026-10-10, the cut in front of PLAN §11's
+order).** The positions this entry makes cells sit in a graph whose own
+edges were not yet edges: a node is a record `N(NodeBody, ValidSpan, Int)`
+holding its children as records, the graph's parent edge is computed from
+that nesting at registration, and the passes walk it (PLAN §7's first bullet
+carries the measurement). THE FORM: a node is its handle. Its body, span,
+parent and every fact the judgment draws are columns at that handle; a body
+holds its children as handles; every reader asks the graph
+(`graph_node_body`, `graph_span_of`). `N(_, _, h)`, a positional record taken
+apart with two wildcards to reach a node's identity, has nothing left to
+name, because the node is `h`. THE STAGES, each a pin the fixed point
+arbitrates:
+- S1 · every reader reads a node's body and span through the graph while the
+  record still exists. The graph holds the very heap object the record does,
+  so the stage moves rows (a walker that reads the program performs
+  GraphRead) and nothing else, except where the record already disagrees
+  with the graph, which S1 decides rather than preserves: the `match` a
+  destructuring `let` becomes takes, in the graph, the extent it holds (the
+  `let` through its block's end, so a parent's span still contains its
+  children's); the head renderer takes the annotation it renders rather than
+  a node fabricated at handle 0; the proposer's extracted candidate is the
+  e-graph's cheapest node at its own handle and span; an absent annotation,
+  registered at no position, is read by nothing that asks where it stands;
+  and voice.mn's modifier table, whose strings interpolate the constructor
+  (`" (L{N})"`) and whose renderer nothing reaches, is deleted with the
+  register that selects from it.
+- S2 · a node is its handle: `type Node = Int`, `mint_node` answers the
+  handle, a body's children are handles, and the record, `node_handle` and
+  every `N` pattern are deleted: a TRANSITION, since the wheel's own
+  representation moves.
+- S3 · the writes it opens: an install of a named chain becomes its members'
+  installs by one graph write at the install, a rename is one write at the
+  declaration, and the session re-judges the nodes an edit rewrote rather
+  than re-parsing a module.
+Sized 2026-10-10 by the medium's own reference lists: 288 sites build or
+take apart a record (infer 123, lower 62, parser 27, query 14, types 11,
+synth_proposer 11, verify 8, graph 7, mentl 5, voice 4, own 4, format 4,
+cursor_transport 3, cursor 2, space 1, pipeline 1, main 1), 225 call
+`node_handle`, and 175 already read a body through the graph.
 
 BORN 2026-10-06 — the 2026-10-06 program, landing #108 (PLAN §11, THE STANDING CURSOR). The design below is the program's own text for this landing, moved here verbatim at the §0.3 integration; its section references (§2–§7) are the program's own numbering, and the whole program, with the seven audit lenses' answers, is at commit 42a94dc0 (docs/record/2026-10-06/).
 
