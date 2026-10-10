@@ -297,7 +297,7 @@ fn board_bounds() = [
   // the edge; each rots at the first edit above it. 29 where a substring
   // read of the extension and colon answered 34: five of those were the
   // extension in prose with no line after it.
-  Bound({ceiling: 28, question: QCensus(CsProseClass(PcCoordinate))}),
+  Bound({ceiling: 27, question: QCensus(CsProseClass(PcCoordinate))}),
   // Repository paths that name no file — six of the seven cite a deleted
   // module, and the seventh quotes the phantom path a parser bug once walked.
   Bound({ceiling: 7, question: QCensus(CsProseClass(PcPathNoFile))}),
@@ -305,17 +305,17 @@ fn board_bounds() = [
   // tokens across 51 comments, every one a pin or a commit.
   Bound({ceiling: 51, question: QCensus(CsProseClass(PcCommit))}),
   // Numbered citations of the archived spec corpus.
-  Bound({ceiling: 25, question: QCensus(CsProseClass(PcSpecCitation))}),
+  Bound({ceiling: 24, question: QCensus(CsProseClass(PcSpecCitation))}),
   // Lifecycle prose — what was, where SYNTAX asks for what is.
   Bound({ceiling: 44, question: QCensus(CsProseClass(PcLifecycle))}),
   // Archaeology — the seed era's vocabulary and its design notes.
-  Bound({ceiling: 93, question: QCensus(CsProseClass(PcArchaeology))}),
+  Bound({ceiling: 92, question: QCensus(CsProseClass(PcArchaeology))}),
   // Decoration runs — the banners drift rows 128 and 131 policed by regex
   // (one over the dissolved triple-slash form, one over a glyph no banner
   // is drawn with, so neither could fail); both rows retired into this line,
-  // and F's decoration strip takes it to zero. 373 -> 346 as the modules the
-  // integrations touched were trued.
-  Bound({ceiling: 346, question: QCensus(CsProseClass(PcBanner))}),
+  // and F's decoration strip takes it to zero. 373 -> 344 as the modules the
+  // landings touched were trued.
+  Bound({ceiling: 344, question: QCensus(CsProseClass(PcBanner))}),
   // A COMMENT NEVER SILENCES A GATE (SYNTAX §Comments). Each marker mutes a
   // text row of tools/drift-patterns.tsv that a structural census reads
   // correctly — a string literal is text, a one-shot concat is not an

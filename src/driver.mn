@@ -2,20 +2,13 @@
 //
 // Walks the import DAG from an entry module, visits each module once
 // in dependency order (post-order: leaves before importers), and
-// resolves each name to a path (driver_module_path — four homes, tried
-// in order). Every compile judges the DAG as ONE program — each module
-// parsed on its own, all of them inferred together — so the diagnostics
-// are whole-program truth, never per-module fragments missing their
-// cross-module names.
-//
-// The header here described "cache hit detection" and "consults the .kai
-// cache to skip re-inference on unchanged sources" for two weeks after
-// the .kai layer was DELETED WHOLE (2026-07-02): it snapshotted env
-// entries lossily, DROPPING Reason chains, and pinned an Inka-era wire
-// format. There is no cache in this file. Cross-run skipping returns as
-// image-persist (Hβ.persist.module-image-cache, PLAN §5.R band O) — the
-// graph image memcpy'd whole, keyed by source + transitive dep hashes,
-// never a second serializer.
+// resolves each name to a path (`driver_module_path`, over the roots
+// `module_roots` names, tried in order). Every compile judges the DAG as ONE
+// program — each module parsed on its own, all of them inferred together —
+// so the diagnostics are whole-program truth, never per-module fragments
+// missing their cross-module names. There is no cache in this file: a
+// cross-run skip is the graph image restored whole
+// (Hβ.persist.module-image-cache).
 //
 // The per-module env overlay is still open: env install merges flat into
 // env_handler and the graph chase walks one global graph
@@ -42,16 +35,23 @@ import verify
 // same two under `/mentl-home`, where the install shim (tools/install.sh)
 // maps $MENTL_HOME so a project outside the repo reaches the pinned boot's
 // own vocabulary with no configuration.
+fn module_roots() = ["", "src/", "lib/", "/mentl-home/src/", "/mentl-home/lib/"]
+
+// The files a module's name can be, one per root.
 // The String pin is an Intent Boundary: unpinned, module_name's only uses
 // are splices, the fn generalizes, and a free-typed caller routes the word
 // floor — paths minted as pointer numerals.
-fn module_probes(module_name: String) = [
-  "{module_name}.mn",
-  "src/{module_name}.mn",
-  "lib/{module_name}.mn",
-  "/mentl-home/src/{module_name}.mn",
-  "/mentl-home/lib/{module_name}.mn"
-]
+fn module_probes(module_name: String) = module_roots() |> map({ root => "{root}{module_name}.mn" })
+
+// The directory a name names under the same roots, the first that exists: a
+// directory under lib/ reaches here by its bare name, the command line
+// having read the path as a module's.
+fn driver_dir_path(name: String) = module_roots() |> map({ root => "{root}{name}" }) |> find(is_dir)
+
+fn is_dir(path) = match fs_list_dir_impl(path) {
+  Some(_) => true,
+  None => false,
+}
 
 // The file a module's name resolves to: the first probe that exists, or
 // None. A module with no file has no path, so nothing reads or writes one

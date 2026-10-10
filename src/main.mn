@@ -1514,8 +1514,9 @@ fn battery_expect_digits(src, i, acc) = if i >= byte_len(src) {
 }
 
 // `// propose L:C: <want>` — the address, then the want: `fill` takes the
-// rest of the line (a candidate's source may carry spaces), `ask` one word
-// (the arm), `none` nothing.
+// rest of the line (a candidate's source may carry spaces), `ask` the rest
+// too (the arm, and what a value question names: `ask value 0 or 1`),
+// `none` nothing.
 fn battery_propose_expect(src) = {
   let line = battery_expect_digits(src, 11, 0)
   let col_start = battery_skip_digits(src, 11) + 1
@@ -1526,7 +1527,7 @@ fn battery_propose_expect(src) = {
   if str_eq(word, "fill") {
     Some(ExpectPropose(line, col, WantFill(battery_line_rest(src, rest_start, rest_start))))
   } else if str_eq(word, "ask") {
-    Some(ExpectPropose(line, col, WantAsk(battery_expect_word(src, rest_start, rest_start))))
+    Some(ExpectPropose(line, col, WantAsk(battery_line_rest(src, rest_start, rest_start))))
   } else if str_eq(word, "none") {
     Some(ExpectPropose(line, col, WantNone))
   } else {
@@ -1851,15 +1852,14 @@ fn audit_run(target) = {
   0
 }
 
-// ─── query_run — structured ad-hoc query
-//
-// `mentl query <module> "<question>"` — read-only query against the
-// substrate. A DIRECTORY is a tree of independent programs, each its own
+// `mentl query <module> "<question>"`: a read-only question asked of a
+// module's judged graph. A DIRECTORY is a tree of independent programs, each its own
 // link as `mentl test <dir>` runs them, and a site facet answers across all
-// of them (`query_dir`). The directory probe is a filesystem op, so the
-// bracket covers it, as the battery's does.
-fn query_run(target, question) = match fs_list_dir_impl(target) {
-  Some(_) => query_dir(dir_base(target), question),
+// of them (`query_dir`), found under the roots a module name resolves
+// against (`driver_dir_path`). The directory probe is a filesystem op, so
+// the bracket covers it, as the battery's does.
+fn query_run(target, question) = match driver_dir_path(dir_base(target)) {
+  Some(dir) => query_dir(dir, question),
   None => query(target, question),
 } ~> stdout_console ~> wasi_filesystem ~> mentl_default ~> diagnostics_handler ~> no_state_walked ~> graph_handler([], 0, []) ~> mutate_sink
 

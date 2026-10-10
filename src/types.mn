@@ -2809,8 +2809,12 @@ type Divergence
   // vocabulary (the type of a parameter, a return, the position itself)
   | DivType(Ty, Ty, Reason)
   | DivName
-  // what the target type admits — the same read that seeded the candidates
-  | DivValue(Domain)
+  // the values the survivors denote, each once, and what the target type
+  // admits — the same read that seeded the candidates. The question names
+  // the values it asks between, as DivVariants names its constructors: a
+  // tie past three members renders the question alone, and "which one?"
+  // with no ones beside it asked nothing.
+  | DivValue([LitValue], Domain)
   // the survivors are a sum's own nullary constructors — its values, named
   // (C7: Circle against Square is a VALUE question, asked as shape before)
   | DivVariants([String])
@@ -5581,15 +5585,24 @@ fn show_domain(d) = match d {
   DUndecided => "the predicate is past the decidable fragment, so the type's bound is unread",
 }
 
+// A constant as the source writes it.
+fn show_lit_value(v) = match v {
+  LVInt(n) => int_to_str(n),
+  LVFloat(f) => float_to_str(f),
+  LVString(s) => "\"{s}\"",
+  LVBool(b) => if b { "true" } else { "false" },
+}
+
 // The arm's NAME — what a proposal fixture's `// propose` contract names
 // (`mentl test` over tests/proposals), so a contract binds the
-// classification and never the sentence.
-fn divergence_arm(d) with Pure = match d {
+// classification and never the sentence. A value question carries the values
+// it asks between, which are the classification's own content.
+fn divergence_arm(d) = match d {
   DivRow(_, _) => "row",
   DivType(_, _, _) => "type",
   DivName => "name",
-  DivValue(_) => "value",
-  DivVariants(_) => "value",
+  DivValue(values, _) => "value {join(" or ", map(show_lit_value, values))}",
+  DivVariants(names) => "value {join(" or ", names)}",
   DivShape => "shape",
   DivBehavior => "behavior",
 }
@@ -5602,7 +5615,7 @@ fn show_divergence(d) with !Mutate = match d {
   DivRow(a, b) => "these differ in what they may DO — {render_row(a)} against {render_row(b)}: which capability does this position carry?" ~> var_names,
   DivType(a, b, r) => "these differ in TYPE — {render_ty(a)} against {render_ty(b)}: which type does this position hold? (the cell that moves: {show_reason(r)})" ~> var_names,
   DivName => "every survivor denotes the same value — the question is which name carries the intent",
-  DivValue(dom) => "the survivors differ in VALUE and {show_domain(dom)}: which one does this position mean?",
+  DivValue(values, dom) => "the survivors differ in VALUE — {join(" or ", map(show_lit_value, values))} — and {show_domain(dom)}: which one does this position mean?",
   DivVariants(names) => "the survivors are the type's own values — {join(" or ", names)}: which one does this position mean?",
   DivShape => "the survivors differ in SHAPE — what structure does this position hold?",
   DivBehavior => "these are different computations of the same type — an example of the result, or a refinement on it, decides which one this position means",

@@ -4700,11 +4700,14 @@ fn unify_args_positionally(args, params, i, span: ValidSpan, call_h) = if i < le
         Located(span, Inferred("declaration-order param"))
       )
       unify(ah, pty_h, span, Inferred("argument fills its declaration-order param"))
-      // A SUPPLIED slot is a refinement construction site like any call arg
-      // (discharge_arg_refinements' partial sibling); a hole has no value
-      // yet — its obligation lands when the suspension is filled.
+      // A SUPPLIED slot is a refinement construction site like any call arg.
+      // A hole holds no value yet, so it raises nothing — its obligation
+      // lands when the suspension is filled — but the slot's contract is
+      // noted on it, so what the medium proposes there satisfies what the
+      // parameter demands: `choose(??)` over `n: Positive` proposed `0`
+      // before, the hole's claims being empty.
       match b {
-        NHole(_) => (),
+        NHole(_) => note_contract(param_ty(list_index(params, i)), ah),
         _ => discharge_arg(list_index(params, i), ah, span, call_h),
       }
       unify_args_positionally(args, params, i + 1, span, call_h)
@@ -10821,9 +10824,14 @@ fn apply_let_annotation(ann_ty, value_handle, span: ValidSpan) = match quantify_
 // it, a reader of a let's binder may lean on its annotation.
 fn claim_refinement(ty, value_handle, span: ValidSpan) = {
   let verdict = apply_refinement_constraint(ty, value_handle, span)
-  if ty_carries_refinement(ty) && !is_provision(ty) { note_claim(ty, value_handle) } else { () }
+  note_contract(ty, value_handle)
   verdict
 }
+
+// The contract a node stands under, noted where its later readers look: a
+// refinement only, never a provision.
+fn note_contract(ty, h) =
+  if ty_carries_refinement(ty) && !is_provision(ty) { note_claim(ty, h) } else { () }
 
 fn note_claim(ty, h) = {
   graph_claim_note(h, ty)

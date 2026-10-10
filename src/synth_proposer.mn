@@ -805,27 +805,22 @@ fn ctors_of_type_from(entries, type_name, i, n, own buf, count) with !Mutate = i
   }
 }
 
-fn ctor_to_enriched_candidate(name, scheme, reason) with !Mutate = EnrichedCandidate({
-  node: synthesize_ctor_call_node(name, scheme),
-  origin: ProposerEnumerative,
-  reason: VarLookup(name, reason),
-  writes: [],
-})
+fn ctor_to_enriched_candidate(name, scheme, reason) with !Mutate =
+  seed_candidate(synthesize_ctor_call_node(name, scheme), VarLookup(name, reason))
 
-fn enumerate_lambdas(params, ret, row, context) = {
-  // Single anonymous-fn candidate: (param_names) => ?? body. The
-  // body becomes a nested Synth invocation; the chain re-enters
-  // recursively at parse-time when the user accepts.
-  let buf = make_list(1)
-  let candidate = EnrichedCandidate({
-    node: synthesize_lambda_node(params, ret),
-    origin: ProposerEnumerative,
-    reason: Inferred("an anonymous fn matching the hole's shape; its body is the next hole"),
-    writes: [],
-  })
-  list_set(buf, 0, candidate)
-  buf
-}
+// A seed the enumerator proposes: the node it stands as, and why the type
+// admits it. It moves no context cell until it is judged.
+fn seed_candidate(node, why) with !Mutate =
+  EnrichedCandidate({node, origin: ProposerEnumerative, reason: why, writes: []})
+
+// One function literal of the hole's shape, its body the next hole: the
+// proposal after it is made there.
+fn enumerate_lambdas(params, ret, row, context) = [
+  seed_candidate(
+    synthesize_lambda_node(params, ret),
+    Inferred("an anonymous fn matching the hole's shape; its body is the next hole")
+  )
+]
 
 // A refined target seeds from its DOMAIN rather than from the unrefined
 // floor. The rule is boundary-value analysis and it carries NO width
@@ -884,168 +879,60 @@ fn interior_near_zero(lo, hi) =
 fn lit_candidate(v) with !Mutate = match v {
   LVInt(n) => int_literal_candidate(n),
   LVFloat(f) => float_literal_candidate(f),
-  LVString(s) => EnrichedCandidate({
-    node: synthesize_string_literal_node(s),
-    origin: ProposerEnumerative,
-    reason: Inferred("the type's string inhabitants"),
-    writes: [],
-  }),
-  LVBool(b) => EnrichedCandidate({
-    node: synth_node(LitBool(b)),
-    origin: ProposerEnumerative,
-    reason: Inferred("the type's boolean inhabitants"),
-    writes: [],
-  }),
+  LVString(s) => seed_candidate(synthesize_string_literal_node(s), Inferred("the type's string inhabitants")),
+  LVBool(b) => seed_candidate(synth_node(LitBool(b)), Inferred("the type's boolean inhabitants")),
 }
 
-fn enumerate_int_literals(context) = {
-  // Literal seeds: 0, 1, -1. Three candidates per the Numerical
-  // Survey discipline (least-trivial inhabitants of TInt).
-  let buf = make_list(3)
-  list_set(buf, 0, int_literal_candidate(0))
-  list_set(buf, 1, int_literal_candidate(1))
-  list_set(buf, 2, int_literal_candidate(-1))
-  buf
-}
+// The integer seeds: the least-trivial inhabitants of Int — zero, and one
+// either side of it.
+fn enumerate_int_literals(context) = [0, 1, -1] |> map(int_literal_candidate)
 
-fn int_literal_candidate(n) with !Mutate = EnrichedCandidate({
-  node: synthesize_int_literal_node(n),
-  origin: ProposerEnumerative,
-  reason: Inferred("the type's integer inhabitants"),
-  writes: [],
-})
+fn int_literal_candidate(n) with !Mutate =
+  seed_candidate(synthesize_int_literal_node(n), Inferred("the type's integer inhabitants"))
 
-fn enumerate_float_literals(context) = {
-  let buf = make_list(2)
-  list_set(buf, 0, float_literal_candidate(0.0))
-  list_set(buf, 1, float_literal_candidate(1.0))
-  buf
-}
+fn enumerate_float_literals(context) = [0.0, 1.0] |> map(float_literal_candidate)
 
-fn float_literal_candidate(f) with !Mutate = EnrichedCandidate({
-  node: synthesize_float_literal_node(f),
-  origin: ProposerEnumerative,
-  reason: Inferred("the type's float inhabitants"),
-  writes: [],
-})
+fn float_literal_candidate(f) with !Mutate =
+  seed_candidate(synthesize_float_literal_node(f), Inferred("the type's float inhabitants"))
 
-fn enumerate_string_literals(context) = {
-  let buf = make_list(1)
-  list_set(
-    buf,
-    0,
-    EnrichedCandidate({
-      node: synthesize_string_literal_node(""),
-      origin: ProposerEnumerative,
-      reason: Inferred("the type's string inhabitants"),
-      writes: [],
-    })
+fn enumerate_string_literals(context) = [lit_candidate(LVString(""))]
+
+fn one_unit_candidate(context) =
+  [seed_candidate(synthesize_unit_literal_node(), Inferred("the unit type's one inhabitant"))]
+
+// A `??` where nothing binds the position yet: the shape narrows, and the
+// next proposal is made inside it.
+fn one_hole_candidate(context) = [
+  seed_candidate(
+    synthesize_hole_node(),
+    Inferred("a nested ?? — the shape narrows, the fill recurses")
   )
-  buf
-}
+]
 
-fn one_unit_candidate(context) = {
-  let buf = make_list(1)
-  list_set(
-    buf,
-    0,
-    EnrichedCandidate({
-      node: synthesize_unit_literal_node(),
-      origin: ProposerEnumerative,
-      reason: Inferred("the unit type's one inhabitant"),
-      writes: [],
-    })
-  )
-  buf
-}
+fn one_continuation_candidate(context) =
+  [seed_candidate(synthesize_resume_node(), Inferred("the continuation's own resume(...)"))]
 
-fn one_hole_candidate(context) = {
-  // ?? at unbound positions. The recursive case: hole-fills-with-
-  // hole, leaving the gradient to narrow further at the next layer.
-  let buf = make_list(1)
-  list_set(
-    buf,
-    0,
-    EnrichedCandidate({
-      node: synthesize_hole_node(),
-      origin: ProposerEnumerative,
-      reason: Inferred("a nested ?? — the shape narrows, the fill recurses"),
-      writes: [],
-    })
-  )
-  buf
-}
+fn enumerate_records(fields, context) =
+  [seed_candidate(synthesize_record_node(fields), Inferred("the type's record construction"))]
 
-fn one_continuation_candidate(context) = {
-  let buf = make_list(1)
-  list_set(
-    buf,
-    0,
-    EnrichedCandidate({
-      node: synthesize_resume_node(),
-      origin: ProposerEnumerative,
-      reason: Inferred("the continuation's own resume(...)"),
-      writes: [],
-    })
+// The empty list, and a list of one element that is itself a hole.
+fn enumerate_list_candidates(elem, context) = [
+  seed_candidate(
+    synthesize_empty_list_node(),
+    Inferred("the type's list inhabitants — the empty list")
+  ),
+  seed_candidate(
+    synthesize_singleton_list_node(elem),
+    Inferred("the type's list inhabitants — one element, itself a hole")
   )
-  buf
-}
+]
 
-fn enumerate_records(fields, context) = {
-  let buf = make_list(1)
-  list_set(
-    buf,
-    0,
-    EnrichedCandidate({
-      node: synthesize_record_node(fields),
-      origin: ProposerEnumerative,
-      reason: Inferred("the type's record construction"),
-      writes: [],
-    })
+fn enumerate_tuple_candidates(elems, context) = [
+  seed_candidate(
+    synthesize_tuple_node(elems),
+    Inferred("the type's tuple construction — each element a hole")
   )
-  buf
-}
-
-fn enumerate_list_candidates(elem, context) = {
-  // Two candidates: empty list, single-element with elem-hole.
-  let buf = make_list(2)
-  list_set(
-    buf,
-    0,
-    EnrichedCandidate({
-      node: synthesize_empty_list_node(),
-      origin: ProposerEnumerative,
-      reason: Inferred("the type's list inhabitants — the empty list"),
-      writes: [],
-    })
-  )
-  list_set(
-    buf,
-    1,
-    EnrichedCandidate({
-      node: synthesize_singleton_list_node(elem),
-      origin: ProposerEnumerative,
-      reason: Inferred("the type's list inhabitants — one element, itself a hole"),
-      writes: [],
-    })
-  )
-  buf
-}
-
-fn enumerate_tuple_candidates(elems, context) = {
-  let buf = make_list(1)
-  list_set(
-    buf,
-    0,
-    EnrichedCandidate({
-      node: synthesize_tuple_node(elems),
-      origin: ProposerEnumerative,
-      reason: Inferred("the type's tuple construction — each element a hole"),
-      writes: [],
-    })
-  )
-  buf
-}
+]
 
 // DONE-CRITERION (Programming by Navigation — Lubin, Ziegler & Chasins,
 // PLDI 2025, defs 3.5–3.6, under the 2025-10-09 errata's covering
@@ -1583,8 +1470,17 @@ fn divergence_by_denotation(nodes, target_ty) = {
   } else if denotations_alike(denotations) {
     DivName
   } else {
-    DivValue(ty_domain(target_ty))
+    DivValue(distinct_denotations(denotations), ty_domain(target_ty))
   }
+}
+
+// The values the survivors denote, each once, in rank order — what a value
+// question asks between.
+fn distinct_denotations(ds) = fold([], add_denotation, ds)
+
+fn add_denotation(acc, d) = match d {
+  Some(v) => if any({ x => denotes_value(v, Some(x)) }, acc) { acc } else { push(acc, v) },
+  None => acc,
 }
 
 // Every survivor's constructor name when each is a bare nullary constructor
@@ -1714,12 +1610,13 @@ fn denotes_value(first: LitValue, d: Option(LitValue)) = match d {
   Some(v) => v == first,
 }
 
-// ─── Node synthesizers — per-shape AST construction ─────────────────
-//
-// Each helper produces a Node value the verify gate can apply to the
-// graph. The actual construction reuses parser_infra's nexpr/nstmt
-// constructors via the wheel's existing Node ADT (types.mn:376-379).
-fn synthesize_int_literal_node(n) with !Mutate = synth_node(LitInt(n))
+// An integer as the source writes it: a negative one is the negation of its
+// magnitude, which is how the parser reads `-1`, so the render writes `-1`
+// and an accept splices what a person would type. A literal node holding a
+// negative word is the lexer's wrap of an unsigned spelling (`0x811C9DC5`),
+// and renders as one — the seed `-1` showed as `4294967295`.
+fn synthesize_int_literal_node(n) with !Mutate =
+  if n < 0 { synth_node(UnaryOpExpr(UNeg, synth_node(LitInt(0 - n)))) } else { synth_node(LitInt(n)) }
 
 fn synthesize_float_literal_node(f) with !Mutate = synth_node(LitFloat(f))
 

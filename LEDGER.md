@@ -35,6 +35,32 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-10-10 · pin 454c3aaf048fbab6 (CLEAN m2 == m3) · A HOLE IN AN ARGUMENT SLOT IS PROPOSED AGAINST THE SLOT'S CONTRACT; A VALUE QUESTION NAMES ITS VALUES
+  Found by a felt walk over the proposal surface after the thesis rewrite,
+  each RED on boot d2bd58b4. `choose(??)` over `fn choose(n: Positive)`
+  proposed `0`: a `??` in an argument slot is the partial's marker, it raises
+  no claim, and the hole's claims were empty, so the proof gate admitted every
+  integer seed. The slot's contract is noted on the hole now (`note_contract`,
+  the one home `claim_refinement` also reads), so the gate judges each
+  candidate against what the parameter demands and `1` alone survives
+  (tests/proposals/arg-slot-fill). A negative seed rendered as the literal
+  the source cannot write; it is the negation of its magnitude now, and
+  `fn f() -> Negative = ??` proposes `-1` (negative-fill). A value question
+  said "which one?" with no ones beside it past three members; it names each
+  value once, in rank order (`DivValue(values, domain)`), and a proposal
+  contract's `ask` takes the rest of its line, so the five value-tie fixtures
+  bind the values they ask between. Measured: the Int tie names `0 or 1 or
+  -1` over four survivors, the fourth the program's own `main()`, which
+  denotes 0; the String tie names `"0123456789abcdef"`, the prelude helper
+  the Linked ring offers (`Hβ.synth.linked-ring-offers-substrate-internals`).
+  `mentl query lib/tutorial …` read a directory under lib/ as a module and
+  refused; a directory resolves under the roots a module name does
+  (`module_roots`, one home for both). The prose-class ceilings fell with the
+  comments the landing trued (coordinates 28 → 27, spec citations 25 → 24,
+  archaeology 93 → 92, banners 346 → 344). The proposal battery 26/26, the
+  march CLEAN m2 == m3 and m3 == m4, 626,605 lines, census 0, the m3 leg
+  27.30 s at 456 MB.
+
 - 2026-10-10 · pin d2bd58b4dff8cd47 (CLEAN m2 == m3) · THE BOOT'S ASSEMBLER PERFORMS THE WORD'S SHIFTS AND WABT LEAVES EVERY GATE (L-F, NOT LANDED); THE THESIS LEADS WITH THE PERSON
   L-F is NOT LANDED: the worker's run role, the fixpoint seal on the page,
   download and run remain (`Hβ.emit.the-medium-assembles-its-output`). This

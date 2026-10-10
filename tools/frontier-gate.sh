@@ -3106,10 +3106,13 @@ for i in "${!compilers[@]}"; do
   # against the boot, which printed the fixed sentence for every one of them.
   #
   # VALUE: two integer seeds of `Bit = Int where 0 <= self && self <= 1`, and
-  # the line names what the type admits rather than asking for "a constraint".
+  # the line names the values it asks between and what the type admits rather
+  # than asking for "a constraint" (the values since 2026-10-10: past three
+  # members the question renders alone, and RED on boot d2bd58b4 it asked
+  # "which one?" with no ones beside it).
   qv=$(cd "$fdemo" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$fdemo" --dir /tmp "$compiler" bit.mn:8:30 2>/dev/null)
-  if printf '%s' "$qv" | grep -q 'differ in VALUE and the type admits 0 through 1'; then
-    pass "computed question: value (the admitted domain, not a generic ask)"
+  if printf '%s' "$qv" | grep -q 'differ in VALUE — 0 or 1 — and the type admits 0 through 1'; then
+    pass "computed question: value (the values asked between and the admitted domain, not a generic ask)"
   else
     fail "computed question: value (got: $(printf '%s' "$qv" | tail -2))"
   fi
