@@ -2192,7 +2192,7 @@ fn print_help() = eprint_string(verb_catalog())
 // stays on stderr).
 fn welcome_run() = {
   print_string("mentl — the medium between intent and execution\n")
-  print_string("any intelligence may propose; nothing executes unproven\n\n")
+  print_string("write what you mean; the medium carries what it can prove\n\n")
   project_directory()
   print_string(verb_catalog())
   0

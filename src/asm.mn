@@ -403,19 +403,9 @@ handler asm_bytes with buf = alloc(64), cap = 64, n = 0 {
 
 fn out_str(s) = out_span(str_payload(s), byte_len(s))
 
-// Logical shifts right by 7 and by 8, over the word's 32 bits: the
-// quotient of the word with its low bits cleared, masked to the bits that
-// remain.
-fn asm_lsr7(v) = i32_and((v - i32_and(v, 127)) / 128, 33554431)
-
-fn asm_lsr8(v) = i32_and((v - i32_and(v, 255)) / 256, 16777215)
-
-// An arithmetic shift right by 7.
-fn asm_asr7(v) = (v - i32_and(v, 127)) / 128
-
 fn out_uleb(v) = {
   let low = i32_and(v, 127)
-  let rest = asm_lsr7(v)
+  let rest = i32_shr_u(v, 7)
   if rest == 0 {
     out_byte(low)
   } else {
@@ -426,7 +416,7 @@ fn out_uleb(v) = {
 
 fn out_sleb(v) = {
   let low = i32_and(v, 127)
-  let rest = asm_asr7(v)
+  let rest = i32_shr_s(v, 7)
   let sign = i32_and(low, 64)
   if rest == 0 && sign == 0 || rest == -1 && sign != 0 {
     out_byte(low)
@@ -439,8 +429,8 @@ fn out_sleb(v) = {
 // A 64-bit signed LEB over the word pair (hi, lo).
 fn out_sleb64(hi, lo) = {
   let low = i32_and(lo, 127)
-  let nlo = i32_or(asm_lsr7(lo), i32_shl(hi, 25))
-  let nhi = asm_asr7(hi)
+  let nlo = i32_or(i32_shr_u(lo, 7), i32_shl(hi, 25))
+  let nhi = i32_shr_s(hi, 7)
   let sign = i32_and(low, 64)
   if nhi == 0 && nlo == 0 && sign == 0 || nhi == -1 && nlo == -1 && sign != 0 {
     out_byte(low)
@@ -452,12 +442,10 @@ fn out_sleb64(hi, lo) = {
 
 // A word's four bytes, least significant first.
 fn out_word(w) = {
-  let w1 = asm_lsr8(w)
-  let w2 = asm_lsr8(w1)
   out_byte(i32_and(w, 255))
-  out_byte(i32_and(w1, 255))
-  out_byte(i32_and(w2, 255))
-  out_byte(i32_and(asm_lsr8(w2), 255))
+  out_byte(i32_and(i32_shr_u(w, 8), 255))
+  out_byte(i32_and(i32_shr_u(w, 16), 255))
+  out_byte(i32_shr_u(w, 24))
 }
 
 // A name's bytes as the binary writes them: its length, then itself.
@@ -556,9 +544,9 @@ handler asm_limb_reader(base) with l0 = 0, l1 = 0, l2 = 0, l3 = 0, bad = false {
       resume() with bad = true
     } else {
       let c0 = l0 * base + d
-      let c1 = l1 * base + c0 / 65536
-      let c2 = l2 * base + c1 / 65536
-      let c3 = l3 * base + c2 / 65536
+      let c1 = l1 * base + i32_shr_u(c0, 16)
+      let c2 = l2 * base + i32_shr_u(c1, 16)
+      let c3 = l3 * base + i32_shr_u(c2, 16)
       resume() with l0 = i32_and(c0, 65535), l1 = i32_and(c1, 65535), l2 = i32_and(c2, 65535), l3 = i32_and(c3, 65535)
     }
   },
@@ -586,7 +574,7 @@ fn asm_negate64(pair) = match pair {
 //
 // A big natural is its 15-bit limbs, least significant first, the top limb
 // never zero; zero is the empty list.
-fn big_small(v) = big_trim([i32_and(v, 32767), v / 32768])
+fn big_small(v) = big_trim([i32_and(v, 32767), i32_shr_u(v, 15)])
 
 fn big_limb(a, i) = nth(a, i, 0)
 
@@ -610,14 +598,14 @@ fn big_mul_add(a, m, add) = {
 fn big_mac(m, acc, limb) = match acc {
   (out, carry) => {
     let c = limb * m + carry
-    (push(out, i32_and(c, 32767)), c / 32768)
+    (push(out, i32_and(c, 32767)), i32_shr_u(c, 15))
   },
 }
 
 fn big_bitlen(a) = if len(a) == 0 { 0 } else { 15 * (len(a) - 1) + asm_bits_of(last(a)) }
 
-// The bits a word below 2^31 needs.
-fn asm_bits_of(v) = if v == 0 { 0 } else { 1 + asm_bits_of(v / 2) }
+// The bits a word needs: thirty-two less the zeros above its highest one.
+fn asm_bits_of(v) = 32 - i32_clz(v)
 
 // a * 2^s: the whole limbs the shift moves, then the part within one.
 fn big_shl(a, s) = {
@@ -660,7 +648,7 @@ fn big_sub_limb(acc, pair) = match acc {
 fn big_half(a) = zip(a, drop(1, a) ++ [0]) |> map(big_half_limb) |> big_trim
 
 fn big_half_limb(pair) = match pair {
-  (x, next) => x / 2 + i32_and(next, 1) * 16384,
+  (x, next) => i32_or(i32_shr_u(x, 1), i32_shl(i32_and(next, 1), 14)),
 }
 
 fn big_pow(a, base, k) = repeat(k, base) |> fold(a, big_mul_add(??, ??, 0))
@@ -879,7 +867,7 @@ fn asm_encode(f, sign, m, e2) = {
   let prec = asm_prec(f)
   let lo =
     i32_or(i32_or(big_limb(m, 0), i32_shl(big_limb(m, 1), 15)), i32_shl(i32_and(big_limb(m, 2), 3), 30))
-  let hi = i32_or(big_limb(m, 2) / 4, i32_shl(big_limb(m, 3), 13))
+  let hi = i32_or(i32_shr_u(big_limb(m, 2), 2), i32_shl(big_limb(m, 3), 13))
   if big_bitlen(m) == prec {
     let biased = prec + e2 + asm_bias(f)
     if biased >= asm_emax(f) { None } else { Some(asm_float_bits(f, sign, biased, hi, lo)) }
@@ -2067,42 +2055,32 @@ fn asm_v128(t, at) = match asm_atom() {
   },
 }
 
-fn asm_v128_lanes(t, k, width, float) = if k == 0 {
-  ()
-} else {
-  match asm_atom() {
-    (s, e) => {
-      let w = if float { asm_f32_bits(t, s, e) } else { asm_int(t, s, e) }
-      out_lane(w, width)
-      asm_v128_lanes(t, k - 1, width, float)
-    },
-  }
+// The shape's k lanes, each the next atom read at the lane's width.
+fn asm_v128_lanes(t, k, width, float) = range(0, k) |> each(asm_v128_lane(t, width, float, ??))
+
+fn asm_v128_lane(t, width, float, lane) = match asm_atom() {
+  (s, e) => out_lane(if float { asm_f32_bits(t, s, e) } else { asm_int(t, s, e) }, width),
 }
 
 fn out_lane(w, width) = if width == 1 {
   out_byte(i32_and(w, 255))
 } else if width == 2 {
   out_byte(i32_and(w, 255))
-  out_byte(i32_and(asm_lsr8(w), 255))
+  out_byte(i32_and(i32_shr_u(w, 8), 255))
 } else {
   out_word(w)
 }
 
-fn asm_v128_wide(t, k, float) = if k == 0 {
-  ()
-} else {
-  match asm_atom() {
-    (s, e) => {
-      let pair = if float { asm_float(t, s, e, AsmF64) } else { asm_int64(t, s, e) }
-      match pair {
-        (hi, lo) => {
-          out_word(lo)
-          out_word(hi)
-        },
-      }
-      asm_v128_wide(t, k - 1, float)
+// The two 64-bit lanes, each the next atom as its word pair, low word first.
+fn asm_v128_wide(t, k, float) = range(0, k) |> each(asm_v128_wide_lane(t, float, ??))
+
+fn asm_v128_wide_lane(t, float, lane) = match asm_atom() {
+  (s, e) => match if float { asm_float(t, s, e, AsmF64) } else { asm_int64(t, s, e) } {
+    (hi, lo) => {
+      out_word(lo)
+      out_word(hi)
     },
-  }
+  },
 }
 
 // Sections

@@ -4,7 +4,7 @@
 > self-contained documents, and reads ALL THREE every session:
 > - **`CLAUDE.md`** — *method*: how to work (anchors, verbs, drift modes, the
 >   interrogate-don't-absorb law).
-> - **`PLAN.md`** (this file) — *substance*: what is true (the reframe, the
+> - **`PLAN.md`** (this file) — *substance*: what is true (the thesis, the
 >   kernel, the resolved decisions, the arc, the state, the laws).
 > - **`SYNTAX.md`** — *surface*: the authoritative language form; supersedes any
 >   syntactic claim made here or in `CLAUDE.md`.
@@ -22,40 +22,66 @@
 
 ---
 
-## §0 · What Mentl IS — the reframe (the north star)
+## §0 · What Mentl IS — the thesis (the north star)
 
-**Mentl is humanity's verification substrate for the age of machine-generated
-code.** Any intelligence may *propose*; nothing *executes* unproven; intent is
-never lost; capability is always bounded.
+**Mentl closes the gap between what a person means and what they are forced to
+write.** That gap is where the bugs, the complexity and the frustration of
+programming live — the first manifesto named it on 2026-03-15, and it has not
+moved. A programmer thinks *"this reads a file, parses it, and might fail"* and
+is made to write async-ness, borrows, error boxes and lifetimes: ceremony a
+language demands to make up for what its compiler could have worked out. Mentl
+does not close the gap by hiding the complexity or erasing the types. It closes
+it by being smarter about inference: the medium carries every fact it can prove
+— the types, the effects, the ownership, the refinements, and the reason behind
+each — and the author writes only their decisions: what this code must never
+do, what bound a value keeps, what width a number needs. A tool for thought,
+not a tax on expression.
 
-The received wisdom — "AI writes the code, so the language stops mattering" — is
-**backwards**. The more code machines generate, the more the bottleneck moves
-from *writing* to *trusting*. Five properties define the substrate:
+Mentl is not a programming language with good features. It is a **medium** — a
+lens so clear the developer looks through it and sees their program, not the
+language. At any position it says what is true there and why; at a hole it
+proposes the next move it can prove; when two proven moves mean different things
+it asks the one question that separates them instead of guessing; and picking it
+up teaches programming itself. The programs are the means; **the developer they
+become is the end.**
 
-1. **Proof beats review** — when no human authored it, "looks right" is
-   worthless. Proof has no ceiling; approximation asymptotes.
-2. **The negative is provable** — `!E` under polymorphism: absence under
+Five properties are what closing the gap means:
+
+1. **Proof beats review** — what you claim, the medium proves or refuses, and
+   nothing executes unproven, so whether a program does what its author meant
+   never rests on someone squinting at it. Proof has no ceiling; review
+   asymptotes.
+2. **The negative is provable** — "this never touches the network", "this never
+   allocates" is something people mean all the time and no mainstream language
+   lets them say. `!E` says it, under polymorphism: absence under
    handler/install IDENTITY, under modality, under TIME, and per-INSTANCE
-   (`!Sample(44100)`). **Mentl's most underrated arm and the future's deepest
-   need.**
-3. **Intent is lossless** — the Reason chain carries the *why*, walkable to root.
-4. **Computation is durable** — multi-shot continuation, persisted.
-5. **Systems explain themselves** — the cursor projects live truth at any point.
+   (`!Sample(44100)`). **Mentl's most underrated arm.**
+3. **Intent is lossless** — the Reason chain carries the *why* of every fact,
+   walkable to the decision that made it; nothing the author meant is dropped
+   between the page and the machine.
+4. **Computation is durable** — a running computation is a value: a multi-shot
+   continuation, persisted by copying the image.
+5. **Systems explain themselves** — the cursor projects live truth at any point,
+   so the medium answers the question rather than the author reconstructing it.
 
-**Mentl's value is *inversely* correlated with human authorship — antifragile to
-AI progress.** The convergence: the same choices return from three independent
-directions — what makes Mentl *ultimate*, what *humanity* will need, and what's
+**What falls out, and is never the point.** A medium that proves what it runs
+and never loses intent does both for every author. Code a person did not write —
+a teammate's, a dependency's, a plugin's, a model's — meets the same proofs and
+the same refusals, so trustworthy machine-generated code is a CONSEQUENCE of
+building the ultimate language for people, never a goal beside it and never the
+headline (Morgan, 2026-10-09). The convergence: the same choices return from
+three directions — what makes Mentl *ultimate*, what *people* need, and what is
 best for *the makers*. The Carried-Truth Law is one law at three scales: Mentl's
-kernel never fabricates a fact it can read live; software for humanity must never
-hallucinate intent; Claude must carry real reasoning, never perform confidence.
+kernel never fabricates a fact it can read live; software must never hallucinate
+its author's intent; Claude must carry real reasoning, never perform confidence.
 
-**Arche and telos** (crystallized 2026-07-13, adversarial refutation held). The
-**generative root is the kernel**: one graph, two operations, `!Outside`. The
-**developer is the telos** — proof wins whenever it meets convenience because
-proof *serves* the developer better than an ergonomic lie. **The developer's
-intent→expression gap and civilization's machine-authored-code trust gap are the
-SAME invariant — the Carried-Truth Law — read at two scales.** Guardrail: keep
-the framing tethered to the actual developer at the keyboard.
+**Arche and telos** (crystallized 2026-07-13). The **generative root is the
+kernel**: one graph, two operations, `!Outside`. The **person is the telos** —
+proof wins whenever it meets convenience because proof *serves* the developer
+better than an ergonomic lie. Guardrail: the framing stays tethered to the
+actual developer at the keyboard, and a sentence that leads with machines has
+inverted the thesis — the headline stood inverted from 2026-06-18 to 2026-10-09
+(`docs/PROCESS-AUDIT-2026-09-25.md` §4.4 measured how).
 
 **`!Outside` scope** (§1): **toolchain reflexivity** — every lever to improve the
 medium is already inside it. Does NOT close the **intent space** (specs are born
@@ -73,13 +99,9 @@ step outside Mentl, that edge remains open. Closing it means absorbing that leve
 into the graph, rows, `~>` handlers, `TCont` worlds, image columns, or `mentl
 space` — never minting a parallel feature named Outside.
 
-Mentl is not a programming language with good features. It is a **medium** — a
-lens so clear the developer looks through it and sees their program, not the
-language. The programs are the means; **the developer they become is the end.**
-
 ---
 
-## §1 · The thesis — the fixed point (`!Outside`)
+## §1 · The fixed point — `!Outside`
 
 A tool you can surpass has its means of improvement *outside* it (to beat X you
 write Y). **The ultimate medium has no outside.** The compiler is a handler on
@@ -90,9 +112,10 @@ kernel; the oracle is incremental-computation plus one cached value; even
 - **Unsurpassability is `!Outside`** — the medium's own negation primitive at
   topology altitude. As `!E` proves the absence of a capability, the fixed point
   proves the absence of an outside.
-- **Closed over proposers** — any intelligence plugs in as a `Synth` handler
-  whose candidates must survive checkpoint → infer → Verify → rollback before
-  any human trusts one (OGIS/Synth-Modulo-Oracles). A stronger proposer strictly
+- **Closed over proposers** — any proposer (a script, a library's tool, a
+  model) plugs in as a `Synth` handler whose candidates must survive
+  checkpoint → infer → Verify → rollback before the person at the keyboard
+  sees one (OGIS/Synth-Modulo-Oracles). A stronger proposer strictly
   strengthens the medium and can never surpass it. The unit of conversation with
   the medium is the **constraint** (lossless, monotone, compounding), not the
   token (lossy, decaying). **Proof is a MONOTONE FILTER, not a generator** —
@@ -102,10 +125,10 @@ kernel; the oracle is incremental-computation plus one cached value; even
   proposes by GUIDED search over the typed graph (rows, Reasons, refinements,
   ownership, proximity), pruned by proof at every step — a structural prior
   richer than a token-window. When survivors tie, the medium surfaces the ONE
-  missing constraint (the teaching tie-break), never guesses. **"Cut the model
-  out" holds at next-move scope.**
-- **THE CLOSED LOOP (Morgan, 2026-07-28):** the loop closes to the HUMAN and
-  MENTL, no LLM advantageous at any scope. Three legs: (1) next-move supremacy —
+  missing constraint (the teaching tie-break), never guesses. **At next-move
+  scope nothing outside the medium proposes better.**
+- **THE CLOSED LOOP (Morgan, 2026-07-28):** the loop is the PERSON and the
+  MEDIUM, and nothing else is needed at any scope. Three legs: (1) next-move supremacy —
   guided search extraction-optimal per §5; (2) the question beats the guess — the
   teaching tie-break dissolves the underdetermined tail into proven next-moves;
   (3) the loop is felt — the fused oracle makes the cycle instant enough to live
@@ -721,7 +744,7 @@ substrate-honest floor of "unsurpassed speed."
 **A** Effects & modal crown · **B** Continuations & TIME · **C** Flow rows (IFC)
 · **D** Value layer (fold & repr) · **E** Parallelism & accelerators ·
 **F** Verification & proof · **G** Graph & e-graph · **H** Ownership ·
-**I** Dataflow & DSP · **J** Self-hosting & `!Outside` · **K** AI-proposer /
+**I** Dataflow & DSP · **J** Self-hosting & `!Outside` · **K** Proposers /
 Synth · **L** Why-engine & `mentl audit` · **M** Felt surface / `mentl space` ·
 **N** Backends (full plan: `docs/NATIVE.md`) · **O** Self-hosting infra.
 
@@ -2466,8 +2489,9 @@ and this is the STATE.
   1.40–1.76 s to 0.06–0.08 s. What the host's exit range exposed: a
   program's exit is [0..126) through WASI, so a fixture expecting 200 was
   unobservable; the host loop refuses such a contract by name now. Open:
-  `Hβ.cli.resident-session-over-fifos`, and WABT's `wat2wasm` in the shim
-  and the gates until the wheel assembles its own output (L-F).
+  `Hβ.cli.resident-session-over-fifos`. WABT's `wat2wasm` left the shim and
+  the gates when the boot came to assemble its own output (L-F, pin
+  d2bd58b4).
 - **THE VIEW IS A PROJECTION — CLOSED 2026-10-06 (L-C).** The page had
   re-parsed the caret's text with regexes and the compile's stderr with
   another, and two of them were measured wrong on boot 2175e015: the kind
@@ -2761,13 +2785,17 @@ and this is the STATE.
   `int_to_str` comes from io, where strings declares it; and Pulse's prose
   spells literals the formatter rewrote. The course (§11, Tier 3) is born
   canonical and deletes lib/tutorial.
-- **THE BOOT ASSEMBLES ITS OWN OUTPUT — L-F NOT LANDED (2026-10-09, pin
-  99de278f).** `mentl asm` is the boot's: src/asm.mn projects the boot's own
-  m2.wat to the bytes wat2wasm writes from it, in 1.45 s, and the gates
-  assemble through it since this pin; WABT's fallback, the shifts the
-  assembler should perform (the boot carries `i32_shr_u`, `i32_shr_s` and
-  `i32_clz`, unused) and the page's run role remain
-  (`Hβ.emit.the-medium-assembles-its-output`). The assembler owns no ghost,
+- **THE BOOT ASSEMBLES ITS OWN OUTPUT — L-F NOT LANDED (2026-10-09 and
+  2026-10-10, pins 99de278f and d2bd58b4).** `mentl asm` is the boot's:
+  src/asm.mn projects the boot's own m2.wat to the bytes wat2wasm writes
+  from it, in 1.40 s, and the march, every gate and `mentl run` assemble
+  through it — WABT's disassemblers stay as forensic instruments at a trap
+  and nothing else. The first pin carried the word's shifts and count
+  (`i32_shr_u`, `i32_shr_s`, `i32_clz`) unused, since a boot must serve a
+  primitive before the wheel it compiles performs it; the second is built
+  from an assembler that performs them where it divided by powers of two.
+  The page's run role remains (`Hβ.emit.the-medium-assembles-its-output`).
+  The assembler owns no ghost,
   costume or open obligation, which `mentl query <entry> "<facet> in
   <module>"` answers by itself now — a site facet keeps one module's sites.
   Integrating it found three things wider than it: a match's arms were
@@ -3604,7 +3632,7 @@ STANDING CURSOR after Arc G.
   VERIFIABLE and CONSEQUENTIAL: everything else renders a quantity (complexity,
   coupling, hotness) or a possibility (this path MAY be tainted), and
   impossibility is the only shape that converts into a decision — *sandbox it /
-  ship it / let the agent run unattended*. It is legible in one glance to
+  ship it / run it unattended*. It is legible in one glance to
   someone who has never heard of an effect system: green band cannot, red band
   can. And the demo is thirty seconds — a module banded green with `!Network`
   proven, one networking call added, **the band turns red and the compile
@@ -3826,9 +3854,10 @@ and Wave C (tier 5) follow.
   spans come from the wheel and the page's tokenizer is deleted, with the
   aspect strip, find by edge, fmt on idle and the trail as undo. L-F · the
   medium assembles its own output (`Hβ.emit.the-medium-assembles-its-output`;
-  OPEN — the boot carries `mentl asm` since its first pin, 2026-10-09, what it
-  still owes in the peer): an `asm` verb, WABT out of the shim, the march and
-  every gate, and in-page run. L-E · the Severance Map (`Hβ.viz.severance-map`, Arc G above), its
+  OPEN — the boot carries `mentl asm` since 2026-10-09 and WABT is out of the
+  shim, the march and every gate since 2026-10-10; what it still owes is in the
+  peer): an `asm` verb, WABT out of the shim, the march and every gate, and
+  in-page run. L-E · the Severance Map (`Hβ.viz.severance-map`, Arc G above), its
   Why walk eliding trivial hops on day one
   (`Hβ.viz.why-walk-elides-trivial-hops`).
 - **E1 · Configuration and secrets are an effect**
@@ -4887,10 +4916,10 @@ its felt path** — the exact surface an outsider or the daily loop touches,
 through the installed shim, before any build starts. A DEP found by walking is
 cheap; a DEP found by an outsider is a category loss.
 
-**THE TERMINUS is §1's closed loop:** human and Mentl only, no LLM
-advantageous at any scope — every landing measured against the three legs
-(next-move supremacy · the question beats the guess · the loop is felt). Leg 3
-carries TEACHABILITY as a named face: the surface IS the course, evolved until
-picking up Mentl teaches programming itself, so the model is unemployed at the
-learning scope too. And every reader-facing page leads with the person at the
-keyboard; verification is the mechanism and the receipts, never the identity.
+**THE TERMINUS is §1's closed loop:** the person and the medium, nothing else
+needed at any scope — every landing measured against the three legs (next-move
+supremacy · the question beats the guess · the loop is felt). Leg 3 carries
+TEACHABILITY as a named face: the surface IS the course, evolved until picking
+up Mentl teaches programming itself. And every reader-facing page leads with the
+person at the keyboard (§0's thesis); verification is the mechanism and the
+receipts, never the identity.

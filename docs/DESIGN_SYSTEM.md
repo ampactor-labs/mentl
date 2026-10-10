@@ -402,7 +402,8 @@ That moment is the entire pitch.
 - **Docs** — parchment ground, Fraunces display, the code face for code, the
   octagon ring for "all eight" moments. Two-voice rendering of annotated code.
 - **Landing** — the live page IS the landing; the five-verb glyphs as the hook,
-  the proof-has-no-ceiling thesis stated plainly. Never a feature-grid
+  the thesis (`PLAN.md §0`) stated plainly: the gap between what a person
+  means and what they are forced to write, closed. Never a feature-grid
   template.
 
 ---

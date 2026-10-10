@@ -22,9 +22,9 @@ import io
 // sequential verb: the value on the left becomes the argument on the right.
 // `++` joins byte-sequences. Joining allocates, so greet's effect row carries
 // Memory and Alloc — Mentl infers that from the body; you never wrote it down.
-// (Ask for `with !Alloc` here and the medium contradicts you at these exact
-// lines — it proves the join allocates. Substrate rows like Alloc report and
-// the program still runs; a user effect's broken claim refuses outright —
+// (Ask for `with !Alloc` here and the medium refuses to build the program,
+// naming this declaration: it proves the join allocates, and a claim it
+// proves false produces no program at all. Declaring and denying effects is
 // the subject of 04-row.)
 fn greet(name) = "Hello, " ++ name ++ ". The medium is reading you back.\n" |> print_string
 

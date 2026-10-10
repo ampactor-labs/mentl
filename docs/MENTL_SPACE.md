@@ -168,8 +168,8 @@ a missing kernel fact; Mentl has the fact, so the fixture dissolves.
 | **The error list** | diagnostics as a flat queue | The gradient's **one** next thing that matters most (Teach), plus sockets *in place*. A hundred-item Problems panel is attention-DDoS; the medium ranks, so the human never triages. |
 | **Breakpoints & the debugger** | no first-class suspension | A hole **is** a breakpoint, a dormant continuation carrying its live value. Debugging is editing at a suspension point; time-travel is the forked cursor scrubbing the trail (band B). One mechanism, not a second product. |
 | **Text search / go-to-definition** | the graph existed only in the compiler's head | Graph query: find by *edge*, not by string. "Every consumer of this row," "every `own` crossing this boundary," "everything this Reason justified." Definition, references, and rename are one edge-walk (`lsp.mn`'s `handle_definition` / `handle_references` already do the walk). |
-| **Diff review** | changes as line edits | Changes as *proof-obligation deltas*: which rows widened, which refinements gained obligations, which `!E` claim a change would break. The diff of what is *promised*, above the diff of what is written. In the machine-code age this is the load-bearing surface: when no human authored it, "looks right" is worthless and the proofs are the review (PLAN §0). |
-| **The AI chat panel** | generation without verification | The socket: proposals are multi-shot candidates that *survived checkpoint → infer → Verify → rollback* before you ever see one. No prompt box, no transcript, no apology. The unit of conversation is the constraint, not the token (PLAN §1). |
+| **Diff review** | changes as line edits | Changes as *proof-obligation deltas*: which rows widened, which refinements gained obligations, which `!E` claim a change would break. The diff of what is *promised*, above the diff of what is written. "Looks right" gives way to what the change still proves (PLAN §0, property 1), and that holds alike for a change you wrote and one you did not. |
+| **A chat panel beside the code** | suggestions without verification | The socket: proposals are multi-shot candidates that *survived checkpoint → infer → Verify → rollback* before you ever see one. No prompt box, no transcript, no apology. The unit of conversation is the constraint, not the token (PLAN §1). |
 | **Plugin marketplace** | the tool can't express its own extensions | Handlers (§0). |
 | **Settings JSON** | configuration outside the medium | Config is handler *state*: inspectable, typed, `mentl why`-able like everything else. |
 | **A density slider, a "simple mode", view toggles** | the tool cannot tell what matters at this position | A degree of interest the graph computes per fact (§3): proximity to the caret along the graph, proof state, the trail's recency. The page draws what scores; nothing is configured. |
@@ -357,7 +357,7 @@ medium now *enforces* on itself and everyone (`types.mn`'s `diag_refuses`, the
 emit gate) — read from it, never listed here. A refusal here is a promise
 the medium keeps, projected.
 
-The surface the machine-code age actually needs is the **absence proof**: every
+The surface a person most needs and no other tool gives them is the **absence proof**: every
 `!E` claim in scope with its transitive proof walkable ("this whole subtree
 cannot reach the network; here is why, hop by hop"). The row math is exact and
 live (`effects.mn`'s absorption law `row(expr ~> h) = (body − handled) ⊕
@@ -941,7 +941,7 @@ IDE-land.
 | A run/debug mode split | One live program; holes are the suspension points |
 | Config pages, settings JSON | Handler state, edited like any value, Why-walkable |
 | A plugin API plus extension review | Handlers under rows; capability is the review |
-| An AI chat transcript | The socket; constraints in, proofs out; no transcript to scroll |
+| A chat transcript beside the code | The socket; constraints in, proofs out; no transcript to scroll |
 | Spinners and progress bars | The medium is either current (IC) or shows *which region* is re-projecting, on the Canvas itself |
 | "Sync" indicators for collab | One graph; presence is a second cursor, not a sync state |
 | A dashboard as a separate app | Ambient chrome that re-projects around the cursor; never a second data model |

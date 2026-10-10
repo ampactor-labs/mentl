@@ -19430,14 +19430,18 @@ when its `)` says where the form ends, the index is a declared record, every
 op parameter is named, a refusal never returns, and long division, powers and
 rounding read their data; it owns no ghost, no costume and no open obligation
 (`mentl query src/main.mn "ghosts in asm"`, `"census iteration in asm"`, `"smt
-in asm"`). From that pin the gates assemble through the boot's verb, since
-`wt_asm`'s probe finds it. The pin also carries the word's shifts and count
-(`i32_shr_u`, `i32_shr_s`, `i32_clz`) unused, because a boot must serve a
-primitive before the wheel it compiles performs it. What remains: the
-assembler performs those three where it divides by powers of two
-(`asm_lsr7`, `asm_lsr8`, `asm_asr7`, `asm_bits_of`); WABT's fallback in
-`wt_asm`, its probe and the gate's wat2wasm cross-check delete; the worker's
-run role, the fixpoint seal on the page, download and run.
+in asm"`). That pin carried the word's shifts and count (`i32_shr_u`,
+`i32_shr_s`, `i32_clz`) unused, because a boot must serve a primitive before
+the wheel it compiles performs it; the second pin (2026-10-10, d2bd58b4) is
+built from an assembler that performs them wherever it divided by powers of
+two — the LEB writers, the word writer, the limb reader, the big-number
+limbs and `asm_bits_of` — and WABT is out of every gate: `wt_asm` has no
+fallback and no probe, its WABT validate helper is deleted, and the asm gate holds a
+candidate's projection of the boot's own m2 to the bytes the boot itself
+assembled. The march, every gate and `mentl run` assemble through `mentl
+asm`; WABT's disassemblers stay as forensic instruments at a trap. What
+remains: the worker's run role, the fixpoint seal on the page, download and
+run.
 
 ### `Hβ.graph.positions-are-cells` — OPEN
 
@@ -19527,7 +19531,7 @@ HOMED 2026-10-06 at the §0.3 integration: cited in the read-path docs and never
 
 ### `Hβ.closure.correctness-oracle-internal` — OPEN
 
-HOMED 2026-10-06 at the §0.3 integration: cited in the read-path docs and never given an entry, so it lived only in a sentence. Its substance is stated where it is cited: PLAN.md, under “§0 · What Mentl IS — the reframe (the north star)”; PLAN.md, under “Phase 10 · `!Outside` closes — the execution layer joins the medium”.
+HOMED 2026-10-06 at the §0.3 integration: cited in the read-path docs and never given an entry, so it lived only in a sentence. Its substance is stated where it is cited: PLAN.md, under “§0 · What Mentl IS — the thesis (the north star)”; PLAN.md, under “Phase 10 · `!Outside` closes — the execution layer joins the medium”.
 
 ### `Hβ.closure.diverse-double-compilation` — OPEN
 

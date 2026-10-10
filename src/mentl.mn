@@ -1,22 +1,15 @@
-// mentl.mn — the teaching substrate · the oracle (spec 09)
+// mentl.mn — the teaching substrate: the gradient at a declaration, and the
+// Synth effect a hole's proposals arrive through.
 //
-// Not a feature. The thesis made flesh. Eight tentacles on the
-// shared inference substrate, each a handler reading through
-// GraphRead + EnvRead. Distributed cognition over one graph;
-// the mascot is an octopus because the architecture IS octopus
-// neurology — local reasoning, shared nervous system.
+// Every aspect the cursor reads is a handler over GraphRead and EnvRead —
+// many arms, one graph, the octopus's shape. What the medium offers the
+// developer is proven before they see it: a candidate is bound inside a
+// checkpoint, inferred and verified, and rolled back, so a proposal is a move
+// the medium can prove and never a guess.
 //
-// The oracle loop (PLAN §1 · spec 09):
-//   graph_push_checkpoint()
-//     → apply tentative annotation via graph_bind / graph_bind_row
-//     → run inference, run Verify
-//     → graph_rollback(checkpoint)
-//     → return a PROVEN candidate patch (not a guess)
-//
-// Synth is peer-handler fall-through: enumerative / SMT / LLM / user,
-// each a ~> stage. The compiler verifies; proposers merely propose.
-// AI obsolescence is mechanism, not rhetoric: proposers are handlers
-// on an effect the compiler exposes.
+// A proposer is a handler on Synth — the enumerator the medium ships, or a
+// tool someone installs over it — and the compiler verifies whichever one
+// proposed.
 import types
 
 import effects

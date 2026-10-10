@@ -35,6 +35,54 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-10-10 · pin d2bd58b4dff8cd47 (CLEAN m2 == m3) · THE BOOT'S ASSEMBLER PERFORMS THE WORD'S SHIFTS AND WABT LEAVES EVERY GATE (L-F, NOT LANDED); THE THESIS LEADS WITH THE PERSON
+  L-F is NOT LANDED: the worker's run role, the fixpoint seal on the page,
+  download and run remain (`Hβ.emit.the-medium-assembles-its-output`). This
+  pin is the first boot built from an assembler that performs `i32_shr_u`,
+  `i32_shr_s` and `i32_clz` where it divided by powers of two — the seam the
+  previous pin opened, since a boot must serve a primitive before the wheel
+  it compiles performs it, closed one generation later. The LEB writers, the
+  word writer, the limb reader, the big-number limbs and `asm_bits_of` read
+  the shifts; `asm_lsr7`, `asm_lsr8` and `asm_asr7` are deleted,
+  `asm_bits_of`'s recursion is one count, and the two v128 lane loops are
+  `range(0, k) |> each(...)`. WABT left `wt_asm` (its fallback and the probe
+  that chose it), `wt_validate` went, and the asm gate's wat2wasm
+  cross-check is deleted: it holds a candidate's projection of the boot's
+  own m2 to the bytes the boot assembled. The march, every gate and `mentl
+  run` assemble through `mentl asm`; WABT's disassemblers stay as forensic
+  instruments at a trap. Measured: the asm gate GREEN against the candidate
+  and the new boot — coverage identical to the recorded module, ten
+  refusals each naming what it refuses, the boot's own m2.wat (21,081,475
+  bytes) projected to the m2.wasm the boot assembled in 1.40 s at a 288 MB
+  peak; the march CLEAN m2 == m3 and m3 == m4, 626,250 lines, census 0, the
+  m3 leg 20.30 s at 456 MB.
+
+  THE THESIS IS THE PERSON'S GAP (Morgan, 2026-10-09). PLAN §0 had opened
+  since 2026-06-18 with "humanity's verification substrate for the age of
+  machine-generated code" and "value inversely correlated with human
+  authorship"; the process audit of 2026-09-25 (§4.4) measured that drift
+  and nothing acted on it. §0 opens now with the thesis the first manifesto
+  named — Mentl closes the gap between what a person means and what they are
+  forced to write — and trustworthy machine-generated code is stated as what
+  falls out of it. The doors followed: the README's first words; POSITIONING
+  rewritten, its false second wedge deleted (the K=8 parallel judge,
+  serialized since 2026-09-19) and its counts replaced by the commands that
+  read them; READING a live essay page with every transcript re-run;
+  MENTL_SPACE, DESIGN_SYSTEM, the page's description, `mentl help`'s banner
+  and the mcp line; §1's closed loop and §11's terminus without "no LLM" and
+  "unemployed". The law is a gate rather than prose: doc-truth reads §0's
+  first bold sentence and refuses a door that does not state it (the README
+  as its first words) or that carries the inverted framing — seen RED on
+  HEAD's docs at three doors and three framings.
+
+  Found on the way, by re-running READING's transcripts: a `??` in an
+  argument slot is judged against no claim — `choose(??)` over `n:
+  Positive` proposed `0` — and the enumerator's `-1` renders as
+  `4294967295`; a tie past three survivors lists none of them; a six-line
+  program reports the runtime library's seventeen open obligations; `mentl
+  query lib/tutorial` reads a directory under lib/ as a module name; and the
+  shim builds `--env` flags by sed over `mentl query env` prose.
+
 - 2026-10-09 · pin 99de278fa5bdfced (TRANSITION m3 == m4) · THE BOOT ASSEMBLES ITS OWN OUTPUT (L-F, NOT LANDED); A MATCH'S ARMS MEET IN A CELL OF THEIR OWN; EVERY VERB TAKES ITS WORDS APART BY PATTERN; A QUESTION KEEPS ONE MODULE'S SITES:
   L-F is NOT LANDED. This pin integrates the swarm's assembler (frontier-audit
   f9c70dd, a WIP that moved four board bounds up) and puts `mentl asm` in the

@@ -13,17 +13,15 @@
 #      what its first line (`;; refuse: <text>`) names.
 #   3. self — the assembler under test projects the boot's own m2.wat (the
 #      wheel compiled by the pinned boot, .build/m2cache) to the bytes the
-#      gates assembled m2.wasm to; with WABT present, to wat2wasm's bytes too.
+#      boot's assembler wrote m2.wasm as: a candidate assembles the wheel as
+#      the generation before it did.
 #
 # A projected module byte-identical to m2.wasm compiles what m2.wasm compiles,
 # so whether the assembled wheel reproduces itself is the march's question
-# (m3 == m4), asked of the assembler once the march assembles through it.
+# (m3 == m4), and the march assembles every generation through `mentl asm`.
 #
 # Usage: bash tools/asm-gate.sh [m2|boot|<compiler.wasm>]   (default m2: the
-# candidate's own assembler — the wheel this checkout compiles to). The
-# pinned boot serves no `asm` verb until the boot carrying this landing is
-# pinned, which is the leg's RED: `bash tools/asm-gate.sh boot` refuses at
-# the verb.
+# candidate's own assembler — the wheel this checkout compiles to).
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -45,11 +43,6 @@ esac
 D="$ROOT/.build/asm-gate"
 mkdir -p "$D"
 fail=0
-if [ "$WT_ASM_SEAM" = 1 ]; then
-  echo "· the pinned boot predates \`mentl asm\`: the gates assemble through WABT for this generation (Hβ.asm.bootstrap-seam)"
-else
-  echo "· the gates assemble through the pinned boot's \`mentl asm\`"
-fi
 
 # asm_with <assembler.wasm> <in.wat> <out.wasm> <err> — one projection, timed.
 asm_with() {
@@ -90,16 +83,9 @@ if asm_with "$A" "$M2/m2.wat" "$D/m2.asm.wasm" "$D/m2.asm.err"; then
   read -r secs kb < "$D/m2.asm.wasm.time"
   echo "· self: $(wc -c < "$M2/m2.wat") bytes of WAT → $(wc -c < "$D/m2.asm.wasm") bytes in ${secs}s, peak ${kb} KB"
   if cmp -s "$D/m2.asm.wasm" "$M2/m2.wasm"; then
-    echo "✓ self: identical to the m2.wasm the gates run"
+    echo "✓ self: identical to the m2.wasm the boot assembled"
   else
-    echo "✗ self: differs from the m2.wasm the gates run ($(cmp "$D/m2.asm.wasm" "$M2/m2.wasm" 2>&1 | head -1))"; fail=1
-  fi
-  if command -v wat2wasm >/dev/null 2>&1; then
-    if "${W2W[@]}" "$M2/m2.wat" -o "$D/m2.wabt.wasm" 2>/dev/null && cmp -s "$D/m2.asm.wasm" "$D/m2.wabt.wasm"; then
-      echo "✓ self: identical to wat2wasm's (the cross-check WABT is optional for)"
-    else
-      echo "✗ self: differs from wat2wasm's"; fail=1
-    fi
+    echo "✗ self: differs from the m2.wasm the boot assembled ($(cmp "$D/m2.asm.wasm" "$M2/m2.wasm" 2>&1 | head -1))"; fail=1
   fi
 else
   echo "✗ self: the assembler refused or trapped on m2.wat: $(grep -v '^ ' "$D/m2.asm.err" | head -2)"; fail=1

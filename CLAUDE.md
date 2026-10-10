@@ -3,7 +3,7 @@
 > **THE THREE-DOCUMENT CONTRACT.** You read and update exactly three files, and
 > you read ALL THREE every session: **`CLAUDE.md`** (this one — *method*: how to
 > work — the verbs, the anchors, the interrogations, the drift modes, the
-> red-flags), **`PLAN.md`** (*substance*: what is true — the reframe, the kernel,
+> red-flags), **`PLAN.md`** (*substance*: what is true — the thesis, the kernel,
 > the resolved decisions, the arc, the state, the laws), and **`SYNTAX.md`**
 > (*surface*: the authoritative language form — it supersedes any syntactic claim
 > made here or in `PLAN.md`). Method / substance / surface — three projections of
@@ -752,13 +752,14 @@ rewrite in residue form inline.)
 | "I'll improve/tune/ratchet the condemned meanwhile" — hygiene, caching, a better cadence on machinery a named peer sentences to deletion | Patching the CONDEMNED (Anchor 2's roadmap face, 2026-07-31). The deletion IS the work; only the oracles that arbitrate the replacement — the march, the ratchets, the divergence count — may touch it |
 | A standing per-run re-derivation wearing "verification"'s name (a second pass that narrates divergence and proceeds with its own answer) | An OVERRIDE, not a verification — a verifier refuses or the divergence is impossible. Verification happens ONCE: structurally per compile, whole-program at the march per landing (the trial/final lesson, 2026-07-31) |
 | "AI"/"agent"/"completion" in user-facing text | Substrate vocabulary: "medium proposes" / "cursor argmax" |
+| Pitching Mentl by what it does for machine-written code — a brief, a pitch, a headline | The thesis is the person's gap (PLAN §0); trusting code someone else wrote falls out of it. `tools/doc-truth.sh` holds the doors to §0's sentence; a brief you write by hand has no gate, so read §0 first |
 
 ---
 
 ## The eight anchors
 
 **0. Dream code.** Write the code you WISH existed; verify by simulation, not
-compilation. The compiler IS the oracle; AI tools are proposers; Mentl verifies.
+compilation. The compiler IS the oracle; any proposer proposes; Mentl verifies.
 The wish is INVARIANT to the substrate — write perfect Mentl source for the
 perfect substrate; complete the disposable seed to match it, never bend the
 source to the seed ("reachable now" is the wish lowered — Red-flags). And the
@@ -810,7 +811,7 @@ for new convergences; (5) consolidate proactively.
 
 - **Delete, don't decorate.** Wrong → delete and redo.
 - **Never attribute Claude in commits** (no false authorship).
-- **What Mentl IS / kernel / resolved decisions / laws:** `PLAN.md` (§0 reframe,
+- **What Mentl IS / kernel / resolved decisions / laws:** `PLAN.md` (§0 thesis,
   §2 kernel, §4 decisions, §9 laws). **Syntax / forms:** `SYNTAX.md`.
 - **Bootstrap / substrate / file-map / verification:** `PLAN.md` (§6, §8).
 - **The cursor / current work:** `PLAN.md §11` (THE STANDING CURSOR — the

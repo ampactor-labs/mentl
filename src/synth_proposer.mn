@@ -1260,8 +1260,8 @@ fn keep_named_refusal(verdicts, acc, indexed) = match indexed {
 //
 // THE PROOF GATE, one home, and the hole is a TERM CELL in it.
 //
-// §1's law is that any intelligence may propose and nothing executes
-// unproven, so what "proven" MEANS has exactly one definition. It used to
+// Nothing the medium proposes reaches the developer unproven (PLAN §0,
+// property 1), so what "proven" MEANS has exactly one definition. It used to
 // instantiate the target FRESH — `instantiate(Frozen(free_in_ty(t), t))` —
 // and its comment called that "so the proof never binds the hole's live
 // frontier", which reads as a safeguard and was a description of the

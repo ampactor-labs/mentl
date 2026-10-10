@@ -1,7 +1,7 @@
 # tools/wt-env.sh — THE ONE HOME for the wasm toolchain invocation.
 #
-# Carried-Truth at the tooling layer: the engine's run-flags and the wat2wasm
-# assemble-flags are a FACT with exactly one home. Every script sources this;
+# Carried-Truth at the tooling layer: the engine's run-flags and the
+# assembler are a FACT with exactly one home. Every script sources this;
 # nobody hand-types `-W threads=y …` again (the flag-split footgun that cost a
 # session). The file dissolves with the native backend (PLAN §11, Phase 10),
 # where Mentl emits an executable that hosts itself and there is no engine —
@@ -9,15 +9,14 @@
 #
 #   Usage (source, never execute):   source "$(dirname "$0")/wt-env.sh"
 #   Then:  wt_run <wasm> [args…]              # run with the canonical flags
-#          wt_asm <in.wat> <out.wasm>         # assemble with the canonical flags
-#          wt_validate <wasm>                 # validate with the canonical flags
+#          wt_asm <in.wat> <out.wasm>         # assemble through the boot's `mentl asm`
 #          wt_func <wasm> <fn-name>           # WABT disasm of ONE function
 #          wt_offsets <wat> <fn> <local>      # field-load offsets for a local
 #          wt_wheel_compile <wasm> <out.wat> <out.err>  # <wasm> compiles src/main.mn's DAG, cold
 #
-# The four constants — WT, WT_RUN_FLAGS, W2W, WT_WABT — are the single source of
+# The constants — WT, WT_RUN_FLAGS and WT_ASM — are the single source of
 # truth. Point WT at another engine via MENTL_WASMTIME. Nothing here re-derives;
-# every helper is a projection of the four constants.
+# every helper is a projection of them.
 #
 # THE TOOLCHAIN'S OWN VARIABLES — one home, the file every script sources.
 # These configure the HOST side; the wheel does not implicitly consume them.
@@ -115,27 +114,19 @@ fi
 # (src/asm.mn) projects the emitter's text to the module's bytes, and
 # writes the module WABT's `wat2wasm --debug-names` writes from the same
 # text, byte for byte, name section included (tools/asm-gate.sh holds it to
-# that on the boot's own m2 and on a module of every form the table knows).
+# that on a module of every form the table knows, recorded once, and holds a
+# candidate's projection of the boot's own m2 to the boot's).
 # It is the pinned boot that assembles — the compiler that emitted the text
 # is the one that projects it — so every gate, the march and `mentl run`
 # assemble through wt_asm below and WABT is in none of them.
 #
-# THE TRANSITION: a boot pinned before this landing serves no `asm` verb, so
-# WABT assembles only until the next repin carries the in-medium assembler.
-# Probe the actual CLI projection, not a byte string that could occur
-# elsewhere in the binary. This seam is removed once the pin can assemble
-# itself (Hβ.asm.bootstrap-seam).
-if "$WT" run "${WT_RUN_FLAGS[@]}" "$_wt_root/boot/mentl.wasm" help 2>/dev/null \
-    | grep -qF "assemble WAT to wasm bytes on stdout"; then
-  WT_ASM_SEAM=0
-else
-  WT_ASM_SEAM=1
-fi
 # The assembler: the pinned boot, or a compiler named by MENTL_ASM (the asm
 # gate points it at a candidate m2 to judge the candidate's own projection).
 WT_ASM="${MENTL_ASM:-$_wt_root/boot/mentl.wasm}"
+# The feature flags WABT's disassemblers need to read a tail-calling,
+# threaded module — forensic instruments (wasm-objdump at a trap, wasm2wat
+# over a shrunk crucible), never a gate's dependency.
 WABT_FEATURE_FLAGS=(--enable-threads --enable-tail-call)
-W2W=(wat2wasm --debug-names "${WABT_FEATURE_FLAGS[@]}")
 
 # MENTL_RT_LIBS — the runtime modules a micro run by run-micro.sh imports (the
 # prelude's closure, which the walk's seed draws on its own; verify.sh names
@@ -176,11 +167,11 @@ wt_rooted() { "$WT" run "${WT_RUN_FLAGS[@]}" --dir . "$@"; }
 # module is run by the host, in the battery exactly as at `mentl run`). This
 # filter assembles and runs each one and writes PASS or FAIL(run) in the RUN
 # line's place, so the verdict stream reads as it always did; every other
-# line passes through. One process per run fixture again — the honest cost
-# of a host with no code of ours in it, paid until `mentl asm` + native —
-# measured at ~340 ms a fixture (wat2wasm + the engine's compile), so the
-# runs go nproc-wide: each verdict is one short line appended atomically, and
-# the verdicts come out sorted by fixture, so the stream is deterministic.
+# line passes through. Each run fixture costs its assembly through the
+# boot's `mentl asm` and the engine's compile — the honest cost of a host
+# with no code of ours in it, until native — so the runs go nproc-wide:
+# each verdict is one short line appended atomically, and the verdicts come
+# out sorted by fixture, so the stream is deterministic.
 wt_battery_run_one() {  # wt_battery_run_one <stem> <wat> <want> <nerr> — one RUN line's verdict
   local stem="$1" path="$2" want="$3" nerr="$4" base exit
   base="${path%.wat}"
@@ -272,10 +263,6 @@ wt_battery() {
 # assembler refuses; the refusal (form, line, column) on stderr, which the
 # caller redirects as it likes. The one assemble step of every gate.
 wt_asm() {
-  if [ "$WT_ASM_SEAM" = 1 ] && [ -z "${MENTL_ASM:-}" ]; then
-    "${W2W[@]}" "$1" -o "$2"
-    return
-  fi
   if wt_run "$WT_ASM" asm < "$1" > "$2.part"; then
     mv -f "$2.part" "$2"
   else
@@ -284,10 +271,6 @@ wt_asm() {
     return "$rc"
   fi
 }
-
-# wt_validate <wasm> — validate a WASM module under the same feature set used
-# for assembly. Threads/tail-call are substrate facts, not per-script choices.
-wt_validate() { wasm-validate "${WABT_FEATURE_FLAGS[@]}" "$1"; }
 
 # ── WABT probes (the trap-pin workhorses; PLAN §8 — never grep the minified
 #    emit). All read a *.wasm assembled by wt_asm, so the name section is live

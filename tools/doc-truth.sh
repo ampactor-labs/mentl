@@ -236,6 +236,41 @@ else
   done
 fi
 
+# THE DOORS LEAD WITH THE THESIS (Morgan, 2026-10-09). The thesis has one
+# home — PLAN §0's first bold sentence — and every reader-facing door states
+# it verbatim, the README as its first words. The headline stood inverted
+# from 2026-06-18 to 2026-10-09 ("humanity's verification substrate for the
+# age of machine-generated code") while §0 itself kept "the developer is the
+# telos" two paragraphs down: prose holding a thesis is edited like state,
+# one citable argument at a time, so the doors are read against the home
+# here. And the inverted framings are refused in every door: trustworthy
+# machine-written code is what falls out of the thesis, never its headline.
+flat() { tr '\n' ' ' | sed -e 's/\*\*//g' -e 's/  */ /g'; }
+thesis=$(awk '/^## §0 /{f=1; next} f && /^\*\*/{t=1} t{print} t && /\.\*\*/{exit}' PLAN.md | flat | sed -e 's/\(\.\) .*/\1/' -e 's/ *$//')
+if [ -z "$thesis" ]; then
+  echo "doc-truth: PLAN §0's thesis sentence did not parse — the check cannot fail, so it fails"
+  fail=1
+else
+  lead=$(awk 'NR>1 && NF{print; exit}' README.md | flat)
+  case "$lead" in
+    "$thesis"*) ;;
+    *) echo "doc-truth: README.md does not open with PLAN §0's thesis: \"$thesis\""; fail=1 ;;
+  esac
+  for door in docs/POSITIONING.md docs/READING.md; do
+    if ! flat < "$door" | grep -qF "$thesis"; then
+      echo "doc-truth: $door does not state PLAN §0's thesis: \"$thesis\""
+      fail=1
+    fi
+  done
+fi
+for door in PLAN.md README.md docs/POSITIONING.md docs/READING.md docs/MENTL_SPACE.md docs/DESIGN_SYSTEM.md ide/index.html ide/README.md; do
+  inverted=$(flat < "$door" | grep -oiE 'verification substrate|age of machine-generated|let anything write|is unemployed|no LLM advantageous' | sort -u | tr '\n' ';')
+  if [ -n "$inverted" ]; then
+    echo "doc-truth: $door leads with machines where PLAN §0 leads with the person: $inverted"
+    fail=1
+  fi
+done
+
 if [ $fail -eq 0 ]; then
   echo "doc-truth: the docs' checkable claims verify against the artifact"
 fi

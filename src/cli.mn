@@ -275,7 +275,7 @@ fn verb_specs() = [
     "mcp",
     "",
     bare_verb(VMcp, ??),
-    "the gate on MCP stdio — agents propose, nothing executes unproven"
+    "the proof gate and the session's reads over MCP stdio, for an editor or tool"
   ),
   VerbSpec(
     "--with",
