@@ -1,0 +1,9 @@
+// A binder spelled with a keyword parses under recovery as a wildcard, and
+// fmt once wrote the recovery: `let own = …` became `let _ = …`, and every
+// read of `own` below it was refused. The file stays as the author wrote it.
+fn f(x) = {
+  let own = x + 1
+  own * 2
+}
+
+fn main() = f(3)

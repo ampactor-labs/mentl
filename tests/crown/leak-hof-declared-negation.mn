@@ -1,9 +1,0 @@
-// CROWN crucible — the declared-row-vacuous hole
-// (Hβ.infer.declared-row-vacuous-against-a-free-body-row, fixed 2026-10-05):
-// a declared !E must constrain its params' rows. Before the fix, the
-// param's free row var passed the !E gate vacuously — `fn run(f) with !E =
-// f()` accepted `run(() => op())` — and nothing bound it later, so the
-// negation leaked through a higher-order call. Expect E_EffectMismatch.
-effect E { op() -> Int }
-fn run(f) with !E = f()
-fn main() = run(() => op())

@@ -1,11 +1,11 @@
 // board.mn — the medium's standing verdict on its own source.
 //
 // A BOARD LINE is a named invariant of the wheel, the bound it may not cross,
-// and the SITES the medium finds for it live. Every line's sites come from
-// `census_sites` — the same walk `mentl query <file> "census <shape>"`
-// projects — so the board asks the medium a question the medium already
-// answers, and nothing between the two re-derives it. The count is `len` of
-// that list and is never stored beside it.
+// and the SITES the medium finds for it live. Every line's sites are the
+// answer to a `mentl query` question — the same `ask` the verb renders — so
+// the board asks the medium a question the medium already answers, and
+// nothing between the two re-derives it. The count is `len` of that list and
+// is never stored beside it.
 //
 // WHAT THIS REPLACES, and why the replacement is the point rather than the
 // tidying. The bounds lived in `tools/verify-baseline.txt`: 1,695 lines
@@ -32,10 +32,19 @@ import types
 
 import query
 
-// One measured invariant: the shape the medium counts and the count it may
-// not exceed. The two fields are inseparable — a shape with no bound is a
-// report, and a bound with no shape is the text file this replaces.
-type Bound = Bound({ceiling: Int, shape: CensusShape})
+// One measured invariant: the QUESTION the medium answers by place and the
+// count of sites it may not exceed. The two fields are inseparable — a
+// question with no bound is a report, and a bound with no question is the
+// text file this replaces.
+//
+// A QUESTION, NOT A SHAPE (G2). The board bounded census shapes alone, so
+// what the medium answers any other way rose with nothing to refuse it: the
+// open proof obligations went 37 → 39 across one landing, read by a facet
+// (`smt`) and bounded by nobody. Every `mentl query` question whose answer
+// is a list of sites — a census shape, a prose class, the open obligations,
+// the ghosts — is a line here, and a question answered without sites
+// refuses as a bound rather than counting nothing (`located_answer`).
+type Bound = {ceiling: Int, question: Question}
 
 // What the medium found when it looked: the SITES, not a count of them.
 //
@@ -50,7 +59,13 @@ type Bound = Bound({ceiling: Int, shape: CensusShape})
 // tells the developer a number rose; a bound that names its sites tells them
 // where to look, from a list the walk already built and the verb used to throw
 // away.
-type Standing = Within([(String, Span)]) | Over([(String, Span)])
+//
+// The label rides beside the sites because the board asks the medium's own
+// question and renders the medium's own answer: the label is part of what
+// `located_answer` handed back, never a second spelling kept here. A bound
+// whose question the medium answers without sites is UNLOCATED — the
+// roster's mistake, which refuses like a breach instead of passing on zero.
+type Standing = Within(String, [(String, Span)]) | Over(String, [(String, Span)]) | Unlocated(String)
 
 // The roster, complete by construction: a shape absent here is not measured,
 // which is visible, where a shape measured against a missing bound would be
@@ -60,7 +75,7 @@ fn board_bounds() = [
   // Zero because an eta-wrapper is a REFERENCE written as a MINT: the name it
   // wraps already exists, so the lambda re-mints what a handle would have
   // carried. Retires when the shape is a refusal rather than a count.
-  Bound({ceiling: 0, shape: CsEta}),
+  Bound({ceiling: 0, question: QCensus(CsEta)}),
   // The one line here that is genuinely a COUNTDOWN rather than a held zero.
   //
   // ITS CONVICTION IS RE-FOUNDED, and the text it replaces was mine from one
@@ -140,41 +155,60 @@ fn board_bounds() = [
   // over `effect_op_names`, `fold_acc_evac_expr` by name, which the store's
   // own demand reads too); the yield-record store the landing deleted took
   // one with it, so the count fell one below the ceiling it entered under.
-  Bound({ceiling: 222, shape: CsEffectfulLambda}),
+  //
+  // 222 -> 220 (2026-10-06, L-C): the session's cone is one judgment, so the
+  // per-module loop that judged it and the two lambdas that mapped its
+  // modules and their imports to names left with it (`cone_module` as a
+  // one-hole partial); the space verb's argument parser is a named function
+  // (`space_verb_args`); and the two routes the landing added each pay the one
+  // thunk every judging route pays — the cold View and the session's.
+  //
+  // 220 -> 219 (2026-10-06, G2): the census shape a query names is read off
+  // the roster through a named predicate (`census_named` as a one-hole
+  // partial), so the lambda the old if-chain's verb-glyph search minted left
+  // with the chain.
+  //
+  // 219 -> 213 (2026-10-06, the heads landing): the count the board read
+  // after the verbs, canvas and heads integrations, held where they left it.
+  //
+  // 213 -> 195 (2026-10-09, L-F): the verb table's builders are references
+  // and arm lists over the words after the verb (`opt_target`, `bare_verb`,
+  // `req_target` as one-hole partials), never a lambda per row.
+  Bound({ceiling: 195, question: QCensus(CsEffectfulLambda)}),
   // Drift mode 10 — the seven survivors are documented sentinels, not masked
   // cases. Every wildcard that is NOT one of them is a variant the author
   // declined to enumerate, and the medium cannot tell the difference, which
   // is exactly why the bound is a count and not zero. 9 -> 7 (2026-09-28,
   // R0d): the count read 7 at pin 0bc8383e, so the bound admitted two new
   // masked cases nobody would have seen.
-  Bound({ceiling: 7, shape: CsWildcardZero}),
+  Bound({ceiling: 7, question: QCensus(CsWildcardZero)}),
   // Drift mode 13 — a bug is zero or it is blocking; a masked failure is the
   // surrender-fallback Anchor 2 deletes rather than wraps.
-  Bound({ceiling: 0, shape: CsFailureMask}),
+  Bound({ceiling: 0, question: QCensus(CsFailureMask)}),
   // A print inside a `report(...)` arm corrupts WAT stdout — the wheel's own
   // emission running through the same file descriptor as its narration.
-  Bound({ceiling: 0, shape: CsPrintInReport}),
+  Bound({ceiling: 0, question: QCensus(CsPrintInReport)}),
   // Drift mode 10's typed face: a wildcard arm minting `Forall`, a bare
   // `TVar`, `"Pure"` or `""` is a fabricated judgment, and a fabricated
   // judgment is indistinguishable downstream from a proven one.
-  Bound({ceiling: 21, shape: CsWildcardFabricates}),
+  Bound({ceiling: 20, question: QCensus(CsWildcardFabricates)}),
   // Drift mode 15 — a value given a leading-underscore name instead of being
   // deleted. The rename silences the reader, never the fact that nothing
   // reads it.
-  Bound({ceiling: 0, shape: CsUnderscoreRetain}),
+  Bound({ceiling: 0, question: QCensus(CsUnderscoreRetain)}),
   // Drift mode 8 — an int-coded flag is an ADT the author did not write, and
   // every comparison against it is a claim the type system cannot check.
-  Bound({ceiling: 0, shape: CsFlagAsInt}),
+  Bound({ceiling: 0, question: QCensus(CsFlagAsInt)}),
   // Drift mode 7 — adjacent `x, x_h` parameters are one record split across
   // two positions, with position standing in for the identity the record
   // would have carried.
-  Bound({ceiling: 0, shape: CsParallelArrays}),
+  Bound({ceiling: 0, question: QCensus(CsParallelArrays)}),
   // Drift mode 1 — a dispatch-slot record. The word never appears in correct
   // Mentl: the graph plus a handler IS the form a vtable approximates.
-  Bound({ceiling: 0, shape: CsVtableRecord}),
+  Bound({ceiling: 0, question: QCensus(CsVtableRecord)}),
   // Drift mode 2 — scope as a parent-pointer frame stack. Env lookup is an
   // effect op; a frame walk is that op re-implemented where the handler was.
-  Bound({ceiling: 0, shape: CsEnvFrame}),
+  Bound({ceiling: 0, question: QCensus(CsEnvFrame)}),
   // THE SECOND LINE ON THIS ROSTER THAT IS A REAL COUNTDOWN, and it reached
   // its endpoint on 2026-09-27 (A4). It began as the WIDE-row count: a
   // signature past eight names is a capability nobody named, and naming
@@ -193,41 +227,153 @@ fn board_bounds() = [
   // verb could not rewrite (a multi-line signature head) plus the caps a
   // developer keeps on purpose — and it only falls. A new inventory refuses
   // the pin: the count is the law's gate, the prose above its residue.
-  Bound({ceiling: 0, shape: CsAuthoredPositiveRow})
+  Bound({ceiling: 0, question: QCensus(CsAuthoredPositiveRow)}),
+  // ─ THE ANSWERS (G2): the lines below bound questions the board could not
+  // ask while it bounded shapes alone. Each was seen RED one below its
+  // ceiling before it was set, and each only falls.
+  //
+  // The open proof obligations — every claim Verify could neither prove nor
+  // refute, at its own site (`mentl query <entry> verification`). They rose
+  // 37 → 39 across L-C with nothing to refuse it, five of them new in
+  // src/space.mn, then 39 → 212 at TRAP, every one an index whose bound
+  // claim `PInBounds` raises and the fragment cannot yet decide — debt the
+  // row now states rather than a trap it hid. Falls as a claim gains its
+  // proof: a precondition, a path read (#109), a refinement at a part (T1) —
+  // or as a walk stops reading by index at all: the canvas's strip, its
+  // tokens' neighbours, its frame roles and the field's ranking walk the
+  // data they read, and the space verb's needle is a list pattern, 212 → 204.
+  // Every verb's builder takes its words apart by pattern, and the help
+  // catalog maps the verb table, 204 → 184 (L-F).
+  Bound({ceiling: 184, question: QVerifyDebt}),
+  // The iteration costumes — a function that threads an incremented index
+  // through its own self-call, the imperative loop in recursion's costume
+  // (CLAUDE.md Anchor 6). 390 when the detector was born on 2026-07-30, 490
+  // at G2, every new module still writing the shape (derive 36, space 3)
+  // because nothing refused it. Falls as each family migrates to the
+  // vocabulary (AU2); the detector itself is re-founded at AU1, and the
+  // ceiling resets to that count then. 490 -> 489 at its birth: the
+  // unconsumed-own report it was born beside became a filter. 489 -> 471 at
+  // the heads landing: the canvas's walks and the space verb's argument read
+  // their data by `enumerate`, `zip`, `sort` and list patterns. 471 -> 465 at
+  // L-F: the address parse, the help catalog and the record renders map
+  // their data, and the assembler's long division folds over its bits.
+  Bound({ceiling: 465, question: QCensus(CsIterationCostume)}),
+  // The ghosts — cells the parser minted and the judgment never bound
+  // (`mentl query <entry> ghosts`): names, parameters, predicates and
+  // annotations that are not yet cells inference writes, which is why `refs
+  // of` misses a type annotation and a claim sits at the application rather
+  // than at its value. It never rises: new code mints ghosts at the rate it
+  // writes names, so a landing that adds code binds a class of them in the
+  // same landing — the bound is how positions become cells (#108), one class
+  // at a time. Its comment once told each landing to raise it, and four
+  // landings did (18,681 → 19,734). The first class paid: an unannotated
+  // parameter's parser cell is bound to the parameter's own cell
+  // (`build_param_types`), 19,747 → 10,604. The second: an absent return
+  // annotation stands at no position (`mint_absent`), where a unit literal was
+  // indexed at every unannotated function's name, 10,665 → 6,089. The third,
+  // 6,092 → 477 when the verbs integration's line fixes rose it by three: a
+  // declaration's node is bound where the judgment registers it — a variant
+  // to its constructor, an op to its operation, a handler to its type, any
+  // other declaration to unit (`bind_declared`) — a statement in a block
+  // carries its expression's value as a let does, and a desugared parameter
+  // is ONE cell (the lambda head's cover node, or the one handle that also
+  // names it) where a second was minted beside it. The fourth, 492 → 150 when
+  // the canvas's holes rose it by thirteen: a `??` is one cell whose id is its
+  // own handle (`nhole`), where a second cell was minted for the id alone,
+  // and a destructuring let's statement cell is the match it becomes
+  // (`desugar_block`). The fifth, 154 → 112 at L-F: a match's arms meet in a
+  // result cell the judgment mints and the match node reads it, as an if's
+  // node reads its branches, where every arm had been unified into the node
+  // itself and left it the class's root; and a nominal record literal's head
+  // is the type it names. Next are the return and parameter annotations and
+  // refinement predicates.
+  Bound({ceiling: 112, question: QGhosts}),
+  // ─ PROSE BY CLASS (SA-5, MOD-13). A comment is graph content, so what
+  // SYNTAX §Comments says a comment is not is a census, never a review
+  // finding. Each class falls as the module carrying it is touched; F strips
+  // the decoration and AU2 rewrites the coordinates into declaration names.
+  //
+  // Module coordinates — a file and a line where the declaration's name was
+  // the edge; each rots at the first edit above it. 29 where a substring
+  // read of the extension and colon answered 34: five of those were the
+  // extension in prose with no line after it.
+  Bound({ceiling: 27, question: QCensus(CsProseClass(PcCoordinate))}),
+  // Repository paths that name no file — six of the seven cite a deleted
+  // module, and the seventh quotes the phantom path a parser bug once walked.
+  Bound({ceiling: 7, question: QCensus(CsProseClass(PcPathNoFile))}),
+  // Hex commit tokens — history belongs to LEDGER and git. 29 distinct
+  // tokens across 51 comments, every one a pin or a commit.
+  Bound({ceiling: 51, question: QCensus(CsProseClass(PcCommit))}),
+  // Numbered citations of the archived spec corpus.
+  Bound({ceiling: 24, question: QCensus(CsProseClass(PcSpecCitation))}),
+  // Lifecycle prose — what was, where SYNTAX asks for what is.
+  Bound({ceiling: 44, question: QCensus(CsProseClass(PcLifecycle))}),
+  // Archaeology — the seed era's vocabulary and its design notes.
+  Bound({ceiling: 92, question: QCensus(CsProseClass(PcArchaeology))}),
+  // Decoration runs — the banners drift rows 128 and 131 policed by regex
+  // (one over the dissolved triple-slash form, one over a glyph no banner
+  // is drawn with, so neither could fail); both rows retired into this line,
+  // and F's decoration strip takes it to zero. 373 -> 344 as the modules the
+  // landings touched were trued.
+  Bound({ceiling: 344, question: QCensus(CsProseClass(PcBanner))}),
+  // A COMMENT NEVER SILENCES A GATE (SYNTAX §Comments). Each marker mutes a
+  // text row of tools/drift-patterns.tsv that a structural census reads
+  // correctly — a string literal is text, a one-shot concat is not an
+  // accumulator — and each falls as its row becomes a shape. At zero the
+  // marker's grammar deletes from drift-audit.sh. 134 -> 132 at the heads
+  // landing; 132 -> 131 at L-F, the marker over the nominal record head's
+  // name read leaving with the read.
+  Bound({ceiling: 131, question: QCensus(CsProseClass(PcSilencer))})
 ]
 
-// The board: every bound answered by one live walk.
+// The board: every bound answered by the medium's own answer to its question.
 //
-// The answer is `census_sites(shape)` — the walk's own result, not a number
-// recovered from its rendering. That distinction is the landing: the old path
-// ran this same walk, printed "N site(s)", and then asked a regex what N was,
-// so a change to the SENTENCE could break the GATE. Nothing here can drift
-// from the walk, because there is nothing between them.
+// The answer is what `ask` returns — the same projection `mentl query` renders,
+// not a number recovered from its rendering. That distinction is the landing
+// the board was born in: the old path ran a walk, printed "N site(s)", and
+// then asked a regex what N was, so a change to the SENTENCE could break the
+// GATE. Nothing here can drift from the answer, because there is nothing
+// between them; and a question the board can ask is any question the query
+// grammar can, not only a census shape.
 fn board_read() with !Mutate = board_bounds() |> map(bound_standing)
 
 fn bound_standing(b) with !Mutate = match b {
-  Bound(r) => {
-    let sites = census_sites(r.shape)
-    (b, if len(sites) > r.ceiling { Over(sites) } else { Within(sites) })
-  },
+  Bound(r) => (b, standing_of(r.ceiling, located_answer(ask(r.question)))),
 }
 
-// One line, in the medium's voice: the shape, what it found, and — when the
-// bound is breached — the fact that a count rose rather than a rule fired,
-// which is the honest description of what a ratchet knows.
+fn standing_of(ceiling, answer) = match answer {
+  Some(found) => match found {
+    (label, sites) => if len(sites) > ceiling { Over(label, sites) } else { Within(label, sites) },
+  },
+  None => Unlocated("a question answered without sites — it cannot be bounded by count"),
+}
+
+// One line, in the medium's voice: the question's label, what it found, and
+// — when the bound is breached — the fact that a count rose rather than a
+// rule fired, which is the honest description of what a ratchet knows.
 fn board_line(entry) = match entry {
   (b, standing) => match b {
     Bound(r) => match standing {
-      Within(sites) => "  · {int_to_str(len(sites))} {census_label(r.shape)} — within {int_to_str(r.ceiling)}\n",
-      Over(sites) => // A breach names WHERE, because the number alone is the one thing the
-      // developer cannot act on. The sites come from the same walk that
+      Within(label, sites) => "  · {int_to_str(len(sites))} {label} — within {int_to_str(r.ceiling)}\n",
+      Over(label, sites) => // A breach names WHERE, because the number alone is the one thing the
+      // developer cannot act on. The sites come from the same answer that
       // decided the breach — one read, no second question.
-      "  ✗ {int_to_str(len(sites))} {census_label(r.shape)} — ROSE past {int_to_str(r.ceiling)}\n{board_sites(sites)}",
+      "  ✗ {int_to_str(len(sites))} {label} — ROSE past {int_to_str(r.ceiling)}\n{board_sites(sites)}",
+      Unlocated(why) => "  ✗ a bound over {why}\n",
     },
   },
 }
 
-fn board_sites(sites) = sites |> map(board_site_line) |> str_concat_all
+// The sites a breach names, the first fifty of them: a line over the ghosts
+// can carry twenty thousand, and the rest are one question away.
+fn board_sites(sites) = {
+  let shown = sites |> take(50) |> map(board_site_line) |> str_concat_all
+  if len(sites) > 50 {
+    "{shown}      … {int_to_str(len(sites) - 50)} more — the full list is the question's own answer under `mentl query`\n"
+  } else {
+    shown
+  }
+}
 
 fn board_site_line(site) = match site {
   (module, span) => "      {module}:{show_span(span)}\n",
@@ -235,7 +381,8 @@ fn board_site_line(site) = match site {
 
 fn board_breached(entry) with Pure = match entry {
   (_b, standing) => match standing {
-    Within(_) => false,
-    Over(_) => true,
+    Within(_, _) => false,
+    Over(_, _) => true,
+    Unlocated(_) => true,
   },
 }

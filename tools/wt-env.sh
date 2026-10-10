@@ -1,101 +1,103 @@
 # tools/wt-env.sh — THE ONE HOME for the wasm toolchain invocation.
 #
-# Carried-Truth at the tooling layer: the wasmtime run-flags and the wat2wasm
-# assemble-flags are a FACT with exactly one home. Every script sources this;
+# Carried-Truth at the tooling layer: the engine's run-flags and the
+# assembler are a FACT with exactly one home. Every script sources this;
 # nobody hand-types `-W threads=y …` again (the flag-split footgun that cost a
-# session). The instant `mentl run` / `mentl asm` exist as real subcommands,
-# this file dissolves — like every bootstrap-era scaffold.
+# session). The file dissolves with the native backend (PLAN §11, Phase 10),
+# where Mentl emits an executable that hosts itself and there is no engine —
+# like every bootstrap-era scaffold.
 #
 #   Usage (source, never execute):   source "$(dirname "$0")/wt-env.sh"
 #   Then:  wt_run <wasm> [args…]              # run with the canonical flags
-#          wt_asm <in.wat> <out.wasm>         # assemble with the canonical flags
-#          wt_validate <wasm>                 # validate with the canonical flags
+#          wt_asm <in.wat> <out.wasm>         # assemble through the boot's `mentl asm`
 #          wt_func <wasm> <fn-name>           # WABT disasm of ONE function
 #          wt_offsets <wat> <fn> <local>      # field-load offsets for a local
-#          wt_wheel <src|lib> [src|lib] > f   # canonical wheel input (find-order)
+#          wt_wheel_compile <wasm> <out.wat> <out.err>  # <wasm> compiles src/main.mn's DAG, cold
 #
-# The four constants — WT, WT_RUN_FLAGS, W2W, WT_WABT — are the single source of
-# truth. Point WT at another build via MENTL_RUNNER. Nothing here re-derives;
-# every helper is a projection of the four constants.
-
-# The threads/shared-memory/tail-call quartet is load-bearing: the wheel's
-# modules use wasi-threads shared memory (the wasi_thread_spawn substrate) and
-# return_call_indirect (opcode 0x13). Drop any one flag → the module refuses to
-# instantiate. This quartet is the invariant, proven across the whole toolchain.
-# The SPELLING is version-dependent: wasmtime 36 LTS folds shared-memory into
-# -W threads=y and rejects the separate flag; 43 requires it explicitly. Probe
-# once at source time so both run (validated 2026-07-23: wheel self-compile
-# byte-identical and battery 113/113 through BOTH binaries —
-# Hβ.ops.wasmtime-runner-migration step 1).
-# THE HOST IS A SEAM, NOT AN ENGINE. The wasmtime CLI was a dead end twice
-# over: measured 2026-09-06, the same spawning module answers exit 60 through
-# wasmtime 36's CLI and `Error: the -Sthreads flag is no longer supported`
-# through 47's; and since the wheel performs the exec seam (2026-09-17) every
-# Mentl module imports `mentl_host`, which no CLI defines — 36's
-# `-W unknown-imports-trap` is applied after its wasi-threads shim has already
-# instantiated, so the boot cannot even start there. A host must provide the
-# SEAM CONTRACT: WASI preview1, the shared env.memory import, mentl_host
-# (wat_write/exec), wasi/thread-spawn, and the -S tcplisten= socket. Two
-# hosts honor it:
-#   - tools/runner (Rust/wasmtime embedding) — the reference; the gates are
-#     measured against it. Preferred when built.
-#   - tools/host-node (Node.js) — zero Rust; the same contract on Node's
-#     engine (wabt for the exec seam's assemble step). Preferred when the
-#     runner is absent and node is present.
-# The fallback is EXPLICIT, never silent: sourcing this file prints which
-# host was selected when it isn't the runner.
+# The constants — WT, WT_RUN_FLAGS and WT_ASM — are the single source of
+# truth. Point WT at another engine via MENTL_WASMTIME. Nothing here re-derives;
+# every helper is a projection of them.
 #
-# One capability the runner drops: `-D coredump=` is parsed and ignored, so a
-# trapped m3 leg writes no coredump for the autopsy. Named here rather than
-# discovered at the next trap.
-_wt_here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-_wt_runner="${MENTL_RUNNER:-$_wt_here/runner/target/release/mentl-runner}"
-_wt_node_host="$_wt_here/host-node/mentl-host.mjs"
+# THE TOOLCHAIN'S OWN VARIABLES — one home, the file every script sources.
+# These configure the HOST side; the wheel does not implicitly consume them.
+# A program that asks env_opt for a computed name under env_from_host opts into
+# the whole process environment, which can include these MENTL_ values.
+# tools/doc-truth.sh refuses any MENTL_ name under tools/, ide/ or .githooks/
+# that this table does not carry.
+#   variable              default                          read by
+#   MENTL_HOME            the checkout holding tools/     install.sh (the shim), verify.sh
+#   MENTL_BOOT            boot/mentl.wasm                  the shim, run-micro.sh, crown-gate.sh, effect-identity-gate.sh, verify.sh
+#   MENTL_WASMTIME        .build/wasmtime, then PATH       wt-env.sh, wasmtime-get.sh, verify.sh
+#   MENTL_WT_EXTRA        (none)                           wt-env.sh — extra engine flags, e.g. --profile=perfmap
+#   MENTL_RT_LIBS         (set here, never read in)        wt-env.sh, verify.sh, march-gate.sh — the runtime floor's modules
+#   MENTL_BIN_DIR         ~/.local/bin                     install.sh — where the shim is written
+#   MENTL_SPACE_PORT      7397                             the shim's `mentl space`
+#   MENTL_CHROME          the usual names on PATH          ide-gate.sh — the browser leg's Chrome
+#   MENTL_IDE_GATE_PORT   7397                             ide-gate.sh
+#   MENTL_IDE_WASM        boot/mentl.wasm                  ide/test-shim.mjs — the node twin's wheel
+#   MENTL_HEAVY_LOCK      /tmp/mentl-heavy-lock.d          heavy-lock.sh — the machine-wide wheel-scale lock
+#   MENTL_HEAVY_TTL       1800                             heavy-lock.sh — seconds before a stale lock breaks
+#   MENTL_LOCK_OWNER      the checkout's top level         heavy-lock.sh
+#   MENTL_ASM             boot/mentl.wasm                  wt-env.sh, asm-gate.sh — assembler module for wt_asm
 
-# Host selection. MENTL_HOST forces one: `node` (zero-Rust) or `runner`
-# (refusing when absent, the old behavior). Unset: the runner when built —
-# it is the reference the gates are measured against — else the Node host.
-_wt_want="${MENTL_HOST:-auto}"
-case "$_wt_want" in
-  runner)
-    if [ ! -x "$_wt_runner" ]; then
-      echo "wt-env: MENTL_HOST=runner but no runner at $_wt_runner — build it: cargo build --release --manifest-path tools/runner/Cargo.toml" >&2
-      return 2 2>/dev/null || exit 2
-    fi
-    WT="$_wt_runner"; WT_RUN_FLAGS=(-W threads=y -W tail-call=y); WT_ENGINE="runner" ;;
-  node)
-    _wt_use_node=1 ;;
-  auto)
-    if [ -x "$_wt_runner" ]; then
-      WT="$_wt_runner"; WT_RUN_FLAGS=(-W threads=y -W tail-call=y); WT_ENGINE="runner"
-    else
-      _wt_use_node=1
-    fi ;;
-  *) echo "wt-env: unknown MENTL_HOST=$_wt_want (want node|runner)" >&2; return 2 2>/dev/null || exit 2 ;;
-esac
-
-if [ -n "${_wt_use_node:-}" ]; then
-  if ! command -v node >/dev/null 2>&1; then
-    echo "wt-env: no runner at $_wt_runner and no node for the Node host." >&2
-    echo "wt-env: build the runner: cargo build --release --manifest-path tools/runner/Cargo.toml" >&2
-    echo "wt-env: or install node (>=20) for the zero-Rust host." >&2
-    return 2 2>/dev/null || exit 2
-  fi
-  if [ ! -d "$_wt_here/host-node/node_modules/wabt" ]; then
-    echo "wt-env: installing the Node host's assembler (wabt)..." >&2
-    (cd "$_wt_here/host-node" && npm install --no-audit --no-fund >&2) || {
-      echo "wt-env: npm install failed in tools/host-node" >&2
-      return 2 2>/dev/null || exit 2
-    }
-  fi
-  WT="$_wt_node_host"
-  WT_RUN_FLAGS=()
-  WT_ENGINE="node"
-  if [ "$_wt_want" = "auto" ]; then
-    echo "wt-env: runner not built — using the Node host. The gates are measured against the runner; MENTL_HOST=runner forces it." >&2
-  fi
+# THE ENGINE IS THE STOCK WASMTIME BINARY, and nothing of Mentl is in it
+# (2026-10-05, L-H — Morgan: no Rust in the codebase, "at all!"). The boot
+# imports WASI preview1 and nothing else and defines its own memory, so any
+# preview1 engine hosts it; a program that spawns also asks for wasi-threads
+# (the `wasi.thread-spawn` import beside a shared `env.memory`), which is
+# where the PIN comes from: wasmtime 36 serves it through `-S threads=y`,
+# and every line after 36 refuses the flag and the legacy preview1 host with
+# it (47 measured 2026-09-06; 48.0.3 and 49.0.2 measured 2026-10-05, where a
+# spawning module cannot instantiate at all), so the newest patch of the 36
+# LTS line is pinned by version and digest in tools/wasmtime-get.sh — the
+# version's one home, read here — and resolved MENTL_WASMTIME →
+# .build/wasmtime → PATH. The pin is decided by that script's probe, one
+# module per capability (`bash tools/wasmtime-get.sh probe [<engine>]`), and
+# the table in its header is the reason: what the successors add
+# (exceptions, stack switching) and why neither moves the pin. A missing engine REFUSES, loudly, with the fetch command — never a
+# silent downgrade. The flags are UNIFORM: `-S threads=y` runs a module that
+# defines its memory exactly as one that imports it (measured on this
+# landing's m2: the wheel compiled through the candidate byte-identical to
+# the Rust runner it replaced, 549,192 lines, at 37.9 s / 492 MB), so no
+# import scan chooses flags per module. The threads/tail-call pair is
+# load-bearing — the wheel's modules use shared memory (atomics for the
+# task join) and return_call_indirect (opcode 0x13); drop either and the
+# module refuses to instantiate. `-C cache=y` is the engine's compilation
+# cache, on by default in the CLI and stated here because it is the fact
+# that makes the loop felt: the JIT of the 3 MB boot is paid once per pinned
+# binary, not once per process — a `mentl help` is 0.06 s against the
+# runner's 1.4–1.8 s, a `check` of the first lesson 0.35 s against ~1.9 s
+# (measured 2026-10-05), and every gate that spawns hundreds of processes
+# loses that floor.
+#
+# The Rust runner this replaced (2026-09-17 → 2026-10-05, tools/runner — an
+# 800-line wasmtime embedding) existed for two seams the wheel performed and
+# no stock engine defined: the exec seam (`mentl_host.wat_write`/`.exec`) and
+# the p1 socket seam (`-S tcplisten=`). Both left the wheel: a compiled
+# module is run by the mentl command (tools/install.sh) and by the battery's
+# host loop below, and the session serves on stdio. RESIDUE.md carries the
+# record under `Hβ.ops.runner-is-the-process-handler`.
+_wt_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# The pinned version has ONE home, the fetch script's `ver=` line; this file
+# reads it rather than repeating it (a second copy drifted the day the patch
+# moved).
+_wt_pin="$(sed -n 's/^ver=//p' "$_wt_root/tools/wasmtime-get.sh" | head -1)"
+_wt_engine="${MENTL_WASMTIME:-}"
+if [ -z "$_wt_engine" ]; then
+  for _wt_cand in "$_wt_root"/.build/wasmtime/wasmtime-v"$_wt_pin"-*/wasmtime; do
+    [ -x "$_wt_cand" ] && _wt_engine="$_wt_cand" && break
+  done
 fi
-# MENTL_WT_EXTRA — extra runner flags, word-split, appended to every wt_run and
+if [ -z "$_wt_engine" ] && command -v wasmtime >/dev/null 2>&1; then
+  _wt_engine="$(command -v wasmtime)"
+fi
+if [ -z "$_wt_engine" ] || [ ! -x "$_wt_engine" ]; then
+  echo "wt-env: no engine — bash tools/wasmtime-get.sh fetches the pinned wasmtime ($_wt_pin) into .build/wasmtime (or set MENTL_WASMTIME, or put a wasmtime 36 on PATH)" >&2
+  return 2 2>/dev/null || exit 2
+fi
+WT="$_wt_engine"
+WT_RUN_FLAGS=(-C cache=y -W threads=y -W tail-call=y -S threads=y)
+# MENTL_WT_EXTRA — extra engine flags, word-split, appended to every wt_run and
 # every shim invocation. It exists for ONE thing the canonical flags cannot
 # express and the shim therefore could not reach: attaching a profiler.
 # PLAN §8 names host `perf` with --profile=perfmap as THE instrument for the
@@ -105,16 +107,30 @@ fi
 #   MENTL_WT_EXTRA=--profile=perfmap perf record -g -- mentl check <file>
 # Empty by default, so every gate and every march runs byte-identical flags.
 # shellcheck disable=SC2206 — the split is the point; this file is sourced by bash.
-# Runner-only: profiler attachment has no meaning on the Node host.
-if [ -n "${MENTL_WT_EXTRA:-}" ] && [ "${WT_ENGINE:-}" = "runner" ]; then
+if [ -n "${MENTL_WT_EXTRA:-}" ]; then
   WT_RUN_FLAGS+=($MENTL_WT_EXTRA)
 fi
+# THE ASSEMBLER IS THE MEDIUM'S OWN (2026-10-06, L-F). `mentl asm`
+# (src/asm.mn) projects the emitter's text to the module's bytes, and
+# writes the module WABT's `wat2wasm --debug-names` writes from the same
+# text, byte for byte, name section included (tools/asm-gate.sh holds it to
+# that on a module of every form the table knows, recorded once, and holds a
+# candidate's projection of the boot's own m2 to the boot's).
+# It is the pinned boot that assembles — the compiler that emitted the text
+# is the one that projects it — so every gate, the march and `mentl run`
+# assemble through wt_asm below and WABT is in none of them.
+#
+# The assembler: the pinned boot, or a compiler named by MENTL_ASM (the asm
+# gate points it at a candidate m2 to judge the candidate's own projection).
+WT_ASM="${MENTL_ASM:-$_wt_root/boot/mentl.wasm}"
+# The feature flags WABT's disassemblers need to read a tail-calling,
+# threaded module — forensic instruments (wasm-objdump at a trap, wasm2wat
+# over a shrunk crucible), never a gate's dependency.
 WABT_FEATURE_FLAGS=(--enable-threads --enable-tail-call)
-W2W=(wat2wasm --debug-names "${WABT_FEATURE_FLAGS[@]}")
 
-# MENTL_RT_LIBS — the runtime-link set every battery fixture concatenates.
-# One home: verify.sh and march-gate.sh both linked the same four modules
-# from their own definitions, the parallel-arrays drift at gate scale.
+# MENTL_RT_LIBS — the runtime modules a micro run by run-micro.sh imports (the
+# prelude's closure, which the walk's seed draws on its own; verify.sh names
+# them for the legs that pass a set).
 MENTL_RT_LIBS=(lib/memory.mn lib/strings.mn lib/lists.mn lib/prelude.mn)
 
 # wt_run <wasm> [args…] — run a wasm module under the canonical flags. Stdin/
@@ -122,16 +138,95 @@ MENTL_RT_LIBS=(lib/memory.mn lib/strings.mn lib/lists.mn lib/prelude.mn)
 # the WAT out exactly as before.
 wt_run() { "$WT" run "${WT_RUN_FLAGS[@]}" "$@"; }
 
+# wt_entry <source|-> [module…] — a program as an ENTRY: its text, then an
+# import line for each named module the text does not already import. Piped
+# into wt_rooted, the compiler reads it on stdin and the walk weaves those
+# imports and the prelude from the tree, the link `mentl compile` draws from a
+# file (driver_collect_text). This replaced concatenating the library files
+# ahead of the program — a third link model, whose repeated imports were one
+# module's duplicates once a duplicate import refused. The imports follow the
+# text so a fixture's own coordinates stay its own.
+wt_entry() {
+  local src="$1" m text; shift
+  if [ "$src" = - ]; then text=$(cat); else text=$(cat "$src"); fi
+  printf '%s\n' "$text"
+  for m in "$@"; do
+    grep -qx "import $m" <<<"$text" || printf 'import %s\n' "$m"
+  done
+}
+
+# wt_rooted <compiler> [arg…] — run the compiler with the working directory
+# preopened, so a stdin entry's imports resolve against the tree it runs in.
+wt_rooted() { "$WT" run "${WT_RUN_FLAGS[@]}" --dir . "$@"; }
+
+# wt_battery_host — the host's half of the battery. `mentl test` judges every
+# fixture in one process and, for a run contract, hands the module over
+# instead of running it: a RUN line names the fixture, the .wat the compiler
+# wrote under .build/battery, the exit the contract wants and the error
+# count it banked (the exec seam left the wheel 2026-10-05 — a compiled
+# module is run by the host, in the battery exactly as at `mentl run`). This
+# filter assembles and runs each one and writes PASS or FAIL(run) in the RUN
+# line's place, so the verdict stream reads as it always did; every other
+# line passes through. Each run fixture costs its assembly through the
+# boot's `mentl asm` and the engine's compile — the honest cost of a host
+# with no code of ours in it, until native — so the runs go nproc-wide:
+# each verdict is one short line appended atomically, and the verdicts come
+# out sorted by fixture, so the stream is deterministic.
+wt_battery_run_one() {  # wt_battery_run_one <stem> <wat> <want> <nerr> — one RUN line's verdict
+  local stem="$1" path="$2" want="$3" nerr="$4" base exit
+  base="${path%.wat}"
+  # A program's exit is what the WASI host reports, and the stock engine
+  # reports [0..126) — `proc_exit(200)` is "exit with invalid exit status
+  # outside of [0..126)" at exit 1, which reads as a trap. A want the host
+  # cannot report is a contract that cannot be judged, refused by name here
+  # (measured 2026-10-05: one micro answered 200 through the Rust runner,
+  # which passed any status through, and went red the day the stock engine
+  # became the host). 134 is the trap's own exit and stays observable.
+  if [ "$want" -ge 126 ] && [ "$want" -ne 134 ]; then
+    echo "FAIL(contract) $stem: wants exit $want, which the WASI host cannot report (a program's exit is [0..126); a trap is 134) — answer below 126"
+    return 0
+  fi
+  if ! wt_asm "$path" "$base.wasm" 2> "$base.asm.err"; then
+    echo "FAIL(asm) $stem: the module did not assemble (see $base.asm.err)"
+    return 0
+  fi
+  timeout 300 "$WT" run "${WT_RUN_FLAGS[@]}" --dir . "$base.wasm" < /dev/null > "$base.out" 2> "$base.run.err"
+  exit=$?
+  if [ "$exit" -eq "$want" ]; then
+    echo "PASS $stem: exit=$exit (expected $want) diags=$nerr"
+  else
+    echo "FAIL(run) $stem: exit=$exit expected=$want diags=$nerr"
+  fi
+}
+wt_battery_host() {
+  local line stem path want nerr runs verdicts n max
+  runs=$(mktemp) && verdicts=$(mktemp)
+  while IFS= read -r line; do
+    case "$line" in
+      "RUN "*) printf '%s\n' "${line#RUN }" >> "$runs" ;;
+      *) printf '%s\n' "$line" ;;
+    esac
+  done
+  n=0; max=$(nproc 2>/dev/null || echo 2)
+  while read -r stem path want nerr; do
+    wt_battery_run_one "$stem" "$path" "$want" "$nerr" >> "$verdicts" &
+    n=$((n + 1))
+    if [ "$n" -ge "$max" ]; then wait -n; n=$((n - 1)); fi
+  done < "$runs"
+  wait
+  sort "$verdicts"
+  rm -f "$runs" "$verdicts"
+}
+
 # wt_battery <compiler.wasm> <fixture-dir> [label] — the fixture battery,
 # judged BY THE MEDIUM: `mentl test <dir>` compiles every fixture in one
-# process, runs each through the runner's exec seam, and prints one verdict
-# line per fixture (PASS / REFUSE / FAIL… / NOEXPECT). This helper reads the
+# process, judges each contract, and prints one verdict line per fixture
+# (PASS / REFUSE / FAIL… / NOEXPECT), with a run contract's module handed to
+# the host through a RUN line (wt_battery_host above). This helper reads the
 # verdict and holds the two halves of the contract a crashed verb cannot
 # print: the exit is 0 AND every fixture the directory holds was judged
 # (`mentl test` once died at fixture 118 of 149 and a gate that counted
-# FAIL lines said green). The tests/micros loop this replaced spawned an
-# assembler and a runtime per fixture (3N processes, ~71s); the medium's
-# own verdict takes ~12s. Dissolves with this file at `mentl verify`.
+# FAIL lines said green). Dissolves with this file at `mentl verify`.
 #
 # A battery's verdict is a function of the compiler BYTES, not of which name
 # the compiler goes by, so its memo key hashes the artifact and never the
@@ -148,6 +243,7 @@ wt_battery() {
     return 0
   fi
   out=$(wt_run --dir . "$compiler" test "$dir" 2>/dev/null); rc=$?
+  out=$(printf '%s\n' "$out" | wt_battery_host)
   seen=$(printf '%s\n' "$out" | grep -cE '^(PASS|REFUSE|FAIL[A-Za-z()]*|NOEXPECT) ' || true)
   bad=$(printf '%s\n' "$out" | grep -cE '^(FAIL[A-Za-z()]*|NOEXPECT) ' || true)
   if [ "$rc" -eq 0 ] && [ "$bad" -eq 0 ] && [ "$seen" -eq "$want" ]; then
@@ -162,13 +258,19 @@ wt_battery() {
   return 1
 }
 
-# wt_asm <in.wat> <out.wasm> — assemble WAT→WASM under the canonical flags.
-# Returns wat2wasm's own exit code; caller redirects stderr as it likes.
-wt_asm() { "${W2W[@]}" "$1" -o "$2"; }
-
-# wt_validate <wasm> — validate a WASM module under the same feature set used
-# for assembly. Threads/tail-call are substrate facts, not per-script choices.
-wt_validate() { wasm-validate "${WABT_FEATURE_FLAGS[@]}" "$1"; }
+# wt_asm <in.wat> <out.wasm> — the module's bytes, projected by the medium
+# (`mentl asm`, the text on stdin). Nonzero and no output file when the
+# assembler refuses; the refusal (form, line, column) on stderr, which the
+# caller redirects as it likes. The one assemble step of every gate.
+wt_asm() {
+  if wt_run "$WT_ASM" asm < "$1" > "$2.part"; then
+    mv -f "$2.part" "$2"
+  else
+    local rc=$?
+    rm -f "$2.part"
+    return "$rc"
+  fi
+}
 
 # ── WABT probes (the trap-pin workhorses; PLAN §8 — never grep the minified
 #    emit). All read a *.wasm assembled by wt_asm, so the name section is live
@@ -194,23 +296,62 @@ wt_offsets() {
     | grep -oE "\\\$$3\)\(i32.load offset=[0-9]+" | sort | uniq -c
 }
 
-# wt_wheel <part…> — emit the canonical wheel input to stdout. Each part is
-# `src` or `lib`; order is the argument order. `wt_wheel lib src` is the
-# CANONICAL build order — callee-first at module scale: lib declares the
-# vocabulary src consumes, so a src->lib reference is BACKWARD and reads the
-# final scheme (the src-first blob left every such call on the loose
-# pre-registered snapshot: 492 fully-bare published schemes, measured
-# 2026-07-23 — the order-conditional class at its true size). Uses `find`,
-# NEVER `cat src/*.mn` (PLAN §6 — cat omits backends/). Excludes lib/tutorial.
-wt_wheel() {
-  local part
-  for part in "$@"; do
-    case "$part" in
-      src) find src -name '*.mn' | sort | xargs cat ;;
-      lib) find lib -name '*.mn' -not -path '*/tutorial/*' | sort | xargs cat ;;
-      *) echo "wt-env: wt_wheel: unknown part '$part' (want src|lib)" >&2; return 2 ;;
-    esac
-  done
+# ONE LINK MODEL (2026-10-06, M9). The wheel is src/main.mn's import DAG plus
+# the prelude edge — what `mentl compile src/main.mn` weaves, what the battery
+# and a lesson weave, and what `mentl query src/main.mn modules` names. These
+# helpers used to assemble a BLOB instead: every .mn under lib/ (tutorials
+# excluded by a path test) then every .mn under src/, concatenated and fed on
+# stdin, so the fixed point judged lib/combinators, lib/audio/wav and
+# lib/ml/grad, which nothing links, in an order `mentl compile` never wove.
+#
+# wt_wheel_digest — what a wheel compile can read, as a value for a key: every
+# .mn under src/ and lib/, NAME and content (a rename moves the key). Over the
+# DAG's own set on purpose — a module the link stops importing still moves the
+# key, which is a spurious re-run, never a stale verdict.
+wt_wheel_digest() {
+  find src lib -name '*.mn' | sort | xargs sha256sum | sha256sum | cut -d' ' -f1
+}
+
+# wt_wheel_root <wasm> <out> <err> <time-file|""> <coredump|""> <harvest|""> <arg>…
+# — run <wasm> <arg>… in a HERMETIC ROOT: a scratch directory holding a copy of
+# src/ and lib/ and nothing else, the run's cwd and its one preopen, deleted
+# after. Hermetic because `compile` persists its analyzed image under the
+# cwd's .build (driver_warm_path) and a later run of the same compiler bytes
+# would RESTORE it — a CLEAN march's m4 leg is run by m3 == m2, so a shared
+# .build would make the fixpoint leg a warm re-derive measured as a cold one.
+# The time file, when named, receives GNU time's `<wall> <peak KB>`; a harvest
+# `<path-in-root>=<dest>` copies one file the run wrote out before the root
+# goes (the march verb writes its generation into the root's .build).
+wt_wheel_root() {
+  local wasm out err tf="$4" core="$5" harvest="$6" root rc
+  wasm=$(realpath "$1"); out=$(realpath -m "$2"); err=$(realpath -m "$3")
+  [ -n "$tf" ] && tf=$(realpath -m "$tf")
+  [ -n "$core" ] && core=$(realpath -m "$core")
+  shift 6
+  mkdir -p .build
+  root=$(mktemp -d "$(realpath .build)/wheel-root.XXXXXX")
+  cp -r src lib "$root"/
+  (
+    cd "$root" || exit 1
+    local -a time_pre=() core_flag=()
+    [ -n "$tf" ] && time_pre=(/usr/bin/time -f '%e %M' -o "$tf")
+    [ -n "$core" ] && core_flag=(-D coredump="$core")
+    exec "${time_pre[@]}" timeout 9000 "$WT" run "${core_flag[@]}" "${WT_RUN_FLAGS[@]}" --dir . "$wasm" "$@"
+  ) > "$out" 2> "$err"
+  rc=$?
+  if [ -n "$harvest" ]; then
+    if ! cp -f "$root/${harvest%%=*}" "$(realpath -m "${harvest#*=}")" 2>/dev/null; then
+      [ "$rc" = 0 ] && rc=1
+    fi
+  fi
+  rm -rf "$root"
+  return $rc
+}
+
+# wt_wheel_compile <compiler.wasm> <out.wat> <out.err> [<time-file> [<coredump>]]
+# — the compiler compiles src/main.mn's DAG to WAT, COLD, in a hermetic root.
+wt_wheel_compile() {
+  wt_wheel_root "$1" "$2" "$3" "${4:-}" "${5:-}" "" compile src/main.mn
 }
 
 # ── the ONE wheel-compile + the gate stamp — Carried-Truth for the tools ────
@@ -226,6 +367,15 @@ wt_wheel() {
 # tool overwrites its own output paths, and a hardlink would write back into
 # the cache inode). Dissolves with this file at `mentl verify` (the IC cursor
 # makes caching the semantics, not a bolt-on).
+
+# THE FIXTURE DIRECTORIES VERIFY'S LEGS READ — one home (G2). wt_state_key
+# hashes exactly these, and verify.sh refuses any leg that names a tests/
+# directory outside them, so a battery added to a leg without entering the
+# stamp's key is a red verify rather than a stale green. It was a hand list in
+# wt_state_key, and it under-included twice: three directories in 2026-08,
+# and tests/lens/negation from its birth until G2.
+WT_VERIFY_FIXTURE_DIRS=(tests/micros tests/lens/negation tests/syntax tests/floors tests/rows)
+wt_verify_fixtures() { find "${WT_VERIFY_FIXTURE_DIRS[@]}" -name '*.mn' 2>/dev/null | LC_ALL=C sort; }
 
 wt_state_key() {  # the gate-relevant tree state, hashed. Over-inclusion is a
                   # spurious re-run; under-inclusion is the bug — include every
@@ -256,9 +406,9 @@ wt_state_key() {  # the gate-relevant tree state, hashed. Over-inclusion is a
   # introduced while fixing over-inclusion. A line that is nothing but a
   # comment has no such hazard. Fixtures and the wheel stay WHOLE, because a
   # `.mn` comment IS graph content (SYNTAX §Comments) and can change a verdict.
-  { wt_wheel lib src
-    cat boot/mentl.wasm tests/micros/*.mn tests/syntax/*.mn tests/rows/*.mn \
-        tests/floors/*.mn 2>/dev/null
+  { wt_wheel_digest
+    cat boot/mentl.wasm 2>/dev/null
+    wt_verify_fixtures | xargs cat 2>/dev/null
     sed -e '/^[[:space:]]*#/d' -e '/^[[:space:]]*$/d' \
         tools/verify.sh tools/run-micro.sh tools/wt-env.sh \
         tools/verify-baseline.txt 2>/dev/null
@@ -267,12 +417,12 @@ wt_state_key() {  # the gate-relevant tree state, hashed. Over-inclusion is a
 }
 
 wt_m2_key() {  # what the cached boot(wheel) artifact depends on — nothing more
-  { wt_wheel lib src; cat boot/mentl.wasm; printf '%s' "${WT_RUN_FLAGS[*]}"; } \
+  { wt_wheel_digest; cat boot/mentl.wasm; printf '%s' "${WT_RUN_FLAGS[*]}"; } \
     | sha256sum | cut -d' ' -f1
 }
 
 WT_M2CACHE=".build/m2cache"
-wt_m2_ensure() {  # fill $WT_M2CACHE/{wheel.mn,m2.wat,m2.wasm,m2.err} for the
+wt_m2_ensure() {  # fill $WT_M2CACHE/{m2.wat,m2.wasm,m2.err} for the
                   # CURRENT tree; instant on a key hit. flock serializes
                   # concurrent gates (the second waits, then reads). Echoes the
                   # cache dir; returns 1 on a trapped/failed compile.
@@ -284,9 +434,8 @@ wt_m2_ensure() {  # fill $WT_M2CACHE/{wheel.mn,m2.wat,m2.wasm,m2.err} for the
       # re-check under the lock — a concurrent gate may have just filled it
       [ "$(cat "$WT_M2CACHE/key" 2>/dev/null)" = "$key" ] && [ -s "$WT_M2CACHE/m2.wasm" ] && exit 0
       : > "$WT_M2CACHE/key"   # invalidate before rebuilding (empty never matches a sha)
-      wt_wheel lib src > "$WT_M2CACHE/wheel.mn"
-      timeout 9000 "$WT" run -D coredump="$WT_M2CACHE/m2.coredump" "${WT_RUN_FLAGS[@]}" \
-        boot/mentl.wasm < "$WT_M2CACHE/wheel.mn" > "$WT_M2CACHE/m2.wat" 2> "$WT_M2CACHE/m2.err" || exit 1
+      wt_wheel_compile boot/mentl.wasm "$WT_M2CACHE/m2.wat" "$WT_M2CACHE/m2.err" \
+        "" "$WT_M2CACHE/m2.coredump" || exit 1
       wt_asm "$WT_M2CACHE/m2.wat" "$WT_M2CACHE/m2.wasm" 2> "$WT_M2CACHE/m2w.err" || exit 1
       printf '%s' "$key" > "$WT_M2CACHE/key"
     ) || return 1
@@ -352,6 +501,7 @@ wt_memo_put() {  # wt_memo_put <leg> <key> <verdict text>
 }
 
 # The key of a leg that RUNS a compiler: the standing inputs every such leg
-# shares (the runner binary, its flags, this file) plus the caller's own — the
+# shares (the engine binary, its flags, this file, the assembler that turns
+# each emission into the module that runs) plus the caller's own — the
 # compiler artifact and the fixtures it feeds it.
-wt_memo_key_run() { wt_memo_key "$WT" "=${WT_RUN_FLAGS[*]}" tools/wt-env.sh "$@"; }
+wt_memo_key_run() { wt_memo_key "$WT" "=${WT_RUN_FLAGS[*]}" tools/wt-env.sh "$WT_ASM" "$@"; }

@@ -1,0 +1,31 @@
+// A destructuring let is written back as the let the author wrote, at its
+// block's indent; a match the author wrote stays a match. The parse makes
+// both one graph, so the render reads the match node's birth reason. The
+// boot rendered every let below as a match one level deeper per let.
+fn pair(x) = (x, x + 1)
+
+fn f(x) = {
+  let (a, b) = pair(x)
+  // the second pair
+  let (c, d) = pair(b)
+  a + b + c + d
+}
+
+fn g(x) = {
+  let y = x + 1
+  let (a, b) = pair(y)
+  a * b
+}
+
+fn h(p) = match p {
+  (a, b) => a + b,
+}
+
+fn k(c, x) = if c {
+  let (a, b) = pair(x)
+  a
+} else {
+  0
+}
+
+fn main() = f(1) + g(1) + h(pair(2)) + k(true, 3)

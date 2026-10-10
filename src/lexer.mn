@@ -235,7 +235,7 @@ fn lex(ref source) = {
 // owner comes back through the return — ownership passes through the
 // chain, this fn finishes nothing (the relevant tier's first sweep; an
 // own that is only handed forward is the caller's to finish).
-fn push_tok(buf, count, own t) = {
+fn push_tok(buf, count, t) = {
   let extended = list_extend_to(buf, count + 1)
   let written = list_set(extended, count, t)
   (written, count + 1)

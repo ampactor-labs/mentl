@@ -15,13 +15,15 @@
 // or heap continuation structs by lower.mn.
 import types
 
-import graph
+import derive
 
 import effects
 
+import graph
+
 import lower
 
-import derive
+import query
 
 import strings
 
@@ -61,21 +63,6 @@ handler wat_stdout {
 handler wat_to_file(fd) {
   wat_emit(s) => {
     fd_write_bytes(fd, str_payload(s), byte_len(s))
-    resume()
-  },
-}
-
-// wat_to_host — the sink the EXECUTOR reads: each segment streams to the
-// host's own buffer through the Process seam (lib/io.mn's Host effect —
-// mentl_host.wat_write in tools/runner), exactly as wat_to_file hands bytes
-// to an fd before resuming, so the product leaves the process a segment at
-// a time and no emission arena ever holds it. The module is then assembled and run by
-// host_exec, which reads the whole streamed text — no wat2wasm, no file,
-// no in-image copy: `mentl run` and the in-process battery install this
-// sink and the program runs in the same process that compiled it.
-handler wat_to_host {
-  wat_emit(s) => {
-    host_wat_write(str_payload(s), byte_len(s))
     resume()
   },
 }
@@ -884,6 +871,7 @@ fn settle_minted_lines(site: String, lines) = each(
         )
       ),
       LhSlot(_) => (),
+      LhShare(_, _) => (),
       LhStaticJvp => report_at(
         h,
         EInternalInvariant(
@@ -965,7 +953,7 @@ type RowRead = RowOf(EffRow, Bool) | RowGranted(String) | RowAbsent(String)
 // One unit in the walk: the row its code answers to, read once where the
 // walk enters it; the encoding its nested units' symbols are mangled with (a
 // twin's bracket); how a report names it; and the symbol it is emitted as.
-type AllocUnit = AllocUnit({enc: String, names: String, row: RowRead, sym: String})
+type AllocUnit = {enc: String, names: String, row: RowRead, sym: String}
 
 // What a construct's emission builds, named only when a refusal says it. The
 // continuation machinery — a remainder record, its extension, a multi-shot
@@ -1111,16 +1099,24 @@ fn alloc_walk_nested(unit, name: String, body) = match unit {
 // read here, once, and a thunk or remainder takes its parent's.
 fn alloc_unit_named(name: String, sym: String, enc: String, parent) = match parent {
   AllocUnit(p) => match graph_emitfn_at(name) {
-    [] => AllocUnit({enc: enc, names: name, row: alloc_owner_row(OwnedByNothing), sym: sym}),
+    [] => AllocUnit({enc, names: name, row: alloc_owner_row(OwnedByNothing), sym}),
     entries => match last(entries) {
       EmitFnEntry(e) => match e.kind {
-        EfkNested => AllocUnit({enc: enc, names: name, row: alloc_owner_row(OwnedByFn(e.origin)), sym: sym}),
-        EfkLambda => AllocUnit({enc: enc, names: p.names, row: alloc_owner_row(OwnedByFn(e.origin)), sym: sym}),
-        EfkPartial => AllocUnit({enc: enc, names: p.names, row: alloc_owner_row(OwnedByFn(e.origin)), sym: sym}),
-        EfkArm(op, hname) => AllocUnit({enc: enc, names: "{hname}.{op}", row: alloc_owner_row(OwnedByHandler(hname)), sym: sym}),
-        EfkInit(hname) => AllocUnit({enc: enc, names: hname, row: alloc_owner_row(OwnedByInstall(hname)), sym: sym}),
-        EfkThunk => AllocUnit({enc: enc, names: p.names, row: p.row, sym: sym}),
-        EfkK => AllocUnit({enc: enc, names: p.names, row: p.row, sym: sym}),
+        EfkNested => AllocUnit({enc, names: name, row: alloc_owner_row(OwnedByFn(e.origin)), sym}),
+        EfkLambda => AllocUnit({enc, names: p.names, row: alloc_owner_row(OwnedByFn(e.origin)), sym}),
+        EfkPartial => AllocUnit({enc, names: p.names, row: alloc_owner_row(OwnedByFn(e.origin)), sym}),
+        EfkArm(op, hname) => AllocUnit({enc, names: "{hname}.{op}", row: alloc_owner_row(OwnedByHandler(hname)), sym}),
+        EfkInit(hname) => AllocUnit({enc, names: hname, row: alloc_owner_row(OwnedByInstall(hname)), sym}),
+        EfkThunk => // A branch thunk exists only under a spawning schedule: its carrier is
+        // that schedule's, and its body is the branch the frame's own row
+        // already answers for in the in-frame form.
+        AllocUnit({
+          enc,
+          names: p.names,
+          row: RowGranted("a branch thunk is built and run by the spawning schedule, at the cost of the install that runs it"),
+          sym,
+        }),
+        EfkK => AllocUnit({enc, names: p.names, row: p.row, sym}),
       },
     },
   },
@@ -1254,6 +1250,29 @@ fn alloc_site_text(s) = match s {
   AsAllocation => "an allocation",
   AsSpawn => "a spawned task's record",
   AsStateCell => "a handler state's cell",
+}
+
+// The branch thunks a spawning form mints, each body walked as the unit it
+// is emitted as; the mints themselves are the schedule's (the arm above).
+// A sequence fanout mints no thunk: its spawning form calls the library's
+// spawning fanout with the program's own function, walked as written.
+fn alloc_spawned(unit, branches, form) = match branches {
+  FanBranches(bs) => {
+    each(alloc_thunk(unit, ??), bs)
+    true
+  },
+  FanSeq(_) => alloc_walk(unit, form),
+}
+
+fn alloc_thunk(unit, b) = match b {
+  ScheduledBoundary(thunk, _, _, _, _, _) => match thunk {
+    LMakeClosure(_, LFn(name, _, _, body, _, _), _) => alloc_walk_nested(unit, name, body),
+    other => {
+      let _ = alloc_walk(unit, other)
+      ()
+    },
+  },
+  InvalidScheduledBoundary(_, _) => (),
 }
 
 // A unit's body walked, and its verdict recorded once, when the walk leaves.
@@ -1439,7 +1458,16 @@ fn alloc_walk(unit, e) = match e {
   },
   LBlock(_, stmts) => alloc_walk_list(unit, stmts, 0),
   LSimdLanes(_, lanes) => alloc_walk_list(unit, lanes, 0),
-  LFanout(_, lex, _, forms) => alloc_walk(unit, fanout_form(lex, forms)),
+  LFanout(_, lex, branches, forms) => // A spawning form's thunk records, spawn tickets and join are the
+  // schedule's construction, built at the cost of the install that runs it
+  // (charged where that install stands, here or at a demanding caller); each
+  // thunk's body is a unit of its own, judged against this unit's row. The
+  // in-frame forms build nothing of their own and are walked as written.
+  match fanout_schedule(lex, forms) {
+    Threaded => alloc_spawned(unit, branches, fanout_form(lex, forms)),
+    Persisted => alloc_spawned(unit, branches, fanout_form(lex, forms)),
+    _ => alloc_walk(unit, fanout_form(lex, forms)),
+  },
   LFieldLoad(_, rec, _) => alloc_walk(unit, rec),
   LConvert(_, _, operand) => alloc_walk(unit, operand),
   LStateSlotStore(_, _, v, record) => {
@@ -1540,7 +1568,7 @@ fn args_spill_at(declared, args, i) = if i >= len(args) {
 // The reach whole: the accepted twin demands, each decl's liveness by
 // source index, and whether the module is settled — an executable is, a
 // library's whole-emit is not (no caller reaches its floors).
-fn emit_reach(program, recs) = {
+fn emit_reach(program, recs, roster: String) = {
   let n = len(program)
   let keys = emit_keys(program, 0, n, smap_new())
   let library = match smap_get(keys, "main") {
@@ -1550,7 +1578,10 @@ fn emit_reach(program, recs) = {
   match emit_reach_roots(program, library, 0, n, list_filled(n, Unreached), []) {
     (live0, root_refs) => {
       let argv = if main_param_count() > 0 { ["wasi_args"] } else { [] }
-      let entry = if library { [] } else { map(demand_base, ["main"] ++ emit_runtime_contract() ++ argv) }
+      // The launch gate `_start` calls before main, where the program has one.
+      let gate = if byte_len(roster) > 0 { ["env_demand_check"] } else { [] }
+      let entry =
+        if library { [] } else { map(demand_base, ["main"] ++ emit_runtime_contract() ++ argv ++ gate) }
       match emit_reach_fix(
         entry ++ map(ref_demand([], ??), root_refs),
         (make_list(64), 0, smap_new(), live0, false),
@@ -1712,6 +1743,16 @@ fn expansion_vectors(acc, x) = match x {
     spec_ctx_clear()
     acc2
   },
+}
+
+// The functions a twin's body holds, read under the twin's own bracket: a
+// schedule twin's fanout runs a spawning form whose branch thunks the base's
+// in-frame form never mints, so read unbracketed they would be lost.
+fn spec_nested_records(pairs, enc: String, body) = {
+  spec_ctx_set(pairs, enc)
+  let recs = collect_fn_emit_records(body)
+  spec_ctx_clear()
+  recs
 }
 
 // One twin's body walked under its own specialization bracket — the one
@@ -2192,6 +2233,7 @@ fn reach_heap_line() = match diag_scope_of() {
   ScopeAll => eprint_string("heap: {heap_mark()} byte(s) when the emitted reach settles\n"),
   ScopeNone => (),
   ScopeModule(_) => (),
+  ScopeLink => (),
 }
 
 fn emit_plan(program) = {
@@ -2209,9 +2251,12 @@ fn emit_plan(program) = {
   // leg +70MB.
   let all_records = flatten(decl_records) |> dedup_fn_records
   let n = len(program)
+  // The program's demand on its host, read once (`env_demand`, query.mn):
+  // the launch gate's roster, a root of the reach where it is non-empty.
+  let roster = env_launch_roster()
   // The emitted reach (above): the twin demands, and which decls a live
   // reference reaches — the only ones emitted below.
-  match emit_reach(program, all_records) {
+  match emit_reach(program, all_records, roster) {
     (spec_demands, live, settles) => {
       reach_heap_line()
       // Every name a twin was demanded of — the unreached decls whose bodies
@@ -2224,13 +2269,24 @@ fn emit_plan(program) = {
         all_records,
         spec_demands,
         twin_base_set,
-        settles
+        settles,
+        roster
       )
     },
   }
 }
 
-fn plan_reached(lowered, fn_records, twin_bases, all_records, spec_demands, twin_base_set, settles) = {
+// THE LAUNCH GATE'S ROSTER: every required environment read beneath a host
+// install (`env_demand`), one line each, for `env_demand_check` to hold
+// against what the host passed before main runs. Empty — no gate, nothing
+// emitted — where the program reads no variable from a host, or links no
+// library that could check one.
+fn env_launch_roster() = match env_lookup("env_demand_check") {
+  Some(_) => env_demand_roster(env_demand()),
+  None => "",
+}
+
+fn plan_reached(lowered, fn_records, twin_bases, all_records, spec_demands, twin_base_set, settles, roster: String) = {
   // Named-generic twins (the emitted reach above): each demand's record is
   // the BASE record renamed — the same body, emitted under the spec_pairs
   // state so every repr read resolves through the site's instantiation.
@@ -2246,7 +2302,7 @@ fn plan_reached(lowered, fn_records, twin_bases, all_records, spec_demands, twin
     {
       (m, base, pairs, enc) => match spec_find_rec(all_records, base) {
         Some(rec) => match rec {
-          (_n, ps, body, f) => [{base: base, enc: enc, pairs: pairs, rec: (m, ps, body, f)}] ++ map(
+          (_n, ps, body, f) => [{base, enc, pairs, rec: (m, ps, body, f)}] ++ map(
             {
               (nn, nps, nbody, nf) => // A nested record takes the schedule only where it cannot
               // outlive the install (`nested_twin`): a branch thunk does, a
@@ -2262,7 +2318,7 @@ fn plan_reached(lowered, fn_records, twin_bases, all_records, spec_demands, twin
                 }
               },
             },
-            collect_fn_emit_records(body)
+            spec_nested_records(pairs, enc, body)
           ),
         },
         None => // record-less names are never worthy; unreachable by construction
@@ -2339,7 +2395,7 @@ fn plan_reached(lowered, fn_records, twin_bases, all_records, spec_demands, twin
   // data section, the leaf emission below reads all four.
   // (fold collection moved below the spec demand analysis — a twin's body is
   // re-collected under its bracket so its substituted aggregate sigs exist)
-  match project_emit_state(lowered, twin_bases, fold_closures) {
+  match project_emit_state(lowered, twin_bases, fold_closures, roster) {
     (all_fn_names, top_fn_names, string_entries, fn_lines, wasi_ops, yield_seen, yield_arity) => {
       // band B M1.2 (the k2/k3 bank, Ruling 1) — the composer is CALLED INDIRECT
       // (it is the fn_ptr@0 of every composed k record), so unlike every other
@@ -2352,12 +2408,13 @@ fn plan_reached(lowered, fn_records, twin_bases, all_records, spec_demands, twin
       // W5 string interning — seed the string_table handler so downstream
       // LString emits can look up the offset via perform string_offset.
       //
-      // An arena lives where one instance owns the line (a spawning module's
-      // arena is its body, `Hβ.arena.per-instance-regions`), decided here
-      // once: the table, the runtime and every exit read it. Where an arena
-      // lives in a module that yields, its re-entry is a k too, resident
-      // beside the composer.
-      let arena_on = arena_demanded() && ls_find_str_local(wasi_ops, "spawn_task", 0) < 0
+      // An arena lives wherever the program opens one, decided here once: the
+      // table, the runtime and every exit read it. In a module that spawns,
+      // each instance owns its own run of the line (`$seg_refill`), so an
+      // arena's region is a span of its instance's run and reclaims as it
+      // does single-threaded. Where an arena lives in a module that yields,
+      // its re-entry is a k too, resident beside the composer.
+      let arena_on = arena_demanded()
       let table_fn_names = all_fn_names ++ k_helper_names(yield_seen > 0, arena_on)
       set_string_entries(string_entries)
       // The per-fn `<~` line lists, seeded for the install emit (a handler
@@ -2377,34 +2434,35 @@ fn plan_reached(lowered, fn_records, twin_bases, all_records, spec_demands, twin
       ) ++ redrive_vectors(redrives)
       {
         adjoint_registers: derived.adjoint_registers,
-        alloc_units: alloc_units,
-        arena_on: arena_on,
-        fn_records: fn_records,
-        fold_closures: fold_closures,
+        alloc_units,
+        arena_on,
+        env_roster: roster,
+        fn_records,
+        fold_closures,
         jvp_faces: jvp_face_map(derived.faces),
-        jvp_names: jvp_names,
-        jvp_recs: jvp_recs,
-        jvp_wide: jvp_wide,
+        jvp_names,
+        jvp_recs,
+        jvp_wide,
         line_owners: static_line_owners(
           top_fn_names,
           fn_lines,
           spec_recs,
           init_lets_lines(collect_top_value_lets(lowered))
         ),
-        lowered: lowered,
-        redrives: redrives,
-        spec_names: spec_names,
-        spec_recs: spec_recs,
-        spec_wide: spec_wide,
-        string_entries: string_entries,
-        table_fn_names: table_fn_names,
+        lowered,
+        redrives,
+        spec_names,
+        spec_recs,
+        spec_wide,
+        string_entries,
+        table_fn_names,
         tangent_rings: derived.rings,
-        top_fn_names: top_fn_names,
-        vectors: vectors,
-        wasi_ops: wasi_ops,
-        wide_fn_names: wide_fn_names,
-        yield_arity: yield_arity,
-        yield_seen: yield_seen,
+        top_fn_names,
+        vectors,
+        wasi_ops,
+        wide_fn_names,
+        yield_arity,
+        yield_seen,
       }
     },
   }
@@ -2420,7 +2478,7 @@ fn k_helper_names(yields, arena_on) =
 // reads was settled before the gate, and the registries the writes consult
 // (the twins, the string offsets, the per-fn lines) were seeded by the plan.
 fn emit_planned(plan) = match plan {
-  {adjoint_registers, alloc_units, arena_on, fn_records, fold_closures, jvp_faces, jvp_names, jvp_recs, jvp_wide, line_owners, lowered, redrives, spec_names, spec_recs, spec_wide, string_entries, table_fn_names, tangent_rings, top_fn_names, vectors, wasi_ops, wide_fn_names, yield_arity, yield_seen} => {
+  {adjoint_registers, alloc_units, arena_on, env_roster, fn_records, fold_closures, jvp_faces, jvp_names, jvp_recs, jvp_wide, line_owners, lowered, redrives, spec_names, spec_recs, spec_wide, string_entries, table_fn_names, tangent_rings, top_fn_names, vectors, wasi_ops, wide_fn_names, yield_arity, yield_seen} => {
     let line_globals = line_global_slots(line_owners)
     emit_header()
     emit_type_section(vectors, yield_seen)
@@ -2432,17 +2490,18 @@ fn emit_planned(plan) = match plan {
     // self-contained defined memory, plain bump, no thread-spawn import.
     // The `<|`/`><` ownership discrimination at the module-image altitude.
     let spawns = ls_find_str_local(wasi_ops, "spawn_task", 0) >= 0
-    // The socket seam's own proof, read from the module's ops beside the
-    // spawn proof rather than inferred from it (see emit_memory_decl).
-    let socketed = ls_find_str_local(wasi_ops, "sock_accept", 0) >= 0
     // The per-instance area a perform's arguments cross in, sized by the
     // widest perform; a module that never yields has none (Law 7).
     let yield_slots = if yield_seen > 0 { yield_area_slots(yield_arity) } else { 0 }
+    // Module VALUE bindings: ONE projection feeds the declaration half, the
+    // init half, and — in a spawning module — the module-values record a
+    // spawned instance takes from the root (never two walks of one tree).
+    let value_lets = collect_top_value_lets(lowered)
     emit_memory_decl(
       spawns,
-      spawns || socketed,
       ls_find_str_local(wasi_ops, "atomic_rmw", 0) >= 0,
-      yield_slots
+      yield_slots,
+      len(value_lets) > 0
     )
     // A live arena's leaves are settled here, before any function is
     // written, because every barrier and every claim writes a leaf's index.
@@ -2451,7 +2510,7 @@ fn emit_planned(plan) = match plan {
       arena_on,
       arena_on && yield_seen > 0
     )
-    if arena_on { emit_arena_runtime() } else { () }
+    if arena_on { emit_arena_runtime(spawns) } else { () }
     emit_line_globals(line_owners)
     emit_tangent_ring_globals(tangent_rings)
     // The register a twin hands its result's tangent back through: one f64
@@ -2484,9 +2543,6 @@ fn emit_planned(plan) = match plan {
     )
     emit_fn_index_globals(table_all, fn_table_base())
     emit_static_top_closures(top_fn_names ++ spec_names ++ jvp_names, table_all, 0)
-    // Module VALUE bindings: ONE projection feeds the declaration half and
-    // the init half (never two walks of one tree).
-    let value_lets = collect_top_value_lets(lowered)
     emit_top_let_globals(value_lets)
     emit_image_substrate(
       wasi_ops,
@@ -2556,7 +2612,8 @@ fn emit_planned(plan) = match plan {
       yield_seen,
       yield_slots,
       spawns,
-      arena_on
+      arena_on,
+      env_roster
     )
     emit_footer()
   } ~> unwind_scope(yield_seen > 0),
@@ -2810,7 +2867,7 @@ fn slot_already_recorded(entries, target: String, i, n) = if i >= n {
 // page (address 12 — below every region mark, never reset, holding a stale
 // pointer into the region; the cross-compile trap of 2026-07-22). The walk's
 // row names the ops; the bracket is the row's dynamic-extent obligation.
-fn project_emit_state(lowered, twin_bases, closures: {cmp: [Ty], eq: [Ty], evac: [Ty], hash: [Ty], show: [Ty]}) = {
+fn project_emit_state(lowered, twin_bases, closures: {cmp: [Ty], eq: [Ty], evac: [Ty], hash: [Ty], show: [Ty]}, roster: String) = {
   walk_lemit(lowered)
   // A twin whose base the module does not emit is still that base's body,
   // so the base owes it every fact the body carries — its strings, its
@@ -2825,6 +2882,9 @@ fn project_emit_state(lowered, twin_bases, closures: {cmp: [Ty], eq: [Ty], evac:
   // The set of literals is a projection of the collected show types (the graph
   // IS the index — the same type closure the unified fold walk collects).
   register_show_literals(closures.show)
+  // The launch gate's roster is a literal `_start` hands its check, laid in
+  // the data section through the channel every literal takes.
+  if byte_len(roster) > 0 { visit_string(roster) } else { () }
   let names = drain_fn_names() |> dedup_names
   let tops = drain_top_fn_names()
   let strs = drain_string_literals()
@@ -3212,7 +3272,7 @@ fn line_global_name(h: Int, site: String) = "__line_{int_to_str(h)}_{site}"
 // for the module inits' own sites. A twin's static-ness is read off its
 // base's lines, where each site's home is recorded — so a base the module
 // does not emit still gives its twins their lines.
-fn static_line_owners(top_fn_names, fn_lines, spec_recs, init_lines) = filter(
+fn static_line_owners(top_fn_names, fn_lines, spec_recs, init_lines) = owners_once(filter(
   { (name, _lines, _p, _e) => ls_find_str_local(top_fn_names, name, 0) >= 0 },
   map({ (name, lines) => (name, lines, [], "") }, fn_lines)
 ) ++ flat_map(
@@ -3220,12 +3280,12 @@ fn static_line_owners(top_fn_names, fn_lines, spec_recs, init_lines) = filter(
     tw => match tw.rec {
       (m, _ps, _b, _f) => match filter(line_is_static, fn_lines_of(tw.base)) {
         [] => [],
-        lines => [(m, lines, tw.pairs, tw.enc)],
+        lines => [(line_symbol(m, tw.enc), lines, tw.pairs, tw.enc)],
       },
     },
   },
   spec_recs
-) ++ match init_lines {
+)) ++ match init_lines {
   [] => [],
   lines => [("__init_lets", lines, [], "")],
 }
@@ -3249,7 +3309,44 @@ fn line_is_static(line) = match line {
     LhStatic => true,
     LhSlot(_) => false,
     LhStaticJvp => true,
+    LhShare(_, _) => false,
   },
+}
+
+// The symbol a static line is owned by: its instantiation's. A schedule
+// twin is its instantiation run under a caller's schedule, so it ticks the
+// line the instantiation owns — the schedule never changes what a
+// recurrence remembers — while each instantiation keeps its own, sized at
+// its own width.
+fn line_symbol(sym: String, enc: String) = match enc_sched(enc) {
+  Seq => sym,
+  _ => {
+    let te = enc_type_part(enc)
+    let base = spec_unmangle(sym, enc)
+    if spec_enc_is_floor(te) { base } else { spec_mangle(base, te) }
+  },
+}
+
+// One owner per line symbol, the first kept: a schedule twin and its
+// instantiation name one set of lines.
+fn owners_once(owners) = match fold(([], smap_new()), owner_keep, owners) {
+  (kept, _) => reverse(kept),
+}
+
+fn owner_keep(acc, owner) = match acc {
+  (kept, seen) => match owner {
+    (sym, _, _, _) => if smap_has(seen, sym) { acc } else { ([owner] ++ kept, smap_add(seen, sym, 1)) },
+  },
+}
+
+// The address of a site's ring, pushed: a static line's instance global, or
+// the word at its slot of the record in `__state`. A shared line is read
+// where its slot is, and filled from its enclosing home at the mint.
+fn emit_ring_address(h: Int, home) = match home {
+  LhStatic => wat_emit("    (global.get ${line_global_name(h, line_symbol(emit_site(), spec_enc_active()))})\n"),
+  LhStaticJvp => wat_emit("    (global.get ${line_global_name(h, line_symbol(emit_site(), spec_enc_active()))})\n"),
+  LhSlot(slot) => wat_emit("    (i32.load offset={int_to_str(8 + slot * 4)} (local.get $__state))\n"),
+  LhShare(slot, _) => wat_emit("    (i32.load offset={int_to_str(8 + slot * 4)} (local.get $__state))\n"),
 }
 
 // Every static line global, as (name, "i32") — the ONE projection the
@@ -4044,6 +4141,16 @@ fn emit_image_substrate(wasi_ops, line_globals, value_lets, yield_seen, table_al
   let used =
     ls_find_str_local(wasi_ops, "image_key", 0) >= 0 || ls_find_str_local(wasi_ops, "globals_area", 0) >= 0 || ls_find_str_local(wasi_ops, "globals_save", 0) >= 0 || ls_find_str_local(wasi_ops, "image_restore", 0) >= 0
   if used {
+    // In a module that spawns, the restored line is the image's frontier and
+    // the run this process held is gone with the swap: the run restarts
+    // empty at the line, so the next allocation takes a chunk from the
+    // restored frontier rather than bump through memory the frontier hands
+    // to the next chunk.
+    let run_reset = if ls_find_str_local(wasi_ops, "spawn_task", 0) >= 0 {
+      "(global.set $seg_base (global.get $heap_ptr))(global.set $seg_end (global.get $heap_ptr))"
+    } else {
+      ""
+    }
     let slots = image_global_slots(line_globals, value_lets, yield_seen)
     emit_build_key(table_all, string_entries, slots)
     wat_emit("  (func $globals_area_impl (result i32)(i32.const ")
@@ -4061,7 +4168,7 @@ fn emit_image_substrate(wasi_ops, line_globals, value_lets, yield_seen, table_al
     // BEFORE the copy (the wire may lie inside the image range); copy the
     // image down; zero everything between the restored line and the old.
     //
-    wat_emit("  (func $image_restore (param $p i32) (result i32) (local $k i32) (local $size i32) (local $g i32) (local $old i32)(local.set $old (call $heap_mark_impl))(local.set $k (i32.load offset=4 (local.get $p)))(local.set $size (i32.load offset=8 (local.get $p)))(local.set $g (i32.mul (i32.load offset=12 (local.get $p)) (i32.const 8)))(if (i32.ne (local.get $g) (call $globals_area_impl))(then (unreachable)))(call $globals_restore (i32.add (local.get $p) (i32.const 16)))(call $memory_reach (local.get $size))(memory.copy (i32.const 0)(i32.add (i32.add (local.get $p) (i32.const 16)) (local.get $g))(local.get $size))(if (i32.gt_u (local.get $old) (local.get $size))(then (memory.fill (local.get $size)(i32.const 0)(i32.sub (local.get $old) (local.get $size)))))(local.get $k))\n")
+    wat_emit("  (func $image_restore (param $p i32) (result i32) (local $k i32) (local $size i32) (local $g i32) (local $old i32)(local.set $old (call $heap_mark_impl))(local.set $k (i32.load offset=4 (local.get $p)))(local.set $size (i32.load offset=8 (local.get $p)))(local.set $g (i32.mul (i32.load offset=12 (local.get $p)) (i32.const 8)))(if (i32.ne (local.get $g) (call $globals_area_impl))(then (unreachable)))(call $globals_restore (i32.add (local.get $p) (i32.const 16))){run_reset}(call $memory_reach (local.get $size))(memory.copy (i32.const 0)(i32.add (i32.add (local.get $p) (i32.const 16)) (local.get $g))(local.get $size))(if (i32.gt_u (local.get $old) (local.get $size))(then (memory.fill (local.get $size)(i32.const 0)(i32.sub (local.get $old) (local.get $size)))))(local.get $k))\n")
   } else {
     ()
   }
@@ -4524,70 +4631,12 @@ fn emit_one_wasi_import(op) = match host_import(op) {
 }
 
 // The FFI boundary's one home: every host-served op with its import module,
-// field name and ABI widths. The preview1 rows ride wasi_import_reprs (field
-// = op name, the p1 convention); the medium's own seam is the `mentl_host`
-// module tools/runner serves (lib/io.mn's Host effect).
+// field name and ABI widths. The rows ride wasi_import_reprs (field = op
+// name, the p1 convention) — preview1 is the whole boundary, so any host
+// that serves it runs the module.
 fn host_import(op) = match wasi_import_reprs(op) {
   Some((preprs, res)) => Some(("wasi_snapshot_preview1", op, preprs, res)),
-  None => if op == "host_wat_write" {
-    Some(("mentl_host", "wat_write", [RI32, RI32], None))
-  } else if op == "host_exec" {
-    Some(("mentl_host", "exec", [RI32, RI32], Some(RI32)))
-  } else {
-    None
-  },
-}
-
-// The WASI preview1 ABI signatures — the FFI boundary's external facts as
-// DATA (Repr vectors), keyed on the op name LWasiCall carries. ONE home,
-// two projections: the import-decl string (wasi_import_sig) and the
-// call-site arg widths (emit_wasi_args_at_widths — a word arg filling an
-// i64 param extends at the boundary). None = not a preview1 import.
-fn wasi_import_reprs(op) = if op == "proc_exit" {
-  Some(([RI32], None))
-} else if op == "fd_write" {
-  Some(([RI32, RI32, RI32, RI32], Some(RI32)))
-} else if op == "fd_read" {
-  Some(([RI32, RI32, RI32, RI32], Some(RI32)))
-} else if op == "fd_close" {
-  Some(([RI32], Some(RI32)))
-} else if op == "fd_prestat_get" {
-  Some(([RI32, RI32], Some(RI32)))
-} else if op == "fd_prestat_dir_name" {
-  Some(([RI32, RI32, RI32], Some(RI32)))
-} else if op == "fd_fdstat_get" {
-  Some(([RI32, RI32], Some(RI32)))
-} else if op == "path_open" {
-  Some(([RI32, RI32, RI32, RI32, RI32, RI64, RI64, RI32, RI32], Some(RI32)))
-} else if op == "path_create_directory" {
-  Some(([RI32, RI32, RI32], Some(RI32)))
-} else if op == "path_filestat_get" {
-  Some(([RI32, RI32, RI32, RI32, RI32], Some(RI32)))
-} else if op == "path_unlink_file" {
-  Some(([RI32, RI32, RI32], Some(RI32)))
-} else if op == "path_rename" {
-  Some(([RI32, RI32, RI32, RI32, RI32, RI32], Some(RI32)))
-} else if op == "fd_readdir" {
-  Some(([RI32, RI32, RI32, RI64, RI32], Some(RI32)))
-}
-// The socket pair (2026-07-10, mentl serves natively): sock_accept takes the
-// PREOPENED listener (wasmtime -S tcplisten) and yields a connection fd that
-// fd_read/fd_write/fd_close already speak; poll_oneoff is the preview1
-// blocking wait the nonblocking listener demands (accept without it spins
-// on EAGAIN=6). The probe that proved the contract: scratch sockprobe4.wat.
-else if op == "sock_accept" {
-  Some(([RI32, RI32, RI32], Some(RI32)))
-} else if op == "poll_oneoff" {
-  Some(([RI32, RI32, RI32, RI32], Some(RI32)))
-}
-// argv, read live at _start — (argc_ptr, buf_size_ptr) and (argv_ptr, buf_ptr),
-// both returning errno. This is what makes `mentl <verb>` reach a verb.
-else if op == "args_sizes_get" {
-  Some(([RI32, RI32], Some(RI32)))
-} else if op == "args_get" {
-  Some(([RI32, RI32], Some(RI32)))
-} else {
-  None
+  None => None,
 }
 
 fn wat_frag_concat(a: String, b: String) -> String = a ++ b
@@ -4627,29 +4676,22 @@ fn emit_wasi_args_at_widths(args, preprs, i) = if i >= len(args) {
   emit_wasi_args_at_widths(args, preprs, i + 1)
 }
 
-fn emit_memory_decl(spawns, imports_image, wants_rmw, yield_slots) = {
-  // The memory's OWNERSHIP follows the module's own proof, and there are
-  // TWO proofs, because two different consumers need the host to hold the
-  // image. This read used to be ONE — "does it spawn?" — with the import
-  // decision proxied through it, and the proxy broke the moment the last
-  // spawn left the wheel: `mentl space` emitted a DEFINED memory and the
-  // runner refused it ("the socket seam needs a guest that imports its
-  // shared memory"), because a trampoline module cannot share a memory the
-  // guest defines.
-  //
-  //   SPAWNS       — the wasi-threads convention: the host creates one
-  //                  memory and links it into every instance, root and
-  //                  spawned alike (a DEFINED memory is per-instance, so a
-  //                  child of a defining module reads a fresh zeroed
-  //                  image). This is what needs the thread-spawn import.
-  //   SOCKET SEAM  — the runner builds a trampoline module over the SAME
-  //                  memory to serve the five socket-facing p1 entries, and
-  //                  it can only do that for a memory the host owns.
-  //
-  // Either proof imports the image and re-exports it for the preview1 ABI
-  // (the p1 host locates guest memory through the "memory" export). A
-  // module with neither owns a self-contained defined memory and ships no
-  // thread-spawn import — nothing to satisfy, any preview1 host runs it.
+fn emit_memory_decl(spawns, wants_rmw, yield_slots, carries_lets) = {
+  // The memory's OWNERSHIP follows the module's own proof, and the proof is
+  // ONE question: does the module spawn? The wasi-threads convention has the
+  // host create one memory and link it into every instance, root and
+  // spawned alike (a DEFINED memory is per-instance, so a child of a
+  // defining module would read a fresh zeroed image) — so a spawning module
+  // imports the image and re-exports it for the preview1 ABI (the p1 host
+  // locates guest memory through the "memory" export). Every other module
+  // owns a self-contained defined memory and ships no thread-spawn import:
+  // nothing to satisfy, any preview1 host runs it — the compiler itself
+  // among them, since the judgment spawns nothing. A second proof stood
+  // here until 2026-10-05, the socket seam: a Rust trampoline served five
+  // socket-facing p1 entries over a memory the host owned, so a module
+  // reaching the accept op imported the image too. The seam is deleted —
+  // the session serves on stdio and the page is static files — and with it
+  // the only host that was not a stock engine.
   //
   // Initial 32 pages (2MB: the string table below 1MB, the heap line at
   // 1MB), max 65536 (4GB, the wasm32 ceiling). THE ALLOCATOR GROWS THE
@@ -4668,10 +4710,6 @@ fn emit_memory_decl(spawns, imports_image, wants_rmw, yield_slots) = {
   // instance through the ONE grow path, which every instance sees.
   if spawns {
     wat_emit("  (import \"wasi\" \"thread-spawn\" (func $wasi_thread_spawn (param i32) (result i32)))\n")
-  } else {
-    ()
-  }
-  if imports_image {
     wat_emit("  (import \"env\" \"memory\" (memory 32 65536 shared))\n")
     wat_emit("  (export \"memory\" (memory 0))\n")
   } else {
@@ -4689,11 +4727,16 @@ fn emit_memory_decl(spawns, imports_image, wants_rmw, yield_slots) = {
   }
   // Bump heap starts at 1MB. The 64KB..1MB region holds static
   // string data (W5) and can accommodate future static tables. In a
-  // thread-free module the heap pointer is this global; in a spawning
-  // module it is the shared CELL at address 64 (globals are
-  // per-instance — a global bump pointer cannot serve two instances of
-  // one image), and this global is inert.
-  wat_emit("  (global $heap_ptr (mut i32) (i32.const 1048576))\n")
+  // thread-free module the heap line is this global. In a spawning module
+  // it is the instance's line inside its own run (globals are per-instance,
+  // which is what makes the run private), starting at 0 below an empty run
+  // so its first allocation takes a chunk; the image's frontier is the
+  // shared CELL at address 64.
+  wat_emit(if spawns {
+    "  (global $heap_ptr (mut i32) (i32.const 0))\n"
+  } else {
+    "  (global $heap_ptr (mut i32) (i32.const 1048576))\n"
+  })
   // Per-instance identity: 0 on the root instance; the thread entry
   // stamps the host thread id on a spawned one. The thread_id op reads
   // it — a per-instance global IS instance-local storage, which is what
@@ -4720,6 +4763,15 @@ fn emit_memory_decl(spawns, imports_image, wants_rmw, yield_slots) = {
   // own swap, per instance, and restores the enclosing value after the arm
   // returns; $spawn_task_impl stores it in the task record.
   wat_emit("  (global $perform_world_g (mut i32) (i32.const 0))\n")
+  // THE MODULE'S VALUES, ONCE. A module value let is the root's: its init
+  // runs once, in the root's _start, and its word lives in a per-instance
+  // global. A spawning module also writes every let's word into one record
+  // in the shared image after the inits ran (`emit_start`), and the task
+  // record carries the record's address beside the world, so a spawned
+  // instance loads its let globals from the root's values and never runs an
+  // init, so an init that prints prints once, and a branch reads the module
+  // buffer the root updated in place, never a fresh copy of it.
+  if spawns && carries_lets { wat_emit("  (global $mvals_g (mut i32) (i32.const 0))\n") }
   // The ONE allocator, emitted once — every construction, closure record, and
   // handler-state alloc is a `(call $alloc SIZE)` against this fn. Both bodies:
   // return the current pointer, advance it by (size+7)&-8 so every record
@@ -4742,7 +4794,24 @@ fn emit_memory_decl(spawns, imports_image, wants_rmw, yield_slots) = {
   // sibling's grow read as "nothing left to do", never as a wrapped delta.
   wat_emit("  (func $memory_reach (param $end i32)(local $need i32)(local $delta i32)(local.set $need (i32.add (i32.shr_u (i32.sub (local.get $end)(i32.const 1))(i32.const 16))(i32.const 1)))(block $done (loop $again (br_if $done (i32.le_u (local.get $need)(memory.size)))(local.set $delta (select (i32.sub (local.get $need)(memory.size))(i32.const 0)(i32.gt_u (local.get $need)(memory.size))))(if (i32.eqz (local.get $delta))(then (br $again)))(if (i32.lt_u (local.get $delta)(i32.const 256))(then (local.set $delta (i32.const 256))))(if (i32.gt_u (local.get $delta)(i32.sub (i32.const 65536)(memory.size)))(then (local.set $delta (i32.sub (i32.const 65536)(memory.size)))))(if (i32.eqz (local.get $delta))(then (unreachable)))(if (i32.eq (memory.grow (local.get $delta))(i32.const -1))(then (unreachable)))(br $again))))\n")
   if spawns {
-    wat_emit("  (func $alloc (param $size i32) (result i32)(local $ptr i32)(local $new i32)(block $won (loop $retry (local.set $ptr (i32.atomic.load (i32.const 64)))(local.set $new (i32.add (local.get $ptr)(i32.and (i32.add (local.get $size)(i32.const 7))(i32.const -8))))(if (i32.lt_u (local.get $new)(local.get $ptr))(then (unreachable)))(call $memory_reach (local.get $new))(br_if $won (i32.eq (i32.atomic.rmw.cmpxchg (i32.const 64)(local.get $ptr)(local.get $new))(local.get $ptr)))(br $retry)))(local.get $ptr))\n")
+    // INSTANCE SEGMENTS — the arena's SPACE face. Every instance bumps
+    // privately in a RUN of its own, [$seg_base, $seg_end), and touches the
+    // shared cell at address 64 — the image's frontier — once per chunk: one
+    // atomic add hands it [old, old + n). A chunk that begins where the run
+    // ends extends the run; any other starts a new one, so a run is always
+    // contiguous and holds this instance's allocations alone. An arena's
+    // region is a span of its instance's run (`emit_arena_runtime`), so exit,
+    // evacuation and reset work as they do single-threaded. A chunk is at
+    // least 64 KB: the root, alone, extends one run forever. Until
+    // 2026-10-06 every allocation by every instance was a compare-exchange
+    // on the one cell, and a module that spawned anywhere ran no arena.
+    wat_emit("  (global $seg_base (mut i32) (i32.const 0))\n  (global $seg_end (mut i32) (i32.const 0))\n")
+    wat_emit("  (func $seg_refill (param $n i32)(local $want i32)(local $old i32)(local.set $want (select (local.get $n)(i32.const 65536)(i32.gt_u (local.get $n)(i32.const 65536))))(local.set $old (i32.atomic.rmw.add (i32.const 64)(local.get $want)))(if (i32.lt_u (i32.add (local.get $old)(local.get $want))(local.get $old))(then (unreachable)))(call $memory_reach (i32.add (local.get $old)(local.get $want)))(if (i32.ne (local.get $old)(global.get $seg_end))(then (global.set $heap_ptr (local.get $old))(global.set $seg_base (local.get $old))))(global.set $seg_end (i32.add (local.get $old)(local.get $want))))\n")
+    wat_emit("  (func $alloc (param $size i32) (result i32)(local $ptr i32)(local $n i32)(local.set $n (i32.and (i32.add (local.get $size)(i32.const 7))(i32.const -8)))(if (i32.lt_u (local.get $n)(local.get $size))(then (unreachable)))(if (i32.gt_u (local.get $n)(i32.sub (global.get $seg_end)(global.get $heap_ptr)))(then (call $seg_refill (local.get $n))))(local.set $ptr (global.get $heap_ptr))(global.set $heap_ptr (i32.add (local.get $ptr)(local.get $n)))(local.get $ptr))\n")
+    // A run's end extended in place by exactly `end`, or 0 where another
+    // instance's chunk already stands there: the arena's exit asks it for
+    // the scratch above its region, which must be its own.
+    wat_emit("  (func $seg_extend (param $end i32) (result i32)(local $want i32)(if (i32.le_u (local.get $end)(global.get $seg_end))(then (return (i32.const 1))))(local.set $want (i32.and (i32.add (i32.sub (local.get $end)(global.get $seg_end))(i32.const 65535))(i32.const -65536)))(if (i32.ne (i32.atomic.rmw.cmpxchg (i32.const 64)(global.get $seg_end)(i32.add (global.get $seg_end)(local.get $want)))(global.get $seg_end))(then (return (i32.const 0))))(call $memory_reach (i32.add (global.get $seg_end)(local.get $want)))(global.set $seg_end (i32.add (global.get $seg_end)(local.get $want)))(i32.const 1))\n")
   } else {
     wat_emit("  (func $alloc (param $size i32) (result i32)(local $ptr i32)(local $new i32)(local.set $ptr (global.get $heap_ptr))(local.set $new (i32.add (local.get $ptr)(i32.and (i32.add (local.get $size)(i32.const 7))(i32.const -8))))(if (i32.lt_u (local.get $new)(local.get $ptr))(then (unreachable)))(call $memory_reach (local.get $new))(global.set $heap_ptr (local.get $new))(local.get $ptr))\n")
   }
@@ -4789,7 +4858,8 @@ fn emit_memory_decl(spawns, imports_image, wants_rmw, yield_slots) = {
   // and the broken promise surfaced as a garbage dispatch far from here.
   wat_emit("  (func $ev_declaring_node (param $top i32)(param $target i32)(param $slot i32)(result i32)(local $n i32)(local $entry i32)(local $record i32)(local.set $n (local.get $top))(block $done (loop $walk (br_if $done (i32.eqz (local.get $n)))(if (i32.eq (i32.load offset=0 (local.get $n))(local.get $target))(then (local.set $entry (i32.load offset=4 (local.get $n)))(local.set $record (i32.load offset=0 (local.get $entry)))(if (i32.load (i32.add (local.get $record)(i32.add (i32.const 8)(i32.add (i32.mul (i32.const 4)(i32.load offset=4 (local.get $record)))(i32.mul (i32.const 4)(i32.add (i32.load offset=4 (local.get $entry))(local.get $slot)))))))(then (return (local.get $n))))))(local.set $n (i32.load offset=8 (local.get $n)))(br $walk)))(i32.const 0)(local.get $target)(i32.store)(i32.load (i32.const -1)))\n")
   // The task record — [task closure@0][completion@4][result@8][world@12],
-  // allocated per spawn through the ONE allocator (no static slot region,
+  // then [op@16][args@20] in a yielding module, then [module values] in a
+  // module with value lets (`task_mvals_offset`), allocated per spawn through the ONE allocator (no static slot region,
   // no capacity ceiling, no tid ledger; every record is heap-uniform and
   // 8-aligned, so the completion word at +4 meets the atomics' alignment
   // by construction). The world word is the live install chain AT THE
@@ -4810,6 +4880,20 @@ fn emit_memory_decl(spawns, imports_image, wants_rmw, yield_slots) = {
   // leaning on the allocator's virginity contract. Emitted only for a
   // spawning module (Law 7 — thread-free modules are byte-identical).
   //
+  // A module with value lets carries the root's module-values record in the
+  // task record past the rest (+16, or +24 where the yield words stand):
+  // the spawned instance's let globals load from it (`emit_wasi_thread_start`).
+  let mvals_off = task_mvals_offset(yield_slots)
+  let task_size = if carries_lets { mvals_off + 4 } else { mvals_off }
+  // A spawn starts a new run base at the line: a child's records lie in the
+  // child's own run and may hold values of every arena this instance has
+  // open, which those exits could never reach to move, so each keeps its
+  // region (`emit_arena_runtime`).
+  let task_tail = if carries_lets {
+    "(i32.store offset={int_to_str(mvals_off)} (local.get $t)(global.get $mvals_g))"
+  } else {
+    ""
+  } ++ "(global.set $seg_base (global.get $heap_ptr))"
   if spawns {
     if yield_slots > 0 {
       // A branch that ABANDONS carries its yield out through the record —
@@ -4819,10 +4903,10 @@ fn emit_memory_decl(spawns, imports_image, wants_rmw, yield_slots) = {
       // already raised keeps its op), the arguments copied into the
       // joiner's own area, the continuation dead. The joiner's check after
       // the join unwinds from there (AN-2).
-      wat_emit("  (func $spawn_task_impl (param $clo i32) (result i32)(local $t i32)(local.set $t (call $alloc (i32.const 24)))(i32.store offset=0 (local.get $t)(local.get $clo))(i32.store offset=4 (local.get $t)(i32.const 0))(i32.store offset=12 (local.get $t)(global.get $perform_world_g))(i32.store offset=16 (local.get $t)(i32.const 0))(i32.store offset=20 (local.get $t)(i32.const 0))(if (i32.lt_s (call $wasi_thread_spawn (local.get $t))(i32.const 0))(then (unreachable)))(local.get $t))\n")
+      wat_emit("  (func $spawn_task_impl (param $clo i32) (result i32)(local $t i32)(local.set $t (call $alloc (i32.const {int_to_str(task_size)})))(i32.store offset=0 (local.get $t)(local.get $clo))(i32.store offset=4 (local.get $t)(i32.const 0))(i32.store offset=12 (local.get $t)(global.get $perform_world_g))(i32.store offset=16 (local.get $t)(i32.const 0))(i32.store offset=20 (local.get $t)(i32.const 0)){task_tail}(if (i32.lt_s (call $wasi_thread_spawn (local.get $t))(i32.const 0))(then (unreachable)))(local.get $t))\n")
       wat_emit("  (func $join_task_impl (param $t i32) (result i32)(block $done (loop $wait (br_if $done (i32.eq (i32.atomic.load (i32.add (local.get $t)(i32.const 4)))(i32.const 1)))(drop (memory.atomic.wait32 (i32.add (local.get $t)(i32.const 4))(i32.const 0)(i64.const -1)))(br $wait)))(if (i32.load offset=16 (local.get $t))(then (if (i32.eqz (global.get $yield_flag))(then (global.set $yield_op (i32.load offset=16 (local.get $t)))(memory.copy (global.get $yield_args)(i32.load offset=20 (local.get $t))(i32.const {int_to_str(8 * yield_slots)}))(global.set $yield_k (i32.const 0))(global.set $yield_flag (i32.const 1))))))(i32.load offset=8 (local.get $t)))\n")
     } else {
-      wat_emit("  (func $spawn_task_impl (param $clo i32) (result i32)(local $t i32)(local.set $t (call $alloc (i32.const 16)))(i32.store offset=0 (local.get $t)(local.get $clo))(i32.store offset=4 (local.get $t)(i32.const 0))(i32.store offset=12 (local.get $t)(global.get $perform_world_g))(if (i32.lt_s (call $wasi_thread_spawn (local.get $t))(i32.const 0))(then (unreachable)))(local.get $t))\n")
+      wat_emit("  (func $spawn_task_impl (param $clo i32) (result i32)(local $t i32)(local.set $t (call $alloc (i32.const {int_to_str(task_size)})))(i32.store offset=0 (local.get $t)(local.get $clo))(i32.store offset=4 (local.get $t)(i32.const 0))(i32.store offset=12 (local.get $t)(global.get $perform_world_g)){task_tail}(if (i32.lt_s (call $wasi_thread_spawn (local.get $t))(i32.const 0))(then (unreachable)))(local.get $t))\n")
       wat_emit("  (func $join_task_impl (param $t i32) (result i32)(block $done (loop $wait (br_if $done (i32.eq (i32.atomic.load (i32.add (local.get $t)(i32.const 4)))(i32.const 1)))(drop (memory.atomic.wait32 (i32.add (local.get $t)(i32.const 4))(i32.const 0)(i64.const -1)))(br $wait)))(i32.load offset=8 (local.get $t)))\n")
     }
   }
@@ -4836,6 +4920,11 @@ fn emit_memory_decl(spawns, imports_image, wants_rmw, yield_slots) = {
     wat_emit("  (func $atomic_rmw_impl (param $addr i32) (param $op i32) (param $val i32) (result i32)(block $bad (block $b5 (block $b4 (block $b3 (block $b2 (block $b1 (block $b0 (br_table $b0 $b1 $b2 $b3 $b4 $b5 $bad (local.get $op)))(return (i32.atomic.rmw.add (local.get $addr)(local.get $val))))(return (i32.atomic.rmw.sub (local.get $addr)(local.get $val))))(return (i32.atomic.rmw.and (local.get $addr)(local.get $val))))(return (i32.atomic.rmw.or (local.get $addr)(local.get $val))))(return (i32.atomic.rmw.xor (local.get $addr)(local.get $val))))(return (i32.atomic.rmw.xchg (local.get $addr)(local.get $val))))(unreachable))\n")
   }
 }
+
+// Where the task record carries the root's module values: past the world,
+// and past the abandon's op and argument area in a yielding module — the
+// one home both the spawn's writer and the thread entry's reader read.
+fn task_mvals_offset(yield_slots) = if yield_slots > 0 { 24 } else { 16 }
 
 // ─── THE ARENA (lib/arena.mn) — the journal and the exit ─────────────────
 //
@@ -4878,12 +4967,29 @@ fn emit_memory_decl(spawns, imports_image, wants_rmw, yield_slots) = {
 // is zeroed, and the line moves. A value no leaf can move — a function, a
 // continuation, a type the emitter could not see — found while moving makes
 // the exit ABORT instead: every moved original gets its first word back,
-// every root its value, and the region is kept. A spawning module's arena is
-// its body alone (`Hβ.arena.per-instance-regions`).
+// every root its value, and the region is kept.
+//
+// IN A MODULE THAT SPAWNS the line an arena opens at, sweeps and resets is
+// its INSTANCE's (`$heap_ptr` inside the run `$seg_refill` keeps), never the
+// image's frontier, which `heap_mark` still reads for persist. Three things
+// differ, each a keep where the single-threaded proof does not hold:
+//   - a region is a span of ONE run: an arena whose mark lies below the
+//     run's base — the instance jumped to a fresh chunk, or spawned while
+//     the arena was open — keeps its region (a spawned child's records lie
+//     in the child's run, outside the young range, and may hold this
+//     extent's values, which the exit would never reach to move);
+//   - the exit's scratch above the region must be the run's own: a run that
+//     cannot be extended in place to hold it (`$seg_extend`) keeps;
+//   - a store is journaled unless its slot lies inside the region itself,
+//     so a store into another instance's memory above the line is seen;
+// and the journal is allocated by an instance's first arena, below its mark,
+// rather than at `_start`, which a spawned instance never runs.
 //
 // The census rides five counters `arena_stat` reads: exits, kept exits, the
 // KB reclaimed and moved, and the highest line an exit reached.
-fn emit_arena_runtime() = {
+fn emit_arena_runtime(spawns) = {
+  // The line this instance's arenas open at and reset.
+  let line = if spawns { "(global.get $heap_ptr)" } else { "(call $heap_mark_impl)" }
   wat_emit("  (global $ar_depth (mut i32) (i32.const 0))\n  (global $ar_mark (mut i32) (i32.const 0))\n  (global $ar_jb (mut i32) (i32.const 0))\n  (global $ar_jn (mut i32) (i32.const 0))\n  (global $ar_jover (mut i32) (i32.const 0))\n")
   wat_emit("  (global $ar_m (mut i32) (i32.const 0))\n  (global $ar_t (mut i32) (i32.const 0))\n  (global $ar_bm (mut i32) (i32.const 0))\n  (global $ar_bmsz (mut i32) (i32.const 0))\n  (global $ar_rl (mut i32) (i32.const 0))\n  (global $ar_rn (mut i32) (i32.const 0))\n  (global $ar_ll (mut i32) (i32.const 0))\n  (global $ar_ln (mut i32) (i32.const 0))\n  (global $ar_lscan (mut i32) (i32.const 0))\n  (global $ar_c0 (mut i32) (i32.const 0))\n  (global $ar_cp (mut i32) (i32.const 0))\n  (global $ar_cend (mut i32) (i32.const 0))\n  (global $ar_dst (mut i32) (i32.const 0))\n  (global $ar_delta (mut i32) (i32.const 0))\n  (global $ar_abort (mut i32) (i32.const 0))\n")
   wat_emit("  (global $ar_exits (mut i32) (i32.const 0))\n  (global $ar_kept (mut i32) (i32.const 0))\n  (global $ar_freed (mut i32) (i32.const 0))\n  (global $ar_moved (mut i32) (i32.const 0))\n  (global $ar_high (mut i32) (i32.const 0))\n  (global $ar_susp (mut i32) (i32.const 0))\n")
@@ -4896,9 +5002,19 @@ fn emit_arena_runtime() = {
   // next arena allocated another, two megabytes per keep, until the line ran
   // out — 2026-10-03, the first run in which the compiler's own judgment
   // kept regions.)
-  wat_emit("  (func $arena_enter (if (i32.eqz (global.get $ar_depth)) (then (global.set $ar_jn (i32.const 0)) (global.set $ar_jover (i32.const 0)))) (global.set $ar_depth (i32.add (global.get $ar_depth) (i32.const 1))) (global.set $ar_mark (call $heap_mark_impl)))\n")
+  let journal_first = if spawns {
+    " (if (i32.eqz (global.get $ar_jb)) (then (global.set $ar_jb (call $alloc (i32.const 2097152)))))"
+  } else {
+    ""
+  }
+  wat_emit("  (func $arena_enter{journal_first} (if (i32.eqz (global.get $ar_depth)) (then (global.set $ar_jn (i32.const 0)) (global.set $ar_jover (i32.const 0)))) (global.set $ar_depth (i32.add (global.get $ar_depth) (i32.const 1))) (global.set $ar_mark {line}))\n")
   wat_emit("  (func $ar_journal (param $a i32) (param $b i32) (local $e i32) (if (i32.ge_u (global.get $ar_jn) (i32.const 262144)) (then (global.set $ar_jover (i32.const 1)) (return))) (local.set $e (i32.add (global.get $ar_jb) (i32.shl (global.get $ar_jn) (i32.const 3)))) (i32.store (local.get $e) (local.get $a)) (i32.store offset=4 (local.get $e) (local.get $b)) (global.set $ar_jn (i32.add (global.get $ar_jn) (i32.const 1))))\n")
-  wat_emit("  (func $arena_slot_note (param $s i32) (param $k i32) (if (i32.eqz (global.get $ar_depth)) (then (return))) (if (i32.ge_u (local.get $s) (global.get $ar_mark)) (then (return))) (call $ar_journal (local.get $s) (local.get $k)))\n")
+  let in_region = if spawns {
+    "(i32.and (i32.ge_u (local.get $s) (global.get $ar_mark)) (i32.lt_u (local.get $s) (global.get $heap_ptr)))"
+  } else {
+    "(i32.ge_u (local.get $s) (global.get $ar_mark))"
+  }
+  wat_emit("  (func $arena_slot_note (param $s i32) (param $k i32) (if (i32.eqz (global.get $ar_depth)) (then (return))) (if {in_region} (then (return))) (call $ar_journal (local.get $s) (local.get $k)))\n")
   // A list slot's barrier, called in place of `list_set` by a direct call
   // (`direct_call_target`) with the leaf of the value the call stores. Only a
   // word list's slot can hold a pointer — a byte list or a packed float list
@@ -4942,10 +5058,16 @@ fn emit_arena_runtime() = {
   wat_emit("  (func $ar_zero (param $a i32) (param $b i32) (param $f i32) (if (i32.lt_u (local.get $a) (local.get $f)) (then (local.set $a (local.get $f)))) (if (i32.gt_u (local.get $b) (local.get $a)) (then (memory.fill (local.get $a) (i32.const 0) (i32.sub (local.get $b) (local.get $a))))))\n")
   // The sweep: the check, the scratch above the region, and the roots.
   wat_emit("  (func $arena_sweep (param $m i32) (param $j0 i32) (result i32) (local $t i32) (local $i i32) (local $e i32) (local $s i32) (local $v i32) (local $k i32) (local $n i32) (local $r i32)\n")
-  wat_emit("    (global.set $ar_exits (i32.add (global.get $ar_exits) (i32.const 1))) (local.set $t (call $heap_mark_impl)) (global.set $ar_m (local.get $m)) (global.set $ar_t (local.get $t)) (global.set $ar_abort (i32.const 0)) (global.set $ar_bm (i32.const 0)) (global.set $ar_rn (i32.const 0)) (global.set $ar_ln (i32.const 0)) (global.set $ar_lscan (i32.const 0))\n")
+  wat_emit("    (global.set $ar_exits (i32.add (global.get $ar_exits) (i32.const 1))) (local.set $t {line}) (global.set $ar_m (local.get $m)) (global.set $ar_t (local.get $t)) (global.set $ar_abort (i32.const 0)) (global.set $ar_bm (i32.const 0)) (global.set $ar_rn (i32.const 0)) (global.set $ar_ln (i32.const 0)) (global.set $ar_lscan (i32.const 0))\n")
   wat_emit("    (if (global.get $ar_jover) (then (return (i32.const 0))))\n")
+  if spawns {
+    wat_emit("    (if (i32.lt_u (local.get $m) (global.get $seg_base)) (then (return (i32.const 0))))\n")
+  }
   wat_emit("    (local.set $i (local.get $j0)) (block $ok (loop $chk (br_if $ok (i32.ge_u (local.get $i) (global.get $ar_jn))) (local.set $e (i32.add (global.get $ar_jb) (i32.shl (local.get $i) (i32.const 3)))) (if (i32.eq (call $ar_entry_leaf (local.get $e)) (i32.const -1)) (then (return (i32.const 0))) (else (if (call $ar_young (i32.load (call $ar_entry_slot (local.get $e)))) (then (if (i32.eqz (call $ar_entry_leaf (local.get $e))) (then (return (i32.const 0)))))))) (local.set $i (i32.add (local.get $i) (i32.const 1))) (br $chk)))\n")
   wat_emit("    (local.set $n (i32.sub (local.get $t) (local.get $m))) (global.set $ar_bm (local.get $t)) (global.set $ar_bmsz (i32.and (i32.add (i32.shr_u (local.get $n) (i32.const 6)) (i32.const 15)) (i32.const -8))) (global.set $ar_rl (i32.add (global.get $ar_bm) (global.get $ar_bmsz))) (global.set $ar_ll (i32.add (global.get $ar_rl) (i32.shl (i32.add (i32.sub (global.get $ar_jn) (local.get $j0)) (i32.const 1)) (i32.const 3)))) (global.set $ar_c0 (i32.and (i32.add (i32.add (global.get $ar_ll) (i32.add (local.get $n) (i32.shr_u (local.get $n) (i32.const 1)))) (i32.const 7)) (i32.const -8))) (global.set $ar_cp (global.get $ar_c0)) (global.set $ar_cend (i32.add (global.get $ar_c0) (local.get $n)))\n")
+  if spawns {
+    wat_emit("    (if (i32.eqz (call $seg_extend (global.get $ar_cend))) (then (global.set $ar_bm (i32.const 0)) (return (i32.const 0))))\n")
+  }
   wat_emit("    (global.set $ar_dst (local.get $m)) (global.set $ar_delta (i32.sub (global.get $ar_c0) (global.get $ar_dst))) (call $memory_reach (global.get $ar_ll))\n")
   wat_emit("    (local.set $i (local.get $j0)) (block $done (loop $root (br_if $done (i32.ge_u (local.get $i) (global.get $ar_jn))) (br_if $done (global.get $ar_abort)) (local.set $e (i32.add (global.get $ar_jb) (i32.shl (local.get $i) (i32.const 3)))) (local.set $s (call $ar_entry_slot (local.get $e))) (local.set $v (i32.load (local.get $s))) (if (call $ar_young (local.get $v)) (then (local.set $k (call $ar_entry_leaf (local.get $e))) (if (i32.or (i32.gt_s (local.get $k) (i32.const 0)) (i32.eq (local.get $k) (i32.const -3))) (then (local.set $r (i32.add (global.get $ar_rl) (i32.shl (global.get $ar_rn) (i32.const 3)))) (i32.store (local.get $r) (local.get $s)) (i32.store offset=4 (local.get $r) (local.get $v)) (global.set $ar_rn (i32.add (global.get $ar_rn) (i32.const 1))) (i32.store (local.get $s) (if (result i32) (i32.eq (local.get $k) (i32.const -3)) (then (call $ar_box8 (local.get $v))) (else (call $ar_evac_by (local.get $k) (local.get $v))))))))) (local.set $i (i32.add (local.get $i) (i32.const 1))) (br $root)))\n")
   wat_emit("    (i32.const 1))\n")
@@ -5119,7 +5241,14 @@ fn emit_arena_exit(hs, t, ev) = {
 // TEMP, and the value at its own width.
 fn arena_locals(h) = {
   let hs = int_to_str(h)
-  ["__ar_o_{hs} i32", "__ar_j_{hs} i32", "__ar_m_{hs} i32", "__ar_g_{hs} i32", "__ar_r_{hs} i32", "__ar_v_{hs} {repr_wat(repr_of(lookup_ty(h)))}"]
+  [
+    "__ar_o_{hs} i32",
+    "__ar_j_{hs} i32",
+    "__ar_m_{hs} i32",
+    "__ar_g_{hs} i32",
+    "__ar_r_{hs} i32",
+    "__ar_v_{hs} {repr_wat(repr_of(lookup_ty(h)))}"
+  ]
 }
 
 // ─── THE FIFTH FOLD LEAF — evacuation ──────────────────────────────────
@@ -5913,6 +6042,7 @@ fn walk_locals_expr(expr, acc) = match expr {
       LhStaticJvp => ["__tslot_{hs} i32", "__fb_dprev_{hs}.f64 f64"],
       LhStatic => [],
       LhSlot(_) => [],
+      LhShare(_, _) => [],
     }
     walk_locals_expr(
       s,
@@ -6308,6 +6438,14 @@ fn emit_value_run(run) = match run {
 // the arms enumerated here are the forms whose emission consumes its
 // own result (local.set / store / decl) or never falls through.
 fn lexpr_leaves_value(e) = match e {
+  LFanout(_, lex, _, forms) => // The form the site runs IS its emission: one that binds its parts to a
+  // consumer's registers leaves no word, exactly as the `let` spelling it
+  // costs the same as does.
+  lexpr_leaves_value(fanout_form(lex, forms)),
+  LBlock(_, stmts) => // A block is its last statement's emission (`emit_body`), so a block of
+  // lets — a product's parts bound to its consumer's registers — leaves no
+  // word either.
+  if len(stmts) == 0 { false } else { lexpr_leaves_value(last(stmts)) },
   LLet(_, _, _) => false,
   LStateSlotStore(_, _, _, _) => false,
   LStateInit(_, _, _, _) => false,
@@ -6321,7 +6459,7 @@ fn lexpr_leaves_value(e) = match e {
 // where every perform is argless, so the area is a record of its own.
 fn yield_area_slots(arity) = if arity > 1 { arity } else { 1 }
 
-fn emit_start(top_fn_names, value_lets, has_lines, main_params, yield_seen, yield_slots, threaded, arena_on) = {
+fn emit_start(top_fn_names, value_lets, has_lines, main_params, yield_seen, yield_slots, threaded, arena_on, env_roster: String) = {
   // Top-level closures are static data; the static `<~` rings allocate
   // through $__init_lines and top-level VALUE lets initialize through
   // $__init_lets, run FIRST in program order — rings before lets, since an
@@ -6330,11 +6468,13 @@ fn emit_start(top_fn_names, value_lets, has_lines, main_params, yield_seen, yiel
   // still run). _start invokes main when main exists.
   wat_emit("  (func $_start\n")
   if threaded {
-    // The shared heap cell's one initializer: the ROOT instance's _start,
-    // before any allocation. Spawned instances never run _start — they
-    // read the live cell (initializing it per instance would rewind the
-    // shared line mid-run).
-    wat_emit("    (i32.atomic.store (i32.const 64) (i32.const 1048576))\n")
+    // The image frontier's one initializer: the ROOT instance's _start,
+    // before any allocation, then the root's first run taken from it, so
+    // its line stands at 1 MB as a thread-free module's does. Spawned
+    // instances never run _start — each takes its first chunk at its first
+    // allocation (initializing the cell per instance would rewind the
+    // shared frontier mid-run).
+    wat_emit("    (i32.atomic.store (i32.const 64) (i32.const 1048576))\n    (call $seg_refill (i32.const 0))\n")
   }
   // The arenas' journal, before anything else is allocated
   // (`emit_arena_runtime`).
@@ -6344,8 +6484,28 @@ fn emit_start(top_fn_names, value_lets, has_lines, main_params, yield_seen, yiel
   if yield_slots > 0 {
     wat_emit("    (global.set $yield_args (call $alloc (i32.const {int_to_str(8 * yield_slots)})))\n")
   }
+  // THE LAUNCH GATE: every variable the program reads from its host is
+  // checked against what the host passed before anything of the program
+  // runs, its initializers included (`env_launch_roster`) — a missing one is
+  // named with its read site and the process exits 1.
+  if byte_len(env_roster) > 0 && ls_find_str_local(top_fn_names, "main", 0) >= 0 {
+    wat_emit("    (call $env_demand_check (i32.const 0) (i32.const {int_to_str(string_offset(env_roster))}))\n    (drop)\n")
+  }
   if has_lines { wat_emit("    (call $__init_lines (i32.const 0))\n    (drop)\n") }
   if len(value_lets) > 0 { wat_emit("    (call $__init_lets (i32.const 0))\n    (drop)\n") }
+  // The module's values, written once where a spawned instance reads them
+  // (`$mvals_g`, emit_memory_decl).
+  if threaded && len(value_lets) > 0 {
+    wat_emit("    (global.set $mvals_g (call $alloc (i32.const {int_to_str(4 * len(value_lets))})))\n")
+    each(
+      {
+        (i, entry) => match entry {
+          (name, _) => wat_emit("    (i32.store offset={int_to_str(4 * i)} (global.get $mvals_g) (global.get ${name}))\n"),
+        },
+      },
+      enumerate(value_lets)
+    )
+  }
   if ls_find_str_local(top_fn_names, "main", 0) >= 0 {
     // main is graph-known → DIRECT call (never virtualize a known
     // operator): static closure as __state, one EMPTY-LIST arg per
@@ -6396,7 +6556,9 @@ fn emit_start(top_fn_names, value_lets, has_lines, main_params, yield_seen, yiel
   wat_emit("  (export \"_start\" (func $_start))\n")
   // The thread entry exists only in a spawning module (Law 7 — a
   // thread-free module carries no entry, no import, no spawn substrate).
-  if threaded { emit_wasi_thread_start(len(value_lets) > 0, has_lines, yield_slots) }
+  if threaded {
+    emit_wasi_thread_start(map({ (name, _) => name }, value_lets), has_lines, yield_slots)
+  }
 }
 
 // emit_wasi_thread_start — the spawned instance's whole life. The host
@@ -6405,12 +6567,13 @@ fn emit_start(top_fn_names, value_lets, has_lines, main_params, yield_seen, yiel
 // ([task closure@0][completion@4][result@8][world@12], and in a yielding
 // module [op@16][args@20], written for a branch that abandoned). The body:
 //   1. stamps the per-instance identity ($tid_g — the thread_id read);
-//   2. runs $__init_lets when the module has top-level value lets —
-//      globals are per-instance, so the spawned instance's let globals
-//      are zero until its own init runs (allocations go through the
-//      shared cell, so the copies land in fresh records; interned string
-//      constants are static data at identical addresses in the one
-//      image, so pointer-licensed compares stay true);
+//   2. loads its module value lets from the ROOT's values — globals are
+//      per-instance, and the root wrote every let's word into the
+//      module-values record the task record carries (`$mvals_g`) after
+//      its inits ran, so the spawned instance reads the root's values and
+//      never re-runs an init (an init that performs ran once per branch
+//      before 2026-10-06, and a branch read a fresh copy of a module
+//      buffer the root had since updated);
 //   3. invokes the task closure through the closure protocol (record as
 //      __state, fn_ptr@0, call_indirect — the exact sequence LCall
 //      emits for a 0-arg closure value);
@@ -6420,7 +6583,7 @@ fn emit_start(top_fn_names, value_lets, has_lines, main_params, yield_seen, yiel
 //   5. releases the completion word (atomic store AFTER the plain result
 //      store — the flag's seq_cst publish orders the result before it)
 //      and notifies the joiner.
-fn emit_wasi_thread_start(has_lets, has_lines, yield_slots) = {
+fn emit_wasi_thread_start(let_names, has_lines, yield_slots) = {
   wat_emit("  (func $wasi_thread_start (param $tid i32) (param $start_arg i32)\n")
   wat_emit("    (local $clo i32)\n")
   wat_emit("    (global.set $tid_g (local.get $tid))\n")
@@ -6432,7 +6595,15 @@ fn emit_wasi_thread_start(has_lets, has_lines, yield_slots) = {
   // The static rings are per instance, as the line globals were: a spawned
   // instance allocates its own set from the shared cell before it runs.
   if has_lines { wat_emit("    (call $__init_lines (i32.const 0))\n    (drop)\n") }
-  if has_lets { wat_emit("    (call $__init_lets (i32.const 0))\n    (drop)\n") }
+  if len(let_names) > 0 {
+    wat_emit("    (global.set $mvals_g (i32.load offset={int_to_str(task_mvals_offset(yield_slots))} (local.get $start_arg)))\n")
+    each(
+      {
+        (i, name) => wat_emit("    (global.set ${name} (i32.load offset={int_to_str(4 * i)} (global.get $mvals_g)))\n"),
+      },
+      enumerate(let_names)
+    )
+  }
   wat_emit("    (local.set $clo (i32.load offset=0 (local.get $start_arg)))\n")
   wat_emit("    (local.get $start_arg)\n")
   wat_emit("    (local.get $clo)\n")
@@ -7512,23 +7683,7 @@ fn emit_expr(expr) = match expr {
     let hs = int_to_str(h)
     let r = repr_of(lookup_ty(h))
     let rw = repr_wat(r)
-    match home {
-      LhStatic => {
-        wat_emit("    (global.get $")
-        wat_emit(line_global_name(h, emit_site()))
-        wat_emit(")\n")
-      },
-      LhStaticJvp => {
-        wat_emit("    (global.get $")
-        wat_emit(line_global_name(h, emit_site()))
-        wat_emit(")\n")
-      },
-      LhSlot(slot) => {
-        wat_emit("    (i32.load offset=")
-        wat_emit(int_to_str(8 + slot * 4))
-        wat_emit(" (local.get $__state))\n")
-      },
-    }
+    emit_ring_address(h, home)
     wat_emit("    (local.set $__ring_{hs})\n")
     if depth > 1 {
       wat_emit("    (local.set $__fbp_{hs} (i32.add (local.get $__ring_{hs}) (i32.add (i32.const 8) (i32.mul (i32.load (local.get $__ring_{hs})) (i32.const {int_to_str(repr_width(r))})))))\n")
@@ -7544,6 +7699,7 @@ fn emit_expr(expr) = match expr {
       LhStaticJvp => true,
       LhStatic => false,
       LhSlot(_) => false,
+      LhShare(_, _) => false,
     }
     if jvp_tick {
       wat_emit("    (local.set $__tslot_{hs} (i32.add (global.get ${tline_global_name(h, emit_site())}) ")
@@ -7600,6 +7756,11 @@ fn emit_expr(expr) = match expr {
       }
       if import_name == "store_i32" {
         wat_emit("    (i32.store)(i32.const 0)\n")
+      } else if import_name == "trap" {
+        // Trap's one op (memory.mn): the instruction that stops the machine.
+        // It never returns, so the stack after it is polymorphic and any
+        // result the site expects validates.
+        wat_emit("    (unreachable)\n")
       } else if import_name == "load_i32" {
         wat_emit("    (i32.load)\n")
       } else if import_name == "store_i8" {
@@ -7647,6 +7808,12 @@ fn emit_expr(expr) = match expr {
         wat_emit("    (i32.and)\n")
       } else if import_name == "i32_shl" {
         wat_emit("    (i32.shl)\n")
+      } else if import_name == "i32_shr_u" {
+        wat_emit("    (i32.shr_u)\n")
+      } else if import_name == "i32_shr_s" {
+        wat_emit("    (i32.shr_s)\n")
+      } else if import_name == "i32_clz" {
+        wat_emit("    (i32.clz)\n")
       } else if import_name == "alloc" {
         emit_alloc_top()
       } else if import_name == "heap_mark" {
@@ -10241,22 +10408,21 @@ fn emit_closure_fill(captures, lines, rec_local: String) = {
 // sets, and the mint — its record's handle, its table entry, its captures
 // and `<~` lines, and the lane pairs a mint under a reading writes beside
 // its captures.
-type MintedBinding
-  = MintedBinding({caps: [LowExpr], entry: String, lines: [(Int, Int, LineHome)], pairs: [LowExpr], record: Int, reg: String})
+type MintedBinding = {
+  caps: [LowExpr],
+  entry: String,
+  lines: [(Int, Int, LineHome)],
+  pairs: [LowExpr],
+  record: Int,
+  reg: String,
+}
 
 // The closure a statement binds, read whole, or None for any other
 // statement.
 fn minted_binding(s) = match s {
   LLet(h, name, val) => match closure_mint(val) {
     Some((mint, pairs)) => match mint {
-      LMakeClosure(ch, LFn(entry, _, _, _, _, lines), caps) => Some(MintedBinding({
-        caps: caps,
-        entry: entry,
-        lines: lines,
-        pairs: pairs,
-        record: ch,
-        reg: local_wat_name(name, llet_repr(h, val)),
-      })),
+      LMakeClosure(ch, LFn(entry, _, _, _, _, lines), caps) => Some(MintedBinding({caps, entry, lines, pairs, record: ch, reg: local_wat_name(name, llet_repr(h, val))})),
       _ => None,
     },
     None => None,
@@ -10323,6 +10489,13 @@ fn emit_line_mints(lines, rec_local: String) = each(
         wat_emit("    (local.get ${rec_local})(local.get $state_tmp)(i32.store offset=")
         wat_emit(int_to_str(8 + slot * 4))
         wat_emit(")\n")
+      },
+      LhShare(slot, from) => // a branch thunk's line is its enclosing frame's, read where the thunk
+      // is minted — this frame's `__state` or its static global
+      {
+        wat_emit("    (local.get ${rec_local})\n")
+        emit_ring_address(h, from)
+        wat_emit("    (i32.store offset={int_to_str(8 + slot * 4)})\n")
       },
       LhStatic => // A minted record has no static line: the settle point refused the
       // module that would carry one (`settle_minted_lines`).
@@ -10392,7 +10565,7 @@ fn emit_variant_stores_acc(fields, i, n, off, local_name) = if i >= n {
 //
 // out of range — unprovable, never a silent 0
 fn variant_payload_offset(ptys, target, i, off) = if i >= len(ptys) {
-  0 - 1
+  -1
 } else {
   let r = slot_repr(fold_strip(list_index(ptys, i)))
   let here = align_for(off, r)

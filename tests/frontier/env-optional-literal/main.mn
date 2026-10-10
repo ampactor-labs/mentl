@@ -1,0 +1,7 @@
+// A literal optional read adds one narrow host name and never blocks launch.
+import environ
+
+fn main() = match env_opt("MN_OPTIONAL_LITERAL") {
+  Some(value) => parse_int(value),
+  None => 0,
+} ~> env_from_host

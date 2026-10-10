@@ -803,7 +803,12 @@ comment_refs_max: 0
 # impls and every one of these becomes an op the handler can see.
 # Held at the measured 7 the landing after — the board read 7 the night the
 # entry above was written and the ceiling was left at 8 to spare a gate cycle.
-fs_impl_bypass_max: 7
+# 7 -> 2 (2026-10-06, M9): the march verb's in-wheel blob assembly
+# (march_walk, its fs_list_dir_impl reads) and the battery's hand-listed
+# prefix (battery_libs, its fs_read_file_impl reads) are deleted; every
+# fixture and the fixed point read their modules through the driver's DAG
+# walk now.
+fs_impl_bypass_max: 2
 
 # 2026-08-07: the ANONYMITY ratchet (PLAN §11 Phase 2.5, second half) —
 # the census tier's convictions on the wheel link, monotone DOWN. Two
@@ -863,6 +868,15 @@ fs_impl_bypass_max: 7
 # count MEANS at zero is that no named fn in the wheel hides behind a lambda
 # that only forwards to it.
 frontier_expected_red: why-coordinates
+# 2026-10-06 (RACE): two threaded branches storing in place into ONE buffer
+# both capture compile and run (exit 3 on boot c8ba5799 and through the RACE
+# candidate) — the arm-state store is refused now, but a branch's own row
+# says only `Memory`, which carries loads, stores and word arithmetic alike,
+# so the rule cannot ask whether a branch stores into memory older than the
+# branch. The cut is Memory's stores as their own effect read against the
+# age claim's targets, EFF's move of ops between effects
+# (Hβ.threads.captured-store-race). Retires loudly the day it refuses.
+frontier_expected_red: threaded-branch-captured-store
 # 2026-09-18 → 2026-09-28: `eq-in-arm-pointer` was declared RED here — `==`
 # in a handler arm over its op's quantified parameters compared two
 # byte-equal Strings by ADDRESS, because no twin reached the arm. RETIRED by
@@ -951,7 +965,26 @@ loop_scaffold_refs_max: 3
 # so no library name stands between the store and the journal, and none
 # can be renamed out from under it. The set diffed against pin 9d27c325 is
 # exactly `arena_stat` in, none out.
-desugar_vocabulary: 46
+# 2026-10-06 · 46 -> 46 · RE-DERIVED, the SET changed and the count did not,
+# and the seed does NOT follow. TRAP: a sequence read whose bounds claim is
+# proven lowers to `list_index_unchecked`, named by the subscript callee's
+# one home (types.mn `subscript_callee`) — so `list_index_unchecked` entered
+# — and `list_index_proven`, a lib wrapper whose only reader was lower's
+# dead elision branch, is deleted, so it left. The scan did not read
+# types.mn, where the sugar's callees have lived since R0i, so it would have
+# counted the exit and missed the entry (46 -> 45, measured); it reads
+# types.mn now, which adds exactly `list_index_unchecked` and nothing else
+# (`list_index`, `slice`, `str_concat`, `list_concat` were already quoted by
+# the five). Both names are reached from the read the free-name walk draws
+# (`subscript_callees`), so reachability finds them and the emit mints none.
+# 2026-10-08 · 46 -> 47 · RE-DERIVED; this time the seed follows. E1's
+# emitted start routine calls `env_demand_check` for a non-empty environment
+# roster, and lowering roots that declaration so link reachability includes
+# `lib/environ.mn`. There is no source call node for this generated entrypoint:
+# the literal is a real name-keyed runtime dependency. The env-protocol gate
+# exercises both the set-variable path and the refusal before main when one is
+# absent.
+desugar_vocabulary: 47
 
 # 2026-09-11 · 812 -> 811 · the gate's own DOWN arm, held. Bisected with the
 # gate's regex to pin 0bd0525e, and the retired marker is `ref strict` in
@@ -968,7 +1001,7 @@ desugar_vocabulary: 46
 # 2026-10-03 · 62 -> 61 · the count fell at #126 (a3bcc7e0, the block-run
 # rework) and the ceiling stood at 62 through #129's first pin, the fall
 # printed and not held; held here.
-authored_own_max: 61
+authored_own_max: 53
 # 2026-09-17: 807 -> 805. Two markers retired with the duplicate map
 # primitive's deletion — the honest grade needs no marker where there is no
 # second copy to annotate.
@@ -1014,7 +1047,25 @@ authored_own_max: 61
 # column, so the cell walk's lookup, dedup and path scan left with six
 # markers and the warm split with the two it threaded an unread ast and
 # the cells through; the session's cone discovery carries three.
-authored_ref_max: 698
+# 698 -> 684 (2026-10-06, L-C): the caret's render left src/main.mn for
+# src/space.mn and its thirteen markers stayed behind — the address walks,
+# the source slice, the line scans, the lede's first line — the View's
+# forms reading each parameter through the grade; infer.mn's
+# `branch_replay_diags` left with its one when the diagnostic became one
+# render and one bank; the driver's three changed bodies and kept theirs.
+# 684 -> 682 (2026-10-06, M9): march_walk_entries' `ref names` and
+# march_read_files' `ref files` left with the blob assembly they walked.
+# 682 -> 680 (2026-10-06, RACE + SPACE.1 integrated): two authored refs left
+# with the lane's rewritten spawn and race-rule bodies.
+# 680 -> 664 (2026-10-06, N2 + N4 integrated): sixteen authored refs left
+# with the render lane's rewritten head projection.
+# 664 -> 663 (2026-10-06, F integrated): mn_walk's `ref names` left —
+# the inference grades the walk's list a borrow without the marker.
+# 663 -> 658 (2026-10-10): the address parser's four index-threaded scans
+# (`parse_address`, `addr_colon_from`, `addr_int`, `addr_int_loop`) left when
+# every verb took its words apart by pattern, and `render_field_inits` with
+# the formatter's punned fields.
+authored_ref_max: 658
 
 # 2026-08-08: the DRIFT-SHAPE ratchet (PLAN §11 5.6's absorption,
 # enforcement half) — the three absorbed drift modes counted by the
@@ -1066,8 +1117,9 @@ authored_ref_max: 698
 # reclaims, so every landing that mints a little more pays it forever. This
 # ceiling's job is to FALL when the arena lands — by roughly two thirds, per
 # §5.O's own accounting — and a ceiling that only ever rises to meet a breach
-# has stopped ratcheting. Raising it is an explicit in-commit act, which is
-# what this paragraph is; the next move on this line should be down.
+# has stopped ratcheting. It no longer rises at all (2026-10-06): a breach is
+# paid down in the landing that caused it, and tools/obey-gate.py refuses a
+# raised `*_max` at the commit. The raises recorded below are history.
 #
 # RAISED 2026-09-27, 1,022,000 -> 1,042,000, for the gate carried by the cell
 # (PROGRAM A3), and the accounting is a 2x2 measured before the raise, not a
@@ -1373,3 +1425,10 @@ authored_ref_max: 698
 # code), not the compiler's. Same rule: ~1% over the highest reading of
 # the landed form, read as the minimum of three.
 selfcompile_peak_kb_max: 539000
+# THE HEAD ROUND TRIP (render lane, 2026-10-06): module-level function heads,
+# formatter's and eye's, that do not come back as themselves through
+# parse∘render. Born at the measured 92 of 4,550 (the base renderer: 787 of
+# 4,534); 0 of 4,772 since the heads landing gave the clause grammar its
+# groups and row variables, a rest its name, and an effect argument a type.
+# Held at zero.
+head_round_trip_max: 0

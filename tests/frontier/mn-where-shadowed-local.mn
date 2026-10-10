@@ -1,0 +1,12 @@
+// `where` names a function at its own declaration, never at a local that
+// shares its name. `one` binds a `heads` of its own and is judged first,
+// since `heads` calls it, so its local reaches the declarations before the
+// function does; asking where `heads` is still answers line 10.
+fn one() = {
+  let heads = 1
+  heads
+}
+
+fn heads(xs) = len(xs) + one()
+
+fn main() = heads([1, 2])

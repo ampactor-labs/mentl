@@ -10,21 +10,21 @@
 // one kernel, one voice grammar.
 import types
 
-import mentl
+import driver
+
+import egraph
 
 import graph
 
-import own
+import mentl
 
-import query
+import own
 
 import pipeline
 
-import driver
+import query
 
 import strings
-
-import egraph
 
 // Topic is the focus of one voice turn. Caret-of-attention projects
 // onto a Topic; Mentl reads the graph at that topic. Five variants
@@ -95,7 +95,7 @@ type EnvEntry = EnvEntry(String, Binding, Reason, SchemeKind)
 // it here. Mentl's Unlock tentacle reads this to surface "this
 // handler is why `Alloc` is absorbed here."
 // Primitive: #2 + #4.
-type HandlerEntry = HandlerEntry({absorbs: EffRow, install_reason: Reason, install_span: Span, name: String})
+type HandlerEntry = {absorbs: EffRow, install_reason: Reason, install_span: Span, name: String}
 
 // Every speak op receives a Situation. All 13 fields are load-bearing.
 // No external state consulted — stateless-per-turn except
@@ -106,8 +106,23 @@ type HandlerEntry = HandlerEntry({absorbs: EffRow, install_reason: Reason, insta
 // turn.
 // Primitives: #1 (graph), #2 (handlers_installed), #4 (rows),
 // #5 (ownership), #6 (refinements), #7 (gradient_next), #8 (reason).
-type Situation
-  = Situation({env_snapshot: [EnvEntry], facts: TopicFacts, gradient_next: Teaching, handle: Option(Int), handlers_installed: [HandlerEntry], ownership_at_topic: Option(Ownership), prior_turn_tentacle: Option(Tentacle), prior_turn_topic: Option(Topic), reason_at_topic: Option(Reason), refinements: [Predicate], register: Register, row_at_topic: Option(EffRow), row_declared: Option(EffRow), tentacle: Tentacle, topic: Topic})
+type Situation = {
+  env_snapshot: [EnvEntry],
+  facts: TopicFacts,
+  gradient_next: Teaching,
+  handle: Option(Int),
+  handlers_installed: [HandlerEntry],
+  ownership_at_topic: Option(Ownership),
+  prior_turn_tentacle: Option(Tentacle),
+  prior_turn_topic: Option(Topic),
+  reason_at_topic: Option(Reason),
+  refinements: [Predicate],
+  register: Register,
+  row_at_topic: Option(EffRow),
+  row_declared: Option(EffRow),
+  tentacle: Tentacle,
+  topic: Topic,
+}
 
 // differs from row_at_topic → subsumption diag
 //
@@ -132,7 +147,7 @@ type Situation
 // row_declared) are NOT duplicated here — those stay on Situation
 // and silence_predicate reads them directly. TopicFacts holds only
 // the three truly-new computations.
-type TopicFacts = TopicFacts({error_code_at: Option(String), is_hole: Bool, nested_call_depth: Int})
+type TopicFacts = {error_code_at: Option(String), is_hole: Bool, nested_call_depth: Int}
 
 // TentPropose → TopicHandle(h): handle_is_hole(h)
 //
@@ -218,7 +233,7 @@ type VoiceLine = Silence | VoiceLine(Tentacle, FormKind, [Slot], Modifier)
 // keeps the last N turns, older entries drop. Ring size is a
 // handler-install parameter, not a substrate constant (configured
 // at handler install per H3.1 parameterized effects).
-type TurnRecord = TurnRecord({line: VoiceLine, span_at: Span, tentacle: Tentacle, topic: Topic})
+type TurnRecord = {line: VoiceLine, span_at: Span, tentacle: Tentacle, topic: Topic}
 
 // Path wraps a String. Nominal — distinguishes file-system paths from
 // arbitrary strings at the type layer. Construction is explicit:
@@ -450,10 +465,24 @@ fn applicable_modifiers_for_tentacle(tentacle) = match tentacle {
   TentQuery => [ParenQualifier(" (L{N})"), ParenQualifier(" (graph-direct)")],
   TentPropose => [EmphasisClose(" fits here."), EmphasisClose(" — try it?")],
   TentTopology => [EmphasisClose(" draws it better."), EmphasisClose(" — try it?")],
-  TentUnlock => [TailConsequence(" — on the table."), TailConsequence(" — memoizable."), TailConsequence(" — real-time-safe."), TailConsequence(" — no allocation.")],
-  TentTrace => [EmphasisClose(" — can't have it both ways."), EmphasisClose(" — `ref` if you're reading only."), ParenQualifier(" (L{N})")],
+  TentUnlock => [
+    TailConsequence(" — on the table."),
+    TailConsequence(" — memoizable."),
+    TailConsequence(" — real-time-safe."),
+    TailConsequence(" — no allocation.")
+  ],
+  TentTrace => [
+    EmphasisClose(" — can't have it both ways."),
+    EmphasisClose(" — `ref` if you're reading only."),
+    ParenQualifier(" (L{N})")
+  ],
   TentVerify => [ParenQualifier(" (L{N})"), ParenQualifier(" (proven)"), ParenQualifier(" (pending verify)")],
-  TentTeach => [TailConsequence(" — on the table."), TailConsequence(" — memoizable."), TailConsequence(" — real-time-safe."), TailConsequence(" — cheaper direct.")],
+  TentTeach => [
+    TailConsequence(" — on the table."),
+    TailConsequence(" — memoizable."),
+    TailConsequence(" — real-time-safe."),
+    TailConsequence(" — cheaper direct.")
+  ],
   TentWhy => [TailConsequence(" — the graph says so."), ParenQualifier(" (L{N})")],
 }
 
@@ -545,7 +574,7 @@ fn topic_span_or_zero(topic) = match topic {
 }
 
 // render_query_arm — TentQuery's render. Per MV §2.7.3 form FFactual,
-// per AT1: `` `name` runs `Type`. Row. ``. Slots compose the
+// per AT1: `` `<name>` runs `<Type>`. Row. ``. Slots compose the
 // identifier from topic, the inferred type from row_at_topic context,
 // and the row itself. silence_predicate gated upstream — fires only
 // when reason_at_topic is Some (per MV §2.7.5 TentQuery arm).
@@ -559,7 +588,14 @@ fn render_query_arm(situation) = match situation {
     VoiceLine(
       TentQuery,
       FFactual,
-      [SIdent(name), SLit(" — bound at "), SSpan(topic_span_or_zero(s.topic)), SLit(". Row: "), row_slot, SLit(".")],
+      [
+        SIdent(name),
+        SLit(" — bound at "),
+        SSpan(topic_span_or_zero(s.topic)),
+        SLit(". Row: "),
+        row_slot,
+        SLit(".")
+      ],
       select_modifier(situation, s.register)
     )
   },
@@ -568,7 +604,7 @@ fn render_query_arm(situation) = match situation {
 // render_propose_arm — TentPropose's render. Per MV §2.7.3 form
 // FOffering, per AT8 + AT10: hole completion / typo codeAction.
 // Topic discriminates: TopicHandle (hole at handle) → "Hole expects
-// `Type`"; TopicError (typo / missing) → "Did you mean ...?";
+// `<Type>`"; TopicError (typo / missing) → "Did you mean ...?";
 // TopicAsk (explicit ask) → echoes ask. silence_predicate gated.
 fn render_propose_arm(situation) = match situation {
   Situation(s) => match s.facts {
@@ -605,7 +641,11 @@ fn render_topology_arm(situation) = match situation {
     TopicFacts(f) => VoiceLine(
       TentTopology,
       FOffering,
-      [SLit("Nested-call depth "), SLit(int_to_str(f.nested_call_depth)), SLit(" — `|>` would draw the topology")],
+      [
+        SLit("Nested-call depth "),
+        SLit(int_to_str(f.nested_call_depth)),
+        SLit(" — `|>` would draw the topology")
+      ],
       select_modifier(situation, s.register)
     ),
   },
@@ -636,7 +676,11 @@ fn render_unlock_arm(situation) = match situation {
 fn render_trace_arm(situation) = match situation {
   Situation(s) => {
     let body = match s.ownership_at_topic {
-      Some(_) => [SLit("Ownership at "), SSpan(topic_span_or_zero(s.topic)), SLit(" — consumed; can't have it both ways")],
+      Some(_) => [
+        SLit("Ownership at "),
+        SSpan(topic_span_or_zero(s.topic)),
+        SLit(" — consumed; can't have it both ways")
+      ],
       None => [SLit("Row narrowing failed at "), SSpan(topic_span_or_zero(s.topic))],
     }
     VoiceLine(TentTrace, FRefutation, body, select_modifier(situation, s.register))
@@ -651,7 +695,13 @@ fn render_verify_arm(situation) = match situation {
   Situation(s) => VoiceLine(
     TentVerify,
     FRefinement,
-    [SLit("Refinements at "), SSpan(topic_span_or_zero(s.topic)), SLit(": "), SLit(int_to_str(len(s.refinements))), SLit(" obligations")],
+    [
+      SLit("Refinements at "),
+      SSpan(topic_span_or_zero(s.topic)),
+      SLit(": "),
+      SLit(int_to_str(len(s.refinements))),
+      SLit(" obligations")
+    ],
     select_modifier(situation, s.register)
   ),
 }
@@ -667,7 +717,12 @@ fn render_teach_arm(situation) = match situation {
     let body = match s.gradient_next {
       TeachNone => [SLit("")],
       TeachAdd(suggestion) => match suggestion {
-        AnnotationSuggestion(ann, _lev, reason) => [SLit("Next: add "), SAnnot(show_annotation(ann)), SLit(" on "), SSpan(suggestion_site_from_reason(reason))],
+        AnnotationSuggestion(ann, _lev, reason) => [
+          SLit("Next: add "),
+          SAnnot(show_annotation(ann)),
+          SLit(" on "),
+          SSpan(suggestion_site_from_reason(reason))
+        ],
       },
       TeachAsk(_) => [SLit("Next: " ++ show_teaching(s.gradient_next))],
       TeachNeed(_, _, _) => [SLit("Next: " ++ show_teaching(s.gradient_next))],
@@ -785,10 +840,11 @@ fn focus_reason(target) = match target {
 // Verify-tentacle (refinement obligations). H6 exhaustive over
 // Question's 15 variants via pattern alternation per SYNTAX.md L956.
 fn tentacle_for_question(question) with Pure = match question {
-  QTypeOf(_) | QTypeAt(_) | QIntentOf(_) | QUnresolved | QEffects(_) | QRefsOf(_) | QStateWrites(_) | QHandlerProvider(_) | QFlowOf(_) | QCensus(_) | QDecls | QWhere(_, _) | QVariants(_) | QModules | QImports | QUnreferenced | QUnreachable | QPerforms | QOrphanClaims | QCost | QGhosts | QUnknown(_) => TentQuery,
+  QTypeOf(_) | QTypeAt(_) | QIntentOf(_) | QUnresolved | QEffects(_) | QRefsOf(_) | QStateWrites(_) | QHandlerProvider(_) | QFlowOf(_) | QCensus(_) | QCensusRoster | QDecls | QWhere(_, _) | QVariants(_) | QModules | QImports | QUnreferenced | QUnreachable | QPerforms | QEnv | QOrphanClaims | QCost | QGhosts | QHeads | QUnknown(_) => TentQuery,
   QOwnership(_) => TentTrace,
   QWhy(_) | QSubstChain(_) => TentWhy,
   QVerifyDebt | QSmt => TentVerify,
+  QIn(inner, m) => tentacle_for_question(inner),
 }
 
 // question_span — extract Span from Question. Only QTypeAt carries a
@@ -797,7 +853,8 @@ fn tentacle_for_question(question) with Pure = match question {
 // exhaustive over Question via pattern alternation.
 fn question_span(question) = match question {
   QTypeAt(s) => s,
-  QTypeOf(_) | QIntentOf(_) | QUnresolved | QSubstChain(_) | QEffects(_) | QOwnership(_) | QWhy(_) | QRefsOf(_) | QStateWrites(_) | QVerifyDebt | QSmt | QHandlerProvider(_) | QFlowOf(_) | QCensus(_) | QDecls | QWhere(_, _) | QVariants(_) | QModules | QImports | QUnreferenced | QUnreachable | QPerforms | QOrphanClaims | QCost | QGhosts | QUnknown(_) => span_zero(),
+  QIn(inner, m) => question_span(inner),
+  QTypeOf(_) | QIntentOf(_) | QUnresolved | QSubstChain(_) | QEffects(_) | QOwnership(_) | QWhy(_) | QRefsOf(_) | QStateWrites(_) | QVerifyDebt | QSmt | QHandlerProvider(_) | QFlowOf(_) | QCensus(_) | QCensusRoster | QDecls | QWhere(_, _) | QVariants(_) | QModules | QImports | QUnreferenced | QUnreachable | QPerforms | QEnv | QOrphanClaims | QCost | QGhosts | QHeads | QUnknown(_) => span_zero(),
 }
 
 // compose_propose_situation — sparse Situation for a propose gesture.
@@ -885,9 +942,13 @@ fn query_result_to_answer(result) = match result {
   // the module half drops here and only here: this answer is consumed by
   // readers that already know the file they asked about.
   AnsRefs(map(census_site_span, sites), Inferred("census: {int_to_str(len(sites))} {label}")),
-  QRDecls(sites) => // The decls column's sites ride AnsRefs like the census — same shape,
-  // so the module half drops at the same boundary and for the same reason.
-  AnsRefs(map(census_site_span, sites), Inferred("decls: {int_to_str(len(sites))} judged decl(s)")),
+  QRCensusRoster(rows) => // The roster names shapes, not caret sites, so the answer carries the
+  // count alone; its rows render at the CLI.
+  AnsRefs([], Inferred("census: {int_to_str(len(rows))} shape(s)")),
+  QRDecls(names) => // The declared names' sites ride AnsRefs like the census — same shape
+  // once the name is set aside, so the module half drops at the same boundary
+  // and for the same reason.
+  AnsRefs(map(named_site_span, names), Inferred("decls: {int_to_str(len(names))} declared name(s)")),
   QRWhere(_, sites) => // The where badges' site list rides AnsRefs like the census; the
   // badge lines render at the CLI (the terminal projection's home).
   AnsRefs(site_spans(sites), Inferred("where: {int_to_str(len(sites))} fanout site(s)")),
@@ -906,6 +967,9 @@ fn query_result_to_answer(result) = match result {
   QRPerforms(rows) => // The effect rosters render at the CLI. A row names a module and an
   // effect, not a caret site, so the answer carries the count alone.
   AnsRefs([], Inferred("performs: {int_to_str(len(rows))} effect(s)")),
+  QREnv(rows) => // The manifest renders at the CLI; its sites are reads in any module,
+  // so the answer carries the count alone.
+  AnsRefs([], Inferred("env: {int_to_str(len(rows))} environment read(s)")),
   QROrphanClaims(rows) => // The orphan-claim rows render at the CLI. A row names a module and a
   // declaration, not a caret site, so the answer carries the count alone.
   AnsRefs([], Inferred("orphan-claims: {int_to_str(len(rows))} declaration(s)")),
@@ -937,6 +1001,10 @@ fn census_site_span(site) with Pure = match site {
   (_m, s) => s,
 }
 
+fn named_site_span(named) with Pure = match named {
+  (_, (_m, s)) => s,
+}
+
 fn diagnostics_from_debt(debt) = if len(debt) == 0 {
   []
 } else {
@@ -958,27 +1026,14 @@ fn emitted_artifact_path(fh) = match fh {
   FileHandle(i) => Path(".build/unit-{int_to_str(i)}.wasm"),
 }
 
-// ─── render_voiceline / render_slot — the ONE terminal voice projection ─
-//
-// The cursor projecting the graph as the human-facing string. A VoiceLine's
-// [Slot] folds to text via render_slot, each slot dispatching to the ONE
-// canonical renderer (show_type / show_effrow / show_reason / show_span) — the
-// SAME renderers the compiler reads. So LSP hover / inlay / doc and a compile
-// error are byte-identical projections of one graph (PLAN §0: one cursor
-// projection, surpassing every LSP). Silence renders empty (the medium does
-// not fill space).
-//
-// THAT IS WHAT IT IS FOR, AND NOBODY CALLS IT — measured 2026-09-21 by
-// `mentl query src/main.mn unreachable`. The sentence that stood here said
-// "the slots a hover should show are NO LONGER computed then discarded —
-// this fn is the terminal read every voice surface shares", and the graph
-// refutes the second half: zero references. The `propose` arm below builds a
-// VoiceLine and banks it in a TurnRecord; the LSP projects slots its own way
-// through `completion_items_from_slots` (src/lsp.mn); nothing renders a
-// VoiceLine to text. So the medium composes its own voice and never speaks
-// it. This is a WIRING gap, not dead code — deleting the renderer would
-// delete the voice — and it is named rather than quietly kept:
-// `Hβ.voice.voiceline-renders-to-nobody`.
+// The voice as text: a VoiceLine's [Slot] folds through render_slot, each
+// slot through the one canonical renderer the compiler reads (show_type,
+// show_effrow, show_reason, show_span), so a hover and a compile error are
+// one projection of one graph; silence renders empty. Nothing calls it: the
+// `propose` arm below builds a VoiceLine and banks it in a TurnRecord, and
+// the LSP projects slots its own way (src/lsp.mn), so the medium composes
+// its voice and never speaks it. Deleting the renderer would delete the
+// voice, so the gap is named (`Hβ.voice.voiceline-renders-to-nobody`).
 fn render_voiceline(line) with !Mutate = match line {
   Silence => "",
   VoiceLine(_, _, slots, modif) => "{render_slots(slots)}{render_modifier(modif)}",
@@ -1158,8 +1213,7 @@ handler mentl_voice_default with caret_now = Caret(0, Inferred("session start"))
       Silence => TentQuery,
       VoiceLine(t, _, _, _) => t,
     }
-    let new_turn =
-      TurnRecord({line: voiceline, span_at: span_zero(), tentacle: tentacle, topic: TopicHandle(0)})
+    let new_turn = TurnRecord({line: voiceline, span_at: span_zero(), tentacle, topic: TopicHandle(0)})
     resume() with prior_turn = Some(new_turn), turns = [new_turn] ++ turns
   },
   run_query(question) => // ─── Run ops — MV.2.e.Run: run_query here; run_compile / run_check /
@@ -1488,4 +1542,18 @@ fn path_to_module_name(ref s) = {
   } else {
     stripped_prefix
   }
+}
+
+// The Lens's lead sentence over a diagnostic: the medium's own words for
+// what the top report means. A capability a row forbids, an effect nothing
+// handles, a name out of scope and a claim proven false each lead with their
+// sentence; a step the medium takes by itself is offered as one; every other
+// report leads with its message, which already says what it is.
+fn diag_lead(d, msg: String) = match d {
+  EEffectMismatch(_, _, _, _) => "this path performs a capability its row forbids. {msg}",
+  EPurityViolated(_, _) => "this path performs a capability its row forbids. {msg}",
+  EEffectUnhandled(_, _, _) => "this path performs an effect no handler around it answers. {msg}",
+  EMissingVariable(_, _) => "a name here isn't in scope — check the spelling or the import. {msg}",
+  ERefinementRejected(_, _) => "a claim is proven false — the value cannot meet its bound. {msg}",
+  _ => if diag_applies_itself(d) { "a step the medium can take: {msg}" } else { msg },
 }

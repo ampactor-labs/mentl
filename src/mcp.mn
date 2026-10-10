@@ -29,48 +29,33 @@
 // judge reads the proposal alone (the stdin contract), no lib weave.
 import types
 
+import backends/wasm
+
 import cli
 
 import driver
 
-import infer
-
-import net
-
-import query
-
-import pipeline
-
-import lower
-
 import egraph
 
-import mentl
-
-import backends/wasm
-
-import json
+import infer
 
 import io
 
-import strings
+import json
 
 import lists
 
+import lower
+
 import memory
 
-// GateLedger — the mcp face's own ledger read: the collector's banked
-// verdict lines, read once after the judge populates them (the Tighten
-// shape). Counts are NOT banked here — diag_errors/diag_refusals forward
-// to the bracket's diagnostics_handler, the one tally home.
-effect GateLedger {
-  // The banked diagnostic text, every reported line verbatim in report
-  // order (each line carries its own newline, as the stderr log prints it).
-  gate_facts() -> String
-  // THE CLASSES, not the prose: `diag_code(diag)` per report, in order — the
-  // refuse contract compares names, never a substring of rendered prose.
-  gate_classes() -> [String]
-}
+import mentl
+
+import pipeline
+
+import query
+
+import strings
 
 // The session's collecting console — the address projection's transport
 // at the MCP surface. The SAME core that narrates to stdout on the CLI
@@ -85,30 +70,6 @@ effect ConsoleBank {
 handler console_bank with lines = [] {
   print(msg) => resume() with lines = push(lines, msg),
   console_taken() => resume(lines),
-}
-
-// The collecting forwarder over Diag (tighten_collector's proven shape):
-// every diagnostic re-performs outward from the arm — an arm's own
-// performs resolve in the INSTALL's world, reaching the bracket's
-// diagnostics_handler (the stderr log), never re-entering this collector.
-// Branch-fired reports arrive HERE as live re-performs (the converged
-// judgment replays each banked diag through the root chain at the join),
-// so no separate absorb arm exists to fold them.
-//
-// A report raised inside an arena this install encloses — a judgment
-// group's, a declaration's lowering, an emitted fn's — banks like any
-// other: the state commit is journaled where it is stored, and the arena's
-// exit moves the class and the line out with it (lib/arena.mn).
-handler mcp_diag_collector with classes = [], lines = [] {
-  diag_report(diag, line, dmod) => {
-    // Forward outward with the SAME rendered line; the bank keeps it too.
-    diag_report(diag, line, dmod)
-    resume() with classes = push(classes, diag_code(diag)), lines = push(lines, line)
-  },
-  diag_errors() => resume(diag_errors()),
-  diag_refusals() => resume(diag_refusals()),
-  gate_facts() => resume(str_concat_all(lines)),
-  gate_classes() => resume(classes),
 }
 
 // mcp_judge — the canonical judgment over one proposal, batch-shaped at
@@ -135,12 +96,12 @@ fn mcp_judge(source, wat_path) = compile_context(() => {
       }
     },
   }
-  let text = gate_facts()
+  let text = banked_lines()
   let nerr = diag_errors()
   match verdict {
     (refused, emitted) => (text, nerr, refused, emitted),
   }
-} ~> mcp_diag_collector ~> wasi_filesystem)
+} ~> diag_bank ~> wasi_filesystem)
 
 // The verdict's head states exactly what the gate did — refused, emitted
 // with surfaced errors (unarmed classes; the sound-incomplete contract,
@@ -169,8 +130,11 @@ fn mcp_response(id, result) =
 
 // The code rides as the Int it is (JSON-RPC codes are integers); the one
 // float conversion sits at the JNum boundary.
-fn mcp_error(id, code, msg) =
-  json_serialize(JObj([("jsonrpc", JStr("2.0")), ("id", id), ("error", JObj([("code", JNum(float_of_int(code))), ("message", JStr(msg))]))])) ++ "\n"
+fn mcp_error(id, code, msg) = json_serialize(JObj([
+  ("jsonrpc", JStr("2.0")),
+  ("id", id),
+  ("error", JObj([("code", JNum(float_of_int(code))), ("message", JStr(msg))]))
+])) ++ "\n"
 
 // The initialize result echoes the client's protocolVersion (the server's
 // behavior does not vary by version at this surface); capabilities name
@@ -180,18 +144,119 @@ fn mcp_initialize_result(params) = {
     Some(JStr(s)) => s,
     _ => "2025-06-18",
   }
-  JObj([("protocolVersion", JStr(pv)), ("capabilities", JObj([("tools", JObj([]))])), ("serverInfo", JObj([("name", JStr("mentl")), ("version", JStr("first-light"))]))])
+  JObj([
+    ("protocolVersion", JStr(pv)),
+    ("capabilities", JObj([("tools", JObj([]))])),
+    ("serverInfo", JObj([("name", JStr("mentl")), ("version", JStr("first-light"))]))
+  ])
 }
 
-fn mcp_tools_result() = JObj([("tools", JArr([JObj([("name", JStr("propose")), ("description", JStr("Submit Mentl source to the verification gate. The medium compiles it and PROVES every claim before emission: declared effect rows, absence severances (!E — the named effect provably never performed, transitively), refinement predicates. PROVEN: the artifact is emitted to .build/mcp/last.wat beside the server. REFUSED: each undischarged claim is named at its source span and the refusal teaches the fix. Nothing executes unproven.")), ("inputSchema", JObj([("type", JStr("object")), ("properties", JObj([("source", JObj([
-  ("type", JStr("string")),
-  // drift-audit: ignore — prose inside a JSON string literal (the audit's string-literal blindness)
-  ("description", JStr("Complete Mentl source for one self-contained module. Declare your own effects; fn main() makes it an executable."))
-]))])), ("required", JArr([JStr("source")]))]))]), JObj([("name", JStr("query")), ("description", JStr("Ask the RESIDENT project graph a question — the session holds the derived project and re-derives whenever the tree moves, so every answer is a live read about the tree as it is (schemes with effect rows, Why chains, references). Question forms: 'type NAME', 'why NAME', 'refs of NAME'.")), ("inputSchema", JObj([("type", JStr("object")), ("properties", JObj([("question", JObj([
-  ("type", JStr("string")),
-  // drift-audit: ignore — prose inside a JSON string literal (the audit's string-literal blindness)
-  ("description", JStr("The question, e.g. 'type main' or 'why double'."))
-]))])), ("required", JArr([JStr("question")]))]))]), JObj([("name", JStr("at")), ("description", JStr("Project the eight aspects at an address in the resident project's entry file — the same read `mentl main.mn:L:C` serves: the node's type at the span, its effect row, ownership, pending obligations, the proposal fan at a ??, and the Why chain. line counts from 1; col defaults to 1.")), ("inputSchema", JObj([("type", JStr("object")), ("properties", JObj([("line", JObj([("type", JStr("integer"))])), ("col", JObj([("type", JStr("integer"))]))])), ("required", JArr([JStr("line")]))]))]), JObj([("name", JStr("audit")), ("description", JStr("Project every entry-file function's effect-row truth from the resident graph — the row each body reaches, which effects are severable (!E provable — the named effect provably never performed), and the capabilities each severance unlocks. The same read `mentl audit main` serves, answered live from the session's one derivation. No arguments.")), ("inputSchema", JObj([("type", JStr("object")), ("properties", JObj([]))]))]), JObj([("name", JStr("teach")), ("description", JStr("Project each entry-file function's next annotation from the gradient — the one input that would unlock capabilities (an effect severance, a refinement, a representation pin). The same read `mentl teach main` serves, answered live. No arguments.")), ("inputSchema", JObj([("type", JStr("object")), ("properties", JObj([]))]))]), JObj([("name", JStr("frontier")), ("description", JStr("Project the entry file's whole ranked absence field from the resident graph — the oracle's frontier, the gradient's argmax uncollapsed. Every authored ?? hole first, each carrying its proven-survivor fan and tie-teaching; then the annotation-gradient positions. The same read `mentl main.mn:0` serves. Answer it, act on the head position, and ask again — the session re-derives as the tree moves. No arguments.")), ("inputSchema", JObj([("type", JStr("object")), ("properties", JObj([]))]))])]))])
+fn mcp_tools_result() = JObj([
+  (
+    "tools",
+    JArr([
+      JObj([
+        ("name", JStr("propose")),
+        (
+          "description",
+          JStr("Submit Mentl source to the verification gate. The medium compiles it and PROVES every claim before emission: declared effect rows, absence severances (!E — the named effect provably never performed, transitively), refinement predicates. PROVEN: the artifact is emitted to .build/mcp/last.wat beside the server. REFUSED: each undischarged claim is named at its source span and the refusal teaches the fix. Nothing executes unproven.")
+        ),
+        (
+          "inputSchema",
+          JObj([
+            ("type", JStr("object")),
+            (
+              "properties",
+              JObj([
+                (
+                  "source",
+                  JObj([
+                    ("type", JStr("string")),
+                    // drift-audit: ignore — prose inside a JSON string literal (the audit's string-literal blindness)
+                    (
+                      "description",
+                      JStr("Complete Mentl source for one self-contained module. Declare your own effects; fn main() makes it an executable.")
+                    )
+                  ])
+                )
+              ])
+            ),
+            ("required", JArr([JStr("source")]))
+          ])
+        )
+      ]),
+      JObj([
+        ("name", JStr("query")),
+        (
+          "description",
+          JStr("Ask the RESIDENT project graph a question — the session holds the derived project and re-derives whenever the tree moves, so every answer is a live read about the tree as it is (schemes with effect rows, Why chains, references). Question forms: 'type NAME', 'why NAME', 'refs of NAME'.")
+        ),
+        (
+          "inputSchema",
+          JObj([
+            ("type", JStr("object")),
+            (
+              "properties",
+              JObj([
+                (
+                  "question",
+                  JObj([
+                    ("type", JStr("string")),
+                    // drift-audit: ignore — prose inside a JSON string literal (the audit's string-literal blindness)
+                    ("description", JStr("The question, e.g. 'type main' or 'why double'."))
+                  ])
+                )
+              ])
+            ),
+            ("required", JArr([JStr("question")]))
+          ])
+        )
+      ]),
+      JObj([
+        ("name", JStr("at")),
+        (
+          "description",
+          JStr("Project the eight aspects at an address in the resident project's entry file — the same read `mentl main.mn:L:C` serves: the node's type at the span, its effect row, ownership, pending obligations, the proposal fan at a ??, and the Why chain. line counts from 1; col defaults to 1.")
+        ),
+        (
+          "inputSchema",
+          JObj([
+            ("type", JStr("object")),
+            (
+              "properties",
+              JObj([("line", JObj([("type", JStr("integer"))])), ("col", JObj([("type", JStr("integer"))]))])
+            ),
+            ("required", JArr([JStr("line")]))
+          ])
+        )
+      ]),
+      JObj([
+        ("name", JStr("audit")),
+        (
+          "description",
+          JStr("Project every entry-file function's effect-row truth from the resident graph — the row each body reaches, which effects are severable (!E provable — the named effect provably never performed), and the capabilities each severance unlocks. The same read `mentl audit main` serves, answered live from the session's one derivation. No arguments.")
+        ),
+        ("inputSchema", JObj([("type", JStr("object")), ("properties", JObj([]))]))
+      ]),
+      JObj([
+        ("name", JStr("teach")),
+        (
+          "description",
+          JStr("Project each entry-file function's next annotation from the gradient — the one input that would unlock capabilities (an effect severance, a refinement, a representation pin). The same read `mentl teach main` serves, answered live. No arguments.")
+        ),
+        ("inputSchema", JObj([("type", JStr("object")), ("properties", JObj([]))]))
+      ]),
+      JObj([
+        ("name", JStr("frontier")),
+        (
+          "description",
+          JStr("Project the entry file's whole ranked absence field from the resident graph — the oracle's frontier, the gradient's argmax uncollapsed. Every authored ?? hole first, each carrying its proven-survivor fan and tie-teaching; then the annotation-gradient positions. The same read `mentl main.mn:0` serves. Answer it, act on the head position, and ask again — the session re-derives as the tree moves. No arguments.")
+        ),
+        ("inputSchema", JObj([("type", JStr("object")), ("properties", JObj([]))]))
+      ])
+    ])
+  )
+])
 
 // tools/call — the gate's propose plus the resident session's reads. A
 // verdict is a SUCCESSFUL tool result whether the gate proved or refused
@@ -215,20 +280,48 @@ fn mcp_tool_call(id, params, ast, ranges, at_read) = {
             let text = mcp_verdict_text(banked, nerr, nref, emitted, ".build/mcp/last.wat")
             mcp_response(
               id,
-              JObj([("content", JArr([JObj([("type", JStr("text")), ("text", JStr(text))])])), ("isError", JBool(false))])
+              JObj([
+                ("content", JArr([JObj([("type", JStr("text")), ("text", JStr(text))])])),
+                ("isError", JBool(false))
+              ])
             )
           },
         },
         _ => mcp_response(
           id,
-          JObj([("content", JArr([JObj([("type", JStr("text")), ("text", JStr("propose needs arguments.source — a string of Mentl source\n"))])])), ("isError", JBool(true))])
+          JObj([
+            (
+              "content",
+              JArr([
+                JObj([
+                  ("type", JStr("text")),
+                  ("text", JStr("propose needs arguments.source — a string of Mentl source\n"))
+                ])
+              ])
+            ),
+            ("isError", JBool(true))
+          ])
         ),
       }
     },
     "at" => if len(ranges) == 0 {
       mcp_response(
         id,
-        JObj([("content", JArr([JObj([("type", JStr("text")), ("text", JStr("no project graph resident — the server started outside a project (no resolvable main); at projects the living session\n"))])])), ("isError", JBool(true))])
+        JObj([
+          (
+            "content",
+            JArr([
+              JObj([
+                ("type", JStr("text")),
+                (
+                  "text",
+                  JStr("no project graph resident — the server started outside a project (no resolvable main); at projects the living session\n")
+                )
+              ])
+            ])
+          ),
+          ("isError", JBool(true))
+        ])
       )
     } else {
       let lineo = match json_obj_get(params, "arguments") {
@@ -250,19 +343,44 @@ fn mcp_tool_call(id, params, ast, ranges, at_read) = {
           let banked = at_read(ranges, float_to_int(lf), col)
           mcp_response(
             id,
-            JObj([("content", JArr([JObj([("type", JStr("text")), ("text", JStr(str_concat_all(banked)))])])), ("isError", JBool(false))])
+            JObj([
+              ("content", JArr([JObj([("type", JStr("text")), ("text", JStr(str_concat_all(banked)))])])),
+              ("isError", JBool(false))
+            ])
           )
         },
         _ => mcp_response(
           id,
-          JObj([("content", JArr([JObj([("type", JStr("text")), ("text", JStr("at needs arguments.line (an integer, counting from 1)\n"))])])), ("isError", JBool(true))])
+          JObj([
+            (
+              "content",
+              JArr([
+                JObj([("type", JStr("text")), ("text", JStr("at needs arguments.line (an integer, counting from 1)\n"))])
+              ])
+            ),
+            ("isError", JBool(true))
+          ])
         ),
       }
     },
     "frontier" => if len(ranges) == 0 {
       mcp_response(
         id,
-        JObj([("content", JArr([JObj([("type", JStr("text")), ("text", JStr("no project graph resident — the server started outside a project (no resolvable main); frontier projects the living session\n"))])])), ("isError", JBool(true))])
+        JObj([
+          (
+            "content",
+            JArr([
+              JObj([
+                ("type", JStr("text")),
+                (
+                  "text",
+                  JStr("no project graph resident — the server started outside a project (no resolvable main); frontier projects the living session\n")
+                )
+              ])
+            ])
+          ),
+          ("isError", JBool(true))
+        ])
       )
     } else {
       // The field read (address line 0 — the whole ranked absence
@@ -270,13 +388,30 @@ fn mcp_tool_call(id, params, ast, ranges, at_read) = {
       let banked = at_read(ranges, 0, 1)
       mcp_response(
         id,
-        JObj([("content", JArr([JObj([("type", JStr("text")), ("text", JStr(str_concat_all(banked)))])])), ("isError", JBool(false))])
+        JObj([
+          ("content", JArr([JObj([("type", JStr("text")), ("text", JStr(str_concat_all(banked)))])])),
+          ("isError", JBool(false))
+        ])
       )
     },
     "audit" => if len(ranges) == 0 {
       mcp_response(
         id,
-        JObj([("content", JArr([JObj([("type", JStr("text")), ("text", JStr("no project graph resident — the server started outside a project (no resolvable main); audit projects the living session\n"))])])), ("isError", JBool(true))])
+        JObj([
+          (
+            "content",
+            JArr([
+              JObj([
+                ("type", JStr("text")),
+                (
+                  "text",
+                  JStr("no project graph resident — the server started outside a project (no resolvable main); audit projects the living session\n")
+                )
+              ])
+            ])
+          ),
+          ("isError", JBool(true))
+        ])
       )
     } else {
       // The SAME projection the CLI's audit verb serves (audit_project,
@@ -285,13 +420,30 @@ fn mcp_tool_call(id, params, ast, ranges, at_read) = {
       let text = audit_project(ast)
       mcp_response(
         id,
-        JObj([("content", JArr([JObj([("type", JStr("text")), ("text", JStr(text))])])), ("isError", JBool(false))])
+        JObj([
+          ("content", JArr([JObj([("type", JStr("text")), ("text", JStr(text))])])),
+          ("isError", JBool(false))
+        ])
       )
     },
     "teach" => if len(ranges) == 0 {
       mcp_response(
         id,
-        JObj([("content", JArr([JObj([("type", JStr("text")), ("text", JStr("no project graph resident — the server started outside a project (no resolvable main); teach reads the living session\n"))])])), ("isError", JBool(true))])
+        JObj([
+          (
+            "content",
+            JArr([
+              JObj([
+                ("type", JStr("text")),
+                (
+                  "text",
+                  JStr("no project graph resident — the server started outside a project (no resolvable main); teach reads the living session\n")
+                )
+              ])
+            ])
+          ),
+          ("isError", JBool(true))
+        ])
       )
     } else {
       // teach_project — the gradient's next-annotation read, the CLI
@@ -299,13 +451,30 @@ fn mcp_tool_call(id, params, ast, ranges, at_read) = {
       let text = teach_project(ast)
       mcp_response(
         id,
-        JObj([("content", JArr([JObj([("type", JStr("text")), ("text", JStr(text))])])), ("isError", JBool(false))])
+        JObj([
+          ("content", JArr([JObj([("type", JStr("text")), ("text", JStr(text))])])),
+          ("isError", JBool(false))
+        ])
       )
     },
     "query" => if len(ranges) == 0 {
       mcp_response(
         id,
-        JObj([("content", JArr([JObj([("type", JStr("text")), ("text", JStr("no project graph resident — the server started outside a project (no resolvable main); query reads the living session\n"))])])), ("isError", JBool(true))])
+        JObj([
+          (
+            "content",
+            JArr([
+              JObj([
+                ("type", JStr("text")),
+                (
+                  "text",
+                  JStr("no project graph resident — the server started outside a project (no resolvable main); query reads the living session\n")
+                )
+              ])
+            ])
+          ),
+          ("isError", JBool(true))
+        ])
       )
     } else {
       let qo = match json_obj_get(params, "arguments") {
@@ -320,12 +489,23 @@ fn mcp_tool_call(id, params, ast, ranges, at_read) = {
           let text = ask(parse_query_string("", question)) |> render_query_result
           mcp_response(
             id,
-            JObj([("content", JArr([JObj([("type", JStr("text")), ("text", JStr("{text}\n"))])])), ("isError", JBool(false))])
+            JObj([
+              ("content", JArr([JObj([("type", JStr("text")), ("text", JStr("{text}\n"))])])),
+              ("isError", JBool(false))
+            ])
           )
         },
         _ => mcp_response(
           id,
-          JObj([("content", JArr([JObj([("type", JStr("text")), ("text", JStr("query needs arguments.question — e.g. 'type main'\n"))])])), ("isError", JBool(true))])
+          JObj([
+            (
+              "content",
+              JArr([
+                JObj([("type", JStr("text")), ("text", JStr("query needs arguments.question — e.g. 'type main'\n"))])
+              ])
+            ),
+            ("isError", JBool(true))
+          ])
         ),
       }
     },
@@ -401,22 +581,47 @@ fn session_current(ast, ranges, manifest) = if len(ranges) == 0 {
   if driver_manifest(ranges) == manifest {
     (ast, ranges, manifest)
   } else {
-    // The generation boundary's clears, BEFORE the re-judgment and only for
-    // the cone: the new judgment re-fires every still-true T_OverDeclared
-    // and re-accrues every still-pending obligation of the modules it
-    // re-judges; a stale generation's entries must not shadow the current
-    // truth (their spans belong to a tree that no longer exists), and a
-    // module outside the cone keeps its own.
-    match driver_session_cone("main", ranges, tighten_forget) {
+    // The generation boundary's clear, BEFORE the re-judgment and only for
+    // the cone: the new judgment re-fires every report and re-accrues every
+    // obligation that still holds of the modules it re-judges; a stale
+    // generation's entries must not shadow the current truth (their spans
+    // belong to a tree that no longer exists), and a module outside the cone
+    // keeps its own.
+    match driver_session_cone("main", ranges, session_forget) {
       (cone, r2) => {
         eprint_string("session: tree moved — re-judged {names_join(cone)}; the graph is current\n")
-        // The bank re-hashes over the NEW range map (r2's paths) — the
-        // check above hashed the old module set. The entry's own decls are
-        // read off its NModule node, the cone's fresh one.
+        // The modules the old link held and the new one does not are cleared
+        // the same way. The entry's own decls are read off its NModule node,
+        // the cone's fresh one.
+        session_prune(ranges, r2)
         (driver_module_ast(ast, "main"), r2, driver_manifest(r2))
       },
     }
   }
+}
+
+// The session's generation clear: the banked reports of the named modules
+// and the obligations raised in their current nodes go, and every other
+// module's stand. Handed to the cone as a value, so the re-judgment and a
+// module leaving the link clear both ledgers through this one function.
+fn session_forget(modules) = {
+  diag_forget(modules)
+  forget_claims(modules)
+}
+
+// A module that LEFT the link keeps nothing. The cone's clear forgets what is
+// re-judged; a module the new tree no longer links is never re-judged, so its
+// reports and claims stood for the session's life — measured in the browser
+// 2026-10-06: a project opened over a lesson's session brought its libraries'
+// reports in, and the Lens over the next four-line lesson held 519 of them.
+// The modules that left are the old link's less the new one's.
+fn session_prune(ranges, r2) = {
+  let linked = map(range_module, r2)
+  ranges |> map(range_module) |> filter({ m => !module_in(linked, m) }) |> session_forget
+}
+
+fn range_module(r) = match r {
+  (m, _, _) => m,
 }
 
 // The serve loop — a RAW recursion over the session triple (ast,
@@ -468,73 +673,45 @@ fn mcp_loop(ast, ranges, manifest, at_read, current) = {
 // dispatch it mirrors); a verb it does not serve answers the MISS
 // sentinel and the host falls back to the cold exec.
 //
-// TWO TRANSPORTS, ONE SESSION. A host that preopened a listener (the
-// install shim's -S tcplisten) gets one answer per connection. A host that
-// preopened none owns the process's input instead — a browser worker, a
-// pipe — and gets one answer per stdin line (session_line_loop). This
-// verb used to REFUSE without a listener, which is why the page re-ran
-// the whole compiler per projection: its worker had no socket to offer
-// and the session had no other door.
-fn session_run(answer) = {
-  let lfd = find_listener()
-  // THE GUARD IS INSIDE THE BRACKET, which is mcp_run's own lesson one verb
-  // over — "The artifact directory is made INSIDE the bracket, because that
-  // is..." — learned there and not here. `fs_exists` is a Filesystem op and
-  // dispatch_invocation installs env / graph / mutate / diagnostics and no
-  // Filesystem, so this guard ran in a world that cannot answer it. It
-  // worked only while a stateless singleton could be direct-called with no
-  // record at all; the uniform world bracket ended that, and the guard
-  // trapped at its own dispatch (ev_declaring_node, i32.const 100524 =
-  // Filesystem, slot 0, pinned at 0xafd83 in session_run). The installs
-  // cost nothing on the path that reports no project.
-  infer_context(() => {
-    if !fs_exists(driver_module_path("main")) {
-      eprint_string("mentl session: no resolvable main here — the session holds a project's living graph; run it in a project directory\n")
-      1
-    } else {
-      match driver_entry_with_ranges("main") {
-        (ast, ranges) => {
-          let entry = driver_module_ast(ast, "main")
-          let manifest = driver_manifest(ranges)
-          if lfd < 0 {
-            eprint_string("mentl session: graph resident on stdin — each line is a verb's argv, tab-joined; the answer is written before the next line is read\n")
-            session_line_loop(entry, ranges, manifest, answer, session_current)
-          } else {
-            eprint_string("mentl session: graph resident on the listener the host preopened (fd {int_to_str(lfd)}) — read verbs answer live; every other verb falls back cold through the shim\n")
-            session_sock_loop(lfd, entry, ranges, manifest, answer, session_current)
-          }
-        },
-      }
-      0
-    }
-  } ~> wasi_filesystem ~> query_default ~> mentl_default ~> arm_state_ctx([], OneShot, "") ~> spec_registry ~> tighten_collector)
-}
-
-// One connection = one verb line = one answer; the living check runs
-// per connection exactly as the mcp loop runs it per message, so an
-// edited tree re-derives into the resident world before the answer.
-// The accept loop is space_loop's shape — constant stack for the
-// session's life, the graph threading through as values.
-fn session_sock_loop(lfd, ast, ranges, manifest, answer, current) = {
-  let before = heap_mark()
-  let next = {
-    let conn = sock_accept_blocking(lfd)
-    let line = strip_cr(session_read_line(conn))
-    match current(ast, ranges, manifest) {
-      (a2, r2, m2) => match answer(line, a2, r2, m2) {
-        (text, held) => {
-          sock_write_str(conn, text)
-          fd_close(conn)
-          held
-        },
+// ONE TRANSPORT. The host owns the process's input — a browser worker over
+// its shared-memory channel, the mentl command over a pipe — and gets one
+// answer per stdin line (session_line_loop), the answer written whole
+// before the next line is read. The listener this verb once served (a
+// socket the host preopened) is gone with the socket seam: WASI p1 has no
+// bind/listen, and a resident session the CLI shares between invocations
+// is a pair of FIFOs the shim would own
+// (`Hβ.cli.resident-session-over-fifos`), never a socket in the wheel.
+//
+// THE GUARD IS INSIDE THE BRACKET, which is mcp_run's own lesson one verb
+// over — "The artifact directory is made INSIDE the bracket, because that
+// is..." — learned there and not here. `fs_exists` is a Filesystem op and
+// dispatch_invocation installs env / graph / mutate / diagnostics and no
+// Filesystem, so this guard ran in a world that cannot answer it. It
+// worked only while a stateless singleton could be direct-called with no
+// record at all; the uniform world bracket ended that, and the guard
+// trapped at its own dispatch (ev_declaring_node, i32.const 100524 =
+// Filesystem, slot 0, pinned at 0xafd83 in session_run). The installs
+// cost nothing on the path that reports no project.
+fn session_run(answer) = infer_context(() => {
+  if driver_module_path("main") == None {
+    eprint_string("mentl session: no resolvable main here — the session holds a project's living graph; run it in a project directory\n")
+    1
+  } else {
+    match driver_entry_with_ranges("main") {
+      (ast, ranges) => {
+        let entry = driver_module_ast(ast, "main")
+        let manifest = driver_manifest(ranges)
+        eprint_string("mentl session: graph resident on stdin — each line is a verb's argv, tab-joined; the answer is written before the next line is read\n")
+        session_line_loop(entry, ranges, manifest, answer, session_current)
       },
     }
-  } ~> arena
-  session_cost(before)
-  match next {
-    (a3, r3, m3) => session_sock_loop(lfd, a3, r3, m3, answer, current),
+    0
   }
-}
+} ~>
+// The filesystem is the OUTERMOST install: an arm's performs resolve outer
+// of its own install, and the query handler's arms read the filesystem (the
+// census's path class asks whether a cited path names a file).
+query_default ~> mentl_default ~> arm_state_ctx([], OneShot, "") ~> spec_registry ~> diag_bank ~> wasi_filesystem)
 
 // What an answer cost the image, on the session's log. Each answer is an
 // arena (lib/arena.mn), so this is what it PUBLISHED: the nodes a question
@@ -576,26 +753,11 @@ fn session_line_loop(ast, ranges, manifest, answer, current) = {
   }
 }
 
-// One read is enough for a verb line (the shim writes it whole and
-// shuts down its side); cut at the first newline.
-fn session_read_line(conn) = {
-  let cap = 65536
-  let buf = alloc(cap)
-  let n = sock_read(conn, buf, cap)
-  let got = if n < 0 { 0 } else { n }
-  let str = bytes_buf(got)
-  mem_copy(addr_at(str, 8), buf, got)
-  let s = str_of_buf(str)
-  let nl = find_char(s, byte_len(s), 0, 10)
-  if nl < 0 { s } else { str_slice(s, 0, nl) }
-}
-
 // The wire is tab-joined argv (quoting survives the shell boundary);
 // a trailing tab leaves one empty tail element, dropped here.
 fn session_argv(line) = {
   let parts = split("\t", line)
-  let n = len(parts)
-  let trimmed = if n > 0 && byte_len(parts[n - 1]) == 0 { slice(parts, 0, n - 1) } else { parts }
+  let trimmed = if len(parts) > 0 && byte_len(last(parts)) == 0 { drop_last(parts) } else { parts }
   ["mentl"] ++ trimmed
 }
 
@@ -636,7 +798,7 @@ fn mcp_run(at_read) = {
     // touched no filesystem while it created directories.
     fs_mkdir(".build")
     fs_mkdir(".build/mcp")
-    if fs_exists(driver_module_path("main")) {
+    if driver_module_path("main") != None {
       match driver_entry_with_ranges("main") {
         (ast, ranges) => {
           eprint_string("session: graph resident — {int_to_str(len(ranges))} modules; queries answer live\n")
@@ -651,6 +813,6 @@ fn mcp_run(at_read) = {
     } else {
       mcp_loop([], [], [], at_read, (a, r, m) => (a, r, m))
     }
-  } ~> wasi_filesystem ~> query_default ~> mentl_default ~> arm_state_ctx([], OneShot, "") ~> spec_registry ~> tighten_collector)
+  } ~> query_default ~> mentl_default ~> arm_state_ctx([], OneShot, "") ~> spec_registry ~> diag_bank ~> wasi_filesystem)
   0
 }

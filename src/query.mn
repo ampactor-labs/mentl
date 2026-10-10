@@ -11,17 +11,17 @@
 // transport; tentacles are already here.
 import types
 
-import graph
-
 import effects
 
-import parser
+import format
 
-import infer
+import graph
 
 import imap
 
-import format
+import infer
+
+import parser
 
 // The structural census (Hβ.query.structural-census — PLAN §11 Phase 0.3):
 // ONE projection taking a structural shape, answering count + located
@@ -35,19 +35,16 @@ import format
 // through show_pipe_kind — the one glyph projection, never a second
 // table), and iteration-shape (CsIterationCostume — the audit tier's
 // detector living HERE, the census its home, the audit a reader).
-// The width past which a declared row stops being an annotation and starts
-// being an inventory. EIGHT, and the number is a reading rather than a taste:
 // A declared-row term that authors a bare positive name — the inventory
-// shape's one test, shared by the census and the audit tier.
+// shape's one test, shared by the census and the audit tier. A row variable
+// names a row the signature quantifies and a group states a mask; both are
+// decisions, never an inventory.
 fn term_is_bare_positive(term) = match term {
-  (name, negated, _) => if negated {
-    false
-  } else {
-    match name {
-      ENamed(_) => true,
-      _ => false,
-    }
+  (RtEff(name), false, _) => match name {
+    ENamed(_) => !row_var_spelled(name),
+    _ => false,
   },
+  _ => false,
 }
 
 type CensusShape
@@ -120,7 +117,44 @@ type CensusShape
   // precedes, so the site is the comment's own span, read off the cell the
   // parse attached. Confessed as a missing facet four times in a day — every
   // audit of the prose went to a grep because no verb read comments.
+  //
+  // THE NEEDLE IS A TOKEN, NOT A SUBSTRING (G2): an end of the needle that is
+  // a word byte must meet a non-word byte in the comment, so a needle naming
+  // one representation answers at that name and never inside a longer one
+  // (the substring read found V1 inside `RV128`).
   | CsProse(String)
+  // A comment of one PROSE CLASS — what SYNTAX §Comments says a comment is not
+  // (a place, a lifecycle, archaeology, decoration, a silenced gate), read by
+  // class rather than by a needle the reader has to know to ask for. The
+  // board bounds each class at its measured count, falling as each module
+  // carrying one is touched.
+  | CsProseClass(ProseClass)
+
+// The prose classes, each the comment-paradigm law it breaks. The needles
+// each class reads live in string literals beside its matcher (prose_needles),
+// never in this prose, so the definition does not count itself.
+type ProseClass
+  // a module coordinate — a file name and a line number, where the
+  // declaration's NAME was the edge; a line number rots at the first edit
+  // above it
+  = PcCoordinate
+  // a repository path that names no file — a deleted module was cited for
+  // weeks after it was gone
+  | PcPathNoFile
+  // a hex commit token — history lives in LEDGER and git, not on the node
+  | PcCommit
+  // a numbered citation of the archived spec corpus, out of the read-path
+  | PcSpecCitation
+  // what was rather than what is — the lifecycle vocabulary SYNTAX forbids
+  | PcLifecycle
+  // the archaeology vocabulary of the seed era and its design notes
+  | PcArchaeology
+  // a decoration run — three or more box-drawing glyphs or equals signs in a
+  // row; the declaration's name IS the heading
+  | PcBanner
+  // the drift audit's suppression marker — a comment that silences a gate,
+  // which SYNTAX says a comment never does
+  | PcSilencer
 
 // Sum type covering every forensic question `mentl query` can pose.
 // Each variant corresponds to one `ask(Q)` arm in `query_default`.
@@ -159,6 +193,9 @@ type Question
   | QFlowOf(String)
   // "census <shape>" — count + sites of a structural shape in the weave
   | QCensus(CensusShape)
+  // "census" — the roster itself: every shape the census knows, by the name
+  // a question asks it with, and its count over this program
+  | QCensusRoster
   // "decls" — the decls column's projection: every declaration the
   // judgment noted, located
   | QDecls
@@ -185,6 +222,9 @@ type Question
   // cannot reach over the frees DAG
   | QUnreachable
   | QPerforms
+  // "env" — every variable the program reads beneath a host install, with
+  // its read site and declaration (`env_demand`)
+  | QEnv
   | QOrphanClaims
   // "smt" — every undischarged obligation rendered as an SMT-LIB assertion,
   // the exact text Phase 8.3's `~> verify_smt` handler will hand a solver.
@@ -199,11 +239,19 @@ type Question
   // "ghosts" — the cells the parser minted that the judgment never bound,
   // located: what the caret reads past, counted so the minting can stop
   | QGhosts
+  // "heads" — every declaration's head, rendered by the formatter and by the
+  // developer's eye, re-parsed and rendered again: a head that does not
+  // come back as itself is a render that does not say what was written
+  | QHeads
+  // "QUESTION in MODULE" — a site facet's answer kept to one module's sites:
+  // the link answers every module it judged, and a developer asking about the
+  // module they are writing reads that module's sites alone
+  | QIn(Question, String)
   | QUnknown(String)
 
 type QueryResult
   = QRType(Ty, Reason)
-  | QRIntent([(EffName, Bool, EConn)])
+  | QRIntent([(RowTerm, Bool, EConn)])
   // [(name, ty, free-tvars)]
   | QRUnresolved([(String, Ty, [Ty])])
   // [(handle, GNode)]
@@ -242,9 +290,12 @@ type QueryResult
   // module names whose line it is — the two halves the weave used to fuse
   // into one global coordinate and three readers had to take apart again.
   | QRCensus(String, [(String, Span)])
-  // the judged decl sites (count = len)
-  // (module, span) pairs, for the same reason the census carries them.
-  | QRDecls([(String, Span)])
+  // (the name a question asks it with, its label, its count) per shape
+  | QRCensusRoster([(String, String, Int)])
+  // every name the judged declarations declare (count = len), each beside
+  // its declaration's (module, span) site — a roster that answered
+  // addresses alone could not say what it listed.
+  | QRDecls([(String, (String, Span))])
   // the weave's module paths, in weave order (count = len)
   | QRModules([String])
   // (importing module, imported path, is any name it brings referenced here)
@@ -253,6 +304,7 @@ type QueryResult
   // (module, fn name, reached-from-entry: 1 or 0)
   | QRUnreachable([(String, String, Int)])
   | QRPerforms([(String, String, Int, Int)])
+  | QREnv([EnvDemand])
   | QROrphanClaims([(String, String, Int)])
   // modules linked, source lines processed, nodes minted
   | QRCost(Int, Int, Int)
@@ -266,7 +318,7 @@ type QueryResult
 // many it spawns, the schedule its own frame installs, the callers whose
 // installs demand it threaded (only where its own frame installs none),
 // and where it stands.
-type WhereSite = WhereSite({schedule: Schedule, shape: SiteShape, span: Span, vias: [String]})
+type WhereSite = {schedule: Schedule, shape: SiteShape, span: Span, vias: [String]}
 
 // A site's branches: a `><` or `<|` with the edges its boundary holds, or
 // the sequence fanout's one branch per element, counted at run time.
@@ -280,131 +332,159 @@ effect Query {
 }
 
 // Read-only projection over the live graph and env. No handler-local
-// state; all data arrives through `GraphRead + EnvRead`. Pure
-// observation — write attempts fail at handler install via the row
-// subsumption gate.
+// state; data arrives through `GraphRead + EnvRead`. The projections that
+// must never write say so in their own rows (`where_badges`): a handler's
+// `!E` would also bind the remainder its arms resume into, which here is a
+// whole compile.
 handler query_default {
-  ask(q) => match q {
-    QTypeOf(name) => match env_lookup(name) {
-      None => resume(QRError("not found: {name}")),
-      Some(entry) => match entry {
-        (scheme, reason, _kind) => resume(QRType(scheme |> judgment_ty |> chase_type_deep, reason)),
-      },
-    },
-    QTypeAt(span) => // One live cursor read: tightest enclosing span → handle → the node's
-    // bound type, chased deep. No throwaway TName("Unknown") chase — the
-    // graph_chase below IS the live read; an unbound node's type IS its own
-    // TVar (the chase terminated there), so the projection is total over the
-    // NodeKind without a fabricated "Unresolved" name.
-    match graph_snapshot() {
-      Graph(_, span_index) => match find_tightest(span_index, span, None, 999999999) {
-        None => resume(QRError("no enclosing span found in AST index")),
-        Some(handle) => match graph_chase(handle) {
-          GNode(kind, reason) => match kind {
-            NBound(ty) => resume(QRType(chase_type_deep(ty), reason)),
-            NFree(_) => resume(QRType(TVar(handle), reason)),
-            NRowBound(_) => resume(QRType(TVar(handle), reason)),
-            NRecordRowBound(_, _) => resume(QRType(TVar(handle), reason)),
-            NRowFree(_) => resume(QRType(TVar(handle), reason)),
-            NErrorHole(_) => resume(QRType(TVar(handle), reason)),
-          },
-        },
-      },
-    },
-    QIntentOf(handle) => // The authored intent row is a field on the FnStmt node the handle
-    // names — read it LIVE (graph_node_body), never a parallel
-    // intent ledger re-found by scan (Carried-Truth). A non-fn node
-    // carries no authored intent.
-    match graph_node_body(handle) {
-      NStmt(FnStmt(_, _, _, effs, _)) => resume(QRIntent(effs)),
-      _ => // drift-audit: ignore
-      resume(QRError("no authored intent at handle {int_to_str(handle)}")),
-    },
-    QUnresolved => match env_snapshot() {
-      Env(entries) => resume(QRUnresolved(find_unresolved(entries))),
-    },
-    QSubstChain(handle) => resume(QRChain(walk_chain(handle, 0))),
-    QEffects(name) => match env_lookup(name) {
-      None => resume(QRError("not found: {name}")),
-      Some(entry) => match entry {
-        (scheme, _, _) => match chase_type_deep(judgment_ty(scheme)) {
-          TFun(_, _, row) => resume(QREffects(row)),
-          _ => resume(QRError("{name} is not a function")),
-        },
-      },
-    },
-    QOwnership(name) => match env_lookup(name) {
-      None => resume(QRError("not found: {name}")),
-      Some(entry) => match entry {
-        (scheme, _, _) => match chase_type_deep(judgment_ty(scheme)) {
-          TFun(params, _, _) => resume(QROwnership(params)),
-          _ => resume(QRError("{name} is not a function")),
-        },
-      },
-    },
-    QWhy(name) => match env_lookup(name) {
-      None => resume(QRError("not found: {name}")),
-      Some(entry) => match entry {
-        (_, reason, _) => // Walk the reason to ROOT — why_expand chases each Fresh(id) through
-        // the graph to its resolved reason, so intent is walkable, not a chain
-        // ending in dangling unification vars. The engine existed (mentl.mn:437)
-        // and only why_from_handle called it; the CLI `why` now performs it too.
-        resume(QRWhy(why_expand(reason, 0))),
-      },
-    },
-    QRefsOf(name) => // Every reference to NAME is a VarRef node in the one graph (the parser
-    // wrote each use into the program weave). refs-of is the projection of
-    // the inbound use-edges: scan the weave for NExpr(VarRef(name)) and
-    // collect each node's span — read live, never an "AST index required"
-    // surrender. This IS rename: the (module, span) sites are exactly the
-    // edit set, and a rename needs the module half — an edit set that names
-    // lines without naming files edits nothing.
-    resume(QRRefs(refs_of_name(name))),
-    QStateWrites(field) => match state_write_lines(field) {
-      [] => resume(QRError("no handler declares a state field `{field}`")),
-      lines => resume(QRWhere(lines, [])),
-    },
-    QDecls => resume(QRDecls(map(decl_site_of, decl_handles()))),
-    QVerifyDebt => {
-      let debt = verify_debt()
-      resume(QRVerifyDebt(debt))
-    },
-    QSmt => // The same bank, handed to the render that speaks solver. Nothing is
-    // re-derived here and nothing may be: a second walk that collected the
-    // obligations again would be the violation this facet's own subject —
-    // the unreached serializer — was a symptom of.
-    resume(QRSmt(verify_debt())),
-    QHandlerProvider(op_name) => // The handler stack IS graph content (PLAN §2 — "the handler chain IS
-    // the capability stack"): each handler decl is a HandlerDeclStmt whose
-    // arms name the ops it provides. Which handlers provide OP are the decls
-    // with an arm for it, each answered at the arm's own line.
-    resume(QRHandlerProvider(handlers_providing_op(op_name))),
-    QFlowOf(name) => // The IFC tentacle: the FlowLabel NAME carries, read over the graph
-    // with no state of its own (`name_flow_label`).
-    match env_lookup(name) {
-      None => resume(QRError("not found: {name}")),
-      Some(entry) => match entry {
-        (scheme, reason, _kind) => resume(QRFlowLabel(name_flow_label(scheme), reason)),
-      },
-    },
-    QCensus(shape) => resume(QRCensus(census_label(shape), census_sites(shape))),
-    QWhere(name, scope) => resume(where_badges(name, scope)),
-    QVariants(tname) => resume(variants_of(tname)),
-    QModules => // A module SET, rendered in the order of its names: the cells arrive in
-    // mint order, which a resident session's re-judged modules leave
-    // behind the ones it kept, so the order had been the history of the
-    // session rather than a fact about the program.
-    resume(QRModules(module_paths() |> sort)),
-    QImports => resume(QRImports(import_report(module_cells()))),
-    QUnreferenced => resume(QRUnreferenced(unreferenced_report(module_cells()))),
-    QUnreachable => resume(QRUnreachable(reach_report(module_cells()))),
-    QPerforms => resume(QRPerforms(effect_report(module_cells()))),
-    QOrphanClaims => resume(QROrphanClaims(orphan_claim_report(module_cells()))),
-    QCost => resume(QRCost(len(module_cells()), weave_line_extent(), graph_next())),
-    QGhosts => resume(QRGhosts(ghost_sites())),
-    QUnknown(q) => resume(QRError("unknown query: {q}")),
-  },
+  ask(q) => resume(query_answer(q)),
 }
+
+// The answer to one question. A scoped question answers its inner question
+// and keeps the sites in the module it names, so the scope is one read over
+// the answer and never a second walk of the graph.
+fn query_answer(q) = match q {
+  QTypeOf(name) => match env_lookup(name) {
+    None => QRError("not found: {name}"),
+    Some(entry) => match entry {
+      (scheme, reason, _kind) => QRType(scheme |> judgment_ty |> chase_type_deep, reason),
+    },
+  },
+  QTypeAt(span) => // One live cursor read: tightest enclosing span → handle → the node's
+  // bound type, chased deep. No throwaway TName("Unknown") chase — the
+  // graph_chase below IS the live read; an unbound node's type IS its own
+  // TVar (the chase terminated there), so the projection is total over the
+  // NodeKind without a fabricated "Unresolved" name.
+  match graph_snapshot() {
+    Graph(_, span_index) => match find_tightest(span_index, span, None, 999999999) {
+      None => QRError("no enclosing span found in AST index"),
+      Some(handle) => match graph_chase(handle) {
+        GNode(kind, reason) => match kind {
+          NBound(ty) => QRType(chase_type_deep(ty), reason),
+          NFree(_) => QRType(TVar(handle), reason),
+          NRowBound(_) => QRType(TVar(handle), reason),
+          NRecordRowBound(_, _) => QRType(TVar(handle), reason),
+          NRowFree(_) => QRType(TVar(handle), reason),
+          NErrorHole(_) => QRType(TVar(handle), reason),
+        },
+      },
+    },
+  },
+  QIntentOf(handle) => // The authored intent row is a field on the FnStmt node the handle
+  // names — read it LIVE (graph_node_body), never a parallel
+  // intent ledger re-found by scan (Carried-Truth). A non-fn node
+  // carries no authored intent.
+  match graph_node_body(handle) {
+    NStmt(FnStmt(_, _, _, effs, _)) => QRIntent(effs),
+    _ => // drift-audit: ignore
+    QRError("no authored intent at handle {int_to_str(handle)}"),
+  },
+  QUnresolved => match env_snapshot() {
+    Env(entries) => QRUnresolved(find_unresolved(entries)),
+  },
+  QSubstChain(handle) => QRChain(walk_chain(handle, 0)),
+  QEffects(name) => match env_lookup(name) {
+    None => QRError("not found: {name}"),
+    Some(entry) => match entry {
+      (scheme, _, _) => match chase_type_deep(judgment_ty(scheme)) {
+        TFun(_, _, row) => QREffects(row),
+        _ => QRError("{name} is not a function"),
+      },
+    },
+  },
+  QOwnership(name) => match env_lookup(name) {
+    None => QRError("not found: {name}"),
+    Some(entry) => match entry {
+      (scheme, _, _) => match chase_type_deep(judgment_ty(scheme)) {
+        TFun(params, _, _) => QROwnership(params),
+        _ => QRError("{name} is not a function"),
+      },
+    },
+  },
+  QWhy(name) => match env_lookup(name) {
+    None => QRError("not found: {name}"),
+    Some(entry) => match entry {
+      (_, reason, _) => // Walk the reason to ROOT — why_expand chases each Fresh(id) through
+      // the graph to its resolved reason, so intent is walkable, not a chain
+      // ending in dangling unification vars.
+      QRWhy(why_expand(reason, 0)),
+    },
+  },
+  QRefsOf(name) => // Every reference to NAME is a VarRef node in the one graph (the parser
+  // wrote each use into the program weave). refs-of is the projection of
+  // the inbound use-edges: scan the weave for NExpr(VarRef(name)) and
+  // collect each node's span — read live, never an "AST index required"
+  // surrender. This IS rename: the (module, span) sites are exactly the
+  // edit set, and a rename needs the module half — an edit set that names
+  // lines without naming files edits nothing.
+  QRRefs(refs_of_name(name)),
+  QStateWrites(field) => match state_write_lines(field) {
+    [] => QRError("no handler declares a state field `{field}`"),
+    lines => QRWhere(lines, []),
+  },
+  QDecls => QRDecls(flat_map(decl_names_at, decl_handles())),
+  QVerifyDebt => QRVerifyDebt(verify_debt()),
+  QSmt => // The same bank, handed to the render that speaks solver. Nothing is
+  // re-derived here and nothing may be: a second walk that collected the
+  // obligations again would be the violation this facet's own subject —
+  // the unreached serializer — was a symptom of.
+  QRSmt(verify_debt()),
+  QHandlerProvider(op_name) => // The handler stack IS graph content (PLAN §2 — "the handler chain IS
+  // the capability stack"): each handler decl is a HandlerDeclStmt whose
+  // arms name the ops it provides. Which handlers provide OP are the decls
+  // with an arm for it, each answered at the arm's own line.
+  QRHandlerProvider(handlers_providing_op(op_name)),
+  QFlowOf(name) => // The IFC tentacle: the FlowLabel NAME carries, read over the graph
+  // with no state of its own (`name_flow_label`).
+  match env_lookup(name) {
+    None => QRError("not found: {name}"),
+    Some(entry) => match entry {
+      (scheme, reason, _kind) => QRFlowLabel(name_flow_label(scheme), reason),
+    },
+  },
+  QCensus(shape) => QRCensus(census_label(shape), census_sites(shape)),
+  QCensusRoster => QRCensusRoster(census_roster() |> map(roster_row)),
+  QWhere(name, scope) => where_badges(name, scope),
+  QVariants(tname) => variants_of(tname),
+  QModules => // A module SET, rendered in the order of its names: the cells arrive in
+  // mint order, which a resident session's re-judged modules leave
+  // behind the ones it kept, so the order had been the history of the
+  // session rather than a fact about the program.
+  QRModules(module_paths() |> sort),
+  QImports => QRImports(import_report(module_cells())),
+  QUnreferenced => QRUnreferenced(unreferenced_report(module_cells())),
+  QUnreachable => QRUnreachable(reach_report(module_cells())),
+  QPerforms => QRPerforms(effect_report(module_cells())),
+  QEnv => QREnv(env_demand()),
+  QOrphanClaims => QROrphanClaims(orphan_claim_report(module_cells())),
+  QCost => QRCost(len(module_cells()), weave_line_extent(), graph_next()),
+  QGhosts => QRGhosts(ghost_sites()),
+  QHeads => QRWhere(head_round_trip(), []),
+  QIn(inner, m) => query_answer(inner) |> sites_in(m),
+  QUnknown(raw) => QRError("unknown query: {raw}"),
+}
+
+// The sites of an answer that stand in module `m`, named as every site line
+// names its module. An answer that carries no sites has nothing to keep, and
+// says which facets a scope reads.
+fn sites_in(m, answer) = match answer {
+  QRRefs(sites) => QRRefs(filter(site_in_module(m, ??), sites)),
+  QRCensus(label, sites) => QRCensus(label, filter(site_in_module(m, ??), sites)),
+  QRGhosts(sites) => QRGhosts(filter(site_in_module(m, ??), sites)),
+  QRDecls(named) => QRDecls(filter(named_in_module(m, ??), named)),
+  QRVerifyDebt(debt) => QRVerifyDebt(filter(obligation_in_module(m, ??), debt)),
+  QRSmt(debt) => QRSmt(filter(obligation_in_module(m, ??), debt)),
+  QRError(msg) => QRError(msg),
+  unscoped => QRError("`in` keeps a site facet's sites: refs of, census, text, prose, ghosts, decls, verification, smt"),
+}
+
+fn site_in_module(m, site) = match site {
+  (path, span) => path == m,
+}
+
+fn named_in_module(m, named) = site_in_module(m, name_site(named))
+
+fn obligation_in_module(m, ob) = site_in_module(m, debt_site(ob))
 
 // The label a name carries: what its type names — a declaration's
 // return, a nominal type's predicate, a row's confinement — joined, for a
@@ -805,6 +885,7 @@ fn predicate_names(pred) = match pred {
   PFlowLe(_, _) => [],
   PWithSelf(_, inner) => predicate_names(inner),
   PTotalDiv(_, a, b) => handle_var_names(a) ++ handle_var_names(b),
+  PInBounds(recv, idx) => handle_var_names(recv) ++ handle_var_names(idx),
   PProvides(provided) => match provided {
     ProvidedAt(nodes) => nodes |> flat_map(handle_var_names),
     ProvidedBeyond(nodes) => nodes |> flat_map(handle_var_names),
@@ -1063,29 +1144,22 @@ fn ref_is_outside(extent, site) with !Mutate = {
 // ─── The decls column's projection — one home, two readers ──────────
 //
 // decl_handles — the judged DECLARATION handles (fn, value binding,
-// handler, type, effect, alias), read from the graph's decls column and
-// deduped by handle (judgment rounds re-note the same decl); the "decls"
-// facet renders them located.
+// handler, type, effect, alias), read from the graph's decls column. A
+// speculative judgment's rounds re-note one declaration, so each handle is
+// kept at its first sight, read off a word map in one pass; the "decls"
+// facet renders them named and located.
 fn decl_handles() = {
   let hs = graph_decls_at()
-  dedup_handles(hs, 0, make_list(0))
-}
-
-fn dedup_handles(hs, i, acc) = if i >= len(hs) {
-  acc
-} else {
-  let h = hs[i]
-  if handle_in(acc, h, 0) {
-    dedup_handles(hs, i + 1, acc)
-  } else {
-    dedup_handles(hs, i + 1, push(acc, h))
+  match hs |> fold(([], wmap_new(len(hs) + 1)), first_sight) {
+    (kept, _) => kept,
   }
 }
 
-fn handle_in(acc, target, i) = if i >= len(acc) {
-  false
-} else {
-  if acc[i] == target { true } else { handle_in(acc, target, i + 1) }
+fn first_sight(acc, h) = match acc {
+  (kept, seen) => match wmap_get(seen, h) {
+    Some(_) => acc,
+    None => (push(kept, h), wmap_add(seen, h, ())),
+  },
 }
 
 // ─── The structural census — count + sites of a shape in the weave ──
@@ -1115,6 +1189,121 @@ fn census_label(shape) = match shape {
   CsRecordPattern => "record pattern(s)",
   CsText(needle) => "string literal(s) containing `{needle}`",
   CsProse(needle) => "comment(s) containing `{needle}`",
+  CsProseClass(c) => "comment(s) carrying {prose_class_label(c)}",
+}
+
+fn prose_class_label(c) = match c {
+  PcCoordinate => "a module coordinate",
+  PcPathNoFile => "a path that names no file",
+  PcCommit => "a hex commit token",
+  PcSpecCitation => "a spec citation",
+  PcLifecycle => "lifecycle prose",
+  PcArchaeology => "archaeology",
+  PcBanner => "a decoration run",
+  PcSilencer => "a gate silenced",
+}
+
+// The name a question asks a shape by — the one home the query grammar reads
+// (census_shape_of) and the roster prints, so a shape is spelled once.
+fn census_name(shape) = match shape {
+  CsAnonymous => "anonymous",
+  CsVerb(k) => show_pipe_kind(k),
+  CsEta => "eta",
+  CsEffectfulLambda => "effectful-lambda",
+  CsIterationCostume => "iteration",
+  CsWildcardZero => "wildcard-zero",
+  CsFailureMask => "failure-mask",
+  CsPrintInReport => "print-in-report",
+  CsWildcardFabricates => "wildcard-fabricates",
+  CsUnderscoreRetain => "underscore-retain",
+  CsFlagAsInt => "flag-as-int",
+  CsParallelArrays => "parallel-arrays",
+  CsVtableRecord => "vtable-record",
+  CsEnvFrame => "env-frame",
+  CsDefaultParam => "default-param",
+  CsDeclaredRowHof => "declared-row-hof",
+  CsAuthoredPositiveRow => "positive-row",
+  CsRecordPattern => "record-pattern",
+  CsText(needle) => "text {needle}",
+  CsProse(needle) => "prose {needle}",
+  CsProseClass(c) => "prose-{prose_class_name(c)}",
+}
+
+fn prose_class_name(c) = match c {
+  PcCoordinate => "coordinate",
+  PcPathNoFile => "path",
+  PcCommit => "commit",
+  PcSpecCitation => "spec",
+  PcLifecycle => "lifecycle",
+  PcArchaeology => "archaeology",
+  PcBanner => "banner",
+  PcSilencer => "silencer",
+}
+
+fn prose_classes() = [
+  PcCoordinate,
+  PcPathNoFile,
+  PcCommit,
+  PcSpecCitation,
+  PcLifecycle,
+  PcArchaeology,
+  PcBanner,
+  PcSilencer
+]
+
+// THE ROSTER — every shape the census answers without a needle, listable
+// (`mentl query <entry> census`). It answered "unknown query" until G2, so
+// the only way to learn the shapes was to read this file.
+fn census_roster() =
+  [CsAnonymous, CsEta, CsEffectfulLambda, CsIterationCostume] ++ drift_roster() ++ [CsDefaultParam, CsDeclaredRowHof, CsAuthoredPositiveRow, CsRecordPattern] ++ map(CsVerb, [PForward, PFanout(FanShare), PFanout(FanDistribute), PTee, PFeedback]) ++ map(CsProseClass, prose_classes())
+
+fn roster_row(shape) = (census_name(shape), census_label(shape), len(census_sites(shape)))
+
+// A shape by the name a question asks it with: the roster read, never a
+// second spelling of it.
+fn census_shape_named(arg: String) = find(census_named(arg), census_roster())
+
+fn census_named(arg: String, shape) = census_name(shape) == arg
+
+// A LOCATED answer: the label and the (module, span) sites of a question the
+// medium answers by place — the shape the board bounds. A question answered
+// by a type, a reason or a table has no sites, and the board refuses a bound
+// over it rather than counting nothing.
+fn located_answer(r) = match r {
+  QRCensus(label, sites) => Some((label, sites)),
+  QRGhosts(sites) => Some(("cell(s) minted and never judged", sites)),
+  QRVerifyDebt(obligations) => Some(("open obligation(s)", map(debt_site, obligations))),
+  QRSmt(obligations) => Some(("open obligation(s)", map(debt_site, obligations))),
+  QRDecls(names) => Some(("declared name(s)", names |> map(name_site))),
+  QRRefs(sites) => Some(("reference(s)", sites)),
+  QRType(_, _) => None,
+  QRIntent(_) => None,
+  QRUnresolved(_) => None,
+  QRChain(_) => None,
+  QREffects(_) => None,
+  QROwnership(_) => None,
+  QRWhy(_) => None,
+  QRHandlerProvider(_) => None,
+  QRFlowLabel(_, _) => None,
+  QRCensusRoster(_) => None,
+  QRModules(_) => None,
+  QRImports(_) => None,
+  QRUnreferenced(_) => None,
+  QRUnreachable(_) => None,
+  QRPerforms(_) => None,
+  QREnv(_) => None,
+  QROrphanClaims(_) => None,
+  QRCost(_, _, _) => None,
+  QRWhere(_, _) => None,
+  QRError(_) => None,
+}
+
+fn debt_site(ob) = match ob {
+  (modh, s, _, _) => (module_name_of_handle(modh), s),
+}
+
+fn name_site(named) = match named {
+  (name, site) => site,
 }
 
 fn census_sites(shape) with !Mutate = match graph_snapshot() {
@@ -1167,6 +1356,7 @@ fn census_walk(shape, i, n, acc) with !Mutate = if i >= n {
 // which stands where the comment does.
 fn census_site_at(shape, h) with !Mutate = match shape {
   CsProse(_) => graph_comment_span_at(h),
+  CsProseClass(_) => graph_comment_span_at(h),
   _ => span_of_node_raw(h),
 }
 
@@ -1399,11 +1589,135 @@ fn census_matches(shape: CensusShape, h, body: NodeBody) with !Mutate = match sh
     _ => false,
   },
   CsProse(needle) => prose_holds(graph_comment_at(h), needle),
+  CsProseClass(c) => prose_class_holds(c, graph_comment_at(h)),
 }
 
 // A node with no comment holds no prose, so an empty needle lists every
 // comment and never every node.
-fn prose_holds(t: String, needle: String) = byte_len(t) > 0 && str_contains(t, needle)
+fn prose_holds(t: String, needle: String) =
+  byte_len(t) > 0 && (byte_len(needle) == 0 || holds_token(t, needle))
+
+// THE TOKEN-BOUNDED READ: some occurrence of the needle whose word-byte ends
+// meet non-word bytes. The comment split at the needle puts each occurrence
+// between two neighbouring parts, so the boundary test reads the part before
+// it and the part after it — no index walked.
+fn holds_token(t: String, needle: String) = {
+  let parts = split(needle, t)
+  zip(parts, rest(parts)) |> any(bounded_between(needle))
+}
+
+fn bounded_between(needle: String, pair) = match pair {
+  (before, after) => start_bounded(needle, before) && end_bounded(needle, after),
+}
+
+fn start_bounded(needle: String, before: String) =
+  !is_alnum(byte_at(needle, 0)) || byte_len(before) == 0 || !is_alnum(byte_at(before, byte_len(before) - 1))
+
+fn end_bounded(needle: String, after: String) =
+  !is_alnum(byte_at(needle, byte_len(needle) - 1)) || byte_len(after) == 0 || !is_alnum(byte_at(after, 0))
+
+// A class's read of one comment.
+fn prose_class_holds(c, t: String) = byte_len(t) > 0 && match c {
+  PcCoordinate => holds_followed_by_digit(t, ".mn:"),
+  PcPathNoFile => comment_tokens(t) |> any(names_no_file),
+  PcCommit => comment_tokens(t) |> any(is_commit_token),
+  PcSpecCitation => holds_followed_by_digit(t, "spec "),
+  PcLifecycle => any(holds_token(t), ["no longer", "previously", "legacy"]) || holds_followed_by_digit(t, "Until 20"),
+  PcArchaeology => any(holds_token(t), ["walkthrough", "walkthroughs", "seed's", "DELETED"]),
+  PcBanner => decoration_run(t) >= 3,
+  PcSilencer => str_contains(t, "drift-audit: ignore"),
+}
+
+// An occurrence, start-bounded, that a digit follows: a coordinate's line, a
+// spec's number, a year.
+fn holds_followed_by_digit(t: String, needle: String) = {
+  let parts = split(needle, t)
+  zip(parts, rest(parts)) |> any(digit_follows(needle))
+}
+
+fn digit_follows(needle: String, pair) = match pair {
+  (before, after) => start_bounded(needle, before) && byte_len(after) > 0 && is_digit(byte_at(after, 0)),
+}
+
+// The comment's whitespace-separated words, each trimmed of the punctuation
+// prose wraps around a token — a backtick, a paren, a trailing comma.
+fn comment_tokens(t: String) = t |> words |> map(token_core)
+
+fn token_core(w: String) = if byte_len(w) == 0 {
+  w
+} else if !token_byte(byte_at(w, 0)) {
+  token_core(str_slice(w, 1, byte_len(w)))
+} else if !token_byte(byte_at(w, byte_len(w) - 1)) {
+  token_core(str_slice(w, 0, byte_len(w) - 1))
+} else {
+  w
+}
+
+fn token_byte(b) with Pure = is_alnum(b)
+
+// A commit token: seven to forty lowercase hex bytes, with a digit and a
+// letter both — a count is all digits and a word is all letters.
+fn is_commit_token(w: String) =
+  byte_len(w) >= 7 && byte_len(w) <= 40 && all(is_hex_lower, w) && any(is_digit, w) && any(is_hex_letter, w)
+
+fn is_hex_lower(b) with Pure = is_digit(b) || is_hex_letter(b)
+
+fn is_hex_letter(b) with Pure = b >= 97 && b <= 102
+
+// A repository path is a token rooted in one of the tree's own directories
+// and ending in a file extension; it names no file when the filesystem the
+// question runs over holds none at it. A glob or a template (a placeholder in
+// braces or angle brackets) names a pattern, never a file.
+fn names_no_file(w: String) =
+  repo_rooted(w) && has_extension(w) && !names_a_pattern(w) && !fs_exists(w)
+
+fn names_a_pattern(w: String) = any(str_contains(w), ["*", "\{", "<", ">"])
+
+fn repo_rooted(w: String) =
+  any(starts_with(w), ["src/", "lib/", "tools/", "tests/", "docs/", "ide/", "examples/", "boot/"])
+
+fn has_extension(w: String) = any(
+  ends_with(w),
+  [
+    ".mn",
+    ".sh",
+    ".md",
+    ".py",
+    ".js",
+    ".mjs",
+    ".tsv",
+    ".txt",
+    ".json",
+    ".wasm",
+    ".wat",
+    ".html",
+    ".css"
+  ]
+)
+
+// The longest run of decoration glyphs in a comment: box-drawing (U+2500 to
+// U+257F, three bytes each, lead 0xE2 then 0x94 or 0x95) or an equals sign.
+// The fold carries (run, best, where the byte stands inside a glyph).
+fn decoration_run(t: String) = match fold((0, 0, GlyphBetween), decoration_step, t) {
+  (_, best, _) => best,
+}
+
+// Where a byte stands relative to a three-byte box-drawing glyph.
+type GlyphPhase = GlyphBetween | GlyphAfterLead | GlyphAfterBlock
+
+fn decoration_step(state, b) = match state {
+  (run, best, phase) => match phase {
+    GlyphAfterLead => if b == 148 || b == 149 { (run, best, GlyphAfterBlock) } else { (0, best, GlyphBetween) },
+    GlyphAfterBlock => (run + 1, max(best, run + 1), GlyphBetween),
+    GlyphBetween => if b == 226 {
+      (run, best, GlyphAfterLead)
+    } else if b == 61 {
+      (run + 1, max(best, run + 1), GlyphBetween)
+    } else {
+      (0, best, GlyphBetween)
+    },
+  },
+}
 
 // The match half of CsRecordPattern, walked by index the way this file's
 // sibling arm-walkers are.
@@ -1532,8 +1846,17 @@ fn subtree_calls_param_children(hs, pnames, fuel) with !Mutate = match hs {
 // newly absorbed mode joins by one entry here (the widening
 // count-tuple this replaced was the per-site family at seven arms —
 // the uniform pass, applied to the tier's own construction).
-fn drift_roster() =
-  [CsWildcardZero, CsFailureMask, CsPrintInReport, CsWildcardFabricates, CsUnderscoreRetain, CsFlagAsInt, CsParallelArrays, CsVtableRecord, CsEnvFrame]
+fn drift_roster() = [
+  CsWildcardZero,
+  CsFailureMask,
+  CsPrintInReport,
+  CsWildcardFabricates,
+  CsUnderscoreRetain,
+  CsFlagAsInt,
+  CsParallelArrays,
+  CsVtableRecord,
+  CsEnvFrame
+]
 
 fn drift_shapes_of(fn_handle) with !Mutate = {
   // The walk starts at the FN NODE, not its body: a shape can live ON
@@ -1852,7 +2175,7 @@ fn lambda_carries_row(h) with !Mutate = match graph_chase(h) {
 // declares a type and an effect both named Sample — so the answer is every
 // one of them, each at its address; a name no type-level declaration
 // claims answers as a value or a binder.
-fn where_badges(name: String, scope: String) with !Mutate = match graph_decls_at() |> filter(decl_is_named(name, ??)) |> flat_map(type_level_lines) {
+fn where_badges(name: String, scope: String) with !Mutate + !GraphWrite + !RowWrite = match graph_decls_at() |> filter(decl_is_named(name, ??)) |> flat_map(type_level_lines) {
   [] => value_where(name, scope),
   lines => QRWhere(lines, []),
 }
@@ -1864,13 +2187,8 @@ fn where_badges(name: String, scope: String) with !Mutate = match graph_decls_at
 // `tee_line`, read at the declaration).
 fn type_level_lines(h) with !Mutate = match graph_node_body(h) {
   NStmt(s) => match s {
-    TypeDefStmt(name, variants) => named_lines(flat_map(variant_tys, variants), "type {name}{decl_at(h)}", variant_badge, variants),
-    EffectDeclStmt(name, params, ops) => named_lines(
-      map(param_ty, params) ++ flat_map(op_tys, ops),
-      "effect {name}{effect_params_text(params)}{decl_at(h)}",
-      op_badge,
-      ops
-    ),
+    TypeDefStmt(name, variants) => named_lines("type {name}{decl_at(h)}", variant_badge, variants),
+    EffectDeclStmt(name, params, ops) => named_lines("effect {name}{effect_params_text(params)}{decl_at(h)}", op_badge, ops),
     RefineStmt(_, _, _) => ["{render_stmt_tokens(s)}{decl_at(h)}"],
     AliasStmt(_, _) => ["{render_stmt_tokens(s)}{decl_at(h)}"],
     RowAliasStmt(_, _) => ["{render_stmt_tokens(s)}{decl_at(h)}"],
@@ -1883,27 +2201,60 @@ fn type_level_lines(h) with !Mutate = match graph_node_body(h) {
   _ => [],
 }
 
+// THE HEAD ROUND TRIP — `parse(render(head)) == head`, for every function
+// declared at module level in the link, through both heads a developer reads:
+// the formatter's (what the page holds) and the eye's (what `where`, `doc` and
+// the caret show). Each is rendered, parsed as the declaration it spells, and
+// rendered again by the formatter; a head that comes back different is a
+// render that says something the parser does not read back. The answer's
+// first line is the count; each failing head follows with what it came back
+// as.
+fn head_round_trip() = {
+  let fns = graph_decls_at() |> filter(at_module_level) |> flat_map(fn_decl_of)
+  let failures = flat_map(head_failures, fns)
+  ["{int_to_str(len(fns))} head(s), {int_to_str(len(failures))} that do not round-trip"] ++ failures
+}
+
+fn fn_decl_of(h) = match graph_node_body(h) {
+  NStmt(FnStmt(name, params, retty, effs, body)) => [(name, params, retty, effs, body)],
+  _ => [],
+}
+
+fn head_failures(decl) = match decl {
+  (name, params, retty, effs, body) => {
+    let authored = render_fn_head(name, params, retty, effs, body)
+    let eye = match env_lookup(name) {
+      Some((sch, _, _)) => match chase_type_deep(judgment_ty(sch)) {
+        TFun(ps, ret, row) => "fn {show_head(name, ps, ret, row)} =",
+        _ => authored,
+      },
+      None => authored,
+    }
+    round_trip_failure("fmt", authored) ++ round_trip_failure("eye", eye)
+  },
+}
+
+// The head parsed as the declaration it spells, then rendered by the
+// formatter: empty when it comes back as itself.
+fn round_trip_failure(face: String, head: String) = match "{head} 0" |> lex |> parse_program ~> diag_quiet {
+  [N(NStmt(FnStmt(n, ps, r, es, b)), _, _)] => {
+    let back = render_fn_head(n, ps, r, es, b)
+    if back == head { [] } else { ["{face}: {head}  ⇢  {back}"] }
+  },
+  _ => ["{face}: {head}  ⇢  does not parse as one declaration"],
+}
+
 // A type's or an effect's lines: the head, then one line per constructor
-// or op, its type variables named as a developer writes them (inside a
-// checkpoint, as a function's are).
-fn named_lines(tys, head: String, line, items) with !Mutate = {
-  let cp = graph_push_checkpoint()
-  name_type_vars(tys)
-  let lines = [head] ++ map(line, items)
-  graph_rollback(cp)
-  lines
-}
+// or op, under one naming, so a variable two lines share reads as one name.
+fn named_lines(head: String, line, items) with !Mutate = [head] ++ map(line, items) ~> var_names
 
-fn variant_tys(v) = match v {
-  (_, fields, _) => fields,
-}
+// The declaration a global name names: its one module-level declaration,
+// read off the decls column, which holds every judged declaration — a
+// block's `let`s and nested fns beside a module's own. A module-level name is
+// unique in the link (`E_DuplicateFnName`), so the first is the one.
+fn module_decl(name: String) with !Mutate = find(module_decl_named(name, ??), graph_decls_at())
 
-fn op_tys(op) = match op {
-  (_, params, ret, _) => push(map(param_ty, params), ret),
-}
-
-// The declaration a name names, of any kind — read off the decls column.
-fn decl_named(name: String) with !Mutate = find(decl_is_named(name, ??), graph_decls_at())
+fn module_decl_named(name: String, h) = decl_is_named(name, h) && at_module_level(h)
 
 fn decl_is_named(name: String, h) = body_decl_name(graph_node_body(h)) == name
 
@@ -1914,31 +2265,33 @@ fn decl_at(h) with !Mutate = match parse_span_of(h) {
 }
 
 fn variant_badge(v) with !Mutate = match v {
-  (ctor, fields, _) => if len(fields) == 0 { "  {ctor}" } else { "  {ctor}({join(", ", map(show_type, fields))})" },
+  (ctor, fields, _) => if len(fields) == 0 { "  {ctor}" } else { "  {ctor}({join(", ", map(render_ty, fields))})" },
 }
 
+// An op's line is its head: a unit result omitted, a parameter the author
+// left bare shown as its type.
 fn op_badge(op) with !Mutate = match op {
-  (name, params, ret, _) => "  {name}({join(", ", map(op_param_text, params))}) -> {show_type(ret)}",
+  (name, params, ret, _) => "  {name}({join(", ", map(render_tparam, params))}){render_ret(ret)}",
 }
-
-fn op_param_text(p) with !Mutate = "{param_name(p)}: {show_type(param_ty(p))}"
 
 fn effect_params_text(params) with !Mutate =
-  if len(params) == 0 { "" } else { "({join(", ", map(op_param_text, params))})" }
+  if len(params) == 0 { "" } else { "({join(", ", map(render_tparam, params))})" ~> var_names }
 
 fn value_where(name: String, scope: String) with !Mutate = match env_lookup(name) {
   None => binder_badges(name, scope),
   Some(entry) => match entry {
     (scheme, _, kind) => match kind {
       EffectOpScheme(ename, _, _, disc) => QRWhere(
-        ["{name} : {ename} op — resume {op_resume_ty(scheme)} {disc_glyph(disc)} answer{effect_address(ename)}"],
+        [
+          "{name} : {ename} op — resume {op_resume_ty(scheme)} {disc_glyph(disc)} answer{effect_address(ename)}"
+        ],
         []
       ),
       _ => {
         let ty = judgment_ty(scheme)
         match chase_type_deep(ty) {
           TFun(params, ret, row) => decl_badges(name, params, ret, row),
-          _ => QRWhere([value_badge(name, ty)], []),
+          _ => QRWhere([value_badge(name, ty) ~> var_names], []),
         }
       },
     },
@@ -1952,65 +2305,20 @@ fn value_where(name: String, scope: String) with !Mutate = match env_lookup(name
 // function value with no declaration body (a module let holding a
 // closure, a constructor) answers its head, parameters and return.
 fn decl_badges(name: String, params, ret, row) with !Mutate = {
-  let body = decl_body(name)
-  let cp = graph_push_checkpoint()
-  name_type_vars([TFun(params, ret, row)])
+  let decl = module_decl(name)
+  let body = decl_body(decl)
+  // One naming for the head, every badge and every install: the variables a
+  // developer would write, read off the render context (`var_names`), never
+  // bound in the graph.
   let lines =
-    [decl_head(name, params, row) ++ decl_address(name)] ++ map(param_badge, params) ++ ["-> {value_type(ret)} @ {width_badge(ret)}"]
-  let tees = flat_map(tee_lines, body)
-  graph_rollback(cp)
-  QRWhere(lines ++ tees, body |> flat_map(fanout_sites(??, [])) |> demand_onto(name))
+    [render_head(name, params, ret, row) ++ decl_address(decl)] ++ map(param_badge, params) ++ ret_badge(ret) ++ flat_map(tee_lines, body) ~> var_names
+  QRWhere(lines, body |> flat_map(fanout_sites(??, [])) |> demand_onto(name))
 }
 
-// THE VARIABLES A DEVELOPER WOULD WRITE. A type variable still free renders
-// as its handle (`t9538@e599`), the forensic projection's "unresolved at
-// epoch e"; a badge is not forensic, and a variable a declaration
-// quantifies is generic, not unresolved. Inside a checkpoint each free type
-// variable is bound to the name a developer would write — the one it was
-// declared with (`a` in `f: a -> b`), else the first letter not taken —
-// so the one renderer shows names, and the caller's rollback leaves the
-// graph as the projection found it. A raw bind: no judgment reads it, and
-// no demand on the cell is consulted. A row variable keeps its handle
-// (`Hβ.voice.free-variables-render-as-handles`).
-fn name_type_vars(tys) with !Mutate = {
-  let vars = tys |> flat_map(free_type_vars) |> unique
-  let picked = fold([], pick_name(flat_map(declared_name, vars), ??, ??), vars)
-  vars |> enumerate |> each(bind_picked(picked, ??))
-}
-
-fn free_type_vars(ty) with !Mutate = ty |> chase_deep |> free_in_ty |> filter(is_type_cell)
-
-fn is_type_cell(v) with !Mutate = match graph_chase(v) {
-  GNode(NFree(_), _) => true,
-  _ => false,
-}
-
-// The name a type parameter was written with: its cell is minted with the
-// authored lowercase name as its reason (`quantify_ctor_ty`).
-fn declared_name(v) with !Mutate = match graph_reason_at(v) {
-  Declared(n) => if is_type_param_name(n) { [n] } else { [] },
-  _ => [],
-}
-
-fn is_type_param_name(n: String) =
-  byte_len(n) > 0 && first_char_code(n) >= 97 && first_char_code(n) <= 122
-
-// A variable's name in first-appearance order: its declared one, else the
-// first letter neither declared by another variable nor picked already.
-fn pick_name(declared, picked, v) with !Mutate = match declared_name(v) {
-  [d] => push(picked, d),
-  _ => push(picked, first_untaken(declared ++ picked, 0)),
-}
-
-fn bind_picked(picked, iv) with !Mutate = match iv {
-  (i, v) => graph_bind(v, TName(picked[i], []), Inferred("the name a developer would write")),
-}
-
-// The letters a to z, then t26, t27 and onward — the first not already
-// taken.
-fn first_untaken(taken, i) = {
-  let n = if i < 26 { str_slice("abcdefghijklmnopqrstuvwxyz", i, i + 1) } else { "t{int_to_str(i)}" }
-  if string_in_list(taken, n) { first_untaken(taken, i + 1) } else { n }
+// The result's badge; a unit result has none, as its head writes no arrow.
+fn ret_badge(ret) with !Mutate = match chase_ret(ret) {
+  TUnit => [],
+  _ => ["-> {value_type(ret)} @ {width_badge(ret)}"],
 }
 
 // A site whose own frame installs no schedule runs under the one its
@@ -2024,18 +2332,14 @@ fn site_is_seq(site) = match site {
 }
 
 fn site_demanded(vias, site) = match site {
-  WhereSite(s) => if schedule_is_seq(s.schedule) { WhereSite({...s, vias: vias}) } else { site },
+  WhereSite(s) => if schedule_is_seq(s.schedule) { WhereSite({...s, vias}) } else { site },
 }
 
-fn decl_head(name: String, params, row) with !Mutate =
-  "{name}({join(", ", map(param_name, params))}){show_row_suffix(row)}"
-
-// Where the declaration stands, in the developer's coordinates: its node off
-// the decls column, the module that node registered under, the line the
-// parser wrote. A function value with no declaration of its own — a
-// constructor, a module let holding a closure — has no line to give, and the
-// head stands alone.
-fn decl_address(name: String) with !Mutate = match decl_named(name) {
+// Where the declaration stands, in the developer's coordinates: the module
+// its node registered under and the line the parser wrote. A function value
+// with no declaration of its own — a constructor, a module let holding a
+// closure — has no line to give, and the head stands alone.
+fn decl_address(decl) with !Mutate = match decl {
   Some(h) => decl_at(h),
   None => // drift-audit: ignore — no declaration node, so no address: the head is the whole answer
   "",
@@ -2063,28 +2367,25 @@ fn param_badge(p) with !Mutate = value_badge(param_name(p), param_ty(p))
 fn value_badge(name: String, ty) with !Mutate = "{name} : {value_type(ty)} @ {width_badge(ty)}"
 
 fn value_type(ty) with !Mutate = match chase_type_deep(ty) {
-  TReprPin(_, base) => show_type(base),
-  shown => show_type(shown),
+  TReprPin(_, base) => render_ty(base),
+  shown => render_ty(shown),
 }
 
 // A width as the gradient settled it. A type that is still a variable has
 // no one width: every instantiation is specialized and takes its own (the
 // total monomorphization), so the floor the variable would read is not
-// what any caller runs. Under `name_type_vars` the variable reads as the
-// lowercase name a type parameter is written with — the case rule's own
-// spelling, which no judged type holds otherwise.
+// what any caller runs.
 fn width_badge(ty) with !Mutate = match chase_type_deep(ty) {
   TVar(_) => "per instantiation",
-  TName(n, []) => if is_type_param_name(n) { "per instantiation" } else { known_width(TName(n, [])) },
   chased => known_width(chased),
 }
 
 fn known_width(ty) with !Mutate = "{repr_name(repr_of(ty))} ({pin_word(ty_has_repr_pin(ty))})"
 
-// A declaration's body, read off the decls column by the index the emit
-// demands schedule twins through (`fanout_decls_index`), so the two cannot
-// disagree about which declaration a name is. A list: none, or one.
-fn decl_body(name: String) with !Mutate = match smap_get(fanout_decls_index(), name) {
+// A declaration's body: the expression its function holds, so the installs
+// and fanout sites `where` lists are the ones under the head it prints. A
+// list: none, or one.
+fn decl_body(decl) with !Mutate = match decl {
   Some(h) => match graph_node_body(h) {
     NStmt(FnStmt(_, _, _, _, body)) => [node_handle(body)],
     _ => [],
@@ -2110,13 +2411,7 @@ fn binder_badges(name: String, scope: String) with !Mutate = {
 
 // One binder's badge with its own variables named: binders of one name in
 // different scopes share no variables, so each line names its own.
-fn named_badge(name: String, b) with !Mutate = {
-  let cp = graph_push_checkpoint()
-  name_type_vars([TVar(b)])
-  let line = value_badge(name, TVar(b))
-  graph_rollback(cp)
-  line
-}
+fn named_badge(name: String, b) with !Mutate = value_badge(name, TVar(b)) ~> var_names
 
 fn read_in(scope: String, r) with !Mutate =
   byte_len(scope) == 0 || module_name_of_handle(graph_module_of(r)) == scope
@@ -2256,7 +2551,7 @@ fn child_sites(body, tees) with !Mutate =
   body_child_handles(body) |> flat_map(fanout_sites(??, tees))
 
 fn where_site(h, shape, tees) with !Mutate =
-  WhereSite({schedule: schedule_of(tees), shape: shape, span: span_of_node_raw(h), vias: []})
+  WhereSite({schedule: schedule_of(tees), shape, span: span_of_node_raw(h), vias: []})
 
 // The branch edges the judgment drew at the site, one per branch (the
 // `><` and `<|` judgments both write a FanoutBoundary). A fanout the
@@ -2349,11 +2644,11 @@ fn demand_step(decls, name: String, acc, callee: String) with !Mutate = match ac
       (found, memo) => {
         let walked = smap_add(st.walked, callee, 1)
         if found && str_eq(callee, name) {
-          (true, next, {memo: memo, walked: walked})
+          (true, next, {memo, walked})
         } else if found {
-          (false, fold(next, push, direct_callees(decls, callee)), {memo: memo, walked: walked})
+          (false, fold(next, push, direct_callees(decls, callee)), {memo, walked})
         } else {
-          (false, next, {memo: memo, walked: walked})
+          (false, next, {memo, walked})
         }
       },
     }
@@ -2389,15 +2684,10 @@ fn tee_lines(h) with !Mutate = {
 // since a handler whose every arm resumes answers each install's body and
 // its answer is a variable of its scheme.
 fn handler_line(name: String, arms, h) with !Mutate = {
-  let cp = graph_push_checkpoint()
   let answer = match handler_answer_of(name) {
-    Some(a) => {
-      name_type_vars([a])
-      ", answers {value_type(a)}"
-    },
+    Some(a) => ", answers {value_type(a) ~> var_names}",
     None => "",
   }
-  graph_rollback(cp)
   "handler {name} absorbs {join(" + ", handler_effect_names(arms))}{answer}{decl_at(h)}"
 }
 
@@ -2408,10 +2698,124 @@ fn tee_line(h, hn: String) with !Mutate = if byte_len(hn) == 0 {
   []
 } else {
   match handler_arms(hn) {
-    Some(arms) => ["~> {hn} absorbs {join(" + ", handler_effect_names(arms))}, answers {value_type(lookup_ty(h))} at {show_span(span_of_node_raw(h))}"],
+    Some(arms) => [
+      "~> {hn} absorbs {join(" + ", handler_effect_names(arms))}, answers {value_type(lookup_ty(h))} at {show_span(span_of_node_raw(h))}"
+    ],
     None => ["~> {hn} at {show_span(span_of_node_raw(h))} — no handler declaration by that name"],
   }
 }
+
+// The program's demand on its host (E1).
+//
+// Every variable the program reads with `env` or `env_opt` (lib/environ.mn)
+// beneath an install whose handler crosses the host boundary, with the line
+// that reads it and the declaration that holds the line. A computed optional
+// name requests the whole host environment; it remains visible here instead
+// of silently becoming an empty read. One home, read twice: the `env`
+// facet (`mentl query <entry> env`, the manifest nobody writes) and the
+// emit's launch gate, which hands it to `env_demand_check` before main. It is
+// read at the PERFORM sites, never off a row: main's row is free of Env the
+// moment an install absorbs it, and a row meeting a ground instance beside an
+// ungrounded one keeps the ungrounded one. Required reads with computed names
+// are refused by the judgment; optional computed reads are explicitly marked
+// as broad host access.
+type EnvDemand = {decl: String, mode: String, name: String, site: String}
+
+fn env_demand() =
+  ["env", "env_opt"] |> flat_map({ op => graph_applies_at(op) }) |> unique |> sort |> fold([], env_demand_at)
+
+fn env_demand_at(acc, c) = match env_read_demand(c) {
+  None => acc,
+  Some((name, mode)) => if any(handler_crosses_host, serving_installs("Environ", c, [])) {
+    push(acc, EnvDemand({decl: enclosing_decl_name(c), mode, name, site: env_read_site(c)}))
+  } else {
+    acc
+  },
+}
+
+// A literal read narrows host access to that name. A computed optional read
+// is honest about its dynamic demand: the host-crossing handler must receive the whole
+// environment for the op to preserve its Option(String) semantics.
+fn env_read_demand(c) = match graph_node_body(c) {
+  NExpr(CallExpr(callee, args)) => match graph_node_body(node_handle(callee)) {
+    NExpr(VarRef(op)) => if (op == "env" || op == "env_opt") && op_effect_of(op) == Some("Environ") {
+      match (op, args) {
+        ("env", [N(NExpr(LitString(s)), _, _), ..._]) => Some((s, "required")),
+        ("env", _) => None,
+        ("env_opt", [N(NExpr(LitString(s)), _, _), ..._]) => Some((s, "optional")),
+        ("env_opt", _) => Some(("*", "all optional")),
+      }
+    } else {
+      None
+    },
+    _ => None,
+  },
+  _ => None,
+}
+
+// The handlers that can serve an operation of EN performed at H: up the
+// parent edges, the innermost `~>` whose body holds H and whose handler
+// answers EN; past a lambda or a nested function, where it is minted (a value
+// that escapes its install's extent is read as served there — named,
+// `Hβ.env.demand-through-an-escaping-value`); at a declaration of the module,
+// every application of it, each served where it stands. SEEN keeps a
+// recursion from walking itself.
+fn serving_installs(en: String, h, seen) = serving_up(en, h, graph_parent_of(h), seen)
+
+fn serving_up(en: String, child, parent, seen) = match parent {
+  None => [],
+  Some(p) => match graph_node_body(p) {
+    NModule(_) => match graph_node_body(child) {
+      NStmt(FnStmt(name, _, _, _, _)) => if string_in_list(seen, name) {
+        []
+      } else {
+        graph_applies_at(name) |> unique |> flat_map(serving_installs(en, ??, push(seen, name)))
+      },
+      _ => [],
+    },
+    NExpr(PipeExpr(PTee, l, r)) => if node_handle(l) == child && handler_answers_effect(tee_handler_name(r), en) {
+      [tee_handler_name(r)]
+    } else {
+      serving_up(en, p, graph_parent_of(p), seen)
+    },
+    _ => serving_up(en, p, graph_parent_of(p), seen),
+  },
+}
+
+fn handler_answers_effect(hname: String, en: String) = match handler_arms(hname) {
+  Some(arms) => string_in_list(handler_effect_names(arms), en),
+  None => false,
+}
+
+// A handler crosses the host boundary when what its arms perform past what
+// it absorbs reaches WASI — env_from_host's do; env_fixed's never ask a host.
+fn handler_crosses_host(hname: String) = match env_lookup(hname) {
+  Some(entry) => match entry {
+    (_, _, HandlerKind(residual, _, _, _, _)) => match resolve_row(mk_ef_open([], residual)) {
+      EfRow(names, _, _) => any({ n => eff_name_str(n) == "WASI" }, names),
+    },
+    _ => false,
+  },
+  None => false,
+}
+
+fn enclosing_decl_name(h) = match graph_parent_of(h) {
+  None => "",
+  Some(p) => match graph_node_body(p) {
+    NModule(_) => body_decl_name(graph_node_body(h)),
+    _ => enclosing_decl_name(p),
+  },
+}
+
+fn env_read_site(c) = match parse_span_of(c) {
+  Span(l, col, _, _) => "{module_name_of_handle(graph_module_of(c))}:{int_to_str(l)}:{int_to_str(col)}",
+}
+
+// The roster as the launch gate reads it: name, mode, site and declaration
+// separated by tabs (`env_demand_check`, lib/environ.mn). Only `required`
+// rows participate in the launch refusal; optional rows shape host access.
+fn env_demand_roster(rows) =
+  join("\n", map({ EnvDemand({decl, mode, name, site}) => "{name}\t{mode}\t{site}\t{decl}" }, rows))
 
 fn handler_arms(hname: String) = match env_lookup(hname) {
   Some(entry) => match entry {
@@ -2461,14 +2865,38 @@ fn schedule_word(s) = match s {
   Persisted => "Persisted",
 }
 
-// span_of_handle — the node's source span, read live from its Reason chain
-// (the parser/infer wrote Located(span, _) at the node). One graph_chase, the
 // A decl's site: its own module beside its own span, both read from the
 // columns the parser wrote. The span is the mint fact — a chased reason
 // answers the class representative's position, and a type declaration's
 // node is never bound at all, so its reason carries none.
 fn decl_site_of(handle) with !Mutate =
   (module_name_of_handle(graph_module_of(handle)), parse_span_of(handle))
+
+// Every name a declaration declares, each at the declaration's site: its
+// own (`body_decl_name`, the one reader of it), then a type's constructors,
+// an effect's operations and a handler's state fields — the names a program
+// can say that this declaration minted.
+fn decl_names_at(handle) with !Mutate = {
+  let body = graph_node_body(handle)
+  [body_decl_name(body)] ++ inner_decl_names(body) |> map(named_at(decl_site_of(handle)))
+}
+
+fn named_at(site, name) = (name, site)
+
+fn inner_decl_names(body) = match body {
+  NStmt(TypeDefStmt(_, variants)) => map(variant_name, variants),
+  NStmt(EffectDeclStmt(_, _, ops)) => map(op_decl_name, ops),
+  NStmt(HandlerDeclStmt(_, _, _, states, _, _)) => map(state_field_name, states),
+  _ => [],
+}
+
+fn variant_name(v) = match v {
+  (name, _, _) => name,
+}
+
+fn op_decl_name(op) = match op {
+  (name, _, _, _) => name,
+}
 
 fn span_of_reason(reason) = match reason {
   Located(sp, _) => sp,
@@ -2498,8 +2926,9 @@ fn arm_site(hname: String, arm) with !Mutate = (hname, decl_at(node_handle(arm.b
 //
 // The judgment notes a state field's writers on its init before any arm is
 // judged (`StateFact`): the init and each `resume … with` update of the
-// field. The facet reads that fact for every handler declaring a field of
-// the name, each writer as its first source line at its address.
+// field — and every value an arm stores into it in place. The facet reads
+// that fact for every handler declaring a field of the name, each writer as
+// its first source line at its address.
 fn state_write_lines(field: String) with !Mutate =
   flat_map(field_write_lines(field, ??), graph_decls_at())
 
@@ -2511,12 +2940,19 @@ fn field_write_lines(field: String, h) with !Mutate = match graph_node_body(h) {
 fn state_named(field: String, st) = st.name == field
 
 fn state_writes(hname: String, st) with !Mutate = match graph_binder_of(node_handle(st.init)) {
-  Some(StateFact(f)) => ["{hname}.{st.name}: {int_to_str(len(f.writes))} write(s)"] ++ map(write_line, f.writes),
+  Some(StateFact(f)) => [
+    "{hname}.{st.name}: {int_to_str(len(f.writes))} write(s), {int_to_str(len(f.stores))} in-place store(s)"
+  ] ++ map(write_line, f.writes) ++ map(store_line, f.stores),
   _ => ["{hname}.{st.name}: no writers noted — the handler was never judged"],
 }
 
 fn write_line(w) with !Mutate =
   "  {head(split("\n", render_body_tokens(graph_node_body(w))))}{decl_at(w)}"
+
+// An in-place store, as the value it stores (or the argument a callee
+// stores through).
+fn store_line(c) with !Mutate =
+  "  store {head(split("\n", render_body_tokens(graph_node_body(c))))}{decl_at(c)}"
 
 // ─── Span → name — the inverse use-edge read (goto/rename anchor) ──
 //

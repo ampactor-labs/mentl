@@ -59,13 +59,13 @@
 // the one output this reading may not produce.
 import types
 
-import graph
-
 import effects
 
-import lower
+import graph
 
 import io
+
+import lower
 
 // The reading's program for each install, seeded once where emit settles the
 // module and read where an LDerive emits; and the arm twins a perform names
@@ -81,8 +81,14 @@ effect DerivedPrograms {
 // it expands under, the projection it took, the program, and the tangent
 // rings its reach ticks — zeroed where the reading opens, so each line's
 // history before it is held fixed.
-type Expansion
-  = Expansion({body: LowExpr, enc: String, install: Int, mode: Mode, pairs: [(Int, Ty)], rings: [TangentRing]})
+type Expansion = {
+  body: LowExpr,
+  enc: String,
+  install: Int,
+  mode: Mode,
+  pairs: [(Int, Ty)],
+  rings: [TangentRing],
+}
 
 // The projection an extent took: the tangent program, or the transposed one.
 type Mode = MForward | MReverse
@@ -90,19 +96,26 @@ type Mode = MForward | MReverse
 // A `<~` line's tangent ring: the line's site, its depth, and the symbol
 // whose static line it is — one ring per (site, owner), the line's own
 // geometry at f64 slots, indexed by the line's own head.
-type TangentRing = TangentRing({depth: Int, owner: String, site: Int})
+type TangentRing = {depth: Int, owner: String, site: Int}
 
 // One place the reading stands: the install, the symbol whose body holds it
 // (empty for a top-level value's initializer), and the bracket that body
 // emits under.
-type Extent = Extent({enc: String, install: LowExpr, owner: String, pairs: [(Int, Ty)]})
+type Extent = {enc: String, install: LowExpr, owner: String, pairs: [(Int, Ty)]}
 
 // A lowered body the reading can twin: its symbol, parameters, body and
 // capture fence, the bracket it emits under, and the symbol whose
 // enumeration entry states its face — the base name for a monomorphic twin,
 // whose mangled name has none.
-type TwinSource
-  = TwinSource({body: [LowExpr], enc: String, face: String, fence: Int, pairs: [(Int, Ty)], params: [String], sym: String})
+type TwinSource = {
+  body: [LowExpr],
+  enc: String,
+  face: String,
+  fence: Int,
+  pairs: [(Int, Ty)],
+  params: [String],
+  sym: String,
+}
 
 // ─── What the reading knows about a value ─────────────────────────────
 //
@@ -409,12 +422,12 @@ fn arm_queries(n, arm) = match arm {
 // value; its tangent, valid once the statements have run; what the reading
 // knows about it; and, for a query of a product seed, the gradient it
 // answers.
-type Jvp = Jvp({act: Act, ans: Ans, pre: [Beside], tan: Lin, val: LowExpr})
+type Jvp = {act: Act, ans: Ans, pre: [Beside], tan: Lin, val: LowExpr}
 
 // A tangent rides beside an f64, and a function value carries its captures'
 // tangents in its own record; a value of any other kind that the seed reaches
 // is lost where it stands, never carried at the wrong width.
-fn jv(pre, val, tan, act) = Jvp({act: at_width(val, act), ans: ANone, pre: pre, tan: tan, val: val})
+fn jv(pre, val, tan, act) = Jvp({act: at_width(val, act), ans: ANone, pre, tan, val})
 
 fn at_width(val, act) = {
   let h = lexpr_handle(val)
@@ -1386,7 +1399,10 @@ fn jvp_stmts_from(stmts, i, env, cx, out) = if i >= len(stmts) {
     },
     last_stmt => {
       let jl = jvp(last_stmt, env, cx)
-      (out ++ jv_pre(jl), Jvp({act: jv_act(jl), ans: jv_ans(jl), pre: [], tan: jv_tan(jl), val: jv_val(jl)}))
+      (
+        out ++ jv_pre(jl),
+        Jvp({act: jv_act(jl), ans: jv_ans(jl), pre: [], tan: jv_tan(jl), val: jv_val(jl)})
+      )
     },
   }
 } else {
@@ -1822,6 +1838,7 @@ fn jvp_feedback(h, depth, home, body, spec, env, cx) = match cx {
     // value's), have no tangent ring the reading can reach.
     let prior = match home {
       LhSlot(_) => unentered_from(h, site, LwClosureLine),
+      LhShare(_, _) => unentered_from(h, site, LwClosureLine),
       LhStatic => if field_name_eq(owner, "") { unentered_from(h, site, LwValueLine) } else { stale_or(site) },
       LhStaticJvp => site,
     }
@@ -1868,6 +1885,7 @@ fn is_static(home) = match home {
   LhStatic => true,
   LhStaticJvp => true,
   LhSlot(_) => false,
+  LhShare(_, _) => false,
 }
 
 fn body_of(h, jb) =
@@ -2176,12 +2194,14 @@ fn rv_back_stmt(s, qh) = match s {
   STan(h, n, l) => rv_transpose(l, LLocal(h, adj_name(n))) ++ [LLet(h, adj_name(n), LConst(h, LFloat(0.0)))],
   SIf(h, _, c, t, e) => {
     let ch = lexpr_handle(c)
-    [LIf(
-      h,
-      LLocal(ch, rv_pred(h)),
-      rv_backward(t, qh) ++ [rv_zero_of(h)],
-      rv_backward(e, qh) ++ [rv_zero_of(h)]
-    )]
+    [
+      LIf(
+        h,
+        LLocal(ch, rv_pred(h)),
+        rv_backward(t, qh) ++ [rv_zero_of(h)],
+        rv_backward(e, qh) ++ [rv_zero_of(h)]
+      )
+    ]
   },
   SMatch(h, _, sc, arms) => {
     let sh = lexpr_handle(sc)
@@ -2362,7 +2382,7 @@ handler deriving(prev, table, touching, faces_of) with twins = [], results = [],
   dv_twin_at(i) => resume(twin_at(prev.twins, twins, i)),
   dv_site(key) => resume(assoc_act(prev.sites, key)),
   dv_site_join(key, a) => resume() with sites = push(sites, (key, a)),
-  dv_ring(h, depth, owner) => resume() with rings = push(rings, (current, TangentRing({depth: depth, owner: owner, site: h}))),
+  dv_ring(h, depth, owner) => resume() with rings = push(rings, (current, TangentRing({depth, owner, site: h}))),
   dv_forward(h) => resume() with stale = act_join(stale, ALost(h, LwStaleLine)),
   dv_stale() => resume(prev.stale),
   dv_store(h) => resume() with memory = act_join(memory, ALost(h, LwMemory)),
@@ -2375,16 +2395,16 @@ handler deriving(prev, table, touching, faces_of) with twins = [], results = [],
   dv_has_record(sym) => resume(len(smap_get_all(table, sym)) > 0),
   dv_touches(sym) => resume(len(smap_get_all(touching, sym)) > 0),
   dv_pass_facts() => resume({
-    arm_faces: arm_faces,
-    calls: calls,
+    arm_faces,
+    calls,
     faces: prev.faces ++ faces,
-    memory: memory,
+    memory,
     only: prev.only ++ only,
-    refusals: refusals,
-    results: results,
-    rings: rings,
-    sites: sites,
-    stale: stale,
+    refusals,
+    results,
+    rings,
+    sites,
+    stale,
     twins: prev.twins ++ twins,
   }),
 }
@@ -2451,8 +2471,11 @@ fn face_fact(src) = match src {
   },
 }
 
-fn face_of_entry(sym: String, e) =
-  (sym, sig_code(map(param_slot_repr, e.params), slot_repr_of(e.ret)), join("", map(param_letter, e.params)))
+fn face_of_entry(sym: String, e) = (
+  sym,
+  sig_code(map(param_slot_repr, e.params), slot_repr_of(e.ret)),
+  join("", map(param_letter, e.params))
+)
 
 fn param_slot_repr(p) = match p {
   (_, t) => slot_repr_of(t),
@@ -2563,8 +2586,7 @@ fn let_units(vl) = match vl {
   (_name, init) => map(extent_at("", [], "", ??), installs_in(init, [])),
 }
 
-fn extent_at(owner: String, pairs, enc: String, install) =
-  Extent({enc: enc, install: install, owner: owner, pairs: pairs})
+fn extent_at(owner: String, pairs, enc: String, install) = Extent({enc, install, owner, pairs})
 
 fn installs_in_list(xs, acc) = fold(acc, installs_step, xs)
 
@@ -2768,7 +2790,10 @@ fn expand_install(ld, owner: String) = match ld {
       dv_seed_set([])
       if len(fields) == 0 {
         match roots {
-          [(hs, tname), ..._] => (MForward, LBlock(h, [LLet(hs, tname, LConst(hs, LFloat(1.0)))] ++ lower_forward(jv_pre(jb)) ++ [jv_val(jb)])),
+          [(hs, tname), ..._] => (
+            MForward,
+            LBlock(h, [LLet(hs, tname, LConst(hs, LFloat(1.0)))] ++ lower_forward(jv_pre(jb)) ++ [jv_val(jb)])
+          ),
           [] => (MForward, body),
         }
       } else {
@@ -2930,15 +2955,7 @@ fn twin_of(src, name: String, key: String, vjp) = match src {
         }
         let params = if vjp { r.params ++ ["__g"] } else { twin_params(r.params, key, 0, []) }
         spec_ctx_clear()
-        {
-          enc: r.enc,
-          face: r.face,
-          key: key,
-          pairs: r.pairs,
-          rec: (name, params, body, r.fence),
-          sym: r.sym,
-          vjp: vjp,
-        }
+        {enc: r.enc, face: r.face, key, pairs: r.pairs, rec: (name, params, body, r.fence), sym: r.sym, vjp}
       },
     }
   },
@@ -3048,11 +3065,11 @@ fn derived_none() =
   {adjoint_registers: 0, arm_faces: [], expansions: [], faces: [], rings: [], twins: []}
 
 fn base_source(r) = match r {
-  (name, params, body, fence) => TwinSource({body: body, enc: "", face: name, fence: fence, pairs: [], params: params, sym: name}),
+  (name, params, body, fence) => TwinSource({body, enc: "", face: name, fence, pairs: [], params, sym: name}),
 }
 
 fn spec_source(tw) = match tw.rec {
-  (m, params, body, fence) => TwinSource({body: body, enc: tw.enc, face: tw.base, fence: fence, pairs: tw.pairs, params: params, sym: m}),
+  (m, params, body, fence) => TwinSource({body, enc: tw.enc, face: tw.base, fence, pairs: tw.pairs, params, sym: m}),
 }
 
 fn table_add(t, src) = match src {
@@ -3205,14 +3222,7 @@ fn derived_find(xs, h: Int, enc: String, i) = if i >= len(xs) {
 // An extent's expansion, with the tangent rings its reach ticks: its own and
 // every twin's it reaches through the call edges.
 fn expansion_with_rings(x, facts) = match x {
-  (name, h, enc, pairs, mode, body) => Expansion({
-    body: body,
-    enc: enc,
-    install: h,
-    mode: mode,
-    pairs: pairs,
-    rings: reach_rings(name, facts.calls, facts.rings),
-  }),
+  (name, h, enc, pairs, mode, body) => Expansion({body, enc, install: h, mode, pairs, rings: reach_rings(name, facts.calls, facts.rings)}),
 }
 
 fn reach_rings(unit: String, calls, rings) = {

@@ -6,7 +6,7 @@
 // demand analysis now mints $sum_acc$sp2 (the same body emitted under the
 // spec_wty specialization state at the site's Float instantiation), the recursion stays
 // in-key, and the sum is native f64. RED (run 1) on the pre-spec boot.
-fn sum_acc(xs, i, acc) with Memory =
+fn sum_acc(xs, i, acc) =
   if i >= 3 { acc } else { sum_acc(xs, i + 1, acc + list_index(xs, i)) }
 
 fn main() = {

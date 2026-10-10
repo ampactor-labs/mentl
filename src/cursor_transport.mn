@@ -53,27 +53,27 @@
 //                           browser-WASM compile.
 import types
 
-import effects
-
 import cursor
-
-import mentl
-
-import voice
 
 import driver
 
-import query
-
-import verify
-
-import strings
-
-import io
+import effects
 
 import egraph
 
 import format
+
+import io
+
+import mentl
+
+import query
+
+import strings
+
+import verify
+
+import voice
 
 // ─── The Surface effect ─────────────────────────────────────────────
 //
@@ -125,8 +125,13 @@ fn default_cadence() = CadDebounced(250)
 //
 // Drift 5 + Drift 7 closure: caret + cursor + cadence + buffer fold
 // into ONE record. No parallel arrays of {names, spans, ...}.
-type TransportState
-  = TransportState({cadence: Cadence, caret: Caret, cursor: Cursor, last_render: Reason, session_id: Int})
+type TransportState = {
+  cadence: Cadence,
+  caret: Caret,
+  cursor: Cursor,
+  last_render: Reason,
+  session_id: Int,
+}
 
 // user's text-attention
 //
@@ -262,7 +267,7 @@ fn state_advance(state, latest_cursor) = match state {
 
 fn state_with_render(state, cursor) = match state {
   TransportState(s) => match cursor {
-    Cursor(_, reason, _) => TransportState({cadence: s.cadence, caret: s.caret, cursor: cursor, last_render: reason, session_id: s.session_id}),
+    Cursor(_, reason, _) => TransportState({cadence: s.cadence, caret: s.caret, cursor, last_render: reason, session_id: s.session_id}),
   },
 }
 
@@ -325,8 +330,13 @@ fn accept_fill(handle, survivor, proof) with !Mutate = {
   let span = parse_span_of(handle)
   let text = render_candidate_source(survivor)
   let module = module_name_of_handle(graph_module_of(handle))
-  graph_accept_note(module, accepted_extent(span, text), text, proof)
-  write_module(module, splice_span(fs_read_file(driver_module_path(module)), span, text))
+  match driver_module_path(module) {
+    Some(path) => {
+      graph_accept_note(module, accepted_extent(span, text), text, proof)
+      write_module(module, splice_span(fs_read_file(path), span, text))
+    },
+    None => eprint_string("mentl accept: `{module}` resolves to no file — nothing written\n"),
+  }
 }
 
 // THE GRADIENT'S ACCEPT (D4). A declaration's position carries no proposal;
@@ -367,21 +377,26 @@ fn accept_annotation(handle, s) with !Mutate = match s {
   AnnotationSuggestion(ann, _, _) => match graph_node_body(handle) {
     NStmt(FnStmt(name, params, retty, effs, body)) => {
       let module = module_name_of_handle(graph_module_of(handle))
-      let source = fs_read_file(driver_module_path(module))
-      match splice_decl_head(
-        source,
-        parse_span_of(handle),
-        node_start_span(body),
-        annotated_head(ann, name, params, retty, effs, body),
-        stated_by(ann, params)
-      ) {
-        Some(edited) => {
-          write_module(module, edited)
-          true
-        },
+      match driver_module_path(module) {
         None => {
-          eprint_string("mentl edit: `{name}`'s head did not render conserved — nothing written\n")
+          eprint_string("mentl edit: `{module}` resolves to no file — nothing written\n")
           false
+        },
+        Some(path) => match splice_decl_head(
+          fs_read_file(path),
+          parse_span_of(handle),
+          node_start_span(body),
+          annotated_head(ann, name, params, retty, effs, body),
+          stated_by(ann, params)
+        ) {
+          Some(edited) => {
+            write_module(module, edited)
+            true
+          },
+          None => {
+            eprint_string("mentl edit: `{name}`'s head did not render conserved — nothing written\n")
+            false
+          },
         },
       }
     },
@@ -396,8 +411,8 @@ fn accept_annotation(handle, s) with !Mutate = match s {
 // clause joined to its row, a parameter's type set to the alias, or the
 // return set to it.
 fn annotated_head(ann, name: String, params, retty, effs, body) with !Mutate = match ann {
-  APure(_) => render_fn_head(name, params, retty, effs ++ [(EPure, false, EcUnion)], body),
-  ANotEffect(n, _) => render_fn_head(name, params, retty, effs ++ [(ENamed(intern_str(n)), true, EcUnion)], body),
+  APure(_) => render_fn_head(name, params, retty, effs ++ [(RtEff(EPure), false, EcUnion)], body),
+  ANotEffect(n, _) => render_fn_head(name, params, retty, effs ++ [(RtEff(ENamed(intern_str(n))), true, EcUnion)], body),
   ARefined(r) => render_fn_head(name, params |> map(restated_param(r.param, r.alias, ??)), retty, effs, body),
   AReturns(r) => render_fn_head(name, params, N(NTypeAnn(TName(r.alias, [])), span_zero(), 0), effs, body),
 }
@@ -590,10 +605,18 @@ effect PatchWrite {
 // hole, typed and proposing, while the file already carried the accepted
 // value (measured 2026-09-30, the first probe of C4). One read, one span
 // space, and the accepted node is the one the address reaches.
+// A module's new text, written to the file its name resolves to. A module
+// that resolves to no file is never given one: the write is refused aloud,
+// because the path a missing module would get is a guess.
+fn module_write(module: String, text: String) = match driver_module_path(module) {
+  Some(path) => fs_write_file(path, text),
+  None => eprint_string("mentl: `{module}` resolves to no file — nothing written\n"),
+}
+
 handler patch_to_file with target_module = "" {
   patch_set_target(name) => resume() with target_module = name,
   write_module(module, text) => {
-    fs_write_file(driver_module_path(module), text)
+    module_write(module, text)
     driver_entry_with_ranges(target_module)
     resume()
   },
@@ -608,7 +631,7 @@ handler patch_to_file with target_module = "" {
 handler patch_written {
   patch_set_target(_) => resume(),
   write_module(module, text) => {
-    fs_write_file(driver_module_path(module), text)
+    module_write(module, text)
     resume()
   },
 }

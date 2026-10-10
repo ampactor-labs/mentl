@@ -13,24 +13,28 @@
 // it, and rolled it back before offering it. A `??` is you asking directly; it
 // names a hole the medium proposes into.
 //
-// Edit it:  mentl space   →   http://localhost:7378/ide/   (paste this in)
+// Edit it:  Mentl Space — the page in ide/, live at https://space.ampactor.dev/ (this lesson is in its program list)
 // Read it:  mentl lib/tutorial/07-gradient.mn:23   ← the Teach facet names the next move
 import io
 
-// add carries no annotation. Inference still proves its row is Pure; the
-// gradient here would offer `with Pure` — same body, and now the medium may
-// memoize it, fold it at compile time, or run it beside anything.
+// add carries no annotation. Inference still proves its row is Pure, and the
+// gradient here offers `with Pure`: the same body, now carrying a LOCK — an
+// edit that makes the body perform an effect refuses at this declaration
+// instead of widening the row silently. The row is projected either way; the
+// clause is the decision to hold it.
 fn add(a, b) = a + b
 
 // The same body, the annotation taken. Nothing about the computation changed;
-// what changed is what the medium is now allowed to do with it.
+// what changed is what the medium will now refuse on your behalf.
 fn add_pure(a, b) with Pure = a + b
 
 // A bigger unlock lives here. step allocates nothing, so `with !Alloc` makes it
 // safe inside a real-time callback. The annotation did not make it faster; it
 // stated a promise the medium could already prove, and unlocked the callers
-// that need it. Put the cursor on it and the medium says the body proves more
-// than you promised — Pure — and that tightening is the next move it offers.
+// that need it. Put the cursor on it: the ring reads `Effects: Pure when
+// called` — the body proves more than the promise — and a negation is never
+// over-declared, so the medium offers nothing further here; the lock is the
+// point.
 fn step(x) with !Alloc = x * 2 - 1
 
 fn main() = add_pure(step(20), 3) |> int_to_str |> print_string

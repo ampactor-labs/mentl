@@ -21,18 +21,27 @@ type EntryVerb
   = VEdit(Option(String))
   | VDoc(Option(String))
   | VServe
-  | VSpace
+  // the View at an address — `mentl space <path>:<line>[:<col>] [<needle>]`
+  // writes it as JSON (space.mn); bare `mentl space` is the page, the mentl
+  // command's
+  | VSpace(Option(SpaceAt))
   | VTighten(Option(String))
-  | VFmt(String)
+  // the paths to render canonical — none is the project, the working
+  // directory's tree; `--check` writes nothing and lists what is not
+  | VFmt(FmtMode, [String])
   // target REQUIRED — carried non-optionally
   | VCompile(String)
+  // the WAT file to assemble; absent means stdin
+  | VAsm(Option(String))
   // a persisted image path — the file IS the argument
   | VResume(String)
   | VCompileStdin
   // target, then the program's own argv (everything after the target — the
   // executor hands it to the program as its args, NUL-joined at the seam)
   | VRun(String, [String])
-  | VCheck(String)
+  // no target judges the PROJECT (its `main`, wherever the resolver finds it);
+  // a target judges that entry's link — every module of it reports either way
+  | VCheck(Option(String))
   // the cursor-address form — `mentl lib/tutorial/09-all.mn:40:20`: target, line, col (0 = whole-line). Drift-38's endpoint: the address IS the surface; verbs are transports
   | VAt(String, Int, Int)
   // the accept form — `mentl accept <path>:<line>:<col>`: the second graph
@@ -64,8 +73,10 @@ type EntryHandlerInvocation = Invocation(EntryVerb) | ParseError(String)
 // ─── The verb table — ONE home the parser AND the help project ────────
 //
 // A VerbSpec carries the verb's name, its argument hint (for the help line),
-// the BUILDER that projects argv → the typed Invocation (or a ParseError that
-// names the missing argument), and its one-line description. The builder is a
+// the BUILDER that projects the words after the verb's name → the typed
+// Invocation (or a ParseError that names the missing argument), and its
+// one-line description. Each builder takes its words apart by pattern, so a
+// word it reads is one the list proved it holds. The builder is a
 // first-class effectful CLOSURE stored in the field — the medium carries
 // functions-with-their-rows through data (the same capability handlers rest
 // on), so the verb→construction edge is the graph's own edge, never a tag a
@@ -77,178 +88,212 @@ type EntryHandlerInvocation = Invocation(EntryVerb) | ParseError(String)
 // runner arm in dispatch_invocation.
 type VerbSpec = VerbSpec(String, String, ([String]) -> EntryHandlerInvocation, String)
 
-// req_target — the shared shape of the target-REQUIRED verbs (compile / run /
-// check / audit): argv[2] resolved to a module, or a ParseError that names the
-// verb and shows its usage. `mk` builds the variant from the resolved module.
-fn req_target(argv, mk, msg) =
-  if len(argv) >= 3 { Invocation(mk(path_to_module(argv[2]))) } else { ParseError(msg) }
+// The target-REQUIRED verbs (compile / audit): the first word resolved to a
+// module, or a ParseError that names the verb and shows its usage. `mk`
+// builds the variant from the resolved module.
+fn req_target(words, mk, msg) = match words {
+  [target, ..._] => Invocation(mk(path_to_module(target))),
+  [] => ParseError(msg),
+}
+
+// The target-OPTIONAL verbs (check / edit / teach / doc / test / tighten /
+// verify): the first word as a module when there is one.
+fn opt_target(mk, words) = Invocation(mk(optional_target(words)))
+
+// The verbs that take no words.
+fn bare_verb(verb, words) = Invocation(verb)
 
 // The run verb keeps everything after its target: those words are the
 // PROGRAM's argv, not the wheel's, and the executor passes them through.
-fn run_verb_args(a) = if len(a) >= 3 {
-  Invocation(VRun(path_to_module(a[2]), drop(3, a)))
-} else {
-  ParseError("run needs a target: mentl run <path> [args…]")
+fn run_verb_args(words) = match words {
+  [target, ...args] => Invocation(VRun(path_to_module(target), args)),
+  [] => ParseError("run needs a target: mentl run <path> [args…]"),
 }
 
-// The verbs, in help-presentation order (the parser matches by name, so order
-// here is the human's reading order, never the dispatch order). A `""` hint is
-// a no-argument verb.
-fn where_verb_args(a) = if len(a) >= 4 {
-  Invocation(VQuery(path_to_module(a[2]), "where {a[3]}"))
-} else {
-  ParseError("where needs a target and a name: mentl where <path> <name>")
+// Assembly takes a WAT file path as-is, or stdin when no file is named.
+fn asm_verb_args(words) = Invocation(VAsm(first_of(words)))
+
+fn where_verb_args(words) = match words {
+  [target, name, ..._] => Invocation(VQuery(path_to_module(target), "where {name}")),
+  short => ParseError("where needs a target and a name: mentl where <path> <name>"),
 }
 
 // The bare why verb (SYNTAX's lag list, first name retired): the same
 // Reason-chain walk the query facet serves, surfaced as its own verb.
-fn why_verb_args(a) = if len(a) >= 4 {
-  Invocation(VQuery(path_to_module(a[2]), "why {a[3]}"))
-} else {
-  ParseError("why needs a target and a name: mentl why <path> <name>")
+fn why_verb_args(words) = match words {
+  [target, name, ..._] => Invocation(VQuery(path_to_module(target), "why {name}")),
+  short => ParseError("why needs a target and a name: mentl why <path> <name>"),
 }
 
 // The accept verb's subject is an ADDRESS, parsed by the same shape read the
 // bare address form uses; a bare path with no line names no position to
 // accept at, and says so.
-fn accept_verb_args(a) = if len(a) >= 3 {
-  match parse_address(a[2]) {
-    Some(addr) => match addr {
-      (target, line, col) => Invocation(VAccept(path_to_module(target), line, col)),
-    },
+fn accept_verb_args(words) = match words {
+  [at, ..._] => match parse_address(at) {
+    Some((target, line, col)) => Invocation(VAccept(path_to_module(target), line, col)),
     None => ParseError("accept needs an address: mentl accept <path>:<line>:<col>"),
-  }
-} else {
-  ParseError("accept needs an address: mentl accept <path>:<line>:<col>")
+  },
+  [] => ParseError("accept needs an address: mentl accept <path>:<line>:<col>"),
 }
 
-fn verb_specs() = [VerbSpec(
-  "run",
-  "<path> [args…]",
-  run_verb_args,
-  "compile, prove, execute (a hole or refuted claim REFUSES)"
-), VerbSpec(
-  "check",
-  "<path>",
-  (a) => req_target(a, VCheck, "check needs a target: mentl check <path>"),
-  "diagnostics only, no emit"
-), VerbSpec(
-  "compile",
-  "<path>",
-  (a) => req_target(a, VCompile, "compile needs a target: mentl compile <path>"),
-  "emit WAT to stdout"
-), VerbSpec(
-  "resume",
-  "<image>",
-  (a) => if len(a) >= 3 {
-    Invocation(VResume(a[2]))
-  } else {
-    ParseError("resume needs an image: mentl resume <image>")
-  },
-  "re-enter a persisted image; the source need not exist"
-), VerbSpec(
-  "edit",
-  "[path]",
-  (a) => Invocation(VEdit(optional_target(a, 2))),
-  "the cursor session (eight aspects + proven proposals)"
-), VerbSpec(
-  "accept",
-  "<path>:<line>:<col>",
-  accept_verb_args,
-  "accept the one proven proposal at the address — a graph edge first, the text its projection"
-), VerbSpec(
-  "audit",
-  "<path>",
-  (a) => req_target(a, VAudit, "audit needs a target: mentl audit <path>"),
-  "the capability set + severance unlocks"
-), VerbSpec(
-  "query",
-  "<path> <question>",
-  (a) => if len(a) >= 4 {
-    Invocation(VQuery(path_to_module(a[2]), a[3]))
-  } else {
-    ParseError("query needs a target and a question: mentl query <path> <question>")
-  },
-  "why / type / effects / ownership, walked to your words; a directory: a site facet across its programs"
-), VerbSpec(
-  "where",
-  "<path> <name>",
-  where_verb_args,
-  "derived badges — repr width, resume cardinality, fanout schedules"
-), VerbSpec("why", "<path> <name>", why_verb_args, "the Reason chain walked to root"), VerbSpec(
-  "teach",
-  "[path]",
-  (a) => Invocation(VTeach(optional_target(a, 2))),
-  "the gradient narrated"
-), VerbSpec(
-  "doc",
-  "[path]",
-  (a) => Invocation(VDoc(optional_target(a, 2))),
-  "documentation projection"
-), VerbSpec("test", "[path]", (a) => Invocation(VTest(optional_target(a, 2))), "the test chain"), VerbSpec(
-  "new",
-  "<name>",
-  (a) => if len(a) >= 3 { Invocation(VNew(a[2])) } else { ParseError("new needs a name: mentl new <name>") },
-  "write <name>.mn here (one file; the imports are the manifest)"
-), VerbSpec(
-  "session",
-  "",
-  (a) => Invocation(VSession),
-  "the resident graph — read verbs answer live; run it in a project"
-), VerbSpec("serve", "", (a) => Invocation(VServe), "the transport server"), VerbSpec(
-  "space",
-  "",
-  (a) => Invocation(VSpace),
-  "the ide, served — open http://localhost:7378/ide/"
-), VerbSpec(
-  "tighten",
-  "[path]",
-  (a) => Invocation(VTighten(optional_target(a, 2))),
-  "author each declared row's residue — its negations and pins; the positive row is projected"
-), VerbSpec(
-  "fmt",
-  "<path>",
-  (a) => if len(a) >= 3 {
-    Invocation(VFmt(a[2]))
-  } else {
-    ParseError("fmt needs a target: mentl fmt <path>")
-  },
-  "render the file canonical — layout is projection, never contract"
-), VerbSpec("repl", "", (a) => Invocation(VRepl), "line REPL"), VerbSpec(
-  "march",
-  "",
-  (a) => Invocation(VMarch),
-  "judge the wheel: emit, compare against the last generation, verdict"
-), VerbSpec(
-  "verify",
-  "[path]",
-  (a) => Invocation(VVerify(optional_target(a, 2))),
-  "the standing bounds the medium keeps on its own source — a rise REFUSES"
-), VerbSpec(
-  "mcp",
-  "",
-  (a) => Invocation(VMcp),
-  "the gate on MCP stdio — agents propose, nothing executes unproven"
-), VerbSpec(
-  "--with",
-  "<handler> [path]",
-  (a) => if len(a) >= 3 {
-    Invocation(VWith(a[2], optional_target(a, 3)))
-  } else {
-    ParseError("--with needs a handler: mentl --with <handler> [path]")
-  },
-  "install any handler over any verb"
-), VerbSpec("help", "", (a) => Invocation(VWelcome), "this projection")]
+// Where a View is asked for: the module, the line and column, and the needle
+// a find typed — the name whose references the View carries, beside the
+// string literals holding it — when one was.
+type SpaceAt = SpaceAt(String, Int, Int, Option(String))
 
-// find_verb — the name → spec projection over the table (names are unique, so
-// either end serves; last/drop_last is the O(1) snoc walk). None when no match.
-fn find_verb(name, specs) = if len(specs) == 0 {
-  None
-} else {
-  let spec = last(specs)
-  match spec {
-    VerbSpec(n, _, _, _) => if n == name { Some(spec) } else { find_verb(name, drop_last(specs)) },
-  }
+// The space verb's subject is an ADDRESS when one is given — the same shape
+// the bare address form reads — and nothing otherwise (the page). A word
+// that is not an address names no position and says so. A word after the
+// address is a needle to find.
+fn space_verb_args(words) = match words {
+  [at, ...more] => match parse_address(at) {
+    Some((target, line, col)) => Invocation(VSpace(Some(SpaceAt(path_to_module(target), line, col, first_of(more))))),
+    None => ParseError("space takes an address: mentl space <path>:<line>[:<col>] — the page itself is `mentl space` with no argument"),
+  },
+  [] => Invocation(VSpace(None)),
+}
+
+fn first_of(words) = match words {
+  [w, ..._] => Some(w),
+  [] => None,
+}
+
+// The verbs, in help-presentation order (the parser matches by name, so order
+// here is the human's reading order, never the dispatch order). A `""` hint is
+// a no-argument verb.
+fn verb_specs() = [
+  VerbSpec(
+    "run",
+    "<path> [args…]",
+    run_verb_args,
+    "compile, prove, execute — the mentl command runs the module (a hole or refuted claim REFUSES)"
+  ),
+  VerbSpec(
+    "check",
+    "[path]",
+    opt_target(VCheck, ??),
+    "diagnostics over every module of the link, no emit — no path: the project"
+  ),
+  VerbSpec(
+    "compile",
+    "<path>",
+    req_target(??, VCompile, "compile needs a target: mentl compile <path>"),
+    "emit WAT to stdout"
+  ),
+  VerbSpec("asm", "[file.wat]", asm_verb_args, "assemble WAT to wasm bytes on stdout"),
+  VerbSpec(
+    "resume",
+    "<image>",
+    {
+      [image, ..._] => Invocation(VResume(image)),
+      [] => ParseError("resume needs an image: mentl resume <image>"),
+    },
+    "re-enter a persisted image; the source need not exist"
+  ),
+  VerbSpec(
+    "edit",
+    "[path]",
+    opt_target(VEdit, ??),
+    "the cursor session (eight aspects + proven proposals)"
+  ),
+  VerbSpec(
+    "accept",
+    "<path>:<line>:<col>",
+    accept_verb_args,
+    "accept the one proven proposal at the address — a graph edge first, the text its projection"
+  ),
+  VerbSpec(
+    "audit",
+    "<path>",
+    req_target(??, VAudit, "audit needs a target: mentl audit <path>"),
+    "the capability set + severance unlocks"
+  ),
+  VerbSpec(
+    "query",
+    "<path> <question>",
+    {
+      [target, question, ..._] => Invocation(VQuery(path_to_module(target), question)),
+      short => ParseError("query needs a target and a question: mentl query <path> <question>"),
+    },
+    "why / type / effects / ownership, walked to your words; `… in <module>` keeps one module's sites; a directory: a site facet across its programs"
+  ),
+  VerbSpec(
+    "where",
+    "<path> <name>",
+    where_verb_args,
+    "derived badges — repr width, resume cardinality, fanout schedules"
+  ),
+  VerbSpec("why", "<path> <name>", why_verb_args, "the Reason chain walked to root"),
+  VerbSpec("teach", "[path]", opt_target(VTeach, ??), "the gradient narrated"),
+  VerbSpec("doc", "[path]", opt_target(VDoc, ??), "documentation projection"),
+  VerbSpec("test", "[path]", opt_target(VTest, ??), "the test chain"),
+  VerbSpec(
+    "new",
+    "<name>",
+    { [name, ..._] => Invocation(VNew(name)), [] => ParseError("new needs a name: mentl new <name>") },
+    "write <name>.mn here (one file; the imports are the manifest)"
+  ),
+  VerbSpec(
+    "session",
+    "",
+    bare_verb(VSession, ??),
+    "the resident graph — read verbs answer live; run it in a project"
+  ),
+  VerbSpec("serve", "", bare_verb(VServe, ??), "the transport server"),
+  VerbSpec(
+    "space",
+    "[<path>:<line>[:<col>] [needle]]",
+    space_verb_args,
+    "the ide — bare, the mentl command stages the page (ide/space.manifest) and serves it; at an address, the View the page paints, as JSON (line 0 carries the canvas; a needle, its references)"
+  ),
+  VerbSpec(
+    "tighten",
+    "[path]",
+    opt_target(VTighten, ??),
+    "author each declared row's residue — its negations and pins; the positive row is projected"
+  ),
+  VerbSpec(
+    "fmt",
+    "[--check] [path…]",
+    fmt_verb_args,
+    "render the project canonical (no path: this directory's tree) — layout is projection, never contract; --check writes nothing and lists what is not"
+  ),
+  VerbSpec("repl", "", bare_verb(VRepl, ??), "line REPL"),
+  VerbSpec(
+    "march",
+    "",
+    bare_verb(VMarch, ??),
+    "judge the wheel: emit, compare against the last generation, verdict"
+  ),
+  VerbSpec(
+    "verify",
+    "[path]",
+    opt_target(VVerify, ??),
+    "the standing bounds the medium keeps on its own source — a rise REFUSES"
+  ),
+  VerbSpec(
+    "mcp",
+    "",
+    bare_verb(VMcp, ??),
+    "the proof gate and the session's reads over MCP stdio, for an editor or tool"
+  ),
+  VerbSpec(
+    "--with",
+    "<handler> [path]",
+    {
+      [handler_name, ...more] => Invocation(VWith(handler_name, optional_target(more))),
+      [] => ParseError("--with needs a handler: mentl --with <handler> [path]"),
+    },
+    "install any handler over any verb"
+  ),
+  VerbSpec("help", "", bare_verb(VWelcome, ??), "this projection")
+]
+
+// The spec a verb's name names; names are unique, so the first is the one.
+fn find_verb(name, specs) = find(verb_named(name, ??), specs)
+
+fn verb_named(name, spec) = match spec {
+  VerbSpec(verb, hint, build, about) => verb == name,
 }
 
 // ─── argv parsing ─────────────────────────────────────────────────
@@ -257,51 +302,49 @@ fn find_verb(name, specs) = if len(specs) == 0 {
 // VCompileStdin (Unix `cmd <input`). `--with <name>` is the universal
 // escape hatch. A target-requiring verb given no target is a ParseError
 // here (the one boundary), never a fabricated "" downstream.
-fn parse_cli_args(argv) = if len(argv) < 2 {
-  Invocation(VCompileStdin)
-} else {
-  let mode = argv[1]
-  // The cursor-address probe FIRST — `mentl <target>:<line>[:<col>]` is
+fn parse_cli_args(argv) = match argv {
+  [program, mode, ...words] => // The cursor-address probe FIRST — `mentl <target>:<line>[:<col>]` is
   // the medium's primary surface (drift-38: projections fire AT-CURSOR;
   // the named verbs are transports). The parse is shape-only; the runner
   // resolves the target exactly like every verb and refuses honestly.
   match parse_address(mode) {
-    Some(addr) => match addr {
-      (target, line, col) => Invocation(VAt(path_to_module(target), line, col)),
-    },
-    None => // The verb ladder is ONE table projection now (verb_specs): normalize the
-    // help aliases to the canonical name, find the spec, run its builder. An
-    // unknown name is the honest ParseError — never a fabricated fallback.
+    Some((target, line, col)) => Invocation(VAt(path_to_module(target), line, col)),
+    None => // The verb ladder is ONE table projection (verb_specs): normalize the
+    // help aliases to the canonical name, find the spec, run its builder over
+    // the words after the verb. An unknown name is the honest ParseError —
+    // never a fabricated fallback.
     {
       let name = if mode == "-h" || mode == "--help" { "help" } else { mode }
       match find_verb(name, verb_specs()) {
-        Some(VerbSpec(_, _, build, _)) => build(argv),
+        Some(VerbSpec(verb, hint, build, about)) => build(words),
         None => ParseError("unrecognized or under-specified command: " ++ mode),
       }
     },
-  }
+  },
+  bare => Invocation(VCompileStdin),
 }
 
 // The address shape — `<target>:<line>` or `<target>:<line>:<col>`, both
-// numeric segments all-digits. Shape parse only (a byte walk over the flat
-// string); existence/resolution is the runner's question. Returns None for
-// anything else, falling through to the verb ladder.
-fn parse_address(ref s) = {
-  let n = byte_len(s)
-  let c1 = addr_colon_from(s, 0, n)
+// numeric segments all-digits. Shape parse only; existence and resolution are
+// the runner's question. None for anything else, falling through to the verb
+// ladder.
+fn parse_address(s) = {
+  let c1 = index_of(s, ":")
   if c1 <= 0 {
     None
   } else {
-    let c2 = addr_colon_from(s, c1 + 1, n)
+    let target = str_slice(s, 0, c1)
+    let place = str_slice(s, c1 + 1, byte_len(s))
+    let c2 = index_of(place, ":")
     if c2 < 0 {
-      match addr_int(s, c1 + 1, n) {
-        Some(line) => Some((str_slice(s, 0, c1), line, 0)),
+      match addr_int(place) {
+        Some(line) => Some((target, line, 0)),
         None => None,
       }
     } else {
-      match addr_int(s, c1 + 1, c2) {
-        Some(line) => match addr_int(s, c2 + 1, n) {
-          Some(col) => Some((str_slice(s, 0, c1), line, col)),
+      match addr_int(str_slice(place, 0, c2)) {
+        Some(line) => match addr_int(str_slice(place, c2 + 1, byte_len(place))) {
+          Some(col) => Some((target, line, col)),
           None => None,
         },
         None => None,
@@ -310,26 +353,34 @@ fn parse_address(ref s) = {
   }
 }
 
-// The first ':' at or after i; -1 when none.
-fn addr_colon_from(ref s, i, n) =
-  if i >= n { 0 - 1 } else if byte_at(s, i) == 58 { i } else { addr_colon_from(s, i + 1, n) }
+// An all-digits segment as Some(value); None when empty or any byte is not a
+// digit (so `web:site.mn` never parses as an address).
+fn addr_int(segment) =
+  if byte_len(segment) == 0 { None } else { fold(Some(0), addr_digit, segment) }
 
-// The all-digits segment [i, end) as Some(value); None when empty or any
-// non-digit byte (so `web:site.mn` never parses as an address).
-fn addr_int(ref s, i, end) = if i >= end { None } else { addr_int_loop(s, i, end, 0) }
-
-fn addr_int_loop(ref s, i, end, acc) = if i >= end {
-  Some(acc)
-} else {
-  let ch = byte_at(s, i)
-  if ch >= 48 && ch <= 57 { addr_int_loop(s, i + 1, end, acc * 10 + (ch - 48)) } else { None }
+fn addr_digit(acc, ch) = match acc {
+  Some(v) => if ch >= 48 && ch <= 57 { Some(v * 10 + (ch - 48)) } else { None },
+  None => None,
 }
 
-// optional_target — for verbs where target is optional (edit / doc
-// / teach / test). Returns Some(module-name) when present; None
-// otherwise. Strips src/ / lib/ prefixes + .mn suffix per
-// path_to_module.
-fn optional_target(argv, idx) = if len(argv) > idx { Some(path_to_module(argv[idx])) } else { None }
+// What `mentl fmt` does with a render that differs from its source: write
+// it, or name it and write nothing — the form a commit hook and the board
+// read.
+type FmtMode = FmtWrite | FmtCheck
+
+// `fmt [--check] [path…]` — the paths are files or directories, kept as
+// written, since fmt reads files and judges no module.
+fn fmt_verb_args(words) = match words {
+  ["--check", ...paths] => Invocation(VFmt(FmtCheck, paths)),
+  paths => Invocation(VFmt(FmtWrite, paths)),
+}
+
+// The first word as a module name when there is one: src/ or lib/ and .mn
+// stripped (path_to_module).
+fn optional_target(words) = match words {
+  [target, ..._] => Some(path_to_module(target)),
+  [] => None,
+}
 
 // path_to_module — accept either a module name ("main") or a file
 // path ("src/main.mn"). Strip "src/" or "lib/" prefix and ".mn"

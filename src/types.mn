@@ -114,7 +114,7 @@ fn constructor_named(name: String) = match env_lookup(name) {
 // exactly what it read before and the emit does not move for it.
 //
 // The same read is a CONTRACT's at its constructor's fields: `Option(Positive)`
-// grounds `Some`'s payload to `Positive`, which is what a value built with
+// grounds `Some`'s payload to the Positive refinement, which is what a value built with
 // `Some` owes where it is claimed and what a pattern over it may assume
 // (verify.mn `contract_part`). It lives here, below lowering, because the
 // judgment reads it too.
@@ -903,7 +903,7 @@ type Binding = Frozen([Int], Ty) | Live(Int)
 // and preserves the fast path for always-one-shot ops (the vast majority).
 // Written by draw_op_edges, projected by lower's op_resume_discipline.
 //
-// EffectDeclKind(op_names) is the effect declaration itself.
+// EffectDeclKind(op_names, dims) is the effect declaration itself.
 // `env_lookup("Iterate")` reads this to know the effect's ops
 // (["yield", "result"]) — the graph carries effect→ops so
 // the world-chain dispatch resolves op→effect at perform sites,
@@ -922,8 +922,13 @@ type SchemeKind
   | EffectOpScheme(String, String, Bool, ResumeDiscipline)
   // tag 3 — [(field_name, ty)]
   | RecordSchemeKind([(String, Ty)])
-  // tag 5 — [op_name: String]  (cache byte 5; byte 4 retired with the dissolved capability)
-  | EffectDeclKind([String])
+  // tag 5 — ([op_name: String], [param_name: String]) — the ops, and the
+  // effect's own parameter names in declaration order (the instance's value
+  // dims, by position). An op parameter that shares one of these names
+  // grounds that dim at the perform (`effect Environ(name: String) {
+  // env(name: String) -> String }`: `env("PORT")` charges
+  // `Environ("PORT")`).
+  | EffectDeclKind([String], [String])
   // tag 6 — (residual_row_handle, remainder_world_handle, config params [the fn-param carrier: name + default ride the TParam, names project via lower_param_names], state fields, arms). The remainder world is the row a held resume of this handler RUNS — the cell its arms' continuations carry as their world, never bound: callees reached through a resume gate it, and every install judges those gates against its own remainder (`remainder_gates_check`). Typed payloads: a bare List here erased the element types the consumers prove (the 581a92f class), and the pattern-constraint unification surfaces the conflict as E_TypeMismatch at every destructure.
   | HandlerKind(Int, Int, [TParam], [{init: Node, name: String}], [{args: [String], body: Node, op_name: String}])
   // tag 7 — parameter binding carries authored ownership at the env edge
@@ -935,7 +940,7 @@ type SchemeKind
   // recursively builds the alias's row WHOLE, so grouping holds by
   // construction); the row algebra never sees the name, and Ty never
   // carries it.
-  | RowAliasKind([(EffName, Bool, EConn)])
+  | RowAliasKind([(RowTerm, Bool, EConn)])
   // tag 8 — the TYPE's own entry: (tag, ctor name, payload tys) per variant, minted at registration where the list is in hand — the variant_specs whole-env scan family's cure
   // HandlerKind (tag 6) is the full handler-effect type AND the handler's
   // identity: a handler is
@@ -1023,11 +1028,10 @@ type EffTail
 // path to it — the `~>` installs between this edge's performs and the row
 // that reads them. The mask rides the edge through every fold, union,
 // instantiation and chase, so a handler's absorption reaches exactly the
-// computation it enclosed. A PRODUCT, not a sum: the record wrapper is the
-// wheel's one-constructor idiom (SpinePage, EmitFnEntry), which carries no
-// tag word — an edge is minted per open row, so the first form's tagged
+// computation it enclosed. A PRODUCT, not a sum: a nominal record carries
+// no tag word — an edge is minted per open row, so the first form's tagged
 // variant was a word per edge that said nothing.
-type RowEdge = RowEdge({cell: Int, mask: [EffName]})
+type RowEdge = {cell: Int, mask: [EffName]}
 
 // A GATE is a constraint carried by a row CELL — the negation half of a
 // declaration (`with !E` — `([], [E], EtAll)`, instance-aware through
@@ -1043,7 +1047,7 @@ type RowEdge = RowEdge({cell: Int, mask: [EffName]})
 // f()` accepted `run(() => op())` — because nothing was written that an
 // instantiation downstream could refuse; the gate is that write
 // (Hβ.infer.declared-row-vacuous-against-a-free-body-row).
-type Gate = Gate({reason: Reason, row: EffRow})
+type Gate = {reason: Reason, row: EffRow}
 
 // The ONE row-edge content read — every edge walk (resolve, flatten,
 // compress, occurs, free, subst, the lower readers) dispatches an
@@ -1153,6 +1157,12 @@ type EConn
   | EcDiff
   // `&` — set intersection
   | EcInter
+
+// An authored row term: an effect name, or a parenthesized row the clause
+// folds whole, its outer connective applied to what the group spells — the
+// rule a named row's reference already follows. A group is how a masked
+// row variable reads back: `with Memory + (e - Intern)`.
+type RowTerm = RtEff(EffName) | RtGroup([(RowTerm, Bool, EConn)])
 
 // Substrate owned by graph.mn. The ADTs live here because every
 // consumer of the graph names them — Read/Write/Speculate effects,
@@ -1356,8 +1366,15 @@ type EmitFnKind = EfkPartial | EfkLambda | EfkThunk | EfkNested | EfkArm(String,
 // learn, where None is a fact the type states and the reader floors on. The
 // ONE projection that must not vary by reader (the ABI) is settled once into
 // the sigs column at the emit boundary.
-type EmitFnEntry
-  = EmitFnEntry({caps: [(String, Int)], fence: Int, kind: EmitFnKind, name: String, origin: Int, params: [(String, Option(Ty))], ret: Option(Ty)})
+type EmitFnEntry = {
+  caps: [(String, Int)],
+  fence: Int,
+  kind: EmitFnKind,
+  name: String,
+  origin: Int,
+  params: [(String, Option(Ty))],
+  ret: Option(Ty),
+}
 
 // The snapshot carries exactly what its consumers read: the mint bound
 // and the span index. The node cells are NOT here — they live in the
@@ -1428,7 +1445,16 @@ type BinderFact
   // the writers. Noted before any arm is judged; until then a state was read
   // as its init, so `100 / d` over `with d = 5` checked clean under `!Trap`
   // while an arm wrote `d - 5`.
-  | StateFact({writes: [Int]})
+  //
+  // `stores` is the field's OTHER writer: every value an arm stores IN PLACE
+  // into what the field holds (`list_set(buf, …)`, directly or through a
+  // callee storing into its parameter), as the cells a move of it demands —
+  // noted by the arena's store claim where it resolves the target to this
+  // field (infer.mn `ages_settle`). The writes replace the record's word; the
+  // stores mutate what it names. The arena's install demand and the race
+  // rule read the two together as what an arm writes, one fact with one home
+  // (`handler_state_writes`, `handler_state_writer`).
+  | StateFact({stores: [Int], writes: [Int]})
 
 // A value walk's dynamic scope: the state binders whose writers it is
 // reading, and the handler declarations whose arms it is reading. A write
@@ -1524,6 +1550,42 @@ type UnaryOp
   // unary `!` per SYNTAX.md
   | UNot
 
+// THE ONE INTEGER FOLDER: an arithmetic `BinOp` over two ground words, read
+// by the proof gate (verify.mn `litval_arith`) and the e-graph (egraph.mn
+// `rw_const_fold`) alike. A partial operator folds exactly where its claim
+// holds at the two points (`int_op_defined`), so neither folder traps on the
+// program it reads: `0x80000000 / (0 - 1)` folded by the host's own `i32.div_s`
+// trapped the compiler under `mentl check` until TRAP (2026-10-06), and the
+// two copies of the folder shared the hole. Where the claim fails the fold is
+// None — the trap is the program's meaning, which the claim refutes at its
+// site, never a constant either folder may write.
+fn int_fold(op, a, b) = if int_op_defined(op, a, b) {
+  match op {
+    BAdd => Some(a + b),
+    BSub => Some(a - b),
+    BMul => Some(a * b),
+    BDiv => Some(a / b),
+    BMod => Some(a % b),
+    _ => None,
+  }
+} else {
+  None
+}
+
+// The division claim (`PTotalDiv`) decided at two points: `%` is defined
+// where the divisor is not 0, `/` where it is not 0 and the quotient fits a
+// signed word (not `INT_MIN / -1`). Every other operator is total. The one
+// home the folder and the claim's constant face both ask (verify.mn
+// `total_div_decide`).
+fn int_op_defined(op, a, b) = match op {
+  BMod => b != 0,
+  BDiv => b != 0 && (b != -1 || a != i32_min()),
+  _ => true,
+}
+
+// The least signed word: the one dividend whose quotient by -1 does not fit.
+fn i32_min() with Pure = -2147483647 - 1
+
 type BinOpKind
   // +, -, *, /, %
   = BKArith
@@ -1546,7 +1608,12 @@ type BinOpKind
 // primitive's declaration, twice, instead of at the developer's line.
 fn concat_callees() = ["str_concat", "list_concat"]
 
-fn subscript_callee() with Pure = "list_index"
+// `xs[i]` calls the checked read where its bounds claim is open and the
+// traversal beneath it where the fragment proved the claim (`PInBounds`,
+// TRAP) — what the lowering performs, so what the judgment charges.
+fn subscript_callee(proven) with Pure = if proven { "list_index_unchecked" } else { "list_index" }
+
+fn subscript_callees() = [subscript_callee(false), subscript_callee(true)]
 
 fn list_rest_callee() with Pure = "slice"
 
@@ -1595,7 +1662,7 @@ fn binop_to_str(op) with Pure = match op {
 // site), instantiation copies it onto the fresh var, and a copy minted
 // before the demand is reached through the instance column. One gate per
 // arithmetic site; the op renders the refusal's operator.
-type NumericGate = NumericGate({op: BinOp, span: Span})
+type NumericGate = {op: BinOp, span: Span}
 
 // ─── TypeDemand — what an operation asks of its operand's type cell ────
 // One column carries every demand, and they share one mechanism: entered at
@@ -1748,7 +1815,7 @@ type Annotation
 // since it locks them all — with the guarantees they name. Debt discharged
 // is what makes a program more proven, so it ranks first; a lock changes no
 // proof today and ranks last.
-type Leverage = Leverage({absences: Int, discharged: Int, locks: [String], opened: Int, refuted: Int})
+type Leverage = {absences: Int, discharged: Int, locks: [String], opened: Int, refuted: Int}
 
 // What the gradient proposes at a position: the annotation PROVEN there,
 // what it buys, and why it leads. The annotation is the fact an accept
@@ -1817,6 +1884,184 @@ type RowFacet = Evaluates(EffRow) | WhenCalled(EffRow, EffRow) | HoleRow
 type CursorView
   = CursorView(NodeKind, Proposal, [VerbFrame], RowFacet, Ownership, [(Int, Span, Predicate, Reason)], Teaching, [Reason])
 
+// ─── The View — what Mentl Space paints, typed ───────────────────────
+//
+// The eight aspects at a position, each carrying the sentence the terminal
+// says for it and the value behind it (space.mn computes them from the one
+// cursor read; the terminal prints them and the page's JSON serializes
+// them, two projections of one walk). An ADT, exhaustive at every reader:
+// no word the page matches on exists in the wheel — the wire's words are
+// made in exactly one place, the serializer.
+type Aspect
+  // the addressed source, sliced to the node, and what is bound there
+  = AQuery(String)
+  // the socket's verdict at the position
+  | APropose(Socket)
+  // the verbs that hold the node, innermost first; empty where none does
+  | ATopology(String)
+  // what running the node performs — said at every position, Pure included
+  | AEffects(String)
+  // the grade the use-count inferred
+  | AOwnership(Ownership)
+  // the obligations standing open at the node — each one a note under it,
+  // so the aspect itself carries nothing a count of the notes would repeat
+  | AVerify
+  // the gradient's answer, said, and which kind of answer it is; at a
+  // declaration the gradient has nothing for, the tightening the judgment
+  // banked, when it banked one
+  | ATeach(String, TeachMode)
+  // the first hop of the node's Why; the deeper hops and the type chains
+  // are notes under it
+  | AWhy(String)
+
+// The socket's content at a position: the one proven fill as source with
+// its Reason; a tie's width (its members and the computed question are
+// notes); an authored hole nothing proved; and a filled position, which has
+// no proposal to report.
+type Socket = SkFill(String, String) | SkAsk(Int) | SkNone | SkSilent
+
+// Which answer the Teach aspect gives: an annotation to add, a question
+// between two, a predicate a parameter needs, a tightening the judgment
+// banked, or nothing.
+type TeachMode = TmAdd | TmAsk | TmNeed | TmTighten | TmNone
+
+// What stands under an aspect: the authored lede over the query; a tie's
+// member, the computed question, a name the medium would not offer with
+// its Why, and the install that serves a perform, under the proposal; an
+// open obligation at its own module and span, under verify; a hop of the
+// Why, and the chain a type is read from with its own hops.
+type Note
+  = NoteLede(String)
+  | NoteMember(String)
+  | NoteQuestion(String)
+  | NoteRefusal(String, String)
+  | NoteHandler(String)
+  | NoteObligation(String, String, Span)
+  | NoteHop(String)
+  | NoteTypeChain(String, [String])
+
+// One aspect of the ring with what stands under it.
+type RingFact = RingFact(Aspect, [Note])
+
+// The Ledger: the module's own facts, each with how much it matters at the
+// caret — a top-level declaration (its handle, its kind in the author's
+// word, its name, its query line, its span, its proximity to the caret), an
+// open obligation of the module (its sentence, the predicate owed, the Why
+// it is owed by, its module and span), a tightening the judgment banked.
+type LedgerFact
+  = LedgerDecl(Int, String, String, String, Span, Float)
+  | LedgerObligation(String, String, String, String, Span)
+  | LedgerTighten(String, String, Span)
+
+// A position the field lists — an authored hole or a gradient position, its
+// handle and span, with the ring its own address projects.
+type FieldFact = FieldHole(Int, Span, [RingFact]) | FieldGradient(Int, Span, [RingFact])
+
+// Where a View stands: the module, the line and column the request named,
+// the handle the address resolved to, and its span.
+type ViewAt = {col: Int, h: Int, line: Int, module: String, span: Span}
+
+// The View at an address: the position, the eight-aspect ring at it, and
+// the Lens and the Ledger of its module. The page paints this and nothing
+// else; the terminal prints its ring. At line 0 the whole module is the
+// subject: the ring is empty and the field holds every hole and every
+// gradient position, ranked, each with its own ring — the work queue the
+// terminal prints with the Ledger's obligations and tightenings. The Lens
+// is the bank's own facts, each the report as it fired (the kind, its
+// message, its module); the lead sentence the page prints over them is a
+// projection of that fact, never a fact of its own.
+type View = {
+  at: ViewAt,
+  canvas: Canvas,
+  field: [FieldFact],
+  ledger: [LedgerFact],
+  lens: [(DiagKind, String, String)],
+  refs: Found,
+  ring: [RingFact],
+}
+
+// ─── The canvas — the text's own projection (L-D) ────────────────────
+//
+// What the page draws ON the code, read off the graph of the module the
+// View stands in: every token at its span with its class (the one lexer —
+// the page holds none), the aspect strip in the gutter, the verb frames,
+// the proof marks at their claims and the traces of owned values. A View at
+// the module altitude (line 0) carries it; a caret's View carries none,
+// since a caret moving changes no fact of the text.
+//
+// Which of the eight aspects a cell, or a diagnostic, speaks for — the
+// strip's column and the ring's row.
+type Arm = OnQuery | OnPropose | OnTopology | OnEffects | OnOwnership | OnVerify | OnTeach | OnWhy
+
+// What a cell says of its aspect on its line: a fact the graph proved (a
+// declaration's type, a discharged claim, an effect an install grants), a
+// fact still open (a hole, a pending claim, an effect the line requires of
+// its callers, a step the gradient proposes), a diagnostic of the aspect
+// that refuses the program there, or one that narrates without refusing.
+type CellState = CellProven | CellOpen | CellRefused | CellWarned
+
+// One cell of the strip: its state, its word (the verb, the effect, the
+// grade, the verdict), its site — the address a click projects — and the
+// sentence the aspect says there.
+type StripCell = StripCell(CellState, String, Span, String)
+
+// A line's eight cells in the kernel's order, None where its aspect has
+// nothing to say on the line. Only lines with a cell are listed.
+type StripLine = StripLine(Int, [Option(StripCell)])
+
+// A token's class — the kernel role its hue names.
+type TokenClass
+  = TkKeyword
+  | TkDiscipline
+  | TkVerb
+  | TkHole
+  | TkString
+  | TkSplice
+  | TkNumber
+  | TkComment
+  | TkType
+  | TkDecl
+  | TkSelf
+  | TkNegation
+  | TkName
+  | TkPunct
+
+type CanvasToken = CanvasToken(Span, TokenClass)
+
+// The five verbs, as a frame draws them.
+type CanvasVerb = CvPipe | CvShare | CvFan | CvTee | CvLoop
+
+// A verb site with the spans of what it composes, in order: a `|>` chain's
+// source and stages, a fanout's input and branches, a `~>`'s body and
+// handler, a `<~`'s recurrence and delay.
+type Frame = Frame(Int, CanvasVerb, [Span])
+
+// A proof mark at a claim's site: proven, open or refuted, and the predicate.
+type ProofMark = ProofMark(CellState, Span, String)
+
+// An owned parameter's trace: the declaration it is a parameter of, its
+// name, the declaration's head, and every use in order — the last its
+// consume.
+type OwnTrace = OwnTrace(Int, String, Span, [Span])
+
+type Canvas
+  = NoCanvas
+  | Canvas({frames: [Frame], lines: Int, marks: [ProofMark], strip: [StripLine], tokens: [CanvasToken], traces: [OwnTrace]})
+
+// Find by edge: the references a View carries — none, or the name they
+// reference with every site, the string literals that hold a needle among
+// them when one was asked.
+type Found = FoundNothing | FoundRefs(String, [(String, Span)], [(String, Span)])
+
+// The wire's word for a diagnostic's applicability — the automation axis
+// (SYNTAX.md), spelled as the catalog spells it.
+fn applicability_text(a) = match a {
+  MachineApplicable => "MachineApplicable",
+  MaybeIncorrect => "MaybeIncorrect",
+  HasPlaceholders => "HasPlaceholders",
+  Unspecified => "Unspecified",
+}
+
 // query   propose  topology     row     trace      verify  teach    why
 // ─── SpinePage — the graph's columns, named ONCE ─────────────────────────
 // One band's worth of every per-handle fact, each column a flat array the
@@ -1834,8 +2079,22 @@ type CursorView
 // files and finding out at the type error which one you missed. Three hand
 // copies of one type is the Carried-Truth Law at the declaration layer; the
 // name is its one home, and the next column is one line.
-type SpinePage
-  = SpinePage({bind: [BindHome], boundaries: [ExecutableBoundary], canon: [Int], comments: [(String, Span)], dispatch: [DispatchTier], installs: [InstallShape], module: [Int], narrowing: [Int], nodes: [GNode], parent: [Int], products: [CallProduct], program: [NodeBody], slots: [StateSlotHome], spans: [Span]})
+type SpinePage = {
+  bind: [BindHome],
+  boundaries: [ExecutableBoundary],
+  canon: [Int],
+  comments: [(String, Span)],
+  dispatch: [DispatchTier],
+  installs: [InstallShape],
+  module: [Int],
+  narrowing: [Int],
+  nodes: [GNode],
+  parent: [Int],
+  products: [CallProduct],
+  program: [NodeBody],
+  slots: [StateSlotHome],
+  spans: [Span],
+}
 
 // Newlines in a flat string — a module's own extent, sized at its parse.
 fn count_lines(ref s) = count_lines_from(s, byte_len(s), 0, 0)
@@ -2127,8 +2386,9 @@ type Expr
   // are the same product-field machinery as
   // MakeRecordExpr.
   | RecordUpdateExpr(Node, [(String, Node)])
-  // type_name + sorted fields — nominal record literal
-  | NamedRecordExpr(String, [(String, Node)])
+  // `WTok{at: s, …}` — the head, a reference to the record's type, and the
+  // sorted fields
+  | NamedRecordExpr(Node, [(String, Node)])
   // `xs[i]` semantic AST — receiver, index.
   // Infer dispatches on receiver's type:
   // TList → list_index (runtime); TTuple →
@@ -2359,7 +2619,7 @@ type Stmt
   // unannotated let). Readers include the channel only when it is
   // NTypeAnn — infer's arm and stmt_child_handles both read it so.
   = LetStmt(Pat, Node, Node)
-  | FnStmt(String, [TParam], Node, [(EffName, Bool, EConn)], Node)
+  | FnStmt(String, [TParam], Node, [(RowTerm, Bool, EConn)], Node)
   // name, params (TParam), retty, effects, body
   | TypeDefStmt(String, [(String, [Ty], Node)])
   // name, then per variant its name + field types
@@ -2376,7 +2636,7 @@ type Stmt
   // same [TParam] product fn params and handler config ride; they
   // register as the effect's env scheme (the instance signature every
   // authored `Sample(44100)` judges against).
-  | HandlerDeclStmt(String, String, [TParam], [{init: Node, name: String}], [{args: [String], body: Node, op_name: String}], [(EffName, Bool, EConn)])
+  | HandlerDeclStmt(String, String, [TParam], [{init: Node, name: String}], [{args: [String], body: Node, op_name: String}], [(RowTerm, Bool, EConn)])
   // handler name, effect name, config-params, state-fields, arms, the
   // authored `with` row (the same signed triples a FnStmt carries — until
   // 2026-09-27 the parser skipped it to the arms, so a handler's `!F` bound
@@ -2389,7 +2649,7 @@ type Stmt
   //   param_default through resolve_call_args
   // state:  List<{name: String, init: Node}> — per-arm scope; updates via `resume(...) with f = e`
   // The state element type is CARRIED in the ADT field
-  // (not bare `List`) so `.name`/`.init` resolve to sorted
+  // (not a bare list) so `.name`/`.init` resolve to sorted
   // offsets at lower-time — never field-offset-resolution's
   // silent offset-0 fabrication on an erased element type.
   // arms:   List<{args, body, op_name}>
@@ -2404,7 +2664,7 @@ type Stmt
   // the RHS is the with-clause's own signed-triple grammar, stored
   // verbatim (Hβ.types.named-effect-rows — one grammar, one
   // representation; expansion at build_declared_row, never in Ty)
-  | RowAliasStmt(String, [(EffName, Bool, EConn)])
+  | RowAliasStmt(String, [(RowTerm, Bool, EConn)])
 
 // A sequence in its runs (`runs_of`): adjacent members that join make ONE
 // run and every other member stands alone. A block's `fn` declarations
@@ -2509,7 +2769,7 @@ type Domain
 // Rejections sit beside the verdict rather than inside it: a lone survivor
 // coexists with three row-refused names, and the refusal teaches either way,
 // so repeating the list per arm would be the same fact in three homes.
-type Proposal = Proposal({rejected: [(String, Reason)], verdict: Verdict})
+type Proposal = {rejected: [(String, Reason)], verdict: Verdict}
 
 // A fill arrives WITH its reason because the constructor holds no other
 // shape — the render cannot drop what the type does not let it separate.
@@ -2549,8 +2809,12 @@ type Divergence
   // vocabulary (the type of a parameter, a return, the position itself)
   | DivType(Ty, Ty, Reason)
   | DivName
-  // what the target type admits — the same read that seeded the candidates
-  | DivValue(Domain)
+  // the values the survivors denote, each once, and what the target type
+  // admits — the same read that seeded the candidates. The question names
+  // the values it asks between, as DivVariants names its constructors: a
+  // tie past three members renders the question alone, and "which one?"
+  // with no ones beside it asked nothing.
+  | DivValue([LitValue], Domain)
   // the survivors are a sum's own nullary constructors — its values, named
   // (C7: Circle against Square is a VALUE question, asked as shape before)
   | DivVariants([String])
@@ -2599,11 +2863,20 @@ type Predicate
   // contract learns, at each position, an EDGE to every node its
   // applications hand that position — read live wherever a function
   // crosses into the contract, so a demand is decided against the value
-  // handed (`5` proves `Positive`, `0` refutes it) rather than against a
+  // handed (`5` proves a Positive refinement, `0` refutes it) rather than against a
   // contract copied off the value's leaves, which a constant never had. A
   // provision states what ARRIVES, never what is demanded: read as a claim
   // it holds. Inference mints it; it has no surface spelling.
   | PProvides(Provided)
+  // A SEQUENCE READ's precondition (TRAP, 2026-10-06): the receiver node
+  // and the index node of `xs[i]` — a String's byte read is the same read,
+  // since a String IS `[Byte]`. The read traps where `0 <= i < len(xs)`
+  // fails; the claim decides from the index's constants and lower bound and
+  // from the receiver's length read along its edges (a literal's own count,
+  // through every tail of a join), refuses where a constant index is out of
+  // a length the text fixes, and where it stays open the site charges
+  // `Trap` — the division's law one primitive over.
+  | PInBounds(Int, Int)
 
 // What one position of a function is handed: nothing yet — no application
 // has reached it, the identity of the join — the values at these nodes, or
@@ -2959,7 +3232,7 @@ effect GraphWrite {
   graph_clear_comment(Int)
   // draw the e-graph equivalence edge from ≡ to — point the from-side's canonical pointer at the cheaper target. The union-find union step over the equivalence weave; saturation reads it back via graph_canon_at (find). Idempotent: re-pointing an already-rooted source overwrites in place (one cell), never grows a ledger.
   graph_canon_set(Int, Int)
-  // draw the refinement-narrowing edge — point the program point's narrowing pointer at the path-predicate's bool-node proven to hold there (§4⑥). One co-indexed weave like the canon column; idempotent (one cell per handle), read back via graph_narrow_at by lower's check-elision.
+  // write what the judgment proved at a program point — a sequence read's index node carries 1 where its bounds claim held (TRAP). One co-indexed weave like the canon column; one cell per handle, written both ways by every judgment of the read, read back via graph_narrow_at by lower's check-elision.
   graph_narrow_set(Int, Int)
   // draw/replace one fanout's executable edges; trail-backed because inference runs under speculative checkpoints
   graph_boundary_set(Int, ExecutableBoundary)
@@ -3045,11 +3318,11 @@ effect GraphWrite {
   // retries on, so held_has_poly was false and the Mycroft fragment never
   // ran (Hβ.diag.an-arms-report-escapes-an-inner-capture).
   //
-  // So the arm STORES the triple and inference DRAINS it at the judgment
-  // boundary, where the report lands in the body's world and every bracket
-  // that should see it does. Same shape as the holes pair above, one
-  // concern over: an arm may note, only the body may narrate.
-  graph_guard_drain() -> [(DiagKind, String, String)]
+  // So the arm STORES the refused fact with its module and inference DRAINS
+  // it at the judgment boundary, where the report is rendered in the body's
+  // world and every bracket that should see it does. Same shape as the holes
+  // pair above, one concern over: an arm may note, only the body may narrate.
+  graph_guard_drain() -> [(DiagKind, String)]
   // The pipe completion's retraction: a stage's `??` slot lowers (the
   // note fires at the visit) and is then spliced over by the piped
   // value — consumed, not surviving. The unnote removes it from the
@@ -3206,6 +3479,10 @@ type DiagKind
   // it — declared in a module the referencing module never imports. Name,
   // the referencing module's path, the declaring module's path.
   | EMissingImport(String, String, String, Span)
+  // a module imported twice by one module: the module's path — the import
+  // list is a set of edges, so the second line draws nothing (SYNTAX
+  // principle 2), and `mentl fmt` is its fix
+  | EDuplicateImport(String, Span)
   // the type name
   | ENotARecordType(String, Span)
   | EResumeOutsideArm(Span)
@@ -3237,6 +3514,12 @@ type DiagKind
   // (measured 2026-09-30: `fn f() with !State = (get() + inc()) ~> only_inc`
   // compiled clean and trapped)
   | EHandlerInexhaustive(String, String, [String], Span)
+  // handler, op — an arm resumes an op declared `-> !`. The never type is
+  // quantified per perform, so every performer meets a result variable of
+  // its own and no value the arm hands back is one all of them can receive;
+  // the arm answers the install instead (N4, 2026-10-06: compiled clean and
+  // returned from an op its declaration says never returns)
+  | EResumeOfNever(String, String, Span)
   // `<~ delay(n)` where n is a runtime value. The line is a ring whose
   // depth the emit sizes from the literal, allocated where its owner is
   // built, so a depth the medium cannot read is a depth it cannot hold —
@@ -3284,7 +3567,9 @@ type DiagKind
   | TPolyRecursionSignature(String, Span)
   // The relevant tier: an authored `own` never consumed on this path —
   // affine's exactly-once half. Narration until the wheel's own count
-  // reaches 0 (the census arming law).
+  // reaches 0 (the census arming law). It carries the PARAMETER'S NAME,
+  // never a rendered sentence, so `mentl tighten` can release the marker it
+  // names; the message is a read of the kind like every other.
   | TOwnUnconsumed(String, Span)
   // The persist value gate: a replay-boundary thunk captures an own
   // whose finish obligation is still open — the image memcpy carries
@@ -3366,6 +3651,10 @@ type DiagKind
   // derivative), or a construct the reading cannot enter. The loss site
   // rides the message (L4, 2026-09-28)
   | EDerivativeUnreachable(String, Span)
+  // a required environment read (`env`, lib/environ.mn) whose name is not a
+  // literal at the read: the instance stays ungrounded, so the program's
+  // demand on its host cannot be stated before it runs (E1, 2026-10-06)
+  | EEnvNameUngrounded(Span)
   // authored value-position hole surviving
   // into the reachable executable (SYNTAX
   // §«Partial application» — productive,
@@ -3398,20 +3687,22 @@ type DiagKind
 // every surface (source/code/kind/message/span/applicability) from it.
 // !Diagnostic gates the handler, not the effect.
 effect Diagnostic {
-  // The op carries the RENDERED line beside the kind — the render runs at
-  // the PERFORM boundary (the `report` fn below), in the reporter's own
-  // world where graph and intern are live, never in an arm. An arm's
-  // performs resolve OUTER of its own install (the world law), so an
-  // arm-side diag_message chased a graph that was not in its world — the
+  // (kind, MESSAGE, the MODULE it is about). The message is the one part
+  // of a report that reads the graph, so it is rendered once, at the
+  // PERFORM boundary (the `report` fn below), in the reporter's own world
+  // where graph and intern are live, never in an arm. An arm's performs
+  // resolve OUTER of its own install (the world law), so an arm-side
+  // diag_message chases a graph that is not in its world — the
   // render-chases-wrong-instance class, and the row truth of it (the
   // handler residual carrying GraphRead + Intern past every bracket to
-  // main's root) is what the root-row gate refused. Arms buffer, tally,
-  // and print; the line arrives made.
-  // (kind, rendered line, the MODULE it is about). The module rides the
+  // main's root) is what the root-row gate refused. Everything else a
+  // report says is a pure read of the kind (diag_line), so an arm that
+  // prints composes its line from what it was handed, and an arm that
+  // banks keeps what it was handed — a fact replayed after a join or read
+  // after a rollback says what it said when it fired. The module rides the
   // report because the register's arm is deliberately graph-free — its row
   // rides every install — so it cannot look the module up itself, and a
-  // local span cannot name a file (two modules both have a line 8). The
-  // reporter has GraphRead and reads it live; the register just compares.
+  // local span cannot name a file (two modules both have a line 8).
   diag_report(DiagKind, String, String)
   // The two live reads of the ledger the handler already keeps. The exit code
   // and the emit gate were both RE-DERIVING this as 0 — the handler saw every
@@ -3423,6 +3714,11 @@ effect Diagnostic {
   diag_errors() -> Int
   // only the ARMED classes (diag_refuses). The emit gate.
   diag_refusals() -> Int
+  // every report that is NOT an error — warnings and teachings — counted in
+  // every scope, whether the register rendered it or not. The board's
+  // project line: the wheel carries zero diagnostics over every module it
+  // links, and a narration the render scoped away still counts.
+  diag_narrations() -> Int
 }
 
 // The render REGISTER (SYNTAX: how much surfaces is the gradient reading
@@ -3450,7 +3746,13 @@ effect Diagnostic {
 // range names nothing; the module does. The register stamps each report with
 // the module in force when it fired (graph_module_current), and the filter
 // compares that, which is one read instead of a containment test.
-type DiagScope = ScopeAll | ScopeNone | ScopeModule(String)
+// ScopeLink is the PROJECT: every module of the link narrates, each report
+// once at its own module, and the instruments stay silent because they are
+// the census's channel, not the developer's. `mentl check` reads it, so the
+// wheel's "zero diagnostics" is measured over every module it links, never
+// over the entry alone (eight refuted `own` markers in three modules sat
+// behind ScopeModule's narrowing until G2).
+type DiagScope = ScopeAll | ScopeNone | ScopeModule(String) | ScopeLink
 
 // Armed on the root diagnostics_handler only (the register lives where
 // the render lives); a separate effect so the quiet trial, the branch
@@ -3479,19 +3781,17 @@ effect DiagRegister {
   diag_scope_of() -> DiagScope
 }
 
-// The branch cursor's diagnostic join surface (Phase C, C1c-2). A branch
-// RENDERS at collect — the projections read live values at the perform,
-// so a banked line is safe where a banked DiagKind would render against
-// post-join state — and the join re-prints the lines in stmt order, folding
-// diag_lines_taken is armed on diag_branch (the per-stmt collector).
-// A separate effect so tighten_collector and diag_quiet keep their arm
-// sets untouched. Each banked fact is (diag, rendered line): the line
-// renders AT THE PERFORM (live values), and the join RE-PERFORMS
-// diag_report per fact into the root chain — the root arm counts and
-// scope-registers off the diag itself, and every Diagnostic forwarder
-// sees the structure (the old absorb-fold reached only the one handler
-// carrying its arm, so a branch-fired T_OverDeclared bypassed the
-// tighten bank).
+// The branch cursor's diagnostic join surface: the facts a branch's
+// collector (diag_branch) holds, taken at the join. Each fact is what the
+// report carried — the kind, its message rendered at the perform against
+// the branch's live values, its module — so a fact read after the join,
+// or after a speculation's rollback, says what it said when it fired; a
+// DiagKind re-rendered there would read the post-join graph. The join
+// RE-PERFORMS diag_report per fact into the root chain, in statement
+// order, so the root arm counts and scope-registers off the kind itself
+// and every Diagnostic forwarder — the bank among them — sees the
+// structure. A separate effect so the forwarders and diag_quiet keep
+// their arm sets untouched.
 effect BranchDiag {
   diag_lines_taken() -> [(DiagKind, String, String)]
 }
@@ -3524,6 +3824,7 @@ fn diag_span(d) with Pure = match d {
   EOccursCheck(_, _, s) => s,
   EMissingVariable(_, s) => s,
   EMissingImport(_, _, _, s) => s,
+  EDuplicateImport(_, s) => s,
   ENotARecordType(_, s) => s,
   EResumeOutsideArm(s) => s,
   EResumeAmbiguousOp(_, s) => s,
@@ -3533,6 +3834,7 @@ fn diag_span(d) with Pure = match d {
   EZeroDelayFeedback(s) => s,
   EInitPerformsOwnOp(_, _, s) => s,
   EHandlerInexhaustive(_, _, _, s) => s,
+  EResumeOfNever(_, _, s) => s,
   EComputedDelayDepth(s) => s,
   ERestOutsideDestructure(s) => s,
   ERowAliasCycle(_, s) => s,
@@ -3570,6 +3872,7 @@ fn diag_span(d) with Pure = match d {
   EThreadedBranchEffect(_, _, s) => s,
   EContinuationUncapturable(_, _, s) => s,
   EDerivativeUnreachable(_, s) => s,
+  EEnvNameUngrounded(s) => s,
   EUnresolvedHole(_, s) => s,
   EFieldOffsetUnprovable(_, s) => s,
   EShapeUnprovable(_, s) => s,
@@ -3604,6 +3907,7 @@ fn diag_source(d) with Pure = match d {
   EOccursCheck(_, _, _) => "graph",
   EMissingVariable(_, _) => "infer",
   EMissingImport(_, _, _, _) => "infer",
+  EDuplicateImport(_, _) => "parser",
   ENotARecordType(_, _) => "infer",
   EResumeOutsideArm(_) => "infer",
   EResumeAmbiguousOp(_, _) => "lower",
@@ -3613,6 +3917,7 @@ fn diag_source(d) with Pure = match d {
   EZeroDelayFeedback(_) => "infer",
   EInitPerformsOwnOp(_, _, _) => "effects",
   EHandlerInexhaustive(_, _, _, _) => "effects",
+  EResumeOfNever(_, _, _) => "effects",
   EComputedDelayDepth(_) => "infer",
   ERestOutsideDestructure(_) => "infer",
   ERowAliasCycle(_, _) => "effects",
@@ -3650,12 +3955,98 @@ fn diag_source(d) with Pure = match d {
   EThreadedBranchEffect(_, _, _) => "lower",
   EContinuationUncapturable(_, _, _) => "lower",
   EDerivativeUnreachable(_, _) => "lower",
+  EEnvNameUngrounded(_) => "infer",
   EUnresolvedHole(_, _) => "verify",
   EFieldOffsetUnprovable(_, _) => "lower",
   EShapeUnprovable(_, _) => "lower",
   EInstantiationDepth(_, _) => "lower",
   EArithOnAggregate(_, _) => "infer",
   EReplayExhausted(_) => "clock",
+}
+
+// The aspect a diagnostic speaks for — the column of the aspect strip its
+// site's line carries it in, and the ring row it concerns: what is bound
+// (the parse and the types), what is proposed at a hole, the verbs, the
+// row, ownership, a claim, a step the gradient takes, a Reason's prose.
+fn diag_arm(d) with Pure = match d {
+  PExpectedToken(_, _) => OnQuery,
+  POrphanDocstring(_) => OnWhy,
+  PUnclosedConstruct(_, _) => OnQuery,
+  PUnexpectedToken(_, _) => OnQuery,
+  ERedundantBraces(_) => OnTeach,
+  EBlockNeedsBraces(_) => OnTeach,
+  ELambdaFence(_) => OnQuery,
+  ERedundantFnOnLambda(_) => OnQuery,
+  ELambdaAsOrOr(_) => OnQuery,
+  EOrphanHandlerAttach(_) => OnTopology,
+  ENotAKeyword(_, _) => OnTopology,
+  EEffArgNotLiteral(_) => OnEffects,
+  EInternalInvariant(_, _) => OnQuery,
+  WRedundantWhere(_) => OnTeach,
+  WCommentRefUnresolved(_, _, _) => OnWhy,
+  ETypeMismatch(_, _, _, _) => OnQuery,
+  ETypeArityMismatch(_, _, _) => OnQuery,
+  EConstructorArity(_, _, _, _) => OnQuery,
+  EHandlerArmArity(_, _, _, _) => OnEffects,
+  EFnArityMismatch(_, _, _) => OnQuery,
+  EOccursCheck(_, _, _) => OnQuery,
+  EMissingVariable(_, _) => OnQuery,
+  EMissingImport(_, _, _, _) => OnQuery,
+  ENotARecordType(_, _) => OnQuery,
+  EResumeOutsideArm(_) => OnEffects,
+  EResumeAmbiguousOp(_, _) => OnEffects,
+  EResumeWorldMismatch(_, _, _) => OnEffects,
+  EEnvNameUngrounded(_) => OnEffects,
+  EUnknownArgLabel(_, _) => OnQuery,
+  EFeedbackNoContext(_) => OnTopology,
+  EZeroDelayFeedback(_) => OnTopology,
+  EInitPerformsOwnOp(_, _, _) => OnEffects,
+  EHandlerInexhaustive(_, _, _, _) => OnEffects,
+  EComputedDelayDepth(_) => OnTopology,
+  ERestOutsideDestructure(_) => OnQuery,
+  ERowAliasCycle(_, _) => OnEffects,
+  EDeclaredRowContradiction(_, _) => OnEffects,
+  EMalformedNumericLiteral(_, _, _) => OnQuery,
+  ERowAliasNegation(_, _) => OnEffects,
+  ERecordFieldExtra(_, _, _) => OnQuery,
+  ERecordFieldMissing(_, _, _) => OnQuery,
+  EPatternInexhaustive(_, _, _) => OnQuery,
+  EPatternAlternationBindingMismatch(_, _) => OnQuery,
+  EIfMissingElse(_) => OnQuery,
+  TOverDeclared(_, _, _, _) => OnTeach,
+  TRowInventory(_, _, _, _) => OnTeach,
+  TWordSlotBox(_, _, _) => OnTeach,
+  TPolyRecursionSignature(_, _) => OnTeach,
+  TOwnUnconsumed(_, _) => OnOwnership,
+  TOwnAcrossReplay(_, _) => OnOwnership,
+  EUseAfterMove(_, _) => OnOwnership,
+  EEffectMismatch(_, _, _, _) => OnEffects,
+  EPurityViolated(_, _) => OnEffects,
+  ERefinementRejected(_, _) => OnVerify,
+  EVerifyUnencodable(_) => OnVerify,
+  VPending(_, _) => OnVerify,
+  EOwnershipViolation(_, _) => OnOwnership,
+  ERegionEscape(_, _) => OnOwnership,
+  EMissingModule(_, _, _) => OnQuery,
+  EHandlerStateShadowsOp(_, _, _) => OnEffects,
+  EFnShadowsOp(_, _, _) => OnEffects,
+  EOpShadowsOp(_, _, _, _) => OnEffects,
+  EDuplicateFnName(_, _) => OnQuery,
+  EDuplicateTypeName(_, _) => OnQuery,
+  EEmittedNameCollision(_, _) => OnQuery,
+  EUnresolvedType(_, _, _) => OnQuery,
+  EEffectUnhandled(_, _, _) => OnEffects,
+  EThreadedBranchEffect(_, _, _) => OnEffects,
+  EContinuationUncapturable(_, _, _) => OnEffects,
+  EDerivativeUnreachable(_, _) => OnTopology,
+  EUnresolvedHole(_, _) => OnPropose,
+  EFieldOffsetUnprovable(_, _) => OnQuery,
+  EShapeUnprovable(_, _) => OnQuery,
+  EInstantiationDepth(_, _) => OnQuery,
+  EArithOnAggregate(_, _) => OnQuery,
+  EReplayExhausted(_) => OnTopology,
+  EDuplicateImport(_, _) => OnTeach,
+  EResumeOfNever(_, _, _) => OnEffects,
 }
 
 // The wire code — the stable identifier (`docs/errors/<CODE>.md`).
@@ -3683,6 +4074,7 @@ fn diag_code(d) with Pure = match d {
   EOccursCheck(_, _, _) => "E_OccursCheck",
   EMissingVariable(_, _) => "E_MissingVariable",
   EMissingImport(_, _, _, _) => "E_MissingImport",
+  EDuplicateImport(_, _) => "E_DuplicateImport",
   ENotARecordType(_, _) => "E_NotARecordType",
   EResumeOutsideArm(_) => "E_ResumeOutsideArm",
   EResumeAmbiguousOp(_, _) => "E_ResumeAmbiguousOp",
@@ -3692,6 +4084,7 @@ fn diag_code(d) with Pure = match d {
   EZeroDelayFeedback(_) => "E_ZeroDelayFeedback",
   EInitPerformsOwnOp(_, _, _) => "E_InitPerformsOwnOp",
   EHandlerInexhaustive(_, _, _, _) => "E_HandlerInexhaustive",
+  EResumeOfNever(_, _, _) => "E_ResumeOfNever",
   EComputedDelayDepth(_) => "E_ComputedDelayDepth",
   ERestOutsideDestructure(_) => "E_RestOutsideDestructure",
   ERowAliasCycle(_, _) => "E_RowAliasCycle",
@@ -3729,6 +4122,7 @@ fn diag_code(d) with Pure = match d {
   EThreadedBranchEffect(_, _, _) => "E_ThreadedBranchEffect",
   EContinuationUncapturable(_, _, _) => "E_ContinuationUncapturable",
   EDerivativeUnreachable(_, _) => "E_DerivativeUnreachable",
+  EEnvNameUngrounded(_) => "E_EnvNameUngrounded",
   EUnresolvedHole(_, _) => "E_UnresolvedHole",
   EFieldOffsetUnprovable(_, _) => "E_FieldOffsetUnprovable",
   EShapeUnprovable(_, _) => "E_ShapeUnprovable",
@@ -3898,6 +4292,10 @@ fn diag_refuses(d) with Pure = match d {
   // and exited 134. Every perform of a multi-shot or held op suspends, so
   // the site is certain to reach the floor whenever it runs.
   True,
+  EEnvNameUngrounded(_) => // ARMED at birth (2026-10-06), born at wheel-ZERO (the wheel reads no
+  // environment). A required read of a computed name has no name the launch
+  // gate can check, so the program would start and fail mid-run instead.
+  True,
   EDerivativeUnreachable(_, _) => // ARMED at birth (2026-09-28), born at wheel-ZERO by construction (the
   // wheel installs no derivative reading). What it refuses is a derivative
   // the reading would otherwise answer as ZERO — the silent wrong the whole
@@ -3944,6 +4342,10 @@ fn diag_refuses(d) with Pure = match d {
   EMissingImport(_, _, _, _) => // ARMED at birth (F0b, 2026-09-27): born at zero on the wheel — the solo
   // sweep it replaces held `solo_violations_max: 0` across 63 modules — and
   // the class is exactly what that sweep ran 63 processes to find.
+  True,
+  EDuplicateImport(_, _) => // ARMED at birth (F, 2026-10-06): a syntax error, as Rust and Go refuse
+  // a repeated import; born RED-first on a program the boot compiled clean,
+  // and at zero on the wheel once infer.mn's two repeated lines were lifted.
   True,
   EMissingVariable(_, _) => // ARMED 2026-07-18, the manifest arc's dividend: wheel census 0, and the
   // user-path licence MEASURED — a no-import stdlib program (map / fold /
@@ -3993,6 +4395,10 @@ fn diag_refuses(d) with Pure = match d {
   // arms against the effect's declared ops, both parse facts; the wheel
   // and the runtime floor carry zero partial handlers, and the one shape
   // that admitted one was a false absence proof that trapped.
+  true,
+  EResumeOfNever(_, _, _) => // ARMED at birth (2026-10-06): an arm's resume of an op its declaration
+  // says never returns, read off the op's own scheme. The wheel and the
+  // runtime floor resume no such op.
   true,
   EInitPerformsOwnOp(_, _, _) => // ARMED at birth (2026-08-18): the judgment is STRUCTURAL, read from
   // the lowered install itself — a direct-perform inside `LHandleWith`'s
@@ -4075,8 +4481,7 @@ fn diag_refuses(d) with Pure = match d {
   _ => False,
 }
 
-// The severity-class label the stderr line prints (the legacy `kind`
-// string position) — a projection of severity + code family.
+// The word a report's line prints for its severity.
 fn diag_kind(d) with Pure = match diag_severity(d) {
   SWarning => "Warning",
   SVerificationPending => "VerificationPending",
@@ -4086,6 +4491,7 @@ fn diag_kind(d) with Pure = match diag_severity(d) {
 // Applicability — the automation axis (SYNTAX.md table), a projection.
 fn diag_applicability(d) with Pure = match d {
   ERedundantBraces(_) => MachineApplicable,
+  EDuplicateImport(_, _) => MachineApplicable,
   EBlockNeedsBraces(_) => MachineApplicable,
   WRedundantWhere(_) => MachineApplicable,
   WCommentRefUnresolved(_, _, _) => MaybeIncorrect,
@@ -4093,19 +4499,23 @@ fn diag_applicability(d) with Pure = match d {
   TRowInventory(_, _, _, _) => MachineApplicable,
   TWordSlotBox(_, _, _) => MaybeIncorrect,
   TPolyRecursionSignature(_, _) => HasPlaceholders,
-  TOwnUnconsumed(_, _) => // Not mechanically applicable: the fix is a consume the developer
-  // must place (or an honest widening to `ref`), never a patch.
-  Unspecified,
+  TOwnUnconsumed(_, _) => // The marker the inference refutes is released to the inferred grade
+  // (`mentl tighten`): the honest form when nothing consumes. Maybe
+  // incorrect, because the developer may have meant a consume they did
+  // not write — the release makes the refusal visible rather than silent.
+  MaybeIncorrect,
   TOwnAcrossReplay(_, _) => Unspecified,
   EUseAfterMove(_, _) => // The fix is structural — drop the read or restructure so the
   // move happens after it — never a patch.
   Unspecified,
   EPatternInexhaustive(_, _, _) => HasPlaceholders,
   EHandlerInexhaustive(_, _, _, _) => HasPlaceholders,
+  EResumeOfNever(_, _, _) => MaybeIncorrect,
   EEffectUnhandled(_, _, _) => MaybeIncorrect,
   EThreadedBranchEffect(_, _, _) => MaybeIncorrect,
   EContinuationUncapturable(_, _, _) => MaybeIncorrect,
   EDerivativeUnreachable(_, _) => Unspecified,
+  EEnvNameUngrounded(_) => MaybeIncorrect,
   EUnresolvedHole(_, _) => HasPlaceholders,
   EFieldOffsetUnprovable(_, _) => MaybeIncorrect,
   EShapeUnprovable(_, _) => MaybeIncorrect,
@@ -4129,6 +4539,11 @@ fn diag_applicability(d) with Pure = match d {
   _ => MaybeIncorrect,
 }
 
+// Whether the step a report names is one the medium takes by itself: the one
+// test for a step on offer. The Lens ranks such a report above a warning and
+// its lead offers the step exactly when the patch applies without a question.
+fn diag_applies_itself(d) = diag_applicability(d) == MachineApplicable
+
 // The rendered message — operands read LIVE from the constructor, never a
 // String copied at the call site. This is the Carried-Truth win: the fact
 // is structured; the prose is its projection.
@@ -4138,6 +4553,7 @@ fn diag_message(d) with !Mutate = match d {
   PUnclosedConstruct(detail, _) => detail,
   PUnexpectedToken(detail, _) => detail,
   ERedundantBraces(_) => "redundant braces around a non-block body",
+  EDuplicateImport(path, _) => "`import {path}` again: the edge is already drawn, so this line draws nothing — `mentl fmt` lifts it",
   EBlockNeedsBraces(_) => "statements require braces",
   ELambdaFence(_) => // drift-audit: ignore — diagnostic message prose, not Mentl syntax
   "`|params|` lambda fence — use `(params) => body`",
@@ -4151,12 +4567,12 @@ fn diag_message(d) with !Mutate = match d {
   EInternalInvariant(note, _) => "internal invariant: {note}",
   WRedundantWhere(_) => "`where true` is a vacuous predicate — drop it",
   WCommentRefUnresolved(owner, name, _) => "comment on `{owner}` references `{name}`, which resolves nowhere — a backticked name is a reference; if this is prose, drop the backticks",
-  ETypeMismatch(a, b, reason, _) => "{show_type(a)} vs {show_type(b)} — {reason_line(reason)}",
+  ETypeMismatch(a, b, reason, _) => "{render_ty(a)} vs {render_ty(b)} — {reason_line(reason)}" ~> var_names,
   ETypeArityMismatch(a, b, _) => "type list arity mismatch: {int_to_str(a)} vs {int_to_str(b)}",
   EConstructorArity(name, declared, got, _) => "constructor {name} takes {int_to_str(declared)} fields; the pattern binds {int_to_str(got)}",
   EHandlerArmArity(name, declared, got, _) => "op {name} declares {int_to_str(declared)} params; the arm binds {int_to_str(got)}",
   EFnArityMismatch(a, b, _) => "function arity mismatch: {int_to_str(a)} param(s) vs {int_to_str(b)} param(s)",
-  EOccursCheck(h, ty, _) => "infinite type: {int_to_str(h)} occurs in {show_type(ty)}",
+  EOccursCheck(h, ty, _) => "infinite type: {render_var(h)} occurs in {render_ty(ty)}" ~> var_names,
   EMissingVariable(what, _) => what,
   EMissingImport(name, rm, dm, _) => "`{name}` resolves only because the whole link carries it: it is declared in `{dm}`, which `{rm}` never imports — on its own, `{rm}` would not compile. Add `import {dm}` to `{rm}`",
   ENotARecordType(name, _) => "{name} is not a record type",
@@ -4167,6 +4583,7 @@ fn diag_message(d) with !Mutate = match d {
   EFeedbackNoContext(_) => "`<~` used outside an iterative context",
   EZeroDelayFeedback(_) => "`<~ delay(0)` closes a cycle with no delay — the prior would be the value being computed. Raise the delay to at least 1",
   EInitPerformsOwnOp(hname, op, _) => "handler {hname} performs {op} while building itself — in a state init or a config default, both of which run before the install exists — and {hname} is what answers {op}, so nothing can absorb it. Move the perform into an arm, or compute the value from a handler installed around this one",
+  EResumeOfNever(hname, op, _) => "handler {hname} resumes {op}, which is declared `-> !`: the op never returns to its performer, and each perform meets a result type of its own, so no value can be handed back to all of them. End the arm with the value the install answers, or declare the op's result type if it does return",
   EHandlerInexhaustive(hname, en, missing, _) => "handler {hname} answers no {join(", ", missing)} of {en} — an install absorbs every op of the effects its arms answer, so a perform of the missing op would reach nothing and read garbage evidence. Add the arm; an arm that performs its own op forwards it to the enclosing handler (`op(…) => resume(op(…))`), and the ops this handler answers can be declared as their own effect",
   EComputedDelayDepth(_) => "the delay depth must be a literal — a feedback line is a fixed set of slots, and a depth read at runtime would silently get one. Write the depth, or hold the history yourself",
   ERestOutsideDestructure(_) => "`...` rest element outside a destructuring parameter — rest lives in patterns (`([h, ...t]) =>`, `let [h, ...t] =`), and `++` joins lists in expressions",
@@ -4181,14 +4598,14 @@ fn diag_message(d) with !Mutate = match d {
   EPatternInexhaustive(missing, total, _) => "match misses {int_to_str(missing)} of {int_to_str(total)} variants — add the missing arms or a wildcard",
   EPatternAlternationBindingMismatch(detail, _) => detail,
   EIfMissingElse(_) => "`if` without `else` requires a unit body",
-  TOverDeclared(declared, used, name, _) => "function '{name}' declares {show_effrow(declared)} but body only uses {show_effrow(used)} — tighten the signature to unlock capabilities",
-  TRowInventory(declared, used, name, _) => "function '{name}' declares {show_effrow(declared)}, which is exactly what the body proves ({show_effrow(used)}) — an inventory: the positive row is projected at the address surface, so author only what inference cannot say (a negation, an instance pin, Pure, or a cap on a callback's row); `mentl tighten` writes the residue",
+  TOverDeclared(declared, used, name, _) => "function '{name}' declares {render_row(declared)} but body only uses {render_row(used)} — tighten the signature to unlock capabilities" ~> var_names,
+  TRowInventory(declared, used, name, _) => "function '{name}' declares {render_row(declared)}, which is exactly what the body proves ({render_row(used)}) — an inventory: the positive row is projected at the address surface, so author only what inference cannot say (a negation, an instance pin, Pure, or a cap on a callback's row); `mentl tighten` writes the residue" ~> var_names,
   TWordSlotBox(what, unit, _) => "{what} is boxed into a fresh cell in `{unit}`, whose row does not say `Alloc` — a wide value crossing a slot sized for a word: the representation's cost, not the program's, until the slot takes the value's own width (Hβ.value.seq-element-stride-carrier)",
   TPolyRecursionSignature(name, _) => "the infinite type runs through '{name}''s own parameter or return — if '{name}' calls itself at a different type (polymorphic recursion), a FULL signature on '{name}' (every parameter and the return annotated) buys the poly self-call",
-  TOwnUnconsumed(msg, _) => msg,
+  TOwnUnconsumed(name, _) => "'{name}' is declared own but never consumed on this path — an owned resource with no finalization; `mentl tighten` releases the marker to the inferred grade",
   TOwnAcrossReplay(msg, _) => msg,
   EUseAfterMove(msg, _) => msg,
-  EEffectMismatch(declared, inferred, why, _) => "effect row mismatch: {show_effrow(declared)} vs {show_effrow(inferred)} — {show_reason(why)}",
+  EEffectMismatch(declared, inferred, why, _) => "effect row mismatch: {render_row(declared)} vs {render_row(inferred)} — {show_reason(why)}" ~> var_names,
   EPurityViolated(row, _) => "expected Pure but found effects: {show_effrow(row)}",
   ERefinementRejected(pred, _) => "refinement predicate proven false at compile time: {show_predicate(pred)}",
   EVerifyUnencodable(_) => // drift-audit: ignore — diagnostic message string
@@ -4196,7 +4613,7 @@ fn diag_message(d) with !Mutate = match d {
   VPending(count, _) => "{int_to_str(count)} verification obligations pending",
   EOwnershipViolation(detail, _) => detail,
   ERegionEscape(detail, _) => detail,
-  EMissingModule(name, path, _) => "module source not found: {name} (expected at {path})",
+  EMissingModule(name, searched, _) => "module source not found: {name} (searched {searched})",
   EHandlerStateShadowsOp(hname, field, _) => "handler '{hname}' state field '{field}' names an op of the handled effect — a state read and an op call become indistinguishable in the arm bodies; rename the field",
   EFnShadowsOp(name, ename, _) => "`fn {name}` collides with an op of effect `{ename}` that this program links — so this declaration is not a second definition, it is an unreachable one: every call to `{name}` performs the op, and the body is judged against the op's signature. Rename the function",
   EOpShadowsOp(name, prior, now, _) => "effect `{now}` declares an op `{name}` that effect `{prior}` already declares, and this program links both. The env holds one entry per name, so the second declaration REPLACES the first rather than joining it: every existing call to `{name}` is now judged against `{now}`'s signature, and the errors surface wherever those calls are — inside the library, at spans your program never wrote. Rename this op",
@@ -4207,6 +4624,7 @@ fn diag_message(d) with !Mutate = match d {
   EEffectUnhandled(ename, proposal, _) => "effect {ename} reaches the executable root with no absorbing handler — calling one of its ops would read garbage evidence at runtime; nothing executes unproven. {proposal}",
   EThreadedBranchEffect(ename, why, _) => "effect {ename} is performed inside a threaded branch and {why} — two spawned instances would race, or reach a handler this site cannot see. Install a stateless handler for {ename} at the fanout's own frame, or install the handler inside the branch",
   EContinuationUncapturable(op, via, _) => "{uncapturable_subject(op, via)} suspends the computation around it — its handler resumes it more than once, or after doing more work — and the rest of the computation cannot be captured at this position yet: a continuation is captured where the perform or the call is the first work its function, block or arena does — the whole expression, or an operand of an operator chain whose earlier operands are plain values. Move it there, or move what precedes it into a function that is called before it",
+  EEnvNameUngrounded(_) => "`env` is a required read, and its name here is computed: the program's demand on its host cannot be stated before it runs, so nothing could check it at launch. Write the variable's name at the read — `env(\"PORT\")` — or ask `env_opt` and decide what an absent value means",
   EDerivativeUnreachable(why, _) => "{why} — the derivative reading would answer zero here, and zero is not what the program asked for; nothing is emitted rather than a wrong slope",
   EUnresolvedHole(h, _) => "unresolved value hole (handle {int_to_str(h)}) — fill it (accept a proven survivor) or suspend it into a parameter product",
   EFieldOffsetUnprovable(why, _) => "{why} — the receiver's row never closed where this is emitted, so there is no slot to read; close the row: annotate the receiver at its Intent Boundary, or give the call site a shape its specialization can key on",
@@ -4216,13 +4634,9 @@ fn diag_message(d) with !Mutate = match d {
   EReplayExhausted(_) => "clock replay trace exhausted",
 }
 
-// Universal short-circuit / early return.
-// Flattens the "Option Monad" into the topological pipeline.
-// `abort` is inferred OneShot despite `-> !`: OneShot's semantics
-// is "at most once" (zero ≤ 1) and "continuation on stack, no
-// heap capture" — both true for a handler arm that never calls
-// resume. The infer pass counts zero resume sites in `catch_abort`-
-// shape arms and produces `OneShot` (count ≤ 1 → OneShot).
+// Early exit. An arm that never resumes abandons the computation around the
+// perform, and the install's value is the arm's (SYNTAX §«Resume
+// discipline»); `abort` returns `!` because nothing after it runs.
 effect Abort {
   abort() -> !
 }
@@ -4303,8 +4717,12 @@ type Resolution
 // derivative reading: the tick carries the line's TANGENT ring beside it
 // (`$__tline_<site>_<symbol>`, the same geometry at f64, indexed by the
 // primal ring's head), so a recurrence's sensitivity to the seed is itself
-// a recurrence — only derive (src/derive.mn) writes it.
-type LineHome = LhStatic | LhSlot(Int) | LhStaticJvp
+// a recurrence — only derive (src/derive.mn) writes it. `LhShare(i, from)`
+// is word `i` of a spawning schedule's branch thunk, read like `LhSlot(i)`
+// but filled at the mint with the line its enclosing frame owns at `from`:
+// a branch literal's line is the enclosing record's under every schedule,
+// so a thunk minted per call never restarts it.
+type LineHome = LhStatic | LhSlot(Int) | LhStaticJvp | LhShare(Int, LineHome)
 
 effect LowerScope {
   // fn_name, locals_names, locals_handles, captures_names, captures_handles,
@@ -4318,6 +4736,8 @@ effect LowerScope {
   ls_exit_frame() -> [(Int, Int, LineHome)]
   // a `<~` site (handle, depth) takes the innermost frame's next line slot
   ls_line_slot(Int, Int) -> LineHome
+  // the home the innermost frame already gave a `<~` site, if it holds one
+  ls_line_home_of(Int) -> Option(LineHome)
   // how many frames are open — 0 at a top-level declaration's own entry
   ls_frame_depth() -> Int
   // bind a local (name, type handle); returns the register the binder takes
@@ -4377,6 +4797,11 @@ effect Verify {
   // decide, never a second decide beside the ledger's.
   verify(Int, Span, Predicate, Reason) -> Option(Bool)
   verify_debt() -> [(Int, Span, Predicate, Reason)]
+  // Every claim the ledger DECIDED, with its verdict — true proven, false
+  // refuted — at the module and span it was raised in. The canvas marks
+  // them at their sites; the decision was made once, here, and kept rather
+  // than discarded the moment it was returned.
+  verify_decided() -> [(Int, Span, Predicate, Bool)]
   // The generation boundary's clear, for the modules about to be re-judged:
   // the obligations raised in each one's CURRENT node are dropped before its
   // judgment re-accrues them, and every other module's stand, because a
@@ -4423,7 +4848,11 @@ effect Consume {
   // not per body). Re-entrant for nested fn decls: enter pushes a fresh
   // frame, exit restores the parent's.
   consume_enter_fn()
-  consume_exit_fn()
+  // Answers the authored owns the closing body never consumed, which the
+  // DECLARATION reports in its own world — an arm's report resolves outer
+  // of its install and skipped every bank inside it, so no tool reading
+  // the bank (tighten, the View, the session) ever saw one (G2).
+  consume_exit_fn() -> [(String, Span)]
   // THE RELEVANT TIER (at-most-once gains its exactly-once half). The
   // ledger is AFFINE: it reports a name consumed twice and says nothing
   // about a name never consumed, so an `own` resource opened and dropped
@@ -4500,11 +4929,13 @@ effect Filesystem {
   fs_rename(String, String) -> Bool
 }
 
-// diag_line — THE diagnostic render, one home (moved beside diag_message,
-// its whole substance). Sequenced projections, then ONE splice-of-vars
-// line: a single 5-splice interpolation mis-rendered the LAST splice when
-// an earlier splice's evaluation allocated (the shared-scratch clobber
-// class, §9); a splice list of pre-built values has nothing to clobber.
+// diag_line — the line a report prints, one home: a pure read of the kind
+// around the message the report carried, so any arm can print it and none
+// re-renders the graph-reading part. Sequenced projections, then ONE
+// splice-of-vars line: a single 5-splice interpolation mis-rendered the
+// LAST splice when an earlier splice's evaluation allocated (the
+// shared-scratch clobber class, §9); a splice list of pre-built values has
+// nothing to clobber.
 // THE ADDRESS IS (MODULE, SPAN) — the same law the census site line and the
 // refs facet answer to. `at 4479:38` names a line in NO FILE, and `src` does
 // not rescue it: src is the PHASE (`infer`, `parser`), not the module, so a
@@ -4514,34 +4945,18 @@ effect Filesystem {
 // "rides along unread" — so this was a rendered fact one parameter from being
 // an address. Measured 2026-09-14 by a representation probe whose ~135 type
 // errors named lines in fifteen different files and no file at all.
-fn diag_line(diag, dmod) with !Mutate = {
+fn diag_line(diag, msg: String, dmod: String) with !Mutate = {
   let src = diag_source(diag)
   let code = diag_code(diag)
   let kindw = diag_kind(diag)
-  let msg = diag_message(diag)
   let sp = show_span(diag_span(diag))
   "{src}: {code} {kindw}: {msg} at {dmod}:{sp}\n"
 }
 
-// report — the ONE reporting boundary. The render runs HERE, in the
-// reporter's own world (graph and intern live under the analysis
-// brackets), and the finished line rides the op beside its kind; every
-// arm downstream buffers, tallies, or prints — never renders. This is
-// what dissolves the diagnostics/graph arm-dependency cycle the install
-// ORDER could only half-satisfy (diagnostics-outer-of-graph served the
-// occurs report and starved the render; the reverse starved the report).
-// The report carries the MODULE it is about, read live where GraphRead
-// already is. The register's arm stays graph-free (its row rides every
-// install), which is why the old filter could only compare LINE NUMBERS and
-// had to carry scope_localize to subtract a weave offset back off every
-// rendered span. Spans are local from birth now, so there is nothing to
-// subtract and nothing to localize — the only question left is which file a
-// report is about, and that is one cell read, carried here rather than
-// re-derived by scanning ranges for one that contains the line.
-// report_at — THE reporting boundary: a diagnostic AT a node. The module is
-// the node's own column read (graph_module_of, total by construction), never
-// the cursor's ambient position. That distinction is the whole reason this
-// boundary exists in this form. The ambient module is right exactly while a
+// A diagnostic AT a node: the module is the node's own column read
+// (graph_module_of, total by construction), never the cursor's ambient
+// position. That distinction is the whole reason this boundary exists in
+// this form. The ambient module is right exactly while a
 // walk is inside one file — the parse — and wrong the moment a walk spans the
 // program: emit visits every reachable fn in table order, so "the module in
 // force" is wherever the walk happens to be, and under the driver's
@@ -4569,10 +4984,15 @@ fn report_at(h, diag) = diag_report_at(diag, module_name_of_handle(graph_module_
 // the parse is reporting from the wrong place.
 fn report(diag) = report_at(graph_module_current(), diag)
 
-// The module is read ONCE and used twice — in the rendered address and as the
-// register's own scope key — so the render and the carried module cannot drift
-// apart into two answers about one report.
-fn diag_report_at(diag, dmod) = diag_report(diag, diag_line(diag, dmod), dmod)
+// The one place a report is rendered: its message, once, here in the
+// reporter's own world, where the graph and the intern are live, riding the
+// op beside its kind and its module. Every arm downstream composes its line
+// from those (diag_line), and buffers, tallies or prints it without reading
+// the graph, so no diagnostic arm depends on where the graph is installed.
+// The module is read once and rides beside the message, so the line an arm
+// prints and the scope it registers cannot drift apart into two answers
+// about one report.
+fn diag_report_at(diag, dmod) = diag_report(diag, diag_message(diag), dmod)
 
 // A module handle's own name, read from its node. The non-NModule arm REFUSES
 // rather than answering "": every value in the module column was written by
@@ -4589,38 +5009,241 @@ fn module_name_of_handle(h) = match graph_node_body(h) {
   },
 }
 
-// Every show_* that renders a Ty chases TVars through graph_chase.
-// A raw handle only appears when chase terminates on NFree/NRowFree —
-// the query layer reads that as "unresolved at epoch e." No cached
-// display. Same discipline as lowering: live observer, never mirror.
-fn show_type(ref ty) with !Mutate = match ty {
+// ─── THE ONE TYPE RENDERER ───────────────────────────────────────────
+// Every surface that shows a type — the formatter's page, `where`, `doc`,
+// `query … type of`, the caret, the View, hover, every diagnostic — renders
+// through `render_ty`, spelled as SYNTAX writes types (`[T]`, `{x: Int}`,
+// `f64`, `!E`), under a render context that is a handler, never a write: a
+// free variable asks the context for its name, the row face says whether a
+// row renders what inference proved or only what an author wrote, and a
+// refinement asks for its predicate's spelling. `var_names` is the
+// developer's eye: it names each free variable the first time the render
+// meets it, so one install is one consistent naming, and nothing is bound in
+// the graph to get there (the four rename brackets `where` used to open,
+// and roll back, are gone with this).
+type VarSort = SortType | SortRow
+
+// Which row a function type shows: what inference proved (presents,
+// negations and the open tails, named) or what an author wrote (presents and
+// negations; a parse-minted tail IS the authored absence of a clause).
+type RowFace = FaceInferred | FaceAuthored
+
+effect TypeRender {
+  ty_var_name(Int, VarSort) -> String
+  ty_row_face() -> RowFace
+  ty_pred(Predicate) -> String
+}
+
+// The developer's eye. A type variable takes the name it was declared with
+// (`a` in `fn map(f: a -> b, …)`) when no other variable holds it, else the
+// first free letter; a row variable takes e, then e1, e2 and on — the two
+// alphabets disjoint, so `spawn(f: () -> a with e)` reads which is which.
+handler var_names with taken = [] {
+  ty_var_name(h, sort) => match var_name_of(taken, h) {
+    Some(n) => resume(n),
+    None => {
+      let n = fresh_var_name(taken, h, sort)
+      resume(n) with taken = push(taken, (h, n))
+    },
+  },
+  ty_row_face() => resume(FaceInferred),
+  ty_pred(p) => resume(show_predicate(p)),
+}
+
+fn var_name_of(taken, h) = match find({ (v, _) => v == h }, taken) {
+  Some((_, n)) => Some(n),
+  None => None,
+}
+
+fn name_is_taken(taken, n: String) = any({ (_, t) => t == n }, taken)
+
+fn fresh_var_name(taken, h, sort) = match sort {
+  SortType => match declared_var_name(h) {
+    Some(d) => if name_is_taken(taken, d) { first_type_letter(taken, 0) } else { d },
+    None => first_type_letter(taken, 0),
+  },
+  SortRow => match declared_var_name(h) {
+    Some(d) => if name_is_taken(taken, d) { first_row_name(taken, 0) } else { d },
+    None => first_row_name(taken, 0),
+  },
+}
+
+// The name a variable was written with: its cell is minted with the authored
+// lowercase name as its reason — a type parameter's (`quantify_ctor_ty`), a
+// clause's row variable (`leaf_row_of`), a record's named rest.
+fn declared_var_name(h) = match graph_reason_at(h) {
+  Declared(n) => if is_var_spelling(n) { Some(n) } else { None },
+  _ => None,
+}
+
+fn is_named_var(h) = match declared_var_name(graph_chase_handle(h)) {
+  Some(_) => true,
+  None => false,
+}
+
+fn is_var_spelling(n: String) = byte_len(n) > 0 && byte_at(n, 0) >= 97 && byte_at(n, 0) <= 122
+
+// a, b, c, d, f, … z, then t26 onward — never `e`, the row alphabet's.
+fn first_type_letter(taken, i) = {
+  let n = if i < 26 { str_slice("abcdefghijklmnopqrstuvwxyz", i, i + 1) } else { "t{int_to_str(i)}" }
+  if n == "e" || name_is_taken(taken, n) { first_type_letter(taken, i + 1) } else { n }
+}
+
+fn first_row_name(taken, i) = {
+  let n = if i == 0 { "e" } else { "e{int_to_str(i)}" }
+  if name_is_taken(taken, n) { first_row_name(taken, i + 1) } else { n }
+}
+
+// The formatter's face: the page holds only what an author wrote, so a free
+// variable has a surface name there only when an author named it (`with e`,
+// `...r`) — any other that reaches a page renders as its forensic handle,
+// loud in fmt's own re-parse, never silently absorbed.
+handler authored_names(pred_render) {
+  ty_var_name(h, _) => resume(match declared_var_name(h) {
+    Some(n) => n,
+    None => show_handle_forensic(h),
+  }),
+  ty_row_face() => resume(FaceAuthored),
+  ty_pred(p) => resume(pred_render(p)),
+}
+
+// A type for the developer's eye, its free variables named in its own
+// extent. A message that shows several types renders the whole message under
+// ONE install (`ETypeMismatch`'s), so a variable they share reads as one
+// name.
+fn show_type(ref ty) with !Mutate = render_ty_top(ty) ~> var_names
+
+// Every render chases TVars through graph_chase; no cached display. Same
+// discipline as lowering: live observer, never mirror.
+fn render_ty(ty) with !Mutate = match ty {
   TInt => "Int",
   TFloat => "Float",
   TUnit => "()",
   TByte => "Byte",
   TAddr => "Addr",
-  TList(elem) => "List({show_type(elem)})",
-  TTuple(elems) => "({show_list(elems, show_type, ", ")})",
-  TFun(params, ret, row) => "({show_list(params, show_tparam, ", ")}) -> {show_type(ret)}{show_row_suffix(row)}",
-  TVar(id) => show_handle(id),
-  TName(name, args) => "{name}{show_type_args(args)}",
-  TRecord(fields) => "\{ {show_list(fields, show_field, ", ")} \}",
-  TRecordOpen(fields, v) => "\{ {show_list(fields, show_field, ", ")} | {show_handle(v)} \}",
-  TRefined(base, pred) => "{show_type(base)} where {show_predicate(pred)}",
-  TCont(input, answer, disc, world) => "Cont({show_type(input)} {show_discipline(disc)} {show_type(answer)}{show_row_suffix(world)})",
+  TList(elem) => "[{render_ty(elem)}]",
+  TTuple(elems) => "({show_list(elems, render_ty, ", ")})",
+  TFun(params, ret, row) => "({show_list(params, render_fn_param, ", ")}) -> {render_ty(ret)}{render_row_suffix(row)}",
+  TVar(id) => render_var(id),
+  TName(name, args) => if len(args) == 0 { name } else { "{name}({show_list(args, render_ty, ", ")})" },
+  TRecord(fields) => "\{{show_list(fields_by_name(fields), render_field, ", ")}\}",
+  TRecordOpen(fields, v) => render_open_record(fields, v),
+  TRefined(base, pred) => if pred_is_provision(pred) {
+    // What a body hands a function is the function's provision, never a
+    // contract on its type a developer would write: the type is its base.
+    render_ty(base)
+  } else {
+    "{render_ty(base)} where {ty_pred(pred)}"
+  },
+  TCont(input, answer, disc, world) => "Cont({render_ty(input)} {show_discipline(disc)} {render_ty(answer)}{render_row_suffix(world)})",
   TAlias(name, _) => // RN.1 — show the alias name (intent), not the resolved type
   name,
-  TReprPin(r, base) => "{show_type(base)} repr {repr_wat(r)}",
+  TReprPin(r, base) => // A pin whose base is the width's own bare atom renders bare (`f32` —
+  // the atom mints exactly this pair); any other pairing renders the
+  // `repr` suffix.
+  match (r, base) {
+    (RF64, TFloat) => "f64",
+    (RF32, TFloat) => "f32",
+    (RI64, TInt) => "i64",
+    (RV128, TInt) => "v128",
+    _ => "{render_ty(base)} repr {repr_wat(r)}",
+  },
 }
+
+// A record's fields in the order SYNTAX sorts them at parse, by name — a row
+// a unification assembled holds them in the order it met them, and the page
+// a developer reads is the order every parse of it gives back.
+fn fields_by_name(fields) =
+  fields |> map({ (n, _) => n }) |> sort |> unique |> flat_map({ n => filter({ (m, _) => m == n }, fields) })
+
+fn pred_is_provision(pred) = match pred {
+  PProvides(_) => true,
+  PWithSelf(_, inner) => pred_is_provision(inner),
+  PTrue => false,
+  PCompare(_, _, _) => false,
+  PAnd(_, _) => false,
+  POr(_, _) => false,
+  PNot(_) => false,
+  PBoolNode(_) => false,
+  PPatternMatch(_, _) => false,
+  PFlowLe(_, _) => false,
+  PTotalDiv(_, _, _) => false,
+  PInBounds(_, _) => false,
+}
+
+// A function type's parameter is its type alone, since a type position
+// carries no names (`f: (a) -> b`).
+fn render_fn_param(p) with !Mutate = render_ty(param_ty(p))
+
+// A type the eye is shown whole: when it is a function, it reads as the
+// signature it is — each parameter with its name and ownership grade, as a
+// head writes it, its grade before its name; the types inside it
+// stay types.
+fn render_ty_top(ty) with !Mutate = match ty {
+  TFun(params, ret, row) => "({show_list(params, render_tparam, ", ")}){render_ret(ret)}{render_row_suffix(row)}",
+  TVar(h) => match graph_chase(h) {
+    GNode(NBound(b), _) => render_ty_top(b),
+    _ => render_ty(ty),
+  },
+  _ => render_ty(ty),
+}
+
+fn render_field(field: (String, Ty)) with !Mutate = match field {
+  (name, ty) => "{name}: {render_ty(ty)}",
+}
+
+// A variable: its binding when bound, the context's name when free.
+fn render_var(h) with !Mutate = match graph_chase(h) {
+  GNode(NBound(ty), _) => render_ty(ty),
+  GNode(NRowBound(row), _) => render_row(row),
+  GNode(NRecordRowBound(fields, tail), _) => render_record_row_residual(fields, tail),
+  GNode(NFree(_), _) => ty_var_name(graph_chase_handle(h), SortType),
+  GNode(NRowFree(_), _) => ty_var_name(graph_chase_handle(h), SortRow),
+  GNode(NErrorHole(reason), _) => "!hole[{show_reason(reason)}]",
+}
+
+// An open record: its known fields, then the rest — `...e` for the row
+// variable that still stands for it, nothing past `...` when it was bound.
+// The authored face names the rest only where its author did (`...r`).
+fn render_open_record(fields, v) with !Mutate = match graph_chase(v) {
+  GNode(NRecordRowBound(more, tail), _) => render_record_row_residual(fields ++ more, tail),
+  GNode(NRowFree(_), _) => "\{{show_list(fields, render_field, ", ")}{rest_lead(fields)}...{rest_name(v)}\}",
+  _ => "\{{show_list(fields, render_field, ", ")}{rest_lead(fields)}...{authored_rest_name(v)}\}",
+}
+
+fn rest_name(v) with !Mutate = match ty_row_face() {
+  FaceInferred => ty_var_name(graph_chase_handle(v), SortRow),
+  FaceAuthored => authored_rest_name(v),
+}
+
+fn authored_rest_name(v) = match declared_var_name(graph_chase_handle(v)) {
+  Some(r) => r,
+  None => "",
+}
+
+fn rest_lead(fields) = if len(fields) == 0 { "" } else { ", " }
 
 // A residual bind, rendered with WHAT ITS WRITER KNEW. The fields alone
 // cannot say whether a remainder was proven or merely unseen, and reading
 // them as though they could is the wrong-slot class at the projection
-// layer — `{ }` from a closed partner is a proof, `{ }` from two partial
+// layer — `{}` from a closed partner is a proof, `{...e}` from two partial
 // sets is a guess, and they used to print identically.
-fn show_record_row_residual(fields, tail) with !Mutate = match tail {
-  RowClosed => show_type(TRecord(fields)),
-  RowContinues(v) => "{show_type(TRecord(fields))} | {show_handle(v)}",
+fn render_record_row_residual(fields, tail) with !Mutate = match tail {
+  RowClosed => render_ty(TRecord(fields)),
+  RowContinues(v) => render_open_record(fields, v),
+}
+
+fn show_record_row_residual(fields, tail) with !Mutate =
+  render_record_row_residual(fields, tail) ~> var_names
+
+// The FORENSIC projection — a free handle as its raw identity and allocation
+// epoch, "unresolved at epoch e". Never a developer-facing name: the
+// developer's eye asks `var_names`; this is what a page that should never
+// hold a variable shows when one reaches it anyway.
+fn show_handle_forensic(h) with !Mutate = match graph_chase(h) {
+  GNode(NRowFree(epoch), _) => "r{int_to_str(h)}@e{int_to_str(epoch)}",
+  GNode(NFree(epoch), _) => "t{int_to_str(h)}@e{int_to_str(epoch)}",
+  _ => show_handle(h),
 }
 
 // show_handle — the live-chase projection. Resolved handles show the
@@ -4639,22 +5262,17 @@ fn show_handle(h) with !Mutate = {
   }
 }
 
-// ─── The parameter list IS a positional product (SYNTAX.md §«Labeled call
-// arguments», §«Defaults...as a product node-kind») ──────────────────────
+// A call's arguments as the callee's positional PRODUCT: positionally, by
+// field (label), mixed, or with defaults filling absent fields, one machinery
+// with a record literal (SYNTAX §«Labeled call arguments»). This is the
+// judgment's one read; its answer is written at the call node (the
+// call-product column, `graph_product_note`) and the lowering reads that, so
+// the two see one product by construction. The LabeledArg wrappers and the
+// reorder are resolved away here; downstream sees only positional value
+// nodes.
 //
-// A call constructs its arg PRODUCT — positionally, by field (label), mixed,
-// or with defaults filling absent fields — ONE machinery, the same as a record
-// literal. resolve_call_args is the JUDGMENT's one read; its answer is written
-// at the call node (the call-product column, `graph_product_note`) and the
-// lowering reads that, so the two see one product by construction — one
-// truth, one writer, one reader, no re-derivation. The LabeledArg wrappers
-// and the reorder are resolved away here; downstream sees only positional
-// value nodes.
-//
-// Resolve a call's arg list (carrying optional LabeledArg wrappers) to the
-// callee's positional param order — PARAMS the callee's declared TParams,
-// read by the judgment off the callee NODE's own type (`callee_params_at`,
-// infer.mn), never by name. Positional args fill the next un-claimed slot
+// PARAMS are the callee's declared TParams, which the judgment reads off the
+// callee NODE's own type, never by name. Positional args fill the next un-claimed slot
 // left-to-right; a labeled arg claims its named slot (skip-over); a slot no
 // arg reaches is filled by the param's default node (the absent product
 // field's fallback construction). An unknown label is E_UnknownArgLabel —
@@ -4785,8 +5403,10 @@ fn collect_slot_nodes(params, slots, i, n, out, count) = if i >= n {
 // The prefixes a desugar mints a parameter's name under, one home for the
 // spelling: `dp_prefix` for a pattern written in parameter position,
 // `al_prefix` for the arm-list literal's one parameter. They are two because
-// the formatter may render only the first back into parameter position
-// (parser.mn `fresh_param_under` says why).
+// the formatter may render only the first back into parameter position: a
+// parameter-position pattern is one the parser could read as an expression,
+// while an arm's pattern is arbitrary, and rendering `{ 0 => 1 }` as a
+// parameter would turn its literal into a wildcard.
 let dp_prefix = "__dp"
 
 let al_prefix = "__al"
@@ -4798,20 +5418,64 @@ fn name_has_prefix(nm, prefix) =
 // the name it carries exists in no source a developer can read.
 fn minted_param_name(nm) = name_has_prefix(nm, dp_prefix) || name_has_prefix(nm, al_prefix)
 
-fn show_tparam(ref tp) = {
-  let base = if minted_param_name(param_name(tp)) {
-    show_type(param_ty(tp))
-  } else {
-    "{param_name(tp)}: {show_type(param_ty(tp))}"
+// A parameter in a head, as SYNTAX writes one: its ownership marker before
+// the name — the authored one, else the grade the inference resolved, which
+// is a fact of the parameter as much as its type is — the name, its type. A
+// parameter with no name an author wrote — an op's or a constructor's bare
+// type (`_`, the positional `_0`, `_1` its scheme carries), or one a desugar
+// minted — renders as its type alone, never as `_:`.
+fn render_tparam(tp) with !Mutate = {
+  let marker = match param_authored(tp) {
+    Unmarked => ownership_marker(param_resolved(tp)),
+    authored => ownership_marker(authored),
   }
-  match param_authored(tp) {
-    Unmarked => match param_resolved(tp) {
-      Unmarked => base,
-      _ => "{base}{show_ownership(param_resolved(tp))} — inferred",
-    },
-    _ => "{base}{show_ownership(param_authored(tp))} — declared",
+  if param_is_unnamed(param_name(tp)) {
+    "{marker}{render_ty(param_ty(tp))}"
+  } else {
+    "{marker}{param_name(tp)}: {render_ty(param_ty(tp))}"
   }
 }
+
+fn ownership_marker(o) with Pure = match o {
+  Unmarked => "",
+  Own => "own ",
+  Ref => "ref ",
+}
+
+fn param_is_unnamed(nm: String) = nm == "_" || minted_param_name(nm) || positional_param_name(nm)
+
+// `_0`, `_1`, … — the names a scheme gives the fields an author left bare.
+fn positional_param_name(nm: String) =
+  byte_len(nm) > 1 && byte_at(nm, 0) == 95 && byte_at(nm, 1) >= 48 && byte_at(nm, 1) <= 57
+
+// A declaration's head for the developer's eye — the one head every
+// projection that shows a signature renders (`where`, `doc`, an op's line):
+// `name(p: T, …) -> R with row`, a unit result omitted as a declaration
+// omits it, the row the inference proved.
+fn render_head(name: String, params, ret, row) with !Mutate =
+  "{name}({show_list(params, render_tparam, ", ")}){render_ret(ret)}{render_row_suffix(row)}"
+
+// A function-typed result is parenthesized: a `with` after it would bind the
+// returned function's row, never the head's (SYNTAX §«Function
+// declarations»: greedy, parenthesize for the outer clause).
+fn render_ret(ret) with !Mutate = match chase_ret(ret) {
+  TUnit => "",
+  TFun(_, _, _) => " -> ({render_ty(ret)})",
+  _ => " -> {render_ty(ret)}",
+}
+
+// A result type read through the variables bound to it, so a unit bound to a
+// variable omits its arrow as a written unit does.
+fn chase_ret(t) = match t {
+  TVar(h) => match graph_chase(h) {
+    GNode(NBound(b), _) => chase_ret(b),
+    _ => t,
+  },
+  _ => t,
+}
+
+fn show_head(name: String, params, ret, row) with !Mutate =
+  render_head(name, params, ret, row) ~> var_names
 
 fn show_ownership(o) with Pure = match o {
   Unmarked => "",
@@ -4826,55 +5490,84 @@ fn show_discipline(d) with Pure = match d {
   Abandon => "Abandon",
 }
 
-fn show_field(ref field: (String, Ty)) with !Mutate = match field {
-  (name, ty) => "{name}: {show_type(ty)}",
+fn show_field(field: (String, Ty)) with !Mutate = render_field(field) ~> var_names
+
+// A function's row after its type: nothing when it performs nothing, else
+// `with` and the row — under the authored face only what an author wrote.
+fn render_row_suffix(row) with !Mutate = match ty_row_face() {
+  FaceAuthored => match row {
+    EfRow(p, a, t) => {
+      // An author writes a row variable by its name; the parse's own open
+      // tail — the absence of a clause — has none and renders nothing.
+      let named = match t {
+        EtOpen(vs) => filter({ e => is_named_var(e.cell) }, vs),
+        _ => [],
+      }
+      if len(p) == 0 && len(a) == 0 && len(named) == 0 {
+        ""
+      } else if len(named) == 0 {
+        " with {render_row_head(p, a)}"
+      } else if len(p) == 0 && len(a) == 0 {
+        " with {show_list(named, render_row_edge, " + ")}"
+      } else {
+        " with {render_row_head(p, a)} + {show_list(named, render_row_edge, " + ")}"
+      }
+    },
+  },
+  FaceInferred => match row {
+    EfRow([], [], EtClosed) => "",
+    EfRow([], [], EtAll) => // Every effect may cross: the row states no constraint, and no
+    // clause spells that — a type with no `with` is unconstrained.
+    "",
+    _ => " with {render_row(row)}",
+  },
 }
 
-fn show_type_args(ref args) with !Mutate =
-  if len(args) == 0 { "" } else { "({show_list(args, show_type, ", ")})" }
+fn show_row_suffix(row) with !Mutate = render_row_suffix(row) ~> var_names
 
-fn show_row_suffix(ref row) with !Mutate = match row {
-  EfRow([], [], EtClosed) => "",
-  _ => " with {show_effrow(row)}",
-}
-
-// An edge in the row's own algebra: the cell alone, or `(r - E - F)` when a
+// An edge in the row's own algebra: the cell alone, or `(e - E - F)` when a
 // `~>` on its path subtracts — the difference SYNTAX already spells, so the
 // projection names which computation each absorption covered.
-fn show_row_edge(e: RowEdge) with !Mutate = if len(e.mask) == 0 {
-  show_handle(e.cell)
+fn render_row_edge(e: RowEdge) with !Mutate = if len(e.mask) == 0 {
+  render_var(e.cell)
 } else {
-  "({show_handle(e.cell)} - {show_list(e.mask, show_eff_name, " - ")})"
+  "({render_var(e.cell)} - {show_list(e.mask, render_eff_name, " - ")})"
 }
 
-// The triple's voice: presents joined with `+`, the absent set as `!X`
-// terms, the tail as its var handle; an empty closed row is Pure.   // drift-audit: ignore — human-facing rendering string for diagnostics/show; not an effect-keyed lookup; tracked by Hβ.perf.name-is-handle; effect-rendering normalization
-fn show_effrow(ref row) with !Mutate = match row {
+fn render_row_head(p, a) with !Mutate = {
+  let parts = show_list(p, render_eff_name, " + ")
+  let negs = show_list(a, (n) => "!{render_eff_name(n)}", " + ")
+  let joiner = if len(p) > 0 && len(a) > 0 { " + " } else { "" }
+  "{parts}{joiner}{negs}"
+}
+
+// The triple, as SYNTAX writes a row: presents joined with `+`, the absent
+// set as `!X` terms, each open tail by its name; an empty closed row is
+// Pure. A negation stands for "anything but", so `!E` is the whole of an
+// EtAll row and no Any is ever spelled.   // drift-audit: ignore — human-facing rendering string for diagnostics/show; not an effect-keyed lookup; tracked by Hβ.perf.name-is-handle; effect-rendering normalization
+fn render_row(row) with !Mutate = match row {
   EfRow(p, a, t) => {
-    let parts = show_list(p, show_eff_name, " + ")
-    let negs = show_list(a, (n) => "!{show_eff_name(n)}", " + ")
-    let joiner = if len(p) > 0 && len(a) > 0 { " + " } else { "" }
-    let head = "{parts}{joiner}{negs}"
+    let head = render_row_head(p, a)
     match t {
       EtClosed => // drift-audit: ignore — the renderer WRITES the surface word for the empty row (SYNTAX: Pure is the identity's spelling); no dispatch reads it
       if len(p) == 0 && len(a) == 0 { "Pure" } else { head },
-      EtAll => // A named EtAll row must render distinguishably from a closed one:
-      // reading = p ∪ (ALL ∖ a), so the tail carries "everything else" — the
-      // 2026-07-31 census read forty EtAll-vs-EtClosed refusals as phantom
-      // positives mismatches because this arm rendered `head` bare.
-      if len(p) == 0 && len(a) == 0 { "Any" } else { "{head} + Any" },
+      EtAll => // reading = p ∪ (ALL ∖ a): with a negation it IS `!E`'s reading;
+      // with none, every effect, which no clause spells but `!Pure`.
+      if len(p) == 0 && len(a) == 0 { "!Pure" } else { head },
       EtOpen(vs) => // every edge renders (the set is the tail); the empty set
       // reads as closed — ef_make canonicalizes it away, and the voice
       // stays total over it regardless (display-totality).
       if len(vs) == 0 {
         if len(p) == 0 && len(a) == 0 { "Pure" } else { head }
       } else {
-        let tails = show_list(vs, show_row_edge, " + ")
+        let tails = show_list(vs, render_row_edge, " + ")
         if len(p) == 0 && len(a) == 0 { tails } else { "{head} + {tails}" }
       },
     }
   },
 }
+
+fn show_effrow(row) with !Mutate = render_row(row) ~> var_names
 
 // What a refinement states about a type's inhabitants, said to a person. The
 // open-bounded arms name the side that IS bounded rather than inventing an
@@ -4892,15 +5585,24 @@ fn show_domain(d) = match d {
   DUndecided => "the predicate is past the decidable fragment, so the type's bound is unread",
 }
 
+// A constant as the source writes it.
+fn show_lit_value(v) = match v {
+  LVInt(n) => int_to_str(n),
+  LVFloat(f) => float_to_str(f),
+  LVString(s) => "\"{s}\"",
+  LVBool(b) => if b { "true" } else { "false" },
+}
+
 // The arm's NAME — what a proposal fixture's `// propose` contract names
 // (`mentl test` over tests/proposals), so a contract binds the
-// classification and never the sentence.
-fn divergence_arm(d) with Pure = match d {
+// classification and never the sentence. A value question carries the values
+// it asks between, which are the classification's own content.
+fn divergence_arm(d) = match d {
   DivRow(_, _) => "row",
   DivType(_, _, _) => "type",
   DivName => "name",
-  DivValue(_) => "value",
-  DivVariants(_) => "value",
+  DivValue(values, _) => "value {join(" or ", map(show_lit_value, values))}",
+  DivVariants(names) => "value {join(" or ", names)}",
   DivShape => "shape",
   DivBehavior => "behavior",
 }
@@ -4910,18 +5612,20 @@ fn divergence_arm(d) with Pure = match d {
 // constraint collapses it" — that sentence was the same words at every tie,
 // which is a placeholder wearing a teaching voice.
 fn show_divergence(d) with !Mutate = match d {
-  DivRow(a, b) => "these differ in what they may DO — {show_effrow(a)} against {show_effrow(b)}: which capability does this position carry?",
-  DivType(a, b, r) => "these differ in TYPE — {show_type(a)} against {show_type(b)}: which type does this position hold? (the cell that moves: {show_reason(r)})",
+  DivRow(a, b) => "these differ in what they may DO — {render_row(a)} against {render_row(b)}: which capability does this position carry?" ~> var_names,
+  DivType(a, b, r) => "these differ in TYPE — {render_ty(a)} against {render_ty(b)}: which type does this position hold? (the cell that moves: {show_reason(r)})" ~> var_names,
   DivName => "every survivor denotes the same value — the question is which name carries the intent",
-  DivValue(dom) => "the survivors differ in VALUE and {show_domain(dom)}: which one does this position mean?",
+  DivValue(values, dom) => "the survivors differ in VALUE — {join(" or ", map(show_lit_value, values))} — and {show_domain(dom)}: which one does this position mean?",
   DivVariants(names) => "the survivors are the type's own values — {join(" or ", names)}: which one does this position mean?",
   DivShape => "the survivors differ in SHAPE — what structure does this position hold?",
   DivBehavior => "these are different computations of the same type — an example of the result, or a refinement on it, decides which one this position means",
 }
 
-fn show_eff_name(ref name) with !Mutate = match name {
+fn show_eff_name(name) with !Mutate = render_eff_name(name) ~> var_names
+
+fn render_eff_name(name) with !Mutate = match name {
   ENamed(h) => intern_name_of(h),
-  EParameterized(h, args) => "{intern_name_of(h)}({show_list(args, show_eff_arg, ", ")})",
+  EParameterized(h, args) => "{intern_name_of(h)}({show_list(args, render_eff_arg, ", ")})",
   EPure => // drift-audit: ignore — variant→surface-label render, not a name key
   // DISPLAY-TOTALITY, not a data-drop. The mentl voice must be TOTAL — it can
   // never crash while REPORTING a diagnostic (a renderer that traps mid-report
@@ -4938,14 +5642,16 @@ fn show_eff_name(ref name) with !Mutate = match name {
   "«invalid-effect»",
 }
 
-fn show_eff_arg(ref arg) with !Mutate = match arg {
+fn show_eff_arg(arg) with !Mutate = render_eff_arg(arg) ~> var_names
+
+fn render_eff_arg(arg) with !Mutate = match arg {
   EAInt(n) => int_to_str(n),
   EAFloat(f) => float_to_str(f),
   EAString(s) => "\"{s}\"",
   EAType(t) => // The instance's payload IS a type the renderer already speaks — the
   // old opaque marker hid the exact instance the diagnostic exists to
   // teach (!Cast vs Cast(<type>) named the class live, 2026-07-24).
-  show_type(t),
+  render_ty(t),
   EANode(h) => // The operand node's own source spelling — the row render is the
   // developer's surface, and the debug form broke fmt's render→re-parse
   // fixpoint the day an EANode instance reached a with-clause (measured
@@ -4981,6 +5687,7 @@ fn show_predicate(ref pred) = match pred {
     _ => "{show_pred_operand(b)} != 0 && {show_pred_atom(a)} / {show_pred_atom(b)} fits (never INT_MIN / -1)",
   },
   PProvides(provided) => show_provided(provided),
+  PInBounds(recv, idx) => "0 <= {show_pred_operand(idx)} && {show_pred_operand(idx)} < len({show_pred_operand(recv)})",
 }
 
 fn show_provided(provided) = match provided {
@@ -5095,7 +5802,7 @@ fn show_reason(ref reason) with !Mutate = match reason {
   LetBinding(name, inner) => "let {name} = {show_reason(inner)}",
   Unified(a, b) => "{show_reason(a)} unified with {show_reason(b)}",
   Instantiation(name, inner) => "instantiate {name} → {show_reason(inner)}",
-  UnifyFailed(ta, tb) => "cannot unify {show_type(ta)} with {show_type(tb)}",
+  UnifyFailed(ta, tb) => "cannot unify {render_ty(ta)} with {render_ty(tb)}" ~> var_names,
   Placeholder(span) => "placeholder at {show_span(span)}",
   BinOpPlaceholder(op) => "binop {binop_to_str(op)}",
   MissingVar(name) => "unbound variable: {name}",
@@ -5112,10 +5819,8 @@ fn show_reason(ref reason) with !Mutate = match reason {
 
 // A diagnostic's reason on the diagnostic's own line: the outer address is
 // the span the diagnostic already carries, so it is dropped, and what
-// remains is the chain the unify was asked with. A mismatch used to drop
-// it at the reporter (`type_mismatch` took the reason and discarded it), so
-// `Int vs List(Byte)` at an install said nothing of the arm that answered
-// the second.
+// remains is the chain the unify was asked with, so `Int vs List(Byte)` at
+// an install says which arm answered the second.
 fn reason_line(reason) with !Mutate = match reason {
   Located(_, inner) => show_reason(inner),
   _ => show_reason(reason),
@@ -5260,6 +5965,8 @@ fn predicate_flow_label(ref pred) = match pred {
   PWithSelf(_, inner) => // the `self` binder is transparent to flow
   predicate_flow_label(inner),
   PTotalDiv(_, _, _) => // a primitive's precondition: not a secrecy annotation
+  Public,
+  PInBounds(_, _) => // a primitive's precondition: not a secrecy annotation
   Public,
   PProvides(_) => // a provision names the values handed, not a secrecy annotation
   Public,

@@ -1,5 +1,5 @@
-// propose 3:17: ask value
-// Four integer seeds fit an unbounded Int, and nothing distinguishes them but their value.
+// propose 3:17: ask value 0 or 1 or -1
+// Four survivors fit an unbounded Int — the three seeds and the program's own `main`, which denotes 0 — and the question names each value once.
 fn f() -> Int = ??
 
 fn main() = 0

@@ -1,0 +1,15 @@
+// Two spawned branches storing into ONE buffer both capture: the store is
+// an in-place write into memory older than either branch, made from two
+// instances — the race the arm-state rule names, with no handler between.
+// Expected: REFUSE E_ThreadedBranchEffect, naming the store.
+fn bump(buf, _) = {
+  list_set(buf, 0, list_index(buf, 0) + 1)
+  list_index(buf, 0)
+}
+
+fn main() = {
+  let buf = make_list(1)
+  match 0 <| (bump(buf), bump(buf)) ~> parallel_compose {
+    (a, b) => a + b,
+  }
+}

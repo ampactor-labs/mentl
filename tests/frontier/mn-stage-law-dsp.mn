@@ -1,0 +1,15 @@
+// expect: 40
+// THE STAGE LAW IN lib/dsp: configuration first, the datum last, so a pipe
+// fills the signal and `x |> clip(0.5)` means what it says. The processors
+// were datum-first while the library's header advertised `x |> gain(0.8)`, so
+// the pipe filled the THRESHOLD: on boot d956687d `(0.0 - 2.0) |> clip(0.5)`
+// was clip(0.5, -2.0) = 0.5, where the clipped signal is -0.5, and `gain`
+// was right only because multiplication commutes. A merge feeds a two-signal
+// stage the same way: `((wet) >< (dry)) |> mix(0.25)`. The frontier links
+// lib/dsp/signal.mn ahead of this program (its `signal` runtime).
+fn main() -> Int = {
+  let clipped = -2.0 |> clip(0.5)
+  let scaled = 3.0 |> gain(0.5)
+  let blended = ((1.0) >< (0.0)) |> mix(0.25)
+  if clipped == -0.5 && scaled == 1.5 && blended == 0.25 { 40 } else { 41 }
+}

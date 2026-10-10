@@ -1,6 +1,6 @@
-// propose 6:19: ask value
+// propose 6:19: ask value Square or Circle
 // Two nullary constructors are the type's own VALUES — a value question,
-// never a shape one.
+// never a shape one — named in rank order, the nearer declaration first.
 type Shape = Circle | Square
 
 fn f() -> Shape = ??

@@ -30,41 +30,43 @@
 //   clock_real, tick_real, sample_at, deadline_real → clock.mn
 import graph
 
-import types
-
-import effects
-
-import env
-
-import intern
-
-import infer
-
-import lower
+import backends/wasm
 
 import derive
 
-import backends/wasm
-
-import lexer
-
-import parser
-
-import own
-
-import verify
-
-import mentl
-
-import query
+import driver
 
 import dsp/clock
 
-import driver
+import effects
+
+import egraph
+
+import env
+
+import format
+
+import infer
+
+import intern
 
 import io
 
-import egraph
+import lexer
+
+import lower
+
+import mentl
+
+import own
+
+import parser
+
+import query
+
+import types
+
+import verify
 
 // The spine — entry points as |> + ~> topology
 // Read top-to-bottom: source flows DOWN through `|>`; handlers wrap
@@ -537,6 +539,7 @@ fn heap_line(at: String) = match diag_scope_of() {
   ScopeAll => eprint_string("heap: {heap_mark()} byte(s) {at}\n"),
   ScopeNone => (),
   ScopeModule(_) => (),
+  ScopeLink => (),
 }
 
 // The arenas' census for the whole compile — every exit the judgment's
@@ -548,6 +551,7 @@ fn arena_line() = match diag_scope_of() {
   ScopeAll => eprint_string("arena: {int_to_str(arena_stat(ArExits))} exit(s), {int_to_str(arena_stat(ArKept))} kept, {int_to_str(arena_stat(ArFreed))} KB reclaimed, {int_to_str(arena_stat(ArMoved))} KB moved, line peak {int_to_str(arena_stat(ArHigh))} KB, {int_to_str(arena_stat(ArSuspended))} suspended\n"),
   ScopeNone => (),
   ScopeModule(_) => (),
+  ScopeLink => (),
 }
 
 // `mentl resume <img>` — the image IS the process: swap it in and run
@@ -562,9 +566,16 @@ fn resume_image(img_path) = compile_context(() => {
   compile_remainder(warm_program())
 } ~> wat_stdout ~> persist_to_disk ~> fail_exit ~> wasi_filesystem)
 
+// The program on stdin is an entry: its import lines weave the DAG the walk
+// draws from it, as a file's do (`driver_text_scoped`), and every module of
+// the link narrates, as the stdin route always has.
 fn compile_stdin() = compile_context(() => {
-  read_stdin() |> infer_program_converged |> compile_remainder
+  read_stdin() |> stdin_link |> compile_remainder
 } ~> wat_stdout ~> wasi_filesystem)
+
+fn stdin_link(text) = match driver_text_scoped(text, ScopeAll) {
+  (ast, _mods) => ast,
+}
 
 // pipeline_check returns its own ERROR COUNT, because it owns the handler that
 // does the counting (the diagnostics_handler at the foot of this chain).
@@ -589,7 +600,12 @@ fn pipeline_check(entry_module) = infer_context(() => {
   // E_MissingVariable noise on a clean program. The per-module env
   // overlay (Hβ.driver.per-module-env-overlay) is that walk's sequenced
   // refinement; until it lands, the weave IS the check.
-  driver_entry_with_ranges(entry_module)
+  //
+  // THE PROJECT IS THE UNIT (G2): every module of the link narrates, each
+  // report once at its own module. The entry-scoped register this read
+  // through hid eight refuted `own` markers in graph, infer and lexer behind
+  // a check that said zero, because it reported the entry alone.
+  driver_entry_scoped(entry_module, ScopeLink)
   diag_errors()
 } ~> wasi_filesystem ~> mentl_default)
 
@@ -638,9 +654,11 @@ fn query_judged(entry_module: String, read) = infer_context(() => {
       Some(_) => Some(read(entry_module)),
     },
   }
-} ~>
-// the derivation's fs_read — handled in-chain, as compile/check do
-wasi_filesystem ~> query_default ~> mentl_default ~> arm_state_ctx([], OneShot, "") ~> spec_registry)
+} ~> query_default ~> mentl_default ~> arm_state_ctx([], OneShot, "") ~> spec_registry ~>
+// the derivation's fs_read — handled in-chain, as compile/check do; outermost,
+// because a query arm reads the filesystem too and an arm's performs resolve
+// outer of its own install
+wasi_filesystem)
 
 // One program's answer to a SITE facet, kept to the program's own module —
 // what `mentl query <dir> …` asks of each program in a directory, since the
@@ -652,88 +670,90 @@ fn query_sites(entry_module: String, question) =
 
 fn own_sites_of(question, m: String) = own_sites(ask(parse_query_string(m, question)), m)
 
-fn own_sites(answer, m: String) = match answer {
-  QRRefs(sites) => Some(("reference(s)", filter(site_in_module(m, ??), sites))),
-  QRCensus(label, sites) => Some((label, filter(site_in_module(m, ??), sites))),
-  QRDecls(sites) => Some(("judged decl(s)", filter(site_in_module(m, ??), sites))),
-  QRType(_, _) => None,
-  QRIntent(_) => None,
-  QRUnresolved(_) => None,
-  QRChain(_) => None,
-  QREffects(_) => None,
-  QROwnership(_) => None,
-  QRWhy(_) => None,
-  QRVerifyDebt(_) => None,
-  QRSmt(_) => None,
-  QRHandlerProvider(_) => None,
-  QRFlowLabel(_, _) => None,
-  QRModules(_) => None,
-  QRImports(_) => None,
-  QRUnreferenced(_) => None,
-  QRUnreachable(_) => None,
-  QRPerforms(_) => None,
-  QROrphanClaims(_) => None,
-  QRCost(_, _, _) => None,
-  QRGhosts(_) => None,
-  QRWhere(_, _) => None,
-  QRError(_) => None,
+// The program's own sites are the located answer kept to its module — the
+// same `sites_in` a scoped question reads and the same `located_answer` the
+// board bounds, so which answers are located is said once.
+fn own_sites(answer, m) = located_answer(sites_in(m, answer))
+
+// The diagnostic bank keeps every report its install encloses, as the
+// structured fact the report carried: the kind, the module it is about,
+// and the message rendered when it fired. Every reader of reports reads
+// it — the page's Lens paints the kinds, `mentl tighten` and the field read
+// the tightenings, the battery's refuse contract reads the classes, and the
+// mcp verdict reads the lines (each a pure projection of a fact) — so no
+// reader parses the stderr text the root handler prints, and no second
+// collector keeps a copy. Every report re-performs outward from the arm,
+// which is sound because an arm's own performs resolve in the INSTALL's
+// world (the deep-handler law): they reach the bracket's
+// diagnostics_handler and never re-enter this bank. diag_forget is the
+// generation boundary's clear for the modules a session is about to
+// re-judge, so a stale generation's reports never shadow the current truth
+// while a module outside the cone keeps its own.
+effect DiagBank {
+  // every report since the last forget, as the report carried it: the kind,
+  // its message, its module
+  diag_banked() -> [(DiagKind, String, String)]
+  diag_forget([String])
 }
 
-fn site_in_module(m: String, site) = match site {
-  (sm, _) => sm == m,
-}
-
-// ─── The tightening bank — T_OverDeclared as a live frontier fact ────
-//
-// T_OverDeclared already IS a proposal (the diagnostic carries the
-// declared row, the proven body row, the fn name, and the decl span,
-// MachineApplicable); this collector banks each one as the judgment
-// fires it, so the tighten verb AND the frontier field read the same
-// candidates live. tighten_forget clears the bank at a generation
-// boundary for the modules about to be re-judged — the living session
-// re-judges a moved tree's cone, and a stale generation's candidates must
-// not shadow the current truth while a module outside the cone keeps its
-// own.
-effect Tighten {
-  // the MODULE rides each candidate: `mentl tighten` edits a FILE, and a
-  // local span names a line without naming which file's line it is.
-  tightenables() -> [(EffRow, EffRow, String, Span, String)]
-  tighten_forget([String])
-}
-
-// The collecting forwarder over the Diag effect: TOverDeclared
-// accumulates in state AND every diagnostic re-performs outward from the
-// arm — sound because an arm's own performs resolve in the INSTALL's
-// world (the world arc's deep-handler law), reaching the bracket's
-// diagnostics_handler, never re-entering this collector. All three Diag
-// ops carry arms: a handler arming only SOME ops of an effect leaves
-// zero fn slots for the rest, and a perform through a zero slot is a
-// garbage dispatch.
-handler tighten_collector with found = [] {
-  diag_report(diag, line, dmod) => {
-    // Forward outward with the SAME rendered line — the forwarder never
-    // re-renders (the line was made once, at the report boundary), and the
-    // module rides along unread: a forwarder must not re-derive what the
-    // reporter already established.
-    diag_report(diag, line, dmod)
-    match diag {
-      TOverDeclared(declared, used, name, span) => resume() with found = push(found, (declared, used, name, span, dmod)),
-      TRowInventory(declared, used, name, span) => // An inventory is a tightening too (A4): the patch for both is the
-      // clause's residue, so both bank in the one place the verb reads.
-      resume() with found = push(found, (declared, used, name, span, dmod)),
-      _ => resume(),
-    }
+handler diag_bank with banked = [] {
+  diag_report(diag, msg, dmod) => {
+    diag_report(diag, msg, dmod)
+    resume() with banked = push(banked, (diag, msg, dmod))
   },
   diag_errors() => resume(diag_errors()),
   diag_refusals() => resume(diag_refusals()),
-  tightenables() => resume(found),
-  tighten_forget(modules) => resume() with found = filter(tightening_outside(modules), found),
+  diag_narrations() => resume(diag_narrations()),
+  diag_banked() => resume(banked),
+  diag_forget(modules) => resume() with banked = filter(diag_outside(modules), banked),
 }
 
-// A banked tightening survives a forget unless its module is about to be
-// re-judged. `modules: [String]` carries the eq proof the name compare needs.
-fn tightening_outside(modules: [String], entry) = match entry {
-  (_, _, _, _, dmod) => !any((m) => m == dmod, modules),
+// A banked report survives a forget unless its module is about to be
+// re-judged.
+fn diag_outside(modules: [String], entry) = match entry {
+  (_, _, dmod) => !any((m) => m == dmod, modules),
+}
+
+// The tightenings the judgment banked, read off the bank: T_OverDeclared
+// already IS a proposal (the diagnostic carries the declared row, the
+// proven body row, the fn name and the decl span, MachineApplicable), and
+// an inventory is a tightening too (A4) — the patch for both is the
+// clause's residue — so `mentl tighten`, the frontier field and the View
+// read the same candidates live. The MODULE rides each candidate: the verb
+// edits a FILE, and a local span names a line without naming which file's.
+fn tightenables() = fold([], tightening_of, diag_banked())
+
+fn tightening_of(acc, entry) = match entry {
+  (TOverDeclared(declared, used, name, span), _, dmod) => push(acc, (declared, used, name, span, dmod)),
+  (TRowInventory(declared, used, name, span), _, dmod) => push(acc, (declared, used, name, span, dmod)),
+  _ => acc,
+}
+
+// The ownership markers the judgment refuted, read off the same bank: each
+// an authored `own` no path consumes, released by `mentl tighten` to the
+// grade the inference reads from use (PLAN §4⑤ — if the developer has to
+// think about it, the inference failed). (parameter, decl span, module).
+fn own_releases() = fold([], own_release_of, diag_banked())
+
+fn own_release_of(acc, entry) = match entry {
+  (TOwnUnconsumed(name, span), _, dmod) => push(acc, (name, span, dmod)),
+  _ => acc,
+}
+
+// The banked reports as the root handler printed them, in report order —
+// the text an mcp verdict carries.
+fn banked_lines() = str_concat_all(map(banked_line, diag_banked()))
+
+fn banked_line(entry) = match entry {
+  (diag, msg, dmod) => diag_line(diag, msg, dmod),
+}
+
+// The banked reports' CLASSES, in report order — what a refuse contract
+// compares, never a substring of rendered prose.
+fn banked_classes() = map(banked_class, diag_banked())
+
+fn banked_class(entry) = match entry {
+  (diag, _, _) => diag_code(diag),
 }
 
 // analyze_fns — the shared analysis-verb cursor: load+check the module,
@@ -757,7 +777,9 @@ fn analyze_fns(entry_module, projection) = infer_context(() => {
   // carried a second cost: the route installed no diagnostic scope, so it
   // narrated every dependency at a developer who had named one file.
   let ast = if entry_module == "-" {
-    read_stdin() |> infer_program_converged
+    match driver_text_scoped(read_stdin(), ScopeModule("<stdin>")) {
+      (ast_all, _mods) => driver_module_ast(ast_all, "<stdin>"),
+    }
   } else {
     match driver_entry_with_ranges(entry_module) {
       (ast_all, _ranges) => driver_module_ast(ast_all, entry_module),
@@ -766,10 +788,10 @@ fn analyze_fns(entry_module, projection) = infer_context(() => {
   projection(ast) |> print_string
 } ~>
 // The weave's own fs_read — handled in-chain, as compile/check do.
-// tighten_collector banks the judgment's T_OverDeclared rows so the
-// audit projection can speak them per decl — the collector sits INSIDE
-// the infer_context body chain, where the judgment's performs reach it.
-wasi_filesystem ~> mentl_default ~> arm_state_ctx([], OneShot, "") ~> spec_registry ~> tighten_collector)
+// diag_bank banks the judgment's reports so the audit projection can speak
+// the tightenings per decl — the bank sits INSIDE the infer_context body
+// chain, where the judgment's performs reach it.
+wasi_filesystem ~> mentl_default ~> arm_state_ctx([], OneShot, "") ~> spec_registry ~> diag_bank)
 
 // The pure projection pair — audit and teach as `ast -> String`, the ONE
 // home the CLI verb and the resident session's tool both call (the
@@ -821,66 +843,12 @@ fn teach(entry_module) = analyze_fns(entry_module, teach_project)
 
 fn audit(entry_module) = analyze_fns(entry_module, audit_project)
 
-// ─── Multi-module compilation — map over a module list ──────────────
-//
-// compile_pair_modules (binary special-case) was erased per
-// CLAUDE.md Anchor 6: the driver's topological-layer walk
-// (`Hβ.driver.level-set-par-walk`, layer partition live in driver.mn)
-// composes each dep-independent layer as `map(compile, layer)`; the
-// multi-core half is a `><` fanout under `~> Thread` at the layer
-// site (Hβ.lower.schedule-specialized-callee). Render targets attach
-// via `~>` to the per-module wat output. Drift 6 erasure.
-//
-// THE DEAD ROOT OF THE RANKED-QUEUE ORACLE WAS HERE, and its sentence was
-// the tell: "`mentl edit` IS this loop running." It was not. The decl —
-// ic_compile_loop, unbackticked because it no longer resolves — had ZERO
-// callers, measured by `mentl query src/main.mn unreachable` which named it
-// before anything else did; and `mentl edit` routes through `edit_run` / `mentl_edit_session`,
-// nowhere near it. It was also the ONLY install site of the queue merger, so
-// an entire subsystem hung off a function nobody called: 25 decls in
-// src/oracle.mn (the priority-queue machine — project_queue, compute_priority,
-// the priority_* / tier_* orders, sort_by_priority, merge_by_impact, the
-// filter_by_* family, handle_distance) and 9 in voice, all unreachable. None
-// of those names is backticked: the module is deleted and they resolve
-// nowhere, which is the difference between prose and a reference.
-//
-// The subsystem it rooted is SUPERSEDED, not merely unused: PLAN §11.1
-// re-founded the oracle as inference with a term-sorted unknown — propagation
-// before enumeration, forking only at genuine disjunction — and a project-wide
-// queue that re-runs the proposer at every position and sorts by a hand-tuned
-// intent × surface-area × locality priority is exactly the generate-then-filter
-// shape that re-founding names and refutes. The LIVE ranked absence field is
-// the frontier (`mentl <file>:0`). Two homes for one projection, and the dead
-// one was the superseded design. `Hβ.oracle.ranked-queue-is-a-second-frontier`
-// carries the deletion of the rest.
-//
-// One thing that deletion answered, measured at the moment the root went and
-// recorded before the rest followed it: with the root gone the queue merger
-// had NO install site anywhere, `mentl check src/main.mn` still passed, and
-// `silence_predicate` (src/voice.mn) — reachable, called from a handler arm —
-// still performed query_project_queue. A reachable perform with zero handlers
-// compiles clean. `Hβ.effects.reachable-perform-with-no-install-compiles`
-// carries it; the predicate reads the gradient field now, so the wheel no
-// longer contains that shape, and the GATE that let it through still does.
-//
-// The env substrate — buffer, index, resolve, dedup, and env_handler —
-// lives in src/env.mn now (PLAN §11 Phase 3.5, the handler seam: the
-// install chain in infer names the handler, so the declaration lives
-// below infer at the state's own module). The intern handlers moved to
-// src/intern.mn the same day for the same seam. This module imports
-// both; the compile chains install them exactly as before.
-// ── (relocated) O(1) env resolution — the str_hash-bucket index ─────────────
-// wasi_filesystem — FS substrate (IC prerequisite)
-// Four-arm stateless handler delegating to io.mn primitives.
-// Grants Filesystem capability to the driver's module reads. Installed in
-// `compile`'s ~> chain between wat_stdout and the compiler-internal
-// handlers — fs stays a driver-level capability, not something the
-// compiler's own code accidentally reaches for.
-//
-// Audit implications: a function that doesn't reach fs_* ops proves
-// `with !Filesystem`; audit-driven linker severance drops path_open
-// / fd_close / path_create_directory / path_filestat_get imports
-// from that binary. PLAN §0's capability severance, realized.
+// The Filesystem effect answered by the host: each arm hands its request to
+// the WASI primitive in io.mn that performs it, and holds no state of its
+// own. A compile route installs it around the driver, so reading a module,
+// writing an image and writing a battery's files all go through the one
+// capability the row names, and a function that reaches none of them proves
+// `!Filesystem`.
 handler wasi_filesystem {
   fs_exists(path) => resume(fs_exists_impl(path)),
   fs_read_file(path) => resume(fs_read_file_impl(path)),
@@ -892,8 +860,7 @@ handler wasi_filesystem {
     fs_mkdir_impl(path)
     resume()
   },
-  fs_open(path) => // FX.A.basics arms (per FX walkthrough §2.2)
-  resume(fs_open_impl(path)),
+  fs_open(path) => resume(fs_open_impl(path)),
   fs_create(path) => resume(fs_create_impl(path)),
   fs_close(fd) => {
     fs_close_impl(fd)
@@ -903,34 +870,21 @@ handler wasi_filesystem {
   fs_rename(old_p, new_p) => resume(fs_rename_impl(old_p, new_p)),
 }
 
-// lookup_ty_graph (the GraphRead → LookupTy bridge, with the
-// specialization state) lives in graph.mn — the projection reads
-// graph_chase, and the branch bracket (infer.mn) installs it, so the
-// graph is the one home both import.
-//
-// diag_line lives beside diag_message in types.mn now — the render moved
-// to the report BOUNDARY (the report fn), so the arms below receive the
-// finished line and never render.
-//
-// diagnostics_handler — stderr routing (spec 06)
-// The sandbox boundary. Outermost in every route. Declares
-// `with !Diagnostic` so its own arms cannot recursively perform
-// report — structural gate via spec 01's algebra.
-handler diagnostics_handler with errors = 0, refusals = 0, scope = ScopeAll {
-  diag_report(diag, line, dmod) => // The line arrives MADE (rendered at the report boundary, in the
-  // reporter's own world) — this arm's remaining projections
-  // (severity, refuses, span, the register's file-local rewrite) are
-  // pure ctor/string reads, so the arm's row carries no graph or
-  // intern demand and its residual stays clean through every install.
-  // The tally IS the projection continued. This arm saw every diagnostic and
-  // dropped its severity on the floor, so `mentl check` on a missing module
-  // printed the error and exited 0, and a program with a live E_TypeMismatch
-  // emitted 77 lines of WAT. The verdict was here the whole time; the exit
-  // code re-derived it as success.
+// Where every report reaches stderr and is tallied: the sandbox boundary,
+// outermost in every route. The message arrives rendered at the report
+// boundary (diag_report_at, types.mn), so the arm composes the printed line
+// from the kind (diag_line), a pure read.
+handler diagnostics_handler with errors = 0, refusals = 0, narrations = 0, scope = ScopeAll {
+  diag_report(diag, msg, dmod) => // The message arrives MADE (rendered at the report boundary, in the
+  // reporter's own world) — this arm's projections (severity, refuses,
+  // the line, the register's scope) are pure ctor/string reads, so the
+  // arm's row carries no graph or intern demand and its residual stays
+  // clean through every install. The tally IS the projection continued:
+  // the exit code and the emit gate read it.
   if diag_severity(diag) == SError {
     // An error renders in EVERY scope — a broken claim anywhere in the
     // weave changes the answer's validity; the register never silences it.
-    eprint_string(line)
+    eprint_string(diag_line(diag, msg, dmod))
     if diag_refuses(diag) {
       resume() with errors = errors + 1, refusals = refusals + 1
     } else {
@@ -942,49 +896,45 @@ handler diagnostics_handler with errors = 0, refusals = 0, scope = ScopeAll {
     // about. The comparison is on the module the report CARRIES, not on a
     // line range — spans are local now, so every file starts at line 1 and a
     // range names nothing.
+    //
+    // The count is every narration ONCE: ScopeNone is the discovery parse's
+    // duplicate copy, which the weave parse reports again where it can be
+    // placed, so it is neither printed nor counted; a narration the module
+    // register scoped away still counts, because the board reads the project.
     match scope {
-      ScopeAll => eprint_string(line),
-      ScopeNone => (),
-      ScopeModule(target) => if dmod == target { eprint_string(line) } else { () },
+      ScopeAll => {
+        eprint_string(diag_line(diag, msg, dmod))
+        resume() with narrations = narrations + 1
+      },
+      ScopeNone => resume(),
+      ScopeModule(target) => {
+        if dmod == target { eprint_string(diag_line(diag, msg, dmod)) } else { () }
+        resume() with narrations = narrations + 1
+      },
+      ScopeLink => {
+        eprint_string(diag_line(diag, msg, dmod))
+        resume() with narrations = narrations + 1
+      },
     }
-    resume()
   },
   diag_errors() => resume(errors),
   diag_refusals() => resume(refusals),
+  diag_narrations() => resume(narrations),
   diag_scope(sc) => resume() with scope = sc,
   diag_scope_of() => resume(scope),
 }
 
-// scope_localize DELETED with the weave: it rebuilt every rendered span by
-// subtracting the module's weave offset back off it, string-slicing the `at
-// <span>` tail and re-rendering the arithmetic. Spans are local from birth,
-// so the number it computed is now the number the span already holds.
-//
-// diag_branch (the branch cursor's per-stmt collector) lives in
-// infer.mn beside diag_quiet — the branch bracket and the join are its
-// only consumers.
-//
-// FreshHandle — two handlers, same function. Inference mints via
-// graph_fresh_ty (stored in graph) — that handler lives in infer.mn, its
-// op's own layer, so synth's re-inference chain reaches it through
-// `import infer` (the import-truth round: pipeline was an over-wide home
-// only its own chain could see). Query mints display ids (ephemeral, for
-// rendering); both satisfy FreshHandle.
+// The display mint: ids a query's answer renders with, never stored in the
+// graph. Inference mints through graph_fresh_ty, whose handler lives with
+// its op in infer.mn; both answer FreshHandle.
 handler fresh_for_query with next_display = 0 {
   mint(_reason) => resume(next_display) with next_display = next_display + 1,
   mint_row(_reason) => resume(next_display) with next_display = next_display + 1,
 }
 
-// Collection helpers — consumed by teach / audit
-//
-// Per-fn gradient projection. Each FnStmt's teach_gradient is
-// independent of siblings (no shared state mutation among reads);
-// map's tail loop walks them. N-core gradients are a `><` under its
-// own `~> Thread` at this site (Hβ.lower.schedule-specialized-callee).
-// map_fn_stmts — project every top-level FnStmt to `project(name, handle)`,
-// dropping non-fn nodes. The ONE cursor walk over the module's fn decls;
-// audit and teach are two projections of it (Carried-Truth: the walk lived
-// twice, byte-identical but for the projection — one home now).
+// Every top-level FnStmt projected to `project(name, handle)`, the other
+// nodes dropped: the one walk over a module's fn decls, which audit and
+// teach read through their two projections.
 fn map_fn_stmts(ast, project) = ast |> map({
   N(body, _, handle) => match body {
     NStmt(FnStmt(name, _, _, _, _)) => [project(name, handle)],
@@ -1087,7 +1037,18 @@ fn build_audit_report(fn_name, handle, ty, pending, tightens) = {
   // an incremented index is the loop in recursion's costume — iteration
   // is topology (|> stages, <~ cycles, derived folds), and the audit
   // names the costume where it stands.
-  (fn_name, show_effrow(body_row), severable_all, referenced_by, pipe_shape_of(handle), recursion_shape_of(handle), anonymity_shape_of(handle), drift_shapes_of(handle), pending, tightens)
+  (
+    fn_name,
+    show_effrow(body_row),
+    severable_all,
+    referenced_by,
+    pipe_shape_of(handle),
+    recursion_shape_of(handle),
+    anonymity_shape_of(handle),
+    drift_shapes_of(handle),
+    pending,
+    tightens
+  )
 }
 
 // The severable candidates a report entry carries — the one field every
@@ -1147,7 +1108,7 @@ fn severance_vocabulary() = match env_snapshot() {
   Env(bindings) => bindings |> fold(
     [],
     (acc, b) => match b {
-      (name, _, _, EffectDeclKind(_)) => {
+      (name, _, _, EffectDeclKind(_, _)) => {
         // The flat env carries a decl at several layers (pre_register +
         // the main walk); each effect names itself once.
         let e = ENamed(intern_str(name))
@@ -1337,6 +1298,16 @@ fn census_site_line(site) = match site {
   (path, s) => "\n  at {path}:{show_span(s)}",
 }
 
+fn render_named_sites(names) = names |> map(named_site_line) |> str_concat_all
+
+fn named_site_line(named) = match named {
+  (name, (path, s)) => "\n  {name}  at {path}:{show_span(s)}",
+}
+
+fn roster_line(row) = match row {
+  (name, label, n) => "\n  {name}  {int_to_str(n)} {label}",
+}
+
 // One line per undischarged obligation: the predicate the graph holds,
 // at the developer's own coordinates — the debt facet's site list.
 // The seam walk is GONE: the span is already the developer's own coordinate
@@ -1492,6 +1463,14 @@ fn perform_row_is_partial(row) with Pure = match row {
   (_, _, total, done) => done < total,
 }
 
+// The manifest: each variable the host must pass, at the line that reads it.
+fn render_env_rows(rows) =
+  "→ {int_to_str(len(rows))} environment read(s) beneath a host install\n  {str_join_indented(map(render_env_row, rows))}"
+
+fn render_env_row(row) = match row {
+  EnvDemand({decl, mode, name, site}) => "{name} [{mode}] read at {site} in {decl}",
+}
+
 fn render_perform_rows(rows) =
   "→ {int_to_str(len(rows))} effect(s); {int_to_str(count(perform_row_is_partial, rows))} with ops nothing performs\n{str_join_indented(map(render_perform_row, filter(perform_row_is_partial, rows)))}"
 
@@ -1512,20 +1491,7 @@ fn render_provider_site(site) = match site {
 
 fn render_query_result(result) = match result {
   QRType(ty, reason) => "→ {show_type(ty)}\n  Reason: {show_reason(reason)}",
-  QRIntent(effs) => {
-    let terms = effs |> map({
-      (name, negated, conn) => {
-        let sign = if negated { "!" } else { "" }
-        let symbol = match conn {
-          EcUnion => "+",
-          EcDiff => "-",
-          EcInter => "&",
-        }
-        "{symbol}{sign}{show_eff_name(name)}"
-      },
-    })
-    "→ {str_concat_all(terms)}"
-  },
+  QRIntent(effs) => "→ {render_signed_effs(effs, 0)}",
   QRUnresolved(entries) => "→ {int_to_str(len(entries))} unresolved entries",
   QRChain(hops) => "→ {int_to_str(len(hops))} hops in chain",
   QREffects(row) => "→ {show_effrow(row)}",
@@ -1555,14 +1521,16 @@ fn render_query_result(result) = match result {
   },
   QRFlowLabel(label, reason) => "→ {show_flow_label(label)}\n  Reason: {show_reason(reason)}",
   QRCensus(label, sites) => "→ {int_to_str(len(sites))} {label}{render_census_sites(sites)}",
-  QRDecls(sites) => // The decls column's projection: every declaration the judgment
-  // noted, located.
-  "→ {int_to_str(len(sites))} judged decl(s){render_census_sites(sites)}",
+  QRCensusRoster(rows) => "→ {int_to_str(len(rows))} census shape(s) — ask one as `census <name>`{rows |> map(roster_line) |> str_concat_all}",
+  QRDecls(names) => // The decls column's projection: every name the judged declarations
+  // declare, beside where it is declared.
+  "→ {int_to_str(len(names))} declared name(s){render_named_sites(names)}",
   QRModules(paths) => "→ {int_to_str(len(paths))} module(s) in the weave\n  {str_join_indented(paths)}",
   QRImports(rows) => render_import_rows(rows),
   QRUnreferenced(rows) => render_unref_rows(rows),
   QRUnreachable(rows) => render_unreach_rows(rows),
   QRPerforms(rows) => render_perform_rows(rows),
+  QREnv(rows) => render_env_rows(rows),
   QROrphanClaims(rows) => render_orphan_rows(rows),
   QRCost(mods, lines, nodes) => "→ {int_to_str(mods)} module(s) · {int_to_str(lines)} source line(s) · {int_to_str(nodes)} node(s) minted",
   QRGhosts(sites) => "→ {int_to_str(len(sites))} cell(s) minted and never judged{render_census_sites(sites)}",
@@ -1637,9 +1605,11 @@ type QueryVerb
   | QVUnreferenced
   | QVUnreachable
   | QVPerforms
+  | QVEnv
   | QVOrphanClaims
   | QVCost
   | QVGhosts
+  | QVHeads
   | QVSmt
   | QVText
   | QVProse
@@ -1682,12 +1652,16 @@ fn classify_query_verb(w: String) with Pure = if w == "type" {
   QVUnreachable
 } else if w == "performs" {
   QVPerforms
+} else if w == "env" {
+  QVEnv
 } else if w == "orphan-claims" {
   QVOrphanClaims
 } else if w == "cost" {
   QVCost
 } else if w == "ghosts" {
   QVGhosts
+} else if w == "heads" {
+  QVHeads
 } else if w == "smt" {
   QVSmt
 } else if w == "text" {
@@ -1713,7 +1687,11 @@ fn parse_query_string(scope: String, q) = {
     [] => QUnknown(q),
     [w0] => build_question(classify_query_verb(w0), "", q, scope),
     [w0, w1] => build_question(classify_query_verb(w0), w1, q, scope),
-    _ => build_question(classify_query_verb(query_head(words)), query_last(words), q, scope),
+    _ => if nth(words, len(words) - 2, "") == "in" {
+      QIn(parse_query_string(scope, join(" ", take(len(words) - 2, words))), last(words))
+    } else {
+      build_question(classify_query_verb(query_head(words)), query_last(words), q, scope)
+    },
   }
 }
 
@@ -1730,9 +1708,13 @@ fn build_question(verb, arg, raw, scope: String) = match verb {
   QVRefs => QRefsOf(arg),
   QVProvider => QHandlerProvider(arg),
   QVFlow => QFlowOf(arg),
-  QVCensus => match census_shape_of(arg) {
-    Some(shape) => QCensus(shape),
-    None => QUnknown(raw),
+  QVCensus => if arg == "" {
+    QCensusRoster
+  } else {
+    match census_shape_named(arg) {
+      Some(shape) => QCensus(shape),
+      None => QUnknown(raw),
+    }
   },
   QVWhere => QWhere(arg, scope),
   QVDecls => QDecls,
@@ -1742,9 +1724,11 @@ fn build_question(verb, arg, raw, scope: String) = match verb {
   QVUnreferenced => QUnreferenced,
   QVUnreachable => QUnreachable,
   QVPerforms => QPerforms,
+  QVEnv => QEnv,
   QVOrphanClaims => QOrphanClaims,
   QVCost => QCost,
   QVGhosts => QGhosts,
+  QVHeads => QHeads,
   QVSmt => QSmt,
   QVText => // The needle is everything after the verb, spaces included: a WAT
   // fragment such as `(type $ft1)` is one question, never its last word.
@@ -1755,55 +1739,6 @@ fn build_question(verb, arg, raw, scope: String) = match verb {
 }
 
 fn words_after_the_verb(q: String) = join(" ", rest(split(" ", q)))
-
-// The shape classifier at the grammar's one boundary: a named judgment
-// shape, "anonymous", or one of the five glyphs matched THROUGH
-// show_pipe_kind (the one glyph projection — the constructor roster
-// appears exactly here, where the external string enters). An
-// unrecognized shape is the honest QUnknown.
-fn census_shape_of(arg) = if arg == "anonymous" {
-  Some(CsAnonymous)
-} else if arg == "eta" {
-  Some(CsEta)
-} else if arg == "effectful-lambda" {
-  Some(CsEffectfulLambda)
-} else if arg == "iteration" {
-  Some(CsIterationCostume)
-} else if arg == "wildcard-zero" {
-  Some(CsWildcardZero)
-} else if arg == "failure-mask" {
-  Some(CsFailureMask)
-} else if arg == "print-in-report" {
-  Some(CsPrintInReport)
-} else if arg == "wildcard-fabricates" {
-  Some(CsWildcardFabricates)
-} else if arg == "underscore-retain" {
-  Some(CsUnderscoreRetain)
-} else if arg == "flag-as-int" {
-  Some(CsFlagAsInt)
-} else if arg == "parallel-arrays" {
-  Some(CsParallelArrays)
-} else if arg == "vtable-record" {
-  Some(CsVtableRecord)
-} else if arg == "env-frame" {
-  Some(CsEnvFrame)
-} else if arg == "default-param" {
-  Some(CsDefaultParam)
-} else if arg == "declared-row-hof" {
-  Some(CsDeclaredRowHof)
-} else if arg == "positive-row" {
-  Some(CsAuthoredPositiveRow)
-} else if arg == "record-pattern" {
-  Some(CsRecordPattern)
-} else {
-  match find(
-    (k) => show_pipe_kind(k) == arg,
-    [PForward, PFanout(FanShare), PFanout(FanDistribute), PTee, PFeedback]
-  ) {
-    Some(k) => Some(CsVerb(k)),
-    None => None,
-  }
-}
 
 // The verb is the FIRST word (`<verb> [arg]` — the documented query
 // grammar); the prior read of last(ws) made every 3+-word query's verb

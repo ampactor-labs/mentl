@@ -6,7 +6,7 @@
 // compared against 1.79…e308, whose `e308` lexed as an IDENTIFIER (TFloatLit
 // has no exponent form). Trim-invariant on purpose: the 17-significant-digit
 // tail (2.5000000000000000) is named cosmetic residue, not gated here.
-fn main() with Memory + Alloc = {
+fn main() = {
   if float_is_inf(2.5) { 90 }
   else if float_is_nan(2.5) { 91 }
   else {

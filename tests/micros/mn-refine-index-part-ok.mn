@@ -6,4 +6,4 @@ type Positive = Int where 0 < self
 
 fn head_inv(xs: [Positive]) = 100 / xs[0]
 
-fn main() with !Trap = head_inv([5])
+fn main() = head_inv([5])

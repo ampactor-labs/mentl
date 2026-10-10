@@ -1,0 +1,17 @@
+// expect: 7
+// Two callbacks typed by one row variable hand it the union of their rows:
+// the variable e learns E from the first and nothing from the second, so the pure
+// callback fits beside the effectful one. Bound at the first argument met,
+// the variable read as a closed cap at the next and the call refused with
+// `E vs Pure`.
+effect E {
+  op() -> Int
+}
+
+handler h {
+  op() => resume(3),
+}
+
+fn both(f: () -> Int with e, g: () -> Int with e) -> Int = f() + g()
+
+fn main() = both(() => op(), () => 4) ~> h

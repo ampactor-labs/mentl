@@ -11,9 +11,9 @@
 // written back into the function type for lower/query to read live.
 import types
 
-import strings
-
 import imap
+
+import strings
 
 // affine_ledger — the Consume handler. Installed per-function body.
 // State tracks consumed-names and the first-use span (for diagnostic
@@ -60,13 +60,14 @@ handler affine_ledger with used = [], used_sites = [], branches = [], fn_saved =
     // `own` this body declared and never consumed. Affine says "not
     // twice"; this says "not never" — the finalization half, and the
     // reason a persisted continuation can lose a close obligation
-    // today (Hβ.own.linear-tier-and-persist-value-barrier).
-    report_unconsumed(declared, used, 0)
+    // today (Hβ.own.linear-tier-and-persist-value-barrier). The list is
+    // ANSWERED, and the declaration reports it (report_unconsumed).
+    let unconsumed = declared |> filter(never_consumed(used, ??))
     if len(fn_saved) == 0 {
-      resume()
+      resume(unconsumed)
     } else {
       match last(fn_saved) {
-        (u, us, br, dc) => resume() with used = u, used_sites = us, branches = br, declared = dc, fn_saved = drop_last(fn_saved),
+        (u, us, br, dc) => resume(unconsumed) with used = u, used_sites = us, branches = br, declared = dc, fn_saved = drop_last(fn_saved),
       }
     }
   },
@@ -193,19 +194,17 @@ fn read_after_move_msg(name: String, first) =
 // class arms only at wheel-zero); the wheel's own unconsumed owns are
 // findings, not failures, until the count is 0. The message states the
 // obligation rather than the rule: what the developer promised to
-// finish, and did not.
-fn report_unconsumed(ref declared, ref used, i) = if i >= len(declared) {
-  ()
-} else {
-  match declared[i] {
-    (name, span) => if set_contains(used, name) { () } else { report(TOwnUnconsumed(unconsumed_msg(name), span)) },
-  }
-  report_unconsumed(declared, used, i + 1)
+// finish, and did not. Performed by the declaration that closes the scope,
+// in its own world, so every bank inside the judgment holds it.
+fn report_unconsumed(unconsumed) = unconsumed |> each(report_one_unconsumed)
+
+fn report_one_unconsumed(entry) = match entry {
+  (name, span) => report(TOwnUnconsumed(name, span)),
 }
 
-// The message's one mint, String-pinned like its double-consume sibling.
-fn unconsumed_msg(name: String) =
-  "'{name}' is declared own but never consumed on this path — an owned resource with no finalization"
+fn never_consumed(used, entry) = match entry {
+  (name, _) => !set_contains(used, name),
+}
 
 // Flat-array union across all branch deltas. Every delta is already
 // a sorted set (maintained by set_insert during consume), so folding

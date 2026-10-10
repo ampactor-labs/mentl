@@ -1,0 +1,96 @@
+// environ.mn — configuration is an effect, and the program's demand on its
+// host is a projection of the reads it performs.
+//
+// A variable's NAME is the effect's instance: `env("PORT")` performs
+// `Environ("PORT")`, grounded by the literal at the read (the op's `name`
+// parameter names the effect's), so `!Environ` and `!Environ("DATABASE_URL")` are
+// provable negations and `mentl query <entry> env` states every variable the
+// program reads beneath a host install, with the line that reads it. The
+// compiler writes that roster into the module's own launch gate
+// (`env_demand_check`, called before main), so a program missing a
+// variable stops before any of main runs and names each one; `mentl run`
+// passes the host exactly the roster's names, from the shell or the
+// project's `.env`, and nothing else of the developer's environment.
+//
+// The module is named environ, never env: `import env` is the compiler's own
+// type environment (src/env.mn), and two modules of one name are one module
+// to the resolver. The effect is Environ, never Env, for the same reason one
+// layer down: every program that imports io links the compiler's types,
+// whose environment type is named Env, and an effect and a type of one name
+// are one env entry — the type's, so the install records lose the arm (a
+// program reading a variable trapped, measured 2026-10-06).
+import io
+
+import strings
+
+// `env` is a REQUIRED read of a variable named at the read — a computed name
+// is `E_EnvNameUngrounded`, because nothing could check it at launch.
+// `env_opt` is the optional read of any name, its absence the program's own
+// question. A computed name under env_from_host is reported as a broad host
+// demand, since no finite launch-time roster can narrow it.
+effect Environ(name: String) {
+  env(name: String) -> String
+  env_opt(name: String) -> Option(String)
+}
+
+// The optional read with the value an absent variable stands for.
+fn env_or(name: String, fallback: String) = match env_opt(name) {
+  Some(v) => v,
+  None => fallback,
+}
+
+// The host serves the reads: each arm crosses the host boundary for the
+// variables the host passed (`wasi_environ`), which is what makes a read
+// beneath it part of the program's demand. A required read the host did not
+// pass can only be reached past the launch gate — a read whose serving
+// install the roster could not see — and stops the program naming it.
+handler env_from_host {
+  env(name) => match environ_lookup(wasi_environ(), name) {
+    Some(v) => resume(v),
+    None => environ_unset(name),
+  },
+  env_opt(name) => resume(environ_lookup(wasi_environ(), name)),
+}
+
+// Fixed variables for a fixture or a test: no host is asked, so nothing the
+// program reads under it is demanded of the host. A required read of a name
+// the pairs lack performs `fail`.
+handler env_fixed(pairs) {
+  env(name) => match environ_lookup(pairs, name) {
+    Some(v) => resume(v),
+    None => fail("{name} is not among the fixed variables"),
+  },
+  env_opt(name) => resume(environ_lookup(pairs, name)),
+}
+
+fn environ_lookup(pairs, name: String) = match find({ (k, _) => k == name }, pairs) {
+  Some((_, v)) => Some(v),
+  None => None,
+}
+
+fn environ_unset(name: String) = fail("{name} is read and is not set") ~> fail_exit
+
+// THE LAUNCH GATE. The compiler calls this from the module's start, before
+// main, with the program's roster — one line per read beneath a host install,
+// its name, mode, site and declaration separated by tabs. Only required
+// reads refuse when absent; optional reads shape the host's allowlist but
+// absence is their result.
+fn env_demand_check(roster: String) = {
+  let have = wasi_environ()
+  let unset = lines(roster) |> filter({ line => roster_line_unset(have, line) })
+  if len(unset) == 0 { () } else { environ_refuse(map(roster_line_said, unset)) }
+}
+
+fn environ_refuse(said) = fail(join("\n", said)) ~> fail_exit
+
+fn roster_line_unset(have, line: String) = match split("\t", line) {
+  [name, "required", ..._] => environ_lookup(have, name) == None,
+  [_, ..._] => false,
+  [] => false,
+}
+
+fn roster_line_said(line: String) = match split("\t", line) {
+  [name, "required", site, decl] => "{name} is read at {site} (in {decl}) and is not set",
+  [name, ..._] => "{name} is read and is not set",
+  [] => line,
+}

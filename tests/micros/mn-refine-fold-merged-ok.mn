@@ -9,4 +9,4 @@ fn inv(n: Positive) = 100 / n
 
 fn inv2(n) = n + 42
 
-fn main() with !Trap = fold(0, (acc, f) => { let g = [f, inv]; acc + f(0) }, [inv2])
+fn main() = fold(0, (acc, f) => { let g = [f, inv]; acc + f(0) }, [inv2])

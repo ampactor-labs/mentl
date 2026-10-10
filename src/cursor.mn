@@ -40,19 +40,19 @@
 //                     proposer, Hμ.cursor.cache, Hμ.gradient-delta).
 import types
 
-import graph
-
 import effects
 
+import graph
+
+import infer
+
 import mentl
+
+import own
 
 import query
 
 import verify
-
-import own
-
-import infer
 
 // ─── The Cursor effect ──────────────────────────────────────────────
 //

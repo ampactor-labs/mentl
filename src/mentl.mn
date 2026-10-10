@@ -1,27 +1,20 @@
-// mentl.mn — the teaching substrate · the oracle (spec 09)
+// mentl.mn — the teaching substrate: the gradient at a declaration, and the
+// Synth effect a hole's proposals arrive through.
 //
-// Not a feature. The thesis made flesh. Eight tentacles on the
-// shared inference substrate, each a handler reading through
-// GraphRead + EnvRead. Distributed cognition over one graph;
-// the mascot is an octopus because the architecture IS octopus
-// neurology — local reasoning, shared nervous system.
+// Every aspect the cursor reads is a handler over GraphRead and EnvRead —
+// many arms, one graph, the octopus's shape. What the medium offers the
+// developer is proven before they see it: a candidate is bound inside a
+// checkpoint, inferred and verified, and rolled back, so a proposal is a move
+// the medium can prove and never a guess.
 //
-// The oracle loop (PLAN §1 · spec 09):
-//   graph_push_checkpoint()
-//     → apply tentative annotation via graph_bind / graph_bind_row
-//     → run inference, run Verify
-//     → graph_rollback(checkpoint)
-//     → return a PROVEN candidate patch (not a guess)
-//
-// Synth is peer-handler fall-through: enumerative / SMT / LLM / user,
-// each a ~> stage. The compiler verifies; proposers merely propose.
-// AI obsolescence is mechanism, not rhetoric: proposers are handlers
-// on an effect the compiler exposes.
+// A proposer is a handler on Synth — the enumerator the medium ships, or a
+// tool someone installs over it — and the compiler verifies whichever one
+// proposed.
 import types
 
-import graph
-
 import effects
+
+import graph
 
 import infer
 
@@ -44,8 +37,11 @@ type Capability
   | CIsolated
   // !Network: it reaches no network
   | CSandbox
-  // !Trap: no partial primitive it reaches can fail
-  | CTotal
+  // !Trap: no partial primitive it reaches can fail. Not "total": a function
+  // that never returns is `!Trap` too, and termination is in no row
+  // (`Hβ.effects.divergence-is-a-row-fact`); totality is the conjunction of
+  // `!Trap` with a proven `!Diverge`, which that peer names.
+  | CTrapFree
   // Pure: it performs nothing at all
   | CPure
   // !E for an effect with no domain meaning: the absence itself
@@ -135,20 +131,7 @@ handler mentl_default with performed = [] {
 fn gradient_next(handle, performed) = match graph_node_body(handle) {
   NStmt(FnStmt(name, params, retty, effs, body)) => match graph_chase(handle) {
     GNode(NBound(ty), anchor) => match ty {
-      TFun(_, ret, _) => decl_teaching(
-        Decl({
-          anchor: anchor,
-          body: body,
-          effs: effs,
-          handle: handle,
-          name: name,
-          params: params,
-          ret: ret,
-          retty: retty,
-          ty: ty,
-        }),
-        performed
-      ),
+      TFun(_, ret, _) => decl_teaching(Decl({anchor, body, effs, handle, name, params, ret, retty, ty}), performed),
       _ => TeachNone,
     },
     _ => TeachNone,
@@ -159,8 +142,17 @@ fn gradient_next(handle, performed) = match graph_node_body(handle) {
 // One declaration as the gradient reads it: its handle and name, the
 // signature it was written with, the type it was judged at, and the reason
 // its suggestions anchor to.
-type Decl
-  = Decl({anchor: Reason, body: Node, effs: [(EffName, Bool, EConn)], handle: Int, name: String, params: [TParam], ret: Ty, retty: Node, ty: Ty})
+type Decl = {
+  anchor: Reason,
+  body: Node,
+  effs: [(RowTerm, Bool, EConn)],
+  handle: Int,
+  name: String,
+  params: [TParam],
+  ret: Ty,
+  retty: Node,
+  ty: Ty,
+}
 
 fn decl_teaching(d, performed) = match d {
   Decl(f) => {
@@ -419,6 +411,7 @@ fn lean_at_slot(b, name: String, ip) = match ip {
 
 fn predicate_leans(pred) = match pred {
   PTotalDiv(_, a, b) => value_leans(b) ++ value_leans(a),
+  PInBounds(recv, idx) => value_leans(idx) ++ value_leans(recv),
   PWithSelf(h, _) => value_leans(h),
   _ => [],
 }
@@ -585,15 +578,17 @@ fn prove_precondition(f, owed, b, i, name: String, alias) = match alias {
       (discharged, broken, refuted, opened) => if discharged == 0 || broken > 0 {
         []
       } else {
-        let ann = ARefined({alias: aname, contract: contract, param: name})
-        [Proven(
-          SiteParam(i),
-          AnnotationSuggestion(
-            ann,
-            Leverage({absences: 0, discharged: discharged, locks: [], opened: opened, refuted: refuted}),
-            suggestion_reason(ann)
+        let ann = ARefined({alias: aname, contract, param: name})
+        [
+          Proven(
+            SiteParam(i),
+            AnnotationSuggestion(
+              ann,
+              Leverage({absences: 0, discharged, locks: [], opened, refuted}),
+              suggestion_reason(ann)
+            )
           )
-        )]
+        ]
       },
     }
   },
@@ -772,15 +767,17 @@ fn prove_return(f, resting, alias) = match alias {
     } ~> arena
     match counts {
       (body_holds, discharged, refuted) => if body_holds && discharged > 0 {
-        let ann = AReturns({alias: aname, contract: contract})
-        [Proven(
-          SiteReturn,
-          AnnotationSuggestion(
-            ann,
-            Leverage({absences: 0, discharged: discharged, locks: [], opened: 0, refuted: refuted}),
-            suggestion_reason(ann)
+        let ann = AReturns({alias: aname, contract})
+        [
+          Proven(
+            SiteReturn,
+            AnnotationSuggestion(
+              ann,
+              Leverage({absences: 0, discharged, locks: [], opened: 0, refuted}),
+              suggestion_reason(ann)
+            )
           )
-        )]
+        ]
       } else {
         []
       },
@@ -968,7 +965,7 @@ fn capabilities_for_severance(name) = match name {
   } else if h == intern_str("Network") {
     [CSandbox]
   } else if h == intern_str("Trap") {
-    [CTotal]
+    [CTrapFree]
   } else {
     []
   },
@@ -1067,7 +1064,7 @@ fn show_capability(cap) = match cap {
   CRealTime => "Real-time safe (proven zero allocation)",
   CIsolated => "Isolated (proven no file or console I/O)",
   CSandbox => "Sandbox (proven no network access)",
-  CTotal => "Total (proven never to trap)",
+  CTrapFree => "Trap-free (proven: no partial primitive it reaches can fail; termination unproven)",
   CPure => "Pure (proven to perform no effect at all)",
   CProvenAbsence(name) => "Proven absence of {name} (the transitive !{name})",
 }
@@ -1124,7 +1121,8 @@ fn tie_leverage(ss) = match ss {
 // walked a Reason DAG into an indented structural dump — no backticks on
 // those, because they no longer resolve and a reference that points nowhere
 // is the thing the comment-ref gate exists to refuse. `mentl why` never
-// called them: the live renderer is `render_why_hops` (src/main.mn), which walks
+// called them: the live renderer is `why_lines` (src/space.mn, the Why
+// facet's hops under the View), which walks
 // the same chain and renders file:line through the range map, each hop's
 // phrase, the binding's literal value read live from `node_const`, and the
 // author's attached `//` lede from `graph_comment_at`. One was a tree of

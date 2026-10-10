@@ -1,0 +1,20 @@
+// A `<~` IN A BRANCH LITERAL IS THE ENCLOSING RECORD'S LINE UNDER EVERY
+// SCHEDULE. `step` installs nothing, so each call under a caller's
+// `parallel_compose` runs its schedule twin, whose branch is a thunk minted
+// per call; the thunk's line slot is filled with the line `step` owns, so the
+// recurrence ticks across calls exactly as the sequential form does
+// (mn-fanout-branch-line). On boot aa0b69af the allocation audit refused the
+// thunk's carrier and mint against `step`'s Pure row; with that refusal
+// fixed, the thunk owned its own line, reborn every call — every call
+// answered the first tick, and the program exited 7.
+// Expected exit: 40.
+fn step(x) = match x <| ((v) => ((p) => v + 0.5 * p) <~ delay(1), (v) => v * 2.0) {
+  (a, b) => a + b,
+}
+
+fn main() -> Int = {
+  let a = (step(1.0)) ~> parallel_compose
+  let b = (step(1.0)) ~> parallel_compose
+  let c = (step(1.0)) ~> parallel_compose
+  if a == 3.0 && b == 3.5 && c == 3.75 { 40 } else if a == 3.0 && b == 3.0 { 7 } else { 41 }
+}
