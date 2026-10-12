@@ -23,7 +23,7 @@ gate() {
   if [ "$rc" -eq 0 ]; then
     echo "$out" | tail -1 | sed 's/^/    /'
   else
-    echo "$out" | grep -E "RED|✗" | head -8 | sed 's/^/    /'
+    echo "$out" | grep -E "RED|✗|FAIL" | head -8 | sed 's/^/    /'
     echo "$out" | tail -1 | sed 's/^/    /'
     reds=$((reds + 1))
   fi
