@@ -1,0 +1,55 @@
+name: The board
+
+# THE BOARD RUNS ON EVERY PUSH TO MAIN AND EVERY PULL REQUEST. A gate that
+# stops being reported stops being run (PLAN §11, tripwire 4: the crown went
+# eleven ledger entries unmentioned while a leak rode the whole arc), and
+# since the July workflow at this path left the tree (runs 1–44 of this
+# workflow id; the tree carries no commit of it), nothing ran the board
+# unless someone ran it. This job
+# is tools/state.sh — every gate the repository owns, one scoreboard — on a
+# fresh runner that has only what the README names: the pinned engine, GNU
+# time (the march measures the self-compile under it and its m3 leg comes
+# back empty without it), and the mentl command. The log is the run's
+# artifact. tools/ci/run-board.sh stays for a self-hosted machine with a
+# perf ledger; it is not used here because its `git pull --ff-only` would
+# move HEAD off the commit under test and its ledger append is lost on a
+# hosted runner. Hβ.board.runs-on-every-push (RESIDUE.md) carries the record.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: board-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  board:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: GNU time
+        run: sudo apt-get update -q && sudo apt-get install -y -q time
+      - name: The pinned engine
+        run: bash tools/wasmtime-get.sh
+      - name: The mentl command
+        run: |
+          bash tools/install.sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: The board
+        # `shell: bash` runs the step under `-o pipefail`, so the step's exit is
+        # the board's and not tee's — without it a red board exits green (the
+        # claim-reading pass caught this before the first push).
+        shell: bash
+        run: bash tools/state.sh 2>&1 | tee board.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: board-${{ github.sha }}
+          path: board.log

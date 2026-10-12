@@ -35,6 +35,42 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-10-12 · no repin (boot 454c3aaf stands; no wheel change) · LANDING 0 — THE BOARD RUNS ON EVERY PUSH, THE PERIMETER INSTALLS WITH THE COMMAND, PLAN §7 IS THE STANDING AUDIT AGAIN
+  Administrative first: PR #16 (the Space pivot through L-F and wave A of the
+  Oct 6 program, 32 commits, board green at pin 454c3aaf) merged to main with
+  a merge commit (9194ec7); PRs #4 (env, superseded by E1), #7 (reflink; it
+  does not build, and its design is `Hβ.lower.reach-edge-on-node`) and #12
+  (asm, superseded by src/asm.mn) closed with a one-line comment each (#7's
+  runs to two sentences); PR #5 stays open as V1's carrier. Then `.github/workflows/board.yml`: `bash
+  tools/state.sh` on every push to main and every pull request, on a fresh
+  Ubuntu runner that installs GNU time, fetches the pinned engine and
+  installs the mentl command; the log is the run's artifact; `shell: bash`
+  so a red board fails the job through `tee` (the first draft let it exit
+  green — caught by the claim-reading pass before the first push).
+  tools/install.sh installs the pre-commit perimeter when MENTL_HOME is a
+  checkout; README names GNU time as a prerequisite (without it the m3 leg
+  comes back empty and the march refuses). PLAN §7 lost its second ledger:
+  4,972 → 3,336 lines, 56 CLOSED/LANDED narratives whose LEDGER entry
+  exists deleted, the standing audit kept, cross-references re-pointed at
+  pins. CLAUDE.md gained the claim-reading pass as a dated law: one reader
+  who did not write a docs commit checks each changed sentence against the
+  artifact with the verbs, which caught the `shell: bash` omission among
+  this landing's claim-level drifts.
+  SEEN RED, SEEN GREEN, AND A HIDDEN RED BETWEEN (PR #17). Run 45 broke one
+  micro on purpose (mn-abandon-alloc expecting 4 for 3): `FAIL(run)`, verify
+  exit 1, the job red in 4 min 6 s. Run 46 restored it and was RED for a
+  reason nobody planted — "BOARD: 1 gate(s) red." under eight green gate
+  last lines. The effect-identity gate's declaration census counted with `rg`,
+  which the hosted runner does not have, so every count read 0 and it
+  printed `FAIL <label>: got 0, expected 1`, a word the board's gate()
+  filter (`RED|✗`) does not show, while its last line, the micro's PASS,
+  printed. Reproduced locally with an `rg` that exits 127 first on PATH:
+  four FAIL lines, a PASS tail, exit 1. The gate counts with grep, marks its
+  failure ✗, and gate() reads FAIL too; run 47 GREEN in 6 min 13 s (run 46:
+  6 min 29 s). Tripwire 4's sibling is written into PLAN §11: a gate whose
+  red speaks a word the board does not read is a green gate.
+  `Hβ.board.runs-on-every-push` CLOSED.
+
 - 2026-10-10 · pin 454c3aaf048fbab6 (CLEAN m2 == m3) · A HOLE IN AN ARGUMENT SLOT IS PROPOSED AGAINST THE SLOT'S CONTRACT; A VALUE QUESTION NAMES ITS VALUES
   Found by a felt walk over the proposal surface after the thesis rewrite,
   each RED on boot d2bd58b4. `choose(??)` over `fn choose(n: Positive)`

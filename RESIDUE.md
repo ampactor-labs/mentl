@@ -20127,37 +20127,50 @@ HOMED 2026-10-06 at the §0.3 integration: cited in the read-path docs and never
 
 ## Gaps carried in from the folded documents (2026-10-06)
 
-### `Hβ.board.runs-on-every-push` — OPEN
+### `Hβ.board.runs-on-every-push` — CLOSED 2026-10-12
 
 BORN 2026-10-06 at the §0.3 integration, folding docs/proposals/board.yml and
 the continuous-integration half of docs/proposals/MILESTONE.next.md (both
-deleted from the tree there; git keeps them). The board runs where someone
-runs it: tools/state.sh by hand, tools/ci/run-board.sh on a host that has
-none, and the repository's workflows carry only the Pages deploy. The remedy
-written into the board so far is local — each leg memoizes its green under
-the sha of what it reads, and a leg not run shows NOT RUN at the pin — so a
-skipped gate reads UNKNOWN, and nothing runs the board when nobody does: a
+deleted from the tree there; git keeps them). Until 2026-10-12 the board ran
+where someone ran it: tools/state.sh by hand, tools/ci/run-board.sh on a host
+that has none, and the repository's workflows carried only the Pages deploy (a board
+workflow at this path had run in July — runs 1–44 of the same workflow id,
+the last seven red — and the tree carries no commit of it) —
+so a skipped gate read UNKNOWN and nothing ran the board when nobody did: a
 gate that stops being reported stops being run (PLAN §11, tripwire 4).
-THE DRAFT, from the 2026-09-25 audit: a workflow on every push and pull
-request that installs WABT and GNU time, fetches the pinned engine
-(tools/wasmtime-get.sh), installs the mentl command (tools/install.sh), and
-runs verify with its stamp forced, the march, the absence benchmarks
-(benchmarks/absence/run.sh), the crown and proof-exactness; the frontier and
-the IDE gate join as jobs of their own once their runtime on the runner is
-measured — nightly if too slow for a push, never dropped. Every command it
-runs passed in a fresh Ubuntu container during that audit. The runner build
-the draft carried is gone with L-H (the stock engine hosts the boot), so the
-engine fetch is the whole host step. Once the workflow is green on two
-consecutive pushes the local stamp machinery deletes — the frontier stamp,
-the verify stamp, state.sh's stamps block — because a stamp exists so a gate
-need not be re-run by hand, and a machine that always runs needs none.
-WHAT IS DECIDED AND WHAT IS NOT: PLAN §11's hardware exclusion names the
-MI300X host and the self-hosted board it would carry, never this; whether a
-push's verdict gates a merge to main is Morgan's decision — the scene-1
-status of 2026-09-28 recorded "a workflow file is a decision still open" —
-and this entry holds the design until he makes it.
-CLOSE: the workflow, seen red on a pushed commit that breaks one leg and
-green on the next; the stamps deleted in the same landing.
+BUILT 2026-10-12 (Landing 0 of the program): `.github/workflows/board.yml`
+runs `bash tools/state.sh` on every push to main and every pull request, on
+a fresh Ubuntu runner that installs GNU time, fetches the pinned engine
+(tools/wasmtime-get.sh) and installs the mentl command (tools/install.sh,
+which now installs the pre-commit perimeter in a checkout); the log is the
+run's artifact; a red board fails the job (`shell: bash` for pipefail — the
+first draft of the step let a red board exit green through `tee`, caught by
+the claim-reading pass before the first push). The absence benchmarks,
+tools/asm-gate.sh and the oracle self-test stay off the board, as they are
+off tools/state.sh; a leg joins the workflow by joining the board. THE
+STAMPS STAY, which supersedes the 2026-10-06 design's "the local stamp
+machinery deletes": the frontier stamp is the pre-commit perimeter's gate
+(a wheel commit lands only when the frontier ran green against the staged
+boot) and the memos make an unchanged tree answer in seconds, and a machine
+that runs on push replaces neither — it refuses a red PR, which no local
+stamp can. Morgan's grant of 2026-10-12 and the program's protocol make a
+green board a condition of every merge to main; the repository setting that
+enforces it mechanically (branch protection on main) is Morgan's.
+CLOSED 2026-10-12, measured on PR #17 in the stronger form of its own
+condition. Run 45 (commit 93f6fae, one micro's expected exit wrong on
+purpose) RED: `FAIL(run) mn-abandon-alloc: exit=3 expected=4`, verify exit
+1, the job failed under pipefail. Run 46 (54761f4, the fixture restored) RED
+for a defect the break had not planted: the effect-identity gate's
+declaration census counted with `rg`, which the hosted runner does not have,
+so every count read 0 and the gate printed `FAIL <label>: got 0, expected 1`
+— a word the board's gate() filter (`RED|✗`) did not show — while its last
+line, the micro's PASS, printed: "BOARD: 1 gate(s) red." under eight green gate
+last lines, a hidden red (reproduced locally with an `rg` that exits 127
+first on PATH: four FAIL lines, a PASS tail, exit 1). Run 47 (b2d68cd: grep
+in place of rg, ✗ on the failure marker, FAIL read by the board's filter)
+GREEN in 6 min 13 s. Red on the planted break, red on a real defect, green
+on the fix; the sibling of PLAN §11's tripwire 4 — a gate whose red speaks a
+word the board does not read is a green gate — is written there.
 
 ### `Hβ.threads.literal-call-branches-no-speedup` — OPEN
 

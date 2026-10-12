@@ -24,12 +24,12 @@ fail=0
 expect_count() {
   local label="$1" expected="$2" pattern="$3"
   local count
-  count=$(rg -n --glob '*.mn' "$pattern" src lib 2>/dev/null | wc -l)
+  count=$(grep -rn --include='*.mn' -E "$pattern" src lib 2>/dev/null | wc -l)
   if [[ "$count" -eq "$expected" ]]; then
     printf 'PASS %s (%s)\n' "$label" "$count"
   else
-    printf 'FAIL %s: got %s, expected %s\n' "$label" "$count" "$expected"
-    rg -n --glob '*.mn' "$pattern" src lib 2>/dev/null || true
+    printf '✗ FAIL %s: got %s, expected %s\n' "$label" "$count" "$expected"
+    grep -rn --include='*.mn' -E "$pattern" src lib 2>/dev/null || true
     fail=1
   fi
 }
