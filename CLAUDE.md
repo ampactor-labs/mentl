@@ -199,8 +199,8 @@
 > mechanism before auditing whether the structure should EXIST is the drift
 > itself (it cost a backtrace + three user corrections to surface a side-ledger
 > the first interrogation flags in one read). Then PROBE the artifact, never a
-> hypothesis; the trap marches deeper per fix (that is progress). Four
-> corollaries, each proven that session:
+> hypothesis; the trap marches deeper per fix (that is progress). Five
+> corollaries — four proven that session, one measured 2026-10-12:
 > - **A probe disproved you? Do NOT crown the next thing you see as the root.**
 >   The first symptom is rarely the ground; keep digging until it cannot reduce.
 > - **Verify every claim with a tool before asserting.** Session-memory and prose
@@ -231,6 +231,28 @@
 >   verified-safe, traced work because a symptom persists is the loop-forever
 >   anti-pattern — "incomplete" ≠ "wrong" (only the artifact proving a regression
 >   justifies a revert). Trust the thesis; forward, not back (Morgan 2026-06-21).
+> - **THE CLAIM-READING PASS — a docs commit gets one reader who did not write
+>   it (2026-10-12).** The law above binds a claim about a CAUSE; a claim about
+>   WHAT EXISTS slips past it, because no gate reads a sentence against the
+>   code beside it: doc-truth checks shas, named commands and verbs, peer citations and
+>   the code names an open peer cites, and the thesis at the doors; the obey
+>   gate counts; and the artifact refutes an implementation in seconds but
+>   cannot refute a sentence. Six instances since June, each found by someone
+>   READING and none by a gate, every one a sentence no gate reads: the
+>   thesis itself stood inverted from 2026-06-18 to 2026-10-09; §10 said "the
+>   whole AST in the one graph" while the AST was nested records; §11.2 called
+>   the ide gate green for weeks while nothing invoked it; `m3 == m4` went
+>   unprobed for at least twelve pins; "persist = memcpy is absent" stood after it was
+>   built; "the wheel's source carries zero diagnostics" was measured on main.mn alone.
+>   So before every commit that changes CLAUDE.md, PLAN.md, SYNTAX.md,
+>   LEDGER.md or RESIDUE.md, a reader who did not write the lines takes each
+>   changed sentence that asserts something of the artifact and answers it with
+>   the verbs (`mentl check`, `mentl query`, `mentl where`, the board's own
+>   lines); a sentence the reader cannot confirm is rewritten to what was
+>   measured, or deleted. The pass replaces nothing mechanical and is not the
+>   adversarial design panel the 2026-10-06 program retired: one reader, one
+>   question — is this sentence true of the artifact right now — which is the
+>   instrument the review itself was.
 
 > **Before ANY new thing, ASK: "What does the ULTIMATE MEDIUM do here?"** The
 > four constant questions at EVERY cursor: (1) **Discarded info?** Re-deriving

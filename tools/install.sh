@@ -158,6 +158,16 @@ exit "\$exec_rc"
 SHIM
 chmod +x "$BIN_DIR/mentl"
 
+# A checkout's perimeter is on from its first commit. .githooks/pre-commit
+# refuses drift, a broken battery and an unstamped frontier, and until
+# 2026-10-12 only the separate tools/setup-git-hooks.sh switched it on —
+# measured 2026-09-14 as a hook that had run on zero commits while the board
+# spoke of it as installed. Installing the command installs the perimeter.
+if [ "$(git -C "$MENTL_HOME" rev-parse --show-toplevel 2>/dev/null)" = "$MENTL_HOME" ]; then
+  bash "$MENTL_HOME/tools/setup-git-hooks.sh" >/dev/null
+  echo "git hooks: core.hooksPath -> .githooks (the pre-commit perimeter is on)"
+fi
+
 echo "installed: $BIN_DIR/mentl -> $MENTL_HOME/boot/mentl.wasm (live pointer)"
 case ":$PATH:" in
   *":$BIN_DIR:"*) ;;
