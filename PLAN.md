@@ -1519,7 +1519,12 @@ silent-wrong banked as a RED refuse-contract the day it is found. (4) **A GATE
 THAT STOPS BEING REPORTED STOPS BEING RUN** — the crown went unmentioned for
 eleven consecutive ledger entries while the leak rode the whole arc; nothing
 written was false, the gate had merely gone quiet. Closed mechanically by Phase
-0.1: a gate not run is a visible blank, and a red one refuses the pin.
+0.1: a gate not run is a visible blank, and a red one refuses the pin. Its
+sibling, measured 2026-10-12 on run 46 of the re-added workflow (PR #17): **A GATE WHOSE RED
+SPEAKS A WORD THE BOARD DOES NOT READ IS A GREEN GATE** — the effect-identity
+census printed `FAIL` where the board's filter reads `RED|✗`, so eight green gate
+last lines stood over "1 gate(s) red." with nothing to name the red; the gate
+speaks ✗ now and the filter reads FAIL too.
 
 **ONE LAW, FIVE FACES — AND THE ORACLE IS THEIR SUM (2026-09-06; the fifth
 2026-10-10).** The board's largest open items are not separate projects.

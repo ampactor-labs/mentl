@@ -3,7 +3,9 @@ name: The board
 # THE BOARD RUNS ON EVERY PUSH TO MAIN AND EVERY PULL REQUEST. A gate that
 # stops being reported stops being run (PLAN §11, tripwire 4: the crown went
 # eleven ledger entries unmentioned while a leak rode the whole arc), and
-# until 2026-10-12 nothing ran the board unless someone ran it. This job
+# since the July workflow at this path left the tree (runs 1–44 of this
+# workflow id; the tree carries no commit of it), nothing ran the board
+# unless someone ran it. This job
 # is tools/state.sh — every gate the repository owns, one scoreboard — on a
 # fresh runner that has only what the README names: the pinned engine, GNU
 # time (the march measures the self-compile under it and its m3 leg comes

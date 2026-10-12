@@ -20127,13 +20127,15 @@ HOMED 2026-10-06 at the §0.3 integration: cited in the read-path docs and never
 
 ## Gaps carried in from the folded documents (2026-10-06)
 
-### `Hβ.board.runs-on-every-push` — OPEN
+### `Hβ.board.runs-on-every-push` — CLOSED 2026-10-12
 
 BORN 2026-10-06 at the §0.3 integration, folding docs/proposals/board.yml and
 the continuous-integration half of docs/proposals/MILESTONE.next.md (both
 deleted from the tree there; git keeps them). Until 2026-10-12 the board ran
 where someone ran it: tools/state.sh by hand, tools/ci/run-board.sh on a host
-that has none, and the repository's workflows carried only the Pages deploy —
+that has none, and the repository's workflows carried only the Pages deploy (a board
+workflow at this path had run in July — runs 1–44 of the same workflow id,
+the last seven red — and the tree carries no commit of it) —
 so a skipped gate read UNKNOWN and nothing ran the board when nobody did: a
 gate that stops being reported stops being run (PLAN §11, tripwire 4).
 BUILT 2026-10-12 (Landing 0 of the program): `.github/workflows/board.yml`
@@ -20154,8 +20156,21 @@ that runs on push replaces neither — it refuses a red PR, which no local
 stamp can. Morgan's grant of 2026-10-12 and the program's protocol make a
 green board a condition of every merge to main; the repository setting that
 enforces it mechanically (branch protection on main) is Morgan's.
-CLOSE: the workflow seen red on a pushed commit that breaks one leg and
-green on the next.
+CLOSED 2026-10-12, measured on PR #17 in the stronger form of its own
+condition. Run 45 (commit 93f6fae, one micro's expected exit wrong on
+purpose) RED: `FAIL(run) mn-abandon-alloc: exit=3 expected=4`, verify exit
+1, the job failed under pipefail. Run 46 (54761f4, the fixture restored) RED
+for a defect the break had not planted: the effect-identity gate's
+declaration census counted with `rg`, which the hosted runner does not have,
+so every count read 0 and the gate printed `FAIL <label>: got 0, expected 1`
+— a word the board's gate() filter (`RED|✗`) did not show — while its last
+line, the micro's PASS, printed: "BOARD: 1 gate(s) red." under eight green gate
+last lines, a hidden red (reproduced locally with an `rg` that exits 127
+first on PATH: four FAIL lines, a PASS tail, exit 1). Run 47 (b2d68cd: grep
+in place of rg, ✗ on the failure marker, FAIL read by the board's filter)
+GREEN in 6 min 13 s. Red on the planted break, red on a real defect, green
+on the fix; the sibling of PLAN §11's tripwire 4 — a gate whose red speaks a
+word the board does not read is a green gate — is written there.
 
 ### `Hβ.threads.literal-call-branches-no-speedup` — OPEN
 
