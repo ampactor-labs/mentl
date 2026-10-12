@@ -26,23 +26,23 @@
 //   left <~ spec    →  LFeedback(h, depth, home, left, spec) — depth from the spec, home from the frame
 import graph
 
-import types
+import effects
+
+import egraph
+
+import env
 
 import imap
+
+import infer
+
+import parser
 
 import persist
 
 import search
 
-import effects
-
-import parser
-
-import infer
-
-import env
-
-import egraph
+import types
 
 // Hβ.first-light.resume-with-state-mutation — handler-arm-state context.
 // `lower_handler_arms_as_decls` installs `arm_state_ctx(state, disc)` around
@@ -161,7 +161,7 @@ effect LowerHandlerStack {
 
 handler lower_handler_stack_ctx with stack = [] {
   lower_handler_push(name, install_handle, proj) => // drift-audit: ignore — O(1) push at the end last/drop_last read (the one stack law)
-  resume(0) with stack = stack ++ [{handle: install_handle, name: name, proj: proj}],
+  resume(0) with stack = stack ++ [{handle: install_handle, name, proj}],
   lower_handler_pop() => if len(stack) == 0 { resume(0) } else { resume(0) with stack = drop_last(stack) },
   lower_handler_stack_now() => // Head-first = innermost-first; resolution walks it as a plain fn.
   resume(stack),
@@ -1262,13 +1262,36 @@ fn project_thunk_fn(thunk_name, cap_pairs, branch_node, result_h, carrier_h, sha
   ls_enter_frame("", [], [], cap_names, cap_handles, len(cap_pairs))
   lower_frame_fence_push()
   let inner = match shared_input {
-    Some(input_h) => lower_call_default(result_h, branch_node, node_handle(branch_node), [LUpval(input_h, 0)]),
+    Some(input_h) => // the branch is a stage applied to the input riding capture slot 0 —
+    // the same completion the in-frame form runs, so a spawned branch costs
+    // what the sequential one does inside its thunk
+    lower_pipe_complete(LUpval(input_h, 0), branch_node, result_h),
     None => lower_expr(branch_node),
   }
   let lo_body = k2_guard(LMakeTuple(carrier_h, [inner]))
   lower_frame_fence_pop()
-  let lines = ls_exit_frame()
+  let lines = ls_exit_frame() |> map(share_enclosing_line)
   LFn(thunk_name, 0, [], [lo_body], len(cap_pairs), lines)
+}
+
+// A branch's `<~` site is the enclosing frame's line, which the in-frame
+// form registered before this thunk was lowered (`fanout_at`): the thunk's
+// slot takes that line at the mint, so a spawning schedule ticks the line a
+// sequential one does. A site the enclosing frame never registered keeps
+// the thunk's own.
+fn share_enclosing_line(line) = match line {
+  (h, depth, home) => match home {
+    LhSlot(slot) => match ls_line_home_of(h) {
+      Some(from) => (h, depth, LhShare(slot, from)),
+      None => line,
+    },
+    _ => line,
+  },
+}
+
+fn line_home_in(lines, h: Int) = match find({ (lh, _, _) => lh == h }, lines) {
+  Some((_, _, home)) => Some(home),
+  None => None,
 }
 
 fn lower_call_partial(handle, fbody, fh, r_args, open, n_ps) = match partial_callee_form(handle, fbody, fh) {
@@ -2213,16 +2236,18 @@ type FanBranches = FanBranches([ScheduledBoundary]) | FanSeq(Int)
 // (`spec_call_name`) — and its own frame's form otherwise. A schedule the
 // site carries no form for (the vocabulary is not linked, or the bracket
 // names Simd/Gpu, which never cross a call) reads as the site's own.
-fn fanout_form(lexical, forms) = match lexical {
-  Some(s) => fanout_form_named(forms, s),
-  None => fanout_form_under(fanout_form_named(forms, Seq), forms, enc_sched(spec_enc_active())),
-}
+fn fanout_form(lexical, forms) = fanout_form_named(forms, fanout_schedule(lexical, forms))
 
-fn fanout_form_under(site_form, forms, demanded) = match demanded {
-  Seq => site_form,
-  _ => match forms_lookup(forms, demanded) {
-    Some(f) => f,
-    None => site_form,
+// The schedule that form runs under — the one home of the choice, read by
+// the form and by every reader that asks what the form costs.
+fn fanout_schedule(lexical, forms) = match lexical {
+  Some(s) => s,
+  None => match enc_sched(spec_enc_active()) {
+    Seq => Seq,
+    demanded => match forms_lookup(forms, demanded) {
+      Some(_) => demanded,
+      None => Seq,
+    },
   },
 }
 
@@ -2476,7 +2501,7 @@ fn split_group_by_ename(groups: [{arms: [String], ename: String}], ename: String
   split_group_loop([], groups, ename)
 
 fn split_group_loop(before: [{arms: [String], ename: String}], rest: [{arms: [String], ename: String}], ename: String) = if len(rest) == 0 {
-  (before, {arms: [], ename: ename}, [])
+  (before, {arms: [], ename}, [])
 } else if last(rest).ename == ename {
   (before, last(rest), drop_last(rest))
 } else {
@@ -2496,12 +2521,12 @@ fn grow_to_with_gaps(arms: [String], n: Int) =
   if len(arms) >= n { arms } else { grow_to_with_gaps(list_concat(arms, [""]), n) }
 
 // Look up the op names for an effect by reading the graph.
-// EffectDeclKind(op_names) carries effect→ops as a first-class
+// EffectDeclKind(op_names, _) carries effect→ops as a first-class
 // fact — registered at EffectDeclStmt by register_effect_ops.
 fn lookup_effect_op_names(eff_name) = match env_lookup(eff_name) {
   Some(entry) => match entry {
     (_, _, kind) => match kind {
-      EffectDeclKind(op_names) => op_names,
+      EffectDeclKind(op_names, _) => op_names,
       _ => // A non-effect entry under this name (a same-named TYPE shadowing the
       // effect — the Cursor/Patch collision class, healed by the
       // Graph/GraphRead naming convention; Sample still pairs by DSP
@@ -2951,7 +2976,17 @@ fn lower_expr_body(e, handle, span) = match e {
     result
   },
   MatchExpr(scrutinee, arms) => match scrutinee {
-    N(_, _, sh) => LMatch(handle, lower_expr(scrutinee), lower_match_arms(sh, arms)),
+    N(_, _, sh) => match destructure_subs(arms, product_arity_at(sh)) {
+      Some(subs) => // A PRODUCT TAKEN APART WHERE IT IS BUILT IS ITS PARTS. The one arm
+      // binds every position, so the match is the destructuring and no
+      // record need exist: each part lands in the binder's own register,
+      // which is what the `let` spelling this desugars from costs.
+      match destructure_body(arms) {
+        Some(body) => lower_product_destructure(handle, sh, subs, body),
+        None => LMatch(handle, lower_expr(scrutinee), lower_match_arms(sh, arms)),
+      },
+      None => LMatch(handle, lower_expr(scrutinee), lower_match_arms(sh, arms)),
+    },
   },
   MakeListExpr(elems) => LMakeList(handle, lower_expr_list(elems)),
   MakeTupleExpr(elems) => LMakeTuple(handle, lower_expr_list(elems)),
@@ -2982,10 +3017,9 @@ fn lower_expr_body(e, handle, span) = match e {
   // or a list receiver, stays the runtime list_index call.
   lower_index(handle, receiver, index),
   MakeRecordExpr(fields) => LMakeRecord(handle, lower_record_field_values(fields)),
-  NamedRecordExpr(_type_name, fields) => // H2.3: nominal records lower identically to bare record
-  // literals — type identity is type-system-only, runtime sees
-  // raw fields. The type name is preserved in the AST for
-  // diagnostics and IDE projection but doesn't reach LIR.
+  NamedRecordExpr(head, fields) => // A nominal record lowers as a bare record literal does: its type's
+  // identity is the judgment's, and the head is a reference to the type,
+  // never a value the record holds.
   LMakeRecord(handle, lower_record_field_values(fields)),
   RecordUpdateExpr(base, overrides) => // {...base, f: v} — non-destructive update. The RESULT record's
   // field set is PROVEN by infer (base's fields ∪ overrides), read
@@ -3080,7 +3114,7 @@ fn lower_expr_body(e, handle, span) = match e {
   // the receiver's live type under the bracket.
   LFieldLoad(handle, lower_expr(rec), FByName(field)),
   PipeExpr(kind, left, right) => lower_pipe(kind, left, right, handle),
-  FanoutExpr(branches) => lower_fanout_nary(handle, branches),
+  FanoutExpr(branches) => lower_fanout_nary_to(handle, branches, FdValue),
   RestExpr(_) => // infer already reported ERestOutsideDestructure at this node;
   // productive-under-error, same as the hole.
   LConst(handle, LInt(0)),
@@ -3103,30 +3137,46 @@ fn lower_expr_body(e, handle, span) = match e {
 // never a second arity table. Factored from PForward so the k remainder
 // builder can complete a stage with the RESUME HOLE as the piped value
 // (band B M1.3) — one completion, two callers.
-fn lower_pipe_complete(lo_l, right, handle) = match inlinable_lambda(right) {
-  Some((params, body)) => lower_applied_in_place(lo_l, params, body, right, handle),
-  None => lower_pipe_stage(lo_l, right, handle),
+fn lower_pipe_complete(lo_l, right, handle) = lower_pipe_complete_many([lo_l], right, handle)
+
+// The values a pipe gives its stage: one, or the parts of a product the site
+// builds, which the merge hands to the stage's N open slots.
+fn lower_pipe_complete_many(lo_ls, right, handle) = match inlinable_lambda_arity(right, len(lo_ls)) {
+  Some((params, body)) => lower_applied_in_place(lo_ls, params, body, right, handle),
+  None => lower_pipe_stage(lo_ls, right, handle),
 }
 
-// A lambda standing as a pipe's stage IS the piped value bound to its
-// parameter: the parameter binds in the frame the pipe stands in and the body
-// lowers there, so no closure is minted — the judgment charges none, by the
-// same test (`inlinable_lambda`). The parameter's register is its own, so a
-// parameter spelled like a local of the frame never overwrites it.
-fn lower_applied_in_place(lo_l, params, body, lam, handle) = {
+// A literal standing as a pipe's stage IS the piped values bound to its
+// parameters: each parameter binds in the frame the pipe stands in and the
+// body lowers there, so no closure is minted — the judgment charges none, by
+// the same test (`inlinable_lambda_arity`). Each parameter's register is its
+// own, so a parameter spelled like a local of the frame never overwrites it.
+fn lower_applied_in_place(lo_ls, params, body, lam, handle) = {
   let cp = ls_push_scope()
-  let ph = last(param_handles_of(node_handle(lam), params))
-  let reg = ls_bind_local(param_name(last(params)), ph)
+  let phs = param_handles_of(node_handle(lam), params)
+  let binds = map(bind_stage_param, zip(zip(phs, map(param_name, params)), lo_ls))
   let lo_body = lower_expr(body)
   ls_pop_scope(cp)
-  // The register's width reads the parameter's own type where it has a
-  // handle, and the piped value's where the type was ground (the same type:
-  // the pipe unified them).
-  LBlock(handle, [LLet(if ph == 0 { lexpr_handle(lo_l) } else { ph }, reg, lo_l), lo_body])
+  LBlock(handle, binds ++ [lo_body])
 }
 
-fn lower_pipe_stage(lo_l, right, handle) = match right {
+// One parameter of an applied-in-place stage. The register's width reads the
+// parameter's own type where it has a handle, and the piped value's where the
+// type was ground (the same type: the application unified them).
+fn bind_stage_param(pair) = match pair {
+  ((ph, name), value) => {
+    let reg = ls_bind_local(name, ph)
+    LLet(if ph == 0 { lexpr_handle(value) } else { ph }, reg, value)
+  },
+}
+
+fn lower_pipe_stage(lo_ls, right, handle) = match right {
   N(rbody, _, rfh) => {
+    // THE MERGE: a product the site built fills the stage's N open slots —
+    // the trailing holes the Stage Law puts the datum in — so the tuple is
+    // never built and the call is the one its let-spelling writes. One value
+    // is the ordinary pipe, below.
+    let lo_l = list_index(lo_ls, 0)
     // A pipe-right CALL dispatches fork-free (lower_call_dispatch): the pipe
     // owns its hole and completes it below by inline splice, so a raw
     // hole-bearing call in stage position never mints a partial closure.
@@ -3165,32 +3215,32 @@ fn lower_pipe_stage(lo_l, right, handle) = match right {
     // and did not assemble, and `(2 |> wrap(3)) == [3, 2]` compared two
     // addresses and answered false (boot e23392f6).
     match lo_r {
-      LDirectCall(_, dfh, dn, dt, dargs) => if hole_at >= 0 {
+      LDirectCall(_, dfh, dn, dt, dargs) => if hole_at >= 0 && len(lo_ls) == 1 {
         completed_call(handle, dfh, dn, dt, splice_at(dargs, hole_at, lo_l))
       }
       // drift-audit: ignore — one completion per pipe node, not a loop accumulator
       else if is_partial {
-        completed_call(handle, dfh, dn, dt, dargs ++ [lo_l])
+        completed_call(handle, dfh, dn, dt, dargs ++ lo_ls)
       } else {
-        LCall(handle, lo_r, [lo_l])
+        LCall(handle, lo_r, lo_ls)
       },
-      LCall(_, fn_, args) => if hole_at >= 0 {
+      LCall(_, fn_, args) => if hole_at >= 0 && len(lo_ls) == 1 {
         LCall(handle, fn_, splice_at(args, hole_at, lo_l))
       }
       // drift-audit: ignore — one completion per pipe node, not a loop accumulator
       else if is_partial {
-        LCall(handle, fn_, args ++ [lo_l])
+        LCall(handle, fn_, args ++ lo_ls)
       } else {
-        LCall(handle, lo_r, [lo_l])
+        LCall(handle, lo_r, lo_ls)
       },
-      LMakeVariant(_, tag, vargs) => if hole_at >= 0 {
+      LMakeVariant(_, tag, vargs) => if hole_at >= 0 && len(lo_ls) == 1 {
         LMakeVariant(handle, tag, splice_at(vargs, hole_at, lo_l))
       }
       // drift-audit: ignore — one completion per pipe node
       else if is_partial {
-        LMakeVariant(handle, tag, vargs ++ [lo_l])
+        LMakeVariant(handle, tag, vargs ++ lo_ls)
       } else {
-        LCall(handle, lo_r, [lo_l])
+        LCall(handle, lo_r, lo_ls)
       },
       _ => {
         // A bare fn-VALUE stage (`7 |> outer`): the completion call runs the
@@ -3198,15 +3248,96 @@ fn lower_pipe_stage(lo_l, right, handle) = match right {
         // arm's k as the trailing argument (the "argument, not evidence"
         // ruling; the callee's performs dispatch through the world chain).
         let args2 = if ls_resume_bind_of(callee_name_of_handle(rfh)) == "" {
-          [lo_l]
+          lo_ls
         } else // drift-audit: ignore — one k+record arg pair per stage, not a loop
         {
-          [lo_l] ++ [resume_k_arg(handle), resume_hrec_arg(handle)]
+          lo_ls ++ [resume_k_arg(handle), resume_hrec_arg(handle)]
         }
         LCall(handle, lo_r, args2)
       },
     }
   },
+}
+
+// ── A PRODUCT CONSUMED WHERE IT IS BUILT ──────────────────────────────
+//
+// The parts are evaluated where the product stands, each into a register of
+// its own, and the consumer reads the registers: a positional destructure's
+// binders, or the N arguments the merge hands its stage. No record is built
+// at any schedule — a spawning one joins its branches into the same
+// registers — which is the verb costing exactly what its `let` spelling
+// costs (the judgment charges by the same rule, `charge_product`).
+fn lower_product_destructure(handle, ph, subs, body) = {
+  let values = lower_product_parts(ph)
+  let cp = ls_push_scope()
+  let regs = map(bind_destructured_part, zip(subs, part_handles_of(ph)))
+  let fill = fill_product_parts(ph, regs, values)
+  let lo_body = lower_expr(body)
+  ls_pop_scope(cp)
+  LBlock(handle, [fill, lo_body])
+}
+
+// The merge: the parts into registers, then the stage applied to them.
+fn lower_product_merge(handle, ph, right) = {
+  let values = lower_product_parts(ph)
+  let cp = ls_push_scope()
+  let hs = part_handles_of(ph)
+  let regs = map(bind_merge_slot(ph), enumerate(hs))
+  let fill = fill_product_parts(ph, regs, values)
+  let args = map(read_part_reg, zip(regs, hs))
+  let call = lower_pipe_complete_many(args, right, handle)
+  ls_pop_scope(cp)
+  LBlock(handle, [fill, call])
+}
+
+// A destructured part's register: the binder's own name, at the part's width;
+// a wildcard still EVALUATES its part (a branch is a computation, and `><`
+// branches are independent of each other, never of the program), so it takes
+// a register nothing reads.
+fn bind_destructured_part(pair) = match pair {
+  (sub, part_h) => match sub {
+    PVar(name) => ls_bind_local(name, part_h),
+    _ => ls_bind_local("__part_{int_to_str(part_h)}", part_h),
+  },
+}
+
+fn bind_merge_slot(ph, indexed) = match indexed {
+  (i, part_h) => ls_bind_local("__merge_{int_to_str(i)}_{int_to_str(ph)}", part_h),
+}
+
+fn read_part_reg(pair) = match pair {
+  (reg, part_h) => LLocal(part_h, reg),
+}
+
+// THE PARTS, each at its own handle: a tuple literal's elements, a fanout's
+// branch results (the boundary edges inference drew).
+fn part_handles_of(ph) = match graph_node_body(ph) {
+  NExpr(MakeTupleExpr(elems)) => map(node_handle, elems),
+  _ => match fanout_boundaries(ph) {
+    Ok(boundaries) => map(boundary_result_handle, boundaries),
+    Err(_) => [],
+  },
+}
+
+fn boundary_result_handle(edge) = match edge {
+  BoundaryEdge(result_h, _, _, _, _) => result_h,
+}
+
+// A tuple literal's parts are lowered where they stand; a fanout's are the
+// schedule's business, so its values are built with the form (`fill_product_parts`).
+fn lower_product_parts(ph) = match graph_node_body(ph) {
+  NExpr(MakeTupleExpr(elems)) => lower_expr_list(elems),
+  _ => [],
+}
+
+// The expression that puts the parts in the registers: plain lets for a tuple
+// literal, and the fanout's own per-schedule form for a fanout — which binds
+// the same registers whether its branches ran here or crossed a thread.
+fn fill_product_parts(ph, regs, values) = match graph_node_body(ph) {
+  NExpr(MakeTupleExpr(_)) => LBlock(ph, map(bind_part_to_reg, zip(regs, values))),
+  NExpr(FanoutExpr(branches)) => lower_fanout_nary_to(ph, branches, FdRegs(regs)),
+  NExpr(PipeExpr(PFanout(fan_own), l, r)) => lower_fanout_to(ph, fan_own, l, r, FdRegs(regs)),
+  _ => LInvariantFailure(ph, MissingFanoutBoundary),
 }
 
 fn lower_pipe(kind, left, right, handle) = match kind {
@@ -3220,8 +3351,19 @@ fn lower_pipe(kind, left, right, handle) = match kind {
   // Drift 1 closure: the handler chain IS the dispatch; no vtable. Drift
   // 5 closure: any per-thread state lives in the chosen handler's `with`,
   // never an ad-hoc parallel struct.
-  lower_fanout(handle, fan_own, left, right),
-  PForward => lower_pipe_complete(lower_expr(left), right, handle),
+  lower_fanout_to(handle, fan_own, left, right, FdValue),
+  PForward => match left {
+    N(_, _, lh) => // THE MERGE (PLAN §4②): a product the site builds fills the stage's N
+    // open slots. The parts are bound to registers where they are computed
+    // and handed to the stage, so `(a) >< (b) |> f` is `f(a, b)` — no tuple
+    // at any schedule (`product_fills_stage`, graph.mn, the judgment's own
+    // rule for the expectation it unified).
+    if product_fills_stage(lh, right) {
+      lower_product_merge(handle, lh, right)
+    } else {
+      lower_pipe_complete(lower_expr(left), right, handle)
+    },
+  },
   PTee => {
     // ~> tee — handler attachment. One precedence, one kind: the parser's
     // table already scoped the handler over the whole chain to its left.
@@ -3461,11 +3603,16 @@ fn extract_handler_config_args(node) = match node {
 //
 // Infer owns the ordered executable edges at the fanout site. Project them
 // directly; tuple types prove the result shape but are not an identity index.
-fn lower_fanout(handle, fan_own, left, right) = match fanout_boundaries(handle) {
+// THE FANOUT, LOWERED TO WHAT CONSUMES IT. `FdValue` is the tuple of the
+// branches' results; `FdRegs(regs)` is the parts bound to the registers a
+// positional destructure or a merge took, with no tuple built at all — the
+// product's own law, read at the consumer (`product_consumed_in_place`,
+// graph.mn).
+fn lower_fanout_to(handle, fan_own, left, right, dest) = match fanout_boundaries(handle) {
   Ok(boundaries) => match fan_own {
     FanDistribute => // The N-ary carrier owns `><` (Hβ.parser.pcompose-nary); the
     // PipeKind arm delegates so the kind stays a key, not a shape.
-    fanout_thunks_from(handle, [left, right], boundaries),
+    fanout_at(handle, [left, right], NoShare, boundaries, dest),
     FanShare => {
       let lo_input = lower_expr(left)
       let input_local_name = "__fanout_input_{int_to_str(handle)}"
@@ -3476,10 +3623,16 @@ fn lower_fanout(handle, fan_own, left, right) = match fanout_boundaries(handle) 
               NExpr(MakeTupleExpr(elems)) => elems,
               _ => [right],
             }
-            let branches =
-              synthesize_diverge_thunks(handle, input_h, input_local_name, branch_nodes, boundaries, 0)
-            // Bind the shared input ONCE, then run the thunks (each captures it).
-            LBlock(handle, [LLet(input_h, input_local_name, lo_input), run_fanout_thunks(handle, branches)])
+            // Bind the shared input ONCE — the branches read the local,
+            // whether they are applied in the frame or captured by a
+            // spawning schedule's thunk.
+            LBlock(
+              handle,
+              [
+                LLet(input_h, input_local_name, lo_input),
+                fanout_at(handle, branch_nodes, Shared(input_h, input_local_name), boundaries, dest)
+              ]
+            )
           },
         },
       }
@@ -3488,28 +3641,89 @@ fn lower_fanout(handle, fan_own, left, right) = match fanout_boundaries(handle) 
   Err(invariant) => LInvariantFailure(handle, invariant),
 }
 
+// Whether a fanout's branches are APPLIED to one borrowed input (`<|`) or
+// are values of their own (`><`) — the ownership aspect, carried to the one
+// place that projects a branch.
+type InputSharing = NoShare | Shared(Int, String)
+
+// Where a fanout's branch results go: the tuple it answers, or the
+// registers its consumer already took.
+type FanDest = FdValue | FdRegs([String])
+
 // The N-ary fanout (FanoutExpr — the `><` carrier): each branch its own
-// boundary and thunk, tagged by position; the runtime record already
-// carries arity (the STEP 4 collapse), so the thunk list generalizes
-// with no emit change.
-fn lower_fanout_nary(handle, branches) = match fanout_boundaries(handle) {
-  Ok(boundaries) => fanout_thunks_from(handle, branches, boundaries),
+// boundary, tagged by position; the runtime record already carries arity
+// (the STEP 4 collapse), so the branch list generalizes with no emit change.
+fn lower_fanout_nary_to(handle, branches, dest) = match fanout_boundaries(handle) {
+  Ok(boundaries) => fanout_at(handle, branches, NoShare, boundaries, dest),
   Err(invariant) => LInvariantFailure(handle, invariant),
 }
 
-fn fanout_thunks_from(handle, branch_nodes, boundaries) = {
-  let thunks = fanout_thunk_walk(handle, branch_nodes, boundaries, 0, len(branch_nodes))
-  run_fanout_thunks(handle, thunks)
+// ONE FANOUT SITE, PROJECTED. The branches are evaluated IN THE FRAME the
+// fanout stands in for every schedule that runs them here — the sequential
+// default, and the lane/device collectors, which pack the same values — so a
+// branch literal is applied in place (R0i's law for a `|>` stage and a `<~`
+// recurrence, extended to a branch: no closure is minted, and a `<~` inside
+// one is a line of the ENCLOSING record, ticking across calls as its author
+// wrote it). A spawning schedule is the one that needs a value to cross a
+// thread or a disk, so its thunks are built only where its vocabulary is
+// linked, and nothing else pays for them.
+fn fanout_at(handle, branch_nodes, share, boundaries, dest) = {
+  let inframe = fanout_inframe_walk(branch_nodes, share, boundaries, 0, len(branch_nodes))
+  let spawning = spawning_schedules()
+  let thunks = if len(spawning) == 0 {
+    []
+  } else {
+    fanout_thunk_walk(handle, branch_nodes, share, boundaries, 0, len(branch_nodes))
+  }
+  let lexical = lower_site_schedule()
+  LFanout(
+    handle,
+    lexical,
+    FanBranches(thunks),
+    fanout_forms(handle, lexical, inframe, thunks, spawning, dest)
+  )
 }
 
-fn fanout_thunk_walk(handle, branch_nodes, boundaries, i, n) = if i >= n {
+// A branch evaluated where the fanout stands: a `><` branch is its own
+// value; a `<|` branch is a STAGE applied to the borrowed input exactly as a
+// `|>` stage is (`lower_pipe_complete`) — a call completed in place, a
+// literal's parameter bound to the input and its body lowered right here.
+fn fanout_inframe_walk(branch_nodes, share, boundaries, i, n) = if i >= n {
+  []
+} else {
+  let branch = list_index(branch_nodes, i)
+  let value = match branch {
+    N(_, _, bh) => match fanout_boundary_at(boundaries, i, bh) {
+      Ok(BoundaryEdge(result_h, _, _, _, _)) => fanout_inframe_value(branch, result_h, share),
+      Err(invariant) => LInvariantFailure(bh, invariant),
+    },
+  }
+  [value] ++ fanout_inframe_walk(branch_nodes, share, boundaries, i + 1, n)
+}
+
+fn fanout_inframe_value(branch, result_h, share) = match share {
+  NoShare => lower_expr(branch),
+  Shared(input_h, input_local_name) => lower_pipe_complete(LLocal(input_h, input_local_name), branch, result_h),
+}
+
+fn fanout_thunk_walk(handle, branch_nodes, share, boundaries, i, n) = if i >= n {
   []
 } else {
   let branch = list_index(branch_nodes, i)
   let thunk = match branch {
-    N(_, _, bh) => synthesize_branch_thunk(handle, int_to_str(i), branch, fanout_boundary_at(boundaries, i, bh)),
+    N(_, _, bh) => match share {
+      NoShare => synthesize_branch_thunk(handle, int_to_str(i), branch, fanout_boundary_at(boundaries, i, bh)),
+      Shared(input_h, input_local_name) => synthesize_diverge_thunk(
+        handle,
+        input_h,
+        input_local_name,
+        i,
+        branch,
+        fanout_boundary_at(boundaries, i, bh)
+      ),
+    },
   }
-  [thunk] ++ fanout_thunk_walk(handle, branch_nodes, boundaries, i + 1, n)
+  [thunk] ++ fanout_thunk_walk(handle, branch_nodes, share, boundaries, i + 1, n)
 }
 
 // Inference is the sole writer of executable boundaries. Missing here means
@@ -3608,17 +3822,16 @@ fn threaded_effect_check(branch_h, stack, via: String, ename: String) = if effec
   ()
 } else {
   match threaded_handler_for(stack, ename) {
-    Some((hname, below)) => if handler_state_is_written(hname) {
-      report_at(
+    Some((hname, below)) => match handler_state_writer(hname) {
+      Some(how) => report_at(
         branch_h,
         EThreadedBranchEffect(
           ename,
-          "{via}the handler it reaches at the fanout's frame, `{hname}`, WRITES its state from an arm (`resume … with`) — one record, two instances",
+          "{via}the handler it reaches at the fanout's frame, `{hname}`, WRITES its state from an arm ({how}) — one record, two instances",
           parse_span_of(branch_h)
         )
-      )
-    } else {
-      each(
+      ),
+      None => each(
         {
           inner => threaded_effect_check(
             branch_h,
@@ -3628,7 +3841,7 @@ fn threaded_effect_check(branch_h, stack, via: String, ename: String) = if effec
           ),
         },
         handler_arm_effects(hname)
-      )
+      ),
     },
     None => report_at(
       branch_h,
@@ -3671,52 +3884,57 @@ fn handler_arm_effects(hname: String) = match env_lookup(hname) {
   None => [],
 }
 
-// A handler is stateful FOR THE RACE RULE when an arm WRITES the state
-// record — a `resume … with` update, the one writer SYNTAX gives state —
-// read off each field's state fact, which the judgment noted with every
-// writer before any arm was judged (infer.mn `bind_handler_state_name`), an
-// update naming no field refused there. Declaring state is not writing it: a
-// handler whose arms only read `n` shares one immutable record across
-// instances, exactly as a config parameter would.
-fn handler_state_is_written(hname: String) = match handler_decl_of(hname) {
-  Some((_, state, _)) => any(state_field_written, state),
-  None => false,
+// A handler is stateful FOR THE RACE RULE when an arm WRITES its state, by
+// either of a field's two writers, both read off the field's one fact
+// (types.mn `StateFact`): a `resume … with` update replaces the record's
+// word, and an in-place store (`list_set(buf, …)`, directly or through a
+// callee storing into its parameter) mutates what the field names — the
+// fact the arena's install demand reads too. Declaring state is not
+// writing it: a handler whose arms only read `n` shares one immutable
+// record across instances, exactly as a config parameter would. Until
+// 2026-10-06 the rule read the updates alone, and two branches bumping a
+// count kept in a state buffer ran.
+//
+// The answer says how, for the refusal: the first written field, by the
+// writer that writes it.
+fn handler_state_writer(hname: String) = match handler_decl_of(hname) {
+  Some((_, state, _)) => fold(None, state_writer_or, state),
+  None => None,
 }
 
-// A field is written when its fact names a writer beyond its init.
-fn state_field_written(sf) = match graph_binder_of(node_handle(state_field_init(sf))) {
+fn state_writer_or(acc, sf) = match acc {
+  Some(_) => acc,
+  None => state_field_writer(sf),
+}
+
+fn state_field_writer(sf) = match graph_binder_of(node_handle(state_field_init(sf))) {
   Some(fact) => match fact {
-    StateFact(f) => len(f.writes) > 1,
-    ParamFact(_) => false,
-    PartFact(_) => false,
+    StateFact(f) => if len(f.stores) > 0 {
+      Some("an in-place store into `{state_field_name(sf)}`{store_site(last(f.stores))}")
+    } else if len(f.writes) > 1 {
+      Some("`resume … with` updates `{state_field_name(sf)}`")
+    } else {
+      None
+    },
+    ParamFact(_) => None,
+    PartFact(_) => None,
   },
-  None => false,
+  None => None,
 }
 
-// Run the exact zero-argument boundary and immediately project its one-field
-// carrier back to the semantic result representation. The scheduler only ever
-// transports the carrier pointer; f64/f32/v128 remain unboxed in field 0.
-fn invoke_scheduled_boundary(branch) = match branch {
-  ScheduledBoundary(thunk, result_h, carrier_h, _, _, _) => LFieldLoad(result_h, LCall(carrier_h, thunk, []), FByIndex(0)),
-  InvalidScheduledBoundary(handle, invariant) => LInvariantFailure(handle, invariant),
-}
+// Where the store stands in the arm: the last cell is the stored value, or
+// the state argument a storing callee was handed (infer.mn `ages_transport`).
+fn store_site(c) = " at {show_span(parse_span_of(c))}"
 
-// Project the strategy-neutral branch thunks through the schedule read
-// LIVE from the installed `~>` chain. `prelude` are statements that must
-// run before the thunks (the `<|` input let-local); the result is the
-// branch-result tuple in SOURCE order — determinism is the verb's, not
-// the scheduler's. NO scheduler → Seq (the invisible default the old
-// hardwired Thread inject made unsayable): each thunk runs inline (a
-// 0-arg closure call), results tupled in source order. `~> Thread` →
-// spawn-ALL-then-join-ALL in source order (true-parallel-ordered, not
-// the spawn-join-each interleave that serialized). `~> Simd` packs the f32
-// branch results into v128 lanes (LSimdLanes); `~> Gpu` projects the thunks
-// to a device-kernel host import (external-transport boundary); `~> Persist`
-// checkpoints each branch thunk to disk (persist_branch/join_persist). All
-// read the SAME strategy-neutral thunks — only the collector differs.
-fn run_fanout_thunks(handle, branches) = {
-  let lexical = lower_site_schedule()
-  LFanout(handle, lexical, FanBranches(branches), fanout_forms(handle, lexical, branches))
+// The schedules whose branches must cross a boundary, and whose
+// implementation the program links — a form is built for each, and for none
+// where a program never spawns, so no thunk is synthesized there at all.
+fn spawning_schedules() = {
+  let threaded =
+    if field_name_eq(lower_effect_name_of_op("spawn"), "Thread") { [Threaded] } else { [] }
+  let persisted =
+    if field_name_eq(lower_effect_name_of_op("persist_branch"), "Persist") { [Persisted] } else { [] }
+  threaded ++ persisted
 }
 
 // THE FORMS A SITE CAN RUN UNDER, built where perform dispatch belongs. The
@@ -3730,55 +3948,53 @@ fn run_fanout_thunks(handle, branches) = {
 // vocabulary does not carry gets no form, so no perform of nothing is ever
 // built; and a site whose frame installs a schedule is never overridden —
 // the innermost install wins, as it does for every effect.
-fn fanout_forms(handle, lexical, branches) = match lexical {
-  Some(s) => [(s, fanout_form_of(handle, s, branches))],
-  None => [(Seq, fanout_form_of(handle, Seq, branches))] ++ spawning_forms(handle, branches),
+fn fanout_forms(handle, lexical, inframe, thunks, spawning, dest) = match lexical {
+  Some(s) => [(s, fanout_form_of(handle, s, inframe, thunks, dest))],
+  None => [(Seq, fanout_form_of(handle, Seq, inframe, thunks, dest))] ++ map({ s => (s, fanout_form_of(handle, s, inframe, thunks, dest)) }, spawning),
 }
 
-fn spawning_forms(handle, branches) = {
-  let threaded = if field_name_eq(lower_effect_name_of_op("spawn"), "Thread") {
-    [(Threaded, fanout_form_of(handle, Threaded, branches))]
-  } else {
-    []
-  }
-  let persisted = if field_name_eq(lower_effect_name_of_op("persist_branch"), "Persist") {
-    [(Persisted, fanout_form_of(handle, Persisted, branches))]
-  } else {
-    []
-  }
-  threaded ++ persisted
-}
-
-fn fanout_form_of(handle, schedule, branches) = match schedule {
-  Seq => LMakeTuple(handle, map(invoke_scheduled_boundary, branches)),
+// ONE FORM: the branch results a schedule produces, collected the way the
+// consumer takes them (`fanout_collect`). The values are the in-frame
+// evaluations wherever the schedule runs the branches here — the sequential
+// default and the lane/device collectors, which pack what this frame
+// computed — and the spawn-then-join reads wherever a branch crosses a
+// boundary. The verb is pure topology: only the WHERE and the collector
+// differ, and nothing is minted for a schedule the site does not run.
+fn fanout_form_of(handle, schedule, inframe, thunks, dest) = match schedule {
+  Seq => fanout_collect(handle, dest, inframe),
   Threaded => {
     // Spawn ALL branches, THEN join ALL — true parallelism with
     // source-order collection (the spawn-join-each interleave
     // serialized). The spawn handles bind as let-locals so the joins
     // read them after every spawn has launched.
-    let spawn_lets = map(spawn_let_at(handle), enumerate(branches))
-    let joins = map(spawn_join_at(handle), enumerate(branches))
-    LBlock(handle, list_concat(spawn_lets, [LMakeTuple(handle, joins)]))
+    let spawn_lets = map(spawn_let_at(handle), enumerate(thunks))
+    let joins = map(spawn_join_at(handle), enumerate(thunks))
+    LBlock(handle, list_concat(spawn_lets, [fanout_collect(handle, dest, joins)]))
   },
   Simd => // `~> Simd` — the SPACE-axis cash-out at the value layer's RV128 altitude:
-  // the N branch results ARE the v128 lanes. Each thunk evaluates to an f32
-  // (the branch's repr, read live by emit); LSimdLanes packs them via
-  // f32x4.replace_lane over a zeroed base, so the fanout's VALUE is one v128 the
-  // lane ops (emit_binop_v128: f32x4.add/mul) process four-at-once. The thunks
-  // are the SAME strategy-neutral closures Seq/Thread call — only the COLLECTOR
-  // differs (lanes vs tuple), proving the verb is pure topology (PLAN §4 STEP 4).
-  LSimdLanes(handle, map(invoke_scheduled_boundary, branches)),
+  // the N branch results ARE the v128 lanes, packed via f32x4.replace_lane
+  // over a zeroed base, so the fanout's VALUE is one v128 the lane ops
+  // (emit_binop_v128: f32x4.add/mul) process four-at-once. The branches are
+  // the SAME in-frame evaluations Seq runs — only the COLLECTOR differs
+  // (lanes vs tuple), which is the verb being pure topology (PLAN §4 STEP 4).
+  // A consumer that took the parts apart gets them as registers: a
+  // destructured lane vector is scalar code, and packing it would be a
+  // record built for nothing.
+  match dest {
+    FdValue => LSimdLanes(handle, inframe),
+    FdRegs(_) => fanout_collect(handle, dest, inframe),
+  },
   Gpu => // `~> Gpu` — "the handler IS the backend" (PLAN: infer/lower/emit/native/GPU
   // are the projected cursor, each aspect → a target token). The WASM substrate
   // has no in-process GPU dispatch instruction — a device kernel crosses the
   // external-transport boundary (the ONE legitimate external-surface exception,
   // like wasmtime/WABT, PLAN §6). The structurally-correct lowering is a host
-  // import call carrying the branch thunks as the kernel grid; until a host
-  // gpu-dispatch import is bound, it routes through the SAME strategy-neutral
-  // thunks Seq runs (a correct sequential execution of the kernel body), and the
-  // device offload is the host-import swap at that boundary — named peer
-  // Hβ.lower.fanout-gpu-host-import (the transport binding, not a Mentl gap).
-  LMakeTuple(handle, map(invoke_scheduled_boundary, branches)),
+  // import call carrying the branch grid; until a host gpu-dispatch import is
+  // bound, it runs the branches here, which is a correct sequential execution
+  // of the kernel body, and the device offload is the host-import swap at that
+  // boundary — named peer Hβ.lower.fanout-gpu-host-import (the transport
+  // binding, not a Mentl gap).
+  fanout_collect(handle, dest, inframe),
   Persisted => // `~> Persist` — parallelism and durable execution are the SAME arm (PLAN
   // §4④): each branch thunk is a continuation record (handler = state = closure
   // = evidence = continuation, §6), so a Persist scheduler spawns each branch
@@ -3790,10 +4006,22 @@ fn fanout_form_of(handle, schedule, branches) = match schedule {
   // (a persisting handler vs a thread pool vs inline), the §4④ unification made
   // real at the fanout layer.
   {
-    let spawn_lets = map(persist_let_at(handle), enumerate(branches))
-    let joins = map(persist_join_at(handle), enumerate(branches))
-    LBlock(handle, list_concat(spawn_lets, [LMakeTuple(handle, joins)]))
+    let spawn_lets = map(persist_let_at(handle), enumerate(thunks))
+    let joins = map(persist_join_at(handle), enumerate(thunks))
+    LBlock(handle, list_concat(spawn_lets, [fanout_collect(handle, dest, joins)]))
   },
+}
+
+// THE COLLECTOR: the tuple the fanout answers, or the registers its consumer
+// already took — in which case no record exists at any schedule, and the
+// form leaves no value of its own (`lexpr_leaves_value` reads the form).
+fn fanout_collect(handle, dest, values) = match dest {
+  FdValue => LMakeTuple(handle, values),
+  FdRegs(regs) => LBlock(handle, map(bind_part_to_reg, zip(regs, values))),
+}
+
+fn bind_part_to_reg(pair) = match pair {
+  (reg, value) => LLet(lexpr_handle(value), reg, value),
 }
 
 // One branch's spawn, bound to its ticket handle as a let-local the join
@@ -3923,79 +4151,74 @@ fn fanout_seq_impl(handle, fh, lo_args, impl: String) = match env_kind_of(impl) 
 // Per H.2.e (lower-lambda-capture-substrate): the closure
 // machinery used here is the same machinery that lowers user-
 // written lambdas; compiler-synthesized thunks reuse it.
-fn synthesize_diverge_thunks(parent_handle, input_h, input_local_name, branch_nodes, boundaries, base_idx) = map(
-  {
-    (i, branch_node) => match branch_node {
-      N(_, _, branch_h) => match fanout_boundary_at(boundaries, base_idx + i, branch_h) {
-        Ok(boundary) => match boundary {
-          BoundaryEdge(result_h, thunk_h, carrier_h, thread_ticket_h, persist_ticket_h) => {
-            let thunk_name = "diverge_{int_to_str(base_idx + i)}_{int_to_str(parent_handle)}"
-            // A diverge thunk is a closure exactly like a branch thunk (`><`,
-            // synthesize_branch_thunk) — ONE closure-synthesis discipline, not two.
-            // It captures EVERY free var it needs: the shared input (a synthetic
-            // capture with no source VarRef, riding slot 0) AND every free var the
-            // branch itself references (a lambda branch's `k`), resolved against the
-            // parent frame. Inside the thunk each reads as an upval off __state. The
-            // old form captured only the input and referenced it as a bare local —
-            // the parent's let-local, undefined in the thunk (the input miss); and it
-            // captured NONE of the branch's frees (the `k` miss). Both were invisible
-            // because no micro exercised `<|` — only `><`.
-            let free_uses = collect_free_uses(branch_node, [])
-            match resolve_captures_outer(free_uses, parent_handle) {
-              (b_names, b_exprs, b_handles) => {
-                let captures_names = [input_local_name] ++ b_names
-                let captures_exprs = [LLocal(input_h, input_local_name)] ++ b_exprs
-                let captures_handles = [input_h] ++ b_handles
-                match executable_boundary_row(thunk_h) {
-                  Ok(thunk_row) => {
-                    threaded_branch_check(branch_h, thunk_row)
-                    // A branch thunk takes nothing — its input rides capture
-                    // slot 0 — so the param vector is empty by construction
-                    // and the result is the thunk node's own judged type.
-                    graph_emitfn_note(EmitFnEntry{
-                      caps: zip(captures_names, captures_handles),
-                      fence: len(captures_exprs),
-                      kind: EfkThunk,
-                      name: thunk_name,
-                      origin: thunk_h,
-                      params: [],
-                      ret: Some(lookup_ty(thunk_h)),
-                    })
-                    // THE DIRECT SWAP (α, the fanout pair's one projector):
-                    // Some(input_h) = the `<|` share — the branch applied to
-                    // the input riding capture slot 0 through the normal call
-                    // lowering. A `<|` branch that performs a STATEFUL effect
-                    // dispatches through the live world chain exactly as a
-                    // real lambda does — no thunk-local evidence.
-                    let fn_ir = project_thunk_fn(
-                      thunk_name,
-                      zip(captures_names, captures_handles),
-                      branch_node,
-                      result_h,
-                      carrier_h,
-                      Some(input_h)
-                    )
-                    ScheduledBoundary(
-                      LMakeClosure(thunk_h, fn_ir, captures_exprs),
-                      result_h,
-                      carrier_h,
-                      thread_ticket_h,
-                      persist_ticket_h,
-                      branch_h
-                    )
-                  },
-                  Err(invariant) => InvalidScheduledBoundary(thunk_h, invariant),
-                }
+fn synthesize_diverge_thunk(parent_handle, input_h, input_local_name, i, branch_node, boundary_at) = match branch_node {
+  N(_, _, branch_h) => match boundary_at {
+    Ok(boundary) => match boundary {
+      BoundaryEdge(result_h, thunk_h, carrier_h, thread_ticket_h, persist_ticket_h) => {
+        let thunk_name = "diverge_{int_to_str(i)}_{int_to_str(parent_handle)}"
+        // A diverge thunk is a closure exactly like a branch thunk (`><`,
+        // synthesize_branch_thunk) — ONE closure-synthesis discipline, not two.
+        // It captures EVERY free var it needs: the shared input (a synthetic
+        // capture with no source VarRef, riding slot 0) AND every free var the
+        // branch itself references (a lambda branch's `k`), resolved against the
+        // parent frame. Inside the thunk each reads as an upval off __state. The
+        // old form captured only the input and referenced it as a bare local —
+        // the parent's let-local, undefined in the thunk (the input miss); and it
+        // captured NONE of the branch's frees (the `k` miss). Both were invisible
+        // because no micro exercised `<|` — only `><`.
+        let free_uses = collect_free_uses(branch_node, [])
+        match resolve_captures_outer(free_uses, parent_handle) {
+          (b_names, b_exprs, b_handles) => {
+            let captures_names = [input_local_name] ++ b_names
+            let captures_exprs = [LLocal(input_h, input_local_name)] ++ b_exprs
+            let captures_handles = [input_h] ++ b_handles
+            match executable_boundary_row(thunk_h) {
+              Ok(thunk_row) => {
+                threaded_branch_check(branch_h, thunk_row)
+                // A branch thunk takes nothing — its input rides capture
+                // slot 0 — so the param vector is empty by construction
+                // and the result is the thunk node's own judged type.
+                graph_emitfn_note(EmitFnEntry{
+                  caps: zip(captures_names, captures_handles),
+                  fence: len(captures_exprs),
+                  kind: EfkThunk,
+                  name: thunk_name,
+                  origin: thunk_h,
+                  params: [],
+                  ret: Some(lookup_ty(thunk_h)),
+                })
+                // THE DIRECT SWAP (α, the fanout pair's one projector):
+                // Some(input_h) = the `<|` share — the branch applied to
+                // the input riding capture slot 0 through the normal call
+                // lowering. A `<|` branch that performs a STATEFUL effect
+                // dispatches through the live world chain exactly as a
+                // real lambda does — no thunk-local evidence.
+                let fn_ir = project_thunk_fn(
+                  thunk_name,
+                  zip(captures_names, captures_handles),
+                  branch_node,
+                  result_h,
+                  carrier_h,
+                  Some(input_h)
+                )
+                ScheduledBoundary(
+                  LMakeClosure(thunk_h, fn_ir, captures_exprs),
+                  result_h,
+                  carrier_h,
+                  thread_ticket_h,
+                  persist_ticket_h,
+                  branch_h
+                )
               },
+              Err(invariant) => InvalidScheduledBoundary(thunk_h, invariant),
             }
           },
-        },
-        Err(invariant) => InvalidScheduledBoundary(branch_h, invariant),
+        }
       },
     },
+    Err(invariant) => InvalidScheduledBoundary(branch_h, invariant),
   },
-  enumerate(branch_nodes)
-)
+}
 
 // Branch-as-thunk synthesis. Mirrors LambdaExpr's lowering above —
 // collect_free_vars over an EMPTY bound-set (a thunk has no params,
@@ -4867,7 +5090,7 @@ fn lower_init_decl(discriminator, config, state: [{init: Node, name: String}], f
   let nconfig = len(config_names)
   graph_emitfn_note(EmitFnEntry{
     caps: [],
-    fence: fence,
+    fence,
     kind: EfkInit(discriminator),
     name: fn_name,
     origin: node_handle(list_index(state, 0).init),
@@ -5003,7 +5226,7 @@ fn lower_one_arm_decl(arm: {args: [String], body: Node, op_name: String}, discri
   }
   graph_emitfn_note(EmitFnEntry{
     caps: [],
-    fence: fence,
+    fence,
     kind: EfkArm(arm.op_name, discriminator),
     name: fn_name,
     origin: node_handle(arm.body),
@@ -5144,42 +5367,48 @@ fn lower_resume_callk(handle, val, state_updates) = {
         if len(state_updates) == 0 { lower_expr(val) } else { LLocal(node_handle(val), val_name) }
       LBlock(
         handle,
-        prefix ++ [LLet(handle, kr, LResumeK(handle, resolve_resume_k(handle), val_lo)), LLet(
-          handle,
-          kr2,
-          LIf(
+        prefix ++ [
+          LLet(handle, kr, LResumeK(handle, resolve_resume_k(handle), val_lo)),
+          LLet(
             handle,
-            LGlobal(handle, "yield_flag"),
-            [LBlock(
+            kr2,
+            LIf(
               handle,
+              LGlobal(handle, "yield_flag"),
               [
-                LLet(
+                LBlock(
                   handle,
-                  rd,
-                  LPerform(handle, PdDriver("__redrive_{hname}", resolve_hrec(handle)), [LLocal(handle, kr)])
-                ),
-                // The redrive LOOPS this handler's OWN ops (dispatch-until-clear),
-                // so a flag STILL raised after it is a FOREIGN op. A DEAD one (an
-                // abandon the continuation performed — backtrack's try-fn resume
-                // feeding my_catch) UNWINDS the arm's frame: nothing of the arm
-                // past its resume runs, and the driver that called the arm bubbles
-                // the flag to the enclosing check (AN-2; before, the dummy flowed
-                // into the arm's own code after the resume). A LIVE foreign yield
-                // keeps flowing as the dummy with the flag intact — the arm's
-                // remainder after a resume is in no k, the named peer
-                // `Hβ.lower.arm-remainder-after-a-foreign-live-yield`; a
-                // genuinely-unhandled op still traps LOUDLY at the _start backstop.
-                LIf(
-                  handle,
-                  LGlobal(handle, "yield_flag"),
-                  [LIf(handle, LGlobal(handle, "yield_k"), [LLocal(handle, rd)], [LUnwind(handle)])],
-                  [LLocal(handle, rd)]
+                  [
+                    LLet(
+                      handle,
+                      rd,
+                      LPerform(handle, PdDriver("__redrive_{hname}", resolve_hrec(handle)), [LLocal(handle, kr)])
+                    ),
+                    // The redrive LOOPS this handler's OWN ops (dispatch-until-clear),
+                    // so a flag STILL raised after it is a FOREIGN op. A DEAD one (an
+                    // abandon the continuation performed — backtrack's try-fn resume
+                    // feeding my_catch) UNWINDS the arm's frame: nothing of the arm
+                    // past its resume runs, and the driver that called the arm bubbles
+                    // the flag to the enclosing check (AN-2; before, the dummy flowed
+                    // into the arm's own code after the resume). A LIVE foreign yield
+                    // keeps flowing as the dummy with the flag intact — the arm's
+                    // remainder after a resume is in no k, the named peer
+                    // `Hβ.lower.arm-remainder-after-a-foreign-live-yield`; a
+                    // genuinely-unhandled op still traps LOUDLY at the _start backstop.
+                    LIf(
+                      handle,
+                      LGlobal(handle, "yield_flag"),
+                      [LIf(handle, LGlobal(handle, "yield_k"), [LLocal(handle, rd)], [LUnwind(handle)])],
+                      [LLocal(handle, rd)]
+                    )
+                  ]
                 )
-              ]
-            )],
-            [LLocal(handle, kr)]
-          )
-        ), LLocal(handle, kr2)]
+              ],
+              [LLocal(handle, kr)]
+            )
+          ),
+          LLocal(handle, kr2)
+        ]
       )
     },
   }
@@ -5715,12 +5944,15 @@ fn lower_body_reified(body_node) = match k_spine_next(body_node, []) {
             lower_expr(body_node),
             _ => LBlock(
               frame_h,
-              [LLet(ph, kr, lower_expr(spine_node)), LIf(
-                ph,
-                LGlobal(ph, "yield_flag"),
-                [LKExtend(frame_h, reify_frame_k(body_node, ph, []))],
-                [c_inline]
-              )]
+              [
+                LLet(ph, kr, lower_expr(spine_node)),
+                LIf(
+                  ph,
+                  LGlobal(ph, "yield_flag"),
+                  [LKExtend(frame_h, reify_frame_k(body_node, ph, []))],
+                  [c_inline]
+                )
+              ]
             ),
           }
         },
@@ -6003,7 +6235,7 @@ fn resume_upd_pair(upd, fields) =
 fn resolve_state_slot_offset(name: String, fields) = {
   let hits = filter({ (_, field) => field == name }, enumerate(fields))
   if len(hits) == 0 {
-    0 - 1
+    -1
   } else {
     match head(hits) {
       (idx, _) => 8 + idx * 4,
@@ -6106,7 +6338,7 @@ fn grounded_scan(bindings, i, n, ename: String) = if i >= n {
 // language meets the instruction set (the wasi-import list's sibling;
 // the op names ARE the identity, declared in one home).
 fn is_substrate_mem_op(name: String) with Pure =
-  name == "store_i32" || name == "load_i32" || name == "store_i8" || name == "load_i8" || name == "store_f64" || name == "load_f64" || name == "mem_copy" || name == "addr_at" || name == "addr_diff" || name == "load_addr" || name == "store_addr" || name == "null_addr" || name == "addr_word" || name == "word_addr" || name == "i32_xor" || name == "i32_or" || name == "i32_and" || name == "i32_shl" || name == "alloc" || name == "heap_mark" || name == "world_top" || name == "world_restore" || name == "image_key" || name == "globals_area" || name == "globals_save" || name == "image_restore" || name == "arena_stat"
+  name == "store_i32" || name == "trap" || name == "load_i32" || name == "store_i8" || name == "load_i8" || name == "store_f64" || name == "load_f64" || name == "mem_copy" || name == "addr_at" || name == "addr_diff" || name == "load_addr" || name == "store_addr" || name == "null_addr" || name == "addr_word" || name == "word_addr" || name == "i32_xor" || name == "i32_or" || name == "i32_and" || name == "i32_shl" || name == "i32_shr_u" || name == "i32_shr_s" || name == "i32_clz" || name == "alloc" || name == "heap_mark" || name == "world_top" || name == "world_restore" || name == "image_key" || name == "globals_area" || name == "globals_save" || name == "image_restore" || name == "arena_stat"
 
 // The Cast capability's one op — erased at lower to its operand (the
 // identity at the word level; memory.mn carries the decl and the law).
@@ -6119,8 +6351,66 @@ fn is_cast_erased_op(name) with Pure = name == "addr"
 // a real handler arm routes through the else branch
 // (lower_perform_dispatch); listing one here bridges it to a dangling
 // `(call $<op>)` with no import and no arm.
-fn is_wasi_import_op(name) with Pure =
-  name == "spawn_task" || name == "join_task" || name == "thread_id" || name == "fd_write" || name == "fd_read" || name == "fd_close" || name == "fd_prestat_get" || name == "fd_prestat_dir_name" || name == "fd_fdstat_get" || name == "path_open" || name == "path_create_directory" || name == "path_filestat_get" || name == "path_unlink_file" || name == "path_rename" || name == "fd_readdir" || name == "sock_accept" || name == "poll_oneoff" || name == "args_sizes_get" || name == "args_get" || name == "proc_exit" || name == "atomic_load_i32" || name == "atomic_store_i32" || name == "atomic_rmw" || name == "atomic_cmpxchg" || name == "wait_i32" || name == "notify" || name == "fence" || name == "host_wat_write" || name == "host_exec"
+//
+// The preview1 imports are READ off their one home, `wasi_import_reprs`: this
+// predicate held a hand copy of the same names, so a new host op added to the
+// ABI table (environ_sizes_get / environ_get, E1) was a perform here — the
+// executable root gate refused WASI at a program reading its environment on
+// the boot (measured 2026-10-06), while the emit knew the import.
+fn is_wasi_import_op(name: String) = name == "spawn_task" || name == "join_task" || name == "thread_id" || name == "atomic_load_i32" || name == "atomic_store_i32" || name == "atomic_rmw" || name == "atomic_cmpxchg" || name == "wait_i32" || name == "notify" || name == "fence" || match wasi_import_reprs(name) {
+  Some(_) => true,
+  None => false,
+}
+
+// The WASI preview1 ABI signatures — the FFI boundary's external facts as
+// DATA (Repr vectors), keyed on the op name LWasiCall carries. ONE home,
+// three readers: the import-decl string (wasi_import_sig), the call-site arg
+// widths (emit_wasi_args_at_widths — a word arg filling an i64 param extends
+// at the boundary), and which ops bridge to an import at all
+// (`is_wasi_import_op`). None = not a preview1 import.
+fn wasi_import_reprs(op: String) = if op == "proc_exit" {
+  Some(([RI32], None))
+} else if op == "fd_write" {
+  Some(([RI32, RI32, RI32, RI32], Some(RI32)))
+} else if op == "fd_read" {
+  Some(([RI32, RI32, RI32, RI32], Some(RI32)))
+} else if op == "fd_close" {
+  Some(([RI32], Some(RI32)))
+} else if op == "fd_prestat_get" {
+  Some(([RI32, RI32], Some(RI32)))
+} else if op == "fd_prestat_dir_name" {
+  Some(([RI32, RI32, RI32], Some(RI32)))
+} else if op == "fd_fdstat_get" {
+  Some(([RI32, RI32], Some(RI32)))
+} else if op == "path_open" {
+  Some(([RI32, RI32, RI32, RI32, RI32, RI64, RI64, RI32, RI32], Some(RI32)))
+} else if op == "path_create_directory" {
+  Some(([RI32, RI32, RI32], Some(RI32)))
+} else if op == "path_filestat_get" {
+  Some(([RI32, RI32, RI32, RI32, RI32], Some(RI32)))
+} else if op == "path_unlink_file" {
+  Some(([RI32, RI32, RI32], Some(RI32)))
+} else if op == "path_rename" {
+  Some(([RI32, RI32, RI32, RI32, RI32, RI32], Some(RI32)))
+} else if op == "fd_readdir" {
+  Some(([RI32, RI32, RI32, RI64, RI32], Some(RI32)))
+}
+// argv, read live at _start — (argc_ptr, buf_size_ptr) and (argv_ptr, buf_ptr),
+// both returning errno. This is what makes `mentl <verb>` reach a verb.
+else if op == "args_sizes_get" {
+  Some(([RI32, RI32], Some(RI32)))
+} else if op == "args_get" {
+  Some(([RI32, RI32], Some(RI32)))
+}
+// the environment, args' shape exactly — (count_ptr, buf_size_ptr) and
+// (environ_ptr, buf_ptr) — read once, at a program's own launch gate.
+else if op == "environ_sizes_get" {
+  Some(([RI32, RI32], Some(RI32)))
+} else if op == "environ_get" {
+  Some(([RI32, RI32], Some(RI32)))
+} else {
+  None
+}
 
 // lower_index — `xs[i]` dispatched on the RECEIVER's proven type (the proof IS
 // the dispatch, the ++/== precedent). A TTuple receiver with a CONSTANT index
@@ -6143,14 +6433,14 @@ fn lower_index(handle, receiver, index) = match receiver {
   },
 }
 
-// A list index lowers to the runtime list_index call. When infer proved the
-// index in-range (the refinement-narrowing weave carries a path-predicate at the
-// index handle — graph_narrow_at ≠ 0), the access is a PROVEN-valid load:
-// list_index_proven, the elision variant that skips the redundant bounds path
-// the proof already discharged (§4⑥; SYNTAX.md «Indexing»: "the compiler elides
-// the bounds check"). Carried-Truth: the proof is READ live from the graph, never
-// re-derived; an un-narrowed index (the 0 default) stays the checked list_index,
-// byte-identical to the prior form.
+// A list index lowers to the runtime list_index call. When the judgment proved
+// the read in range (its `PInBounds` claim held — the verdict the judgment
+// wrote on the index node, graph_narrow_at ≠ 0), the access is the traversal
+// beneath the check, list_index_unchecked (SYNTAX.md «Indexing»: "the compiler
+// elides the bounds check"), whose row carries no Trap — exactly what the
+// judgment charged (`subscript_callee`, one home for both reads). Until TRAP
+// (2026-10-06) nothing wrote the verdict, so this branch's elision wrapper
+// was never called; the wrapper is deleted.
 //
 // The reader is a NAMED function, so it is called DIRECTLY at its own
 // signature (LDirectCall), never through its static closure as a value: its
@@ -6161,7 +6451,7 @@ fn lower_index(handle, receiver, index) = match receiver {
 // moment a closure call stopped boxing, and every `[Float]` index trapped.
 fn lower_index_runtime(handle, receiver, index) = match index {
   N(_, _, ih) => {
-    let callee = if graph_narrow_at(ih) != 0 { "list_index_proven" } else { "list_index" }
+    let callee = subscript_callee(graph_narrow_at(ih) != 0)
     LDirectCall(handle, handle, callee, false, [lower_expr(receiver), lower_expr(index)])
   },
 }
@@ -6348,8 +6638,16 @@ fn resolve_captures_outer(uses, owner_h) = if len(uses) == 0 {
       (res, local_h) => match resolve_captures_outer(drop_last(uses), owner_h) {
         (rest_names, rest_exprs, rest_handles) => match res {
           RGlobal => (rest_names, rest_exprs, rest_handles),
-          RLocal(reg) => ([name] ++ rest_names, [LLocal(local_ty_handle(local_h, use_h), reg)] ++ rest_exprs, [local_h] ++ rest_handles),
-          RUpval(slot) => ([name] ++ rest_names, [LUpval(local_ty_handle(local_h, use_h), slot)] ++ rest_exprs, [local_h] ++ rest_handles),
+          RLocal(reg) => (
+            [name] ++ rest_names,
+            [LLocal(local_ty_handle(local_h, use_h), reg)] ++ rest_exprs,
+            [local_h] ++ rest_handles
+          ),
+          RUpval(slot) => (
+            [name] ++ rest_names,
+            [LUpval(local_ty_handle(local_h, use_h), slot)] ++ rest_exprs,
+            [local_h] ++ rest_handles
+          ),
           RFbPrior(fb_h) => ([name] ++ rest_names, [LFeedbackPrior(fb_h)] ++ rest_exprs, [local_h] ++ rest_handles),
         },
       },
@@ -6500,8 +6798,8 @@ handler lower_scope with frames = [], globals = [], esc_rows = smap_new(), may_y
       capture_handles: captures_h,
       capture_order: captures_in,
       captures: set_canonicalize(captures_in),
-      fn_name: fn_name,
-      line_base: line_base,
+      fn_name,
+      line_base,
       lines: [],
       locals: set_canonicalize(locals_in),
     }
@@ -6536,6 +6834,7 @@ handler lower_scope with frames = [], globals = [], esc_rows = smap_new(), may_y
     // drift-audit: ignore — replace the END frame last() read
     resume(home) with frames = drop_last(frames) ++ [updated]
   },
+  ls_line_home_of(h) => if len(frames) == 0 { resume(None) } else { resume(line_home_in(last(frames).lines, h)) },
   ls_frame_depth() => resume(len(frames)),
   ls_push_scope() => if len(frames) == 0 {
     resume(0)
@@ -7752,6 +8051,11 @@ else if byte_at(enc, i) != 48 {
 // numerals, the m3 ≠ m4 the march caught.
 fn spec_mangle(name: String, enc: String) = "{name}$sp{enc}"
 
+// The base a mangled symbol names — spec_mangle's inverse, read off its one
+// spelling.
+fn spec_unmangle(sym: String, enc: String) =
+  str_slice(sym, 0, byte_len(sym) - byte_len(spec_mangle("", enc)))
+
 // The handler-arm fn name's ONE spelling (the arm decl, the ev-slot
 // placement, and the redrive liveness probe all read it here). The same
 // String pins as spec_mangle, for the same reason.
@@ -8209,7 +8513,14 @@ fn reachable_from_main(stmts) = {
     let enq = make_list(n)
     let fbuf0 = list_set(list_extend_to(make_list(16), 1), 0, "main")
     let argv_root = if main_param_count() > 0 { ["wasi_args"] } else { [] }
-    match reach_enqueue(emit_runtime_contract() ++ argv_root, make_list(4), 0, fbuf0, 1) {
+    // The launch gate the module's start may call (lib/environ.mn): lowered
+    // wherever the program links it, and emitted only where the emit's
+    // roster is non-empty (`env_launch_roster`).
+    let gate_root = match env_lookup("env_demand_check") {
+      Some(_) => ["env_demand_check"],
+      None => [],
+    }
+    match reach_enqueue(emit_runtime_contract() ++ argv_root ++ gate_root, make_list(4), 0, fbuf0, 1) {
       (fbuf1, fc1) => match reach_seed_stmts(stmts, 0, n, outs, enq, make_list(4), fbuf1, fc1) {
         (fbuf2, fc2) => match reach_construct_loop(stmts, map, outs, enq, make_list(16), 0, fbuf2, fc2) {
           (rbuf, rn) => reach_collect(outs, rbuf, rn, 0, n, make_list(n), 0),
@@ -8254,8 +8565,21 @@ fn reachable_from_main(stmts) = {
 // all. `Hβ.driver.link-is-reachability` is what makes a minted name demand
 // its module the way an import does; every name below still rides on the
 // module set already carrying it.
-fn emit_runtime_contract() =
-  ["len", "list_compare", "list_concat", "list_eq", "list_index", "list_set", "make_list", "make_list_sc", "slice", "str_compare", "str_concat", "str_eq", "str_hash"]
+fn emit_runtime_contract() = [
+  "len",
+  "list_compare",
+  "list_concat",
+  "list_eq",
+  "list_index",
+  "list_set",
+  "make_list",
+  "make_list_sc",
+  "slice",
+  "str_compare",
+  "str_concat",
+  "str_eq",
+  "str_hash"
+]
 
 // make_list_sc is the literal allocator's SECOND face, paired with make_list:
 // emit_list_literal mints `call $make_list` for the word floor (sc 0) and

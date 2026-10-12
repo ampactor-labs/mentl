@@ -1,0 +1,15 @@
+// expect: refuse E_EnvNameUngrounded
+// A required environment read whose name is computed: nothing could state the
+// program's demand on its host before it runs, so the launch gate could not
+// check it. On boot 4228ff71 it compiled clean.
+effect Environ(name: String) {
+  env(name: String) -> Int
+}
+
+handler fixed {
+  env(name) => resume(byte_len(name)),
+}
+
+fn read(n: String) = env(n)
+
+fn main() = read("PORT") ~> fixed

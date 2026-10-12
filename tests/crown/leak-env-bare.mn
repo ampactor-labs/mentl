@@ -1,0 +1,14 @@
+// CROWN env (E1) — `!Env` refuses a body reading ANY variable: the read is
+// an Env perform, its instance grounded by its own literal argument. Expect
+// E_EffectMismatch.
+effect Env(name: String) {
+  env(name: String) -> Int
+}
+
+fn port() with !Env = env("A")
+
+handler fixed {
+  env(name) => resume(7),
+}
+
+fn main() = port() ~> fixed

@@ -1,0 +1,7 @@
+// propose 7:20: fill 1
+// A hole in an argument slot is judged against the slot's parameter: under `n: Positive` only `1` proves.
+type Positive = Int where self > 0
+
+fn choose(n: Positive) = n * 2
+
+fn main() = choose(??)

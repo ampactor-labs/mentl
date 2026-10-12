@@ -1,0 +1,17 @@
+// expect: 5
+// A lowercase name in a clause is a row variable (SYNTAX's case rule read
+// at a row): `f: () -> Int with e` lets the callback perform whatever the
+// caller hands it. The clause was read as an effect named e, a closed cap,
+// so `run(() => op())` refused `E vs e` at the argument on every boot
+// through c0b2828c's successors.
+effect E {
+  op() -> Int
+}
+
+handler h {
+  op() => resume(5),
+}
+
+fn run(f: () -> Int with e) -> Int = f()
+
+fn main() = run(() => op()) ~> h

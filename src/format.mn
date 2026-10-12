@@ -109,9 +109,50 @@ handler format_default {
 // and for every helper the arms call. Rows stay inferred (Intent Boundaries
 // only), and the arms become one line each.
 fn render_program(ast) = {
-  let stmts = ast_top_level_stmts(ast)
+  let stmts = ast_top_level_stmts(ast) |> imports_in_path_order
   let rendered = stmts |> map(format_one_stmt)
   join_lines(rendered)
+}
+
+// A module's imports are a set (the parse keeps one edge per module), and a
+// set has no authored order — each run of import statements renders in path
+// order, so an unrelated edit never churns the block. An import that carries
+// prose stays where its author put it — the module's header rides the first
+// statement, and a comment naming why an import is there anchors it — so a
+// commented import closes the run before it and stands on its own.
+fn imports_in_path_order(stmts) = match fold(([], []), import_run_step, stmts) {
+  (out, run) => out ++ imports_sorted(run),
+}
+
+fn import_run_step(acc, stmt) = match acc {
+  (out, run) => match import_path_of(stmt) {
+    Some(_) => if graph_comment_at(node_handle(stmt)) == "" {
+      (out, push(run, stmt))
+    } else {
+      (out ++ imports_sorted(run) ++ [stmt], [])
+    },
+    None => (out ++ imports_sorted(run) ++ [stmt], []),
+  },
+}
+
+fn import_path_of(stmt) = match ast_kind_of(stmt) {
+  NStmt(ImportStmt(path)) => Some(path),
+  _ => None,
+}
+
+fn imports_sorted(run) = fold([], import_inserted, run)
+
+fn import_inserted(sorted, stmt) = match import_path_of(stmt) {
+  Some(p) => {
+    let before = filter(import_before(p, ??), sorted)
+    before ++ [stmt] ++ drop(len(before), sorted)
+  },
+  None => push(sorted, stmt),
+}
+
+fn import_before(p: String, s) = match import_path_of(s) {
+  Some(q) => !str_lt(p, q),
+  None => true,
 }
 
 // ─── render_node_at — render one node ─────────────────────────────
@@ -237,30 +278,21 @@ fn render_compose_chain(branches) = match branches {
   [h, ...t] => "{parenthesize(render_chain_node(h))}\n{spaces(indented_center())}><\n{render_compose_chain(t)}",
 }
 
-// A named row renders as its authored signed triples: the first term
-// bare, each subsequent led by its connective glyph, negation as `!` —
-// the with-clause's own grammar, round-trippable by construction.
-fn render_row_triples(effs, i) = if i >= len(effs) {
-  ""
-} else {
-  match list_index(effs, i) {
-    (name, negated, conn) => {
-      let bang = if negated { "!" } else { "" }
-      let glyph = match conn {
-        EcUnion => "+",
-        EcDiff => "-",
-        EcInter => "&",
-      }
-      let lead = if i == 0 { "" } else { " {glyph} " }
-      "{lead}{bang}{show_eff_name(name)}{render_row_triples(effs, i + 1)}"
-    },
-  }
-}
-
+// Every branch renders parenthesized, inline as in the vertical layout
+// (SYNTAX §`><`, the render rule): the parentheses are the branch's visual
+// boundary. Wrapped only where precedence demanded it, `((1 + 1) >< (2 + 2))`
+// rendered as `(1 + 1 >< 2 + 2)` — the same tree, read as one sum.
 fn render_fanout_inline(branches) = match branches {
   [] => "",
-  [one] => render_operand(one, pipe_prec(fanout_distribute_kind), false),
-  [h, ...t] => "{render_operand(h, pipe_prec(fanout_distribute_kind), false)} >< {render_fanout_inline(t)}",
+  [one] => parenthesize(render_tokens_for(one)),
+  [h, ...t] => "{parenthesize(render_tokens_for(h))} >< {render_fanout_inline(t)}",
+}
+
+// Each branch on its own line, `><` alone between them at indented center.
+fn render_fanout_vertical(branches) = match branches {
+  [] => "",
+  [one] => parenthesize(render_tokens_for(one)),
+  [h, ...t] => "{parenthesize(render_tokens_for(h))}\n{spaces(indented_center())}><\n{render_fanout_vertical(t)}",
 }
 
 // ─── Render a ~> chain — handler-attach ────────────────────────────
@@ -368,12 +400,58 @@ fn join_lines_from(ref lines, i) = if i >= len(lines) {
 fn render_tokens_for(node) with !Mutate = match node {
   N(body, _, h) => {
     let c = graph_comment_at(h)
-    if c == "" {
-      render_body_tokens(body)
-    } else {
-      "//{replace(c, "\n", "\n//")}\n{render_body_tokens(body)}"
+    let lead = if c == "" { "" } else { "//{replace(c, "\n", "\n//")}\n" }
+    match let_born(node) {
+      Some((scrut, pat, rest)) => "{lead}\{\n{indent_block(render_let_chain(scrut, pat, rest))}\n\}",
+      None => "{lead}{render_body_tokens(body)}",
     }
   },
+}
+
+// The one-arm match a destructuring let became, as its scrutinee, pattern and
+// the rest of the block — or None for a match the author wrote. The parse
+// makes `let pat = v` and the rest of its block one arm of a
+// `match` (desugar_block), and births that match `LetBinding`. The render is
+// the parse's inverse, so the let comes back: `let pat = v`, then the
+// statements and final the arm holds, at the block's own indent — never the
+// match pyramid one level deeper per destructure. A `match` the author wrote
+// is born a placeholder and renders as a match.
+fn let_born(n) = match ast_kind_of(n) {
+  NExpr(MatchExpr(scrut, arms)) => if len(arms) == 1 && born_of_let(node_handle(n)) {
+    match arms[0] {
+      (pat, body) => Some((scrut, pat, body)),
+    }
+  } else {
+    None
+  },
+  _ => None,
+}
+
+fn born_of_let(h) = match graph_chase(h) {
+  GNode(_, reason) => reason_is_let(reason),
+}
+
+fn reason_is_let(reason) = match reason {
+  LetBinding(_, _) => true,
+  Located(_, inner) => reason_is_let(inner),
+  _ => false,
+}
+
+fn render_let_chain(scrut, pat, body) with !Mutate =
+  "let {render_pat_tokens(pat)} = {render_tokens_for(scrut)}\n{render_block_rest(body)}"
+
+// What follows a let in its block: the statements the parse folded into the
+// arm, then the block's final.
+fn render_block_rest(body) with !Mutate = match ast_kind_of(body) {
+  NExpr(BlockExpr(stmts, final)) => "{render_stmt_comment(body)}{render_block_stmts(stmts, 0)}{render_block_final(final)}",
+  _ => render_block_final(body),
+}
+
+// A block's final, at the block's indent: a destructuring let continues the
+// block, anything else is the block's value.
+fn render_block_final(final) with !Mutate = match let_born(final) {
+  Some((scrut, pat, rest)) => "{render_stmt_comment(final)}{render_let_chain(scrut, pat, rest)}",
+  None => render_grouped_body(final),
 }
 
 fn render_body_tokens(body) with !Mutate = match body {
@@ -386,20 +464,24 @@ fn render_body_tokens(body) with !Mutate = match body {
 }
 
 fn render_expr_tokens(e) with !Mutate = match e {
-  LitInt(n) => // int_to_str(INT_MIN) prints its own minus, which re-parses as a unary
-  // minus over the WRAPPING positive literal and accretes one `-` per fmt
-  // pass. The wrapping spelling IS the authored surface (the lexer wraps
-  // 2147483648 back to INT_MIN) — value-identical, idempotent. Every
-  // other negative is stable: `-5` re-parses UNeg(5) and re-renders `-5`.
-  if n == 0 - 2147483648 { "2147483648" } else { int_to_str(n) },
-  LitFloat(f) => float_to_str(f),
+  LitInt(n) => // A negative literal node is a literal the lexer WRAPPED — `0x811C9DC5`,
+  // `2147483648` — since an authored `-5` parses as UNeg(5). int_to_str
+  // prints its minus, which re-parses as a unary minus over a different
+  // literal: INT_MIN accreted one `-` per pass, and `0x811C9DC5` became
+  // two tokens the conservation census could not pair. The wrapping
+  // spelling IS the value — the unsigned word the lexer wraps back — one
+  // token, idempotent, and the authored radix returns through `respell`.
+  if n < 0 { unsigned_word_text(n) } else { int_to_str(n) },
+  LitFloat(f) => float_literal_text(f),
   LitString(s) => "\"{str_escape(s)}\"",
   LitBool(b) => if b { "true" } else { "false" },
   LitUnit => "()",
   VarRef(name) => name,
   BinOpExpr(op, l, r) => {
     let rc = graph_comment_at(node_handle(r))
-    if rc == "" {
+    if lifts_zero_minus(op, l, r) {
+      "-{render_tokens_for(r)}"
+    } else if rc == "" {
       "{render_operand(l, binop_prec(op), false)} {binop_to_str(op)} {render_operand(r, binop_prec(op), true)}"
     } else {
       "{render_operand(l, binop_prec(op), false)} {binop_to_str(op)}\n{render_operand(r, binop_prec(op), true)}"
@@ -425,8 +507,11 @@ fn render_expr_tokens(e) with !Mutate = match e {
       "{render_operand(l, pipe_prec(verb), false)} {show_pipe_kind(verb)}\n{render_operand(r, pipe_prec(verb), true)}"
     }
   },
-  FanoutExpr(branches) => // >< inline: each branch an operand at the fanout's prec
-  render_fanout_inline(branches),
+  FanoutExpr(branches) => // Inline when it fits; past the width, SYNTAX §`><`'s vertical layout.
+  {
+    let inline = render_fanout_inline(branches)
+    if fits_inline(inline) { inline } else { render_fanout_vertical(branches) }
+  },
   RestExpr(nm) => "...{nm}",
   IfExpr(c, t, el) => {
     let inline = "if {render_tokens_for(c)} {render_if_branch(t)}{render_else(el)}"
@@ -443,15 +528,23 @@ fn render_expr_tokens(e) with !Mutate = match e {
   // migration that broke fmt idempotence on the fan's labeled branches
   // (measured: the eight-interrogation branch tuple's labels walked one
   // arm per pass).
-  if args_carry_prose(elems, 0) {
-    "[\n{indent_block(render_arg_lines(elems, 0))}\n]"
-  } else {
-    "[{render_node_list(elems, ", ")}]"
+  // A literal past the width breaks one element per line, as a call's
+  // arguments do — a `<|` branch tuple included.
+  {
+    let inline = "[{render_node_list(elems, ", ")}]"
+    if args_carry_prose(elems, 0) || !fits_inline(inline) {
+      "[\n{indent_block(render_arg_lines(elems, 0))}\n]"
+    } else {
+      inline
+    }
   },
-  MakeTupleExpr(elems) => if args_carry_prose(elems, 0) {
-    "(\n{indent_block(render_arg_lines(elems, 0))}\n)"
-  } else {
-    "({render_node_list(elems, ", ")})"
+  MakeTupleExpr(elems) => {
+    let inline = "({render_node_list(elems, ", ")})"
+    if args_carry_prose(elems, 0) || !fits_inline(inline) {
+      "(\n{indent_block(render_arg_lines(elems, 0))}\n)"
+    } else {
+      inline
+    }
   },
   ExprPlaceholder => "??",
   BlockExpr(stmts, final) => // The final expr's attached prose renders exactly as a statement's does
@@ -460,7 +553,7 @@ fn render_expr_tokens(e) with !Mutate = match e {
   // follows) to the final, and dropping it violated "never dropped" (the
   // fmt census's blocker 5: a third of parser.mn's prose was
   // body-interior).
-  "\{\n{indent_block("{render_block_stmts(stmts, 0)}{render_grouped_body(final)}")}\n\}",
+  "\{\n{indent_block("{render_block_stmts(stmts, 0)}{render_block_final(final)}")}\n\}",
   LambdaExpr(params, body) => match arm_list_of(params, body) {
     Some(arms) => render_arm_literal(arms),
     None => match resugar_head(params, body) {
@@ -471,7 +564,7 @@ fn render_expr_tokens(e) with !Mutate = match e {
     },
   },
   MakeRecordExpr(fields) => render_record(fields, ""),
-  NamedRecordExpr(tname, fields) => "{tname}{render_record(fields, "")}",
+  NamedRecordExpr(head, fields) => "{render_tokens_for(head)}{render_record(fields, "")}",
   RecordUpdateExpr(base, fields) => render_record(fields, "...{render_tokens_for(base)}"),
   MakeStringExpr(parts) => // Interpolation is the parse's inverse: literal chunks re-escape,
   // every other fragment renders as a live splice.
@@ -500,7 +593,7 @@ fn render_stmt_tokens(s) with !Mutate = match s {
     _ => render_grouped_body(e),
   },
   AliasStmt(name, ty) => "type {name} = {render_decl_type(ty)}",
-  RowAliasStmt(name, effs) => "type {name} = {render_row_triples(effs, 0)}",
+  RowAliasStmt(name, effs) => "type {name} = {render_signed_effs(effs, 0)}",
   LetStmt(pat, value, ann) => {
     let lhead = "let {render_pat_tokens(pat)}{render_let_ann(ann)} ="
     let lv = render_tokens_for(value)
@@ -510,7 +603,10 @@ fn render_stmt_tokens(s) with !Mutate = match s {
       "{lhead}\n{indent_block(lv)}"
     }
   },
-  TypeDefStmt(name, variants) => "type {name}{render_variants(variants, 0)}",
+  TypeDefStmt(name, variants) => match nominal_record_of(name, variants) {
+    Some(fields) => render_record_decl(name, fields),
+    None => "type {name}{render_variants(variants, 0)}",
+  },
   EffectDeclStmt(name, params, ops) => // An op's params carry the author's names (a bare type is the wildcard
   // `_`), so the render is the parse's inverse over both spellings. The
   // instance params render through the same product projection the
@@ -647,7 +743,7 @@ fn render_fn_decl(name, params, retty, effs, body) with !Mutate = match match re
 // A declaration's head through its binder — the one shape the whole
 // declaration's render and an accepted clause's splice share.
 fn fn_head_text(name, plist, retty, effs) with !Mutate =
-  "fn {name}({plist}){render_retty(retty)}{render_with_clause(effs)} ="
+  "fn {name}({plist}){render_retty(retty, effs)}{render_with_clause(effs)} ="
 
 // The head ALONE, for a reader that writes a declaration's signature back
 // without its body: the same param re-sugaring the whole render does.
@@ -757,7 +853,7 @@ fn render_operand(child, parent_prec, is_right) with !Mutate = {
 fn render_postfix_head(head) with !Mutate = render_operand(head, 100, false)
 
 fn expr_prec_of(node) with Pure = match ast_kind_of(node) {
-  NExpr(BinOpExpr(op, _, _)) => binop_prec(op),
+  NExpr(BinOpExpr(op, l, r)) => if zero_minus_literal(op, l, r) { 90 } else { binop_prec(op) },
   NExpr(PipeExpr(k, _, _)) => pipe_prec(k),
   NExpr(FanoutExpr(_)) => pipe_prec(fanout_distribute_kind),
   NExpr(UnaryOpExpr(_, _)) => 90,
@@ -829,50 +925,36 @@ fn render_stmt_comment(n) with !Mutate = {
 fn render_record(fields: [(String, Node)], lead: String) with !Mutate = if len(fields) == 0 {
   "\{{lead}\}"
 } else {
-  let inline = if lead == "" {
-    "\{{render_field_inits(fields, 0)}\}"
-  } else {
-    "\{{lead}, {render_field_inits(fields, 0)}\}"
-  }
-  if fits_inline(inline) && !fields_carry_prose(fields, 0) {
+  let inits = fields |> map(field_init) |> join(", ", ??)
+  let inline = if lead == "" { "\{{inits}\}" } else { "\{{lead}, {inits}\}" }
+  if fits_inline(inline) && !any(field_carries_prose, fields) {
     inline
   } else {
-    let lines = render_field_lines(fields, 0)
+    // one field per line, each closed by its comma — SYNTAX §«Records»' own
+    // multi-line layout, so a field added at the end is a one-line diff
+    let lines = fields |> map(field_line) |> join("\n", ??)
     let body = if lead == "" { lines } else { "{lead},\n{lines}" }
     "\{\n{indent_block(body)}\n\}"
   }
 }
 
-// One field per line, each closed by its comma — SYNTAX §«Records»' own
-// multi-line layout, so a field added at the end is a one-line diff.
-fn render_field_lines(fields: [(String, Node)], i) with !Mutate = if i >= len(fields) {
-  ""
-} else {
-  match fields[i] {
-    (fname, v) => {
-      let one = "{fname}: {render_tokens_for(v)},"
-      if i == len(fields) - 1 { one } else { "{one}\n{render_field_lines(fields, i + 1)}" }
-    },
-  }
+// A field as a literal writes it: its name alone when the value is the
+// variable of that name (SYNTAX's field punning), else `name: value`.
+fn field_init(field) with !Mutate = match field {
+  (fname, v) => if field_puns(fname, v) { fname } else { "{fname}: {render_tokens_for(v)}" },
 }
 
-fn fields_carry_prose(fields: [(String, Node)], i) = if i >= len(fields) {
-  false
-} else {
-  match fields[i] {
-    (_, v) => if graph_comment_at(node_handle(v)) == "" { fields_carry_prose(fields, i + 1) } else { true },
-  }
+fn field_line(field) with !Mutate = "{field_init(field)},"
+
+// A value that is the variable its field is named for, with no prose of its
+// own to carry.
+fn field_puns(fname, v) = match ast_kind_of(v) {
+  NExpr(VarRef(n)) => n == fname && graph_comment_at(node_handle(v)) == "",
+  other => false,
 }
 
-fn render_field_inits(ref fields: [(String, Node)], i) with !Mutate = if i >= len(fields) {
-  ""
-} else {
-  match fields[i] {
-    (fname, v) => {
-      let one = "{fname}: {render_tokens_for(v)}"
-      if i == len(fields) - 1 { one } else { "{one}, {render_field_inits(fields, i + 1)}" }
-    },
-  }
+fn field_carries_prose(field) = match field {
+  (fname, v) => graph_comment_at(node_handle(v)) != "",
 }
 
 fn render_string_parts(ref parts, i) with !Mutate = if i >= len(parts) {
@@ -904,7 +986,10 @@ fn render_string_parts(ref parts, i) with !Mutate = if i >= len(parts) {
 // already emits.
 fn render_branch_block(n) with !Mutate = match ast_kind_of(n) {
   NExpr(BlockExpr(_, _)) => render_tokens_for(n),
-  _ => "\{\n{indent_block(render_grouped_body(n))}\n\}",
+  _ => match let_born(n) {
+    Some(_) => render_tokens_for(n),
+    None => "\{\n{indent_block(render_grouped_body(n))}\n\}",
+  },
 }
 
 // The else-if DESTRUCTURES its child node and renders the pieces, so the
@@ -930,7 +1015,10 @@ fn render_if_branch(n) with !Mutate = match ast_kind_of(n) {
     render_tokens_for(n)
   },
   NExpr(IfExpr(_, _, _)) => render_tokens_for(n),
-  _ => "\{ {render_tokens_for(n)} \}",
+  _ => match let_born(n) {
+    Some(_) => render_tokens_for(n),
+    None => "\{ {render_tokens_for(n)} \}",
+  },
 }
 
 // The implicit else is the parser's own unit node — rendering it back
@@ -1014,6 +1102,33 @@ fn render_let_ann(ann) with !Mutate = match ast_kind_of(ann) {
   "",
 }
 
+// The record a nominal record type IS: a lone variant named as its type,
+// its one payload a record, is what SYNTAX writes `type X = {f: T, …}`.
+// Both spellings parse to that one variant, so the render writes the
+// documented one — until 2026-10-09 it wrote `type X = X({f: T, …})`, the
+// redundant spelling principle 2 rejects. A variant carrying prose of its
+// own keeps the variant line the prose stands above.
+fn nominal_record_of(name, variants) = match variants {
+  [(vname, [TRecord(fields)], cn)] => if vname == name && graph_comment_at(node_handle(cn)) == "" { Some(fields) } else { None },
+  others => None,
+}
+
+// A record type's braces follow a record literal's law: inline when the
+// declaration fits the line, else one field per line, each closed by its
+// comma.
+fn render_record_decl(name, fields) with !Mutate = {
+  let inline = "type {name} = {render_type_tokens(TRecord(fields))}"
+  if fits_inline(inline) {
+    inline
+  } else {
+    "type {name} = \{\n{indent_block(fields |> map(record_type_field_line) |> join("\n", ??))}\n\}"
+  }
+}
+
+fn record_type_field_line(field) with !Mutate = match field {
+  (fname, ty) => "{fname}: {render_type_tokens(ty)},",
+}
+
 // A commented variant set renders VERTICAL (prose above each variant,
 // `=`/`|` leading); a prose-free set keeps the inline ` | ` join.
 fn render_variants(ref variants, i) with !Mutate = if variants_carry_prose(variants, 0) {
@@ -1036,7 +1151,7 @@ fn render_variants_inline(ref variants, i) with !Mutate = if i >= len(variants) 
 } else {
   match variants[i] {
     (vname, tys, _) => {
-      let one = if len(tys) == 0 { vname } else { "{vname}({render_ty_list(tys, 0)})" }
+      let one = if len(tys) == 0 { vname } else { "{vname}({render_ty_list(tys)})" }
       if i == len(variants) - 1 { one } else { "{one} | {render_variants_inline(variants, i + 1)}" }
     },
   }
@@ -1047,7 +1162,7 @@ fn render_variants_vertical(ref variants, i) with !Mutate = if i >= len(variants
 } else {
   match variants[i] {
     (vname, tys, cn) => {
-      let one = if len(tys) == 0 { vname } else { "{vname}({render_ty_list(tys, 0)})" }
+      let one = if len(tys) == 0 { vname } else { "{vname}({render_ty_list(tys)})" }
       let lead = if i == 0 { "=" } else { "|" }
       let tail = if i == len(variants) - 1 { "" } else { "\n{render_variants_vertical(variants, i + 1)}" }
       "{render_stmt_comment(cn)}{lead} {one}{tail}"
@@ -1055,43 +1170,14 @@ fn render_variants_vertical(ref variants, i) with !Mutate = if i >= len(variants
   }
 }
 
-// ─── The SURFACE-type projection — the parse's inverse over authored
-// type syntax, the formatter's ONE type renderer. show_type is the VOICE
-// (diagnostics: List(T) spellings, tN@eN free-var handles, every row
-// rendered) and borrowing it here leaked internals into rendered source —
-// an effect op's fn-typed param rendered `with t45323@e23311`, which the
-// second fmt pass misparsed into three bogus op declarations. Surface
-// rules: [T] never List(T); fn-type params are TYPES (a type position
-// carries no names — the voice's `_:` invention does not parse); a row
-// renders only its AUTHORED content (present + !absent), because a bare
-// parse-minted tail var IS authored absence.
-fn render_type_tokens(ref ty) with !Mutate = match ty {
-  TInt => "Int",
-  TFloat => "Float",
-  TUnit => "()",
-  TByte => "Byte",
-  TAddr => "Addr",
-  TList(elem) => "[{render_type_tokens(elem)}]",
-  TTuple(elems) => "({render_type_list(elems, 0)})",
-  TFun(params, ret, row) => "({render_tparam_types(params, 0)}) -> {render_type_tokens(ret)}{render_row_surface(row)}",
-  TVar(id) => render_type_handle(id),
-  TName(name, args) => if len(args) == 0 { name } else { "{name}({render_type_list(args, 0)})" },
-  TRecord(fields) => "\{{render_type_fields(fields, 0)}\}",
-  TRecordOpen(fields, _) => "\{{render_type_fields(fields, 0)}, ...\}",
-  TRefined(base, pred) => "{render_type_tokens(base)} where {render_predicate_tokens(pred)}",
-  TCont(input, answer, disc, world) => show_type(TCont(input, answer, disc, world)),
-  TAlias(name, _) => name,
-  TReprPin(r, base) => // Parse-inverse: a pin whose base is the width's own bare atom
-  // renders bare (`f32` — the atom mints exactly this pair); any other
-  // pairing renders the authored `repr` suffix.
-  match (r, base) {
-    (RF64, TFloat) => "f64",
-    (RF32, TFloat) => "f32",
-    (RI64, TInt) => "i64",
-    (RV128, TInt) => "v128",
-    _ => "{render_type_tokens(base)} repr {repr_wat(r)}",
-  },
-}
+// ─── The SURFACE-type projection — the parse's inverse over authored type
+// syntax: the one renderer every surface shares (`render_ty`), under the
+// authored face. A row renders only what an author wrote (present and
+// `!absent`), because a bare parse-minted tail IS authored absence; a free
+// variable has no spelling on a page and renders as its forensic handle,
+// loud in fmt's own re-parse; a refinement's predicate is the parse's own
+// inverse (`render_predicate_tokens`), never the voice's compression.
+fn render_type_tokens(ty) with !Mutate = render_ty(ty) ~> authored_names(render_predicate_tokens)
 
 // The formatter's OWN predicate projection — the parse's inverse, never
 // the voice: show_predicate compresses a call operand to `(...)` (the
@@ -1116,6 +1202,7 @@ fn render_predicate_tokens(pred) with !Mutate = match pred {
   PFlowLe(src, dst) => show_predicate(PFlowLe(src, dst)),
   PWithSelf(_, inner) => render_predicate_tokens(inner),
   PTotalDiv(op, a, b) => show_predicate(PTotalDiv(op, a, b)),
+  PInBounds(recv, idx) => show_predicate(PInBounds(recv, idx)),
   PProvides(provided) => show_predicate(PProvides(provided)),
 }
 
@@ -1140,83 +1227,7 @@ fn pred_prec(pred) with Pure = match pred {
 
 fn render_pred_node(h) with !Mutate = render_body_tokens(graph_node_body(h))
 
-fn render_type_list(ref tys, i) with !Mutate = if i >= len(tys) {
-  ""
-} else if i == len(tys) - 1 {
-  render_type_tokens(tys[i])
-} else {
-  "{render_type_tokens(tys[i])}, {render_type_list(tys, i + 1)}"
-}
-
-fn render_tparam_types(ref params, i) with !Mutate = if i >= len(params) {
-  ""
-} else if i == len(params) - 1 {
-  render_type_tokens(param_ty(params[i]))
-} else {
-  "{render_type_tokens(param_ty(params[i]))}, {render_tparam_types(params, i + 1)}"
-}
-
-fn render_type_fields(ref fields: [(String, Ty)], i) with !Mutate = if i >= len(fields) {
-  ""
-} else {
-  match fields[i] {
-    (name, fty) => {
-      let one = "{name}: {render_type_tokens(fty)}"
-      if i == len(fields) - 1 { one } else { "{one}, {render_type_fields(fields, i + 1)}" }
-    },
-  }
-}
-
-// A bound var renders its binding (the resolved surface); a free or
-// row-state handle has NO parseable surface spelling, so it delegates to
-// the voice — loud in the idempotence gate if it ever reaches source,
-// never silently absorbed.
-fn render_type_handle(h) with !Mutate = match graph_chase(h) {
-  GNode(NBound(ty), _) => render_type_tokens(ty),
-  GNode(NRecordRowBound(fields, _), _) => render_type_tokens(TRecord(fields)),
-  GNode(NFree(_), _) => show_handle(h),
-  GNode(NRowBound(_), _) => show_handle(h),
-  GNode(NRowFree(_), _) => show_handle(h),
-  GNode(NErrorHole(_), _) => show_handle(h),
-}
-
-// The row's AUTHORED face: present and absent sets render; the tail never
-// does (no surface syntax spells a tail — an open var is authored absence,
-// and a Pure-closed empty row is the identity `with Pure` canonically
-// drops).
-fn render_row_surface(ref row) with !Mutate = match row {
-  EfRow(p, a, _) => if len(p) == 0 && len(a) == 0 {
-    ""
-  } else {
-    let pos = render_row_names(p, 0, "")
-    let joined = render_row_negs(a, 0, pos)
-    " with {joined}"
-  },
-}
-
-fn render_row_names(ref names, i, acc) with !Mutate = if i >= len(names) {
-  acc
-} else {
-  let one = render_authored_eff_name(names[i])
-  let next = if acc == "" { one } else { "{acc} + {one}" }
-  render_row_names(names, i + 1, next)
-}
-
-fn render_row_negs(ref names, i, acc) with !Mutate = if i >= len(names) {
-  acc
-} else {
-  let one = "!{render_authored_eff_name(names[i])}"
-  let next = if acc == "" { one } else { "{acc} + {one}" }
-  render_row_negs(names, i + 1, next)
-}
-
-fn render_ty_list(ref tys, i) with !Mutate = if i >= len(tys) {
-  ""
-} else if i == len(tys) - 1 {
-  render_type_tokens(tys[i])
-} else {
-  "{render_type_tokens(tys[i])}, {render_ty_list(tys, i + 1)}"
-}
+fn render_ty_list(tys) with !Mutate = join(", ", map(render_type_tokens, tys))
 
 fn render_effect_ops(ref ops: [(String, [TParam], Ty, Node)], i) with !Mutate = if i >= len(ops) {
   ""
@@ -1280,7 +1291,7 @@ fn render_state_inits(ref states, i) with !Mutate = if i >= len(states) {
 // its own effect row when it authors one, else its state inits — the
 // parse's inverse over what the node carries.
 fn render_handler_clause(effs, states) with !Mutate =
-  if len(effs) > 0 { " with {render_row_triples(effs, 0)}" } else { render_state_inits(states, 0) }
+  if len(effs) > 0 { " with {render_signed_effs(effs, 0)}" } else { render_state_inits(states, 0) }
 
 fn render_handler_arms(ref arms, i) with !Mutate = if i >= len(arms) {
   ""
@@ -1291,9 +1302,175 @@ fn render_handler_arms(ref arms, i) with !Mutate = if i >= len(arms) {
 
 fn render_lit_value(lv) = match lv {
   LVInt(n) => int_to_str(n),
-  LVFloat(f) => float_to_str(f),
+  LVFloat(f) => float_literal_text(f),
   LVString(s) => "\"{str_escape(s)}\"",
   LVBool(b) => if b { "true" } else { "false" },
+}
+
+// `0 - <literal>` is unary minus spelled as a subtraction (SYNTAX principle
+// 2): the render writes `-<literal>` wherever the literal's own kind makes the
+// two one value. An Int is exact at every literal — negation IS `0 - x` in
+// the word. A Float is exact at every literal but zero: `0.0 - 0.0` is +0.0
+// and `-(0.0)` is -0.0, so that one keeps its subtraction. Over a variable
+// the kind needs the judgment, which fmt does not run — that rewrite is
+// tighten's, and a Float variable's is MaybeIncorrect for the same zero.
+// The census reads this one predicate for the `0` it lifts (`lifted_atoms`).
+fn zero_minus_literal(op, l, r) with Pure = match op {
+  BSub => match ast_kind_of(l) {
+    NExpr(LitInt(0)) => match ast_kind_of(r) {
+      NExpr(LitInt(_)) => true,
+      _ => false,
+    },
+    NExpr(LitFloat(z)) => match ast_kind_of(r) {
+      NExpr(LitFloat(f)) => z == 0.0 && f != 0.0,
+      _ => false,
+    },
+    _ => false,
+  },
+  _ => false,
+}
+
+// The lift as the render takes it: never across prose, which rides the
+// operand it is attached to.
+fn lifts_zero_minus(op, l, r) =
+  zero_minus_literal(op, l, r) && graph_comment_at(node_handle(l)) == "" && graph_comment_at(node_handle(r)) == ""
+
+// ─── The stated equivalences — what a lift removes, and what still carries it
+//
+// The census is a multiset: a canonicalization that removes an atom would
+// read as a loss — the second `import verify` leaves one `verify` unpaid, a
+// lifted `0 - 5` one `0`. Each lift therefore STATES what it removes, read off
+// the parse it was rendered from, and the census counts each stated atom as
+// present: a dropped duplicate import is carried by the import of the same
+// module the parse kept; a lifted zero by the negation it became. A real loss
+// is still a loss, since nothing else is stated. The parse's nodes are the
+// handles it minted, [from, to); `kept` is the statement list it returned.
+fn lifted_atoms(from, to, kept) = flat_map(lifted_at(kept, ??), range_list(from, to))
+
+fn lifted_at(kept, h) = match graph_node_body(h) {
+  NStmt(ImportStmt(path)) => if any(has_handle(h, ??), kept) { [] } else { path_atoms(path) },
+  NExpr(BinOpExpr(op, l, r)) => if lifts_zero_minus(op, l, r) {
+    match ast_kind_of(l) {
+      NExpr(LitInt(_)) => ["#0"],
+      _ => ["#{float_to_str(0.0)}"],
+    }
+  } else {
+    []
+  },
+  NStmt(TypeDefStmt(name, variants)) => // `type X = X({f: T})` renders as `type X = {f: T}`: the variant's name is
+  // carried by the type's, which is the same name
+  match nominal_record_of(name, variants) {
+    Some(fields) => [name],
+    None => [],
+  },
+  NExpr(MakeRecordExpr(fields)) => // `{at: at}` renders as `{at}`: the value's name is carried by the field's
+  punned_names(fields),
+  NExpr(NamedRecordExpr(head, fields)) => punned_names(fields),
+  NExpr(RecordUpdateExpr(base, fields)) => punned_names(fields),
+  _ => [],
+}
+
+fn punned_names(fields) = fields |> filter(field_puns_entry) |> map(field_name_of)
+
+fn field_puns_entry(field) = match field {
+  (fname, v) => field_puns(fname, v),
+}
+
+fn field_name_of(field) = match field {
+  (fname, v) => fname,
+}
+
+fn has_handle(h, stmt) = node_handle(stmt) == h
+
+// An import path's atoms — its segments, each a name the lexer reads.
+fn path_atoms(path: String) = path_atoms_from(path, 0, 0, [])
+
+fn path_atoms_from(path: String, i, start, acc) = if i >= byte_len(path) {
+  push(acc, str_slice(path, start, i))
+} else if byte_at(path, i) == 47 {
+  path_atoms_from(path, i + 1, i + 1, push(acc, str_slice(path, start, i)))
+} else {
+  path_atoms_from(path, i + 1, start, acc)
+}
+
+fn range_list(from, to) = range_from(from, to, [])
+
+fn range_from(i, to, acc) = if i >= to { acc } else { range_from(i + 1, to, push(acc, i)) }
+
+// A negative word as the unsigned decimal it wraps from, n + 2^32, computed
+// in halves so no step leaves the word: 2^32 + n = 2^31 + a with
+// a = n + 2^31, and 2^31 = 214748364 * 10 + 8.
+fn unsigned_word_text(n) = {
+  let a = n + 2147483647 + 1
+  let low = a % 10 + 8
+  "{int_to_str(214748364 + a / 10 + low / 10)}{int_to_str(low % 10)}"
+}
+
+// A float as a literal the lexer reads back. The voice renders a small or
+// large magnitude in scientific form (`1.0e-5`), which no Mentl literal
+// spells, so a page rendered through it did not re-lex: `0.00001` came back
+// as `1.0e-5`, three tokens, and the conservation gate refused the file
+// (measured 2026-09-28 on tests/frontier/derive-crucible). Moving the point
+// is exact — the digits are the same faithful run, so the literal parses to
+// the same value.
+fn float_literal_text(f) = {
+  let s = float_to_str(f)
+  match byte_index_from(s, 101, 0) {
+    None => s,
+    Some(e) => if byte_at(s, 0) == 45 {
+      "-{fixed_of_scientific(str_slice(s, 1, e), signed_int_of(str_slice(s, e + 1, byte_len(s))))}"
+    } else {
+      fixed_of_scientific(str_slice(s, 0, e), signed_int_of(str_slice(s, e + 1, byte_len(s))))
+    },
+  }
+}
+
+fn fixed_of_scientific(mantissa: String, exp) = {
+  let dot = match byte_index_from(mantissa, 46, 0) {
+    Some(d) => d,
+    None => byte_len(mantissa),
+  }
+  let digits =
+    str_slice(mantissa, 0, dot) ++ str_slice(mantissa, min(dot + 1, byte_len(mantissa)), byte_len(mantissa))
+  let point = dot + exp
+  let n = byte_len(digits)
+  if point <= 0 {
+    trim_fraction_zeros("0.{float_zero_pad(0 - point)}{digits}")
+  } else if point >= n {
+    "{digits}{float_zero_pad(point - n)}.0"
+  } else {
+    trim_fraction_zeros("{str_slice(digits, 0, point)}.{str_slice(digits, point, n)}")
+  }
+}
+
+// Trailing zeros after the point are no digit of the value; one stays, so
+// the literal keeps its point.
+fn trim_fraction_zeros(s: String) = {
+  let n = byte_len(s)
+  if n >= 2 && byte_at(s, n - 1) == 48 && byte_at(s, n - 2) != 46 {
+    trim_fraction_zeros(str_slice(s, 0, n - 1))
+  } else {
+    s
+  }
+}
+
+fn signed_int_of(s: String) = if byte_len(s) > 0 && byte_at(s, 0) == 45 {
+  0 - digits_value(s, 1, 0)
+} else if byte_len(s) > 0 && byte_at(s, 0) == 43 {
+  digits_value(s, 1, 0)
+} else {
+  digits_value(s, 0, 0)
+}
+
+fn digits_value(s: String, i, acc) =
+  if i >= byte_len(s) { acc } else { digits_value(s, i + 1, acc * 10 + (byte_at(s, i) - 48)) }
+
+fn byte_index_from(s: String, b, i) = if i >= byte_len(s) {
+  None
+} else if byte_at(s, i) == b {
+  Some(i)
+} else {
+  byte_index_from(s, b, i + 1)
 }
 
 fn render_plist_inner(ref ps, rest: Option(String)) = {
@@ -1320,12 +1497,12 @@ fn render_pat_fields(ref fields, i) = if i >= len(fields) {
   }
 }
 
-// The declared with-clause, rendered from the parser's SIGNED TRIPLES —
-// [(EffName, negated, EConn)] — verbatim: the authored surface is the only
-// faithful render (a closed-row rebuild cannot represent - / & connectors
-// or per-entry !, and feeding the triples to the row constructor read
-// tuples as bare EffNames — «invalid-effect» destroyed 41 declared rows
-// across the five pass-once files, the fmt census's blocker 1).
+// The declared with-clause — and a named row's right side, and a handler's
+// `with` — rendered from the parser's SIGNED TERMS verbatim: the first term
+// bare, each later one led by the connective its author joined it with,
+// negation as `!`, a group in its parentheses. The authored surface is the
+// only faithful render: a closed-row rebuild cannot represent `-` / `&`
+// connectors, per-term `!`, or a group.
 fn render_with_clause(effs) with !Mutate =
   if len(effs) == 0 { "" } else { " with {render_signed_effs(effs, 0)}" }
 
@@ -1333,7 +1510,7 @@ fn render_signed_effs(ref effs, i) with !Mutate = if i >= len(effs) {
   ""
 } else {
   match effs[i] {
-    (name, negated, conn) => {
+    (term, negated, conn) => {
       // The first entry's connector is its position; each later entry
       // carries the operator the author joined it with.
       let lead = if i == 0 {
@@ -1346,33 +1523,40 @@ fn render_signed_effs(ref effs, i) with !Mutate = if i >= len(effs) {
         }
       }
       let bang = if negated { "!" } else { "" }
-      "{lead}{bang}{render_authored_eff_name(name)}{render_signed_effs(effs, i + 1)}"
+      "{lead}{bang}{render_row_term(term)}{render_signed_effs(effs, i + 1)}"
     },
   }
 }
 
-fn render_authored_eff_name(name) with !Mutate = match name {
-  EPure => // drift-audit: ignore — the ADT match RENDERING the surface keyword, not a string-keyed dispatch
-  "Pure",
-  ENamed(h) => intern_name_of(h),
-  EParameterized(h, args) => "{intern_name_of(h)}({render_authored_eff_args(args, 0)})",
+fn render_row_term(t) with !Mutate = match t {
+  RtEff(name) => render_authored_eff_name(name),
+  RtGroup(ts) => "({render_signed_effs(ts, 0)})",
 }
 
-// The instance args render through show_eff_arg — the ONE arg renderer
-// (the diagnostics voice and the formatter speak the same projection).
-fn render_authored_eff_args(ref args, i) with !Mutate = if i >= len(args) {
-  ""
-} else {
-  let one = show_eff_arg(args[i])
-  if i == len(args) - 1 { one } else { "{one}, {render_authored_eff_args(args, i + 1)}" }
-}
+// An authored effect name — the one name renderer (`render_eff_name`, the
+// voice's and the page's alike) under the authored face.
+fn render_authored_eff_name(name) with !Mutate =
+  render_eff_name(name) ~> authored_names(render_predicate_tokens)
 
 // An authored `-> RetTy` carries back verbatim (the fmt census's blocker
 // 4: the discarded binder silently dropped 91 authored heads); the absent
 // annotation renders nothing.
-fn render_retty(retty) with !Mutate = match retty {
+// A function-typed return before the head's own `with` keeps the parens
+// that group it: the type grammar's `with` is greedy, so without them the
+// head's clause re-parses as the returned function's row. An explicit
+// `-> ()` is the unit return written out, which SYNTAX's unit-return rule
+// omits.
+fn render_retty(retty, effs) with !Mutate = match retty {
   N(b, _, _) => match b {
-    NTypeAnn(ann_ty) => " -> {render_type_tokens(ann_ty)}",
+    NTypeAnn(TUnit) => "",
+    NTypeAnn(ann_ty) => match ann_ty {
+      TFun(_, _, _) => if len(effs) > 0 {
+        " -> ({render_type_tokens(ann_ty)})"
+      } else {
+        " -> {render_type_tokens(ann_ty)}"
+      },
+      _ => " -> {render_type_tokens(ann_ty)}",
+    },
     _ => // drift-audit: ignore — the documented absent-annotation contract (an inferred return renders no clause)
     "",
   },
@@ -1495,6 +1679,101 @@ fn atom_key(t) = match token_kind(t) {
   TStringLit(s) => Some("\"{s}"),
   TStringPart(s) => Some("\"{s}"),
   _ => None,
+}
+
+// ─── A literal's authored spelling — intent the source holds ─────────
+//
+// A numeric literal's radix and digit grouping are the author's: `48_000`,
+// `0x811C9DC5` and `0.00001` each say something `48000`, `-2128831035` and
+// a shortest decimal do not. The parse keeps the value and drops the lexeme,
+// so a render written from the parse alone spelled every literal by value —
+// Pulse's prose said `Sample(48_000)` over code fmt had rewritten to
+// `Sample(48000)`. This pass gives each rendered literal its authored
+// spelling back: the source's numeric literals, keyed as the census keys
+// them (kind and value), queued in source order, and each rendered literal of
+// a key takes the next one. A spelling of the same key always re-lexes to the
+// same value, so the swap is exact by construction; a key the render holds
+// more often than the source keeps its value spelling for the extra ones.
+// One pass serves every position a literal can stand in — an expression, a
+// pattern, an effect's instance argument — because it reads the text both
+// sides lex to, not the tree.
+fn respell(src: String, out: String) = {
+  let authored =
+    fold(smap_new(), spelling_queued, flat_map(literal_spelled(src, line_starts(src), ??), lex(src)))
+  let rendered = flat_map(literal_spelled(out, line_starts(out), ??), lex(out))
+  match fold((authored, smap_new(), []), literal_swap, rendered) {
+    (_, _, swaps) => splice_swaps(out, swaps, 0, 0, ""),
+  }
+}
+
+// A numeric literal token as (its census key, its byte range, its text).
+fn literal_spelled(text: String, starts, t) = match numeric_key(t) {
+  Some(k) => match span_range(starts, token_span(t)) {
+    (s, e) => [(k, (s, e), str_slice(text, s, e))],
+  },
+  None => [],
+}
+
+fn spelling_queued(m, lit) = match lit {
+  (k, _, spelled) => smap_add(m, k, push(spellings_of(m, k), spelled)),
+}
+
+fn numeric_key(t) = match token_kind(t) {
+  TIntLit(_) => atom_key(t),
+  TFloatLit(_) => atom_key(t),
+  _ => None,
+}
+
+fn spellings_of(m, k: String) = match smap_get(m, k) {
+  Some(q) => q,
+  None => [],
+}
+
+// The render's literal takes the next authored spelling of its key.
+fn literal_swap(acc, lit) = match acc {
+  (authored, used, swaps) => match lit {
+    (k, range, now) => {
+      let i = atom_count(used, k)
+      let q = spellings_of(authored, k)
+      if i >= len(q) {
+        acc
+      } else {
+        let spelled = q[i]
+        let used_next = smap_add(used, k, i + 1)
+        if spelled == now {
+          (authored, used_next, swaps)
+        } else {
+          (authored, used_next, push(swaps, (range, spelled)))
+        }
+      }
+    },
+  },
+}
+
+// The rendered text with each swapped range replaced, in offset order.
+fn splice_swaps(out: String, swaps, i, from, acc) = if i >= len(swaps) {
+  acc ++ str_slice(out, from, byte_len(out))
+} else {
+  match swaps[i] {
+    ((s, e), spelled) => splice_swaps(out, swaps, i + 1, e, acc ++ str_slice(out, from, s) ++ spelled),
+  }
+}
+
+// A token's byte range from its span: lines count from 1, columns from 1,
+// and the end column is one past the last byte.
+fn span_range(starts, sp) = match sp {
+  Span(l, c, el, ec) => (starts[l - 1] + c - 1, starts[el - 1] + ec - 1),
+}
+
+// The byte offset each line starts at.
+fn line_starts(s: String) = list_to_flat(line_starts_from(s, 0, [0]))
+
+fn line_starts_from(s: String, i, acc) = if i >= byte_len(s) {
+  acc
+} else if byte_at(s, i) == 10 {
+  line_starts_from(s, i + 1, push(acc, i + 1))
+} else {
+  line_starts_from(s, i + 1, acc)
 }
 
 // One TComment token per authored prose line — the lexical census the

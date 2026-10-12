@@ -14,7 +14,7 @@
 // the type the graph proved, not a fresh re-analysis.
 //
 // Run it:   mentl run  lib/tutorial/01-graph.mn
-// Read it:  mentl lib/tutorial/01-graph.mn:26   ← the cursor on add; its inferred type
+// Read it:  mentl lib/tutorial/01-graph.mn:24:4   ← the cursor on add; its inferred type
 import io
 
 // add — the smallest binding. Inference writes several edges here: a node for

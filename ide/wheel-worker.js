@@ -1,11 +1,15 @@
-/* wheel-worker.js — the wheel's execution host: the runner pattern at the
-   browser host (the browser leg of Hβ.ops.wasmtime-runner-migration).
+/* wheel-worker.js — the wheel's execution host in the browser: a WASI
+   preview1 shim around one instance per worker. The terminal's host is a
+   stock engine (wasmtime, tools/wt-env.sh); this file is the page's, and
+   the two satisfy the same imports.
 
-   The pinned boot imports the shared image (env.memory — a 32-page minimum
-   since 2026-09-27, grown on demand by its own allocator) and the exec seam;
-   a module that can spawn also imports wasi.thread-spawn, which the boot has
-   not since the judgment stopped spawning (judge once, pin 7c9dc538). Two
-   substrate facts force this file's shape:
+   The pinned boot imports WASI preview1 and nothing else, and DEFINES its
+   own memory (a 32-page minimum, grown on demand by its own allocator) —
+   since 2026-10-05, when the exec seam left the wheel and the memory's
+   ownership became one proof: a module imports the shared image
+   (env.memory) exactly when it spawns, beside wasi.thread-spawn, which the
+   boot has not since the judgment stopped spawning (judge once, pin
+   7c9dc538). Two substrate facts force this file's shape:
 
      - memory.atomic.wait32 (a task join, the session's own wait) is
        FORBIDDEN on the browser main thread, so ALL wheel execution lives in
@@ -22,9 +26,10 @@
    page and the headless gate (ide/test-shim.mjs) drive the SAME execution
    host and cannot drift. Three roles:
 
-     {role:"run", module, memPages?, argv, stdin?, vfs?, stubSpawn?}
+     {role:"run", module, memPages?, argv, stdin?, vfs?, stubSpawn?, binary?}
        (a reply carries `written`: the vfs files the wheel wrote — the
-        accept's projection of the module back to its text)
+       accept's projection of the module back to its text; `binary` carries
+       stdout as `outBytes`, never through a text decoder)
         -> creates the shared memory, instantiates, runs _start, drains the
            task fan, posts {k:"result", exit, out, err, trapped, tasks}
      {role:"session", module, memPages?, vfs, channel}
@@ -47,7 +52,7 @@ const HOST = NODE
       const { parentPort, Worker } = require("node:worker_threads");
       return {
         listen(fn) { parentPort.on("message", fn); },
-        post(m) { parentPort.postMessage(m); },
+        post(m, transfer) { parentPort.postMessage(m, transfer); },
         spawn() {
           const w = new Worker(__filename);
           return {
@@ -62,7 +67,7 @@ const HOST = NODE
     })()
   : {
       listen(fn) { self.onmessage = (e) => fn(e.data); },
-      post(m) { self.postMessage(m); },
+      post(m, transfer) { self.postMessage(m, transfer); },
       spawn() {
         const w = new Worker(self.location.href);
         return {
@@ -87,19 +92,32 @@ const cat = (cs) => { const n = cs.reduce((a, c) => a + c.length, 0); const b = 
    SharedArrayBuffer-backed views, so every read COPIES (.slice) before
    decoding — the one shared-memory tax; writes (TypedArray.set into a
    shared view) are allowed. */
-function makeShim({ memory, argv, stdin, vfs, spawnFn, pull }) {
-  const dv = () => new DataView(memory.buffer), u8 = () => new Uint8Array(memory.buffer);
+function makeShim({ mem, argv, stdin, vfs, spawnFn, pull }) {
+  // `mem` is a holder: a module that DEFINES its memory (every module that
+  // does not spawn, the boot included) hands it over after instantiation
+  // through its "memory" export; a spawning module imports the memory the
+  // host made, so the holder is filled before. Every view reads it live.
+  const dv = () => new DataView(mem.memory.buffer), u8 = () => new Uint8Array(mem.memory.buffer);
   let out = [], err = [];
   let written = new Set();   // vfs files this instance wrote (the accept's projection)
   // stdin is a byte array served from srcPos; `pull`, when the host owns the
   // session's input, is asked for the NEXT bytes the moment the wheel reads
   // past the end of these (null = EOF) — the resident session's frame.
   let src = stdin, srcPos = 0;
+  // The descriptor table: fd 3 is the tree's root, the one preopen, held in
+  // the table like every handle so each fd_* op reads it the same way; 0, 1
+  // and 2 are the streams.
   const fds = new Map(); let nextFd = 8;
+  if (vfs) fds.set(3, { name: ".", pos: 0, dir: 1, preopen: 1 });
   const args = (argv || []).map((s) => te.encode(s + "\0"));
   const argTotal = args.reduce((a, b) => a + b.length, 0);
   const readStr = (p, l) => td.decode(u8().slice(p, p + l));
   const norm = (p) => p.replace(/^\.\//, "").replace(/^\//, "");
+  // A path as the tree keys it: relative to the directory handle it was
+  // opened under (the root's name is "."), and a directory exists exactly
+  // when some file lies under it — the vfs holds files, never directories.
+  const under = (dirfd, rel) => { const h = fds.get(dirfd); const base = !h || h.name === "." ? "" : h.name + "/"; return norm(base + norm(rel)); };
+  const isDir = (nm) => nm === "" || nm === "." || Object.keys(vfs).some((k) => k.startsWith(nm + "/"));
   const stat = (ptr, ft, sz) => { const v = dv(); for (let i = 0; i < 64; i += 8) v.setBigUint64(ptr + i, 0n, true);
     v.setUint8(ptr + 16, ft); v.setBigUint64(ptr + 24, 1n, true); v.setBigUint64(ptr + 32, BigInt(sz), true); };
   const P = {
@@ -108,6 +126,7 @@ function makeShim({ memory, argv, stdin, vfs, spawnFn, pull }) {
     args_get(ap, bp) { let p = bp; args.forEach((a, i) => { dv().setUint32(ap + 4 * i, p, true); u8().set(a, p); p += a.length; }); return 0; },
     fd_write(fd, io, n, o) { const v = dv(); let t = 0;
       const h = fds.get(fd);
+      if (fd !== 1 && fd !== 2 && (!h || h.dir)) return 8;   // EBADF: no stream and no open file
       for (let i = 0; i < n; i++) { const p = v.getUint32(io + 8 * i, true), l = v.getUint32(io + 8 * i + 4, true), b = u8().slice(p, p + l);
         if (h && !h.dir) {
           // a FILE the wheel writes — `fs_write_file` after `mentl accept`
@@ -133,39 +152,64 @@ function makeShim({ memory, argv, stdin, vfs, spawnFn, pull }) {
         const k = Math.min(l, d.length - h.pos); u8().set(d.subarray(h.pos, h.pos + k), p); h.pos += k; t += k; }
       v.setUint32(o, t, true); return 0; },
     fd_close(fd) { fds.delete(fd); return 0; },
-    fd_seek(fd, off, w, o) { const h = fds.get(fd); if (!h) return 8;
+    fd_seek(fd, off, w, o) { const h = fds.get(fd); if (!h || h.dir) return 8;
       h.pos = w === 0 ? Number(off) : w === 1 ? h.pos + Number(off) : vfs[h.name].length + Number(off);
       dv().setBigUint64(o, BigInt(h.pos), true); return 0; },
-    fd_prestat_get(fd, p) { if (vfs && fd === 3) { dv().setUint8(p, 0); dv().setUint32(p + 4, 1, true); return 0; } return 8; },
-    fd_prestat_dir_name(fd, p) { if (vfs && fd === 3) { u8()[p] = 46; return 0; } return 8; },   // "."
-    path_open(b, df, pp, pl, of, rb, ri, ff, o) { if (!vfs) return 44; const nm = norm(readStr(pp, pl));
-      if (nm === "" || nm === ".") { const fd = nextFd++; fds.set(fd, { name: ".", pos: 0, dir: 1 }); dv().setUint32(o, fd, true); return 0; }
-      // WASI oflags: CREAT = 1, TRUNC = 8 — the wheel's fs_write_file opens
-      // with both (0x9). A create births the entry; a truncate empties it.
+    fd_prestat_get(fd, p) { const h = fds.get(fd); if (h && h.preopen) { dv().setUint8(p, 0); dv().setUint32(p + 4, 1, true); return 0; } return 8; },
+    fd_prestat_dir_name(fd, p) { const h = fds.get(fd); if (h && h.preopen) { u8()[p] = 46; return 0; } return 8; },   // "."
+    // WASI oflags: CREAT = 1, DIRECTORY = 2, EXCL = 4, TRUNC = 8 — the wheel's
+    // fs_write_file opens with CREAT|TRUNC (0x9). A directory opens as a
+    // handle readdir can list (a create or truncate of one is EISDIR); a
+    // create births a file's entry and a truncate empties it.
+    path_open(b, df, pp, pl, of, rb, ri, ff, o) { if (!vfs) return 44; const base = fds.get(b); if (!base || !base.dir) return 8;
+      const nm = under(b, readStr(pp, pl));
+      if (!(nm in vfs) && isDir(nm)) { if (of & 9) return 31; const fd = nextFd++; fds.set(fd, { name: nm === "" ? "." : nm, pos: 0, dir: 1 }); dv().setUint32(o, fd, true); return 0; }
+      if (of & 2) return nm in vfs ? 54 : 44;   // ENOTDIR / ENOENT: a directory was asked for
       if (!(nm in vfs)) { if (!(of & 1)) return 44; vfs[nm] = new Uint8Array(0); }
       if (of & 8) vfs[nm] = new Uint8Array(0);
       const fd = nextFd++; fds.set(fd, { name: nm, pos: 0 }); dv().setUint32(o, fd, true); return 0; },
-    path_filestat_get(fd, fl, pp, pl, s) { if (!vfs) return 44; const nm = norm(readStr(pp, pl)); if (!(nm in vfs)) return 44; stat(s, 4, vfs[nm].length); return 0; },
+    path_filestat_get(fd, fl, pp, pl, s) { if (!vfs) return 44; const nm = under(fd, readStr(pp, pl));
+      if (nm in vfs) { stat(s, 4, vfs[nm].length); return 0; } if (isDir(nm)) { stat(s, 3, 0); return 0; } return 44; },
     fd_filestat_get(fd, s) { const h = fds.get(fd); if (!h) return 8; stat(s, h.dir ? 3 : 4, h.dir ? 0 : vfs[h.name].length); return 0; },
-    fd_fdstat_get(fd, p) { if (vfs && fd === 3) { dv().setUint8(p, 3); return 0; } const h = fds.get(fd); if (h) { dv().setUint8(p, h.dir ? 3 : 4); return 0; } return 8; },
-    fd_readdir() { return vfs ? 0 : 8; },
+    // the streams are host buffers, neither a terminal nor a file: filetype
+    // unknown (0), so the wheel's terminal test (stdin_is_tty, lib/io.mn)
+    // reads a pipe and compiles what stdin holds
+    fd_fdstat_get(fd, p) { const h = fds.get(fd); if (h) { dv().setUint8(p, h.dir ? 3 : 4); return 0; } if (fd >= 0 && fd <= 2) { dv().setUint8(p, 0); return 0; } return 8; },
+    // A directory read over the vfs keys: the children of the handle's
+    // directory, each a preview1 dirent ([d_next u64][d_ino u64][d_namlen
+    // u32][d_type u8, 3 pad] + the name), the cookie the next index; a
+    // buffer the entries overflow is filled to its length, as the ABI says.
+    // It answered success with `bufused` never written until L-C — a lying
+    // stub the session never needed, since imports resolve by path_open.
+    fd_readdir(fd, buf, len, cookie, used) {
+      if (!vfs) return 8;
+      const h = fds.get(fd);
+      if (!h) return 8;
+      if (!h.dir) return 54;
+      const prefix = h.name === "." ? "" : h.name.replace(/\/?$/, "/");
+      const kids = new Map();
+      for (const k of Object.keys(vfs)) {
+        if (!k.startsWith(prefix)) continue;
+        const rest = k.slice(prefix.length), i = rest.indexOf("/"), nm = i < 0 ? rest : rest.slice(0, i);
+        if (nm && !kids.has(nm)) kids.set(nm, i < 0 ? 4 : 3);
+      }
+      const names = [...kids.keys()].sort(), parts = [];
+      for (let i = Number(cookie); i < names.length; i++) {
+        const nb = te.encode(names[i]), e = new Uint8Array(24 + nb.length), ev = new DataView(e.buffer);
+        ev.setBigUint64(0, BigInt(i + 1), true); ev.setBigUint64(8, BigInt(i + 1), true);
+        ev.setUint32(16, nb.length, true); ev.setUint8(20, kids.get(names[i])); e.set(nb, 24);
+        parts.push(e);
+      }
+      const all = cat(parts), n = Math.min(all.length, len);
+      u8().set(all.subarray(0, n), buf); dv().setUint32(used, n, true); return 0; },
     clock_time_get(id, pr, o) { dv().setBigUint64(o, 0n, true); return 0; },
     random_get(p, l) { u8().fill(0, p, p + l); return 0; },
     environ_sizes_get(a, b) { dv().setUint32(a, 0, true); dv().setUint32(b, 0, true); return 0; },
     environ_get() { return 0; },
     path_create_directory() { return 44; }, path_unlink_file() { return 44; }, path_rename() { return 44; },
   };
-  const proxy = new Proxy(P, { get(t, k) { return k in t ? t[k] : () => 8; } });
-  // The exec seam (`mentl_host.wat_write` / `mentl_host.exec`, tools/runner)
-  // is what runs a COMPILED program — `mentl run`, the micro battery — and
-  // the page never asks for it. The boot imports the pair, and a browser
-  // refuses to instantiate a module whose import module is absent, so the
-  // seam is present here as the same thing wasmtime makes of an unknown
-  // import: a trap the moment it is reached, never a value. Running the
-  // compiled program in the page is `Hβ.felt.ide-run-in-page` (an in-page
-  // assembler); until it lands this is the honest socket, and it is loud.
-  const seam = (name) => () => { throw new Error(`mentl_host.${name}: the exec seam has no in-page assembler (Hβ.felt.ide-run-in-page)`); };
-  const mentl_host = { wat_write: seam("wat_write"), exec: seam("exec") };
+  // an op the page does not implement answers ENOSYS (52), never a lie
+  const proxy = new Proxy(P, { get(t, k) { return k in t ? t[k] : () => 52; } });
   const writtenFiles = () => Object.fromEntries([...written].map((n) => [n, vfs[n]]));
   // What the instance said and wrote since the last take — one session
   // answer's stdout, stderr and files — and the slate cleared for the next.
@@ -174,7 +218,14 @@ function makeShim({ memory, argv, stdin, vfs, spawnFn, pull }) {
     out = []; err = []; written = new Set();
     return t;
   };
-  return { imports: { env: { memory }, wasi_snapshot_preview1: proxy, wasi: { "thread-spawn": spawnFn }, mentl_host },
+  // The imports are preview1, the thread-spawn a spawning module asks for,
+  // and the shared memory a spawning module imports; a module that defines
+  // its own memory ignores the `env` entry (WebAssembly links by import, so an
+  // unasked-for import is not an error). Running a COMPILED program in the
+  // page is `Hβ.felt.ide-run-in-page` (an in-page assembler).
+  const imports = { wasi_snapshot_preview1: proxy, wasi: { "thread-spawn": spawnFn } };
+  if (mem.memory) imports.env = { memory: mem.memory };
+  return { imports,
            get out() { return out; }, get err() { return err; }, writtenFiles, take };
 }
 
@@ -306,7 +357,7 @@ function makeFan(q, tids, pool) {
    {line, delta: {path: text}} or {close: true}; a reply {state, out, err,
    written: {path: text}, memoryBytes, exit?, trapped?}. */
 const CH_WORDS = 8, CH_DATA = 4 * CH_WORDS;
-function sessionServe({ module, memory, vfs, channel }) {
+function sessionServe({ module, mem, vfs, channel }) {
   const ctl = new Int32Array(channel, 0, CH_WORDS);
   const reqBytes = new Uint8Array(channel, CH_DATA, ctl[5]);
   const repBytes = new Uint8Array(channel, CH_DATA + ctl[5], ctl[6]);
@@ -315,10 +366,10 @@ function sessionServe({ module, memory, vfs, channel }) {
   const publish = (state, extra) => {
     const t = shim.take();
     let body = te.encode(JSON.stringify(Object.assign({ state, out: td.decode(t.out), err: td.decode(t.err),
-      written: asText(t.written), memoryBytes: memory.buffer.byteLength }, extra || {})));
+      written: asText(t.written), memoryBytes: mem.memory.buffer.byteLength }, extra || {})));
     if (body.length > repBytes.length) {
       // loud, never truncated text dressed as an answer
-      body = te.encode(JSON.stringify({ state, out: "", written: {}, memoryBytes: memory.buffer.byteLength, overflow: true,
+      body = te.encode(JSON.stringify({ state, out: "", written: {}, memoryBytes: mem.memory.buffer.byteLength, overflow: true,
         err: `the answer (${body.length} bytes) exceeds the session channel's reply region (${repBytes.length} bytes)\n` }));
     }
     repBytes.set(body);
@@ -336,12 +387,13 @@ function sessionServe({ module, memory, vfs, channel }) {
     for (const [p, text] of Object.entries(req.delta || {})) vfs[p] = te.encode(text);
     return req.close ? null : te.encode(req.line + "\n");
   };
-  shim = makeShim({ memory, argv: ["mentl", "session"], stdin: null, vfs, pull,
+  shim = makeShim({ mem, argv: ["mentl", "session"], stdin: null, vfs, pull,
     // the judgment spawns nothing (judge once, pin 7c9dc538), and a module that
     // cannot spawn does not import thread-spawn; a spawn reaching here is
     // refused loudly by the wheel, never served by a pool nobody armed
     spawnFn: () => -1 });
   return WebAssembly.instantiate(module, shim.imports).then((inst) => {
+    adopt(mem, inst);
     try { inst.exports._start(); publish(2, { exit: 0 }); }
     catch (e) {
       if (e && e.exitCode !== undefined) publish(2, { exit: e.exitCode });
@@ -355,17 +407,31 @@ function sessionServe({ module, memory, vfs, channel }) {
 // spawning — so a run arms a pool only for a module that could use it,
 // where it used to arm twelve nested workers for every run of every module.
 const spawns = (module) => WebAssembly.Module.imports(module).some((i) => i.module === "wasi" && i.name === "thread-spawn");
+// A module that spawns imports the shared memory the host makes (every
+// instance reads one image); a module that does not defines its own and
+// exports it. The ladder retries a smaller initial reservation on a host
+// that refuses the larger one; a defined memory starts at the module's own
+// minimum and grows on demand, so no reservation is made for it at all.
+const importsMemory = (module) => WebAssembly.Module.imports(module).some((i) => i.module === "env" && i.name === "memory");
+function makeMemory(module, memPages) {
+  if (!importsMemory(module)) return { memory: null };
+  let lastE = null;
+  for (const p of [memPages || 16384, 8192]) {
+    try { return { memory: new WebAssembly.Memory({ initial: p, maximum: 65536, shared: true }) }; }
+    catch (e) { lastE = e; }
+  }
+  throw lastE;
+}
+// After instantiation the holder reads the module's own memory where the module defined it.
+const adopt = (mem, inst) => { if (!mem.memory) mem.memory = inst.exports.memory; return mem; };
 
 HOST.listen(async (msg) => {
   if (msg.role === "session") {
     const { module, memPages, vfs, channel, dbg } = msg;
     DEBUG = !!dbg;
-    let memory = null, lastE = null;
-    for (const p of [memPages || 16384, 8192]) {
-      try { memory = new WebAssembly.Memory({ initial: p, maximum: 65536, shared: true }); break; }
-      catch (e) { lastE = e; }
-    }
-    if (!memory) {
+    let mem = null;
+    try { mem = makeMemory(module, memPages); }
+    catch (lastE) {
       // no memory, no instance: answer the open with the reason, on the channel
       const ctl = new Int32Array(channel, 0, CH_WORDS);
       const body = te.encode(JSON.stringify({ state: 2, exit: 1, out: "", written: {}, trapped: String((lastE && lastE.message) || lastE) }));
@@ -373,34 +439,28 @@ HOST.listen(async (msg) => {
       Atomics.store(ctl, 3, body.length); Atomics.store(ctl, 4, 2); Atomics.add(ctl, 2, 1); Atomics.notify(ctl, 2);
       return;
     }
-    await sessionServe({ module, memory, vfs: Object.assign({}, vfs || {}), channel });
+    await sessionServe({ module, mem, vfs: Object.assign({}, vfs || {}), channel });
   } else if (msg.role === "run") {
-    const { module, memPages, argv, stdin, vfs, stubSpawn } = msg;
+    const { module, memPages, argv, stdin, vfs, stubSpawn, binary } = msg;
     DEBUG = !!msg.dbg;
-    let memory = null, trapped = null, exit = 0, fan = null, shim = null;
+    let mem = null, trapped = null, exit = 0, fan = null, shim = null;
     try {
-      // the binary declares min 8192 (512MB); provide more when the host
-      // allows — the ladder retries smaller on a reservation refusal.
-      let lastE = null;
-      for (const p of [memPages || 16384, 8192]) {
-        try { memory = new WebAssembly.Memory({ initial: p, maximum: 65536, shared: true }); break; }
-        catch (e) { lastE = e; }
-      }
-      if (!memory) throw lastE;
+      mem = makeMemory(module, memPages);
       const tids = new Int32Array(new SharedArrayBuffer(4));
       Atomics.store(tids, 0, 1);
       DBG("memory ok, arming pool");
       let q = null;
       if (!stubSpawn && spawns(module)) {
         q = qMake();
-        const pool = makePool(POOL_N, { role: "arm", module, memory, tids, q, vfs: vfs || null, dbg: DEBUG });
+        const pool = makePool(POOL_N, { role: "arm", module, memory: mem.memory, tids, q, vfs: vfs || null, dbg: DEBUG });
         await pool.ready;   // every pool worker LOADED + ARMED before _start can block
         DBG("pool armed");
         fan = makeFan(q, tids, pool);
       }
-      shim = makeShim({ memory, argv: argv || [], stdin: stdin || null, vfs: vfs || null,
+      shim = makeShim({ mem, argv: argv || [], stdin: stdin || null, vfs: vfs || null,
                         spawnFn: fan ? ((a) => { const t = fan.spawn(a); DBG("spawn tid=" + t); return t; }) : (() => -1) });
       const inst = await WebAssembly.instantiate(module, shim.imports);
+      adopt(mem, inst);
       DBG("instantiated, _start");
       try { inst.exports._start(); }
       catch (e) { if (e && e.exitCode !== undefined) exit = e.exitCode; else trapped = String((e && e.message) || e); }
@@ -415,9 +475,19 @@ HOST.listen(async (msg) => {
         if (io.out) extraErr += "[task stdout] " + io.out;   // never interleaved into the wat stream
       }
     }
-    const out = shim ? td.decode(cat(shim.out)) : "";
+    // WAT is text, but `mentl asm` writes a binary module.  The host carries
+    // that projection as bytes so a U+FFFD substitution can never turn a
+    // valid module into a different one before WebAssembly instantiates it.
+    const outBytes = shim ? cat(shim.out) : new Uint8Array(0);
+    const out = binary ? "" : td.decode(outBytes);
     const err = (shim ? td.decode(cat(shim.err)) : "") + extraErr;
-    HOST.post({ k: "result", exit, out, err, trapped, tasks, written: shim ? shim.writtenFiles() : {} });
+    const result = { k: "result", exit, out, err, trapped, tasks, written: shim ? shim.writtenFiles() : {} };
+    if (binary) {
+      result.outBytes = outBytes;
+      HOST.post(result, [outBytes.buffer]);
+    } else {
+      HOST.post(result);
+    }
   } else if (msg.role === "arm") {
     // a pool worker: hold the run's module/memory/queue, consume tasks
     // until the run's drain kills the pool. Each task gets a FRESH
@@ -432,7 +502,7 @@ HOST.listen(async (msg) => {
     DEBUG = !!msg.dbg;
     const runTask = async (tid, arg) => {
       DBG("task start tid=" + tid);
-      const shim = makeShim({ memory, argv: [], stdin: null, vfs: vfs || null,
+      const shim = makeShim({ mem: { memory }, argv: [], stdin: null, vfs: vfs || null,
         spawnFn: (a) => { const t = Atomics.add(tids, 0, 1); qPush(q, t, a); return t; } });
       let err0 = "";
       try {

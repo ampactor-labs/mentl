@@ -14,17 +14,17 @@
 // just says hello.
 //
 // Run it:   mentl run  lib/tutorial/00-hello.mn
-// Edit it:  mentl space   →   http://localhost:7378/ide/
-// Read it:  mentl lib/tutorial/00-hello.mn:32   ← ask at the pipe into print_string; the medium answers
+// Edit it:  Mentl Space — the page in ide/, live at https://space.ampactor.dev/ (this lesson is in its program list)
+// Read it:  mentl lib/tutorial/00-hello.mn:29:77   ← ask at the pipe into print_string; the medium answers
 import io
 
 // greet builds a line and flows it into print_string with `|>`, the
 // sequential verb: the value on the left becomes the argument on the right.
 // `++` joins byte-sequences. Joining allocates, so greet's effect row carries
 // Memory and Alloc — Mentl infers that from the body; you never wrote it down.
-// (Ask for `with !Alloc` here and the medium contradicts you at these exact
-// lines — it proves the join allocates. Substrate rows like Alloc report and
-// the program still runs; a user effect's broken claim refuses outright —
+// (Ask for `with !Alloc` here and the medium refuses to build the program,
+// naming this declaration: it proves the join allocates, and a claim it
+// proves false produces no program at all. Declaring and denying effects is
 // the subject of 04-row.)
 fn greet(name) = "Hello, " ++ name ++ ". The medium is reading you back.\n" |> print_string
 

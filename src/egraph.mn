@@ -32,9 +32,9 @@
 // mode (the canon-weave read), not a bolted-on pass.
 import types
 
-import graph
-
 import effects
+
+import graph
 
 import io
 
@@ -180,27 +180,20 @@ fn is_one(handle) = match graph_node_body(handle) {
 // weave AND type-bound to Int — saturate runs after inference, so an un-bound new
 // node would be NFree at lower time. Operands are read through egraph_extract, so
 // a folded subterm (already ≡ a literal) folds transitively (the congruence
-// payoff for fold). Div/mod by zero does NOT fold: the trap is the program's
-// meaning, not a constant. The edge is drawn idempotently (rewrite_to), so a
-// re-fold pass mints nothing new and converges.
+// payoff for fold). A division whose claim fails at the two points does NOT
+// fold — the trap is the program's meaning, not a constant — and the folder
+// is the proof gate's own (types.mn `int_fold`), so the two cannot disagree.
+// The edge is drawn idempotently (rewrite_to), so a re-fold pass mints
+// nothing new and converges.
 fn const_int(handle) = match graph_node_body(handle) {
   NExpr(LitInt(n)) => Some(n),
-  _ => None,
-}
-
-fn fold_int(op, a, b) = match op {
-  BAdd => Some(a + b),
-  BSub => Some(a - b),
-  BMul => Some(a * b),
-  BDiv => if b == 0 { None } else { Some(a / b) },
-  BMod => if b == 0 { None } else { Some(a % b) },
   _ => None,
 }
 
 fn rw_const_fold(handle) = match graph_node_body(handle) {
   NExpr(BinOpExpr(op, l, r)) => match const_int(egraph_extract(node_handle(l))) {
     Some(a) => match const_int(egraph_extract(node_handle(r))) {
-      Some(b) => match fold_int(op, a, b) {
+      Some(b) => match int_fold(op, a, b) {
         Some(v) => // Already folded to v on a prior pass? The current canonical
         // form is a literal v — draw nothing, report no progress.
         match const_int(egraph_extract(handle)) {

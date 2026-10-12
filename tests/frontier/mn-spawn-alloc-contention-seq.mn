@@ -1,0 +1,19 @@
+// The sequential twin of mn-spawn-alloc-contention: the same four branches
+// of a million small allocations, run in this instance one after another
+// under sequential_compose — the baseline the threaded run's wall time is
+// printed beside. Expected exit: 4.
+fn churn(k, n) = if n == 0 {
+  let c = alloc(8)
+  store_i32(c, k)
+  if load_i32(c) == k { 1 } else { 0 }
+} else {
+  let c = alloc(8)
+  store_i32(c, n)
+  churn(k, n - 1)
+}
+
+fn branch(k) = churn(k, 1000000)
+
+fn add_int(a, b) = a + b
+
+fn main() = fanout(branch, [1, 2, 3, 4]) |> fold(0, add_int) ~> sequential_compose

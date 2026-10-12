@@ -1,38 +1,26 @@
 // expect: 42
-// BANKED RED (unregistered — Hβ.effects.negative-stance-under-mixed-gate).
-// A fn whose callee is a MUTUALLY-RECURSIVE `!E`-declaring fn cannot
-// declare a closed positive row: `outer` here declares `Cast + !Mutate`
-// and proves `Cast(Int) + !Mutate`, and the gate refuses it —
-// E_EffectMismatch at outer's own decl span, on every path (check,
-// compile, and the concatenated blob alike).
+// mn-mutual-negation-gate — a declaration over a MUTUALLY-RECURSIVE callee
+// that declares `!Mutate` may itself declare a closed clause beside the
+// negation. `outer` declares `Cast + !Mutate` and its body proves
+// `Cast(Int) + !Mutate`; the gate holds and the program runs to 42.
 //
-// The trigger was isolated by probe, three theories dead first:
-//   · bare-declared vs instance-proven ALONE passes (`with Cast` over
-//     `addr(x)` — eff_name_handle shares the handle between ENamed and
-//     EParameterized, so by-name membership already admits an instance);
-//   · negation-beside-positives alone passes (`with Cast + !Mutate`);
-//   · a NON-recursive `!Mutate` callee passes.
-// Mutual recursion is the discriminator, and the root is named:
-// row_without_self (effects.mn) takes the least solution of a recursive
-// row equation — "a tail landing on the fn's OWN row handle cuts to the
-// closed head" — and that cut is SELF-only. Here the tail lands on a
-// CO-MEMBER's handle, so R_ping = names ∪ R_pong and R_pong = names ∪
-// R_ping never cut, the row never closes, and the widened tail flows
-// into every caller until a closed gate refuses it.
-//
-// That group-wide cut was REFUTED (2026-07-31, the source dig): a wider
-// cut freezes MORE rows — the cut is the defect, not its scope. The
-// dissolution is rung 3's edge-set tails: R ∪ R = R, the visiting-set
-// read closes every cycle with NO cut (the refuter's hand-trace
-// predicts this fixture green under it). A D9 banked gate; it goes
-// green when the swap lands, and building any cut from this comment
-// is the condemned-forms clause violated.
+// It refused once (Hβ.effects.negative-stance-under-mixed-gate): the least
+// solution of a recursive row equation cut only at the declaration's OWN
+// row, so a tail landing on a co-member's row never closed and the widened
+// tail reached every caller's gate. The one-pass judgment closes every
+// cycle at its binding group, and this fixture is that rule's standing
+// witness. It rotted unregistered when `addr` began answering an address
+// and its comparison became a type error; the cast is a statement now and
+// the comparison reads the callee's number, and the frontier runs it.
 import memory
 
 fn ping(n) with !Mutate = if n <= 0 { 0 } else { pong(n - 1) }
 
 fn pong(n) with !Mutate = if n <= 0 { 1 } else { ping(n - 1) }
 
-fn outer(x) with Cast + !Mutate = addr(ping(x))
+fn outer(x) with Cast + !Mutate = {
+  let _ = addr(x)
+  ping(x)
+}
 
 fn main() = if outer(3) > 0 { 42 } else { 1 }

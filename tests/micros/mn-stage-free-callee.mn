@@ -1,0 +1,15 @@
+// expect: 42
+// A pipe stage whose callee's arrow is not yet known is the product the
+// Stage Law reads: its arguments, then the piped value. `frame`'s record is
+// an unannotated parameter, so `rig.tone`'s type is learned from this one
+// use, and `2 |> rig.tone(40)` makes it `(Int, Int) -> Int`, the stage built
+// below. Until 2026-10-06 the stage was judged as a complete call returning
+// a function, the field read `(Int) -> (Int) -> Int`, and the call into
+// `frame` refused a correct program with an arity mismatch.
+fn add(a, b) = a + b
+
+fn build() = {tone: add}
+
+fn frame(rig) = 2 |> rig.tone(40)
+
+fn main() = frame(build())

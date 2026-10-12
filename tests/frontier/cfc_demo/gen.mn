@@ -1,0 +1,32 @@
+// gen.mn — the synthetic phase-amplitude-coupled test signal
+//
+// x(t) = (1 + 0.8·cos(2π·6·t))·sin(2π·40·t) + 0.1·sin(2π·13·t),  t = i/sr
+//
+// The 40 Hz carrier's AMPLITUDE is modulated at 6 Hz — coupling built in
+// by construction, so a correct comodulogram argmaxes the (6, 40) cell.
+// The 13 Hz term is an off-grid distractor. The signal reaches ±1.8
+// (envelope 1.8 × carrier ±1), so it is a plain Float, never a `Sample`
+// (whose refinement bounds it to ±1). Stored as a NATIVE [Float] list now —
+// the §5.U wide-element cash-out round-trips a [Float] end to end, so the
+// scaled-Int fixed-point carrier is gone.
+
+import dsp/cfc
+
+fn pac_sample(i: Int, sr: Int) -> Float with Pure = {
+  let t = float_of_int(i) / float_of_int(sr)
+  let envelope = 1.0 + 0.8 * cos(two_pi() * 6.0 * t)
+  let carrier = sin(two_pi() * 40.0 * t)
+  let noise = 0.1 * sin(two_pi() * 13.0 * t)
+  envelope * carrier + noise
+}
+
+fn fill_signal(sr: Int, num: Int, out, i: Int) = {
+  if i >= num { out }
+  else {
+    let out2 = list_set(out, i, pac_sample(i, sr))
+    fill_signal(sr, num, out2, i + 1)
+  }
+}
+
+fn build_pac_signal(sr: Int, num: Int) =
+  fill_signal(sr, num, make_list(num), 0)

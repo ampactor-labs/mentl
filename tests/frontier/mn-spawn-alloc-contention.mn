@@ -1,0 +1,24 @@
+// Allocation under contention: four spawned branches each make a million
+// small allocations at once. Each instance bumps privately inside its own
+// run and touches the shared frontier once per 64 KB chunk, where every
+// allocation was a compare-exchange on one cell before 2026-10-06. The
+// frontier leg times this beside its sequential twin
+// (mn-spawn-alloc-contention-seq, the same branches under
+// sequential_compose) and prints both; a wall clock is never ratcheted.
+// Expected exit: 4 (each branch answers 1 when its last allocation holds the
+// value it wrote).
+fn churn(k, n) = if n == 0 {
+  let c = alloc(8)
+  store_i32(c, k)
+  if load_i32(c) == k { 1 } else { 0 }
+} else {
+  let c = alloc(8)
+  store_i32(c, n)
+  churn(k, n - 1)
+}
+
+fn branch(k) = churn(k, 1000000)
+
+fn add_int(a, b) = a + b
+
+fn main() = fanout(branch, [1, 2, 3, 4]) |> fold(0, add_int) ~> parallel_compose

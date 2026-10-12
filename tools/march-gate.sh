@@ -66,7 +66,7 @@ if [ "$DO_BUILD" = 1 ]; then
   # march.sh): instant when another gate already compiled this state.
   echo "── m2 (boot — the pinned fixpoint wheel — compiles the wheel) ──"
   C=$(wt_m2_ensure) || { echo "✗ m2 generation TRAPPED (see $WT_M2CACHE/m2.err)"; tail -3 "$WT_M2CACHE/m2.err"; exit 1; }
-  wt_m2_place "$C" "$OUT"; cp -f "$C/wheel.mn" "$OUT/wheel.mn"
+  wt_m2_place "$C" "$OUT"
   echo "m2: boot(wheel) via $C — $(wc -l < "$OUT/m2.wat") lines (key $(cut -c1-12 "$C/key"))"
   echo "✓ m2.wasm ($(stat -c%s "$OUT/m2.wasm") bytes)"
 elif [ -z "${GATE_WASM:-}" ]; then
@@ -81,7 +81,7 @@ elif [ -z "${GATE_WASM:-}" ]; then
     exit 1
   fi
   if ! cmp -s "$WT_M2CACHE/m2.wasm" "$OUT/m2.wasm"; then
-    wt_m2_place "$WT_M2CACHE" "$OUT"; cp -f "$WT_M2CACHE/wheel.mn" "$OUT/wheel.mn"
+    wt_m2_place "$WT_M2CACHE" "$OUT"
     echo "m2: the probe copy was older than the source — placed the cache's current m2"
   fi
 fi
@@ -111,11 +111,6 @@ if [ "${H0:-0}" != "0" ]; then
   exit 1
 fi
 
-# The trio + prelude: strings.mn's parse_int_base calls prelude's
-# parse_int, so the honest link set includes it — m2 emits the whole
-# input (no reachability-from-main yet, unlike the seed), so an
-# under-linked dependency surfaces as an undefined global at assemble.
-RT="${MENTL_RT_LIBS[*]}"
 pass=0; fail=0
 fail_m=0
 # fail_m is the MICRO tier's counter and must exist outside the micros
@@ -147,7 +142,7 @@ rung() {
   else echo "✗ $name: RUN exit=$got want=$want"; fail=$((fail+1)); fi
 }
 
-echo "── rungs (each: m2-compile → wat2wasm → run → exit) ──"
+echo "── rungs (each: m2-compile → assemble → run → exit) ──"
 rung one-main 7 <<'EOF'
 fn main() = 7
 EOF
@@ -177,12 +172,12 @@ fn get(o) = match o {
 fn main() = get(Some(4))
 EOF
 
-# rungs below carry the runtime trio (the vocabulary — every real
-# program links it; verify.sh RTLIBS convention)
+# rungs below are entries read with the tree preopened, so the walk seeds the
+# prelude — the vocabulary every real program links (driver_seeded)
 rungrt() {
   local name="$1" want="$2" src="$G/$1.mn"
-  { cat $RT; cat; } > "$src"
-  "$WT" run "${WT_RUN_FLAGS[@]}" "$GATE_WASM" < "$src" > "$G/$1.wat" 2> "$G/$1.err"
+  cat > "$src"
+  wt_rooted "$GATE_WASM" < "$src" > "$G/$1.wat" 2> "$G/$1.err"
   local rc=$?
   if [ $rc -ne 0 ]; then
     echo "✗ $name(+rt): m2 COMPILE trap=$(grep -m1 -oE '!\S+' "$G/$1.err" | head -1)"

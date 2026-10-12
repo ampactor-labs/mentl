@@ -36,6 +36,7 @@ VERBS = """Ask the medium first:
   mentl query src/main.mn decls              the declaration roster with spans
   mentl query src/main.mn unreachable        what nothing reaches
   mentl query src/main.mn "census <shape>"   a structural shape, counted
+  mentl query src/main.mn census             the census roster, every shape with its count
   mentl query src/main.mn "text NEEDLE"      every string literal holding it (the emit's WAT)
   mentl query src/main.mn "prose NEEDLE"     every comment holding it, at the comment
   mentl query src/main.mn "writes of FIELD"  every value written into a handler state field

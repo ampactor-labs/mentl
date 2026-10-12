@@ -39,7 +39,7 @@ fn lcg_next(s: Int) with Pure = (75 * s + 74) % 65537
 
 // Fill the reference with the LCG stream mapped into [-1, 1). Advance the state,
 // then store — so ref[0] is the first LCG output, matching the oracle.
-fn gen_ref(out, s: Int, i: Int, n: Int) with Memory = {
+fn gen_ref(out, s: Int, i: Int, n: Int) ={
   if i >= n { out }
   else {
     let s2 = lcg_next(s)
@@ -48,14 +48,14 @@ fn gen_ref(out, s: Int, i: Int, n: Int) with Memory = {
 }
 
 // The one-sample delay: ref[i-1], zero before the stream starts.
-fn ref_at(refs, i: Int) with Memory = if i < 0 { 0.0 } else { refs[i] }
+fn ref_at(refs, i: Int) =if i < 0 { 0.0 } else { refs[i] }
 
 // The LMS loop — filter and learn together. `d` is the unknown channel's
 // output (the desired), `y` the adaptive estimate, `e` the residual; the taps
 // step by mu·e·x each sample. `ip` accumulates the residual power over the first
 // K samples (early adaptation), `fp` over the last K (converged) — both threaded
 // float accumulators, compared at the end for the power-drop fact.
-fn lms_loop(refs, w0: Float, w1: Float, i: Int, n: Int, k: Int, ip: Float, fp: Float, mu: Float) with Memory + Alloc = {
+fn lms_loop(refs, w0: Float, w1: Float, i: Int, n: Int, k: Int, ip: Float, fp: Float, mu: Float) ={
   if i >= n { (w0, w1, ip, fp) }
   else {
     let x0 = ref_at(refs, i)
@@ -72,7 +72,7 @@ fn lms_loop(refs, w0: Float, w1: Float, i: Int, n: Int, k: Int, ip: Float, fp: F
 // round-to-nearest for a positive value: truncate(v + 0.5).
 fn round_pos(v: Float) with Pure = float_to_int(v + 0.5)
 
-fn main() with Memory + Alloc = {
+fn main() ={
   let n = 2000
   let k = 100
   let refs = gen_ref(make_list(n), 1, 0, n)

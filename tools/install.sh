@@ -12,7 +12,14 @@
 # configuration: an address, not an env var; the resolver's home chain,
 # src/driver.mn driver_module_path).
 #
-# Override the bin dir with MENTL_BIN_DIR. Re-running is idempotent.
+# The host is the stock engine tools/wt-env.sh resolves (wasmtime, pinned by
+# tools/wasmtime-get.sh) — nothing of Mentl runs in any language but WASM
+# and WAT. Three verbs are the mentl command's rather than the wheel's,
+# because each needs a host facility a WASI module has none of: `run`
+# (a process to execute the module the compiler emits), `space` (a
+# listening socket to serve the page), and the resident `session` the
+# page's worker holds (a channel the process's own stdin is). Override
+# the bin dir with MENTL_BIN_DIR. Re-running is idempotent.
 set -euo pipefail
 
 MENTL_HOME="$(cd "$(dirname "$0")/.." && pwd)"
@@ -50,58 +57,100 @@ mentl_wasm() {
   done
   "\$WT" run "\${WT_RUN_FLAGS[@]}" \\
     --dir "\$PWD" --dir /tmp --dir "\$MENTL_HOME::/mentl-home" "\${extra[@]}" \\
-    "\$MENTL_HOME/boot/mentl.wasm" "\$@"
+    "\${MENTL_BOOT:-\$MENTL_HOME/boot/mentl.wasm}" "\$@"
 }
-# mentl run is the WHEEL's verb: compile, stream the module to the runner
-# through the Process seam, execute it there, answer the program's own exit
-# (src/main.mn run_run ~> process_host; tools/runner mentl_host.exec). The
-# shim owned this seam as compile → wat2wasm → wasmtime with a content-keyed
-# run cache; it falls through to the wheel like every other verb now, and the
-# warm image restore is the compile's own cache.
-if [ "\${1:-}" = "session" ]; then
-  # session = the resident graph. The listener is a HOST resource the
-  # runner owns (-S tcplisten=, the p1 socket protocol lib/net.mn speaks);
-  # the wheel derives once and answers read verbs over one-line
-  # connections speaking the CLI's own grammar. Port override:
-  # MENTL_SESSION_PORT.
-  exec "\$WT" run "\${WT_RUN_FLAGS[@]}" \\
-    --dir "\$PWD" --dir /tmp --dir "\$MENTL_HOME::/mentl-home" \\
-    -S "tcplisten=127.0.0.1:\${MENTL_SESSION_PORT:-7377}" \\
-    "\$MENTL_HOME/boot/mentl.wasm" session
-fi
-# Resident-first: when a session lives, EVERY verb is offered to it —
-# a tab-joined argv line over /dev/tcp, the answer streamed back. The
-# shim is a TRANSPORT, never a policy: WHICH verbs the session serves
-# is the medium's own dispatch (session_answer, main.mn — the one
-# home); anything it declines answers the MISS sentinel, and MISS or
-# a dead port falls through to the cold exec below. Resident and cold
-# run the same projections, so the answers agree byte-for-byte.
-mentl_session_try() {
-  local port="\${MENTL_SESSION_PORT:-7377}" out
-  { exec 3<>"/dev/tcp/127.0.0.1/\$port"; } 2>/dev/null || return 1
-  printf '%s\t' "\$@" >&3
-  printf '\n' >&3
-  out="\$(cat <&3)"
-  exec 3<&- 3>&-
-  case "\$out" in MENTL-SESSION-MISS*) return 1 ;; esac
-  printf '%s' "\$out"
-  return 0
-}
-if [ -n "\${1:-}" ]; then
-  if mentl_session_try "\$@"; then exit 0; fi
+if [ "\${1:-}" = "run" ] && [ -n "\${2:-}" ]; then
+  # mentl run <module> [args…] — compile, assemble, execute, since a WASI
+  # module has no process to hand its emission to. The compile and the
+  # assembly are the wheel's (\`mentl compile\`, its warm image making a second
+  # run of an unchanged program cheap, then \`mentl asm\` through wt_asm); the
+  # run alone is the engine's, over the caller's cwd, with the program's own
+  # args and its own exit. A hole or a refuted claim refuses at the compile
+  # and nothing runs (the proof-exactness contract,
+  # tools/proof-exactness-gate.sh).
+  module="\$2"; shift 2
+  stage="\$(mktemp -d "\${TMPDIR:-/tmp}/mentl-run.XXXXXX")"
+  trap 'rm -rf "\$stage"' EXIT
+  mentl_wasm compile "\$module" > "\$stage/module.wat" || exit \$?
+  wt_asm "\$stage/module.wat" "\$stage/module.wasm" || exit \$?
+  # Host access follows the medium's read-site roster. Required and optional
+  # literal names are passed only when present in the shell or project .env.
+  # A dynamic env_opt is explicitly marked as whole-environment access: its
+  # name cannot be narrowed before execution, so the host passes its
+  # environment plus .env values not already set in the shell. Only required
+  # names are checked by the module's pre-main launch gate.
+  envs=()
+  env_keys=()
+  env_add() {
+    local add_name="\$1" add_value="\$2" existing
+    [ -n "\$add_name" ] || return 0
+    for existing in "\${env_keys[@]}"; do
+      [ "\$existing" = "\$add_name" ] && return 0
+    done
+    env_keys+=("\$add_name")
+    envs+=(--env "\$add_name=\$add_value")
+  }
+  dotenv="\$(mentl_arg_dir "\$module.mn" 2>/dev/null || mentl_arg_dir "\$module" 2>/dev/null || pwd)/.env"
+  while IFS=\$'\t' read -r name mode; do
+    [ -n "\$name" ] || continue
+    if [ "\$mode" = "all optional" ]; then
+      while IFS= read -r -d '' entry; do
+        name="\${entry%%=*}"
+        value="\${entry#*=}"
+        env_add "\$name" "\$value"
+      done < <(env -0)
+      if [ -f "\$dotenv" ]; then
+        while IFS= read -r line || [ -n "\$line" ]; do
+          line="\${line#"\${line%%[![:space:]]*}"}"
+          [[ -z "\$line" || "\$line" == \\#* || "\$line" != *=* ]] && continue
+          name="\${line%%=*}"
+          value="\${line#*=}"
+          env_add "\$name" "\$value"
+        done < "\$dotenv"
+      fi
+    elif [[ "\$name" =~ ^[A-Za-z_][A-Za-z0-9_]*\$ ]]; then
+      if [ -n "\${!name+set}" ]; then
+        env_add "\$name" "\${!name}"
+      elif [ -f "\$dotenv" ]; then
+        while IFS= read -r line || [ -n "\$line" ]; do
+          line="\${line#"\${line%%[![:space:]]*}"}"
+          [[ -z "\$line" || "\$line" == \\#* || "\$line" != *=* ]] && continue
+          key="\${line%%=*}"
+          if [ "\$key" = "\$name" ]; then
+            env_add "\$name" "\${line#*=}"
+            break
+          fi
+        done < "\$dotenv"
+      fi
+    fi
+  done < <(mentl_wasm query "\$module" env 2>/dev/null | sed -n 's/^ *\\([^ ]*\\) \\[\\([^]]*\\)\\] read at .*/\\1\t\\2/p' | sort -u)
+  "\$WT" run "\${WT_RUN_FLAGS[@]}" \${envs[@]+"\${envs[@]}"} --dir "\$PWD" --dir /tmp "\$stage/module.wasm" "\$@"
+  exit \$?
 fi
 if [ "\${1:-}" = "space" ]; then
-  # space = the ide, served by the wheel. A listener is a HOST resource
-  # (WASI p1 has no bind/listen — the wheel's find_listener only reads the
-  # preopen table), so the runner owns this seam exactly as it owns the
-  # exec seam. The repo maps at guest "." so the verb serves ide/ from any
-  # directory. Port override: MENTL_SPACE_PORT.
-  # (No backticks in this heredoc: it is unquoted, so they would run as
-  # command substitution at install time — which is exactly what they did.)
-  exec "\$WT" run "\${WT_RUN_FLAGS[@]}" \\
-    --dir "\$MENTL_HOME::." --dir /tmp \\
-    -S "tcplisten=127.0.0.1:\${MENTL_SPACE_PORT:-7378}" \\
-    "\$MENTL_HOME/boot/mentl.wasm" space
+  # mentl space — the page: stage what ide/space.manifest names and serve the
+  # staged directory with the two isolation headers (the browser needs a
+  # cross-origin-isolated document for the shared memory the session's
+  # channel is). Port override: MENTL_SPACE_PORT. The deployed page is the
+  # same artifact, served by GitHub Pages.
+  #
+  # mentl space <file>:<line>[:<col>] is the WHEEL's: the View the page
+  # paints, as JSON (src/space.mn). The bare verb and \`mentl space <dir>\`
+  # (the page opened on that folder of modules, staged as a project) are the
+  # host's to serve; an address passes through to the module below.
+  case "\${2:-}" in
+    *:[0-9]*) ;;
+    *)
+      extra=()
+      if [ -n "\${2:-}" ]; then
+        [ -d "\$2" ] || { echo "mentl space: \$2 is neither a folder to open nor an address (<file>:<line>[:<col>])" >&2; exit 2; }
+        extra=("\$(cd "\$2" && pwd)")
+      fi
+      bash "\$MENTL_HOME/tools/space-stage.sh" "\$MENTL_HOME/.build/space" \${extra[@]+"\${extra[@]}"} || exit \$?
+      echo "mentl space: http://127.0.0.1:\${MENTL_SPACE_PORT:-7397}/" >&2
+      exec python3 "\$MENTL_HOME/tools/space-serve.py" "\$MENTL_HOME/.build/space" "\${MENTL_SPACE_PORT:-7397}"
+      ;;
+  esac
 fi
 exec_rc=0
 mentl_wasm "\$@" || exec_rc=\$?

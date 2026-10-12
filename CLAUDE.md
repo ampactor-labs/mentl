@@ -3,7 +3,7 @@
 > **THE THREE-DOCUMENT CONTRACT.** You read and update exactly three files, and
 > you read ALL THREE every session: **`CLAUDE.md`** (this one — *method*: how to
 > work — the verbs, the anchors, the interrogations, the drift modes, the
-> red-flags), **`PLAN.md`** (*substance*: what is true — the reframe, the kernel,
+> red-flags), **`PLAN.md`** (*substance*: what is true — the thesis, the kernel,
 > the resolved decisions, the arc, the state, the laws), and **`SYNTAX.md`**
 > (*surface*: the authoritative language form — it supersedes any syntactic claim
 > made here or in `PLAN.md`). Method / substance / surface — three projections of
@@ -110,10 +110,51 @@
 > artifact obsoletes it (the comment-ref ratchet is this law at the prose
 > boundary; the ledger's retractions are it at the corpus boundary).
 >
+> **A GATE IS OBEYED, NEVER SATISFIED** (Morgan, 2026-10-06, after one
+> integration made every satisfying move in turn: a stray file deleted
+> instead of the resolver that wrote it fixed, a ghost ceiling raised with a
+> careful per-module attribution, four defects written into RESIDUE instead
+> of fixed, a red board met with "find the leg" when the leg was the third
+> link model the program had already named). When a gate goes red, the work
+> is the thing it MEASURES — never the gate. Five moves turn a gate green
+> without changing what it measures, and `tools/obey-gate.py` refuses each at
+> the commit with no flag that lets it through: a CEILING RAISED (board
+> bounds, every `*_max` ratchet, cost included), a BOUND DROPPED, a red leg
+> DECLARED EXPECTED, a gate SILENCED (`drift-audit: ignore`), a contained
+> defect PARKED as an OPEN peer. The sixth has no mechanical form and is the
+> same move: a symptom DELETED where its cause is fixable — the stray file,
+> the failing fixture, the noisy line. Prose that justifies a raise is the
+> confession, not the license; a careful attribution is still a raise. A
+> bound that a CORRECT landing must raise is the wrong shape (the ghost count
+> grew with every honest line until positions are cells, and its own comment
+> told each landing to raise it): reshape the bound or pay its debt down in
+> the same landing — the ghost bound fell 19,747 → 10,604 the day this law
+> landed, because the parameter binders it was counting became judged cells. A
+> defect found inside the arc is fixed inside the arc; RESIDUE holds only
+> what needs a foundation no landing in reach provides, and opening one
+> entry means closing another.
+>
+> **TRUING IS NOT MOVING THE GOALPOSTS** (Morgan, 2026-10-06, after the same
+> integration wrote "landed in part" over two landings, folded a lane's two
+> remaining peers into one so a citation gate stopped asking, and banked a
+> new leg at its own landing's failure count). Truing corrects a claim about
+> what IS so it matches the artifact; moving the goalposts rewrites what
+> SHOULD BE so it matches what was built. Both edit the same documents, and
+> the second always arrives calling itself the first. The tells: a landing
+> declared landed with a "remaining" list; a peer's design or a §11 line
+> narrowed in the commit that claims it; the remainder's names merged or
+> deleted until a gate stops naming them; a new bound born at the landing's
+> own failures (`head_round_trip_max: 92` beside the promise that every head
+> round-trips). A landing is landed when what its §11 line and its peer's
+> design state is built; until then the record says NOT LANDED in its first
+> sentence (⊘). `tools/obey-gate.py` refuses a partial-landing claim at the
+> commit; the bound born at its own landing's failures is the same move with
+> no mechanical form yet.
+>
 > **The standing charge is AMBIENT — it need never be re-typed:** ultimate,
 > SOTA-surpassing, novel, Mentl-empowered design is the only acceptable
-> move at every scale; no deferrals, no named-gaps without their COMPLETE
-> build-ready design banked; challenge every "canonical" shape on sight;
+> move at every scale; no deferrals, and a gap found in the arc is built in
+> the arc (the obey gate holds RESIDUE's open count); challenge every "canonical" shape on sight;
 > comments must be TRUE (an entity that can be wrong wrote them — the
 > graph's carried truth outranks them); never dodge incomplete inference
 > with annotations (Mentl infers, teaches, proposes — annotations are
@@ -239,9 +280,11 @@
 > 2. **Ultimate ≠ complete.** The frontier (modal §4③, IFC §4⑥, native, the
 >    deepest optimizations) sequenced after first-light and named in POSITIVE FORM
 >    is ultimate (`PLAN.md §5`). A hidden gap or a silent fabrication is drift.
-> 3. **Honest-and-sequenced, never hidden.** A named positive-form peer IS the
->    ultimate form; a silent fallback is the betrayal — at the exact moment it is
->    cheapest to betray.
+> 3. **Fixed in the arc, never parked.** A silent fallback is the betrayal — at
+>    the exact moment it is cheapest to betray — and a named peer is not its
+>    cure: naming a defect the arc could fix is the same betrayal written down.
+>    A peer is honest only for work that needs a foundation the arc cannot
+>    reach, and the obey gate holds their count (⚖ "A gate is obeyed").
 >
 > **The inverse trap — perfectionism-as-paralysis — is drift too.** "Ultimate" is
 > NOT "every frontier feature built before first-light." The REAL aspect (`§5`) is
@@ -287,19 +330,22 @@
 > - **Deep kernel / novel-concept reasoning → INLINE.** Holding the whole
 >   accumulated state (the seam, the ev-slots, the probes that disproved prior
 >   root-causes) is irreplaceable; the single conversation is the handler.
-> - **Verifying my OWN conclusions → ADVERSARIAL DISPATCH.** After reasoning
->   inline to a root-cause / design / fix, spawn independent agents to REFUTE it
->   ("default to refuted if uncertain"). A fresh mind does not share my
->   accumulated fluency-bias — the highest-leverage anti-fluency tool, and a
->   systematic proxy for the human-catches-the-drift loop (PLAN §0: prose can't
->   enforce itself). The old rule foreclosed this; embrace it.
+> - **A finding that shows the artifact can be better is BUILT — the artifact
+>   is the refuter** (Morgan, 2026-10-06: "if the artifact could be better then
+>   go right ahead"; this replaces the adversarial-dispatch rule). The build and
+>   the mechanical gates — the fixed point, the census bounds, the battery —
+>   refute a wrong form in seconds where a refuter pass costs an hour, and they
+>   are what makes breaking things safe: a broken boot stops all work, so a
+>   break cannot ship past them. Agents are dispatched for BREADTH, never as
+>   skeptics of a design before it is built; the fluency a fresh mind was sent
+>   to catch is caught by running something (⊕: when the reason is unmeasured,
+>   the output is the next instrument).
 > - **Breadth / exhaustive coverage → WORKFLOW fan-out** (audits, multi-file
->   sweeps, judge-panels of N independent approaches).
+>   sweeps, fixtures, reading).
 > - **Synthesis stays INLINE** — agents inform the conclusion; I hold it.
 >
 > Scope every dispatch so it does NOT need the live context (scout inline first,
-> hand a complete brief), OR use it precisely BECAUSE it is independent
-> (adversarial verify). Never hand off the live deep-reasoning thread on a cold
+> hand a complete brief). Never hand off the live deep-reasoning thread on a cold
 > brief — that is the one proven drift.
 >
 > **THE BASE-FRESHNESS CONTRACT (measured 2026-07-25, non-negotiable):** the
@@ -338,27 +384,32 @@
 ## ⟲ The proven pipeline — every label is a hypothesis until the BINARY confirms it ⟲
 
 > The loop that closed the dead-end-flanked central blocker (2026-06-29, after many
-> sessions failed it): **diagnose → converge → build → verify → RE-DERIVE.** One law
-> above the rest: **a label is a HYPOTHESIS until the ARTIFACT confirms it — the
-> VERIFIER's included.** Three were refuted in a row this session: the orchestrator's
-> own ev-index theory (a dropped effect, not a bad index), a "multi-handler" root (a
-> seed PARSER bug), and an independent verifier's "regression" verdict (a stale tree,
-> caught only by re-deriving the gate by hand). The last, load-bearing check is the
-> orchestrator running the gate ITSELF and committing only on a self-confirmed
-> result — never on a build's or a verifier's word.
+> sessions failed it), in the form it has had since 2026-10-06: **diagnose → design
+> → build → gate → RE-DERIVE.** One law above the rest: **a label is a HYPOTHESIS
+> until the ARTIFACT confirms it — the VERIFIER's included.** Three were refuted in
+> a row that session: the orchestrator's own ev-index theory (a dropped effect, not
+> a bad index), a "multi-handler" root (a seed PARSER bug), and an independent
+> verifier's "regression" verdict (a stale tree, caught only by re-deriving the gate
+> by hand). The last, load-bearing check is the orchestrator running the gate
+> ITSELF and committing only on a self-confirmed result — never on a build's or a
+> verifier's word.
 >
-> - **Diagnose-first**, binary-arbitrated, with an **adversarial pin** told to refute
->   the leading hypothesis — kill the ghost before a fix chases it.
-> - **Adversarial design-convergence BEFORE a byte changes.** Propose N mechanisms;
->   refute each against the dead-ends / blast-radius / layering. When N independent
->   proposals collapse onto ONE attractor, that convergence IS the truth signal — and
->   it catches the dead-end (the eager-pass that reproduces the 200-site regression)
->   in design, not in production.
-> - **Gated build UNCOMMITTED → independent verify → orchestrator RE-DERIVES** the
->   ground truth. Three checks, none trusted on faith; the build stops HONESTLY at a
->   verified state rather than forcing (no band-aid).
+> - **Diagnose-first, binary-arbitrated:** the leading hypothesis meets an
+>   instrument — a fixture, a probe, a verb's answer — before a fix chases it.
+>   Kill the ghost by running something.
+> - **Design INLINE against the artifact's records, then BUILD.** The design is
+>   read against what the artifact has already measured — the LEDGER's kills,
+>   RESIDUE's refuted forms, the dead-ends a probe has named — and is then built
+>   whole. No refuter pass and no design-convergence panel stands in front of the
+>   build (Morgan, 2026-10-06): the build and the gates refute a wrong form in
+>   seconds, and a just-built form that fails is the instrument finding the next
+>   fundamental (⟐).
+> - **Build UNCOMMITTED → the orchestrator runs the gates ITSELF before any
+>   commit** — the march, the board, the battery, each answer read whole on the
+>   tree it will commit, never on a builder's or an agent's word. The build stops
+>   HONESTLY at a verified state rather than forcing (no band-aid).
 > - **Synthesis stays INLINE** (the design is the orchestrator's, holding the
->   altitude); diagnosis, refutation, breadth dispatch out (power × anti-drift, ⧗).
+>   altitude); instruments and breadth dispatch out (power × anti-drift, ⧗).
 >
 > This loop IS `mentl audit` + the multi-shot oracle in larval form (`PLAN.md §0`) —
 > the human-catches-the-drift safeguard run as machinery. **As Mentl becomes real the
@@ -488,9 +539,11 @@
 > from main, fn decls — partitioned into modules CARRYING dead weight, with
 > their reached/unreached ratio, and modules the entry links WHOLE and never
 > calls into) · `refs of NAME` · `census <shape>` · `decls` (each of
-> these, and `text`/`prose` below, also answers over a DIRECTORY of
-> independent programs — `mentl query tests/frontier/arena "refs of X"` —
-> every program judged on its own link, its own sites kept) ·
+> these, and `text`/`prose`/`ghosts`/`verification`/`smt` below, also
+> answers over a DIRECTORY of independent programs — `mentl query
+> tests/frontier/arena "refs of X"` — every program judged on its own link,
+> its own sites kept; and a question ending `in <module>` keeps that module's
+> sites: `mentl query src/main.mn "census iteration in asm"`) ·
 > `variants NAME` (an ADT's constructors, or an effect's operations, with
 > their arities) · `ghosts`
 > (every cell the parser minted and the judgment never bound) ·
@@ -686,25 +739,27 @@ rewrite in residue form inline.)
 | `_ => <fabricated value>` / `_ => str_concat` | A silent surrender-fallback — DELETE it, don't wrap; explicit enumeration |
 | "I'll work around this gap" (direct-loop, catch-all) | That's a BOLT onto a non-ultimate form — do the ultimate restructure |
 | "ultimate form reachable now" / "realistic ultimate" / "the deeper ideal is a follow-up" | Equivocating "ultimate" DOWNWARD to fit the seed — the underhanded drift in the discipline's costume. Ultimate is substrate-INVARIANT; the SEED yields, the target NEVER lowers. Dream-code the true form; sequence the work (§5), never the target |
-| "DEP-gated on X" / "requires the arena first" / "a separate band" / "blocked on unbuilt Y" — as a reason to STOP and report | **A DEP-GATE IS NOT A STOP — IT IS THE NEXT THING TO BUILD.** When the ultimate form needs a fundamental that isn't ultimate yet (the arena, a representation, a primitive), you BUILD that fundamental too, in ONE continuous arc, as deep as the ultimate requires. Naming the DEP and handing it back as a question ("want me to scope X?") is the lowered-target drift wearing a sequencing costume — the adversarial pass that FINDS the DEP is the START of the build, never the end. Take the initiative; drive the whole arc. The point of every session is to realize the novel, unprecedented, SOTA-SURPASSING Mentl form — not a copy of Rust/Haskell/anyone; the new thing we are building — AS DEEP AS IT GOES. Report a landing + keep going; never a "here's the plan, shall I?" |
+| "DEP-gated on X" / "requires the arena first" / "a separate band" / "blocked on unbuilt Y" — as a reason to STOP and report | **A DEP-GATE IS NOT A STOP — IT IS THE NEXT THING TO BUILD.** When the ultimate form needs a fundamental that isn't ultimate yet (the arena, a representation, a primitive), you BUILD that fundamental too, in ONE continuous arc, as deep as the ultimate requires. Naming the DEP and handing it back as a question ("want me to scope X?") is the lowered-target drift wearing a sequencing costume — the pass that FINDS the DEP is the START of the build, never the end. Take the initiative; drive the whole arc. The point of every session is to realize the novel, unprecedented, SOTA-SURPASSING Mentl form — not a copy of Rust/Haskell/anyone; the new thing we are building — AS DEEP AS IT GOES. Report a landing + keep going; never a "here's the plan, shall I?" |
 | Reductive audit only ("delete the duplication") with no novel pass | Run the GENERATIVE question too: how do multi-shot (time) / threading (space) / WASM-memory (substrate) + the frontier improve this primitive AND the system? Seek the leap, not only less code |
 | Tracing a trap / symptom before auditing the structure | AUDIT FIRST — the structure may not belong; the first symptom is rarely the root |
 | "Look up X by name" (ledger / index / map) | If a `~>` edge or the env already connects it → re-derivation (Anchor 1); follow the edge, read the live node |
 | Presenting "Option A (ultimate) vs Option B (safer/lower-risk)" — to me OR to the user | The fork IS the drift; the thesis already answers it. Ultimate form wins; DECIDE it, don't outsource a thesis-answered call; never hedge the wheel against the seed |
 | "It's a big change, so later" / "today was good" | Forbidden. Keep going; report result + next move |
+| A red gate, and the move that turns it green is a number, a list entry, a marker, a RESIDUE entry or a deleted file | SATISFYING, not obeying (⚖ "A gate is obeyed"). Find what the gate measures and fix that; `tools/obey-gate.py` refuses the five mechanical forms at the commit, and the deleted symptom is the sixth |
 | "This fixes the symptom / unblocks the path / is the smallest correct change" | **SUFFICIENT IS NOT ULTIMATE** (Morgan, 2026-09-06, after two non-ultimate builds in one session). A fix that works is not thereby the form. Ask what the thing WOULD be if nothing around it were assumed; sufficiency is the ultimate form's most convincing costume because it passes every test you thought to run |
 | Defining "ultimate" relative to the structures already there | **THE SURROUNDING CODE IS NOT A PREMISE.** Much of it was written by an intelligence nobody vets line-by-line, so an "ultimate given X" where X is unverified is X's drift laundered through your judgment. Verify X first, and ask whether X should exist — the ultimate form of a compensation is its DELETION |
 | Building the foundational-looking piece first because it is tractable | **HARDEST FIRST, no deferrals.** The easy piece is easy because it assumes the hard one's answer; build it first and you will build it twice. Name the hardest question, answer it, then everything downstream is forced |
 | "I'll improve/tune/ratchet the condemned meanwhile" — hygiene, caching, a better cadence on machinery a named peer sentences to deletion | Patching the CONDEMNED (Anchor 2's roadmap face, 2026-07-31). The deletion IS the work; only the oracles that arbitrate the replacement — the march, the ratchets, the divergence count — may touch it |
 | A standing per-run re-derivation wearing "verification"'s name (a second pass that narrates divergence and proceeds with its own answer) | An OVERRIDE, not a verification — a verifier refuses or the divergence is impossible. Verification happens ONCE: structurally per compile, whole-program at the march per landing (the trial/final lesson, 2026-07-31) |
 | "AI"/"agent"/"completion" in user-facing text | Substrate vocabulary: "medium proposes" / "cursor argmax" |
+| Pitching Mentl by what it does for machine-written code — a brief, a pitch, a headline | The thesis is the person's gap (PLAN §0); trusting code someone else wrote falls out of it. `tools/doc-truth.sh` holds the doors to §0's sentence; a brief you write by hand has no gate, so read §0 first |
 
 ---
 
 ## The eight anchors
 
 **0. Dream code.** Write the code you WISH existed; verify by simulation, not
-compilation. The compiler IS the oracle; AI tools are proposers; Mentl verifies.
+compilation. The compiler IS the oracle; any proposer proposes; Mentl verifies.
 The wish is INVARIANT to the substrate — write perfect Mentl source for the
 perfect substrate; complete the disposable seed to match it, never bend the
 source to the seed ("reachable now" is the wish lowered — Red-flags). And the
@@ -756,11 +811,12 @@ for new convergences; (5) consolidate proactively.
 
 - **Delete, don't decorate.** Wrong → delete and redo.
 - **Never attribute Claude in commits** (no false authorship).
-- **What Mentl IS / kernel / resolved decisions / laws:** `PLAN.md` (§0 reframe,
+- **What Mentl IS / kernel / resolved decisions / laws:** `PLAN.md` (§0 thesis,
   §2 kernel, §4 decisions, §9 laws). **Syntax / forms:** `SYNTAX.md`.
 - **Bootstrap / substrate / file-map / verification:** `PLAN.md` (§6, §8).
-- **The cursor / current work:** `PLAN.md §11` (THE PRODUCTION BAR — the
-  live roadmap) + `§7` (grounded state + the landing ledger) + `§5`
+- **The cursor / current work:** `PLAN.md §11` (THE STANDING CURSOR — the
+  program's order, one landing per paragraph, each pointing at its RESIDUE
+  design) + `§7` (grounded state; the landing record is `LEDGER.md`) + `§5`
   (real→felt→unsurpassable) + `§10` (resume).
 - **When drift happens:** re-read the three docs, run `state.sh`, ask "what does
   the ultimate medium do here?", and implement that.

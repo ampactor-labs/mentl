@@ -1,13 +1,19 @@
-// A pair piped into a two-parameter function REFUSES (E_TypeMismatch —
-// the function-arity face): the parameter lists pair arity for arity, and
-// this program's do not. Until 2026-09-27 a unification rule decomposed the
-// single tuple against the two parameters ("parameters ARE tuples") and
-// the program checked clean — then trapped at the indirect call, because
-// the emit never carried that rule into the calling convention. Measured
-// RED-first on boot b145b836: exit 0, no diagnostic, `indirect call type
-// mismatch` at run. The capability this refusal names is
-// `Hβ.lower.parameter-product-calling-convention`; this file turns green
-// only by that landing, never by re-admitting the shape at the type layer.
+// A pair VALUE piped into a two-parameter function REFUSES (E_TypeMismatch —
+// the function-arity face): a pair is one argument, and the parameter lists
+// pair arity for arity. Until 2026-09-27 a unification rule decomposed any
+// tuple against the parameters ("parameters ARE tuples") and the program
+// checked clean, then trapped at the indirect call, because the emit never
+// carried that rule into the calling convention (RED-first on boot b145b836:
+// exit 0, `indirect call type mismatch` at run). A product BUILT AT THE SITE
+// is the other shape and it runs: `(1, 2) |> add` is the merge, `add(1, 2)`,
+// one rule the judgment and the lowering both read (V2, 2026-10-06 —
+// mn-product-merges-into-stage). What crosses a binding is a value, and a
+// value fills one slot until `Hβ.lower.parameter-product-calling-convention`
+// lands; this file turns green only by that landing, never by re-admitting
+// the decomposition at the type layer.
 fn add(a, b) = a + b
 
-fn main() = (1, 2) |> add
+fn main() = {
+  let p = (1, 2)
+  p |> add
+}

@@ -11,7 +11,7 @@
 // same eight-aspect projection `mentl edit` shows, at a one-shot address.
 //
 // Run it:   mentl run  lib/tutorial/09-all.mn
-// Edit it:  mentl space   →   http://localhost:7378/ide/
+// Edit it:  Mentl Space — the page in ide/, live at https://space.ampactor.dev/ (this lesson is in its program list)
 import io
 
 // #6 refinement — Level is an Int proven to sit in 0..100 wherever one is built.
@@ -38,9 +38,9 @@ fn keep(ref x) = x
 // #3 the verbs — raise threads the counted bumps into the base and carries the
 // Bump row; run composes seed into raise into keep with |>; main installs the
 // handler with ~> and pipes the result out with |>, too.
-fn raise(base) with Bump = base + bump() + bump() + bump()
+fn raise(base) = base + bump() + bump() + bump()
 
-fn run() with Bump = seed() |> raise |> keep
+fn run() = seed() |> raise |> keep
 
 fn main() = {
   let total = {
@@ -56,12 +56,13 @@ fn main() = {
 // read shows several at once — that is the whole point: the graph read many
 // ways from one place.
 //
-//   mentl lib/tutorial/09-all.mn:40:20   — raise, mid-body: five facets at once.
-//        Query is the type; row is `Effects: Bump`; ownership is `own`; the
-//        gradient offers a step; and Why walks the Reason chain.
-//   mentl lib/tutorial/09-all.mn:35:9    — keep's parameter: ownership reads `ref`.
-//   mentl lib/tutorial/09-all.mn:32:4    — seed: the type carries the Level
-//        refinement (`() -> Level`) and the row reads `Pure`.
+//   mentl lib/tutorial/09-all.mn:41:4    — raise: five facets at once. Query is
+//        the type, `-> Int with Bump`; the row reads `Effects: Bump when
+//        called`; ownership is `own`; the gradient offers a lock (`with
+//        !Memory`, proven); and Why walks the Reason chain.
+//   mentl lib/tutorial/09-all.mn:36:9    — keep's parameter: ownership reads `ref`.
+//   mentl lib/tutorial/09-all.mn:33:4    — seed: the type carries the Level
+//        refinement (`() -> Level`) and the row reads `Pure when called`.
 //
 // Two aspects live elsewhere, honestly. The verb facet reads the shape you
 // wrote — the topology is on the page, so the ring reads it there. And the

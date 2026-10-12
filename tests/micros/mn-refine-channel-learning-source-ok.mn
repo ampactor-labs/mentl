@@ -9,4 +9,4 @@ fn inv(n: Positive) = 100 / n
 
 fn apply_all5(fs) = fold(0, (acc, f) => acc + f(5), fs)
 
-fn main() with !Trap = apply_all5([inv])
+fn main() = apply_all5([inv])

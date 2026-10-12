@@ -14,7 +14,7 @@
 // projects the canonical layout, and one precedence table draws the tree.
 //
 // Run it:   mentl run  lib/tutorial/03-verbs.mn   ← prints 30, the accumulator
-// Read it:  mentl lib/tutorial/03-verbs.mn:36     ← the cursor on a verb; the ring names its shape
+// Read it:  mentl lib/tutorial/03-verbs.mn:37:32  ← the cursor on a verb; the ring names its shape
 import io
 
 fn double(x) = x + x
@@ -34,7 +34,7 @@ fn fan(n) = n <| (double, add_one, negate)
 // together and the result is their tuple. How they run — in sequence, across
 // threads, on a device — is a handler choice, not part of the verb: install a
 // `~> Thread` schedule over the chain and the same source runs on cores.
-fn combine(x, y) = x |> double >< y |> add_one
+fn combine(x, y) = (x |> double) >< (y |> add_one)
 
 // <~ feedback — the recurrence y[n] = x[n] + y[n-1]. `(prev)` binds the prior
 // output, read live; `delay(1)` is the one-step state element. `<~` requires an
@@ -47,11 +47,11 @@ handler beat {
   rate() => resume(1),
 }
 
-fn accum(input) with Beat = ((prev) => input + prev) <~ delay(1)
+fn accum(input) = ((prev) => input + prev) <~ delay(1)
 
 // Called three times under one context, the prior carries across each call:
 // 10, then 10 + 10 = 20, then 10 + 20 = 30.
-fn run() with Beat = {
+fn run() = {
   let a = accum(10)
   let b = accum(10)
   accum(10)

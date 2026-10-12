@@ -1,6 +1,6 @@
-// propose 4:20: ask value
-// The empty string beside a Linked-ring call that answers a String (a substrate
-// helper the ring offers as vocabulary — Hβ.synth.linked-ring-offers-substrate-internals).
+// propose 4:20: ask value "0123456789abcdef" or ""
+// The empty string beside a Linked-ring call that answers a String; the question names the helper's
+// value, which is how the substrate leak reads to a developer (Hβ.synth.linked-ring-offers-substrate-internals).
 fn f() -> String = ??
 
 fn main() = 0

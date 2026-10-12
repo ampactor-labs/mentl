@@ -1,9 +1,10 @@
-// Hβ.emit.under-application-suspension's standing crucible: bare
-// under-application (one field absent, no ?? marker) must NEVER
-// silently produce a wrong-valued run. Today the emit produces invalid
-// WAT (loud at assemble — the 2026-08-09 find); the peer's fix makes
-// this program RUN as the suspension, exit 42. Either state is sound;
-// the one forbidden state is a run with a wrong value.
+// expect: 42
+// mn-under-application-loud — a bare under-application (one field absent,
+// no ?? marker) IS the partial SYNTAX names: `add3(10, 30)` is a value
+// awaiting its last field, and calling it with 2 runs the suspension to 42.
+// The frontier leg passes on 42 and nothing else; a run with any other value
+// is the silent wrong this crucible exists to refuse, and a module that no
+// longer assembles is a regression.
 fn add3(a, b, c) = a + b + c
 
 fn main() = {

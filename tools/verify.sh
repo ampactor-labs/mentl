@@ -27,7 +27,7 @@ WHEEL_ONLY=0; PREFLIGHT_ONLY=0
 [[ "${1:-}" == "--preflight" ]] && PREFLIGHT_ONLY=1
 
 BASELINE="tools/verify-baseline.txt"
-source "$ROOT/tools/wt-env.sh"   # WT, WT_RUN_FLAGS, W2W — the one home
+source "$ROOT/tools/wt-env.sh"   # WT, WT_RUN_FLAGS, wt_asm — the one home
 # The runtime trio IS the vocabulary every real .mn program reaches for, so
 # a micro compiled WITHOUT it is the abnormal case, not the default. Link it for
 # every micro: a micro that calls str_concat/str_eq (strings) or ev_lookup (the
@@ -40,7 +40,7 @@ say() { printf '%s\n' "$*"; }
 fail=0
 
 [[ -f "$BASELINE" ]] || { say "verify: baseline missing: $BASELINE"; exit 2; }
-[[ "$PREFLIGHT_ONLY" -eq 1 || -x "${WT:-}" ]] || { say "verify: the runner is not built at ${WT:-tools/runner} (cargo build --release --manifest-path tools/runner/Cargo.toml)"; exit 2; }
+[[ "$PREFLIGHT_ONLY" -eq 1 || -x "${WT:-}" ]] || { say "verify: no engine at ${WT:-(unresolved)} — bash tools/wasmtime-get.sh fetches the pinned wasmtime (tools/wt-env.sh resolves MENTL_WASMTIME, then .build/wasmtime, then PATH)"; exit 2; }
 
 # ── THE TEXT LEGS — the ratchets that read only text (2026-09-26) ─────────
 # The quiet gate, the scaffold count and the sugar vocabulary need no compiler,
@@ -101,7 +101,9 @@ text_legs() {
   # demand-link must carry: reachability from written names alone would miss
   # them, so the day that set changes is the day the seed must change with
   # it. This is the SIZE of the intersection between what lib/ publishes and
-  # what the five desugar-capable modules quote, held EXACT.
+  # what the desugar-capable modules quote, held EXACT — the five that
+  # mint, and types.mn, where the sugar's callees have one home since R0i
+  # (`concat_callees`, `subscript_callee`, `list_rest_callee`).
   # WHAT IT CATCHES, stated precisely because the first draft of this comment
   # oversold it and the RED tests said so: a name ENTERING or LEAVING the
   # vocabulary — a new name-keyed dependency on the prelude that nobody
@@ -118,7 +120,7 @@ text_legs() {
   { grep -hoE '^fn [a-z_][A-Za-z0-9_]*' lib/prelude.mn lib/*.mn | sed 's/^fn //'
     grep -hoE '^type [A-Z][A-Za-z0-9_]*|^  = [A-Z][A-Za-z0-9_]*|^  \| [A-Z][A-Za-z0-9_]*' lib/prelude.mn lib/*.mn | sed -E 's/^(type|  = |  \| )//'
   } | sort -u > "$sv_pre"
-  grep -hoE '"[A-Za-z_][A-Za-z0-9_]*"' src/lower.mn src/backends/wasm.mn src/parser.mn src/infer.mn src/pipeline.mn | tr -d '"' | sort -u > "$sv_min"
+  grep -hoE '"[A-Za-z_][A-Za-z0-9_]*"' src/lower.mn src/backends/wasm.mn src/parser.mn src/infer.mn src/pipeline.mn src/types.mn | tr -d '"' | sort -u > "$sv_min"
   csugar=$(comm -12 "$sv_pre" "$sv_min" | wc -l)
   rm -f "$sv_pre" "$sv_min"
   svmax=$(grep -E '^desugar_vocabulary:' "$BASELINE" | head -1 | cut -d: -f2 | tr -d ' ')
@@ -158,6 +160,25 @@ fi
 
 text_legs
 
+# 0. Every fixture directory a leg reads is in the green stamp's key
+#    (WT_VERIFY_FIXTURE_DIRS, tools/wt-env.sh — G2). The key under-included a
+#    battery twice because a leg could name a directory the key never heard
+#    of; this reads the legs' own executable lines and refuses that.
+key_gap=$(sed -e '/^[[:space:]]*#/d' "${BASH_SOURCE[0]}" | grep -oE 'tests/[a-z_-]+(/[a-z_-]+)?' | sort -u \
+  | while read -r d; do
+      inkey=0
+      for k in "${WT_VERIFY_FIXTURE_DIRS[@]}"; do
+        case "$d" in "$k"|"$k"/*) inkey=1 ;; esac
+      done
+      [ "$inkey" = 1 ] || echo "$d"
+    done)
+if [[ -n "$key_gap" ]]; then
+  say "✗ a verify leg reads fixtures the green stamp's key does not hash: $(echo $key_gap) — add them to WT_VERIFY_FIXTURE_DIRS"
+  fail=1
+else
+  say "· stamp key: every fixture directory a leg reads is hashed (${#WT_VERIFY_FIXTURE_DIRS[@]} directories)"
+fi
+
 # 1. The compiler exists: the pinned fixpoint wheel (boot/ — first light
 #    2026-07-10; boot/PROVENANCE.md). The hand-WAT seed is DELETED (7401c4b);
 #    the cold-ladder recipe lives at tag first-light (band J archaeology).
@@ -176,9 +197,10 @@ else
 fi
 
 # 2. Micro battery — the medium's own `test` verb against the pinned boot:
-#    every fixture compiled, run through the runner's exec seam and judged
-#    against its own `// expect:` contract in ONE process (wt_battery reads
-#    the verdict and holds the exit + every-fixture-judged contract). Under
+#    every fixture compiled and judged against its own `// expect:` contract
+#    in ONE process, each run contract's module assembled and run by the
+#    host (wt_battery_host reads the RUN lines; wt_battery holds the exit +
+#    every-fixture-judged contract). Under
 #    --wheel the contract battery below judges the same fixtures through the
 #    candidate, so this leg has nothing of its own to measure.
 if [[ "$WHEEL_ONLY" -eq 0 ]]; then
@@ -188,8 +210,8 @@ fi
 
 # 2b. The contract battery — the medium enforcing every fixture's own
 #     contract (run AND refuse grammars) in one process. A FAILC / FAILR /
-#     NOEXPECT line is a broken contract; the run-values above stay the
-#     exec-side check until the exec seam itself absorbs.
+#     NOEXPECT line is a broken contract, and a FAIL(run) / FAIL(asm) line
+#     is the host's verdict on a module the compiler handed it.
 #
 #     THE COMPILER IS THE ONE THIS GATE OWNS, never the installed pointer.
 #     The shim resolves MENTL_HOME to the repo it was installed from, so in
@@ -376,11 +398,12 @@ if C=$(wt_m2_ensure); then
     [[ "$rout" == PASS* ]] || { say "✗ row $r: ${rout:-no output}"; rm_bad=$((rm_bad+1)); continue; }
     rproj=$(wt_run --dir . "$C/m2.wasm" query "$rf" "type pick" 2>/dev/null)
     # Two states. A remainder is PROVEN (rendered as its fields) or FREE
-    # (rendered open, `| r…`), and a free one is a variable each caller closes.
+    # (rendered open as SYNTAX writes it, `...`), and a free one is a
+    # variable each caller closes.
     case "$rkind:$rproj" in
-      proven:*'|'*) say "✗ row $r: declares a proven remainder, projection still shows an open row"; rm_bad=$((rm_bad+1)) ;;
+      proven:*'...'*) say "✗ row $r: declares a proven remainder, projection still shows an open row"; rm_bad=$((rm_bad+1)) ;;
       proven:*) ;;
-      free:*'|'*) ;;
+      free:*'...'*) ;;
       free:*) say "✗ row $r: declares a free remainder, projection shows it resolved"; rm_bad=$((rm_bad+1)) ;;
     esac
   done
@@ -484,8 +507,8 @@ if C=$(wt_m2_ensure); then
   # tools/comment-audit.sh + comment-ratchet.sh whole: the medium is the
   # classifier now, and the count rides the census compile — zero extra passes.
   # IT READS THE MANIFEST LINK, NOT THE BLOB, and that is the whole fix.
-  # This grepped "$C/m2.err" — the compile of .build/m2cache/wheel.mn, which
-  # is every module CONCATENATED INTO ONE FILE. One module means every name is
+  # This grepped "$C/m2.err" — the compile of the blob the fixed point read
+  # until 2026-10-06 (M9), which was every module CONCATENATED INTO ONE FILE. One module means every name is
   # local and a cross-module reference problem is UNCONSTRUCTIBLE, so the count
   # was not a measurement that read zero; it was one that could not read
   # anything else (measured 2026-09-20: 0 here against 58 across the modules).
@@ -637,33 +660,64 @@ if C=$(wt_m2_ensure); then
   # binding was declared in a module its own module never imports refuses
   # E_MissingImport inside the ONE judgment above (F0b, 2026-09-27), so
   # every module the entry links is judged there. What that judgment cannot
-  # see is a module NOBODY links from the entry — lib/combinators and the
-  # tutorials today — and each of those is its own closure's root: one
-  # small check per island, judged by the same wheel, memoized like the rest.
+  # see is a module NOBODY links from the entry — and that is what the medium
+  # SHIPS: since the fixed point stopped being a blob (2026-10-06, M9), the
+  # library roots a program may import (dsp/*, ml/*, audio/wav, combinators)
+  # and the tutorials are never the compiler's imports, so each is its own
+  # closure's root here: one small check per root, judged by the same wheel,
+  # memoized like the rest.
   islkey=$(wt_memo_key_run "$C/m2.wasm" src lib)
   if islmemo=$(wt_memo_hit islands "$islkey"); then
     say "$islmemo (memo)"
   else
     isl_linked=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$C/m2.wasm" query src/main.mn modules 2>/dev/null | grep -oE '[A-Za-z_][A-Za-z_0-9/.-]*' | sort -u)
     isl_bad=0; isl_n=0
-    for islf in src/*.mn src/backends/*.mn lib/*.mn lib/dsp/*.mn lib/ml/*.mn lib/tutorial/*.mn; do
+    # Every module the tree holds, read off the tree — the hand-listed
+    # directory globs this walked missed lib/audio/ (lib/audio/wav.mn was
+    # judged by nothing but the blob), and a root the board does not list is
+    # a root it does not judge. A root is judged CLEAN: no error of any class
+    # on its own link, never only its missing names.
+    for islf in $(find src lib -name '*.mn' | sort); do
       islm=${islf#src/}; islm=${islm#lib/}; islm=${islm%.mn}
       if ! printf '%s\n' "$isl_linked" | grep -qx "$islm"; then
         isl_n=$((isl_n + 1))
-        isl_miss=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$C/m2.wasm" check "$islf" 2>&1 | grep -cE 'E_MissingVariable|E_MissingImport')
-        if [[ "$isl_miss" -gt 0 ]]; then
+        isl_err=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$C/m2.wasm" check "$islf" 2>&1 | grep -cE 'E_[A-Za-z_]+ error')
+        if [[ "$isl_err" -gt 0 ]]; then
           isl_bad=$((isl_bad + 1))
-          say "✗ island $islf: $isl_miss missing name(s) on its own closure"
+          say "✗ island $islf: $isl_err error(s) on its own link"
         fi
       fi
     done
-    islline="· islands: $isl_n module(s) the entry never links, each judged as its own root — $isl_bad with a missing name"
+    islline="· islands: $isl_n module(s) the entry never links, each judged as its own root — $isl_bad with an error"
     if [[ "$isl_bad" -eq 0 ]]; then
       say "$islline"
       wt_memo_put islands "$islkey" "$islline"
     else
       say "✗ $islline"
       fail=1
+    fi
+  fi
+  # THE HEAD ROUND TRIP — `parse(render(head)) == head` for every module-level
+  # function in the link, through the formatter's head and the developer's
+  # eye (`where`, `doc`, the caret): `mentl query src/main.mn heads` renders
+  # each, parses it as the declaration it spells and renders it again. Held
+  # at zero since the heads landing closed the grammar's three gaps
+  # (`Hβ.syntax.named-record-rest-is-dropped`,
+  # `Hβ.syntax.row-grammar-has-no-grouping`,
+  # `Hβ.syntax.effect-arg-type-is-one-token`). Seen RED: the base renderer
+  # failed 787 of 4,534, and boot b2920932 97 of 4,772.
+  hrt=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$C/m2.wasm" query src/main.mn heads 2>/dev/null | head -1 | grep -oE '[0-9]+ that do not' | grep -oE '^[0-9]+')
+  hrtmax=$(grep -E '^head_round_trip_max:' "$BASELINE" | head -1 | cut -d: -f2 | tr -d ' ')
+  if [[ -z "$hrt" ]]; then
+    say "✗ HEADS: mentl query src/main.mn heads answered nothing — the projection is broken, not clean."
+    fail=1
+  else
+    say "· heads: $hrt head(s) that do not round-trip through their own render"
+    if [[ -n "$hrtmax" && "$hrt" -gt "$hrtmax" ]]; then
+      say "✗ HEADS RATCHET: heads that do not round-trip rose $hrtmax -> $hrt — a render says something its own parse does not read back."
+      fail=1
+    elif [[ -n "$hrtmax" && "$hrt" -lt "$hrtmax" ]]; then
+      say "  ↓ heads TIGHTENED $hrtmax -> $hrt — lower head_round_trip_max in $BASELINE to hold it."
     fi
   fi
   } > "$census_out"

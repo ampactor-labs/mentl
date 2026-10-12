@@ -1,0 +1,7 @@
+// propose 5:22: fill -1
+// A negative seed is proposed as the source writes it: the negation of its magnitude.
+type Negative = Int where self < 0
+
+fn f() -> Negative = ??
+
+fn main() = 0

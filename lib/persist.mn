@@ -31,9 +31,9 @@
 // mid-spawn is Phase C's fusion work, not claimed here.
 import memory
 
-import strings
-
 import io
+
+import strings
 
 // A durable-branch ticket is opaque to its consumer. The handler owns the
 // current in-image index representation; the effect surface preserves only the

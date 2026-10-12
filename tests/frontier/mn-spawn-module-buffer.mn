@@ -1,0 +1,14 @@
+// A module value is the root's, initialized once: a spawned instance reads
+// the module's buffer the root has since updated in place, exactly as a
+// branch under no schedule does — one source, two schedules, one answer.
+// Expected exit: 18 (each branch reads the 9 the root stored).
+let buf = make_list(1)
+
+fn read_slot(_) = list_index(buf, 0)
+
+fn main() = {
+  list_set(buf, 0, 9)
+  match 0 <| (read_slot, read_slot) ~> parallel_compose {
+    (a, b) => a + b,
+  }
+}

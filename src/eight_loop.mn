@@ -58,19 +58,19 @@
 //   Drift 11 (suffix-append): Buffer-counter substrate.
 import types
 
+import cursor
+
 import effects
 
 import graph
 
-import own
-
-import verify
+import math
 
 import mentl
 
-import cursor
+import own
 
-import math
+import verify
 
 // ─── The eight interrogations as a tagged ADT ───────────────────────
 //
@@ -113,8 +113,18 @@ type InterrogationVerdict
   | VerdictInvites(Reason)
 
 // ─── Per-position report — one record-shape (drift 7 closure) ──────
-type InterrogationReport
-  = InterrogationReport({gradient_v: InterrogationVerdict, graph_v: InterrogationVerdict, handle: Int, handler_v: InterrogationVerdict, ownership_v: InterrogationVerdict, reason_v: InterrogationVerdict, refinement_v: InterrogationVerdict, row_v: InterrogationVerdict, span: Span, verb_v: InterrogationVerdict})
+type InterrogationReport = {
+  gradient_v: InterrogationVerdict,
+  graph_v: InterrogationVerdict,
+  handle: Int,
+  handler_v: InterrogationVerdict,
+  ownership_v: InterrogationVerdict,
+  reason_v: InterrogationVerdict,
+  refinement_v: InterrogationVerdict,
+  row_v: InterrogationVerdict,
+  span: Span,
+  verb_v: InterrogationVerdict,
+}
 
 // graph handle the report attaches to
 //
@@ -229,18 +239,7 @@ fn interrogation_at(handle) = match graph_chase(handle) {
         },
       }
     ) {
-      (graph_v, handler_v, verb_v, row_v, ownership_v, refinement_v, gradient_v, reason_v) => InterrogationReport({
-        gradient_v: gradient_v,
-        graph_v: graph_v,
-        handle: handle,
-        handler_v: handler_v,
-        ownership_v: ownership_v,
-        reason_v: reason_v,
-        refinement_v: refinement_v,
-        row_v: row_v,
-        span: span,
-        verb_v: verb_v,
-      }),
+      (graph_v, handler_v, verb_v, row_v, ownership_v, refinement_v, gradient_v, reason_v) => InterrogationReport({gradient_v, graph_v, handle, handler_v, ownership_v, reason_v, refinement_v, row_v, span, verb_v}),
     }
   },
 }

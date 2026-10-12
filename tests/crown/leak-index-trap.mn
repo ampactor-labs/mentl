@@ -1,0 +1,8 @@
+// CROWN partiality (TRAP, 2026-10-06): a sequence read traps past its
+// sequence, so a read whose bounds nothing here proves performs Trap, and a
+// declared `!Trap` over it refuses. `xs` is a parameter, so no length is in
+// sight. Checked clean on boot 4228ff71: the deliberate trap beneath every
+// read (lib/memory's out_of_range) was rowed Memory alone. Expect E_EffectMismatch.
+fn sixth(xs) with !Trap = xs[5]
+
+fn main() = sixth([1, 2, 3])

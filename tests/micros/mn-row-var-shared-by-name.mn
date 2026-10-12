@@ -1,0 +1,17 @@
+// expect: 7
+// One name, one row: e in a parameter's type and in the declaration's own
+// clause is one variable of the signature, as a type variable named in two
+// places is. `(e - E)` is the masked row the formatter writes back for a
+// body that absorbs E around the callback — a group the clause folds whole —
+// and the install's own cost rides beside it.
+effect E {
+  op() -> Int
+}
+
+handler h {
+  op() => resume(3),
+}
+
+fn guarded(f: () -> Int with e) -> Int with Memory + Alloc + (e - E) = (f() ~> h) + 4
+
+fn main() = guarded(() => op())

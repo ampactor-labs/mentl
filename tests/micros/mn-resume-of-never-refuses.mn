@@ -1,0 +1,19 @@
+// expect: refuse E_ResumeOfNever
+// `-> !` is the never type: an op that declares it never returns to its
+// performer, so `!` is quantified per PERFORM and every consumer meets its
+// own fresh variable. An arm that resumes such an op hands a value of one
+// type to a performer that may stand at any type, so no resume of it is
+// sound whatever it hands back. On boot 4228ff71 this compiled clean and ran
+// to 4: the `!` was an effect parameter, the install fixed it at Int, and
+// the op the declaration says never returns returned.
+effect Stop {
+  halt(code: Int) -> !
+}
+
+handler keep_going {
+  halt(c) => resume(3),
+}
+
+fn f() = halt(3) + 1
+
+fn main() -> Int = f() ~> keep_going

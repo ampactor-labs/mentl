@@ -58,7 +58,7 @@ fn sig_at(n: Int, nn: Int) -> Float with Pure = {
   lo + hi + noise
 }
 
-fn build_signal(out, i: Int, n: Int) with Memory = {
+fn build_signal(out, i: Int, n: Int) ={
   if i >= n { out }
   else { build_signal(list_set(out, i, sig_at(i, n)), i + 1, n) }
 }
@@ -70,24 +70,24 @@ fn build_signal(out, i: Int, n: Int) with Memory = {
 fn lp_step(x: Float, a: Float) -> Float with Sample + Memory + Alloc =
   ((prev) => a * x + (1.0 - a) * prev) <~ delay(1)
 
-fn filter_loop(xs, a: Float, i: Int, n: Int, out) with Sample + Memory + Alloc = {
+fn filter_loop(xs, a: Float, i: Int, n: Int, out) = {
   if i >= n { out }
   else { filter_loop(xs, a, i + 1, n, list_set(out, i, lp_step(xs[i], a))) }
 }
 
 // One single-bin DFT magnitude at `freq` cycles over N: re/im threaded as
 // annotated float accumulators, the magnitude their hypotenuse.
-fn dft_loop(xs, freq: Int, n: Int, j: Int, re: Float, im: Float) with Memory = {
+fn dft_loop(xs, freq: Int, n: Int, j: Int, re: Float, im: Float) ={
   if j >= n { sqrt(re * re + im * im) }
   else {
     let ang = two_pi() * float_of_int(freq) * float_of_int(j) / float_of_int(n)
     dft_loop(xs, freq, n, j + 1, re + xs[j] * cos(ang), im + xs[j] * sin(ang))
   }
 }
-fn dft_mag(xs, freq: Int, n: Int) with Memory = dft_loop(xs, freq, n, 0, 0.0, 0.0)
+fn dft_mag(xs, freq: Int, n: Int) =dft_loop(xs, freq, n, 0, 0.0, 0.0)
 
 // The argmax bin over the eight DFT frequencies, tracking the running best.
-fn argmax_loop(xs, bins, n: Int, k: Int, nb: Int, best_k: Int, best_v: Float) with Memory = {
+fn argmax_loop(xs, bins, n: Int, k: Int, nb: Int, best_k: Int, best_v: Float) ={
   if k >= nb { best_k }
   else {
     let v = dft_mag(xs, bins[k], n)
@@ -97,7 +97,7 @@ fn argmax_loop(xs, bins, n: Int, k: Int, nb: Int, best_k: Int, best_v: Float) wi
 }
 
 // Zero-crossing count: consecutive samples whose sign differs.
-fn zc_loop(xs, i: Int, n: Int, acc: Int) with Memory = {
+fn zc_loop(xs, i: Int, n: Int, acc: Int) ={
   if i >= n { acc }
   else {
     let na = if xs[i - 1] < 0.0 { 1 } else { 0 }
@@ -108,7 +108,7 @@ fn zc_loop(xs, i: Int, n: Int, acc: Int) with Memory = {
 }
 
 // Clipped-sample count: the magnitude of x above the threshold.
-fn clip_loop(xs, thresh: Float, i: Int, n: Int, acc: Int) with Memory = {
+fn clip_loop(xs, thresh: Float, i: Int, n: Int, acc: Int) ={
   if i >= n { acc }
   else {
     let ax = if xs[i] < 0.0 { 0.0 - xs[i] } else { xs[i] }
@@ -117,7 +117,7 @@ fn clip_loop(xs, thresh: Float, i: Int, n: Int, acc: Int) with Memory = {
   }
 }
 
-fn analyze(sig, filtered, n: Int) with Memory + Alloc = {
+fn analyze(sig, filtered, n: Int) ={
   let bins = [4, 8, 12, 16, 24, 32, 48, 64]
   let ab = argmax_loop(filtered, bins, n, 1, 8, 0, dft_mag(filtered, 4, n))
   let zc = zc_loop(filtered, 1, n, 0)
@@ -128,7 +128,7 @@ fn analyze(sig, filtered, n: Int) with Memory + Alloc = {
   base + zbit + cbit
 }
 
-fn run(n: Int) with Sample + Memory + Alloc = {
+fn run(n: Int) = {
   let sig = build_signal(make_list(n), 0, n)
   let filtered = filter_loop(sig, 0.15, 0, n, make_list(n))
   analyze(sig, filtered, n)

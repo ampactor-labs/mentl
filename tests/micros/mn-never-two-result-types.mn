@@ -1,0 +1,14 @@
+// expect: 7
+// `!` is quantified per perform: `fail` stands at a list in one branch and
+// at an Int in the other, and the two performs are one effect instance —
+// `both`'s row is `Fail`, never `Fail(a)`. On boot 4228ff71 the `!` was the
+// effect's type parameter, so the row carried `Fail(List(b))` for the first
+// perform and dropped the second's instance. The abandoning arm answers the
+// install either way.
+handler bail {
+  fail(msg) => 7,
+}
+
+fn both(c: Bool) = if c { len(fail("s")) } else { fail("i") + 1 }
+
+fn main() -> Int = both(true) ~> bail

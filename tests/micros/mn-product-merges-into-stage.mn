@@ -1,0 +1,20 @@
+// expect: 40
+// THE MERGE (PLAN §4②, Faust's `,` then `:`): a product the site builds fills
+// the N open slots of the stage a `|>` hands it, so the tuple is never built
+// and `((a) >< (b)) |> f` is `f(a, b)` (the fanout parenthesized: `|>` binds
+// tighter than `><`, SYNTAX §Precedence). A product of two reaching a
+// two-parameter stage was `E_TypeMismatch: function arity mismatch` on boot
+// d956687d, so the verbs could not express a merge at all.
+fn fadd(a, b) = a + b
+
+fn sum3(x, y, z) = x + y + z
+
+fn main() -> Int = {
+  let before = heap_mark()
+  let pair = (1.0, 2.0) |> fadd
+  let fan = ((1 + 1) >< (2 + 2)) |> fadd
+  let three = ((1) >< (2) >< (3)) |> sum3
+  let lam = (3, 4) |> ((a, b) => a * b)
+  let grown = addr_diff(heap_mark(), before)
+  if grown == 0 && pair == 3.0 && fan == 6 && three == 6 && lam == 12 { 40 } else { 41 }
+}

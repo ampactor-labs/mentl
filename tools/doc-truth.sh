@@ -16,6 +16,10 @@
 #      path; a command that does not exist is a broken promise. The §7
 #      landing ledger is HISTORY (a deletion record legitimately names the
 #      file it deleted) and is excluded from the sweep.
+#   4. RESIDUE's peers (tools/residue-truth.py): every peer the read-path
+#      docs cite is an entry, every entry's status is from the closed
+#      vocabulary and agrees with LEDGER's closures, and an open entry's
+#      code names resolve to what the medium declares.
 #
 # Scaffold tier (PLAN §6): dissolves into docs-as-projection + `mentl audit`
 # (the state sections generated from the graph make checks 1-2 vacuous; the
@@ -198,6 +202,74 @@ elif printf '%s' "$cursor_block" | grep -qE '(crown|frontier|proof-exactness|mic
   echo "  the selector is read as CURRENT every iteration; the numbers live in state.sh (§7's law)"
   fail=1
 fi
+
+# RESIDUE's peers held to the docs and the artifact (2026-10-06). PLAN §7 says
+# "a gap not in RESIDUE.md does not exist", and three claims in that sentence
+# are checkable: every peer the read-path docs cite is an entry header, every
+# status is from the closed vocabulary and agrees with the closures LEDGER
+# records, and an OPEN entry's code names resolve to what the medium declares
+# (`mentl query src/main.mn decls`), to a path, or to the entry's own Builds
+# line. Measured on its first run: 1,570 citations of peers with no header,
+# because RESIDUE had no entry headers at all — 508 lines opened with a peer
+# name and nothing told an entry from a continuation. One script, so the
+# roster parsing has one home.
+if ! python3 tools/residue-truth.py; then
+  fail=1
+fi
+
+# THE TOOLCHAIN'S VARIABLES HAVE ONE HOME — the table in tools/wt-env.sh's
+# header (E1, 2026-10-06). Thirteen MENTL_ names were read across a dozen
+# scripts with their defaults stated nowhere together; every one the host
+# side reads must be a row of that table, so a new variable lands with its
+# default and its reader or the verify refuses it. A doc file's name
+# (docs/MENTL_SPACE.md) is a path, never a variable.
+env_table=$(awk '/^# THE TOOLCHAIN.S OWN VARIABLES/{f=1; next} f && /^#   MENTL_/{print $2} f && !/^#/{exit}' tools/wt-env.sh)
+if [ -z "$env_table" ]; then
+  echo "doc-truth: tools/wt-env.sh's toolchain-variable table did not parse — the check cannot fail, so it fails"
+  fail=1
+else
+  for v in $(grep -rhoE 'MENTL_[A-Z0-9_]+(\.md)?' tools ide .githooks 2>/dev/null | grep -v '\.md$' | sort -u); do
+    if ! printf '%s\n' "$env_table" | grep -qx "$v"; then
+      echo "doc-truth: $v is read by the toolchain ($(grep -rlE "\\b$v\\b" tools ide .githooks | head -3 | tr '\n' ' '))and is not a row of tools/wt-env.sh's variable table"
+      fail=1
+    fi
+  done
+fi
+
+# THE DOORS LEAD WITH THE THESIS (Morgan, 2026-10-09). The thesis has one
+# home — PLAN §0's first bold sentence — and every reader-facing door states
+# it verbatim, the README as its first words. The headline stood inverted
+# from 2026-06-18 to 2026-10-09 ("humanity's verification substrate for the
+# age of machine-generated code") while §0 itself kept "the developer is the
+# telos" two paragraphs down: prose holding a thesis is edited like state,
+# one citable argument at a time, so the doors are read against the home
+# here. And the inverted framings are refused in every door: trustworthy
+# machine-written code is what falls out of the thesis, never its headline.
+flat() { tr '\n' ' ' | sed -e 's/\*\*//g' -e 's/  */ /g'; }
+thesis=$(awk '/^## §0 /{f=1; next} f && /^\*\*/{t=1} t{print} t && /\.\*\*/{exit}' PLAN.md | flat | sed -e 's/\(\.\) .*/\1/' -e 's/ *$//')
+if [ -z "$thesis" ]; then
+  echo "doc-truth: PLAN §0's thesis sentence did not parse — the check cannot fail, so it fails"
+  fail=1
+else
+  lead=$(awk 'NR>1 && NF{print; exit}' README.md | flat)
+  case "$lead" in
+    "$thesis"*) ;;
+    *) echo "doc-truth: README.md does not open with PLAN §0's thesis: \"$thesis\""; fail=1 ;;
+  esac
+  for door in docs/POSITIONING.md docs/READING.md; do
+    if ! flat < "$door" | grep -qF "$thesis"; then
+      echo "doc-truth: $door does not state PLAN §0's thesis: \"$thesis\""
+      fail=1
+    fi
+  done
+fi
+for door in PLAN.md README.md docs/POSITIONING.md docs/READING.md docs/MENTL_SPACE.md docs/DESIGN_SYSTEM.md ide/index.html ide/README.md; do
+  inverted=$(flat < "$door" | grep -oiE 'verification substrate|age of machine-generated|let anything write|is unemployed|no LLM advantageous' | sort -u | tr '\n' ';')
+  if [ -n "$inverted" ]; then
+    echo "doc-truth: $door leads with machines where PLAN §0 leads with the person: $inverted"
+    fail=1
+  fi
+done
 
 if [ $fail -eq 0 ]; then
   echo "doc-truth: the docs' checkable claims verify against the artifact"

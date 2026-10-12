@@ -36,7 +36,7 @@
 // sharp resonator bank for true removal-RED + low-frequency resolution are the
 // named peers Hβ.dsp.tort-modulation-index and Hβ.dsp.resonator-filter-bank.)
 
-fn main() with Memory + Alloc + WASI = {
+fn main() = {
   let sr = 512
   let signal = read_recording("/tmp/mentl-signal-recording.txt")
   let low_freqs = [4, 6, 8, 10]

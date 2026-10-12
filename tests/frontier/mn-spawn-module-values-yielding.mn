@@ -1,0 +1,24 @@
+// The module-values record in a module that YIELDS: the task record's abandon
+// words stand before the record's address, so the spawned instance reads it
+// past them. Both branches read the root's updated `base` (7 + 7); the
+// abandon beside the fanout makes the module yield and answers 3.
+// Expected exit: 17.
+effect Ab {
+  ab() -> Int
+}
+
+handler h {
+  ab() => 3,
+}
+
+let base = make_list(1)
+
+fn read_base(_) = list_index(base, 0)
+
+fn main() = {
+  list_set(base, 0, 7)
+  let s = match 0 <| (read_base, read_base) ~> parallel_compose {
+    (a, b) => a + b,
+  }
+  s + (ab() ~> h)
+}

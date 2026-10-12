@@ -13,17 +13,17 @@
 // form of the exit reclaimed the region with the argument's slot unjournaled,
 // and the arm read a reclaimed list (len 0 for 10, the frontier's red that
 // named the journal entry).
-effect Fail {
-  fail(xs: [Int]) -> Int
+effect Bail {
+  bail(xs: [Int]) -> Int
 }
 
 handler catch_it {
-  fail(xs) => len(xs),
+  bail(xs) => len(xs),
 }
 
 fn build(n) = if n == 0 { [] } else { build(n - 1) ++ [n] }
 
-fn body() = fail(build(10)) + len(build(300)) ~> arena
+fn body() = bail(build(10)) + len(build(300)) ~> arena
 
 fn main() = {
   let r = body() ~> catch_it

@@ -12,30 +12,30 @@
 // with python EXACTLY.
 
 // Count occurrences of one byte value across the whole text.
-fn count_byte_loop(text, target: Int, i: Int, n: Int, acc: Int) with Memory = {
+fn count_byte_loop(text, target: Int, i: Int, n: Int, acc: Int) ={
   if i >= n { acc }
   else {
     let inc = if byte_at(text, i) == target { 1 } else { 0 }
     count_byte_loop(text, target, i + 1, n, acc + inc)
   }
 }
-fn count_byte(text, target: Int) with Memory = count_byte_loop(text, target, 0, byte_len(text), 0)
+fn count_byte(text, target: Int) =count_byte_loop(text, target, 0, byte_len(text), 0)
 
 // A 256-slot byte histogram, threaded through the byte scan (flat list_set, in
 // place). make_list zero-inits, so each slot starts at 0.
-fn hist_loop(text, i: Int, n: Int, hist) with Memory + Alloc = {
+fn hist_loop(text, i: Int, n: Int, hist) = {
   if i >= n { hist }
   else {
     let b = byte_at(text, i)
     hist_loop(text, i + 1, n, list_set(hist, b, list_index(hist, b) + 1))
   }
 }
-fn build_hist(text) with Memory + Alloc =
+fn build_hist(text) =
   hist_loop(text, 0, byte_len(text), make_list(256))
 
 // The most frequent lowercase letter (a=97 .. z=122); a forward scan, so the
 // first max wins on a tie — the same order the python oracle takes.
-fn top_letter_loop(hist, b: Int, best_b: Int, best_c: Int) with Memory = {
+fn top_letter_loop(hist, b: Int, best_b: Int, best_c: Int) ={
   if b > 122 { best_b }
   else {
     let c = list_index(hist, b)
@@ -43,9 +43,9 @@ fn top_letter_loop(hist, b: Int, best_b: Int, best_c: Int) with Memory = {
     else { top_letter_loop(hist, b + 1, best_b, best_c) }
   }
 }
-fn top_letter(hist) with Memory = top_letter_loop(hist, 97, 0, 0 - 1)
+fn top_letter(hist) =top_letter_loop(hist, 97, 0, 0 - 1)
 
-fn main() with Memory + Alloc + WASI = {
+fn main() = {
   let text = fs_read_file_impl("/tmp/mentl-text-corpus.txt")
   let nbytes = byte_len(text)
   let ce = count_byte(text, 101)      // 'e'

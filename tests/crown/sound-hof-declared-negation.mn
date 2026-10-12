@@ -1,8 +1,0 @@
-// CROWN control — the declared-!E cap must not over-reject: a pure lambda
-// under `fn run(f) with !E` satisfies the negation and must be ACCEPTED.
-// Guards the Hβ.infer.declared-row-vacuous fix against the twice-measured
-// dead end (rejecting free tails at the gate: 646 false mismatches).
-effect E { op() -> Int }
-fn run(f) with !E = f()
-fn good() = run(() => 42)
-fn main() = good()

@@ -1,5 +1,5 @@
-// propose 3:19: ask value
-// Two float seeds, one value question.
+// propose 3:19: ask value 0.0 or 1.0
+// Two float seeds, one value question naming both.
 fn f() -> Float = ??
 
 fn main() = 0

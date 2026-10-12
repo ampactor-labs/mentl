@@ -1,0 +1,14 @@
+// CROWN env (E1) — `!Env("A")` ADMITS `env("B")`: the perform's literal
+// grounds the instance at "B", provably distinct from "A". Expect NO
+// E_EffectMismatch.
+effect Env(name: String) {
+  env(name: String) -> Int
+}
+
+fn port() with !Env("A") = env("B")
+
+handler fixed {
+  env(name) => resume(7),
+}
+
+fn main() = port() ~> fixed

@@ -3,113 +3,94 @@
 This document states what Mentl claims against the 2026 field, and gives
 the command that checks each claim on this repository. Nothing here asks
 to be believed: run the command. The release protocol at the end makes
-that the norm rather than a courtesy.
+that the norm rather than a courtesy. It carries no counts — a count in
+prose is a copy of a fact the artifact holds, so each claim names the
+command that reads it.
 
-The category claim in one sentence: **Mentl is a verification substrate —
-a medium where any intelligence may propose code and nothing executes
-unproven — at the language level, where the industry's agent fences are
-all at runtime and its intent specs are all behavioral.**
+The claim in one sentence, from `PLAN.md §0`: **Mentl closes the gap
+between what a person means and what they are forced to write.** Its compiler
+carries every fact it can prove — types, effects, ownership, refinements,
+and the reason behind each — so the source holds only the author's
+decisions, and at the position they are working it says what is true and
+why, proposes the next move it can prove, and asks the one question that
+separates two meanings instead of guessing. It is a programming
+environment in the line of Engelbart, Kay, Papert and Victor, with proof
+as its trust mechanism and one graph as its substrate.
 
-And one sentence more, so the category is never mistaken for the
-identity: the category is the wedge, not the point. Mentl is built for
-the person at the keyboard — a medium intuitive enough that picking it up
-teaches programming itself, with proof as what makes every answer
-trustworthy and every proposal worth taking; the machine-code-age
-argument below is that design meeting this decade (`PLAN.md §0`, arche
-and telos — the developer is what the medium is *for*).
+## Claim 1 — the compiler writes the ceremony, the author writes decisions
 
-## Wedge 1 — the spec that cannot be ignored
-
-The industry spent 2025–26 converging on "the spec is the artifact."
-GitHub's spec-kit (124k stars, 30+ agent integrations) captures intent in
-markdown and asks a model to follow it; its own documentation concedes
-the gap: *"no automated validation that generated code matches
-specifications"* — enforcement is behavioral. MoonBit bolts a verifier
-beside its own copilot, after generation, on a conventional language.
-Both channels share the same shape: intent → tokens → plausible text →
-human audit, lossy at every arrow, with a person squinting at the end as
-the error-correction layer.
-
-In Mentl the same intent is a constraint the compiler discharges or
-refuses. An effect row is a spec. A negation (`!E`) is a spec about what
-can *never* happen. A refinement is a spec with arithmetic. None of them
-can be ignored, because the executable gate sits between reachability and
-emission: a program whose claims don't discharge produces zero output
-bytes and a teaching diagnostic at the claim's own span.
+A programmer thinks *"this reads a file, parses it, and might fail"* and
+most languages make them spell out borrows, error boxes, async-ness and
+an effect list a compiler could have worked out. In Mentl the effect row,
+the ownership grade and the refinement obligations are inferred, and a
+`with` clause holds only what inference cannot say: a negation, an
+instance pin, `Pure`. A clause that restates the inferred row is narrated
+as an inventory (`T_RowInventory`), and the medium writes its own
+migration: `mentl tighten` rewrote the compiler's own signatures to their
+residue, and a standing bound keeps them there.
 
 Check it:
 
 ```sh
-bash benchmarks/absence/run.sh     # 13 absence tasks judged by the compiler itself:
-                                   # eight severance shapes REFUSE with a teaching span,
-                                   # five controls PROVE — under- and over-refusal both scored
-mentl mcp                          # the same gate served to agents over MCP stdio —
-                                   # one tool (propose); refusals teach, and the only
-                                   # path to an artifact on disk is through the proof
+mentl <file>:<line>       # the row, ownership and Reason chain at the line, typed by no one
+mentl tighten <file>      # each declared row rewritten to what only its author could say
+mentl verify              # the compiler's standing bounds on its own source (src/board.mn),
+                          # among them that it authors no positive effect row
 ```
 
-The absence benchmark exists because the podium was empty: vericoding
-benchmarks standardize on proving what code *does*; none measures proving
-what it can *never do*, which is the property autonomous software actually
-hinges on. The nearest prior in print is Flix's effect exclusion
-(ICFP'23; Boolean qualifiers OOPSLA'25) — name-keyed `!E` under
-polymorphism, which we cite rather than claim. Mentl's seat is the
-conjunction nobody holds: absence under handler-install *identity*, under
-modality, under *time* (a persisted continuation's world), and per
-*instance* — each measured unoccupied as of 2026-07.
+## Claim 2 — "never" is sayable
 
-## Wedge 2 — cell-grain deterministic parallel inference
-
-TypeScript 7 shipped deterministic parallel checking at *file*
-granularity. rustc's parallel front end is still fighting
-diagnostics-differ-between-serial-and-parallel, with determinism proposed
-as opt-in. Mentl's type inference runs its judgment as spawned branch
-cursors over one shared image at *cell* granularity — individual type and
-row cells are join-semilattice LVars, so concurrent teaching writes
-commute — and the gate is byte-equality of the emitted artifact: the K=8
-parallel judge produces the same bytes as the sequential judge, proven by
-sha, not asserted by test.
-
-The theory citation is LVars/CALM (Kuper–Newton; Hellerstein): monotone
-joins commute, so schedule order cannot change the fixpoint. The
-engineering claim past published SOTA is the *byte* gate itself — nobody
-gates parallel compilation on byte-identical artifacts across thread
-counts.
+"This never touches the network", "this never allocates" — people mean
+this constantly, and no mainstream language lets them write it. In Mentl
+`!Network` is a claim the compiler proves through every callee, through
+higher-order functions and stored closures, and per instance
+(`!Sample(44100)`), or refuses at the claim's own span. The nearest prior
+in print is Flix's effect exclusion ("With or Without You", Lutze, Madsen,
+Schuster, Brachthäuser, ICFP 2023), and absence inside a polymorphic row
+goes back to Rémy (POPL 1989) and Links (TyDe 2016); we cite them rather
+than claim them. What is Mentl's is the conjunction in one self-hosted
+substrate: per-instance negation, negation through a handler's install,
+and the compiler held to the same bounds as the programs it compiles.
 
 Check it:
 
 ```sh
-bash tools/march.sh                # the wheel compiles itself to a byte-identical
-                                   # fixed point (m2 == m3) — through the K=8 judge
-bash tools/frontier-gate.sh        # 285 contracts including the fan legs that assert
-                                   # identical shas across spawned-vs-sequential runs
+bash benchmarks/absence/run.sh     # absence tasks judged by the compiler itself: each must
+                                   # refuse naming its class at a teaching span, or prove;
+                                   # under- and over-refusal both scored
+bash tools/crown-gate.sh           # every leak-* crucible in tests/crown must refuse and
+                                   # every sound-* one must not
 ```
 
-## The four-arm hole
+## Claim 3 — the medium proposes, and asks instead of guessing
 
 Mentl's `??` is a typed hole whose candidates are pruned by effect rows
-(with negation), ownership, and refinements, over a *live image* that
-fills and resumes. Each arm exists somewhere in prior work — RbSyn
-(effects), RusSOL (ownership), Synquid (refinements), Hazel (live holes)
-— and no published system combines them in one hole. The survivors are
-proven before they surface; a tie is never guessed, it teaches: the fan
-surfaces the one constraint that collapses it.
+(with negation), ownership and refinements, over a live image. Each arm
+exists somewhere in prior work — RbSyn (effects), RusSOL (ownership),
+Synquid (refinements), Hazel (live holes) — and no published system
+combines them in one hole. A survivor is proven before it surfaces. When
+two survivors mean different things, the medium does not pick: it reads
+the first cell their two proofs bound differently and asks about that —
+"which type does this position hold?" — in the vocabulary of what the
+developer was just writing. At a declaration the same gradient proposes
+the annotation that discharges what the program still owes (a
+precondition, a return contract), proven before it is offered.
 
 Check it:
 
 ```sh
-mentl lib/tutorial/07-gradient.mn:0   # the whole absence field, ranked
-mentl <file>:<line>:<col>             # at any authored ??: the proven fan,
-                                      # each survivor with its Reason; ties teach
+mentl test tests/proposals      # each fixture's first line states what the hole must fill or ask
+mentl test tests/teach          # each fixture states the annotation the gradient must propose
+mentl <file>:<line>:<col>       # at any authored ??: the verdict, each survivor with its Reason
 ```
 
-## Verify-by-replay — the release protocol
+## Claim 4 — verify by replay, the release
 
 There is no signing ceremony to trust. The pinned compiler
 (`boot/mentl.wasm`) carries a provenance chain (`boot/PROVENANCE.md`)
 whose every entry was self-confirmed at pin time, and the claim is
-*replayable*: re-run the march and the wheel reproduces itself
-byte-for-byte from source. A hand-typed sha cannot enter history —
+*replayable*: re-run the march and the compiler reproduces itself
+byte for byte from source. A hand-typed sha cannot enter history —
 `tools/doc-truth.sh` runs inside every verify and pre-commit, checking
 the recorded pin against `sha256(boot/mentl.wasm)` mechanically. This is
 stronger than a signature: a signature says who built it; the replay says
@@ -122,33 +103,43 @@ bash tools/doc-truth.sh            # the docs' checkable claims vs the artifact
 bash tools/march.sh                # the replay: source → itself, byte-identical
 ```
 
+## What falls out — code you did not write
+
+A medium that proves what it runs and never loses intent does both for
+every author, so code a person did not write — a dependency's, a
+plugin's, a teammate's, a model's — meets the same proofs and the same
+refusals. That is a consequence of the thesis, not the thesis. A guessing
+assistant's channel is intent → tokens → plausible text → human audit,
+lossy at every arrow; Mentl's is intent → constraint → a search pruned by
+proof at every step → survivors → a question where they disagree → the
+accepted move proven. `mentl mcp` serves the same gate and the session's
+reads over the Model Context Protocol to any editor or tool. The nearest
+work on this axis is in Scala 3 with published evaluations — Odersky,
+Zhao, Xu, Bračevac and Pham, "Tracking Capabilities for Safer Agents"
+(CAIS 2026), and LACUNA (arXiv 2605.28617) — and Mentl has run no
+comparison against it.
+
 ## The honest boundary
 
 Credibility with skeptics comes from stating what is *not* claimed.
 
 - **Spec-faithfulness sits above the crown.** A proof is relative to a
   spec; proof-passing-but-intent-wrong code is a failure a proof
-  *launders*, not one it removes. The human owns intent — that is the one
-  genuine Outside, and the reason the tie-break asks instead of guessing.
+  *launders*, not one it removes. The person owns intent — that is the
+  one genuine Outside, and the reason the tie-break asks instead of
+  guessing.
 - **Verify is sound and incomplete by choice.** Undecidable residue
-  accrues as visible `V_Pending` debt (139 obligations on the wheel's own
-  self-compile today), never silent assumption. The compile *says so*.
+  accrues as visible `V_Pending` debt, never silent assumption, and the
+  compile says so: `mentl query src/main.mn smt` renders each open
+  obligation of the compiler's own source.
 - **Classes arm one at a time.** A diagnostic class refuses executables
-  only once the wheel's own census of that class is zero — dogfooding as
-  a mechanical license, held monotone by a ratchet. Unarmed classes
-  surface and the compile proceeds; the verdict says which happened.
+  only once the compiler's own census of that class is zero; `diag_refuses`
+  in `src/types.mn` is the live list. Unarmed classes surface and the
+  compile proceeds; the verdict says which happened.
+- **`!E` is not yet sound at every altitude.** Negation under the modal
+  world-index is open (`PLAN.md §4③`); each rule lands as a crucible in
+  `tests/crown` first.
 - **The correctness oracle is still external.** The micro battery and the
-  fixpoint prove reproduction and behavior; absorbing them into the
-  wheel's own Verify (and diverse double-compilation for trusting-trust)
-  is named, sequenced work, not a claim.
-
-## The channel, stated once
-
-A copilot's channel: intent → tokens → plausible text → human audit.
-Mentl's channel: intent → constraint (typed, monotone, compounding) →
-search pruned by proof at every step → survivors ranked by local intent →
-ties teach → the accepted move proven. There is no unverified middle,
-because every intermediate is a graph fact. What a generative assistant
-retains is the underdetermined tail, and the medium converts that tail
-into a sequence of proven next-moves. An LLM behind the gate is not
-forbidden; it is unemployed.
+  fixed point prove reproduction and behavior; absorbing them into the
+  compiler's own Verify (and diverse double-compilation for
+  trusting-trust) is named, sequenced work, not a claim.

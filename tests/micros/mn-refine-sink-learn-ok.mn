@@ -7,4 +7,4 @@ fn inv(n: Positive) = 100 / n
 
 fn run_with(g) = fold(0, g, [inv])
 
-fn main() with !Trap = run_with((acc, f) => acc + f(5))
+fn main() = run_with((acc, f) => acc + f(5))

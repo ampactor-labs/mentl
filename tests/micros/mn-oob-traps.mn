@@ -4,9 +4,10 @@
 // three-element list must TRAP (exit 134), never read adjacent memory.
 // Before 2026-07-18 the tag-0 read was raw and this program returned
 // whatever word sat past the list — the silent-wrong the checked
-// list_index deleted. The trap is the ev-miss precedent: a 4-byte load
-// crossing 2^32, out of bounds at every wasm32 memory size.
-fn main() = {
-  let xs = [10, 20, 30]
-  xs[99]
-}
+// list_index deleted. The index arrives through a parameter, so nothing
+// at the read proves or refutes its bounds and the read is the checked one;
+// a constant index past a literal is refuted before it runs (TRAP,
+// 2026-10-06 — tests/crown/leak-claim-index-past-literal.mn).
+fn at(xs, i) = xs[i]
+
+fn main() = at([10, 20, 30], 99)

@@ -125,10 +125,10 @@
 # --- Σ-/// drift (doc-comment doctrine; SYNTAX.md §Comments §Doc comments) ---
 37	Σ-/// drift (JSDoc/JavaDoc tag inside ///)	^///.*@(param|returns?|throws?|since|deprecated|author|see|link|inheritdoc)\b	ka	Σ-///. JSDoc/JavaDoc tags forbidden inside ///. Effect row + refinement substrate already carries that information.	raw
 37	Σ-/// drift (Sphinx directive inside ///)	^///.*:(func|type|class|param|returns|raises):	ka	Σ-///. Sphinx directives forbidden inside ///. Mentl has no Sphinx; substrate carries the structure.	raw
-37	Σ-/// drift (=== header inside ///)	^///.*={3,}	ka	Σ-///. No internal headers inside ///. Declaration name IS the heading.	raw
+# (=== header inside ///: RETIRED 2026-10-06, G2 — the form it policed is dissolved; decoration is the board's banner class, CsProseClass(PcBanner))
 37	Σ-/// drift (lifecycle vocabulary)	^///.*\b(deprecated|legacy|previously|no longer|migration|backward[- ]compat|removed in)\b	ka	Σ-///. Positive-form discipline (CLAUDE.md global). Doc shows what IS, not what was.	raw
 37	Σ-/// drift (subjective-gating prose)	^///.*\b(non-trivial|nontrivial|non-obvious|nonobvious|noteworthy|interesting|advanced|important|may want to|might consider)\b	ka	Σ-///. Subjective-gating language shouldn't appear in substrate-derived voice. Either the tentacle's silence_predicate fires or it doesn't.	raw
-37	Σ-/// drift (// ═══ decoration on file)	^//\s*═	ka	Σ-///. // ═══ decorations are flat-file scaffolding. Pattern A: delete. Pattern B: consolidate to /// lede. Pattern C: strip ═══, keep plain // text.	raw
+# (// ═══ decoration: RETIRED 2026-10-06, G2 — it matched U+2550 while every banner is drawn with U+2500, so it could not fail; the board's banner class reads every box-drawing run)
 #
 # --- Disintermediation drift (mascot-as-command-prefix; F.1) ---
 38	Mascot-as-tentacle-prefix (mentl <tentacle> shadowing at-cursor)	\bmentl\s+(trace|why|propose|unlock|verify|topology)\b	all	Per CLAUDE.md sharpened drift 38 + CLI-canonical-vocabulary.md §3.3 (2026-05-07). Project-action verbs (mentl edit/doc/run/test/audit/serve/teach/query/repl/new/compile/check) are CANONICAL — the binary IS named Mentl; subcommand prefix is structural like `git commit` / `cargo build`. Drift fires only on tentacle-named verbs that shadow at-cursor projections (Trace/Why/Propose/Unlock/Verify/Topology). Note: `mentl teach` and `mentl query` are project-action peer transports for terminal users (per EH alias table), NOT drift.

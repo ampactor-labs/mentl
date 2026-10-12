@@ -46,9 +46,11 @@ handler counter_logged with count = 0 {
   read() => resume(count),
 }
 
-// User code. It performs against Counter and never mentions a handler; `with
-// Counter` in the signature is the medium proving the effect is present.
-fn triple_inc() with Counter = {
+// User code. It performs against Counter and never mentions a handler — and it
+// never writes the row either: the medium infers `Counter` from the body and
+// projects it at the address surface (a signature states a decision, never an
+// inventory of what the body already proves).
+fn triple_inc() = {
   inc()
   inc()
   inc()

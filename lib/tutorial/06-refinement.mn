@@ -12,7 +12,7 @@
 // violate its type cannot be constructed — the medium refuses.
 //
 // Run it:   mentl run  lib/tutorial/06-refinement.mn   ← prints 51
-// Read it:  mentl lib/tutorial/06-refinement.mn:22     ← the cursor on Level; the refinement in the ring
+// Read it:  mentl lib/tutorial/06-refinement.mn:19:6   ← the cursor on Level; the refinement in the ring
 import io
 
 // Level — an Int narrowed by a predicate. `self` is the value being refined.

@@ -1,15 +1,14 @@
-// The arm-wide-op-arg gate (Hβ.emit.arm-wide-arg-face): a handler arm
-// may READ a wide op argument. The perform boxes every wide arg into a
-// cell (emit_args_word — the arm fn's ABI is floor words, shared between
-// the floor and every twin), while the arm's own signature is projected
-// from its param repr, so an arm that USES a Float arg declares
-// `(param $g.f64 f64)` and meets the pushed cell pointer:
-// `expected [i32, f64] but got [i32, i32]`, refused at assemble. An arm
-// that IGNORES the same arg floors to i32 and matches the cell by
-// accident — which is why the class hid behind the unused case.
+// expect: 11
+// The arm-wide-op-arg gate (Hβ.emit.arm-wide-arg-face, closed): a handler
+// arm may READ a wide op argument. A perform speaks its site's face, and
+// the arm twinned at the install's instance is that face by construction,
+// so an arm that uses a Float argument and an arm that ignores one both
+// meet the value at its own width. The class hid behind the unused case
+// once — an arm that ignored the argument floored to a word and matched by
+// accident — which is why the pair stands together.
 //
-// The pair: `set_gain` reads its wide arg, `set_trim` ignores one.
-// Expect exit 11 (10 + 1).
+// The pair: `gain_read` reads its wide arg, `gain_ignored` ignores one.
+// The frontier runs it to 11 (10 + 1).
 type Gain = Float where 0.0 <= self
 
 effect Mix {
@@ -22,10 +21,10 @@ handler mixer {
   gain_ignored(t) => resume(1),
 }
 
-fn run() with Mix = {
+fn run() = {
   let a = gain_read(0.5)
   let b = gain_ignored(0.25)
   a + b
 }
 
-fn main() = (run()) ~> mixer
+fn main() = run() ~> mixer

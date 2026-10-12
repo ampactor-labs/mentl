@@ -124,23 +124,17 @@ effect Memory {
   // choreography (no allocation may interleave; the caller's heap values
   // die under it — read everything you need into locals first).
   image_restore(Addr) -> Addr
-  // Integer XOR — two i32 values, returns i32
-  // Lowers to WASM's i32.xor. Not a bitwise operator in the
-  // language — a substrate primitive. Used by hash functions.
-  //
-  // (a, b) -> a XOR b
-  i32_xor(Int, Int) -> Int
-  // The XOR's siblings — i32.or / i32.and / i32.shl, the same substrate
-  // projection. Bitwise verbs for hash mixing and flag projection; the
-  // world rides continuation records as a HANDLE now (R4), so no tag
-  // arithmetic is load-bearing here.
-  //
-  // (a, b) -> a OR b
-  i32_or(Int, Int) -> Int
-  // (a, b) -> a AND b
-  i32_and(Int, Int) -> Int
-  // (a, n) -> a << (n mod 32)
-  i32_shl(Int, Int) -> Int
+  // The word's bit operations, one instruction each — the substrate's, not
+  // operators of the language. A shift reads its count mod 32: shr_u moves
+  // zeros in at the top, shr_s the sign. clz counts the zero bits above the
+  // highest one, 32 for zero.
+  i32_xor(a: Int, b: Int) -> Int
+  i32_or(a: Int, b: Int) -> Int
+  i32_and(a: Int, b: Int) -> Int
+  i32_shl(a: Int, n: Int) -> Int
+  i32_shr_u(a: Int, n: Int) -> Int
+  i32_shr_s(a: Int, n: Int) -> Int
+  i32_clz(a: Int) -> Int
 }
 
 // The arenas' census: how many exits ran, how many kept their region, the
@@ -167,15 +161,34 @@ effect Alloc {
   // opens at it. There is no rewind beside it — reclaiming an extent is the
   // arena's (lib/arena.mn), which keeps what the extent published and zeroes
   // the memory behind it, so no reclaim depends on its caller knowing that
-  // nothing older points into what it drops.
+  // nothing older points into what it drops. In a module that spawns, each
+  // instance allocates in a run of its own and this reads the IMAGE's
+  // frontier past every run, which is what a persisted image must hold; an
+  // arena reads its own instance's line in the runtime.
   heap_mark() -> Addr
 }
 
-// A deliberate trap: a word read at the last address, which no memory a
-// wasm32 instance can grow to holds, so the read faults wherever it runs —
-// the one home of the out-of-range refusal the runtime makes where a
-// structural contract breaks.
-fn out_of_range() = load_i32(word_addr(0 - 1))
+// PARTIALITY IS A ROW FACT. The substrate traps a partial primitive whose
+// precondition fails — an integer division by zero, INT_MIN / -1, an index
+// past its sequence — and a site whose precondition the judgment cannot
+// prove performs Trap, so `with !Trap` claims a function reaches no trap it
+// has not bounded. Its one operation is the instruction that stops the
+// machine: the substrate answers it (no handler is written in Mentl, as for
+// Memory), it never returns, and nothing intercepts it — its absence is the
+// point. Termination is not in this row: a function that never returns is
+// `!Trap` too (`Hβ.effects.divergence-is-a-row-fact`). The op answers a word
+// it never produces: written `-> !`, the parser's fresh variable is shared by
+// the effect, which made every row it reached carry `Trap(Int)` beside the
+// bare `Trap` a division charges (measured at this landing); it takes `-> !`
+// when `!` is quantified per perform (`Hβ.types.never-is-quantified-per-perform`).
+effect Trap {
+  trap() -> Int
+}
+
+// A deliberate trap — the one home of the out-of-range refusal the runtime
+// makes where a structural contract breaks. It performs `Trap`, so every row
+// that reaches it says so and `!Trap` refuses it.
+fn out_of_range() = trap()
 
 // The live world's identity: the install chain from world_top() down, hashed
 // over each node's effect key and its handler's slot-0 arm word — a table

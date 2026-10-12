@@ -13,20 +13,11 @@
 // inert statements; the driver reads them as the dep DAG.
 import memory
 
-import strings
-
 import lists
 
-import threading
+import strings
 
-// PARTIALITY IS A ROW FACT. The substrate traps a partial primitive whose
-// precondition fails — an integer division by zero, INT_MIN / -1 — and a
-// site whose precondition the judgment cannot prove performs Trap, so
-// `with !Trap` claims a function divides by nothing it has not bounded.
-// Nothing handles a trap: it has no operations, and its absence is the point.
-effect Trap {
-  
-}
+import threading
 
 // ─── Vocabulary Types ───────────────────────────────────────
 // The algebraic bedrock every program speaks.
@@ -45,12 +36,14 @@ type Option = None | Some(a)
 type Result = Ok(a) | Err(e)
 
 // Failure IS an effect — the kernel's answer to bottom.  `fail` never
-// resumes, so its polymorphic return unifies with any consumer; the
-// installed handler decides the policy (io.mn fail_exit prints +
-// exits; a test handler collects instead).  Fail is distinct from the
-// control-cut Abort effect: their declarations must never share identity.
+// resumes: its result is the never type, quantified per perform, so each
+// consumer meets a variable of its own and the effect carries no
+// parameter; the installed handler decides the policy (io.mn fail_exit
+// prints + exits; a test handler collects instead).  Fail is distinct from
+// the control-cut Abort effect: their declarations must never share
+// identity.
 effect Fail {
-  fail(String) -> a
+  fail(String) -> !
 }
 
 fn unwrap(opt) = match opt {
@@ -499,7 +492,7 @@ fn index_of(s: String, sub: String) = {
   let slen = byte_len(s)
   let sublen = byte_len(sub)
   fn search(i) = if i + sublen > slen {
-    0 - 1
+    -1
   } else {
     if str_eq(str_slice(s, i, i + sublen), sub) { i } else { search(i + 1) }
   }

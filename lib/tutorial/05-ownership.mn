@@ -12,7 +12,7 @@
 // about ownership, the inference failed.
 //
 // Run it:   mentl run  lib/tutorial/05-ownership.mn   ← prints 14 (byte length, twice)
-// Read it:  mentl lib/tutorial/05-ownership.mn:24     ← the cursor on a param; own/ref in the ring
+// Read it:  mentl lib/tutorial/05-ownership.mn:21:11  ← the cursor on a param; own/ref in the ring
 import io
 
 // ref — borrow. `length` reads its argument and gives it back; the caller can
@@ -28,10 +28,13 @@ fn measure() = {
   a + b
 }
 
-// own — consume. `archive` takes ownership; after the call the value is gone,
-// and any later reference to it is a compile-time error (E_OwnershipViolation).
-// The medium proves single-use the same way it proves everything else.
-fn archive(own data) = byte_len(data)
+// own — consume. `archive` takes ownership and hands the value on (returning
+// an owned value is the transfer); after the call the value is gone from the
+// caller, and any later reference to it there is a compile-time error
+// (E_OwnershipViolation). The medium proves single-use the same way it proves
+// everything else — and it narrates the inverse: an `own` parameter a body
+// only READS is a claim without a consume, and the ring says so.
+fn archive(own data) = data
 
 // Branches are ALTERNATIVES, not both-run, so consuming `x` in each arm of an
 // if is sound: exactly one arm runs, so `x` is consumed exactly once. The

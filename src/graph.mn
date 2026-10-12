@@ -43,11 +43,11 @@ import types
 
 import effects
 
-import strings
-
 import imap
 
 import io
+
+import strings
 
 // graph_handler — the substrate handler
 // State:
@@ -143,17 +143,17 @@ fn spine_open_loop(own spine, opened, b) = if opened > b {
 
 // In-place cell writes — the page never moves, so no write returns a new
 // spine and no handler-state rebind rides a cell store.
-fn spine_put_node(ref spine, h, own node) = {
+fn spine_put_node(ref spine, h, node) = {
   let _ = list_set(spine_page(spine, h).nodes, spine_slot(h), node)
   ()
 }
 
-fn spine_put_body(ref spine, h, own body) = {
+fn spine_put_body(ref spine, h, body) = {
   let _ = list_set(spine_page(spine, h).program, spine_slot(h), body)
   ()
 }
 
-fn spine_put_comment(ref spine, h, own cell) = {
+fn spine_put_comment(ref spine, h, cell) = {
   let _ = list_set(spine_page(spine, h).comments, spine_slot(h), cell)
   ()
 }
@@ -250,6 +250,17 @@ fn spine_parent_at(spine, spine_open, h) = if spine_band(h) >= spine_open {
   if cell == 0 { None } else { Some(cell - 1) }
 }
 
+// A declaration stands at module level when this edge runs from it to a
+// module node. The decls column holds a block's `let`s and nested fns beside
+// a module's own declarations, and this is the one test that tells them apart.
+fn at_module_level(h) = match graph_parent_of(h) {
+  Some(p) => match graph_node_body(p) {
+    NModule(_) => true,
+    _ => false,
+  },
+  None => false,
+}
+
 // THE ACCEPT EDGE, read at the one writer (C4). A node bound at an extent
 // the accepted column holds — same module, same span — takes its reason
 // wrapped in `Accepted`, so every projection of the reason cell (the Why
@@ -298,7 +309,7 @@ fn spine_put_narrowing(ref spine, h, pred) = {
   ()
 }
 
-fn spine_put_boundary(ref spine, h, own boundary) = {
+fn spine_put_boundary(ref spine, h, boundary) = {
   let _ = list_set(spine_page(spine, h).boundaries, spine_slot(h), boundary)
   ()
 }
@@ -328,7 +339,7 @@ fn spine_put_product(spine, h, p) = {
   ()
 }
 
-fn spine_put_span(ref spine, h, own span) = {
+fn spine_put_span(ref spine, h, span) = {
   let _ = list_set(spine_page(spine, h).spans, spine_slot(h), span)
   ()
 }
@@ -398,18 +409,6 @@ fn occurs_in_live(handle, ref ty) with !Mutate = match graph_branch_seed() {
   (spine, _open, _spans) => occurs_in(spine, graph_next(), handle, ty),
 }
 
-// The write guard's own line — coordinates only, zero graph or intern
-// reads, because the arm that speaks it cannot see its own instance (an
-// arm's performs resolve OUTER). A real infinite type still deserves its
-// span (SYNTAX principle 5); the typed render lives at unify's pre-check.
-fn occurs_guard_line(handle, reason) =
-  "infer: E_OccursCheck error: infinite type at t{handle} (the graph write guard) at {show_span(reason_span_or_zero(reason))}\n"
-
-// The teach's line beside the refusal — coordinates + name only, the
-// guard's own render discipline (no graph ops from the arm).
-fn poly_teach_line(owner: String, reason) =
-  "infer: T_PolyRecursionSignature Warning: the infinite type runs through '{owner}''s own parameter or return — if '{owner}' calls itself at a different type (polymorphic recursion), a FULL signature on '{owner}' buys the poly self-call at {show_span(reason_span_or_zero(reason))}\n"
-
 // Config: a BRANCH CURSOR (the parallel fan's per-thread instance) installs
 // over the SHARED spine with a private planned range — the root install is
 // bare and the defaults are the empty graph. Handler state records live in
@@ -475,18 +474,7 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
   // unconstructible in this representation). The record allocates BEFORE
   // the fork pair's heap_mark, so it survives the region.
   {
-    resume(trail_len) with checkpoint_stack = push(
-      checkpoint_stack,
-      {
-        comment_refs: comment_refs,
-        next: next,
-        span_index: span_index,
-        spine: spine,
-        spine_open: spine_open,
-        trail: trail,
-        trail_len: trail_len,
-      }
-    )
+    resume(trail_len) with checkpoint_stack = push(checkpoint_stack, {comment_refs, next, span_index, spine, spine_open, trail, trail_len})
   },
   graph_fresh_ty(reason) => // ─── Write ops ───────────────────────────────────────────────────
   // Each write appends a Mutation to the trail. The trail is the
@@ -627,12 +615,13 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
     resume(spine_canon_at(spine, spine_open, handle))
   },
   graph_narrow_set(handle, pred_handle) => // The refinement-narrowing column — in the handle's page beside canon.
-  // graph_narrow_set(handle, pred_handle) records that the path-predicate at
-  // bool-node `pred_handle` is proven to hold AT program-point `handle` (§4⑥).
-  // graph_narrow_at reads it back — 0 = no narrowing proven (the default for
-  // every handle, so an un-narrowed program is byte-identical: lower elides
-  // nothing). One cell per handle (idempotent), no side-ledger, no trail — the
-  // narrowing is a `|>` stage at infer, read by lower's verify-obligation.
+  // graph_narrow_set(handle, verdict) records what the judgment proved AT
+  // program-point `handle`: a sequence read's index node carries 1 where its
+  // bounds claim held (TRAP), and lower reads it to emit the unchecked
+  // traversal. graph_narrow_at reads it back — 0 = nothing proven (the
+  // default). One cell per handle, no trail: every judgment of a read writes
+  // its verdict both ways, so a cell a rolled-back speculation wrote is
+  // overwritten by the judgment of the node that holds the handle now.
   {
     spine_put_narrowing(spine, handle, pred_handle)
     resume()
@@ -663,38 +652,23 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
   // residual (the row leak that carried the render/guard ops past every
   // bracket into the wheel's own root row).
   if occurs_in(spine, next, handle, ty) {
-    // The write guard's report renders NO types: an arm's performs
-    // resolve OUTER of its own install, so a diag_message render here
-    // would chase a graph that is not in this arm's world (the
-    // wrong-instance class). The line carries coordinates only; the
-    // typed teaching render lives at unify's pre-check sites (the
-    // perform side, inside the analysis brackets), which fire first on
-    // every unification path — this belt guards the non-unify binds.
-    // STORED, NOT REPORTED. A diag_report here resolves OUTER of this
-    // install and sails past any capture bracket installed deeper — which
-    // is where speculation installs one, so the refusal the Mycroft retry
-    // keys on never reached it. The body drains and narrates
-    // (graph_guard_drain); this arm only notes.
-    let g1 = push(
-      guard_diags,
-      (EOccursCheck(handle, ty, reason_span_or_zero(reason)), occurs_guard_line(handle, reason), spine_module_name(spine, spine_open, cur_module))
-    )
-    // The poly-recursion teach rides the refusal (coordinates-only
-    // discipline as above — the mint reason is read from THIS
-    // instance's state, no outer-resolving render): an infinite type
-    // through a fn's OWN param/return mint is the
-    // self-call-at-a-different-type fingerprint; name the fn and the
-    // signature route.
+    // STORED, NOT REPORTED, AND NOT RENDERED. A report here resolves OUTER
+    // of this install, so it would sail past any capture bracket installed
+    // deeper (where speculation installs one, so the refusal the Mycroft
+    // retry keys on never reached it), and a render here would chase a
+    // graph that is not this arm's world. The arm notes the fact and its
+    // module; the body drains it at the judgment boundary and renders it
+    // there (graph_guard_drain). This belt guards the binds no unify
+    // pre-check saw.
+    let dm = spine_module_name(spine, spine_open, cur_module)
+    let g1 = push(guard_diags, (EOccursCheck(handle, ty, reason_span_or_zero(reason)), dm))
+    // The poly-recursion teach rides the refusal: an infinite type through
+    // a fn's OWN param or return mint (read from this instance's own
+    // state) is the self-call-at-a-different-type fingerprint.
     let g2 = match graph_node_at(spine, next, handle) {
       GNode(_, mint_r) => match mint_r {
-        FnParam(owner, _, _) => push(
-          g1,
-          (TPolyRecursionSignature(owner, reason_span_or_zero(reason)), poly_teach_line(owner, reason), spine_module_name(spine, spine_open, cur_module))
-        ),
-        FnReturn(owner, _) => push(
-          g1,
-          (TPolyRecursionSignature(owner, reason_span_or_zero(reason)), poly_teach_line(owner, reason), spine_module_name(spine, spine_open, cur_module))
-        ),
+        FnParam(owner, _, _) => push(g1, (TPolyRecursionSignature(owner, reason_span_or_zero(reason)), dm)),
+        FnReturn(owner, _) => push(g1, (TPolyRecursionSignature(owner, reason_span_or_zero(reason)), dm)),
         _ => g1,
       },
     }
@@ -1135,15 +1109,7 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
         trail_len,
         target_idx,
         next,
-        {
-          binders: binders,
-          claims: claims,
-          demands: demands,
-          gates: gates,
-          instances: instances,
-          late: late,
-          rows: rows,
-        }
+        {binders, claims, demands, gates, instances, late, rows}
       )
       resume() with next = new_next, trail_len = target_idx
     } else {
@@ -1162,15 +1128,7 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
         trail,
         trail_len,
         target_idx,
-        {
-          binders: binders,
-          claims: claims,
-          demands: demands,
-          gates: gates,
-          instances: instances,
-          late: late,
-          rows: rows,
-        }
+        {binders, claims, demands, gates, instances, late, rows}
       )
       // drop_last, never slice: on the always-snoc stack drop_last is
       // the parent READ — the pop allocates nothing and the surviving
@@ -1863,7 +1821,7 @@ fn revert_trail(ref spine, spine_open, ref trail, current, target, next_handle, 
 // The trail buffer is not `own`: list_extend_to borrows it and the
 // (possibly fresh) owner returns — this fn finishes nothing (the
 // relevant tier's first sweep).
-fn trail_append(trail, trail_len, own mutation) =
+fn trail_append(trail, trail_len, mutation) =
   list_set(list_extend_to(trail, trail_len + 1), trail_len, mutation)
 
 // Whether a write is journaled: an undo entry is read only by an open
@@ -1943,7 +1901,7 @@ fn expr_child_handles(e) = match e {
   // (parse_record_fields); only resume updates are {name, init} records.
   map(tuple_field_handle, fields),
   RecordUpdateExpr(base, flds) => [node_handle(base)] ++ map(tuple_field_handle, flds),
-  NamedRecordExpr(_, flds) => map(tuple_field_handle, flds),
+  NamedRecordExpr(head, flds) => [node_handle(head)] ++ map(tuple_field_handle, flds),
   IndexExpr(recv, idx) => [node_handle(recv), node_handle(idx)],
   MakeStringExpr(frags) => map(node_handle, frags),
   ShowExpr(inner) => [node_handle(inner)],
@@ -2047,8 +2005,9 @@ fn body_child_handles(body) = match body {
 //
 // Whether a function reaches a fanout through DIRECT calls: its own body
 // holds a `><`, a `<|` or a `fanout(f, xs)` call, or it directly calls a fn
-// that does — never through a fn declared `!Thread`, which keeps its own
-// frame's schedule and hands no demand on. A schedule an install demands
+// that does — never through a fn declared `!Thread` or `!Alloc`, which keeps
+// its own frame's schedule and hands no demand on: a spawn performs `Thread`
+// and builds its thunks, while the in-frame form builds nothing. A schedule an install demands
 // crosses a call exactly this far (lower's `spec_call_name`), so the emit
 // asks this rule before it demands a callee's schedule twin, and `mentl
 // where` asks it, the same way, to say which callers' installs reach a
@@ -2064,13 +2023,13 @@ fn body_child_handles(body) = match body {
 // Whether a declaration's clause negates the named effect (`!Thread`) —
 // the authored negation, read off the FnStmt it stands on.
 fn declares_absent(clause, ename: String) =
-  any({ (en, negated, _) => negated && str_eq(eff_name_str(en), ename) }, clause)
+  any({ (t, negated, _) => negated && term_spells(t, ename) }, clause)
 
 // ONE ASK of the rule with the answers settled across asks carried in
 // `memo`: an ask that found no fanout from its root settles every name it
 // entered false (`fanout_reach_settle`), the root's reach being whole. The
 // emit's spec registry and `where`'s demand walk both ask through here.
-fn fanout_reach_ask(memo, decls, name: String) = match fanout_reach_of({entered: [], memo: memo, seen: smap_new()}, decls, name) {
+fn fanout_reach_ask(memo, decls, name: String) = match fanout_reach_of({entered: [], memo, seen: smap_new()}, decls, name) {
   (found, st) => (found, if found { st.memo } else { fold(st.memo, fanout_reach_settle, st.entered) }),
 }
 
@@ -2095,7 +2054,7 @@ fn fanout_reach_of(st, decls, name: String) = match smap_get(st.memo, name) {
       // through
       (false, st),
       Some(h) => match graph_node_body(h) {
-        NStmt(FnStmt(_, _, _, clause, body)) => if declares_absent(clause, "Thread") {
+        NStmt(FnStmt(_, _, _, clause, body)) => if declares_absent(clause, "Thread") || declares_absent(clause, "Alloc") {
           (false, {entered: st.entered, memo: smap_add(st.memo, name, 0), seen: st.seen})
         } else {
           match fanout_fact((false, []), node_handle(body)) {
@@ -2107,11 +2066,14 @@ fn fanout_reach_of(st, decls, name: String) = match smap_get(st.memo, name) {
                 fanout_reach_callee(decls, ??, ??),
                 callees
               ) {
-                (found, inner) => (found, {
-                  entered: inner.entered,
-                  memo: if found { smap_add(inner.memo, name, 1) } else { inner.memo },
-                  seen: inner.seen,
-                }),
+                (found, inner) => (
+                  found,
+                  {
+                    entered: inner.entered,
+                    memo: if found { smap_add(inner.memo, name, 1) } else { inner.memo },
+                    seen: inner.seen,
+                  }
+                ),
               }
             },
           }
@@ -2169,6 +2131,125 @@ fn fact_call(acc, f) = match f {
 fn callee_is_fanout(f) = match f {
   N(NExpr(VarRef(name)), _, _) => str_eq(name, "fanout"),
   _ => false,
+}
+
+// ── A PRODUCT BUILT AT A SITE, AND WHAT TAKES IT APART THERE ──────────
+//
+// A VERB NEVER COSTS MORE THAN ITS DESUGARING. A product a site builds and
+// takes apart there is its parts, in registers, exactly as the `let`
+// spelling is — only a product that ESCAPES (returned, stored, passed,
+// captured, spawned) is a record. Two consumers take one apart where it
+// stands: the one-arm positional destructure (`match p { (a, b) => … }`,
+// which a tuple `let` desugars to at parse) and the N-ary stage a `|>`
+// fills (PLAN §4②'s "merge folds into `|> merge_fn`", Faust's `,` then
+// `:`). The JUDGMENT reads this to charge the product only where the
+// record is built; the LOWERING reads it to bind the parts; so the two
+// cannot disagree about what a fanout costs.
+//
+// How many parts the product at `h` has, and −1 for a value that is not one
+// built here: a tuple literal's elements, a fanout's branches.
+fn product_arity_at(h) = match graph_node_body(h) {
+  NExpr(MakeTupleExpr(elems)) => len(elems),
+  NExpr(FanoutExpr(branches)) => len(branches),
+  NExpr(PipeExpr(PFanout(fan_own), _, right)) => match fan_own {
+    FanDistribute => 2,
+    FanShare => fanshare_arity(right),
+  },
+  _ => -1,
+}
+
+// A `<|`'s branch count: the tuple of stages it fans into, or the one
+// stage of the degenerate form (lower and infer normalize the same way).
+fn fanshare_arity(right) = match right {
+  N(NExpr(MakeTupleExpr(elems)), _, _) => len(elems),
+  _ => 1,
+}
+
+// The one arm whose tuple pattern binds every part of the product it
+// scrutinizes — a binder or a wildcard at each position, so the match IS
+// the destructuring and no arm can fail. `None` where the match is a real
+// dispatch, which keeps its tuple.
+fn destructure_subs(arms, n) = if n < 2 {
+  None
+} else {
+  match arms {
+    [(PTuple(subs), _)] => if len(subs) == n && all(pat_binds_only, subs) { Some(subs) } else { None },
+    _ => None,
+  }
+}
+
+fn pat_binds_only(p) = match p {
+  PVar(_) => true,
+  PWild => true,
+  PLit(_) => false,
+  PCon(_, _) => false,
+  PTuple(_) => false,
+  PList(_, _) => false,
+  PRecord(_, _) => false,
+  PAlt(_) => false,
+  PAs(_, _) => false,
+}
+
+// The arm's body, where the arms ARE that destructure.
+fn destructure_body(arms) = match arms {
+  [(_, body)] => Some(body),
+  _ => None,
+}
+
+// Whether the product at `h` is taken apart where it is built. Read UP the
+// parent edge, so the product's own lowering can ask it without the
+// consumer telling it. The types are settled by then; the JUDGMENT asks
+// `product_fate` instead, because a pipe's stage is judged after its left.
+fn product_consumed_in_place(h) = match graph_parent_of(h) {
+  None => false,
+  Some(p) => match graph_node_body(p) {
+    NExpr(MatchExpr(scrut, arms)) => node_handle(scrut) == h && is_some(destructure_subs(arms, product_arity_at(h))),
+    NExpr(PipeExpr(PForward, left, right)) => node_handle(left) == h && product_fills_stage(h, right),
+    _ => false,
+  },
+}
+
+// WHO DECIDES whether a product is a record. A positional destructure is an
+// AST fact, so the product's own judgment reads it; a pipe's merge turns on
+// the stage's ARROW, which is judged after the product, so the PIPE charges
+// its left (`infer_pipe`) once it knows. Everything else escapes and is
+// charged where it is built.
+type ProductFate = PfConsumed | PfByPipe | PfEscapes
+
+fn product_fate(h) = match graph_parent_of(h) {
+  None => PfEscapes,
+  Some(p) => match graph_node_body(p) {
+    NExpr(MatchExpr(scrut, arms)) => if node_handle(scrut) == h && is_some(destructure_subs(arms, product_arity_at(h))) {
+      PfConsumed
+    } else {
+      PfEscapes
+    },
+    NExpr(PipeExpr(PForward, left, _)) => if node_handle(left) == h && product_arity_at(h) > 1 { PfByPipe } else { PfEscapes },
+    _ => PfEscapes,
+  },
+}
+
+// THE MERGE: a product of N fills a stage whose N slots are still open —
+// the trailing holes the Stage Law puts the datum in, N of them. A stage
+// with one hole takes the product WHOLE (an ordinary pipe), so the merge
+// asks for exact agreement and never guesses.
+fn product_fills_stage(h, right) = {
+  let n = product_arity_at(h)
+  n > 1 && stage_open_slots(right) == n
+}
+
+// A stage's open slots: the parameters of its own arrow, read live — a bare
+// reference's whole parameter list, a partial's remaining ones (the partial
+// node's type IS the remaining arrow), and −1 where nothing proves an arrow.
+// A LITERAL stage says its own count on the page, which is what lets the
+// merge be known before the literal is judged (the judgment reaches a pipe's
+// left first).
+fn stage_open_slots(right) = match right {
+  N(NExpr(LambdaExpr(params, _)), _, _) => len(params),
+  N(_, _, rh) => match lookup_ty(rh) {
+    TFun(ps, _, _) => len(ps),
+    _ => -1,
+  },
 }
 
 // The MINT span of a handle — the reverse read of the span_index weave

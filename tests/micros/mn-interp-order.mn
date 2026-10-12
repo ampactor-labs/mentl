@@ -6,7 +6,7 @@
 // m4.wat's first assembly failure once m4 existed at all, 2026-07-10).
 // The seed's own make-string lowering is source-ordered, so m2's strings
 // were fine and the wheel's copy was never order-gated until this micro.
-fn main() with Memory + Alloc = {
+fn main() = {
   let a = "B"
   let b = "D"
   let s = "x{a}y{b}z"

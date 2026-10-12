@@ -1,0 +1,17 @@
+// Optional reads are not launch requirements. A literal read narrows the
+// host manifest; a computed read explicitly requests broad environment access.
+import environ
+
+fn dynamic(name: String) = env_opt(name)
+
+fn main() = {
+  let fixed = match env_opt("MN_OPTIONAL_FIXED") {
+    Some(value) => parse_int(value),
+    None => 0,
+  }
+  let computed = match dynamic("MN_OPTIONAL_DYNAMIC") {
+    Some(value) => parse_int(value),
+    None => 0,
+  }
+  fixed + computed
+} ~> env_from_host

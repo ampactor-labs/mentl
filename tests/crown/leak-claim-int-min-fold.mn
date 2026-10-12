@@ -1,0 +1,9 @@
+// CROWN partiality (TRAP, 2026-10-06): `INT_MIN / -1` is the one quotient a
+// signed word cannot hold, so its claim is refuted at the inner division,
+// and the outer one, whose dividend now folds to nothing, stays proven by
+// its constant divisor. Measured on boot 4228ff71: both constant folders
+// computed the quotient with the host's own division, which trapped the
+// COMPILER (integer overflow in litval_arith, exit 134 under check and
+// compile alike). One folder now folds a division only where its claim
+// holds. Expect E_RefinementRejected.
+fn main() = 2147483648 / (0 - 1) / 2

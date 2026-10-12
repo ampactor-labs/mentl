@@ -1,0 +1,15 @@
+// expect: 22
+// The control beside mn-record-chain-crosses-call: the same two fields read
+// through a record parameter that crosses a recursive call, each called at
+// the arity `build` gives it, runs to 2 × (2 + 9).
+fn add(a, b) = a + b
+
+fn inc(a) = a + 1
+
+fn build() = {first: inc, second: add}
+
+fn frame(rig) = rig.first(1) + rig.second(4, 5)
+
+fn spin(rig, n) = if n == 0 { 0 } else { frame(rig) + spin(rig, n - 1) }
+
+fn main() = spin(build(), 2)

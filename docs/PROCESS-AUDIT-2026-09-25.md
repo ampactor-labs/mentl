@@ -878,7 +878,7 @@ concrete and external, per milestone:
 | `LEDGER.md` (15,791) | frozen as `docs/archive/LEDGER-2026-06-to-09.md`; `git log` and `boot/PROVENANCE.md` are the ledger | archive | `doc-truth.sh` reads PROVENANCE only |
 | `RESIDUE.md` (11,211) | GitHub issues, one label per band; frozen copy archived; only milestone-blocking peers get issues now | archive | — |
 | `tools/loop-prompt.md`, `AGENTS.md` | delete the loop prompt; `AGENTS.md` becomes ten lines pointing at `CLAUDE.md` | — | — |
-| `docs/MENTL_EDIT.md`, `DESIGN_SYSTEM.md`, `NATIVE.md`, `POSITIONING.md` | keep as design and positioning docs, linked from `DESIGN.md`, fixed for rot | — | — |
+| `docs/MENTL_SPACE.md`, `DESIGN_SYSTEM.md`, `NATIVE.md`, `POSITIONING.md` | keep as design and positioning docs, linked from `DESIGN.md`, fixed for rot | — | — |
 
 A session then starts on about 300 always-loaded lines (CLAUDE + MILESTONE),
 with the syntax card appearing only when `.mn` files are touched and DESIGN

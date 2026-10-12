@@ -1,0 +1,1891 @@
+// space.mn — Mentl Space: the View the page paints, computed by the wheel
+//
+// THE VIEW IS A PROJECTION. The page is a host — a textarea, a worker, a
+// channel and one painter — and what it paints is the record this module
+// computes: the eight aspects at the caret; the diagnostics the judgment
+// reported, as the kinds they are; the module's declarations, obligations
+// and tightenings, each ranked for the caret; and at line 0 the field,
+// every hole and gradient position of the module with its own ring. The
+// facts are read once, into the View, every sentence rendered as it is
+// built, so each projection is a pure read of the record: the terminal's
+// (ring_text at a position, field_text at line 0) and the page's
+// (view_json), cold through the CLI or resident through the session. The
+// View is typed and every reader of it is exhaustive, so a facet reaches
+// the page by construction: the serializer cannot be written without it.
+//
+// The address resolution lives here too — the three-case line rule, the
+// module-scoped span index, the field at line 0 — because an address IS
+// the way into a View, and the binding lede the Why chain renders reads the
+// line's root through the same rule. main.mn keeps the dispatch: the CLI's
+// cold routes and the session's resident ones both call in.
+import types
+
+import cursor
+
+import cursor_transport
+
+import driver
+
+import effects
+
+import graph
+
+import infer
+
+import io
+
+import json
+
+import lexer
+
+import lists
+
+import lower
+
+import mentl
+
+import pipeline
+
+import query
+
+import strings
+
+import synth_proposer
+
+import verify
+
+import voice
+
+// The module a View stands in, read once per View: its name, its node, the
+// text the judgment read, its own nodes with their spans, and the
+// tightenings the judgment banked for it. Every reader takes this one
+// value, so none re-derives one of these facts from another, and none opens
+// the file the text came from: a session's text is the edit it judged,
+// which the file on disk need not be.
+type Viewed = {
+  name: String,
+  node: Int,
+  spans: [(Span, Int)],
+  text: String,
+  tights: [(EffRow, EffRow, String, Span, String)],
+}
+
+// The module the address names, as the judgment left it, or a refusal on
+// stderr (the process log on every transport): a module not in the link,
+// or one that minted no module node.
+fn viewed(ranges, target: String) = match range_of_module(ranges, target) {
+  None => {
+    eprint_string("mentl: {target} did not load — nothing to project\n")
+    None
+  },
+  Some(r) => match r {
+    (_m, _p, text) => match module_handle_of_path(target) {
+      None => {
+        eprint_string("mentl: {target} is in the weave but minted no module node — nothing to address\n")
+        None
+      },
+      Some(mh) => Some(Viewed({
+        name: target,
+        node: mh,
+        spans: spans_of_module(span_index_of_snapshot(), mh),
+        text,
+        tights: module_tightenings(target),
+      })),
+    },
+  },
+}
+
+// The View at a resolved position: the ring at the node, the Lens and
+// Ledger of its module, and the references a find asks for — the needle's
+// when one was typed, else what the node at the caret names, by its edge.
+// The caret the request named rides along, so the painter knows which read
+// it is painting. A caret carries no canvas: moving it changes no fact of
+// the text.
+fn space_view(v, h, pspan, line, col, needle) = View({
+  at: ViewAt({col, h, line, module: v.name, span: pspan}),
+  canvas: NoCanvas,
+  field: [],
+  ledger: ledger_of(v, h),
+  lens: lens_of(v.name),
+  refs: match needle {
+    Some(n) => found_needle(v.name, n),
+    None => refs_at(h, v),
+  },
+  ring: ring_of(cursor_at_handle(h), h, pspan, v),
+})
+
+// The View of a whole module (`mentl <file>:0`, `mentl space <file>:0`): no
+// caret, so no ring. The field holds the module's absence, ranked: every
+// authored hole first (absence categorically outranks — filling a hole
+// lifts the executable's own refusal), then every annotation-gradient
+// position, each in the one ranked order the session's argmax takes its
+// head from (`rank_positions`), each with the ring its own address
+// projects. The Ledger, ranked from the module node, carries the module's
+// pending obligations and tightenings beside its declarations, so the
+// field and the Ledger together are the whole work queue.
+fn space_field_view(v) = {
+  let caret0 = Caret(v.node, Located(Span(1, 1, 1, 1), Inferred("field read")))
+  let holes = map(field_hole(v, ??), rank_positions(enumerate_hole_positions(v.node), caret0))
+  let grads = map(field_gradient(v, ??), rank_positions(enumerate_gradient_positions(v.node), caret0))
+  View({
+    at: ViewAt({col: 0, h: v.node, line: 0, module: v.name, span: parse_span_of(v.node)}),
+    canvas: NoCanvas,
+    field: holes ++ grads,
+    ledger: ledger_of(v, v.node),
+    lens: lens_of(v.name),
+    refs: FoundNothing,
+    ring: [],
+  })
+}
+
+// The module View as the page paints it: the field View with its canvas —
+// the text's own projection, read off the facts the field and the Ledger
+// already hold and the graph of the module — and the needle's references
+// when a find asked for them. The terminal's field reads none of it, so
+// only the page's projection pays for it.
+fn space_module_view(v, needle) = match space_field_view(v) {
+  View(w) => View({
+    ...w,
+    canvas: canvas_of(v, w.field, w.ledger, w.lens),
+    refs: match needle {
+      Some(n) => found_needle(v.name, n),
+      None => FoundNothing,
+    },
+  }),
+}
+
+// ─── The canvas — the text's own projection (L-D) ────────────────────
+//
+// Everything the page draws on the code, read once from the module the
+// View stands in: the tokens (the one lexer's, over the text the judgment
+// read), the aspect strip, the verb frames, the proof marks and the traces
+// of owned values.
+fn canvas_of(v, field, ledger, lens) = {
+  let nodes = module_handles(v.node)
+  let frames = nodes |> map(frames_at) |> flatten
+  let decided = filter(decided_here(v.node, ??), verify_decided())
+  let owed = module_pending(v.node)
+  let uses = nodes |> map(param_uses) |> flatten
+  let traces = nodes |> map(own_traces(uses, ??)) |> flatten
+  let cells =
+    (nodes |> map(node_cells(v, ??)) |> flatten) ++ (field |> map(field_cell) |> flatten) ++ (ledger |> map(ledger_cell) |> flatten) ++ (frames |> map(frame_cells) |> flatten) ++ map(decided_cell, decided) ++ map(owed_cell, owed) ++ (traces |> map(trace_cells) |> flatten) ++ (lens |> filter(lens_in_module(v.name)) |> map(diag_cell))
+  Canvas({
+    frames,
+    lines: count_lines(v.text) + 1,
+    marks: map(decided_mark, decided) ++ map(owed_mark, owed),
+    strip: strip_of(cells),
+    tokens: canvas_tokens(v.text),
+    traces,
+  })
+}
+
+// ── The tokens — the one lexer, read again over the text the judgment read.
+// A token's class is the kernel role its hue names: a keyword, a
+// discipline word, a verb, a hole, a string and its splices, a number, a
+// comment, a nominal name (the case rule IS the declaration), the name a
+// declaration introduces, `self`, a negation, any other name, punctuation.
+// The lexer's reports were said when the judgment read the same text, so
+// they are quiet here.
+fn canvas_tokens(text: String) = {
+  let toks = lex(text) ~> diag_quiet
+  let kinds = map(token_kind_of, toks)
+  // Each token beside the kinds around it: the one before (none at the
+  // first) and the one after (none at the last).
+  let around = zip([None] ++ kinds, rest(kinds) ++ [None])
+  zip(toks, around) |> fold([], canvas_token_step)
+}
+
+fn canvas_token_step(acc, entry) = match entry {
+  (Tok(kind, sp), (prev, next)) => match token_class(kind, prev, next) {
+    Some(c) => push(acc, CanvasToken(sp, c)),
+    None => acc,
+  },
+}
+
+fn token_kind_of(t) = match t {
+  Tok(k, _) => Some(k),
+}
+
+fn token_class(kind, prev, next) = match kind {
+  TFn => Some(TkKeyword),
+  TLet => Some(TkKeyword),
+  TIf => Some(TkKeyword),
+  TElse => Some(TkKeyword),
+  TMatch => Some(TkKeyword),
+  TType => Some(TkKeyword),
+  TEffect => Some(TkKeyword),
+  THandler => Some(TkKeyword),
+  TWith => Some(TkKeyword),
+  TImport => Some(TkKeyword),
+  TWhere => Some(TkKeyword),
+  TTrue => Some(TkKeyword),
+  TFalse => Some(TkKeyword),
+  TResume => Some(TkDiscipline),
+  TOwn => Some(TkDiscipline),
+  TRef => Some(TkDiscipline),
+  TPure => Some(TkDiscipline),
+  TIdent(w) => Some(ident_class(w, prev)),
+  TIntLit(_) => Some(TkNumber),
+  TFloatLit(_) => Some(TkNumber),
+  TStringLit(_) => Some(TkString),
+  TStringPart(_) => Some(TkString),
+  TStringSplice => Some(TkSplice),
+  TComment(_) => Some(TkComment),
+  TPipeGt => Some(TkVerb),
+  TLtPipe => Some(TkVerb),
+  TGtLt => Some(TkVerb),
+  TTildeGt => Some(TkVerb),
+  TLtTilde => Some(TkVerb),
+  THole => Some(TkHole),
+  TBang => Some(if names_a_type(next) { TkNegation } else { TkPunct }),
+  TEqEq => Some(TkPunct),
+  TBangEq => Some(TkPunct),
+  TLtEq => Some(TkPunct),
+  TGtEq => Some(TkPunct),
+  TArrow => Some(TkPunct),
+  TFatArrow => Some(TkPunct),
+  TPlusPlus => Some(TkPunct),
+  TAndAnd => Some(TkPunct),
+  TOrOr => Some(TkPunct),
+  TLParen => Some(TkPunct),
+  TRParen => Some(TkPunct),
+  TLBrace => Some(TkPunct),
+  TRBrace => Some(TkPunct),
+  TLBracket => Some(TkPunct),
+  TRBracket => Some(TkPunct),
+  TComma => Some(TkPunct),
+  TDot => Some(TkPunct),
+  TColon => Some(TkPunct),
+  TSemicolon => Some(TkPunct),
+  TPlus => Some(TkPunct),
+  TMinus => Some(TkPunct),
+  TStar => Some(TkPunct),
+  TSlash => Some(TkPunct),
+  TPercent => Some(TkPunct),
+  TEq => Some(TkPunct),
+  TLt => Some(TkPunct),
+  TGt => Some(TkPunct),
+  TAmp => Some(TkPunct),
+  TPipe => Some(TkPunct),
+  TAt => Some(TkPunct),
+  TNewline => None,
+  TEof => None,
+}
+
+// A name: `self`; the name a declaration introduces, read off the keyword
+// before it; the name a negation negates; a nominal name, by its case; any
+// other.
+fn ident_class(w: String, prev) = if w == "self" {
+  TkSelf
+} else {
+  match prev {
+    Some(TFn) => TkDecl,
+    Some(THandler) => TkDecl,
+    Some(TEffect) => TkDecl,
+    Some(TType) => TkDecl,
+    Some(TBang) => if is_nominal(w) { TkNegation } else { TkName },
+    Some(_) => if is_nominal(w) { TkType } else { TkName },
+    None => if is_nominal(w) { TkType } else { TkName },
+  }
+}
+
+fn names_a_type(next) = match next {
+  Some(TIdent(w)) => is_nominal(w),
+  Some(TPure) => true,
+  Some(_) => false,
+  None => false,
+}
+
+// The case rule (SYNTAX §Generic type parameters): an uppercase first letter
+// is a nominal name.
+fn is_nominal(w: String) = byte_len(w) > 0 && byte_at(w, 0) >= 65 && byte_at(w, 0) <= 90
+
+// ── The frames — each verb site with what it composes, read off the node.
+// A `|>` chain is one site however many pipes nest in it: the chain's head
+// (a pipe no `|>` above holds as its left side) carries the source and
+// every stage; an inner pipe of the chain draws nothing of its own.
+fn frames_at(h) = match graph_node_body(h) {
+  NExpr(PipeExpr(PForward, _, _)) => if is_chain_prefix(h) { [] } else { [Frame(h, CvPipe, map(parse_span_of, chain_elements(h)))] },
+  NExpr(PipeExpr(PTee, l, r)) => [Frame(h, CvTee, [parse_span_of(node_handle(l)), parse_span_of(node_handle(r))])],
+  NExpr(PipeExpr(PFeedback, l, r)) => [Frame(h, CvLoop, [parse_span_of(node_handle(l)), parse_span_of(node_handle(r))])],
+  NExpr(PipeExpr(PFanout(_), l, r)) => [Frame(h, CvShare, [parse_span_of(node_handle(l))] ++ map(parse_span_of, shared_branches(r)))],
+  NExpr(FanoutExpr(branches)) => [Frame(h, CvFan, map(branch_span, branches))],
+  _ => [],
+}
+
+// A `|>` that is the LEFT side of the `|>` above it is that chain's prefix.
+fn is_chain_prefix(h) = match graph_parent_of(h) {
+  Some(p) => match graph_node_body(p) {
+    NExpr(PipeExpr(PForward, l, _)) => node_handle(l) == h,
+    _ => false,
+  },
+  None => false,
+}
+
+// A `<|` shares its input across the elements of the tuple on its right; a
+// right side that is not a tuple is the one branch.
+fn shared_branches(r) = match graph_node_body(node_handle(r)) {
+  NExpr(MakeTupleExpr(elems)) => map(node_handle, elems),
+  _ => [node_handle(r)],
+}
+
+fn branch_span(n) = parse_span_of(node_handle(n))
+
+fn canvas_verb_word(verb) = match verb {
+  CvPipe => "|>",
+  CvShare => "<|",
+  CvFan => "><",
+  CvTee => "~>",
+  CvLoop => "<~",
+}
+
+// What each composed span is, in the verb's words — the topology facet's
+// own sentences (verb_role_text), so the cell and the ring say one thing.
+fn frame_role(verb, k, n) = match verb {
+  CvPipe => if k == 0 { ChainSource } else { ChainStage(k, n - 1) },
+  CvShare => if k == 0 { FanInput } else { ShareBranch(k - 1, n - 1) },
+  CvFan => FanBranch(k, n),
+  CvTee => if k == 0 { InstallBody } else { InstallHandler },
+  CvLoop => if k == 0 { Recurrence } else { FeedbackDelay },
+}
+
+// ── The strip — one entry per fact, then grouped: per line, per aspect,
+// the strongest state wins (a refusal over an open fact over a narration
+// over a proof), the first of equals kept.
+fn strip_of(cells) =
+  cells |> enumerate |> map(strip_keyed) |> sort |> fold([], strip_step) |> map(strip_line)
+
+// A cell's place in the order: its line, its aspect in kernel order, the
+// strongest first, and its position among equals — unique, so the order
+// never compares the cells themselves.
+fn strip_keyed(entry) = match entry {
+  (i, (line, arm, cell)) => (line, arm_index(arm), 0 - cell_strength(cell), i, (arm, cell)),
+}
+
+// Per line, the first cell of each aspect the order reaches is its strongest.
+fn strip_step(lines, key) = match key {
+  (line, _, _, _, (arm, cell)) => match last_line(lines) {
+    Some((l, picks)) => if l == line {
+      if any(is_aspect(arm, ??), picks) {
+        lines
+      } else {
+        push(drop_last(lines), (l, push(picks, (arm, cell))))
+      }
+    } else {
+      push(lines, (line, [(arm, cell)]))
+    },
+    None => push(lines, (line, [(arm, cell)])),
+  },
+}
+
+fn is_aspect(arm, pick) = match pick {
+  (a, _) => a == arm,
+}
+
+fn last_line(lines) = if len(lines) == 0 { None } else { Some(last(lines)) }
+
+// A line's eight cells, in kernel order, each its aspect's pick or nothing.
+fn strip_line(entry) = match entry {
+  (line, picks) => StripLine(line, map(aspect_pick(picks, ??), kernel_arms())),
+}
+
+fn aspect_pick(picks, arm) = match find(is_aspect(arm, ??), picks) {
+  Some((_, cell)) => Some(cell),
+  None => None,
+}
+
+fn kernel_arms() =
+  [OnQuery, OnPropose, OnTopology, OnEffects, OnOwnership, OnVerify, OnTeach, OnWhy]
+
+fn arm_index(arm) = match arm {
+  OnQuery => 0,
+  OnPropose => 1,
+  OnTopology => 2,
+  OnEffects => 3,
+  OnOwnership => 4,
+  OnVerify => 5,
+  OnTeach => 6,
+  OnWhy => 7,
+}
+
+fn cell_strength(cell) = match cell {
+  StripCell(state, _, _, _) => match state {
+    CellRefused => 3,
+    CellOpen => 2,
+    CellWarned => 1,
+    CellProven => 0,
+  },
+}
+
+fn span_line(sp) = match sp {
+  Span(sl, _, _, _) => sl,
+}
+
+fn cell_at(arm, state, word: String, sp, text: String) =
+  (span_line(sp), arm, StripCell(state, word, sp, text))
+
+// What a node says on its own line: a declaration's type, the prose
+// attached to it or the accept that drew it, the effect a perform needs and
+// who grants it, and the effects an install grants.
+fn node_cells(v, h) = {
+  let body = graph_node_body(h)
+  let sp = parse_span_of(h)
+  let decl = if is_top_decl(h) || is_nested_fn(body) {
+    match graph_chase(h) {
+      GNode(kind, _) => [cell_at(OnQuery, CellProven, decl_word(body), sp, node_query_line(h, kind))],
+    }
+  } else {
+    []
+  }
+  let prose = graph_comment_at(h)
+  let lede = if byte_len(prose) > 0 {
+    [cell_at(OnWhy, CellProven, "lede", sp, first_sentence(prose))]
+  } else {
+    []
+  }
+  let accepted = match graph_reason_at(h) {
+    Located(_, Accepted(text, _, _)) => [cell_at(OnWhy, CellProven, "accepted", sp, "accepted `{text}`")],
+    _ => [],
+  }
+  let served = match served_at(h) {
+    Some((en, s)) => [served_cell(en, s, sp, v.name)],
+    None => [],
+  }
+  let granted = match body {
+    NExpr(PipeExpr(PTee, _, r)) => [
+      cell_at(
+        OnEffects,
+        CellProven,
+        tee_handler_name(r),
+        parse_span_of(node_handle(r)),
+        "~> {tee_handler_name(r)} grants what its arms answer"
+      )
+    ],
+    _ => [],
+  }
+  decl ++ lede ++ accepted ++ served ++ granted
+}
+
+fn is_nested_fn(body) = match body {
+  NStmt(FnStmt(_, _, _, _, _)) => true,
+  _ => false,
+}
+
+// A perform an install on its path serves is GRANTED here — the filled
+// glyph; one no install serves is REQUIRED of the callers — the hollow
+// glyph, a refusal where nothing grants it at the root (the Lens says so,
+// and the refusal's cell outranks this one).
+fn served_cell(en: String, s, sp, target: String) = match s {
+  ServedBy(_, _) => cell_at(OnEffects, CellProven, en, sp, show_served(en, s, target)),
+  ServedWhereCalled(_) => cell_at(OnEffects, CellOpen, en, sp, show_served(en, s, target)),
+  ServedByCaller(_) => cell_at(OnEffects, CellOpen, en, sp, show_served(en, s, target)),
+}
+
+// The field's positions: a hole with its verdict, a gradient position with
+// the step it proposes — each said in its aspect's own sentence.
+fn field_cell(f) = match f {
+  FieldHole(_, sp, ring) => match fold(None, socket_step, ring) {
+    Some(sk) => [cell_at(OnPropose, CellOpen, socket_word(sk), sp, socket_text(sk))],
+    None => [],
+  },
+  FieldGradient(_, sp, ring) => match fold(None, teach_step, ring) {
+    Some((text, mode)) => if teach_says(mode) { [cell_at(OnTeach, CellOpen, teach_word(mode), sp, text)] } else { [] },
+    None => [],
+  },
+}
+
+fn socket_word(sk) = match sk {
+  SkFill(_, _) => "fill",
+  SkAsk(_) => "ask",
+  SkNone => "none",
+  SkSilent => "silent",
+}
+
+fn socket_step(acc, f) = match f {
+  RingFact(APropose(sk), _) => Some(sk),
+  RingFact(_, _) => acc,
+}
+
+fn teach_step(acc, f) = match f {
+  RingFact(ATeach(text, mode), _) => Some((text, mode)),
+  RingFact(_, _) => acc,
+}
+
+fn teach_says(mode) = match mode {
+  TmAdd => true,
+  TmAsk => true,
+  TmNeed => true,
+  TmTighten => true,
+  TmNone => false,
+}
+
+fn teach_word(mode) = match mode {
+  TmAdd => "add",
+  TmAsk => "ask",
+  TmNeed => "need",
+  TmTighten => "tighten",
+  TmNone => "none",
+}
+
+// The Ledger's tightenings are steps the gradient proposes at their
+// declarations.
+fn ledger_cell(f) = match f {
+  LedgerTighten(name, text, sp) => [cell_at(OnTeach, CellOpen, "tighten", sp, text)],
+  LedgerDecl(_, _, _, _, _, _) => [],
+  LedgerObligation(_, _, _, _, _) => [],
+}
+
+// A frame's composed spans, each on its own line, after the first: the
+// stage, the branch, the handler, the delay — the verb glyph at the line
+// the author wrote it on.
+fn frame_cells(f) = match f {
+  Frame(_, verb, spans) => spans |> enumerate |> rest |> map(frame_cell(verb, len(spans), ??)),
+}
+
+fn frame_cell(verb, n, entry) = match entry {
+  (k, sp) => cell_at(OnTopology, CellProven, canvas_verb_word(verb), sp, verb_role_text(frame_role(verb, k, n))),
+}
+
+// The claims the ledger decided, in this module: proven or refuted. A
+// provision (what a body hands a function) and the trivial claim are facts
+// of the walk, not claims a developer wrote, so they mark nothing.
+fn decided_here(mh, entry) = match entry {
+  (m, _, pred, _) => m == mh && claim_is_marked(pred),
+}
+
+fn claim_is_marked(pred) = match pred {
+  PTrue => false,
+  PProvides(_) => false,
+  PCompare(_, _, _) => true,
+  PAnd(_, _) => true,
+  POr(_, _) => true,
+  PNot(_) => true,
+  PBoolNode(_) => true,
+  PPatternMatch(_, _) => true,
+  PFlowLe(_, _) => true,
+  PWithSelf(_, inner) => claim_is_marked(inner),
+  PTotalDiv(_, _, _) => true,
+  PInBounds(_, _) => true,
+}
+
+fn decided_state(proven) = if proven { CellProven } else { CellRefused }
+
+fn decided_cell(entry) = match entry {
+  (_, sp, pred, proven) => cell_at(
+    OnVerify,
+    decided_state(proven),
+    if proven { "proven" } else { "refuted" },
+    sp,
+    show_predicate(pred)
+  ),
+}
+
+fn decided_mark(entry) = match entry {
+  (_, sp, pred, proven) => ProofMark(decided_state(proven), sp, show_predicate(pred)),
+}
+
+fn owed_cell(entry) = match entry {
+  (_, sp, pred, _) => cell_at(OnVerify, CellOpen, "pending", sp, show_predicate(pred)),
+}
+
+fn owed_mark(entry) = match entry {
+  (_, sp, pred, _) => ProofMark(CellOpen, sp, show_predicate(pred)),
+}
+
+// A diagnostic of the module, in the column of the aspect it speaks for: a
+// refusal refuses there, a narration narrates.
+fn diag_cell(f) = match f {
+  (d, msg, _) => cell_at(
+    diag_arm(d),
+    if diag_refuses(d) { CellRefused } else { CellWarned },
+    diag_code(d),
+    diag_span(d),
+    msg
+  ),
+}
+
+// ── The traces of owned values: every parameter a declaration's judged
+// type grades `own`, from the declaration's head through each use in the
+// body to the last — the use that consumes it. A use is a reference whose
+// own link names a parameter's binder; the module's uses are read once,
+// each with the declaration that holds it and the name it reads.
+fn own_traces(uses, h) = match graph_node_body(h) {
+  NStmt(FnStmt(name, _, _, _, _)) => if at_module_level(h) {
+    match env_lookup(name) {
+      Some((scheme, _, _)) => match judgment_ty(scheme) {
+        TFun(params, _, _) => params |> filter(param_is_owned) |> map(trace_of(uses, h, ??)) |> filter(trace_has_uses),
+        _ => [],
+      },
+      None => [],
+    }
+  } else {
+    []
+  },
+  _ => [],
+}
+
+fn param_is_owned(p) = match param_resolved(p) {
+  Own => true,
+  Ref => false,
+  Unmarked => false,
+}
+
+fn trace_of(uses, decl, p) = match p {
+  TParam(pname, _, _, _, _, _) => OwnTrace(decl, pname, parse_span_of(decl), uses |> filter(use_of(decl, pname, ??)) |> map(use_site)),
+}
+
+fn trace_has_uses(t) = match t {
+  OwnTrace(_, _, _, sites) => len(sites) > 0,
+}
+
+fn use_of(decl, pname: String, u) = match u {
+  (d, n, _) => d == decl && n == pname,
+}
+
+fn use_site(u) = match u {
+  (_, _, sp) => sp,
+}
+
+// A parameter's use — a reference whose own link names a parameter's
+// binder, inside a declaration: the declaration, the name it reads, its
+// site. Every other node is no use.
+fn param_uses(h) = match graph_node_body(h) {
+  NExpr(VarRef(n)) => if links_a_param(h) {
+    match decl_path_to(h) {
+      [] => [],
+      [top, ..._] => [(top, n, parse_span_of(h))],
+    }
+  } else {
+    []
+  },
+  _ => [],
+}
+
+fn links_a_param(h) = match graph_link_of(h) {
+  Some(b) => match graph_binder_of(b) {
+    Some(ParamFact(_)) => true,
+    Some(_) => false,
+    None => false,
+  },
+  None => false,
+}
+
+fn trace_cells(t) = match t {
+  OwnTrace(_, pname, head, uses) => [
+    cell_at(
+      OnOwnership,
+      CellProven,
+      "own",
+      head,
+      "{pname} is owned — consumed at line {int_to_str(span_line(last(uses)))}"
+    ),
+    cell_at(OnOwnership, CellProven, "consume", last(uses), "{pname} is consumed here")
+  ],
+}
+
+// ── Find by edge: what the node at the caret names, followed along its
+// edge. A reference to a local — its own link names a binder the parse
+// minted inside a declaration — answers every reference in the module that
+// links the same binder; a name a declaration introduces answers every
+// reference the graph noted under it (the refs column — the reverse edge).
+fn refs_at(h, v) = match graph_node_body(h) {
+  NExpr(VarRef(name)) => match graph_link_of(h) {
+    Some(b) => if is_local_binder(b) {
+      FoundRefs(name, local_uses(v, b) |> map(site_in_view(v.name, ??)), [])
+    } else {
+      FoundRefs(name, refs_of_name(name), [])
+    },
+    None => FoundRefs(name, refs_of_name(name), []),
+  },
+  NStmt(s) => match stmt_declared_name(s) {
+    Some(name) => FoundRefs(name, refs_of_name(name), []),
+    None => FoundNothing,
+  },
+  _ => FoundNothing,
+}
+
+fn stmt_declared_name(s) = match s {
+  FnStmt(name, _, _, _, _) => Some(name),
+  TypeDefStmt(name, _) => Some(name),
+  EffectDeclStmt(name, _, _) => Some(name),
+  HandlerDeclStmt(name, _, _, _, _, _) => Some(name),
+  RefineStmt(name, _, _) => Some(name),
+  AliasStmt(name, _) => Some(name),
+  RowAliasStmt(name, _) => Some(name),
+  LetStmt(_, _, _) => None,
+  ImportStmt(_) => None,
+  ExprStmt(_) => None,
+}
+
+// A binder a declaration's body holds: a parameter, a part a pattern took
+// apart, a handler's state — or a node the parse minted below a
+// declaration (a let's pattern).
+fn is_local_binder(b) = match graph_binder_of(b) {
+  Some(_) => true,
+  None => len(decl_path_to(b)) > 1,
+}
+
+fn local_uses(v, b) = module_handles(v.node) |> filter(links_to(??, b)) |> map(parse_span_of)
+
+fn site_in_view(m: String, sp) = (m, sp)
+
+fn links_to(u, b) = match graph_node_body(u) {
+  NExpr(VarRef(_)) => match graph_link_of(u) {
+    Some(x) => x == b,
+    None => false,
+  },
+  _ => false,
+}
+
+// A needle a find typed: the references the graph noted under it, and the
+// string literals holding it — the medium's own `refs of` and `text`
+// answers, never a second search.
+fn found_needle(m: String, needle: String) = FoundRefs(
+  needle,
+  sites_of(ask(parse_query_string(m, "refs of {needle}"))),
+  sites_of(ask(parse_query_string(m, "text {needle}")))
+) ~> query_default
+
+// The sites an answer carries, read through the one projection of an answer
+// to its places (`located_answer`), so a facet the query grows is a site list
+// here without a second enumeration of every answer kind.
+fn sites_of(answer) = match located_answer(answer) {
+  Some((_, sites)) => sites,
+  None => [],
+}
+
+fn field_hole(v, ranked) = match ranked {
+  (_, ph) => FieldHole(ph, parse_span_of(ph), ring_of(cursor_at_handle(ph), ph, parse_span_of(ph), v)),
+}
+
+fn field_gradient(v, ranked) = match ranked {
+  (_, ph) => FieldGradient(ph, parse_span_of(ph), ring_of(cursor_at_handle(ph), ph, parse_span_of(ph), v)),
+}
+
+// The eight facts of a position, from the one cursor read. Each aspect
+// speaks where it has something true to say and carries an empty sentence
+// where it does not; the notes under an aspect are what the terminal
+// prints beside it — the lede over the query, a tie's members and the
+// question under the proposal, the refusals, the install that serves a
+// perform, each open obligation, the hops of the Why.
+fn ring_of(view, h, pspan, v) = match view {
+  CursorView(kind, propose, topology, row, trace, verify, teach, why) => [
+    query_fact(h, kind, pspan, v),
+    propose_fact(h, propose, v.name),
+    RingFact(
+      ATopology(if len(topology) > 0 { show_verb_path(topology, file_line_col(v.name, ??)) } else { "" }),
+      []
+    ),
+    RingFact(AEffects(show_row_facet(row)), []),
+    RingFact(AOwnership(trace), []),
+    RingFact(AVerify, map(obligation_note, verify)),
+    teach_fact(h, teach, v.tights),
+    why_fact(why, v)
+  ],
+}
+
+// The lede — the first sentence of the node's attached prose, the read side
+// of the comment weave the parser fills: a node carrying authored prose speaks
+// that sentence before the Query facet, the same edge the Why engine walks. The
+// query line itself is the addressed source, sliced to the node out of the
+// text the judgment read, and what is bound there.
+fn query_fact(h, kind, pspan, v) = {
+  let prose = graph_comment_at(h)
+  let lede = if len(prose) > 0 { [NoteLede(first_sentence(prose))] } else { [] }
+  RingFact(AQuery("{source_slice(pspan, v.text)}{node_query_line(h, kind)}"), lede)
+}
+
+// The Propose facet — the socket's content at the address surface. The
+// graph already computed it (propose_at runs synth at an authored hole;
+// VNone everywhere else, so silence needs no second hole check). The
+// VERDICT is read, never re-derived from a count: a fill arrives with the
+// Reason its constructor carries, and a tie TEACHES by naming what
+// separates the survivors — never a hidden first-wins pick (PLAN §5's
+// tie-break law at this surface too). A tie is a QUESTION, never a list
+// (§11.1): the members render while a glance can hold them — three — and
+// past that width the surface carries the count and the computed question
+// alone. The refusals stand under the proposal: every name the medium
+// considered and would not offer, each with its Why, so the audit trail
+// the Proposal has carried since it was a pair of lists can be read. And
+// the Handler facet at a perform — which install serves the operation, the
+// innermost `~>` on the declaration's path whose handler answers it — is
+// the same primitive's other face, so it stands here too.
+fn propose_fact(h, propose, target: String) = match propose {
+  Proposal(pr) => {
+    let refusals = map(refusal_note, pr.rejected)
+    let served = match served_at(h) {
+      Some((en, s)) => [NoteHandler(show_served(en, s, target))],
+      None => [],
+    }
+    match pr.verdict {
+      VNone => // An authored hole nothing proved is SAID, never left blank: the
+      // refusals under it are the reasons, and the verdict is the line they
+      // explain (C7). A filled position has no proposal to report.
+      RingFact(APropose(if authored_hole(h) { SkNone } else { SkSilent }), refusals ++ served),
+      VFill(survivor, reason) => RingFact(
+        APropose(SkFill(render_candidate_source(survivor), show_reason(reason))),
+        refusals ++ served
+      ),
+      VAsk(divergence, survivors) => {
+        let members = if len(survivors) <= 3 { map(member_note, survivors) } else { [] }
+        RingFact(
+          APropose(SkAsk(len(survivors))),
+          members ++ [NoteQuestion(show_divergence(divergence))] ++ refusals ++ served
+        )
+      },
+    }
+  },
+}
+
+// A name the medium considered and would not offer, with its Why.
+fn refusal_note(rejected) = match rejected {
+  (name, reason) => NoteRefusal(name, show_reason(reason)),
+}
+
+// A tie's member: the candidate as source, with its Reason.
+fn member_note(survivor) = match survivor {
+  (node, reason) => NoteMember("{render_candidate_source(node)}  — {show_reason(reason)}"),
+}
+
+// One open obligation at its own site: the module it was raised in and
+// the span, the predicate rendered as the ledger renders it.
+fn obligation_note(entry) = match entry {
+  (m, sp, pred, _) => NoteObligation(obligation_text(m, sp, pred), module_name_of_handle(m), sp),
+}
+
+// The Teach facet says what it found: the annotation to add, the question
+// between two, the predicate a parameter needs — or, at a declaration with
+// an authored row the judgment proved wider than its body, the tightening
+// the judgment banked for the module (the Tighten line the terminal prints
+// in Teach's place).
+fn teach_fact(h, teach, tights) = match teach {
+  TeachNone => match graph_node_body(h) {
+    NStmt(FnStmt(name, _, _, _, _)) => match banked_tightening(name, tights) {
+      Some((declared, used)) => RingFact(ATeach(tighten_line(name, declared, used), TmTighten), []),
+      None => RingFact(ATeach("", TmNone), []),
+    },
+    _ => RingFact(ATeach("", TmNone), []),
+  },
+  TeachAdd(_) => RingFact(ATeach(show_teaching(teach), TmAdd), []),
+  TeachAsk(_) => RingFact(ATeach(show_teaching(teach), TmAsk), []),
+  TeachNeed(_, _, _) => RingFact(ATeach(show_teaching(teach), TmNeed), []),
+}
+
+// The Why: the node's own chain, then the chain its type is read from when
+// its cell links to another. The first hop is the aspect's sentence; every
+// deeper hop is a note, and each type chain a note holding its own hops.
+fn why_fact(why, v) = match why {
+  [] => RingFact(AWhy(""), []),
+  [here, ...types] => match why_lines(here, v, 0) {
+    [] => RingFact(AWhy(""), []),
+    [first, ...rest] => RingFact(AWhy(first), map(NoteHop, rest) ++ map(chain_note(v, ??), types)),
+  },
+}
+
+// The chain a node's type is read from, as one note over its hops.
+fn chain_note(v, chain) = match why_lines(chain, v, 0) {
+  [] => NoteTypeChain("", []),
+  [first, ...rest] => NoteTypeChain(first, rest),
+}
+
+// What the terminal says for an aspect — one home per sentence, read by
+// both projections. Empty where the aspect has nothing
+// to say at this position.
+fn aspect_text(a) = match a {
+  AQuery(s) => s,
+  APropose(sk) => socket_text(sk),
+  ATopology(s) => s,
+  AEffects(s) => s,
+  AOwnership(o) => match o {
+    Unmarked => "",
+    Own => "own",
+    Ref => "ref",
+  },
+  AVerify => "",
+  ATeach(s, _) => s,
+  AWhy(s) => s,
+}
+
+fn socket_text(sk) = match sk {
+  SkFill(src, why) => "{src}  — {why}",
+  SkAsk(n) => "{int_to_str(n)} proven survivors — a tie:",
+  SkNone => "no candidate proved at this hole",
+  SkSilent => "",
+}
+
+// The terminal's render of a ring — the address surface's own lines: the lede before the query, the
+// proposal with its members, question and refusals, the install that
+// serves a perform, then topology, effects, ownership, each obligation,
+// the teaching, and the Why with its hops. An aspect with nothing to say
+// prints nothing; the Effects facet is said at every position, Pure
+// included, because "performs nothing" is a proven fact and its absence
+// used to read as no answer.
+fn ring_text(ring) = each(ring_line, ring)
+
+fn ring_line(f) = match f {
+  RingFact(aspect, notes) => {
+    let text = aspect_text(aspect)
+    match aspect {
+      AQuery(_) => {
+        each(note_line, notes)
+        print("Query: {text}\n")
+      },
+      APropose(_) => {
+        if byte_len(text) > 0 { print("Propose: {text}\n") } else { () }
+        each(note_line, notes)
+      },
+      ATopology(_) => if byte_len(text) > 0 { print("Topology: {text}\n") } else { () },
+      AEffects(_) => print("Effects: {text}\n"),
+      AOwnership(_) => if byte_len(text) > 0 { print("Ownership: {text}\n") } else { () },
+      AVerify => each(note_line, notes),
+      ATeach(_, mode) => if byte_len(text) > 0 { print("{teach_label(mode)}: {text}\n") } else { () },
+      AWhy(_) => if byte_len(text) > 0 {
+        print("Why: {text}\n")
+        each(note_line, notes)
+      } else {
+        ()
+      },
+    }
+  },
+}
+
+// The terminal's word for a Teach answer: a tightening is printed as one.
+fn teach_label(mode) = match mode {
+  TmTighten => "Tighten",
+  TmAdd => "Teach",
+  TmAsk => "Teach",
+  TmNeed => "Teach",
+  TmNone => "Teach",
+}
+
+// A note under an aspect, printed as its own line form.
+fn note_line(n) = match n {
+  NoteLede(s) => print("Lede: {s}\n"),
+  NoteMember(s) => print("  {s}\n"),
+  NoteQuestion(s) => print("  {s}\n"),
+  NoteRefusal(name, why) => print("  · refused {name} — {why}\n"),
+  NoteHandler(s) => print("Handler: {s}\n"),
+  NoteObligation(s, _, _) => print("Verify: {s}\n"),
+  NoteHop(s) => hop_line(s),
+  NoteTypeChain(first, hops) => {
+    print("     its type: {first}\n")
+    each(hop_line, hops)
+  },
+}
+
+// A deeper hop of the Why, indented under the first.
+fn hop_line(s: String) = print("     {s}\n")
+
+// The Lens — every report the bank holds, as the kind it is, ranked by
+// proof state: a refusal first, then an error, an open claim, a gradient
+// step, a warning. The addressed module's own reports stand before every
+// linked module's: a lesson that links src/types.mn carries that module's
+// comment-reference warnings (names its prose cites that this link never
+// reaches), and a developer reading their own program is owed their own
+// line first. Both halves are the one ranked order; the module each fact
+// carries is what the painter folds by, and the lead the page prints over
+// them rides each fact on the wire.
+fn lens_of(target: String) = {
+  let all = diag_banked()
+  let here = rank_by(diag_interest_of, filter(lens_in_module(target), all))
+  let linked = rank_by(diag_interest_of, filter(lens_outside_module(target), all))
+  here ++ linked
+}
+
+fn lens_in_module(target: String, f) = match f {
+  (_, _, dmod) => dmod == target,
+}
+
+fn lens_outside_module(target: String, f) = !lens_in_module(target, f)
+
+fn diag_interest_of(f) = match f {
+  (d, _, _) => diag_interest(d),
+}
+
+// How much a diagnostic matters: a refusal above everything, then an error,
+// then an open claim, then a step the medium takes by itself, then a warning.
+fn diag_interest(d) = if diag_refuses(d) {
+  1.0
+} else {
+  match diag_severity(d) {
+    SError => 0.9,
+    SVerificationPending => 0.7,
+    SWarning => if diag_applies_itself(d) { 0.6 } else { 0.4 },
+  }
+}
+
+// The Ledger — the module's own facts, ranked for the caret: every top-level
+// declaration by its proximity to the caret (the gradient's decay, read
+// between two handles), every pending obligation of the module, and every
+// tightening the judgment banked for it.
+fn ledger_of(v, caret_h) = {
+  let reach = module_reach_of(v.node)
+  let decls = latest_generation(filter(is_top_decl, module_handles(v.node)))
+  let decl_facts = map(decl_fact(??, caret_h, reach), decls)
+  let debt_facts = map(debt_fact(v.name, ??), module_pending(v.node))
+  let tight_facts = map(tighten_fact, v.tights)
+  rank_by(ledger_interest, decl_facts ++ debt_facts ++ tight_facts)
+}
+
+// The module's open proof obligations. A claim pending over a hole is the
+// hole's own demand, carried by the hole's position — filling it discharges
+// the claim — so it is not a second position beside the hole.
+fn module_pending(mh) =
+  filter({ (modh, _, pred, _) => modh == mh && !claim_is_a_holes_demand(pred) }, verify_debt())
+
+// The tightenings the judgment banked for the module.
+fn module_tightenings(target: String) =
+  filter({ (_, _, _, _, dmod) => dmod == target }, tightenables())
+
+fn debt_fact(target: String, entry) = match entry {
+  (m, sp, pred, why) => LedgerObligation(obligation_text(m, sp, pred), show_predicate(pred), show_reason(why), target, sp),
+}
+
+fn tighten_fact(entry) = match entry {
+  (declared, used, name, tspan, _) => LedgerTighten(name, tighten_line(name, declared, used), tspan),
+}
+
+// A top-level declaration: a statement that declares, standing directly in
+// its module — a nested fn hoists into its block's scope, never the
+// Ledger's.
+fn is_top_decl(h) = match graph_node_body(h) {
+  NStmt(s) => match s {
+    ImportStmt(_) => false,
+    ExprStmt(_) => false,
+    LetStmt(_, _, _) => at_module_level(h),
+    FnStmt(_, _, _, _, _) => at_module_level(h),
+    TypeDefStmt(_, _) => at_module_level(h),
+    EffectDeclStmt(_, _, _) => at_module_level(h),
+    HandlerDeclStmt(_, _, _, _, _, _) => at_module_level(h),
+    RefineStmt(_, _, _) => at_module_level(h),
+    AliasStmt(_, _) => at_module_level(h),
+    RowAliasStmt(_, _) => at_module_level(h),
+  },
+  _ => false,
+}
+
+// One declaration of the module: its query line — the type the judgment
+// proved, with the inferred row — at its own site, as near as the gradient
+// reads it from the caret.
+fn decl_fact(dh, caret_h, reach) = match graph_chase(dh) {
+  GNode(kind, _) => {
+    let body = graph_node_body(dh)
+    LedgerDecl(
+      dh,
+      decl_word(body),
+      body_decl_name(body),
+      node_query_line(dh, kind),
+      parse_span_of(dh),
+      position_proximity(caret_h, dh, reach)
+    )
+  },
+}
+
+// The declaration's kind, in the author's words.
+fn decl_word(body) = match body {
+  NStmt(s) => match s {
+    LetStmt(_, _, _) => "let",
+    FnStmt(_, _, _, _, _) => "fn",
+    TypeDefStmt(_, _) => "type",
+    EffectDeclStmt(_, _, _) => "effect",
+    HandlerDeclStmt(_, _, _, _, _, _) => "handler",
+    RefineStmt(_, _, _) => "refinement",
+    AliasStmt(_, _) => "alias",
+    RowAliasStmt(_, _) => "row",
+    ImportStmt(_) => "import",
+    ExprStmt(_) => "expression",
+  },
+  _ => "node",
+}
+
+// How much a Ledger fact matters at the caret: debt first, then a
+// tightening, then a declaration by its proximity.
+fn ledger_interest(f) = match f {
+  LedgerDecl(_, _, _, _, _, near) => near,
+  LedgerObligation(_, _, _, _, _) => 0.9,
+  LedgerTighten(_, _, _) => 0.8,
+}
+
+// Facts by interest, highest first, equal interest in source order — the
+// field's own ordering (rank_positions): each fact keyed by its interest
+// negated and its place, so the ascending structural sort puts the highest
+// first and keeps a tie where it stood. A module's Ledger is every
+// declaration it holds, never a glance's worth.
+fn rank_by(interest, facts) =
+  facts |> enumerate |> map(rank_keyed(interest, ??)) |> sort |> map(rank_fact)
+
+// The place is unique, so the order never compares the facts themselves.
+fn rank_keyed(interest, entry) = match entry {
+  (i, f) => (0.0 - interest(f), i, f),
+}
+
+fn rank_fact(key) = match key {
+  (_, _, f) => f,
+}
+
+// The View as JSON — the page's wire, and THE ONE HOME of every wire word: the kinds, the fields, the shapes. A
+// number is a JSON number (a Float on the wire parses as the integer it
+// is), a site is a module and a span, and every match below is exhaustive,
+// so an aspect, a note or a fact the wheel grows cannot be left off the
+// wire — the serializer refuses to compile without its arm.
+fn view_json(view) = match view {
+  View(v) => json_serialize(JObj([
+    ("at", at_json(v.at)),
+    ("ring", JArr(map(ring_json, v.ring))),
+    ("field", JArr(map(field_json, v.field))),
+    ("lens", JArr(map(lens_json, v.lens))),
+    ("ledger", JArr(map(ledger_json, v.ledger))),
+    ("canvas", canvas_json(v.canvas)),
+    ("refs", found_json(v.refs))
+  ])),
+}
+
+// The canvas on the wire. A token is the five-word tuple
+// [line, col, end_line, end_col, class] — the one shape a module's every
+// token takes, so it rides as an array rather than an object per token.
+// Columns are the text's bytes, the lexer's own columns.
+fn canvas_json(c) = match c {
+  NoCanvas => JNull,
+  Canvas(cv) => JObj([
+    ("lines", jnum(cv.lines)),
+    ("tokens", JArr(map(token_json, cv.tokens))),
+    ("strip", JArr(map(strip_line_json, cv.strip))),
+    ("frames", JArr(map(frame_json, cv.frames))),
+    ("marks", JArr(map(mark_json, cv.marks))),
+    ("traces", JArr(map(trace_json, cv.traces)))
+  ]),
+}
+
+fn token_json(t) = match t {
+  CanvasToken(Span(sl, sc, el, ec), cls) => JArr([jnum(sl), jnum(sc), jnum(el), jnum(ec), JStr(token_class_word(cls))]),
+}
+
+fn token_class_word(cls) = match cls {
+  TkKeyword => "kw",
+  TkDiscipline => "disc",
+  TkVerb => "verb",
+  TkHole => "hole",
+  TkString => "str",
+  TkSplice => "spl",
+  TkNumber => "num",
+  TkComment => "cm",
+  TkType => "ty",
+  TkDecl => "fn",
+  TkSelf => "self",
+  TkNegation => "neg",
+  TkName => "id",
+  TkPunct => "op",
+}
+
+fn strip_line_json(s) = match s {
+  StripLine(line, cells) => JObj([("line", jnum(line)), ("cells", JArr(map(cell_json, cells)))]),
+}
+
+fn cell_json(c) = match c {
+  None => JNull,
+  Some(StripCell(state, word, sp, text)) => JObj([
+    ("glyph", JStr(cell_state_word(state))),
+    ("word", JStr(word)),
+    ("site", span_json(sp)),
+    ("text", JStr(text))
+  ]),
+}
+
+fn cell_state_word(state) = match state {
+  CellProven => "proven",
+  CellOpen => "open",
+  CellRefused => "refused",
+  CellWarned => "warned",
+}
+
+fn frame_json(f) = match f {
+  Frame(h, verb, spans) => JObj([("h", jnum(h)), ("verb", JStr(canvas_verb_word(verb))), ("stages", JArr(map(span_json, spans)))]),
+}
+
+fn mark_json(m) = match m {
+  ProofMark(state, sp, text) => JObj([("glyph", JStr(cell_state_word(state))), ("site", span_json(sp)), ("text", JStr(text))]),
+}
+
+fn trace_json(t) = match t {
+  OwnTrace(h, name, head, uses) => JObj([
+    ("h", jnum(h)),
+    ("name", JStr(name)),
+    ("head", span_json(head)),
+    ("uses", JArr(map(span_json, uses)))
+  ]),
+}
+
+fn found_json(f) = match f {
+  FoundNothing => JNull,
+  FoundRefs(name, sites, texts) => JObj([
+    ("needle", JStr(name)),
+    ("sites", JArr(map(site_json, sites))),
+    ("texts", JArr(map(site_json, texts)))
+  ]),
+}
+
+fn site_json(s) = match s {
+  (m, sp) => JObj([("module", JStr(m)), ("site", span_json(sp))]),
+}
+
+// A field position: its kind, handle and site, and the ring its address
+// projects.
+fn field_json(f) = match f {
+  FieldHole(h, sp, ring) => JObj([
+    ("kind", JStr("hole")),
+    ("h", jnum(h)),
+    ("site", span_json(sp)),
+    ("ring", JArr(map(ring_json, ring)))
+  ]),
+  FieldGradient(h, sp, ring) => JObj([
+    ("kind", JStr("gradient")),
+    ("h", jnum(h)),
+    ("site", span_json(sp)),
+    ("ring", JArr(map(ring_json, ring)))
+  ]),
+}
+
+fn at_json(at) = match at {
+  ViewAt(a) => JObj([
+    ("module", JStr(a.module)),
+    ("line", jnum(a.line)),
+    ("col", jnum(a.col)),
+    ("h", jnum(a.h)),
+    ("span", span_json(a.span))
+  ]),
+}
+
+fn jnum(n) = JNum(float_of_int(n))
+
+fn span_json(sp) = match sp {
+  Span(sl, sc, el, ec) => JObj([("line", jnum(sl)), ("col", jnum(sc)), ("end_line", jnum(el)), ("end_col", jnum(ec))]),
+}
+
+// A ring fact: its kind, the sentence, what the kind adds, and its notes.
+fn ring_json(f) = match f {
+  RingFact(aspect, notes) => JObj([("kind", JStr(aspect_kind(aspect))), ("text", JStr(aspect_text(aspect)))] ++ aspect_fields(aspect) ++ [("notes", JArr(map(note_json, notes)))]),
+}
+
+fn aspect_kind(a) = match a {
+  AQuery(_) => "query",
+  APropose(_) => "propose",
+  ATopology(_) => "topology",
+  AEffects(_) => "effects",
+  AOwnership(_) => "ownership",
+  AVerify => "verify",
+  ATeach(_, _) => "teach",
+  AWhy(_) => "why",
+}
+
+// What an aspect carries beyond its sentence.
+fn aspect_fields(a) = match a {
+  AQuery(_) => [],
+  APropose(sk) => match sk {
+    SkFill(src, why) => [("verdict", JStr("fill")), ("fill", JStr(src)), ("why", JStr(why))],
+    SkAsk(n) => [("verdict", JStr("ask")), ("survivors", jnum(n))],
+    SkNone => [("verdict", JStr("none"))],
+    SkSilent => [("verdict", JStr("silent"))],
+  },
+  ATopology(_) => [],
+  AEffects(_) => [],
+  AOwnership(o) => [
+    (
+      "grade",
+      JStr(match o {
+        Unmarked => "inferred",
+        Own => "own",
+        Ref => "ref",
+      })
+    )
+  ],
+  AVerify => [],
+  ATeach(_, mode) => [
+    (
+      "mode",
+      JStr(match mode {
+        TmAdd => "add",
+        TmAsk => "ask",
+        TmNeed => "need",
+        TmTighten => "tighten",
+        TmNone => "none",
+      })
+    )
+  ],
+  AWhy(_) => [],
+}
+
+fn note_json(n) = match n {
+  NoteLede(s) => JObj([("kind", JStr("lede")), ("text", JStr(s))]),
+  NoteMember(s) => JObj([("kind", JStr("member")), ("text", JStr(s))]),
+  NoteQuestion(s) => JObj([("kind", JStr("question")), ("text", JStr(s))]),
+  NoteRefusal(name, why) => JObj([
+    ("kind", JStr("refusal")),
+    ("text", JStr("{name} — {why}")),
+    ("name", JStr(name)),
+    ("why", JStr(why))
+  ]),
+  NoteHandler(s) => JObj([("kind", JStr("handler")), ("text", JStr(s))]),
+  NoteObligation(s, m, sp) => JObj([("kind", JStr("obligation")), ("text", JStr(s)), ("module", JStr(m)), ("site", span_json(sp))]),
+  NoteHop(s) => JObj([("kind", JStr("hop")), ("text", JStr(s))]),
+  NoteTypeChain(first, hops) => JObj([("kind", JStr("type-chain")), ("text", JStr(first)), ("hops", JArr(map(JStr, hops)))]),
+}
+
+// A diagnostic on the wire carries its own lead — the sentence the page
+// prints over whichever fact stands first — so the lead is never a fact
+// beside the facts it is about.
+fn lens_json(f) = match f {
+  (d, msg, dmod) => JObj([
+    ("kind", JStr("diag")),
+    ("text", JStr(msg)),
+    ("lead", JStr(diag_lead(d, msg))),
+    ("module", JStr(dmod)),
+    ("site", span_json(diag_span(d))),
+    ("code", JStr(diag_code(d))),
+    ("source", JStr(diag_source(d))),
+    ("severity", JStr(diag_kind(d))),
+    ("applicability", JStr(applicability_text(diag_applicability(d)))),
+    ("refuses", JBool(diag_refuses(d))),
+    ("interest", JNum(diag_interest(d)))
+  ]),
+}
+
+fn ledger_json(f) = match f {
+  LedgerDecl(h, word, name, text, sp, near) => JObj([
+    ("kind", JStr("decl")),
+    ("text", JStr(text)),
+    ("h", jnum(h)),
+    ("word", JStr(word)),
+    ("name", JStr(name)),
+    ("site", span_json(sp)),
+    ("interest", JNum(near))
+  ]),
+  LedgerObligation(text, pred, why, m, sp) => JObj([
+    ("kind", JStr("obligation")),
+    ("text", JStr(text)),
+    ("predicate", JStr(pred)),
+    ("why", JStr(why)),
+    ("module", JStr(m)),
+    ("site", span_json(sp)),
+    ("interest", JNum(ledger_interest(f)))
+  ]),
+  LedgerTighten(name, text, sp) => JObj([
+    ("kind", JStr("tighten")),
+    ("text", JStr(text)),
+    ("name", JStr(name)),
+    ("site", span_json(sp)),
+    ("interest", JNum(ledger_interest(f)))
+  ]),
+}
+
+// What an address — the way into a View — resolves to: a node of the module
+// with its span, the whole module (line 0, the field), or a refusal already
+// said on stderr.
+type Addressed = AddressNode(Viewed, Span, Int) | AddressField(Viewed) | AddressRefused
+
+// The ONE address resolution for every projection — the address surface's
+// text, the View, the accept. A module not in the link, a line past the
+// end and a line nothing stands on are refused on stderr, the process log
+// on every transport. Productive under error IS the address contract (the
+// README's own voice.mn:9 answers OVER its unresolved name mix — an env
+// miss binds NErrorHole and the graph still projects). A module's first
+// line is 1, because its spans are its own.
+fn address_locate(ranges, target: String, line, col) = match viewed(ranges, target) {
+  None => AddressRefused,
+  Some(m) => match m {
+    Viewed(v) => {
+      let nlines = count_lines(v.text) + 1
+      if line == 0 {
+        AddressField(m)
+      } else if line < 0 {
+        eprint_string("mentl: line {int_to_str(line)} — lines count from 1 (0 = the whole-file field)\n")
+        AddressRefused
+      } else if line > nlines {
+        eprint_string("mentl: {target} has {int_to_str(nlines)} lines; {int_to_str(line)} is past the end\n")
+        AddressRefused
+      } else {
+        match address_resolve(v.spans, line, col) {
+          None => {
+            eprint_string("mentl: no node at {target}:{int_to_str(line)} (a blank or comment-only line)\n")
+            AddressRefused
+          },
+          Some(pick) => match pick {
+            (pspan, ph) => AddressNode(m, pspan, ph),
+          },
+        }
+      }
+    },
+  },
+}
+
+// The address surface's projection — `mentl <file>:<line>[:<col>]`: the
+// ring at the node, or the ranked field of the whole file at line 0. The
+// exit code is the verdict.
+fn address_project(ranges, target: String, line, col) = match address_locate(ranges, target, line, col) {
+  AddressRefused => 1,
+  AddressField(Viewed(v)) => {
+    field_text(space_field_view(v))
+    0
+  },
+  AddressNode(Viewed(v), pspan, ph) => {
+    ring_text(ring_of(cursor_at_handle(ph), ph, pspan, v))
+    0
+  },
+}
+
+// The space verb's projection — `mentl space <file>:<line>[:<col>]`: the
+// View as one JSON line on stdout; the same resolution, the same refusals.
+fn space_project(ranges, target: String, line, col, needle) = match address_locate(ranges, target, line, col) {
+  AddressRefused => 1,
+  AddressField(Viewed(v)) => {
+    print("{view_json(space_module_view(v, needle))}\n")
+    0
+  },
+  AddressNode(Viewed(v), pspan, ph) => {
+    print("{view_json(space_view(v, ph, pspan, line, col, needle))}\n")
+    0
+  },
+}
+
+// The node an address names, for a verb that acts there rather than
+// projecting it — the accept and the battery's view read the one resolution
+// the projections read, so each lands exactly where the address projects.
+fn address_node(ranges, target: String, line, col) = match address_locate(ranges, target, line, col) {
+  AddressNode(_, _, ph) => Some(ph),
+  AddressField(_) => None,
+  AddressRefused => None,
+}
+
+// The terminal's field (`mentl <file>:0`): the whole module's work queue,
+// projected from the field View — every hole, then every pending
+// obligation, then every tightening, then every gradient position, each
+// under its own address. The argmax is the field's head; the field is the
+// argmax UNCOLLAPSED, the multi-cursor read (sequential: the per-position
+// fanout is `fanout(…) ~> parallel_compose`, run or refused by the race
+// rule). Every position, obligation and tightening is the module's own,
+// read by module identity, never by line range — every module numbers its
+// lines from 1.
+fn field_text(view) = match view {
+  View(w) => match w.at {
+    ViewAt(a) => {
+      let holes = filter(is_hole_fact, w.field)
+      let grads = filter(is_gradient_fact, w.field)
+      let owed = filter(is_owed_fact, w.ledger)
+      let tights = filter(is_tighten_fact, w.ledger)
+      print("Field: {int_to_str(len(holes))} hole(s), {int_to_str(len(owed))} pending proof(s), {int_to_str(len(tights))} tightening(s), {int_to_str(len(grads))} gradient position(s) in {a.module}\n")
+      each(field_entry_text(a.module, ??), holes)
+      each(ledger_entry_text(a.module, ??), owed)
+      each(ledger_entry_text(a.module, ??), tights)
+      each(field_entry_text(a.module, ??), grads)
+    },
+  },
+}
+
+fn is_hole_fact(f) = match f {
+  FieldHole(_, _, _) => true,
+  FieldGradient(_, _, _) => false,
+}
+
+fn is_gradient_fact(f) = !is_hole_fact(f)
+
+fn is_owed_fact(f) = match f {
+  LedgerObligation(_, _, _, _, _) => true,
+  LedgerDecl(_, _, _, _, _, _) => false,
+  LedgerTighten(_, _, _) => false,
+}
+
+fn is_tighten_fact(f) = match f {
+  LedgerTighten(_, _, _) => true,
+  LedgerDecl(_, _, _, _, _, _) => false,
+  LedgerObligation(_, _, _, _, _) => false,
+}
+
+// A field position under its address, with its ring: a hole's carries its
+// Propose fan, a gradient position's its Teach line.
+fn field_entry_text(module: String, f) = match f {
+  FieldHole(_, sp, ring) => {
+    print("\n── {file_line_col(module, sp)}\n")
+    ring_text(ring)
+  },
+  FieldGradient(_, sp, ring) => {
+    print("\n── {file_line_col(module, sp)}\n")
+    ring_text(ring)
+  },
+}
+
+// An obligation the module owes, with the Why it is owed by, or a
+// tightening with its standing patch (`mentl tighten` authors it), under its
+// address. A declaration is the Ledger's alone and says nothing here.
+fn ledger_entry_text(module: String, f) = match f {
+  LedgerObligation(_, pred, why, _, sp) => {
+    print("\n── {file_line_col(module, sp)}\n")
+    print("Pending: {pred} — undischarged; a ground witness or a refinement collapses it\n")
+    print("Why: {why}\n")
+  },
+  LedgerTighten(_, text, sp) => {
+    print("\n── {file_line_col(module, sp)}\n")
+    print("Tighten: {text}\n")
+    print("  the proven row is the patch (mentl tighten authors it)\n")
+  },
+  LedgerDecl(_, _, _, _, _, _) => (),
+}
+
+// The tightening's sentence — the declared row against the proven one. The
+// name pin is an Intent Boundary at the line's ONE mint (spec_mangle's
+// law): destructured from the candidate tuple the element is free at the
+// splice, and the show floor rendered the fn name as a pointer numeral —
+// the named call anchors the binder.
+fn tighten_line(name: String, declared, used) = match declared_bare_row(declared) {
+  Some(bare) => if row_subsumes(bare, used) {
+    "{name} declares {show_effrow(declared)}, which the body proves — the row is projected; author only its negations and pins"
+  } else {
+    "{name} declares {show_effrow(declared)} — the body proves {show_effrow(used)}"
+  },
+  None => "{name} declares {show_effrow(declared)} — the body proves {show_effrow(used)}",
+}
+
+fn span_index_of_snapshot() = match graph_snapshot() {
+  Graph(_x, spans) => spans,
+}
+
+// The addressed module's own span index, flat and in mint order, read once
+// per View (viewed) and then by every address resolution and every Why lede
+// of it. NARROWED TO THE MODULE FIRST, which is what makes the three-case
+// line rule an address rather than a line-number lottery: a module's spans
+// are its own coordinates, every file starts at line 1, so the weave-wide
+// index holds one entry per module per line, and the widest-node pick
+// answered whichever module's node happened to be widest (measured: `mentl
+// src/synth_proposer.mn:733` rendered `scan_number` from the lexer). One word
+// compare per entry against the module stamped at each node's mint
+// (`graph_module_of`); the flatten is on the OUTPUT, because `filter` builds
+// by push and the rule indexes the result (walked raw, the push-built log
+// cost a measured 131 s per call on the resident session).
+//
+// The module NODE itself is excluded. Its span is the whole file, so it
+// covers every line and would win the covering case at any line no decl
+// reaches, answering with the module's own placeholder Why; the whole-file
+// reading has its own spelling, the field at line 0.
+fn spans_of_module(spans, mh) = list_to_flat(filter(span_in_module(mh), spans))
+
+fn span_in_module(mh, e) = match e {
+  (_s, h) => h != mh && graph_module_of(h) == mh,
+}
+
+// The three-case line rule (the panel's corrected form, deterministic):
+//  (a) among nodes whose span STARTS on the line (and, with a column,
+//      contains it) — `file:LINE` takes the WIDEST (the line's root),
+//      `file:L:C` the TIGHTEST containing the point; ties break leftward,
+//      identical spans to the latest mint (address_better_a is the rule's
+//      one home — this list used to say "smallest start column, then
+//      largest area", which was never what it did);
+//  (b) else the tightest node COVERING the point (a continuation line);
+//  (c) else the nearest node by start line (the no-Module-root top-level
+//      gap — blank lines between decls are ordinary addresses, not errors).
+fn address_resolve(spans, gline, col) = match fold(None, address_case_a(gline, col, ??, ??), spans) {
+  Some(pick) => Some(pick),
+  None => match find_tightest(spans, caret_span(gline, if col > 0 { col } else { 1 }), None, 1000000000) {
+    Some(h) => span_pick_of(spans, h),
+    None => fold(None, address_case_c(gline, ??, ??), spans),
+  },
+}
+
+// Case (a)'s step: a node whose span starts on the line (and, with a
+// column, contains it) contends for the pick.
+fn address_case_a(gline, col, best, e) = match e {
+  (s, h) => match s {
+    Span(sl, _, _, _) => {
+      let hits = if sl == gline {
+        if col > 0 { span_contains(s, caret_span(gline, col)) } else { true }
+      } else {
+        false
+      }
+      if hits { address_better_a(col, best, (s, h)) } else { best }
+    },
+  },
+}
+
+// The two address intents pick OPPOSITE extremes of the containing set.
+// `file:LINE` (col 0) means "the line" — its ROOT, the WIDEST node (the
+// statement/expression covering most of the line: `echo(mix, x)` over the
+// wet binder it feeds). `file:L:C` (col > 0) means "this exact position" —
+// the TIGHTEST node containing the point, so pointing at a `??` reaches
+// the hole node itself (and its Propose facet), never the enclosing decl
+// that also contains the column. Ties break leftward in both modes.
+fn address_better_a(col, best, cand) = match best {
+  None => Some(cand),
+  Some(b) => match b {
+    (bs, bh) => match cand {
+      (cs, ch) => match bs {
+        Span(_, bsc, _, _) => match cs {
+          Span(_, csc, _, _) => {
+            // A BOUND cell beats a ghost, above the area rule (column
+            // mode): a decl's head-anchored span loses tightness to a
+            // never-judged parse cell over its own NAME, and the
+            // projection then renders the ghost's free var (`t…@e0` at
+            // 1:4 — the measured placeholder face). Boundness is the
+            // graph's own "was anything proven here" read; a `??`
+            // node is typed, hence bound, so the hole's reach is
+            // untouched.
+            let cb = address_bound(ch)
+            let bb = address_bound(bh)
+            if col > 0 && cb != bb {
+              if cb { Some(cand) } else { best }
+            } else {
+              let narrower = if col > 0 { span_area(cs) < span_area(bs) } else { span_area(cs) > span_area(bs) }
+              if narrower {
+                Some(cand)
+              } else if span_area(cs) == span_area(bs) {
+                // Identical spans: the LATEST mint wins — mint order builds
+                // constituents before composites, so the later node is the more
+                // derived reading of the same position (a `??` mints its id cell
+                // first, then the NHole node over the same span; the address must
+                // reach the NHole, whose Propose facet speaks). Distinct starts
+                // keep the leftward tie-break.
+                if csc == bsc { Some(cand) } else if csc < bsc { Some(cand) } else { best }
+              } else {
+                best
+              }
+            }
+          },
+        },
+      },
+    },
+  },
+}
+
+// "Was anything proven here" is the node's OWN cell, read unchased: a mint
+// inference never visited still carries the Placeholder it was born with.
+// The chase terminal answered a different question — whether the TYPE is
+// ground — and a variable whose type is generic (a recurrence's prior, the
+// parameter spliced into an interpolation) lost the caret to the node around
+// it (measured on boot 8b071ba3). An authored hole is the one cell left free
+// on purpose: nothing binds `let x = ??` until a proposal is accepted, and
+// the caret on it is where the medium proposes. What is left is a ghost,
+// counted and located by the `ghosts` facet (`node_is_ghost`).
+fn address_bound(h) = !node_is_ghost(h)
+
+fn span_pick_of(spans, h) = match find({ (_, eh) => eh == h }, spans) {
+  Some(e) => match e {
+    (s, _) => Some((s, h)),
+  },
+  None => None,
+}
+
+// Case (c)'s step: the node whose span starts nearest the line, the first
+// of equals kept.
+fn address_case_c(gline, best, e) = match e {
+  (s, h) => match best {
+    None => Some((s, h)),
+    Some(b) => match b {
+      (bs, _) => if line_distance(s, gline) < line_distance(bs, gline) { Some((s, h)) } else { best },
+    },
+  },
+}
+
+fn line_distance(s, gline) = match s {
+  Span(sl, _, _, _) => if sl > gline { sl - gline } else { gline - sl },
+}
+
+// The query line's type: a declaration node's own graph cell is a free var (the scheme lives in
+// the env — read it there, never render the raw t-var); every other node
+// shows its inferred type.
+//
+// EVERY declaration kind, not just the fn (2026-08-16). The law above was
+// written for FnStmt and the other six fell to the catch-all, which is
+// exactly the raw t-var the law forbids: a cursor on `handler counter`
+// answered `counter : t24295@e21654`, and one on `type Gain = Float where
+// self >= 0.0` or `type Coeff = Float repr f64` answered nothing at all.
+// Those are the authoring sites of arms 2, 6 and 7, so three of the eight
+// could not be read where a developer writes them (PLAN §2 says the eight
+// ARE the aspects of one read; PLAN §0 pt 5 says systems explain
+// themselves). Each arm below reads the declaration's OWN node — the
+// refinement's base and predicate, the alias's target, the handler's
+// effect and arm count — never a re-derivation.
+fn node_query_line(h, kind) = match graph_node_body(h) {
+  NStmt(FnStmt(name, _, _, _, _)) => match env_lookup(name) {
+    Some(entry) => match entry {
+      (scheme, _, _) => show_type(judgment_ty(scheme)),
+    },
+    None => show_type(ty_of_kind(h, kind)),
+  },
+  NStmt(RefineStmt(name, base, pred)) => "{name} = {show_type(base)} where {show_predicate(pred)}",
+  NStmt(AliasStmt(name, ty)) => "{name} = {show_type(ty)}",
+  NStmt(TypeDefStmt(name, variants)) => "{name} — {int_to_str(len(variants))} variant(s)",
+  NStmt(EffectDeclStmt(name, _, ops)) => "effect {name} — {int_to_str(len(ops))} op(s)",
+  NStmt(HandlerDeclStmt(name, _, _, state, arms, _)) => "handler {name} — {int_to_str(len(arms))} arm(s), {int_to_str(len(state))} state field(s)",
+  NStmt(RowAliasStmt(name, _)) => "{name} — a named effect row",
+  NHole(_) => // An UNDETERMINED hole never leaks the raw var — substrate
+  // vocabulary at the exact moment the medium should ASK (§1's law: the
+  // question beats the guess; the fan cannot enumerate an open type, so
+  // the missing constraint IS the answer). A typed hole renders what it
+  // DEMANDS — the contract a claim raised over it, refinement and all, or
+  // its cell's type where nothing claimed it (the cell holds a shape).
+  match hole_demand(h) {
+    TVar(_) => "_ — still free: annotate the enclosing function's param or result and the fan arrives with the type",
+    ty => show_type(ty),
+  },
+  NExpr(LitFloat(_)) => // A literal's type IS its body when the cell is still free (a top-level
+  // let's value node keeps its own cell unbound; the body already proves
+  // the answer — read it, never render the raw t-var).
+  "Float",
+  NExpr(LitInt(_)) => "Int",
+  NExpr(LitString(_)) => "String",
+  NExpr(LitBool(_)) => "Bool",
+  _ => show_type(ty_of_kind(h, kind)),
+}
+
+// The addressed source itself: the text the judgment read, sliced to the
+// node's span on the line the developer pointed at. Never the file on disk,
+// which in a session need not be the edit the judgment read.
+fn source_slice(span, text) = match span {
+  Span(sl, sc, el, ec) => {
+    let lstart = nth_line_offset(text, sl - 1, 0, 0)
+    let lend = line_end_from(text, lstart)
+    let a = lstart + sc - 1
+    // A MULTI-LINE span ends on a DIFFERENT line, so its end column is not
+    // an offset into this one — slice to the end of the addressed line
+    // instead. A span's end column is EXCLUSIVE and 1-based, so its byte
+    // offset is `ec - 1` past the line's start (reading `ec` sliced a
+    // one-letter variable with the space after it, measured on boot
+    // 8b071ba3).
+    let b = if el > sl { lend } else { lstart + ec - 1 }
+    let lo = if a < lend { a } else { lstart }
+    let hi = if b <= lend { b } else { lend }
+    if hi > lo { "{str_slice(text, lo, hi)} : " } else { "" }
+  },
+}
+
+// Byte offset of the k-th line (0-based) — a forward newline walk.
+fn nth_line_offset(text, k, i, line) = if line >= k {
+  i
+} else if i >= byte_len(text) {
+  i
+} else if byte_at(text, i) == 10 {
+  nth_line_offset(text, k, i + 1, line + 1)
+} else {
+  nth_line_offset(text, k, i + 1, line)
+}
+
+fn line_end_from(text, i) = if i >= byte_len(text) {
+  i
+} else if byte_at(text, i) == 10 {
+  i
+} else {
+  line_end_from(text, i + 1)
+}
+
+// A span's file:line. The module is the addressed one and a span is already
+// in that module's own coordinates, so the address is the two read together.
+fn file_line(target: String, span) = match span {
+  Span(sl, _, _, _) => "{target}:{int_to_str(sl)}",
+}
+
+// A site's address as the caret takes it: file, line and column.
+fn file_line_col(target: String, span) = match span {
+  Span(sl, sc, _, _) => "{target}:{int_to_str(sl)}:{int_to_str(sc)}",
+}
+
+// The Handler facet's sentence for a perform.
+fn show_served(en: String, served, target: String) with !Mutate = match served {
+  ServedBy(site, hname) => "{en} is served by `~> {hname}` at {file_line_col(target, parse_span_of(site))}",
+  ServedWhereCalled(site) => "{en} is performed when the function value at {file_line_col(target, parse_span_of(site))} is called — the install in force there serves it",
+  ServedByCaller(decl) => "no install inside `{body_decl_name(graph_node_body(decl))}` answers {en} — its row carries {en} to the callers",
+}
+
+// The Why chain, one line per hop: file:line through the module's own
+// coordinates, the hop's own phrase, and — where the graph carries them —
+// the binding's literal value (node_const at the let's value node, read
+// live) and the author's attached lede (graph_comment_at). The prose rides
+// the same rails as the types: nothing here is stored twice. The first line
+// is the hop at the position; every later one a deeper hop; past eight hops
+// the chain says it goes deeper rather than going on.
+fn why_lines(reason, v, depth) = if depth > 7 {
+  ["… the chain goes deeper than the eight hops shown"]
+} else {
+  match reason {
+    Located(span, inner) => ["{reason_phrase(inner)}, at {file_line(v.name, span)}{binding_ledes(span, inner, v)}"] ++ why_deeper(inner, v, depth),
+    VarLookup(name, br) => ["{name} read here"] ++ why_lines(br, v, depth + 1),
+    _ => ["{reason_phrase(reason)}"] ++ why_deeper(reason, v, depth),
+  }
+}
+
+fn why_deeper(inner, v, depth) = match inner {
+  Accepted(_, _, br) => // The accept edge: its phrase names the proposal and its proof; the
+  // hop beneath is the binding's own reason, which the acceptance wraps.
+  why_lines(br, v, depth + 1),
+  VarLookup(_, br) => why_lines(br, v, depth + 1),
+  LetBinding(_, br) => why_lines(br, v, depth + 1),
+  FnReturn(_, br) => why_lines(br, v, depth + 1),
+  InferredCallReturn(_, br) => why_lines(br, v, depth + 1),
+  InferredPipeResult(_, br) => why_lines(br, v, depth + 1),
+  Unified(a, b) => // A unification joins TWO provenances — walk both (the second indented
+  // as its own branch), the DAG rendered as the tree it is.
+  why_lines(a, v, depth + 1) ++ why_lines(b, v, depth + 1),
+  OpConstraint(_, a, b) => why_lines(a, v, depth + 1) ++ why_lines(b, v, depth + 1),
+  IfBranch(br) => why_lines(br, v, depth + 1),
+  Instantiation(_, br) => why_lines(br, v, depth + 1),
+  _ => [],
+}
+
+// The value + comment ledes at a binding hop — both read LIVE from the
+// graph (the let's value node via node_const; the attached comment via
+// the comment weave). Empty strings when the graph carries neither. The
+// hop's line is resolved inside the addressed module's own spans — the
+// one resolution the address takes — never over every module's by line
+// alone, where another module's node at that line could answer for the
+// binder.
+fn binding_ledes(span, inner, v) = match inner {
+  LetBinding(_, _) => match address_resolve(v.spans, span_line_of(span), 0) {
+    None => "",
+    Some(pick) => match pick {
+      (_, sh) => "{value_lede(sh)}{comment_lede(sh)}",
+    },
+  },
+  _ => // drift-audit: ignore — genuine String-null lede: a non-binding hop carries no value/comment lede by construction
+  "",
+}
+
+fn span_line_of(s) with Pure = match s {
+  Span(sl, _, _, _) => sl,
+}
+
+fn value_lede(sh) = match graph_node_body(sh) {
+  NStmt(LetStmt(_, value, _)) => match value {
+    N(_, _, vh) => match node_const(vh) {
+      Some(LVInt(n)) => " = {int_to_str(n)}",
+      Some(LVFloat(f)) => " = {float_to_str(f)}",
+      Some(LVString(s)) => " = \"{s}\"",
+      Some(LVBool(b)) => if b { " = true" } else { " = false" },
+      None => "",
+    },
+  },
+  _ => // drift-audit: ignore — genuine String-null lede: a non-let node has no binding value to render
+  "",
+}
+
+fn comment_lede(sh) = {
+  let c = graph_comment_at(sh)
+  if byte_len(c) == 0 { "" } else { ", {first_sentence(c)}" }
+}
+
+// A comment's lede is its first sentence (SYNTAX §Comments): the first
+// paragraph with each line break read as ONE space, up to the first full
+// stop a space follows, or the whole paragraph when no stop ends it sooner.
+// A comment keeps every line as written, the space after each `//` included,
+// because a comment may hold code whose indent means something; the sentence
+// is prose, so each line is read without the space around it, and a line
+// left empty ends the paragraph whether or not its `//` had a space after it.
+fn first_sentence(c) = {
+  let para = match c |> lines |> map(trim) |> join("\n") |> split("\n\n") {
+    [] => "",
+    [p, ..._] => p,
+  }
+  let text = replace(para, "\n", " ")
+  match found_at(index_of(text, ". ")) {
+    Some(i) => str_slice(text, 0, i + 1),
+    None => text,
+  }
+}
+
+// The library's searches answer -1 for absence; read here as the absence
+// it is.
+fn found_at(i) = if i < 0 { None } else { Some(i) }

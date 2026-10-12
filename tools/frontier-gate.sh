@@ -84,32 +84,28 @@ if frontier_memo=$(wt_memo_hit "frontier-$selection" "$frontier_key"); then
   exit 0
 fi
 
-RTLIBS=(
-  "$ROOT/lib/memory.mn"
-  "$ROOT/lib/strings.mn"
-  "$ROOT/lib/lists.mn"
-  "$ROOT/lib/threading.mn"
-  "$ROOT/lib/prelude.mn"
-)
+# The prelude edge is every link's (driver_seeded): its closure — memory,
+# strings, lists, threading — needs no import of its own.
+RTLIBS=()
 
 # The persist fixture additionally needs the WASI fs layer and the Persist
 # handler itself; its runs preopen /tmp for the checkpoint files.
 PERSIST_RTLIBS=(
   "${RTLIBS[@]}"
-  "$ROOT/lib/io.mn"
-  "$ROOT/lib/persist.mn"
+  io
+  persist
 )
 
 # The CFC pipeline links the DSP math substrate (math.mn), the comodulogram
 # (dsp/cfc.mn, whose read_recording crosses the WASI boundary → io.mn), and
-# the synthetic-signal generator (cfc-demo/gen.mn). The demo builds its
+# the synthetic-signal generator (cfc_demo/gen.mn). The demo builds its
 # signal inline, so its run preopens nothing.
 CFC_RTLIBS=(
   "${RTLIBS[@]}"
-  "$ROOT/lib/io.mn"
-  "$ROOT/lib/math.mn"
-  "$ROOT/lib/dsp/cfc.mn"
-  "$ROOT/tests/frontier/cfc-demo/gen.mn"
+  io
+  math
+  dsp/cfc
+  tests/frontier/cfc_demo/gen
 )
 
 # The signal-crucible link set: the CFC substrate plus lib/dsp/signal.mn (the
@@ -119,10 +115,10 @@ CFC_RTLIBS=(
 # bandpass sit on top. The run preopens /tmp for the recording.
 SIGNAL_RTLIBS=(
   "${RTLIBS[@]}"
-  "$ROOT/lib/io.mn"
-  "$ROOT/lib/math.mn"
-  "$ROOT/lib/dsp/cfc.mn"
-  "$ROOT/lib/dsp/signal.mn"
+  io
+  math
+  dsp/cfc
+  dsp/signal
 )
 
 # The data-validator lib set: the base runtime plus the WASI fs layer (io.mn),
@@ -130,7 +126,7 @@ SIGNAL_RTLIBS=(
 # runs preopen /tmp for the fixture.
 IO_RTLIBS=(
   "${RTLIBS[@]}"
-  "$ROOT/lib/io.mn"
+  io
 )
 
 # The real-workload crucible lib set: the base runtime plus the transcendental
@@ -139,7 +135,7 @@ IO_RTLIBS=(
 # nothing.
 MATH_RTLIBS=(
   "${RTLIBS[@]}"
-  "$ROOT/lib/math.mn"
+  math
 )
 
 # The derivative-reading lib set (L4a, 2026-09-28): the signal set plus the
@@ -148,15 +144,15 @@ MATH_RTLIBS=(
 # copies of them.
 DERIVE_RTLIBS=(
   "${SIGNAL_RTLIBS[@]}"
-  "$ROOT/lib/dsp/spectral.mn"
-  "$ROOT/lib/ml/grad.mn"
+  dsp/spectral
+  ml/grad
 )
 
 # The arena lib set (2026-10-03): the base runtime plus lib/arena.mn's
 # `arena` handler and the `Arena` effect its install charges.
 ARENA_RTLIBS=(
   "${RTLIBS[@]}"
-  "$ROOT/lib/arena.mn"
+  arena
 )
 
 total_pass=0
@@ -201,8 +197,12 @@ BOOT_RUNTIME_SHADOW=""
 # when the libs compiled without src/. The two-altitude split (list_to_flat
 # joins the seq-op table as [a] -> [a]; flat_raw is the raw body — the
 # make_list/alloc_list precedent) deleted the class at its origin. The libs
-# now compile in isolation with ZERO diagnostics.
-EXPECTED_RUNTIME_SHADOW_SHA256="e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+# now compile in isolation with ZERO diagnostics. TRAP (2026-10-06) moved it
+# once, on the record: every runtime index read whose bound nothing in sight
+# proves is an open PInBounds claim, so the libs judged alone carry the one
+# class V_Pending (the debt the row now states; #109's path read proves the
+# guarded ones and returns this to the empty multiset).
+EXPECTED_RUNTIME_SHADOW_SHA256="2c3b4947f8a331994032bdb27e1ff7ecb72e9450cb9d40eabe119ed969fae920"
 
 pass() {
   echo "  PASS $*"
@@ -287,8 +287,8 @@ capture_runtime_shadow() {
   local compiler="$1" dir="$2"
   local wat="$dir/runtime-shadow.wat" err="$dir/runtime-shadow.err"
 
-  { cat "${RTLIBS[@]}"; printf '\nfn main() = 0\n'; } \
-    | wt_run "$compiler" > "$wat" 2> "$err"
+  printf 'fn main() = 0\n' | wt_entry - "${RTLIBS[@]}" \
+    | wt_rooted "$compiler" > "$wat" 2> "$err"
   local rc=$?
   if [ "$rc" -ne 0 ]; then
     fail "runtime shadow compile (exit=$rc; see $err)"
@@ -309,27 +309,27 @@ run_program() {
 
   case "$link_runtime" in
     yes)
-      cat "${RTLIBS[@]}" "$source" | wt_run "$compiler" > "$wat" 2> "$cerr" ;;
+      wt_entry "$source" "${RTLIBS[@]}" | wt_rooted "$compiler" > "$wat" 2> "$cerr" ;;
     persist)
-      cat "${PERSIST_RTLIBS[@]}" "$source" | wt_run "$compiler" > "$wat" 2> "$cerr"
+      wt_entry "$source" "${PERSIST_RTLIBS[@]}" | wt_rooted "$compiler" > "$wat" 2> "$cerr"
       run_flags=(--dir /tmp) ;;
     cfc)
-      cat "${CFC_RTLIBS[@]}" "$source" | wt_run "$compiler" > "$wat" 2> "$cerr" ;;
+      wt_entry "$source" "${CFC_RTLIBS[@]}" | wt_rooted "$compiler" > "$wat" 2> "$cerr" ;;
     cfc-rec)
-      cat "${CFC_RTLIBS[@]}" "$source" | wt_run "$compiler" > "$wat" 2> "$cerr"
+      wt_entry "$source" "${CFC_RTLIBS[@]}" | wt_rooted "$compiler" > "$wat" 2> "$cerr"
       run_flags=(--dir "$dir::/tmp") ;;
     signal)
-      cat "${SIGNAL_RTLIBS[@]}" "$source" | wt_run "$compiler" > "$wat" 2> "$cerr"
+      wt_entry "$source" "${SIGNAL_RTLIBS[@]}" | wt_rooted "$compiler" > "$wat" 2> "$cerr"
       run_flags=(--dir "$dir::/tmp") ;;
     io-rec)
-      cat "${IO_RTLIBS[@]}" "$source" | wt_run "$compiler" > "$wat" 2> "$cerr"
+      wt_entry "$source" "${IO_RTLIBS[@]}" | wt_rooted "$compiler" > "$wat" 2> "$cerr"
       run_flags=(--dir "$dir::/tmp") ;;
     math)
-      cat "${MATH_RTLIBS[@]}" "$source" | wt_run "$compiler" > "$wat" 2> "$cerr" ;;
+      wt_entry "$source" "${MATH_RTLIBS[@]}" | wt_rooted "$compiler" > "$wat" 2> "$cerr" ;;
     derive)
-      cat "${DERIVE_RTLIBS[@]}" "$source" | wt_run "$compiler" > "$wat" 2> "$cerr" ;;
+      wt_entry "$source" "${DERIVE_RTLIBS[@]}" | wt_rooted "$compiler" > "$wat" 2> "$cerr" ;;
     arena)
-      cat "${ARENA_RTLIBS[@]}" "$source" | wt_run "$compiler" > "$wat" 2> "$cerr" ;;
+      wt_entry "$source" "${ARENA_RTLIBS[@]}" | wt_rooted "$compiler" > "$wat" 2> "$cerr" ;;
     *)
       wt_run "$compiler" < "$source" > "$wat" 2> "$cerr" ;;
   esac
@@ -412,7 +412,7 @@ run_persist_image() {
   local cerr="$dir/$label.compile.err" aerr="$dir/$label.assemble.err"
   local pdir="$dir/$label.tmp" rc
 
-  cat "${PERSIST_RTLIBS[@]}" "$src" | wt_run "$compiler" > "$wat" 2> "$cerr"
+  wt_entry "$src" "${PERSIST_RTLIBS[@]}" | wt_rooted "$compiler" > "$wat" 2> "$cerr"
   rc=$?
   local normalized="$dir/$label.normalized" unexpected="$dir/$label.unexpected"
   normalize_errors "$cerr" > "$normalized"
@@ -485,7 +485,7 @@ run_persist_arena() {
   local wat="$dir/$label.wat" wasm="$dir/$label.wasm"
   local cerr="$dir/$label.compile.err" aerr="$dir/$label.assemble.err"
   local pdir="$dir/$label.tmp" rc
-  cat "${PERSIST_RTLIBS[@]}" "$ROOT/lib/arena.mn" "$src" | wt_run "$compiler" > "$wat" 2> "$cerr"
+  wt_entry "$src" "${PERSIST_RTLIBS[@]}" arena | wt_rooted "$compiler" > "$wat" 2> "$cerr"
   rc=$?
   local normalized="$dir/$label.normalized" unexpected="$dir/$label.unexpected"
   normalize_errors "$cerr" > "$normalized"
@@ -573,8 +573,26 @@ run_warm_start() {
   fi
 }
 
+# run_module <compiler> <project-dir> <module> <stdout-file> <stderr-file> —
+# the host's three steps for a program the compiler emits: compile the
+# module as a project (its imports resolved the way a developer's program
+# resolves them), assemble it, run it with the project mounted as its ".".
+# The program's exit is the answer; a module that did not compile answers
+# 199 and one that did not assemble 198, both above any exit a program
+# writes, so a leg's "want N" can never be met by a host fault. The exec
+# seam left the wheel 2026-10-05: `mentl run` is the mentl command's, and
+# here it is these three lines.
+run_module() {
+  local compiler="$1" pdir="$2" module="$3" out="$4" err="$5"
+  wt_run --dir "$pdir::." --dir "$ROOT::/mentl-home" "$compiler" compile "$module" \
+    > "$pdir/$module.wat" 2> "$err" || { echo "run_module: $module did not compile" >> "$err"; return 199; }
+  wt_asm "$pdir/$module.wat" "$pdir/$module.wasm" 2>> "$err" \
+    || { echo "run_module: $module did not assemble" >> "$err"; return 198; }
+  wt_run --dir "$pdir::." "$pdir/$module.wasm" > "$out" 2>> "$err"
+}
+
 # The flagship program (Track G, Pulse scene 1): examples/pulse/render
-# rendered through the compiler under test by `mentl run`, and the WAV judged
+# rendered through the compiler under test (run_module), and the WAV judged
 # by an oracle that shares nothing with the medium
 # (tests/frontier/pulse-render/oracle.py: the header, both channels'
 # loudness, no full-scale sample, and each of the score's eight notes
@@ -596,8 +614,7 @@ run_pulse_render() {
   mkdir -p "$pdir"
   cp "$ROOT/examples/pulse/render/main.mn" "$pdir/main.mn"
   t0=$(date +%s%N)
-  wt_run --dir "$pdir::." --dir "$ROOT::/mentl-home" "$compiler" run main \
-    > "$dir/$label.wav" 2> "$dir/$label.err"
+  run_module "$compiler" "$pdir" main "$dir/$label.wav" "$dir/$label.err"
   rc=$?
   t1=$(date +%s%N)
   if [ "$rc" -ne 0 ] || [ ! -s "$dir/$label.wav" ]; then
@@ -646,13 +663,9 @@ run_pulse_render() {
 # (the fixture is lambda-free, so handle numbering cannot leak into the
 # wat and byte-equality is the honest oracle at today's pin; the
 # deterministic handle partition generalizes it).
-# Two verbs, one file, two worlds: `run` persists its analyzed image under
-# the world its handlers built, and a `compile` after it must not restore
-# that image into its own output — the image is filed under world_key(), so
-# the compile finds none and derives, and the second verb's WAT is whole.
 # A program that links library modules by import runs as a project — the
-# `run` verb resolves its imports the way a developer's program does, where
-# a battery fixture is compiled over the runtime floor alone — and answers
+# compile resolves its imports the way a developer's program does, where a
+# battery fixture is compiled over the runtime floor alone — and answers
 # its expected exit.
 run_project() {
   local compiler="$1" dir="$2" label="$3" source="$4" expected="$5"
@@ -660,8 +673,7 @@ run_project() {
   rm -rf "$pdir"
   mkdir -p "$pdir"
   cp "$source" "$pdir/main.mn"
-  wt_run --dir "$pdir::." --dir "$ROOT::/mentl-home" "$compiler" run main \
-    > "$dir/$label.run.out" 2> "$dir/$label.run.err"
+  run_module "$compiler" "$pdir" main "$dir/$label.run.out" "$dir/$label.run.err"
   rc=$?
   if [ "$rc" -eq "$expected" ]; then
     pass "$label: runs to $expected"
@@ -670,14 +682,149 @@ run_project() {
   fi
 }
 
+# The environment protocol (E1): required reads refuse before main, while
+# optional literal reads are narrowly passed and computed optional reads
+# request the whole environment. Exercise the actual generated `mentl run`
+# shim as well as the module gate and demand query. RED on boot 4228ff71: the
+# program did not compile (the WASI root gate knew no environ op).
+run_env_protocol() {
+  local compiler="$1" dir="$2" label="env-protocol"
+  local pdir="$dir/$label.proj" rc out shim
+  rm -rf "$pdir"
+  mkdir -p "$pdir"
+  cp "$ROOT/tests/frontier/env-protocol/main.mn" "$pdir/main.mn"
+  if ! wt_run --dir "$pdir::." --dir "$ROOT::/mentl-home" "$compiler" compile main \
+      > "$pdir/main.wat" 2> "$dir/$label.err" \
+      || ! wt_asm "$pdir/main.wat" "$pdir/main.wasm" 2>> "$dir/$label.err"; then
+    fail "$label: did not compile (see $dir/$label.err)"
+    return
+  fi
+  out=$(wt_run --env MN_A=30 --env MN_B=12 --dir "$pdir::." "$pdir/main.wasm" 2>> "$dir/$label.err")
+  rc=$?
+  if [ "$rc" -eq 42 ] && [ "$out" = "sum 42" ]; then
+    pass "$label: both variables set — runs to 42"
+  else
+    fail "$label: both set, exit=$rc out='$out', want 42 and 'sum 42'"
+  fi
+  # The refusal is fail_exit's, which speaks on stdout; main's own line
+  # (`sum …`) must not appear beside it.
+  out=$(wt_run --env MN_A=30 --dir "$pdir::." "$pdir/main.wasm" 2> "$dir/$label.unset.err")
+  rc=$?
+  if [ "$rc" -eq 1 ] && printf '%s\n' "$out" | grep -q '^MN_B is read at main:7:' \
+      && ! printf '%s\n' "$out" | grep -q '^sum'; then
+    pass "$label: MN_B unset — the launch gate names it and its read site, nothing of main ran"
+  else
+    fail "$label: MN_B unset, exit=$rc out='$out' (see $dir/$label.unset.err)"
+  fi
+  wt_run --dir "$pdir::." --dir "$ROOT::/mentl-home" "$compiler" query main env > "$dir/$label.query" 2>/dev/null
+  if grep -q '2 environment read(s)' "$dir/$label.query" && grep -q 'MN_A \[required\] read at main:7:' "$dir/$label.query" \
+      && grep -q 'MN_B \[required\] read at main:7:' "$dir/$label.query"; then
+    pass "$label: query env names both reads at their sites"
+  else
+    fail "$label: query env (see $dir/$label.query)"
+  fi
+
+  # Install into the gate's own scratch tree, pointing the shim at the exact
+  # compiler under test. This covers the shell/.env projection and the start
+  # gate together without touching the user's global `mentl` command.
+  MENTL_BIN_DIR="$pdir/bin" bash "$ROOT/tools/install.sh" > "$dir/$label.install" 2>&1
+  shim="$pdir/bin/mentl"
+  out=$(env MN_A=30 MN_B=12 MENTL_BOOT="$compiler" "$shim" run "$pdir/main" 2> "$dir/$label.shim-set.err")
+  rc=$?
+  if [ "$rc" -eq 42 ] && [ "$out" = "sum 42" ]; then
+    pass "$label: mentl run passes the literal roster from the shell"
+  else
+    fail "$label: mentl run with variables set, exit=$rc out='$out' (see $dir/$label.shim-set.err)"
+  fi
+  out=$(env -u MN_B MN_A=30 MENTL_BOOT="$compiler" "$shim" run "$pdir/main" 2> "$dir/$label.shim-unset.err")
+  rc=$?
+  if [ "$rc" -eq 1 ] && printf '%s\n' "$out" | grep -Eq '^MN_B is read at .*/main:7:[0-9]+ \(in total\) and is not set$' \
+      && ! printf '%s\n' "$out" | grep -q '^sum'; then
+    pass "$label: mentl run preserves pre-main refusal for an unset required name"
+  else
+    fail "$label: mentl run with MN_B unset, exit=$rc out='$out' (see $dir/$label.shim-unset.err)"
+  fi
+
+  local opt="$dir/env-optional.proj"
+  rm -rf "$opt"
+  mkdir -p "$opt"
+  cp "$ROOT/tests/frontier/env-optional/main.mn" "$opt/main.mn"
+  if ! wt_run --dir "$opt::." --dir "$ROOT::/mentl-home" "$compiler" compile main \
+      > "$opt/main.wat" 2> "$dir/env-optional.compile.err" \
+      || ! wt_asm "$opt/main.wat" "$opt/main.wasm" 2>> "$dir/env-optional.compile.err"; then
+    fail "env-optional: did not compile (see $dir/env-optional.compile.err)"
+    return
+  fi
+  wt_run --dir "$opt::." --dir "$ROOT::/mentl-home" "$compiler" query main env > "$dir/env-optional.query" 2>/dev/null
+  if grep -q 'MN_OPTIONAL_FIXED \[optional\] read at main:' "$dir/env-optional.query" \
+      && grep -q '\* \[all optional\] read at' "$dir/env-optional.query"; then
+    pass "env-optional: query distinguishes literal and dynamic optional reads"
+  else
+    fail "env-optional: query demand (see $dir/env-optional.query)"
+  fi
+  printf 'MN_OPTIONAL_FIXED=20\nMN_OPTIONAL_DYNAMIC=22\n' > "$opt/.env"
+  out=$(env -u MN_OPTIONAL_FIXED -u MN_OPTIONAL_DYNAMIC MENTL_BOOT="$compiler" "$shim" run "$opt/main" 2> "$dir/env-optional.dotenv.err")
+  rc=$?
+  if [ "$rc" -eq 42 ]; then
+    pass "env-optional: mentl run supplies optional values from .env"
+  else
+    fail "env-optional: .env values, exit=$rc (see $dir/env-optional.dotenv.err)"
+  fi
+  rm -f "$opt/.env"
+  out=$(env -u MN_OPTIONAL_FIXED -u MN_OPTIONAL_DYNAMIC MENTL_BOOT="$compiler" "$shim" run "$opt/main" 2> "$dir/env-optional.absent.err")
+  rc=$?
+  if [ "$rc" -eq 0 ]; then
+    pass "env-optional: absent optional values return None without refusing"
+  else
+    fail "env-optional: absent optional values, exit=$rc (see $dir/env-optional.absent.err)"
+  fi
+
+  local lit="$dir/env-optional-literal.proj"
+  mkdir -p "$lit"
+  cp "$ROOT/tests/frontier/env-optional-literal/main.mn" "$lit/main.mn"
+  if ! wt_run --dir "$lit::." --dir "$ROOT::/mentl-home" "$compiler" compile main \
+      > "$lit/main.wat" 2> "$dir/env-optional-literal.compile.err" \
+      || ! wt_asm "$lit/main.wat" "$lit/main.wasm" 2>> "$dir/env-optional-literal.compile.err"; then
+    fail "env-optional-literal: did not compile (see $dir/env-optional-literal.compile.err)"
+    return
+  fi
+  wt_run --dir "$lit::." --dir "$ROOT::/mentl-home" "$compiler" query main env > "$dir/env-optional-literal.query" 2>/dev/null
+  if grep -q 'MN_OPTIONAL_LITERAL \[optional\] read at main:' "$dir/env-optional-literal.query" \
+      && ! grep -q '\* \[all optional\]' "$dir/env-optional-literal.query"; then
+    pass "env-optional-literal: query stays narrow"
+  else
+    fail "env-optional-literal: query demand (see $dir/env-optional-literal.query)"
+  fi
+  printf 'MN_OPTIONAL_LITERAL=42\n' > "$lit/.env"
+  out=$(env -u MN_OPTIONAL_LITERAL MENTL_BOOT="$compiler" "$shim" run "$lit/main" 2> "$dir/env-optional-literal.dotenv.err")
+  rc=$?
+  if [ "$rc" -eq 42 ]; then
+    pass "env-optional-literal: mentl run passes the named .env value"
+  else
+    fail "env-optional-literal: named .env value, exit=$rc (see $dir/env-optional-literal.dotenv.err)"
+  fi
+  rm -f "$lit/.env"
+  out=$(env -u MN_OPTIONAL_LITERAL MENTL_BOOT="$compiler" "$shim" run "$lit/main" 2> "$dir/env-optional-literal.absent.err")
+  rc=$?
+  if [ "$rc" -eq 0 ]; then
+    pass "env-optional-literal: absence returns None without widening access"
+  else
+    fail "env-optional-literal: absent value, exit=$rc (see $dir/env-optional-literal.absent.err)"
+  fi
+}
+
+# The warm world: a compile persists its analyzed image, and a second compile
+# of the same file restores it and must still emit the WHOLE module — the
+# contract that caught a restored image carrying a foreign world's output
+# routing (2026-09-28: `run` then `compile` printed nothing; the image is
+# filed under world_key() since). The program also runs, through the host.
 run_warm_world() {
   local compiler="$1" dir="$2" label="warm-world"
   local wdir="$dir/$label.proj" rc lines
   rm -rf "$wdir"
   mkdir -p "$wdir/.build"
   printf 'fn main() = 9\n' > "$wdir/main.mn"
-  wt_run --dir "$wdir::." --dir "$ROOT::/mentl-home" "$compiler" run main \
-    > "$dir/$label.run.out" 2> "$dir/$label.run.err"
+  run_module "$compiler" "$wdir" main "$dir/$label.run.out" "$dir/$label.run.err"
   rc=$?
   if [ "$rc" -ne 9 ]; then
     fail "$label: run exit=$rc, want 9 (see $dir/$label.run.err)"
@@ -688,9 +835,9 @@ run_warm_world() {
   rc=$?
   lines=$(wc -l < "$dir/$label.wat")
   if [ "$rc" -eq 0 ] && grep -q '(module' "$dir/$label.wat"; then
-    pass "$label: compile after run emits the module ($lines WAT lines)"
+    pass "$label: the warm compile after a compile emits the module ($lines WAT lines)"
   else
-    fail "$label: compile after run emitted $lines WAT lines (exit=$rc; see $dir/$label.err)"
+    fail "$label: the warm compile emitted $lines WAT lines (exit=$rc; see $dir/$label.err)"
   fi
 }
 
@@ -810,11 +957,11 @@ run_refusal_linked() {
   # by default, the derivative-reading set for a refusal the reading makes.
   case "$link_runtime" in
     derive)
-      cat "${DERIVE_RTLIBS[@]}" "$source" | wt_run "$compiler" > "$wat" 2> "$err" ;;
+      wt_entry "$source" "${DERIVE_RTLIBS[@]}" | wt_rooted "$compiler" > "$wat" 2> "$err" ;;
     arena)
-      cat "${ARENA_RTLIBS[@]}" "$source" | wt_run "$compiler" > "$wat" 2> "$err" ;;
+      wt_entry "$source" "${ARENA_RTLIBS[@]}" | wt_rooted "$compiler" > "$wat" 2> "$err" ;;
     *)
-      cat "${RTLIBS[@]}" "$source" | wt_run "$compiler" > "$wat" 2> "$err" ;;
+      wt_entry "$source" "${RTLIBS[@]}" | wt_rooted "$compiler" > "$wat" 2> "$err" ;;
   esac
   rc=$?
   count=$(grep -c "$expected_code error:" "$err" 2>/dev/null || true)
@@ -925,8 +1072,8 @@ capture_persist_shadow() {
   local compiler="$1" dir="$2"
   local wat="$dir/persist-shadow.wat" err="$dir/persist-shadow.err"
 
-  { cat "${PERSIST_RTLIBS[@]}"; printf '\nfn main() = 0\n'; } \
-    | wt_run "$compiler" > "$wat" 2> "$err"
+  printf 'fn main() = 0\n' | wt_entry - "${PERSIST_RTLIBS[@]}" \
+    | wt_rooted "$compiler" > "$wat" 2> "$err"
   local rc=$?
   if [ "$rc" -ne 0 ]; then
     fail "persist shadow compile (exit=$rc; see $err)"
@@ -944,8 +1091,8 @@ capture_cfc_shadow() {
   local compiler="$1" dir="$2"
   local wat="$dir/cfc-shadow.wat" err="$dir/cfc-shadow.err"
 
-  { cat "${CFC_RTLIBS[@]}"; printf '\nfn main() = 0\n'; } \
-    | wt_run "$compiler" > "$wat" 2> "$err"
+  printf 'fn main() = 0\n' | wt_entry - "${CFC_RTLIBS[@]}" \
+    | wt_rooted "$compiler" > "$wat" 2> "$err"
   local rc=$?
   if [ "$rc" -ne 0 ]; then
     fail "cfc shadow compile (exit=$rc; see $err)"
@@ -963,8 +1110,8 @@ capture_signal_shadow() {
   local compiler="$1" dir="$2"
   local wat="$dir/signal-shadow.wat" err="$dir/signal-shadow.err"
 
-  { cat "${SIGNAL_RTLIBS[@]}"; printf '\nfn main() = 0\n'; } \
-    | wt_run "$compiler" > "$wat" 2> "$err"
+  printf 'fn main() = 0\n' | wt_entry - "${SIGNAL_RTLIBS[@]}" \
+    | wt_rooted "$compiler" > "$wat" 2> "$err"
   local rc=$?
   if [ "$rc" -ne 0 ]; then
     fail "signal shadow compile (exit=$rc; see $err)"
@@ -978,7 +1125,7 @@ capture_signal_shadow() {
 
 # The STFT + `<~` bandpass + comodulogram (lib/dsp/signal.mn) on a REAL on-disk
 # recording + a python cross-validation. The recording carries a 4 Hz-phase ->
-# 50 Hz-amplitude coupling — a DIFFERENT pair than cfc-demo (6->40) and cfc-rec
+# 50 Hz-amplitude coupling — a DIFFERENT pair than cfc_demo (6->40) and cfc-rec
 # (6->60), so the pipeline is proven to find a coupling it was never tuned to, not
 # to memorize one grid cell.
 #   (1) Mentl reads the recording (WASI fs -> parse_float -> native [Float]),
@@ -1053,8 +1200,8 @@ capture_io_shadow() {
   local compiler="$1" dir="$2"
   local wat="$dir/io-shadow.wat" err="$dir/io-shadow.err"
 
-  { cat "${IO_RTLIBS[@]}"; printf '\nfn main() = 0\n'; } \
-    | wt_run "$compiler" > "$wat" 2> "$err"
+  printf 'fn main() = 0\n' | wt_entry - "${IO_RTLIBS[@]}" \
+    | wt_rooted "$compiler" > "$wat" 2> "$err"
   local rc=$?
   if [ "$rc" -ne 0 ]; then
     fail "io shadow compile (exit=$rc; see $err)"
@@ -1073,8 +1220,8 @@ capture_math_shadow() {
   local compiler="$1" dir="$2"
   local wat="$dir/math-shadow.wat" err="$dir/math-shadow.err"
 
-  { cat "${MATH_RTLIBS[@]}"; printf '\nfn main() = 0\n'; } \
-    | wt_run "$compiler" > "$wat" 2> "$err"
+  printf 'fn main() = 0\n' | wt_entry - "${MATH_RTLIBS[@]}" \
+    | wt_rooted "$compiler" > "$wat" 2> "$err"
   local rc=$?
   if [ "$rc" -ne 0 ]; then
     fail "math shadow compile (exit=$rc; see $err)"
@@ -1091,8 +1238,8 @@ capture_derive_shadow() {
   local compiler="$1" dir="$2"
   local wat="$dir/derive-shadow.wat" err="$dir/derive-shadow.err"
 
-  { cat "${DERIVE_RTLIBS[@]}"; printf '\nfn main() = 0\n'; } \
-    | wt_run "$compiler" > "$wat" 2> "$err"
+  printf 'fn main() = 0\n' | wt_entry - "${DERIVE_RTLIBS[@]}" \
+    | wt_rooted "$compiler" > "$wat" 2> "$err"
   local rc=$?
   if [ "$rc" -ne 0 ]; then
     fail "derive shadow compile (exit=$rc; see $err)"
@@ -1109,8 +1256,8 @@ capture_arena_shadow() {
   local compiler="$1" dir="$2"
   local wat="$dir/arena-shadow.wat" err="$dir/arena-shadow.err"
 
-  { cat "${ARENA_RTLIBS[@]}"; printf '\nfn main() = 0\n'; } \
-    | wt_run "$compiler" > "$wat" 2> "$err"
+  printf 'fn main() = 0\n' | wt_entry - "${ARENA_RTLIBS[@]}" \
+    | wt_rooted "$compiler" > "$wat" 2> "$err"
   local rc=$?
   if [ "$rc" -ne 0 ]; then
     fail "arena shadow compile (exit=$rc; see $err)"
@@ -1436,14 +1583,16 @@ run_lsp_hover() {
   } > "$frames"
   timeout 30 "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT" "$compiler" serve < "$frames" > "$sout" 2> "$serr"
   local src=$?
-  if grep -q '"contents"' "$sout"; then
+  # THE LEG PASSES ON CONTENTS AND NOTHING ELSE (G2). It used to pass on a
+  # clean exit with no hover at all ("the next rung"), so the one thing it
+  # names could vanish and the frontier stay green. A hover whose value is
+  # empty is no hover.
+  if grep -qE '"contents":\{"kind":"markdown","value":"[^"]+"' "$sout"; then
     pass "$label lsp serve hover returned a type (contents present)"
   elif grep -q 'parse_number' "$serr"; then
     fail "$label lsp serve REGRESSED to the json float trap (Hβ.emit.float-evidence-ft returned; see $serr)"
-  elif [ "$src" -eq 0 ]; then
-    pass "$label lsp serve clears the json float blocker (no parse_number trap; hover-response emission is the next rung, Hβ.lsp.transport-runs-frontend)"
   else
-    fail "$label lsp serve trapped (exit=$src; see $serr)"
+    fail "$label lsp serve answered no hover contents (exit=$src; see $sout, $serr)"
   fi
 }
 
@@ -1517,8 +1666,8 @@ for i in "${!compilers[@]}"; do
   # (4096 samples @ 512 Hz) run through the comodulogram over low=[4,6,8,10]
   # high=[30,40,50,60]. Exit 42 iff the coupled cell is (6, 40) — the phase-
   # amplitude coupling built into the signal (peak/median MVL ratio ≈ 5.9).
-  run_program "$compiler" cfc-demo \
-    "$ROOT/tests/frontier/cfc-demo/demo.mn" 42 cfc "$dir"
+  run_program "$compiler" cfc_demo \
+    "$ROOT/tests/frontier/cfc_demo/demo.mn" 42 cfc "$dir"
   # The same pipeline on a REAL on-disk recording, cross-validated against numpy
   # (a distinct 6→60 coupling, flat 7). The felt research payoff + the
   # representation oracle the fixpoint cannot be (see run_cfc_rec).
@@ -1528,6 +1677,16 @@ for i in "${!compilers[@]}"; do
   # against a python oracle (PLAN §11 col 4's research half, filter-based).
   capture_signal_shadow "$compiler" "$dir" || continue
   run_signal_crucible "$compiler" "$dir"
+  # THE STAGE LAW IN lib/dsp (V2): configuration first, the datum last, so
+  # `(0 - 2) |> clip(0.5)` clips the signal and a fanout merges into `mix`.
+  # Born RED on boot d956687d: the processors were datum-first, the pipe
+  # filled the threshold (clip(0.5, -2.0) = 0.5), and a pair could not fill
+  # a two-slot stage at all (arity mismatch).
+  run_program "$compiler" stage-law-dsp "$ROOT/tests/frontier/mn-stage-law-dsp.mn" 40 signal "$dir"
+  # The same law at the string vocabulary (`"a,b,c" |> split(",")` splits
+  # the data, never the separator). Written 2026-07-31 and run by nothing
+  # until the verbs landing found it unwired.
+  run_program "$compiler" stage-law-strings "$ROOT/tests/frontier/mn-stage-law-strings.mn" 42 yes "$dir"
   # Two more on-disk data validators, cross-validated against numpy/python (the
   # representation-stress the m3==m4 fixpoint is structurally blind to):
   #  - native [Float] statistics: fold-sum mean, comparison-reduction argmin/
@@ -1747,6 +1906,62 @@ for i in "${!compilers[@]}"; do
     "$ROOT/tests/frontier/mn-spine-callee-alloc.mn" E_EffectMismatch "$dir"
   run_program "$compiler" threaded-branch-readonly-state \
     "$ROOT/tests/frontier/mn-threaded-branch-readonly-state.mn" 10 yes "$dir"
+  # ── RACE (2026-10-06): the race rule reads EVERY write an arm makes ──
+  # An arm's in-place store into its state (`list_set(buf, …)`) is the
+  # field's second writer, read off the same StateFact the arena's install
+  # demand reads; the refusal names the store. RED on boot c8ba5799: the
+  # store crucible compiled and ran (exit 3); the read control runs.
+  run_refusal_linked "$compiler" threaded-branch-state-store \
+    "$ROOT/tests/frontier/mn-threaded-branch-state-store.mn" E_ThreadedBranchEffect "$dir"
+  if grep -q 'an in-place store into `buf`' "$dir/threaded-branch-state-store.compile.err" 2>/dev/null; then
+    pass "threaded-branch-state-store names the in-place store"
+  else
+    fail "threaded-branch-state-store refusal does not name the in-place store (see $dir/threaded-branch-state-store.compile.err)"
+  fi
+  run_program "$compiler" threaded-branch-state-read \
+    "$ROOT/tests/frontier/mn-threaded-branch-state-read.mn" 14 yes "$dir"
+  # Two branches storing into ONE buffer they both capture: a race with no
+  # handler between, which a branch's row cannot say while Memory's loads
+  # and stores are one effect (Hβ.threads.captured-store-race, declared red).
+  run_refusal_linked "$compiler" threaded-branch-captured-store \
+    "$ROOT/tests/frontier/mn-threaded-branch-captured-store.mn" E_ThreadedBranchEffect "$dir"
+  # A spawned instance takes the ROOT's module values through the task
+  # record and never re-runs an init: the buffer the root updated reads the
+  # same in both branches (exit 0 on boot c8ba5799 — each branch read a
+  # fresh copy), an init that prints prints once (three times on the boot),
+  # and the record stands past the abandon words in a yielding module
+  # (exit 3 on the boot).
+  run_program "$compiler" spawn-module-buffer \
+    "$ROOT/tests/frontier/mn-spawn-module-buffer.mn" 18 yes "$dir"
+  run_program "$compiler" spawn-module-values-yielding \
+    "$ROOT/tests/frontier/mn-spawn-module-values-yielding.mn" 17 yes "$dir"
+  run_program "$compiler" spawn-module-init-once \
+    "$ROOT/tests/frontier/mn-spawn-module-init-once.mn" 10 io-rec "$dir"
+  init_lines=$(grep -c '^init$' "$dir/spawn-module-init-once.run.out" 2>/dev/null || true)
+  if [ "${init_lines:-0}" -eq 1 ]; then
+    pass "spawn-module-init-once: the init ran once across the root and both branches"
+  else
+    fail "spawn-module-init-once: the init ran ${init_lines:-0} time(s) — a spawned instance re-ran a module init"
+  fi
+  # ── SPACE.1 (2026-10-06): instance segments ──
+  # Four spawned branches of a million small allocations each, timed beside
+  # the same branches under sequential_compose. Each instance bumps in its
+  # own run and touches the shared frontier once per 64 KB chunk; on boot
+  # c8ba5799 every allocation was a compare-exchange on one cell and the
+  # threaded run took 278–300 ms against the sequential 48–57 ms. The wall
+  # clock is printed, never ratcheted; the answers are judged.
+  run_program "$compiler" spawn-alloc-contention \
+    "$ROOT/tests/frontier/mn-spawn-alloc-contention.mn" 4 yes "$dir"
+  run_program "$compiler" spawn-alloc-contention-seq \
+    "$ROOT/tests/frontier/mn-spawn-alloc-contention-seq.mn" 4 yes "$dir"
+  for leg in spawn-alloc-contention spawn-alloc-contention-seq; do
+    if [ -f "$dir/$leg.wasm" ]; then
+      t0=$(date +%s%N)
+      wt_run "$dir/$leg.wasm" > /dev/null 2>&1
+      t1=$(date +%s%N)
+      echo "  time $leg: $(( (t1 - t0) / 1000000 )) ms"
+    fi
+  done
   # ── B4: the schedule reaches a callee's fanout (2026-09-30) ──
   # A `~> parallel_compose` install reaches every `><` and `fanout` in its
   # extent's direct-call reach: the callee is emitted as a schedule twin
@@ -1772,6 +1987,15 @@ for i in "${!compilers[@]}"; do
     "$ROOT/tests/frontier/mn-schedule-race-through-callee.mn" E_ThreadedBranchEffect "$dir"
   run_program "$compiler" schedule-race-callee-readonly \
     "$ROOT/tests/frontier/mn-schedule-race-callee-readonly.mn" 10 yes "$dir"
+  # A branch's `<~` line is the enclosing record's under a caller's spawning
+  # schedule too: the thunk's slot holds the line `step` owns (exit 7 when
+  # the thunk minted its own, reborn every call).
+  run_program "$compiler" fanout-branch-line-threaded \
+    "$ROOT/tests/frontier/mn-fanout-branch-line-threaded.mn" 40 yes "$dir"
+  # ...and one line whichever schedule a call runs under (exit 7 when the
+  # schedule twin's static line was keyed by its own symbol).
+  run_program "$compiler" fanout-branch-line-mixed \
+    "$ROOT/tests/frontier/mn-fanout-branch-line-mixed.mn" 40 yes "$dir"
   run_program "$compiler" scheduled-persist-float \
     "$ROOT/tests/frontier/mn-scheduled-fanout-persist-float.mn" 60 persist "$dir"
   # The rooted-image persist (B-i landing 1): ONE build, TWO processes. Leg A
@@ -1809,6 +2033,9 @@ for i in "${!compilers[@]}"; do
   # one-byte string serialized as a NUL, a quote as two, a control byte with
   # no short spelling crossed raw. RED on boot 2198ed97: exit 1.
   run_project "$compiler" "$dir" json-escape-total "$ROOT/tests/frontier/mn-json-escape-total.mn" 42
+  # Configuration is an effect and the demand is the manifest (E1,
+  # run_env_protocol's header).
+  run_env_protocol "$compiler" "$dir"
   # Real host-thread spawn over the shared image (the task-record substrate:
   # import-shape memory, shared-cell allocator, $spawn_task_impl/$join_task_impl).
   # Seen RED on the pre-task-record boot: 134, unaligned atomic in the join.
@@ -1894,7 +2121,7 @@ for i in "${!compilers[@]}"; do
     "$ROOT/tests/frontier/mn-generic-multitype.mn" 42 yes "$dir"
   # C5 — partiality is a row fact: the absorb rewrite x * 0 ≡ 0 keeps a
   # division whose precondition stays open (it carries `Trap`), so
-  # `(1 / n) * 0` TRAPS at n = 0 as written (exit 134 through the runner).
+  # `(1 / n) * 0` TRAPS at n = 0 as written (exit 134 through the engine).
   # The claim is OPEN by design — `n` is unbounded — so the compile
   # surfaces it as V_Pending, which the leg ASSERTS: an open claim is the
   # whole reason the operand survives. RED on boot 21f8e691: the shape-read
@@ -1976,8 +2203,8 @@ for i in "${!compilers[@]}"; do
   # !Cast severance REFUSES (E_EffectMismatch at the declaration — ARMED
   # 2026-09-25, the crown's own verdict; before that it reported and the
   # program ran). The leg asserts the diagnostic fires.
-  cat "${RTLIBS[@]}" "$ROOT/tests/frontier/mn-cast-refused.mn" \
-    | wt_run "$compiler" > /dev/null 2> "$dir/cast-refused.err"
+  wt_entry "$ROOT/tests/frontier/mn-cast-refused.mn" "${RTLIBS[@]}" \
+    | wt_rooted "$compiler" > /dev/null 2> "$dir/cast-refused.err"
   if grep -q "E_EffectMismatch error" "$dir/cast-refused.err"; then
     pass "cast-refused severance reported (E_EffectMismatch at the decl)"
   else
@@ -2078,7 +2305,7 @@ for i in "${!compilers[@]}"; do
   # and the escaped thunk's `ping()` is in main's row with no enclosing
   # install — E_EffectUnhandled names Ping, no WAT, nonzero exit. The runtime
   # walk's 134 stays as the belt beneath it, never reached from this program.
-  cat "${RTLIBS[@]}" "$ROOT/tests/frontier/mn-effect-escaped-install.mn" | wt_run "$compiler" > "$dir/effect-escaped-install.wat" 2> "$dir/effect-escaped-install.err"
+  wt_entry "$ROOT/tests/frontier/mn-effect-escaped-install.mn" "${RTLIBS[@]}" | wt_rooted "$compiler" > "$dir/effect-escaped-install.wat" 2> "$dir/effect-escaped-install.err"
   esc_rc=$?
   if [ "$esc_rc" != "0" ] && [ ! -s "$dir/effect-escaped-install.wat" ] && grep -q 'E_EffectUnhandled.*Ping' "$dir/effect-escaped-install.err"; then
     pass "effect-escaped-install refuses at COMPILE (E_EffectUnhandled names Ping, no WAT)"
@@ -2133,9 +2360,9 @@ for i in "${!compilers[@]}"; do
   ug_fin=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" query "$ROOT/tests/frontier/mn-usage-grade.mn" "type finish" 2>/dev/null)
   ug_stmt=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" query "$ROOT/tests/frontier/mn-usage-grade.mn" "type stmt_use" 2>/dev/null)
   if [ "$ug_false" = "0" ] \
-    && printf '%s' "$ug_fin" | grep -q 'xs: [^,]* own — inferred' \
-    && printf '%s' "$ug_fin" | grep -q 'c: [^)]* ref — inferred' \
-    && printf '%s' "$ug_stmt" | grep -q 'xs: [^,]* own — inferred'; then
+    && printf '%s' "$ug_fin" | grep -q 'own xs: ' \
+    && printf '%s' "$ug_fin" | grep -q 'ref c: ' \
+    && printf '%s' "$ug_stmt" | grep -q 'own xs: '; then
     pass "usage grade: join and mode hold (no false narration; Own/Ref badges true)"
   else
     fail "usage grade (false-narrations=$ug_false; finish='$(printf '%s' "$ug_fin" | head -1)' stmt='$(printf '%s' "$ug_stmt" | head -1)')"
@@ -2228,7 +2455,7 @@ for i in "${!compilers[@]}"; do
   # bind always sticks. The fix returns row_subsumes(body_row, narrowing)
   # from the apply — the fn-finalize gate's own engine. The control leg
   # keeps the TRUE proposal alive.
-  cat "${RTLIBS[@]}" "$ROOT/tests/frontier/mn-teach-alloc-honest.mn" | wt_run "$compiler" teach - > "$dir/teach-alloc.out" 2>/dev/null
+  wt_entry "$ROOT/tests/frontier/mn-teach-alloc-honest.mn" "${RTLIBS[@]}" | wt_rooted "$compiler" teach - > "$dir/teach-alloc.out" 2>/dev/null
   # Judge main's OWN line: teach projects every fn in the linked blob, and
   # the runtime's non-allocating fns legitimately earn !Alloc lines.
   if grep '^main:' "$dir/teach-alloc.out" | grep -q '!Alloc'; then
@@ -2242,7 +2469,7 @@ for i in "${!compilers[@]}"; do
   # (memoize, compile-time eval, parallelize), and the ladder had ranked it
   # LAST — Pure won 0 of 165 measured suggestions. The leg still guards what
   # it was born to guard: a non-allocating body keeps a true proposal.
-  cat "${RTLIBS[@]}" "$ROOT/tests/frontier/mn-teach-pure-control.mn" | wt_run "$compiler" teach - > "$dir/teach-pure.out" 2>/dev/null
+  wt_entry "$ROOT/tests/frontier/mn-teach-pure-control.mn" "${RTLIBS[@]}" | wt_rooted "$compiler" teach - > "$dir/teach-pure.out" 2>/dev/null
   if grep '^main:' "$dir/teach-pure.out" | grep -q 'with Pure'; then
     pass "teach-pure-control (a pure body is taught its strongest proven claim, with Pure)"
   else
@@ -2282,13 +2509,12 @@ for i in "${!compilers[@]}"; do
     fail "teach-authored (teach: $(printf '%s' "$ta_out" | grep -E '^(step|helper|add):' | tr '\n' ' ') decl: $(printf '%s' "$ta_decl" | grep Teach) call: $(printf '%s' "$ta_call" | grep Teach))"
   fi
 
-  # Hβ.emit.under-application-suspension's standing crucible (2026-08-09):
-  # bare under-application must be LOUD-OR-CORRECT, never silent-wrong.
-  # Green today (invalid WAT refuses at assemble), green when the fix
-  # lands (the suspension runs, exit 42), RED only if the emit ever
-  # produces a runnable executable with any other value — the
-  # silent-wrong transition this leg exists to catch. Tighten to
-  # demand-42-only when the peer's fix lands.
+  # Hβ.emit.under-application-suspension's crucible: a bare
+  # under-application (one field absent, no ?? marker) is the partial it
+  # names, and the program RUNS as the suspension, exit 42. Nothing else
+  # passes (G2): the leg accepted "loud at assemble" as green for as long as
+  # the fix was unbuilt, and kept accepting it after the fix landed, so the
+  # suspension could regress to invalid WAT under a green frontier.
   ua_dir="$dir/under-app"
   mkdir -p "$ua_dir"
   wt_run "$compiler" < "$ROOT/tests/frontier/mn-under-application-loud.mn" > "$ua_dir/ua.wat" 2> "$ua_dir/ua.compile.err"
@@ -2296,12 +2522,12 @@ for i in "${!compilers[@]}"; do
     "$WT" run "${WT_RUN_FLAGS[@]}" "$ua_dir/ua.wasm" > "$ua_dir/ua.run.out" 2> "$ua_dir/ua.run.err"
     ua_rc=$?
     if [ "$ua_rc" = "42" ]; then
-      pass "under-application crucible: the suspension RUNS (the peer's fix is live — tighten this leg to 42-only)"
+      pass "under-application: the suspension runs (exit 42)"
     else
-      fail "under-application crucible: a bare under-application RAN with exit $ua_rc — the silent-wrong transition (see $ua_dir)"
+      fail "under-application: a bare under-application RAN with exit $ua_rc, not 42 — the silent-wrong transition (see $ua_dir)"
     fi
   else
-    pass "under-application crucible: loud at assemble (invalid WAT refused; the banked peer names the suspension fix)"
+    fail "under-application: the suspension no longer assembles (see $ua_dir/ua.assemble.err)"
   fi
 
   # The arena census (2026-10-02, replacing the image-classified byte count
@@ -2338,19 +2564,32 @@ for i in "${!compilers[@]}"; do
   # MODULE now and a function's own line carries only its delta above it
   # (`severs beyond the module:`), so `severable:` no longer appears per fn.
   # The invariant is unchanged and is what this leg is for.
-  cat "${RTLIBS[@]}" "$ROOT/tests/frontier/mn-audit-severance-honest.mn" | wt_run "$compiler" audit - > "$dir/audit-sev.out" 2>/dev/null
-  if grep -A1 '^allocates :' "$dir/audit-sev.out" | grep -q 'Alloc — unlocks Real-time safe'; then
+  wt_entry "$ROOT/tests/frontier/mn-audit-severance-honest.mn" "${RTLIBS[@]}" | wt_rooted "$compiler" audit - > "$dir/audit-sev.out" 2>/dev/null
+  if grep -A1 '^allocates :' "$dir/audit-sev.out" | grep -qE 'Alloc[^—]* — unlocks Real-time safe'; then
     fail "audit-severance-honest (an allocating row was offered Alloc severance)"
-  elif grep -A1 '^quiet :' "$dir/audit-sev.out" | grep -q 'Alloc — unlocks Real-time safe'; then
+  elif grep -A1 '^quiet :' "$dir/audit-sev.out" | grep -qE 'Alloc[^—]* — unlocks Real-time safe'; then
     pass "audit-severance-honest (Alloc never offered on an allocating row; the pure control keeps it)"
   else
     fail "audit-severance-honest (the pure control lost its true severance offer)"
   fi
 
+  # TRAP (2026-10-06): the deliberate trap is in the row. extract_chase traps
+  # at depth > 1000 by its own comment, and its row must say so; the audit's
+  # !Trap offer states what !Trap proves and never "Total". RED on boot
+  # 4228ff71: `extract_chase(handle, depth) with Memory + GraphRead`, and the
+  # audit offered "Total (proven never to trap)" over it.
+  trap_where=$(wt_run --dir "$ROOT" "$compiler" where "$ROOT/src/main.mn" extract_chase 2>/dev/null | head -1)
+  trap_row_ok=0
+  printf '%s' "$trap_where" | grep -qE '^→ extract_chase\(.*\).* with .*\bTrap\b' && trap_row_ok=1
+  judge trap-in-the-row "$trap_row_ok" "trap in the row (extract_chase's row carries Trap) (got: $trap_where)"
+  trap_label_ok=1
+  grep -q 'Total (proven' "$dir/audit-sev.out" && trap_label_ok=0
+  judge trap-free-label "$trap_label_ok" "trap-free label (no \"Total\" offer on the audit while termination is unrowed)"
+
   # The verb-shape tier (audit): a 2-step single-use let-chain invites the
   # |> pipe; a twice-used name (`<|` territory) and a one-step let (the
   # law's own exception) stay silent — both faces asserted.
-  cat "${RTLIBS[@]}" "$ROOT/tests/frontier/mn-audit-pipe-shape.mn" | wt_run "$compiler" audit - > "$dir/audit-pipe.out" 2>/dev/null
+  wt_entry "$ROOT/tests/frontier/mn-audit-pipe-shape.mn" "${RTLIBS[@]}" | wt_rooted "$compiler" audit - > "$dir/audit-pipe.out" 2>/dev/null
   if grep -A4 '^chained :' "$dir/audit-pipe.out" | grep -q 'verb-shape: 2-step'; then
     if grep -A4 '^forked :' "$dir/audit-pipe.out" | grep -q 'verb-shape' \
        || grep -A4 '^single :' "$dir/audit-pipe.out" | grep -q 'verb-shape'; then
@@ -2455,13 +2694,13 @@ for i in "${!compilers[@]}"; do
   fdemo2="$dir/fmt-demo"
   mkdir -p "$fdemo2"
   cp "$ROOT/tests/frontier/fmt-demo/rich.mn" "$fdemo2/rich.mn"
-  cat "${RTLIBS[@]}" "$fdemo2/rich.mn" | wt_run "$compiler" > "$fdemo2/pre.wat" 2>/dev/null \
+  wt_entry "$fdemo2/rich.mn" "${RTLIBS[@]}" | wt_rooted "$compiler" > "$fdemo2/pre.wat" 2>/dev/null \
     && wt_asm "$fdemo2/pre.wat" "$fdemo2/pre.wasm" 2>/dev/null \
     && "$WT" run "${WT_RUN_FLAGS[@]}" "$fdemo2/pre.wasm" >/dev/null 2>&1
   fmt_pre=$?
   (cd "$fdemo2" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$fdemo2" --dir /tmp "$compiler" fmt rich.mn) >"$dir/fmt.out" 2>&1
   fmt_rc=$?
-  cat "${RTLIBS[@]}" "$fdemo2/rich.mn" | wt_run "$compiler" > "$fdemo2/post.wat" 2>/dev/null \
+  wt_entry "$fdemo2/rich.mn" "${RTLIBS[@]}" | wt_rooted "$compiler" > "$fdemo2/post.wat" 2>/dev/null \
     && wt_asm "$fdemo2/post.wat" "$fdemo2/post.wasm" 2>/dev/null \
     && "$WT" run "${WT_RUN_FLAGS[@]}" "$fdemo2/post.wasm" >/dev/null 2>&1
   fmt_post=$?
@@ -2477,6 +2716,36 @@ for i in "${!compilers[@]}"; do
   else
     fail "fmt idempotence"
   fi
+  # A destructuring let renders as the let the author wrote, never as the
+  # one-arm match the parse makes of it (RED on boot 50da7612: every
+  # let became a match one level deeper per destructure). The fixture is
+  # canonical as written, and runs to 22.
+  cp "$ROOT/tests/frontier/fmt-demo/lets.mn" "$fdemo2/lets.mn"
+  (cd "$fdemo2" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$fdemo2" --dir /tmp "$compiler" fmt --check lets.mn) >"$dir/fmt-lets.out" 2>&1
+  lets_rc=$?
+  wt_entry "$fdemo2/lets.mn" "${RTLIBS[@]}" | wt_rooted "$compiler" > "$fdemo2/lets.wat" 2>/dev/null \
+    && wt_asm "$fdemo2/lets.wat" "$fdemo2/lets.wasm" 2>/dev/null \
+    && "$WT" run "${WT_RUN_FLAGS[@]}" "$fdemo2/lets.wasm" >/dev/null 2>&1
+  lets_run=$?
+  if [ $lets_rc -eq 0 ] && [ "$lets_run" = "22" ]; then
+    pass "fmt writes a destructuring let as a let (canonical as authored, runs to 22)"
+  else
+    fail "fmt destructuring let (check rc=$lets_rc run=$lets_run; see $dir/fmt-lets.out)"
+  fi
+  # A parse that recovered is never rendered: an unexpected token only
+  # narrates, and fmt wrote the recovery's holes back over the author's
+  # clause (RED on boot b2920932 and its candidate: `[e - E]` became
+  # `+  = e - E` with two `??` lines; a keyword binder became `let _`, RED
+  # since boot 21f8e691). The file stays byte for byte.
+  for rec in recovered keyword-binder; do
+    cp "$ROOT/tests/frontier/fmt-demo/$rec.mn" "$fdemo2/$rec.mn"
+    (cd "$fdemo2" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$fdemo2" --dir /tmp "$compiler" fmt "$rec.mn") >"$dir/fmt-$rec.out" 2>&1
+    if cmp -s "$ROOT/tests/frontier/fmt-demo/$rec.mn" "$fdemo2/$rec.mn"; then
+      pass "fmt never writes a parse it recovered ($rec.mn stays as authored)"
+    else
+      fail "fmt wrote a recovered parse (see $fdemo2/$rec.mn, $dir/fmt-$rec.out)"
+    fi
+  done
   # The re-sugar: the fixture's destructure-param lambda must render as
   # its authored pattern, never the desugared __dp<handle> machine form
   # (seen RED on the pre-resugar wheel: the fan's labeled branches baked
@@ -2519,17 +2788,30 @@ for i in "${!compilers[@]}"; do
   else
     fail "fmt prose/annotation carry"
   fi
+  # ── a target that names no file and no module is refused, and no file
+  # appears. RED on boot c0b2828c: the resolver answered a fabricated
+  # `lib/<name>.mn` for a module with no file, and fmt wrote ANOTHER
+  # module's render there (lib/--check.mn held lib/memory.mn's text).
+  mkdir -p "$fdemo2/lib"
+  (cd "$fdemo2" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$fdemo2" --dir /tmp "$compiler" fmt no_such_module) >"$dir/fmt-nothing.out" 2>&1
+  nothing_rc=$?
+  if [ $nothing_rc -ne 0 ] && [ ! -e "$fdemo2/lib/no_such_module.mn" ] && [ ! -e "$fdemo2/no_such_module.mn" ] \
+     && grep -q 'no_such_module' "$dir/fmt-nothing.out"; then
+    pass "fmt refuses a target that names nothing, and writes no file"
+  else
+    fail "fmt wrote or accepted a target that names nothing (rc=$nothing_rc; see $dir/fmt-nothing.out, $fdemo2/lib)"
+  fi
   # ── fmt rungs 1/2/4 (the census's universal blockers) — RED pre-fix:
   # the signed with-clause rendered «invalid-effect», every handler decl
   # trapped in render_handler_arms, and authored `-> RetTy` dropped.
   cp "$ROOT/tests/frontier/fmt-demo/voicey.mn" "$fdemo2/voicey.mn"
-  cat "${RTLIBS[@]}" "$fdemo2/voicey.mn" | wt_run "$compiler" > "$fdemo2/vpre.wat" 2>/dev/null \
+  wt_entry "$fdemo2/voicey.mn" "${RTLIBS[@]}" | wt_rooted "$compiler" > "$fdemo2/vpre.wat" 2>/dev/null \
     && wt_asm "$fdemo2/vpre.wat" "$fdemo2/vpre.wasm" 2>/dev/null \
     && "$WT" run "${WT_RUN_FLAGS[@]}" "$fdemo2/vpre.wasm" >/dev/null 2>&1
   vfmt_pre=$?
   (cd "$fdemo2" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$fdemo2" --dir /tmp "$compiler" fmt voicey.mn) >"$dir/vfmt.out" 2>&1
   vfmt_rc=$?
-  cat "${RTLIBS[@]}" "$fdemo2/voicey.mn" | wt_run "$compiler" > "$fdemo2/vpost.wat" 2>/dev/null \
+  wt_entry "$fdemo2/voicey.mn" "${RTLIBS[@]}" | wt_rooted "$compiler" > "$fdemo2/vpost.wat" 2>/dev/null \
     && wt_asm "$fdemo2/vpost.wat" "$fdemo2/vpost.wasm" 2>/dev/null \
     && "$WT" run "${WT_RUN_FLAGS[@]}" "$fdemo2/vpost.wasm" >/dev/null 2>&1
   vfmt_post=$?
@@ -2613,7 +2895,7 @@ for i in "${!compilers[@]}"; do
   # the decl's prose as its lede.
   dout=$(cd "$ldemo" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ldemo" --dir /tmp "$compiler" doc lede 2>"$dir/doc.err")
   derr=$(grep -c ' error: ' "$dir/doc.err" || true)
-  if [ "$derr" = 0 ] && printf '%s' "$dout" | grep -q '^compute : ' && printf '%s' "$dout" | grep -q 'The outer prose'; then
+  if [ "$derr" = 0 ] && printf '%s' "$dout" | grep -q '^compute(' && printf '%s' "$dout" | grep -q 'The outer prose'; then
     pass "doc projection (decls with types and ledes, no diagnostics)"
   else
     fail "doc projection (errors=$derr; see $dir/doc.err; got: $(printf '%s' "$dout" | head -3))"
@@ -2634,7 +2916,7 @@ for i in "${!compilers[@]}"; do
   admemo="$ROOT/tests/frontier/address-module-demo"
   adout=$(cd "$admemo" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$admemo" --dir /tmp "$compiler" addr.mn:4 2>"$dir/addr-module.err")
   if printf '%s' "$adout" | grep -q "of 'entry_at_four'" \
-     && printf '%s' "$adout" | grep -q '(n: Int own' \
+     && printf '%s' "$adout" | grep -q '(own n: Int' \
      && ! printf '%s' "$adout" | grep -q 'helper_at_four'; then
     pass "cursor-address carries its module (line 4 is the entry's own decl, not the widest stranger's)"
   else
@@ -2677,7 +2959,7 @@ for i in "${!compilers[@]}"; do
     fail "caret why (got: $(printf '%s' "$cpar" | grep -A1 '^Why'); see $dir/caret.err)"
   fi
   cwhere=$( (cd "$cdemo" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$cdemo" --dir /tmp "$compiler" where walk.mn inv 2>>"$dir/caret.err") | head -1)
-  if [ "$cwhere" = "→ inv(n)  at walk:11" ]; then
+  if [ "$cwhere" = "→ inv(own n: Positive) -> Int  at walk:11" ]; then
     pass "where answers where (the declaration's address beside its head)"
   else
     fail "where answers where (got: $cwhere; see $dir/caret.err)"
@@ -2824,10 +3106,13 @@ for i in "${!compilers[@]}"; do
   # against the boot, which printed the fixed sentence for every one of them.
   #
   # VALUE: two integer seeds of `Bit = Int where 0 <= self && self <= 1`, and
-  # the line names what the type admits rather than asking for "a constraint".
+  # the line names the values it asks between and what the type admits rather
+  # than asking for "a constraint" (the values since 2026-10-10: past three
+  # members the question renders alone, and RED on boot d2bd58b4 it asked
+  # "which one?" with no ones beside it).
   qv=$(cd "$fdemo" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$fdemo" --dir /tmp "$compiler" bit.mn:8:30 2>/dev/null)
-  if printf '%s' "$qv" | grep -q 'differ in VALUE and the type admits 0 through 1'; then
-    pass "computed question: value (the admitted domain, not a generic ask)"
+  if printf '%s' "$qv" | grep -q 'differ in VALUE — 0 or 1 — and the type admits 0 through 1'; then
+    pass "computed question: value (the values asked between and the admitted domain, not a generic ask)"
   else
     fail "computed question: value (got: $(printf '%s' "$qv" | tail -2))"
   fi
@@ -2864,6 +3149,23 @@ for i in "${!compilers[@]}"; do
     pass "hole row: a candidate performing what the enclosing ~> absorbs is proposed (the tie's question is the row split, E against Pure)"
   else
     fail "hole row absorbed (got: $(printf '%s' "$qa" | grep -E 'eff_one|Propose|against' | head -3 | tr '\n' ' '))"
+  fi
+  # ONE RENDERER FOR THE DEVELOPER'S EYE (render lane, 2026-10-06). `doc`
+  # and `where` render every type through the formatter's projection with
+  # free variables named by the render context: no forensic handle (`@e`),
+  # no `_:` for a parameter nobody named, no `-> ()` on a unit result, and
+  # no `WASI(a)` — the never type is quantified per perform, so an effect
+  # with a `-> !` op carries no phantom parameter. RED on boot 4228ff71:
+  # `doc` printed `Option : Option(t8090@e76)` and `unwrap : (opt:
+  # Option(t11349@e7593) ref — inferred) -> … with Fail(t11349@e7593)`.
+  rd=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT::." --dir /tmp "$compiler" doc lib/prelude.mn 2>/dev/null)
+  rf=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT::." --dir /tmp "$compiler" where src/main.mn Filesystem 2>/dev/null)
+  rr=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT::." --dir /tmp "$compiler" where src/main.mn fmt_run 2>/dev/null)
+  rall="$rd$rf$rr"
+  if [[ -n "$rd" && -n "$rf" && -n "$rr" ]] && ! printf '%s' "$rall" | grep -qE '@e[0-9]|_: |-> \(\)|WASI\(a\)'; then
+    pass "one renderer: doc and where print no handle, no _:, no -> () and no WASI(a)"
+  else
+    fail "one renderer (got: $(printf '%s' "$rall" | grep -E '@e[0-9]|_: |-> \(\)|WASI\(a\)' | head -3 | tr '\n' ' '))"
   fi
   # A PIPE STAGE IS PROPOSED BY REFERENCE, searched outward from the hole's
   # module (PROGRAM C3). Born RED 2026-09-25 on all three: `5 |> ??` offered
@@ -2963,7 +3265,18 @@ for i in "${!compilers[@]}"; do
   taret=$?
   wt_run --dir "$tadir::." --dir "$ROOT::/mentl-home" "$compiler" accept plain.mn:8:1 > /dev/null 2>"$dir/teach-accept-plain.err"
   taplain=$?
-  tadebt=$( { wt_run --dir "$tadir::." --dir "$ROOT::/mentl-home" "$compiler" compile pre.mn 2>&1 >/dev/null; wt_run --dir "$tadir::." --dir "$ROOT::/mentl-home" "$compiler" compile ret.mn 2>&1 >/dev/null; wt_run --dir "$tadir::." --dir "$ROOT::/mentl-home" "$compiler" compile plain.mn 2>&1 >/dev/null; } | grep -c 'pending\| error' || true)
+  # The debt is the fixture's own: since TRAP the linked runtime carries open
+  # index claims of its own, so each file's pending count is read against a
+  # bare program's over the same link, and any error counts outright.
+  printf 'fn main() = 0\n' > "$tadir/bare.mn"
+  ta_pending() { wt_run --dir "$tadir::." --dir "$ROOT::/mentl-home" "$compiler" compile "$1" 2>&1 >/dev/null \
+    | awk '/ error/ {e++} /verification obligations pending/ {for (i=1;i<=NF;i++) if ($i ~ /^[0-9]+$/) p=$i} END {print (e+0) " " (p+0)}'; }
+  read -r _ tabase <<<"$(ta_pending bare.mn)"
+  tadebt=0
+  for taf in pre.mn ret.mn plain.mn; do
+    read -r tae tap <<<"$(ta_pending "$taf")"
+    tadebt=$((tadebt + tae + tap - tabase))
+  done
   if [ "$tapre" = 0 ] && [ "$taret" = 0 ] && [ "$taplain" = 0 ] \
      && [ "$(sed -n 12p "$tadir/pre.mn")" = "fn inv(n: NonZero) = 100 / n" ] \
      && [ "$(sed -n 7p "$tadir/ret.mn")" = "fn five() -> Positive = 5" ] \
@@ -3020,77 +3333,22 @@ for i in "${!compilers[@]}"; do
   # resolves the callee's FINAL scheme and the check REFUSES.
   fwd_out=$(cd "$ROOT" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT" --dir /tmp "$compiler" check tests/frontier/mn-check-forward-order.mn 2>&1)
   fwd_rc=$?
-  fwd_count=$(printf '%s' "$fwd_out" | grep -Fc 'E_TypeMismatch error: (Int, String) vs List(Byte)' || true)
+  fwd_count=$(printf '%s' "$fwd_out" | grep -Fc 'E_TypeMismatch error: (Int, String) vs [Byte]' || true)
   if [ "$fwd_rc" -ne 0 ] && [ "$fwd_count" -ge 1 ]; then
     pass "check-forward-order (the DAG path judges converged: forward tuple-into-[String] refuses)"
   else
     fail "check-forward-order (exit=$fwd_rc mismatches=$fwd_count — the forward-ref seam is open)"
   fi
-  # ── mentl session — the resident graph as the CLI's default transport ──
-  # The living session behind the shim's tcplisten seam answers read
-  # verbs over a one-line wire speaking the CLI's own grammar; anything
-  # it does not serve answers the MISS sentinel and the shim falls back
-  # cold. RED on any pre-session boot: the verb is unrecognized, nothing
-  # listens, both probes fail. The oracle is the strongest available:
-  # the resident answer must BYTE-EQUAL the cold verb's.
-  sessdir="$dir/session-proj"
-  mkdir -p "$sessdir"
-  printf 'fn width(n) = n + 2\n\nfn main() = width(40)\n' > "$sessdir/main.mn"
-  sess_port=7391
-  # An orphan from a prior run holds the port and answers with ITS stale
-  # graph (measured: a leftover session served the REPO main's audit —
-  # the fresh session could never bind). Clear by the port's own
-  # fingerprint, and mount the project as guest "." so the wheel's
-  # relative "main.mn" probe resolves the FIXTURE, never falling through
-  # to /mentl-home (the space verb's own mount convention).
-  pkill -f "tcplisten=127.0.0.1:${sess_port}" 2>/dev/null
-  sleep 1
-  (cd "$sessdir" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$sessdir::." --dir /tmp --dir "$ROOT::/mentl-home" -S "tcplisten=127.0.0.1:${sess_port}" "$compiler" session >"$dir/session.log" 2>&1) &
-  sess_pid=$!
-  : > "$dir/session-resident.txt"
-  for _ in $(seq 1 60); do
-    # Direct redirect, never command substitution — $(...) strips the
-    # trailing newline and a one-byte "divergence" fails the byte oracle.
-    bash -c "exec 3<>/dev/tcp/127.0.0.1/${sess_port} 2>/dev/null && printf 'audit\tmain\t\n' >&3 && cat <&3" > "$dir/session-resident.txt" 2>/dev/null
-    [ -s "$dir/session-resident.txt" ] && break
-    sleep 1
-  done
-  (cd "$sessdir" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$sessdir::." --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" audit main 2>/dev/null) > "$dir/session-cold.txt"
-  if [ -s "$dir/session-resident.txt" ] && cmp -s "$dir/session-resident.txt" "$dir/session-cold.txt"; then
-    pass "session resident audit (byte-equal to the cold verb)"
-  else
-    fail "session resident audit (empty or diverged; see $dir/session-resident.txt vs session-cold.txt)"
-  fi
-  sess_miss=$(bash -c "exec 3<>/dev/tcp/127.0.0.1/${sess_port} 2>/dev/null && printf 'compile\tmain\t\n' >&3 && cat <&3" 2>/dev/null)
-  if printf '%s' "$sess_miss" | grep -q 'MENTL-SESSION-MISS'; then
-    pass "session MISS sentinel (cold-only verbs decline; the shim falls back)"
-  else
-    fail "session MISS sentinel (got: $sess_miss)"
-  fi
-  # A REFUSAL ANSWERS MISS (E2). A verb that refuses says why on stderr and
-  # gives its verdict as the exit code, and the wire carries neither — the
-  # socket's stderr is the server's terminal — so the session answers MISS
-  # and the cold route says the refusal whole. RED on boot 713745c6: the
-  # address past the end of the file answered nothing, as if it had
-  # succeeded, where the cold verb names the file's length and exits 1.
-  sess_ref=$(bash -c "exec 3<>/dev/tcp/127.0.0.1/${sess_port} 2>/dev/null && printf 'main.mn:999:1\n' >&3 && cat <&3" 2>/dev/null)
-  if [ "$sess_ref" = "MENTL-SESSION-MISS" ]; then
-    pass "session refusal answers MISS (the cold route says it whole)"
-  else
-    fail "session refusal answers MISS (got: [$sess_ref])"
-  fi
-  # Kill by the port fingerprint — the subshell pid is the wrapper, and
-  # killing it orphans the wasmtime grandchild (the stale-graph server
-  # this leg's first red was).
-  pkill -f "tcplisten=127.0.0.1:${sess_port}" 2>/dev/null
-  kill "$sess_pid" 2>/dev/null
-  wait "$sess_pid" 2>/dev/null
-  # ── the session on stdin (E2) ──────────────────────────────────────
-  # A host that preopens no listener owns the process's input instead — a
-  # browser worker, a pipe — and the session answers one line per verb, the
-  # answer written whole before the next line is read. The oracle is the
-  # cold verb byte for byte, then the refusal's MISS. RED on boot 713745c6:
-  # without a listener the verb refused.
+  # ── the session on stdin (E2) — the resident graph, ONE transport ────
+  # The host owns the process's input — a browser worker's channel, the
+  # mentl command's pipe — and the session answers one line per verb, the
+  # answer written whole before the next line is read; a verb it does not
+  # serve, and a verb that refuses (its reason is stderr, its verdict the
+  # exit code, and the wire carries neither), answers the MISS sentinel so
+  # the cold route says it whole. The oracle is the cold verb byte for
+  # byte, then the refusal's MISS. RED on boot 713745c6: without a listener
+  # the verb refused. The listener it once served (a socket the host
+  # preopened; `-S tcplisten=`) is gone with the socket seam, 2026-10-05.
   stdir="$dir/session-stdin"
   rm -rf "$stdir"
   mkdir -p "$stdir"
@@ -3105,71 +3363,37 @@ for i in "${!compilers[@]}"; do
     fail "session on stdin (diff $stdir/out.txt $stdir/want.txt; see $stdir/err.log)"
   fi
   # ── the accept's edge outlives the reply (E2) ──────────────────────
-  # Through the shim's own rule: ask the session, and on MISS run the verb
-  # cold. The session draws the accept into the graph it keeps, so the
-  # next read of the position walks to the proposal; a cold accept drew it
-  # in a process that ended with the reply. RED on boot 713745c6: the
-  # accept answered MISS, the cold accept wrote `1`, and the next resident
-  # read said "Why: int literal".
+  # One session, three lines on its stdin: a read of the hole, the accept,
+  # the same read again. The session draws the accept into the graph it
+  # keeps, so the next read of the position walks to the proposal — where a
+  # cold accept drew it in a process that ended with the reply. RED on boot
+  # 713745c6: the accept answered MISS, the cold accept wrote `1`, and the
+  # next read said "Why: int literal". The first read must NOT walk to a
+  # proposal (nothing has been accepted), so exactly one answer does.
   acdir="$dir/session-accept"
   rm -rf "$acdir"
   mkdir -p "$acdir"
   printf 'type Positive = Int where 0 < self\n\nfn choose() -> Positive = ??\n\nfn main() = choose()\n' > "$acdir/main.mn"
-  ac_port=7393
-  pkill -f "tcplisten=127.0.0.1:${ac_port}" 2>/dev/null
-  sleep 1
-  (cd "$acdir" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$acdir::." --dir /tmp --dir "$ROOT::/mentl-home" -S "tcplisten=127.0.0.1:${ac_port}" "$compiler" session >"$acdir/session.log" 2>&1) &
-  ac_pid=$!
-  ac_ask() { bash -c "exec 3<>/dev/tcp/127.0.0.1/${ac_port} 2>/dev/null && printf '%s\n' \"\$1\" >&3 && cat <&3" _ "$1" 2>/dev/null; }
-  : > "$acdir/before.txt"
-  for _ in $(seq 1 60); do
-    ac_ask 'main.mn:3:27' > "$acdir/before.txt"
-    [ -s "$acdir/before.txt" ] && break
-    sleep 1
-  done
-  if [ "$(ac_ask "$(printf 'accept\tmain.mn:3:27')")" = "MENTL-SESSION-MISS" ]; then
-    (cd "$acdir" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$acdir::." --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" accept main.mn:3:27 > "$acdir/cold-accept.txt" 2>&1)
-  fi
-  ac_ask 'main.mn:3:27' > "$acdir/later.txt"
-  if grep -q '^Why: accepted `1` — proposed' "$acdir/later.txt" && grep -q 'fn choose() -> Positive = 1$' "$acdir/main.mn"; then
+  printf 'main.mn:3:27\naccept\tmain.mn:3:27\nmain.mn:3:27\n' \
+    | (cd "$acdir" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$acdir::." --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" session) \
+      > "$acdir/answers.txt" 2> "$acdir/session.log"
+  # Three answers, each opening with its Query line: the first read must not
+  # walk to a proposal, the accept answers with the projection of the
+  # accepted position exactly as the cold `mentl accept` does (its Why walks
+  # to the proposal already), and the third read walks to it again off the
+  # graph the session kept. RED on the first stock-engine march (2026-10-05):
+  # this leg counted ONE accepted Why across all three answers and the accept's
+  # own answer made it two — the contract was the leg's, not the wheel's.
+  if awk '/^Query:/{n++} n==1 && /^Why: accepted/{bad=1} n==3 && /^Why: accepted `1` — proposed/{ok=1} END{exit !(ok && !bad)}' "$acdir/answers.txt" \
+     && grep -q 'fn choose() -> Positive = 1$' "$acdir/main.mn"; then
     pass "session accept: the next read walks to the proposal"
   else
-    fail "session accept (see $acdir/later.txt)"
+    fail "session accept (see $acdir/answers.txt and $acdir/session.log)"
   fi
-  pkill -f "tcplisten=127.0.0.1:${ac_port}" 2>/dev/null
-  kill "$ac_pid" 2>/dev/null
-  wait "$ac_pid" 2>/dev/null
-  # ── mentl space — the ide served by the wheel ──────────────────────
-  # The verb absorbs ide/serve.mn whole: the accept loop lives in
-  # src/main.mn, the listener is the shim's tcplisten preopen seam (WASI
-  # p1 has no bind/listen). Leg 1: without a listener the verb refuses
-  # and TEACHES the seam. Leg 2: with one preopened it serves
-  # ide/index.html carrying the cross-origin-isolation pair the
-  # shared-memory compiler requires. Both seen RED on the pre-verb boot
-  # ("unrecognized or under-specified command: space").
-  "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT::." "$compiler" space >"$dir/space-refuse.out" 2>&1
-  if [ $? -ne 0 ] && grep -q 'no listener preopened' "$dir/space-refuse.out"; then
-    pass "space refuses without a listener (and teaches the seam)"
-  else
-    fail "space no-listener refusal (see $dir/space-refuse.out)"
-  fi
-  space_port=7379
-  "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT::." -S "tcplisten=127.0.0.1:${space_port}" "$compiler" space >"$dir/space-serve.log" 2>&1 &
-  space_pid=$!
-  space_hdr=""
-  for _ in $(seq 1 20); do
-    space_hdr=$(curl -s -D - -o "$dir/space-index.html" "http://127.0.0.1:${space_port}/ide/index.html" 2>/dev/null) && break
-    sleep 0.3
-  done
-  kill "$space_pid" 2>/dev/null
-  wait "$space_pid" 2>/dev/null
-  if printf '%s' "$space_hdr" | grep -q '200 OK' \
-     && printf '%s' "$space_hdr" | grep -qi 'Cross-Origin-Embedder-Policy: require-corp' \
-     && [ -s "$dir/space-index.html" ]; then
-    pass "space serves ide/index.html with the isolation pair"
-  else
-    fail "space live serve (status: $(printf '%s' "$space_hdr" | head -1); see $dir/space-serve.log)"
-  fi
+  # `mentl space` is the page — static files the mentl command stages and
+  # serves (tools/space-stage.sh, tools/space-serve.py) — and its gate is
+  # tools/ide-gate.sh's leg 2 over the staged artifact; the wheel serves no
+  # socket since 2026-10-05.
   # ── mentl mcp — the gate served over MCP stdio ─────────────────────
   # The Synth-gate as an agent-facing surface: newline-delimited JSON-RPC,
   # one tool (propose). One scripted session exercises the whole contract:
@@ -3258,7 +3482,7 @@ for i in "${!compilers[@]}"; do
      && grep -q '"name":"at"' "$ses_dir/out.jsonl" \
      && grep -q '"name":"audit"' "$ses_dir/out.jsonl" \
      && grep -q '"name":"teach"' "$ses_dir/out.jsonl" \
-     && grep -q 'x: Int own' "$ses_dir/out.jsonl" \
+     && grep -q 'own x: Int' "$ses_dir/out.jsonl" \
      && grep -q 'declared as main' "$ses_dir/out.jsonl" \
      && grep -q 'Query: fn double' "$ses_dir/out.jsonl" \
      && grep -q 'double : Pure' "$ses_dir/out.jsonl" \
@@ -3416,7 +3640,7 @@ for i in "${!compilers[@]}"; do
   # row construction (the by-name dedup used to delete it silently) and
   # blocks conservatively — same instance and bare performs report,
   # a provably-distinct sibling instance is admitted and runs.
-  cat "${RTLIBS[@]}" "$ROOT/tests/frontier/mn-effect-instance-sibling.mn" | wt_run "$compiler" > "$dir/inst-sib.wat" 2> "$dir/inst-sib.err" \
+  wt_entry "$ROOT/tests/frontier/mn-effect-instance-sibling.mn" "${RTLIBS[@]}" | wt_rooted "$compiler" > "$dir/inst-sib.wat" 2> "$dir/inst-sib.err" \
     && wt_asm "$dir/inst-sib.wat" "$dir/inst-sib.wasm" 2>/dev/null \
     && "$WT" run "${WT_RUN_FLAGS[@]}" "$dir/inst-sib.wasm"
   sib_rc=$?
@@ -3425,13 +3649,13 @@ for i in "${!compilers[@]}"; do
   else
     fail "instance sibling (rc=$sib_rc; see $dir/inst-sib.err)"
   fi
-  cat "${RTLIBS[@]}" "$ROOT/tests/frontier/mn-effect-instance-severed.mn" | wt_run "$compiler" > /dev/null 2> "$dir/inst-sev.err"
+  wt_entry "$ROOT/tests/frontier/mn-effect-instance-severed.mn" "${RTLIBS[@]}" | wt_rooted "$compiler" > /dev/null 2> "$dir/inst-sev.err"
   if grep -q 'E_EffectMismatch' "$dir/inst-sev.err"; then
     pass "instance negation severs the same instance (mismatch reported)"
   else
     fail "instance severed (no mismatch; see $dir/inst-sev.err)"
   fi
-  cat "${RTLIBS[@]}" "$ROOT/tests/frontier/mn-effect-instance-bare.mn" | wt_run "$compiler" > /dev/null 2> "$dir/inst-bare.err"
+  wt_entry "$ROOT/tests/frontier/mn-effect-instance-bare.mn" "${RTLIBS[@]}" | wt_rooted "$compiler" > /dev/null 2> "$dir/inst-bare.err"
   if grep -q 'E_EffectMismatch' "$dir/inst-bare.err"; then
     pass "instance negation blocks the bare perform (conservative)"
   else
@@ -3442,13 +3666,13 @@ for i in "${!compilers[@]}"; do
   # ground type disagrees reports the mismatch; wrong arity reports the
   # constructor-arity class. Both RED on the prior boot (silent admits;
   # the head itself only parse-recovered there).
-  cat "${RTLIBS[@]}" "$ROOT/tests/frontier/mn-effect-instance-argty.mn" | wt_run "$compiler" > /dev/null 2> "$dir/inst-argty.err"
+  wt_entry "$ROOT/tests/frontier/mn-effect-instance-argty.mn" "${RTLIBS[@]}" | wt_rooted "$compiler" > /dev/null 2> "$dir/inst-argty.err"
   if grep -q 'E_TypeMismatch' "$dir/inst-argty.err" && ! grep -q 'P_' "$dir/inst-argty.err"; then
     pass "instance arg typing (wrong scalar type reports; the head parses clean)"
   else
     fail "instance argty (see $dir/inst-argty.err)"
   fi
-  cat "${RTLIBS[@]}" "$ROOT/tests/frontier/mn-effect-instance-arity.mn" | wt_run "$compiler" > /dev/null 2> "$dir/inst-arity.err"
+  wt_entry "$ROOT/tests/frontier/mn-effect-instance-arity.mn" "${RTLIBS[@]}" | wt_rooted "$compiler" > /dev/null 2> "$dir/inst-arity.err"
   if grep -q 'E_ConstructorArity' "$dir/inst-arity.err"; then
     pass "instance arg arity (wrong count reports)"
   else
@@ -3477,7 +3701,7 @@ for i in "${!compilers[@]}"; do
   # ride beside the quiet face's run. The old single-fixture form banked
   # "exit 42 with exactly one mismatch" — a real `!WASI` leak the unarmed
   # era let run (§9.11).
-  cat "${RTLIBS[@]}" "$ROOT/lib/io.mn" "$ROOT/tests/frontier/mn-hof-row-gate.mn" | wt_run "$compiler" > "$dir/hof-gate.wat" 2> "$dir/hof-gate.err" \
+  wt_entry "$ROOT/tests/frontier/mn-hof-row-gate.mn" "${RTLIBS[@]}" io | wt_rooted "$compiler" > "$dir/hof-gate.wat" 2> "$dir/hof-gate.err" \
     && wt_asm "$dir/hof-gate.wat" "$dir/hof-gate.wasm" 2>/dev/null \
     && "$WT" run "${WT_RUN_FLAGS[@]}" "$dir/hof-gate.wasm" > /dev/null
   hof_rc=$?
@@ -3486,7 +3710,7 @@ for i in "${!compilers[@]}"; do
   else
     fail "hof row gate (rc=$hof_rc mismatches=$(grep -c 'E_EffectMismatch' "$dir/hof-gate.err"); see $dir/hof-gate.err)"
   fi
-  cat "${RTLIBS[@]}" "$ROOT/lib/io.mn" "$ROOT/tests/frontier/mn-hof-row-gate-noisy.mn" | wt_run "$compiler" > "$dir/hof-gate-noisy.wat" 2> "$dir/hof-gate-noisy.err"
+  wt_entry "$ROOT/tests/frontier/mn-hof-row-gate-noisy.mn" "${RTLIBS[@]}" io | wt_rooted "$compiler" > "$dir/hof-gate-noisy.wat" 2> "$dir/hof-gate-noisy.err"
   hofn_rc=$?
   if [ "$hofn_rc" != "0" ] && [ ! -s "$dir/hof-gate-noisy.wat" ] && [ "$(grep -c 'E_EffectMismatch' "$dir/hof-gate-noisy.err")" = "1" ]; then
     pass "hof row gate, noisy face (REFUSED: exactly one mismatch at the printing edge, no WAT)"
@@ -3498,7 +3722,7 @@ for i in "${!compilers[@]}"; do
   # RE-RUNS its thunk — §4④): the replay-exact branch is admitted by
   # subsumption and the whole checkpoint+run+join loop runs; a printing
   # branch reports the mismatch naming the severed row at its own edge.
-  cat "${PERSIST_RTLIBS[@]}" "$ROOT/tests/frontier/mn-persist-branch-clean.mn" | wt_run "$compiler" > "$dir/pb-clean.wat" 2> "$dir/pb-clean.err" \
+  wt_entry "$ROOT/tests/frontier/mn-persist-branch-clean.mn" "${PERSIST_RTLIBS[@]}" | wt_rooted "$compiler" > "$dir/pb-clean.wat" 2> "$dir/pb-clean.err" \
     && wt_asm "$dir/pb-clean.wat" "$dir/pb-clean.wasm" 2>/dev/null \
     && "$WT" run "${WT_RUN_FLAGS[@]}" --dir /tmp "$dir/pb-clean.wasm" > /dev/null
   pb_rc=$?
@@ -3507,7 +3731,7 @@ for i in "${!compilers[@]}"; do
   else
     fail "persist branch clean (rc=$pb_rc; see $dir/pb-clean.err)"
   fi
-  cat "${PERSIST_RTLIBS[@]}" "$ROOT/tests/frontier/mn-persist-branch-external.mn" | wt_run "$compiler" > /dev/null 2> "$dir/pb-ext.err"
+  wt_entry "$ROOT/tests/frontier/mn-persist-branch-external.mn" "${PERSIST_RTLIBS[@]}" | wt_rooted "$compiler" > /dev/null 2> "$dir/pb-ext.err"
   if grep -q 'E_EffectMismatch' "$dir/pb-ext.err" && grep -q '!WASI' "$dir/pb-ext.err"; then
     pass "persist branch barrier reports the replaying external (severed row named)"
   else
@@ -3518,7 +3742,7 @@ for i in "${!compilers[@]}"; do
   # re-consumed per resumed run — T_OwnAcrossReplay names it at the call
   # edge (narration: the loop still runs 42); the self-contained sibling
   # thunk stays silent (exactly one line).
-  cat "${PERSIST_RTLIBS[@]}" "$ROOT/tests/frontier/mn-own-across-replay.mn" | wt_run "$compiler" > "$dir/pb-own.wat" 2> "$dir/pb-own.err" \
+  wt_entry "$ROOT/tests/frontier/mn-own-across-replay.mn" "${PERSIST_RTLIBS[@]}" | wt_rooted "$compiler" > "$dir/pb-own.wat" 2> "$dir/pb-own.err" \
     && wt_asm "$dir/pb-own.wat" "$dir/pb-own.wasm" 2>/dev/null \
     && "$WT" run "${WT_RUN_FLAGS[@]}" --dir /tmp "$dir/pb-own.wasm" > /dev/null
   pbo_rc=$?
@@ -3861,7 +4085,7 @@ for i in "${!compilers[@]}"; do
   w_head=$(wt_run --dir "$ROOT" "$compiler" where "$wdoc" ticks 2>/dev/null)
   # E4: the head carries the declaration's address (RED on boot 8b071ba3,
   # whose head stopped at the row).
-  printf '%s' "$w_head" | grep -q '^→ ticks(x) with Tick  at .*mn-where-badges:10$' || { w_ok=0; fail "where head with its inferred row and address (got: $w_head)"; }
+  printf '%s' "$w_head" | grep -q '^→ ticks(own x: Int) -> Int with Tick  at .*mn-where-badges:10$' || { w_ok=0; fail "where head with its inferred row and address (got: $w_head)"; }
   printf '%s' "$w_head" | grep -q '^  x : Int @ i32 (inferred)$' || { w_ok=0; fail "where parameter badge (got: $w_head)"; }
   w_pin=$(wt_run --dir "$ROOT" "$compiler" where "$wdoc" s 2>/dev/null)
   printf '%s' "$w_pin" | grep -q '^→ s : Float @ f32 (pinned)$' || { w_ok=0; fail "where pinned parameter, SYNTAX's own example (got: $w_pin)"; }
@@ -3883,10 +4107,10 @@ for i in "${!compilers[@]}"; do
   printf '%s' "$w_zero" | grep -q '^→ handler zero absorbs Ask, answers Int  at .*mn-refine-install-answer:12$' || { w_ok=0; fail "where handler answer (got: $w_zero)"; }
   # The install's refusal carries the reason its unify was asked with — the
   # mismatch reporter had taken the reason and dropped it — so a body and an
-  # arm disagreeing names the arm: `Int vs List(Byte) — ~> pipe → at 15:…:
+  # arm disagreeing names the arm: `Int vs [Byte] — ~> pipe → at 15:…:
   # inferred from the arm bail of handler h`. RED on cf8a6d50 (compiled clean).
   w_arm=$(wt_run --dir "$ROOT" "$compiler" check "$ROOT/tests/micros/mn-arm-answer-is-the-install.mn" 2>&1 >/dev/null)
-  printf '%s' "$w_arm" | grep -q 'E_TypeMismatch error: Int vs List(Byte) — ~> pipe → at 15:[0-9]*-15:[0-9]*: inferred from the arm bail of handler h at' || { w_ok=0; fail "install refusal names the arm (got: $w_arm)"; }
+  printf '%s' "$w_arm" | grep -q 'E_TypeMismatch error: Int vs \[Byte\] — ~> pipe → at 15:[0-9]*-15:[0-9]*: inferred from the arm bail of handler h at' || { w_ok=0; fail "install refusal names the arm (got: $w_arm)"; }
   # B4 (2026-09-30): a fanout site reports the schedules its CALLERS demand
   # of it through direct calls — `shared`'s own frame installs none (Seq),
   # and `twice` calls it under `parallel_compose`, so its site runs threaded
@@ -3894,6 +4118,13 @@ for i in "${!compilers[@]}"; do
   # demands twins by. RED on boot 6f2ce437 (the badge knew only the frame).
   w_dem=$(wt_run --dir "$ROOT" "$compiler" where "$wdoc" shared 2>/dev/null)
   printf '%s' "$w_dem" | grep -q '>< \[Seq ×2; Thread demanded via twice\] at' || { w_ok=0; fail "where demanded-schedule badge (got: $w_dem)"; }
+  # L-C (2026-10-06): a function's address and body are its own module-level
+  # declaration's, never a block-level `let` that shares its name. The decls
+  # column holds both, and the address was the first of either: RED on boot
+  # d956687d, which put `heads` at line 6, the local in `one` (judged first,
+  # since `heads` calls it); the function stands at line 10.
+  w_shadow=$(wt_run --dir "$ROOT" "$compiler" where "$ROOT/tests/frontier/mn-where-shadowed-local.mn" heads 2>/dev/null)
+  printf '%s' "$w_shadow" | grep -q '^→ heads(ref xs: \[a\]) -> Int with Memory  at .*mn-where-shadowed-local:10$' || { w_ok=0; fail "where address of a function a local shares its name with (got: $w_shadow)"; }
   # The bare why verb (SYNTAX's lag list, first name retired): the
   # Reason-chain walk as its own verb. Born RED 2026-08-08 (the prior
   # boot answered unknown-verb).
@@ -3944,16 +4175,24 @@ for i in "${!compilers[@]}"; do
   [ "$w_ok" = 1 ] && pass "where: repr, cardinality, schedule with width, tee, head, parameter and local badges narrate (output, never input)"
 
   # ─── The lambda list-pattern parameter (PLAN §11 Phase 3.3) ─────────
-  # `([h, ...t]) => h` parses and checks clean — the cover-grammar rest
-  # closed the second-weaker-copy gap. The RUN half is the banked peer
-  # Hβ.lower.list-rest-binding-runtime's gate (the fixture's own header
-  # carries the expected value for that day).
+  # A list pattern with a rest as a literal's parameter parses, checks clean AND RUNS to 7. The leg gated the
+  # check alone (G2): the run half's peer (Hβ.lower.list-rest-binding-runtime)
+  # closed and the leg never learned, so a regression in the binding would
+  # have stayed green.
   lp_chk=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" check "$ROOT/tests/frontier/mn-lambda-list-param.mn" 2>&1)
   lp_n=$(printf '%s' "$lp_chk" | grep -cE 'P_(Unexpected|Expected)Token|E_.* error')
-  if [ "$lp_n" = "0" ]; then
-    pass "lambda list-pattern param: ([h, ...t]) => parses and checks clean"
+  lp_dir="$dir/lambda-list-param"
+  mkdir -p "$lp_dir"
+  lp_rc=x
+  if wt_run --dir "$ROOT" "$compiler" compile "$ROOT/tests/frontier/mn-lambda-list-param.mn" > "$lp_dir/lp.wat" 2> "$lp_dir/lp.err" \
+     && wt_asm "$lp_dir/lp.wat" "$lp_dir/lp.wasm" 2>> "$lp_dir/lp.err"; then
+    "$WT" run "${WT_RUN_FLAGS[@]}" "$lp_dir/lp.wasm" > /dev/null 2>> "$lp_dir/lp.err"
+    lp_rc=$?
+  fi
+  if [ "$lp_n" = "0" ] && [ "$lp_rc" = "7" ]; then
+    pass "lambda list-pattern param: { [h, ...t] => h } parses, checks clean and runs to 7"
   else
-    fail "lambda list-pattern param ($lp_n diagnostics; the six-warning refusal is back)"
+    fail "lambda list-pattern param ($lp_n diagnostics, exit $lp_rc, want 0 and 7; see $lp_dir)"
   fi
 
   # ─── Named effect rows (PLAN §11 Phase 3.3, Hβ.types.named-effect-rows) ─
@@ -4065,16 +4304,19 @@ for i in "${!compilers[@]}"; do
   fi
 
   # ─── The decls facet (the bound-projection landing's gate) ──────────
-  # `query <fixture> "decls"` projects the decls COLUMN — the oracle
-  # queue's own seed set. Born RED 2026-08-07: the incumbent boot
-  # answered "error: unknown query: decls". The fixture's three decls
-  # (lines 7/9/11) must be listed located; the retired whole-handle
-  # NBound walk seeded every fn-typed MENTION alongside its decl.
+  # `query <fixture> "decls"` projects the decls COLUMN: every name the
+  # judged declarations declare, beside its declaration's site. Born RED
+  # 2026-08-07: the incumbent boot answered "error: unknown query: decls".
+  # Each of the fixture's three decls (lines 7/9/11) is listed ONCE, by
+  # name at its line — the retired whole-handle NBound walk seeded every
+  # fn-typed MENTION beside its decl, and the roster before 2026-10-06
+  # answered addresses alone, so it could not say what it listed.
   df_out=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" query "$ROOT/tests/frontier/mn-decls-facet.mn" "decls" 2>/dev/null)
-  if printf '%s' "$df_out" | grep -q "judged decl" && printf '%s' "$df_out" | grep -q "mn-decls-facet:7" && printf '%s' "$df_out" | grep -q "mn-decls-facet:9" && printf '%s' "$df_out" | grep -q "mn-decls-facet:11"; then
-    pass "decls facet: the column lists the fixture's three decls (7/9/11)"
+  df_once() { [ "$(printf '%s\n' "$df_out" | grep -cE "^  $1  at .*mn-decls-facet:$2:")" = 1 ]; }
+  if printf '%s' "$df_out" | grep -q "declared name(s)" && df_once inc 7 && df_once twice 9 && df_once main 11; then
+    pass "decls facet: each of the fixture's three decls listed once, by name at its line (7/9/11)"
   else
-    fail "decls facet (column projection; got: $(printf '%s' "$df_out" | tail -1))"
+    fail "decls facet (each decl once, by name at its line; got: $(printf '%s' "$df_out" | grep -E 'declared name|mn-decls-facet' | tr '\n' ' '))"
   fi
 
   # ─── The reading facets: text, prose, writes of ─────────────────────
@@ -4379,7 +4621,13 @@ for i in "${!compilers[@]}"; do
   # form a Thread-class schedule selects for it, sixteen lines with the
   # header's demand sentence. A bare program fans nothing out, so it links
   # both for no reason at all; the same peer takes them back.
-  cost_ceiling=2833
+  # 2835 (2026-10-06): ROSE 2833 → 2835 with N2's head projection, which
+  # names the prelude's ops in the parameter products SYNTAX writes; the
+  # parameters are the decisions the render now shows, two lines net.
+  # 2829 (2026-10-09): FELL 2835 → 2829 at L-F, the word's bit operations
+  # one paragraph over their named parameters where each op carried its own
+  # comment, the three it gained (shr_u, shr_s, clz) included.
+  cost_ceiling=2829
   ct_out=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" query "$ROOT/tests/frontier/mn-bare-floor.mn" "cost" 2>/dev/null)
   ct_lines=$(printf '%s' "$ct_out" | grep -o '[0-9]* source line' | grep -o '[0-9]*' | head -1)
   if [ -n "$ct_lines" ] && [ "$ct_lines" -le "$cost_ceiling" ]; then
@@ -4477,6 +4725,14 @@ for i in "${!compilers[@]}"; do
   # failing.
   run_program "$compiler" eq-polymorphic-sum "$ROOT/tests/frontier/mn-eq-polymorphic-sum.mn" 0 yes "$dir"
   run_program "$compiler" payload-instantiation "$ROOT/tests/frontier/mn-payload-instantiation.mn" 0 yes "$dir"
+
+  # TWO FIXTURES THAT SAT IN tests/frontier/ WITH NO LEG (registered at G2).
+  # An unregistered fixture is a gate that cannot fail: the mutual-negation
+  # witness rotted to a type error when `addr` began answering an address
+  # and nothing noticed, and the arm-wide-op-arg pair named a closed peer no
+  # leg ran. Each runs to its header's value now.
+  run_program "$compiler" mutual-negation-gate "$ROOT/tests/frontier/mn-mutual-negation-gate.mn" 42 yes "$dir"
+  run_program "$compiler" arm-wide-op-arg "$ROOT/tests/frontier/mn-arm-wide-op-arg.mn" 11 yes "$dir"
 
   # (The per-module solo sweep moved to tools/verify.sh on 2026-09-26: it is a
   # census of the wheel's own source, and it was the one leg here that read

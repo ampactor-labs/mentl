@@ -25,7 +25,7 @@
 # medium already states exactly:
 #   · the ARTIFACT — a module imports `wasi.thread-spawn` exactly when its
 #     reached tree performs `spawn_task` (emit_planned, src/backends/wasm.mn),
-#     and the runner creates a guest thread only through that import;
+#     and the engine creates a guest thread only through that import;
 #   · the CLAIM — `main`'s inferred row carries `WasiThreads` exactly when
 #     the program performs a spawn, read by the medium's own `query` verb.
 # Both are exact, neither sees a thread the host makes for itself, and a
@@ -139,7 +139,7 @@ spawn_row() {
 # Each is read twice: compiled, and its module's imports read; judged, and
 # its row at main read. The four answers must split exactly by schedule. The
 # WAT byte count is asserted because a refused compile emits zero bytes and
-# wat2wasm will happily assemble an empty module — which is how the first
+# wat2wasm happily assembled an empty module — which is how the first
 # draft of this gate's control measured nothing and passed.
 control() {
   local f="$1" want="$2" src="$T/$1.mn"

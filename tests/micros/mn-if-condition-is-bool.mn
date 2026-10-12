@@ -1,0 +1,10 @@
+// expect: refuse E_TypeMismatch
+// An `if` condition is a Bool: the condition is unified with `Bool` at the
+// `if`, so what it flows from learns it. `g`'s parameter reaches the
+// condition and nothing else, so `g([1, 2])` is a list where a Bool stands
+// and refuses at the argument. Until 2026-10-06 the judgment overwrote the
+// condition node's own cell with `Bool` instead of unifying it, the
+// parameter never learned it, and this program checked clean and ran to 1.
+fn g(c) = if c { 1 } else { 2 }
+
+fn main() = g([1, 2])

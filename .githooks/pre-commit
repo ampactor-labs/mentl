@@ -37,6 +37,13 @@ mapfile -t staged_src < <(
       | grep -E '\.mn$' || true
 )
 
+# ─── Gate −1: the obey gate — a red gate is obeyed, never satisfied ──
+# A ceiling raised, a bound dropped, a red leg declared expected, a
+# silencer added, an OPEN peer parked: each turns a gate green without
+# changing what it measures, and each is refused here, with no flag that
+# lets it through (tools/obey-gate.py; CLAUDE.md ⚖ "A gate is obeyed").
+python3 "$REPO_ROOT/tools/obey-gate.py" || exit 1
+
 # ─── Gate 0: the fmt rung — canonical form enters history ────────────
 # The fmt fixpoint is proven (one-pass idempotent, whole-wheel, prose
 # conserved — the canonical-page landing), which licenses applying it in

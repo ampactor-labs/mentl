@@ -205,7 +205,7 @@ fn argmax_scan(matrix, num_low: Int, num_high: Positive, k: Int, total: Int, bes
 }
 
 fn comodulogram_argmax(matrix, num_low: Int, num_high: Positive) =
-  argmax_scan(matrix, num_low, num_high, 0, num_low * num_high, 0, 0.0 - 1.0)
+  argmax_scan(matrix, num_low, num_high, 0, num_low * num_high, 0, -1.0)
 
 // Sum of all cells (scaled Int) — for the mean, a peak/mean separation
 // witness the demo reports.

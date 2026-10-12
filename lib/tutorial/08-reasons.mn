@@ -15,9 +15,9 @@
 // You never call the Why engine from your program — it is the medium reading
 // itself. Point the cursor at a value and the medium answers:
 //
-//   mentl lib/tutorial/08-reasons.mn:29
-//     Query: caller(x) : Int
-//     Why:   the call to caller, at 08-reasons.mn:29
+//   mentl lib/tutorial/08-reasons.mn:35:4
+//     Query: fn caller(x) = base(x) + 1 : (x: Int own — inferred) -> Int
+//     Why:   ownership-resolved params of 'caller', at tutorial/08-reasons:35
 //
 // Or open the IDE, click any fact in the aspect ring, and the Reason draws.
 //
