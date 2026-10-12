@@ -1,4 +1,4 @@
-// expect: 4
+// expect: 3
 // AN-2 — an abandoning perform with an argument under `!Alloc` allocates
 // nothing: the argument crosses in the instance's area, allocated once at
 // start, never a record per perform. The arm measures the heap between the
