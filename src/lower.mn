@@ -40,8 +40,6 @@ import parser
 
 import persist
 
-import search
-
 import types
 
 // Hβ.first-light.resume-with-state-mutation — handler-arm-state context.
@@ -289,7 +287,7 @@ type LowExpr
   // monomorphic direct call
   | LCall(Int, LowExpr, [LowExpr])
   | LTailCall(Int, LowExpr, [LowExpr])
-  // call handle, callee-ref handle, fn name, tail, args — the DIRECT native call to a known top-level fn: lower resolved the callee's FnScheme, so the emit calls $name with NATIVE argument types (an f64 arg stays f64 — no spill cell, no word face, no wrapper hop) and `return_call` in tail position (true tails for wide results too — the word-face demotion and the wrapper's per-iteration frame leak both die at this node). __state stays the callee's own static-closure global, byte-equal semantics to the closure convention minus the table hop. The closure path remains for genuine VALUE callees; the callee-ref handle feeds the twin-demand scan (the reference's instantiated TFun lives there)
+  // call handle, callee-ref handle, fn name, tail, args — the DIRECT native call to a known top-level fn: lower resolved the callee's FnScheme, so the emit calls $name with NATIVE argument types (an f64 arg stays f64 — no spill cell, no word face, no wrapper hop) and the WAT instruction return_call in tail position (true tails for wide results too — the word-face demotion and the wrapper's per-iteration frame leak both die at this node). __state stays the callee's own static-closure global, byte-equal semantics to the closure convention minus the table hop. The closure path remains for genuine VALUE callees; the callee-ref handle feeds the twin-demand scan (the reference's instantiated TFun lives there)
   | LDirectCall(Int, Int, String, Bool, [LowExpr])
   | LReturn(Int, LowExpr)
   // handle, fn, captures
@@ -332,7 +330,7 @@ type LowExpr
   // landing — an install body's block, so its driver runs (an owned op
   // dispatches, a foreign one bubbles) and its world restores; an arena
   // body's block, so its exit runs; the function's return otherwise. Nothing
-  // of the frame past the perform runs: `g(ab(), 1)` called `g` with the
+  // of the frame past the perform runs: `g(ab(), 1)` called g with the
   // dummy and `let v = ab(); v + 1` left a block with no value on boot
   // 311479e1. No record is built, so `!Alloc` holds over an abandon.
   | LAbandon(Int, String, [LowExpr])
@@ -340,7 +338,7 @@ type LowExpr
   // A dead continuation ($yield_k == 0) unwinds to the innermost landing; a
   // live one is the floor (unreachable) — the frame cannot reify a remainder
   // here — refused at the settle point where the callee's row proves a
-  // multi-shot op (`settle_unwind`, backends/wasm.mn). handle = the
+  // multi-shot op (settle_unwind, backends/wasm.mn). handle = the
   // boundary's node.
   | LUnwind(Int)
   | LMakeContinuation(Int, LowFn, [LowExpr], Int, Int)
@@ -583,7 +581,7 @@ type LowFn = LFn(String, Int, [String], [LowExpr], Int, [(Int, Int, LineHome)])
 
 // name, arity, param names, body stmts, fence, lines. It carries no effect
 // row: the row a fn's code answers to is the judgment's, read live where it
-// is asked (`alloc_unit_named`, wasm.mn), and the copy that stood here was
+// is asked (alloc_unit_named, wasm.mn), and the copy that stood here was
 // read by nothing while five of its seven writers filled it with `Pure`.
 // lines = the fn's `<~` sites as (site handle, depth, home), so the record's minter (a
 // closure mint, an install, a k reification, the static line init) sizes
@@ -628,7 +626,7 @@ type LowPat
   // generic body's own variable included, so the emit reads each element's
   // width through it under whatever twin it emits, and reads a proven-flat
   // list raw only where that width is a word held by value
-  // (`list_elem_read`).
+  // (wasm.mn's list_elem_read).
   | LPList(Ty, [LowPat], Option(String), SeqRep)
   // (scrutinee handle, receiver type, [(field_name, sub_pat)], rest binder).
   // The receiver's type is the one this position matched, a generic body's
@@ -865,7 +863,7 @@ fn lower_call_of(handle, fh, lo_f, lo_args) = {
 // is this call's callee whatever the global env says of the same name (an
 // op, a constructor, an intrinsic): a parameter named `result`, called, was
 // lowered as the `Iterate` op of that name and trapped at the root (measured
-// 2026-09-28 in derive.mn's `jvp_pair`).
+// 2026-09-28 in derive.mn's jvp_pair).
 fn lower_call_dispatch(handle, f, fh, fbody, r_args) = {
   let lo_args = lower_expr_list(r_args)
   match fbody {
@@ -918,7 +916,7 @@ fn lower_global_call(handle, fh, name: String, r_args, lo_args) = if name == "to
   LInvariantFailure(handle, TangentOutsideReading)
 } else if name == "fanout" && len(r_args) == 2 {
   // THE SEQUENCE FANOUT — `><` over a runtime sequence: `fanout(f, xs)`
-  // applies `f` to each element as an INDEPENDENT branch and collects the
+  // applies f to each element as an INDEPENDENT branch and collects the
   // results in order, under whatever schedule governs the site (its own
   // frame's install, or a caller's reaching it through a direct call). The
   // prelude declares it as the sequential reading (`map`, which is what a
@@ -1518,7 +1516,7 @@ fn effect_has_op_by(ename, disc_pred) = any(op_disc_holds(disc_pred), effect_op_
 
 // The first op a row carries whose handler resumes it — what the settle
 // point refuses on: a live continuation leaving a callee at a boundary this
-// frame holds no remainder for (`settle_unwind`). None where the row's
+// frame holds no remainder for (wasm.mn's settle_unwind). None where the row's
 // names prove no such op; an open tail is no proof, so the floor stays the
 // runtime's there.
 fn row_live_op(row) = match row {
@@ -1536,7 +1534,7 @@ fn first_live_op(enames) = match enames {
 fn effect_live_op(ename) = find(op_disc_holds(disc_live), effect_op_names(ename))
 
 // A handler whose arms JOIN a thread may return with the flag raised: a
-// branch's abandon is re-raised at the join (`$join_task_impl`), so the
+// branch's abandon is re-raised at the join (the runtime's $join_task_impl), so the
 // performer of such a handler's op checks after it as it checks after one
 // whose arms may yield.
 fn effect_joins_a_thread(ename: String) = ename == "WasiThreads"
@@ -1782,7 +1780,7 @@ fn clamp_index(i) = if i < 0 { 0 } else { i }
 // escaping_row(name): the dispatched effects that ESCAPE fn `name` — the
 // ones a caller must thread evidence for. The forward-ref class (a mutually-
 // recursive callee bound AFTER `name` generalized, so its effect never
-// entered `name`'s row — the module emitter losing `WasmOut` via `emit_header`)
+// entered `name`'s row — the module emitter losing WasmOut via wasm.mn's emit_header)
 // is recovered by reading the effect off the CALL-EDGES live, not off the
 // frozen generalized scheme. can_yield (the multishot-absence gate) reads
 // THIS projection
@@ -1794,8 +1792,8 @@ fn clamp_index(i) = if i < 0 { 0 } else { i }
 //
 // The own-dispatched set is the leaf (today's `effects_of` of the generalized
 // scheme — RETAINED, never deleted). The handled-locally subtraction removes every
-// effect a `~> h` install in the body absorbs (so `WasmOut` does NOT escape
-// `compile_stdin`, which installs `~> wat_stdout`). Monotone union over the
+// effect a `~> h` install in the body absorbs (so WasmOut does NOT escape
+// pipeline.mn's compile_stdin, which installs `~> wat_stdout`). Monotone union over the
 // finite dispatched-effect lattice ⇒ the fixpoint converges (mutual
 // recursion included); precomputed ONCE per program at lower_program (the
 // cached cursor / IC), then read by name.
@@ -2181,7 +2179,7 @@ fn resolve_in_stack(op_name: String, ename, stack) = if ename == "" || len(stack
 // group's arms DENSE over [0, max_slot] with `""` at the ops this handler
 // does not implement, so "does this handler declare this op" is the slot
 // being filled — the same question the RUNTIME record answers with its arm
-// region, where `emit_arm_writes` skips gaps and leaves the slot zero.
+// region, where wasm.mn's emit_arm_writes skips gaps and leaves the slot zero.
 // The arms this handler lays for ONE effect — dense over that effect's op
 // slots, a gap where it does not implement one, empty when it does not cover
 // the effect at all. Both questions below are reads of this one list, and
@@ -2620,7 +2618,7 @@ fn lower_perform_dispatch(handle, op_name, lo_args) = match op_resume_discipline
   // value, a later statement, an argument, a right operand, a branch), and
   // every evaluation of it would yield with no continuation to carry. It
   // lowers to the floor, which the settle point refuses wherever the
-  // emitted reach holds it (`settle_yield`) — never in a body nothing runs.
+  // emitted reach holds it (wasm.mn's settle_yield) — never in a body nothing runs.
   // The floor carries the EMPTY op name (the emit floors on op == "", NEVER
   // on the k value — an abandon yield's k is also a bare LConst, so op-name
   // is the discriminator).
@@ -3033,7 +3031,7 @@ fn lower_expr_body(e, handle, span) = match e {
     // DESIGN Ch 1: lambdas close over their free variables. Each
     // lambda gets a unique name derived from its AST handle, so
     // emit's deep walk lifts every LMakeClosure — top-level or
-    // inline — into a WASM function entry in the `$fns` table.
+    // inline — into a WASM function entry in the $fns table.
     // Param + capture HANDLES are threaded into the frame so VarRef
     // resolution returns the local's actual type handle (Phase-A1).
     let lambda_name = "lambda_{int_to_str(handle)}"
@@ -4014,7 +4012,7 @@ fn fanout_form_of(handle, schedule, inframe, thunks, dest) = match schedule {
 
 // THE COLLECTOR: the tuple the fanout answers, or the registers its consumer
 // already took — in which case no record exists at any schedule, and the
-// form leaves no value of its own (`lexpr_leaves_value` reads the form).
+// form leaves no value of its own (wasm.mn's lexpr_leaves_value reads the form).
 fn fanout_collect(handle, dest, values) = match dest {
   FdValue => LMakeTuple(handle, values),
   FdRegs(regs) => LBlock(handle, map(bind_part_to_reg, zip(regs, values))),
@@ -4028,7 +4026,7 @@ fn bind_part_to_reg(pair) = match pair {
 // below reads after every spawn has launched.
 // A spawn or a join perform returns with the flag raised when its branch
 // abandoned — run inline by a sequential schedule's arm, or re-raised at the
-// join from a thread's task record (`$join_task_impl`) — so the fanout
+// join from a thread's task record (the runtime's $join_task_impl) — so the fanout
 // checks after each, per branch, where the branch's row may yield (AN-2).
 fn branch_checked(h, thunk, e) = match lookup_ty(lexpr_handle(thunk)) {
   TFun(_, _, row) => if ls_program_may_yield() && row_may_multishot(row) { k2_floor_wrap(h, e) } else { e },
@@ -4287,7 +4285,7 @@ fn synthesize_branch_thunk(parent_handle, side_label: String, branch_node, bound
 // non-record type (the receiver's type mis-resolved) or the field is absent,
 // return -1 — the LFieldLoad emit arm guards offset < 0 and emits a LOUD
 // `(unreachable)` with a Located Reason. The former silent `0` read the node's
-// word-0 as the field value (a graph pointer) and `wat_emit` dumped the heap:
+// word-0 as the field value (a graph pointer) and wasm.mn's wat_emit dumped the heap:
 // the emit corruption. The ultimate form refuses to guess an offset it cannot
 // prove; the loud trap names the unresolved receiver instead of masking it.
 // The full field set of an OPEN receiver: its row read to its end
@@ -4454,7 +4452,7 @@ fn lower_stmt_list(stmts) = {
 // A run of fn declarations binds every member's name before any member
 // mints, so a member that captures a sibling declared after it reads the
 // register the sibling's record will be set at; the emit fills the records
-// once every one of them exists (`emit_minted_bindings`).
+// once every one of them exists (wasm.mn's emit_minted_bindings).
 fn lower_run_into(acc, run) = match run {
   Lone(stmt) => lowered_into(acc, lower_stmt(stmt)),
   Joined(decls) => fold(acc, lower_member_into, zip(decls, flat_map(bind_member, decls))),
@@ -4491,11 +4489,11 @@ fn lowered_into(acc, lo) = match acc {
   },
 }
 
-// Module scope is a frame: the frame of `$__init_lets`, the one function
+// Module scope is a frame: the frame of $__init_lets, the one WAT function
 // every module value let's init runs in. Its locals are that function's
 // locals, a fn nested in an init is a closure minted there (its lines are
 // slots in its own record), and a `<~` directly in an init is static, its
-// ring an instance global owned by `$__init_lets`. The frame is named for
+// ring an instance global owned by $__init_lets. The frame is named for
 // the binding, so a nested fn qualifies as it would inside a fn of that
 // name. Lowered with no frame, a block local resolved as a global and a
 // nested fn took a static home it had no record for
@@ -4659,7 +4657,7 @@ fn lower_fn_mint(name, params, body_node, handle, reg) = {
         // name unless it shadows), which the body's own references, a
         // self-capture and a sibling's capture read — and the LowFn holds the
         // EMITTED symbol (`ls_fn_symbol`). The emit binds the record at the
-        // LLet's register (`emit_minted_bindings`) and names its body by the
+        // LLet's register (wasm.mn's emit_minted_bindings) and names its body by the
         // LowFn, so neither is read for the other. Binding this LLet to the
         // symbol was tried at pin 3967d236b294 and reverted: it left the
         // register the captures read unbound.
@@ -7015,7 +7013,7 @@ fn ls_find_in_order_loop(lst, target: String, i, n) = if i >= n {
 // The edges are read at TWO altitudes through ONE walk. Lower's reach
 // constructs by NAME, and it must: a twin is a copy of its base's lowered
 // body, so a base is constructed whatever key its sites project. The
-// emitted reach (`emit_reach`, backends/wasm.mn) reads the same references
+// emitted reach (emit_reach, backends/wasm.mn) reads the same references
 // once the keys exist, each under the bracket its body is emitted in, and
 // emits only what a live reference reaches. Two walkers carried these
 // edges until 2026-09-28 — one for the names, one for the twin sites — and
@@ -7474,7 +7472,7 @@ fn reach_enqueue(refs, rbuf, rn, fbuf, fcount) = if len(refs) == 0 {
 }
 
 // The surviving-hole census over the REACHABLE emitted tree — the executable
-// gate's hole read (pipeline.mn `gate_reads`). Survival IS value-position
+// gate's hole read (pipeline.mn's gate_reads). Survival IS value-position
 // by construction: a call-arg hole became a partial param (the fork), a
 // pipe-stage hole was spliced over (lower_pipe_complete), so an authored
 // NHole still riding an LConst in the tree is exactly the hole the
@@ -8316,7 +8314,7 @@ fn twin_site_key(h, name: String) = twin_key(spec_site_pairs(h, name))
 // so an arm signs the widths its body reads; and a performer emits its
 // arguments at its own site's widths, which are the same instance's — the tee
 // unifies every perform with the handler's — so the two faces agree
-// (`call_site_vector`, wasm.mn). The handler's ANSWER is keyed the same way:
+// (call_site_vector, wasm.mn). The handler's ANSWER is keyed the same way:
 // it is the second argument of the handler's type, met at the install by the
 // body's answer (`install_answer`, infer.mn), so an arm that observes its
 // answer runs at the answer its install gives it, and a wide answer crosses
@@ -8515,7 +8513,7 @@ fn reachable_from_main(stmts) = {
     let argv_root = if main_param_count() > 0 { ["wasi_args"] } else { [] }
     // The launch gate the module's start may call (lib/environ.mn): lowered
     // wherever the program links it, and emitted only where the emit's
-    // roster is non-empty (`env_launch_roster`).
+    // roster is non-empty (wasm.mn's env_launch_roster).
     let gate_root = match env_lookup("env_demand_check") {
       Some(_) => ["env_demand_check"],
       None => [],
@@ -8541,7 +8539,7 @@ fn reachable_from_main(stmts) = {
 // W7: every function is emitted with an implicit `__state` param.
 // Calls go through a function table keyed by i32 index; LMakeClosure
 // stores the index at offset 0 of the closure record; LCall loads
-// the index and uses `call_indirect` with `$ft(N+1)` type (arity
+// the index and uses the WAT instruction call_indirect with `$ft(N+1)` type (arity
 // includes the `__state` slot).
 //
 // The emit layer's substrate contract — every runtime fn an emit arm
@@ -8557,11 +8555,11 @@ fn reachable_from_main(stmts) = {
 //
 // THE WORLD WALK IS NOT IN THIS LIST, and the reason is the list's own
 // limit: seeding a NAME only reaches it if the module defining it is already
-// in the program's set. `ev_declaring_node` was a lib fn with zero Mentl
-// callers, so the wheel linked it (the wheel imports memory) and a small
+// in the program's set. The world walk's ev_declaring_node was a lib fn with
+// zero Mentl callers, so the wheel linked it (the wheel imports memory) and a small
 // program did not — eleven frontier legs read RED on an undefined symbol for
 // programs whose only crime was being small. It is emitted into the preamble
-// now, beside the `$world_push` it is the dual of, and needs no reaching at
+// now, beside the $world_push it is the dual of, and needs no reaching at
 // all. `Hβ.driver.link-is-reachability` is what makes a minted name demand
 // its module the way an import does; every name below still rides on the
 // module set already carrying it.

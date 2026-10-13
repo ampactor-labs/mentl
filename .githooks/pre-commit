@@ -98,11 +98,13 @@ if [[ -x "$AUDIT" && ${#staged_src[@]} -gt 0 ]]; then
 fi
 
 # (The former Gate 2 — the comment-truth ratchet — ABSORBED 2026-07-22:
-# the medium's own W_CommentRefUnresolved pass runs in every compile and
-# verify's census ratchets comment_refs_max at 0. Its script was deleted
-# then; the dead -x check here silently no-opped for a week — the exact
-# gate-that-cannot-fail vacuity, caught by the practice scout 2026-07-30.
-# Verify's ratchet in Gate 3 below IS the comment-truth gate now.)
+# the medium's own W_CommentRefUnresolved pass runs in every compile. Its
+# script was deleted then; the dead -x check here silently no-opped for a
+# week — the exact gate-that-cannot-fail vacuity, caught by the practice
+# scout 2026-07-30. Verify's census ratcheted comment_refs_max at 0 until
+# 2026-10-13, when that key retired too: an unresolved reference is a
+# narration, and `mentl verify` holds the link's narrations at zero over
+# every module, so Gate 3 below IS the comment-truth gate.)
 
 # ─── Gate 3: the thesis gate (compiler source staged) ────────────────
 has_compiler_change=false

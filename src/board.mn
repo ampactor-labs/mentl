@@ -92,13 +92,14 @@ fn board_bounds() = [
   //
   // IT HAS MOVED IN BOTH DIRECTIONS AND BOTH MOVES ARE RECORDED HERE, beside
   // the number, rather than argued in a file the number could drift from.
-  // 365 -> 367 when this verb landed: `infer_context` takes a THUNK, so every
-  // route that judges pays one lambda, and each `VerbSpec` carries the
-  // argument parser its table is built from — structural, one per sibling,
-  // not authored anonymity. Then 367 -> 236, which is the arm-list literal's
-  // payoff read rather than assumed: the sweep converted the pattern-dispatch
-  // half of the corpus and the census stopped convicting a form that carries
-  // no param list at all, so 131 sites left the conviction honestly.
+  // 365 -> 367 when this verb landed: pipeline.mn's infer_context takes a
+  // THUNK, so every route that judges pays one lambda, and each cli.mn
+  // VerbSpec carries the argument parser its table is built from —
+  // structural, one per sibling, not authored anonymity. Then 367 -> 236,
+  // which is the arm-list literal's payoff read rather than assumed: the
+  // sweep converted the pattern-dispatch half of the corpus and the census
+  // stopped convicting a form that carries no param list at all, so 131
+  // sites left the conviction honestly.
   //
   // The ceiling follows the measurement DOWN. A ratchet that only ever rises
   // to meet a breach has stopped ratcheting, and this one sat 131 above its
@@ -109,17 +110,18 @@ fn board_bounds() = [
   // 236 -> 234 (2026-09-28, L3): the landing minted three (a second copy of
   // the specialization bracket for call vectors, an `each` over a param
   // list, and Verify's per-arm join), the board refused 238, and all three
-  // became references — the two brackets one `spec_bracketed` taken as a
-  // two-hole partial, which retired the pre-existing copy's lambda too.
+  // became references — the two brackets one spec_bracketed (the wasm
+  // backend's) taken as a two-hole partial, which retired the pre-existing
+  // copy's lambda too.
   //
   // 234 -> 231 (2026-09-28, R0d): the count read 232 at pin 0bc8383e, two
   // under the ceiling the landing before left, and one more left with the
   // untyped pattern lowering R0d deleted.
   //
   // 231 -> 230 (2026-09-30, R0j): the per-fn emission's bracket became a
-  // reference (`emit_function_bracketed` as a one-hole partial), and the
-  // allocation audit's walkers were written as references and index walks
-  // from the start.
+  // reference (the wasm backend's emit_function_bracketed as a one-hole
+  // partial), and the allocation audit's walkers were written as references
+  // and index walks from the start.
   //
   // 230 -> 229 (2026-10-01, P0): the landing minted two — the cycle guards'
   // settlement folded with two accumulator lambdas — and the board refused
@@ -130,9 +132,9 @@ fn board_bounds() = [
   // 229 -> 228 (2026-10-02, E2): the count read 227 at pin 713745c6, two
   // under the ceiling the landing before left. The session's banked brackets
   // minted four thunks and the board refused 230; the three around the
-  // address projection are one function (`session_address`), and the
-  // discovery fold's accumulator lambda became a reference
-  // (`range_of_entry`), so the landing adds one — the address projection's
+  // address projection are one function (main.mn's session_address), and
+  // the discovery fold's accumulator lambda became a reference (driver.mn's
+  // range_of_entry), so the landing adds one — the address projection's
   // and the accept's draw remain — and the ceiling holds the 228 it measures.
   //
   // 228 -> 225 (2026-10-02, E4): the Propose context reads the one path from
@@ -151,17 +153,19 @@ fn board_bounds() = [
   // 223 -> 222 (2026-10-03, AN-2): the landing minted three and the board
   // refused 225 — two readers of an effect's ops each testing a discipline
   // through a lambda, and the fold demanding each perform argument's leaf —
-  // and all three became references (`op_disc_holds` as a one-hole partial
-  // over `effect_op_names`, `fold_acc_evac_expr` by name, which the store's
-  // own demand reads too); the yield-record store the landing deleted took
-  // one with it, so the count fell one below the ceiling it entered under.
+  // and all three became references (lower.mn's op_disc_holds as a one-hole
+  // partial over `effect_op_names`, the wasm backend's fold_acc_evac_expr by
+  // name, which the store's own demand reads too); the yield-record store
+  // the landing deleted took one with it, so the count fell one below the
+  // ceiling it entered under.
   //
   // 222 -> 220 (2026-10-06, L-C): the session's cone is one judgment, so the
   // per-module loop that judged it and the two lambdas that mapped its
-  // modules and their imports to names left with it (`cone_module` as a
-  // one-hole partial); the space verb's argument parser is a named function
-  // (`space_verb_args`); and the two routes the landing added each pay the one
-  // thunk every judging route pays — the cold View and the session's.
+  // modules and their imports to names left with it (driver.mn's cone_module
+  // as a one-hole partial); the space verb's argument parser is a named
+  // function (cli.mn's space_verb_args); and the two routes the landing added
+  // each pay the one thunk every judging route pays — the cold View and the
+  // session's.
   //
   // 220 -> 219 (2026-10-06, G2): the census shape a query names is read off
   // the roster through a named predicate (`census_named` as a one-hole
@@ -172,9 +176,14 @@ fn board_bounds() = [
   // after the verbs, canvas and heads integrations, held where they left it.
   //
   // 213 -> 195 (2026-10-09, L-F): the verb table's builders are references
-  // and arm lists over the words after the verb (`opt_target`, `bare_verb`,
-  // `req_target` as one-hole partials), never a lambda per row.
-  Bound({ceiling: 195, question: QCensus(CsEffectfulLambda)}),
+  // and arm lists over the words after the verb (cli.mn's opt_target,
+  // bare_verb and req_target as one-hole partials), never a lambda per row.
+  //
+  // 195 -> 193 (2026-10-13, Landing 1): the effect-name law walked three
+  // parameter lists through one lambda shape and the board refused 196; the
+  // shape is one named stage (infer.mn's check_param_effect_names as a
+  // one-hole partial), and lib/search's two left with the module.
+  Bound({ceiling: 193, question: QCensus(CsEffectfulLambda)}),
   // Drift mode 10 — the seven survivors are documented sentinels, not masked
   // cases. Every wildcard that is NOT one of them is a variant the author
   // declined to enumerate, and the medium cannot tell the difference, which
@@ -257,7 +266,9 @@ fn board_bounds() = [
   // their data by `enumerate`, `zip`, `sort` and list patterns. 471 -> 465 at
   // L-F: the address parse, the help catalog and the record renders map
   // their data, and the assembler's long division folds over its bits.
-  Bound({ceiling: 465, question: QCensus(CsIterationCostume)}),
+  // 465 -> 464 at Landing 1 (2026-10-13): lib/search's one left with the
+  // module.
+  Bound({ceiling: 464, question: QCensus(CsIterationCostume)}),
   // The ghosts — cells the parser minted and the judgment never bound
   // (`mentl query <entry> ghosts`): names, parameters, predicates and
   // annotations that are not yet cells inference writes, which is why `refs
@@ -306,8 +317,12 @@ fn board_bounds() = [
   Bound({ceiling: 51, question: QCensus(CsProseClass(PcCommit))}),
   // Numbered citations of the archived spec corpus.
   Bound({ceiling: 24, question: QCensus(CsProseClass(PcSpecCitation))}),
-  // Lifecycle prose — what was, where SYNTAX asks for what is.
-  Bound({ceiling: 44, question: QCensus(CsProseClass(PcLifecycle))}),
+  // Lifecycle prose — what was, where SYNTAX asks for what is. 44 -> 43
+  // (2026-10-13, Landing 1): the warm route's comment was trued to its
+  // measurement, and the two dated comments the landing wrote — the literal
+  // vocabulary's and the host pair's — read in positive form after the board
+  // refused 45.
+  Bound({ceiling: 43, question: QCensus(CsProseClass(PcLifecycle))}),
   // Archaeology — the seed era's vocabulary and its design notes.
   Bound({ceiling: 92, question: QCensus(CsProseClass(PcArchaeology))}),
   // Decoration runs — the banners drift rows 128 and 131 policed by regex

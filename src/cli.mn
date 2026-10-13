@@ -39,7 +39,7 @@ type EntryVerb
   // target, then the program's own argv (everything after the target — the
   // executor hands it to the program as its args, NUL-joined at the seam)
   | VRun(String, [String])
-  // no target judges the PROJECT (its `main`, wherever the resolver finds it);
+  // no target judges the PROJECT (its main, wherever the resolver finds it);
   // a target judges that entry's link — every module of it reports either way
   | VCheck(Option(String))
   // the cursor-address form — `mentl lib/tutorial/09-all.mn:40:20`: target, line, col (0 = whole-line). Drift-38's endpoint: the address IS the surface; verbs are transports

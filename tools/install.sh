@@ -45,19 +45,40 @@ mentl_arg_dir() {
   [ -e "\$p" ] || return 1
   ( cd "\$(dirname "\$p")" 2>/dev/null && pwd )
 }
+# A path argument outside the cwd is handed to the guest as its ABSOLUTE
+# form, because the guest resolves a relative path against the cwd preopen
+# and WASI refuses a .. above it: mentl run ../x.mn read E_MissingModule
+# for a file that existed (measured 2026-10-12). The directory is preopened
+# as itself, so the absolute spelling opens there; a :L or :L:C address
+# suffix rides along; a path inside the cwd stays as written, so its module
+# name stays main (no backticks in this heredoc: it is unquoted, and a
+# backticked word would run as a command at install time).
+mentl_arg_path() {
+  local a="\$1" p="\$1" suffix=""
+  while [ ! -e "\$p" ] && [ "\${p%:*}" != "\$p" ]; do suffix="\${p##*:}:\$suffix"; p="\${p%:*}"; done
+  [ -e "\$p" ] || { printf '%s' "\$a"; return; }
+  local d; d="\$(cd "\$(dirname "\$p")" 2>/dev/null && pwd)"
+  if [ "\$d" = "\$PWD" ] || [ "\$d" = "/tmp" ]; then printf '%s' "\$a"; return; fi
+  suffix="\${suffix%:}"
+  printf '%s%s' "\$d/\$(basename "\$p")" "\${suffix:+:\$suffix}"
+}
 mentl_wasm() {
   local extra=()
   local a d
+  local args=()
   for a in "\$@"; do
-    case "\$a" in */*) ;; *) continue ;; esac
-    if d="\$(mentl_arg_dir "\$a")"; then
-      [ "\$d" != "\$PWD" ] && [ "\$d" != "/tmp" ] && extra=(--dir "\$d")
-      break
-    fi
+    case "\$a" in
+      */*)
+        if [ \${#extra[@]} -eq 0 ] && d="\$(mentl_arg_dir "\$a")"; then
+          [ "\$d" != "\$PWD" ] && [ "\$d" != "/tmp" ] && extra=(--dir "\$d")
+        fi
+        args+=("\$(mentl_arg_path "\$a")") ;;
+      *) args+=("\$a") ;;
+    esac
   done
   "\$WT" run "\${WT_RUN_FLAGS[@]}" \\
     --dir "\$PWD" --dir /tmp --dir "\$MENTL_HOME::/mentl-home" "\${extra[@]}" \\
-    "\${MENTL_BOOT:-\$MENTL_HOME/boot/mentl.wasm}" "\$@"
+    "\${MENTL_BOOT:-\$MENTL_HOME/boot/mentl.wasm}" "\${args[@]}"
 }
 if [ "\${1:-}" = "run" ] && [ -n "\${2:-}" ]; then
   # mentl run <module> [args…] — compile, assemble, execute, since a WASI

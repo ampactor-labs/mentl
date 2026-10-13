@@ -25,6 +25,8 @@
 // runtime stride carrier); the annotation monomorphizes the body to f64.
 import math
 
+import fs
+
 import io
 
 // Positive — a strictly positive count: a hop in samples, a grid width.

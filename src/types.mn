@@ -52,8 +52,8 @@ type Ty
   //   compared by identity, ordered unsigned) and not a number — its
   //   arithmetic is `addr_at`, never `+`. The type is what tells an
   //   arena's exit the word points somewhere, so a young one found where
-  //   the exit looks keeps the region instead of dangling (lower.mn
-  //   `evac_of`).
+  //   the exit looks keeps the region instead of dangling (lower.mn's
+  //   evac_of).
   | TAddr
   | TList(Ty)
   | TTuple([Ty])
@@ -116,10 +116,10 @@ fn constructor_named(name: String) = match env_lookup(name) {
 // The same read is a CONTRACT's at its constructor's fields: `Option(Positive)`
 // grounds `Some`'s payload to the Positive refinement, which is what a value built with
 // `Some` owes where it is claimed and what a pattern over it may assume
-// (verify.mn `contract_part`). It lives here, below lowering, because the
+// (verify.mn's contract_part). It lives here, below lowering, because the
 // judgment reads it too.
 //
-// This is not a second copy of `subst_ty`. That one FRESHENS — every
+// This is not a second copy of infer.mn's subst_ty. That one FRESHENS — every
 // quantified var to a fresh var of its own domain — and its mapping is
 // var→var precisely because it serves ROW vars too, which have no `Ty` form.
 // This one GROUNDS, var→Ty, over the type arguments a nominal application
@@ -155,7 +155,7 @@ fn spec_named(cname: String, spec) = match spec {
 // the result rather than from the quantifier keeps the correspondence
 // positional by construction — a quantifier is a SET, and a set has no
 // positions.
-// Matched at `Frozen` directly rather than through `judgment_ty`: a
+// Matched at `Frozen` directly rather than through infer.mn's judgment_ty: a
 // TypeVariants entry is registered Frozen at its own declaration, and going
 // through the general reader would drag generalize's whole row — including
 // WASI — into every emit-side payload read for a shape that cannot occur.
@@ -211,7 +211,7 @@ fn ground_param(params, args, p) = match p {
 
 // The argument standing in this var's position. Keyed by the union-find ROOT
 // on both sides — a parameter var aliased since the declaration is still that
-// parameter, the same reason `subst_ty`'s own lookup is root-keyed. A var that
+// parameter, the same reason infer.mn's subst_ty keys its own lookup by root. A var that
 // is not a parameter stays itself: a payload may carry vars the type does not
 // quantify, and inventing a grounding for one would be the fabrication this
 // whole read exists to end.
@@ -472,7 +472,7 @@ fn repr_wat(r) with Pure = match r {
 //
 // fold_strip — alias-strip / refinement-unwrap FIRST (TAlias->inner,
 // TRefined->base), structurally identical to repr_of's prologue. A Port-style
-// (= Int) folds as Int; a `Sample` (= Float where ..) folds as Float. The
+// (= Int) folds as Int; a Sample-style (= Float where ..) folds as Float. The
 // predicate is erased at runtime, so the leaf reads the underlying value.
 // ─── ArithOperand — what arithmetic can do with an operand, off its type ──
 // The ONE classification the judgment reads at the operator and at the one
@@ -929,7 +929,7 @@ type SchemeKind
   // env(name: String) -> String }`: `env("PORT")` charges
   // `Environ("PORT")`).
   | EffectDeclKind([String], [String])
-  // tag 6 — (residual_row_handle, remainder_world_handle, config params [the fn-param carrier: name + default ride the TParam, names project via lower_param_names], state fields, arms). The remainder world is the row a held resume of this handler RUNS — the cell its arms' continuations carry as their world, never bound: callees reached through a resume gate it, and every install judges those gates against its own remainder (`remainder_gates_check`). Typed payloads: a bare List here erased the element types the consumers prove (the 581a92f class), and the pattern-constraint unification surfaces the conflict as E_TypeMismatch at every destructure.
+  // tag 6 — (residual_row_handle, remainder_world_handle, config params [the fn-param carrier: name + default ride the TParam, names project via lower_param_names], state fields, arms). The remainder world is the row a held resume of this handler RUNS — the cell its arms' continuations carry as their world, never bound: callees reached through a resume gate it, and every install judges those gates against its own remainder (infer.mn's remainder_gates_check). Typed payloads: a bare List here erased the element types the consumers prove (the 581a92f class), and the pattern-constraint unification surfaces the conflict as E_TypeMismatch at every destructure.
   | HandlerKind(Int, Int, [TParam], [{init: Node, name: String}], [{args: [String], body: Node, op_name: String}])
   // tag 7 — parameter binding carries authored ownership at the env edge
   | ParamScheme(Ownership)
@@ -1307,15 +1307,15 @@ type StateSlotHome = SlotPairs([(String, Int)])
 // The handler expression's type is the instantiated `Handler(inst)`, the
 // effect instance this install serves, and the config handles are where the
 // config's instantiation is read: together they key the arms it runs
-// (`arm_site_pairs`, lower.mn). `NoInstall` comes first so a virgin cell
+// (lower.mn's arm_site_pairs). `NoInstall` comes first so a virgin cell
 // reads as it, the `BindUnwritten` precedent.
 type InstallShape = NoInstall | InstallOf(String, Int, [Int], [{arms: [String], ename: String}])
 
-// A call's positional product, the judgment's own (`infer_call_node`): the
+// A call's positional product, the judgment's own (infer.mn's infer_call_node): the
 // declared slots in order as the nodes that fill them — an argument, the
 // default that fills an absent field, an authored `??` — and past them the
 // cells typing the slots a partial leaves open (one per slot, bound to the
-// slot's parameter type at the judgment, `open_slot_cells`). Written once
+// slot's parameter type at the judgment, infer.mn's open_slot_cells). Written once
 // at the call node, trailed as `MSetProduct`; the lowering reads it and
 // resolves no callee by name. `NoProduct` comes first so a virgin cell
 // reads as it, the `NoInstall` precedent.
@@ -1332,11 +1332,11 @@ type CallProduct = NoProduct | ProductOf([Node], [Int])
 // (the pass carries LowFn interiors through untouched — each body is
 // floored at its own construction). An arm carries the op it answers,
 // because its callers name it by that op — a direct perform's target
-// (`perform_target`, lower.mn) and the allocation audit's unit name alike;
+// (lower.mn's perform_target) and the allocation audit's unit name alike;
 // a handler's state init is a fn of its own that the install calls
 // directly. Both carry their handler's
 // name, because the row their code answers to is the handler's own
-// (`alloc_unit_named`, wasm.mn), and neither origin handle reaches it.
+// (the wasm backend's alloc_unit_named), and neither origin handle reaches it.
 type EmitFnKind = EfkPartial | EfkLambda | EfkThunk | EfkNested | EfkArm(String, String) | EfkInit(String) | EfkK
 
 // THE ENUMERATION'S ENTRY — one record per emittable symbol, written by
@@ -1450,10 +1450,10 @@ type BinderFact
   // into what the field holds (`list_set(buf, …)`, directly or through a
   // callee storing into its parameter), as the cells a move of it demands —
   // noted by the arena's store claim where it resolves the target to this
-  // field (infer.mn `ages_settle`). The writes replace the record's word; the
+  // field (infer.mn's ages_settle). The writes replace the record's word; the
   // stores mutate what it names. The arena's install demand and the race
   // rule read the two together as what an arm writes, one fact with one home
-  // (`handler_state_writes`, `handler_state_writer`).
+  // (infer.mn's handler_state_writes, lower.mn's handler_state_writer).
   | StateFact({stores: [Int], writes: [Int]})
 
 // A value walk's dynamic scope: the state binders whose writers it is
@@ -1463,7 +1463,7 @@ type BinderFact
 // than looping; an arm may install its own handler, and the arms met again
 // add no tail (the least fixed point, exact). The chain of handlers
 // installed around the walks IS the stack of states and declarations
-// entered (verify.mn `walking_state_of`).
+// entered (verify.mn's walking_state_of).
 effect StateWalk {
   walking_state(b: Int) -> Bool
 }
@@ -1551,8 +1551,8 @@ type UnaryOp
   | UNot
 
 // THE ONE INTEGER FOLDER: an arithmetic `BinOp` over two ground words, read
-// by the proof gate (verify.mn `litval_arith`) and the e-graph (egraph.mn
-// `rw_const_fold`) alike. A partial operator folds exactly where its claim
+// by the proof gate (verify.mn's litval_arith) and the e-graph (egraph.mn's
+// rw_const_fold) alike. A partial operator folds exactly where its claim
 // holds at the two points (`int_op_defined`), so neither folder traps on the
 // program it reads: `0x80000000 / (0 - 1)` folded by the host's own `i32.div_s`
 // trapped the compiler under `mentl check` until TRAP (2026-10-06), and the
@@ -1575,8 +1575,8 @@ fn int_fold(op, a, b) = if int_op_defined(op, a, b) {
 // The division claim (`PTotalDiv`) decided at two points: `%` is defined
 // where the divisor is not 0, `/` where it is not 0 and the quotient fits a
 // signed word (not `INT_MIN / -1`). Every other operator is total. The one
-// home the folder and the claim's constant face both ask (verify.mn
-// `total_div_decide`).
+// home the folder and the claim's constant face both ask (verify.mn's
+// total_div_decide).
 fn int_op_defined(op, a, b) = match op {
   BMod => b != 0,
   BDiv => b != 0 && (b != -1 || a != i32_min()),
@@ -1599,7 +1599,7 @@ type BinOpKind
 // The primitives the sugar CALLS: `++` and every seam of an interpolation
 // call the sequence concat, `xs[i]` calls `list_index`, and a list pattern
 // that binds its rest (`[head, ...rest]`) cuts the rest as a slice. They are
-// the construct's callees exactly as `f` is a call's — the judgment reads
+// the construct's callees exactly as f is the callee of `f(x)` — the judgment reads
 // their rows live (the concat, subscript and rest charges), and the
 // free-name walk draws the edges its callee-first order needs, both from
 // these homes. Until 2026-09-28 the walk drew none, so a fn whose only call
@@ -1975,7 +1975,7 @@ type View = {
   canvas: Canvas,
   field: [FieldFact],
   ledger: [LedgerFact],
-  lens: [(DiagKind, String, String)],
+  lens: [(DiagKind, String, String, Layer)],
   refs: Found,
   ring: [RingFact],
 }
@@ -2332,7 +2332,11 @@ type NodeBody
   // imports: the modules this one imports, as the IDENTITIES their own
   // cells carry — resolved by the driver's walk once and carried here as
   // edges (F0b), so no reader re-resolves an authored spelling.
-  | NModule({decls: [Node], imports: [String], path: String, span: Span})
+  // layer: the root the driver's walk found the module under — the user's
+  // own folder, the library, or the compiler — the fact the diagnostics
+  // register and every projection of "whose module is this" read, never a
+  // path prefix re-tested.
+  | NModule({decls: [Node], imports: [String], layer: Layer, path: String, span: Span})
   // An authored type annotation carried live in the graph — the `-> RetTy`
   // return annotation (SYNTAX.md «Return type omission»: absent = inferred,
   // present = a CONSTRAINT). parse_type_expr mints this carrying the real Ty
@@ -2526,9 +2530,9 @@ effect RegionTrack {
 }
 
 // StringTable (spec W5) — compile-time interned string literals.
-// `emit_plan` collects every LString in the lowered program, assigns
+// The wasm backend's emit_plan collects every LString in the lowered program, assigns
 // each unique literal a 4-byte-aligned offset in the string-data
-// region (0x10000..0x100000), and `emit_planned` writes the `(data ...)`
+// region (0x10000..0x100000), and its emit_planned writes the `(data ...)`
 // segments. At LString emit time, `string_offset(s)` returns the interned
 // offset; the generated WAT is `(i32.const <offset>)` with zero runtime
 // construction. `set_string_entries` is called once by the plan after
@@ -2577,7 +2581,7 @@ effect SpecTwins {
 }
 
 // EmitSite — WHERE an emit-time diagnostic is standing. A node minted after
-// parse carries no span (`parse_span_of` answers zero on it), so a report at
+// parse carries no span (graph.mn's parse_span_of answers zero on it), so a report at
 // one is prose nobody can locate: the unprovable-comparison class's first
 // census read 41 of its 56 sites at 0:0 with nothing to name them, which is a count standing in
 // for a finding. The emission in flight IS the nearest true coordinate, and it
@@ -2669,8 +2673,8 @@ type Stmt
 // A sequence in its runs (`runs_of`): adjacent members that join make ONE
 // run and every other member stands alone. A block's `fn` declarations
 // join, every name of the run in scope in every body of the run and in
-// everything after it (`stmt_runs`); so do the closure bindings the emit
-// mints together (`emit_minted_bindings`).
+// everything after it (parser.mn's stmt_runs); so do the closure bindings the emit
+// mints together (the wasm backend's emit_minted_bindings).
 type Run = Joined([a]) | Lone(b)
 
 // The runs of a sequence: `joins` reads each member as a one-member run,
@@ -2987,7 +2991,7 @@ fn show_flow_label(label) with Pure = match label {
 // entry is re-published wherever a judgment further on refines it (a handler's
 // registration re-publishes its ops, a caller's resolution a HOF's row),
 // so the publisher's module is not the declarer's. The declarer is the
-// statement's own column, read once per judgment (`inf_decl_module`, F0b).
+// statement's own column, read once per judgment (infer.mn's inf_decl_module, F0b).
 // The OP VOCABULARY declares HERE — the lowest module every performer
 // imports — while the handlers live at their subsystem (pipeline.mn);
 // the effects prepass phase (pre_register_effect) makes the pair
@@ -3100,7 +3104,7 @@ effect GraphRead {
   // path superseded. A resident session holds each re-judged module's older
   // generation below the current one, and a read that does not ask this
   // answers about a program that no longer exists — measured 2026-10-02,
-  // the proposer offering `main()` at a hole `main` calls, after one edit.
+  // the proposer offering `main()` at a hole main calls, after one edit.
   graph_node_current(Int) -> Bool
   // the current module node of a path — the latest parse registered under
   // it, read where the registration happened rather than by walking the
@@ -3202,7 +3206,7 @@ effect GraphRead {
 }
 
 // THE ROW WRITES ARE THEIR OWN EFFECT because they have two handlers with
-// two jobs: `graph_handler` answers them RAW, and `row_gate` (effects.mn),
+// two jobs: graph.mn's graph_handler answers them RAW, and effects.mn's row_gate,
 // installed innermost at every judgment chain, answers them JUDGED — a bind
 // or a finalize is checked against every gate its target cell carries and
 // the gates ride the value's free terminals before the raw write is
@@ -3276,7 +3280,7 @@ effect GraphWrite {
   // handle) into the smap column, O(1) prepend per reference. The read
   // face is graph_refs_at; three whole-graph scans retire onto the pair.
   graph_ref_note(String, Int)
-  // The APPLICATION edge's write: `call_owes`, the one home where an
+  // The APPLICATION edge's write: infer.mn's call_owes, the one home where an
   // application fills a declaration's parameters, notes (the name applied →
   // the application's handle) for each top-level declaration its callee can
   // be. The refs column's contract: append-only, so a reader re-reads the
@@ -3318,11 +3322,13 @@ effect GraphWrite {
   // retries on, so held_has_poly was false and the Mycroft fragment never
   // ran (Hβ.diag.an-arms-report-escapes-an-inner-capture).
   //
-  // So the arm STORES the refused fact with its module and inference DRAINS
-  // it at the judgment boundary, where the report is rendered in the body's
-  // world and every bracket that should see it does. Same shape as the holes
-  // pair above, one concern over: an arm may note, only the body may narrate.
-  graph_guard_drain() -> [(DiagKind, String)]
+  // So the arm STORES the refused fact with its module — the module node's
+  // HANDLE, so the drain reports AT it and reads its name and layer where
+  // every other report does (report_at) — and inference DRAINS it at the
+  // judgment boundary, where the report is rendered in the body's world and
+  // every bracket that should see it does. Same shape as the holes pair
+  // above, one concern over: an arm may note, only the body may narrate.
+  graph_guard_drain() -> [(DiagKind, Int)]
   // The pipe completion's retraction: a stage's `??` slot lowers (the
   // note fires at the visit) and is then spliced over by the piped
   // value — consumed, not surviving. The unnote removes it from the
@@ -3348,7 +3354,7 @@ effect GraphWrite {
   // trailed as MOweLate, so a rolled-back judgment's payments go with it.
   graph_owe_late(Int, Int)
   // THE CLAIMS' write (P0): a refinement claimed of the value at a node,
-  // noted by `claim_refinement` where the claim is raised. Trailed as
+  // noted by infer.mn's claim_refinement where the claim is raised. Trailed as
   // MClaimNote, so a rolled-back judgment's claims go with it.
   graph_claim_note(Int, Ty)
   // The bind-home column's write (Hβ.lower.lowering-is-a-column step i):
@@ -3410,7 +3416,7 @@ effect GraphWrite {
 // E_/V_/W_/T_/P_ code, each carrying ONLY the structured operands its
 // message needs (an EffRow, a Ty, a name) plus its Located Span. The
 // source, kind (severity class), applicability, and the rendered
-// `message` are all PROJECTIONS of the constructor (diag_source / diag_kind
+// message are all PROJECTIONS of the constructor (diag_source / diag_kind
 // / diag_applicability / diag_message below) — never string literals copied
 // at the call site. So `mentl diagnostics` is `diag_*` walking the DiagKind
 // constructors; the SYNTAX.md catalog tables are worked examples of THIS
@@ -3662,7 +3668,7 @@ type DiagKind
   | EUnresolvedHole(Int, Span)
   // a field load or a record pattern whose receiver's row never closed
   // where it is emitted: no field set, so no slot to read. Said at the
-  // settle point (`emit_plan`), where the gate still reads it; the emit's
+  // settle point (the wasm backend's emit_plan), where the gate still reads it; the emit's
   // own `(unreachable)` beside the site is never reached
   | EFieldOffsetUnprovable(String, Span)
   // a comparison, a show, a hash or a `++` whose operand is still a type
@@ -3680,8 +3686,6 @@ type DiagKind
   // (NumericGate), so `mentl check` refuses it; the emit multiplied the two
   // ADDRESSES with zero diagnostics until 2026-09-27
   | EArithOnAggregate(String, Span)
-  // clock-replay trace ran out
-  | EReplayExhausted(Span)
 
 // report takes ONE DiagKind — the structured fact. The handler PROJECTS
 // every surface (source/code/kind/message/span/applicability) from it.
@@ -3702,8 +3706,10 @@ effect Diagnostic {
   // after a rollback says what it said when it fired. The module rides the
   // report because the register's arm is deliberately graph-free — its row
   // rides every install — so it cannot look the module up itself, and a
-  // local span cannot name a file (two modules both have a line 8).
-  diag_report(DiagKind, String, String)
+  // local span cannot name a file (two modules both have a line 8). The
+  // module's LAYER rides beside its name for the same reason: the project
+  // register compares it with the entry's, and the arm may not read the node.
+  diag_report(DiagKind, String, String, Layer)
   // The two live reads of the ledger the handler already keeps. The exit code
   // and the emit gate were both RE-DERIVING this as 0 — the handler saw every
   // diagnostic, printed it, and threw the severity away, so `mentl check` on a
@@ -3739,20 +3745,34 @@ effect Diagnostic {
 // warning printed TWICE: once per parse, the discovery copy in
 // file-local coordinates no range can place). Errors still render in
 // every scope, discovery included.
-// ScopeModule(name) is the target MODULE, not a line range. It was
-// ScopeAt(start, nlines) — the module's range in the concatenated weave —
-// and that only ever worked because every file's spans were offsets into one
-// text. With the per-module parse each file's spans start at line 1, so a
-// range names nothing; the module does. The register stamps each report with
-// the module in force when it fired (graph_module_current), and the filter
-// compares that, which is one read instead of a containment test.
-// ScopeLink is the PROJECT: every module of the link narrates, each report
-// once at its own module, and the instruments stay silent because they are
-// the census's channel, not the developer's. `mentl check` reads it, so the
-// wheel's "zero diagnostics" is measured over every module it links, never
-// over the entry alone (eight refuted `own` markers in three modules sat
-// behind ScopeModule's narrowing until G2).
-type DiagScope = ScopeAll | ScopeNone | ScopeModule(String) | ScopeLink
+// ScopeProject(layer) is the PROJECT: the modules of the entry's own layer
+// narrate, each report once at its own module, and a module of another
+// layer — the library under a user's program, the compiler under a library
+// module checked alone — is heard by the board (the count is every
+// narration, whatever the register prints) and never by the developer who
+// named one file. It replaced two registers on 2026-10-12: ScopeModule(name)
+// narrowed to ONE module, so a developer checking main.mn never saw their
+// own helper's teaching and the wheel's "zero diagnostics" was measured on
+// main.mn alone (G2's eight refuted `own` markers); ScopeLink widened to the
+// whole link, so a six-line program's `mentl check` printed the runtime
+// library's prose. The layer rides each report from its writer (report_at
+// reads it off the module node) because this register's arm is graph-free.
+type DiagScope = ScopeAll | ScopeNone | ScopeProject(Layer)
+
+// Where a module was found, by the root that resolved it (src/driver.mn
+// module_roots): a user's own folder — the entry's directory, or a path
+// given outright; the library under `lib/`; the compiler under `src/`. A
+// module's layer decides what its imports may reach (a library module
+// reaches the library alone, a user's module its folder and the library,
+// never the compiler), which modules narrate under ScopeProject, and whose
+// open obligations a run's summary counts. The link root takes the entry's.
+type Layer = User | Lib | Compiler
+
+// Who a route's register prints for: the census (the board, the march, the
+// stdin compile — every narration of every module) or the project — the
+// modules of the entry's layer, which the weave reads off the entry once the
+// walk has resolved it, so a route names the audience and never a module.
+type Audience = Census | Project
 
 // Armed on the root diagnostics_handler only (the register lives where
 // the render lives); a separate effect so the quiet trial, the branch
@@ -3793,7 +3813,7 @@ effect DiagRegister {
 // structure. A separate effect so the forwarders and diag_quiet keep
 // their arm sets untouched.
 effect BranchDiag {
-  diag_lines_taken() -> [(DiagKind, String, String)]
+  diag_lines_taken() -> [(DiagKind, String, String, Layer)]
 }
 
 // ─── The catalog AS projections of the DiagKind constructors ───────────
@@ -3878,7 +3898,6 @@ fn diag_span(d) with Pure = match d {
   EShapeUnprovable(_, s) => s,
   EInstantiationDepth(_, s) => s,
   EArithOnAggregate(_, s) => s,
-  EReplayExhausted(s) => s,
 }
 
 // The originating tentacle/stage — a projection, not a copied label.
@@ -3961,7 +3980,6 @@ fn diag_source(d) with Pure = match d {
   EShapeUnprovable(_, _) => "lower",
   EInstantiationDepth(_, _) => "lower",
   EArithOnAggregate(_, _) => "infer",
-  EReplayExhausted(_) => "clock",
 }
 
 // The aspect a diagnostic speaks for — the column of the aspect strip its
@@ -4044,7 +4062,6 @@ fn diag_arm(d) with Pure = match d {
   EShapeUnprovable(_, _) => OnQuery,
   EInstantiationDepth(_, _) => OnQuery,
   EArithOnAggregate(_, _) => OnQuery,
-  EReplayExhausted(_) => OnTopology,
   EDuplicateImport(_, _) => OnTeach,
   EResumeOfNever(_, _, _) => OnEffects,
 }
@@ -4128,7 +4145,6 @@ fn diag_code(d) with Pure = match d {
   EShapeUnprovable(_, _) => "E_ShapeUnprovable",
   EInstantiationDepth(_, _) => "E_InstantiationDepth",
   EArithOnAggregate(_, _) => "E_ArithOnAggregate",
-  EReplayExhausted(_) => "E_ReplayExhausted",
 }
 
 // Severity — the error-vs-narration axis (a projection).
@@ -4212,7 +4228,7 @@ fn diag_refuses(d) with Pure = match d {
   EDuplicateFnName(_, _) => True,
   EPatternInexhaustive(_, _, _) => // ARMED 2026-10-03, the day its one false shape closed: an as-pattern
   // read as covering nothing, so `whole @ Leaf(_)` beside `Pair(a, b)` was
-  // "misses 1 of 2" (`pat_tops`). Unarmed, a match missing a variant
+  // "misses 1 of 2" (infer.mn's pat_tops). Unarmed, a match missing a variant
   // compiled and trapped when the variant arrived — the hard error SYNTAX
   // names, emitted. Census on the wheel at arming: 0.
   True,
@@ -4401,7 +4417,7 @@ fn diag_refuses(d) with Pure = match d {
   // runtime floor resume no such op.
   true,
   EInitPerformsOwnOp(_, _, _) => // ARMED at birth (2026-08-18): the judgment is STRUCTURAL, read from
-  // the lowered install itself — a direct-perform inside `LHandleWith`'s
+  // the lowered install itself — a direct-perform inside lower.mn's LHandleWith's
   // own inits list, naming that same install's handler. No resolution
   // dependency and no extent guess: the install's world_push has not run
   // while its inits run, for every install, so the dispatch's walk
@@ -4436,8 +4452,8 @@ fn diag_refuses(d) with Pure = match d {
   // PLAN §0 says never happens. The licence is the same one: the wheel's
   // census of the class is zero (`mentl check src/main.mn` answers no
   // diagnostics; the blob compile carries none). The proposer's refused
-  // candidates are unaffected: `segment_bracket` judges each under its own
-  // `diag_branch`, and only a proven candidate joins the root — which it
+  // candidates are unaffected: infer.mn's segment_bracket judges each under its own
+  // diag_branch, and only a proven candidate joins the root — which it
   // does carrying no diagnostic, since a diagnostic is what refuses it.
   True,
   EFnArityMismatch(_, _, _) => // ARMED 2026-09-27, the day the tuple-decomposition rule left
@@ -4631,37 +4647,29 @@ fn diag_message(d) with !Mutate = match d {
   EShapeUnprovable(why, _) => "{why} — the operand's type is still a variable where this is emitted, so nothing proves the shape the read needs, and reading it as a word is a lie for anything but a word; prove the operand: give the call site a shape its specialization can key on, or name the type at its Intent Boundary",
   EInstantiationDepth(why, _) => "{why} — the recursion instantiates it at a type that grows with every call and a body on the chain reads that structure, so the medium specializes eight levels deep and refuses the ninth rather than read it as a word; keep the type the recursion reads from growing",
   EArithOnAggregate(why, _) => "{why} — arithmetic on an address, or on a product, sum, sequence, function, continuation or unit, has no meaning: the operands are addresses, and the result would be arithmetic on where the values live, never on the values. A number is a word (Int, Float, Byte); give this operand one, read the field you meant, or move an address with addr_at",
-  EReplayExhausted(_) => "clock replay trace exhausted",
 }
 
-// Early exit. An arm that never resumes abandons the computation around the
-// perform, and the install's value is the arm's (SYNTAX §«Resume
-// discipline»); `abort` returns `!` because nothing after it runs.
-effect Abort {
-  abort() -> !
-}
-
-// Mutation capability marker.
-// !Mutate on a function proves read-only access to all parameters.
-// Vale-style region-freeze: "N parallel readers, no writers" through
-// the same Boolean algebra that proves !Alloc and !IO.
-// Mutate carries the graph_mutated event — performed by graph_handler
-// at the OUTERMOST commit boundary so the IC fixpoint (the oracle's
-// project_queue_merger, src/oracle.mn) re-projects only on real graph
-// state changes. Speculative writes between graph_push_checkpoint /
-// graph_rollback never reach this op — Mentl's own oracle would
-// otherwise subscribe to her speculations and recursively explore
-// forever.
+// The graph's mutation event — performed by graph_handler at the OUTERMOST
+// commit boundary so an incremental projection re-projects only on real
+// graph state changes. Speculative writes between graph_push_checkpoint /
+// graph_rollback never reach this op — Mentl's own oracle would otherwise
+// subscribe to her speculations and recursively explore forever. Every
+// handler in the tree discards its arguments today, so the delta is
+// write-only (Hβ.graph.mutation-delta-is-write-only).
+//
+// This effect carried the name `Mutate` and two meanings with it: the
+// ownership marker every program may negate (`with !Mutate` — Vale-style
+// region-freeze, lib/memory.mn's `effect Mutate` since 2026-10-12, where a
+// user's row can reach it) and this compiler-private event. One word, one
+// effect: the event is the graph's.
 //
 // epoch — graph epoch at which the mutation committed. The epoch IS the
 // one cache key: the IC projection memoizes by it, re-deriving the queue
 // only when the epoch bumps (PLAN §2: read live is the meaning, cached
 // by epoch is the mechanism).
-// Mutation — MSetNode | MSetRow | MFreshNode (per the Mutation type at
-// src/types.mn:163). The event carries enough for the projection to
-// re-derive over the changed graph (Q-2 (B) scope: transitive dependents
-// via Reason chain).
-effect Mutate {
+// Mutation — MSetNode | MSetRow | MFreshNode. The event carries enough for
+// the projection to re-derive over the changed graph.
+effect GraphMutated {
   graph_mutated(Int, Mutation)
 }
 
@@ -4889,46 +4897,6 @@ effect Consume {
   consume_log() -> [(String, Span)]
 }
 
-// Generic file I/O (read/write, mkdir, exists) — the driver's module
-// reads and any build output. Operates relative to a preopen fd
-// (wasmtime's --dir=. grants preopen fd 3 by convention).
-//
-// Row semantics: `with Filesystem` declares the function MAY touch
-// the filesystem. `with !Filesystem` PROVES it does not — audit-
-// driven linker severance can drop path_open / fd_close / etc.
-// imports from binaries with proven !Filesystem.
-//
-// v1 takes preopen fd 3 as implicit. Parameterization via
-// `with Filesystem("/workspace")` (H3.1 parameterized effects)
-// lands when audit-driven permission scopes become meaningful.
-//
-// Returns bytes as a flat Mentl String (length prefix + bytes) —
-// same shape as read_stdin for uniform downstream handling.
-effect Filesystem {
-  // ─── Original 4 ops (FS walkthrough; commit 1debfdc) ──────────
-  fs_exists(String) -> Bool
-  fs_read_file(String) -> String
-  fs_write_file(String, String)
-  fs_mkdir(String)
-  // ─── FX.A.basics extension ops (FX walkthrough §1) ────────────
-  // Cover the FileHandle-shaped surface Mentl-voice's Interact ops
-  // need. Returns are domain-free (Int fd / Bool errno); ADT
-  // projection (FileHandle / TreeEntry) lifted to mentl_voice_filesystem
-  // handler per FX walkthrough §3.1.
-  //
-  // fs_list_dir lands separately as FX.A.dirent (dirent record parsing
-  // is its own focused sub-handle).
-  fs_open(String) -> Int
-  // create+truncate for writing, returning the fd — distinct from fs_open's
-  // read/write open (WASI oflags CREAT|TRUNC, write rights). It was missing
-  // while three routes wrote files, which is the whole reason those routes
-  // reached past this effect to fs_create_impl.
-  fs_create(String) -> Int
-  fs_close(Int)
-  fs_unlink(String) -> Bool
-  fs_rename(String, String) -> Bool
-}
-
 // diag_line — the line a report prints, one home: a pure read of the kind
 // around the message the report carried, so any arm can print it and none
 // re-renders the graph-reading part. Sequenced projections, then ONE
@@ -4974,7 +4942,10 @@ fn diag_line(diag, msg: String, dmod: String) with !Mutate = {
 // token span and leave the hole to their caller, so recovery must change
 // before they can report at a node. Until then this takes the handle and the
 // diag keeps its span.
-fn report_at(h, diag) = diag_report_at(diag, module_name_of_handle(graph_module_of(h)))
+fn report_at(h, diag) = {
+  let m = graph_module_of(h)
+  diag_report_at(diag, module_name_of_handle(m), module_layer_of_handle(m))
+}
 
 // The parse-phase form: a report inside the module being parsed, where the
 // module in force IS the right one because the parser never leaves a file.
@@ -4992,7 +4963,7 @@ fn report(diag) = report_at(graph_module_current(), diag)
 // The module is read once and rides beside the message, so the line an arm
 // prints and the scope it registers cannot drift apart into two answers
 // about one report.
-fn diag_report_at(diag, dmod) = diag_report(diag, diag_message(diag), dmod)
+fn diag_report_at(diag, dmod, dlayer) = diag_report(diag, diag_message(diag), dmod, dlayer)
 
 // A module handle's own name, read from its node. The non-NModule arm REFUSES
 // rather than answering "": every value in the module column was written by
@@ -5009,9 +4980,19 @@ fn module_name_of_handle(h) = match graph_node_body(h) {
   },
 }
 
+// A module handle's LAYER, read from its node — the same read as its name,
+// and the same refusal for a handle no module column named.
+fn module_layer_of_handle(h) = match graph_node_body(h) {
+  NModule(m) => m.layer,
+  _ => {
+    out_of_range()
+    User
+  },
+}
+
 // ─── THE ONE TYPE RENDERER ───────────────────────────────────────────
-// Every surface that shows a type — the formatter's page, `where`, `doc`,
-// `query … type of`, the caret, the View, hover, every diagnostic — renders
+// Every surface that shows a type — the formatter's page, the where and doc
+// verbs, `query … type of`, the caret, the View, hover, every diagnostic — renders
 // through `render_ty`, spelled as SYNTAX writes types (`[T]`, `{x: Int}`,
 // `f64`, `!E`), under a render context that is a handler, never a write: a
 // free variable asks the context for its name, the row face says whether a
@@ -5069,8 +5050,8 @@ fn fresh_var_name(taken, h, sort) = match sort {
 }
 
 // The name a variable was written with: its cell is minted with the authored
-// lowercase name as its reason — a type parameter's (`quantify_ctor_ty`), a
-// clause's row variable (`leaf_row_of`), a record's named rest.
+// lowercase name as its reason — a type parameter's (infer.mn's quantify_ctor_ty), a
+// clause's row variable (effects.mn's leaf_row_of), a record's named rest.
 fn declared_var_name(h) = match graph_reason_at(h) {
   Declared(n) => if is_var_spelling(n) { Some(n) } else { None },
   _ => None,
@@ -5449,7 +5430,8 @@ fn positional_param_name(nm: String) =
   byte_len(nm) > 1 && byte_at(nm, 0) == 95 && byte_at(nm, 1) >= 48 && byte_at(nm, 1) <= 57
 
 // A declaration's head for the developer's eye — the one head every
-// projection that shows a signature renders (`where`, `doc`, an op's line):
+// projection that shows a signature renders (the where and doc verbs, an
+// op's line):
 // `name(p: T, …) -> R with row`, a unit result omitted as a declaration
 // omits it, the row the inference proved.
 fn render_head(name: String, params, ret, row) with !Mutate =

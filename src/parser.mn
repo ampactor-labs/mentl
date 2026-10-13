@@ -595,7 +595,7 @@ fn parse_program(ref tokens) = {
 // (`E_DuplicateImport`, armed) — a second line drawing an edge that exists
 // is a form that makes no graph, SYNTAX principle 2's rejected redundancy.
 // The statement leaves the tree, so `mentl fmt`'s render is the lift. Read
-// per MODULE (`parse_one_module`), the unit an import list belongs to: a
+// per MODULE (infer.mn's parse_one_module), the unit an import list belongs to: a
 // concatenated blob — the march's wheel, a battery's `libs ++ src` — repeats
 // every file's imports because it is many modules spelled as one text.
 fn import_set(stmts) = match fold((smap_new(), []), import_kept, stmts) {
@@ -984,7 +984,7 @@ fn parse_effect_list_from(ref tokens, pos, conn) = match parse_one_effect(tokens
   },
 }
 
-// Parse a single row term — bare `IO`, negated `!IO`, parameterized
+// Parse a single row term — bare IO, negated !IO, parameterized
 // `Sample(44100)`, a lowercase row variable `e`, or a parenthesized group
 // `(e - Intern)` the clause folds whole — each optionally negated.
 fn parse_one_effect(ref tokens, pos) = match if at(tokens, pos, TBang) { (true, pos + 1) } else { (false, pos) } {
@@ -3611,7 +3611,7 @@ fn parse_type_args_loop(ref tokens, pos, own buf, count) = {
 // for an open record (accepts any record with AT LEAST these fields),
 // None for a closed one. `...` mints a fresh anonymous row var; `...R`
 // mints one named R, and the signature's quantification
-// (`quantify_ctor_ty`) gives every R in one signature one cell.
+// (infer.mn's quantify_ctor_ty) gives every R in one signature one cell.
 fn parse_record_type_fields(ref tokens, pos) = {
   let p = skip_ws(tokens, pos)
   if at(tokens, p, TRBrace) {
@@ -3748,10 +3748,10 @@ fn compare_pred(op, l, r) = PCompare(op, node_handle(l), node_handle(r))
 // A closure mint reads the handle. At emit, record slot N stores the value
 // of capture N from the enclosing scope and the body reads it as
 // `LUpval(h, N)`; the store has to know the value's width. A local bound
-// at a GROUND type has no binding-time handle (lower's `ty_handle_of`
+// at a GROUND type has no binding-time handle (lower's ty_handle_of
 // answers 0 — a ground type is a value, not a node), and a local is
 // monomorphic, so the use node carries the same truth — the rule
-// `local_ty_handle` (lower.mn) states once for every read. Without it a
+// local_ty_handle (lower.mn) states once for every read. Without it a
 // captured Float floored to a word at the mint while the body read it wide:
 // measured 2026-09-27, `fn make(fb: Float) = (x) => x + fb` passed `mentl
 // check` and did not ASSEMBLE. `bound` stays a name set; only the answer

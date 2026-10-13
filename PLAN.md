@@ -924,9 +924,12 @@ and this is the STATE.
   **Visibility is still the import CLOSURE** (`inf_module_reaches`): the
   manifest refuses a name the module does not reach at all, never one it
   reaches only through a conduit, so a module uses names its own import list
-  never states, changing a module's private imports breaks its importers,
-  and the runtime's `import types` puts the compiler's metaschema in every
-  user program's namespace. The overlay is the second half, re-grounded as
+  never states and changing a module's private imports breaks its importers
+  (the compiler's roots are out of every program's reach since Landing 1,
+  2026-10-13: a module's layer bounds the roots its imports probe, so only a
+  program whose own folder holds the compiler's source reaches it, as its
+  own files). The
+  overlay is the second half, re-grounded as
   M4 — a module sees its own declarations, its direct imports' and the
   prelude's (`Hβ.driver.per-module-env-overlay`, §11) — and the module
   bullets of 2026-10-06 below carry what the closure costs.
@@ -1052,36 +1055,38 @@ and this is the STATE.
   a reference. M1's reference link makes a site a node and M2's facets read
   it (§11, Tier 4); F refuses the duplicate import, and #108 makes the
   annotation a reference.
-- **A MODULE SEES ITS WHOLE IMPORT CLOSURE, AND THE RUNTIME STANDS ON THE
-  COMPILER (2026-10-06) → M3, M4.** Visibility is the closure (the
-  per-module manifest bullet above), so a user cannot declare `count` beside
-  lib/lists without `E_DuplicateFnName`, and one namespace is paid for in
-  prefixes (lib/strings carries 64 of 100 declarations under `str_`,
-  `float_` and `set_`). lib/io, lib/json, lib/lsp_frame and lib/dsp/clock
-  import src/types.mn — three of those edges dead — so its 5,384 lines ride
-  into every user program's link; lib/search imports src/types.mn and
-  src/own.mn while src/lower.mn imports lib/search, whose `backtrack` rolls
-  back the compiler's own graph trail; and the resolver offers src/ to a
-  user's import, so a user's `import graph` links the compiler's
-  src/graph.mn. M3 makes layer a fact of the module node (`E_LayerInversion`
-  at the import edge), and M4 makes visibility the direct edges plus the
-  prelude, migrated by the medium (§11, Tier 4).
+- **A MODULE SEES ITS WHOLE IMPORT CLOSURE (2026-10-06) → M4.** Visibility
+  is the closure (the per-module manifest bullet above), so a user cannot
+  declare `count` beside lib/lists without `E_DuplicateFnName`, and one
+  namespace is paid for in prefixes (lib/strings carries 64 of 100
+  declarations under `str_`, `float_` and `set_`). M4 makes visibility the
+  direct edges plus the prelude, migrated by the medium (§11, Tier 4). The
+  other half this bullet measured — the runtime standing on the compiler,
+  four library modules importing src/types.mn and a user's `import graph`
+  linking src/graph.mn — closed at Landing 1 (2026-10-13, LEDGER): a
+  module's layer is a fact of its node, an importer probes only the roots
+  its layer may reach, and an inversion is unconstructible rather than
+  diagnosed (`Hβ.modules.layer-is-a-fact-of-the-module`).
 - **THE VOCABULARY IS HELD BY SPELLING, AN EFFECT NAME CAN RESOLVE TO
   NOTHING, AND DECLARED OPS GO UNPERFORMED (2026-10-06) → M1, M10, M11.**
   The compiler recognizes library effects by their spelling — 10 `"Alloc"`
   literals in 7 modules, and `projection_of_effects` reads Thread, Simd,
   Gpu, Persist, Derivative and Alloc by name — so a user's own
-  `effect Thread` gets the schedule's reading. An effect name in a row is never
-  resolved: `!Network` in lib/persist.mn names nothing its link declares and
-  checks clean, `mentl where lib/persist.mn Network` answers "not found" with
-  exit 0, and `IO` has meaning at three compiler sites while no module
-  declares it. Of the 86 effects in the wheel's link, 20 carry ops nothing
-  performs and seven have no performed op at all (Interrogate, Clock,
-  Sample, IterContext, Network, Distort, Choice); `no_iter_context` is
-  installed seven times over an effect nothing performs and keeps main.mn's
-  and pipeline.mn's `import dsp/clock` alive. M1 refuses the unresolved name,
-  M10 holds the vocabulary by declaration, and M11 deletes the dead ops and
-  the installs that absorb nothing (§11, Tier 4).
+  `effect Thread` gets the schedule's reading. An effect name in a row
+  resolves or refuses since Landing 1 (2026-10-13, `E_MissingVariable` at
+  the clause; lib/persist.mn's `!Network`, which named nothing any link
+  declared and checked clean, was its first refusal and is gone), while `IO`
+  has meaning at three compiler sites though no module declares it. Of the
+  86 effects in the wheel's link measured 2026-10-06, 20 carried ops nothing
+  performs and seven had no performed op at all (Interrogate, Clock, Sample,
+  IterContext, Network, Distort, Choice); of those, Network was never
+  declared, Choice left with lib/search at Landing 1, and Distort is not in
+  the link on 2026-10-13, while the other four stand with every op at zero
+  references;
+  `no_iter_context` is installed seven times over an effect nothing performs
+  and keeps main.mn's and pipeline.mn's `import dsp/clock` alive. M10 holds
+  the vocabulary by declaration, and M11 deletes the dead ops and the
+  installs that absorb nothing (§11, Tier 4).
 - **EVERY EFFECT-OP PARAMETER IS NAMELESS, AND A LEDE CAN BE ANOTHER
   COMMENT'S TEXT (2026-10-06) → N1, T5.** `mentl where src/main.mn Filesystem`
   renders `fs_write_file(_: String, _: String) -> ()`: 455 of the medium's 457
@@ -1157,19 +1162,24 @@ and this is the STATE.
   which read; and `Memory` holds pure word arithmetic — so `!E` is a true
   statement about a false vocabulary. EFF (§11, Tier 4).
 - **THE FILESYSTEM CAPABILITY IS BYPASSED, AND ITS HOST BOUNDARY FABRICATES
-  (2026-10-06) → N1 + N3.** `fs_read_file_impl` has 7 callers outside its
-  handler and `fs_list_dir_impl` 4 calls for an op the effect never
+  (2026-10-06) → N3.** The declaration, the handler and the implementations
+  are one module since Landing 1 (lib/fs.mn, 2026-10-13 — N1's module half),
+  and the bypasses stand: on the wheel's link `fs_read_file_impl` has 2
+  callers outside its handler (lib/persist.mn's `image_resume`,
+  src/main.mn's `battery_step`) and `fs_list_dir_impl` 5 calls
+  (src/driver.mn's `is_dir`, four in src/main.mn) for an op the effect never
   declared, so `!Filesystem` cannot see them and no other handler can answer
-  them; the declaration, the handler and the implementation live in three
-  modules; `fs_read_file_impl` answers an empty string on an open failure,
-  and the voice's `open_file` answers `FileHandle(0)` and never closes the
-  descriptor it opened to test existence. N1 makes the capability one module
-  whose arms are the implementation and N3 says every failure (§11, Tier 4).
+  them; `fs_read_file_impl` answers an empty string on an open failure, and
+  the voice's `open_file` answers `FileHandle(0)` and never closes the
+  descriptor it opened to test existence. N3 makes every bridge call a
+  perform and says every failure (§11, Tier 4).
 - **THE COURSE HAS TWO HOMES AND TEACHES WHAT THE MEDIUM REFUTED
   (2026-10-06) → the course.** lib/tutorial's lesson 04 teaches that `Pure`
   unlocks memoization, compile-time evaluation and parallelism — the three
-  capabilities D4 deleted as things the medium never does — and checks
-  `!Network` over a link that declares no Network; lesson 01 says
+  capabilities D4 deleted as things the medium never does (its `!Network`
+  checked over a link that declared no Network until the row law refused
+  the name on 2026-10-13, and the lesson declares the effect it negates
+  now); lesson 01 says
   `int_to_str` comes from io, where strings declares it; and Pulse's prose
   spells literals the formatter rewrote. The course (§11, Tier 3) is born
   canonical and deletes lib/tutorial.
@@ -2306,11 +2316,13 @@ nothing installed only to swallow an op nobody reads.
 - **M2–M5, M7, M10, M11 · The module is a scope.** The facets read the link
   and two facets may not disagree (`Hβ.query.facets-read-the-link`); layer
   is a fact of the module node and lib stands on its own
-  (`Hβ.modules.layer-is-a-fact-of-the-module`); a module sees its own
-  declarations, its direct imports' and the prelude's, migrated by the
-  medium (`Hβ.driver.per-module-env-overlay`); a symbol is the declaration's
-  (`Hβ.emit.symbol-is-the-declarations`); prose edges resolve in the same
-  scope (`Hβ.voice.comment-ref-gate-reads-the-flattened-link`); the medium's
+  (`Hβ.modules.layer-is-a-fact-of-the-module`, LANDED 2026-10-13 at Landing
+  1); a module sees its own declarations, its direct imports' and the
+  prelude's, migrated by the medium (`Hβ.driver.per-module-env-overlay`); a
+  symbol is the declaration's (`Hβ.emit.symbol-is-the-declarations`); prose
+  edges resolve in the same scope
+  (`Hβ.voice.comment-ref-gate-reads-the-flattened-link`, LANDED 2026-10-13
+  at Landing 1); the medium's
   vocabulary is held by declaration, never by spelling
   (`Hβ.modules.vocabulary-held-by-declaration`); and an effect nothing
   performs is deleted, as is an install that absorbs nothing

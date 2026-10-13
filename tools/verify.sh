@@ -487,7 +487,7 @@ if C=$(wt_m2_ensure); then
     | FS_ROOT="$ROOT" FS_C="$C/m2.wasm" xargs -P "${FRONTIER_POOL:-$(nproc)}" -I{} bash -c '
         source "$FS_ROOT/tools/wt-env.sh" >/dev/null 2>&1
         wt_run --dir "$FS_ROOT" "$FS_C" query src/main.mn "refs of {}" 2>/dev/null \
-          | grep -oE "^  at [a-z_/]+:" | grep -vcE "^  at (pipeline|io):" || true' > "$fs_seam_out" &
+          | grep -oE "^  at [a-z_/]+:" | grep -vcE "^  at fs:" || true' > "$fs_seam_out" &
   fs_seam_pid=$!
   errors=$(grep -cE '(^|: )E_[A-Za-z_]+ error: ' "$C/m2.err")    # the wheel prefixes stages ('infer: E_…')
   warns=$(grep -cE '(^|: )(E_|W_|P_)[A-Za-z_]+ Warning: ' "$C/m2.err")
@@ -501,31 +501,16 @@ if C=$(wt_m2_ensure); then
   elif [[ -n "$max" && "$errors" -lt "$max" ]]; then
     say "  ↓ census FELL $max -> $errors — lower census_errors_max in $BASELINE to hold it."
   fi
-  # The comment-reference ratchet — the SAME stderr, one layer up: every
-  # backticked identifier in a comment is a REFERENCE the medium resolves at
-  # the infer tail (W_CommentRefUnresolved, SYNTAX §Comments). This absorbed
-  # tools/comment-audit.sh + comment-ratchet.sh whole: the medium is the
-  # classifier now, and the count rides the census compile — zero extra passes.
-  # IT READS THE MANIFEST LINK, NOT THE BLOB, and that is the whole fix.
-  # This grepped "$C/m2.err" — the compile of the blob the fixed point read
-  # until 2026-10-06 (M9), which was every module CONCATENATED INTO ONE FILE. One module means every name is
-  # local and a cross-module reference problem is UNCONSTRUCTIBLE, so the count
-  # was not a measurement that read zero; it was one that could not read
-  # anything else (measured 2026-09-20: 0 here against 58 across the modules).
-  # `mentl verify` links through the real import DAG and runs ScopeAll, so the
-  # medium's own board sees every module's prose — the reader the driver's
-  # hardcoded narrowing had left with no way to ask.
+  # THE COMMENT-REFERENCE RATCHET STOOD HERE and was RETIRED 2026-10-12 (M7):
+  # an unresolved backticked reference is a W_CommentRefUnresolved NARRATION,
+  # and `mentl verify` holds the link's narrations at ZERO over every module
+  # (verify_board, src/main.mn — the board line "0 narration(s) over every
+  # module of the link"), so a grep of the same stderr for one class was a
+  # second home for a bound the board already holds, at a ceiling of 0. The
+  # history it absorbed (tools/comment-audit.sh, comment-ratchet.sh; the
+  # concatenated-blob era in which the count could not read anything but 0)
+  # is RESIDUE's `Hβ.voice.comment-ref-gate-reads-the-flattened-link`.
   wait "$vj_pid"; brc=$?
-  crefs=$(grep -cE 'W_CommentRefUnresolved' "$vj_err" || true)
-  cmax=$(grep -E '^comment_refs_max:' "$BASELINE" | head -1 | cut -d: -f2 | tr -d ' ')
-  say "· comment-refs: $crefs unresolved — the medium's verdict on its own prose"
-  if [[ -n "$cmax" && "$crefs" -gt "$cmax" ]]; then
-    say "✗ comment-ref RATCHET: unresolved references rose $cmax -> $crefs. A backticked"
-    say "  name is a claim; fix the reference or write prose without backticks."
-    fail=1
-  elif [[ -n "$cmax" && "$crefs" -lt "$cmax" ]]; then
-    say "  ↓ comment-refs FELL $cmax -> $crefs — lower comment_refs_max in $BASELINE to hold it."
-  fi
   # The MOVERS ratchet stood here — the two-pass tower's size gauge (schemes
   # the final judged differently than the trial published). RETIRED
   # 2026-09-17 with the pass it gauged: one judgment has no trial→final
@@ -582,10 +567,15 @@ if C=$(wt_m2_ensure); then
   # held over routes that created, wrote, renamed and unlinked files, and
   # the severance the handler's own comment promises ("drops path_open /
   # fd_close from that binary") would have qualified a file-writing binary.
-  # Every fs_*_impl reference must be inside the handler that owns it
-  # (pipeline) or its own definition (io). Anything else is a bypass.
-  # SEEN RED at 3 before the fix: fs_close_impl answered main:425,
-  # main:1826, mcp:128 beside its one legitimate site at pipeline:757.
+  # Every fs_*_impl reference must be inside the handler that owns it or
+  # its own definition — one module since 2026-10-13, lib/fs.mn, where the
+  # Filesystem capability's declaration, handler and implementations live
+  # together (N1's module half; they were src/types.mn, src/pipeline.mn and
+  # lib/io.mn, and this leg excluded the latter two by name). Anything
+  # else is a bypass. SEEN RED at 3 before the first fix: fs_close_impl
+  # answered main:425, main:1826, mcp:128 beside its one legitimate site in
+  # the handler; and at 13 the day the capability moved, every reference
+  # inside lib/fs.mn counted until the leg named the module that owns them.
   # The count is the medium's own refs answer, never a grep — a grep cannot
   # tell a call from a name written in a comment, which is the lesson the
   # imports facet already paid for.

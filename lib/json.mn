@@ -16,8 +16,6 @@
 // integer fields (line / character / version / id) cast at use
 // site. \uXXXX Unicode escapes deferred to JSON.unicode peer
 // sub-handle (rare in LSP traffic; ASCII covers the common path).
-import types
-
 import strings
 
 // JsonValue — the canonical typed JSON representation. Six variants

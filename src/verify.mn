@@ -295,7 +295,7 @@ fn tail_of_arm(arm) = match arm {
 // of the handler it installs (`install_arm_tails`). The one home the claim
 // decider, the leaves, the path read, the flow label and the function-value
 // walk read a value's structure through. A claim NOTED over a value stays
-// with the join's own tails (`note_claim`): a handler's arms are shared by
+// with the join's own tails (infer.mn's note_claim): a handler's arms are shared by
 // every install, and a note there would claim for all of them.
 fn value_tails(h) = match join_tails(h) {
   Some(tails) => Some(tails),
@@ -342,7 +342,7 @@ fn install_arm_tails(right) = match env_lookup(tee_handler_name(right)) {
 // node, since the install column is the lowering's, written after every
 // claim is decided. A tee whose handler expression is not a named reference
 // has no name to classify: "" is the frame-fence sentinel
-// `schedule_installed` itself reads (lower.mn: a "" stack entry is the
+// schedule_installed itself reads (lower.mn: a "" stack entry is the
 // fence), not a fabrication — no declaration answers it, so its class is a
 // dispatch and the schedule read walks past it. One home for the judgment,
 // the query and the caret.
@@ -1695,10 +1695,23 @@ fn report_verify_debt(debt) = if len(debt) == 0 {
   // it is their teaching surface ("this claim was not checked") — while
   // the wheel's obligations (types.mn spans printed on every
   // hello-world, the audit's measured flood) stay the census
-  // channel's. ScopeAll keeps every line; the SUMMARY count still
-  // reports through diag_report in every scope.
-  debt_lines(debt, diag_scope_of(), 0)
-  report(VPending(len(debt), span_zero()))
+  // channel's. ScopeAll keeps every line; the SUMMARY counts the same
+  // obligations the lines render — the project's own — so a six-line
+  // program never answers for the runtime library's open claims. Measured
+  // 2026-10-12 against the whole-ledger count this replaces: a hello-world
+  // reported seventeen obligations it had no way to discharge, every one
+  // the library's, while the lines beside the count filtered them out.
+  let scope = diag_scope_of()
+  debt_lines(debt, scope, 0)
+  // The summary is reported at the module of an obligation it counts — the
+  // project's own — never at whichever module the judgment entered last,
+  // which under the project register could be the library's and hide it.
+  match filter({ (modh, _, _, _) => debt_in_scope(modh, scope) }, debt) {
+    [] => (),
+    [first, ...rest] => match first {
+      (modh, _, _, _) => report_at(modh, VPending(len(rest) + 1, span_zero())),
+    },
+  }
 }
 
 // The seams argument is GONE with the weave: the span is already the
@@ -1726,8 +1739,7 @@ fn obligation_text(modh, dspan, pred) =
 fn debt_in_scope(modh, ref scope) = match scope {
   ScopeAll => true,
   ScopeNone => false,
-  ScopeModule(name) => module_name_of_handle(modh) == name,
-  ScopeLink => true,
+  ScopeProject(layer) => module_layer_of_handle(modh) == layer,
 }
 
 fn classify_predicate(pred) with Pure = match pred {

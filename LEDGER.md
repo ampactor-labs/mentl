@@ -35,6 +35,150 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-10-13 · pin 6e35c6db5665f613 (CLEAN m2 == m3; m3 == m4 measured) · LANDING 1 — THE USER'S LINK IS THE USER'S: A MODULE'S LAYER IS A FACT, A REPORT CARRIES IT, PROSE AND EFFECT NAMES RESOLVE IN THE MODULE'S OWN REACH
+  ONE NEW FACT — a module's LAYER (`type Layer = User | Lib | Compiler`),
+  read off the root that resolved it, recorded on the module node and carried
+  by every report from its writer (`report_at`) — and four readers of it. THE
+  RESOLVER probes by the importer's layer (a User module its own directory
+  then the library roots, a Lib module the library roots, a Compiler module
+  every root), so a user's `import graph` is `E_MissingModule` with the paths
+  it probed and a user's `fn report` compiles (both RED on boot 454c3aaf: the
+  first linked src/graph.mn, the second was refused as a duplicate of
+  src/types.mn's `report`); an inversion is unconstructible, so no
+  E_LayerInversion is built. A module's own imports probe from where IT was
+  found, so `sub/b`'s `import c` is `sub/c.mn` beside it and two spellings of
+  one file are one module (tests/frontier/user-link/nest: RED on the boot,
+  which probed the cwd for every importer and lost `sub/b` at the entry). THE
+  REGISTER renders, on the file route, the narrations of the entry's own
+  layer (`ScopeProject(Layer)`, dissolving `ScopeLink` and
+  `ScopeModule(String)`); errors render in every scope and every narration is
+  counted, so the board still fails on library noise a user never sees. THE
+  DEBT SUMMARY counts the obligations in scope and reports at the entry's
+  module: a program owing one claim reports 1 where the boot reported the
+  runtime's 17 beside it. PROSE RESOLVES IN ITS OWN REACH (M7): the
+  declaration index, the env and the literal vocabulary are each asked
+  whether the referent's module is one the comment's module reaches — the
+  literal vocabulary indexed BY THE MODULES THAT WRITE each run, the last
+  face, found when lib/io.mn's prose resolved the WASI import module through
+  the emitter's literals — and the sweep the rule exposed cleared 140
+  references in the wheel and 3 in the library through the medium's own
+  check; the comment-refs ratchet is RETIRED, a second home for the board's
+  zero-narration bound. AN EFFECT NAME IN A ROW RESOLVES OR REFUSES: a
+  declaration's, a handler's, an op signature's clause and a function type's
+  `with` are judged against the effects in reach (`E_MissingVariable`).
+  THE DELETIONS that make the layer rule true: lib/io, lib/json and
+  lib/lsp_frame's dead `import types`; `Filesystem` with its handler and
+  implementations moved to lib/fs.mn (N1's module half; the effect-seam leg
+  names that module as the owner, and its two bypasses on the wheel's link
+  stand — `image_resume`, `battery_step`); lib/search.mn, lib/combinators.mn
+  and lower.mn's dead `import search`; `clock_replay`, its import and
+  EReplayExhausted (dead: nothing installed it, no arm wrote its trace);
+  `effect Abort` and `catch_abort` (zero references in the wheel and in every
+  fixture directory; the identity gate's census holds Abort at zero). THE
+  SHIM rewrites a path above the cwd to its absolute form, so `mentl run
+  ../owes.mn` runs. A lesson's check (lib/tutorial/00-hello.mn) peaks at
+  41,132 KB / 0.27 s against 53,236 KB / 0.50 s with the types edge, through
+  one boot (454c3aaf; medians of three). `Mutate` is split: the ownership marker every program may negate
+  is lib/memory.mn's `effect Mutate {}`, the compiler's graph event is
+  `GraphMutated` (356 `effect: Mutate` refusals on the wheel through the
+  first m2 named the split).
+  TWO DEFECTS FOUND BY THE BUILD, each with its kills. (1) THE OCCURS CHECK
+  WENT SILENT in the first candidate: `report_guard_note` called
+  `diag_report_at(d, dmod)` against the grown three-field signature — a
+  PARTIAL APPLICATION, a function value `each` discarded — so `fn f(x) = x ==
+  [x]` checked clean and a polymorphic self-call was judged monomorphic: a
+  recursion whose type grows emitted ONE twin calling itself instead of
+  refusing at the eighth instantiation (mn-instantiation-depth-eq/-show
+  compiled, exit 0, where the boot refuses). Killed on the way: the
+  link-contents hypothesis (the boot with this tree's lib still refuses) and
+  the scope hypothesis (errors print in every scope); the caret at the
+  self-reference told the truth first — `(x: a, y: a, n: Int)`, the
+  declaration's own cell, where the boot read an instance at `[a]`. The guard
+  note carries the module HANDLE and the drain reports at it; the stage of
+  `each` answers `()` — `each_handler`'s arm resumes with the stage's answer
+  and `yield` answers unit, so the constraint is read off the op and no
+  annotation is written (one wheel site, `intern_word`, answered a handle),
+  and a dropped function value there is a type error
+  (mn-each-stage-answers-unit: compiled clean and ran to 0 on main's tree);
+  mn-occurs-check-reports holds the first layer. The general class is banked
+  (`Hβ.infer.statement-value-is-dropped-silently`). (2) THE WARM ROUTE DOES
+  NOT EMIT THE COLD ROUTE'S BYTES after a cone re-derivation: one source,
+  628,651 lines / 7,493 functions cold, 672,832 / 9,206 through a
+  thirteen-module cone — 156 `map` twins for the cold route's one — the
+  superseded generations' nodes feeding the twin demand
+  (`Hβ.graph.module-nodes-are-a-column`, its emit face; driver_incremental's
+  comment trued); candidates are built cold.
+  WHAT THE EFFECT-NAME LAW FOUND IN THE TREE, each RED-first: lib/persist.mn's
+  `!Network` (no Network effect exists; dropped); a compiler rule leaning on
+  the phantom — the replay-barrier test required a thunk to forbid the triple
+  WASI, Filesystem, Network, so when the contract lost the name no row severed
+  and `T_OwnAcrossReplay` vanished through the boot on this tree; it reads the
+  host pair — the frontier's generic-show fixture authoring `with Memory +
+  Alloc + Show` with no Show anywhere (its rows are inferred), and
+  lib/tutorial/04-row.mn negating a `Network` nothing declared (the island
+  leg refused it; the lesson declares the effect it negates). Beside them:
+  the formatter rendered an empty effect body as a brace pair around an
+  indented empty line and renders `effect Mutate {}`; the prelude floor rose
+  2829 → 2837 for the marker and the stage law, justified at the ceiling; the
+  one-renderer leg forbids `-> ()` on a head's own result, not inside a
+  parameter's function type; and the syntax battery's `import lib/lists`
+  fixture is `import lists` — a repository-relative spelling is not a module
+  name a program can write under the layer law, and the two-spellings claim
+  it carried lives in the nested user-link leg.
+  THE REPIN'S OWN REFUSALS, each obeyed. The quiet gate refused the first
+  repin (authored own 53 → 55, ref 658 → 664): eight markers on five new
+  helpers were inventory and came off, and the two `own` markers the walk's
+  callers kept turned `T_OwnUnconsumed` the moment their callee stopped
+  consuming — four more left, and the ceiling fell 53 → 49. The board refused
+  the second: three effectful lambdas (one shape, `(p) =>
+  check_ty_effect_names(param_ty(p), span)`, three sites) became one named
+  stage; one ghost — the `(a) -> ()` annotation on `each`, a parser cell the
+  judgment never binds (#108's class) — went when the constraint moved onto
+  `yield`'s declared result; two dated comments carried lifecycle prose and
+  read in positive form now; and five narrations stood over the link, two
+  T_OwnUnconsumed and three library comment references (imap, arena,
+  dsp/clock) that the file route had hidden by design and the board counted —
+  the register working as built. The effect-seam leg counted 13 bypasses
+  because it excluded the owning modules by name (pipeline, io) and the
+  capability had moved; it names lib/fs.mn and counts 2, the ceiling it had.
+  The board's three lines that FELL are held where they landed, each with
+  its history beside the number (src/board.mn): effectful lambdas 195 → 193,
+  lifecycle prose 44 → 43, iteration costumes 465 → 464 (lib/search's one
+  left with the module) — a ceiling left slack measures nothing between
+  breaches.
+  THE CLAIM-READING PASS (one reader who did not write the records) refuted
+  or sharpened ten sentences before the commit: "the compiler is out of every
+  program's reach" (its ROOTS are — a program whose own folder holds
+  src/graph.mn reaches it as its own file, measured through stdin from the
+  repository root); "`lib/lists` is not a module name a program can write"
+  (it is, from a folder holding the repository's layout); "two warnings
+  through this tree's lib" (none — the two predated the library sweep); one
+  landing written under two dates; `Alloc` offered as an effect whose only
+  non-ground op returns `!`; Distort listed as present (gone before the
+  landing) and Network dropped from a dated list without a note; a frontier
+  comment still describing the `(a) -> ()` annotation; `query_run` named as
+  a bypass site it only reaches through `mn_files`; the lesson measurement
+  taken under load (re-measured, medians of three); and two "RED on the boot"
+  claims that are facts of main's LIBRARY, not of the boot. Beside them it
+  found the shim's heredoc executing its own backticked comment at install
+  time (`mentl run ../x.mn` ran, and the words left the installed shim),
+  lib/persist.mn describing Filesystem's former home, and library prose no
+  gate counts — lib/environ.mn's two unresolved references outside the
+  wheel's link and two new micros narrating on their own comments — each
+  fixed before the commit.
+  Fixtures: six micros (effect names ×2, the user's import, the user's name,
+  the occurs check, the each stage) and the frontier's user-link leg (silent
+  hello, own debt, the shim above the cwd, the nested two spellings). Closed:
+  `Hβ.modules.layer-is-a-fact-of-the-module`,
+  `Hβ.voice.comment-ref-gate-reads-the-flattened-link`,
+  `Hβ.verify.comment-ref-ratchet-is-dark`; N1's module half recorded. Opened:
+  `Hβ.infer.statement-value-is-dropped-silently`,
+  `Hβ.shim.outside-path-names-the-module-absolutely`. Micros 399/399,
+  frontier 660 pass / 0 red / 2 expected-red, crown 143/143, proof-exactness 30/30, ide GREEN, the
+  march CLEAN m2 == m3 at 628,935 lines (m3 == m4 measured), census 0, the m3
+  leg 35.34 s wall / 460 MB peak RSS (471,272 KB). A first pin, b24bee56, carried
+  the same source with the three fallen bounds still slack and was superseded
+  in the landing once they were held; both blocks stand in PROVENANCE.
 - 2026-10-12 · no repin (boot 454c3aaf stands; no wheel change) · LANDING 0 — THE BOARD RUNS ON EVERY PUSH, THE PERIMETER INSTALLS WITH THE COMMAND, PLAN §7 IS THE STANDING AUDIT AGAIN
   Administrative first: PR #16 (the Space pivot through L-F and wave A of the
   Oct 6 program, 32 commits, board green at pin 454c3aaf) merged to main with

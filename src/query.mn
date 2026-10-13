@@ -15,6 +15,8 @@ import effects
 
 import format
 
+import fs
+
 import graph
 
 import imap
@@ -109,7 +111,7 @@ type CensusShape
   // A string literal whose text contains the needle — the `text` facet's
   // shape, the one reach into what the wheel WRITES rather than what it
   // calls: the emit's WAT is string literals, and no identifier edge reaches
-  // a `$global` or an instruction inside one. A literal chunk of an
+  // a WAT $global or an instruction inside one. A literal chunk of an
   // interpolating string is its own literal node, so the walk sees it too.
   | CsText(String)
   // A comment whose prose contains the needle — the `text` facet's twin over
@@ -1043,7 +1045,7 @@ fn node_is_ghost(h) with !Mutate = match graph_node_body(h) {
 }
 
 // The ghosts facet: every current cell nothing judged, located. The caret
-// reads past them (`address_bound`); this is the instrument that finds the
+// reads past them (space.mn's address_bound); this is the instrument that finds the
 // minting that makes each one.
 fn ghost_sites() with !Mutate = match graph_snapshot() {
   Graph(_, span_index) => span_index |> filter(ghost_entry) |> map(ghost_site),
@@ -1107,7 +1109,7 @@ fn orphan_prose_floor() with Pure = 240
 // shape visible in one read: k/n says at a glance whether a surface is
 // whole, half-wired, or dead.
 //
-// The count is per-op and the same one `unreferenced` uses — reference
+// The count is per-op and the same one the unreferenced facet uses — reference
 // sites outside the declaration's own extent — so a handler ARM does not
 // count as a perform, which is exactly right: an arm is the promise's
 // other half, not its consumer.
@@ -2203,8 +2205,8 @@ fn type_level_lines(h) with !Mutate = match graph_node_body(h) {
 
 // THE HEAD ROUND TRIP — `parse(render(head)) == head`, for every function
 // declared at module level in the link, through both heads a developer reads:
-// the formatter's (what the page holds) and the eye's (what `where`, `doc` and
-// the caret show). Each is rendered, parsed as the declaration it spells, and
+// the formatter's (what the page holds) and the eye's (what the where and doc
+// verbs and the caret show). Each is rendered, parsed as the declaration it spells, and
 // rendered again by the formatter; a head that comes back different is a
 // render that says something the parser does not read back. The answer's
 // first line is the count; each failing head follows with what it came back
@@ -2713,12 +2715,12 @@ fn tee_line(h, hn: String) with !Mutate = if byte_len(hn) == 0 {
 // name requests the whole host environment; it remains visible here instead
 // of silently becoming an empty read. One home, read twice: the `env`
 // facet (`mentl query <entry> env`, the manifest nobody writes) and the
-// emit's launch gate, which hands it to `env_demand_check` before main. It is
-// read at the PERFORM sites, never off a row: main's row is free of Env the
-// moment an install absorbs it, and a row meeting a ground instance beside an
-// ungrounded one keeps the ungrounded one. Required reads with computed names
-// are refused by the judgment; optional computed reads are explicitly marked
-// as broad host access.
+// emit's launch gate, which hands it to env_demand_check (lib/environ.mn)
+// before main. It is read at the PERFORM sites, never off a row: main's row
+// is free of Env the moment an install absorbs it, and a row meeting a ground
+// instance beside an ungrounded one keeps the ungrounded one. Required reads
+// with computed names are refused by the judgment; optional computed reads
+// are explicitly marked as broad host access.
 type EnvDemand = {decl: String, mode: String, name: String, site: String}
 
 fn env_demand() =
@@ -2812,7 +2814,7 @@ fn env_read_site(c) = match parse_span_of(c) {
 }
 
 // The roster as the launch gate reads it: name, mode, site and declaration
-// separated by tabs (`env_demand_check`, lib/environ.mn). Only `required`
+// separated by tabs (env_demand_check, lib/environ.mn). Only `required`
 // rows participate in the launch refusal; optional rows shape host access.
 fn env_demand_roster(rows) =
   join("\n", map({ EnvDemand({decl, mode, name, site}) => "{name}\t{mode}\t{site}\t{decl}" }, rows))

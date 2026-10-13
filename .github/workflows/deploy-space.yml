@@ -7,7 +7,6 @@ on:
       - 'ide/**'
       - 'boot/**'
       - 'lib/**'
-      - 'src/types.mn'
       - 'tools/space-stage.sh'
       - '.github/workflows/deploy-space.yml'
   workflow_dispatch:

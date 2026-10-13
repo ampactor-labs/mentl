@@ -1,0 +1,3 @@
+// The leaf: reached as sub/c from the entry and as c from its sibling — two
+// spellings, one file, one module in the DAG (the walk keys the path).
+fn seven() = 7

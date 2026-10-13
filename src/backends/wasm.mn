@@ -192,7 +192,8 @@ fn alloc_audit_emitted(site: String, verdict) = match verdict {
       "emitting `{site}`: it allocates, and the allocation audit read nothing in it that builds",
       span_zero()
     ),
-    ""
+    "",
+    Compiler
   ),
   Allocates => (),
   Unaudited => (),
@@ -1046,7 +1047,8 @@ fn alloc_verdict(units, name: String) = match units {
     None => {
       diag_report_at(
         EInternalInvariant("emitting `{name}`: the allocation audit never walked it", span_zero()),
-        ""
+        "",
+        Compiler
       )
       Unaudited
     },
@@ -2224,7 +2226,7 @@ fn names_add(acc, n: String) = if string_in_list(acc, n) { acc } else { push(acc
 
 fn name_strs_minus(names, mask) = filter({ n => !any(eff_name_is(n), mask) }, names)
 
-// The plan's own mark beside the compile's phase lines (`heap_line`,
+// The plan's own mark beside the compile's phase lines (heap_line,
 // pipeline.mn): the emitted reach is the plan's largest step — 73 of its
 // 111 MB on the wheel, 2026-09-30 — and the step whose growth a per-step
 // walk of the plan found when the cost ratchet refused a landing 22 MB
@@ -2232,8 +2234,7 @@ fn name_strs_minus(names, mask) = filter({ n => !any(eff_name_is(n), mask) }, na
 fn reach_heap_line() = match diag_scope_of() {
   ScopeAll => eprint_string("heap: {heap_mark()} byte(s) when the emitted reach settles\n"),
   ScopeNone => (),
-  ScopeModule(_) => (),
-  ScopeLink => (),
+  ScopeProject(_) => (),
 }
 
 fn emit_plan(program) = {
@@ -5318,7 +5319,8 @@ fn evac_leaf_named(sig: String) = match arena_leaf_index(sig) {
         "an arena barrier asks for the leaf of `{sig}`, which the fold collection never met",
         span_zero()
       ),
-      ""
+      "",
+      Compiler
     )
     LfOpaque
   },

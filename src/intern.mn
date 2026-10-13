@@ -69,7 +69,13 @@ handler intern_table with buckets = list_filled(4096, []), entries = make_list(1
 // view trapped. A literal intern anywhere in the wheel names one of these.
 fn medium_vocabulary() = ["Memory", "Alloc", "IO", "Network", "Trap", "Arena"]
 
-fn intern_word(w: String) = intern_str(w)
+// One word of the vocabulary entered into the table for its presence there;
+// the handle the intern answers is read by nothing here, and the stage of
+// `each` answers `()`.
+fn intern_word(w: String) = {
+  let _ = intern_str(w)
+  ()
+}
 
 // A fresh intern table over `body`, born holding the medium's vocabulary —
 // the one way the wheel installs a table (the process's and each judgment's).

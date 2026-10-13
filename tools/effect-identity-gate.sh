@@ -34,7 +34,11 @@ expect_count() {
   fi
 }
 
-expect_count 'Abort declarations' 1 '^effect Abort\b'
+# The wheel declares no Abort since 2026-10-12: the effect and its catch_abort
+# handler had zero references in the wheel and in every fixture directory (the
+# identity micro declares its own Abort), and early exit is an abandoning arm
+# (SYNTAX §«Resume discipline»). The census holds that at zero.
+expect_count 'Abort declarations' 0 '^effect Abort\b'
 expect_count 'Fail declarations' 1 '^effect Fail\b'
 expect_count 'Alloc declarations' 1 '^effect Alloc\b'
 expect_count 'fail_exit handlers' 1 '^handler fail_exit\b'

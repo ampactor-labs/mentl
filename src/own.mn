@@ -29,10 +29,6 @@ import strings
 //                   branch's captured delta; branch_exit pairwise-checks
 //                   and merges. Stack shape naturally supports nested
 //                   branches (e.g. (a >< b) >< c).
-handler catch_abort {
-  abort() => None,
-}
-
 handler affine_ledger with used = [], used_sites = [], branches = [], fn_saved = [], borrow_depth = 0, declared = [] {
   borrow_enter() => // A borrow scope reads without moving — inside it consume is a no-op, so
   // an `own` value used in an `if` condition / `match` scrutinee stays
@@ -472,8 +468,9 @@ fn find_first_span(ref sites, ref name: String) = {
 // ZERO hazard model. It fired when a param inference had graded `Ref` (use-count
 // >= 2) also appeared as a bare tail return, never asking whether a mutation or
 // aliasing conflict was actually possible. So it flagged `min(a,b) = if a <= b
-// { a } else { b }`, every fold-accumulator return, and `extract_chase` — 356 of
-// the census, every sampled case provably safe to return from.
+// { a } else { b }`, every fold-accumulator return, and egraph.mn's
+// extract_chase — 356 of the census, every sampled case provably safe to
+// return from.
 //
 // It was a cruder, older stand-in for the hazard the region tracker now covers.
 // check_escape (own.mn ~201) tracks allocation regions and reports a GENUINE

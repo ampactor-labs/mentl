@@ -102,7 +102,7 @@ bash tools/crown-gate.sh             # !E soundness: every leak-* crucible in te
                                      # every sound-* crucible must not
 bash tools/proof-exactness-gate.sh   # a value-position hole refuses the executable, pending debt is reported, a ?? inside a
                                      # call's argument list still runs
-bash tools/effect-identity-gate.sh   # the Fail and Abort effects dispatch separately (a micro), and each is declared once
+bash tools/effect-identity-gate.sh   # Fail and Abort dispatch separately (a micro that declares its own Abort); the wheel declares Fail once and no Abort
 bash tools/instrument-gate.sh        # the diagnostics instrument can go red: a missing module or a type error exits nonzero,
                                      # and a clean program still emits (the negative control)
 bash tools/thread-gate.sh            # the compile spawns as many threads as the source says, read as a delta between two programs

@@ -15,6 +15,8 @@
 // (Hβ.driver.per-module-env-overlay).
 import types
 
+import fs
+
 import infer
 
 import io
@@ -29,35 +31,94 @@ import strings
 
 import verify
 
-// Where a module's source can live, in the order a name is resolved: the
-// DIRECT read (`mentl check foo` beside foo.mn in any directory; `sub/thing`
-// and absolute paths ride it), the repository's `src/` and `lib/`, then the
-// same two under `/mentl-home`, where the install shim (tools/install.sh)
-// maps $MENTL_HOME so a project outside the repo reaches the pinned boot's
-// own vocabulary with no configuration.
-fn module_roots() = ["", "src/", "lib/", "/mentl-home/src/", "/mentl-home/lib/"]
+// Where a module's source can live, each root with the LAYER a module found
+// there belongs to, in the order an ENTRY is resolved: the direct read
+// (`mentl check foo` beside foo.mn in any directory; `sub/thing` and
+// absolute paths ride it — a user's own module), the repository's `src/`
+// (the compiler) and `lib/` (the library), then the same two under
+// `/mentl-home`, where the install shim (tools/install.sh) maps $MENTL_HOME
+// so a project outside the repo reaches the pinned boot's own vocabulary
+// with no configuration. The layer is a fact of the module from the root
+// that found it: it rides the walk's entry (`ModuleEntry`), the module's
+// node (`NModule`) and every report the module makes (`report_at`), and is
+// never a path prefix re-tested by a reader.
+fn module_roots() = [
+  (User, ""),
+  (Compiler, "src/"),
+  (Lib, "lib/"),
+  (Compiler, "/mentl-home/src/"),
+  (Lib, "/mentl-home/lib/")
+]
 
-// The files a module's name can be, one per root.
+// The roots an IMPORT edge probes, decided by the IMPORTER: a user's module
+// reaches its own folder (an entry outside the cwd finds its siblings beside
+// itself, never in the cwd) and the library, and never the compiler's roots
+// (a file the user's own folder holds is the user's, whatever it contains);
+// a library module reaches the library alone, its own root first; a compiler
+// module keeps the entry's whole order. So the library cannot import the
+// compiler and a user cannot `import graph`: E_MissingModule names the
+// places that were probed, which is the only refusal the layering needs —
+// an inversion is unconstructible rather than detected. `None` is the entry
+// itself, which no edge reached.
+fn import_roots(importer) = match importer {
+  None => module_roots(),
+  Some((User, dir)) => [(User, dir), (Lib, "lib/"), (Lib, "/mentl-home/lib/")],
+  Some((Lib, root)) => [(Lib, root), (Lib, "lib/"), (Lib, "/mentl-home/lib/")],
+  Some((Compiler, _)) => module_roots(),
+}
+
+// The files a module's name can be under the given roots, each with the
+// layer and the root that would have found it.
 // The String pin is an Intent Boundary: unpinned, module_name's only uses
 // are splices, the fn generalizes, and a free-typed caller routes the word
 // floor — paths minted as pointer numerals.
-fn module_probes(module_name: String) = module_roots() |> map({ root => "{root}{module_name}.mn" })
+fn module_candidates(module_name: String, roots) =
+  roots |> map({ (layer, root) => (layer, root, "{root}{module_name}.mn") })
 
-// The directory a name names under the same roots, the first that exists: a
-// directory under lib/ reaches here by its bare name, the command line
+// The probe paths alone, under the entry's roots — what a verb that names a
+// module says it searched.
+fn module_probes(module_name: String) =
+  candidate_paths(module_candidates(module_name, module_roots()))
+
+fn candidate_paths(candidates) = map({ (_, _, path) => path }, candidates)
+
+// The directory a name names under the entry's roots, the first that exists:
+// a directory under lib/ reaches here by its bare name, the command line
 // having read the path as a module's.
-fn driver_dir_path(name: String) = module_roots() |> map({ root => "{root}{name}" }) |> find(is_dir)
+fn driver_dir_path(name: String) =
+  module_roots() |> map({ (_, root) => "{root}{name}" }) |> find(is_dir)
 
 fn is_dir(path) = match fs_list_dir_impl(path) {
   Some(_) => true,
   None => false,
 }
 
-// The file a module's name resolves to: the first probe that exists, or
-// None. A module with no file has no path, so nothing reads or writes one
-// in its name; each caller says what the absence means, and the refusal
-// names every place it looked (`module_probes`).
-fn driver_module_path(module_name: String) = find(fs_exists, module_probes(module_name))
+// The candidate a module's name resolves to under the given roots — its
+// layer, the root that found it and its path — or None. A module with no
+// file has no path, so nothing reads or writes one in its name; each caller
+// says what the absence means.
+fn driver_resolve(module_name: String, roots) =
+  find({ (_, _, path) => fs_exists(path) }, module_candidates(module_name, roots))
+
+fn resolved_layer(resolved) = match resolved {
+  Some((layer, _, _)) => layer,
+  None => User,
+}
+
+// The file a module's name resolves to as an ENTRY would — the first probe
+// that exists under every root, or None — the read every verb that names a
+// module by itself takes.
+fn driver_module_path(module_name: String) = match driver_resolve(module_name, module_roots()) {
+  Some((_, _, path)) => Some(path),
+  None => None,
+}
+
+// The directory a path's siblings live in, with its slash — "" for a bare
+// name in the cwd — the root a user module's own imports probe first.
+fn path_dir(path: String) = match drop_last(split("/", path)) {
+  [] => "",
+  parts => "{join("/", parts)}/",
+}
 
 // A resolved module's path as a list — empty where the name resolves to no
 // file, so an import that names nothing draws no edge.
@@ -87,9 +148,15 @@ fn module_path_list(module_name: String) = match driver_module_path(module_name)
 // heap stood at 75.6 MB once the wheel's link was discovered, of which the
 // module texts are 3.7 MB, and the judgment carried the other 72 MB to its
 // end.
-fn driver_collect_dag(ref entry_module) = match driver_seeded() {
-  (seeded, seeded_visited) => match driver_collect_visit(entry_module, seeded, seeded_visited) {
-    ((final_buf, final_count), _final_visited) => slice(final_buf, 0, final_count),
+fn driver_collect_dag(ref entry_module) =
+  driver_collect_dag_resolved(entry_module, driver_resolve(entry_module, module_roots()))
+
+// The walk from an entry already resolved — the routes that enter the link
+// root with the entry's layer resolve it once, before the root, and hand the
+// resolution here rather than probing the roots again.
+fn driver_collect_dag_resolved(entry_module, resolved) = match driver_seeded() {
+  (seeded, seeded_visited) => match driver_collect_resolved(entry_module, resolved, None, seeded, seeded_visited) {
+    (((final_buf, final_count), _final_visited), _key) => slice(final_buf, 0, final_count),
   },
 } ~> arena
 
@@ -102,10 +169,10 @@ fn driver_collect_dag(ref entry_module) = match driver_seeded() {
 fn driver_collect_text(text) = {
   let imports = driver_extract_imports(text)
   match driver_seeded() {
-    (seeded, seeded_visited) => match driver_collect_visit_list(imports, seeded, seeded_visited) {
-      ((buf, count), _visited) => {
+    (seeded, seeded_visited) => match driver_collect_visit_list(imports, Some((User, "")), seeded, seeded_visited) {
+      (((buf, count), _visited), dep_keys) => {
         let extended = list_extend_to(buf, count + 1)
-        slice(list_set(extended, count, ("<stdin>", "<stdin>", Some(text), imports)), 0, count + 1)
+        slice(list_set(extended, count, ("<stdin>", "<stdin>", Some(text), dep_keys, User)), 0, count + 1)
       },
     },
   }
@@ -118,8 +185,10 @@ fn driver_collect_text(text) = {
 // E_MissingModule a phantom and refuse every compile.
 fn driver_seeded() = {
   let buf = make_list(16)
-  match driver_module_path("prelude") {
-    Some(_) => driver_collect_visit("prelude", (buf, 0), []),
+  match driver_resolve("prelude", module_roots()) {
+    Some(found) => match driver_collect_resolved("prelude", Some(found), None, (buf, 0), []) {
+      (collected_visited, _key) => collected_visited,
+    },
     None => ((buf, 0), []),
   }
 }
@@ -151,42 +220,74 @@ fn driver_seeded() = {
 // declaration in it then collided with itself. Resolution moves ABOVE
 // the check and the set keys the path, so a second edge to a module
 // already walked is the no-op that drawing an existing edge is.
-fn driver_collect_visit(ref module_name, own collected, own visited) with !Diagnostic = {
-  let resolved = driver_module_path(module_name)
+// The walk's step for one import edge: resolve the spelling under the
+// IMPORTER's roots, then collect. The answer carries the KEY the module was
+// walked under — its path, or its name when it has none — so the importer's
+// entry can record its deps as the identities they resolved to.
+fn driver_collect_visit(ref module_name, importer, collected, visited) with !Diagnostic = driver_collect_resolved(
+  module_name,
+  driver_resolve(module_name, import_roots(importer)),
+  importer,
+  collected,
+  visited
+)
+
+fn driver_collect_resolved(module_name, resolved, importer, collected, visited) with !Diagnostic = {
   // A module with no file is keyed by its name: a name never ends in `.mn`,
   // so it cannot meet a path.
-  let key = unwrap_or(resolved, module_name)
+  let key = match resolved {
+    Some((_, _, path)) => path,
+    None => module_name,
+  }
   if set_contains(visited, key) {
-    (collected, visited)
+    ((collected, visited), key)
   } else {
     let visited2 = set_insert(visited, key)
     match resolved {
       None => // No file: a terminal with no source and no deps, its path the places
-      // the resolver looked — E_MissingModule names them where the entry is
-      // checked.
+      // the resolver looked for the module that asked — E_MissingModule names
+      // them where the entry is checked. Its layer is its importer's: the
+      // world it would have joined.
       match collected {
         (buf, count) => {
           let extended = list_extend_to(buf, count + 1)
-          let searched = join(", ", module_probes(module_name))
-          let written = list_set(extended, count, (module_name, searched, None, []))
-          ((written, count + 1), visited2)
+          let searched = join(", ", candidate_paths(module_candidates(module_name, import_roots(importer))))
+          let written = list_set(extended, count, (module_name, searched, None, [], importer_layer(importer)))
+          (((written, count + 1), visited2), key)
         },
       },
-      Some(path) => driver_collect_present(module_name, path, collected, visited2),
+      Some((layer, root, path)) => driver_collect_present(module_name, layer, root, path, collected, visited2),
     }
   }
 }
 
-fn driver_collect_present(module_name, path, collected, visited2) = {
+fn importer_layer(importer) = match importer {
+  None => User,
+  Some((layer, _)) => layer,
+}
+
+fn driver_collect_present(module_name, layer, root, path, collected, visited2) = {
   let source = fs_read_file(path)
   let imports = driver_extract_imports(source)
-  // Visit dependencies first, then add self (post-order).
-  match driver_collect_visit_list(imports, collected, visited2) {
-    (after_deps_collected, after_deps_visited) => match after_deps_collected {
+  // The module's own edges probe from where IT was found: a user module's
+  // folder, a library module's root.
+  let own_importer = Some((
+    layer,
+    match layer {
+      User => path_dir(path),
+      Lib => root,
+      Compiler => root,
+    }
+  ))
+  // Visit dependencies first, then add self (post-order); the deps ride the
+  // entry as the KEYS the walk resolved them to, so no reader re-resolves a
+  // spelling.
+  match driver_collect_visit_list(imports, own_importer, collected, visited2) {
+    ((after_deps_collected, after_deps_visited), dep_keys) => match after_deps_collected {
       (buf, count) => {
         let extended = list_extend_to(buf, count + 1)
-        let written = list_set(extended, count, (module_name, path, Some(source), imports))
-        ((written, count + 1), after_deps_visited)
+        let written = list_set(extended, count, (module_name, path, Some(source), dep_keys, layer))
+        (((written, count + 1), after_deps_visited), path)
       },
     },
   }
@@ -194,42 +295,43 @@ fn driver_collect_present(module_name, path, collected, visited2) = {
 
 // What the walk resolved about one module, carried whole: the spelling that
 // reached it (for the human in a diagnostic), the path that IS its identity,
-// the source already read, and the import edges already lexed. Naming the
-// quad gives the layer partition a pin it can state and the four projections
-// below a subject.
-type ModuleEntry = (String, String, Option(String), [String])
+// the source already read, the import edges as the KEYS they resolved to,
+// and the layer of the root that found it. Naming the quint gives the layer
+// partition a pin it can state and the five projections below a subject.
+type ModuleEntry = (String, String, Option(String), [String], Layer)
 
-// The DAG element's four projections — one home each, so a consumer reads the
-// field instead of destructuring a positional quad at nine sites.
+// The DAG element's five projections — one home each, so a consumer reads
+// the field instead of destructuring a positional quint at nine sites.
 fn module_name_of(entry) with Pure = match entry {
-  (n, _p, _s, _i) => n,
+  (n, _p, _s, _i, _l) => n,
 }
 
 fn module_path_of(entry) with Pure = match entry {
-  (_n, p, _s, _i) => p,
+  (_n, p, _s, _i, _l) => p,
 }
 
 fn module_source_of(entry) with Pure = match entry {
-  (_n, _p, s, _i) => s,
+  (_n, _p, s, _i, _l) => s,
 }
 
 fn module_imports_of(entry) with Pure = match entry {
-  (_n, _p, _s, i) => i,
+  (_n, _p, _s, i, _l) => i,
+}
+
+fn module_layer_of(entry) with Pure = match entry {
+  (_n, _p, _s, _i, l) => l,
 }
 
 // The import edges of the module named `name`, as the IDENTITIES the
 // link's cells carry — each dep's own entry name (F0b). The walk resolved
-// every authored spelling to a path once; this reads the entry that path
-// belongs to, so two spellings of one file are one edge and a spelling no
-// entry resolves to names nothing.
+// every authored spelling once and recorded the key; this reads the entry
+// that key belongs to, so two spellings of one file are one edge and a
+// spelling no entry resolves to names nothing.
 fn entry_import_names(modules, name: String) = match find((e) => module_name_of(e) == name, modules) {
   Some(entry) => fold(
     [],
-    (acc, spelling) => match driver_module_path(spelling) {
-      Some(path) => match entry_name_of_path(modules, path) {
-        Some(dep) => push(acc, dep),
-        None => acc,
-      },
+    (acc, key) => match entry_name_of_path(modules, key) {
+      Some(dep) => push(acc, dep),
       None => acc,
     },
     module_imports_of(entry)
@@ -242,10 +344,14 @@ fn entry_name_of_path(modules, path: String) = match find((e) => module_path_of(
   None => None,
 }
 
-fn driver_collect_visit_list(ref modules, own collected, own visited) with !Diagnostic = fold(
-  (collected, visited),
+// The walk over one module's import list: each spelling collected under the
+// importer's roots, the keys gathered in import order.
+fn driver_collect_visit_list(ref modules, importer, collected, visited) with !Diagnostic = fold(
+  ((collected, visited), []),
   (acc, m) => match acc {
-    (c, v) => driver_collect_visit(m, c, v),
+    ((c, v), keys) => match driver_collect_visit(m, importer, c, v) {
+      (collected_visited, key) => (collected_visited, push(keys, key)),
+    },
   },
   modules
 )
@@ -392,10 +498,9 @@ fn module_decls_now(target: String) = match graph_module_now(target) {
 // find. A mechanism that
 // picks its readers' policy leaves one of them with no way to ask.
 // `Hβ.voice.comment-ref-gate-reads-the-flattened-link` carries the record.
-fn driver_entry_with_ranges(entry_module) =
-  driver_entry_scoped(entry_module, ScopeModule(entry_module))
+fn driver_entry_with_ranges(entry_module) = driver_entry_scoped(entry_module, Project)
 
-fn driver_entry_scoped(ref entry_module, dscope) = {
+fn driver_entry_scoped(ref entry_module, audience) = {
   // Discovery is a STRUCTURE read: the DAG walk parses each module only
   // for its imports, and the weave parse below re-reports every shape
   // with weave spans — so discovery narration is a duplicate in
@@ -403,23 +508,36 @@ fn driver_entry_scoped(ref entry_module, dscope) = {
   // every parse warning printed twice). ScopeNone silences exactly that
   // copy; discovery ERRORS still render.
   diag_scope(ScopeNone)
+  // The entry resolves ONCE, before the link root: the root takes the
+  // entry's layer (it is the program the developer asked for), and the walk
+  // takes the resolution rather than probing the roots a second time.
+  let resolved = driver_resolve(entry_module, module_roots())
   // Before discovery, because discovery MINTS (it parses each module's header
   // for imports) and REPORTS (E_MissingModule). Nothing in a compile runs
   // outside a module, so no reader carries an "if any" arm.
-  enter_link_root()
-  driver_weave(driver_collect_dag(entry_module), dscope)
+  enter_link_root(resolved_layer(resolved))
+  driver_weave(driver_collect_dag_resolved(entry_module, resolved), audience)
 }
 
 // The stdin program's link: the same discovery register and link root as a
-// file entry's, the same weave after it.
-fn driver_text_scoped(text, dscope) = {
+// file entry's, the same weave after it. A program read from stdin is the
+// user's.
+fn driver_text_scoped(text, audience) = {
   diag_scope(ScopeNone)
-  enter_link_root()
-  driver_weave(driver_collect_text(text), dscope)
+  enter_link_root(User)
+  driver_weave(driver_collect_text(text), audience)
+}
+
+// The register a route's audience asks for, read off the walk: the census
+// hears every module; the project is the layer of the ENTRY, the last module
+// the post-order walk appended.
+fn weave_scope(audience, modules) = match audience {
+  Census => ScopeAll,
+  Project => ScopeProject(module_layer_of(last(modules))),
 }
 
 // What discovery found, judged as ONE program in the walk's order.
-fn driver_weave(modules, dscope) = {
+fn driver_weave(modules, audience) = {
   let discovered = heap_mark()
   // THE WEAVE IS GONE. This fold used to concatenate every module into one
   // text and account line offsets so five later machines could put the module
@@ -429,10 +547,11 @@ fn driver_weave(modules, dscope) = {
   match fold([], range_of_entry, modules) {
     mods => {
       // The render register at its one home, set BEFORE any parse or judgment
-      // can narrate, so every user-target chain scopes to the file the user
-      // named (types.mn DiagScope; errors always render). It scopes by MODULE
-      // now rather than by a weave line range: spans are local from birth, so
-      // every module starts at line 1 and a range no longer names a file.
+      // can narrate, so every user-target chain scopes to the project the
+      // user's entry belongs to (types.mn DiagScope; errors always render).
+      // It scopes by LAYER: the module each report carries is compared with
+      // the entry's, never a name and never a weave line range.
+      let dscope = weave_scope(audience, modules)
       diag_scope(dscope)
       // The link's own phase line beside the judgment's (infer.mn) and the
       // compile's (pipeline.mn heap_line): where the heap stands once the
@@ -447,8 +566,7 @@ fn driver_weave(modules, dscope) = {
       // module's decls out of the weave by span containment — has no work
       // left, and rehome_seam_comments goes with it: the parser attaches
       // comments within ONE module now, so no comment can cross a seam.
-      let ast =
-        infer_modules_converged(map({ (m, _p, text) => (m, entry_import_names(modules, m), text) }, mods))
+      let ast = infer_modules_converged(map(judged_module(modules, ??), mods))
       (ast, mods)
     },
   }
@@ -498,25 +616,23 @@ fn driver_scan_of(ref modules) = {
       Some(text) => (
         module_path_of(entry),
         str_hash(text),
-        filter(
-          (dep_path) => contains_module(paths, dep_path),
-          flat_map(module_path_list, module_imports_of(entry))
-        ),
-        module_name_of(entry)
+        filter((dep_path) => contains_module(paths, dep_path), module_imports_of(entry)),
+        module_name_of(entry),
+        module_layer_of(entry)
       ),
-      None => (module_path_of(entry), 0, [], module_name_of(entry)),
+      None => (module_path_of(entry), 0, [], module_name_of(entry), module_layer_of(entry)),
     },
     modules
   )
 }
 
-fn scan_pairs(ref scan) = map({ (m, h, _, _) => (m, h) }, scan)
+fn scan_pairs(ref scan) = map({ (m, h, _, _, _) => (m, h) }, scan)
 
 // The name a scan entry carries for a path — the identity a cone module's
 // NModule import edges name its deps by (the deps ride the scan as paths).
-fn scan_name_of_path(scan, path: String) = match find({ (p, _, _, _) => p == path }, scan) {
+fn scan_name_of_path(scan, path: String) = match find({ (p, _, _, _, _) => p == path }, scan) {
   Some(entry) => match entry {
-    (_, _, _, name) => name,
+    (_, _, _, name, _) => name,
   },
   None => path,
 }
@@ -689,11 +805,19 @@ fn driver_incremental() = {
     let fresh = cone_buckets(cone)
     let old_asts = list_index(warm_asts, 0)
     // The full program reassembles in the scan's own order — the walk's,
-    // the cold route's, so the warm emission is the cold one's bytes: an
-    // unchanged module contributes its restored (already-inferred)
-    // bucket, a cone module its fresh one — lower and emit see the whole
-    // weave either way.
-    let merged = scan |> map({ (m, _, _, _) => (m, bucket_of(fresh, old_asts, m)) })
+    // the cold route's — so the warm emission is MEANT to be the cold
+    // one's bytes: an unchanged module contributes its restored
+    // (already-inferred) bucket, a cone module its fresh one, and lower
+    // and emit see the whole weave either way. MEASURED FALSE after a
+    // re-derived cone (2026-10-12): the superseded generations' nodes stay
+    // in the graph and the twin demand reads them, so one wheel source
+    // emitted 7,493 functions cold and 9,206 through a thirteen-module
+    // cone — 156 `map` twins for the cold route's one. The march's
+    // verb-parity leg passes because its compile meets no prior image. The
+    // demand walking the CURRENT modules' columns is the fix
+    // (Hβ.graph.module-nodes-are-a-column, its emit face); until then a
+    // candidate compiler is built cold.
+    let merged = scan |> map({ (m, _, _, _, _) => (m, bucket_of(fresh, old_asts, m)) })
     driver_warm_persist(entry, merged, cur_pairs)
     flatten(map({ (_, ss) => ss }, merged))
   }
@@ -721,17 +845,17 @@ fn manifest_hash_of(ref pairs, name: String) = match find({ (m, _) => m == name 
 // (the cone's readers looked each of them up by path again, four finds
 // per module, until 2026-10-06).
 fn downstream_closure(ref scan, changed) = {
-  let dag = map({ (m, _, deps, _) => (m, deps) }, scan)
+  let dag = map({ (m, _, deps, _, _) => (m, deps) }, scan)
   let cone = closure_fix(dag, changed)
-  filter({ (m, _, _, _) => module_in(cone, m) }, scan)
+  filter({ (m, _, _, _, _) => module_in(cone, m) }, scan)
 }
 
 fn scan_path(entry) = match entry {
-  (path, _, _, _) => path,
+  (path, _, _, _, _) => path,
 }
 
 fn scan_name(entry) = match entry {
-  (_, _, _, name) => name,
+  (_, _, _, name, _) => name,
 }
 
 fn closure_fix(ref dag, cone) = {
@@ -786,7 +910,7 @@ fn current_node(m: String) = match module_handle_of_path(m) {
 }
 
 fn cone_module(scan, entry) = match entry {
-  (path, _, deps, name) => (name, map(scan_name_of_path(scan, ??), deps), fs_read_file(path)),
+  (path, _, deps, name, layer) => (name, map(scan_name_of_path(scan, ??), deps), fs_read_file(path), layer),
 }
 
 // Each cone module's statement bucket for the reassembly, read off the
@@ -797,7 +921,7 @@ fn cone_module(scan, entry) = match entry {
 fn cone_buckets(cone) = map(cone_bucket, cone)
 
 fn cone_bucket(entry) = match entry {
-  (path, _, _, name) => (
+  (path, _, _, name, _) => (
     path,
     match module_decls_now(name) {
       Some(decls) => decls,
@@ -820,11 +944,12 @@ fn cone_bucket(entry) = match entry {
 // re-judged.
 fn driver_session_cone(ref entry_module, ref ranges, forget) = {
   diag_scope(ScopeNone)
-  enter_link_root()
-  let modules = driver_collect_dag(entry_module)
+  let resolved = driver_resolve(entry_module, module_roots())
+  enter_link_root(resolved_layer(resolved))
+  let modules = driver_collect_dag_resolved(entry_module, resolved)
   let scan = driver_scan_of(modules)
   let cone = downstream_closure(scan, changed_modules(map(range_text_pair, ranges), scan_pairs(scan)))
-  diag_scope(ScopeModule(entry_module))
+  diag_scope(weave_scope(Project, modules))
   rederive_cone(cone, scan, forget)
   (map(scan_path, cone), fold([], range_of_entry, modules))
 }
@@ -849,6 +974,18 @@ fn range_of_entry(acc, entry) = match module_source_of(entry) {
   },
 }
 
+// A range as the judgment takes it: the module's name, its import edges as
+// entry names, its text and its layer — the layer read off the walk's entry
+// for the name, the one place the root that found the module is recorded.
+fn judged_module(modules, range) = match range {
+  (m, _p, text) => (m, entry_import_names(modules, m), text, entry_layer_of(modules, m)),
+}
+
+fn entry_layer_of(modules, name: String) = match find((e) => module_name_of(e) == name, modules) {
+  Some(entry) => module_layer_of(entry),
+  None => User,
+}
+
 // Walk the post-order DAG and pair each module with its in-DAG deps.
 // In-DAG: dep PATHS that appear among the collected modules (filters
 // out missing-module fallbacks that have no source). Returns
@@ -870,13 +1007,7 @@ fn driver_collect_dag_with_deps(ref entry_module) = {
   let modules = driver_collect_dag(entry_module)
   let paths = map(module_path_of, modules)
   map(
-    (entry) => (
-      entry,
-      filter(
-        (dep_path) => contains_module(paths, dep_path),
-        flat_map(module_path_list, module_imports_of(entry))
-      )
-    ),
+    (entry) => (entry, filter((dep_path) => contains_module(paths, dep_path), module_imports_of(entry))),
     modules
   )
 }

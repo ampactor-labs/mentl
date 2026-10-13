@@ -1042,7 +1042,7 @@ fn refusal_reason(inner) with !Mutate = match inner {
   (_, dfacts, _, _) => match dfacts {
     [] => Inferred("the hole's refinement is not satisfied"),
     [first, ..._] => match first {
-      (_, msg, _) => Inferred(msg),
+      (_, msg, _, _) => Inferred(msg),
     },
   },
 }

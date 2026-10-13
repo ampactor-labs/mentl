@@ -2,7 +2,7 @@
 // host is a projection of the reads it performs.
 //
 // A variable's NAME is the effect's instance: `env("PORT")` performs
-// `Environ("PORT")`, grounded by the literal at the read (the op's `name`
+// `Environ("PORT")`, grounded by the literal at the read (the op's name
 // parameter names the effect's), so `!Environ` and `!Environ("DATABASE_URL")` are
 // provable negations and `mentl query <entry> env` states every variable the
 // program reads beneath a host install, with the line that reads it. The
@@ -15,16 +15,17 @@
 // The module is named environ, never env: `import env` is the compiler's own
 // type environment (src/env.mn), and two modules of one name are one module
 // to the resolver. The effect is Environ, never Env, for the same reason one
-// layer down: every program that imports io links the compiler's types,
-// whose environment type is named Env, and an effect and a type of one name
-// are one env entry — the type's, so the install records lose the arm (a
-// program reading a variable trapped, measured 2026-10-06).
+// layer down: the compiler's own environment type is named Env, and an effect
+// and a type of one name are one env entry in a link that holds both — the
+// type's, so the install records lose the arm (a program reading a variable
+// trapped, measured 2026-10-06, when every program that imported io linked
+// the compiler's types).
 import io
 
 import strings
 
 // `env` is a REQUIRED read of a variable named at the read — a computed name
-// is `E_EnvNameUngrounded`, because nothing could check it at launch.
+// is E_EnvNameUngrounded, because nothing could check it at launch.
 // `env_opt` is the optional read of any name, its absence the program's own
 // question. A computed name under env_from_host is reported as a broad host
 // demand, since no finite launch-time roster can narrow it.

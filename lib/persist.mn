@@ -31,6 +31,8 @@
 // mid-spawn is Phase C's fusion work, not claimed here.
 import memory
 
+import fs
+
 import io
 
 import strings
@@ -72,8 +74,8 @@ effect Persist {
   // RESUME BARRIER lives in the param's row: a crashed branch re-enters
   // from its wire and RE-RUNS the thunk (the SPACE=TIME fork, §4④), so
   // an external effect in the branch would fire AGAIN on replay — the
-  // row severs image-external effects (WASI/Filesystem/Network; the
-  // image restore rolls back Alloc/Memory but cannot un-send a packet),
+  // row severs image-external effects (WASI and Filesystem — the
+  // image restore rolls back Alloc/Memory but cannot un-write a file),
   // and ordinary row checking at the argument edge is the whole gate:
   // absorb the effect before the boundary or own the replay in a
   // handler. The durable-execution field enforces exactly this
@@ -81,7 +83,7 @@ effect Persist {
   // the first run. persist(root, path) stays word-rooted — a DATA root
   // (the warm compile's asts) replays nothing, so it carries no gate;
   // a thunk root's re-entry call is gated at its own call site.
-  persist_branch(() -> a with !WASI + !Filesystem + !Network) -> PersistHandle
+  persist_branch(() -> a with !WASI + !Filesystem) -> PersistHandle
   join_persist(PersistHandle) -> a
 }
 
@@ -193,14 +195,13 @@ fn image_write_wire(ref hdr, ref path) = {
 // handler's RESIDUAL — every install then honestly carried Persist to
 // the root and the row gate refused programs whose only Persist handler
 // was this very install. The policy is a direct write, never a re-entry.
-// The write is the IMPL, not the op, and that is forced rather than lazy:
-// the Filesystem effect is declared in src/types.mn, so a lib/ module
-// cannot perform it and still compile standalone. The frontier's persist
-// shadow leg proved it — `fs_write_file` answered E_MissingVariable at
-// 3405 in the subset link the moment the op was substituted here. The
-// declared `Filesystem` row above stays honest about what a caller must
-// grant; the effect's own home is what keeps the op out of reach.
-// Hβ.io.filesystem-impl-bypasses-the-effect carries the boundary.
+// The write is the IMPL, not the op — a bypass the effect-seam leg counts
+// (Hβ.io.filesystem-impl-bypasses-the-effect): performing the op here would
+// carry Filesystem into this handler's residual the way the re-entry above
+// would carry Persist, to every install's root. The capability's one home is
+// lib/fs.mn — declaration, handler and implementations — which this module
+// imports; the declared `Filesystem` row above stays honest about what a
+// caller must grant.
 // The BRANCH wire's writer, and the one place a pack still runs inside an
 // arm. persist_branch checkpoints BEFORE invoking the branch, at a path
 // derived from the handler's own state, so neither half can move to the

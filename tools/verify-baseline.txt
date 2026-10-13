@@ -446,7 +446,6 @@ census_errors_max: 0
 # which is on the board. Falls to 0, then both it and this line are deleted and
 # comment-audit gates directly — and both ratchets dissolve into `mentl audit`,
 # the projection they are larval forms of.
-comment_refs_max: 0
 
 # 2026-07-31: the MOVERS ratchet — the condemned second pass's vital sign
 # (PLAN, THE RESOLVED DESIGN D5/D8): the count of schemes the final judges
@@ -1001,7 +1000,13 @@ desugar_vocabulary: 47
 # 2026-10-03 · 62 -> 61 · the count fell at #126 (a3bcc7e0, the block-run
 # rework) and the ceiling stood at 62 through #129's first pin, the fall
 # printed and not held; held here.
-authored_own_max: 53
+# 2026-10-13 · 53 -> 49 · Landing 1: the import walk's four `own` markers
+# (driver_collect_visit's and driver_collect_visit_list's accumulators) left
+# when the walk's resolved step took its accumulators unmarked — the two
+# helpers the ratchet refused at 55 and 664 carry none, the grade reading
+# each parameter; `mentl check` named the two kept markers T_OwnUnconsumed
+# the moment their callee stopped consuming.
+authored_own_max: 49
 # 2026-09-17: 807 -> 805. Two markers retired with the duplicate map
 # primitive's deletion — the honest grade needs no marker where there is no
 # second copy to annotate.

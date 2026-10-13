@@ -29,10 +29,18 @@ fn scale(x) with Pure = x * 2
 // branches only; nothing here builds a value on the heap, so the claim holds.
 fn bound(x, lo, hi) with !Alloc = if x < lo { lo } else if x > hi { hi } else { x }
 
-// !Network — anything EXCEPT the network. The negation subtracts one capability
-// from the universe of allowed effects. Load a function proven `!Network` into
-// an untrusted chain and it cannot reach the network, whatever else it does.
-// The proof is the sandbox; there is no runtime firewall to trust.
+// A negation names a DECLARED effect. The program says what the network IS —
+// one capability with its operations — and a clause naming an effect no
+// declaration backs is refused (E_MissingVariable): a negation of nothing
+// would prove nothing.
+effect Network {
+  fetch(url: String) -> String
+}
+
+// !Network — anything EXCEPT the network. The negation subtracts that one
+// capability from the universe of allowed effects. Load a function proven
+// `!Network` into an untrusted chain and it cannot reach the network, whatever
+// else it does. The proof is the sandbox; there is no runtime firewall to trust.
 fn local_only(x) with !Network = bound(x, 0, 100)
 
 fn main() = {

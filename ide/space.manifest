@@ -12,6 +12,7 @@ lib lib/strings.mn
 lib lib/lists.mn
 lib lib/threading.mn
 lib lib/io.mn
+lib lib/fs.mn
 lib lib/prelude.mn
 lib lib/math.mn
 lib lib/dsp/clock.mn
@@ -21,7 +22,6 @@ lib lib/dsp/spectral.mn
 lib lib/dsp/cfc.mn
 lib lib/dsp/processors.mn
 lib lib/audio/wav.mn
-lib src/types.mn
 project examples/pulse/render
 program lib/tutorial/00-hello.mn
 program lib/tutorial/01-graph.mn
