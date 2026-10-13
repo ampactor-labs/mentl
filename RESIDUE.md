@@ -3945,10 +3945,16 @@ gate's reason is the parameter cell's own). The type sibling got its
 Reason at AN-1 (2026-10-03): `ETypeMismatch(Ty, Ty, Reason, Span)`, the
 Reason the unify was asked with rendered on the diagnostic's own line
 (`reason_line`), so an install's mismatch names the arm whose value is its
-own. What remains: the two spans as two LOCATIONS the address surface can
-walk (the declaration and the writing site are one line today), and the
-unify arms' construction reasons (`Inferred("…")`) rendered as the
-developer's own words rather than the algebra's.
+own. SECOND FACE LANDED 2026-10-13 (Landing 2): the declaration's refusal
+carries the chain of sites the refused effect enters through, each a
+`module:line:col` the address surface walks
+(`Hβ.why.row-says-where-each-effect-enters`, CLOSED). What remains: the
+WRITE-TIME gate's refusal — a callback's row violating a HOF's declared
+negation, reported where the row is written (`row_gate`, src/effects.mn) —
+still names the declaration alone, since its violating row arrives through
+the argument rather than the body; and the unify arms' construction reasons
+(`Inferred("…")`) rendered as the developer's own words rather than the
+algebra's.
 
 ### `Hβ.infer.nested-frame-prune-drops-parameter-row` — CLOSED 2026-09-25
 
@@ -10234,7 +10240,21 @@ stored value and returned value may differ, and L2's ring (2026-09-27) makes
 it cheap: the site stores its input and returns the slot D behind the head,
 one load beside the store the tick already makes.
 
-### `Hβ.diag.effect-mismatch-at-the-call` — OPEN
+### `Hβ.diag.effect-mismatch-at-the-call` — CLOSED 2026-10-13
+
+CLOSED at Landing 2 (LEDGER, the 2026-10-13 entry after pin 6e35c6db), with
+one deviation from the sentence below stated here: the refusal's primary SPAN
+stays the declaration's, because the clause the body violates is the
+declaration's own decision; the CALL is the first hop of the Reason the
+refusal carries (`mismatch_reason`, src/infer.mn — `declared as quiet; WASI
+enters at tests/frontier/mn-effect-enters:19:26 through `helper` → …`),
+named as `module:line:col` so the Lens walks to it, and every hop beyond it
+down to the op, or to the construct that charges by itself, is named the
+same way. On tests/micros/mn-interp-alloc.mn the refusal at 7:1-7:33 reads
+`declared as label; Alloc enters at tests/micros/mn-interp-alloc:7:29,
+rendering the value` — the splice `{x}` inside the interpolation the record
+below asked for at column 27, where the allocation is made; on 2026-10-06
+the refusal named neither. The record as born:
 
 (M1's second test). An allocation
 added beneath Pulse's per-sample function (`examples/pulse/render/main.mn:378`,
@@ -18414,7 +18434,30 @@ F's format-lift, the rest by what the artifact does with the shape today).
 
 **Builds:** `E_ConcatTypeMismatch` `E_HandlerUninstallable` `E_ImportNameCollision` `E_PipeHoleAmbiguous` `E_PipeIntoComplete` `E_StatementSemicolon` `W_CapabilityEmpty` `W_EmptyRow` `W_RedundantRepr` `W_Suggestion`
 
-### `Hβ.why.row-says-where-each-effect-enters` — OPEN
+### `Hβ.why.row-says-where-each-effect-enters` — CLOSED 2026-10-13
+
+CLOSED at Landing 2 (LEDGER, the 2026-10-13 entry after pin 6e35c6db). The
+walk is `effect_entry` (src/infer.mn): from a node to the earliest child
+whose subtree row carries the effect (`row_of_subtree`, C5's notes), until a
+node none of whose children carries it — a call to an op is the perform and
+the chain ends at the effect's declaration; a call to a module declaration is
+entered; a value in scope is where the walk stops; a callee whose own body
+does not carry the effect took it in through a function value, whose body is
+entered. Each hop is `EffectEnters(effect, site, next)`, a Reason, so three
+surfaces read one walk: `E_EffectMismatch`'s Reason at a declaration whose
+negation the body violates (`mismatch_reason`), the caret's Why at a
+declaration (`effect_entries_of`, one chain per effect of its row, a
+`NoteEffectChain` on the page) and `mentl why <entry> <fn> [<Effect>]`.
+The gate this entry named ran first: `mentl why src/main.mn infer_var_ref
+WASI` ended at a perform site — `infer_var_ref → seq_face_ty → instantiate →
+generalize → generalize_pair → chase_deep → chase_deep_at → chase_deep_build
+→ eprint_string → fd_write_bytes → fd_write`, the depth tripwire in
+`chase_deep_build` writing to stderr — and the tripwire is the
+`E_InternalInvariant` report it always meant, so the host leaves the judgment
+of a variable reference in the same landing. The frontier leg
+`effect-enters` holds the three-deep fixture's chain (RED on boot 6e35c6db:
+the message ended at `declared as quiet`, the why verb ignored its third
+word). The record as born:
 
 BORN 2026-10-06 — the 2026-10-06 program, landing N6 (PLAN §11, THE STANDING CURSOR). The design below is the program's own text for this landing, moved here verbatim at the §0.3 integration; its section references (§2–§7) are the program's own numbering, and the whole program, with the seven audit lenses' answers, is at commit 42a94dc0 (docs/record/2026-10-06/).
 

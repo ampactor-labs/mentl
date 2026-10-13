@@ -1467,7 +1467,7 @@ fn render_query_result(result) = match result {
   QRChain(hops) => "→ {int_to_str(len(hops))} hops in chain",
   QREffects(row) => "→ {show_effrow(row)}",
   QROwnership(params) => "→ {int_to_str(len(params))} params",
-  QRWhy(reason) => show_reason(reason),
+  QRWhy(reasons) => join("\n", map(show_reason, reasons)),
   QRRefs(sites) => // The refs facet renders WHAT the graph computed, not just how much:
   // one located line per inbound use-edge (the seam the propose-facet fix
   // convicted once already — the graph computed it, the terminal threw it
@@ -1658,6 +1658,17 @@ fn parse_query_string(scope: String, q) = {
     [] => QUnknown(q),
     [w0] => build_question(classify_query_verb(w0), "", q, scope),
     [w0, w1] => build_question(classify_query_verb(w0), w1, q, scope),
+    [w0, w1, w2] => // Three words: a scoped question (`ghosts in asm`), the why verb's
+    // effect question (`why quiet WASI`), or a verb whose argument is the
+    // last word (`refs of X`).
+    if w1 == "in" {
+      QIn(parse_query_string(scope, w0), w2)
+    } else {
+      match classify_query_verb(w0) {
+        QVWhy => QWhy(w1, Some(w2)),
+        verb => build_question(verb, w2, q, scope),
+      }
+    },
     _ => if nth(words, len(words) - 2, "") == "in" {
       QIn(parse_query_string(scope, join(" ", take(len(words) - 2, words))), last(words))
     } else {
@@ -1675,7 +1686,7 @@ fn build_question(verb, arg, raw, scope: String) = match verb {
   QVType => QTypeOf(arg),
   QVEffects => QEffects(arg),
   QVOwnership => QOwnership(arg),
-  QVWhy => QWhy(arg),
+  QVWhy => QWhy(arg, None),
   QVRefs => QRefsOf(arg),
   QVProvider => QHandlerProvider(arg),
   QVFlow => QFlowOf(arg),

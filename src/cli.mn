@@ -119,10 +119,13 @@ fn where_verb_args(words) = match words {
 }
 
 // The bare why verb (SYNTAX's lag list, first name retired): the same
-// Reason-chain walk the query facet serves, surfaced as its own verb.
+// Reason-chain walk the query facet serves, surfaced as its own verb. A
+// third word names an effect of the declaration's row, and the answer is
+// that effect's chain to the site that charges it.
 fn why_verb_args(words) = match words {
-  [target, name, ..._] => Invocation(VQuery(path_to_module(target), "why {name}")),
-  short => ParseError("why needs a target and a name: mentl why <path> <name>"),
+  [target, name, eff, ..._] => Invocation(VQuery(path_to_module(target), "why {name} {eff}")),
+  [target, name] => Invocation(VQuery(path_to_module(target), "why {name}")),
+  short => ParseError("why needs a target and a name: mentl why <path> <name> [<Effect>]"),
 }
 
 // The accept verb's subject is an ADDRESS, parsed by the same shape read the
@@ -223,7 +226,12 @@ fn verb_specs() = [
     where_verb_args,
     "derived badges — repr width, resume cardinality, fanout schedules"
   ),
-  VerbSpec("why", "<path> <name>", why_verb_args, "the Reason chain walked to root"),
+  VerbSpec(
+    "why",
+    "<path> <name> [<Effect>]",
+    why_verb_args,
+    "the Reason chain walked to root, then where each effect of the row enters; with the effect, that chain alone"
+  ),
   VerbSpec("teach", "[path]", opt_target(VTeach, ??), "the gradient narrated"),
   VerbSpec("doc", "[path]", opt_target(VDoc, ??), "documentation projection"),
   VerbSpec("test", "[path]", opt_target(VTest, ??), "the test chain"),

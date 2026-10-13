@@ -175,8 +175,9 @@ type Question
   | QEffects(String)
   // "ownership of NAME"
   | QOwnership(String)
-  // "why NAME" — walks reason DAG
-  | QWhy(String)
+  // "why NAME" — the declaration's reason, then the chain of each effect its
+  // row carries; "why NAME EFFECT" — that effect's chain alone
+  | QWhy(String, Option(String))
   // "refs of NAME" — for rename
   | QRefsOf(String)
   // "writes of FIELD" — every value written into a handler state field of
@@ -260,7 +261,9 @@ type QueryResult
   | QRChain([(Int, GNode)])
   | QREffects(EffRow)
   | QROwnership([TParam])
-  | QRWhy(Reason)
+  // The chains a why question answers with: the declaration's own reason
+  // first, then one per effect of its row, or the one effect's chain alone
+  | QRWhy([Reason])
   // The refs sites as (module, span) PAIRS — the same shape the census and
   // decls facets already answer in. This facet was the last holdout carrying
   // a BARE span, and a bare span is not an address: `at 3090:3` names a line
@@ -403,13 +406,21 @@ fn query_answer(q) = match q {
       },
     },
   },
-  QWhy(name) => match env_lookup(name) {
+  QWhy(name, eff) => match env_lookup(name) {
     None => QRError("not found: {name}"),
     Some(entry) => match entry {
       (_, reason, _) => // Walk the reason to ROOT — why_expand chases each Fresh(id) through
       // the graph to its resolved reason, so intent is walkable, not a chain
-      // ending in dangling unification vars.
-      QRWhy(why_expand(reason, 0)),
+      // ending in dangling unification vars. Then the row: one chain per
+      // effect the declaration's row carries, from the declaration to the
+      // site that charges it, or the one chain the question names.
+      match eff {
+        None => QRWhy([why_expand(reason, 0)] ++ decl_effect_chains(name)),
+        Some(e) => match filter(chain_enters(e, ??), decl_effect_chains(name)) {
+          [] => QRError("the row of {name} carries no {e}"),
+          chains => QRWhy(chains),
+        },
+      },
     },
   },
   QRefsOf(name) => // Every reference to NAME is a VarRef node in the one graph (the parser
@@ -2250,16 +2261,6 @@ fn round_trip_failure(face: String, head: String) = match "{head} 0" |> lex |> p
 // or op, under one naming, so a variable two lines share reads as one name.
 fn named_lines(head: String, line, items) with !Mutate = [head] ++ map(line, items) ~> var_names
 
-// The declaration a global name names: its one module-level declaration,
-// read off the decls column, which holds every judged declaration — a
-// block's `let`s and nested fns beside a module's own. A module-level name is
-// unique in the link (`E_DuplicateFnName`), so the first is the one.
-fn module_decl(name: String) with !Mutate = find(module_decl_named(name, ??), graph_decls_at())
-
-fn module_decl_named(name: String, h) = decl_is_named(name, h) && at_module_level(h)
-
-fn decl_is_named(name: String, h) = body_decl_name(graph_node_body(h)) == name
-
 // Where a declaration stands: the module its node registered under and the
 // line the parser wrote.
 fn decl_at(h) with !Mutate = match parse_span_of(h) {
@@ -3044,8 +3045,21 @@ fn why_expand(reason, depth) = if depth > 20 {
         _ => why_expand(resolved, depth + 1),
       },
     },
+    EffectEnters(eff, site, next) => EffectEnters(eff, site, why_expand(next, depth + 1)),
     _ => reason,
   }
+}
+
+// The entry chains of the declaration a global name names — one per effect
+// its row carries — and whether a chain is the named effect's.
+fn decl_effect_chains(name: String) = match module_decl(name) {
+  Some(dh) => effect_entries_of(dh),
+  None => [],
+}
+
+fn chain_enters(e: String, chain) = match chain {
+  EffectEnters(eff, _, _) => eff == e,
+  _ => false,
 }
 
 // Fill a typed hole with THE sole proven survivor from the Synth chain,

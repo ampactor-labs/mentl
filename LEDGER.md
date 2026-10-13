@@ -35,6 +35,85 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-10-13 · pin c939f5b843a52fd5 (CLEAN m2 == m3; m3 == m4 measured; the landing's second pin — the first, 70928b6e, was superseded once the claim-reading pass's two refuted renders were fixed) · LANDING 2 — A REFUSAL NAMES ITS CAUSE: THE WALK FROM A DECLARATION'S ROW TO THE SITE THAT CHARGES EACH EFFECT, READ BY THE REFUSAL, THE CARET AND THE WHY VERB
+  ONE WALK — `effect_entry` (src/infer.mn): from a node to the earliest
+  child whose subtree row carries the effect (`row_of_subtree` over the
+  charge every node notes since C5), until a node none of whose children
+  carries it, the SITE; a call to an op is the perform and the chain ends at
+  the effect's declaration, a call to a module declaration is entered (the
+  one judgment holds every module's notes, so the walk crosses into the
+  library), a value in scope is where it stops, and a callee whose own body
+  does not carry the effect took it in through a function value, whose body
+  is entered. Each hop is a Reason, `EffectEnters(effect, site, next)`, so
+  THREE SURFACES READ IT: `E_EffectMismatch` at a declaration whose negation
+  the body violates carries the first refused effect's chain
+  (`mismatch_reason`; the span stays the declaration's, whose clause is the
+  decision the body breaks — the deviation `Hβ.diag.effect-mismatch-at-the-
+  call` records), the caret's Why at a declaration lists one chain per
+  effect of its row (`effect_entries_of`; `NoteEffectChain` on the page,
+  walked whole where a type chain stops at eight hops), and `mentl why
+  <entry> <fn> [<Effect>]` prints them (`QWhy(String, Option(String))`,
+  `QRWhy([Reason])`; a third word the verb used to drop). On the three-deep
+  fixture (tests/frontier/mn-effect-enters.mn) the refusal reads `declared
+  as quiet; WASI enters at …:19:26 through `helper` → at …:15:3 through
+  `log_it` → at …:12:18 through `print_string` → at io:209:3 through
+  `fd_write_bytes` → at io:187:3 through `fd_write` → declared as fd_write,
+  an op of WASI declared at io:45:1` (RED on boot 6e35c6db: `declared as
+  quiet` and nothing after it). THE GATE THE PEER NAMED RAN FIRST and found
+  what N6 predicted it would: `mentl why src/main.mn infer_var_ref WASI`
+  ends at the depth tripwire in `chase_deep_build` writing to stderr — the
+  compiler's judgment of every variable reference performed the host for a
+  sentence meant never to print — and the tripwire is the
+  `E_InternalInvariant` report it meant (0 narrations, the wheel's rows
+  judged clean through the boot). THE SHIM: Landing 1's `mentl_arg_path`
+  kept a path as written only when its directory IS the cwd or /tmp itself,
+  so `src/main.mn` went to the guest absolute, resolved under the user root,
+  and `mentl check src/main.mn` from the repo root refused with
+  E_MissingModule for `types` — found at this landing's first verb, through
+  the installed command, while the board's own shim legs ran paths outside
+  the cwd, which that rule handled, and never the wheel's entry from the
+  repo root. Two questions
+  of a path's directory, answered apart (`mentl_dir_under_cwd`,
+  `mentl_dir_mounted`): a path under the cwd keeps its spelling; a path
+  outside it goes to the guest absolute and gets a preopen unless /tmp or
+  the cwd already mounts it — the first cut answered both with one predicate
+  and the frontier's own shim leg went RED, `mentl run ../../user-link/
+  owes.mn` from a cwd under /tmp kept its relative spelling and could not
+  climb through the cwd preopen. The frontier leg `shim-path-under-cwd`
+  installs the tree's own shim into a bin of its own and checks src/main.mn
+  through it (RED on the Landing 1 shim). KILLS: the
+  module name a hop renders is the entry's spelling
+  (`tests/frontier/mn-effect-enters`, never the bare stem the first leg
+  grepped for); the caret's chains first rendered under the type chain's
+  label (`its type: WASI enters …`) and were cut at eight hops with the
+  Alloc chain's op unseen — a note kind of their own, walked whole; a
+  `with Pure` on a phrase helper that interpolates was refused by the row
+  (interpolation allocates); and two false sentences the walk itself
+  printed, found by the claim-reading pass: a constructor call rendered as
+  "`EMissingVariable`, which this link does not declare" (a constructor is
+  no module declaration — it reads "building `EMissingVariable`" now, and a
+  block's nested fn is entered through the decls column) and a pattern's
+  rest, whose cut is charged on the scrutinee it is cut from, rendered as
+  "the reference to `xs`" (a reference charges nothing; the hop says "what
+  is built from `xs` here"). Peers CLOSED: `Hβ.why.row-says-where-each-
+  effect-enters`, `Hβ.diag.effect-mismatch-at-the-call`; `Hβ.diag.effect-
+  mismatch-reason` records its second face landed and its write-time gate
+  as the remainder. THE CLAIM-READING PASS (one reader, 72 verb runs,
+  nothing edited): sixteen sentences refuted, every one rewritten or the
+  code behind it fixed before this commit — the two false renders above;
+  "to the op it ends at" in PLAN, SYNTAX, PROVENANCE and two comments, where
+  a chain ends at a splice, a function value entered or a value in scope as
+  often as at an op; "every charge is noted on the node that makes it",
+  which a pattern's rest refutes (its charge is the scrutinee's node); a
+  hop quoted as `quiet:19:26` where the render is the entry's spelling; the
+  Landing 1 shim described as keeping only the cwd when it also kept /tmp,
+  and the board as never running the shim when three frontier legs do;
+  "an absolute spelling … never reaches src/" where main's own imports
+  resolve in its folder and wasm.mn's do not; and "no backticks in this
+  heredoc" over a heredoc with three escaped ones. Unverifiable and left
+  as the march's own readings: the m3 leg's cost line and the board's
+  counts in PROVENANCE. m3 leg:
+  39.26 s wall, 464 MB peak RSS (475,392 KB), 635,498 lines, census 0.
 - 2026-10-13 · pin 6e35c6db5665f613 (CLEAN m2 == m3; m3 == m4 measured) · LANDING 1 — THE USER'S LINK IS THE USER'S: A MODULE'S LAYER IS A FACT, A REPORT CARRIES IT, PROSE AND EFFECT NAMES RESOLVE IN THE MODULE'S OWN REACH
   ONE NEW FACT — a module's LAYER (`type Layer = User | Lib | Compiler`),
   read off the root that resolved it, recorded on the module node and carried

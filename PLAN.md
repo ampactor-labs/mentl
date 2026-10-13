@@ -1227,6 +1227,7 @@ in `RESIDUE.md` does not exist. §11 names the peers each phase touches.
 # ── the BOOT ERA (post-first-light, 2026-07-10): boot/mentl.wasm IS the compiler ──
 bash tools/state.sh            # THE BOARD, ground FIRST: git → verify → march → frontier → proof-exactness → crown → effect-identity → instrument → threads → ide, one scoreboard; --quick = verify only
 mentl verify [path]            # THE BOARD, in the medium: the standing bounds on its own source, read off ONE judged graph (src/board.mn carries each bound WITH its justification); a breach REFUSES, an unread or unclean weave refuses rather than measuring less
+mentl why <file> <fn> [<Effect>]   # the declaration's reason, then one chain per effect of its row from the declaration to the site that charges it (each hop a site at module:line:col — a call, a stage, a tee, a function value entered, or a construct that charges by itself — ending at the op where the chain reaches one); with the effect named, that chain alone — the walk E_EffectMismatch's Reason carries
 bash tools/verify.sh           # the floor the verb has not absorbed: micros through the host (the compiler judges, the mentl command assembles and runs each RUN line's module), the sha chain, the world outside the graph — STAMPED green (unchanged tree answers in ms; FORCE_VERIFY=1 re-runs)
 bash tools/march-gate.sh --micros   # rungs + battery through boot's wheel-emitted m2 (reads the shared .build/m2cache)
 bash tools/march.sh            # THE RATCHET: boot→m2→m3, ASSERTS m2 == m3; on m2 ≠ m3 runs m4 ITSELF and rules TRANSITION (re-pin from m3) vs BROKEN
@@ -2311,8 +2312,10 @@ nothing installed only to swallow an op nobody reads.
   diagnostic catalog is a projection (`Hβ.diag.catalog-as-projection`):
   `mentl diagnostics` projects it from the constructors, and the docs cannot
   name a class that does not exist. A row says where each effect enters
-  (`Hβ.why.row-says-where-each-effect-enters`): the Why walk from a
-  function's row to the node whose note charges the effect.
+  (`Hβ.why.row-says-where-each-effect-enters`, LANDED 2026-10-13 at Landing
+  2): the Why walk from a function's row to the node whose note charges the
+  effect — `E_EffectMismatch` carries it, the caret lists one per effect,
+  `mentl why <file> <fn> <Effect>` prints it.
 - **M2–M5, M7, M10, M11 · The module is a scope.** The facets read the link
   and two facets may not disagree (`Hβ.query.facets-read-the-link`); layer
   is a fact of the module node and lib stands on its own

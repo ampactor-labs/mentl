@@ -1741,6 +1741,20 @@ type Reason
   // and they accepted — and that is intent the graph carries losslessly
   // (PLAN §0 property 3), never a fact the source text could hold.
   | Accepted(String, Reason, Reason)
+  // WHERE AN EFFECT ENTERS (2026-10-13): one hop of the walk from a
+  // declaration's row to the site that charges the effect — the effect's
+  // name, the SITE node (the declaration at the chain's head; a call, a
+  // stage, a tee, a function value entered or a construct that charges by
+  // itself at each hop; the effect's declaration where the chain reaches
+  // one of its ops) and the next hop. The terminal is the op's `Declared`
+  // name, or the `Inferred` sentence for where the walk stops short of an
+  // op — a value in scope, a constructor built, a construct's own charge.
+  // Every charge is noted on a node of the construct that makes it, so the
+  // chain is read off those notes, never stored: `E_EffectMismatch` carries
+  // it from a declaration whose negation the body violates, the caret's Why
+  // lists one per effect of a declaration's row, and `mentl why <entry>
+  // <fn> <Effect>` prints it.
+  | EffectEnters(String, Int, Reason)
 
 // Caret — the user's text-attention position. ONE input among many to
 // Cursor's argmax computation. Updated by the editor's transport
@@ -1929,7 +1943,9 @@ type TeachMode = TmAdd | TmAsk | TmNeed | TmTighten | TmNone
 // member, the computed question, a name the medium would not offer with
 // its Why, and the install that serves a perform, under the proposal; an
 // open obligation at its own module and span, under verify; a hop of the
-// Why, and the chain a type is read from with its own hops.
+// Why, the chain a type is read from with its own hops, and the chain an
+// effect of a declaration's row enters through, from the declaration to the
+// site that charges it.
 type Note
   = NoteLede(String)
   | NoteMember(String)
@@ -1939,6 +1955,7 @@ type Note
   | NoteObligation(String, String, Span)
   | NoteHop(String)
   | NoteTypeChain(String, [String])
+  | NoteEffectChain(String, [String])
 
 // One aspect of the ring with what stands under it.
 type RingFact = RingFact(Aspect, [Note])
@@ -5767,6 +5784,46 @@ fn reason_phrase(reason) with !Mutate = match reason {
   DefaultReason(name, _) => "{name} defaulted",
   VerifyWitness(w) => "the witness {w}",
   Accepted(text, proof, _) => "accepted `{text}` — proposed: {show_reason(proof)}",
+  EffectEnters(eff, _, _) => "{eff} enters here",
+}
+
+// Where a hop of an effect's entry chain stands: the module the node
+// registered under and the line and column the parser wrote — the address
+// the caret takes, so a hop in another module says which.
+fn site_address(h) with !Mutate = match graph_span_of(h) {
+  Span(sl, sc, _, _) => "{module_name_of_handle(graph_module_of(h))}:{int_to_str(sl)}:{int_to_str(sc)}",
+}
+
+// How an effect crosses a site: through the callee a call applies, through
+// the stage a pipe applies, through the handler a tee installs, or inside a
+// function value whose body the chain enters.
+fn site_phrase(body) with !Mutate = match body {
+  NExpr(CallExpr(f, _)) => "through `{show_callee_name(f)}`",
+  NExpr(PipeExpr(PForward, _, stage)) => stage_phrase(stage),
+  NExpr(PipeExpr(PTee, _, h)) => "through `~> {install_name(h)}`",
+  NExpr(LambdaExpr(_, _)) => "inside the function value",
+  _ => "here",
+}
+
+fn stage_phrase(stage) = match stage {
+  N(NExpr(VarRef(n)), _, _) => "through `{n}`",
+  N(NExpr(CallExpr(f, _)), _, _) => "through `{show_callee_name(f)}`",
+  N(NExpr(LambdaExpr(_, _)), _, _) => "inside the stage's function value",
+  _ => "through the stage",
+}
+
+// The handler a tee installs, named: a bare reference or a configured call.
+fn install_name(h) with Pure = match h {
+  N(NExpr(VarRef(n)), _, _) => n,
+  N(NExpr(CallExpr(f, _)), _, _) => show_callee_name(f),
+  _ => "_",
+}
+
+// What an effect enters at a declaration's head: the chain beneath it, or
+// the one sentence a chain with no site has to say.
+fn enters_tail(next) with !Mutate = match next {
+  Inferred(what) => what,
+  _ => show_reason(next),
 }
 
 fn show_reason(ref reason) with !Mutate = match reason {
@@ -5797,6 +5854,19 @@ fn show_reason(ref reason) with !Mutate = match reason {
   DefaultReason(pname, span) => "{pname} defaulted at {show_span(span)}",
   VerifyWitness(model) => "proved by SMT witness: {model}",
   Accepted(text, proof, inner) => "accepted `{text}` — {show_reason(proof)} → {show_reason(inner)}",
+  EffectEnters(eff, site, next) => // The chain's three shapes, read off the site node: the declaration the
+  // effect enters, the effect's own declaration where the chain ends at
+  // one of its ops, and a hop in between — a call, a stage or a tee the
+  // effect crosses, a function value it is carried into, or a construct
+  // that charges it by itself.
+  match graph_node_body(site) {
+    NStmt(FnStmt(name, _, _, _, _)) => "declared as {name}; {eff} enters {enters_tail(next)}",
+    NStmt(EffectDeclStmt(ename, _, _)) => "{show_reason(next)}, an op of {ename} declared at {site_address(site)}",
+    body => match next {
+      Inferred(what) => "at {site_address(site)}, {what}",
+      _ => "at {site_address(site)} {site_phrase(body)} → {show_reason(next)}",
+    },
+  },
 }
 
 // A diagnostic's reason on the diagnostic's own line: the outer address is

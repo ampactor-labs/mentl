@@ -3136,7 +3136,7 @@ fn infer_fn(name, params, body_node, ret_ann, effs, handle, span: ValidSpan, pol
         // that decided which parks could ever resolve). With the gate
         // carried BY the free edge, the write that resolves it is the
         // check: the exit installs unconditionally and nothing parks.
-        enforce_row_gate(name, declared_row, has_pure, row_handle, span)
+        enforce_row_gate(name, declared_row, has_pure, row_handle, span, Some(handle))
       }
       env_scope_exit()
       // Generalize and re-extend. Located: this is the entry every later
@@ -3322,7 +3322,7 @@ fn pin_scalar_or_keep(barg, darg) = match darg {
 // The pin (the entry's unknowable value dim becomes the declared scalar)
 // is a decl-exit REPLACE on the STORED row — a finalize, judged like
 // every replace — and runs first so the reading below sees it.
-fn enforce_row_gate(name: String, declared_row, has_pure, row_handle, span: ValidSpan) = {
+fn enforce_row_gate(name: String, declared_row, has_pure, row_handle, span: ValidSpan, decl) = {
   let why = Located(span, Declared(name))
   match graph_chase(row_handle) {
     GNode(NRowBound(raw_row), _) => {
@@ -3372,7 +3372,12 @@ fn enforce_row_gate(name: String, declared_row, has_pure, row_handle, span: Vali
   } else if has_pure {
     report(EPurityViolated(body_row, span))
   } else {
-    report(EEffectMismatch(declared_row, body_row, why, span))
+    report(EEffectMismatch(
+      declared_row,
+      body_row,
+      mismatch_reason(name, declared_row, body_row, decl, span),
+      span
+    ))
   }
   match declared_gate(declared_row, has_pure, why) {
     Some(g) => gate_terminals(g, body_row, row_handle, span),
@@ -3390,6 +3395,294 @@ fn declared_bare_row(declared_row) = match declared_row {
     if len(bare) == 0 { None } else { Some(EfRow(bare, [], EtClosed)) }
   },
 }
+
+// ── WHERE AN EFFECT ENTERS — the walk from a row to its site (2026-10-13) ──
+//
+// Every charge is noted on a node of the construct that makes it
+// (`inf_add_row_at` — a pattern's rest charges the scrutinee it is cut from),
+// so "where does WASI enter this declaration" is a descent the graph already
+// carries: from a node to the earliest child whose subtree row carries the
+// effect (`row_of_subtree`), until a node none of whose children carries it
+// — the SITE. A call to an op is the perform, and the chain ends at the
+// effect's declaration; a call to a declaration continues inside that
+// declaration's body, since the one judgment holds every module's notes; a
+// call through a value stops at the value; a callee whose own body does not
+// carry the effect took it in through a function value, whose body the chain
+// enters; a construct that charges by itself — a splice, a list literal, a
+// constructor call — is named where it stands. Each hop is an `EffectEnters`
+// Reason, so `E_EffectMismatch` carries the chain from the declaration whose
+// negation the body violates, the caret's Why lists one per effect of a
+// declaration's row, and `mentl why <entry> <fn> <Effect>` prints it.
+//
+// The refusal's reason: the declaration, then the first forbidden effect's
+// chain from its body. The row's other forbidden effects are in the
+// message's rows, and `mentl why` answers each; a handler's clause has no
+// body here and keeps the declaration alone; a charge the body's nodes never
+// noted (a guard a callee's precondition hands to its caller) is said in the
+// chain's place.
+fn mismatch_reason(name: String, declared_row, body_row, decl, span: ValidSpan) = match decl {
+  None => Located(span, Declared(name)),
+  Some(dh) => match offending_names(declared_row, body_row) {
+    [] => Located(span, Declared(name)),
+    [eff, ..._] => match graph_node_body(dh) {
+      NStmt(FnStmt(_, _, _, _, body)) => Located(span, EffectEnters(eff_name_str(eff), dh, body_entry(eff, node_handle(body), [dh]))),
+      _ => Located(span, Declared(name)),
+    },
+  },
+}
+
+// The body's present effects the declaration refuses: a name its negation
+// forbids, or — under a closed declared row, a cap — a name no declared
+// positive admits.
+fn offending_names(declared_row, body_row) = match declared_row {
+  EfRow(dp, da, dt) => match body_row {
+    EfRow(bp, _, _) => filter(not_admitted(dp, da, dt, ??), bp),
+  },
+}
+
+fn not_admitted(dp, da, dt, present) = any(eff_forbids(??, present), da) || match dt {
+  EtClosed => !any(eff_admits(??, present), dp),
+  EtOpen(_) => false,
+  EtAll => false,
+}
+
+// The chains a declaration's row is made of — one per effect its resolved
+// row carries, each from the declaration to the site that charges it — read
+// live for the caret's Why and the why verb, never stored.
+fn effect_entries_of(h) = match graph_node_body(h) {
+  NStmt(FnStmt(_, _, _, _, body)) => match chase_ty(TVar(h)) {
+    TFun(_, _, row) => match resolve_row(row) {
+      EfRow(present, _, _) => present |> filter({ EPure => false, _ => true }) |> map(decl_effect_entry(h, node_handle(body), ??)),
+    },
+    _ => [],
+  },
+  _ => [],
+}
+
+fn decl_effect_entry(h, bh, eff) = EffectEnters(eff_name_str(eff), h, body_entry(eff, bh, [h]))
+
+// The chain from a declaration's body: the descent where the body's nodes
+// note the effect, else the one sentence for a charge no node owns.
+fn body_entry(eff, bh, seen) = if carries(eff, bh) {
+  effect_entry(eff, bh, seen)
+} else {
+  Inferred("the body's row without a site — a guard a callee's precondition hands to its caller")
+}
+
+// The descent: into the earliest child that carries the effect, else this
+// node is the site.
+fn effect_entry(eff, h, seen) = match entry_child(eff, h) {
+  Some(c) => effect_entry(eff, c, seen),
+  None => entry_at(eff, h, seen),
+}
+
+// Which child the walk enters, under `row_of_subtree`'s own reading of what
+// runs when a node is evaluated: a lambda, a nested fn and a handler
+// declaration mint and install nothing of their bodies; a tee's body may
+// still carry what its handler does not absorb; a cycle's delay spec never
+// runs; every other node's children run before it.
+fn entry_child(eff, h) = match graph_node_body(h) {
+  NExpr(LambdaExpr(_, _)) => None,
+  NStmt(FnStmt(_, _, _, _, _)) => None,
+  NStmt(HandlerDeclStmt(_, _, _, _, _, _)) => None,
+  NExpr(PipeExpr(PTee, l, _)) => earliest_carrier(eff, [node_handle(l)]),
+  NExpr(PipeExpr(PFeedback, l, _)) => earliest_carrier(eff, [node_handle(l)]),
+  body => earliest_carrier(eff, body_child_handles(body)),
+}
+
+// The site's hop: what the effect crosses there, and the chain beyond it.
+fn entry_at(eff, h, seen) = match graph_node_body(h) {
+  NExpr(CallExpr(f, args)) => EffectEnters(eff_name_str(eff), h, callee_entry(eff, node_handle(f), map(node_handle, args), seen)),
+  NExpr(PipeExpr(PForward, l, stage)) => EffectEnters(eff_name_str(eff), h, stage_entry(eff, node_handle(stage), [node_handle(l)], seen)),
+  NExpr(PipeExpr(PTee, _, hnd)) => EffectEnters(eff_name_str(eff), h, install_entry(eff, hnd, seen)),
+  body => EffectEnters(eff_name_str(eff), h, Inferred(charge_word(body))),
+}
+
+// Through a stage: a reference or a call the pipe completes with the piped
+// value, or a literal applied in place, whose body runs in this frame.
+fn stage_entry(eff, stage_h, piped, seen) = match graph_node_body(stage_h) {
+  NExpr(VarRef(_)) => callee_entry(eff, stage_h, piped, seen),
+  NExpr(CallExpr(f, args)) => callee_entry(eff, node_handle(f), map(node_handle, args) ++ piped, seen),
+  NExpr(LambdaExpr(_, body)) => effect_entry(eff, node_handle(body), seen),
+  _ => Inferred("a call through a value"),
+}
+
+// Through an install: the handler's arms and state inits run under the tee,
+// and the install itself charges its record.
+fn install_entry(eff, hnd, seen) = match module_decl(install_name(hnd)) {
+  Some(dh) => match graph_node_body(dh) {
+    NStmt(HandlerDeclStmt(hname, _, _, _, _, _)) => match earliest_carrier(eff, body_child_handles(graph_node_body(dh))) {
+      Some(c) => effect_entry(eff, c, seen),
+      None => Inferred("the install of `{hname}`"),
+    },
+    _ => Inferred("the install"),
+  },
+  None => Inferred("the install"),
+}
+
+// Through a callee: an op of the effect is the perform, and the chain ends
+// at the effect's declaration; a declaration is entered — a module's, else
+// a block's nested fn, which the decls column holds beside the module's own;
+// a constructor builds its variant, which is the charge; a value in scope
+// is where the walk stops.
+fn callee_entry(eff, callee_h, arg_hs, seen) = match graph_node_body(callee_h) {
+  NExpr(VarRef(name)) => match op_effect_of(name) {
+    Some(en) => op_entry(eff, en, name),
+    None => match graph_link_of(callee_h) {
+      Some(_) => Inferred("the function value `{name}`"),
+      None => match module_decl(name) {
+        Some(dh) => decl_entry(eff, name, dh, arg_hs, seen),
+        None => match find(decl_is_named(name, ??), graph_decls_at()) {
+          Some(dh) => decl_entry(eff, name, dh, arg_hs, seen),
+          None => match env_lookup(name) {
+            Some((_, _, ConstructorScheme(_, _))) => Inferred("building `{name}`"),
+            _ => Inferred("`{name}`, which no declaration in this link names"),
+          },
+        },
+      },
+    },
+  },
+  _ => Inferred("a call through a value"),
+}
+
+fn op_entry(eff, en: String, opname: String) = if en == eff_name_str(eff) {
+  match module_decl(en) {
+    Some(dh) => EffectEnters(en, dh, Declared(opname)),
+    None => Declared(opname),
+  }
+} else {
+  Inferred("`{opname}`, an op of {en}")
+}
+
+// Into a declaration: its body where the body carries the effect; else the
+// effect came in through a function value handed to it — a literal whose
+// body carries it, or a named function whose row does.
+fn decl_entry(eff, name: String, dh, arg_hs, seen) = if any({ x => x == dh }, seen) {
+  Inferred("`{name}`, already on this path")
+} else {
+  match graph_node_body(dh) {
+    NStmt(FnStmt(_, _, _, _, body)) => if carries(eff, node_handle(body)) {
+      effect_entry(eff, node_handle(body), push(seen, dh))
+    } else {
+      match find(value_carries(eff, ??), arg_hs) {
+        Some(vh) => value_entry(eff, vh, seen),
+        None => Inferred("a value handed to `{name}`"),
+      }
+    },
+    _ => Inferred("the value `{name}`"),
+  }
+}
+
+fn value_carries(eff, vh) = match graph_node_body(vh) {
+  NExpr(LambdaExpr(_, body)) => carries(eff, node_handle(body)),
+  _ => match chase_ty(TVar(vh)) {
+    TFun(_, _, row) => row_carries(resolve_row(row), eff),
+    _ => false,
+  },
+}
+
+fn value_entry(eff, vh, seen) = match graph_node_body(vh) {
+  NExpr(LambdaExpr(_, body)) => EffectEnters(eff_name_str(eff), vh, effect_entry(eff, node_handle(body), seen)),
+  NExpr(VarRef(_)) => callee_entry(eff, vh, [], seen),
+  _ => Inferred("a function value handed in"),
+}
+
+// Whether a subtree's row carries the effect, by name.
+fn carries(eff, h) = match row_of_subtree(h) {
+  Some(row) => row_carries(row, eff),
+  None => false,
+}
+
+fn row_carries(row, eff) = match row {
+  EfRow(present, _, _) => any({ p => eff_name_handle(p) == eff_name_handle(eff) }, present),
+}
+
+// The earliest-placed child that carries the effect — evaluation order is
+// source order among a node's children, and a child the parser placed
+// nowhere never wins over one it did.
+fn earliest_carrier(eff, hs) = fold(None, earlier_carrier(eff, ??, ??), hs)
+
+fn earlier_carrier(eff, best, h) = if carries(eff, h) {
+  match best {
+    None => Some(h),
+    Some(b) => if span_before(graph_span_of(h), graph_span_of(b)) { Some(h) } else { best },
+  }
+} else {
+  best
+}
+
+fn span_before(a, b) = match a {
+  Span(al, ac, _, _) => match b {
+    Span(bl, bc, _, _) => al > 0 && (bl == 0 || al < bl || al == bl && ac < bc),
+  },
+}
+
+// What a node charges by itself, for a site no call explains. A reference
+// charges nothing of its own, so a note on one is a charge the judgment laid
+// on the value's node for a construct around it — a pattern's rest cut from
+// the scrutinee, a product built from a piped value.
+fn charge_word(body) = match body {
+  NExpr(e) => expr_charge_word(e),
+  NStmt(s) => stmt_charge_word(s),
+  NPat(_) => "the pattern",
+  NHole(_) => "the hole",
+  NModule(_) => "the module",
+  NTypeAnn(_) => "the annotation",
+}
+
+fn expr_charge_word(e) = match e {
+  LitInt(_) => "the literal",
+  LitFloat(_) => "the literal",
+  LitString(_) => "the literal",
+  LitBool(_) => "the literal",
+  LitUnit => "the literal",
+  VarRef(name) => "what is built from `{name}` here",
+  BinOpExpr(op, _, _) => "the operator {binop_to_str(op)}",
+  UnaryOpExpr(_, _) => "the operator",
+  CallExpr(_, _) => "the call",
+  LabeledArg(_, _) => "the argument",
+  LambdaExpr(_, _) => "minting the function value",
+  IfExpr(_, _, _) => "the if",
+  BlockExpr(_, _) => "the block",
+  MatchExpr(_, _) => "the match",
+  ResumeExpr(_, _) => "the resume",
+  MakeListExpr(_) => "building the list",
+  MakeTupleExpr(_) => "building the tuple",
+  MakeRecordExpr(_) => "building the record",
+  RecordUpdateExpr(_, _) => "building the record",
+  NamedRecordExpr(_, _) => "building the record",
+  IndexExpr(_, _) => "the index",
+  MakeStringExpr(_) => "the string interpolation",
+  ShowExpr(_) => "rendering the value",
+  FieldExpr(_, _) => "the field read",
+  PipeExpr(_, _, _) => "the verb",
+  FanoutExpr(_) => "the fanout",
+  RestExpr(_) => "the rest",
+  ExprPlaceholder => "the placeholder",
+}
+
+fn stmt_charge_word(s) = match s {
+  LetStmt(_, _, _) => "the binding",
+  FnStmt(_, _, _, _, _) => "minting the nested function",
+  TypeDefStmt(_, _) => "the type declaration",
+  EffectDeclStmt(_, _, _) => "the effect declaration",
+  HandlerDeclStmt(_, _, _, _, _, _) => "the handler declaration",
+  ExprStmt(_) => "the statement",
+  ImportStmt(_) => "the import",
+  RefineStmt(_, _, _) => "the refinement",
+  AliasStmt(_, _) => "the alias",
+  RowAliasStmt(_, _) => "the row alias",
+}
+
+// The declaration a global name names: its one module-level declaration,
+// read off the decls column, which holds every judged declaration — a
+// block's `let`s and nested fns beside a module's own. A module-level name is
+// unique in the link (`E_DuplicateFnName`), so the first is the one.
+fn module_decl(name: String) with !Mutate = find(module_decl_named(name, ??), graph_decls_at())
+
+fn module_decl_named(name: String, h) = decl_is_named(name, h) && at_module_level(h)
+
+fn decl_is_named(name: String, h) = body_decl_name(graph_node_body(h)) == name
 
 // The gate a declaration installs: its empty closed cap (`Pure`), its
 // negation (`!E`, a universe-minus row), or — A3-pos, 2026-09-27 — the
@@ -5847,7 +6140,7 @@ fn enforce_handler_clause(hname: String, declared_effs, r_handle, span: ValidSpa
   check_effect_names(resolved_effs, span)
   check_instance_args(resolved_effs, span)
   let declared_row = build_declared_row(resolved_effs)
-  enforce_row_gate(hname, declared_row, has_pure, r_handle, span)
+  enforce_row_gate(hname, declared_row, has_pure, r_handle, span, None)
   match declared_row {
     EfRow(_, absent, _) => if len(absent) == 0 {
       ()
@@ -9256,8 +9549,16 @@ fn chase_args_changes(args, d, i, n) = if i >= n {
 fn chase_deep_build(ty, d) = if d > 200 {
   // Unreachable once the occurs guard recurses bindings (no cycle can enter
   // the graph); a firing here means a write path slipped the guard — the
-  // tripwire names the shape without recursing it (show_type would spin).
-  eprint_string("mentl: chase_deep depth tripwire — cyclic graph at {chase_probe_tag(ty)}\n")
+  // tripwire names the shape without recursing it (show_type would spin),
+  // as the internal-invariant refusal it is. Through boot 6e35c6db it was a
+  // raw write to stderr, and the first chain `mentl why src/main.mn
+  // infer_var_ref WASI` printed (2026-10-13) ended here: the compiler's
+  // judgment of every variable reference performed the host for a sentence
+  // meant never to print.
+  report(EInternalInvariant(
+    "chase_deep depth tripwire — cyclic graph at {chase_probe_tag(ty)}",
+    span_zero()
+  ))
   ty
 } else {
   match ty {

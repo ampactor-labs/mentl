@@ -669,6 +669,7 @@ function noteHtml(n){
     case "handler": return `<span class="sub">${esc(n.text)}</span>`;
     case "obligation": return `<span class="hop" data-l="${n.module === VIEW.at.module ? n.site.line : ""}">${esc(n.text)}</span>`;
     case "type-chain": return `<span class="hop">its type: ${esc(n.text)}</span>` + n.hops.map(h => `<span class="hop">${esc(h)}</span>`).join("");
+    case "effect-chain": return `<span class="hop">${esc(n.text)}</span>` + n.hops.map(h => `<span class="hop">${esc(h)}</span>`).join("");
     default: return `<span class="sub">${esc(n.text)}</span>`;
   }
 }
