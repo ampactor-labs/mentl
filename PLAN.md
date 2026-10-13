@@ -860,16 +860,25 @@ and this is the STATE.
   match at the let's cell with the let-through-block extent, the head
   renderer taking the annotation it renders, the proposer's candidate at its
   own handle, the absent annotation read by nothing that asks where it
-  stands, voice.mn's modifier bank deleted with its register). What the face
-  still owes is S3, the writes the handle makes possible and nothing yet
-  makes: installing a named chain as one write at the install, a rename as
-  one write at the declaration, the session re-judging the nodes an edit
-  rewrote rather than re-parsing a module, a
-  proposal rewriting in place. A reference is a name (`VarRef(String)`, M1's link), a
-  type a value tree (`Ty`), a reason a value tree, and the lowered program a
-  second tree (`LowExpr`, 42 constructors): §11's one law in five faces, the
-  first of them cut (`Hβ.graph.positions-are-cells`, S1 and S2) and S3's
-  writes the next move on it.
+  stands, voice.mn's modifier bank deleted with its register). The first
+  write the handle makes possible is BUILT (S3, 2026-10-13): an install of a
+  named handler chain (`handler NAME = h1 ~> h2`, SYNTAX §«Handler chains»)
+  becomes its members' installs by re-registering the install's own node — the
+  members instantiated as fresh nodes at the reference, no ancestor touched — and
+  the wheel's own analysis and emit brackets are chains, their thunks and
+  wrapper functions deleted. The three writes the face still owes stand on
+  foundations S3 measured and named: a rename as one write at the
+  declaration is one write exactly when references are edges (M1's link,
+  §11 Tier 4); the session re-judging the nodes an edit rewrote, and a
+  proposal's accept rewriting the hole's node in place, need an edit to be a
+  DELTA on live nodes — the declaration-grain cone over M1's reverse edge and
+  spans re-projected by the render rather than re-indexed by a parse (L-D's
+  canvas) — since today's accept edge survives a re-parse only through a
+  position-keyed column (`Hβ.synth.accepted-edge-keyed-by-position`). A
+  reference is a name (`VarRef(String)`, M1's link), a type a value tree
+  (`Ty`), a reason a value tree, and the lowered program a second tree
+  (`LowExpr`, 42 constructors): §11's one law in five faces, the first of
+  them cut (`Hβ.graph.positions-are-cells`, S1, S2 and S3's first write).
 - **Regions are runtime since the arena** (2026-10-03): `(body) ~> arena` reclaims an extent's allocations at its exit
   except what its publication reaches. Ownership's regions stay what they
   were — compile-time root-tagging and return-transfer — and the arena does
@@ -2174,12 +2183,22 @@ tier 1's net, which has landed. Its stages are its design
 (`Hβ.graph.positions-are-cells`); S1 and S2 LANDED 2026-10-13 (LEDGER):
 every reader reads through the graph and a node IS its handle (`type Node =
 Int`, the record deleted), so an ancestor holds its children's handles and a
-write at a child is read by everything that asks the graph; S3's writes —
-the chain's install, the rename, the session re-judging rewritten nodes,
-the proposal rewriting in place — are the next move. Handler installation
-follows on it: one
-install per extent, a handler's start state its own, a chain named once,
-nothing installed only to swallow an op nobody reads.
+write at a child is read by everything that asks the graph; S3's first
+write LANDED the same day: the named chain (`handler judgment = … ~> …`,
+installed `work ~> judgment`) becomes its members' installs by re-registering
+the install's own node, its ancestors untouched because they hold its handle,
+and the wheel's own brackets are chains with their thunks gone. The other three writes — the rename, the session re-judging rewritten
+nodes, the proposal rewriting in place — stand on M1's link and on edits
+that are deltas on live nodes (§7's first bullet names the measurement).
+Next on it, by Morgan's decision of 2026-10-13: a catch-all arm over a sum
+is the roster the author declined to write
+(`Hβ.match.catch-all-over-a-sum-is-the-roster`) — a census shape bounded on
+the wheel, `mentl tighten` writing the alternation of the uncovered
+constructors in its place, and the refusal once the wheel's count is zero;
+the exhaustiveness refusal already says `write its arm` and never a wildcard.
+Handler installation follows on it: one install per extent, a handler's
+start state its own, a chain named once, nothing installed only to swallow
+an op nobody reads.
 
 *Tier 0 · protect the work.*
 - **§0.1 · The record** — DONE, commit 42a94dc0.

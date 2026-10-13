@@ -1,0 +1,21 @@
+// expect: refuse E_PatternInexhaustive
+// THE EXHAUSTIVENESS CHECK READS THE WHOLE PATTERN (2026-10-13): a variant
+// missing INSIDE a constructor's payload is a value the match does not cover,
+// and the refusal names it — `Wrap(Three)` here. Until this landed the check
+// read each arm's top constructor alone: `Wrap(One)` and `Wrap(Two)` named
+// `Wrap`, the only top beside `Bare`, so the match passed, and the program
+// trapped when `Three` arrived — measured 2026-10-13 on boot ad930774, where
+// this program compiled clean and exited 134 at the arm nobody wrote. The
+// compiler's own classifier walk did the same the day a statement variant was
+// added, which is how the gap was found.
+type Inner = One | Two | Three
+
+type Outer = Wrap(Inner) | Bare
+
+fn pick(o) = match o {
+  Wrap(One) => 1,
+  Wrap(Two) => 2,
+  Bare => 0,
+}
+
+fn main() = pick(Wrap(Three))

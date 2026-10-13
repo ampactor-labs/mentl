@@ -493,6 +493,31 @@ probe_m4() {  # 0 when m3 == m4; sets m4rc and m4done
 # The stamp is keyed to the boot sha it measured, exactly as the frontier
 # stamp is, so a later repin invalidates it by construction and state.sh can
 # report its absence as a visible blank.
+# A battery's verdict is a fact of the compiler BYTES (wt-env.sh's memo keys
+# content, never a path) — yet every CLEAN repin re-ran the 404 micros on the
+# bytes verify --wheel had judged minutes before (2 min 24 s of a 12-minute
+# repin, measured 2026-10-13), because the key also hashes the ASSEMBLER and
+# the boot is the assembler. One check stands in for the 404: the new boot
+# assembles m2.wat to the bytes the old one did, so the candidate's verdicts
+# are the new boot's and are re-keyed under it. A boot whose assembler
+# disagrees transplants nothing, and the battery runs as before.
+transplant_memos() {  # transplant_memos <old-boot> — after the CLEAN copy of m2 over boot/mentl.wasm
+  local old="$1" dir leg okey nkey verdict
+  wt_asm "$OUT/m2.wat" "$OUT/m2.asm-parity.wasm" 2>/dev/null || return 0
+  if ! cmp -s "$OUT/m2.asm-parity.wasm" "$OUT/m2.wasm"; then
+    echo "· asm parity: the new boot assembles m2.wat to different bytes — the battery re-runs"
+    return 0
+  fi
+  for dir in tests/micros tests/lens/negation; do
+    leg="battery-${dir//\//_}"
+    okey=$(WT_ASM="$old" wt_memo_key_run "$OUT/m2.wasm" "$dir" lib)
+    verdict=$(wt_memo_hit "$leg" "$okey") || continue
+    nkey=$(wt_memo_key_run "$OUT/m2.wasm" "$dir" lib)
+    wt_memo_put "$leg" "$nkey" "$verdict"
+    echo "· asm parity holds: the $dir verdict the candidate earned ($verdict) is the new boot's"
+  done
+}
+
 stamp_fixpoint() {
   mkdir -p .build/gate
   sha256sum boot/mentl.wasm 2>/dev/null | awk '{print $1}' > .build/gate/fixpoint-stamp
@@ -520,6 +545,7 @@ elif [ "$m3rc" = 0 ]; then
       # red restores the prior boot and refuses.
       cp boot/mentl.wasm "$OUT/boot.prev.wasm"
       cp "$OUT/m2.wasm" boot/mentl.wasm
+      transplant_memos "$OUT/boot.prev.wasm"
       if [ "$costok" = 1 ] && [ "$censusok" = 1 ] && [ "$parityok" = 1 ] && bash tools/march-gate.sh --micros > "$OUT/repin-battery.log" 2>&1; then
         # A repin is a new build: the warm-compile images were written by
         # the old one, and their $build_key (table+strings+globals) does

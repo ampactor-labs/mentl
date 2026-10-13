@@ -150,9 +150,10 @@ fn board_bounds() = [
   // the span scan that found it, and the lambda it searched with, are gone.
   //
   // 225 -> 223 (2026-10-03, #126): the exhaustiveness check's three readers
-  // of an arm's top pattern read one projection (`pat_tops`), and the two
-  // accumulator lambdas that walked arms and alternations became references
-  // (`arm_tags`, `top_tag`).
+  // of an arm's top pattern read one projection, and the two accumulator
+  // lambdas that walked arms and alternations became references; the three
+  // readers and the projection are one matrix walk since 2026-10-13
+  // (infer.mn's uncovered), which reads the whole pattern.
   //
   // 223 -> 222 (2026-10-03, AN-2): the landing minted three and the board
   // refused 225 — two readers of an effect's ops each testing a discipline
@@ -187,7 +188,14 @@ fn board_bounds() = [
   // parameter lists through one lambda shape and the board refused 196; the
   // shape is one named stage (infer.mn's check_param_effect_names as a
   // one-hole partial), and lib/search's two left with the module.
-  Bound({ceiling: 193, question: QCensus(CsEffectfulLambda)}),
+  //
+  // 193 -> 164 (2026-10-13, Landing 4 S3): a handler chain is a value, so
+  // the analysis and emit brackets are chains (pipeline.mn's infer_context,
+  // emit_context and compile_context) installed `body ~> chain`, and the
+  // thunk every judging route paid to hand its body to a fixed stack is
+  // gone — 25 sites (main 14, pipeline 8, mcp 3) and the wrappers' own inner
+  // thunks with them, 29 lambdas, the anonymity census falling 234 -> 205.
+  Bound({ceiling: 164, question: QCensus(CsEffectfulLambda)}),
   // Drift mode 10 — the seven survivors are documented sentinels, not masked
   // cases. Every wildcard that is NOT one of them is a variant the author
   // declined to enumerate, and the medium cannot tell the difference, which

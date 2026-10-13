@@ -80,7 +80,7 @@ handler console_bank with lines = [] {
 // verdict). Emission streams through wat_to_file so stdout stays
 // protocol-only; a refused proposal never opens the artifact at all.
 // Returns (diagnostic lines, errors, refusals, emitted-bit).
-fn mcp_judge(source, wat_path) = compile_context(() => {
+fn mcp_judge(source, wat_path) = {
   let lowered =
     source |> infer_program_converged |> saturate_pass |> lower_program |> reachable_from_main
   let verdict = match gated_plan(lowered) {
@@ -103,7 +103,7 @@ fn mcp_judge(source, wat_path) = compile_context(() => {
   match verdict {
     (refused, emitted) => (text, nerr, refused, emitted),
   }
-} ~> diag_bank ~> wasi_filesystem)
+} ~> diag_bank ~> wasi_filesystem ~> compile_context
 
 // The verdict's head states exactly what the gate did — refused, emitted
 // with surfaced errors (unarmed classes; the sound-incomplete contract,
@@ -694,26 +694,24 @@ fn mcp_loop(ast, ranges, manifest, at_read, current) = {
 // trapped at its own dispatch (ev_declaring_node, i32.const 100524 =
 // Filesystem, slot 0, pinned at 0xafd83 in session_run). The installs
 // cost nothing on the path that reports no project.
-fn session_run(answer) = infer_context(() => {
-  if driver_module_path("main") == None {
-    eprint_string("mentl session: no resolvable main here — the session holds a project's living graph; run it in a project directory\n")
-    1
-  } else {
-    match driver_entry_with_ranges("main") {
-      (ast, ranges) => {
-        let entry = driver_module_ast(ast, "main")
-        let manifest = driver_manifest(ranges)
-        eprint_string("mentl session: graph resident on stdin — each line is a verb's argv, tab-joined; the answer is written before the next line is read\n")
-        session_line_loop(entry, ranges, manifest, answer, session_current)
-      },
-    }
-    0
+fn session_run(answer) = if driver_module_path("main") == None {
+  eprint_string("mentl session: no resolvable main here — the session holds a project's living graph; run it in a project directory\n")
+  1
+} else {
+  match driver_entry_with_ranges("main") {
+    (ast, ranges) => {
+      let entry = driver_module_ast(ast, "main")
+      let manifest = driver_manifest(ranges)
+      eprint_string("mentl session: graph resident on stdin — each line is a verb's argv, tab-joined; the answer is written before the next line is read\n")
+      session_line_loop(entry, ranges, manifest, answer, session_current)
+    },
   }
+  0
 } ~>
 // The filesystem is the OUTERMOST install: an arm's performs resolve outer
 // of its own install, and the query handler's arms read the filesystem (the
 // census's path class asks whether a cited path names a file).
-query_default ~> mentl_default ~> arm_state_ctx([], OneShot, "") ~> spec_registry ~> diag_bank ~> wasi_filesystem)
+query_default ~> mentl_default ~> arm_state_ctx([], OneShot, "") ~> spec_registry ~> diag_bank ~> wasi_filesystem ~> infer_context
 
 // What an answer cost the image, on the session's log. Each answer is an
 // arena (lib/arena.mn), so this is what it PUBLISHED: the nodes a question
@@ -792,7 +790,7 @@ fn mcp_run(at_read) = {
   // refused (verify_ledger is stateful, so no default grounds it). The
   // conditional lives inside the bracket; the installs cost nothing on
   // the empty path.
-  infer_context(() => {
+  {
     // The artifact directory is made INSIDE the bracket, because that is
     // where the Filesystem handler is. Outside it these were fs_mkdir_impl
     // calls reaching past the effect — the op is unreachable there, so the
@@ -815,6 +813,6 @@ fn mcp_run(at_read) = {
     } else {
       mcp_loop([], [], [], at_read, (a, r, m) => (a, r, m))
     }
-  } ~> query_default ~> mentl_default ~> arm_state_ctx([], OneShot, "") ~> spec_registry ~> diag_bank ~> wasi_filesystem)
+  } ~> query_default ~> mentl_default ~> arm_state_ctx([], OneShot, "") ~> spec_registry ~> diag_bank ~> wasi_filesystem ~> infer_context
   0
 }

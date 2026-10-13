@@ -1,0 +1,22 @@
+// expect: refuse E_HandlerChainShape
+// A CHAIN IS HANDLERS APPLIED TO VALUES, and its shape is judged at the
+// declaration (2026-10-13): a member whose argument declares a function is
+// refused where the chain is declared, whether or not anything installs it,
+// and the class is ARMED — the executable is refused, no WAT is written.
+// Measured on boot d0eb6ad2 before the arming: the declaration judged clean,
+// the install reported the shape and the program compiled and RAN to exit 4,
+// the error printed beside the WAT it had just written.
+effect Ask {
+  ask() -> Int
+}
+
+handler fixed(n) {
+  ask() => resume(n),
+}
+
+handler rig = fixed({
+  fn four() = 4
+  four()
+})
+
+fn main() = ask() ~> rig

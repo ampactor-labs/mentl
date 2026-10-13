@@ -1288,7 +1288,36 @@ mistake being caught before it became a build.
 CLOSE: every surviving multi-param lambda is either a named decl or a
 reference with holes, and `(params) => body` is deleted with the other two.
 
-### `Hβ.syntax.handler-chain-is-a-value` — OPEN
+### `Hβ.syntax.handler-chain-is-a-value` — CLOSED 2026-10-13
+
+CLOSED at Landing 4 S3, in two pins because a boot must parse a
+form before the wheel it compiles writes it: the machinery first (pin
+b26b168c, before the wheel's own source wrote a chain), then the wheel's
+own adoption.
+`handler NAME = h1 ~> h2(cfg) ~> h3` declares the chain (HandlerChainStmt,
+parsed where `handler NAME` meets `=`), and `body ~> NAME` installs it: at
+the tee the members are instantiated at the reference's own span, nested
+innermost-first, the install node re-registered as that nested tee and
+judged by the tee's own rule with a ChainInstall reason the formatter reads to
+write the name back — so the install's row is exactly the members', each a
+fresh instance at the reference (tests/crown/sound-chain-absorbs.mn
+accepts `!Count + !Trace` over a two-member chain, leak-chain-escapes.mn
+refuses the op no member answers, which escapes the chain, naming it; tests/micros/mn-handler-chain.mn
+and tests/syntax/handler-chain.mn run), and the formatter renders the
+declaration and a judged install as `body ~> NAME`. The wheel's analysis and
+emit brackets are chains — `infer_context`, `emit_context` and
+`compile_context` in src/pipeline.mn, the third a chain of the two — installed
+`body ~> chain` at 25 sites (main 14, pipeline 8, mcp 3), the thunk gone from
+each and the wrapper functions with their own inner thunks — 29 zero-argument
+lambdas in all: the anonymity census fell 234 → 205 and the effectful-lambda
+bound 193 → 164 (the 23 banked below was the 2026-09-20 count; the routes had
+grown to 25). The intern table is one seeded state, so its install is a chain
+member like any other. What the chain costs is on the record: each site
+carries its members' installs where it called a wrapper before, and the
+wheel's WAT grew 636,348 → 643,653 lines (not attributed line by line), while
+the image's line peak fell 498,382 → 496,968 KB.
+A zero-argument thunk handed to a function that runs it — a deferred
+computation, not a body handed to a stack — stays the binder form.
 
 BORN 2026-09-20 out of the thunk
 census. 27 of the wheel's lambdas are `() =>` and 23 of those go to
@@ -1306,6 +1335,67 @@ serves 9.2, where the fan wants `(c) >< (c) ~> Schedule` at a width a handler
 decides.
 CLOSE: a named handler chain installs as one `~>` edge; the `*_context`
 wrappers and their thunks delete; the board's anonymity bound falls by 23.
+
+### `Hβ.match.catch-all-over-a-sum-is-the-roster` — OPEN
+
+BORN 2026-10-13, Morgan's reading of the exhaustiveness refusal the same
+landing wrote: "add the arm or a wildcard" taught the move that silences the
+gate while discarding what the gate knew. A `_` (or a bare binder) as a
+match's catch-all arm is three different things, and only one of them is
+honest. Inside a constructor (`Some(_)`) it discards a binding, not a case,
+and the medium can verify the field is unread. Over an INFINITE domain — an
+Int, Float or String column — it is the complement, the only way to say
+"every other integer". Over a FINITE SUM it is an inventory-drop: the
+decision is "these N variants share this body", and the wildcard hides which
+N, so when the roster grows the gate can never ask again — this landing
+measured it, three matches that enumerated every statement kind refused the
+new `HandlerChainStmt` and were fixed, where a `_` among them would have
+absorbed the new variant with whatever body stood there (the Carried-Truth
+Law at the surface, PLAN §9.1: the authored text holds the decision, the
+medium maintains what it can compute). The board bounds the two shapes of it
+that fabricate (`CsWildcardZero` at 7, `CsWildcardFabricates` at 20,
+src/board.mn) and no facet counts the class itself.
+THE FORM: over a finite sum, `_` means the alternation of the variants not
+yet covered when it was written, and the medium knows that roster. CLOSE, in
+the order mechanism beats instruction: (1) a census shape, `wildcard-over-sum`
+— a catch-all arm (`_` or a binder) whose scrutinee's type is a finite sum,
+read off the judged graph — measured on the wheel and bounded in
+src/board.mn at the count it reads, falling, with the sentinels counted as
+what they are; (2) `mentl tighten` writes the alternation of the uncovered
+constructors (`A(_) | B => body`, arms before it unchanged, since arms are
+tried in order) as it writes a clause's residue — a migration the medium
+authors, so a later variant refuses and the author decides; a binder
+catch-all becomes the as-pattern over the same alternation; (3) when the
+wheel's count is zero the shape refuses as a class, and the exhaustiveness
+refusal keeps saying `write its arm`. A `_` over Bool is a sum's catch-all
+(`False | True`) and expands; a `_` over an infinite domain stays, being
+the complement; a sub-pattern `_` is untouched.
+
+### `Hβ.infer.exhaustiveness-over-literal-and-list-columns` — OPEN
+
+BORN 2026-10-13 at Landing 4 S3, the day the exhaustiveness check learned to
+read the whole pattern. `uncovered` (src/infer.mn) decides a match column by
+column: a column of constructors is complete when the arms name every
+variant of the type and each payload column is covered, a tuple column is
+one constructor of its width, and a wildcard covers the rest. A column of
+LITERAL, LIST or RECORD patterns decides nothing — it is read as covered,
+exactly as the top-level read always read it — so `match n { 0 => a, 1 =>
+b }`, `match xs { [x] => … }` and `Some(0) => …, None => …` check clean and
+trap at the value nobody matched, as they did before the nested check. The
+choice was deliberate for the landing: refusing only the constructor and
+tuple gaps the check can PROVE adds no false refusal to the wheel (measured:
+the wheel judges clean under it once three matches gained the Stmt variant
+the landing added — `collect_fn_decls`, found by the candidate's trap, then
+`usage_of` and `walk_refinement`, named by the candidate's own check of the
+wheel at the m3 leg), while a literal column needs a notion of completeness (`true | false`
+for a Bool, every length for a list with a rest pattern, never for Int or
+String) the check does not carry. CLOSE: literal columns over Bool and over
+unit complete when both or the one value appear; a list column completes
+when every length is covered (an exact pattern per length below the shortest
+rest pattern's prefix, or a rest pattern with an empty prefix); a record
+column is a product over its named fields, open rows included; an Int,
+Float or String column never completes without a wildcard — and each refusal
+names its witness as the constructor case does (`match misses `[_, _]``).
 
 ### `Hβ.verify.board-is-not-yet-a-value` — OPEN
 
@@ -18817,7 +18907,15 @@ being byte-identical to m3 under `parallel_compose`, and the lens's order holds.
 - **The judgment's binding-group levels run as segments (AU4).** Commits happen
   in group order; `driver_check` and its `<stdin>` labels are deleted.
 - **The battery judges its library once.** Each fixture is a segment over that
-  one judgment.
+  one judgment. THE NUMBER (2026-10-13, Landing 4 S3's third pin, read off
+  the build directory's file times): a repin took 12 min 12 s, of which the
+  three cold self-compiles that are the fixed point cost 2 min, and 5 min 55 s
+  was the micro battery (404 fixtures, twice) and the frontier (665 legs)
+  each judging the runtime library per fixture on four cores — verify
+  --wheel 3 min 12 s, the post-repin battery 2 min 24 s, the frontier 3 min
+  31 s. The duplicate battery is re-keyed by the march now (its memo had
+  hashed the assembler, which is the boot); the per-fixture library
+  judgment is this bullet.
 - **The ??-fan returns verdicts as values.** The joins run in order after the
   fan.
 - **SPMD for Simd, gated by the row.** Gpu stays named until a device exists.
@@ -19723,11 +19821,34 @@ arbitrates:
   460,108 KB and its WAT 634,037 → 629,236 lines with the record at the
   first pin (630,330 at the second, the deleted forwarders' op homes
   performed in place).
-- S3 · the writes it opens: an install of a named chain becomes its members'
-  installs by one graph write at the install, a rename is one write at the
-  declaration, the session re-judges the nodes an edit rewrote rather than
-  re-parsing a module, and a proposal's accept rewrites the hole's node in
-  place rather than splicing text (PLAN §11's cut paragraph names the four).
+- S3 · the writes it opens. ONE IS BUILT (2026-10-13, LEDGER, Landing 4 S3):
+  an install of a named chain becomes its members' installs by re-registering
+  the install's own node, no ancestor touched — `handler NAME = h1 ~> h2`
+  (SYNTAX §«Handler chains»), the members instantiated as fresh nodes at the
+  reference and nested over the body, the install's own node registered again
+  as the outermost (infer.mn's `infer_chain_install`), every reader after the judgment asking the graph
+  and seeing the installs the author would have spelled, the formatter
+  writing the name back (`ChainInstall`); the wheel's own analysis and emit
+  brackets are chains now (pipeline.mn's `infer_context`, `emit_context`,
+  `compile_context`), the thunks and wrapper functions that stood in for a
+  chain with no name deleted. THE OTHER THREE STAND ON WHAT THIS LANDING
+  MEASURED, each named where it belongs: a rename as one write at the
+  declaration is one write exactly when references are edges — over the
+  name-keyed refs column it is N rewrites that would rename a user's local
+  `lines` with the prelude's (`refs of lines` answered 56 sites with the
+  emitter's binders mixed in, 2026-10-06) — so it is M1's first consumer
+  (`Hβ.lower.reach-edge-on-node`); the session re-judging the nodes an edit
+  rewrote needs the edit to be a DELTA on live nodes, which is the
+  declaration-grain cone (M1's reverse edge) plus spans re-projected by the
+  render rather than re-indexed by a parse — the render that emits spans is
+  L-D's (`Hβ.space.the-canvas`); and a proposal's accept rewriting the hole's
+  node in place was DESIGNED this landing and not built, because the accept
+  edge's durability today rides a position-keyed column re-applied at every
+  re-parse (`Hβ.synth.accepted-edge-keyed-by-position`): writing the node
+  live and deleting the column loses the edge at the module's next re-parse,
+  and writing the node live while keeping the column is two homes for one
+  fact — the accept becomes a live write the day edits are deltas, with the
+  rename and the re-judge.
 Sized 2026-10-10 by the medium's own reference lists: 288 sites build or
 take apart a record (infer 123, lower 62, parser 27, query 14, types 11,
 synth_proposer 11, verify 8, graph 7, mentl 5, voice 4, own 4, format 4,
@@ -20070,7 +20191,24 @@ HOMED 2026-10-06 at the §0.3 integration: cited in the read-path docs and never
 
 HOMED 2026-10-06 at the §0.3 integration: cited in the read-path docs and never given an entry, so it lived only in a sentence. Its substance is stated where it is cited: PLAN.md, under “Phase 6 · The crown completes — `!E` sound at every altitude”.
 
-### `Hβ.infer.nested-pattern-exhaustiveness` — OPEN
+### `Hβ.infer.nested-pattern-exhaustiveness` — CLOSED 2026-10-13
+
+CLOSED at Landing 4 S3: the exhaustiveness check reads the WHOLE pattern,
+one matrix walk over constructor and tuple columns (`uncovered`,
+src/infer.mn) — a column of constructors is complete when the arms name
+every variant and each payload column is covered, a tuple column is one
+constructor of its width, a wildcard or binder covers the rest — and the
+refusal names the value that escapes as a pattern (`match misses
+Wrap(Three)`). Found by the landing's own first chain program: the candidate
+trapped in a match missing the new statement variant inside `NStmt(…)`
+while `mentl check` was clean, because the check read each arm's top
+constructor alone; the new check then named two more such arms in the wheel
+(own.mn's usage_of, infer.mn's walk_refinement), each a trap waiting for the
+first chain statement to reach it — and usage_of is the match whose trap on
+a grown Expr banked this peer (the sweep cited below), so the same function
+paid the same class twice before the check could see inside a payload. What
+the walk does not decide — literal,
+list and record columns — is `Hβ.infer.exhaustiveness-over-literal-and-list-columns`.
 
 HOMED 2026-10-06 at the §0.3 integration: cited in the read-path docs and never given an entry, so it lived only in a sentence. Its substance is stated where it is cited: RESIDUE.md, in `Hβ.lower.lowering-is-a-column`; LEDGER.md, under “The landing ledger (newest first; · pin = boot re-pinned)”.
 

@@ -1,0 +1,29 @@
+// expect: 7
+// SYNTAX §«Handler declarations»: `handler NAME = h1 ~> h2(cfg) ~> h3` names a
+// handler CHAIN — a composition, a value by the reasoning that makes a named
+// row a `type` — and `body ~> NAME` installs each member in order, innermost
+// first, exactly as the spelled-out chain would. A member may carry config
+// arguments, evaluated at each install; a chain may name another chain, which
+// stands for its members. The formatter writes the declaration back on one
+// line, members joined by ` ~> `.
+effect Ask {
+  ask() -> Int
+}
+
+effect Scale {
+  scale(v: Int) -> Int
+}
+
+handler answer(k) {
+  ask() => resume(k),
+}
+
+handler times(m) {
+  scale(v) => resume(v * m),
+}
+
+handler fixed = answer(3)
+
+handler rig = fixed ~> times(2)
+
+fn main() = scale(ask()) + 1 ~> rig

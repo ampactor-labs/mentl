@@ -1,0 +1,28 @@
+// CROWN — a named handler chain absorbs what its members absorb. `both` is
+// `counter ~> tracer`, so `(work()) ~> both` is the install of each, and a
+// declaration negating Count and Trace over it ACCEPTS: the row of the
+// install is the body's row with every member's absorption removed, read
+// off the installs the chain became at the install node (S3, 2026-10-13).
+effect Count {
+  bump() -> Int
+}
+
+effect Trace {
+  mark(n: Int) -> Int
+}
+
+handler counter with n = 0 {
+  bump() => resume(n) with n = n + 1,
+}
+
+handler tracer with seen = 0 {
+  mark(k) => resume(k + seen) with seen = seen + 1,
+}
+
+handler both = counter ~> tracer
+
+fn work() = mark(bump() + bump())
+
+fn quiet() with !Count + !Trace = work() ~> both
+
+fn main() = quiet()

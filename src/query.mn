@@ -2275,6 +2275,7 @@ fn type_level_lines(h) with !Mutate = match graph_node_body(h) {
     AliasStmt(_, _) => ["{render_stmt_tokens(s)}{decl_at(h)}"],
     RowAliasStmt(_, _) => ["{render_stmt_tokens(s)}{decl_at(h)}"],
     HandlerDeclStmt(name, _, _, _, arms, _) => [handler_line(name, arms, h)],
+    HandlerChainStmt(_, _) => ["{render_stmt_tokens(s)}{decl_at(h)}"],
     FnStmt(_, _, _, _, _) => [],
     LetStmt(_, _, _) => [],
     ExprStmt(_) => [],
