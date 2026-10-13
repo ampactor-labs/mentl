@@ -833,7 +833,8 @@ arbiter. Where a design section and this audit disagree, §4/§5 is the TARGET
 and this is the STATE.
 
 - **THE PROGRAM IS NOT YET THE GRAPH: ITS STRUCTURE IS NESTED VALUES
-  (measured 2026-10-10, Morgan's "what tree?").** The judgment is a graph:
+  (measured 2026-10-10, Morgan's "what tree?"; its readers moved 2026-10-13,
+  Landing 4 S1).** The judgment is a graph:
   every node has a handle, everything the judgment learns about a node is a
   column at that handle (its type cell, span, parent, reason, comment,
   charges, claims, gates, binder facts), and type and row variables are
@@ -841,20 +842,28 @@ and this is the STATE.
   ValidSpan, Int)`, and every `Expr` holds its children as whole records
   (`BinOpExpr(BinOp, Node, Node)`), so what contains what lives in the
   nesting, the graph's parent edge is computed from it at registration, and
-  the passes walk it: 288 sites build or take apart a record (infer 123,
-  lower 62, parser 27, the rest across twelve modules), 225 ask a record for
-  its handle, and 175 read a body through the graph. Three places already
-  hold what the graph does not: `desugar_block` re-registers a `let`'s handle
-  as the `match` it becomes and builds that node with a span the graph never
-  indexed, the head renderer is handed a node fabricated at handle 0, and the
-  proposer pairs the e-graph's cheapest body and handle with another node's
-  span. It costs every change that should be one write: installing a named
-  chain, a rename, the session's edit (which re-parses a module), a proposal
-  rewriting in place. A reference is a name (`VarRef(String)`, M1's link), a
+  the passes walk it. Since S1 (2026-10-13) every reader reads a node's body
+  and span through the graph: 7 sites name the record — six build it (the
+  parser's three mints and the two re-wraps of a let's handle in
+  `desugar_block`, and the proposer's extracted candidate) and one takes it
+  apart (`node_handle`, the one read of it, beside `type Node`) — 520 ask a
+  node for its handle, 364 read a body through the graph and 55 a span,
+  where 288 sites built or took one apart, 225 asked a record for its
+  handle and 175 read the graph on 2026-10-10. The five places where record
+  and graph disagreed are decided for the graph: the one-arm match a
+  destructuring `let` becomes holds, in the graph, the let through its
+  block's end; the head renderer takes the annotation it renders; the
+  proposer's extracted candidate stands at its own handle and span; the
+  absent annotation, registered at no position, is read by nothing that asks
+  where it stands; and voice.mn's modifier bank is deleted with the register
+  that selected from it. The nesting still costs every change that should be one write: installing a
+  named chain, a rename, the session's edit (which re-parses a module), a
+  proposal rewriting in place. A reference is a name (`VarRef(String)`, M1's link), a
   type a value tree (`Ty`), a reason a value tree, and the lowered program a
   second tree (`LowExpr`, 42 constructors): §11's one law in five faces. The
-  cut: a node IS its handle, a body holds its children as handles, and every
-  reader asks the graph (`Hβ.graph.positions-are-cells`, its first face).
+  cut: a node IS its handle and a body holds its children as handles
+  (`Hβ.graph.positions-are-cells`, its first face; S2, the TRANSITION, is
+  the rename S1 made it).
 - **Regions are runtime since the arena** (2026-10-03): `(body) ~> arena` reclaims an extent's allocations at its exit
   except what its publication reaches. Ownership's regions stay what they
   were — compile-time root-tagging and return-transfer — and the arena does
@@ -2152,7 +2161,9 @@ bullet). That is #108's first face, and every change the medium should make
 as one write rests on it — the chain, a rename, the session's edit, a
 proposal rewriting in place — so it runs now, ahead of the order and behind
 tier 1's net, which has landed. Its stages are its design
-(`Hβ.graph.positions-are-cells`). Handler installation follows on it: one
+(`Hβ.graph.positions-are-cells`); S1 LANDED 2026-10-13 (LEDGER), every
+reader through the graph with the record carried and taken apart by
+`node_handle` alone, so S2 is a rename. Handler installation follows on it: one
 install per extent, a handler's start state its own, a chain named once,
 nothing installed only to swallow an op nobody reads.
 

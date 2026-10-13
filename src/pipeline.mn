@@ -672,10 +672,12 @@ fn query_sites(entry_module: String, question) =
 
 fn own_sites_of(question, m: String) = own_sites(ask(parse_query_string(m, question)), m)
 
-// The program's own sites are the located answer kept to its module — the
-// same `sites_in` a scoped question reads and the same `located_answer` the
-// board bounds, so which answers are located is said once.
-fn own_sites(answer, m) = located_answer(sites_in(m, answer))
+// The program's own sites are the noted answer kept to its module — the same
+// `sites_in` a scoped question reads and the same `noted_answer` whose
+// addresses the board bounds (`located_answer`), so which answers are located
+// is said once, and a site carries its role or its prose line across a
+// directory as it does for one program.
+fn own_sites(answer, m) = noted_answer(sites_in(m, answer))
 
 // The diagnostic bank keeps every report its install encloses, as the
 // structured fact the report carried: the kind, the module it is about,
@@ -907,9 +909,12 @@ handler fresh_for_query with next_display = 0 {
 // nodes dropped: the one walk over a module's fn decls, which audit and
 // teach read through their two projections.
 fn map_fn_stmts(ast, project) = ast |> map({
-  N(body, _, handle) => match body {
-    NStmt(FnStmt(name, _, _, _, _)) => [project(name, handle)],
-    _ => [],
+  node => {
+    let handle = node_handle(node)
+    match graph_node_body(handle) {
+      NStmt(FnStmt(name, _, _, _, _)) => [project(name, handle)],
+      _ => [],
+    }
   },
 }) |> flatten
 
@@ -1269,6 +1274,18 @@ fn census_site_line(site) = match site {
   (path, s) => "\n  at {path}:{show_span(s)}",
 }
 
+// A noted site: the address, then what stands there when the facet has
+// something to show — a reference's role, the comment line a prose needle is
+// in — so the answer is read without opening the line.
+fn render_noted_sites(sites) = sites |> map(noted_site_line) |> str_concat_all
+
+fn noted_site_line(site) = match site {
+  (path, s, note) => match note {
+    None => "\n  at {path}:{show_span(s)}",
+    Some(n) => "\n  at {path}:{show_span(s)}  {n}",
+  },
+}
+
 fn render_named_sites(names) = names |> map(named_site_line) |> str_concat_all
 
 fn named_site_line(named) = match named {
@@ -1475,7 +1492,7 @@ fn render_query_result(result) = match result {
   // edges the weave holds — and the answer is only a replacement once it
   // names the FILE, which is why it renders through the census's own site
   // line rather than a second renderer that knew one half of an address.
-  "→ {int_to_str(len(sites))} reference(s){render_census_sites(sites)}",
+  "→ {int_to_str(len(sites))} reference(s){render_noted_sites(sites)}",
   QRVerifyDebt(obligations) => // The debt renders WHAT is owed, not just how much (the refs facet's
   // own lesson): each obligation located with its predicate, so the
   // discharge work has an instrument instead of a count.
@@ -1491,7 +1508,7 @@ fn render_query_result(result) = match result {
     "→ {int_to_str(len(sites))} handler(s) declare an arm for it{str_concat_all(map(render_provider_site, sites))}"
   },
   QRFlowLabel(label, reason) => "→ {show_flow_label(label)}\n  Reason: {show_reason(reason)}",
-  QRCensus(label, sites) => "→ {int_to_str(len(sites))} {label}{render_census_sites(sites)}",
+  QRCensus(label, sites) => "→ {int_to_str(len(sites))} {label}{render_noted_sites(sites)}",
   QRCensusRoster(rows) => "→ {int_to_str(len(rows))} census shape(s) — ask one as `census <name>`{rows |> map(roster_line) |> str_concat_all}",
   QRDecls(names) => // The decls column's projection: every name the judged declarations
   // declare, beside where it is declared.

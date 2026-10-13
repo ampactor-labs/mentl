@@ -387,8 +387,8 @@ fn accept_annotation(handle, s) with !Mutate = match s {
         Some(path) => match splice_decl_head(
           fs_read_file(path),
           parse_span_of(handle),
-          node_start_span(body),
-          annotated_head(ann, name, params, retty, effs, body),
+          graph_span_of(node_handle(body)),
+          annotated_head(ann, name, params, graph_node_body(node_handle(retty)), effs, body),
           stated_by(ann, params)
         ) {
           Some(edited) => {
@@ -411,12 +411,13 @@ fn accept_annotation(handle, s) with !Mutate = match s {
 
 // The head an annotation writes: the declaration re-rendered with the
 // clause joined to its row, a parameter's type set to the alias, or the
-// return set to it.
-fn annotated_head(ann, name: String, params, retty, effs, body) with !Mutate = match ann {
-  APure(_) => render_fn_head(name, params, retty, effs ++ [(RtEff(EPure), false, EcUnion)], body),
-  ANotEffect(n, _) => render_fn_head(name, params, retty, effs ++ [(RtEff(ENamed(intern_str(n))), true, EcUnion)], body),
-  ARefined(r) => render_fn_head(name, params |> map(restated_param(r.param, r.alias, ??)), retty, effs, body),
-  AReturns(r) => render_fn_head(name, params, N(NTypeAnn(TName(r.alias, [])), span_zero(), 0), effs, body),
+// return set to it. `ret` is the declaration's return annotation itself,
+// and a return contract writes the alias as the annotation in its place.
+fn annotated_head(ann, name: String, params, ret, effs, body) with !Mutate = match ann {
+  APure(_) => render_fn_head(name, params, ret, effs ++ [(RtEff(EPure), false, EcUnion)], body),
+  ANotEffect(n, _) => render_fn_head(name, params, ret, effs ++ [(RtEff(ENamed(intern_str(n))), true, EcUnion)], body),
+  ARefined(r) => render_fn_head(name, params |> map(restated_param(r.param, r.alias, ??)), ret, effs, body),
+  AReturns(r) => render_fn_head(name, params, NTypeAnn(TName(r.alias, [])), effs, body),
 }
 
 fn restated_param(pname: String, alias: String, p) = match p {
@@ -441,10 +442,6 @@ fn written_base(pname: String, contract, p) = match p {
   } else {
     []
   },
-}
-
-fn node_start_span(node) = match node {
-  N(_, sp, _) => sp,
 }
 
 // The head is the source from the declaration's start to the whitespace
@@ -520,9 +517,8 @@ fn accept_at(handle, view) with !Mutate = match view {
 // skeleton. Until C7 this was a literal renderer with a hole-marker floor,
 // so every structured candidate showed as `??` — the medium showing a
 // proposal it could not name (`Hβ.felt.candidate-render-is-format`, closed).
-fn render_candidate_source(node) with !Mutate = match node {
-  N(body, _, _) => render_body_tokens(body),
-}
+fn render_candidate_source(node) with !Mutate =
+  render_body_tokens(graph_node_body(node_handle(node)))
 
 // ─── Format / parse helpers per transport ──────────────────────────
 fn show_handle_label(cursor) = match cursor {

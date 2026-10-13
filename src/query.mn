@@ -270,14 +270,15 @@ type QueryResult
   // The chains a why question answers with: the declaration's own reason
   // first, then one per effect of its row, or the one effect's chain alone
   | QRWhy([Reason])
-  // The refs sites as (module, span) PAIRS — the same shape the census and
-  // decls facets already answer in. This facet was the last holdout carrying
-  // a BARE span, and a bare span is not an address: `at 3090:3` names a line
-  // in no file, so reading it costs a grep to find out whose line it is (paid
-  // twice in one session). Worse, the dedup compared bare spans, so two refs
-  // at one line:col in DIFFERENT modules were one entry by construction.
-  // The handle knows its module; the collector was discarding it.
-  | QRRefs([(String, Span)])
+  // The refs sites as (module, span, role) — an ADDRESS and what stands at it.
+  // A bare span is not an address: `at 3090:3` names a line in no file, so
+  // reading it costs a grep to find out whose line it is (paid twice in one
+  // session), and a dedup over bare spans made two refs at one line:col in
+  // DIFFERENT modules one entry by construction. The role is the third half
+  // (`ref_role`): a name as a callee, as a value, or a constructor a pattern
+  // names — asked for by every reader who had to tell a record's
+  // constructions from its patterns by opening each line.
+  | QRRefs([(String, Span, Option(String))])
   | QRVerifyDebt([(Int, Span, Predicate, Reason)])
   // THE SAME OBLIGATIONS, PROJECTED AS SMT-LIB — `mentl query <f> "smt"`.
   // One read (`verify_debt()`), two renders: `QRVerifyDebt` speaks the
@@ -297,10 +298,13 @@ type QueryResult
   // IFC projection — the FlowLabel the type already proves
   | QRFlowLabel(FlowLabel, Reason)
   // census label + the located sites (count = len)
-  // the sites as (module, span) PAIRS: a local span names a line, and the
-  // module names whose line it is — the two halves the weave used to fuse
-  // into one global coordinate and three readers had to take apart again.
-  | QRCensus(String, [(String, Span)])
+  // the sites as (module, span, note): a local span names a line, the module
+  // names whose line it is — the two halves the weave used to fuse into one
+  // global coordinate and three readers had to take apart again — and the
+  // note is what stands there when the shape has something to show: the
+  // comment line that carries a prose needle or a prose class, nothing for a
+  // shape whose site is the whole answer (`census_note`).
+  | QRCensus(String, [(String, Span, Option(String))])
   // (the name a question asks it with, its label, its count) per shape
   | QRCensusRoster([(String, String, Int)])
   // every name the judged declarations declare (count = len), each beside
@@ -461,7 +465,7 @@ fn query_answer(q) = match q {
       (scheme, reason, _kind) => QRFlowLabel(name_flow_label(scheme), reason),
     },
   },
-  QCensus(shape) => QRCensus(census_label(shape), census_sites(shape)),
+  QCensus(shape) => QRCensus(census_label(shape), census_noted(shape)),
   QCensusRoster => QRCensusRoster(census_roster() |> map(roster_row)),
   QWhere(name, scope) => where_badges(name, scope),
   QVariants(tname) => variants_of(tname),
@@ -487,8 +491,8 @@ fn query_answer(q) = match q {
 // names its module. An answer that carries no sites has nothing to keep, and
 // says which facets a scope reads.
 fn sites_in(m, answer) = match answer {
-  QRRefs(sites) => QRRefs(filter(site_in_module(m, ??), sites)),
-  QRCensus(label, sites) => QRCensus(label, filter(site_in_module(m, ??), sites)),
+  QRRefs(sites) => QRRefs(filter(noted_in_module(m, ??), sites)),
+  QRCensus(label, sites) => QRCensus(label, filter(noted_in_module(m, ??), sites)),
   QRGhosts(sites) => QRGhosts(filter(site_in_module(m, ??), sites)),
   QRDecls(named) => QRDecls(filter(named_in_module(m, ??), named)),
   QRVerifyDebt(debt) => QRVerifyDebt(filter(obligation_in_module(m, ??), debt)),
@@ -500,6 +504,8 @@ fn sites_in(m, answer) = match answer {
 fn site_in_module(m, site) = match site {
   (path, span) => path == m,
 }
+
+fn noted_in_module(m, site) = site_in_module(m, noted_address(site))
 
 fn named_in_module(m, named) = site_in_module(m, name_site(named))
 
@@ -622,7 +628,36 @@ fn walk_chain(handle, depth) = if depth > 50 || handle < 0 {
 // that column — O(refs), never O(graph) — and walks it from the TAIL
 // because the column prepends (newest first): oldest-first preserves
 // the scan-era answer order and its first-seen span dedup.
-fn refs_of_name(name) with !Mutate = map({ (m, sp, _h) => (m, sp) }, ref_sites_of(name))
+fn refs_of_name(name) with !Mutate =
+  map({ (m, sp, h) => (m, sp, Some(ref_role(name, h))) }, ref_sites_of(name))
+
+// What stands at a reference site. The column notes a reference at the node
+// that makes it: the name's own node when it is a callee (`call`) or a value
+// (`value`), and the SCRUTINEE a pattern constrains when a constructor is
+// named by a pattern (`pattern`) — the pattern has no cell of its own yet, so
+// `infer_pat` notes it at the node it matches
+// (`Hβ.graph.positions-are-cells`). A node holding any other body is such a
+// scrutinee; a node holding the name is the name.
+fn ref_role(name, h) with !Mutate = match graph_node_body(h) {
+  NExpr(VarRef(n)) => if n == name { if callee_of_parent(h) { "call" } else { "value" } } else { "pattern" },
+  _ => "pattern",
+}
+
+// Whether the node is the callee of the call that holds it — the parent edge
+// read, never a second walk.
+fn callee_of_parent(h) with !Mutate = match graph_parent_of(h) {
+  Some(p) => match graph_node_body(p) {
+    NExpr(CallExpr(f, _)) => node_handle(f) == h,
+    _ => false,
+  },
+  None => false,
+}
+
+// The address half of a noted site — what the board bounds and the caret
+// carries; the note is the terminal's.
+fn noted_address(site) = match site {
+  (m, sp, _) => (m, sp),
+}
 
 // The same sites as their HANDLES — what a reader that measures nearness
 // between positions needs (the proposer's rank), one per source site.
@@ -735,8 +770,8 @@ fn import_edges_of(cell) = match cell {
   (_, _, _, decls) => fold([], import_edge_join, decls),
 }
 
-fn import_edge_join(acc, d) = match d {
-  N(NStmt(ImportStmt(p)), _, _) => push(acc, p),
+fn import_edge_join(acc, d) = match graph_node_body(node_handle(d)) {
+  NStmt(ImportStmt(p)) => push(acc, p),
   _ => acc,
 }
 
@@ -749,8 +784,8 @@ fn module_declared_names(cell) = match cell {
 
 fn decl_names_join(acc, d) = acc ++ decl_names_of(d)
 
-fn decl_names_of(d) = match d {
-  N(NStmt(s), _, _) => match s {
+fn decl_names_of(d) = match graph_node_body(node_handle(d)) {
+  NStmt(s) => match s {
     FnStmt(n, _, _, _, _) => [n],
     TypeDefStmt(n, ctors) => [n] ++ map({ (cn, _, _) => cn }, ctors),
     EffectDeclStmt(n, _, ops) => [n] ++ map({ (on, _, _, _) => on }, ops),
@@ -818,13 +853,7 @@ fn decl_ref_row_join(path: String, acc, d) with !Mutate =
 fn decl_ref_verdict(path: String, extent, name: String) with !Mutate =
   (path, name, count(ref_is_outside(extent), graph_refs_at(name)))
 
-fn decl_extent(d) with Pure = match d {
-  N(_, sp, _) => sp,
-}
-
-fn decl_handle(d) with Pure = match d {
-  N(_, _, h) => h,
-}
+fn decl_extent(d) = graph_span_of(node_handle(d))
 
 // ─── unreachable — unreferenced's transitive face ───────────────────
 //
@@ -884,8 +913,8 @@ fn reach_report(cells) = {
 fn refine_roots(decls) = decls |> map(refine_decl_names) |> flatten
 
 fn refine_decl_names(entry) = match entry {
-  (_, d) => match d {
-    N(NStmt(RefineStmt(_, _, pred)), _, _) => predicate_names(pred),
+  (_, d) => match graph_node_body(node_handle(d)) {
+    NStmt(RefineStmt(_, _, pred)) => predicate_names(pred),
     _ => [],
   },
 }
@@ -964,8 +993,8 @@ fn ur_walk(ref decls, idx, work, reached, parked) = match work {
 }
 
 // A declaration's frees to walk now, and the arms it parks as (op, frees).
-fn ur_decl_frees(d, reached) = match d {
-  N(NStmt(HandlerDeclStmt(_, _, config, state, arms, _)), _, _) => match projection_of_effects(handler_effect_names(arms)) {
+fn ur_decl_frees(d, reached) = match graph_node_body(node_handle(d)) {
+  NStmt(HandlerDeclStmt(_, _, config, state, arms, _)) => match projection_of_effects(handler_effect_names(arms)) {
     PDispatch => {
       let cfg = free_vars_param_names(config)
       let in_arms = cfg ++ map({ st => st.name }, state)
@@ -998,8 +1027,8 @@ fn ur_rows(ref decls, reached, i, n, acc) = if i >= n {
   acc
 } else {
   match decls[i] {
-    (path, d) => match d {
-      N(NStmt(FnStmt(name, _, _, _, _)), _, _) => {
+    (path, d) => match graph_node_body(node_handle(d)) {
+      NStmt(FnStmt(name, _, _, _, _)) => {
         let hit = match smap_get(reached, name) {
           Some(_) => 1,
           None => 0,
@@ -1083,7 +1112,7 @@ fn orphan_rows_for(cell) with !Mutate = match cell {
 }
 
 fn orphan_row_join(path: String, acc, d) with !Mutate = {
-  let prose = graph_comment_at(decl_handle(d))
+  let prose = graph_comment_at(node_handle(d))
   if byte_len(prose) < orphan_prose_floor() {
     acc
   } else {
@@ -1138,14 +1167,15 @@ fn effect_rows_for(cell) with !Mutate = match cell {
   (_h, path, _, decls) => fold([], effect_row_join(path), decls),
 }
 
-fn effect_row_join(path: String, acc, d) with !Mutate = match d {
-  N(body, sp, _) => match body {
+fn effect_row_join(path: String, acc, d) with !Mutate = {
+  let h = node_handle(d)
+  match graph_node_body(h) {
     NStmt(s) => match s {
-      EffectDeclStmt(n, _, ops) => push(acc, (path, n, len(ops), count(op_is_performed(sp), ops))),
+      EffectDeclStmt(n, _, ops) => push(acc, (path, n, len(ops), count(op_is_performed(graph_span_of(h)), ops))),
       _ => acc,
     },
     _ => acc,
-  },
+  }
 }
 
 fn op_is_performed(extent, op) with !Mutate = match op {
@@ -1286,16 +1316,20 @@ fn census_shape_named(arg: String) = find(census_named(arg), census_roster())
 
 fn census_named(arg: String, shape) = census_name(shape) == arg
 
-// A LOCATED answer: the label and the (module, span) sites of a question the
-// medium answers by place — the shape the board bounds. A question answered
-// by a type, a reason or a table has no sites, and the board refuses a bound
-// over it rather than counting nothing.
-fn located_answer(r) = match r {
+// A NOTED answer: the label and the (module, span, note) sites of a question
+// the medium answers by place, each site with what stands there when the
+// facet has something to show — a reference's role, the comment line a prose
+// needle is in — and nothing for a facet that only locates. It is what a
+// directory of programs renders, one program at a time (the directory route,
+// query_dir in src/main.mn), so a site reads the same whether one program or
+// a tree of them was asked. A question answered by a type, a reason or a
+// table has no sites.
+fn noted_answer(r) = match r {
   QRCensus(label, sites) => Some((label, sites)),
-  QRGhosts(sites) => Some(("cell(s) minted and never judged", sites)),
-  QRVerifyDebt(obligations) => Some(("open obligation(s)", map(debt_site, obligations))),
-  QRSmt(obligations) => Some(("open obligation(s)", map(debt_site, obligations))),
-  QRDecls(names) => Some(("declared name(s)", names |> map(name_site))),
+  QRGhosts(sites) => Some(("cell(s) minted and never judged", map(unnoted, sites))),
+  QRVerifyDebt(obligations) => Some(("open obligation(s)", obligations |> map(debt_site) |> map(unnoted))),
+  QRSmt(obligations) => Some(("open obligation(s)", obligations |> map(debt_site) |> map(unnoted))),
+  QRDecls(names) => Some(("declared name(s)", names |> map(name_site) |> map(unnoted))),
   QRRefs(sites) => Some(("reference(s)", sites)),
   QRType(_, _) => None,
   QRIntent(_) => None,
@@ -1319,6 +1353,19 @@ fn located_answer(r) = match r {
   QRError(_) => None,
 }
 
+// A LOCATED answer: the noted answer's addresses alone — the shape the board
+// bounds and the caret reads, so which answers are located is said once, at
+// the noted answer. The board refuses a bound over a question with no sites
+// rather than counting nothing.
+fn located_answer(r) = match noted_answer(r) {
+  Some((label, sites)) => Some((label, map(noted_address, sites))),
+  None => None,
+}
+
+fn unnoted(site) = match site {
+  (m, s) => (m, s, None),
+}
+
 fn debt_site(ob) = match ob {
   (modh, s, _, _) => (module_name_of_handle(modh), s),
 }
@@ -1327,8 +1374,29 @@ fn name_site(named) = match named {
   (name, site) => site,
 }
 
-fn census_sites(shape) with !Mutate = match graph_snapshot() {
-  Graph(next, _) => map({ (m, sp, _h) => (m, sp) }, census_walk(shape, 0, next, make_list(0))),
+fn census_sites(shape) with !Mutate = census_noted(shape) |> map(noted_address)
+
+// The sites with what stands at each — the answer the terminal renders; the
+// board and the caret read the addresses alone, through `located_answer`, and
+// the roster counts them (`census_sites`).
+fn census_noted(shape) with !Mutate = match graph_snapshot() {
+  Graph(next, _) => map({ (m, sp, h) => (m, sp, census_note(shape, h)) }, census_walk(shape, 0, next, make_list(0))),
+}
+
+// What a site shows beside its address: for a prose shape, the comment line
+// that carries the needle or the class, read by the same test that admitted
+// the comment, so the line is the one the count counted; nothing for a shape
+// whose site says it all. A class a single line cannot carry — a decoration
+// run across several — shows nothing rather than a line that does not.
+fn census_note(shape, h) with !Mutate = match shape {
+  CsProse(needle) => prose_line(prose_holds(??, needle), graph_comment_at(h)),
+  CsProseClass(c) => prose_line(prose_class_holds(c), graph_comment_at(h)),
+  _ => None,
+}
+
+fn prose_line(holds, text) = match find(holds, lines(text)) {
+  Some(l) => Some(trim(l)),
+  None => None,
 }
 
 // The weave walk's span is the node's OWN (raw) reason — the parse site.
@@ -1438,11 +1506,9 @@ fn census_matches(shape: CensusShape, h, body: NodeBody) with !Mutate = match sh
   // reason exactly as the wildcard-zero convention set.
   match body {
     NExpr(BinOpExpr(op, _, r)) => match op {
-      BOr => match r {
-        N(rb, _, _) => match rb {
-          NExpr(LitBool(v)) => v,
-          _ => false,
-        },
+      BOr => match graph_node_body(node_handle(r)) {
+        NExpr(LitBool(v)) => v,
+        _ => false,
       },
       _ => false,
     },
@@ -1921,11 +1987,9 @@ fn any_wildcard_zero(arms, i, n) = if i >= n {
 } else {
   match list_index(arms, i) {
     (p, b) => match p {
-      PWild => match b {
-        N(nb, _, _) => match nb {
-          NExpr(LitInt(0)) => true,
-          _ => any_wildcard_zero(arms, i + 1, n),
-        },
+      PWild => match graph_node_body(node_handle(b)) {
+        NExpr(LitInt(0)) => true,
+        _ => any_wildcard_zero(arms, i + 1, n),
       },
       _ => any_wildcard_zero(arms, i + 1, n),
     },
@@ -1943,20 +2007,18 @@ fn any_wildcard_fabricates(arms, i, n) = if i >= n {
   }
 }
 
-fn wildcard_body_fabricates(b) = match b {
-  N(nb, _, _) => match nb {
-    NExpr(LitString(s)) => // drift-audit: ignore — the census DETECTOR reading the drifted literal from the weave, not an effect-name dispatch
-    s == "" || s == "Pure",
-    NExpr(CallExpr(callee, _)) => match graph_node_body(node_handle(callee)) {
-      NExpr(VarRef(cn)) => cn == "Forall" || cn == "TVar",
-      _ => false,
-    },
+fn wildcard_body_fabricates(b) = match graph_node_body(node_handle(b)) {
+  NExpr(LitString(s)) => // drift-audit: ignore — the census DETECTOR reading the drifted literal from the weave, not an effect-name dispatch
+  s == "" || s == "Pure",
+  NExpr(CallExpr(callee, _)) => match graph_node_body(node_handle(callee)) {
+    NExpr(VarRef(cn)) => cn == "Forall" || cn == "TVar",
     _ => false,
   },
+  _ => false,
 }
 
 // The one total child projection over NodeBody — `body_child_handles` and
-// its Expr/Stmt halves — lives beside `node_handle` in graph.mn (moved
+// its Expr/Stmt halves — lives in graph.mn (moved
 // 2026-09-27 so lower's race rule can walk a handler's arms with the same
 // edge the census walks; every tree walk here reads it, never a copy).
 //
@@ -2247,7 +2309,7 @@ fn fn_decl_of(h) = match graph_node_body(h) {
 
 fn head_failures(decl) = match decl {
   (name, params, retty, effs, body) => {
-    let authored = render_fn_head(name, params, retty, effs, body)
+    let authored = render_fn_head(name, params, graph_node_body(node_handle(retty)), effs, body)
     let eye = match env_lookup(name) {
       Some((sch, _, _)) => match chase_type_deep(judgment_ty(sch)) {
         TFun(ps, ret, row) => "fn {show_head(name, ps, ret, row)} =",
@@ -2261,12 +2323,18 @@ fn head_failures(decl) = match decl {
 
 // The head parsed as the declaration it spells, then rendered by the
 // formatter: empty when it comes back as itself.
-fn round_trip_failure(face: String, head: String) = match "{head} 0" |> lex |> parse_program ~> diag_quiet {
-  [N(NStmt(FnStmt(n, ps, r, es, b)), _, _)] => {
-    let back = render_fn_head(n, ps, r, es, b)
+fn round_trip_failure(face: String, head: String) = match sole_decl_body("{head} 0" |> lex |> parse_program ~> diag_quiet) {
+  Some(NStmt(FnStmt(n, ps, r, es, b))) => {
+    let back = render_fn_head(n, ps, graph_node_body(node_handle(r)), es, b)
     if back == head { [] } else { ["{face}: {head}  ⇢  {back}"] }
   },
   _ => ["{face}: {head}  ⇢  does not parse as one declaration"],
+}
+
+// The body of a parse that is exactly one statement.
+fn sole_decl_body(stmts) = match stmts {
+  [d] => Some(graph_node_body(node_handle(d))),
+  _ => None,
 }
 
 // A type's or an effect's lines: the head, then one line per constructor
@@ -2613,8 +2681,8 @@ fn extent_calls(h, tees, via: String, acc) with !Mutate = {
 fn extent_calls_step(tees, via: String, acc, h) with !Mutate = extent_calls(h, tees, via, acc)
 
 fn seed_call(acc, f, tees, via: String) with !Mutate = if schedule_is_threaded(schedule_of(tees)) {
-  match f {
-    N(NExpr(VarRef(callee)), _, _) => push(acc, (callee, via)),
+  match graph_node_body(node_handle(f)) {
+    NExpr(VarRef(callee)) => push(acc, (callee, via)),
     _ => acc,
   }
 } else {
@@ -2754,11 +2822,11 @@ fn env_demand_at(acc, c) = match env_read_demand(c) {
 fn env_read_demand(c) = match graph_node_body(c) {
   NExpr(CallExpr(callee, args)) => match graph_node_body(node_handle(callee)) {
     NExpr(VarRef(op)) => if (op == "env" || op == "env_opt") && op_effect_of(op) == Some("Environ") {
-      match (op, args) {
-        ("env", [N(NExpr(LitString(s)), _, _), ..._]) => Some((s, "required")),
-        ("env", _) => None,
-        ("env_opt", [N(NExpr(LitString(s)), _, _), ..._]) => Some((s, "optional")),
-        ("env_opt", _) => Some(("*", "all optional")),
+      match (op, literal_first_arg(args)) {
+        ("env", Some(s)) => Some((s, "required")),
+        ("env", None) => None,
+        ("env_opt", Some(s)) => Some((s, "optional")),
+        ("env_opt", None) => Some(("*", "all optional")),
       }
     } else {
       None
@@ -2766,6 +2834,15 @@ fn env_read_demand(c) = match graph_node_body(c) {
     _ => None,
   },
   _ => None,
+}
+
+// The first argument's text, when the call writes it as a string literal.
+fn literal_first_arg(args) = match args {
+  [a, ..._] => match graph_node_body(node_handle(a)) {
+    NExpr(LitString(s)) => Some(s),
+    _ => None,
+  },
+  [] => None,
 }
 
 // The handlers that can serve an operation of EN performed at H: up the

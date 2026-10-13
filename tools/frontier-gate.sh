@@ -3445,6 +3445,25 @@ for i in "${!compilers[@]}"; do
   else
     fail "effect-enters (exit=$ent_rc: $(printf '%s' "$ent_out" | grep -F 'E_EffectMismatch' | head -1 | cut -c1-200))"
   fi
+  # An effect an install ABSORBS enters through the install: `quiet` declares
+  # `!Log` over `work() ~> relog`, relog answers every `log` the body performs
+  # and its own arm performs `log` again (resolving outside the install), so
+  # the chain names the tee and relog's arm, never work's absorbed `log("a")`.
+  # RED on boot 53213e36 (Landing 4 S1, 2026-10-13): the walk descended into
+  # the tee's body because the body's note carried Log and answered
+  # `through \`work\``.
+  abs_out=$(cd "$ROOT" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT" --dir /tmp "$compiler" check tests/frontier/mn-effect-enters-absorbed.mn 2>&1)
+  abs_rc=$?
+  abs_why=$(cd "$ROOT" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT" --dir /tmp "$compiler" query tests/frontier/mn-effect-enters-absorbed.mn "why quiet Log" 2>/dev/null)
+  if [ "$abs_rc" -ne 0 ] \
+     && printf '%s' "$abs_out" | grep -q 'declared as quiet; Log enters at [a-z/-]*mn-effect-enters-absorbed:29:[0-9]* through `~> relog` → at [a-z/-]*mn-effect-enters-absorbed:15:[0-9]* through `log` → declared as log, an op of Log' \
+     && ! printf '%s' "$abs_out" | grep -q 'through `work`' \
+     && printf '%s' "$abs_why" | grep -q 'through `~> relog` → at [a-z/-]*mn-effect-enters-absorbed:15:[0-9]* through `log`' \
+     && ! printf '%s' "$abs_why" | grep -q 'through `work`'; then
+    pass "effect-enters-absorbed (an absorbed effect enters through the install's arm, never the body it absorbs from)"
+  else
+    fail "effect-enters-absorbed (exit=$abs_rc: $(printf '%s' "$abs_out" | grep -F 'E_EffectMismatch' | head -1 | cut -c1-240))"
+  fi
   # ── the installed command keeps a path under the cwd as written ──────
   # The shim hands a path OUTSIDE the cwd to the guest absolute (a `..`
   # above the cwd preopen is refused), and a path under the cwd as the

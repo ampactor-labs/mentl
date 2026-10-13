@@ -1087,16 +1087,20 @@ fn doc_render_cell(entry_module: String, cell) = match cell {
 // head (`name(p: T) -> R with row`), a module value its type, a type its
 // constructors and an effect its ops — the lines `mentl where` gives them —
 // each followed by its lede.
-fn doc_render_decl(d) = match d {
-  N(NStmt(FnStmt(name, _, _, _, _)), _, h) => doc_render_lines([doc_value_line(name)], h),
-  N(NStmt(LetStmt(_, _, _)), _, h) => match body_decl_name(graph_node_body(h)) {
-    "" => (),
-    name => doc_render_lines([doc_value_line(name)], h),
-  },
-  N(NStmt(HandlerDeclStmt(name, _, _, _, _, _)), _, h) => doc_render_lines([doc_value_line(name)], h),
-  N(NStmt(TypeDefStmt(_, _)), _, h) => doc_render_lines(type_level_lines(h), h),
-  N(NStmt(EffectDeclStmt(_, _, _)), _, h) => doc_render_lines(type_level_lines(h), h),
-  _ => (),
+fn doc_render_decl(d) = {
+  let h = node_handle(d)
+  let body = graph_node_body(h)
+  match body {
+    NStmt(FnStmt(name, _, _, _, _)) => doc_render_lines([doc_value_line(name)], h),
+    NStmt(LetStmt(_, _, _)) => match body_decl_name(body) {
+      "" => (),
+      name => doc_render_lines([doc_value_line(name)], h),
+    },
+    NStmt(HandlerDeclStmt(name, _, _, _, _, _)) => doc_render_lines([doc_value_line(name)], h),
+    NStmt(TypeDefStmt(_, _)) => doc_render_lines(type_level_lines(h), h),
+    NStmt(EffectDeclStmt(_, _, _)) => doc_render_lines(type_level_lines(h), h),
+    _ => (),
+  }
 }
 
 // A value's line: a function's head, anything else `name : T`, its free
@@ -1577,23 +1581,28 @@ fn battery_line_rest(src, start, i) = if i >= byte_len(src) {
 // same address resolution and the same eight-aspect view the CLI's
 // `mentl <file>:<line>:<col>` builds, and the contract is compared to the
 // Verdict itself — structurally, never through the rendered line.
-fn battery_propose_step(stem, path: String, line, col, want) = match battery_view(path, line, col) {
-  None => {
-    print_string("FAIL(propose) {stem}: no node at {path}:{int_to_str(line)}:{int_to_str(col)}\n")
-    1
-  },
-  Some((_, view)) => match view {
-    CursorView(_, propose, _, _, _, _, _, _) => match propose {
-      Proposal(p) => if verdict_meets(want, p.verdict) {
-        print_string("PASS {stem}: propose {show_want(want)}\n")
-        0
-      } else {
-        print_string("FAIL(propose) {stem}: wanted {show_want(want)}, got {verdict_word(p.verdict)}\n")
-        1
+fn battery_propose_step(stem, path: String, line, col, want) = battery_view(
+  path,
+  line,
+  col,
+  {
+    None => {
+      print_string("FAIL(propose) {stem}: no node at {path}:{int_to_str(line)}:{int_to_str(col)}\n")
+      1
+    },
+    Some((_, view)) => match view {
+      CursorView(_, propose, _, _, _, _, _, _) => match propose {
+        Proposal(p) => if verdict_meets(want, p.verdict) {
+          print_string("PASS {stem}: propose {show_want(want)}\n")
+          0
+        } else {
+          print_string("FAIL(propose) {stem}: wanted {show_want(want)}, got {verdict_word(p.verdict)}\n")
+          1
+        },
       },
     },
-  },
-}
+  }
+)
 
 // THE TEACH BATTERY (D4): the fixture is judged at its declaration's line
 // through the address route and the eight-aspect view, and the contract is
@@ -1601,37 +1610,46 @@ fn battery_propose_step(stem, path: String, line, col, want) = match battery_vie
 // declaration: a `none` contract at a blank line met the module's own view,
 // which teaches nothing, and passed (measured 2026-10-13 on a fixture whose
 // contract had drifted onto a blank line as its comment grew).
-fn battery_teach_step(stem, path: String, line, want) = match battery_view(path, line, 0) {
-  None => {
-    print_string("FAIL(teach) {stem}: no node at {path}:{int_to_str(line)}\n")
-    1
-  },
-  Some((decl_name, view)) => if decl_name == "" {
-    print_string("FAIL(teach) {stem}: no declaration at {path}:{int_to_str(line)}\n")
-    1
-  } else {
-    match view {
-      CursorView(_, _, _, _, _, _, teach, _) => if teach_meets(want, teach) {
-        print_string("PASS {stem}: teach {show_teach_want(want)}\n")
-        0
-      } else {
-        print_string("FAIL(teach) {stem}: wanted {show_teach_want(want)}, got {show_teaching(teach)}\n")
-        1
-      },
-    }
-  },
-}
+fn battery_teach_step(stem, path: String, line, want) = battery_view(
+  path,
+  line,
+  0,
+  {
+    None => {
+      print_string("FAIL(teach) {stem}: no node at {path}:{int_to_str(line)}\n")
+      1
+    },
+    Some((decl_name, view)) => if decl_name == "" {
+      print_string("FAIL(teach) {stem}: no declaration at {path}:{int_to_str(line)}\n")
+      1
+    } else {
+      match view {
+        CursorView(_, _, _, _, _, _, teach, _) => if teach_meets(want, teach) {
+          print_string("PASS {stem}: teach {show_teach_want(want)}\n")
+          0
+        } else {
+          print_string("FAIL(teach) {stem}: wanted {show_teach_want(want)}, got {show_teaching(teach)}\n")
+          1
+        },
+      }
+    },
+  }
+)
 
 // The eight-aspect view at a fixture's address — the one read both
 // contracts judge, built as the CLI's `mentl <file>:<line>:<col>` builds it
-// — beside the name the node declares, read here inside the judgment that
-// holds the graph (outside it the handle names nothing) and empty where the
-// node is no declaration.
-fn battery_view(path: String, line, col) = infer_context(() => match driver_entry_with_ranges(path) {
-  (_ast, ranges) => match address_node(ranges, path, line, col) {
+// — beside the name the node declares (empty where the node is no
+// declaration), handed to the contract's judge INSIDE the judgment that
+// holds the graph. A node is its handle, and outside the judgment the handle
+// names nothing: a verdict's survivor rendered after this chain closed read
+// a body the graph did not hold, and every fill compared as `??` (measured
+// 2026-10-13 on the battery's eleven fill fixtures, the day the renderer
+// stopped reading the record). The judge's answer is the step's exit.
+fn battery_view(path: String, line, col, judge) = infer_context(() => match driver_entry_with_ranges(path) {
+  (_ast, ranges) => judge(match address_node(ranges, path, line, col) {
     None => None,
     Some(ph) => Some((body_decl_name(graph_node_body(ph)), cursor_at_handle(ph))),
-  },
+  }),
 } ~> cursor_default ~> synth_default ~> interrogate_default ~> mentl_default ~> diag_bank)
 
 fn teach_meets(want, teach) = match want {
@@ -1894,7 +1912,7 @@ fn query_dir(dir: String, question) = {
     } else {
       ()
     }
-    println("→ {int_to_str(len(found))} {fold("site(s)", answer_label, answers)} across {int_to_str(len(programs))} program(s){render_census_sites(found)}")
+    println("→ {int_to_str(len(found))} {fold("site(s)", answer_label, answers)} across {int_to_str(len(programs))} program(s){render_noted_sites(found)}")
     0
   }
 }

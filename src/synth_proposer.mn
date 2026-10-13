@@ -594,8 +594,9 @@ fn decl_index_cell(acc, c) = match c {
   (_h, _p, _s, decls) => fold(acc, decl_index_node, decls),
 }
 
-fn decl_index_node(acc, d) = match d {
-  N(body, _, h) => match body {
+fn decl_index_node(acc, d) = {
+  let h = node_handle(d)
+  match graph_node_body(h) {
     NStmt(FnStmt(name, _, _, _, _)) => smap_add(acc, name, h),
     NStmt(HandlerDeclStmt(hname, _, _, _, _, _)) => smap_add(acc, hname, h),
     NStmt(TypeDefStmt(_, variants)) => fold(
@@ -613,7 +614,7 @@ fn decl_index_node(acc, d) = match d {
       ops
     ),
     _ => acc,
-  },
+  }
 }
 
 // rank_of — RANK IS A PROJECTION of the LIVE candidate (the resolved
@@ -627,18 +628,14 @@ fn decl_index_node(acc, d) = match d {
 // Computed ONCE per candidate at sort entry — the same refs walk the
 // stored form paid at enrichment, moved to the read point.
 fn rank_of(c, hole_h, reach, decls) with !Mutate = match c {
-  EnrichedCandidate(cr) => match cr.node {
-    N(body, _, _) => match body {
-      NExpr(CallExpr(callee, _)) => match callee {
-        N(cb, _, _) => match cb {
-          NExpr(VarRef(name)) => candidate_rank(name, hole_h, reach, decls),
-          _ => 0.5,
-        },
-      },
-      NExpr(VarRef(name)) => // A reference ranks by the same local-intent read as a call of it.
-      candidate_rank(name, hole_h, reach, decls),
+  EnrichedCandidate(cr) => match graph_node_body(node_handle(cr.node)) {
+    NExpr(CallExpr(callee, _)) => match graph_node_body(node_handle(callee)) {
+      NExpr(VarRef(name)) => candidate_rank(name, hole_h, reach, decls),
       _ => 0.5,
     },
+    NExpr(VarRef(name)) => // A reference ranks by the same local-intent read as a call of it.
+    candidate_rank(name, hole_h, reach, decls),
+    _ => 0.5,
   },
 }
 
@@ -1162,12 +1159,9 @@ fn candidate_proven(node, hole_h, reason) = {
   {
     infer_expr(node)
   } ~> row_gate ~> store_ages ~> infer_ctx ~> fresh_for_inference ~> resume_summaries_ctx
-  match node {
-    N(_, span, h) => {
-      unify(hole_h, h, span, reason)
-      verify_after_apply(h) && all(refinement_admits(??, h), graph_claims_of(hole_h))
-    },
-  }
+  let h = node_handle(node)
+  unify(hole_h, h, graph_span_of(h), reason)
+  verify_after_apply(h) && all(refinement_admits(??, h), graph_claims_of(hole_h))
 }
 
 // ─── Verification — every candidate through the one gate ────────────
@@ -1236,17 +1230,13 @@ fn candidate_reason(candidate) with Pure = match candidate {
 // here — a refused `MkBox(…)` is exactly the kind of refusal a developer
 // needs to see, and it has an arg. A skeleton with no head name teaches
 // nothing and stays out.
-fn candidate_head_name(node) = match node {
-  N(body, _, _) => match body {
-    NExpr(CallExpr(callee, _)) => match callee {
-      N(cb, _, _) => match cb {
-        NExpr(VarRef(name)) => Some(name),
-        _ => None,
-      },
-    },
+fn candidate_head_name(node) = match graph_node_body(node_handle(node)) {
+  NExpr(CallExpr(callee, _)) => match graph_node_body(node_handle(callee)) {
     NExpr(VarRef(name)) => Some(name),
     _ => None,
   },
+  NExpr(VarRef(name)) => Some(name),
+  _ => None,
 }
 
 // A survivor's node, replaced by the cost-minimal member of its own
@@ -1260,26 +1250,23 @@ fn extract_optimal(candidate) = match candidate {
     if cheapest == h {
       candidate
     } else {
-      // The CHEAPER BODY at the CANDIDATE'S OWN SPAN: a proposal is
-      // about the position the developer is filling, so taking the
-      // rewritten node's span would answer a `why` with the coordinates
-      // of a node they never wrote (caught in review of this fn's first
-      // form). The rewrite's own justification belongs on the canon
-      // EDGE — the one kernel write that carries no Reason today
-      // (Hβ.egraph.canon-edge-carries-reason); until it does, the
-      // candidate's seed Reason is the honest chain.
+      // The CHEAPEST MEMBER IS the candidate, at its own handle: its body
+      // and its span are the graph's there, never one node's body paired
+      // with another's span. A candidate stands at no position
+      // (`synth_node` mints it at the zero span) and neither does a folded
+      // constant, and the position a proposal fills is the hole's, which
+      // the accept reads off the hole's own handle. The rewrite's own
+      // justification belongs on the canon EDGE — the one kernel write
+      // that carries no Reason (Hβ.egraph.canon-edge-carries-reason) — so
+      // the candidate's seed Reason is the honest chain.
       EnrichedCandidate({
-        node: N(graph_node_body(cheapest), node_span(c.node), cheapest),
+        node: N(graph_node_body(cheapest), graph_span_of(cheapest), cheapest),
         origin: c.origin,
         reason: c.reason,
         writes: c.writes,
       })
     }
   },
-}
-
-fn node_span(node) with Pure = match node {
-  N(_, span, _) => span,
 }
 
 // ─── map_to_proposals — project each survivor to its (node, reason) ──
@@ -1298,21 +1285,17 @@ fn reference_before_mint(survivors) = if any(is_reference_candidate, survivors) 
   survivors
 }
 
-fn is_reference_candidate(c) with Pure = match c {
-  EnrichedCandidate(cr) => match cr.node {
-    N(body, _, _) => match body {
-      NExpr(VarRef(_)) => true,
-      _ => false,
-    },
+fn is_reference_candidate(c) = match c {
+  EnrichedCandidate(cr) => match graph_node_body(node_handle(cr.node)) {
+    NExpr(VarRef(_)) => true,
+    _ => false,
   },
 }
 
-fn is_not_lambda_candidate(c) with Pure = match c {
-  EnrichedCandidate(cr) => match cr.node {
-    N(body, _, _) => match body {
-      NExpr(LambdaExpr(_, _)) => false,
-      _ => true,
-    },
+fn is_not_lambda_candidate(c) = match c {
+  EnrichedCandidate(cr) => match graph_node_body(node_handle(cr.node)) {
+    NExpr(LambdaExpr(_, _)) => false,
+    _ => true,
   },
 }
 
@@ -1483,19 +1466,17 @@ fn nullary_ctor_step(acc, node) = match acc {
   },
 }
 
-fn nullary_ctor_name(node) = match node {
-  N(body, _, _) => match body {
-    NExpr(VarRef(name)) => match env_lookup(name) {
-      Some(entry) => match entry {
-        (_, _, kind) => match kind {
-          ConstructorScheme(_, _) => Some(name),
-          _ => None,
-        },
+fn nullary_ctor_name(node) = match graph_node_body(node_handle(node)) {
+  NExpr(VarRef(name)) => match env_lookup(name) {
+    Some(entry) => match entry {
+      (_, _, kind) => match kind {
+        ConstructorScheme(_, _) => Some(name),
+        _ => None,
       },
-      None => None,
     },
-    _ => None,
+    None => None,
   },
+  _ => None,
 }
 
 // Rows compare by MUTUAL subsumption — the crown's own algebra, never a

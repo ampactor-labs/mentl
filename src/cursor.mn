@@ -260,20 +260,16 @@ fn enumerate_hole_positions(mh) with !Mutate =
 // callee's own row and body what the candidate means. An arg-bearing call
 // answers None because nothing downstream can yet say what its arguments
 // are (`Hβ.synth.vocabulary-arg-holes` is where they start being sayable).
-fn callee_name_of(node) = match node {
-  N(body, _, _) => match body {
-    NExpr(CallExpr(callee, args)) => if len(args) == 0 {
-      match callee {
-        N(cb, _, _) => match cb {
-          NExpr(VarRef(name)) => Some(name),
-          _ => None,
-        },
-      }
-    } else {
-      None
-    },
-    _ => None,
+fn callee_name_of(node) = match graph_node_body(node_handle(node)) {
+  NExpr(CallExpr(callee, args)) => if len(args) == 0 {
+    match graph_node_body(node_handle(callee)) {
+      NExpr(VarRef(name)) => Some(name),
+      _ => None,
+    }
+  } else {
+    None
   },
+  _ => None,
 }
 
 // A gradient position IS a fn declaration — the teach verb's own scope

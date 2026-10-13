@@ -406,14 +406,8 @@ fn node_const_at(handle, bind) = match graph_node_body(handle) {
   NExpr(LitString(s)) => Some(LVString(s)),
   NExpr(LitBool(b)) => Some(LVBool(b)),
   NExpr(VarRef(name)) => resolve_self_operand(name, bind),
-  NExpr(BinOpExpr(op, l, r)) => match l {
-    N(_, _, lh) => match r {
-      N(_, _, rh) => litval_arith_opt(op, node_const_at(lh, bind), node_const_at(rh, bind)),
-    },
-  },
-  NExpr(UnaryOpExpr(op, x)) => match x {
-    N(_, _, xh) => litval_unary_opt(op, node_const_at(xh, bind)),
-  },
+  NExpr(BinOpExpr(op, l, r)) => litval_arith_opt(op, node_const_at(node_handle(l), bind), node_const_at(node_handle(r), bind)),
+  NExpr(UnaryOpExpr(op, x)) => litval_unary_opt(op, node_const_at(node_handle(x), bind)),
   _ => None,
 }
 
@@ -1898,40 +1892,30 @@ fn handle_to_smt(handle) = match graph_node_body(handle) {
 // (the operand-Node channel PCompare already uses); the fname is the callee's
 // name read live from its node body, or the unencodable sentinel if it is not a
 // bare name reference.
-fn smt_call(callee, args) = match callee {
-  N(cbody, _, _) => {
-    let fname = match cbody {
-      NExpr(VarRef(n)) => n,
-      _ => {
-        report(EVerifyUnencodable(span_zero()))
-        "false"
-      },
-    }
-    "({fname}{smt_arg_terms(args)})"
-  },
+fn smt_call(callee, args) = {
+  let fname = match graph_node_body(node_handle(callee)) {
+    NExpr(VarRef(n)) => n,
+    _ => {
+      report(EVerifyUnencodable(span_zero()))
+      "false"
+    },
+  }
+  "({fname}{smt_arg_terms(args)})"
 }
 
 // Each arg is a handle — map through handle_to_smt and join (map/fold, never an
 // imperative i/n counter; Anchor 6).
-fn smt_arg_terms(args) = fold(
-  "",
-  (acc, arg) => match arg {
-    N(_, _, h) => "{acc} {handle_to_smt(h)}",
-  },
-  args
-)
+fn smt_arg_terms(args) = fold("", (acc, arg) => "{acc} {handle_to_smt(node_handle(arg))}", args)
 
-fn smt_binop(op, l, r) = match l {
-  N(_, _, lh) => match r {
-    N(_, _, rh) => "({smt_binop_sym(op)} {handle_to_smt(lh)} {handle_to_smt(rh)})",
-  },
-}
+fn smt_binop(op, l, r) =
+  "({smt_binop_sym(op)} {handle_to_smt(node_handle(l))} {handle_to_smt(node_handle(r))})"
 
-fn smt_unop(op, x) = match x {
-  N(_, _, xh) => match op {
+fn smt_unop(op, x) = {
+  let xh = node_handle(x)
+  match op {
     UNot => "(not {handle_to_smt(xh)})",
     UNeg => "(- {handle_to_smt(xh)})",
-  },
+  }
 }
 
 // Every BinOp rendered to its SMT-LIB symbol — exhaustive over the ADT (no

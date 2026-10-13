@@ -2121,7 +2121,7 @@ type SpinePage = {
   products: [CallProduct],
   program: [NodeBody],
   slots: [StateSlotHome],
-  spans: [Span],
+  spans: [ValidSpan],
 }
 
 // Newlines in a flat string — a module's own extent, sized at its parse.
@@ -2342,9 +2342,11 @@ fn token_span(t) with Pure = match t {
 // N-construction, where span_at/span_join already supply ValidSpan.
 type Node = N(NodeBody, ValidSpan, Int)
 
-// body, span, TypeHandle
-fn span_of_node(node) = match node {
-  N(_, span, _) => span,
+// A node's handle — the one read of the record every reader goes through:
+// the body and the span are the graph's at this handle
+// (`graph_node_body`, `graph_span_of`).
+fn node_handle(node) = match node {
+  N(_, _, h) => h,
 }
 
 type NodeBody
@@ -3111,8 +3113,12 @@ effect GraphRead {
   graph_node_body(Int) -> NodeBody
   // the birth-span by HANDLE — the spans spine column's O(1) read (the
   // ordered (span, handle) log stays for containment scans; this is the
-  // by-handle projection of the same one write)
-  graph_span_of(Int) -> Span
+  // by-handle projection of the same one write). A ValidSpan, because the
+  // column is written from one (graph_index_span) and a cell never indexed
+  // answers span_zero, the absent position every reader of a position
+  // already treats as "no source site" — so a node's span read off the
+  // graph is what its record carried, and a reader of it owes no claim
+  graph_span_of(Int) -> ValidSpan
   // the module a node was BORN IN — read from the spine's own column, never
   // re-derived by scanning weave ranges for one that contains the node's
   // line. TOTAL: every node is born inside a module, stdin's included, so
@@ -3301,6 +3307,13 @@ effect GraphWrite {
   // commits through this op — leaving the record on the stack forever
   // would suppress graph_mutated for the rest of the compile.
   graph_commit_checkpoint(Int)
+  // a node's birth span, by handle — the column takes it and the ordered
+  // (span, handle) log gains the pair. Indexed again for a cell whose extent
+  // widened after its birth (the one-arm match a destructuring let becomes
+  // stands at the let's cell and spans the let through its block's end), the
+  // column takes the new span, so a parent's extent contains its children's
+  // in the graph as it does in the record, and the log keeps both pairs — a
+  // containment scan reaches the one cell by either extent
   graph_index_span(ValidSpan, Int)
   // The REVERSE-EDGE column's write (Hβ.graph.reverse-edge-and-bound-
   // projection, the 5.5 column arc's opener): infer_var_ref — the ONE
@@ -5296,11 +5309,9 @@ fn resolve_call_args(params, args, cname: String) =
   if len(params) == 0 { map(unwrap_labeled_arg, args) } else { fill_arg_slots(params, args, cname) }
 
 // Unwrap a LabeledArg to its value node; a positional arg passes through.
-fn unwrap_labeled_arg(arg) with Pure = match arg {
-  N(body, _, _) => match body {
-    NExpr(LabeledArg(_, v)) => v,
-    _ => arg,
-  },
+fn unwrap_labeled_arg(arg) = match graph_node_body(node_handle(arg)) {
+  NExpr(LabeledArg(_, v)) => v,
+  _ => arg,
 }
 
 // Build the positional slot buffer (one slot per declared param, 0 = unfilled
@@ -5321,24 +5332,20 @@ fn fill_arg_slots(params, args, cname) = {
 fn place_labeled(params, args, i, slots, cname: String) = if i >= len(args) {
   slots
 } else {
-  let arg = list_index(args, i)
-  match arg {
-    N(body, sp, _) => {
-      let next = match body {
-        NExpr(LabeledArg(label, v)) => {
-          let idx = param_index(params, label, 0)
-          if idx < 0 {
-            report(EUnknownArgLabel("no parameter named `{label}` on `{cname}`", sp))
-            slots
-          } else {
-            list_set(slots, idx, v)
-          }
-        },
-        _ => slots,
+  let ah = node_handle(list_index(args, i))
+  let next = match graph_node_body(ah) {
+    NExpr(LabeledArg(label, v)) => {
+      let idx = param_index(params, label, 0)
+      if idx < 0 {
+        report(EUnknownArgLabel("no parameter named `{label}` on `{cname}`", graph_span_of(ah)))
+        slots
+      } else {
+        list_set(slots, idx, v)
       }
-      place_labeled(params, args, i + 1, next, cname)
     },
+    _ => slots,
   }
+  place_labeled(params, args, i + 1, next, cname)
 }
 
 // Pass 2 — fill positional (non-labeled) args into the next unfilled slot,
@@ -5348,22 +5355,21 @@ fn place_positional(args, cur, slot, slots, n) = if cur >= len(args) {
   slots
 } else {
   let arg = list_index(args, cur)
-  match arg {
-    N(body, aspan, _) => match body {
-      NExpr(LabeledArg(_, _)) => place_positional(args, cur + 1, slot, slots, n),
-      _ => {
-        let free = next_free_slot(slots, slot, n)
-        if free >= n {
-          // An argument with no slot is the refusal, and it must be
-          // spoken HERE: dropping it is what makes every downstream count
-          // equal, so no later judgment can see the mismatch. The span is
-          // the surplus argument's own — the thing with no home.
-          report(EFnArityMismatch(n, len(args), aspan))
-          slots
-        } else {
-          place_positional(args, cur + 1, free + 1, list_set(slots, free, arg), n)
-        }
-      },
+  let ah = node_handle(arg)
+  match graph_node_body(ah) {
+    NExpr(LabeledArg(_, _)) => place_positional(args, cur + 1, slot, slots, n),
+    _ => {
+      let free = next_free_slot(slots, slot, n)
+      if free >= n {
+        // An argument with no slot is the refusal, and it must be
+        // spoken HERE: dropping it is what makes every downstream count
+        // equal, so no later judgment can see the mismatch. The span is
+        // the surplus argument's own — the thing with no home.
+        report(EFnArityMismatch(n, len(args), graph_span_of(ah)))
+        slots
+      } else {
+        place_positional(args, cur + 1, free + 1, list_set(slots, free, arg), n)
+      }
     },
   }
 }
@@ -5733,21 +5739,13 @@ fn show_pred_operand(handle) = match graph_node_body(handle) {
   // refinement's `-1.0 <= self` carries UnaryOpExpr(UNeg, LitFloat) on the
   // left, and `self % 2` carries a BinOpExpr; both rendered `<expr>` before,
   // fabricating away the exact bound the diagnostic exists to teach.
-  match inner {
-    N(_, _, ih) => "-{show_pred_operand(ih)}",
-  },
-  NExpr(UnaryOpExpr(UNot, inner)) => match inner {
-    N(_, _, ih) => "!{show_pred_operand(ih)}",
-  },
-  NExpr(BinOpExpr(op, l, r)) => match l {
-    N(_, _, lh) => match r {
-      N(_, _, rh) => "{show_pred_atom(lh)} {binop_to_str(op)} {show_pred_atom(rh)}",
-    },
-  },
+  "-{show_pred_operand(node_handle(inner))}",
+  NExpr(UnaryOpExpr(UNot, inner)) => "!{show_pred_operand(node_handle(inner))}",
+  NExpr(BinOpExpr(op, l, r)) => "{show_pred_atom(node_handle(l))} {binop_to_str(op)} {show_pred_atom(node_handle(r))}",
   NExpr(CallExpr(callee, args)) => // The canonical refinement vocabulary is call-shaped (len(self),
   // abs(x)) — render the call rather than a placeholder; an exotic
   // callee degrades through show_callee_name's own sentinel.
-  "{show_callee_name(callee)}({show_list(args, { N(_, _, ah) => show_pred_operand(ah) }, ", ")})",
+  "{show_callee_name(callee)}({show_list(args, { a => show_pred_operand(node_handle(a)) }, ", ")})",
   _ => "<expr>",
 }
 
@@ -5760,11 +5758,9 @@ fn show_pred_atom(handle) = match graph_node_body(handle) {
   _ => show_pred_operand(handle),
 }
 
-fn show_callee_name(ref callee) with Pure = match callee {
-  N(cbody, _, _) => match cbody {
-    NExpr(VarRef(n)) => n,
-    _ => "_",
-  },
+fn show_callee_name(ref callee) = match graph_node_body(node_handle(callee)) {
+  NExpr(VarRef(n)) => n,
+  _ => "_",
 }
 
 // One hop of a Reason chain in a developer's words, never its subtree: the
@@ -5818,17 +5814,17 @@ fn site_phrase(body) with !Mutate = match body {
   _ => "here",
 }
 
-fn stage_phrase(stage) = match stage {
-  N(NExpr(VarRef(n)), _, _) => "through `{n}`",
-  N(NExpr(CallExpr(f, _)), _, _) => "through `{show_callee_name(f)}`",
-  N(NExpr(LambdaExpr(_, _)), _, _) => "inside the stage's function value",
+fn stage_phrase(stage) = match graph_node_body(node_handle(stage)) {
+  NExpr(VarRef(n)) => "through `{n}`",
+  NExpr(CallExpr(f, _)) => "through `{show_callee_name(f)}`",
+  NExpr(LambdaExpr(_, _)) => "inside the stage's function value",
   _ => "through the stage",
 }
 
 // The handler a tee installs, named: a bare reference or a configured call.
-fn install_name(h) with Pure = match h {
-  N(NExpr(VarRef(n)), _, _) => n,
-  N(NExpr(CallExpr(f, _)), _, _) => show_callee_name(f),
+fn install_name(h) = match graph_node_body(node_handle(h)) {
+  NExpr(VarRef(n)) => n,
+  NExpr(CallExpr(f, _)) => show_callee_name(f),
   _ => "_",
 }
 
@@ -6038,15 +6034,13 @@ fn predicate_flow_label(ref pred) = match pred {
   PBoolNode(h) => // Follow the handle into the graph — read the actual call node's callee name.
   // The callee name IS the authored intent; reading it is reading the graph.
   match graph_node_body(h) {
-    NExpr(CallExpr(callee, _)) => match callee {
-      N(cbody, _, _) => match cbody {
-        NExpr(VarRef(fname)) => if str_contains(fname, "secret") || str_contains(fname, "classified") || str_contains(fname, "sensitive") {
-          Secret
-        } else {
-          Public
-        },
-        _ => Public,
+    NExpr(CallExpr(callee, _)) => match graph_node_body(node_handle(callee)) {
+      NExpr(VarRef(fname)) => if str_contains(fname, "secret") || str_contains(fname, "classified") || str_contains(fname, "sensitive") {
+        Secret
+      } else {
+        Public
       },
+      _ => Public,
     },
     _ => Public,
   },
