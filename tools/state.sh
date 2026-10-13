@@ -14,13 +14,19 @@ cd "$(dirname "$0")/.." || exit 2
 
 reds=0
 
-# Run one gate: green → its last line; red → its RED lines + last line.
+# Run one gate: green → its cost lines + its last line; red → its RED lines +
+# last line. The cost lines are the march's `· cost:` (the self-compile's wall
+# and peak RSS) and `· image:` (the line peak): a green board used to print
+# neither, so a runner's reading of a boot existed only when it breached the
+# ceiling (2026-10-13 — the ceiling that is held 1% over the highest machine's
+# reading could not be set from a green run).
 gate() {
   local label="$1"; shift
   echo "▸ $label"
   local out rc
   out=$("$@" 2>&1); rc=$?
   if [ "$rc" -eq 0 ]; then
+    echo "$out" | grep -E "^· cost:|^· image:" | sed 's/^/    /'
     echo "$out" | tail -1 | sed 's/^/    /'
   else
     echo "$out" | grep -E "RED|✗|FAIL" | head -8 | sed 's/^/    /'
