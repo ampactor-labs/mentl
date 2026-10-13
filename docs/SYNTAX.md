@@ -275,6 +275,8 @@ list_set(xs, ??, v)     // the MIDDLE field is the hole: { i => list_set(xs, i, 
 
 `??` is the same absence marker as the gradient's hole (§«Token enumeration», `THole`): a field the cursor reads as *unsupplied*. What fills it depends on context — Synth proposes a candidate, a call supplies a value, the `|>` pipe supplies the flowing datum, a resumption supplies it later — but the marker is one, and it names *which* field, never a slot.
 
+**Where nothing can fill the field later, the hole is a value hole and the call applies** (real, 2026-10-13). An operand of an operator — `choose(??) + 1`, `-choose(??)`, `choose(??) == 2` — is handed nothing by anyone: no pipe flows into it, no later call fills it, so the product it would suspend into has no filler but the proposer. The call is therefore the applied call, its `??` the slot's value hole under the slot's contract (`choose(??) + 1` over `choose(n: Positive)` proposes `1`), and the judgment records the decision on the call's product (`CallShape`) for the lowering to read. In every other position — an argument (`f(choose(??))`), a binding (`let c = choose(??)`), a value returned — the `??` keeps the suspension above. Through boot c939f5b8 the operand form was the product with a hole, and `+` refused it as arithmetic on a function.
+
 **The `|>` pipe is hole-completion, not a rewrite.** `x |> f(a)` fills `f(a)`'s remaining hole with `x`:
 
 ```

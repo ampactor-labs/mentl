@@ -1,2 +1,6 @@
-// A stage the entry reaches through an authored import edge.
+import deep
+
+// A stage the entry reaches through an authored import edge. The import of
+// deep is this module's, not the entry's: what deep declares is in reach at
+// stage.mn only through the link, and the proposer never offers it there.
 fn triple(x) = x * 3

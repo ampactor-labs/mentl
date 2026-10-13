@@ -1,0 +1,7 @@
+// teach 6: none
+// The battery's own contract: line 6 is blank, so no declaration stands
+// there, and a `none` that meets no declaration is refused, never passed —
+// the frontier runs this directory and expects the FAIL (2026-10-13).
+fn main() = 42
+
+fn other() = 1

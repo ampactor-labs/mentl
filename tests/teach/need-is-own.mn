@@ -1,9 +1,11 @@
-// teach 13: add with !Memory
+// teach 15: none
 // An obligation can lean on another declaration's parameter: the crossing
 // of `inv` into `apply` claims Positive of what `apply` hands its callback,
 // which is the parameter x of `apply`, and the claim stays open here. That
 // parameter is no position the head of `main` can state, so it is never
-// named as its need (D4: it was, on the gradient's first build).
+// named as its need (D4: it was, on the gradient's first build); and no
+// clause stands on `main`, so no lock is taught in its place (T2: on boot
+// c939f5b8 this line read `add with !Memory`).
 type Positive = Int where 0 < self
 
 fn inv(n: Positive) = 100 / n

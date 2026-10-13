@@ -5,12 +5,13 @@
 // the judgment banks as T_OverDeclared, and teach never read it. And the
 // address surface printed one constant Teach sentence at call sites, where
 // no annotation can be written (measured 2026-09-25, PROGRAM D1/D2).
-// Expected: step is not told to add `!Alloc`; add is taught `with Pure`;
-// helper is taught the tightening; the call site carries no Teach line.
+// Expected: step is not told to add `!Alloc`; add is taught `with Pure`,
+// the clause main stands on; helper is taught the tightening; the call
+// site carries no Teach line.
 fn step(x) with !Alloc = x + 1
 
 fn helper() with Memory + Alloc = 7
 
 fn add(a, b) = a + b
 
-fn main() = step(helper()) + add(1, 2)
+fn main() with Pure = step(helper()) + add(1, 2)

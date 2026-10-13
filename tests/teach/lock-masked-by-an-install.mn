@@ -1,0 +1,18 @@
+// teach 14: none
+// `g` declares `!Ask` and calls `f`, but the install between them absorbs
+// Ask, so `g`'s clause does not stand on `f`'s row: `f` performs Ask, so
+// `!Ask` is not provable, and the locks that are provable of `f` have
+// nothing standing on them — no lock is proposed.
+effect Ask {
+  ask() -> Int
+}
+
+handler zero {
+  ask() => resume(0),
+}
+
+fn f(x) = ask() + x
+
+fn g(x) with !Ask = f(x) ~> zero
+
+fn main() = g(1)

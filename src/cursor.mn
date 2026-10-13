@@ -352,7 +352,7 @@ fn position_score(handle: Handle, caret, reach) -> (Float, Float) with !Mutate =
 
 fn suggestion_gains(s, prox: Float) -> (Float, Float) = match s {
   AnnotationSuggestion(_, lev, _) => match lev {
-    Leverage(l) => (float_of_int(l.discharged) * prox, float_of_int(l.absences) * prox),
+    Leverage(l) => (float_of_int(l.discharged) * prox, float_of_int(len(l.stands)) * prox),
   },
 }
 
@@ -397,13 +397,6 @@ fn same_enclosing_decl(a, b) with !Mutate = match enclosing_decl(a) {
     None => false,
     Some(db) => da == db,
   },
-}
-
-// The top-level declaration that holds position `h`, the last node of its
-// ancestry; a module node itself sits in none of its declarations.
-fn enclosing_decl(h) with !Mutate = match ancestry(h, [h]) {
-  Some(up) => Some(last(up)),
-  None => None,
 }
 
 fn caret_span_from_reason(reason) = match reason {

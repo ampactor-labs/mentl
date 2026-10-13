@@ -2454,52 +2454,44 @@ for i in "${!compilers[@]}"; do
   # callee's row) was offered "!Alloc ... proven zero allocation" — the
   # tentative-apply's post-bind NBound read was the whole check, and a
   # bind always sticks. The fix returns row_subsumes(body_row, narrowing)
-  # from the apply — the fn-finalize gate's own engine. The control leg
-  # keeps the TRUE proposal alive.
+  # from the apply — the fn-finalize gate's own engine. Since T2
+  # (2026-10-13) a lock is taught only where a clause stands on it, so the
+  # fixture's g declares `!Trap` over a call to the allocating f: f's line
+  # carries `!Trap` (stood on, proven) and never `!Alloc` (unprovable, and
+  # nothing stands on it).
   wt_entry "$ROOT/tests/frontier/mn-teach-alloc-honest.mn" "${RTLIBS[@]}" | wt_rooted "$compiler" teach - > "$dir/teach-alloc.out" 2>/dev/null
-  # Judge main's OWN line: teach projects every fn in the linked blob, and
-  # the runtime's non-allocating fns legitimately earn !Alloc lines.
-  if grep '^main:' "$dir/teach-alloc.out" | grep -q '!Alloc'; then
+  # Judge f's OWN line: teach projects every fn in the linked blob.
+  if grep '^f:' "$dir/teach-alloc.out" | grep -q '!Alloc'; then
     fail "teach-alloc-honest (an allocating body was offered !Alloc as proven)"
+  elif grep '^f:' "$dir/teach-alloc.out" | grep -q '!Trap'; then
+    pass "teach-alloc-honest (no !Alloc proposal on an allocating body; the !Trap its caller stands on is taught)"
   else
-    pass "teach-alloc-honest (no !Alloc proposal on an allocating body)"
+    fail "teach-alloc-honest (the stood-on lock died; got: $(grep '^f:' "$dir/teach-alloc.out" | head -1))"
   fi
-  # Re-derived by hand 2026-09-25 (§9.11) when the literal ladder
-  # [!Alloc, !IO, !Network, Pure] became the leverage count: `fn main() = 42`
-  # proves `with Pure`, which implies `!Alloc` and unlocks strictly more
-  # (memoize, compile-time eval, parallelize), and the ladder had ranked it
-  # LAST — Pure won 0 of 165 measured suggestions. The leg still guards what
-  # it was born to guard: a non-allocating body keeps a true proposal.
+  # A LOCK IS TAUGHT ONLY WHERE SOMETHING STANDS ON IT (T2, 2026-10-13).
+  # `fn main() = 42` has no callers, so no clause rests on its purity and
+  # nothing is taught. RED on boot c939f5b8, where this line read
+  # `main: → add \`with Pure\` — locks Pure`: the strongest clause a body
+  # proved was offered whether or not anything depended on it, 367 of 427
+  # declarations across six wheel modules on 2026-10-06. The locks that ARE
+  # stood on are the teach battery's lock-* fixtures (tests/teach).
   wt_entry "$ROOT/tests/frontier/mn-teach-pure-control.mn" "${RTLIBS[@]}" | wt_rooted "$compiler" teach - > "$dir/teach-pure.out" 2>/dev/null
-  if grep '^main:' "$dir/teach-pure.out" | grep -q 'with Pure'; then
-    pass "teach-pure-control (a pure body is taught its strongest proven claim, with Pure)"
+  if grep '^main:' "$dir/teach-pure.out" | grep -q 'no next-step annotation'; then
+    pass "teach-claimless-none (a declaration no clause stands on is taught no lock)"
   else
-    fail "teach-pure-control (the true proposal died; got: $(grep '^main:' "$dir/teach-pure.out" | head -1))"
+    fail "teach-claimless-none (got: $(grep '^main:' "$dir/teach-pure.out" | head -1))"
   fi
 
-  # The tie-ranking law (Hβ.teach.severance-vocabulary-from-link's last
-  # half, 2026-08-09): equal-leverage generic severances rank by link
-  # PREVALENCE. The fixture performs Rare once (declared first — pure
-  # enumeration order would propose !Rare, the seen-RED state) and
-  # Common three times; main performs only Noise, so both are provable
-  # and the winner exposes the ranking. Bare link on purpose — the
-  # prelude's Alloc prevalence would hand the rich-label ladder the win
-  # before generics are consulted.
-  wt_run "$compiler" teach - < "$ROOT/tests/frontier/mn-teach-prevalence.mn" > "$dir/teach-prev.out" 2>/dev/null
-  if grep '^main:' "$dir/teach-prev.out" | grep -q '!Common'; then
-    pass "teach tie-ranking: prevalence beats enumeration order (!Common over !Rare)"
-  else
-    fail "teach tie-ranking (got: $(grep '^main:' "$dir/teach-prev.out" | head -1))"
-  fi
   # TEACH READS THE DECLARATION AND THE JUDGMENT (PROGRAM D1/D2). Born RED
   # 2026-09-25: every fn of this fixture was told to add `!Alloc` — `step`,
   # which declares it; `add`, which proves `with Pure`; `helper`, whose
   # over-declared row the judgment had already banked — and the address
-  # surface printed one constant Teach sentence at the call site.
+  # surface printed one constant Teach sentence at the call site. main
+  # declares `with Pure` since T2, so its clause is what stands on add.
   ta_file="$ROOT/tests/frontier/mn-teach-authored.mn"
   ta_out=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" teach "$ta_file" 2>/dev/null)
-  ta_decl=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" "$ta_file:14" 2>/dev/null)
-  ta_call=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" "$ta_file:16:30" 2>/dev/null)
+  ta_decl=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" "$ta_file:15" 2>/dev/null)
+  ta_call=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" "$ta_file:17:40" 2>/dev/null)
   if ! printf '%s' "$ta_out" | grep '^step:' | grep -q 'add with !Alloc' \
      && printf '%s' "$ta_out" | grep '^helper:' | grep -q 'tighten' \
      && printf '%s' "$ta_out" | grep '^add:' | grep -q 'with Pure' \
@@ -2509,6 +2501,21 @@ for i in "${!compilers[@]}"; do
   else
     fail "teach-authored (teach: $(printf '%s' "$ta_out" | grep -E '^(step|helper|add):' | tr '\n' ' ') decl: $(printf '%s' "$ta_decl" | grep Teach) call: $(printf '%s' "$ta_call" | grep Teach))"
   fi
+  # AN ARGUMENT HOLE AT AN OPERAND IS A VALUE HOLE (2026-10-13). Nothing can
+  # fill the field of `choose(??) + 1` later, so the call is applied and the
+  # hole takes the slot's contract: `check` is clean (RED on boot c939f5b8:
+  # the call was the product with a hole and `+` refused E_ArithOnAggregate),
+  # the proposal battery fills `1` (tests/proposals/arg-slot-operand.mn), and
+  # the executable still refuses the unfilled hole honestly.
+  ho_file="$ROOT/tests/proposals/arg-slot-operand.mn"
+  ho_out=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" check "$ho_file" 2>&1)
+  ho_rc=$?
+  if [ "$ho_rc" -eq 0 ] && [ -z "$ho_out" ]; then
+    pass "hole-operand check (an argument hole at an operand is a value hole; the call applies)"
+  else
+    fail "hole-operand check (exit=$ho_rc: $(printf '%s' "$ho_out" | head -2 | tr '\n' ' '))"
+  fi
+  compile_hole_fixture "$compiler" hole-operand "$ho_file" "$dir"
 
   # Hβ.emit.under-application-suspension's crucible: a bare
   # under-application (one field absent, no ?? marker) is the partial it
@@ -2998,14 +3005,19 @@ for i in "${!compilers[@]}"; do
   # tie-broken by handle. The session's head is that field's head, and its
   # accept is a clause the formatter writes into the decl's own file: on the
   # same boot the session focused the PRELUDE's `unwrap_or` (61:1) and
-  # accepting it wrote `  with Pure` above main.mn's first line.
+  # accepting it wrote `  with Pure` above main.mn's first line. Since T2
+  # (2026-10-13) a lock is a position only where a clause stands on it: main
+  # and quiet declare `!Fail`, so `add` (two clauses stand on it) ranks above
+  # `build` (one), and main and quiet, authoring clauses, are no positions —
+  # on boot c939f5b8 the field held three locks nothing stood on.
   gdemo="$ROOT/tests/frontier/gradient-module-demo"
   gfout=$(wt_run --dir "$gdemo::." --dir "$ROOT::/mentl-home" "$compiler" main.mn:0 2>"$dir/gradient-field.err")
   gorder=$(printf '%s\n' "$gfout" | grep -oE '^── main:[0-9]+:[0-9]+' | tr '\n' ' ')
-  if printf '%s' "$gfout" | grep -q '3 gradient position(s) in main' \
-     && [ "$gorder" = "── main:5:1 ── main:3:1 ── main:7:1 " ] \
+  if printf '%s' "$gfout" | grep -q '2 gradient position(s) in main' \
+     && [ "$gorder" = "── main:5:1 ── main:3:1 " ] \
+     && printf '%s' "$gfout" | grep -q 'stand on it' \
      && ! printf '%s' "$gfout" | grep -qE "'(twice|total)'"; then
-    pass "gradient field: the module's own positions, ranked by score then source order"
+    pass "gradient field: the module's own positions, ranked by what stands on them then source order"
   else
     fail "gradient field (order: $gorder; see $dir/gradient-field.err)"
   fi
@@ -3013,8 +3025,8 @@ for i in "${!compilers[@]}"; do
   rm -rf "$gadir"; mkdir -p "$gadir" && cp "$gdemo"/*.mn "$gadir/"
   gaout=$(printf 'y\n' | timeout 60 "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$gadir::." --dir "$ROOT::/mentl-home" "$compiler" edit main 2>"$dir/gradient-accept.err")
   if printf '%s' "$gaout" | grep -q "params of 'add'" \
-     && grep -qx 'fn add(a, b) with Pure = a + b' "$gadir/main.mn" \
-     && [ "$(grep -c 'with' "$gadir/main.mn")" = "1" ] \
+     && grep -qx 'fn add(a, b) with !Fail = a + b' "$gadir/main.mn" \
+     && [ "$(grep -c 'with' "$gadir/main.mn")" = "3" ] \
      && cmp -s "$gdemo/helper.mn" "$gadir/helper.mn" \
      && wt_run --dir "$gadir::." --dir "$ROOT::/mentl-home" "$compiler" check main > /dev/null 2>&1; then
     pass "gradient accept: the session's head is the field's head, and the clause lands in its declaration"
@@ -3174,11 +3186,16 @@ for i in "${!compilers[@]}"; do
   # calls, never a function reference — so a stage hole could neither fill
   # nor ask a real question. The ring fixture is the search's own contract:
   # with no fitting function in the entry, the one its authored import
-  # declares fills, and the prelude's `id` is never judged beside it.
+  # declares fills, and the prelude's `id` is never judged beside it. Since
+  # T3 (2026-10-13) the rings are what the module sees — its own
+  # declarations, its direct imports' and the prelude's — so helper's own
+  # import deep, which declares a fitting `quadruple`, is never offered at
+  # stage.mn: on boot c939f5b8 the imported ring was the transitive closure
+  # and the two tied.
   qp=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT::." --dir /tmp "$compiler" tests/frontier/mn-pipe-stage-hole.mn:13:25 2>/dev/null)
   qf=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT::." --dir /tmp "$compiler" tests/frontier/mn-pipe-stage-fill.mn:8:25 2>/dev/null)
   ringdemo="$ROOT/tests/frontier/stage-ring-demo"
-  qr=$(cd "$ringdemo" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ringdemo" --dir /tmp "$compiler" stage.mn:8:25 2>/dev/null)
+  qr=$(cd "$ringdemo" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ringdemo" --dir /tmp "$compiler" stage.mn:12:25 2>/dev/null)
   if printf '%s' "$qp" | grep -q '^  double  ' && printf '%s' "$qp" | grep -q '^  inc  ' \
      && printf '%s' "$qp" | grep -q 'different computations of the same type' \
      && ! printf '%s' "$qp" | grep -q '^  ??  ' \
@@ -3246,6 +3263,20 @@ for i in "${!compilers[@]}"; do
     pass "teach battery: every fixture's contract holds (preconditions, return contracts, questions, needs)"
   else
     fail "teach battery (see the battery lines above)"
+  fi
+  # THE TEACH BATTERY REFUSES A CONTRACT AT NO DECLARATION (Landing 3,
+  # 2026-10-13): a `teach L: none` whose line L holds no declaration met the
+  # view of whatever node the address resolved to, which teaches nothing, and
+  # PASSED — a contract that drifted onto a blank line as its fixture's
+  # comment grew went green on boot 1b59f63c. The battery reads the
+  # declaration's name inside the judgment and refuses the line that has
+  # none; this directory holds the one fixture that must FAIL.
+  tbr_out=$(wt_run --dir . "$compiler" test tests/frontier/teach-battery-refuses 2>/dev/null)
+  if printf '%s' "$tbr_out" | grep -q '^FAIL(teach) blank-line: no declaration at' \
+     && ! printf '%s' "$tbr_out" | grep -q '^PASS'; then
+    pass "teach battery refuses a contract at a line with no declaration"
+  else
+    fail "teach battery refuses a contract at no declaration (got: $(printf '%s' "$tbr_out" | head -2))"
   fi
   # THE ACCEPT WRITES WHAT THE GRADIENT PROVED (D4): `mentl accept` at a
   # declaration writes the Teaching's annotation into its head through the
@@ -3565,7 +3596,10 @@ for i in "${!compilers[@]}"; do
   # because this invocation mounted only the project dir. The agent-
   # facing gate must see the same world the CLI does (the shim's own
   # mount, every other leg's mount) — the engine meets the surface.
-  printf 'fn double(x) = x * 2\n\nfn main() = double(21)\n' > "$ses_dir/main.mn"
+  # main declares `with Pure` since T2 (2026-10-13), so its clause is what
+  # stands on `double` and the teach read answers `→ add` for it; a lock
+  # nothing stands on is no longer taught.
+  printf 'fn double(x) = x * 2\n\nfn main() with Pure = double(21)\n' > "$ses_dir/main.mn"
   "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ses_dir::." --dir "$ROOT::/mentl-home" "$compiler" mcp \
     < "$ROOT/tests/frontier/mcp-resident-session.jsonl" >"$ses_dir/out.jsonl" 2>"$ses_dir/err.log"
   # The audit assertion reads `severs module-wide:` — severance is a MODULE
@@ -3603,14 +3637,17 @@ for i in "${!compilers[@]}"; do
   # entered under garbage coordinates; the kind gate scopes it to real
   # fn decls). Known residue asserted AS-IS: the last lib's tail
   # comment attaches forward across the module seam to the entry's
-  # first decl (Hβ.parser.comment-attach-module-boundary).
+  # first decl (Hβ.parser.comment-attach-module-boundary). Since T2
+  # (2026-10-13) main declares `!Alloc`, so the gradient tier holds the two
+  # locks it stands on (width, banner) and not main's own; the boot's three
+  # were locks nothing stood on.
   fro_dir="$dir/mcp-frontier"
   mkdir -p "$fro_dir"
-  printf 'fn width(x) = x * 2\n\nfn banner(n) = {\n  let w = width(n)\n  w + ??\n}\n\nfn main() = banner(21)\n' > "$fro_dir/main.mn"
+  printf 'fn width(x) = x * 2\n\nfn banner(n) = {\n  let w = width(n)\n  w + ??\n}\n\nfn main() with !Alloc = banner(21)\n' > "$fro_dir/main.mn"
   printf '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}\n{"jsonrpc":"2.0","id":2,"method":"tools/list"}\n{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"frontier","arguments":{}}}\n' \
     | "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$fro_dir::." "$compiler" mcp >"$fro_dir/out.jsonl" 2>"$fro_dir/err.log"
   if grep -q '"name":"frontier"' "$fro_dir/out.jsonl" \
-     && grep -q 'Field: 1 hole(s), 0 pending proof(s), 0 tightening(s), 3 gradient position(s)' "$fro_dir/out.jsonl" \
+     && grep -q 'Field: 1 hole(s), 0 pending proof(s), 0 tightening(s), 2 gradient position(s)' "$fro_dir/out.jsonl" \
      && grep -q 'main:5:7' "$fro_dir/out.jsonl" \
      && grep -q 'Query: ?? : Int' "$fro_dir/out.jsonl" \
      && grep -q 'Propose: 3 proven survivors' "$fro_dir/out.jsonl"; then
@@ -3632,7 +3669,7 @@ for i in "${!compilers[@]}"; do
   # doubled every position.
   prob_dir="$dir/mcp-problems"
   mkdir -p "$prob_dir"
-  printf 'type Pos = Int where 0 < self\n\nfn scaled(x) -> Pos = x * 3\n\nfn noisy() with IO = 7\n\nfn main() = scaled(2) + noisy() + ??\n' > "$prob_dir/main.mn"
+  printf 'type Pos = Int where 0 < self\n\nfn scaled(x) -> Pos = x * 3\n\nfn noisy() with IO = 7\n\nfn main() with !Alloc = scaled(2) + noisy() + ??\n' > "$prob_dir/main.mn"
   mkfifo "$prob_dir/in"
   "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$prob_dir::." "$compiler" mcp \
     < "$prob_dir/in" >"$prob_dir/out.jsonl" 2>"$prob_dir/err.log" &
@@ -3642,21 +3679,24 @@ for i in "${!compilers[@]}"; do
   printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}' >&9
   printf '%s\n' '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"frontier","arguments":{}}}' >&9
   prob_wait 2 || true
-  printf 'type Pos = Int where 0 < self\n\nfn scaled(x) -> Pos = x * 3\n\nfn noisy() = 7\n\nfn main() = scaled(2) + noisy() + ??\n' > "$prob_dir/main.mn"
+  printf 'type Pos = Int where 0 < self\n\nfn scaled(x) -> Pos = x * 3\n\nfn noisy() = 7\n\nfn main() with !Alloc = scaled(2) + noisy() + ??\n' > "$prob_dir/main.mn"
   printf '%s\n' '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"frontier","arguments":{}}}' >&9
   prob_wait 3 || true
   exec 9>&-
   wait $prob_srv 2>/dev/null
-  # id 2 counts TWO gradient positions since 2026-09-25, re-derived by hand
-  # (§9.11): `noisy` declares `with IO` over a pure body, so its teach is the
-  # TIGHTENING the field already lists in its own tier; the gradient used to
-  # count it again as a position (offering it `!Alloc` beside its declared
-  # row), one declaration counted twice. After the edit removes the row,
-  # noisy is an undeclared fn the gradient teaches, and id 3's three stand.
-  if grep '"id":2' "$prob_dir/out.jsonl" | grep -q 'Field: 1 hole(s), 1 pending proof(s), 1 tightening(s), 2 gradient position(s)' \
+  # id 2 counts ONE gradient position since T2 (2026-10-13), re-derived by
+  # hand: `scaled`'s need (its parameter must make 0 < self hold); `noisy`
+  # declares `with IO` over a pure body, so its teach is the TIGHTENING the
+  # field lists in its own tier, and main authors a clause. After the edit
+  # removes noisy's row, main's `!Alloc` stands on noisy and the lock appears
+  # as a second gradient position — the living frontier in both directions.
+  # (2026-09-25 to 2026-10-13 the counts were two and three: a lock on main,
+  # and on noisy, that nothing stood on.)
+  if grep '"id":2' "$prob_dir/out.jsonl" | grep -q 'Field: 1 hole(s), 1 pending proof(s), 1 tightening(s), 1 gradient position(s)' \
      && grep '"id":2' "$prob_dir/out.jsonl" | grep -q 'Pending: 0 < self' \
      && grep '"id":2' "$prob_dir/out.jsonl" | grep -q 'Tighten: noisy declares IO — the body proves Pure' \
-     && grep '"id":3' "$prob_dir/out.jsonl" | grep -q 'Field: 1 hole(s), 1 pending proof(s), 0 tightening(s), 3 gradient position(s)' \
+     && grep '"id":3' "$prob_dir/out.jsonl" | grep -q 'Field: 1 hole(s), 1 pending proof(s), 0 tightening(s), 2 gradient position(s)' \
+     && grep '"id":3' "$prob_dir/out.jsonl" | grep -q 'add `with !Alloc`.*`main` stands on it' \
      && [ "$(grep -c 'session: tree moved' "$prob_dir/err.log")" = "1" ]; then
     pass "problem space: pending + tightening rank as positions; the honest edit clears its tightening from the living frontier"
   else
@@ -4415,24 +4455,29 @@ for i in "${!compilers[@]}"; do
     fail "decls facet (each decl once, by name at its line; got: $(printf '%s' "$df_out" | grep -E 'declared name|mn-decls-facet' | tr '\n' ' '))"
   fi
 
-  # ─── The reading facets: text, prose, writes of ─────────────────────
-  # What a program SAYS and WRITES, asked of one fixture: the string
+  # ─── The reading facets: text, prose, writes of, reads of ───────────
+  # What a program SAYS, WRITES and READS, asked of one fixture: the string
   # literal holding facet-literal-marker, the comment holding
-  # facet-prose-marker (sited at the comment), and the two values written
-  # into the counter's state (its init, its update). The first and third
-  # were built with no gate; the second was confessed as a verb gap four
-  # times in a day. Born RED 2026-10-03: the boot answered "unknown query"
-  # to all three.
+  # facet-prose-marker (sited at the comment), the two values written
+  # into the counter's state (its init, its update), and the one read of
+  # the record field width (in area). The first and third were built with
+  # no gate; the second was confessed as a verb gap four times in a day,
+  # the fourth once (2026-10-13, when a record lost a field and its readers
+  # were found by a shell search — a field is no declaration, so `refs of`
+  # never reaches it). Born RED 2026-10-03: the boot answered "unknown
+  # query" to the first three; boot c939f5b8 answered it to the fourth.
   rf_doc="$ROOT/tests/frontier/mn-reading-facets.mn"
   rf_text=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" query "$rf_doc" "text facet-literal-marker" 2>/dev/null)
   rf_prose=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" query "$rf_doc" "prose facet-prose-marker" 2>/dev/null)
   rf_writes=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" query "$rf_doc" "writes of sum" 2>/dev/null)
-  if printf '%s' "$rf_text" | grep -q "1 string literal(s)" && printf '%s' "$rf_text" | grep -q "mn-reading-facets:19" \
+  rf_reads=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" query "$rf_doc" "reads of width" 2>/dev/null)
+  if printf '%s' "$rf_text" | grep -q "1 string literal(s)" && printf '%s' "$rf_text" | grep -q "mn-reading-facets:20" \
      && printf '%s' "$rf_prose" | grep -q "1 comment(s)" && printf '%s' "$rf_prose" | grep -q "mn-reading-facets:1:" \
-     && printf '%s' "$rf_writes" | grep -q "counter.sum: 2 write(s)" && printf '%s' "$rf_writes" | grep -q "sum + n"; then
-    pass "reading facets: text (the literal at 19), prose (the comment at 1), writes of (init and update)"
+     && printf '%s' "$rf_writes" | grep -q "counter.sum: 2 write(s)" && printf '%s' "$rf_writes" | grep -q "sum + n" \
+     && printf '%s' "$rf_reads" | grep -q "1 read(s) of the field" && printf '%s' "$rf_reads" | grep -q "mn-reading-facets:24:"; then
+    pass "reading facets: text (the literal at 20), prose (the comment at 1), writes of (init and update), reads of (the field read at 24)"
   else
-    fail "reading facets (text: $(printf '%s' "$rf_text" | head -1) · prose: $(printf '%s' "$rf_prose" | head -1) · writes: $(printf '%s' "$rf_writes" | head -1))"
+    fail "reading facets (text: $(printf '%s' "$rf_text" | head -1) · prose: $(printf '%s' "$rf_prose" | head -1) · writes: $(printf '%s' "$rf_writes" | head -1) · reads: $(printf '%s' "$rf_reads" | head -1))"
   fi
 
   # ─── The flow facet on a refined source (PLAN §11 Phase 7 walk) ─────

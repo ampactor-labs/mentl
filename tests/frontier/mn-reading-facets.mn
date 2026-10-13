@@ -1,8 +1,9 @@
-// The facets that read what a program SAYS and WRITES rather than what it
-// calls, each asked of this file by the frontier: the text facet finds the
+// The facets that read what a program SAYS, WRITES and READS rather than what
+// it calls, each asked of this file by the frontier: the text facet finds the
 // one literal holding facet-literal-marker, the prose facet finds the one
-// comment holding facet-prose-marker, and the writes facet finds the two
-// values written into the counter's state, its init and its update.
+// comment holding facet-prose-marker, the writes facet finds the two values
+// written into the counter's state (its init and its update), and the reads
+// facet finds the one read of the field width, in area.
 effect Count {
   add(Int)
   total() -> Int
@@ -17,5 +18,7 @@ fn main() = {
   add(2)
   add(3)
   let marker = "facet-literal-marker"
-  total() + len(marker)
+  total() + len(marker) + area({height: 2, width: 3})
 } ~> counter
+
+fn area(r) = r.width * r.height

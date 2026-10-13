@@ -1585,6 +1585,7 @@ type QueryVerb
   | QVText
   | QVProse
   | QVWrites
+  | QVReads
   | QVUnknownVerb
 
 fn classify_query_verb(w: String) with Pure = if w == "type" {
@@ -1641,6 +1642,8 @@ fn classify_query_verb(w: String) with Pure = if w == "type" {
   QVProse
 } else if w == "writes" {
   QVWrites
+} else if w == "reads" {
+  QVReads
 } else {
   QVUnknownVerb
 }
@@ -1717,6 +1720,7 @@ fn build_question(verb, arg, raw, scope: String) = match verb {
   QCensus(CsText(words_after_the_verb(raw))),
   QVProse => QCensus(CsProse(words_after_the_verb(raw))),
   QVWrites => QStateWrites(arg),
+  QVReads => QCensus(CsFieldRead(arg)),
   QVUnknownVerb => QUnknown(raw),
 }
 

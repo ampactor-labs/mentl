@@ -3950,8 +3950,8 @@ fn infer_expr(ref node) = match node {
     NExpr(LitUnit) => graph_bind(handle, TUnit, Located(span, Inferred("unit"))),
     NExpr(VarRef(name)) => infer_var_ref(name, handle, span, RefValued),
     NExpr(BinOpExpr(op, left, right)) => {
-      infer_expr(left)
-      infer_expr(right)
+      infer_operand(left)
+      infer_operand(right)
       match left {
         N(_, _, lh) => match right {
           N(_, _, rh) => infer_binop(handle, op, lh, rh, span),
@@ -3959,21 +3959,12 @@ fn infer_expr(ref node) = match node {
       }
     },
     NExpr(UnaryOpExpr(op, inner)) => {
-      infer_expr(inner)
+      infer_operand(inner)
       match inner {
         N(_, _, ih) => infer_unaryop(handle, op, ih, span),
       }
     },
-    NExpr(CallExpr(func, args)) => match infer_call_node(func, args, handle, span, AtCall) {
-      CallPartial(_) => // A partial application mints the closure that holds its supplied
-      // fields, in the frame that forms it (16 bytes over one literal, and
-      // `!Alloc` accepted it, measured 2026-09-28). A pipe's right-hand stage
-      // is completed in place and mints nothing, which is why the pipe judges
-      // its stage through `infer_call_node` alone.
-      inf_add_row_at(handle, construction_row()),
-      CallSaturated => (),
-      CallSubstrateHoled(_) => (),
-    },
+    NExpr(CallExpr(func, args)) => infer_call_expr(func, args, handle, span, AtCall),
     NExpr(IfExpr(cond, then_e, else_e)) => {
       // The condition is READ to decide the branch — a read-SHAPE
       // condition borrows; a call condition infers normally (its args
@@ -4541,7 +4532,7 @@ fn infer_callee(func) = match func {
 // own width. A nullary constructor's reference is the value itself, not an
 // arrow, and writes none.
 fn bare_reference_product(handle, ty, span: ValidSpan) = match ty {
-  TFun(ps, _, _) => graph_product_note(handle, [], open_slot_cells(ps, 0, span)),
+  TFun(ps, _, _) => graph_product_note(handle, [], open_slot_cells(ps, 0, span), CallSuspended),
   _ => (),
 }
 
@@ -4876,13 +4867,54 @@ type CallForm = CallSaturated | CallPartial([Int]) | CallSubstrateHoled([Int])
 // Where a call stands. A call at a STAGE — a `|>`'s right side, a `<|`
 // branch — is handed the piped value, and where its callee's arrow is not
 // yet known the Stage Law fixes its product: the arguments written, then
-// the datum's slot.
-type CallSite = AtCall | AtStage
+// the datum's slot. A call at an OPERAND — of `+`, `==`, a unary `-` — can
+// be handed nothing later, so an authored `??` among its arguments is a
+// VALUE hole the proposer fills under the slot's contract, never the field a
+// partial suspends at: `choose(??) + 1` is the applied call, while
+// `f(choose(??))` and `let c = choose(??)` keep the suspension (2026-10-13;
+// before that the operand form was the product with a hole, and `+` refused
+// it as arithmetic on a function).
+type CallSite = AtCall | AtStage | AtOperand
+
+fn site_is_operand(site) = match site {
+  AtOperand => true,
+  AtCall => false,
+  AtStage => false,
+}
 
 fn form_holes(form) = match form {
   CallSaturated => [],
   CallPartial(cells) => cells,
   CallSubstrateHoled(cells) => cells,
+}
+
+// The shape the judgment decided, written on the product for the lowering
+// and the gradient to read.
+fn form_shape(form) = match form {
+  CallSaturated => CallApplied,
+  CallPartial(_) => CallSuspended,
+  CallSubstrateHoled(_) => CallSuspended,
+}
+
+// A call judged where it stands, the closure a partial mints charged to the
+// frame that forms it.
+fn infer_call_expr(func, args, handle, span: ValidSpan, site) = match infer_call_node(func, args, handle, span, site) {
+  CallPartial(_) => // A partial application mints the closure that holds its supplied
+  // fields, in the frame that forms it (16 bytes over one literal, and
+  // `!Alloc` accepted it, measured 2026-09-28). A pipe's right-hand stage
+  // is completed in place and mints nothing, which is why the pipe judges
+  // its stage through `infer_call_node` alone.
+  inf_add_row_at(handle, construction_row()),
+  CallSaturated => (),
+  CallSubstrateHoled(_) => (),
+}
+
+// An operator's operand: a call standing there is judged at the operand,
+// where an argument hole is a value hole; anything else is judged as the
+// expression it is.
+fn infer_operand(node) = match node {
+  N(NExpr(CallExpr(func, args)), span, handle) => infer_call_expr(func, args, handle, span, AtOperand),
+  _ => infer_expr(node),
 }
 
 // A call node's judgment, returning which form it built.
@@ -4913,8 +4945,9 @@ fn infer_call_node(func, args, handle, span: ValidSpan, site) = {
   let form = infer_call(func, pos_args, handle, span, site)
   // The product is a fact of the call node: written once, here, and read
   // by the lowering (the call-product column) — the nodes in declaration
-  // order, and the cells typing the slots a partial leaves open past them.
-  graph_product_note(handle, pos_args, form_holes(form))
+  // order, the cells typing the slots a partial leaves open past them, and
+  // the shape decided here, applied or suspended.
+  graph_product_note(handle, pos_args, form_holes(form), form_shape(form))
   // H4: constructor calls allocate a heap record. Tag the
   // resulting handle so check_escape at fn return can verify
   // the value doesn't outlive its region. H4.1: constructor
@@ -4929,12 +4962,13 @@ fn infer_call(func, args, handle, span: ValidSpan, site) = match func {
     let cname = callee_name(func)
     // The substrate fast-path fires only for a SATURATED, hole-free call —
     // both facts read live (the hole from the arg's own body, the arity from
-    // the callee's declared product). It previously fired on shape-of-name
-    // alone, so `list_set(??, i, v)` was typed saturated: the `??` never
-    // became the partial the pipe completes, and every seq-op pipe stage
-    // mismatched (14 census sites). An under-applied or holed seq-op call is
-    // the product-with-holes like any other call.
-    if is_seq_op(cname) && call_hole_index(args, 0) < 0 && len(args) == len(callee_params_at(fh)) {
+    // the callee's declared product) — and for a saturated call at an
+    // operand, where the hole is a value. It previously fired on
+    // shape-of-name alone, so `list_set(??, i, v)` was typed saturated: the
+    // `??` never became the partial the pipe completes, and every seq-op
+    // pipe stage mismatched (14 census sites). An under-applied or holed
+    // seq-op call is the product-with-holes like any other call.
+    if is_seq_op(cname) && (call_hole_index(args, 0) < 0 || site_is_operand(site)) && len(args) == len(callee_params_at(fh)) {
       infer_seq_op(cname, fh, args, handle, span)
       CallSaturated
     }
@@ -4986,9 +5020,10 @@ fn infer_call(func, args, handle, span: ValidSpan, site) = match func {
         // holes: its type is the fn of the UNFILLED params. The callee's TParam
         // nodes are reused whole (the param product's identity carries); the row
         // rides the result fn — a partial performs nothing, and forming it
-        // mints the closure its caller is charged for.
+        // mints the closure its caller is charged for. At an operand the `??`
+        // is a value hole and the call applies (`CallSite`).
         match graph_chase(fh) {
-          GNode(NBound(TFun(ps, pret, prow)), _) => if len(args) < len(ps) || call_hole_index(args, 0) >= 0 {
+          GNode(NBound(TFun(ps, pret, prow)), _) => if len(args) < len(ps) || call_hole_index(args, 0) >= 0 && !site_is_operand(site) {
             CallPartial(infer_call_partial(args, ps, pret, prow, handle, span, cname))
           } else {
             infer_call_saturated(args, fh, handle, span, cname)
@@ -5017,6 +5052,10 @@ fn infer_call(func, args, handle, span: ValidSpan, site) = match func {
               CallSaturated
             },
             AtCall => {
+              infer_call_saturated(args, fh, handle, span, cname)
+              CallSaturated
+            },
+            AtOperand => {
               infer_call_saturated(args, fh, handle, span, cname)
               CallSaturated
             },
@@ -5711,7 +5750,16 @@ fn contract_owes(t, args, call_h, span: ValidSpan) = match t {
 fn discharge_arg_refinements(dps, arg_handles, i, span: ValidSpan, call_h) = if i >= len(dps) || i >= len(arg_handles) {
   ()
 } else {
-  discharge_arg(list_index(dps, i), list_index(arg_handles, i), span, call_h)
+  let p = list_index(dps, i)
+  let ah = list_index(arg_handles, i)
+  // An authored hole holds no value yet and raises nothing; the slot's
+  // contract is noted on it so what is proposed there satisfies what the
+  // parameter demands — the partial path's law (unify_args_positionally),
+  // met here by an applied call holding a value hole (`choose(??) + 1`).
+  match graph_node_body(ah) {
+    NHole(id) => if id == 0 { discharge_arg(p, ah, span, call_h) } else { note_contract(param_ty(p), ah) },
+    _ => discharge_arg(p, ah, span, call_h),
+  }
   discharge_arg_refinements(dps, arg_handles, i + 1, span, call_h)
 }
 
@@ -6198,7 +6246,11 @@ fn note_bare_handler_product(right) = match right {
   N(rbody, _, rh) => match rbody {
     NExpr(VarRef(name)) => {
       let params = callee_params_at(rh)
-      if len(params) == 0 { () } else { graph_product_note(rh, resolve_call_args(params, [], name), []) }
+      if len(params) == 0 {
+        ()
+      } else {
+        graph_product_note(rh, resolve_call_args(params, [], name), [], CallApplied)
+      }
     },
     _ => (),
   },
@@ -12075,18 +12127,16 @@ fn source_leaf(src) = match src {
   SrcUnknown => [],
 }
 
-// The callee and the arguments a node applies: a saturated call's
-// product, or a pipe stage completed by the piped value.
+// The callee and the arguments a node applies: an applied call's product
+// (the shape the judgment decided, read off the product), or a pipe stage
+// completed by the piped value.
 fn application_of(h) = match graph_node_body(h) {
   NExpr(CallExpr(callee, _)) => match graph_product_at(h) {
-    ProductOf(nodes, open) => if len(open) == 0 && !any(is_authored_hole, nodes) {
-      match fn_leaves(node_handle(callee)) {
-        [one] => Some((one, nodes |> map(node_handle))),
-        _ => None,
-      }
-    } else {
-      None
+    ProductOf(nodes, _, CallApplied) => match fn_leaves(node_handle(callee)) {
+      [one] => Some((one, nodes |> map(node_handle))),
+      _ => None,
     },
+    ProductOf(_, _, CallSuspended) => None,
     NoProduct => None,
   },
   NExpr(PipeExpr(PForward, left, stage)) => match fn_leaves(node_handle(stage)) {
@@ -12102,11 +12152,8 @@ fn application_of(h) = match graph_node_body(h) {
 fn stage_application(sh, applied) = match graph_node_body(sh) {
   NExpr(VarRef(_)) => Some((sh, applied)),
   NExpr(CallExpr(callee, _)) => match graph_product_at(sh) {
-    ProductOf(nodes, open) => if len(open) > 0 || any(is_authored_hole, nodes) {
-      Some((node_handle(callee), completed_args(nodes, applied)))
-    } else {
-      None
-    },
+    ProductOf(nodes, _, CallSuspended) => Some((node_handle(callee), completed_args(nodes, applied))),
+    ProductOf(_, _, CallApplied) => None,
     NoProduct => None,
   },
   _ => None,

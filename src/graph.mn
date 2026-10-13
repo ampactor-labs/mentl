@@ -1027,12 +1027,12 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
     resume()
   },
   graph_install_at(h) => resume(spine_install_at(spine, spine_open, h)),
-  graph_product_note(h, nodes, open) => // The call-product column's one write — the judgment's, so it is
+  graph_product_note(h, nodes, open, shape) => // The call-product column's one write — the judgment's, so it is
   // trailed: a candidate or a Mycroft round that noted a product and is
   // rolled back leaves the cell as it found it.
   {
     let old = spine_product_at(spine, spine_open, h)
-    spine_put_product(spine, h, ProductOf(nodes, open))
+    spine_put_product(spine, h, ProductOf(nodes, open, shape))
     let mutation = MSetProduct(h, old)
     let j = journaling(checkpoint_stack)
     let new_epoch = epoch + 1
@@ -2300,6 +2300,19 @@ fn module_cell_of(acc, h) with !Mutate = match graph_node_body(h) {
 }
 
 fn module_paths() with !Mutate = map({ (_h, p, _s, _d) => p }, module_cells())
+
+// The top-level declaration that holds a position: the module node's child
+// on the parent walk up from it. A module node itself sits in none of its
+// declarations and answers None. One walk for the cursor's proximity, the
+// gradient's dependents and the query facets' declaration names (it had a
+// home in cursor.mn and a by-name twin in query.mn before 2026-10-13).
+fn enclosing_decl(h) with !Mutate = match graph_parent_of(h) {
+  None => None,
+  Some(p) => match graph_node_body(p) {
+    NModule(_) => Some(h),
+    _ => enclosing_decl(p),
+  },
+}
 
 // The module handle a path names — the inverse of `module_name_of_handle`,
 // read from the same deduped cells, so it lands on the JUDGED generation's

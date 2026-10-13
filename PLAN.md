@@ -2332,11 +2332,15 @@ nothing installed only to swallow an op nobody reads.
   (`Hβ.effects.unperformed-effects-delete`).
 - **T · The teaching compiler teaches what the program owes**
   (`Hβ.teach.teaches-what-the-program-owes`, T1–T9): a refinement at a part,
-  a lock taught only when something stands on it, a proposer that offers
-  what is in scope, one obligation value, a declaration's Why its
-  signature's, projections that never write, the self-proposal benchmark,
-  topology proposed under the race rule's proof, and a base-type pin equal
-  to what inference derives narrated as the inventory it is.
+  a lock taught only when something stands on it (T2, LANDED 2026-10-13 at
+  Landing 3 on the by-name application edge, the reference link its
+  successor), a proposer that offers what is in scope (T3's rings LANDED
+  the same day: the module's own declarations, its direct imports' and the
+  prelude's; its other faces open), one obligation value, a declaration's
+  Why its signature's, projections that never write, the self-proposal
+  benchmark, topology proposed under the race rule's proof, and a
+  base-type pin equal to what inference derives narrated as the inventory
+  it is.
 - **V1, V3, V4 · The verbs are whole** (`Hβ.verbs.the-verbs-are-whole`):
   early exit is a resume grade, so `any`, `all`, `find` and `take` stop at
   the first hit; every cycle has a driver; stages are handlers.

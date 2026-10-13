@@ -313,8 +313,12 @@ fn board_bounds() = [
   // module, and the seventh quotes the phantom path a parser bug once walked.
   Bound({ceiling: 7, question: QCensus(CsProseClass(PcPathNoFile))}),
   // Hex commit tokens — history belongs to LEDGER and git. 29 distinct
-  // tokens across 51 comments, every one a pin or a commit.
-  Bound({ceiling: 51, question: QCensus(CsProseClass(PcCommit))}),
+  // tokens across 51 comments when the bound was written, every one a pin or
+  // a commit. 51 -> 48 (2026-10-13, Landing 3): the board refused 54 at the
+  // repin — six new comments dated their old form by the boot's sha — and
+  // with those reworded to the date the tree carries the 48 it carried
+  // before them, which is the ceiling now.
+  Bound({ceiling: 48, question: QCensus(CsProseClass(PcCommit))}),
   // Numbered citations of the archived spec corpus.
   Bound({ceiling: 24, question: QCensus(CsProseClass(PcSpecCitation))}),
   // Lifecycle prose — what was, where SYNTAX asks for what is. 44 -> 43

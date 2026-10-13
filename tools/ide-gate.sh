@@ -139,11 +139,16 @@ if [ -n "$browser" ]; then
     "SMOKE-CANVAS no-page-lexer=true "*)
       tk=$(num tokens); sp=$(num spans); st=$(num strip); fr=$(num frames); mk=$(num marks)
       rc=$(num refs-at-caret); rd=$(num refs-drawn); nd=$(num needle); nl=$(num needle-listed)
-      fmtv=$(num fmt); und=$(num undone); acc=$(num accepted)
-      if [ "${tk:-0}" -gt 0 ] && [[ "$sp" =~ ^[0-9]+$ ]] && [[ "$st" =~ ^[0-9]+$ ]] && [ "${fr:-0}" -gt 0 ] && [ "${mk:-0}" -gt 0 ] \
+      fmtv=$(num fmt); und=$(num undone); acc=$(num accepted); ct=$(num canvas-text)
+      # canvas-text: the canvas the line counts was judged for the text on the
+      # page. The smoke used to read whatever canvas the page held when its
+      # settle window closed — tokens=0 on a loaded machine, and 26 (a smaller
+      # step's program) where the fixture's own canvas has 115 — so a green
+      # here could measure the wrong canvas (2026-10-13).
+      if [ "${tk:-0}" -gt 0 ] && [ "$ct" = true ] && [[ "$sp" =~ ^[0-9]+$ ]] && [[ "$st" =~ ^[0-9]+$ ]] && [ "${fr:-0}" -gt 0 ] && [ "${mk:-0}" -gt 0 ] \
          && [ "${rc:--1}" -gt 0 ] && [ "${rd:-0}" -eq "${rc:--1}" ] && [ "${nd:--1}" -gt 0 ] && [ "${nl:-0}" -eq "${nd:--1}" ] \
          && [ "$fmtv" = true ] && [ "$acc" = true ] && [ "$und" = true ]; then
-        echo "  canvas leg: PASS — $tk tokens from the wheel, $sp painted spans and $st strip cells faithful, $fr frames, $mk marks, $rc reference(s) at the caret drawn, $nd for the needle listed, fmt on idle, the accept one undo step"
+        echo "  canvas leg: PASS — $tk tokens from the wheel for the text on the page, $sp painted spans and $st strip cells faithful, $fr frames, $mk marks, $rc reference(s) at the caret drawn, $nd for the needle listed, fmt on idle, the accept one undo step"
       else
         echo "  canvas leg: FAIL — $cline"; fail=1
       fi ;;

@@ -98,10 +98,15 @@ type ProposerKind
 
 // Where the vocabulary search found a name, nearest first. The hole's own
 // module is what the developer wrote; an authored import is vocabulary they
-// chose to reach; the rest of the link — the pre-imported prelude and the
-// runtime floor under it — is in scope by name only because the link
-// flattens every module into one env.
-type VocabRing = OwnModule | AuthoredImport | Linked
+// chose to reach; the prelude is what every program speaks without naming
+// it. A name the hole's module reaches only through the link — a library
+// helper the program never imported, a module two import edges away — is
+// in scope by name because visibility is still the import closure, and the
+// proposer never offers it (T3, 2026-10-13: before that the whole rest of
+// the link was a fourth ring, and `5 |> ??` in a bare program answered six
+// survivors — four from lib/strings, one from lib/lists and the prelude's
+// `id`, which fills alone now).
+type VocabRing = OwnModule | AuthoredImport | Prelude
 
 // ─── EnrichedCandidate — Candidate + provenance ────────────────────
 //
@@ -292,54 +297,53 @@ fn enumerate_vocabulary_calls(target_ty, allowed_row, context, rings) with !Muta
         (name, scheme, reason, kind) => match kind {
           FnScheme | ValueScheme => // A value binding of function type is vocabulary exactly as a
           // declared fn is: a reference to it fills a function-typed hole.
-          match judgment_ty(scheme) {
-            TFun(params, ret, row) => if len(params) == 0 && heads_may_unify(ret, target_ty) && !reaches_decl(name, enclosing, []) {
-              if row_subsumes(row, allowed_row) {
-                // drift-audit: ignore — bounded by the in-scope zero-arg vocabulary, not a loop accumulator
-                (
-                  accepted ++ [vocabulary_call_candidate(name, row, allowed_row, ring_of_name(rings, name))],
-                  rejected
-                )
-              } else {
-                (
-                  accepted,
+          // A name in none of the rings is in scope through the link alone
+          // and is neither offered nor listed as refused.
+          match ring_of_name(rings, name) {
+            None => (accepted, rejected),
+            Some(ring) => match judgment_ty(scheme) {
+              TFun(params, ret, row) => if len(params) == 0 && heads_may_unify(ret, target_ty) && !reaches_decl(name, enclosing, []) {
+                if row_subsumes(row, allowed_row) {
                   // drift-audit: ignore — bounded by the in-scope zero-arg vocabulary, not a loop accumulator
-                  rejected ++ [
-                    (
-                      name,
-                      Inferred("performs {show_effrow(row)} — refused by the target row {show_effrow(allowed_row)}"),
-                      ring_of_name(rings, name)
-                    )
-                  ]
-                )
-              }
-            } else if fn_heads_may_unify(params, ret, target_ty) && !reaches_decl(name, enclosing, []) {
-              // A FUNCTION-typed hole is filled first by a REFERENCE to a
-              // function already in scope. The reference's row is charged
-              // where the stage applies, so the same row gate judges it.
-              if row_subsumes(row, allowed_row) {
-                // drift-audit: ignore — bounded by the in-scope vocabulary of one arity, not a loop accumulator
-                (
-                  accepted ++ [vocabulary_ref_candidate(name, row, allowed_row, ring_of_name(rings, name))],
-                  rejected
-                )
-              } else {
-                (
-                  accepted,
+                  (accepted ++ [vocabulary_call_candidate(name, row, allowed_row, ring)], rejected)
+                } else {
+                  (
+                    accepted,
+                    // drift-audit: ignore — bounded by the in-scope zero-arg vocabulary, not a loop accumulator
+                    rejected ++ [
+                      (
+                        name,
+                        Inferred("performs {show_effrow(row)} — refused by the target row {show_effrow(allowed_row)}"),
+                        ring
+                      )
+                    ]
+                  )
+                }
+              } else if fn_heads_may_unify(params, ret, target_ty) && !reaches_decl(name, enclosing, []) {
+                // A FUNCTION-typed hole is filled first by a REFERENCE to a
+                // function already in scope. The reference's row is charged
+                // where the stage applies, so the same row gate judges it.
+                if row_subsumes(row, allowed_row) {
                   // drift-audit: ignore — bounded by the in-scope vocabulary of one arity, not a loop accumulator
-                  rejected ++ [
-                    (
-                      name,
-                      Inferred("performs {show_effrow(row)} when applied — refused by the target row {show_effrow(allowed_row)}"),
-                      ring_of_name(rings, name)
-                    )
-                  ]
-                )
-              }
-            } else {
-              (accepted, rejected)
+                  (accepted ++ [vocabulary_ref_candidate(name, row, allowed_row, ring)], rejected)
+                } else {
+                  (
+                    accepted,
+                    // drift-audit: ignore — bounded by the in-scope vocabulary of one arity, not a loop accumulator
+                    rejected ++ [
+                      (
+                        name,
+                        Inferred("performs {show_effrow(row)} when applied — refused by the target row {show_effrow(allowed_row)}"),
+                        ring
+                      )
+                    ]
+                  )
+                }
+              } else {
+                (accepted, rejected)
+              },
+              _ => (accepted, rejected),
             },
-            _ => (accepted, rejected),
           },
           _ => (accepted, rejected),
         },
@@ -361,9 +365,10 @@ fn enumerate_vocabulary_calls(target_ty, allowed_row, context, rings) with !Muta
 // hole: the whole link was one ring, so `decode_stride`, `hex_val`,
 // `escape_len`, `escape_tail`, `hash` and `id` — reachable from the program
 // only because the link flattens every module into one env — tied with it,
-// and the hole could never fill.
+// and the hole could never fill. The rings end at the prelude: what the link
+// carries past them is never searched.
 fn search_outward(vocab, row_rejected, hole_h, cand_start) =
-  [OwnModule, AuthoredImport, Linked] |> fold(([], []), search_ring(vocab, row_rejected, hole_h, cand_start))
+  [OwnModule, AuthoredImport, Prelude] |> fold(([], []), search_ring(vocab, row_rejected, hole_h, cand_start))
 
 fn search_ring(vocab, row_rejected, hole_h, cand_start, acc, ring) = match acc {
   (found, refused) => if len(found) > 0 {
@@ -397,21 +402,24 @@ fn refusal_words(refusal) = match refusal {
 }
 
 // The ring a name is found in: declared by the hole's own module, by a
-// module it reaches through an AUTHORED import, or only by the link.
+// module it imports, or by the prelude — or none, for a name the module
+// reaches through the link alone.
 fn ring_of_name(rings, name: String) = if any({ n => n == name }, rings.home) {
-  OwnModule
+  Some(OwnModule)
 } else if any({ n => n == name }, rings.imported) {
-  AuthoredImport
+  Some(AuthoredImport)
+} else if any({ n => n == name }, rings.prelude) {
+  Some(Prelude)
 } else {
-  Linked
+  None
 }
 
 // The rings, read once per proposal from the hole's own module node: the
-// names its decls declare, and the names declared by every module it
-// reaches through authored import edges. The driver PRE-imports the
-// prelude rather than drawing an edge anyone wrote, so the prelude and the
-// runtime floor under it stay in the outer ring unless the program imports
-// them by name.
+// names its decls declare, the names declared by the modules its own import
+// statements name, and the prelude's. They are what the module SEES once a
+// module's scope is its own declarations, its direct imports' and the
+// prelude's (`Hβ.driver.per-module-env-overlay`); the import closure the
+// judgment still resolves through is not vocabulary the developer chose.
 //
 // The membership is read BY NAME because the env entry the vocabulary
 // enumerates carries no edge to its decl: a judged fn is published as
@@ -422,10 +430,10 @@ fn ring_of_name(rings, name: String) = if any({ n => n == name }, rings.home) {
 fn vocabulary_rings(hole_h) = match graph_node_body(graph_module_of(hole_h)) {
   NModule(m) => {
     let cells = module_cells()
-    let reached = authored_reach(cells, import_paths_of_decls(m.decls), [])
     {
       home: map(stmt_decl_name, m.decls),
-      imported: cells |> filter(cell_reached(reached)) |> map(cell_decl_names) |> flatten,
+      imported: cells |> filter(cell_in(import_paths_of_decls(m.decls))) |> map(cell_decl_names) |> flatten,
+      prelude: cells |> filter(cell_in(["prelude"])) |> map(cell_decl_names) |> flatten,
     }
   },
   _ => {
@@ -434,32 +442,12 @@ fn vocabulary_rings(hole_h) = match graph_node_body(graph_module_of(hole_h)) {
     // defect in the caller, which traps rather than answering with an
     // empty vocabulary nobody could tell from a real one.
     out_of_range()
-    {home: [], imported: []}
+    {home: [], imported: [], prelude: []}
   },
 }
 
-// The module paths the hole's module reaches through authored import edges,
-// read from the cells' own decls so the walk never rescans the weave.
-fn authored_reach(cells, frontier, seen) = if len(frontier) == 0 {
-  seen
-} else if contains_path(seen, last(frontier)) {
-  authored_reach(cells, drop_last(frontier), seen)
-} else {
-  authored_reach(
-    cells,
-    drop_last(frontier) ++ cell_imports(cells, last(frontier)),
-    push(seen, last(frontier))
-  )
-}
-
-fn cell_imports(cells, path: String) = fold([], cell_imports_pick(path), cells)
-
-fn cell_imports_pick(path: String, acc, c) = match c {
-  (_h, p, _s, d) => if p == path { import_paths_of_decls(d) } else { acc },
-}
-
-fn cell_reached(reached, c) = match c {
-  (_h, p, _s, _d) => contains_path(reached, p),
+fn cell_in(paths, c) = match c {
+  (_h, p, _s, _d) => contains_path(paths, p),
 }
 
 fn cell_decl_names(c) = match c {

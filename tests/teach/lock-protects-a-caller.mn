@@ -1,0 +1,9 @@
+// teach 5: add with !Alloc
+// A lock is taught where something stands on it: `g` declares `!Alloc` and
+// calls `f`, so `f` not allocating is what `g`'s clause rests on, and the
+// lock moves the refusal of a future allocation in `f` to `f` itself.
+fn f(x) = x + 1
+
+fn g(x) with !Alloc = f(x)
+
+fn main() = g(1)
