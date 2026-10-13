@@ -449,9 +449,9 @@ weights |> filter({ (name, w) => w > 0 })
 The binder form still parses, and it is the last of the line that retired `perform`, `handle`, `capability`, the turbofish and `|x|`. A sole-parameter lambda IS an arm list, so the binder is the redundant spelling of one. `mentl fmt` writes the arms wherever the lambda's body is a `match` on its parameter (`arm_list_of`) — every arm list reads back that way, and so does the param-position destructure `((a, b)) => e`. A sole-parameter lambda with any other body keeps its binder today (`(x) => x + 1`), because the parser builds `{ x => x + 1 }` as a `match` on a minted parameter rather than as the one `LambdaExpr` the binder form builds; the formatter landing makes them one node, and every sole-parameter mint then renders as its arms. What survives on the page after that is the honest remainder:
 
 - **multi-parameter** (`(a, b) => a * b`) — the arm list is one-parameter, so these retire by becoming REFERENCES (`fold(0, add, xs)`), which is rule 1 and needs no new form. `Hβ.syntax.multi-param-lambda-is-a-reference`.
-- **the zero-argument thunk** (`() => e`) — retires into a named handler chain rather than into a literal. `Hβ.syntax.handler-chain-is-a-value`.
+- **the zero-argument thunk** (`() => e`) that handed a body to a handler stack — RETIRED into the named handler chain (§«Handler chains», real 2026-10-13: the wheel's analysis and emit brackets are chains, and the 25 thunks that handed them a body are gone with the four inside the wrappers themselves, `Hβ.syntax.handler-chain-is-a-value`). A thunk that defers a computation for a function to run stays the binder form, the two-parameter case's sibling.
 
-Both are named in positive form with their measured counts in `RESIDUE.md`; neither is a second minting form, and no third is being held open.
+The multi-parameter residue is named in positive form in `RESIDUE.md`, its count still open; neither is a second minting form, and no third is being held open.
 
 ### Examples
 
@@ -1312,14 +1312,38 @@ Arms separated by commas. Trailing comma allowed.
 
 ### Exhaustiveness
 
-The match must cover every variant of the scrutinee's type, OR include a wildcard arm `_ => default`. Missing variants without wildcard:
+Every value a constructor or tuple column can take reaches an arm (the
+literal, list and record columns are the remainder named below). A value no
+arm reaches:
 
-Diagnostic: **`E_PatternInexhaustive`** at the `match` keyword:
-> "match on Option does not cover variant: None. Add `None => ...` arm or `_ => ...` wildcard."
+Diagnostic: **`E_PatternInexhaustive`** at the `match` keyword, naming the value
+that escapes as a pattern:
+> "match misses `None` — write its arm"
 
-Quick Fix: insert stubs for missing variants.
+Quick Fix: insert the arm the witness names. The refusal never proposes a
+wildcard: a `_` arm over a sum is the roster of variants the author declined
+to write, and the medium bounds the shapes of it that fabricate (`mentl verify`,
+the wildcard-zero and wildcard-fabricates census).
 
-An arm covers what its top pattern covers: an alternation every branch, an as-pattern `name @ pat` what `pat` does (`whole @ Leaf(_)` covers `Leaf`). The refusal is armed (real, 2026-10-03): a match missing a variant no longer compiles to a program that traps when the variant arrives. Until then the class narrated and emitted, and an as-pattern was read as covering nothing, so `whole @ Leaf(_)` beside `Pair(a, b)` reported a false "misses 1 of 2".
+**The check reads the WHOLE pattern, column by column** (real, 2026-10-13):
+the arms are a matrix of pattern rows, a column of constructors is complete
+when the arms name every variant of the type and each variant's payload
+columns are themselves covered, and a column with a wildcard or binder covers
+the rest — so a match naming every `Stmt` variant but one inside `NStmt(…)`
+refuses as `match misses `NStmt(HandlerChainStmt(_, _))``, the witness being
+the first missing variant in declaration order. A tuple column is one constructor of its
+width; a column of literal, list or record patterns decides nothing and is
+read as covered, so the check refuses exactly the constructor gaps it can
+prove. Until then the check read each arm's TOP constructor alone, and a
+nested variant nobody matched compiled clean and trapped at run time; the
+compiler's own classifier walk did, the day a `Stmt` variant was added
+(the handler chain). An arm covers what its top pattern covers: an
+alternation every branch, an as-pattern `name @ pat` what `pat` does
+(`whole @ Leaf(_)` covers `Leaf`). The refusal is armed (real, 2026-10-03):
+a match missing a variant does not compile to a program that traps when the
+variant arrives. Before that the class narrated and emitted, and an
+as-pattern was read as covering nothing, so `whole @ Leaf(_)` beside
+`Pair(a, b)` reported a false miss.
 
 ### Type aliases
 
@@ -1882,6 +1906,53 @@ handler bounded_log(prefix: String) with count = 0, max = 100 {
 ```
 
 A state init may read the handler's config — `handler window(size) with buf = make_list(size)`, `with n = cfg.x` — because each install builds its state from the config it was given, as a function of its own record, before the handler is installed: an init performs in the installer's world, and one that performs its own handler's ops is `E_InitPerformsOwnOp`. *(Real 2026-09-28, R0c: until then the install lowered the declaration's inits in its own scope, where the config does not exist, so only a bare `with n = cfg` worked and anything more reached a floor and trapped.)*
+
+### Handler chains — a composition is a value
+
+```
+handler judgment = affine_ledger ~> region_tracker ~> verify_ledger
+handler judged_emit = emit_ctx ~> judgment
+
+fn check(entry) = (judge(entry)) ~> judgment
+```
+
+`handler NAME = h1 ~> h2(cfg) ~> h3` names a COMPOSITION of handlers. An
+effect row is a first-class kernel value, so naming a row is what `type`
+already does (§«Named effect rows»); a handler composition is a value by the
+same reasoning, and naming one needs no new form — the `=` opens the chain
+where the arms would open, and the chain is a `~>` tree whose leaves are
+handler references, bare or applied to their config. A member may be another
+chain, which stands for its members.
+
+**An install of the name is the installs of its members, innermost first,
+and the graph holds exactly that** (real, 2026-10-13, S3 of PLAN §11's cut).
+`body ~> judgment` is `body ~> affine_ledger ~> region_tracker ~>
+verify_ledger` in every respect — the row (each member's absorption removed,
+each member's arms added, each install's cost charged), the remainder gates,
+the lowering, the Why walk — because the judgment WRITES those installs into
+the graph at the install node, once: each member is instantiated at the
+reference (a copy of its subtree, as a row alias's terms are copied where a
+signature reads them, so a config argument is evaluated per install and a
+handler's instance and answer are the install's own), the installs are nested
+over the body, and the install's node is registered again as the outermost
+of them. Every reader after the judgment asks the graph and sees the installs
+the author would have spelled; the formatter writes `~> judgment` back, since
+the install node is bound with the chain's name (`ChainInstall`), and `refs
+of judgment` counts the install. Until this landed the only way to hand a
+body to a fixed stack of handlers was a thunk and a wrapper function
+(`infer_context(() => …)`, 23 thunks in the wheel on 2026-09-20).
+
+A chain carries no config of its own — `~> judgment(x)` is
+`E_HandlerChainShape` — and a member is a handler or a chain: a value that is
+neither, or a member whose argument declares anything (a function, a handler,
+a type, an import — `member_declarations` walks the argument), is refused at
+the declaration with the same class, whether or not anything installs the
+chain. The class is ARMED: nothing of a malformed chain compiles (real,
+2026-10-13 — it was born unarmed the same day, a chain applied to arguments
+printing the error while the program compiled and ran, and the declaration
+refusal fired only at an install; the landing's claim-reading pass caught
+both). The declaration installs nothing and renders on one line, its members
+joined by ` ~> `.
 
 ### A handler is exhaustive
 
@@ -3041,7 +3112,7 @@ colon (`ast: own Node`, §«The Intent Boundary Rule»).
 
 | Code                  | Trigger                                       | Applicability        | Quick Fix                                      |
 |-----------------------|-----------------------------------------------|----------------------|-------------------------------------------------|
-| `E_PatternInexhaustive` | match missing variants, no wildcard — an alternation covers its branches, an as-pattern its inner pattern. ARMED 2026-10-03 (refuses the executable) | `HasPlaceholders`    | insert stubs for missing variants              |
+| `E_PatternInexhaustive` | a value escapes every arm — read over the whole pattern, column by column (§«Exhaustiveness»), so a variant missing INSIDE a constructor's payload refuses too; the message names the escaping value as a pattern. An alternation covers its branches, an as-pattern its inner pattern. ARMED 2026-10-03 (refuses the executable); nested since 2026-10-13 | `HasPlaceholders`    | insert the arm the witness names |
 | `E_RefinementRejected`| value violates refinement predicate — or a partial primitive's precondition refuted by constants (`1 / 0`, `INT_MIN / -1`; §«Partiality») | `Unspecified`        | adjust value or widen refinement               |
 | `E_EffectMismatch`    | declared row doesn't subsume body row. The Reason names the declaration and, for a function, the chain of sites the first refused effect enters through — each a `module:line:col` naming what the effect crosses there (a callee, a stage, a handler, a function value entered) or the construct that charges it (`rendering the value`, `building the list`) — to the op where the chain reaches one (real, 2026-10-13; the span stays the declaration's, whose clause is what the body violates) | `MaybeIncorrect`     | widen declaration OR install absorbing handler at the site the chain names |
 | `E_PurityViolated`    | `with Pure` body performs non-empty effects   | `MaybeIncorrect`     | remove `with Pure` or absorb the effect        |
@@ -3076,6 +3147,7 @@ colon (`ast: own Node`, §«The Intent Boundary Rule»).
 | `E_UnresolvedHole`    | compiling an EXECUTABLE whose reachable emitted tree carries an authored value-position `??` (§«Partial application» — a hole is productive for check/edit, never an executable value; a parameter-product `??` is an executable suspension and runs). Raised by the executable gate between reachability and emit: nonzero exit, zero WAT bytes, the authored weave span on the diagnostic | `HasPlaceholders` | fill the hole (accept a Synth survivor) or suspend it into a parameter product |
 | `E_FieldOffsetUnprovable` | a field read or a record pattern whose receiver's row never closed where the body is emitted — no field set, so no slot. Said at the SETTLE POINT: the plan's emitted reach asks it of every body under the bracket that body is emitted in, a base at the floor and a twin under its own pairs, before the gate reads the ledger, so the compile exits 1 with zero WAT bytes. ARMED 2026-09-28 at wheel-zero. It narrated as `T_FieldOffsetUnprovable` from 2026-09-15 and could not arm while it was decided during emission, after the gate: a program carrying one compiled clean and trapped at the instruction that admits it (`tests/micros/mn-payload3.mn`, exit 134 on every boot before the arming) | `MaybeIncorrect` | close the receiver's row — annotate it at its Intent Boundary, or give the call site a shape its specialization can key on |
 | `E_ShapeUnprovable` | a comparison, a show, a hash or a `++` whose operand is still a type VARIABLE where it is emitted: nothing proves the shape the read needs, and the word reading it would fall to is an address lie for anything but a word. Said at the settle point beside its row sibling and ARMED with it (2026-09-28). The eq and show narrations it replaces (`T_EqTypeUnprovable`, `T_ShowTypeUnprovable`) counted two sites on the wheel, both `list_compare_loop` reading its elements through the typed `list_index`; it reads the words the emit's by-name call guarantees, and the count is zero | `MaybeIncorrect` | prove the operand — give the call site a shape its specialization can key on, or name the type at its Intent Boundary |
+| `E_HandlerChainShape` | a handler chain (`handler NAME = h1 ~> h2`, §«Handler chains») with the wrong shape: a member that is not a handler or a chain, a member whose argument declares anything (a function, a handler, a type, an import), or the chain installed with arguments of its own — a chain carries no config, its members do; all three judged at the declaration or the install, never at the lowering. ARMED 2026-10-13, the day it was born unarmed: a chain applied to arguments printed the error and the program compiled and ran (tests/micros/mn-handler-chain-shape-refuses.mn) | `MaybeIncorrect` | name a handler at the member; move the declaration beside the chain; install the chain bare and give the member its config |
 | `E_InstantiationDepth` | a reference eight instantiations deep in a recursion whose type grows with every call, reaching a callee that READS the growing structure (a comparison, a show, a field — or a number). Monomorphization cannot specialize without bound, and the ninth level would read the structure as a word, so the settle point refuses there. ARMED at birth (2026-09-28): two ten-deep lists compared unequal and a nested show printed an address before it. A wide value nothing reads crosses the word protocol boxed and back, and is admitted | `Unspecified` | recurse over a type that keeps its shape, or leave the growing part unread |
 
 ### Gradient narration (teaching surfaces)

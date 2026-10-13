@@ -1168,6 +1168,13 @@ fn pre_register_stmt(seen, ref node) = match graph_node_body(node) {
     pre_register_handler_sig(hname, config, state, arms)
     seen
   },
+  NStmt(HandlerChainStmt(name, chain)) => {
+    // A chain's name registers beside the handlers' so an install anywhere
+    // in the link resolves it (chain_of). Its type is unit: the name is
+    // never a value — every install of it becomes its members' installs.
+    env_extend(name, Frozen([], TUnit), Declared(name), HandlerChainKind(chain))
+    seen
+  },
   _ => // EffectDeclStmt registered in the pre_register_effect phase above —
   // every handler sig in THIS fold reads a complete effect env.
   seen,
@@ -1994,6 +2001,7 @@ fn stmt_declared_names(node) = match graph_node_body(node) {
     TypeDefStmt(name, variants) => [name] ++ map({ (vname, _, _) => vname }, variants),
     EffectDeclStmt(name, _, ops) => [name] ++ map({ (op, _, _, _) => op }, ops),
     HandlerDeclStmt(name, _, _, _, _, _) => [name],
+    HandlerChainStmt(name, _) => [name],
     LetStmt(pat, _, _) => pat_binders(pat),
     RefineStmt(name, _, _) => [name],
     AliasStmt(name, _) => [name],
@@ -2013,6 +2021,7 @@ fn body_decl_name(body) = match body {
   NStmt(TypeDefStmt(name, _)) => name,
   NStmt(EffectDeclStmt(name, _, _)) => name,
   NStmt(HandlerDeclStmt(name, _, _, _, _, _)) => name,
+  NStmt(HandlerChainStmt(name, _)) => name,
   NStmt(RefineStmt(name, _, _)) => name,
   NStmt(AliasStmt(name, _)) => name,
   NStmt(RowAliasStmt(name, _)) => name,
@@ -2336,6 +2345,15 @@ fn infer_stmt(ref node) = {
       // one union-find edge, so no statement in a block is a cell nothing
       // judged.
       graph_bind(node, TVar(expr), Located(span, Inferred("statement carries its value")))
+    },
+    NStmt(HandlerChainStmt(name, chain)) => {
+      // The decls column's fifth writer. The members are judged as the
+      // references they are — a handler, or a chain standing for its
+      // members — so the declaration's own cells are bound and `refs of h`
+      // counts the chain; every install instantiates them again where it
+      // stands (infer_chain_install).
+      judge_chain(name, chain)
+      declaration_noted(node, name)
     },
     NStmt(ImportStmt(path)) => bind_declared(node, TUnit, path),
     NStmt(RefineStmt(name, _, _)) => // Registered at pre_register_stmt (the one home — TAlias(name,
@@ -3630,6 +3648,7 @@ fn stmt_charge_word(s) = match s {
   TypeDefStmt(_, _) => "the type declaration",
   EffectDeclStmt(_, _, _) => "the effect declaration",
   HandlerDeclStmt(_, _, _, _, _, _) => "the handler declaration",
+  HandlerChainStmt(_, _) => "the handler chain declaration",
   ExprStmt(_) => "the statement",
   ImportStmt(_) => "the import",
   RefineStmt(_, _, _) => "the refinement",
@@ -5843,7 +5862,249 @@ fn pipe_stage_params(lh, right) = if product_fills_stage(lh, right) {
 
 fn product_slot_param(t) = mk_param("_", t)
 
-fn infer_pipe_tee(left, right, handle, span: ValidSpan) = {
+// An install whose right side names a HANDLER CHAIN becomes its members'
+// installs by one write at the install node (`infer_chain_install`); every
+// other install is judged as the one install it is.
+fn infer_pipe_tee(left, right, handle, span: ValidSpan) = match chain_of(right) {
+  Some((name, members)) => infer_chain_install(left, right, name, members, handle, span),
+  None => infer_pipe_tee_one(left, right, handle, span, install_reason(right, span)),
+}
+
+// THE ONE WRITE (S3, 2026-10-13): `body ~> NAME` over `handler NAME = h1 ~>
+// h2` is the install of h1 under the install of h2, and the graph holds
+// exactly that after this write — the members instantiated at the
+// reference's span, nested innermost-first over the body, and the install's
+// own node REGISTERED AGAIN as the outermost of them — so every reader after
+// the judgment (the row fold, the entry walk, the lowering, the formatter)
+// asks the graph and sees the installs the author would have spelled. The
+// authored reference stays the site's own node, bound so the Why at the
+// glyph names the chain and `refs of NAME` counts the install; the install
+// node is bound `ChainInstall`, which the formatter reads to write the name
+// back. A chain applied to arguments is refused: a chain carries no config of
+// its own, its members do. Until this landed the only way to hand a body to
+// a fixed stack of handlers was a thunk and a wrapper function (pipeline's
+// infer_context and the 23 thunks into it, measured 2026-09-20).
+fn infer_chain_install(left, right, name: String, members, handle, span: ValidSpan) = {
+  let rspan = graph_span_of(right)
+  match graph_node_body(right) {
+    NExpr(CallExpr(_, _)) => report(EHandlerChainShape(
+      "`{name}` is a chain of handlers, not a handler with config — install it bare; its members carry their own arguments",
+      rspan
+    )),
+    _ => (),
+  }
+  graph_ref_note(name, right)
+  graph_bind(
+    right,
+    TUnit,
+    Located(
+      rspan,
+      Inferred("the handler chain {name}, installed here as its {int_to_str(len(members))} member(s)")
+    )
+  )
+  let inner = member_installs(name, left, drop_last(members), rspan, span)
+  let outermost = chain_instance(name, last(members), rspan)
+  graph_register_node(handle, NExpr(PipeExpr(PTee, inner, outermost)))
+  infer_pipe_tee_one(inner, outermost, handle, span, Located(span, ChainInstall(name, len(members))))
+}
+
+// The installs of every member but the outermost, innermost first: each is a
+// fresh install node over the body so far, its member instantiated at the
+// reference's span.
+fn member_installs(name: String, body, members, rspan: ValidSpan, span: ValidSpan) = match members {
+  [] => body,
+  [m, ...rest] => member_installs(name, member_install(body, chain_instance(name, m, rspan), span), rest, rspan, span),
+}
+
+fn member_install(body, member, span: ValidSpan) = {
+  let h = fresh_handle_as(span, Located(span, Inferred("an install of a chain's member")))
+  graph_register_node(h, NExpr(PipeExpr(PTee, body, member)))
+  h
+}
+
+// The chain an install's right side names and its members, flattened — a
+// member that names another chain stands for that chain's members. None for
+// a handler, a value or an anonymous install.
+fn chain_of(right) = match callee_name(right) {
+  "" => None,
+  name => match env_lookup(name) {
+    Some((_, _, HandlerChainKind(chain))) => Some((name, chain_members(chain))),
+    _ => None,
+  },
+}
+
+fn chain_members(h) = match graph_node_body(h) {
+  NExpr(PipeExpr(PTee, l, r)) => chain_members(l) ++ chain_member(r),
+  _ => chain_member(h),
+}
+
+fn chain_member(h) = match chain_of(h) {
+  Some((_, members)) => members,
+  None => [h],
+}
+
+// A chain declaration's own judgment: each member is a handler reference —
+// bare or applied to its config — or another chain; a joint of the tree is
+// bound to unit so no cell of the declaration is left unjudged. The
+// declaration never installs anything; its members are judged here as the
+// references they are and instantiated again at every install.
+fn judge_chain(name: String, h) = match graph_node_body(h) {
+  NExpr(PipeExpr(PTee, l, r)) => {
+    judge_chain(name, l)
+    judge_chain_member(name, r)
+    graph_bind(h, TUnit, Located(graph_span_of(h), Inferred("a joint of the handler chain {name}")))
+  },
+  _ => judge_chain_member(name, h),
+}
+
+fn judge_chain_member(name: String, h) = match callee_name(h) {
+  "" => report(EHandlerChainShape(
+    "a member of the chain {name} is not a handler — a chain is handlers, each a name or a name applied to its config",
+    graph_span_of(h)
+  )),
+  member => match env_lookup(member) {
+    Some((_, _, HandlerKind(_, _, _, _, _))) => {
+      member_declarations(h) |> each(member_declared(name, ??))
+      infer_expr(h)
+    },
+    Some((_, _, HandlerChainKind(_))) => {
+      graph_ref_note(member, h)
+      graph_bind(
+        h,
+        TUnit,
+        Located(graph_span_of(h), Inferred("the handler chain {member}, a member of {name}"))
+      )
+    },
+    _ => report(EHandlerChainShape("`{member}`, a member of the chain {name}, is not a handler", graph_span_of(h))),
+  },
+}
+
+// A member's arguments are VALUES. A declaration anywhere inside one — a
+// function, a handler, a type, an import — is refused here, at the chain's
+// declaration, where the member is judged once; every install then
+// instantiates values alone. A let or an expression statement inside an
+// argument's block is a value's own scaffolding and is walked through.
+fn member_declarations(h) = match graph_node_body(h) {
+  NStmt(LetStmt(_, _, _)) => flat_map(member_declarations, body_child_handles(graph_node_body(h))),
+  NStmt(ExprStmt(_)) => flat_map(member_declarations, body_child_handles(graph_node_body(h))),
+  NStmt(FnStmt(_, _, _, _, _)) => [h],
+  NStmt(HandlerDeclStmt(_, _, _, _, _, _)) => [h],
+  NStmt(HandlerChainStmt(_, _)) => [h],
+  NStmt(TypeDefStmt(_, _)) => [h],
+  NStmt(EffectDeclStmt(_, _, _)) => [h],
+  NStmt(ImportStmt(_)) => [h],
+  NStmt(RefineStmt(_, _, _)) => [h],
+  NStmt(AliasStmt(_, _)) => [h],
+  NStmt(RowAliasStmt(_, _)) => [h],
+  body => flat_map(member_declarations, body_child_handles(body)),
+}
+
+fn member_declared(chain: String, d) = report(EHandlerChainShape(
+  "a member of the chain {chain} declares `{body_decl_name(graph_node_body(d))}` — a chain is handlers applied to values; declare it beside the chain",
+  graph_span_of(d)
+))
+
+// A CHAIN'S MEMBER, INSTANTIATED WHERE THE CHAIN IS INSTALLED. A member of
+// `handler NAME = h1 ~> h2(cfg)` is the declaration's own node, and an
+// install is a frame of its own: the handler's instance, its answer and its
+// config arguments are the install's, so a member judged at two installs
+// through one node would unify two instances into one cell. The install
+// therefore COPIES the member's subtree at the reference's span — the move a
+// row alias makes when a signature reads its terms — and the copy is what
+// the install judges and lowers. A `??` in a member is a hole of the copy's
+// own, since a hole's id is its cell; a declaration inside a member's
+// argument was refused where the chain was judged (`member_declarations`),
+// because a chain is handlers applied to values, so the copy leaves it as it
+// stands.
+fn chain_instance(chain: String, h, span: ValidSpan) = {
+  let copy = fresh_handle_as(
+    span,
+    Located(span, Inferred("a member of the handler chain {chain}, instantiated at this install"))
+  )
+  graph_register_node(copy, instance_body(chain, graph_node_body(h), copy, span))
+  copy
+}
+
+fn instance_body(chain: String, body, copy, span: ValidSpan) = match body {
+  NExpr(e) => NExpr(instance_expr(chain, e, span)),
+  NStmt(s) => NStmt(instance_stmt(chain, s, span)),
+  NHole(_) => NHole(copy),
+  NPat(p) => NPat(p),
+  NTypeAnn(t) => NTypeAnn(t),
+  NModule(m) => NModule(m),
+}
+
+fn instance_of(chain: String, span: ValidSpan, h) = chain_instance(chain, h, span)
+
+fn instance_pair(chain: String, span: ValidSpan, field) = match field {
+  (n, v) => (n, chain_instance(chain, v, span)),
+}
+
+fn instance_arm(chain: String, span: ValidSpan, arm) = match arm {
+  (p, b) => (p, chain_instance(chain, b, span)),
+}
+
+fn instance_update(chain: String, span: ValidSpan, u) =
+  {init: chain_instance(chain, state_field_init(u), span), name: state_field_name(u)}
+
+fn instance_expr(chain: String, e, span: ValidSpan) = {
+  let go = instance_of(chain, span, ??)
+  match e {
+    LitInt(n) => LitInt(n),
+    LitFloat(f) => LitFloat(f),
+    LitString(s) => LitString(s),
+    LitBool(b) => LitBool(b),
+    LitUnit => LitUnit,
+    VarRef(name) => VarRef(name),
+    BinOpExpr(op, l, r) => BinOpExpr(op, go(l), go(r)),
+    UnaryOpExpr(op, n) => UnaryOpExpr(op, go(n)),
+    CallExpr(f, args) => CallExpr(go(f), map(go, args)),
+    LabeledArg(name, v) => LabeledArg(name, go(v)),
+    LambdaExpr(params, body) => LambdaExpr(params, go(body)),
+    IfExpr(c, t, f) => IfExpr(go(c), go(t), go(f)),
+    BlockExpr(stmts, fin) => BlockExpr(map(go, stmts), go(fin)),
+    MatchExpr(scrut, arms) => MatchExpr(go(scrut), map(instance_arm(chain, span, ??), arms)),
+    ResumeExpr(v, updates) => ResumeExpr(go(v), map(instance_update(chain, span, ??), updates)),
+    MakeListExpr(elems) => MakeListExpr(map(go, elems)),
+    MakeTupleExpr(elems) => MakeTupleExpr(map(go, elems)),
+    MakeRecordExpr(fields) => MakeRecordExpr(map(instance_pair(chain, span, ??), fields)),
+    RecordUpdateExpr(base, fields) => RecordUpdateExpr(go(base), map(instance_pair(chain, span, ??), fields)),
+    NamedRecordExpr(head, fields) => NamedRecordExpr(go(head), map(instance_pair(chain, span, ??), fields)),
+    IndexExpr(recv, idx) => IndexExpr(go(recv), go(idx)),
+    MakeStringExpr(frags) => MakeStringExpr(map(go, frags)),
+    ShowExpr(inner) => ShowExpr(go(inner)),
+    FieldExpr(recv, name) => FieldExpr(go(recv), name),
+    PipeExpr(k, l, r) => PipeExpr(k, go(l), go(r)),
+    FanoutExpr(branches) => FanoutExpr(map(go, branches)),
+    RestExpr(name) => RestExpr(name),
+    ExprPlaceholder => ExprPlaceholder,
+  }
+}
+
+// A block inside a member's argument: its lets and expression statements are
+// copied; a declaration there was refused at the chain's declaration
+// (`member_declarations`) and is left as it stands.
+fn instance_stmt(chain: String, s, span: ValidSpan) = match s {
+  LetStmt(pat, value, ann) => {
+    let v = chain_instance(chain, value, span)
+    // an absent annotation IS the value node (the parser's sentinel), so the
+    // copy keeps the alias
+    LetStmt(pat, v, if ann == value { v } else { chain_instance(chain, ann, span) })
+  },
+  ExprStmt(e) => ExprStmt(chain_instance(chain, e, span)),
+  FnStmt(_, _, _, _, _) => s,
+  HandlerDeclStmt(_, _, _, _, _, _) => s,
+  HandlerChainStmt(_, _) => s,
+  TypeDefStmt(_, _) => s,
+  EffectDeclStmt(_, _, _) => s,
+  ImportStmt(_) => s,
+  RefineStmt(_, _, _) => s,
+  AliasStmt(_, _) => s,
+  RowAliasStmt(_, _) => s,
+}
+
+// One install, judged as the one install it is.
+fn infer_pipe_tee_one(left, right, handle, span: ValidSpan, born) = {
   let body_row_h = graph_fresh_row(Inferred("~> body row"))
   // drift-audit: ignore — two independent frame inputs (row handle, answer handle) — one frame record's fields, not parallel arrays
   // The tee body is ONE install's scope — its effect-instance fragments
@@ -5925,7 +6186,7 @@ fn infer_pipe_tee(left, right, handle, span: ValidSpan) = {
     // graph proves the handler identity at a decl; a value forwards.
     inf_add_row_at(handle, body_row),
   }
-  graph_bind(handle, TVar(left), attach)
+  graph_bind(handle, TVar(left), born)
 }
 
 // What an install costs the frame it stands in, by its class (the roster in
@@ -6038,6 +6299,7 @@ fn op_effect_of(cname: String) = match env_lookup(cname) {
       RecordSchemeKind(_) => None,
       EffectDeclKind(_, _) => None,
       HandlerKind(_, _, _, _, _) => None,
+      HandlerChainKind(_) => None,
       ParamScheme(_) => None,
       RowAliasKind(_) => None,
       TypeVariants(_) => None,
@@ -8849,17 +9111,154 @@ fn infer_match_arms(arms, scrut, result_h, span: ValidSpan) = {
   if n > 0 { branch_enter(BAlternative) }
   infer_match_arm_iter(arms, scrut, result_h, span, 0, n)
   if n > 0 { branch_exit(span) }
-  // Exhaustiveness check (H3): if no wildcard arm covers the
-  // remainder, every constructor of the scrutinee's declaring type
-  // must appear among the arms. ConstructorScheme(_, total_variants)
-  // makes this a graph read — no per-type registry needed.
-  let covered = collect_arm_tags(arms, [])
-  let total = arms_total_variants(arms)
-  let has_wild = arms_have_wildcard(arms)
-  if total > 0 && len(covered) < total && !has_wild {
-    report(EPatternInexhaustive(total - len(covered), total, span))
+  // THE EXHAUSTIVENESS CHECK (H3), over the WHOLE pattern (2026-10-13). The
+  // arms are a matrix of pattern rows and the question is whether a value
+  // escapes every row — decided column by column as Maranget decides it: a
+  // column of constructors is complete when the arms name every variant of
+  // the type (the roster is the type's own entry, TypeVariants) and each
+  // variant's specialization is itself covered; incomplete, the rows with a
+  // wildcard there must cover the rest, else the first missing constructor
+  // is the witness. Until this landed the check read each arm's TOP
+  // constructor alone, so `NStmt(FnStmt(…)) | NStmt(LetStmt(…)) | NExpr(…)`
+  // passed with a Stmt variant missing inside NStmt and the program trapped
+  // at the arm nobody wrote — found the day a Stmt variant was added and the
+  // compiler's own classifier walk (`collect_fn_decls`) trapped on it with
+  // `mentl check` clean. The refusal names the value that escapes, as a
+  // pattern (`NStmt(HandlerChainStmt(_, _))`), never a count.
+  match uncovered(flat_map(arm_row, arms), 1) {
+    Some(witness) => report(EPatternInexhaustive(join(", ", witness), span)),
+    None => (),
   }
 }
+
+fn arm_row(arm) = match arm {
+  (pat, _body) => [[pat]],
+}
+
+// Some value of width `n` that escapes every row of the matrix, as one
+// rendered pattern per column, or None when the rows cover everything. A
+// column of literals, list or record patterns decides nothing — it is read
+// as covered, as the top-level read always read it — so the check refuses
+// exactly the constructor and tuple gaps, never a shape it cannot judge.
+fn uncovered(rows, n) = if n == 0 {
+  if len(rows) == 0 { Some([]) } else { None }
+} else {
+  let rs = flat_map(norm_row, rows)
+  match column_ctors(rs) {
+    [] => match tuple_width(rs) {
+      Some(k) => witness_tuple(k, uncovered(map(tuple_row(k, ??), rs), k + n - 1)),
+      None => witness_prefix("_", uncovered(map(rest, rs), n - 1)),
+    },
+    heads => match ctor_roster(list_index(heads, 0)) {
+      [] => // no roster for the type (a nominal record's one constructor registers
+      // none): the column is read as covered, as before
+      witness_prefix("_", uncovered(map(rest, rs), n - 1)),
+      roster => match filter(roster_missing(heads, ??), roster) {
+        [] => first_uncovered(roster, rs, n),
+        [(_, cname, tys), ..._] => witness_prefix(
+          witness_ctor(cname, map({ _ => "_" }, tys)),
+          uncovered(map(rest, filter(row_wild_at_front, rs)), n - 1)
+        ),
+      },
+    },
+  }
+}
+
+// A row's first column, normalized: an as-pattern is its inner pattern and an
+// alternation is one row per branch.
+fn norm_row(row) = match row {
+  [PAs(_, inner), ...tail] => norm_row([inner] ++ tail),
+  [PAlt(branches), ...tail] => flat_map({ b => norm_row([b] ++ tail) }, branches),
+  _ => [row],
+}
+
+fn row_wild_at_front(row) = match row {
+  [PWild, ..._] => true,
+  [PVar(_), ..._] => true,
+  _ => false,
+}
+
+// The constructors the first column names, each once, in row order.
+fn column_ctors(rs) = fold([], column_ctor, rs)
+
+fn column_ctor(acc, row) = match row {
+  [PCon(name, _), ..._] => if any({ n => n == name }, acc) { acc } else { push(acc, name) },
+  _ => acc,
+}
+
+// The variants of the type a constructor belongs to, from the type's own
+// entry: (tag, name, payload types). Empty when the type registers none.
+fn ctor_roster(cname: String) = match env_lookup(cname) {
+  Some((Frozen(_, ty), _, ConstructorScheme(_, _))) => roster_of_result(ty),
+  _ => [],
+}
+
+// The roster behind a constructor's scheme: its result is the type applied
+// (bare for a nullary constructor, the return of its arrow for a fielded one).
+fn roster_of_result(ty) = match ty {
+  TFun(_, ret, _) => roster_of_result(ret),
+  TName(t, _) => variant_named_specs_at(TName(t, [])),
+  _ => [],
+}
+
+fn roster_missing(heads, spec) = match spec {
+  (_, cname, _) => !any({ h => h == cname }, heads),
+}
+
+// Every constructor named: the first whose specialization some value escapes
+// is the witness, its payload columns folded back under its name.
+fn first_uncovered(roster, rs, n) = match roster {
+  [] => None,
+  [(_, cname, tys), ...more] => {
+    let k = len(tys)
+    match uncovered(flat_map(specialize_row(cname, k, ??), rs), k + n - 1) {
+      Some(w) => Some([witness_ctor(cname, take(k, w))] ++ drop(k, w)),
+      None => first_uncovered(more, rs, n),
+    }
+  },
+}
+
+// The row under constructor `cname` of arity `k`: its payload patterns in
+// place of the constructor, a wildcard's `k` wildcards, another
+// constructor's row gone.
+fn specialize_row(cname: String, k, row) = match row {
+  [PCon(c, ps), ...tail] => if c == cname { if len(ps) == k { [ps ++ tail] } else { [wildcards(k) ++ tail] } } else { [] },
+  [PWild, ...tail] => [wildcards(k) ++ tail],
+  [PVar(_), ...tail] => [wildcards(k) ++ tail],
+  _ => [],
+}
+
+fn wildcards(k) = if k <= 0 { [] } else { [PWild] ++ wildcards(k - 1) }
+
+// A tuple column: the width of any tuple pattern in it.
+fn tuple_width(rs) = match find(row_tuple_at_front, rs) {
+  Some([PTuple(ps), ..._]) => Some(len(ps)),
+  _ => None,
+}
+
+fn row_tuple_at_front(row) = match row {
+  [PTuple(_), ..._] => true,
+  _ => false,
+}
+
+fn tuple_row(k, row) = match row {
+  [PTuple(ps), ...tail] => if len(ps) == k { ps ++ tail } else { wildcards(k) ++ tail },
+  [_, ...tail] => wildcards(k) ++ tail,
+  [] => [],
+}
+
+fn witness_prefix(first: String, w) = match w {
+  Some(cols) => Some([first] ++ cols),
+  None => None,
+}
+
+fn witness_tuple(k, w) = match w {
+  Some(cols) => Some(["({join(", ", take(k, cols))})"] ++ drop(k, cols)),
+  None => None,
+}
+
+fn witness_ctor(cname: String, payload) =
+  if len(payload) == 0 { cname } else { "{cname}({join(", ", payload)})" }
 
 fn infer_match_arm_iter(arms, scrut, result_h, span: ValidSpan, i, n) = if i >= n {
   ()
@@ -8878,70 +9277,6 @@ fn infer_match_arm_iter(arms, scrut, result_h, span: ValidSpan, i, n) = if i >= 
       infer_match_arm_iter(arms, scrut, result_h, span, i + 1, n)
     },
   }
-}
-
-// The alternatives a pattern answers for at its top — the one read the
-// exhaustiveness check makes of an arm. An as-pattern answers for what its
-// inner pattern does and an alternation for every branch, so the three
-// readers below cannot see one form and miss the other: each walked the
-// pattern itself, all three knew PAlt (once a voice match covering every
-// variant read "misses 11 of 13"), and none knew PAs, so `lone @ Lone(_)`
-// beside `Joined(ms)` was refused as inexhaustive until 2026-10-03.
-fn pat_tops(pat) = match pat {
-  PAs(_, inner) => pat_tops(inner),
-  PAlt(branches) => flat_map(pat_tops, branches),
-  top => [top],
-}
-
-// The tags the arms' constructors name, deduped.
-fn collect_arm_tags(arms, init) = fold(init, arm_tags, arms)
-
-fn arm_tags(acc, arm) = match arm {
-  (pat, _body) => fold(acc, top_tag, pat_tops(pat)),
-}
-
-fn top_tag(acc, top) = match top {
-  PCon(name, _) => match env_lookup(name) {
-    Some((_, _, ConstructorScheme(tag, _))) => set_insert(acc, int_to_str(tag)),
-    _ => acc,
-  },
-  _ => acc,
-}
-
-// The variant count of the type the arms' constructors declare — every
-// constructor of one type carries the same, so the first found answers. No
-// constructor among the arms (a literal-only match) leaves 0, and the check
-// skips.
-fn arms_total_variants(arms) = fold(0, arm_total, arms)
-
-fn arm_total(found, arm) = match arm {
-  (pat, _body) => fold(found, top_total, pat_tops(pat)),
-}
-
-fn top_total(found, top) = if found > 0 {
-  found
-} else {
-  match top {
-    PCon(name, _) => match env_lookup(name) {
-      Some((_, _, ConstructorScheme(_, total))) => total,
-      _ => found,
-    },
-    _ => found,
-  }
-}
-
-// A wildcard or a binder at an arm's top covers whatever the other arms do
-// not.
-fn arms_have_wildcard(arms) = any(arm_has_wildcard, arms)
-
-fn arm_has_wildcard(arm) = match arm {
-  (pat, _body) => any(top_covers_all, pat_tops(pat)),
-}
-
-fn top_covers_all(top) = match top {
-  PWild => true,
-  PVar(_) => true,
-  _ => false,
 }
 
 // One arm under the typed-resume law (SYNTAX §Effect declarations).
@@ -13016,6 +13351,9 @@ fn register_one_op(effect_name, eff_name, op) = match op {
           // resolve in disjoint positions (`~> h` installs, `h()` performs),
           // so both entries are reachable and neither shadows the other.
           (),
+          HandlerChainKind(_) => // A chain's name stands where a handler's does, at `~>`, and
+          // nowhere an op's does.
+          (),
           ConstructorScheme(_, _) => // Uppercase by the case rule (SYNTAX §«Generic type parameters» —
           // nominal types and constructors are capitalized, ops are not), so
           // an op name can never collide with one of these.
@@ -13783,6 +14121,7 @@ fn collect_fn_decls(node, acc) = match graph_node_body(node) {
     [(name, b, tail_transparent_params(params, b), free_vars_param_names(params))] ++ acc
   ),
   NStmt(HandlerDeclStmt(_, _, _, _, arms, _)) => collect_fn_decls_arms(arms, acc),
+  NStmt(HandlerChainStmt(_, chain)) => collect_fn_decls(chain, acc),
   NStmt(LetStmt(_, v, _)) => collect_fn_decls(v, acc),
   NStmt(ExprStmt(e)) => collect_fn_decls(e, acc),
   NExpr(BlockExpr(stmts, final)) => collect_fn_decls(final, collect_fn_decls_list(stmts, acc)),
@@ -13972,6 +14311,7 @@ fn resume_grade(node) = match graph_node_body(node) {
   RNone,
   NStmt(EffectDeclStmt(_, _, _)) => RNone,
   NStmt(HandlerDeclStmt(_, _, _, _, _, _)) => RNone,
+  NStmt(HandlerChainStmt(_, _)) => RNone,
   NStmt(ImportStmt(_)) => RNone,
   NStmt(RefineStmt(_, _, _)) => RNone,
   NStmt(AliasStmt(_, _)) => RNone,
@@ -14205,6 +14545,7 @@ fn walk_refinement(node, path_pred) = match graph_node_body(node) {
   NStmt(TypeDefStmt(_, _)) => (),
   NStmt(EffectDeclStmt(_, _, _)) => (),
   NStmt(HandlerDeclStmt(_, _, _, _, _, _)) => (),
+  NStmt(HandlerChainStmt(_, _)) => (),
   NStmt(ImportStmt(_)) => (),
   NStmt(RefineStmt(_, _, _)) => (),
   NStmt(AliasStmt(_, _)) => (),

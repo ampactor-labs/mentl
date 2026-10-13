@@ -109,9 +109,15 @@ import verify
 // consumer; the three mn-world-* frontier legs gate the semantics it
 // rests on.
 //
-// The bracket takes the body as a thunk (the analyze_fns precedent);
-// verb-specific handlers chain INSIDE the thunk, so their ops resolve
-// innermost-first. NO schedule handler is here or at the dispatch
+// The bracket is a NAMED HANDLER CHAIN (SYNTAX §«Handler chains», S3
+// 2026-10-13): a route installs it as `body ~> infer_context`, and the install
+// becomes these members' installs at the judgment, innermost first —
+// verb-specific handlers chain INSIDE it, so their ops resolve
+// innermost-first, and the intern table is its outermost member, born
+// holding the medium's vocabulary. Until S3 the bracket was a function
+// taking the body as a THUNK (a closure minted and called per route — 23
+// of the wheel's lambdas on 2026-09-20), because a `~>` chain had no name.
+// NO schedule handler is here or at the dispatch
 // boundary: the wheel's spine is sequential by artifact (a schedule
 // installs lexically at the fanout it schedules — main.mn's dispatch
 // comment carries the why). Nested installs stay isolating — a voice
@@ -129,8 +135,7 @@ import verify
 // dependency order; within-run incrementality IS the epoch cursor
 // (§2 cached-cursor mode), and cross-run skip is the image-persist
 // peer (Hβ.persist.module-image-cache).
-fn infer_context(body) =
-  interned(() => body() ~> affine_ledger ~> region_tracker ~> verify_ledger ~> lookup_ty_graph ~> env_handler(make_list(0), 0, env_index_new(), 0) ~> no_state_walked ~> graph_handler([], 0, []) ~> mutate_sink ~> diagnostics_handler)
+handler infer_context = affine_ledger ~> region_tracker ~> verify_ledger ~> lookup_ty_graph ~> env_handler(make_list(0), 0, env_index_new(), 0) ~> no_state_walked ~> graph_handler([], 0, []) ~> mutate_sink ~> diagnostics_handler ~> intern_table
 
 // The LOWERING/EMIT stack's one home — infer_context's peer on the far side
 // of the cursor. Every route that lowers installs exactly this: string_table
@@ -159,23 +164,21 @@ fn infer_context(body) =
 // unhandled floor on every march the verb ran — the wheel unable to judge
 // its own generation while tools/march.sh, which the board actually calls,
 // stayed green. A chain with one home cannot lose a handler to a copy.
-fn emit_context(body) =
-  body() ~> string_table ~> line_registry ~> mentl_default ~> lower_scope ~> lower_handler_stack_ctx ~> arm_state_ctx([], OneShot, "") ~> spec_registry ~> derived_registry ~> arena_registry ~> emit_site_module
+handler emit_context = string_table ~> line_registry ~> mentl_default ~> lower_scope ~> lower_handler_stack_ctx ~> arm_state_ctx([], OneShot, "") ~> spec_registry ~> derived_registry ~> arena_registry ~> emit_site_module
 
 // A route that LOWERS installs both stacks, emit inside analysis, and that
 // nesting order is itself a fact — so it has one home too rather than being
-// re-derived at every lowering route. Analysis-only routes (check, query,
-// the single-source check) keep infer_context alone; they have nothing to
-// lower and installing an emit stack over them would be inert ceremony.
-fn compile_context(body) = infer_context(() => emit_context(body))
+// re-derived at every lowering route: a chain whose members are the two
+// chains. Analysis-only routes (check, query, the single-source check) keep
+// infer_context alone; they have nothing to lower and installing an emit
+// stack over them would be inert ceremony.
+handler compile_context = emit_context ~> infer_context
 
-fn compile(entry_module) = compile_context(() => {
-  // `driver_compile_entry` infers the deps DAG + the entry ONCE and returns
-  // the entry's already-typed AST — compile lowers that live graph, no
-  // second fs_read / re-judgment (Carried-Truth: the entry
-  // is proven once and read live, never re-derived).
-  entry_module |> driver_compile_entry |> compile_remainder
-} ~>
+// `driver_compile_entry` infers the deps DAG + the entry ONCE and returns
+// the entry's already-typed AST — compile lowers that live graph, no
+// second fs_read / re-judgment (Carried-Truth: the entry
+// is proven once and read live, never re-derived).
+fn compile(entry_module) = entry_module |> driver_compile_entry |> compile_remainder ~>
 // The emit SINK is the caller's install, never this chain's: compile_run
 // streams to stdout (wat_stdout), run_run streams to the executor
 // (wat_to_host) — one compile graph, the handler swap IS the verb. A sink
@@ -186,7 +189,7 @@ persist_to_disk ~>
 // image_resume's refusal policy (probe-guarded)
 fail_exit ~>
 // FS — per-file byte I/O for driver / cache
-wasi_filesystem)
+wasi_filesystem ~> compile_context
 
 // Per Hβ.first-light.compile-stdin-substrate (2026-05-09): canonical
 // stdin-source compile path. Per Unix vocabulary `mentl compile -`
@@ -560,18 +563,17 @@ fn arena_line() = match diag_scope_of() {
 // proof). The chain mirrors compile's: the pre-swap fs/fail ops resolve
 // through it, the executable gate's static demands ground in it, and
 // every post-swap dispatch walks the RESTORED world regardless.
-fn resume_image(img_path) = compile_context(() => {
+fn resume_image(img_path) = {
   eprint_string("warm: restoring the persisted image\n")
   image_resume(img_path)
   compile_remainder(warm_program())
-} ~> wat_stdout ~> persist_to_disk ~> fail_exit ~> wasi_filesystem)
+} ~> wat_stdout ~> persist_to_disk ~> fail_exit ~> wasi_filesystem ~> compile_context
 
 // The program on stdin is an entry: its import lines weave the DAG the walk
 // draws from it, as a file's do (`driver_text_scoped`), and every module of
 // the link narrates, as the stdin route always has.
-fn compile_stdin() = compile_context(() => {
-  read_stdin() |> stdin_link |> compile_remainder
-} ~> wat_stdout ~> wasi_filesystem)
+fn compile_stdin() =
+  read_stdin() |> stdin_link |> compile_remainder ~> wat_stdout ~> wasi_filesystem ~> compile_context
 
 fn stdin_link(text) = match driver_text_scoped(text, Census) {
   (ast, _mods) => ast,
@@ -591,7 +593,7 @@ fn stdin_link(text) = match driver_text_scoped(text, Census) {
 // classes this chain paid for (the zero-state sentinel reads, the
 // SingletonUninstalled catches) are why EVERY inference-reaching chain
 // installs the whole core; infer_context is that law as one home.
-fn pipeline_check(entry_module) = infer_context(() => {
+fn pipeline_check(entry_module) = {
   // Check reads the SAME one-namespace weave every other driver verb
   // reads (compile / at / edit — driver_entry_with_ranges): whole-program
   // truth, one span space. The old per-module walk (driver_check) inferred
@@ -609,14 +611,14 @@ fn pipeline_check(entry_module) = infer_context(() => {
   // user's six-line program.
   driver_entry_scoped(entry_module, Project)
   diag_errors()
-} ~> wasi_filesystem ~> mentl_default)
+} ~> wasi_filesystem ~> mentl_default ~> infer_context
 
 // Legacy single-source entry — for tests that pass raw source
 // without filesystem layout. No caching; full re-infer each call.
 fn compile_source(source) =
-  compile_context(() => source |> infer_program_converged |> compile_remainder ~> wat_stdout)
+  source |> infer_program_converged |> compile_remainder ~> wat_stdout ~> compile_context
 
-fn check_source(source) = infer_context(() => source |> infer_program_converged ~> mentl_default)
+fn check_source(source) = source |> infer_program_converged ~> mentl_default ~> infer_context
 
 fn query(entry_module, question) = match query_judged(entry_module, query_render(question, ??)) {
   None => {
@@ -649,18 +651,16 @@ fn query_render(question, m: String) =
 // home, because a module judged SOLO is judged without its layer's
 // vocabulary (the per-module-env-overlay residue) and every query over it
 // runs against a partially-broken env.
-fn query_judged(entry_module: String, read) = infer_context(() => {
-  match driver_entry_with_ranges(entry_module) {
-    (_ast, ranges) => match range_of_module(ranges, entry_module) {
-      None => None,
-      Some(_) => Some(read(entry_module)),
-    },
-  }
+fn query_judged(entry_module: String, read) = match driver_entry_with_ranges(entry_module) {
+  (_ast, ranges) => match range_of_module(ranges, entry_module) {
+    None => None,
+    Some(_) => Some(read(entry_module)),
+  },
 } ~> query_default ~> mentl_default ~> arm_state_ctx([], OneShot, "") ~> spec_registry ~>
-// the derivation's fs_read — handled in-chain, as compile/check do; outermost,
-// because a query arm reads the filesystem too and an arm's performs resolve
-// outer of its own install
-wasi_filesystem)
+// the derivation's fs_read — handled in-chain, as compile/check do; outermost
+// of the query's own installs, because a query arm reads the filesystem too
+// and an arm's performs resolve outer of its own install
+wasi_filesystem ~> infer_context
 
 // One program's answer to a SITE facet, kept to the program's own module —
 // what `mentl query <dir> …` asks of each program in a directory, since the
@@ -766,7 +766,7 @@ fn banked_class(entry) = match entry {
 // load → project → print skeleton lived twice, byte-identical but for
 // the projection (Carried-Truth: one home now). query stays separate:
 // it ASKS a question, not a per-fn walk.
-fn analyze_fns(entry_module, projection) = infer_context(() => {
+fn analyze_fns(entry_module, projection) = {
   // "-" is the stdin contract (self-contained source, the bare
   // compile's own path); anything else derives THE WEAVE — the same
   // `driver_entry_with_ranges` the check verb, the address, `fmt`, and the
@@ -795,7 +795,7 @@ fn analyze_fns(entry_module, projection) = infer_context(() => {
 // diag_bank banks the judgment's reports so the audit projection can speak
 // the tightenings per decl — the bank sits INSIDE the infer_context body
 // chain, where the judgment's performs reach it.
-wasi_filesystem ~> mentl_default ~> arm_state_ctx([], OneShot, "") ~> spec_registry ~> diag_bank)
+wasi_filesystem ~> mentl_default ~> arm_state_ctx([], OneShot, "") ~> spec_registry ~> diag_bank ~> infer_context
 
 // The pure projection pair — audit and teach as `ast -> String`, the ONE
 // home the CLI verb and the resident session's tool both call (the

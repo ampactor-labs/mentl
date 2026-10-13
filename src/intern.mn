@@ -20,69 +20,83 @@ fn intern_probe(ref bucket, ref src, s, e, i, n) = if i >= n {
   }
 }
 
-handler intern_table with buckets = list_filled(4096, []), entries = make_list(1024), count = 1 {
-  intern_span(src, s, e) => {
-    let b = i32_and(str_hash_loop(src, s, e, -2128831035), 4095)
-    let bucket = list_index(buckets, b)
-    match intern_probe(bucket, src, s, e, 0, len(bucket)) {
-      Some(row) => resume(row),
-      None => {
-        let canonical = list_to_flat(str_slice(src, s, e))
-        let row = (canonical, count, keyword_kind(canonical))
-        let nbuckets = list_set(buckets, b, [row] ++ bucket)
-        let nentries = list_set(list_extend_to(entries, count + 1), count, canonical)
-        resume(row) with buckets = nbuckets, entries = nentries, count = count + 1
-      },
-    }
+// The table is one state — its buckets, its entries and the next handle —
+// BORN holding the medium's vocabulary (`vocab_seed`), so an install of it is
+// a member of a handler chain like any other and needs no body to pre-warm it.
+handler intern_table with table = vocab_seed() {
+  intern_span(src, s, e) => match table {
+    (buckets, entries, count) => {
+      let b = i32_and(str_hash_loop(src, s, e, -2128831035), 4095)
+      let bucket = list_index(buckets, b)
+      match intern_probe(bucket, src, s, e, 0, len(bucket)) {
+        Some(row) => resume(row),
+        None => {
+          let canonical = list_to_flat(str_slice(src, s, e))
+          let row = (canonical, count, keyword_kind(canonical))
+          let nbuckets = list_set(buckets, b, [row] ++ bucket)
+          let nentries = list_set(list_extend_to(entries, count + 1), count, canonical)
+          resume(row) with table = (nbuckets, nentries, count + 1)
+        },
+      }
+    },
   },
-  intern_str(s) => {
-    let e = byte_len(s)
-    let b = i32_and(str_hash_loop(s, 0, e, -2128831035), 4095)
-    let bucket = list_index(buckets, b)
-    match intern_probe(bucket, s, 0, e, 0, len(bucket)) {
-      Some(row) => match row {
-        (_canonical, h, _kw) => resume(h),
-      },
-      None => {
-        let canonical = list_to_flat(s)
-        let row = (canonical, count, keyword_kind(canonical))
-        let nbuckets = list_set(buckets, b, [row] ++ bucket)
-        let nentries = list_set(list_extend_to(entries, count + 1), count, canonical)
-        resume(count) with buckets = nbuckets, entries = nentries, count = count + 1
-      },
-    }
+  intern_str(s) => match table {
+    (buckets, entries, count) => {
+      let e = byte_len(s)
+      let b = i32_and(str_hash_loop(s, 0, e, -2128831035), 4095)
+      let bucket = list_index(buckets, b)
+      match intern_probe(bucket, s, 0, e, 0, len(bucket)) {
+        Some(row) => match row {
+          (_canonical, h, _kw) => resume(h),
+        },
+        None => {
+          let canonical = list_to_flat(s)
+          let row = (canonical, count, keyword_kind(canonical))
+          let nbuckets = list_set(buckets, b, [row] ++ bucket)
+          let nentries = list_set(list_extend_to(entries, count + 1), count, canonical)
+          resume(count) with table = (nbuckets, nentries, count + 1)
+        },
+      }
+    },
   },
-  intern_name_of(h) => resume(list_index(entries, h)),
-  intern_seed() => resume((buckets, entries, count)),
+  intern_name_of(h) => match table {
+    (_buckets, entries, _count) => resume(list_index(entries, h)),
+  },
+  intern_seed() => resume(table),
 }
 
 // THE MEDIUM'S OWN VOCABULARY — the names the wheel itself interns by
 // literal: the effects the judgment charges by name (a construction's
 // `Memory + Alloc`, an arena's `Arena`) and the ones the teaching surface
-// classifies (`IO`, `Network`). Every table is BORN holding them (`interned`), through the
-// table's own op, so their handles are the same in every table and a
-// read-only view always finds them. Until 2026-09-28 they were interned by
-// whoever asked first, which held only while every program that judged a
-// candidate had judged a literal before it: a program with no literal and no
-// library (the frontier's stage-ring demo, whose link is two files) asked for
-// `Memory` from inside a proposal once a closure mint was charged, and the
-// view trapped. A literal intern anywhere in the wheel names one of these.
+// classifies (`IO`, `Network`). Every table is BORN holding them — its state
+// init inserts them in this order, so their handles are the same in every
+// table (1 through 6) and a read-only view always finds them. Until
+// 2026-09-28 they were interned by whoever asked first, which held only while
+// every program that judged a candidate had judged a literal before it: a
+// program with no literal and no library (the frontier's stage-ring demo,
+// whose link is two files) asked for `Memory` from inside a proposal once a
+// closure mint was charged, and the view trapped. A literal intern anywhere
+// in the wheel names one of these.
 fn medium_vocabulary() = ["Memory", "Alloc", "IO", "Network", "Trap", "Arena"]
 
-// One word of the vocabulary entered into the table for its presence there;
-// the handle the intern answers is read by nothing here, and the stage of
-// `each` answers `()`.
-fn intern_word(w: String) = {
-  let _ = intern_str(w)
-  ()
-}
+// A table born holding the vocabulary: fresh buckets and entries with the
+// words inserted in order — the same insertion the `intern_str` arm makes on
+// a miss, so a word seeded here and a word interned later are one row shape.
+fn vocab_seed() =
+  fold((list_filled(4096, []), make_list(1024), 1), vocab_insert, medium_vocabulary())
 
-// A fresh intern table over `body`, born holding the medium's vocabulary —
-// the one way the wheel installs a table (the process's and each judgment's).
-fn interned(body) = {
-  each(intern_word, medium_vocabulary())
-  body()
-} ~> intern_table
+fn vocab_insert(table, w: String) = match table {
+  (buckets, entries, count) => {
+    let canonical = list_to_flat(w)
+    let b = i32_and(str_hash_loop(canonical, 0, byte_len(canonical), -2128831035), 4095)
+    let row = (canonical, count, keyword_kind(canonical))
+    (
+      list_set(buckets, b, [row] ++ list_index(buckets, b)),
+      list_set(list_extend_to(entries, count + 1), count, canonical),
+      count + 1
+    )
+  },
+}
 
 // The branch cursor's READ-ONLY intern view (the fan): serves probe
 // hits and name_of over the root's live table; a MISS traps loudly —

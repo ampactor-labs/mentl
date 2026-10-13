@@ -194,8 +194,13 @@ fn render_chain_node(chain_node) = {
     render_diverge_chain(l, r),
     NExpr(FanoutExpr(branches)) => // >< — the N-ary carrier
     render_compose_chain(branches),
-    NExpr(PipeExpr(PTee, l, r)) => // ~>
-    render_tee(l, r),
+    NExpr(PipeExpr(PTee, l, r)) => // ~> — an install the judgment wrote as a named chain's member
+    // installs renders as the author wrote it: the body under the chain's
+    // installs, then `~> NAME` (the name the install node was bound with).
+    match chain_installed(chain_node) {
+      Some((name, n)) => render_tee_text(chain_body(l, n - 1), name, ""),
+      None => render_tee(l, r),
+    },
     NExpr(PipeExpr(PFeedback, l, r)) => // <~
     render_feedback_chain(l, r),
     _ => render_node_at(chain_node),
@@ -306,10 +311,11 @@ fn render_fanout_vertical(branches) = match branches {
 // A single-stage body renders inline — same tree, same scope:
 //
 //   (try_fn()) ~> recover
-fn render_tee(body, handler_expr) = {
+fn render_tee(body, handler_expr) =
+  render_tee_text(body, render_chain_pos(handler_expr), graph_comment_at(handler_expr))
+
+fn render_tee_text(body, handler_str: String, hc: String) = {
   let body_str = render_chain_pos(body)
-  let handler_str = render_chain_pos(handler_expr)
-  let hc = graph_comment_at(handler_expr)
   match graph_node_body(body) {
     NExpr(PipeExpr(_, _, _)) => "{body_str}\n{spaces(left_edge_indent())}~> {handler_str}",
     _ => if hc == "" {
@@ -318,6 +324,37 @@ fn render_tee(body, handler_expr) = {
       "{body_str}\n{spaces(left_edge_indent())}~> {handler_str}"
     },
   }
+}
+
+// An install node the judgment bound `ChainInstall`: the chain's name and
+// how many members it became (infer.mn's infer_chain_install). A parse-only
+// render never meets one — the rewrite is the judgment's — so `mentl fmt`
+// reads the authored reference as written.
+fn chain_installed(h) = match graph_chase(h) {
+  GNode(_, reason) => chain_of_reason(reason),
+}
+
+fn chain_of_reason(reason) = match reason {
+  ChainInstall(name, n) => Some((name, n)),
+  Located(_, inner) => chain_of_reason(inner),
+  _ => None,
+}
+
+// The body under a chain's installs: `k` nested member installs unwrapped
+// from the install node's left side.
+fn chain_body(l, k) = if k <= 0 {
+  l
+} else {
+  match graph_node_body(l) {
+    NExpr(PipeExpr(PTee, inner, _)) => chain_body(inner, k - 1),
+    _ => l,
+  }
+}
+
+// A chain declaration's members on one line, joined by ` ~> `.
+fn render_chain_members(h) with !Mutate = match graph_node_body(h) {
+  NExpr(PipeExpr(PTee, l, r)) => "{render_chain_members(l)} ~> {render_tokens_for(r)}",
+  _ => render_tokens_for(h),
 }
 
 // ─── Render a <~ chain — feedback / iterative ──────────────────────
@@ -614,6 +651,9 @@ fn render_stmt_tokens(s) with !Mutate = match s {
     _ => "effect {name}{render_config_params(params)} \{\n{indent_block(strip_trailing_nl(render_effect_ops(ops, 0)))}\n\}",
   },
   HandlerDeclStmt(hname, _ename, config, states, arms, effs) => "handler {hname}{render_config_params(config)}{render_handler_clause(effs, states)} \{\n{indent_block(strip_trailing_nl(render_handler_arms(arms, 0)))}\n\}",
+  HandlerChainStmt(name, chain) => // A chain declaration is one line, its members joined by ` ~> ` — the
+  // layout of a composition, not of an install over a body.
+  "handler {name} = {render_chain_members(chain)}",
   RefineStmt(name, ty, pred) => "type {name} = {render_decl_type(ty)} where {render_predicate_tokens(pred)}",
 }
 

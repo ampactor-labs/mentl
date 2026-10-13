@@ -1,0 +1,36 @@
+// CROWN — a named handler chain absorbs ONLY what its members absorb. `one`
+// is `counter ~> idle`, and neither member answers Trace, so `(work()) ~>
+// one` under `!Trace` REFUSES (E_EffectMismatch at `leaky`): the chain is
+// its installs, and an install subtracts nothing it has no arm for. The
+// sound twin beside this file installs the chain that does absorb it.
+effect Count {
+  bump() -> Int
+}
+
+effect Trace {
+  mark(n: Int) -> Int
+}
+
+effect Idle {
+  pause() -> Int
+}
+
+handler counter with n = 0 {
+  bump() => resume(n) with n = n + 1,
+}
+
+handler idle {
+  pause() => resume(0),
+}
+
+handler one = counter ~> idle
+
+fn work() = mark(bump() + bump())
+
+fn leaky() with !Trace = work() ~> one
+
+handler tracer with seen = 0 {
+  mark(k) => resume(k + seen) with seen = seen + 1,
+}
+
+fn main() = leaky() ~> tracer

@@ -1,0 +1,25 @@
+// expect: 13
+// THE NESTED EXHAUSTIVENESS CHECK REFUSES EXACTLY THE GAPS IT CAN PROVE: a
+// match that names every variant inside a payload runs, a tuple column is one
+// constructor of its width, and a wildcard in a column covers the rest of it —
+// `(_, false)` covers the `(Wrap(_), false)` the first two arms leave. Beside
+// mn-match-nested-inexhaustive.mn, the twin that must refuse.
+type Inner = One | Two | Three
+
+type Outer = Wrap(Inner) | Bare
+
+fn pick(o) = match o {
+  Wrap(One) => 1,
+  Wrap(Two) => 2,
+  Wrap(Three) => 3,
+  Bare => 0,
+}
+
+fn pair(o, b) = match (o, b) {
+  (Wrap(_), true) => 1,
+  (Bare, _) => 2,
+  (_, false) => 4,
+}
+
+fn main() =
+  pick(Wrap(Three)) + pick(Wrap(Two)) + pick(Wrap(One)) + pair(Wrap(One), true) + pair(Bare, false) + pair(Wrap(Two), false)

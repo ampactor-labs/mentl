@@ -1080,9 +1080,9 @@ type PartialCalleeForm = PcfCall(String) | PcfVariant(TagId) | PcfPerform(Perfor
 // own scope holds — a parameter, a local, a capture — is the callee
 // whatever the module env says of the same name, and its value rides the
 // partial's record as the last capture, called by the synthesized body. A
-// let-bound `add` that shadowed a top-level `add` used to be looked up by
-// name in the module env, so the partial called the top-level one (6 for
-// 5, zero diagnostics, boot 523f1732), and a local with no module entry
+// let-bound function that shadowed a top-level one of its name used to be
+// looked up by name in the module env, so the partial called the top-level
+// one (6 for 5, zero diagnostics, boot 523f1732), and a local with no module entry
 // was a floor (Hβ.lower.callee-resolved-by-name-in-the-module-env). Module
 // scope keeps its kinds: a top-level fn or module value (LCall through its
 // global), ADT construction (LMakeVariant), an op reified as a value.
@@ -1941,6 +1941,7 @@ fn flow_edges_stmt(s) = match s {
   TypeDefStmt(_, _) => ([], []),
   EffectDeclStmt(_, _, _) => ([], []),
   HandlerDeclStmt(_, _, _, _, _, _) => ([], []),
+  HandlerChainStmt(_, _) => ([], []),
   ImportStmt(_) => ([], []),
   RefineStmt(_, _, _) => ([], []),
   AliasStmt(_, _) => ([], []),
@@ -4550,6 +4551,10 @@ fn lower_stmt_body(s, handle, span) = match s {
     }
     LBlock(handle, list_concat(arm_decls, [LConst(handle, LInt(0))]))
   },
+  HandlerChainStmt(_, _) => // A chain has no runtime presence of its own: every install of it
+  // became its members' installs at the judgment, and the members' arms are
+  // lowered at their own declarations.
+  LConst(handle, LInt(0)),
   ImportStmt(_module) => LConst(handle, LInt(0)),
   RefineStmt(_name, _ty, _pred) => LConst(handle, LInt(0)),
   AliasStmt(_name, _ty) => // Transparent alias: type-level only, no runtime presence — the alias
@@ -7163,6 +7168,7 @@ fn reach_stmt_defers(node) = match graph_node_body(node) {
   NStmt(s) => match s {
     FnStmt(_, _, _, _, _) => true,
     HandlerDeclStmt(_, _, _, _, arms, _) => len(arms) > 0,
+    HandlerChainStmt(_, _) => false,
     LetStmt(_, _, _) => false,
     TypeDefStmt(_, _) => false,
     EffectDeclStmt(_, _, _) => false,
@@ -8381,6 +8387,15 @@ fn spec_wide_family() = ["float_to_str", "list_compare_f64", "list_eq_f64", "lis
 // $wasi_args. The runtime contract roots as before (emit mints those
 // calls after construction). The wide-twin family seeds per entry at
 // each construction (wide_seed).
+//
+// The walk is an EXTENT (lib/arena.mn): what it publishes is the constructed
+// declarations in source order, and everything else it builds on the way —
+// each entry's reference list, the twin key read at every site to seed the
+// wide family, the frontier and the reached set — dies at its exit. Measured
+// 2026-10-13 on the self-compile: the declarations published 8.2 MB past
+// their own arenas while the walk's scratch stood at 56 MB of the heap with
+// nothing to reclaim it, 8 MB more than on the source before the landing,
+// and the cost ratchet refused the pin.
 fn reachable_from_main(stmts) = {
   let has_main = any(stmt_is_main_fn, stmts)
   // THE LIBRARY PATH seeds ALL decls: every stmt constructs, source
@@ -8414,7 +8429,7 @@ fn reachable_from_main(stmts) = {
       },
     }
   }
-}
+} ~> arena
 
 // ── DAG-homed here (the import-truth sweep, 2026-07-23): each fn below
 // moved from a module DOWNSTREAM of its users so every user reaches it

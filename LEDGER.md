@@ -35,6 +35,211 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-10-13 · pin 8269252523d492f9 (CLEAN m2 == m3; m3 == m4 measured; the landing's fourth pin — the first, b26b168cabfa1e59, carried the machinery before the wheel's own source wrote a chain, because a boot must parse a form before the wheel it compiles writes it, and was superseded before its narrative was written; the second, d0eb6ad298a5e4d8, the wheel's adoption, was superseded once the claim-reading pass's two artifact refutations landed; the third, 28d22f2e83d82235, was refused by the board on every push on the cost ratchet alone, and the fourth pays that cost down where it stood) · LANDING 4 S3 — A HANDLER CHAIN IS A VALUE, AND THE EXHAUSTIVENESS CHECK READS THE WHOLE PATTERN
+  The third stage of `Hβ.graph.positions-are-cells`'s STRUCTURE face: the
+  first write a node-as-handle makes possible. `handler NAME = h1 ~> h2(cfg)
+  ~> h3` declares a chain (HandlerChainStmt, parsed where `handler NAME`
+  meets `=` instead of a config list or `{`; HandlerChainKind in the env);
+  `body ~> NAME` installs it. At the tee the reference's members are
+  instantiated at the reference's own span, nested innermost-first, the
+  install node re-registered as that nested tee and judged by the tee's own
+  rule (`infer_pipe_tee_one`), born with a `ChainInstall` reason the Why walk
+  reads — so the install's row is exactly the nested tees', each member a
+  fresh instance at the reference (its subtree copied, as a row alias's terms
+  are copied where a signature reads them, since an install is a frame of its
+  own): `with !Count + !Trace` over a body a two-member chain absorbs
+  accepts, and an op no member answers escapes the chain and refuses under
+  the negation, naming the op
+  (tests/crown/sound-chain-absorbs.mn, leak-chain-escapes.mn; the boot
+  refused every chain fixture at the parser, `expected {, found =`, on
+  tests/micros/mn-handler-chain.mn and tests/syntax/handler-chain.mn). The
+  formatter renders the declaration (`render_chain_members`) and a judged
+  install back as `body ~> NAME`; the lowering sees the nested tees and
+  nothing else. SYNTAX §«Handler chains» carries the surface.
+  THE WHEEL ADOPTS IT AT THE SECOND PIN: `infer_context`, `emit_context` and
+  `compile_context` (src/pipeline.mn) are chains, the third a chain of the
+  two, installed `body ~> chain` at 25 sites (main 14, pipeline 8, mcp 3)
+  with the thunk gone from each and the wrapper functions with their own
+  inner thunks — 29 zero-argument lambdas in all — the anonymity census 234
+  → 205, the effectful-lambda bound 193 → 164 and held there (src/board.mn;
+  the peer's banked 23 was the 2026-09-20 count, the routes had grown to
+  25) — and the intern table is one seeded state (`vocab_seed`), so its
+  install is a member like any other. The chain's cost is on the record:
+  each site carries its members' installs where it called a wrapper before,
+  and the WAT grew 636,348 → 643,653 lines at the second pin (not attributed
+  line by line), while the image's line peak fell 498,382 → 496,968 KB — the
+  machinery's pin had raised it from S2's 494,011, the adoption gave 1,414
+  back — and the m3 leg's peak read 473,920 KB inside its 477,000 ceiling.
+  `Hβ.syntax.handler-chain-is-a-value` CLOSED.
+  THE EXHAUSTIVENESS CHECK READS THE WHOLE PATTERN, found by the first chain
+  program: the candidate TRAPPED in `collect_fn_decls` while `mentl check`
+  was clean. The check read each arm's TOP constructor alone, so a variant
+  missing inside a payload — `NStmt(FnStmt(…))` and the rest beside
+  `NStmt(LetStmt(…))` with the new Stmt variant unnamed — passed, on the
+  wheel as on tests/micros/mn-match-nested-inexhaustive.mn (boot ad930774:
+  clean, exit 134 at the arm nobody wrote). It is one matrix walk now
+  (`uncovered`, src/infer.mn): a column of constructors is complete when the
+  arms name every variant and each payload column is covered, a tuple column
+  is one constructor of its width, a wildcard or binder covers the rest, and
+  the refusal names the WITNESS — `match misses Wrap(Three)` — as a pattern
+  (EPatternInexhaustive carries it; ten readers of an arm's top pattern are
+  deleted: pat_tops, collect_arm_tags, arm_tags, top_tag,
+  arms_total_variants, arm_total, top_total, arms_have_wildcard,
+  arm_has_wildcard, top_covers_all). Literal, list and record columns decide
+  nothing yet, as the top-level read never decided them:
+  `Hβ.infer.exhaustiveness-over-literal-and-list-columns` OPEN, born with its
+  CLOSE, and `Hβ.infer.nested-pattern-exhaustiveness` CLOSED — the peer the
+  ExprPlaceholder sweep banked from usage_of's own trap on a grown Expr, and
+  usage_of is among the three matches that paid the class again today.
+  tests/micros/mn-match-nested-complete.mn holds the accepting shape.
+  KILLS, in order. (1) The trap in collect_fn_decls was read first as the
+  chain machinery's — it was a match the chain never touches, missing the
+  arm the landing added, and the check that should have named it could not
+  see inside a payload. (2) The new check then refused the m3 leg (census
+  2): two more matches in the wheel missing the same arm (own.mn's
+  usage_of, infer.mn's walk_refinement), each a trap waiting for the first
+  chain statement to reach it; each closed by its arm. (3) The witness
+  roster's `_ => ""` tripped the wildcard-fabricates bound (21 > 20) the
+  moment it was written; the roster reads the constructor's result as a
+  list and answers `[]`. (4) The first repin was REFUSED by the quiet gate:
+  authored `ref` 655 → 656, because `parse_handler_arms_decl`, split out of
+  `parse_handler_decl`, had copied its parent's `ref tokens`; inference
+  grades it, the marker is gone. (5) The comment-ref gate refused seven
+  backticked names across types, infer, format and board (`chain_of`,
+  `chain_installed`, `infer_chain_install`, `infer_context`, and the three
+  deleted readers) — each written as prose or re-pointed. (6) The leak
+  crucible's op `rest` collided with the prelude's `rest`
+  (E_FnShadowsOp); it is `pause`. (7) Morgan read the refusal — `match
+  misses X — add the arm or a wildcard` — as the gate-satisfying move
+  taught by the gate itself (a `_` over a sum is the roster the author
+  declined to write, drift mode 10's own class); it says `write its arm`
+  now, SYNTAX's two Quick Fix rows name the arm and nothing else, and the
+  word `add` in the old text turns out to have been what resolved a
+  backticked `add` in lower.mn's prose — a reference riding a diagnostic
+  string — which is prose now. (8) After the adoption, eight sites the sweep
+  had left in thunk form refused at the chain reference (`() vs (() -> …)`,
+  the reference bound to unit) and three bodies that lost their thunk kept
+  braces around a non-block (E_RedundantBraces ×3); all rewritten, `mentl
+  fmt` writing the canonical layout. (9) THE CLAIM-READING PASS refuted
+  nineteen sentences of this record's first draft, two of them the
+  artifact's: `E_HandlerChainShape` was NOT armed — a chain applied to
+  arguments printed the error while the program compiled and RAN (exit 4,
+  the WAT written) — and a member whose argument declares a function was
+  refused only at an install, never at the declaration, where the chain is
+  judged. Both are the third pin: the class is in `diag_refuses`, and
+  `member_declarations` walks each member's argument at the declaration
+  (tests/micros/mn-handler-chain-shape-refuses.mn — on boot d0eb6ad2 the
+  declaration judged clean, the install reported, `compile` exited 0 with
+  38,953 bytes of WAT and `run` answered 4; through the armed wheel the
+  declaration refuses at the nested fn, exit 1, zero bytes). The third pin's
+  wheel is 644,206 lines, its line peak 497,032 KB, its m3 leg's peak
+  474,248 KB. The other
+  seventeen were the prose's: the install count (25 sites, not the 29
+  lambdas), "nothing is copied" (every member is instantiated as fresh
+  nodes), "one graph write" (one node re-registered, the members minted
+  beneath it), "the wheel's source untouched" (its own use of chains was),
+  "the op the chain forwards" (an op no member answers escapes), six names
+  for seven, the Quick Fix homes, "Landing 5" where the docs say Tier 4,
+  and the exhaustiveness section's unqualified first sentence. The board at
+  the third pin, WHOLE: micros 404/404 through the boot, negation probes
+  37/37, syntax 21 + 21, floor and residual contracts, census 0, heads 0,
+  islands 19 with 0 errors, verify 23 bounds, march CLEAN (m2 == m3, m3 ==
+  m4), frontier 665/0/2, proof-exactness, crown, effect identity,
+  instrument, threads and ide all green; the nested-inexhaustive and chain
+  fixtures RED-first on boot ad930774, the shape fixture on boot d0eb6ad2.
+  THE FOURTH PIN — THE REACH WALK IS AN EXTENT, found by the cost ratchet.
+  The board on every push (.github/workflows/board.yml) refused the third
+  pin with every other gate green: the runner read the self-compile at
+  486,712 KB (min of 3) against the 477,000 ceiling, where this machine read
+  474,248 — and S2's pin had read 459,996 here, so the chain had cost 14 MB
+  of resident memory that the sentences above named only as WAT lines and a
+  falling line peak. A ceiling never rises; the landing pays the cost down,
+  and the breach is the instrument (PLAN §5.O). Decomposed with the march's
+  own leg (`wt_wheel_root … march`, the verb the ratchet reads): the new boot
+  compiling MAIN's source read 458,916 KB, so the compiler's new code costs
+  nothing on the old source and the 15 MB is in compiling the S3 source (the
+  machinery, the adoption and the third pin's fixes together); the `heap:`
+  marks put 3.2 MB of it in the judgment (no instrument splits that further;
+  the chain's 320 member installs — 7 sites of the 20-member
+  compile_context, 18 of the 10-member infer_context — are in it) and 8.7 MB
+  in the lowering phase; and a probe compiler that printed what each
+  declaration's lowering published past its arena (heap_mark after the exit
+  minus before; 5,781 declarations) put the declarations' whole publication
+  at 8.2 MB against 7.8 MB on main's source — the 25 sites +406 KB, 14 to 22
+  KB each, the net over every declaration +445 KB. So the lowering phase's
+  other 56 MB was the walk's own scratch, allocated OUTSIDE any extent:
+  `reachable_from_main` constructs each declaration in an arena and then,
+  between the arenas, builds the entry's reference list as a concat chain
+  (`low_refs`), reads a twin key at every site to seed the wide family
+  (`ref_is_wide`), and grows the frontier and the reached set — 48.1 MB on
+  main's source, 56.3 MB on the tip's; the 8 MB between them is the S3
+  source's, the chain installs' arm references and the new compiler
+  functions' references alike, which nothing splits further. The walk is an
+  extent now (`fn reachable_from_main(stmts) = { … } ~> arena`,
+  src/lower.mn): its publication is the constructed declarations in source
+  order, and nothing else survives its exit. Measured through the third
+  pin's boot and then at this pin: the heap when lowering ends 336.1 →
+  279.7 MB, when the module is written 440.6 → 384.3 MB; the m3 leg 39.43 s
+  wall, 417 MB peak RSS (427,956 KB, against 474,248 at the third pin); the
+  arena census 23,221 exits, 0 kept, 999,730 KB reclaimed, 78,983 KB moved
+  (944,634 and 71,016 at the third pin); the line peak 497,042 KB; the WAT
+  644,221 lines. The ceiling is HELD at 477,000 until the runner has read
+  this boot (tools/verify-baseline.txt says why). KILLS, continued. (10)
+  The first reading of the breach was "the chain's lowering costs it" —
+  refuted by the per-declaration probe (406 KB). (11) The second was "the
+  line peak will fall with the published heap" — it did not: 497,032 →
+  497,042 KB while the published heap at every later mark fell 56 MB. The
+  line peak is in KiB, 125 MB above the highest heap mark (384.25 MB), and
+  since every later mark fell 56 MB while the peak moved 10 KB, the exit
+  that sets it stands at or before the walk — the judgment's groups, the
+  pre-passes, or a declaration's arena inside the walk while its scratch
+  was live — never in the plan or the emit; which one is the next
+  instrument, not this landing's. The RSS fell 46,292 KB against 55,096 KB
+  reclaimed with the peak unchanged, consistent with the walk's scratch
+  being dense (strings and cons cells touch their pages) where the peak's
+  span is not — an inference; no instrument reads residency. (12) The first
+  measurement reproduced nothing: `compile
+  src/main.mn` on the file route read 594,320 and 594,248 KB where the
+  march verb over the same source and boot reads 474,052 — 120 MB a user's
+  compile pays that the ratchet never sees, banked as a measurement in
+  `Hβ.persist.module-image-cache`. The WAT's growth is attributed now, over
+  S2's source to the third pin's (630,330 → 644,206, +13,876 lines): the 25
+  sites +11,117 — each 285 to 671 lines, the 7 compile_context sites 472 to
+  671, the members' record builds, since `emit_install` writes a handler's
+  arm table into every install's record at the install site
+  (`emit_arm_writes`, 80 stores and ~100 lines for graph_handler) — the
+  thunks and wrappers they replaced −3,617 net (513 lambdas gone, 488 new),
+  the compiler's new functions +5,795 net (instance_expr 1,010 lines,
+  member_declarations 517, judge_chain_member 435, infer_pipe_tee_one 350,
+  infer_chain_install 340), partials +124, the rest +457; the adoption's own
+  +7,305 (636,348 → 643,653) is the sites' growth less what it deleted. The
+  probe's question is answered by the
+  existing marks from here on: with the walk an extent, `heap: … when
+  lowering ends` minus `… when the lowering pre-passes end` IS what the
+  declarations publish.
+  A REPIN'S TWELVE MINUTES, MEASURED ON THE THIRD (Morgan's question) and
+  read off the build directory's file times: m2 49 s, verify --wheel on the
+  candidate 3 min 12 s (the 404-micro battery, 37 negation probes, 42 syntax
+  fixtures, the census and manifest judgments), m3 39 s, the verb-parity
+  compile 41 s, asm and the link query 15 s, m4 41 s, the post-repin battery
+  2 min 24 s, the frontier through the boot 3 min 31 s. Three cold
+  self-compiles are the fixed point and stay cold; the post-repin battery
+  re-ran 404 fixtures through bytes the candidate battery had judged
+  minutes earlier, because the memo's key hashes the assembler and the boot
+  IS the assembler — the march re-keys those verdicts now when the new boot
+  assembles m2.wat to the bytes the old one did (`transplant_memos`,
+  tools/march.sh). MEASURED ON THE FOURTH: 10 min 20 s in all (22:08:05 →
+  22:18:25) — m2 and verify --wheel 3 min 46 s, m3 40 s, the verb-parity
+  compile 41 s, asm and the link query 10 s, m4 42 s, then after the repin
+  the transplant's re-assembly 3 s, an m2 rebuild of 45 s, the battery 2.5 s
+  (the transplanted memo hit, against 2 min 24 s), the frontier with the
+  self-run gates — crown, proof-exactness, effect identity — 3 min 30 s, the
+  frontier alone about 3 min 10 s. The 45 s was the same redundancy
+  one step over: a CLEAN repin's new boot IS m2, so the m2 the battery's
+  cache rebuilt under it is the verb-parity leg's own compile, and
+  `transplant_memos` seeds the cache with it now (measured on the next
+  repin). The rest is the SPACE axis's cost, 1,069 fixtures each judging
+  the runtime library on four cores (`Hβ.driver.level-set-par-walk`).
 - 2026-10-13 · pin ad930774d22c22f5 (CLEAN m2 == m3; m3 == m4 measured — the design named this stage a TRANSITION, since the wheel's own representation moves, and the march ruled it CLEAN: what a compiler emits for a program depends on what it computes, never on how it holds its own nodes, and the boot and m2 compute the same; the landing's second pin — the first, 162c7328, was superseded once the claim-reading pass's refutations landed, the nineteen second names deleted by reading among them) · LANDING 4 S2 — A NODE IS ITS HANDLE: `type Node = Int`, THE RECORD, ITS ONE READ AND THAT READ'S 520 REFERENCES DELETED
   The second stage of `Hβ.graph.positions-are-cells`'s STRUCTURE face. Since
   S1 (pin 4b621311) every reader read the graph, so the record `N(NodeBody,

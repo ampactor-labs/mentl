@@ -1,0 +1,34 @@
+// expect: 12
+// A NAMED HANDLER CHAIN INSTALLS AS ITS MEMBERS, ONE WRITE AT THE INSTALL
+// (PLAN §11's cut, S3). `handler both = counter ~> tracer` names the
+// composition — a value by the reasoning that makes a named row a `type` —
+// and `(work()) ~> both` is the install of each member in order, written into
+// the graph at the install node: the body under counter under tracer, so the
+// chain needs no thunk and no wrapper fn, and every reader after the
+// judgment sees the installs it would see had they been spelled out. RED-first
+// on boot ad930774: `handler both =` does not parse.
+effect Count {
+  bump() -> Int
+}
+
+effect Trace {
+  mark(n: Int) -> Int
+}
+
+handler counter with n = 0 {
+  bump() => resume(n) with n = n + 1,
+}
+
+handler tracer with seen = 0 {
+  mark(k) => resume(k + seen) with seen = seen + 1,
+}
+
+handler both = counter ~> tracer
+
+fn work() = {
+  let a = bump()
+  let b = bump()
+  mark(a + b) + mark(10)
+}
+
+fn main() = work() ~> both

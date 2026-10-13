@@ -1454,45 +1454,59 @@ fn parse_handler_decl(ref tokens, pos) = {
   let start = span_at(tokens, pos)
   let name = ident_at(tokens, pos)
   let p_after_name = skip_ws(tokens, pos + 1)
-  // Optional `(config_params)` — closure-captured at install site.
-  match if at(tokens, p_after_name, TLParen) {
-    parse_config_params(tokens, skip_ws(tokens, p_after_name + 1))
+  // `handler NAME = h1 ~> h2(cfg)` — a handler CHAIN (SYNTAX §«Handler
+  // declarations»): the `=` opens an expression, the `~>` tree of the
+  // members, and the statement carries it whole; its members are judged and
+  // instantiated where the chain is installed (infer.mn).
+  if at(tokens, p_after_name, TEq) {
+    match parse_expr(tokens, skip_ws(tokens, p_after_name + 1)) {
+      (chain, p_end) => (HandlerChainStmt(name, chain), p_end),
+    }
   } else {
-    ([], p_after_name)
-  } {
-    (config, p_after_config) => // Optional `with` clause, disambiguated by position (SYNTAX §«With-
-    // clauses»: one keyword, read as "carries"):
-    //   with !E / with E [+ E]  — the handler's own effect row, the same
-    //                             signed triples a fn signature carries
-    //   with f = init [, ..]    — state-init
-    // The row is PARSED and carried on the statement (A5, 2026-09-27). It
-    // used to be skipped to the arms' `{` as "WAT-invisible", so `handler h
-    // with !F` bound nothing and the crown accepted a handler resuming into
-    // the effect it negated; the row rides the node now and infer enforces
-    // it on the arms and on every install's remainder.
-    match if at(tokens, skip_ws(tokens, p_after_config), TWith) {
-      let p_w = skip_ws(tokens, p_after_config)
-      let p_with = skip_ws(tokens, p_w + 1)
-      if at(tokens, p_with, TBang) || at(tokens, p_with, TLParen) || is_param_name_tok(tokens, p_with) && !at(tokens, skip_ws(tokens, p_with + 1), TEq) {
-        match parse_effect_list(tokens, p_with) {
-          (effs, p_after_row) => ([], effs, p_after_row),
-        }
-      } else {
-        match parse_handler_state_fields(tokens, p_with) {
-          (state, p_after_state) => (state, [], p_after_state),
-        }
+    parse_handler_arms_decl(tokens, name, p_after_name)
+  }
+}
+
+// The arm-list handler: optional config, the `with` clause, the arms.
+//
+// Optional `(config_params)` — closure-captured at install site.
+fn parse_handler_arms_decl(tokens, name, p_after_name) = match if at(tokens, p_after_name, TLParen) {
+  parse_config_params(tokens, skip_ws(tokens, p_after_name + 1))
+} else {
+  ([], p_after_name)
+} {
+  (config, p_after_config) => // Optional `with` clause, disambiguated by position (SYNTAX §«With-
+  // clauses»: one keyword, read as "carries"):
+  //   with !E / with E [+ E]  — the handler's own effect row, the same
+  //                             signed triples a fn signature carries
+  //   with f = init [, ..]    — state-init
+  // The row is PARSED and carried on the statement (A5, 2026-09-27). It
+  // used to be skipped to the arms' `{` as "WAT-invisible", so `handler h
+  // with !F` bound nothing and the crown accepted a handler resuming into
+  // the effect it negated; the row rides the node now and infer enforces
+  // it on the arms and on every install's remainder.
+  match if at(tokens, skip_ws(tokens, p_after_config), TWith) {
+    let p_w = skip_ws(tokens, p_after_config)
+    let p_with = skip_ws(tokens, p_w + 1)
+    if at(tokens, p_with, TBang) || at(tokens, p_with, TLParen) || is_param_name_tok(tokens, p_with) && !at(tokens, skip_ws(tokens, p_with + 1), TEq) {
+      match parse_effect_list(tokens, p_with) {
+        (effs, p_after_row) => ([], effs, p_after_row),
       }
     } else {
-      ([], [], p_after_config)
-    } {
-      (state, effs, p_after_state) => {
-        let p_open = expect(tokens, skip_ws(tokens, p_after_state), TLBrace)
-        match parse_handler_arms(tokens, skip_ws(tokens, p_open)) {
-          (arms, p_close) => (HandlerDeclStmt(name, "", config, state, arms, effs), p_close),
-        }
-      },
+      match parse_handler_state_fields(tokens, p_with) {
+        (state, p_after_state) => (state, [], p_after_state),
+      }
+    }
+  } else {
+    ([], [], p_after_config)
+  } {
+    (state, effs, p_after_state) => {
+      let p_open = expect(tokens, skip_ws(tokens, p_after_state), TLBrace)
+      match parse_handler_arms(tokens, skip_ws(tokens, p_open)) {
+        (arms, p_close) => (HandlerDeclStmt(name, "", config, state, arms, effs), p_close),
+      }
     },
-  }
+  },
 }
 
 // Parse `field = init [, field = init]*` until TLBrace. Each state
@@ -3884,6 +3898,11 @@ fn free_vars_stmt(s, bound) = match s {
       free_vars_handler_arms(arms, arm_bound)
     )
   },
+  HandlerChainStmt(_, chain) => // A chain's members are references to handlers, and a member's config
+  // arguments are expressions: every free name in the tree is an edge, so a
+  // chain is judged after the handlers it names and an install after the
+  // chain.
+  collect_free_uses(chain, bound),
   ImportStmt(_) => [],
   RefineStmt(_, _, _) => [],
   AliasStmt(_, _) => [],

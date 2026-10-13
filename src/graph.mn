@@ -1931,6 +1931,7 @@ fn stmt_child_handles(s) = match s {
   FnStmt(_name, _params, _ret, _effs, body) => [body],
   ExprStmt(e) => [e],
   HandlerDeclStmt(_hname, _ename, _config, states, arms, _effs) => map(record_field_handle, states) ++ map(arm_body_handle, arms),
+  HandlerChainStmt(_, chain) => [chain],
   TypeDefStmt(_, _) => [],
   EffectDeclStmt(_, _, _) => [],
   ImportStmt(_) => [],
