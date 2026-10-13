@@ -281,14 +281,14 @@ fn decide_tail(inner, acc, tail) = and_decide(acc, decide_with_self(inner, SelfN
 // decided over a join, the value walk and the claim noted over a join each
 // fold.
 fn join_tails(h) = match graph_node_body(h) {
-  NExpr(IfExpr(_, t, e)) => Some([node_handle(t), node_handle(e)]),
+  NExpr(IfExpr(_, t, e)) => Some([t, e]),
   NExpr(MatchExpr(_, arms)) => Some(arms |> map(tail_of_arm)),
-  NExpr(BlockExpr(_, final_expr)) => Some([node_handle(final_expr)]),
+  NExpr(BlockExpr(_, final_expr)) => Some([final_expr]),
   _ => None,
 }
 
 fn tail_of_arm(arm) = match arm {
-  (_, body) => node_handle(body),
+  (_, body) => body,
 }
 
 // A VALUE's tails: a join's, or a tee's — the body it governs and every arm
@@ -301,7 +301,7 @@ fn value_tails(h) = match join_tails(h) {
   Some(tails) => Some(tails),
   None => match graph_node_body(h) {
     NExpr(PipeExpr(PTee, left, right)) => match install_arm_tails(right) {
-      Some(tails) => Some([node_handle(left)] ++ tails),
+      Some(tails) => Some([left] ++ tails),
       None => None,
     },
     _ => None,
@@ -329,7 +329,7 @@ fn install_arm_tails(right) = match env_lookup(tee_handler_name(right)) {
       HandlerKind(r_handle, _, _, _, arms) => if walking_state(r_handle) {
         Some([])
       } else {
-        Some(arms |> flat_map({ arm => arm_tails(node_handle(arm.body)) }) ~> walking_state_of(r_handle))
+        Some(arms |> flat_map({ arm => arm_tails(arm.body) }) ~> walking_state_of(r_handle))
       },
       _ => None,
     },
@@ -346,9 +346,9 @@ fn install_arm_tails(right) = match env_lookup(tee_handler_name(right)) {
 // fence), not a fabrication — no declaration answers it, so its class is a
 // dispatch and the schedule read walks past it. One home for the judgment,
 // the query and the caret.
-fn tee_handler_name(r) = match graph_node_body(node_handle(r)) {
+fn tee_handler_name(r) = match graph_node_body(r) {
   NExpr(VarRef(n)) => n,
-  NExpr(CallExpr(callee, _)) => match graph_node_body(node_handle(callee)) {
+  NExpr(CallExpr(callee, _)) => match graph_node_body(callee) {
     NExpr(VarRef(n)) => n,
     _ => // drift-audit: ignore — the frame-fence sentinel, documented above
     "",
@@ -406,8 +406,8 @@ fn node_const_at(handle, bind) = match graph_node_body(handle) {
   NExpr(LitString(s)) => Some(LVString(s)),
   NExpr(LitBool(b)) => Some(LVBool(b)),
   NExpr(VarRef(name)) => resolve_self_operand(name, bind),
-  NExpr(BinOpExpr(op, l, r)) => litval_arith_opt(op, node_const_at(node_handle(l), bind), node_const_at(node_handle(r), bind)),
-  NExpr(UnaryOpExpr(op, x)) => litval_unary_opt(op, node_const_at(node_handle(x), bind)),
+  NExpr(BinOpExpr(op, l, r)) => litval_arith_opt(op, node_const_at(l, bind), node_const_at(r, bind)),
+  NExpr(UnaryOpExpr(op, x)) => litval_unary_opt(op, node_const_at(x, bind)),
   _ => None,
 }
 
@@ -439,11 +439,7 @@ fn module_let_scan(name: String, decls) = if len(decls) == 0 {
   None
 } else {
   match graph_node_body(last(decls)) {
-    NStmt(LetStmt(PVar(n), value, _)) => if n == name {
-      node_const_at(node_handle(value), NoSelf)
-    } else {
-      module_let_scan(name, drop_last(decls))
-    },
+    NStmt(LetStmt(PVar(n), value, _)) => if n == name { node_const_at(value, NoSelf) } else { module_let_scan(name, drop_last(decls)) },
     _ => module_let_scan(name, drop_last(decls)),
   }
 }
@@ -508,15 +504,13 @@ fn value_leaves(h, bind) = match node_const_at(h, bind) {
     None => match graph_node_body(h) {
       NExpr(VarRef(name)) => if name == "self" { self_leaves(bind) } else { binder_leaves(h) },
       NExpr(BinOpExpr(op, l, r)) => match op {
-        BAdd => [
-          LSum(lo_add(leaves_lo(value_leaves(node_handle(l), bind)), leaves_lo(value_leaves(node_handle(r), bind))))
-        ],
+        BAdd => [LSum(lo_add(leaves_lo(value_leaves(l, bind)), leaves_lo(value_leaves(r, bind))))],
         _ => [LUnknown],
       },
       NExpr(CallExpr(callee, _)) => call_leaves(callee),
       NExpr(PipeExpr(PForward, _, stage)) => call_leaves(stage),
-      NExpr(FieldExpr(recv, fname)) => part_leaves(node_handle(recv), PartField(fname)),
-      NExpr(IndexExpr(recv, idx)) => part_leaves(node_handle(recv), index_step(node_handle(recv), idx)),
+      NExpr(FieldExpr(recv, fname)) => part_leaves(recv, PartField(fname)),
+      NExpr(IndexExpr(recv, idx)) => part_leaves(recv, index_step(recv, idx)),
       _ => [LUnknown],
     },
   },
@@ -702,14 +696,14 @@ fn built_part(whole, step) = match graph_node_body(whole) {
     PartIndex(i) => nth_handle(elems, i),
     _ => None,
   },
-  NExpr(CallExpr(callee, args)) => match graph_node_body(node_handle(callee)) {
+  NExpr(CallExpr(callee, args)) => match graph_node_body(callee) {
     NExpr(VarRef(made)) => if constructor_named(made) { construction_part(made, args, step) } else { None },
     _ => None,
   },
   NExpr(MakeRecordExpr(fields)) => field_part(fields, step),
   NExpr(NamedRecordExpr(_, fields)) => field_part(fields, step),
   NExpr(MakeListExpr(elems)) => match step {
-    PartElem => Some(elems |> map(node_handle)),
+    PartElem => Some(elems),
     _ => None,
   },
   _ => None,
@@ -723,7 +717,7 @@ fn built_part(whole, step) = match graph_node_body(whole) {
 // (Hβ.verify.type-arg-part-reads-every-field).
 fn construction_part(made: String, args, step) = match step {
   PartCtor(cname, i) => if made == cname { nth_handle(args, i) } else { Some([]) },
-  PartTypeArg(_) => Some(args |> map(node_handle)),
+  PartTypeArg(_) => Some(args),
   _ => None,
 }
 
@@ -734,12 +728,11 @@ fn bare_construction_part(step) = match step {
   _ => None,
 }
 
-fn nth_handle(nodes, i) =
-  if i < len(nodes) { Some([node_handle(list_index(nodes, i))]) } else { None }
+fn nth_handle(nodes, i) = if i < len(nodes) { Some([list_index(nodes, i)]) } else { None }
 
 fn field_part(fields, step) = match step {
   PartField(name) => match find({ (n, _) => n == name }, fields) {
-    Some((_, v)) => Some([node_handle(v)]),
+    Some((_, v)) => Some([v]),
     None => None,
   },
   _ => None,
@@ -819,9 +812,9 @@ fn field_contract(fs, step) = match step {
 // A call is a length when the callee is len / byte_len; any other call is
 // its callee's return — declared, or proven at the callee's exit — when
 // that return states a refinement.
-fn call_leaves(ref callee) = match graph_node_body(node_handle(callee)) {
-  NExpr(VarRef(cname)) => if cname == "len" || cname == "byte_len" { [LLength] } else { applied_leaves(node_handle(callee)) },
-  _ => applied_leaves(node_handle(callee)),
+fn call_leaves(ref callee) = match graph_node_body(callee) {
+  NExpr(VarRef(cname)) => if cname == "len" || cname == "byte_len" { [LLength] } else { applied_leaves(callee) },
+  _ => applied_leaves(callee),
 }
 
 // ── The declared parameter a value IS, and where in it (H4·D) ───────────
@@ -843,15 +836,15 @@ fn flow_param_path(h) = match graph_node_body(h) {
       None => None,
     }
   },
-  NExpr(IndexExpr(recv, idx)) => path_step(flow_param_path(node_handle(recv)), index_step(node_handle(recv), idx)),
-  NExpr(FieldExpr(recv, fname)) => path_step(flow_param_path(node_handle(recv)), PartField(fname)),
-  NExpr(BlockExpr(_, f)) => flow_param_path(node_handle(f)),
+  NExpr(IndexExpr(recv, idx)) => path_step(flow_param_path(recv), index_step(recv, idx)),
+  NExpr(FieldExpr(recv, fname)) => path_step(flow_param_path(recv), PartField(fname)),
+  NExpr(BlockExpr(_, f)) => flow_param_path(f),
   _ => None,
 }
 
 // What an index reads: a list's element, or — a literal index over a
 // tuple — that position (SYNTAX §«Indexing»).
-fn index_step(recv_h, idx) = match graph_node_body(node_handle(idx)) {
+fn index_step(recv_h, idx) = match graph_node_body(idx) {
   NExpr(LitInt(k)) => match graph_chase(recv_h) {
     GNode(NBound(TTuple(_)), _) => PartIndex(k),
     _ => PartElem,
@@ -1133,8 +1126,8 @@ fn value_flow_label(h) = match node_const_at(h, NoSelf) {
         Some(b) => binder_flow_label(b),
         None => Public,
       },
-      NExpr(CallExpr(callee, args)) => flow_label_join(leaves_flow_label(call_leaves(callee)), labels_join(args |> map(node_handle))),
-      NExpr(FieldExpr(recv, fname)) => part_flow_label(node_handle(recv), PartField(fname)),
+      NExpr(CallExpr(callee, args)) => flow_label_join(leaves_flow_label(call_leaves(callee)), labels_join(args)),
+      NExpr(FieldExpr(recv, fname)) => part_flow_label(recv, PartField(fname)),
       body => labels_join(body_child_handles(body)),
     },
   },
@@ -1893,7 +1886,7 @@ fn handle_to_smt(handle) = match graph_node_body(handle) {
 // name read live from its node body, or the unencodable sentinel if it is not a
 // bare name reference.
 fn smt_call(callee, args) = {
-  let fname = match graph_node_body(node_handle(callee)) {
+  let fname = match graph_node_body(callee) {
     NExpr(VarRef(n)) => n,
     _ => {
       report(EVerifyUnencodable(span_zero()))
@@ -1905,17 +1898,13 @@ fn smt_call(callee, args) = {
 
 // Each arg is a handle — map through handle_to_smt and join (map/fold, never an
 // imperative i/n counter; Anchor 6).
-fn smt_arg_terms(args) = fold("", (acc, arg) => "{acc} {handle_to_smt(node_handle(arg))}", args)
+fn smt_arg_terms(args) = fold("", (acc, arg) => "{acc} {handle_to_smt(arg)}", args)
 
-fn smt_binop(op, l, r) =
-  "({smt_binop_sym(op)} {handle_to_smt(node_handle(l))} {handle_to_smt(node_handle(r))})"
+fn smt_binop(op, l, r) = "({smt_binop_sym(op)} {handle_to_smt(l)} {handle_to_smt(r)})"
 
-fn smt_unop(op, x) = {
-  let xh = node_handle(x)
-  match op {
-    UNot => "(not {handle_to_smt(xh)})",
-    UNeg => "(- {handle_to_smt(xh)})",
-  }
+fn smt_unop(op, x) = match op {
+  UNot => "(not {handle_to_smt(x)})",
+  UNeg => "(- {handle_to_smt(x)})",
 }
 
 // Every BinOp rendered to its SMT-LIB symbol — exhaustive over the ADT (no

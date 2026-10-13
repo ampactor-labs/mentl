@@ -1070,7 +1070,11 @@ authored_own_max: 49
 # (`parse_address`, `addr_colon_from`, `addr_int`, `addr_int_loop`) left when
 # every verb took its words apart by pattern, and `render_field_inits` with
 # the formatter's punned fields.
-authored_ref_max: 658
+# 658 -> 655 (2026-10-13, Landing 4 S2): `collect_handles(ref nodes)` left
+# when a node became its handle and the function became the identity, and
+# `sort_unique(ref names)` and `lookup_tag(ref idx, handle)` left as second
+# names for `name_set_canonicalize` and `wmap_get`.
+authored_ref_max: 655
 
 # 2026-08-08: the DRIFT-SHAPE ratchet (PLAN §11 5.6's absorption,
 # enforcement half) — the three absorbed drift modes counted by the
@@ -1429,7 +1433,33 @@ authored_ref_max: 658
 # so the rise is the source's (the compiler grew by the landing's own
 # code), not the compiler's. Same rule: ~1% over the highest reading of
 # the landed form, read as the minimum of three.
-selfcompile_peak_kb_max: 539000
+# 477,000 (2026-10-13, Landing 4 S2): FELL 539,000 → 477,000. A node is its
+# handle and the record `N(NodeBody, ValidSpan, Int)` is gone, so the
+# self-compile's peak fell 477,156 → 460,108 KB on this machine (m3 leg; the
+# m4 leg 460,104; 459,996 at the second repin) and the WAT 634,037 → 629,236
+# lines. THE CEILING IS 1% OVER THE HIGHEST READING AMONG THE MACHINES THE
+# BOARD RUNS ON, not over this machine's: the board runs on every push
+# (.github/workflows/board.yml), and the CI runner read the same boot at
+# 471,568 KB (min of 3) — 2.5% over this machine, the engine's and the host
+# allocator's share of RSS differing by machine — so the 465,000 this landing
+# first held, 1% over this machine alone, was refused by the CI board (run
+# 38438537747) with every other gate green. A leg's first sample after a
+# fresh assembly sometimes reads ~100 MB high (575–590 MB on four legs of
+# earlier marches; 460 MB, no re-read, at both of this landing's repins),
+# and on a breach the march re-reads the leg and takes the minimum of three
+# (`read_cost`, tools/march.sh) — that minimum is what this ceiling is
+# measured against. The reading no machine moves is the line peak below.
+selfcompile_peak_kb_max: 477000
+# THE IMAGE'S OWN HIGH-WATER (2026-10-13, Landing 4 S2): the guest prints its
+# bump line's peak on the m3 leg's stderr (`arena: … line peak N KB`), and
+# that number is a pure function of the computation — two self-compiles of
+# one source read 494,011 KB both times while their peak RSS read 460,108 and
+# 460,036 — so it is the memory ratchet no machine moves. Born at 1% over
+# the landed form's 494,011 KB (the RSS ceiling's own rule), seen RED at
+# 494,000 through `read_line` (tools/march.sh), which refuses the repin on a
+# breach with no re-measure, since there is no jitter to die. A landing that
+# breaches it pays the cost down, never raises it.
+selfcompile_line_peak_kb_max: 499000
 # THE HEAD ROUND TRIP (render lane, 2026-10-06): module-level function heads,
 # formatter's and eye's, that do not come back as themselves through
 # parse∘render. Born at the measured 92 of 4,550 (the base renderer: 787 of

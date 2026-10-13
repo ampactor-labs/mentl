@@ -2215,10 +2215,10 @@ fn span_contains(outer, inner) with Pure = match outer {
   },
 }
 
-// Tokens are the lexer's output; the parser's input. The wrapper
-// pattern mirrors AST nodes: structured value + positional metadata.
-// `N(NodeBody, Span, Int)` for nodes; `Tok(TokenKind, Span)` for
-// tokens. Same shape, two layers. Accessors are uniform across both.
+// Tokens are the lexer's output; the parser's input: a structured value
+// with its positional metadata, `Tok(TokenKind, Span)`. A token carries its
+// span beside its value, as a Reason's `Located` does — where a node is its
+// graph handle, and its span is the graph's (`graph_span_of`).
 //
 // TokenKind enumerates the 64 lexical forms specified in SYNTAX.md
 // — 19 keywords, 7 identifiers/literals (with payload), 14 two-char
@@ -2320,7 +2320,7 @@ type TokenKind
   // end of input — always last
   | TEof
 
-// Token accessors — uniform with N-pattern accessors.
+// Token accessors.
 fn token_kind(t) with Pure = match t {
   Tok(k, _) => k,
 }
@@ -2329,25 +2329,17 @@ fn token_span(t) with Pure = match t {
   Tok(_, s) => s,
 }
 
-// Every expression site is an N(body, span, handle). The handle is
-// allocated at parse time via graph_fresh_ty(Placeholder(span)) and
-// populated during inference. No null handle. No sentinel zero.
-// Type resolution is always a live chase via LookupTy — never a
-// cached Ty field.
-//
-// The span FIELD carries the refinement (the producer-carries-proof
-// law at the ctor decl): every destructured node span reads ValidSpan
-// by type, so the 31 infer-side call boundaries that each re-demanded
-// span_valid collapse by typed identity; the obligation lives at
-// N-construction, where span_at/span_join already supply ValidSpan.
-type Node = N(NodeBody, ValidSpan, Int)
-
-// A node's handle — the one read of the record every reader goes through:
-// the body and the span are the graph's at this handle
-// (`graph_node_body`, `graph_span_of`).
-fn node_handle(node) = match node {
-  N(_, _, h) => h,
-}
+// A node IS its handle. Every node is born at the parse as a fresh handle
+// (`graph_fresh_ty` with the parse's own reason), its body registered at that
+// handle and its extent indexed there, and everything the judgment learns
+// about it is a column at the same handle: the body (`graph_node_body`), the
+// span (`graph_span_of`, a ValidSpan because the one write that indexes it
+// takes one), the parent edge, the type cell, the reason, the comment, the
+// charges and the claims. A body holds its children as handles, so what
+// contains what is the graph's and a write at one node is seen by every
+// reader of it. No null handle, no sentinel zero; type resolution is always a
+// live chase through LookupTy, never a cached Ty field.
+type Node = Int
 
 type NodeBody
   = NExpr(Expr)
@@ -3113,11 +3105,16 @@ effect GraphRead {
   graph_node_body(Int) -> NodeBody
   // the birth-span by HANDLE — the spans spine column's O(1) read (the
   // ordered (span, handle) log stays for containment scans; this is the
-  // by-handle projection of the same one write). A ValidSpan, because the
-  // column is written from one (graph_index_span) and a cell never indexed
-  // answers span_zero, the absent position every reader of a position
-  // already treats as "no source site" — so a node's span read off the
-  // graph is what its record carried, and a reader of it owes no claim
+  // by-handle projection of the same one write). It is the one place a
+  // position comes from: a span is a MINT fact — a chase follows the binding
+  // chain (a hole unified with a call's result answered the chase terminal's
+  // span), and even a node's own reason cell rebinds when inference resolves
+  // it (a hole's last-bind reason carried the enclosing binop's span; both
+  // measured) — and only the birth index never moves. A ValidSpan, because
+  // the column is written from one (graph_index_span) and a cell never
+  // indexed answers span_zero, the absent position every reader already
+  // treats as "no source site" (it is what tells an authored hole from
+  // scaffolding), so a reader of it owes no claim
   graph_span_of(Int) -> ValidSpan
   // the module a node was BORN IN — read from the spine's own column, never
   // re-derived by scanning weave ranges for one that contains the node's
@@ -3142,7 +3139,16 @@ effect GraphRead {
   graph_node_current(Int) -> Bool
   // the current module node of a path — the latest parse registered under
   // it, read where the registration happened rather than by walking the
-  // whole graph for module cells and keeping the last
+  // whole graph for module cells and keeping the last. None when the weave
+  // holds no such module: a caller refuses rather than guessing, and the
+  // answer is an Option rather than a 0 sentinel because the link root is
+  // itself a module node and 0 is a handle it can legitimately hold. It is
+  // what makes `mentl <file>:<line>` an address: a node's module is stamped
+  // at its mint (graph_module_of reads it back), so naming the file resolves
+  // ONCE here and every downstream comparison is a word compare against that
+  // handle — never a path re-matched per candidate, and never span
+  // containment, which cannot answer once each module's spans are its own
+  // 1-based coordinates
   graph_module_now(String) -> Option(Int)
   // every current module node, in the order the modules were registered
   graph_modules() -> [Int]
@@ -5309,7 +5315,7 @@ fn resolve_call_args(params, args, cname: String) =
   if len(params) == 0 { map(unwrap_labeled_arg, args) } else { fill_arg_slots(params, args, cname) }
 
 // Unwrap a LabeledArg to its value node; a positional arg passes through.
-fn unwrap_labeled_arg(arg) = match graph_node_body(node_handle(arg)) {
+fn unwrap_labeled_arg(arg) = match graph_node_body(arg) {
   NExpr(LabeledArg(_, v)) => v,
   _ => arg,
 }
@@ -5332,7 +5338,7 @@ fn fill_arg_slots(params, args, cname) = {
 fn place_labeled(params, args, i, slots, cname: String) = if i >= len(args) {
   slots
 } else {
-  let ah = node_handle(list_index(args, i))
+  let ah = list_index(args, i)
   let next = match graph_node_body(ah) {
     NExpr(LabeledArg(label, v)) => {
       let idx = param_index(params, label, 0)
@@ -5355,8 +5361,7 @@ fn place_positional(args, cur, slot, slots, n) = if cur >= len(args) {
   slots
 } else {
   let arg = list_index(args, cur)
-  let ah = node_handle(arg)
-  match graph_node_body(ah) {
+  match graph_node_body(arg) {
     NExpr(LabeledArg(_, _)) => place_positional(args, cur + 1, slot, slots, n),
     _ => {
       let free = next_free_slot(slots, slot, n)
@@ -5365,7 +5370,7 @@ fn place_positional(args, cur, slot, slots, n) = if cur >= len(args) {
         // spoken HERE: dropping it is what makes every downstream count
         // equal, so no later judgment can see the mismatch. The span is
         // the surplus argument's own — the thing with no home.
-        report(EFnArityMismatch(n, len(args), graph_span_of(ah)))
+        report(EFnArityMismatch(n, len(args), graph_span_of(arg)))
         slots
       } else {
         place_positional(args, cur + 1, free + 1, list_set(slots, free, arg), n)
@@ -5739,13 +5744,13 @@ fn show_pred_operand(handle) = match graph_node_body(handle) {
   // refinement's `-1.0 <= self` carries UnaryOpExpr(UNeg, LitFloat) on the
   // left, and `self % 2` carries a BinOpExpr; both rendered `<expr>` before,
   // fabricating away the exact bound the diagnostic exists to teach.
-  "-{show_pred_operand(node_handle(inner))}",
-  NExpr(UnaryOpExpr(UNot, inner)) => "!{show_pred_operand(node_handle(inner))}",
-  NExpr(BinOpExpr(op, l, r)) => "{show_pred_atom(node_handle(l))} {binop_to_str(op)} {show_pred_atom(node_handle(r))}",
+  "-{show_pred_operand(inner)}",
+  NExpr(UnaryOpExpr(UNot, inner)) => "!{show_pred_operand(inner)}",
+  NExpr(BinOpExpr(op, l, r)) => "{show_pred_atom(l)} {binop_to_str(op)} {show_pred_atom(r)}",
   NExpr(CallExpr(callee, args)) => // The canonical refinement vocabulary is call-shaped (len(self),
   // abs(x)) — render the call rather than a placeholder; an exotic
   // callee degrades through show_callee_name's own sentinel.
-  "{show_callee_name(callee)}({show_list(args, { a => show_pred_operand(node_handle(a)) }, ", ")})",
+  "{show_callee_name(callee)}({show_list(args, show_pred_operand, ", ")})",
   _ => "<expr>",
 }
 
@@ -5758,7 +5763,7 @@ fn show_pred_atom(handle) = match graph_node_body(handle) {
   _ => show_pred_operand(handle),
 }
 
-fn show_callee_name(ref callee) = match graph_node_body(node_handle(callee)) {
+fn show_callee_name(ref callee) = match graph_node_body(callee) {
   NExpr(VarRef(n)) => n,
   _ => "_",
 }
@@ -5814,7 +5819,7 @@ fn site_phrase(body) with !Mutate = match body {
   _ => "here",
 }
 
-fn stage_phrase(stage) = match graph_node_body(node_handle(stage)) {
+fn stage_phrase(stage) = match graph_node_body(stage) {
   NExpr(VarRef(n)) => "through `{n}`",
   NExpr(CallExpr(f, _)) => "through `{show_callee_name(f)}`",
   NExpr(LambdaExpr(_, _)) => "inside the stage's function value",
@@ -5822,7 +5827,7 @@ fn stage_phrase(stage) = match graph_node_body(node_handle(stage)) {
 }
 
 // The handler a tee installs, named: a bare reference or a configured call.
-fn install_name(h) = match graph_node_body(node_handle(h)) {
+fn install_name(h) = match graph_node_body(h) {
   NExpr(VarRef(n)) => n,
   NExpr(CallExpr(f, _)) => show_callee_name(f),
   _ => "_",
@@ -6034,7 +6039,7 @@ fn predicate_flow_label(ref pred) = match pred {
   PBoolNode(h) => // Follow the handle into the graph — read the actual call node's callee name.
   // The callee name IS the authored intent; reading it is reading the graph.
   match graph_node_body(h) {
-    NExpr(CallExpr(callee, _)) => match graph_node_body(node_handle(callee)) {
+    NExpr(CallExpr(callee, _)) => match graph_node_body(callee) {
       NExpr(VarRef(fname)) => if str_contains(fname, "secret") || str_contains(fname, "classified") || str_contains(fname, "sensitive") {
         Secret
       } else {

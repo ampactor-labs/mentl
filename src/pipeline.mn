@@ -498,7 +498,7 @@ fn report_holes(holes, i) = if i >= len(holes) {
   let h = list_index(holes, i)
   // The weave span — the parse truth authored_hole itself proved; the
   // reason-chain span is clobbered by the binder's unification.
-  report_at(h, EUnresolvedHole(h, parse_span_of(h)))
+  report_at(h, EUnresolvedHole(h, graph_span_of(h)))
   report_holes(holes, i + 1)
 }
 
@@ -809,14 +809,14 @@ fn teach_project(ast) = {
 
 // The banks the judgment already holds, read ONCE and attributed per
 // fn: pending proof obligations by decl EXTENT — this decl's span start
-// to the next decl's, parse_span_of being the O(1) spans-column read —
+// to the next decl's, graph_span_of being the O(1) spans-column read —
 // and tightenings by the name the collector banked. The audit and the
 // frontier are two projections of the same banks; this read keeps the
 // per-fn surface current with the medium's growth.
 fn audit_project(ast) =
   map_fn_stmts(ast, (name, handle) => (name, handle)) |> audit_walk(verify_debt(), tightenables(), 0) |> render_audit
 
-fn decl_start_line(handle) = match parse_span_of(handle) {
+fn decl_start_line(handle) = match graph_span_of(handle) {
   Span(sl, _, _, _) => sl,
 }
 
@@ -909,12 +909,9 @@ handler fresh_for_query with next_display = 0 {
 // nodes dropped: the one walk over a module's fn decls, which audit and
 // teach read through their two projections.
 fn map_fn_stmts(ast, project) = ast |> map({
-  node => {
-    let handle = node_handle(node)
-    match graph_node_body(handle) {
-      NStmt(FnStmt(name, _, _, _, _)) => [project(name, handle)],
-      _ => [],
-    }
+  handle => match graph_node_body(handle) {
+    NStmt(FnStmt(name, _, _, _, _)) => [project(name, handle)],
+    _ => [],
   },
 }) |> flatten
 

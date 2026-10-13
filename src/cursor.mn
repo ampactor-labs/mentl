@@ -98,7 +98,7 @@ handler cursor_default {
   resume(cursor_view_of(handle)),
   cursor_argmax(caret) => resume(cursor_argmax_compute(caret)),
   cursor_pinned(handle) => {
-    let span = parse_span_of(handle)
+    let span = graph_span_of(handle)
     match graph_chase(handle) {
       GNode(_, _anchor) => // Pinned-ness is STRUCTURAL — the Reason IS Located(span, "user pinned"),
       // read by case (reason_is_pinned), never a 1e308 float magnitude that
@@ -241,7 +241,7 @@ fn module_handles(mh: Int) with !Mutate = match graph_snapshot() {
 // identity is the span's START: an edit that reshapes a decl changes its
 // extent but not where it begins.
 fn latest_generation(handles) with !Mutate = filter(
-  (h) => !any((h2) => h2 > h && span_start_eq(parse_span_of(h2), parse_span_of(h)), handles),
+  (h) => !any((h2) => h2 > h && span_start_eq(graph_span_of(h2), graph_span_of(h)), handles),
   handles
 )
 
@@ -260,9 +260,9 @@ fn enumerate_hole_positions(mh) with !Mutate =
 // callee's own row and body what the candidate means. An arg-bearing call
 // answers None because nothing downstream can yet say what its arguments
 // are (`Hβ.synth.vocabulary-arg-holes` is where they start being sayable).
-fn callee_name_of(node) = match graph_node_body(node_handle(node)) {
+fn callee_name_of(node) = match graph_node_body(node) {
   NExpr(CallExpr(callee, args)) => if len(args) == 0 {
-    match graph_node_body(node_handle(callee)) {
+    match graph_node_body(callee) {
       NExpr(VarRef(name)) => Some(name),
       _ => None,
     }
@@ -314,7 +314,7 @@ fn rank_positions(handles, caret) -> [(Float, Handle)] with !Mutate = {
 // The sort key: the two gains negated so the ascending structural sort puts
 // the highest first — debt before locks — then the position's own line and
 // column.
-fn position_key(h, caret, reach) -> (Float, Float, Int, Int, Handle) with !Mutate = match parse_span_of(h) {
+fn position_key(h, caret, reach) -> (Float, Float, Int, Int, Handle) with !Mutate = match graph_span_of(h) {
   Span(sl, sc, _, _) => match position_score(h, caret, reach) {
     (debt, locks) => (0.0 - debt, 0.0 - locks, sl, sc, h),
   },
@@ -355,7 +355,7 @@ fn suggestion_gains(s, prox: Float) -> (Float, Float) = match s {
 // A ranked position as the cursor the session projects: its handle, its
 // own span over its node's reason, its score.
 fn position_cursor(h, score) = match graph_chase(h) {
-  GNode(_, reason) => Cursor(h, Located(parse_span_of(h), reason), score),
+  GNode(_, reason) => Cursor(h, Located(graph_span_of(h), reason), score),
 }
 
 // ─── Proximity — read off the graph, between two positions ──────────
@@ -595,10 +595,10 @@ fn verb_role(site, path, i) with !Mutate = {
   let next = list_index(path, i + 1)
   match graph_node_body(site) {
     NExpr(PipeExpr(PForward, _, _)) => if chain_continues_above(path, i) { None } else { chain_role(site, path, i + 1) },
-    NExpr(PipeExpr(PTee, l, _)) => Some(if node_handle(l) == next { InstallBody } else { InstallHandler }),
-    NExpr(PipeExpr(PFeedback, l, _)) => Some(if node_handle(l) == next { Recurrence } else { FeedbackDelay }),
-    NExpr(PipeExpr(PFanout(_), l, r)) => if node_handle(l) == next { Some(FanInput) } else { shared_branch_role(r, path, i + 2) },
-    NExpr(FanoutExpr(branches)) => match position_in(next, map(node_handle, branches)) {
+    NExpr(PipeExpr(PTee, l, _)) => Some(if l == next { InstallBody } else { InstallHandler }),
+    NExpr(PipeExpr(PFeedback, l, _)) => Some(if l == next { Recurrence } else { FeedbackDelay }),
+    NExpr(PipeExpr(PFanout(_), l, r)) => if l == next { Some(FanInput) } else { shared_branch_role(r, path, i + 2) },
+    NExpr(FanoutExpr(branches)) => match position_in(next, branches) {
       Some(k) => Some(FanBranch(k, len(branches))),
       None => None,
     },
@@ -611,7 +611,7 @@ fn chain_continues_above(path, i) with !Mutate = if i == 0 {
   false
 } else {
   match graph_node_body(list_index(path, i - 1)) {
-    NExpr(PipeExpr(PForward, l, _)) => node_handle(l) == list_index(path, i),
+    NExpr(PipeExpr(PForward, l, _)) => l == list_index(path, i),
     _ => false,
   }
 }
@@ -628,7 +628,7 @@ fn chain_role(site, path, from) with !Mutate = {
 }
 
 fn chain_elements(h) with !Mutate = match graph_node_body(h) {
-  NExpr(PipeExpr(PForward, l, r)) => push(chain_elements(node_handle(l)), node_handle(r)),
+  NExpr(PipeExpr(PForward, l, r)) => push(chain_elements(l), r),
   _ => [h],
 }
 
@@ -640,9 +640,9 @@ fn entered_element(elems, found, h) = match found {
 // A `<|` shares its input across the elements of the tuple on its right, and
 // the path enters the tuple before it enters a branch; a right side that is
 // not a tuple is the one branch. A path that ends ON the tuple enters none.
-fn shared_branch_role(r, path, at) with !Mutate = match graph_node_body(node_handle(r)) {
+fn shared_branch_role(r, path, at) with !Mutate = match graph_node_body(r) {
   NExpr(MakeTupleExpr(elems)) => if at < len(path) {
-    match position_in(list_index(path, at), map(node_handle, elems)) {
+    match position_in(list_index(path, at), elems) {
       Some(k) => Some(ShareBranch(k, len(elems))),
       None => None,
     }
@@ -675,7 +675,7 @@ fn served_at(h) with !Mutate = match performed_effect(h) {
 }
 
 fn performed_effect(h) with !Mutate = match graph_node_body(h) {
-  NExpr(CallExpr(callee, _)) => op_named_at(node_handle(callee)),
+  NExpr(CallExpr(callee, _)) => op_named_at(callee),
   NExpr(VarRef(_)) => op_named_at(h),
   _ => None,
 }
@@ -692,7 +692,7 @@ fn served_step(en: String, up, found, i) with !Mutate = match found {
     match graph_node_body(a) {
       NExpr(LambdaExpr(_, _)) => Some(ServedWhereCalled(a)),
       NStmt(FnStmt(_, _, _, _, _)) => if i + 1 < len(up) { Some(ServedWhereCalled(a)) } else { None },
-      NExpr(PipeExpr(PTee, l, r)) => if node_handle(l) == list_index(up, i - 1) && handler_answers(tee_handler_name(r), en) {
+      NExpr(PipeExpr(PTee, l, r)) => if l == list_index(up, i - 1) && handler_answers(tee_handler_name(r), en) {
         Some(ServedBy(a, tee_handler_name(r)))
       } else {
         None
@@ -726,7 +726,7 @@ fn show_verb_path(frames, place) with !Mutate =
   join(", inside ", map(show_verb_frame(place, ??), reverse(frames)))
 
 fn show_verb_frame(place, frame) with !Mutate = match frame {
-  VerbFrame(site, role) => "{verb_role_text(role)} at {place(parse_span_of(site))}",
+  VerbFrame(site, role) => "{verb_role_text(role)} at {place(graph_span_of(site))}",
 }
 
 fn verb_role_text(role) = match role {
@@ -854,7 +854,7 @@ fn allowed_row_at(path, k, effs) = {
 // Each level used to re-walk its children's subtrees to find the one holding
 // the hole, which the path already knows.
 fn absorbed_step(path, acc, i) with !Mutate = match graph_node_body(list_index(path, i)) {
-  NExpr(PipeExpr(PTee, left, right)) => if node_handle(left) == list_index(path, i + 1) {
+  NExpr(PipeExpr(PTee, left, right)) => if left == list_index(path, i + 1) {
     match handler_arms_of(right) {
       Some(arms) => name_set_union(acc, derive_handler_enames(arms, 0, [])),
       None => acc,
@@ -879,7 +879,7 @@ fn absorbed_step(path, acc, i) with !Mutate = match graph_node_body(list_index(p
 // of main.mn counted the pending claims on lines 3–5 of every module it
 // linked (D4's audit; the class D3 closed for positions).
 fn verify_pending_at(handle) with !Mutate =
-  verify_debt() |> filter(pending_in(graph_module_of(handle), parse_span_of(handle), ??))
+  verify_debt() |> filter(pending_in(graph_module_of(handle), graph_span_of(handle), ??))
 
 // An obligation is AT a node when its claim sits inside the node's extent —
 // the node's own and its sub-expressions'. Lines used to be compared, so every

@@ -57,7 +57,7 @@ type Patch = Patch(Span, String)
 // guess they cannot audit).
 type Context = Context([(String, Binding, Reason, SchemeKind)], EffRow, String, Int)
 
-// scope bindings (the Env's own entries), the LIVE active-effect row, the enclosing decl's name ("" at top level — the vocabulary excludes candidates whose free-name closure reaches it: proposing the hole's own enclosing fn, or anything that transitively calls it, is nontermination by construction), and the HOLE'S OWN HANDLE — the cell the proposals are for. The fourth field was the hole's SPAN, a coordinate copied beside the very handle that gives it live, and the copy was load-bearing in the worst way: with only a span the proof gate had no cell to bind, so it instantiated a FRESH target and called that safety. The handle carries the span (parse_span_of), the type (ty_of_kind over its live kind), and the union-find root every candidate must agree with. One edge where three copies were.
+// scope bindings (the Env's own entries), the LIVE active-effect row, the enclosing decl's name ("" at top level — the vocabulary excludes candidates whose free-name closure reaches it: proposing the hole's own enclosing fn, or anything that transitively calls it, is nontermination by construction), and the HOLE'S OWN HANDLE — the cell the proposals are for. The fourth field was the hole's SPAN, a coordinate copied beside the very handle that gives it live, and the copy was load-bearing in the worst way: with only a span the proof gate had no cell to bind, so it instantiated a FRESH target and called that safety. The handle carries the span (graph_span_of), the type (ty_of_kind over its live kind), and the union-find root every candidate must agree with. One edge where three copies were.
 // The full Boolean row reaches synth — not a
 // flattened positive [EffName]. So `!E` (the
 // negative capability, PLAN §4⑥) is readable at
@@ -228,11 +228,7 @@ fn masked_between(child, top) = if child == top {
   match graph_parent_of(child) {
     None => [],
     Some(p) => match graph_node_body(p) {
-      NExpr(PipeExpr(PTee, l, r)) => if node_handle(l) == child {
-        tee_absorbs(r) ++ masked_between(p, top)
-      } else {
-        masked_between(p, top)
-      },
+      NExpr(PipeExpr(PTee, l, r)) => if l == child { tee_absorbs(r) ++ masked_between(p, top) } else { masked_between(p, top) },
       _ => masked_between(p, top),
     },
   }
@@ -401,7 +397,7 @@ fn row_suggestion(c) = match c {
 // its lines from 1, so an extent alone matches a stranger's claim at the
 // same lines. A claim pending over an authored hole is the hole's demand,
 // paid by its fill, and is the proposer's to answer.
-fn open_obligations(h) = verify_debt() |> filter(owed_at(graph_module_of(h), parse_span_of(h), ??))
+fn open_obligations(h) = verify_debt() |> filter(owed_at(graph_module_of(h), graph_span_of(h), ??))
 
 fn owed_at(m, sp, o) = match o {
   (dm, dsp, pred, _) => dm == m && span_overlaps(sp, dsp) && !claim_is_a_holes_demand(pred),
@@ -479,8 +475,8 @@ fn value_leans(h) = match join_tails(h) {
   Some(tails) => tails |> flat_map(value_leans),
   None => match graph_node_body(h) {
     NExpr(VarRef(name)) => if name == "self" { [] } else { link_leans(h, name) },
-    NExpr(BinOpExpr(_, l, r)) => value_leans(node_handle(l)) ++ value_leans(node_handle(r)),
-    NExpr(UnaryOpExpr(_, e)) => value_leans(node_handle(e)),
+    NExpr(BinOpExpr(_, l, r)) => value_leans(l) ++ value_leans(r),
+    NExpr(UnaryOpExpr(_, e)) => value_leans(e),
     _ => [],
   },
 }
@@ -527,7 +523,7 @@ fn module_refinements(m) = match graph_node_body(m) {
   _ => [],
 }
 
-fn refinement_alias(d) = match graph_node_body(node_handle(d)) {
+fn refinement_alias(d) = match graph_node_body(d) {
   NStmt(RefineStmt(name, _, _)) => match env_lookup(name) {
     Some(entry) => match entry {
       (scheme, _, _) => [(name, judgment_ty(scheme))],
@@ -683,8 +679,8 @@ fn verdict_open(v) = match v {
 fn applications_of(name: String) = graph_applies_at(name) |> filter(applies(name, ??)) |> unique
 
 fn applies(name: String, h) = match graph_node_body(h) {
-  NExpr(CallExpr(callee, _)) => any(leaf_is(name, ??), fn_leaves(node_handle(callee))),
-  NExpr(PipeExpr(PForward, _, stage)) => any(leaf_is(name, ??), fn_leaves(node_handle(stage))),
+  NExpr(CallExpr(callee, _)) => any(leaf_is(name, ??), fn_leaves(callee)),
+  NExpr(PipeExpr(PForward, _, stage)) => any(leaf_is(name, ??), fn_leaves(stage)),
   _ => false,
 }
 
@@ -704,12 +700,9 @@ fn application_args(h) = match graph_node_body(h) {
 }
 
 // The callee node of a reference to the top-level `name`, or none.
-fn callee_named(callee, name: String) = {
-  let ch = node_handle(callee)
-  match graph_node_body(ch) {
-    NExpr(VarRef(cn)) => if cn == name && graph_link_of(ch) == None { [ch] } else { [] },
-    _ => [],
-  }
+fn callee_named(callee, name: String) = match graph_node_body(callee) {
+  NExpr(VarRef(cn)) => if cn == name && graph_link_of(callee) == None { [callee] } else { [] },
+  _ => [],
 }
 
 // A session that has re-derived holds one application node per generation
@@ -723,7 +716,7 @@ fn latest_applications(apps) = apps |> filter(no_later_mint(apps, ??))
 fn no_later_mint(apps, h) = !any(later_mint_of(h, ??), apps)
 
 fn later_mint_of(h, h2) =
-  h2 > h && graph_module_of(h2) == graph_module_of(h) && parse_span_of(h2) == parse_span_of(h)
+  h2 > h && graph_module_of(h2) == graph_module_of(h) && graph_span_of(h2) == graph_span_of(h)
 
 // The claim an application raises at its argument under the candidate — the
 // call site's own two steps (`discharge_arg`: an unannotated parameter
@@ -734,10 +727,8 @@ fn claim_at_call(contract, i, app_h) = {
   if i < len(args) { dry_claim(contract, args[i]) } else { Some(true) }
 }
 
-fn dry_claim(contract, arg) = {
-  let ah = node_handle(arg)
-  learn_then_claim(contract, ah, graph_span_of(ah)) ~> verify_ledger ~> diag_quiet
-}
+fn dry_claim(contract, arg) =
+  learn_then_claim(contract, arg, graph_span_of(arg)) ~> verify_ledger ~> diag_quiet
 
 fn learn_then_claim(contract, ah, sp: ValidSpan) = {
   learn_precondition(ah, contract)
@@ -761,7 +752,7 @@ fn return_suggestions(f) = if authored_return(f.retty) {
   }
 }
 
-fn authored_return(retty) = match graph_node_body(node_handle(retty)) {
+fn authored_return(retty) = match graph_node_body(retty) {
   NTypeAnn(_) => true,
   _ => false,
 }
@@ -834,10 +825,8 @@ fn prove_return(f, resting, alias) = match alias {
   },
 }
 
-fn dry_return_claim(contract, body) = {
-  let bh = node_handle(body)
-  claim_refinement(contract, bh, graph_span_of(bh)) ~> verify_ledger ~> diag_quiet
-}
+fn dry_return_claim(contract, body) =
+  claim_refinement(contract, body, graph_span_of(body)) ~> verify_ledger ~> diag_quiet
 
 fn rest_on_contract(contract, r) = match r {
   (_, chs) => chs |> each(return_as(contract, ??)),

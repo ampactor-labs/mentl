@@ -35,6 +35,99 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-10-13 · pin ad930774d22c22f5 (CLEAN m2 == m3; m3 == m4 measured — the design named this stage a TRANSITION, since the wheel's own representation moves, and the march ruled it CLEAN: what a compiler emits for a program depends on what it computes, never on how it holds its own nodes, and the boot and m2 compute the same; the landing's second pin — the first, 162c7328, was superseded once the claim-reading pass's refutations landed, the nineteen second names deleted by reading among them) · LANDING 4 S2 — A NODE IS ITS HANDLE: `type Node = Int`, THE RECORD, ITS ONE READ AND THAT READ'S 520 REFERENCES DELETED
+  The second stage of `Hβ.graph.positions-are-cells`'s STRUCTURE face. Since
+  S1 (pin 4b621311) every reader read the graph, so the record `N(NodeBody,
+  ValidSpan, Int)` had six builders and one reader left; S2 makes the node
+  the handle. `type Node = Int` (src/types.mn); the three mints
+  (`mint_node_as`, `mint_absent`, `nhole`) and `desugar_block`'s two re-wraps
+  of a let's handle answer the handle they registered; the proposer's
+  extracted candidate is the cheapest handle (`extract_optimal`); the record
+  is no declaration. The one read, node_handle, became the identity and its
+  520 references — 496 calls and 24 passed as a value (`map(node_handle, xs)`,
+  `|> node_handle`) — were inlined away by four builders on disjoint modules (infer
+  169; lower 79, query 51, graph 49; verify 37, parser 26, format 23,
+  synth_proposer 15, cursor 14; types 12, egraph 12, space 12, mentl 11, own
+  4, cursor_transport 3, pipeline 1, main 1) and one by the integrator
+  (backends/wasm, whose module the per-module count had missed), the
+  declaration deleted last — each builder's patch taken against the base
+  plus the step-0 edits, applied to the tip and judged there (`mentl check`
+  0 after each). The inlining left functions standing as second names for
+  another and three parameters as copies of another; all are gone. The
+  builders deleted eight — collect_handles and update_value (infer),
+  compare_pred (parser), render_non_chain, format_one_stmt and ast_kind_of
+  (format, 22 callers), branch_span (space), node_body_of (graph) — and the
+  claim-reading pass found three more standing in the same shape
+  (decl_extent, predicate_of_bool_expr, pattern_predicate_for). The shape
+  was then made a census — the eta count extended to a named function whose
+  body only forwards its parameters — and the census refuted its own bound:
+  34 on the link, of which the surface wants fifteen (out_of_range, make_list, make_list_sc, len, slice, list_to_flat, byte_len, byte_at, str_slice, to_string, concat, fanout, delay, accumulate and filter_spec: fanout is map
+  that declares its applications independent and the lowering keys on its
+  spelling (`name == "fanout"`, src/lower.mn), delay is the surface spelling of `Delay`, len and slice and
+  byte_len are the typed faces over raw word operations), so a zero bound
+  would claim the language is wrong, and the shape went back to lambdas with
+  the measurement in its comment (`census_matches`). The other nineteen were
+  second names for one home and are deleted by reading, their callers
+  calling the home: decl_extent, predicate_of_bool_expr, negation_of, conjunction, pattern_predicate_for, twin_refs_in, lower_stmt_as_expr, feedback_param_name, lower_frame_fence_pop, sort_unique, module_handle_of_path, parse_span_of, lookup_tag, token_byte, demand_base, lanes_on, direct_callee_widths, synthesize_hole_node and mentl_lsp_session. `fh` left
+  `lower_call_dispatch` and `lower_call_default`, `rfh` left
+  `lower_pipe_stage_value`. Every `let h = node_handle(x)` alias is deleted
+  and the node used, or the parameter renamed to the handle it is. MEASURED
+  by the medium's reference lists: `refs of N` 7 → 0 and N not declared;
+  node_handle 520 → not declared; `graph_node_body` 364 → 384 references,
+  `graph_span_of` 55 → 127 (123 calls and 4 values: parse_span_of's 73
+  references folded into its home, its own call among the 55); `mint_node` 10. A body holds its children as
+  handles because `Node` is the handle: `BinOpExpr(BinOp, Node, Node)` is
+  four words — a tag, the op and two handles — and the parse holds no second copy of
+  what it registered. Two comments in types.mn that described the node as a
+  record are trued (a token carries its span beside its value, as a
+  Reason's `Located` does).
+  KILLS: none — the cut is the rename S1 made it; the one surprise was the
+  transplant, not the wheel: reversing the step-0 patch in a builder's
+  worktree conflicted where the builder had edited the same hunk, the chain
+  pruned that worktree before its patch was taken, and the builder redid its
+  115 edits from its own record (the diff matched line for line); the
+  integration script takes a builder's patch against the index since then
+  and never prunes. THE CONFESSION: inlining an identity function at 520
+  sites is a rename-class rewrite the medium does not author yet — the
+  `rename` verb of `Hβ.syntax.parameter-product-has-identity` (PLAN §11
+  Tier 4, N1, born on M1's reference link) is its home; the hand sweep is
+  named here, not absorbed.
+  GATES: `mentl check src/main.mn` 0; `mentl verify` within every bound
+  (open obligations 184/184, ghosts 112/112, effectful lambdas 193/193, wildcard-fabricates 20/20, lifecycle prose 42/42); `mentl fmt --check src lib` 0; micros 400/400 through m2 (8/8 rungs); proposals
+  27/27 and teach 16/16 through the candidate; frontier 665 pass / 0 red / 2 expected-red; crown
+  143/0; proof-exactness 30/0; ide GREEN; march CLEAN at both pins — the
+  first, 162c7328, from boot 4b621311 (m3 leg 41.89 s / 460,108 KB, 629,236
+  lines, m4 leg 40.27 s / 460,104 KB), and this one from the first's boot,
+  m3 leg 44.43 s / 459,996 KB, 630,330 lines, m4 leg 43.70 s / 460,060 KB
+  (4b621311: 43.08 s / 477,156 KB / 634,037; the WAT grew 629,236 → 630,330
+  between the two pins because the forwarders deleted by reading had OPS
+  for homes, and a perform is longer than a call: +934 lines in the
+  functions holding parse_span_of's 70 call sites (its 3 value sites pass
+  `graph_span_of` as a value and perform nothing), +210 in those holding
+  the 15 call sites of decl_extent, module_handle_of_path, lanes_on and
+  lower_frame_fence_pop, the deleted bodies and the rest netting under
+  that — a per-function diff of the two pins' m2.wat); the self-compile's peak fell
+  477,156 → 460,108 KB and its WAT 634,037 → 629,236 lines at the first pin,
+  with the record's allocations and the copies `map(node_handle, xs)` made,
+  and the peak ceiling is held at 477,000 KB (tools/verify-baseline.txt),
+  where it had stood at 539,000 — 1% over the HIGHEST reading among the
+  board's machines: this landing first held it at 465,000, 1% over this
+  machine alone, and the CI board (run 38438537747) refused it with every
+  other gate green, the runner reading the same boot at 471,568 KB (min of
+  3), 2.5% over this machine's 460,108, the engine's and the host
+  allocator's share of RSS differing by machine. The reading no machine
+  moves was born beside it: the image's own line peak, which the guest
+  prints on the m3 leg's stderr and two self-compiles of one source read
+  identically at 494,011 KB while their RSS read 460,108 and 460,036 —
+  `selfcompile_line_peak_kb_max` at 499,000, 1% over, ratcheted by
+  `read_line` (tools/march.sh) with no re-measure and seen RED at 494,000; authored `ref`
+  fell 658 → 655 with collect_handles(ref nodes), sort_unique(ref names) and
+  lookup_tag(ref idx, handle), and its ceiling is held there. Two claim-reading passes read the records
+  (99 sentences, 19 refuted; then 34 sentences, 4 refuted and 8 with a
+  refuted clause), every refutation rewritten to what was measured — the
+  `graph_span_of` count among them, which four records had copied from
+  the first pin's draft, and a WAT-growth cause that named one forwarder
+  where four had ops for homes. Builders' worktrees pruned at absorption.
 - 2026-10-13 · pin 4b621311aedc4ae6 (CLEAN m2 == m3; m3 == m4 measured; the landing's fourth pin — the first, deedc632, was the TRANSITION m2 ≠ m3, m3 == m4, where the wheel's own two pipes into a bare op, `forget_claims` and `enter_link_root`, are performed in place by the wheel while boot 53213e36 built the op's partial, `tools/emit-diff.py` naming exactly those two functions and the two partial bodies m3 lacked; the second, 29fe9749, CLEAN from that boot, followed the docs pass's five refutations, one of them a dead `span_of_node` the pass found standing; the third, 96c00273, CLEAN from the second's, followed the records pass's one artifact finding, the directory route's render; this one, CLEAN from the third's, follows the final pass's stale confession — two sites spelled as calls to suit boot 53213e36 are pipes again) · LANDING 4 S1 — EVERY READER READS A NODE'S BODY AND SPAN THROUGH THE GRAPH, THE RECORD CARRIED AND TAKEN APART BY `node_handle` ALONE
   The first stage of `Hβ.graph.positions-are-cells`'s STRUCTURE face (PLAN
   §11, the cut in front of the order). A node is still `N(NodeBody, ValidSpan,

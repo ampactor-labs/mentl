@@ -647,7 +647,7 @@ fn ref_role(name, h) with !Mutate = match graph_node_body(h) {
 // read, never a second walk.
 fn callee_of_parent(h) with !Mutate = match graph_parent_of(h) {
   Some(p) => match graph_node_body(p) {
-    NExpr(CallExpr(f, _)) => node_handle(f) == h,
+    NExpr(CallExpr(f, _)) => f == h,
     _ => false,
   },
   None => false,
@@ -770,7 +770,7 @@ fn import_edges_of(cell) = match cell {
   (_, _, _, decls) => fold([], import_edge_join, decls),
 }
 
-fn import_edge_join(acc, d) = match graph_node_body(node_handle(d)) {
+fn import_edge_join(acc, d) = match graph_node_body(d) {
   NStmt(ImportStmt(p)) => push(acc, p),
   _ => acc,
 }
@@ -784,7 +784,7 @@ fn module_declared_names(cell) = match cell {
 
 fn decl_names_join(acc, d) = acc ++ decl_names_of(d)
 
-fn decl_names_of(d) = match graph_node_body(node_handle(d)) {
+fn decl_names_of(d) = match graph_node_body(d) {
   NStmt(s) => match s {
     FnStmt(n, _, _, _, _) => [n],
     TypeDefStmt(n, ctors) => [n] ++ map({ (cn, _, _) => cn }, ctors),
@@ -846,14 +846,12 @@ fn decl_ref_rows_for(cell) with !Mutate = match cell {
 }
 
 fn decl_ref_row_join(path: String, acc, d) with !Mutate =
-  acc ++ map(decl_ref_verdict(path, decl_extent(d)), decl_names_of(d))
+  acc ++ map(decl_ref_verdict(path, graph_span_of(d)), decl_names_of(d))
 
 // The per-name verdict: the declaring module, the name, and how many of its
 // reference sites lie outside its own declaration. Zero is the finding.
 fn decl_ref_verdict(path: String, extent, name: String) with !Mutate =
   (path, name, count(ref_is_outside(extent), graph_refs_at(name)))
-
-fn decl_extent(d) = graph_span_of(node_handle(d))
 
 // ─── unreachable — unreferenced's transitive face ───────────────────
 //
@@ -913,7 +911,7 @@ fn reach_report(cells) = {
 fn refine_roots(decls) = decls |> map(refine_decl_names) |> flatten
 
 fn refine_decl_names(entry) = match entry {
-  (_, d) => match graph_node_body(node_handle(d)) {
+  (_, d) => match graph_node_body(d) {
     NStmt(RefineStmt(_, _, pred)) => predicate_names(pred),
     _ => [],
   },
@@ -993,7 +991,7 @@ fn ur_walk(ref decls, idx, work, reached, parked) = match work {
 }
 
 // A declaration's frees to walk now, and the arms it parks as (op, frees).
-fn ur_decl_frees(d, reached) = match graph_node_body(node_handle(d)) {
+fn ur_decl_frees(d, reached) = match graph_node_body(d) {
   NStmt(HandlerDeclStmt(_, _, config, state, arms, _)) => match projection_of_effects(handler_effect_names(arms)) {
     PDispatch => {
       let cfg = free_vars_param_names(config)
@@ -1027,7 +1025,7 @@ fn ur_rows(ref decls, reached, i, n, acc) = if i >= n {
   acc
 } else {
   match decls[i] {
-    (path, d) => match graph_node_body(node_handle(d)) {
+    (path, d) => match graph_node_body(d) {
       NStmt(FnStmt(name, _, _, _, _)) => {
         let hit = match smap_get(reached, name) {
           Some(_) => 1,
@@ -1074,7 +1072,7 @@ fn orphan_claim_report(cells) with !Mutate = fold([], orphan_rows_join, cells)
 // either way). The weave's absent-default NHole(0) and the driver's span-zero
 // scaffolding are not positions: there is nothing at 0:0 to render or patch.
 fn authored_hole(handle) with !Mutate = match graph_node_body(handle) {
-  NHole(id) => id != 0 && !span_eq(parse_span_of(handle), span_zero()),
+  NHole(id) => id != 0 && !span_eq(graph_span_of(handle), span_zero()),
   _ => false,
 }
 
@@ -1112,7 +1110,7 @@ fn orphan_rows_for(cell) with !Mutate = match cell {
 }
 
 fn orphan_row_join(path: String, acc, d) with !Mutate = {
-  let prose = graph_comment_at(node_handle(d))
+  let prose = graph_comment_at(d)
   if byte_len(prose) < orphan_prose_floor() {
     acc
   } else {
@@ -1121,7 +1119,7 @@ fn orphan_row_join(path: String, acc, d) with !Mutate = {
     // a pipe first and caught by the medium in one check.
     acc ++ map(
       orphan_verdict(path, byte_len(prose)),
-      filter(name_is_orphaned(decl_extent(d)), decl_names_of(d))
+      filter(name_is_orphaned(graph_span_of(d)), decl_names_of(d))
     )
   }
 }
@@ -1167,15 +1165,12 @@ fn effect_rows_for(cell) with !Mutate = match cell {
   (_h, path, _, decls) => fold([], effect_row_join(path), decls),
 }
 
-fn effect_row_join(path: String, acc, d) with !Mutate = {
-  let h = node_handle(d)
-  match graph_node_body(h) {
-    NStmt(s) => match s {
-      EffectDeclStmt(n, _, ops) => push(acc, (path, n, len(ops), count(op_is_performed(graph_span_of(h)), ops))),
-      _ => acc,
-    },
+fn effect_row_join(path: String, acc, d) with !Mutate = match graph_node_body(d) {
+  NStmt(s) => match s {
+    EffectDeclStmt(n, _, ops) => push(acc, (path, n, len(ops), count(op_is_performed(graph_span_of(d)), ops))),
     _ => acc,
-  }
+  },
+  _ => acc,
 }
 
 fn op_is_performed(extent, op) with !Mutate = match op {
@@ -1479,7 +1474,17 @@ fn census_matches(shape: CensusShape, h, body: NodeBody) with !Mutate = match sh
   },
   CsEta => match body {
     NExpr(LambdaExpr(params, lbody)) => lambda_is_eta(params, lbody),
-    _ => false,
+    _ => // A NAMED function of the same shape — its body one call of another name
+    // with its own parameters in order — is not this shape, measured
+    // 2026-10-13: the wheel's link held 34 — 15 of them vocabulary the
+    // surface wants (`fanout` is `map` that declares its applications
+    // independent, and the lowering keys on its spelling; `delay` is the
+    // surface spelling of `Delay`; `len`, `slice` and `byte_len` are the
+    // typed faces over raw word operations) and 19 second names for one
+    // home, deleted by reading, so the link holds the 15. A shape that
+    // convicts a spelling the surface wants claims the language is wrong, so
+    // a named forwarder is a reader's question, never a count.
+    false,
   },
   CsEffectfulLambda => match body {
     NExpr(LambdaExpr(params, lbody)) => lambda_is_written_as_a_mint(params, lbody) && !lambda_is_eta(params, lbody) && lambda_carries_row(h),
@@ -1506,7 +1511,7 @@ fn census_matches(shape: CensusShape, h, body: NodeBody) with !Mutate = match sh
   // reason exactly as the wildcard-zero convention set.
   match body {
     NExpr(BinOpExpr(op, _, r)) => match op {
-      BOr => match graph_node_body(node_handle(r)) {
+      BOr => match graph_node_body(r) {
         NExpr(LitBool(v)) => v,
         _ => false,
       },
@@ -1520,7 +1525,7 @@ fn census_matches(shape: CensusShape, h, body: NodeBody) with !Mutate = match sh
   // bug list). The subtree search walks the weave's own tree edge
   // (body_child_handles), fuel-bounded by the arg tree's real depth.
   match body {
-    NExpr(CallExpr(callee, args)) => match graph_node_body(node_handle(callee)) {
+    NExpr(CallExpr(callee, args)) => match graph_node_body(callee) {
       NExpr(VarRef(cn)) => if cn == "report" { any_subtree_prints(args, 0, len(args)) } else { false },
       _ => false,
     },
@@ -1643,11 +1648,7 @@ fn census_matches(shape: CensusShape, h, body: NodeBody) with !Mutate = match sh
   // signed clauses are FnStmt's own field, and the call is the weave's
   // tree edge walked to the callee's VarRef.
   match body {
-    NStmt(FnStmt(_, params, _, effs, fbody)) => if len(effs) == 0 {
-      false
-    } else {
-      subtree_calls_param(node_handle(fbody), map(param_name, params), 64)
-    },
+    NStmt(FnStmt(_, params, _, effs, fbody)) => if len(effs) == 0 { false } else { subtree_calls_param(fbody, map(param_name, params), 64) },
     _ => false,
   },
   CsAuthoredPositiveRow => // The declared clauses are `FnStmt`'s own field — the row is read where
@@ -1736,15 +1737,13 @@ fn comment_tokens(t: String) = t |> words |> map(token_core)
 
 fn token_core(w: String) = if byte_len(w) == 0 {
   w
-} else if !token_byte(byte_at(w, 0)) {
+} else if !is_alnum(byte_at(w, 0)) {
   token_core(str_slice(w, 1, byte_len(w)))
-} else if !token_byte(byte_at(w, byte_len(w) - 1)) {
+} else if !is_alnum(byte_at(w, byte_len(w) - 1)) {
   token_core(str_slice(w, 0, byte_len(w) - 1))
 } else {
   w
 }
-
-fn token_byte(b) with Pure = is_alnum(b)
 
 // A commit token: seven to forty lowercase hex bytes, with a digit and a
 // letter both — a count is all digits and a word is all letters.
@@ -1833,7 +1832,7 @@ fn any_vtable_field(flds, i, n) with !Mutate = if i >= n {
 } else {
   match list_index(flds, i) {
     (fname, fval) => if starts_with(fname, "fn_") || starts_with(fname, "handler_") {
-      match graph_node_body(node_handle(fval)) {
+      match graph_node_body(fval) {
         NExpr(LambdaExpr(_, _)) => true,
         _ => any_vtable_field(flds, i + 1, n),
       }
@@ -1861,9 +1860,9 @@ fn adjacent_handle_params(names) = match names {
   _ => false,
 }
 
-fn flag_int_compare(a, b) = match graph_node_body(node_handle(a)) {
+fn flag_int_compare(a, b) = match graph_node_body(a) {
   NExpr(VarRef(n)) => if n == "mode" || n == "token_kind" || n == "scheme_kind" {
-    match graph_node_body(node_handle(b)) {
+    match graph_node_body(b) {
       NExpr(LitInt(_)) => true,
       _ => false,
     }
@@ -1876,11 +1875,7 @@ fn flag_int_compare(a, b) = match graph_node_body(node_handle(a)) {
 fn any_subtree_prints(nodes, i, n) with !Mutate = if i >= n {
   false
 } else {
-  if subtree_prints(node_handle(list_index(nodes, i)), 64) {
-    true
-  } else {
-    any_subtree_prints(nodes, i + 1, n)
-  }
+  if subtree_prints(list_index(nodes, i), 64) { true } else { any_subtree_prints(nodes, i + 1, n) }
 }
 
 fn subtree_prints(h, fuel) with !Mutate = if fuel <= 0 {
@@ -1888,7 +1883,7 @@ fn subtree_prints(h, fuel) with !Mutate = if fuel <= 0 {
 } else {
   let body = graph_node_body(h)
   let here = match body {
-    NExpr(CallExpr(callee, _)) => match graph_node_body(node_handle(callee)) {
+    NExpr(CallExpr(callee, _)) => match graph_node_body(callee) {
       NExpr(VarRef(cn)) => cn == "println" || cn == "print" || cn == "print_string",
       _ => false,
     },
@@ -1911,7 +1906,7 @@ fn subtree_calls_param(h, pnames, fuel) with !Mutate = if fuel <= 0 {
 } else {
   let body = graph_node_body(h)
   let here = match body {
-    NExpr(CallExpr(callee, _)) => match graph_node_body(node_handle(callee)) {
+    NExpr(CallExpr(callee, _)) => match graph_node_body(callee) {
       NExpr(VarRef(cn)) => set_contains(pnames, cn),
       _ => false,
     },
@@ -1987,7 +1982,7 @@ fn any_wildcard_zero(arms, i, n) = if i >= n {
 } else {
   match list_index(arms, i) {
     (p, b) => match p {
-      PWild => match graph_node_body(node_handle(b)) {
+      PWild => match graph_node_body(b) {
         NExpr(LitInt(0)) => true,
         _ => any_wildcard_zero(arms, i + 1, n),
       },
@@ -2007,10 +2002,10 @@ fn any_wildcard_fabricates(arms, i, n) = if i >= n {
   }
 }
 
-fn wildcard_body_fabricates(b) = match graph_node_body(node_handle(b)) {
+fn wildcard_body_fabricates(b) = match graph_node_body(b) {
   NExpr(LitString(s)) => // drift-audit: ignore — the census DETECTOR reading the drifted literal from the weave, not an effect-name dispatch
   s == "" || s == "Pure",
-  NExpr(CallExpr(callee, _)) => match graph_node_body(node_handle(callee)) {
+  NExpr(CallExpr(callee, _)) => match graph_node_body(callee) {
     NExpr(VarRef(cn)) => cn == "Forall" || cn == "TVar",
     _ => false,
   },
@@ -2048,7 +2043,7 @@ fn wildcard_body_fabricates(b) = match graph_node_body(node_handle(b)) {
 // (a structural fold's self-call recurses on CHILDREN, never on an
 // incremented counter, so derived-fold-shaped recursion never fires).
 fn recursion_shape_of(fn_handle) = match graph_node_body(fn_handle) {
-  NStmt(FnStmt(name, params, _, _, body)) => self_call_increments(node_handle(body), name, params |> map(param_name)),
+  NStmt(FnStmt(name, params, _, _, body)) => self_call_increments(body, name, params |> map(param_name)),
   _ => false,
 }
 
@@ -2103,26 +2098,26 @@ fn keep_run(run, acc) = if run >= 2 { acc ++ [run] } else { acc }
 fn chain_links(nodes) = if len(nodes) < 2 {
   []
 } else {
-  range(0, len(nodes) - 1) |> map((i) => match graph_node_body(node_handle(nodes[i])) {
+  range(0, len(nodes) - 1) |> map((i) => match graph_node_body(nodes[i]) {
     NStmt(LetStmt(PVar(name), _, _)) => let_feeds_next(name, nodes, i),
     _ => false,
   })
 }
 
 fn let_feeds_next(name: String, nodes, i) =
-  count_var_uses(node_handle(nodes[i + 1]), name) == 1 && rest_uses(name, nodes, i + 2) == 0
+  count_var_uses(nodes[i + 1], name) == 1 && rest_uses(name, nodes, i + 2) == 0
 
 // The suffix's total use-count — a `|>` chain over the tail, not an
 // index threaded through a self-call (iteration is topology; this is
 // the tier's own neighbour, convicted by the tier it sits four lines
 // above).
 fn rest_uses(name: String, nodes, j) =
-  nodes |> drop(j) |> map((n) => count_var_uses(node_handle(n), name)) |> sum
+  nodes |> drop(j) |> map((n) => count_var_uses(n, name)) |> sum
 
 // pipe_shape_of — the verb-shape read over a fn's body spine, the
 // audit tier's entry (build_audit_report reads it per fn).
 fn pipe_shape_of(fn_handle) = match graph_node_body(fn_handle) {
-  NStmt(FnStmt(_, _, _, _, body)) => match graph_node_body(node_handle(body)) {
+  NStmt(FnStmt(_, _, _, _, body)) => match graph_node_body(body) {
     NExpr(BlockExpr(stmts, fin)) => chain_scan(stmts ++ [fin]),
     _ => [],
   },
@@ -2142,7 +2137,7 @@ fn pipe_shape_of(fn_handle) = match graph_node_body(fn_handle) {
 // The escape class is DEP `Hβ.infer.use-profile` (band N): until the
 // escape-bit lands, the read speaks the two classes it can prove.
 fn anonymity_shape_of(fn_handle) with !Mutate = match graph_node_body(fn_handle) {
-  NStmt(FnStmt(_, _, _, _, body)) => lambda_shapes(node_handle(body), (0, 0)),
+  NStmt(FnStmt(_, _, _, _, body)) => lambda_shapes(body, (0, 0)),
   _ => (0, 0),
 }
 
@@ -2174,18 +2169,18 @@ fn self_call_increments(h, name: String, pnames) = {
   here || (body_child_handles(body) |> any((c) => self_call_increments(c, name, pnames)))
 }
 
-fn callee_names(callee, name: String) = match graph_node_body(node_handle(callee)) {
+fn callee_names(callee, name: String) = match graph_node_body(callee) {
   NExpr(VarRef(n)) => n == name,
   _ => false,
 }
 
-fn arg_is_increment(arg, pnames) = match graph_node_body(node_handle(arg)) {
+fn arg_is_increment(arg, pnames) = match graph_node_body(arg) {
   NExpr(BinOpExpr(BAdd, l, r)) => param_plus_one(l, r, pnames) || param_plus_one(r, l, pnames),
   _ => false,
 }
 
-fn param_plus_one(a, b, pnames) = match graph_node_body(node_handle(a)) {
-  NExpr(VarRef(n)) => string_in_list(pnames, n) && match graph_node_body(node_handle(b)) {
+fn param_plus_one(a, b, pnames) = match graph_node_body(a) {
+  NExpr(VarRef(n)) => string_in_list(pnames, n) && match graph_node_body(b) {
     NExpr(LitInt(1)) => true,
     _ => false,
   },
@@ -2213,8 +2208,8 @@ fn lambda_is_written_as_a_mint(params, lbody) = match arm_list_of(params, lbody)
 // The eta test reads the body's OWN shape: exactly CallExpr(VarRef(g),
 // args) with g resolving OUTSIDE the params (a param-named callee has
 // no site-independent name to pass) and args ≡ the params in order.
-fn lambda_is_eta(params, lbody) = match graph_node_body(node_handle(lbody)) {
-  NExpr(CallExpr(callee, args)) => match graph_node_body(node_handle(callee)) {
+fn lambda_is_eta(params, lbody) = match graph_node_body(lbody) {
+  NExpr(CallExpr(callee, args)) => match graph_node_body(callee) {
     NExpr(VarRef(g)) => {
       let pnames = params |> map(param_name)
       !string_in_list(pnames, g) && args_mirror_params(args, pnames)
@@ -2227,7 +2222,7 @@ fn lambda_is_eta(params, lbody) = match graph_node_body(node_handle(lbody)) {
 fn args_mirror_params(args, pnames) =
   len(args) == len(pnames) && (range(0, len(args)) |> all((i) => arg_is_var(args[i], pnames[i])))
 
-fn arg_is_var(a, n: String) = match graph_node_body(node_handle(a)) {
+fn arg_is_var(a, n: String) = match graph_node_body(a) {
   NExpr(VarRef(v)) => v == n,
   _ => false,
 }
@@ -2309,7 +2304,7 @@ fn fn_decl_of(h) = match graph_node_body(h) {
 
 fn head_failures(decl) = match decl {
   (name, params, retty, effs, body) => {
-    let authored = render_fn_head(name, params, graph_node_body(node_handle(retty)), effs, body)
+    let authored = render_fn_head(name, params, graph_node_body(retty), effs, body)
     let eye = match env_lookup(name) {
       Some((sch, _, _)) => match chase_type_deep(judgment_ty(sch)) {
         TFun(ps, ret, row) => "fn {show_head(name, ps, ret, row)} =",
@@ -2325,7 +2320,7 @@ fn head_failures(decl) = match decl {
 // formatter: empty when it comes back as itself.
 fn round_trip_failure(face: String, head: String) = match sole_decl_body("{head} 0" |> lex |> parse_program ~> diag_quiet) {
   Some(NStmt(FnStmt(n, ps, r, es, b))) => {
-    let back = render_fn_head(n, ps, graph_node_body(node_handle(r)), es, b)
+    let back = render_fn_head(n, ps, graph_node_body(r), es, b)
     if back == head { [] } else { ["{face}: {head}  ⇢  {back}"] }
   },
   _ => ["{face}: {head}  ⇢  does not parse as one declaration"],
@@ -2333,7 +2328,7 @@ fn round_trip_failure(face: String, head: String) = match sole_decl_body("{head}
 
 // The body of a parse that is exactly one statement.
 fn sole_decl_body(stmts) = match stmts {
-  [d] => Some(graph_node_body(node_handle(d))),
+  [d] => Some(graph_node_body(d)),
   _ => None,
 }
 
@@ -2343,7 +2338,7 @@ fn named_lines(head: String, line, items) with !Mutate = [head] ++ map(line, ite
 
 // Where a declaration stands: the module its node registered under and the
 // line the parser wrote.
-fn decl_at(h) with !Mutate = match parse_span_of(h) {
+fn decl_at(h) with !Mutate = match graph_span_of(h) {
   Span(sl, _, _, _) => "  at {module_name_of_handle(graph_module_of(h))}:{int_to_str(sl)}",
 }
 
@@ -2470,7 +2465,7 @@ fn known_width(ty) with !Mutate = "{repr_name(repr_of(ty))} ({pin_word(ty_has_re
 // list: none, or one.
 fn decl_body(decl) with !Mutate = match decl {
   Some(h) => match graph_node_body(h) {
-    NStmt(FnStmt(_, _, _, _, body)) => [node_handle(body)],
+    NStmt(FnStmt(_, _, _, _, body)) => [body],
     _ => [],
   },
   None => [],
@@ -2616,7 +2611,7 @@ fn ty_has_repr_pin(ty) with Pure = match ty {
 fn fanout_sites(h, tees) with !Mutate = {
   let body = graph_node_body(h)
   match body {
-    NExpr(PipeExpr(PTee, l, r)) => fanout_sites(node_handle(l), push(tees, tee_handler_name(r))),
+    NExpr(PipeExpr(PTee, l, r)) => fanout_sites(l, push(tees, tee_handler_name(r))),
     NExpr(FanoutExpr(_)) => [where_site(h, Branches(FanDistribute, boundary_width(h)), tees)] ++ child_sites(body, tees),
     NExpr(PipeExpr(PFanout(fan), _, _)) => [where_site(h, Branches(fan, boundary_width(h)), tees)] ++ child_sites(body, tees),
     NExpr(CallExpr(f, _)) => if callee_is_fanout(f) {
@@ -2624,8 +2619,8 @@ fn fanout_sites(h, tees) with !Mutate = {
     } else {
       child_sites(body, tees)
     },
-    NExpr(LambdaExpr(_, lb)) => fanout_sites(node_handle(lb), []),
-    NStmt(FnStmt(_, _, _, _, fb)) => fanout_sites(node_handle(fb), []),
+    NExpr(LambdaExpr(_, lb)) => fanout_sites(lb, []),
+    NStmt(FnStmt(_, _, _, _, fb)) => fanout_sites(fb, []),
     _ => child_sites(body, tees),
   }
 }
@@ -2663,14 +2658,14 @@ fn demanded_vias(name: String) with !Mutate = {
 // standing in the extent of such an install, each paired with the fn whose
 // frame holds the install.
 fn decl_seeds(acc, h) with !Mutate = match graph_node_body(h) {
-  NStmt(FnStmt(fname, _, _, _, body)) => extent_calls(node_handle(body), [], fname, acc),
+  NStmt(FnStmt(fname, _, _, _, body)) => extent_calls(body, [], fname, acc),
   _ => acc,
 }
 
 fn extent_calls(h, tees, via: String, acc) with !Mutate = {
   let body = graph_node_body(h)
   match body {
-    NExpr(PipeExpr(PTee, l, r)) => extent_calls(node_handle(l), push(tees, tee_handler_name(r)), via, acc),
+    NExpr(PipeExpr(PTee, l, r)) => extent_calls(l, push(tees, tee_handler_name(r)), via, acc),
     NExpr(CallExpr(f, _)) => fold(seed_call(acc, f, tees, via), extent_calls_step(tees, via), body_child_handles(body)),
     NExpr(LambdaExpr(_, _)) => acc,
     NStmt(FnStmt(_, _, _, _, _)) => acc,
@@ -2681,7 +2676,7 @@ fn extent_calls(h, tees, via: String, acc) with !Mutate = {
 fn extent_calls_step(tees, via: String, acc, h) with !Mutate = extent_calls(h, tees, via, acc)
 
 fn seed_call(acc, f, tees, via: String) with !Mutate = if schedule_is_threaded(schedule_of(tees)) {
-  match graph_node_body(node_handle(f)) {
+  match graph_node_body(f) {
     NExpr(VarRef(callee)) => push(acc, (callee, via)),
     _ => acc,
   }
@@ -2742,7 +2737,7 @@ fn demand_step(decls, name: String, acc, callee: String) with !Mutate = match ac
 // the pass the reach rule itself reads).
 fn direct_callees(decls, name: String) with !Mutate = match smap_get(decls, name) {
   Some(h) => match graph_node_body(h) {
-    NStmt(FnStmt(_, _, _, _, body)) => match fanout_fact((false, []), node_handle(body)) {
+    NStmt(FnStmt(_, _, _, _, body)) => match fanout_fact((false, []), body) {
       (_, callees) => callees,
     },
     _ => [],
@@ -2757,7 +2752,7 @@ fn direct_callees(decls, name: String) with !Mutate = match smap_get(decls, name
 fn tee_lines(h) with !Mutate = {
   let body = graph_node_body(h)
   match body {
-    NExpr(PipeExpr(PTee, l, r)) => tee_line(h, tee_handler_name(r)) ++ tee_lines(node_handle(l)),
+    NExpr(PipeExpr(PTee, l, r)) => tee_line(h, tee_handler_name(r)) ++ tee_lines(l),
     _ => body_child_handles(body) |> flat_map(tee_lines),
   }
 }
@@ -2820,7 +2815,7 @@ fn env_demand_at(acc, c) = match env_read_demand(c) {
 // is honest about its dynamic demand: the host-crossing handler must receive the whole
 // environment for the op to preserve its Option(String) semantics.
 fn env_read_demand(c) = match graph_node_body(c) {
-  NExpr(CallExpr(callee, args)) => match graph_node_body(node_handle(callee)) {
+  NExpr(CallExpr(callee, args)) => match graph_node_body(callee) {
     NExpr(VarRef(op)) => if (op == "env" || op == "env_opt") && op_effect_of(op) == Some("Environ") {
       match (op, literal_first_arg(args)) {
         ("env", Some(s)) => Some((s, "required")),
@@ -2838,7 +2833,7 @@ fn env_read_demand(c) = match graph_node_body(c) {
 
 // The first argument's text, when the call writes it as a string literal.
 fn literal_first_arg(args) = match args {
-  [a, ..._] => match graph_node_body(node_handle(a)) {
+  [a, ..._] => match graph_node_body(a) {
     NExpr(LitString(s)) => Some(s),
     _ => None,
   },
@@ -2865,7 +2860,7 @@ fn serving_up(en: String, child, parent, seen) = match parent {
       },
       _ => [],
     },
-    NExpr(PipeExpr(PTee, l, r)) => if node_handle(l) == child && handler_answers_effect(tee_handler_name(r), en) {
+    NExpr(PipeExpr(PTee, l, r)) => if l == child && handler_answers_effect(tee_handler_name(r), en) {
       [tee_handler_name(r)]
     } else {
       serving_up(en, p, graph_parent_of(p), seen)
@@ -2896,7 +2891,7 @@ fn enclosing_decl_name(h) = match enclosing_decl(h) {
   Some(d) => body_decl_name(graph_node_body(d)),
 }
 
-fn env_read_site(c) = match parse_span_of(c) {
+fn env_read_site(c) = match graph_span_of(c) {
   Span(l, col, _, _) => "{module_name_of_handle(graph_module_of(c))}:{int_to_str(l)}:{int_to_str(col)}",
 }
 
@@ -2959,7 +2954,7 @@ fn schedule_word(s) = match s {
 // answers the class representative's position, and a type declaration's
 // node is never bound at all, so its reason carries none.
 fn decl_site_of(handle) with !Mutate =
-  (module_name_of_handle(graph_module_of(handle)), parse_span_of(handle))
+  (module_name_of_handle(graph_module_of(handle)), graph_span_of(handle))
 
 // Every name a declaration declares, each at the declaration's site: its
 // own (`body_decl_name`, the one reader of it), then a type's constructors,
@@ -3009,7 +3004,7 @@ fn arms_for_op(op_name: String, h) with !Mutate = match graph_node_body(h) {
 
 fn arm_answers(op_name: String, arm) = arm.op_name == op_name
 
-fn arm_site(hname: String, arm) with !Mutate = (hname, decl_at(node_handle(arm.body)))
+fn arm_site(hname: String, arm) with !Mutate = (hname, decl_at(arm.body))
 
 // ─── Every value written into a handler's state field ──────────────
 //
@@ -3028,7 +3023,7 @@ fn field_write_lines(field: String, h) with !Mutate = match graph_node_body(h) {
 
 fn state_named(field: String, st) = st.name == field
 
-fn state_writes(hname: String, st) with !Mutate = match graph_binder_of(node_handle(st.init)) {
+fn state_writes(hname: String, st) with !Mutate = match graph_binder_of(st.init) {
   Some(StateFact(f)) => [
     "{hname}.{st.name}: {int_to_str(len(f.writes))} write(s), {int_to_str(len(f.stores))} in-place store(s)"
   ] ++ map(write_line, f.writes) ++ map(store_line, f.stores),

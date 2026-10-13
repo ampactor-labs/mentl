@@ -594,27 +594,24 @@ fn decl_index_cell(acc, c) = match c {
   (_h, _p, _s, decls) => fold(acc, decl_index_node, decls),
 }
 
-fn decl_index_node(acc, d) = {
-  let h = node_handle(d)
-  match graph_node_body(h) {
-    NStmt(FnStmt(name, _, _, _, _)) => smap_add(acc, name, h),
-    NStmt(HandlerDeclStmt(hname, _, _, _, _, _)) => smap_add(acc, hname, h),
-    NStmt(TypeDefStmt(_, variants)) => fold(
-      acc,
-      (a, v) => match v {
-        (vname, _, _) => smap_add(a, vname, h),
-      },
-      variants
-    ),
-    NStmt(EffectDeclStmt(_, _, ops)) => fold(
-      acc,
-      (a, op) => match op {
-        (oname, _, _, _) => smap_add(a, oname, h),
-      },
-      ops
-    ),
-    _ => acc,
-  }
+fn decl_index_node(acc, h) = match graph_node_body(h) {
+  NStmt(FnStmt(name, _, _, _, _)) => smap_add(acc, name, h),
+  NStmt(HandlerDeclStmt(hname, _, _, _, _, _)) => smap_add(acc, hname, h),
+  NStmt(TypeDefStmt(_, variants)) => fold(
+    acc,
+    (a, v) => match v {
+      (vname, _, _) => smap_add(a, vname, h),
+    },
+    variants
+  ),
+  NStmt(EffectDeclStmt(_, _, ops)) => fold(
+    acc,
+    (a, op) => match op {
+      (oname, _, _, _) => smap_add(a, oname, h),
+    },
+    ops
+  ),
+  _ => acc,
 }
 
 // rank_of — RANK IS A PROJECTION of the LIVE candidate (the resolved
@@ -628,8 +625,8 @@ fn decl_index_node(acc, d) = {
 // Computed ONCE per candidate at sort entry — the same refs walk the
 // stored form paid at enrichment, moved to the read point.
 fn rank_of(c, hole_h, reach, decls) with !Mutate = match c {
-  EnrichedCandidate(cr) => match graph_node_body(node_handle(cr.node)) {
-    NExpr(CallExpr(callee, _)) => match graph_node_body(node_handle(callee)) {
+  EnrichedCandidate(cr) => match graph_node_body(cr.node) {
+    NExpr(CallExpr(callee, _)) => match graph_node_body(callee) {
       NExpr(VarRef(name)) => candidate_rank(name, hole_h, reach, decls),
       _ => 0.5,
     },
@@ -888,10 +885,7 @@ fn one_unit_candidate(context) =
 // A `??` where nothing binds the position yet: the shape narrows, and the
 // next proposal is made inside it.
 fn one_hole_candidate(context) = [
-  seed_candidate(
-    synthesize_hole_node(),
-    Inferred("a nested ?? — the shape narrows, the fill recurses")
-  )
+  seed_candidate(synth_hole_node(), Inferred("a nested ?? — the shape narrows, the fill recurses"))
 ]
 
 fn one_continuation_candidate(context) =
@@ -1159,9 +1153,8 @@ fn candidate_proven(node, hole_h, reason) = {
   {
     infer_expr(node)
   } ~> row_gate ~> store_ages ~> infer_ctx ~> fresh_for_inference ~> resume_summaries_ctx
-  let h = node_handle(node)
-  unify(hole_h, h, graph_span_of(h), reason)
-  verify_after_apply(h) && all(refinement_admits(??, h), graph_claims_of(hole_h))
+  unify(hole_h, node, graph_span_of(node), reason)
+  verify_after_apply(node) && all(refinement_admits(??, node), graph_claims_of(hole_h))
 }
 
 // ─── Verification — every candidate through the one gate ────────────
@@ -1211,7 +1204,7 @@ fn collapse_equivalent(cands) = fold([], collapse_step, cands)
 
 fn collapse_step(acc, c) = if any(same_node_as(c), acc) { acc } else { acc ++ [c] }
 
-fn same_node_as(c, k) with Pure = node_handle(candidate_node(k)) == node_handle(candidate_node(c))
+fn same_node_as(c, k) with Pure = candidate_node(k) == candidate_node(c)
 
 fn candidate_node(candidate) with Pure = match candidate {
   EnrichedCandidate(c) => c.node,
@@ -1230,8 +1223,8 @@ fn candidate_reason(candidate) with Pure = match candidate {
 // here — a refused `MkBox(…)` is exactly the kind of refusal a developer
 // needs to see, and it has an arg. A skeleton with no head name teaches
 // nothing and stays out.
-fn candidate_head_name(node) = match graph_node_body(node_handle(node)) {
-  NExpr(CallExpr(callee, _)) => match graph_node_body(node_handle(callee)) {
+fn candidate_head_name(node) = match graph_node_body(node) {
+  NExpr(CallExpr(callee, _)) => match graph_node_body(callee) {
     NExpr(VarRef(name)) => Some(name),
     _ => None,
   },
@@ -1245,26 +1238,19 @@ fn candidate_head_name(node) = match graph_node_body(node_handle(node)) {
 // already had, so a candidate with no cheaper equivalent pays nothing.
 fn extract_optimal(candidate) = match candidate {
   EnrichedCandidate(c) => {
-    let h = node_handle(c.node)
-    let cheapest = egraph_extract(h)
-    if cheapest == h {
+    let cheapest = egraph_extract(c.node)
+    if cheapest == c.node {
       candidate
     } else {
-      // The CHEAPEST MEMBER IS the candidate, at its own handle: its body
-      // and its span are the graph's there, never one node's body paired
-      // with another's span. A candidate stands at no position
-      // (`synth_node` mints it at the zero span) and neither does a folded
-      // constant, and the position a proposal fills is the hole's, which
-      // the accept reads off the hole's own handle. The rewrite's own
+      // The CHEAPEST MEMBER IS the candidate: a node is its handle, and its
+      // body and span are the graph's there. A candidate stands at no
+      // position (`synth_node` mints it at the zero span) and neither does a
+      // folded constant, and the position a proposal fills is the hole's,
+      // which the accept reads off the hole's own handle. The rewrite's own
       // justification belongs on the canon EDGE — the one kernel write
       // that carries no Reason (Hβ.egraph.canon-edge-carries-reason) — so
       // the candidate's seed Reason is the honest chain.
-      EnrichedCandidate({
-        node: N(graph_node_body(cheapest), graph_span_of(cheapest), cheapest),
-        origin: c.origin,
-        reason: c.reason,
-        writes: c.writes,
-      })
+      EnrichedCandidate({node: cheapest, origin: c.origin, reason: c.reason, writes: c.writes})
     }
   },
 }
@@ -1286,14 +1272,14 @@ fn reference_before_mint(survivors) = if any(is_reference_candidate, survivors) 
 }
 
 fn is_reference_candidate(c) = match c {
-  EnrichedCandidate(cr) => match graph_node_body(node_handle(cr.node)) {
+  EnrichedCandidate(cr) => match graph_node_body(cr.node) {
     NExpr(VarRef(_)) => true,
     _ => false,
   },
 }
 
 fn is_not_lambda_candidate(c) = match c {
-  EnrichedCandidate(cr) => match graph_node_body(node_handle(cr.node)) {
+  EnrichedCandidate(cr) => match graph_node_body(cr.node) {
     NExpr(LambdaExpr(_, _)) => false,
     _ => true,
   },
@@ -1327,8 +1313,8 @@ fn verdict_of(survivors, target_ty, context) = match distinct_by_canon(survivors
 fn distinct_by_canon(cands, acc) = if len(cands) == 0 {
   acc
 } else {
-  let root = egraph_extract(node_handle(candidate_node(cands[0])))
-  if any({ c => egraph_extract(node_handle(candidate_node(c))) == root }, acc) {
+  let root = egraph_extract(candidate_node(cands[0]))
+  if any({ c => egraph_extract(candidate_node(c)) == root }, acc) {
     distinct_by_canon(rest(cands), acc)
   } else {
     distinct_by_canon(rest(cands), push(acc, cands[0]))
@@ -1466,7 +1452,7 @@ fn nullary_ctor_step(acc, node) = match acc {
   },
 }
 
-fn nullary_ctor_name(node) = match graph_node_body(node_handle(node)) {
+fn nullary_ctor_name(node) = match graph_node_body(node) {
   NExpr(VarRef(name)) => match env_lookup(name) {
     Some(entry) => match entry {
       (_, _, kind) => match kind {
@@ -1540,7 +1526,7 @@ fn candidate_denotation(seen, node) = match callee_name_of(node) {
       candidate_denotation([name] ++ seen, body),
     }
   },
-  None => node_const(node_handle(node)),
+  None => node_const(node),
 }
 
 fn denotation_unread(d) with Pure = match d {
@@ -1592,8 +1578,6 @@ fn synthesize_float_literal_node(f) with !Mutate = synth_node(LitFloat(f))
 fn synthesize_string_literal_node(s) with !Mutate = synth_node(LitString(s))
 
 fn synthesize_unit_literal_node() with !Mutate = synth_node(LitUnit)
-
-fn synthesize_hole_node() = synth_hole_node()
 
 fn synthesize_resume_node() with !Mutate = synth_node(ResumeExpr(synth_unit_node(), []))
 

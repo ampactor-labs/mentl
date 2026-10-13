@@ -98,8 +98,8 @@ fn rewrite_to(from, to) = if graph_canon_at(from) == to {
 // x + 0 ≡ x  and  0 + x ≡ x  — the survivor is kept, never gated.
 fn rw_add_identity(handle) = match graph_node_body(handle) {
   NExpr(BinOpExpr(BAdd, l, r)) => {
-    let lh = egraph_extract(node_handle(l))
-    let rh = egraph_extract(node_handle(r))
+    let lh = egraph_extract(l)
+    let rh = egraph_extract(r)
     if is_zero(rh) {
       rewrite_to(handle, lh)
     } else if is_zero(lh) {
@@ -114,8 +114,8 @@ fn rw_add_identity(handle) = match graph_node_body(handle) {
 // x * 1 ≡ x  and  1 * x ≡ x  — survivor kept, never gated.
 fn rw_mul_identity(handle) = match graph_node_body(handle) {
   NExpr(BinOpExpr(BMul, l, r)) => {
-    let lh = egraph_extract(node_handle(l))
-    let rh = egraph_extract(node_handle(r))
+    let lh = egraph_extract(l)
+    let rh = egraph_extract(r)
     if is_one(rh) {
       rewrite_to(handle, lh)
     } else if is_one(lh) {
@@ -132,8 +132,8 @@ fn rw_mul_identity(handle) = match graph_node_body(handle) {
 // The canonical target is the zero literal node, already in the fabric.
 fn rw_mul_absorb(handle) = match graph_node_body(handle) {
   NExpr(BinOpExpr(BMul, l, r)) => {
-    let lh = egraph_extract(node_handle(l))
-    let rh = egraph_extract(node_handle(r))
+    let lh = egraph_extract(l)
+    let rh = egraph_extract(r)
     if is_zero(rh) && is_pure(lh) {
       rewrite_to(handle, rh)
     } else if is_zero(lh) && is_pure(rh) {
@@ -148,8 +148,8 @@ fn rw_mul_absorb(handle) = match graph_node_body(handle) {
 // x - 0 ≡ x — survivor kept, never gated. (0 - x is NOT x, so left only.)
 fn rw_sub_identity(handle) = match graph_node_body(handle) {
   NExpr(BinOpExpr(BSub, l, r)) => {
-    let rh = egraph_extract(node_handle(r))
-    if is_zero(rh) { rewrite_to(handle, egraph_extract(node_handle(l))) } else { false }
+    let rh = egraph_extract(r)
+    if is_zero(rh) { rewrite_to(handle, egraph_extract(l)) } else { false }
   },
   _ => false,
 }
@@ -157,8 +157,8 @@ fn rw_sub_identity(handle) = match graph_node_body(handle) {
 // x / 1 ≡ x — survivor kept, never gated.
 fn rw_div_identity(handle) = match graph_node_body(handle) {
   NExpr(BinOpExpr(BDiv, l, r)) => {
-    let rh = egraph_extract(node_handle(r))
-    if is_one(rh) { rewrite_to(handle, egraph_extract(node_handle(l))) } else { false }
+    let rh = egraph_extract(r)
+    if is_one(rh) { rewrite_to(handle, egraph_extract(l)) } else { false }
   },
   _ => false,
 }
@@ -191,8 +191,8 @@ fn const_int(handle) = match graph_node_body(handle) {
 }
 
 fn rw_const_fold(handle) = match graph_node_body(handle) {
-  NExpr(BinOpExpr(op, l, r)) => match const_int(egraph_extract(node_handle(l))) {
-    Some(a) => match const_int(egraph_extract(node_handle(r))) {
+  NExpr(BinOpExpr(op, l, r)) => match const_int(egraph_extract(l)) {
+    Some(a) => match const_int(egraph_extract(r)) {
       Some(b) => match int_fold(op, a, b) {
         Some(v) => // Already folded to v on a prior pass? The current canonical
         // form is a literal v — draw nothing, report no progress.

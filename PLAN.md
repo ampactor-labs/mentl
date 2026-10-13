@@ -659,7 +659,14 @@ RE-INSTRUMENTED 2026-08-07 (the arena's build step 0,
 `Hβ.perf.per-decl-arena`).** The march's m3 leg — the self-compile —
 runs under GNU time: the cost line prints per run, the pin's mechanical
 block carries it, and `selfcompile_peak_kb_max` in verify-baseline
-ratchets the peak (a breach refuses the repin, seen RED at ceiling 1).
+ratchets the peak (a breach refuses the repin, seen RED at ceiling 1) —
+read as the minimum of three on a breach, and held 1% over the highest
+reading among the MACHINES the board runs on, since 2026-10-13: the CI
+runner read one boot at 471,568 KB where this machine read 460,108. Beside
+it `selfcompile_line_peak_kb_max` ratchets the image's own high-water, the
+guest's `arena:` line peak, a pure function of the computation that two
+self-compiles read identically (494,011 KB) while their RSS moved — the
+memory ratchet no machine moves.
 Measured at the landing: ~8.4s wall, ~1.70GB peak RSS (three reads
 within ±0.03% — the earlier "~694MB" claim was an era-stale number this
 read corrects). The arena's win landed as that ceiling FALLING — 1,050,000
@@ -832,38 +839,37 @@ Ground FIRST: `bash tools/state.sh` (the whole board). State-as-PROJECTION is
 arbiter. Where a design section and this audit disagree, §4/§5 is the TARGET
 and this is the STATE.
 
-- **THE PROGRAM IS NOT YET THE GRAPH: ITS STRUCTURE IS NESTED VALUES
-  (measured 2026-10-10, Morgan's "what tree?"; its readers moved 2026-10-13,
-  Landing 4 S1).** The judgment is a graph:
-  every node has a handle, everything the judgment learns about a node is a
-  column at that handle (its type cell, span, parent, reason, comment,
-  charges, claims, gates, binder facts), and type and row variables are
-  union-find cells. The program is not. A node is a record `N(NodeBody,
-  ValidSpan, Int)`, and every `Expr` holds its children as whole records
-  (`BinOpExpr(BinOp, Node, Node)`), so what contains what lives in the
-  nesting, the graph's parent edge is computed from it at registration, and
-  the passes walk it. Since S1 (2026-10-13) every reader reads a node's body
-  and span through the graph: 7 sites name the record — six build it (the
-  parser's three mints and the two re-wraps of a let's handle in
-  `desugar_block`, and the proposer's extracted candidate) and one takes it
-  apart (`node_handle`, the one read of it, beside `type Node`) — 520 ask a
-  node for its handle, 364 read a body through the graph and 55 a span,
-  where 288 sites built or took one apart, 225 asked a record for its
-  handle and 175 read the graph on 2026-10-10. The five places where record
-  and graph disagreed are decided for the graph: the one-arm match a
-  destructuring `let` becomes holds, in the graph, the let through its
-  block's end; the head renderer takes the annotation it renders; the
-  proposer's extracted candidate stands at its own handle and span; the
-  absent annotation, registered at no position, is read by nothing that asks
-  where it stands; and voice.mn's modifier bank is deleted with the register
-  that selected from it. The nesting still costs every change that should be one write: installing a
-  named chain, a rename, the session's edit (which re-parses a module), a
+- **THE PROGRAM'S NODES ARE THE GRAPH'S HANDLES; THE ONE-WRITE OPERATIONS
+  ON THEM ARE NOT YET BUILT (the structure face: measured 2026-10-10 as
+  nested records, Morgan's "what tree?"; cut 2026-10-13 at Landing 4 S1
+  and S2).** The judgment is a graph: every node has a handle, everything
+  the judgment learns about a node is a column at that handle (its body,
+  span, parent, type cell, reason, comment, charges, claims, gates, binder
+  facts), and type and row variables are union-find cells. Since S2 the
+  program is too: `type Node = Int`, a node IS its handle, a body holds its
+  children as handles (`BinOpExpr(BinOp, Node, Node)` is four words: a tag, the op
+  and two handles), the
+  parse mints a handle and registers the body at it and nothing else
+  (`mint_node_as`), and every reader asks the graph (`graph_node_body` at
+  384 sites, `graph_span_of` at 127). The record `N(NodeBody, ValidSpan,
+  Int)` — 288 sites built or took it apart on 2026-10-10, 225 asked it for
+  its handle — is no declaration, and neither is the one read S1 left it
+  (`node_handle`, 520 references inlined away — 496 calls and 24 passed as a
+  value); the five places where record and
+  graph disagreed were decided for the graph at S1 (the destructuring let's
+  match at the let's cell with the let-through-block extent, the head
+  renderer taking the annotation it renders, the proposer's candidate at its
+  own handle, the absent annotation read by nothing that asks where it
+  stands, voice.mn's modifier bank deleted with its register). What the face
+  still owes is S3, the writes the handle makes possible and nothing yet
+  makes: installing a named chain as one write at the install, a rename as
+  one write at the declaration, the session re-judging the nodes an edit
+  rewrote rather than re-parsing a module, a
   proposal rewriting in place. A reference is a name (`VarRef(String)`, M1's link), a
   type a value tree (`Ty`), a reason a value tree, and the lowered program a
-  second tree (`LowExpr`, 42 constructors): §11's one law in five faces. The
-  cut: a node IS its handle and a body holds its children as handles
-  (`Hβ.graph.positions-are-cells`, its first face; S2, the TRANSITION, is
-  the rename S1 made it).
+  second tree (`LowExpr`, 42 constructors): §11's one law in five faces, the
+  first of them cut (`Hβ.graph.positions-are-cells`, S1 and S2) and S3's
+  writes the next move on it.
 - **Regions are runtime since the arena** (2026-10-03): `(body) ~> arena` reclaims an extent's allocations at its exit
   except what its publication reaches. Ownership's regions stay what they
   were — compile-time root-tagging and return-transfer — and the arena does
@@ -1462,8 +1468,8 @@ table idx 0, so "prints WAT mid-inference" can mean "the parser ate my arm").
    crown proved that over eleven landings.
 3. **The cursor is the ULTIMATE-FORM arc — write the `.mn` in full.** NOT a
    first-light blocker to chase. Recent leaps that ARE the cursor: every node
-   of the AST a resolvable handle in the one graph (the fabric — its structure
-   is still nested records, §7's first bullet); the e-graph
+   of the AST a resolvable handle in the one graph (the fabric — a node is
+   its handle since S2, §7's first bullet carrying what the face still owes); the e-graph
    engine (effect-aware equality saturation) live in lower. The seed's weaker
    inference lags this and catches up ("then we make it work"); NEVER hedge the
    wheel against the seed — that fork (ultimate form vs safer-for-the-seed) IS
@@ -1550,13 +1556,17 @@ speaks ✗ now and the filter reads FAIL too.
 2026-10-10).** The board's largest open items are not separate projects.
 Each is the same violation — *a materialized view stored where an edge
 belonged* — and the oracle is what they add up to:
-- **STRUCTURE** (`N(NodeBody, ValidSpan, Int)`, named 2026-10-10): the
-  program's own edges, what contains what, held as records nested inside
-  records. The graph's parent edge is computed from the nesting, every pass
-  walks the nesting, and so a write to the graph at one node is invisible to
-  its ancestors. It is the face under the other four: a scheme, a reason and
-  a position are each a fact ABOUT a node, and the node itself was a value
-  the graph pointed into (§7's first bullet carries the measurement).
+- **STRUCTURE** (`N(NodeBody, ValidSpan, Int)`, named 2026-10-10; CUT
+  2026-10-13 at Landing 4 S1 and S2): the program's own edges, what contains
+  what, were held as records nested inside records, the graph's parent edge
+  computed from the nesting and every pass walking it, so a write to the
+  graph at one node was invisible to its ancestors. A node is its handle now
+  (`type Node = Int`) and a body holds its children as handles, so the
+  program is graph content and a write at a node is read by every reader of
+  it; the one-write operations that rest on this are S3 (§7's first bullet
+  carries what remains). It was the face under the other four: a scheme, a
+  reason and a position are each a fact ABOUT a node, and the node itself
+  was a value the graph pointed into.
 - **SCHEMES** (`Frozen`, rung 3): a decl's type frozen at its own exit, the
   moment the cell is least finished. The two-pass tower re-judges the gap;
   the movers line counts it.
@@ -2155,15 +2165,19 @@ and Wave C (tier 5) follow.
 **THE CUT IN FRONT OF THE ORDER — THE PROGRAM BECOMES THE GRAPH (Morgan,
 2026-10-10).** Asked how handlers SHOULD be installed, the design of a
 named chain (`handler judgment = … ~> …`, installed `work ~> judgment`) met
-the structure face: an install cannot become its members' installs after the
-parse, because the install's ancestors hold its old record (§7's first
-bullet). That is #108's first face, and every change the medium should make
+the structure face: an install could not become its members' installs after
+the parse while the install's ancestors held its old record (§7's first
+bullet, measured 2026-10-10). That is #108's first face, and every change the medium should make
 as one write rests on it — the chain, a rename, the session's edit, a
 proposal rewriting in place — so it runs now, ahead of the order and behind
 tier 1's net, which has landed. Its stages are its design
-(`Hβ.graph.positions-are-cells`); S1 LANDED 2026-10-13 (LEDGER), every
-reader through the graph with the record carried and taken apart by
-`node_handle` alone, so S2 is a rename. Handler installation follows on it: one
+(`Hβ.graph.positions-are-cells`); S1 and S2 LANDED 2026-10-13 (LEDGER):
+every reader reads through the graph and a node IS its handle (`type Node =
+Int`, the record deleted), so an ancestor holds its children's handles and a
+write at a child is read by everything that asks the graph; S3's writes —
+the chain's install, the rename, the session re-judging rewritten nodes,
+the proposal rewriting in place — are the next move. Handler installation
+follows on it: one
 install per extent, a handler's start state its own, a chain named once,
 nothing installed only to swallow an op nobody reads.
 

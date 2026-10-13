@@ -327,7 +327,7 @@ handler region_tracker with region_stack = [], next_region = 0, region_index = w
     //   OUTER live region / region 0 → already outlives this return.
     //   DEAD region → the escape, reported with BOTH spans (where the
     //     region opened, where the value tried to leave).
-    let entry = lookup_tag(region_index, value_handle)
+    let entry = wmap_get(region_index, value_handle)
     match entry {
       None => resume(),
       Some(tag) => match tag {
@@ -366,14 +366,6 @@ handler region_tracker with region_stack = [], next_region = 0, region_index = w
     }
   },
 }
-
-// O(1) region lookup — the region ledger is a handle-indexed hash bucket
-// (region_index), not a cons-list re-scanned per alloc. check_escape /
-// join_field_regions' linear find over it was ~93% of the post-classifier
-// self-compile (perf, 2026-07-13; the O(N²) alloc-check scan, §5.O). The handle
-// is a dense Int, so i32.eq buckets — no str_eq. Returns Some(tag) / None, exactly
-// as find did.
-fn lookup_tag(ref idx, handle) = wmap_get(idx, handle)
 
 // The bucket count is the INDEX'S OWN, read live from its header.
 //
@@ -430,7 +422,7 @@ fn region_on_stack(ref stack, rid) = any({ Region(rid_on_stack, _) => rid_on_sta
 fn join_field_regions(ref tags, ref fields, current) = fold(
   current,
   (acc, fh) => {
-    let field_rid = match lookup_tag(tags, fh) {
+    let field_rid = match wmap_get(tags, fh) {
       None => 0,
       Some(t) => match t {
         (_, rid) => rid,
@@ -557,7 +549,7 @@ fn pair_join(a, b) = match a {
 // (infer.mn) is this walk's sibling over the same lattice — they stay two
 // walks because resume carries call-substitution this walk must not, and
 // this walk carries mode resume must not (the stamped two-walks ruling).
-fn usage_of(ref name: String, ref node, mode) = match graph_node_body(node_handle(node)) {
+fn usage_of(ref name: String, ref node, mode) = match graph_node_body(node) {
   NExpr(VarRef(n)) => if n == name { use_leaf(mode) } else { pair_zero() },
   NExpr(CallExpr(f, args)) => pair_seq(usage_of(name, f, MRead), usage_args(name, args, callee_borrow_params(f), 0)),
   NExpr(BinOpExpr(_, l, r)) => pair_seq(usage_of(name, l, mode), usage_of(name, r, mode)),
@@ -675,7 +667,7 @@ fn usage_flds(ref name, ref flds, mode) = if len(flds) == 0 {
 // ref, and the second judgment flipped it to own. With one judgment
 // (2026-09-17) the read is the shape at this moment, and the callee-first
 // walk makes it an arrow for every acyclic callee before its callers ask.
-fn callee_borrow_params(ref f) with !Mutate = match graph_node_body(node_handle(f)) {
+fn callee_borrow_params(ref f) with !Mutate = match graph_node_body(f) {
   NExpr(VarRef(cn)) => match env_lookup(cn) {
     Some(entry) => match entry {
       (scheme, _, _) => match scheme {
@@ -717,12 +709,12 @@ fn usage_args(ref name, ref args, borrow_slots, i) = if i >= len(args) {
 // consume mode and its inner positions re-derive (the borrow bracket's
 // own VarRef-only rule). Beyond-product args consume (the arg walk's
 // plain infer_expr fall-through).
-fn arg_slot_mode(ref arg, ref borrow_slots, i) = match graph_node_body(node_handle(arg)) {
+fn arg_slot_mode(ref arg, ref borrow_slots, i) = match graph_node_body(arg) {
   NExpr(VarRef(_)) => match borrow_slots {
     Some(ps) => if i < len(ps) { if param_borrows(list_index(ps, i)) { MRead } else { MConsume } } else { MConsume },
     None => MRead,
   },
-  NExpr(LabeledArg(label, v)) => match graph_node_body(node_handle(v)) {
+  NExpr(LabeledArg(label, v)) => match graph_node_body(v) {
     NExpr(VarRef(_)) => match borrow_slots {
       Some(ps) => if labeled_param_borrows(ps, label, 0) { MRead } else { MConsume },
       None => MRead,

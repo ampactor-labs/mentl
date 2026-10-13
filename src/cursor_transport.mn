@@ -329,7 +329,7 @@ fn apply_suggestion(cursor, view) with !Mutate = match cursor {
 // it. One home for both routes: the edit session's `y` and the address
 // form's `mentl accept` call this.
 fn accept_fill(handle, survivor, proof) with !Mutate = {
-  let span = parse_span_of(handle)
+  let span = graph_span_of(handle)
   let text = render_candidate_source(survivor)
   let module = module_name_of_handle(graph_module_of(handle))
   match driver_module_path(module) {
@@ -386,9 +386,9 @@ fn accept_annotation(handle, s) with !Mutate = match s {
         },
         Some(path) => match splice_decl_head(
           fs_read_file(path),
-          parse_span_of(handle),
-          graph_span_of(node_handle(body)),
-          annotated_head(ann, name, params, graph_node_body(node_handle(retty)), effs, body),
+          graph_span_of(handle),
+          graph_span_of(body),
+          annotated_head(ann, name, params, graph_node_body(retty), effs, body),
           stated_by(ann, params)
         ) {
           Some(edited) => {
@@ -517,8 +517,7 @@ fn accept_at(handle, view) with !Mutate = match view {
 // skeleton. Until C7 this was a literal renderer with a hole-marker floor,
 // so every structured candidate showed as `??` — the medium showing a
 // proposal it could not name (`Hβ.felt.candidate-render-is-format`, closed).
-fn render_candidate_source(node) with !Mutate =
-  render_body_tokens(graph_node_body(node_handle(node)))
+fn render_candidate_source(node) with !Mutate = render_body_tokens(graph_node_body(node))
 
 // ─── Format / parse helpers per transport ──────────────────────────
 fn show_handle_label(cursor) = match cursor {

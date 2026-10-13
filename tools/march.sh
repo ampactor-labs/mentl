@@ -46,7 +46,13 @@ trap_lines() { grep -nE 'out of bounds|wasm trap|undefined element|unreachable|o
 # GNU time writes `<wall-s> <peak-rss-KB>` beside the wat, the march prints
 # it, the pin's mechanical block carries it, and selfcompile_peak_kb_max in
 # tools/verify-baseline.txt ratchets the peak — raising the ceiling is an
-# explicit in-commit act with a fixed-input justification.
+# explicit in-commit act with a fixed-input justification. Beside it the
+# IMAGE's own high-water — the guest's `arena:` line, the bump line's peak —
+# is a pure function of the computation, the same on every machine the board
+# runs on, and selfcompile_line_peak_kb_max ratchets that (2026-10-13: the CI
+# runner read a boot's peak RSS at 471,568 KB where this machine read 460,108,
+# the engine's and the host allocator's share differing by machine; the line
+# peak cannot).
 # The wheel is src/main.mn's import DAG, judged cold in a hermetic root
 # (wt_wheel_root): the march's input is the module tree, never an assembled
 # text. A generation leg runs the compiler's own `march` verb — the fixed
@@ -362,6 +368,25 @@ read_cost() {  # read_cost <leg> <compiler> — sets MARCH_COST from $OUT/<leg>.
   fi
 }
 read_cost m3 "$OUT/m2.wasm"
+# ── the IMAGE's own high-water: the guest prints its bump line's peak on the
+# leg's stderr (`arena: … line peak N KB`), a reading no machine moves, so it
+# is ratcheted exactly — no re-measure, since there is no jitter to die — and
+# a breach refuses the repin as the RSS ceiling does. The RSS reading stays the
+# pin's recorded cost: it is what a kernel kills on, and it is machine-bound.
+read_line() {  # read_line <leg> — ratchets the image's line peak from $OUT/<leg>.err
+  local leg="$1" line_kb line_max
+  line_kb=$(grep -oE 'line peak [0-9]+ KB' "$OUT/$leg.err" 2>/dev/null | head -1 | grep -oE '[0-9]+')
+  [ -n "${line_kb:-}" ] || return 0
+  MARCH_COST="${MARCH_COST:+$MARCH_COST · }line peak ${line_kb} KB"
+  echo "· image: line peak ${line_kb} KB (the guest's own high-water)"
+  line_max=$(grep -E '^selfcompile_line_peak_kb_max:' "$BASELINE" 2>/dev/null | head -1 | cut -d: -f2 | tr -d ' ')
+  [ -n "${line_max:-}" ] || return 0
+  [ "$line_kb" -gt "$line_max" ] || return 0
+  echo "✗ LINE RATCHET: the image's line peak ${line_kb}KB > ${line_max}KB ceiling — a deterministic reading,"
+  echo "  nothing to re-measure; the landing pays the cost down (fixed-input justification in $BASELINE); repin refused."
+  costok=0
+}
+read_line m3
 # ── the CENSUS gate (the 25-divergence lesson, 2026-08-08): a repin with a
 # rising census rode the TRANSITION path — verify's ratchet caught it only
 # post-pin, after the boot was already blessed. The march reads the same
@@ -528,6 +553,7 @@ elif [ "$m3rc" = 0 ]; then
       gen "$OUT/m3.wasm" "$OUT/m4.wat" "$OUT/m4.err"; m4rc=$?; m4done=1
       echo "m4: exit=$m4rc, $(wc -l < "$OUT/m4.wat" 2>/dev/null) lines"
       read_cost m4 "$OUT/m3.wasm"
+      read_line m4
       if [ "$m4rc" = 0 ] && diff -q "$OUT/m3.wat" "$OUT/m4.wat" >/dev/null 2>&1; then
         echo "✓✓ TRANSITION: m3 == m4 — the NEW wheel reproduces itself; the m2/m3 diff was the emit change crossing one generation."
         if [ "${MARCH_REPIN:-0}" = 1 ]; then
