@@ -310,7 +310,7 @@ fn handle_completion(params) = {
   focus(TargetSpan(span))
   match propose(TargetSpan(span)) {
     Silence => LspCompletionResp([]),
-    VoiceLine(_, _, slots, _) => LspCompletionResp(completion_items_from_slots(slots)),
+    VoiceLine(_, _, slots) => LspCompletionResp(completion_items_from_slots(slots)),
   }
 }
 
@@ -326,7 +326,7 @@ fn handle_code_action(params) = {
   focus(TargetSpan(span))
   match propose(TargetSpan(span)) {
     Silence => LspCodeActionResp([]),
-    VoiceLine(_, _, slots, _) => LspCodeActionResp(code_actions_from_slots(slots)),
+    VoiceLine(_, _, slots) => LspCodeActionResp(code_actions_from_slots(slots)),
   }
 }
 

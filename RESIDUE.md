@@ -534,8 +534,8 @@ fixed and no site is claimed broken.
 ### `Hβ.voice.voiceline-renders-to-nobody` — OPEN
 
 BORN 2026-09-21.
-`render_voiceline` / `render_slots` / `render_slot` / `render_modifier`
-(src/voice.mn) fold a VoiceLine's slots to text through the SAME canonical
+`render_voiceline` / `render_slots` / `render_slot` (src/voice.mn) fold a
+VoiceLine's slots to text through the SAME canonical
 renderers the compiler reads (`show_type` / `show_effrow` / `show_reason` /
 `show_span`), which is PLAN §0's one-cursor-projection claim made concrete.
 NOTHING CALLS THEM. The `propose` arm builds a VoiceLine and banks it in a
@@ -555,10 +555,13 @@ reports, the Ledger's `LedgerFact`s) rendered as the terminal's text
 would mint a second renderer beside it. THE FORM: the LSP and the voice
 project the View — completion and code actions read its Propose and Teach
 facts (`propose_fact`, `teach_fact`), as the page does — and the VoiceLine
-render path deletes, its four renderers with it and
+render path deletes, its three renderers with it and
 `completion_items_from_slots` replaced by that read. Measured 2026-10-06:
-`mentl query src/main.mn unreachable` still lists all four renderers
-(voice: 15 of 46 decls unreached).
+`mentl query src/main.mn unreachable` still listed all four renderers
+(voice: 15 of 46 decls unreached); the fourth, the modifier bank's render,
+left with the register and the modifier at Landing 4's S1 (2026-10-13), a
+vocabulary no surface read, and the facet lists the three (voice: 14 of 41
+decls unreached).
 
 ### `Hβ.voice.situation-gradient-is-never-filled` — OPEN
 
@@ -3381,12 +3384,13 @@ BORN 2026-09-30
 with C5. The partiality claim decides from constants, module constants
 and what the operand's value carries along its edges since P0 (a
 parameter's refinement, a join's tails — `node_excludes` over
-`value_leaves`); it does not read the PATH. `fn fold_int(op,
-a, b) = … if b == 0 { None } else { Some(a / b) }` (src/egraph.mn) and
-`litval_arith`'s twin (src/verify.mn) guard the divisor and still carry an
-open claim, as does `pick_from_pool`'s `hash % n` under `if n == 0`
-(src/voice.mn) — the wheel's five open partiality obligations, every one
-of this shape (`mentl query src/main.mn smt` renders each as a `distinct`
+`value_leaves`); it does not read the PATH. `int_fold` (src/types.mn, the
+one folder the e-graph's constant rule and `litval_arith` share) guards
+both its divisions behind `int_op_defined(op, a, b)` and still carries
+their two claims open — the wheel's two open DIVISION obligations,
+measured 2026-10-13, both of this shape (its index-bound obligations are
+`Hβ.effects.index-partiality-is-a-row-fact`'s, the same law one primitive
+over) (`mentl query src/main.mn smt` renders each as a `distinct`
 assertion; lib/dsp's six divisions by a hop or a grid width discharge
 through `Positive` on the parameter, cfc.mn). The narrowing walk
 (`walk_refinement`, infer.mn) COMPUTES the path predicate at every node and
@@ -13491,7 +13495,7 @@ address's `Lede:` and the Why engine read). Cited from that fn's comment
 since the stub era and never held here. What remains is the RENDER
 HANDLERS over that roster — md / html / llms projections as `~>` handlers
 the way `format_default` projects layout — and the full body of each
-comment in the `RExplain` register (SYNTAX §Comments: register is a
+comment where the register asks for it (SYNTAX §Comments: register is a
 projection, not a delimiter). The roster is the one home every render
 handler projects from; none of them re-reads the source.
 
@@ -19661,6 +19665,33 @@ arbitrates:
   and voice.mn's modifier table, whose strings interpolate the constructor
   (`" (L{N})"`) and whose renderer nothing reaches, is deleted with the
   register that selects from it.
+  LANDED 2026-10-13 (LEDGER, Landing 4 S1). `refs of N` 293 → 7: the
+  parser's three mints (`mint_absent`, `mint_node_as`, `nhole`) and
+  `desugar_block`'s two re-wraps of a let's handle, the proposer's extracted
+  candidate, and `node_handle`,
+  the one read of the record, which lives beside `type Node` in src/types.mn
+  (the bedrock imports nothing, so a reader there could reach no other home);
+  `node_handle` 241 → 520 references, `graph_node_body` 193 → 364,
+  `graph_span_of` 5 → 55, span_of_node 3 → 0 and the proposer's node_span
+  1 → 0, both deleted (the first stood dead, an alias of `graph_span_of` over
+  `node_handle`, at the first pin; the claim-reading pass named it). The five
+  decisions were taken as written, the destructuring let's match indexed at
+  the let's cell with the let-through-block extent (`graph_index_span`, the
+  ordered log keeping both pairs). Three things the move found and fixed at
+  their roots: the register arm of `graph_handler` draws its parent edges
+  through `body_child_handles`, which read a let's annotation child's body
+  through the op — and an arm's performs resolve outside its own install, so
+  `GraphRead` reached the executable root; an absent annotation IS the value
+  node, so the child is decided by handle identity and the projection reads
+  no body. A pipe into a bare op reference minted the op's partial where
+  the judgment charged nothing (SYNTAX §«`|>` — converge»); the stage is
+  applied. And the proposal battery compared a fill's survivor to its
+  contract OUTSIDE the judgment that holds the graph — a reader the record
+  had carried, which the graph cannot: a node is its handle and the handle
+  names nothing there, so every fill rendered `??` (the battery's eleven
+  fill fixtures, through the candidate); the contract's judge runs inside the judgment
+  (`battery_view` hands it the view there). The record is carried and taken
+  apart by `node_handle` alone, so S2 is the rename it was designed to be.
 - S2 · a node is its handle: `type Node = Int`, `mint_node` answers the
   handle, a body's children are handles, and the record, `node_handle` and
   every `N` pattern are deleted: a TRANSITION, since the wheel's own

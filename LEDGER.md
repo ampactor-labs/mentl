@@ -35,6 +35,185 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-10-13 · pin 4b621311aedc4ae6 (CLEAN m2 == m3; m3 == m4 measured; the landing's fourth pin — the first, deedc632, was the TRANSITION m2 ≠ m3, m3 == m4, where the wheel's own two pipes into a bare op, `forget_claims` and `enter_link_root`, are performed in place by the wheel while boot 53213e36 built the op's partial, `tools/emit-diff.py` naming exactly those two functions and the two partial bodies m3 lacked; the second, 29fe9749, CLEAN from that boot, followed the docs pass's five refutations, one of them a dead `span_of_node` the pass found standing; the third, 96c00273, CLEAN from the second's, followed the records pass's one artifact finding, the directory route's render; this one, CLEAN from the third's, follows the final pass's stale confession — two sites spelled as calls to suit boot 53213e36 are pipes again) · LANDING 4 S1 — EVERY READER READS A NODE'S BODY AND SPAN THROUGH THE GRAPH, THE RECORD CARRIED AND TAKEN APART BY `node_handle` ALONE
+  The first stage of `Hβ.graph.positions-are-cells`'s STRUCTURE face (PLAN
+  §11, the cut in front of the order). A node is still `N(NodeBody, ValidSpan,
+  Int)`, and the graph holds the same body and span at the handle; S1 moves
+  every reader off the record — a reader that took it apart with an `N(...)`
+  pattern asks the graph (`graph_node_body`, `graph_span_of`) through the one
+  read of the record that survives, `node_handle` — so that S2 (`type Node =
+  Int`) is a rename. Built as a fan-out of four builders on disjoint modules
+  from one base (infer; lower, own, verify; query, types, synth_proposer,
+  graph, parser's readers, mentl, format, cursor_transport, cursor, main,
+  pipeline, space; voice, lsp), each verified by the integrator on the tree
+  committed; the fixed point arbitrated the whole. MEASURED by the medium's
+  own reference lists: `refs of N` 293 → 7 (the parser's three mints —
+  `mint_absent`, `mint_node_as`, `nhole` — and `desugar_block`'s two re-wraps
+  of a let's handle, the proposer's extracted candidate, and `node_handle`),
+  `node_handle` 241 →
+  520, `graph_node_body` 193 → 364, `graph_span_of` 5 → 55, `span_of_node` 3
+  → 0 and `node_span` 1 → 0, both deleted — `span_of_node` stood dead as
+  `graph_span_of(node_handle(node))` at the first pin, and the claim-reading
+  pass named it where this entry had called it deleted.
+  **The spans column is `[ValidSpan]`**, `graph_span_of` answers one, and the
+  column takes a cell's span again through the one write (`graph_index_span`,
+  the ordered log keeping both pairs), so a span read off the graph owes no
+  claim — the open obligations held at 184 through 2,100 reader rewrites.
+  **The five decisions, taken for the graph:** the one-arm match a
+  destructuring `let` becomes is indexed at the let's cell with the
+  let-through-block extent (`desugar_block`), so a parent's extent contains
+  its children's in the graph as in the record; the head renderer takes the
+  annotation it renders (`render_retty(ann, effs)`, `fn_head_text`,
+  `render_fn_head`), never a node fabricated at handle 0, and `mentl query
+  src/main.mn heads` answers 5,106 heads with 0 that do not round-trip; the
+  proposer's extracted candidate stands at the e-graph's cheapest node's own
+  handle and span (`extract_optimal`); the absent annotation (`mint_absent`,
+  registered at no position) is read by nothing that asks where it stands,
+  measured over every `retty` reader; and voice.mn's modifier bank —
+  `Register`, `Modifier`, `select_modifier`, `situation_hash`,
+  `tentacle_tag`, `topic_discriminant`, `applicable_modifiers_for_tentacle`,
+  `pick_from_pool`, `render_modifier` — is deleted with the register that
+  selected from it (`VoiceLine` is three fields; the voice's unreached count
+  15 of 47 → 14 of 41). `node_handle` lives beside
+  `type Node` in src/types.mn: the bedrock imports nothing, and eight of its
+  readers needed the handle, so the one record read sits upstream of every
+  user (G3's move). Thirteen `with Pure` clauses left functions that read the
+  graph now — infer's `is_read_shape`, `callee_name`, `is_assert_call`;
+  graph's `node_body_of`; types' `unwrap_labeled_arg`, `show_callee_name`,
+  `install_name`; format's `ast_kind_of`, `expr_prec_of`, `zero_minus_literal`;
+  query's `decl_extent`; synth_proposer's `is_reference_candidate`,
+  `is_not_lambda_candidate` — their rows projected (`GraphRead`); `decl_handle`
+  (query), `node_span` (synth_proposer) and `node_start_span`
+  (cursor_transport) are deleted into `node_handle` and `graph_span_of`.
+  **Three defects the move surfaced, fixed at their roots (the first two RED
+  on boot 53213e36, the third RED through the candidate).** (1) `GraphRead` reached the executable root and m2 refused
+  (`E_EffectUnhandled` at `main`): the register arm of `graph_handler` draws
+  its parent edges through `body_child_handles`, whose `LetStmt` arm read the
+  annotation child's body through the op to tell an annotation from the
+  absent one — and an arm's performs resolve outside its own install. The
+  absent annotation IS the value node (the parser's sentinel at every
+  `LetStmt` mint; `let_at_scope` reads the same identity), so the child is
+  decided by handle identity and the projection reads no body; its row is
+  `Memory + Alloc + Trap` again. KILLS: the first cause named was the why
+  verb's own answer — `mentl why src/main.mn main GraphRead` walked
+  `infer_context` → `~> affine_ledger` → `report` → `graph_module_current`,
+  a path through an install (`~> graph_handler`) that ABSORBS it; the root
+  was found by reading the rows (`body_child_handles` carried `GraphRead`,
+  `infer_context`'s positive row carried it past the subtraction). The walk's
+  imprecision is the second defect's sibling: `entry_child` descended into a
+  tee's body whenever the body's note carried the effect, though the install
+  absorbs it; it reads the arms' handled set now (`tee_absorbs_here`, the
+  read `infer_pipe_tee` takes) and enters through the install — RED on the
+  boot by tests/frontier/mn-effect-enters-absorbed.mn, which the boot
+  answered `through \`work\`` (the absorbed site) and the candidate answers
+  through `relog`'s arm. (2) A pipe into a bare op reference minted the op's
+  partial record and called it, where the judgment charged the stage the
+  op's row and nothing else: `fn pipe_it(x) with !Alloc = x |> put` refused
+  the executable as `E_InternalInvariant` (a closure record allocates …)
+  where `put(x)` ran — a user-facing refusal of a correct program, found when
+  G1 wrote `node |> node_handle |> graph_node_body` and the boot's allocation
+  audit refused the wheel. The stage is applied: `lower_pipe_stage` lowers a
+  bare op reference as the perform `op(x)` in the frame (`stage_op_name`,
+  through `lower_global_call`), tests/micros/mn-pipe-into-op.mn (expect 10,
+  RED on the boot). The two pipes the boot's audit refused (their rows say no
+  `Alloc`) — `enter_module_of`, `stmt_decl_name` — were spelled as calls
+  through the first three pins, since boot 53213e36, which compiled the
+  source at the first pin, built the partial; the two it admitted
+  (`forget_claims`, `enter_link_root`, under rows that allocate) stayed
+  pipes, and the wheel lowering them as performs where that boot built
+  partials was the whole of the first pin's m2 ≠ m3 — its TRANSITION. At the
+  fourth pin the two are pipes again, the confession beside them deleted,
+  since the boot that compiles the source applies the stage. (3) The proposal battery compared a
+  fill's survivor to its contract OUTSIDE the judgment: `battery_view` ran
+  the judgment and returned the view, and `verdict_meets` rendered the
+  survivor after the chain closed, through `render_candidate_source`, which
+  since this landing reads the body off the graph — a node is its handle,
+  and outside the judgment the handle names nothing, so every one of the
+  battery's eleven fill fixtures compared as `??` (the frontier's proposal
+  leg, through the fresh compiler; the address verb at the same hole
+  answered `Propose: 7`, since it renders inside; this entry first said
+  seven, read off a truncated tail of the run — the reader's probe counted
+  the eleven). The judge runs inside the judgment now: `battery_view`
+  takes the contract's judge and hands it the view where the graph is, and
+  the judge's answer is the step's exit — the teach battery goes through the
+  same door. The record had carried that reader; the graph cannot, and the
+  law the comment beside `battery_view` already stated for the declaration's
+  name holds for the node itself.
+  **Two verb gaps the builders logged, grown:** `prose NEEDLE` listed positions
+  and no text (G1 read the comment with `sed`); `refs of N` mixed the
+  record's constructions with its patterns (G3, three times). A located site
+  in a query answer carries what stands there — `(module, span, note)`,
+  `QRRefs` and `QRCensus` — rendered after the address: for `refs of`, the
+  reference's ROLE (`call`, `value`, or `pattern` where the column noted a
+  constructor at the scrutinee a pattern constrains — the pattern has no cell
+  of its own, #108), read off the site's body and its parent edge
+  (`ref_role`, `callee_of_parent`); for `prose NEEDLE` and the prose classes,
+  the comment line that carries the needle or the class, found by the same
+  test that admitted the comment (`census_note`, `prose_line`) — over one
+  program and over a directory of programs alike: the located answer is the
+  noted answer's addresses (`noted_answer`, `located_answer`), so the
+  directory route renders what one program renders. Through pin 29fe9749 it
+  rendered addresses alone — the claim-reading pass measured it on
+  tests/proposals, and the RED read on that boot is `refs of choose`: 4
+  references across 27 programs with no role, and `prose ": fill "`: 11
+  comments with no line, where one program answers `call` and the contract
+  line — because the directory's `own_sites` read `located_answer`, the
+  address projection, and the noted form had no home the directory could
+  read. The board and the caret read the address half through
+  `located_answer`, and the roster counts it (`census_sites`). A third
+  logged gap, "reads of a record FIELD by name", is the `reads of FIELD` facet
+  Landing 3 built; the log names a verb a builder did not know.
+  **Docs trued on the way:** `fold_int` is gone and the partiality count was
+  stale — the wheel's two open DIVISION claims are both in `int_fold`
+  (src/types.mn), the one folder the e-graph's constant rule and
+  `litval_arith` share, where RESIDUE and SYNTAX said five across three
+  functions (the 148 index-bound obligations beside them on the link, 131 in
+  src, are TRAP's class, and the first draft's "partiality" blurred the two); `RTerse`/`RExplain` left SYNTAX and RESIDUE with the register;
+  `graph_span_of`'s comment named an op that was never built (`graph_respan`,
+  a redundant second form of `graph_index_span` written and deleted in Phase
+  A); `VoiceLine`'s comment claimed each line carries a Reason edge (it
+  carries none — the Situation's reason at its topic does). The board's
+  lifecycle-prose ceiling fell 43 → 42 (the modifier bank's dissolution note
+  left with it) and is held there.
+  GATES: `mentl check src/main.mn` 0; `mentl verify` within every bound
+  (open obligations 184/184, ghosts 112/112, effectful lambdas 193/193,
+  wildcard-fabricates 20/20 — it rose to 21 at a `_ => ""` arm in
+  `census_note`, refused by the board, and the note became `Option(String)`);
+  `mentl fmt --check src lib` 0; micros 400/400 through m2 (8/8 rungs); proposals 27/27 and the
+  teach battery green through the candidate; frontier 665 pass / 0 red / 2
+  expected-red (the absorbed-entry leg is the 665th); crown 143/0;
+  proof-exactness 30/0; ide GREEN (product and canvas legs); march at the
+  first pin TRANSITION m2 ≠ m3 (two functions), m3 == m4 measured,
+  re-pinned from m3 (m3 leg 41.14 s / 476,712 KB, 633,901 lines); at the
+  second, from that boot, CLEAN m2 == m3, m3 == m4 measured, re-pinned from
+  m2 (m3 leg 41.49 s / 476,768 KB, 633,901 lines); at the third, from the
+  second's boot, CLEAN, re-pinned from m2 (m3 leg 43.56 s / 476,860 KB,
+  634,028 lines, m4 leg 42.91 s / 476,964 KB); and at this pin, from the
+  third's boot, CLEAN m2 == m3, m3 == m4 measured, re-pinned from m2 — m3
+  leg 43.08 s / 477,156 KB, 634,037 lines, m4 leg 42.78 s / 477,068 KB
+  (53213e36: 38.52 s / 475,832 KB / 636,821). The first repin
+  attempt was REFUSED by the quiet-gate text ratchet — authored `ref` in src
+  rose 658 → 659, the one marker the landing added (`render_noted_sites`),
+  dropped since the inference grades it — and the first pin, deedc632,
+  blessed an m3 BYTE-IDENTICAL to the one the gates above measured; the
+  claim-reading pass then found `span_of_node` standing dead, and its deletion
+  moved the wheel's bytes (the second pin's m2 and the first pin's m3 differ
+  from line 122 of the render), so no verdict carried over and the board ran
+  again whole; the second pass's directory finding moved them again, and the
+  third pass's restored pipes once more — the board ran whole on each pin.
+  A leg's first run after a fresh assembly reads its peak high — the m4
+  leg's first sample 575,632 and 580,216 KB on two marches, the m3 leg's
+  589,588 KB on the fourth — and the march's re-reads through the leg's own
+  compiler hold 476,704–477,096 KB: the first sample is the jitter, the
+  minimum the footprint. The claim-reading passes
+  read 200 sentences (55 over the four docs, 145 over the records and the PR
+  text) and refuted 22 — fifteen distinct problems, two of which moved the
+  wheel (a dead function deleted, the directory route's render) — each
+  rewritten to what was measured or built; a third pass read 71 of the
+  rewritten sentences and refuted 6 (four problems: a heads count, a label
+  that counted two re-wraps as mints, the readers of the address half, a
+  pin's parent), rewritten here, and named a stale confession beside two
+  calls spelled to suit boot 53213e36, which are pipes again. Builders' worktrees pruned at absorption.
 - 2026-10-13 · pin 53213e361d673a39 (CLEAN m2 == m3; m3 == m4 measured; the landing's second pin — the first, 1b59f63c, was superseded once the claim-reading pass's rewrites and the teach battery's declaration check landed) · LANDING 3 — TEACH SAYS WHAT IS TRUE OR NOTHING: A LOCK IS TAUGHT ONLY WHERE A CLAUSE STANDS ON IT, THE PROPOSER OFFERS WHAT THE MODULE SEES, AND AN ARGUMENT HOLE AT AN OPERAND IS A VALUE HOLE
   Three contained cuts on the felt loop, each measured RED on boot c939f5b8
   before the change, and one facet grown for a confessed verb gap.

@@ -527,16 +527,14 @@ fn module_refinements(m) = match graph_node_body(m) {
   _ => [],
 }
 
-fn refinement_alias(d) = match d {
-  N(body, _, _) => match body {
-    NStmt(RefineStmt(name, _, _)) => match env_lookup(name) {
-      Some(entry) => match entry {
-        (scheme, _, _) => [(name, judgment_ty(scheme))],
-      },
-      None => [],
+fn refinement_alias(d) = match graph_node_body(node_handle(d)) {
+  NStmt(RefineStmt(name, _, _)) => match env_lookup(name) {
+    Some(entry) => match entry {
+      (scheme, _, _) => [(name, judgment_ty(scheme))],
     },
-    _ => [],
+    None => [],
   },
+  _ => [],
 }
 
 fn param_candidates(f, owed, aliases, lean) = match lean {
@@ -706,11 +704,12 @@ fn application_args(h) = match graph_node_body(h) {
 }
 
 // The callee node of a reference to the top-level `name`, or none.
-fn callee_named(callee, name: String) = match callee {
-  N(cb, _, ch) => match cb {
+fn callee_named(callee, name: String) = {
+  let ch = node_handle(callee)
+  match graph_node_body(ch) {
     NExpr(VarRef(cn)) => if cn == name && graph_link_of(ch) == None { [ch] } else { [] },
     _ => [],
-  },
+  }
 }
 
 // A session that has re-derived holds one application node per generation
@@ -735,8 +734,9 @@ fn claim_at_call(contract, i, app_h) = {
   if i < len(args) { dry_claim(contract, args[i]) } else { Some(true) }
 }
 
-fn dry_claim(contract, arg) = match arg {
-  N(_, sp, ah) => learn_then_claim(contract, ah, sp) ~> verify_ledger ~> diag_quiet,
+fn dry_claim(contract, arg) = {
+  let ah = node_handle(arg)
+  learn_then_claim(contract, ah, graph_span_of(ah)) ~> verify_ledger ~> diag_quiet
 }
 
 fn learn_then_claim(contract, ah, sp: ValidSpan) = {
@@ -761,11 +761,9 @@ fn return_suggestions(f) = if authored_return(f.retty) {
   }
 }
 
-fn authored_return(retty) = match retty {
-  N(body, _, _) => match body {
-    NTypeAnn(_) => true,
-    _ => false,
-  },
+fn authored_return(retty) = match graph_node_body(node_handle(retty)) {
+  NTypeAnn(_) => true,
+  _ => false,
 }
 
 fn ret_fits(ret, alias) = alias_fits(chase_deep(ret), alias)
@@ -836,8 +834,9 @@ fn prove_return(f, resting, alias) = match alias {
   },
 }
 
-fn dry_return_claim(contract, body) = match body {
-  N(_, sp, bh) => claim_refinement(contract, bh, sp) ~> verify_ledger ~> diag_quiet,
+fn dry_return_claim(contract, body) = {
+  let bh = node_handle(body)
+  claim_refinement(contract, bh, graph_span_of(bh)) ~> verify_ledger ~> diag_quiet
 }
 
 fn rest_on_contract(contract, r) = match r {

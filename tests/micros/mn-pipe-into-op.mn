@@ -1,0 +1,20 @@
+// expect: 10
+// A STAGE THAT IS A BARE OP REFERENCE IS APPLIED, never minted: `x |> put`
+// performs `put(x)` in the frame the pipe stands in, as a pipe into a
+// function calls it and a literal stage binds its parameter there. The judgment charged the
+// stage nothing, which is right — and the lowering built the op's partial
+// record and called it, so under `!Alloc` the allocation audit refused the
+// executable with an internal invariant (measured 2026-10-13 on boot
+// 53213e36: `a closure record allocates in pipe_it, whose row Put does not
+// say Alloc`). The same program with a call in place of the pipe ran to 10.
+effect Put {
+  put(v: Int) -> Int
+}
+
+handler doubler {
+  put(v) => resume(v * 2),
+}
+
+fn pipe_it(x) with !Alloc = x |> put
+
+fn main() = pipe_it(5) ~> doubler

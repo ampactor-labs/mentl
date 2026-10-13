@@ -325,8 +325,9 @@ fn board_bounds() = [
   // (2026-10-13, Landing 1): the warm route's comment was trued to its
   // measurement, and the two dated comments the landing wrote — the literal
   // vocabulary's and the host pair's — read in positive form after the board
-  // refused 45.
-  Bound({ceiling: 43, question: QCensus(CsProseClass(PcLifecycle))}),
+  // refused 45. 43 -> 42 (2026-10-13, Landing 4 S1): the voice's modifier
+  // bank left with its register, and the dissolution note above it went too.
+  Bound({ceiling: 42, question: QCensus(CsProseClass(PcLifecycle))}),
   // Archaeology — the seed era's vocabulary and its design notes.
   Bound({ceiling: 92, question: QCensus(CsProseClass(PcArchaeology))}),
   // Decoration runs — the banners drift rows 128 and 131 policed by regex

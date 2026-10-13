@@ -693,12 +693,12 @@ fn refs_at(h, v) = match graph_node_body(h) {
     Some(b) => if is_local_binder(b) {
       FoundRefs(name, local_uses(v, b) |> map(site_in_view(v.name, ??)), [])
     } else {
-      FoundRefs(name, refs_of_name(name), [])
+      FoundRefs(name, refs_of_name(name) |> map(noted_address), [])
     },
-    None => FoundRefs(name, refs_of_name(name), []),
+    None => FoundRefs(name, refs_of_name(name) |> map(noted_address), []),
   },
   NStmt(s) => match stmt_declared_name(s) {
-    Some(name) => FoundRefs(name, refs_of_name(name), []),
+    Some(name) => FoundRefs(name, refs_of_name(name) |> map(noted_address), []),
     None => FoundNothing,
   },
   _ => FoundNothing,
@@ -1883,14 +1883,12 @@ fn span_line_of(s) with Pure = match s {
 }
 
 fn value_lede(sh) = match graph_node_body(sh) {
-  NStmt(LetStmt(_, value, _)) => match value {
-    N(_, _, vh) => match node_const(vh) {
-      Some(LVInt(n)) => " = {int_to_str(n)}",
-      Some(LVFloat(f)) => " = {float_to_str(f)}",
-      Some(LVString(s)) => " = \"{s}\"",
-      Some(LVBool(b)) => if b { " = true" } else { " = false" },
-      None => "",
-    },
+  NStmt(LetStmt(_, value, _)) => match node_const(node_handle(value)) {
+    Some(LVInt(n)) => " = {int_to_str(n)}",
+    Some(LVFloat(f)) => " = {float_to_str(f)}",
+    Some(LVString(s)) => " = \"{s}\"",
+    Some(LVBool(b)) => if b { " = true" } else { " = false" },
+    None => "",
   },
   _ => // drift-audit: ignore — genuine String-null lede: a non-let node has no binding value to render
   "",

@@ -560,7 +560,9 @@
 > `mentl query <entry> unreferenced` (one hop) · `unreachable` (transitive
 > from main, fn decls — partitioned into modules CARRYING dead weight, with
 > their reached/unreached ratio, and modules the entry links WHOLE and never
-> calls into) · `refs of NAME` · `census <shape>` · `decls` (each of
+> calls into) · `refs of NAME` (every reference, each site with what stands
+> there — `call`, `value`, or `pattern` where a constructor is named by a
+> pattern over that node) · `census <shape>` · `decls` (each of
 > these, and `text`/`prose`/`ghosts`/`verification`/`smt` below, also
 > answers over a DIRECTORY of independent programs — `mentl query
 > tests/frontier/arena "refs of X"` — every program judged on its own link,
@@ -574,8 +576,8 @@
 > solver decides, readable today) · `text NEEDLE` (every string literal
 > containing it, spaces included — the emit's WAT is string literals, which
 > no identifier edge reaches) · `prose NEEDLE` (every comment containing it,
-> at the comment — prose is graph content, attached to the node it
-> precedes) · `writes of FIELD` (every value written into
+> at the comment, with the comment line that carries it — prose is graph
+> content, attached to the node it precedes) · `writes of FIELD` (every value written into
 > a handler state field of that name, off the writers the judgment noted) ·
 > `reads of FIELD` (every `x.FIELD` read of that name, at the read — a field
 > is no declaration, so `refs of` never reaches it; a record pattern's field

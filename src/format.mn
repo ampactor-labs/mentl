@@ -248,15 +248,11 @@ fn render_diverge_chain(input, branches_tuple) = {
   // The right operand is the branch-tuple NODE; render_branch_tuple eats
   // the element LIST (the converged judge caught the node passed whole).
   // A non-tuple right operand is a single branch, rendered as one chain.
-  match branches_tuple {
-    N(bkind, _, _) => {
-      let branches = match bkind {
-        NExpr(MakeTupleExpr(elems)) => render_branch_tuple(elems),
-        _ => "{spaces(indented_center())}{render_chain_node(branches_tuple)},",
-      }
-      "{input_str}\n{spaces(left_edge_indent())}<| (\n{branches}\n{spaces(left_edge_indent())})"
-    },
+  let branches = match graph_node_body(node_handle(branches_tuple)) {
+    NExpr(MakeTupleExpr(elems)) => render_branch_tuple(elems),
+    _ => "{spaces(indented_center())}{render_chain_node(branches_tuple)},",
   }
+  "{input_str}\n{spaces(left_edge_indent())}<| (\n{branches}\n{spaces(left_edge_indent())})"
 }
 
 // ─── Render a >< fanout — parallel composition, N-ary ───────────────
@@ -397,15 +393,14 @@ fn join_lines_from(ref lines, i) = if i >= len(lines) {
 // node's prose forces its line to break, which the fits-or-breaks rule
 // cascades outward — and the verb's internal re-render makes the
 // written file the fixpoint of any resulting movement.
-fn render_tokens_for(node) with !Mutate = match node {
-  N(body, _, h) => {
-    let c = graph_comment_at(h)
-    let lead = if c == "" { "" } else { "//{replace(c, "\n", "\n//")}\n" }
-    match let_born(node) {
-      Some((scrut, pat, rest)) => "{lead}\{\n{indent_block(render_let_chain(scrut, pat, rest))}\n\}",
-      None => "{lead}{render_body_tokens(body)}",
-    }
-  },
+fn render_tokens_for(node) with !Mutate = {
+  let h = node_handle(node)
+  let c = graph_comment_at(h)
+  let lead = if c == "" { "" } else { "//{replace(c, "\n", "\n//")}\n" }
+  match let_born(node) {
+    Some((scrut, pat, rest)) => "{lead}\{\n{indent_block(render_let_chain(scrut, pat, rest))}\n\}",
+    None => "{lead}{render_body_tokens(graph_node_body(h))}",
+  }
 }
 
 // The one-arm match a destructuring let became, as its scrutinee, pattern and
@@ -736,7 +731,7 @@ fn render_fn_decl(name, params, retty, effs, body) with !Mutate = match match re
   None => (render_param_list(params), body),
 } {
   (plist, b_node) => {
-    let head = fn_head_text(name, plist, retty, effs)
+    let head = fn_head_text(name, plist, graph_node_body(node_handle(retty)), effs)
     let b = render_grouped_body(b_node)
     if str_contains(b, "\n") || fits_inline("{head} {b}") {
       "{head} {b}"
@@ -747,17 +742,18 @@ fn render_fn_decl(name, params, retty, effs, body) with !Mutate = match match re
 }
 
 // A declaration's head through its binder — the one shape the whole
-// declaration's render and an accepted clause's splice share.
-fn fn_head_text(name, plist, retty, effs) with !Mutate =
-  "fn {name}({plist}){render_retty(retty, effs)}{render_with_clause(effs)} ="
+// declaration's render and an accepted clause's splice share. `ann` is the
+// return annotation itself (`render_retty`).
+fn fn_head_text(name, plist, ann, effs) with !Mutate =
+  "fn {name}({plist}){render_retty(ann, effs)}{render_with_clause(effs)} ="
 
 // The head ALONE, for a reader that writes a declaration's signature back
 // without its body: the same param re-sugaring the whole render does.
-fn render_fn_head(name, params, retty, effs, body) with !Mutate = match resugar_head(params, body) {
+fn render_fn_head(name, params, ann, effs, body) with !Mutate = match resugar_head(params, body) {
   Some(pair) => match pair {
-    (plist, _) => fn_head_text(name, plist, retty, effs),
+    (plist, _) => fn_head_text(name, plist, ann, effs),
   },
-  None => fn_head_text(name, render_param_list(params), retty, effs),
+  None => fn_head_text(name, render_param_list(params), ann, effs),
 }
 
 // The arms of a declaration whose only parameter an arm-list literal
@@ -858,7 +854,7 @@ fn render_operand(child, parent_prec, is_right) with !Mutate = {
 // wrote it into three micros as "names conserved" (measured 2026-09-28).
 fn render_postfix_head(head) with !Mutate = render_operand(head, 100, false)
 
-fn expr_prec_of(node) with Pure = match ast_kind_of(node) {
+fn expr_prec_of(node) = match ast_kind_of(node) {
   NExpr(BinOpExpr(op, l, r)) => if zero_minus_literal(op, l, r) { 90 } else { binop_prec(op) },
   NExpr(PipeExpr(k, _, _)) => pipe_prec(k),
   NExpr(FanoutExpr(_)) => pipe_prec(fanout_distribute_kind),
@@ -1321,7 +1317,7 @@ fn render_lit_value(lv) = match lv {
 // the kind needs the judgment, which fmt does not run — that rewrite is
 // tighten's, and a Float variable's is MaybeIncorrect for the same zero.
 // The census reads this one predicate for the `0` it lifts (`lifted_atoms`).
-fn zero_minus_literal(op, l, r) with Pure = match op {
+fn zero_minus_literal(op, l, r) = match op {
   BSub => match ast_kind_of(l) {
     NExpr(LitInt(0)) => match ast_kind_of(r) {
       NExpr(LitInt(_)) => true,
@@ -1546,26 +1542,27 @@ fn render_authored_eff_name(name) with !Mutate =
 
 // An authored `-> RetTy` carries back verbatim (the fmt census's blocker
 // 4: the discarded binder silently dropped 91 authored heads); the absent
-// annotation renders nothing.
+// annotation renders nothing. It takes the annotation it renders — the
+// body at a declaration's return node, or the contract an accepted
+// suggestion writes — never a node, so nothing stands at a handle no cell
+// owns.
 // A function-typed return before the head's own `with` keeps the parens
 // that group it: the type grammar's `with` is greedy, so without them the
 // head's clause re-parses as the returned function's row. An explicit
 // `-> ()` is the unit return written out, which SYNTAX's unit-return rule
 // omits.
-fn render_retty(retty, effs) with !Mutate = match retty {
-  N(b, _, _) => match b {
-    NTypeAnn(TUnit) => "",
-    NTypeAnn(ann_ty) => match ann_ty {
-      TFun(_, _, _) => if len(effs) > 0 {
-        " -> ({render_type_tokens(ann_ty)})"
-      } else {
-        " -> {render_type_tokens(ann_ty)}"
-      },
-      _ => " -> {render_type_tokens(ann_ty)}",
+fn render_retty(ann, effs) with !Mutate = match ann {
+  NTypeAnn(TUnit) => "",
+  NTypeAnn(ann_ty) => match ann_ty {
+    TFun(_, _, _) => if len(effs) > 0 {
+      " -> ({render_type_tokens(ann_ty)})"
+    } else {
+      " -> {render_type_tokens(ann_ty)}"
     },
-    _ => // drift-audit: ignore — the documented absent-annotation contract (an inferred return renders no clause)
-    "",
+    _ => " -> {render_type_tokens(ann_ty)}",
   },
+  _ => // drift-audit: ignore — the documented absent-annotation contract (an inferred return renders no clause)
+  "",
 }
 
 // Canonical indent depth per node kind. Match-arm bodies +2; let-
@@ -1609,11 +1606,8 @@ fn format_one_stmt(stmt) = render_node_at(node_handle(stmt))
 
 fn ast_top_level_stmts(ast) with Pure = ast
 
-fn ast_kind_of(node) with Pure = match node {
-  N(body, _, _) => body,
-}
+fn ast_kind_of(node) = graph_node_body(node_handle(node))
 
-// node_handle() — see src/infer.mn (canonical Node-handle accessor).
 fn canonical_indent_depth(kind) with Pure = match kind {
   NStmt(_) => 0,
   NExpr(_) => left_edge_indent(),

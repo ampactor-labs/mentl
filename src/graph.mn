@@ -1859,27 +1859,14 @@ fn written_step(below, acc, m) = match m {
 fn note_written(acc, h, below) =
   if h < below && !any({ x => x == h }, acc) { push(acc, h) } else { acc }
 
-// Effect-name set ops (H3.1)
-// merge_row routes through `name_set_union` from effects.mn — the
-// row entries are EffName values, not strings. Smart constructors
-// (mk_ef_closed, mk_ef_open) enforce sort invariant at construction,
-// so no boundary canonicalize is needed. The local string-set
-// adapters are gone — string-set primitives still serve own.mn and
-// other linear-binding consumers.
-//
-// ── DAG-homed here (the import-truth sweep, 2026-07-23): each fn below
-// moved from a module DOWNSTREAM of its users so every user reaches it
-// through a forward import edge — the manifest tells the truth.
-fn node_handle(node) = match node {
-  N(_, _, h) => h,
-}
-
 // ── the one total child projection — the weave's tree edge ──────────
 //
-// Homed beside `node_handle` (moved from query.mn 2026-09-27): the census's
-// tree walks, the enclosing-decl descent and lower's race rule (a handler's
-// arms walked for a state write) all read THIS edge, never a per-altitude
-// copy.
+// DAG-homed here (the import-truth sweep, 2026-07-23): each fn below moved
+// from a module DOWNSTREAM of its users so every user reaches it through a
+// forward import edge — the manifest tells the truth. The census's tree
+// walks, the enclosing-decl descent and lower's race rule (a handler's arms
+// walked for a state write) all read THIS edge (moved from query.mn
+// 2026-09-27), never a per-altitude copy.
 //
 // expr_child_handles — the type-handles of an Expr's direct child Nodes.
 // One arm per Expr variant that carries children (the row algebra over
@@ -1932,15 +1919,18 @@ fn tuple_field_handle(field) with Pure = match field {
 // comment node, an import, a refinement's predicate) hold no value
 // holes and contribute none.
 fn stmt_child_handles(s) = match s {
-  LetStmt(_pat, value, ann) => match ann {
-    N(NTypeAnn(_), _, _) => // the annotation channel is a child only when it IS one: the absent
-    // form ALIASES the value node (the parser's no-fresh-mint sentinel,
-    // all three LetStmt mints), so listing the alias double-visits every
-    // unannotated let's value subtree — measured as count_var_uses
-    // doubling through statement-position lets. Same read infer makes
-    // (its NTypeAnn arm skips a non-annotation node).
-    [node_handle(value), node_handle(ann)],
-    _ => [node_handle(value)],
+  LetStmt(_pat, value, ann) => // the annotation channel is a child only when it IS one: an absent
+  // annotation IS the value node (the parser's sentinel at every LetStmt
+  // mint; its module-scope let reads the same identity), so listing it would
+  // double-visit every unannotated let's value subtree — measured as
+  // count_var_uses doubling through statement-position lets. The alias is
+  // a fact of the HANDLES, so no body is read: the register arm draws its
+  // parent edges through this projection, and an arm's performs resolve
+  // outside its own install.
+  if node_handle(ann) == node_handle(value) {
+    [node_handle(value)]
+  } else {
+    [node_handle(value), node_handle(ann)]
   },
   FnStmt(_name, _params, _ret, _effs, body) => [node_handle(body)],
   ExprStmt(e) => [node_handle(e)],
@@ -2125,15 +2115,15 @@ fn fact_own(acc) = match acc {
 }
 
 // A call of the prelude's `fanout` is a fanout of the body's own.
-fn fact_call(acc, f) = match f {
-  N(NExpr(VarRef(name)), _, _) => match acc {
+fn fact_call(acc, f) = match graph_node_body(node_handle(f)) {
+  NExpr(VarRef(name)) => match acc {
     (has_own, callees) => (has_own || callee_is_fanout(f), push(callees, name)),
   },
   _ => acc,
 }
 
-fn callee_is_fanout(f) = match f {
-  N(NExpr(VarRef(name)), _, _) => str_eq(name, "fanout"),
+fn callee_is_fanout(f) = match graph_node_body(node_handle(f)) {
+  NExpr(VarRef(name)) => str_eq(name, "fanout"),
   _ => false,
 }
 
@@ -2164,8 +2154,8 @@ fn product_arity_at(h) = match graph_node_body(h) {
 
 // A `<|`'s branch count: the tuple of stages it fans into, or the one
 // stage of the degenerate form (lower and infer normalize the same way).
-fn fanshare_arity(right) = match right {
-  N(NExpr(MakeTupleExpr(elems)), _, _) => len(elems),
+fn fanshare_arity(right) = match graph_node_body(node_handle(right)) {
+  NExpr(MakeTupleExpr(elems)) => len(elems),
   _ => 1,
 }
 
@@ -2248,12 +2238,15 @@ fn product_fills_stage(h, right) = {
 // A LITERAL stage says its own count on the page, which is what lets the
 // merge be known before the literal is judged (the judgment reaches a pipe's
 // left first).
-fn stage_open_slots(right) = match right {
-  N(NExpr(LambdaExpr(params, _)), _, _) => len(params),
-  N(_, _, rh) => match lookup_ty(rh) {
-    TFun(ps, _, _) => len(ps),
-    _ => -1,
-  },
+fn stage_open_slots(right) = {
+  let rh = node_handle(right)
+  match graph_node_body(rh) {
+    NExpr(LambdaExpr(params, _)) => len(params),
+    _ => match lookup_ty(rh) {
+      TFun(ps, _, _) => len(ps),
+      _ => -1,
+    },
+  }
 }
 
 // The MINT span of a handle — the reverse read of the span_index weave
@@ -2438,9 +2431,7 @@ fn filter_map_imports(decls) = if len(decls) == 0 {
   head_imports ++ filter_map_imports(drop_last(decls))
 }
 
-fn node_body_of(node) with Pure = match node {
-  N(body, _, _) => body,
-}
+fn node_body_of(node) = graph_node_body(node_handle(node))
 
 // The total source the medium processed for this entry — the SUM of every
 // module's own extent. A graph read, so it is DETERMINISTIC: unlike a wall

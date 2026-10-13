@@ -1,0 +1,31 @@
+// AN ABSORBED EFFECT ENTERS THROUGH THE INSTALL. `quiet` declares `!Log`
+// over `(work()) ~> relog`: `relog` absorbs every `log` the body performs,
+// and its own arm performs `log` again, which resolves outside the install —
+// so `Log` reaches `quiet`'s row through the ARM, never through `work`. The
+// chain the refusal carries, and `mentl why <this file> quiet Log`, name the
+// install and the arm's perform. RED on boot 53213e36 (2026-10-13): the walk
+// descended into the tee's body because the body's note carried `Log`, and
+// named `work`'s own `log("a")` — a site the install absorbs — as the entry.
+effect Log {
+  log(m: String)
+}
+
+handler relog {
+  log(m) => {
+    log("{m}!")
+    resume()
+  },
+}
+
+handler sink {
+  log(_) => resume(),
+}
+
+fn work() = {
+  log("a")
+  1
+}
+
+fn quiet() with !Log = work() ~> relog
+
+fn main() = quiet() ~> sink
