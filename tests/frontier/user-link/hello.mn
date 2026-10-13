@@ -1,0 +1,9 @@
+// A clean program. Its check prints nothing: no narration about the
+// library's prose, no summary of the library's own open obligations — the
+// user's link is the user's (the frontier's user-link leg).
+import io
+
+fn main() = {
+  print_string("hello\n")
+  0
+}

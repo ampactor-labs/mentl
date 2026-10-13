@@ -1,0 +1,6 @@
+// A sibling import: c resolves beside this module, in sub/, never in the
+// directory the command runs from — a user module's own folder is its first
+// root.
+import c
+
+fn eight() = seven() + 1

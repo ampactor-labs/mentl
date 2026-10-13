@@ -271,10 +271,10 @@ handler infer_ctx with stack = [], arm_stack = [], install_marks = [], mint_ceil
     // let's init and a proposer's candidate. Each charge was noted on the
     // node that makes it first (`inf_add_row_at`), which is where a reader
     // finds it: the executable root gate reads a value let's init row off
-    // its nodes (`report_unhandled_init`); the proof gate does not yet read
-    // a candidate's (`Hβ.synth.candidate-row-is-unjudged`). An authored
-    // return's claim reached here after its declaration's frame had closed,
-    // and its payment was dropped until S6 moved the claim inside.
+    // its nodes (pipeline.mn's report_unhandled_init); the proof gate does
+    // not yet read a candidate's (`Hβ.synth.candidate-row-is-unjudged`). An
+    // authored return's claim reached here after its declaration's frame had
+    // closed, and its payment was dropped until S6 moved the claim inside.
     resume()
   } else {
     // The union is a plain value join — never a resolve: a fold here
@@ -351,7 +351,7 @@ fn exit_frame() = match inf_exit_fn() {
 // `mint` resolves to real graph handles (graph_fresh_ty), never display
 // ids. Declared HERE, the op's own layer, so every re-inference chain
 // (synth's candidate verify included) reaches it through `import infer`;
-// the query/teach entry installs `fresh_for_query` (pipeline.mn) for
+// the query/teach entry installs fresh_for_query (pipeline.mn) for
 // ephemeral display ids — the swappable peer.
 handler fresh_for_inference {
   mint(reason) => {
@@ -370,7 +370,8 @@ handler fresh_for_inference {
 // was declared but never `~>`-installed, so every `mint` in the inference extent
 // floored its FreshHandle evidence (the slot-0 fabrication). Drawing the edge
 // roots the chain at the handler the graph now connects; the query/teach entry
-// installs `fresh_for_query` for ephemeral display ids (the swappable peer).
+// installs pipeline.mn's fresh_for_query for ephemeral display ids (the
+// swappable peer).
 // The callee-row accumulation seam. Same-named effect-instance FRAGMENTS
 // join by position ONLY inside an INSTALL frame (a tee body — one
 // install's scope: yield's Iterate(el, r) and result's Iterate(el', r')
@@ -709,6 +710,16 @@ fn span_ident_walk(ref t, a, b) = if a >= b {
   }
 }
 
+// A backticked name resolves in the COMMENT'S OWN MODULE: a declaration the
+// module reaches through its imports (the same reach the manifest holds a
+// reference to, inf_module_reaches), a primitive, a keyword, a surface word
+// or a binder of the commented node. A declaration the whole link carries
+// but this module never imports is no edge the module can draw, so it does
+// not resolve — until 2026-10-12 the index and the env were read over the
+// flattened link, so a library module's prose cited the compiler's
+// declarations and checked clean, and the same prose judged alone as its
+// own entry narrated 139 unresolved references the board never saw
+// (Hβ.voice.comment-ref-gate-reads-the-flattened-link, M7).
 fn crc_resolve(ref name, h, ref cdix, ref locals) = if in_owner_names(locals, name, 0) {
   true
 } else {
@@ -718,20 +729,30 @@ fn crc_resolve(ref name, h, ref cdix, ref locals) = if in_owner_names(locals, na
       true
     } else {
       match smap_get(cdix, name) {
-        Some(referent) => {
+        Some(referent) => if inf_module_reaches(graph_module_of(h), graph_module_of(referent)) {
           graph_attach_comment_ref(h, referent)
           true
+        } else {
+          false
         },
         None => match env_lookup(name) {
-          Some(_) => true,
+          Some(_) => crc_decl_reaches(h, name),
           None => match env_lookup_type(name) {
-            Some(_) => true,
+            Some(_) => crc_decl_reaches(h, name),
             None => false,
           },
         },
       }
     },
   }
+}
+
+// An env hit resolves for a comment when the comment's module reaches the
+// declaring module; a name the env holds with no declaring module (0) is a
+// primitive, in every module's reach.
+fn crc_decl_reaches(h, name) = {
+  let dm = inf_decl_module(name)
+  dm == 0 || inf_module_reaches(graph_module_of(h), dm)
 }
 
 // The `$`-vocabulary judgment: what the program's own literals write IS
@@ -747,7 +768,7 @@ fn crc_judge_dollars(ref dollars, i, ref lvix, ref cdix) = if i >= len(dollars) 
         true
       } else {
         match smap_get(lvix, name) {
-          Some(_) => true,
+          Some(ms) => lit_modules_reach(h, ms),
           None => match smap_get(cdix, name) {
             Some(dh) => // A DECL HIT IS NOT YET A REFERENCE. `cdix` indexes every decl
             // in the weave, so a bare `Some` answers "this name exists
@@ -797,30 +818,58 @@ fn shed_underscores(ref s, i) = if i < byte_len(s) && byte_at(s, i) == 95 {
 }
 
 // Every identifier run a literal writes joins the emitted vocabulary,
-// normalized the same way (sigils split runs; leading underscores shed).
-// The walk reads every generation the graph holds, so in a session a word
-// only an edited-away literal wrote still resolves: a module's current
-// handles are no column of its node (`Hβ.graph.module-nodes-are-a-column`).
+// normalized the same way (sigils split runs; leading underscores shed),
+// UNDER THE MODULES THAT WRITE IT: the index maps a run to the module nodes
+// whose literals write it, and a comment's word resolves against it only
+// where the comment's module reaches one of them — the same reach a
+// declaration needs (crc_resolve). So lib/io.mn's prose cannot resolve
+// through literals the EMITTER writes, which io.mn never reaches, and reads
+// the same judged as its own entry and judged inside the wheel's link — a
+// flat index over the link resolves it one way and narrates it the other
+// (M7's last face, Hβ.voice.comment-ref-gate-reads-the-flattened-link). The
+// walk reads every generation the graph holds, so in a session a word only an
+// edited-away literal wrote still resolves where its generation's module
+// is reached: a module's current handles are no column of its node
+// (`Hβ.graph.module-nodes-are-a-column`).
 fn lit_vocab_build(h, n, idx) = if h >= n {
   idx
 } else {
   let idx2 = match graph_node_body(h) {
-    NExpr(LitString(s)) => lit_runs_add(s, 0, byte_len(s), idx),
+    NExpr(LitString(s)) => lit_runs_add(s, 0, byte_len(s), idx, graph_module_of(h)),
     _ => idx,
   }
   lit_vocab_build(h + 1, n, idx2)
 }
 
-fn lit_runs_add(ref s, i, n, idx) = if i >= n {
+fn lit_runs_add(ref s, i, n, idx, m) = if i >= n {
   idx
 } else {
   if ident_byte(byte_at(s, i)) {
     let j = lit_run_end(s, i + 1, n)
     let tok = shed_underscores(str_slice(s, i, j), 0)
-    lit_runs_add(s, j, n, if byte_len(tok) > 0 { smap_add(idx, tok, 1) } else { idx })
+    lit_runs_add(
+      s,
+      j,
+      n,
+      if byte_len(tok) > 0 { smap_add(idx, tok, lit_modules_with(idx, tok, m)) } else { idx },
+      m
+    )
   } else {
-    lit_runs_add(s, i + 1, n, idx)
+    lit_runs_add(s, i + 1, n, idx, m)
   }
+}
+
+// The modules already writing a run, with this one joined once.
+fn lit_modules_with(idx, tok, m) = match smap_get(idx, tok) {
+  Some(ms) => if any({ x => x == m }, ms) { ms } else { ms ++ [m] },
+  None => [m],
+}
+
+// A literal-written word is in a comment's reach when one of the modules
+// writing it is: the comment's own, or one it imports.
+fn lit_modules_reach(h, ms) = {
+  let cm = graph_module_of(h)
+  any({ m => inf_module_reaches(cm, m) }, ms)
 }
 
 fn lit_run_end(ref s, i, n) =
@@ -1410,7 +1459,7 @@ fn infer_program_once(stmts, parse_start, parse_end) = {
 // answer and never a report). The counts answer zero, because nothing
 // here judges the program.
 handler diag_quiet {
-  diag_report(_d, _msg, _dmod) => resume(),
+  diag_report(_d, _msg, _dmod, _dlayer) => resume(),
   diag_errors() => resume(0),
   diag_refusals() => resume(0),
   diag_narrations() => resume(0),
@@ -1424,9 +1473,9 @@ handler diag_quiet {
 // each into the root chain, so every Diagnostic forwarder — the bank among
 // them — sees a branch report exactly as a live one.
 handler diag_branch with lines = make_list(16), count = 0, errors = 0, refusals = 0 {
-  diag_report(diag, msg, dmod) => {
+  diag_report(diag, msg, dmod, dlayer) => {
     let iserr = diag_severity(diag) == SError
-    let grown = list_set(list_extend_to(lines, count + 1), count, (diag, msg, dmod))
+    let grown = list_set(list_extend_to(lines, count + 1), count, (diag, msg, dmod, dlayer))
     if iserr {
       if diag_refuses(diag) {
         resume() with lines = grown, count = count + 1, errors = errors + 1, refusals = refusals + 1
@@ -1447,7 +1496,7 @@ handler diag_branch with lines = make_list(16), count = 0, errors = 0, refusals 
 // capture handler hands the driver its held list through this op, the
 // diag_lines_taken precedent one bracket over.
 effect PolyCapture {
-  poly_captured() -> [(DiagKind, String, String)]
+  poly_captured() -> [(DiagKind, String, String, Layer)]
 }
 
 // The speculative judgment's diag CAPTURE: an attempt runs under it so
@@ -1457,7 +1506,7 @@ effect PolyCapture {
 // counts — the v1 boundary, noted at the stamp); the driver replays the
 // held list outward on accept or drops it for the honest re-run.
 handler poly_capture with held = [] {
-  diag_report(diag, msg, dmod) => resume() with held = push(held, (diag, msg, dmod)),
+  diag_report(diag, msg, dmod, dlayer) => resume() with held = push(held, (diag, msg, dmod, dlayer)),
   diag_errors() => resume(diag_errors()),
   diag_refusals() => resume(diag_refusals()),
   diag_narrations() => resume(diag_narrations()),
@@ -1468,8 +1517,8 @@ handler poly_capture with held = [] {
 // There is no unattributed parse and therefore no absent case for any reader
 // to carry: the column is total because entering a module is what parsing is.
 fn infer_program_converged(src) = {
-  enter_link_root()
-  infer_modules_converged([("<stdin>", [], src)])
+  enter_link_root(User)
+  infer_modules_converged([("<stdin>", [], src, User)])
 }
 
 // ─── The per-module parse — one text per module, never one weave ─────────
@@ -1496,27 +1545,28 @@ fn infer_program_converged(src) = {
 // case this column exists to not have. The link is a module: it is the
 // program the developer asked for, and the per-file parses enter their own
 // inside it.
-fn enter_link_root() = {
+fn enter_link_root(layer) = {
   let rspan = Span(1, 0, 1, 0)
-  match mint_node(NModule({decls: [], imports: [], path: "<link>", span: rspan}), rspan) {
+  match mint_node(NModule({decls: [], imports: [], layer, path: "<link>", span: rspan}), rspan) {
     N(_, _, h) => graph_module_enter(h),
   }
 }
 
 fn parse_modules(ref mods) = mods |> map(parse_one_module) |> flatten
 
-// One module: (identity, import identities, source). The imports are the
-// driver's resolved edges, carried onto the NModule so the module DAG is
-// graph content read by identity — never an authored spelling re-resolved.
+// One module: (identity, import identities, source, layer). The imports are
+// the driver's resolved edges and the layer the root the driver found the
+// module under, both carried onto the NModule so the module DAG is graph
+// content read by identity — never an authored spelling re-resolved.
 fn parse_one_module(m) = match m {
-  (path, imports, text) => {
+  (path, imports, text, layer) => {
     let mspan = Span(1, 0, count_lines(text) + 2, 0)
-    let mh = match mint_node(NModule({decls: [], imports, path, span: mspan}), mspan) {
+    let mh = match mint_node(NModule({decls: [], imports, layer, path, span: mspan}), mspan) {
       N(_, _, h) => h,
     }
     graph_module_enter(mh)
     let stmts = lex(text) |> parse_program |> import_set
-    graph_register_node(mh, NModule({decls: stmts, imports, path, span: mspan}))
+    graph_register_node(mh, NModule({decls: stmts, imports, layer, path, span: mspan}))
     stmts
   },
 }
@@ -1575,7 +1625,7 @@ fn parse_one_module(m) = match m {
 // program moves it, up at an allocation and down at an arena's exit, so
 // byte-identical runs read one number where peak RSS measured 33MB of
 // kernel jitter (Hβ.perf.cost-ratchet-reads-the-image). The arenas' census
-// is read once the module is written (`arena_line`, pipeline.mn).
+// is read once the module is written (arena_line, pipeline.mn).
 // The `passes:` line and the movers report both measured the second pass
 // and go with it; the movers ratchet reads zero because there is nothing
 // left for a scheme to move between.
@@ -2069,7 +2119,7 @@ fn layer_name_index(ref names, i, idx) = if i >= len(names) {
 // body's graph performs resolve OUTER to the root's own instance and the
 // judgment happens on the one live graph. Isolation is the caller's fork
 // triple (`graph_push_checkpoint` + `world_top` … rollback + restore), the
-// same triple `row_clause_holds` runs at the annotation gradient — the
+// same triple mentl.mn's row_clause_holds runs at the annotation gradient — the
 // gradient's own comment names this site as its shape.
 //
 // The fresh ledgers stay, and that is the point of keeping the chain: the
@@ -2113,7 +2163,7 @@ fn branch_join(facts) = match facts {
 // A held report, performed again: its message was rendered where the report
 // was made, so the replay reads nothing and says what was true then.
 fn replay_report(fact) = match fact {
-  (d, msg, dmod) => diag_report(d, msg, dmod),
+  (d, msg, dmod, dlayer) => diag_report(d, msg, dmod, dlayer),
 }
 
 fn branch_replay_consumes(ref clog, i) = if i < 0 {
@@ -2300,7 +2350,13 @@ fn infer_stmt(ref node) = match node {
     // finds a function — by what they declare, in the column — and the
     // decls facet lists them.
     declaration_noted(node, name),
-    NStmt(EffectDeclStmt(name, _, _)) => declaration_noted(node, name),
+    NStmt(EffectDeclStmt(name, _, ops)) => {
+      // Every `with` row inside an op's signature resolves, judged HERE —
+      // after every effect of the link is registered — so an op naming an
+      // effect declared below it in source is not refused for the order.
+      each(check_op_effect_names, ops)
+      declaration_noted(node, name)
+    },
     NStmt(HandlerDeclStmt(hname, ename, config, state, arms, effs)) => {
       // The decls column, third writer. An ARM is an emittable entry whose
       // name is composed at lower and cannot be parsed back to (handler,
@@ -2359,7 +2415,7 @@ fn declaration_noted(node, name: String) = match node {
 // exit (which binds the row), generalize, re-extend env with scheme.
 fn held_has_poly(held, name: String) = any(
   {
-    (d, _, _) => match d {
+    (d, _, _, _) => match d {
       TPolyRecursionSignature(owner, _) => owner == name,
       _ => false,
     },
@@ -2367,7 +2423,7 @@ fn held_has_poly(held, name: String) = any(
   held
 )
 
-fn held_has_error(held) = any({ (d, _, _) => diag_severity(d) == SError }, held)
+fn held_has_error(held) = any({ (d, _, _, _) => diag_severity(d) == SError }, held)
 
 // The Mycroft ASSUMPTION at round 2 — the name pre-bound poly over its
 // own FRESH cells (the sig'd path's shape with fresh vars standing for
@@ -2874,6 +2930,12 @@ fn infer_fn(name, params, body_node, ret_ann, effs, handle, span: ValidSpan, pol
   // One scope per signature: a lowercase name means one variable in every
   // parameter, the return and the clause (SYNTAX's case rule).
   let (param_tys, sig_scope) = build_param_scope(params, param_handles)
+  // A `with` row inside a parameter's or the return's type names effects the
+  // link declares, or the declaration refuses (check_effect_names's law, at
+  // the function-type altitude: `f: () -> a with !Network` constrained
+  // nothing while no Network existed).
+  each(check_param_effect_names(span), params)
+  check_ret_ann_effect_names(ret_ann)
   let resolved_params =
     declare_params(params, param_tys, param_handles, judged_guards(handle, params, name))
   // THE ASSUMED SIGNATURE RIDES THE SLOT AS A VALUE — prereg's own law
@@ -3062,6 +3124,7 @@ fn infer_fn(name, params, body_node, ret_ann, effs, handle, span: ValidSpan, pol
         // happens once, at the one env-whole point, never inside
         // the row algebra's compares.
         let resolved_effs = resolve_declared_instances(declared_effs)
+        check_effect_names(resolved_effs, span)
         check_instance_args(resolved_effs, span)
         let declared_row = build_declared_row_in(resolved_effs, sig_scope)
         // THE GATE RUNS ON THE RESOLVED ROW, at every exit — a cycle
@@ -3088,9 +3151,15 @@ fn infer_fn(name, params, body_node, ret_ann, effs, handle, span: ValidSpan, pol
 }
 
 // A refusal the graph's write guard noted, rendered and reported here, beside
-// the graph the guard protected.
+// the graph the guard protected — AT the module the guard noted, so its name
+// and layer are read where every report reads them. (This call dropped a
+// field on 2026-10-12, when the report grew a layer: with one field
+// unsupplied it was a PARTIAL, a value `each` discarded, and every occurs
+// refusal the guard noted vanished — `fn f(x) = x == [x]` checked clean and
+// a polymorphic self-call judged monomorphic. The stage of `each` answers
+// `()` now, so a dropped function value there is a type error.)
 fn report_guard_note(note) = match note {
-  (d, dmod) => diag_report_at(d, dmod),
+  (d, m) => report_at(m, d),
 }
 
 // ─── The instance-argument REGISTRATION FOLD (RESIDUE effarg-node D1/D2) ──
@@ -3427,6 +3496,97 @@ fn call_is_alloc_returning(func) = match func {
 // mismatch. Type- and node-shaped args carry the instance-unification
 // flow (the modal frontier's admit-through-instantiation face) and
 // pass this ground check.
+// Every name a clause writes RESOLVES — to an effect the link declares or to
+// a row alias — or the clause refuses at its declaration. A lowercase name is
+// a row variable (SYNTAX's case rule) and `Pure` is the identity; anything
+// else that the env does not hold as an effect is a word the program
+// invented, and a negation of it constrains nothing: `with !Network` over a
+// link that declares no Network checked clean and proved nothing until
+// 2026-10-12 (lib/persist.mn carried one). The refusal is E_MissingVariable,
+// the same class a reference to an undeclared name takes, with the term
+// named as an effect.
+fn check_effect_names(effs, span: ValidSpan) = each(
+  {
+    (RtGroup(ts), _negated, _conn) => check_effect_names(ts, span),
+    (RtEff(ename), _negated, _conn) => check_effect_name(ename, span),
+  },
+  effs
+)
+
+// One name of a row, resolved: a row variable, `Pure`, an effect the env
+// declares or a row alias; anything else is refused at the span given.
+fn check_effect_name(ename, span: ValidSpan) = if row_var_spelled(ename) || is_pure_eff_name(ename) {
+  ()
+} else {
+  match env_lookup(eff_name_str(ename)) {
+    Some(entry) => match entry {
+      (_, _, EffectDeclKind(_, _)) => (),
+      (_, _, RowAliasKind(_)) => (),
+      _ => report(EMissingVariable("effect: {eff_name_str(ename)}", span)),
+    },
+    None => report(EMissingVariable("effect: {eff_name_str(ename)}", span)),
+  }
+}
+
+// One parameter's type, walked at the declaration's span — the stage every
+// parameter list below is walked with.
+fn check_param_effect_names(span: ValidSpan, p) = check_ty_effect_names(param_ty(p), span)
+
+// The same law at the function-type altitude: every `with` row a TYPE holds
+// — a function-typed parameter's, a continuation's world, a row inside a
+// record's field or a nominal type's argument — names effects the link
+// declares. The parser builds those rows before any effect is registered
+// (build_declared_row at parse time takes a name on faith), so the judgment
+// walks the type where the declaration is judged, with every effect in the
+// env. The walk mirrors free_in_ty's over the type constructors.
+fn check_ty_effect_names(ty, span: ValidSpan) = match ty {
+  TInt => (),
+  TFloat => (),
+  TUnit => (),
+  TByte => (),
+  TAddr => (),
+  TVar(_) => (),
+  TList(elem) => check_ty_effect_names(elem, span),
+  TTuple(elems) => each(check_ty_effect_names(??, span), elems),
+  TFun(params, ret, eff) => {
+    each(check_param_effect_names(span), params)
+    check_ty_effect_names(ret, span)
+    check_row_effect_names(eff, span)
+  },
+  TName(_, args) => each(check_ty_effect_names(??, span), args),
+  TRecord(fields) => each({ (_, fty) => check_ty_effect_names(fty, span) }, fields),
+  TRecordOpen(fields, _) => each({ (_, fty) => check_ty_effect_names(fty, span) }, fields),
+  TRefined(base, _) => check_ty_effect_names(base, span),
+  TCont(input, answer, _, world) => {
+    check_ty_effect_names(input, span)
+    check_ty_effect_names(answer, span)
+    check_row_effect_names(world, span)
+  },
+  TAlias(_, inner) => check_ty_effect_names(inner, span),
+  TReprPin(_, base) => check_ty_effect_names(base, span),
+}
+
+// A built row's names, present and absent alike; its tail is a cell.
+fn check_row_effect_names(row, span: ValidSpan) = match row {
+  EfRow(present, absent, _) => each(check_effect_name(??, span), present ++ absent),
+}
+
+// An effect op's signature: its parameters' types and its return, each at
+// the op's own span.
+fn check_op_effect_names(op) = match op {
+  (_op_name, op_params, ret, N(_, op_span, _)) => {
+    each(check_param_effect_names(op_span), op_params)
+    check_ty_effect_names(ret, op_span)
+  },
+}
+
+// A function's authored return type, when one was written (the parser mints
+// LitUnit where no `->` is authored).
+fn check_ret_ann_effect_names(ret_ann) = match ret_ann {
+  N(NTypeAnn(t), s, _) => check_ty_effect_names(t, s),
+  _ => (),
+}
+
 fn check_instance_args(effs, span: ValidSpan) = each(
   {
     (RtGroup(ts), _negated, _conn) => check_instance_args(ts, span),
@@ -3938,7 +4098,7 @@ fn infer_expr(ref node) = match node {
         }
         // The spec stays a VALUE — `infer_pipe` checks it as a FeedbackSpec —
         // but its construction never executes: the depth is read at lower
-        // (`feedback_line_depth`) and emit drops the lowered spec. So it is
+        // (lower.mn's feedback_line_depth) and emit drops the lowered spec. So it is
         // judged in a frame of its own whose row is dropped, never charged to
         // this one. Measured 2026-09-25: `((prev) => ramp(prev)) <~ Delay(3)`
         // under `!Alloc` refused with `!Alloc + Any vs Memory + Alloc`, the
@@ -4211,7 +4371,7 @@ fn callee_name(func_node) with Pure = match func_node {
 // bound its node before the arguments are read, and that binding is the one
 // home: a parameter or a field callee carries ITS type, never a module
 // function's that shares the name (`fn run(f) = f(7)` beside a two-parameter
-// top-level `f` with a default spliced that default into the callback's
+// top-level f with a default spliced that default into the callback's
 // call, measured 2026-09-30 on boot 523f1732). [] when the node is not a
 // function type: no labels to resolve, the arguments pass through
 // positionally.
@@ -4903,10 +5063,9 @@ fn int_in(ref xs, target, i) = if i >= len(xs) {
 // ─── The replay value barrier (Hβ.own.linear-tier-and-persist-value-barrier) ──
 //
 // The ROW half landed first: a fn-typed param whose declared row severs
-// the whole external triple under the !-stance (!WASI + !Filesystem +
-// !Network, EtAll tail — persist_branch's own contract) IS a replay
-// boundary: the callee re-runs the thunk, and the row severs what a
-// replay cannot un-send. This is the VALUE half: a frame-declared
+// the host under the !-stance (!WASI + !Filesystem, EtAll tail —
+// persist_branch's own contract) IS a replay boundary: the callee re-runs
+// the thunk, and the row severs what a replay cannot un-send. This is the VALUE half: a frame-declared
 // authored `own` FREE in that thunk crosses the wire as bytes while its
 // duty-to-finish stays behind — each resumed run re-consumes it. Replay
 // is the parallel fan on the TIME axis, so BParallel's collision law
@@ -4925,10 +5084,11 @@ fn replay_barrier_gate(dps, args, span: ValidSpan, i) = if i >= len(dps) || i >=
   replay_barrier_gate(dps, args, span, i + 1)
 }
 
-// A row severs replay when its !-stance forbids the whole external
-// triple — the exact contract persist_branch's declared row states. The
-// stance is a GATE now (the universe appears in gates and nowhere else):
-// an authored `!WASI + !Filesystem + !Network` on the thunk's type is a
+// A row severs replay when its !-stance forbids the host — WASI, the
+// boundary itself, and Filesystem, the capability over it — the exact
+// contract persist_branch's declared row states. The stance is a GATE now
+// (the universe appears in gates and nowhere else): an authored `!WASI +
+// !Filesystem` on the thunk's type is a
 // free row terminal whose cell carries the negation, so the read follows
 // the row to its one terminal and reads the bound there; the value form
 // stays readable for a row that still folds to the universe.
@@ -4941,8 +5101,14 @@ fn row_severs_replay(row) = match chase_row_deep(row, 0) {
   _ => false,
 }
 
-fn absent_severs(absent) =
-  absent_forbids(absent, "WASI") && absent_forbids(absent, "Filesystem") && absent_forbids(absent, "Network")
+// The host pair, by name — the effects whose absence severs a branch from
+// the host. Each is declared in every link that persists, and the row law
+// (check_effect_names) refuses a clause naming an effect no declaration backs,
+// so this conjunction cannot demand a phantom: a name here that nothing
+// declares would constrain nothing, and the barrier it guards would vanish
+// with it (the frontier's persist value-barrier leg holds the narration,
+// T_OwnAcrossReplay, against the boot).
+fn absent_severs(absent) = absent_forbids(absent, "WASI") && absent_forbids(absent, "Filesystem")
 
 // The negation gates at a terminal, read as one forbidden set.
 fn gates_sever(gs: [Gate]) = absent_severs(gates_forbidden(gs))
@@ -5148,8 +5314,8 @@ fn perform_ground_dim(dims, i, a) = match a {
 // A REQUIRED environment read must name its variable at the read: lib's
 // `env` op of `Environ` (lib/environ.mn) — host vocabulary the medium names, as
 // it names `Alloc` and `Trap` — with its name dim left opaque has no name the
-// launch gate can check (`env_demand_check`). `env_opt`, the optional read,
-// takes any name.
+// launch gate can check (env_demand_check in lib/environ.mn). `env_opt`, the
+// optional read, takes any name.
 fn env_read_is_ungrounded(en: String, cname: String, dims) =
   en == "Environ" && cname == "env" && any({ (_, None) => true, (_, Some(_)) => false }, dims)
 
@@ -5395,8 +5561,8 @@ fn infer_lambda(params, body_node, handle, span: ValidSpan, binder) = {
 // A single-parameter lambda literal. Where a verb applies it in place — the
 // left of `<~`, whose parameter binds the prior, and the right of `|>`, whose
 // parameter binds the piped value — the lowering binds the parameter and
-// lowers the body in the frame it stands in (`lower_feedback_body`,
-// `lower_pipe_complete`), so no closure is minted and the judgment charges
+// lowers the body in the frame it stands in (lower.mn's lower_feedback_body
+// and lower_pipe_complete), so no closure is minted and the judgment charges
 // none. One test, both readers.
 fn inlinable_lambda(node) = match node {
   N(NExpr(LambdaExpr(params, body)), _, _) => if len(params) == 1 { Some((params, body)) } else { None },
@@ -5416,7 +5582,7 @@ fn inlinable_lambda_arity(node, n) = match node {
 // borrowed input — is APPLIED where it stands: a call there is completed in
 // place, the value filling its hole, so it mints no partial; a literal there
 // is the value bound to its parameters, so it mints no closure. The
-// lowering applies it the same way (`lower_pipe_complete_many`), which is
+// lowering applies it the same way (lower.mn's lower_pipe_complete_many), which is
 // what keeps the stage's cost in the row exactly what the emit builds.
 fn infer_stage(stage, arity) = match stage {
   N(NExpr(CallExpr(rf, rargs)), rspan, rh) => match infer_call_node(rf, rargs, rh, rspan, AtStage) {
@@ -5678,6 +5844,7 @@ fn enforce_handler_clause(hname: String, declared_effs, r_handle, span: ValidSpa
 } else {
   let has_pure = has_pure_declared(declared_effs)
   let resolved_effs = resolve_declared_instances(declared_effs)
+  check_effect_names(resolved_effs, span)
   check_instance_args(resolved_effs, span)
   let declared_row = build_declared_row(resolved_effs)
   enforce_row_gate(hname, declared_row, has_pure, r_handle, span)
@@ -5731,7 +5898,7 @@ fn handler_e_r(right) = match callee_name(right) {
 // A bare `~> h` of a handler with config is the zero-argument product:
 // every field fills from its declaration default, and that product is
 // written at the reference node, where the lowering reads an install's
-// config arguments (`extract_handler_config_args`) — a `~> h(args)`
+// config arguments (lower.mn's extract_handler_config_args) — a `~> h(args)`
 // install is a call and writes its product at the call node. A handler
 // without config writes none.
 fn note_bare_handler_product(right) = match right {
@@ -7496,7 +7663,7 @@ fn demands_copy(ds: [TypeDemand], fresh) = match ds {
 // (the outer shape: a list or not, which fields a row holds); everywhere
 // else it reads a width. So the variables a body reads the structure of are
 // exactly the ones a twin of that body keys by structure, and every other
-// one keys by its representation digit (lower.mn `twin_key`). The judgment
+// one keys by its representation digit (lower.mn's twin_key). The judgment
 // holds each such read at its site, so the read is entered there and the
 // cells carry it as they carry the numeric gate: pushed into what a marked
 // cell is bound to, ridden across an alias, copied at instantiation — which
@@ -7749,7 +7916,7 @@ fn ages_open_fn(param_handles) = match ages_top() {
 // that returns its own recursive call reads that call through the claim being
 // formed, so the claim is its LEAST FIXPOINT: it starts at "fresh" and is
 // read again through what the last round found until a round adds nothing —
-// `list_copy_into` returns its `dst` or itself, so it returns `dst`, where
+// `list_copy_into` returns its dst parameter or itself, so it returns dst, where
 // reading the unpublished call as older made every buffer it grows older too
 // (the measured first form: `map` still twinned 119 times). A round can only
 // add a parameter or fall to older, so the rounds are bounded by the
@@ -12939,9 +13106,9 @@ fn register_handler(hname, ename_parsed, config, state, arms, effs, span: ValidS
   // Config params bound FIRST — before the state inits are inferred — so a
   // state init that references a config param (`with acc = init`) READS the
   // live config, not an unbound name flooring to a fresh var. That
-  // read-before-bind disconnected fold's accumulator `acc` from its `init`
+  // read-before-bind disconnected fold's accumulator acc from its `init`
   // config: fold's type became four separate vars (init / f-param / f-result /
-  // return), the lambda's `acc` never resolved to a list, and `acc ++ xs`
+  // return), the lambda's acc never resolved to a list, and `acc ++ xs`
   // floored (the m3 concat census). One outer env scope holds config + state
   // for every arm; per-arm scopes isolate only the op params.
   env_scope_enter()
@@ -13568,9 +13735,9 @@ fn collect_fn_decls_updates(updates, acc) = if len(updates) == 0 {
 // `fail -> a` graded OneShot handed the arm's value back to the perform site
 // as whatever `a` had unified with — `let s: String = fail("x"); len(s) +
 // 100` answered 100 on boot 311479e1, the arm's 7 read as a String — and
-// `abort -> !` parses TUnit, a value like any other. The wheel's two
-// never-resuming handlers, `catch_abort` and `fail_exit`, abandon now
-// (AN-2, 2026-10-03).
+// `abort -> !` parses TUnit, a value like any other. The wheel's
+// never-resuming handler, `fail_exit`, abandons (AN-2, 2026-10-03); the
+// other, catch_abort, left with the dead Abort subsystem on 2026-10-12.
 fn arm_disc_of(grade) = match grade {
   RMany => MultiShot,
   RDeep => // ONE use, HELD: the arm computes after the remainder returns, so the
@@ -13603,7 +13770,7 @@ fn disc_join(a, b) = match a {
 
 // Whether a resume of this discipline CALLS its continuation, so the
 // remainder runs inside the resume's own frame: the record path the lowering
-// takes for both (`lower_resume_callk`). A one-shot resume is the stack
+// takes for both (lower.mn's lower_resume_callk). A one-shot resume is the stack
 // return, and the remainder runs after the arm has returned.
 fn continuation_held(disc) = match disc {
   MultiShot => true,

@@ -127,6 +127,7 @@ SIGNAL_RTLIBS=(
 IO_RTLIBS=(
   "${RTLIBS[@]}"
   io
+  fs
 )
 
 # The real-workload crucible lib set: the base runtime plus the transcendental
@@ -3162,10 +3163,10 @@ for i in "${!compilers[@]}"; do
   rf=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT::." --dir /tmp "$compiler" where src/main.mn Filesystem 2>/dev/null)
   rr=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT::." --dir /tmp "$compiler" where src/main.mn fmt_run 2>/dev/null)
   rall="$rd$rf$rr"
-  if [[ -n "$rd" && -n "$rf" && -n "$rr" ]] && ! printf '%s' "$rall" | grep -qE '@e[0-9]|_: |-> \(\)|WASI\(a\)'; then
+  if [[ -n "$rd" && -n "$rf" && -n "$rr" ]] && ! printf '%s' "$rall" | grep -qE '@e[0-9]|_: |-> \(\)( with [A-Za-z0-9_+!() ]*)?$|WASI\(a\)'; then
     pass "one renderer: doc and where print no handle, no _:, no -> () and no WASI(a)"
   else
-    fail "one renderer (got: $(printf '%s' "$rall" | grep -E '@e[0-9]|_: |-> \(\)|WASI\(a\)' | head -3 | tr '\n' ' '))"
+    fail "one renderer (got: $(printf '%s' "$rall" | grep -E '@e[0-9]|_: |-> \(\)( with [A-Za-z0-9_+!() ]*)?$|WASI\(a\)' | head -3 | tr '\n' ' '))"
   fi
   # A PIPE STAGE IS PROPOSED BY REFERENCE, searched outward from the hole's
   # module (PROGRAM C3). Born RED 2026-09-25 on all three: `5 |> ??` offered
@@ -3265,9 +3266,11 @@ for i in "${!compilers[@]}"; do
   taret=$?
   wt_run --dir "$tadir::." --dir "$ROOT::/mentl-home" "$compiler" accept plain.mn:8:1 > /dev/null 2>"$dir/teach-accept-plain.err"
   taplain=$?
-  # The debt is the fixture's own: since TRAP the linked runtime carries open
-  # index claims of its own, so each file's pending count is read against a
-  # bare program's over the same link, and any error counts outright.
+  # The debt is the fixture's own. The file route's summary counts the
+  # entry's own layer since 2026-10-12 (the user-link leg below holds it),
+  # so a bare program's count over the same link is zero; it is still read
+  # and subtracted, a no-op that keeps this leg honest should the summary
+  # ever widen again. Any error counts outright.
   printf 'fn main() = 0\n' > "$tadir/bare.mn"
   ta_pending() { wt_run --dir "$tadir::." --dir "$ROOT::/mentl-home" "$compiler" compile "$1" 2>&1 >/dev/null \
     | awk '/ error/ {e++} /verification obligations pending/ {for (i=1;i<=NF;i++) if ($i ~ /^[0-9]+$/) p=$i} END {print (e+0) " " (p+0)}'; }
@@ -3322,6 +3325,59 @@ for i in "${!compilers[@]}"; do
     pass "render register (the user's own warning survives, once)"
   else
     fail "render register own-warning (want 1 E_RedundantBraces, got $wcount)"
+  fi
+  # ── the user's link is the user's (2026-10-12) ─────────────────────
+  # A module's LAYER (User | Lib | Compiler) is read off the root that
+  # resolved it and rides every report from its writer; on the file route
+  # the register renders the modules of the entry's own layer and the debt
+  # summary counts only them. RED on boot 454c3aaf: a clean program's check
+  # printed the library's unresolved comment references (41 through main's
+  # library, where lib/io.mn still imported src/types.mn; none through this
+  # tree's), and a program owing ONE obligation reported the runtime
+  # library's seventeen beside it (18). The fixtures are copied out so the
+  # warm image a compile files under `.build/` never lands in the tree.
+  uld="$dir/user-link"
+  rm -rf "$uld"; mkdir -p "$uld"
+  cp "$ROOT/tests/frontier/user-link/hello.mn" "$ROOT/tests/frontier/user-link/owes.mn" "$uld/"
+  ulhello=$(wt_run --dir "$uld::." --dir "$ROOT::/mentl-home" "$compiler" check hello.mn 2>&1); ulrc=$?
+  if [ "$ulrc" = 0 ] && [ -z "$ulhello" ]; then
+    pass "user link: a clean program's check prints nothing (no library narration, no library debt)"
+  else
+    fail "user link hello (exit=$ulrc, $(printf '%s\n' "$ulhello" | grep -c .) line(s): $(printf '%s' "$ulhello" | head -1 | cut -c1-120))"
+  fi
+  ulowes=$(wt_run --dir "$uld::." --dir "$ROOT::/mentl-home" "$compiler" compile owes.mn 2>&1 >/dev/null); ulorc=$?
+  ulpend=$(printf '%s\n' "$ulowes" | grep -c 'V_Pending' || true)
+  ullines=$(printf '%s\n' "$ulowes" | grep -c . || true)
+  if [ "$ulorc" = 0 ] && [ "$ulpend" = 1 ] && [ "$ullines" = 2 ] && printf '%s' "$ulowes" | grep -q ' 1 verification obligations pending at owes:'; then
+    pass "user link: a program's debt summary counts its own obligation (1) and nothing of the library's"
+  else
+    fail "user link debt (exit=$ulorc V_Pending=$ulpend lines=$ullines: $(printf '%s' "$ulowes" | tail -1 | cut -c1-140))"
+  fi
+  # The shim's half: a path-shaped argument whose directory lies outside the
+  # cwd is rewritten to its absolute form (a `:L:C` suffix kept), since the
+  # guest opens it against the cwd preopen and WASI refuses `..` above it.
+  # RED on the 454c3aaf shim: `mentl run ../owes.mn` was E_MissingModule.
+  ulbin="$dir/user-link-bin"
+  rm -rf "$ulbin"; mkdir -p "$ulbin/sub"
+  MENTL_BIN_DIR="$ulbin" bash "$ROOT/tools/install.sh" >/dev/null 2>&1
+  (cd "$ulbin/sub" && MENTL_BOOT="$compiler" "$ulbin/mentl" run ../../user-link/owes.mn >/dev/null 2>"$dir/user-link-shim.err"); ulsrc=$?
+  if [ "$ulsrc" = 20 ]; then
+    pass "user link: the shim runs a program above the cwd (\`mentl run ../owes.mn\` exits 20)"
+  else
+    fail "user link shim (exit=$ulsrc: $(grep -v '^verify:' "$dir/user-link-shim.err" | head -1 | cut -c1-140))"
+  fi
+  # Two spellings of one file from one program — sub/c from the entry, c
+  # from its sibling in sub/ — are one module in the DAG: the walk keys the
+  # path it resolved, and a user module's own folder is its first root. RED
+  # on boot 454c3aaf: every importer probed the cwd first, so the entry's
+  # `import sub/b` was E_MissingModule (searched sub/b.mn, src/sub/b.mn,
+  # lib/sub/b.mn, …) with `seven` and `eight` unbound behind it.
+  cp -r "$ROOT/tests/frontier/user-link/nest" "$uld/"
+  (cd "$uld" && MENTL_BOOT="$compiler" "$ulbin/mentl" run nest/a.mn >/dev/null 2>"$dir/user-link-nest.err"); ulnrc=$?
+  if [ "$ulnrc" = 15 ] && ! grep -qv '^verify:' "$dir/user-link-nest.err"; then
+    pass "user link: two spellings of one file are one module (nest/a.mn exits 15, silent)"
+  else
+    fail "user link nest (exit=$ulnrc: $(grep -v '^verify:' "$dir/user-link-nest.err" | head -1 | cut -c1-140))"
   fi
   # ── the one judge — order-independent verdicts on the DAG path ─────
   # The check/audit/at/field verbs judge through infer_program_converged
@@ -4627,7 +4683,15 @@ for i in "${!compilers[@]}"; do
   # 2829 (2026-10-09): FELL 2835 → 2829 at L-F, the word's bit operations
   # one paragraph over their named parameters where each op carried its own
   # comment, the three it gained (shr_u, shr_s, clz) included.
-  cost_ceiling=2829
+  # 2837 (2026-10-13): ROSE 2829 → 2837 at Landing 1. lib/memory.mn declares
+  # `effect Mutate {}` — the ownership marker every program may negate, which
+  # had lived in src/types.mn beside the compiler's graph event and reached a
+  # user only through a dead import (five lines with its lede); and
+  # lib/prelude.mn's `each` states its stage law in its comment and
+  # `each_handler`'s arm resumes with the stage's answer (two lines net).
+  # A bare program pays both: the marker because `with !Mutate` must resolve
+  # in every program, the law because its stage is every program's.
+  cost_ceiling=2837
   ct_out=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" query "$ROOT/tests/frontier/mn-bare-floor.mn" "cost" 2>/dev/null)
   ct_lines=$(printf '%s' "$ct_out" | grep -o '[0-9]* source line' | grep -o '[0-9]*' | head -1)
   if [ -n "$ct_lines" ] && [ "$ct_lines" -le "$cost_ceiling" ]; then

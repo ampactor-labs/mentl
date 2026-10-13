@@ -1,0 +1,12 @@
+// expect: refuse E_MissingModule
+// THE USER'S LINK IS THE USER'S. A module's layer is read off the root that
+// resolved it (User, Lib, Compiler), and an importer probes the roots its
+// layer may reach: a User module its own directory and the library roots,
+// never `src/`. So a program's `import graph` names no module — the compiler's
+// graph.mn is not in a user's reach — and refuses by name, with the paths it
+// probed. Until Landing 1 (2026-10-13) every root was probed for every importer, so this
+// program linked the compiler's own graph module and compiled clean (measured
+// on boot 454c3aaf).
+import graph
+
+fn main() = 0

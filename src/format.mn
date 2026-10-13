@@ -309,7 +309,7 @@ fn render_fanout_vertical(branches) = match branches {
 //
 // A single-stage body renders inline — same tree, same scope:
 //
-//   (try_fn()) ~> catch_abort
+//   (try_fn()) ~> recover
 fn render_tee(body, handler_expr) = {
   let body_str = render_chain_pos(body)
   let handler_str = render_chain_pos(handler_expr)
@@ -360,7 +360,7 @@ fn render_feedback_chain(input, spec) = {
 //
 // THE PROPERTY THEY DESCRIBED IS REAL AND IS BUILT — just not here: `fmt`
 // writes its own fixpoint in one invocation by rendering, re-parsing and
-// writing the SECOND render (`fmt_run`, src/main.mn), which is the idempotence
+// writing the SECOND render (fmt_run, src/main.mn), which is the idempotence
 // this loop only asserted. A verb whose output feeds its own reader carries
 // the loop internally; it does not need a `<~` wrapper nobody calls.
 //
@@ -612,7 +612,13 @@ fn render_stmt_tokens(s) with !Mutate = match s {
   // instance params render through the same product projection the
   // handler head uses (format∘parse identity over SYNTAX §«Parameterized
   // effect»).
-  "effect {name}{render_config_params(params)} \{\n{indent_block(strip_trailing_nl(render_effect_ops(ops, 0)))}\n\}",
+  // An effect with no operations is a marker (`effect Mutate {}`): its body
+  // renders closed on the head's line, never as a brace pair around an
+  // indented empty line (the trailing-space line the block form wrote).
+  match ops {
+    [] => "effect {name}{render_config_params(params)} \{\}",
+    _ => "effect {name}{render_config_params(params)} \{\n{indent_block(strip_trailing_nl(render_effect_ops(ops, 0)))}\n\}",
+  },
   HandlerDeclStmt(hname, _ename, config, states, arms, effs) => "handler {hname}{render_config_params(config)}{render_handler_clause(effs, states)} \{\n{indent_block(strip_trailing_nl(render_handler_arms(arms, 0)))}\n\}",
   RefineStmt(name, ty, pred) => "type {name} = {render_decl_type(ty)} where {render_predicate_tokens(pred)}",
 }

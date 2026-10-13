@@ -74,7 +74,7 @@ if (spawned > 0) {
   console.log('[1] stub-spawn control: VACUOUS — the judgment spawned nothing on this path (judge once, since pin 7c9dc538); the control re-arms when the judgment schedules (PLAN §11 9.2)');
 }
 // ── Leg 2: address mode projects the REAL CursorView (the ring wire) ────────
-const libs = ['lib/memory.mn', 'lib/strings.mn', 'lib/lists.mn', 'lib/threading.mn', 'lib/io.mn', 'lib/prelude.mn', 'src/types.mn'];
+const libs = ['lib/memory.mn', 'lib/strings.mn', 'lib/lists.mn', 'lib/threading.mn', 'lib/io.mn', 'lib/fs.mn', 'lib/prelude.mn'];
 const VFS = {};
 for (const p of libs) VFS[p] = new Uint8Array(await readFile(new URL(p, REPO)));
 

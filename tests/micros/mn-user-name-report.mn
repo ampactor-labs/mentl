@@ -1,0 +1,17 @@
+// expect: 7
+// A USER'S NAME IS THE USER'S. `report` is a declaration of the compiler's
+// src/types.mn, and until Landing 1 (2026-10-13) every program that imported
+// io linked that module through one dead import line (lib/io.mn's `import
+// types`), so this program was refused as a duplicate declaration — of a
+// function the developer never heard of, in a file they never opened
+// (E_DuplicateFnName on main's tree through boot 454c3aaf; the refusal is the
+// library's, so the same boot over this tree's library runs it). The library
+// imports nothing of the compiler now, and a user's reach never holds it.
+import io
+
+fn report(x) = x + 2
+
+fn main() = {
+  print_string("")
+  report(5)
+}

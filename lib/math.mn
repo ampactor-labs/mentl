@@ -31,7 +31,7 @@ import strings
 // UNANNOTATED float parameter at the i32 floor (§5.U's repr gradient
 // reaches literals and float-forcing bodies, but not a bare `x + y`
 // param), so the callee is compiled with i32 params while the caller
-// pushes f64 and dispatches through `call_indirect` — an "indirect call
+// pushes f64 and dispatches through a call_indirect — an "indirect call
 // type mismatch" trap the moment a float fn calls another float fn.
 // Annotating the parameter emits the f64 slot the gradient will one day
 // infer. Named peer Hβ.emit.float-evidence-ft (PLAN §7): the gradient

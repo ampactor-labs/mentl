@@ -67,6 +67,8 @@ import eight_loop
 
 import format
 
+import fs
+
 import infer
 
 import io
@@ -336,7 +338,7 @@ fn march_run() = match march_entry() {
 // pipeline_check's own law).
 fn march_emit(entry, fd) = compile_context(() => {
   // body() ~> chain is infer_context's own idiom.
-  let body = () => match driver_entry_scoped(entry, ScopeAll) {
+  let body = () => match driver_entry_scoped(entry, Census) {
     (ast, mods) => {
       compile_remainder(ast)
       (mods, diag_errors())
@@ -539,14 +541,14 @@ fn fmt_file(stamps, path: String) = {
 fn fmt_render_file(path: String, src: String) = infer_context(() => {
   let module = path_to_module(path)
   let from = graph_next()
-  let ast = parse_one_module((module, [], src))
+  let ast = parse_one_module((module, [], src, User))
   let to = graph_next()
   let parse_errors = parse_refusals()
   if parse_errors > 0 {
     FmtUnparsed(path, parse_errors)
   } else {
     let first = respell(src, format_program(ast))
-    let again = parse_one_module((module, [], first))
+    let again = parse_one_module((module, [], first, User))
     if parse_refusals() > 0 {
       FmtRefused(path, ["the canonical render does not parse — the formatter's defect, reported above"])
     } else {
@@ -573,7 +575,7 @@ fn fmt_render_file(path: String, src: String) = infer_context(() => {
 fn parse_refusals() = len(filter(render_cannot_fix, diag_banked()))
 
 fn render_cannot_fix(entry) = match entry {
-  (d, _, _) => diag_applicability(d) != MachineApplicable,
+  (d, _, _, _) => diag_applicability(d) != MachineApplicable,
 }
 
 // THE CONSERVATION GATE — the verb lexes its own render beside the source
@@ -1713,7 +1715,7 @@ fn battery_wat_path(stem) = ".build/battery/{stem}.wat"
 // lists, prelude — which was a copy of the prelude's closure that had
 // already lost threading, and which ignored a fixture's own imports.
 fn battery_compile(module: String, stem) = compile_context(() => {
-  let lowered = match driver_entry_scoped(module, ScopeAll) {
+  let lowered = match driver_entry_scoped(module, Census) {
     (ast, _) => ast |> saturate_pass |> lower_program |> reachable_from_main,
   }
   // THE SAME law the CLI compile applies, batch-shaped: refusal = holes +
@@ -1965,7 +1967,7 @@ fn verify_run(target_opt) = infer_context(() => {
   // defect, and while it inherited the narrowing the comment-reference count
   // could only ever see the entry module's prose (measured 2026-09-20:
   // 0 on the entry link against 58 across the modules).
-  match driver_entry_scoped(entry_module, ScopeAll) {
+  match driver_entry_scoped(entry_module, Census) {
     (_ast, ranges) => match range_of_module(ranges, entry_module) {
       None => {
         eprint_string("mentl verify: no source to judge — {entry_module} never joined the weave\n")

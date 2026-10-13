@@ -1,0 +1,9 @@
+// expect: refuse E_MissingVariable
+// THE SAME LAW AT THE FUNCTION-TYPE ALTITUDE: a `with` row inside a
+// parameter's type names effects the module's reach declares, or the
+// declaration refuses. `f: () -> Int with !Nowhere` constrained nothing while
+// no Nowhere existed — a negation on a callback that no call could ever
+// violate. Measured on boot 454c3aaf: compiled clean and ran to 1.
+fn run(f: () -> Int with !Nowhere) = f()
+
+fn main() = run(() => 1)

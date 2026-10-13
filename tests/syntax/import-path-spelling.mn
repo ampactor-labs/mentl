@@ -1,22 +1,21 @@
 // expect: 7
 // SYNTAX §«Imports» — a module's IDENTITY is the module it resolves to,
-// never the spelling that reached it. `lists` and `lib/lists` name one
-// file, so importing the path-prefixed spelling from a module whose
-// prelude already imported the bare one draws a SECOND edge to a module
-// already in the DAG — and drawing an edge that exists is a no-op,
-// because that is what an edge is.
+// never the spelling that reached it. The prelude imports lists for every
+// program, so importing it here draws a SECOND edge to a module already in
+// the DAG — and drawing an edge that exists is a no-op, because that is what
+// an edge is: the walk keys its visited set by the PATH a spelling resolved
+// to, so the module is collected once and no declaration in it collides with
+// itself (58 diagnostics on this four-line program the day the set keyed the
+// spelling, while the identical source through the blob link was silent, the
+// concatenation never resolving an import at all — the divergence this
+// battery's manifest leg exists to catch).
 //
-// Born RED (2026-09-06): the DAG walk keyed its visited set by the
-// SPELLING and resolved to a path on the next line, so the two spellings
-// collected the same file twice and every declaration in it collided
-// with itself — 58 diagnostics on this four-line program, while the
-// identical source through the blob link is silent because the
-// concatenation never resolves an import at all.
-//
-// That divergence is what this battery's manifest leg exists to catch,
-// and it is the §11 tripwire-3 shape exactly: the wheel's own build is
-// the cat-blob through stdin, and every lib spells its siblings bare, so
-// no gate on the board had ever resolved a path-prefixed import.
-import lib/lists
+// Two spellings of ONE file from one program is a user-folder shape — sub/c
+// from the entry and c from its sibling in sub/ — and the frontier's
+// user-link leg holds it (tests/frontier/user-link/nest). A lib/-prefixed
+// spelling is not a module name a program can write: a user module resolves
+// against its own folder and the library roots, never the repository's
+// layout (SYNTAX §«Imports», the layer law).
+import lists
 
 fn main() = len([1, 2, 3]) + 4

@@ -258,14 +258,12 @@ handler fold_handler(f, init) with acc = init {
 }
 
 // Exhaustive over `Iterate` like its siblings: `each` collects nothing, so
-// its `result` is unit. The arm answered `yield` alone before 2026-09-30,
-// when the exhaustive-handler rule (E_HandlerInexhaustive) refused it — an
-// install of a half-handler subtracts the WHOLE effect from the row.
+// its `result` is unit (a half-handler answering `yield` alone is refused,
+// E_HandlerInexhaustive — an install subtracts the WHOLE effect from the
+// row). The arm resumes with the stage's answer, which `yield`'s declared
+// result makes unit: the constraint `each` promises, read off the op.
 handler each_handler(f) {
-  yield(elem) => {
-    f(elem)
-    resume()
-  },
+  yield(elem) => resume(f(elem)),
   result() => resume(),
 }
 
@@ -298,6 +296,10 @@ fn fold(init, f, xs) = {
   result()
 } ~> fold_handler(f, init)
 
+// The stage of an iteration for effect answers `()`: the arm resumes with the
+// stage's answer and `yield` answers unit, so a stage answering anything else
+// is refused — a value the program would silently lose (SYNTAX, the Stage
+// Law).
 fn each(f, xs) = iterate(xs) ~> each_handler(f)
 
 fn any(pred, xs) = {

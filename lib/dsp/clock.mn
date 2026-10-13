@@ -18,11 +18,8 @@
 // will read (`Hβ.dataflow.clock-calculus-sample-rate`); nothing reads it
 // at a `<~` site today.
 //
-// Four handler tiers per effect: real (delegates to host) · test
-// (deterministic) · record (tees to trace) · replay (reads trace).
-// Record + replay = time-travel debugging; same source, two handlers.
-import types
-
+// Three handler tiers per effect: real (delegates to host) · test
+// (deterministic) · record (tees to trace); the tick's replay reads a trace.
 // Time vocabulary — Instant and Duration are nanosecond-scale wrappers.
 //
 // nanoseconds since epoch
@@ -73,7 +70,7 @@ effect Deadline {
 // that performs an iterative effect carrying state across ticks) provides
 // it too. A `<~` site does not read it: the site's line is a per-site
 // register the enclosing function's next call advances, so a cycle needs
-// no context to exist, and `E_FeedbackNoContext` has no construction site
+// no context to exist, and E_FeedbackNoContext has no construction site
 // by design (SYNTAX §«<~»).
 effect IterContext {
   iter_context() -> Bool
@@ -170,20 +167,6 @@ handler tick_record with counter = 0, trace = [], trace_len = 0 {
     resume() with counter = counter + 1, trace = new_trace, trace_len = trace_len + 1
   },
   current_tick() => resume(counter),
-}
-
-// Tier 4: replay — reads from a recorded trace. Replay maintains a read
-// cursor into an immutable trace buffer; advancing is O(1); post-hoc
-// inspection and re-replay are structurally available.
-handler clock_replay with trace = [], read_idx = 0 {
-  clock_now() => if read_idx >= len(trace) {
-    report(EReplayExhausted(span_zero()))
-    resume(Instant(0))
-  } else {
-    let val = list_index(trace, read_idx)
-    resume(Instant(val)) with read_idx = read_idx + 1
-  },
-  clock_sleep(_d) => resume(),
 }
 
 handler tick_replay with trace = [], read_idx = 0 {

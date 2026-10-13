@@ -90,6 +90,22 @@ line starts are the same family: `source_slice` (src/space.mn) finds the
 addressed line by an index-recursive byte walk over the judged text
 (`nth_line_offset`, `line_end_from`), where the lexer passed every line start
 once — a second column of the module node.
+▶ THE EMIT FACE, measured 2026-10-12 while building Landing 1. The literal
+vocabulary was the smallest reader of stale generations; the largest is the
+TWIN DEMAND. One wheel source compiled COLD emits 628,651 lines and 7,493
+functions, with one `map` twin; compiled through a warm image whose cone
+re-derivation covered thirteen modules (`warm: re-deriving lib/memory.mn
+lib/prelude.mn src/types.mn …`) it emits 672,832 lines and 9,206 functions —
+156 `map` twins, 65 `filter`, 46 `zip`, 36 `flat_map`, 25 `enumerate`, and
+arena leaves (`evac_ll…`) for list-of-list types the cold emission never
+demands. The superseded generations' nodes stay in the graph and their call
+sites still demand twins, so the warm route's promise that it emits the cold
+route's bytes (driver_incremental, src/driver.mn — trued at this landing) is
+false the moment a cone is re-derived; the march's verb-parity leg passes
+because its `compile` meets no prior image. The column is the fix here too:
+the demand walks the CURRENT modules' columns and a superseded generation
+contributes nothing. Until it lands a candidate compiler is built cold (the
+warm images moved aside) or it is not the candidate.
 
 ### `Hβ.diag.module-identity-is-a-name` — OPEN
 
@@ -938,7 +954,7 @@ field is not a decl, so `.name` would be a THIRD way to mint a function beside
 reference-with-holes and the arm list. `{ st => st.name }` says it with the one
 literal. CLOSE: the examples leave SYNTAX; the accessor is not built.
 
-### `Hβ.voice.comment-ref-gate-reads-the-flattened-link` — OPEN
+### `Hβ.voice.comment-ref-gate-reads-the-flattened-link` — CLOSED 2026-10-13
 
 BORN 2026-09-20,
 and it was found by USING THE MEDIUM after a landing that had not — Morgan's
@@ -1152,6 +1168,37 @@ The narration itself is trued:
 - It reports each (comment, name) pair once.
 - `where <module>` stops printing the narrow-link warnings ahead of its
   answer. Today that is 34 lines before a 10-line answer for types.mn.
+
+CLOSED 2026-10-13 (Landing 1 of the program, M7). Resolution asks the one
+reach on every surface: `crc_resolve`'s declaration-index hit and its two env
+hits require `inf_module_reaches(comment's module, referent's module)`
+(`crc_decl_reaches`; a primitive, module 0, is in every reach), and the
+literal vocabulary the lazy `$`-judgment reads is indexed BY THE MODULES THAT
+WRITE each run (`lit_modules_with`, `lit_modules_reach`), so a WAT or WASI
+word resolves where the emitter is reached and nowhere else — the last face,
+found when lib/io.mn's prose resolved `wasi_snapshot_preview1` and `mentl`
+through the compiler's literals in the wheel link and narrated as its own
+entry. THE CENSUS the rule exposed and the sweep cleared: 106 references in
+the wheel at the first cut (board 13, infer 12, mentl 5, graph 7, effects 3,
+own 1; lower 19, parser 4, format 1, wasm 1, verify 2, query 1,
+cursor_transport 1; types 36), 34 more when the literal vocabulary was scoped
+(lower 11, infer 6, types 5, query 5, graph 5, parser 1, cli 1 — WAT words,
+verb and facet names, ordinary words in backticks), and three in the
+library (io.mn ×2, math.mn); every one a declaration the citing module does
+not reach or a word that is not a reference, re-pointed where a referent
+resolves (two became resolving references) and written as prose otherwise,
+through the medium's own check at every step. The wheel's `mentl check
+src/main.mn` answers what each module checked as its own entry answers — the
+same question — and a user's `check` of a program that prints shows nothing
+of the library's prose (the frontier's user-link leg; 41 warnings on boot
+454c3aaf through main's library, none through this tree's). The bound did not move
+to src/board.mn: an unresolved reference is a NARRATION, and `mentl verify`
+holds the link's narrations at ZERO over every module (verify_board,
+src/main.mn), so `comment_refs_max` and tools/verify.sh's grep were a second
+home for a bound the board already holds, and both are RETIRED (the obey
+gate's zero-ceiling licence). The page's Lens stops carrying types.mn's
+narrations because lib no longer links types.mn. What this entry's deeper
+form named stands where it stood: `Hβ.driver.link-is-reachability` (Arc D).
 
 ### `Hβ.verify.class-bound-cannot-tally-in-the-arm` — OPEN
 
@@ -2567,7 +2614,7 @@ to count them; reporting the per-module split is the same walk not
 throwing its intermediate away. Sequenced with the reachability link
 work, whose progress it is the natural way to read.
 
-### `Hβ.verify.comment-ref-ratchet-is-dark` — OPEN
+### `Hβ.verify.comment-ref-ratchet-is-dark` — CLOSED 2026-10-13
 
 One
 fact and no cause. `mentl check src/lexer.mn` reported
@@ -2602,6 +2649,21 @@ took one stash and one leg. The floor now measures 6352, seven lines
 BELOW where the session found it, and the ceiling falls to 6360 to hold
 that. Recorded because the shape recurs: a rise adjacent to someone
 else's landing reads as theirs, and the stash is cheap.
+CLOSED 2026-10-13. The probe the entry asked for ran twice over. First
+(2026-09-20, `Hβ.voice.comment-ref-gate-reads-the-flattened-link`): the leg
+read the compile of the wheel CONCATENATED INTO ONE FILE, where every name
+is local and a cross-module reference is unconstructible — a count that
+could not read anything but zero. Then the resolution itself: the solo check
+and the link answered differently because the declaration index, the env and
+the literal vocabulary were read over the whole link while a module judged
+alone saw only its import closure. At Landing 1 resolution is MODULE-SCOPED
+on every surface (crc_resolve, crc_decl_reaches, the literal vocabulary's
+modules), so the two entry paths ask one question, the wheel's 140
+flattened-only references were re-pointed or written as prose, and the
+ratchet itself is RETIRED: an unresolved reference is a narration, and
+`mentl verify` holds the link's narrations at zero over every module
+(verify_board, src/main.mn), so `comment_refs_max` and verify.sh's grep were
+a second home for a bound the board already holds, at a ceiling of 0.
 
 ### `Hβ.teach.severance-vocabulary-from-link` — CLOSED 2026-08-08
 
@@ -5285,8 +5347,8 @@ prunes the now-unreachable second-pass machinery out of emit. Then:
 
 THE 13 ARE ONE CLASS AND THEY NAME THE BLOCKER IN THE MEDIUM'S OWN WORDS:
 `E_InternalInvariant: a row gate for 'X' is still unresolved at the pass tail
-— a chain survived the whole pass`, for `filter_list`/`filter_loop`,
-`map_list`/`map_loop`, `min_by_key`, `env_resolve_where`/`env_bucket_pos_where`,
+— a chain survived the whole pass`, for filter_list/`filter_loop`,
+map_list/`map_loop`, `min_by_key`, `env_resolve_where`/`env_bucket_pos_where`,
 `driver_check_module`. Every one is a HIGHER-ORDER fn whose row is polymorphic
 in a function parameter's row. `assert_row_gates_drained()` already performs
 the pass-tail drain (its own comment: re-parked cross-group gates "drain HERE,
@@ -6179,24 +6241,29 @@ Filesystem OPS TO THEIR IMPLEMENTATIONS, AND THE ROW DOES NOT SAY SO.
 Opened 2026-09-04 at pin 46ad0838 as `.fs-close-op-is-bypassed`; renamed
 and re-scoped at pin 9347479e when the gate measured the real extent;
 re-measured 2026-10-06.
-▶ WHAT IS TRUE (2026-10-06, the medium's `refs of` each implementation).
-TWELVE calls reach a WASI implementation outside the handler that owns it.
-`fs_read_file_impl` seven times: `image_resume` (lib/persist.mn:93),
-the battery's library read ×4 (left with M9), `battery_step` (src/main.mn:1390),
-`read_recording` (lib/dsp/cfc.mn:277). `fs_list_dir_impl` four times:
-the march's directory walk ×2 (left with M9), the test verb's directory probe
-(src/main.mn:1042), `query_run` (src/main.mn:1473). `fs_write_image_impl`
-once: `image_write_wire` (lib/persist.mn:183). The last two back no op at
-all — `Filesystem` declares nine (src/types.mn), and none lists a directory
-or writes an image — so `query_run` and the test verb read directories
-under a row that does not name `Filesystem`, though both stand inside a
+▶ THE MODULE HALF LANDED 2026-10-13 (Landing 1): the declaration, the
+handler `wasi_filesystem` and the implementations are one module, lib/fs.mn,
+which the compiler imports as it imports any library module; the effect-seam
+leg names that module as the owner. The bypasses stand.
+▶ WHAT IS TRUE (2026-10-13, the medium's `refs of` each implementation on
+the wheel's link, src/main.mn). EIGHT calls reach a WASI implementation
+outside the handler that owns it. `fs_read_file_impl` twice: `image_resume`
+(lib/persist.mn:95), `battery_step` (src/main.mn:1781) — `read_recording`
+(lib/dsp/cfc.mn) is a third on cfc's own link. `fs_list_dir_impl` five
+times: `is_dir` (src/driver.mn:90) and four sites in src/main.mn —
+`mn_files` (:375), `mn_walk` (:403), `fmt_target_files` (:485) and the test
+verb's directory probe (:1428); `query_run` reaches one through `mn_files`.
+`fs_write_image_impl` once: `image_write_wire` (lib/persist.mn:185).
+The last two back no op at all — `Filesystem` declares nine (lib/fs.mn), and
+none lists a directory or writes an image — so the directory readers run
+under a row that does not name `Filesystem`, though they stand inside a
 `~> wasi_filesystem` install.
-▶ THE GATE COUNTS SEVEN BECAUSE ITS LIST IS HAND-KEPT. tools/verify.sh's
-effect-seam leg asks `refs of` nine implementation names; lib/io.mn
-declares eleven, and the two it leaves out are the two with no op. Its
-ceiling in `tools/verify-baseline.txt` holds the seven it can see. The list
-must be derived — every implementation io.mn declares, each backing
-exactly one op — never a second copy of the declarations.
+▶ THE GATE COUNTS TWO BECAUSE ITS LIST IS HAND-KEPT. tools/verify.sh's
+effect-seam leg asks `refs of` nine implementation names; lib/fs.mn declares
+eleven, and the two it leaves out are the two with no op. Its ceiling in
+`tools/verify-baseline.txt` (`fs_impl_bypass_max: 2`) holds the two it can
+see. The list must be derived — every implementation fs.mn declares, each
+backing exactly one op — never a second copy of the declarations.
 ▶ WHY IT IS INVISIBLE: the impls carry `WASI`; the capability the handler
 names is `Filesystem`. A bypass keeps the behaviour and drops the effect
 from the row, so `with !Filesystem` holds over a route that reads files
@@ -15827,7 +15894,7 @@ RUNG — MEASURED AND CORRECTED IN PLACE (2026-08-01; the §7 entry THE
 FRESH ROW CELL WAS A LIVE EDGE carries the build and the probe).**
 The form above was built exactly as written and marched TRANSITION
 m3 == m4 at census 0, and the two-boot fixed-input probe convicted it
-on EFFECTS: `filter_list` / `map_list` / `race` and nine kin proved
+on EFFECTS: filter_list / map_list / `race` and nine kin proved
 **Pure** where they had proved `Memory + Alloc` (85 → 99 movers on an
 identical blob — behavior, not workload). The teach-back this rung
 deletes was ALSO the channel keeping the caller's charge LIVE: the
@@ -18393,7 +18460,7 @@ before any visibility change).
   - The facet's other false "used" verdicts were measured too: lower→search,
     io→types, json→types, lsp_frame→types and math→strings.
 
-### `Hβ.modules.layer-is-a-fact-of-the-module` — OPEN
+### `Hβ.modules.layer-is-a-fact-of-the-module` — CLOSED 2026-10-13
 
 BORN 2026-10-06 — the 2026-10-06 program, landing M3 (PLAN §11, THE STANDING CURSOR). The design below is the program's own text for this landing, moved here verbatim at the §0.3 integration; its section references (§2–§7) are the program's own numbering, and the whole program, with the seven audit lenses' answers, is at commit 42a94dc0 (docs/record/2026-10-06/).
 
@@ -18417,7 +18484,7 @@ BORN 2026-10-06 — the 2026-10-06 program, landing M3 (PLAN §11, THE STANDING 
 - **`Filesystem`** moves to lib/fs.mn (N1).
 - **lib/dsp/clock's one use** is `report(EReplayExhausted(span_zero()))`.
   Replay exhaustion becomes an abandoning op of clock's own effect, which the
-  program's handler answers through AN-2's unwind. `EReplayExhausted` leaves
+  program's handler answers through AN-2's unwind. EReplayExhausted leaves
   DiagKind.
 - **lib/search.mn, effect `Abort` and handler `catch_abort`** are one dead
   subsystem across three modules. Every reference to `catch_abort` and `abort`
@@ -18438,7 +18505,39 @@ toward the 39 MB of a module with no types edge.
 *Gate.* E_LayerInversion's census of lib→src edges, seen RED at the measured 6
 (8 counting combinators), then 0.
 
-**Builds:** `E_LayerInversion`
+**Builds:** `Layer`
+
+CLOSED 2026-10-13 (Landing 1 of the program), as designed with two
+deviations, each measured. A module's LAYER (`type Layer = User | Lib |
+Compiler`, src/types.mn) is read off the root that resolved it, recorded on
+the module node (`NModule`'s `layer` field) and carried by every report from
+its writer (`report_at`); the resolver probes by the IMPORTER'S layer — a
+User module its own directory then the library roots, a Lib module the
+library roots, a Compiler module every root (src/driver.mn `import_roots`) —
+so a user's `import graph` is `E_MissingModule` with the paths it probed
+(tests/micros/mn-user-cannot-import-the-compiler.mn, RED on boot 454c3aaf)
+and a user's `fn report` compiles (mn-user-name-report.mn, refused as a
+duplicate of src/types.mn's on the boot). FIRST DEVIATION: E_LayerInversion
+is not built, because the inversion is UNCONSTRUCTIBLE — an importer below
+the compiler is never offered a compiler root, so there is no edge to refuse
+and a diagnostic would name a shape no program can write; the census it was
+to hold at zero (lib→src edges: io, json, lsp_frame, dsp/clock, search, and
+combinators' two — 6 modules, 8 edges) is zero by deletion, and every lib
+module checks as its own entry with no compiler module in its link. The
+dead imports are gone; `Filesystem` is lib/fs.mn's
+(`Hβ.io.filesystem-impl-bypasses-the-effect`, the module half); lib/search.mn
+and lib/combinators.mn left the tree with lower.mn's dead `import search`;
+`effect Abort` (src/types.mn) and `catch_abort` (src/own.mn) are deleted —
+zero references in the wheel and in every fixture directory, the identity
+micro declaring its own Abort, and the effect-identity gate's census now
+holds `effect Abort` at zero. SECOND DEVIATION: `clock_replay` and
+EReplayExhausted were deleted rather than redesigned as an abandoning op —
+nothing installed the handler, no arm wrote its `trace`, so every
+`clock_now()` took the exhausted branch: it was dead, not wrong-shaped. A
+lesson's check (lib/tutorial/00-hello.mn) peaks at 53,236 KB and 0.50 s on
+the tree with the types edge and 41,132 KB and 0.27 s without it, through
+the same boot. The user's TIME library (AU6) is its own landing and nothing
+here stands in for it.
 
 ### `Hβ.emit.symbol-is-the-declarations` — OPEN
 
@@ -20324,3 +20423,43 @@ BORN AND CLOSED 2026-10-06, found integrating the fmt lane. `driver_module_path`
 THE FORM: `driver_module_path(name) -> Option(String)` — the first of `module_probes(name)` that exists, or None — and every caller says what absence means: the DAG walk records the module as missing with the places it searched (`E_MissingModule` now reads "searched …", never "expected at" one guessed path), an import that names nothing draws no edge (`module_path_list`), every write of a module's text goes through `module_write`, which refuses aloud, and `fmt` turns a target that names no directory, file or module into a refused verdict (`FmtNothing`), so the project write holds back and the exit is nonzero. The three `fs_exists` wrappers are deleted. Frontier leg "fmt refuses a target that names nothing, and writes no file", RED on the boot.
 
 Open beneath it: `fs_read_file` still answers `""` for a file it cannot open — the host boundary's own fabrication, `Hβ.io.filesystem-impl-bypasses-the-effect` (N3).
+
+### `Hβ.infer.statement-value-is-dropped-silently` — OPEN
+
+BORN 2026-10-12 (Landing 1), from the defect that hid an occurs-check
+regression: a report call that had become a partial application when its op
+grew a field was the stage of an `each`, which discarded it, and nothing said
+a function value had been dropped. The stage of `each` answers `()` now
+(lib/prelude.mn; tests/micros/mn-each-stage-answers-unit.mn), which refuses
+that one position. Every other position that drops a value is still silent:
+a block's non-final statement whose value is not unit (`{ push(acc, x); 0 }`
+loses the push; `{ diag_report_at(d, m); () }` loses the report), and a
+callback whose consumer ignores its answer through a free return variable.
+OCaml's warning 10 ("this expression should have type unit") is the
+precedent; Mentl's form is a refusal, since `let _ = e` is the explicit
+discard. THE BUILD: at a block's non-final `ExprStmt`, after the statement is
+judged, the judgment reads its cell — a FUNCTION type refuses at once
+(E_DroppedValue: a function value in a discarded position is never meant),
+a non-unit word or aggregate narrates until the wheel's census is zero and
+then refuses, and a cell still free at the block's exit is read at the
+declaration's exit, the gate-on-the-cell mechanism A3 built. Measured first:
+the wheel's census of non-unit statements, which decides whether the second
+class arms at birth. CLOSE: `{ diag_report_at(d, m); () }` refuses
+E_DroppedValue, the wheel's census is zero, SYNTAX §Function declarations
+carries the law.
+
+### `Hβ.shim.outside-path-names-the-module-absolutely` — OPEN
+
+BORN 2026-10-12 (Landing 1). The shim rewrites a path-shaped argument whose
+directory lies outside the cwd to its absolute form so WASI's cwd preopen can
+open it (`mentl run` of a file written as ../owes.mn runs; it was
+`E_MissingModule` before, the frontier's user-link leg), and a module's NAME is the path as given, so every
+diagnostic and the debt summary of that program name it
+`/home/…/owes:5:13` where the developer wrote ../owes.mn. The module path
+is the resolved path by design (the layer rule reads the root off it); what
+the developer sees should be the path they wrote, relative to where they
+stand. THE FORM: the guest keeps the resolved path as the module's identity
+and renders it RELATIVE to the invocation's directory wherever a module is
+named at a person — the one render every diagnostic shares (`diag_line`),
+the address surface, `where`. CLOSE: `mentl run` of ../owes.mn from a subdirectory reports the module
+as ../owes, never as its absolute path.

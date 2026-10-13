@@ -595,7 +595,7 @@ fn owed_mark(entry) = match entry {
 // A diagnostic of the module, in the column of the aspect it speaks for: a
 // refusal refuses there, a narration narrates.
 fn diag_cell(f) = match f {
-  (d, msg, _) => cell_at(
+  (d, msg, _, _) => cell_at(
     diag_arm(d),
     if diag_refuses(d) { CellRefused } else { CellWarned },
     diag_code(d),
@@ -993,13 +993,13 @@ fn lens_of(target: String) = {
 }
 
 fn lens_in_module(target: String, f) = match f {
-  (_, _, dmod) => dmod == target,
+  (_, _, dmod, _) => dmod == target,
 }
 
 fn lens_outside_module(target: String, f) = !lens_in_module(target, f)
 
 fn diag_interest_of(f) = match f {
-  (d, _, _) => diag_interest(d),
+  (d, _, _, _) => diag_interest(d),
 }
 
 // How much a diagnostic matters: a refusal above everything, then an error,
@@ -1334,7 +1334,7 @@ fn note_json(n) = match n {
 // prints over whichever fact stands first — so the lead is never a fact
 // beside the facts it is about.
 fn lens_json(f) = match f {
-  (d, msg, dmod) => JObj([
+  (d, msg, dmod, _) => JObj([
     ("kind", JStr("diag")),
     ("text", JStr(msg)),
     ("lead", JStr(diag_lead(d, msg))),

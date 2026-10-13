@@ -46,6 +46,8 @@ import env
 
 import format
 
+import fs
+
 import infer
 
 import intern
@@ -538,8 +540,7 @@ fn compile_remainder(ast) = {
 fn heap_line(at: String) = match diag_scope_of() {
   ScopeAll => eprint_string("heap: {heap_mark()} byte(s) {at}\n"),
   ScopeNone => (),
-  ScopeModule(_) => (),
-  ScopeLink => (),
+  ScopeProject(_) => (),
 }
 
 // The arenas' census for the whole compile — every exit the judgment's
@@ -550,8 +551,7 @@ fn heap_line(at: String) = match diag_scope_of() {
 fn arena_line() = match diag_scope_of() {
   ScopeAll => eprint_string("arena: {int_to_str(arena_stat(ArExits))} exit(s), {int_to_str(arena_stat(ArKept))} kept, {int_to_str(arena_stat(ArFreed))} KB reclaimed, {int_to_str(arena_stat(ArMoved))} KB moved, line peak {int_to_str(arena_stat(ArHigh))} KB, {int_to_str(arena_stat(ArSuspended))} suspended\n"),
   ScopeNone => (),
-  ScopeModule(_) => (),
-  ScopeLink => (),
+  ScopeProject(_) => (),
 }
 
 // `mentl resume <img>` — the image IS the process: swap it in and run
@@ -573,7 +573,7 @@ fn compile_stdin() = compile_context(() => {
   read_stdin() |> stdin_link |> compile_remainder
 } ~> wat_stdout ~> wasi_filesystem)
 
-fn stdin_link(text) = match driver_text_scoped(text, ScopeAll) {
+fn stdin_link(text) = match driver_text_scoped(text, Census) {
   (ast, _mods) => ast,
 }
 
@@ -601,11 +601,13 @@ fn pipeline_check(entry_module) = infer_context(() => {
   // overlay (Hβ.driver.per-module-env-overlay) is that walk's sequenced
   // refinement; until it lands, the weave IS the check.
   //
-  // THE PROJECT IS THE UNIT (G2): every module of the link narrates, each
-  // report once at its own module. The entry-scoped register this read
+  // THE PROJECT IS THE UNIT (G2): every module of the entry's layer narrates,
+  // each report once at its own module. The entry-scoped register this read
   // through hid eight refuted `own` markers in graph, infer and lexer behind
-  // a check that said zero, because it reported the entry alone.
-  driver_entry_scoped(entry_module, ScopeLink)
+  // a check that said zero, because it reported the entry alone; the
+  // whole-link register that replaced it printed the library's prose at a
+  // user's six-line program.
+  driver_entry_scoped(entry_module, Project)
   diag_errors()
 } ~> wasi_filesystem ~> mentl_default)
 
@@ -691,15 +693,15 @@ fn own_sites(answer, m) = located_answer(sites_in(m, answer))
 // while a module outside the cone keeps its own.
 effect DiagBank {
   // every report since the last forget, as the report carried it: the kind,
-  // its message, its module
-  diag_banked() -> [(DiagKind, String, String)]
+  // its message, its module and the module's layer
+  diag_banked() -> [(DiagKind, String, String, Layer)]
   diag_forget([String])
 }
 
 handler diag_bank with banked = [] {
-  diag_report(diag, msg, dmod) => {
-    diag_report(diag, msg, dmod)
-    resume() with banked = push(banked, (diag, msg, dmod))
+  diag_report(diag, msg, dmod, dlayer) => {
+    diag_report(diag, msg, dmod, dlayer)
+    resume() with banked = push(banked, (diag, msg, dmod, dlayer))
   },
   diag_errors() => resume(diag_errors()),
   diag_refusals() => resume(diag_refusals()),
@@ -711,7 +713,7 @@ handler diag_bank with banked = [] {
 // A banked report survives a forget unless its module is about to be
 // re-judged.
 fn diag_outside(modules: [String], entry) = match entry {
-  (_, _, dmod) => !any((m) => m == dmod, modules),
+  (_, _, dmod, _) => !any((m) => m == dmod, modules),
 }
 
 // The tightenings the judgment banked, read off the bank: T_OverDeclared
@@ -724,8 +726,8 @@ fn diag_outside(modules: [String], entry) = match entry {
 fn tightenables() = fold([], tightening_of, diag_banked())
 
 fn tightening_of(acc, entry) = match entry {
-  (TOverDeclared(declared, used, name, span), _, dmod) => push(acc, (declared, used, name, span, dmod)),
-  (TRowInventory(declared, used, name, span), _, dmod) => push(acc, (declared, used, name, span, dmod)),
+  (TOverDeclared(declared, used, name, span), _, dmod, _) => push(acc, (declared, used, name, span, dmod)),
+  (TRowInventory(declared, used, name, span), _, dmod, _) => push(acc, (declared, used, name, span, dmod)),
   _ => acc,
 }
 
@@ -736,7 +738,7 @@ fn tightening_of(acc, entry) = match entry {
 fn own_releases() = fold([], own_release_of, diag_banked())
 
 fn own_release_of(acc, entry) = match entry {
-  (TOwnUnconsumed(name, span), _, dmod) => push(acc, (name, span, dmod)),
+  (TOwnUnconsumed(name, span), _, dmod, _) => push(acc, (name, span, dmod)),
   _ => acc,
 }
 
@@ -745,7 +747,7 @@ fn own_release_of(acc, entry) = match entry {
 fn banked_lines() = str_concat_all(map(banked_line, diag_banked()))
 
 fn banked_line(entry) = match entry {
-  (diag, msg, dmod) => diag_line(diag, msg, dmod),
+  (diag, msg, dmod, _) => diag_line(diag, msg, dmod),
 }
 
 // The banked reports' CLASSES, in report order — what a refuse contract
@@ -753,7 +755,7 @@ fn banked_line(entry) = match entry {
 fn banked_classes() = map(banked_class, diag_banked())
 
 fn banked_class(entry) = match entry {
-  (diag, _, _) => diag_code(diag),
+  (diag, _, _, _) => diag_code(diag),
 }
 
 // analyze_fns — the shared analysis-verb cursor: load+check the module,
@@ -777,7 +779,7 @@ fn analyze_fns(entry_module, projection) = infer_context(() => {
   // carried a second cost: the route installed no diagnostic scope, so it
   // narrated every dependency at a developer who had named one file.
   let ast = if entry_module == "-" {
-    match driver_text_scoped(read_stdin(), ScopeModule("<stdin>")) {
+    match driver_text_scoped(read_stdin(), Project) {
       (ast_all, _mods) => driver_module_ast(ast_all, "<stdin>"),
     }
   } else {
@@ -843,39 +845,12 @@ fn teach(entry_module) = analyze_fns(entry_module, teach_project)
 
 fn audit(entry_module) = analyze_fns(entry_module, audit_project)
 
-// The Filesystem effect answered by the host: each arm hands its request to
-// the WASI primitive in io.mn that performs it, and holds no state of its
-// own. A compile route installs it around the driver, so reading a module,
-// writing an image and writing a battery's files all go through the one
-// capability the row names, and a function that reaches none of them proves
-// `!Filesystem`.
-handler wasi_filesystem {
-  fs_exists(path) => resume(fs_exists_impl(path)),
-  fs_read_file(path) => resume(fs_read_file_impl(path)),
-  fs_write_file(path, bytes) => {
-    fs_write_file_impl(path, bytes)
-    resume()
-  },
-  fs_mkdir(path) => {
-    fs_mkdir_impl(path)
-    resume()
-  },
-  fs_open(path) => resume(fs_open_impl(path)),
-  fs_create(path) => resume(fs_create_impl(path)),
-  fs_close(fd) => {
-    fs_close_impl(fd)
-    resume()
-  },
-  fs_unlink(path) => resume(fs_unlink_impl(path)),
-  fs_rename(old_p, new_p) => resume(fs_rename_impl(old_p, new_p)),
-}
-
 // Where every report reaches stderr and is tallied: the sandbox boundary,
 // outermost in every route. The message arrives rendered at the report
 // boundary (diag_report_at, types.mn), so the arm composes the printed line
 // from the kind (diag_line), a pure read.
 handler diagnostics_handler with errors = 0, refusals = 0, narrations = 0, scope = ScopeAll {
-  diag_report(diag, msg, dmod) => // The message arrives MADE (rendered at the report boundary, in the
+  diag_report(diag, msg, dmod, dlayer) => // The message arrives MADE (rendered at the report boundary, in the
   // reporter's own world) — this arm's projections (severity, refuses,
   // the line, the register's scope) are pure ctor/string reads, so the
   // arm's row carries no graph or intern demand and its residual stays
@@ -892,27 +867,23 @@ handler diagnostics_handler with errors = 0, refusals = 0, narrations = 0, scope
     }
   } else {
     // Narration is the register's business: ScopeAll (the census paths)
-    // prints everything; ScopeModule renders only the file the user asked
-    // about. The comparison is on the module the report CARRIES, not on a
-    // line range — spans are local now, so every file starts at line 1 and a
-    // range names nothing.
+    // prints everything; ScopeProject renders the modules of the entry's
+    // own layer — the developer's project, never the library beneath it.
+    // The comparison is on the layer the report CARRIES, read off the
+    // module node by the writer, not on a name or a line range.
     //
     // The count is every narration ONCE: ScopeNone is the discovery parse's
     // duplicate copy, which the weave parse reports again where it can be
-    // placed, so it is neither printed nor counted; a narration the module
-    // register scoped away still counts, because the board reads the project.
+    // placed, so it is neither printed nor counted; a narration the project
+    // register scoped away still counts, because the board reads the link.
     match scope {
       ScopeAll => {
         eprint_string(diag_line(diag, msg, dmod))
         resume() with narrations = narrations + 1
       },
       ScopeNone => resume(),
-      ScopeModule(target) => {
-        if dmod == target { eprint_string(diag_line(diag, msg, dmod)) } else { () }
-        resume() with narrations = narrations + 1
-      },
-      ScopeLink => {
-        eprint_string(diag_line(diag, msg, dmod))
+      ScopeProject(layer) => {
+        if dlayer == layer { eprint_string(diag_line(diag, msg, dmod)) } else { () }
         resume() with narrations = narrations + 1
       },
     }

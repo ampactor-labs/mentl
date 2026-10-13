@@ -1,0 +1,15 @@
+// expect: refuse E_TypeMismatch
+// THE STAGE OF `each` ANSWERS `()`. An iteration-for-effect drops its stage's
+// value by definition, so a stage that answers anything else is a value the
+// program silently loses. Measured 2026-10-12 on boot 454c3aaf as a compiler
+// defect this shape hid: a report call that had become a PARTIAL APPLICATION
+// when its op grew a field — a function value — was handed to `each`, which
+// discarded it, and every occurs-check refusal the graph's write guard noted
+// vanished (`fn f(x) = x == [x]` checked clean). With the stage typed `()`
+// the dropped value is a type error at the call. On main's tree through boot
+// 454c3aaf this program compiled clean and ran to 0; the law lives in
+// lib/prelude.mn, so the same boot over this tree's library refuses it.
+fn main() = {
+  each({ x => x + 1 }, [1, 2])
+  0
+}

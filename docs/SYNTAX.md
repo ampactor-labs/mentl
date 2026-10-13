@@ -201,6 +201,16 @@ fn audio_stage(samples) with Sample(44100) + !Alloc + IO =
 
 `Pure` is the identity element of `+`. Writing `with Pure` is allowed (and an explicit purity declaration); `with Pure + IO` simplifies to `with IO`.
 
+**Every name in a row is a declared effect, a row alias, a row variable or
+`Pure`, or the declaration refuses.** A term that names no effect in the
+module's reach — in a function's clause, a handler's, an op signature's, or
+inside a function type (`f: () -> Int with !Nowhere`) — is `E_MissingVariable`
+at the declaration (real, 2026-10-13: until then the expansion took an unknown
+name as an effect OF THAT NAME, so `fn quiet() with !Nowhere = 1` checked
+clean and constrained nothing, and lib/persist.mn's `!Network` held two
+weeks after the last Network effect left the tree on 2026-09-28;
+tests/micros/mn-effect-name-resolves.mn, mn-effect-name-in-fn-type.mn).
+
 **A lowercase name in a row is a row variable** — the case rule read at a row, as it is read at a type. `f: () -> a with e` takes a callback performing anything, and `e` written again anywhere in the same signature — another parameter's type, the declaration's own clause — is the same variable, as a type variable named twice is. A parenthesized group is a row term the clause folds whole, its outer connective applied to what it spells: `with Memory + Alloc + (e - Intern)` is the row of a body that absorbs `Intern` around the callback and pays for the install, and it is how the medium writes such a row back (real, 2026-10-06: a lowercase name was read as an EFFECT named `e`, so `run(() => op())` against `f: () -> Int with e` refused `E vs e`, and a group did not parse).
 
 **`with` is one keyword, not three.** It reads identically everywhere it appears — *"this construct is accompanied by / carries X"* — and the three surfaces are one concept, not overload: a function carries effects (`fn f() with E`); a handler carries state (`handler h with s = init`); a resume carries a state update (`resume(v) with s = s + 1`). The grammar disambiguates by position (a row after a signature, or `name = init` bindings after a handler/resume); the meaning is constant. (Handler *installation* is not a `with`-surface — it is the `~>` verb.)
@@ -318,7 +328,19 @@ either the callee is genuinely not a stage (the `??` says so, explicitly —
 a chain datum), or the signature violates the law — and the fix is the
 SIGNATURE, never decoration at N call sites. The standard vocabulary obeys
 it: `map(f, xs)` · `filter(p, xs)` · `each(f, xs)` · `fold(init, f, xs)` ·
-`take(n, xs)` · `drop(n, xs)` · `any/all/find/count(p, xs)`. Four prelude
+`take(n, xs)` · `drop(n, xs)` · `any/all/find/count(p, xs)`.
+
+**The stage of `each` answers `()`.** An iteration for effect drops its
+stage's value by definition, so a stage that answers anything else is a value
+the program silently loses, and `each({ x => x + 1 }, xs)` is
+`E_TypeMismatch` at the call (real, 2026-10-13). The shape it refuses was
+measured as a compiler defect first: a report call that had become a PARTIAL
+APPLICATION when its op grew a field — a function value, not a call — was
+the stage of an `each`, which discarded it, and every occurs-check refusal
+the graph's write guard noted vanished with it (`fn f(x) = x == [x]`
+checked clean, and a polymorphic self-call was judged monomorphic). A value
+dropped in any other position is still silent
+(`Hβ.infer.statement-value-is-dropped-silently`). Four prelude
 signatures still take the datum first — `reduce(xs, f)`, `scanl(xs, init, f)`,
 `nth(xs, n, default)` and `clamp(x, lo, hi)` — so `x |> clamp(0, 255)` is the
 law the prelude catches up to, through a medium-authored reorder that reads
@@ -1668,8 +1690,8 @@ the Abandon discipline reads), `fail(String) -> !`, and WASI's
 PERFORM, never at the effect (real, 2026-10-06): each perform meets a result
 variable of its own, so one function may perform `fail` where a list stands
 and where an Int stands, and an effect whose only non-ground op returns `!`
-carries no type parameter — `Fail`, `WASI` and `Abort` read as bare names in
-every row. That is sound exactly because the arm never resumes: an arm that
+carries no type parameter — `Fail` and `WASI` read as bare names in every
+row. That is sound exactly because the arm never resumes: an arm that
 resumes a `-> !` op is `E_ResumeOfNever`, armed at birth. An arm ending in a
 never op answers any install, which is what makes `fail_exit` installable
 over a body of any type (§«Handler declarations»). Until this landed the `!`
@@ -2238,7 +2260,34 @@ the match predicate is the inner pattern's alone.
 import path/to/module
 ```
 
-The path is a slash-separated module name. The resolver (`driver_module_path`, src/driver.mn) maps it to a file: the path as written, then `src/` and `lib/` of the repository, then the same two under the installed home (`/mentl-home`). So a user program can import the compiler's own modules today, a layering the module graph is to refuse: a program resolves against its own project and the runtime library.
+The path is a slash-separated module name, and **a module's LAYER is read off
+the root that resolved it** — `User` (the program's own directory), `Lib` (the
+runtime library, `lib/` of the repository or of the installed home) or
+`Compiler` (`src/`). An importer probes the roots its layer may reach: a User
+module its own directory, then the library roots; a Lib module the library
+roots alone; a Compiler module every root. So a program resolves against its
+own project and the runtime library, and the compiler's roots are never
+offered to it: a user's `import graph` names no module and refuses
+`E_MissingModule` with the paths it probed (real, 2026-10-13 — until then
+every root was probed for every importer, so a program could import the
+compiler's own modules, and did: lib/io.mn's one dead `import types` linked
+the compiler's metaschema into every program that printed). A file the
+program's own folder holds is the program's whatever it contains — a project
+whose folder is this repository reaches `src/graph` as its own file, under
+its own layer. A lib module importing the compiler is unconstructible by the
+same rule, so no second diagnostic names it. The layer
+rides every report from its writer: on the file route (`check`, `run`,
+`compile <file>`) the register renders the narrations of the entry's own layer
+and the debt summary counts only its obligations — a developer sees their
+project, never the library beneath it, and a maintainer checking `lib/io.mn`
+sees the library's. The stdin route and the board read every layer. A module's
+own imports probe from where IT was found — a user module's folder, a library
+module's root — so `sub/b`'s `import c` is `sub/c.mn` beside it, and the
+entry's `import sub/c` is the same file: the walk keys a module by the path a
+spelling resolved to, so two spellings of one file are one module and one
+edge (`tests/frontier/user-link/nest` holds the shape). A repository-relative
+spelling (`lib/lists`) names a module only where the program's own folder
+holds the repository's layout; the library's name is `lists`.
 
 ### Selective import
 
@@ -2288,7 +2337,7 @@ fn lowpass_filter(samples: [Sample]) -> [Sample] with !Alloc =
 
 - **Pure prose, graph-attached.** Contiguous `//` lines concatenate to one String; a blank `//` line is a paragraph break. The comment attaches to the immediately-following declaration (`fn`/`type`/`effect`/`handler`/`let`), or — with none — to the enclosing block / the file's `Module` handle; a decl-boundary comment is **never dropped**, and an orphan with genuinely no home surfaces `P_OrphanDocstring` (gradient-narration), never a silent discard. An INTERIOR comment (inside a `{ }` body) attaches to the finest FOLLOWING node — the next statement, the final expr, or the block's own unit node when nothing follows — and a TRAILING same-line comment attaches BACKWARD to the node whose line it shares (same-line is structural: the comment token sits before any newline, one token of lookahead). Both are graph content in the same weave the decl comment fills, judged by the same backtick gate, and the address surface renders the attached prose's first line as the `Lede:` facet. **Attachment is by SPAN, so an ANONYMOUS node is a home like any other**: a comment above a lambda inside an argument list attaches to the lambda (measured 2026-09-17 — `Lede:` at the lambda's address, its backticked params resolving through the enclosing decl's binders), and a lambda's span is its whole extent, head through body, so `mentl <file:line>` on the lambda's line reaches it (it used to be the head alone, and the line's widest-node rule reached a body sub-node instead — the address rule and the weave's rule are one question, and the span is the one fact both read). Expression-interior comments elsewhere (inside parens / match-arm headers) attach by the same span rule; `Hβ.parser.expr-interior-comment-attach` in `RESIDUE.md` names what the gate has and has not measured there.
 - **Register is a projection, not a delimiter.** How much surfaces — the one-line lede in `RTerse`, the full body in `RExplain` — is the gradient reading the comment's relevance at the cursor (the same gradient that drives every projection), NOT an author-chosen `//`-vs-`///` audience split. The author writes prose; the cursor decides what shows. First sentence = lede.
-- **Surfaces verbatim, rendered per target.** The substrate stores the raw String; render handlers interpret presentation — HTML `<code>` for `` `backticks` ``, terminal ANSI, markdown fence. `` `backticks` `` cross-reference identifiers; the author writes the reference, the handler resolves it.
+- **Surfaces verbatim, rendered per target.** The substrate stores the raw String; render handlers interpret presentation — HTML `<code>` for `` `backticks` ``, terminal ANSI, markdown fence. `` `backticks` `` cross-reference identifiers; the author writes the reference, the handler resolves it — **in the comment's own module's reach**: a declaration of its own module, of a module it imports or of the prelude, a binder of the commented node, a keyword or surface word, or a word a string literal of a module it reaches writes (the WAT and WASI vocabulary the emitter's literals write resolves in the emitter, and nowhere the emitter is not imported). A name the whole link carries but the module never imports is no edge the module can draw, so it does not resolve: `W_CommentRefUnresolved`, and the author points the reference at what resolves or writes the word as prose (real, 2026-10-13 — until then the declaration index, the env and the literal vocabulary were read over the flattened link, so a library module's prose cited the compiler's declarations and checked clean, and the same prose judged as its own entry narrated; the sweep that made the law true re-pointed, de-ticked or wrote as prose 140 references in the wheel and three in the library).
 - **Code blocks compile via the same pipeline.** A comment containing Mentl source IS Mentl source — the compile verifies it; there is no separate doc-test category.
 
 ### What a comment TRENDS TO

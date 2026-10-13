@@ -496,8 +496,9 @@ fn param_candidates(f, owed, aliases, lean) = match lean {
 // A refinement can be written over what the parameter says: nothing, or a
 // word type the alias refines — written `n: Int`, the accept writes `n:
 // NonZero`, and `Int` survives as the base the alias declares, which is what
-// the head's census counts it as (`stated_by`). Over any other written type
-// the accept would drop a name the developer chose, so it is no candidate.
+// the head's census counts it as (cursor_transport.mn's stated_by). Over any
+// other written type the accept would drop a name the developer chose, so it
+// is no candidate.
 fn writable_over(written, alias) = match written {
   TVar(_) => true,
   _ => is_word_base(written) && alias_fits(written, alias),
@@ -666,8 +667,8 @@ fn callee_named(callee, name: String) = match callee {
 // at the same source extent; the latest mint is the live one. The identity
 // is the WHOLE extent in its module — two files' line 4 are two calls, and
 // a chain `x |> inv |> inv` holds two applications that begin together
-// (a declaration's position is its start, `latest_generation`; applications
-// nest at one start).
+// (a declaration's position is its start, cursor.mn's latest_generation;
+// applications nest at one start).
 fn latest_applications(apps) = apps |> filter(no_later_mint(apps, ??))
 
 fn no_later_mint(apps, h) = !any(later_mint_of(h, ??), apps)
@@ -937,8 +938,8 @@ fn unwrap_source_span(opt) = match opt {
   None => span_zero(),
 }
 
-// What a proven clause guarantees, named. The list is what
-// `severance_named` filters on and `render_module_severance` spends: an
+// What a proven clause guarantees, named. The list is what pipeline.mn's
+// severance_named filters on and its render_module_severance spends: an
 // effect this map does not name severs just as provably, and rides as its
 // proven absence. A refinement guarantees no absence — its gain is the
 // obligations it discharges, counted where it was proven.
@@ -1121,9 +1122,9 @@ fn tie_leverage(ss) = match ss {
 // walked a Reason DAG into an indented structural dump — no backticks on
 // those, because they no longer resolve and a reference that points nowhere
 // is the thing the comment-ref gate exists to refuse. `mentl why` never
-// called them: the live renderer is `why_lines` (src/space.mn, the Why
-// facet's hops under the View), which walks
-// the same chain and renders file:line through the range map, each hop's
+// called them: the live renderer is why_lines (src/space.mn, the Why
+// facet's hops under the View), which walks the same chain and renders
+// file:line through the range map, each hop's
 // phrase, the binding's literal value read live from `node_const`, and the
 // author's attached `//` lede from `graph_comment_at`. One was a tree of
 // constructor names; the other speaks the developer's file back to them.

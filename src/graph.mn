@@ -656,11 +656,13 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
     // of this install, so it would sail past any capture bracket installed
     // deeper (where speculation installs one, so the refusal the Mycroft
     // retry keys on never reached it), and a render here would chase a
-    // graph that is not this arm's world. The arm notes the fact and its
-    // module; the body drains it at the judgment boundary and renders it
-    // there (graph_guard_drain). This belt guards the binds no unify
-    // pre-check saw.
-    let dm = spine_module_name(spine, spine_open, cur_module)
+    // graph that is not this arm's world. The arm notes the fact and the
+    // module in force — its HANDLE, which is what a report is made at
+    // (report_at reads the name and the layer off the node); the body
+    // drains it at the judgment boundary and renders it there
+    // (graph_guard_drain). This belt guards the binds no unify pre-check
+    // saw.
+    let dm = cur_module
     let g1 = push(guard_diags, (EOccursCheck(handle, ty, reason_span_or_zero(reason)), dm))
     // The poly-recursion teach rides the refusal: an infinite type through
     // a fn's OWN param or return mint (read from this instance's own
@@ -899,7 +901,8 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
   // (graph_register_node), because a reader handed a re-judged module's older
   // references, applications or declarations counts a program that no longer
   // exists (the generation oracle, 2026-10-02: `refs twice` answered 2 where
-  // the tree held 1, `unreferenced` one short, `decls` twelve long).
+  // the tree held 1, the unreferenced facet one short, the decls facet
+  // twelve long).
   resume(smap_get_all(refs_col, name)),
   graph_apply_note(name, app_handle) => // The application edge's write, the refs column's own contract: one
   // O(1) prepend per application, not trail-backed — a rolled-back
@@ -1056,7 +1059,7 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
   // THE ARM HAS A CALLER, and this comment said it had none. It read "the
   // arm has NO call sites yet: the enumeration is step (i) vocabulary,
   // dual-written and zero-read" — written when that was true and left
-  // standing after `emitted_sig_of_symbol` (backends/wasm.mn) became its
+  // standing after emitted_sig_of_symbol (backends/wasm.mn) became its
   // reader, which is the whole emitted-ABI path. A comment claiming zero
   // readers is a claim ABOUT THE GRAPH, and the graph refutes it: that is
   // the confession SYNTAX §«What a comment TRENDS TO» describes, and the
@@ -1090,8 +1093,8 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
   graph_sig_at(name) => // Unpublished is the empty `[]` that costs nothing (the emitfns_idx
   // discipline: graph_handler installs per speculative branch, so a
   // smap_new() in the state init would be a 4096-word table per branch).
-  // Every read before the publish — every non-emit route, `check`,
-  // `query`, the judgment's own — answers None and takes the word floor.
+  // Every read before the publish — every non-emit route, the check and
+  // query verbs, the judgment's own — answers None and takes the word floor.
   if len(sigs_col) == 0 { resume(None) } else { resume(smap_get(sigs_col, name)) },
   graph_branch_seed() => resume((spine, spine_open, span_index)),
   graph_rollback(target_idx) => {
@@ -1169,12 +1172,12 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
 // loop's project_queue_merger re-projects on the bumped epoch, MV-LSP.push
 // streams diagnostics) … the IC loop swaps it for the oracle's
 // re-projection." Measured 2026-09-19: that handler contained ZERO
-// `graph_mutated` arms, and the only other arm in the tree is `lsp_adapter`'s,
-// which discards both arguments exactly as this one does. The comment
-// described an architecture the artifact does not have, which is the one
-// thing a comment must never do — and 2026-09-21 finished the sentence: the
-// whole ranked-queue oracle it named is DELETED, so those names are prose
-// here now and carry no backticks.
+// `graph_mutated` arms, and the only other arm in the tree is the one in
+// lsp.mn's lsp_adapter, which discards both arguments exactly as this one
+// does. The comment described an architecture the artifact does not have,
+// which is the one thing a comment must never do — and 2026-09-21 finished
+// the sentence: the whole ranked-queue oracle it named is DELETED, so those
+// names are prose here now and carry no backticks.
 //
 // WHAT IS ACTUALLY THROWN AWAY, and why it matters more than a dead event:
 // the write arms perform `graph_mutated(new_epoch, MSetNode(handle, old_node))`
@@ -1700,7 +1703,8 @@ fn occurs_in_eff_args_loop(spine, mint_bound, handle, ref args, i, n) with !Muta
 // one); an entry whose band opened only during the fork is skipped by the
 // open-count guard — its page dies with the region, and writing into it
 // would resurrect the doomed-allocation class. MFreshNode needs no step
-// here: the checkpoint restores `next` wholesale.
+// here: the checkpoint restores the next counter of `graph_handler`
+// wholesale.
 // The LIFO note columns (gates, instances, demands, row notes, parameter
 // facts) are NOT paged, so their arms carry no open-band guard: a pop lands
 // on the live table whatever band the handle is in, and the table itself
@@ -1762,8 +1766,8 @@ fn revert_trail_into(ref spine, spine_open, ref trail, current, target, cols) = 
 }
 
 // The unpaired walker: same in-place undo (every touched band is open —
-// the guard is kept uniform as the belt), with MFreshNode counting `next`
-// back down.
+// the guard is kept uniform as the belt), with MFreshNode counting
+// `next_handle` back down.
 fn revert_trail(ref spine, spine_open, ref trail, current, target, next_handle, cols) = if current <= target {
   next_handle
 } else {
@@ -2008,7 +2012,7 @@ fn body_child_handles(body) = match body {
 // that does — never through a fn declared `!Thread` or `!Alloc`, which keeps
 // its own frame's schedule and hands no demand on: a spawn performs `Thread`
 // and builds its thunks, while the in-frame form builds nothing. A schedule an install demands
-// crosses a call exactly this far (lower's `spec_call_name`), so the emit
+// crosses a call exactly this far (lower's spec_call_name), so the emit
 // asks this rule before it demands a callee's schedule twin, and `mentl
 // where` asks it, the same way, to say which callers' installs reach a
 // fanout site. A lambda's or a nested fn's body is its own frame and never
@@ -2212,7 +2216,7 @@ fn product_consumed_in_place(h) = match graph_parent_of(h) {
 // WHO DECIDES whether a product is a record. A positional destructure is an
 // AST fact, so the product's own judgment reads it; a pipe's merge turns on
 // the stage's ARROW, which is judged after the product, so the PIPE charges
-// its left (`infer_pipe`) once it knows. Everything else escapes and is
+// its left (infer.mn's infer_pipe) once it knows. Everything else escapes and is
 // charged where it is built.
 type ProductFate = PfConsumed | PfByPipe | PfEscapes
 
@@ -2569,7 +2573,7 @@ fn spec_subst_pairs(t, pairs) = match t {
   // terminal, never on a link, so a receiver whose row learned fields
   // across several unifies answers as the one record every link spells —
   // the fields its chain learned, then the residual the site proved past
-  // the terminal (`spec_pairs_key_rest`). Two types sharing one terminal
+  // the terminal (lower.mn's spec_pairs_key_rest). Two types sharing one terminal
   // start their chains at different points (a receiver at its named
   // fields, its pattern's rest binder past them), and each spells its own
   // record from its own start. Unpaired, the row stays open at its
@@ -2581,7 +2585,7 @@ fn spec_subst_pairs(t, pairs) = match t {
         RowEndFree(t) => match spec_pairs_find(pairs, t) {
           Some(residual) => match residual {
             TRecord(rfs) => TRecord(field_canonicalize(learned ++ rfs)),
-            other => // only `spec_pairs_key_rest` pairs a row terminal, always as a closed record
+            other => // only lower.mn's spec_pairs_key_rest pairs a row terminal, always as a closed record
             other,
           },
           None => mk_record_open(learned, t),
@@ -2628,7 +2632,7 @@ handler lookup_ty_graph with spec_pairs = [], spec_enc = "" {
         // spells the chain's learned fields before it; an effect row is never
         // in the pair space and keeps the unit it always read. Answering unit
         // for the paired row too left every open record a twin had closed
-        // still open to `spec_resolve`, which reads a row's end through this op.
+        // still open to lower.mn's spec_resolve, which reads a row's end through this op.
         resume(match spec_pairs_find(spec_pairs, graph_chase_handle(h)) {
           Some(c) => c,
           None => TUnit,

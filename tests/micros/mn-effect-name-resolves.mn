@@ -1,0 +1,12 @@
+// expect: refuse E_MissingVariable
+// AN EFFECT NAME IN A ROW RESOLVES OR REFUSES. A `with` term that names no
+// effect declared in the module's reach — no `effect Nowhere` anywhere this
+// module links — is E_MissingVariable at the declaration. Until Landing 1
+// (2026-10-13) the expansion took an unknown name as an effect OF THAT NAME,
+// so the clause checked clean and constrained nothing: lib/persist.mn's
+// `!Network` held two weeks after the last Network effect left the tree on
+// 2026-09-28. Measured on boot 454c3aaf: this program compiled clean and ran
+// to 1.
+fn quiet() with !Nowhere = 1
+
+fn main() = quiet()

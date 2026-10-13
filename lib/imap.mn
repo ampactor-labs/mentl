@@ -39,7 +39,7 @@
 // the exit).
 fn wmap_new(n) = list_filled(n, [])
 
-// The key is pinned `Int` at every entry: the primitive's own law is that
+// The key is pinned Int at every entry: the primitive's own law is that
 // the key IS a word, and the pin is what makes the bucket's key compare a
 // proven word compare rather than an address compare over the erased
 // tuple (the unprovable-comparison class, refused now as E_ShapeUnprovable

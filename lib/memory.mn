@@ -168,6 +168,12 @@ effect Alloc {
   heap_mark() -> Addr
 }
 
+// Mutate — the mutation marker: `!Mutate` on a function proves read-only
+// access to its parameters (Vale's region-freeze through the algebra that
+// proves `!Alloc`). No operations — the negation is the claim. Declared in the
+// library every program links; the compiler's graph event is GraphMutated.
+effect Mutate {}
+
 // PARTIALITY IS A ROW FACT. The substrate traps a partial primitive whose
 // precondition fails — an integer division by zero, INT_MIN / -1, an index
 // past its sequence — and a site whose precondition the judgment cannot

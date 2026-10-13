@@ -31,8 +31,6 @@ handler arena {
 }
 
 // The fact that code opens an arena, charged to the frame the install stands
-// in and answered by no handler — so `main`'s row says whether the program
+// in and answered by no handler — so the row of main says whether the program
 // opens one, which is what turns every store's barrier on.
-effect Arena {
-  
-}
+effect Arena {}

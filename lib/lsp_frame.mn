@@ -16,8 +16,6 @@
 // per-byte reads are O(N) but not a perf bottleneck for editor traffic.
 // Buffered framing (BatchedFrame peer sub-handle) lands when high-
 // throughput surfaces (web playground push-streams) need it.
-import types
-
 import io
 
 import strings

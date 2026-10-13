@@ -1,0 +1,400 @@
+// The Filesystem capability, whole: the effect a program's row names, the
+// handler whose arms ARE the implementation, and the WASI path syscalls each
+// arm hands its request to. One module, so `!Filesystem` is a claim about
+// this module's ops and nothing else, a library module can name the
+// capability without reaching the compiler (lib/persist.mn names
+// `!Filesystem` in a row; the effect used to be declared in src/types.mn and
+// its handler in src/pipeline.mn, so the runtime library's one honest
+// capability claim stood on an import of the compiler's metaschema), and a
+// program installs `wasi_filesystem` by importing the capability it uses.
+//
+// Row semantics: `with Filesystem` declares the function MAY touch the
+// filesystem. `with !Filesystem` PROVES it does not — audit-driven linker
+// severance can drop path_open / fd_close / etc. imports from binaries with
+// proven !Filesystem.
+//
+// Paths resolve against the preopen table (fs_at): a relative path against
+// the first dir preopen (the install shim preopens the caller's cwd first),
+// an absolute path against the preopen whose guest name is its longest prefix
+// — what makes the shim's `/mentl-home` mapping reachable from any directory.
+// Parameterization via `with Filesystem("/workspace")` lands when
+// audit-driven permission scopes become meaningful.
+import io
+
+import memory
+
+import strings
+
+effect Filesystem {
+  fs_exists(String) -> Bool
+  fs_read_file(String) -> String
+  fs_write_file(String, String)
+  fs_mkdir(String)
+  // The FileHandle-shaped surface the voice's Interact ops need. Returns are
+  // domain-free (Int fd / Bool errno); ADT projection (FileHandle /
+  // TreeEntry) is the voice's.
+  fs_open(String) -> Int
+  // create+truncate for writing, returning the fd — distinct from fs_open's
+  // read/write open (WASI oflags CREAT|TRUNC, write rights). It was missing
+  // while three routes wrote files, which is the whole reason those routes
+  // reached past this effect to fs_create_impl.
+  fs_create(String) -> Int
+  fs_close(Int)
+  fs_unlink(String) -> Bool
+  fs_rename(String, String) -> Bool
+}
+
+// The Filesystem effect answered by the host: each arm hands its request to
+// the WASI primitive below that performs it, and holds no state of its own.
+// A compile route installs it around the driver, so reading a module,
+// writing an image and writing a battery's files all go through the one
+// capability the row names, and a function that reaches none of them proves
+// `!Filesystem`.
+handler wasi_filesystem {
+  fs_exists(path) => resume(fs_exists_impl(path)),
+  fs_read_file(path) => resume(fs_read_file_impl(path)),
+  fs_write_file(path, bytes) => {
+    fs_write_file_impl(path, bytes)
+    resume()
+  },
+  fs_mkdir(path) => {
+    fs_mkdir_impl(path)
+    resume()
+  },
+  fs_open(path) => resume(fs_open_impl(path)),
+  fs_create(path) => resume(fs_create_impl(path)),
+  fs_close(fd) => {
+    fs_close_impl(fd)
+    resume()
+  },
+  fs_unlink(path) => resume(fs_unlink_impl(path)),
+  fs_rename(old_p, new_p) => resume(fs_rename_impl(old_p, new_p)),
+}
+
+// The implementations — each takes a String path and hands the syscall a
+// (ptr, len) view straight into the string's payload.
+//
+// fs_path_view — the (ptr, len) span a path_* syscall reads, pointing
+// STRAIGHT at the string's payload bytes in the image. WASI preview1
+// paths carry explicit lengths; str_payload materializes a rope/slice
+// exactly here, and a flat path is zero-copy — the bytes already sit
+// where the syscall wants them.
+fn fs_path_view(s) = (str_payload(s), byte_len(s))
+
+// fs_dir_fd — the preopened DIRECTORY's fd, read live from the preopen
+// table: fd_prestat_get answers 0 with tag 0 (dir) for a dir preopen; any
+// other kind of preopen occupying a slot refuses. The table's ORDER is the
+// host invocation's business, never a baked constant — a socket preopen
+// once stole fd 3 (2026-07-10) and every path syscall hit it. Scan
+// exhausted = no dir preopened: return the first slot so the syscall
+// itself errors loudly.
+fn fs_dir_fd() = fs_dir_fd_from(3)
+
+fn fs_dir_fd_from(fd) = if fd >= 16 {
+  3
+} else {
+  let prestat = alloc(8)
+  if fd_prestat_get(fd, prestat) == 0 && load_i8(prestat) == 0 { fd } else { fs_dir_fd_from(fd + 1) }
+}
+
+// fs_at — the ONE path resolution every fs syscall reads: (dir_fd,
+// path_ptr, path_len). The preopen table IS the mount table (Carried-Truth
+// at the WASI layer): an ABSOLUTE path resolves to the preopen whose guest
+// name is its LONGEST prefix (the wasi-libc rule), opened relative with the
+// prefix stripped — what makes the install shim's `--dir lib::/mentl-lib`
+// mapping reachable, so a user project's vocabulary imports resolve from any
+// directory. A relative path opens against the FIRST dir preopen (the shim
+// preopens the caller's cwd first); no prefix match falls to the first dir
+// so the syscall itself errors loudly, exactly as fs_dir_fd always did.
+fn fs_at(path_str) = match fs_path_view(path_str) {
+  (pp, plen) => if plen == 0 || load_i8(pp) != 47 {
+    (fs_dir_fd(), pp, plen)
+  } else {
+    match fs_best_preopen(pp, plen, 3, 0, 0) {
+      (best_fd, best_len) => if best_fd == 0 {
+        (fs_dir_fd(), pp, plen)
+      } else {
+        let skip =
+          if best_len < plen && load_i8(addr_at(pp, best_len)) == 47 { best_len + 1 } else { best_len }
+        (best_fd, addr_at(pp, skip), plen - skip)
+      },
+    }
+  },
+}
+
+// The longest-prefix scan over the preopen table (dir fds live in 3..16;
+// fd 0 is the no-match sentinel — a real dir preopen is never below 3).
+fn fs_best_preopen(pp, plen, fd, best_fd, best_len) = if fd >= 16 {
+  (best_fd, best_len)
+} else {
+  let prestat = alloc(8)
+  if fd_prestat_get(fd, prestat) == 0 && load_i8(prestat) == 0 {
+    let nlen = load_i32(addr_at(prestat, 4))
+    let nbuf = alloc(nlen)
+    if fd_prestat_dir_name(fd, nbuf, nlen) == 0 && fs_preopen_prefix(nbuf, nlen, pp, plen) && nlen > best_len {
+      fs_best_preopen(pp, plen, fd + 1, fd, nlen)
+    } else {
+      fs_best_preopen(pp, plen, fd + 1, best_fd, best_len)
+    }
+  } else {
+    fs_best_preopen(pp, plen, fd + 1, best_fd, best_len)
+  }
+}
+
+// The guest name is a prefix of the path AND the boundary is exact (the
+// path ends there or continues with '/'); the root name "/" matches every
+// absolute path.
+fn fs_preopen_prefix(nbuf, nlen, pp, plen) = if nlen == 1 && load_i8(nbuf) == 47 {
+  true
+} else if nlen > plen {
+  false
+} else if !fs_bytes_eq(nbuf, pp, nlen, 0) {
+  false
+} else {
+  nlen == plen || load_i8(addr_at(pp, nlen)) == 47
+}
+
+fn fs_bytes_eq(a, b, n, i) = if i >= n {
+  true
+} else if load_i8(addr_at(a, i)) != load_i8(addr_at(b, i)) {
+  false
+} else {
+  fs_bytes_eq(a, b, n, i + 1)
+}
+
+// fs_list_dir_names — the names in the FIRST dir preopen (the caller's
+// cwd under the install shim), read via fd_readdir on the preopen fd
+// itself. The dirent wire format (WASI preview1): d_next u64@0,
+// d_ino u64@8, d_namlen u32@16, d_type u8@20, name@24. The cookie rides
+// the low word (the fd_readdir import's RI64 slot zero-extends it — the
+// wait_i32 precedent); a buffer-boundary-truncated entry resumes the
+// loop from the last whole entry's d_next.
+fn fs_list_dir_names() = fs_dir_fd() |> fs_readdir_loop(??, 0, [])
+
+fn fs_readdir_loop(fd, cookie, acc) = {
+  let bufsz = 8192
+  let buf = alloc(bufsz)
+  let nread_cell = alloc(4)
+  let errno = fd_readdir(fd, buf, bufsz, cookie, nread_cell)
+  if errno != 0 {
+    acc
+  } else {
+    let nread = load_i32(nread_cell)
+    match fs_parse_dirents(buf, nread, 0, acc, cookie, false) {
+      (acc2, last_cookie, saw_whole) => // nread < bufsz ⇒ the host wrote the whole remainder — done. A full
+      // buffer means more entries exist; continue from the last WHOLE
+      // entry's d_next (no whole entry in a full buffer = a name larger
+      // than the buffer — stop rather than loop forever).
+      if nread < bufsz || !saw_whole { acc2 } else { fs_readdir_loop(fd, last_cookie, acc2) },
+    }
+  }
+}
+
+fn fs_parse_dirents(buf, end, off, acc, last_cookie, saw_whole) = if off + 24 > end {
+  (acc, last_cookie, saw_whole)
+} else {
+  let d_next = load_i32(addr_at(buf, off))
+  let namlen = load_i32(addr_at(buf, off + 16))
+  if off + 24 + namlen > end {
+    (acc, last_cookie, saw_whole)
+  } else {
+    let name = bytes_buf(namlen)
+    mem_copy(addr_at(name, 8), addr_at(buf, off + 24), namlen)
+    fs_parse_dirents(buf, end, off + 24 + namlen, push(acc, str_of_buf(name)), d_next, true)
+  }
+}
+
+// fs_list_dir_impl — list a SUBDIRECTORY's entry names: path_open the dir
+// (oflags DIRECTORY = 0x2; rights = fd_readdir, bit 14) against its preopen,
+// then the same fd_readdir loop the cwd projection drives, then close. None
+// = the path is not an openable directory — the discriminator `mentl test`
+// uses to fork battery-mode (a directory) from the check chain (a module).
+fn fs_list_dir_impl(path_str) = match fs_at(path_str) {
+  (dfd, pp, plen) => {
+    let fd_cell = alloc(4)
+    let open_errno = path_open(dfd, 0, pp, plen, 2, 16384, 0, 0, fd_cell)
+    if open_errno != 0 {
+      None
+    } else {
+      let fd = load_i32(fd_cell)
+      let names = fs_readdir_loop(fd, 0, [])
+      fd_close(fd)
+      Some(names)
+    }
+  },
+}
+
+// fs_exists — path_filestat_get returns 0 on success, errno otherwise.
+// The 64-byte filestat_t record is alloc'd and discarded; existence is
+// the boolean.
+fn fs_exists_impl(path_str) = match fs_at(path_str) {
+  (dfd, pp, plen) => {
+    let stat = alloc(64)
+    let errno = path_filestat_get(dfd, 0, pp, plen, stat)
+    errno == 0
+  },
+}
+
+// fs_mkdir — path_create_directory relative to the dir preopen.
+// Idempotent at the handler level (errno-17 EEXIST ignored).
+fn fs_mkdir_impl(path_str) = match fs_at(path_str) {
+  (dfd, pp, plen) => {
+    path_create_directory(dfd, pp, plen)
+    ()
+  },
+}
+
+// fs_read_file — path_filestat_get + path_open (read flag) + one sized read +
+// fd_close. Returns the file bytes as a flat Mentl String. On open failure
+// returns an empty string; caller should distinguish via fs_exists.
+//
+// A FILE STATES ITS SIZE, so it is read into the one byte record that size
+// names, and nothing else is allocated. It used to be read through
+// fd_read_all, the stream loop a pipe needs: a doubling buffer from 64 KB
+// and a final copy, so reading 18.7 MB touched 87 MB against an 18 MB
+// floor (measured 2026-10-06, M9, on the wheel's march verb reading back its own
+// emission — 72 MB of the verb's peak). The filestat_t record's size is the
+// u64 at +32, read as its low word: a Mentl string's length is a word.
+fn fs_read_file_impl(path_str) = match fs_at(path_str) {
+  (dfd, pp, plen) => {
+    let stat = alloc(64)
+    let fd_cell = alloc(4)
+    // path_open(base_fd, dirflags=0, path_ptr, path_len, oflags=0,
+    //   rights_base=FS_RIGHTS_READ, rights_inheriting=FS_RIGHTS_READ,
+    //   fdflags=0, fd_out_ptr)
+    // lookupflags=1 (symlink-follow): the size is the file's, never a link's.
+    if path_filestat_get(dfd, 1, pp, plen, stat) != 0 {
+      str_of_buf(bytes_buf(0))
+    } else if path_open(dfd, 0, pp, plen, 0, 2, 2, 0, fd_cell) != 0 {
+      str_of_buf(bytes_buf(0))
+    } else {
+      let fd = load_i32(fd_cell)
+      let bytes = fd_read_sized(fd, load_i32(addr_at(stat, 32)))
+      fd_close(fd)
+      bytes
+    }
+  },
+}
+
+// The file's bytes at the size its stat named. A file that shrank between
+// the stat and the read answers what it held at the read; one that grew
+// answers its first `size` bytes — a read is not a snapshot either way, and
+// the stat is the moment this one names.
+fn fd_read_sized(fd, size) = {
+  let str = bytes_buf(size)
+  let got = fd_read_into(fd, addr_at(str, 8), 0, size)
+  if got == size { str_of_buf(str) } else { str_slice(str_of_buf(str), 0, got) }
+}
+
+fn fd_read_into(fd, dst, off, size) = if off >= size {
+  off
+} else {
+  let n = read_chunk(fd, addr_at(dst, off), size - off)
+  if n == 0 { off } else { fd_read_into(fd, dst, off + n, size) }
+}
+
+// fs_write_file — path_open (write+create+trunc) + fd_write + fd_close.
+// Overwrites any existing file at path.
+fn fs_write_file_impl(path_str, bytes_str) = match fs_at(path_str) {
+  (dfd, pp, plen) => {
+    let fd_cell = alloc(4)
+    // path_open with FS_OFLAGS_CREAT|FS_OFLAGS_TRUNC = 0x9, FS_RIGHTS_WRITE = 0x40
+    let open_errno = path_open(dfd, 0, pp, plen, 9, 64, 64, 0, fd_cell)
+    if open_errno != 0 {
+      ()
+    } else {
+      let fd = load_i32(fd_cell)
+      fd_write_bytes(fd, str_payload(bytes_str), byte_len(bytes_str))
+      fd_close(fd)
+      ()
+    }
+  },
+}
+
+// fs_write_image_impl — a header buffer followed by a raw memory extent,
+// streamed to path, ALL OR NOTHING. Returns whether the whole extent landed.
+//
+// This is the streaming sibling of fs_write_file_impl, and it exists so that
+// writing a large image is ONE filesystem operation with one home. A caller
+// that opened the fd, wrote twice, closed and unlinked for itself would be
+// reaching past this seam five times for what is a single question — does this
+// path now hold exactly these bytes — and each of those reaches is an
+// operation the Filesystem handler can no longer see.
+//
+// ALL OR NOTHING is the contract, not a convenience. A reader that admits a
+// wire on its header alone cannot tell a truncated file from a whole one, so a
+// short write must leave NO file rather than a plausible one: the failure has
+// to be absence, which every reader already handles, instead of a declared
+// extent that was never written.
+//
+// A length that does not fit a signed word is refused here rather than handed
+// to the syscall as a negative — the honest bound of the word this interface
+// is built from, named where it bites.
+fn fs_write_image_impl(path_str, hdr_ptr, hdr_len, base, len) = {
+  let fd = fs_create_impl(path_str)
+  if fd == 0 {
+    false
+  } else {
+    let nh = fd_write_bytes(fd, hdr_ptr, hdr_len)
+    let nb = if len < 0 { -1 } else { fd_write_bytes(fd, base, len) }
+    fd_close(fd)
+    if nh == hdr_len && nb == len {
+      true
+    } else {
+      fs_unlink_impl(path_str)
+      false
+    }
+  }
+}
+
+// fs_open_impl — path_open for read+write+create. Returns WASI fd
+// integer or 0 on failure (caller checks via fs_exists for distinction).
+// FS_OFLAGS_CREAT = 0x1; FS_RIGHTS_READ|WRITE = 0x42.
+fn fs_open_impl(path_str) = match fs_at(path_str) {
+  (dfd, pp, plen) => {
+    let fd_cell = alloc(4)
+    let open_errno = path_open(dfd, 0, pp, plen, 1, 66, 66, 0, fd_cell)
+    if open_errno != 0 { 0 } else { load_i32(fd_cell) }
+  },
+}
+
+// fs_create_impl — path_open write+create+trunc RETURNING the fd: the
+// streaming half of fs_write_file (same flags), for writers that emit
+// through the fd across a long extent instead of banking one buffer.
+// 0 on failure (the fs_open_impl convention).
+fn fs_create_impl(path_str) = match fs_at(path_str) {
+  (dfd, pp, plen) => {
+    let fd_cell = alloc(4)
+    let open_errno = path_open(dfd, 0, pp, plen, 9, 64, 64, 0, fd_cell)
+    if open_errno != 0 { 0 } else { load_i32(fd_cell) }
+  },
+}
+
+// fs_close_impl — fd_close; errno absorbed (idempotent at runtime
+// per WASI errno-9 EBADF semantics).
+fn fs_close_impl(fd) = {
+  fd_close(fd)
+  ()
+}
+
+// fs_unlink_impl — path_unlink_file relative to the dir preopen.
+// Errno surfaced as Bool (true on success). H6 binary outcome.
+fn fs_unlink_impl(path_str) = match fs_at(path_str) {
+  (dfd, pp, plen) => {
+    let errno = path_unlink_file(dfd, pp, plen)
+    errno == 0
+  },
+}
+
+// fs_rename_impl — path_rename within the dir preopen to itself. Each
+// path crosses as its own payload view; the old adjacent-scratch
+// packing (new at 256 + old_len + 1) died with the scratch. Errno
+// surfaced as Bool.
+fn fs_rename_impl(old_str, new_str) = match fs_at(old_str) {
+  (ofd, op, olen) => match fs_at(new_str) {
+    (nfd, np, nlen) => {
+      let errno = path_rename(ofd, op, olen, nfd, np, nlen)
+      errno == 0
+    },
+  },
+}

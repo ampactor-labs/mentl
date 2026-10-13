@@ -1,0 +1,14 @@
+// expect: refuse E_OccursCheck
+// THE OCCURS CHECK IS REPORTED. The graph's write guard notes an infinite
+// type where the bind refuses it and inference drains the note at the
+// judgment boundary; the drain's report is the only way the refusal reaches
+// the register. On 2026-10-12 an intermediate compiler lost every such report
+// (the drain's call had become a partial application, discarded by `each`),
+// and the consequence was two layers away: a polymorphic self-call whose
+// first Mycroft round should have refused was judged monomorphic, and a
+// recursion whose type grows with every call emitted ONE twin calling itself
+// instead of refusing at the eighth instantiation. This fixture holds the
+// first layer; the instantiation-depth micros hold the second.
+fn f(x) = x == [x]
+
+fn main() = if f(1) { 1 } else { 0 }

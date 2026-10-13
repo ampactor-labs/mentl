@@ -37,6 +37,8 @@ import driver
 
 import egraph
 
+import fs
+
 import infer
 
 import io

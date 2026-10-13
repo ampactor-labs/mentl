@@ -63,6 +63,8 @@ import egraph
 
 import format
 
+import fs
+
 import io
 
 import mentl
@@ -189,7 +191,7 @@ fn render_cursor_block(cursor, view) with !Mutate = match view {
 // Query projection (consult/propose over the live graph), the rust-
 // analyzer-surpassing form where one cursor read answers hover /
 // completion / references / diagnostics. No second LSP stack lives here;
-// duplicating its `LspMessage`/bridges was the two-parallel-mechanisms
+// duplicating its LspMessage/bridges was the two-parallel-mechanisms
 // drift (the file failing its own one-cursor-N-transports thesis).
 //
 // The browser-WASM DOM wire and the nvim-RPC wire are the ONLY
