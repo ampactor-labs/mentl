@@ -234,7 +234,7 @@ fn handle_is_not(module: Int, handle: Int) = handle != module
 // registration wins, which is the tree a desugaring leaves (a `let`'s value
 // is a child of the match its block becomes).
 fn spine_put_parents(spine, parent, body) = match body {
-  NModule(m) => m.decls |> map(node_handle) |> each(spine_put_parent(spine, ??, parent)),
+  NModule(m) => m.decls |> each(spine_put_parent(spine, ??, parent)),
   _ => body_child_handles(body) |> each(spine_put_parent(spine, ??, parent)),
 }
 
@@ -1872,45 +1872,45 @@ fn note_written(acc, h, below) =
 // One arm per Expr variant that carries children (the row algebra over
 // the value space — H6 exhaustive); leaf literals carry none.
 fn expr_child_handles(e) = match e {
-  BinOpExpr(_, l, r) => [node_handle(l), node_handle(r)],
-  UnaryOpExpr(_, n) => [node_handle(n)],
-  CallExpr(f, args) => [node_handle(f)] ++ map(node_handle, args),
-  LambdaExpr(_, body) => [node_handle(body)],
-  IfExpr(c, t, f) => [node_handle(c), node_handle(t), node_handle(f)],
+  BinOpExpr(_, l, r) => [l, r],
+  UnaryOpExpr(_, n) => [n],
+  CallExpr(f, args) => [f] ++ args,
+  LambdaExpr(_, body) => [body],
+  IfExpr(c, t, f) => [c, t, f],
   BlockExpr(stmts, fin) => // order-free: membership test only
-  [node_handle(fin)] ++ map(node_handle, stmts),
+  [fin] ++ stmts,
   MatchExpr(scrut, arms) => // an arm's BODY is a child node — dropping the arms left the
   // projection partial and tree containment blind below any match
   // (the enclosing-decl guard's measured hole).
-  [node_handle(scrut)] ++ map({ (_, b) => node_handle(b) }, arms),
+  [scrut] ++ map({ (_, b) => b }, arms),
   ResumeExpr(v, updates) => // A resume-with update is the parser's {name, init} record — the handle
   // lives on its init edge (record_field_handle's exact sibling).
-  [node_handle(v)] ++ map(record_field_handle, updates),
-  MakeListExpr(elems) => map(node_handle, elems),
-  MakeTupleExpr(elems) => map(node_handle, elems),
+  [v] ++ map(record_field_handle, updates),
+  MakeListExpr(elems) => elems,
+  MakeTupleExpr(elems) => elems,
   MakeRecordExpr(fields) => // Record LITERALS carry the parser's (name, value) tuples
   // (parse_record_fields); only resume updates are {name, init} records.
   map(tuple_field_handle, fields),
-  RecordUpdateExpr(base, flds) => [node_handle(base)] ++ map(tuple_field_handle, flds),
-  NamedRecordExpr(head, flds) => [node_handle(head)] ++ map(tuple_field_handle, flds),
-  IndexExpr(recv, idx) => [node_handle(recv), node_handle(idx)],
-  MakeStringExpr(frags) => map(node_handle, frags),
-  ShowExpr(inner) => [node_handle(inner)],
-  FieldExpr(recv, _) => [node_handle(recv)],
-  PipeExpr(_, l, r) => [node_handle(l), node_handle(r)],
-  FanoutExpr(branches) => map(node_handle, branches),
+  RecordUpdateExpr(base, flds) => [base] ++ map(tuple_field_handle, flds),
+  NamedRecordExpr(head, flds) => [head] ++ map(tuple_field_handle, flds),
+  IndexExpr(recv, idx) => [recv, idx],
+  MakeStringExpr(frags) => frags,
+  ShowExpr(inner) => [inner],
+  FieldExpr(recv, _) => [recv],
+  PipeExpr(_, l, r) => [l, r],
+  FanoutExpr(branches) => branches,
   LabeledArg(_, v) => // the labeled value is a child node
-  [node_handle(v)],
+  [v],
   _ => // LitInt/LitFloat/LitString/LitBool/LitUnit/VarRef/ExprPlaceholder — no child Nodes
   [],
 }
 
 // The field IS the parser's {name, init} record — read the init edge by
 // name (the tuple destructure read a record as positions and met Node).
-fn record_field_handle(field) with Pure = node_handle(field.init)
+fn record_field_handle(field) with Pure = field.init
 
 fn tuple_field_handle(field) with Pure = match field {
-  (_, v) => node_handle(v),
+  (_, v) => v,
 }
 
 // stmt_child_handles — expr_child_handles' Stmt sibling (the projection
@@ -1927,13 +1927,9 @@ fn stmt_child_handles(s) = match s {
   // a fact of the HANDLES, so no body is read: the register arm draws its
   // parent edges through this projection, and an arm's performs resolve
   // outside its own install.
-  if node_handle(ann) == node_handle(value) {
-    [node_handle(value)]
-  } else {
-    [node_handle(value), node_handle(ann)]
-  },
-  FnStmt(_name, _params, _ret, _effs, body) => [node_handle(body)],
-  ExprStmt(e) => [node_handle(e)],
+  if ann == value { [value] } else { [value, ann] },
+  FnStmt(_name, _params, _ret, _effs, body) => [body],
+  ExprStmt(e) => [e],
   HandlerDeclStmt(_hname, _ename, _config, states, arms, _effs) => map(record_field_handle, states) ++ map(arm_body_handle, arms),
   TypeDefStmt(_, _) => [],
   EffectDeclStmt(_, _, _) => [],
@@ -1943,7 +1939,7 @@ fn stmt_child_handles(s) = match s {
   RowAliasStmt(_, _) => [],
 }
 
-fn arm_body_handle(arm) with Pure = node_handle(arm.body)
+fn arm_body_handle(arm) with Pure = arm.body
 
 // body_child_handles — the ONE total child projection over NodeBody:
 // tree walks (containment, the enclosing-decl descent) read this,
@@ -1973,7 +1969,7 @@ fn row_of_subtree(h) with !Mutate = {
     NStmt(FnStmt(_, _, _, _, _)) => Some(here),
     NStmt(HandlerDeclStmt(_, _, _, _, _, _)) => Some(here),
     NExpr(PipeExpr(PTee, _, _)) => Some(here),
-    NExpr(PipeExpr(PFeedback, l, _)) => row_of_child(Some(here), node_handle(l)),
+    NExpr(PipeExpr(PFeedback, l, _)) => row_of_child(Some(here), l),
     body => fold(Some(here), row_of_child, body_child_handles(body)),
   }
 }
@@ -2051,7 +2047,7 @@ fn fanout_reach_of(st, decls, name: String) = match smap_get(st.memo, name) {
         NStmt(FnStmt(_, _, _, clause, body)) => if declares_absent(clause, "Thread") || declares_absent(clause, "Alloc") {
           (false, {entered: st.entered, memo: smap_add(st.memo, name, 0), seen: st.seen})
         } else {
-          match fanout_fact((false, []), node_handle(body)) {
+          match fanout_fact((false, []), body) {
             (has_own, callees) => if has_own {
               (true, {entered: st.entered, memo: smap_add(st.memo, name, 1), seen: st.seen})
             } else {
@@ -2115,14 +2111,14 @@ fn fact_own(acc) = match acc {
 }
 
 // A call of the prelude's `fanout` is a fanout of the body's own.
-fn fact_call(acc, f) = match graph_node_body(node_handle(f)) {
+fn fact_call(acc, f) = match graph_node_body(f) {
   NExpr(VarRef(name)) => match acc {
     (has_own, callees) => (has_own || callee_is_fanout(f), push(callees, name)),
   },
   _ => acc,
 }
 
-fn callee_is_fanout(f) = match graph_node_body(node_handle(f)) {
+fn callee_is_fanout(f) = match graph_node_body(f) {
   NExpr(VarRef(name)) => str_eq(name, "fanout"),
   _ => false,
 }
@@ -2154,7 +2150,7 @@ fn product_arity_at(h) = match graph_node_body(h) {
 
 // A `<|`'s branch count: the tuple of stages it fans into, or the one
 // stage of the degenerate form (lower and infer normalize the same way).
-fn fanshare_arity(right) = match graph_node_body(node_handle(right)) {
+fn fanshare_arity(right) = match graph_node_body(right) {
   NExpr(MakeTupleExpr(elems)) => len(elems),
   _ => 1,
 }
@@ -2197,8 +2193,8 @@ fn destructure_body(arms) = match arms {
 fn product_consumed_in_place(h) = match graph_parent_of(h) {
   None => false,
   Some(p) => match graph_node_body(p) {
-    NExpr(MatchExpr(scrut, arms)) => node_handle(scrut) == h && is_some(destructure_subs(arms, product_arity_at(h))),
-    NExpr(PipeExpr(PForward, left, right)) => node_handle(left) == h && product_fills_stage(h, right),
+    NExpr(MatchExpr(scrut, arms)) => scrut == h && is_some(destructure_subs(arms, product_arity_at(h))),
+    NExpr(PipeExpr(PForward, left, right)) => left == h && product_fills_stage(h, right),
     _ => false,
   },
 }
@@ -2213,12 +2209,12 @@ type ProductFate = PfConsumed | PfByPipe | PfEscapes
 fn product_fate(h) = match graph_parent_of(h) {
   None => PfEscapes,
   Some(p) => match graph_node_body(p) {
-    NExpr(MatchExpr(scrut, arms)) => if node_handle(scrut) == h && is_some(destructure_subs(arms, product_arity_at(h))) {
+    NExpr(MatchExpr(scrut, arms)) => if scrut == h && is_some(destructure_subs(arms, product_arity_at(h))) {
       PfConsumed
     } else {
       PfEscapes
     },
-    NExpr(PipeExpr(PForward, left, _)) => if node_handle(left) == h && product_arity_at(h) > 1 { PfByPipe } else { PfEscapes },
+    NExpr(PipeExpr(PForward, left, _)) => if left == h && product_arity_at(h) > 1 { PfByPipe } else { PfEscapes },
     _ => PfEscapes,
   },
 }
@@ -2238,15 +2234,12 @@ fn product_fills_stage(h, right) = {
 // A LITERAL stage says its own count on the page, which is what lets the
 // merge be known before the literal is judged (the judgment reaches a pipe's
 // left first).
-fn stage_open_slots(right) = {
-  let rh = node_handle(right)
-  match graph_node_body(rh) {
-    NExpr(LambdaExpr(params, _)) => len(params),
-    _ => match lookup_ty(rh) {
-      TFun(ps, _, _) => len(ps),
-      _ => -1,
-    },
-  }
+fn stage_open_slots(right) = match graph_node_body(right) {
+  NExpr(LambdaExpr(params, _)) => len(params),
+  _ => match lookup_ty(right) {
+    TFun(ps, _, _) => len(ps),
+    _ => -1,
+  },
 }
 
 // The MINT span of a handle — the reverse read of the span_index weave
@@ -2306,26 +2299,6 @@ fn enclosing_decl(h) with !Mutate = match graph_parent_of(h) {
     _ => enclosing_decl(p),
   },
 }
-
-// The module handle a path names — the inverse of `module_name_of_handle`,
-// read from the same deduped cells, so it lands on the JUDGED generation's
-// node rather than the trial's shadow. `None` when the weave holds no such
-// module: the caller refuses rather than guessing, and the answer is an
-// Option rather than a 0 sentinel because the link root is itself a module
-// node and 0 is a handle it can legitimately hold.
-//
-// This is what makes `mentl <file>:<line>` an address at all. A node's module
-// is stamped at its mint (`spine_put_module`, read back by `graph_module_of`),
-// so naming the file resolves ONCE here and every downstream comparison is a
-// word compare against that handle — never a path re-matched per candidate,
-// and never span CONTAINMENT, which stopped being able to answer the question
-// the moment each module's spans became its own 1-based coordinates.
-// The CURRENT node is read where its registration superseded the last one
-// (graph_module_now). This walked every handle in the graph for module cells
-// and kept the last per path — once per address a caret asked for, so a
-// resident session paid a whole-graph walk on every read, a longer one for
-// every generation it had kept.
-fn module_handle_of_path(path: String) with !Mutate = graph_module_now(path)
 
 // ─── Import reachability — can module A see module B's names? ────────
 //
@@ -2424,14 +2397,12 @@ fn import_paths_of_decls(decls) = decls |> filter_map_imports
 fn filter_map_imports(decls) = if len(decls) == 0 {
   []
 } else {
-  let head_imports = match node_body_of(last(decls)) {
+  let head_imports = match graph_node_body(last(decls)) {
     NStmt(ImportStmt(p)) => [p],
     _ => [],
   }
   head_imports ++ filter_map_imports(drop_last(decls))
 }
-
-fn node_body_of(node) = graph_node_body(node_handle(node))
 
 // The total source the medium processed for this entry — the SUM of every
 // module's own extent. A graph read, so it is DETERMINISTIC: unlike a wall
@@ -2457,24 +2428,6 @@ fn weave_line_extent() with !Mutate = fold(
   },
   module_cells()
 )
-
-// The birth-span read is O(1) BY HANDLE — the spans spine column
-// (§5.O layer 2 landed at this read). The scan it replaces rode the
-// generic find, whose iterate FLATTENS the whole (span, handle) log per
-// call: the field projection calls this once per position, and a
-// wheel-scale field exhausted the 4GB image inside alloc (measured:
-// alloc <- flat_raw <- iterate <- find <- parse_span_of); the
-// allocation-free scan then measured O(n^2) over the snoc-spined log
-// (a 600s timeout at the same scale). The column is the same one write
-// projected by handle — the log survives for containment scans.
-//
-// It is the one place a position comes from. A span is a MINT fact: a chase
-// follows the binding chain (a hole unified with a call's result answered the
-// chase terminal's span), and even a node's own reason cell rebinds when
-// inference resolves it (a hole's last-bind reason carried the enclosing
-// binop's span — both measured). Only the birth index never moves. A miss
-// answers span_zero, which is what tells an authored hole from scaffolding.
-fn parse_span_of(handle) = graph_span_of(handle)
 
 // The ONLY route from a TypeHandle to a resolved Ty. Delegates to
 // graph_chase. No cache. No staleness. Every observer reads live.

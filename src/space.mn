@@ -79,7 +79,7 @@ fn viewed(ranges, target: String) = match range_of_module(ranges, target) {
     None
   },
   Some(r) => match r {
-    (_m, _p, text) => match module_handle_of_path(target) {
+    (_m, _p, text) => match graph_module_now(target) {
       None => {
         eprint_string("mentl: {target} is in the weave but minted no module node — nothing to address\n")
         None
@@ -128,7 +128,7 @@ fn space_field_view(v) = {
   let holes = map(field_hole(v, ??), rank_positions(enumerate_hole_positions(v.node), caret0))
   let grads = map(field_gradient(v, ??), rank_positions(enumerate_gradient_positions(v.node), caret0))
   View({
-    at: ViewAt({col: 0, h: v.node, line: 0, module: v.name, span: parse_span_of(v.node)}),
+    at: ViewAt({col: 0, h: v.node, line: 0, module: v.name, span: graph_span_of(v.node)}),
     canvas: NoCanvas,
     field: holes ++ grads,
     ledger: ledger_of(v, v.node),
@@ -305,18 +305,18 @@ fn is_nominal(w: String) = byte_len(w) > 0 && byte_at(w, 0) >= 65 && byte_at(w, 
 // (a pipe no `|>` above holds as its left side) carries the source and
 // every stage; an inner pipe of the chain draws nothing of its own.
 fn frames_at(h) = match graph_node_body(h) {
-  NExpr(PipeExpr(PForward, _, _)) => if is_chain_prefix(h) { [] } else { [Frame(h, CvPipe, map(parse_span_of, chain_elements(h)))] },
-  NExpr(PipeExpr(PTee, l, r)) => [Frame(h, CvTee, [parse_span_of(node_handle(l)), parse_span_of(node_handle(r))])],
-  NExpr(PipeExpr(PFeedback, l, r)) => [Frame(h, CvLoop, [parse_span_of(node_handle(l)), parse_span_of(node_handle(r))])],
-  NExpr(PipeExpr(PFanout(_), l, r)) => [Frame(h, CvShare, [parse_span_of(node_handle(l))] ++ map(parse_span_of, shared_branches(r)))],
-  NExpr(FanoutExpr(branches)) => [Frame(h, CvFan, map(branch_span, branches))],
+  NExpr(PipeExpr(PForward, _, _)) => if is_chain_prefix(h) { [] } else { [Frame(h, CvPipe, map(graph_span_of, chain_elements(h)))] },
+  NExpr(PipeExpr(PTee, l, r)) => [Frame(h, CvTee, [graph_span_of(l), graph_span_of(r)])],
+  NExpr(PipeExpr(PFeedback, l, r)) => [Frame(h, CvLoop, [graph_span_of(l), graph_span_of(r)])],
+  NExpr(PipeExpr(PFanout(_), l, r)) => [Frame(h, CvShare, [graph_span_of(l)] ++ map(graph_span_of, shared_branches(r)))],
+  NExpr(FanoutExpr(branches)) => [Frame(h, CvFan, map(graph_span_of, branches))],
   _ => [],
 }
 
 // A `|>` that is the LEFT side of the `|>` above it is that chain's prefix.
 fn is_chain_prefix(h) = match graph_parent_of(h) {
   Some(p) => match graph_node_body(p) {
-    NExpr(PipeExpr(PForward, l, _)) => node_handle(l) == h,
+    NExpr(PipeExpr(PForward, l, _)) => l == h,
     _ => false,
   },
   None => false,
@@ -324,12 +324,10 @@ fn is_chain_prefix(h) = match graph_parent_of(h) {
 
 // A `<|` shares its input across the elements of the tuple on its right; a
 // right side that is not a tuple is the one branch.
-fn shared_branches(r) = match graph_node_body(node_handle(r)) {
-  NExpr(MakeTupleExpr(elems)) => map(node_handle, elems),
-  _ => [node_handle(r)],
+fn shared_branches(r) = match graph_node_body(r) {
+  NExpr(MakeTupleExpr(elems)) => elems,
+  _ => [r],
 }
-
-fn branch_span(n) = parse_span_of(node_handle(n))
 
 fn canvas_verb_word(verb) = match verb {
   CvPipe => "|>",
@@ -429,7 +427,7 @@ fn cell_at(arm, state, word: String, sp, text: String) =
 // who grants it, and the effects an install grants.
 fn node_cells(v, h) = {
   let body = graph_node_body(h)
-  let sp = parse_span_of(h)
+  let sp = graph_span_of(h)
   let decl = if is_top_decl(h) || is_nested_fn(body) {
     match graph_chase(h) {
       GNode(kind, _) => [cell_at(OnQuery, CellProven, decl_word(body), sp, node_query_line(h, kind))],
@@ -457,7 +455,7 @@ fn node_cells(v, h) = {
         OnEffects,
         CellProven,
         tee_handler_name(r),
-        parse_span_of(node_handle(r)),
+        graph_span_of(r),
         "~> {tee_handler_name(r)} grants what its arms answer"
       )
     ],
@@ -631,7 +629,7 @@ fn param_is_owned(p) = match param_resolved(p) {
 }
 
 fn trace_of(uses, decl, p) = match p {
-  TParam(pname, _, _, _, _, _) => OwnTrace(decl, pname, parse_span_of(decl), uses |> filter(use_of(decl, pname, ??)) |> map(use_site)),
+  TParam(pname, _, _, _, _, _) => OwnTrace(decl, pname, graph_span_of(decl), uses |> filter(use_of(decl, pname, ??)) |> map(use_site)),
 }
 
 fn trace_has_uses(t) = match t {
@@ -653,7 +651,7 @@ fn param_uses(h) = match graph_node_body(h) {
   NExpr(VarRef(n)) => if links_a_param(h) {
     match decl_path_to(h) {
       [] => [],
-      [top, ..._] => [(top, n, parse_span_of(h))],
+      [top, ..._] => [(top, n, graph_span_of(h))],
     }
   } else {
     []
@@ -725,7 +723,7 @@ fn is_local_binder(b) = match graph_binder_of(b) {
   None => len(decl_path_to(b)) > 1,
 }
 
-fn local_uses(v, b) = module_handles(v.node) |> filter(links_to(??, b)) |> map(parse_span_of)
+fn local_uses(v, b) = module_handles(v.node) |> filter(links_to(??, b)) |> map(graph_span_of)
 
 fn site_in_view(m: String, sp) = (m, sp)
 
@@ -755,11 +753,11 @@ fn sites_of(answer) = match located_answer(answer) {
 }
 
 fn field_hole(v, ranked) = match ranked {
-  (_, ph) => FieldHole(ph, parse_span_of(ph), ring_of(cursor_at_handle(ph), ph, parse_span_of(ph), v)),
+  (_, ph) => FieldHole(ph, graph_span_of(ph), ring_of(cursor_at_handle(ph), ph, graph_span_of(ph), v)),
 }
 
 fn field_gradient(v, ranked) = match ranked {
-  (_, ph) => FieldGradient(ph, parse_span_of(ph), ring_of(cursor_at_handle(ph), ph, parse_span_of(ph), v)),
+  (_, ph) => FieldGradient(ph, graph_span_of(ph), ring_of(cursor_at_handle(ph), ph, graph_span_of(ph), v)),
 }
 
 // The eight facts of a position, from the one cursor read. Each aspect
@@ -1086,7 +1084,7 @@ fn decl_fact(dh, caret_h, reach) = match graph_chase(dh) {
       decl_word(body),
       body_decl_name(body),
       node_query_line(dh, kind),
-      parse_span_of(dh),
+      graph_span_of(dh),
       position_proximity(caret_h, dh, reach)
     )
   },
@@ -1798,8 +1796,8 @@ fn file_line_col(target: String, span) = match span {
 
 // The Handler facet's sentence for a perform.
 fn show_served(en: String, served, target: String) with !Mutate = match served {
-  ServedBy(site, hname) => "{en} is served by `~> {hname}` at {file_line_col(target, parse_span_of(site))}",
-  ServedWhereCalled(site) => "{en} is performed when the function value at {file_line_col(target, parse_span_of(site))} is called — the install in force there serves it",
+  ServedBy(site, hname) => "{en} is served by `~> {hname}` at {file_line_col(target, graph_span_of(site))}",
+  ServedWhereCalled(site) => "{en} is performed when the function value at {file_line_col(target, graph_span_of(site))} is called — the install in force there serves it",
   ServedByCaller(decl) => "no install inside `{body_decl_name(graph_node_body(decl))}` answers {en} — its row carries {en} to the callers",
 }
 
@@ -1883,7 +1881,7 @@ fn span_line_of(s) with Pure = match s {
 }
 
 fn value_lede(sh) = match graph_node_body(sh) {
-  NStmt(LetStmt(_, value, _)) => match node_const(node_handle(value)) {
+  NStmt(LetStmt(_, value, _)) => match node_const(value) {
     Some(LVInt(n)) => " = {int_to_str(n)}",
     Some(LVFloat(f)) => " = {float_to_str(f)}",
     Some(LVString(s)) => " = \"{s}\"",

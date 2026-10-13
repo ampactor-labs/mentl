@@ -180,8 +180,6 @@ handler lower_handler_stack_ctx with stack = [] {
 // can never shadow a real install.
 fn lower_frame_fence_push() = lower_handler_push("", 0, PDispatch)
 
-fn lower_frame_fence_pop() = lower_handler_pop()
-
 fn index_of_name(names: [String], target: String, i) = if i >= len(names) {
   -1
 } else if names[i] == target {
@@ -776,7 +774,7 @@ fn env_kind_of(name) = match env_lookup(name) {
 fn lower_callee_name(fbody) = match fbody {
   NExpr(VarRef(name)) => name,
   NExpr(FieldExpr(_, field)) => field,
-  NExpr(CallExpr(callee, _)) => lower_callee_name(graph_node_body(node_handle(callee))),
+  NExpr(CallExpr(callee, _)) => lower_callee_name(graph_node_body(callee)),
   _ => // drift-audit: ignore — "" = callee has no declared name (positional passthrough)
   "",
 }
@@ -797,7 +795,7 @@ fn call_product_at(handle, args) = match graph_product_at(handle) {
   NoProduct => {
     report(EInternalInvariant(
       "a call's argument product was never judged: the lowering reached a call the judgment did not",
-      parse_span_of(handle)
+      graph_span_of(handle)
     ))
     (map(unwrap_labeled_arg, args), [], CallApplied)
   },
@@ -817,7 +815,7 @@ fn call_product_nodes(handle, args) = match call_product_at(handle, args) {
 // takes the arm's k as a REAL trailing argument — the "argument, not
 // evidence" ruling executed: the callee's own resolve_resume_k finds its
 // __k as an ordinary param (RLocal), a lambda's as a capture (RUpval).
-fn lower_call_default(handle, f, fh, lo_args) = lower_call_of(handle, fh, lower_expr(f), lo_args)
+fn lower_call_default(handle, f, lo_args) = lower_call_of(handle, f, lower_expr(f), lo_args)
 
 // A call whose callee is already lowered: the dispatch that resolved the
 // callee's name hands its read over, so the name is resolved once per call.
@@ -863,17 +861,17 @@ fn lower_call_of(handle, fh, lo_f, lo_args) = {
 // op, a constructor, an intrinsic): a parameter named `result`, called, was
 // lowered as the `Iterate` op of that name and trapped at the root (measured
 // 2026-09-28 in derive.mn's jvp_pair).
-fn lower_call_dispatch(handle, f, fh, fbody, r_args) = {
+fn lower_call_dispatch(handle, f, fbody, r_args) = {
   let lo_args = lower_expr_list(r_args)
   match fbody {
     NExpr(VarRef(name)) => match ls_resolve(name) {
       (RGlobal, _) => {
-        site_schedule_seed(fh)
-        lower_global_call(handle, fh, name, r_args, lo_args)
+        site_schedule_seed(f)
+        lower_global_call(handle, f, name, r_args, lo_args)
       },
-      (res, local_h) => lower_call_of(handle, fh, lower_resolved_ref(fh, name, res, local_h), lo_args),
+      (res, local_h) => lower_call_of(handle, f, lower_resolved_ref(f, name, res, local_h), lo_args),
     },
-    _ => lower_call_default(handle, f, fh, lo_args),
+    _ => lower_call_default(handle, f, lo_args),
   }
 }
 
@@ -910,7 +908,7 @@ fn lower_global_call(handle, fh, name: String, r_args, lo_args) = if name == "to
   // this line means a program called it where no reading can answer.
   report(EDerivativeUnreachable(
     "`tangent_of` is what `d` means inside a derivative reading, and this call is outside every one; ask `d(v)` inside `(…) ~> grad(w)`",
-    parse_span_of(handle)
+    graph_span_of(handle)
   ))
   LInvariantFailure(handle, TangentOutsideReading)
 } else if name == "fanout" && len(r_args) == 2 {
@@ -927,7 +925,7 @@ fn lower_global_call(handle, fh, name: String, r_args, lo_args) = if name == "to
   // by construction (SYNTAX §Vocabulary): only a fanout declares its
   // applications independent. A pipe reaches the same node with the datum
   // as its second field (`completed_call`).
-  lower_fanout_seq(handle, fh, node_handle(list_index(r_args, 0)), lo_args)
+  lower_fanout_seq(handle, fh, list_index(r_args, 0), lo_args)
 } else if is_substrate_mem_op(name) {
   // Memory / Alloc ops ARE the instruction set — "the WASM runtime
   // IS the handler" (lib/memory.mn). They project to raw
@@ -1044,12 +1042,11 @@ fn partial_split(r_args, open, n_args, n_ps, handle, i, ci) = if i >= n_ps {
   }
 } else {
   let arg = list_index(r_args, i)
-  let ah = node_handle(arg)
-  match graph_node_body(ah) {
+  match graph_node_body(arg) {
     NHole(_) => {
       let pn = "__part_{int_to_str(i)}"
       match partial_split(r_args, open, n_args, n_ps, handle, i + 1, ci) {
-        (caps, names, bargs, cells) => (caps, [pn] ++ names, [LLocal(ah, pn)] ++ bargs, [ah] ++ cells),
+        (caps, names, bargs, cells) => (caps, [pn] ++ names, [LLocal(arg, pn)] ++ bargs, [arg] ++ cells),
       }
     },
     _ => {
@@ -1067,7 +1064,7 @@ fn partial_split(r_args, open, n_args, n_ps, handle, i, ci) = if i >= n_ps {
 fn open_slot_handle(open, k, handle) = if k < len(open) {
   list_index(open, k)
 } else {
-  report(EInternalInvariant("a partial's open slot has no cell typing it", parse_span_of(handle)))
+  report(EInternalInvariant("a partial's open slot has no cell typing it", graph_span_of(handle)))
   handle
 }
 
@@ -1189,7 +1186,7 @@ fn project_lambda_fn(origin, cap_pairs) = match graph_node_body(origin) {
     )
     lower_frame_fence_push()
     let lo_body = k2_guard(mark_tail(lower_body_reified(body_node)))
-    lower_frame_fence_pop()
+    lower_handler_pop()
     let lines = ls_exit_frame()
     Some(LFn("lambda_{int_to_str(origin)}", len(params), param_names_list, [lo_body], len(cap_pairs), lines))
   },
@@ -1233,7 +1230,7 @@ fn project_nested_fn(origin, fn_name, bind_h, cap_pairs) = match graph_node_body
     let lo_body = k2_guard(mark_tail({
       lower_body_reified(body_node)
     } ~> arm_state_ctx(bind_fields, bind_disc, bind_h)))
-    lower_frame_fence_pop()
+    lower_handler_pop()
     let lines = ls_exit_frame()
     Some(LFn(fn_name, len(param_names_list), param_names_list, [lo_body], len(cap_pairs), lines))
   },
@@ -1261,7 +1258,7 @@ fn project_thunk_fn(thunk_name, cap_pairs, branch_node, result_h, carrier_h, sha
     None => lower_expr(branch_node),
   }
   let lo_body = k2_guard(LMakeTuple(carrier_h, [inner]))
-  lower_frame_fence_pop()
+  lower_handler_pop()
   let lines = ls_exit_frame() |> map(share_enclosing_line)
   LFn(thunk_name, 0, [], [lo_body], len(cap_pairs), lines)
 }
@@ -1562,7 +1559,7 @@ fn resume_bindings(stmts) = match classify_fixpoint(stmts) {
 fn bind_from_handlers(stmts, summaries, decls, binds) = if len(stmts) == 0 {
   binds
 } else {
-  let binds2 = match graph_node_body(node_handle(last(stmts))) {
+  let binds2 = match graph_node_body(last(stmts)) {
     NStmt(HandlerDeclStmt(hname, _, config, state, arms, _)) => {
       // An arm's config, state fields and arguments are its binders, never
       // a call — the arm walk binds them as the free-name walk does.
@@ -1660,7 +1657,7 @@ fn collect_free_vars_of_decl(decls, name: String) = {
 // body lowers.
 fn program_may_yield(stmts) = any(
   {
-    s => match graph_node_body(node_handle(s)) {
+    s => match graph_node_body(s) {
       NStmt(EffectDeclStmt(ename, _, _)) => effect_has_multishot_op(ename),
       _ => false,
     },
@@ -1677,7 +1674,7 @@ fn program_may_yield(stmts) = any(
 // short-circuit is; [] where nothing yields.
 fn unwinding_ops(stmts) = flat_map(
   {
-    s => match graph_node_body(node_handle(s)) {
+    s => match graph_node_body(s) {
       NStmt(HandlerDeclStmt(hname, _, _, _, arms, _)) => if handler_may_unwind(hname) { map(handler_arm_op_name, arms) } else { [] },
       _ => [],
     },
@@ -1847,7 +1844,7 @@ fn callee_name_of_handle(h) = lower_callee_name(graph_node_body(h))
 // Static call + install edges of a fn body, walked once: (callee_names,
 // installed_handled_enames). A `~> h` records the effect h's HandlerKind
 // absorbs; every other node just unions its children's edges.
-fn flow_edges(node) = match graph_node_body(node_handle(node)) {
+fn flow_edges(node) = match graph_node_body(node) {
   NExpr(e) => flow_edges_expr(e),
   NStmt(s) => flow_edges_stmt(s),
   NPat(_) => ([], []),
@@ -1896,7 +1893,7 @@ fn flow_edges_expr(e) = match e {
   BinOpExpr(_, l, r) => flow_join(flow_edges(l), flow_edges(r)),
   UnaryOpExpr(_, inner) => flow_edges(inner),
   CallExpr(f, args) => {
-    let nm = lower_callee_name(graph_node_body(node_handle(f)))
+    let nm = callee_name_of_handle(f)
     let here = if nm == "" { ([], []) } else { ([nm], []) }
     flow_join(here, flow_join(flow_edges(f), flow_edges_list(args)))
   },
@@ -1919,7 +1916,7 @@ fn flow_edges_expr(e) = match e {
     let inner = flow_join(flow_edges(l), flow_edges(r))
     match kind {
       PTee => {
-        let hd = installed_handled_ename(graph_node_body(node_handle(r)))
+        let hd = installed_handled_ename(graph_node_body(r))
         if hd == "" {
           inner
         } else {
@@ -1994,7 +1991,7 @@ fn installed_handled_ename(handler_body) = {
 // One base per top-level fn: (name, own-leaf, sorted callees, sorted handled).
 fn collect_fn_bases(stmts) = flatten(map(
   {
-    s => match graph_node_body(node_handle(s)) {
+    s => match graph_node_body(s) {
       NStmt(FnStmt(name, _, _, _, body_node)) => match flow_edges(body_node) {
         (callees, handled) => [(name, own_dispatched_row(name), set_canonicalize(callees), set_canonicalize(handled))],
       },
@@ -2539,12 +2536,12 @@ fn lookup_effect_op_names(eff_name) = match env_lookup(eff_name) {
 // follow-up Hβ.lower.diverging-callee-analysis; rare, and the flag still
 // propagates via the caller's k2 boundary, only the local dead code isn't
 // pruned).
-fn expr_diverges(node) = match graph_node_body(node_handle(node)) {
+fn expr_diverges(node) = match graph_node_body(node) {
   NStmt(ExprStmt(e)) => // Statements wrap their expression — a block's stmts are NStmt(...), so
   // first_diverging must unwrap to reach the perform.
   expr_diverges(e),
   NStmt(LetStmt(_, init, _)) => expr_diverges(init),
-  NExpr(CallExpr(f, _)) => match graph_node_body(node_handle(f)) {
+  NExpr(CallExpr(f, _)) => match graph_node_body(f) {
     NExpr(VarRef(name)) => match op_resume_discipline(name) {
       Abandon => true,
       _ => false,
@@ -2581,7 +2578,7 @@ fn first_diverging(stmts, i) = if i >= len(stmts) {
 // The diverging statement lowers as the expression that diverges: a binder
 // it would have bound is dead, and a block ending in a `let` has no value
 // (`let v = ab(); v + 1` did not assemble — nothing on the stack).
-fn diverging_expr(stmt) = match graph_node_body(node_handle(stmt)) {
+fn diverging_expr(stmt) = match graph_node_body(stmt) {
   NStmt(ExprStmt(e)) => e,
   NStmt(LetStmt(_, init, _)) => init,
   _ => stmt,
@@ -2732,43 +2729,41 @@ fn lookup_parent_effect(op_name) = match env_lookup(op_name) {
 // and lower emits x — optimization as a cursor read, not a separate pass.
 // The canonical handle carries the type lookups, since a rewrite preserves
 // the type (and, for a dropping rewrite, the effect row — the gate proved it).
-fn lower_expr(node) = {
-  let handle = node_handle(node)
-  // An AUTHORED hole's identity lives on its own node — the id and the
-  // authored span the executable gate and the cursor read (authored_hole).
-  // Its union-find class root is often an absent-default mint (NHole(0):
-  // the fn-return var a body hole unified with, a let's value var), so
-  // canonicalizing first discards the authored truth and the surviving
-  // hole slips the gate. The hole keeps its handle; every other body
-  // reads canonically (same class ⇒ same lookup_ty chase ⇒ same repr),
-  // at the authored node's own span.
-  match graph_node_body(handle) {
-    NHole(_) => {
-      // The value-holes column's note (the one writer): a hole that
-      // reaches this arm SURVIVED to value position — consumed
-      // call-arg/pipe holes never do. executable_hole is the note
-      // condition (authored id + real span), exactly the old walk's
-      // collect test.
-      if executable_hole(handle) { graph_hole_note(handle) } else { () }
-      LConst(handle, LInt(0))
-    },
-    _ => {
-      let canon = egraph_extract(handle)
-      let span = graph_span_of(handle)
-      match graph_node_body(canon) {
-        NExpr(e) => lower_expr_body(e, canon, span),
-        NStmt(s) => lower_stmt_as_expr(s, canon, span),
-        NPat(_) => // patterns don't lower as expr
-        LConst(canon, LInt(0)),
-        NHole(_) => // the class root is a hole-default mint; nothing authored to carry
-        LConst(canon, LInt(0)),
-        NModule(_) => // never an expr position — module entity, not a value
-        LConst(canon, LInt(0)),
-        NTypeAnn(_) => // never an expr position — an authored return annotation, not a value
-        LConst(canon, LInt(0)),
-      }
-    },
-  }
+//
+// An AUTHORED hole's identity lives on its own node — the id and the
+// authored span the executable gate and the cursor read (authored_hole).
+// Its union-find class root is often an absent-default mint (NHole(0):
+// the fn-return var a body hole unified with, a let's value var), so
+// canonicalizing first discards the authored truth and the surviving
+// hole slips the gate. The hole keeps its handle; every other body
+// reads canonically (same class ⇒ same lookup_ty chase ⇒ same repr),
+// at the authored node's own span.
+fn lower_expr(handle) = match graph_node_body(handle) {
+  NHole(_) => {
+    // The value-holes column's note (the one writer): a hole that
+    // reaches this arm SURVIVED to value position — consumed
+    // call-arg/pipe holes never do. executable_hole is the note
+    // condition (authored id + real span), exactly the old walk's
+    // collect test.
+    if executable_hole(handle) { graph_hole_note(handle) } else { () }
+    LConst(handle, LInt(0))
+  },
+  _ => {
+    let canon = egraph_extract(handle)
+    let span = graph_span_of(handle)
+    match graph_node_body(canon) {
+      NExpr(e) => lower_expr_body(e, canon, span),
+      NStmt(s) => lower_stmt_body(s, canon, span),
+      NPat(_) => // patterns don't lower as expr
+      LConst(canon, LInt(0)),
+      NHole(_) => // the class root is a hole-default mint; nothing authored to carry
+      LConst(canon, LInt(0)),
+      NModule(_) => // never an expr position — module entity, not a value
+      LConst(canon, LInt(0)),
+      NTypeAnn(_) => // never an expr position — an authored return annotation, not a value
+      LConst(canon, LInt(0)),
+    }
+  },
 }
 
 // The read of a name the lowering's scope resolved — a value reference and a
@@ -2904,8 +2899,7 @@ fn lower_expr_body(e, handle, span) = match e {
     // no PerformExpr path (dissolved); `op(args)` IS the canonical and
     // only form, dispatched here by the env's EffectOpScheme. Plain
     // function calls fall through.
-    let fh = node_handle(f)
-    let fbody = graph_node_body(fh)
+    let fbody = graph_node_body(f)
     // The arg PRODUCT is the judgment's — labeled args in declaration
     // order, absent fields filled by their defaults — read off the call
     // node (the call-product column), never resolved again by name.
@@ -2920,9 +2914,9 @@ fn lower_expr_body(e, handle, span) = match e {
       // lower_pipe_complete dispatches them fork-free (the pipe owns its
       // hole; the inline splice is the zero-record projection of the same
       // hole-filling).
-      match partial_unfilled(lower_callee_name(fbody), fh, shape) {
-        Some(n_ps) => lower_call_partial(handle, fbody, fh, r_args, open, n_ps),
-        None => lower_call_dispatch(handle, f, fh, fbody, r_args),
+      match partial_unfilled(lower_callee_name(fbody), f, shape) {
+        Some(n_ps) => lower_call_partial(handle, fbody, f, r_args, open, n_ps),
+        None => lower_call_dispatch(handle, f, fbody, r_args),
       },
     }
   },
@@ -2954,19 +2948,16 @@ fn lower_expr_body(e, handle, span) = match e {
     ls_pop_scope(cp)
     result
   },
-  MatchExpr(scrutinee, arms) => {
-    let sh = node_handle(scrutinee)
-    match destructure_subs(arms, product_arity_at(sh)) {
-      Some(subs) => // A PRODUCT TAKEN APART WHERE IT IS BUILT IS ITS PARTS. The one arm
-      // binds every position, so the match is the destructuring and no
-      // record need exist: each part lands in the binder's own register,
-      // which is what the `let` spelling this desugars from costs.
-      match destructure_body(arms) {
-        Some(body) => lower_product_destructure(handle, sh, subs, body),
-        None => LMatch(handle, lower_expr(scrutinee), lower_match_arms(sh, arms)),
-      },
-      None => LMatch(handle, lower_expr(scrutinee), lower_match_arms(sh, arms)),
-    }
+  MatchExpr(scrutinee, arms) => match destructure_subs(arms, product_arity_at(scrutinee)) {
+    Some(subs) => // A PRODUCT TAKEN APART WHERE IT IS BUILT IS ITS PARTS. The one arm
+    // binds every position, so the match is the destructuring and no
+    // record need exist: each part lands in the binder's own register,
+    // which is what the `let` spelling this desugars from costs.
+    match destructure_body(arms) {
+      Some(body) => lower_product_destructure(handle, scrutinee, subs, body),
+      None => LMatch(handle, lower_expr(scrutinee), lower_match_arms(scrutinee, arms)),
+    },
+    None => LMatch(handle, lower_expr(scrutinee), lower_match_arms(scrutinee, arms)),
   },
   MakeListExpr(elems) => LMakeList(handle, lower_expr_list(elems)),
   MakeTupleExpr(elems) => LMakeTuple(handle, lower_expr_list(elems)),
@@ -3133,7 +3124,7 @@ fn lower_pipe_complete_many(lo_ls, right, handle) = match inlinable_lambda_arity
 // own, so a parameter spelled like a local of the frame never overwrites it.
 fn lower_applied_in_place(lo_ls, params, body, lam, handle) = {
   let cp = ls_push_scope()
-  let phs = param_handles_of(node_handle(lam), params)
+  let phs = param_handles_of(lam, params)
   let binds = map(bind_stage_param, zip(zip(phs, map(param_name, params)), lo_ls))
   let lo_body = lower_expr(body)
   ls_pop_scope(cp)
@@ -3151,8 +3142,7 @@ fn bind_stage_param(pair) = match pair {
 }
 
 fn lower_pipe_stage(lo_ls, right, handle) = {
-  let rfh = node_handle(right)
-  let rbody = graph_node_body(rfh)
+  let rbody = graph_node_body(right)
   match stage_op_name(rbody) {
     Some(name) => // A bare op reference standing as the stage is the perform `op(x)` in
     // the frame the pipe stands in — applied, never minted. The judgment
@@ -3160,8 +3150,8 @@ fn lower_pipe_stage(lo_ls, right, handle) = {
     // static record a value could reach, so lowering the reference built the
     // op's partial and called it: `x |> put` under `!Alloc` refused as an
     // internal invariant where `put(x)` ran (tests/micros/mn-pipe-into-op.mn).
-    lower_global_call(handle, rfh, name, [], lo_ls),
-    None => lower_pipe_stage_value(lo_ls, right, handle, rfh, rbody),
+    lower_global_call(handle, right, name, [], lo_ls),
+    None => lower_pipe_stage_value(lo_ls, right, handle, rbody),
   }
 }
 
@@ -3178,7 +3168,7 @@ fn stage_op_name(rbody) = match rbody {
   _ => None,
 }
 
-fn lower_pipe_stage_value(lo_ls, right, handle, rfh, rbody) = {
+fn lower_pipe_stage_value(lo_ls, right, handle, rbody) = {
   // THE MERGE: a product the site built fills the stage's N open slots —
   // the trailing holes the Stage Law puts the datum in — so the tuple is
   // never built and the call is the one its let-spelling writes. One value
@@ -3188,10 +3178,7 @@ fn lower_pipe_stage_value(lo_ls, right, handle, rfh, rbody) = {
   // owns its hole and completes it below by inline splice, so a raw
   // hole-bearing call in stage position never mints a partial closure.
   let lo_r = match rbody {
-    NExpr(CallExpr(f2, args2)) => {
-      let fh2 = node_handle(f2)
-      lower_call_dispatch(rfh, f2, fh2, graph_node_body(fh2), call_product_nodes(rfh, args2))
-    },
+    NExpr(CallExpr(f2, args2)) => lower_call_dispatch(right, f2, graph_node_body(f2), call_product_nodes(right, args2)),
     _ => lower_expr(right),
   }
   let hole_at = match rbody {
@@ -3202,7 +3189,7 @@ fn lower_pipe_stage_value(lo_ls, right, handle, rfh, rbody) = {
   // fired at the visit) and the splice below consumes it — retract the
   // pending note so a consumed hole never reads as a survival.
   match rbody {
-    NExpr(CallExpr(_, cargs2)) => if hole_at >= 0 { graph_hole_unnote(node_handle(list_index(cargs2, hole_at))) } else { () },
+    NExpr(CallExpr(_, cargs2)) => if hole_at >= 0 { graph_hole_unnote(list_index(cargs2, hole_at)) } else { () },
     _ => (),
   }
   let is_partial = match rbody {
@@ -3249,7 +3236,7 @@ fn lower_pipe_stage_value(lo_ls, right, handle, rfh, rbody) = {
       // SAME k-append fork every call runs — a resume-bound stage takes the
       // arm's k as the trailing argument (the "argument, not evidence"
       // ruling; the callee's performs dispatch through the world chain).
-      let args2 = if ls_resume_bind_of(callee_name_of_handle(rfh)) == "" {
+      let args2 = if ls_resume_bind_of(callee_name_of_handle(right)) == "" {
         lo_ls
       } else // drift-audit: ignore — one k+record arg pair per stage, not a loop
       {
@@ -3313,7 +3300,7 @@ fn read_part_reg(pair) = match pair {
 // THE PARTS, each at its own handle: a tuple literal's elements, a fanout's
 // branch results (the boundary edges inference drew).
 fn part_handles_of(ph) = match graph_node_body(ph) {
-  NExpr(MakeTupleExpr(elems)) => map(node_handle, elems),
+  NExpr(MakeTupleExpr(elems)) => elems,
   _ => match fanout_boundaries(ph) {
     Ok(boundaries) => map(boundary_result_handle, boundaries),
     Err(_) => [],
@@ -3353,18 +3340,15 @@ fn lower_pipe(kind, left, right, handle) = match kind {
   // 5 closure: any per-thread state lives in the chosen handler's `with`,
   // never an ad-hoc parallel struct.
   lower_fanout_to(handle, fan_own, left, right, FdValue),
-  PForward => {
-    let lh = node_handle(left)
-    // THE MERGE (PLAN §4②): a product the site builds fills the stage's N
-    // open slots. The parts are bound to registers where they are computed
-    // and handed to the stage, so `(a) >< (b) |> f` is `f(a, b)` — no tuple
-    // at any schedule (`product_fills_stage`, graph.mn, the judgment's own
-    // rule for the expectation it unified).
-    if product_fills_stage(lh, right) {
-      lower_product_merge(handle, lh, right)
-    } else {
-      lower_pipe_complete(lower_expr(left), right, handle)
-    }
+  PForward => // THE MERGE (PLAN §4②): a product the site builds fills the stage's N
+  // open slots. The parts are bound to registers where they are computed
+  // and handed to the stage, so `(a) >< (b) |> f` is `f(a, b)` — no tuple
+  // at any schedule (`product_fills_stage`, graph.mn, the judgment's own
+  // rule for the expectation it unified).
+  if product_fills_stage(left, right) {
+    lower_product_merge(handle, left, right)
+  } else {
+    lower_pipe_complete(lower_expr(left), right, handle)
   },
   PTee => {
     // ~> tee — handler attachment. One precedence, one kind: the parser's
@@ -3393,10 +3377,7 @@ fn lower_pipe(kind, left, right, handle) = match kind {
     // program handles, arm-name groups — note at the install node. The config
     // arguments are this frame's own expressions; the state belongs to the
     // declaration, whose init fn the install calls (`lower_init_decl`).
-    graph_install_note(
-      handle,
-      InstallOf(hname, node_handle(right), map(node_handle, config_args), arm_groups)
-    )
+    graph_install_note(handle, InstallOf(hname, right, config_args, arm_groups))
     let config_inits = config_args |> map(lower_expr)
     match projection_of(hname) {
       PDerivative => // The reading replaces the install: no record, no world push. The
@@ -3460,7 +3441,7 @@ fn feedback_line_depth(spec) = match feedback_depth(spec) {
 fn pipe_hole_index(args, i) = if i >= len(args) {
   -1
 } else {
-  match graph_node_body(node_handle(list_index(args, i))) {
+  match graph_node_body(list_index(args, i)) {
     NHole(_) => i,
     _ => pipe_hole_index(args, i + 1),
   }
@@ -3470,7 +3451,7 @@ fn pipe_hole_index(args, i) = if i >= len(args) {
 // already proves it — never a second arity table). -1 when the graph holds
 // no fn type at the callee (the unresolved callee already carries its own
 // diagnostic); the pipe then treats the right side as a saturated stage.
-fn callee_arity_of(f) = match lookup_ty(node_handle(f)) {
+fn callee_arity_of(f) = match lookup_ty(f) {
   TFun(ps, _, _) => len(ps),
   _ => -1,
 }
@@ -3498,19 +3479,13 @@ fn completed_call(dh, dfh, dn: String, dt, args) = if str_eq(dn, "fanout") && le
 fn lower_feedback_body(left, fb_handle) = match inlinable_lambda(left) {
   Some((params, body)) => {
     let cp = ls_push_scope()
-    ls_bind_fb_prior(feedback_param_name(last(params)), fb_handle)
+    ls_bind_fb_prior(param_name(last(params)), fb_handle)
     let lo = lower_expr(body)
     ls_pop_scope(cp)
     lo
   },
   None => lower_expr(left),
 }
-
-// The bound name of a `<~` lambda's single param (the prior-output binder).
-// TParam's first field IS the name string (a wildcard `(_)` lowers it to "_",
-// which never resolves — a feed-forward body simply leaves the prior
-// unreferenced). One destructure, read live — no pattern re-classification.
-fn feedback_param_name(p) = param_name(p)
 
 // Extract the handler-name string from the AST node on the right side
 // of a `body ~> handler` pipe. Recognized shapes:
@@ -3533,9 +3508,9 @@ fn feedback_param_name(p) = param_name(p)
 // name is lost reads as anonymous — no arm groups, no lexical Tier-1
 // resolve, the record's arm slot zero — so a named install must never
 // reach it.
-fn extract_handler_name(node) = match graph_node_body(node_handle(node)) {
+fn extract_handler_name(node) = match graph_node_body(node) {
   NExpr(VarRef(name)) => name,
-  NExpr(CallExpr(callee, _args)) => match graph_node_body(node_handle(callee)) {
+  NExpr(CallExpr(callee, _args)) => match graph_node_body(callee) {
     NExpr(VarRef(name)) => name,
     _ => // drift-audit: ignore — "" = genuinely anonymous install (the meaningful sentinel)
     "",
@@ -3554,16 +3529,13 @@ fn extract_handler_name(node) = match graph_node_body(node_handle(node)) {
 // §«Default parameter values») — written at the reference node
 // (`note_bare_handler_product`, infer.mn); a handler without config, or a
 // tee over a plain fn value, has none.
-fn extract_handler_config_args(node) = {
-  let nh = node_handle(node)
-  match graph_node_body(nh) {
-    NExpr(CallExpr(_callee, args)) => call_product_nodes(nh, args),
-    NExpr(VarRef(_)) => match graph_product_at(nh) {
-      ProductOf(nodes, _, _) => nodes,
-      NoProduct => [],
-    },
-    _ => [],
-  }
+fn extract_handler_config_args(node) = match graph_node_body(node) {
+  NExpr(CallExpr(_callee, args)) => call_product_nodes(node, args),
+  NExpr(VarRef(_)) => match graph_product_at(node) {
+    ProductOf(nodes, _, _) => nodes,
+    NoProduct => [],
+  },
+  _ => [],
 }
 
 // Fanout lowering — ONE path for `<|` and `>< `, discriminated by the
@@ -3610,8 +3582,7 @@ fn lower_fanout_to(handle, fan_own, left, right, dest) = match fanout_boundaries
     FanShare => {
       let lo_input = lower_expr(left)
       let input_local_name = "__fanout_input_{int_to_str(handle)}"
-      let input_h = node_handle(left)
-      let branch_nodes = match graph_node_body(node_handle(right)) {
+      let branch_nodes = match graph_node_body(right) {
         NExpr(MakeTupleExpr(elems)) => elems,
         _ => [right],
       }
@@ -3621,8 +3592,8 @@ fn lower_fanout_to(handle, fan_own, left, right, dest) = match fanout_boundaries
       LBlock(
         handle,
         [
-          LLet(input_h, input_local_name, lo_input),
-          fanout_at(handle, branch_nodes, Shared(input_h, input_local_name), boundaries, dest)
+          LLet(left, input_local_name, lo_input),
+          fanout_at(handle, branch_nodes, Shared(left, input_local_name), boundaries, dest)
         ]
       )
     },
@@ -3681,10 +3652,9 @@ fn fanout_inframe_walk(branch_nodes, share, boundaries, i, n) = if i >= n {
   []
 } else {
   let branch = list_index(branch_nodes, i)
-  let bh = node_handle(branch)
-  let value = match fanout_boundary_at(boundaries, i, bh) {
+  let value = match fanout_boundary_at(boundaries, i, branch) {
     Ok(BoundaryEdge(result_h, _, _, _, _)) => fanout_inframe_value(branch, result_h, share),
-    Err(invariant) => LInvariantFailure(bh, invariant),
+    Err(invariant) => LInvariantFailure(branch, invariant),
   }
   [value] ++ fanout_inframe_walk(branch_nodes, share, boundaries, i + 1, n)
 }
@@ -3698,16 +3668,15 @@ fn fanout_thunk_walk(handle, branch_nodes, share, boundaries, i, n) = if i >= n 
   []
 } else {
   let branch = list_index(branch_nodes, i)
-  let bh = node_handle(branch)
   let thunk = match share {
-    NoShare => synthesize_branch_thunk(handle, int_to_str(i), branch, fanout_boundary_at(boundaries, i, bh)),
+    NoShare => synthesize_branch_thunk(handle, int_to_str(i), branch, fanout_boundary_at(boundaries, i, branch)),
     Shared(input_h, input_local_name) => synthesize_diverge_thunk(
       handle,
       input_h,
       input_local_name,
       i,
       branch,
-      fanout_boundary_at(boundaries, i, bh)
+      fanout_boundary_at(boundaries, i, branch)
     ),
   }
   [thunk] ++ fanout_thunk_walk(handle, branch_nodes, share, boundaries, i + 1, n)
@@ -3719,19 +3688,19 @@ fn fanout_thunk_walk(handle, branch_nodes, share, boundaries, i, n) = if i >= n 
 fn fanout_boundaries(handle) = match graph_boundary_at(handle) {
   FanoutBoundary(edges) => Ok(edges),
   PendingContinuationBoundary(_, _, _, _) => {
-    report_at(handle, EUnresolvedType(handle, graph_epoch(), parse_span_of(handle)))
+    report_at(handle, EUnresolvedType(handle, graph_epoch(), graph_span_of(handle)))
     Err(WrongFanoutBoundaryKind)
   },
   ContinuationBoundary(_) => {
-    report_at(handle, EUnresolvedType(handle, graph_epoch(), parse_span_of(handle)))
+    report_at(handle, EUnresolvedType(handle, graph_epoch(), graph_span_of(handle)))
     Err(WrongFanoutBoundaryKind)
   },
   InterpBoundary(_) => {
-    report_at(handle, EUnresolvedType(handle, graph_epoch(), parse_span_of(handle)))
+    report_at(handle, EUnresolvedType(handle, graph_epoch(), graph_span_of(handle)))
     Err(WrongFanoutBoundaryKind)
   },
   NoBoundary => {
-    report_at(handle, EUnresolvedType(handle, graph_epoch(), parse_span_of(handle)))
+    report_at(handle, EUnresolvedType(handle, graph_epoch(), graph_span_of(handle)))
     Err(MissingFanoutBoundary)
   },
 }
@@ -3739,14 +3708,14 @@ fn fanout_boundaries(handle) = match graph_boundary_at(handle) {
 fn fanout_boundary_at(boundaries, i, fallback_h) = if i < len(boundaries) {
   Ok(list_index(boundaries, i))
 } else {
-  report_at(fallback_h, EUnresolvedType(fallback_h, graph_epoch(), parse_span_of(fallback_h)))
+  report_at(fallback_h, EUnresolvedType(fallback_h, graph_epoch(), graph_span_of(fallback_h)))
   Err(MissingFanoutEdge(i))
 }
 
 fn executable_boundary_row(thunk_h) = match lookup_ty(thunk_h) {
   TFun(_, _, row) => Ok(row),
   _ => {
-    report_at(thunk_h, EUnresolvedType(thunk_h, graph_epoch(), parse_span_of(thunk_h)))
+    report_at(thunk_h, EUnresolvedType(thunk_h, graph_epoch(), graph_span_of(thunk_h)))
     Err(UnresolvedBoundaryThunk(thunk_h))
   },
 }
@@ -3815,7 +3784,7 @@ fn threaded_effect_check(branch_h, stack, via: String, ename: String) = if effec
         EThreadedBranchEffect(
           ename,
           "{via}the handler it reaches at the fanout's frame, `{hname}`, WRITES its state from an arm ({how}) — one record, two instances",
-          parse_span_of(branch_h)
+          graph_span_of(branch_h)
         )
       ),
       None => each(
@@ -3835,7 +3804,7 @@ fn threaded_effect_check(branch_h, stack, via: String, ename: String) = if effec
       EThreadedBranchEffect(
         ename,
         "{via}no handler for it is installed at the fanout's own frame (an install beyond the frame fence — a caller's — is not provable from here)",
-        parse_span_of(branch_h)
+        graph_span_of(branch_h)
       )
     ),
   }
@@ -3894,7 +3863,7 @@ fn state_writer_or(acc, sf) = match acc {
   None => state_field_writer(sf),
 }
 
-fn state_field_writer(sf) = match graph_binder_of(node_handle(state_field_init(sf))) {
+fn state_field_writer(sf) = match graph_binder_of(state_field_init(sf)) {
   Some(fact) => match fact {
     StateFact(f) => if len(f.stores) > 0 {
       Some("an in-place store into `{state_field_name(sf)}`{store_site(last(f.stores))}")
@@ -3911,7 +3880,7 @@ fn state_field_writer(sf) = match graph_binder_of(node_handle(state_field_init(s
 
 // Where the store stands in the arm: the last cell is the stored value, or
 // the state argument a storing callee was handed (infer.mn `ages_transport`).
-fn store_site(c) = " at {show_span(parse_span_of(c))}"
+fn store_site(c) = " at {show_span(graph_span_of(c))}"
 
 // The schedules whose branches must cross a boundary, and whose
 // implementation the program links — a form is built for each, and for none
@@ -4138,74 +4107,71 @@ fn fanout_seq_impl(handle, fh, lo_args, impl: String) = match env_kind_of(impl) 
 // Per H.2.e (lower-lambda-capture-substrate): the closure
 // machinery used here is the same machinery that lowers user-
 // written lambdas; compiler-synthesized thunks reuse it.
-fn synthesize_diverge_thunk(parent_handle, input_h, input_local_name, i, branch_node, boundary_at) = {
-  let branch_h = node_handle(branch_node)
-  match boundary_at {
-    Ok(boundary) => match boundary {
-      BoundaryEdge(result_h, thunk_h, carrier_h, thread_ticket_h, persist_ticket_h) => {
-        let thunk_name = "diverge_{int_to_str(i)}_{int_to_str(parent_handle)}"
-        // A diverge thunk is a closure exactly like a branch thunk (`><`,
-        // synthesize_branch_thunk) — ONE closure-synthesis discipline, not two.
-        // It captures EVERY free var it needs: the shared input (a synthetic
-        // capture with no source VarRef, riding slot 0) AND every free var the
-        // branch itself references (a lambda branch's `k`), resolved against the
-        // parent frame. Inside the thunk each reads as an upval off __state. The
-        // old form captured only the input and referenced it as a bare local —
-        // the parent's let-local, undefined in the thunk (the input miss); and it
-        // captured NONE of the branch's frees (the `k` miss). Both were invisible
-        // because no micro exercised `<|` — only `><`.
-        let free_uses = collect_free_uses(branch_node, [])
-        match resolve_captures_outer(free_uses, parent_handle) {
-          (b_names, b_exprs, b_handles) => {
-            let captures_names = [input_local_name] ++ b_names
-            let captures_exprs = [LLocal(input_h, input_local_name)] ++ b_exprs
-            let captures_handles = [input_h] ++ b_handles
-            match executable_boundary_row(thunk_h) {
-              Ok(thunk_row) => {
-                threaded_branch_check(branch_h, thunk_row)
-                // A branch thunk takes nothing — its input rides capture
-                // slot 0 — so the param vector is empty by construction
-                // and the result is the thunk node's own judged type.
-                graph_emitfn_note(EmitFnEntry{
-                  caps: zip(captures_names, captures_handles),
-                  fence: len(captures_exprs),
-                  kind: EfkThunk,
-                  name: thunk_name,
-                  origin: thunk_h,
-                  params: [],
-                  ret: Some(lookup_ty(thunk_h)),
-                })
-                // THE DIRECT SWAP (α, the fanout pair's one projector):
-                // Some(input_h) = the `<|` share — the branch applied to
-                // the input riding capture slot 0 through the normal call
-                // lowering. A `<|` branch that performs a STATEFUL effect
-                // dispatches through the live world chain exactly as a
-                // real lambda does — no thunk-local evidence.
-                let fn_ir = project_thunk_fn(
-                  thunk_name,
-                  zip(captures_names, captures_handles),
-                  branch_node,
-                  result_h,
-                  carrier_h,
-                  Some(input_h)
-                )
-                ScheduledBoundary(
-                  LMakeClosure(thunk_h, fn_ir, captures_exprs),
-                  result_h,
-                  carrier_h,
-                  thread_ticket_h,
-                  persist_ticket_h,
-                  branch_h
-                )
-              },
-              Err(invariant) => InvalidScheduledBoundary(thunk_h, invariant),
-            }
-          },
-        }
-      },
+fn synthesize_diverge_thunk(parent_handle, input_h, input_local_name, i, branch_node, boundary_at) = match boundary_at {
+  Ok(boundary) => match boundary {
+    BoundaryEdge(result_h, thunk_h, carrier_h, thread_ticket_h, persist_ticket_h) => {
+      let thunk_name = "diverge_{int_to_str(i)}_{int_to_str(parent_handle)}"
+      // A diverge thunk is a closure exactly like a branch thunk (`><`,
+      // synthesize_branch_thunk) — ONE closure-synthesis discipline, not two.
+      // It captures EVERY free var it needs: the shared input (a synthetic
+      // capture with no source VarRef, riding slot 0) AND every free var the
+      // branch itself references (a lambda branch's `k`), resolved against the
+      // parent frame. Inside the thunk each reads as an upval off __state. The
+      // old form captured only the input and referenced it as a bare local —
+      // the parent's let-local, undefined in the thunk (the input miss); and it
+      // captured NONE of the branch's frees (the `k` miss). Both were invisible
+      // because no micro exercised `<|` — only `><`.
+      let free_uses = collect_free_uses(branch_node, [])
+      match resolve_captures_outer(free_uses, parent_handle) {
+        (b_names, b_exprs, b_handles) => {
+          let captures_names = [input_local_name] ++ b_names
+          let captures_exprs = [LLocal(input_h, input_local_name)] ++ b_exprs
+          let captures_handles = [input_h] ++ b_handles
+          match executable_boundary_row(thunk_h) {
+            Ok(thunk_row) => {
+              threaded_branch_check(branch_node, thunk_row)
+              // A branch thunk takes nothing — its input rides capture
+              // slot 0 — so the param vector is empty by construction
+              // and the result is the thunk node's own judged type.
+              graph_emitfn_note(EmitFnEntry{
+                caps: zip(captures_names, captures_handles),
+                fence: len(captures_exprs),
+                kind: EfkThunk,
+                name: thunk_name,
+                origin: thunk_h,
+                params: [],
+                ret: Some(lookup_ty(thunk_h)),
+              })
+              // THE DIRECT SWAP (α, the fanout pair's one projector):
+              // Some(input_h) = the `<|` share — the branch applied to
+              // the input riding capture slot 0 through the normal call
+              // lowering. A `<|` branch that performs a STATEFUL effect
+              // dispatches through the live world chain exactly as a
+              // real lambda does — no thunk-local evidence.
+              let fn_ir = project_thunk_fn(
+                thunk_name,
+                zip(captures_names, captures_handles),
+                branch_node,
+                result_h,
+                carrier_h,
+                Some(input_h)
+              )
+              ScheduledBoundary(
+                LMakeClosure(thunk_h, fn_ir, captures_exprs),
+                result_h,
+                carrier_h,
+                thread_ticket_h,
+                persist_ticket_h,
+                branch_node
+              )
+            },
+            Err(invariant) => InvalidScheduledBoundary(thunk_h, invariant),
+          }
+        },
+      }
     },
-    Err(invariant) => InvalidScheduledBoundary(branch_h, invariant),
-  }
+  },
+  Err(invariant) => InvalidScheduledBoundary(branch_node, invariant),
 }
 
 // Branch-as-thunk synthesis. Mirrors LambdaExpr's lowering above —
@@ -4218,55 +4184,52 @@ fn synthesize_diverge_thunk(parent_handle, input_h, input_local_name, i, branch_
 // lowers user-written lambdas covers compiler-synthesized thunks.
 // Drift 6 closure: same closure substrate — no special-case for
 // "compiler-synthesized" thunks vs. user-written ones.
-fn synthesize_branch_thunk(parent_handle, side_label: String, branch_node, boundary) = {
-  let branch_h = node_handle(branch_node)
-  match boundary {
-    Ok(edge) => match edge {
-      BoundaryEdge(result_h, thunk_h, carrier_h, thread_ticket_h, persist_ticket_h) => {
-        let thunk_name = "compose_{side_label}_{int_to_str(parent_handle)}"
-        let free_uses = collect_free_uses(branch_node, [])
-        match resolve_captures_outer(free_uses, parent_handle) {
-          (captures_names, captures_exprs, captures_handles) => match executable_boundary_row(thunk_h) {
-            Ok(thunk_row) => {
-              threaded_branch_check(branch_h, thunk_row)
-              graph_emitfn_note(EmitFnEntry{
-                caps: zip(captures_names, captures_handles),
-                fence: len(captures_exprs),
-                kind: EfkThunk,
-                name: thunk_name,
-                origin: thunk_h,
-                params: [],
-                ret: Some(lookup_ty(thunk_h)),
-              })
-              // THE DIRECT SWAP (α, the fanout pair's one projector):
-              // None = the `><` distribute — the branch evaluated as its
-              // own value. Synthetic parallel-thunk: empty fn_name, not a
-              // lambda (frame -1 → ev READ falls through to the
-              // named-fn/block path).
-              let fn_ir = project_thunk_fn(
-                thunk_name,
-                zip(captures_names, captures_handles),
-                branch_node,
-                result_h,
-                carrier_h,
-                None
-              )
-              ScheduledBoundary(
-                LMakeClosure(thunk_h, fn_ir, captures_exprs),
-                result_h,
-                carrier_h,
-                thread_ticket_h,
-                persist_ticket_h,
-                branch_h
-              )
-            },
-            Err(invariant) => InvalidScheduledBoundary(thunk_h, invariant),
+fn synthesize_branch_thunk(parent_handle, side_label: String, branch_node, boundary) = match boundary {
+  Ok(edge) => match edge {
+    BoundaryEdge(result_h, thunk_h, carrier_h, thread_ticket_h, persist_ticket_h) => {
+      let thunk_name = "compose_{side_label}_{int_to_str(parent_handle)}"
+      let free_uses = collect_free_uses(branch_node, [])
+      match resolve_captures_outer(free_uses, parent_handle) {
+        (captures_names, captures_exprs, captures_handles) => match executable_boundary_row(thunk_h) {
+          Ok(thunk_row) => {
+            threaded_branch_check(branch_node, thunk_row)
+            graph_emitfn_note(EmitFnEntry{
+              caps: zip(captures_names, captures_handles),
+              fence: len(captures_exprs),
+              kind: EfkThunk,
+              name: thunk_name,
+              origin: thunk_h,
+              params: [],
+              ret: Some(lookup_ty(thunk_h)),
+            })
+            // THE DIRECT SWAP (α, the fanout pair's one projector):
+            // None = the `><` distribute — the branch evaluated as its
+            // own value. Synthetic parallel-thunk: empty fn_name, not a
+            // lambda (frame -1 → ev READ falls through to the
+            // named-fn/block path).
+            let fn_ir = project_thunk_fn(
+              thunk_name,
+              zip(captures_names, captures_handles),
+              branch_node,
+              result_h,
+              carrier_h,
+              None
+            )
+            ScheduledBoundary(
+              LMakeClosure(thunk_h, fn_ir, captures_exprs),
+              result_h,
+              carrier_h,
+              thread_ticket_h,
+              persist_ticket_h,
+              branch_node
+            )
           },
-        }
-      },
+          Err(invariant) => InvalidScheduledBoundary(thunk_h, invariant),
+        },
+      }
     },
-    Err(invariant) => InvalidScheduledBoundary(branch_h, invariant),
-  }
+  },
+  Err(invariant) => InvalidScheduledBoundary(branch_node, invariant),
 }
 
 // W6 — resolve a field's byte offset from the record's live type.
@@ -4450,23 +4413,17 @@ fn lower_run_into(acc, run) = match run {
 }
 
 // A run member's name bound in the frame: the register its record is set at.
-fn bind_member(decl) = {
-  let handle = node_handle(decl)
-  match graph_node_body(handle) {
-    NStmt(FnStmt(name, _, _, _, _)) => [ls_bind_local(name, handle)],
-    _ => // a run holds fn declarations only
-    [],
-  }
+fn bind_member(decl) = match graph_node_body(decl) {
+  NStmt(FnStmt(name, _, _, _, _)) => [ls_bind_local(name, decl)],
+  _ => // a run holds fn declarations only
+  [],
 }
 
 fn lower_member_into(acc, member) = match member {
-  (decl, reg) => {
-    let handle = node_handle(decl)
-    match graph_node_body(handle) {
-      NStmt(FnStmt(name, params, _, _, body_node)) => lowered_into(acc, lower_fn_mint(name, params, body_node, handle, reg)),
-      _ => // a run holds fn declarations only
-      acc,
-    }
+  (decl, reg) => match graph_node_body(decl) {
+    NStmt(FnStmt(name, params, _, _, body_node)) => lowered_into(acc, lower_fn_mint(name, params, body_node, decl, reg)),
+    _ => // a run holds fn declarations only
+    acc,
   },
 }
 
@@ -4507,7 +4464,7 @@ fn lower_module_init(pat, handle, expr) = {
   ls_enter_frame(frame_name, [], [], [], [], -1)
   lower_frame_fence_push()
   let lo = lower_expr(expr)
-  lower_frame_fence_pop()
+  lower_handler_pop()
   ls_exit_frame()
   lo
 }
@@ -4516,8 +4473,7 @@ fn lower_module_init(pat, handle, expr) = {
 // statement position are degenerate; lowering to LConst(0)
 // is the "unreachable-in-well-formed-source" fallback. Named
 // explicitly so a new NodeBody variant surfaces at compile time.
-fn lower_stmt(node) = {
-  let handle = node_handle(node)
+fn lower_stmt(handle) = {
   let span = graph_span_of(handle)
   match graph_node_body(handle) {
     NStmt(s) => lower_stmt_body(s, handle, span),
@@ -4540,7 +4496,7 @@ fn lower_stmt_body(s, handle, span) = match s {
       PVar(name) => // Register the name in the current scope (a local for subsequent
       // VarRef lookups; the bound expr's handle IS the local's type handle),
       // set at the register the binding took.
-      LLet(handle, ls_bind_local(name, node_handle(expr)), lo),
+      LLet(handle, ls_bind_local(name, expr), lo),
       _ => // PWild / PLit: evaluate for effect, no binding. DESTRUCTURE patterns
       // (PTuple/PCon/PList/PRecord) never reach here — the parser desugars
       // `let pat = v; rest` to `match v { pat => rest }` at the node's birth
@@ -4603,8 +4559,6 @@ fn lower_stmt_body(s, handle, span) = match s {
   LConst(handle, LInt(0)),
   ExprStmt(expr) => lower_expr(expr),
 }
-
-fn lower_stmt_as_expr(s, handle, span) = lower_stmt_body(s, handle, span)
 
 // A named fn's mint, at the register its name is bound to.
 fn lower_fn_mint(name, params, body_node, handle, reg) = {
@@ -4768,13 +4722,13 @@ fn seq_rep_of_fuel(h, fuel) = if fuel <= 0 {
       BConcat => SRRope,
       _ => SRUnknown,
     },
-    NExpr(CallExpr(f, _)) => match graph_node_body(node_handle(f)) {
+    NExpr(CallExpr(f, _)) => match graph_node_body(f) {
       NExpr(VarRef(cname)) => seq_rep_of_call(cname),
       _ => SRUnknown,
     },
-    NExpr(IfExpr(_, t, e)) => seq_rep_join(seq_rep_of_fuel(node_handle(t), fuel - 1), seq_rep_of_fuel(node_handle(e), fuel - 1)),
+    NExpr(IfExpr(_, t, e)) => seq_rep_join(seq_rep_of_fuel(t, fuel - 1), seq_rep_of_fuel(e, fuel - 1)),
     NExpr(MatchExpr(_, arms)) => seq_rep_arms(arms, 0, SRUnknown, true, fuel - 1),
-    NExpr(BlockExpr(_, final_e)) => seq_rep_of_fuel(node_handle(final_e), fuel - 1),
+    NExpr(BlockExpr(_, final_e)) => seq_rep_of_fuel(final_e, fuel - 1),
     NExpr(VarRef(name)) => match ls_resolve(name) {
       (res, local_h) => match res {
         RLocal(_) => if local_h == 0 { SRUnknown } else { seq_rep_of_fuel(local_h, fuel - 1) },
@@ -4810,7 +4764,7 @@ fn seq_rep_arms(ref arms, i, acc, first, fuel) = if i >= len(arms) {
 } else {
   match list_index(arms, i) {
     (_, body) => {
-      let r = seq_rep_of_fuel(node_handle(body), fuel)
+      let r = seq_rep_of_fuel(body, fuel)
       seq_rep_arms(arms, i + 1, if first { r } else { seq_rep_join(acc, r) }, false, fuel)
     },
   }
@@ -5080,20 +5034,18 @@ fn lower_init_decl(discriminator, config, state: [{init: Node, name: String}], f
     fence,
     kind: EfkInit(discriminator),
     name: fn_name,
-    origin: node_handle(list_index(state, 0).init),
+    origin: list_index(state, 0).init,
     params: [],
     ret: None,
   })
   ls_enter_frame(fn_name, [], [], captures_names, zeros_of_len(len(captures_names)), line_base)
   lower_frame_fence_push()
   let stores = map(
-    {
-      (i, field) => LStateInit(node_handle(field.init), discriminator, nconfig + i, lower_expr(field.init)),
-    },
+    { (i, field) => LStateInit(field.init, discriminator, nconfig + i, lower_expr(field.init)) },
     enumerate(state)
   )
   graph_hole_drain(fn_name)
-  lower_frame_fence_pop()
+  lower_handler_pop()
   let lines = ls_exit_frame()
   LDeclareFn(LFn(fn_name, 0, [], stores ++ [LConst(0, LInt(0))], fence, lines))
 }
@@ -5207,8 +5159,8 @@ fn lower_one_arm_decl(arm: {args: [String], body: Node, op_name: String}, discri
   // during body lowering below) — the tree order every projected kind
   // shares, so the future enumeration reader walks parents first.
   let arm_ret = match disc {
-    MultiShot => Some(lookup_ty(node_handle(arm.body))),
-    Abandon => Some(lookup_ty(node_handle(arm.body))),
+    MultiShot => Some(lookup_ty(arm.body)),
+    Abandon => Some(lookup_ty(arm.body)),
     _ => at_instance(at_inst, op_ret_ty(arm.op_name)),
   }
   graph_emitfn_note(EmitFnEntry{
@@ -5216,7 +5168,7 @@ fn lower_one_arm_decl(arm: {args: [String], body: Node, op_name: String}, discri
     fence,
     kind: EfkArm(arm.op_name, discriminator),
     name: fn_name,
-    origin: node_handle(arm.body),
+    origin: arm.body,
     params: zip(arm_params, arm_param_tys),
     ret: arm_ret,
   })
@@ -5251,7 +5203,7 @@ fn lower_one_arm_decl(arm: {args: [String], body: Node, op_name: String}, discri
   // never-installed handler's arm hole never over-refuses (measured on
   // the dead-arm fixture before the swap).
   graph_hole_drain(fn_name)
-  lower_frame_fence_pop()
+  lower_handler_pop()
   let lines = ls_exit_frame()
   // fence = nstate + total_arms; the arm's LEvPerform reads land on the
   // record's captured-ev region (past state AND arms).
@@ -5350,8 +5302,7 @@ fn lower_resume_callk(handle, val, state_updates) = {
     resume_commit_prefix(handle, val, state_updates, fields, resolve_hrec(handle))
   } {
     (prefix, val_name) => {
-      let val_lo =
-        if len(state_updates) == 0 { lower_expr(val) } else { LLocal(node_handle(val), val_name) }
+      let val_lo = if len(state_updates) == 0 { lower_expr(val) } else { LLocal(val, val_name) }
       LBlock(
         handle,
         prefix ++ [
@@ -5505,8 +5456,8 @@ fn resolve_resume_k(handle) = match ls_resolve("__k") {
 // statement-free brace block. op-ness + cardinality are ONE env read
 // (op_resume_discipline returns MultiShot only for a genuine MultiShot op;
 // every non-op floors OneShot).
-fn ms_op_of_call(node) = match graph_node_body(node_handle(node)) {
-  NExpr(CallExpr(f, args)) => match graph_node_body(node_handle(f)) {
+fn ms_op_of_call(node) = match graph_node_body(node) {
+  NExpr(CallExpr(f, args)) => match graph_node_body(f) {
     NExpr(VarRef(name)) => match op_resume_discipline(name) {
       MultiShot => Some((name, args)),
       _ => None,
@@ -5535,8 +5486,8 @@ fn ms_op_of_call(node) = match graph_node_body(node_handle(node)) {
 fn k_spine_next(node, subs) = match k_sub_for(subs, node) {
   Some(_) => None,
   None => match ms_op_of_call(node) {
-    Some((op, args)) => Some((op, node_handle(node), args)),
-    None => match graph_node_body(node_handle(node)) {
+    Some((op, args)) => Some((op, node, args)),
+    None => match graph_node_body(node) {
       NExpr(BinOpExpr(_, l, r)) => match k_spine_next(l, subs) {
         Some(hit) => Some(hit),
         None => if k_trivial(l, subs) { k_spine_next(r, subs) } else { None },
@@ -5555,7 +5506,7 @@ fn k_spine_next(node, subs) = match k_sub_for(subs, node) {
 // their captures are the part of the recipe that already works).
 fn k_trivial(node, subs) = match k_sub_for(subs, node) {
   Some(_) => true,
-  None => match graph_node_body(node_handle(node)) {
+  None => match graph_node_body(node) {
     NExpr(LitInt(_)) => true,
     NExpr(LitFloat(_)) => true,
     NExpr(LitBool(_)) => true,
@@ -5579,51 +5530,45 @@ fn k_trivial(node, subs) = match k_sub_for(subs, node) {
 // composition that crosses an install is A4's re-install-in-k (its
 // crucible mn-resume-across-install arbitrates, M2). Off-spine can-yield
 // calls are NOT silent: k2_floor_guard wraps them with the loud floor.
-fn k2_spine_call(node) = match graph_node_body(node_handle(node)) {
+fn k2_spine_call(node) = match graph_node_body(node) {
   NExpr(BinOpExpr(_, l, _)) => k2_spine_call(l),
   NExpr(BlockExpr(stmts, final)) => if len(stmts) == 0 { k2_spine_call(final) } else { None },
   NExpr(PipeExpr(kind, l, r)) => match kind {
     PForward => match k2_spine_call(l) {
       Some(deeper) => Some(deeper),
-      None => {
-        let rfh = node_handle(r)
-        match graph_node_body(rfh) {
-          NExpr(VarRef(_)) => if can_yield_live(rfh) { Some(node) } else { None },
-          _ => None,
-        }
+      None => match graph_node_body(r) {
+        NExpr(VarRef(_)) => if can_yield_live(r) { Some(node) } else { None },
+        _ => None,
       },
     },
     PTee => // An arena whose body may suspend is a boundary as a call is: its body
     // is a frame of its own whose remainder rides the arena's re-entry,
     // and the rest of THIS frame is the next segment out.
-    if is_arena_tee(r) && arena_may_yield_live(node_handle(node)) { Some(node) } else { None },
+    if is_arena_tee(r) && arena_may_yield_live(node) { Some(node) } else { None },
     _ => None,
   },
-  NExpr(CallExpr(f, args)) => {
-    let fh = node_handle(f)
-    match graph_node_body(fh) {
-      NExpr(VarRef(name)) => // An effect op is k1's business (its MultiShot form yields at the
-      // perform itself); a k2 boundary is an ordinary CALL whose callee
-      // may carry a yield out.
-      if lower_effect_name_of_op(name) == "" && can_yield_live(fh) {
-        Some(node)
-      }
-      // M4 — the callee doesn't yield, but an ARG might: the first
-      // can-yield arg is the boundary (`Some(risky())`). ONLY for a
-      // CONSTRUCTOR callee — k_remainder can rebuild the variant with
-      // the arg substituted, but a FN-call remainder (evidence, arity)
-      // is unbuilt (Hβ.lower.k2-remainder-fncall), so descending there
-      // would floor a genuine yield AND mis-reify an over-approximated
-      // can-yield arg (parse `at`'s `kind_eq(_, token_kind_at())` — the
-      // m3-trap the divergence pinner caught). A fn-call arg's yield
-      // stays k2_floor_guard's business (floored off-spine, loud).
-      else if callee_is_constructor(name) {
-        k2_spine_in_args(args, 0)
-      } else {
-        None
-      },
-      _ => None,
+  NExpr(CallExpr(f, args)) => match graph_node_body(f) {
+    NExpr(VarRef(name)) => // An effect op is k1's business (its MultiShot form yields at the
+    // perform itself); a k2 boundary is an ordinary CALL whose callee
+    // may carry a yield out.
+    if lower_effect_name_of_op(name) == "" && can_yield_live(f) {
+      Some(node)
     }
+    // M4 — the callee doesn't yield, but an ARG might: the first
+    // can-yield arg is the boundary (`Some(risky())`). ONLY for a
+    // CONSTRUCTOR callee — k_remainder can rebuild the variant with
+    // the arg substituted, but a FN-call remainder (evidence, arity)
+    // is unbuilt (Hβ.lower.k2-remainder-fncall), so descending there
+    // would floor a genuine yield AND mis-reify an over-approximated
+    // can-yield arg (parse `at`'s `kind_eq(_, token_kind_at())` — the
+    // m3-trap the divergence pinner caught). A fn-call arg's yield
+    // stays k2_floor_guard's business (floored off-spine, loud).
+    else if callee_is_constructor(name) {
+      k2_spine_in_args(args, 0)
+    } else {
+      None
+    },
+    _ => None,
   },
   _ => None,
 }
@@ -5663,8 +5608,7 @@ fn k2_spine_in_args(args, i) = if i >= len(args) {
 // nested spine perform substitutes its whole LYield, and the inline
 // residency reads the parked __kr local. One environment, four read kinds.
 fn k_sub_for(subs, node) = {
-  let h = node_handle(node)
-  let hits = filter({ (ph, _) => ph == h }, subs)
+  let hits = filter({ (ph, _) => ph == node }, subs)
   if len(hits) == 0 {
     None
   } else {
@@ -5680,7 +5624,7 @@ fn k_sub_for(subs, node) = {
 // over-approximates nothing).
 fn k_subs_inside(node, subs) = match k_sub_for(subs, node) {
   Some(_) => true,
-  None => match graph_node_body(node_handle(node)) {
+  None => match graph_node_body(node) {
     NExpr(BinOpExpr(_, l, r)) => k_subs_inside(l, subs) || k_subs_inside(r, subs),
     NExpr(BlockExpr(stmts, final)) => if len(stmts) == 0 { k_subs_inside(final, subs) } else { false },
     NExpr(PipeExpr(_, l, _)) => k_subs_inside(l, subs),
@@ -5703,24 +5647,23 @@ fn k_remainder(node, subs) = match k_sub_for(subs, node) {
   None => if !k_subs_inside(node, subs) {
     lower_expr(node)
   } else {
-    let h = node_handle(node)
-    match graph_node_body(h) {
-      NExpr(BinOpExpr(op2, l, r)) => LBinOp(h, op2, k_remainder(l, subs), k_remainder(r, subs)),
+    match graph_node_body(node) {
+      NExpr(BinOpExpr(op2, l, r)) => LBinOp(node, op2, k_remainder(l, subs), k_remainder(r, subs)),
       NExpr(BlockExpr(_, final)) => k_remainder(final, subs),
-      NExpr(PipeExpr(_, l, r)) => lower_pipe_complete(k_remainder(l, subs), r, h),
+      NExpr(PipeExpr(_, l, r)) => lower_pipe_complete(k_remainder(l, subs), r, node),
       NExpr(CallExpr(f, args)) => // M4 — a boundary inside a CONSTRUCTOR arg (`Some(risky())`): the
       // remainder is the variant rebuilt with the arg substituted. The
       // tag is read LIVE from the ConstructorScheme (never re-derived).
       // A fn-CALL boundary reconstruction (evidence, arity resolution)
       // is the named floor Hβ.lower.k2-remainder-fncall — loud, unbuilt.
-      match graph_node_body(node_handle(f)) {
+      match graph_node_body(f) {
         NExpr(VarRef(name)) => match env_lookup(name) {
-          Some((_, _, ConstructorScheme(tag, _))) => LMakeVariant(h, tag, map((a) => k_remainder(a, subs), args)),
-          _ => LYield(h, "", [], LConst(h, LInt(0))),
+          Some((_, _, ConstructorScheme(tag, _))) => LMakeVariant(node, tag, map((a) => k_remainder(a, subs), args)),
+          _ => LYield(node, "", [], LConst(node, LInt(0))),
         },
-        _ => LYield(h, "", [], LConst(h, LInt(0))),
+        _ => LYield(node, "", [], LConst(node, LInt(0))),
       },
-      _ => LYield(h, "", [], LConst(h, LInt(0))),
+      _ => LYield(node, "", [], LConst(node, LInt(0))),
     }
   },
 }
@@ -5824,7 +5767,7 @@ fn reify_frame_k_at(body_node, ph, outer_holes, edge) = match edge {
           },
         }
         let k_body = k2_floor_guard(mark_tail(k_remainder(body_node, subs2)), false)
-        lower_frame_fence_pop()
+        lower_handler_pop()
         let lines = ls_exit_frame()
         let k_fn = LFn("__k_{int_to_str(ph)}", 1, [hole], [k_body], len(captures_exprs), lines)
         if disc == MultiShot {
@@ -5843,20 +5786,20 @@ fn continuation_boundary_at(site_h) = match graph_boundary_at(site_h) {
   PendingContinuationBoundary(_, _, continuation_h, _) => {
     report_at(
       continuation_h,
-      EUnresolvedType(continuation_h, graph_epoch(), parse_span_of(continuation_h))
+      EUnresolvedType(continuation_h, graph_epoch(), graph_span_of(continuation_h))
     )
     Err(UnfinalizedContinuationBoundary(continuation_h))
   },
   FanoutBoundary(_) => {
-    report_at(site_h, EUnresolvedType(site_h, graph_epoch(), parse_span_of(site_h)))
+    report_at(site_h, EUnresolvedType(site_h, graph_epoch(), graph_span_of(site_h)))
     Err(WrongContinuationBoundaryKind)
   },
   InterpBoundary(_) => {
-    report_at(site_h, EUnresolvedType(site_h, graph_epoch(), parse_span_of(site_h)))
+    report_at(site_h, EUnresolvedType(site_h, graph_epoch(), graph_span_of(site_h)))
     Err(WrongContinuationBoundaryKind)
   },
   NoBoundary => {
-    report_at(site_h, EUnresolvedType(site_h, graph_epoch(), parse_span_of(site_h)))
+    report_at(site_h, EUnresolvedType(site_h, graph_epoch(), graph_span_of(site_h)))
     Err(MissingContinuationBoundary)
   },
 }
@@ -5893,17 +5836,14 @@ fn k_deaden_rest(body_node, subs) = match k_spine_next(body_node, subs) {
 //   else — verbatim lowering (the byte-identical path, Law 7).
 fn lower_body_reified(body_node) = match k_spine_next(body_node, []) {
   Some((op_name, ph, arg_nodes)) => {
-    let frame_h = node_handle(body_node)
     // The op's args evaluate at the yield site, in the ENCLOSING frame —
     // the already-computed prefix; the k's hole replaces the whole
     // perform call, so the remainder never re-evaluates them.
     let lo_args = map(lower_expr, arg_nodes)
-    LYield(frame_h, op_name, lo_args, reify_frame_k(body_node, ph, []))
+    LYield(body_node, op_name, lo_args, reify_frame_k(body_node, ph, []))
   },
   None => match k2_spine_call(body_node) {
-    Some(spine_node) => {
-      let frame_h = node_handle(body_node)
-      let ph = node_handle(spine_node)
+    Some(ph) => {
       let kr = "__kr_{int_to_str(ph)}"
       let c_inline = k_remainder(body_node, [(ph, LLocal(ph, kr))])
       match c_inline {
@@ -5913,13 +5853,13 @@ fn lower_body_reified(body_node) = match k_spine_next(body_node, []) {
         // composer) is the boundary. No wrap, no reification.
         lower_expr(body_node),
         _ => LBlock(
-          frame_h,
+          body_node,
           [
-            LLet(ph, kr, lower_expr(spine_node)),
+            LLet(ph, kr, lower_expr(ph)),
             LIf(
               ph,
               LGlobal(ph, "yield_flag"),
-              [LKExtend(frame_h, reify_frame_k(body_node, ph, []))],
+              [LKExtend(body_node, reify_frame_k(body_node, ph, []))],
               [c_inline]
             )
           ]
@@ -6125,7 +6065,7 @@ fn lower_resume_snapshot(handle, val, updates, fields) = match resume_commit_pre
     // The snapshot is read back at the VALUE's handle, the node the scratch
     // is declared at (`resume_commit_prefix`) — never the resume node's,
     // whose type is the handler's answer.
-    prefix ++ [LReturn(handle, LLocal(node_handle(val), val_name))]
+    prefix ++ [LReturn(handle, LLocal(val, val_name))]
   ),
 }
 
@@ -6149,13 +6089,9 @@ fn resume_commit_prefix(handle, val, updates, fields, record) = {
   // handler resuming with `()`), the two names differed and the module did
   // not assemble.
   let val_name = "__resume_val_{int_to_str(handle)}"
-  let val_let = LLet(node_handle(val), val_name, lower_expr(val))
+  let val_let = LLet(val, val_name, lower_expr(val))
   let lets = map(
-    (upd) => LLet(
-      node_handle(state_field_init(upd)),
-      resume_upd_local(upd, handle),
-      lower_expr(state_field_init(upd))
-    ),
+    (upd) => LLet(state_field_init(upd), resume_upd_local(upd, handle), lower_expr(state_field_init(upd))),
     updates
   )
   // The state-slot-home column (lowering-is-a-column step i): the resolved
@@ -6168,7 +6104,7 @@ fn resume_commit_prefix(handle, val, updates, fields, record) = {
     (upd) => LStateSlotStore(
       handle,
       resolve_state_slot_offset(state_field_name(upd), fields),
-      LLocal(node_handle(state_field_init(upd)), resume_upd_local(upd, handle)),
+      LLocal(state_field_init(upd), resume_upd_local(upd, handle)),
       record
     ),
     updates
@@ -6389,8 +6325,8 @@ else if op == "environ_sizes_get" {
 // constant is still a list_index (an open question the type system would refine
 // to ValidIndex, but the const case is the one a positional product answers at
 // compile time).
-fn lower_index(handle, receiver, index) = match lookup_ty(node_handle(receiver)) {
-  TTuple(elems) => match graph_node_body(node_handle(index)) {
+fn lower_index(handle, receiver, index) = match lookup_ty(receiver) {
+  TTuple(elems) => match graph_node_body(index) {
     NExpr(LitInt(n)) => LFieldLoad(handle, lower_expr(receiver), FByIndex(n)),
     _ => lower_index_runtime(handle, receiver, index),
   },
@@ -6414,7 +6350,7 @@ fn lower_index(handle, receiver, index) = match lookup_ty(node_handle(receiver))
 // vector — `(i32, i32, i32) -> f64` against a callee that signs a word — the
 // moment a closure call stopped boxing, and every `[Float]` index trapped.
 fn lower_index_runtime(handle, receiver, index) = {
-  let callee = subscript_callee(graph_narrow_at(node_handle(index)) != 0)
+  let callee = subscript_callee(graph_narrow_at(index) != 0)
   LDirectCall(handle, handle, callee, false, [lower_expr(receiver), lower_expr(index)])
 }
 
@@ -6516,12 +6452,11 @@ fn lower_record_update(handle, base, overrides) = {
   // The copy-load's receiver carries BASE's handle: the emit projects the
   // offset from the receiver's live type, and base's layout is the one the
   // copied field lives in (the result may ADD fields — two layouts).
-  let bh = node_handle(base)
   let field_exprs = map(
     {
       (fname, _) => match find_override(overrides, fname) {
         Some(v) => lower_expr(v),
-        None => LFieldLoad(handle, LLocal(bh, tmp), FByName(fname)),
+        None => LFieldLoad(handle, LLocal(base, tmp), FByName(fname)),
       },
     },
     result_fields
@@ -6669,7 +6604,7 @@ fn collect_top_level_names(stmts) = {
 fn collect_top_level_names_loop(stmts, i, n, buf, count) = if i >= n {
   (buf, count)
 } else {
-  match match graph_node_body(node_handle(list_index(stmts, i))) {
+  match match graph_node_body(list_index(stmts, i)) {
     NStmt(FnStmt(name, _, _, _, _)) => push_name(buf, count, name),
     NStmt(LetStmt(PVar(name), _, _)) => push_name(buf, count, name),
     NStmt(HandlerDeclStmt(name, _, _, _, _, _)) => // A handler decl IS a top-level name — `~> h` references it as a
@@ -7211,7 +7146,7 @@ fn reach_has_loop(buf, count, target: String, i) = if i >= count {
 // An executable is a module whose top level declares `fn main` — the
 // program's own read (main_param_count's precedent: the FnStmt is the
 // canonical main). A library folds false and emits whole.
-fn stmt_is_main_fn(node) = match graph_node_body(node_handle(node)) {
+fn stmt_is_main_fn(node) = match graph_node_body(node) {
   NStmt(FnStmt(name, _, _, _, _)) => name == "main",
   _ => // not a fn decl — cannot be the entry
   false,
@@ -7224,7 +7159,7 @@ fn stmt_is_main_fn(node) = match graph_node_body(node_handle(node)) {
 // module value lets (__init_lets runs them), zero-arm containers, the
 // trivial type/effect/import decls, bare exprs — phase A constructs
 // them in source order.
-fn reach_stmt_defers(node) = match graph_node_body(node_handle(node)) {
+fn reach_stmt_defers(node) = match graph_node_body(node) {
   NStmt(s) => match s {
     FnStmt(_, _, _, _, _) => true,
     HandlerDeclStmt(_, _, _, _, arms, _) => len(arms) > 0,
@@ -7254,7 +7189,7 @@ fn reach_stmt_defers(node) = match graph_node_body(node_handle(node)) {
 fn reach_name_map(stmts, i, n, map) = if i >= n {
   map
 } else {
-  let m2 = match graph_node_body(node_handle(list_index(stmts, i))) {
+  let m2 = match graph_node_body(list_index(stmts, i)) {
     NStmt(FnStmt(name, _, _, _, _)) => smap_add(map, name, i),
     NStmt(LetStmt(PVar(name), _, _)) => smap_add(map, name, i),
     NStmt(HandlerDeclStmt(hname, _, _, state, arms, _)) => {
@@ -7433,7 +7368,7 @@ fn reach_enqueue(refs, rbuf, rn, fbuf, fcount) = if len(refs) == 0 {
 // never executable). One pass, O(1) per node (authored_hole is one graph
 // read); the arm set walks in lockstep with LowExpr — every constructor
 // present, H6's exhaustive-match law keeping it honest.
-// The gate's hole classifier reads the WEAVE span (parse_span_of) — the
+// The gate's hole classifier reads the WEAVE span (graph_span_of) — the
 // parse truth no unification overwrites: a body/let-init hole unifies with
 // its binder's fresh var, the class root becomes that unlocated mint, and
 // the reason-flavored caret collapses to span_zero (the miss that let
@@ -7442,7 +7377,7 @@ fn reach_enqueue(refs, rbuf, rn, fbuf, fcount) = if len(refs) == 0 {
 // authored_hole onto the caret test (cursor.mn) cannot occur here; the two
 // reads re-unify under Hβ.cursor.session-weave-epoch-scope.
 fn executable_hole(handle) with !Mutate = match graph_node_body(handle) {
-  NHole(id) => id != 0 && !span_eq(parse_span_of(handle), span_zero()),
+  NHole(id) => id != 0 && !span_eq(graph_span_of(handle), span_zero()),
   _ => false,
 }
 

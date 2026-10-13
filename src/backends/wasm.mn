@@ -460,8 +460,6 @@ type DeclReach = Unreached | Reached
 
 fn spec_find_rec(recs, target: String) = find({ (n, _p, _b, _f) => n == target }, recs)
 
-fn demand_base(n) = DemandBase(n)
-
 // One reference, read under the bracket in force: the key its site
 // projects decides twin or base, the same read `spec_target_name` makes
 // for the emitted call. A twin demand carries the LINEAGE it was reached
@@ -605,7 +603,7 @@ fn emit_reach_fix(work, st, program, keys, recs, settles) = if len(work) == 0 {
           } ~> arena
           // the runtime family a twin's emission can mint that its floor did
           // not (lower seeds the same names per entry, wide_seed)
-          let family = if wide { [] } else { map(demand_base, spec_wide_family()) }
+          let family = if wide { [] } else { map(DemandBase, spec_wide_family()) }
           match spec_demand_accept((dbuf, dn), (m, base, pairs, enc)) {
             (dbuf2, dn2) => emit_reach_fix(
               ds ++ family ++ w2,
@@ -662,7 +660,7 @@ fn settle_node(site: String, expr) = match expr {
   LFieldLoad(h, rec, sel) => // said at the access, which names the receiver and the selector together
   // (a parameter receiver's own handle carries no span)
   if field_sel_offset(rec, sel) < 0 {
-    report_at(h, EFieldOffsetUnprovable(field_offset_unprovable_why(rec, sel), parse_span_of(h)))
+    report_at(h, EFieldOffsetUnprovable(field_offset_unprovable_why(rec, sel), graph_span_of(h)))
   },
   LShow(h, x) => settle_shape(site, h, "a show", x),
   LHash(h, x) => settle_shape(site, h, "a hash", x),
@@ -677,7 +675,7 @@ fn settle_node(site: String, expr) = match expr {
   settle_minted_lines(name, lines),
   LInvariantFailure(h, inv) => report_at(
     h,
-    EInternalInvariant("{show_boundary_invariant(inv)}, emitting {site}", parse_span_of(h))
+    EInternalInvariant("{show_boundary_invariant(inv)}, emitting {site}", graph_span_of(h))
   ),
   LConst(_, _) => (),
   LLocal(_, _) => (),
@@ -725,7 +723,7 @@ fn settle_yield(h, op: String) = if op == "" {
     NExpr(CallExpr(f, _)) => {
       let name = callee_name(f)
       match op_resume_discipline(name) {
-        MultiShot => report_at(h, EContinuationUncapturable(name, "", parse_span_of(h))),
+        MultiShot => report_at(h, EContinuationUncapturable(name, "", graph_span_of(h))),
         _ => (),
       }
     },
@@ -747,9 +745,9 @@ fn settle_unwind(h) = match graph_node_body(h) {
   NExpr(CallExpr(f, _)) => {
     let name = callee_name(f)
     if field_name_eq(lower_effect_name_of_op(name), "") {
-      match lookup_ty(node_handle(f)) {
+      match lookup_ty(f) {
         TFun(_, _, row) => match row_live_op(row) {
-          Some(op) => report_at(h, EContinuationUncapturable(op, name, parse_span_of(h))),
+          Some(op) => report_at(h, EContinuationUncapturable(op, name, graph_span_of(h))),
           None => (),
         },
         _ => (),
@@ -808,7 +806,7 @@ fn settle_shape(site: String, h, what: String, x) = match show_hash_ty(x) {
   _ => (),
 }
 
-fn settle_unprovable(h, why: String) = report_at(h, EShapeUnprovable(why, parse_span_of(h)))
+fn settle_unprovable(h, why: String) = report_at(h, EShapeUnprovable(why, graph_span_of(h)))
 
 // Arithmetic's operand is a word by the judgment's numeric gate, so what
 // the emit would meet otherwise is an invariant broken upstream: a variable
@@ -821,7 +819,7 @@ fn settle_arith(site: String, h, op, lh) = if lh != 0 {
         h,
         EInternalInvariant(
           "arithmetic `{binop_to_str(op)}` on an ungated variable ({show_type(lookup_ty(lh))}), emitting {site}",
-          parse_span_of(h)
+          graph_span_of(h)
         )
       )
     },
@@ -829,7 +827,7 @@ fn settle_arith(site: String, h, op, lh) = if lh != 0 {
       h,
       EInternalInvariant(
         "arithmetic `{binop_to_str(op)}` on {show_type(lookup_ty(lh))} reached emit past the judgment's gate, emitting {site}",
-        parse_span_of(h)
+        graph_span_of(h)
       )
     ),
   }
@@ -850,7 +848,7 @@ fn settle_pattern(pat) = match pat {
   LPRecord(rh, rty, fbs, rest) => match record_full_fields(rty) {
     Some(_) => each({ (_, p) => settle_pattern(p) }, fbs),
     None => if !record_pats_always_match(fbs) || record_pat_has_binds(fbs, rest) {
-      report_at(rh, EFieldOffsetUnprovable(record_pattern_unprovable_why(rty), parse_span_of(rh)))
+      report_at(rh, EFieldOffsetUnprovable(record_pattern_unprovable_why(rty), graph_span_of(rh)))
     },
   },
   LPAs(_, p) => settle_pattern(p),
@@ -868,7 +866,7 @@ fn settle_minted_lines(site: String, lines) = each(
         h,
         EInternalInvariant(
           "this `<~` has a static home inside a record minted at run time, emitting {site}",
-          parse_span_of(h)
+          graph_span_of(h)
         )
       ),
       LhSlot(_) => (),
@@ -877,7 +875,7 @@ fn settle_minted_lines(site: String, lines) = each(
         h,
         EInternalInvariant(
           "this `<~` has a static derivative home inside a record minted at run time, emitting {site}",
-          parse_span_of(h)
+          graph_span_of(h)
         )
       ),
     },
@@ -902,7 +900,7 @@ fn settle_depth_at(site: String, base: String, h, n: String, pairs) = if any(pai
     h,
     EInstantiationDepth(
       "`{n}`, reached from `{site}` eight instantiations deep in `{base}`'s recursion",
-      parse_span_of(h)
+      graph_span_of(h)
     )
   )
 }
@@ -1206,7 +1204,7 @@ fn alloc_refuse(unit, h, site) = {
       h,
       EInternalInvariant(
         "{alloc_site_text(site)} allocates in `{u.names}`, {alloc_row_text(u.row)} — a construct the judgment never charged",
-        parse_span_of(h)
+        graph_span_of(h)
       )
     ),
   }
@@ -1224,7 +1222,7 @@ fn alloc_boxed(unit, h, cname: String) = {
     ()
   } else {
     match unit {
-      AllocUnit(u) => report_at(h, TWordSlotBox("a wide argument to `{cname}`", u.names, parse_span_of(h))),
+      AllocUnit(u) => report_at(h, TWordSlotBox("a wide argument to `{cname}`", u.names, graph_span_of(h))),
     }
   }
   true
@@ -1553,8 +1551,8 @@ fn alloc_args_may_spill(args, i) =
   i < len(args) && (wide_ref_allocates(tail_expr_repr(list_index(args, i))) || alloc_args_may_spill(args, i + 1))
 
 // Whether a direct call spills: the face the emission reads for it
-// (`direct_callee_widths`, at the twin the site names).
-fn alloc_direct_spills(fh, cname: String, args) = match direct_callee_widths(spec_call_name(fh, cname), len(args)) {
+// (`sig_of_symbol`, at the twin the site names).
+fn alloc_direct_spills(fh, cname: String, args) = match sig_of_symbol(spec_call_name(fh, cname), len(args)) {
   (declared, _) => args_spill_at(declared, args, 0),
 }
 
@@ -1583,7 +1581,7 @@ fn emit_reach(program, recs, roster: String) = {
       // The launch gate `_start` calls before main, where the program has one.
       let gate = if byte_len(roster) > 0 { ["env_demand_check"] } else { [] }
       let entry =
-        if library { [] } else { map(demand_base, ["main"] ++ emit_runtime_contract() ++ argv ++ gate) }
+        if library { [] } else { map(DemandBase, ["main"] ++ emit_runtime_contract() ++ argv ++ gate) }
       match emit_reach_fix(
         entry ++ map(ref_demand([], ??), root_refs),
         (make_list(64), 0, smap_new(), live0, false),
@@ -1635,7 +1633,7 @@ fn twin_bases_where(program, decl_records, live, bases, i, n, out, k) = if i >= 
   }
 }
 
-fn demand_base_note(acc, d) = match d {
+fn DemandBase_note(acc, d) = match d {
   (_m, base, _p, _e) => smap_add(acc, base, 1),
 }
 
@@ -2262,7 +2260,7 @@ fn emit_plan(program) = {
       reach_heap_line()
       // Every name a twin was demanded of — the unreached decls whose bodies
       // still feed their twins, and the arms a keyed install runs twinned.
-      let twin_base_set = fold(smap_new(), demand_base_note, spec_demands)
+      let twin_base_set = fold(smap_new(), DemandBase_note, spec_demands)
       plan_reached(
         decls_reached(program, live, 0, n, make_list(n), 0),
         decls_reached(decl_records, live, 0, n, make_list(n), 0) |> flatten |> dedup_fn_records,
@@ -2518,7 +2516,7 @@ fn emit_planned(plan) = match plan {
     // per instance, written by a twin's exit and read by its caller the
     // instant the call returns; and the epoch every record's lanes are read
     // against, advanced where each reading opens.
-    if lanes_on() {
+    if derivative_demanded() {
       wat_emit("  (global $__dt (mut f64) (f64.const 0))\n  (global $__dt_epoch (mut i32) (i32.const 0))\n")
       emit_adjoint_registers(adjoint_registers)
     }
@@ -2539,7 +2537,7 @@ fn emit_planned(plan) = match plan {
       table_all,
       wide_all,
       any(vector_is_wide, vectors),
-      if lanes_on() { Some(jvp_face_names(jvp_faces, table_all)) } else { None },
+      if derivative_demanded() { Some(jvp_face_names(jvp_faces, table_all)) } else { None },
       arena_leaves()
     )
     emit_fn_index_globals(table_all, fn_table_base())
@@ -3896,7 +3894,7 @@ fn fn_record_name(r) = match r {
 // first statement is a graph node, and the graph is where every coordinate
 // already lives. An empty body has nothing to point at and says so.
 fn fn_record_span(r) with !Mutate = match r {
-  (_, _, body, _) => if len(body) == 0 { span_zero() } else { parse_span_of(lexpr_handle(list_index(body, 0))) },
+  (_, _, body, _) => if len(body) == 0 { span_zero() } else { graph_span_of(lexpr_handle(list_index(body, 0))) },
 }
 
 // Emit the function table and elem mapping indices to function
@@ -6780,9 +6778,7 @@ fn emit_adjoint_registers(n) = if n <= 0 {
   emit_adjoint_registers(n - 1)
 }
 
-fn lanes_on() = derivative_demanded()
-
-fn lane_prefix(n) = if lanes_on() && n > 0 { 16 * n } else { 0 }
+fn lane_prefix(n) = if derivative_demanded() && n > 0 { 16 * n } else { 0 }
 
 // A record's mint: the allocation grows by its lanes and the pointer steps
 // past them, so the record's own address is where every reader expects it.
@@ -7285,7 +7281,7 @@ fn emit_expr(expr) = match expr {
     // site type is wide is an ADDRESS the caller derefs — the same
     // emit_wide_ref/emit_wide_deref pair the closure convention uses,
     // applied per the signature the callee's own header signed.
-    let widths = direct_callee_widths(cname2, len(args))
+    let widths = sig_of_symbol(cname2, len(args))
     match widths {
       (param_reprs, ret_repr) => {
         wat_emit("    (global.get $")
@@ -8449,20 +8445,6 @@ fn emit_word_face_call(h, func, args) = {
   wat_emit("    (call_indirect (type {call_ft_name(args)}))\n")
   emit_from_continuation(repr_of(lookup_ty(h)))
 }
-
-// The direct call's signature: THE CALLEE'S OWN, read from the column under
-// the symbol the call actually names (cname2 — the twin's mangled name at a
-// specialized site, the plain name otherwise). Not "the same derivation the
-// callee runs" — the SAME FACT the callee's header signed, which is the only
-// form of agreement an ABI can have.
-//
-// What this deletes is a whole parallel derivation: the declared scheme via
-// env_lookup, a lookup_ty(fh) fallback, and — at a twinned site — the site's
-// instantiation re-applied by hand (spec_site_pairs / spec_subst_pairs) to
-// reconstruct the bracket the twin's body had been emitted under. Every one
-// of those was a second opinion about a fact the callee had already stated,
-// and the last one billed the f64.load miscompile that named this column.
-fn direct_callee_widths(cname2: String, n) = sig_of_symbol(cname2, n)
 
 fn emit_fold_state_insert() = {
   wat_emit("    (local.set $callee_closure)\n")

@@ -110,7 +110,7 @@ handler format_default {
 // only), and the arms become one line each.
 fn render_program(ast) = {
   let stmts = ast_top_level_stmts(ast) |> imports_in_path_order
-  let rendered = stmts |> map(format_one_stmt)
+  let rendered = stmts |> map(render_node_at)
   join_lines(rendered)
 }
 
@@ -126,7 +126,7 @@ fn imports_in_path_order(stmts) = match fold(([], []), import_run_step, stmts) {
 
 fn import_run_step(acc, stmt) = match acc {
   (out, run) => match import_path_of(stmt) {
-    Some(_) => if graph_comment_at(node_handle(stmt)) == "" {
+    Some(_) => if graph_comment_at(stmt) == "" {
       (out, push(run, stmt))
     } else {
       (out ++ imports_sorted(run) ++ [stmt], [])
@@ -135,7 +135,7 @@ fn import_run_step(acc, stmt) = match acc {
   },
 }
 
-fn import_path_of(stmt) = match ast_kind_of(stmt) {
+fn import_path_of(stmt) = match graph_node_body(stmt) {
   NStmt(ImportStmt(path)) => Some(path),
   _ => None,
 }
@@ -179,10 +179,10 @@ fn render_node_at(handle) with !Mutate = {
 // pipelines. `<~` indented center, optionally inline. `|>` and `~>`
 // at left edge with stages on indented lines.
 fn render_chain_node(chain_node) = {
-  let kind = ast_kind_of(chain_node)
-  // ast_kind_of projects the NodeBody altitude — the Expr sits one
-  // constructor in (NExpr(PipeExpr(..))); the bare-Expr arms never
-  // matched and every chain fell to the non-chain render (order-masked;
+  let kind = graph_node_body(chain_node)
+  // A node's body is the NodeBody altitude — the Expr sits one
+  // constructor in (NExpr(PipeExpr(..))); arms over the bare Expr never
+  // matched, and every chain fell to the plain node render (order-masked;
   // the order-independent judge named it, 2026-07-25).
   let rendered = match kind {
     NExpr(PipeExpr(PForward, l, r)) => // |>
@@ -198,7 +198,7 @@ fn render_chain_node(chain_node) = {
     render_tee(l, r),
     NExpr(PipeExpr(PFeedback, l, r)) => // <~
     render_feedback_chain(l, r),
-    _ => render_non_chain(chain_node),
+    _ => render_node_at(chain_node),
   }
   rendered
 }
@@ -248,7 +248,7 @@ fn render_diverge_chain(input, branches_tuple) = {
   // The right operand is the branch-tuple NODE; render_branch_tuple eats
   // the element LIST (the converged judge caught the node passed whole).
   // A non-tuple right operand is a single branch, rendered as one chain.
-  let branches = match graph_node_body(node_handle(branches_tuple)) {
+  let branches = match graph_node_body(branches_tuple) {
     NExpr(MakeTupleExpr(elems)) => render_branch_tuple(elems),
     _ => "{spaces(indented_center())}{render_chain_node(branches_tuple)},",
   }
@@ -309,8 +309,8 @@ fn render_fanout_vertical(branches) = match branches {
 fn render_tee(body, handler_expr) = {
   let body_str = render_chain_pos(body)
   let handler_str = render_chain_pos(handler_expr)
-  let hc = graph_comment_at(node_handle(handler_expr))
-  match ast_kind_of(body) {
+  let hc = graph_comment_at(handler_expr)
+  match graph_node_body(body) {
     NExpr(PipeExpr(_, _, _)) => "{body_str}\n{spaces(left_edge_indent())}~> {handler_str}",
     _ => if hc == "" {
       "{body_str} ~> {handler_str}"
@@ -394,12 +394,11 @@ fn join_lines_from(ref lines, i) = if i >= len(lines) {
 // cascades outward — and the verb's internal re-render makes the
 // written file the fixpoint of any resulting movement.
 fn render_tokens_for(node) with !Mutate = {
-  let h = node_handle(node)
-  let c = graph_comment_at(h)
+  let c = graph_comment_at(node)
   let lead = if c == "" { "" } else { "//{replace(c, "\n", "\n//")}\n" }
   match let_born(node) {
     Some((scrut, pat, rest)) => "{lead}\{\n{indent_block(render_let_chain(scrut, pat, rest))}\n\}",
-    None => "{lead}{render_body_tokens(graph_node_body(h))}",
+    None => "{lead}{render_body_tokens(graph_node_body(node))}",
   }
 }
 
@@ -411,8 +410,8 @@ fn render_tokens_for(node) with !Mutate = {
 // statements and final the arm holds, at the block's own indent — never the
 // match pyramid one level deeper per destructure. A `match` the author wrote
 // is born a placeholder and renders as a match.
-fn let_born(n) = match ast_kind_of(n) {
-  NExpr(MatchExpr(scrut, arms)) => if len(arms) == 1 && born_of_let(node_handle(n)) {
+fn let_born(n) = match graph_node_body(n) {
+  NExpr(MatchExpr(scrut, arms)) => if len(arms) == 1 && born_of_let(n) {
     match arms[0] {
       (pat, body) => Some((scrut, pat, body)),
     }
@@ -437,7 +436,7 @@ fn render_let_chain(scrut, pat, body) with !Mutate =
 
 // What follows a let in its block: the statements the parse folded into the
 // arm, then the block's final.
-fn render_block_rest(body) with !Mutate = match ast_kind_of(body) {
+fn render_block_rest(body) with !Mutate = match graph_node_body(body) {
   NExpr(BlockExpr(stmts, final)) => "{render_stmt_comment(body)}{render_block_stmts(stmts, 0)}{render_block_final(final)}",
   _ => render_block_final(body),
 }
@@ -473,7 +472,7 @@ fn render_expr_tokens(e) with !Mutate = match e {
   LitUnit => "()",
   VarRef(name) => name,
   BinOpExpr(op, l, r) => {
-    let rc = graph_comment_at(node_handle(r))
+    let rc = graph_comment_at(r)
     if lifts_zero_minus(op, l, r) {
       "-{render_tokens_for(r)}"
     } else if rc == "" {
@@ -495,7 +494,7 @@ fn render_expr_tokens(e) with !Mutate = match e {
   FieldExpr(recv, field) => "{render_postfix_head(recv)}.{field}",
   IndexExpr(recv, idx) => "{render_postfix_head(recv)}[{render_tokens_for(idx)}]",
   PipeExpr(verb, l, r) => {
-    let rc = graph_comment_at(node_handle(r))
+    let rc = graph_comment_at(r)
     if rc == "" {
       "{render_operand(l, pipe_prec(verb), false)} {show_pipe_kind(verb)} {render_operand(r, pipe_prec(verb), true)}"
     } else {
@@ -583,7 +582,7 @@ fn render_stmt_tokens(s) with !Mutate = match s {
   ExprStmt(e) => // A unit expression statement is the file-tail prose CARRIER (and a
   // bare `()` statement is dead weight either way): its comment renders,
   // its tokens do not.
-  match ast_kind_of(e) {
+  match graph_node_body(e) {
     NExpr(LitUnit) => "",
     _ => render_grouped_body(e),
   },
@@ -652,7 +651,7 @@ fn render_pat_tokens(p) = match p {
 // the inline join has nowhere to put a comment).
 fn args_carry_prose(ref args, i) = if i >= len(args) {
   false
-} else if graph_comment_at(node_handle(args[i])) == "" {
+} else if graph_comment_at(args[i]) == "" {
   args_carry_prose(args, i + 1)
 } else {
   true
@@ -731,7 +730,7 @@ fn render_fn_decl(name, params, retty, effs, body) with !Mutate = match match re
   None => (render_param_list(params), body),
 } {
   (plist, b_node) => {
-    let head = fn_head_text(name, plist, graph_node_body(node_handle(retty)), effs)
+    let head = fn_head_text(name, plist, graph_node_body(retty), effs)
     let b = render_grouped_body(b_node)
     if str_contains(b, "\n") || fits_inline("{head} {b}") {
       "{head} {b}"
@@ -817,9 +816,9 @@ fn render_arm_list_inline(arms, i) with !Mutate = if i >= len(arms) {
 }
 
 // The one-arm match the desugar minted: the scrutinee IS the __dp name.
-fn dp_match_arm(body, nm) = match ast_kind_of(body) {
+fn dp_match_arm(body, nm) = match graph_node_body(body) {
   NExpr(MatchExpr(scrut, arms)) => if len(arms) == 1 {
-    match ast_kind_of(scrut) {
+    match graph_node_body(scrut) {
       NExpr(VarRef(snm)) => if snm == nm { Some(arms[0]) } else { None },
       _ => None,
     }
@@ -854,7 +853,7 @@ fn render_operand(child, parent_prec, is_right) with !Mutate = {
 // wrote it into three micros as "names conserved" (measured 2026-09-28).
 fn render_postfix_head(head) with !Mutate = render_operand(head, 100, false)
 
-fn expr_prec_of(node) = match ast_kind_of(node) {
+fn expr_prec_of(node) = match graph_node_body(node) {
   NExpr(BinOpExpr(op, l, r)) => if zero_minus_literal(op, l, r) { 90 } else { binop_prec(op) },
   NExpr(PipeExpr(k, _, _)) => pipe_prec(k),
   NExpr(FanoutExpr(_)) => pipe_prec(fanout_distribute_kind),
@@ -915,7 +914,7 @@ fn render_block_stmts(ref stmts, i) with !Mutate = if i >= len(stmts) {
 // cell render as leading: movement, never loss — the decl-comment
 // contract at the interior altitude).
 fn render_stmt_comment(n) with !Mutate = {
-  let c = graph_comment_at(node_handle(n))
+  let c = graph_comment_at(n)
   if c == "" { "" } else { "//{replace(c, "\n", "\n//")}\n" }
 }
 
@@ -950,19 +949,19 @@ fn field_line(field) with !Mutate = "{field_init(field)},"
 
 // A value that is the variable its field is named for, with no prose of its
 // own to carry.
-fn field_puns(fname, v) = match ast_kind_of(v) {
-  NExpr(VarRef(n)) => n == fname && graph_comment_at(node_handle(v)) == "",
+fn field_puns(fname, v) = match graph_node_body(v) {
+  NExpr(VarRef(n)) => n == fname && graph_comment_at(v) == "",
   other => false,
 }
 
 fn field_carries_prose(field) = match field {
-  (fname, v) => graph_comment_at(node_handle(v)) != "",
+  (fname, v) => graph_comment_at(v) != "",
 }
 
 fn render_string_parts(ref parts, i) with !Mutate = if i >= len(parts) {
   ""
 } else {
-  let one = match ast_kind_of(parts[i]) {
+  let one = match graph_node_body(parts[i]) {
     NExpr(LitString(s)) => str_escape(s),
     NExpr(ShowExpr(inner)) => // The splice's ShowExpr wrap is invisible surface — the braces
     // render the INNER (render∘parse fixpoint over the wrap).
@@ -986,7 +985,7 @@ fn render_string_parts(ref parts, i) with !Mutate = if i >= len(parts) {
 // stays cuddled (`} else {`, `} else if c {`) — SYNTAX's own chase_node
 // shape. A prose-carrying else keeps the line-broken form render_else
 // already emits.
-fn render_branch_block(n) with !Mutate = match ast_kind_of(n) {
+fn render_branch_block(n) with !Mutate = match graph_node_body(n) {
   NExpr(BlockExpr(_, _)) => render_tokens_for(n),
   _ => match let_born(n) {
     Some(_) => render_tokens_for(n),
@@ -997,21 +996,21 @@ fn render_branch_block(n) with !Mutate = match ast_kind_of(n) {
 // The else-if DESTRUCTURES its child node and renders the pieces, so the
 // child's uniform emission never fires — its attached prose emits here,
 // uncuddling the chain at exactly the prose-carrying link.
-fn render_else_block(el) with !Mutate = match ast_kind_of(el) {
+fn render_else_block(el) with !Mutate = match graph_node_body(el) {
   NExpr(LitUnit) => "",
   NExpr(IfExpr(c2, t2, e2)) => {
     let core = "else if {render_tokens_for(c2)} {render_branch_block(t2)}{render_else_block(e2)}"
-    let ec = graph_comment_at(node_handle(el))
+    let ec = graph_comment_at(el)
     if ec == "" { " {core}" } else { "\n//{replace(ec, "\n", "\n//")}\n{core}" }
   },
   _ => " else {render_branch_block(el)}",
 }
 
-fn render_if_branch(n) with !Mutate = match ast_kind_of(n) {
+fn render_if_branch(n) with !Mutate = match graph_node_body(n) {
   NExpr(BlockExpr(stmts, final)) => // Attached prose forces the block layout — a comment needs its own
   // line, and the single-line form would drop it (measured: the
   // if-branch finals were the interior-prose loss's biggest residue).
-  if len(stmts) == 0 && graph_comment_at(node_handle(final)) == "" {
+  if len(stmts) == 0 && graph_comment_at(final) == "" {
     "\{ {render_tokens_for(final)} \}"
   } else {
     render_tokens_for(n)
@@ -1026,7 +1025,7 @@ fn render_if_branch(n) with !Mutate = match ast_kind_of(n) {
 // The implicit else is the parser's own unit node — rendering it back
 // would add `else \{ () \}` to every authored else-less if; omitting it is
 // the identity (the re-parse re-inserts the same unit node).
-fn render_else(el) with !Mutate = match ast_kind_of(el) {
+fn render_else(el) with !Mutate = match graph_node_body(el) {
   NExpr(LitUnit) => "",
   _ => " else {render_if_branch(el)}",
 }
@@ -1058,7 +1057,7 @@ fn strip_trailing_nl(s) = {
 // 2026-09-28 a fn body read a leading `{` as a block alone, so this wrapped
 // a body record in parens the parser then consumed — the formatter
 // projecting the parser's gap onto every page.
-fn render_grouped_body(node) with !Mutate = match ast_kind_of(node) {
+fn render_grouped_body(node) with !Mutate = match graph_node_body(node) {
   NExpr(BlockExpr(stmts, final)) => // The E_RedundantBraces format-lift, at the ONE altitude where braces
   // are genuinely optional (fn/lambda/arm/let bodies route here): a
   // stmt-less block IS its final expression, and emitting its braces
@@ -1067,7 +1066,7 @@ fn render_grouped_body(node) with !Mutate = match ast_kind_of(node) {
   // by composition — render_branch_block and the block final add their
   // own braces AROUND this result, exactly once. A block carrying its
   // own attached prose keeps the braces: the prose's anchor.
-  if len(stmts) == 0 && graph_comment_at(node_handle(node)) == "" {
+  if len(stmts) == 0 && graph_comment_at(node) == "" {
     render_grouped_body(final)
   } else {
     render_tokens_for(node)
@@ -1084,7 +1083,7 @@ fn render_match_arms(ref arms, i) with !Mutate = if i >= len(arms) {
   }
 }
 
-fn render_resume_head(v) with !Mutate = match ast_kind_of(v) {
+fn render_resume_head(v) with !Mutate = match graph_node_body(v) {
   NExpr(LitUnit) => "resume()",
   _ => "resume({render_tokens_for(v)})",
 }
@@ -1098,7 +1097,7 @@ fn render_state_updates(ref updates: [{init: Node, name: String}], i) with !Muta
   "{lead}{one}{render_state_updates(updates, i + 1)}"
 }
 
-fn render_let_ann(ann) with !Mutate = match ast_kind_of(ann) {
+fn render_let_ann(ann) with !Mutate = match graph_node_body(ann) {
   NTypeAnn(ty) => ": {render_type_tokens(ty)}",
   _ => // drift-audit: ignore — the ADT's own absence sentinel: LetStmt's ann node is LitUnit when unannotated (the LetStmt decl comment); any non-NTypeAnn body IS that absence, rendered as no clause
   "",
@@ -1111,7 +1110,7 @@ fn render_let_ann(ann) with !Mutate = match ast_kind_of(ann) {
 // redundant spelling principle 2 rejects. A variant carrying prose of its
 // own keeps the variant line the prose stands above.
 fn nominal_record_of(name, variants) = match variants {
-  [(vname, [TRecord(fields)], cn)] => if vname == name && graph_comment_at(node_handle(cn)) == "" { Some(fields) } else { None },
+  [(vname, [TRecord(fields)], cn)] => if vname == name && graph_comment_at(cn) == "" { Some(fields) } else { None },
   others => None,
 }
 
@@ -1144,7 +1143,7 @@ fn variants_carry_prose(ref variants, i) = if i >= len(variants) {
   false
 } else {
   match variants[i] {
-    (_, _, cn) => if graph_comment_at(node_handle(cn)) == "" { variants_carry_prose(variants, i + 1) } else { true },
+    (_, _, cn) => if graph_comment_at(cn) == "" { variants_carry_prose(variants, i + 1) } else { true },
   }
 }
 
@@ -1318,12 +1317,12 @@ fn render_lit_value(lv) = match lv {
 // tighten's, and a Float variable's is MaybeIncorrect for the same zero.
 // The census reads this one predicate for the `0` it lifts (`lifted_atoms`).
 fn zero_minus_literal(op, l, r) = match op {
-  BSub => match ast_kind_of(l) {
-    NExpr(LitInt(0)) => match ast_kind_of(r) {
+  BSub => match graph_node_body(l) {
+    NExpr(LitInt(0)) => match graph_node_body(r) {
       NExpr(LitInt(_)) => true,
       _ => false,
     },
-    NExpr(LitFloat(z)) => match ast_kind_of(r) {
+    NExpr(LitFloat(z)) => match graph_node_body(r) {
       NExpr(LitFloat(f)) => z == 0.0 && f != 0.0,
       _ => false,
     },
@@ -1335,7 +1334,7 @@ fn zero_minus_literal(op, l, r) = match op {
 // The lift as the render takes it: never across prose, which rides the
 // operand it is attached to.
 fn lifts_zero_minus(op, l, r) =
-  zero_minus_literal(op, l, r) && graph_comment_at(node_handle(l)) == "" && graph_comment_at(node_handle(r)) == ""
+  zero_minus_literal(op, l, r) && graph_comment_at(l) == "" && graph_comment_at(r) == ""
 
 // ─── The stated equivalences — what a lift removes, and what still carries it
 //
@@ -1352,7 +1351,7 @@ fn lifted_atoms(from, to, kept) = flat_map(lifted_at(kept, ??), range_list(from,
 fn lifted_at(kept, h) = match graph_node_body(h) {
   NStmt(ImportStmt(path)) => if any(has_handle(h, ??), kept) { [] } else { path_atoms(path) },
   NExpr(BinOpExpr(op, l, r)) => if lifts_zero_minus(op, l, r) {
-    match ast_kind_of(l) {
+    match graph_node_body(l) {
       NExpr(LitInt(_)) => ["#0"],
       _ => ["#{float_to_str(0.0)}"],
     }
@@ -1382,7 +1381,7 @@ fn field_name_of(field) = match field {
   (fname, v) => fname,
 }
 
-fn has_handle(h, stmt) = node_handle(stmt) == h
+fn has_handle(h, stmt) = stmt == h
 
 // An import path's atoms — its segments, each a name the lexer reads.
 fn path_atoms(path: String) = path_atoms_from(path, 0, 0, [])
@@ -1600,13 +1599,7 @@ fn render_branch_tuple(branches) = if len(branches) == 0 {
   if len(tail) == 0 { head_line } else { head_line ++ "\n" ++ render_branch_tuple(tail) }
 }
 
-fn render_non_chain(node) = render_node_at(node_handle(node))
-
-fn format_one_stmt(stmt) = render_node_at(node_handle(stmt))
-
 fn ast_top_level_stmts(ast) with Pure = ast
-
-fn ast_kind_of(node) = graph_node_body(node_handle(node))
 
 fn canonical_indent_depth(kind) with Pure = match kind {
   NStmt(_) => 0,

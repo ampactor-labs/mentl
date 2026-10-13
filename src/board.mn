@@ -74,7 +74,11 @@ type Standing = Within(String, [(String, Span)]) | Over(String, [(String, Span)]
 fn board_bounds() = [
   // Zero because an eta-wrapper is a REFERENCE written as a MINT: the name it
   // wraps already exists, so the lambda re-mints what a handle would have
-  // carried. Retires when the shape is a refusal rather than a count.
+  // carried. A NAMED forwarder is not counted here: the surface wants some
+  // (`fanout`, `delay`, `len` — vocabulary and typed faces, `census_matches`
+  // carries the measurement), so a count of them could not hold at zero
+  // without claiming the language is wrong. Retires when the shape is a
+  // refusal rather than a count.
   Bound({ceiling: 0, question: QCensus(CsEta)}),
   // The one line here that is genuinely a COUNTDOWN rather than a held zero.
   //

@@ -28,11 +28,11 @@ fn fresh_handle_as(span: ValidSpan, reason) = {
   h
 }
 
-// Every node is born here: mint its handle, edge-link its body into the
-// one graph (graph_register_node at the handle), and wrap it. The body is
-// registered AND carried in N — one heap object, two references (the AST
-// projection in N, the graph weave keyed by handle), never a copy — so
-// resolving the handle (graph_node_body) reads the same body the tree holds.
+// Every node is born here: mint its handle and edge-link its body into the
+// one graph (graph_register_node at the handle, the extent indexed by
+// fresh_handle_as). The node IS the handle — the body and the span are the
+// graph's at it (graph_node_body, graph_span_of), so the parse holds no
+// second copy of what it registered.
 fn mint_node(body, span: ValidSpan) = mint_node_as(body, span, Placeholder(span))
 
 // An absent annotation — a declaration with no `-> T` — is a node its readers
@@ -42,7 +42,7 @@ fn mint_node(body, span: ValidSpan) = mint_node_as(body, span, Placeholder(span)
 fn mint_absent(span: ValidSpan) = {
   let h = graph_fresh_ty(Placeholder(span))
   graph_register_node(h, NExpr(LitUnit))
-  N(NExpr(LitUnit), span, h)
+  h
 }
 
 // A node born with the reason its parse knows: the one-arm match a
@@ -51,7 +51,7 @@ fn mint_absent(span: ValidSpan) = {
 fn mint_node_as(body, span: ValidSpan, reason) = {
   let h = fresh_handle_as(span, reason)
   graph_register_node(h, body)
-  N(body, span, h)
+  h
 }
 
 fn nexpr(e, span: ValidSpan) = mint_node(NExpr(e), span)
@@ -76,7 +76,7 @@ fn stmt_birth(s, span: ValidSpan) = match s {
 fn nhole(span: ValidSpan) = {
   let h = fresh_handle(span)
   graph_register_node(h, NHole(h))
-  N(NHole(h), span, h)
+  h
 }
 
 // Token navigation
@@ -603,18 +603,15 @@ fn import_set(stmts) = match fold((smap_new(), []), import_kept, stmts) {
 }
 
 fn import_kept(acc, stmt) = match acc {
-  (seen, kept) => {
-    let h = node_handle(stmt)
-    match graph_node_body(h) {
-      NStmt(ImportStmt(path)) => match smap_get(seen, path) {
-        Some(_) => {
-          report_at(h, EDuplicateImport(path, graph_span_of(h)))
-          acc
-        },
-        None => (smap_add(seen, path, 1), push(kept, stmt)),
+  (seen, kept) => match graph_node_body(stmt) {
+    NStmt(ImportStmt(path)) => match smap_get(seen, path) {
+      Some(_) => {
+        report_at(stmt, EDuplicateImport(path, graph_span_of(stmt)))
+        acc
       },
-      _ => (seen, push(kept, stmt)),
-    }
+      None => (smap_add(seen, path, 1), push(kept, stmt)),
+    },
+    _ => (seen, push(kept, stmt)),
   },
 }
 
@@ -669,7 +666,7 @@ fn parse_stmt(ref tokens, pos, scope) = match kind_at(tokens, pos) {
           // node); the render emits the prose and no tokens for the carrier,
           // so the tail round-trips.
           let carrier = nstmt(ExprStmt(nexpr(LitUnit, comment_span)), comment_span)
-          graph_attach_comment(node_handle(carrier), full_text, comment_span)
+          graph_attach_comment(carrier, full_text, comment_span)
           (carrier, p2)
         } else {
           // The decl parses; the weave pass attaches the run by span.
@@ -1068,7 +1065,7 @@ fn parse_one_eff_arg(ref tokens, pos) = match kind_at(tokens, pos) {
   // effect over a bound name is first-class, not an error.
   {
     let sp = span_at(tokens, pos)
-    (EANode(node_handle(nexpr(VarRef(name), sp))), pos + 1)
+    (EANode(nexpr(VarRef(name), sp)), pos + 1)
   },
   TLParen => // A compound type is a TYPE argument (`Cast(() -> a with e)`, `Box([Int])`):
   // no value spells with these openers at an argument's head.
@@ -1136,16 +1133,13 @@ fn parse_let(ref tokens, pos) = {
 fn let_at_scope(stmt, scope) = match scope {
   AtBlock => stmt,
   AtModule => match stmt {
-    LetStmt(PVar(name), val, ann) => {
-      let vh = node_handle(val)
-      if node_handle(ann) == vh {
-        match graph_node_body(vh) {
-          NExpr(LambdaExpr(params, body)) => FnStmt(name, params, mint_absent(graph_span_of(vh)), [], body),
-          _ => stmt,
-        }
-      } else {
-        stmt
+    LetStmt(PVar(name), val, ann) => if ann == val {
+      match graph_node_body(val) {
+        NExpr(LambdaExpr(params, body)) => FnStmt(name, params, mint_absent(graph_span_of(val)), [], body),
+        _ => stmt,
       }
+    } else {
+      stmt
     },
     _ => stmt,
   },
@@ -1836,7 +1830,7 @@ fn parse_let_expr(ref tokens, pos, start_span) = match parse_pat(tokens, pos) {
           // brace pyramid). Scoping is identical: a statement-list let scopes over
           // the rest of its block exactly as the nesting did, and a merged
           // explicit block was the final expression — nothing followed it.
-          match graph_node_body(node_handle(body)) {
+          match graph_node_body(body) {
             NExpr(BlockExpr(stmts2, final2)) => (desugar_block([let_stmt] ++ stmts2, final2, upto(tokens, start_span, p7)), p7),
             _ => (desugar_block([let_stmt], body, upto(tokens, start_span, p7)), p7),
           },
@@ -1879,7 +1873,7 @@ fn binop_loop(ref tokens, left, first: ValidSpan, pos, min_prec, slot) = {
             // artifact, not the verb's semantics). An authored
             // tuple-valued branch stays a branch: only the chain
             // accretes, so `(1, 2) >< (3, 4)` is two branches of two.
-            match graph_node_body(node_handle(left)) {
+            match graph_node_body(left) {
               NExpr(FanoutExpr(branches)) => nexpr(FanoutExpr(branches ++ [right]), combined_span),
               _ => nexpr(FanoutExpr([left, right]), combined_span),
             },
@@ -1966,7 +1960,7 @@ fn postfix_loop(ref tokens, e, first: ValidSpan, pos, slot) = match kind_at(toke
   {
     let is_named_record = match slot {
       BraceHeader => false,
-      FreeExpr => match graph_node_body(node_handle(e)) {
+      FreeExpr => match graph_node_body(e) {
         NExpr(VarRef(name)) => byte_len(name) > 0 && first_char_code(name) >= 65 && first_char_code(name) <= 90,
         _ => false,
       },
@@ -2193,7 +2187,7 @@ fn fresh_param_marked(prefix: String, span: ValidSpan, marker) = {
 // Convert a parsed expr (a lambda param, already parsed as an expression) to a
 // pattern: a record/tuple/list literal IS the corresponding destructure
 // pattern; a bare var is PVar; anything else is PWild (productive-under-error).
-fn expr_to_pat(e) = match graph_node_body(node_handle(e)) {
+fn expr_to_pat(e) = match graph_node_body(e) {
   NExpr(VarRef(nm)) => if nm == "_" { PWild } else { PVar(nm) },
   NExpr(MakeRecordExpr(flds)) => PRecord(sort_pat_fields(record_fields_to_pat(flds)), None),
   NExpr(MakeTupleExpr(elems)) => PTuple(map(expr_to_pat, elems)),
@@ -2201,7 +2195,7 @@ fn expr_to_pat(e) = match graph_node_body(node_handle(e)) {
   // minted for `([h, ...t]) =>`) becomes PList's rest — consumed
   // HERE, so it never reaches infer on the lambda path.
   if len(elems) > 0 {
-    match graph_node_body(node_handle(last(elems))) {
+    match graph_node_body(last(elems)) {
       NExpr(RestExpr(rest_nm)) => PList(map(expr_to_pat, drop_last(elems)), Some(rest_nm)),
       _ => PList(map(expr_to_pat, elems), None),
     }
@@ -2225,20 +2219,17 @@ fn record_fields_to_pat(flds) = map({ (nm, v) => (nm, expr_to_pat(v)) }, flds)
 // expression parse minted at the parameter is the parameter. A second cell
 // minted beside it left the first one unjudged, one ghost per lambda
 // parameter.
-fn pat_param_and_let(pat, cover) = {
-  let h = node_handle(cover)
-  match pat {
-    PVar(nm) => (TParam(nm, TVar(h), Unmarked, Unmarked, None, guards_nothing()), None),
-    PWild => (TParam("_", TVar(h), Unmarked, Unmarked, None, guards_nothing()), None),
-    _ => {
-      let fresh = "{dp_prefix}{int_to_str(h)}"
-      let span = graph_span_of(h)
-      // reuse as the absent-annotation sentinel (byte-identical)
-      let vref = nexpr(VarRef(fresh), span)
-      let bind = nstmt(LetStmt(pat, vref, vref), span)
-      (TParam(fresh, TVar(h), Unmarked, Unmarked, None, guards_nothing()), Some(bind))
-    },
-  }
+fn pat_param_and_let(pat, cover) = match pat {
+  PVar(nm) => (TParam(nm, TVar(cover), Unmarked, Unmarked, None, guards_nothing()), None),
+  PWild => (TParam("_", TVar(cover), Unmarked, Unmarked, None, guards_nothing()), None),
+  _ => {
+    let fresh = "{dp_prefix}{int_to_str(cover)}"
+    let span = graph_span_of(cover)
+    // reuse as the absent-annotation sentinel (byte-identical)
+    let vref = nexpr(VarRef(fresh), span)
+    let bind = nstmt(LetStmt(pat, vref, vref), span)
+    (TParam(fresh, TVar(cover), Unmarked, Unmarked, None, guards_nothing()), Some(bind))
+  },
 }
 
 // Prepend the collected destructure-let bindings to a body and run them
@@ -2612,8 +2603,8 @@ fn arm_list_of(params, body) = if len(params) != 1 {
   None
 } else {
   let nm = param_name(params[0])
-  match graph_node_body(node_handle(body)) {
-    NExpr(MatchExpr(scrut, arms)) => match graph_node_body(node_handle(scrut)) {
+  match graph_node_body(body) {
+    NExpr(MatchExpr(scrut, arms)) => match graph_node_body(scrut) {
       NExpr(VarRef(snm)) => if snm == nm && !free_uses_contains(free_vars_match_arms(arms, []), nm) { Some(arms) } else { None },
       _ => None,
     },
@@ -2876,7 +2867,7 @@ fn parse_block_body(ref tokens, pos, own buf, count) = {
 fn desugar_block(stmts, final_e, span: ValidSpan) = match find_destructure_let(stmts, 0) {
   None => nexpr(BlockExpr(stmts, final_e), span),
   Some((i, pat, v)) => {
-    let lh = node_handle(list_index(stmts, i))
+    let lh = list_index(stmts, i)
     let rest_stmts = slice(stmts, i + 1, len(stmts))
     // The arm body is exactly what follows the destructure — a bare final when
     // nothing intervenes, else the desugared remainder. No redundant block.
@@ -2886,11 +2877,7 @@ fn desugar_block(stmts, final_e, span: ValidSpan) = match find_destructure_let(s
     let arm_body = if len(rest_stmts) == 0 {
       final_e
     } else {
-      desugar_block(
-        rest_stmts,
-        final_e,
-        span_join(graph_span_of(node_handle(list_index(rest_stmts, 0))), span)
-      )
+      desugar_block(rest_stmts, final_e, span_join(graph_span_of(list_index(rest_stmts, 0)), span))
     }
     let m = NExpr(MatchExpr(v, [(pat, arm_body)]))
     // The match is the let's own cell, born with the let's reason
@@ -2898,13 +2885,11 @@ fn desugar_block(stmts, final_e, span: ValidSpan) = match find_destructure_let(s
     // author wrote. A destructure at the head IS the match (no empty-prefix
     // block); otherwise the prefix stmts carry the match as their final.
     // The cell's extent in the graph is the match's — the let through the
-    // block's end — so a reader asking the graph where the cell stands is
-    // answered what the record carries, and the parent's extent contains
-    // its children's (S1: the graph decides where record and graph differ).
+    // block's end — so the parent's extent contains its children's.
     let msp = if i == 0 { span } else { span_join(graph_span_of(lh), span) }
     graph_register_node(lh, m)
     graph_index_span(msp, lh)
-    if i == 0 { N(m, msp, lh) } else { nexpr(BlockExpr(slice(stmts, 0, i), N(m, msp, lh)), span) }
+    if i == 0 { lh } else { nexpr(BlockExpr(slice(stmts, 0, i), lh), span) }
   },
 }
 
@@ -2932,7 +2917,7 @@ fn option_names(rest) = match rest {
 fn find_destructure_let(stmts, i) = if i >= len(stmts) {
   None
 } else {
-  match graph_node_body(node_handle(list_index(stmts, i))) {
+  match graph_node_body(list_index(stmts, i)) {
     NStmt(LetStmt(pat, v, _)) => if is_destructure_pat(pat) { Some((i, pat, v)) } else { find_destructure_let(stmts, i + 1) },
     _ => find_destructure_let(stmts, i + 1),
   }
@@ -3198,7 +3183,7 @@ fn parse_block_expr_checked(ref tokens, pos, start_span) = match parse_block_exp
 // shapes (a non-block is correctly "not an empty block"). Avoids the
 // drift class of `_ => <fabricated int sentinel>` per CLAUDE.md red-flag
 // "no `_ => <fabricated value>` over a load-bearing ADT".
-fn is_empty_block(node) = match graph_node_body(node_handle(node)) {
+fn is_empty_block(node) = match graph_node_body(node) {
   NExpr(e) => is_empty_block_expr(e),
   _ => false,
 }
@@ -3682,7 +3667,7 @@ fn parse_type_expr(ref tokens, pos) = match parse_type_ty(tokens, pos) {
 // SYNTAX.md:1604-1611 — the where-clause adds nothing.
 fn parse_predicate(ref tokens, pos) = match parse_expr(tokens, pos) {
   (expr_node, p) => {
-    let span = graph_span_of(node_handle(expr_node))
+    let span = graph_span_of(expr_node)
     let pred = node_to_predicate(expr_node, span)
     match pred {
       PTrue => report(WRedundantWhere(span)),
@@ -3700,25 +3685,19 @@ fn parse_predicate(ref tokens, pos) = match parse_expr(tokens, pos) {
 // `&&`/`||`/`!` compose recursively; ANY other boolean expression (a
 // refinement call, a bare bool var) IS its graph node — PBoolNode(handle),
 // read live. No lossy fallback.
-fn node_to_predicate(node, span: ValidSpan) = {
-  let h = node_handle(node)
-  match graph_node_body(h) {
-    NExpr(BinOpExpr(BEq, l, r)) => compare_pred(BEq, l, r),
-    NExpr(BinOpExpr(BNe, l, r)) => PNot(compare_pred(BEq, l, r)),
-    NExpr(BinOpExpr(BLt, l, r)) => compare_pred(BLt, l, r),
-    NExpr(BinOpExpr(BLe, l, r)) => compare_pred(BLe, l, r),
-    NExpr(BinOpExpr(BGt, l, r)) => compare_pred(BLt, r, l),
-    NExpr(BinOpExpr(BGe, l, r)) => compare_pred(BLe, r, l),
-    NExpr(BinOpExpr(BAnd, l, r)) => PAnd(node_to_predicate(l, span), node_to_predicate(r, span)),
-    NExpr(BinOpExpr(BOr, l, r)) => POr(node_to_predicate(l, span), node_to_predicate(r, span)),
-    NExpr(UnaryOpExpr(UNot, inner)) => PNot(node_to_predicate(inner, span)),
-    NExpr(LitBool(true)) => PTrue,
-    _ => PBoolNode(h),
-  }
+fn node_to_predicate(node, span: ValidSpan) = match graph_node_body(node) {
+  NExpr(BinOpExpr(BEq, l, r)) => PCompare(BEq, l, r),
+  NExpr(BinOpExpr(BNe, l, r)) => PNot(PCompare(BEq, l, r)),
+  NExpr(BinOpExpr(BLt, l, r)) => PCompare(BLt, l, r),
+  NExpr(BinOpExpr(BLe, l, r)) => PCompare(BLe, l, r),
+  NExpr(BinOpExpr(BGt, l, r)) => PCompare(BLt, r, l),
+  NExpr(BinOpExpr(BGe, l, r)) => PCompare(BLe, r, l),
+  NExpr(BinOpExpr(BAnd, l, r)) => PAnd(node_to_predicate(l, span), node_to_predicate(r, span)),
+  NExpr(BinOpExpr(BOr, l, r)) => POr(node_to_predicate(l, span), node_to_predicate(r, span)),
+  NExpr(UnaryOpExpr(UNot, inner)) => PNot(node_to_predicate(inner, span)),
+  NExpr(LitBool(true)) => PTrue,
+  _ => PBoolNode(node),
 }
-
-// A comparison carries its two operand handles (resolved live via graph_node_body).
-fn compare_pred(op, l, r) = PCompare(op, node_handle(l), node_handle(r))
 
 // ─── free variables — the parse tree's own reference projection ──────
 //
@@ -3754,18 +3733,15 @@ fn compare_pred(op, l, r) = PCompare(op, node_handle(l), node_handle(r))
 // check` and did not ASSEMBLE. `bound` stays a name set; only the answer
 // carries handles. The NodeBody match is exhaustive (H6): patterns and holes
 // contribute no reference, named so a new variant decides for itself.
-fn collect_free_uses(node, bound) = {
-  let h = node_handle(node)
-  match graph_node_body(h) {
-    NExpr(e) => free_vars_expr(e, h, bound),
-    NStmt(s) => free_vars_stmt(s, bound),
-    NPat(_) => [],
-    NHole(_) => [],
-    NModule(_) => // a module entity contains no VarRef of its own
-    [],
-    NTypeAnn(_) => // an authored type annotation contains no VarRef
-    [],
-  }
+fn collect_free_uses(node, bound) = match graph_node_body(node) {
+  NExpr(e) => free_vars_expr(e, node, bound),
+  NStmt(s) => free_vars_stmt(s, bound),
+  NPat(_) => [],
+  NHole(_) => [],
+  NModule(_) => // a module entity contains no VarRef of its own
+  [],
+  NTypeAnn(_) => // an authored type annotation contains no VarRef
+  [],
 }
 
 // The free NAMES — the uses projected to their names, for the readers that
@@ -4007,7 +3983,7 @@ fn free_vars_run_step(acc, run) = match acc {
         (frees2, _) => (frees2, inner),
       }
     },
-    Lone(stmt) => match graph_node_body(node_handle(stmt)) {
+    Lone(stmt) => match graph_node_body(stmt) {
       NStmt(LetStmt(pat, expr, _)) => (
         free_uses_merge(frees, collect_free_uses(expr, bound)),
         free_vars_merge(bound, free_vars_pat_binds(pat))
@@ -4020,7 +3996,7 @@ fn free_vars_run_step(acc, run) = match acc {
 // One fn of a run: its parameters bind its body beside every name the run
 // binds.
 fn free_vars_decl_step(acc, decl) = match acc {
-  (frees, inner) => match graph_node_body(node_handle(decl)) {
+  (frees, inner) => match graph_node_body(decl) {
     NStmt(FnStmt(_, params, _, _, body_node)) => (
       free_uses_merge(
         frees,
@@ -4043,7 +4019,7 @@ fn free_vars_decl_step(acc, decl) = match acc {
 fn stmt_runs(stmts) = runs_of(fn_joins, stmts)
 
 // A `fn` declaration joins its neighbours' run; any other statement ends it.
-fn fn_joins(node) = match graph_node_body(node_handle(node)) {
+fn fn_joins(node) = match graph_node_body(node) {
   NStmt(FnStmt(_, _, _, _, _)) => Joined([node]),
   _ => Lone(node),
 }
@@ -4051,7 +4027,7 @@ fn fn_joins(node) = match graph_node_body(node_handle(node)) {
 // The names a run declares, in source order.
 fn run_names(decls) = flat_map(declared_fn_name, decls)
 
-fn declared_fn_name(decl) = match graph_node_body(node_handle(decl)) {
+fn declared_fn_name(decl) = match graph_node_body(decl) {
   NStmt(FnStmt(name, _, _, _, _)) => [name],
   _ => // a run holds fn declarations only (`stmt_runs`)
   [],

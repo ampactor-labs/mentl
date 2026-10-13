@@ -9302,7 +9302,7 @@ The audit's
 ultimate form, and buildable now. The walk (`alloc_audit`,
 src/backends/wasm.mn) is a MODEL of the emit: a per-`LowExpr` prediction of
 what the emission builds, some four hundred lines re-deriving
-`direct_callee_widths` (through `alloc_direct_spills`), `wide_ref_allocates`,
+`sig_of_symbol` (through `alloc_direct_spills`), `wide_ref_allocates`,
 the show and hash leaves' tests and the list literal's callee
 (`list_literal_callee`) — a THIRD reading beside the judgment's charge and
 the emission's own `emit_alloc`, and the cross-check that keeps the model
@@ -9459,7 +9459,7 @@ OPEN is the element's VALUE face. The strided access speaks the word
 protocol — `load_strided` answers a word, a wide element's address punned
 to one (`addr_word`), and `store_strided` takes one — and the list
 primitives' settled signatures declare a word at the element position
-(`direct_callee_widths` answers RI32 for `list_set`'s value,
+(`sig_of_symbol` answers RI32 for `list_set`'s value,
 `list_copy_into`'s and `store_strided`'s), so a Float element crosses into
 them boxed (`emit_wide_ref`), one fresh cell per store, under a row that
 never said so. R0j's allocation audit found fifteen such sites in the units
@@ -19668,13 +19668,13 @@ arbitrates:
   LANDED 2026-10-13 (LEDGER, Landing 4 S1). `refs of N` 293 → 7: the
   parser's three mints (`mint_absent`, `mint_node_as`, `nhole`) and
   `desugar_block`'s two re-wraps of a let's handle, the proposer's extracted
-  candidate, and `node_handle`,
+  candidate, and node_handle,
   the one read of the record, which lives beside `type Node` in src/types.mn
   (the bedrock imports nothing, so a reader there could reach no other home);
-  `node_handle` 241 → 520 references, `graph_node_body` 193 → 364,
+  node_handle 241 → 520 references, `graph_node_body` 193 → 364,
   `graph_span_of` 5 → 55, span_of_node 3 → 0 and the proposer's node_span
   1 → 0, both deleted (the first stood dead, an alias of `graph_span_of` over
-  `node_handle`, at the first pin; the claim-reading pass named it). The five
+  node_handle, at the first pin; the claim-reading pass named it). The five
   decisions were taken as written, the destructuring let's match indexed at
   the let's cell with the let-through-block extent (`graph_index_span`, the
   ordered log keeping both pairs). Three things the move found and fixed at
@@ -19691,20 +19691,48 @@ arbitrates:
   names nothing there, so every fill rendered `??` (the battery's eleven
   fill fixtures, through the candidate); the contract's judge runs inside the judgment
   (`battery_view` hands it the view there). The record is carried and taken
-  apart by `node_handle` alone, so S2 is the rename it was designed to be.
+  apart by node_handle alone, so S2 is the rename it was designed to be.
 - S2 · a node is its handle: `type Node = Int`, `mint_node` answers the
-  handle, a body's children are handles, and the record, `node_handle` and
+  handle, a body's children are handles, and the record, node_handle and
   every `N` pattern are deleted: a TRANSITION, since the wheel's own
   representation moves.
+  LANDED 2026-10-13 (LEDGER, Landing 4 S2). `type Node = Int`; `mint_node_as`,
+  `mint_absent`, `nhole` and `desugar_block` answer the handle they
+  registered; the proposer's extracted candidate is the cheapest handle;
+  node_handle and its 520 references (496 calls, 24 passed as a value) are
+  gone, inlined by four builders on disjoint modules, and with them every
+  function left standing as a second name for another — the eight the
+  builders found, the three the claim-reading pass found in the same shape,
+  and then every other one the eta census named when it was extended to a
+  named function that only forwards its parameters: 34 on the link, read one
+  by one; 19 internal second names deleted (decl_extent, predicate_of_bool_expr, negation_of, conjunction, pattern_predicate_for, twin_refs_in, lower_stmt_as_expr, feedback_param_name, lower_frame_fence_pop, sort_unique, module_handle_of_path, parse_span_of, lookup_tag, token_byte, demand_base, lanes_on, direct_callee_widths, synthesize_hole_node and mentl_lsp_session) and 15 kept because
+  the surface wants them (vocabulary such as fanout, whose spelling the lowering
+  keys on, and delay, the surface spelling of a constructor; typed faces over raw
+  words such as len, slice and byte_len), which is why the shape stays a
+  lambda shape: a count that convicts a spelling the surface wants claims the
+  language is wrong — and three parameters that had become copies of
+  another (`lower_call_dispatch`, `lower_call_default`,
+  `lower_pipe_stage_value`);
+  `refs of N` 0 and N is no declaration; `graph_node_body` 384 and
+  `graph_span_of` 127 are the reads (parse_span_of's 73 references folded
+  into its home). The wheel's representation moved and
+  the march ruled CLEAN m2 == m3, m3 == m4, where this entry had named a
+  TRANSITION: what a compiler emits for a program depends on what it
+  computes, never on how it holds its own nodes, and the boot and the
+  candidate compute the same. The self-compile's peak fell 477,156 →
+  460,108 KB and its WAT 634,037 → 629,236 lines with the record at the
+  first pin (630,330 at the second, the deleted forwarders' op homes
+  performed in place).
 - S3 · the writes it opens: an install of a named chain becomes its members'
   installs by one graph write at the install, a rename is one write at the
-  declaration, and the session re-judges the nodes an edit rewrote rather
-  than re-parsing a module.
+  declaration, the session re-judges the nodes an edit rewrote rather than
+  re-parsing a module, and a proposal's accept rewrites the hole's node in
+  place rather than splicing text (PLAN §11's cut paragraph names the four).
 Sized 2026-10-10 by the medium's own reference lists: 288 sites build or
 take apart a record (infer 123, lower 62, parser 27, query 14, types 11,
 synth_proposer 11, verify 8, graph 7, mentl 5, voice 4, own 4, format 4,
 cursor_transport 3, cursor 2, space 1, pipeline 1, main 1), 225 call
-`node_handle`, and 175 already read a body through the graph.
+node_handle, and 175 already read a body through the graph.
 
 BORN 2026-10-06 — the 2026-10-06 program, landing #108 (PLAN §11, THE STANDING CURSOR). The design below is the program's own text for this landing, moved here verbatim at the §0.3 integration; its section references (§2–§7) are the program's own numbering, and the whole program, with the seven audit lenses' answers, is at commit 42a94dc0 (docs/record/2026-10-06/).
 

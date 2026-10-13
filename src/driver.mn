@@ -904,7 +904,7 @@ fn rederive_cone(ref cone, scan, forget) = {
 // forget.
 fn forget_claims(modules) = modules |> flat_map(current_node) |> verify_forget
 
-fn current_node(m: String) = match module_handle_of_path(m) {
+fn current_node(m: String) = match graph_module_now(m) {
   Some(h) => [h],
   None => [],
 }

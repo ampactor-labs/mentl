@@ -327,9 +327,9 @@ fn build_row_seen(effs, seen, rvars) = match fold(
     // reading law: present adds now, absent filters the tail).
     match pos {
       EfRow(pp, pa, pt) => if len(pp) == 0 {
-        mk_ef_neg(sort_unique(neg_names))
+        mk_ef_neg(name_set_canonicalize(neg_names))
       } else {
-        let full_absent = name_set_union(pa, sort_unique(neg_names))
+        let full_absent = name_set_union(pa, name_set_canonicalize(neg_names))
         // The pair law REPORTS before it drops (E_DeclaredRowContradiction,
         // band L's decl-site teaching): the pre-diagnostic meet resolved
         // `with A + !A` by silently discarding the negation, and the body's
@@ -1424,8 +1424,6 @@ fn row_is_ground(ref row) with Pure = match row {
     _ => true,
   },
 }
-
-fn sort_unique(ref names) = name_set_canonicalize(names)
 
 // The comparison KEY — name identity as the interned handle (one word;
 // §5.O layer 1 landed). An effect declaration's name and a negation

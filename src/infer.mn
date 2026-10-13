@@ -558,14 +558,14 @@ fn comment_refs_check(ref stmts, parse_start, parse_end) = {
 fn crc_fn_scopes(ref stmts, i, acc) = if i >= len(stmts) {
   acc
 } else {
-  let h = node_handle(list_index(stmts, i))
+  let h = list_index(stmts, i)
   match graph_span_of(h) {
     Span(sl, sc, el, ec) => {
       let mh = graph_module_of(h)
       // The next decl bounds this one only when it is the same module's;
       // otherwise the decl's OWN end is the honest edge.
       let ext = if i + 1 < len(stmts) {
-        let nh = node_handle(list_index(stmts, i + 1))
+        let nh = list_index(stmts, i + 1)
         if graph_module_of(nh) == mh {
           match graph_span_of(nh) {
             Span(nl, nc, _, _) => Span(sl, sc, nl, nc),
@@ -596,7 +596,7 @@ fn crc_scope_at(ref scopes, cmod: Int, csp, i) = if i >= len(scopes) {
 fn comment_decl_index(ref stmts, i, idx) = if i >= len(stmts) {
   idx
 } else {
-  let h = node_handle(list_index(stmts, i))
+  let h = list_index(stmts, i)
   let idx2 = match graph_node_body(h) {
     NStmt(FnStmt(name, _, _, _, _)) => smap_add(idx, name, h),
     NStmt(LetStmt(PVar(name), _, _)) => // A module value let is a declaration too (the decls column notes
@@ -938,7 +938,7 @@ fn cl_record_field_names(ref fs, i, acc) = if i >= len(fs) {
 // owner's own namespace. (uses / binders / reach / spec-scan are one
 // AST fold in larval form — the forked-cursor rewrite unifies them,
 // the PLAN §7 ruling.)
-fn body_binders(ref node, acc) = match graph_node_body(node_handle(node)) {
+fn body_binders(ref node, acc) = match graph_node_body(node) {
   NExpr(LambdaExpr(params, lb)) => body_binders(lb, cl_param_names(params, 0, acc)),
   NExpr(BlockExpr(stmts, fe)) => body_binders(fe, bb_list(stmts, 0, acc)),
   NExpr(IfExpr(c, t, e)) => body_binders(e, body_binders(t, body_binders(c, acc))),
@@ -1097,7 +1097,7 @@ fn pre_register_decls(stmts) = {
 fn refuse_duplicate_type_decls(stmts, i, n, seen) = if i >= n {
   ()
 } else {
-  let h = node_handle(list_index(stmts, i))
+  let h = list_index(stmts, i)
   let span = graph_span_of(h)
   let claimed = match graph_node_body(h) {
     NStmt(AliasStmt(name, _)) => type_decl_claim(seen, name, span),
@@ -1119,7 +1119,7 @@ fn type_decl_claim(seen, name, span) = match smap_get(seen, name) {
 
 // The alias edges — registration's ONE home. The main walk keeps only
 // RefineStmt's predicate Verify obligation.
-fn pre_register_alias(ref node) = match graph_node_body(node_handle(node)) {
+fn pre_register_alias(ref node) = match graph_node_body(node) {
   NStmt(RefineStmt(name, base_ty, pred)) => env_extend(name, Frozen([], TAlias(name, TRefined(base_ty, pred))), Declared(name), FnScheme),
   NStmt(AliasStmt(name, ty)) => env_extend(name, Frozen([], TAlias(name, ty)), Declared(name), FnScheme),
   NStmt(RowAliasStmt(name, effs)) => // A named effect row is an ENV fact: the triples stored verbatim,
@@ -1139,61 +1139,55 @@ fn pre_register_alias(ref node) = match graph_node_body(node_handle(node)) {
 // refused a fully-handled program (measured 2026-07-29: intern_table
 // moved to lexer.mn, which sorts before types.mn's `effect Intern`, and
 // the whole wheel refused with "no install anywhere").
-fn pre_register_effect(ref node) = match graph_node_body(node_handle(node)) {
+fn pre_register_effect(ref node) = match graph_node_body(node) {
   NStmt(EffectDeclStmt(name, params, ops)) => register_effect_ops(name, params, ops),
   _ => (),
 }
 
-fn pre_register_stmt(seen, ref node) = {
-  let h = node_handle(node)
-  match graph_node_body(h) {
-    NStmt(FnStmt(name, _, _, _, _)) => {
-      // ONE NAME, TWO KINDS, judged at the fn's own write: effects register
-      // before this fold, so an op of the same name is already in the env
-      // and this declaration would silently WIN (every call then reaches
-      // the fn, the linked module's own calls of its op mistyped — measured
-      // 2026-09-17 as E_TypeMismatch noise inside threading.mn, exit 0,
-      // WAT emitted). register_one_op's arm covers the other order. A
-      // block's fn shadows an op lexically, as any local binding does, and
-      // is not asked.
-      match env_lookup(name) {
-        Some((_, _, EffectOpScheme(prior_effect, _, _, _))) => report(EFnShadowsOp(name, prior_effect, graph_span_of(h))),
-        _ => (),
-      }
-      pre_register_fn_once(seen, node)
-    },
-    NStmt(TypeDefStmt(name, variants)) => {
-      register_type_constructors(name, variants)
-      seen
-    },
-    NStmt(HandlerDeclStmt(hname, _ename, config, state, arms, _effs)) => {
-      pre_register_handler_sig(hname, config, state, arms)
-      seen
-    },
-    _ => // EffectDeclStmt registered in the pre_register_effect phase above —
-    // every handler sig in THIS fold reads a complete effect env.
-    seen,
-  }
+fn pre_register_stmt(seen, ref node) = match graph_node_body(node) {
+  NStmt(FnStmt(name, _, _, _, _)) => {
+    // ONE NAME, TWO KINDS, judged at the fn's own write: effects register
+    // before this fold, so an op of the same name is already in the env
+    // and this declaration would silently WIN (every call then reaches
+    // the fn, the linked module's own calls of its op mistyped — measured
+    // 2026-09-17 as E_TypeMismatch noise inside threading.mn, exit 0,
+    // WAT emitted). register_one_op's arm covers the other order. A
+    // block's fn shadows an op lexically, as any local binding does, and
+    // is not asked.
+    match env_lookup(name) {
+      Some((_, _, EffectOpScheme(prior_effect, _, _, _))) => report(EFnShadowsOp(name, prior_effect, graph_span_of(node))),
+      _ => (),
+    }
+    pre_register_fn_once(seen, node)
+  },
+  NStmt(TypeDefStmt(name, variants)) => {
+    register_type_constructors(name, variants)
+    seen
+  },
+  NStmt(HandlerDeclStmt(hname, _ename, config, state, arms, _effs)) => {
+    pre_register_handler_sig(hname, config, state, arms)
+    seen
+  },
+  _ => // EffectDeclStmt registered in the pre_register_effect phase above —
+  // every handler sig in THIS fold reads a complete effect env.
+  seen,
 }
 
 // One fn declaration's pre-registration, refusing a second of its name in
 // one namespace — the module's, or a block's run of fns (`judge_fn_run`).
-fn pre_register_fn_once(seen, node) = {
-  let handle = node_handle(node)
-  match graph_node_body(handle) {
-    NStmt(FnStmt(name, params, ret_ann, _, _)) => match smap_get(seen, name) {
-      Some(_) => {
-        report(EDuplicateFnName(name, graph_span_of(handle)))
-        seen
-      },
-      None => {
-        pre_register_fn_sig(name, params, ret_ann, handle, graph_span_of(handle))
-        smap_add(seen, name, 1)
-      },
+fn pre_register_fn_once(seen, node) = match graph_node_body(node) {
+  NStmt(FnStmt(name, params, ret_ann, _, _)) => match smap_get(seen, name) {
+    Some(_) => {
+      report(EDuplicateFnName(name, graph_span_of(node)))
+      seen
     },
-    _ => // only a fn declaration pre-registers here
-    seen,
-  }
+    None => {
+      pre_register_fn_sig(name, params, ret_ann, node, graph_span_of(node))
+      smap_add(seen, name, 1)
+    },
+  },
+  _ => // only a fn declaration pre-registers here
+  seen,
 }
 
 // The handler's identity IS a parsed fact: its effect (derivable from the
@@ -1223,7 +1217,7 @@ fn pre_register_handler_sig(hname, config, state, arms) = {
         Some(entry) => match entry {
           (_, _, kind) => match kind {
             EffectOpScheme(op_effect, _, _, _) => if op_effect == ename {
-              report(EHandlerStateShadowsOp(hname, fname, graph_span_of(node_handle(state_field_init(sf)))))
+              report(EHandlerStateShadowsOp(hname, fname, graph_span_of(state_field_init(sf))))
             } else {
               ()
             },
@@ -1300,7 +1294,7 @@ fn pre_register_fn_sig(name, params, ret_ann, handle, span: ValidSpan) = {
   // assume-the-signature induction a claim may stand on. The cell binds
   // the shape (forward-ref grounding + quantification); a cell never
   // holds a refinement (types.mn `shape_of`).
-  let ret_component = match graph_node_body(node_handle(ret_ann)) {
+  let ret_component = match graph_node_body(ret_ann) {
     NTypeAnn(ann_ty) => // Resolve through the alias edge FIRST (quantify_ctor_ty — the same
     // resolution build_param_types and apply_let_annotation use): binding
     // the raw syntactic TName made a refined alias look NOMINAL, so the
@@ -1531,7 +1525,7 @@ fn infer_program_converged(src) = {
 // inside it.
 fn enter_link_root(layer) = {
   let rspan = Span(1, 0, 1, 0)
-  mint_node(NModule({decls: [], imports: [], layer, path: "<link>", span: rspan}), rspan) |> node_handle |> graph_module_enter
+  mint_node(NModule({decls: [], imports: [], layer, path: "<link>", span: rspan}), rspan) |> graph_module_enter
 }
 
 fn parse_modules(ref mods) = mods |> map(parse_one_module) |> flatten
@@ -1543,7 +1537,7 @@ fn parse_modules(ref mods) = mods |> map(parse_one_module) |> flatten
 fn parse_one_module(m) = match m {
   (path, imports, text, layer) => {
     let mspan = Span(1, 0, count_lines(text) + 2, 0)
-    let mh = mint_node(NModule({decls: [], imports, layer, path, span: mspan}), mspan) |> node_handle
+    let mh = mint_node(NModule({decls: [], imports, layer, path, span: mspan}), mspan)
     graph_module_enter(mh)
     let stmts = lex(text) |> parse_program |> import_set
     graph_register_node(mh, NModule({decls: stmts, imports, layer, path, span: mspan}))
@@ -1835,7 +1829,7 @@ fn trial_judge_group(ref stmts, members) = {
 fn group_mono_views(ref stmts, ref members, j) = if j >= len(members) {
   ()
 } else {
-  match graph_node_body(node_handle(stmts[members[j]])) {
+  match graph_node_body(stmts[members[j]]) {
     NStmt(FnStmt(name, params, ret_ann, _, _)) => if fn_fully_sigd(params, ret_ann) {
       ()
     } else {
@@ -1864,7 +1858,7 @@ fn group_mono_views(ref stmts, ref members, j) = if j >= len(members) {
 // type params in the annotations are the DECLARED polymorphism (the case
 // rule), quantified by the pre-registration — exactly the generality the
 // sig prices.
-fn fn_fully_sigd(ref params, ref ret_ann) = match graph_node_body(node_handle(ret_ann)) {
+fn fn_fully_sigd(ref params, ref ret_ann) = match graph_node_body(ret_ann) {
   NTypeAnn(_) => params_all_annotated(params, 0),
   _ => false,
 }
@@ -1899,7 +1893,7 @@ fn row_handles_only(ref q, i) = if i >= len(q) {
 fn group_completion_fold(ref stmts, ref members, j) = if j >= len(members) {
   ()
 } else {
-  let handle = node_handle(stmts[members[j]])
+  let handle = stmts[members[j]]
   match graph_node_body(handle) {
     NStmt(FnStmt(_, _, _, _, _)) => match graph_chase(handle) {
       GNode(NBound(TFun(_, _, frow)), _) => match frow {
@@ -1940,7 +1934,7 @@ fn fold_member_cells(ref vs: [RowEdge], ref span) = match vs {
 fn group_final_publish(ref stmts, ref members, j) = if j >= len(members) {
   ()
 } else {
-  let handle = node_handle(stmts[members[j]])
+  let handle = stmts[members[j]]
   match graph_node_body(handle) {
     NStmt(FnStmt(name, _, _, _, _)) => env_extend(name, Live(handle), Located(graph_span_of(handle), Declared(name)), FnScheme),
     _ => (),
@@ -1961,7 +1955,7 @@ fn group_judge_members(ref stmts, ref members, j) = if j >= len(members) {
 // that caused them, and the diagnostics register can stamp a report with the
 // module it is about, which is what scopes narration now that spans are local
 // and a line range no longer distinguishes one file from another.
-fn enter_module_of(ref node) = node |> node_handle |> graph_module_of |> graph_module_enter
+fn enter_module_of(ref node) = node |> graph_module_of |> graph_module_enter
 
 // This was stmt_measure_one, which also returned (name, handles minted) —
 // the count the deleted second pass prefix-summed into planned handle bases.
@@ -1994,7 +1988,7 @@ fn decl_module_cell(acc, cell) = match cell {
 fn decl_module_add(m: Int, acc, node) =
   fold(acc, (t, name) => smap_add(t, name, m), stmt_declared_names(node))
 
-fn stmt_declared_names(node) = match node_body_of(node) {
+fn stmt_declared_names(node) = match graph_node_body(node) {
   NStmt(stmt) => match stmt {
     FnStmt(name, _, _, _, _) => [name],
     TypeDefStmt(name, variants) => [name] ++ map({ (vname, _, _) => vname }, variants),
@@ -2010,7 +2004,7 @@ fn stmt_declared_names(node) = match node_body_of(node) {
   _ => [],
 }
 
-fn stmt_decl_name(ref node) = node |> node_handle |> graph_node_body |> body_decl_name
+fn stmt_decl_name(ref node) = node |> graph_node_body |> body_decl_name
 
 // The name a declaration's body declares — read off the body, so a reader
 // holding only a handle asks `graph_node_body` and lands here.
@@ -2245,7 +2239,7 @@ fn infer_run(run) = match run {
 
 fn judge_fn_run(decls) = {
   fold(smap_new(), pre_register_fn_once, decls)
-  inf_keep_open(map(node_handle, decls))
+  inf_keep_open(decls)
   trial_group_walk(
     decls,
     scc_groups(stmt_frees(decls), layer_name_index(map(stmt_decl_name, decls), 0, smap_new())),
@@ -2266,54 +2260,50 @@ fn judge_fn_run(decls) = {
 // (Hβ.lower.captureless-nested-fn-is-static).
 fn nested_fns_charge(stmts) = each(nested_fn_charge, stmts)
 
-fn nested_fn_charge(node) = {
-  let h = node_handle(node)
-  match graph_node_body(h) {
-    NStmt(FnStmt(_, _, _, _, _)) => inf_add_row_at(h, construction_row()),
-    _ => (),
-  }
+fn nested_fn_charge(node) = match graph_node_body(node) {
+  NStmt(FnStmt(_, _, _, _, _)) => inf_add_row_at(node, construction_row()),
+  _ => (),
 }
 
 // Statement inference
 fn infer_stmt(ref node) = {
-  let handle = node_handle(node)
-  let span = graph_span_of(handle)
-  match graph_node_body(handle) {
+  let span = graph_span_of(node)
+  match graph_node_body(node) {
     NStmt(LetStmt(pat, expr, ann)) => {
       // The decls column, second writer: a value binding IS a declaration,
       // and a MODULE-level one is an emittable entry (__init_lets runs
       // every module value let), so the relocation's reader resolves its
       // origin here. Nested fns already note through infer_fn, so the
       // column's contract was never top-level-only.
-      graph_decl_note(handle)
+      graph_decl_note(node)
       infer_expr(expr)
-      let eh = node_handle(expr)
-      ages_let(eh)
+      ages_let(expr)
       // The let STATEMENT's value IS its expression: bind the stmt node to
       // the value's var (one union-find edge). Unbound, every block-let's
       // own node sat NFree while lower keys LLet by the STMT handle and two
       // emit width-readers lookup_ty it — two recovered E_UnresolvedType
       // per let, program-wide, and a word-floored LLet width where the
       // value's proof already existed one edge away.
-      graph_bind(handle, TVar(eh), Located(span, Inferred("let statement carries its value")))
-      infer_pat(pat, eh, span)
+      graph_bind(node, TVar(expr), Located(span, Inferred("let statement carries its value")))
+      infer_pat(pat, expr, span)
       // The `: T` annotation is a CONSTRAINT verified against the value node.
       // Unlike the generic TRefined arm of unify_types (predicate + span only),
-      // the value's node HANDLE (eh) is live here, so a refinement's `self`
-      // operand binds to the value and Verify decides it on the literal —
-      // `let bad: Sample = 1.5` rejects, `0.5` compiles. Absent = LitUnit, skipped.
-      match graph_node_body(node_handle(ann)) {
-        NTypeAnn(ann_ty) => apply_let_annotation(ann_ty, eh, graph_span_of(eh)),
+      // the value node (expr, which is its handle) is live here, so a
+      // refinement's `self` operand binds to the value and Verify decides it
+      // on the literal — `let bad: Sample = 1.5` rejects, `0.5` compiles.
+      // Absent = LitUnit, skipped.
+      match graph_node_body(ann) {
+        NTypeAnn(ann_ty) => apply_let_annotation(ann_ty, expr, graph_span_of(expr)),
         _ => (),
       }
     },
     NStmt(FnStmt(name, params, ret_ann, effs, body_node)) => if fn_fully_sigd(params, ret_ann) {
-      infer_fn(name, params, body_node, ret_ann, effs, handle, span, false)
+      infer_fn(name, params, body_node, ret_ann, effs, node, span, false)
     } else {
       // Every unsig'd decl judges SPECULATIVELY (§11 5.3's fragment):
       // the common mono case pays one checkpoint + one held list and
       // commits round 1; only a poly-fingerprinted refusal retries.
-      infer_fn_speculative(name, params, body_node, ret_ann, effs, handle, span)
+      infer_fn_speculative(name, params, body_node, ret_ann, effs, node, span)
     },
     NStmt(TypeDefStmt(name, _)) => // The decls column's fourth writer: a type, an effect and an alias
     // are declarations a name names, so `mentl where` finds them where it
@@ -2333,7 +2323,7 @@ fn infer_stmt(ref node) = {
       // op), so the arm's origin is its handler decl's node — noted here,
       // where the decl is judged. A handler declares a value, as a fn
       // does, so its node carries the handler's type once registered.
-      graph_decl_note(handle)
+      graph_decl_note(node)
       register_handler(hname, ename, config, state, arms, effs, span)
       match env_lookup(hname) {
         Some((Frozen(_, ty), _, _)) => bind_declared(node, ty, hname),
@@ -2345,7 +2335,7 @@ fn infer_stmt(ref node) = {
       // The statement's value IS its expression's, as a let statement's is:
       // one union-find edge, so no statement in a block is a cell nothing
       // judged.
-      graph_bind(handle, TVar(node_handle(expr)), Located(span, Inferred("statement carries its value")))
+      graph_bind(node, TVar(expr), Located(span, Inferred("statement carries its value")))
     },
     NStmt(ImportStmt(path)) => bind_declared(node, TUnit, path),
     NStmt(RefineStmt(name, _, _)) => // Registered at pre_register_stmt (the one home — TAlias(name,
@@ -2372,7 +2362,7 @@ fn infer_stmt(ref node) = {
 // A declaration with no value — a type, an effect, an alias — is noted in
 // the decls column and its statement evaluates to unit.
 fn declaration_noted(node, name: String) = {
-  graph_decl_note(node_handle(node))
+  graph_decl_note(node)
   bind_declared(node, TUnit, name)
 }
 
@@ -2918,11 +2908,10 @@ fn infer_fn(name, params, body_node, ret_ann, effs, handle, span: ValidSpan, pol
   // body makes the IH visible to the rec-call's callee read on time; the
   // cell still binds (forward-ref grounding + quantification), exactly as
   // at prereg. Absent annotation ⇒ the fresh var, inferred as before.
-  let pin_h = node_handle(ret_ann)
-  let authored_pin = match graph_node_body(pin_h) {
+  let authored_pin = match graph_node_body(ret_ann) {
     NTypeAnn(pin_ty) => match quantify_ctor_ty(pin_ty, sig_scope, Located(span, Declared(name))) {
       (resolved_pin, _pq) => {
-        graph_bind(ret_handle, resolved_pin, Located(graph_span_of(pin_h), Declared(name)))
+        graph_bind(ret_handle, resolved_pin, Located(graph_span_of(ret_ann), Declared(name)))
         Some(resolved_pin)
       },
     },
@@ -2996,7 +2985,7 @@ fn infer_fn(name, params, body_node, ret_ann, effs, handle, span: ValidSpan, pol
   declare_authored_owns(params, span)
   ages_open_fn(param_handles)
   infer_expr(body_node)
-  ages_close_fn(name, param_handles, node_handle(body_node))
+  ages_close_fn(name, param_handles, body_node)
   // The authored return is claimed INSIDE the declaration's frame, where a
   // function crossing into it pays the guard of each demand the stated type
   // does not provide, and before the frame's own guards settle. Raised after
@@ -3010,12 +2999,11 @@ fn infer_fn(name, params, body_node, ret_ann, effs, handle, span: ValidSpan, pol
   report_unconsumed(consume_exit_fn())
   let declared_effs = exit_frame()
   // Unify body's type with the declared return.
-  let body_handle = node_handle(body_node)
   // The `-> RetTy` annotation is PINNED BEFORE the body (the assumed-
   // signature slot value above), so this unify runs the body against the
   // bound cell — a disagreeing body surfaces E_TypeMismatch through that
   // one edge.
-  unify(body_handle, ret_handle, span, FnReturn(name, Inferred("body")))
+  unify(body_node, ret_handle, span, FnReturn(name, Inferred("body")))
   // H4: every fn return is an escape boundary — and a TRANSFER. The body
   // value tagged with THIS fn's region re-tags into the parent's (the
   // caller owns it now — Hβ.own.region-return-transfer); an outer-region
@@ -3023,7 +3011,7 @@ fn infer_fn(name, params, body_node, ret_ann, effs, handle, span: ValidSpan, pol
   // genuine escape, reported with both spans. The check runs INSIDE the
   // body region (the arm reads the stack top to know which region is
   // "mine"); the exit follows.
-  check_escape(body_handle, span)
+  check_escape(body_node, span)
   region_exit(body_region)
   // ─── Ownership inference (§4⑤, arm 5) — the Hylo-quiet bar ──────
   // After the body is inferred, classify each Unmarked param's ownership
@@ -3042,7 +3030,7 @@ fn infer_fn(name, params, body_node, ret_ann, effs, handle, span: ValidSpan, pol
   // cannot see (`hand_on_value`); an authored one is crossed by its
   // claim above.
   match pinned_ret {
-    TVar(_) => hand_on_value(body_handle),
+    TVar(_) => hand_on_value(body_node),
     _ => (),
   }
   let inferred_params = infer_ownership(resolved_params, body_node)
@@ -3054,7 +3042,7 @@ fn infer_fn(name, params, body_node, ret_ann, effs, handle, span: ValidSpan, pol
     // params publish what the body learned of them (published_params).
     TFun(
       published_params(inferred_params, param_handles, name, span),
-      published_ret(pinned_ret, body_handle, ret_handle),
+      published_ret(pinned_ret, body_node, ret_handle),
       mk_ef_open([], row_handle)
     ),
     Located(span, Inferred("ownership-resolved params of '{name}'"))
@@ -3387,7 +3375,7 @@ fn mismatch_reason(name: String, declared_row, body_row, decl, span: ValidSpan) 
   Some(dh) => match offending_names(declared_row, body_row) {
     [] => Located(span, Declared(name)),
     [eff, ..._] => match graph_node_body(dh) {
-      NStmt(FnStmt(_, _, _, _, body)) => Located(span, EffectEnters(eff_name_str(eff), dh, body_entry(eff, node_handle(body), [dh]))),
+      NStmt(FnStmt(_, _, _, _, body)) => Located(span, EffectEnters(eff_name_str(eff), dh, body_entry(eff, body, [dh]))),
       _ => Located(span, Declared(name)),
     },
   },
@@ -3414,7 +3402,7 @@ fn not_admitted(dp, da, dt, present) = any(eff_forbids(??, present), da) || matc
 fn effect_entries_of(h) = match graph_node_body(h) {
   NStmt(FnStmt(_, _, _, _, body)) => match chase_ty(TVar(h)) {
     TFun(_, _, row) => match resolve_row(row) {
-      EfRow(present, _, _) => present |> filter({ EPure => false, _ => true }) |> map(decl_effect_entry(h, node_handle(body), ??)),
+      EfRow(present, _, _) => present |> filter({ EPure => false, _ => true }) |> map(decl_effect_entry(h, body, ??)),
     },
     _ => [],
   },
@@ -3449,8 +3437,8 @@ fn entry_child(eff, h) = match graph_node_body(h) {
   NExpr(LambdaExpr(_, _)) => None,
   NStmt(FnStmt(_, _, _, _, _)) => None,
   NStmt(HandlerDeclStmt(_, _, _, _, _, _)) => None,
-  NExpr(PipeExpr(PTee, l, hnd)) => if tee_absorbs_here(hnd, eff) { None } else { earliest_carrier(eff, [node_handle(l)]) },
-  NExpr(PipeExpr(PFeedback, l, _)) => earliest_carrier(eff, [node_handle(l)]),
+  NExpr(PipeExpr(PTee, l, hnd)) => if tee_absorbs_here(hnd, eff) { None } else { earliest_carrier(eff, [l]) },
+  NExpr(PipeExpr(PFeedback, l, _)) => earliest_carrier(eff, [l]),
   body => earliest_carrier(eff, body_child_handles(body)),
 }
 
@@ -3467,8 +3455,8 @@ fn tee_absorbs_here(hnd, eff) = match handler_arms_of(hnd) {
 
 // The site's hop: what the effect crosses there, and the chain beyond it.
 fn entry_at(eff, h, seen) = match graph_node_body(h) {
-  NExpr(CallExpr(f, args)) => EffectEnters(eff_name_str(eff), h, callee_entry(eff, node_handle(f), map(node_handle, args), seen)),
-  NExpr(PipeExpr(PForward, l, stage)) => EffectEnters(eff_name_str(eff), h, stage_entry(eff, node_handle(stage), [node_handle(l)], seen)),
+  NExpr(CallExpr(f, args)) => EffectEnters(eff_name_str(eff), h, callee_entry(eff, f, args, seen)),
+  NExpr(PipeExpr(PForward, l, stage)) => EffectEnters(eff_name_str(eff), h, stage_entry(eff, stage, [l], seen)),
   NExpr(PipeExpr(PTee, _, hnd)) => EffectEnters(eff_name_str(eff), h, install_entry(eff, hnd, seen)),
   body => EffectEnters(eff_name_str(eff), h, Inferred(charge_word(body))),
 }
@@ -3477,8 +3465,8 @@ fn entry_at(eff, h, seen) = match graph_node_body(h) {
 // value, or a literal applied in place, whose body runs in this frame.
 fn stage_entry(eff, stage_h, piped, seen) = match graph_node_body(stage_h) {
   NExpr(VarRef(_)) => callee_entry(eff, stage_h, piped, seen),
-  NExpr(CallExpr(f, args)) => callee_entry(eff, node_handle(f), map(node_handle, args) ++ piped, seen),
-  NExpr(LambdaExpr(_, body)) => effect_entry(eff, node_handle(body), seen),
+  NExpr(CallExpr(f, args)) => callee_entry(eff, f, args ++ piped, seen),
+  NExpr(LambdaExpr(_, body)) => effect_entry(eff, body, seen),
   _ => Inferred("a call through a value"),
 }
 
@@ -3536,8 +3524,8 @@ fn decl_entry(eff, name: String, dh, arg_hs, seen) = if any({ x => x == dh }, se
   Inferred("`{name}`, already on this path")
 } else {
   match graph_node_body(dh) {
-    NStmt(FnStmt(_, _, _, _, body)) => if carries(eff, node_handle(body)) {
-      effect_entry(eff, node_handle(body), push(seen, dh))
+    NStmt(FnStmt(_, _, _, _, body)) => if carries(eff, body) {
+      effect_entry(eff, body, push(seen, dh))
     } else {
       match find(value_carries(eff, ??), arg_hs) {
         Some(vh) => value_entry(eff, vh, seen),
@@ -3549,7 +3537,7 @@ fn decl_entry(eff, name: String, dh, arg_hs, seen) = if any({ x => x == dh }, se
 }
 
 fn value_carries(eff, vh) = match graph_node_body(vh) {
-  NExpr(LambdaExpr(_, body)) => carries(eff, node_handle(body)),
+  NExpr(LambdaExpr(_, body)) => carries(eff, body),
   _ => match chase_ty(TVar(vh)) {
     TFun(_, _, row) => row_carries(resolve_row(row), eff),
     _ => false,
@@ -3557,7 +3545,7 @@ fn value_carries(eff, vh) = match graph_node_body(vh) {
 }
 
 fn value_entry(eff, vh, seen) = match graph_node_body(vh) {
-  NExpr(LambdaExpr(_, body)) => EffectEnters(eff_name_str(eff), vh, effect_entry(eff, node_handle(body), seen)),
+  NExpr(LambdaExpr(_, body)) => EffectEnters(eff_name_str(eff), vh, effect_entry(eff, body, seen)),
   NExpr(VarRef(_)) => callee_entry(eff, vh, [], seen),
   _ => Inferred("a function value handed in"),
 }
@@ -3713,7 +3701,7 @@ fn gate_terminal_edges(g, vs: [RowEdge], row_handle, span: ValidSpan) = match vs
 // here only via degenerate CallExpr — canonical form is
 // NamedRecordExpr. Either way the result handle deserves region
 // tracking.
-fn call_is_alloc_returning(func) = match graph_node_body(node_handle(func)) {
+fn call_is_alloc_returning(func) = match graph_node_body(func) {
   NExpr(VarRef(name)) => match env_lookup(name) {
     Some(entry) => match entry {
       (_, _, kind) => match kind {
@@ -3841,7 +3829,7 @@ fn check_row_effect_names(row, span: ValidSpan) = match row {
 // the op's own span.
 fn check_op_effect_names(op) = match op {
   (_op_name, op_params, ret, op_node) => {
-    let op_span = graph_span_of(node_handle(op_node))
+    let op_span = graph_span_of(op_node)
     each(check_param_effect_names(op_span), op_params)
     check_ty_effect_names(ret, op_span)
   },
@@ -3849,12 +3837,9 @@ fn check_op_effect_names(op) = match op {
 
 // A function's authored return type, when one was written (the parser mints
 // LitUnit where no `->` is authored).
-fn check_ret_ann_effect_names(ret_ann) = {
-  let h = node_handle(ret_ann)
-  match graph_node_body(h) {
-    NTypeAnn(t) => check_ty_effect_names(t, graph_span_of(h)),
-    _ => (),
-  }
+fn check_ret_ann_effect_names(ret_ann) = match graph_node_body(ret_ann) {
+  NTypeAnn(t) => check_ty_effect_names(t, graph_span_of(ret_ann)),
+  _ => (),
 }
 
 fn check_instance_args(effs, span: ValidSpan) = each(
@@ -3918,8 +3903,7 @@ fn instance_arg_scalar_ty(arg) = match arg {
 // fn-type `with` rows alike.
 //
 // Expression inference
-fn infer_expr(ref node) = {
-  let handle = node_handle(node)
+fn infer_expr(ref handle) = {
   let span = graph_span_of(handle)
   match graph_node_body(handle) {
     NExpr(LitInt(_)) => graph_bind(handle, TInt, Located(span, Inferred("int literal"))),
@@ -3931,11 +3915,11 @@ fn infer_expr(ref node) = {
     NExpr(BinOpExpr(op, left, right)) => {
       infer_operand(left)
       infer_operand(right)
-      infer_binop(handle, op, node_handle(left), node_handle(right), span)
+      infer_binop(handle, op, left, right, span)
     },
     NExpr(UnaryOpExpr(op, inner)) => {
       infer_operand(inner)
-      infer_unaryop(handle, op, node_handle(inner), span)
+      infer_unaryop(handle, op, inner, span)
     },
     NExpr(CallExpr(func, args)) => infer_call_expr(func, args, handle, span, AtCall),
     NExpr(IfExpr(cond, then_e, else_e)) => {
@@ -3955,22 +3939,19 @@ fn infer_expr(ref node) = {
       branch_divider(span)
       infer_expr(else_e)
       branch_exit(span)
-      let ch = node_handle(cond)
-      let th = node_handle(then_e)
-      let eh = node_handle(else_e)
-      unify_types(TVar(ch), TName("Bool", []), span, IfBranch(Inferred("condition")))
+      unify_types(TVar(cond), TName("Bool", []), span, IfBranch(Inferred("condition")))
       // E_IfMissingElse per SYNTAX.md: detect synthesized-LitUnit else
       // (parser produces LitUnit when no else clause — src/parser.mn:1275).
       // If the then-branch produces a non-unit value, the missing else
       // is structurally invalid: the if would have to "produce nothing"
       // on the false path. Emit before unify so user sees the structural
       // cause, not the downstream E_TypeMismatch.
-      let else_is_synthesized_unit = match graph_node_body(eh) {
+      let else_is_synthesized_unit = match graph_node_body(else_e) {
         NExpr(LitUnit) => true,
         _ => false,
       }
       if else_is_synthesized_unit {
-        let then_ty = lookup_ty(th)
+        let then_ty = lookup_ty(then_e)
         match then_ty {
           TUnit => // Unit's REAL constructor is TUnit — the old TName("Unit") arm
           // matched a nominal spelling the inferencer never produces, so
@@ -3987,15 +3968,15 @@ fn infer_expr(ref node) = {
           _ => report(EIfMissingElse(span)),
         }
       }
-      unify(th, eh, span, IfBranch(Inferred("branches must match")))
-      graph_bind(handle, TVar(th), Located(span, IfBranch(Inferred("if result"))))
+      unify(then_e, else_e, span, IfBranch(Inferred("branches must match")))
+      graph_bind(handle, TVar(then_e), Located(span, IfBranch(Inferred("if result"))))
     },
     NExpr(BlockExpr(stmts, final_expr)) => {
       env_scope_enter()
       each(infer_run, stmt_runs(stmts))
       nested_fns_charge(stmts)
       infer_expr(final_expr)
-      graph_bind(handle, TVar(node_handle(final_expr)), Located(span, Inferred("block result")))
+      graph_bind(handle, TVar(final_expr), Located(span, Inferred("block result")))
       env_scope_exit()
     },
     NExpr(MatchExpr(scrutinee, arms)) => {
@@ -4010,7 +3991,7 @@ fn infer_expr(ref node) = {
       // into the node itself made the node the class's root, carrying the
       // reason the parser minted it with.
       let result_h = mint(Located(span, Inferred("match result")))
-      infer_match_arms(arms, node_handle(scrutinee), result_h, span)
+      infer_match_arms(arms, scrutinee, result_h, span)
       graph_bind(
         handle,
         TVar(result_h),
@@ -4026,12 +4007,12 @@ fn infer_expr(ref node) = {
         let elem_h = mint(Inferred("empty list element"))
         graph_bind(handle, TList(TVar(elem_h)), Located(span, Inferred("empty list")))
       } else {
-        let fh = node_handle(last(elems))
+        let fh = last(elems)
         unify_list_elems(drop_last(elems), fh, span)
         graph_bind(handle, TList(TVar(fh)), Located(span, Inferred("list literal")))
       }
       // H4.1: list elements may carry inner-region pointers; join.
-      tag_alloc_join(handle, collect_handles(elems))
+      tag_alloc_join(handle, elems)
     },
     NExpr(MakeTupleExpr(elems)) => {
       infer_expr_list(elems)
@@ -4042,7 +4023,7 @@ fn infer_expr(ref node) = {
       // reads the same rule to bind them).
       charge_product(handle)
       graph_bind(handle, TTuple(collect_tvar_types(elems)), Located(span, Inferred("tuple literal")))
-      tag_alloc_join(handle, collect_handles(elems))
+      tag_alloc_join(handle, elems)
     },
     NExpr(IndexExpr(receiver, index)) => {
       // Per #139 — semantic subscript. Infer receiver + index; the result
@@ -4065,11 +4046,9 @@ fn infer_expr(ref node) = {
       // the Hylo-quiet bar naming the inference gap).
       infer_borrowed_read(receiver)
       infer_expr(index)
-      let rh = node_handle(receiver)
-      let ih = node_handle(index)
       let exp_i = mint(Inferred("index value"))
       graph_bind(exp_i, TInt, Located(span, Inferred("index value")))
-      unify(ih, exp_i, span, Inferred("index value"))
+      unify(index, exp_i, span, Inferred("index value"))
       // Tuple-const-index — the judge's half of the dispatch lower
       // already performs (its LFieldLoad prefix-sum): a receiver
       // CHASED to a tuple, indexed by a literal, types as that
@@ -4083,8 +4062,8 @@ fn infer_expr(ref node) = {
       // (TRecordOpen's tuple sibling) is the named remainder of
       // Hβ.infer.index-expr-dispatch; a literal-indexed tuple in
       // a generic body destructures until it lands.
-      match index_receiver_shallow(rh) {
-        TTuple(elems) => match graph_node_body(ih) {
+      match index_receiver_shallow(receiver) {
+        TTuple(elems) => match graph_node_body(index) {
           NExpr(LitInt(k)) => if k >= 0 && k < len(elems) {
             graph_bind(handle, list_index(elems, k), Located(span, Inferred("tuple element")))
           } else {
@@ -4099,9 +4078,9 @@ fn infer_expr(ref node) = {
           },
           _ => // a runtime-variable index cannot type a heterogeneous
           // product — the list force below reports the honest mismatch
-          infer_index_force(rh, ih, handle, span),
+          infer_index_force(receiver, index, handle, span),
         },
-        _ => infer_index_force(rh, ih, handle, span),
+        _ => infer_index_force(receiver, index, handle, span),
       }
     },
     NExpr(MakeStringExpr(fragments)) => {
@@ -4138,7 +4117,7 @@ fn infer_expr(ref node) = {
       // handle lower's LShow reads instead of minting a cell. The show
       // reads the inner's whole structure.
       infer_expr(inner)
-      shape_demand(node_handle(inner), WholeShape)
+      shape_demand(inner, WholeShape)
       // The show builds the string it answers. A String splice answers
       // itself and builds nothing, so this charges one case the emit does
       // not allocate for — sound, and the only over-charge in the rule.
@@ -4167,13 +4146,12 @@ fn infer_expr(ref node) = {
       // The spread base MUST be record-shaped — the same open-record
       // constraint field access erects, so `{...5, f: v}` is a type
       // error at the spread, never a zero-field fabrication.
-      let bh = node_handle(base)
       let base_row_h = graph_fresh_row(Inferred("record update row"))
       let expected_h = mint(Inferred("record update base"))
       graph_bind(expected_h, mk_record_open([], base_row_h), Located(span, Inferred("expected record")))
-      unify(bh, expected_h, span, Inferred("record spread base"))
+      unify(base, expected_h, span, Inferred("record spread base"))
       // The copy reads each field of the base by name.
-      shape_demand(bh, OuterShape)
+      shape_demand(base, OuterShape)
       infer_record_field_values(overrides)
       inf_add_row_at(handle, construction_row())
       let base_fields = record_fields_of_node(base)
@@ -4188,9 +4166,8 @@ fn infer_expr(ref node) = {
       // a reference to that type — is the type it names.
       infer_record_field_values(fields)
       inf_add_row_at(handle, construction_row())
-      let head_h = node_handle(head)
-      let head_span = graph_span_of(head_h)
-      match graph_node_body(head_h) {
+      let head_span = graph_span_of(head)
+      match graph_node_body(head) {
         NExpr(VarRef(type_name)) => match env_lookup(type_name) {
           None => report(EMissingVariable("record type: {type_name}", head_span)),
           Some(entry) => match entry {
@@ -4198,7 +4175,7 @@ fn infer_expr(ref node) = {
               RecordSchemeKind(declared) => {
                 check_nominal_record_fields(declared, fields, type_name, span)
                 graph_bind(
-                  head_h,
+                  head,
                   TName(type_name, []),
                   Located(head_span, Inferred("the record type '{type_name}'"))
                 )
@@ -4219,13 +4196,12 @@ fn infer_expr(ref node) = {
       // to the perform site (v unifies with R); the expression's own
       // value is the continuation's completion (S).
       infer_expr(val)
-      let vh = node_handle(val)
       match inf_arm_tys() {
         Some(continuation_h) => match graph_chase(continuation_h) {
           GNode(NBound(TCont(resume_input, answer, disc, world)), _) => {
             let r_h = mint(Inferred("op result at resume"))
             graph_bind(r_h, resume_input, Located(span, Inferred("resume carries the continuation input")))
-            unify(vh, r_h, span, Inferred("resume carries the continuation input"))
+            unify(val, r_h, span, Inferred("resume carries the continuation input"))
             // The op's declared return is a STATED position the resumed
             // value crosses into, in the arm's frame: a function demanding
             // more than the declared type provides pays its guard here,
@@ -4236,7 +4212,7 @@ fn infer_expr(ref node) = {
             // as its shape — the continuation's cell holds shapes — and
             // the performer never stands on it
             // (`Hβ.verify.op-return-is-a-contract`).
-            claim_refinement(resume_input, vh, span)
+            claim_refinement(resume_input, val, span)
             graph_bind(handle, answer, Located(span, Inferred("resume yields the continuation answer")))
             // A HELD continuation is a record this resume CALLS, so its
             // remainder runs here, inside whatever frame holds the resume —
@@ -4267,7 +4243,7 @@ fn infer_expr(ref node) = {
       each(
         (upd) => {
           infer_expr(state_field_init(upd))
-          let uh = node_handle(state_field_init(upd))
+          let uh = state_field_init(upd)
           match env_lookup(state_field_name(upd)) {
             Some(entry) => match entry {
               (scheme, reason, _) => {
@@ -4320,10 +4296,7 @@ fn infer_expr(ref node) = {
         // A recurrence lambda is inlined into the cycle, so it is judged as a
         // lambda and charged no mint; any other left side is an ordinary value.
         match inlinable_lambda(left) {
-          Some((params, body)) => {
-            let lh = node_handle(left)
-            infer_lambda(params, body, lh, graph_span_of(lh), BoundByTheCycle)
-          },
+          Some((params, body)) => infer_lambda(params, body, left, graph_span_of(left), BoundByTheCycle),
           None => infer_expr(left),
         }
         // The spec stays a VALUE — `infer_pipe` checks it as a FeedbackSpec —
@@ -4339,7 +4312,7 @@ fn infer_expr(ref node) = {
         // branch B — the RHS as a static depth annotation, the lowering
         // deleted — stays open and would delete this frame with it.
         let spec_row_h = graph_fresh_row(Inferred("feedback spec — static, its row never charges"))
-        inf_enter_fn(spec_row_h, node_handle(right), span, [])
+        inf_enter_fn(spec_row_h, right, span, [])
         infer_expr(right)
         exit_frame()
         infer_pipe(kind, left, right, handle, span)
@@ -4404,7 +4377,7 @@ fn infer_expr(ref node) = {
 // field site carried the call narrowing from its birth; the other three
 // surfaces now read the same projection — the uniform pass replacing
 // the per-site family.
-fn is_read_shape(node) = match graph_node_body(node_handle(node)) {
+fn is_read_shape(node) = match graph_node_body(node) {
   NExpr(VarRef(_)) => true,
   NExpr(FieldExpr(recv, _)) => is_read_shape(recv),
   NExpr(IndexExpr(recv, _)) => is_read_shape(recv),
@@ -4432,15 +4405,14 @@ fn infer_borrowed_read(node) = if is_read_shape(node) {
 // the shared read-shape projection gates the bracket.
 fn infer_field_access_record(rec, field, handle, span: ValidSpan) = {
   infer_borrowed_read(rec)
-  let rh = node_handle(rec)
   let field_h = mint(Inferred("field type"))
   let row_h = graph_fresh_row(Inferred("record row"))
   let expected = mk_record_open([(field, TVar(field_h))], row_h)
   let expected_h = mint(Inferred("record access"))
   graph_bind(expected_h, expected, Located(span, Inferred("expected record")))
-  unify(rh, expected_h, span, Inferred("field access"))
+  unify(rec, expected_h, span, Inferred("field access"))
   // The load's offset reads which fields the receiver's row holds.
-  shape_demand(rh, OuterShape)
+  shape_demand(rec, OuterShape)
   graph_bind(handle, TVar(field_h), Located(span, Inferred("field type")))
 }
 
@@ -4457,12 +4429,9 @@ type RefUse = RefCalled | RefValued
 
 // A call's callee, judged as the reference it is (`RefCalled`); every other
 // callee expression is judged as the value it is.
-fn infer_callee(func) = {
-  let fh = node_handle(func)
-  match graph_node_body(fh) {
-    NExpr(VarRef(name)) => infer_var_ref(name, fh, graph_span_of(fh), RefCalled),
-    _ => infer_expr(func),
-  }
+fn infer_callee(func) = match graph_node_body(func) {
+  NExpr(VarRef(name)) => infer_var_ref(name, func, graph_span_of(func), RefCalled),
+  _ => infer_expr(func),
 }
 
 // A bare constructor or op reference's product: no arguments, one cell per
@@ -4550,7 +4519,7 @@ fn seq_face_ty(name: String, scheme) = {
 // move-vs-borrow read cannot ground. Param-position and lambda callees have
 // resolvable schemes and keep normal inference; only the VarRef-with-no-entry
 // shape borrows its direct args (the miss already reported once).
-fn callee_missing_in_env(ref func, cname: String) = match graph_node_body(node_handle(func)) {
+fn callee_missing_in_env(ref func, cname: String) = match graph_node_body(func) {
   NExpr(VarRef(_)) => match env_lookup(cname) {
     None => true,
     Some(_) => false,
@@ -4572,7 +4541,7 @@ fn check_consume_at_use(name, kind, span: ValidSpan) = match kind {
 }
 
 // RX.4 — extract callee name from func node for Why chain.
-fn callee_name(func_node) = match graph_node_body(node_handle(func_node)) {
+fn callee_name(func_node) = match graph_node_body(func_node) {
   NExpr(VarRef(name)) => name,
   NExpr(FieldExpr(_, field)) => field,
   NExpr(CallExpr(callee, _)) => // A config handler `~> h(args)` is a CallExpr; the handler's name IS
@@ -4747,16 +4716,15 @@ fn seq_force_list(ah, ptys, i, span: ValidSpan) = if i >= len(ptys) {
 }
 
 fn infer_seq_op(cname, fh, args, handle, span: ValidSpan) = {
-  let ah = collect_handles(args)
   let elem = TVar(mint(Inferred("sequence element")))
   match seq_op_sig(cname, elem) {
     Some(sig) => match sig {
       (ptys, ret) => {
-        seq_force_list(ah, ptys, 0, span)
+        seq_force_list(args, ptys, 0, span)
         graph_bind(handle, ret, Located(span, Inferred("substrate face of '{cname}'")))
         // An in-place store: its claim is on the buffer it writes.
-        if cname == "list_set" && len(ah) == 3 {
-          ages_store(list_index(ah, 0), [list_index(ah, 2)])
+        if cname == "list_set" && len(args) == 3 {
+          ages_store(list_index(args, 0), [list_index(args, 2)])
         } else {
           ()
         }
@@ -4846,12 +4814,9 @@ fn infer_call_expr(func, args, handle, span: ValidSpan, site) = match infer_call
 // An operator's operand: a call standing there is judged at the operand,
 // where an argument hole is a value hole; anything else is judged as the
 // expression it is.
-fn infer_operand(node) = {
-  let handle = node_handle(node)
-  match graph_node_body(handle) {
-    NExpr(CallExpr(func, args)) => infer_call_expr(func, args, handle, graph_span_of(handle), AtOperand),
-    _ => infer_expr(node),
-  }
+fn infer_operand(node) = match graph_node_body(node) {
+  NExpr(CallExpr(func, args)) => infer_call_expr(func, args, node, graph_span_of(node), AtOperand),
+  _ => infer_expr(node),
 }
 
 // A call node's judgment, returning which form it built.
@@ -4862,7 +4827,7 @@ fn infer_call_node(func, args, handle, span: ValidSpan, site) = {
   // the parameters the callee NODE carries. The LabeledArg wrappers never
   // reach infer_expr — resolution strips them.
   let cname = callee_name(func)
-  let params = callee_params_at(node_handle(func))
+  let params = callee_params_at(func)
   let pos_args = resolve_call_args(params, args, cname)
   // A named callee that MISSES env already reported (one miss, one
   // diagnostic); its parameter product is unreadable, so the move-vs-
@@ -4888,12 +4853,11 @@ fn infer_call_node(func, args, handle, span: ValidSpan, site) = {
   // the value doesn't outlive its region. H4.1: constructor
   // ARGS ARE the fields — the resulting record's region pins
   // to the deepest field region.
-  if call_is_alloc_returning(func) { tag_alloc_join(handle, collect_handles(pos_args)) }
+  if call_is_alloc_returning(func) { tag_alloc_join(handle, pos_args) }
   form
 }
 
 fn infer_call(func, args, handle, span: ValidSpan, site) = {
-  let fh = node_handle(func)
   let cname = callee_name(func)
   // The substrate fast-path fires only for a SATURATED, hole-free call —
   // both facts read live (the hole from the arg's own body, the arity from
@@ -4903,8 +4867,8 @@ fn infer_call(func, args, handle, span: ValidSpan, site) = {
   // `??` never became the partial the pipe completes, and every seq-op
   // pipe stage mismatched (14 census sites). An under-applied or holed
   // seq-op call is the product-with-holes like any other call.
-  if is_seq_op(cname) && (call_hole_index(args, 0) < 0 || site_is_operand(site)) && len(args) == len(callee_params_at(fh)) {
-    infer_seq_op(cname, fh, args, handle, span)
+  if is_seq_op(cname) && (call_hole_index(args, 0) < 0 || site_is_operand(site)) && len(args) == len(callee_params_at(func)) {
+    infer_seq_op(cname, func, args, handle, span)
     CallSaturated
   }
   // A HOLED/under-applied substrate call is the product-with-holes built
@@ -4957,11 +4921,11 @@ fn infer_call(func, args, handle, span: ValidSpan, site) = {
       // rides the result fn — a partial performs nothing, and forming it
       // mints the closure its caller is charged for. At an operand the `??`
       // is a value hole and the call applies (`CallSite`).
-      match graph_chase(fh) {
+      match graph_chase(func) {
         GNode(NBound(TFun(ps, pret, prow)), _) => if len(args) < len(ps) || call_hole_index(args, 0) >= 0 && !site_is_operand(site) {
           CallPartial(infer_call_partial(args, ps, pret, prow, handle, span, cname))
         } else {
-          infer_call_saturated(args, fh, handle, span, cname)
+          infer_call_saturated(args, func, handle, span, cname)
           CallSaturated
         },
         _ => // A stage whose callee's arrow is not yet known — a field of an
@@ -4974,24 +4938,24 @@ fn infer_call(func, args, handle, span: ValidSpan, site) = {
         // indirect call (2026-10-06).
         match site {
           AtStage => if call_hole_index(args, 0) < 0 {
-            bind_stage_product(fh, args, span, cname)
-            match graph_chase(fh) {
+            bind_stage_product(func, args, span, cname)
+            match graph_chase(func) {
               GNode(NBound(TFun(ps, pret, prow)), _) => CallPartial(infer_call_partial(args, ps, pret, prow, handle, span, cname)),
               _ => {
-                infer_call_saturated(args, fh, handle, span, cname)
+                infer_call_saturated(args, func, handle, span, cname)
                 CallSaturated
               },
             }
           } else {
-            infer_call_saturated(args, fh, handle, span, cname)
+            infer_call_saturated(args, func, handle, span, cname)
             CallSaturated
           },
           AtCall => {
-            infer_call_saturated(args, fh, handle, span, cname)
+            infer_call_saturated(args, func, handle, span, cname)
             CallSaturated
           },
           AtOperand => {
-            infer_call_saturated(args, fh, handle, span, cname)
+            infer_call_saturated(args, func, handle, span, cname)
             CallSaturated
           },
         },
@@ -5004,7 +4968,7 @@ fn infer_call(func, args, handle, span: ValidSpan, site) = {
 // per argument written, then the piped value's slot, last.
 fn bind_stage_product(fh, args, span: ValidSpan, cname) = {
   let slot = mk_param("_", TVar(mint(InferredCallReturn(cname, Inferred("the piped value's slot")))))
-  let ps = build_inferred_params_masked(collect_handles(args), []) ++ [slot]
+  let ps = build_inferred_params_masked(args, []) ++ [slot]
   let row = mk_ef_open([], graph_fresh_row(InferredCallReturn(cname, Inferred("effects"))))
   let ret = TVar(mint(InferredCallReturn(cname, Inferred("result"))))
   unify_types(
@@ -5046,7 +5010,7 @@ fn infer_call_arg_list(args, params, i) = if i >= len(args) {
   infer_call_arg_list(args, params, i + 1)
 }
 
-fn infer_call_arg(arg, param) = match graph_node_body(node_handle(arg)) {
+fn infer_call_arg(arg, param) = match graph_node_body(arg) {
   NExpr(VarRef(_)) => // param_borrows (types.mn, the classification's one home — the
   // ownership grade's mode walk reads the same test at decl time).
   if param_borrows(param) {
@@ -5069,7 +5033,7 @@ fn infer_call_arg(arg, param) = match graph_node_body(node_handle(arg)) {
 fn call_hole_index(args, i) = if i >= len(args) {
   -1
 } else {
-  match graph_node_body(node_handle(list_index(args, i))) {
+  match graph_node_body(list_index(args, i)) {
     NHole(id) => if id == 0 { call_hole_index(args, i + 1) } else { i },
     _ => call_hole_index(args, i + 1),
   }
@@ -5113,7 +5077,7 @@ fn open_slot_cell(span: ValidSpan, p) = {
 }
 
 fn unify_args_positionally(args, params, i, span: ValidSpan, call_h) = if i < len(args) && i < len(params) {
-  let ah = node_handle(list_index(args, i))
+  let ah = list_index(args, i)
   let pty_h = mint(Inferred("declared param at partial call"))
   graph_bind(
     pty_h,
@@ -5142,7 +5106,7 @@ fn unfilled_params(args, params) =
 fn hole_params(args, params, i) = if i >= len(args) {
   []
 } else {
-  match graph_node_body(node_handle(list_index(args, i))) {
+  match graph_node_body(list_index(args, i)) {
     NHole(id) => if id == 0 {
       hole_params(args, params, i + 1)
     } else {
@@ -5392,7 +5356,6 @@ fn across_replay_msg(name: String) =
   "'{name}' is an open own captured across a replay boundary — a resumed run consumes it again; finish it before the persist, or move its whole lifetime inside the thunk"
 
 fn infer_call_saturated(args, fh, handle, span: ValidSpan, cname) = {
-  let arg_handles = collect_handles(args)
   // drift-audit: ignore — "return" is a Reason string, not an imperative keyword
   let ret_h = mint(InferredCallReturn(cname, Inferred("return")))
   // THE ONE-WAY CALL EDGE (D9 rung 1's B1+B3+charge arc). One pre-unify
@@ -5424,7 +5387,7 @@ fn infer_call_saturated(args, fh, handle, span: ValidSpan, cname) = {
       // runs the counts are equal by construction and the evidence is gone.
       // The refusal lives at that drop (src/types.mn place_positional).
       replay_barrier_gate(dps0, args, span, 0)
-      fn_arg_directional_positions(dps0, arg_handles, span)
+      fn_arg_directional_positions(dps0, args, span)
     },
     _ => [],
   }
@@ -5432,7 +5395,7 @@ fn infer_call_saturated(args, fh, handle, span: ValidSpan, cname) = {
     GNode(NBound(TFun(_, _, crow0)), _) => crow0,
     _ => mk_ef_open([], graph_fresh_row(InferredCallReturn(cname, Inferred("effects")))),
   }
-  let expected = TFun(build_inferred_params_masked(arg_handles, masked), TVar(ret_h), erow)
+  let expected = TFun(build_inferred_params_masked(args, masked), TVar(ret_h), erow)
   let expected_h = mint(InferredCallReturn(cname, Inferred("expected function type")))
   graph_bind(expected_h, expected, Located(span, InferredCallReturn(cname, Inferred("expected"))))
   unify(fh, expected_h, span, InferredCallReturn(cname, Inferred("unification")))
@@ -5466,8 +5429,8 @@ fn infer_call_saturated(args, fh, handle, span: ValidSpan, cname) = {
   // The partial path's supplied-arg discharge is the same law at
   // unify_args_positionally. What the call owes is what every function the
   // callee can be demands, read along its edges (`call_owes`).
-  call_owes(fn_leaves(fh), arg_handles, handle, span)
-  ages_call(fh, cname, arg_handles)
+  call_owes(fn_leaves(fh), args, handle, span)
+  ages_call(fh, cname, args)
   stage_continuation_boundary(cname, handle)
 }
 
@@ -5533,7 +5496,7 @@ fn perform_slot_value(args, slot) = match slot {
   (ai, di) => (di, if ai < len(args) { literal_eff_arg(list_index(args, ai)) } else { None }),
 }
 
-fn literal_eff_arg(arg) = match graph_node_body(node_handle(arg)) {
+fn literal_eff_arg(arg) = match graph_node_body(arg) {
   NExpr(LitString(s)) => Some(EAString(s)),
   NExpr(LitInt(k)) => Some(EAInt(k)),
   NExpr(LitFloat(f)) => Some(EAFloat(f)),
@@ -5636,8 +5599,8 @@ fn note_application(call_h, leaf) = match graph_node_body(leaf) {
 fn callee_in_sight(leaf) = match graph_node_body(leaf) {
   NExpr(LambdaExpr(_, _)) => true,
   NExpr(VarRef(name)) => if env_lookup_is_global(name) { true } else { stated_parameter(leaf) },
-  NExpr(CallExpr(callee, _)) => callee_in_sight(node_handle(callee)),
-  NExpr(PipeExpr(PForward, _, stage)) => callee_in_sight(node_handle(stage)),
+  NExpr(CallExpr(callee, _)) => callee_in_sight(callee),
+  NExpr(PipeExpr(PForward, _, stage)) => callee_in_sight(stage),
   _ => false,
 }
 
@@ -5799,21 +5762,20 @@ fn infer_lambda(params, body_node, handle, span: ValidSpan, binder) = {
     BoundByCallers => declare_params(params, typed, param_handles, guard_cells(params, "lambda")),
     BoundByTheCycle => typed,
   }
-  let bh = node_handle(body_node)
-  inf_enter_fn(row_handle, bh, span, [])
-  inf_frame_params(param_handles ++ [bh])
+  inf_enter_fn(row_handle, body_node, span, [])
+  inf_frame_params(param_handles ++ [body_node])
   ages_open(AgeClosure)
   infer_expr(body_node)
   ages_pop()
   exit_frame()
-  hand_on_value(bh)
+  hand_on_value(body_node)
   let published = match binder {
     BoundByCallers => published_params(declared, param_handles, "lambda", span),
     BoundByTheCycle => declared,
   }
   graph_bind(
     handle,
-    TFun(published, published_fn_ret(TVar(bh), bh), mk_ef_open([], row_handle)),
+    TFun(published, published_fn_ret(TVar(body_node), body_node), mk_ef_open([], row_handle)),
     Located(span, Inferred("lambda"))
   )
   // H4: every lambda allocates a closure record on the heap.
@@ -5827,7 +5789,7 @@ fn infer_lambda(params, body_node, handle, span: ValidSpan, binder) = {
 // lowers the body in the frame it stands in (lower.mn's lower_feedback_body
 // and lower_pipe_complete), so no closure is minted and the judgment charges
 // none. One test, both readers.
-fn inlinable_lambda(node) = match graph_node_body(node_handle(node)) {
+fn inlinable_lambda(node) = match graph_node_body(node) {
   NExpr(LambdaExpr(params, body)) => if len(params) == 1 { Some((params, body)) } else { None },
   _ => None,
 }
@@ -5836,7 +5798,7 @@ fn inlinable_lambda(node) = match graph_node_body(node_handle(node)) {
 // stage, whose parameters are the product's parts. One parameter is
 // `inlinable_lambda`'s own case; the test is the same one, read at the
 // arity the site supplies.
-fn inlinable_lambda_arity(node, n) = match graph_node_body(node_handle(node)) {
+fn inlinable_lambda_arity(node, n) = match graph_node_body(node) {
   NExpr(LambdaExpr(params, body)) => if len(params) == n { Some((params, body)) } else { None },
   _ => None,
 }
@@ -5847,26 +5809,23 @@ fn inlinable_lambda_arity(node, n) = match graph_node_body(node_handle(node)) {
 // is the value bound to its parameters, so it mints no closure. The
 // lowering applies it the same way (lower.mn's lower_pipe_complete_many), which is
 // what keeps the stage's cost in the row exactly what the emit builds.
-fn infer_stage(stage, arity) = {
-  let rh = node_handle(stage)
-  match graph_node_body(rh) {
-    NExpr(CallExpr(rf, rargs)) => match infer_call_node(rf, rargs, rh, graph_span_of(rh), AtStage) {
-      CallPartial(_) => (),
-      CallSaturated => (),
-      CallSubstrateHoled(_) => (),
-    },
-    _ => match inlinable_lambda_arity(stage, arity) {
-      Some((params, body)) => infer_lambda(params, body, rh, graph_span_of(rh), BoundByCallers),
-      None => infer_expr(stage),
-    },
-  }
+fn infer_stage(stage, arity) = match graph_node_body(stage) {
+  NExpr(CallExpr(rf, rargs)) => match infer_call_node(rf, rargs, stage, graph_span_of(stage), AtStage) {
+    CallPartial(_) => (),
+    CallSaturated => (),
+    CallSubstrateHoled(_) => (),
+  },
+  _ => match inlinable_lambda_arity(stage, arity) {
+    Some((params, body)) => infer_lambda(params, body, stage, graph_span_of(stage), BoundByCallers),
+    None => infer_expr(stage),
+  },
 }
 
 // How many values a pipe's stage is given: one, or the parts of a product
 // the site builds (the merge). The literal standing as that stage takes
 // exactly that many parameters and is applied in place, minting nothing.
 fn pipe_stage_arity(left) = {
-  let n = product_arity_at(node_handle(left))
+  let n = product_arity_at(left)
   if n > 1 { n } else { 1 }
 }
 
@@ -5886,7 +5845,6 @@ fn product_slot_param(t) = mk_param("_", t)
 
 fn infer_pipe_tee(left, right, handle, span: ValidSpan) = {
   let body_row_h = graph_fresh_row(Inferred("~> body row"))
-  let body_answer_h = node_handle(left)
   // drift-audit: ignore — two independent frame inputs (row handle, answer handle) — one frame record's fields, not parallel arrays
   // The tee body is ONE install's scope — its effect-instance fragments
   // join at the accumulation seam (inf_add_row_unified's gate).
@@ -5906,7 +5864,7 @@ fn infer_pipe_tee(left, right, handle, span: ValidSpan) = {
   let projection = projection_of_effects(map(eff_name_str, arm_names))
   let opens_arena = install_opens_arena(projection)
   if opens_arena { ages_depth(1) } else { () }
-  inf_enter_fn(body_row_h, body_answer_h, span, [])
+  inf_enter_fn(body_row_h, left, span, [])
   inf_mark_install_frame(arm_names)
   infer_expr(left)
   exit_frame()
@@ -5921,7 +5879,7 @@ fn infer_pipe_tee(left, right, handle, span: ValidSpan) = {
   }
   infer_expr(right)
   let attach = install_reason(right, span)
-  install_answer(right, body_answer_h, span, attach)
+  install_answer(right, left, span, attach)
   // The install itself, in the frame it stands in: a dispatched install
   // builds its record and pushes its world, so it allocates, and `!Alloc`
   // accepted every one while the heap grew per call (40 bytes for a
@@ -5967,7 +5925,7 @@ fn infer_pipe_tee(left, right, handle, span: ValidSpan) = {
     // graph proves the handler identity at a decl; a value forwards.
     inf_add_row_at(handle, body_row),
   }
-  graph_bind(handle, TVar(body_answer_h), attach)
+  graph_bind(handle, TVar(left), attach)
 }
 
 // What an install costs the frame it stands in, by its class (the roster in
@@ -5997,7 +5955,7 @@ fn install_opens_arena(projection) = match projection {
 // every instantiation keys its own twin by the class that move needs. The
 // other classes read nothing of it.
 fn install_reads(projection, left) = match projection {
-  PArena => shape_demand(node_handle(left), MovedShape),
+  PArena => shape_demand(left, MovedShape),
   PDerivative => (),
   PSchedule(_) => (),
   PDispatch => (),
@@ -6156,19 +6114,16 @@ fn handler_e_r(right) = match callee_name(right) {
 // config arguments (lower.mn's extract_handler_config_args) — a `~> h(args)`
 // install is a call and writes its product at the call node. A handler
 // without config writes none.
-fn note_bare_handler_product(right) = {
-  let rh = node_handle(right)
-  match graph_node_body(rh) {
-    NExpr(VarRef(name)) => {
-      let params = callee_params_at(rh)
-      if len(params) == 0 {
-        ()
-      } else {
-        graph_product_note(rh, resolve_call_args(params, [], name), [], CallApplied)
-      }
-    },
-    _ => (),
-  }
+fn note_bare_handler_product(right) = match graph_node_body(right) {
+  NExpr(VarRef(name)) => {
+    let params = callee_params_at(right)
+    if len(params) == 0 {
+      ()
+    } else {
+      graph_product_note(right, resolve_call_args(params, [], name), [], CallApplied)
+    }
+  },
+  _ => (),
 }
 
 // The residual READ at the install — the instantiation the raw handle
@@ -6185,7 +6140,7 @@ fn note_bare_handler_product(right) = {
 // edge set), so the charge stays exact. A labeled or arity-short
 // install falls back to the raw residual (positions are the pairing;
 // resolve_call_args' full label resolution is the refinement).
-fn residual_with_config_args(resid_h, config, right) = match graph_node_body(node_handle(right)) {
+fn residual_with_config_args(resid_h, config, right) = match graph_node_body(right) {
   NExpr(CallExpr(_, args)) => {
     // The residual rides the CELL AS AN EDGE — the shape a scheme's row
     // rides (mk_ef_open on the handle), never read_bound_row: a residual
@@ -6219,7 +6174,7 @@ fn residual_with_config_args(resid_h, config, right) = match graph_node_body(nod
 
 fn any_arg_labeled(ref args) = any(
   {
-    a => match graph_node_body(node_handle(a)) {
+    a => match graph_node_body(a) {
       NExpr(LabeledArg(_, _)) => true,
       _ => false,
     },
@@ -6250,7 +6205,7 @@ fn residual_has_root(resid, root) = match resid {
   _ => false,
 }
 
-fn arg_fn_row(ref args, i) = match chase_deep(lookup_ty(node_handle(list_index(args, i)))) {
+fn arg_fn_row(ref args, i) = match chase_deep(lookup_ty(list_index(args, i))) {
   TFun(_, _, arow) => Some(arow),
   _ => None,
 }
@@ -6265,7 +6220,7 @@ fn arg_fn_row(ref args, i) = match chase_deep(lookup_ty(node_handle(list_index(a
 // [f(a)] ~ …`, the infinite type the occurs-check then rejects. One instance,
 // one unify; the positions never cross (register_effect_ops names this: "the
 // install unifies the whole instance per-position").
-fn unify_install_payload(body_row, handled, right, span: ValidSpan) = match handler_payload_ty(lookup_ty(node_handle(right))) {
+fn unify_install_payload(body_row, handled, right, span: ValidSpan) = match handler_payload_ty(lookup_ty(right)) {
   None => (),
   Some(pty) => // Unify the handler's ONE instance with EVERY same-named instance the body
   // performed — not just the last. A multi-payload effect fragments across its
@@ -6365,7 +6320,7 @@ fn handler_answer_ty(ty) = match ty {
 // clean and ran (`tests/micros/mn-arm-answer-is-the-install.mn`), and an arm
 // that observed its answer was emitted at the floor, its answer a variable
 // no install bound (`tests/micros/mn-arm-answer-observed.mn`).
-fn install_answer(right, body_answer_h, span: ValidSpan, reason) = match handler_answer_ty(lookup_ty(node_handle(right))) {
+fn install_answer(right, body_answer_h, span: ValidSpan, reason) = match handler_answer_ty(lookup_ty(right)) {
   Some(answer) => unify_types(answer, TVar(body_answer_h), span, reason),
   None => (),
 }
@@ -6384,10 +6339,7 @@ fn answer_reason(right) = match env_lookup(callee_name(right)) {
   Some(entry) => match entry {
     (_, _, kind) => match kind {
       HandlerKind(_, _, _, _, arms) => match find(arm_own_value, arms) {
-        Some(arm) => Located(
-          graph_span_of(node_handle(arm.body)),
-          Inferred("the arm {arm.op_name} of handler {callee_name(right)}")
-        ),
+        Some(arm) => Located(graph_span_of(arm.body), Inferred("the arm {arm.op_name} of handler {callee_name(right)}")),
         None => Inferred("handler attachment"),
       },
       _ => Inferred("handler attachment"),
@@ -6398,7 +6350,7 @@ fn answer_reason(right) = match env_lookup(callee_name(right)) {
 
 // An arm whose value is the install's: a tail of its own past every
 // `resume` (`arm_tails`, the value walk's reader of the same fact).
-fn arm_own_value(arm) = len(arm_tails(node_handle(arm.body))) > 0
+fn arm_own_value(arm) = len(arm_tails(arm.body)) > 0
 
 // The type args of a parameterized effect's payload (EAType only; a scalar
 // effect arg like Sample(44100) carries no type).
@@ -6431,157 +6383,153 @@ fn instances_in_names(names, ename: String) = {
 // The five verbs, each inferred by its topology.
 // `PFanout` (`<|`/`><`) and `PTee` are handled BEFORE `infer_pipe` fires
 // (see `PipeExpr` arm in `infer_expr`); their arms here are unreachable stubs.
-fn infer_pipe(kind, left, right, handle, span: ValidSpan) = {
-  let lh = node_handle(left)
-  let rh = node_handle(right)
-  match kind {
-    PForward => // |> converge — right applied to left. Transparent wire;
-    // unification pairs slots structurally (Parameters ARE tuples).
-    // THE ONE-WAY PIPE EDGE (the call edge's twin — D9 rung 1's
-    // B1+B3+charge arc): on the bound path the expectation's row IS
-    // the stage's own row, so unify_row meets identical rows and
-    // no-ops — a pipe never teaches its stage's cell (D5) — and the
-    // charge is the stage's row VERBATIM, live edges intact, folding
-    // at read time. A pre-free stage (a lambda, a local, a loose
-    // forward) binds to the expectation wholesale, so the fresh row
-    // cell becomes its own row cell and the same charge arm carries
-    // the polymorphic share; the old FnScheme share-guard dissolves —
-    // one-way discipline makes the shared cell read-only to callers,
-    // and a loose forward's edge now resolves late instead of
-    // charging nothing. The unify-failure path charges nothing.
-    {
-      // drift-audit: ignore — "return" is a Reason string; "|>" is a string literal key, not a pipe verb
-      let ret_h = mint(InferredPipeResult("|>", Inferred("return")))
-      let erow = match graph_chase(rh) {
-        GNode(NBound(TFun(_, _, srow0)), _) => srow0,
-        _ => mk_ef_open([], graph_fresh_row(InferredPipeResult("|>", Inferred("effects")))),
-      }
-      // THE MERGE (PLAN §4②, Faust's `,` then `:`): a product the site
-      // BUILDS, piped into a stage whose N slots are open, fills them —
-      // `(a) >< (b) |> f` is `f(a, b)` and costs what it costs, since the
-      // tuple is never built (`product_fills_stage`, graph.mn, read here
-      // for the expectation and at lower for the splice). A stage with ONE
-      // open slot takes the product whole, as any value does.
-      let expected = TFun(pipe_stage_params(lh, right), TVar(ret_h), erow)
-      let expected_h = mint(InferredPipeResult("|>", Inferred("expected fn")))
-      graph_bind(expected_h, expected, Located(span, InferredPipeResult("|>", Inferred("expected"))))
-      unify(rh, expected_h, span, InferredPipeResult("|>", Inferred("target")))
-      graph_bind(handle, TVar(ret_h), Located(span, InferredPipeResult("|>", Inferred("result"))))
-      // A stage is APPLIED to the piped value, so the pipe is a refinement
-      // construction site as a call's argument is: the stage's parameter
-      // claims of the value what its contract demands, pays the row the
-      // precondition guards where the claim is open, and a parameter stage
-      // learns what it is handed. The pipe raised nothing until P0·H:
-      // `0 |> inv` under `!Trap` checked clean and divided by zero (boot
-      // 13e8484a and the P0 tree alike).
-      // The left product's own charge, decided here because the stage's
-      // arrow is what decides it: a merge builds nothing, and a product
-      // the stage takes WHOLE is the record it was (`product_fate`'s
-      // `PfByPipe`, graph.mn).
-      if product_arity_at(lh) > 1 && !product_fills_stage(lh, right) {
-        inf_add_row_at(lh, construction_row())
-      } else {
-        ()
-      }
-      call_owes(fn_leaves(rh), [lh], handle, span)
-      // A pipe stage is an application; its result node is a suspension
-      // boundary exactly as a CallExpr's is (lower's k2 spine keys the
-      // bare-VarRef stage's completion call by THIS pipe node's handle).
-      stage_continuation_boundary("|>", handle)
-      match graph_chase(rh) {
-        GNode(NBound(TFun(_, _, crow)), _) => inf_add_row_unified_at(handle, crow),
-        _ => (),
-      }
-    },
-    PFanout(_) => // PFanout (<| and ><) is handled BEFORE infer_pipe fires (see the
-    // PipeExpr arm in infer_expr → infer_fanout). Its branches run under
-    // a branching-ledger scope so parallel consumes collide correctly.
+fn infer_pipe(kind, left, right, handle, span: ValidSpan) = match kind {
+  PForward => // |> converge — right applied to left. Transparent wire;
+  // unification pairs slots structurally (Parameters ARE tuples).
+  // THE ONE-WAY PIPE EDGE (the call edge's twin — D9 rung 1's
+  // B1+B3+charge arc): on the bound path the expectation's row IS
+  // the stage's own row, so unify_row meets identical rows and
+  // no-ops — a pipe never teaches its stage's cell (D5) — and the
+  // charge is the stage's row VERBATIM, live edges intact, folding
+  // at read time. A pre-free stage (a lambda, a local, a loose
+  // forward) binds to the expectation wholesale, so the fresh row
+  // cell becomes its own row cell and the same charge arm carries
+  // the polymorphic share; the old FnScheme share-guard dissolves —
+  // one-way discipline makes the shared cell read-only to callers,
+  // and a loose forward's edge now resolves late instead of
+  // charging nothing. The unify-failure path charges nothing.
+  {
+    // drift-audit: ignore — "return" is a Reason string; "|>" is a string literal key, not a pipe verb
+    let ret_h = mint(InferredPipeResult("|>", Inferred("return")))
+    let erow = match graph_chase(right) {
+      GNode(NBound(TFun(_, _, srow0)), _) => srow0,
+      _ => mk_ef_open([], graph_fresh_row(InferredPipeResult("|>", Inferred("effects")))),
+    }
+    // THE MERGE (PLAN §4②, Faust's `,` then `:`): a product the site
+    // BUILDS, piped into a stage whose N slots are open, fills them —
+    // `(a) >< (b) |> f` is `f(a, b)` and costs what it costs, since the
+    // tuple is never built (`product_fills_stage`, graph.mn, read here
+    // for the expectation and at lower for the splice). A stage with ONE
+    // open slot takes the product whole, as any value does.
+    let expected = TFun(pipe_stage_params(left, right), TVar(ret_h), erow)
+    let expected_h = mint(InferredPipeResult("|>", Inferred("expected fn")))
+    graph_bind(expected_h, expected, Located(span, InferredPipeResult("|>", Inferred("expected"))))
+    unify(right, expected_h, span, InferredPipeResult("|>", Inferred("target")))
+    graph_bind(handle, TVar(ret_h), Located(span, InferredPipeResult("|>", Inferred("result"))))
+    // A stage is APPLIED to the piped value, so the pipe is a refinement
+    // construction site as a call's argument is: the stage's parameter
+    // claims of the value what its contract demands, pays the row the
+    // precondition guards where the claim is open, and a parameter stage
+    // learns what it is handed. The pipe raised nothing until P0·H:
+    // `0 |> inv` under `!Trap` checked clean and divided by zero (boot
+    // 13e8484a and the P0 tree alike).
+    // The left product's own charge, decided here because the stage's
+    // arrow is what decides it: a merge builds nothing, and a product
+    // the stage takes WHOLE is the record it was (`product_fate`'s
+    // `PfByPipe`, graph.mn).
+    if product_arity_at(left) > 1 && !product_fills_stage(left, right) {
+      inf_add_row_at(left, construction_row())
+    } else {
+      ()
+    }
+    call_owes(fn_leaves(right), [left], handle, span)
+    // A pipe stage is an application; its result node is a suspension
+    // boundary exactly as a CallExpr's is (lower's k2 spine keys the
+    // bare-VarRef stage's completion call by THIS pipe node's handle).
+    stage_continuation_boundary("|>", handle)
+    match graph_chase(right) {
+      GNode(NBound(TFun(_, _, crow)), _) => inf_add_row_unified_at(handle, crow),
+      _ => (),
+    }
+  },
+  PFanout(_) => // PFanout (<| and ><) is handled BEFORE infer_pipe fires (see the
+  // PipeExpr arm in infer_expr → infer_fanout). Its branches run under
+  // a branching-ledger scope so parallel consumes collide correctly.
+  //
+  // unreachable; handled in infer_fanout
+  (),
+  PTee => // A tee is judged by `infer_pipe_tee` before `infer_pipe` fires (the
+  // PipeExpr arm in infer_expr dispatches it there): the install's answer
+  // met with the body's, its row, its reason naming the arm that answers.
+  //
+  // unreachable; handled in infer_pipe_tee
+  (),
+  PFeedback => // <~ feedback — SYNTAX §«<~» requires an iterative context: an
+  // Iterate-class effect in the enclosing stack AT THE SITE. The check
+  // that stood here read iter_context() — the COMPILER'S OWN runtime
+  // handler stack — while inferring the COMPILED PROGRAM's structure: a
+  // category error that reported E_FeedbackNoContext on every real `<~`
+  // in the wheel (11 sites, including SYNTAX's own canonical lowpass)
+  // because the pipeline chains install no_iter_context. The honest
+  // compile-time question — does the site's AMBIENT ROW carry an
+  // Iterate-CLASS effect? — needs class membership as a DECLARED fact
+  // (not a name-allowlist): the named peer
+  // Hβ.effects.iterate-class-declaration. Until it lands, the verb
+  // types by unification and a genuinely driverless `<~` surfaces at
+  // runtime (ev-miss, loud); the E_FeedbackNoContext DiagKind stays
+  // for the check's return.
+  {
+    // SYNTAX §«<~» — the recurrence form: `((prev) => body) <~ delay(1)`
+    // binds PREV to the PRIOR ITERATION'S OUTPUT, so the lambda's param
+    // unifies with its own result (y[n-1] has y's type — the prior
+    // carries the forward path's refinement row for free) and the verb's
+    // value IS that result. A bare LHS is the feed-forward form: the verb
+    // carries its value through. The RHS names WHAT flows back — a
+    // FeedbackSpec value — and is checked as one; it is never unified
+    // with the FLOW (the arrow~spec unify that stood here mismatched all
+    // 15 recurrence sites, SYNTAX's own canonical lowpass included).
+    match graph_chase(left) {
+      GNode(NBound(TFun(params, ret_ty, lam_row)), _) => // THE BODY'S ROW IS THE SITE'S ROW. This destructure sent the
+      // recurrence lambda's row to `_row` and dropped it, so a forbidden
+      // effect performed inside the cycle never reached the enclosing
+      // fn: `fn cycle() with !E` around `((prev) => prev + bump()) <~
+      // Delay(1)` CHECKED CLEAN. The verb is pure topology, but what the
+      // body performs is still performed — the edge JOINS, it does not
+      // substitute (Hβ.effects.feedback-row-substitutes; repros at
+      // tests/frontier/mn-feedback-negation.mn and -transport.mn).
+      {
+        inf_add_row_at(handle, lam_row)
+        if len(params) == 1 {
+          unify_types(
+            param_ty(list_index(params, 0)),
+            ret_ty,
+            span,
+            InferredPipeResult("<~", Inferred("the prior is the prior output"))
+          )
+          graph_bind(handle, ret_ty, Located(span, InferredPipeResult("<~", Inferred("recurrence result"))))
+        } else {
+          graph_bind(handle, TVar(left), Located(span, InferredPipeResult("<~", Inferred("feedback"))))
+        }
+      },
+      _ => graph_bind(handle, TVar(left), Located(span, InferredPipeResult("<~", Inferred("feedback")))),
+    }
+    unify_types(
+      TVar(right),
+      TName("FeedbackSpec", [TVar(mint(Inferred("feedback state element")))]),
+      span,
+      InferredPipeResult("<~", Inferred("the RHS is a state element"))
+    )
+    // What the site's declared depth has to answer for, both arms of
+    // the one read that also SIZES the line at lower.
     //
-    // unreachable; handled in infer_fanout
-    (),
-    PTee => // A tee is judged by `infer_pipe_tee` before `infer_pipe` fires (the
-    // PipeExpr arm in infer_expr dispatches it there): the install's answer
-    // met with the body's, its row, its reason naming the arm that answers.
+    // THE CAUSALITY RULE — Faust's, at Mentl's typed altitude: a cycle
+    // whose declared delay is ZERO has no computable value, the prior
+    // being the very output being computed. (Negative reads the same
+    // way, and cannot size a line either.)
     //
-    // unreachable; handled in infer_pipe_tee
-    (),
-    PFeedback => // <~ feedback — SYNTAX §«<~» requires an iterative context: an
-    // Iterate-class effect in the enclosing stack AT THE SITE. The check
-    // that stood here read iter_context() — the COMPILER'S OWN runtime
-    // handler stack — while inferring the COMPILED PROGRAM's structure: a
-    // category error that reported E_FeedbackNoContext on every real `<~`
-    // in the wheel (11 sites, including SYNTAX's own canonical lowpass)
-    // because the pipeline chains install no_iter_context. The honest
-    // compile-time question — does the site's AMBIENT ROW carry an
-    // Iterate-CLASS effect? — needs class membership as a DECLARED fact
-    // (not a name-allowlist): the named peer
-    // Hβ.effects.iterate-class-declaration. Until it lands, the verb
-    // types by unification and a genuinely driverless `<~` surfaces at
-    // runtime (ev-miss, loud); the E_FeedbackNoContext DiagKind stays
-    // for the check's return.
-    {
-      // SYNTAX §«<~» — the recurrence form: `((prev) => body) <~ delay(1)`
-      // binds PREV to the PRIOR ITERATION'S OUTPUT, so the lambda's param
-      // unifies with its own result (y[n-1] has y's type — the prior
-      // carries the forward path's refinement row for free) and the verb's
-      // value IS that result. A bare LHS is the feed-forward form: the verb
-      // carries its value through. The RHS names WHAT flows back — a
-      // FeedbackSpec value — and is checked as one; it is never unified
-      // with the FLOW (the arrow~spec unify that stood here mismatched all
-      // 15 recurrence sites, SYNTAX's own canonical lowpass included).
-      match graph_chase(lh) {
-        GNode(NBound(TFun(params, ret_ty, lam_row)), _) => // THE BODY'S ROW IS THE SITE'S ROW. This destructure sent the
-        // recurrence lambda's row to `_row` and dropped it, so a forbidden
-        // effect performed inside the cycle never reached the enclosing
-        // fn: `fn cycle() with !E` around `((prev) => prev + bump()) <~
-        // Delay(1)` CHECKED CLEAN. The verb is pure topology, but what the
-        // body performs is still performed — the edge JOINS, it does not
-        // substitute (Hβ.effects.feedback-row-substitutes; repros at
-        // tests/frontier/mn-feedback-negation.mn and -transport.mn).
-        {
-          inf_add_row_at(handle, lam_row)
-          if len(params) == 1 {
-            unify_types(
-              param_ty(list_index(params, 0)),
-              ret_ty,
-              span,
-              InferredPipeResult("<~", Inferred("the prior is the prior output"))
-            )
-            graph_bind(handle, ret_ty, Located(span, InferredPipeResult("<~", Inferred("recurrence result"))))
-          } else {
-            graph_bind(handle, TVar(lh), Located(span, InferredPipeResult("<~", Inferred("feedback"))))
-          }
-        },
-        _ => graph_bind(handle, TVar(lh), Located(span, InferredPipeResult("<~", Inferred("feedback")))),
-      }
-      unify_types(
-        TVar(rh),
-        TName("FeedbackSpec", [TVar(mint(Inferred("feedback state element")))]),
-        span,
-        InferredPipeResult("<~", Inferred("the RHS is a state element"))
-      )
-      // What the site's declared depth has to answer for, both arms of
-      // the one read that also SIZES the line at lower.
-      //
-      // THE CAUSALITY RULE — Faust's, at Mentl's typed altitude: a cycle
-      // whose declared delay is ZERO has no computable value, the prior
-      // being the very output being computed. (Negative reads the same
-      // way, and cannot size a line either.)
-      //
-      // THE SAYABILITY RULE: a line is a fixed set of declared slots, so
-      // a depth known only at runtime is a depth the medium cannot hold
-      // — and handing that site one slot is the silent wrong this whole
-      // read exists to end.
-      //
-      // Both productive (report, keep typing) and both ARMED, so neither
-      // reaches an executable.
-      match feedback_depth(right) {
-        DepthLiteral(n) => if n <= 0 { report(EZeroDelayFeedback(span)) } else { () },
-        DepthComputed => report(EComputedDelayDepth(span)),
-        DepthUnstated => (),
-      }
-    },
-  }
+    // THE SAYABILITY RULE: a line is a fixed set of declared slots, so
+    // a depth known only at runtime is a depth the medium cannot hold
+    // — and handing that site one slot is the silent wrong this whole
+    // read exists to end.
+    //
+    // Both productive (report, keep typing) and both ARMED, so neither
+    // reaches an executable.
+    match feedback_depth(right) {
+      DepthLiteral(n) => if n <= 0 { report(EZeroDelayFeedback(span)) } else { () },
+      DepthComputed => report(EComputedDelayDepth(span)),
+      DepthUnstated => (),
+    }
+  },
 }
 
 // What depth does this `<~` RHS DECLARE? One read, and every judgment
@@ -6604,8 +6552,8 @@ type FeedbackDepth
   // prior is the previous tick's value, one slot, nothing to read
   | DepthUnstated
 
-fn feedback_depth(spec) = match graph_node_body(node_handle(spec)) {
-  NExpr(CallExpr(callee, args)) => match graph_node_body(node_handle(callee)) {
+fn feedback_depth(spec) = match graph_node_body(spec) {
+  NExpr(CallExpr(callee, args)) => match graph_node_body(callee) {
     NExpr(VarRef(fname)) => if is_delay_spec_name(fname) { delay_arg_depth(args) } else { DepthUnstated },
     _ => DepthUnstated,
   },
@@ -6619,7 +6567,7 @@ fn is_delay_spec_name(fname: String) = fname == "delay" || fname == "Delay"
 fn delay_arg_depth(args) = if len(args) == 0 {
   DepthUnstated
 } else {
-  match graph_node_body(node_handle(list_index(args, 0))) {
+  match graph_node_body(list_index(args, 0)) {
     NExpr(LitInt(n)) => DepthLiteral(n),
     _ => DepthComputed,
   }
@@ -6707,7 +6655,6 @@ fn infer_fanout_nary_branches(branches, span: ValidSpan, i, n) = if i >= n {
 // `() -> carrier_h`. The nested InferCtx frame owns the thunk's exact row; once
 // closed, that row flows into the enclosing fanout just as a lambda row does.
 fn infer_fanout_value_boundary(branch, span: ValidSpan, label: String) = {
-  let branch_h = node_handle(branch)
   let result_h = mint(InferredPipeResult("><", Inferred("{label} branch result")))
   let carrier_h = mint(InferredPipeResult("><", Inferred("{label} branch carrier")))
   let thunk_h = mint(InferredPipeResult("><", Inferred("{label} executable boundary")))
@@ -6719,7 +6666,7 @@ fn infer_fanout_value_boundary(branch, span: ValidSpan, label: String) = {
   infer_expr(branch)
   graph_bind(
     result_h,
-    TVar(branch_h),
+    TVar(branch),
     Located(span, InferredPipeResult("><", Inferred("{label} branch evaluation")))
   )
   // The branch evaluation is an application inside the thunk frame; its
@@ -6747,7 +6694,7 @@ fn infer_fanout_value_boundary(branch, span: ValidSpan, label: String) = {
     TName("PersistHandle", []),
     Located(span, InferredPipeResult("><", Inferred("{label} persist schedule ticket")))
   )
-  inf_add_row_at(branch_h, thunk_row)
+  inf_add_row_at(branch, thunk_row)
   BoundaryEdge(result_h, thunk_h, carrier_h, thread_ticket_h, persist_ticket_h)
 }
 
@@ -6762,9 +6709,7 @@ fn boundary_result_ty(edge) = match edge {
 // outer-scope own collide.
 fn infer_fanout_share(left, right, handle, span: ValidSpan) = {
   infer_expr(left)
-  let input_h = node_handle(left)
-  let rh = node_handle(right)
-  let rbody = graph_node_body(rh)
+  let rbody = graph_node_body(right)
   // Lower normalizes a non-tuple RHS to one branch, so infer must draw the
   // same application edge and the same one-element output product. Empty,
   // singleton, and N-way forms now share one topology.
@@ -6777,7 +6722,7 @@ fn infer_fanout_share(left, right, handle, span: ValidSpan) = {
     []
   } else {
     branch_enter(BParallel)
-    let inferred_edges = infer_fanout_share_branches(branches, input_h, span, 0, n)
+    let inferred_edges = infer_fanout_share_branches(branches, left, span, 0, n)
     branch_exit(span)
     inferred_edges
   }
@@ -6785,12 +6730,12 @@ fn infer_fanout_share(left, right, handle, span: ValidSpan) = {
   // escapes — the same rule, and the same cost, `><` pays.
   charge_product(handle)
   // Preserve the RHS as the tuple of STAGES it denotes. In the singleton
-  // form `rh` is the branch handle itself and infer_fanout_apply_one already
+  // form `right` is the branch itself and infer_fanout_apply_one already
   // proved it TFun, so rebinding it to the output tuple would erase the
   // branch's row. The fanout node alone owns the tuple of application results.
   match rbody {
     NExpr(MakeTupleExpr(_)) => graph_bind(
-      rh,
+      right,
       TTuple(collect_tvar_types(branches)),
       Located(span, Inferred("<| fanout — tuple of branch stages"))
     ),
@@ -6823,7 +6768,6 @@ fn infer_fanout_share_branches(branches, input_h, span: ValidSpan, i, n) = if i 
 }
 
 fn infer_fanout_apply_one(branch, input_h, span: ValidSpan) = {
-  let bh = node_handle(branch)
   let ret_h = mint(InferredPipeResult("<|", Inferred("branch result")))
   let carrier_h = mint(InferredPipeResult("<|", Inferred("branch carrier")))
   let thunk_h = mint(InferredPipeResult("<|", Inferred("executable boundary")))
@@ -6843,14 +6787,14 @@ fn infer_fanout_apply_one(branch, input_h, span: ValidSpan) = {
   // stage is: completed or bound in place, minting nothing.
   infer_stage(branch, 1)
   graph_bind(expected_h, expected, Located(span, Inferred("<| branch applied to the borrowed input")))
-  unify(bh, expected_h, span, Inferred("<| branch borrows the shared input"))
+  unify(branch, expected_h, span, Inferred("<| branch borrows the shared input"))
   // The branch call's row flows into the boundary frame — the same
   // read-the-callee's-own-row discipline infer_call_saturated uses.
-  match graph_chase(bh) {
-    GNode(NBound(TFun(_, _, brow)), _) => inf_add_row_unified_at(bh, brow),
+  match graph_chase(branch) {
+    GNode(NBound(TFun(_, _, brow)), _) => inf_add_row_unified_at(branch, brow),
     _ => match graph_chase(call_row_h) {
-      GNode(NRowBound(row), _) => inf_add_row_unified_at(bh, row),
-      GNode(NRowFree(_), _) => inf_add_row_at(bh, mk_ef_open([], call_row_h)),
+      GNode(NRowBound(row), _) => inf_add_row_unified_at(branch, row),
+      GNode(NRowFree(_), _) => inf_add_row_at(branch, mk_ef_open([], call_row_h)),
       _ => (),
     },
   }
@@ -6878,7 +6822,7 @@ fn infer_fanout_apply_one(branch, input_h, span: ValidSpan) = {
     TName("PersistHandle", []),
     Located(span, InferredPipeResult("<|", Inferred("persist schedule ticket")))
   )
-  inf_add_row_at(bh, thunk_row)
+  inf_add_row_at(branch, thunk_row)
   BoundaryEdge(ret_h, thunk_h, carrier_h, thread_ticket_h, persist_ticket_h)
 }
 
@@ -7512,14 +7456,13 @@ fn infer_record_field_values(fields) = if len(fields) == 0 {
   }
 }
 
-fn build_record_field_types(fields) =
-  map({ (name, value) => (name, TVar(node_handle(value))) }, fields)
+fn build_record_field_types(fields) = map({ (name, value) => (name, TVar(value)) }, fields)
 
 // The record field list inferred at a node — chase its handle to the
 // bound type and read its fields LIVE (TRecord / TRecordOpen carry them;
 // any other resolved type yields []). The record-update result derives
 // from this, so it reads the base's proven shape, never a copy.
-fn record_fields_of_node(node) = match graph_chase(node_handle(node)) {
+fn record_fields_of_node(node) = match graph_chase(node) {
   GNode(NBound(ty), _) => match ty {
     TRecord(fields) => fields,
     TRecordOpen(fields, v) => match record_row_full(fields, v) {
@@ -7549,7 +7492,7 @@ fn reject_field(fields, target) = filter({ (n, _) => n != target }, fields)
 // H4.1 projection — pull the value handles out of a record-field list
 // for region-join lookup. Field names aren't needed for region
 // tracking; only the per-value handles matter.
-fn record_field_handles(fields) = map({ (_, value) => node_handle(value) }, fields)
+fn record_field_handles(fields) = map({ (_, value) => value }, fields)
 
 // H2.3: validate a nominal record literal's fields against the
 // declared schema. Both lists arrive sorted by field name (parser
@@ -7581,10 +7524,9 @@ fn check_nominal_record_loop(declared, provided, type_name, span: ValidSpan, i, 
   match list_index(declared, i) {
     (dn, dt) => match list_index(provided, j) {
       (pn, pv) => if field_name_eq(dn, pn) {
-        let vh = node_handle(pv)
         let expect_h = mint(Inferred("record field type"))
         graph_bind(expect_h, dt, Located(span, Inferred("declared field type")))
-        unify(vh, expect_h, span, OpConstraint("record field", Inferred("declared"), Inferred("provided")))
+        unify(pv, expect_h, span, OpConstraint("record field", Inferred("declared"), Inferred("provided")))
         // A declared field type is a STATED position, claimed as a
         // constructor's argument is: a refined value claims its
         // refinement, a function crossing in pays what it demands beyond
@@ -7594,8 +7536,8 @@ fn check_nominal_record_loop(declared, provided, type_name, span: ValidSpan, i, 
         // compiled clean, and `Ops{f: inv}` under `{f: (Int) -> Int}`,
         // built behind `fn mk()`, let `mk().f(0)` divide by zero under
         // `!Trap` (pin 852184886f52a848, S6).
-        learn_precondition(vh, dt)
-        claim_refinement(dt, vh, graph_span_of(vh))
+        learn_precondition(pv, dt)
+        claim_refinement(dt, pv, graph_span_of(pv))
         check_nominal_record_loop(declared, provided, type_name, span, i + 1, j + 1, ni, nj)
       } else if str_lt(dn, pn) {
         report(ERecordFieldMissing(dn, type_name, span))
@@ -8305,7 +8247,7 @@ fn handler_state_writes(hname: String) = match env_lookup(hname) {
   None => [],
 }
 
-fn state_field_written_cells(sf) = match graph_binder_of(node_handle(state_field_init(sf))) {
+fn state_field_written_cells(sf) = match graph_binder_of(state_field_init(sf)) {
   Some(fact) => match fact {
     StateFact(f) => drop(1, f.writes) ++ f.stores,
     ParamFact(_) => [],
@@ -8323,14 +8265,14 @@ fn store_targets(h, scope) = match graph_node_body(h) {
   },
   NExpr(CallExpr(callee, args)) => call_targets(callee, args, scope),
   NExpr(MakeListExpr(_)) => [],
-  NExpr(BlockExpr(_, f)) => store_targets(node_handle(f), scope),
-  NExpr(IfExpr(_, t, e)) => store_targets(node_handle(t), scope) ++ store_targets(node_handle(e), scope),
+  NExpr(BlockExpr(_, f)) => store_targets(f, scope),
+  NExpr(IfExpr(_, t, e)) => store_targets(t, scope) ++ store_targets(e, scope),
   NExpr(MatchExpr(_, arms)) => flat_map(arm_targets(scope, ??), arms),
   _ => [TgOlder],
 }
 
 fn arm_targets(scope, arm) = match arm {
-  (_, body) => store_targets(node_handle(body), scope),
+  (_, body) => store_targets(body, scope),
 }
 
 fn binder_targets(b, scope) = match scope {
@@ -8364,31 +8306,28 @@ fn let_at(b, entry) = match entry {
 // A call's result: `alloc`'s is fresh by what the op is, a declared
 // function's is what its claim says of the arguments it returns, and any
 // other's is older than the call.
-fn call_targets(callee, args, scope) = {
-  let ch = node_handle(callee)
-  match graph_node_body(ch) {
-    NExpr(VarRef(cname)) => match graph_link_of(ch) {
-      Some(_) => [TgOlder],
-      None => if cname == "alloc" {
-        []
-      } else {
-        match ages_summary(cname) {
-          Some(summary) => match summary {
-            AgeSummary(s) => match s.returns {
-              Some(idxs) => flat_map(arg_targets(args, scope, ??), idxs),
-              None => [TgOlder],
-            },
+fn call_targets(callee, args, scope) = match graph_node_body(callee) {
+  NExpr(VarRef(cname)) => match graph_link_of(callee) {
+    Some(_) => [TgOlder],
+    None => if cname == "alloc" {
+      []
+    } else {
+      match ages_summary(cname) {
+        Some(summary) => match summary {
+          AgeSummary(s) => match s.returns {
+            Some(idxs) => flat_map(arg_targets(args, scope, ??), idxs),
+            None => [TgOlder],
           },
-          None => [TgOlder],
-        }
-      },
+        },
+        None => [TgOlder],
+      }
     },
-    _ => [TgOlder],
-  }
+  },
+  _ => [TgOlder],
 }
 
 fn arg_targets(args, scope, i) = if i >= 0 && i < len(args) {
-  let ah = node_handle(list_index(args, i))
+  let ah = list_index(args, i)
   match graph_node_body(ah) {
     NExpr(LabeledArg(_, _)) => [TgOlder],
     _ => store_targets(ah, scope),
@@ -8930,7 +8869,7 @@ fn infer_match_arm_iter(arms, scrut, result_h, span: ValidSpan, i, n) = if i >= 
       env_scope_enter()
       infer_pat(pat, scrut, span)
       infer_expr(body)
-      unify(node_handle(body), result_h, span, MatchBranch(Inferred("arm body"), Inferred("result")))
+      unify(body, result_h, span, MatchBranch(Inferred("arm body"), Inferred("result")))
       env_scope_exit()
       // Divide BETWEEN arms only — the affine ledger resets `used` to the
       // frame base so the next arm sees the pre-match scope, never the
@@ -9014,7 +8953,7 @@ fn top_covers_all(top) = match top {
 //
 // drift-audit: ignore — result_h (arm result) and inst_h (effect instance) are distinct handles
 fn infer_one_handler_arm(arm: {args: [String], body: Node, op_name: String}, result_h, inst_h, world_h) = {
-  let arm_span = graph_span_of(node_handle(arm.body))
+  let arm_span = graph_span_of(arm.body)
   let op_ret_ty = match env_lookup(arm.op_name) {
     Some(entry) => match entry {
       (scheme, _, _) => match instantiate(scheme) {
@@ -9055,14 +8994,14 @@ fn infer_one_handler_arm(arm: {args: [String], body: Node, op_name: String}, res
   inf_enter_arm(continuation_h)
   infer_expr(arm.body)
   inf_exit_arm()
-  unify(node_handle(arm.body), result_h, arm_span, Inferred("handler arm result"))
+  unify(arm.body, result_h, arm_span, Inferred("handler arm result"))
 }
 
 // An arm may not resume an op declared `-> !` (`EResumeOfNever`): its result
 // is quantified per perform, so the value the arm would hand back has no one
 // type every performer can receive.
 fn never_resume_check(hname: String, arm: {args: [String], body: Node, op_name: String}) = if op_never_returns(arm.op_name) && resume_grade(arm.body) != RNone {
-  report(EResumeOfNever(hname, arm.op_name, graph_span_of(node_handle(arm.body))))
+  report(EResumeOfNever(hname, arm.op_name, graph_span_of(arm.body)))
 }
 
 // An op whose result is a variable its own scheme quantifies and nothing else
@@ -10391,17 +10330,14 @@ fn published_params(params, handles, owner: String, span: ValidSpan) = {
 // judged cells, with the IH already visible through the slot pinned before
 // the body (the old post-body rebind landed after this decide and the decl's
 // own obligation read the join's bare base; probe-measured 2026-08-12).
-fn claim_authored_return(ret_ann, body_node, name: String, span: ValidSpan) = {
-  let ret_h = node_handle(ret_ann)
-  match graph_node_body(ret_h) {
-    NTypeAnn(ann_ty) => match quantify_ctor_ty(ann_ty, [], Located(span, Declared(name))) {
-      (resolved_ann, _) => {
-        claim_refinement(resolved_ann, node_handle(body_node), graph_span_of(ret_h))
-        ()
-      },
+fn claim_authored_return(ret_ann, body_node, name: String, span: ValidSpan) = match graph_node_body(ret_ann) {
+  NTypeAnn(ann_ty) => match quantify_ctor_ty(ann_ty, [], Located(span, Declared(name))) {
+    (resolved_ann, _) => {
+      claim_refinement(resolved_ann, body_node, graph_span_of(ret_ann))
+      ()
     },
-    _ => (),
-  }
+  },
+  _ => (),
 }
 
 // The return the exit publishes: an authored `->` stands as written; with
@@ -10534,7 +10470,7 @@ fn settle_unit_guards(stmts, members) = {
 
 // What a member's guards owe the callers that reached them open, charged
 // to those callers on the way.
-fn member_owed_late(stmts, j) = match graph_chase(node_handle(stmts[j])) {
+fn member_owed_late(stmts, j) = match graph_chase(stmts[j]) {
   GNode(NBound(TFun(pps, _, _)), _) => pps |> map(param_owed_late) |> fold(guards_nothing(), row_join),
   _ => guards_nothing(),
 }
@@ -10556,7 +10492,7 @@ fn param_owed_late(p) = match param_row(p) {
 }
 
 fn member_takes_late(stmts, owed, j) = {
-  let handle = node_handle(stmts[j])
+  let handle = stmts[j]
   match graph_node_body(handle) {
     NStmt(FnStmt(name, _, _, effs, _)) => match graph_chase(handle) {
       GNode(NBound(TFun(_, _, frow)), _) => match frow {
@@ -11053,9 +10989,9 @@ fn demanded_with(contract, found) = match found {
 // the result of APPLYING: a call or a pipe stage whose callee it is,
 // through references and lets.
 fn applied_path(h) = match graph_node_body(h) {
-  NExpr(CallExpr(callee, _)) => learning_path(node_handle(callee)),
-  NExpr(PipeExpr(PForward, _, stage)) => learning_path(node_handle(stage)),
-  NExpr(BlockExpr(_, f)) => applied_path(node_handle(f)),
+  NExpr(CallExpr(callee, _)) => learning_path(callee),
+  NExpr(PipeExpr(PForward, _, stage)) => learning_path(stage),
+  NExpr(BlockExpr(_, f)) => applied_path(f),
   _ => None,
 }
 
@@ -11766,7 +11702,7 @@ fn usage_of_unknown(usage, span: ValidSpan) = match usage {
 fn cross_result(aret, eret, body, value_handle, span: ValidSpan) = match fn_usage(eret) {
   Some(usage) => match usage {
     (kps, kret) => match body {
-      Some(b) => fun_refinement_crossing(kps, kret, node_handle(b), span),
+      Some(b) => fun_refinement_crossing(kps, kret, b, span),
       None => match fn_usage(aret) {
         Some(stated) => match stated {
           (sps, sret) => cross_contract_at(sps, sret, kps, kret, None, value_handle, span),
@@ -11783,8 +11719,7 @@ fn cross_result(aret, eret, body, value_handle, span: ValidSpan) = match fn_usag
         } else {
           match body {
             Some(b) => {
-              let bh = node_handle(b)
-              claim_refinement(eret, bh, graph_span_of(bh))
+              claim_refinement(eret, b, graph_span_of(b))
               ()
             },
             None => {
@@ -11820,7 +11755,7 @@ fn cross_result_fn(aret, eret, body, value_handle, span: ValidSpan, pos) = match
     Some(ept) => match fn_usage(ept) {
       Some(usage) => match usage {
         (kps, kret) => match body {
-          Some(b) => sources_at(node_handle(b), path) |> each(cross_result_source(kps, kret, value_handle, span, ??)),
+          Some(b) => sources_at(b, path) |> each(cross_result_source(kps, kret, value_handle, span, ??)),
           None => match contract_at(chase_deep(aret), path) {
             Some(apt) => match fn_usage(apt) {
               Some(stated) => match stated {
@@ -11903,8 +11838,8 @@ fn fn_leaves(h) = match value_tails(h) {
       Some(b) => fn_leaves_at_binder(b, h),
       None => [h],
     },
-    NExpr(FieldExpr(recv, fname)) => fn_leaves_of_part(node_handle(recv), PartField(fname), h),
-    NExpr(IndexExpr(recv, idx)) => fn_leaves_of_part(node_handle(recv), index_step(node_handle(recv), idx), h),
+    NExpr(FieldExpr(recv, fname)) => fn_leaves_of_part(recv, PartField(fname), h),
+    NExpr(IndexExpr(recv, idx)) => fn_leaves_of_part(recv, index_step(recv, idx), h),
     NExpr(CallExpr(_, _)) => result_leaves(h),
     NExpr(PipeExpr(PForward, _, _)) => result_leaves(h),
     _ => [h],
@@ -11999,15 +11934,15 @@ fn source_leaf(src) = match src {
 // completed by the piped value.
 fn application_of(h) = match graph_node_body(h) {
   NExpr(CallExpr(callee, _)) => match graph_product_at(h) {
-    ProductOf(nodes, _, CallApplied) => match fn_leaves(node_handle(callee)) {
-      [one] => Some((one, nodes |> map(node_handle))),
+    ProductOf(nodes, _, CallApplied) => match fn_leaves(callee) {
+      [one] => Some((one, nodes)),
       _ => None,
     },
     ProductOf(_, _, CallSuspended) => None,
     NoProduct => None,
   },
-  NExpr(PipeExpr(PForward, left, stage)) => match fn_leaves(node_handle(stage)) {
-    [one] => stage_application(one, [node_handle(left)]),
+  NExpr(PipeExpr(PForward, left, stage)) => match fn_leaves(stage) {
+    [one] => stage_application(one, [left]),
     _ => None,
   },
   _ => None,
@@ -12019,7 +11954,7 @@ fn application_of(h) = match graph_node_body(h) {
 fn stage_application(sh, applied) = match graph_node_body(sh) {
   NExpr(VarRef(_)) => Some((sh, applied)),
   NExpr(CallExpr(callee, _)) => match graph_product_at(sh) {
-    ProductOf(nodes, _, CallSuspended) => Some((node_handle(callee), completed_args(nodes, applied))),
+    ProductOf(nodes, _, CallSuspended) => Some((callee, completed_args(nodes, applied))),
     ProductOf(_, _, CallApplied) => None,
     NoProduct => None,
   },
@@ -12035,13 +11970,13 @@ fn completed_args(nodes, applied) = {
 fn completed_slot(nodes, applied, slot) = match slot {
   (i, n) => if is_authored_hole(n) {
     let k = count(is_authored_hole, slice(nodes, 0, i))
-    if k < len(applied) { applied[k] } else { node_handle(n) }
+    if k < len(applied) { applied[k] } else { n }
   } else {
-    node_handle(n)
+    n
   },
 }
 
-fn is_authored_hole(n) = match graph_node_body(node_handle(n)) {
+fn is_authored_hole(n) = match graph_node_body(n) {
   NHole(id) => id != 0,
   _ => false,
 }
@@ -12241,7 +12176,7 @@ fn result_sources(sub, src) = match src {
     [SrcUnknown]
   } else {
     match lambda_body(leaf) {
-      Some(body) => sources_at(node_handle(body), sub),
+      Some(body) => sources_at(body, sub),
       None => match graph_chase(leaf) {
         GNode(NBound(TFun(_, ret, _)), _) => [contract_source(ret, sub, leaf)],
         _ => [SrcUnknown],
@@ -12851,10 +12786,8 @@ fn ctor_type(result_ty, field_types) = if len(field_types) == 0 {
 // registers it: a variant its constructor, an op its operation, a statement
 // the unit it evaluates to. A declaration position nothing binds is a cell
 // the parser minted and nothing judged.
-fn bind_declared(node, ty, name: String) = {
-  let h = node_handle(node)
-  graph_bind(h, ty, Located(graph_span_of(h), Declared(name)))
-}
+fn bind_declared(node, ty, name: String) =
+  graph_bind(node, ty, Located(graph_span_of(node), Declared(name)))
 
 fn is_record_ty(ty) with Pure = match ty {
   TRecord(_) => true,
@@ -13077,7 +13010,7 @@ fn register_one_op(effect_name, eff_name, op) = match op {
           if prior_effect == effect_name {
             ()
           } else {
-            report(EOpShadowsOp(op_name, prior_effect, effect_name, graph_span_of(node_handle(op_node))))
+            report(EOpShadowsOp(op_name, prior_effect, effect_name, graph_span_of(op_node)))
           },
           HandlerKind(_, _, _, _, _) => // A handler NAME beside an op name is measured harmless: they
           // resolve in disjoint positions (`~> h` installs, `h()` performs),
@@ -13360,9 +13293,8 @@ fn register_handler(hname, ename_parsed, config, state, arms, effs, span: ValidS
     (p) => match param_default(p) {
       Some(d) => {
         infer_expr(d)
-        let dh = node_handle(d)
-        let dsp = graph_span_of(dh)
-        unify_types(TVar(dh), param_ty(p), dsp, DefaultReason(param_name(p), dsp))
+        let dsp = graph_span_of(d)
+        unify_types(TVar(d), param_ty(p), dsp, DefaultReason(param_name(p), dsp))
       },
       None => (),
     },
@@ -13521,7 +13453,7 @@ fn ty_with_row_added(ty, extra) = match ty {
 fn infer_handler_state_inits(state) = map(
   (sf) => {
     infer_expr(state_field_init(sf))
-    (state_field_name(sf), node_handle(state_field_init(sf)))
+    (state_field_name(sf), state_field_init(sf))
   },
   state
 )
@@ -13559,14 +13491,14 @@ fn bind_handler_state_name(updates, hname: String, span: ValidSpan, bind) = matc
     )
     graph_binder_note(
       ih,
-      StateFact({stores: [], writes: [ih] ++ (updates |> filter(update_names(name, ??)) |> map(update_value))})
+      StateFact({stores: [], writes: [ih] ++ (updates |> filter(update_names(name, ??)) |> map(state_field_init))})
     )
   },
 }
 
 // Every `resume … with` update in an arm's body, read off the one total
 // child projection before the arm is judged.
-fn arm_updates(arm) = subtree_updates(node_handle(handler_arm_body(arm)))
+fn arm_updates(arm) = subtree_updates(handler_arm_body(arm))
 
 fn subtree_updates(h) = {
   let body = graph_node_body(h)
@@ -13579,18 +13511,13 @@ fn subtree_updates(h) = {
 
 fn update_names(name: String, upd) = state_field_name(upd) == name
 
-fn update_value(upd) = node_handle(state_field_init(upd))
-
 // An update naming no field of its handler writes nothing anything reads,
 // so it is refused, never dropped: `resume(0) with m = n + 1` beside `with n
 // = 0` compiled clean and `n` stayed 0 (pin 53f7404b).
 fn refuse_stray_update(state_binds, upd) = if any(bind_named(state_field_name(upd), ??), state_binds) {
   ()
 } else {
-  report(EMissingVariable(
-    "state field: {state_field_name(upd)}",
-    graph_span_of(node_handle(state_field_init(upd)))
-  ))
+  report(EMissingVariable("state field: {state_field_name(upd)}", graph_span_of(state_field_init(upd))))
 }
 
 fn bind_named(name: String, bind) = match bind {
@@ -13762,11 +13689,11 @@ fn tail_transparent_loop(params, body, callees, i, acc) = if i >= len(params) {
 
 // The names in callee position at the body's tail positions — the block's
 // final, both branches, every arm — and nothing else.
-fn tail_callee_names(node, acc) = match graph_node_body(node_handle(node)) {
+fn tail_callee_names(node, acc) = match graph_node_body(node) {
   NExpr(BlockExpr(_, final)) => tail_callee_names(final, acc),
   NExpr(IfExpr(_, t, e)) => tail_callee_names(e, tail_callee_names(t, acc)),
   NExpr(MatchExpr(_, arms)) => tail_callee_names_arms(arms, acc),
-  NExpr(CallExpr(f, _)) => match graph_node_body(node_handle(f)) {
+  NExpr(CallExpr(f, _)) => match graph_node_body(f) {
     NExpr(VarRef(n)) => push(acc, n),
     _ => acc,
   },
@@ -13782,13 +13709,13 @@ fn tail_callee_names_arms(arms, acc) = if len(arms) == 0 {
 }
 
 // Every mention of `p` in `node` is a callee at a tail position.
-fn tail_transparent(node, p: String) = match graph_node_body(node_handle(node)) {
+fn tail_transparent(node, p: String) = match graph_node_body(node) {
   NExpr(BlockExpr(stmts, final)) => match free_vars_stmts(stmts, [], []) {
     (uses, _) => !free_uses_contains(uses, p) && tail_transparent(final, p),
   },
   NExpr(IfExpr(c, t, e)) => !string_in_list(collect_free_vars(c, []), p) && tail_transparent(t, p) && tail_transparent(e, p),
   NExpr(MatchExpr(scrut, arms)) => !string_in_list(collect_free_vars(scrut, []), p) && all({ (_, body) => tail_transparent(body, p) }, arms),
-  NExpr(CallExpr(f, args)) => match graph_node_body(node_handle(f)) {
+  NExpr(CallExpr(f, args)) => match graph_node_body(f) {
     NExpr(VarRef(n)) => if n == p {
       !any({ a => string_in_list(collect_free_vars(a, []), p) }, args)
     } else {
@@ -13849,7 +13776,7 @@ fn collect_fn_decls_list(nodes, acc) = if len(nodes) == 0 {
   collect_fn_decls_list(drop_last(nodes), collect_fn_decls(last(nodes), acc))
 }
 
-fn collect_fn_decls(node, acc) = match graph_node_body(node_handle(node)) {
+fn collect_fn_decls(node, acc) = match graph_node_body(node) {
   NStmt(FnStmt(name, params, _, _, b)) => // drift-audit: ignore — decl-count-bounded cons, not a hot loop
   collect_fn_decls(
     b,
@@ -13988,7 +13915,7 @@ fn continuation_held(disc) = match disc {
 // an operand, an argument, an element, a field, a let RHS, a lambda body —
 // wraps the child in `resume_interior`, and every sequence runs
 // `resume_seq` in source order, so a use with code after it is held.
-fn resume_grade(node) = match graph_node_body(node_handle(node)) {
+fn resume_grade(node) = match graph_node_body(node) {
   NExpr(ResumeExpr(_, _)) => RTail,
   NExpr(BlockExpr(stmts, final)) => resume_seq(grade_nodes(stmts), resume_grade(final)),
   NExpr(IfExpr(c, t, e)) => resume_seq(resume_grade(c), resume_join(resume_grade(t), resume_grade(e))),
@@ -14002,7 +13929,7 @@ fn resume_grade(node) = match graph_node_body(node_handle(node)) {
   // callee's uses sit at the CALL's result: a tail call into a helper
   // that resumes at its own tail is still the stack return, while a
   // resume inside an argument is held by the call that follows it.
-  match match graph_node_body(node_handle(f)) {
+  match match graph_node_body(f) {
     NExpr(VarRef(cn)) => (summary_of(cn), tail_params_of(cn)),
     _ => (RNone, []),
   } {
@@ -14091,7 +14018,7 @@ fn grade_args_tail(args, tails, i, acc) = if i >= len(args) {
   acc
 } else {
   let g = if int_in(tails, i, 0) {
-    match graph_node_body(node_handle(list_index(args, i))) {
+    match graph_node_body(list_index(args, i)) {
       NExpr(LambdaExpr(_, lbody)) => resume_grade(lbody),
       NExpr(VarRef(an)) => summary_of(an),
       _ => resume_grade(list_index(args, i)),
@@ -14194,12 +14121,12 @@ fn grade_fields(fields) = if len(fields) == 0 {
 // NExpr arm enumerated; no wildcard fabricating ()).
 fn infer_refinement_narrowing(body) = walk_refinement(body, PTrue)
 
-fn walk_refinement(node, path_pred) = match graph_node_body(node_handle(node)) {
+fn walk_refinement(node, path_pred) = match graph_node_body(node) {
   NExpr(IfExpr(c, t, e)) => {
-    let cond_pred = predicate_of_bool_expr(c)
+    let cond_pred = PBoolNode(c)
     walk_refinement(c, path_pred)
-    walk_refinement(t, conjunction(path_pred, cond_pred))
-    walk_refinement(e, conjunction(path_pred, negation_of(cond_pred)))
+    walk_refinement(t, PAnd(path_pred, cond_pred))
+    walk_refinement(e, PAnd(path_pred, PNot(cond_pred)))
   },
   NExpr(MatchExpr(scrut, arms)) => {
     walk_refinement(scrut, path_pred)
@@ -14298,8 +14225,8 @@ fn walk_refinement_arms(scrut, arms, path_pred) = if len(arms) == 0 {
   // TTuple (→ the loud `unreachable` / a garbage slot). Destructure positionally.
   match last(arms) {
     (pat, body) => {
-      let arm_pred = pattern_predicate_for(pat, scrut)
-      walk_refinement(body, conjunction(path_pred, arm_pred))
+      let arm_pred = PPatternMatch(pat, scrut)
+      walk_refinement(body, PAnd(path_pred, arm_pred))
       walk_refinement_arms(scrut, drop_last(arms), path_pred)
     },
   }
@@ -14326,13 +14253,9 @@ fn walk_refinement_block(stmts, final, path_pred) = if len(stmts) == 0 {
   walk_refinement_block(drop_last(stmts), final, strengthened)
 }
 
-fn strengthen_path_pred(path_pred, stmt) = match graph_node_body(node_handle(stmt)) {
-  NStmt(ExprStmt(e)) => match graph_node_body(node_handle(e)) {
-    NExpr(CallExpr(callee, args)) => if is_assert_call(callee) {
-      conjunction(path_pred, predicate_of_assert_arg(args))
-    } else {
-      path_pred
-    },
+fn strengthen_path_pred(path_pred, stmt) = match graph_node_body(stmt) {
+  NStmt(ExprStmt(e)) => match graph_node_body(e) {
+    NExpr(CallExpr(callee, args)) => if is_assert_call(callee) { PAnd(path_pred, predicate_of_assert_arg(args)) } else { path_pred },
     _ => path_pred,
   },
   _ => path_pred,
@@ -14368,31 +14291,12 @@ fn walk_refinement_fields(fields, path_pred) = if len(fields) == 0 {
   }
 }
 
-// Helpers — peer-named substrate. Each is a small graph walk; the
-// production-quality bodies fold into named peers as the inference
-// cascade matures past the basic flow-narrowing form.
-//
-// $predicate_of_bool_expr — extract Predicate from boolean expression.
-// Operates on graph-typed Bool nodes; converts BinOpExpr (==, <, >,
-// &&, ||) and CallExpr (refinement predicates returning Bool) into
-// Predicate ADT instances. Peer follow-up
-// `Hβ.infer.predicate-from-bool-expression` covers the full case
-// enumeration.
-fn predicate_of_bool_expr(node) = PBoolNode(node_handle(node))
-
-fn negation_of(pred) = PNot(pred)
-
-fn conjunction(p, q) = PAnd(p, q)
-
-fn pattern_predicate_for(pat, scrut) = PPatternMatch(pat, node_handle(scrut))
-
-fn is_assert_call(callee) = match graph_node_body(node_handle(callee)) {
+fn is_assert_call(callee) = match graph_node_body(callee) {
   NExpr(VarRef(name)) => name == "assert",
   _ => false,
 }
 
-fn predicate_of_assert_arg(args) =
-  if len(args) == 0 { PTrue } else { predicate_of_bool_expr(last(args)) }
+fn predicate_of_assert_arg(args) = if len(args) == 0 { PTrue } else { PBoolNode(last(args)) }
 
 // Config is [TParam] (the fn-param carrier), and it mints exactly as a
 // function's parameters do: one graph handle each, superseding the
@@ -14416,12 +14320,10 @@ fn mint_handler_config_tparams(config, hname, base_idx) = build_param_types(
 // Utilities
 fn infer_expr_list(ref nodes) = each(infer_expr, nodes)
 
-fn collect_handles(ref nodes) = map(node_handle, nodes)
-
-fn collect_tvar_types(ref nodes) = map({ n => TVar(node_handle(n)) }, nodes)
+fn collect_tvar_types(ref nodes) = map(TVar, nodes)
 
 fn unify_list_elems(elems, target_h, span: ValidSpan) =
-  each({ e => unify(node_handle(e), target_h, span, ListElement(Inferred("list element"))) }, elems)
+  each({ e => unify(e, target_h, span, ListElement(Inferred("list element"))) }, elems)
 
 // Each string-interpolation fragment binds to the canonical String
 // alias node directly;
@@ -14447,7 +14349,7 @@ fn interp_concat_cells(fragments, span: ValidSpan) = {
 fn count_nonempty_fragments(fragments, i, acc) = if i >= len(fragments) {
   acc
 } else {
-  match graph_node_body(node_handle(list_index(fragments, i))) {
+  match graph_node_body(list_index(fragments, i)) {
     NExpr(LitString(s)) => count_nonempty_fragments(fragments, i + 1, if byte_len(s) == 0 { acc } else { acc + 1 }),
     _ => count_nonempty_fragments(fragments, i + 1, acc + 1),
   }
@@ -14467,9 +14369,8 @@ fn mint_concat_cells(n, span: ValidSpan, acc) = if n <= 0 {
 fn check_splice_flow_labels(fragments, span: ValidSpan) = each(
   {
     frag => {
-      let fh = node_handle(frag)
-      let fspan = graph_span_of(fh)
-      match graph_node_body(fh) {
+      let fspan = graph_span_of(frag)
+      match graph_node_body(frag) {
         NExpr(LitString(_)) => // literal part: always Public, no IFC check
         (),
         NExpr(ShowExpr(inner)) => // the parser wraps every splice in ShowExpr, and the WRAPPER
@@ -14477,9 +14378,9 @@ fn check_splice_flow_labels(fragments, span: ValidSpan) = each(
         // splice Public and silently discharged the flow obligation (the
         // regression the DCC gate's first probe caught, 2026-08-08). The
         // label lives on the INNER node; read through the wrap.
-        splice_flow_check(node_handle(inner), fspan),
+        splice_flow_check(inner, fspan),
         _ => // an unwrapped splice (pre-ShowExpr shapes): classify its own node
-        splice_flow_check(fh, fspan),
+        splice_flow_check(frag, fspan),
       }
     },
   },

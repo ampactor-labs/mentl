@@ -221,7 +221,7 @@ fn edit_run(target_opt) = {
 // weave line, so the module-aware proximity decay ranks the entry's own
 // absences above the closure's.
 fn mentl_edit_session(entry_module) = match driver_entry_with_ranges(entry_module) {
-  (_ast, _mods) => match module_handle_of_path(entry_module) {
+  (_ast, _mods) => match graph_module_now(entry_module) {
     None => eprint_string("mentl edit: {entry_module} minted no module node — nothing to edit\n"),
     Some(mh) => {
       patch_set_target(entry_module)
@@ -1033,15 +1033,11 @@ fn serve_run() = {
   // reference in the session — the driverless chain (open_file only) read an
   // unpopulated graph and every query fell to AnsSilence
   // (Hβ.lsp.transport-runs-frontend).
-  infer_context(() => mentl_lsp_session() ~> lsp_adapter ~> mentl_voice_filesystem ~> mentl_voice_default ~>
+  infer_context(() => lsp_session() ~> lsp_adapter ~> mentl_voice_filesystem ~> mentl_voice_default ~>
   // consult/run_query bubble Query.ask here — the live forensic read
   query_default ~> wasi_filesystem ~> no_iter_context)
   0
 }
-
-// Reads JSON-RPC frames from stdin; routes to Query / Teach /
-// Synth via lsp_adapter; writes responses to stdout. Per MV-LSP-adapter.
-fn mentl_lsp_session() = lsp_session()
 
 // ─── doc_run — documentation projection (F.1 substrate)
 //
@@ -1087,8 +1083,7 @@ fn doc_render_cell(entry_module: String, cell) = match cell {
 // head (`name(p: T) -> R with row`), a module value its type, a type its
 // constructors and an effect its ops — the lines `mentl where` gives them —
 // each followed by its lede.
-fn doc_render_decl(d) = {
-  let h = node_handle(d)
+fn doc_render_decl(h) = {
   let body = graph_node_body(h)
   match body {
     NStmt(FnStmt(name, _, _, _, _)) => doc_render_lines([doc_value_line(name)], h),
