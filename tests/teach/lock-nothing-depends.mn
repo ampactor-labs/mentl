@@ -1,0 +1,6 @@
+// teach 4: none
+// A pure body whose callers declare nothing: no clause stands on its
+// absences, so no lock is taught — a lock nothing depends on is noise.
+fn f(x) = x + 1
+
+fn main() = f(1)

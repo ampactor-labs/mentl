@@ -1,0 +1,5 @@
+// A stage the entry reaches only through helper's import — two edges away.
+// The proposer offers what the entry's module sees: its own declarations,
+// its direct imports' and the prelude's. This one is never offered at
+// stage.mn's hole, so helper's triple fills alone instead of tying with it.
+fn quadruple(x) = x * 4

@@ -1,0 +1,7 @@
+// propose 7:20: fill 1
+// An argument hole in an OPERAND is a value hole: nothing can fill the field later, so the call is saturated and the hole takes the slot's contract — only `1` proves `Positive`.
+type Positive = Int where 0 < self
+
+fn choose(n: Positive) = n * 2
+
+fn main() = choose(??) + 1

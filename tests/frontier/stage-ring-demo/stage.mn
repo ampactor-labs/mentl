@@ -1,8 +1,12 @@
 import helper
 
 // No function in this module fits the stage, so the search widens to the
-// module it IMPORTS and stops there: `triple` fills. The prelude's `id` and
-// the runtime's word helpers are in scope only because the link flattens
-// every module into one env, and they are never judged beside it.
-// Measured 2026-09-25, PROGRAM C3.
+// module it IMPORTS and stops there: `triple` fills. helper's own import,
+// deep, declares a fitting `quadruple` that this module never imported, and
+// it is never offered here (it tied with `triple` on boot c939f5b8, where
+// the imported ring was the transitive closure of the authored edges). The
+// prelude's `id` is the outermost ring, never judged while a nearer ring
+// proves a survivor; the runtime's word helpers are in scope only through
+// the link and are never offered. Measured 2026-09-25, PROGRAM C3; the reach
+// re-measured 2026-10-13.
 fn main() -> Int = 5 |> ??

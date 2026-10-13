@@ -315,6 +315,7 @@ const GLYPH = {
 };
 const glyphOf = (arm, c) => c.glyph === "refused" ? "✗" : (arm === "topology" ? (GLYPH.topology[c.word] || "▸") : (GLYPH[arm][c.glyph] || GLYPH[arm].proven));
 let CANVAS = null, CANVAS_TEXT = null, CANVAS_FILE = null;   // the module View's canvas and the text it was read off
+let CANVAS_WHY = "unasked";                                  // what the last module read answered (the smoke prints it)
 let TOK = new Map(), STRIP = new Map();                        // canvas line → its tokens [byte start, byte end, class]; → its eight cells
 function takeCanvas(cv, text){
   CANVAS = cv; CANVAS_TEXT = text; CANVAS_FILE = FILE; TOK = new Map(); STRIP = new Map();
@@ -621,7 +622,12 @@ async function project(edited){
   EXTRA_DELTA = {};
   if (edited || !CANVAS || CANVAS_FILE !== FILE || CANVAS_TEXT !== text){
     const m = await session().call(["mentl", "space", `${FILE}:0`], delta);
-    try { if (m.exit === 0 && !m.trapped) takeCanvas(JSON.parse(m.out).canvas, text); } catch (e) {}
+    // CANVAS_WHY: what the module read answered — the smoke prints it, so a
+    // canvas the page does not hold names its cause instead of reading as 0
+    let cv = null, why = m.exit !== 0 ? `exit${m.exit}` : m.trapped ? "trapped" : "ok";
+    if (why === "ok") { try { cv = JSON.parse(m.out).canvas; if (!cv) why = "no-canvas"; } catch (e) { why = "unparsed"; } }
+    CANVAS_WHY = `${why}/${text.length}b/${(m.err || "").split("\n").filter(l => l.trim())[0] || "-"}`.replace(/\s+/g, "_");
+    if (why === "ok" || why === "no-canvas") takeCanvas(cv, text);
   }
   const ask = ["mentl", "space", `${FILE}:${line}:${col}`].concat(NEEDLE ? [NEEDLE] : []);
   const r = await session().call(ask, delta);
@@ -878,7 +884,12 @@ try { const qt = new URLSearchParams(location.search).get("theme"); if (qt) docu
 
 /* ── boot ───────────────────────────────────────────────────────────────── */
 const T_BOOT = performance.now();
-const settled = async (max = 400) => { for (let i = 0; i < max && (busy || !PROJECTED); i++) await new Promise(r => setTimeout(r, 50)); };
+// A wait for the projection on the page is bounded by the leg that runs the
+// smoke (browser-leg.mjs's 240 s), never by a settle window of its own: a
+// window that passes before the session answers reads a stale canvas, and
+// the board went RED on tokens=0 while the machine ran batteries beside it
+// (2026-10-13) — the line measured the window, not the canvas.
+const settled = async (max = 4800) => { for (let i = 0; i < max && (busy || !PROJECTED); i++) await new Promise(r => setTimeout(r, 50)); };
 async function boot(){
   try {
     await readManifest();
@@ -923,7 +934,7 @@ async function boot(){
 const tick = ms => new Promise(r => setTimeout(r, ms));
 async function smoke(){
   FMT_IDLE_MS = 0;   // the formatter's own leg below drives it; nothing else may reformat a fixture mid-measure
-  await settled(200);
+  await settled();
   // THE VIEW: the first lesson's View arrived from the session — eight ring
   // facts, no refusing diagnostic, the ledger present — and a second read of
   // it is resident and timed; its size in bytes is printed, never assumed
@@ -938,22 +949,22 @@ async function smoke(){
   // session — its main.mn the entry, its View from the resident session
   const pr = PROJECTS[0], pm = pr && ENTRIES.find(e => e.dir === pr.dir && e.file === "main.mn");
   if (pm){
-    openEntry(pm.key); await settled(1200);
+    openEntry(pm.key); await settled();
     const pv = VIEW, members = pr.members.length;
     console.log(`SMOKE-PROJECT dir=${pr.dir} members=${members} file=${FILE} resident=${!!(LAST && LAST.resident)} ring=${pv ? pv.ring.length : 0} refusing=${pv ? pv.lens.filter(f => diag(f) && f.refuses).length : -1} module=${pv ? pv.at.module : "-"} canvas-lines=${CANVAS ? CANVAS.lines : 0} painted=${document.querySelectorAll("#hl .ln").length}`);
-    openEntry(ENTRIES[0].key); await settled(400);
+    openEntry(ENTRIES[0].key); await settled();
   }
   // THE PRODUCT: what the page renders, measured — fidelity (every painted
   // line shows every character the hand typed), no undefined anywhere in the
   // chrome, eight real ring rows painted from the View, and the Lens
   // structural: a Warning lands as a Warning at its own line and a mismatch
   // at its own site
-  jump(line); await tick(400); await settled(100);
+  jump(line); await tick(400); await settled();
   const ta = $("src");
   const fidelity = linesFaithful();
   const realRows = document.querySelectorAll(".facet.real").length;
   ta.value = '// `nothing_here` is a reference that resolves nowhere\nfn f(x: Int) = x\n\nfn main() = f("x")\n';
-  ta.setSelectionRange(0, 0); PROJECTED = false; await project(true); await settled(100);
+  ta.setSelectionRange(0, 0); PROJECTED = false; await project(true); await settled();
   const warnAt = !!$("plens").querySelector(".diag.sev-Warning[data-l='1']");
   const mismatchAt = !!$("plens").querySelector(".diag.sev-error[data-l='4']");
   const diags = VIEW ? VIEW.lens.filter(diag).length : -1;
@@ -969,35 +980,35 @@ async function smoke(){
   // the frames and marks drawn from the canvas; find by edge at a caret and
   // from the box; the formatter's canon on idle; the medium's write a step
   // of the native undo
-  ta.value = CANVAS_FIXTURE; ta.setSelectionRange(0, 0); PROJECTED = false; await project(true); await settled(100);
+  ta.value = CANVAS_FIXTURE; ta.setSelectionRange(0, 0); PROJECTED = false; await project(true); await settled();
   const lexer = typeof tokenize === "undefined" && typeof highlight === "undefined";
   const spans = spansFaithful();
   const strip = stripFaithful();
   const frames = document.querySelectorAll("#topo .frame").length, marks = document.querySelectorAll("#topo .mark").length;
-  jump(2, 16); await tick(150); await settled(100);   // `x` in `x * 2`: the parameter's references, by its edge
+  jump(2, 16); await tick(150); await settled();   // `x` in `x * 2`: the parameter's references, by its edge
   const atCaret = VIEW && VIEW.refs ? VIEW.refs.sites.filter(r => r.module === VIEW.at.module).length : -1;
   const refsDrawn = document.querySelectorAll("#topo .ref").length;
-  $("find").value = "double"; NEEDLE = "double"; await project(false); await settled(100);
+  $("find").value = "double"; NEEDLE = "double"; await project(false); await settled();
   const needle = VIEW && VIEW.refs && VIEW.refs.needle === "double" ? VIEW.refs.sites.length + VIEW.refs.texts.length : -1;
   const listed = $("prefs").querySelectorAll(".item").length;
   $("find").value = ""; NEEDLE = null;
   // the formatter on idle: a pause renders the file canonical
-  ta.value = "fn main()  =  42\n"; ta.setSelectionRange(4, 4); PROJECTED = false; await project(true); await settled(100);
+  ta.value = "fn main()  =  42\n"; ta.setSelectionRange(4, 4); PROJECTED = false; await project(true); await settled();
   FMT_IDLE_MS = 200; ta.dispatchEvent(new Event("input"));
   for (let i = 0; i < 100 && ta.value === "fn main()  =  42\n"; i++) await tick(100);
   FMT_IDLE_MS = 0;
   const fmt = ta.value === "fn main() = 42\n";
   // the accept is one step of the undo the hand already has
   ta.value = "type Positive = Int where 0 < self\n\nfn choose() -> Positive with Pure = ??\n\nfn main() = choose()\n";
-  ta.focus(); ta.setSelectionRange(0, 0); PROJECTED = false; await project(true); await settled(100);
-  const hole = ta.value.indexOf("??"); ta.setSelectionRange(hole, hole); await project(false); await settled(100);
-  const proposed = !!PROPOSAL; await acceptProposal(); await settled(100);
+  ta.focus(); ta.setSelectionRange(0, 0); PROJECTED = false; await project(true); await settled();
+  const hole = ta.value.indexOf("??"); ta.setSelectionRange(hole, hole); await project(false); await settled();
+  const proposed = !!PROPOSAL; await acceptProposal(); await settled();
   const accepted = !ta.value.includes("??");
   document.execCommand("undo");
   const undone = ta.value.includes("??");
   // the page as the record's screenshot shows it: the canvas fixture, the caret on a stage of its chain
-  ta.value = CANVAS_FIXTURE; PROJECTED = false; await project(true); await settled(100); jump(19, 8); await tick(200); await settled(100);
-  console.log(`SMOKE-CANVAS no-page-lexer=${lexer} tokens=${CANVAS ? CANVAS.tokens.length : 0} spans=${spans} strip=${strip} frames=${frames} marks=${marks} refs-at-caret=${atCaret} refs-drawn=${refsDrawn} needle=${needle} needle-listed=${listed} fmt=${fmt} proposed=${proposed} accepted=${accepted} undone=${undone}`);
+  ta.value = CANVAS_FIXTURE; PROJECTED = false; await project(true); await settled(); jump(19, 8); await tick(200); await settled();
+  console.log(`SMOKE-CANVAS no-page-lexer=${lexer} tokens=${CANVAS ? CANVAS.tokens.length : 0} canvas-text=${!!CANVAS && CANVAS_TEXT === $("src").value} canvas-why=${CANVAS_WHY} busy=${busy} projected=${PROJECTED} text-is-fixture=${$("src").value === CANVAS_FIXTURE} spans=${spans} strip=${strip} frames=${frames} marks=${marks} refs-at-caret=${atCaret} refs-drawn=${refsDrawn} needle=${needle} needle-listed=${listed} fmt=${fmt} proposed=${proposed} accepted=${accepted} undone=${undone}`);
 }
 // every painted line is the source's line, character for character
 function linesFaithful(){

@@ -1582,7 +1582,7 @@ fn battery_propose_step(stem, path: String, line, col, want) = match battery_vie
     print_string("FAIL(propose) {stem}: no node at {path}:{int_to_str(line)}:{int_to_str(col)}\n")
     1
   },
-  Some(view) => match view {
+  Some((_, view)) => match view {
     CursorView(_, propose, _, _, _, _, _, _) => match propose {
       Proposal(p) => if verdict_meets(want, p.verdict) {
         print_string("PASS {stem}: propose {show_want(want)}\n")
@@ -1597,29 +1597,40 @@ fn battery_propose_step(stem, path: String, line, col, want) = match battery_vie
 
 // THE TEACH BATTERY (D4): the fixture is judged at its declaration's line
 // through the address route and the eight-aspect view, and the contract is
-// compared to the gradient's Teaching itself.
+// compared to the gradient's Teaching itself. The line must hold a
+// declaration: a `none` contract at a blank line met the module's own view,
+// which teaches nothing, and passed (measured 2026-10-13 on a fixture whose
+// contract had drifted onto a blank line as its comment grew).
 fn battery_teach_step(stem, path: String, line, want) = match battery_view(path, line, 0) {
   None => {
     print_string("FAIL(teach) {stem}: no node at {path}:{int_to_str(line)}\n")
     1
   },
-  Some(view) => match view {
-    CursorView(_, _, _, _, _, _, teach, _) => if teach_meets(want, teach) {
-      print_string("PASS {stem}: teach {show_teach_want(want)}\n")
-      0
-    } else {
-      print_string("FAIL(teach) {stem}: wanted {show_teach_want(want)}, got {show_teaching(teach)}\n")
-      1
-    },
+  Some((decl_name, view)) => if decl_name == "" {
+    print_string("FAIL(teach) {stem}: no declaration at {path}:{int_to_str(line)}\n")
+    1
+  } else {
+    match view {
+      CursorView(_, _, _, _, _, _, teach, _) => if teach_meets(want, teach) {
+        print_string("PASS {stem}: teach {show_teach_want(want)}\n")
+        0
+      } else {
+        print_string("FAIL(teach) {stem}: wanted {show_teach_want(want)}, got {show_teaching(teach)}\n")
+        1
+      },
+    }
   },
 }
 
 // The eight-aspect view at a fixture's address — the one read both
-// contracts judge, built as the CLI's `mentl <file>:<line>:<col>` builds it.
+// contracts judge, built as the CLI's `mentl <file>:<line>:<col>` builds it
+// — beside the name the node declares, read here inside the judgment that
+// holds the graph (outside it the handle names nothing) and empty where the
+// node is no declaration.
 fn battery_view(path: String, line, col) = infer_context(() => match driver_entry_with_ranges(path) {
   (_ast, ranges) => match address_node(ranges, path, line, col) {
     None => None,
-    Some(ph) => Some(cursor_at_handle(ph)),
+    Some(ph) => Some((body_decl_name(graph_node_body(ph)), cursor_at_handle(ph))),
   },
 } ~> cursor_default ~> synth_default ~> interrogate_default ~> mentl_default ~> diag_bank)
 

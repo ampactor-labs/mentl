@@ -131,6 +131,12 @@ type CensusShape
   // board bounds each class at its measured count, falling as each module
   // carrying one is touched.
   | CsProseClass(ProseClass)
+  // A read of a record field of the name — `x.FIELD` wherever it stands — the
+  // `writes of` facet's twin over the record's other side: a field is no
+  // declaration, so `refs of` never reaches it. Confessed as a verb gap on
+  // 2026-10-13, when `Leverage` lost a field and its readers were found by a
+  // shell search.
+  | CsFieldRead(String)
 
 // The prose classes, each the comment-paradigm law it breaks. The needles
 // each class reads live in string literals beside its matcher (prose_needles),
@@ -488,7 +494,7 @@ fn sites_in(m, answer) = match answer {
   QRVerifyDebt(debt) => QRVerifyDebt(filter(obligation_in_module(m, ??), debt)),
   QRSmt(debt) => QRSmt(filter(obligation_in_module(m, ??), debt)),
   QRError(msg) => QRError(msg),
-  unscoped => QRError("`in` keeps a site facet's sites: refs of, census, text, prose, ghosts, decls, verification, smt"),
+  unscoped => QRError("`in` keeps a site facet's sites: refs of, reads of, census, text, prose, ghosts, decls, verification, smt"),
 }
 
 fn site_in_module(m, site) = match site {
@@ -1203,6 +1209,7 @@ fn census_label(shape) = match shape {
   CsText(needle) => "string literal(s) containing `{needle}`",
   CsProse(needle) => "comment(s) containing `{needle}`",
   CsProseClass(c) => "comment(s) carrying {prose_class_label(c)}",
+  CsFieldRead(f) => "read(s) of the field `{f}`",
 }
 
 fn prose_class_label(c) = match c {
@@ -1240,6 +1247,7 @@ fn census_name(shape) = match shape {
   CsText(needle) => "text {needle}",
   CsProse(needle) => "prose {needle}",
   CsProseClass(c) => "prose-{prose_class_name(c)}",
+  CsFieldRead(f) => "reads of {f}",
 }
 
 fn prose_class_name(c) = match c {
@@ -1603,6 +1611,10 @@ fn census_matches(shape: CensusShape, h, body: NodeBody) with !Mutate = match sh
   },
   CsProse(needle) => prose_holds(graph_comment_at(h), needle),
   CsProseClass(c) => prose_class_holds(c, graph_comment_at(h)),
+  CsFieldRead(f) => match body {
+    NExpr(FieldExpr(_, name)) => name == f,
+    _ => false,
+  },
 }
 
 // A node with no comment holds no prose, so an empty needle lists every
@@ -2802,12 +2814,9 @@ fn handler_crosses_host(hname: String) = match env_lookup(hname) {
   None => false,
 }
 
-fn enclosing_decl_name(h) = match graph_parent_of(h) {
+fn enclosing_decl_name(h) = match enclosing_decl(h) {
   None => "",
-  Some(p) => match graph_node_body(p) {
-    NModule(_) => body_decl_name(graph_node_body(h)),
-    _ => enclosing_decl_name(p),
-  },
+  Some(d) => body_decl_name(graph_node_body(d)),
 }
 
 fn env_read_site(c) = match parse_span_of(c) {

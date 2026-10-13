@@ -1,3 +1,6 @@
-// The positive control: a body performing nothing still unlocks !Alloc —
-// the fix must kill the false proposal, never the true one.
+// A declaration no clause stands on is taught no lock: main has no callers,
+// so nothing is proposed, although its body proves every absence. It was the
+// positive control for "a body performing nothing still unlocks !Alloc" until
+// T2 made a lock nothing stands on noise (2026-10-13); the locks that ARE
+// stood on are tests/teach's lock-* fixtures.
 fn main() = 42

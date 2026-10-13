@@ -1,6 +1,13 @@
-// propose 4:26: ask behavior
+// propose 11:26: ask behavior
 // A function-typed hole: every in-scope Int -> Int function is a different
-// computation of one type.
+// computation of one type. The functions are this module's own since T3
+// (2026-10-13): the tie used to be between five helpers from lib/strings and
+// lib/lists the program never imported and the prelude's id, which a bare
+// program now fills alone.
+fn inc(x) = x + 1
+
+fn dbl(x) = x * 2
+
 fn f() -> (Int) -> Int = ??
 
 fn main() = 0

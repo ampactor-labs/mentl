@@ -577,6 +577,9 @@
 > at the comment — prose is graph content, attached to the node it
 > precedes) · `writes of FIELD` (every value written into
 > a handler state field of that name, off the writers the judgment noted) ·
+> `reads of FIELD` (every `x.FIELD` read of that name, at the read — a field
+> is no declaration, so `refs of` never reaches it; a record pattern's field
+> is not counted) ·
 > `provider of OP` (every handler declaring an arm for it, at the arm's
 > line); `mentl verify`
 > (the standing bounds on a program's own source, read off one judged

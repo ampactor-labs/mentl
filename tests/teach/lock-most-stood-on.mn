@@ -1,0 +1,13 @@
+// teach 5: add with !Alloc
+// Two callers stand on `f` not allocating and one on it not trapping: the
+// lock more declarations stand on is the one taught (a declaration that
+// authors a clause is offered no further lock).
+fn f(x) = x + 1
+
+fn a(x) with !Alloc = f(x)
+
+fn b(x) with !Alloc = f(x) + 1
+
+fn c(x) with !Trap = f(x)
+
+fn main() = a(1) + b(2) + c(3)

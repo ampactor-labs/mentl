@@ -786,26 +786,27 @@ fn lower_callee_name(fbody) = match fbody {
 // A call's positional product, read where the judgment wrote it (the
 // call-product column): the argument nodes in declaration order — labels
 // resolved, absent fields filled by their defaults, an authored `??` in
-// place — and the cells typing the slots a partial leaves open past them.
-// The lowering resolves no callee by name: the product is the call node's
-// own fact, whatever the module env says of the name — a parameter, a
-// local or a field callee is the callee the call resolves to
+// place — the cells typing the slots a partial leaves open past them, and
+// the shape the judgment decided, applied or suspended. The lowering
+// resolves no callee by name and re-decides no shape: the product is the
+// call node's own fact, whatever the module env says of the name — a
+// parameter, a local or a field callee is the callee the call resolves to
 // (Hβ.lower.callee-resolved-by-name-in-the-module-env). A call the judgment
 // never reached has no product; that is the compiler's own invariant
 // broken, reported, with the raw arguments the productive-under-error order.
 fn call_product_at(handle, args) = match graph_product_at(handle) {
-  ProductOf(nodes, open) => (nodes, open),
+  ProductOf(nodes, open, shape) => (nodes, open, shape),
   NoProduct => {
     report(EInternalInvariant(
       "a call's argument product was never judged: the lowering reached a call the judgment did not",
       parse_span_of(handle)
     ))
-    (map(unwrap_labeled_arg, args), [])
+    (map(unwrap_labeled_arg, args), [], CallApplied)
   },
 }
 
 fn call_product_nodes(handle, args) = match call_product_at(handle, args) {
-  (nodes, _) => nodes,
+  (nodes, _, _) => nodes,
 }
 
 // The `CallExpr` dispatch falls back to this when the callee isn't a
@@ -977,22 +978,27 @@ fn lower_global_call(handle, fh, name: String, r_args, lo_args) = if name == "to
   }
 }
 
-// The partial fork's ONE decider — the lower mirror of infer_call's dispatch
-// (the same call_hole_index read, the same is_seq_op precedence, the same
-// fn-typed-callee gate): Some(n) = the callee declares n params and the
-// call does not fill them all; None = saturated, or not a fn-typed callee
-// (infer's own saturated fallback, mirrored). The decider's proof — the
-// declared arity — travels to the mint; it is never re-derived there.
+// The partial fork's ONE decider reads the judgment's decision off the call
+// node's product (`CallShape`, written by infer_call_node): a call the
+// judgment SUSPENDED mints the partial, the callee's declared arity its proof
+// — the TFun read once here and carried to the mint, never re-derived there
+// — and an APPLIED call dispatches. A substrate op's holed form is the
+// pipe's to complete and is never minted here (a hole it leaves in value
+// position is refused as a hole). Before 2026-10-13 this fork re-read the
+// authored `??` and the argument count to re-make the decision, so a call
+// the judgment applied with a value hole at an operand (`choose(??) + 1`)
+// would have minted a closure where the judgment had typed a word; the
+// shape is one fact with one writer.
 //
-// THE ARITY IS THE SIGNAL, and it used to be the authored `??`. Requiring
-// the marker made SYNTAX's own headline spelling miscompile: `add(1)`
-// against a 2-param fn typed clean, fell through to the direct-call emit,
-// and produced `(call $add)` with two operands where three were expected —
-// caught by wat2wasm, an oracle outside the medium, and by nothing inside
-// it. The `??`-marked twin ran correctly throughout, so the mint was built
-// and only this decider refused; `partial_split` has always turned a slot
-// past the supplied args into a param (its own comment says "or a
-// hole-adjacent short tail").
+// THE ARITY IS THE SIGNAL the judgment reads, and it used to be the authored
+// `??` alone. Requiring the marker made SYNTAX's own headline spelling
+// miscompile: `add(1)` against a 2-param fn typed clean, fell through to the
+// direct-call emit, and produced `(call $add)` with two operands where three
+// were expected — caught by wat2wasm, an oracle outside the medium, and by
+// nothing inside it. The `??`-marked twin ran correctly throughout, so the
+// mint was built and only the decider refused; `partial_split` has always
+// turned a slot past the supplied args into a param (its own comment says
+// "or a hole-adjacent short tail").
 //
 // The reason the marker was there — a recovered callee's TFun arity is a
 // guess under productive-under-error — is real, and it is already answered
@@ -1002,25 +1008,16 @@ fn lower_global_call(handle, fh, name: String, r_args, lo_args) = if name == "to
 // arity therefore reaches a floor, never a wrong call. Measured beside it:
 // a callee that failed to resolve raises E_MissingVariable, an armed class,
 // so that program emits zero bytes and has no module to collapse.
-fn partial_unfilled(cname, fh, r_args) = if is_seq_op(cname) {
-  None
-} else {
-  match lookup_ty(fh) {
-    TFun(ps, _, _) => if len(r_args) < len(ps) {
-      Some(len(ps))
-    } else if len(r_args) == len(ps) && call_hole_index(r_args, 0) >= 0 {
-      // Saturated by COUNT but a slot is an authored hole — `add(??, 41)`,
-      // the form that always worked.
-      Some(len(ps))
-    } else {
-      // Over-application (more args than params — a recovered arity error)
-      // dispatches as before: the mint's slot walk stops at the param count
-      // and would silently drop the surplus args' evaluation, so it never
-      // fires there.
-      None
-    },
-    _ => None,
-  }
+fn partial_unfilled(cname, fh, shape) = match shape {
+  CallApplied => None,
+  CallSuspended => if is_seq_op(cname) {
+    None
+  } else {
+    match lookup_ty(fh) {
+      TFun(ps, _, _) => Some(len(ps)),
+      _ => None,
+    }
+  },
 }
 
 // The partial's declaration-order slots — ONE walk, each arg visited once
@@ -2850,7 +2847,7 @@ fn lower_resolved_ref(handle, name: String, res, local_h) = {
         NoProduct => // Not a function type: the reference IS the value — a nullary
         // variant, the sentinel form emit already knows.
         LMakeVariant(handle, tag_id, []),
-        ProductOf(_, open) => lower_call_partial(handle, graph_node_body(handle), handle, [], open, len(open)),
+        ProductOf(_, open, _) => lower_call_partial(handle, graph_node_body(handle), handle, [], open, len(open)),
       },
       Some(EffectOpScheme(_, _, _, _)) => match graph_product_at(handle) {
         NoProduct => // An op's declared scheme is always a signature, zero-arg
@@ -2858,7 +2855,7 @@ fn lower_resolved_ref(handle, name: String, res, local_h) = {
         // typed floor is the honest answer — lower_call_partial's own
         // None path, reached with the arity the graph actually proved.
         LInvariantFailure(handle, PartialCalleeShape(handle)),
-        ProductOf(_, open) => lower_call_partial(handle, graph_node_body(handle), handle, [], open, len(open)),
+        ProductOf(_, open, _) => lower_call_partial(handle, graph_node_body(handle), handle, [], open, len(open)),
       },
       Some(FnScheme) => // A named-fn VALUE reference (FnScheme tag-0 — excludes HandlerKind,
       // the PTee guard). ALWAYS the bare LGlobal — emit resolves it to the
@@ -2929,17 +2926,17 @@ fn lower_expr_body(e, handle, span) = match e {
     // order, absent fields filled by their defaults — read off the call
     // node (the call-product column), never resolved again by name.
     match call_product_at(handle, args) {
-      (r_args, open) => // PARTIAL APPLICATION AS A VALUE (SYNTAX §«Partial application — the
+      (r_args, open, shape) => // PARTIAL APPLICATION AS A VALUE (SYNTAX §«Partial application — the
       // product with a hole»): resolved args leaving declaration-order params
       // unfilled — an authored `??` slot — IS the lambda the surface law names
       // (`add3(10, ??, 30)` ≡ `(x) => add3(10, x, 30)`), supplied fields
-      // evaluated ONCE at construction. The fork mirrors infer_call's dispatch:
-      // (same call_hole_index read, same is_seq_op precedence); the mint
-      // precedes lo_args so hole slots never lower. Pipe-right calls never
-      // reach this fork — lower_pipe_complete dispatches them fork-free (the
-      // pipe owns its hole; the inline splice is the zero-record projection
-      // of the same hole-filling).
-      match partial_unfilled(lower_callee_name(fbody), fh, r_args) {
+      // evaluated ONCE at construction. The fork reads infer_call's decision
+      // off the product (the shape); the mint precedes lo_args so hole slots
+      // never lower. Pipe-right calls never reach this fork —
+      // lower_pipe_complete dispatches them fork-free (the pipe owns its
+      // hole; the inline splice is the zero-record projection of the same
+      // hole-filling).
+      match partial_unfilled(lower_callee_name(fbody), fh, shape) {
         Some(n_ps) => lower_call_partial(handle, fbody, fh, r_args, open, n_ps),
         None => lower_call_dispatch(handle, f, fh, fbody, r_args),
       },
@@ -3563,7 +3560,7 @@ fn extract_handler_config_args(node) = match node {
   N(body, _, nh) => match body {
     NExpr(CallExpr(_callee, args)) => call_product_nodes(nh, args),
     NExpr(VarRef(_)) => match graph_product_at(nh) {
-      ProductOf(nodes, _) => nodes,
+      ProductOf(nodes, _, _) => nodes,
       NoProduct => [],
     },
     _ => [],

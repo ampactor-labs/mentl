@@ -35,6 +35,227 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-10-13 · pin 53213e361d673a39 (CLEAN m2 == m3; m3 == m4 measured; the landing's second pin — the first, 1b59f63c, was superseded once the claim-reading pass's rewrites and the teach battery's declaration check landed) · LANDING 3 — TEACH SAYS WHAT IS TRUE OR NOTHING: A LOCK IS TAUGHT ONLY WHERE A CLAUSE STANDS ON IT, THE PROPOSER OFFERS WHAT THE MODULE SEES, AND AN ARGUMENT HOLE AT AN OPERAND IS A VALUE HOLE
+  Three contained cuts on the felt loop, each measured RED on boot c939f5b8
+  before the change, and one facet grown for a confessed verb gap.
+  **T2 · the lock's dependents.** `row_suggestions` (src/mentl.mn) used to
+  enumerate `with Pure` and one `!E` per effect the LINK performed, ranked by
+  how often the link performed it, and offer the strongest clause the body
+  proved — so `fn main() = 42` was told to add `with Pure`, and 367 of 427
+  declarations across six wheel modules got a lock on 2026-10-06. A lock is
+  read off the clauses that STAND on the declaration now: `standing_clauses`
+  walks the by-name application edge (`applications_of`) from the declaration
+  to each application and up through every caller, claused or not (g's
+  `!Alloc` stands on f through an unclaused h, and k's `!Trap` stands on f
+  through a claused g), with the effects a `~>`
+  install between the application and the clause absorbs masked out
+  (`masked_between`, through `tee_absorbs`); the locks a clause states are
+  `with Pure` or each bare name it negates, a group's members under the
+  group's sign (`clause_locks`); each candidate is still proven in the
+  checkpoint bracket (`row_clause_holds`); `Leverage` lost `absences` and
+  gained `stands`, the declarations whose clauses stand on the lock, rendered
+  "locks … — `g` stands on it" and ranked more-stood-on first (cursor.mn's
+  position score reads the same count). The Teach handler is stateless: the
+  link-wide performed-name census it held (`performed_names_of_link`,
+  `entries_row_names`, `entry_row_names`, `names_union_into`,
+  `name_count_bump`, `sort_by_count_desc`, `insert_by_count`,
+  `severance_negations`, `gradient_candidates`, `clause_absences` — ten
+  declarations) was the lock vocabulary and is deleted. An instance negation
+  is not yet a lock (band A). Gates: five teach fixtures —
+  `lock-protects-a-caller`, `lock-nothing-depends`, `lock-through-a-caller`,
+  `lock-most-stood-on` (two callers' `!Alloc` ranks above one `!Trap`) and
+  `lock-masked-by-an-install` — all RED on the boot, which taught `with Pure`
+  to four and `!Memory` to the masked one; the frontier's `teach-pure-control`
+  became `teach-claimless-none` (the boot read `main: → add with Pure`);
+  mn-teach-authored's and tests/teach/pure.mn's main declare `with Pure` so
+  their `add` keeps its `with Pure` with main standing on it;
+  mn-teach-alloc-honest's allocating f is called under a `!Trap` clause and is
+  taught `!Trap`, never `!Alloc`; need-is-own's contract is `none` (the boot
+  taught `!Memory` beside the need it correctly withheld); and
+  mn-teach-prevalence.mn is deleted with the prevalence ranking it measured.
+  **T3 · the rings are the module's scope.** `VocabRing = OwnModule |
+  AuthoredImport | Prelude` (src/synth_proposer.mn): the imported ring is the
+  declarations of the modules the hole's module's own import statements name
+  — it was the transitive closure of the authored edges (`authored_reach`,
+  `cell_imports`, `cell_imports_pick`, deleted) — the third ring is the
+  prelude's declarations, and a name the module reaches through the link
+  alone is neither offered nor listed as refused (`ring_of_name` answers
+  None). Measured: tests/frontier/stage-ring-demo gained a `deep.mn` two
+  edges from the entry declaring a fitting `quadruple`, which TIED with
+  helper's `triple` on the boot and is never offered now (`Propose: triple`);
+  a bare `fn main() -> Int = 5 |> ??` answered six survivors on the boot —
+  four from lib/strings, one from lib/lists and the prelude's `id` — and
+  `id` alone now;
+  tests/proposals/string-value-tie's contract moved to `fill ""`, as the peer
+  predicted, and lambda-behavior-tie declares the two functions its behavior
+  tie is between (the old shape fills `id`).
+  `Hβ.synth.linked-ring-offers-substrate-internals` is CLOSED in the scope
+  form, its remainder named: a directly imported module offers every
+  declaration it makes until a module has a surface.
+  **The operand hole.** `CallSite` gains `AtOperand` (src/infer.mn): an
+  operator's operand that is a call is judged there (`infer_operand`,
+  `infer_call_expr`), and an authored `??` among its arguments is a VALUE hole
+  — nothing can fill the field later — so the call applies, the hole takes
+  the slot's contract (`discharge_arg_refinements` notes it as the partial
+  path does), and `choose(??) + 1` over `choose(n: Positive)` checks clean and
+  proposes `1` where the boot refused `E_ArithOnAggregate` on the product the
+  hole made. The decision is one fact with one writer: `CallProduct` carries a
+  `CallShape` (`CallApplied | CallSuspended`, src/types.mn) written by
+  `infer_call_node`, and the lowering reads it — `partial_unfilled` no longer
+  re-reads the authored `??` and the argument count to re-make the judgment's
+  decision, and `application_of` / `stage_application` read the shape instead
+  of re-scanning the nodes for authored holes. The executable still refuses
+  the unfilled hole (`E_UnresolvedHole` at 7:20). Gates:
+  tests/proposals/arg-slot-operand.mn (`fill 1`) and the frontier's
+  `hole-operand` pair (check clean; compile refuses honestly). SYNTAX
+  §«Partial application» carries the rule.
+  **The frontier's gradient tier was the lock noise.** The first frontier run
+  of the candidate went 658 / 5 red: the gradient field, the gradient accept,
+  the resident session, the frontier read and the problem space — every leg
+  whose "gradient position(s)" were locks nothing stood on (three on a
+  three-function module; `with Pure` on `main`). Each fixture gained the
+  clause its lock stands on and each leg was re-derived by hand through the
+  candidate: gradient-module-demo's main and a new `quiet` declare `!Fail`,
+  so `add` (two clauses stand on it) ranks above `build` (one) and the two
+  claused declarations are no positions — the ranking the leg exists to
+  measure, now by what stands on a lock; the session's accept writes `fn
+  add(a, b) with !Fail = a + b` into its own file; the resident fixture's main
+  declares `with Pure` and `double` is taught it; the frontier-read fixture's
+  main declares `!Alloc` and the tier holds width and banner; the
+  problem-space fixture's main declares `!Alloc`, so id 2 counts scaled's need
+  alone beside noisy's tightening, and id 3, after the edit drops noisy's
+  row, counts the `!Alloc` lock main now stands on beside it — the living
+  frontier in both directions.
+  **The confessed facet, grown: `reads of FIELD`.** Finding every reader of
+  `Leverage.absences` went to a shell search over src/*.mn under a `verb-gap`
+  tag — `refs of` reads the refs column, which a field read never enters
+  (a field is no declaration), and `text`/`prose` read literals and comments.
+  The facet is a census shape (`CsFieldRead(String)`, src/query.mn): every
+  `x.FIELD` node, at the read, scoped by `in <module>` like its siblings;
+  `mentl query tests/frontier/mn-reading-facets.mn "reads of width"` answers
+  the one read at 24:14 through the candidate and `unknown query` through the
+  boot. The reading-facets frontier leg asks it beside text, prose and
+  writes of; CLAUDE.md's verb map names it.
+  **One home for the enclosing declaration.** The medium refused the first
+  build with `E_DuplicateFnName`: cursor.mn already had an `enclosing_decl`
+  (over its ancestry walk) and query.mn a by-name twin
+  (`enclosing_decl_name`); the one walk lives in graph.mn now and all three
+  read it.
+  KILLS. (1) "The proposer stopped offering a module's own references at a
+  function-typed value hole" — the rewritten lambda-behavior-tie answered
+  `none` through the candidate; the projection at its contract's address
+  rendered `Query: x : Int`, dbl's parameter: the contract named line 8 and
+  the hole was on line 10, and the same miscount had sent pure.mn's contract
+  to a blank line. The proposer was right both times. (2) The first build's
+  `E_PatternInexhaustive` at infer_call's site match: the third `CallSite`
+  variant had no arm there. (3) cursor.mn's position score read
+  `Leverage.absences` for a lock's weight; it reads the dependents' count.
+  (4) The fixtures' first draft declared `!IO` where a second effect was
+  needed: no module declares IO, so the clause refuses at the declaration
+  since Landing 1, and lock-most-stood-on's third caller and
+  mn-teach-alloc-honest's caller declare `!Trap`. (5) The drift hook (mode 9)
+  refused "until then" in a comment; the comment then said through which boot
+  the old form held, and the first repin REFUSED that: `mentl verify` counted
+  54 comments carrying a hex commit token against a ceiling of 51, because a
+  boot's sha in prose is the commit token the board bounds (a sha belongs to
+  LEDGER and git). The six comments date their old form by the day instead;
+  the tree carries 48 such comments, as it did before them, and the ceiling
+  is lowered to that count (src/board.mn). (6) fmt refused two redundant parentheses
+  the author wrote around `&&` and `++`. (7) The board's first run at the new
+  pin was refused by residue-truth: an OPEN peer
+  (`Hβ.synth.vocabulary-reach-index`) named `authored_reach`, deleted here,
+  and its 2026-10-06 re-grounding said no reach walk remained while
+  `reaches_decl` is one; the entry says what stands. (8) The claim pass's
+  rewrites grew two fixtures' comments by a line, and the proposal battery
+  refused the first: lambda-behavior-tie's contract named 10:26 while its
+  hole had moved to line 11 (`none`, where the projection at 11:26 shows the
+  two-way tie); the contract names the line again. The teach battery did NOT
+  refuse the second — lock-masked-by-an-install's `teach 13: none` stood at a
+  blank line and PASSED. (9) Probed in the scratchpad: a `none` contract at
+  a blank line meets the view of whatever node the address resolves to (at
+  pure.mn:4 a type variable whose span is line 0), which teaches nothing,
+  and passes; past the file's
+  end it refuses, and a wrong want at a real declaration refuses — so the
+  one shape the battery could not fail on was the one the fixtures had
+  drifted into. The battery reads the declaration's name beside the view
+  (`battery_view` answers both) and refuses a contract at a line that
+  declares nothing (`FAIL(teach) … no declaration at`). Its first form read
+  the graph OUTSIDE the fixture's judgment and refused every fixture: the
+  handle names nothing once the bracket that holds the graph has closed, so
+  the name is read where the view is. The frontier runs
+  tests/frontier/teach-battery-refuses, whose one fixture must FAIL. (10)
+  THE SESSION CLIENT ADMITTED TWO ASKS IN FLIGHT OVER A ONE-SLOT CHANNEL.
+  The board's first run at the second pin went RED on the ide gate's canvas
+  leg — `SMOKE-CANVAS … tokens=0`, every other field as always — and three
+  hypotheses died in order: load (the batteries ran beside that board; the
+  gate alone answered `tokens=26` and GREEN, then the board alone went red
+  again), the shell capture the board runs a gate in (reproduced once in a
+  capture, then the direct run failed and the capture passed), and the
+  smoke's settle windows (made the leg's one bound, and the line still read
+  0 one run in three). The instrument that answered was the line itself:
+  the page now prints why the canvas it holds is what it is (`canvas-why`,
+  ide/index.html), and the red run said `no-canvas/326b` — the module read
+  `space FILE:0`, exit 0, answered a View WITHOUT a canvas, which
+  `space_project` cannot produce for line 0 (src/space.mn: the field view
+  always carries one). It had received the answer to the ask BEFORE it, a
+  caret's View. ide/session-client.js's `call` wrote each ask into the one
+  request slot of the shared channel and waited for the reply counter to
+  move, with no queue and no id: two asks in flight both resolved on the
+  first answer and the second's reply stood for whoever asked next, so
+  every later answer was the previous ask's. The page's formatter-on-idle
+  timer (`fmtIdle`) asks the session outside the `busy` guard a projection
+  sets, and its 200 ms rescheduling under the smoke's fmt leg could land
+  beside a projection — once in three runs here; for a developer, any pause
+  that formats while a caret moves. The earlier greens were the same shift
+  one answer later: 26 tokens was a smaller step's canvas standing for the
+  fixture's 115. A call waits behind the one before it now (a promise chain
+  in `call`; the twin shares the file), the smoke's waits are bounded by the
+  leg's one timeout, the line reports `canvas-text` and `canvas-why`, and
+  the gate requires the canvas to be the page text's (tools/ide-gate.sh):
+  six consecutive runs answer 115 tokens, canvas-text true.
+  **THE CLAIM-READING PASS.** One reader (an agent that did not write the
+  landing) took 130 sentences the landing's docs, comments and fixtures
+  assert of the artifact and answered each with the verbs, the boot and
+  HEAD's boot through `MENTL_BOOT`; 14 were refuted and rewritten to what
+  was measured. The bare program's six survivors were `decode_stride`
+  (lib/lists), `hex_val`, `escape_len`, `escape_tail` and `hash`
+  (lib/strings) and the prelude's `id` — not lib/strings and lib/memory,
+  and `id` was one of the six. The T2 walk climbs through EVERY caller,
+  claused or not (probed: `k with !Trap` and `m with !Trap` calling a
+  claused `g with !Alloc` calling `f` teach `f` the `!Trap` both stand on),
+  where four sentences said "callers that author no clause". `triple` fills
+  alone at stage.mn's hole and `quadruple` is never offered, where the
+  RESIDUE sentence's pronoun said the opposite; stage.mn's comment said `id`
+  was in scope only through the flattened link, where it is the Prelude ring
+  by design. The OPEN peer line read 383 → 382 for a measured 382 → 381. The
+  board.mn history line said 51 comments and three older ones reworded,
+  where the census answers 48 and HEAD was already at 48 (54 − 6). `reads
+  of FIELD` does not count a record pattern's field. need-is-own's contract
+  named line 13, `apply`, where `main` (15) was meant — the kill-(1) miscount
+  once more. lock-most-stood-on's comment promised `!Trap` would follow once
+  `!Alloc` was accepted, and a declaration with an authored clause is
+  offered no further lock (the remainder RESIDUE names); lock-masked's said
+  no lock was provable where one is (`!Memory`, nothing standing on it);
+  kill (4) said every fixture stands on `!Trap` where one caller does;
+  lambda-behavior-tie's comment left `id` out of the six;
+  mn-teach-pure-control's header described the pre-T2 behaviour as current;
+  and the CLOSED peer `Hβ.teach.severance-vocabulary-from-link` still cited
+  the deleted prevalence fixture as its gate (a dated note says it left with
+  T2). Each refuted sentence was a claim about WHAT EXISTS, which no gate
+  reads — the class CLAUDE.md's pass exists for — and two of the rewrites
+  moved fixture lines, which kills (8) and (9) record.
+  GATES, each read whole on the tree committed: micros 399/399 through m2;
+  teach 16/16 and proposals 27/27 through the candidate; frontier 664 pass /
+  0 red / 2 expected-red (fresh compile; 663 at the first pin, the
+  battery-refuses leg the 664th); crown 143/143; proof-exactness 30/30;
+  `mentl verify` 23 bounds hold; march CLEAN m2 == m3 and m3 == m4 measured;
+  m3 leg 38.52 s wall, 464 MB peak RSS (475,832 KB), 636,821 lines, census 0
+  (38.26 s / 475,724 KB / 636,655 lines at the first pin); the ide gate
+  GREEN and the board whole at the pin (`bash tools/state.sh`, after the
+  residue-truth correction above). Peers: `Hβ.synth.linked-ring-offers-substrate-internals` CLOSED;
+  `Hβ.teach.teaches-what-the-program-owes` records T2 and T3's rings LANDED,
+  with the remainder a declaration that authors a clause is offered no further
+  lock; OPEN count 382 → 381.
 - 2026-10-13 · pin c939f5b843a52fd5 (CLEAN m2 == m3; m3 == m4 measured; the landing's second pin — the first, 70928b6e, was superseded once the claim-reading pass's two refuted renders were fixed) · LANDING 2 — A REFUSAL NAMES ITS CAUSE: THE WALK FROM A DECLARATION'S ROW TO THE SITE THAT CHARGES EACH EFFECT, READ BY THE REFUSAL, THE CARET AND THE WHY VERB
   ONE WALK — `effect_entry` (src/infer.mn): from a node to the earliest
   child whose subtree row carries the effect (`row_of_subtree` over the

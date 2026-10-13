@@ -1,0 +1,11 @@
+// teach 5: add with !Alloc
+// The clause that stands on `f` is two calls up: `g` declares `!Alloc` and
+// calls `h`, whose body calls `f` under no clause of its own. `g`'s proof
+// rests on `f` through `h`, so `f` is taught the lock `g` stands on.
+fn f(x) = x + 1
+
+fn h(x) = f(x) * 2
+
+fn g(x) with !Alloc = h(x)
+
+fn main() = g(1)

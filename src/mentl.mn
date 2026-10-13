@@ -95,20 +95,11 @@ effect Synth {
 
 // Default Teach handler — the substrate's self-projection, reading the graph
 // through GraphRead: the gradient by the bracket that proves each annotation,
-// the Why by the reason DAG.
-handler mentl_default with performed = [] {
-  teach_gradient(handle) => // The link's PERFORMED-name union, computed once and held as
-  // handler state (handler = state — the Mentl-native memo): the
-  // severance vocabulary is what the program actually performs, so
-  // per-fn asks stay O(1) after the first. An empty union (a link
-  // performing nothing) recomputes per ask — bounded by its own
-  // emptiness.
-  if len(performed) == 0 {
-    let ps = performed_names_of_link()
-    resume(gradient_next(handle, ps)) with performed = ps
-  } else {
-    resume(gradient_next(handle, performed))
-  },
+// the Why by the reason DAG. Stateless: the link-wide census of performed
+// names it held as state was the lock vocabulary, and a lock is read off the
+// clauses that stand on the declaration (T2, 2026-10-13).
+handler mentl_default {
+  teach_gradient(handle) => resume(gradient_next(handle)),
   teach_why(handle) => resume(why_from_handle(handle)),
 }
 
@@ -128,10 +119,10 @@ handler mentl_default with performed = [] {
 // clause while no row is authored (a row the author wrote is either tight or
 // proven over-declared, and that proof — T_OverDeclared, banked for `mentl
 // tighten` — is what the render layer reads instead).
-fn gradient_next(handle, performed) = match graph_node_body(handle) {
+fn gradient_next(handle) = match graph_node_body(handle) {
   NStmt(FnStmt(name, params, retty, effs, body)) => match graph_chase(handle) {
     GNode(NBound(ty), anchor) => match ty {
-      TFun(_, ret, _) => decl_teaching(Decl({anchor, body, effs, handle, name, params, ret, retty, ty}), performed),
+      TFun(_, ret, _) => decl_teaching(Decl({anchor, body, effs, handle, name, params, ret, retty, ty})),
       _ => TeachNone,
     },
     _ => TeachNone,
@@ -154,10 +145,10 @@ type Decl = {
   ty: Ty,
 }
 
-fn decl_teaching(d, performed) = match d {
+fn decl_teaching(d) = match d {
   Decl(f) => {
     let owed = open_obligations(f.handle)
-    let rows = if len(f.effs) > 0 { [] } else { row_suggestions(f, performed) }
+    let rows = if len(f.effs) > 0 { [] } else { row_suggestions(f) }
     let proven = precondition_suggestions(f, owed) ++ return_suggestions(f) ++ rows
     match rank_suggestions(proven) {
       [] => need_or_none(f, owed),
@@ -170,86 +161,145 @@ fn decl_teaching(d, performed) = match d {
   },
 }
 
-// The link's performed-name union WITH PREVALENCE: every env scheme's
-// TFun row, row_names'd and counted by the name handle (identity is a
-// contract — one interned word per name), sorted most-performed-first
-// at the one memo point. The count grades the law's "E happens in this
-// program" — a name half the link performs makes a stronger severance
-// than one fn's plumbing effect — and the sort IS the tie-ranking:
-// the ranking's stable insertion keeps the first proven candidate,
-// so equal-leverage generics resolve by prevalence, never by env
-// enumeration order (the uniform-!SmtSolver symptom). The env is the
-// one home the QEffects facet already reads per name; this is the
-// same read, link-wide, run once per Teach install and held as
-// handler state. (The first cut walked decls-column HANDLES through
-// lookup_ty and measured an EMPTY union — a decl node's bound type is
-// not its fn's TFun; the scheme is.)
-fn performed_names_of_link() = match env_snapshot() {
-  Env(entries) => sort_by_count_desc(entries_row_names(entries, [])),
-}
+// ── The locks something stands on (T2, 2026-10-13) ────────────────────
+//
+// A clause another declaration authored is a proof resting on this
+// declaration's row: `fn g() with !Alloc = f()` holds because f allocates
+// nothing, so an allocation written into f later is refused at g, far from
+// the line that made it. The lock teaches f the clause g stands on, and the
+// refusal moves to f. A declaration no clause reaches has nothing standing
+// on its absences, and no lock is taught there. Before 2026-10-13 every
+// declaration whose row lacked an effect the link performed was offered the
+// strongest clause it proved — 367 of 427 declarations across six wheel
+// modules on 2026-10-06 — and `fn main() = 42` was told to add `with Pure`.
+//
+// The dependents are read along the application edge (`applications_of`,
+// the by-name reverse link the reference link replaces) and up through every
+// caller, claused or not: g's `!Alloc` stands on f through an unclaused h,
+// and k's `!Trap` stands on f through a claused g. A `~>` install between
+// the application and the clause absorbs what its handler answers, and the
+// clause stands on nothing of the row for those effects. An instance
+// negation (`!Sample(44100)`) is band A's precision and is not yet a lock.
+fn standing_clauses(name: String, seen) = applications_of(name) |> flat_map(standing_at(seen, ??))
 
-fn entries_row_names(entries, acc) = match entries {
-  [] => acc,
-  [e, ...rest] => entries_row_names(rest, names_union_into(acc, entry_row_names(e))),
-}
-
-fn entry_row_names(e) = match e {
-  (_, scheme, _, _) => match judgment_ty(scheme) {
-    TFun(_, _, row) => row_names(row),
-    _ => [],
-  },
-}
-
-fn names_union_into(acc, names) = match names {
-  [] => acc,
-  [n, ...rest] => names_union_into(name_count_bump(acc, n), rest),
-}
-
-fn name_count_bump(acc, n) = match acc {
-  [] => [(n, 1)],
-  [p, ...rest] => match p {
-    (m, c) => if eff_name_handle(m) == eff_name_handle(n) {
-      [(m, c + 1)] ++ rest
+fn standing_at(seen, app_h) = match enclosing_decl(app_h) {
+  None => [],
+  Some(dh) => match decl_clause(dh) {
+    None => [],
+    Some((dname, effs)) => if string_in_list(seen, dname) {
+      []
     } else {
-      [p] ++ name_count_bump(rest, n)
+      let masked = masked_between(app_h, dh)
+      let here = clause_locks(effs) |> map(stood_by(dname, ??))
+      here ++ standing_clauses(dname, push(seen, dname)) |> filter(lock_unmasked(masked, ??))
     },
   },
 }
 
-fn sort_by_count_desc(pairs) = match pairs {
-  [] => [],
-  [p, ...rest] => insert_by_count(p, sort_by_count_desc(rest)),
+fn stood_by(dname: String, ann) = (ann, dname)
+
+// A declaration's name and authored clause — a function's or a handler's.
+fn decl_clause(dh) = match graph_node_body(dh) {
+  NStmt(FnStmt(name, _, _, effs, _)) => Some((name, effs)),
+  NStmt(HandlerDeclStmt(name, _, _, _, _, effs)) => Some((name, effs)),
+  _ => None,
 }
 
-fn insert_by_count(p, sorted) = match sorted {
-  [] => [p],
-  [q, ...rest] => match (p, q) {
-    ((_, pc), (_, qc)) => if pc >= qc { [p] ++ sorted } else { [q] ++ insert_by_count(p, rest) },
+// The locks a clause states: `with Pure`, or each bare name it negates — a
+// group's members under the group's own sign.
+fn clause_locks(effs) =
+  if has_pure_declared(effs) { [APure(None)] } else { effs |> flat_map(term_locks(false, ??)) }
+
+fn term_locks(flipped, term) = match term {
+  (RtEff(n), neg, _) => match n {
+    ENamed(_) => if neg != flipped { [ANotEffect(eff_name_str(n), None)] } else { [] },
+    EParameterized(_, _) => [],
+    EPure => [],
   },
+  (RtGroup(ts), neg, _) => ts |> flat_map(term_locks(neg != flipped, ??)),
 }
 
-// One general-severance candidate per performed BARE name, in the
-// union's prevalence order (most-performed first — the tie-ranking) —
-// the parameterized and Pure entries stay out (an instance severance
-// is band A's precision work; Pure severs nothing).
-fn severance_negations(performed) = match performed {
-  [] => [],
-  [p, ...rest] => match p {
-    (n, _count) => match n {
-      ENamed(_) => [ANotEffect(eff_name_str(n), None)] ++ severance_negations(rest),
-      EParameterized(_, _) => severance_negations(rest),
-      EPure => severance_negations(rest),
+// What the installs between an application and its declaration absorb: at
+// each `~>` whose body holds the application, the effects its handler's arms
+// answer.
+fn masked_between(child, top) = if child == top {
+  []
+} else {
+  match graph_parent_of(child) {
+    None => [],
+    Some(p) => match graph_node_body(p) {
+      NExpr(PipeExpr(PTee, l, r)) => if node_handle(l) == child {
+        tee_absorbs(r) ++ masked_between(p, top)
+      } else {
+        masked_between(p, top)
+      },
+      _ => masked_between(p, top),
     },
+  }
+}
+
+fn tee_absorbs(r) = match handler_arms(tee_handler_name(r)) {
+  Some(arms) => handler_effect_names(arms),
+  None => [],
+}
+
+fn lock_unmasked(masked, pair) = match pair {
+  (ann, _) => match ann {
+    ANotEffect(name, _) => !string_in_list(masked, name),
+    APure(_) => len(masked) == 0,
+    ARefined(_) => false,
+    AReturns(_) => false,
   },
 }
 
-// The row clause's candidate enumeration: `with Pure`, then one ANotEffect
-// per name the link performs (known names keep their rich capability labels
-// through capabilities_for_severance), each proven by the same
-// negation-narrowing row read. `!E` is informative exactly when E happens in
-// this program and is absent from THIS fn's row — the proof filters the
-// present ones.
-fn gradient_candidates(performed) = [APure(None)] ++ severance_negations(performed)
+// One candidate per lock, with every declaration that stands on it: `with
+// Pure` first, then the negations as the walk found them.
+fn lock_candidates(pairs) = {
+  let grouped = fold([], add_dependent, pairs)
+  filter(is_pure_lock, grouped) ++ filter({ c => !is_pure_lock(c) }, grouped)
+}
+
+fn add_dependent(acc, pair) = match pair {
+  (ann, dname) => if any(same_lock(ann, ??), acc) {
+    map(join_dependent(ann, dname, ??), acc)
+  } else {
+    push(acc, (ann, [dname]))
+  },
+}
+
+fn join_dependent(ann, dname: String, c) = match c {
+  (a, ds) => if lock_eq(a, ann) && !string_in_list(ds, dname) { (a, push(ds, dname)) } else { c },
+}
+
+fn same_lock(ann, c) = match c {
+  (a, _) => lock_eq(a, ann),
+}
+
+fn is_pure_lock(c) = match c {
+  (a, _) => match a {
+    APure(_) => true,
+    ANotEffect(_, _) => false,
+    ARefined(_) => false,
+    AReturns(_) => false,
+  },
+}
+
+fn lock_eq(a, b) = match a {
+  APure(_) => match b {
+    APure(_) => true,
+    ANotEffect(_, _) => false,
+    ARefined(_) => false,
+    AReturns(_) => false,
+  },
+  ANotEffect(x, _) => match b {
+    ANotEffect(y, _) => x == y,
+    APure(_) => false,
+    ARefined(_) => false,
+    AReturns(_) => false,
+  },
+  ARefined(_) => false,
+  AReturns(_) => false,
+}
 
 // Map an Annotation variant to its SuggestionKind axis. Drift 8
 // closure: SuggestionKind is the tagged dispatch surface; the
@@ -295,14 +345,19 @@ type Site = SiteParam(Int) | SiteReturn | SiteRow
 
 type Proven = Proven(Site, AnnotationSuggestion)
 
-// ── The row clause: a proven absence, locked ───────────────────────────
+// ── The row clause: a lock some clause stands on, proven ───────────────
 //
-// Each candidate proven by the declaration gate's own engine: the narrowed
-// row bound in a checkpoint, the body's row asked to subsume it, rolled
-// back. A proven clause locks an absence the body already has — the gate
-// every edit of the body must meet — and discharges nothing.
-fn row_suggestions(f, performed) =
-  gradient_candidates(performed) |> filter(row_clause_holds(f.handle, f.ty, ??)) |> map(row_suggestion(len(performed), ??))
+// Each candidate is a lock a dependent's clause stands on (above), proven by
+// the declaration gate's own engine: the narrowed row bound in a checkpoint,
+// the body's row asked to subsume it, rolled back. A proven clause locks an
+// absence the body already has — the gate every edit of the body must meet
+// — and discharges nothing.
+fn row_suggestions(f) =
+  standing_clauses(f.name, [f.name]) |> lock_candidates |> filter(lock_holds(f.handle, f.ty, ??)) |> map(row_suggestion)
+
+fn lock_holds(handle, base_ty, c) = match c {
+  (ann, _) => row_clause_holds(handle, base_ty, ann),
+}
 
 // One candidate's bracket — the synth fan's shape (judge_in_segment): the
 // graph's checkpoint and the world's top, each restored, inside an arena
@@ -320,28 +375,23 @@ fn row_clause_holds(handle, base_ty, ann) = {
   ok
 } ~> arena
 
-// A clause's absences: `!E` locks one; `with Pure` locks every effect the
-// link performs, each of which it proves this declaration never reaches.
-fn row_suggestion(performed_count, ann) = Proven(
-  SiteRow,
-  AnnotationSuggestion(
-    ann,
-    Leverage({
-      absences: clause_absences(ann, performed_count),
-      discharged: 0,
-      locks: capability_labels(capabilities_for_annotation(ann)),
-      opened: 0,
-      refuted: 0,
-    }),
-    suggestion_reason(ann)
-  )
-)
-
-fn clause_absences(ann, performed_count) = match ann {
-  APure(_) => if performed_count > 1 { performed_count } else { 1 },
-  ANotEffect(_, _) => 1,
-  ARefined(_) => 0,
-  AReturns(_) => 0,
+// A lock's leverage: the guarantees it names, and the declarations whose
+// clauses stand on it.
+fn row_suggestion(c) = match c {
+  (ann, stands) => Proven(
+    SiteRow,
+    AnnotationSuggestion(
+      ann,
+      Leverage({
+        discharged: 0,
+        locks: capability_labels(capabilities_for_annotation(ann)),
+        opened: 0,
+        refuted: 0,
+        stands,
+      }),
+      suggestion_reason(ann)
+    )
+  ),
 }
 
 // ── The open obligations a declaration owes ────────────────────────────
@@ -585,7 +635,7 @@ fn prove_precondition(f, owed, b, i, name: String, alias) = match alias {
             SiteParam(i),
             AnnotationSuggestion(
               ann,
-              Leverage({absences: 0, discharged, locks: [], opened, refuted}),
+              Leverage({discharged, locks: [], opened, refuted, stands: []}),
               suggestion_reason(ann)
             )
           )
@@ -650,7 +700,7 @@ fn leaf_is(name: String, leaf) = match graph_node_body(leaf) {
 fn application_args(h) = match graph_node_body(h) {
   NExpr(PipeExpr(PForward, left, _)) => [left],
   _ => match graph_product_at(h) {
-    ProductOf(args, _) => args,
+    ProductOf(args, _, _) => args,
     NoProduct => [],
   },
 }
@@ -774,7 +824,7 @@ fn prove_return(f, resting, alias) = match alias {
             SiteReturn,
             AnnotationSuggestion(
               ann,
-              Leverage({absences: 0, discharged, locks: [], opened: 0, refuted}),
+              Leverage({discharged, locks: [], opened: 0, refuted, stands: []}),
               suggestion_reason(ann)
             )
           )
@@ -815,9 +865,10 @@ fn rest_refuted(r) = match r {
 // THE RANKING: what a suggestion proves, read lexicographically — debt
 // discharged first (the program becomes more proven), then fewer calls
 // refuted and fewer left open (a precondition asking less of its callers),
-// then the locks. A stable insertion, so equal suggestions keep their
-// enumeration order: preconditions in parameter order, the return, then
-// `with Pure` and the severances in prevalence order.
+// then the locks, the one more declarations stand on first. A stable
+// insertion, so equal suggestions keep their enumeration order:
+// preconditions in parameter order, the return, then `with Pure` and the
+// negations as the dependents walk found them.
 fn rank_suggestions(proven) = fold([], insert_ranked, proven)
 
 fn insert_ranked(sorted, p) = match sorted {
@@ -828,7 +879,7 @@ fn insert_ranked(sorted, p) = match sorted {
 fn proven_key(p) = match p {
   Proven(_, s) => match s {
     AnnotationSuggestion(_, lev, _) => match lev {
-      Leverage(l) => [0 - l.discharged, l.refuted, l.opened, 0 - l.absences],
+      Leverage(l) => [0 - l.discharged, l.refuted, l.opened, 0 - len(l.stands)],
     },
   },
 }
@@ -1074,14 +1125,25 @@ fn show_capability(cap) = match cap {
 }
 
 // What a suggestion buys, in the developer's words: the debt it discharges
-// and what it asks of the callers, or the guarantees it locks.
+// and what it asks of the callers, or the guarantees it locks and who
+// stands on them.
 fn show_leverage(lev) = match lev {
   Leverage(l) => if l.discharged > 0 {
     "discharges {counted(l.discharged, "open obligation")}{refuted_clause(l.refuted)}{opened_clause(l.opened)}"
   } else {
-    "locks {join(", ", l.locks)}"
+    "locks {join(", ", l.locks)} — {stood_on(l.stands)}"
   },
 }
+
+// The declarations whose clauses stand on a lock, named. A lock is built
+// only from its dependents, so the empty case is the record's own word.
+fn stood_on(names) = match names {
+  [] => "nothing stands on it",
+  [one] => "`{one}` stands on it",
+  _ => "{join(", ", map(backticked, names))} stand on it",
+}
+
+fn backticked(n: String) = "`{n}`"
 
 fn counted(n, noun: String) = if n == 1 { "1 {noun}" } else { "{int_to_str(n)} {noun}s" }
 

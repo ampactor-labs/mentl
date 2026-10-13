@@ -2718,6 +2718,11 @@ comment; the bank had outlived the fix. The named growth beyond this
 peer: per-fn PROXIMITY (does this fn's call neighborhood perform E)
 as a second informativeness axis — synth's rank_of owns that read;
 it joins if a real teach consumer measures prevalence insufficient.
+RE-READ 2026-10-13 (Landing 3): the prevalence ranking and its fixture
+left with T2 — a lock is proposed only when a clause stands on it, and
+ranks by how many declarations stand on it, so no prevalence of a name
+across the link is read any more; tests/frontier/mn-teach-prevalence.mn
+is deleted, and the gate above is history, not a leg the board runs.
 
 ### `Hβ.types.predicate-is-expr` — OPEN
 
@@ -3298,7 +3303,7 @@ CALL with arguments is still not enumerated: `f(??, ??)` for an in-scope
 `fn f(a, b)` whose result fits the hole is the general recursive form, and
 this entry keeps it.
 
-### `Hβ.synth.linked-ring-offers-substrate-internals` — OPEN
+### `Hβ.synth.linked-ring-offers-substrate-internals` — CLOSED 2026-10-13
 
 BORN 2026-09-30
 (C7, measured on boot 2fcad4e9). The Linked ring offers the substrate's
@@ -3314,6 +3319,21 @@ the import edges the manifest judgment already draws (`E_MissingImport`,
 F0b), so the Linked ring offers what a `lib` module exports and never what
 it keeps. `tests/proposals/string-value-tie.mn` carries the survivor as a
 value tie; its contract moves to a fill when this lands.
+
+CLOSED 2026-10-13 (Landing 3, T3's rings). The Linked ring is gone: the
+proposer's rings are what the hole's module SEES — its own declarations,
+the declarations of the modules its own import statements name, and the
+prelude's (`VocabRing = OwnModule | AuthoredImport | Prelude`,
+src/synth_proposer.mn) — and a name the module reaches through the link
+alone is neither offered nor listed as refused. The imported ring had been
+the transitive closure of the authored edges (`authored_reach`, deleted):
+tests/frontier/stage-ring-demo's helper imports a `deep` declaring a fitting
+`quadruple`, and on boot c939f5b8 the two tied at stage.mn's hole; `triple`
+fills alone now and `quadruple` is never offered. `hex_glyphs()` is offered at a String
+hole exactly when the program imports lib/strings itself, which is the
+remainder this entry leaves to the module's SURFACE (what a module exports
+against what it keeps — `Hβ.driver.per-module-env-overlay`, M12's capability
+units): a directly imported module offers every declaration it makes.
 
 ### `Hβ.infer.arm-body-cell-is-free-at-propose` — OPEN
 
@@ -13350,9 +13370,12 @@ mechanism.**
    reference linked to it. It is module-qualified by construction and never a
    text replacement.
 5. **A module's surface.** Its exports are the declarations other modules'
-   references link to. The proposer's Linked ring offers those and stops
-   offering substrate internals: today `hex_glyphs()` ranks first at a String
-   hole (`Hβ.synth.linked-ring-offers-substrate-internals`).
+   references link to. The proposer's rings are the hole's module's scope
+   since 2026-10-13 — its own declarations, its direct imports' and the
+   prelude's — and offer every declaration an imported module makes; the
+   surface narrows that to what the module exports
+   (`Hβ.synth.linked-ring-offers-substrate-internals`, closed in the scope
+   form).
 6. **Dead declarations.** A dead declaration has no incoming link, and
    `unreachable` is the link closure from main. `unreferenced` stops calling
    `Ty`, `Option` and `Alloc` dead once their annotation positions are links
@@ -17854,7 +17877,7 @@ RE-GROUNDED 2026-10-06 (design-superseded): Its README anchor ('bounded by Sampl
 
 Named in a list without a description; the lead-in above it is its context.
 
-RE-GROUNDED 2026-10-06 (design-superseded): synth_proposer doc: the vocabulary is searched outward by rings (`search_outward`, `search_ring`, `authored_reach`) with a sound head index (`heads_may_unify`). Each candidate's published row is pruned against the allowed row. No reach walk remains. The published row IS the transitive reach, so there is nothing left to index.
+RE-GROUNDED 2026-10-06 (design-superseded), RE-READ 2026-10-13 (Landing 3): the vocabulary is searched outward by rings (`search_outward`, `search_ring` over `vocabulary_rings` — the hole's module's own declarations, its direct imports' and the prelude's) with a sound head index (`heads_may_unify`), and each candidate's published row is pruned against the allowed row, so the ROW needs no reach index — the published row is the transitive reach. The reach walk that remains is `reaches_decl`: a candidate whose free-name closure reaches the enclosing declaration is excluded, walked per candidate over the free names; its O(1) form is the call-edge index the reference link makes readable (`Hβ.lower.reach-edge-on-node`). The 2026-10-06 re-grounding said no reach walk remained and named a ring walk Landing 3 deleted; this is what stands.
 
 ### `Hβ.cursor.enclosing-decl-edge` — CLOSED 2026-10-02
 
@@ -18814,9 +18837,34 @@ PR-7, PR-8, PR-10, MS-4, TH-11, TH-14).
   read along reverse links (M1), and the answer names them. With no dependents
   there is no teaching. Gates: `lock-protects-a-caller` and
   `lock-nothing-depends`.
+  - **LANDED 2026-10-13 (Landing 3), on the application edge.** The
+    dependents are read along `applications_of` — the by-name application
+    edge, up through every caller, claused or not (a clause two calls up
+    stands on the declaration through whatever lies between), with the
+    effects a `~>` install between the application and the clause absorbs
+    masked out — until M1's reference link replaces the edge
+    (`standing_clauses`, src/mentl.mn). A lock is one a dependent's clause
+    states: `with Pure`, or each bare name a clause negates; an instance
+    negation is band A's precision and is not yet a lock. The answer names
+    the dependents (`Leverage.stands`, rendered "`g` stands on it"), and the
+    lock more declarations stand on ranks first. The Teach handler is
+    stateless: the link-wide performed-name census it held was the lock
+    vocabulary. Gates: tests/teach's `lock-protects-a-caller`,
+    `lock-nothing-depends`, `lock-through-a-caller`, `lock-most-stood-on`,
+    `lock-masked-by-an-install` (each RED on boot c939f5b8, which taught
+    `with Pure` or `!Memory` to all five) and the frontier's
+    `teach-claimless-none`. REMAINDER: a declaration that authors a clause is
+    offered no further lock (`decl_teaching` reads the authored row as the
+    whole answer), so once `!Alloc` is accepted on a declaration that `!Trap`
+    also stands on, the second lock is not taught.
 - **T3 · The proposer offers what is in scope.**
   - a Lexical ring read up the parent edge;
-  - the Linked ring as a module's surface;
+  - the Linked ring as a module's surface — **LANDED 2026-10-13 in the scope
+    form (Landing 3):** the rings are the module's own declarations, its
+    direct imports' and the prelude's, and the link's remainder is never
+    offered (`Hβ.synth.linked-ring-offers-substrate-internals`, closed);
+    string-value-tie's contract moved to filling `""`, as the gate below
+    asked;
   - calls with argument holes;
   - a record for a positional product (SA-9), its field names taken from the
     adjacent comment and from the binders that destructure it at its use

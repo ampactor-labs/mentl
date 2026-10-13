@@ -1311,15 +1311,26 @@ type StateSlotHome = SlotPairs([(String, Int)])
 // reads as it, the `BindUnwritten` precedent.
 type InstallShape = NoInstall | InstallOf(String, Int, [Int], [{arms: [String], ename: String}])
 
+// What a call's judgment built of its product: the APPLIED call, whose value
+// is the callee's result, or the product SUSPENDED at a slot — a partial
+// application, the closure awaiting its field. Decided once, at the judgment,
+// by where the call stands and what it supplies (infer.mn's infer_call); the
+// lowering and the gradient read the decision and never take the arguments
+// apart to re-make it (before 2026-10-13 the lowering re-read the authored
+// `??` to decide, so a saturated call holding a value hole would have minted
+// a closure).
+type CallShape = CallApplied | CallSuspended
+
 // A call's positional product, the judgment's own (infer.mn's infer_call_node): the
 // declared slots in order as the nodes that fill them — an argument, the
-// default that fills an absent field, an authored `??` — and past them the
+// default that fills an absent field, an authored `??` — past them the
 // cells typing the slots a partial leaves open (one per slot, bound to the
-// slot's parameter type at the judgment, infer.mn's open_slot_cells). Written once
+// slot's parameter type at the judgment, infer.mn's open_slot_cells), and the
+// shape the judgment decided. Written once
 // at the call node, trailed as `MSetProduct`; the lowering reads it and
 // resolves no callee by name. `NoProduct` comes first so a virgin cell
 // reads as it, the `NoInstall` precedent.
-type CallProduct = NoProduct | ProductOf([Node], [Int])
+type CallProduct = NoProduct | ProductOf([Node], [Int], CallShape)
 
 // The emittable-fn enumeration's entry kind (lowering-is-a-column, the
 // no-mint resolution): each synthesized fn shape is a PROJECTION of
@@ -1823,13 +1834,13 @@ type Annotation
 // precondition, at its callers for a return contract — the calls whose
 // claim it REFUTES (each a call that breaks the requirement: the program's
 // own defect, which the annotation makes the medium say), the calls whose
-// claim it leaves OPEN (debt a precondition moves to its callers), and the
-// effect absences it makes promises of — each a gate a later write must
-// meet: one for `!E`, and for `with Pure` every effect the program performs,
-// since it locks them all — with the guarantees they name. Debt discharged
-// is what makes a program more proven, so it ranks first; a lock changes no
-// proof today and ranks last.
-type Leverage = {absences: Int, discharged: Int, locks: [String], opened: Int, refuted: Int}
+// claim it leaves OPEN (debt a precondition moves to its callers), and for a
+// lock the guarantees it names with the declarations whose authored clauses
+// STAND on it — a lock is taught only where one does (mentl.mn's
+// standing_clauses). Debt discharged is what makes a program more proven, so
+// it ranks first; a lock changes no proof today and ranks last, the one more
+// declarations stand on first.
+type Leverage = {discharged: Int, locks: [String], opened: Int, refuted: Int, stands: [String]}
 
 // What the gradient proposes at a position: the annotation PROVEN there,
 // what it buys, and why it leads. The annotation is the fact an accept
@@ -3399,10 +3410,12 @@ effect GraphWrite {
   graph_install_at(Int) -> InstallShape
   // The call-product column's write: the judgment notes each call's
   // positional product at the call node — the ONE reader of a callee's
-  // parameters — trailed as MSetProduct so a rolled-back judgment leaves no
-  // product at a reused handle. Its read is the lowering's, which resolves
-  // no callee by name (Hβ.lower.callee-resolved-by-name-in-the-module-env).
-  graph_product_note(Int, [Node], [Int])
+  // parameters — with the open slots' cells and the shape it decided
+  // (applied, or suspended as a partial), trailed as MSetProduct so a
+  // rolled-back judgment leaves no product at a reused handle. Its read is
+  // the lowering's, which resolves no callee by name and re-decides no
+  // shape (Hβ.lower.callee-resolved-by-name-in-the-module-env).
+  graph_product_note(Int, [Node], [Int], CallShape)
   graph_product_at(Int) -> CallProduct
   // The emittable-fn enumeration's write (the no-mint resolution):
   // each of lower's seven LFn construction sites notes (kind, origin

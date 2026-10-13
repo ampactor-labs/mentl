@@ -66,6 +66,7 @@
       this.vfs = Object.assign({}, vfs || {});   // the tree as the host knows it
       this.unsent = {};                          // files the session has not seen
       this.worker = null; this.opened = null; this.died = null; this.unavailable = null;
+      this.chain = Promise.resolve();            // the one ask in flight; the next waits behind it
     }
 
     // Open the session over the tree as it stands: one derivation, timed.
@@ -102,7 +103,24 @@
     // Ask the session: argv as the CLI spells it (["mentl", ...]), plus the
     // files that changed. Resolves to the `run` role's reply shape with `ms`,
     // `resident` and, when the session could not answer, `why`.
-    async call(argv, delta) {
+    //
+    // ONE ASK IN FLIGHT. The channel is one request slot and one reply slot
+    // with a counter and no id, so two asks in flight read one answer and
+    // leave the other's for whoever asks next — every later answer is the
+    // previous ask's. Measured 2026-10-13 on the page: the formatter's idle
+    // timer asked beside a projection, and from then on the module read
+    // (`space FILE:0`) received the caret's View (no canvas), the gate read
+    // tokens=0, and on another run a smaller program's canvas (26 tokens)
+    // stood for the fixture's (115). A call waits behind the one before it,
+    // whatever that one answered.
+    call(argv, delta) {
+      const run = () => this.ask(argv, delta);
+      const p = this.chain.then(run, run);
+      this.chain = p.then(() => undefined, () => undefined);
+      return p;
+    }
+
+    async ask(argv, delta) {
       // a file is news to the session only when its bytes differ from the
       // tree the session already holds; an unchanged one rides no request
       for (const [p, v] of Object.entries(delta || {})) {
