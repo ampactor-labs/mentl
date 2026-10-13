@@ -1449,6 +1449,13 @@ authored_ref_max: 655
 # and on a breach the march re-reads the leg and takes the minimum of three
 # (`read_cost`, tools/march.sh) — that minimum is what this ceiling is
 # measured against. The reading no machine moves is the line peak below.
+# HELD at 477,000 through Landing 4 S3's fourth pin (2026-10-13): the
+# third pin read 474,248 here and the runner refused it at 486,712 (min of
+# 3, run 38470081484) with every other gate green; the reach walk became
+# an extent (src/lower.mn's `reachable_from_main`) and the m3 leg reads
+# 427,956 here. The next ceiling is 1% over the runner's reading of THIS
+# boot, written when that reading exists — a ceiling set from a predicted
+# reading is a number nobody read.
 selfcompile_peak_kb_max: 477000
 # THE IMAGE'S OWN HIGH-WATER (2026-10-13, Landing 4 S2): the guest prints its
 # bump line's peak on the m3 leg's stderr (`arena: … line peak N KB`), and

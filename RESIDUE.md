@@ -1313,9 +1313,22 @@ lambdas in all: the anonymity census fell 234 → 205 and the effectful-lambda
 bound 193 → 164 (the 23 banked below was the 2026-09-20 count; the routes had
 grown to 25). The intern table is one seeded state, so its install is a chain
 member like any other. What the chain costs is on the record: each site
-carries its members' installs where it called a wrapper before, and the
-wheel's WAT grew 636,348 → 643,653 lines (not attributed line by line), while
-the image's line peak fell 498,382 → 496,968 KB.
+carries its members' installs where it called a wrapper before — the
+wheel's WAT grew 636,348 → 643,653 lines: the 25 sites by 285 to 671 lines
+each, +11,117 in all against the 3,617 the deleted thunks and wrappers gave
+back (the per-function diff spans S2's source to the third pin's), the
+members' record builds (`emit_install` writes a handler's whole arm table
+into every install's record at the site) — while the image's line peak fell
+498,382 → 496,968 KB and the self-compile's resident peak rose 459,996 →
+474,248 KB on this machine. The board on every push refused that peak (the
+runner read 486,712 KB against the 477,000 ceiling), and the landing's fourth
+pin paid it down where the cost stood: not in the chain's lowering (the 25
+sites published 406 KB more past their arenas, about 1.3 KB per member
+install) but in the reach walk, which constructed each declaration in an
+arena and built everything between them — the reference lists, the twin key
+read at every site, the frontier and the reached set — outside any extent,
+56 MB of the heap, 8 MB more than on S2's source; the walk is an extent now
+(src/lower.mn's `reachable_from_main`), and the leg reads 427,956 KB here.
 A zero-argument thunk handed to a function that runs it — a deferred
 computation, not a body handed to a stack — stays the binder form.
 
@@ -18914,7 +18927,8 @@ being byte-identical to m3 under `parallel_compose`, and the lens's order holds.
   each judging the runtime library per fixture on four cores — verify
   --wheel 3 min 12 s, the post-repin battery 2 min 24 s, the frontier 3 min
   31 s. The duplicate battery is re-keyed by the march now (its memo had
-  hashed the assembler, which is the boot); the per-fixture library
+  hashed the assembler, which is the boot): the fourth pin's repin took 10
+  min 20 s, its post-repin battery 2.5 s; the per-fixture library
   judgment is this bullet.
 - **The ??-fan returns verdicts as values.** The joins run in order after the
   fan.
@@ -20411,6 +20425,8 @@ HOMED 2026-10-06 at the §0.3 integration: cited in the read-path docs and never
 ### `Hβ.persist.module-image-cache` — OPEN
 
 HOMED 2026-10-06 at the §0.3 integration: cited in the read-path docs and never given an entry, so it lived only in a sentence. Its substance is stated where it is cited: PLAN.md, under “§11 · THE PHASES — the ordered program”; PLAN.md, under “Phase 9 · TIME and SPACE ship — computation durable, cursors parallel”; RESIDUE.md, in `Hβ.audit.at-the-edit-is-image-gated`; RESIDUE.md, in `Hβ.perf.compile-is-linear-in-source`; RESIDUE.md, in `Hβ.gate.sweep-rederives-the-prelude`; RESIDUE.md, in `Hβ.ops.runner-is-the-process-handler`; RESIDUE.md, in `Hβ.driver.link-is-reachability`; LEDGER.md, under “The landing ledger (newest first; · pin = boot re-pinned)”.
+
+MEASURED 2026-10-13 (Landing 4 S3's fourth pin, GNU time's peak RSS): `mentl compile src/main.mn` on the file route, which persists the analyzed image under `.build` for the warm start (`driver_warm_persist`, src/driver.mn), peaked at 594,320 and 594,248 KB in two reads where the march verb over the same source and the same boot peaked at 474,052 (474,248 at the pin's own leg) — 120 MB a user's compile pays that the cost ratchet, which reads the march verb, never measures. Where that 120 MB stands is not yet measured; the image's line peak, 497,032 KB, is 4.6% above the resident peak, so at least that much of the line is allocated and never written, the engine's own resident share being unmeasured, and what a persist reads of the line is the first question.
 
 ### `Hβ.prelude.parallel-map-dissolves-into-schedule` — OPEN
 

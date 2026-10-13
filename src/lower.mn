@@ -8387,6 +8387,15 @@ fn spec_wide_family() = ["float_to_str", "list_compare_f64", "list_eq_f64", "lis
 // $wasi_args. The runtime contract roots as before (emit mints those
 // calls after construction). The wide-twin family seeds per entry at
 // each construction (wide_seed).
+//
+// The walk is an EXTENT (lib/arena.mn): what it publishes is the constructed
+// declarations in source order, and everything else it builds on the way —
+// each entry's reference list, the twin key read at every site to seed the
+// wide family, the frontier and the reached set — dies at its exit. Measured
+// 2026-10-13 on the self-compile: the declarations published 8.2 MB past
+// their own arenas while the walk's scratch stood at 56 MB of the heap with
+// nothing to reclaim it, 8 MB more than on the source before the landing,
+// and the cost ratchet refused the pin.
 fn reachable_from_main(stmts) = {
   let has_main = any(stmt_is_main_fn, stmts)
   // THE LIBRARY PATH seeds ALL decls: every stmt constructs, source
@@ -8420,7 +8429,7 @@ fn reachable_from_main(stmts) = {
       },
     }
   }
-}
+} ~> arena
 
 // ── DAG-homed here (the import-truth sweep, 2026-07-23): each fn below
 // moved from a module DOWNSTREAM of its users so every user reaches it

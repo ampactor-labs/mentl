@@ -676,7 +676,9 @@ state.sh
 still shows the footprint. A ceiling never rises (2026-10-06): a landing
 whose cost breaches it pays the cost down — the B4 + C9 breach found a
 whole-program walk re-run per ask, the L4b one a path-local walk asked at
-every `++` — and `tools/obey-gate.py` refuses a raised ceiling at the commit
+every `++`, Landing 4 S3's (2026-10-13, the board on every push refusing
+the pin this machine had passed) the reach walk's 56 MB of scratch
+standing outside any extent — and `tools/obey-gate.py` refuses a raised ceiling at the commit
 (CLAUDE.md ⚖ "A gate is obeyed"). Paid for by measurement: the judgment's peak moved
 563MB → 3,044MB (07-25 → 07-29) across unmeasured landings and fell 823MB at
 the rounds deletion, also unmeasured; a frontier edit-leg holding generations
@@ -884,8 +886,9 @@ and this is the STATE.
   were — compile-time root-tagging and return-transfer — and the arena does
   not read them: an exit decides by reachability from the extent's
   publication, never by a `Consume`. Every extent runs in one — the
-  judgment's binding groups, each declaration's lowering, each emitted
-  unit, each session answer, each speculation — and nothing else reclaims:
+  judgment's binding groups, each declaration's lowering and the reach walk
+  that constructs them (2026-10-13), each emitted unit, each session
+  answer, each speculation — and nothing else reclaims:
   the raw rewind beside `heap_mark` is deleted (Arena·P2, 2026-10-03).
 - **`persist = memcpy` IS BUILT, and this line said it was absent** — the doc
   rot named as violation #1, measured 2026-09-07. `lib/persist.mn` writes
@@ -2440,7 +2443,10 @@ an op nobody reads.
 **THE ARENA IN EVERY LANDING.** The arena is the program's memory model:
 every extent runs in one (`(body) ~> arena`), what an extent publishes
 moves and the rest dies at its exit, and nothing else reclaims (§7). Each
-landing names its extents rather than inheriting a heap that only grows. F:
+landing names its extents rather than inheriting a heap that only grows. S3
+named the reach walk, whose publication is the constructed declarations and
+whose scratch — 56 MB of the self-compile — had no extent until the cost
+ratchet refused it (2026-10-13). F:
 one arena per file, so a project pass peaks at one file's scratch. N: the
 renderer and the `rename` verb answer per request, and the sweep holds one
 module's rewrite at a time. M: the facet's walk and tighten's per-module

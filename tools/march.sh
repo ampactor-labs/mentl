@@ -501,6 +501,15 @@ probe_m4() {  # 0 when m3 == m4; sets m4rc and m4done
 # assembles m2.wat to the bytes the old one did, so the candidate's verdicts
 # are the new boot's and are re-keyed under it. A boot whose assembler
 # disagrees transplants nothing, and the battery runs as before.
+# The same parity seeds the m2 cache: a CLEAN pin's new boot IS m2, so what
+# wt_m2_ensure would compile the wheel to under it is the verb-parity leg's
+# own output (`compile src/main.mn` through m2), and the battery read the
+# key miss and rebuilt it — 45 s of the fourth S3 pin's repin, measured
+# 2026-10-13 off the build directory's file times. Seeded only when the
+# leg's file IS this march's: a parity memo hit leaves compile.wat as an
+# earlier march wrote it, so the copy is gated on its bytes equalling
+# m3.wat, which every repinning run regenerates; a leg that failed parity
+# refuses the repin below and the restored boot's key never matches.
 transplant_memos() {  # transplant_memos <old-boot> — after the CLEAN copy of m2 over boot/mentl.wasm
   local old="$1" dir leg okey nkey verdict
   wt_asm "$OUT/m2.wat" "$OUT/m2.asm-parity.wasm" 2>/dev/null || return 0
@@ -516,6 +525,15 @@ transplant_memos() {  # transplant_memos <old-boot> — after the CLEAN copy of 
     wt_memo_put "$leg" "$nkey" "$verdict"
     echo "· asm parity holds: the $dir verdict the candidate earned ($verdict) is the new boot's"
   done
+  [ "$parityok" = 1 ] && cmp -s "$OUT/compile.wat" "$OUT/m3.wat" || return 0
+  (
+    mkdir -p "$WT_M2CACHE"
+    exec 9>"$WT_M2CACHE/lock"; flock 9
+    : > "$WT_M2CACHE/key"
+    cp -f "$OUT/compile.wat" "$WT_M2CACHE/m2.wat" && cp -f "$OUT/m2.wasm" "$WT_M2CACHE/m2.wasm" \
+      && cp -f "$OUT/compile.err" "$WT_M2CACHE/m2.err" && printf '%s' "$(wt_m2_key)" > "$WT_M2CACHE/key" \
+      && echo "· asm parity holds: the new boot's m2 is the verb-parity leg's compile — the m2 cache is seeded, nothing re-derived"
+  )
 }
 
 stamp_fixpoint() {

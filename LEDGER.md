@@ -35,7 +35,7 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
-- 2026-10-13 · pin 28d22f2e83d82235 (CLEAN m2 == m3; m3 == m4 measured; the landing's third pin — the first, b26b168cabfa1e59, carried the machinery before the wheel's own source wrote a chain, because a boot must parse a form before the wheel it compiles writes it, and was superseded before its narrative was written; the second, d0eb6ad298a5e4d8, the wheel's adoption, was superseded once the claim-reading pass's two artifact refutations landed) · LANDING 4 S3 — A HANDLER CHAIN IS A VALUE, AND THE EXHAUSTIVENESS CHECK READS THE WHOLE PATTERN
+- 2026-10-13 · pin 8269252523d492f9 (CLEAN m2 == m3; m3 == m4 measured; the landing's fourth pin — the first, b26b168cabfa1e59, carried the machinery before the wheel's own source wrote a chain, because a boot must parse a form before the wheel it compiles writes it, and was superseded before its narrative was written; the second, d0eb6ad298a5e4d8, the wheel's adoption, was superseded once the claim-reading pass's two artifact refutations landed; the third, 28d22f2e83d82235, was refused by the board on every push on the cost ratchet alone, and the fourth pays that cost down where it stood) · LANDING 4 S3 — A HANDLER CHAIN IS A VALUE, AND THE EXHAUSTIVENESS CHECK READS THE WHOLE PATTERN
   The third stage of `Hβ.graph.positions-are-cells`'s STRUCTURE face: the
   first write a node-as-handle makes possible. `handler NAME = h1 ~> h2(cfg)
   ~> h3` declares a chain (HandlerChainStmt, parsed where `handler NAME`
@@ -147,6 +147,76 @@
   m4), frontier 665/0/2, proof-exactness, crown, effect identity,
   instrument, threads and ide all green; the nested-inexhaustive and chain
   fixtures RED-first on boot ad930774, the shape fixture on boot d0eb6ad2.
+  THE FOURTH PIN — THE REACH WALK IS AN EXTENT, found by the cost ratchet.
+  The board on every push (.github/workflows/board.yml) refused the third
+  pin with every other gate green: the runner read the self-compile at
+  486,712 KB (min of 3) against the 477,000 ceiling, where this machine read
+  474,248 — and S2's pin had read 459,996 here, so the chain had cost 14 MB
+  of resident memory that the sentences above named only as WAT lines and a
+  falling line peak. A ceiling never rises; the landing pays the cost down,
+  and the breach is the instrument (PLAN §5.O). Decomposed with the march's
+  own leg (`wt_wheel_root … march`, the verb the ratchet reads): the new boot
+  compiling MAIN's source read 458,916 KB, so the compiler's new code costs
+  nothing on the old source and the 15 MB is in compiling the S3 source (the
+  machinery, the adoption and the third pin's fixes together); the `heap:`
+  marks put 3.2 MB of it in the judgment (no instrument splits that further;
+  the chain's 320 member installs — 7 sites of the 20-member
+  compile_context, 18 of the 10-member infer_context — are in it) and 8.7 MB
+  in the lowering phase; and a probe compiler that printed what each
+  declaration's lowering published past its arena (heap_mark after the exit
+  minus before; 5,781 declarations) put the declarations' whole publication
+  at 8.2 MB against 7.8 MB on main's source — the 25 sites +406 KB, 14 to 22
+  KB each, the net over every declaration +445 KB. So the lowering phase's
+  other 56 MB was the walk's own scratch, allocated OUTSIDE any extent:
+  `reachable_from_main` constructs each declaration in an arena and then,
+  between the arenas, builds the entry's reference list as a concat chain
+  (`low_refs`), reads a twin key at every site to seed the wide family
+  (`ref_is_wide`), and grows the frontier and the reached set — 48.1 MB on
+  main's source, 56.3 MB on the tip's; the 8 MB between them is the S3
+  source's, the chain installs' arm references and the new compiler
+  functions' references alike, which nothing splits further. The walk is an
+  extent now (`fn reachable_from_main(stmts) = { … } ~> arena`,
+  src/lower.mn): its publication is the constructed declarations in source
+  order, and nothing else survives its exit. Measured through the third
+  pin's boot and then at this pin: the heap when lowering ends 336.1 →
+  279.7 MB, when the module is written 440.6 → 384.3 MB; the m3 leg 39.43 s
+  wall, 417 MB peak RSS (427,956 KB, against 474,248 at the third pin); the
+  arena census 23,221 exits, 0 kept, 999,730 KB reclaimed, 78,983 KB moved
+  (944,634 and 71,016 at the third pin); the line peak 497,042 KB; the WAT
+  644,221 lines. The ceiling is HELD at 477,000 until the runner has read
+  this boot (tools/verify-baseline.txt says why). KILLS, continued. (10)
+  The first reading of the breach was "the chain's lowering costs it" —
+  refuted by the per-declaration probe (406 KB). (11) The second was "the
+  line peak will fall with the published heap" — it did not: 497,032 →
+  497,042 KB while the published heap at every later mark fell 56 MB. The
+  line peak is in KiB, 125 MB above the highest heap mark (384.25 MB), and
+  since every later mark fell 56 MB while the peak moved 10 KB, the exit
+  that sets it stands at or before the walk — the judgment's groups, the
+  pre-passes, or a declaration's arena inside the walk while its scratch
+  was live — never in the plan or the emit; which one is the next
+  instrument, not this landing's. The RSS fell 46,292 KB against 55,096 KB
+  reclaimed with the peak unchanged, consistent with the walk's scratch
+  being dense (strings and cons cells touch their pages) where the peak's
+  span is not — an inference; no instrument reads residency. (12) The first
+  measurement reproduced nothing: `compile
+  src/main.mn` on the file route read 594,320 and 594,248 KB where the
+  march verb over the same source and boot reads 474,052 — 120 MB a user's
+  compile pays that the ratchet never sees, banked as a measurement in
+  `Hβ.persist.module-image-cache`. The WAT's growth is attributed now, over
+  S2's source to the third pin's (630,330 → 644,206, +13,876 lines): the 25
+  sites +11,117 — each 285 to 671 lines, the 7 compile_context sites 472 to
+  671, the members' record builds, since `emit_install` writes a handler's
+  arm table into every install's record at the install site
+  (`emit_arm_writes`, 80 stores and ~100 lines for graph_handler) — the
+  thunks and wrappers they replaced −3,617 net (513 lambdas gone, 488 new),
+  the compiler's new functions +5,795 net (instance_expr 1,010 lines,
+  member_declarations 517, judge_chain_member 435, infer_pipe_tee_one 350,
+  infer_chain_install 340), partials +124, the rest +457; the adoption's own
+  +7,305 (636,348 → 643,653) is the sites' growth less what it deleted. The
+  probe's question is answered by the
+  existing marks from here on: with the walk an extent, `heap: … when
+  lowering ends` minus `… when the lowering pre-passes end` IS what the
+  declarations publish.
   A REPIN'S TWELVE MINUTES, MEASURED ON THE THIRD (Morgan's question) and
   read off the build directory's file times: m2 49 s, verify --wheel on the
   candidate 3 min 12 s (the 404-micro battery, 37 negation probes, 42 syntax
@@ -158,9 +228,18 @@
   minutes earlier, because the memo's key hashes the assembler and the boot
   IS the assembler — the march re-keys those verdicts now when the new boot
   assembles m2.wat to the bytes the old one did (`transplant_memos`,
-  tools/march.sh; its first measured repin is the next landing's). The rest
-  is the SPACE axis's cost, 1,069 fixtures each judging the runtime library
-  on four cores (`Hβ.driver.level-set-par-walk`).
+  tools/march.sh). MEASURED ON THE FOURTH: 10 min 20 s in all (22:08:05 →
+  22:18:25) — m2 and verify --wheel 3 min 46 s, m3 40 s, the verb-parity
+  compile 41 s, asm and the link query 10 s, m4 42 s, then after the repin
+  the transplant's re-assembly 3 s, an m2 rebuild of 45 s, the battery 2.5 s
+  (the transplanted memo hit, against 2 min 24 s), the frontier with the
+  self-run gates — crown, proof-exactness, effect identity — 3 min 30 s, the
+  frontier alone about 3 min 10 s. The 45 s was the same redundancy
+  one step over: a CLEAN repin's new boot IS m2, so the m2 the battery's
+  cache rebuilt under it is the verb-parity leg's own compile, and
+  `transplant_memos` seeds the cache with it now (measured on the next
+  repin). The rest is the SPACE axis's cost, 1,069 fixtures each judging
+  the runtime library on four cores (`Hβ.driver.level-set-par-walk`).
 - 2026-10-13 · pin ad930774d22c22f5 (CLEAN m2 == m3; m3 == m4 measured — the design named this stage a TRANSITION, since the wheel's own representation moves, and the march ruled it CLEAN: what a compiler emits for a program depends on what it computes, never on how it holds its own nodes, and the boot and m2 compute the same; the landing's second pin — the first, 162c7328, was superseded once the claim-reading pass's refutations landed, the nineteen second names deleted by reading among them) · LANDING 4 S2 — A NODE IS ITS HANDLE: `type Node = Int`, THE RECORD, ITS ONE READ AND THAT READ'S 520 REFERENCES DELETED
   The second stage of `Hβ.graph.positions-are-cells`'s STRUCTURE face. Since
   S1 (pin 4b621311) every reader read the graph, so the record `N(NodeBody,
