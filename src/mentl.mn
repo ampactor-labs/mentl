@@ -1021,11 +1021,14 @@ fn verify_after_apply(handle) = match graph_chase(handle) {
 // to another, the reason of the cell its type is read from, the links between
 // elided. The terminal alone answered why the TYPE is what it is and never
 // why this node has it: at a parameter's use it said "int literal". Each
-// chain is expanded through the Reason edges it carries (`why_expand`).
+// chain is expanded through the Reason edges it carries (`why_expand`). At a
+// declaration the chains of its row follow: one per effect, from the
+// declaration to the site that charges it (`effect_entries_of`).
 fn why_from_handle(handle) = {
   let t = graph_chase_handle(handle)
   let here = why_expand(graph_reason_at(handle), 0)
-  if t == handle { [here] } else { [here, why_expand(graph_reason_at(t), 0)] }
+  let chains = effect_entries_of(handle)
+  if t == handle { [here] ++ chains } else { [here, why_expand(graph_reason_at(t), 0)] ++ chains }
 }
 
 // H6: exhaustive Ty enumeration. Only TFun carries an explicit

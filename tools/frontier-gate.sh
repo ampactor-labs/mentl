@@ -3395,6 +3395,46 @@ for i in "${!compilers[@]}"; do
   else
     fail "check-forward-order (exit=$fwd_rc mismatches=$fwd_count — the forward-ref seam is open)"
   fi
+  # ── a refusal names its cause (Landing 2, 2026-10-13) ───────────────
+  # `fn quiet(x) with !WASI = helper(x)` reaches the host three calls down.
+  # The refusal at the declaration carries the chain of sites the effect
+  # enters through — helper, log_it, print_string, the library's write — read
+  # off the charge every node notes, down to the op of WASI it ends at; and
+  # `why quiet WASI` answers the same chain. RED on boot 6e35c6db: the message
+  # ended at `declared as quiet` and the why verb ignored its third word.
+  ent_out=$(cd "$ROOT" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT" --dir /tmp "$compiler" check tests/frontier/mn-effect-enters.mn 2>&1)
+  ent_rc=$?
+  ent_why=$(cd "$ROOT" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT" --dir /tmp "$compiler" query tests/frontier/mn-effect-enters.mn "why quiet WASI" 2>/dev/null)
+  if [ "$ent_rc" -ne 0 ] \
+     && printf '%s' "$ent_out" | grep -q 'declared as quiet; WASI enters at [a-z/-]*mn-effect-enters:19:[0-9]* through `helper` → at [a-z/-]*mn-effect-enters:15:[0-9]* through `log_it` → at [a-z/-]*mn-effect-enters:12:[0-9]* through `print_string` → at io:' \
+     && printf '%s' "$ent_out" | grep -q 'declared as fd_write, an op of WASI declared at io:' \
+     && printf '%s' "$ent_why" | grep -q 'WASI enters at [a-z/-]*mn-effect-enters:19:[0-9]* through `helper`' \
+     && printf '%s' "$ent_why" | grep -q 'an op of WASI declared at'; then
+    pass "effect-enters (the refusal's chain runs helper → log_it → print_string to the op of WASI, and why quiet WASI answers it)"
+  else
+    fail "effect-enters (exit=$ent_rc: $(printf '%s' "$ent_out" | grep -F 'E_EffectMismatch' | head -1 | cut -c1-200))"
+  fi
+  # ── the installed command keeps a path under the cwd as written ──────
+  # The shim hands a path OUTSIDE the cwd to the guest absolute (a `..`
+  # above the cwd preopen is refused), and a path under the cwd as the
+  # developer spelled it, because the spelling is the module's identity:
+  # `src/main.mn` is the compiler's own main, whose imports reach `src/`;
+  # the same file spelled absolute is a user module whose imports probe its
+  # own folder and the library, so src/backends/wasm.mn never reaches
+  # src/types.mn. RED on the Landing 1 shim (2026-10-13): its test read "the
+  # directory IS the cwd, or /tmp itself", every path in a subdirectory went
+  # absolute, and `mentl check src/main.mn` from the repo root refused with
+  # E_MissingModule for types.
+  # The shim under test is installed from THIS tree into a bin of its own.
+  shim_dir="$dir/shim-bin"
+  rm -rf "$shim_dir"
+  if MENTL_BIN_DIR="$shim_dir" bash "$ROOT/tools/install.sh" > "$dir/shim-install.out" 2>&1 \
+     && shim_out=$(cd "$ROOT" && MENTL_BOOT="$compiler" "$shim_dir/mentl" check src/main.mn 2>&1) \
+     && [ -z "$shim_out" ]; then
+    pass "shim-path-under-cwd (the installed command checks src/main.mn from the repo root through the compiler's own layer)"
+  else
+    fail "shim-path-under-cwd ($(printf '%s' "$shim_out" | head -1 | cut -c1-160))"
+  fi
   # ── the session on stdin (E2) — the resident graph, ONE transport ────
   # The host owns the process's input — a browser worker's channel, the
   # mentl command's pipe — and the session answers one line per verb, the

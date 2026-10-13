@@ -45,20 +45,46 @@ mentl_arg_dir() {
   [ -e "\$p" ] || return 1
   ( cd "\$(dirname "\$p")" 2>/dev/null && pwd )
 }
+# Two questions of a path argument's directory, answered apart. UNDER THE
+# CWD: the cwd or anything beneath it — a path there keeps the spelling the
+# developer wrote, since a relative path resolves against the cwd preopen
+# and never climbs above it. MOUNTED: under the cwd or under /tmp — a path
+# there needs no preopen of its own. A path under /tmp but outside the cwd
+# is mounted and still goes to the guest absolute (../x.mn from a cwd under
+# /tmp cannot climb through the cwd preopen; it opens through /tmp's).
+mentl_dir_under_cwd() {
+  case "\$1" in
+    "\$PWD"|"\$PWD"/*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+mentl_dir_mounted() {
+  case "\$1" in
+    /tmp|/tmp/*) return 0 ;;
+    *) mentl_dir_under_cwd "\$1" ;;
+  esac
+}
 # A path argument outside the cwd is handed to the guest as its ABSOLUTE
 # form, because the guest resolves a relative path against the cwd preopen
 # and WASI refuses a .. above it: mentl run ../x.mn read E_MissingModule
 # for a file that existed (measured 2026-10-12). The directory is preopened
 # as itself, so the absolute spelling opens there; a :L or :L:C address
 # suffix rides along; a path inside the cwd stays as written, so its module
-# name stays main (no backticks in this heredoc: it is unquoted, and a
-# backticked word would run as a command at install time).
+# name stays what the spelling says — src/main.mn is the compiler's main,
+# and an absolute spelling of the same file is a user module, whose imports
+# probe its own folder and the library, so src/backends/wasm.mn, found
+# beside it, never reaches src/types.mn (measured 2026-10-13: the test read
+# "the directory IS the cwd, or /tmp itself", so every path in a
+# subdirectory went absolute and mentl check src/main.mn refused with
+# E_MissingModule for types). No unescaped backticks in this heredoc: it is
+# unquoted, and an unescaped backticked word would run as a command at
+# install time.
 mentl_arg_path() {
   local a="\$1" p="\$1" suffix=""
   while [ ! -e "\$p" ] && [ "\${p%:*}" != "\$p" ]; do suffix="\${p##*:}:\$suffix"; p="\${p%:*}"; done
   [ -e "\$p" ] || { printf '%s' "\$a"; return; }
   local d; d="\$(cd "\$(dirname "\$p")" 2>/dev/null && pwd)"
-  if [ "\$d" = "\$PWD" ] || [ "\$d" = "/tmp" ]; then printf '%s' "\$a"; return; fi
+  if mentl_dir_under_cwd "\$d"; then printf '%s' "\$a"; return; fi
   suffix="\${suffix%:}"
   printf '%s%s' "\$d/\$(basename "\$p")" "\${suffix:+:\$suffix}"
 }
@@ -70,7 +96,7 @@ mentl_wasm() {
     case "\$a" in
       */*)
         if [ \${#extra[@]} -eq 0 ] && d="\$(mentl_arg_dir "\$a")"; then
-          [ "\$d" != "\$PWD" ] && [ "\$d" != "/tmp" ] && extra=(--dir "\$d")
+          mentl_dir_mounted "\$d" || extra=(--dir "\$d")
         fi
         args+=("\$(mentl_arg_path "\$a")") ;;
       *) args+=("\$a") ;;

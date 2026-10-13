@@ -844,7 +844,7 @@ fn focus_reason(target) = match target {
 fn tentacle_for_question(question) with Pure = match question {
   QTypeOf(_) | QTypeAt(_) | QIntentOf(_) | QUnresolved | QEffects(_) | QRefsOf(_) | QStateWrites(_) | QHandlerProvider(_) | QFlowOf(_) | QCensus(_) | QCensusRoster | QDecls | QWhere(_, _) | QVariants(_) | QModules | QImports | QUnreferenced | QUnreachable | QPerforms | QEnv | QOrphanClaims | QCost | QGhosts | QHeads | QUnknown(_) => TentQuery,
   QOwnership(_) => TentTrace,
-  QWhy(_) | QSubstChain(_) => TentWhy,
+  QWhy(_, _) | QSubstChain(_) => TentWhy,
   QVerifyDebt | QSmt => TentVerify,
   QIn(inner, m) => tentacle_for_question(inner),
 }
@@ -856,7 +856,7 @@ fn tentacle_for_question(question) with Pure = match question {
 fn question_span(question) = match question {
   QTypeAt(s) => s,
   QIn(inner, m) => question_span(inner),
-  QTypeOf(_) | QIntentOf(_) | QUnresolved | QSubstChain(_) | QEffects(_) | QOwnership(_) | QWhy(_) | QRefsOf(_) | QStateWrites(_) | QVerifyDebt | QSmt | QHandlerProvider(_) | QFlowOf(_) | QCensus(_) | QCensusRoster | QDecls | QWhere(_, _) | QVariants(_) | QModules | QImports | QUnreferenced | QUnreachable | QPerforms | QEnv | QOrphanClaims | QCost | QGhosts | QHeads | QUnknown(_) => span_zero(),
+  QTypeOf(_) | QIntentOf(_) | QUnresolved | QSubstChain(_) | QEffects(_) | QOwnership(_) | QWhy(_, _) | QRefsOf(_) | QStateWrites(_) | QVerifyDebt | QSmt | QHandlerProvider(_) | QFlowOf(_) | QCensus(_) | QCensusRoster | QDecls | QWhere(_, _) | QVariants(_) | QModules | QImports | QUnreferenced | QUnreachable | QPerforms | QEnv | QOrphanClaims | QCost | QGhosts | QHeads | QUnknown(_) => span_zero(),
 }
 
 // compose_propose_situation — sparse Situation for a propose gesture.
@@ -925,7 +925,12 @@ fn compose_propose_situation(target_handle, target_reason, prior_turn) = match m
 // QueryResult's 15 variants — no wildcard.
 fn query_result_to_answer(result) = match result {
   QRType(ty, reason) => AnsType(ty, reason),
-  QRWhy(reason) => AnsReason(reason),
+  QRWhy(reasons) => // The caret's carrier holds one reason: the declaration's own, which
+  // leads the list; the effect chains behind it are the why verb's.
+  match reasons {
+    [first, ..._] => AnsReason(first),
+    [] => AnsSilence,
+  },
   QRRefs(sites) => // refs-of carries (module, span) sites now, so it drops its module half at
   // exactly the boundary the census and decls arms below drop theirs, and for
   // the same reason: AnsRefs is the caret's carrier and the caret already

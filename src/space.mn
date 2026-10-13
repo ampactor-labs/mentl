@@ -882,10 +882,17 @@ fn why_fact(why, v) = match why {
   },
 }
 
-// The chain a node's type is read from, as one note over its hops.
-fn chain_note(v, chain) = match why_lines(chain, v, 0) {
-  [] => NoteTypeChain("", []),
-  [first, ...rest] => NoteTypeChain(first, rest),
+// The chain a node's type is read from, as one note over its hops — or, at a
+// declaration, the chain one effect of its row enters through.
+fn chain_note(v, chain) = match chain {
+  EffectEnters(eff, site, next) => match enters_lines(eff, site, next, v) {
+    [] => NoteEffectChain("", []),
+    [first, ...rest] => NoteEffectChain(first, rest),
+  },
+  _ => match why_lines(chain, v, 0) {
+    [] => NoteTypeChain("", []),
+    [first, ...rest] => NoteTypeChain(first, rest),
+  },
 }
 
 // What the terminal says for an aspect — one home per sentence, read by
@@ -967,6 +974,10 @@ fn note_line(n) = match n {
   NoteHandler(s) => print("Handler: {s}\n"),
   NoteObligation(s, _, _) => print("Verify: {s}\n"),
   NoteHop(s) => hop_line(s),
+  NoteEffectChain(first, hops) => {
+    print("     {first}\n")
+    each(hop_line, hops)
+  },
   NoteTypeChain(first, hops) => {
     print("     its type: {first}\n")
     each(hop_line, hops)
@@ -1316,6 +1327,7 @@ fn aspect_fields(a) = match a {
 
 fn note_json(n) = match n {
   NoteLede(s) => JObj([("kind", JStr("lede")), ("text", JStr(s))]),
+  NoteEffectChain(first, hops) => JObj([("kind", JStr("effect-chain")), ("text", JStr(first)), ("hops", JArr(map(JStr, hops)))]),
   NoteMember(s) => JObj([("kind", JStr("member")), ("text", JStr(s))]),
   NoteQuestion(s) => JObj([("kind", JStr("question")), ("text", JStr(s))]),
   NoteRefusal(name, why) => JObj([
@@ -1804,11 +1816,33 @@ fn why_lines(reason, v, depth) = if depth > 7 {
   match reason {
     Located(span, inner) => ["{reason_phrase(inner)}, at {file_line(v.name, span)}{binding_ledes(span, inner, v)}"] ++ why_deeper(inner, v, depth),
     VarLookup(name, br) => ["{name} read here"] ++ why_lines(br, v, depth + 1),
+    EffectEnters(eff, site, next) => enters_lines(eff, site, next, v),
     _ => ["{reason_phrase(reason)}"] ++ why_deeper(reason, v, depth),
   }
 }
 
+// An effect's entry chain, one line per hop: the effect and the declaration
+// it enters at the head; at each site, what the effect crosses there and the
+// site's own address (its module's, so a hop in the library says so); the op
+// it ends at. The chain is walked whole: it is finite by construction — a
+// declaration is entered once per chain — and its last hop is the one the
+// question is asked for.
+fn enters_lines(eff: String, site, next, v) = match graph_node_body(site) {
+  NStmt(FnStmt(name, _, _, _, _)) => ["{eff} enters `{name}`"] ++ enters_rest(next, v),
+  NStmt(EffectDeclStmt(ename, _, _)) => ["{reason_phrase(next)}, an op of {ename}, at {site_address(site)}"],
+  body => match next {
+    Inferred(what) => ["{what}, at {site_address(site)}"],
+    _ => ["{site_phrase(body)}, at {site_address(site)}"] ++ enters_rest(next, v),
+  },
+}
+
+fn enters_rest(next, v) = match next {
+  EffectEnters(eff, site, deeper) => enters_lines(eff, site, deeper, v),
+  _ => why_lines(next, v, 0),
+}
+
 fn why_deeper(inner, v, depth) = match inner {
+  EffectEnters(_, _, next) => enters_rest(next, v),
   Accepted(_, _, br) => // The accept edge: its phrase names the proposal and its proof; the
   // hop beneath is the binding's own reason, which the acceptance wraps.
   why_lines(br, v, depth + 1),

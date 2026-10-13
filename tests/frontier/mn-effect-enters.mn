@@ -1,0 +1,21 @@
+// A REFUSAL NAMES ITS CAUSE. `quiet` declares `!WASI` over a body that
+// reaches the host three calls down — helper, log_it, print_string, the
+// library's own write — and the refusal at the declaration carries the chain
+// of sites the effect enters through, read off the charge every node notes,
+// down to the op of WASI it ends at. The frontier leg
+// holds the chain's hops; `mentl why <this file> quiet WASI` prints the same
+// chain. Until Landing 2 (2026-10-13) the message ended at `declared as
+// quiet` and the developer was left to find the call by hand (measured on
+// boot 6e35c6db).
+import io
+
+fn log_it(msg) = print_string(msg)
+
+fn helper(x) = {
+  log_it("x")
+  x + 1
+}
+
+fn quiet(x) with !WASI = helper(x)
+
+fn main() = quiet(1)
