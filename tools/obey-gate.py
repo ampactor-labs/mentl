@@ -1,139 +1,137 @@
 #!/usr/bin/env python3
-"""The obey gate: a red gate is obeyed by fixing what it measures, never
-satisfied by moving the gate.
+"""The obey gate: a red gate is obeyed by fixing what it measures, and a
+capability grows in the medium, never in a sidecar beside it.
 
-Run by .githooks/pre-commit against the staged tree. It compares what is
-staged with HEAD and refuses the six moves that turn a red gate green
-without changing what it measures:
+Run by .githooks/pre-commit on the staged tree, and by the march with
+--worktree before anything is staged. It compares that tree with HEAD and
+refuses, with no flag that lets a commit through:
 
-  1. a ceiling raised        — src/board.mn `Bound({ceiling: N, …})`, and every
-                               `*_max:` line of tools/verify-baseline.txt
-  2. a bound deleted         — the same entries, gone, unless the ceiling was 0
-                               (a class held at zero retires when it is armed)
-  3. a red leg declared      — a new `frontier_expected_red:` entry
-  4. a gate silenced         — more `drift-audit: ignore` markers in the tree
-  5. a defect parked         — more OPEN entries in RESIDUE.md
-  6. a landing claimed in part — more "landed in part" claims in PLAN.md,
-                               RESIDUE.md, LEDGER.md or docs/: the target
-                               rewritten to what was built (CLAUDE.md ⚖,
-                               "truing is not moving the goalposts")
+  1. a ceiling raised     — src/board.mn `Bound({ceiling: N, …})` and every
+                            `*_max:` line of tools/verify-baseline.txt
+  2. a bound deleted      — the same entries, gone, unless the ceiling was 0
+  3. a red leg declared   — a new `frontier_expected_red:` entry
+  4. a gate silenced      — more `drift-audit: ignore` markers in .mn source
+  5. a defect parked      — more OPEN entries in RESIDUE.md
+  6. work left unfinished — more "landed in part" or "NOT LANDED" records in
+                            the documents: a landing is committed whole
+  7. a sidecar grown      — a new script (.sh .py .js .mjs .ts) outside ide/,
+                            a new .md document, or more text lines under
+                            tools/: a capability belongs in the medium's own
+                            source, and the scaffolds only shrink
 
-There is no flag that lets a commit through. A bound whose measurement a
-correct landing must raise is a gate of the wrong shape: it is reshaped, by
-the human, in this file's company — never raised to fit. When this refuses,
-the work is the thing the gate measures.
+A bound a correct landing must raise is the wrong shape: it is reshaped, by
+the human, in this file's company — never raised to fit.
 """
+import os
 import re
 import subprocess
 import sys
 
-
 WORKTREE = "--worktree" in sys.argv
 
 
+def git(*args):
+    return subprocess.run(["git", *args], capture_output=True, text=True).stdout
+
+
 def show(rev, path):
-    """The file at `rev` (HEAD, or ':' for the index — the working tree under
-    --worktree, which the march reads before anything is staged), or ''."""
+    """The text of `path` at `rev` (HEAD, or ':' for the index — the working
+    tree under --worktree), or '' when it is absent or not text."""
     if rev == ":" and WORKTREE:
         try:
-            return open(path).read()
+            data = open(path, "rb").read()
         except OSError:
             return ""
-    spec = f"{rev}:{path}" if rev != ":" else f":{path}"
-    r = subprocess.run(["git", "show", spec], capture_output=True, text=True)
-    return r.stdout if r.returncode == 0 else ""
+    else:
+        r = subprocess.run(["git", "show", f"{rev}:{path}" if rev != ":" else f":{path}"], capture_output=True)
+        data = r.stdout if r.returncode == 0 else b""
+    try:
+        return data.decode()
+    except UnicodeDecodeError:
+        return ""
+
+
+def tracked(rev):
+    """The paths at `rev`: HEAD's tree, the index, or under --worktree every
+    file of the working tree git would track."""
+    if rev == "HEAD":
+        return set(git("ls-tree", "-r", "--name-only", "HEAD").split("\n")) - {""}
+    found = set(git("ls-files", "--cached", *(["--others", "--exclude-standard"] if WORKTREE else [])).split("\n")) - {""}
+    return {p for p in found if not WORKTREE or os.path.isfile(p)}
 
 
 def board_bounds(text):
-    out = {}
-    for m in re.finditer(r"Bound\(\{ceiling: (\d+), question: (.+?)\}\)", text):
-        out[m.group(2).strip()] = int(m.group(1))
-    return out
+    return {m.group(2).strip(): int(m.group(1)) for m in re.finditer(r"Bound\(\{ceiling: (\d+), question: (.+?)\}\)", text)}
 
 
 def baseline_maxes(text):
-    out = {}
-    for line in text.splitlines():
-        m = re.match(r"^([a-z0-9_]+_max):\s*(\d+)\s*$", line)
-        if m:
-            out[m.group(1)] = int(m.group(2))
-    return out
+    return {m.group(1): int(m.group(2)) for m in re.finditer(r"^([a-z0-9_]+_max):\s*(\d+)\s*$", text, re.M)}
 
 
 def expected_red(text):
     return {m.group(1).strip() for m in re.finditer(r"^frontier_expected_red:\s*(\S+)", text, re.M)}
 
 
-def open_residue(text):
-    return len(re.findall(r"^### .*— OPEN", text, re.M))
+def silencers(rev):
+    args = ["grep", "-c", "drift-audit: ignore"] + ([rev] if rev != ":" else [] if WORKTREE else ["--cached"])
+    return sum(int(line.rsplit(":", 1)[1]) for line in git(*args, "--", "*.mn").splitlines())
 
 
 PARTIAL = re.compile(r"\b(landed in part|partially landed|landed partially)\b", re.I)
-RECORDS = ["PLAN.md", "RESIDUE.md", "LEDGER.md"]
+NOT_LANDED = re.compile(r"\bNOT LANDED\b")
 
 
-def partial_claims(rev):
-    """Every claim that a landing landed in part, across the records and the
-    design documents — a landing is landed or it is not."""
-    paths = list(RECORDS)
-    r = subprocess.run(["git", "ls-files", "--", "docs"], capture_output=True, text=True)
-    paths += [p for p in r.stdout.split() if p.endswith(".md")]
-    return sum(len(PARTIAL.findall(show(rev, p))) for p in paths)
+def unfinished(rev, paths):
+    texts = [show(rev, p) for p in paths if p.endswith(".md")]
+    return sum(len(PARTIAL.findall(t)) + len(NOT_LANDED.findall(t)) for t in texts)
 
 
-def silencers(rev):
-    """The markers the drift audit obeys — in .mn source, the only place one
-    silences anything; a document naming the marker is prose."""
-    args = ["git", "grep", "-c", "drift-audit: ignore"]
-    if rev != ":":
-        args += [rev]
-    elif not WORKTREE:
-        args += ["--cached"]
-    args += ["--", "*.mn"]
-    r = subprocess.run(args, capture_output=True, text=True)
-    total = 0
-    for line in r.stdout.splitlines():
-        total += int(line.rsplit(":", 1)[1])
-    return total
+def tool_lines(rev, paths):
+    return sum(show(rev, p).count("\n") for p in paths if p.startswith("tools/"))
+
+
+SCRIPT = re.compile(r"\.(sh|py|js|mjs|ts)$")
 
 
 def main():
     refusals = []
-
     for path, read in (("src/board.mn", board_bounds), ("tools/verify-baseline.txt", baseline_maxes)):
         head, staged = read(show("HEAD", path)), read(show(":", path))
         for key, was in head.items():
-            if key not in staged:
-                if was != 0:
-                    refusals.append(f"{path}: the bound on `{key}` (ceiling {was}) is gone")
-            elif staged[key] > was:
+            if key not in staged and was != 0:
+                refusals.append(f"{path}: the bound on `{key}` (ceiling {was}) is gone")
+            elif key in staged and staged[key] > was:
                 refusals.append(f"{path}: `{key}` raised {was} -> {staged[key]}")
-
     added = expected_red(show(":", "tools/verify-baseline.txt")) - expected_red(show("HEAD", "tools/verify-baseline.txt"))
-    for leg in sorted(added):
-        refusals.append(f"tools/verify-baseline.txt: `{leg}` declared an expected red")
+    refusals += [f"tools/verify-baseline.txt: `{leg}` declared an expected red" for leg in sorted(added)]
 
-    was, now = silencers("HEAD"), silencers(":")
-    if now > was:
-        refusals.append(f"`drift-audit: ignore` markers {was} -> {now}")
-
-    was, now = open_residue(show("HEAD", "RESIDUE.md")), open_residue(show(":", "RESIDUE.md"))
-    if now > was:
-        refusals.append(f"RESIDUE.md: OPEN entries {was} -> {now}")
-
-    was, now = partial_claims("HEAD"), partial_claims(":")
-    if now > was:
-        refusals.append(f"a landing claimed in part {was} -> {now} — build what it states, or record it NOT LANDED")
+    head_paths, paths = tracked("HEAD"), tracked(":")
+    for what, was, now in (
+        ("`drift-audit: ignore` markers", silencers("HEAD"), silencers(":")),
+        ("RESIDUE.md OPEN entries", len(re.findall(r"^### .*— OPEN", show("HEAD", "RESIDUE.md"), re.M)),
+         len(re.findall(r"^### .*— OPEN", show(":", "RESIDUE.md"), re.M))),
+        ("unfinished work recorded — commit a landing whole; open work is PLAN §11's alone",
+         unfinished("HEAD", head_paths), unfinished(":", paths)),
+        ("text lines under tools/ — the scaffolds only shrink as the medium absorbs them",
+         tool_lines("HEAD", head_paths), tool_lines(":", paths)),
+    ):
+        if now > was:
+            refusals.append(f"{what}: {was} -> {now}")
+    for p in sorted(paths - head_paths):
+        if SCRIPT.search(p) and not p.startswith("ide/"):
+            refusals.append(f"{p}: a new script — grow the medium (a verb in src/), not a sidecar")
+        if p.endswith(".md"):
+            refusals.append(f"{p}: a new document — the three documents are the read-path")
 
     if refusals:
         print("✗ OBEY GATE — a red gate is obeyed by fixing what it measures:")
         for r in refusals:
             print(f"  {r}")
-        print("  Fix the thing measured (lower the count, close the peer, make the leg pass,")
-        print("  remove the cause the marker hides). A bound a correct landing must raise is")
-        print("  the wrong shape: reshape it — a raise is never the fix.")
+        print("  Fix the thing measured (lower the count, make the leg pass, remove the cause")
+        print("  the marker hides, build the capability in the medium). A bound a correct")
+        print("  landing must raise is the wrong shape: reshape it — a raise is never the fix.")
         sys.exit(1)
-    print("✓ obey gate: no ceiling raised, no bound dropped, no red declared, nothing silenced, parked or claimed in part")
+    print("✓ obey gate: no ceiling raised, no bound dropped, no red declared, nothing silenced, parked, unfinished or grown beside the medium")
 
 
 if __name__ == "__main__":
