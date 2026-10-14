@@ -2440,7 +2440,7 @@ fn decl_badges(name: String, params, ret, row) with !Mutate = {
   // bound in the graph.
   let lines =
     [render_head(name, params, ret, row) ++ decl_address(decl)] ++ map(param_badge, params) ++ ret_badge(ret) ++ flat_map(tee_lines, body) ~> var_names
-  QRWhere(lines, body |> flat_map(fanout_sites(??, [])) |> demand_onto(name))
+  QRWhere(lines, body |> flat_map(fanout_sites(??, [])) |> demand_onto(decl))
 }
 
 // The result's badge; a unit result has none, as its head writes no arrow.
@@ -2452,8 +2452,10 @@ fn ret_badge(ret) with !Mutate = match chase_ret(ret) {
 // A site whose own frame installs no schedule runs under the one its
 // callers demand (B4), so only those carry the demand — read once, and
 // only when some site needs it.
-fn demand_onto(name: String, sites) with !Mutate =
-  if any(site_is_seq, sites) { map(site_demanded(demanded_vias(name), ??), sites) } else { sites }
+fn demand_onto(decl, sites) with !Mutate = match decl {
+  Some(d) => if any(site_is_seq, sites) { map(site_demanded(demanded_vias(d), ??), sites) } else { sites },
+  None => sites,
+}
 
 fn site_is_seq(site) = match site {
   WhereSite(s) => schedule_is_seq(s.schedule),
@@ -2713,21 +2715,20 @@ fn boundary_width(h) with !Mutate = match graph_boundary_at(h) {
 // (`fanout_reach_ask`, graph.mn — the one home of that rule) hands the
 // demand to its direct callees in turn. The seeds are read off the decls
 // column; each caller's demand is walked once per fn it reaches.
-fn demanded_vias(name: String) with !Mutate = {
-  let decls = fanout_decls_index()
+fn demanded_vias(decl: Int) with !Mutate = {
   let seeds = fold([], decl_seeds, graph_decls_at())
-  seeds |> map(seed_via) |> unique |> filter(demand_reaches(decls, seeds, name, ??))
+  seeds |> map(seed_via) |> unique |> filter(demand_reaches(seeds, decl, ??)) |> map(stmt_decl_name)
 }
 
 // Every (callee, via) a Thread-class install demands directly: the calls
-// standing in the extent of such an install, each paired with the fn whose
-// frame holds the install.
+// standing in the extent of such an install, each callee the declaration its
+// edge reaches, paired with the fn whose frame holds the install.
 fn decl_seeds(acc, h) with !Mutate = match graph_node_body(h) {
-  NStmt(FnStmt(fname, _, _, _, body)) => extent_calls(body, [], fname, acc),
+  NStmt(FnStmt(_, _, _, _, body)) => extent_calls(body, [], h, acc),
   _ => acc,
 }
 
-fn extent_calls(h, tees, via: String, acc) with !Mutate = {
+fn extent_calls(h, tees, via: Int, acc) with !Mutate = {
   let body = graph_node_body(h)
   match body {
     NExpr(PipeExpr(PTee, l, r)) => extent_calls(l, push(tees, tee_arms(r)), via, acc),
@@ -2738,13 +2739,10 @@ fn extent_calls(h, tees, via: String, acc) with !Mutate = {
   }
 }
 
-fn extent_calls_step(tees, via: String, acc, h) with !Mutate = extent_calls(h, tees, via, acc)
+fn extent_calls_step(tees, via: Int, acc, h) with !Mutate = extent_calls(h, tees, via, acc)
 
-fn seed_call(acc, f, tees, via: String) with !Mutate = if schedule_is_threaded(schedule_of(tees)) {
-  match graph_node_body(f) {
-    NExpr(VarRef(callee)) => push(acc, (callee, via)),
-    _ => acc,
-  }
+fn seed_call(acc, f, tees, via: Int) with !Mutate = if schedule_is_threaded(schedule_of(tees)) {
+  direct_callee([], f) |> map({ callee => (callee, via) }) |> fold(acc, push)
 } else {
   acc
 }
@@ -2753,61 +2751,52 @@ fn seed_via(seed) = match seed {
   (_, via) => via,
 }
 
-// Whether `via`'s demand reaches `name`: a round asks the reach rule of
+// Whether `via`'s demand reaches `target`: a round asks the reach rule of
 // every callee not yet walked, the ones whose reach holds a fanout hand the
 // demand to their direct callees, and the walk ends when a round meets
-// `name` or adds nothing new.
-fn demand_reaches(decls, seeds, name: String, via: String) with !Mutate = demand_round(
-  decls,
-  name,
-  seeds |> filter(seeded_by(via, ??)) |> map(seed_callee),
-  {memo: smap_new(), walked: smap_new()}
+// `target` or adds nothing new.
+fn demand_reaches(seeds, target: Int, via: Int) with !Mutate = demand_round(
+  target,
+  seeds |> filter({ (_, v) => v == via }) |> map(seed_callee),
+  {memo: wmap_new(64), walked: wmap_new(64)}
 )
-
-fn seeded_by(via: String, seed) = match seed {
-  (_, v) => str_eq(v, via),
-}
 
 fn seed_callee(seed) = match seed {
   (callee, _) => callee,
 }
 
-fn demand_round(decls, name: String, frontier, st) with !Mutate = match fold((false, [], st), demand_step(decls, name, ??, ??), frontier) {
+fn demand_round(target: Int, frontier, st) with !Mutate = match fold((false, [], st), demand_step(target, ??, ??), frontier) {
   (true, _, _) => true,
   (false, [], _) => false,
-  (false, next, st2) => demand_round(decls, name, next, st2),
+  (false, next, st2) => demand_round(target, next, st2),
 }
 
-fn demand_step(decls, name: String, acc, callee: String) with !Mutate = match acc {
+fn demand_step(target: Int, acc, callee: Int) with !Mutate = match acc {
   (true, _, _) => acc,
-  (false, next, st) => if smap_has(st.walked, callee) {
-    acc
-  } else {
-    match fanout_reach_ask(st.memo, decls, callee) {
+  (false, next, st) => match wmap_get(st.walked, callee) {
+    Some(_) => acc,
+    None => match fanout_reach_ask(st.memo, callee) {
       (found, memo) => {
-        let walked = smap_add(st.walked, callee, 1)
-        if found && str_eq(callee, name) {
+        let walked = wmap_add(st.walked, callee, 1)
+        if found && callee == target {
           (true, next, {memo, walked})
         } else if found {
-          (false, fold(next, push, direct_callees(decls, callee)), {memo, walked})
+          (false, fold(next, push, direct_callees(callee)), {memo, walked})
         } else {
           (false, next, {memo, walked})
         }
       },
-    }
+    },
   },
 }
 
-// The names a declaration calls directly, at its own frame (`fanout_fact`,
-// the pass the reach rule itself reads).
-fn direct_callees(decls, name: String) with !Mutate = match smap_get(decls, name) {
-  Some(h) => match graph_node_body(h) {
-    NStmt(FnStmt(_, _, _, _, body)) => match fanout_fact((false, []), body) {
-      (_, callees) => callees,
-    },
-    _ => [],
+// The declarations a declaration calls directly, at its own frame
+// (`fanout_fact`, the pass the reach rule itself reads).
+fn direct_callees(decl: Int) with !Mutate = match graph_node_body(decl) {
+  NStmt(FnStmt(_, _, _, _, body)) => match fanout_fact((false, []), body) {
+    (_, callees) => callees,
   },
-  None => [],
+  _ => [],
 }
 
 // The capability-at-tee projection (§11 6.3's felt face): every `~>`

@@ -1,0 +1,19 @@
+// expect: 17
+// A nested fn sharing a module-level fn's name never answers for it: the
+// caller's schedule reaches the module-level `helper`'s fanout through the
+// call's edge, so each branch runs on a thread of its own and reads that
+// thread's id. On boot 74d7aadf the demand read its callee by name, the
+// nested `helper` in `other` answered for the module's, and both branches
+// ran in the root (exit 7).
+import threading
+
+fn helper() = match (thread_id()) >< (thread_id()) {
+  (x, y) => if x > 0 && y > 0 && x != y { 1 } else { 0 },
+}
+
+fn other() = {
+  fn helper() = 7
+  helper()
+}
+
+fn main() = helper() * 10 + other() ~> parallel_compose

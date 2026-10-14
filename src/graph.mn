@@ -2139,84 +2139,69 @@ fn declares_absent(clause, ename: String) =
   any({ (t, negated, _) => negated && term_spells(t, ename) }, clause)
 
 // ONE ASK of the rule with the answers settled across asks carried in
-// `memo`: an ask that found no fanout from its root settles every name it
-// entered false (`fanout_reach_settle`), the root's reach being whole. The
-// emit's spec registry and `where`'s demand walk both ask through here.
-fn fanout_reach_ask(memo, decls, name: String) = match fanout_reach_of({entered: [], memo, seen: smap_new()}, decls, name) {
+// `memo`, keyed by declaration: an ask that found no fanout from its root
+// settles every declaration it entered false (`fanout_reach_settle`), the
+// root's reach being whole. The emit's spec registry and `where`'s demand
+// walk both ask through here.
+fn fanout_reach_ask(memo, decl: Int) = match fanout_reach_of({entered: [], memo, seen: wmap_new(64)}, decl) {
   (found, st) => (found, if found { st.memo } else { fold(st.memo, fanout_reach_settle, st.entered) }),
 }
 
-// THE RULE WALKED FROM ONE NAME and no further. The memo carries the
-// answers settled across asks; a name is entered ONCE per ask (the seen
-// set, with the entered list its order), and a second meeting — a cycle,
-// or a callee two paths share — answers false without walking again, since
-// the ask's root settles it: a chain that found a fanout settles true as it
-// returns, and a root that found none settles every name it entered false.
-// The whole-program closure it replaced answered each ask by walking every
-// body — 22 MB on the wheel, for lib/persist's four Persist-class sites
-// (2026-09-30) — and the first per-name form memoized nothing a cycle had
-// touched and re-walked the runtime's mutual recursion once per path,
-// exponentially: the wheel's compile reached 4.3 GB and never planned.
-fn fanout_reach_of(st, decls, name: String) = match smap_get(st.memo, name) {
+// THE RULE WALKED FROM ONE DECLARATION and no further. The memo carries the
+// answers settled across asks; a declaration is entered ONCE per ask (the
+// seen set, with the entered list its order), and a second meeting — a
+// cycle, or a callee two paths share — answers false without walking again,
+// since the ask's root settles it: a chain that found a fanout settles true
+// as it returns, and a root that found none settles every declaration it
+// entered false. A declaration with no fn body — a primitive, an op, a
+// constructor — has nothing to reach through.
+fn fanout_reach_of(st, decl: Int) = match wmap_get(st.memo, decl) {
   Some(v) => (v == 1, st),
-  None => if smap_has(st.seen, name) {
-    (false, st)
-  } else {
-    match smap_get(decls, name) {
-      None => // a primitive, an op, a constructor or a local: no body to reach
-      // through
-      (false, st),
-      Some(h) => match graph_node_body(h) {
-        NStmt(FnStmt(_, _, _, clause, body)) => if declares_absent(clause, "Thread") || declares_absent(clause, "Alloc") {
-          (false, {entered: st.entered, memo: smap_add(st.memo, name, 0), seen: st.seen})
-        } else {
-          match fanout_fact((false, []), body) {
-            (has_own, callees) => if has_own {
-              (true, {entered: st.entered, memo: smap_add(st.memo, name, 1), seen: st.seen})
-            } else {
-              match fold(
-                (false, {entered: push(st.entered, name), memo: st.memo, seen: smap_add(st.seen, name, 1)}),
-                fanout_reach_callee(decls, ??, ??),
-                callees
-              ) {
-                (found, inner) => (
-                  found,
-                  {
-                    entered: inner.entered,
-                    memo: if found { smap_add(inner.memo, name, 1) } else { inner.memo },
-                    seen: inner.seen,
-                  }
-                ),
-              }
-            },
-          }
-        },
-        _ => (false, st),
+  None => match wmap_get(st.seen, decl) {
+    Some(_) => (false, st),
+    None => match graph_node_body(decl) {
+      NStmt(FnStmt(_, _, _, clause, body)) => if declares_absent(clause, "Thread") || declares_absent(clause, "Alloc") {
+        (false, {entered: st.entered, memo: wmap_add(st.memo, decl, 0), seen: st.seen})
+      } else {
+        match fanout_fact((false, []), body) {
+          (has_own, callees) => if has_own {
+            (true, {entered: st.entered, memo: wmap_add(st.memo, decl, 1), seen: st.seen})
+          } else {
+            match fold(
+              (false, {entered: push(st.entered, decl), memo: st.memo, seen: wmap_add(st.seen, decl, 1)}),
+              fanout_reach_callee,
+              callees
+            ) {
+              (found, inner) => (
+                found,
+                {
+                  entered: inner.entered,
+                  memo: if found { wmap_add(inner.memo, decl, 1) } else { inner.memo },
+                  seen: inner.seen,
+                }
+              ),
+            }
+          },
+        }
       },
-    }
+      _ => (false, st),
+    },
   },
 }
 
-fn fanout_reach_callee(decls, acc, callee) = match acc {
+fn fanout_reach_callee(acc, callee: Int) = match acc {
   (true, _) => acc,
-  (false, st) => fanout_reach_of(st, decls, callee),
+  (false, st) => fanout_reach_of(st, callee),
 }
 
-// An ask that found no fanout from its root settles every name it entered.
-fn fanout_reach_settle(memo, name: String) = smap_add(memo, name, 0)
+// An ask that found no fanout from its root settles every declaration it
+// entered.
+fn fanout_reach_settle(memo, decl: Int) = wmap_add(memo, decl, 0)
 
-// The fn declarations by name, read once off the decls column, so the
-// reach can find a callee's clause and body by the name a call carries.
-fn fanout_decls_index() = fold(smap_new(), fanout_decls_step, graph_decls_at())
-
-fn fanout_decls_step(acc, h) = match graph_node_body(h) {
-  NStmt(FnStmt(name, _, _, _, _)) => smap_add(acc, name, h),
-  _ => acc,
-}
-
-// ONE pass over a body: whether it holds a fanout of its own and the names
-// it calls directly, both at its own frame — a lambda or a nested fn starts
-// another. A fold stage over `(own, callees)`, the accumulator first.
+// ONE pass over a body: whether it holds a fanout of its own and the
+// declarations it calls directly, both at its own frame — a lambda or a
+// nested fn starts another. A fold stage over `(own, callees)`, the
+// accumulator first.
 fn fanout_fact(acc, h) = {
   let body = graph_node_body(h)
   match body {
@@ -2235,10 +2220,19 @@ fn fact_own(acc) = match acc {
 
 // A call of the prelude's `fanout` is a fanout of the body's own.
 fn fact_call(acc, f) = match graph_node_body(f) {
-  NExpr(VarRef(name)) => match acc {
-    (has_own, callees) => (has_own || callee_is_fanout(f), push(callees, name)),
+  NExpr(VarRef(_)) => match acc {
+    (has_own, callees) => (has_own || callee_is_fanout(f), direct_callee(callees, f)),
   },
   _ => acc,
+}
+
+// A call is DIRECT when its callee's edge reaches a module-level
+// declaration. A value — a parameter, a let, a nested fn — keeps its own
+// frame's schedule (`Hβ.lower.schedule-through-a-value`), so its body is no
+// part of this frame's reach.
+fn direct_callee(callees, f) = match graph_ref_decl(f) {
+  Some(d) => if at_module_level(d) { push(callees, d) } else { callees },
+  None => callees,
 }
 
 fn callee_is_fanout(f) = match graph_node_body(f) {

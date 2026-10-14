@@ -751,7 +751,12 @@ function value minted under the schedule — a lambda, a partial, a nested fn �
 keeps its own frame's schedule, because a value can outlive the install and a
 spawn it carried out would find no handler on the chain
 (`Hβ.lower.schedule-through-a-value`); a branch thunk, an install's arm and
-a state init never leave the extent and take the schedule. The race rule is
+a state init never leave the extent and take the schedule. A direct call is
+the declaration its callee's edge reaches, so a nested fn sharing a
+module-level fn's name never answers for it (real, 2026-10-14: the demand
+read its callee by spelling, the nested fn answered, and a caller's `~>
+parallel_compose` ran the module-level fanout in the root;
+tests/micros/mn-schedule-reach-shadowed-name.mn). The race rule is
 read along the same demand: each demanded fanout's branch rows are checked
 against the installs between it and the demanding site, and a branch whose
 row is a callback PARAMETER's is read at the instantiating site — `fn

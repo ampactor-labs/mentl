@@ -225,24 +225,25 @@ handler string_table with idx = string_index_new() {
 // scan that stood here, beside a comment calling the set tiny, ran at every
 // generic reference the module emits, over a set that reached three thousand
 // twins on the wheel before twins were keyed by what their bodies read.
-handler spec_registry with twins = smap_new(), count = 0, reach = smap_new(), decls = smap_new(), decls_read = false, sites = wmap_new(1024), threaded = false, forms = [] {
+handler spec_registry with twins = smap_new(), count = 0, reach = wmap_new(64), sites = wmap_new(1024), threaded = false, forms = [] {
   spec_twins_exist() => resume(count > 0),
   spec_twin_known(n) => resume(match smap_get(twins, n) {
     Some(_) => true,
     None => false,
   }),
   set_spec_twins(ns) => resume() with twins = fold(smap_new(), smap_add(??, ??, 1), ns), count = len(ns),
-  fanout_reach_known(n) => // Asked only by a call under a spawning demand, and answered by walking
-  // that name's own reach and no further (`fanout_reach_ask`, graph.mn —
-  // the rule's one home, which `mentl where` asks the same way), the
-  // answers settled across asks in `reach`; a schedule-free module never
-  // asks and pays nothing for the rule's existence. The decl index is read
-  // off the decls column at the first ask.
-  {
-    let idx = if decls_read { decls } else { fanout_decls_index() }
-    match fanout_reach_ask(reach, idx, n) {
-      (found, memo) => resume(found) with reach = memo, decls = idx, decls_read = true,
-    }
+  fanout_reach_known(n) => // Asked only by a call under a spawning demand. The lowered program names
+  // its callee by spelling, so the name resolves once through the scope, to
+  // the declaration it denotes at module level, and the rule walks that
+  // declaration's own reach and no further (`fanout_reach_ask`, graph.mn,
+  // which `mentl where` asks the same way), the answers settled across asks
+  // in `reach`. A symbol the scope holds no declaration for — a twin's —
+  // reaches nothing. A schedule-free module never asks.
+  match env_resolve(n) {
+    Some(d) => match fanout_reach_ask(reach, d) {
+      (found, memo) => resume(found) with reach = memo,
+    },
+    None => resume(false),
   },
   site_schedule_note(h, s) => resume() with sites = wmap_add(sites, h, s), threaded = threaded || schedule_eq(s, Threaded),
   site_schedule(h) => resume(wmap_get(sites, h)),

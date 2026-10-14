@@ -438,9 +438,9 @@ landing that closes it. A gate that did not run is UNKNOWN, never green.
   §«Handler chains»); a rename, the session's edit and a proposal's accept are
   not (§11.2).
 - **Names are still read where an edge exists** (§11.1): the lowered program's
-  identity is a spelling, so the reach walks and the emit's fanout index walk
-  names; the judgment re-resolves references it linked; `usage_of` counts by
-  name.
+  identity is a spelling, so the reach walks walk names and the emit resolves
+  a callee's spelling through the scope again; the judgment re-resolves
+  references it linked; `usage_of` counts by name.
 - **A module sees its whole import closure** (§11.3): visibility is the closure,
   so a user cannot declare a name the prelude declares, one namespace is paid
   for in prefixes, and the compiler recognizes library effects by their
@@ -639,10 +639,10 @@ a provenance diff, a search over live shared cells.
    judgment draws the edge at the one writer (`graph_ref_link`), and the scope,
    the gradient, the value walk, the caret and the facets read it. What still
    reads names: (a) the lowered program's identity is a spelling
-   (`LFn(String, …)`), so the four reach walks (`reach_entry_names`,
-   `plan_reached`, `reach_units`, `demand_round`) and the emit's
-   `fanout_decls_index` walk names, and a nested fn sharing a module-level
-   function's name answers for it — the form is a lowered unit keyed by its
+   (`LFn(String, …)`), so the three reach walks (`reach_entry_names`,
+   `plan_reached`, `reach_units`) walk names, and the emit asks the schedule's
+   reach of a lowered callee by resolving its spelling through the scope again
+   (`fanout_reach_known`) — the form is a lowered unit keyed by its
    declaration's handle, reachability the edge followed from `main`, a symbol
    read off its declaration (`$module.name`, nested paths `.`-joined), and the
    name-keyed walks deleted, a TRANSITION; (b) the judgment re-resolves by name
