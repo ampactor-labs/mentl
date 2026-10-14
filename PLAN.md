@@ -1297,20 +1297,15 @@ wat2wasm m2.wat -o m2.wasm --debug-names --enable-threads --enable-tail-call
 # --fold-exprs (readable canonical WAT — NEVER the raw 12MB m2.wat) · wasm-validate · wasm-decompile (C-like)
 ```
 
-**Modern toolkit (measured; profiling CORRECTED 2026-07-13).** `wasmtime
---profile=guest` writes a Firefox-profiler JSON — BUT it writes NOTHING for a
-program that exits via `proc_exit` (WASI), which is every real Mentl compile: the
-store is torn down before the dump fires (three attempts wrote empty, 2026-07-13).
-Profile the self-compile with host **`perf`** instead — it samples the process
-regardless of how the guest exits: `perf record -F 199 --call-graph=fp -o
-perf.data -- wasmtime run --profile=perfmap <flags> m2.wasm < wheel.mn` (the
-`--profile=perfmap` writes /tmp/perf-<pid>.map so `perf report` resolves guest fn
-names; `perf_event_paranoid=2` permits user-space samples of your own child; a
-`timeout 300` on the first 5 min is representative for the uniform compile). This
-is THE profiler for the self-compile — it pinned the resume-cardinality
-classifier's O(n^k) at **98% of the entire compile** (§7) after `--profile=guest`
-returned nothing, and it is the tool that made the env miss (attacking a
-diagnosed-but-non-dominant O(n²)) unrepeatable: measure, do not guess the hot
+**Modern toolkit (measured).** `bash tools/profile-self.sh [compiler.wasm]` runs
+the self-compile under `wasmtime --profile=guest` and prints self and inclusive
+time per function; `python3 tools/guest-profile.py <json> --callers FN` names who
+reaches a hot function. The guest profiler writes nothing for a program that ends
+through `proc_exit`, but the march verb returns from `main`, so it profiles the
+self-compile — measured 2026-10-14, where the sweep it drove took the m3 leg from
+35.37 s to 19.82 s wall. Host `perf` (`--profile=perfmap`) samples any exit path,
+and is how the resume-cardinality classifier was pinned at 98% of a compile on
+2026-07-13, but it is not installed everywhere. Measure, do not guess the hot
 path. **AOT is MARGINAL: `wasmtime compile` → .cwasm removes the JIT cost, but the
 JIT is only ~20ms MEASURED (the 2 MB boot module), so the compile is 100% guest
 ALGORITHM — AOT buys ~nothing for the wheel, ~1s across the 66-micro battery.**

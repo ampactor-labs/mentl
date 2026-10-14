@@ -563,20 +563,20 @@ fn resolve_self_operand(name: String, bind) = if name == "self" {
 
 // A module-level `let` bound to a constant — the innermost binding of the
 // name must be the module's (a local of the same name shadows it, and the
-// env answers which is in force), and the let's own node is in the decls
-// column, judged before any reader of the name by the callee-first order.
-// The newest note for the name is the judged generation's. A local let is
-// path-sensitive and stays honest debt.
-fn module_let_const(name: String) =
-  if env_lookup_is_global(name) { module_let_scan(name, graph_decls_at()) } else { None }
-
-fn module_let_scan(name: String, decls) = if len(decls) == 0 {
-  None
-} else {
-  match graph_node_body(last(decls)) {
-    NStmt(LetStmt(PVar(n), value, _)) => if n == name { node_const_at(value, NoSelf) } else { module_let_scan(name, drop_last(decls)) },
-    _ => module_let_scan(name, drop_last(decls)),
+// env answers which is in force), and the let is the module-level
+// declaration the name is filed under, judged before any reader of the name
+// by the callee-first order. A local let is path-sensitive and stays honest
+// debt.
+fn module_let_const(name: String) = if env_lookup_is_global(name) {
+  match graph_module_decl_at(name) {
+    Some(h) => match graph_node_body(h) {
+      NStmt(LetStmt(PVar(_), value, _)) => node_const_at(value, NoSelf),
+      _ => None,
+    },
+    None => None,
   }
+} else {
+  None
 }
 
 // ─── The value walk — what a value is, read along the edges it flowed ──

@@ -296,8 +296,9 @@ fn board_bounds() = [
   // their data, and the assembler's long division folds over its bits.
   // 465 -> 464 at Landing 1 (2026-10-13): lib/search's one left with the
   // module. 464 -> 461 at WILD (2026-10-14): the escaping-row pre-pass's
-  // three index walks left with it.
-  Bound({ceiling: 461, question: QCensus(CsIterationCostume)}),
+  // three index walks left with it. 461 -> 460 the same day: a data
+  // segment's bytes fold into one buffer.
+  Bound({ceiling: 460, question: QCensus(CsIterationCostume)}),
   // The ghosts — cells the parser minted and the judgment never bound
   // (`mentl query <entry> ghosts`): names, parameters, predicates and
   // annotations that are not yet cells inference writes, which is why `refs
