@@ -4660,8 +4660,7 @@ for i in "${!compilers[@]}"; do
     fail "row contradiction (reports: $rc_n, want >=2)"
   fi
 
-  # ─── The contradiction is INSTANCE-PRECISE (RESIDUE effarg-node, the
-  # adjacent kill): `Flow(1, Store) + !Flow(1, Wasi)` names two provably
+  # ─── The contradiction is INSTANCE-PRECISE: `Flow(1, Store) + !Flow(1, Wasi)` names two provably
   # distinct instances — the registration fold gives the nullary ctors
   # value identity, so the absent survives as a REFINEMENT and only the
   # same-instance decl reports. Born RED against the boot (2 reports:

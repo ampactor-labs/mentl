@@ -46,8 +46,8 @@
 # module), buildable once the wheel assembles its own output (L-F) and
 # sequenced behind the thread host's move — because the only terminal host
 # for a spawning module is this line, which has no exceptions. The thread
-# host's horizon and its successor are `Hβ.threads.terminal-host-horizon`
-# (RESIDUE.md). Moving the pin is an explicit in-commit act carrying the
+# host's horizon and its successor are `Hβ.threads.terminal-host-horizon`.
+# Moving the pin is an explicit in-commit act carrying the
 # probe's table — a patch within the line (36.0.2 → 36.0.17, same table) as
 # much as a line.
 #

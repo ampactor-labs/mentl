@@ -1,4 +1,0 @@
-interface:
-  display_name: "Mentl MN Design"
-  short_description: "Keep .mn code aligned with Mentl syntax"
-  default_prompt: "Use $mentl-mn-design before changing Mentl .mn language or compiler source."

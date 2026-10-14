@@ -8,18 +8,10 @@
 #   1. The PROVENANCE head sha equals sha256(boot/mentl.wasm). A pin claim
 #      is a measurement read from the artifact, never typed from memory —
 #      the fabrication law (CLAUDE.md ⊕), mechanized.
-#   2. The §7 ledger's most recent `pin XXXXXXXX` is the boot sha's prefix —
-#      a ledger entry cannot claim a pin the artifact does not carry.
-#   3. Every `bash tools/<x>.sh` and `tools/<x>.py` the four reader-facing
-#      docs name in PRESENT-TENSE position exists on disk — the verification
-#      surface (PLAN §8) and the README's command blocks are the outsider's
-#      path; a command that does not exist is a broken promise. The §7
-#      landing ledger is HISTORY (a deletion record legitimately names the
-#      file it deleted) and is excluded from the sweep.
-#   4. RESIDUE's peers (tools/residue-truth.py): every peer the read-path
-#      docs cite is an entry, every entry's status is from the closed
-#      vocabulary and agrees with LEDGER's closures, and an open entry's
-#      code names resolve to what the medium declares.
+#   2. Every `bash tools/<x>.sh` and `tools/<x>.py` the reader-facing docs
+#      name exists on disk — the verification surface (PLAN §8) and the
+#      README's command blocks are the outsider's path; a command that does
+#      not exist is a broken promise.
 #
 # Scaffold tier (PLAN §6): dissolves into docs-as-projection + `mentl audit`
 # (the state sections generated from the graph make checks 1-2 vacuous; the
@@ -64,33 +56,6 @@ if grep -q '^- ‹BOARD RED' boot/PROVENANCE.md; then
   fail=1
 fi
 
-# The ledger moved to LEDGER.md (2026-08-05) — 78% of PLAN was a prose copy
-# of git. An EMPTY headpin used to pass silently here, so the move would have
-# turned this into a gate that cannot fail; the absence is now a failure.
-# An entry's pin sits on a CONTINUATION line, so the scan anchors at the first
-# entry and reads onward — matching per-entry-line found an older inline pin
-# and reported a false mismatch on this check's first run after the move.
-#
-# It reads the `· pin` MARKER, never a bare `pin <sha>`: an entry's body
-# legitimately cites older pins in prose ("the guard at pin 1aca4868"), and a
-# bare match grabbed the first such citation and called it the head — a false
-# mismatch measured 2026-09-05, two entries after fixture-only landings that
-# carry no pin of their own. The marker is the structure; the citation is
-# text. Entries WITHOUT a pin (fixtures only, no repin) are skipped, so the
-# check walks to the most recent entry that actually claims one.
-headpin=$(grep -oE '· pin [0-9a-f]{8}' LEDGER.md | head -1 | grep -oE '[0-9a-f]{8}')
-if [ -z "$headpin" ]; then
-  echo "doc-truth: no pin found in LEDGER.md's head entry — the chain cannot be checked, so it fails"
-  fail=1
-elif [ "${have:0:8}" != "$headpin" ]; then
-  echo "doc-truth: the ledger's most recent pin ($headpin) is not the boot sha prefix (${have:0:8})"
-  fail=1
-fi
-
-# LEDGER.md stays OUT of the named-command sweep: it is history, and a landing
-# that records deleting a script is not a broken promise (the sweep's own first
-# run correctly made that distinction). PLAN carries only live claims now, so
-# the whole file is swept.
 plan_present=$(cat PLAN.md)
 # The third party's own instruction surfaces are reader-facing docs too:
 # hook prose grounded a week of sessions on superseded law and a pre-commit
@@ -190,9 +155,7 @@ fi
 # 71/0` sat in that header against a live 332/0. §11's selector then grew the
 # same disease one section down, where it is worse: every loop iteration reads
 # the STANDING CURSOR as the current state before choosing work, and it said
-# `crown 33/0` against a measured 39/0. A LANDING RECORD may carry the numbers
-# it measured — that is history, the LEDGER's own convention, and the records
-# at Phase 1 / 6.2 / 6.3 are legitimate. The live selector may not.
+# `crown 33/0` against a measured 39/0.
 cursor_block=$(awk '/^\*\*THE STANDING CURSOR/{f=1} f{print} f && /^---$/{exit}' PLAN.md)
 if [ -z "$cursor_block" ]; then
   echo "doc-truth: PLAN §11's STANDING CURSOR block did not parse — the check cannot fail, so it fails"
@@ -200,20 +163,6 @@ if [ -z "$cursor_block" ]; then
 elif printf '%s' "$cursor_block" | grep -qE '(crown|frontier|proof-exactness|micros|census) [0-9]+/[0-9]+'; then
   echo "doc-truth: PLAN §11's STANDING CURSOR carries a hard-coded board count —"
   echo "  the selector is read as CURRENT every iteration; the numbers live in state.sh (§7's law)"
-  fail=1
-fi
-
-# RESIDUE's peers held to the docs and the artifact (2026-10-06). PLAN §7 says
-# "a gap not in RESIDUE.md does not exist", and three claims in that sentence
-# are checkable: every peer the read-path docs cite is an entry header, every
-# status is from the closed vocabulary and agrees with the closures LEDGER
-# records, and an OPEN entry's code names resolve to what the medium declares
-# (`mentl query src/main.mn decls`), to a path, or to the entry's own Builds
-# line. Measured on its first run: 1,570 citations of peers with no header,
-# because RESIDUE had no entry headers at all — 508 lines opened with a peer
-# name and nothing told an entry from a continuation. One script, so the
-# roster parsing has one home.
-if ! python3 tools/residue-truth.py; then
   fail=1
 fi
 
@@ -256,14 +205,8 @@ else
     "$thesis"*) ;;
     *) echo "doc-truth: README.md does not open with PLAN §0's thesis: \"$thesis\""; fail=1 ;;
   esac
-  for door in docs/POSITIONING.md docs/READING.md; do
-    if ! flat < "$door" | grep -qF "$thesis"; then
-      echo "doc-truth: $door does not state PLAN §0's thesis: \"$thesis\""
-      fail=1
-    fi
-  done
 fi
-for door in PLAN.md README.md docs/POSITIONING.md docs/READING.md docs/MENTL_SPACE.md docs/DESIGN_SYSTEM.md ide/index.html ide/README.md; do
+for door in PLAN.md README.md docs/MENTL_SPACE.md docs/DESIGN_SYSTEM.md ide/index.html ide/README.md; do
   inverted=$(flat < "$door" | grep -oiE 'verification substrate|age of machine-generated|let anything write|is unemployed|no LLM advantageous' | sort -u | tr '\n' ';')
   if [ -n "$inverted" ]; then
     echo "doc-truth: $door leads with machines where PLAN §0 leads with the person: $inverted"

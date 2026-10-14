@@ -11,8 +11,8 @@
 #   require <path>     about to write <path> — exit 2 unless it was marked
 #
 # WIRED BY NOTHING UNTIL G2 (2026-10-06): the settings that call it lived in a
-# gitignored .claude/, so every fresh clone carried this law and no caller,
-# and RESIDUE called it resolved. It is not on the board, because it is not a
+# gitignored .claude/, so every fresh clone carried this law and no caller.
+# It is not on the board, because it is not a
 # gate over the tree: it is a per-edit refusal the session's hook contract
 # runs.
 #

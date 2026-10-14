@@ -1,9 +1,0 @@
-s02_float_arith — classification: edit-trap
-
-edit rc=134; wasm trap: indirect call type mismatch; frames: enumerate_float_literals,op_synth_default_synth_propose,propose_at
-
-Reproduce (from repo root):
-  source tools/wt-env.sh
-  d=$(mktemp -d /tmp/cru_XXXX); cp tests/selftest/crucibles/s02_float_arith/s02_float_arith.mn $d/
-  printf 'y\n' | "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$d" boot/mentl.wasm edit s02_float_arith
-  # traps in the compiler (boot) while projecting the cursor — see s02_float_arith.edit.err

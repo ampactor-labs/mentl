@@ -1,6 +1,0 @@
-// expect: PROVE
-// CONTROL: a `!E` body performing nothing must be accepted — the gate
-// must not over-refuse (soundness has a completeness partner).
-effect E { op() -> Int }
-fn good() with !E = 42
-fn main() = good()

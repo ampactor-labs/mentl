@@ -1,0 +1,8 @@
+// expect: 42
+// CONTROL under polymorphism: run applied to a PURE lambda — no E is
+// ever performed, so `!E` holds through the row variable. Refusing this
+// is the over-rejection failure mode of coarse capability systems.
+effect E { op() -> Int }
+fn run(f) = f()
+fn good() with !E = run(() => 42)
+fn main() = good()

@@ -51,7 +51,7 @@ compile_exit=$?
 diags=$(grep -c ' error: ' "$base.err" || true)
 # The refuse contract: the diagnostic channel must NAME the class as an
 # error. (The raw stdin-compile's exit policy — it reports E_ errors and
-# still exits 0 — is the wheel seam named at LEDGER; the contract both
+# still exits 0 — is a wheel seam; the contract both
 # prior channels judged is class-reported, so this reader matches that.)
 # EVERY class, not just E_. The arm read `refuse:E_*`, so a fixture expecting
 # a P_ / W_ / T_ / V_ refusal fell straight through it to the value path, where

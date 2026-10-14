@@ -138,9 +138,7 @@
 #
 # --- Mode 40: SYNTAX-surface dissolutions (SYNTAX.md is the authority) ---
 # At-zero ratchets over the wheel read-path: each names a form SYNTAX.md
-# dissolved. Out-of-band archaeology (crucibles/, tools/editor samples,
-# bootstrap/test repros) may still carry these — the ratchet flags them on
-# touch; the wheel (src/ lib/ tests/) is clean.
+# dissolved; the wheel (src/ lib/ tests/) is clean.
 40	SYNTAX-surface drift (/// dissolved — one comment form)	^///	ka	SYNTAX.md §Comments: the //-vs-/// split is dissolved. One comment form: //. Every comment is graph content attached to the next decl.
 40	SYNTAX-surface drift (import rename)	^\s*import\s+.*\s+as\s+	ka	SYNTAX.md §Imports: no `import X as Y`. An alias is a redundant second name for an edge the import already drew; narrow the selective set.
 40	SYNTAX-surface drift (:: is not a token)	^[^/]*::	ka	SYNTAX.md §Imports one-separator law: `.` is the one access operator; `/` only at import position. `::` is not a Mentl token.

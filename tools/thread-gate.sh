@@ -50,8 +50,7 @@
 # THE CONFESSION (CLAUDE.md ⟳): the import read is a hand tool — the emit
 # decides the import and no verb projects it. The honest endpoint is the
 # self-compile reporting its own width beside the cost line it already prints
-# (Hβ.march.concurrency-is-a-projection in RESIDUE); this script retires into
-# it.
+# (Hβ.march.concurrency-is-a-projection); this script retires into it.
 #
 # Usage: tools/thread-gate.sh
 # Exit:  0 the width is what we think it is, 1 it is not (or cannot be read).

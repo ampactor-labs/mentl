@@ -1,9 +1,0 @@
-effect Pick { pick() -> Int }
-handler replay_pick(v) { pick() => resume(v) }
-fn body() = pick()
-fn run_twice(bt) = {
-  let a = bt() ~> replay_pick(10)
-  let b = bt() ~> replay_pick(20)
-  a + b
-}
-fn main() = run_twice(() => body())

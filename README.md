@@ -84,7 +84,7 @@ The language reference is [docs/SYNTAX.md](docs/SYNTAX.md); `PLAN.md` holds the 
 
 ## Testing
 
-Two GitHub Actions workflows run here. `.github/workflows/board.yml` runs the board (`bash tools/state.sh`) on every push to main and on every pull request, from a fresh Ubuntu runner that fetches the pinned engine, installs GNU `time` and the `mentl` command, and keeps the board's log as the run's artifact; `.github/workflows/deploy-space.yml` publishes the browser IDE to GitHub Pages. Each re-pin of `boot/mentl.wasm` also records the gates' verdicts in the new `boot/PROVENANCE.md` entry, whose head entry is the board at the pin. `tools/ci/run-board.sh` wraps the board for a self-hosted machine with a perf ledger and nothing in the repository invokes it. The gates need the stock wasmtime engine from Quick start (`bash tools/wasmtime-get.sh`) and GNU `time` (the `time` package on Debian and Ubuntu), which the march measures the self-compile under: without it the m3 leg comes back empty and the march refuses. The boot assembles each generation itself (`mentl asm`); the browser leg of the IDE gate needs Chrome and skips with a message without it.
+Two GitHub Actions workflows run here. `.github/workflows/board.yml` runs the board (`bash tools/state.sh`) on every push to main and on every pull request, from a fresh Ubuntu runner that fetches the pinned engine, installs GNU `time` and the `mentl` command, and keeps the board's log as the run's artifact; `.github/workflows/deploy-space.yml` publishes the browser IDE to GitHub Pages. Each re-pin of `boot/mentl.wasm` also records the gates' verdicts in the new `boot/PROVENANCE.md` entry, whose head entry is the board at the pin. The gates need the stock wasmtime engine from Quick start (`bash tools/wasmtime-get.sh`) and GNU `time` (the `time` package on Debian and Ubuntu), which the march measures the self-compile under: without it the m3 leg comes back empty and the march refuses. The boot assembles each generation itself (`mentl asm`); the browser leg of the IDE gate needs Chrome and skips with a message without it.
 
 ```sh
 bash tools/state.sh                  # the board: verify, then every gate below, one scoreboard; --quick runs verify only
@@ -107,14 +107,13 @@ bash tools/instrument-gate.sh        # the diagnostics instrument can go red: a 
                                      # and a clean program still emits (the negative control)
 bash tools/thread-gate.sh            # the compile spawns as many threads as the source says, read as a delta between two programs
 bash tools/ide-gate.sh               # the browser IDE: a Node twin drives ide/wheel-worker.js, then headless Chrome loads the page
-bash tools/doc-truth.sh              # the recorded pin equals the binary's sha256, the ledger's head pin matches, and every
+bash tools/doc-truth.sh              # the recorded pin equals the binary's sha256, the pin's narrative is written, and every
                                      # tools/*.sh command and mentl verb the docs name exists
-bash benchmarks/absence/run.sh       # the absence tasks: each must refuse naming its class or must prove (benchmarks/absence/README.md)
 bash tools/setup-git-hooks.sh        # installs .githooks/pre-commit: fmt on staged sources, the drift audit, verify when compiler
                                      # source is staged, and the frontier stamp (tools/install.sh runs this in a git checkout)
 ```
 
-Three things are not covered. The determinism probe (the same binary on the same input emits the same bytes) runs only with `bash tools/march.sh --fixpoint`, and `tools/state.sh` reports when it has not run at the current boot. `tools/oracle-selftest.sh`, which runs the proposer over a corpus of holes, runs by hand and is off the board. The engine is an unmodified wasmtime release, pinned by version and digest in `tools/wasmtime-get.sh`, and nothing in the repository tests it.
+Two things are not covered. The determinism probe (the same binary on the same input emits the same bytes) runs only with `bash tools/march.sh --fixpoint`, and `tools/state.sh` reports when it has not run at the current boot. The engine is an unmodified wasmtime release, pinned by version and digest in `tools/wasmtime-get.sh`, and nothing in the repository tests it.
 
 ## Limitations
 

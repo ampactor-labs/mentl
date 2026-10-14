@@ -18,8 +18,8 @@ the forward pass it mirrors, because none exists.
 - `tensor.mn` — the matrix floor the models stand on.
 
 What the reading covers today and what it refuses (naming the construct that
-would lose a derivative, never answering zero) is written in `RESIDUE.md`
-under `Hβ.lower.ad-is-a-demanded-projection`.
+would lose a derivative, never answering zero) is SYNTAX's §«`~>` — tee»,
+the derivative reading.
 
 ## The receipts
 

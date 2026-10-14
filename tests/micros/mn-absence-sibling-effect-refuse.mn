@@ -1,0 +1,11 @@
+// expect: refuse E_EffectMismatch
+// PARTIAL absorption: the install absorbs A, but the body ALSO performs
+// B, and the decl severs B. Subtracting the handled effect must not
+// launder its sibling — the refusal names B.
+effect A { opa() -> Int }
+effect B { opb() -> Int }
+handler absorb_a {
+  opa() => resume(1),
+}
+fn bad() with !B = ({ opa() + opb() } ~> absorb_a)
+fn main() = bad()

@@ -1,0 +1,11 @@
+// expect: 1
+// ABSENCE via ABSORPTION: the body performs E, but the `~>` install
+// absorbs it before the `!E` boundary — the subtraction is part of the
+// algebra, so the severance PROVES. A system that cannot subtract at
+// installs over-refuses here.
+effect E { op() -> Int }
+handler absorb {
+  op() => resume(1),
+}
+fn good() with !E = ({ op() } ~> absorb)
+fn main() = good()

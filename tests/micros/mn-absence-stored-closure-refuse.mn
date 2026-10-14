@@ -1,0 +1,11 @@
+// expect: refuse E_EffectMismatch
+// ABSENCE through DATA: an effectful closure is stored in a value and
+// called later inside a `!E` extent. The effect row rides the stored
+// function's own type — absence must hold across the data flow, not
+// only the call graph.
+effect E { op() -> Int }
+fn bad() with !E = {
+  let f = () => op()
+  f()
+}
+fn main() = bad()

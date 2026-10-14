@@ -1,0 +1,9 @@
+// expect: refuse E_EffectMismatch
+// ABSENCE under polymorphism: run's row variable is instantiated with E
+// through the lambda — the textbook higher-order leak. The gate must
+// refuse; a row system without sound negation-under-instantiation
+// admits this silently.
+effect E { op() -> Int }
+fn run(f) = f()
+fn bad() with !E = run(() => op())
+fn main() = bad()

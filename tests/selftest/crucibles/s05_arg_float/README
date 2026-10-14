@@ -1,9 +1,0 @@
-s05_arg_float — classification: assemble-fail
-
-wat2wasm rejected the emit: /tmp/selftest_run_zpKn/s05_arg_float.wat:44:6: error: type mismatch in call, expected [i32] but got [f64]
-
-Reproduce (from repo root):
-  source tools/wt-env.sh
-  d=$(mktemp -d /tmp/cru_XXXX); cp tests/selftest/crucibles/s05_arg_float/s05_arg_float.mn $d/
-  wt_run boot/mentl.wasm < $d/s05_arg_float.mn > $d/s05_arg_float.wat
-  wt_asm $d/s05_arg_float.wat $d/s05_arg_float.wasm   # wat2wasm rejects the emit — see s05_arg_float.assemble.err

@@ -206,8 +206,8 @@ emit_provenance() {  # emit_provenance <gen> <verdict> <lines> <census>
   # refuse; the caller's verify text may not, being free prose.
   case "$selfrun$frontier" in *RED*) redmark=$'\n- ‹BOARD RED — a gate above refuses this pin; fix it or restore the prior boot›';; esac
   block=$(cat <<EOF
-- source: ‹NARRATIVE UNWRITTEN — replace this line: what landed and why,
-  the §7 ledger entry of the same name carrying the arc›
+- source: ‹NARRATIVE UNWRITTEN — replace this line: what landed, the
+  property a person sees, and the verb that shows it›
 - boot/mentl.wasm  sha256 $sha
   ($verdict; re-pinned from $gen per march.sh — $lines lines, census $census)
 - cost: ${MARCH_COST:-NOT MEASURED (no .time beside the leg)}

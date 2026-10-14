@@ -607,7 +607,7 @@ fixtures and examples/ joins the board. Lesson 6 states its rate through the
 negation on the render path until a handler pins its instance, and lesson
 8's second half — the developer's own `choose` under the medium's search —
 waits on AU6; each says so in its own prose. The design, whole, is
-`Hβ.course.pulse-is-the-course` in RESIDUE.
+PLAN §11's course item (`Hβ.course.pulse-is-the-course`).
 
 ---
 

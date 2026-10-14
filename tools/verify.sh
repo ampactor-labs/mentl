@@ -48,16 +48,13 @@ fail=0
 # `MARCH_REPIN=1 march` runs before the m2 leg: a marker the inference should
 # have graded refuses in a second, not after a generation.
 text_legs() {
-  # THE SCAFFOLD RATCHET (CLAUDE.md ⟳ — every scaffold's destiny is ABSORPTION
-  # into a verb, never permanence). The loop prompt is imperative prose telling
-  # an agent how to behave, which is the one thing PLAN §0 proves cannot
-  # enforce itself; so what is measured is how much of the loop is still NOT
-  # the medium's: the count of distinct tools/*.sh scripts the prompt must name
-  # to run one iteration. Monotone DOWN, and it falls only when a VERB actually
-  # replaces a script — rewording cannot move it, which is why this is the
-  # metric and a line count is not. At zero the medium runs its own loop and
-  # tools/loop-prompt.md is deleted rather than archived.
-  csref=$(grep -ohE 'tools/[a-z0-9_-]+\.(sh|py)' tools/loop-prompt.md | sort -u | wc -l)
+  # THE SCAFFOLD RATCHET (every scaffold's destiny is ABSORPTION into a verb).
+  # What is measured is how much of the loop is still NOT the medium's: the
+  # distinct tools/*.sh scripts CLAUDE.md's «The loop» names to run one
+  # landing. Monotone DOWN, and it falls only when a VERB replaces a script —
+  # rewording cannot move it, which is why this is the metric and a line count
+  # is not. At zero the medium runs its own loop.
+  csref=$(awk '/^## The loop/{f=1; next} f && /^## /{exit} f' CLAUDE.md | grep -ohE 'tools/[a-z0-9_-]+\.(sh|py)' | sort -u | wc -l)
   srmax=$(grep -E '^loop_scaffold_refs_max:' "$BASELINE" | head -1 | cut -d: -f2 | tr -d ' ')
   say "· loop scaffolds: $csref script(s) the loop still needs — the medium's un-absorbed remainder"
   if [[ -n "$srmax" && "$csref" -gt "$srmax" ]]; then
@@ -462,7 +459,7 @@ if C=$(wt_m2_ensure); then
   # judged wheel the questions it had already answered. The pinned boot rides
   # the key because the freshness line compares against it. FORCE_GATES=1
   # re-runs.
-  census_key=$(wt_memo_key_run "$C/m2.wasm" "$C/m2.err" boot/mentl.wasm src lib tools/loop-prompt.md "$BASELINE" tools/verify.sh)
+  census_key=$(wt_memo_key_run "$C/m2.wasm" "$C/m2.err" boot/mentl.wasm src lib CLAUDE.md "$BASELINE" tools/verify.sh)
   if cmemo=$(wt_memo_hit census-legs "$census_key"); then
     printf '%s\n' "$cmemo"
     say "  (memo: this compiler already judged this source against these bounds)"
@@ -506,10 +503,7 @@ if C=$(wt_m2_ensure); then
   # and `mentl verify` holds the link's narrations at ZERO over every module
   # (verify_board, src/main.mn — the board line "0 narration(s) over every
   # module of the link"), so a grep of the same stderr for one class was a
-  # second home for a bound the board already holds, at a ceiling of 0. The
-  # history it absorbed (tools/comment-audit.sh, comment-ratchet.sh; the
-  # concatenated-blob era in which the count could not read anything but 0)
-  # is RESIDUE's `Hβ.voice.comment-ref-gate-reads-the-flattened-link`.
+  # second home for a bound the board already holds, at a ceiling of 0.
   wait "$vj_pid"; brc=$?
   # The MOVERS ratchet stood here — the two-pass tower's size gauge (schemes
   # the final judged differently than the trial published). RETIRED
@@ -720,7 +714,7 @@ else
 fi
 
 # 5. Doc-truth — the docs' claims that CAN be checked against the artifact
-#    ARE (pin shas, ledger pins, named commands). Prose drifts; this is the
+#    ARE (pin shas, the pin narrative, named commands). Prose drifts; this is the
 #    mechanical floor under it (tools/doc-truth.sh; dissolves into
 #    docs-as-projection + mentl audit).
 if [[ "$WHEEL_ONLY" -eq 1 ]]; then
@@ -730,7 +724,7 @@ elif ! bash tools/doc-truth.sh >/dev/null 2>&1; then
   bash tools/doc-truth.sh 2>&1 | sed 's/^/  /'
   fail=1
 else
-  say "· doc-truth: pin shas, ledger pins, and named commands verify against the artifact"
+  say "· doc-truth: pin shas, the pin narrative and named commands verify against the artifact"
 fi
 
 if [[ "$fail" -ne 0 ]]; then

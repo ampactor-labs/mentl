@@ -10,10 +10,7 @@ name: The board
 # fresh runner that has only what the README names: the pinned engine, GNU
 # time (the march measures the self-compile under it and its m3 leg comes
 # back empty without it), and the mentl command. The log is the run's
-# artifact. tools/ci/run-board.sh stays for a self-hosted machine with a
-# perf ledger; it is not used here because its `git pull --ff-only` would
-# move HEAD off the commit under test and its ledger append is lost on a
-# hosted runner. Hβ.board.runs-on-every-push (RESIDUE.md) carries the record.
+# artifact.
 
 on:
   push:

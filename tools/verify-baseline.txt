@@ -717,8 +717,6 @@ census_errors_max: 0
 # two were `list_compare_loop` reading its elements through the typed
 # `list_index`, and it reads the words the emit's by-name call guarantees).
 # A ratchet beside an armed class is a weaker second copy of the refusal.
-# LEDGER carries each count's descent (4 → 8 → 0; 56 → 60 → 58 → 57 → 34 →
-# 2 → 0; 22 → 1 → 0).
 
 # The effect seam: filesystem impl calls outside the handler that owns them.
 # MEASURED 24 before this landing and 13 after (both read from the artifact,
@@ -893,10 +891,10 @@ frontier_expected_red: threaded-branch-captured-store
 # the gate's other direction refused the stale declaration the moment it
 # passed, which is what that contract is for.
 
-# loop_scaffold_refs_max — the distinct tools/*.sh scripts tools/loop-prompt.md
-# still names to run one iteration; monotone DOWN, falling only when a verb
+# loop_scaffold_refs_max — the distinct tools/*.sh scripts CLAUDE.md's «The
+# loop» names to run one landing; monotone DOWN, falling only when a verb
 # replaces a script (the argument is verify.sh's scaffold ratchet).
-loop_scaffold_refs_max: 3
+loop_scaffold_refs_max: 2
 
 # 2026-08-07: the QUIET gate (§4⑤'s Hylo bar as a banked ceiling, PLAN
 # §11 4.4 — Hβ.ownership.quiet-empirical-gate). Authored own/ref markers

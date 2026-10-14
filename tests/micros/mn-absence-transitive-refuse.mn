@@ -1,0 +1,9 @@
+// expect: refuse E_EffectMismatch
+// ABSENCE: E flows a -> b -> bad through two unannotated calls; bad
+// declares `with !E`. The proof is TRANSITIVE — the gate must refuse
+// without any annotation on the intermediate hops.
+effect E { op() -> Int }
+fn a() = op()
+fn b() = a()
+fn bad() with !E = b()
+fn main() = bad()

@@ -1,6 +1,0 @@
-// expect: REFUSE E_PurityViolated
-// ABSENCE, total form: `with Pure` claims the EMPTY row — the absence of
-// every effect. A body performing anything must refuse at the decl.
-effect E { op() -> Int }
-fn bad() with Pure = op()
-fn main() = bad()

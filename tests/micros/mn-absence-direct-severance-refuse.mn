@@ -1,0 +1,6 @@
+// expect: refuse E_EffectMismatch
+// ABSENCE: a body declaring `with !E` performs E directly. The gate must
+// refuse — the severance is a first-class claim, not a lint.
+effect E { op() -> Int }
+fn bad() with !E = op()
+fn main() = bad()

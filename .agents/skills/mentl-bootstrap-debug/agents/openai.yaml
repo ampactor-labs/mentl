@@ -1,4 +1,0 @@
-interface:
-  display_name: "Mentl Bootstrap Debug"
-  short_description: "Debug Mentl bootstrap and pass-2 failures"
-  default_prompt: "Use $mentl-bootstrap-debug to investigate the current Mentl bootstrap or pass-2 failure."

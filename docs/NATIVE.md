@@ -268,8 +268,7 @@ ceiling under everything from S9 on: ship before it, prove after it.
 
 ## §6 · Where the WASM work fits — S3/S4, proven in the peer today
 
-The portable multi-shot this session proved (`tests/native-cont/`,
-`reexec-model.mn` → 30) is S3/S4 *in the WASM peer*: cardinality already decides
+The portable multi-shot proved in the WASM peer is S3/S4 *in the WASM peer*: cardinality already decides
 OneShot-vs-MultiShot (landed), and the correct execution is the captured-segment
 continuation (the ultimate O(1) form) with re-execution as the proven stepping
 stone. Two facts pinned building it: a multi-shot handler's arm is a **UZero-grade

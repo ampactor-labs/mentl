@@ -1,0 +1,9 @@
+// expect: refuse E_EffectMismatch
+// REACHABILITY, not observation: the effect sits on ONE branch of a
+// conditional whose guard is data. Absence is a universal claim over
+// every path — a system that only watches executed traces admits the
+// quiet branch until production takes it.
+effect E { op() -> Int }
+fn maybe(flag) = if flag > 0 { op() } else { 0 }
+fn bad() with !E = maybe(0)
+fn main() = bad()

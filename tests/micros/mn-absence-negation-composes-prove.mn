@@ -1,0 +1,9 @@
+// expect: 42
+// COMPOSED absence: two severances at once (`!A + !B`) over a body that
+// calls through helpers performing neither. The Boolean row algebra
+// composes negations; both must discharge together.
+effect A { opa() -> Int }
+effect B { opb() -> Int }
+fn helper() = 21
+fn good() with !A + !B = helper() + helper()
+fn main() = good()

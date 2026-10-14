@@ -75,8 +75,7 @@
 # no stock engine defined: the exec seam (`mentl_host.wat_write`/`.exec`) and
 # the p1 socket seam (`-S tcplisten=`). Both left the wheel: a compiled
 # module is run by the mentl command (tools/install.sh) and by the battery's
-# host loop below, and the session serves on stdio. RESIDUE.md carries the
-# record under `Hβ.ops.runner-is-the-process-handler`.
+# host loop below, and the session serves on stdio.
 _wt_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # The pinned version has ONE home, the fetch script's `ver=` line; this file
 # reads it rather than repeating it (a second copy drifted the day the patch

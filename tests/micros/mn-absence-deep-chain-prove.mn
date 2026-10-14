@@ -1,0 +1,12 @@
+// expect: 5
+// DEEP transitive control: a five-deep pure call chain under `!E` — the
+// transitive walk must discharge at depth without annotations on any
+// intermediate hop.
+effect E { op() -> Int }
+fn e1() = 1
+fn e2() = e1() + 1
+fn e3() = e2() + 1
+fn e4() = e3() + 1
+fn e5() = e4() + 1
+fn good() with !E = e5()
+fn main() = good()

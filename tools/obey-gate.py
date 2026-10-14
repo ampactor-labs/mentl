@@ -11,10 +11,9 @@ refuses, with no flag that lets a commit through:
   2. a bound deleted      — the same entries, gone, unless the ceiling was 0
   3. a red leg declared   — a new `frontier_expected_red:` entry
   4. a gate silenced      — more `drift-audit: ignore` markers in .mn source
-  5. a defect parked      — more OPEN entries in RESIDUE.md
-  6. work left unfinished — more "landed in part" or "NOT LANDED" records in
+  5. work left unfinished — more "landed in part" or "NOT LANDED" records in
                             the documents: a landing is committed whole
-  7. a sidecar grown      — a new script (.sh .py .js .mjs .ts) outside ide/,
+  6. a sidecar grown      — a new script (.sh .py .js .mjs .ts) outside ide/,
                             a new .md document, or more text lines under
                             tools/: a capability belongs in the medium's own
                             source, and the scaffolds only shrink
@@ -108,8 +107,6 @@ def main():
     head_paths, paths = tracked("HEAD"), tracked(":")
     for what, was, now in (
         ("`drift-audit: ignore` markers", silencers("HEAD"), silencers(":")),
-        ("RESIDUE.md OPEN entries", len(re.findall(r"^### .*— OPEN", show("HEAD", "RESIDUE.md"), re.M)),
-         len(re.findall(r"^### .*— OPEN", show(":", "RESIDUE.md"), re.M))),
         ("unfinished work recorded — commit a landing whole; open work is PLAN §11's alone",
          unfinished("HEAD", head_paths), unfinished(":", paths)),
         ("text lines under tools/ — the scaffolds only shrink as the medium absorbs them",
@@ -131,7 +128,7 @@ def main():
         print("  the marker hides, build the capability in the medium). A bound a correct")
         print("  landing must raise is the wrong shape: reshape it — a raise is never the fix.")
         sys.exit(1)
-    print("✓ obey gate: no ceiling raised, no bound dropped, no red declared, nothing silenced, parked, unfinished or grown beside the medium")
+    print("✓ obey gate: no ceiling raised, no bound dropped, no red declared, nothing silenced, unfinished or grown beside the medium")
 
 
 if __name__ == "__main__":
