@@ -3065,13 +3065,6 @@ fn infer_fn(name, params, body_node, ret_ann, effs, handle, span: ValidSpan, pol
     ),
     Located(span, Inferred("ownership-resolved params of '{name}'"))
   )
-  // ─── Refinement narrowing (§4⑥, arm 6) — the verified cursor ────
-  // Walk the body's if/match/assert sites; at each index site under a proven
-  // path condition, write the narrowing edge into the graph (graph_narrow_set).
-  // lower's bounds-check read (graph_narrow_at) elides any check the path already
-  // proves (Carried-Truth: the narrowing is written ONCE here, read live at
-  // lower — never re-derived; the elision is a PROJECTION, not a recomputation).
-  infer_refinement_narrowing(body_node)
   // ─── Declared effects enforcement (gap 1 + 2) ──────────────────
   // If the FnStmt carries a declared effect row, verify the inferred
   // body's row is subsumed by it. If so, rebind row_handle to the
@@ -3476,7 +3469,14 @@ fn entry_at(eff, h, seen) = match graph_node_body(h) {
   NExpr(CallExpr(f, args)) => EffectEnters(eff_name_str(eff), h, callee_entry(eff, f, args, seen)),
   NExpr(PipeExpr(PForward, l, stage)) => EffectEnters(eff_name_str(eff), h, stage_entry(eff, stage, [l], seen)),
   NExpr(PipeExpr(PTee, _, hnd)) => EffectEnters(eff_name_str(eff), h, install_entry(eff, hnd, seen)),
-  body => EffectEnters(eff_name_str(eff), h, Inferred(charge_word(body))),
+  body => EffectEnters(eff_name_str(eff), h, Inferred(charge_word_at(h, body))),
+}
+
+// What a node charges by itself, in words: a match the parse made of a
+// destructuring `let` is the let, whose shape claim is the charge.
+fn charge_word_at(h, body) = match graph_birth_of(h) {
+  Some(LetBorn) => "the destructuring let",
+  Some(Authored) | None => charge_word(body),
 }
 
 // Through a stage: a reference or a call the pipe completes with the piped
@@ -4010,7 +4010,7 @@ fn infer_expr(ref handle) = {
       // into the node itself made the node the class's root, carrying the
       // reason the parser minted it with.
       let result_h = mint(Located(span, Inferred("match result")))
-      infer_match_arms(arms, scrutinee, result_h, span)
+      infer_match_arms(arms, scrutinee, result_h, handle, span)
       graph_bind(
         handle,
         TVar(result_h),
@@ -6022,6 +6022,12 @@ fn chain_instance(chain: String, h, span: ValidSpan) = {
     Located(span, Inferred("a member of the handler chain {chain}, instantiated at this install"))
   )
   graph_register_node(copy, instance_body(chain, graph_node_body(h), copy, span))
+  // A destructuring `let` stays one in the copy: its birth is a fact of the
+  // node, read by the judgment (a shape claim, not a dispatch) and the render.
+  match graph_birth_of(h) {
+    Some(birth) => graph_birth_note(copy, birth),
+    None => (),
+  }
   copy
 }
 
@@ -6971,38 +6977,22 @@ fn boundary_result_ty(edge) = match edge {
 // outer-scope own collide.
 fn infer_fanout_share(left, right, handle, span: ValidSpan) = {
   infer_expr(left)
-  let rbody = graph_node_body(right)
-  // Lower normalizes a non-tuple RHS to one branch, so infer must draw the
-  // same application edge and the same one-element output product. Empty,
-  // singleton, and N-way forms now share one topology.
-  let branches = match rbody {
-    NExpr(MakeTupleExpr(elems)) => elems,
-    _ => [right],
-  }
-  let n = len(branches)
-  let edges = if n == 0 {
-    []
-  } else {
-    branch_enter(BParallel)
-    let inferred_edges = infer_fanout_share_branches(branches, left, span, 0, n)
-    branch_exit(span)
-    inferred_edges
-  }
+  // The stages the parse guarantees: a tuple of two or more, since a `<|`
+  // over one stage is the pipe (`share_stages`, graph.mn).
+  let branches = share_stages(right)
+  branch_enter(BParallel)
+  let edges = infer_fanout_share_branches(branches, left, span, 0, len(branches))
+  branch_exit(span)
   // The tuple of the branches' results, a record only where it
   // escapes — the same rule, and the same cost, `><` pays.
   charge_product(handle)
-  // Preserve the RHS as the tuple of STAGES it denotes. In the singleton
-  // form `right` is the branch itself and infer_fanout_apply_one already
-  // proved it TFun, so rebinding it to the output tuple would erase the
-  // branch's row. The fanout node alone owns the tuple of application results.
-  match rbody {
-    NExpr(MakeTupleExpr(_)) => graph_bind(
-      right,
-      TTuple(collect_tvar_types(branches)),
-      Located(span, Inferred("<| fanout — tuple of branch stages"))
-    ),
-    _ => (),
-  }
+  // The right side is the tuple of STAGES it denotes; the fanout node alone
+  // owns the tuple of application results.
+  graph_bind(
+    right,
+    TTuple(collect_tvar_types(branches)),
+    Located(span, Inferred("<| fanout — tuple of branch stages"))
+  )
   graph_boundary_set(handle, FanoutBoundary(edges))
   graph_bind(
     handle,
@@ -9101,7 +9091,7 @@ fn refined_or_none(ty) = if ty_carries_refinement(ty) { Some(ty) } else { None }
 // was destructured from, where nothing declares the part's contract.
 fn note_part(sub_h, whole, step) = graph_binder_note(sub_h, PartFact({declared: None, step, whole}))
 
-fn infer_match_arms(arms, scrut, result_h, span: ValidSpan) = {
+fn infer_match_arms(arms, scrut, result_h, handle, span: ValidSpan) = {
   // Match arms are ALTERNATIVE — exactly one runs — so an `own` value
   // consumed in several arms is one consume on the taken path, unioned
   // by the affine ledger without a collision (BAlternative), the same
@@ -9125,10 +9115,45 @@ fn infer_match_arms(arms, scrut, result_h, span: ValidSpan) = {
   // compiler's own classifier walk (`collect_fn_decls`) trapped on it with
   // `mentl check` clean. The refusal names the value that escapes, as a
   // pattern (`NStmt(HandlerChainStmt(_, _))`), never a count.
+  //
+  // TWO LAWS, read off the arms. A match of several arms DISPATCHES: they
+  // are the roster of what it handles, and a value none of them reaches is a
+  // case nobody wrote, so it refuses. A match of ONE arm DESTRUCTURES,
+  // whatever its spelling — a `let`, a parameter written as a pattern, a
+  // one-arm literal, `match v { p => e }` — and asserts its value's shape
+  // where several arms would dispatch on it: the read is partial as `xs[i]`
+  // is, so the site raises the shape as the claim it is (`claim_shape`), the
+  // escaping value riding the claim's reason. The spelling is the render's to
+  // keep (`graph_birth_of`), never the meaning's: the binder form
+  // `([h, ...t]) => h` and the arm list `mentl fmt` writes it as are one graph.
   match uncovered(flat_map(arm_row, arms), 1) {
-    Some(witness) => report(EPatternInexhaustive(join(", ", witness), span)),
+    Some(witness) => match arms {
+      [arm] => claim_shape(scrut, handle, span, join(", ", witness), arm),
+      [] | [_, _, ..._] => report(EPatternInexhaustive(join(", ", witness), span)),
+    },
     None => (),
   }
+}
+
+// A destructuring pattern's shape, claimed of its value as a partial read's
+// precondition is (the TRAP law at `infer_index_force`): proven, it costs
+// nothing; refuted, the ledger refuses at the let (E_RefinementRejected);
+// open, the let's own row carries the Trap a mismatch is, and `with !Trap`
+// refuses it until the shape is proven or matched. The value walk decides it
+// (`shape_decide`, verify.mn) from what the value's edges say it is.
+fn claim_shape(scrut, handle, span: ValidSpan, witness: String, arm) = match arm {
+  (pat, _) => {
+    let proven = match verify_claim(
+      graph_module_current(),
+      span,
+      PPatternMatch(pat, scrut),
+      Located(span, Inferred("a destructuring pattern is partial: `{witness}` escapes it"))
+    ) {
+      Some(held) => held,
+      None => false,
+    }
+    if proven { () } else { inf_add_row_at(handle, trap_row()) }
+  },
 }
 
 fn arm_row(arm) = match arm {
@@ -9136,10 +9161,19 @@ fn arm_row(arm) = match arm {
 }
 
 // Some value of width `n` that escapes every row of the matrix, as one
-// rendered pattern per column, or None when the rows cover everything. A
-// column of literals, list or record patterns decides nothing — it is read
-// as covered, as the top-level read always read it — so the check refuses
-// exactly the constructor and tuple gaps, never a shape it cannot judge.
+// rendered pattern per column, or None when the rows cover everything. The
+// first column decides by what stands at its heads: constructors (Bool's two
+// literals among them, by `norm_row`) through the type's roster, each
+// constructor's payloads folded back under its name; tuples by their
+// positions; a list as the sum it is, empty or a head before a rest; a
+// record by the union of the fields its patterns name, an unnamed field `_`;
+// and any other literal only by a row that is wild there, since no set of
+// literals covers a word or a text. The read is STRICT where it used to take
+// a literal, list or record column as covered: three readers stand on it —
+// the refusal, the roster a catch-all is written as, and the last arm of an
+// exhaustive match running untested — and the lenient read wrote `None =>
+// ()` for a `_` after `Some(false)`, so `Some(true)` reached no arm and the
+// wheel trapped in `verify_claim` (measured 2026-10-14).
 fn uncovered(rows, n) = if n == 0 {
   if len(rows) == 0 { Some([]) } else { None }
 } else {
@@ -9147,7 +9181,14 @@ fn uncovered(rows, n) = if n == 0 {
   match column_ctors(rs) {
     [] => match tuple_width(rs) {
       Some(k) => witness_tuple(k, uncovered(map(tuple_row(k, ??), rs), k + n - 1)),
-      None => witness_prefix("_", uncovered(map(rest, rs), n - 1)),
+      None => if any(row_list_at_front, rs) {
+        uncovered_list(rs, n)
+      } else {
+        match record_fields_at_front(rs) {
+          [] => uncovered_literals(rs, n),
+          fields => witness_record(fields, uncovered(flat_map(record_row(fields, ??), rs), len(fields) + n - 1)),
+        }
+      },
     },
     heads => match ctor_roster(list_index(heads, 0)) {
       [] => // no roster for the type (a nominal record's one constructor registers
@@ -9164,12 +9205,120 @@ fn uncovered(rows, n) = if n == 0 {
   }
 }
 
-// A row's first column, normalized: an as-pattern is its inner pattern and an
-// alternation is one row per branch.
+// A row's first column, normalized: an as-pattern is its inner pattern, an
+// alternation is one row per branch, and a Bool literal is the constructor
+// it names, since `Bool` is the sum `False | True` (the prelude).
 fn norm_row(row) = match row {
   [PAs(_, inner), ...tail] => norm_row([inner] ++ tail),
   [PAlt(branches), ...tail] => flat_map({ b => norm_row([b] ++ tail) }, branches),
+  [PLit(LVBool(b)), ...tail] => [[PCon(bool_ctor_name(b), [])] ++ tail],
   _ => [row],
+}
+
+fn bool_ctor_name(b) = if b { "True" } else { "False" }
+
+// A literal column: each literal present is covered by the rows that name it
+// or are wild there, and every other value by the wild rows alone.
+fn uncovered_literals(rs, n) = match fold(None, literal_step(rs, n, ??, ??), literal_heads(rs)) {
+  Some(w) => Some(w),
+  None => witness_prefix("_", uncovered(map(rest, filter(row_wild_at_front, rs)), n - 1)),
+}
+
+fn literal_step(rs, n, acc, lv) = match acc {
+  Some(w) => Some(w),
+  None => witness_prefix(lit_witness(lv), uncovered(map(rest, filter(row_lit_or_wild(lv, ??), rs)), n - 1)),
+}
+
+fn literal_heads(rs) = fold([], literal_head, rs)
+
+fn literal_head(acc, row) = match row {
+  [PLit(lv), ..._] => if any({ x => x == lv }, acc) { acc } else { push(acc, lv) },
+  _ => acc,
+}
+
+fn row_lit_or_wild(lv, row) = match row {
+  [PLit(x), ..._] => x == lv,
+  [PWild, ..._] => true,
+  [PVar(_), ..._] => true,
+  _ => false,
+}
+
+fn lit_witness(lv) = match lv {
+  LVInt(n) => int_to_str(n),
+  LVFloat(f) => float_to_str(f),
+  LVString(s) => "\"{s}\"",
+  LVBool(b) => if b { "true" } else { "false" },
+}
+
+// A list column as the sum it is: a row covers `[]` by an empty or a
+// rest-only pattern, and a head before a rest by a prefix, whose first
+// element and remaining list become two columns of their own.
+fn uncovered_list(rs, n) = match uncovered(flat_map(list_nil_row, rs), n - 1) {
+  Some(w) => Some(["[]"] ++ w),
+  None => match uncovered(flat_map(list_cons_row, rs), n + 1) {
+    Some([h, t, ...more]) => Some([witness_list(h, t)] ++ more),
+    Some(short) => Some(short),
+    None => None,
+  },
+}
+
+fn witness_list(h: String, t: String) = if t == "[]" { "[{h}]" } else { "[{h}, ...]" }
+
+fn row_list_at_front(row) = match row {
+  [PList(_, _), ..._] => true,
+  _ => false,
+}
+
+fn list_nil_row(row) = match row {
+  [PList([], _), ...tail] => [tail],
+  [PList(_, _), ..._] => [],
+  [PWild, ...tail] => [tail],
+  [PVar(_), ...tail] => [tail],
+  _ => [],
+}
+
+fn list_cons_row(row) = match row {
+  [PList([], None), ..._] => [],
+  [PList([], Some(_)), ...tail] => [[PWild, PWild] ++ tail],
+  [PList([p, ...ps], rst), ...tail] => [[p, PList(ps, rst)] ++ tail],
+  [PWild, ...tail] => [[PWild, PWild] ++ tail],
+  [PVar(_), ...tail] => [[PWild, PWild] ++ tail],
+  _ => [],
+}
+
+// A record column: the union of the fields its patterns name, each row's
+// pattern for a field it names and `_` for one it leaves to the rest.
+fn record_fields_at_front(rs) = fold([], record_field_names, rs)
+
+fn record_field_names(acc, row) = match row {
+  [PRecord(fields, _), ..._] => fold(acc, add_field_name, fields),
+  _ => acc,
+}
+
+fn add_field_name(acc, field) = match field {
+  (name, _) => if any({ x => x == name }, acc) { acc } else { push(acc, name) },
+}
+
+fn record_row(fields, row) = match row {
+  [PRecord(flds, _), ...tail] => [map(field_pattern(flds, ??), fields) ++ tail],
+  [PWild, ...tail] => [wildcards(len(fields)) ++ tail],
+  [PVar(_), ...tail] => [wildcards(len(fields)) ++ tail],
+  _ => [],
+}
+
+fn field_pattern(flds, name: String) = match find({ (f, _) => f == name }, flds) {
+  Some((_, p)) => p,
+  None => PWild,
+}
+
+fn witness_record(fields, w) = match w {
+  Some(ws) => Some(["\{{join(", ", field_witnesses(fields, take(len(fields), ws)))}\}"] ++ drop(len(fields), ws)),
+  None => None,
+}
+
+fn field_witnesses(fields, ws) = match (fields, ws) {
+  ([f, ...fs], [w, ...rest]) => ["{f}: {w}"] ++ field_witnesses(fs, rest),
+  _ => [],
 }
 
 fn row_wild_at_front(row) = match row {
@@ -9184,21 +9333,6 @@ fn column_ctors(rs) = fold([], column_ctor, rs)
 fn column_ctor(acc, row) = match row {
   [PCon(name, _), ..._] => if any({ n => n == name }, acc) { acc } else { push(acc, name) },
   _ => acc,
-}
-
-// The variants of the type a constructor belongs to, from the type's own
-// entry: (tag, name, payload types). Empty when the type registers none.
-fn ctor_roster(cname: String) = match env_lookup(cname) {
-  Some((Frozen(_, ty), _, ConstructorScheme(_, _))) => roster_of_result(ty),
-  _ => [],
-}
-
-// The roster behind a constructor's scheme: its result is the type applied
-// (bare for a nullary constructor, the return of its arrow for a fielded one).
-fn roster_of_result(ty) = match ty {
-  TFun(_, ret, _) => roster_of_result(ret),
-  TName(t, _) => variant_named_specs_at(TName(t, [])),
-  _ => [],
 }
 
 fn roster_missing(heads, spec) = match spec {
@@ -9226,6 +9360,122 @@ fn specialize_row(cname: String, k, row) = match row {
   [PWild, ...tail] => [wildcards(k) ++ tail],
   [PVar(_), ...tail] => [wildcards(k) ++ tail],
   _ => [],
+}
+
+// A CATCH-ALL ARM OVER A SUM IS THE ROSTER THE AUTHOR DECLINED TO WRITE
+// (Morgan, 2026-10-13). What `_` or a bare binder swallows there is the
+// scrutinee's constructors less what the arms before it cover whole, and a
+// constructor declared later joins it unread — drift mode 10 at the arm
+// itself. This is that roster as the pattern that names it: each escaping
+// constructor with its payload left to `_` (a wildcard inside a constructor
+// is honest), under the arm's binder when it bound one, Bool's two by their
+// literals. None when the arm is no catch-all, when the scrutinee is no sum
+// (a word, a sequence, a product, a function — `_` there is the honest
+// complement), or when nothing escapes the arms before it (the arm is
+// dead). The census counts it (CsWildcardOverSum, src/query.mn), `mentl
+// tighten` writes it, and the refusal at zero will read it
+// (`Hβ.match.catch-all-over-a-sum-is-the-roster`).
+fn roster_of(scrut, before, pat) = match sum_roster(lookup_ty(scrut)) {
+  [] => None,
+  roster => match filter(ctor_escapes(flat_map(norm_row, flat_map(arm_row, before)), ??), roster) {
+    [] => None,
+    escaping => Some(roster_pattern(pat, map(ctor_wild_pattern, escaping))),
+  },
+}
+
+// The first catch-all arm of a match over a sum: its index, its pattern and
+// the pattern that names its roster; a later catch-all is dead and is not
+// counted twice.
+fn catch_all_arm(scrut, arms) = fold(None, catch_all_first(scrut, arms, ??, ??), enumerate(arms))
+
+// A match's only arm is a binding, never a dispatch — `{ x => body }` is the
+// one-parameter function literal, `match v { x => … }` a `let` — so a
+// catch-all is convicted only after an arm it could be the roster of.
+fn catch_all_first(scrut, arms, acc, indexed) = match acc {
+  Some(found) => Some(found),
+  None => match indexed {
+    (i, (pat, _)) => if i > 0 && pat_is_catch_all(pat) {
+      match roster_of(scrut, take(i, arms), pat) {
+        Some(roster) => Some((i, pat, roster)),
+        None => None,
+      }
+    } else {
+      None
+    },
+  },
+}
+
+fn pat_is_catch_all(pat) = match pat {
+  PWild => true,
+  PVar(_) => true,
+  PAs(_, inner) => pat_is_catch_all(inner),
+  PAlt(branches) => any(pat_is_catch_all, branches),
+  PCon(_, _) => false,
+  PLit(_) => false,
+  PTuple(_) => false,
+  PList(_, _) => false,
+  PRecord(_, _) => false,
+}
+
+// The constructors of a scrutinee's type when it is a sum, through an alias,
+// a refinement or a pin; empty for every other shape and for a nominal
+// record, which registers none.
+fn sum_roster(ty) = match ty {
+  TName(name, _) => variant_named_specs_at(TName(name, [])),
+  TAlias(_, base) => sum_roster(base),
+  TRefined(base, _) => sum_roster(base),
+  TReprPin(_, base) => sum_roster(base),
+  TInt => [],
+  TFloat => [],
+  TUnit => [],
+  TByte => [],
+  TAddr => [],
+  TList(_) => [],
+  TTuple(_) => [],
+  TFun(_, _, _) => [],
+  TVar(_) => [],
+  TRecord(_) => [],
+  TRecordOpen(_, _) => [],
+  TCont(_, _, _, _) => [],
+}
+
+// Whether some value of the constructor escapes the rows before the arm —
+// the same specialization the witness walk makes, over rows `norm_row` has
+// already read (Bool's literals as its two constructors among them).
+fn ctor_escapes(before, spec) = match spec {
+  (_, cname, tys) => match uncovered(flat_map(specialize_row(cname, len(tys), ??), before), len(tys)) {
+    Some(_) => true,
+    None => false,
+  },
+}
+
+// One escaping constructor as the pattern that names it: its payload left to
+// `_`, Bool's two by their literals.
+fn ctor_wild_pattern(spec) = match spec {
+  (_, "True", []) => PLit(LVBool(true)),
+  (_, "False", []) => PLit(LVBool(false)),
+  (_, cname, tys) => PCon(cname, wildcards(len(tys))),
+}
+
+// The arm's pattern with the catch-all spelled out: the roster under the
+// arm's binder when it bound one (`b @ (C(_) | D)`), bare otherwise. An
+// alternation holding a `_` stood for the whole roster, so the roster
+// replaces it whole.
+fn roster_pattern(pat, branches) = match pat {
+  PVar(name) => PAs(name, alternation_of(branches)),
+  PAs(name, _) => PAs(name, alternation_of(branches)),
+  PWild => alternation_of(branches),
+  PAlt(_) => alternation_of(branches),
+  PCon(_, _) => alternation_of(branches),
+  PLit(_) => alternation_of(branches),
+  PTuple(_) => alternation_of(branches),
+  PList(_, _) => alternation_of(branches),
+  PRecord(_, _) => alternation_of(branches),
+}
+
+fn alternation_of(branches) = match branches {
+  [one] => one,
+  many => PAlt(many),
 }
 
 fn wildcards(k) = if k <= 0 { [] } else { [PWild] ++ wildcards(k - 1) }
@@ -14387,257 +14637,6 @@ fn grade_fields(fields) = if len(fields) == 0 {
     (_, v) => resume_seq(grade_fields(drop_last(fields)), resume_grade(v)),
   }
 }
-
-// The inference primitive — every emergent property is cursor-
-// projected from body structure, never authored as annotation. Per
-// PLAN §2: "annotations declare INPUTS
-// to the cursor; never the emergent property itself."
-//
-// Three companion substrates land alongside Phase B's resume-
-// cardinality inference, completing the chain of cursor-projected
-// emergent properties:
-//
-//   • Effect-row inference (Peer 1) — operational at infer_fn:343-420.
-//     Body's perform sites accumulate via inf_add_row; declared row
-//     compared against inferred via row_subsumes; T_OverDeclared
-//     warns when authored row is wider than inferred. Authored row
-//     is a CONSTRAINT (must contain inferred), never a contract.
-//
-//   • Ownership inference (Peer 2) — operational at own.mn's
-//     infer_ownership. `Unmarked`-marked params get classify_usage
-//     which counts var-uses in the body: 0 → Unmarked; 1 → Own
-//     (affine consume); ≥2 → Ref (borrowed). Authored `own`/`ref`
-//     is a constraint over the inferred form. THIS IS THE SAME
-//     use-count lattice as resume cardinality: ownership reads the
-//     grade (types.mn Usage) on a param's VarRefs, cardinality reads
-//     it on an arm's ResumeExprs — UZero/UOne/UMany projecting to
-//     Unmarked/Own/Ref and OneShot/OneShot/MultiShot respectively.
-//     The continuation is just a value; its multiplicity IS its
-//     ownership grade. resume_grade folds the grade compositionally
-//     (⊗ sequence, ⊔ alternation); classify_usage counts syntactically
-//     — collapsing both onto one `count_uses(is_use, body)` is the
-//     named peer Hβ.infer.usage-grade-unifies-cardinality-ownership.
-//
-//   • Refinement narrowing (Peer 3 — this section) — flow-sensitive
-//     predicate inference. Each narrowing site (if/match/assert)
-//     adds a path-conditional predicate; the medium tracks per-
-//     program-point refinement maps so lower's verify obligations
-//     elide checks the path already proves.
-//
-// All four (resume + row + ownership + refinement) follow the same
-// substrate pattern: WALK body structure, PREDICATE-FILTER witness
-// sites, PROJECT aggregated value. Same shape as
-// $collect_used_wasi_ops in the seed. The cursor IS the inference
-// primitive.
-//
-// What this enables: the developer writes WHAT THEY MEAN — body
-// structure + ground value types + effect names. Everything else
-// (resume cardinality, effect rows, ownership, refinement bounds)
-// is cursor-projected. Authored declarations BECOME CONSTRAINTS the
-// inference verifies — never contracts the inference must reverse-
-// engineer. The user-facing surface shrinks toward the irreducible.
-//
-// $infer_refinement_narrowing — Phase B.3 substrate. Flow-sensitive
-// refinement inference; per-program-point refinement maps. Each
-// narrowing site adds a path-conditional predicate to the relevant
-// variable's refinement; downstream Verify obligations elide checks
-// that the path already proves.
-//
-// Narrowing sites:
-//   • `if pred { branch }`        — pred narrows scope of branch
-//   • `if pred { } else { branch }` — !pred narrows else branch
-//   • `match x { pat => body }`   — pat narrows x's type in body
-//   • `assert(pred); rest`        — pred narrows rest of block
-//   • function call with refinement-typed param — param's pred holds
-//     in the called body's scope
-//
-// The narrowing WRITE is graph_narrow_set at the index site — one
-// write, consumed live by lower's graph_narrow_at (Carried-Truth: no
-// side-map re-deriving what the graph carries).
-//
-// Drift refused: 1 (no vtable; structural NodeKind walk); 6 (no
-// primitive-type-special-case for refinement); 8 (Predicate is the
-// ADT — no string-keyed pred-name flag); 9 (every NarrowingSite
-// NExpr arm enumerated; no wildcard fabricating ()).
-fn infer_refinement_narrowing(body) = walk_refinement(body, PTrue)
-
-fn walk_refinement(node, path_pred) = match graph_node_body(node) {
-  NExpr(IfExpr(c, t, e)) => {
-    let cond_pred = PBoolNode(c)
-    walk_refinement(c, path_pred)
-    walk_refinement(t, PAnd(path_pred, cond_pred))
-    walk_refinement(e, PAnd(path_pred, PNot(cond_pred)))
-  },
-  NExpr(MatchExpr(scrut, arms)) => {
-    walk_refinement(scrut, path_pred)
-    walk_refinement_arms(scrut, arms, path_pred)
-  },
-  NExpr(BlockExpr(stmts, final)) => walk_refinement_block(stmts, final, path_pred),
-  NExpr(CallExpr(f, args)) => {
-    walk_refinement(f, path_pred)
-    walk_refinement_args_with_param_preds(f, args, path_pred)
-  },
-  NExpr(BinOpExpr(_, l, r)) => {
-    walk_refinement(l, path_pred)
-    walk_refinement(r, path_pred)
-  },
-  NExpr(UnaryOpExpr(_, x)) => walk_refinement(x, path_pred),
-  NExpr(LambdaExpr(_, lb)) => walk_refinement(lb, PTrue),
-  NExpr(ResumeExpr(v, _)) => walk_refinement(v, path_pred),
-  NExpr(MakeListExpr(elems)) => walk_refinement_list(elems, path_pred),
-  NExpr(MakeTupleExpr(elems)) => walk_refinement_list(elems, path_pred),
-  NExpr(MakeStringExpr(frags)) => walk_refinement_list(frags, path_pred),
-  NExpr(ShowExpr(inner)) => walk_refinement(inner, path_pred),
-  NExpr(IndexExpr(receiver, index)) => // An index site under a non-trivial path: record the path-predicate proven
-  // to hold at the index node (graph_narrow_set), so lower's bounds-check read
-  // (graph_narrow_at) elides the check the path already discharged (§4⑥:
-  // "When i is refined to a proven-valid index, the compiler elides the bounds
-  // check"). Carried-Truth: the narrowing is written ONCE here, read live at
-  // lower — never re-derived. A trivial path (PTrue) records nothing (the 0
-  // default = no narrowing = byte-identical un-elided load).
-  // The narrowing WRITE was here — graph_narrow_set(ih, path-pred) on ANY
-  // non-trivial path. It was doubly dead-and-wrong (panel, 2026-07-18):
-  // narrowing_pred_handle descends PAnd's LEFT conjunct to the PTrue seed,
-  // so the handle was always 0 and the write never fired; and had it fired,
-  // it recorded predicates that say NOTHING about the index (`if x > 0 {
-  // xs[i] }`) — an unsound elision licence. The real write requires a
-  // structural discharge that the path predicate implies BOTH `0 <= index`
-  // AND `index < len(receiver)` — the named peer
-  // Hβ.infer.narrowing-write-requires-discharge. The weave's writer is the
-  // read's own bounds claim since TRAP (infer_index_force); the path half
-  // waits on `Hβ.verify.partiality-reads-the-path-narrowing`.
-  {
-    walk_refinement(receiver, path_pred)
-    walk_refinement(index, path_pred)
-  },
-  NExpr(MakeRecordExpr(fields)) => walk_refinement_fields(fields, path_pred),
-  NExpr(RecordUpdateExpr(base, fields)) => {
-    walk_refinement(base, path_pred)
-    walk_refinement_fields(fields, path_pred)
-  },
-  NExpr(NamedRecordExpr(_, fields)) => walk_refinement_fields(fields, path_pred),
-  NExpr(FieldExpr(b, _)) => walk_refinement(b, path_pred),
-  NExpr(PipeExpr(_, l, r)) => {
-    walk_refinement(l, path_pred)
-    walk_refinement(r, path_pred)
-  },
-  NExpr(FanoutExpr(branches)) => walk_refinement_branches(branches, path_pred),
-  NExpr(RestExpr(_)) => (),
-  NStmt(LetStmt(_, v, _)) => walk_refinement(v, path_pred),
-  NStmt(ExprStmt(e)) => walk_refinement(e, path_pred),
-  NExpr(LitInt(_)) => (),
-  NExpr(LitFloat(_)) => (),
-  NExpr(LitString(_)) => (),
-  NExpr(LitBool(_)) => (),
-  NExpr(LitUnit) => (),
-  NExpr(VarRef(_)) => (),
-  NExpr(ExprPlaceholder) => (),
-  NExpr(LabeledArg(_, v)) => walk_refinement(v, path_pred),
-  NHole(_) => (),
-  NPat(_) => (),
-  NModule(_) => (),
-  NStmt(FnStmt(_, _, _, _, fbody)) => // TOTAL over NodeBody/Stmt — a missing arm IS a drop to the loud
-  // `unreachable` (the walk_refinement floor that blocked m3). A nested fn is
-  // walked like a lambda: its body under a FRESH path (the enclosing path
-  // predicate does not hold inside the callee). Declaration statements carry
-  // no narrowable runtime expression; a type annotation is a Ty, not an expr.
-  walk_refinement(fbody, PTrue),
-  NStmt(TypeDefStmt(_, _)) => (),
-  NStmt(EffectDeclStmt(_, _, _)) => (),
-  NStmt(HandlerDeclStmt(_, _, _, _, _, _)) => (),
-  NStmt(HandlerChainStmt(_, _)) => (),
-  NStmt(ImportStmt(_)) => (),
-  NStmt(RefineStmt(_, _, _)) => (),
-  NStmt(AliasStmt(_, _)) => (),
-  NStmt(RowAliasStmt(_, _)) => (),
-  NTypeAnn(_) => (),
-}
-
-// Walk a Match — each arm gets its scrut narrowed by the arm's pattern
-// before walking the arm body. The narrowing is per-arm-scope; once
-// the arm body is walked, its refinement contributions don't leak
-// to other arms (they're branch-disjoint; map-per-arm semantics).
-fn walk_refinement_arms(scrut, arms, path_pred) = if len(arms) == 0 {
-  ()
-} else {
-  // A match arm is a (pat, body) TUPLE (parser push_node (pat, body); the
-  // canonical destructure infer_match_arms uses) — positional, NOT a named
-  // record. `arm.pat`/`arm.body` field-access floors resolve_field_offset on a
-  // TTuple (→ the loud `unreachable` / a garbage slot). Destructure positionally.
-  match last(arms) {
-    (pat, body) => {
-      let arm_pred = PPatternMatch(pat, scrut)
-      walk_refinement(body, PAnd(path_pred, arm_pred))
-      walk_refinement_arms(scrut, drop_last(arms), path_pred)
-    },
-  }
-}
-
-// Block walking — stmts may include `assert(pred)` which narrows the
-// rest of the block. Threads path_pred through; each assert
-// A fanout's branches walk under the SAME path predicate — parallel
-// peers, no sequential strengthening between them.
-fn walk_refinement_branches(branches, path_pred) = if len(branches) == 0 {
-  ()
-} else {
-  walk_refinement(last(branches), path_pred)
-  walk_refinement_branches(drop_last(branches), path_pred)
-}
-
-// strengthens the predicate for subsequent stmts + final expression.
-fn walk_refinement_block(stmts, final, path_pred) = if len(stmts) == 0 {
-  walk_refinement(final, path_pred)
-} else {
-  let stmt = last(stmts)
-  let strengthened = strengthen_path_pred(path_pred, stmt)
-  walk_refinement(stmt, path_pred)
-  walk_refinement_block(drop_last(stmts), final, strengthened)
-}
-
-fn strengthen_path_pred(path_pred, stmt) = match graph_node_body(stmt) {
-  NStmt(ExprStmt(e)) => match graph_node_body(e) {
-    NExpr(CallExpr(callee, args)) => if is_assert_call(callee) { PAnd(path_pred, predicate_of_assert_arg(args)) } else { path_pred },
-    _ => path_pred,
-  },
-  _ => path_pred,
-}
-
-// Function-arg walking — each arg's refinement type (if any) provides
-// a predicate that holds in the called body's scope. The caller-side
-// inference doesn't add the predicate to the caller's path_pred (the
-// callee's body is independently walked); the relationship surfaces
-// via signature unification at call site.
-fn walk_refinement_args_with_param_preds(f, args, path_pred) = walk_refinement_list(args, path_pred)
-
-fn walk_refinement_list(nodes, path_pred) = if len(nodes) == 0 {
-  ()
-} else {
-  walk_refinement(last(nodes), path_pred)
-  walk_refinement_list(drop_last(nodes), path_pred)
-}
-
-fn walk_refinement_fields(fields, path_pred) = if len(fields) == 0 {
-  ()
-} else {
-  // A record-literal field is a (name, value) TUPLE (types.mn
-  // MakeRecordExpr — sorted at parse), not a record — destructure it.
-  // `.value` here was a field access on a tuple; the seed's weak
-  // inference passed it silently and m2 trapped at the first record
-  // literal under a refinement walk (the named record-literal face).
-  match last(fields) {
-    (_, value) => {
-      walk_refinement(value, path_pred)
-      walk_refinement_fields(drop_last(fields), path_pred)
-    },
-  }
-}
-
-fn is_assert_call(callee) = match graph_node_body(callee) {
-  NExpr(VarRef(name)) => name == "assert",
-  _ => false,
-}
-
-fn predicate_of_assert_arg(args) = if len(args) == 0 { PTrue } else { PBoolNode(last(args)) }
 
 // Config is [TParam] (the fn-param carrier), and it mints exactly as a
 // function's parameters do: one graph handle each, superseding the

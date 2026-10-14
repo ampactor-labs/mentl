@@ -1,0 +1,10 @@
+// expect: refuse E_PatternInexhaustive
+// No set of literals covers a word: `0` and `1` leave every other Int to no
+// arm, and the honest complement is `_`. On boot 82692525 this compiled clean
+// and trapped (exit 134) at 2.
+fn small(n) = match n {
+  0 => 1,
+  1 => 2,
+}
+
+fn main() = small(2)

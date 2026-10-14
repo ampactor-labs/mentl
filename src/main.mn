@@ -828,32 +828,151 @@ fn tighten_run(target_opt) = {
   match driver_entry_with_ranges(entry_module) {
     (_ast, ranges) => {
       let cands = tightenables()
+      let rosters = project_sites(catch_all_sites())
       // The refuted ownership markers first: a release rewrites one word of
       // a head and moves no line, so the clause patches below read the same
       // line numbers whichever runs first.
       let released = own_releases() |> fold(0, apply_own_release)
-      if len(cands) == 0 {
-        if released > 0 {
-          print_string("tighten: {int_to_str(released)} ownership marker(s) released — the medium authored these; verify with a fresh check + the gates\n")
-          0
-        } else {
-          print_string("mentl tighten: nothing to tighten — no declared row is an inventory or over-declared, and no `own` is refuted\n")
-          0
-        }
+      // Batch-apply: every proposal was computed against the CURRENT
+      // declarations, and the patch is the clause's RESIDUE — the
+      // negations and instance pins the judgment cannot infer (A4,
+      // 2026-09-27) — so a batch member never narrows below what the body
+      // proves: the positive row it drops is projected, not lost, and
+      // nothing authored is ever a row the parser cannot read back. Per
+      // file, patch bottom-up so line offsets hold.
+      let n = apply_tightenings(cands)
+      // The catch-alls over sums last: each is written at its match node and
+      // the module rendered whole, which moves lines, so every patch that
+      // reads a line number has run by now; a module those patches changed
+      // is refused here and rewritten by the next run's judgment.
+      let rostered = apply_pattern_tightenings(ranges, rosters)
+      if len(cands) + len(rosters) == 0 && released == 0 {
+        print_string("mentl tighten: nothing to tighten — no declared row is an inventory or over-declared, no `own` is refuted, and no catch-all stands over a sum\n")
+        0
       } else {
-        // Batch-apply: every proposal was computed against the CURRENT
-        // declarations, and the patch is the clause's RESIDUE — the
-        // negations and instance pins the judgment cannot infer (A4,
-        // 2026-09-27) — so a batch member never narrows below what the body
-        // proves: the positive row it drops is projected, not lost, and
-        // nothing authored is ever a row the parser cannot read back. Per
-        // file, patch bottom-up so line offsets hold.
-        let n = apply_tightenings(cands)
-        print_string("tighten: {int_to_str(n)} of {int_to_str(len(cands))} applied — the medium authored these; verify with a fresh check + the gates\n")
-        if n > 0 { 0 } else { 1 }
+        print_string("tighten: {int_to_str(n)} of {int_to_str(len(cands))} clause(s) applied, {int_to_str(released)} ownership marker(s) released, {int_to_str(rostered)} of {int_to_str(len(rosters))} catch-all arm(s) written as the roster each stood for — the medium authored these; verify with a fresh check + the gates\n")
+        if n + released + rostered > 0 { 0 } else { 1 }
       }
     },
   } ~> diag_bank ~> wasi_filesystem ~> mentl_default ~> infer_context
+}
+
+// THE CATCH-ALLS OVER SUMS, WRITTEN AS THEIR ROSTERS (Morgan, 2026-10-13: a
+// `_` over a sum is the roster the author declined to write). A site is the
+// judged match's own handle (`catch_all_sites`, src/query.mn), so the
+// rewrite is ONE WRITE AT THE NODE — the roster registered over the
+// catch-all arm — and the page is its projection: the module rendered whole
+// from its own module node through the formatter's render, its conservation
+// gate and its verdict. No second parse and no coordinate join: the graph
+// that judged the match is the graph the roster is written into. A module
+// is rewritten only when its file is canonical and unchanged since the
+// judgment, because a render that changed anything but the roster would
+// write layout the author did not ask for, or undo a clause the passes
+// above just patched at a line; each refusal says which. Writing those
+// passes at the node too, so one render projects every tightening, is the
+// verb's next form (`Hβ.match.catch-all-over-a-sum-is-the-roster`).
+fn apply_pattern_tightenings(ranges, sites) = fold(0, roster_module(sites, ??, ??), ranges)
+
+// The sites of the entry's own layer: a user's `tighten` never writes the
+// library its program links, as its reports never name it (ScopeProject).
+fn project_sites(sites) = match diag_scope_of() {
+  ScopeProject(layer) => filter({ h => module_layer_of_handle(graph_module_of(h)) == layer }, sites),
+  ScopeAll | ScopeNone => sites,
+}
+
+fn roster_module(sites, acc, range) = match range {
+  (m, path, judged) => match filter({ h => module_name_of_handle(graph_module_of(h)) == m }, sites) {
+    [] => acc,
+    mine @ [first, ..._] => {
+      let verdict = roster_render(path, judged, module_decls_of(first), mine) ~> arena
+      fmt_print_refused(verdict)
+      fmt_write(verdict)
+      if fmt_is_render(verdict) {
+        print_string("tighten: {path} — {int_to_str(len(mine))} catch-all arm(s) written as the roster each stood for\n")
+        acc + len(mine)
+      } else {
+        acc
+      }
+    },
+  },
+}
+
+// One module's render with its rosters written: its declarations off its
+// node, rendered once to prove the file canonical, then with the rosters in
+// place, re-parsed and rendered again (the formatter's own fixpoint), the
+// conservation gate stating the `_` each wildcard arm consumed.
+fn roster_render(path: String, judged: String, decls, sites) = {
+  let src = fs_read_file(path)
+  let before = respell(src, format_program(decls))
+  if src != judged {
+    FmtRefused(path, ["changed since it was judged — run `mentl tighten` again"])
+  } else if before != src {
+    match first_changed_line(src, before) {
+      (n, was, now) => FmtRefused(
+        path,
+        [
+          "not canonical at line {int_to_str(n)} — the roster is written by rendering the module whole, which may change nothing else; `mentl fmt` first",
+          "- {was}",
+          "+ {now}"
+        ]
+      ),
+    }
+  } else {
+    let consumed = flat_map(write_roster, sites)
+    let first = respell(src, format_program(decls))
+    let again = parse_one_module((path_to_module(path), [], first, User))
+    if parse_refusals() > 0 {
+      FmtRefused(path, ["the render does not parse — the formatter's defect, reported above"])
+    } else {
+      let rendered = respell(first, format_program(again))
+      match fmt_losses(src, rendered, consumed) {
+        [] => FmtRenders(path, src, rendered),
+        lines => FmtRefused(path, lines),
+      }
+    }
+  }
+} ~> format_default ~> diag_bank
+
+// A node's module's declarations, off the module node the parse minted for
+// its file — the same read as `module_name_of_handle`, the same refusal.
+fn module_decls_of(h) = match graph_node_body(graph_module_of(h)) {
+  NModule(m) => m.decls,
+  NExpr(_) | NStmt(_) | NHole(_) | NPat(_) | NTypeAnn(_) => {
+    out_of_range()
+    []
+  },
+}
+
+// One site's write: the roster registered over the catch-all arm, the body
+// kept. Answers the atom the roster leaves out of the arm's pattern — a
+// wildcard arm's `_`, which the roster says in constructors; a binder
+// survives as the name over the grouped alternation.
+fn write_roster(h) = match graph_node_body(h) {
+  NExpr(MatchExpr(scrut, arms)) => match catch_all_arm(scrut, arms) {
+    Some((i, pat, roster)) => {
+      graph_register_node(h, NExpr(MatchExpr(scrut, map(roster_arm(i, roster, ??), enumerate(arms)))))
+      consumed_by(pat)
+    },
+    None => [],
+  },
+  NExpr(_) | NStmt(_) | NHole(_) | NPat(_) | NTypeAnn(_) | NModule(_) => [],
+}
+
+fn consumed_by(pat) = match pat {
+  PWild => ["_"],
+  PAs(_, inner) => consumed_by(inner),
+  PAlt(ps) => flat_map(consumed_by, ps),
+  PVar(_) | PLit(_) | PCon(_, _) | PTuple(_) | PList(_, _) | PRecord(_, _) => [],
+}
+
+fn roster_arm(i, roster, indexed) = match indexed {
+  (j, arm) => if j == i {
+    match arm {
+      (_, body) => (roster, body),
+    }
+  } else {
+    arm
+  },
 }
 
 // The batch applier: locate every candidate (drop unmappable spans),

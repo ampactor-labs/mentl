@@ -251,12 +251,8 @@ fn render_converge_chain(left, right) = {
 fn render_diverge_chain(input, branches_tuple) = {
   let input_str = render_chain_node(input)
   // The right operand is the branch-tuple NODE; render_branch_tuple eats
-  // the element LIST (the converged judge caught the node passed whole).
-  // A non-tuple right operand is a single branch, rendered as one chain.
-  let branches = match graph_node_body(branches_tuple) {
-    NExpr(MakeTupleExpr(elems)) => render_branch_tuple(elems),
-    _ => "{spaces(indented_center())}{render_chain_node(branches_tuple)},",
-  }
+  // its stages (`share_stages`), the element LIST.
+  let branches = render_branch_tuple(share_stages(branches_tuple))
   "{input_str}\n{spaces(left_edge_indent())}<| (\n{branches}\n{spaces(left_edge_indent())})"
 }
 
@@ -330,9 +326,7 @@ fn render_tee_text(body, handler_str: String, hc: String) = {
 // how many members it became (infer.mn's infer_chain_install). A parse-only
 // render never meets one — the rewrite is the judgment's — so `mentl fmt`
 // reads the authored reference as written.
-fn chain_installed(h) = match graph_chase(h) {
-  GNode(_, reason) => chain_of_reason(reason),
-}
+fn chain_installed(h) = chain_of_reason(graph_reason_at(h))
 
 fn chain_of_reason(reason) = match reason {
   ChainInstall(name, n) => Some((name, n)),
@@ -435,7 +429,20 @@ fn render_tokens_for(node) with !Mutate = {
   let lead = if c == "" { "" } else { "//{replace(c, "\n", "\n//")}\n" }
   match let_born(node) {
     Some((scrut, pat, rest)) => "{lead}\{\n{indent_block(render_let_chain(scrut, pat, rest))}\n\}",
-    None => "{lead}{render_body_tokens(graph_node_body(node))}",
+    None => "{lead}{render_installed_tokens(node)}",
+  }
+}
+
+// A judged install of a named chain renders as the author wrote it — the
+// body under the chain's member installs, then `~> NAME` — wherever the
+// node stands: a statement, an operand, an argument. The check read the
+// handle only on the chain-render route until 2026-10-14, so every
+// `body ~> infer_context` in a judged module rendered as its members.
+fn render_installed_tokens(node) with !Mutate = {
+  let body = graph_node_body(node)
+  match (chain_installed(node), body) {
+    (Some((name, n)), NExpr(PipeExpr(PTee, l, _))) => "{render_operand(chain_body(l, n - 1), pipe_prec(PTee), false)} ~> {name}",
+    _ => render_body_tokens(body),
   }
 }
 
@@ -458,14 +465,15 @@ fn let_born(n) = match graph_node_body(n) {
   _ => None,
 }
 
-fn born_of_let(h) = match graph_chase(h) {
-  GNode(_, reason) => reason_is_let(reason),
-}
-
-fn reason_is_let(reason) = match reason {
-  LetBinding(_, _) => true,
-  Located(_, inner) => reason_is_let(inner),
-  _ => false,
+// The birth the parse noted at the node (types.mn `Birth`) — a fact of the
+// node, never its reason: the judgment's bind at a match overwrites the
+// reason cell, and read through it every destructuring let in a judged
+// module rendered as the match pyramid (measured 2026-10-14 at `mentl
+// tighten`'s render of src/infer.mn).
+fn born_of_let(h) = match graph_birth_of(h) {
+  Some(LetBorn) => true,
+  Some(Authored) => false,
+  None => false,
 }
 
 fn render_let_chain(scrut, pat, body) with !Mutate =
@@ -679,8 +687,51 @@ fn render_pat_tokens(p) = match p {
     None => "\{{render_pat_fields(fields, 0)}\}",
     Some(rn) => if len(fields) == 0 { "\{...{rn}\}" } else { "\{{render_pat_fields(fields, 0)}, ...{rn}\}" },
   },
-  PAlt(ps) => render_pat_list(ps, " | "),
-  PAs(name, inner) => "{name} @ {render_pat_tokens(inner)}",
+  PAlt(ps) => // Inline when it fits; past the width, one branch per line, each
+  // continuation led by its `|` (SYNTAX §«Pattern alternation — rule»): the
+  // roster a catch-all stood for is often forty names, and the parser passes
+  // over the newline before a `|` as layout. Branches that each bind the
+  // whole value under one name are that binder over the alternation,
+  // `b @ (C(_) | D)` — the lift `lifted_at` states, one name per branch
+  // the grouped spelling writes once.
+  match binder_of_branches(ps) {
+    Some((name, inners)) => render_pat_tokens(PAs(name, PAlt(inners))),
+    None => {
+      let inline = render_pat_list(ps, " | ")
+      if fits_inline(inline) { inline } else { render_pat_list(ps, "\n| ") }
+    },
+  },
+  PAs(name, inner) => match inner {
+    PAlt(ps) => // The binder over the alternation it groups, one branch per line past
+    // the width as the bare alternation breaks.
+    {
+      let inline = "{name} @ ({render_pat_list(ps, " | ")})"
+      if fits_inline(inline) {
+        inline
+      } else {
+        "{name} @ (\n{indent_block(render_pat_list(ps, "\n| "))}\n)"
+      }
+    },
+    PVar(_) | PWild | PLit(_) | PCon(_, _) | PTuple(_) | PList(_, _) | PRecord(_, _) | PAs(_, _) => "{name} @ {render_pat_tokens(inner)}",
+  },
+}
+
+// The one binder every branch of an alternation places over the whole value,
+// with the branches under it — `b @ C(_) | b @ D` is `b @ (C(_) | D)`.
+fn binder_of_branches(ps) = match ps {
+  [PAs(name, _), ..._] => match fold(Some([]), as_branches_step(name, ??, ??), ps) {
+    Some(inners) => Some((name, inners)),
+    None => None,
+  },
+  _ => None,
+}
+
+fn as_branches_step(name: String, acc, branch) = match acc {
+  None => None,
+  Some(inners) => match branch {
+    PAs(n, inner) => if n == name { Some(push(inners, inner)) } else { None },
+    PVar(_) | PWild | PLit(_) | PCon(_, _) | PTuple(_) | PList(_, _) | PRecord(_, _) | PAlt(_) => None,
+  },
 }
 
 // Every list renderer walks HEAD-FIRST (index 0 upward): parser lists are
@@ -1408,6 +1459,17 @@ fn lifted_at(kept, h) = match graph_node_body(h) {
   punned_names(fields),
   NExpr(NamedRecordExpr(head, fields)) => punned_names(fields),
   NExpr(RecordUpdateExpr(base, fields)) => punned_names(fields),
+  NExpr(MatchExpr(_, arms)) => // `b @ C(_) | b @ D` renders as `b @ (C(_) | D)`: the binder is written once
+  // for branches the parse read it on each of
+  flat_map(arm_grouped_binders, arms),
+  _ => [],
+}
+
+fn arm_grouped_binders(arm) = match arm {
+  (PAlt(ps), _) => match binder_of_branches(ps) {
+    Some((name, inners)) => map({ _ => name }, range_list(1, len(inners))),
+    None => [],
+  },
   _ => [],
 }
 

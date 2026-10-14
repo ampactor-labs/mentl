@@ -419,8 +419,6 @@ fn int_to_str(n) = if n == 0 {
   int_to_str_positive(n)
 }
 
-// ─── Show — rendering IS an effect ───────────────────────────────
-//
 // show_word's generic param instantiates fresh per call site, so
 // to_string stays polymorphic at infer (no Int contamination of
 // generic callers like assert_eq). The default handler renders the
@@ -716,7 +714,6 @@ fn float_fill_digit_bytes(buf, digits, start, end, i) = if i >= end {
   float_fill_digit_bytes(buf, digits, start, end, i + 1)
 }
 
-// ─── Float arithmetic intrinsics ──────────────────────────────────
 // These map 1:1 to WASM f64 instructions when emitted. Named
 // explicitly rather than overloading +/-/* so the emitter can
 // distinguish float ops from integer ops without a type pass.
@@ -759,7 +756,6 @@ fn float_is_negative(f) = f < 0.0 || float_is_negative_zero(f)
 
 fn float_is_negative_zero(f) = f == 0.0 - 0.0 && 1.0 / f < 0.0
 
-// ─── Digit list helpers ───────────────────────────────────────────
 // A digit list is a flat Mentl list of Int (values 0-9).
 //
 // Total over any index: past the list is the zero digit — this is what

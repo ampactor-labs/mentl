@@ -637,19 +637,17 @@ fn entered_element(elems, found, h) = match found {
   None => position_in(h, elems),
 }
 
-// A `<|` shares its input across the elements of the tuple on its right, and
-// the path enters the tuple before it enters a branch; a right side that is
-// not a tuple is the one branch. A path that ends ON the tuple enters none.
-fn shared_branch_role(r, path, at) with !Mutate = match graph_node_body(r) {
-  NExpr(MakeTupleExpr(elems)) => if at < len(path) {
-    match position_in(list_index(path, at), elems) {
-      Some(k) => Some(ShareBranch(k, len(elems))),
-      None => None,
-    }
-  } else {
-    None
-  },
-  _ => Some(ShareBranch(0, 1)),
+// A `<|` shares its input across the elements of the tuple on its right
+// (`share_stages`), and the path enters the tuple before it enters a branch.
+// A path that ends ON the tuple enters none.
+fn shared_branch_role(r, path, at) with !Mutate = if at < len(path) {
+  let stages = share_stages(r)
+  match position_in(list_index(path, at), stages) {
+    Some(k) => Some(ShareBranch(k, len(stages))),
+    None => None,
+  }
+} else {
+  None
 }
 
 // Which install serves an operation performed at a node — the Handler facet's

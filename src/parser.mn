@@ -56,7 +56,18 @@ fn mint_node_as(body, span: ValidSpan, reason) = {
 
 fn nexpr(e, span: ValidSpan) = mint_node(NExpr(e), span)
 
-fn nstmt(s, span: ValidSpan) = mint_node_as(NStmt(s), span, stmt_birth(s, span))
+fn nstmt(s, span: ValidSpan) = {
+  let h = mint_node_as(NStmt(s), span, stmt_birth(s, span))
+  // The birth is a FACT of the node beside the reason: the judgment's bind
+  // overwrites the reason, and the render reads the fact (types.mn `Birth`).
+  if is_let_born(s) { graph_birth_note(h, LetBorn) } else { () }
+  h
+}
+
+fn is_let_born(s) = match s {
+  LetStmt(pat, _, _) => is_destructure_pat(pat),
+  _ => false,
+}
 
 // A destructuring let is born the match it becomes: `desugar_block` gives
 // that match this statement's own cell, so the cell carries the let's birth
@@ -1891,6 +1902,14 @@ fn binop_loop(ref tokens, left, first: ValidSpan, pos, min_prec, slot) = {
               NExpr(FanoutExpr(branches)) => nexpr(FanoutExpr(branches ++ [right]), combined_span),
               _ => nexpr(FanoutExpr([left, right]), combined_span),
             },
+            PFanout(FanShare) => // A `<|` over one stage is the pipe: the product of one it would
+            // answer is its field, so `x <| f` and `x |> f` are one graph and the
+            // redundant spelling never survives the parse (SYNTAX §`<|`). Every
+            // `<|` the graph holds fans into a tuple of stages (`share_stages`).
+            match graph_node_body(right) {
+              NExpr(MakeTupleExpr(_)) => nexpr(PipeExpr(pk, left, right), combined_span),
+              _ => nexpr(PipeExpr(PForward, left, right), combined_span),
+            },
             _ => nexpr(PipeExpr(pk, left, right), combined_span),
           },
           None => match op_to_binop(k) {
@@ -2309,10 +2328,13 @@ fn parse_paren_or_tuple(ref tokens, pos, start_span) = {
                     },
                   }
                 } else {
-                  (
-                    nexpr(MakeTupleExpr(slice(final_buf, 0, final_count)), upto(tokens, start_span, final_pos)),
-                    final_pos
-                  )
+                  // A product of one field is its field: `(a,)` is `a`, as the
+                  // pattern `(p,)` is `p` (`parse_pat_elems`) and a call's one
+                  // argument is its value, never a record of one.
+                  match slice(final_buf, 0, final_count) {
+                    [one] => (one, final_pos),
+                    elems => (nexpr(MakeTupleExpr(elems), upto(tokens, start_span, final_pos)), final_pos),
+                  }
                 }
               },
             },
@@ -3262,7 +3284,13 @@ fn parse_pat(ref tokens, pos) = match kind_at(tokens, pos) {
   TStringPart(s) => (PLit(LVString(s)), pos + 1),
   TTrue => (PLit(LVBool(true)), pos + 1),
   TFalse => (PLit(LVBool(false)), pos + 1),
-  TLParen => match parse_pat_args(tokens, skip_ws(tokens, pos + 1)) {
+  TLParen => // A parenthesized pattern groups: `(A | B)` is the alternation, read
+  // whole where one pattern stands — under a binder, `b @ (A | B)` binds
+  // the value under any branch (SYNTAX §«As-patterns — rule») — and one
+  // pattern in parens is that pattern, since there is no product of one;
+  // `(a, b)` is the pair as before.
+  match parse_pat_elems(tokens, skip_ws(tokens, pos + 1), parse_pat_alt) {
+    ([one], p) => (one, p),
     (sub, p) => (PTuple(sub), p),
   },
   TLBracket => match parse_pat_list_args(tokens, skip_ws(tokens, pos + 1)) {
@@ -3312,16 +3340,21 @@ fn parse_pat_record_fields(ref tokens, pos) = {
 
 fn sort_pat_fields(fields) = sort_record_fields_loop(fields, 0, len(fields), [])
 
-fn parse_pat_args(ref tokens, pos) = {
+fn parse_pat_args(ref tokens, pos) = parse_pat_elems(tokens, pos, parse_pat)
+
+// Comma-separated patterns to the closing paren, each read by `elem`: a
+// constructor's payloads are plain patterns, a parenthesized group's
+// elements may each be an alternation.
+fn parse_pat_elems(tokens, pos, elem) = {
   let p = skip_ws(tokens, pos)
   if at(tokens, p, TRParen) {
     ([], p + 1)
   } else {
-    match parse_pat(tokens, p) {
+    match elem(tokens, p) {
       (pat, p2) => {
         let p3 = skip_ws(tokens, p2)
         if at(tokens, p3, TComma) {
-          match parse_pat_args(tokens, skip_ws(tokens, p3 + 1)) {
+          match parse_pat_elems(tokens, skip_ws(tokens, p3 + 1), elem) {
             (rest, p4) => ([pat] ++ rest, p4),
           }
         } else {

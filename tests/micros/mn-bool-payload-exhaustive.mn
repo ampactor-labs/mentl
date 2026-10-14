@@ -1,0 +1,11 @@
+// expect: 1
+// Bool is the sum `False | True` (the prelude), so its two literals inside a
+// payload cover the constructor: the strict matrix reads each as the
+// constructor it names, and this match is whole.
+fn pick(o) = match o {
+  Some(true) => 1,
+  Some(false) => 2,
+  None => 3,
+}
+
+fn main() = pick(Some(true))

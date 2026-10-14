@@ -1383,8 +1383,89 @@ wheel's count is zero the shape refuses as a class, and the exhaustiveness
 refusal keeps saying `write its arm`. A `_` over Bool is a sum's catch-all
 (`False | True`) and expands; a `_` over an infinite domain stays, being
 the complement; a sub-pattern `_` is untouched.
+STEPS (1) AND (2) LANDED 2026-10-14 (the WILD landing). The wheel's own
+migration — all 1,248 rosters written out, about 9,700 lines, 12% of its
+source — was planned as a second pin and is not taken: which constructors a
+catch-all covers is a fact the graph computes, and PLAN §9.1 keeps such a
+fact projected, never hand-kept as text; the cap holds the count. The shape is `CsWildcardOverSum`
+(`catch_all_of`, src/query.mn, over `catch_all_arm`, src/infer.mn: the first
+catch-all after another arm of a match over a sum, with the constructors
+that escape the arms before it, read off the strict matrix — a match's only
+arm is a binding, never a dispatch, so `{ x => body }` is not convicted);
+the census note is the roster rendered; the board bounded it at the 1,261
+the wheel's link read the day it was counted, seen RED one below, and holds
+it at 1,248 after the landing deleted thirteen. `mentl
+tighten` writes each roster AT THE JUDGED MATCH NODE (`write_roster`,
+src/main.mn — one write, `graph_register_node`) and renders the module
+whole from its own module node through the formatter's render, its
+conservation gate and its verdict, with the `_` a wildcard arm consumed
+stated; a module is rewritten only when its file is canonical and unchanged
+since the judgment, and the sites are the entry's layer, never the library
+beneath a user's program. A binder's roster is the binder over the grouped
+alternation, `other @ (Line(_) | Box(_, _) | Blob)`, a form the parser reads
+and the formatter writes the spread spelling back as (SYNTAX §«As-patterns —
+rule»). The last arm of an exhaustive match runs untested, so the roster
+costs what the `_` cost (tests/frontier/tighten-demo/wild.mn's WAT is the
+same bytes but a handle-numbered local). Four kills on the way, each a read
+the landing had not made before building on it: the first applier copied
+fmt's handler chain and `infer_context` installs a fresh graph, so every
+judged handle read as a hole; the formatter learned a judged chain install
+by the CHASED reason, where the install's own reason holds `ChainInstall`,
+and only on the chain-render route, so `body ~> infer_context` rendered as
+its members in a judged module (`render_installed_tokens`, src/format.mn);
+a let-born match's birth was a reason the judgment's bind overwrote, so
+every destructuring let rendered as the match pyramid — it is a column now
+(`Birth`, `graph_birth_note`/`graph_birth_of`, written where the parse
+desugars); and the lenient matrix wrote `None => ()` for a `_` after
+`Some(false)`, which is `Hβ.infer.exhaustiveness-over-literal-and-list-columns`'s
+closing. The first march refused the pin over four battery fixtures, and
+they named two laws the strict read had made load-bearing. A `<|` over one
+stage minted a tuple of one that only the pattern `(e)` could open; `(p)`
+being `p` now, the fanout over one stage is the pipe it always meant, built
+at the parse, and the six readers that each re-derived a `<|`'s stages read
+one home (`share_stages`, src/graph.mn). And a destructuring `let` was
+refused as the dispatch it desugars into, where it ASSERTS a shape: a match
+of one arm, whatever its spelling, raises the case its pattern leaves as a
+claim (`claim_shape`, src/infer.mn) the value walk decides (`shape_decide`,
+src/verify.mn — the constructor that built a value carried as a leaf,
+`LBuilt`, beside the lengths and parts the walk already read), and only a
+match of several arms refuses. The first form keyed the law on the node's
+birth, and the frontier's one-arm literal refuted it: the binder form and
+the arm list the formatter writes it as are one graph, and the birth made
+them mean two things. WHAT REMAINS, the design revised at the landing: in place of step (3)'s
+refusal at zero, the projection — at a constructor's declaration the medium
+names every catch-all over its type that the constructor falls into, so a
+variant added later is seen where it is written; the
+lowering re-walks the matrix for the untested last arm where one
+exhaustiveness fact on the match node would serve the refusal, the roster and
+the lowering alike; and `tighten`'s clause and ownership passes still patch
+text at a line, so a module they touched in one run is refused by the roster
+pass and rewritten by the next — writing them at the node too, so one render
+projects every tightening, is the verb's next form.
 
-### `Hβ.infer.exhaustiveness-over-literal-and-list-columns` — OPEN
+### `Hβ.infer.exhaustiveness-over-literal-and-list-columns` — CLOSED 2026-10-14
+
+CLOSED at the WILD landing, where the roster `mentl tighten` writes for a
+catch-all inherited the lenient read: the first migration wrote `None => ()`
+for a `_` after `Some(false)`, the matrix having called the literal column
+covered, and the wheel compiled from it trapped in `verify_claim` on
+`Some(true)`. The matrix is strict now (`uncovered`, src/infer.mn): a list
+column is the sum `[] | [head, ...rest]` (`uncovered_list`, the head and the
+remaining list two columns of their own), a record column the union of the
+fields its patterns name with an unnamed field `_` (`record_row`), Bool's
+two literals the constructors they are (`norm_row`), and any other literal
+column is covered only by a wild row, each literal present read beside the
+wild rows and every other value by the wild rows alone
+(`uncovered_literals`); the witness names the value as the constructor case
+does (`[_, ...]`, `Some(True)`, `_`). Three micros measure the three shapes
+below on boot 82692525 (clean check, exit 134) and refuse through the
+candidate; four positives stay whole (nil/cons, Bool payload, a record
+column, the grouped as-pattern). The wheel owed five refusals to the strict
+read, all latent traps: four matches over the sequence tag word in
+lib/lists.mn, which read the word as the sum it names now (`SeqKind`,
+`seq_kind`, the complement the deliberate trap), and one tuple of string
+literals in src/query.mn whose guard the matrix could not see, restructured
+over the Option alone.
 
 BORN 2026-10-13 at Landing 4 S3, the day the exhaustiveness check learned to
 read the whole pattern. `uncovered` (src/infer.mn) decides a match column by
@@ -3495,15 +3576,15 @@ measured 2026-10-13, both of this shape (its index-bound obligations are
 `Hβ.effects.index-partiality-is-a-row-fact`'s, the same law one primitive
 over) (`mentl query src/main.mn smt` renders each as a `distinct`
 assertion; lib/dsp's six divisions by a hop or a grid width discharge
-through `Positive` on the parameter, cfc.mn). The narrowing walk
-(`walk_refinement`, infer.mn) COMPUTES the path predicate at every node and
-writes it nowhere: its one write was found dead on 2026-07-18 and deleted
-(the handle it wrote descended to the walk's `PTrue` seed and was always 0,
-and had it fired it would have recorded predicates that say nothing about an
-index — `Hβ.infer.narrowing-write-requires-discharge`), so the column's
-write op `graph_narrow_set` has no performer, `graph_narrow_at` reads 0
-everywhere, and the elision it would select (`list_index_unchecked`,
-lib/lists.mn) has never fired. The form: `node_excludes` asks the path
+through `Positive` on the parameter, cfc.mn). Nothing reads the path: the
+narrowing walk that computed a path predicate at every node and wrote none
+(its one write found dead on 2026-07-18 —
+`Hβ.infer.narrowing-write-requires-discharge`) was deleted whole on
+2026-10-14, and the index node's column (`graph_narrow_set`, read by
+`lower_index_runtime`) holds the in-bounds claim's verdict since TRAP, so the
+unchecked read (`list_index_unchecked`, lib/lists.mn) is selected where
+constants and lengths prove the claim and never where only a guard on the
+path does. The form: `node_excludes` asks the path
 predicate as it asks the refinement (decide it with `self` bound to the
 fatal point). Since E4 the predicate is a READ, never a column: a node's
 ancestry along the parent edge (`ancestry`, `graph_parent_of`) passes every
@@ -9940,11 +10021,34 @@ minted (`QCost`, src/query.mn), and the per-declaration, per-phase heap
 delta, sorted, belongs beside them, so the next silent superlinearity is
 read off the medium rather than re-instrumented by hand. Since Arena·P2
 (2026-10-03) each statement's lowering (`reach_construct_loop`) and each of
-the lowering's pre-passes (`compute_escaping_rows` among them) runs in an
-arena, so each extent's exit already knows what its extent allocated, and
-the facet reads those exits rather than marks a probe adds.
+the lowering's pre-passes runs in an arena, so each extent's exit already
+knows what its extent allocated, and the facet reads those exits rather than
+marks a probe adds. WILD (2026-10-14) paid for the facet's absence again:
+the march refused at the line ratchet, and the extent that set the peak was
+named only by a probe patched into the arena's exit — the exit's index, its
+region's base and top, and the copy region its commit reached, which sits
+past a scan queue reserved at one and a half times the region, so an
+exit's line is about two and a half regions above its base. The facet
+answers that per extent, the largest first.
 
-### `Hβ.lower.esc-row-on-node` — OPEN
+### `Hβ.lower.esc-row-on-node` — CLOSED 2026-10-14
+
+CLOSED at WILD's first pin, by deletion rather than by the field this entry
+asked for: the fact was already on the node. The march refused that pin's
+first repin at the line ratchet (502,012 KB against 499,000), and a probe
+patched into the arena's exit named the extent — the escaping-row pre-pass,
+exit 5,223: a region of 93,289 KB (25,800 KB of setup, then twenty fixpoint
+rounds of about 3,360 KB each, all held to the exit) whose exit placed its
+copy region past a scan queue reserved at one and a half times the region,
+so the line peak was the region's base plus about 2.5 times its size. Its one reader was the
+yield gate (`may_yield_by`), which joined it with the callee's own row by
+`||`. A second probe compiler printed every site where the flow closure said
+a callee may yield and the row did not: zero, against 253 sites where the
+closure said it may (198 on the wheel, 55 across the 990 fixture files under
+tests/ and examples/). The single-pass judgment had made the row the
+transitive closure the pre-pass re-derived, so the gate reads the row alone
+and the pre-pass, its flow-edge walk, its two `LowerScope` operations and
+its handler state left whole. The line peak fell to the next extent's.
 
 (PLAN §5.O has cited it since
 2026-07-13; this is its home, measured 2026-09-30). The escaping-row
@@ -14624,7 +14728,7 @@ yield-reachability over the call graph — exact for the 23.5k
 direct-call sites, with the row check surviving only on HOF values.
 Composes with band N's frame-rep-from-cardinality.
 
-RE-GROUNDED 2026-10-06 (design-superseded): may_yield_by (lower.mn:1397-1410) reads the callee's judged row, which is already the transitive closure of its performs, together with the escaping_row flow closure. AN-2's can_yield_live reifies a remainder only for live-resumed effects. Dead continuations unwind through flag checks: 2,661 on the wheel for a single abandon site. The remaining over-approximation is that effect_has_multishot_op and effect_has_live_op test whole effects rather than ops. The better fixes are Hβ.effects.op-granular-arm-reach, Hβ.emit.unwind-by-engine-exceptions and Hβ.lower.diverging-provider-direct-call. A separate call-graph closure would be a third home for the row fact. Next: #159.
+RE-GROUNDED 2026-10-06 (design-superseded): may_yield_by reads the callee's judged row, which is already the transitive closure of its performs; the flow closure it read beside the row until 2026-10-14 was measured subsumed at every site and deleted (`Hβ.lower.esc-row-on-node`). AN-2's can_yield_live reifies a remainder only for live-resumed effects. Dead continuations unwind through flag checks: 2,661 on the wheel for a single abandon site. The remaining over-approximation is that effect_has_multishot_op and effect_has_live_op test whole effects rather than ops. The better fixes are Hβ.effects.op-granular-arm-reach, Hβ.emit.unwind-by-engine-exceptions and Hβ.lower.diverging-provider-direct-call. A separate call-graph closure would be a third home for the row fact. Next: #159.
 
 ### `Hβ.lower.double-walk-and-dead-fields` — OPEN
 
@@ -17096,7 +17200,7 @@ names only the under-publish class; mn-depth-unannotated stays runs-3;
 the crown's 39 crucibles stay green; the wheel self-compiles through
 the correspondence edges (m3 == m4, the trusting-trust anchor).
 
-RE-GROUNDED 2026-10-06 (stale-description): LEDGER 6155: 2026-09-17, the judgment is one pass; the trial/final tower and the movers ratchets are deleted. infer.mn:1337 and :1925 publish `Live(handle)`, and `variants Binding` → Frozen/2, Live/1. infer.mn:8508 `judgment_ty(Live(h))` re-runs `generalize_pair`, which does `chase_deep` (infer:8431), at every read. `instantiate` still clones through `build_inst_mapping` + `subst_ty`, and `subst_changes` still inlines every NBound var. Lower's `escaping_fixpoint`/`compute_escaping_rows` engine remains. The tower framing, the movers acceptance, the B-ladder and D8's final-pass items are history. Open: D0 = #108 positions are cells (types as nodes); D1, instantiate as correspondence edges; D6, the env as handles (E1). D2's band bit is dead (the planned mint was deleted 2026-09-19). Its intent survives in a better form: compute the quantifier ONCE at the binding group's completion event into a spine column on the decl's cells, so no read re-runs generalize_pair or chase_deep. Instantiate then mints fresh cells only for those parameter cells, joined by one-way edges. Merge the second entry at line 15859 into this home. Next: #108, then E1.
+RE-GROUNDED 2026-10-06 (stale-description): LEDGER 6155: 2026-09-17, the judgment is one pass; the trial/final tower and the movers ratchets are deleted. infer.mn:1337 and :1925 publish `Live(handle)`, and `variants Binding` → Frozen/2, Live/1. infer.mn:8508 `judgment_ty(Live(h))` re-runs `generalize_pair`, which does `chase_deep` (infer:8431), at every read. `instantiate` still clones through `build_inst_mapping` + `subst_ty`, and `subst_changes` still inlines every NBound var. Lower's escaping-row engine was deleted 2026-10-14, the row having made it redundant (`Hβ.lower.esc-row-on-node`). The tower framing, the movers acceptance, the B-ladder and D8's final-pass items are history. Open: D0 = #108 positions are cells (types as nodes); D1, instantiate as correspondence edges; D6, the env as handles (E1). D2's band bit is dead (the planned mint was deleted 2026-09-19). Its intent survives in a better form: compute the quantifier ONCE at the binding group's completion event into a spine column on the decl's cells, so no read re-runs generalize_pair or chase_deep. Instantiate then mints fresh cells only for those parameter cells, joined by one-way edges. Merge the second entry at line 15859 into this home. Next: #108, then E1.
 
 RE-GROUNDED 2026-10-06 (stale-description): Stage (1) landed (`Binding = Frozen | Live`). Stage (4) landed 2026-09-17. The wall was crossed: Live is the shipping publish (infer:1337, :1925). Not built: `generalize_pair` still does `chase_deep` (infer:8431) at every Live read, `subst_changes` still inlines every NBound var, `instantiate` clones through `build_inst_mapping`, and lower's escaping-row engine remains. The GUARDS still name the deleted movers line. One peer should have one home: merge this into line 13424. The remaining contract: a completion-time quantifier column, correspondence-edge instantiation, subst that shares the edge, and lower's escaping-row engine dissolved into cell reads. Next: #108, then E1.
 
@@ -17841,7 +17945,19 @@ the R5 discharge selects
 
 RE-GROUNDED 2026-10-06 (already-closed): lib/lists.mn:210-225: `list_index` traps through `out_of_range` when i < 0 or i >= len, since 2026-07-18. Mark it CLOSED. The remaining half is the row: Hβ.effects.index-partiality-is-a-row-fact.
 
-### `Hβ.infer.narrowing-write-requires-discharge` — OPEN
+### `Hβ.infer.narrowing-write-requires-discharge` — CLOSED 2026-10-14
+
+CLOSED at WILD's first pin. The real form below landed at TRAP (2026-10-06):
+an index is a partial primitive whose precondition is a claim,
+`infer_index_force` decides it and writes the verdict on the index node
+(`graph_narrow_set`), and the lowering reads it there to select the
+unchecked read (`lower_index_runtime`) — the proof is the dispatch, carried
+on the node rather than looked up in the ledger by span, so the column this
+entry expected to delete became the verdict's home. What stood of the dead
+machinery was the walk itself — it computed a path predicate at every node
+of every function and wrote none, under a call-site comment still claiming
+the write — and it was deleted whole, with no reader to lose. Reading the
+path is `Hβ.verify.partiality-reads-the-path-narrowing`.
 
 R5 re-scoped by the panel: the elision machinery is DEAD CODE —
 narrowing_pred_handle descends PAnd's left conjunct to PTrue, handle 0, never
@@ -19078,8 +19194,9 @@ BORN 2026-10-06 — the 2026-10-06 program, landing V1–V4 (PLAN §11, THE STAN
     `cursor_session` folds over the actions, closing
     `Hβ.felt.edit-session-reads-one-action`.
   - A fixpoint is a `<~` on a convergence clock that refuses rather than answer
-    a non-fixpoint. `escaping_fixpoint`'s cap is made a loud
-    `E_InternalInvariant` first, so the march says whether it was ever reached.
+    a non-fixpoint. The one whose 32nd round answered as though it had
+    converged, the escaping-row fixpoint, left whole at WILD (2026-10-14): its
+    rows were the judgment's own (`Hβ.lower.esc-row-on-node`).
   - Monotone fixpoints iterate over the delta.
   - The per-tick clock rides `Hβ.dataflow.clock-calculus-sample-rate`, named.
 - **V4 · Stages are handlers.**

@@ -1,0 +1,10 @@
+// expect: 5
+// A record column is read field by field: the binder `n` at the field x
+// covers what the literal 0 leaves, so the match is whole; the literal arm
+// alone would be refused, as a word is never covered by its literals.
+fn pick(r) = match r {
+  {x: 0} => 1,
+  {x: n} => n,
+}
+
+fn main() = pick({x: 5})

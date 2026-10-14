@@ -145,6 +145,22 @@ fn variant_named_specs_at(applied) = match applied {
   _ => [],
 }
 
+// The variants of the type a constructor belongs to, from the type's own
+// entry: (tag, name, payload types). Empty when the type registers none. The
+// exhaustiveness matrix reads it, and so does a destructuring pattern's claim.
+fn ctor_roster(cname: String) = match env_lookup(cname) {
+  Some((Frozen(_, ty), _, ConstructorScheme(_, _))) => roster_of_result(ty),
+  _ => [],
+}
+
+// The roster behind a constructor's scheme: its result is the type applied
+// (bare for a nullary constructor, the return of its arrow for a fielded one).
+fn roster_of_result(ty) = match ty {
+  TFun(_, ret, _) => roster_of_result(ret),
+  TName(t, _) => variant_named_specs_at(TName(t, [])),
+  _ => [],
+}
+
 fn spec_named(cname: String, spec) = match spec {
   (_, n, _) => n == cname,
 }
@@ -1431,10 +1447,20 @@ type Mutation
   | MRowNote(Int)
   // a binder's fact entered under its handle (undo = pop the newest)
   | MBinderFact(Int)
+  // a node's birth noted under its handle (undo = pop the newest)
+  | MBirth(Int)
   // a payer recorded under an open guard cell (undo = pop the newest)
   | MOweLate(Int)
   // a contract claimed of the value at a node (undo = pop the newest)
   | MClaimNote(Int)
+
+// How a node was born, where the parse made one node of another's spelling:
+// a destructuring `let` is the one-arm match it becomes (desugar_block), and
+// the match is born remembering it, so the render writes the let back. A
+// FACT of the node, never its reason: the judgment's bind at the match
+// overwrites the reason cell, and read through it every destructuring let in
+// a judged module rendered as a match (measured 2026-10-14).
+type Birth = Authored | LetBorn
 
 // What the graph knows of a BINDER the value walk reads through (P0),
 // keyed by the binder's own handle; the walk reaches it through a
@@ -3245,6 +3271,8 @@ effect GraphRead {
   // walk reads through — a declared parameter or a constructor field's
   // binder — by its handle; None for every other handle.
   graph_binder_of(Int) -> Option(BinderFact)
+  // the birth the parse noted at the node, if any
+  graph_birth_of(Int) -> Option(Birth)
   // THE LATE PAYERS' read (P0): every frame row cell that called through an
   // open guard cell — its declaration not yet exited — newest first.
   graph_late_payers(Int) -> [Int]
@@ -3419,6 +3447,8 @@ effect GraphWrite {
   // where its pattern binds — trailed as MBinderFact, so a speculative
   // judgment's notes roll back with it; the newest note is the fact.
   graph_binder_note(Int, BinderFact)
+  // how the parse made the node of another spelling (a let-born match)
+  graph_birth_note(Int, Birth)
   // THE LATE PAYERS' write (P0): a call reached a guard cell its
   // declaration has not written yet, so the frame owes whatever the exit
   // writes there. Keyed by the open cell, the payer's row cell the value;
@@ -4854,10 +4884,6 @@ effect LowerScope {
   ls_push_scope() -> Int
   // truncate frame locals back to checkpoint
   ls_pop_scope(Int)
-  // install the flow-closure map (name → escaping name-set; elements are the interned effect NAMES — eff_names_of's form, the ev ledger's native key)
-  ls_register_escaping([(String, [String])])
-  // a name's flow-closure name-set — the same string elements the register wrote (None = not a top-level fn → leaf); escaping_row lifts it at the one consumer
-  ls_escaping_of(String) -> Option([String])
   // band B M1.3 — does ANY declared effect carry a MultiShot op? (computed once at lower_program)
   ls_register_may_yield(Bool)
   // the A1 prove-absence gate's global short-circuit: no MultiShot op anywhere ⇒ nothing can yield ⇒ every row proves absence
@@ -5658,6 +5684,36 @@ fn show_lit_value(v) = match v {
   LVBool(b) => if b { "true" } else { "false" },
 }
 
+// A pattern as the source writes it, on one line: the voice's reading of
+// what a destructuring asserts, as `show_lit_value` is a constant's. The
+// page's reading, which lays a long alternation out across lines, is the
+// formatter's.
+fn show_pat(p) = match p {
+  PVar(name) => name,
+  PWild => "_",
+  PLit(lv) => show_lit_value(lv),
+  PCon(name, ps) => if len(ps) == 0 { name } else { "{name}({join(", ", map(show_pat, ps))})" },
+  PTuple(ps) => "({join(", ", map(show_pat, ps))})",
+  PList(ps, rest) => "[{join(", ", map(show_pat, ps) ++ show_pat_rest(rest))}]",
+  PRecord(fields, rest) => "\{{join(", ", map(show_field_pat, fields) ++ show_pat_rest(rest))}\}",
+  PAlt(ps) => join(" | ", map(show_pat, ps)),
+  PAs(name, PAlt(ps)) => "{name} @ ({join(" | ", map(show_pat, ps))})",
+  PAs(name, inner) => "{name} @ {show_pat(inner)}",
+}
+
+fn show_pat_rest(rest) = match rest {
+  Some(name) => ["...{name}"],
+  None => [],
+}
+
+// A field bound to its own name is written once, as the source puns it.
+fn show_field_pat(field) = match field {
+  (name, p) => {
+    let shown = show_pat(p)
+    if shown == name { name } else { "{name}: {shown}" }
+  },
+}
+
 // The arm's NAME — what a proposal fixture's `// propose` contract names
 // (`mentl test` over tests/proposals), so a contract binds the
 // classification and never the sentence. A value question carries the values
@@ -5740,7 +5796,7 @@ fn show_predicate(ref pred) = match pred {
   POr(a, b) => "{show_predicate(a)} || {show_predicate(b)}",
   PNot(p) => "!{show_predicate(p)}",
   PBoolNode(n) => show_pred_operand(n),
-  PPatternMatch(_, n) => "{show_pred_operand(n)} matches _",
+  PPatternMatch(p, n) => "{show_pred_operand(n)} matches {show_pat(p)}",
   PFlowLe(src, dst) => // IFC: src must not exceed dst in the lattice
   // The binder renders as its body — the diagnostic reads `self + 1 <= 10`
   // with self SYMBOLIC (the SYNTAX-canonical spelling), never the
@@ -5775,9 +5831,10 @@ fn show_cmp_op(ref op) with Pure = match op {
   _ => "?",
 }
 
-// Resolve a predicate operand HANDLE to its Expr live and render it.
+// Resolve a predicate operand HANDLE to its Expr live and render it. A
+// parameter no author named (`minted_param_name`) is the argument it holds.
 fn show_pred_operand(handle) = match graph_node_body(handle) {
-  NExpr(VarRef(name)) => name,
+  NExpr(VarRef(name)) => if minted_param_name(name) { "the argument" } else { name },
   NExpr(LitInt(n)) => int_to_str(n),
   NExpr(LitFloat(f)) => float_to_str(f),
   NExpr(LitString(s)) => "\"{s}\"",
@@ -5789,10 +5846,6 @@ fn show_pred_operand(handle) = match graph_node_body(handle) {
   "-{show_pred_operand(inner)}",
   NExpr(UnaryOpExpr(UNot, inner)) => "!{show_pred_operand(inner)}",
   NExpr(BinOpExpr(op, l, r)) => "{show_pred_atom(l)} {binop_to_str(op)} {show_pred_atom(r)}",
-  NExpr(CallExpr(callee, args)) => // The canonical refinement vocabulary is call-shaped (len(self),
-  // abs(x)) — render the call rather than a placeholder; an exotic
-  // callee degrades through show_callee_name's own sentinel.
-  "{show_callee_name(callee)}({show_list(args, show_pred_operand, ", ")})",
   _ => "<expr>",
 }
 
@@ -6064,7 +6117,7 @@ fn predicate_flow_label(ref pred) = match pred {
   PTrue => Public,
   PCompare(_, _, _) => // numeric comparison: not a secrecy annotation
   Public,
-  PPatternMatch(_, _) => // match-narrowing: not a secrecy signal
+  PPatternMatch(_, _) => // a destructuring's shape: not a secrecy signal
   Public,
   PNot(_) => // negation of secret IS NOT secret (non-monotone)
   Public,

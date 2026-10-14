@@ -83,8 +83,8 @@ fn predicate_decide_at(ref pred, bind) = match pred {
   PNot(inner) => not_decide(predicate_decide_at(inner, bind)),
   PBoolNode(_) => // a bool expr node — the SMT tier resolves it live
   None,
-  PPatternMatch(_, _) => // match-narrowing — the SMT tier evaluates
-  None,
+  PPatternMatch(pat, n) => // a destructuring pattern's shape, read off the value's edges
+  shape_decide(pat, n),
   PFlowLe(a, b) => // IFC: finite lattice, always decidable
   Some(flow_le(a, b)),
   PWithSelf(sh, inner) => // bind `self` = sh over inner, through its tails when sh is a join
@@ -163,6 +163,7 @@ fn leaf_nonneg(leaf) = match leaf {
   LPost(_) => None,
   LSum(_) => None,
   LRet(_) => None,
+  LBuilt(_) => None,
   LUnknown => None,
 }
 
@@ -221,6 +222,140 @@ fn binder_lengths(b) = match graph_binder_of(b) {
     NExpr(_) => seq_lengths(b),
     _ => [None],
   },
+}
+
+// ─── A destructuring pattern's shape — the claim a `let` asserts ──────
+//
+// `let [a, b] = xs`, `let Some(v) = o` and a parameter written as a pattern
+// ASSERT the shape of a value where a `match` would dispatch on it, so the
+// assertion is a partial read's claim, decided as the index's is: along the
+// value's edges, every value it can be. Refuted the moment one has a
+// constructor, a length or a constant the pattern excludes; proven when each
+// has the pattern's shape; open where the walk reads nothing. The reads are
+// the walk's own — the leaves (a constant, the constructor that built a
+// value), `seq_lengths`, and `part_read` for a part of a whole built in
+// sight. Two of them prove and never refute: an alternation, whose branches
+// may each answer a different value, and a list's elements, which the part
+// read answers together rather than at their positions.
+fn shape_decide(pat, n) = match pat {
+  PVar(_) => Some(true),
+  PWild => Some(true),
+  PAs(_, inner) => shape_decide(inner, n),
+  PAlt(branches) => proves_only(fold(Some(false), alt_step(n, ??, ??), branches)),
+  PLit(lv) => leaves_decide(value_leaves(n, NoSelf), leaf_is_point(lv, ??)),
+  PCon(cname, ps) => and_decide(ctor_decide(cname, n), parts_decide(n, map(ctor_part(cname, ??), enumerate(ps)))),
+  PTuple(ps) => parts_decide(n, map(tuple_part, enumerate(ps))),
+  PRecord(fields, _) => parts_decide(n, map(record_part, fields)),
+  PList(prefix, rest) => and_decide(
+    seq_lengths(n) |> map(length_admits(len(prefix), rest, ??)) |> fold(Some(true), and_decide),
+    elements_decide(n, prefix)
+  ),
+}
+
+fn alt_step(n, acc, branch) = or_decide(acc, shape_decide(branch, n))
+
+fn proves_only(v) = match v {
+  Some(true) => Some(true),
+  Some(false) => None,
+  None => None,
+}
+
+fn leaves_decide(leaves, test) =
+  if len(leaves) == 0 { None } else { leaves |> map(test) |> fold(Some(true), and_decide) }
+
+fn leaf_is_point(lv, leaf) = match leaf {
+  LPoint(v) => litval_eq(v, lv),
+  LClaimed(_, beneath) => leaf_is_point(lv, beneath),
+  LBuilt(_) | LParam(_, _) | LPost(_) | LSum(_) | LLength | LRet(_) | LUnknown => None,
+}
+
+// A constructor pattern: every value built by it proves, one built by
+// another refutes, one not built in sight leaves it open. A type with one
+// constructor has nothing to exclude.
+fn ctor_decide(cname: String, n) = if len(ctor_roster(cname)) == 1 {
+  Some(true)
+} else {
+  leaves_decide(value_leaves(n, NoSelf), leaf_is_built_by(cname, ??))
+}
+
+fn leaf_is_built_by(cname: String, leaf) = match leaf {
+  LBuilt(made) => Some(made == cname),
+  LClaimed(_, beneath) => leaf_is_built_by(cname, beneath),
+  LPoint(_) | LParam(_, _) | LPost(_) | LSum(_) | LLength | LRet(_) | LUnknown => None,
+}
+
+fn ctor_part(cname: String, indexed) = match indexed {
+  (i, p) => (PartCtor(cname, i), p),
+}
+
+fn tuple_part(indexed) = match indexed {
+  (i, p) => (PartIndex(i), p),
+}
+
+fn record_part(field) = match field {
+  (name, p) => (PartField(name), p),
+}
+
+fn parts_decide(n, parts) = parts |> map(part_decide(n, ??)) |> fold(Some(true), and_decide)
+
+// A part that binds or ignores what it holds asserts nothing; any other is
+// read off the whole where the whole was built in sight, each node the part
+// can be deciding its own pattern, and is open where it was not.
+fn part_decide(n, part) = match part {
+  (step, p) => if asserts_nothing(p) {
+    Some(true)
+  } else {
+    match part_read(n, step, shape_read(p, ??)) {
+      Some(verdicts) => verdicts |> fold(Some(true), and_decide),
+      None => None,
+    }
+  },
+}
+
+fn shape_read(p, node) = Some([shape_decide(p, node)])
+
+// A list's elements are read together — `PartElem` answers every element of
+// a list built in sight, not the one at a position — so each asserting
+// element pattern is asked of every element: that proves the claim, and a
+// failure says nothing of the element at the pattern's own position.
+fn elements_decide(n, prefix) = match filter(asserts, prefix) {
+  [] => Some(true),
+  asserting => match part_read(n, PartElem, node_read) {
+    Some(elems) => proves_only(elems |> flat_map(element_verdicts(asserting, ??)) |> fold(Some(true), and_decide)),
+    None => None,
+  },
+}
+
+fn asserts(p) = !asserts_nothing(p)
+
+fn node_read(node) = Some([node])
+
+fn element_verdicts(asserting, elem) = asserting |> map(shape_decide(??, elem))
+
+fn length_admits(k, rest, length) = match length {
+  Some(m) => match rest {
+    Some(_) => Some(m >= k),
+    None => Some(m == k),
+  },
+  None => None,
+}
+
+// A pattern no value of its type can fail: a binder, `_`, and a tuple, a
+// record or a sole constructor whose parts are such patterns.
+fn asserts_nothing(p) = match p {
+  PVar(_) => true,
+  PWild => true,
+  PAs(_, inner) => asserts_nothing(inner),
+  PTuple(ps) => all(asserts_nothing, ps),
+  PRecord(fields, _) => all(field_asserts_nothing, fields),
+  PCon(cname, ps) => len(ctor_roster(cname)) == 1 && all(asserts_nothing, ps),
+  PLit(_) => false,
+  PList(_, _) => false,
+  PAlt(_) => false,
+}
+
+fn field_asserts_nothing(field) = match field {
+  (_, p) => asserts_nothing(p),
 }
 
 // Is the value at `h` provably not `k`? A constant answers outright (equal
@@ -494,6 +629,10 @@ type Leaf
   // annotation, a constructor field's declared refinement — owed there: a
   // claim may stand on the contract, a row fact only on the leaf beneath
   | LClaimed(Ty, Leaf)
+  // a value built by this constructor, named bare or applied — the fact
+  // `construction_part` compares, read by a destructuring pattern's claim
+  // (`shape_decide`); no number, bound or label stands on it
+  | LBuilt(String)
   // nothing this walk can read
   | LUnknown
 
@@ -502,7 +641,13 @@ fn value_leaves(h, bind) = match node_const_at(h, bind) {
   None => match value_tails(h) {
     Some(tails) => tails |> flat_map(value_leaves(??, bind)),
     None => match graph_node_body(h) {
-      NExpr(VarRef(name)) => if name == "self" { self_leaves(bind) } else { binder_leaves(h) },
+      NExpr(VarRef(name)) => if name == "self" {
+        self_leaves(bind)
+      } else if constructor_named(name) {
+        [LBuilt(name)]
+      } else {
+        binder_leaves(h)
+      },
       NExpr(BinOpExpr(op, l, r)) => match op {
         BAdd => [LSum(lo_add(leaves_lo(value_leaves(l, bind)), leaves_lo(value_leaves(r, bind))))],
         _ => [LUnknown],
@@ -759,6 +904,8 @@ fn project_leaf(leaf, step) = match leaf {
   LSum(_) => LUnknown,
   LLength => LUnknown,
   LRet(_) => LUnknown,
+  LBuilt(_) => // a construction's parts are read where it was built (`part_read`)
+  LUnknown,
   LUnknown => LUnknown,
 }
 
@@ -809,11 +956,18 @@ fn field_contract(fs, step) = match step {
   _ => None,
 }
 
-// A call is a length when the callee is len / byte_len; any other call is
-// its callee's return — declared, or proven at the callee's exit — when
-// that return states a refinement.
+// A call is a length when the callee is len / byte_len, and a construction
+// when the callee is a constructor (a pipe into one is the same
+// application); any other call is its callee's return — declared, or proven
+// at the callee's exit — when that return states a refinement.
 fn call_leaves(ref callee) = match graph_node_body(callee) {
-  NExpr(VarRef(cname)) => if cname == "len" || cname == "byte_len" { [LLength] } else { applied_leaves(callee) },
+  NExpr(VarRef(cname)) => if cname == "len" || cname == "byte_len" {
+    [LLength]
+  } else if constructor_named(cname) {
+    [LBuilt(cname)]
+  } else {
+    applied_leaves(callee)
+  },
   _ => applied_leaves(callee),
 }
 
@@ -1008,6 +1162,7 @@ fn leaf_excludes(k, leaf) = match leaf {
   LPost(_) => None,
   LSum(_) => None,
   LRet(_) => None,
+  LBuilt(_) => None,
   LUnknown => None,
 }
 
@@ -1037,6 +1192,7 @@ fn leaf_lo(leaf) = match leaf {
   LSum(lo) => lo,
   LLength => Some(0),
   LRet(_) => None,
+  LBuilt(_) => None,
   LUnknown => None,
 }
 
@@ -1189,6 +1345,7 @@ fn leaf_flow_label(leaf) = match leaf {
   LSum(_) => Public,
   LLength => Public,
   LRet(_) => Public,
+  LBuilt(_) => Public,
   LUnknown => Public,
 }
 
@@ -1736,7 +1893,7 @@ fn classify_predicate(pred) with Pure = match pred {
   POr(_, _) => "disjunction",
   PCompare(_, _, _) => "comparison",
   PBoolNode(_) => "graph-deferred",
-  PPatternMatch(_, _) => "match-narrowing",
+  PPatternMatch(_, _) => "shape",
   PFlowLe(_, _) => // IFC: always decides at compile time via flow_le
   "ifc-flow",
   PWithSelf(_, inner) => // the binder classifies as its body

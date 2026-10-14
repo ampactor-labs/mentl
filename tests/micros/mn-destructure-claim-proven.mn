@@ -1,0 +1,12 @@
+// expect: 7
+// A destructuring let whose shape the value walk reads is proven and costs
+// nothing, so a declared negation of Trap holds over both lets: the list's
+// length is its literal's through the reference, and the option is built by
+// the constructor its pattern names. Measured on boot 82692525: refused, the
+// second let read as a match missing its None arm.
+fn main() with !Trap = {
+  let xs = [3, 4]
+  let [a, b] = xs
+  let Some(v) = Some(a)
+  v + b
+}

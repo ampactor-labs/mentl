@@ -58,6 +58,20 @@ fn seq_stride(ref list) = decode_stride(load_i32(addr_at(list, 4)) / 16)
 
 fn seq_tag(ref list) = i32_and(load_i32(addr_at(list, 4)), 15)
 
+// The four shapes a sequence's tag word names (PLAN §6), as the sum they are:
+// a word the representation never writes is the deliberate trap.
+type SeqKind = SeqFlat | SeqSnoc | SeqConcat | SeqSlice
+
+fn seq_kind_of(tag) = match tag {
+  0 => SeqFlat,
+  1 => SeqSnoc,
+  3 => SeqConcat,
+  4 => SeqSlice,
+  _ => out_of_range(),
+}
+
+fn seq_kind(ref list) = seq_kind_of(seq_tag(list))
+
 fn seq_sc(ref list) = load_i32(addr_at(list, 4)) / 16
 
 // Element access at a runtime-carried stride — the WORD PROTOCOL, total and
@@ -240,15 +254,15 @@ fn list_index(ref list, i) = if i < 0 {
 // node carries its own word).
 fn list_index_unchecked(ref list, i) = {
   let tw = load_i32(addr_at(list, 4))
-  match i32_and(tw, 15) {
-    0 => if tw == 0 {
+  match seq_kind_of(i32_and(tw, 15)) {
+    SeqFlat => if tw == 0 {
       load_i32(addr_at(list, 8 + i * 4))
     } else if tw == 16 {
       load_i8(addr_at(list, 8 + i))
     } else {
       load_strided(addr_at(list, 8), i, decode_stride(tw / 16))
     },
-    1 => {
+    SeqSnoc => {
       let left = load_addr(addr_at(list, 8))
       let left_len = load_i32(left)
       if i < left_len {
@@ -259,7 +273,7 @@ fn list_index_unchecked(ref list, i) = {
         load_strided(addr_at(list, 12), 0, decode_stride(tw / 16))
       }
     },
-    3 => {
+    SeqConcat => {
       let left = load_addr(addr_at(list, 8))
       let left_len = load_i32(left)
       if i < left_len {
@@ -268,7 +282,7 @@ fn list_index_unchecked(ref list, i) = {
         list_index_unchecked(load_addr(addr_at(list, 12)), i - left_len)
       }
     },
-    4 => {
+    SeqSlice => {
       let base = load_addr(addr_at(list, 8))
       let start = load_i32(addr_at(list, 12))
       list_index_unchecked(base, start + i)
@@ -531,11 +545,9 @@ fn last(xs) = xs[len(xs) - 1]
 // other, so no arm fabricates a list for one.
 fn drop_last(list) = {
   let list_len = load_i32(list)
-  match seq_tag(list) {
-    1 => load_addr(addr_at(list, 8)),
-    0 => slice_raw(list, 0, list_len - 1),
-    3 => slice_raw(list, 0, list_len - 1),
-    4 => slice_raw(list, 0, list_len - 1),
+  match seq_kind(list) {
+    SeqSnoc => load_addr(addr_at(list, 8)),
+    SeqFlat | SeqConcat | SeqSlice => slice_raw(list, 0, list_len - 1),
   }
 }
 
@@ -575,11 +587,11 @@ fn flat_raw(list) = {
 fn flat_fill(flat, tree, i, n) = if i >= n {
   ()
 } else {
-  match seq_tag(tree) {
-    0 => flat_fill_flat_src(flat, tree, i, n),
-    1 => flat_fill_snoc(flat, tree, i, n),
-    3 => flat_fill_concat(flat, tree, i, n),
-    4 => flat_fill_slice(flat, tree, i, n),
+  match seq_kind(tree) {
+    SeqFlat => flat_fill_flat_src(flat, tree, i, n),
+    SeqSnoc => flat_fill_snoc(flat, tree, i, n),
+    SeqConcat => flat_fill_concat(flat, tree, i, n),
+    SeqSlice => flat_fill_slice(flat, tree, i, n),
   }
 }
 
@@ -657,11 +669,11 @@ fn ff_concat_drain(flat, stack, sp) = if sp <= 1 {
 fn flat_fill_at_offset(flat, src, offset, n) = if n == 0 {
   ()
 } else {
-  match seq_tag(src) {
-    0 => flat_fill_flat_src_offset(flat, src, offset, n),
-    1 => flat_fill_snoc_offset(flat, src, offset, n),
-    3 => flat_fill_concat_offset(flat, src, offset, n),
-    4 => flat_fill_slice_offset(flat, src, offset, n),
+  match seq_kind(src) {
+    SeqFlat => flat_fill_flat_src_offset(flat, src, offset, n),
+    SeqSnoc => flat_fill_snoc_offset(flat, src, offset, n),
+    SeqConcat => flat_fill_concat_offset(flat, src, offset, n),
+    SeqSlice => flat_fill_slice_offset(flat, src, offset, n),
   }
 }
 

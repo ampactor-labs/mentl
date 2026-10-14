@@ -1468,8 +1468,12 @@ selfcompile_peak_kb_max: 477000
 # the landed form's 494,011 KB (the RSS ceiling's own rule), seen RED at
 # 494,000 through `read_line` (tools/march.sh), which refuses the repin on a
 # breach with no re-measure, since there is no jitter to die. A landing that
-# breaches it pays the cost down, never raises it.
-selfcompile_line_peak_kb_max: 499000
+# breaches it pays the cost down, never raises it. WILD's first pin
+# (2026-10-14) read 502,012 KB and was refused; the peak was the
+# escaping-row pre-pass's extent, which recomputed the judgment's own rows
+# for the yield gate (`Hβ.lower.esc-row-on-node`), and with it deleted the
+# landed form reads 435,048 KB — held at 1% over it.
+selfcompile_line_peak_kb_max: 440000
 # THE HEAD ROUND TRIP (render lane, 2026-10-06): module-level function heads,
 # formatter's and eye's, that do not come back as themselves through
 # parse∘render. Born at the measured 92 of 4,550 (the base renderer: 787 of

@@ -19,7 +19,6 @@ import strings
 
 import threading
 
-// ─── Vocabulary Types ───────────────────────────────────────
 // The algebraic bedrock every program speaks.
 //
 // Nullary-sentinel ADT.  False=tag 0, True=tag 1 — matches WAT's
@@ -96,7 +95,6 @@ fn map_result(f, res) = match res {
   Err(e) => Err(e),
 }
 
-// ─── The Iterate Effect ─────────────────────────────────────
 // One effect.  Every collection operation is a handler on it.
 effect Iterate {
   yield(element)
@@ -135,7 +133,6 @@ fn iterate_from(xs, i, n) = if i < n {
 
 fn iterate(xs) = iterate_from(list_to_flat(xs), 0, len(xs))
 
-// ─── Collection Operations (single fused handlers on Iterate) ────────
 // One handler per `~>` install: transform + materialize fused into
 // ONE state record.  The substrate-honest form per the eight interrogations:
 //   Graph: one handler IS one graph node at the `~>` site.
@@ -322,7 +319,6 @@ fn count(pred, xs) = {
   result()
 } ~> count_handler(pred)
 
-// ─── Derived (built on the handlers above) ──────────────────
 fn head(xs) = xs[0]
 
 fn rest(xs) = slice(xs, 1, len(xs))
@@ -381,14 +377,12 @@ fn repeat(n, x) = if n <= 0 { [] } else { [x] ++ repeat(n - 1, x) }
 
 fn chunk(n, xs) = if len(xs) == 0 { [] } else { [take(n, xs)] ++ chunk(n, drop(n, xs)) }
 
-// ─── Aggregation with projection ────────────────────────────
 fn sum_by(f, xs) = fold(0, (acc, x) => acc + f(x), xs)
 
 fn max_by(f, xs) = reduce(xs, (a, b) => if f(a) >= f(b) { a } else { b })
 
 fn min_by(f, xs) = reduce(xs, (a, b) => if f(a) <= f(b) { a } else { b })
 
-// ─── Composition ────────────────────────────────────────────
 // compose is the pipe as a value: f first, then g, so
 // `x |> compose(f, g)` is `x |> f |> g`. id is its identity element:
 // compose(f, id) and compose(id, f) both behave as f.
@@ -402,10 +396,8 @@ fn not(x) with Pure = if x { false } else { true }
 // `x |> build_pipeline([f, g, h])` is `x |> f |> g |> h`.
 fn build_pipeline(steps) = fold(id, compose, steps)
 
-// ─── Safe access ────────────────────────────────────────────
 fn nth(xs, n, default) = if n >= 0 && n < len(xs) { xs[n] } else { default }
 
-// ─── Math ───────────────────────────────────────────────────
 fn min(a, b) with Pure = if a <= b { a } else { b }
 
 fn max(a, b) with Pure = if a <= b { b } else { a }
@@ -420,7 +412,6 @@ fn clamp(x, lo, hi) with Pure = min(max(x, lo), hi)
 // `if n < 0 { 0 - n } else { n }` at its own width.
 fn abs(x) with Pure = if x < 0.0 { 0.0 - x } else { x }
 
-// ─── Sort (merge sort — pure, not an Iterate handler) ───────
 fn merge(xs, ys) = if len(xs) == 0 {
   ys
 } else {
@@ -438,8 +429,6 @@ fn sort(xs) = if len(xs) <= 1 {
   merge(sort(slice(xs, 0, mid)), sort(slice(xs, mid, len(xs))))
 }
 
-// ─── String operations (pure Mentl) ───────────────────────────
-//
 // THE PINS ARE LOAD-BEARING, and their absence shipped a RUNTIME TRAP on
 // the plainest line a beginner writes: unannotated params leave the
 // element type free, so `acc ++ sep ++ xs[i]` reaches `++`'s no-guess
@@ -521,7 +510,6 @@ fn trim(s) = {
   if start >= end { "" } else { str_slice(s, start, end) }
 }
 
-// ─── Parsing (pure Mentl) ─────────────────────────────────────
 fn parse_int(s) = {
   let n = byte_len(s)
   fn digit(b) = b - 48
@@ -529,8 +517,6 @@ fn parse_int(s) = {
   if n > 0 && byte_at(s, 0) == 45 { 0 - go(1, 0) } else { go(0, 0) }
 }
 
-// ─── Feedback specs — the `<~` verb's RHS contract ──────────────────
-//
 // Per SYNTAX.md §`<~`: the feedback verb's RHS is a FeedbackSpec value.
 // `signal <~ delay(3)` closes a 3-sample cycle; `state <~ accumulate(s0)`
 // threads a running value; `filter <~ filter_spec(n, coeffs)` feeds N
