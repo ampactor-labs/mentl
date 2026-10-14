@@ -35,6 +35,24 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-10-14 · pin 74d7aadfda960e85 (CLEAN m2 == m3, m3 == m4) · THE FORM —
+  THE METHOD FORCES THE MEDIUM, AND PLAN §11 IS THE ONE LIST OF OPEN WORK
+  CLAUDE.md is the method in mechanical rules (commit 7442577). PLAN.md went
+  from 3,436 lines to 857: §11 is the ordered program with each landing's
+  design inline, §7 the state in one-line bullets, and the narratives git
+  already holds are gone. The obey gate refuses a new script or document, any
+  growth of tools/ and any rise in unfinished-work records; the medium-first
+  hook refuses a python or node write that names .mn source however it
+  spells the path, and a cp or mv onto it — seen refusing the python write
+  this landing made to src/board.mn, and right on nine other probes. The
+  comments citing the deleted src/oracle.mn, RESIDUE.md and LEDGER.md, found
+  by `mentl query src/main.mn "prose …"`, were deleted where they were
+  archaeology and rewritten where they described what is; the board's prose
+  ceilings fell with them — paths naming no file 5 → 1, lifecycle 41 → 40,
+  archaeology 85 → 83, decoration 320 → 319 — and authored ref 655 → 622.
+  Kill: the march refused the first candidate, whose new board comment said
+  "no longer", which the lifecycle census counts.
+
 - 2026-10-14 · pin 343007093a4c099c (TRANSITION m2 ≠ m3, m3 == m4) · M1'S
   FIRST PIN — A REFERENCE IS LINKED TO ITS DECLARATION, AND THE NAME-KEYED
   HOMES OF THAT FACT ARE DELETED

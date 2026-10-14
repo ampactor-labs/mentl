@@ -618,27 +618,9 @@ fn render_for_tentacle(situation) = match situation {
   },
 }
 
-// THE QUEUE-PROJECTION FAMILY IS DELETED — voice_queue_walk,
-// fold_queue_items, tier_to_tentacle, with_tentacle and
-// tentacle_to_form_kind, unbackticked because none of them resolve now.
-//
-// Their prose is the record worth keeping. It read: *"silence and
-// worth-surfacing are not per-Topic × per-tentacle re-derivations — they are
-// the oracle QUEUE projected … There is no second silence machinery to
-// maintain — the queue-empty gate is the one silence gate."* The argument
-// was right and the object it named was never there: the queue's handler
-// (project_queue_merger, in the now-deleted src/oracle.mn) was installed only
-// by a function with zero callers, so nothing here ever ran, and
-// `mentl query src/main.mn unreachable` named the whole family in one read.
-//
-// The ranked queue is ALSO the superseded design — PLAN §11.1 re-founded the
-// oracle as inference with a term-sorted unknown, and the live ranked absence
-// field is the frontier (`mentl <file>:0`). So the right silence gate is not
-// a second queue: it is `silence_predicate` reading the gradient's own answer
-// off `Situation.gradient_next`, which is what it does now.
-//
-// `render_for_tentacle` survives — it is the LIVE render, called from the
-// `propose` arm below.
+// The silence gate is `silence_predicate`, reading the gradient's own answer
+// off `Situation.gradient_next`; `render_for_tentacle` is the render the
+// `propose` arm calls.
 //
 // ─── MV.2.e.Q — Query tentacle helpers ────────────────────────────────
 //

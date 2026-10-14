@@ -908,16 +908,11 @@ fn edges_without_self(ref vs: [RowEdge], self_root: Int) = match vs {
 // drop reading TRUE where it fires: a free judgment-era root the decl's
 // params/return reach at exit escapes through instantiate at every call
 // site (generalize's signature collection quantifies exactly these), so
-// "none can arrive" is false for it. The two-category form dropped that
-// edge and published `run(f) = f()` as Pure while f's row var rode the
-// scheme disconnected — the crown's higher-order leak (root 29 vs
-// ceiling 26 by binary-patch wat probe; the keep census showed the
-// collected root IS the severed edge, and the crown flipped 4/1 → 5/5
-// with the wheel census still 0). The 2026-08-05 refuted attempt at this
-// same category collected from declared slots and never contained the
-// root: signature_free_roots reads THROUGH the live cells at exit,
-// deep-chased — that read is load-bearing. Record:
-// `Hβ.infer.hof-param-row-never-reaches-enclosing` in RESIDUE.md.
+// "none can arrive" is false for it: dropping that edge would publish
+// `run(f) = f()` as Pure while f's row var rode the scheme disconnected —
+// the crown's higher-order leak. signature_free_roots reads THROUGH the
+// live cells at exit, deep-chased; collecting from the declared slots
+// instead never contains the root, so that read is load-bearing.
 fn row_keep_completion(row, ceiling: Int, sig_keep: [Int]) = if ceiling == 0 {
   row
 } else {

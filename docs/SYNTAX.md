@@ -27,7 +27,7 @@ This document is **the authoritative syntactic spec for Mentl**. It binds the pa
 > a representation gradient (`Bool` already derives — `False | True`). The surface
 > is INVARIANT to the substrate, and the byte-sequence ontology is that invariant
 > form, so it IS the form on the page — the *lowering* is sequenced to catch up to
-> the surface (§5/§5.3), never the surface lowered to current lowering. The one
+> the surface (`PLAN.md §5`), never the surface lowered to current lowering. The one
 > genuinely post-real forward-pointer is the **effect system** (`§4③`): `!E` is
 > present and load-bearing now; the modal synthesis that closes the higher-order
 > leak, and the IFC flow-constraint (`§4⑥`), are sequenced after first-light —
@@ -367,7 +367,7 @@ projection; see §«What a comment TRENDS TO»). Three rulings:
   handler fact (`>< [Thread ×4]` is a derived badge, §`><`), so
   `parallel_map` was vocabulary drift over `map ~> Schedule` — DISSOLVED
   2026-07-02. The blocker
-  was never map's fanout substrate landing (that landed at PLAN §5.U STEP 4);
+  was never map's fanout substrate (`PLAN.md §5.U`);
   it was that a standalone helper can never reach `Thread` scheduling at all:
   the schedule is read LIVE at the fanout's own install site (§`><` — the
   same `resolve_in_stack` every op uses), never across a call boundary, so a
@@ -451,7 +451,7 @@ The binder form still parses, and it is the last of the line that retired `perfo
 - **multi-parameter** (`(a, b) => a * b`) — the arm list is one-parameter, so these retire by becoming REFERENCES (`fold(0, add, xs)`), which is rule 1 and needs no new form. `Hβ.syntax.multi-param-lambda-is-a-reference`.
 - **the zero-argument thunk** (`() => e`) that handed a body to a handler stack — RETIRED into the named handler chain (§«Handler chains», real 2026-10-13: the wheel's analysis and emit brackets are chains, and the 25 thunks that handed them a body are gone with the four inside the wrappers themselves, `Hβ.syntax.handler-chain-is-a-value`). A thunk that defers a computation for a function to run stays the binder form, the two-parameter case's sibling.
 
-The multi-parameter residue is named in positive form in `RESIDUE.md`, its count still open; neither is a second minting form, and no third is being held open.
+The multi-parameter residue retires as the medium authors the migration (`PLAN.md §11`, iteration is topology); neither is a second minting form, and no third is being held open.
 
 ### Examples
 
@@ -1674,7 +1674,7 @@ arm's splice compiled clean on boot cf8a6d50
 (`tests/micros/mn-refine-install-answer.mn`,
 `mn-refine-install-answer-proven.mn`, `tests/frontier/mn-ifc-tee-arm-leak.mn`).
 
-The predicate is a compile-time obligation; at gradient-top it erases entirely (no runtime check). `Verify`'s default ledger accrues what it cannot discharge statically (`V_Pending`); Verify's own solver discharges more of it as its fragment grows (`PLAN.md §11` Phase 8.3: path narrowing, overflow-aware intervals, linear arithmetic, case splits by fork) — same source, deeper proof engine. An external solver plugs in only as a proposer whose certificate the kernel checks.
+The predicate is a compile-time obligation; at gradient-top it erases entirely (no runtime check). `Verify`'s default ledger accrues what it cannot discharge statically (`V_Pending`); Verify's own solver discharges more of it as its fragment grows (`PLAN.md §11`, Verify's own solver: path narrowing, overflow-aware intervals, linear arithmetic, case splits by fork) — same source, deeper proof engine. An external solver plugs in only as a proposer whose certificate the kernel checks.
 
 ---
 
@@ -1984,7 +1984,7 @@ handler references, bare or applied to their config. A member may be another
 chain, which stands for its members.
 
 **An install of the name is the installs of its members, innermost first,
-and the graph holds exactly that** (real, 2026-10-13, S3 of PLAN §11's cut).
+and the graph holds exactly that** (real, 2026-10-13).
 `body ~> judgment` is `body ~> affine_ledger ~> region_tracker ~>
 verify_ledger` in every respect — the row (each member's absorption removed,
 each member's arms added, each install's cost charged), the remainder gates,
@@ -2502,7 +2502,7 @@ hand-copied into prose, where it can rot (the Carried-Truth Law at the prose
 layer). The deletion test: delete the comment; if information is lost that no
 projection can answer, the MISSING PROJECTION is the finding — name the peer,
 grow the verb, and the comment's load-bearing half ABSORBS into the medium,
-exactly as the bash scaffolds absorb into verbs (`CLAUDE.md ⟳`). What `//`
+exactly as the bash scaffolds absorb into verbs (`CLAUDE.md`). What `//`
 trends toward as the voice completes is the developer's OWN prose — intent,
 taste, the scratchpad, the reminder, the fun — the one genuine Outside
 (`PLAN.md §0`: intent), which the medium carries losslessly and never
@@ -2865,8 +2865,8 @@ After a convergent construct, the chain returns to the left edge — and
 the fanout that feeds it is PARENTHESIZED, because the precedence table
 demands it: `|>` (3) binds tighter than `><` (2), so an unparenthesized
 `a >< b |> mix` pipes into the LAST BRANCH (`a >< (b |> mix)` — probed
-with a value at the Phase 3.4 truing: `(1) >< (2) |> inc` runs as
-`(1, inc(2))`, never `inc((1, 2))`). The parens are the source's own
+with a value: `(1) >< (2) |> inc` runs as `(1, inc(2))`, never
+`inc((1, 2))`). The parens are the source's own
 requirement; the formatter renders them:
 
 ```
@@ -3175,7 +3175,7 @@ un-normalized source the formatter has not yet touched).
 
 *The silent lift is the DESIGN. `E_RedundantBraces` still surfaces as a
 warning — it retires when the formatter's canonical projection becomes the
-save path (the fmt sweep's payoff ratchet, `RESIDUE.md`'s fmt entry), never by
+save path (`PLAN.md §11`, the project canonical), never by
 muting the reporter. `E_RedundantPerform` is DELETED (2026-08-08): `perform` is
 no longer a token, so there is nothing to lift.*
 

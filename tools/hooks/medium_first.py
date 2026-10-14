@@ -2,20 +2,17 @@
 """The medium-first gate: a PreToolUse hook that refuses hand searches and
 hand writes over .mn source while a projection of the medium answers them.
 
-CLAUDE.md's verb map said this in prose, and prose caught none of it: a
-session that knew the rule grepped src/*.mn for definitions and references
-the medium had answered by edge for weeks. A law that can become a gate
-must, so this is the gate. It reads the hook's JSON on stdin and exits 2
-(refuse, the reason on stderr) or 0 (proceed).
-
-Two refusals:
+It reads the hook's JSON on stdin and exits 2 (refuse, the reason on stderr)
+or 0 (proceed). Two refusals:
   1. A search over .mn source -- the Grep tool scoped to .mn, or a grep/rg
      segment of a Bash command whose own arguments name .mn source. A grep
      FILTERING another command's output (`mentl query ... | grep x`) reads
      no source and passes.
   2. A write to .mn source that is not the medium's or the Edit tool's -- a
-     `sed -i`, a redirect, a `tee`, a python write. The drift audit fires on
-     Edit-tool writes; a shell write edits the wheel outside its gate.
+     `sed -i`, a redirect, a `tee`, a `cp`/`mv` onto it, or a python or node
+     script that names .mn source and writes, however it spells the path.
+     The drift audit fires on Edit-tool writes; a shell write edits the
+     wheel outside its gate.
 
 The confession: a Bash command carrying `verb-gap: <the facet that is
 missing>` passes, and the line lands in .build/verb-gaps.log. A question no
@@ -194,10 +191,10 @@ def bash_write(segment, command):
         # name edits whatever files follow it, not that name.
         targets, _ = search_operands([w for w in ws[1:] if not w.startswith("-i") and w != "-pi"])
         return any(names_mn_source(w) for w in targets)
-    if cmd == "tee":
-        return any(names_mn_source(w) for w in ws[1:] if not w.startswith("-"))
-    if cmd in ("python", "python3") and re.search(
-            r"open\(\s*[^)]*\.mn['\"]\s*,\s*['\"][wax+]|\.mn['\"]\s*\)\s*\.write_text", command):
+    if cmd in ("tee", "cp", "mv", "install"):
+        return any(names_mn_source(w) for w in ws[1:] if not w.startswith("-")) if cmd == "tee" else names_mn_source(ws[-1])
+    if cmd in ("python", "python3", "node") and re.search(r"\.mn['\"]", command) and re.search(
+            r"open\([^)]*,\s*['\"][wax+]|\.write(_text|_bytes|FileSync|File)?\(|os\.(replace|rename)\(", command):
         return True
     bare = re.sub(r"'[^']*'|\"(?:\\.|[^\"\\])*\"", "''", segment)
     redirect = re.findall(r"(?<![0-9&])>>?\s*([^\s;&|]+)", bare)

@@ -3012,7 +3012,7 @@ fn report_guard_note(note) = match note {
   (d, m) => report_at(m, d),
 }
 
-// ─── The instance-argument REGISTRATION FOLD (RESIDUE effarg-node D1/D2) ──
+// ─── The instance-argument REGISTRATION FOLD ──
 // A bare ident at an effect-arg position parses as EANode — the parser
 // cannot resolve it (the env is infer's). HERE, at registration — the one
 // deterministic point where the env is whole — the ident's env kind folds

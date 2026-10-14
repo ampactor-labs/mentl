@@ -150,7 +150,7 @@ type ProseClass
   // a repository path that names no file — a deleted module was cited for
   // weeks after it was gone
   | PcPathNoFile
-  // a hex commit token — history lives in LEDGER and git, not on the node
+  // a hex commit token — history lives in git, not on the node
   | PcCommit
   // a numbered citation of the archived spec corpus, out of the read-path
   | PcSpecCitation
@@ -2079,15 +2079,7 @@ fn wildcard_body_fabricates(b) = match graph_node_body(b) {
 // The audit tiers (`anonymity_shape_of` per fn, below; pipeline.mn's
 // renderer) READ these; the census counts them over the whole weave.
 // One detector, two projections — the per-fn narration and the
-// count+sites answer — never two classifiers (PLAN §11 Phase 2.5).
-//
-// THE FAMILY HAS ONE HOME AS OF 2026-09-21, and this comment named the
-// split it was living in: two of the audit's four shape reads
-// (`pipe_shape_of`, `anonymity_shape_of` with their ten helpers) lived in
-// src/oracle.mn, a module whose entire subject was the superseded
-// ranked-queue oracle, and whose other 25 decls were unreachable. They are
-// below, beside `drift_shapes_of` and `recursion_shape_of`, and oracle.mn is
-// deleted.
+// count+sites answer — never two classifiers.
 //
 // ITERATION IS TOPOLOGY (Morgan's interrogation, 2026-07-30 — the law
 // SYNTAX declared at birth: no loop keywords; iteration is |> stages,

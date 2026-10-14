@@ -1766,8 +1766,8 @@ fn parse_import_path(ref tokens, pos, own acc) = {
 // instead of a product per token, measured IDENTICAL, so the per-token cost is
 // the traversal and not the carrier. The fold stays because the law prefers it
 // (iteration is topology) and no measurement bought the index-threaded form.
-// What that 0.28s over ~25k tokens actually prices is named in RESIDUE: at
-// ~11µs a token it is a substrate signal about traversal, not about imports.
+// At ~11µs a token, the 0.28s over ~25k tokens is a substrate signal about
+// traversal, not about imports.
 fn import_edges(tokens) = match fold(
   (0, []),
   (acc, t) => match acc {

@@ -367,30 +367,6 @@ fn render_feedback_chain(input, spec) = {
   "{input_str}\n{spaces(indented_center())}<~ {spec_str}"
 }
 
-// ─── Multi-source format — map over an AST list ─────────────────────
-//
-// The DELETED format_pair (binary special-case) was erased per
-// CLAUDE.md Anchor 6: callers compose
-// `map(format_program, asts)` directly. `format_program` itself
-// already maps over top-level statements (line 93); the same stage
-// composes at the multi-source level. Drift 6 erasure.
-//
-// THE FOURTH UNCALLED `<~ accumulate` IC FIXPOINT WAS HERE, and the family
-// is the finding rather than this one member. format_ic_loop, teach_ic_loop
-// (src/mentl.mn), oracle_ic_fixpoint (src/oracle.mn) and ic_compile_loop
-// (src/pipeline.mn) were four decls, in four modules, each a one-line
-// statement that "build IS the `<~` loop closing", and NONE of them had a
-// caller — the IC effect they all declared a row against had no live
-// performer and no install anywhere. Four prose claims about the medium's
-// own shape, none of them a mechanism. They are deleted with the effect,
-// whose name goes unbackticked here because it no longer resolves.
-//
-// THE PROPERTY THEY DESCRIBED IS REAL AND IS BUILT — just not here: `fmt`
-// writes its own fixpoint in one invocation by rendering, re-parsing and
-// writing the SECOND render (fmt_run, src/main.mn), which is the idempotence
-// this loop only asserted. A verb whose output feeds its own reader carries
-// the loop internally; it does not need a `<~` wrapper nobody calls.
-//
 // ─── Helper functions — transforms over String (each builds its answer) ──
 fn spaces(n) = if n == 0 { "" } else { " {spaces(n - 1)}" }
 

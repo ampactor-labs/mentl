@@ -821,8 +821,7 @@ over the page's console wire, with the product legs: render fidelity, no
   as ONE judgment — the changed modules and everything downstream, through the
   cold route's own machine, so a chain's order and a cycle of modules are the
   judgment's binding groups and never the session's — answering the View in
-  one reply. PLAN §7's L-C bullet carries the reads and edits measured at the
-  close pin, the page's and Pulse's among them.
+  one reply.
 - **The project form**: `project <dir>` in `ide/space.manifest` (staged into
   `member` lines, since a static host lists no folder), `mentl space <dir>`
   for a folder on the command line, the select grouped by project, every

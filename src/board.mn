@@ -349,42 +349,20 @@ fn board_bounds() = [
   // extension in prose with no line after it. 27 -> 23 (2026-10-14, WILD):
   // the dead narrowing walk's header cited four.
   Bound({ceiling: 23, question: QCensus(CsProseClass(PcCoordinate))}),
-  // Repository paths that name no file — six of the seven cite a deleted
-  // module, and the seventh quotes the phantom path a parser bug once walked.
-  // 7 -> 5 (2026-10-14, WILD) with the narrowing walk's prose.
-  Bound({ceiling: 5, question: QCensus(CsProseClass(PcPathNoFile))}),
-  // Hex commit tokens — history belongs to LEDGER and git. 29 distinct
-  // tokens across 51 comments when the bound was written, every one a pin or
-  // a commit. 51 -> 48 (2026-10-13, Landing 3): the board refused 54 at the
-  // repin — six new comments dated their old form by the boot's sha — and
-  // with those reworded to the date the tree carries the 48 it carried
-  // before them, which is the ceiling now.
+  // Repository paths that name no file: a comment citing a path the tree
+  // does not hold.
+  Bound({ceiling: 1, question: QCensus(CsProseClass(PcPathNoFile))}),
+  // Hex commit tokens — history belongs to git, never on the node.
   Bound({ceiling: 48, question: QCensus(CsProseClass(PcCommit))}),
-  // Numbered citations of the archived spec corpus. 24 -> 23 at M1's first
-  // pin (2026-10-14): the env handler's comment was rewritten when the env
-  // became the scope alone.
+  // Numbered citations of the archived spec corpus.
   Bound({ceiling: 23, question: QCensus(CsProseClass(PcSpecCitation))}),
-  // Lifecycle prose — what was, where SYNTAX asks for what is. 44 -> 43
-  // (2026-10-13, Landing 1): the warm route's comment was trued to its
-  // measurement, and the two dated comments the landing wrote — the literal
-  // vocabulary's and the host pair's — read in positive form after the board
-  // refused 45. 43 -> 42 (2026-10-13, Landing 4 S1): the voice's modifier
-  // bank left with its register, and the dissolution note above it went too.
-  // 42 -> 41 (2026-10-14, WILD): the narrowing walk left with its prose.
-  Bound({ceiling: 41, question: QCensus(CsProseClass(PcLifecycle))}),
-  // Archaeology — the seed era's vocabulary and its design notes. 92 -> 85
-  // (2026-10-14, WILD): the narrowing walk's seed-era header went with it,
-  // and the escaping-row pre-pass's notes with the pass.
-  Bound({ceiling: 85, question: QCensus(CsProseClass(PcArchaeology))}),
-  // Decoration runs — the banners drift rows 128 and 131 policed by regex
-  // (one over the dissolved triple-slash form, one over a glyph no banner
-  // is drawn with, so neither could fail); both rows retired into this line,
-  // and F's decoration strip takes it to zero. 373 -> 344 as the modules the
-  // landings touched were trued; 321 at WILD (2026-10-14), the nineteen in
-  // the modules a bare program links deleted to pay its floor down and the
-  // escaping-row pre-pass's two leaving with it. 320 at M1's first pin
-  // (2026-10-14): the env's index banner went with the rewrite.
-  Bound({ceiling: 320, question: QCensus(CsProseClass(PcBanner))}),
+  // Lifecycle prose — what was, where SYNTAX asks for what is.
+  Bound({ceiling: 40, question: QCensus(CsProseClass(PcLifecycle))}),
+  // Archaeology — the seed era's vocabulary and its design notes.
+  Bound({ceiling: 83, question: QCensus(CsProseClass(PcArchaeology))}),
+  // Decoration runs; the formatter's decoration strip takes this to zero
+  // (PLAN §11, the project canonical).
+  Bound({ceiling: 319, question: QCensus(CsProseClass(PcBanner))}),
   // A COMMENT NEVER SILENCES A GATE (SYNTAX §Comments). Each marker mutes a
   // text row of tools/drift-patterns.tsv that a structural census reads
   // correctly — a string literal is text, a one-shot concat is not an

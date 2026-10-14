@@ -468,17 +468,13 @@ fn occurs_in_live(handle, ref ty) with !Mutate = match graph_branch_seed() {
 // table minted lazily inside a speculation would be copied out of the
 // speculation's arena at its exit, a cost the eager one never pays.
 handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spine_open = spine_open0, trail = [], trail_len = 0, epoch = 0, next = 0, span_index = span_index0, checkpoint_stack = [], in_edges = wmap_new(4096), published = wmap_new(4096), decls_col = [], emitfns_col = [], emitfns_idx = [], emitfns_idx_covers = 0, sigs_col = [], holes_pend = [], holes_col = [], cur_module = 0, guard_diags = [], gates = wmap_new(1024), instances = wmap_new(1024), demands = wmap_new(1024), accepted = [], rows = wmap_new(1024), binders = wmap_new(1024), births = wmap_new(1024), late = wmap_new(1024), claims = wmap_new(1024), modules_now = smap_new(), superseded = wmap_new(64), modules_col = [] {
-  graph_chase(handle) => // checkpoint_stack tracks active speculation depth. Each
-  // graph_push_checkpoint pushes the current trail_len; each
-  // graph_rollback pops. When the stack is empty, writes are at the
-  // OUTERMOST commit boundary — perform graph_mutated so the IC fixpoint
-  // (the oracle's project_queue_merger re-projects, src/oracle.mn) bumps
-  // its epoch only on real graph state changes. Speculative writes
-  // (Mentl's oracle exploration between push+rollback) leave the stack
-  // non-empty and never emit graph_mutated — otherwise infinite recursion
-  // (Mentl would subscribe to her own speculations).
-  //
-  // ─── Read ops ────────────────────────────────────────────────────
+  graph_chase(handle) => // checkpoint_stack is the speculation depth: each
+  // graph_push_checkpoint pushes the current trail_len and each
+  // graph_rollback pops it. A write with the stack empty is at the outermost
+  // commit boundary and performs graph_mutated with its handle and prior
+  // value; a speculative write leaves the stack non-empty and performs
+  // nothing, so a reader of the delta never sees a write that was rolled
+  // back.
   {
     resume(chase_node(spine, next, handle, 0))
   },
