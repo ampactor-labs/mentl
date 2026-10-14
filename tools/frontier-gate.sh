@@ -4519,6 +4519,37 @@ for i in "${!compilers[@]}"; do
     fail "decls facet (each decl once, by name at its line; got: $(printf '%s' "$df_out" | grep -E 'declared name|mn-decls-facet' | tr '\n' ' '))"
   fi
 
+  # ─── refs of follows the reference edge (M1, Hβ.lower.reach-edge-on-node)
+  # A reference is linked to the declaration it resolved to, at the one
+  # writer, and `refs of` reads the declaration's in-edges. The fixture's
+  # function `width` is called twice on line 7; `shadowed` binds a `let
+  # width` of its own and reads it on line 11, which is no reference to the
+  # function. Born RED 2026-10-14: boot 16d5706e answered 3 references, the
+  # local read among them, because the refs column was keyed by the name.
+  re_out=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" query "$ROOT/tests/frontier/mn-refs-by-edge.mn" "refs of width" 2>/dev/null)
+  if printf '%s' "$re_out" | grep -q "^→ 2 reference(s)" \
+     && [ "$(printf '%s\n' "$re_out" | grep -cE "mn-refs-by-edge:7:[0-9]+-7:[0-9]+  call")" = 2 ] \
+     && ! printf '%s' "$re_out" | grep -q "mn-refs-by-edge:11:"; then
+    pass "refs by edge: the function's two calls (line 7), never the shadowing local's read (line 11)"
+  else
+    fail "refs by edge (want the 2 calls on line 7 and nothing on line 11; got: $(printf '%s' "$re_out" | tr '\n' ' '))"
+  fi
+
+  # ─── The imports facet reads the references that cross an import ────
+  # An import is used when a reference standing in the importing module
+  # links to a declaration the imported one makes. The fixture's entry reads
+  # consts.mn's module value and nothing of unused.mn. Born RED 2026-10-14:
+  # boots 16d5706e and 259f244e both answered the consts edge DEAD, since a
+  # module value `let` was no declaration to the facet (PLAN §7's canon
+  # finding, `Hβ.query.facets-read-the-link`).
+  ie_out=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" query "$ROOT/tests/frontier/imports-by-edge/main.mn" "imports" 2>/dev/null)
+  if printf '%s' "$ie_out" | grep -qE "^ *used +.*imports-by-edge/main -> import consts" \
+     && printf '%s' "$ie_out" | grep -qE "^ *DEAD +.*imports-by-edge/main -> import unused"; then
+    pass "imports by edge: the module value's import used, the unreferenced module's DEAD"
+  else
+    fail "imports by edge (want consts used, unused DEAD; got: $(printf '%s' "$ie_out" | grep 'imports-by-edge/main ->' | tr '\n' ' '))"
+  fi
+
   # ─── The reading facets: text, prose, writes of, reads of ───────────
   # What a program SAYS, WRITES and READS, asked of one fixture: the string
   # literal holding facet-literal-marker, the comment holding

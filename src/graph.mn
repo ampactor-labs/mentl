@@ -66,17 +66,6 @@ import strings
 // state is internal to the handler; callers never see Graph as
 // a value; access is only through perform.
 //
-// Reverse projection over the comment-ref pairs: which comment owners
-// reference this node. Linear over the pair list — the pair count is the
-// program's authored cross-references, small by construction.
-fn comment_ref_owners(ref pairs, referent, i, acc) = if i >= len(pairs) {
-  acc
-} else {
-  match list_index(pairs, i) {
-    (o, r) => comment_ref_owners(pairs, referent, i + 1, if r == referent { acc ++ [o] } else { acc }),
-  }
-}
-
 // ─── The paged spine — six columns, one page record per band ─────────────
 // Column absent-contracts (a virgin cell is word 0 — the allocator's
 // virginity contract IS the column's): the nodes column is MINT-DENSE
@@ -129,6 +118,7 @@ fn spine_open_loop(own spine, opened, b) = if opened > b {
     comments: make_list(spine_slots),
     dispatch: make_list(spine_slots),
     installs: make_list(spine_slots),
+    links: make_list(spine_slots),
     module: make_list(spine_slots),
     narrowing: make_list(spine_slots),
     nodes: make_list(spine_slots),
@@ -241,6 +231,60 @@ fn spine_put_parents(spine, parent, body) = match body {
 fn spine_put_parent(spine, h, parent) = {
   let _ = list_set(spine_page(spine, h).parent, spine_slot(h), parent + 1)
   ()
+}
+
+// A reference's link: the cell holds the declaration's handle BIASED BY ONE,
+// the parent column's convention, since a declaration may be handle 0 and a
+// virgin cell reads as no link.
+fn spine_put_link(spine, h, cell) = {
+  let _ = list_set(spine_page(spine, h).links, spine_slot(h), cell)
+  ()
+}
+
+fn spine_link_cell(spine, spine_open, h) =
+  if spine_band(h) >= spine_open { 0 } else { list_index(spine_page(spine, h).links, spine_slot(h)) }
+
+fn spine_link_at(spine, spine_open, h) = {
+  let cell = spine_link_cell(spine, spine_open, h)
+  if cell == 0 { None } else { Some(cell - 1) }
+}
+
+// The three kinds of a declaration's in-edges, each read off the one store.
+// A use still names its reference when the reference's cell links to the
+// declaration it stands under: a reference re-resolved to another
+// declaration leaves its old entry behind, and the read drops it.
+fn use_still_linked(spine, spine_open, decl, e) = match e {
+  UseBy(r) => if spine_link_cell(spine, spine_open, r) == decl + 1 { [r] } else { [] },
+  MentionBy(_) | AppliedAt(_) => [],
+}
+
+fn mention_owner(e) = match e {
+  MentionBy(owner) => [owner],
+  UseBy(_) | AppliedAt(_) => [],
+}
+
+fn application_at(e) = match e {
+  AppliedAt(call) => [call],
+  UseBy(_) | MentionBy(_) => [],
+}
+
+// An in-edge survives a supersession when the node it arrives from does.
+fn in_edge_kept(keep, e) = match e {
+  UseBy(h) | MentionBy(h) | AppliedAt(h) => keep(h),
+}
+
+// The binder a reference reads, when what it names is a value binder — a
+// parameter, a pattern's binder, a handler's state field, a declaration's
+// own cell while its group is judged — whose cell the reference shares: the
+// declaration's published binding is that cell, unquantified. A declaration
+// that generalizes (a function, a constructor, an op) is reached by the same
+// edge and is no binder.
+fn binder_read_by(r) = match graph_ref_decl(r) {
+  Some(d) => match graph_published(d) {
+    Some((Frozen([], TVar(b)), _, _)) => if b == d { Some(d) } else { None },
+    _ => None,
+  },
+  None => None,
 }
 
 fn spine_parent_at(spine, spine_open, h) = if spine_band(h) >= spine_open {
@@ -423,7 +467,7 @@ fn occurs_in_live(handle, ref ty) with !Mutate = match graph_branch_seed() {
 // costs one 4KB word-list per process and no write tests for it — and a
 // table minted lazily inside a speculation would be copied out of the
 // speculation's arena at its exit, a cost the eager one never pays.
-handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spine_open = spine_open0, trail = [], trail_len = 0, epoch = 0, next = 0, span_index = span_index0, checkpoint_stack = [], comment_refs = [], refs_col = smap_new(), apps_col = smap_new(), decls_col = [], module_decls = smap_new(), emitfns_col = [], emitfns_idx = [], emitfns_idx_covers = 0, sigs_col = [], holes_pend = [], holes_col = [], cur_module = 0, guard_diags = [], gates = wmap_new(1024), instances = wmap_new(1024), demands = wmap_new(1024), accepted = [], rows = wmap_new(1024), binders = wmap_new(1024), births = wmap_new(1024), late = wmap_new(1024), claims = wmap_new(1024), modules_now = smap_new(), superseded = wmap_new(64), modules_col = [] {
+handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spine_open = spine_open0, trail = [], trail_len = 0, epoch = 0, next = 0, span_index = span_index0, checkpoint_stack = [], in_edges = wmap_new(4096), published = wmap_new(4096), decls_col = [], emitfns_col = [], emitfns_idx = [], emitfns_idx_covers = 0, sigs_col = [], holes_pend = [], holes_col = [], cur_module = 0, guard_diags = [], gates = wmap_new(1024), instances = wmap_new(1024), demands = wmap_new(1024), accepted = [], rows = wmap_new(1024), binders = wmap_new(1024), births = wmap_new(1024), late = wmap_new(1024), claims = wmap_new(1024), modules_now = smap_new(), superseded = wmap_new(64), modules_col = [] {
   graph_chase(handle) => // checkpoint_stack tracks active speculation depth. Each
   // graph_push_checkpoint pushes the current trail_len; each
   // graph_rollback pops. When the stack is empty, writes are at the
@@ -467,14 +511,14 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
   graph_push_checkpoint() => // The checkpoint is the fork's STATE VALUE — but pages never move, so the
   // spine contributes two words (the band-table pointer, for the rare
   // in-fork table growth, and the open count) instead of six spine copies.
-  // The append-only logs (trail, span_index, comment_refs) restore
-  // wholesale exactly as before; per-cell truth restores by
+  // The append-only logs (trail, span_index) restore wholesale; per-cell
+  // truth, the edges among it, restores by
   // walking the trail backward IN PLACE (pages are stable, so every inverse
   // lands on its live cell — the boundaries[23] stale-spine trap is
   // unconstructible in this representation). The record allocates BEFORE
   // the fork pair's heap_mark, so it survives the region.
   {
-    resume(trail_len) with checkpoint_stack = push(checkpoint_stack, {comment_refs, next, span_index, spine, spine_open, trail, trail_len})
+    resume(trail_len) with checkpoint_stack = push(checkpoint_stack, {next, span_index, spine, spine_open, trail, trail_len})
   },
   graph_fresh_ty(reason) => // ─── Write ops ───────────────────────────────────────────────────
   // Each write appends a Mutation to the trail. The trail is the
@@ -541,7 +585,7 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
           resume()
         } else {
           let keep = born_outside(spine, spine_open, old, ??)
-          resume() with modules_now = smap_add(modules_now, m.path, handle), superseded = wmap_add(superseded, old, 1), modules_col = push(filter(handle_is_not(old, ??), modules_col), handle), decls_col = filter(keep, decls_col), refs_col = smap_retain(refs_col, keep), apps_col = smap_retain(apps_col, keep)
+          resume() with modules_now = smap_add(modules_now, m.path, handle), superseded = wmap_add(superseded, old, 1), modules_col = push(filter(handle_is_not(old, ??), modules_col), handle), decls_col = filter(keep, decls_col), in_edges = smap_retain(in_edges, in_edge_kept(keep, ??))
         },
         None => resume() with modules_now = smap_add(modules_now, m.path, handle), modules_col = push(modules_col, handle),
       },
@@ -583,15 +627,15 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
     spine_put_comment(spine, handle, ("", span_zero()))
     resume()
   },
-  graph_attach_comment_ref(owner, referent) => // The comment-REFERENCE edges: a resolved backticked reference is a
-  // real edge (owner comment's node -> referent decl's node), drawn at
-  // the infer tail once the env is whole. Comments heal under rename
-  // because the edge carries the identity and the NAME is a projection;
-  // the audit's referenced-by line is the reverse read.
+  graph_attach_comment_ref(owner, referent) => // A resolved backticked reference is an edge from the comment's node to
+  // the declaration it names, entered among the declaration's in-edges with
+  // the uses and applications that arrive there.
   {
-    resume() with comment_refs = comment_refs ++ [(owner, referent)]
+    wmap_add(in_edges, referent, MentionBy(owner))
+    let j = journaling(checkpoint_stack)
+    resume() with trail = trail_after(trail, trail_len, j, MInEdge(referent)), trail_len = trail_len_after(trail_len, j)
   },
-  graph_comment_refs_of(referent) => resume(comment_ref_owners(comment_refs, referent, 0, [])),
+  graph_comment_refs_of(referent) => resume(unique(flat_map(mention_owner, wmap_get_all(in_edges, referent)))),
   graph_canon_set(from, to) => // The e-graph equivalence weave — union-find as a fabric EDGE, a column of
   // the handle's own page beside the program/comments/nodes columns (the TVar
   // union-find precedent). `graph_canon_set(from, to)` draws the equivalence edge `from ≡
@@ -888,35 +932,47 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
     spine_put_span(spine, handle, span)
     resume() with span_index = push(span_index, (span, handle))
   },
-  graph_ref_note(name, ref_handle) => // The reverse-edge column's write:
-  // one O(1) prepend into the smap bucket per reference (the multi-map
-  // form — smap_get_all collects every entry). NOT trail-backed: a
-  // reference note is append-only telemetry of the judgment's own walk,
-  // and a rolled-back speculative branch's notes are dead spans the
-  // read-side zero-skip/dedup already drops (the same discipline the
-  // whole-graph scan applied to judgment re-mints).
-  resume() with refs_col = smap_add(refs_col, name, ref_handle),
-  graph_refs_at(name) => // The name-keyed columns answer for the CURRENT generation: the
-  // registration that supersedes a module drops what its generation noted
-  // (graph_register_node), because a reader handed a re-judged module's older
-  // references, applications or declarations counts a program that no longer
-  // exists (the generation oracle, 2026-10-02: `refs twice` answered 2 where
-  // the tree held 1, the unreferenced facet one short, the decls facet
-  // twelve long).
-  resume(smap_get_all(refs_col, name)),
-  graph_apply_note(name, app_handle) => // The application edge's write, the refs column's own contract: one
-  // O(1) prepend per application, not trail-backed — a rolled-back
-  // segment's note can name a handle a later mint reuses, and the reader
-  // re-reads the application there.
-  resume() with apps_col = smap_add(apps_col, name, app_handle),
-  graph_applies_at(name) => resume(smap_get_all(apps_col, name)),
+  graph_ref_link(r, decl) => // THE REFERENCE LINK's write (M1): the reference's cell forward, the
+  // declaration's in-edge back, one trail entry under an open checkpoint so
+  // a rolled-back judgment's links go with it. A reference already linked
+  // to this declaration writes nothing.
+  {
+    let prior = spine_link_cell(spine, spine_open, r)
+    if prior == decl + 1 {
+      resume()
+    } else {
+      spine_put_link(spine, r, decl + 1)
+      wmap_add(in_edges, decl, UseBy(r))
+      let j = journaling(checkpoint_stack)
+      resume() with trail = trail_after(trail, trail_len, j, MRefLink(r, decl, prior)), trail_len = trail_len_after(trail_len, j)
+    }
+  },
+  graph_ref_decl(r) => resume(spine_link_at(spine, spine_open, r)),
+  graph_refs_of(decl) => // The current generation's references: the registration that supersedes
+  // a module drops what its generation linked (graph_register_node), because
+  // a reader handed a re-judged module's older references counts a program
+  // that no longer exists (the generation oracle, 2026-10-02). A reference
+  // re-linked elsewhere leaves its entry here, and its own cell says so.
+  resume(unique(flat_map(use_still_linked(spine, spine_open, decl, ??), wmap_get_all(in_edges, decl)))),
+  graph_apply_note(decl, call) => {
+    wmap_add(in_edges, decl, AppliedAt(call))
+    let j = journaling(checkpoint_stack)
+    resume() with trail = trail_after(trail, trail_len, j, MInEdge(decl)), trail_len = trail_len_after(trail_len, j)
+  },
+  graph_applies_of(decl) => resume(unique(flat_map(application_at, wmap_get_all(in_edges, decl)))),
+  graph_publish(decl, scheme, reason, kind) => // What the judgment learned about a declaration, at its handle, newest
+  // first — the facts the env's entries carried by name until 2026-10-14.
+  {
+    wmap_add(published, decl, (scheme, reason, kind))
+    let j = journaling(checkpoint_stack)
+    resume() with trail = trail_after(trail, trail_len, j, MPublish(decl)), trail_len = trail_len_after(trail_len, j)
+  },
+  graph_published(decl) => resume(wmap_get(published, decl)),
   graph_decl_note(decl_handle) => // The refs column's decl-granularity sibling — same append-only
   // telemetry contract (not trail-backed; judgment rounds re-note the
   // same handle, readers dedup by handle).
   resume() with decls_col = push(decls_col, decl_handle),
   graph_decls_at() => resume(decls_col),
-  graph_module_decl_note(name, decl_handle) => resume() with module_decls = smap_add(module_decls, name, decl_handle),
-  graph_module_decl_at(name) => resume(smap_get(module_decls, name)),
   graph_node_current(h) => resume(spine_current(spine, spine_open, superseded, h)),
   graph_module_now(path) => resume(smap_get(modules_now, path)),
   graph_modules() => resume(modules_col),
@@ -999,10 +1055,6 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
     resume() with epoch = new_epoch, trail = trail_after(trail, trail_len, j, m), trail_len = trail_len_after(trail_len, j)
   },
   graph_claims_of(h) => resume(wmap_get_all(claims, h)),
-  graph_link_of(h) => resume(match graph_node_at(spine, next, h) {
-    GNode(NBound(TVar(b)), _) => Some(b),
-    _ => None,
-  }),
   graph_written_since(cp, below) => // The segment's write set, read off the trail's live tail — a slice
   // view (no copy) from the checkpoint to the logical length, folded for
   // the cells a bind moved. Entries above trail_len are stale by the
@@ -1126,7 +1178,7 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
         trail_len,
         target_idx,
         next,
-        {binders, births, claims, demands, gates, instances, late, rows}
+        {binders, births, claims, demands, gates, in_edges, instances, late, published, rows}
       )
       resume() with next = new_next, trail_len = target_idx
     } else {
@@ -1145,13 +1197,13 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
         trail,
         trail_len,
         target_idx,
-        {binders, births, claims, demands, gates, instances, late, rows}
+        {binders, births, claims, demands, gates, in_edges, instances, late, published, rows}
       )
       // drop_last, never slice: on the always-snoc stack drop_last is
       // the parent READ — the pop allocates nothing and the surviving
       // value is the pre-fork stack, so the fork's arena has nothing of
       // it to move (a slice minted here would be copied out at the exit).
-      resume() with spine = cp.spine, spine_open = cp.spine_open, next = cp.next, trail = cp.trail, trail_len = target_idx, span_index = cp.span_index, comment_refs = cp.comment_refs, checkpoint_stack = drop_last(checkpoint_stack)
+      resume() with spine = cp.spine, spine_open = cp.spine_open, next = cp.next, trail = cp.trail, trail_len = target_idx, span_index = cp.span_index, checkpoint_stack = drop_last(checkpoint_stack)
     }
   },
   graph_commit_checkpoint(_target_idx) => // The ACCEPT half of speculation: drop the newest checkpoint record
@@ -1780,6 +1832,19 @@ fn revert_trail_into(ref spine, spine_open, ref trail, current, target, cols) = 
       wmap_pop(cols.claims, h)
       revert_trail_into(spine, spine_open, trail, idx, target, cols)
     },
+    MRefLink(r, decl, prior) => {
+      if spine_band(r) < spine_open { spine_put_link(spine, r, prior) }
+      wmap_pop(cols.in_edges, decl)
+      revert_trail_into(spine, spine_open, trail, idx, target, cols)
+    },
+    MInEdge(decl) => {
+      wmap_pop(cols.in_edges, decl)
+      revert_trail_into(spine, spine_open, trail, idx, target, cols)
+    },
+    MPublish(decl) => {
+      wmap_pop(cols.published, decl)
+      revert_trail_into(spine, spine_open, trail, idx, target, cols)
+    },
   }
 }
 
@@ -1841,6 +1906,19 @@ fn revert_trail(ref spine, spine_open, ref trail, current, target, next_handle, 
       wmap_pop(cols.claims, h)
       revert_trail(spine, spine_open, trail, idx, target, next_handle, cols)
     },
+    MRefLink(r, decl, prior) => {
+      if spine_band(r) < spine_open { spine_put_link(spine, r, prior) }
+      wmap_pop(cols.in_edges, decl)
+      revert_trail(spine, spine_open, trail, idx, target, next_handle, cols)
+    },
+    MInEdge(decl) => {
+      wmap_pop(cols.in_edges, decl)
+      revert_trail(spine, spine_open, trail, idx, target, next_handle, cols)
+    },
+    MPublish(decl) => {
+      wmap_pop(cols.published, decl)
+      revert_trail(spine, spine_open, trail, idx, target, next_handle, cols)
+    },
   }
 }
 
@@ -1885,7 +1963,10 @@ fn written_step(below, acc, m) = match m {
   | MBinderFact(_)
   | MBirth(_)
   | MOweLate(_)
-  | MClaimNote(_) => acc,
+  | MClaimNote(_)
+  | MRefLink(_, _, _)
+  | MInEdge(_)
+  | MPublish(_) => acc,
 }
 
 fn note_written(acc, h, below) =
@@ -1941,6 +2022,16 @@ fn expr_child_handles(e) = match e {
 // name (the tuple destructure read a record as positions and met Node).
 fn record_field_handle(field) with Pure = field.init
 
+// A variant's node: the third of its (name, field types, node).
+fn variant_node(variant) with Pure = match variant {
+  (_, _, node) => node,
+}
+
+// An op's node: the fourth of its (name, params, result, node).
+fn op_node(op) with Pure = match op {
+  (_, _, _, node) => node,
+}
+
 fn tuple_field_handle(field) with Pure = match field {
   (_, v) => v,
 }
@@ -1964,8 +2055,11 @@ fn stmt_child_handles(s) = match s {
   ExprStmt(e) => [e],
   HandlerDeclStmt(_hname, _ename, _config, states, arms, _effs) => map(record_field_handle, states) ++ map(arm_body_handle, arms),
   HandlerChainStmt(_, chain) => [chain],
-  TypeDefStmt(_, _) => [],
-  EffectDeclStmt(_, _, _) => [],
+  TypeDefStmt(_, variants) => // A type's variants and an effect's ops are its parts: each is a node the
+  // parse minted, its parent the declaration that holds it, so an op reaches
+  // its effect and a variant its type by the edge, never by a name.
+  map(variant_node, variants),
+  EffectDeclStmt(_, _, ops) => map(op_node, ops),
   ImportStmt(_) => [],
   RefineStmt(_, _, _) => [],
   AliasStmt(_, _) => [],

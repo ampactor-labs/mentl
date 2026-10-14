@@ -205,7 +205,7 @@ fn seq_lengths(h) = match node_const_at(h, NoSelf) {
     Some(tails) => tails |> flat_map(seq_lengths),
     None => match graph_node_body(h) {
       NExpr(MakeListExpr(elems)) => [Some(len(elems))],
-      NExpr(VarRef(_)) => match graph_link_of(h) {
+      NExpr(VarRef(_)) => match binder_read_by(h) {
         Some(b) => binder_lengths(b),
         None => [None],
       },
@@ -458,9 +458,9 @@ fn value_tails(h) = match join_tails(h) {
 // the graph noted, so each walk keeps its own floor. Until 2026-10-03
 // every walk read a tee as nothing it could read, so `100 / ((…) ~> h)`
 // was debt whatever `h` answered.
-fn install_arm_tails(right) = match env_lookup(tee_handler_name(right)) {
-  Some(entry) => match entry {
-    (_, _, kind) => match kind {
+fn install_arm_tails(right) = match tee_handler_decl(right) {
+  Some(d) => match graph_published(d) {
+    Some((_, _, kind)) => match kind {
       HandlerKind(r_handle, _, _, _, arms) => if walking_state(r_handle) {
         Some([])
       } else {
@@ -468,7 +468,41 @@ fn install_arm_tails(right) = match env_lookup(tee_handler_name(right)) {
       },
       _ => None,
     },
+    None => None,
   },
+  None => None,
+}
+
+// The declaration a tee installs: the reference on its right side, bare or
+// applied to its config, followed along its edge. None when that side is
+// no reference — no declaration answers it, which is the frame fence.
+fn tee_handler_decl(r) = match graph_node_body(r) {
+  NExpr(CallExpr(f, _)) => tee_handler_decl(f),
+  _ => graph_ref_decl(r),
+}
+
+// The arms of the handler a declaration was published as; None for a
+// declaration that is no handler — a parameter or a local holding one.
+fn handler_arms_at(d) = match graph_published(d) {
+  Some((_, _, kind)) => match kind {
+    HandlerKind(_, _, _, _, arms) => Some(arms),
+    FnScheme
+    | ValueScheme
+    | ParamScheme(_)
+    | ConstructorScheme(_, _)
+    | EffectOpScheme(_, _, _, _)
+    | RecordSchemeKind(_)
+    | EffectDeclKind(_, _)
+    | HandlerChainKind(_)
+    | RowAliasKind(_)
+    | TypeVariants(_) => None,
+  },
+  None => None,
+}
+
+// The arms of the handler a tee installs, read along its edge.
+fn tee_arms(r) = match tee_handler_decl(r) {
+  Some(d) => handler_arms_at(d),
   None => None,
 }
 
@@ -540,7 +574,7 @@ fn node_const_at(handle, bind) = match graph_node_body(handle) {
   NExpr(LitFloat(f)) => Some(LVFloat(f)),
   NExpr(LitString(s)) => Some(LVString(s)),
   NExpr(LitBool(b)) => Some(LVBool(b)),
-  NExpr(VarRef(name)) => resolve_self_operand(name, bind),
+  NExpr(VarRef(name)) => resolve_self_operand(handle, name, bind),
   NExpr(BinOpExpr(op, l, r)) => litval_arith_opt(op, node_const_at(l, bind), node_const_at(r, bind)),
   NExpr(UnaryOpExpr(op, x)) => litval_unary_opt(op, node_const_at(x, bind)),
   _ => None,
@@ -551,32 +585,30 @@ fn node_const_at(handle, bind) = match graph_node_body(handle) {
 // name is a constant exactly when it is a MODULE VALUE bound to one
 // (`module_let_const`): `let spine_slots = 16384` is a fact the graph holds
 // at the let's own node, and a division by it is total for that reason.
-fn resolve_self_operand(name: String, bind) = if name == "self" {
+fn resolve_self_operand(r, name: String, bind) = if name == "self" {
   match bind {
     NoSelf => None,
     SelfNode(h) => node_const_at(h, NoSelf),
     SelfVal(v) => Some(v),
   }
 } else {
-  module_let_const(name)
+  module_let_const(r)
 }
 
-// A module-level `let` bound to a constant — the innermost binding of the
-// name must be the module's (a local of the same name shadows it, and the
-// env answers which is in force), and the let is the module-level
-// declaration the name is filed under, judged before any reader of the name
-// by the callee-first order. A local let is path-sensitive and stays honest
+// A module-level `let` bound to a constant: the reference's edge reaches the
+// value the let binds (a `let`'s binder IS its value's cell), and that value
+// is the let's own at module level. A local let — or a local of the same
+// name, which the edge reaches instead — is path-sensitive and stays honest
 // debt.
-fn module_let_const(name: String) = if env_lookup_is_global(name) {
-  match graph_module_decl_at(name) {
-    Some(h) => match graph_node_body(h) {
-      NStmt(LetStmt(PVar(_), value, _)) => node_const_at(value, NoSelf),
+fn module_let_const(r) = match binder_read_by(r) {
+  Some(v) => match graph_parent_of(v) {
+    Some(s) => match graph_node_body(s) {
+      NStmt(LetStmt(PVar(_), value, _)) => if value == v && at_module_level(s) { node_const_at(v, NoSelf) } else { None },
       _ => None,
     },
     None => None,
-  }
-} else {
-  None
+  },
+  None => None,
 }
 
 // ─── The value walk — what a value is, read along the edges it flowed ──
@@ -643,7 +675,7 @@ fn value_leaves(h, bind) = match node_const_at(h, bind) {
     None => match graph_node_body(h) {
       NExpr(VarRef(name)) => if name == "self" {
         self_leaves(bind)
-      } else if constructor_named(name) {
+      } else if ref_is_constructor(h) {
         [LBuilt(name)]
       } else {
         binder_leaves(h)
@@ -667,9 +699,9 @@ fn self_leaves(bind) = match bind {
   NoSelf => [LUnknown],
 }
 
-// A reference's binder, through the reference's OWN link (graph_link_of),
+// A reference's binder, along the reference's own edge (`binder_read_by`),
 // never its class.
-fn binder_leaves(use_h) = match graph_link_of(use_h) {
+fn binder_leaves(use_h) = match binder_read_by(use_h) {
   Some(b) => leaves_at_binder(b),
   None => [LUnknown],
 }
@@ -810,10 +842,10 @@ fn writer_path_read(path, read, w) = match path {
 // construction with no fields; any other construction continues at the node
 // in the step's position.
 fn built_path_read(whole, step, rest, read) = match graph_node_body(whole) {
-  NExpr(VarRef(name)) => if constructor_named(name) {
+  NExpr(VarRef(_)) => if ref_is_constructor(whole) {
     nodes_path_read(bare_construction_part(step), rest, read)
   } else {
-    match graph_link_of(whole) {
+    match binder_read_by(whole) {
       Some(b) => path_read(b, [step] ++ rest, read),
       None => None,
     }
@@ -842,7 +874,7 @@ fn built_part(whole, step) = match graph_node_body(whole) {
     _ => None,
   },
   NExpr(CallExpr(callee, args)) => match graph_node_body(callee) {
-    NExpr(VarRef(made)) => if constructor_named(made) { construction_part(made, args, step) } else { None },
+    NExpr(VarRef(made)) => if ref_is_constructor(callee) { construction_part(made, args, step) } else { None },
     _ => None,
   },
   NExpr(MakeRecordExpr(fields)) => field_part(fields, step),
@@ -963,7 +995,7 @@ fn field_contract(fs, step) = match step {
 fn call_leaves(ref callee) = match graph_node_body(callee) {
   NExpr(VarRef(cname)) => if cname == "len" || cname == "byte_len" {
     [LLength]
-  } else if constructor_named(cname) {
+  } else if ref_is_constructor(callee) {
     [LBuilt(cname)]
   } else {
     applied_leaves(callee)
@@ -985,7 +1017,7 @@ fn flow_param_path(h) = match graph_node_body(h) {
   NExpr(VarRef(name)) => if name == "self" {
     None
   } else {
-    match graph_link_of(h) {
+    match binder_read_by(h) {
       Some(b) => binder_path(b),
       None => None,
     }
@@ -1278,7 +1310,7 @@ fn value_flow_label(h) = match node_const_at(h, NoSelf) {
   None => match value_tails(h) {
     Some(tails) => labels_join(tails),
     None => match graph_node_body(h) {
-      NExpr(VarRef(_)) => match graph_link_of(h) {
+      NExpr(VarRef(_)) => match binder_read_by(h) {
         Some(b) => binder_flow_label(b),
         None => Public,
       },

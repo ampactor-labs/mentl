@@ -448,7 +448,7 @@ fn absorb_scan(ref bindings, i, n, ename: String, own acc) = if i >= n {
   acc
 } else {
   match list_index(bindings, i) {
-    (hname, _, _, kind) => {
+    (hname, _, _, kind, _) => {
       let hit = match kind {
         HandlerKind(_, _, _, _, arms) => handler_arms_touch(arms, 0, len(arms), ename),
         _ => false,
@@ -1081,7 +1081,7 @@ fn severance_vocabulary() = match env_snapshot() {
   Env(bindings) => bindings |> fold(
     [],
     (acc, b) => match b {
-      (name, _, _, EffectDeclKind(_, _)) => {
+      (name, _, _, EffectDeclKind(_, _), _) => {
         // The flat env carries a decl at several layers (pre_register +
         // the main walk); each effect names itself once.
         let e = ENamed(intern_str(name))

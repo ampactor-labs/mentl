@@ -560,9 +560,10 @@
 > `mentl query <entry> unreferenced` (one hop) · `unreachable` (transitive
 > from main, fn decls — partitioned into modules CARRYING dead weight, with
 > their reached/unreached ratio, and modules the entry links WHOLE and never
-> calls into) · `refs of NAME` (every reference, each site with what stands
-> there — `call`, `value`, or `pattern` where a constructor is named by a
-> pattern over that node) · `census <shape>` · `decls` (each of
+> calls into) · `refs of NAME` (every reference to the declaration the name
+> names, read off its in-edges, each site with what stands there — `call` or
+> `value`; a pattern naming a constructor has no node yet and draws no
+> edge) · `census <shape>` · `decls` (each of
 > these, and `text`/`prose`/`ghosts`/`verification`/`smt` below, also
 > answers over a DIRECTORY of independent programs — `mentl query
 > tests/frontier/arena "refs of X"` — every program judged on its own link,

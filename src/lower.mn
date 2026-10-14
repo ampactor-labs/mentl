@@ -5955,7 +5955,7 @@ fn grounded_scan(bindings, i, n, ename: String) = if i >= n {
   true
 } else {
   match list_index(bindings, i) {
-    (opname, _, _, kind) => {
+    (opname, _, _, kind, _) => {
       let ok = match kind {
         EffectOpScheme(op_effect, _, _, _) => // Substrate projection or WASI import only. A DEFAULT HANDLER does
         // NOT ground: the perform's singleton tier direct-calls it, but a

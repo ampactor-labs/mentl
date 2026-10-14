@@ -871,22 +871,28 @@ and this is the STATE.
   the wheel's own analysis and emit brackets are chains, their thunks and
   wrapper functions deleted. The three writes the face still owes stand on
   foundations S3 measured and named: a rename as one write at the
-  declaration is one write exactly when references are edges (M1's link,
-  §11 Tier 4); the session re-judging the nodes an edit rewrote, and a
+  declaration is one write exactly when references are edges, which they are
+  since M1's first pin (2026-10-14) — the verb is N1's `rename`, not yet
+  built; the session re-judging the nodes an edit rewrote, and a
   proposal's accept rewriting the hole's node in place, need an edit to be a
   DELTA on live nodes — the declaration-grain cone over M1's reverse edge and
   spans re-projected by the render rather than re-indexed by a parse (L-D's
   canvas) — since today's accept edge survives a re-parse only through a
   position-keyed column (`Hβ.synth.accepted-edge-keyed-by-position`). A
-  reference is a name (`VarRef(String)`, M1's link), a type a value tree
-  (`Ty`), a reason a value tree, and the lowered program a second tree
-  (`LowExpr`, 42 constructors): §11's one law in five faces, the first of
-  them cut (`Hβ.graph.positions-are-cells`, S1, S2 and S3's first write).
+  value reference is linked to the declaration it resolved to since M1's
+  first pin (2026-10-14, LEDGER) — its spelling kept for the page, its edge
+  read by every reader that holds it — while a pattern's constructor, a type
+  annotation and a handler arm's op are still names with no node to link; a
+  type is a value tree (`Ty`), a reason a value tree, and the lowered
+  program a second tree (`LowExpr`, 42 constructors) whose walks still read
+  names: §11's one law in five faces, the first of them cut
+  (`Hβ.graph.positions-are-cells`, S1, S2 and S3's first write).
 - **A CATCH-ALL OVER A SUM IS COUNTED AND CAPPED (2026-10-14) →
   `Hβ.match.catch-all-over-a-sum-is-the-roster`.** The census counts a `_`
   or a bare binder after other arms of a match over a sum, 1,261 on the
-  wheel's link the day the shape was counted and 1,248 after that pin's
-  deletions, and the board caps it there, so a new one cannot be written
+  wheel's link the day the shape was counted, 1,248 after that pin's
+  deletions and 1,243 after M1's first pin, and the board caps it at its
+  count, so a new one cannot be written
   into the wheel to get past a gate; `mentl tighten` writes any one of them
   as the roster it stood for, at the judged match node. What stands open: a
   constructor declared later falls silently into every catch-all over its
@@ -1014,13 +1020,14 @@ and this is the STATE.
   face (`Hβ.persist.cross-machine-resume`) and host resources outside the image,
   both named in that bullet.
 - **Subsystem-as-cursor** (§2) is ~60% earned. Gap ranked: LOWERING (39
-  constructors → columns), ENV (dissolves with schemes-are-edges), REVERSE EDGE
-  (the refs + decls columns landed 2026-08-07 — but `refs_col` is keyed by
-  NAME, not handle, so it is the reverse edge's waypoint, not the edge;
-  `Hβ.lower.reach-edge-on-node` is the handle-keyed form, M1's reference
-  link in §11, and this line said
-  "landed" for six weeks while PLAN cited that peer three times and RESIDUE
-  never held it — corrected 2026-09-17), verify/tighten BANKS. The move: put the fact in a column,
+  constructors → columns), ENV (the scope alone since M1's first pin — an
+  entry is a name and its declaration's handle, the facts published at the
+  handle — and the rest dissolves with schemes-are-edges), REVERSE EDGE (a
+  declaration's in-edges since 2026-10-14: each reference, application and
+  comment mention the judgment linked to it, keyed by the declaration's
+  handle; the name-keyed refs column it replaced is deleted, and the reach
+  walks over the lowered program still walk names,
+  `Hβ.lower.reach-edge-on-node`), verify/tighten BANKS. The move: put the fact in a column,
   dual-write, migrate readers, delete the side-structure — and its full cycle
   ran once at pin 8aeca3c8: the emittable-fn enumeration went from dual-written
   and zero-read to carrying each symbol's signature edges, emit's six
@@ -1091,9 +1098,10 @@ and this is the STATE.
   compared without its module): `mentl audit src/main.mn` prints 37
   pending lines for a module that owns 3 obligations, and
   `mentl audit src/egraph.mn` charges `apply_rules_from` three obligations
-  from graph.mn and types.mn, predicted before the run. The refs column is keyed by name:
-  `refs of lines` answered 56 sites, the emitter's local `let lines` binders
-  mixed with the prelude's `lines`; and `unreferenced` calls `Ty`, `Option`
+  from graph.mn and types.mn, predicted before the run. The refs column was
+  keyed by name: `refs of lines` answered 56 sites, the emitter's local `let
+  lines` binders mixed with the prelude's `lines`, and answers the prelude's
+  2 since M1's first pin, which reads the declaration's in-edges; and `unreferenced` calls `Ty`, `Option`
   and `Alloc` dead (465 of 6533 names) because a type annotation is not yet
   a reference. M1's reference link makes a site a node and M2's facets read
   it (§11, Tier 4); F refuses the duplicate import, and #108 makes the
@@ -1244,10 +1252,10 @@ and this is the STATE.
   (the arms meet in a result cell the judgment mints, and the wheel's ghosts
   fell 154 → 112); every cli verb read argv by index under a length guard
   (each builder takes its words apart by pattern, and the open obligations
-  fell 205 → 184); and the reference link is the union-find edge
-  (`graph_link_of` reads `NBound(TVar(b))`), so which free root survives a
-  union is load-bearing until the reference link records it
-  (`Hβ.lower.reach-edge-on-node`). The formatter writes `type X = {…}` and
+  fell 205 → 184); and the reference link was the union-find edge, read off
+  a reference's cell as `NBound(TVar(b))`, so which free root survived a
+  union was load-bearing — until M1's first pin (2026-10-14), when the one
+  writer began recording the link (`Hβ.lower.reach-edge-on-node`). The formatter writes `type X = {…}` and
   punned fields, and the wheel's source and library are at its fixpoint.
 
 Everything else requires the board that measured it. A skipped, stale, or
@@ -2207,7 +2215,7 @@ Next on it, from Morgan's reading of 2026-10-13 that a wildcard satisfies a
 gate while discarding what the gate knew: a catch-all arm over a sum
 (`Hβ.match.catch-all-over-a-sum-is-the-roster`), counted and capped on the
 wheel since 2026-10-14 (LEDGER) — 1,261 the day it was counted, 1,248 after
-that pin's deletions — with `mentl tighten` able to write any one as the
+that pin's deletions, 1,243 after M1's first pin — with `mentl tighten` able to write any one as the
 roster it stood for. The exhaustiveness matrix is strict over every pattern
 kind since the same day (`Hβ.infer.exhaustiveness-over-literal-and-list-columns`,
 CLOSED); the refusal says `write its arm` and never a wildcard, and it is a
@@ -2359,7 +2367,10 @@ an op nobody reads.
   host-held credentials remain open work.
 
 *Tier 4 · wide foundations, behind tier 1's net.*
-- **M1 · The reference link** (`Hβ.lower.reach-edge-on-node`). At the one
+- **M1 · The reference link** (`Hβ.lower.reach-edge-on-node`). NOT LANDED:
+  the edge is drawn since its first pin (2026-10-14, LEDGER) and the
+  name-keyed homes it replaces are deleted, while the reach walks over the
+  lowered program still walk names. At the one
   writer a reference records the declaration it resolved to, the env entry
   carries its declaration's handle, and an effect name in a row resolves or
   refuses. The root: the import graph, a module's surface, dead

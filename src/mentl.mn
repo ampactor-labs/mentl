@@ -55,7 +55,7 @@ type Patch = Patch(Span, String)
 // ALLOWED row refused, each refusal keeping its Why (PLAN §5: the row pruning
 // IS the second moat, and a pruned candidate the developer cannot see is a
 // guess they cannot audit).
-type Context = Context([(String, Binding, Reason, SchemeKind)], EffRow, String, Int)
+type Context = Context([(String, Binding, Reason, SchemeKind, Int)], EffRow, String, Int)
 
 // scope bindings (the Env's own entries), the LIVE active-effect row, the enclosing decl's name ("" at top level — the vocabulary excludes candidates whose free-name closure reaches it: proposing the hole's own enclosing fn, or anything that transitively calls it, is nontermination by construction), and the HOLE'S OWN HANDLE — the cell the proposals are for. The fourth field was the hole's SPAN, a coordinate copied beside the very handle that gives it live, and the copy was load-bearing in the worst way: with only a span the proof gate had no cell to bind, so it instantiated a FRESH target and called that safety. The handle carries the span (graph_span_of), the type (ty_of_kind over its live kind), and the union-find root every candidate must agree with. One edge where three copies were.
 // The full Boolean row reaches synth — not a
@@ -173,25 +173,25 @@ fn decl_teaching(d) = match d {
 // strongest clause it proved — 367 of 427 declarations across six wheel
 // modules on 2026-10-06 — and `fn main() = 42` was told to add `with Pure`.
 //
-// The dependents are read along the application edge (`applications_of`,
-// the by-name reverse link the reference link replaces) and up through every
+// The dependents are read along the application edge — the declaration's
+// in-edges that are calls (`graph_applies_of`) — and up through every
 // caller, claused or not: g's `!Alloc` stands on f through an unclaused h,
 // and k's `!Trap` stands on f through a claused g. A `~>` install between
 // the application and the clause absorbs what its handler answers, and the
 // clause stands on nothing of the row for those effects. An instance
 // negation (`!Sample(44100)`) is band A's precision and is not yet a lock.
-fn standing_clauses(name: String, seen) = applications_of(name) |> flat_map(standing_at(seen, ??))
+fn standing_clauses(decl, seen) = graph_applies_of(decl) |> flat_map(standing_at(seen, ??))
 
 fn standing_at(seen, app_h) = match enclosing_decl(app_h) {
   None => [],
   Some(dh) => match decl_clause(dh) {
     None => [],
-    Some((dname, effs)) => if string_in_list(seen, dname) {
+    Some((dname, effs)) => if any({ s => s == dh }, seen) {
       []
     } else {
       let masked = masked_between(app_h, dh)
       let here = clause_locks(effs) |> map(stood_by(dname, ??))
-      here ++ standing_clauses(dname, push(seen, dname)) |> filter(lock_unmasked(masked, ??))
+      here ++ standing_clauses(dh, push(seen, dh)) |> filter(lock_unmasked(masked, ??))
     },
   },
 }
@@ -234,7 +234,7 @@ fn masked_between(child, top) = if child == top {
   }
 }
 
-fn tee_absorbs(r) = match handler_arms(tee_handler_name(r)) {
+fn tee_absorbs(r) = match tee_arms(r) {
   Some(arms) => handler_effect_names(arms),
   None => [],
 }
@@ -349,7 +349,7 @@ type Proven = Proven(Site, AnnotationSuggestion)
 // absence the body already has — the gate every edit of the body must meet
 // — and discharges nothing.
 fn row_suggestions(f) =
-  standing_clauses(f.name, [f.name]) |> lock_candidates |> filter(lock_holds(f.handle, f.ty, ??)) |> map(row_suggestion)
+  standing_clauses(f.handle, [f.handle]) |> lock_candidates |> filter(lock_holds(f.handle, f.ty, ??)) |> map(row_suggestion)
 
 fn lock_holds(handle, base_ty, c) = match c {
   (ann, _) => row_clause_holds(handle, base_ty, ann),
@@ -481,7 +481,7 @@ fn value_leans(h) = match join_tails(h) {
   },
 }
 
-fn link_leans(use_h, name: String) = match graph_link_of(use_h) {
+fn link_leans(use_h, name: String) = match binder_read_by(use_h) {
   None => [],
   Some(b) => match graph_binder_of(b) {
     Some(fact) => match fact {
@@ -612,7 +612,8 @@ fn prove_precondition(f, owed, b, i, name: String, alias) = match alias {
       restate_param(b, contract)
       let discharged = owed |> filter(obligation_holds) |> len
       let broken = owed |> filter(obligation_refuted) |> len
-      let verdicts = latest_applications(applications_of(f.name)) |> map(claim_at_call(contract, i, ??))
+      let verdicts =
+        latest_applications(graph_applies_of(f.handle)) |> map(claim_at_call(contract, i, ??))
       let refuted = verdicts |> filter(verdict_refuted) |> len
       let opened = verdicts |> filter(verdict_open) |> len
       graph_rollback(cp)
@@ -671,24 +672,6 @@ fn verdict_open(v) = match v {
   None => true,
 }
 
-// Every application of a top-level declaration as the judgment drew it: the
-// application edge (`note_application` notes each one under every
-// declaration its callee can be) — a call, a pipe stage, a call through a
-// local holding it — each re-read at its handle, since an append-only note
-// can name a handle a rolled-back segment minted and a later mint reused.
-fn applications_of(name: String) = graph_applies_at(name) |> filter(applies(name, ??)) |> unique
-
-fn applies(name: String, h) = match graph_node_body(h) {
-  NExpr(CallExpr(callee, _)) => any(leaf_is(name, ??), fn_leaves(callee)),
-  NExpr(PipeExpr(PForward, _, stage)) => any(leaf_is(name, ??), fn_leaves(stage)),
-  _ => false,
-}
-
-fn leaf_is(name: String, leaf) = match graph_node_body(leaf) {
-  NExpr(VarRef(n)) => n == name && graph_link_of(leaf) == None,
-  _ => false,
-}
-
 // The arguments an application hands the declaration, in its parameters'
 // order: a call's positional product, a pipe's piped value.
 fn application_args(h) = match graph_node_body(h) {
@@ -699,10 +682,10 @@ fn application_args(h) = match graph_node_body(h) {
   },
 }
 
-// The callee node of a reference to the top-level `name`, or none.
-fn callee_named(callee, name: String) = match graph_node_body(callee) {
-  NExpr(VarRef(cn)) => if cn == name && graph_link_of(callee) == None { [callee] } else { [] },
-  _ => [],
+// The callee node when it references the declaration `decl`, or none.
+fn callee_naming(callee, decl) = match graph_ref_decl(callee) {
+  Some(d) => if d == decl { [callee] } else { [] },
+  None => [],
 }
 
 // A session that has re-derived holds one application node per generation
@@ -746,7 +729,7 @@ fn learn_then_claim(contract, ah, sp: ValidSpan) = {
 fn return_suggestions(f) = if authored_return(f.retty) {
   []
 } else {
-  match verify_debt() |> flat_map(resting_on(f.name, ??)) {
+  match verify_debt() |> flat_map(resting_on(f.handle, ??)) {
     [] => [],
     resting => aliases_in_reach(graph_module_of(f.handle)) |> filter(ret_fits(f.ret, ??)) |> flat_map(prove_return(f, resting, ??)),
   }
@@ -759,9 +742,9 @@ fn authored_return(retty) = match graph_node_body(retty) {
 
 fn ret_fits(ret, alias) = alias_fits(chase_deep(ret), alias)
 
-fn resting_on(name: String, o) = match o {
+fn resting_on(decl, o) = match o {
   (_, _, pred, _) => match pred {
-    PWithSelf(h, _) => match value_calls(h, name) {
+    PWithSelf(h, _) => match value_calls(h, decl) {
       [] => [],
       chs => [(pred, chs)],
     },
@@ -769,17 +752,17 @@ fn resting_on(name: String, o) = match o {
   },
 }
 
-// The callee nodes through which a value IS a call to `name`: the call, a
-// pipe stage naming it, a let of either, a join's tails.
-fn value_calls(h, name: String) = match join_tails(h) {
-  Some(tails) => tails |> flat_map(value_calls(??, name)),
+// The callee nodes through which a value IS a call to the declaration: the
+// call, a pipe stage naming it, a let of either, a join's tails.
+fn value_calls(h, decl) = match join_tails(h) {
+  Some(tails) => tails |> flat_map(value_calls(??, decl)),
   None => match graph_node_body(h) {
-    NExpr(CallExpr(callee, _)) => callee_named(callee, name),
-    NExpr(PipeExpr(PForward, _, stage)) => callee_named(stage, name),
-    NExpr(VarRef(_)) => match graph_link_of(h) {
+    NExpr(CallExpr(callee, _)) => callee_naming(callee, decl),
+    NExpr(PipeExpr(PForward, _, stage)) => callee_naming(stage, decl),
+    NExpr(VarRef(_)) => match binder_read_by(h) {
       Some(b) => match graph_binder_of(b) {
         Some(_) => [],
-        None => value_calls(b, name),
+        None => value_calls(b, decl),
       },
       None => [],
     },

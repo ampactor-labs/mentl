@@ -565,7 +565,7 @@ fn chase_fields_deep(ref fields) = map({ (name, ty) => (name, chase_type_deep(ty
 // after inference, in env order (the reversing walk was the
 // param-render-reversed class's fourth face).
 fn find_unresolved(ref entries) with !Mutate =
-  entries |> filter({ (_, scheme, _, _) => has_free_tvar(judgment_ty(scheme)) }) |> map({ (name, scheme, _, _) => (name, judgment_ty(scheme), []) })
+  entries |> filter({ (_, scheme, _, _, _) => has_free_tvar(judgment_ty(scheme)) }) |> map({ (name, scheme, _, _, _) => (name, judgment_ty(scheme), []) })
 
 fn has_free_tvar(ref ty) = match ty {
   TVar(h) => match graph_chase(h) {
@@ -624,25 +624,23 @@ fn walk_chain(handle, depth) = if depth > 50 || handle < 0 {
 
 // ─── Live use-edge projection — refs-of (rename) ───────────────────
 //
-// Every judged reference to NAME is noted name → handle in the graph's
-// refs column at the one writer (infer_var_ref). The projection reads
-// that column — O(refs), never O(graph) — and walks it from the TAIL
-// because the column prepends (newest first): oldest-first preserves
-// the scan-era answer order and its first-seen span dedup.
-fn refs_of_name(name) with !Mutate =
-  map({ (m, sp, h) => (m, sp, Some(ref_role(name, h))) }, ref_sites_of(name))
+// Every reference the judgment linked to a declaration is among the
+// declaration's in-edges (`graph_ref_link`, the one writer). The projection
+// reads them — O(refs), never O(graph) — one site per source location, each
+// with what stands there. A pattern naming a constructor has no node of its
+// own yet, so it draws no edge and is no site here
+// (`Hβ.graph.positions-are-cells`).
+fn refs_of_decl(d) with !Mutate =
+  map({ (m, sp, h) => (m, sp, Some(ref_role(h))) }, decl_ref_sites(d))
 
-// What stands at a reference site. The column notes a reference at the node
-// that makes it: the name's own node when it is a callee (`call`) or a value
-// (`value`), and the SCRUTINEE a pattern constrains when a constructor is
-// named by a pattern (`pattern`) — the pattern has no cell of its own yet, so
-// `infer_pat` notes it at the node it matches
-// (`Hβ.graph.positions-are-cells`). A node holding any other body is such a
-// scrutinee; a node holding the name is the name.
-fn ref_role(name, h) with !Mutate = match graph_node_body(h) {
-  NExpr(VarRef(n)) => if n == name { if callee_of_parent(h) { "call" } else { "value" } } else { "pattern" },
-  _ => "pattern",
+// The text boundary's form: a person typed the name.
+fn refs_of_name(name) with !Mutate = match name_decl(name) {
+  Some(d) => refs_of_decl(d),
+  None => [],
 }
+
+// What stands at a reference: the callee of a call, or a value.
+fn ref_role(h) with !Mutate = if callee_of_parent(h) { "call" } else { "value" }
 
 // Whether the node is the callee of the call that holds it — the parent edge
 // read, never a second walk.
@@ -664,9 +662,31 @@ fn noted_address(site) = match site {
 // between positions needs (the proposer's rank), one per source site.
 fn ref_handles_of(name) with !Mutate = map({ (_m, _sp, h) => h }, ref_sites_of(name))
 
-fn ref_sites_of(name) with !Mutate = {
-  let hs = graph_refs_at(name)
+// The references to the declaration a name names at module level — the
+// env's own resolution once the judgment is done, followed by its link. A
+// local binder that shares the spelling is another declaration and none of
+// its references are counted here (`refs of lines` answered the emitter's
+// local `let lines` beside the prelude's until the link, 2026-10-14).
+fn ref_sites_of(name) with !Mutate = match name_decl(name) {
+  Some(d) => decl_ref_sites(d),
+  None => [],
+}
+
+// A declaration's references, one per source site, oldest first.
+fn decl_ref_sites(d) with !Mutate = {
+  let hs = graph_refs_of(d)
   collect_ref_sites(hs, len(hs) - 1, make_list(0))
+}
+
+// The declaration a name names at module level: the text boundary's one
+// resolution — a person typed the name, so the scope answers it, and every
+// read from there follows edges.
+fn name_decl(name) with !Mutate = env_resolve(name)
+
+// Every application of the declaration a name names.
+fn applies_of_name(name) with !Mutate = match name_decl(name) {
+  Some(d) => graph_applies_of(d),
+  None => [],
 }
 
 fn collect_ref_sites(ref hs, i, acc) with !Mutate = if i < 0 {
@@ -703,11 +723,12 @@ fn collect_ref_sites(ref hs, i, acc) with !Mutate = if i < 0 {
 // An import is DEAD when nothing the imported module declares is
 // referenced from inside the importing one. Every term of that is already
 // in the graph: module_cells gives each module its path, its span and its
-// decls; an ImportStmt among those decls IS the edge; and graph_refs_at
-// answers each declared name's reference sites in O(refs). So the read is
-// a fold over edges, never a scan of text — which matters, because the
-// text answer cannot tell a used name from one mentioned in a comment,
-// and every dead import found on 2026-09-04 hid behind exactly that.
+// decls; an ImportStmt among those decls IS the edge; and a declaration's
+// in-edges (`graph_refs_of`) are its references, each standing in its own
+// module. So the read is a fold over edges, never a scan of text — which
+// matters, because the text answer cannot tell a used name from one
+// mentioned in a comment, and every dead import found on 2026-09-04 hid
+// behind exactly that.
 //
 // What those three lines cost while nobody could see them: lib/lists,
 // lib/strings and lib/threading each imported the compiler's own types
@@ -736,28 +757,35 @@ fn import_report(cells) with !Mutate = fold([], import_rows_join(cells), cells)
 fn import_rows_join(cells, acc, cell) with !Mutate = acc ++ import_rows_for(cell, cells)
 
 fn import_rows_for(cell, cells) with !Mutate = match cell {
-  (_h, path, extent, _) => map(import_verdict(path, extent, cells), import_edges_of(cell)),
+  (h, path, _, _) => map(import_verdict(path, h, cells), import_edges_of(cell)),
 }
 
 // The per-edge verdict: the importing module, the path it names, and whether
 // anything that path brings is referenced here.
-fn import_verdict(path: String, extent, cells, imported) with !Mutate =
-  (path, imported, import_is_used(imported, extent, cells, 0))
+fn import_verdict(path: String, importer: Int, cells, imported) with !Mutate =
+  (path, imported, import_is_used(imported, importer, cells, 0))
 
-// Does the named module bring any name this extent references? A module the
-// weave does not carry answers False for its edge — never a fabricated True
-// that would hide a real dead import.
-fn import_is_used(imported: String, extent, cells, i) with !Mutate = if i >= len(cells) {
+// Does the named module declare anything a reference standing in the
+// importer links to? A module the weave does not carry answers False for its
+// edge — never a fabricated True that would hide a real dead import. The
+// reference's own module is the read, never a span compared without its
+// module (the span test it replaced answered `used` for spans that overlapped in another
+// file until the link, 2026-10-14).
+fn import_is_used(imported: String, importer: Int, cells, i) with !Mutate = if i >= len(cells) {
   false
 } else {
   match cells[i] {
-    (_h, p, _, _) => if module_tail_eq(p, imported) {
-      any_name_referenced_in(module_declared_names(cells[i]), extent, 0)
+    (_h, p, _, decls) => if module_tail_eq(p, imported) {
+      decls |> flat_map(decl_links_of) |> any({ (_, d) => referenced_from(importer, d) })
     } else {
-      import_is_used(imported, extent, cells, i + 1)
+      import_is_used(imported, importer, cells, i + 1)
     },
   }
 }
+
+// Whether a reference standing in the module links to the declaration.
+fn referenced_from(module: Int, d) with !Mutate =
+  any({ r => graph_module_of(r) == module }, graph_refs_of(d))
 
 // An import names a PATH (`dsp/clock`); a module cell names its resolved
 // file. They agree on the last segment, which is the module's identity.
@@ -776,42 +804,45 @@ fn import_edge_join(acc, d) = match graph_node_body(d) {
   _ => acc,
 }
 
-// The names a module DECLARES, read from its own decl list — the same
-// four claim kinds register_one_op weighs: fns, types with their ctors,
-// effects with their ops, handlers.
-fn module_declared_names(cell) = match cell {
-  (_, _, _, decls) => fold([], decl_names_join, decls),
-}
-
-fn decl_names_join(acc, d) = acc ++ decl_names_of(d)
-
-fn decl_names_of(d) = match graph_node_body(d) {
+// What a statement declares, each name with the handle its references link
+// to: a function or a handler its own node, a type's constructors their
+// variants, an effect's ops their nodes, a module value its value's cell
+// (a `let`'s binder IS its value's cell). A type whose constructor shares
+// its name is that constructor's to answer — a type name is not yet a
+// reference (`Hβ.graph.positions-are-cells`), so its own node links nothing.
+fn decl_links_of(d) = match graph_node_body(d) {
   NStmt(s) => match s {
-    FnStmt(n, _, _, _, _) => [n],
-    TypeDefStmt(n, ctors) => [n] ++ map({ (cn, _, _) => cn }, ctors),
-    EffectDeclStmt(n, _, ops) => [n] ++ map({ (on, _, _, _) => on }, ops),
-    HandlerDeclStmt(n, _, _, _, _, _) => [n],
+    FnStmt(n, _, _, _, _) => [(n, d)],
+    TypeDefStmt(n, ctors) => {
+      let vs = map({ (cn, _, vn) => (cn, vn) }, ctors)
+      if any({ (cn, _) => cn == n }, vs) { vs } else { [(n, d)] ++ vs }
+    },
+    EffectDeclStmt(n, _, ops) => [(n, d)] ++ map({ (on, _, _, onode) => (on, onode) }, ops),
+    HandlerDeclStmt(n, _, _, _, _, _) => [(n, d)],
+    LetStmt(PVar(n), value, _) => [(n, value)],
     _ => [],
   },
   _ => [],
 }
 
-// Is any of `names` referenced from within `extent`? The refs column is
-// name-keyed, so this is one O(1) probe per name plus its own sites.
-fn any_name_referenced_in(names, extent, i) with !Mutate = if i >= len(names) {
-  false
-} else if refs_inside(graph_refs_at(names[i]), extent, 0) {
-  true
-} else {
-  any_name_referenced_in(names, extent, i + 1)
+fn link_name(link) = match link {
+  (name, _) => name,
 }
 
-fn refs_inside(hs, extent, i) with !Mutate = if i >= len(hs) {
-  false
+// A reference stands inside a declaration when the declaration is among its
+// ancestors — the parent edge read, never a span compared without its module.
+fn ref_within(d, r) with !Mutate = if r == d {
+  true
 } else {
-  let sp = span_of_node_raw(hs[i])
-  if sp != span_zero() && span_overlaps(extent, sp) { true } else { refs_inside(hs, extent, i + 1) }
+  match graph_parent_of(r) {
+    Some(p) => ref_within(d, p),
+    None => false,
+  }
 }
+
+// The references to a declaration from outside the statement that declares
+// it, its own recursion and its own arms excluded.
+fn outside_refs(stmt, d) with !Mutate = graph_refs_of(d) |> filter({ r => !ref_within(stmt, r) })
 
 // ─── The declarations, read for what actually reaches them ──────────
 //
@@ -819,9 +850,10 @@ fn refs_inside(hs, extent, i) with !Mutate = if i >= len(hs) {
 // inside its own declaration — a fn only its own recursion calls, a
 // constructor nothing builds, an effect op no arm performs. This is the
 // import read one altitude down and turned around: that one asks whether
-// any name an edge BRINGS is referenced INSIDE the importing extent; this
-// one asks whether any site referencing a declared name lies OUTSIDE the
-// declaring one. Same two columns, same O(1) probe, opposite direction.
+// any declaration an edge BRINGS is referenced from INSIDE the importing
+// module; this one asks whether any reference to a declaration stands
+// OUTSIDE the statement that declares it. The same in-edges, read in the
+// opposite direction.
 //
 // Nine dead fns came out of src/ on 2026-09-04, found by grepping each
 // name and reading the hits by hand. That method costs one pass per name
@@ -847,12 +879,13 @@ fn decl_ref_rows_for(cell) with !Mutate = match cell {
 }
 
 fn decl_ref_row_join(path: String, acc, d) with !Mutate =
-  acc ++ map(decl_ref_verdict(path, graph_span_of(d)), decl_names_of(d))
+  acc ++ map(decl_ref_verdict(path, d), decl_links_of(d))
 
 // The per-name verdict: the declaring module, the name, and how many of its
-// reference sites lie outside its own declaration. Zero is the finding.
-fn decl_ref_verdict(path: String, extent, name: String) with !Mutate =
-  (path, name, count(ref_is_outside(extent), graph_refs_at(name)))
+// references stand outside its own declaration. Zero is the finding.
+fn decl_ref_verdict(path: String, stmt, link) with !Mutate = match link {
+  (name, d) => (path, name, len(outside_refs(stmt, d))),
+}
 
 // ─── unreachable — unreferenced's transitive face ───────────────────
 //
@@ -959,7 +992,7 @@ fn ur_index(ref decls, i, n, idx) = if i >= n {
   idx
 } else {
   match decls[i] {
-    (_, d) => ur_index(decls, i + 1, n, fold(idx, (m, name) => smap_add(m, name, i), decl_names_of(d))),
+    (_, d) => ur_index(decls, i + 1, n, fold(idx, (m, link) => smap_add(m, link_name(link), i), decl_links_of(d))),
   }
 }
 
@@ -1118,17 +1151,17 @@ fn orphan_row_join(path: String, acc, d) with !Mutate = {
     // Parenthesised deliberately: `++` binds tighter than `|>` (§Precedence),
     // so `acc ++ filter(…) |> map(…)` maps over the ACCUMULATOR. Written as
     // a pipe first and caught by the medium in one check.
-    acc ++ map(
-      orphan_verdict(path, byte_len(prose)),
-      filter(name_is_orphaned(graph_span_of(d)), decl_names_of(d))
-    )
+    acc ++ map(orphan_verdict(path, byte_len(prose)), filter(name_is_orphaned(d), decl_links_of(d)))
   }
 }
 
-fn name_is_orphaned(extent, name: String) with !Mutate =
-  count(ref_is_outside(extent), graph_refs_at(name)) == 0
+fn name_is_orphaned(stmt, link) with !Mutate = match link {
+  (_, d) => len(outside_refs(stmt, d)) == 0,
+}
 
-fn orphan_verdict(path: String, prose_bytes, name: String) = (path, name, prose_bytes)
+fn orphan_verdict(path: String, prose_bytes, link) = match link {
+  (name, _) => (path, name, prose_bytes),
+}
 
 // The floor is a length, not a judgment: below it a comment is a label
 // ("// the fd", "// see above") and its absence of readers says nothing.
@@ -1168,22 +1201,14 @@ fn effect_rows_for(cell) with !Mutate = match cell {
 
 fn effect_row_join(path: String, acc, d) with !Mutate = match graph_node_body(d) {
   NStmt(s) => match s {
-    EffectDeclStmt(n, _, ops) => push(acc, (path, n, len(ops), count(op_is_performed(graph_span_of(d)), ops))),
+    EffectDeclStmt(n, _, ops) => push(acc, (path, n, len(ops), count(op_is_performed(d), ops))),
     _ => acc,
   },
   _ => acc,
 }
 
-fn op_is_performed(extent, op) with !Mutate = match op {
-  (on, _, _, _) => count(ref_is_outside(extent), graph_refs_at(on)) > 0,
-}
-
-// A ref site counts when it has a real span and that span does not fall
-// within the declaration's own extent. A spanless site proves nothing about
-// where it is, so it never counts as an outside reader.
-fn ref_is_outside(extent, site) with !Mutate = {
-  let sp = span_of_node_raw(site)
-  sp != span_zero() && !span_overlaps(extent, sp)
+fn op_is_performed(stmt, op) with !Mutate = match op {
+  (_, _, _, onode) => len(outside_refs(stmt, onode)) > 0,
 }
 
 // ─── The decls column's projection — one home, two readers ──────────
@@ -2416,7 +2441,7 @@ fn value_where(name: String, scope: String) with !Mutate = match env_lookup(name
 // function value with no declaration body (a module let holding a
 // closure, a constructor) answers its head, parameters and return.
 fn decl_badges(name: String, params, ret, row) with !Mutate = {
-  let decl = module_decl(name)
+  let decl = name_decl(name)
   let body = decl_body(decl)
   // One naming for the head, every badge and every install: the variables a
   // developer would write, read off the render context (`var_names`), never
@@ -2506,13 +2531,14 @@ fn decl_body(decl) with !Mutate = match decl {
 
 // A name with no global entry is a LOCAL: a parameter, a let, a pattern's
 // part, a function literal's parameter. It is found the way the judgment
-// drew it — from each reference to the name in the module the question is
-// about (`graph_refs_at`) along the reference's link (`graph_link_of`) to
-// the cell it reads. One binder answers its badge alone; several, each
-// with where it is first read, which is what tells them apart on the page.
-// A binder nothing reads has no edge to follow and is not listed.
+// drew it — from each reference spelled so in the module the question is
+// about (`spelled_reads`, the text boundary asking by spelling) along the
+// reference's edge to the binder it reads (`binder_read_by`). One binder
+// answers its badge alone; several, each with where it is first read,
+// which is what tells them apart on the page. A binder nothing reads has
+// no edge to follow and is not listed.
 fn binder_badges(name: String, scope: String) with !Mutate = {
-  let reads = graph_refs_at(name) |> filter(read_in(scope, ??)) |> flat_map(linked_read) |> reverse
+  let reads = spelled_reads(name, scope) |> flat_map(linked_read)
   match unique(map(read_binder, reads)) {
     [] => QRError("not found: {name} — no declaration of it, and no binder of it read in {scope}"),
     [b] => QRWhere([named_badge(name, b)], []),
@@ -2527,7 +2553,21 @@ fn named_badge(name: String, b) with !Mutate = value_badge(name, TVar(b)) ~> var
 fn read_in(scope: String, r) with !Mutate =
   byte_len(scope) == 0 || module_name_of_handle(graph_module_of(r)) == scope
 
-fn linked_read(r) with !Mutate = match graph_link_of(r) {
+// Every current reference spelled `name` in the scope's module, in the order
+// the parse minted them — the span index read once, since a question asked by
+// spelling is the one place a name is the key.
+fn spelled_reads(name: String, scope: String) with !Mutate = match graph_snapshot() {
+  Graph(_, span_index) => span_index |> filter(spelled_in(name, scope, ??)) |> map({ (_, h) => h }) |> unique,
+}
+
+fn spelled_in(name: String, scope: String, entry) with !Mutate = match entry {
+  (_, h) => match graph_node_body(h) {
+    NExpr(VarRef(n)) => n == name && graph_node_current(h) && read_in(scope, h),
+    _ => false,
+  },
+}
+
+fn linked_read(r) with !Mutate = match binder_read_by(r) {
   Some(b) => [(b, r)],
   None => [],
 }
@@ -2536,8 +2576,8 @@ fn read_binder(read) = match read {
   (b, _) => b,
 }
 
-// The refs column prepends, so the reads arrive reversed into judgment
-// order; a binder's first read is the first of its reads.
+// The reads arrive in parse order, so a binder's first read is the first of
+// its reads.
 fn binder_line(name: String, reads, b) with !Mutate = match reads |> filter(read_of(b, ??)) |> head {
   (_, r) => "{named_badge(name, b)} — first read at {show_span(span_of_node_raw(r))}",
 }
@@ -2588,7 +2628,7 @@ fn variant_lines(entries, tname: String, i, n, acc) = if i >= n {
   acc
 } else {
   match list_index(entries, i) {
-    (name, scheme, _, kind) => if is_ctor_of(kind, scheme, tname) {
+    (name, scheme, _, kind, _) => if is_ctor_of(kind, scheme, tname) {
       // drift-audit: ignore — bounded by the type's ctor count, not a hot loop
       variant_lines(entries, tname, i + 1, n, acc ++ ["{name}/{int_to_str(ctor_arity(scheme))}"])
     } else {
@@ -2644,7 +2684,7 @@ fn ty_has_repr_pin(ty) with Pure = match ty {
 fn fanout_sites(h, tees) with !Mutate = {
   let body = graph_node_body(h)
   match body {
-    NExpr(PipeExpr(PTee, l, r)) => fanout_sites(l, push(tees, tee_handler_name(r))),
+    NExpr(PipeExpr(PTee, l, r)) => fanout_sites(l, push(tees, tee_arms(r))),
     NExpr(FanoutExpr(_)) => [where_site(h, Branches(FanDistribute, boundary_width(h)), tees)] ++ child_sites(body, tees),
     NExpr(PipeExpr(PFanout(fan), _, _)) => [where_site(h, Branches(fan, boundary_width(h)), tees)] ++ child_sites(body, tees),
     NExpr(CallExpr(f, _)) => if callee_is_fanout(f) {
@@ -2698,7 +2738,7 @@ fn decl_seeds(acc, h) with !Mutate = match graph_node_body(h) {
 fn extent_calls(h, tees, via: String, acc) with !Mutate = {
   let body = graph_node_body(h)
   match body {
-    NExpr(PipeExpr(PTee, l, r)) => extent_calls(l, push(tees, tee_handler_name(r)), via, acc),
+    NExpr(PipeExpr(PTee, l, r)) => extent_calls(l, push(tees, tee_arms(r)), via, acc),
     NExpr(CallExpr(f, _)) => fold(seed_call(acc, f, tees, via), extent_calls_step(tees, via), body_child_handles(body)),
     NExpr(LambdaExpr(_, _)) => acc,
     NStmt(FnStmt(_, _, _, _, _)) => acc,
@@ -2785,7 +2825,7 @@ fn direct_callees(decls, name: String) with !Mutate = match smap_get(decls, name
 fn tee_lines(h) with !Mutate = {
   let body = graph_node_body(h)
   match body {
-    NExpr(PipeExpr(PTee, l, r)) => tee_line(h, tee_handler_name(r)) ++ tee_lines(l),
+    NExpr(PipeExpr(PTee, l, r)) => tee_line(h, r) ++ tee_lines(l),
     _ => body_child_handles(body) |> flat_map(tee_lines),
   }
 }
@@ -2805,14 +2845,17 @@ fn handler_line(name: String, arms, h) with !Mutate = {
 // An install's line in a function's badges: the handler, what it absorbs
 // and what this install answers — the tee's own type, the body's answer met
 // by the arms'.
-fn tee_line(h, hn: String) with !Mutate = if byte_len(hn) == 0 {
-  []
-} else {
-  match handler_arms(hn) {
-    Some(arms) => [
-      "~> {hn} absorbs {join(" + ", handler_effect_names(arms))}, answers {value_type(lookup_ty(h))} at {show_span(span_of_node_raw(h))}"
-    ],
-    None => ["~> {hn} at {show_span(span_of_node_raw(h))} — no handler declaration by that name"],
+fn tee_line(h, r) with !Mutate = {
+  let hn = tee_handler_name(r)
+  if byte_len(hn) == 0 {
+    []
+  } else {
+    match tee_arms(r) {
+      Some(arms) => [
+        "~> {hn} absorbs {join(" + ", handler_effect_names(arms))}, answers {value_type(lookup_ty(h))} at {show_span(span_of_node_raw(h))}"
+      ],
+      None => ["~> {hn} at {show_span(span_of_node_raw(h))} — {hn} names no handler declaration"],
+    }
   }
 }
 
@@ -2833,7 +2876,7 @@ fn tee_line(h, hn: String) with !Mutate = if byte_len(hn) == 0 {
 type EnvDemand = {decl: String, mode: String, name: String, site: String}
 
 fn env_demand() =
-  ["env", "env_opt"] |> flat_map({ op => graph_applies_at(op) }) |> unique |> sort |> fold([], env_demand_at)
+  ["env", "env_opt"] |> flat_map(applies_of_name) |> unique |> sort |> fold([], env_demand_at)
 
 fn env_demand_at(acc, c) = match env_read_demand(c) {
   None => acc,
@@ -2885,30 +2928,33 @@ fn serving_up(en: String, child, parent, seen) = match parent {
   None => [],
   Some(p) => match graph_node_body(p) {
     NModule(_) => match graph_node_body(child) {
-      NStmt(FnStmt(name, _, _, _, _)) => if string_in_list(seen, name) {
+      NStmt(FnStmt(_, _, _, _, _)) => if any({ s => s == child }, seen) {
         []
       } else {
-        graph_applies_at(name) |> unique |> flat_map(serving_installs(en, ??, push(seen, name)))
+        graph_applies_of(child) |> unique |> flat_map(serving_installs(en, ??, push(seen, child)))
       },
       _ => [],
     },
-    NExpr(PipeExpr(PTee, l, r)) => if l == child && handler_answers_effect(tee_handler_name(r), en) {
-      [tee_handler_name(r)]
-    } else {
-      serving_up(en, p, graph_parent_of(p), seen)
+    NExpr(PipeExpr(PTee, l, r)) => match tee_handler_decl(r) {
+      Some(d) => if l == child && handler_answers_effect(d, en) {
+        [d]
+      } else {
+        serving_up(en, p, graph_parent_of(p), seen)
+      },
+      None => serving_up(en, p, graph_parent_of(p), seen),
     },
     _ => serving_up(en, p, graph_parent_of(p), seen),
   },
 }
 
-fn handler_answers_effect(hname: String, en: String) = match handler_arms(hname) {
+fn handler_answers_effect(d, en: String) = match handler_arms_at(d) {
   Some(arms) => string_in_list(handler_effect_names(arms), en),
   None => false,
 }
 
 // A handler crosses the host boundary when what its arms perform past what
 // it absorbs reaches WASI — env_from_host's do; env_fixed's never ask a host.
-fn handler_crosses_host(hname: String) = match env_lookup(hname) {
+fn handler_crosses_host(d) = match graph_published(d) {
   Some(entry) => match entry {
     (_, _, HandlerKind(residual, _, _, _, _)) => match resolve_row(mk_ef_open([], residual)) {
       EfRow(names, _, _) => any({ n => eff_name_str(n) == "WASI" }, names),
@@ -2933,20 +2979,14 @@ fn env_read_site(c) = match graph_span_of(c) {
 fn env_demand_roster(rows) =
   join("\n", map({ EnvDemand({decl, mode, name, site}) => "{name}\t{mode}\t{site}\t{decl}" }, rows))
 
-fn handler_arms(hname: String) = match env_lookup(hname) {
-  Some(entry) => match entry {
-    (_, _, HandlerKind(_, _, _, _, arms)) => Some(arms),
-    _ => None,
-  },
-  None => None,
-}
-
 // The schedule a site runs under: the innermost install whose class is a
 // schedule, read off the roster the judgment prices an install by and the
-// lowering lowers it by (`projection_of_effects`); Seq when none is.
+// lowering lowers it by (`projection_of_effects`); Seq when none is. Each
+// install is the arms its handler declaration was published with, read
+// along the tee's edge, or none where the tee installs no declaration.
 fn schedule_of(tees) = fold(Seq, inner_schedule, tees)
 
-fn inner_schedule(acc, hname: String) = match handler_arms(hname) {
+fn inner_schedule(acc, installed) = match installed {
   Some(arms) => match projection_of_effects(handler_effect_names(arms)) {
     PSchedule(s) => s,
     PDispatch => acc,
@@ -3165,7 +3205,7 @@ fn why_expand(reason, depth) = if depth > 20 {
 
 // The entry chains of the declaration a global name names — one per effect
 // its row carries — and whether a chain is the named effect's.
-fn decl_effect_chains(name: String) = match module_decl(name) {
+fn decl_effect_chains(name: String) = match name_decl(name) {
   Some(dh) => effect_entries_of(dh),
   None => [],
 }

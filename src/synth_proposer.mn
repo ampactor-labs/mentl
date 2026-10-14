@@ -294,7 +294,7 @@ fn enumerate_vocabulary_calls(target_ty, allowed_row, context, rings) with !Muta
     ([], []),
     (acc, entry) => match acc {
       (accepted, rejected) => match entry {
-        (name, scheme, reason, kind) => match kind {
+        (name, scheme, reason, kind, _) => match kind {
           FnScheme | ValueScheme => // A value binding of function type is vocabulary exactly as a
           // declared fn is: a reference to it fills a function-typed hole.
           // A name in none of the rings is in scope through the link alone
@@ -772,7 +772,7 @@ fn ctors_of_type_from(entries, type_name, i, n, own buf, count) with !Mutate = i
   slice(buf, 0, count)
 } else {
   match list_index(entries, i) {
-    (name, scheme, reason, kind) => if is_ctor_of(kind, scheme, type_name) {
+    (name, scheme, reason, kind, _) => if is_ctor_of(kind, scheme, type_name) {
       ctors_of_type_from(
         entries,
         type_name,
@@ -1494,14 +1494,14 @@ fn candidate_row(context, node) = match callee_name_of(node) {
 fn scope_row_of(name: String, context) = match context {
   Context(scope_bindings, _, _, _) => match find(binding_is_named(name), scope_bindings) {
     Some(entry) => match entry {
-      (_, scheme, _, _) => extract_row(judgment_ty(scheme)),
+      (_, scheme, _, _, _) => extract_row(judgment_ty(scheme)),
     },
     None => mk_ef_pure(),
   },
 }
 
 fn binding_is_named(name: String, entry) = match entry {
-  (ename, _, _, _) => ename == name,
+  (ename, _, _, _, _) => ename == name,
 }
 
 // What this candidate DENOTES, if the medium can read it: a literal denotes

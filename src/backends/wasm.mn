@@ -3607,7 +3607,7 @@ fn ms_handler_names_at(entries, i, acc) = if i == 0 {
   acc
 } else {
   match list_index(entries, i - 1) {
-    (name, _scheme, _reason, kind) => {
+    (name, _scheme, _reason, kind, _) => {
       let acc2 = match kind {
         HandlerKind(_row, _world, _config, _state, _arms) => if len(multishot_ops_of(name)) > 0 && ls_find_str_local(acc, name, 0) < 0 {
           [name] ++ acc

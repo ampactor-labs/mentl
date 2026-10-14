@@ -81,14 +81,47 @@ type Ty
   // RN.1 — authored alias name (e.g. "Port") wrapping resolved type
   | TAlias(String, Ty)
 
-// A name that resolves to a constructor where it stands — the env's own
-// answer, never a guess read off the name's first letter.
-fn constructor_named(name: String) = match env_lookup(name) {
-  Some(entry) => match entry {
-    (_, _, kind) => match kind {
-      ConstructorScheme(_, _) => true,
-      _ => false,
+// The effect a reference performs when what it names is an op: the effect
+// its declaration was published under, read along the reference's edge.
+fn ref_op_effect(r) = match graph_ref_decl(r) {
+  Some(d) => match graph_published(d) {
+    Some((_, _, kind)) => match kind {
+      EffectOpScheme(en, _, _, _) => Some(en),
+      FnScheme
+      | ValueScheme
+      | ParamScheme(_)
+      | ConstructorScheme(_, _)
+      | RecordSchemeKind(_)
+      | EffectDeclKind(_, _)
+      | HandlerKind(_, _, _, _, _)
+      | HandlerChainKind(_)
+      | RowAliasKind(_)
+      | TypeVariants(_) => None,
     },
+    None => None,
+  },
+  None => None,
+}
+
+// A reference that names a constructor: the kind its declaration was
+// published as, read along the reference's edge — never the name asked
+// again, and never a guess read off its first letter.
+fn ref_is_constructor(r) = match graph_ref_decl(r) {
+  Some(d) => match graph_published(d) {
+    Some((_, _, kind)) => match kind {
+      ConstructorScheme(_, _) => true,
+      FnScheme
+      | ValueScheme
+      | ParamScheme(_)
+      | EffectOpScheme(_, _, _, _)
+      | RecordSchemeKind(_)
+      | EffectDeclKind(_, _)
+      | HandlerKind(_, _, _, _, _)
+      | HandlerChainKind(_)
+      | RowAliasKind(_)
+      | TypeVariants(_) => false,
+    },
+    None => false,
   },
   None => false,
 }
@@ -1453,6 +1486,22 @@ type Mutation
   | MOweLate(Int)
   // a contract claimed of the value at a node (undo = pop the newest)
   | MClaimNote(Int)
+  // a reference linked to a declaration: the reference, the declaration,
+  // and the reference's cell before the write (undo = restore the cell and
+  // pop the declaration's newest in-edge)
+  | MRefLink(Int, Int, Int)
+  // a mention or an application entered among a declaration's in-edges
+  // (undo = pop the newest)
+  | MInEdge(Int)
+  // what the judgment published about a declaration, entered under its
+  // handle (undo = pop the newest)
+  | MPublish(Int)
+
+// An edge arriving at a declaration, held at the declaration's handle: a
+// reference the judgment linked to it, a node whose comment names it in
+// backticks, or a call the judgment proved applies it — through a local
+// that holds it, a branch's tail or a pipe's stage as much as directly.
+type InEdge = UseBy(Int) | MentionBy(Int) | AppliedAt(Int)
 
 // How a node was born, where the parse made one node of another's spelling:
 // a destructuring `let` is the one-arm match it becomes (desugar_block), and
@@ -2152,6 +2201,7 @@ type SpinePage = {
   comments: [(String, Span)],
   dispatch: [DispatchTier],
   installs: [InstallShape],
+  links: [Int],
   module: [Int],
   narrowing: [Int],
   nodes: [GNode],
@@ -3051,41 +3101,59 @@ fn show_flow_label(label) with Pure = match label {
 // home, ONE declaration serving the wheel's self-build (src+lib) and every
 // program that links the prelude.
 //
-// Scoped bindings via push/pop mark. Env is never passed as argument.
-// Every read performs env_lookup; every write performs env_extend.
-// Entries are 4-tuples (name, Binding, Reason, SchemeKind) — SchemeKind
-// carries construction-origin metadata that lower dispatches on.
-// Scoped bindings via push/pop mark. Env is never passed as argument.
-// Every read performs env_lookup; every write performs env_extend.
-// Entries are 4-tuples (name, Binding, Reason, SchemeKind) — SchemeKind
-// carries construction-origin metadata that lower dispatches on. The
-// module a name is DECLARED in is deliberately not an entry field: an
-// entry is re-published wherever a judgment further on refines it (a handler's
-// registration re-publishes its ops, a caller's resolution a HOF's row),
-// so the publisher's module is not the declarer's. The declarer is the
-// statement's own column, read once per judgment (infer.mn's inf_decl_module, F0b).
+// The scope the judgment resolves names through, and nothing else: an entry
+// is a name and the handle of the node that declares it. What the judgment
+// learns about a declaration — its scheme, its reason, its kind — is
+// published at that handle in the graph (`graph_publish`), so the scope maps
+// a name to a node and the node carries its facts. A reference judged here
+// draws its edge to the node (`graph_ref_link`), and no reader after the
+// judgment resolves a name again. The snapshot is the scope projected with
+// each declaration's published facts, for the readers that enumerate it.
 // The OP VOCABULARY declares HERE — the lowest module every performer
 // imports — while the handlers live at their subsystem (pipeline.mn);
 // the effects prepass phase (pre_register_effect) makes the pair
 // order-independent regardless of the split.
-type Env = Env([(String, Binding, Reason, SchemeKind)])
+type Env = Env([(String, Binding, Reason, SchemeKind, Int)])
 
-// [(name, Binding, Reason, SchemeKind)]
 effect EnvRead {
-  env_lookup(String) -> Option((Binding, Reason, SchemeKind))
-  env_lookup_type(String) -> Option((Binding, Reason, SchemeKind))
-  env_lookup_ctor(String) -> Option((Binding, Reason, SchemeKind))
-  env_lookup_variants(String) -> Option((Binding, Reason, SchemeKind))
+  // The declaration a name denotes in scope, the newest binding first.
+  env_resolve(name: String) -> Option(Int)
+  // The newest binding whose declaration is a TYPE (an alias or a nominal
+  // record), past any later declaration of another kind under the name.
+  env_resolve_type(name: String) -> Option(Int)
+  // The newest binding whose declaration carries a type's variants.
+  env_resolve_variants(name: String) -> Option(Int)
   // Whether the name's live binding is MODULE-LEVEL: published below every
   // open scope mark. The env is the scope stack, so the entry's position
   // is the fact — false for a parameter, a let, a nested fn, and for a
   // name bound nowhere.
-  env_lookup_is_global(String) -> Bool
+  env_lookup_is_global(name: String) -> Bool
   env_snapshot() -> Env
 }
 
+// What the judgment published about the declaration a name denotes in
+// scope. A holder of a NAME reads it so — the judgment at its writer, a
+// person's input at the text boundary; a holder of a reference follows its
+// edge (`graph_ref_decl`) to the same handle and never asks the name.
+fn env_lookup(name: String) = match env_resolve(name) {
+  Some(d) => graph_published(d),
+  None => None,
+}
+
+fn env_lookup_type(name: String) = match env_resolve_type(name) {
+  Some(d) => graph_published(d),
+  None => None,
+}
+
+fn env_lookup_variants(name: String) = match env_resolve_variants(name) {
+  Some(d) => graph_published(d),
+  None => None,
+}
+
 effect EnvWrite {
-  env_extend(String, Binding, Reason, SchemeKind)
+  // A declaration entering scope: its facts published at its handle, its
+  // name bound to it.
+  env_extend(name: String, scheme: Binding, reason: Reason, kind: SchemeKind, decl: Int)
   env_scope_enter()
   env_scope_exit()
 }
@@ -3105,8 +3173,10 @@ effect BranchEnv {
   // The fourth component is the base's MODULE-LEVEL extent — the root's
   // first open scope mark, or its count when no scope is open — so a
   // branch instance answers env_lookup_is_global for a base hit exactly.
-  env_base_view() -> ([(String, Binding, Reason, SchemeKind)], Int, [[(String, Int)]], Int)
-  env_publishes() -> [(String, Binding, Reason, SchemeKind)]
+  env_base_view() -> ([(String, Int)], Int, [[(String, Int)]], Int)
+  // The branch's publishes, each read with the facts its declaration holds
+  // while the segment's writes are still live.
+  env_publishes() -> [(String, Binding, Reason, SchemeKind, Int)]
 }
 
 // The lex-name intern (§5.O layer 1) — an identifier's canonical String
@@ -3206,10 +3276,10 @@ effect GraphRead {
   graph_comment_at(Int) -> String
   // the comment's own source span, carried from parse (zero span if absent) — the reference diagnostics anchor here
   graph_comment_span_at(Int) -> Span
-  // draw a resolved comment-reference edge (owner node -> referent decl node); drawn once at the infer tail
-  graph_attach_comment_ref(Int, Int)
-  // reverse read: the comment owners referencing this decl — the audit's referenced-by projection
-  graph_comment_refs_of(Int) -> [Int]
+  // draw a resolved comment-reference edge (owner node -> referent decl node), entered among the referent's in-edges
+  graph_attach_comment_ref(owner: Int, referent: Int)
+  // the comment owners naming this declaration — its in-edges that are mentions
+  graph_comment_refs_of(decl: Int) -> [Int]
   // the e-graph canonical pointer at a handle — the equivalence weave's find step (returns the handle itself if it is its own e-class root). One co-indexed weave, exactly like the nodes column's TVar union-find; egraph_extract chases it live.
   graph_canon_at(Int) -> Int
   // the refinement-narrowing pointer at a handle — the path-predicate's bool-node handle proven to hold AT this program point (0 = no narrowing). One co-indexed weave like the canon column; lower's verify-obligation read chases it live to elide a check the path already proves (§4⑥). Appropriate as a side-table: narrowing is a per-program-point boolean fact, not a unifiable variable.
@@ -3223,19 +3293,21 @@ effect GraphRead {
   // these with its stmt's planned range as (next0, limit0).
   graph_boundary_at(Int) -> ExecutableBoundary
   graph_branch_seed() -> ([SpinePage], Int, [(ValidSpan, Int)])
-  // The REVERSE-EDGE column's read: every reference handle noted under
-  // NAME (newest first — the column prepends). refs_of_name's whole-
-  // graph VarRef scan and the oracle's quadratic count_dependents both
-  // retire onto this O(bucket) read.
-  graph_refs_at(String) -> [Int]
-  // The APPLICATION edge's read: every application handle noted under
-  // NAME, newest first — the reverse call graph a reader follows where it
-  // would otherwise scan the graph for call nodes (the gradient's bracket).
-  graph_applies_at(String) -> [Int]
+  // THE REFERENCE LINK's reads. A reference's declaration: the handle the
+  // one writer linked it to (`graph_ref_link`), or None for a node no
+  // reference resolution reached.
+  graph_ref_decl(reference: Int) -> Option(Int)
+  // Every reference to a declaration, each once, in the current generation:
+  // its in-edges that are uses.
+  graph_refs_of(decl: Int) -> [Int]
+  // Every application of a declaration: its in-edges that are calls — the
+  // reverse call graph a reader follows where it would otherwise scan the
+  // graph for call nodes (the gradient's bracket).
+  graph_applies_of(decl: Int) -> [Int]
+  // What the judgment published about a declaration, newest first: its
+  // scheme, the reason it was bound and its kind (`env_extend` writes it).
+  graph_published(decl: Int) -> Option((Binding, Reason, SchemeKind))
   graph_decls_at() -> [Int]
-  // The module-level declaration a global name names, newest first — one
-  // read where a reader would walk the whole decls column for it.
-  graph_module_decl_at(String) -> Option(Int)
   // The value-holes column's read: (hole handle, entry name) pairs — the
   // executable gate's whole input (lowering-is-a-column (ii), the first
   // walker swap; the four-fn LowExpr walk retired onto this read).
@@ -3283,13 +3355,6 @@ effect GraphRead {
   // node, newest first. At a hole it is what the fill must satisfy; at a
   // let's value it is the annotation a reader of the binder may stand on.
   graph_claims_of(Int) -> [Ty]
-  // A node's OWN link: the handle its binding names when it is bound to a
-  // bare variable, read without chasing. A reference is bound to its
-  // binder's cell exactly so (infer_var_ref), which makes this the edge
-  // from a use to what it uses — the one the value walk follows, where the
-  // chase would hand back the class root, which a join or an operator may
-  // have merged with values the binder never held.
-  graph_link_of(Int) -> Option(Int)
   // THE SEGMENT'S WRITE SET (C6): the cells below a handle frontier that a
   // bind since a checkpoint moved — a type or row cell overwritten in the
   // trail's MSetNode / MSetRow entries — each once, in first-write order.
@@ -3376,25 +3441,27 @@ effect GraphWrite {
   // in the graph as it does in the record, and the log keeps both pairs — a
   // containment scan reaches the one cell by either extent
   graph_index_span(ValidSpan, Int)
-  // The REVERSE-EDGE column's write (Hβ.graph.reverse-edge-and-bound-
-  // projection, the 5.5 column arc's opener): infer_var_ref — the ONE
-  // writer, where the use edge is drawn — notes (name → the reference's
-  // handle) into the smap column, O(1) prepend per reference. The read
-  // face is graph_refs_at; three whole-graph scans retire onto the pair.
-  graph_ref_note(String, Int)
-  // The APPLICATION edge's write: infer.mn's call_owes, the one home where an
-  // application fills a declaration's parameters, notes (the name applied →
-  // the application's handle) for each top-level declaration its callee can
-  // be. The refs column's contract: append-only, so a reader re-reads the
-  // application at the handle and drops what no longer is one.
-  graph_apply_note(String, Int)
+  // THE REFERENCE LINK (M1): the one writer, where a name resolves in its
+  // scope, links the reference to the node that declares it. The
+  // reference's spine cell holds the declaration forward and the
+  // declaration's in-edges hold the reference back, one trailed write, so a
+  // rolled-back judgment's links go with it. No reader after the judgment
+  // resolves the name again.
+  graph_ref_link(reference: Int, decl: Int)
+  // An application among a declaration's in-edges: call_owes, the one home
+  // where an application fills a declaration's parameters, enters it for each
+  // declaration its callee can be. Trailed, so a speculation's applications
+  // go with it.
+  graph_apply_note(decl: Int, call: Int)
+  // What the judgment learned about a declaration, at its handle: its scheme,
+  // the reason it was bound and its kind. Trailed — a speculative round's
+  // publication goes with its rollback, and the next round publishes again.
+  graph_publish(decl: Int, scheme: Binding, reason: Reason, kind: SchemeKind)
   // The decls column — the refs column's sibling at decl granularity:
   // the FnStmt judgment notes its own node handle; the read face is
   // graph_decls_at (the oracle queue's seed). Judgment rounds re-note,
   // so readers dedup by handle.
   graph_decl_note(Int)
-  // A module-level declaration filed under the name it declares.
-  graph_module_decl_note(String, Int)
   // The value-holes column's writes: lower's authored-hole arm NOTES the
   // surviving hole (value-position is a lowering decision — a consumed
   // call-arg/pipe hole never reaches that arm), and each constructed

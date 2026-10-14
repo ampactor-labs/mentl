@@ -1,0 +1,2 @@
+// A function nothing calls.
+fn never() = 0

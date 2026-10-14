@@ -678,9 +678,9 @@ a judgment holds module-level names, so every parameter, `let`, pattern part
 and function literal's parameter answers "not found" (measured on boot
 b400dc74 over `let scale = 2.0`: `mentl why … scale` and `query … "type of
 scale"`). `where` reads a local the way the judgment drew it — each
-reference to the name in the module the question is about (`graph_refs_at`,
-filtered by `graph_module_of`) along its link (`graph_link_of`) to the cell
-it reads — with the question carrying its module (`QWhere(name, scope)`,
+reference spelled so in the module the question is about (`spelled_reads`)
+along its edge to the binder it reads (`binder_read_by`, since M1's first
+pin) — with the question carrying its module (`QWhere(name, scope)`,
 `parse_query_string(scope, q)`). THE CLOSE: `QTypeOf`, `QWhy` and `QFlowOf`
 take the scope the same way and fall to the one binder read when the env
 has no entry — `binder_badges`' reads factored as the shared resolution:
@@ -1393,8 +1393,9 @@ catch-all after another arm of a match over a sum, with the constructors
 that escape the arms before it, read off the strict matrix — a match's only
 arm is a binding, never a dispatch, so `{ x => body }` is not convicted);
 the census note is the roster rendered; the board bounded it at the 1,261
-the wheel's link read the day it was counted, seen RED one below, and holds
-it at 1,248 after the landing deleted thirteen. `mentl
+the wheel's link read the day it was counted, seen RED one below, and held
+it at 1,248 after the landing deleted thirteen, 1,243 after M1's first pin
+(2026-10-14). `mentl
 tighten` writes each roster AT THE JUDGED MATCH NODE (`write_roster`,
 src/main.mn — one write, `graph_register_node`) and renders the module
 whole from its own module node through the formatter's render, its
@@ -1536,7 +1537,7 @@ honest remainder of the same landing, named so nothing inherits it silently.
 Fourteen of the old baseline's twenty-six keys are NOT census shapes and did
 not move: the micro battery (an exec seam WASI has no process-spawn for), the
 march's peak RSS and wall cost, the loop-scaffold count (a filesystem fact),
-doc-truth's sha chain, census_errors / `comment_refs` /
+doc-truth's sha chain, census_errors / the comment-reference count /
 field_offset_unprovable / eq_type_unprovable (diagnostic-class counts read
 from a compile's stderr rather than from a walk), the authored own/ref quiet
 gate (a TEXT count the baseline's own entry already calls "the census-shape
@@ -5773,6 +5774,10 @@ read plus the import reach, and the name lists are deleted.
 entry's CLOSE asks for, from the module cells' own declarations
 (`decl_index`); the rings still read name lists, and reading a candidate's
 ring off its declaration's module through that index is the remaining move.
+2026-10-14 (M1's first pin): the binding keeps its declaration's handle — the
+env's snapshot entry carries it as its fifth field — so the CLOSE's condition
+holds; the rings, `decl_index` and the rank's `ref_handles_of` still ask by
+name, and are the move.
 
 ### `Hβ.parser.field-name-after-dot-drops-keyword` — CLOSED 2026-09-25
 
@@ -13499,8 +13504,8 @@ computes the entry's transitive reach as a NAME-keyed worklist over
 reach_names_expr, keeps it in a scratch buffer, and the fn set it proves
 is read by nobody else — so the `unreachable` query facet (born the same
 day, query.mn `reach_report`) RE-DERIVES the same closure over
-`collect_free_vars` from the decls column, and `refs_col` is name-keyed
-too (PLAN §7's "REVERSE EDGE landed" corrected to say so). Three walks
+`collect_free_vars` from the decls column, and the refs column was
+name-keyed too (PLAN §7's "REVERSE EDGE landed" corrected to say so). Three walks
 of one fact. The ultimate form: reachability is a spine COLUMN written
 ONCE at the one worklist — a bit per decl handle, set when the frontier
 constructs it — and emit, `unreachable`, the census, and the oracle's
@@ -13516,19 +13521,37 @@ fns included, so a nested fn sharing a module-level function's name answers
 for it there. `where` read the same index for a function's body and the
 first declaration of ANY kind for its address — a block's `let` included —
 so it printed the prelude's `lines` beside a local `let lines` in the
-emitter. `where` now reads the one module-level declaration (`module_decl`,
-src/query.mn; `at_module_level`, src/graph.mn); the emit's index is the
-remainder, and the handle-keyed column dissolves both. AND THE LINK IS A
-UNION-FIND EDGE TODAY, measured 2026-10-09: `graph_link_of` answers a
+emitter. `where` came to read the one module-level declaration by a
+name-keyed table and `at_module_level` (src/graph.mn); the emit's index is
+the remainder, and the handle-keyed column dissolves both. AND THE LINK WAS
+A UNION-FIND EDGE, measured 2026-10-09: the link read answered a
 reference's binder by reading the reference's cell as `NBound(TVar(b))`, so
-which of two free roots survives a unification is load-bearing — a union that
+which of two free roots survives a unification was load-bearing — a union that
 kept the judged root over the parser's (built to end Why walks at the cell
 the judgment minted) linked binders to their uses, and m2 trapped reading a
-handle past the spine in `value_leaves`. One edge carries "these are equal"
+handle past the spine in `value_leaves`. One edge carried "these are equal"
 and "this use reads that binder"; the reference link records the second at
 the one writer, and the union is free to choose its root. The 2026-10-06 lane's attempt, which
 its own pre-commit gate refused ("the wheel did not build"), is commit
-59299deb, kept at `refs/pull/7/head`.
+59299deb, kept at the head of pull request 7.
+
+2026-10-14 — M1'S FIRST PIN (LEDGER): the edge is drawn and the name-keyed
+homes of the fact are deleted. `graph_ref_link` at the one writer puts the
+declaration in the reference's spine cell and the reference among the
+declaration's in-edges (`InEdge`: `UseBy`, `MentionBy`, `AppliedAt`), one
+trailed write each; the env is the scope alone, its entries a name and the
+declaration's handle, and what the judgment learns of a declaration is
+published there (`graph_publish`); a binder a reference reads is
+`binder_read_by`. The refs and applications columns keyed by name, the
+module-declaration table, the union-find link read and the comment gate's
+name index are deleted, and `refs of`, `where`, the gradient, the value walk,
+the caret and the imports and unreferenced facets read the edge. What
+remains for this entry's CLOSE is its first sentence: the four name-keyed
+reach walks (`reach_entry_names`, `plan_reached`, `reach_units`,
+`demand_round`) and the emit's `fanout_decls_index` still walk names over the
+lowered program, whose identity is `LFn(String, …)`; and the judgment still
+re-resolves by name a reference it has linked (`callee_name` and
+`op_effect_of` readers, src/infer.mn).
 
 THE 2026-10-06 PROGRAM, landing M1 (the reference link, the root of M2–M12) (PLAN §11, THE STANDING CURSOR) — the program's own text, moved here at the §0.3 integration (the whole program is at commit 42a94dc0):
 
@@ -13540,7 +13563,8 @@ does?"), answered by reading the judgment.**
 - It uses the pair once, for F0b's `E_MissingImport` test, then drops it.
 - `graph_ref_note(name, handle)` files the reference under its NAME. So the
   refs column answers "who mentions this spelling" and never "who reaches this
-  declaration" (PLAN §7: "`refs_col` is keyed by NAME, not handle").
+  declaration" (PLAN §7 said so: the refs column "is keyed by NAME, not
+  handle").
 
 So one edge is missing. Once it is drawn, the import graph stops being a facet
 to compute and becomes a projection to read.
@@ -13573,8 +13597,9 @@ mechanism.**
    - A conduit link lands outside the module's direct imports; their count is
      exactly the migration's size.
    - Today's two false verdicts both go. Canon's value `let` becomes a
-     declaration like any other. "Used" becomes a link, never `refs_inside`'s
-     module-blind span overlap.
+     declaration like any other. "Used" becomes a link, never the span-overlap
+     test that compared a reference's span with the importer's extent
+     without its module.
 2. **The missing import, proposed.** A conduit link is the gradient's fill at
    the reference: the edge to add, accepted like any proposal.
 3. **The import block, maintained.** tighten writes the set the links name, so
@@ -15124,7 +15149,7 @@ lowpass` (`E_TypeMismatch Handler(DSP) vs …`), and the maker is named
 inferred prelude without its layer's vocabulary (len/list_index missing on a
 clean program) — check rides the weave until the overlay lands.
 
-RE-GROUNDED 2026-10-06 (design-superseded): Both seams closed on 2026-08-07 (LEDGER 12945-12969). The docs place `parse_cli_args`/`VerbSpec` in src/cli.mn, `env_handler` in src/env.mn and `intern_view` in src/intern.mn. F0b (LEDGER 4001-4030, RESIDUE 2146-2161) armed E_MissingImport and deleted the solo sweep and solo_violations_max. F0b also built the stamp's 'tag each env entry by its declaring module at env_extend' and the wheel refuted it with 3,541 refusals: the env re-publishes entries, so it names a publisher, not the declarer. The per-module parse (LEDGER 6868, 2026-09-07) gave file-true coordinates and module-scoped reports. Strike the 36-violation seam paragraph and the env-tag design. The line-15556 consequence ('check rides the weave until the overlay lands') is moot: check has ridden the one judgment since 2026-09-17. What is still open is RESOLUTION by the asking module: a user declaration that shadows a library name still rebinds the library's own reference (Pulse's `envelope`/`lowpass`), and the refusal is a misattributed E_MissingImport. The form: a name resolves through its module node's scope — its own decls, then its import edges' exports (`inf_decl_module` and `inf_module_reaches` are already computed once per judgment) — never through the newest flat-env entry. Next: #189 (module-as-scope import graph, with #188's prose-edge cut); E1 (the Env protocol).
+RE-GROUNDED 2026-10-06 (design-superseded): Both seams closed on 2026-08-07 (LEDGER 12945-12969). The docs place `parse_cli_args`/`VerbSpec` in src/cli.mn, `env_handler` in src/env.mn and `intern_view` in src/intern.mn. F0b (LEDGER 4001-4030, RESIDUE 2146-2161) armed E_MissingImport and deleted the solo sweep and solo_violations_max. F0b also built the stamp's 'tag each env entry by its declaring module at env_extend' and the wheel refuted it with 3,541 refusals: the env re-publishes entries, so it names a publisher, not the declarer. The per-module parse (LEDGER 6868, 2026-09-07) gave file-true coordinates and module-scoped reports. Strike the 36-violation seam paragraph and the env-tag design. The line-15556 consequence ('check rides the weave until the overlay lands') is moot: check has ridden the one judgment since 2026-09-17. What is still open is RESOLUTION by the asking module: a user declaration that shadows a library name still rebinds the library's own reference (Pulse's `envelope`/`lowpass`), and the refusal is a misattributed E_MissingImport. The form: a name resolves through its module node's scope — its own decls, then its import edges' exports (`inf_module_reaches` is computed once per judgment, and a resolution's declaring module is its declaration's own, `graph_module_of`, since M1's first pin hands the resolution the declaration's handle) — never through the newest flat-env entry. Next: #189 (module-as-scope import graph, with #188's prose-edge cut); E1 (the Env protocol).
 
 THE 2026-10-06 PROGRAM, landing M4 (PLAN §11, THE STANDING CURSOR) — the program's own text, moved here at the §0.3 integration (the whole program is at commit 42a94dc0):
 
@@ -18734,9 +18759,17 @@ before any visibility change).
   then `conduit`, `DEAD` or `DUPLICATE`.
   - Value lets are declarations like any other.
   - Each site is compared by (module, span), never by a bare span.
-  - Six comparison sites share the module-blind shape (MOD-1): `refs_inside`,
-    `ref_is_outside`, `decl_names_of`, `import_is_used` and its
-    `module_tail_eq`, and `audit_walk`.
+  - Six comparison sites shared the module-blind shape (MOD-1): the
+    importer's span-overlap test, the outside-the-declaration test, the
+    declared-names read that dropped value lets, `import_is_used` and its
+    `module_tail_eq`, and `audit_walk`. At M1's first pin (2026-10-14) the
+    first four read the link — a reference's own module
+    (`referenced_from`), the parent edge (`ref_within`), a declaration and
+    the handle its references link to (`decl_links_of`, value lets
+    included) — and `module_tail_eq` and `audit_walk` remain. The edge
+    counts what a value reference reaches: an import used only by a pattern's
+    constructor, a type annotation or a row's effect name reads DEAD until
+    #108 makes those positions cells.
 - A second facet lists every conduit reference.
 - A third, `importers of <module>`, gives the reverse edges across the
   repository. Today no facet can say who imports lib/combinators.mn,
@@ -19072,8 +19105,9 @@ PR-7, PR-8, PR-10, MS-4, TH-11, TH-14).
   there is no teaching. Gates: `lock-protects-a-caller` and
   `lock-nothing-depends`.
   - **LANDED 2026-10-13 (Landing 3), on the application edge.** The
-    dependents are read along `applications_of` — the by-name application
-    edge, up through every caller, claused or not (a clause two calls up
+    dependents are read along the application edge — by name at the
+    landing, among the declaration's in-edges (`graph_applies_of`) since
+    M1's first pin — up through every caller, claused or not (a clause two calls up
     stands on the declaration through whatever lies between), with the
     effects a `~>` install between the application and the clause absorbs
     masked out — until M1's reference link replaces the edge
@@ -19169,10 +19203,10 @@ BORN 2026-10-06 — the 2026-10-06 program, landing V1–V4 (PLAN §11, THE STAN
   - Gates: `any` over five elements under a counting handler counts 3 (5
     today). A mixed-arm micro under `!Alloc` is the instrument for how such an
     arm lowers today, which is unmeasured.
-  - The 2026-10-06 lane's draft (`OneShotOrAbandon` and `LAnswer`, on boot
-    c8ba5799, committed past a refusing pre-commit gate and never integrated)
-    is commit 718e2e04, kept at `refs/pull/5/head` (`git fetch origin
-    pull/5/head`).
+  - The 2026-10-06 lane's draft (a one-shot-or-abandon resume grade and an
+    answer node in the lowering, on boot c8ba5799, committed past a refusing
+    pre-commit gate and never integrated) is commit 718e2e04, kept at the head
+    of pull request 5 (`git fetch origin pull/5/head`).
 - **V2 · A verb never costs more than its desugaring.**
   - Under Seq, a fanout's branch literals are applied in the frame (R0i's law,
     extended to branches). The tuple is a record only where it escapes.
@@ -19495,7 +19529,8 @@ handler env_from_host { env(name) => resume(host_environ(name)) }   // the root 
    access, its span and module, and its enclosing
    declaration, and the install `served_at` (src/main.mn:1428) resolves to;
    kept only where the serving handler's arm row crosses `WASI`
-   (`handler_arms`/`handler_effect_names`, src/query.mn:2420–2434). Read
+   (`handler_arms_at`/`handler_effect_names`, read along the install's edge
+   since M1's first pin). Read
    twice, never copied: by `QEnv` in src/query.mn (`Question` :122,
    `QueryResult` :207, the render :2380ff) and by `emit_start`'s prologue.
 4. **The launch gate.** `emit_start` emits `(call

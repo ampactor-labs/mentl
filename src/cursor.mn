@@ -673,13 +673,8 @@ fn served_at(h) with !Mutate = match performed_effect(h) {
 }
 
 fn performed_effect(h) with !Mutate = match graph_node_body(h) {
-  NExpr(CallExpr(callee, _)) => op_named_at(callee),
-  NExpr(VarRef(_)) => op_named_at(h),
-  _ => None,
-}
-
-fn op_named_at(h) with !Mutate = match graph_node_body(h) {
-  NExpr(VarRef(name)) => op_effect_of(name),
+  NExpr(CallExpr(callee, _)) => ref_op_effect(callee),
+  NExpr(VarRef(_)) => ref_op_effect(h),
   _ => None,
 }
 
@@ -690,7 +685,7 @@ fn served_step(en: String, up, found, i) with !Mutate = match found {
     match graph_node_body(a) {
       NExpr(LambdaExpr(_, _)) => Some(ServedWhereCalled(a)),
       NStmt(FnStmt(_, _, _, _, _)) => if i + 1 < len(up) { Some(ServedWhereCalled(a)) } else { None },
-      NExpr(PipeExpr(PTee, l, r)) => if l == list_index(up, i - 1) && handler_answers(tee_handler_name(r), en) {
+      NExpr(PipeExpr(PTee, l, r)) => if l == list_index(up, i - 1) && tee_answers(r, en) {
         Some(ServedBy(a, tee_handler_name(r)))
       } else {
         None
@@ -700,7 +695,9 @@ fn served_step(en: String, up, found, i) with !Mutate = match found {
   },
 }
 
-fn handler_answers(hname: String, en: String) with !Mutate = match handler_arms(hname) {
+// Whether the handler a tee installs answers the effect: its arms, read
+// along the tee's edge to the declaration.
+fn tee_answers(r, en: String) with !Mutate = match tee_arms(r) {
   Some(arms) => string_in_list(handler_effect_names(arms), en),
   None => false,
 }

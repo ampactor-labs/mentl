@@ -1,0 +1,7 @@
+// The imports facet reads an import by the references that cross it: the
+// module value consts.mn declares is read here, and nothing unused.mn
+// declares is.
+import consts
+import unused
+
+fn main() = limit + 1

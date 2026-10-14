@@ -35,6 +35,80 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-10-14 · pin 343007093a4c099c (TRANSITION m2 ≠ m3, m3 == m4) · M1'S
+  FIRST PIN — A REFERENCE IS LINKED TO ITS DECLARATION, AND THE NAME-KEYED
+  HOMES OF THAT FACT ARE DELETED
+  M1 NOT LANDED: the reach walks over the lowered program still walk names
+  (`Hβ.lower.reach-edge-on-node`, below). Measured first, at boot 16d5706e:
+  the fact "this reference names that declaration" lived in eleven places —
+  the env's name table, the union-find link (`graph_link_of` read a
+  reference's cell as `NBound(TVar(b))`), the module-declaration table, the
+  decls column's name scan, the refs and applications columns keyed by name,
+  and five reach walks — and the comment gate held two more, a declaration
+  index by name and span-containment scopes. The one writer now draws the
+  edge where the name resolves in its scope (`graph_ref_link`, in
+  `infer_var_ref`): the reference's spine cell holds the declaration, and the
+  declaration's in-edges (`InEdge = UseBy | MentionBy | AppliedAt`) hold the
+  reference back, one trailed write each, so a rolled-back judgment's links,
+  applications and mentions go with it and no reader re-checks a note at its
+  handle. The env is the scope alone — an entry is a name and its
+  declaration's handle — and what the judgment learns of a declaration is
+  published at that handle (`graph_publish`, trailed); a binder a reference
+  reads is the declaration whose published binding is its own cell
+  (`binder_read_by`), so which free root survives a union stops being
+  load-bearing. Primitives get minted declaration cells in the prelude; a
+  type's variants and an effect's ops are children of their declaration, so an
+  op reaches its effect up the parent edge; an interior comment reaches its
+  declaration the same way. Deleted: the two name-keyed columns, the
+  module-declaration table, `graph_link_of`, the comment gate's index and its
+  span scopes, the env's per-kind lookup ops, the space verb's local-binder
+  scan. Moved onto the edge: the value walk, path reads, flow labels and
+  module constants (verify), the gradient's locks, preconditions and return
+  contracts (mentl), find-by-edge and parameter uses (space), `refs of`,
+  serving installs, schedules and install lines (query), served-by and the
+  performed effect (cursor), the effect-entry walk and binder reads (infer),
+  and the imports and unreferenced facets: an import is used when a
+  reference standing in the importer links into the imported module
+  (`referenced_from`), a reference stands inside its declaration by the
+  parent edge (`ref_within`), and a module value `let` is a declaration
+  (`decl_links_of`). The facet answers 34 of the wheel's 256 import edges
+  DEAD where the span test answered 2 — both of those false (infer and
+  parser reading canon's `ty_string`), and both `used` now; the 34 are true
+  of value references, and over-report an import used only by a pattern's
+  constructor, a type annotation or a row's effect name, which draw no edge
+  until #108 makes them cells (`pipeline -> import dsp/clock` is a true one:
+  every install of `no_iter_context` stands in main).
+  Kills: (1) publishing a handler's config parameter at the handler's own
+  declaration — caught reading the env_extend sites before the first build:
+  two config parameters would have answered each other's facts and a
+  recursive reference to the handler a parameter's; each config parameter is
+  a cell of its own now, as an arm's parameters are. (2) An op parameter
+  named `ref` parsed silently as the ownership marker over an empty name; the
+  formatter's render refused to parse and named it
+  (`Hβ.parser.ident-sentinel-is-an-empty-name`). RED first:
+  tests/frontier/mn-refs-by-edge.mn — boot 16d5706e answered 3 references to
+  `width`, a shadowing local's read among them; this boot answers the
+  function's 2 calls, and `refs of lines` on the wheel answers 2 sites, where
+  the name-keyed column answered 56 on 2026-10-06; and
+  tests/frontier/imports-by-edge/ — boot 16d5706e answered the entry's import
+  of a module value DEAD, this boot `used`, and the unreferenced module's
+  DEAD under both. Board counts fell, each
+  ceiling lowered to hold it: catch-alls over a sum 1,248 → 1,243, open
+  obligations 184 → 181, iteration costumes 460 → 450, spec citations 24 →
+  23, banners 321 → 320, silencers 129 → 128. The m3 leg 17.22 s wall, 412 MB
+  peak; 629,982 lines, census 0; rungs 8/8, micros through m2 417/417;
+  crown, proof-exactness and effect identity green; frontier 672 pass / 0
+  red / 2 expected-red.
+  What stands (each named, each the next stage): the four name-keyed reach
+  walks (`reach_entry_names`, `plan_reached`, `reach_units`, `demand_round`)
+  and the emit's `fanout_decls_index`; the judgment re-resolving by name a
+  reference it already linked (`callee_name` readers, `op_effect_of`); the
+  proposer's rings and its name → declaration index
+  (`Hβ.synth.vocabulary-ring-is-read-by-name` — the binding keeps its
+  declaration's handle now, which its CLOSE asked for); and a pattern's
+  constructor, which has no node and draws no edge, so `refs of` lists no
+  pattern site until patterns are nodes (`Hβ.graph.positions-are-cells`).
+
 - 2026-10-14 · pin 16d5706e82397dbd (TRANSITION m2 ≠ m3, m3 == m4; m2 == m3
   measured again on the committed source) · THE SWEEP'S FIRST CUT — THE
   SELF-COMPILE PROFILED, ITS MEASURED HOT SPOTS REMOVED

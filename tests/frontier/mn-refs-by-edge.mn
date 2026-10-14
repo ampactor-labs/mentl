@@ -1,0 +1,14 @@
+// A reference names a declaration, never a spelling: the two calls of
+// `width` in `twice` are its references, and the `let width` in `shadowed`
+// is a declaration of its own, whose read on line 11 is no reference to the
+// function.
+fn width(x) = x + 1
+
+fn twice(n) = width(width(n))
+
+fn shadowed() = {
+  let width = 3
+  width * 2
+}
+
+fn main() = twice(shadowed())

@@ -122,25 +122,12 @@ effect InferCtx {
   // or is `to` in the prelude's closure, which the driver links into every
   // compile unasked.
   inf_module_reaches(Int, Int) -> Bool
-  // The module a module-level name is DECLARED in — 0 when no module-level
-  // statement declares it — read off each module's own decls once per
-  // judgment, never off the env: an entry is re-published wherever a
-  // judgment further on refines it, so the publisher's module is not the
-  // declarer's.
-  inf_decl_module(String) -> Int
 }
 
-handler infer_ctx with stack = [], arm_stack = [], install_marks = [], mint_ceiling = 0, decl_entry = 0, reach = [], decl_modules = [], kept = [] {
+handler infer_ctx with stack = [], arm_stack = [], install_marks = [], mint_ceiling = 0, decl_entry = 0, reach = [], kept = [] {
   inf_module_reaches(from, to) => {
     let table = if len(reach) == 0 { module_reach_table() } else { reach }
     resume(reach_table_has(table, from, to)) with reach = table
-  },
-  inf_decl_module(name) => {
-    let table = if len(decl_modules) == 0 { decl_module_table() } else { decl_modules }
-    resume(match smap_get(table, name) {
-      None => 0,
-      Some(m) => m,
-    }) with decl_modules = table
   },
   inf_enter_fn(h, answer_h, fn_span, effs) => // stack = [InferFrame, ...] where each InferFrame is a record:
   //   {accumulated_row: EffRow, answer_handle: Int, declared: List,
@@ -510,13 +497,10 @@ fn inf_add_row_unified(row) = {
 // doc-test frontier) and `<...>` marks a schematic template — neither
 // is a reference.
 fn comment_refs_check(ref stmts, parse_start, parse_end) = {
-  let cdix = comment_decl_index(stmts, 0, smap_new())
-  // Flat ONCE before the per-comment scans: crc_scope_at indexes this list
-  // per scope per commented handle, and a snoc spine pays its depth on
-  // every read — measured 2026-07-24 at 83% of the ENTIRE self-compile
-  // (the prose gate cost five compilers; perf found it, no code-reading
-  // estimate ever named it).
-  let scopes = list_to_flat(crc_fn_scopes(stmts, 0, []))
+  // Each top-level declaration's own names, computed once and kept at its
+  // handle: an interior comment reaches the declaration around it up the
+  // parent edge and reads them there.
+  let scopes = fold(wmap_new(1024), (acc, h) => wmap_add(acc, h, comment_locals(h)), stmts)
   // The walk's bounds are THIS pass's own parse range: comments attach
   // only at parse (graph_attach_comment, like graph_index_span), so
   // handles above the frontend's frontier are comment-free by
@@ -525,133 +509,57 @@ fn comment_refs_check(ref stmts, parse_start, parse_end) = {
   // graph_next walk judged every stale generation's copy and probed
   // the judgment's millions of mints for prose (the crc share of the
   // healed profile, 19%, 2026-07-26).
-  let dollars = crc_walk(parse_start, parse_end, cdix, scopes, [])
+  let dollars = crc_walk(parse_start, parse_end, scopes, [])
   if len(dollars) > 0 {
     let lvix = lit_vocab_build(0, graph_next(), smap_new())
-    crc_judge_dollars(dollars, 0, lvix, cdix)
+    crc_judge_dollars(dollars, 0, lvix)
   } else {
     ()
   }
 }
 
-// The SCOPE face of the referent set: an interior comment's backticks name
-// the enclosing fn's params and binders — real names at that position —
-// so each top-level decl contributes (its span, its comment_locals) once,
-// and a comment inside that span resolves against them exactly as the
-// decl's own comment does.
-// A decl node's recorded span is its HEAD; the scope's EXTENT runs from
-// this decl's start to the next decl's start (the last runs open) — the
-// stmt list is consecutive, so the pair of starts IS the extent, no
-// re-measure of the body.
-// EACH SCOPE CARRIES ITS MODULE, and the extent stops at its module's edge.
-// A decl's extent is "from my span to the NEXT decl's", which was true while
-// spans were offsets into one weave and became a cross-file claim the moment
-// every module started at line 1 again: the last decl of module A ran to the
-// FIRST LINE OF MODULE B, so its extent was inverted and matched nothing,
-// while B's early decls sat inside A's range by pure line-number coincidence.
-// Measured 2026-09-20 — seven comment references to a fn's own PARAMS went
-// unresolved (cdix, effs, sig_frees, used_sites among them — named here as
-// prose, since from THIS scope they are other functions' binders) because the
-// interior comment looked up a scope by containment alone and found the wrong
-// file's, or none. This is `Hβ.cursor.module-of-a-span-is-containment` — the
-// third machine PLAN §7 names — meeting the prose gate.
-fn crc_fn_scopes(ref stmts, i, acc) = if i >= len(stmts) {
-  acc
-} else {
-  let h = list_index(stmts, i)
-  match graph_span_of(h) {
-    Span(sl, sc, el, ec) => {
-      let mh = graph_module_of(h)
-      // The next decl bounds this one only when it is the same module's;
-      // otherwise the decl's OWN end is the honest edge.
-      let ext = if i + 1 < len(stmts) {
-        let nh = list_index(stmts, i + 1)
-        if graph_module_of(nh) == mh {
-          match graph_span_of(nh) {
-            Span(nl, nc, _, _) => Span(sl, sc, nl, nc),
-          }
-        } else {
-          Span(sl, sc, el, ec)
-        }
-      } else {
-        Span(sl, sc, el, ec)
-      }
-      crc_fn_scopes(stmts, i + 1, push(acc, (mh, ext, comment_locals(h))))
-    },
-  }
+// The names of the top-level declaration a node stands inside: its
+// ancestor whose parent is the module, read up the parent edge.
+fn enclosing_names(scopes, h) = match top_declaration_of(h) {
+  Some(top) => match wmap_get(scopes, top) {
+    Some(names) => names,
+    None => [],
+  },
+  None => [],
 }
 
-// A position is not an address until it is module-qualified, so the lookup
-// matches the MODULE first and the containment second — the same correction
-// the caret projection took at `Hβ.cursor.address-drops-module-identity`.
-fn crc_scope_at(ref scopes, cmod: Int, csp, i) = if i >= len(scopes) {
-  []
-} else {
-  match list_index(scopes, i) {
-    (mh, sp, names) => if mh == cmod && span_contains(sp, csp) { names } else { crc_scope_at(scopes, cmod, csp, i + 1) },
-  }
+fn top_declaration_of(h) = match graph_parent_of(h) {
+  Some(p) => match graph_node_body(p) {
+    NModule(_) => Some(h),
+    _ => top_declaration_of(p),
+  },
+  None => None,
 }
 
-// name -> decl stmt handle, one walk over the program's own statements.
-fn comment_decl_index(ref stmts, i, idx) = if i >= len(stmts) {
-  idx
-} else {
-  let h = list_index(stmts, i)
-  let idx2 = match graph_node_body(h) {
-    NStmt(FnStmt(name, _, _, _, _)) => smap_add(idx, name, h),
-    NStmt(LetStmt(PVar(name), _, _)) => // A module value let is a declaration too (the decls column notes
-    // it), so a comment naming one draws an edge to it.
-    smap_add(idx, name, h),
-    NStmt(TypeDefStmt(name, ctors)) => ctor_index_add(ctors, 0, smap_add(idx, name, h), h),
-    NStmt(EffectDeclStmt(name, _, ops)) => op_index_add(ops, 0, smap_add(idx, name, h), h),
-    NStmt(HandlerDeclStmt(name, _, _, _, _, _)) => smap_add(idx, name, h),
-    _ => idx,
-  }
-  comment_decl_index(stmts, i + 1, idx2)
-}
-
-fn ctor_index_add(ref ctors, i, idx, h) = if i >= len(ctors) {
-  idx
-} else {
-  match list_index(ctors, i) {
-    (cname, _, _) => ctor_index_add(ctors, i + 1, smap_add(idx, cname, h), h),
-  }
-}
-
-fn op_index_add(ref ops, i, idx, h) = if i >= len(ops) {
-  idx
-} else {
-  match list_index(ops, i) {
-    (opname, _, _, _) => op_index_add(ops, i + 1, smap_add(idx, opname, h), h),
-  }
-}
-
-fn crc_walk(h, n, ref cdix, ref scopes, dollars) = if h >= n {
+fn crc_walk(h, n, ref scopes, dollars) = if h >= n {
   dollars
 } else {
   let t = graph_comment_at(h)
   let d2 = if byte_len(t) > 0 {
-    let locals =
-      comment_locals(h) ++ crc_scope_at(scopes, graph_module_of(h), graph_comment_span_at(h), 0)
-    crc_scan(t, 0, byte_len(t), h, cdix, locals, dollars)
+    crc_scan(t, 0, byte_len(t), h, comment_locals(h) ++ enclosing_names(scopes, h), dollars)
   } else {
     dollars
   }
-  crc_walk(h + 1, n, cdix, scopes, d2)
+  crc_walk(h + 1, n, scopes, d2)
 }
 
-fn crc_scan(ref t, i, n, h, ref cdix, ref locals, dollars) = if i >= n {
+fn crc_scan(ref t, i, n, h, ref locals, dollars) = if i >= n {
   dollars
 } else {
   if byte_at(t, i) == 96 {
     let j = ctick_close(t, i + 1, n)
     if j < n {
-      crc_scan(t, j + 1, n, h, cdix, locals, crc_judge(t, i + 1, j, h, cdix, locals, dollars))
+      crc_scan(t, j + 1, n, h, locals, crc_judge(t, i + 1, j, h, locals, dollars))
     } else {
       dollars
     }
   } else {
-    crc_scan(t, i + 1, n, h, cdix, locals, dollars)
+    crc_scan(t, i + 1, n, h, locals, dollars)
   }
 }
 
@@ -661,7 +569,7 @@ fn ctick_close(ref t, i, n) =
 // One span, one verdict. A `$`-opening ident span queues for the lazy
 // emitted-vocabulary judgment; a pure ident span resolves now; anything
 // else in backticks is quoted code or schema, not a reference.
-fn crc_judge(ref t, a, b, h, ref cdix, ref locals, dollars) = if b <= a {
+fn crc_judge(ref t, a, b, h, ref locals, dollars) = if b <= a {
   dollars
 } else {
   if byte_at(t, a) == 36 {
@@ -672,7 +580,7 @@ fn crc_judge(ref t, a, b, h, ref cdix, ref locals, dollars) = if b <= a {
     } else {
       if span_is_ident(t, a, b) {
         let name = str_slice(t, a, b)
-        if crc_resolve(name, h, cdix, locals) { dollars } else { dollars ++ [(h, name)] }
+        if crc_resolve(name, h, locals) { dollars } else { dollars ++ [(h, name)] }
       } else {
         dollars
       }
@@ -705,16 +613,17 @@ fn span_ident_walk(ref t, a, b) = if a >= b {
 }
 
 // A backticked name resolves in the COMMENT'S OWN MODULE: a declaration the
-// module reaches through its imports (the same reach the manifest holds a
-// reference to, inf_module_reaches), a primitive, a keyword, a surface word
-// or a binder of the commented node. A declaration the whole link carries
-// but this module never imports is no edge the module can draw, so it does
-// not resolve — until 2026-10-12 the index and the env were read over the
-// flattened link, so a library module's prose cited the compiler's
-// declarations and checked clean, and the same prose judged alone as its
-// own entry narrated 139 unresolved references the board never saw
-// (Hβ.voice.comment-ref-gate-reads-the-flattened-link, M7).
-fn crc_resolve(ref name, h, ref cdix, ref locals) = if in_owner_names(locals, name, 0) {
+// scope holds and the module reaches through its imports (the same reach the
+// manifest holds a reference to, inf_module_reaches), a keyword, a surface
+// word or a binder of the commented node or the declaration around it. A
+// declaration the whole link carries but this module never imports is no
+// edge the module can draw, so it does not resolve — until 2026-10-12 the
+// index and the env were read over the flattened link, so a library module's
+// prose cited the compiler's declarations and checked clean, and the same
+// prose judged alone as its own entry narrated 139 unresolved references the
+// board never saw (Hβ.voice.comment-ref-gate-reads-the-flattened-link, M7).
+// A resolved name draws the comment's edge to its declaration.
+fn crc_resolve(ref name, h, ref locals) = if in_owner_names(locals, name, 0) {
   true
 } else {
   match keyword_kind(name) {
@@ -722,37 +631,23 @@ fn crc_resolve(ref name, h, ref cdix, ref locals) = if in_owner_names(locals, na
     None => if is_surface_word(name) {
       true
     } else {
-      match smap_get(cdix, name) {
+      match env_resolve(name) {
         Some(referent) => if inf_module_reaches(graph_module_of(h), graph_module_of(referent)) {
           graph_attach_comment_ref(h, referent)
           true
         } else {
           false
         },
-        None => match env_lookup(name) {
-          Some(_) => crc_decl_reaches(h, name),
-          None => match env_lookup_type(name) {
-            Some(_) => crc_decl_reaches(h, name),
-            None => false,
-          },
-        },
+        None => false,
       }
     },
   }
 }
 
-// An env hit resolves for a comment when the comment's module reaches the
-// declaring module; a name the env holds with no declaring module (0) is a
-// primitive, in every module's reach.
-fn crc_decl_reaches(h, name) = {
-  let dm = inf_decl_module(name)
-  dm == 0 || inf_module_reaches(graph_module_of(h), dm)
-}
-
 // The `$`-vocabulary judgment: what the program's own literals write IS
 // part of the program. `$`-names normalize by shedding the sigil and
 // leading underscores on BOTH sides of the comparison.
-fn crc_judge_dollars(ref dollars, i, ref lvix, ref cdix) = if i >= len(dollars) {
+fn crc_judge_dollars(ref dollars, i, ref lvix) = if i >= len(dollars) {
   ()
 } else {
   match list_index(dollars, i) {
@@ -763,25 +658,15 @@ fn crc_judge_dollars(ref dollars, i, ref lvix, ref cdix) = if i >= len(dollars) 
       } else {
         match smap_get(lvix, name) {
           Some(ms) => lit_modules_reach(h, ms),
-          None => match smap_get(cdix, name) {
-            Some(dh) => // A DECL HIT IS NOT YET A REFERENCE. `cdix` indexes every decl
-            // in the weave, so a bare `Some` answers "this name exists
-            // somewhere in the link" — and the link flattens every module
-            // into one env, which is a different question from the one
-            // SYNTAX asks. A backticked name is *a resolvable EDGE the Why
-            // engine walks*; an edge that exists only because two modules
-            // were laid side by side is a NAME LOOKUP wearing an edge's
-            // name, which is the re-derivation this gate exists to catch,
-            // one layer above the prose it polices.
-            //
-            // So ask reachability: the referent's module must BE the
-            // comment's own or be imported by it. Measured at the landing —
-            // the entry link answered 0 while the modules answered 57, and
-            // the 57 were real: references crossing an import edge the
-            // wrong way, one naming a DELETED decl, and English words in
-            // backticks. The report one branch down already read the
-            // comment's module from `h` for its own span; the hit test was
-            // the half that ignored it.
+          None => match env_resolve(name) {
+            Some(dh) => // A declaration the scope holds is not yet a reference: the link
+            // lays every module side by side in one scope, and an edge that
+            // exists only because of that is a name lookup wearing an edge's
+            // name. The referent's module must BE the comment's own or be
+            // imported by it — measured at the landing, the entry link
+            // answered 0 while the modules answered 57, and the 57 were real:
+            // references crossing an import edge the wrong way, one naming a
+            // DELETED decl, and English words in backticks.
             inf_module_reaches(graph_module_of(h), graph_module_of(dh)),
             None => false,
           },
@@ -800,7 +685,7 @@ fn crc_judge_dollars(ref dollars, i, ref lvix, ref cdix) = if i >= len(dollars) 
         graph_module_enter(graph_module_of(h))
         report(WCommentRefUnresolved(comment_owner(h), raw, graph_comment_span_at(h)))
       }
-      crc_judge_dollars(dollars, i + 1, lvix, cdix)
+      crc_judge_dollars(dollars, i + 1, lvix)
     },
   }
 }
@@ -1030,18 +915,33 @@ fn cl_op_names(ref ops, i, acc) = if i >= len(ops) {
 // only inside the derivative reading, so it has a type and no forward
 // lowering: the one arm that writes it is read as a rewrite and never
 // lowered, and a call anywhere else refuses at lower.
+//
+// A primitive is declared by the judgment itself, so its declaration is a
+// cell the judgment mints in the prelude's module, which every module
+// reaches, and its facts are published at that cell like any declaration's.
 fn register_primitives() = {
+  let here = graph_module_current()
+  match graph_module_now("prelude") {
+    Some(p) => graph_module_enter(p),
+    None => (),
+  }
+  let f2i = mint(Declared("float_of_int"))
+  let i2f = mint(Declared("float_to_int"))
+  let tan = mint(Declared("tangent_of"))
+  graph_module_enter(here)
   env_extend(
     "float_of_int",
     Frozen([], TFun([mk_param("_", TInt)], TFloat, mk_ef_pure())),
     Declared("float_of_int"),
-    FnScheme
+    FnScheme,
+    f2i
   )
   env_extend(
     "float_to_int",
     Frozen([], TFun([mk_param("_", TFloat)], TInt, mk_ef_pure())),
     Declared("float_to_int"),
-    FnScheme
+    FnScheme,
+    i2f
   )
   let seed_shape = mint(Inferred("the seed's shape"))
   env_extend(
@@ -1051,7 +951,8 @@ fn register_primitives() = {
       TFun([mk_param("_", TFloat), mk_param("_", TVar(seed_shape))], TVar(seed_shape), mk_ef_pure())
     ),
     Declared("tangent_of"),
-    FnScheme
+    FnScheme,
+    tan
   )
 }
 
@@ -1120,13 +1021,13 @@ fn type_decl_claim(seen, name, span) = match smap_get(seen, name) {
 // The alias edges — registration's ONE home. The main walk keeps only
 // RefineStmt's predicate Verify obligation.
 fn pre_register_alias(ref node) = match graph_node_body(node) {
-  NStmt(RefineStmt(name, base_ty, pred)) => env_extend(name, Frozen([], TAlias(name, TRefined(base_ty, pred))), Declared(name), FnScheme),
-  NStmt(AliasStmt(name, ty)) => env_extend(name, Frozen([], TAlias(name, ty)), Declared(name), FnScheme),
+  NStmt(RefineStmt(name, base_ty, pred)) => env_extend(name, Frozen([], TAlias(name, TRefined(base_ty, pred))), Declared(name), FnScheme, node),
+  NStmt(AliasStmt(name, ty)) => env_extend(name, Frozen([], TAlias(name, ty)), Declared(name), FnScheme, node),
   NStmt(RowAliasStmt(name, effs)) => // A named effect row is an ENV fact: the triples stored verbatim,
   // expansion at build_declared_row (Hβ.types.named-effect-rows).
   // The scheme's Ty is nominal only so the entry has a shape; the
   // row alias never participates in type unification.
-  env_extend(name, Frozen([], TName(name, [])), Declared(name), RowAliasKind(effs)),
+  env_extend(name, Frozen([], TName(name, [])), Declared(name), RowAliasKind(effs), node),
   _ => (),
 }
 
@@ -1140,7 +1041,7 @@ fn pre_register_alias(ref node) = match graph_node_body(node) {
 // moved to lexer.mn, which sorts before types.mn's `effect Intern`, and
 // the whole wheel refused with "no install anywhere").
 fn pre_register_effect(ref node) = match graph_node_body(node) {
-  NStmt(EffectDeclStmt(name, params, ops)) => register_effect_ops(name, params, ops),
+  NStmt(EffectDeclStmt(name, params, ops)) => register_effect_ops(name, params, ops, node),
   _ => (),
 }
 
@@ -1161,18 +1062,18 @@ fn pre_register_stmt(seen, ref node) = match graph_node_body(node) {
     pre_register_fn_once(seen, node)
   },
   NStmt(TypeDefStmt(name, variants)) => {
-    register_type_constructors(name, variants)
+    register_type_constructors(name, variants, node)
     seen
   },
   NStmt(HandlerDeclStmt(hname, _ename, config, state, arms, _effs)) => {
-    pre_register_handler_sig(hname, config, state, arms)
+    pre_register_handler_sig(hname, config, state, arms, node)
     seen
   },
   NStmt(HandlerChainStmt(name, chain)) => {
     // A chain's name registers beside the handlers' so an install anywhere
     // in the link resolves it (chain_of). Its type is unit: the name is
     // never a value — every install of it becomes its members' installs.
-    env_extend(name, Frozen([], TUnit), Declared(name), HandlerChainKind(chain))
+    env_extend(name, Frozen([], TUnit), Declared(name), HandlerChainKind(chain), node)
     seen
   },
   _ => // EffectDeclStmt registered in the pre_register_effect phase above —
@@ -1207,7 +1108,7 @@ fn pre_register_fn_once(seen, node) = match graph_node_body(node) {
 // The main walk's register_handler overwrites with the fully-inferred scheme
 // after arm-body inference, reading the pre-registered r_handle so forward
 // references share the same residual row handle.
-fn pre_register_handler_sig(hname, config, state, arms) = {
+fn pre_register_handler_sig(hname, config, state, arms, decl) = {
   let ename = derive_handler_ename(arms, hname)
   // A state field naming an op of the HANDLED effect is refused at the decl:
   // inside the arm bodies a bare `name` then means both the state read and
@@ -1264,7 +1165,8 @@ fn pre_register_handler_sig(hname, config, state, arms) = {
     hname,
     Frozen(inst_vars ++ [answer_h], scheme_body),
     Declared(hname),
-    HandlerKind(r_handle, w_handle, config_tparams, state, arms)
+    HandlerKind(r_handle, w_handle, config_tparams, state, arms),
+    decl
   )
   // The op→handler edges — each arm's discipline JOINED onto its op's
   // scheme, and the MultiShot cost onto the op's row — are drawn HERE,
@@ -1364,7 +1266,7 @@ fn pre_register_fn_sig(name, params, ret_ann, handle, span: ValidSpan) = {
   // (judgment_ty / judgment_pair / instantiate, or the shallow chase below
   // the infer layer), so a decl the rest of the walk refines is read
   // refined instead of frozen at whatever it was when it finished.
-  env_extend(name, Live(handle), Located(span, Declared(name)), FnScheme)
+  env_extend(name, Live(handle), Located(span, Declared(name)), FnScheme, handle)
 }
 
 // ─── THE ONE JUDGMENT (Hβ.infer.judge-once-per-scc) ─────────────────────
@@ -1836,11 +1738,12 @@ fn trial_judge_group(ref stmts, members) = {
 fn group_mono_views(ref stmts, ref members, j) = if j >= len(members) {
   ()
 } else {
-  match graph_node_body(stmts[members[j]]) {
+  let h = stmts[members[j]]
+  match graph_node_body(h) {
     NStmt(FnStmt(name, params, ret_ann, _, _)) => if fn_fully_sigd(params, ret_ann) {
       ()
     } else {
-      match env_lookup(name) {
+      match graph_published(h) {
         Some((sch, reason, FnScheme)) => match judgment_pair(sch) {
           (q, fn_ty) => // TYPE cells share (mono — the intra-cycle demand teaches the
           // callee's actual param/ret cells); ROW handles stay QUANTIFIED,
@@ -1849,7 +1752,7 @@ fn group_mono_views(ref stmts, ref members, j) = if j >= len(members) {
           // own row (measured: five declared-row mismatches the moment the
           // full-mono view landed — the directional-edge law's class, the
           // row channel is a FLOW, never a shared cap).
-          env_extend(name, Frozen(row_handles_only(q, 0), fn_ty), reason, FnScheme),
+          env_extend(name, Frozen(row_handles_only(q, 0), fn_ty), reason, FnScheme, h),
         },
         _ => (),
       }
@@ -1943,7 +1846,7 @@ fn group_final_publish(ref stmts, ref members, j) = if j >= len(members) {
 } else {
   let handle = stmts[members[j]]
   match graph_node_body(handle) {
-    NStmt(FnStmt(name, _, _, _, _)) => env_extend(name, Live(handle), Located(graph_span_of(handle), Declared(name)), FnScheme),
+    NStmt(FnStmt(name, _, _, _, _)) => env_extend(name, Live(handle), Located(graph_span_of(handle), Declared(name)), FnScheme, handle),
     _ => (),
   }
   group_final_publish(stmts, members, j + 1)
@@ -1980,21 +1883,6 @@ fn judge_stmt_one(ref node) = {
 // no single name (a destructured let, an expression statement) contributes
 // no key; missing edges DEGRADE TO SOURCE ORDER (equal depths walk in
 // source order), never reorder a dependent before its dependency.
-// Every module-level name → the module that declares it, one walk over the
-// module cells' own decls (F0b): a statement declares its head name and the
-// names it mints beside it — a type's constructors, an effect's ops, a let
-// pattern's binders. Built once per judgment (infer_ctx caches it); the
-// reference check reads it where the env's entry would have named the
-// publisher instead of the declarer.
-fn decl_module_table() with !Mutate = fold(smap_new(), decl_module_cell, module_cells())
-
-fn decl_module_cell(acc, cell) = match cell {
-  (h, _p, _s, decls) => fold(acc, decl_module_add(h), decls),
-}
-
-fn decl_module_add(m: Int, acc, node) =
-  fold(acc, (t, name) => smap_add(t, name, m), stmt_declared_names(node))
-
 fn stmt_declared_names(node) = match graph_node_body(node) {
   NStmt(stmt) => match stmt {
     FnStmt(name, _, _, _, _) => [name],
@@ -2165,8 +2053,8 @@ fn branch_replay_pubs(ref pubs, i) = if i >= len(pubs) {
   ()
 } else {
   match pubs[i] {
-    (name, scheme, reason, kind) => {
-      branch_replay_one(name, scheme, reason, kind)
+    (name, scheme, reason, kind, decl) => {
+      branch_replay_one(name, scheme, reason, kind, decl)
       branch_replay_pubs(pubs, i + 1)
     },
   }
@@ -2191,13 +2079,13 @@ fn branch_replay_pubs(ref pubs, i) = if i >= len(pubs) {
 // set (measured: str_of_single_byte's can_yield chasing a row var
 // bound in four of six runs, free in two — the k2 wrap flipping the
 // whole float-format family).
-fn branch_replay_one(name, scheme, reason, kind) = match scheme {
+fn branch_replay_one(name, scheme, reason, kind, decl) = match scheme {
   Live(h) => // A live cell replays AS a live cell: the branch's judgment wrote the
   // decl's graph cell in place (one graph, one truth), so the root's
   // readers resolve it live. Freezing here would publish a snapshot the
   // cell has already moved past — the two-generations disease this
   // landing deletes.
-  env_extend(name, Live(h), reason, kind),
+  env_extend(name, Live(h), reason, kind, decl),
   Frozen(q, sty) => {
     let fty = chase_deep(sty)
     // The quantifier RE-DERIVES from the frozen type: chase_deep folds
@@ -2228,9 +2116,9 @@ fn branch_replay_one(name, scheme, reason, kind) = match scheme {
           },
           _ => kind,
         }
-        env_extend(name, frozen, reason, joined)
+        env_extend(name, frozen, reason, joined, decl)
       },
-      _ => env_extend(name, frozen, reason, kind),
+      _ => env_extend(name, frozen, reason, kind, decl),
     }
   },
 }
@@ -2333,8 +2221,8 @@ fn infer_stmt(ref node) = {
       // where the decl is judged. A handler declares a value, as a fn
       // does, so its node carries the handler's type once registered.
       note_decl(node)
-      register_handler(hname, ename, config, state, arms, effs, span)
-      match env_lookup(hname) {
+      register_handler(hname, ename, config, state, arms, effs, span, node)
+      match graph_published(node) {
         Some((Frozen(_, ty), _, _)) => bind_declared(node, ty, hname),
         _ => (),
       }
@@ -2407,14 +2295,14 @@ fn held_has_error(held) = any({ (d, _, _, _) => diag_severity(d) == SError }, he
 // self-charge under-attributes nothing the body does not already carry.
 fn mycroft_fresh_param(p) = param_with_ty(p, TVar(mint(Inferred("mycroft assumed param"))))
 
-fn mycroft_prebind(name: String, params, span: ValidSpan) = {
+fn mycroft_prebind(name: String, params, span: ValidSpan, decl) = {
   let fresh_params = map(mycroft_fresh_param, params)
   let fn_ty = TFun(
     fresh_params,
     TVar(mint(FnReturn(name, Inferred("mycroft assumed return")))),
     mk_ef_open([], graph_fresh_row(Inferred("mycroft assumed row of '{name}'")))
   )
-  env_extend(name, Frozen(free_in_ty(fn_ty), fn_ty), Located(span, Declared(name)), FnScheme)
+  env_extend(name, Frozen(free_in_ty(fn_ty), fn_ty), Located(span, Declared(name)), FnScheme, decl)
 }
 
 // Alpha-equality over detached Ty values — the Mycroft accept's
@@ -2637,7 +2525,7 @@ fn row_alpha_shallow(r1, r2) = match r1 {
 // unquantified and would dangle).
 fn mycroft_recheck_pair(c) = (c, mint(Inferred("mycroft recheck var")))
 
-fn rebind_recheck(name: String, q, ty0, span: ValidSpan) = {
+fn rebind_recheck(name: String, q, ty0, span: ValidSpan, decl) = {
   let mapping = map(mycroft_recheck_pair, q)
   let ty1 = subst_ty(ty0, mapping)
   let ty2 = match ty1 {
@@ -2648,7 +2536,8 @@ fn rebind_recheck(name: String, q, ty0, span: ValidSpan) = {
     name,
     Frozen(map({ (_, fresh) => fresh }, mapping), ty2),
     Located(span, Declared(name)),
-    FnScheme
+    FnScheme,
+    decl
   )
   // The assumed type rides back to the accept, whose gate transfer pairs
   // its cells with the published ones.
@@ -2802,7 +2691,7 @@ fn infer_fn_speculative(name, params, body_node, ret_ann, effs, handle, span: Va
     graph_rollback(cp)
     let cp2 = graph_push_checkpoint()
     let held2 = {
-      mycroft_prebind(name, params, span)
+      mycroft_prebind(name, params, span, handle)
       infer_fn(name, params, body_node, ret_ann, effs, handle, span, true)
       poly_captured()
     } ~> poly_capture
@@ -2820,7 +2709,7 @@ fn infer_fn_speculative(name, params, body_node, ret_ann, effs, handle, span: Va
               // The assumption is written before the capture bracket: it
               // mints and binds, reports nothing, and its type rides to the
               // accept's gate transfer below.
-              let assumed = rebind_recheck(name, q, detached, span)
+              let assumed = rebind_recheck(name, q, detached, span, handle)
               let held3 = {
                 infer_fn(name, params, body_node, ret_ann, effs, handle, span, true)
                 poly_captured()
@@ -2968,9 +2857,9 @@ fn infer_fn(name, params, body_node, ret_ann, effs, handle, span: ValidSpan, pol
         } else if fn_fully_sigd(params, ret_ann) {
           ()
         } else {
-          env_extend(name, Frozen([], fn_ty), Located(span, Declared(name)), FnScheme)
+          env_extend(name, Frozen([], fn_ty), Located(span, Declared(name)), FnScheme, handle)
         },
-        None => env_extend(name, Frozen([], fn_ty), Located(span, Declared(name)), FnScheme),
+        None => env_extend(name, Frozen([], fn_ty), Located(span, Declared(name)), FnScheme, handle),
       }
       graph_bind(handle, fn_ty, Located(span, Declared(name)))
     },
@@ -3107,7 +2996,7 @@ fn infer_fn(name, params, body_node, ret_ann, effs, handle, span: ValidSpan, pol
   // rides the reason for the Why chain and the executable gate's
   // unhandled-effect diagnostic.
   let scheme = generalize(handle)
-  env_extend(name, scheme, Located(span, Declared(name)), FnScheme)
+  env_extend(name, scheme, Located(span, Declared(name)), FnScheme, handle)
   each(report_guard_note, graph_guard_drain())
 }
 
@@ -3490,7 +3379,7 @@ fn stage_entry(eff, stage_h, piped, seen) = match graph_node_body(stage_h) {
 
 // Through an install: the handler's arms and state inits run under the tee,
 // and the install itself charges its record.
-fn install_entry(eff, hnd, seen) = match module_decl(install_name(hnd)) {
+fn install_entry(eff, hnd, seen) = match tee_handler_decl(hnd) {
   Some(dh) => match graph_node_body(dh) {
     NStmt(HandlerDeclStmt(hname, _, _, _, _, _)) => match earliest_carrier(eff, body_child_handles(graph_node_body(dh))) {
       Some(c) => effect_entry(eff, c, seen),
@@ -3501,38 +3390,37 @@ fn install_entry(eff, hnd, seen) = match module_decl(install_name(hnd)) {
   None => Inferred("the install"),
 }
 
-// Through a callee: an op of the effect is the perform, and the chain ends
-// at the effect's declaration; a declaration is entered — a module's, else
-// a block's nested fn, which the decls column holds beside the module's own;
-// a constructor builds its variant, which is the charge; a value in scope
-// is where the walk stops.
+// Through a callee, by its edge to what it names: an op of the effect is the
+// perform, and the chain ends at the effect's declaration; a function is
+// entered, a module's or a block's alike; a constructor builds its variant,
+// which is the charge; a value in scope is where the walk stops.
 fn callee_entry(eff, callee_h, arg_hs, seen) = match graph_node_body(callee_h) {
-  NExpr(VarRef(name)) => match op_effect_of(name) {
-    Some(en) => op_entry(eff, en, name),
-    None => match graph_link_of(callee_h) {
-      Some(_) => Inferred("the function value `{name}`"),
-      None => match module_decl(name) {
-        Some(dh) => decl_entry(eff, name, dh, arg_hs, seen),
-        None => match find(decl_is_named(name, ??), graph_decls_at()) {
-          Some(dh) => decl_entry(eff, name, dh, arg_hs, seen),
-          None => match env_lookup(name) {
-            Some((_, _, ConstructorScheme(_, _))) => Inferred("building `{name}`"),
-            _ => Inferred("`{name}`, which no declaration in this link names"),
-          },
-        },
+  NExpr(VarRef(name)) => match graph_ref_decl(callee_h) {
+    Some(dh) => match graph_published(dh) {
+      Some((_, _, EffectOpScheme(_, _, _, _))) => op_entry(eff, dh, name),
+      Some((_, _, ConstructorScheme(_, _))) => Inferred("building `{name}`"),
+      _ => match graph_node_body(dh) {
+        NStmt(FnStmt(_, _, _, _, _)) => decl_entry(eff, name, dh, arg_hs, seen),
+        _ => Inferred("the function value `{name}`"),
       },
     },
+    None => Inferred("`{name}`, which no declaration in this link names"),
   },
   _ => Inferred("a call through a value"),
 }
 
-fn op_entry(eff, en: String, opname: String) = if en == eff_name_str(eff) {
-  match module_decl(en) {
-    Some(dh) => EffectEnters(en, dh, Declared(opname)),
-    None => Declared(opname),
-  }
-} else {
-  Inferred("`{opname}`, an op of {en}")
+// An op's effect is its declaration's parent: the effect declaration whose
+// body holds the op.
+fn op_entry(eff, op_decl, opname: String) = match graph_parent_of(op_decl) {
+  Some(effect_decl) => match graph_node_body(effect_decl) {
+    NStmt(EffectDeclStmt(en, _, _)) => if en == eff_name_str(eff) {
+      EffectEnters(en, effect_decl, Declared(opname))
+    } else {
+      Inferred("`{opname}`, an op of {en}")
+    },
+    _ => Declared(opname),
+  },
+  None => Declared(opname),
 }
 
 // Into a declaration: its body where the body carries the effect; else the
@@ -3656,20 +3544,9 @@ fn stmt_charge_word(s) = match s {
   RowAliasStmt(_, _) => "the row alias",
 }
 
-// The declaration a global name names: its one module-level declaration,
-// filed under its name where the judgment notes it (`note_decl`). A
-// module-level name is unique in the link (`E_DuplicateFnName`); a
-// declaration judged again is the newest entry.
-fn module_decl(name: String) with !Mutate = graph_module_decl_at(name)
-
 // A judged declaration enters the decls column, which holds a block's `let`s
-// and nested fns beside a module's own, and a module-level one is filed
-// under the name it declares as well.
-fn note_decl(node) = {
-  graph_decl_note(node)
-  let name = body_decl_name(graph_node_body(node))
-  if len(name) > 0 && at_module_level(node) { graph_module_decl_note(name, node) } else { () }
-}
+// and nested fns beside a module's own.
+fn note_decl(node) = graph_decl_note(node)
 
 fn decl_is_named(name: String, h) = body_decl_name(graph_node_body(h)) == name
 
@@ -4469,59 +4346,62 @@ fn bare_reference_product(handle, ty, span: ValidSpan) = match ty {
   _ => (),
 }
 
-fn infer_var_ref(name, handle, span: ValidSpan, use) = {
-  // The note fires ABOVE the env match: a missing name is still a
-  // reference (the whole-weave scan counted it; the column must too).
-  graph_ref_note(name, handle)
-  match env_lookup(name) {
-    None => {
-      report(EMissingVariable(name, span))
-      // The miss IS the fact — poison, never a normal-looking var. The old
-      // TVar(handle) self-bind tripped graph_bind's own occurs check (a
-      // spurious 0:0 E_OccursCheck per missing name) and read downstream as
-      // an unconstrained var (the ownership move-default false positives).
-      // A hole no-ops in unify, preserves the handle through generalize, and
-      // keeps every consumer silent: one miss, one diagnostic.
-      graph_bind_hole(handle, Located(span, MissingVar(name)))
-    },
-    Some(entry) => match entry {
-      (scheme, reason, kind) => {
-        // F0b (2026-09-27): a name that resolves only because the whole link
-        // carries it — declared at module level in a module this reference's
-        // module never imports — refuses HERE, at the reference, where the
-        // per-module solo sweep used to spend a process per module to find
-        // it. The declarer is its statement's own column and the reference's
-        // module its node's; the closure is one table per judgment; and a
-        // local that shadows a module-level name is the env's own answer
-        // (env_lookup_is_global), never a guess from the name.
-        let dm = inf_decl_module(name)
-        let rm = graph_module_of(handle)
-        if dm != 0 && rm != 0 && dm != rm && env_lookup_is_global(name) && !inf_module_reaches(rm, dm) {
-          report(EMissingImport(name, module_name_of_handle(rm), module_name_of_handle(dm), span))
-        } else {
-          ()
-        }
-        // A seq-op MENTION types as its FACE, never the raw body's scheme
-        // (the substrate boundary: list_set's `l + 8` types l Int, and
-        // only the op's own body may read that; the saturated and holed
-        // CALL paths already force the face — the bare mention was the
-        // last raw-scheme leak, measured as `xs |> len` unifying List
-        // against Int while emitting correctly, the 3.3 false-diagnostic
-        // drift). The row stays the callee's own declared row.
-        let ty = if is_seq_op(name) { seq_face_ty(name, scheme) } else { instantiate(scheme) }
-        graph_bind(handle, ty, Located(span, VarLookup(name, reason)))
-        // Carry parameter ownership from the env edge into Consume. No recovery
-        // lookup: SchemeKind names the binding's construction origin.
-        check_consume_at_use(name, kind, span)
-        match use {
-          RefCalled => (),
-          RefValued => match kind {
-            ConstructorScheme(_, _) => bare_reference_product(handle, ty, span),
-            EffectOpScheme(_, _, _, _) => bare_reference_product(handle, ty, span),
-            _ => (),
-          },
-        }
-      },
+fn infer_var_ref(name, handle, span: ValidSpan, use) = match env_resolve(name) {
+  None => {
+    report(EMissingVariable(name, span))
+    // The miss IS the fact — poison, never a normal-looking var. The old
+    // TVar(handle) self-bind tripped graph_bind's own occurs check (a
+    // spurious 0:0 E_OccursCheck per missing name) and read downstream as
+    // an unconstrained var (the ownership move-default false positives).
+    // A hole no-ops in unify, preserves the handle through generalize, and
+    // keeps every consumer silent: one miss, one diagnostic.
+    graph_bind_hole(handle, Located(span, MissingVar(name)))
+  },
+  Some(decl) => {
+    // THE REFERENCE LINK (M1): the one place a name resolves, so the one
+    // place the reference is joined to what declares it. Every reader after
+    // this follows the link and never resolves the name again.
+    graph_ref_link(handle, decl)
+    // F0b (2026-09-27): a name that resolves only because the whole link
+    // carries it — declared in a module this reference's module never
+    // imports — refuses HERE, at the reference. The declarer is the module
+    // its declaration was born in; a local binder is born in the
+    // reference's own module, and a primitive in the prelude, which every
+    // module reaches.
+    let rm = graph_module_of(handle)
+    let dm = graph_module_of(decl)
+    if dm != rm && !inf_module_reaches(rm, dm) {
+      report(EMissingImport(name, module_name_of_handle(rm), module_name_of_handle(dm), span))
+    } else {
+      ()
+    }
+    match graph_published(decl) {
+      Some((scheme, reason, kind)) => judge_reference(name, handle, span, use, scheme, reason, kind),
+      None => graph_bind_hole(handle, Located(span, MissingVar(name))),
+    }
+  },
+}
+
+// A resolved reference judged against what its declaration published.
+fn judge_reference(name: String, handle, span: ValidSpan, use, scheme, reason, kind) = {
+  // A seq-op MENTION types as its FACE, never the raw body's scheme (the
+  // substrate boundary: list_set's `l + 8` types l Int, and only the op's
+  // own body may read that; the saturated and holed CALL paths already
+  // force the face — the bare mention was the last raw-scheme leak,
+  // measured as `xs |> len` unifying List against Int while emitting
+  // correctly, the 3.3 false-diagnostic drift). The row stays the callee's
+  // own declared row.
+  let ty = if is_seq_op(name) { seq_face_ty(name, scheme) } else { instantiate(scheme) }
+  graph_bind(handle, ty, Located(span, VarLookup(name, reason)))
+  // Carry parameter ownership from the declaration into Consume. No
+  // recovery lookup: SchemeKind names the binding's construction origin.
+  check_consume_at_use(name, kind, span)
+  match use {
+    RefCalled => (),
+    RefValued => match kind {
+      ConstructorScheme(_, _) => bare_reference_product(handle, ty, span),
+      EffectOpScheme(_, _, _, _) => bare_reference_product(handle, ty, span),
+      _ => (),
     },
   }
 }
@@ -5606,13 +5486,20 @@ fn call_owes(callees, args, call_h, span: ValidSpan) = {
 }
 
 // The application edge, drawn where the application is judged: a reference
-// to a top-level declaration among the functions the callee can be — the
-// callee itself, a pipe's stage, the value a local holds — is noted under
-// its name (D4: the gradient's precondition bracket read the calls of a
-// declaration by scanning the whole graph for call nodes, and a pipe stage
-// was never one).
+// to a declaration among the functions the callee can be — the callee
+// itself, a pipe's stage, the value a local holds — enters the application
+// among the in-edges of the declaration it links to (D4: the gradient's
+// precondition bracket read the calls of a declaration by scanning the whole
+// graph for call nodes, and a pipe stage was never one). A value binder the
+// reference reads is the local, not a declaration it applies.
 fn note_application(call_h, leaf) = match graph_node_body(leaf) {
-  NExpr(VarRef(name)) => if graph_link_of(leaf) == None { graph_apply_note(name, call_h) } else { () },
+  NExpr(VarRef(_)) => match binder_read_by(leaf) {
+    None => match graph_ref_decl(leaf) {
+      Some(decl) => graph_apply_note(decl, call_h),
+      None => (),
+    },
+    Some(_) => (),
+  },
   _ => (),
 }
 
@@ -5632,7 +5519,7 @@ fn callee_in_sight(leaf) = match graph_node_body(leaf) {
 
 fn callee_seen(leaf) = learning_param(leaf) || callee_in_sight(leaf)
 
-fn stated_parameter(leaf) = match graph_link_of(leaf) {
+fn stated_parameter(leaf) = match binder_read_by(leaf) {
   Some(b) => match graph_binder_of(b) {
     Some(fact) => match fact {
       ParamFact(_) => !learning_binder(b),
@@ -5900,7 +5787,10 @@ fn infer_chain_install(left, right, name: String, members, handle, span: ValidSp
     )),
     _ => (),
   }
-  graph_ref_note(name, right)
+  match env_resolve(name) {
+    Some(decl) => graph_ref_link(right, decl),
+    None => (),
+  }
   graph_bind(
     right,
     TUnit,
@@ -5969,20 +5859,23 @@ fn judge_chain_member(name: String, h) = match callee_name(h) {
     "a member of the chain {name} is not a handler — a chain is handlers, each a name or a name applied to its config",
     graph_span_of(h)
   )),
-  member => match env_lookup(member) {
-    Some((_, _, HandlerKind(_, _, _, _, _))) => {
-      member_declarations(h) |> each(member_declared(name, ??))
-      infer_expr(h)
+  member => match env_resolve(member) {
+    Some(decl) => match graph_published(decl) {
+      Some((_, _, HandlerKind(_, _, _, _, _))) => {
+        member_declarations(h) |> each(member_declared(name, ??))
+        infer_expr(h)
+      },
+      Some((_, _, HandlerChainKind(_))) => {
+        graph_ref_link(h, decl)
+        graph_bind(
+          h,
+          TUnit,
+          Located(graph_span_of(h), Inferred("the handler chain {member}, a member of {name}"))
+        )
+      },
+      _ => report(EHandlerChainShape("`{member}`, a member of the chain {name}, is not a handler", graph_span_of(h))),
     },
-    Some((_, _, HandlerChainKind(_))) => {
-      graph_ref_note(member, h)
-      graph_bind(
-        h,
-        TUnit,
-        Located(graph_span_of(h), Inferred("the handler chain {member}, a member of {name}"))
-      )
-    },
-    _ => report(EHandlerChainShape("`{member}`, a member of the chain {name}, is not a handler", graph_span_of(h))),
+    None => report(EHandlerChainShape("`{member}`, a member of the chain {name}, is not a handler", graph_span_of(h))),
   },
 }
 
@@ -8518,7 +8411,7 @@ fn state_field_written_cells(sf) = match graph_binder_of(state_field_init(sf)) {
 // The targets a store into the value at `h` reaches, read from the scope the
 // store stands in — none when the scope allocated it.
 fn store_targets(h, scope) = match graph_node_body(h) {
-  NExpr(VarRef(_)) => match graph_link_of(h) {
+  NExpr(VarRef(_)) => match binder_read_by(h) {
     Some(b) => binder_targets(b, scope),
     None => [TgOlder],
   },
@@ -8566,7 +8459,7 @@ fn let_at(b, entry) = match entry {
 // function's is what its claim says of the arguments it returns, and any
 // other's is older than the call.
 fn call_targets(callee, args, scope) = match graph_node_body(callee) {
-  NExpr(VarRef(cname)) => match graph_link_of(callee) {
+  NExpr(VarRef(cname)) => match binder_read_by(callee) {
     Some(_) => [TgOlder],
     None => if cname == "alloc" {
       []
@@ -8597,7 +8490,7 @@ fn arg_targets(args, scope, i) = if i >= 0 && i < len(args) {
 
 // A call into a declared function asks every parameter the function stores
 // into of the argument that fills it.
-fn ages_call(callee_h, cname: String, arg_handles) = match graph_link_of(callee_h) {
+fn ages_call(callee_h, cname: String, arg_handles) = match binder_read_by(callee_h) {
   Some(_) => (),
   None => match ages_summary(cname) {
     Some(summary) => match summary {
@@ -8800,7 +8693,8 @@ fn infer_pat(ref pat, handle, span: ValidSpan) = match pat {
     name,
     Frozen([], TVar(handle)),
     Located(span, LetBinding(name, Inferred("pattern"))),
-    ValueScheme
+    ValueScheme,
+    handle
   ),
   PWild => (),
   PLit(v) => {
@@ -8812,49 +8706,44 @@ fn infer_pat(ref pat, handle, span: ValidSpan) = match pat {
     }
     constrain_scrutinee(handle, ty, span, Inferred("literal pattern"))
   },
-  PCon(name, sub_pats) => {
-    // A pattern IS a reference. This resolution has to happen — arity and
-    // exhaustiveness are checked against the very scheme it finds — so the
-    // edge is proven here and was being dropped on the floor, which made
-    // every match-only constructor read as declared-and-never-reached.
-    // Noted above the match for infer_var_ref's reason: a missing
-    // constructor is still a reference to the name that is missing.
-    graph_ref_note(name, handle)
-    match env_lookup(name) {
-      None => report(EMissingVariable("constructor: {name}", span)),
-      Some(entry) => // ConstructorScheme bindings carry one of two ty shapes:
-      //   nullary  → TName(type_name, args)         — bind scrutinee to it
-      //   fielded  → TFun(params, TName(...), Pure) — bind scrutinee to RETURN,
-      //                                                 sub_pats to PARAMS.
-      // A nominal record's entry (RecordSchemeKind) binds the bare TName —
-      // the construction view for `Pri{...}` literals, no arrow. Its
-      // ctor-PATTERN view is the single-field arrow
-      // `Pri : TRecord(declared) → TName`: rebuild the arrow AROUND the
-      // scheme's body so ONE instantiate substitutes both halves, and the
-      // shared TFun path below binds scrutinee + the sub-pattern. (The
-      // seed's kind-132 arm has read this view since the m2 march; the
-      // wheel lagged its own seed — every `let Pri(pa) = a` lost pa.)
-      // FnScheme bindings reaching here are user-level matches on a
-      // plain function value — degenerate but harmless; bind the
-      // scrutinee to the looked-up type and skip sub-pat plumbing.
-      match entry {
-        (scheme, reason, kind) => {
-          let ty = match kind {
-            RecordSchemeKind(declared_fields) => match judgment_pair(scheme) {
-              (q, body) => instantiate(Frozen(q, TFun(build_ctor_params([TRecord(declared_fields)], 0), body, mk_ef_pure()))),
-            },
-            _ => instantiate(scheme),
-          }
-          match ty {
-            TFun(params, ret_ty, _row) => {
-              constrain_scrutinee(handle, ret_ty, span, VarLookup(name, reason))
-              bind_pcon_subpats(params, sub_pats, handle, span, reason, name)
-            },
-            _ => constrain_scrutinee(handle, ty, span, VarLookup(name, reason)),
-          }
-        },
+  PCon(name, sub_pats) => // A pattern IS a reference, and the constructor resolves here, where
+  // arity and exhaustiveness are checked against the very scheme it finds.
+  // Its edge belongs to the pattern's own node, and a pattern is a value tree
+  // with no node yet (`Hβ.graph.positions-are-cells`), so none is drawn.
+  match env_lookup(name) {
+    None => report(EMissingVariable("constructor: {name}", span)),
+    Some(entry) => // ConstructorScheme bindings carry one of two ty shapes:
+    //   nullary  → TName(type_name, args)         — bind scrutinee to it
+    //   fielded  → TFun(params, TName(...), Pure) — bind scrutinee to RETURN,
+    //                                                 sub_pats to PARAMS.
+    // A nominal record's entry (RecordSchemeKind) binds the bare TName —
+    // the construction view for `Pri{...}` literals, no arrow. Its
+    // ctor-PATTERN view is the single-field arrow
+    // `Pri : TRecord(declared) → TName`: rebuild the arrow AROUND the
+    // scheme's body so ONE instantiate substitutes both halves, and the
+    // shared TFun path below binds scrutinee + the sub-pattern. (The
+    // seed's kind-132 arm has read this view since the m2 march; the
+    // wheel lagged its own seed — every `let Pri(pa) = a` lost pa.)
+    // FnScheme bindings reaching here are user-level matches on a
+    // plain function value — degenerate but harmless; bind the
+    // scrutinee to the looked-up type and skip sub-pat plumbing.
+    match entry {
+      (scheme, reason, kind) => {
+        let ty = match kind {
+          RecordSchemeKind(declared_fields) => match judgment_pair(scheme) {
+            (q, body) => instantiate(Frozen(q, TFun(build_ctor_params([TRecord(declared_fields)], 0), body, mk_ef_pure()))),
+          },
+          _ => instantiate(scheme),
+        }
+        match ty {
+          TFun(params, ret_ty, _row) => {
+            constrain_scrutinee(handle, ret_ty, span, VarLookup(name, reason))
+            bind_pcon_subpats(params, sub_pats, handle, span, reason, name)
+          },
+          _ => constrain_scrutinee(handle, ty, span, VarLookup(name, reason)),
+        }
       },
-    }
+    },
   },
   PTuple(pats) => infer_pat_tuple(pats, handle, span),
   PList(pats, rest) => infer_pat_list(pats, rest, handle, span),
@@ -8887,7 +8776,8 @@ fn infer_pat(ref pat, handle, span: ValidSpan) = match pat {
           rn,
           Frozen([], TVar(rest_h)),
           Located(span, LetBinding(rn, Inferred("record pattern rest"))),
-          ValueScheme
+          ValueScheme,
+          rest_h
         )
         // the remaining fields are copied into a record built here
         inf_add_row_at(handle, construction_row())
@@ -8918,7 +8808,8 @@ fn infer_pat(ref pat, handle, span: ValidSpan) = match pat {
       name,
       Frozen([], TVar(as_h)),
       Located(span, LetBinding(name, Inferred("as-pattern"))),
-      ValueScheme
+      ValueScheme,
+      as_h
     )
     infer_pat(inner, handle, span)
   },
@@ -9057,7 +8948,8 @@ fn infer_pat_list(pats, rest, parent_handle, span: ValidSpan) = {
         name,
         Frozen([], TVar(rest_h)),
         Located(span, LetBinding(name, Inferred("list rest pattern"))),
-        ValueScheme
+        ValueScheme,
+        rest_h
       )
       // the rest is cut as a slice at run time, and costs what its callee does
       inf_add_row_at(parent_handle, named_fn_row(list_rest_callee()))
@@ -9625,7 +9517,8 @@ fn bind_arm_args(args, params, op_name, span: ValidSpan) = {
           name,
           Frozen([], TVar(h)),
           Located(span, LetBinding(name, Declared(op_name))),
-          ValueScheme
+          ValueScheme,
+          h
         )
       },
     },
@@ -10761,7 +10654,7 @@ fn mint_params(params, owner_name, span: ValidSpan) = map(
       // chases to the resolved param type (the eq/binop/++ dispatch, the emit width).
       // The entry's reason is the parameter's own, located at the signature that
       // declares it, so a read's Why ends at the declaration rather than a bare name.
-      env_extend(name, Frozen([], TVar(h)), Located(span, why), ParamScheme(param_authored(p)))
+      env_extend(name, Frozen([], TVar(h)), Located(span, why), ParamScheme(param_authored(p)), h)
       h
     },
   },
@@ -12426,7 +12319,7 @@ fn refined_as(ty, name: String) = match surface_refinement(ty) {
 fn fn_leaves(h) = match value_tails(h) {
   Some(tails) => tails |> flat_map(fn_leaves),
   None => match graph_node_body(h) {
-    NExpr(VarRef(_)) => match graph_link_of(h) {
+    NExpr(VarRef(_)) => match binder_read_by(h) {
       Some(b) => fn_leaves_at_binder(b, h),
       None => [h],
     },
@@ -13018,7 +12911,7 @@ fn unknown_with(found) = match found {
 
 fn build_inferred_params(handles) = map((h) => mk_param("_", TVar(h)), handles)
 
-fn register_type_constructors(type_name, variants) = {
+fn register_type_constructors(type_name, variants, decl) = {
   let total = len(variants)
   // ONE quantification map per DECL (HM: every ctor of a type
   // quantifies the type's full parameter set — None : Option(a)
@@ -13072,7 +12965,8 @@ fn register_type_constructors(type_name, variants) = {
               },
             },
             enumerate(variants)
-          ))
+          )),
+          decl
         )
       }
       each(
@@ -13345,7 +13239,8 @@ fn register_one_variant(type_name: String, result_ty, qhandles, field_types, var
           ctor_name,
           Frozen(qhandles, declared),
           Declared(ctor_name),
-          RecordSchemeKind(declared_fields)
+          RecordSchemeKind(declared_fields),
+          vnode
         ),
         _ => // is_record_ty above proves TRecord — the impossible branch (SYNTAX
         // §exhaustiveness); the refutable let-destructure that stood here was
@@ -13357,7 +13252,8 @@ fn register_one_variant(type_name: String, result_ty, qhandles, field_types, var
         ctor_name,
         Frozen(qhandles, declared),
         Declared(ctor_name),
-        ConstructorScheme(tag_id, total)
+        ConstructorScheme(tag_id, total),
+        vnode
       )
     }
   },
@@ -13389,7 +13285,7 @@ fn is_record_ty(ty) with Pure = match ty {
 fn build_ctor_params(field_types, base_idx) =
   map({ (i, ty) => mk_param("_{int_to_str(base_idx + i)}", ty) }, enumerate(field_types))
 
-fn register_effect_ops(effect_name, params, ops) = {
+fn register_effect_ops(effect_name, params, ops, decl) = {
   // Register the effect name itself with its op names.
   // EffectDeclKind is the graph's vocabulary for "this is an effect
   // declaration carrying these ops." The world-chain dispatch reads it;
@@ -13404,7 +13300,8 @@ fn register_effect_ops(effect_name, params, ops) = {
     effect_name,
     Frozen([], TTuple(map(param_ty, params))),
     Declared(effect_name),
-    EffectDeclKind(op_names, map(param_name, params))
+    EffectDeclKind(op_names, map(param_name, params)),
+    decl
   )
   // THE EFFECT'S COMPLETE TYPE-VAR STRUCTURE: the free type vars across ALL
   // its ops' signatures (params + returns), deduped — the effect's type
@@ -13634,7 +13531,8 @@ fn register_one_op(effect_name, eff_name, op) = match op {
       Declared(op_name),
       // OneShot is the join identity (grade UZero → OneShot): an op with no
       // handler stays the fast path; each handler's arm joins its grade in.
-      EffectOpScheme(effect_name, "", false, OneShot)
+      EffectOpScheme(effect_name, "", false, OneShot),
+      op_node
     )
   },
 }
@@ -13758,7 +13656,7 @@ fn derive_handler_ename(arms, fallback: String) = if len(arms) == 0 {
   }
 }
 
-fn register_handler(hname, ename_parsed, config, state, arms, effs, span: ValidSpan) = {
+fn register_handler(hname, ename_parsed, config, state, arms, effs, span: ValidSpan, decl) = {
   // The handler's identity (effect, instance, config, HandlerKind) was registered
   // at pre_register_handler_sig — a parsed fact, not an inferred one. The main
   // walk reads the pre-registered r_handle from the env so forward references
@@ -13825,7 +13723,8 @@ fn register_handler(hname, ename_parsed, config, state, arms, effs, span: ValidS
     hname,
     Frozen(inst_vars ++ [s_h], scheme_body),
     Declared(hname),
-    HandlerKind(r_handle, w_handle, config_tparams, state, arms)
+    HandlerKind(r_handle, w_handle, config_tparams, state, arms),
+    decl
   )
   // Resume cardinality IS written here, on the op's EffectOpScheme (draw_op_edges
   // below joins each arm's resume_grade). The body IS the contract, so the
@@ -13948,7 +13847,8 @@ fn register_handler(hname, ename_parsed, config, state, arms, effs, span: ValidS
     hname,
     generalize(scheme_body_h),
     Declared(hname),
-    HandlerKind(r_handle, w_handle, config_tparams, state, arms)
+    HandlerKind(r_handle, w_handle, config_tparams, state, arms),
+    decl
   )
   // Draw the op→handler edge onto each op's EffectOpScheme HERE — in the body,
   // OUTSIDE the arm `each` and inf_enter_fn's InferCtx install. An env_extend
@@ -13984,9 +13884,9 @@ fn draw_op_edges(arms, hname) = if len(arms) == 0 {
   // live by lower — no second hand-walk at lower. The join is monotone
   // toward MultiShot, so a re-drawn arm only ever raises disc.
   let grade = resume_grade(handler_arm_body(arm))
-  match env_lookup(op_name) {
-    Some(entry) => match entry {
-      (scheme, reason, kind) => match kind {
+  match env_resolve(op_name) {
+    Some(decl) => match graph_published(decl) {
+      Some((scheme, reason, kind)) => match kind {
         EffectOpScheme(ename, cur_default, ambiguous, cur_disc) => {
           // An arm that never resumes ABANDONS: its value is the install's,
           // delivered by the driver (the arm returns without calling k and
@@ -14007,12 +13907,14 @@ fn draw_op_edges(arms, hname) = if len(arms) == 0 {
               op_name,
               scheme_with_disc_cost(scheme, disc),
               reason,
-              EffectOpScheme(ename, nd, na, disc)
+              EffectOpScheme(ename, nd, na, disc),
+              decl
             ),
           }
         },
         _ => (),
       },
+      None => (),
     },
     None => (),
   }
@@ -14053,15 +13955,20 @@ fn infer_handler_state_inits(state) = map(
   state
 )
 
-fn bind_handler_config_params(config_tparams, hname) = each(
+// A config parameter is a cell of its own, bound to the parameter's type, as
+// an arm's parameters are (`bind_arm_args`): its references link to the
+// cell, and what the judgment learns of it is published there.
+fn bind_handler_config_params(config_tparams, hname: String) = each(
   (tp) => {
     let name = param_name(tp)
-    let ty = param_ty(tp)
+    let h = mint(Located(span_zero(), LetBinding(name, Declared(hname))))
+    graph_bind(h, param_ty(tp), Located(span_zero(), Declared(hname)))
     env_extend(
       name,
-      Frozen([], ty),
+      Frozen([], TVar(h)),
       Located(span_zero(), LetBinding(name, Declared(hname))),
-      ParamScheme(param_authored(tp))
+      ParamScheme(param_authored(tp)),
+      h
     )
   },
   config_tparams
@@ -14082,7 +13989,8 @@ fn bind_handler_state_name(updates, hname: String, span: ValidSpan, bind) = matc
       name,
       Frozen([], TVar(ih)),
       Located(span, LetBinding(name, Declared(hname))),
-      ValueScheme
+      ValueScheme,
+      ih
     )
     graph_binder_note(
       ih,

@@ -652,7 +652,7 @@ fn param_uses(h) = match graph_node_body(h) {
   _ => [],
 }
 
-fn links_a_param(h) = match graph_link_of(h) {
+fn links_a_param(h) = match binder_read_by(h) {
   Some(b) => match graph_binder_of(b) {
     Some(ParamFact(_)) => true,
     Some(_) => false,
@@ -675,21 +675,17 @@ fn trace_cells(t) = match t {
 }
 
 // ── Find by edge: what the node at the caret names, followed along its
-// edge. A reference to a local — its own link names a binder the parse
-// minted inside a declaration — answers every reference in the module that
-// links the same binder; a name a declaration introduces answers every
-// reference the graph noted under it (the refs column — the reverse edge).
+// edge. A reference answers every reference to the declaration it links —
+// a parameter, a local and a module's function alike, each the node that
+// declares it — and a declaration answers its own: the in-edges that are
+// uses (`graph_refs_of`).
 fn refs_at(h, v) = match graph_node_body(h) {
-  NExpr(VarRef(name)) => match graph_link_of(h) {
-    Some(b) => if is_local_binder(b) {
-      FoundRefs(name, local_uses(v, b) |> map(site_in_view(v.name, ??)), [])
-    } else {
-      FoundRefs(name, refs_of_name(name) |> map(noted_address), [])
-    },
-    None => FoundRefs(name, refs_of_name(name) |> map(noted_address), []),
+  NExpr(VarRef(name)) => match graph_ref_decl(h) {
+    Some(d) => FoundRefs(name, refs_of_decl(d) |> map(noted_address), []),
+    None => FoundNothing,
   },
   NStmt(s) => match stmt_declared_name(s) {
-    Some(name) => FoundRefs(name, refs_of_name(name) |> map(noted_address), []),
+    Some(name) => FoundRefs(name, refs_of_decl(h) |> map(noted_address), []),
     None => FoundNothing,
   },
   _ => FoundNothing,
@@ -707,26 +703,6 @@ fn stmt_declared_name(s) = match s {
   LetStmt(_, _, _) => None,
   ImportStmt(_) => None,
   ExprStmt(_) => None,
-}
-
-// A binder a declaration's body holds: a parameter, a part a pattern took
-// apart, a handler's state — or a node the parse minted below a
-// declaration (a let's pattern).
-fn is_local_binder(b) = match graph_binder_of(b) {
-  Some(_) => true,
-  None => len(decl_path_to(b)) > 1,
-}
-
-fn local_uses(v, b) = module_handles(v.node) |> filter(links_to(??, b)) |> map(graph_span_of)
-
-fn site_in_view(m: String, sp) = (m, sp)
-
-fn links_to(u, b) = match graph_node_body(u) {
-  NExpr(VarRef(_)) => match graph_link_of(u) {
-    Some(x) => x == b,
-    None => false,
-  },
-  _ => false,
 }
 
 // A needle a find typed: the references the graph noted under it, and the
