@@ -1430,15 +1430,34 @@ fn edges_may_yield_by(ref vs: [RowEdge], effect_pred) = match vs {
   },
 }
 
-// The effect→ops edge lives in the env (EffectDeclKind, register_effect_ops);
-// each op's resume grade lives on its EffectOpScheme (inference joined the
-// handler arms' Usage grades). Two live reads — no side registry. An effect
-// yields when any of its ops suspends the perform — a multi-shot op (a live
-// continuation) or an abandoning one (a dead continuation: the caller
-// treats the call as a boundary and unwinds on the flag).
-fn effect_has_multishot_op(ename) = effect_has_op_by(ename, disc_yields)
+// An effect yields when any of its ops suspends the perform — a multi-shot
+// op (a live continuation) or an abandoning one (a dead continuation: the
+// caller treats the call as a boundary and unwinds on the flag). Each op's
+// resume grade lives on its EffectOpScheme, so whether an effect yields is a
+// fact of the effect, fixed once the judgment ends: `lower_program` reads it
+// once per declared effect (`effect_yield_facts`) and the gate asks it at
+// every call. A name no statement declares is read off its ops directly.
+fn effect_has_multishot_op(ename) = match ls_effect_yield_fact(ename) {
+  Some((yields, _)) => yields,
+  None => effect_has_op_by(ename, disc_yields),
+}
 
-fn effect_has_live_op(ename) = effect_has_op_by(ename, disc_live)
+fn effect_has_live_op(ename) = match ls_effect_yield_fact(ename) {
+  Some((_, live)) => live,
+  None => effect_has_op_by(ename, disc_live),
+}
+
+// Each declared effect's two yield facts: whether an op yields, and whether
+// a handler resumes one.
+fn effect_yield_facts(stmts) = flat_map(
+  {
+    s => match graph_node_body(s) {
+      NStmt(EffectDeclStmt(ename, _, _)) => [(ename, (effect_has_op_by(ename, disc_yields), effect_has_op_by(ename, disc_live)))],
+      _ => [],
+    },
+  },
+  stmts
+)
 
 fn disc_yields(d) = match d {
   MultiShot => true,
@@ -1606,19 +1625,6 @@ fn collect_free_vars_of_decl(decls, name: String) = {
     }
   }
 }
-
-// The global short-circuit's one writer: walk the program's effect decls and
-// ask each for a MultiShot-graded op. Runs once at lower_program, before any
-// body lowers.
-fn program_may_yield(stmts) = any(
-  {
-    s => match graph_node_body(s) {
-      NStmt(EffectDeclStmt(ename, _, _)) => effect_has_multishot_op(ename),
-      _ => false,
-    },
-  },
-  stmts
-)
 
 // AN-2 — the ops a direct perform must CHECK after: every op of every
 // handler whose residual row (what its arms perform) may yield, by name or
@@ -6295,7 +6301,9 @@ fn lower_program(stmts) = {
   // that found it does not. Does any declared effect carry a yielding op?
   // No ⇒ nothing can yield ⇒ `can_yield` is false everywhere and the
   // boundary machinery contributes zero bytes.
-  let yields = program_may_yield(stmts) ~> arena
+  let facts = effect_yield_facts(stmts) ~> arena
+  ls_register_yield_facts(facts)
+  let yields = any({ (_, (y, _)) => y }, facts)
   ls_register_may_yield(yields)
   // AN-2 — the ops whose direct performs are followed by the boundary
   // check; nothing unwinds in a program where nothing yields.
@@ -6380,7 +6388,9 @@ fn push_name(buf, count, name) = {
 //
 // Records are stored with their fields sorted by name; Mentl source reads
 // them by `.field`, so the physical layout is the emit's business.
-handler lower_scope with frames = [], globals = [], may_yield = false, unwinding = [], resume_binds = [], wide = smap_new(), walking = [], fn_symbols = wmap_new(64), symbol_counts = smap_new() {
+handler lower_scope with frames = [], globals = [], may_yield = false, yield_facts = smap_new(), unwinding = [], resume_binds = [], wide = smap_new(), walking = [], fn_symbols = wmap_new(64), symbol_counts = smap_new() {
+  ls_register_yield_facts(facts) => resume() with yield_facts = smap_build(facts),
+  ls_effect_yield_fact(name) => resume(smap_get(yield_facts, name)),
   ls_wide_memo(name) => // A nominal type's wide-sequence fact, settled once per name by
   // `wide_reach_name` and read at every later site; the names whose
   // structure the walk stands inside cut their own cycles.

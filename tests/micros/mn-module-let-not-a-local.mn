@@ -1,0 +1,15 @@
+// expect: 25
+// A global reference reads the module-level `let` it names, never a local
+// `let` of the same name another function binds. Measured on boot 187d938e:
+// refused, E_RefinementRejected — the division read `f`'s local `k` as its
+// divisor and proved `k != 0` false.
+let k = 4
+
+fn f() = {
+  let k = 0
+  k
+}
+
+fn g(x) = x / k
+
+fn main() = g(100) + f()

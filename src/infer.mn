@@ -2284,7 +2284,7 @@ fn infer_stmt(ref node) = {
       // every module value let), so the relocation's reader resolves its
       // origin here. Nested fns already note through infer_fn, so the
       // column's contract was never top-level-only.
-      graph_decl_note(node)
+      note_decl(node)
       infer_expr(expr)
       ages_let(expr)
       // The let STATEMENT's value IS its expression: bind the stmt node to
@@ -2332,7 +2332,7 @@ fn infer_stmt(ref node) = {
       // op), so the arm's origin is its handler decl's node — noted here,
       // where the decl is judged. A handler declares a value, as a fn
       // does, so its node carries the handler's type once registered.
-      graph_decl_note(node)
+      note_decl(node)
       register_handler(hname, ename, config, state, arms, effs, span)
       match env_lookup(hname) {
         Some((Frozen(_, ty), _, _)) => bind_declared(node, ty, hname),
@@ -2380,7 +2380,7 @@ fn infer_stmt(ref node) = {
 // A declaration with no value — a type, an effect, an alias — is noted in
 // the decls column and its statement evaluates to unit.
 fn declaration_noted(node, name: String) = {
-  graph_decl_note(node)
+  note_decl(node)
   bind_declared(node, TUnit, name)
 }
 
@@ -2890,7 +2890,7 @@ fn infer_fn(name, params, body_node, ret_ann, effs, handle, span: ValidSpan, pol
   // handler-decl arms of infer_stmt are the other two — a column of
   // every judged DECLARATION, which is what the relocation's reader
   // needs an origin from.
-  graph_decl_note(handle)
+  note_decl(handle)
   env_scope_enter()
   let param_handles = mint_params(params, name, span)
   let ret_handle = mint(FnReturn(name, Inferred("return of '{name}'")))
@@ -3657,12 +3657,19 @@ fn stmt_charge_word(s) = match s {
 }
 
 // The declaration a global name names: its one module-level declaration,
-// read off the decls column, which holds every judged declaration — a
-// block's `let`s and nested fns beside a module's own. A module-level name is
-// unique in the link (`E_DuplicateFnName`), so the first is the one.
-fn module_decl(name: String) with !Mutate = find(module_decl_named(name, ??), graph_decls_at())
+// filed under its name where the judgment notes it (`note_decl`). A
+// module-level name is unique in the link (`E_DuplicateFnName`); a
+// declaration judged again is the newest entry.
+fn module_decl(name: String) with !Mutate = graph_module_decl_at(name)
 
-fn module_decl_named(name: String, h) = decl_is_named(name, h) && at_module_level(h)
+// A judged declaration enters the decls column, which holds a block's `let`s
+// and nested fns beside a module's own, and a module-level one is filed
+// under the name it declares as well.
+fn note_decl(node) = {
+  graph_decl_note(node)
+  let name = body_decl_name(graph_node_body(node))
+  if len(name) > 0 && at_module_level(node) { graph_module_decl_note(name, node) } else { () }
+}
 
 fn decl_is_named(name: String, h) = body_decl_name(graph_node_body(h)) == name
 

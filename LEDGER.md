@@ -35,6 +35,35 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-10-14 · pin 16d5706e82397dbd (TRANSITION m2 ≠ m3, m3 == m4; m2 == m3
+  measured again on the committed source) · THE SWEEP'S FIRST CUT — THE
+  SELF-COMPILE PROFILED, ITS MEASURED HOT SPOTS REMOVED
+  The guest profiler profiles the self-compile: the march verb returns from
+  `main` (tools/profile-self.sh, tools/guest-profile.py). Guest samples 5,884
+  → 2,755, the m3 leg 35.37 → 19.82 s wall, peak RSS 428,400 → 412,928 KB.
+  Five cuts, each measured. (1) WILD's `seq_kind_of` put a function call into
+  `list_index_unchecked`, the hottest function in the compiler, at 11% of
+  guest time; the four tag matches read the word again, the complement the
+  trap, and `SeqKind` is deleted. (2) The yield gate asked each effect of a
+  callee's row for its ops' disciplines at every call site, an env lookup
+  per op, 14% inclusive; each declared effect's two yield facts are read
+  once (`effect_yield_facts`). (3) A data segment's bytes were written three
+  performs per byte, each walking the handler chain, with a fresh one-glyph
+  string per hex digit — 57% of `ev_declaring_node`'s time; a segment is
+  escaped into one buffer and written once (`segment_text`), printable bytes
+  as themselves. (4) `slice_raw` over a slice made a slice of the slice, so
+  every `drop_last` walk over a flat list read through a chain of cuts; the
+  offsets compose. (5) `module_let_const` scanned every judged declaration by
+  name per read, 12% inclusive, and its newest `let` of a name could be a
+  local one: tests/micros/mn-module-let-not-a-local.mn was refused on boot
+  187d938e, `k != 0` proven false from another function's local `let k = 0`,
+  and runs 25 now. Module-level declarations are filed under their names
+  where the judgment notes them (`note_decl`, `graph_module_decl_at`), which
+  `module_decl` reads too. Next, by the same profile: the env's name-keyed
+  bucket scans (~14%, the family M1's reference edge replaces) and
+  `ev_declaring_node` (~12%, performs inside loops walking the handler
+  chain). Gates: battery 417/417, frontier 670 / 0 red, crown, proof-exactness
+  and ide green; the iteration-costume bound held at 460.
 - 2026-10-14 · pin 187d938ea368186d (TRANSITION m2 ≠ m3, m3 == m4; the
   first repin was refused at the line ratchet, and this one pays that cost
   down) · LANDING 4.5 (WILD) — A CATCH-ALL OVER A SUM IS COUNTED AND

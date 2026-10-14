@@ -3733,30 +3733,51 @@ fn emit_k_compose_pair() = {
 // layout is the unified flat-sequence record [count@0][tag_word@+4][bytes@+8],
 // identical to a stride-1 flat list, so list_index reads it generically at
 // stride 1 (the carrier). tag_word = pack_tag(0, 1): the flat tag (0) with the
-// byte stride-code (1). The bytes now begin at +8, not +4.
+// byte stride-code (1).
 fn emit_string_data(entries) = each(
   {
     (s, offset) => {
       wat_emit("  (data (i32.const ")
       wat_emit(int_to_str(offset))
       wat_emit(") \"")
-      // count @ +0
-      emit_le4_escape(byte_len(s))
-      // tag word @ +4: flat, stride-1 (byte)
-      emit_le4_escape(pack_tag(0, 1))
-      // bytes @ +8
-      emit_string_bytes(s, 0, byte_len(s))
+      wat_emit(segment_text(s))
       wat_emit("\")\n")
     },
   },
   entries
 )
 
-fn emit_string_bytes(s, i, n) = if i >= n {
-  ()
+// A string literal's segment as the WAT text writes it — its count word, its
+// tag word, then its bytes — built in one buffer and written once.
+fn segment_text(s) = {
+  let n = byte_len(s)
+  let out = bytes_buf(3 * (8 + n))
+  let header = escape_word(out, escape_word(out, 0, n), pack_tag(0, 1))
+  store_i32(out, fold(header, escape_into(out, ??, ??), s))
+  str_of_buf(out)
+}
+
+// Words as a data segment's text, each four bytes little-endian.
+fn words_text(words) = {
+  let out = bytes_buf(12 * len(words))
+  store_i32(out, fold(0, escape_word(out, ??, ??), words))
+  str_of_buf(out)
+}
+
+fn escape_word(out, pos, w) =
+  fold(pos, escape_into(out, ??, ??), [w % 256, w / 256 % 256, w / 65536 % 256, w / 16777216 % 256])
+
+// One byte into a segment's text at `pos`, answering the next position: a
+// printable byte other than `"` and `\` stands as itself, every other as
+// `\HH`.
+fn escape_into(out, pos, b) = if b >= 32 && b < 127 && b != 34 && b != 92 {
+  store_i8(addr_at(out, 8 + pos), b)
+  pos + 1
 } else {
-  emit_byte_escape(byte_at(s, i))
-  emit_string_bytes(s, i + 1, n)
+  store_i8(addr_at(out, 8 + pos), 92)
+  store_i8(addr_at(out, 9 + pos), hex_nibble(b / 16))
+  store_i8(addr_at(out, 10 + pos), hex_nibble(b % 16))
+  pos + 3
 }
 
 // extract_top_fn_name — read the binding name from a top-level LLet
@@ -4374,8 +4395,7 @@ fn emit_static_top_closures(top_names, all_names, base_slot) = each(
       wat_emit("  (data (i32.const ")
       wat_emit(int_to_str(addr))
       wat_emit(") \"")
-      emit_le4_escape(fn_idx)
-      emit_le4_escape(0)
+      wat_emit(words_text([fn_idx, 0]))
       wat_emit("\")\n")
       // Immutable global pointing at the record. VarRef → LGlobal →
       // (global.get $<name>) returns the static closure pointer.
@@ -4388,24 +4408,6 @@ fn emit_static_top_closures(top_names, all_names, base_slot) = each(
   },
   enumerate(top_names)
 )
-
-fn emit_le4_escape(n) = {
-  emit_byte_escape(n % 256)
-  emit_byte_escape(n / 256 % 256)
-  emit_byte_escape(n / 65536 % 256)
-  emit_byte_escape(n / 16777216 % 256)
-}
-
-fn emit_byte_escape(b) = {
-  wat_emit("\\")
-  wat_emit(hex_digit(b / 16))
-  wat_emit(hex_digit(b % 16))
-}
-
-// One glyph of the shared hex table (lib/strings.mn hex_glyphs — the same
-// bytes the formatter's `\xHH` renders), as the one-byte string wat_emit
-// takes.
-fn hex_digit(d) = str_slice(hex_glyphs(), d, d + 1)
 
 // The function types every call_indirect names, projected from the module's
 // call vectors (collected once in the plan): the arity family $ftN the

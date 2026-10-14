@@ -3233,6 +3233,9 @@ effect GraphRead {
   // would otherwise scan the graph for call nodes (the gradient's bracket).
   graph_applies_at(String) -> [Int]
   graph_decls_at() -> [Int]
+  // The module-level declaration a global name names, newest first — one
+  // read where a reader would walk the whole decls column for it.
+  graph_module_decl_at(String) -> Option(Int)
   // The value-holes column's read: (hole handle, entry name) pairs — the
   // executable gate's whole input (lowering-is-a-column (ii), the first
   // walker swap; the four-fn LowExpr walk retired onto this read).
@@ -3390,6 +3393,8 @@ effect GraphWrite {
   // graph_decls_at (the oracle queue's seed). Judgment rounds re-note,
   // so readers dedup by handle.
   graph_decl_note(Int)
+  // A module-level declaration filed under the name it declares.
+  graph_module_decl_note(String, Int)
   // The value-holes column's writes: lower's authored-hole arm NOTES the
   // surviving hole (value-position is a lowering decision — a consumed
   // call-arg/pipe hole never reaches that arm), and each constructed
@@ -4884,6 +4889,10 @@ effect LowerScope {
   ls_push_scope() -> Int
   // truncate frame locals back to checkpoint
   ls_pop_scope(Int)
+  // each declared effect's yield facts, read once per program: (name, (an op yields, a handler resumes an op))
+  ls_register_yield_facts([(String, (Bool, Bool))])
+  // a declared effect's yield facts; None where no statement declares the name
+  ls_effect_yield_fact(String) -> Option((Bool, Bool))
   // band B M1.3 — does ANY declared effect carry a MultiShot op? (computed once at lower_program)
   ls_register_may_yield(Bool)
   // the A1 prove-absence gate's global short-circuit: no MultiShot op anywhere ⇒ nothing can yield ⇒ every row proves absence
