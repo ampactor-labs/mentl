@@ -13526,7 +13526,9 @@ kept the judged root over the parser's (built to end Why walks at the cell
 the judgment minted) linked binders to their uses, and m2 trapped reading a
 handle past the spine in `value_leaves`. One edge carries "these are equal"
 and "this use reads that binder"; the reference link records the second at
-the one writer, and the union is free to choose its root.
+the one writer, and the union is free to choose its root. The 2026-10-06 lane's attempt, which
+its own pre-commit gate refused ("the wheel did not build"), is commit
+59299deb, kept at `refs/pull/7/head`.
 
 THE 2026-10-06 PROGRAM, landing M1 (the reference link, the root of M2–M12) (PLAN §11, THE STANDING CURSOR) — the program's own text, moved here at the §0.3 integration (the whole program is at commit 42a94dc0):
 
@@ -19167,6 +19169,10 @@ BORN 2026-10-06 — the 2026-10-06 program, landing V1–V4 (PLAN §11, THE STAN
   - Gates: `any` over five elements under a counting handler counts 3 (5
     today). A mixed-arm micro under `!Alloc` is the instrument for how such an
     arm lowers today, which is unmeasured.
+  - The 2026-10-06 lane's draft (`OneShotOrAbandon` and `LAnswer`, on boot
+    c8ba5799, committed past a refusing pre-commit gate and never integrated)
+    is commit 718e2e04, kept at `refs/pull/5/head` (`git fetch origin
+    pull/5/head`).
 - **V2 · A verb never costs more than its desugaring.**
   - Under Seq, a fanout's branch literals are applied in the frame (R0i's law,
     extended to branches). The tuple is a record only where it escapes.
