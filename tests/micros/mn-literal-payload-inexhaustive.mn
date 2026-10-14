@@ -1,0 +1,12 @@
+// expect: refuse E_PatternInexhaustive
+// A literal inside a constructor's payload covers one value of a word, never
+// the word: `Some(false)` leaves `Some(true)` to no arm. On boot 82692525 the
+// exhaustiveness matrix read a literal column as covered, so this compiled
+// clean and trapped at the match (exit 134) when `Some(true)` arrived; the
+// strict matrix refuses it, naming the value no arm takes.
+fn pick(o) = match o {
+  Some(false) => 1,
+  None => 2,
+}
+
+fn main() = pick(Some(true))

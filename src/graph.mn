@@ -423,7 +423,7 @@ fn occurs_in_live(handle, ref ty) with !Mutate = match graph_branch_seed() {
 // costs one 4KB word-list per process and no write tests for it — and a
 // table minted lazily inside a speculation would be copied out of the
 // speculation's arena at its exit, a cost the eager one never pays.
-handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spine_open = spine_open0, trail = [], trail_len = 0, epoch = 0, next = 0, span_index = span_index0, checkpoint_stack = [], comment_refs = [], refs_col = smap_new(), apps_col = smap_new(), decls_col = [], emitfns_col = [], emitfns_idx = [], emitfns_idx_covers = 0, sigs_col = [], holes_pend = [], holes_col = [], cur_module = 0, guard_diags = [], gates = wmap_new(1024), instances = wmap_new(1024), demands = wmap_new(1024), accepted = [], rows = wmap_new(1024), binders = wmap_new(1024), late = wmap_new(1024), claims = wmap_new(1024), modules_now = smap_new(), superseded = wmap_new(64), modules_col = [] {
+handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spine_open = spine_open0, trail = [], trail_len = 0, epoch = 0, next = 0, span_index = span_index0, checkpoint_stack = [], comment_refs = [], refs_col = smap_new(), apps_col = smap_new(), decls_col = [], emitfns_col = [], emitfns_idx = [], emitfns_idx_covers = 0, sigs_col = [], holes_pend = [], holes_col = [], cur_module = 0, guard_diags = [], gates = wmap_new(1024), instances = wmap_new(1024), demands = wmap_new(1024), accepted = [], rows = wmap_new(1024), binders = wmap_new(1024), births = wmap_new(1024), late = wmap_new(1024), claims = wmap_new(1024), modules_now = smap_new(), superseded = wmap_new(64), modules_col = [] {
   graph_chase(handle) => // checkpoint_stack tracks active speculation depth. Each
   // graph_push_checkpoint pushes the current trail_len; each
   // graph_rollback pops. When the stack is empty, writes are at the
@@ -960,7 +960,19 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
     if !j { graph_mutated(new_epoch, m) }
     resume() with epoch = new_epoch, trail = trail_after(trail, trail_len, j, m), trail_len = trail_len_after(trail_len, j)
   },
+  graph_birth_note(h, birth) => // The parse's note of how it made the node (types.mn `Birth`), trailed
+  // as MBirth for the same reason a binder's fact is: a node minted inside
+  // a speculation is a handle the rollback hands out again.
+  {
+    wmap_add(births, h, birth)
+    let m = MBirth(h)
+    let j = journaling(checkpoint_stack)
+    let new_epoch = epoch + 1
+    if !j { graph_mutated(new_epoch, m) }
+    resume() with epoch = new_epoch, trail = trail_after(trail, trail_len, j, m), trail_len = trail_len_after(trail_len, j)
+  },
   graph_binder_of(h) => resume(wmap_get(binders, h)),
+  graph_birth_of(h) => resume(wmap_get(births, h)),
   graph_owe_late(g, payer) => // THE LATE PAYERS' write (P0): a frame called through a guard cell its
   // declaration has not written yet. Newest first under the cell, trailed
   // as MOweLate, so a rolled-back judgment's payments go with it.
@@ -1112,7 +1124,7 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
         trail_len,
         target_idx,
         next,
-        {binders, claims, demands, gates, instances, late, rows}
+        {binders, births, claims, demands, gates, instances, late, rows}
       )
       resume() with next = new_next, trail_len = target_idx
     } else {
@@ -1131,7 +1143,7 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
         trail,
         trail_len,
         target_idx,
-        {binders, claims, demands, gates, instances, late, rows}
+        {binders, births, claims, demands, gates, instances, late, rows}
       )
       // drop_last, never slice: on the always-snoc stack drop_last is
       // the parent READ — the pop allocates nothing and the surviving
@@ -1754,6 +1766,10 @@ fn revert_trail_into(ref spine, spine_open, ref trail, current, target, cols) = 
       wmap_pop(cols.binders, h)
       revert_trail_into(spine, spine_open, trail, idx, target, cols)
     },
+    MBirth(h) => {
+      wmap_pop(cols.births, h)
+      revert_trail_into(spine, spine_open, trail, idx, target, cols)
+    },
     MOweLate(h) => {
       wmap_pop(cols.late, h)
       revert_trail_into(spine, spine_open, trail, idx, target, cols)
@@ -1811,6 +1827,10 @@ fn revert_trail(ref spine, spine_open, ref trail, current, target, next_handle, 
       wmap_pop(cols.binders, h)
       revert_trail(spine, spine_open, trail, idx, target, next_handle, cols)
     },
+    MBirth(h) => {
+      wmap_pop(cols.births, h)
+      revert_trail(spine, spine_open, trail, idx, target, next_handle, cols)
+    },
     MOweLate(h) => {
       wmap_pop(cols.late, h)
       revert_trail(spine, spine_open, trail, idx, target, next_handle, cols)
@@ -1853,7 +1873,17 @@ fn written_since(entries, below) = fold([], written_step(below), entries)
 fn written_step(below, acc, m) = match m {
   MSetNode(h, _) => note_written(acc, h, below),
   MSetRow(h, _) => note_written(acc, h, below),
-  MSetBoundary(_, _) | MFreshNode(_) | MSetGate(_) | MInstanceNote(_) | MSetDemand(_) | MSetProduct(_, _) | MRowNote(_) | MBinderFact(_) | MOweLate(_) | MClaimNote(_) => acc,
+  MSetBoundary(_, _)
+  | MFreshNode(_)
+  | MSetGate(_)
+  | MInstanceNote(_)
+  | MSetDemand(_)
+  | MSetProduct(_, _)
+  | MRowNote(_)
+  | MBinderFact(_)
+  | MBirth(_)
+  | MOweLate(_)
+  | MClaimNote(_) => acc,
 }
 
 fn note_written(acc, h, below) =
@@ -2144,16 +2174,20 @@ fn product_arity_at(h) = match graph_node_body(h) {
   NExpr(FanoutExpr(branches)) => len(branches),
   NExpr(PipeExpr(PFanout(fan_own), _, right)) => match fan_own {
     FanDistribute => 2,
-    FanShare => fanshare_arity(right),
+    FanShare => len(share_stages(right)),
   },
   _ => -1,
 }
 
-// A `<|`'s branch count: the tuple of stages it fans into, or the one
-// stage of the degenerate form (lower and infer normalize the same way).
-fn fanshare_arity(right) = match graph_node_body(right) {
-  NExpr(MakeTupleExpr(elems)) => len(elems),
-  _ => 1,
+// A `<|`'s stages: the elements of the tuple it fans into, read here once for
+// the judgment, the lowering, the formatter and the cursor. The parse makes a
+// `<|` over one stage the pipe it is, a product of one being its field, so the
+// right side of every `<|` the graph holds is a tuple literal of two or more;
+// any other right side is a node no parse built, and the deliberate trap names
+// the broken invariant where a reader would have guessed a branch.
+fn share_stages(right) = match graph_node_body(right) {
+  NExpr(MakeTupleExpr(elems)) => elems,
+  _ => out_of_range(),
 }
 
 // The one arm whose tuple pattern binds every part of the product it

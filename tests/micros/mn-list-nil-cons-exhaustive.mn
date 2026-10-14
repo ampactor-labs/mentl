@@ -1,0 +1,10 @@
+// expect: 6
+// The two shapes of a list cover it: the empty list and a head before a rest.
+// The strict matrix reads a list column as that sum, so this stays whole
+// while `[x]` beside `[]` is refused (mn-list-length-inexhaustive).
+fn total(xs) = match xs {
+  [] => 0,
+  [h, ...t] => h + total(t),
+}
+
+fn main() = total([1, 2, 3])

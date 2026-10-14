@@ -1,0 +1,13 @@
+// expect: 134
+// The Trap an open destructure carries is real: a list of three reaching a
+// pattern of two traps at the let. The last arm of an EXHAUSTIVE match runs
+// untested, so this pins that a destructure whose shape the walk cannot
+// prove keeps its test — read as covering every list, its arm would answer
+// 3 from the first two elements. Measured on boot 82692525: traps (134), the
+// arm tested there because nothing ran a last arm untested yet.
+fn two(xs) = {
+  let [a, b] = xs
+  a + b
+}
+
+fn main() = two([1, 2, 3])

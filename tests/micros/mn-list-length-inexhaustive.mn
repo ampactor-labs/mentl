@@ -1,0 +1,10 @@
+// expect: refuse E_PatternInexhaustive
+// A list is the sum `[] | [head, ...rest]`: `[x]` and `[]` leave every list of
+// two or more to no arm. On boot 82692525 the matrix read a list column as
+// covered, so this compiled clean and trapped (exit 134) at `[1, 2]`.
+fn first_or_zero(xs) = match xs {
+  [x] => x,
+  [] => 0,
+}
+
+fn main() = first_or_zero([1, 2])

@@ -35,6 +35,47 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-10-14 · pin 187d938ea368186d (TRANSITION m2 ≠ m3, m3 == m4; the
+  first repin was refused at the line ratchet, and this one pays that cost
+  down) · LANDING 4.5 (WILD) — A CATCH-ALL OVER A SUM IS COUNTED AND
+  CAPPED, EXHAUSTIVENESS IS STRICT, A MATCH OF ONE ARM ASSERTS ITS SHAPE,
+  AND THE ESCAPING-ROW PRE-PASS IS DELETED
+  From Morgan's reading of 2026-10-13 that a wildcard satisfies a gate while
+  discarding what the gate knew. (1) `CsWildcardOverSum` counts a catch-all
+  after other arms of a match over a sum, capped on the board at 1,248;
+  `mentl tighten` writes one as its roster at the judged match node, the
+  grouped as-pattern `k @ (A | B)` parsing and rendering. The wheel's own
+  migration — 1,248 rosters, about 9,700 lines — was planned as a second
+  pin and is not taken (RESIDUE). (2) The exhaustiveness matrix is strict
+  over list, record and literal columns, and it found five latent traps in
+  the wheel: four matches over lib/lists.mn's sequence tag word, read as the
+  sum it names now (`SeqKind`), and a tuple of string literals in
+  src/query.mn's `env_read_demand`. RED-first: three fixtures checked clean
+  and trapped (134) on boot 82692525. (3) A match of several arms
+  dispatches; a match of one arm, a destructuring `let` among them, asserts
+  its shape as a claim the value walk decides (`claim_shape`,
+  `shape_decide`, the building constructor carried as the leaf `LBuilt`) —
+  proven costs nothing, refuted is E_RefinementRejected, open puts `Trap`
+  in the row. (4) A product of one is its field: a one-stage `<|` is `|>`,
+  `(a,)` is `a`, and six readers of a `<|`'s stages read `share_stages`.
+  (5) The first repin was refused at the line ratchet, 502,012 KB > 499,000.
+  A probe patched into the arena's exit named the escaping-row pre-pass: a
+  93,289 KB region, twenty fixpoint rounds re-deriving rows the judgment
+  already holds. A probe compiler compared it with the callee's row at
+  every site where it said a callee may yield — 198 on the wheel, 55 across
+  the 990 fixture files — and the row agreed at all of them, so the pre-pass
+  is deleted (396 lines net, `Hβ.lower.esc-row-on-node` CLOSED). Line peak
+  435,048 KB, held at 440,000. Also deleted: the narrowing walk that wrote
+  nothing (`Hβ.infer.narrowing-write-requires-discharge` CLOSED) and the
+  nineteen decoration banners in the modules a bare program links (its
+  floor back to 2,825). Kills: the destructure law first keyed on the
+  node's birth, refuted by the frontier's one-arm literal; "228 MB of one
+  extent's scratch", refuted by the exit probe (93,289 KB, the rest a
+  reserved scan queue); "the yield pre-passes are dormant on the wheel",
+  refuted by the same print (an arm of a `-> !` op abandons, so they ran).
+  Gates: battery 416/416, frontier 670 / 0 red, crown 145/0,
+  proof-exactness 30/0, ide GREEN. Cost: m3 leg 35.37 s, 428,400 KB peak
+  RSS, line peak 435,048 KB.
 - 2026-10-13 · pin 8269252523d492f9 (CLEAN m2 == m3; m3 == m4 measured; the landing's fourth pin — the first, b26b168cabfa1e59, carried the machinery before the wheel's own source wrote a chain, because a boot must parse a form before the wheel it compiles writes it, and was superseded before its narrative was written; the second, d0eb6ad298a5e4d8, the wheel's adoption, was superseded once the claim-reading pass's two artifact refutations landed; the third, 28d22f2e83d82235, was refused by the board on every push on the cost ratchet alone, and the fourth pays that cost down where it stood) · LANDING 4 S3 — A HANDLER CHAIN IS A VALUE, AND THE EXHAUSTIVENESS CHECK READS THE WHOLE PATTERN
   The third stage of `Hβ.graph.positions-are-cells`'s STRUCTURE face: the
   first write a node-as-handle makes possible. `handler NAME = h1 ~> h2(cfg)

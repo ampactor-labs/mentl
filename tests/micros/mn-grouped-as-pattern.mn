@@ -1,0 +1,20 @@
+// expect: 7
+// `k @ (Line(_) | Box(_, _))` binds the whole value under any branch of the
+// group — the spelling `mentl tighten` writes for a binder that stood over a
+// sum, and the one the formatter writes `k @ Line(_) | k @ Box(_, _)` back as.
+// On boot 82692525 the parens read as a one-element tuple pattern and the
+// program refused to type.
+type Shape = Dot | Line(Int) | Box(Int, Int)
+
+fn weight(s) = match s {
+  Dot => 1,
+  k @ (Line(_) | Box(_, _)) => 2 + size(k),
+}
+
+fn size(s) = match s {
+  Dot => 0,
+  Line(n) => n,
+  Box(a, b) => a + b,
+}
+
+fn main() = weight(Box(2, 3))

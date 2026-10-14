@@ -1,0 +1,13 @@
+// expect: 8
+// A product of one field is its field. A fanout over one stage is the pipe,
+// so the share below answers the stage's value; and a parenthesized element
+// before a trailing comma is the element itself, as its pattern is. Measured
+// on boot 82692525: the share minted a tuple of one and the tuple literal
+// built one, and each refused arithmetic on itself (E_ArithOnAggregate).
+fn inc(x) = x + 1
+
+fn main() = {
+  let e = 2 <| inc
+  let t = (5,)
+  e + t
+}

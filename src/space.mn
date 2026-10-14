@@ -308,7 +308,7 @@ fn frames_at(h) = match graph_node_body(h) {
   NExpr(PipeExpr(PForward, _, _)) => if is_chain_prefix(h) { [] } else { [Frame(h, CvPipe, map(graph_span_of, chain_elements(h)))] },
   NExpr(PipeExpr(PTee, l, r)) => [Frame(h, CvTee, [graph_span_of(l), graph_span_of(r)])],
   NExpr(PipeExpr(PFeedback, l, r)) => [Frame(h, CvLoop, [graph_span_of(l), graph_span_of(r)])],
-  NExpr(PipeExpr(PFanout(_), l, r)) => [Frame(h, CvShare, [graph_span_of(l)] ++ map(graph_span_of, shared_branches(r)))],
+  NExpr(PipeExpr(PFanout(_), l, r)) => [Frame(h, CvShare, [graph_span_of(l)] ++ map(graph_span_of, share_stages(r)))],
   NExpr(FanoutExpr(branches)) => [Frame(h, CvFan, map(graph_span_of, branches))],
   _ => [],
 }
@@ -320,13 +320,6 @@ fn is_chain_prefix(h) = match graph_parent_of(h) {
     _ => false,
   },
   None => false,
-}
-
-// A `<|` shares its input across the elements of the tuple on its right; a
-// right side that is not a tuple is the one branch.
-fn shared_branches(r) = match graph_node_body(r) {
-  NExpr(MakeTupleExpr(elems)) => elems,
-  _ => [r],
 }
 
 fn canvas_verb_word(verb) = match verb {

@@ -695,8 +695,9 @@ session's reports under .build/research are its first corpus
    Load-bearing; everything else is O(1) off it.
 2. **The O(1) reads** — `env_lookup` (handle-index → slot, `Hβ.perf.env-o1-index`),
    dedup (handle-set bit, `Hβ.emit.flat-accumulator-dedup` → handle-set),
-   `find_mapping` (handle→handle chase), esc-rows (a FIELD on the fn's node read
-   live, the side-ledger deleted, `Hβ.lower.esc-row-on-node`), instantiate
+   `find_mapping` (handle→handle chase), esc-rows (the side-ledger deleted
+   2026-10-14 — the yield gate reads the callee's own row, which carried what
+   the ledger re-derived, `Hβ.lower.esc-row-on-node`), instantiate
    (`Hβ.infer.instantiate-shares-never-clones`), and REACHABILITY — the emitted-fn
    set as EDGE-following from main (`Hβ.lower.reach-edge-on-node`), the name scan
    gone (the `reach_has` membership's remaining O(n²) is `Hβ.lower.reach-membership-o1`).
@@ -881,6 +882,21 @@ and this is the STATE.
   (`Ty`), a reason a value tree, and the lowered program a second tree
   (`LowExpr`, 42 constructors): §11's one law in five faces, the first of
   them cut (`Hβ.graph.positions-are-cells`, S1, S2 and S3's first write).
+- **A CATCH-ALL OVER A SUM IS COUNTED AND CAPPED (2026-10-14) →
+  `Hβ.match.catch-all-over-a-sum-is-the-roster`.** The census counts a `_`
+  or a bare binder after other arms of a match over a sum, 1,261 on the
+  wheel's link the day the shape was counted and 1,248 after that pin's
+  deletions, and the board caps it there, so a new one cannot be written
+  into the wheel to get past a gate; `mentl tighten` writes any one of them
+  as the roster it stood for, at the judged match node. What stands open: a
+  constructor declared later falls silently into every catch-all over its
+  type, where the medium should name each one at the declaration. A match
+  of one arm, a destructuring `let` among them, asserts its shape as a claim
+  the value walk decides (`Trap` in its row when open), and only a match of
+  several arms refuses a case its arms leave; a `<|` over one stage is the
+  pipe. The lowering re-walks the exhaustiveness matrix to run an exhaustive
+  match's last arm untested, where one fact on the match node would serve
+  the refusal, the roster and the lowering.
 - **Regions are runtime since the arena** (2026-10-03): `(body) ~> arena` reclaims an extent's allocations at its exit
   except what its publication reaches. Ownership's regions stay what they
   were — compile-time root-tagging and return-transfer — and the arena does
@@ -1129,8 +1145,7 @@ and this is the STATE.
   writes no `|>`, `<|` or `><`, and its `render_frame` is 31 `let`s. `any`,
   `all`, `find` and `take` resume on every element because the resume grade
   joins RNone with RTail and cannot say "stop", while `||` short-circuits
-  (V1). Every cycle is hand recursion, and `escaping_fixpoint` answers its
-  32nd round as though it were the fixpoint (V3). Two comments forbid handler
+  (V1). Every cycle is hand recursion (V3). Two comments forbid handler
   stages for a gap the frame fence closed (V4). The prelude still inverts the
   Stage Law where lib/dsp no longer does, which AU2 writes (§11). The verbs'
   cost (V2) and lib/dsp's Stage Law landed 2026-10-06 (pin b2920932).
@@ -2193,12 +2208,17 @@ the install's own node, its ancestors untouched because they hold its handle,
 and the wheel's own brackets are chains with their thunks gone. The other three writes — the rename, the session re-judging rewritten
 nodes, the proposal rewriting in place — stand on M1's link and on edits
 that are deltas on live nodes (§7's first bullet names the measurement).
-Next on it, by Morgan's decision of 2026-10-13: a catch-all arm over a sum
-is the roster the author declined to write
-(`Hβ.match.catch-all-over-a-sum-is-the-roster`) — a census shape bounded on
-the wheel, `mentl tighten` writing the alternation of the uncovered
-constructors in its place, and the refusal once the wheel's count is zero;
-the exhaustiveness refusal already says `write its arm` and never a wildcard.
+Next on it, from Morgan's reading of 2026-10-13 that a wildcard satisfies a
+gate while discarding what the gate knew: a catch-all arm over a sum
+(`Hβ.match.catch-all-over-a-sum-is-the-roster`), counted and capped on the
+wheel since 2026-10-14 (LEDGER) — 1,261 the day it was counted, 1,248 after
+that pin's deletions — with `mentl tighten` able to write any one as the
+roster it stood for. The exhaustiveness matrix is strict over every pattern
+kind since the same day (`Hβ.infer.exhaustiveness-over-literal-and-list-columns`,
+CLOSED); the refusal says `write its arm` and never a wildcard, and it is a
+match of several arms' alone — a match of one arm, a destructuring `let`
+among them, asserts its shape as a claim the value walk decides, and a `<|`
+over one stage is the pipe, a product of one being its field.
 Handler installation follows on it: one install per extent, a handler's
 start state its own, a chain named once, nothing installed only to swallow
 an op nobody reads.

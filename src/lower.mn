@@ -758,17 +758,9 @@ fn env_kind_of(name) = match env_lookup(name) {
   },
 }
 
-// Default-fill, labeled-arg reorder, and label resolution are now ONE read —
-// resolve_call_args (types.mn), called by both infer and lower so they see the
-// identical positional product order. The former lower-only trailing-default
-// fill (lower_args_with_defaults / callee_params_of / lower_default_fills)
-// dissolved into it: a call constructs its arg product positionally, by field,
-// or mixed, with absent fields drawing their param default — one machinery.
-//
-// The callee's name for resolve_call_args — a VarRef / field / nested config
-// The NAME a callee expression carries — read by the flow-closure engine's
-// call edge, the resume-bind read and the install's handler-identity read;
-// "" for an anonymous callee. A call's argument product and a partial's
+// The NAME a callee expression carries — read by the resume-bind read
+// (`callee_name_of_handle`) and by `partial_unfilled`; "" for an anonymous
+// callee. A call's argument product and a partial's
 // callee are never resolved through it: those are the call node's own facts
 // (`call_product_at`, `partial_callee_form`).
 fn lower_callee_name(fbody) = match fbody {
@@ -1327,25 +1319,9 @@ fn lower_call_partial(handle, fbody, fh, r_args, open, n_ps) = match partial_cal
 // is emitted under (`slot_ty`).
 fn some_slot_ty(cell) = Some(TVar(cell))
 
-// THE DISPATCHED-ROW PROJECTION (master plan §6 1★). The single read of a fn's
-// dispatched effect-row names — canonical order, builtins filtered. The
-// escaping-row machinery (compute_escaping_rows) and the multishot-absence
-// gate (can_yield) both project through THIS ONE truth. The live form reads
-// the flow-closure (escaping_row — walk the body/call-edges, subtract
-// installs), recovering forward-ref-dropped
-// effects the frozen TFun row lost (the flow-edges reading — now PLAN's
-// resolved design; this second engine deletes at rung 3 when rows are
-// live, the subsumed Hβ.infer.order-free-live-row).
-fn effects_of(fn_ty) = match fn_ty {
-  TFun(_, _, row) => effects_of_row(row),
-  TCont(_, _, _, world) => effects_of_row(world),
-  _ => [],
-}
-
-// The dispatched names of the WHOLE row: the present field inline,
-// the tail chased and folded (a var carries the rest of the row —
-// discarding it read [] and starved the escaping rows, the pinned
-// seam). The absent field masks tail contributions.
+// The dispatched names of the WHOLE row, in canonical order: the present
+// field inline, the tail chased and folded (a variable carries the rest of
+// the row), the absent field masking what the tail contributes.
 fn effects_of_row(row) = match row {
   EfRow(names, ab, t) => {
     let inline = row_dispatched_names(eff_names_of(names))
@@ -1363,10 +1339,7 @@ fn effects_of_edges(ref vs: [RowEdge], acc, ref ab) = match vs {
   [e, ...rest] => {
     let next = match graph_chase(edge_cell(e)) {
       GNode(kind, _) => match edge_row_of(kind) {
-        Some(inner) => set_canonicalize(names_concat(
-          acc,
-          names_diff_strs(effects_of_row(inner), eff_names_of(ab) ++ eff_names_of(edge_mask(e)))
-        )),
+        Some(inner) => set_canonicalize(acc ++ names_diff_strs(effects_of_row(inner), eff_names_of(ab) ++ eff_names_of(edge_mask(e)))),
         None => acc,
       },
     }
@@ -1376,27 +1349,15 @@ fn effects_of_edges(ref vs: [RowEdge], acc, ref ab) = match vs {
 
 fn names_diff_strs(ref xs, ref mask) = filter((n) => !string_in_list(mask, n), xs)
 
-// ─── band B M1.3 — the A1 prove-absence gate (the bank Ruling 5) ─────────
-// can_yield(fh): may a yield unwind THROUGH a call to this callee? The k2
-// boundary check is inserted UNLESS the callee's row PROVES absence of every
-// MultiShot-graded effect — the project's own stance applied to the gate:
-// prove the negative, never assume it. The call-side twin of
-// multishot_ops_of (the install-side decider); keep them in view together.
-//
-// The proof ladder, cheapest first:
-//   1. The program declares NO MultiShot-graded op anywhere ⇒ nothing can
-//      ever yield ⇒ absence proven globally (ls_program_may_yield, computed
-//      once at lower_program). Pre-cut this is the wheel's whole story —
-//      zero wraps, bytes identical (Law 7).
-//   2. Any MultiShot-graded effect in the callee's KNOWN names (the leaf row
-//      ∪ the flow-closure — a MultiShot effect fully handled INSIDE the
-//      callee has already subtracted out and the gate goes quiet) ⇒ check.
-//   3. The leaf row's TAIL: a closed row (or an open one whose chase grounds
-//      to closed) with no MultiShot name PROVES absence ⇒ skip; a free tail,
-//      a negation/intersection form (¬X admits everything but X), or a
-//      non-TFun callee type is UNPROVEN ⇒ check — the one-global.get cost is
-//      the price of the A1 hole (a free row var at the callee's one lowering
-//      hid try_fn's yield from every name read).
+// Whether a yield may unwind THROUGH a call to this callee: the boundary
+// check follows the call unless the callee's row proves the absence of every
+// effect with a yielding op — the negative proven, never assumed. A program
+// that declares no yielding op proves it once for every call
+// (`ls_program_may_yield`); otherwise the callee's row decides. A yielding
+// effect among its names checks — one the callee handles inside is already
+// absent, since the install subtracted it — a closed tail with none proves
+// absence, and a free tail, a negation or intersection form, or a callee
+// that is not a function is unproven and checks.
 fn can_yield(callee_handle) = may_yield_by(callee_handle, effect_has_multishot_op)
 
 // Whether the callee may yield a LIVE continuation — one its handler resumes
@@ -1409,15 +1370,9 @@ fn can_yield_live(callee_handle) = may_yield_by(callee_handle, effect_has_live_o
 fn may_yield_by(callee_handle, effect_pred) = if !ls_program_may_yield() {
   false
 } else {
-  let name = callee_name_of_handle(callee_handle)
-  let flow = if len(name) == 0 { lambda_escaping_row(callee_handle) } else { escaping_row(name) }
-  if any(effect_pred, flow) {
-    true
-  } else {
-    match lookup_ty(callee_handle) {
-      TFun(_, _, row) => row_may_yield_by(row, effect_pred),
-      _ => true,
-    }
+  match lookup_ty(callee_handle) {
+    TFun(_, _, row) => row_may_yield_by(row, effect_pred),
+    _ => true,
   }
 }
 
@@ -1763,346 +1718,9 @@ fn lower_compute_ev_slot_for_op(op_name) = match lookup_parent_effect(op_name) {
 // named residue until the diagnostic path reaches this site.
 fn clamp_index(i) = if i < 0 { 0 } else { i }
 
-// ─── THE FLOW-CLOSURE (master plan §6 1★ Stage 1) ───────────────────────
-// escaping_row(name): the dispatched effects that ESCAPE fn `name` — the
-// ones a caller must thread evidence for. The forward-ref class (a mutually-
-// recursive callee bound AFTER `name` generalized, so its effect never
-// entered `name`'s row — the module emitter losing WasmOut via wasm.mn's emit_header)
-// is recovered by reading the effect off the CALL-EDGES live, not off the
-// frozen generalized scheme. can_yield (the multishot-absence gate) reads
-// THIS projection
-// (the polymorphism-as-flow-edges walkthrough §8).
-//
-//   escaping(name) = ( own_dispatched(name)
-//                      ∪ ⋃ { escaping(c) | c ∈ static_callees(name) } )
-//                    − handled_locally(name)
-//
-// The own-dispatched set is the leaf (today's `effects_of` of the generalized
-// scheme — RETAINED, never deleted). The handled-locally subtraction removes every
-// effect a `~> h` install in the body absorbs (so WasmOut does NOT escape
-// pipeline.mn's compile_stdin, which installs `~> wat_stdout`). Monotone union over the
-// finite dispatched-effect lattice ⇒ the fixpoint converges (mutual
-// recursion included); precomputed ONCE per program at lower_program (the
-// cached cursor / IC), then read by name.
-//
-// own_dispatched leaf: the fn's generalized-scheme dispatched row. The SAME
-// read the old seam used — never deleted; it is the flow-closure's base case.
-fn own_dispatched_row(name: String) = match env_lookup(name) {
-  Some(entry) => match entry {
-    (scheme, _, _) => effects_of(judgment_ty(scheme)),
-  },
-  None => [],
-}
-
-fn set_difference(a, b) = filter((x) => !set_contains(b, x), a)
-
-// The flow-closure read at a use site: the precomputed escaping row by name
-// (Some for a top-level fn), else the leaf (nested fn / lambda / unknown —
-// identical to the pre-flow-closure behaviour, so closures stay byte-stable).
-// The whole escaping family speaks canonical NAME-SETS ([EffName] — the form
-// escaping_fixpoint computes over and ev derivation consumes); the old
-// `-> Option(EffRow)` op declaration was the family's one row-speaker, and
-// its instantiation at this match was the List-vs-EffRow census error.
-fn escaping_row(name) = match ls_escaping_of(name) {
-  Some(names) => names,
-  None => own_dispatched_row(name),
-}
-
-// An anonymous lambda has no name in the esc map, so its closure-evidence row
-// would be read off the LEAF (`effects_of(lookup_ty(h))` — the frozen
-// generalized own-row), which suffers EXACTLY the forward-ref drop escaping_row
-// exists to fix. The named-fn seam already reads the flow-closure; the lambda
-// seam must too, or its PLACE/READ are internally consistent but TOO SMALL —
-// the body forwards a callee's full escaping row while only the leaf's slots
-// were placed, reading __state past the fence into uninitialized bump-heap.
-// So route the lambda's own-row through its body's flow-closure, read LIVE off
-// the already-precomputed top-level escaping map in ONE union round (a lambda
-// is anonymous ⇒ cannot sit in a name-cycle ⇒ no new fixpoint, no snapshot).
-// Carried-Truth: delete the frozen-leaf re-derivation in favour of the
-// flow-closure the graph already proves. The `_` arm is NOT a degraded path —
-// it is the flow-closure's BASE CASE: a non-lambda-seam handle has no
-// body-callees to propagate, so its escaping row IS its own row. (The deeper
-// ultimate form dissolves this fn entirely: with order-free live inference the
-// own-row leaf would already equal the flow-closure — escaping_row exists only
-// to recover what generalize() snapshots away; peer Hβ.infer.order-free-live-row.)
-fn lambda_escaping_row(h) = match graph_node_body(h) {
-  NExpr(LambdaExpr(_, body_node)) => match flow_edges(body_node) {
-    (callees, handled) => {
-      let own_effs = effects_of(lookup_ty(h))
-      let propagated = flatten(map(escaping_row, set_canonicalize(callees)))
-      set_difference(set_canonicalize(own_effs ++ propagated), set_canonicalize(handled))
-    },
-  },
-  _ => effects_of(lookup_ty(h)),
-}
-
-// callee name for the flow-closure's handle: the AST fabric resolves any
-// handle to its node body live; a VarRef/CallExpr callee yields its name, an
-// anonymous lambda/resume body yields "" (→ the lookup_ty own-evidence path).
+// The name a callee handle reads as: a VarRef or CallExpr callee yields its
+// name, an anonymous one (a lambda, a resume body) the empty string.
 fn callee_name_of_handle(h) = lower_callee_name(graph_node_body(h))
-
-// Static call + install edges of a fn body, walked once: (callee_names,
-// installed_handled_enames). A `~> h` records the effect h's HandlerKind
-// absorbs; every other node just unions its children's edges.
-fn flow_edges(node) = match graph_node_body(node) {
-  NExpr(e) => flow_edges_expr(e),
-  NStmt(s) => flow_edges_stmt(s),
-  NPat(_) => ([], []),
-  NHole(_) => ([], []),
-  NModule(_) => // a module handle carries no call/install edges of its own — decls are separate handles, walked individually
-  ([], []),
-  NTypeAnn(_) => // a type annotation is not executable — no callees, no installs
-  ([], []),
-}
-
-// The escaping-path's name-list concat, its element type PINNED (an
-// Intent Boundary, SYNTAX §"The Intent Boundary Rule"): the operands
-// arrive through tuple destructures whose bare type vars carry no
-// sequence constructor, so an unpinned `++` cannot prove its
-// representation to the emit dispatch — the silent string-path
-// miscompile (count-valid, tag-garbage lists). The pin IS the proof;
-// the proof becomes the dispatch. Dissolves with the one-sequence
-// ontology (PLAN §4①, roadmap band D).
-fn names_concat(xs: [String], ys: [String]) -> [String] = xs ++ ys
-
-fn flow_join(a, b) = match a {
-  (ca, ha) => match b {
-    (cb, hb) => (names_concat(ca, cb), names_concat(ha, hb)),
-  },
-}
-
-fn flow_edges_list(nodes) = fold(([], []), (acc, n) => flow_join(acc, flow_edges(n)), nodes)
-
-fn flow_edges_expr(e) = match e {
-  LitInt(_) => ([], []),
-  LitFloat(_) => ([], []),
-  LitString(_) => ([], []),
-  LitBool(_) => ([], []),
-  LitUnit => ([], []),
-  VarRef(name) => // VarRef contributes its name to the availability set — a value-referenced
-  // global FnScheme joins the enclosing fn's escaping row, so the
-  // flow-closure (can_yield's read) sees effects a fn-value carries
-  // (the §7-thread availability half, peer
-  // Hβ.lower.value-fn-availability-edge, now LIVE). Names that resolve to a
-  // local or a non-effecting global add nothing (the env lookup is empty), so
-  // the set stays bounded by distinct effect-forwarding fns. The transitive-
-  // fixpoint inflation that once overflowed the seed's arm-ev capture is rooted:
-  // lower_arm_ev_index_for reads its own logical counter, not the
-  // capacity-as-length list header (the Carried-Truth substrate fix).
-  ([name], []),
-  BinOpExpr(_, l, r) => flow_join(flow_edges(l), flow_edges(r)),
-  UnaryOpExpr(_, inner) => flow_edges(inner),
-  CallExpr(f, args) => {
-    let nm = callee_name_of_handle(f)
-    let here = if nm == "" { ([], []) } else { ([nm], []) }
-    flow_join(here, flow_join(flow_edges(f), flow_edges_list(args)))
-  },
-  IfExpr(c, t, el) => flow_join(flow_edges(c), flow_join(flow_edges(t), flow_edges(el))),
-  BlockExpr(stmts, final_e) => flow_join(flow_edges_list(stmts), flow_edges(final_e)),
-  MatchExpr(scrut, arms) => flow_join(flow_edges(scrut), flow_edges_match_arms(arms)),
-  MakeListExpr(elems) => flow_edges_list(elems),
-  MakeTupleExpr(elems) => flow_edges_list(elems),
-  FanoutExpr(branches) => flow_edges_list(branches),
-  MakeStringExpr(frags) => flow_edges_list(frags),
-  ShowExpr(inner) => flow_edges(inner),
-  IndexExpr(r, i) => flow_join(flow_edges(r), flow_edges(i)),
-  MakeRecordExpr(flds) => flow_edges_fields(flds),
-  RecordUpdateExpr(base, flds) => flow_join(flow_edges(base), flow_edges_fields(flds)),
-  NamedRecordExpr(_, flds) => flow_edges_fields(flds),
-  LambdaExpr(_, b) => flow_edges(b),
-  ResumeExpr(v, su) => flow_join(flow_edges(v), flow_edges_state_updates(su)),
-  FieldExpr(rec, _) => flow_edges(rec),
-  PipeExpr(kind, l, r) => {
-    let inner = flow_join(flow_edges(l), flow_edges(r))
-    match kind {
-      PTee => {
-        let hd = installed_handled_ename(graph_node_body(r))
-        if hd == "" {
-          inner
-        } else {
-          match inner {
-            (cs, hs) => // drift-audit: ignore — one append per ~> node (visited once), not a loop accumulator; set_canonicalize dedupes at collect_fn_bases
-            (cs, names_concat(hs, [hd])),
-          }
-        }
-      },
-      _ => inner,
-    }
-  },
-  ExprPlaceholder => ([], []),
-  RestExpr(_) => ([], []),
-  LabeledArg(_, v) => flow_edges(v),
-}
-
-fn flow_edges_stmt(s) = match s {
-  LetStmt(_, expr, _) => flow_edges(expr),
-  FnStmt(_, _, _, _, body_node) => flow_edges(body_node),
-  ExprStmt(expr) => flow_edges(expr),
-  TypeDefStmt(_, _) => ([], []),
-  EffectDeclStmt(_, _, _) => ([], []),
-  HandlerDeclStmt(_, _, _, _, _, _) => ([], []),
-  HandlerChainStmt(_, _) => ([], []),
-  ImportStmt(_) => ([], []),
-  RefineStmt(_, _, _) => ([], []),
-  AliasStmt(_, _) => ([], []),
-  RowAliasStmt(_, _) => ([], []),
-}
-
-fn flow_edges_match_arms(arms) = fold(
-  ([], []),
-  (acc, arm) => match arm {
-    (_, body) => flow_join(acc, flow_edges(body)),
-  },
-  arms
-)
-
-fn flow_edges_fields(flds) = fold(
-  ([], []),
-  (acc, fld) => match fld {
-    (_, value) => flow_join(acc, flow_edges(value)),
-  },
-  flds
-)
-
-fn flow_edges_state_updates(updates) =
-  fold(([], []), (acc, upd) => flow_join(acc, flow_edges(state_field_init(upd))), updates)
-
-// The effect a `~> h` install absorbs: h's HandlerKind handled_ename. "" when
-// the RHS is not a named handler decl (a value-forwarded handler — the row
-// passes through, nothing subtracted).
-fn installed_handled_ename(handler_body) = {
-  let hname = lower_callee_name(handler_body)
-  if hname == "" {
-    ""
-  } else {
-    match env_lookup(hname) {
-      Some(entry) => match entry {
-        (_, _, kind) => match kind {
-          HandlerKind(_, _, _, _, arms) => // The absorbed effect is a live projection of the arms (§2), not a field.
-          derive_handler_ename(arms, hname),
-          _ => // drift-audit: ignore — "" = RHS is not a named handler decl (nothing absorbed)
-          "",
-        },
-      },
-      None => "",
-    }
-  }
-}
-
-// One base per top-level fn: (name, own-leaf, sorted callees, sorted handled).
-fn collect_fn_bases(stmts) = flatten(map(
-  {
-    s => match graph_node_body(s) {
-      NStmt(FnStmt(name, _, _, _, body_node)) => match flow_edges(body_node) {
-        (callees, handled) => [(name, own_dispatched_row(name), set_canonicalize(callees), set_canonicalize(handled))],
-      },
-      _ => [],
-    },
-  },
-  stmts
-))
-
-// The flow-closure map (name → escaping row) is the shared smap indexed-map
-// (lib/imap.mn): esc_rows = smap_build(map) at ls_register_escaping,
-// smap_get(esc_rows, name) per call site. None = "not a top-level fn" (→ the
-// leaf); Some [] = "a fn with empty flow-closure". The old esc_index_* family
-// (a linear-scan read-side that was 72% of the post-esc-setup self-compile,
-// perf 2026-07-14) was esc_index generalized — dissolved into smap.
-//
-// The name→index edge, drawn ONCE (Carried-Truth): each base's callee names
-// resolve to base POSITIONS at collect time, so the fixpoint rounds read
-// rows by list_index — no name scan, no allocation in the hot loop. The old
-// per-round assoc_row scan allocated ~2GB PER ROUND on the full wheel
-// (2,500 fns × ~20 callees × a 2,500-step drop_last scan minting a slice
-// per step) and wrapped the bump pointer past 2^32 — face 7's root. A
-// callee with no base (a prelude intrinsic, an effect op) contributed the
-// empty row on every lookup of every round; now it is dropped once, here.
-// The name→index edge, drawn ONCE and O(1) (Carried-Truth): build a str_hash
-// index (name → base position) once, then resolve every callee in O(1). The old
-// base_index_find was an O(N) linear scan per callee, and indexed_bases maps it
-// over every base → O(N² × callees) — 85% of the post-region self-compile (perf,
-// 2026-07-14; the esc_assoc O(n²) §5.O named). Reverse-inserted so a name's FIRST
-// base position (lowest index) is returned, byte-identical to the old scan.
-// The callee-name → base-position index: the shared smap (lib/imap.mn).
-// Keeps its own build (the position IS the list index i, extracted from each
-// base's 4-tuple — not a field), calling smap_new/smap_add; the primitive is
-// smap. base names are unique, so first-match is byte-identical.
-fn build_base_index(bases) = build_base_index_from(bases, len(bases) - 1, smap_new())
-
-fn build_base_index_from(bases, i, idx) = if i < 0 {
-  idx
-} else {
-  match list_index(bases, i) {
-    (name, _, _, _) => build_base_index_from(bases, i - 1, smap_add(idx, name, i)),
-  }
-}
-
-fn resolve_callee_indices(idx, callees) = flatten(map(
-  (c) => match smap_get(idx, c) {
-    Some(i) => [i],
-    None => [],
-  },
-  callees
-))
-
-fn indexed_bases(bases) = {
-  let idx = build_base_index(bases)
-  map(
-    {
-      (name, own_effs, callees, handled) => (name, own_effs, resolve_callee_indices(idx, callees), handled),
-    },
-    bases
-  )
-}
-
-// One monotone round over rows-only (base order): row = (own ∪ ⋃ callee rows) − handled.
-fn escaping_round(ibases, cur) = map(
-  {
-    (_, own_effs, callee_idxs, handled) => {
-      let propagated = flatten(map((ci) => list_index(cur, ci), callee_idxs))
-      set_difference(set_canonicalize(names_concat(own_effs, propagated)), handled)
-    },
-  },
-  ibases
-)
-
-fn rows_equal(a, b) = len(a) == len(b) && fold2_equal(a, b, 0)
-
-fn fold2_equal(a, b, i) = if i >= len(a) {
-  true
-} else if list_index(a, i) == list_index(b, i) {
-  fold2_equal(a, b, i + 1)
-} else {
-  false
-}
-
-fn esc_rows_lists_equal(cur, next, i) = if i >= len(cur) {
-  true
-} else if rows_equal(list_index(cur, i), list_index(next, i)) {
-  esc_rows_lists_equal(cur, next, i + 1)
-} else {
-  false
-}
-
-// Fixpoint over the finite dispatched-effect lattice. Early-stops on a
-// stable round; the cap is the safety bound (effect chains are shallow).
-fn escaping_fixpoint(ibases, cur, iters) = if iters >= 32 {
-  cur
-} else {
-  let next = escaping_round(ibases, cur)
-  if esc_rows_lists_equal(cur, next, 0) { next } else { escaping_fixpoint(ibases, next, iters + 1) }
-}
-
-fn compute_escaping_rows(stmts) = {
-  let bases = collect_fn_bases(stmts)
-  let ibases = indexed_bases(bases)
-  let seed =
-    map({ (_, own_effs, _, handled) => set_difference(set_canonicalize(own_effs), handled) }, ibases)
-  let final_rows = escaping_fixpoint(ibases, seed, 0)
-  // The name-keyed view the ls_escaping_of consumer reads — rebuilt ONCE
-  // at the end, never per round.
-  zip(map({ (n, _, _, _) => n }, bases), final_rows)
-}
 
 // ─── Lexical handler resolution (lower-phase, install-handle-bearing) ──
 // Walk the lower-handler-stack innermost-first; return the discriminated
@@ -3583,10 +3201,7 @@ fn lower_fanout_to(handle, fan_own, left, right, dest) = match fanout_boundaries
     FanShare => {
       let lo_input = lower_expr(left)
       let input_local_name = "__fanout_input_{int_to_str(handle)}"
-      let branch_nodes = match graph_node_body(right) {
-        NExpr(MakeTupleExpr(elems)) => elems,
-        _ => [right],
-      }
+      let branch_nodes = share_stages(right)
       // Bind the shared input ONCE — the branches read the local,
       // whether they are applied in the frame or captured by a
       // spawning schedule's thunk.
@@ -4633,24 +4248,108 @@ fn lower_match_arms(scrut_h, arms) = {
   // elements may be read raw is the emit's question: it depends on the
   // element's width, which only the twin being emitted knows.
   let srep = seq_rep_of(scrut_h)
+  // THE LAST ARM OF AN EXHAUSTIVE MATCH RUNS UNTESTED when its pattern
+  // extracts nothing from a payload: the judgment proved every value the
+  // arms before it leave reaches it, so the roster `mentl tighten` writes in
+  // a catch-all's place costs what the `_` cost — the fixture's WAT is the
+  // same bytes but a handle-numbered local. The proof is re-derived here
+  // from the same matrix the refusal reads (`uncovered`), where one
+  // exhaustiveness fact on the match node would serve both
+  // (`Hβ.match.catch-all-over-a-sum-is-the-roster`).
+  let n = len(arms)
+  let last_unconditional = match uncovered(flat_map(arm_row, arms), 1) {
+    None => true,
+    Some(_) => false,
+  }
   map(
     {
-      (pat, body) => {
-        let cp = ls_push_scope()
-        // ONE walk binds the arm's names and lowers its pattern, so a
-        // binder's register is decided at its binding and the pattern the
-        // emit writes carries it. The pattern's value type is the
-        // scrutinee's, read live, and every sub-pattern keeps its own — so
-        // the emit places each slot by the SAME fold construction and
-        // access run, under any twin.
-        let lp = lower_pat_at(bind_fresh, pat, lookup_ty(scrut_h), srep, scrut_h)
-        let lo_body = lower_expr(body)
-        ls_pop_scope(cp)
-        (lp, lo_body)
+      (i, arm) => match arm {
+        (pat, body) => {
+          let cp = ls_push_scope()
+          // ONE walk binds the arm's names and lowers its pattern, so a
+          // binder's register is decided at its binding and the pattern the
+          // emit writes carries it. The pattern's value type is the
+          // scrutinee's, read live, and every sub-pattern keeps its own — so
+          // the emit places each slot by the SAME fold construction and
+          // access run, under any twin.
+          let lp = lower_pat_at(
+            bind_fresh,
+            arm_pat_lowered(pat, i == n - 1 && last_unconditional),
+            lookup_ty(scrut_h),
+            srep,
+            scrut_h
+          )
+          let lo_body = lower_expr(body)
+          ls_pop_scope(cp)
+          (lp, lo_body)
+        },
       },
     },
-    arms
+    enumerate(arms)
   )
+}
+
+fn arm_pat_lowered(pat, last_of_exhaustive) = if last_of_exhaustive {
+  match unconditional_pat(pat) {
+    Some(u) => u,
+    None => pat,
+  }
+} else {
+  pat
+}
+
+// The pattern an arm lowers as when nothing can fail to match it: `_` for a
+// roster whose payloads are all `_`, the binder for a roster bound under one
+// (`b @ (C(_) | D)` binds the scrutinee, as `b` alone does); None for a
+// pattern that places a binder inside a payload or tests a literal.
+fn unconditional_pat(pat) = match pat {
+  PWild => Some(PWild),
+  PVar(n) => Some(PVar(n)),
+  PAs(n, inner) => match unconditional_pat(inner) {
+    Some(_) => Some(PVar(n)),
+    None => None,
+  },
+  PCon(_, ps) => if all(pat_is_wild, ps) { Some(PWild) } else { None },
+  PAlt(branches) => fold(Some(PWild), merge_unconditional, map(unconditional_pat, branches)),
+  PLit(_) => None,
+  PTuple(_) => None,
+  PList(_, _) => None,
+  PRecord(_, _) => None,
+}
+
+fn pat_is_wild(p) = match p {
+  PWild => true,
+  PVar(_) => false,
+  PLit(_) => false,
+  PCon(_, _) => false,
+  PTuple(_) => false,
+  PList(_, _) => false,
+  PRecord(_, _) => false,
+  PAlt(_) => false,
+  PAs(_, _) => false,
+}
+
+// Two branches of one unconditional alternation agree on the binder they
+// place or place none (the alternation law has every branch bind the same
+// names); any branch that keeps a test keeps the arm's.
+fn merge_unconditional(acc, u) = match acc {
+  None => None,
+  Some(a) => match u {
+    None => None,
+    Some(PWild) => Some(a),
+    Some(PVar(n)) => match a {
+      PWild => Some(PVar(n)),
+      PVar(m) => if m == n { Some(PVar(n)) } else { None },
+      PLit(_) | PCon(_, _) | PTuple(_) | PList(_, _) | PRecord(_, _) | PAlt(_) | PAs(_, _) => None,
+    },
+    Some(PLit(_))
+    | Some(PCon(_, _))
+    | Some(PTuple(_))
+    | Some(PList(_, _))
+    | Some(PRecord(_, _))
+    | Some(PAlt(_))
+    | Some(PAs(_, _)) => None,
+  },
 }
 
 // How a pattern walk binds a name. A binder takes its register where the
@@ -4879,7 +4578,16 @@ fn record_known_fields(ty) = match tuple_pat_strip(ty) {
   TReprPin(_, inner) => record_known_fields(inner),
   TAlias(_, inner) => record_known_fields(inner),
   TRefined(inner, _) => record_known_fields(inner),
-  TVar(_) | TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TCont(_, _, _, _) => [],
+  TVar(_)
+  | TInt
+  | TFloat
+  | TUnit
+  | TByte
+  | TAddr
+  | TList(_)
+  | TTuple(_)
+  | TFun(_, _, _)
+  | TCont(_, _, _, _) => [],
 }
 
 fn field_named(name: String, f) = match f {
@@ -4891,7 +4599,18 @@ fn tuple_elem_tys(ty) = match tuple_pat_strip(ty) {
   TReprPin(_, inner) => tuple_elem_tys(inner),
   TAlias(_, inner) => tuple_elem_tys(inner),
   TRefined(inner, _) => tuple_elem_tys(inner),
-  TVar(_) | TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TFun(_, _, _) | TName(_, _) | TRecord(_) | TRecordOpen(_, _) | TCont(_, _, _, _) => [],
+  TVar(_)
+  | TInt
+  | TFloat
+  | TUnit
+  | TByte
+  | TAddr
+  | TList(_)
+  | TFun(_, _, _)
+  | TName(_, _)
+  | TRecord(_)
+  | TRecordOpen(_, _)
+  | TCont(_, _, _, _) => [],
 }
 
 fn list_elem_ty(ty) = match tuple_pat_strip(ty) {
@@ -4899,7 +4618,18 @@ fn list_elem_ty(ty) = match tuple_pat_strip(ty) {
   TReprPin(_, inner) => list_elem_ty(inner),
   TAlias(_, inner) => list_elem_ty(inner),
   TRefined(inner, _) => list_elem_ty(inner),
-  TVar(_) | TInt | TFloat | TUnit | TByte | TAddr | TTuple(_) | TFun(_, _, _) | TName(_, _) | TRecord(_) | TRecordOpen(_, _) | TCont(_, _, _, _) => TVar(0),
+  TVar(_)
+  | TInt
+  | TFloat
+  | TUnit
+  | TByte
+  | TAddr
+  | TTuple(_)
+  | TFun(_, _, _)
+  | TName(_, _)
+  | TRecord(_)
+  | TRecordOpen(_, _)
+  | TCont(_, _, _, _) => TVar(0),
 }
 
 // A constructor's payload types at the scrutinee — none where no type
@@ -6561,15 +6291,10 @@ fn resolve_captures_outer(uses, owner_h) = if len(uses) == 0 {
 fn lower_program(stmts) = {
   let globals = collect_top_level_names(stmts)
   ls_register_globals(globals)
-  // The flow-closure, computed ONCE (the cached cursor): name → escaping row.
-  // Read live by THE SEAM's two consumers; the env is fully typed here (infer
-  // ran), so own_dispatched + the call-edge fixpoint are both available.
   // Each pre-pass is an arena (lib/arena.mn): its fact crosses, the walk
-  // that found it does not.
-  ls_register_escaping(compute_escaping_rows(stmts) ~> arena)
-  // band B M1.3 — the A1 gate's global short-circuit: does any declared
-  // effect carry a MultiShot-graded op? No ⇒ nothing can yield ⇒ can_yield
-  // is false everywhere and the k2 machinery contributes zero bytes (Law 7).
+  // that found it does not. Does any declared effect carry a yielding op?
+  // No ⇒ nothing can yield ⇒ `can_yield` is false everywhere and the
+  // boundary machinery contributes zero bytes.
   let yields = program_may_yield(stmts) ~> arena
   ls_register_may_yield(yields)
   // AN-2 — the ops whose direct performs are followed by the boundary
@@ -6655,12 +6380,7 @@ fn push_name(buf, count, name) = {
 //
 // Records are stored with their fields sorted by name; Mentl source reads
 // them by `.field`, so the physical layout is the emit's business.
-handler lower_scope with frames = [], globals = [], esc_rows = smap_new(), may_yield = false, unwinding = [], resume_binds = [], wide = smap_new(), walking = [], fn_symbols = wmap_new(64), symbol_counts = smap_new() {
-  ls_register_escaping(map) => // THE FLOW-CLOSURE map (name → escaping row), computed once at lower_program
-  // and read live by THE SEAM. Some(row) for a top-level fn; None (→ the leaf)
-  // for a nested fn / lambda / unknown name.
-  resume() with esc_rows = smap_build(map),
-  ls_escaping_of(name) => resume(smap_get(esc_rows, name)),
+handler lower_scope with frames = [], globals = [], may_yield = false, unwinding = [], resume_binds = [], wide = smap_new(), walking = [], fn_symbols = wmap_new(64), symbol_counts = smap_new() {
   ls_wide_memo(name) => // A nominal type's wide-sequence fact, settled once per name by
   // `wide_reach_name` and read at every later site; the names whose
   // structure the walk stands inside cut their own cycles.

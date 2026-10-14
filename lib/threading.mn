@@ -127,8 +127,6 @@ fn fanout_threaded(f, xs) = xs |> map(spawn_branch(f)) |> map(thread_join)
 
 fn spawn_branch(f, x) = spawn(() => f(x))
 
-// ─── Connection to the kernel ─────────────────────────────────────────
-//
 // Handler IS the backend: the same source runs single-threaded or
 // multi-core depending only on the installed schedule handler. The
 // fanout verb stays pure topology; `lower_fanout_schedule()` reads the

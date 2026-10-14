@@ -697,7 +697,31 @@ fn focus_reason(target) = match target {
 // Verify-tentacle (refinement obligations). H6 exhaustive over
 // Question's 15 variants via pattern alternation per SYNTAX.md L956.
 fn tentacle_for_question(question) with Pure = match question {
-  QTypeOf(_) | QTypeAt(_) | QIntentOf(_) | QUnresolved | QEffects(_) | QRefsOf(_) | QStateWrites(_) | QHandlerProvider(_) | QFlowOf(_) | QCensus(_) | QCensusRoster | QDecls | QWhere(_, _) | QVariants(_) | QModules | QImports | QUnreferenced | QUnreachable | QPerforms | QEnv | QOrphanClaims | QCost | QGhosts | QHeads | QUnknown(_) => TentQuery,
+  QTypeOf(_)
+  | QTypeAt(_)
+  | QIntentOf(_)
+  | QUnresolved
+  | QEffects(_)
+  | QRefsOf(_)
+  | QStateWrites(_)
+  | QHandlerProvider(_)
+  | QFlowOf(_)
+  | QCensus(_)
+  | QCensusRoster
+  | QDecls
+  | QWhere(_, _)
+  | QVariants(_)
+  | QModules
+  | QImports
+  | QUnreferenced
+  | QUnreachable
+  | QPerforms
+  | QEnv
+  | QOrphanClaims
+  | QCost
+  | QGhosts
+  | QHeads
+  | QUnknown(_) => TentQuery,
   QOwnership(_) => TentTrace,
   QWhy(_, _) | QSubstChain(_) => TentWhy,
   QVerifyDebt | QSmt => TentVerify,
@@ -711,7 +735,35 @@ fn tentacle_for_question(question) with Pure = match question {
 fn question_span(question) = match question {
   QTypeAt(s) => s,
   QIn(inner, m) => question_span(inner),
-  QTypeOf(_) | QIntentOf(_) | QUnresolved | QSubstChain(_) | QEffects(_) | QOwnership(_) | QWhy(_, _) | QRefsOf(_) | QStateWrites(_) | QVerifyDebt | QSmt | QHandlerProvider(_) | QFlowOf(_) | QCensus(_) | QCensusRoster | QDecls | QWhere(_, _) | QVariants(_) | QModules | QImports | QUnreferenced | QUnreachable | QPerforms | QEnv | QOrphanClaims | QCost | QGhosts | QHeads | QUnknown(_) => span_zero(),
+  QTypeOf(_)
+  | QIntentOf(_)
+  | QUnresolved
+  | QSubstChain(_)
+  | QEffects(_)
+  | QOwnership(_)
+  | QWhy(_, _)
+  | QRefsOf(_)
+  | QStateWrites(_)
+  | QVerifyDebt
+  | QSmt
+  | QHandlerProvider(_)
+  | QFlowOf(_)
+  | QCensus(_)
+  | QCensusRoster
+  | QDecls
+  | QWhere(_, _)
+  | QVariants(_)
+  | QModules
+  | QImports
+  | QUnreferenced
+  | QUnreachable
+  | QPerforms
+  | QEnv
+  | QOrphanClaims
+  | QCost
+  | QGhosts
+  | QHeads
+  | QUnknown(_) => span_zero(),
 }
 
 // compose_propose_situation — sparse Situation for a propose gesture.

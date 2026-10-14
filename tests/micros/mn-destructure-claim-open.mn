@@ -1,0 +1,12 @@
+// expect: refuse E_EffectMismatch
+// A destructuring let asserts its value's shape, and an assertion the walk
+// cannot prove is the Trap a mismatch is: here the list is a parameter, so
+// the length the pattern asserts is open and the declared negation refuses.
+// Measured on boot 82692525: checked clean, since the exhaustiveness read
+// took a list pattern as covering every list.
+fn two(xs) with !Trap = {
+  let [a, b] = xs
+  a + b
+}
+
+fn main() = two([3, 4])

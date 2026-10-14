@@ -2642,6 +2642,51 @@ for i in "${!compilers[@]}"; do
     fail "tighten fixpoint (see $dir/tighten2.out)"
   fi
 
+  # ── the catch-all over a sum is the roster the author declined to write ──
+  # (Morgan, 2026-10-13). wild.mn stands a `_` and a bare binder after other
+  # arms over `Dot | Line(Int) | Box(Int, Int) | Blob`, and a `_` over an Int.
+  # The census names the two over the sum with the roster each stands for;
+  # tighten writes the rosters — the binder's as the binder over the group;
+  # the result checks clean and runs to 5; the second run finds nothing; the
+  # file is canonical. RED on boot 82692525: no such census shape, the file
+  # untouched.
+  cp "$ROOT/tests/frontier/tighten-demo/wild.mn" "$tdemo/wild.mn"
+  (cd "$tdemo" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$tdemo" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" query wild.mn "census wildcard-over-sum") >"$dir/wild-census.out" 2>&1
+  if grep -q '^→ 2 catch-all arm(s) over a sum' "$dir/wild-census.out" && grep -q 'other @ (Line(_) | Box(_, _) | Blob)' "$dir/wild-census.out"; then
+    pass "the census names each catch-all over a sum with its roster"
+  else
+    fail "wildcard-over-sum census (see $dir/wild-census.out)"
+  fi
+  (cd "$tdemo" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$tdemo" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" tighten wild.mn) >"$dir/wild-tighten.out" 2>&1
+  wrc=$?
+  if [ $wrc -eq 0 ] && grep -q '^  Box(_, _) | Blob => 4,' "$tdemo/wild.mn" && grep -q '^  other @ (Line(_) | Box(_, _) | Blob) => "many",' "$tdemo/wild.mn" && grep -q '^  _ => 1,' "$tdemo/wild.mn"; then
+    pass "tighten writes the roster each catch-all stood for, the binder over its group, the word's complement kept"
+  else
+    fail "wildcard-over-sum tighten (exit=$wrc; see $dir/wild-tighten.out)"
+  fi
+  (cd "$tdemo" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$tdemo" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" check wild.mn) >"$dir/wild-check.out" 2>&1
+  if [ $? -eq 0 ] && [ ! -s "$dir/wild-check.out" ]; then
+    pass "the rostered match checks clean"
+  else
+    fail "wildcard-over-sum check (see $dir/wild-check.out)"
+  fi
+  # The wheel only emits; running is the mentl command's (run_module).
+  run_module "$compiler" "$tdemo" wild "$dir/wild-run.out" "$dir/wild-run.err"
+  wrun=$?
+  if [ $wrun -eq 5 ]; then
+    pass "the rostered match runs to 5"
+  else
+    fail "wildcard-over-sum run (exit=$wrun; see $dir/wild-run.err)"
+  fi
+  (cd "$tdemo" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$tdemo" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" tighten wild.mn) >"$dir/wild-tighten2.out" 2>&1
+  (cd "$tdemo" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$tdemo" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" fmt --check wild.mn) >"$dir/wild-fmt.out" 2>&1
+  wfmt=$?
+  if grep -q 'nothing to tighten' "$dir/wild-tighten2.out" && [ $wfmt -eq 0 ]; then
+    pass "the roster is the fixpoint: a second run finds nothing and the file is canonical"
+  else
+    fail "wildcard-over-sum fixpoint (fmt=$wfmt; see $dir/wild-tighten2.out, $dir/wild-fmt.out)"
+  fi
+
   # ── E_MissingImport — the solo sweep as ONE judgment (F0b) ──────────
   # entry imports a and b; b calls a's `helper` without importing a. The
   # whole link resolves the name; on its own b would not compile. The
@@ -4795,7 +4840,14 @@ for i in "${!compilers[@]}"; do
   # `each_handler`'s arm resumes with the stage's answer (two lines net).
   # A bare program pays both: the marker because `with !Mutate` must resolve
   # in every program, the law because its stage is every program's.
-  cost_ceiling=2837
+  # 2825 (2026-10-14): FELL 2837 → 2825 at WILD. The landing's own lines
+  # rose it 17 — lib/lists.mn's `SeqKind`, the sum the sequence tag word
+  # names, and lib/memory.mn's `trap() -> !` — and the debt was paid in the
+  # modules a bare program links: the nineteen decoration banners there
+  # deleted (SYNTAX: a declaration's name is its heading), all but one the
+  # stolen lede of the declaration below it, and the two new comments
+  # trued to what is.
+  cost_ceiling=2825
   ct_out=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" query "$ROOT/tests/frontier/mn-bare-floor.mn" "cost" 2>/dev/null)
   ct_lines=$(printf '%s' "$ct_out" | grep -o '[0-9]* source line' | grep -o '[0-9]*' | head -1)
   if [ -n "$ct_lines" ] && [ "$ct_lines" -le "$cost_ceiling" ]; then

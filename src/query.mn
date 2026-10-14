@@ -59,6 +59,7 @@ type CensusShape
   | CsFailureMask
   | CsPrintInReport
   | CsWildcardFabricates
+  | CsWildcardOverSum
   | CsUnderscoreRetain
   | CsFlagAsInt
   | CsParallelArrays
@@ -1222,6 +1223,7 @@ fn census_label(shape) = match shape {
   CsFailureMask => "failure-mask site(s)",
   CsPrintInReport => "print-in-report site(s)",
   CsWildcardFabricates => "wildcard-fabricates arm(s)",
+  CsWildcardOverSum => "catch-all arm(s) over a sum",
   CsUnderscoreRetain => "underscore-retain let(s)",
   CsFlagAsInt => "flag-as-int compare(s)",
   CsParallelArrays => "parallel-arrays site(s)",
@@ -1260,6 +1262,7 @@ fn census_name(shape) = match shape {
   CsFailureMask => "failure-mask",
   CsPrintInReport => "print-in-report",
   CsWildcardFabricates => "wildcard-fabricates",
+  CsWildcardOverSum => "wildcard-over-sum",
   CsUnderscoreRetain => "underscore-retain",
   CsFlagAsInt => "flag-as-int",
   CsParallelArrays => "parallel-arrays",
@@ -1386,7 +1389,26 @@ fn census_noted(shape) with !Mutate = match graph_snapshot() {
 fn census_note(shape, h) with !Mutate = match shape {
   CsProse(needle) => prose_line(prose_holds(??, needle), graph_comment_at(h)),
   CsProseClass(c) => prose_line(prose_class_holds(c), graph_comment_at(h)),
+  CsWildcardOverSum => match catch_all_of(graph_node_body(h)) {
+    Some((_, _, roster)) => Some(render_pat_tokens(roster)),
+    None => None,
+  },
   _ => None,
+}
+
+// The one read of the shape: a match whose catch-all arm stands over a sum
+// answers the arm's index, its pattern and the roster it stands for
+// (`catch_all_arm`, src/infer.mn); any other node answers nothing.
+fn catch_all_of(body) with !Mutate = match body {
+  NExpr(MatchExpr(scrut, arms)) => catch_all_arm(scrut, arms),
+  NExpr(_) | NStmt(_) | NHole(_) | NPat(_) | NTypeAnn(_) | NModule(_) => None,
+}
+
+// Every match the census convicts, as its handle — the node `mentl tighten`
+// writes the roster into. Everything else about a site is read off the
+// handle: its module, its span, its catch-all arm.
+fn catch_all_sites() with !Mutate = match graph_snapshot() {
+  Graph(next, _) => census_walk(CsWildcardOverSum, 0, next, make_list(0)) |> map({ (_, _, h) => h }),
 }
 
 fn prose_line(holds, text) = match find(holds, lines(text)) {
@@ -1541,6 +1563,15 @@ fn census_matches(shape: CensusShape, h, body: NodeBody) with !Mutate = match sh
   match body {
     NExpr(MatchExpr(_, arms)) => any_wildcard_fabricates(arms, 0, len(arms)),
     _ => false,
+  },
+  CsWildcardOverSum => // Drift mode 10 at the arm itself (Morgan, 2026-10-13): a `_` or a bare
+  // binder over a SUM swallows the constructors the arms before it leave,
+  // and a constructor declared later joins it unread. The site is the
+  // match; its note is the roster the arm stands for, as the pattern
+  // `mentl tighten` writes in its place (`catch_all_arm`, src/infer.mn).
+  match catch_all_of(body) {
+    Some(_) => true,
+    None => false,
   },
   CsUnderscoreRetain => // Drift mode 15's shape (the fifth absorption): a let whose
   // binder KEEPS a leading underscore — an unused value renamed
@@ -1937,6 +1968,7 @@ fn drift_roster() = [
   CsFailureMask,
   CsPrintInReport,
   CsWildcardFabricates,
+  CsWildcardOverSum,
   CsUnderscoreRetain,
   CsFlagAsInt,
   CsParallelArrays,
@@ -2818,11 +2850,10 @@ fn env_demand_at(acc, c) = match env_read_demand(c) {
 fn env_read_demand(c) = match graph_node_body(c) {
   NExpr(CallExpr(callee, args)) => match graph_node_body(callee) {
     NExpr(VarRef(op)) => if (op == "env" || op == "env_opt") && op_effect_of(op) == Some("Environ") {
-      match (op, literal_first_arg(args)) {
-        ("env", Some(s)) => Some((s, "required")),
-        ("env", None) => None,
-        ("env_opt", Some(s)) => Some((s, "optional")),
-        ("env_opt", None) => Some(("*", "all optional")),
+      let required = op == "env"
+      match literal_first_arg(args) {
+        Some(s) => Some((s, if required { "required" } else { "optional" })),
+        None => if required { None } else { Some(("*", "all optional")) },
       }
     } else {
       None

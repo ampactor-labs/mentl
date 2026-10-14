@@ -1,0 +1,9 @@
+// expect: refuse E_RefinementRejected
+// A destructuring let whose value the walk reads as built by another
+// constructor is the trap written down, refused at the let as a division by
+// a literal zero is. Measured on boot 82692525: refused as a match missing
+// its None arm, a dispatch nobody wrote.
+fn main() = {
+  let Some(v) = None
+  v
+}

@@ -614,6 +614,14 @@ parallel-fanout topology (see §`><`). The read-only borrow is what makes
 execution-as-a-handler PROVABLY race-free: a shared value borrowed read-only is
 safe across threads.
 
+**A fanout over one stage is the pipe** (real, 2026-10-14). A product of one
+field is its field, so `x <| f` answers what `x |> f` answers and the two are
+one graph: the parse builds the pipe, and `mentl fmt` writes `|>`. A tuple
+literal of one, `(a,)`, is `a`, as the pattern `(p)` is `p`. Until then the
+one-stage fanout minted a tuple of one that only the pattern `(e)` could take
+apart, and `let e = 2 <| inc; e + 1` refused arithmetic on it
+(tests/micros/mn-product-of-one.mn, measured on boot 82692525).
+
 ### `><` — parallel compose (structural N-ary)
 
 **Two or more INDEPENDENT pipelines run in parallel.** Each branch has its own input. Outputs are tupled.
@@ -1312,9 +1320,9 @@ Arms separated by commas. Trailing comma allowed.
 
 ### Exhaustiveness
 
-Every value a constructor or tuple column can take reaches an arm (the
-literal, list and record columns are the remainder named below). A value no
-arm reaches:
+Every value the scrutinee of a match of two or more arms can take reaches an
+arm (a match of one arm asserts its shape instead, below). A value no arm
+reaches:
 
 Diagnostic: **`E_PatternInexhaustive`** at the `match` keyword, naming the value
 that escapes as a pattern:
@@ -1332,9 +1340,18 @@ columns are themselves covered, and a column with a wildcard or binder covers
 the rest — so a match naming every `Stmt` variant but one inside `NStmt(…)`
 refuses as `match misses `NStmt(HandlerChainStmt(_, _))``, the witness being
 the first missing variant in declaration order. A tuple column is one constructor of its
-width; a column of literal, list or record patterns decides nothing and is
-read as covered, so the check refuses exactly the constructor gaps it can
-prove. Until then the check read each arm's TOP constructor alone, and a
+width. **The read is strict over every pattern kind** (real, 2026-10-14): a
+list column is the sum it is, `[]` or a head before a rest, so `[]` beside
+`[h, ...t]` is whole and `[x]` beside `[]` misses `[_, ...]`; a record column
+is the union of the fields its patterns name, an unnamed field `_`; Bool's
+two literals are the constructors they are; and any other literal column is
+covered only by a row that is wild there, since no set of literals covers a
+word or a text — `0` beside `1` misses `_`, and `Some(false)` beside `None`
+misses `Some(True)`. Until then the matrix read a literal, list or record
+column as covered, so each of those three compiled clean and trapped at the
+value no arm named (tests/micros/mn-literal-payload-inexhaustive.mn,
+mn-list-length-inexhaustive.mn, mn-int-literal-inexhaustive.mn, exit 134 on
+boot 82692525). Before 2026-10-13 the check read each arm's TOP constructor alone, and a
 nested variant nobody matched compiled clean and trapped at run time; the
 compiler's own classifier walk did, the day a `Stmt` variant was added
 (the handler chain). An arm covers what its top pattern covers: an
@@ -1344,6 +1361,48 @@ a match missing a variant does not compile to a program that traps when the
 variant arrives. Before that the class narrated and emitted, and an
 as-pattern was read as covering nothing, so `whole @ Leaf(_)` beside
 `Pair(a, b)` reported a false miss.
+
+**A catch-all over a sum is the roster its author declined to write**
+(counted 2026-10-14). A `_` or a bare binder after other arms of a match over
+a sum swallows the constructors those arms leave, and a constructor declared
+later joins it unread — the exhaustiveness gate satisfied while what it knew
+is thrown away. So the medium counts the shape (`mentl verify`'s catch-all
+census, bounded at the wheel's count) and `mentl tighten` writes in its place
+the alternation of the constructors that reach it, each payload `_`, under
+the arm's binder when it bound one: after `Dot => 1`, the arm `other =>
+"many"` over `type Shape = Dot | Line(Int) | Box(Int, Int) | Blob` becomes
+`other @ (Line(_) | Box(_, _) | Blob) => "many"`, and `_ => 4` after `Dot`
+and `Line(_)` becomes `Box(_, _) | Blob => 4` (tests/frontier/tighten-demo/wild.mn).
+The write costs nothing at run time: the last arm of an exhaustive match runs
+untested, as the `_` did. Three shapes are not the roster and are never
+counted: a `_` inside a payload, which ignores a part the arm does not read;
+a `_` over a word, a text or a list, the honest complement no roster could
+name; and a match's only arm, which is a binding (`{ x => body }`, `match v
+{ x => … }`), never a dispatch. Once nothing in the wheel is left to rewrite
+the shape refuses — the third step of
+`Hβ.match.catch-all-over-a-sum-is-the-roster`.
+
+**A match of several arms dispatches; a match of one arm asserts** (real,
+2026-10-14). `let [a, b] = xs`, `let Some(v) = o`, a parameter written as a
+pattern (`fn h([p, q]) = p - q`), a one-arm literal (`{ [h, ...t] => h }`)
+and `match v { p => e }` are one graph — a match of one arm — and each
+ASSERTS the value's shape where several arms would dispatch on it. So the
+case its pattern leaves is not a refusal: the shape is a claim, decided along
+the value's edges as an index's precondition is (§«Partiality — a
+primitive's precondition is a claim»). It is proven where every value the
+scrutinee can be has the shape — `let [a, b] = [3, 4]`, `let Some(v) =
+Some(a)` — and costs nothing; refuted where one is built otherwise — `let
+Some(v) = None` is `E_RefinementRejected` at the let; and open otherwise, the
+match's own row carrying the `Trap` a mismatch is, so `with !Trap` refuses a
+destructure of a parameter until its shape is proven or its value is matched
+by arms of its own. The arms of a match of several stay the roster of what it
+handles. The law reads the arms, never the spelling: the binder form
+`([h, ...t]) => h` and the arm list `mentl fmt` writes it as are one graph
+with one meaning. Before this, a destructure of a sum was refused as the
+dispatch it is desugared into, at a line with no `match`, while a list
+pattern was read as covering every list
+(tests/micros/mn-destructure-claim-proven.mn, mn-destructure-claim-open.mn,
+mn-destructure-claim-refuted.mn, each measured on boot 82692525).
 
 ### Type aliases
 
@@ -2236,7 +2295,7 @@ Patterns appear in `let`, `match`, function parameters, and lambda parameters.
 | `PList(prefix, rest)` | `[a, b, c]`, `[head, ...rest]`, `[_, ..._]` | positional prefix + optional rest |
 | `PRecord`           | `{name, age}`, `{name: n, ...r}`  | field punning + rest |
 | `PAlt`              | `pat_1 \| pat_2 \| ...`            | matches if any branch matches; no variable bindings inside alternatives |
-| `PAs`               | `name @ pat`                      | binds `name` to whole value AND destructures via `pat` |
+| `PAs`               | `name @ pat`, `name @ (p1 \| p2)` | binds `name` to whole value AND destructures via `pat`; over a parenthesized alternation, under any branch |
 
 ### Examples
 
@@ -2315,6 +2374,13 @@ match v {
 
 When branches bind different names: `E_PatternAlternationBindingMismatch` with the conflict surfaced. When the same name has incompatible types: same diagnostic with the type conflict surfaced.
 
+**Layout** (real, 2026-10-14): an alternation renders inline when it fits
+and past the width one branch per line, each continuation led by its `|` —
+the roster a catch-all stood for is often forty names, and the parser passes
+over the newline before a `|` as layout. Branches that each bind the whole
+value under one name render as that binder over the group, `b @ (C(_) | D)`
+(§«As-patterns — rule»).
+
 ### As-patterns — rule
 
 The as-pattern is real (2026-07-30): `name @ pat` binds the whole value and
@@ -2322,6 +2388,16 @@ destructures it in one arm; the binder carries the scrutinee's own type, and
 the match predicate is the inner pattern's alone.
 
 `name @ pat => body`: binds `name` to the entire matched value; `pat` destructures it further. `name` and any bindings inside `pat` are all available in the arm body. Common for "need the whole value AND some pieces" cases — event forwarding, logging, pass-through.
+
+**The binder over a group** (real, 2026-10-14): `name @ (A | B)` binds the
+whole value under any branch of the alternation it groups — the spelling
+`mentl tighten` writes for a binder that stood over a sum — and a
+parenthesized pattern is that pattern, since there is no product of one:
+`(A | B)` is the alternation, `(a, b)` the pair as before. One spelling for
+one graph: `b @ C(_) | b @ D`, every branch under the same binder, is the
+tree the formatter writes back as `b @ (C(_) | D)`, one branch per line past
+the width (tests/micros/mn-grouped-as-pattern.mn; the boot read the parens as
+a one-element tuple pattern and refused to type).
 
 `@` is TAt (reserved for handler annotations more generally; no current load-bearing user-facing `@`-form on effect ops — `@resume=` was erased per the inference-from-body discipline). Context disambiguates if other `@`-forms are introduced in future kernel additions.
 
@@ -2702,7 +2778,10 @@ operands, with three outcomes (real, 2026-09-30):
 | anything else — a parameter nothing bounds, a local, a call | OPEN — the site charges **`Trap`** into the row |
 
 `Trap` is the effect the substrate performs when a partial primitive's
-precondition fails (`effect Trap {}`, the prelude — no operations, nothing
+precondition fails (`effect Trap { trap() -> ! }`, lib/memory.mn — its one
+op the deliberate trap, `out_of_range()`, which never returns and says so
+since 2026-10-14, so it stands where a value of any type is owed, as the
+complement arm of a match over a word the representation bounds; nothing
 handles it, and its absence is the whole point of naming it). It is a row
 fact like `Alloc`: inferred and projected (`fn ratio(t, n) = t / n` renders
 `-> Int with Trap` at the address surface), transitive through calls, and
@@ -2733,13 +2812,15 @@ gate read the operand's SHAPE — arithmetic over a literal and a variable —
 and that program answered 0 (measured on boot 21f8e691).
 
 What the fragment cannot yet read, named: a guard on the PATH (`if b == 0 {
-None } else { a / b }` — the narrowing the walk computes and never writes,
-`Hβ.verify.partiality-reads-the-path-narrowing`; the wheel's two open
+None } else { a / b }` — a read up the parent edge the verifier has not
+grown, `Hβ.verify.partiality-reads-the-path-narrowing`; the wheel's two open
 division claims, both in `int_fold`, are of this shape), and the other partial
 primitives — an index out of range (`xs[i]`, whose precondition needs the
 same path read), a slice past its sequence — which are the same law one
-primitive over (`Hβ.effects.index-partiality-is-a-row-fact`). Non-termination
-is not a trap and not in the row (`Hβ.effects.divergence-is-a-row-fact`).
+primitive over (`Hβ.effects.index-partiality-is-a-row-fact`). A destructuring
+pattern is that law one form over: the shape it asserts is its precondition,
+decided by the same walk (§«Exhaustiveness»). Non-termination is not a trap
+and not in the row (`Hβ.effects.divergence-is-a-row-fact`).
 
 ---
 
@@ -3104,16 +3185,17 @@ no longer a token, so there is nothing to lift.*
 | `E_BlockNeedsBraces`  | statements (a `BlockExpr`) written without braces       | wrap the statements in `{ }`; user sees no diagnostic |
 | `E_StatementSemicolon`| `;` between statements. **Not yet born**: the parser skips the `;` as a separator (`skip_sep`) and the render writes newline layout, so the lift is real and silent, and no constructor names it | lift to newline layout; canonical text has no `;` |
 
-Two more redundant spellings lift the same way and have no class yet: an
-explicit `-> ()` (§«Unit return omission») and an ownership marker after the
-colon (`ast: own Node`, §«The Intent Boundary Rule»).
+Three more redundant spellings lift the same way and have no class yet: an
+explicit `-> ()` (§«Unit return omission»), an ownership marker after the
+colon (`ast: own Node`, §«The Intent Boundary Rule»), and a `<|` over one
+stage, which the parse builds as the pipe it is (§«`<|` — diverge»).
 
 ### Hard errors (substrate violations)
 
 | Code                  | Trigger                                       | Applicability        | Quick Fix                                      |
 |-----------------------|-----------------------------------------------|----------------------|-------------------------------------------------|
-| `E_PatternInexhaustive` | a value escapes every arm — read over the whole pattern, column by column (§«Exhaustiveness»), so a variant missing INSIDE a constructor's payload refuses too; the message names the escaping value as a pattern. An alternation covers its branches, an as-pattern its inner pattern. ARMED 2026-10-03 (refuses the executable); nested since 2026-10-13 | `HasPlaceholders`    | insert the arm the witness names |
-| `E_RefinementRejected`| value violates refinement predicate — or a partial primitive's precondition refuted by constants (`1 / 0`, `INT_MIN / -1`; §«Partiality») | `Unspecified`        | adjust value or widen refinement               |
+| `E_PatternInexhaustive` | a value escapes every arm of a match of two or more arms — a match of one arm, a destructuring `let` among them, claims its shape instead (§«Exhaustiveness») — read over the whole pattern, column by column, so a variant missing INSIDE a constructor's payload refuses too; the message names the escaping value as a pattern. An alternation covers its branches, an as-pattern its inner pattern; a list column is `[]` or a head before a rest, a record its fields, Bool's literals its constructors, and any other literal column is covered only by a wild row (`0` beside `1` misses `_`). ARMED 2026-10-03 (refuses the executable); nested since 2026-10-13; strict over every pattern kind since 2026-10-14 | `HasPlaceholders`    | insert the arm the witness names |
+| `E_RefinementRejected`| value violates refinement predicate — or a partial primitive's precondition refuted by constants (`1 / 0`, `INT_MIN / -1`; §«Partiality»), or a destructuring pattern's shape refuted by how the value was built (`let Some(v) = None`; §«Exhaustiveness») | `Unspecified`        | adjust value or widen refinement               |
 | `E_EffectMismatch`    | declared row doesn't subsume body row. The Reason names the declaration and, for a function, the chain of sites the first refused effect enters through — each a `module:line:col` naming what the effect crosses there (a callee, a stage, a handler, a function value entered) or the construct that charges it (`rendering the value`, `building the list`) — to the op where the chain reaches one (real, 2026-10-13; the span stays the declaration's, whose clause is what the body violates) | `MaybeIncorrect`     | widen declaration OR install absorbing handler at the site the chain names |
 | `E_PurityViolated`    | `with Pure` body performs non-empty effects   | `MaybeIncorrect`     | remove `with Pure` or absorb the effect        |
 | `E_FeedbackNoContext` | `<~` used without iterative context — DECLARED, zero construction sites by design: the ambient-context requirement is a Faust inheritance the substrate never adopted (a `<~` prior is a per-site register advanced by the enclosing fn's next call), so firing it would refuse correct code. It becomes real when the clock is INFERRED (`Hβ.dataflow.clock-calculus-sample-rate`) | `MaybeIncorrect` | install an `Iterate`-class handler (`Sample`/`Tick`/`Clock`)        |
