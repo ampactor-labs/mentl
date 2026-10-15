@@ -653,24 +653,25 @@ a provenance diff, a search over live shared cells.
    site resolved where it is minted — and leads to that declaration's
    statement (`ref_target`), a callee's kind, judgment and schedule reach
    are read off its declaration (`callee_kind`, `fn_judgment`,
-   `fanout_reach_known`), an op's sole handler is its declaration on the
-   op's scheme, and the facet walks from `main` and the module value lets
-   over the edges, naming the dead code of the entry's own layer
-   (`reach_report`). What still reads names: (a) the lowered program's
-   identity is a spelling (`LFn(String, …)`, a callee's symbol its
-   declaration's bare name), so the emit's and the reading's reach walks
-   (`plan_reached`, `reach_units`) walk names, and a function bound to a
-   handler's resume is found by its spelling (`ls_resume_bind_of`) — the
-   form is a lowered
-   unit keyed by its declaration's handle, reachability the edge followed
-   from `main`, a symbol read off its declaration (`$module.name`, nested
-   paths `.`-joined), and the name-keyed walks deleted, a TRANSITION; (b) a
-   sugar's callees are
-   spellings (`concat_callees`, `subscript_callee`, `list_rest_callee`): the
-   judgment charges each as resolved at the link's own scope and the lowering
-   calls the symbol the spelling names — the form is the sugar node's edge to
-   the primitive's declaration, drawn where the sugar is judged, the symbol
-   (a) reads. Gate: m3 == m4 with the name-keyed walks deleted.
+   `fanout_reach_known`), a symbol is read off its declaration
+   (`decl_symbol`: `$module.name`, a nested function's path `.`-joined under
+   it, a handler's arms, init and redrive spelled off it, the vocabulary the
+   emit calls resolved to its declaration's, `vocab_symbol`), so two modules
+   that declare one name emit two symbols, an op's sole handler is its
+   declaration on the op's scheme, and the facet walks from `main` and the
+   module value lets over the edges, naming the dead code of the entry's own
+   layer (`reach_report`). What still reads names: (a) the lowered program's
+   identity is its symbol (`LFn(String, …)`), so the emit's and the
+   reading's reach walks (`plan_reached`, `reach_units`) key their units by
+   it, and a function bound to a handler's resume is found by its spelling
+   (`ls_resume_bind_of`) — the form is a lowered unit keyed by its
+   declaration's handle and reachability the edge followed from `main`, the
+   symbol-keyed walks deleted; (b) a sugar's callees are spellings
+   (`concat_callees`, `subscript_callee`, `list_rest_callee`): the judgment
+   charges each as resolved at the link's own scope and the lowering calls
+   the symbol its declaration names — the form is the sugar node's edge to
+   the primitive's declaration, drawn where the sugar is judged. Gate: m3 ==
+   m4 with the symbol-keyed walks deleted.
 2. **Every position is a cell — #108** (`Hβ.graph.positions-are-cells`). A
    pattern's constructor, a type annotation's name, a row's effect name and a
    handler arm's op name are nodes that draw the same edge, so `refs of` a

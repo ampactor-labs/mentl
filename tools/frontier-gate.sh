@@ -4907,8 +4907,8 @@ for i in "${!compilers[@]}"; do
   # while both functions are present. This leg reported RED at alpha=1
   # beta=1 until the pipe came out.
   wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" compile "$ROOT/tests/frontier/mn-reach-library-whole.mn" > "$dir/reach-library.wat" 2>/dev/null
-  lw_a=$(grep -cF '(func $alpha ' "$dir/reach-library.wat")
-  lw_b=$(grep -cF '(func $beta ' "$dir/reach-library.wat")
+  lw_a=$(grep -cE '\(func \$[^ ]*\.alpha ' "$dir/reach-library.wat")
+  lw_b=$(grep -cE '\(func \$[^ ]*\.beta ' "$dir/reach-library.wat")
   if [ "$lw_a" -ge 1 ] && [ "$lw_b" -ge 1 ]; then
     pass "relocation library pin: a no-main module emits whole (alpha + unreferenced beta)"
   else
@@ -4917,7 +4917,7 @@ for i in "${!compilers[@]}"; do
   # EMISSION-ORDER — the module emits in SOURCE order (zeta, alpha, main),
   # never the demand order the worklist constructs in (main, alpha, zeta).
   eo_elem=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" compile "$ROOT/tests/frontier/mn-reach-emission-order.mn" 2>/dev/null | grep -F 'elem $fns')
-  if printf '%s' "$eo_elem" | grep -qF '$zeta $alpha $main'; then
+  if printf '%s' "$eo_elem" | grep -qE '\.zeta \$[^ ]*\.alpha \$[^ ]*\.main( |\))'; then
     pass "relocation order pin: emission is source order (zeta alpha main)"
   else
     fail "relocation order pin (elem order: $eo_elem)"

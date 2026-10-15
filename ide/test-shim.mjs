@@ -60,8 +60,9 @@ let spawned = 0;
 {
   const r = await runWheel({ argv: [], stdin: te.encode(PROG) });
   spawned = r.tasks;
-  const ok = !r.trapped && r.out.includes('(module') && r.out.includes('$double');
-  console.log(`[0] compile-stdin: exit ${r.exit} · has (module ${r.out.includes('(module')} · has $double ${r.out.includes('$double')} · tasks ${r.tasks} (reported, not required) -> ${ok ? 'PASS' : 'FAIL'}`);
+  const hasDouble = /\(func \$\S*\.double /.test(r.out);
+  const ok = !r.trapped && r.out.includes('(module') && hasDouble;
+  console.log(`[0] compile-stdin: exit ${r.exit} · has (module ${r.out.includes('(module')} · has $<module>.double ${hasDouble} · tasks ${r.tasks} (reported, not required) -> ${ok ? 'PASS' : 'FAIL'}`);
   if (!ok) { bad++; console.log('    err: ' + r.err.trim().split('\n').slice(0, 6).join('\n    ') + (r.trapped ? '\n    trap: ' + r.trapped : '')); }
 }
 // ── Leg 1: the stub spawn REFUSES this wasm — armed only while leg 0 spawned ─

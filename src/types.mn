@@ -4855,15 +4855,18 @@ effect LowerScope {
   // how many frames are open — 0 at a top-level declaration's own entry
   ls_frame_depth() -> Int
   // bind a local (name, type handle); returns the register the binder takes
+  // — at module scope, the global its declaration's symbol names
   ls_bind_local(String, Int) -> String
   // (LF.B) bind a `<~` lambda param to its feedback site's prior — a binder
   // of the current frame, retired with the scope around the recurrence body
   ls_bind_fb_prior(String, Int)
   ls_resolve(String) -> (Resolution, Int)
-  ls_register_globals([String])
-  // the symbol a named fn declaration (name, handle) emits as: its name at
-  // top level, else the enclosing named fn's symbol, a `.` and its name,
-  // and `$k` on the k-th further declaration that path names
+  // the symbol a top-level declaration emits as: its module's name and its
+  // own, joined by `.`, spelled once and read after
+  ls_decl_symbol(Int) -> String
+  // the symbol a named fn declaration (name, handle) emits as: its
+  // declaration's at top level, else the enclosing named fn's symbol, a `.`
+  // and its name, and `$k` on the k-th further declaration that path names
   ls_fn_symbol(String, Int) -> String
   // checkpoint = current frame's local count
   ls_push_scope() -> Int

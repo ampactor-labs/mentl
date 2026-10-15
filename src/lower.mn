@@ -744,13 +744,34 @@ fn env_kind_of(name) = match env_lookup(name) {
   },
 }
 
-// The symbol a callee is emitted under at the floor: the name of the
-// declaration that constructs it (`callee_target`), or a synthesized unit's
-// identity. A twin mangles it (`spec_mangle`).
+// The symbol a callee is emitted under at the floor: its declaration's
+// (`decl_symbol`), or a synthesized unit's identity. A twin mangles it
+// (`spec_mangle`).
 fn callee_symbol(c) = match c {
-  DeclaredAt(d) => enclosing_decl_name(d),
+  DeclaredAt(d) => decl_symbol(d),
   Synthesized(s) => s,
 }
+
+// The symbol a module-scope declaration is emitted under: its module's name
+// and the name of the declaration that holds it (`enclosing_decl_name`),
+// joined by `.`. A name is unique within its module and a module's name
+// within the link, so two modules that declare one name emit two symbols. A
+// function nested in a declaration extends its symbol (`ls_fn_symbol`), and
+// a handler's arms, state init and redrive are spelled off it
+// (`arm_fn_name`). Spelled once per declaration (`ls_decl_symbol`) and read
+// after: every reference, twin key and demand reads it. A declaration no
+// statement holds — a primitive the judgment mints — constructs no unit and
+// has no symbol, and every call site lowers it as an instruction, so
+// reaching one here is a defect in the caller.
+fn decl_symbol(d) = match enclosing_decl(d) {
+  Some(s) => ls_decl_symbol(s),
+  None => out_of_range(),
+}
+
+// The symbol a name of the compiler's own vocabulary is emitted under: the
+// declaration it resolves to at the link's scope, or the spelling where no
+// declaration answers — a function the emit writes itself.
+fn vocab_symbol(n: String) = callee_symbol(vocabulary_callee(n))
 
 // A name of the compiler's own vocabulary — a library function a lowering
 // or an emit calls by name — as the declaration it resolves to at the link's
@@ -4035,7 +4056,7 @@ fn lowered_into(acc, lo) = match acc {
 // it.
 fn lower_module_init(pat, handle, expr) = {
   let frame_name = match pat {
-    PVar(name) => name,
+    PVar(_) => decl_symbol(handle),
     _ => "init{int_to_str(handle)}",
   }
   ls_enter_frame(frame_name, [], [], [], [], -1)
@@ -4155,8 +4176,8 @@ fn lower_fn_mint(name, params, body_node, handle, reg) = {
   match resolve_captures_outer(free_uses, handle) {
     (captures_names, captures_exprs, captures_handles) => {
       // The emitted symbol, asked BEFORE this fn's own frame is entered so
-      // the path is its enclosing fns' (`ls_fn_symbol`): the bare name at
-      // top level, so `_start → $main` resolves.
+      // the path is its enclosing fns' (`ls_fn_symbol`): the declaration's
+      // own at top level, the symbol the module's start calls for main.
       let fn_name = ls_fn_symbol(name, handle)
       graph_emitfn_note(EmitFnEntry{
         caps: zip(captures_names, captures_handles),
@@ -6199,13 +6220,10 @@ fn resolve_captures_outer(uses, owner_h) = if len(uses) == 0 {
   }
 }
 
-// Pre-pass: collect every top-level name (`FnStmt`, `LetStmt`) and
-// register as globals via `ls_register_globals`. Then walk stmts; each
-// `FnStmt` / `LambdaExpr` pushes its own frame. `VarRef` resolution in
-// lambda bodies correctly distinguishes local/upval/global.
+// The cross-declaration facts every declaration's lowering reads, settled
+// before any declaration is constructed. Each `FnStmt` / `LambdaExpr`
+// pushes its own frame, and a name no frame binds is module scope.
 fn lower_program(stmts) = {
-  let globals = collect_top_level_names(stmts)
-  ls_register_globals(globals)
   // Each pre-pass is an arena (lib/arena.mn): its fact crosses, the walk
   // that found it does not. Does any declared effect carry a yielding op?
   // No ⇒ nothing can yield ⇒ `can_yield` is false everywhere and the
@@ -6228,53 +6246,14 @@ fn lower_program(stmts) = {
   //
   // Construction is RELOCATED to the demand worklist (reachable_from_main —
   // Hβ.lower.lowering-is-a-column): lower_program IS its pre-passes, the
-  // four cross-decl facts every per-decl lower_stmt call reads. The program
+  // three cross-decl facts every per-decl lower_stmt call reads. The program
   // flows on; each decl constructs when reachability demands it.
   stmts
-}
-
-// Ω.3 — top-level name collection uses the buffer substrate. The number
-// of top-level statements is bounded by N (file size), so O(N) total
-// allocation via `list_extend_to` + `list_set` + counter + `slice` —
-// avoiding the O(N²) recursive accumulator pattern. The buffer threads
-// through tail-recursion as `(buf, count)` because `list_extend_to`
-// may return a fresh allocation if the current capacity is exceeded.
-fn collect_top_level_names(stmts) = {
-  let n = len(stmts)
-  let initial_capacity = if n < 4 { 4 } else { n }
-  let buf = make_list(initial_capacity)
-  match collect_top_level_names_loop(stmts, 0, n, buf, 0) {
-    (final_buf, final_count) => slice(final_buf, 0, final_count),
-  }
-}
-
-fn collect_top_level_names_loop(stmts, i, n, buf, count) = if i >= n {
-  (buf, count)
-} else {
-  match match graph_node_body(list_index(stmts, i)) {
-    NStmt(FnStmt(name, _, _, _, _)) => push_name(buf, count, name),
-    NStmt(LetStmt(PVar(name), _, _)) => push_name(buf, count, name),
-    NStmt(HandlerDeclStmt(name, _, _, _, _, _)) => // A handler decl IS a top-level name — `~> h` references it as a
-    // global, never a captured upvalue (the phantom-capture fence lie:
-    // each install counted as a capture inflated the ev-region base by
-    // 4×installs while every caller built the record at ncap=0).
-    push_name(buf, count, name),
-    _ => (buf, count),
-  } {
-    (new_buf, new_count) => collect_top_level_names_loop(stmts, i + 1, n, new_buf, new_count),
-  }
-}
-
-fn push_name(buf, count, name) = {
-  let extended = list_extend_to(buf, count + 1)
-  let written = list_set(extended, count, name)
-  (written, count + 1)
 }
 
 // W7.1 lexical frame stack. State:
 //   `frames`  — list of frame records (head = current). Each frame is one
 //               lambda / fn body with locals + captures.
-//   `globals` — top-level name strings registered by `lower_program` at entry.
 //
 // `ls_resolve(name)`: the current frame's INNERMOST binder of the name (the
 // last one bound — push/pop checkpoint truncation retires a closed scope's
@@ -6297,7 +6276,7 @@ fn push_name(buf, count, name) = {
 //
 // Records are stored with their fields sorted by name; Mentl source reads
 // them by `.field`, so the physical layout is the emit's business.
-handler lower_scope with frames = [], globals = [], may_yield = false, yield_facts = smap_new(), unwinding = [], resume_binds = [], wide = smap_new(), walking = [], fn_symbols = wmap_new(64), symbol_counts = smap_new() {
+handler lower_scope with frames = [], may_yield = false, yield_facts = smap_new(), unwinding = [], resume_binds = [], wide = smap_new(), walking = [], fn_symbols = wmap_new(64), symbol_counts = smap_new() {
   ls_register_yield_facts(facts) => resume() with yield_facts = smap_build(facts),
   ls_effect_yield_fact(name) => resume(smap_get(yield_facts, name)),
   ls_wide_memo(name) => // A nominal type's wide-sequence fact, settled once per name by
@@ -6391,7 +6370,14 @@ handler lower_scope with frames = [], globals = [], may_yield = false, yield_fac
     resume() with frames = drop_last(frames) ++ [updated]
   },
   ls_bind_local(name, h) => if len(frames) == 0 {
-    resume(name)
+    // At module scope a binder's register is the global its declaration's
+    // symbol names.
+    match enclosing_decl(h) {
+      Some(s) => match symbol_of_decl(fn_symbols, s) {
+        (sym, symbols) => resume(sym) with fn_symbols = symbols,
+      },
+      None => resume(name),
+    }
   } else {
     let frame = last(frames)
     // A binder whose name the frame already holds takes a register of its
@@ -6430,10 +6416,12 @@ handler lower_scope with frames = [], globals = [], may_yield = false, yield_fac
       resume((RGlobal, 0))
     }
   },
-  ls_register_globals(names) => resume() with globals = names,
+  ls_decl_symbol(s) => match symbol_of_decl(fn_symbols, s) {
+    (sym, symbols) => resume(sym) with fn_symbols = symbols,
+  },
   ls_fn_symbol(name, h) => {
     // A named fn's symbol is a projection of its declaration: a top-level
-    // name is unique by the module's own judgment, and a nested one is the
+    // one is its declaration's (`decl_symbol`), and a nested one is the
     // path of enclosing named fns joined by `.`, which no identifier
     // contains — so an f nested in a fn named a can never meet a sibling of
     // a named a_f, as the two did under `_`. Two declarations one path names — a name shadowed
@@ -6444,7 +6432,9 @@ handler lower_scope with frames = [], globals = [], may_yield = false, yield_fac
     // own naming collision (E_EmittedNameCollision).
     let outer = ls_outer_fn_name_loop(frames)
     if outer == "" {
-      resume(name)
+      match symbol_of_decl(fn_symbols, h) {
+        (sym, symbols) => resume(sym) with fn_symbols = symbols,
+      }
     } else {
       match wmap_get(fn_symbols, h) {
         Some(sym) => resume(sym),
@@ -6456,6 +6446,16 @@ handler lower_scope with frames = [], globals = [], may_yield = false, yield_fac
         },
       }
     }
+  },
+}
+
+// A top-level declaration's symbol out of the scope's symbol table, spelled
+// into it on the first ask: its module's name and its own, joined by `.`.
+fn symbol_of_decl(symbols, s) = match wmap_get(symbols, s) {
+  Some(sym) => (sym, symbols),
+  None => {
+    let sym = "{module_name_of_handle(graph_module_of(s))}.{stmt_decl_name(s)}"
+    (sym, wmap_add(symbols, s, sym))
   },
 }
 
@@ -6569,7 +6569,8 @@ type LowRef
   // handler that declares the op: no install keys it
   | RefDeclArm(Int, String)
   // a name no instantiation keys: a driver, a runtime fn emit mints for a
-  // show, a hash or a wide comparison
+  // show, a hash or a wide comparison — emitted under the symbol of the
+  // declaration it names (`vocab_symbol`)
   | RefName(String)
 
 fn ref_name(r) = match r {
@@ -6577,7 +6578,7 @@ fn ref_name(r) = match r {
   RefCall(_, c) => callee_symbol(c),
   RefArm(_, n) => n,
   RefDeclArm(_, n) => n,
-  RefName(n) => n,
+  RefName(n) => vocab_symbol(n),
 }
 
 fn low_refs_list(acc, exprs) = fold(acc, low_refs, exprs)
@@ -7546,11 +7547,11 @@ fn spec_unmangle(sym: String, enc: String) =
 // character, so no declaration can share the name), and the redrive a held
 // resume calls when its remainder yields again. The op keeps the String pin
 // spec_mangle's parameters carry, for the same reason.
-fn arm_fn_name(hd, op: String) = "op_{stmt_decl_name(hd)}_{op}"
+fn arm_fn_name(hd, op: String) = "op_{decl_symbol(hd)}_{op}"
 
-fn init_fn_name(hd) = "{stmt_decl_name(hd)}$init"
+fn init_fn_name(hd) = "{decl_symbol(hd)}$init"
 
-fn redrive_fn_name(hd) = "op___redrive_{stmt_decl_name(hd)}"
+fn redrive_fn_name(hd) = "op___redrive_{decl_symbol(hd)}"
 
 // The site's instantiation pairs — [] when the callee is not generic: a
 // value let, a monomorphic fn, or a synthesized unit. The scheme's

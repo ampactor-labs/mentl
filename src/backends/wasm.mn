@@ -465,7 +465,7 @@ fn spec_find_rec(recs, target: String) = find({ (n, _p, _b, _f) => n == target }
 // for the emitted call. A twin demand carries the LINEAGE it was reached
 // by.
 fn ref_demand(lineage, r) = match r {
-  RefName(n) => DemandBase(n),
+  RefName(n) => DemandBase(vocab_symbol(n)),
   RefDeclArm(_, n) => DemandBase(n),
   RefSite(h, c) => key_demand(callee_symbol(c), twin_site_key(h, c), lineage),
   RefCall(h, c) => // A direct call's key carries the bracket's schedule into a callee that
@@ -604,7 +604,7 @@ fn emit_reach_fix(work, st, program, keys, recs, settles) = if len(work) == 0 {
           } ~> arena
           // the runtime family a twin's emission can mint that its floor did
           // not (lower seeds the same names per entry, wide_seed)
-          let family = if wide { [] } else { map(DemandBase, spec_wide_family()) }
+          let family = if wide { [] } else { spec_wide_family() |> map(vocab_symbol) |> map(DemandBase) }
           match spec_demand_accept((dbuf, dn), (m, base, pairs, enc)) {
             (dbuf2, dn2) => emit_reach_fix(
               ds ++ family ++ w2,
@@ -1572,7 +1572,7 @@ fn args_spill_at(declared, args, i) = if i >= len(args) {
 fn emit_reach(program, recs, roster: String) = {
   let n = len(program)
   let keys = emit_keys(program, 0, n, smap_new())
-  let library = match smap_get(keys, "main") {
+  let library = match smap_get(keys, vocab_symbol("main")) {
     Some(_) => false,
     None => true,
   }
@@ -1581,8 +1581,11 @@ fn emit_reach(program, recs, roster: String) = {
       let argv = if main_param_count() > 0 { ["wasi_args"] } else { [] }
       // The launch gate `_start` calls before main, where the program has one.
       let gate = if byte_len(roster) > 0 { ["env_demand_check"] } else { [] }
-      let entry =
-        if library { [] } else { map(DemandBase, ["main"] ++ emit_runtime_contract() ++ argv ++ gate) }
+      let entry = if library {
+        []
+      } else {
+        ["main"] ++ emit_runtime_contract() ++ argv ++ gate |> map(vocab_symbol) |> map(DemandBase)
+      }
       match emit_reach_fix(
         entry ++ map(ref_demand([], ??), root_refs),
         (make_list(64), 0, smap_new(), live0, false),
@@ -2475,9 +2478,14 @@ fn k_helper_names(yields, arena_on) =
 fn emit_planned(plan) = match plan {
   {adjoint_registers, alloc_units, arena_on, env_roster, fn_records, fold_closures, jvp_faces, jvp_names, jvp_recs, jvp_wide, line_owners, lowered, redrives, spec_names, spec_recs, spec_wide, string_entries, table_fn_names, tangent_rings, top_fn_names, vectors, wasi_ops, wide_fn_names, yield_arity, yield_seen} => {
     let line_globals = line_global_slots(line_owners)
-    emit_header()
-    emit_type_section(vectors, yield_seen)
-    emit_runtime_imports(wasi_ops)
+    // Each step of the module's head is an extent of its own (lib/arena.mn),
+    // as each function's emission is: the text it streams dies at its exit,
+    // so the module's text never stands on the heap.
+    {
+      emit_header()
+      emit_type_section(vectors, yield_seen)
+      emit_runtime_imports(wasi_ops)
+    } ~> arena
     // The module's memory OWNERSHIP is read from its own proof (the fifth
     // projection): a module that spawns IMPORTS the shared image (every
     // instance reads one memory — the wasi-threads convention) and
@@ -2497,7 +2505,7 @@ fn emit_planned(plan) = match plan {
       ls_find_str_local(wasi_ops, "atomic_rmw", 0) >= 0,
       yield_slots,
       len(value_lets) > 0
-    )
+    ) ~> arena
     // A live arena's leaves are settled here, before any function is
     // written, because every barrier and every claim writes a leaf's index.
     set_arena_leaves(
@@ -2505,9 +2513,9 @@ fn emit_planned(plan) = match plan {
       arena_on,
       arena_on && yield_seen > 0
     )
-    if arena_on { emit_arena_runtime(spawns) } else { () }
-    emit_line_globals(line_owners)
-    emit_tangent_ring_globals(tangent_rings)
+    if arena_on { emit_arena_runtime(spawns) ~> arena } else { () }
+    emit_line_globals(line_owners) ~> arena
+    emit_tangent_ring_globals(tangent_rings) ~> arena
     // The register a twin hands its result's tangent back through: one f64
     // per instance, written by a twin's exit and read by its caller the
     // instant the call returns; and the epoch every record's lanes are read
@@ -2520,7 +2528,7 @@ fn emit_planned(plan) = match plan {
     // $yield_flag (the out-of-band Koka-lineage yielding bit), $yield_op (the
     // interned op key the drivers compare), $yield_k (the reified k record).
     if yield_seen > 0 { emit_yield_globals() }
-    emit_string_data(string_entries)
+    emit_string_data(string_entries) ~> arena
     // Twins ride every fn-name surface APPENDED (existing indices stable): the
     // table (a wide twin's slot holds its $wf$ word face), the per-name idx
     // globals, and the static closure records (global.get $<twin> at redirect
@@ -2535,10 +2543,10 @@ fn emit_planned(plan) = match plan {
       any(vector_is_wide, vectors),
       if derivative_demanded() { Some(jvp_face_names(jvp_faces, table_all)) } else { None },
       arena_leaves()
-    )
-    emit_fn_index_globals(table_all, fn_table_base())
-    emit_static_top_closures(top_fn_names ++ spec_names ++ jvp_names, table_all, 0)
-    emit_top_let_globals(value_lets)
+    ) ~> arena
+    emit_fn_index_globals(table_all, fn_table_base()) ~> arena
+    emit_static_top_closures(top_fn_names ++ spec_names ++ jvp_names, table_all, 0) ~> arena
+    emit_top_let_globals(value_lets) ~> arena
     emit_image_substrate(
       wasi_ops,
       line_globals ++ tangent_ring_slots(tangent_rings),
@@ -2546,7 +2554,7 @@ fn emit_planned(plan) = match plan {
       yield_seen,
       table_all,
       string_entries
-    )
+    ) ~> arena
     emit_functions(fn_records, alloc_units)
     emit_wide_wrappers(fn_records)
     // The twins: the SAME per-fn emission, each under its instantiation
@@ -4054,7 +4062,8 @@ fn emit_fn_refs(names, wide_names) = each(
 // where an arena lives (`emit_arena_runtime`), at the same position: a
 // direct call carries the stored value's leaf, and a call through a value
 // cannot.
-fn slot_face(name: String) = if name == "list_set" && arena_live() { "list_set_v" } else { name }
+fn slot_face(name: String) =
+  if arena_live() && name == vocab_symbol("list_set") { "list_set_v" } else { name }
 
 // Per-function table-index globals. At LMakeClosure emit, we push
 // `(global.get $<name>_idx)` to get the i32 table index — no list
@@ -5001,7 +5010,7 @@ fn emit_arena_runtime(spawns) = {
   // word list's slot can hold a pointer — a byte list or a packed float list
   // stores none — so the barrier reads the tag word the store itself is about
   // to read.
-  wat_emit("  (func $list_set_j (param $st i32) (param $l i32) (param $i i32) (param $v i32) (param $k i32) (result i32) (if (i32.eqz (i32.load offset=4 (local.get $l))) (then (call $arena_slot_note (i32.add (local.get $l) (i32.add (i32.const 8) (i32.shl (local.get $i) (i32.const 2)))) (local.get $k)))) (return_call $list_set (local.get $st) (local.get $l) (local.get $i) (local.get $v)))\n")
+  wat_emit("  (func $list_set_j (param $st i32) (param $l i32) (param $i i32) (param $v i32) (param $k i32) (result i32) (if (i32.eqz (i32.load offset=4 (local.get $l))) (then (call $arena_slot_note (i32.add (local.get $l) (i32.add (i32.const 8) (i32.shl (local.get $i) (i32.const 2)))) (local.get $k)))) (return_call ${vocab_symbol("list_set")} (local.get $st) (local.get $l) (local.get $i) (local.get $v)))\n")
   // The same store reached through the table — `list_set` as a value, called
   // where the stored type is not known: its slot holds this face
   // (`slot_face`), which journals with leaf 0, so an exit that finds a value
@@ -6446,6 +6455,8 @@ fn emit_start(top_fn_names, value_lets, has_lines, main_params, yield_seen, yiel
   // initializer may call into a recurrence — before main's invocation AND
   // before a library-shape module's clean exit (effectful initializers
   // still run). _start invokes main when main exists.
+  let main_sym = vocab_symbol("main")
+  let has_main = ls_find_str_local(top_fn_names, main_sym, 0) >= 0
   wat_emit("  (func $_start\n")
   if threaded {
     // The image frontier's one initializer: the ROOT instance's _start,
@@ -6468,8 +6479,9 @@ fn emit_start(top_fn_names, value_lets, has_lines, main_params, yield_seen, yiel
   // checked against what the host passed before anything of the program
   // runs, its initializers included (`env_launch_roster`) — a missing one is
   // named with its read site and the process exits 1.
-  if byte_len(env_roster) > 0 && ls_find_str_local(top_fn_names, "main", 0) >= 0 {
-    wat_emit("    (call $env_demand_check (i32.const 0) (i32.const {int_to_str(string_offset(env_roster))}))\n    (drop)\n")
+  if byte_len(env_roster) > 0 && has_main {
+    let gate_sym = vocab_symbol("env_demand_check")
+    wat_emit("    (call ${gate_sym} (i32.const 0) (i32.const {int_to_str(string_offset(env_roster))}))\n    (drop)\n")
   }
   if has_lines { wat_emit("    (call $__init_lines (i32.const 0))\n    (drop)\n") }
   if len(value_lets) > 0 { wat_emit("    (call $__init_lets (i32.const 0))\n    (drop)\n") }
@@ -6486,7 +6498,7 @@ fn emit_start(top_fn_names, value_lets, has_lines, main_params, yield_seen, yiel
       enumerate(value_lets)
     )
   }
-  if ls_find_str_local(top_fn_names, "main", 0) >= 0 {
+  if has_main {
     // main is graph-known → DIRECT call (never virtualize a known
     // operator): static closure as __state, one EMPTY-LIST arg per
     // declared param. main's result IS the exit code (Unix vocabulary;
@@ -6498,7 +6510,7 @@ fn emit_start(top_fn_names, value_lets, has_lines, main_params, yield_seen, yiel
     // dispatched every stdin compile to ParseError/help and emitted
     // NOTHING (the 0/45 battery, the empty m4). Real WASI argv is the
     // named peer Hβ.emit.wasi-argv-in-start.
-    wat_emit("    (call $main (global.get $main)")
+    wat_emit("    (call ${main_sym} (global.get ${main_sym})")
     // main's FIRST param IS argv — read the live process args (Hβ.emit.wasi-argv-
     // in-start, closed). wasi_args has no captures, so __state = 0 (the
     // __init_lets precedent). Any further params (none in practice) stay empty
@@ -6507,8 +6519,9 @@ fn emit_start(top_fn_names, value_lets, has_lines, main_params, yield_seen, yiel
       // wasi_args needs io.mn linked. A params-taking main WITHOUT it (the micro
       // harness links memory+strings+lists+prelude only) gets the empty list —
       // the pre-argv behavior — never a dangling $wasi_args.
-      if ls_find_str_local(top_fn_names, "wasi_args", 0) >= 0 {
-        wat_emit(" (call $wasi_args (i32.const 0))")
+      let args_sym = vocab_symbol("wasi_args")
+      if ls_find_str_local(top_fn_names, args_sym, 0) >= 0 {
+        wat_emit(" (call ${args_sym} (i32.const 0))")
       } else {
         wat_emit(" (call $alloc (i32.const 4))")
       }
@@ -8122,7 +8135,7 @@ fn emit_binop_for(op, l, r) = {
       // concat node (list_concat threads the carrier's sc). An unresolved
       // operand keeps the loud floor.
       match fold_strip(lookup_ty(left_h)) {
-        TList(_) => wat_emit("    (call $list_concat)\n"),
+        TList(_) => emit_vocab_call("list_concat"),
         other => emit_concat_unresolved(other),
       }
     },
@@ -8346,7 +8359,7 @@ fn perform_vector_at(h, args) = site_vector(args, repr_of(lookup_ty(h)))
 // in. A word stores with no barrier, since a word never points. A call
 // through `list_set` as a value carries no leaf and reaches the slot's table
 // face (`slot_face`), which journals with none.
-fn direct_call_target(cname2: String, args) = if cname2 == "list_set" && len(args) == 3 && arena_live() {
+fn direct_call_target(cname2: String, args) = if len(args) == 3 && arena_live() && cname2 == vocab_symbol("list_set") {
   match store_leaf(args[2]) {
     Some(k) => {
       wat_emit("    (i32.const {int_to_str(k)})\n")
@@ -8478,14 +8491,14 @@ fn emit_eq_for_ty(ty, neg) = match ty {
   {
     emit_fold_state_insert()
     match seq_elem_face(e) {
-      TByte => wat_emit("    (call $str_eq)\n"),
-      TFloat => wat_emit("    (call $list_eq_f64)\n"),
+      TByte => emit_vocab_call("str_eq"),
+      TFloat => emit_vocab_call("list_eq_f64"),
       face => if seq_face_structural(face) {
         wat_emit("    (call $eq_")
         wat_emit(fold_sig(ty))
         wat_emit(")\n")
       } else {
-        wat_emit("    (call $list_eq)\n")
+        emit_vocab_call("list_eq")
       },
     }
     if neg { wat_emit("    (i32.eqz)\n") } else { () }
@@ -8772,18 +8785,23 @@ fn emit_fold_leaf_helpers(closures: {cmp: [Ty], eq: [Ty], evac: [Ty], hash: [Ty]
 // The element leaf's callee: a structural face calls its own generated
 // $<prefix>_<sig> (the collector self-contributes structural lists, so
 // nested walkers exist transitively); a byte / float / word LIST element
-// keeps its runtime family — the names arrive as values from each
-// walker's own generator, never a mode key.
+// keeps its runtime family, under its declarations' symbols — the names
+// arrive as values from each walker's own generator, never a mode key.
 fn seq_elem_leaf_callee(prefix: String, rt_byte: String, rt_f64: String, rt_word: String, face) = match face {
   TList(inner) => match seq_elem_face(inner) {
-    TByte => rt_byte,
-    TFloat => rt_f64,
-    f2 => if seq_face_structural(f2) { "{prefix}_{fold_sig(face)}" } else { rt_word },
+    TByte => vocab_symbol(rt_byte),
+    TFloat => vocab_symbol(rt_f64),
+    f2 => if seq_face_structural(f2) { "{prefix}_{fold_sig(face)}" } else { vocab_symbol(rt_word) },
   },
   _ => "{prefix}_{fold_sig(face)}",
 }
 
+// A call into the compiler's vocabulary, under the symbol of the
+// declaration the name resolves to (`vocab_symbol`).
+fn emit_vocab_call(n: String) = wat_emit("    (call ${vocab_symbol(n)})\n")
+
 fn emit_eq_leaf_seq(sig, elem) = {
+  let len_sym = vocab_symbol("len")
   wat_emit("  (func $eq_")
   wat_emit(sig)
   wat_emit(" (param $__state i32) (param $a i32) (param $b i32) (result i32)")
@@ -8792,7 +8810,7 @@ fn emit_eq_leaf_seq(sig, elem) = {
   // length before any element walk (list_eq's own protocol).
   //
   wat_emit("    (if (i32.eq (local.get $a) (local.get $b)) (then (return (i32.const 1))))\n")
-  wat_emit("    (if (i32.ne (call $len (local.get $__state) (local.get $a)) (call $len (local.get $__state) (local.get $b))) (then (return (i32.const 0))))\n")
+  wat_emit("    (if (i32.ne (call ${len_sym} (local.get $__state) (local.get $a)) (call ${len_sym} (local.get $__state) (local.get $b))) (then (return (i32.const 0))))\n")
   wat_emit("    (call $eq_listbody_")
   wat_emit(sig)
   wat_emit(" (local.get $__state) (local.get $a) (local.get $b) (i32.const 0))\n")
@@ -8802,18 +8820,20 @@ fn emit_eq_leaf_seq(sig, elem) = {
 
 fn emit_eq_seq_body(sig, elem) = {
   let callee = seq_elem_leaf_callee("eq", "str_eq", "list_eq_f64", "list_eq", seq_elem_face(elem))
+  let len_sym = vocab_symbol("len")
+  let index_sym = vocab_symbol("list_index")
   wat_emit("  (func $eq_listbody_")
   wat_emit(sig)
   wat_emit(" (param $__state i32) (param $a i32) (param $b i32) (param $i i32) (result i32)")
   wat_emit(" (local $state_tmp i32) (local $callee_closure i32) (local $alloc_size i32)\n")
   wat_emit("    (if (result i32)\n")
-  wat_emit("      (i32.ge_s (local.get $i) (call $len (local.get $__state) (local.get $a)))\n")
+  wat_emit("      (i32.ge_s (local.get $i) (call ${len_sym} (local.get $__state) (local.get $a)))\n")
   wat_emit("      (then (i32.const 1))\n")
   wat_emit("      (else\n")
   wat_emit("        (if (result i32)\n")
   wat_emit("          (call $")
   wat_emit(callee)
-  wat_emit(" (local.get $__state) (call $list_index (local.get $__state) (local.get $a) (local.get $i)) (call $list_index (local.get $__state) (local.get $b) (local.get $i)))\n")
+  wat_emit(" (local.get $__state) (call ${index_sym} (local.get $__state) (local.get $a) (local.get $i)) (call ${index_sym} (local.get $__state) (local.get $b) (local.get $i)))\n")
   wat_emit("          (then (call $eq_listbody_")
   wat_emit(sig)
   wat_emit(" (local.get $__state) (local.get $a) (local.get $b) (i32.add (local.get $i) (i32.const 1))))\n")
@@ -8845,20 +8865,22 @@ fn emit_cmp_seq_body(sig, elem) = {
     "list_compare",
     seq_elem_face(elem)
   )
+  let len_sym = vocab_symbol("len")
+  let index_sym = vocab_symbol("list_index")
   wat_emit("  (func $compare_listbody_")
   wat_emit(sig)
   wat_emit(" (param $__state i32) (param $a i32) (param $b i32) (param $i i32) (result i32)")
   wat_emit(" (local $c i32) (local $state_tmp i32) (local $callee_closure i32) (local $alloc_size i32)\n")
   wat_emit("    (if (result i32)\n")
-  wat_emit("      (i32.ge_s (local.get $i) (call $len (local.get $__state) (local.get $a)))\n")
-  wat_emit("      (then (if (result i32) (i32.ge_s (local.get $i) (call $len (local.get $__state) (local.get $b))) (then (i32.const 0)) (else (i32.const -1))))\n")
+  wat_emit("      (i32.ge_s (local.get $i) (call ${len_sym} (local.get $__state) (local.get $a)))\n")
+  wat_emit("      (then (if (result i32) (i32.ge_s (local.get $i) (call ${len_sym} (local.get $__state) (local.get $b))) (then (i32.const 0)) (else (i32.const -1))))\n")
   wat_emit("      (else\n")
-  wat_emit("        (if (result i32) (i32.ge_s (local.get $i) (call $len (local.get $__state) (local.get $b)))\n")
+  wat_emit("        (if (result i32) (i32.ge_s (local.get $i) (call ${len_sym} (local.get $__state) (local.get $b)))\n")
   wat_emit("          (then (i32.const 1))\n")
   wat_emit("          (else\n")
   wat_emit("            (local.set $c (call $")
   wat_emit(callee)
-  wat_emit(" (local.get $__state) (call $list_index (local.get $__state) (local.get $a) (local.get $i)) (call $list_index (local.get $__state) (local.get $b) (local.get $i))))\n")
+  wat_emit(" (local.get $__state) (call ${index_sym} (local.get $__state) (local.get $a) (local.get $i)) (call ${index_sym} (local.get $__state) (local.get $b) (local.get $i))))\n")
   wat_emit("            (if (result i32) (i32.eqz (local.get $c))\n")
   wat_emit("              (then (call $compare_listbody_")
   wat_emit(sig)
@@ -8876,9 +8898,10 @@ fn emit_hash_leaf_seq(sig, elem) = {
   wat_emit(sig)
   wat_emit(" (param $__state i32) (param $a i32) (result i32)")
   wat_emit(" (local $state_tmp i32) (local $callee_closure i32) (local $alloc_size i32)\n")
+  let len_sym = vocab_symbol("len")
   wat_emit("    (call $hash_listbody_")
   wat_emit(sig)
-  wat_emit(" (local.get $__state) (local.get $a) (i32.const 0) (i32.mul (i32.xor (i32.const -2128831035) (call $len (local.get $__state) (local.get $a))) (i32.const 16777619)))\n")
+  wat_emit(" (local.get $__state) (local.get $a) (i32.const 0) (i32.mul (i32.xor (i32.const -2128831035) (call ${len_sym} (local.get $__state) (local.get $a))) (i32.const 16777619)))\n")
   wat_emit("  )\n")
   emit_hash_seq_body(sig, elem)
 }
@@ -8886,18 +8909,20 @@ fn emit_hash_leaf_seq(sig, elem) = {
 fn emit_hash_seq_body(sig, elem) = {
   let callee =
     seq_elem_leaf_callee("hash", "str_hash", "list_hash_f64", "list_hash", seq_elem_face(elem))
+  let len_sym = vocab_symbol("len")
+  let index_sym = vocab_symbol("list_index")
   wat_emit("  (func $hash_listbody_")
   wat_emit(sig)
   wat_emit(" (param $__state i32) (param $a i32) (param $i i32) (param $h i32) (result i32)")
   wat_emit(" (local $state_tmp i32) (local $callee_closure i32) (local $alloc_size i32)\n")
   wat_emit("    (if (result i32)\n")
-  wat_emit("      (i32.ge_s (local.get $i) (call $len (local.get $__state) (local.get $a)))\n")
+  wat_emit("      (i32.ge_s (local.get $i) (call ${len_sym} (local.get $__state) (local.get $a)))\n")
   wat_emit("      (then (local.get $h))\n")
   wat_emit("      (else (call $hash_listbody_")
   wat_emit(sig)
   wat_emit(" (local.get $__state) (local.get $a) (i32.add (local.get $i) (i32.const 1)) (i32.mul (i32.xor (local.get $h) (call $")
   wat_emit(callee)
-  wat_emit(" (local.get $__state) (call $list_index (local.get $__state) (local.get $a) (local.get $i)))) (i32.const 16777619)))))\n")
+  wat_emit(" (local.get $__state) (call ${index_sym} (local.get $__state) (local.get $a) (local.get $i)))) (i32.const 16777619)))))\n")
   wat_emit("  )\n")
 }
 
@@ -9107,14 +9132,14 @@ fn emit_field_eq(fty) = match fty {
     wat_emit("    (local.get $__state)\n")
     emit_swap_under_state()
     match seq_elem_face(e) {
-      TByte => wat_emit("    (call $str_eq)\n"),
-      TFloat => wat_emit("    (call $list_eq_f64)\n"),
+      TByte => emit_vocab_call("str_eq"),
+      TFloat => emit_vocab_call("list_eq_f64"),
       face => if seq_face_structural(face) {
         wat_emit("    (call $eq_")
         wat_emit(fold_sig(fty))
         wat_emit(")\n")
       } else {
-        wat_emit("    (call $list_eq)\n")
+        emit_vocab_call("list_eq")
       },
     }
   },
@@ -9185,12 +9210,12 @@ fn emit_struct_cmp(op, left_h) = if left_h == 0 {
 fn emit_cmp_for_ty(op, ty) = match ty {
   TList(e) => // One sequence arm, element-face dispatched (the eq routing's twin).
   match seq_elem_face(e) {
-    TByte => emit_cmp_seq_call("str_compare", op),
-    TFloat => emit_cmp_seq_call("list_compare_f64", op),
+    TByte => emit_cmp_seq_call(vocab_symbol("str_compare"), op),
+    TFloat => emit_cmp_seq_call(vocab_symbol("list_compare_f64"), op),
     face => if seq_face_structural(face) {
       emit_cmp_agg_call(fold_sig(ty), op)
     } else {
-      emit_cmp_seq_call("list_compare", op)
+      emit_cmp_seq_call(vocab_symbol("list_compare"), op)
     },
   },
   TRecord(_) => emit_cmp_agg_call(fold_sig(ty), op),
@@ -9436,14 +9461,14 @@ fn emit_field_cmp(fty) = match fty {
     wat_emit("    (local.get $__state)\n")
     emit_swap_under_state()
     match seq_elem_face(e) {
-      TByte => wat_emit("    (call $str_compare)\n"),
-      TFloat => wat_emit("    (call $list_compare_f64)\n"),
+      TByte => emit_vocab_call("str_compare"),
+      TFloat => emit_vocab_call("list_compare_f64"),
       face => if seq_face_structural(face) {
         wat_emit("    (call $compare_")
         wat_emit(fold_sig(fty))
         wat_emit(")\n")
       } else {
-        wat_emit("    (call $list_compare)\n")
+        emit_vocab_call("list_compare")
       },
     }
   },
@@ -9608,10 +9633,12 @@ fn emit_one_show_helper(sig, ty) = match fold_strip(ty) {
 // quotient and last digit by ten, each taken unsigned — the quotient is
 // below 2^31 and nonzero, so its signed rendering is its value.
 fn emit_one_show_addr_helper(sig) = {
+  let render = vocab_symbol("int_to_str")
+  let concat = vocab_symbol("str_concat")
   emit_show_header(sig)
   wat_emit("    (if (result i32) (i32.ge_s (local.get $a) (i32.const 0))\n")
-  wat_emit("      (then (call $int_to_str (local.get $__state) (local.get $a)))\n")
-  wat_emit("      (else (call $str_concat (local.get $__state) (call $int_to_str (local.get $__state) (i32.div_u (local.get $a) (i32.const 10))) (call $int_to_str (local.get $__state) (i32.rem_u (local.get $a) (i32.const 10))))))\n")
+  wat_emit("      (then (call ${render} (local.get $__state) (local.get $a)))\n")
+  wat_emit("      (else (call ${concat} (local.get $__state) (call ${render} (local.get $__state) (i32.div_u (local.get $a) (i32.const 10))) (call ${render} (local.get $__state) (i32.rem_u (local.get $a) (i32.const 10))))))\n")
   wat_emit("  )\n")
 }
 
@@ -9709,7 +9736,7 @@ fn emit_show_field_render(off, r, fty) = match fty {
   TList(TByte) => // A byte sequence RENDERS AS TEXT (§4①: String is the text VIEW of [byte]) —
   // never the bracket-list render ("hi", not [104, 105]).
   emit_show_field_load(off, r),
-  TFloat => emit_show_call_field("float_to_str", off, r),
+  TFloat => emit_show_call_field(vocab_symbol("float_to_str"), off, r),
   TList(_) => emit_show_call_field("show_{fold_sig(fty)}", off, r),
   TRecord(_) => emit_show_call_field("show_{fold_sig(fty)}", off, r),
   TRecordOpen(_, _) => emit_show_call_field("show_{fold_sig(fty)}", off, r),
@@ -9717,7 +9744,7 @@ fn emit_show_field_render(off, r, fty) = match fty {
   TName(_, _) => emit_show_call_field("show_{fold_sig(fty)}", off, r),
   TAddr => emit_show_call_field("show_{fold_sig(fty)}", off, r),
   _ => // Int / Unit / resolved-TVar / closure / continuation — render the word.
-  emit_show_call_field("int_to_str", off, r),
+  emit_show_call_field(vocab_symbol("int_to_str"), off, r),
 }
 
 // emit_show_call_field — a folded `(call $name (local.get $__state) <field-load>)`.
@@ -9835,14 +9862,14 @@ fn emit_show_variant_payloads(payloads, i, n) = if i >= n {
 fn emit_show_variant_payload_render(off, pty) = match pty {
   TList(TByte) => // text view (§4①)
   emit_show_variant_load(off, pty),
-  TFloat => emit_show_call_variant("float_to_str", off, pty),
+  TFloat => emit_show_call_variant(vocab_symbol("float_to_str"), off, pty),
   TList(_) => emit_show_call_variant("show_{fold_sig(pty)}", off, pty),
   TRecord(_) => emit_show_call_variant("show_{fold_sig(pty)}", off, pty),
   TRecordOpen(_, _) => emit_show_call_variant("show_{fold_sig(pty)}", off, pty),
   TTuple(_) => emit_show_call_variant("show_{fold_sig(pty)}", off, pty),
   TName(_, _) => emit_show_call_variant("show_{fold_sig(pty)}", off, pty),
   TAddr => emit_show_call_variant("show_{fold_sig(pty)}", off, pty),
-  _ => emit_show_call_variant("int_to_str", off, pty),
+  _ => emit_show_call_variant(vocab_symbol("int_to_str"), off, pty),
 }
 
 // A folded `(call $name (local.get $__state) (<repr>.load offset=off (local.get $a)))`
@@ -9886,25 +9913,27 @@ fn emit_one_show_list_helper(sig, elem) = {
 // recurse to i+1; "" when i == len(a). Tail-recursive over the list length
 // (finite). The element leaf reads the proven element type (Carried-Truth).
 fn emit_show_list_body_helper(sig, elem) = {
+  let len_sym = vocab_symbol("len")
+  let concat = vocab_symbol("str_concat")
   wat_emit("  (func $show_listbody_")
   wat_emit(sig)
   wat_emit(" (param $__state i32) (param $a i32) (param $i i32) (result i32)")
   wat_emit(" (local $state_tmp i32) (local $callee_closure i32) (local $alloc_size i32)\n")
   wat_emit("    (if (result i32)\n")
-  wat_emit("      (i32.ge_s (local.get $i) (call $len (local.get $__state) (local.get $a)))\n")
+  wat_emit("      (i32.ge_s (local.get $i) (call ${len_sym} (local.get $__state) (local.get $a)))\n")
   wat_emit("      (then ")
   emit_show_str_literal_inline("")
   wat_emit(")\n")
   wat_emit("      (else\n")
   // concat( sep, concat( show(elem_i), recurse(i+1) ) )
-  wat_emit("        (call $str_concat (local.get $__state)\n")
+  wat_emit("        (call ${concat} (local.get $__state)\n")
   wat_emit("          (if (result i32) (i32.gt_s (local.get $i) (i32.const 0))\n")
   wat_emit("            (then ")
   emit_show_str_literal_inline(", ")
   wat_emit(") (else ")
   emit_show_str_literal_inline("")
   wat_emit("))\n")
-  wat_emit("          (call $str_concat (local.get $__state)\n")
+  wat_emit("          (call ${concat} (local.get $__state)\n")
   emit_show_list_elem_render(fold_strip(elem))
   wat_emit("            (call $show_listbody_")
   wat_emit(sig)
@@ -9924,14 +9953,14 @@ fn emit_show_list_elem_render(elem) = match elem {
   // The element read yields the f64's REFERENCE (the word protocol); deref
   // before the native-faced renderer.
   emit_show_list_index(),
-  TFloat => emit_show_call_listidx_deref("float_to_str"),
+  TFloat => emit_show_call_listidx_deref(vocab_symbol("float_to_str")),
   TList(_) => emit_show_call_listidx("show_{fold_sig(elem)}"),
   TRecord(_) => emit_show_call_listidx("show_{fold_sig(elem)}"),
   TRecordOpen(_, _) => emit_show_call_listidx("show_{fold_sig(elem)}"),
   TTuple(_) => emit_show_call_listidx("show_{fold_sig(elem)}"),
   TName(_, _) => emit_show_call_listidx("show_{fold_sig(elem)}"),
   TAddr => emit_show_call_listidx("show_{fold_sig(elem)}"),
-  _ => emit_show_call_listidx("int_to_str"),
+  _ => emit_show_call_listidx(vocab_symbol("int_to_str")),
 }
 
 // A folded `(call $name (local.get $__state) (call $list_index … i))` — the
@@ -9955,7 +9984,7 @@ fn emit_show_call_listidx_deref(name) = {
 }
 
 fn emit_show_list_index() =
-  wat_emit("(call $list_index (local.get $__state) (local.get $a) (local.get $i))")
+  wat_emit("(call ${vocab_symbol("list_index")} (local.get $__state) (local.get $a) (local.get $i))")
 
 // ─── show literal/separator emit ──────────────────────────────────────────
 // A string literal in the helper body: emit the data-pointer load (the literal
@@ -9972,7 +10001,8 @@ fn emit_show_str_literal_inline(s) = emit_expr(LConst(0, LString(s)))
 // emit_show_concat_open / close — a folded `(call $str_concat (local.get $__state)
 // <left> <right> )`: open writes the call head + __state, the two operands follow
 // as sub-expressions, close writes the `)`. Right-nesting builds the N-ary concat.
-fn emit_show_concat_open() = wat_emit("    (call $str_concat (local.get $__state)\n")
+fn emit_show_concat_open() =
+  wat_emit("    (call ${vocab_symbol("str_concat")} (local.get $__state)\n")
 
 fn emit_show_concat_close() = wat_emit("    )\n")
 
@@ -10159,12 +10189,12 @@ fn emit_field_hash(off, r, fty) = match fty {
   // seeds its FNV mix with the length, str_hash does not — one type must
   // hash through ONE route or eq-equal values hash unequal.
   match seq_elem_face(e) {
-    TByte => emit_field_hash_seq_call(off, "str_hash"),
-    TFloat => emit_field_hash_seq_call(off, "list_hash_f64"),
+    TByte => emit_field_hash_seq_call(off, vocab_symbol("str_hash")),
+    TFloat => emit_field_hash_seq_call(off, vocab_symbol("list_hash_f64")),
     face => if seq_face_structural(face) {
       emit_field_hash_seq_call(off, "hash_{fold_sig(fty)}")
     } else {
-      emit_field_hash_seq_call(off, "list_hash")
+      emit_field_hash_seq_call(off, vocab_symbol("list_hash"))
     },
   },
   TRecord(_) => emit_field_hash_agg_call(off, fold_sig(fty)),
@@ -10173,7 +10203,7 @@ fn emit_field_hash(off, r, fty) = match fty {
   TName(_, _) => emit_field_hash_agg_call(off, fold_sig(fty)),
   TFloat => // Float field: hash the decimal rendering of the loaded f64 (value-faithful).
   {
-    wat_emit("(call $str_hash (call $float_to_str (f64.load offset=")
+    wat_emit("(call ${vocab_symbol("str_hash")} (call ${vocab_symbol("float_to_str")} (f64.load offset=")
     wat_emit(int_to_str(off))
     wat_emit(" (local.get $a))))")
   },
@@ -10305,7 +10335,7 @@ fn emit_binop(op) = match op {
     wat_emit("    (local.get $__state)\n")
     wat_emit("    (local.get $state_tmp)\n")
     wat_emit("    (local.get $callee_closure)\n")
-    wat_emit("    (call $list_concat)\n")
+    emit_vocab_call("list_concat")
   },
 }
 
@@ -10767,7 +10797,7 @@ fn emit_pat_predicate_at(pat, path, path_len) = match pat {
       emit_scrut_at_repr(path, path_len, RI32)
       emit_low_value_const(lv)
       emit_fold_state_insert()
-      wat_emit("    (call $str_eq)\n")
+      emit_vocab_call("str_eq")
     },
     _ => // Scalars: value-eq IS structural. A float LOADS the scrutinee f64-wide
     // (emit_scrut_at_repr at low_value_repr) and compares f64.eq (the gradient
@@ -11119,7 +11149,7 @@ fn emit_pat_list_rest_bind(n_prefix, rest, path, path_len) = match rest {
     wat_emit(")\n")
     emit_scrut_at(path, path_len)
     wat_emit("    (i32.load offset=0)\n")
-    wat_emit("    (call ${list_rest_callee()})\n")
+    wat_emit("    (call ${vocab_symbol(list_rest_callee())})\n")
     wat_emit("    (local.set $")
     wat_emit(name)
     wat_emit(")\n")
@@ -11300,7 +11330,7 @@ fn emit_load_chain_repr(path, k, path_len, leaf_repr) = if k == path_len {
       wat_emit(int_to_str(i))
       wat_emit(")\n")
       emit_fold_state_insert()
-      wat_emit("    (call $list_index)\n")
+      emit_vocab_call("list_index")
       if k + 1 == path_len { emit_wide_deref(leaf_repr) } else { () }
       emit_load_chain_repr(path, k + 1, path_len, leaf_repr)
     },
@@ -11406,7 +11436,7 @@ fn emit_list_literal(h, elems) = {
     wat_emit(int_to_str(sc))
     wat_emit(")\n")
   }
-  wat_emit("    (call ${list_literal_callee(sc)})\n")
+  wat_emit("    (call ${vocab_symbol(list_literal_callee(sc))})\n")
   emit_list_stores(elems, 0)
 }
 
@@ -11435,7 +11465,7 @@ fn emit_list_stores(elems, base_idx) = each(
       // A wide element crosses to the word-faced list_set by reference; the
       // packed slot's store_strided copies the bytes from behind it.
       emit_wide_ref(tail_expr_repr(elem))
-      wat_emit("    (call $list_set)\n")
+      emit_vocab_call("list_set")
     },
   },
   enumerate(elems)
