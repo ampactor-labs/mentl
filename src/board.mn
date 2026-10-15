@@ -246,9 +246,11 @@ fn board_bounds() = [
   // judgment was read off it; 1,199 when a pattern became a node, each
   // reader of a pattern's kind written as its roster; 1,197 when a
   // predicate's references became edges and the walk that collected them by
-  // spelling left. It falls to zero where the migration lands
+  // spelling left; 1,191 when a name written in a type became a node, and
+  // the readers that took a bare variable for an unwritten type read the
+  // node instead. It falls to zero where the migration lands
   // (`Hβ.match.catch-all-over-a-sum-is-the-roster`).
-  Bound({ceiling: 1197, question: QCensus(CsWildcardOverSum)}),
+  Bound({ceiling: 1191, question: QCensus(CsWildcardOverSum)}),
   // Drift mode 15 — a value given a leading-underscore name instead of being
   // deleted. The rename silences the reader, never the fact that nothing
   // reads it.

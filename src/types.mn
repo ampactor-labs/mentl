@@ -718,6 +718,33 @@ fn param_ty(p) = match p {
 // absent form belongs to the slots that carry no parameter at all.
 fn some_param_ty(p) = Some(param_ty(p))
 
+// The cell the parser minted for a position no author typed, read off the
+// position's parsed type: a variable whose node holds nothing written. A
+// name an author wrote is a variable too, its node holding what was written
+// (parser.mn's written_type_name), so whether a type was written is read off
+// the node, never off the variable's shape.
+fn unwritten_cell(ty) = match ty {
+  TVar(h) => match graph_node_body(h) {
+    NTypeAnn(_) => None,
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) => Some(h),
+  },
+  TInt
+  | TFloat
+  | TUnit
+  | TByte
+  | TAddr
+  | TList(_)
+  | TTuple(_)
+  | TFun(_, _, _)
+  | TName(_, _)
+  | TRecord(_)
+  | TRecordOpen(_, _)
+  | TRefined(_, _)
+  | TReprPin(_, _)
+  | TCont(_, _, _, _)
+  | TAlias(_, _) => None,
+}
+
 fn param_authored(p) = match p {
   TParam(_, _, a, _, _, _) => a,
 }
@@ -2245,8 +2272,6 @@ type TagId = Int where 0 <= self && self <= 255
 
 type ValidOffset = Int where 0 <= self
 
-type NonEmptyList = [a] where 0 < len(self)
-
 fn span_valid(s) with Pure = match s {
   Span(sl, sc, el, ec) => sl >= 0 && sc >= 0 && el >= sl && (el > sl || ec >= sc),
 }
@@ -3090,11 +3115,6 @@ fn env_lookup(name: String) = match env_resolve(name) {
 }
 
 fn env_lookup_linked(name: String) = match env_resolve_linked(name) {
-  Some(d) => graph_published(d),
-  None => None,
-}
-
-fn env_lookup_type(name: String) = match env_resolve_type(name) {
   Some(d) => graph_published(d),
   None => None,
 }
@@ -5226,7 +5246,12 @@ fn render_ty(ty) with !Mutate = match ty {
   TList(elem) => "[{render_ty(elem)}]",
   TTuple(elems) => "({show_list(elems, render_ty, ", ")})",
   TFun(params, ret, row) => "({show_list(params, render_fn_param, ", ")}) -> {render_ty(ret)}{render_row_suffix(row)}",
-  TVar(id) => render_var(id),
+  // A name an author wrote renders as written; any other variable through
+  // its binding.
+  TVar(id) => match graph_node_body(id) {
+    NTypeAnn(written) => render_ty(written),
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) => render_var(id),
+  },
   TName(name, args) => if len(args) == 0 { name } else { "{name}({show_list(args, render_ty, ", ")})" },
   TRecord(fields) => "\{{show_list(fields_by_name(fields), render_field, ", ")}\}",
   TRecordOpen(fields, v) => render_open_record(fields, v),

@@ -1803,10 +1803,7 @@ fn fn_fully_sigd(ref params, ref ret_ann) = match graph_node_body(ret_ann) {
 fn params_all_annotated(ref params, i) = if i >= len(params) {
   true
 } else {
-  match param_ty(params[i]) {
-    TVar(_) => false,
-    _ => params_all_annotated(params, i + 1),
-  }
+  !is_some(unwritten_cell(param_ty(params[i]))) && params_all_annotated(params, i + 1)
 }
 
 fn row_handles_only(ref q, i) = if i >= len(q) {
@@ -2283,8 +2280,13 @@ fn infer_stmt(ref node) = {
     },
     // Transparent alias `type X = T`: registered at pre_register_stmt.
     // No predicate, no Verify — the difference from RefineStmt is exactly
-    // the absent `where` (SYNTAX.md §«Type aliases»).
-    NStmt(AliasStmt(name, _)) => declaration_noted(node, name),
+    // the absent `where` (SYNTAX.md §«Type aliases»). Its body is read here,
+    // where it is declared, so each name it writes is linked to the
+    // declaration the name denotes.
+    NStmt(AliasStmt(name, ty)) => {
+      let _ = quantify_ctor_ty(ty, [], Declared(name))
+      declaration_noted(node, name)
+    },
     NStmt(RowAliasStmt(name, effs)) => {
       // A named row's terms are judged where they are written, as a
       // clause's are at its declaration: each names an effect, a row alias
@@ -11363,13 +11365,13 @@ fn build_param_types_loop(params, handles, qmap, i) = if i >= len(params) {
   match list_index(params, i) {
     TParam(name, declared, auth, res, default, prow) => {
       let h = list_index(handles, i)
-      match match declared {
+      match match unwritten_cell(declared) {
         // The parser minted this cell at the parameter's name; it IS the
         // parameter, so it is bound to the cell the judgment carries rather
         // than left behind unjudged (a ghost the caret and `refs of` could
         // only answer with nothing). The first judgment of a signature binds
         // it; a later one finds it bound and reads through it.
-        TVar(ph) => {
+        Some(ph) => {
           if ph != h && param_cell_is_free(ph) {
             graph_bind(ph, TVar(h), Located(span_zero(), Declared(name)))
           } else {
@@ -11377,7 +11379,8 @@ fn build_param_types_loop(params, handles, qmap, i) = if i >= len(params) {
           }
           (TVar(h), qmap)
         },
-        _ => match quantify_ctor_ty(declared, qmap, graph_reason_at(h)) {
+        // A written type is quantified into the parameter's cell.
+        None => match quantify_ctor_ty(declared, qmap, graph_reason_at(h)) {
           (conv, q) => {
             graph_bind(h, conv, Located(span_zero(), Declared(name)))
             (conv, q)
@@ -11446,9 +11449,9 @@ fn declare_params(params, resolved, handles, guards) = resolved |> enumerate |> 
 // What the developer wrote: a refinement is a stated precondition, a plain
 // type states none (and learns none), and no annotation leaves the
 // parameter to learn one from the edges it is handed through.
-fn stated_pre(authored, resolved) = match authored {
-  TVar(_) => Unstated,
-  _ => if ty_carries_refinement(resolved) { Stated(resolved) } else { Unrefined },
+fn stated_pre(authored, resolved) = match unwritten_cell(authored) {
+  Some(_) => Unstated,
+  None => if ty_carries_refinement(resolved) { Stated(resolved) } else { Unrefined },
 }
 
 // At the exit a parameter publishes what it learned — its callers owe the
@@ -13776,15 +13779,7 @@ fn quantify_ctor_ty(ty, qmap, owner) = match ty {
     // TYPE-position lookup: an effect decl may share the name (`effect
     // Sample` + `type Sample`), and the plain newest-entry read would let
     // the effect shadow the alias — the kind is the namespace.
-    match env_lookup_type(name) {
-      Some(entry) => match entry {
-        (scheme, _, _) => match judgment_ty(scheme) {
-          TAlias(an, inner) => (TAlias(an, inner), qmap),
-          _ => (TName(name, []), qmap),
-        },
-      },
-      None => (TName(name, []), qmap),
-    }
+    (named_type(name, env_resolve_type(name)), qmap)
   } else {
     match quantify_ty_list(args, qmap, owner) {
       (args2, q2) => (TName(name, args2), q2),
@@ -13816,6 +13811,7 @@ fn quantify_ctor_ty(ty, qmap, owner) = match ty {
   TRecord(fields) => match quantify_field_list(fields, qmap, owner) {
     (fs2, q2) => (TRecord(fs2), q2),
   },
+  TVar(h) => resolve_written(h, ty, qmap, owner),
   // An open record's fields quantify as a closed one's; a rest its author
   // named (`...r`) is the signature's one row variable for that name, so
   // `{name: String, ...r} -> {name: String, age: Int, ...r}` carries the
@@ -13833,6 +13829,60 @@ fn quantify_ctor_ty(ty, qmap, owner) = match ty {
     },
   },
   _ => (ty, qmap),
+}
+
+// A name an author wrote in a type (parser.mn's written_type_name): resolved
+// here, where the annotation is read and its scope is in force — its node
+// linked to the declaration the name denotes, so `refs of` the type answers
+// the annotation, and bound to the type the name resolves to. Any other
+// variable is the judgment's own and passes through.
+fn resolve_written(h, ty, qmap, owner) = match graph_node_body(h) {
+  NTypeAnn(TName(name, args)) => {
+    let decl = type_decl_named(name)
+    match decl {
+      Some(d) => graph_ref_link(h, d),
+      None => (),
+    }
+    match if len(args) == 0 {
+      (named_type(name, decl), qmap)
+    } else {
+      match quantify_ty_list(args, qmap, owner) {
+        (args2, q2) => (TName(name, args2), q2),
+      }
+    } {
+      (resolved, q) => {
+        graph_bind(h, resolved, Located(graph_span_of(h), owner))
+        (resolved, q)
+      },
+    }
+  },
+  NTypeAnn(_) | NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) => (ty, qmap),
+}
+
+// The declaration a type name denotes: an alias or a nominal record, else a
+// sum type's variants — the kind is the namespace, so an effect or a
+// constructor of the name never answers.
+fn type_decl_named(name: String) = match env_resolve_type(name) {
+  Some(d) => Some(d),
+  None => env_resolve_variants(name),
+}
+
+// A capitalized name standing alone: an alias binds as its TAlias, so
+// unification sees through it to its base; any other declaration keeps its
+// nominal identity. The alias's declared type holds the names its author
+// wrote as cells, and the type handed out reads each through to what it is
+// bound to: a type value is walked by readers that take a variable for a
+// variable (a helper's sig, a scheme's quantifier), and a written name is
+// never one.
+fn named_type(name: String, decl) = match decl {
+  Some(d) => match graph_published(d) {
+    Some((scheme, _, _)) => match judgment_ty(scheme) {
+      TAlias(an, inner) => TAlias(an, chase_deep(inner)),
+      _ => TName(name, []),
+    },
+    None => TName(name, []),
+  },
+  None => TName(name, []),
 }
 
 fn quantify_tparam_list(params, qmap, owner) = if len(params) == 0 {

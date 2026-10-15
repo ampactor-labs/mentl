@@ -559,9 +559,9 @@ fn param_candidates(f, owed, aliases, lean) = match lean {
 // the head's census counts it as (cursor_transport.mn's stated_by). Over any
 // other written type the accept would drop a name the developer chose, so it
 // is no candidate.
-fn writable_over(written, alias) = match written {
-  TVar(_) => true,
-  _ => is_word_base(written) && alias_fits(written, alias),
+fn writable_over(written, alias) = match unwritten_cell(written) {
+  Some(_) => true,
+  None => is_word_base(written) && alias_fits(written, alias),
 }
 
 fn is_word_base(t) = match t {

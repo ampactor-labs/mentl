@@ -581,9 +581,9 @@ fn has_free_tvar_fields(ref fields) = if len(fields) == 0 {
 // Every reference the judgment linked to a declaration is among the
 // declaration's in-edges (`graph_ref_link`, the one writer). The projection
 // reads them — O(refs), never O(graph) — one site per source location, each
-// with what stands there: a pattern naming a constructor is a node that
-// draws the same edge, so a constructor's sites are its patterns beside its
-// calls.
+// with what stands there: a pattern naming a constructor and a name written
+// in a type are nodes that draw the same edge, so a constructor's sites are
+// its patterns beside its calls and a type's are its annotations.
 fn refs_of_decl(d) with !Mutate =
   map({ (m, sp, h) => (m, sp, Some(ref_role(h))) }, decl_ref_sites(d))
 
@@ -593,11 +593,12 @@ fn refs_of_name(name) with !Mutate = match name_decl(name) {
   None => [],
 }
 
-// What stands at a reference: a pattern taking the value apart, the callee
-// of a call, or a value.
+// What stands at a reference: a pattern taking the value apart, a type an
+// annotation names, the callee of a call, or a value.
 fn ref_role(h) with !Mutate = match graph_node_body(h) {
   NPat(_) => "pattern",
-  NExpr(_) | NStmt(_) | NHole(_) | NModule(_) | NTypeAnn(_) => if callee_of_parent(h) { "call" } else { "value" },
+  NTypeAnn(_) => "annotation",
+  NExpr(_) | NStmt(_) | NHole(_) | NModule(_) => if callee_of_parent(h) { "call" } else { "value" },
 }
 
 // Whether the node is the callee of the call that holds it — the parent edge
@@ -755,15 +756,17 @@ fn import_edge_join(acc, d) = match graph_node_body(d) {
 
 // What a statement declares that a reference can link to, each name with the
 // handle its references link to: a function or a handler its own node, a
-// type's constructors their variants, an effect's ops their nodes, a module
-// value its value's cell (a `let`'s binder IS its value's cell). A type's
-// name and an effect's name are not yet references — an annotation and a
-// row hold names, not nodes (`Hβ.graph.positions-are-cells`) — so neither
-// has a row to measure until they are.
+// type its own node (the names annotations write) and its constructors their
+// variants, an alias or a refinement its own node, an effect's ops their
+// nodes, a module value its value's cell (a `let`'s binder IS its value's
+// cell). An effect's name is not yet a reference — a row holds names, not
+// nodes (`Hβ.graph.positions-are-cells`) — so it has no row to measure.
 fn decl_links_of(d) = match graph_node_body(d) {
   NStmt(s) => match s {
     FnStmt(n, _, _, _, _) => [(n, d)],
-    TypeDefStmt(_, ctors) => map({ (cn, _, vn) => (cn, vn) }, ctors),
+    TypeDefStmt(n, ctors) => [(n, d)] ++ map({ (cn, _, vn) => (cn, vn) }, ctors),
+    AliasStmt(n, _) => [(n, d)],
+    RefineStmt(n, _, _) => [(n, d)],
     EffectDeclStmt(_, _, ops) => map({ (on, _, _, onode) => (on, onode) }, ops),
     HandlerDeclStmt(n, _, _, _, _, _) => [(n, d)],
     LetStmt(pat, value, _) => match pat_of(pat) {
@@ -790,22 +793,28 @@ fn ref_within(d, r) with !Mutate = if r == d {
 // it, its own recursion and its own arms excluded.
 fn outside_refs(stmt, d) with !Mutate = graph_refs_of(d) |> filter({ r => !ref_within(stmt, r) })
 
+// The references a name's verdict counts. A statement's own name answers for
+// everything the statement declares, so a type is referenced where its name
+// is written and where a value of it is built or taken apart.
+fn name_outside_refs(stmt, link) with !Mutate = match link {
+  (_, d) => if d == stmt {
+    decl_links_of(stmt) |> flat_map({ (_, h) => outside_refs(stmt, h) })
+  } else {
+    outside_refs(stmt, d)
+  },
+}
+
 // ─── The declarations, read for what actually reaches them ──────────
 //
 // A declaration is UNREFERENCED when every reference to its name falls
 // inside its own declaration — a fn only its own recursion calls, a
-// constructor nothing builds, an effect op no arm performs. This is the
-// import read one altitude down and turned around: that one asks whether
-// any declaration an edge BRINGS is referenced from INSIDE the importing
+// constructor nothing builds, an effect op no arm performs, a type nothing
+// names and no value of which is built or taken apart. This is the import
+// read one altitude down and turned around: that one asks whether any
+// declaration an edge BRINGS is referenced from INSIDE the importing
 // module; this one asks whether any reference to a declaration stands
 // OUTSIDE the statement that declares it. The same in-edges, read in the
-// opposite direction.
-//
-// Nine dead fns came out of src/ on 2026-09-04, found by grepping each
-// name and reading the hits by hand. That method costs one pass per name
-// and cannot tell a call from a mention in a comment — the same blindness
-// that hid three dead imports for weeks. This is one pass over the decls
-// the weave already carries.
+// opposite direction, in one pass over the declarations the weave carries.
 //
 // The honest limits, stated because a reader will otherwise take this
 // further than it goes:
@@ -830,7 +839,7 @@ fn decl_ref_row_join(path: String, acc, d) with !Mutate =
 // The per-name verdict: the declaring module, the name, and how many of its
 // references stand outside its own declaration. Zero is the finding.
 fn decl_ref_verdict(path: String, stmt, link) with !Mutate = match link {
-  (name, d) => (path, name, len(outside_refs(stmt, d))),
+  (name, _) => (path, name, len(name_outside_refs(stmt, link))),
 }
 
 // ─── unreachable — unreferenced's transitive face ───────────────────
@@ -1126,9 +1135,7 @@ fn orphan_row_join(path: String, acc, d) with !Mutate = {
   }
 }
 
-fn name_is_orphaned(stmt, link) with !Mutate = match link {
-  (_, d) => len(outside_refs(stmt, d)) == 0,
-}
+fn name_is_orphaned(stmt, link) with !Mutate = len(name_outside_refs(stmt, link)) == 0
 
 fn orphan_verdict(path: String, prose_bytes, link) = match link {
   (name, _) => (path, name, prose_bytes),

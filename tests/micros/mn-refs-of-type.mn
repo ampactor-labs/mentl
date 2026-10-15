@@ -1,0 +1,14 @@
+// refs of Shape: 2 annotation
+// A name written in a type is a reference: the judgment links each name an
+// annotation writes to the declaration it denotes, so `refs of Shape` answers
+// the parameter and the return that name the type.
+type Shape = Dot | Line(Int)
+
+fn width(s: Shape) -> Int = match s {
+  Dot => 0,
+  Line(n) => n,
+}
+
+fn make(n: Int) -> Shape = if n > 0 { Line(n) } else { Dot }
+
+fn main() = width(make(3))

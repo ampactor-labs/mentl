@@ -581,9 +581,9 @@ fn render_one_param(p) with !Mutate = {
     Ref => "ref ",
     Unmarked => "",
   }
-  let ann = match param_ty(p) {
-    TVar(_) => "",
-    ty => ": {render_type_tokens(ty)}",
+  let ann = match unwritten_cell(param_ty(p)) {
+    Some(_) => "",
+    None => ": {render_type_tokens(param_ty(p))}",
   }
   let dflt = match param_default(p) {
     Some(d) => " = {render_tokens_for(d)}",

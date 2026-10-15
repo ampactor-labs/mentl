@@ -1206,9 +1206,11 @@ fn parse_type_decl(ref tokens, pos) = {
     //   `|`/`+`/`-`/`&`         → multi-variant ADT / named effect row
     //   a constructor payload    → single-variant ADT (`type Token = Tok(...)`)
     //   nothing                  → transparent alias (`type Port = Int`)
-    if at(tokens, p2, TBang) {
-      // A leading `!` never starts a type — `type NoIO = !IO` is the
-      // named-row grammar from its first token.
+    if at(tokens, p2, TBang) || row_term_joins(tokens, p2) {
+      // A named effect row (SYNTAX §«Named effect rows»): a leading `!`, or a
+      // term joined to another by `+ - &`. The RHS is the with-clause's OWN
+      // signed-triple grammar, read once through parse_effect_list — one
+      // grammar and one representation (Hβ.types.named-effect-rows).
       match parse_effect_list(tokens, p2) {
         (effs, p3) => (RowAliasStmt(name, effs), p3),
       }
@@ -1222,25 +1224,29 @@ fn parse_type_decl(ref tokens, pos) = {
                 (pred, p4) => (RefineStmt(name, alias_ty, pred), p4),
               }
             } else if at(tokens, term, TPipe) {
-              match parse_variants(tokens, p2) {
-                (variants, p3) => (TypeDefStmt(name, variants), p3),
-              }
-            } else if at(tokens, term, TPlus) || at(tokens, term, TMinus) || at(tokens, term, TAmp) {
-              // Named effect row (SYNTAX §«Named effect rows»): the RHS is
-              // the with-clause's OWN signed-triple grammar — re-parse from
-              // the RHS start through parse_effect_list, one grammar and one
-              // representation (Hβ.types.named-effect-rows).
-              match parse_effect_list(tokens, p2) {
-                (effs, p3) => (RowAliasStmt(name, effs), p3),
+              // The head the type parse read is the first variant, and the
+              // rest follow the `|`. A head that names no constructor is read
+              // again by the variant parse, which says so.
+              match written_constructor(alias_ty) {
+                Some(head) => match parse_variants(tokens, skip_ws(tokens, term + 1)) {
+                  (rest, p3) => (TypeDefStmt(name, [constructor_variant(head)] ++ rest), p3),
+                },
+                None => match parse_variants(tokens, p2) {
+                  (variants, p3) => (TypeDefStmt(name, variants), p3),
+                },
               }
             } else {
-              match alias_ty {
-                TName(vname, fields) => if len(fields) > 0 {
-                  (TypeDefStmt(name, [(vname, fields, mint_node(NTypeAnn(TTuple(fields)), start))]), p_alias)
-                } else {
-                  (AliasStmt(name, alias_ty), p_alias)
+              // A constructor with fields standing alone declares the type's
+              // one variant; a bare name is an alias of the type it names.
+              match written_constructor(alias_ty) {
+                Some(head) => match head {
+                  (_, fields, _) => if len(fields) > 0 {
+                    (TypeDefStmt(name, [constructor_variant(head)]), p_alias)
+                  } else {
+                    (AliasStmt(name, alias_ty), p_alias)
+                  },
                 },
-                _ => (AliasStmt(name, alias_ty), p_alias),
+                None => (AliasStmt(name, alias_ty), p_alias),
               }
             }
           },
@@ -1248,6 +1254,51 @@ fn parse_type_decl(ref tokens, pos) = {
       }
     }
   }
+}
+
+// Whether a type declaration's right-hand side at `pos` is a named row: a
+// term — a name, its arguments grouped — joined to the next by `+`, `-` or
+// `&`. A bounded token scan, so the row is read once, by the row grammar.
+fn row_term_joins(tokens, pos) = match kind_at(tokens, pos) {
+  TIdent(_) => {
+    let after = if at(tokens, pos + 1, TLParen) { skip_group(tokens, pos + 1, 0) } else { pos + 1 }
+    let q = skip_ws(tokens, after)
+    at(tokens, q, TPlus) || at(tokens, q, TMinus) || at(tokens, q, TAmp)
+  },
+  _ => false,
+}
+
+// A name the type parse read as written, with what it applies to, and the
+// node that holds it.
+fn written_constructor(ty) = match ty {
+  TVar(n) => match graph_node_body(n) {
+    NTypeAnn(TName(vname, fields)) => Some((vname, fields, n)),
+    NTypeAnn(_) | NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) => None,
+  },
+  TInt
+  | TFloat
+  | TUnit
+  | TByte
+  | TAddr
+  | TList(_)
+  | TTuple(_)
+  | TFun(_, _, _)
+  | TName(_, _)
+  | TRecord(_)
+  | TRecordOpen(_, _)
+  | TRefined(_, _)
+  | TReprPin(_, _)
+  | TCont(_, _, _, _)
+  | TAlias(_, _) => None,
+}
+
+// A constructor the type parse read as a written name declares a variant:
+// its node is the variant's position, holding the fields it declares.
+fn constructor_variant(head) = match head {
+  (vname, fields, n) => {
+    graph_register_node(n, NTypeAnn(TTuple(fields)))
+    (vname, fields, n)
+  },
 }
 
 // The repr pin's parse (SYNTAX §"Representation-pinned alias"): after the
@@ -3508,53 +3559,23 @@ fn type_head_items(tokens, pos) = match kind_at(tokens, pos) {
 fn parse_type_atom(ref tokens, pos) = match kind_at(tokens, pos) {
   TIdent(v) => {
     let base_pos = pos + 1
-    // Type-name recognition must be byte-structural. The m2 backend can lower
-    // bare string `==` as pointer equality here, which turns `Int` into the
-    // nominal TName("Int", []) and later reports equal-looking `Int vs Int`.
-    let base = if str_eq(v, "Int") {
-      TInt
-    } else if str_eq(v, "Float") {
-      TFloat
-    } else if str_eq(v, "f64") {
-      // The bare-width pin (SYNTAX §"The Intent Boundary Rule" pt 3):
-      // `s: f32` ≡ `s: Float repr f32` — the width names are the
-      // pinned spellings of their value types.
-      TReprPin(RF64, TFloat)
-    } else if str_eq(v, "f32") {
-      TReprPin(RF32, TFloat)
-    } else if str_eq(v, "i64") {
-      TReprPin(RI64, TInt)
-    } else if str_eq(v, "v128") {
-      TReprPin(RV128, TInt)
-    } else if str_eq(v, "String") {
-      ty_string
-    } else if str_eq(v, "Bool") {
-      TName("Bool", [])
-    } else if str_eq(v, "Unit") {
-      TUnit
-    } else if str_eq(v, "Addr") {
-      TAddr
+    // Parens application — the one-application-syntax law: types apply
+    // like effects apply (`Sample(44100)`) and values apply (`f(x)`).
+    // Unambiguous: no expression context exists in type position. A
+    // primitive takes no arguments; per protocol_no_silent_fallback the
+    // args are discarded but the parse advances cleanly.
+    let (args, p_after) = if at(tokens, base_pos, TLParen) {
+      parse_type_args(tokens, skip_ws(tokens, base_pos + 1))
     } else {
-      TName(v, [])
+      ([], base_pos)
     }
-    // Parens application — the one-application-syntax law: types
-    // apply like effects apply (`Sample(44100)`) and values apply
-    // (`f(x)`). `Option(Int)` rewraps a TName base with args.
-    // Unambiguous: no expression context exists in type position.
-    // Primitives (TInt etc.) take no args; per protocol_no_silent_
-    // fallback the args are discarded but the parse advances cleanly.
-    if at(tokens, base_pos, TLParen) {
-      match parse_type_args(tokens, skip_ws(tokens, base_pos + 1)) {
-        (args, p_after) => {
-          let typed = match base {
-            TName(name, _) => TName(name, args),
-            _ => base,
-          }
-          (typed, p_after)
-        },
-      }
-    } else {
-      (base, base_pos)
+    match primitive_type(v) {
+      Some(t) => (t, p_after),
+      None => if upper_initial(v) {
+        (written_type_name(TName(v, args), span_at(tokens, pos)), p_after)
+      } else {
+        (TName(v, args), p_after)
+      },
     }
   },
   // `-> !` — the never-returns marker (SYNTAX §«Never-returning ops»). The
@@ -3593,6 +3614,44 @@ fn parse_type_atom(ref tokens, pos) = match kind_at(tokens, pos) {
     report(PUnexpectedToken("unexpected token in type position — expected a type", span_at(tokens, pos)))
     (TUnit, pos + 1)
   },
+}
+
+// The types the language names itself, which no declaration in the link
+// writes. Recognition is byte-structural (`str_eq`): the m2 backend can lower
+// a bare string `==` as pointer equality, which turned `Int` into the nominal
+// TName("Int", []) that reported equal-looking `Int vs Int`. A width name is
+// the pinned spelling of its value type (SYNTAX §"The Intent Boundary Rule"
+// pt 3: `s: f32` ≡ `s: Float repr f32`).
+fn primitive_type(v: String) = if str_eq(v, "Int") {
+  Some(TInt)
+} else if str_eq(v, "Float") {
+  Some(TFloat)
+} else if str_eq(v, "f64") {
+  Some(TReprPin(RF64, TFloat))
+} else if str_eq(v, "f32") {
+  Some(TReprPin(RF32, TFloat))
+} else if str_eq(v, "i64") {
+  Some(TReprPin(RI64, TInt))
+} else if str_eq(v, "v128") {
+  Some(TReprPin(RV128, TInt))
+} else if str_eq(v, "String") {
+  Some(ty_string)
+} else if str_eq(v, "Unit") {
+  Some(TUnit)
+} else if str_eq(v, "Addr") {
+  Some(TAddr)
+} else {
+  None
+}
+
+// A name an author wrote in a type is a position: a node holding what was
+// written there, whose cell carries the written type until the judgment
+// resolves the name (infer.mn's resolve_written), links the node to the
+// declaration it names and binds the type the name denotes.
+fn written_type_name(written, span: ValidSpan) = {
+  let n = mint_node(NTypeAnn(written), span)
+  graph_bind(n, written, Placeholder(span))
+  TVar(n)
 }
 
 // A parenthesized type group: the types between `(` and `)`, comma-separated,

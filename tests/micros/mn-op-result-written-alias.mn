@@ -1,0 +1,24 @@
+// expect: 1
+// An op whose declared result names a refined alias over a written type is
+// monomorphic in it: the name written in the alias is a cell bound to the
+// type it names, never a variable each perform freshens, so the two results
+// compare as the spans they are.
+type Span = Span(Int, Int)
+
+fn span_ok(s) = match s {
+  Span(a, b) => a <= b,
+}
+
+type ValidSpan = Span where span_ok(self)
+
+effect Spans {
+  span_of(h: Int) -> ValidSpan
+}
+
+handler spans {
+  span_of(h) => resume(Span(h, h + 1)),
+}
+
+fn same(a, b) = span_of(a) == span_of(b)
+
+fn main() = (if same(1, 1) { 1 } else { 0 }) ~> spans
