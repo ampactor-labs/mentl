@@ -1247,7 +1247,7 @@ fn chase_node(ref spine, mint_bound, handle, depth) with !Mutate = if depth > 10
         _ => GNode(kind, reason),
       },
       NRowBound(row) => match row {
-        EfRow(names, absents, EtOpen(edges)) => // The chase folds the chain under the READING LAW: each level's
+        // The chase folds the chain under the READING LAW: each level's
         // present rides forward MINUS the levels above it masked, and the
         // absents ACCUMULATE — the discarded-absent destructure here was
         // the mask-killer at the one mechanism every row read routes
@@ -1258,7 +1258,7 @@ fn chase_node(ref spine, mint_bound, handle, depth) with !Mutate = if depth > 10
         // not a chain — the cell is its own terminal, and every content
         // read rides resolve's fold (which walks each edge). The link's
         // own mask joins the masks carried forward: it is this path's.
-        if len(edges) == 1 {
+        EfRow(names, absents, EtOpen(edges)) => if len(edges) == 1 {
           let next = edge_cell(last(edges))
           chase_node(spine, mint_bound, next, depth + 1) |> merge_chased_row(??, names, name_set_union(absents, edge_mask(last(edges))), next)
         } else {
@@ -1300,13 +1300,13 @@ fn chase_handle(ref spine, mint_bound, handle, depth) with !Mutate = if depth > 
         TVar(next) => chase_handle(spine, mint_bound, next, depth + 1),
         _ => handle,
       },
-      NRowBound(row) => // Row aliases: unify_row links open row cells as `va → EfRow(_, _, EtOpen([vb]))`.
+      // Row aliases: unify_row links open row cells as `va → EfRow(_, _, EtOpen([vb]))`.
       // find follows a SINGLE edge to the canonical root, exactly as it
       // follows TVar — so generalize/instantiate quantify a buried row
       // tail (the row mirror of the type-var find). Type handles never
       // reach this arm; a MULTI-edge tail has no single root, so the
       // cell is its own canonical handle (content reads ride resolve).
-      match row {
+      NRowBound(row) => match row {
         EfRow(_, _, EtOpen(edges)) => if len(edges) == 1 {
           chase_handle(spine, mint_bound, edge_cell(last(edges)), depth + 1)
         } else {
@@ -1326,7 +1326,7 @@ fn chase_handle(ref spine, mint_bound, handle, depth) with !Mutate = if depth > 
 fn merge_chased_row(ref chased, ref names, ref absents, free_handle) = match chased {
   GNode(ck, cr) => match ck {
     NRowBound(inner) => GNode(NRowBound(merge_row(names, absents, inner)), cr),
-    _ => // EVERY non-bound terminal preserves the accumulated reading — the
+    // EVERY non-bound terminal preserves the accumulated reading — the
     // names AND masks ride an edge to the terminal. NRowFree always did;
     // the former catch-all returned the bare terminal for every OTHER
     // ending — above all the cross-sort free t-cell a fn-typed param
@@ -1334,7 +1334,7 @@ fn merge_chased_row(ref chased, ref names, ref absents, free_handle) = match cha
     // and a final-pass publish whose chain ends at a free param cell
     // published Pure under a declared row (the forward-hof
     // false-absence root; the CELT-vs-CELB differential measured it).
-    if len(names) == 0 && len(absents) == 0 {
+    _ => if len(names) == 0 && len(absents) == 0 {
       chased
     } else {
       GNode(NRowBound(ef_make(names, absents, EtOpen([bare_edge(free_handle)]))), cr)
@@ -1483,7 +1483,7 @@ fn occurs_in(spine, mint_bound, handle, ref ty) = match ty {
   TUnit => false,
   TByte => false,
   TAddr => false,
-  TVar(id) => // The leaf answers "does handle occur in the type GRAPH reachable from
+  // The leaf answers "does handle occur in the type GRAPH reachable from
   // here" — three tiers, each a hole the selfapply fixture found trapping
   // the compiler (f(f) spun chase_deep/subst_ty to stack exhaustion with
   // ZERO occurs reports): (1) the raw handle; (2) the ROOT (unify IS
@@ -1496,7 +1496,7 @@ fn occurs_in(spine, mint_bound, handle, ref ty) = match ty {
   // every bind runs this check, so the graph stays acyclic and the
   // recursion always bottoms out (chase_deep's depth tripwire is the
   // belt behind this suspender).
-  if id == handle {
+  TVar(id) => if id == handle {
     true
   } else {
     let root = chase_handle(spine, mint_bound, id, 0)
@@ -1618,12 +1618,12 @@ fn occurs_in_row_seen(spine, mint_bound, handle, eff, seen) = match eff {
       true
     } else {
       match t {
-        EtOpen(vs) => // A BOUND edge hides structure the write would embed: subst_row's
+        // A BOUND edge hides structure the write would embed: subst_row's
         // merge arm traverses into the binding, so the cycle guard must
         // reach the same leaves through EVERY edge (the trio law over
         // rows — any edge occurring is the row occurring). Structural
         // walk — the mechanism layer's own discipline.
-        occurs_in_edges(spine, mint_bound, handle, vs, seen),
+        EtOpen(vs) => occurs_in_edges(spine, mint_bound, handle, vs, seen),
         _ => false,
       }
     }
@@ -1711,8 +1711,8 @@ fn occurs_in_eff_args_loop(spine, mint_bound, handle, ref args, i, n) = if i >= 
     EAString(_) => false,
     EAType(ty) => occurs_in(spine, mint_bound, handle, ty),
     EANode(_) => false,
-    EAEffect(_) => // interned identities — no embedded Ty, nothing to occur in
-    false,
+    // interned identities — no embedded Ty, nothing to occur in
+    EAEffect(_) => false,
     EACon(_) => false,
   }
   if occ { true } else { occurs_in_eff_args_loop(spine, mint_bound, handle, args, i + 1, n) }
@@ -1962,20 +1962,20 @@ fn expr_child_handles(e) = match e {
   CallExpr(f, args) => [f] ++ args,
   LambdaExpr(_, body) => [body],
   IfExpr(c, t, f) => [c, t, f],
-  BlockExpr(stmts, fin) => // order-free: membership test only
-  [fin] ++ stmts,
-  MatchExpr(scrut, arms) => // an arm's BODY is a child node — dropping the arms left the
-  // projection partial and tree containment blind below any match
+  // order-free: membership test only
+  BlockExpr(stmts, fin) => [fin] ++ stmts,
+  // an arm's pattern and body are child nodes — dropping the arms left
+  // the projection partial and tree containment blind below any match
   // (the enclosing-decl guard's measured hole).
-  [scrut] ++ map({ (_, b) => b }, arms),
-  ResumeExpr(v, updates) => // A resume-with update is the parser's {name, init} record — the handle
+  MatchExpr(scrut, arms) => [scrut] ++ flat_map({ (p, b) => [p, b] }, arms),
+  // A resume-with update is the parser's {name, init} record — the handle
   // lives on its init edge (record_field_handle's exact sibling).
-  [v] ++ map(record_field_handle, updates),
+  ResumeExpr(v, updates) => [v] ++ map(record_field_handle, updates),
   MakeListExpr(elems) => elems,
   MakeTupleExpr(elems) => elems,
-  MakeRecordExpr(fields) => // Record LITERALS carry the parser's (name, value) tuples
+  // Record LITERALS carry the parser's (name, value) tuples
   // (parse_record_fields); only resume updates are {name, init} records.
-  map(tuple_field_handle, fields),
+  MakeRecordExpr(fields) => map(tuple_field_handle, fields),
   RecordUpdateExpr(base, flds) => [base] ++ map(tuple_field_handle, flds),
   NamedRecordExpr(head, flds) => [head] ++ map(tuple_field_handle, flds),
   IndexExpr(recv, idx) => [recv, idx],
@@ -1984,10 +1984,10 @@ fn expr_child_handles(e) = match e {
   FieldExpr(recv, _) => [recv],
   PipeExpr(_, l, r) => [l, r],
   FanoutExpr(branches) => branches,
-  LabeledArg(_, v) => // the labeled value is a child node
-  [v],
-  _ => // LitInt/LitFloat/LitString/LitBool/LitUnit/VarRef/ExprPlaceholder — no child Nodes
-  [],
+  // the labeled value is a child node
+  LabeledArg(_, v) => [v],
+  // LitInt/LitFloat/LitString/LitBool/LitUnit/VarRef/ExprPlaceholder — no child Nodes
+  _ => [],
 }
 
 // The field IS the parser's {name, init} record — read the init edge by
@@ -2014,7 +2014,7 @@ fn tuple_field_handle(field) with Pure = match field {
 // comment node, an import, a refinement's predicate) hold no value
 // holes and contribute none.
 fn stmt_child_handles(s) = match s {
-  LetStmt(_pat, value, ann) => // the annotation channel is a child only when it IS one: an absent
+  // the annotation channel is a child only when it IS one: an absent
   // annotation IS the value node (the parser's sentinel at every LetStmt
   // mint; its module-scope let reads the same identity), so listing it would
   // double-visit every unannotated let's value subtree — measured as
@@ -2022,15 +2022,15 @@ fn stmt_child_handles(s) = match s {
   // a fact of the HANDLES, so no body is read: the register arm draws its
   // parent edges through this projection, and an arm's performs resolve
   // outside its own install.
-  if ann == value { [value] } else { [value, ann] },
+  LetStmt(pat, value, ann) => if ann == value { [pat, value] } else { [pat, value, ann] },
   FnStmt(_name, _params, _ret, _effs, body) => [body],
   ExprStmt(e) => [e],
   HandlerDeclStmt(_hname, _ename, _config, states, arms, _effs) => map(record_field_handle, states) ++ map(arm_body_handle, arms),
   HandlerChainStmt(_, chain) => [chain],
-  TypeDefStmt(_, variants) => // A type's variants and an effect's ops are its parts: each is a node the
+  // A type's variants and an effect's ops are its parts: each is a node the
   // parse minted, its parent the declaration that holds it, so an op reaches
   // its effect and a variant its type by the edge, never by a name.
-  map(variant_node, variants),
+  TypeDefStmt(_, variants) => map(variant_node, variants),
   EffectDeclStmt(_, _, ops) => map(op_node, ops),
   ImportStmt(_) => [],
   RefineStmt(_, _, _) => [],
@@ -2101,10 +2101,21 @@ fn row_of_child(acc, c) = match acc {
 fn body_child_handles(body) = match body {
   NExpr(e) => expr_child_handles(e),
   NStmt(s) => stmt_child_handles(s),
-  NPat(_) => [],
+  NPat(p) => pat_child_handles(p),
   NHole(_) => [],
   NModule(_) => [],
   NTypeAnn(_) => [],
+}
+
+// A pattern's sub-patterns, each a node of its own.
+fn pat_child_handles(p) = match p {
+  PCon(_, ps) => ps,
+  PTuple(ps) => ps,
+  PList(ps, _) => ps,
+  PRecord(fields, _) => map({ (_, f) => f }, fields),
+  PAlt(ps) => ps,
+  PAs(_, inner) => [inner],
+  PVar(_) | PWild | PLit(_) => [],
 }
 
 // ── THE FANOUT REACH — one rule, asked one name at a time ────────────
@@ -2277,12 +2288,15 @@ fn destructure_subs(arms, n) = if n < 2 {
   None
 } else {
   match arms {
-    [(PTuple(subs), _)] => if len(subs) == n && all(pat_binds_only, subs) { Some(subs) } else { None },
-    _ => None,
+    [(pat, _)] => match pat_of(pat) {
+      PTuple(subs) => if len(subs) == n && all(pat_binds_only, subs) { Some(subs) } else { None },
+      PVar(_) | PWild | PLit(_) | PCon(_, _) | PList(_, _) | PRecord(_, _) | PAlt(_) | PAs(_, _) => None,
+    },
+    [] | [_, _, ..._] => None,
   }
 }
 
-fn pat_binds_only(p) = match p {
+fn pat_binds_only(h) = match pat_of(h) {
   PVar(_) => true,
   PWild => true,
   PLit(_) => false,
@@ -2575,9 +2589,9 @@ fn record_row_full(fields, v) = match graph_chase(v) {
     NBound(t) => match t {
       TRecordOpen(more, next) => record_row_full(fields ++ more, next),
       TRecord(more) => (fields ++ more, RowEndClosed),
-      _ => // A row cell bound to any other type is ill-sorted; its rest is not
+      // A row cell bound to any other type is ill-sorted; its rest is not
       // known, and a reader that needs it floors.
-      (fields, RowEndFree(graph_chase_handle(v))),
+      _ => (fields, RowEndFree(graph_chase_handle(v))),
     },
     NFree(_) => (fields, RowEndFree(graph_chase_handle(v))),
     NRowFree(_) => (fields, RowEndFree(graph_chase_handle(v))),
@@ -2605,15 +2619,15 @@ fn spec_subst_pairs(t, pairs) = match t {
       NBound(t2) => spec_subst_pairs(t2, pairs),
       NFree(_) => spec_pair_or_var(u, pairs),
       NErrorHole(_) => spec_pair_or_var(u, pairs),
-      NRowBound(_) => // an EFFECT row — not in the pair space, which keys value shapes
-      t,
-      NRecordRowBound(_, _) => // A RECORD row var is a quantified var like any other, and the site that
+      // an EFFECT row — not in the pair space, which keys value shapes
+      NRowBound(_) => t,
+      // A RECORD row var is a quantified var like any other, and the site that
       // closed it proved the whole field set. Returning it verbatim left the
       // substitution unable to answer for the one var whose binding decides
       // every field offset — and an INTERIOR site, a call inside another
       // twin's own body, read the decl's unlearned row again. A bound cell is
       // a link in a chain, so it answers as the record the chain spells.
-      spec_subst_pairs(TRecordOpen([], u), pairs),
+      NRecordRowBound(_, _) => spec_subst_pairs(TRecordOpen([], u), pairs),
       NRowFree(_) => spec_pair_or_var(u, pairs),
     },
   },
@@ -2626,7 +2640,7 @@ fn spec_subst_pairs(t, pairs) = match t {
   ),
   TName(n, args) => TName(n, map((x) => spec_subst_pairs(x, pairs), args)),
   TRecord(fs) => TRecord(map({ (n, ft) => (n, spec_subst_pairs(ft, pairs)) }, fs)),
-  TRecordOpen(fs, v) => // A row var is a var, and its pair is the RESIDUAL the site proved past
+  // A row var is a var, and its pair is the RESIDUAL the site proved past
   // it. The row is read to its END first: a key sits on the chain's free
   // terminal, never on a link, so a receiver whose row learned fields
   // across several unifies answers as the one record every link spells —
@@ -2636,15 +2650,15 @@ fn spec_subst_pairs(t, pairs) = match t {
   // fields, its pattern's rest binder past them), and each spells its own
   // record from its own start. Unpaired, the row stays open at its
   // terminal; closed, it is the record.
-  match record_row_full(fs, v) {
+  TRecordOpen(fs, v) => match record_row_full(fs, v) {
     (all, end) => {
       let learned = map({ (n, ft) => (n, spec_subst_pairs(ft, pairs)) }, all)
       match end {
         RowEndFree(t) => match spec_pairs_find(pairs, t) {
           Some(residual) => match residual {
             TRecord(rfs) => TRecord(field_canonicalize(learned ++ rfs)),
-            other => // only lower.mn's spec_pairs_key_rest pairs a row terminal, always as a closed record
-            other,
+            // only lower.mn's spec_pairs_key_rest pairs a row terminal, always as a closed record
+            other => other,
           },
           None => mk_record_open(learned, t),
         },
@@ -2685,13 +2699,13 @@ handler lookup_ty_graph with spec_pairs = [], spec_enc = "" {
         NErrorHole(_) => resume(spec_pair_or_var(h, spec_pairs)),
         NRowBound(_) => resume(TUnit),
         NRecordRowBound(_, _) => resume(TUnit),
-        NRowFree(_) => // A free RECORD row the site paired answers with the residual the site
+        // A free RECORD row the site paired answers with the residual the site
         // proved past it, as a type variable answers its pair — its reader
         // spells the chain's learned fields before it; an effect row is never
         // in the pair space and keeps the unit it always read. Answering unit
         // for the paired row too left every open record a twin had closed
         // still open to lower.mn's spec_resolve, which reads a row's end through this op.
-        resume(match spec_pairs_find(spec_pairs, graph_chase_handle(h)) {
+        NRowFree(_) => resume(match spec_pairs_find(spec_pairs, graph_chase_handle(h)) {
           Some(c) => c,
           None => TUnit,
         }),
@@ -2699,7 +2713,7 @@ handler lookup_ty_graph with spec_pairs = [], spec_enc = "" {
     } else {
       match kind {
         NBound(t) => resume(t),
-        NErrorHole(_) => // An error hole / free var resumes TVar(h) — CARRY THE HANDLE. The
+        // An error hole / free var resumes TVar(h) — CARRY THE HANDLE. The
         // prior TName("ERROR_HOLE")/TName("UNRESOLVED") sentinels fabricated
         // a NOMINAL type for a node the graph proves is unresolved: every
         // downstream type-directed read then trusted the lie — the eq
@@ -2712,8 +2726,8 @@ handler lookup_ty_graph with spec_pairs = [], spec_enc = "" {
         // by the same floor; the type-directed eq for a generic operand at
         // its instantiated width is the evidence-passing band —
         // Hβ.emit.generic-boundary-repr-coercion.)
-        resume(TVar(h)),
-        NFree(_) => // A free var read at lower is NOT an error — it is a legal quantified
+        NErrorHole(_) => resume(TVar(h)),
+        // A free var read at lower is NOT an error — it is a legal quantified
         // parameter of a reachable generic declaration (generalize's Forall is
         // the graph's own proof; `fn ident(x) = x` called from main carries
         // one), and repr_of floors it to the honest word by design. The per-read
@@ -2723,7 +2737,7 @@ handler lookup_ty_graph with spec_pairs = [], spec_enc = "" {
         // at emit's loud comment-marked floors (field-offset-unprovable, the
         // ft mismatch), at the site that actually needs the width — the
         // consumer owns the refusal, never the read.
-        resume(TVar(h)),
+        NFree(_) => resume(TVar(h)),
         NRowBound(_) => resume(TUnit),
         NRecordRowBound(_, _) => resume(TUnit),
         NRowFree(_) => resume(TUnit),

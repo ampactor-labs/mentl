@@ -605,10 +605,10 @@ fn resolve_edge_compress(acc, e) = match acc {
         graph_compress_row(edge_cell(e), ri)
         edge_content_into(p, am, res, saw_all, edge_mask(e), ri)
       },
-      k => // A fn-typed edge FOLDS its row but is NEVER compressed: the cell's
+      // A fn-typed edge FOLDS its row but is NEVER compressed: the cell's
       // binding IS the function type, and a compress write here would
       // overwrite the TFun with a row (the cell serves the type reads too).
-      match edge_row_of(k) {
+      k => match edge_row_of(k) {
         Some(inner) => edge_content_into(p, am, res, saw_all, edge_mask(e), resolve_row_compress(inner)),
         None => (p, am, tail_set_insert(res, e), saw_all, progressed),
       },
@@ -738,9 +738,9 @@ fn frag_arg_same(x, y) = match x {
     _ => false,
   },
   EAEffect(hx) => match y {
-    EAEffect(hy) => // The registration fold's constants: one interned identity each, so
+    // The registration fold's constants: one interned identity each, so
     // sameness is the word compare (eff_arg_scalar_unequal's dual).
-    hx == hy,
+    EAEffect(hy) => hx == hy,
     _ => false,
   },
   EACon(hx) => match y {
@@ -930,14 +930,14 @@ fn row_keep_completion(row, ceiling: Int, sig_keep: [Int]) = if ceiling == 0 {
 fn edges_keep_completion(ref vs: [RowEdge], ceiling: Int, sig_keep: [Int]) = match vs {
   [] => [],
   [e, ...rest] => match graph_chase(edge_cell(e)) {
-    GNode(kind, _) => // "A bound edge is a content link — KEPT (reads fold it)" holds for
+    // "A bound edge is a content link — KEPT (reads fold it)" holds for
     // BOTH row-bearing bindings (edge_row_of, the one projection): a row
     // cell, and a cell bound to a FUNCTION type — the caller's freshened
     // HOF param, bound by the argument, whose row the finalize fold now
     // reads. The NRowBound-only keep dropped the fn-typed link as an
     // above-ceiling transient, and the callee's effects died with it
     // (the under-publish peer's layer two).
-    match edge_row_of(kind) {
+    GNode(kind, _) => match edge_row_of(kind) {
       Some(_) => [e] ++ edges_keep_completion(rest, ceiling, sig_keep),
       None => {
         let r = graph_chase_handle(edge_cell(e))
@@ -984,7 +984,7 @@ fn row_subsumes(ref body_row, ref gate_row) = {
   match b {
     EfRow(pb, ab, tb) => match g {
       EfRow(pg, ag, tg) => match tg {
-        EtAll => // The `!B` gate: nothing present may touch the forbidden set. A
+        // The `!B` gate: nothing present may touch the forbidden set. A
         // closed or free-tailed body passes on disjointness alone.
         //
         // THE FREE TAIL IS ADMITTED HERE AND NOTHING CLOSES IT LATER. This
@@ -1001,7 +1001,7 @@ fn row_subsumes(ref body_row, ref gate_row) = {
         // design. This read stays a read.
         //
         // An EtAll body must carry at least the gate's mask: ¬A ⊆ ¬B iff B ⊆ A.
-        if forbidden_names_disjoint(pb, ag) {
+        EtAll => if forbidden_names_disjoint(pb, ag) {
           match tb {
             EtClosed => true,
             EtOpen(_) => true,
@@ -1010,12 +1010,12 @@ fn row_subsumes(ref body_row, ref gate_row) = {
         } else {
           false
         },
-        EtClosed => // The closed gate's absent set is the declared `!B` proof: nothing
+        // The closed gate's absent set is the declared `!B` proof: nothing
         // present may touch it, transitively through every subsumption.
         // Present membership is the ADMISSION read (eff_admits — the
         // instance law's positive side), not bare structural equality: a
         // bare declared name admits every instance of its name.
-        if forbidden_names_disjoint(pb, ag) {
+        EtClosed => if forbidden_names_disjoint(pb, ag) {
           match tb {
             EtClosed => present_admitted(pb, pg),
             EtOpen(_) => present_admitted(pb, pg),
@@ -1323,7 +1323,7 @@ fn unify_row_canonical(ref a, ref b, ref span, ref reason) = match a {
     EfRow(pb, ab, tb) => match ta {
       EtClosed => match tb {
         EtClosed => if name_set_eq(pa, pb) { () } else { report_effect_mismatch(a, b, span, reason) },
-        EtOpen(wbs) => // Closed(A) ~ (B + edges∖ab): the residual (A ∖ B) binds EVERY
+        // Closed(A) ~ (B + edges∖ab): the residual (A ∖ B) binds EVERY
         // edge (A2's judged form) — the equation demands each edge's
         // contribution fit within the residual and the union read
         // exactly A; binding each to the residual-closed row is the
@@ -1332,12 +1332,12 @@ fn unify_row_canonical(ref a, ref b, ref span, ref reason) = match a {
         // solution verbatim). A name A demands that B does not perform
         // must pass SOME edge's mask; one every path subtracts is a
         // genuine mismatch.
-        if names_deliverable(name_set_diff(pa, pb), wbs) {
+        EtOpen(wbs) => if names_deliverable(name_set_diff(pa, pb), wbs) {
           bind_edges_to(wbs, ef_make(name_set_diff(pa, pb), [], EtClosed), span, reason)
         } else {
           report_effect_mismatch(a, b, span, reason)
         },
-        EtAll => // Closed ~ ¬B: the negation row is a GATE by construction (§4③ —
+        // Closed ~ ¬B: the negation row is a GATE by construction (§4③ —
         // "the negation is the GATE"), so the meet is SUBSUMPTION, not
         // equality: a concrete row satisfying the mask passes with NO
         // bind — each side keeps its own row (the context reads its
@@ -1348,7 +1348,7 @@ fn unify_row_canonical(ref a, ref b, ref span, ref reason) = match a {
         // ¬-rowed VALUE flowing into a closed context) stays refused by
         // the reverse arm below; the fully direction-aware call edge is
         // the named residual Hβ.effects.directional-fn-row-edge.
-        if row_subsumes(a, b) { () } else { report_effect_mismatch(a, b, span, reason) },
+        EtAll => if row_subsumes(a, b) { () } else { report_effect_mismatch(a, b, span, reason) },
       },
       EtOpen(was) => match tb {
         EtClosed => if names_deliverable(name_set_diff(pb, pa), was) {
@@ -1356,7 +1356,7 @@ fn unify_row_canonical(ref a, ref b, ref span, ref reason) = match a {
         } else {
           report_effect_mismatch(a, b, span, reason)
         },
-        EtOpen(wbs) => // Identical edge sets are ONE tail (structural == over the
+        // Identical edge sets are ONE tail (structural == over the
         // canonical sorted sets — singletons reduce to the old handle
         // compare). Otherwise every edge PRIVATE to a binds the
         // residual whose tail keeps b's WHOLE edge set: shared edges
@@ -1368,7 +1368,7 @@ fn unify_row_canonical(ref a, ref b, ref span, ref reason) = match a {
         // one-way teach — D5's decl→site direction — as today). The
         // residual keeps each of b's edges WITH its mask: what b's paths
         // subtract, the a-private cells inherit as b's reading.
-        if edges_same_cells(was, wbs) {
+        EtOpen(wbs) => if edges_same_cells(was, wbs) {
           if name_set_eq(pa, pb) { () } else { report_effect_mismatch(a, b, span, reason) }
         } else {
           let only_a = tail_set_diff(was, wbs)
@@ -1378,10 +1378,10 @@ fn unify_row_canonical(ref a, ref b, ref span, ref reason) = match a {
             bind_edges_to(only_a, ef_make(name_set_diff(pb, pa), [], EtOpen(wbs)), span, reason)
           }
         },
-        EtAll => // Open ~ !B: the SOUND modal closure — every edge carries the
+        // Open ~ !B: the SOUND modal closure — every edge carries the
         // negative capability forward, less what its own path absorbs;
         // the knowns must avoid B.
-        if forbidden_names_disjoint(pa, ab) {
+        EtAll => if forbidden_names_disjoint(pa, ab) {
           bind_edges_neg(was, ab, span, reason)
         } else {
           report_effect_mismatch(a, b, span, reason)
@@ -1398,9 +1398,9 @@ fn unify_row_canonical(ref a, ref b, ref span, ref reason) = match a {
         } else {
           report_effect_mismatch(a, b, span, reason)
         },
-        EtClosed => // ¬A ~ Closed: the mirror of the gate meet above — the closed
+        // ¬A ~ Closed: the mirror of the gate meet above — the closed
         // side satisfying the mask passes with no bind.
-        if row_subsumes(b, a) { () } else { report_effect_mismatch(a, b, span, reason) },
+        EtClosed => if row_subsumes(b, a) { () } else { report_effect_mismatch(a, b, span, reason) },
       },
     },
   },
@@ -1547,13 +1547,13 @@ fn eff_arg_scalar_unequal(fa, pa) with Pure = match fa {
   },
   EAType(_) => false,
   EANode(_) => false,
-  EAEffect(x) => // The registration fold's constants (types.mn EffArg): an effect name
+  // The registration fold's constants (types.mn EffArg): an effect name
   // and a nullary ctor are GLOBAL identities — one namespace each, the
   // intern handle the word — so handle inequality IS value inequality,
   // unconditionally (two distinct constructors are distinct values
   // whatever their types; ill-typed positions are instance typing's
   // refusal, never a distinctness claim).
-  match pa {
+  EAEffect(x) => match pa {
     EAEffect(y) => x != y,
     _ => false,
   },

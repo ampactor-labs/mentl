@@ -941,18 +941,18 @@ fn need_of(f, o) = match o {
 // main before this returned the subsumption).
 fn apply_annotation_tentatively(handle, ann, base_ty) = match ann {
   APure(sp) => narrow_row_proven(handle, base_ty, mk_ef_pure(), sp),
-  ANotEffect(name, sp) => // The general severance: the negation-narrowing proof for ANY name
+  // The general severance: the negation-narrowing proof for ANY name
   // the link performs. The name is user-facing vocabulary at the one
   // mint; identity is the intern handle from here on (EffName-is-a-
   // handle LANDED — comparisons are word i32.eq by type).
-  narrow_row_proven(handle, base_ty, mk_ef_neg([ENamed(intern_str(name))]), sp),
-  ARefined(_) => // A refinement is proven in its own bracket against the obligations it
+  ANotEffect(name, sp) => narrow_row_proven(handle, base_ty, mk_ef_neg([ENamed(intern_str(name))]), sp),
+  // A refinement is proven in its own bracket against the obligations it
   // discharges (`prove_precondition`, `prove_return`); it narrows no row,
   // and a narrowing of its own would prove nothing it claims. Until D4 this
   // arm performed `verify` on a predicate no candidate ever supplied and
   // answered true, and the ownership arms answered true with no proof at
   // all — the reason ownership could never be offered under a ranking.
-  false,
+  ARefined(_) => false,
   AReturns(_) => false,
 }
 
@@ -983,10 +983,10 @@ fn unwrap_source_span(opt) = match opt {
 // obligations it discharges, counted where it was proven.
 fn capabilities_for_annotation(ann) = match ann {
   APure(_) => [CPure],
-  ANotEffect(name, _) => // the known names keep their rich labels (capabilities_for_severance's
+  // the known names keep their rich labels (capabilities_for_severance's
   // own mapping); an unmapped name unlocks its proven absence itself, the
   // crown's vocabulary as the capability.
-  match capabilities_for_severance(ENamed(intern_str(name))) {
+  ANotEffect(name, _) => match capabilities_for_severance(ENamed(intern_str(name))) {
     [] => [CProvenAbsence(name)],
     known => known,
   },
@@ -1009,8 +1009,8 @@ fn capabilities_for_severance(name) = match name {
     []
   },
   EParameterized(_, _) => [],
-  EPure => // the identity severs no capability
-  [],
+  // the identity severs no capability
+  EPure => [],
 }
 
 fn narrow_row(handle, base_ty, narrow, source_span) = match base_ty {
@@ -1087,8 +1087,8 @@ fn extract_row(ty) with Pure = match ty {
   TRecord(_) => mk_ef_pure(),
   TRecordOpen(_, _) => mk_ef_pure(),
   TRefined(_, _) => mk_ef_pure(),
-  TCont(_, _, _, world) => // resuming a continuation performs its frozen world (the TFun analog: extract_row(TFun) => row)
-  world,
+  // resuming a continuation performs its frozen world (the TFun analog: extract_row(TFun) => row)
+  TCont(_, _, _, world) => world,
   TAlias(_, inner) => extract_row(inner),
   TReprPin(_, base) => extract_row(base),
 }

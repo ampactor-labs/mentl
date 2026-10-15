@@ -244,11 +244,11 @@ fn driver_collect_resolved(module_name, resolved, importer, collected, visited) 
   } else {
     let visited2 = set_insert(visited, key)
     match resolved {
-      None => // No file: a terminal with no source and no deps, its path the places
+      // No file: a terminal with no source and no deps, its path the places
       // the resolver looked for the module that asked — E_MissingModule names
       // them where the entry is checked. Its layer is its importer's: the
       // world it would have joined.
-      match collected {
+      None => match collected {
         (buf, count) => {
           let extended = list_extend_to(buf, count + 1)
           let searched = join(", ", candidate_paths(module_candidates(module_name, import_roots(importer))))

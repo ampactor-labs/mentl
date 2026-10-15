@@ -184,8 +184,8 @@ fn show_token_kind(k) with Pure = match k {
   TResume => "resume",
   TImport => "import",
   TWhere => "where",
-  TOwn => // drift-audit: ignore — human-facing token-display rendering, not effect keying; tracked by Hβ.perf.name-is-handle; token-rendering normalization
-  "own",
+  // drift-audit: ignore — human-facing token-display rendering, not effect keying; tracked by Hβ.perf.name-is-handle; token-rendering normalization
+  TOwn => "own",
   TRef => "ref",
   TPure => "Pure",
   TTrue => "true",
@@ -196,8 +196,8 @@ fn show_token_kind(k) with Pure = match k {
   TComment(_) => "<comment>",
   TStringPart(_) => "<string-part>",
   TStringSplice => "<string-splice>",
-  TEqEq => // drift-audit: ignore — TokenKind→display-text rendering for diagnostics; not runtime comparison; tracked by Hβ.perf.name-is-handle; token-rendering normalization
-  "==",
+  // drift-audit: ignore — TokenKind→display-text rendering for diagnostics; not runtime comparison; tracked by Hβ.perf.name-is-handle; token-rendering normalization
+  TEqEq => "==",
   TBangEq => "!=",
   TLtEq => "<=",
   TGtEq => ">=",
@@ -268,8 +268,8 @@ fn expect(ref tokens, pos, kind) = if at(tokens, pos, kind) {
 // has already verified the variant and just needs the payload.
 fn ident_at(ref tokens, pos) = match kind_at(tokens, pos) {
   TIdent(s) => s,
-  _ => // drift-audit: ignore — "" = non-ident payload null (parent already verified the variant; surfaces downstream, SYNTAX §414)
-  "",
+  // drift-audit: ignore — "" = non-ident payload null (parent already verified the variant; surfaces downstream, SYNTAX §414)
+  _ => "",
 }
 
 // Operator precedence — THE canonical table, per SYNTAX.md §Precedence.
@@ -302,8 +302,8 @@ fn op_prec(k) with Pure = match k {
   TStar => 10,
   TSlash => 10,
   TPercent => 10,
-  _ => // drift-audit: ignore — prec 0 IS "not a binary operator"; the ladder's terminator, not a fabricated default
-  0,
+  // drift-audit: ignore — prec 0 IS "not a binary operator"; the ladder's terminator, not a fabricated default
+  _ => 0,
 }
 
 // Pipe-verb token → PipeKind. One token, one kind — `~>` is PTee
@@ -311,13 +311,13 @@ fn op_prec(k) with Pure = match k {
 fn op_to_pipe_kind(k) = match k {
   TTildeGt => Some(PTee),
   TPipeGt => Some(PForward),
-  TLtPipe => // `<|` and `><` are ONE PFanout topology; the glyph authors the
+  // `<|` and `><` are ONE PFanout topology; the glyph authors the
   // ownership aspect (FanShare = one ref-borrowed input; FanDistribute
   // = N owned inputs). The surface keeps both glyphs; ownership CHECKS
   // coherence (own through `<|` → E_OwnershipViolation; the cursor
   // projects the glyph from the inferred ownership at fmt). The verb
   // contributes ZERO execution facts — schedule is a `~>` handler.
-  Some(PFanout(FanShare)),
+  TLtPipe => Some(PFanout(FanShare)),
   TGtLt => Some(PFanout(FanDistribute)),
   TLtTilde => Some(PFeedback),
   _ => None,
@@ -656,13 +656,13 @@ type StmtScope = AtModule | AtBlock
 // and lost its address to its own predicate — and FnStmt was right only
 // because someone remembered span_join. Remembering is what this deletes.
 fn parse_stmt(ref tokens, pos, scope) = match kind_at(tokens, pos) {
-  TComment(first_line) => // A comment is graph content (SYNTAX.md Comments): collect the contiguous
+  // A comment is graph content (SYNTAX.md Comments): collect the contiguous
   // // run, parse the following declaration, and attach the joined prose to
   // that decl's handle in the comment weave (graph_attach_comment) — the Why
   // engine / formatter / cursor project it live. No wrapper node: the comment
   // edge holds the prose, the decl node is returned directly. With no following
   // decl (EOF), the run attaches to a unit carrier — never discarded.
-  {
+  TComment(first_line) => {
     let comment_span = span_at(tokens, pos)
     match collect_comment(tokens, pos + 1, first_line) {
       (full_text, p) => {
@@ -695,9 +695,7 @@ fn parse_stmt(ref tokens, pos, scope) = match kind_at(tokens, pos) {
 // the declaration that follows, never a statement form of its own.
 fn parse_stmt_form(ref tokens, pos, scope) = match kind_at(tokens, pos) {
   TFn => parse_fn(tokens, pos + 1),
-  TLet => match parse_let(tokens, pos + 1) {
-    (stmt, p) => (let_at_scope(stmt, scope), p),
-  },
+  TLet => parse_let(tokens, pos + 1, scope),
   TType => parse_type_decl(tokens, pos + 1),
   TEffect => parse_effect_decl(tokens, pos + 1),
   THandler => parse_handler_decl(tokens, pos + 1),
@@ -803,8 +801,8 @@ fn ident_or_kw_at(ref tokens, p) = match kind_at(tokens, p) {
   TIdent(s) => s,
   TOwn => "own",
   TRef => "ref",
-  _ => // drift-audit: ignore — "" = not an ident-shaped token (seed-canonical null; surfaces downstream, not a masked ADT)
-  "",
+  // drift-audit: ignore — "" = not an ident-shaped token (seed-canonical null; surfaces downstream, not a masked ADT)
+  _ => "",
 }
 
 // Does a real param start at p? TIdent → yes. A pattern opener
@@ -1063,23 +1061,23 @@ fn parse_eff_args_tail(ref tokens, pos, own buf, count) = {
 }
 
 fn parse_one_eff_arg(ref tokens, pos) = match kind_at(tokens, pos) {
-  TIntLit(n) => // Scalar literals are the CONSTANT-FOLDED PROJECTION of the operand node —
+  // Scalar literals are the CONSTANT-FOLDED PROJECTION of the operand node —
   // the literal the AST already holds, folded for value-distinct row equality.
-  (EAInt(n), pos + 1),
+  TIntLit(n) => (EAInt(n), pos + 1),
   TFloatLit(f) => (EAFloat(f), pos + 1),
   TStringPart(s) => (EAString(s), pos + 1),
-  TIdent(name) => // A non-literal argument (`Clock(monotonic)`, `Sample(rate)`) is an operand
+  // A non-literal argument (`Clock(monotonic)`, `Sample(rate)`) is an operand
   // Node — minted into the one graph as a VarRef and carried by HANDLE
   // (EANode), resolved live via graph_node_body (the PExpr-dissolution
   // precedent). The old EEffArgNotLiteral surrender is DELETED: a parameterized
   // effect over a bound name is first-class, not an error.
-  {
+  TIdent(name) => {
     let sp = span_at(tokens, pos)
     (EANode(nexpr(VarRef(name), sp)), pos + 1)
   },
-  TLParen => // A compound type is a TYPE argument (`Cast(() -> a with e)`, `Box([Int])`):
+  // A compound type is a TYPE argument (`Cast(() -> a with e)`, `Box([Int])`):
   // no value spells with these openers at an argument's head.
-  type_eff_arg(tokens, pos),
+  TLParen => type_eff_arg(tokens, pos),
   TLBracket => type_eff_arg(tokens, pos),
   TLBrace => type_eff_arg(tokens, pos),
   _ => {
@@ -1092,43 +1090,67 @@ fn type_eff_arg(tokens, pos) = match parse_type_ty(tokens, pos) {
   (ty, p) => (EAType(ty), p),
 }
 
-// Parse `let pat [: ty] = expr`.
-fn parse_let(ref tokens, pos) = {
-  let start = span_at(tokens, pos)
-  match parse_pat(tokens, pos) {
-    (pat, p) => {
-      let p2 = skip_ws(tokens, p)
-      // Capture the `: T` annotation LIVE (mirrors FnStmt's ret_ann, parse_type_expr):
-      // present = NTypeAnn(ty) minted into the graph, so infer reads the declared
-      // type back and discharges its refinement against the value node; absent = a
-      // LitUnit dummy the infer arm skips. The old form parsed the type and DISCARDED
-      // it (`let (_, p_ty) = ...`), so every `let x: T = e` lost its constraint.
-      match if at(tokens, p2, TColon) {
-        match parse_type_expr(tokens, skip_ws(tokens, p2 + 1)) {
-          (a, pt) => (Some(a), pt),
-        }
-      } else {
-        (None, p2)
-      } {
-        (ann_opt, p3) => {
-          let p4 = expect(tokens, skip_ws(tokens, p3), TEq)
-          match parse_expr(tokens, skip_ws(tokens, p4)) {
-            (val, p5) => {
-              // Absent annotation REUSES the value node as the sentinel — no fresh mint,
-              // so the handle counter is unshifted and the emit stays byte-identical for
-              // every unannotated let (infer's NTypeAnn arm skips a non-annotation node).
-              // Only a PRESENT annotation adds its NTypeAnn node.
-              let ann_node = match ann_opt {
-                Some(a) => a,
-                None => val,
-              }
-              (LetStmt(pat, val, ann_node), p5)
-            },
-          }
-        },
+// Parse `let pat [: ty] = expr`. A head that is one name stays that name until
+// the scope says what the statement is (`let_at_scope`).
+fn parse_let(ref tokens, pos, scope) = match parse_let_head(tokens, pos) {
+  (head, p) => {
+    let p2 = skip_ws(tokens, p)
+    // Capture the `: T` annotation LIVE (mirrors FnStmt's ret_ann, parse_type_expr):
+    // present = NTypeAnn(ty) minted into the graph, so infer reads the declared
+    // type back and discharges its refinement against the value node; absent = a
+    // LitUnit dummy the infer arm skips. The old form parsed the type and DISCARDED
+    // it (`let (_, p_ty) = ...`), so every `let x: T = e` lost its constraint.
+    match if at(tokens, p2, TColon) {
+      match parse_type_expr(tokens, skip_ws(tokens, p2 + 1)) {
+        (a, pt) => (Some(a), pt),
       }
-    },
+    } else {
+      (None, p2)
+    } {
+      (ann_opt, p3) => {
+        let p4 = expect(tokens, skip_ws(tokens, p3), TEq)
+        match parse_expr(tokens, skip_ws(tokens, p4)) {
+          (val, p5) => {
+            // Absent annotation REUSES the value node as the sentinel — no fresh mint,
+            // so the handle counter is unshifted and the emit stays byte-identical for
+            // every unannotated let (infer's NTypeAnn arm skips a non-annotation node).
+            // Only a PRESENT annotation adds its NTypeAnn node.
+            let ann_node = match ann_opt {
+              Some(a) => a,
+              None => val,
+            }
+            (let_at_scope(head, val, ann_node, scope), p5)
+          },
+        }
+      },
+    }
+  },
+}
+
+// A let's head: one lowercase name, or a pattern. The name is a pattern node
+// only once the statement is a let — at module scope over a function literal
+// it is a declaration's name, and no pattern stands at it.
+type LetHead = LhName(String, ValidSpan) | LhPat(Node)
+
+fn parse_let_head(tokens, pos) = {
+  let v = ident_at(tokens, pos)
+  if byte_len(v) > 0 && v != "_" && !upper_initial(v) && !at(tokens, skip_ws(tokens, pos + 1), TAt) {
+    (LhName(v, span_at(tokens, pos)), pos + 1)
+  } else {
+    match parse_pat(tokens, pos) {
+      (pat, p) => (LhPat(pat), p),
+    }
   }
+}
+
+fn upper_initial(v: String) = {
+  let c = first_char_code(v)
+  c >= 65 && c <= 90
+}
+
+fn let_head_node(head) = match head {
+  LhName(v, span) => npat(PVar(v), span),
+  LhPat(pat) => pat,
 }
 
 // A MODULE-SCOPE `let name = <function literal>` IS the declaration `fn
@@ -1140,19 +1162,16 @@ fn parse_let(ref tokens, pos) = {
 // 1` checked clean and did not assemble). A block-scope `let` stays a
 // closure VALUE, since it may capture what its block bound, and an
 // annotated let keeps its annotation's constraint as a value.
-fn let_at_scope(stmt, scope) = match scope {
-  AtBlock => stmt,
-  AtModule => match stmt {
-    LetStmt(PVar(name), val, ann) => if ann == val {
-      match graph_node_body(val) {
-        NExpr(LambdaExpr(params, body)) => FnStmt(name, params, mint_absent(graph_span_of(val)), [], body),
-        _ => stmt,
-      }
-    } else {
-      stmt
-    },
-    _ => stmt,
+fn let_at_scope(head, val, ann, scope) = match (scope, head) {
+  (AtModule, LhName(name, _)) => if ann == val {
+    match graph_node_body(val) {
+      NExpr(LambdaExpr(params, body)) => FnStmt(name, params, mint_absent(graph_span_of(val)), [], body),
+      _ => LetStmt(let_head_node(head), val, ann),
+    }
+  } else {
+    LetStmt(let_head_node(head), val, ann)
   },
+  (AtModule, LhPat(_)) | (AtBlock, _) => LetStmt(let_head_node(head), val, ann),
 }
 
 // Parse `type X = V1 | V2(fields) | ...` or `type X = T where P`.
@@ -1485,7 +1504,7 @@ fn parse_handler_arms_decl(tokens, name, p_after_name) = match if at(tokens, p_a
 } else {
   ([], p_after_name)
 } {
-  (config, p_after_config) => // Optional `with` clause, disambiguated by position (SYNTAX §«With-
+  // Optional `with` clause, disambiguated by position (SYNTAX §«With-
   // clauses»: one keyword, read as "carries"):
   //   with !E / with E [+ E]  — the handler's own effect row, the same
   //                             signed triples a fn signature carries
@@ -1495,7 +1514,7 @@ fn parse_handler_arms_decl(tokens, name, p_after_name) = match if at(tokens, p_a
   // with !F` bound nothing and the crown accepted a handler resuming into
   // the effect it negated; the row rides the node now and infer enforces
   // it on the arms and on every install's remainder.
-  match if at(tokens, skip_ws(tokens, p_after_config), TWith) {
+  (config, p_after_config) => match if at(tokens, skip_ws(tokens, p_after_config), TWith) {
     let p_w = skip_ws(tokens, p_after_config)
     let p_with = skip_ws(tokens, p_w + 1)
     if at(tokens, p_with, TBang) || at(tokens, p_with, TLParen) || is_param_name_tok(tokens, p_with) && !at(tokens, skip_ws(tokens, p_with + 1), TEq) {
@@ -1846,7 +1865,7 @@ fn parse_let_expr(ref tokens, pos, start_span) = match parse_pat(tokens, pos) {
         let let_stmt = nstmt(LetStmt(pat, val, val), upto(tokens, start_span, p5))
         let p6 = skip_sep(tokens, p5)
         match parse_expr(tokens, p6) {
-          (body, p7) => // THE CHAIN FLATTENS AT PARSE: a continuation that is itself a block
+          // THE CHAIN FLATTENS AT PARSE: a continuation that is itself a block
           // merges into ONE statement sequence, so the braceless let-chain and the
           // braced block parse to the SAME graph (principle 2 — one meaning, one
           // graph; the per-let nested BlockExpr was a second shape for the same
@@ -1854,7 +1873,7 @@ fn parse_let_expr(ref tokens, pos, start_span) = match parse_pat(tokens, pos) {
           // brace pyramid). Scoping is identical: a statement-list let scopes over
           // the rest of its block exactly as the nesting did, and a merged
           // explicit block was the final expression — nothing followed it.
-          match graph_node_body(body) {
+          (body, p7) => match graph_node_body(body) {
             NExpr(BlockExpr(stmts2, final2)) => (desugar_block([let_stmt] ++ stmts2, final2, upto(tokens, start_span, p7)), p7),
             _ => (desugar_block([let_stmt], body, upto(tokens, start_span, p7)), p7),
           },
@@ -1891,21 +1910,21 @@ fn binop_loop(ref tokens, left, first: ValidSpan, pos, min_prec, slot) = {
         let combined_span = upto(tokens, first, p2)
         let node = match op_to_pipe_kind(k) {
           Some(pk) => match pk {
-            PFanout(FanDistribute) => // The N-ary law (SYNTAX §><): a `><` chain's branches are
+            // The N-ary law (SYNTAX §><): a `><` chain's branches are
             // peers in ONE FanoutExpr, accreted by the left-assoc loop —
             // never nested pairs (the fold was the binary shape's
             // artifact, not the verb's semantics). An authored
             // tuple-valued branch stays a branch: only the chain
             // accretes, so `(1, 2) >< (3, 4)` is two branches of two.
-            match graph_node_body(left) {
+            PFanout(FanDistribute) => match graph_node_body(left) {
               NExpr(FanoutExpr(branches)) => nexpr(FanoutExpr(branches ++ [right]), combined_span),
               _ => nexpr(FanoutExpr([left, right]), combined_span),
             },
-            PFanout(FanShare) => // A `<|` over one stage is the pipe: the product of one it would
+            // A `<|` over one stage is the pipe: the product of one it would
             // answer is its field, so `x <| f` and `x |> f` are one graph and the
             // redundant spelling never survives the parse (SYNTAX §`<|`). Every
             // `<|` the graph holds fans into a tuple of stages (`share_stages`).
-            match graph_node_body(right) {
+            PFanout(FanShare) => match graph_node_body(right) {
               NExpr(MakeTupleExpr(_)) => nexpr(PipeExpr(pk, left, right), combined_span),
               _ => nexpr(PipeExpr(PForward, left, right), combined_span),
             },
@@ -1949,7 +1968,7 @@ fn postfix_loop(ref tokens, e, first: ValidSpan, pos, slot) = match kind_at(toke
   TLParen => match parse_call_args(tokens, skip_ws(tokens, pos + 1)) {
     (args, p2) => postfix_loop(tokens, nexpr(CallExpr(e, args), upto(tokens, first, p2)), first, p2, slot),
   },
-  TLBracket => // Subscript `xs[i]` per SYNTAX.md:611-632 + #139. The parser
+  // Subscript `xs[i]` per SYNTAX.md:611-632 + #139. The parser
   // produces IndexExpr(receiver, index) as a semantic AST node;
   // infer dispatches on the receiver's chase-deep Ty:
   //   T[A] → list_index runtime call
@@ -1960,7 +1979,7 @@ fn postfix_loop(ref tokens, e, first: ValidSpan, pos, slot) = match kind_at(toke
   // shape — drift mode 9. Refinements on the index elide the
   // runtime bounds check via gradient ascent (peer Hβ.emit.refinement-
   // elide-bounds).
-  match parse_expr(tokens, skip_ws(tokens, pos + 1)) {
+  TLBracket => match parse_expr(tokens, skip_ws(tokens, pos + 1)) {
     (idx_expr, p2) => {
       let p3 = expect(tokens, skip_ws(tokens, p2), TRBracket)
       postfix_loop(tokens, nexpr(IndexExpr(e, idx_expr), upto(tokens, first, p3)), first, p3, slot)
@@ -1982,14 +2001,14 @@ fn postfix_loop(ref tokens, e, first: ValidSpan, pos, slot) = match kind_at(toke
     }
     postfix_loop(tokens, nexpr(FieldExpr(e, field), upto(tokens, first, pos + 2)), first, pos + 2, slot)
   },
-  TLBrace => // H2.3 nominal record literal: `Person{name: "Morgan", ...}`.
+  // H2.3 nominal record literal: `Person{name: "Morgan", ...}`.
   // Type names are capitalized; lowercase identifiers fall through
   // and the brace stays a separate construct. In a BraceHeader slot
   // the `{` is the FORM's own opener (SYNTAX §Nominal record types,
   // brace-header rule): `with found = None {`, `match acquired {`,
   // `if x == None {` — the continuation never fires there; a record
   // literal in a header parenthesizes.
-  {
+  TLBrace => {
     let is_named_record = match slot {
       BraceHeader => false,
       FreeExpr => match graph_node_body(e) {
@@ -2005,7 +2024,7 @@ fn postfix_loop(ref tokens, e, first: ValidSpan, pos, slot) = match kind_at(toke
       (e, pos)
     }
   },
-  _ => // No postfix suffix here. `<` is ALWAYS comparison (TLt) — angle-bracket
+  // No postfix suffix here. `<` is ALWAYS comparison (TLt) — angle-bracket
   // generics are retired everywhere (the case rule IS the declaration; types
   // apply with parens). The parser has ONE precedence table + productive-
   // under-error, so a stale `f<T>(args)` keystroke parses as the comparison
@@ -2013,7 +2032,7 @@ fn postfix_loop(ref tokens, e, first: ValidSpan, pos, slot) = match kind_at(toke
   // type-mismatch diagnostic teaches in context — NOT a Rust-specific
   // balanced-`<...>` lookahead. A bespoke recognizer per foreign syntax does
   // not scale (the owner's point); the general diagnostic path is the one home.
-  (e, pos),
+  _ => (e, pos),
 }
 
 // Parse the body of a nominal record literal — same shape as
@@ -2106,18 +2125,18 @@ fn parse_primary(ref tokens, pos, slot) = {
     TLBrace => parse_brace_expr(tokens, pos + 1, span),
     TIf => parse_if(tokens, pos + 1, span),
     TMatch => parse_match(tokens, pos + 1, span),
-    TOwn => // `own`/`ref` are contextual keywords (ownership prefixes in
+    // `own`/`ref` are contextual keywords (ownership prefixes in
     // param position only); in expression position they are idents
     // (`match own { }`, `= ref`). Seed
     // parity ($ident_at_p maps TOwn→"own"/TRef→"ref" — the seed parses
     // `match own {}` as a VarRef scrutinee, verified empirically).
-    (nexpr(VarRef("own"), span), pos + 1),
+    TOwn => (nexpr(VarRef("own"), span), pos + 1),
     TRef => (nexpr(VarRef("ref"), span), pos + 1),
-    THandler => // `handler` is a contextual keyword (handler declarations in
+    // `handler` is a contextual keyword (handler declarations in
     // parse_stmt); in expression position it is an ident
     // (`return handler`, `handler` as param name). Same treatment as
     // TOwn/TRef — seed $ident_at_p maps THandler→"handler".
-    (nexpr(VarRef("handler"), span), pos + 1),
+    THandler => (nexpr(VarRef("handler"), span), pos + 1),
     TResume => parse_resume(tokens, pos + 1, span),
     TPipe => {
       // SYNTAX.md:307-315 — E_LambdaFence: pipe-fenced params syntax is // drift-audit: ignore
@@ -2127,11 +2146,11 @@ fn parse_primary(ref tokens, pos, slot) = {
       report(ELambdaFence(span))
       parse_lambda(tokens, pos + 1, span)
     },
-    TFn => // SYNTAX.md §148-190 + §317-322: anonymous lambda via the fn-keyword // drift-audit: ignore
+    // SYNTAX.md §148-190 + §317-322: anonymous lambda via the fn-keyword // drift-audit: ignore
     // is REJECTED (E_RedundantFnOnLambda). The fn-keyword is reserved
     // on named declarations; anonymous lambdas use parenthesized params
     // + fat-arrow body. Parse continues; diagnostic surfaces Quick-Fix.
-    {
+    TFn => {
       report(ERedundantFnOnLambda(span))
       let p = skip_ws(tokens, pos + 1)
       let p2 = expect(tokens, p, TLParen)
@@ -2153,21 +2172,21 @@ fn parse_primary(ref tokens, pos, slot) = {
     TBang => match parse_postfix(tokens, pos + 1, slot) {
       (inner, p) => (nexpr(UnaryOpExpr(UNot, inner), upto(tokens, span, p)), p),
     },
-    TOrOr => // SYNTAX.md:324-329 — E_LambdaAsOrOr: the double-pipe at expression
+    // SYNTAX.md:324-329 — E_LambdaAsOrOr: the double-pipe at expression
     // start position is the logical-OR token (TOrOr), not a zero-arg
     // lambda. Canonical zero-arg lambda is `() => body`. Parse continues
     // as `() => <next-expr>` per the Quick-Fix.
-    {
+    TOrOr => {
       report(ELambdaAsOrOr(span))
       match parse_expr(tokens, pos + 1) {
         (body, p) => (nexpr(LambdaExpr([], body), upto(tokens, span, p)), p),
       }
     },
-    TTildeGt => // SYNTAX.md:1593 — E_OrphanHandlerAttach: the tee-arrow at expression
+    // SYNTAX.md:1593 — E_OrphanHandlerAttach: the tee-arrow at expression
     // start position has no preceding chain. Quick-Fix shape per spec:
     // delete the tee-arrow OR supply a body. Parser recovery: emit
     // diagnostic, return hole, advance past the tee-arrow token.
-    {
+    TTildeGt => {
       report(EOrphanHandlerAttach(span))
       (nhole(span), pos + 1)
     },
@@ -2201,8 +2220,8 @@ fn parse_primary(ref tokens, pos, slot) = {
 // wrong rather than a naming preference. `dp_prefix` says "this param
 // came from a PATTERN IN PARAM POSITION", which licenses the formatter's
 // one-arm destructure render (format.mn) — sound only because
-// `expr_to_pat` produced the pattern, and `expr_to_pat` answers PWild for
-// a literal and for a constructor call. `al_prefix` carries ARBITRARY arm
+// `cover_pat_body` produced the pattern, and it answers PWild for a
+// literal and for a constructor call. `al_prefix` carries ARBITRARY arm
 // patterns, so the same render would turn `{ 0 => 1 }` into `(0) => 1` —
 // a WILDCARD — with nothing anywhere to say it had. Distinct prefixes
 // make that unsayable; fmt's own second render is what would otherwise
@@ -2215,20 +2234,25 @@ fn fresh_param_marked(prefix: String, span: ValidSpan, marker) = {
   (nm, TParam(nm, TVar(h), marker, marker, None, guards_nothing()))
 }
 
-// Convert a parsed expr (a lambda param, already parsed as an expression) to a
-// pattern: a record/tuple/list literal IS the corresponding destructure
-// pattern; a bare var is PVar; anything else is PWild (productive-under-error).
-fn expr_to_pat(e) = match graph_node_body(e) {
+// The pattern a cover expression spells — a lambda's head is parsed as an
+// expression before its `=>` says it was a parameter list: a record, tuple or
+// list literal is the corresponding destructure, a bare name a binder, and
+// anything else a wildcard (productive under error). Each node inside the
+// cover IS the sub-pattern it spells, re-registered as one, so no cell
+// stands beside it for the judgment never to reach.
+fn cover_pat_body(e) = match graph_node_body(e) {
   NExpr(VarRef(nm)) => if nm == "_" { PWild } else { PVar(nm) },
-  NExpr(MakeRecordExpr(flds)) => PRecord(sort_pat_fields(record_fields_to_pat(flds)), None),
-  NExpr(MakeTupleExpr(elems)) => PTuple(map(expr_to_pat, elems)),
-  NExpr(MakeListExpr(elems)) => // a trailing RestExpr (the cover-grammar rest the list parser
+  // field punning `{x}` parses as `x: x`, so each field's pattern is
+  // its value's
+  NExpr(MakeRecordExpr(flds)) => PRecord(sort_pat_fields(map({ (nm, v) => (nm, cover_pat(v)) }, flds)), None),
+  NExpr(MakeTupleExpr(elems)) => PTuple(map(cover_pat, elems)),
+  // a trailing RestExpr (the cover-grammar rest the list parser
   // minted for `([h, ...t]) =>`) becomes PList's rest — consumed
   // HERE, so it never reaches infer on the lambda path.
-  if len(elems) > 0 {
+  NExpr(MakeListExpr(elems)) => if len(elems) > 0 {
     match graph_node_body(last(elems)) {
-      NExpr(RestExpr(rest_nm)) => PList(map(expr_to_pat, drop_last(elems)), Some(rest_nm)),
-      _ => PList(map(expr_to_pat, elems), None),
+      NExpr(RestExpr(rest_nm)) => PList(map(cover_pat, drop_last(elems)), Some(rest_nm)),
+      _ => PList(map(cover_pat, elems), None),
     }
   } else {
     PList([], None)
@@ -2236,31 +2260,41 @@ fn expr_to_pat(e) = match graph_node_body(e) {
   _ => PWild,
 }
 
-// Record literal fields `[(name, value_node)]` → pattern fields
-// `[(name, sub_pat)]` — the value node's pattern (field punning `{x}` parses
-// as `x: x`, so the sub-pat is the value's pattern).
-fn record_fields_to_pat(flds) = map({ (nm, v) => (nm, expr_to_pat(v)) }, flds)
+fn cover_pat(e) = {
+  graph_register_node(e, NPat(cover_pat_body(e)))
+  e
+}
 
-// A param drawn from a Pat: PVar is the bare-name degenerate (no desugar);
-// any destructure pattern yields a fresh-named param plus the prepend-let
-// `let <pat> = <fresh>` that binds it at fn entry. Returns (TParam, Option(let)).
+// A parameter drawn from its cover: a bare name is the parameter itself (no
+// desugar); any destructure yields a fresh-named param plus the prepend-let
+// `let <pat> = <fresh>` that binds it at fn entry. Returns (TParam,
+// Option(let)).
 //
-// The parameter's cell is the COVER node's own: a lambda's head is read as an
-// expression until its `=>` says it was a parameter list, so the node the
-// expression parse minted at the parameter is the parameter. A second cell
-// minted beside it left the first one unjudged, one ghost per lambda
-// parameter.
-fn pat_param_and_let(pat, cover) = match pat {
+// The parameter's cell is the COVER node's own: the node the expression
+// parse minted at the parameter is the parameter. A second cell minted
+// beside it left the first one unjudged, one ghost per lambda parameter. A
+// destructure's pattern stands beside the cover as a node of its own, and
+// its sub-patterns are the cover's own inner nodes.
+fn pat_param_and_let(cover) = match cover_pat_body_top(cover) {
   PVar(nm) => (TParam(nm, TVar(cover), Unmarked, Unmarked, None, guards_nothing()), None),
   PWild => (TParam("_", TVar(cover), Unmarked, Unmarked, None, guards_nothing()), None),
-  _ => {
+  pat @ (PLit(_) | PCon(_, _) | PTuple(_) | PList(_, _) | PRecord(_, _) | PAlt(_) | PAs(_, _)) => {
     let fresh = "{dp_prefix}{int_to_str(cover)}"
     let span = graph_span_of(cover)
     // reuse as the absent-annotation sentinel (byte-identical)
     let vref = nexpr(VarRef(fresh), span)
-    let bind = nstmt(LetStmt(pat, vref, vref), span)
+    let bind = nstmt(LetStmt(npat(pat, span), vref, vref), span)
     (TParam(fresh, TVar(cover), Unmarked, Unmarked, None, guards_nothing()), Some(bind))
   },
+}
+
+// The top of a cover's pattern: a bare name or a wildcard leaves the cover
+// the expression node it is, since the parameter is that cell; a destructure
+// re-registers the cover's inner nodes as its sub-patterns.
+fn cover_pat_body_top(cover) = match graph_node_body(cover) {
+  NExpr(VarRef(nm)) => if nm == "_" { PWild } else { PVar(nm) },
+  NExpr(MakeRecordExpr(_)) | NExpr(MakeTupleExpr(_)) | NExpr(MakeListExpr(_)) => cover_pat_body(cover),
+  _ => PWild,
 }
 
 // Prepend the collected destructure-let bindings to a body and run them
@@ -2271,7 +2305,7 @@ fn bind_param_destructures(lets, body, span: ValidSpan) =
   if len(lets) == 0 { body } else { desugar_block(lets, body, span) }
 
 // Convert a list of parsed expr nodes (paren-lambda params) into a TParam list
-// PLUS the destructure-let bindings — each elem's pattern (expr_to_pat) drives
+// PLUS the destructure-let bindings — each elem's cover drives
 // pat_param_and_let, so `((x, y)) => …` / `({a, b}) => …` bind their pattern at
 // fn entry. Parallel buffer-counter build (params + lets); returns
 // (params, lets).
@@ -2279,7 +2313,7 @@ fn exprs_to_params(elems, i, n, own buf, count, own lbuf, lcount) = if i >= n {
   (slice(buf, 0, count), slice(lbuf, 0, lcount))
 } else {
   let e = list_index(elems, i)
-  match pat_param_and_let(expr_to_pat(e), e) {
+  match pat_param_and_let(e) {
     (param, opt_let) => match push_node(buf, count, param) {
       (b1, c1) => match push_opt_let(lbuf, lcount, opt_let) {
         (lb1, lc1) => exprs_to_params(elems, i + 1, n, b1, c1, lb1, lc1),
@@ -2344,7 +2378,7 @@ fn parse_paren_or_tuple(ref tokens, pos, start_span) = {
             // `(e) => body` — single-param lambda; `first` reinterprets
             // as the param. A destructure (`({x,y}) => …`) binds its pattern at
             // entry via the same prepend-let machinery.
-            match pat_param_and_let(expr_to_pat(first), first) {
+            match pat_param_and_let(first) {
               (param, opt_let) => match parse_expr(tokens, skip_ws(tokens, p_after + 1)) {
                 (raw_body, pb) => {
                   let whole = upto(tokens, start_span, pb)
@@ -2488,7 +2522,7 @@ fn parse_list_elems(ref tokens, pos, own buf, count) = {
   } else if at_ellipsis(tokens, p) {
     // `...name` — the cover-grammar rest (the paren-lambda parameter
     // path parses its content as an expression before `=>` is seen;
-    // expr_to_pat consumes this into PList's rest, and infer refuses
+    // cover_pat_body consumes this into PList's rest, and infer refuses
     // it loudly anywhere else). Rest closes the list — it is the tail.
     let rest_name = ident_at(tokens, p + 3)
     let elem = nexpr(RestExpr(rest_name), span_at(tokens, p))
@@ -2928,7 +2962,7 @@ fn desugar_block(stmts, final_e, span: ValidSpan) = match find_destructure_let(s
 }
 
 // The names a pattern binds, in source order.
-fn pat_binder_names(pat) = match pat {
+fn pat_binder_names(pat) = match pat_of(pat) {
   PVar(n) => [n],
   PWild => [],
   PLit(_) => [],
@@ -2957,7 +2991,7 @@ fn find_destructure_let(stmts, i) = if i >= len(stmts) {
   }
 }
 
-fn is_destructure_pat(pat) = match pat {
+fn is_destructure_pat(pat) = match pat_of(pat) {
   PVar(_) => false,
   PWild => false,
   PLit(_) => false,
@@ -2966,10 +3000,10 @@ fn is_destructure_pat(pat) = match pat {
   PList(_, _) => true,
   PRecord(_, _) => true,
   PAs(_, inner) => is_destructure_pat(inner),
-  PAlt(branches) => // An alternation destructures iff its branches do; by the same-binders
+  // An alternation destructures iff its branches do; by the same-binders
   // law the first branch decides (a PAlt of bare PVars would be
   // nonsensical — but the read stays total, not assumed).
-  is_destructure_pat(list_index(branches, 0)),
+  PAlt(branches) => is_destructure_pat(list_index(branches, 0)),
 }
 
 fn parse_if(ref tokens, pos, span: ValidSpan) = match parse_header_expr(tokens, pos) {
@@ -3046,7 +3080,7 @@ fn parse_match_arms(ref tokens, pos, own buf, count) = {
 fn parse_pat_alt(ref tokens, pos) = match parse_pat(tokens, pos) {
   (first, p) => if at(tokens, skip_ws(tokens, p), TPipe) {
     match parse_pat_alt_branches(tokens, p, [first], 1) {
-      (branches, p2) => (PAlt(branches), p2),
+      (branches, p2) => (npat(PAlt(branches), upto(tokens, span_at(tokens, pos), p2)), p2),
     }
   } else {
     (first, p)
@@ -3247,60 +3281,66 @@ fn is_empty_block_expr(e) = match e {
   _ => false,
 }
 
-// Patterns
-fn parse_pat(ref tokens, pos) = match kind_at(tokens, pos) {
-  TIdent(v) => if v == "_" {
-    (PWild, pos + 1)
-  } else {
-    let first_code = first_char_code(v)
-    if first_code >= 65 && first_code <= 90 {
-      // Capitalized identifier — constructor pattern
-      let p2 = pos + 1
-      if at(tokens, p2, TLParen) {
-        match parse_pat_args(tokens, skip_ws(tokens, p2 + 1)) {
-          (sub, p3) => (PCon(v, sub), p3),
-        }
-      } else {
-        (PCon(v, []), p2)
-      }
+// Patterns — each one a node minted over the tokens it consumed, and each
+// pattern inside it a node of its own.
+fn npat(p, span: ValidSpan) = mint_node(NPat(p), span)
+
+fn parse_pat(ref tokens, pos) = {
+  let start = span_at(tokens, pos)
+  match kind_at(tokens, pos) {
+    TIdent(v) => if v == "_" {
+      (npat(PWild, start), pos + 1)
     } else {
-      // The as-pattern (SYNTAX §"As-patterns — rule"): `name @ pat`
-      // binds the whole value AND destructures it. The `@` peek is
-      // whitespace-tolerant on both sides.
-      let pa = skip_ws(tokens, pos + 1)
-      if at(tokens, pa, TAt) {
-        match parse_pat(tokens, skip_ws(tokens, pa + 1)) {
-          (inner, p3) => (PAs(v, inner), p3),
+      let first_code = first_char_code(v)
+      if first_code >= 65 && first_code <= 90 {
+        // Capitalized identifier — constructor pattern
+        let p2 = pos + 1
+        if at(tokens, p2, TLParen) {
+          match parse_pat_args(tokens, skip_ws(tokens, p2 + 1)) {
+            (sub, p3) => (npat(PCon(v, sub), upto(tokens, start, p3)), p3),
+          }
+        } else {
+          (npat(PCon(v, []), start), p2)
         }
       } else {
-        (PVar(v), pos + 1)
+        // The as-pattern (SYNTAX §"As-patterns — rule"): `name @ pat`
+        // binds the whole value AND destructures it. The `@` peek is
+        // whitespace-tolerant on both sides.
+        let pa = skip_ws(tokens, pos + 1)
+        if at(tokens, pa, TAt) {
+          match parse_pat(tokens, skip_ws(tokens, pa + 1)) {
+            (inner, p3) => (npat(PAs(v, inner), upto(tokens, start, p3)), p3),
+          }
+        } else {
+          (npat(PVar(v), start), pos + 1)
+        }
       }
-    }
-  },
-  TIntLit(n) => (PLit(LVInt(n)), pos + 1),
-  TFloatLit(f) => (PLit(LVFloat(f)), pos + 1),
-  TStringPart(s) => (PLit(LVString(s)), pos + 1),
-  TTrue => (PLit(LVBool(true)), pos + 1),
-  TFalse => (PLit(LVBool(false)), pos + 1),
-  TLParen => // A parenthesized pattern groups: `(A | B)` is the alternation, read
-  // whole where one pattern stands — under a binder, `b @ (A | B)` binds
-  // the value under any branch (SYNTAX §«As-patterns — rule») — and one
-  // pattern in parens is that pattern, since there is no product of one;
-  // `(a, b)` is the pair as before.
-  match parse_pat_elems(tokens, skip_ws(tokens, pos + 1), parse_pat_alt) {
-    ([one], p) => (one, p),
-    (sub, p) => (PTuple(sub), p),
-  },
-  TLBracket => match parse_pat_list_args(tokens, skip_ws(tokens, pos + 1)) {
-    (sub, rest, p) => (PList(sub, rest), p),
-  },
-  TLBrace => match parse_pat_record_fields(tokens, skip_ws(tokens, pos + 1)) {
-    (flds, rest, p) => (PRecord(sort_pat_fields(flds), rest), p),
-  },
-  _ => {
-    report(PUnexpectedToken("unexpected token in pattern position", span_at(tokens, pos)))
-    (PWild, pos + 1)
-  },
+    },
+    TIntLit(n) => (npat(PLit(LVInt(n)), start), pos + 1),
+    TFloatLit(f) => (npat(PLit(LVFloat(f)), start), pos + 1),
+    TStringPart(s) => (npat(PLit(LVString(s)), start), pos + 1),
+    TTrue => (npat(PLit(LVBool(true)), start), pos + 1),
+    TFalse => (npat(PLit(LVBool(false)), start), pos + 1),
+    // A parenthesized pattern groups: `(A | B)` is the alternation, read
+    // whole where one pattern stands — under a binder, `b @ (A | B)` binds
+    // the value under any branch (SYNTAX §«As-patterns — rule») — and one
+    // pattern in parens is that pattern, since there is no product of one;
+    // `(a, b)` is the pair as before.
+    TLParen => match parse_pat_elems(tokens, skip_ws(tokens, pos + 1), parse_pat_alt) {
+      ([one], p) => (one, p),
+      (sub, p) => (npat(PTuple(sub), upto(tokens, start, p)), p),
+    },
+    TLBracket => match parse_pat_list_args(tokens, skip_ws(tokens, pos + 1)) {
+      (sub, rest, p) => (npat(PList(sub, rest), upto(tokens, start, p)), p),
+    },
+    TLBrace => match parse_pat_record_fields(tokens, skip_ws(tokens, pos + 1)) {
+      (flds, rest, p) => (npat(PRecord(sort_pat_fields(flds), rest), upto(tokens, start, p)), p),
+    },
+    _ => {
+      report(PUnexpectedToken("unexpected token in pattern position", start))
+      (npat(PWild, start), pos + 1)
+    },
+  }
 }
 
 // Parse `{name, age}`, `{name: sub_pat}`, or the rest form
@@ -3321,7 +3361,11 @@ fn parse_pat_record_fields(ref tokens, pos) = {
     let name = ident_at(tokens, p)
     let p1 = p + 1
     let p2 = skip_ws(tokens, p1)
-    match if at(tokens, p2, TColon) { parse_pat(tokens, skip_ws(tokens, p2 + 1)) } else { (PVar(name), p1) } {
+    match if at(tokens, p2, TColon) {
+      parse_pat(tokens, skip_ws(tokens, p2 + 1))
+    } else {
+      (npat(PVar(name), span_at(tokens, p)), p1)
+    } {
       (sub_pat, p3) => {
         let p4 = skip_ws(tokens, p3)
         if at(tokens, p4, TComma) {
@@ -3510,21 +3554,21 @@ fn parse_type_atom(ref tokens, pos) = match kind_at(tokens, pos) {
       (base, base_pos)
     }
   },
-  TBang => // `-> !` — the never-returns marker (SYNTAX §«Never-returning ops»). The
+  // `-> !` — the never-returns marker (SYNTAX §«Never-returning ops»). The
   // syntactic name "!" resolves at quantify_ctor_ty to a FRESH quantified var
   // per occurrence: bottom unifies with every consumer, exactly the
   // bottom-producing sibling `fail(msg) -> a` spelled as intent.
-  (TName("!", []), pos + 1),
+  TBang => (TName("!", []), pos + 1),
   TLParen => match parse_paren_types(tokens, pos) {
     (items, p) => (paren_group_type(items), p),
   },
-  TLBrace => // Structural record type `{name: Ty, age: Ty}` (closed) or open
+  // Structural record type `{name: Ty, age: Ty}` (closed) or open
   // `{name: Ty, ...}` / `{name: Ty, ...R}` (accepts any record with AT
   // LEAST these fields — SYNTAX.md §«Row polymorphism»). Sorted at
   // parse; an open rest mints a fresh row var and the field set becomes
   // a TRecordOpen (mk_record_open canonicalizes the fields with the
   // row var); closed stays TRecord.
-  match parse_record_type_fields(tokens, skip_ws(tokens, pos + 1)) {
+  TLBrace => match parse_record_type_fields(tokens, skip_ws(tokens, pos + 1)) {
     (flds, rest_var, p) => {
       let sorted = sort_record_type_fields(flds)
       let ty = match rest_var {
@@ -3534,12 +3578,12 @@ fn parse_type_atom(ref tokens, pos) = match kind_at(tokens, pos) {
       (ty, p)
     },
   },
-  TLBracket => // List type `[T]` → TList(T) — the canonical list-type notation
+  // List type `[T]` → TList(T) — the canonical list-type notation
   // (SYNTAX.md:691 `type Bytes = [Int]`). The seed parses it; this arm
   // closes the wheel-parser fidelity gap (`[String]` in main.mn's
   // Invocation ctor desynced into the silent `_ => TUnit` fallback →
   // P_UnexpectedToken at pass-2). One element type, then `]`.
-  match parse_type_ty(tokens, skip_ws(tokens, pos + 1)) {
+  TLBracket => match parse_type_ty(tokens, skip_ws(tokens, pos + 1)) {
     (elem, p) => (TList(elem), expect(tokens, skip_ws(tokens, p), TRBracket)),
   },
   _ => {
@@ -3783,10 +3827,10 @@ fn collect_free_uses(node, bound) = match graph_node_body(node) {
   NStmt(s) => free_vars_stmt(s, bound),
   NPat(_) => [],
   NHole(_) => [],
-  NModule(_) => // a module entity contains no VarRef of its own
-  [],
-  NTypeAnn(_) => // an authored type annotation contains no VarRef
-  [],
+  // a module entity contains no VarRef of its own
+  NModule(_) => [],
+  // an authored type annotation contains no VarRef
+  NTypeAnn(_) => [],
 }
 
 // The free NAMES — the uses projected to their names, for the readers that
@@ -3837,7 +3881,7 @@ fn free_vars_expr(e, h, bound) = match e {
     let inner_bound = free_vars_merge(bound, free_vars_param_names(params))
     collect_free_uses(body, inner_bound)
   },
-  ResumeExpr(val, state_updates) => // band B M1.6 (bank Ruling 2/A3): a resume USES the enclosing arm's k,
+  // band B M1.6 (bank Ruling 2/A3): a resume USES the enclosing arm's k,
   // so "__k" is one of its free names. A lambda inside a MultiShot arm
   // thereby CAPTURES the k record like any local — the capture tier of
   // the resume-resolution ladder (lower_resume_callk walks it). Anywhere
@@ -3846,23 +3890,23 @@ fn free_vars_expr(e, h, bound) = match e {
   // DROPS it: zero captures added, bytes identical (Law 7 holds on the
   // wheel's own backtrack, whose resume-in-lambda sits under the
   // OneShot-misclassified choose until the cut).
-  free_uses_merge(
+  ResumeExpr(val, state_updates) => free_uses_merge(
     [("__k", 0)],
     free_uses_merge(collect_free_uses(val, bound), free_vars_state_updates(state_updates, bound))
   ),
   FieldExpr(rec, _) => collect_free_uses(rec, bound),
   PipeExpr(_, l, r) => free_uses_merge(collect_free_uses(l, bound), collect_free_uses(r, bound)),
   FanoutExpr(branches) => collect_free_vars_branches(branches, bound),
-  RestExpr(_) => // the rest NAME binds in the lambda path; it is never a free ref
-  [],
+  // the rest NAME binds in the lambda path; it is never a free ref
+  RestExpr(_) => [],
   ExprPlaceholder => [],
-  LabeledArg(_, v) => // A labeled arg's value can reference free vars (closure capture must see
+  // A labeled arg's value can reference free vars (closure capture must see
   // them); the label is a param name, not a value-position var.
-  collect_free_uses(v, bound),
-  LitInt(_) => // H6: exhaustive Expr enumeration. Literals contribute no
+  LabeledArg(_, v) => collect_free_uses(v, bound),
+  // H6: exhaustive Expr enumeration. Literals contribute no
   // free vars. Named explicitly so new Expr variants must decide
   // their free-var contribution (critical for closure capture).
-  [],
+  LitInt(_) => [],
   LitFloat(_) => [],
   LitString(_) => [],
   LitBool(_) => [],
@@ -3906,7 +3950,7 @@ fn free_vars_state_updates(updates, bound) = fold(
 // expression this walk can descend (Hβ.types.predicate-is-expr).
 fn free_vars_stmt(s, bound) = match s {
   LetStmt(_, expr, _) => collect_free_uses(expr, bound),
-  FnStmt(_, params, _, _, body_node) => // A function's parameters bind its body, as a lambda's do. They read as
+  // A function's parameters bind its body, as a lambda's do. They read as
   // references until 2026-10-03, so a parameter named like a declaration was
   // an edge to it: `fn a(b) = b` beside `fn b(n)` made one false cycle, its
   // discipline made `a` monomorphic inside `b`, and `b`'s two calls of `a`
@@ -3914,7 +3958,7 @@ fn free_vars_stmt(s, bound) = match s {
   // cycle of seventeen through the list substrate and the prelude's `count`.
   // The function's own name stays a reference, which is the self-edge that
   // makes a recursive declaration a cycle.
-  collect_free_uses(body_node, free_vars_merge(bound, free_vars_param_names(params))),
+  FnStmt(_, params, _, _, body_node) => collect_free_uses(body_node, free_vars_merge(bound, free_vars_param_names(params))),
   ExprStmt(expr) => collect_free_uses(expr, bound),
   TypeDefStmt(_, _) => [],
   EffectDeclStmt(_, _, _) => [],
@@ -3929,11 +3973,11 @@ fn free_vars_stmt(s, bound) = match s {
       free_vars_handler_arms(arms, arm_bound)
     )
   },
-  HandlerChainStmt(_, chain) => // A chain's members are references to handlers, and a member's config
+  // A chain's members are references to handlers, and a member's config
   // arguments are expressions: every free name in the tree is an edge, so a
   // chain is judged after the handlers it names and an install after the
   // chain.
-  collect_free_uses(chain, bound),
+  HandlerChainStmt(_, chain) => collect_free_uses(chain, bound),
   ImportStmt(_) => [],
   RefineStmt(_, _, _) => [],
   AliasStmt(_, _) => [],
@@ -3974,7 +4018,7 @@ fn arm_cuts_list_rest(arm) = match arm {
   (pat, _) => pat_cuts_list_rest(pat),
 }
 
-fn pat_cuts_list_rest(pat) = match pat {
+fn pat_cuts_list_rest(pat) = match pat_of(pat) {
   PList(subs, rest) => rest_names_a_binder(rest) || pats_cut_list_rest(subs, 0),
   PCon(_, subs) => pats_cut_list_rest(subs, 0),
   PTuple(subs) => pats_cut_list_rest(subs, 0),
@@ -4054,8 +4098,8 @@ fn free_vars_decl_step(acc, decl) = match acc {
       ),
       inner
     ),
-    _ => // a run holds fn declarations only (`stmt_runs`)
-    acc,
+    // a run holds fn declarations only (`stmt_runs`)
+    _ => acc,
   },
 }
 
@@ -4079,8 +4123,8 @@ fn run_names(decls) = flat_map(declared_fn_name, decls)
 
 fn declared_fn_name(decl) = match graph_node_body(decl) {
   NStmt(FnStmt(name, _, _, _, _)) => [name],
-  _ => // a run holds fn declarations only (`stmt_runs`)
-  [],
+  // a run holds fn declarations only (`stmt_runs`)
+  _ => [],
 }
 
 fn free_vars_match_arms(arms, bound) = fold(
@@ -4100,19 +4144,19 @@ fn free_vars_param_names(params) = map(param_name, params)
 // binds a name; compound patterns recurse into sub-patterns.
 // PWild / PLit bind nothing. New Pat variants must decide their
 // binder-name contribution explicitly.
-fn free_vars_pat_binds(pat) = match pat {
+fn free_vars_pat_binds(pat) = match pat_of(pat) {
   PVar(name) => [name],
   PCon(_, sub_pats) => free_vars_pat_binds_list(sub_pats),
   PTuple(sub_pats) => free_vars_pat_binds_list(sub_pats),
   PList(sub_pats, rest) => free_vars_merge(free_vars_pat_binds_list(sub_pats), free_vars_pat_rest_binds(rest)),
   PRecord(flds, rest) => free_vars_merge(free_vars_pat_binds_fields(flds), free_vars_pat_rest_binds(rest)),
   PAs(name, inner) => free_vars_merge([name], free_vars_pat_binds(inner)),
-  PAlt(branches) => // Alternation branches bind the SAME name set by law (SYNTAX
+  // Alternation branches bind the SAME name set by law (SYNTAX
   // §"Pattern alternation" — E_PatternAlternationBindingMismatch
   // enforces it), so the first branch's binders ARE the arm's.
   // Face 9: this was the one Pat walker missing the arm; the testing
   // lib's alternation matches hit the floor at the input's tail.
-  free_vars_pat_binds(list_index(branches, 0)),
+  PAlt(branches) => free_vars_pat_binds(list_index(branches, 0)),
   PWild => [],
   PLit(_) => [],
 }

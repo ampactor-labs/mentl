@@ -783,10 +783,10 @@ fn propose_fact(h, propose, target: String) = match propose {
       None => [],
     }
     match pr.verdict {
-      VNone => // An authored hole nothing proved is SAID, never left blank: the
+      // An authored hole nothing proved is SAID, never left blank: the
       // refusals under it are the reasons, and the verdict is the line they
       // explain (C7). A filled position has no proposal to report.
-      RingFact(APropose(if authored_hole(h) { SkNone } else { SkSilent }), refusals ++ served),
+      VNone => RingFact(APropose(if authored_hole(h) { SkNone } else { SkSilent }), refusals ++ served),
       VFill(survivor, reason) => RingFact(
         APropose(SkFill(render_candidate_source(survivor), show_reason(reason))),
         refusals ++ served
@@ -1706,20 +1706,20 @@ fn node_query_line(h, kind) = match graph_node_body(h) {
   NStmt(EffectDeclStmt(name, _, ops)) => "effect {name} — {int_to_str(len(ops))} op(s)",
   NStmt(HandlerDeclStmt(name, _, _, state, arms, _)) => "handler {name} — {int_to_str(len(arms))} arm(s), {int_to_str(len(state))} state field(s)",
   NStmt(RowAliasStmt(name, _)) => "{name} — a named effect row",
-  NHole(_) => // An UNDETERMINED hole never leaks the raw var — substrate
+  // An UNDETERMINED hole never leaks the raw var — substrate
   // vocabulary at the exact moment the medium should ASK (§1's law: the
   // question beats the guess; the fan cannot enumerate an open type, so
   // the missing constraint IS the answer). A typed hole renders what it
   // DEMANDS — the contract a claim raised over it, refinement and all, or
   // its cell's type where nothing claimed it (the cell holds a shape).
-  match hole_demand(h) {
+  NHole(_) => match hole_demand(h) {
     TVar(_) => "_ — still free: annotate the enclosing function's param or result and the fan arrives with the type",
     ty => show_type(ty),
   },
-  NExpr(LitFloat(_)) => // A literal's type IS its body when the cell is still free (a top-level
+  // A literal's type IS its body when the cell is still free (a top-level
   // let's value node keeps its own cell unbound; the body already proves
   // the answer — read it, never render the raw t-var).
-  "Float",
+  NExpr(LitFloat(_)) => "Float",
   NExpr(LitInt(_)) => "Int",
   NExpr(LitString(_)) => "String",
   NExpr(LitBool(_)) => "Bool",
@@ -1824,17 +1824,17 @@ fn enters_rest(next, v) = match next {
 
 fn why_deeper(inner, v, depth) = match inner {
   EffectEnters(_, _, next) => enters_rest(next, v),
-  Accepted(_, _, br) => // The accept edge: its phrase names the proposal and its proof; the
+  // The accept edge: its phrase names the proposal and its proof; the
   // hop beneath is the binding's own reason, which the acceptance wraps.
-  why_lines(br, v, depth + 1),
+  Accepted(_, _, br) => why_lines(br, v, depth + 1),
   VarLookup(_, br) => why_lines(br, v, depth + 1),
   LetBinding(_, br) => why_lines(br, v, depth + 1),
   FnReturn(_, br) => why_lines(br, v, depth + 1),
   InferredCallReturn(_, br) => why_lines(br, v, depth + 1),
   InferredPipeResult(_, br) => why_lines(br, v, depth + 1),
-  Unified(a, b) => // A unification joins TWO provenances — walk both (the second indented
+  // A unification joins TWO provenances — walk both (the second indented
   // as its own branch), the DAG rendered as the tree it is.
-  why_lines(a, v, depth + 1) ++ why_lines(b, v, depth + 1),
+  Unified(a, b) => why_lines(a, v, depth + 1) ++ why_lines(b, v, depth + 1),
   OpConstraint(_, a, b) => why_lines(a, v, depth + 1) ++ why_lines(b, v, depth + 1),
   IfBranch(br) => why_lines(br, v, depth + 1),
   Instantiation(_, br) => why_lines(br, v, depth + 1),
@@ -1855,8 +1855,8 @@ fn binding_ledes(span, inner, v) = match inner {
       (_, sh) => "{value_lede(sh)}{comment_lede(sh)}",
     },
   },
-  _ => // drift-audit: ignore — genuine String-null lede: a non-binding hop carries no value/comment lede by construction
-  "",
+  // drift-audit: ignore — genuine String-null lede: a non-binding hop carries no value/comment lede by construction
+  _ => "",
 }
 
 fn span_line_of(s) with Pure = match s {
@@ -1871,8 +1871,8 @@ fn value_lede(sh) = match graph_node_body(sh) {
     Some(LVBool(b)) => if b { " = true" } else { " = false" },
     None => "",
   },
-  _ => // drift-audit: ignore — genuine String-null lede: a non-let node has no binding value to render
-  "",
+  // drift-audit: ignore — genuine String-null lede: a non-let node has no binding value to render
+  _ => "",
 }
 
 fn comment_lede(sh) = {

@@ -617,9 +617,9 @@ fn jvp(e, env, cx) = match e {
   LGlobal(_, _) => jv_plain(e),
   LLocal(_, name) => jv_read(e, env_find(env, name)),
   LUpval(h, i) => match cx {
-    DeriveCx(_, ExitsInPlace) => // In an extent, a capture is the seed or a free variable held fixed; in
+    // In an extent, a capture is the seed or a free variable held fixed; in
     // a twin, a capture is what the record carries.
-    jv_read(e, env_find(env, upval_key(i))),
+    DeriveCx(_, ExitsInPlace) => jv_read(e, env_find(env, upval_key(i))),
     DeriveCx(_, ExitsToCaller(_)) => jvp_upval(e, h, i),
   },
   LFeedbackPrior(h) => jv_read(e, env_find(env, prior_key(h))),
@@ -639,10 +639,10 @@ fn jvp(e, env, cx) = match e {
     grad_consumed(h, jx)
     jv(jv_pre(jx), LConvert(h, k, jv_val(jx)), LinZero, AInactive)
   },
-  LDirectCall(h, fh, name, _, args) => // A call where a VALUE stands is an ordinary call, whatever lower marked
+  // A call where a VALUE stands is an ordinary call, whatever lower marked
   // it: only a twin's own exits keep the tail form, and they are read by
   // the exit rules below, never here.
-  jvp_direct(h, fh, name, jvp_list(args, env, cx)),
+  LDirectCall(h, fh, name, _, args) => jvp_direct(h, fh, name, jvp_list(args, env, cx)),
   LCall(h, f, args) => jvp_dynamic(h, jvp(f, env, cx), jvp_list(args, env, cx), false),
   LTailCall(h, f, args) => jvp_dynamic(h, jvp(f, env, cx), jvp_list(args, env, cx), false),
   LReturn(h, inner) => jvp_return(h, jvp(inner, env, cx), cx),
@@ -664,9 +664,9 @@ fn jvp(e, env, cx) = match e {
   LSimdLanes(h, xs) => match seq_values(h, jvp_list(xs, env, cx)) {
     (pre, vals, a) => jv(pre, LSimdLanes(h, vals), LinZero, stored_in(h, a)),
   },
-  LFanout(_h, lex, _br, forms) => // A fanout under the reading is read as the form the site runs — its
+  // A fanout under the reading is read as the form the site runs — its
   // branches are function values of their own frames.
-  jvp(fanout_form(lex, forms), env, cx),
+  LFanout(_h, lex, _br, forms) => jvp(fanout_form(lex, forms), env, cx),
   LMakeClosure(h, lfn, caps) => jvp_mint(h, lfn, jvp_list(caps, env, cx)),
   LFieldLoad(h, rec, sel) => jvp_field(h, rec, sel, env, cx),
   LShow(h, x) => {
@@ -717,15 +717,15 @@ fn jvp(e, env, cx) = match e {
   LResumeK(h, _, _) => jvp_unentered(h, e),
   LYield(h, _, _, _) => jvp_unentered(h, e),
   LKExtend(h, _) => jvp_unentered(h, e),
-  LAbandon(h, op, args) => // An abandoning perform: its arguments are evaluated here and handed to a
+  // An abandoning perform: its arguments are evaluated here and handed to a
   // handler outside the reading, and the extent is left — nothing after it
   // runs, so no tangent of it is ever asked for.
-  match seq_values(h, jvp_list(args, env, cx)) {
+  LAbandon(h, op, args) => match seq_values(h, jvp_list(args, env, cx)) {
     (pre, vals, _) => jv(pre, LAbandon(h, op, vals), LinZero, AInactive),
   },
-  LUnwind(_) => // A boundary check: the frame leaves when the flag is up, and the position
+  // A boundary check: the frame leaves when the flag is up, and the position
   // carries no value the reading could differentiate.
-  jv_plain(e),
+  LUnwind(_) => jv_plain(e),
   LDeclareFn(_) => jv_plain(e),
   LInvariantFailure(_, _) => jv_plain(e),
 }
@@ -878,9 +878,9 @@ fn jvp_binop(h, op, jl, jr) = match binop_kind(op) {
     jvp_arith(h, op, jl, jr)
   },
   BKBool => jvp_short_circuit(h, op, jl, jr),
-  BKCmp => // A comparison's value is a step, whose derivative is zero wherever it
+  // A comparison's value is a step, whose derivative is zero wherever it
   // exists.
-  jvp_pair(h, op, jl, jr, inactive_of),
+  BKCmp => jvp_pair(h, op, jl, jr, inactive_of),
   BKConcat => jvp_pair(h, op, jl, jr, stored_in(h, ??)),
 }
 
@@ -929,8 +929,8 @@ fn jvp_arith(h, op, jl, jr) = match op {
   },
   BMul => match named(h, 0, jl) {
     (pre_l, a) => match named(h, 1, jr) {
-      (pre_r, b) => // d(a · b) = a · db + b · da
-      jv(
+      // d(a · b) = a · db + b · da
+      (pre_r, b) => jv(
         pre_l ++ pre_r,
         LBinOp(h, op, a, b),
         lin_add(h, lin_scale(h, a, jv_tan(jr)), lin_scale(h, b, jv_tan(jl))),
@@ -940,8 +940,8 @@ fn jvp_arith(h, op, jl, jr) = match op {
   },
   BDiv => match named(h, 0, jl) {
     (pre_l, a) => match named(h, 1, jr) {
-      (pre_r, b) => // d(a / b) = (da − q · db) / b, where q = a / b is the primal itself
-      {
+      // d(a / b) = (da − q · db) / b, where q = a / b is the primal itself
+      (pre_r, b) => {
         let q = temp(h, 2)
         jv(
           pre_l ++ pre_r ++ [SPrim(LLet(h, q, LBinOp(h, op, a, b)))],
@@ -952,9 +952,9 @@ fn jvp_arith(h, op, jl, jr) = match op {
       },
     },
   },
-  other => // The remainder of a float division has no partials the reading writes
+  // The remainder of a float division has no partials the reading writes
   // yet; what it knows about the result is that its tangent is lost here.
-  jvp_pair(h, other, jl, jr, stored_in(h, ??)),
+  other => jvp_pair(h, other, jl, jr, stored_in(h, ??)),
 }
 
 // ─── Calls ────────────────────────────────────────────────────────────
@@ -1372,9 +1372,9 @@ fn jvp_stmts_from(stmts, i, env, cx, out) = if i >= len(stmts) {
   (out, jv_plain(LConst(0, LInt(0))))
 } else if i == len(stmts) - 1 {
   match list_index(stmts, i) {
-    LLet(h, name, inner) => // A body ending in a binding ends as the primal did — the binding is the
+    // A body ending in a binding ends as the primal did — the binding is the
     // last statement, and nothing after it reads the name.
-    {
+    LLet(h, name, inner) => {
       let ji = jvp(inner, env, cx)
       grad_consumed(h, ji)
       (out ++ jv_pre(ji), jv([], LLet(h, name, jv_val(ji)), LinZero, AInactive))
@@ -1975,9 +1975,9 @@ fn jvp_tail(e, env, cx) = match e {
   LDirectCall(h, fh, name, true, args) => {
     let jargs = jvp_list(args, env, cx)
     match twin_for(fh, name, jargs) {
-      Some((sym, key, result)) => // A tail call to a twin stays one: the callee twin writes the
+      // A tail call to a twin stays one: the callee twin writes the
       // register.
-      match seq_values(h, jargs) {
+      Some((sym, key, result)) => match seq_values(h, jargs) {
         (pre, vals, _) => (pre ++ [STail(h, fh, name, sym, key, vals, twin_lins(jargs, vals, 0, []))], result),
       },
       None => if is_float_at(h) {
@@ -2196,9 +2196,9 @@ fn rv_back_stmt(s, qh) = match s {
     None => [],
   },
   STail(h, fh, _name, sym, key, vals, lins) => rv_adjoint_call(h, fh, sym, key, vals, lins, LLocal(h, "__g")),
-  SArena(_, _, stmts) => // Every statement of the arena ran, and the residuals the sweep reads are
+  // Every statement of the arena ran, and the residuals the sweep reads are
   // numbers in frame locals (`jvp_arena`), so the sweep needs no arena.
-  rv_backward(stmts, qh),
+  SArena(_, _, stmts) => rv_backward(stmts, qh),
 }
 
 fn rv_back_arm(h, qh, arm) = match arm {

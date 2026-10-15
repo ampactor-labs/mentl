@@ -430,13 +430,13 @@ landing that closes it. A gate that did not run is UNKNOWN, never green.
 - **The program is the graph, and its one-write operations are not all built.**
   A node is its handle (`type Node = Int`), a body holds its children as handles,
   and everything the judgment learns about a node is a column at that handle; a
-  value reference is linked to the declaration it resolved to. A pattern's
-  constructor, a type annotation's name, a row's effect name and a handler arm's
-  op are still names with no node (§11.2); a type, a Reason and the lowered
-  program are still value trees (§11.18). The first one-write operation is
-  built: a named handler chain's install becomes its members' installs (SYNTAX
-  §«Handler chains»); a rename, the session's edit and a proposal's accept are
-  not (§11.2).
+  value reference is linked to the declaration it resolved to. A pattern is a
+  node the judgment binds, and its constructor is linked the same way; a type
+  annotation's name, a row's effect name and a handler arm's op are still names
+  with no node (§11.2); a type, a Reason and the lowered program are still value
+  trees (§11.18). The first one-write operation is built: a named handler
+  chain's install becomes its members' installs (SYNTAX §«Handler chains»); a
+  rename, the session's edit and a proposal's accept are not (§11.2).
 - **Names are still read where an edge exists** (§11.2, §11.18): the lowered
   program's identity is its symbol, so the emit's reach walks key their units
   by it and a resume-bound function is found by its spelling; a sugar's
@@ -465,10 +465,10 @@ landing that closes it. A gate that did not run is UNKNOWN, never green.
   and one that does not open answers fd 0.
 - **Executable refusal is partial**: `diag_refuses` holds the live list; a class
   born at zero arms at birth, and the rest are §11's work.
-- **Regions are runtime**: every extent runs in an arena — binding groups,
-  declaration lowerings and the reach walk, emitted units, session answers,
-  speculations, spawned instances' runs — and ownership's regions stay
-  compile-time facts.
+- **Regions are runtime**: every extent runs in an arena — each module's
+  parse, binding groups, declaration lowerings and the reach walk, emitted
+  units, session answers, speculations, spawned instances' runs — and
+  ownership's regions stay compile-time facts.
 - **`persist = memcpy` is built**: `lib/persist.mn` writes the image,
   `image_resume` gates on the build key, `mentl resume <image>` re-enters it.
   Host resources (descriptors, sockets) do not restore; cross-machine resume and
@@ -639,19 +639,23 @@ a provenance diff, a search over live shared cells.
 **THE STANDING CURSOR** — the order work runs in:
 
 2. **Every position is a cell — #108** (`Hβ.graph.positions-are-cells`). A
-   pattern's constructor, a type annotation's name, a row's effect name, a
-   handler arm's op name and a sugar's primitive are nodes that draw the same
-   edge the judgment draws for a value reference (`graph_ref_link`), so `refs
-   of` a constructor or a type answers its pattern and annotation sites, `refs
-   of slice` its list-rest patterns, `unreferenced` stops calling `Ty`,
-   `Option` and `Alloc` dead, and the imports facet stops reading an import
-   used only by a pattern, an annotation or a row as DEAD; the sugar's callee
-   is the edge at its node, which the lowering reads where it now resolves
-   `concat_callees`, `subscript_callee` and `list_rest_callee` by spelling at
-   the link's scope (the two concats one `seq_concat`, §4①).
-   Binders, sub-patterns, annotations and predicates become the cells inference
-   binds: the ghosts (`mentl query <entry> ghosts`) fall to zero and a claim is
-   located at the value it claims. Then the writes the structure cut was for: a
+   pattern is a node the judgment binds and its constructor draws the edge a
+   value reference draws (`graph_ref_link`), so `refs of` a constructor
+   answers the patterns that take its values apart and the imports facet
+   reads an import used only by a pattern as used. A type annotation's name, a
+   row's effect name, a handler arm's op name and a sugar's primitive are
+   nodes that draw the same edge, so `refs of` a type answers its annotation
+   sites, `refs of slice` its list-rest patterns, `unreferenced` measures a
+   type and an effect as it measures a constructor, and the imports facet
+   stops reading an import used only by an annotation or a row as DEAD; the
+   sugar's callee is the edge at its node, which the lowering reads where it
+   now resolves `concat_callees`, `subscript_callee` and `list_rest_callee` by
+   spelling at the link's scope (the two concats one `seq_concat`, §4①). A
+   sub-pattern's node is the cell of the part it takes apart, where a second
+   cell is minted beside it today, so a binder is declared at its own
+   position; annotations and predicates become the cells inference binds: the
+   ghosts (`mentl query <entry> ghosts`) fall to zero and a claim is located
+   at the value it claims. Then the writes the structure cut was for: a
    rename is one write at the declaration (the `rename` verb, through the
    formatter); the session re-judges the nodes an edit rewrote rather than
    re-parsing a module (the declaration-grain cone over the in-edges); accepting

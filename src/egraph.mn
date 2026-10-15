@@ -194,9 +194,9 @@ fn rw_const_fold(handle) = match graph_node_body(handle) {
   NExpr(BinOpExpr(op, l, r)) => match const_int(egraph_extract(l)) {
     Some(a) => match const_int(egraph_extract(r)) {
       Some(b) => match int_fold(op, a, b) {
-        Some(v) => // Already folded to v on a prior pass? The current canonical
+        // Already folded to v on a prior pass? The current canonical
         // form is a literal v — draw nothing, report no progress.
-        match const_int(egraph_extract(handle)) {
+        Some(v) => match const_int(egraph_extract(handle)) {
           Some(existing) => if existing == v { false } else { mint_fold(handle, v) },
           None => mint_fold(handle, v),
         },

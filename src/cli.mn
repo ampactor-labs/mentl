@@ -312,17 +312,17 @@ fn verb_named(name, spec) = match spec {
 // escape hatch. A target-requiring verb given no target is a ParseError
 // here (the one boundary), never a fabricated "" downstream.
 fn parse_cli_args(argv) = match argv {
-  [program, mode, ...words] => // The cursor-address probe FIRST — `mentl <target>:<line>[:<col>]` is
+  // The cursor-address probe FIRST — `mentl <target>:<line>[:<col>]` is
   // the medium's primary surface (drift-38: projections fire AT-CURSOR;
   // the named verbs are transports). The parse is shape-only; the runner
   // resolves the target exactly like every verb and refuses honestly.
-  match parse_address(mode) {
+  [program, mode, ...words] => match parse_address(mode) {
     Some((target, line, col)) => Invocation(VAt(path_to_module(target), line, col)),
-    None => // The verb ladder is ONE table projection (verb_specs): normalize the
+    // The verb ladder is ONE table projection (verb_specs): normalize the
     // help aliases to the canonical name, find the spec, run its builder over
     // the words after the verb. An unknown name is the honest ParseError —
     // never a fabricated fallback.
-    {
+    None => {
       let name = if mode == "-h" || mode == "--help" { "help" } else { mode }
       match find_verb(name, verb_specs()) {
         Some(VerbSpec(verb, hint, build, about)) => build(words),

@@ -1,0 +1,23 @@
+// refs of Node: 1 call 4 pattern
+// A constructor's references are every position that names it: the call that
+// builds a tree, and each pattern that takes one apart, nested or not, each
+// reaching the one declaration over the edge the judgment draws for a value
+// reference, so renaming the constructor or asking who reads it never misses
+// a match.
+type Tree = Leaf | Node(Tree, Int, Tree)
+
+fn size(t) = match t {
+  Leaf => 0,
+  Node(l, _, r) => size(l) + 1 + size(r),
+}
+
+fn left_leaf(t) = match t {
+  Node(Leaf, _, _) => true,
+  Node(Node(_, _, _), _, _) => false,
+  Leaf => false,
+}
+
+fn main() = {
+  let t = Node(Leaf, 4, Leaf)
+  if left_leaf(t) { size(t) } else { 0 }
+}

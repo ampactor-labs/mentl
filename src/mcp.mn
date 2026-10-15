@@ -267,8 +267,8 @@ fn mcp_tools_result() = JObj([
 fn mcp_tool_call(id, params, ast, ranges, at_read) = {
   let name = match json_obj_get(params, "name") {
     Some(JStr(s)) => s,
-    _ => // drift-audit: ignore — the protocol-null sentinel: no real tool name is empty, and the match below refuses "" with -32602
-    "",
+    // drift-audit: ignore — the protocol-null sentinel: no real tool name is empty, and the match below refuses "" with -32602
+    _ => "",
   }
   match name {
     "propose" => {
@@ -537,8 +537,8 @@ fn mcp_request(id, method, params, ast, ranges, at_read) = match method {
 fn mcp_dispatch(req, ast, ranges, at_read) = {
   let method = match json_obj_get(req, "method") {
     Some(JStr(s)) => s,
-    _ => // drift-audit: ignore — the protocol-null sentinel: no real method is empty, and mcp_request refuses "" with -32601
-    "",
+    // drift-audit: ignore — the protocol-null sentinel: no real method is empty, and mcp_request refuses "" with -32601
+    _ => "",
   }
   match json_obj_get(req, "id") {
     None => "",

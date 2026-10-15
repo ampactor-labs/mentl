@@ -377,12 +377,12 @@ fn query_answer(q) = match q {
   QWhy(name, eff) => match env_lookup(name) {
     None => QRError("not found: {name}"),
     Some(entry) => match entry {
-      (_, reason, _) => // Walk the reason to ROOT — why_expand chases each Fresh(id) through
+      // Walk the reason to ROOT — why_expand chases each Fresh(id) through
       // the graph to its resolved reason, so intent is walkable, not a chain
       // ending in dangling unification vars. Then the row: one chain per
       // effect the declaration's row carries, from the declaration to the
       // site that charges it, or the one chain the question names.
-      match eff {
+      (_, reason, _) => match eff {
         None => QRWhy([why_expand(reason, 0)] ++ decl_effect_chains(name)),
         Some(e) => match filter(chain_enters(e, ??), decl_effect_chains(name)) {
           [] => QRError("the row of {name} carries no {e}"),
@@ -391,33 +391,33 @@ fn query_answer(q) = match q {
       },
     },
   },
-  QRefsOf(name) => // Every reference to NAME is a VarRef node in the one graph (the parser
+  // Every reference to NAME is a VarRef node in the one graph (the parser
   // wrote each use into the program weave). refs-of is the projection of
   // the inbound use-edges: scan the weave for NExpr(VarRef(name)) and
   // collect each node's span — read live, never an "AST index required"
   // surrender. This IS rename: the (module, span) sites are exactly the
   // edit set, and a rename needs the module half — an edit set that names
   // lines without naming files edits nothing.
-  QRRefs(refs_of_name(name)),
+  QRefsOf(name) => QRRefs(refs_of_name(name)),
   QStateWrites(field) => match state_write_lines(field) {
     [] => QRError("no handler declares a state field `{field}`"),
     lines => QRWhere(lines, []),
   },
   QDecls => QRDecls(flat_map(decl_names_at, decl_handles())),
   QVerifyDebt => QRVerifyDebt(verify_debt()),
-  QSmt => // The same bank, handed to the render that speaks solver. Nothing is
+  // The same bank, handed to the render that speaks solver. Nothing is
   // re-derived here and nothing may be: a second walk that collected the
   // obligations again would be the violation this facet's own subject —
   // the unreached serializer — was a symptom of.
-  QRSmt(verify_debt()),
-  QHandlerProvider(op_name) => // The handler stack IS graph content (PLAN §2 — "the handler chain IS
+  QSmt => QRSmt(verify_debt()),
+  // The handler stack IS graph content (PLAN §2 — "the handler chain IS
   // the capability stack"): each handler decl is a HandlerDeclStmt whose
   // arms name the ops it provides. Which handlers provide OP are the decls
   // with an arm for it, each answered at the arm's own line.
-  QRHandlerProvider(handlers_providing_op(op_name)),
-  QFlowOf(name) => // The IFC tentacle: the FlowLabel NAME carries, read over the graph
+  QHandlerProvider(op_name) => QRHandlerProvider(handlers_providing_op(op_name)),
+  // The IFC tentacle: the FlowLabel NAME carries, read over the graph
   // with no state of its own (`name_flow_label`).
-  match env_lookup(name) {
+  QFlowOf(name) => match env_lookup(name) {
     None => QRError("not found: {name}"),
     Some(entry) => match entry {
       (scheme, reason, _kind) => QRFlowLabel(name_flow_label(scheme), reason),
@@ -427,11 +427,11 @@ fn query_answer(q) = match q {
   QCensusRoster => QRCensusRoster(census_roster() |> map(roster_row)),
   QWhere(name, scope) => where_badges(name, scope),
   QVariants(tname) => variants_of(tname),
-  QModules => // A module SET, rendered in the order of its names: the cells arrive in
+  // A module SET, rendered in the order of its names: the cells arrive in
   // mint order, which a resident session's re-judged modules leave
   // behind the ones it kept, so the order had been the history of the
   // session rather than a fact about the program.
-  QRModules(module_paths() |> sort),
+  QModules => QRModules(module_paths() |> sort),
   QImports => QRImports(import_report(module_cells())),
   QUnreferenced => QRUnreferenced(unreferenced_report(module_cells())),
   QUnreachable => QRUnreachable(reach_report(module_cells())),
@@ -581,9 +581,9 @@ fn has_free_tvar_fields(ref fields) = if len(fields) == 0 {
 // Every reference the judgment linked to a declaration is among the
 // declaration's in-edges (`graph_ref_link`, the one writer). The projection
 // reads them — O(refs), never O(graph) — one site per source location, each
-// with what stands there. A pattern naming a constructor has no node of its
-// own yet, so it draws no edge and is no site here
-// (`Hβ.graph.positions-are-cells`).
+// with what stands there: a pattern naming a constructor is a node that
+// draws the same edge, so a constructor's sites are its patterns beside its
+// calls.
 fn refs_of_decl(d) with !Mutate =
   map({ (m, sp, h) => (m, sp, Some(ref_role(h))) }, decl_ref_sites(d))
 
@@ -593,8 +593,12 @@ fn refs_of_name(name) with !Mutate = match name_decl(name) {
   None => [],
 }
 
-// What stands at a reference: the callee of a call, or a value.
-fn ref_role(h) with !Mutate = if callee_of_parent(h) { "call" } else { "value" }
+// What stands at a reference: a pattern taking the value apart, the callee
+// of a call, or a value.
+fn ref_role(h) with !Mutate = match graph_node_body(h) {
+  NPat(_) => "pattern",
+  NExpr(_) | NStmt(_) | NHole(_) | NModule(_) | NTypeAnn(_) => if callee_of_parent(h) { "call" } else { "value" },
+}
 
 // Whether the node is the callee of the call that holds it — the parent edge
 // read, never a second walk.
@@ -762,7 +766,10 @@ fn decl_links_of(d) = match graph_node_body(d) {
     TypeDefStmt(_, ctors) => map({ (cn, _, vn) => (cn, vn) }, ctors),
     EffectDeclStmt(_, _, ops) => map({ (on, _, _, onode) => (on, onode) }, ops),
     HandlerDeclStmt(n, _, _, _, _, _) => [(n, d)],
-    LetStmt(PVar(n), value, _) => [(n, value)],
+    LetStmt(pat, value, _) => match pat_of(pat) {
+      PVar(n) => [(n, value)],
+      PWild | PLit(_) | PCon(_, _) | PTuple(_) | PList(_, _) | PRecord(_, _) | PAlt(_) | PAs(_, _) => [],
+    },
     _ => [],
   },
   _ => [],
@@ -1410,7 +1417,7 @@ fn census_note(shape, h) with !Mutate = match shape {
   CsProse(needle) => prose_line(prose_holds(??, needle), graph_comment_at(h)),
   CsProseClass(c) => prose_line(prose_class_holds(c), graph_comment_at(h)),
   CsWildcardOverSum => match catch_all_of(graph_node_body(h)) {
-    Some((_, _, roster)) => Some(render_pat_tokens(roster)),
+    Some((_, _, roster)) => Some(render_roster(roster)),
     None => None,
   },
   _ => None,
@@ -1525,14 +1532,14 @@ fn census_matches(shape: CensusShape, h, body: NodeBody) with !Mutate = match sh
   },
   CsVerb(k) => match body {
     NExpr(PipeExpr(pk, _, _)) => pk == k,
-    NExpr(FanoutExpr(_)) => // the N-ary carrier IS the `><` site; the kind
+    // the N-ary carrier IS the `><` site; the kind
     // stays the census key (Hβ.parser.pcompose-nary)
-    k == PFanout(FanDistribute),
+    NExpr(FanoutExpr(_)) => k == PFanout(FanDistribute),
     _ => false,
   },
   CsEta => match body {
     NExpr(LambdaExpr(params, lbody)) => lambda_is_eta(params, lbody),
-    _ => // A NAMED function of the same shape — its body one call of another name
+    // A NAMED function of the same shape — its body one call of another name
     // with its own parameters in order — is not this shape, measured
     // 2026-10-13: the wheel's link held 34 — 15 of them vocabulary the
     // surface wants (`fanout` is `map` that declares its applications
@@ -1542,7 +1549,7 @@ fn census_matches(shape: CensusShape, h, body: NodeBody) with !Mutate = match sh
     // home, deleted by reading, so the link holds the 15. A shape that
     // convicts a spelling the surface wants claims the language is wrong, so
     // a named forwarder is a reader's question, never a count.
-    false,
+    _ => false,
   },
   CsEffectfulLambda => match body {
     NExpr(LambdaExpr(params, lbody)) => lambda_is_written_as_a_mint(params, lbody) && !lambda_is_eta(params, lbody) && lambda_carries_row(h),
@@ -1552,22 +1559,22 @@ fn census_matches(shape: CensusShape, h, body: NodeBody) with !Mutate = match sh
     NStmt(FnStmt(_, _, _, _, _)) => recursion_shape_of(h),
     _ => false,
   },
-  CsWildcardZero => // Drift mode 10's shape (the 5.6 absorption's first instance —
+  // Drift mode 10's shape (the 5.6 absorption's first instance —
   // the detector moves from bash grep into the weave): a match arm
   // whose pattern is the wildcard and whose body is the literal 0 —
   // the surrender-fallback silhouette. The census COUNTS the shape;
   // whether a given site is the masked-case drift or a true total
   // answer (a non-fn's arity IS zero) stays the reader's judgment,
   // exactly as the bash mode's suppression comment encoded it.
-  match body {
+  CsWildcardZero => match body {
     NExpr(MatchExpr(_, arms)) => any_wildcard_zero(arms, 0, len(arms)),
     _ => false,
   },
-  CsFailureMask => // Drift mode 13's shape (the second absorption): `expr || true`
+  // Drift mode 13's shape (the second absorption): `expr || true`
   // — a failure masked into unconditional success. The census counts
   // the silhouette; a deliberate specimen carries its reader-facing
   // reason exactly as the wildcard-zero convention set.
-  match body {
+  CsFailureMask => match body {
     NExpr(BinOpExpr(op, _, r)) => match op {
       BOr => match graph_node_body(r) {
         NExpr(LitBool(v)) => v,
@@ -1577,64 +1584,64 @@ fn census_matches(shape: CensusShape, h, body: NodeBody) with !Mutate = match sh
     },
     _ => false,
   },
-  CsPrintInReport => // Drift mode 16's shape (the third absorption): a `report(...)`
+  // Drift mode 16's shape (the third absorption): a `report(...)`
   // call whose argument subtree calls the print family — the class
   // that corrupts WAT stdout when diagnostics render mid-emit (§9's
   // bug list). The subtree search walks the weave's own tree edge
   // (body_child_handles), fuel-bounded by the arg tree's real depth.
-  match body {
+  CsPrintInReport => match body {
     NExpr(CallExpr(callee, args)) => match graph_node_body(callee) {
       NExpr(VarRef(cn)) => if cn == "report" { any_subtree_prints(args, 0, len(args)) } else { false },
       _ => false,
     },
     _ => false,
   },
-  CsWildcardFabricates => // Drift mode 10's TYPED fabrications (the fourth absorption):
+  // Drift mode 10's TYPED fabrications (the fourth absorption):
   // a wildcard arm whose body mints a Scheme (Forall), a fresh type
   // var (TVar), the string "Pure", or the empty string — the four
   // values a missing case silently absorbs a new variant into. The
   // zero literal is CsWildcardZero's own shape; these are its typed
   // siblings, name-keyed on the minting ctor exactly as
   // CsPrintInReport keys on the print family.
-  match body {
+  CsWildcardFabricates => match body {
     NExpr(MatchExpr(_, arms)) => any_wildcard_fabricates(arms, 0, len(arms)),
     _ => false,
   },
-  CsWildcardOverSum => // Drift mode 10 at the arm itself (Morgan, 2026-10-13): a `_` or a bare
+  // Drift mode 10 at the arm itself (Morgan, 2026-10-13): a `_` or a bare
   // binder over a SUM swallows the constructors the arms before it leave,
   // and a constructor declared later joins it unread. The site is the
   // match; its note is the roster the arm stands for, as the pattern
   // `mentl tighten` writes in its place (`catch_all_arm`, src/infer.mn).
-  match catch_all_of(body) {
+  CsWildcardOverSum => match catch_all_of(body) {
     Some(_) => true,
     None => false,
   },
-  CsUnderscoreRetain => // Drift mode 15's shape (the fifth absorption): a let whose
+  // Drift mode 15's shape (the fifth absorption): a let whose
   // binder KEEPS a leading underscore — an unused value renamed
   // instead of deleted. A bare `_` is PWild at parse, so any PVar
   // opening with the underscore is the retained costume; deletion,
   // not decoration, is the fix the mode has always named.
-  match body {
-    NStmt(LetStmt(p, _, _)) => match p {
+  CsUnderscoreRetain => match body {
+    NStmt(LetStmt(p, _, _)) => match pat_of(p) {
       PVar(name) => starts_with(name, "_"),
       _ => false,
     },
     _ => false,
   },
-  CsFlagAsInt => // Drift mode 8's shape (the sixth absorption): a flag compared
+  // Drift mode 8's shape (the sixth absorption): a flag compared
   // as an integer — `mode == 0`, `token_kind == 2`, `scheme_kind == 1`
   // — the int-coded state an ADT is begging to replace. Name-keyed on
   // the three flag identifiers the mode always policed, exactly as
   // CsPrintInReport keys on the print family; the literal side is the
   // int, either operand order.
-  match body {
+  CsFlagAsInt => match body {
     NExpr(BinOpExpr(op, l, r)) => match op {
       BEq => flag_int_compare(l, r) || flag_int_compare(r, l),
       _ => false,
     },
     _ => false,
   },
-  CsParallelArrays => // Drift mode 7's shape (the seventh absorption): parallel
+  // Drift mode 7's shape (the seventh absorption): parallel
   // arrays where one record was native, in its TWO faces. The let-tuple
   // face: a destructuring bind of a tuple whose FIRST TWO binders both
   // carry the _h suffix (the surface let desugars at parse into the
@@ -1645,10 +1652,10 @@ fn census_matches(shape: CensusShape, h, body: NodeBody) with !Mutate = match sh
   // over ANY name where the regex saw four literals. The pair anchor
   // is the mode's own settled note: ctor payloads legitimately carry
   // the handle convention; the paired bind/params convict.
-  match body {
+  CsParallelArrays => match body {
     NExpr(MatchExpr(_, arms)) => if len(arms) == 1 {
       match list_index(arms, 0) {
-        (p, _) => match p {
+        (p, _) => match pat_of(p) {
           PTuple(elems) => paired_handle_binders(elems),
           _ => false,
         },
@@ -1659,7 +1666,7 @@ fn census_matches(shape: CensusShape, h, body: NodeBody) with !Mutate = match sh
     NStmt(FnStmt(_, params, _, _, _)) => adjacent_handle_params(params |> map(param_name)),
     _ => false,
   },
-  CsVtableRecord => // Drift mode 1's shape (the eighth absorption): a record
+  // Drift mode 1's shape (the eighth absorption): a record
   // literal with a field NAMED like a dispatch slot (fn_* / handler_*)
   // holding a lambda — Mentl drawn as Rust. The name key is the
   // mode's own anchor: a record of closures with HONEST field names
@@ -1667,35 +1674,35 @@ fn census_matches(shape: CensusShape, h, body: NodeBody) with !Mutate = match sh
   // the machinery-named slot convicts. Structural where the regex saw
   // only the retired lambda spellings; the nominal-record costume
   // counts too.
-  match body {
+  CsVtableRecord => match body {
     NExpr(MakeRecordExpr(flds)) => any_vtable_field(flds, 0, len(flds)),
     NExpr(NamedRecordExpr(_, flds)) => any_vtable_field(flds, 0, len(flds)),
     _ => false,
   },
-  CsEnvFrame => // Drift mode 2's shape (the tenth absorption): the
+  // Drift mode 2's shape (the tenth absorption): the
   // scope-as-frame-stack family — parent_env / env_stack / push_frame /
   // pop_frame / env_chain — declared, called, or bound. Env lookup is
   // an effect op (the bare `env_lookup(name)` call); a parent-pointer
   // frame walk re-derives what the env edge already connects. The name
   // key is the mode's own anchor, exactly as CsFlagAsInt and
   // CsPrintInReport key on their families.
-  match body {
+  CsEnvFrame => match body {
     NStmt(FnStmt(name, _, _, _, _)) => env_frame_name(name),
     NExpr(VarRef(name)) => env_frame_name(name),
-    NStmt(LetStmt(p, _, _)) => match p {
+    NStmt(LetStmt(p, _, _)) => match pat_of(p) {
       PVar(name) => env_frame_name(name),
       _ => false,
     },
     _ => false,
   },
-  CsDefaultParam => // The declared surface read from the carrier that already holds it:
+  // The declared surface read from the carrier that already holds it:
   // a default is TParam slot 4, an Option(Node) the parser fills at the
   // declaration, so this is a chase to a fact the graph proves and never
   // a re-derivation from source text. SYNTAX makes the slot load-bearing
   // rather than decorative — the default is a callee-scoped fill, so its
   // row is the callee's row, which is why the crown pins it as a carrier
   // (leak-default-latent / sound-default-transport).
-  match body {
+  CsDefaultParam => match body {
     NStmt(FnStmt(_, params, _, _, _)) => any(
       (p) => match param_default(p) {
         Some(_) => true,
@@ -1705,7 +1712,7 @@ fn census_matches(shape: CensusShape, h, body: NodeBody) with !Mutate = match sh
     ),
     _ => false,
   },
-  CsDeclaredRowHof => // The population `Hβ.infer.declared-row-vacuous-against-a-free-body-row`
+  // The population `Hβ.infer.declared-row-vacuous-against-a-free-body-row`
   // needs priced before its fix is built: a fn that DECLARES a row and
   // CALLS one of its own parameters. Today the declaration is vacuous
   // against the param's free row var — `fn run(f) with !E = f()` accepts
@@ -1714,25 +1721,25 @@ fn census_matches(shape: CensusShape, h, body: NodeBody) with !Mutate = match sh
   // judgment changes. Both facts are read where the graph holds them: the
   // signed clauses are FnStmt's own field, and the call is the weave's
   // tree edge walked to the callee's VarRef.
-  match body {
+  CsDeclaredRowHof => match body {
     NStmt(FnStmt(_, params, _, effs, fbody)) => if len(effs) == 0 { false } else { subtree_calls_param(fbody, map(param_name, params), 64) },
     _ => false,
   },
-  CsAuthoredPositiveRow => // The declared clauses are `FnStmt`'s own field — the row is read where
+  // The declared clauses are `FnStmt`'s own field — the row is read where
   // the signature holds it, never re-parsed from the page. A term is
   // (name, negated, connective): a bare un-negated name is the shape; a
   // negation, an instance pin and Pure are decisions and are not.
-  match body {
+  CsAuthoredPositiveRow => match body {
     NStmt(FnStmt(_, _, _, effs, _)) => any(term_is_bare_positive, effs),
     _ => false,
   },
-  CsRecordPattern => // Both spellings of one shape, read where the pattern lives: a
+  // Both spellings of one shape, read where the pattern lives: a
   // let-binding's own pattern and a match arm's. The emit reads a record
   // pattern's field offsets from the receiver's whole field set under the
   // twin being emitted, so every site counted here is a structural read of
   // its receiver's row.
-  match body {
-    NStmt(LetStmt(p, _, _)) => match p {
+  CsRecordPattern => match body {
+    NStmt(LetStmt(p, _, _)) => match pat_of(p) {
       PRecord(_, _) => true,
       _ => false,
     },
@@ -1882,7 +1889,7 @@ fn any_record_arm(arms, i, n) = if i >= n {
   false
 } else {
   match list_index(arms, i) {
-    (p, _) => match p {
+    (p, _) => match pat_of(p) {
       PRecord(_, _) => true,
       _ => any_record_arm(arms, i + 1, n),
     },
@@ -1912,7 +1919,7 @@ fn any_vtable_field(flds, i, n) with !Mutate = if i >= n {
 fn paired_handle_binders(elems) = if len(elems) < 2 {
   false
 } else {
-  match (list_index(elems, 0), list_index(elems, 1)) {
+  match (pat_of(list_index(elems, 0)), pat_of(list_index(elems, 1))) {
     (PVar(a), PVar(b)) => ends_with(a, "_h") && ends_with(b, "_h"),
     _ => false,
   }
@@ -2049,7 +2056,7 @@ fn any_wildcard_zero(arms, i, n) = if i >= n {
   false
 } else {
   match list_index(arms, i) {
-    (p, b) => match p {
+    (p, b) => match pat_of(p) {
       PWild => match graph_node_body(b) {
         NExpr(LitInt(0)) => true,
         _ => any_wildcard_zero(arms, i + 1, n),
@@ -2063,7 +2070,7 @@ fn any_wildcard_fabricates(arms, i, n) = if i >= n {
   false
 } else {
   match list_index(arms, i) {
-    (p, b) => match p {
+    (p, b) => match pat_of(p) {
       PWild => if wildcard_body_fabricates(b) { true } else { any_wildcard_fabricates(arms, i + 1, n) },
       _ => any_wildcard_fabricates(arms, i + 1, n),
     },
@@ -2071,8 +2078,8 @@ fn any_wildcard_fabricates(arms, i, n) = if i >= n {
 }
 
 fn wildcard_body_fabricates(b) = match graph_node_body(b) {
-  NExpr(LitString(s)) => // drift-audit: ignore — the census DETECTOR reading the drifted literal from the weave, not an effect-name dispatch
-  s == "" || s == "Pure",
+  // drift-audit: ignore — the census DETECTOR reading the drifted literal from the weave, not an effect-name dispatch
+  NExpr(LitString(s)) => s == "" || s == "Pure",
   NExpr(CallExpr(callee, _)) => match graph_node_body(callee) {
     NExpr(VarRef(cn)) => cn == "Forall" || cn == "TVar",
     _ => false,
@@ -2159,7 +2166,10 @@ fn chain_links(nodes) = if len(nodes) < 2 {
   []
 } else {
   range(0, len(nodes) - 1) |> map((i) => match graph_node_body(nodes[i]) {
-    NStmt(LetStmt(PVar(name), _, _)) => let_feeds_next(name, nodes, i),
+    NStmt(LetStmt(p, _, _)) => match pat_of(p) {
+      PVar(name) => let_feeds_next(name, nodes, i),
+      PWild | PLit(_) | PCon(_, _) | PTuple(_) | PList(_, _) | PRecord(_, _) | PAlt(_) | PAs(_, _) => false,
+    },
     _ => false,
   })
 }
@@ -2482,8 +2492,8 @@ fn site_demanded(vias, site) = match site {
 // closure — has no line to give, and the head stands alone.
 fn decl_address(decl) with !Mutate = match decl {
   Some(h) => decl_at(h),
-  None => // drift-audit: ignore — no declaration node, so no address: the head is the whole answer
-  "",
+  // drift-audit: ignore — no declaration node, so no address: the head is the whole answer
+  None => "",
 }
 
 // An op stands where its effect is declared — the effect declaration of that
@@ -2491,8 +2501,8 @@ fn decl_address(decl) with !Mutate = match decl {
 // both named Sample).
 fn effect_address(ename: String) with !Mutate = match find(declares_effect(ename, ??), graph_decls_at()) {
   Some(h) => decl_at(h),
-  None => // drift-audit: ignore — an effect the substrate registers with no declaration node has no address
-  "",
+  // drift-audit: ignore — an effect the substrate registers with no declaration node has no address
+  None => "",
 }
 
 fn declares_effect(ename: String, h) = match graph_node_body(h) {
@@ -2644,8 +2654,8 @@ fn variant_lines(entries, tname: String, i, n, acc) = if i >= n {
 
 fn ctor_arity(scheme) = match judgment_ty(scheme) {
   TFun(params, _, _) => len(params),
-  _ => // drift-audit: ignore — the arity of any non-TFun scheme IS zero (a value takes no params); a true total answer, not a masked case
-  0,
+  // drift-audit: ignore — the arity of any non-TFun scheme IS zero (a value takes no params); a true total answer, not a masked case
+  _ => 0,
 }
 
 fn op_resume_ty(scheme) with !Mutate = match chase_type_deep(judgment_ty(scheme)) {
@@ -3173,11 +3183,11 @@ fn why_expand(reason, depth) = if depth > 20 {
     IfBranch(inner) => IfBranch(why_expand(inner, depth + 1)),
     LetBinding(name, inner) => LetBinding(name, why_expand(inner, depth + 1)),
     Instantiation(name, inner) => Instantiation(name, why_expand(inner, depth + 1)),
-    Accepted(text, proof, inner) => // The accept edge expands its BINDING side only: the proof is the
+    // The accept edge expands its BINDING side only: the proof is the
     // medium's own sentence at proposal time, carried as it was said —
     // a fact of the generation that proposed, never re-chased in the
     // one that accepted.
-    Accepted(text, proof, why_expand(inner, depth + 1)),
+    Accepted(text, proof, inner) => Accepted(text, proof, why_expand(inner, depth + 1)),
     Fresh(id) => match graph_chase(id) {
       GNode(_, resolved) => match resolved {
         Fresh(_) => reason,

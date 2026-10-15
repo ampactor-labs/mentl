@@ -261,21 +261,21 @@ fn render_block_final(final) with !Mutate = match let_born(final) {
 fn render_body_tokens(body) with !Mutate = match body {
   NExpr(e) => render_expr_tokens(e),
   NStmt(s) => render_stmt_tokens(s),
-  NPat(p) => render_pat_tokens(p),
+  NPat(p) => render_pat_value(p),
   NHole(_) => "??",
   NModule(m) => "// module {m.path}",
   NTypeAnn(ty) => render_type_tokens(ty),
 }
 
 fn render_expr_tokens(e) with !Mutate = match e {
-  LitInt(n) => // A negative literal node is a literal the lexer WRAPPED — `0x811C9DC5`,
+  // A negative literal node is a literal the lexer WRAPPED — `0x811C9DC5`,
   // `2147483648` — since an authored `-5` parses as UNeg(5). int_to_str
   // prints its minus, which re-parses as a unary minus over a different
   // literal: INT_MIN accreted one `-` per pass, and `0x811C9DC5` became
   // two tokens the conservation census could not pair. The wrapping
   // spelling IS the value — the unsigned word the lexer wraps back — one
   // token, idempotent, and the authored radix returns through `respell`.
-  if n < 0 { unsigned_word_text(n) } else { int_to_str(n) },
+  LitInt(n) => if n < 0 { unsigned_word_text(n) } else { int_to_str(n) },
   LitFloat(f) => float_literal_text(f),
   LitString(s) => "\"{str_escape(s)}\"",
   LitBool(b) => if b { "true" } else { "false" },
@@ -311,8 +311,8 @@ fn render_expr_tokens(e) with !Mutate = match e {
       "{render_operand(l, pipe_prec(verb), false)} {show_pipe_kind(verb)}\n{render_operand(r, pipe_prec(verb), true)}"
     }
   },
-  FanoutExpr(branches) => // Inline when it fits; past the width, SYNTAX §`><`'s vertical layout.
-  {
+  // Inline when it fits; past the width, SYNTAX §`><`'s vertical layout.
+  FanoutExpr(branches) => {
     let inline = render_fanout_inline(branches)
     if fits_inline(inline) { inline } else { render_fanout_vertical(branches) }
   },
@@ -325,7 +325,7 @@ fn render_expr_tokens(e) with !Mutate = match e {
       "if {render_tokens_for(c)} {render_branch_block(t)}{render_else_block(el)}"
     }
   },
-  MakeListExpr(elems) => // An element carrying prose forces the VERTICAL layout (the CallExpr
+  // An element carrying prose forces the VERTICAL layout (the CallExpr
   // args law at the tuple/list altitude): an inline pack embeds the
   // prose's newlines mid-expression, and the next parse re-homes the
   // comment to whatever now starts the following line — the layout
@@ -334,7 +334,7 @@ fn render_expr_tokens(e) with !Mutate = match e {
   // arm per pass).
   // A literal past the width breaks one element per line, as a call's
   // arguments do — a `<|` branch tuple included.
-  {
+  MakeListExpr(elems) => {
     let inline = "[{render_node_list(elems, ", ")}]"
     if args_carry_prose(elems, 0) || !fits_inline(inline) {
       "[\n{indent_block(render_arg_lines(elems, 0))}\n]"
@@ -351,13 +351,13 @@ fn render_expr_tokens(e) with !Mutate = match e {
     }
   },
   ExprPlaceholder => "??",
-  BlockExpr(stmts, final) => // The final expr's attached prose renders exactly as a statement's does
+  // The final expr's attached prose renders exactly as a statement's does
   // — the weave attaches a before-final interior comment (and the
   // block-tail comment, whose home is the final's own handle when nothing
   // follows) to the final, and dropping it violated "never dropped" (the
   // fmt census's blocker 5: a third of parser.mn's prose was
   // body-interior).
-  "\{\n{indent_block("{render_block_stmts(stmts, 0)}{render_block_final(final)}")}\n\}",
+  BlockExpr(stmts, final) => "\{\n{indent_block("{render_block_stmts(stmts, 0)}{render_block_final(final)}")}\n\}",
   LambdaExpr(params, body) => match arm_list_of(params, body) {
     Some(arms) => render_arm_literal(arms),
     None => match resugar_head(params, body) {
@@ -370,29 +370,29 @@ fn render_expr_tokens(e) with !Mutate = match e {
   MakeRecordExpr(fields) => render_record(fields, ""),
   NamedRecordExpr(head, fields) => "{render_tokens_for(head)}{render_record(fields, "")}",
   RecordUpdateExpr(base, fields) => render_record(fields, "...{render_tokens_for(base)}"),
-  MakeStringExpr(parts) => // Interpolation is the parse's inverse: literal chunks re-escape,
+  // Interpolation is the parse's inverse: literal chunks re-escape,
   // every other fragment renders as a live splice.
-  "\"{render_string_parts(parts, 0)}\"",
-  ShowExpr(inner) => // Outside a string context the wrap is invisible surface — the
+  MakeStringExpr(parts) => "\"{render_string_parts(parts, 0)}\"",
+  // Outside a string context the wrap is invisible surface — the
   // inner renders bare (parser-minted only inside fragments).
-  render_tokens_for(inner),
+  ShowExpr(inner) => render_tokens_for(inner),
   MatchExpr(scrut, arms) => "match {render_tokens_for(scrut)} \{\n{indent_block(strip_trailing_nl(render_match_arms(arms, 0)))}\n\}",
   ResumeExpr(v, updates) => "{render_resume_head(v)}{render_state_updates(updates, 0)}",
 }
 
 fn render_stmt_tokens(s) with !Mutate = match s {
   FnStmt(name, params, retty, effs, body) => match module_arm_list(params, body) {
-    Some(arms) => // A module-scope `let name = { arms }` is born a declaration whose one
+    // A module-scope `let name = { arms }` is born a declaration whose one
     // parameter the literal minted (parser.mn `let_at_scope`), so it renders
     // as the literal it was written as: the fresh name never reaches the page.
-    "let {name} = {render_arm_literal(arms)}",
+    Some(arms) => "let {name} = {render_arm_literal(arms)}",
     None => render_fn_decl(name, params, retty, effs, body),
   },
   ImportStmt(path) => "import {path}",
-  ExprStmt(e) => // A unit expression statement is the file-tail prose CARRIER (and a
+  // A unit expression statement is the file-tail prose CARRIER (and a
   // bare `()` statement is dead weight either way): its comment renders,
   // its tokens do not.
-  match graph_node_body(e) {
+  ExprStmt(e) => match graph_node_body(e) {
     NExpr(LitUnit) => "",
     _ => render_grouped_body(e),
   },
@@ -411,7 +411,7 @@ fn render_stmt_tokens(s) with !Mutate = match s {
     Some(fields) => render_record_decl(name, fields),
     None => "type {name}{render_variants(variants, 0)}",
   },
-  EffectDeclStmt(name, params, ops) => // An op's params carry the author's names (a bare type is the wildcard
+  // An op's params carry the author's names (a bare type is the wildcard
   // `_`), so the render is the parse's inverse over both spellings. The
   // instance params render through the same product projection the
   // handler head uses (format∘parse identity over SYNTAX §«Parameterized
@@ -419,14 +419,14 @@ fn render_stmt_tokens(s) with !Mutate = match s {
   // An effect with no operations is a marker (`effect Mutate {}`): its body
   // renders closed on the head's line, never as a brace pair around an
   // indented empty line (the trailing-space line the block form wrote).
-  match ops {
+  EffectDeclStmt(name, params, ops) => match ops {
     [] => "effect {name}{render_config_params(params)} \{\}",
     _ => "effect {name}{render_config_params(params)} \{\n{indent_block(strip_trailing_nl(render_effect_ops(ops, 0)))}\n\}",
   },
   HandlerDeclStmt(hname, _ename, config, states, arms, effs) => "handler {hname}{render_config_params(config)}{render_handler_clause(effs, states)} \{\n{indent_block(strip_trailing_nl(render_handler_arms(arms, 0)))}\n\}",
-  HandlerChainStmt(name, chain) => // A chain declaration is one line, its members joined by ` ~> ` — the
+  // A chain declaration is one line, its members joined by ` ~> ` — the
   // layout of a composition, not of an install over a body.
-  "handler {name} = {render_chain_members(chain)}",
+  HandlerChainStmt(name, chain) => "handler {name} = {render_chain_members(chain)}",
   RefineStmt(name, ty, pred) => "type {name} = {render_decl_type(ty)} where {render_predicate_tokens(pred)}",
 }
 
@@ -441,7 +441,9 @@ fn render_decl_type(ty) with !Mutate = match ty {
   t => render_type_tokens(t),
 }
 
-fn render_pat_tokens(p) = match p {
+fn render_pat_tokens(h) = render_pat_value(pat_of(h))
+
+fn render_pat_value(p) = match p {
   PVar(name) => name,
   PWild => "_",
   PCon(name, ps) => if len(ps) == 0 { name } else { "{name}({render_pat_list(ps, ", ")})" },
@@ -452,48 +454,71 @@ fn render_pat_tokens(p) = match p {
     None => "\{{render_pat_fields(fields, 0)}\}",
     Some(rn) => if len(fields) == 0 { "\{...{rn}\}" } else { "\{{render_pat_fields(fields, 0)}, ...{rn}\}" },
   },
-  PAlt(ps) => // Inline when it fits; past the width, one branch per line, each
-  // continuation led by its `|` (SYNTAX §«Pattern alternation — rule»): the
-  // roster a catch-all stood for is often forty names, and the parser passes
-  // over the newline before a `|` as layout. Branches that each bind the
-  // whole value under one name are that binder over the alternation,
-  // `b @ (C(_) | D)` — the lift `lifted_at` states, one name per branch
-  // the grouped spelling writes once.
-  match binder_of_branches(ps) {
-    Some((name, inners)) => render_pat_tokens(PAs(name, PAlt(inners))),
-    None => {
-      let inline = render_pat_list(ps, " | ")
-      if fits_inline(inline) { inline } else { render_pat_list(ps, "\n| ") }
-    },
+  // Branches that each bind the whole value under one name are that
+  // binder over the alternation, `b @ (C(_) | D)` — the lift `lifted_at`
+  // states, one name per branch the grouped spelling writes once.
+  PAlt(ps) => match binder_of_branches(ps) {
+    Some((name, inners)) => render_binder_over(name, map(render_pat_tokens, inners)),
+    None => render_alternation(map(render_pat_tokens, ps)),
   },
-  PAs(name, inner) => match inner {
-    PAlt(ps) => // The binder over the alternation it groups, one branch per line past
-    // the width as the bare alternation breaks.
-    {
-      let inline = "{name} @ ({render_pat_list(ps, " | ")})"
-      if fits_inline(inline) {
-        inline
-      } else {
-        "{name} @ (\n{indent_block(render_pat_list(ps, "\n| "))}\n)"
-      }
-    },
+  PAs(name, inner) => match pat_of(inner) {
+    PAlt(ps) => render_binder_over(name, map(render_pat_tokens, ps)),
     PVar(_) | PWild | PLit(_) | PCon(_, _) | PTuple(_) | PList(_, _) | PRecord(_, _) | PAs(_, _) => "{name} @ {render_pat_tokens(inner)}",
   },
+}
+
+// An alternation, inline when it fits; past the width, one branch per line,
+// each continuation led by its `|` (SYNTAX §«Pattern alternation — rule»):
+// the roster a catch-all stood for is often forty names, and the parser
+// passes over the newline before a `|` as layout.
+fn render_alternation(branches) = {
+  let inline = join(" | ", branches)
+  if fits_inline(inline) { inline } else { join("\n| ", branches) }
+}
+
+// The binder over the alternation it groups, one branch per line past the
+// width as the bare alternation breaks.
+fn render_binder_over(name: String, branches) = {
+  let inline = "{name} @ ({join(" | ", branches)})"
+  if fits_inline(inline) { inline } else { "{name} @ (\n{indent_block(join("\n| ", branches))}\n)" }
+}
+
+// The roster a catch-all over a sum stands for, as `mentl tighten` writes it:
+// each constructor with its payload left to `_`, Bool's two by their
+// literals, under the arm's binder when it bound one.
+fn render_roster(roster) = match roster {
+  Roster(binder, ctors) => {
+    let branches = map(render_roster_ctor, ctors)
+    match (binder, branches) {
+      (Some(name), [one]) => "{name} @ {one}",
+      (Some(name), _) => render_binder_over(name, branches),
+      (None, _) => render_alternation(branches),
+    }
+  },
+}
+
+fn render_roster_ctor(entry) = match entry {
+  ("True", 0) => "true",
+  ("False", 0) => "false",
+  (cname, k) => if k == 0 { cname } else { "{cname}({join(", ", map({ _ => "_" }, range(0, k)))})" },
 }
 
 // The one binder every branch of an alternation places over the whole value,
 // with the branches under it — `b @ C(_) | b @ D` is `b @ (C(_) | D)`.
 fn binder_of_branches(ps) = match ps {
-  [PAs(name, _), ..._] => match fold(Some([]), as_branches_step(name, ??, ??), ps) {
-    Some(inners) => Some((name, inners)),
-    None => None,
+  [first, ..._] => match pat_of(first) {
+    PAs(name, _) => match fold(Some([]), as_branches_step(name, ??, ??), ps) {
+      Some(inners) => Some((name, inners)),
+      None => None,
+    },
+    PVar(_) | PWild | PLit(_) | PCon(_, _) | PTuple(_) | PList(_, _) | PRecord(_, _) | PAlt(_) => None,
   },
-  _ => None,
+  [] => None,
 }
 
 fn as_branches_step(name: String, acc, branch) = match acc {
   None => None,
-  Some(inners) => match branch {
+  Some(inners) => match pat_of(branch) {
     PAs(n, inner) => if n == name { Some(push(inners, inner)) } else { None },
     PVar(_) | PWild | PLit(_) | PCon(_, _) | PTuple(_) | PList(_, _) | PRecord(_, _) | PAlt(_) => None,
   },
@@ -667,7 +692,7 @@ fn render_arm_list_inline(arms, i) with !Mutate = if i >= len(arms) {
 } else {
   let sep = if i == 0 { "" } else { ", " }
   match arms[i] {
-    (pat, body) => "{sep}{render_pat_tokens(pat)} => {render_grouped_body(body)}{render_arm_list_inline(arms, i + 1)}",
+    (pat, body) => "{sep}{render_comment_at(pat)}{render_pat_tokens(pat)} => {render_grouped_body(body)}{render_arm_list_inline(arms, i + 1)}",
   }
 }
 
@@ -716,13 +741,13 @@ fn expr_prec_of(node) = match graph_node_body(node) {
   NExpr(UnaryOpExpr(_, _)) => 90,
   NExpr(IfExpr(_, _, _)) => 15,
   NExpr(MatchExpr(_, _)) => 15,
-  NExpr(LambdaExpr(_, _)) => // A lambda's body extends maximally rightward — as an operand it must
+  // A lambda's body extends maximally rightward — as an operand it must
   // ALWAYS re-wrap, or the re-parse absorbs the operator into the body
   // (measured: the recurrence `((prev) => …) <~ delay(1)` rendered
   // paren-free, and pass 2 read `delay(1)(prev)` as an application).
   // Prec 0 sits below every operator, so render_operand wraps it in
   // every operand position — SYNTAX's own canonical spelling.
-  0,
+  NExpr(LambdaExpr(_, _)) => 0,
   _ => 100,
 }
 
@@ -819,9 +844,9 @@ fn render_string_parts(ref parts, i) with !Mutate = if i >= len(parts) {
 } else {
   let one = match graph_node_body(parts[i]) {
     NExpr(LitString(s)) => str_escape(s),
-    NExpr(ShowExpr(inner)) => // The splice's ShowExpr wrap is invisible surface — the braces
+    // The splice's ShowExpr wrap is invisible surface — the braces
     // render the INNER (render∘parse fixpoint over the wrap).
-    "\{{render_tokens_for(inner)}\}",
+    NExpr(ShowExpr(inner)) => "\{{render_tokens_for(inner)}\}",
     _ => "\{{render_tokens_for(parts[i])}\}",
   }
   "{one}{render_string_parts(parts, i + 1)}"
@@ -863,10 +888,10 @@ fn render_else_block(el) with !Mutate = match graph_node_body(el) {
 }
 
 fn render_if_branch(n) with !Mutate = match graph_node_body(n) {
-  NExpr(BlockExpr(stmts, final)) => // Attached prose forces the block layout — a comment needs its own
+  // Attached prose forces the block layout — a comment needs its own
   // line, and the single-line form would drop it (measured: the
   // if-branch finals were the interior-prose loss's biggest residue).
-  if len(stmts) == 0 && graph_comment_at(final) == "" {
+  NExpr(BlockExpr(stmts, final)) => if len(stmts) == 0 && graph_comment_at(final) == "" {
     "\{ {render_tokens_for(final)} \}"
   } else {
     render_tokens_for(n)
@@ -914,7 +939,7 @@ fn strip_trailing_nl(s) = {
 // a body record in parens the parser then consumed — the formatter
 // projecting the parser's gap onto every page.
 fn render_grouped_body(node) with !Mutate = match graph_node_body(node) {
-  NExpr(BlockExpr(stmts, final)) => // The E_RedundantBraces format-lift, at the ONE altitude where braces
+  // The E_RedundantBraces format-lift, at the ONE altitude where braces
   // are genuinely optional (fn/lambda/arm/let bodies route here): a
   // stmt-less block IS its final expression, and emitting its braces
   // re-minted the lint on the canonical page (measured: 1654 warnings
@@ -922,20 +947,20 @@ fn render_grouped_body(node) with !Mutate = match graph_node_body(node) {
   // by composition — render_branch_block and the block final add their
   // own braces AROUND this result, exactly once. A block carrying its
   // own attached prose keeps the braces: the prose's anchor.
-  if len(stmts) == 0 && graph_comment_at(node) == "" {
+  NExpr(BlockExpr(stmts, final)) => if len(stmts) == 0 && graph_comment_at(node) == "" {
     render_grouped_body(final)
   } else {
     render_tokens_for(node)
   },
-  _ => // drift-audit: ignore — the brace-lead expr forms and the stmt-less block are the enumerated classes; everything else renders unwrapped by design
-  render_tokens_for(node),
+  // drift-audit: ignore — the brace-lead expr forms and the stmt-less block are the enumerated classes; everything else renders unwrapped by design
+  _ => render_tokens_for(node),
 }
 
 fn render_match_arms(ref arms, i) with !Mutate = if i >= len(arms) {
   ""
 } else {
   match arms[i] {
-    (pat, body) => "{render_pat_tokens(pat)} => {render_grouped_body(body)},\n{render_match_arms(arms, i + 1)}",
+    (pat, body) => "{render_comment_at(pat)}{render_pat_tokens(pat)} => {render_grouped_body(body)},\n{render_match_arms(arms, i + 1)}",
   }
 }
 
@@ -955,8 +980,8 @@ fn render_state_updates(ref updates: [{init: Node, name: String}], i) with !Muta
 
 fn render_let_ann(ann) with !Mutate = match graph_node_body(ann) {
   NTypeAnn(ty) => ": {render_type_tokens(ty)}",
-  _ => // drift-audit: ignore — the ADT's own absence sentinel: LetStmt's ann node is LitUnit when unannotated (the LetStmt decl comment); any non-NTypeAnn body IS that absence, rendered as no clause
-  "",
+  // drift-audit: ignore — the ADT's own absence sentinel: LetStmt's ann node is LitUnit when unannotated (the LetStmt decl comment); any non-NTypeAnn body IS that absence, rendered as no clause
+  _ => "",
 }
 
 // The record a nominal record type IS: a lone variant named as its type,
@@ -1051,11 +1076,11 @@ fn render_predicate_tokens(pred) with !Mutate = match pred {
   POr(a, b) => "{render_pred_grouped(a, 4, false)} || {render_pred_grouped(b, 4, true)}",
   PNot(p) => "!{render_pred_grouped(p, 90, false)}",
   PBoolNode(n) => render_pred_node(n),
-  PPatternMatch(p, n) => // The non-surface predicates (inference-minted narrowing, IFC
+  // The non-surface predicates (inference-minted narrowing, IFC
   // obligations, partiality, provisions) have no parseable spelling; the
   // voice is their only projection, and the fmt verb's own reparse
   // refuses loudly if one ever reaches a page.
-  show_predicate(PPatternMatch(p, n)),
+  PPatternMatch(p, n) => show_predicate(PPatternMatch(p, n)),
   PFlowLe(src, dst) => show_predicate(PFlowLe(src, dst)),
   PWithSelf(_, inner) => render_predicate_tokens(inner),
   PTotalDiv(op, a, b) => show_predicate(PTotalDiv(op, a, b)),
@@ -1214,28 +1239,30 @@ fn lifted_at(kept, h) = match graph_node_body(h) {
   } else {
     []
   },
-  NStmt(TypeDefStmt(name, variants)) => // `type X = X({f: T})` renders as `type X = {f: T}`: the variant's name is
+  // `type X = X({f: T})` renders as `type X = {f: T}`: the variant's name is
   // carried by the type's, which is the same name
-  match nominal_record_of(name, variants) {
+  NStmt(TypeDefStmt(name, variants)) => match nominal_record_of(name, variants) {
     Some(fields) => [name],
     None => [],
   },
-  NExpr(MakeRecordExpr(fields)) => // `{at: at}` renders as `{at}`: the value's name is carried by the field's
-  punned_names(fields),
+  // `{at: at}` renders as `{at}`: the value's name is carried by the field's
+  NExpr(MakeRecordExpr(fields)) => punned_names(fields),
   NExpr(NamedRecordExpr(head, fields)) => punned_names(fields),
   NExpr(RecordUpdateExpr(base, fields)) => punned_names(fields),
-  NExpr(MatchExpr(_, arms)) => // `b @ C(_) | b @ D` renders as `b @ (C(_) | D)`: the binder is written once
+  // `b @ C(_) | b @ D` renders as `b @ (C(_) | D)`: the binder is written once
   // for branches the parse read it on each of
-  flat_map(arm_grouped_binders, arms),
+  NExpr(MatchExpr(_, arms)) => flat_map(arm_grouped_binders, arms),
   _ => [],
 }
 
 fn arm_grouped_binders(arm) = match arm {
-  (PAlt(ps), _) => match binder_of_branches(ps) {
-    Some((name, inners)) => map({ _ => name }, range_list(1, len(inners))),
-    None => [],
+  (pat, _) => match pat_of(pat) {
+    PAlt(ps) => match binder_of_branches(ps) {
+      Some((name, inners)) => map({ _ => name }, range_list(1, len(inners))),
+      None => [],
+    },
+    _ => [],
   },
-  _ => [],
 }
 
 fn punned_names(fields) = fields |> filter(field_puns_entry) |> map(field_name_of)
@@ -1356,9 +1383,9 @@ fn render_pat_fields(ref fields, i) = if i >= len(fields) {
     (fname, p) => {
       // Punning is the canonical form when the pattern binds the field's
       // own name (SYNTAX §records).
-      let one = match p {
+      let one = match pat_of(p) {
         PVar(n) => if n == fname { fname } else { "{fname}: {n}" },
-        other => "{fname}: {render_pat_tokens(other)}",
+        _ => "{fname}: {render_pat_tokens(p)}",
       }
       if i == len(fields) - 1 { one } else { "{one}, {render_pat_fields(fields, i + 1)}" }
     },
@@ -1427,8 +1454,8 @@ fn render_retty(ann, effs) with !Mutate = match ann {
     },
     _ => " -> {render_type_tokens(ann_ty)}",
   },
-  _ => // drift-audit: ignore — the documented absent-annotation contract (an inferred return renders no clause)
-  "",
+  // drift-audit: ignore — the documented absent-annotation contract (an inferred return renders no clause)
+  _ => "",
 }
 
 // Canonical indent depth per node kind. Match-arm bodies +2; let-
@@ -1461,8 +1488,8 @@ fn ast_top_level_stmts(ast) with Pure = ast
 fn canonical_indent_depth(kind) with Pure = match kind {
   NStmt(_) => 0,
   NExpr(_) => left_edge_indent(),
-  _ => // drift-audit: ignore — non-stmt/expr kinds sit at left edge; depth 0 IS their canonical indent, not a fabricated default
-  0,
+  // drift-audit: ignore — non-stmt/expr kinds sit at left edge; depth 0 IS their canonical indent, not a fabricated default
+  _ => 0,
 }
 
 // The unary operator glyph per SYNTAX.md — `-` negate, `!` logical-not.

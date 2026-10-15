@@ -182,12 +182,12 @@ fn handle_of_cursor(cursor) = match cursor {
 // handle_at_span() — see src/cursor.mn (the module-scoped resolver).
 fn apply_suggestion(cursor, view) = match cursor {
   Cursor(handle, _, _) => match view {
-    CursorView(_, propose, _, _, _, _, teach, _) => // A hole accepts its PROPOSE survivor: the verdict says whether there
+    // A hole accepts its PROPOSE survivor: the verdict says whether there
     // is one, and the accept path READS it rather than re-deriving it from
     // a survivor count. `VAsk` is the teaching TIE-BREAK — surface the
     // question, never guess between proven survivors (PLAN §5); `VNone`
     // and non-hole positions accept the teach annotation.
-    match propose {
+    CursorView(_, propose, _, _, _, _, teach, _) => match propose {
       Proposal(p) => match p.verdict {
         VFill(survivor, reason) => if authored_hole(handle) {
           accept_fill(handle, survivor, reason)

@@ -340,12 +340,12 @@ fn lex_from(ref source, n: ValidOffset, pos: ValidOffset, line, col, own buf, co
     }
   } else if is_alpha(b) {
     match scan_ident(source, n, pos, col) {
-      (new_pos, new_col) => // The intern resolves the identifier ONCE per unique spelling: a
+      // The intern resolves the identifier ONCE per unique spelling: a
       // repeat occurrence returns the canonical String and its banked
       // keyword classification through a hash probe — no slice minted,
       // no keyword chain walked (the per-occurrence forms this replaces
       // paid both at every identifier).
-      match intern_span(source, pos, new_pos) {
+      (new_pos, new_col) => match intern_span(source, pos, new_pos) {
         (word, _handle, kw) => {
           let kind = match kw {
             Some(k) => k,

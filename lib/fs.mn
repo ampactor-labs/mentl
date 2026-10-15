@@ -279,11 +279,11 @@ fn fs_readdir_loop(fd, cookie, acc) = {
   } else {
     let nread = load_i32(nread_cell)
     match fs_parse_dirents(buf, nread, 0, acc, cookie, false) {
-      (acc2, last_cookie, saw_whole) => // nread < bufsz ⇒ the host wrote the whole remainder — done. A full
+      // nread < bufsz ⇒ the host wrote the whole remainder — done. A full
       // buffer means more entries exist; continue from the last WHOLE
       // entry's d_next (no whole entry in a full buffer = a name larger
       // than the buffer — stop rather than loop forever).
-      if nread < bufsz || !saw_whole { acc2 } else { fs_readdir_loop(fd, last_cookie, acc2) },
+      (acc2, last_cookie, saw_whole) => if nread < bufsz || !saw_whole { acc2 } else { fs_readdir_loop(fd, last_cookie, acc2) },
     }
   }
 }

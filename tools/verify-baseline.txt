@@ -1064,8 +1064,8 @@ authored_own_max: 48
 # when a node became its handle and the function became the identity, and
 # `sort_unique(ref names)` and `lookup_tag(ref idx, handle)` left as second
 # names for `name_set_canonicalize` and `wmap_get`. 617 -> 601 (2026-10-15): M1's
-# name-keyed walks, then the dead code the facets named, left with their markers.
-authored_ref_max: 601
+# name-keyed walks and the dead code the facets named; -> 598, a pattern's walks.
+authored_ref_max: 598
 
 # 2026-08-08: the DRIFT-SHAPE ratchet (PLAN §11 5.6's absorption,
 # enforcement half) — the three absorbed drift modes counted by the
@@ -1451,11 +1451,11 @@ selfcompile_peak_kb_max: 421100
 # peak RSS differed — so it is the memory ratchet no machine moves, refused
 # on a breach by `read_line` (tools/march.sh) with no re-measure. A landing
 # that breaches it pays the cost down, never raises it. Held at 1% over the
-# landed form's 346,463 KB (2026-10-15): the lowering's reach holds its line,
-# each root's reads and each step of the module's head are extents of their
-# own, the gate reads an effect's ops off its declaration, and the code
-# nothing reached is gone with the three spine columns nothing read.
-selfcompile_line_peak_kb_max: 349900
+# landed form's 264,546 KB (2026-10-15): a pattern became a node and the line
+# read 360,529 KB where the boot read 347,344 on the same source, refused;
+# each module's parse became an arena, so its tokens and every value built on
+# the way to the graph die at its exit, and the judgment ends at 167 MB.
+selfcompile_line_peak_kb_max: 267200
 # THE HEAD ROUND TRIP (render lane, 2026-10-06): module-level function heads,
 # formatter's and eye's, that do not come back as themselves through
 # parse∘render. Born at the measured 92 of 4,550 (the base renderer: 787 of

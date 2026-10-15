@@ -64,18 +64,18 @@ fn predicate_decide_at(ref pred, bind) = match pred {
   PAnd(a, b) => and_decide(predicate_decide_at(a, bind), predicate_decide_at(b, bind)),
   POr(a, b) => or_decide(predicate_decide_at(a, bind), predicate_decide_at(b, bind)),
   PNot(inner) => not_decide(predicate_decide_at(inner, bind)),
-  PBoolNode(_) => // a bool expr node — the SMT tier resolves it live
-  None,
-  PPatternMatch(pat, n) => // a destructuring pattern's shape, read off the value's edges
-  shape_decide(pat, n),
-  PFlowLe(a, b) => // IFC: finite lattice, always decidable
-  Some(flow_le(a, b)),
-  PWithSelf(sh, inner) => // bind `self` = sh over inner, through its tails when sh is a join
-  decide_with_self(inner, SelfNode(sh)),
+  // a bool expr node — the SMT tier resolves it live
+  PBoolNode(_) => None,
+  // a destructuring pattern's shape, read off the value's edges
+  PPatternMatch(pat, n) => shape_decide(pat, n),
+  // IFC: finite lattice, always decidable
+  PFlowLe(a, b) => Some(flow_le(a, b)),
+  // bind `self` = sh over inner, through its tails when sh is a join
+  PWithSelf(sh, inner) => decide_with_self(inner, SelfNode(sh)),
   PTotalDiv(op, a, b) => total_div_decide(op, a, b, bind),
   PInBounds(recv, idx) => in_bounds_decide(recv, idx, bind),
-  PProvides(_) => // a provision states what arrives at a position, never a demand on it
-  Some(true),
+  // a provision states what arrives at a position, never a demand on it
+  PProvides(_) => Some(true),
 }
 
 // ─── Partiality — a primitive's precondition decided as a claim (C5) ──
@@ -220,7 +220,7 @@ fn binder_lengths(b) = match graph_binder_of(b) {
 // sight. Two of them prove and never refute: an alternation, whose branches
 // may each answer a different value, and a list's elements, which the part
 // read answers together rather than at their positions.
-fn shape_decide(pat, n) = match pat {
+fn shape_decide(pat, n) = match pat_of(pat) {
   PVar(_) => Some(true),
   PWild => Some(true),
   PAs(_, inner) => shape_decide(inner, n),
@@ -325,7 +325,7 @@ fn length_admits(k, rest, length) = match length {
 
 // A pattern no value of its type can fail: a binder, `_`, and a tuple, a
 // record or a sole constructor whose parts are such patterns.
-fn asserts_nothing(p) = match p {
+fn asserts_nothing(p) = match pat_of(p) {
   PVar(_) => true,
   PWild => true,
   PAs(_, inner) => asserts_nothing(inner),
@@ -512,11 +512,11 @@ fn tee_handler_name(r) = match graph_node_body(r) {
   NExpr(VarRef(n)) => n,
   NExpr(CallExpr(callee, _)) => match graph_node_body(callee) {
     NExpr(VarRef(n)) => n,
-    _ => // drift-audit: ignore — the frame-fence sentinel, documented above
-    "",
+    // drift-audit: ignore — the frame-fence sentinel, documented above
+    _ => "",
   },
-  _ => // drift-audit: ignore — the frame-fence sentinel, documented above
-  "",
+  // drift-audit: ignore — the frame-fence sentinel, documented above
+  _ => "",
 }
 
 fn arm_tails(h) = match value_tails(h) {
@@ -596,7 +596,10 @@ fn resolve_self_operand(r, name: String, bind) = if name == "self" {
 fn module_let_const(r) = match binder_read_by(r) {
   Some(v) => match graph_parent_of(v) {
     Some(s) => match graph_node_body(s) {
-      NStmt(LetStmt(PVar(_), value, _)) => if value == v && at_module_level(s) { node_const_at(v, NoSelf) } else { None },
+      NStmt(LetStmt(pat, value, _)) => match pat_of(pat) {
+        PVar(_) => if value == v && at_module_level(s) { node_const_at(v, NoSelf) } else { None },
+        PWild | PLit(_) | PCon(_, _) | PTuple(_) | PList(_, _) | PRecord(_, _) | PAlt(_) | PAs(_, _) => None,
+      },
       _ => None,
     },
     None => None,
@@ -924,13 +927,13 @@ fn project_leaf(leaf, step) = match leaf {
     Some(pc) => LClaimed(pc, project_leaf(beneath, step)),
     None => project_leaf(beneath, step),
   },
-  LPoint(_) => // a constant, a sum, a length or a free return has no parts
-  LUnknown,
+  // a constant, a sum, a length or a free return has no parts
+  LPoint(_) => LUnknown,
   LSum(_) => LUnknown,
   LLength => LUnknown,
   LRet(_) => LUnknown,
-  LBuilt(_) => // a construction's parts are read where it was built (`part_read`)
-  LUnknown,
+  // a construction's parts are read where it was built (`part_read`)
+  LBuilt(_) => LUnknown,
   LUnknown => LUnknown,
 }
 
@@ -1212,8 +1215,8 @@ fn leaf_lo(leaf) = match leaf {
   },
   LParam(_, c) => domain_lo(ty_domain(c)),
   LPost(c) => domain_lo(ty_domain(c)),
-  LClaimed(c, beneath) => // both hold of the one value, so the bounds MEET
-  bound_meet(int_max, domain_lo(ty_domain(c)), leaf_lo(beneath)),
+  // both hold of the one value, so the bounds MEET
+  LClaimed(c, beneath) => bound_meet(int_max, domain_lo(ty_domain(c)), leaf_lo(beneath)),
   LSum(lo) => lo,
   LLength => Some(0),
   LRet(_) => None,
@@ -1401,17 +1404,17 @@ fn pred_domain(pred) = match pred {
   PCompare(op, lh, rh) => compare_domain(op, lh, rh),
   PAnd(a, b) => domain_meet(pred_domain(a), pred_domain(b)),
   POr(a, b) => domain_join(pred_domain(a), pred_domain(b)),
-  PNot(_) => // The complement of a range is two rays, which DRange cannot hold; the
+  // The complement of a range is two rays, which DRange cannot hold; the
   // top is the honest superset rather than a bound that would cut inhabitants.
-  dom_top(),
+  PNot(_) => dom_top(),
   PBoolNode(_) => DUndecided,
   PPatternMatch(_, _) => DUndecided,
-  PFlowLe(_, _) => // A flow obligation constrains WHERE a value may go, never which values it
+  // A flow obligation constrains WHERE a value may go, never which values it
   // may be — the domain is untouched, which is a reading, not a gap.
-  dom_top(),
+  PFlowLe(_, _) => dom_top(),
   PWithSelf(_, inner) => pred_domain(inner),
-  PTotalDiv(_, _, _) => // a precondition on two operands states nothing about `self`
-  dom_top(),
+  // a precondition on two operands states nothing about `self`
+  PTotalDiv(_, _, _) => dom_top(),
   PInBounds(_, _) => dom_top(),
   PProvides(_) => dom_top(),
 }
@@ -1455,8 +1458,8 @@ fn flip_cmp(op) with Pure = match op {
 // exactly for equality, where no predecessor is needed.
 fn self_op_const(op, v) = match op {
   BEq => DFinite([v]),
-  BNe => // The complement of one point is not a range; top is the honest superset.
-  dom_top(),
+  // The complement of one point is not a range; top is the honest superset.
+  BNe => dom_top(),
   BLt => match v {
     LVInt(n) => DRange(None, Some(n - 1)),
     _ => DUndecided,
@@ -1473,9 +1476,9 @@ fn self_op_const(op, v) = match op {
     LVInt(n) => DRange(Some(n), None),
     _ => DUndecided,
   },
-  _ => // An arithmetic operator in a comparison slot states nothing this
+  // An arithmetic operator in a comparison slot states nothing this
   // fragment can read.
-  DUndecided,
+  _ => DUndecided,
 }
 
 // MEET — both predicates hold, so the truth is the intersection. An unreadable
@@ -1606,7 +1609,7 @@ fn subst_self(pred, value_handle) = PWithSelf(value_handle, pred)
 // exists to refuse. Transparent aliases recurse; an unrefined target
 // admits by type alone.
 fn refinement_admits(ty, value_handle) = match ty {
-  TAlias(aname, inner) => // A candidate whose every leaf already NAMES the refinement — a
+  // A candidate whose every leaf already NAMES the refinement — a
   // parameter's precondition, a callee's declared return — is admitted
   // by that identity, which proves the declaration, never its discharge.
   // The layering is deliberate, each proof question at its one home: a
@@ -1617,7 +1620,7 @@ fn refinement_admits(ty, value_handle) = match ty {
   // refusal on remaining debt is R5's gate at the emit boundary. The synth
   // gate answers only "does this filling fit the target type" — it never
   // re-decides a proof another site owns.
-  value_carries_alias(value_handle, aname) || refinement_admits(inner, value_handle),
+  TAlias(aname, inner) => value_carries_alias(value_handle, aname) || refinement_admits(inner, value_handle),
   TRefined(base, pred) => refinement_admits(base, value_handle) && match predicate_decide(subst_self(pred, value_handle)) {
     Some(decided) => decided,
     None => false,
@@ -1905,10 +1908,10 @@ fn classify_predicate(pred) with Pure = match pred {
   PCompare(_, _, _) => "comparison",
   PBoolNode(_) => "graph-deferred",
   PPatternMatch(_, _) => "shape",
-  PFlowLe(_, _) => // IFC: always decides at compile time via flow_le
-  "ifc-flow",
-  PWithSelf(_, inner) => // the binder classifies as its body
-  classify_predicate(inner),
+  // IFC: always decides at compile time via flow_le
+  PFlowLe(_, _) => "ifc-flow",
+  // the binder classifies as its body
+  PWithSelf(_, inner) => classify_predicate(inner),
   PTotalDiv(_, _, _) => "partiality",
   PInBounds(_, _) => "partiality",
   PProvides(_) => "provision",
@@ -1928,10 +1931,10 @@ fn predicate_to_smt(ref pred) = match pred {
   PNot(inner) => "(not {predicate_to_smt(inner)})",
   PBoolNode(n) => handle_to_smt(n),
   PPatternMatch(_, n) => handle_to_smt(n),
-  PFlowLe(a, b) => // finite lattice: literal
+  // finite lattice: literal
   // The self binder renders as its body — `self` stays symbolic in SMT-LIB
   // (the solver's declared variable), exactly the diagnostic's reading.
-  if flow_le(a, b) { "true" } else { "false" },
+  PFlowLe(a, b) => if flow_le(a, b) { "true" } else { "false" },
   PWithSelf(_, inner) => predicate_to_smt(inner),
   PTotalDiv(op, a, b) => match op {
     BMod => "(distinct {handle_to_smt(b)} 0)",

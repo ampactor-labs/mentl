@@ -99,8 +99,8 @@ fn installed_handler(right) = match tee_handler_decl(right) {
 fn multishot_ops_of(hd) = match handler_shape_at(hd) {
   Some((_, _, _, arms)) => arms |> filter((a) => match op_resume_discipline(handler_arm_op_name(a)) {
     MultiShot => true,
-    Abandon => // M4 — an abandon op needs the driver too: it delivers the arm value on flag-clear (the redrive's existing behaviour IS abandon)
-    true,
+    // M4 — an abandon op needs the driver too: it delivers the arm value on flag-clear (the redrive's existing behaviour IS abandon)
+    Abandon => true,
     _ => false,
   }) |> map((a) => (handler_arm_op_name(a), handler_arm_arity(a))),
   None => [],
@@ -121,8 +121,8 @@ fn handler_arm_groups(hd) = match handler_shape_at(hd) {
 // The names a handler's record holds, in slot order: its config parameters,
 // then its state fields.
 fn arm_capture_names(hd) = match handler_shape_at(hd) {
-  Some((_, config, state, _)) => // drift-audit: ignore — one-shot name-list build
-  lower_param_names(config) ++ state_field_names_of(state),
+  // drift-audit: ignore — one-shot name-list build
+  Some((_, config, state, _)) => lower_param_names(config) ++ state_field_names_of(state),
   None => [],
 }
 
@@ -734,16 +734,6 @@ fn mark_tail_last_in(stmts) = {
 
 fn mark_tail_arms(arms) = map({ (pat, body) => (pat, mark_tail(body)) }, arms)
 
-// What a pattern's constructor name was published as — a pattern's
-// constructor is a name with no node yet (PLAN §11.2), so it is read by its
-// spelling; `None` when the name isn't bound (infer already reported it).
-fn env_kind_of(name) = match env_lookup(name) {
-  None => None,
-  Some(entry) => match entry {
-    (_, _, kind) => Some(kind),
-  },
-}
-
 // The symbol a callee is emitted under at the floor: its declaration's
 // (`decl_symbol`), or a synthesized unit's identity. A twin mangles it
 // (`spec_mangle`).
@@ -798,8 +788,8 @@ fn lower_callee_name(fbody) = match fbody {
   NExpr(VarRef(name)) => name,
   NExpr(FieldExpr(_, field)) => field,
   NExpr(CallExpr(callee, _)) => lower_callee_name(graph_node_body(callee)),
-  _ => // drift-audit: ignore — "" = callee has no declared name (positional passthrough)
-  "",
+  // drift-audit: ignore — "" = callee has no declared name (positional passthrough)
+  _ => "",
 }
 
 // A call's positional product, read where the judgment wrote it (the
@@ -870,8 +860,8 @@ fn lower_call_of(handle, fh, lo_f, lo_args) = {
 // scope and the loud dead-k word where none is.
 fn resume_bound_args(handle, callee, lo_args) = match ls_resume_bind_of(callee_name_of_handle(callee)) {
   None => lo_args,
-  Some(_) => // drift-audit: ignore — one k+record arg pair per call site, not a loop
-  lo_args ++ [resume_k_arg(handle), resume_hrec_arg(handle)],
+  // drift-audit: ignore — one k+record arg pair per call site, not a loop
+  Some(_) => lo_args ++ [resume_k_arg(handle), resume_hrec_arg(handle)],
 }
 
 // The saturated call's ONE dispatch body — two callers project through it:
@@ -964,7 +954,7 @@ fn lower_global_call(handle, fh, name: String, r_args, lo_args) = if name == "to
 } else {
   match published_kind(graph_ref_decl(fh)) {
     Some(ConstructorScheme(tag_id, _)) => LMakeVariant(handle, tag_id, lo_args),
-    Some(RecordSchemeKind(_)) => // Nominal-record CALL-form construction `Pri({...})`: the runtime
+    // Nominal-record CALL-form construction `Pri({...})`: the runtime
     // representation IS the bare record (NamedRecordExpr's own arm
     // lowers to LMakeRecord — type identity is type-system-only, no
     // tag). The single argument already IS that record; the wrapper
@@ -972,8 +962,8 @@ fn lower_global_call(handle, fh, name: String, r_args, lo_args) = if name == "to
     // business (the ctor-pattern arrow view unifies one param); a
     // zero-arg call (already reported there) lowers to the empty
     // record, never a garbage read past an empty args list.
-    if len(lo_args) == 0 { LMakeRecord(handle, []) } else { list_index(lo_args, 0) },
-    Some(EffectOpScheme(_, _, _, _)) => // ONE perform, whose DISPATCH says how much of the walk this
+    Some(RecordSchemeKind(_)) => if len(lo_args) == 0 { LMakeRecord(handle, []) } else { list_index(lo_args, 0) },
+    // ONE perform, whose DISPATCH says how much of the walk this
     // site could finish now (PerformDispatch). PLAN §6's
     // handler-elimination tiers are degrees of that boundness, not
     // three operations: the meaning is always "walk innermost-out to
@@ -985,7 +975,7 @@ fn lower_global_call(handle, fh, name: String, r_args, lo_args) = if name == "to
     // the address, so the emission is identity and no demand ever
     // reaches the executable gate — the row carries the whole
     // meaning (with Cast admits; !Cast severs).
-    if is_cast_erased_op(name) {
+    Some(EffectOpScheme(_, _, _, _)) => if is_cast_erased_op(name) {
       list_index(lo_args, 0)
     } else if is_wasi_import_op(name) {
       LWasiCall(handle, name, lo_args)
@@ -1127,15 +1117,15 @@ fn partial_global_callee_form(fh, name) = if is_substrate_mem_op(name) || is_was
 } else {
   let decl = graph_ref_decl(fh)
   match published_kind(decl) {
-    Some(FnScheme) | Some(ValueScheme) => // A module value holding a closure is called through its global
+    // A module value holding a closure is called through its global
     // exactly as a declared fn's static closure is. Only module-scope
     // entries answer here: a local's binding left the env with its scope.
-    match decl {
+    Some(FnScheme) | Some(ValueScheme) => match decl {
       Some(d) => Some(PcfCall(DeclaredAt(d))),
       None => None,
     },
     Some(ConstructorScheme(tag_id, _)) => Some(PcfVariant(tag_id)),
-    Some(EffectOpScheme(_, _, _, _)) => // An OP reified as a value, and it passes None for the lexical
+    // An OP reified as a value, and it passes None for the lexical
     // answer — not to disable a tier, but because it HAS no lexical
     // answer: this body becomes a lifted fn, so a frame local resolved
     // here would name a frame that is gone by the time it runs. The walk
@@ -1148,7 +1138,7 @@ fn partial_global_callee_form(fh, name) = if is_substrate_mem_op(name) || is_was
     // ambiguous op has no single one. That refusal was the whole of the
     // eta-wrapper ceiling. The op-keyed walk has no such gap, so there is
     // nothing left to decline.
-    Some(PcfPerform(perform_dispatch_of(name, None))),
+    Some(EffectOpScheme(_, _, _, _)) => Some(PcfPerform(perform_dispatch_of(name, None))),
     _ => None,
   }
 }
@@ -1164,9 +1154,9 @@ fn apply_callee_form(form, handle, fh, bargs, n_caps) = match form {
   PcfCall(c) => LCall(handle, LGlobal(fh, c), bargs),
   PcfVariant(tag_id) => LMakeVariant(handle, tag_id, bargs),
   PcfPerform(disp) => LPerform(handle, disp, bargs),
-  PcfLocal(v) => // The callee value rides the record past the supplied fields, at the
+  // The callee value rides the record past the supplied fields, at the
   // capture ordinal the supplied slots leave free; the body calls it.
-  LCall(handle, LUpval(lexpr_handle(v), n_caps), bargs),
+  PcfLocal(v) => LCall(handle, LUpval(lexpr_handle(v), n_caps), bargs),
 }
 
 // What the callee form adds to the partial's record: a local callee's
@@ -1269,10 +1259,10 @@ fn project_thunk_fn(thunk_name, cap_pairs, branch_node, result_h, carrier_h, sha
   ls_enter_frame("", [], [], cap_names, cap_handles, len(cap_pairs))
   lower_frame_fence_push()
   let inner = match shared_input {
-    Some(input_h) => // the branch is a stage applied to the input riding capture slot 0 —
+    // the branch is a stage applied to the input riding capture slot 0 —
     // the same completion the in-frame form runs, so a spawned branch costs
     // what the sequential one does inside its thunk
-    lower_pipe_complete(LUpval(input_h, 0), branch_node, result_h),
+    Some(input_h) => lower_pipe_complete(LUpval(input_h, 0), branch_node, result_h),
     None => lower_expr(branch_node),
   }
   let lo_body = k2_guard(LMakeTuple(carrier_h, [inner]))
@@ -1763,8 +1753,8 @@ fn resolve_in_stack(op_name: String, ename, stack) = if ename == "" || len(stack
   None
 } else {
   match last(stack) {
-    Fence => // the frame fence — enclosing installs live in another WASM frame
-    None,
+    // the frame fence — enclosing installs live in another WASM frame
+    Fence => None,
     Installed(ih, hd, _) => if handler_declares_op(hd, ename, op_name) {
       Some((ih, hd))
     } else {
@@ -2004,10 +1994,10 @@ fn schedule_installed_at(stack, i) = if i < 0 {
   None
 } else {
   match list_index(stack, i) {
-    Fence => // the frame fence — the LEXICAL read stops at the frame; a caller's
+    // the frame fence — the LEXICAL read stops at the frame; a caller's
     // schedule reaches a fanout in another frame by DEMAND, through a direct
     // call (`spec_call_name`, `fanout_form`), never through this stack
-    None,
+    Fence => None,
     Installed(_, _, proj) => match proj {
       PSchedule(s) => Some(s),
       PDispatch | PDerivative | PArena => schedule_installed_at(stack, i - 1),
@@ -2147,9 +2137,9 @@ fn grow_to_with_gaps(arms: [String], n: Int) =
 // propagates via the caller's k2 boundary, only the local dead code isn't
 // pruned).
 fn expr_diverges(node) = match graph_node_body(node) {
-  NStmt(ExprStmt(e)) => // Statements wrap their expression — a block's stmts are NStmt(...), so
+  // Statements wrap their expression — a block's stmts are NStmt(...), so
   // first_diverging must unwrap to reach the perform.
-  expr_diverges(e),
+  NStmt(ExprStmt(e)) => expr_diverges(e),
   NStmt(LetStmt(_, init, _)) => expr_diverges(init),
   NExpr(CallExpr(f, _)) => match graph_node_body(f) {
     NExpr(VarRef(name)) => match op_resume_discipline(name) {
@@ -2197,7 +2187,7 @@ fn diverging_expr(stmt) = match graph_node_body(stmt) {
 // Lexical install wins over the keyed forward (a nested handler shadows the
 // caller's evidence) — the seed's $lower_perform order, byte-faithful.
 fn lower_perform_dispatch(handle, op_name, lo_args) = match op_resume_discipline(op_name) {
-  MultiShot => // A MultiShot perform NEVER calls the arm — it YIELDS (band B k1). The
+  // A MultiShot perform NEVER calls the arm — it YIELDS (band B k1). The
   // on-spine sites are consumed by lower_body_reified, which constructs
   // the real k; one reaching the ordinary dispatch is OFF-spine (a `let`'s
   // value, a later statement, an argument, a right operand, a branch), and
@@ -2207,15 +2197,15 @@ fn lower_perform_dispatch(handle, op_name, lo_args) = match op_resume_discipline
   // The floor carries the EMPTY op name (the emit floors on op == "", NEVER
   // on the k value — an abandon yield's k is also a bare LConst, so op-name
   // is the discriminator).
-  LYield(handle, "", [], LConst(handle, LInt(0))),
-  Abandon => // An Abandon perform yields from ANY position with a DEAD k: the arm
+  MultiShot => LYield(handle, "", [], LConst(handle, LInt(0))),
+  // An Abandon perform yields from ANY position with a DEAD k: the arm
   // never resumes, so the continuation is abandoned and the frame unwinds
   // to its landing (`LAbandon`). The driver runs the arm with k = 0, the
   // arm returns without calling it, and the loop exits flag-clear
   // delivering the arm's value as the install's. Everything up the stack
   // unwinds through the boundary checks (never a bare return, which would
   // skip an install's driver bracket — the M1.3 finding).
-  LAbandon(handle, op_name, lo_args),
+  Abandon => LAbandon(handle, op_name, lo_args),
   _ => lower_perform_walk(handle, op_name, lo_args),
 }
 
@@ -2240,13 +2230,13 @@ fn perform_dispatch_of(op_name, lexical) = {
   match lexical {
     Some((ih, hd)) => PdFrame(ih, hd, op_name),
     None => match lower_op_default_handler(op_name) {
-      Some(hd) => // The arm is static (one handler declares it) and the record is not. The
+      // The arm is static (one handler declares it) and the record is not. The
       // record comes from the SAME walk the unbound case uses — it used to come
       // from a second one keyed on the handler name, which could not answer an
       // ambiguous op and was the whole of the eta ceiling. A handler whose
       // installs may key their arms has no ONE arm to name: the record the walk
       // finds holds the arm its own install runs.
-      if handler_may_key(hd) {
+      Some(hd) => if handler_may_key(hd) {
         PdWalk(ename, slot, op_name, ArmSlot)
       } else {
         PdWalk(ename, slot, op_name, ArmNamed(hd))
@@ -2336,14 +2326,14 @@ fn lower_expr(handle) = match graph_node_body(handle) {
     match graph_node_body(canon) {
       NExpr(e) => lower_expr_body(e, canon, span),
       NStmt(s) => lower_stmt_body(s, canon, span),
-      NPat(_) => // patterns don't lower as expr
-      LConst(canon, LInt(0)),
-      NHole(_) => // the class root is a hole-default mint; nothing authored to carry
-      LConst(canon, LInt(0)),
-      NModule(_) => // never an expr position — module entity, not a value
-      LConst(canon, LInt(0)),
-      NTypeAnn(_) => // never an expr position — an authored return annotation, not a value
-      LConst(canon, LInt(0)),
+      // patterns don't lower as expr
+      NPat(_) => LConst(canon, LInt(0)),
+      // the class root is a hole-default mint; nothing authored to carry
+      NHole(_) => LConst(canon, LInt(0)),
+      // never an expr position — module entity, not a value
+      NModule(_) => LConst(canon, LInt(0)),
+      // never an expr position — an authored return annotation, not a value
+      NTypeAnn(_) => LConst(canon, LInt(0)),
     }
   },
 }
@@ -2362,10 +2352,10 @@ fn lower_expr(handle) = match graph_node_body(handle) {
 fn lower_resolved_ref(handle, name: String, res, local_h) = match res {
   RLocal(reg) => LLocal(local_ty_handle(local_h, handle), reg),
   RUpval(slot) => LUpval(local_ty_handle(local_h, handle), slot),
-  RFbPrior(fb_h) => // (LF.B) a `<~` lambda param resolves to the feedback site's prior local,
+  // (LF.B) a `<~` lambda param resolves to the feedback site's prior local,
   // read LIVE — the recurrence's y[n-1] term IS this node.
-  LFeedbackPrior(fb_h),
-  RGlobal => // A NON-FN BINDING IN VALUE POSITION IS A REIFICATION, and until
+  RFbPrior(fb_h) => LFeedbackPrior(fb_h),
+  // A NON-FN BINDING IN VALUE POSITION IS A REIFICATION, and until
   // 2026-09-09 it was two silent wrongs. A constructor lowered to
   // LMakeVariant(handle, tag, []) whatever its arity, so mapping a
   // one-field constructor over a list checked with zero diagnostics
@@ -2389,42 +2379,42 @@ fn lower_resolved_ref(handle, name: String, res, local_h) = match res {
   // no longer asks the env scheme by name for an arity it could not
   // tell from an unresolved type. What the reference denotes is the
   // declaration its edge reaches.
-  match graph_ref_decl(handle) {
+  RGlobal => match graph_ref_decl(handle) {
     Some(d) => lower_declared_ref(handle, d),
-    None => // NO EDGE: the judgment refused the name. `_ => LGlobal(handle, name)`
+    // NO EDGE: the judgment refused the name. `_ => LGlobal(handle, name)`
     // stood here once and guessed an unbound name into `(global.get
     // $name)`, fabricating the one fact infer had just proved false: WAT no
     // assembler accepts, the medium's own spanned E_MissingVariable moved to
     // a wat2wasm error hundreds of thousands of lines away.
-    LInvariantFailure(handle, MissingName(name)),
+    None => LInvariantFailure(handle, MissingName(name)),
   },
 }
 
 fn lower_declared_ref(handle, d) = match published_kind(Some(d)) {
   Some(ConstructorScheme(tag_id, _)) => match graph_product_at(handle) {
-    NoProduct => // Not a function type: the reference IS the value — a nullary
+    // Not a function type: the reference IS the value — a nullary
     // variant, the sentinel form emit already knows.
-    LMakeVariant(handle, tag_id, []),
+    NoProduct => LMakeVariant(handle, tag_id, []),
     ProductOf(_, open, _) => lower_call_partial(handle, graph_node_body(handle), handle, [], open, len(open)),
   },
   Some(EffectOpScheme(_, _, _, _)) => match graph_product_at(handle) {
-    NoProduct => // An op's declared scheme is always a signature, zero-arg
+    // An op's declared scheme is always a signature, zero-arg
     // included, so a missing product is an unresolved judgment and the
     // typed floor is the honest answer — lower_call_partial's own
     // None path, reached with the arity the graph actually proved.
-    LInvariantFailure(handle, PartialCalleeShape(handle)),
+    NoProduct => LInvariantFailure(handle, PartialCalleeShape(handle)),
     ProductOf(_, open, _) => lower_call_partial(handle, graph_node_body(handle), handle, [], open, len(open)),
   },
-  Some(FnScheme) => // A named-fn VALUE reference (FnScheme tag-0 — excludes HandlerKind,
+  // A named-fn VALUE reference (FnScheme tag-0 — excludes HandlerKind,
   // the PTee guard). ALWAYS the bare LGlobal — emit resolves it to the
   // fn's static closure record; the fn's performs dispatch through the
   // live world chain when the consumer (`each(f, xs)`) calls it.
-  LGlobal(handle, DeclaredAt(d)),
-  Some(_) => // Found, some other kind (a value binding, a record) — the global read
+  Some(FnScheme) => LGlobal(handle, DeclaredAt(d)),
+  // Found, some other kind (a value binding, a record) — the global read
   // is the right projection.
-  LGlobal(handle, DeclaredAt(d)),
-  None => // a declaration that published nothing: the judgment stopped at it
-  LInvariantFailure(handle, MissingName(enclosing_decl_name(d))),
+  Some(_) => LGlobal(handle, DeclaredAt(d)),
+  // a declaration that published nothing: the judgment stopped at it
+  None => LInvariantFailure(handle, MissingName(enclosing_decl_name(d))),
 }
 
 fn lower_expr_body(e, handle, span) = match e {
@@ -2442,7 +2432,7 @@ fn lower_expr_body(e, handle, span) = match e {
   VarRef(name) => match ls_resolve(name) {
     (res, local_h) => lower_resolved_ref(handle, name, res, local_h),
   },
-  BinOpExpr(op, left, right) => // The boolean verbs are CONTROL, not arithmetic: `a && b` IS
+  // The boolean verbs are CONTROL, not arithmetic: `a && b` IS
   // `if a { b } else { false }`, `a || b` IS `if a { true } else { b }`.
   // The eager i32.and lowering evaluated both operands, so every guard
   // protecting a read (`pos < n && str_eq(set[pos], …)`) ran the read it
@@ -2452,7 +2442,7 @@ fn lower_expr_body(e, handle, span) = match e {
   // sites keep explicit control-flow guards for the transition generation
   // (an m2 body compiled by the still-eager boot meets the checked
   // list_index in the same binary).
-  match binop_kind(op) {
+  BinOpExpr(op, left, right) => match binop_kind(op) {
     BKBool => match op {
       BAnd => LIf(handle, lower_expr(left), [lower_expr(right)], [LConst(handle, LInt(0))]),
       _ => LIf(handle, lower_expr(left), [LConst(handle, LInt(1))], [lower_expr(right)]),
@@ -2477,7 +2467,7 @@ fn lower_expr_body(e, handle, span) = match e {
     // order, absent fields filled by their defaults — read off the call
     // node (the call-product column), never resolved again by name.
     match call_product_at(handle, args) {
-      (r_args, open, shape) => // PARTIAL APPLICATION AS A VALUE (SYNTAX §«Partial application — the
+      // PARTIAL APPLICATION AS A VALUE (SYNTAX §«Partial application — the
       // product with a hole»): resolved args leaving declaration-order params
       // unfilled — an authored `??` slot — IS the lambda the surface law names
       // (`add3(10, ??, 30)` ≡ `(x) => add3(10, x, 30)`), supplied fields
@@ -2487,7 +2477,7 @@ fn lower_expr_body(e, handle, span) = match e {
       // lower_pipe_complete dispatches them fork-free (the pipe owns its
       // hole; the inline splice is the zero-record projection of the same
       // hole-filling).
-      match partial_unfilled(f, shape) {
+      (r_args, open, shape) => match partial_unfilled(f, shape) {
         Some(n_ps) => lower_call_partial(handle, fbody, f, r_args, open, n_ps),
         None => lower_call_dispatch(handle, f, fbody, r_args),
       },
@@ -2522,11 +2512,11 @@ fn lower_expr_body(e, handle, span) = match e {
     result
   },
   MatchExpr(scrutinee, arms) => match destructure_subs(arms, product_arity_at(scrutinee)) {
-    Some(subs) => // A PRODUCT TAKEN APART WHERE IT IS BUILT IS ITS PARTS. The one arm
+    // A PRODUCT TAKEN APART WHERE IT IS BUILT IS ITS PARTS. The one arm
     // binds every position, so the match is the destructuring and no
     // record need exist: each part lands in the binder's own register,
     // which is what the `let` spelling this desugars from costs.
-    match destructure_body(arms) {
+    Some(subs) => match destructure_body(arms) {
       Some(body) => lower_product_destructure(handle, scrutinee, subs, body),
       None => LMatch(handle, lower_expr(scrutinee), lower_match_arms(scrutinee, arms)),
     },
@@ -2534,7 +2524,7 @@ fn lower_expr_body(e, handle, span) = match e {
   },
   MakeListExpr(elems) => LMakeList(handle, lower_expr_list(elems)),
   MakeTupleExpr(elems) => LMakeTuple(handle, lower_expr_list(elems)),
-  MakeStringExpr(fragments) => // Per #138: MakeStringExpr is the semantic-preserving form of
+  // Per #138: MakeStringExpr is the semantic-preserving form of
   // string interpolation (alternating literal + splice fragments).
   // Lower projects it to a left-fold of str_concat calls at this
   // cursor — the runtime substrate is the str_concat composition.
@@ -2542,12 +2532,12 @@ fn lower_expr_body(e, handle, span) = match e {
   // view's view-substrate), the fold materializes to one alloc per
   // concat node; the view-substrate ensures zero byte-copy through
   // each splice's lex-produced view operand.
-  lower_string_interpolation(handle, lower_expr_list(fragments)),
-  ShowExpr(inner) => // γ's splice half: the structural show reads THIS judged node's
+  MakeStringExpr(fragments) => lower_string_interpolation(handle, lower_expr_list(fragments)),
+  // γ's splice half: the structural show reads THIS judged node's
   // handle — the 4818 placeholder mint is dead; emit's show dispatch
   // reads the OPERAND's type exactly as before.
-  LShow(handle, lower_expr(inner)),
-  IndexExpr(receiver, index) => // Subscript dispatch at lower-time — the proof becomes the dispatch.
+  ShowExpr(inner) => LShow(handle, lower_expr(inner)),
+  // Subscript dispatch at lower-time — the proof becomes the dispatch.
   // A tuple IS a positional product (L1); indexing it at a CONSTANT is a
   // field load read live from the proven Ty: lower emits LFieldLoad at the
   // width-summed prefix-sum to element i (tuple_elem_offset — the SAME fold
@@ -2559,20 +2549,20 @@ fn lower_expr_body(e, handle, span) = match e {
   // the SAME offset fold — the three move in lock-step (Law 7: a half-
   // migration mis-offsets an f64 tuple). A genuinely-runtime-variable index,
   // or a list receiver, stays the runtime list_index call.
-  lower_index(handle, receiver, index),
+  IndexExpr(receiver, index) => lower_index(handle, receiver, index),
   MakeRecordExpr(fields) => LMakeRecord(handle, lower_record_field_values(fields)),
-  NamedRecordExpr(head, fields) => // A nominal record lowers as a bare record literal does: its type's
+  // A nominal record lowers as a bare record literal does: its type's
   // identity is the judgment's, and the head is a reference to the type,
   // never a value the record holds.
-  LMakeRecord(handle, lower_record_field_values(fields)),
-  RecordUpdateExpr(base, overrides) => // {...base, f: v} — non-destructive update. The RESULT record's
+  NamedRecordExpr(head, fields) => LMakeRecord(handle, lower_record_field_values(fields)),
+  // {...base, f: v} — non-destructive update. The RESULT record's
   // field set is PROVEN by infer (base's fields ∪ overrides), read
   // live via lookup_ty(handle); each result field is either an
   // override value or a field-load COPIED from base at its proven
   // offset — never re-derived, never a runtime field-copy loop. The
   // base is evaluated once into a temp local (LLet) and field-loaded
   // N times (LLocal) — the share the spread semantics demand.
-  lower_record_update(handle, base, overrides),
+  RecordUpdateExpr(base, overrides) => lower_record_update(handle, base, overrides),
   LambdaExpr(params, body_node) => {
     // DESIGN Ch 1: lambdas close over their free variables. Each
     // lambda gets a unique name derived from its AST handle, so
@@ -2613,18 +2603,18 @@ fn lower_expr_body(e, handle, span) = match e {
         // (free-var collection, capture resolution, the note); the
         // body-lowering lives in project_lambda_fn.
         match project_lambda_fn(handle, zip(captures_names, captures_handles)) {
-          Some(fn_ir) => // The record is [fn_ptr@0][nc@4][captures@8..] — captures only. The
+          // The record is [fn_ptr@0][nc@4][captures@8..] — captures only. The
           // body's performs dispatch through the LIVE world chain at call time
           // (a computation performs in the world where it is CALLED — R2's law),
           // and a resume inside a MultiShot arm's lambda rides the captures as
           // the ordinary __k free var (collect_free_vars' ResumeExpr arm).
-          LMakeClosure(handle, fn_ir, captures_exprs),
+          Some(fn_ir) => LMakeClosure(handle, fn_ir, captures_exprs),
           None => LInvariantFailure(handle, ProjectionOriginShape(handle)),
         }
       },
     }
   },
-  ResumeExpr(val, state_updates) => // The cursor reads the op's proven cardinality LIVE (the body IS the
+  // The cursor reads the op's proven cardinality LIVE (the body IS the
   // contract; current_resume_discipline() projects it from the enclosing
   // arm context) and picks the representation — the gradient at the resume
   // site, the TIME-axis twin of the function-dispatch gradient. The
@@ -2636,38 +2626,38 @@ fn lower_expr_body(e, handle, span) = match e {
   // (SYNTAX §State updates via with on resume): the resume value AND every `with field = NEW`
   // RHS read the PRE-update state; lower_resume_snapshot commits the stores
   // after evaluating all RHS into scratch locals in source order.
-  match current_resume_discipline() {
+  ResumeExpr(val, state_updates) => match current_resume_discipline() {
     OneShot => lower_resume_oneshot(handle, val, state_updates),
-    MultiShot => // MultiShot: resume(v) CALLS the k record the driver bound to the
+    // MultiShot: resume(v) CALLS the k record the driver bound to the
     // arm's __k param — the W7 closure convention on fn_ptr@0, N times
     // (k is immutable data; the reification happened at the PERFORMING
     // frame's yield, lower_body_reified). The catching handler
     // (in-memory / oracle-rollback / persist) is the swap.
-    lower_resume_callk(handle, val, state_updates),
-    Abandon => // M4 — a resume inside a pure-Abandon op's arm is the MIXED case (the
+    MultiShot => lower_resume_callk(handle, val, state_updates),
+    // M4 — a resume inside a pure-Abandon op's arm is the MIXED case (the
     // op has an abandon arm AND a resume arm). It does not occur in the
     // wheel or crucibles: abort/fail are single-handler UZero, so a
     // resume under an Abandon-graded op is unreachable-by-construction (a
     // UZero arm has no resume). If it ever arises, the op must reify k at
     // the perform (become MultiShot — the abandon perform's dead k=0
     // would trap here, loud, never silent): Hβ.lower.abandon-with-resume-arm.
-    lower_resume_callk(handle, val, state_updates),
+    Abandon => lower_resume_callk(handle, val, state_updates),
   },
-  FieldExpr(rec, field) => // W6: the field NAME rides the node; the offset projects at emit from
+  // W6: the field NAME rides the node; the offset projects at emit from
   // the receiver's live type under the bracket.
-  LFieldLoad(handle, lower_expr(rec), FByName(field)),
+  FieldExpr(rec, field) => LFieldLoad(handle, lower_expr(rec), FByName(field)),
   PipeExpr(kind, left, right) => lower_pipe(kind, left, right, handle),
   FanoutExpr(branches) => lower_fanout_nary_to(handle, branches, FdValue),
-  RestExpr(_) => // infer already reported ERestOutsideDestructure at this node;
+  // infer already reported ERestOutsideDestructure at this node;
   // productive-under-error, same as the hole.
-  LConst(handle, LInt(0)),
-  ExprPlaceholder => // ? — emit lowers to unreachable via NHole check
-  LConst(handle, LInt(0)),
-  LabeledArg(_, v) => // A labeled arg is resolved to positional by resolve_call_args before
+  RestExpr(_) => LConst(handle, LInt(0)),
+  // ? — emit lowers to unreachable via NHole check
+  ExprPlaceholder => LConst(handle, LInt(0)),
+  // A labeled arg is resolved to positional by resolve_call_args before
   // lower_expr sees it; reaching here means one leaked outside a call's arg
   // list. Lower the value through (productive-under-error) — infer has already
   // surfaced the E_UnknownArgLabel diagnostic at this node.
-  lower_expr(v),
+  LabeledArg(_, v) => lower_expr(v),
 }
 
 // `|>` is HOLE-COMPLETION (SYNTAX.md §«Partial application — the product
@@ -2716,13 +2706,13 @@ fn bind_stage_param(pair) = match pair {
 fn lower_pipe_stage(lo_ls, right, handle) = {
   let rbody = graph_node_body(right)
   match stage_op_name(right, rbody) {
-    Some(name) => // A bare op reference standing as the stage is the perform `op(x)` in
+    // A bare op reference standing as the stage is the perform `op(x)` in
     // the frame the pipe stands in — applied, never minted. The judgment
     // charges the stage the op's row and nothing else, and an op has no
     // static record a value could reach, so lowering the reference built the
     // op's partial and called it: `x |> put` under `!Alloc` refused as an
     // internal invariant where `put(x)` ran (tests/micros/mn-pipe-into-op.mn).
-    lower_global_call(handle, right, name, [], lo_ls),
+    Some(name) => lower_global_call(handle, right, name, [], lo_ls),
     None => lower_pipe_stage_value(lo_ls, right, handle, rbody),
   }
 }
@@ -2803,11 +2793,11 @@ fn lower_pipe_stage_value(lo_ls, right, handle, rbody) = {
     } else {
       LCall(handle, lo_r, lo_ls)
     },
-    _ => // A bare fn-VALUE stage (`7 |> outer`): the completion call runs the
+    // A bare fn-VALUE stage (`7 |> outer`): the completion call runs the
     // SAME k-append fork every call runs — a resume-bound stage takes the
     // arm's k as the trailing argument (the "argument, not evidence"
     // ruling; the callee's performs dispatch through the world chain).
-    LCall(handle, lo_r, resume_bound_args(handle, right, lo_ls)),
+    _ => LCall(handle, lo_r, resume_bound_args(handle, right, lo_ls)),
   }
 }
 
@@ -2847,7 +2837,7 @@ fn lower_product_merge(handle, ph, right) = {
 // branches are independent of each other, never of the program), so it takes
 // a register nothing reads.
 fn bind_destructured_part(pair) = match pair {
-  (sub, part_h) => match sub {
+  (sub, part_h) => match pat_of(sub) {
     PVar(name) => ls_bind_local(name, part_h),
     _ => ls_bind_local("__part_{int_to_str(part_h)}", part_h),
   },
@@ -2893,7 +2883,7 @@ fn fill_product_parts(ph, regs, values) = match graph_node_body(ph) {
 }
 
 fn lower_pipe(kind, left, right, handle) = match kind {
-  PFanout(fan_own) => // `<|`/`><` — ONE parallel-fanout topology, discriminated by input
+  // `<|`/`><` — ONE parallel-fanout topology, discriminated by input
   // ownership (the FanOwnership aspect). The verb draws the independence
   // edge + tuples the branch results; it does NOT schedule. HOW the
   // branches run is read LIVE from the installed `~>` chain
@@ -2903,22 +2893,22 @@ fn lower_pipe(kind, left, right, handle) = match kind {
   // Drift 1 closure: the handler chain IS the dispatch; no vtable. Drift
   // 5 closure: any per-thread state lives in the chosen handler's `with`,
   // never an ad-hoc parallel struct.
-  lower_fanout_to(handle, fan_own, left, right, FdValue),
-  PForward => // THE MERGE (PLAN §4②): a product the site builds fills the stage's N
+  PFanout(fan_own) => lower_fanout_to(handle, fan_own, left, right, FdValue),
+  // THE MERGE (PLAN §4②): a product the site builds fills the stage's N
   // open slots. The parts are bound to registers where they are computed
   // and handed to the stage, so `(a) >< (b) |> f` is `f(a, b)` — no tuple
   // at any schedule (`product_fills_stage`, graph.mn, the judgment's own
   // rule for the expectation it unified).
-  if product_fills_stage(left, right) {
+  PForward => if product_fills_stage(left, right) {
     lower_product_merge(handle, left, right)
   } else {
     lower_pipe_complete(lower_expr(left), right, handle)
   },
   PTee => match installed_handler(right) {
     Some(hd) => lower_install(left, right, hd, handle),
-    None => // A handler held by a value absorbs nothing at the judgment
+    // A handler held by a value absorbs nothing at the judgment
     // (`installed_handler`), so the install is its body.
-    lower_body_reified(left),
+    None => lower_body_reified(left),
   },
   PFeedback => {
     // <~ feedback. The site's line is a ring owned by the record of the
@@ -2969,21 +2959,21 @@ fn lower_install(left, right, hd, handle) = {
   graph_install_note(handle, InstallOf(right, config_args))
   let config_inits = config_args |> map(lower_expr)
   match proj {
-    PDerivative => // The reading replaces the install: no record, no world push. The
+    // The reading replaces the install: no record, no world push. The
     // seed is the reading's one config argument, and it keeps the lowered
     // shape every read of it has (a local or a capture), which is how
     // derive knows its uses.
-    {
+    PDerivative => {
       derivative_demand_note()
       match config_inits {
         [seed, ..._] => LDerive(handle, seed, lo_l),
         [] => LDerive(handle, LConst(handle, LFloat(0.0)), lo_l),
       }
     },
-    PArena => // The arena replaces the install the same way: no record, no world
+    // The arena replaces the install the same way: no record, no world
     // push. Its exit asks no one — every store its body made into older
     // memory journaled its own type where it happened.
-    {
+    PArena => {
       arena_demand_note()
       LArena(handle, lo_l)
     },
@@ -3124,9 +3114,9 @@ fn extract_handler_config_args(node) = match graph_node_body(node) {
 // `product_fills_stage`).
 fn lower_fanout_to(handle, fan_own, left, right, dest) = match fanout_boundaries(handle) {
   Ok(boundaries) => match fan_own {
-    FanDistribute => // The N-ary carrier owns `><` (Hβ.parser.pcompose-nary); the
+    // The N-ary carrier owns `><` (Hβ.parser.pcompose-nary); the
     // PipeKind arm delegates so the kind stays a key, not a shape.
-    fanout_at(handle, [left, right], NoShare, boundaries, dest),
+    FanDistribute => fanout_at(handle, [left, right], NoShare, boundaries, dest),
     FanShare => {
       let lo_input = lower_expr(left)
       let input_local_name = "__fanout_input_{int_to_str(handle)}"
@@ -3497,7 +3487,7 @@ fn fanout_form_of(handle, schedule, inframe, thunks, dest) = match schedule {
     let joins = map(spawn_join_at(handle), enumerate(thunks))
     LBlock(handle, list_concat(spawn_lets, [fanout_collect(handle, dest, joins)]))
   },
-  Simd => // `~> Simd` — the SPACE-axis cash-out at the value layer's RV128 altitude:
+  // `~> Simd` — the SPACE-axis cash-out at the value layer's RV128 altitude:
   // the N branch results ARE the v128 lanes, packed via f32x4.replace_lane
   // over a zeroed base, so the fanout's VALUE is one v128 the lane ops
   // (emit_binop_v128: f32x4.add/mul) process four-at-once. The branches are
@@ -3506,11 +3496,11 @@ fn fanout_form_of(handle, schedule, inframe, thunks, dest) = match schedule {
   // A consumer that took the parts apart gets them as registers: a
   // destructured lane vector is scalar code, and packing it would be a
   // record built for nothing.
-  match dest {
+  Simd => match dest {
     FdValue => LSimdLanes(handle, inframe),
     FdRegs(_) => fanout_collect(handle, dest, inframe),
   },
-  Gpu => // `~> Gpu` — "the handler IS the backend" (PLAN: infer/lower/emit/native/GPU
+  // `~> Gpu` — "the handler IS the backend" (PLAN: infer/lower/emit/native/GPU
   // are the projected cursor, each aspect → a target token). The WASM substrate
   // has no in-process GPU dispatch instruction — a device kernel crosses the
   // external-transport boundary (the ONE legitimate external-surface exception,
@@ -3520,8 +3510,8 @@ fn fanout_form_of(handle, schedule, inframe, thunks, dest) = match schedule {
   // of the kernel body, and the device offload is the host-import swap at that
   // boundary — named peer Hβ.lower.fanout-gpu-host-import (the transport
   // binding, not a Mentl gap).
-  fanout_collect(handle, dest, inframe),
-  Persisted => // `~> Persist` — parallelism and durable execution are the SAME arm (PLAN
+  Gpu => fanout_collect(handle, dest, inframe),
+  // `~> Persist` — parallelism and durable execution are the SAME arm (PLAN
   // §4④): each branch thunk is a continuation record (handler = state = closure
   // = evidence = continuation, §6), so a Persist scheduler spawns each branch
   // AND checkpoints its thunk to disk — a crashed/forked branch re-runs from its
@@ -3531,7 +3521,7 @@ fn fanout_form_of(handle, schedule, inframe, thunks, dest) = match schedule {
   // The thunks are the same strategy-neutral closures — only the CATCHER differs
   // (a persisting handler vs a thread pool vs inline), the §4④ unification made
   // real at the fanout layer.
-  {
+  Persisted => {
     let spawn_lets = map(persist_let_at(handle), enumerate(thunks))
     let joins = map(persist_join_at(handle), enumerate(thunks))
     LBlock(handle, list_concat(spawn_lets, [fanout_collect(handle, dest, joins)]))
@@ -3686,9 +3676,9 @@ fn fanout_seq_form(handle, fh, schedule, lo_args) = match schedule {
   Seq => LDirectCall(handle, fh, vocabulary_callee("map"), false, lo_args),
   Threaded => fanout_seq_impl(handle, fh, lo_args, "fanout_threaded"),
   Persisted => fanout_seq_impl(handle, fh, lo_args, "fanout_persisted"),
-  Simd => // Simd and Gpu pack a FIXED lane count; a runtime sequence runs
+  // Simd and Gpu pack a FIXED lane count; a runtime sequence runs
   // sequentially under them, as the syntactic Gpu arm does today.
-  LDirectCall(handle, fh, vocabulary_callee("map"), false, lo_args),
+  Simd => LDirectCall(handle, fh, vocabulary_callee("map"), false, lo_args),
   Gpu => LDirectCall(handle, fh, vocabulary_callee("map"), false, lo_args),
 }
 
@@ -4016,15 +4006,15 @@ fn lower_run_into(acc, run) = match run {
 // A run member's name bound in the frame: the register its record is set at.
 fn bind_member(decl) = match graph_node_body(decl) {
   NStmt(FnStmt(name, _, _, _, _)) => [ls_bind_local(name, decl)],
-  _ => // a run holds fn declarations only
-  [],
+  // a run holds fn declarations only
+  _ => [],
 }
 
 fn lower_member_into(acc, member) = match member {
   (decl, reg) => match graph_node_body(decl) {
     NStmt(FnStmt(name, params, _, _, body_node)) => lowered_into(acc, lower_fn_mint(name, params, body_node, decl, reg)),
-    _ => // a run holds fn declarations only
-    acc,
+    // a run holds fn declarations only
+    _ => acc,
   },
 }
 
@@ -4048,7 +4038,7 @@ fn lowered_into(acc, lo) = match acc {
 // every one is static and rides its own `LFeedback`, where the emit reads
 // it.
 fn lower_module_init(pat, handle, expr) = {
-  let frame_name = match pat {
+  let frame_name = match pat_of(pat) {
     PVar(_) => decl_symbol(handle),
     _ => "init{int_to_str(handle)}",
   }
@@ -4069,40 +4059,40 @@ fn lower_stmt(handle) = {
   match graph_node_body(handle) {
     NStmt(s) => lower_stmt_body(s, handle, span),
     NExpr(e) => lower_expr_body(e, handle, span),
-    NPat(_) => // pattern at stmt position — degenerate
-    LConst(handle, LInt(0)),
-    NHole(_) => // Hazel hole at stmt position — unreachable trap at emit
-    LConst(handle, LInt(0)),
-    NModule(_) => // module entity at stmt position — degenerate
-    LConst(handle, LInt(0)),
-    NTypeAnn(_) => // type annotation at stmt position — degenerate
-    LConst(handle, LInt(0)),
+    // pattern at stmt position — degenerate
+    NPat(_) => LConst(handle, LInt(0)),
+    // Hazel hole at stmt position — unreachable trap at emit
+    NHole(_) => LConst(handle, LInt(0)),
+    // module entity at stmt position — degenerate
+    NModule(_) => LConst(handle, LInt(0)),
+    // type annotation at stmt position — degenerate
+    NTypeAnn(_) => LConst(handle, LInt(0)),
   }
 }
 
 fn lower_stmt_body(s, handle, span) = match s {
   LetStmt(pat, expr, _) => {
     let lo = if ls_frame_depth() == 0 { lower_module_init(pat, handle, expr) } else { lower_expr(expr) }
-    match pat {
-      PVar(name) => // Register the name in the current scope (a local for subsequent
+    match pat_of(pat) {
+      // Register the name in the current scope (a local for subsequent
       // VarRef lookups; the bound expr's handle IS the local's type handle),
       // set at the register the binding took.
-      LLet(handle, ls_bind_local(name, expr), lo),
-      _ => // PWild / PLit: evaluate for effect, no binding. DESTRUCTURE patterns
+      PVar(name) => LLet(handle, ls_bind_local(name, expr), lo),
+      // PWild / PLit: evaluate for effect, no binding. DESTRUCTURE patterns
       // (PTuple/PCon/PList/PRecord) never reach here — the parser desugars
       // `let pat = v; rest` to `match v { pat => rest }` at the node's birth
       // (desugar_block), so LetStmt is PVar-only by construction. Binding +
       // field-load + nesting all come from the ONE match projection
       // (`lower_match_arms`, whose one pattern walk binds and lowers), no
       // parallel destructure re-derivation.
-      lo,
+      _ => lo,
     }
   },
-  FnStmt(name, params, _ret_ann, _effs, body_node) => // Bind the fn's name in the enclosing frame (the fn's handle is the type
+  // Bind the fn's name in the enclosing frame (the fn's handle is the type
   // handle, its TFun bound there by infer) and mint it at that register; a
   // block's run of fns binds every name before it mints any
   // (`lower_run_into`).
-  lower_fn_mint(name, params, body_node, handle, ls_bind_local(name, handle)),
+  FnStmt(name, params, _ret_ann, _effs, body_node) => lower_fn_mint(name, params, body_node, handle, ls_bind_local(name, handle)),
   TypeDefStmt(_name, _variants) => LConst(handle, LInt(0)),
   EffectDeclStmt(_name, _params, _ops) => LConst(handle, LInt(0)),
   HandlerDeclStmt(_name, _ename, config, state, arms, _effs) => {
@@ -4126,17 +4116,17 @@ fn lower_stmt_body(s, handle, span) = match s {
     }
     LBlock(handle, list_concat(arm_decls, [LConst(handle, LInt(0))]))
   },
-  HandlerChainStmt(_, _) => // A chain has no runtime presence of its own: every install of it
+  // A chain has no runtime presence of its own: every install of it
   // became its members' installs at the judgment, and the members' arms are
   // lowered at their own declarations.
-  LConst(handle, LInt(0)),
+  HandlerChainStmt(_, _) => LConst(handle, LInt(0)),
   ImportStmt(_module) => LConst(handle, LInt(0)),
   RefineStmt(_name, _ty, _pred) => LConst(handle, LInt(0)),
-  AliasStmt(_name, _ty) => // Transparent alias: type-level only, no runtime presence — the alias
+  // Transparent alias: type-level only, no runtime presence — the alias
   // and its underlying type unify at infer; emit erases (like RefineStmt).
-  LConst(handle, LInt(0)),
-  RowAliasStmt(_name, _effs) => // A named row is an env fact — no runtime presence.
-  LConst(handle, LInt(0)),
+  AliasStmt(_name, _ty) => LConst(handle, LInt(0)),
+  // A named row is an env fact — no runtime presence.
+  RowAliasStmt(_name, _effs) => LConst(handle, LInt(0)),
   ExprStmt(expr) => lower_expr(expr),
 }
 
@@ -4187,7 +4177,7 @@ fn lower_fn_mint(name, params, body_node, handle, reg) = {
       // appended __k/__hrec params) lives in project_nested_fn; the
       // site keeps what feeds the columns.
       match project_nested_fn(handle, fn_name, bind, zip(captures_names, captures_handles)) {
-        Some(fn_ir) => // Two namespaces meet here, each carried by its own node. The LLet
+        // Two namespaces meet here, each carried by its own node. The LLet
         // holds the LOCAL one — the register the name is bound at (the source
         // name unless it shadows), which the body's own references, a
         // self-capture and a sibling's capture read — and the LowFn holds the
@@ -4196,7 +4186,7 @@ fn lower_fn_mint(name, params, body_node, handle, reg) = {
         // LowFn, so neither is read for the other. Binding this LLet to the
         // symbol was tried at pin 3967d236b294 and reverted: it left the
         // register the captures read unbound.
-        LLet(handle, reg, LMakeClosure(handle, fn_ir, captures_exprs)),
+        Some(fn_ir) => LLet(handle, reg, LMakeClosure(handle, fn_ir, captures_exprs)),
         None => LInvariantFailure(handle, ProjectionOriginShape(handle)),
       }
     },
@@ -4234,9 +4224,10 @@ fn lower_match_arms(scrut_h, arms) = {
           // scrutinee's, read live, and every sub-pattern keeps its own — so
           // the emit places each slot by the SAME fold construction and
           // access run, under any twin.
-          let lp = lower_pat_at(
+          let lp = lower_pat_value(
             bind_fresh,
             arm_pat_lowered(pat, i == n - 1 && last_unconditional),
+            pat,
             lookup_ty(scrut_h),
             srep,
             scrut_h
@@ -4254,17 +4245,17 @@ fn lower_match_arms(scrut_h, arms) = {
 fn arm_pat_lowered(pat, last_of_exhaustive) = if last_of_exhaustive {
   match unconditional_pat(pat) {
     Some(u) => u,
-    None => pat,
+    None => pat_of(pat),
   }
 } else {
-  pat
+  pat_of(pat)
 }
 
 // The pattern an arm lowers as when nothing can fail to match it: `_` for a
 // roster whose payloads are all `_`, the binder for a roster bound under one
 // (`b @ (C(_) | D)` binds the scrutinee, as `b` alone does); None for a
 // pattern that places a binder inside a payload or tests a literal.
-fn unconditional_pat(pat) = match pat {
+fn unconditional_pat(pat) = match pat_of(pat) {
   PWild => Some(PWild),
   PVar(n) => Some(PVar(n)),
   PAs(n, inner) => match unconditional_pat(inner) {
@@ -4279,7 +4270,7 @@ fn unconditional_pat(pat) = match pat {
   PRecord(_, _) => None,
 }
 
-fn pat_is_wild(p) = match p {
+fn pat_is_wild(p) = match pat_of(p) {
   PWild => true,
   PVar(_) => false,
   PLit(_) => false,
@@ -4323,10 +4314,10 @@ fn bind_fresh(name: String, ty) = ls_bind_local(name, ty_handle_of(ty))
 
 fn bind_again(name: String, _ty) = match ls_resolve(name) {
   (RLocal(reg), _) => reg,
-  (RUpval(_), _) => // A later branch binding a name the first did not is refused at the
+  // A later branch binding a name the first did not is refused at the
   // judgment (E_PatternAlternationBindingMismatch); the source name keeps
   // the refused arm assembling.
-  name,
+  (RUpval(_), _) => name,
   (RFbPrior(_), _) => name,
   (RGlobal, _) => name,
 }
@@ -4447,38 +4438,43 @@ fn seq_rep_arms(ref arms, i, acc, first, fuel) = if i >= len(arms) {
 // handle, where a record whose field set never closes is reported. TVar(0)
 // is the explicit no-proof type: a position no type reached, read as the
 // word.
-fn lower_pat_at(bind, pat, ty, srep, rh) = match pat {
+fn lower_pat_at(bind, pat, ty, srep, rh) = lower_pat_value(bind, pat_of(pat), pat, ty, srep, rh)
+
+// The pattern a node holds, lowered — or the pattern an arm lowers as in its
+// place (`arm_pat_lowered`), which names no constructor. A constructor is
+// the declaration the pattern's edge reaches (`ctor_kind_at`).
+fn lower_pat_value(bind, p, node, ty, srep, rh) = match p {
   PVar(name) => LPVar(bind(name, ty)),
   PWild => LPWild,
   PLit(v) => LPLit(lower_lit_value(v)),
   PTuple(sub) => LPTuple(lower_pat_positions(bind, sub, tuple_elem_tys(ty), rh)),
-  PList(sub, rest) => // The scrutinee's proven representation rides the TOP list pattern —
+  // The scrutinee's proven representation rides the TOP list pattern —
   // nested sequences are reached through elements (rep unknown) and stay
   // on the total reader.
-  lower_pat_list(bind, list_elem_ty(ty), sub, rest, srep, rh),
-  PCon(name, sub) => // Resolve the constructor's tag_id at lower time; emit dispatches on
-  // the int tag without re-walking the env. The receiver's type grounds the
-  // constructor's payloads, so a binder takes the width the graph PROVED
-  // rather than the one the declaration quantified.
-  match env_kind_of(name) {
+  PList(sub, rest) => lower_pat_list(bind, list_elem_ty(ty), sub, rest, srep, rh),
+  // The constructor's tag_id is read off the declaration the pattern's
+  // edge reaches; emit dispatches on the int tag. The receiver's type
+  // grounds the constructor's payloads, so a binder takes the width the
+  // graph PROVED rather than the one the declaration quantified.
+  PCon(name, sub) => match ctor_kind_at(node) {
     Some(ConstructorScheme(t, _)) => LPCon(name, t, lower_pat_positions(bind, sub, pat_payload_tys(name, ty), rh)),
-    Some(RecordSchemeKind(_)) => // Nominal-record pattern `Pri(pa)`: the runtime value IS the bare
+    // Nominal-record pattern `Pri(pa)`: the runtime value IS the bare
     // record (no tag word) — the ctor wrapper is the identity in
     // pattern position exactly as in construction. The single
     // sub-pattern matches the scrutinee itself, at the scrutinee's own
     // type. The BARE spelling `Pri =>` binds nothing: LPWild.
-    if len(sub) == 0 { LPWild } else { lower_pat_at(bind, list_index(sub, 0), ty, srep, rh) },
-    _ => // a name no declaration proves: infer already reported it, and the
+    Some(RecordSchemeKind(_)) => if len(sub) == 0 { LPWild } else { lower_pat_at(bind, list_index(sub, 0), ty, srep, rh) },
+    // a name no declaration proves: infer already reported it, and the
     // sub-binders still declare so the dead arm body assembles
-    LPUnresolvedCon(name, map(lower_pat_at(bind, ??, TVar(0), SRUnknown, rh), sub)),
+    _ => LPUnresolvedCon(name, map(lower_pat_at(bind, ??, TVar(0), SRUnknown, rh), sub)),
   },
   PRecord(flds, rest) => {
     let lflds = map(lower_pat_field(bind, ty, rh, ??), flds)
     LPRecord(rh, ty, lflds, bind_rest(bind, rest))
   },
-  PAlt(branches) => // Alternation branches match the one scrutinee, at its type; the first
+  // Alternation branches match the one scrutinee, at its type; the first
   // takes the registers and the rest write them.
-  match branches {
+  PAlt(branches) => match branches {
     [first, ...others] => {
       let lfirst = lower_pat_at(bind, first, ty, srep, rh)
       LPAlt([lfirst] ++ map(lower_pat_at(bind_again, ??, ty, srep, rh), others))
@@ -4491,6 +4487,16 @@ fn lower_pat_at(bind, pat, ty, srep, rh) = match pat {
     let reg = bind(name, ty)
     LPAs(reg, lower_pat_at(bind, inner, ty, srep, rh))
   },
+}
+
+// What the declaration a constructor pattern's edge reaches was published
+// as; None where the judgment drew no edge — a name it refused.
+fn ctor_kind_at(node) = match graph_ref_decl(node) {
+  Some(d) => match graph_published(d) {
+    Some((_, _, kind)) => Some(kind),
+    None => None,
+  },
+  None => None,
 }
 
 // A list or record pattern's rest: the fresh slice or record the emit builds
@@ -4819,8 +4825,8 @@ fn lower_one_arm_decl(arm: {args: [String], body: Node, op_name: String}, hd, co
   let disc = op_resume_discipline(arm.op_name)
   let arm_params = match disc {
     MultiShot => ["__k"] ++ arm.args,
-    Abandon => // M4 — the driver pushes (record, k) uniformly; an Abandon arm takes __k and ignores it (it never resumes), returning its value flag-clear so the driver delivers it as the install's
-    ["__k"] ++ arm.args,
+    // M4 — the driver pushes (record, k) uniformly; an Abandon arm takes __k and ignores it (it never resumes), returning its value flag-clear so the driver delivers it as the install's
+    Abandon => ["__k"] ++ arm.args,
     _ => arm.args,
   }
   let locals_handles = zeros_of_len(len(arm_params))
@@ -5230,17 +5236,17 @@ fn k2_spine_call(node) = match graph_node_body(node) {
         _ => None,
       },
     },
-    PTee => // An arena whose body may suspend is a boundary as a call is: its body
+    // An arena whose body may suspend is a boundary as a call is: its body
     // is a frame of its own whose remainder rides the arena's re-entry,
     // and the rest of THIS frame is the next segment out.
-    if is_arena_tee(r) && arena_may_yield_live(node) { Some(node) } else { None },
+    PTee => if is_arena_tee(r) && arena_may_yield_live(node) { Some(node) } else { None },
     _ => None,
   },
   NExpr(CallExpr(f, args)) => match graph_node_body(f) {
-    NExpr(VarRef(name)) => // An effect op is k1's business (its MultiShot form yields at the
+    // An effect op is k1's business (its MultiShot form yields at the
     // perform itself); a k2 boundary is an ordinary CALL whose callee
     // may carry a yield out.
-    if lower_effect_name_of_op(name) == "" && can_yield_live(f) {
+    NExpr(VarRef(name)) => if lower_effect_name_of_op(name) == "" && can_yield_live(f) {
       Some(node)
     }
     // M4 — the callee doesn't yield, but an ARG might: the first
@@ -5317,8 +5323,8 @@ fn k_subs_inside(node, subs) = match k_sub_for(subs, node) {
     NExpr(BinOpExpr(_, l, r)) => k_subs_inside(l, subs) || k_subs_inside(r, subs),
     NExpr(BlockExpr(stmts, final)) => if len(stmts) == 0 { k_subs_inside(final, subs) } else { false },
     NExpr(PipeExpr(_, l, _)) => k_subs_inside(l, subs),
-    NExpr(CallExpr(_, args)) => // M4 — a sub inside a constructor/call arg (the `Some(call)` boundary)
-    any((a) => k_subs_inside(a, subs), args),
+    // M4 — a sub inside a constructor/call arg (the `Some(call)` boundary)
+    NExpr(CallExpr(_, args)) => any((a) => k_subs_inside(a, subs), args),
     _ => false,
   },
 }
@@ -5340,12 +5346,12 @@ fn k_remainder(node, subs) = match k_sub_for(subs, node) {
       NExpr(BinOpExpr(op2, l, r)) => LBinOp(node, op2, k_remainder(l, subs), k_remainder(r, subs)),
       NExpr(BlockExpr(_, final)) => k_remainder(final, subs),
       NExpr(PipeExpr(_, l, r)) => lower_pipe_complete(k_remainder(l, subs), r, node),
-      NExpr(CallExpr(f, args)) => // M4 — a boundary inside a CONSTRUCTOR arg (`Some(risky())`): the
+      // M4 — a boundary inside a CONSTRUCTOR arg (`Some(risky())`): the
       // remainder is the variant rebuilt with the arg substituted. The
       // tag is read LIVE from the ConstructorScheme (never re-derived).
       // A fn-CALL boundary reconstruction (evidence, arity resolution)
       // is the named floor Hβ.lower.k2-remainder-fncall — loud, unbuilt.
-      match graph_node_body(f) {
+      NExpr(CallExpr(f, args)) => match graph_node_body(f) {
         NExpr(VarRef(name)) => match env_lookup(name) {
           Some((_, _, ConstructorScheme(tag, _))) => LMakeVariant(node, tag, map((a) => k_remainder(a, subs), args)),
           _ => LYield(node, "", [], LConst(node, LInt(0))),
@@ -5499,8 +5505,8 @@ fn continuation_boundary_at(site_h) = match graph_boundary_at(site_h) {
 // skips substituted positions.
 fn k_deaden_rest(body_node, subs) = match k_spine_next(body_node, subs) {
   None => subs,
-  Some((_, ph_dead, _)) => // drift-audit: ignore — bounded by the body's perform count, not a hot loop
-  k_deaden_rest(body_node, subs ++ [(ph_dead, LConst(ph_dead, LInt(0)))]),
+  // drift-audit: ignore — bounded by the body's perform count, not a hot loop
+  Some((_, ph_dead, _)) => k_deaden_rest(body_node, subs ++ [(ph_dead, LConst(ph_dead, LInt(0)))]),
 }
 
 // Lower a frame body with continuation reification. THREE arms, priority
@@ -5536,11 +5542,11 @@ fn lower_body_reified(body_node) = match k_spine_next(body_node, []) {
       let kr = "__kr_{int_to_str(ph)}"
       let c_inline = k_remainder(body_node, [(ph, LLocal(ph, kr))])
       match c_inline {
-        LLocal(_, _) => // Identity remainder: the boundary IS the frame tail — the flag
+        // Identity remainder: the boundary IS the frame tail — the flag
         // propagates through the frame's own return (mark_tail keeps the
         // return_call), and the caller's check (or the driver, or the
         // composer) is the boundary. No wrap, no reification.
-        lower_expr(body_node),
+        LLocal(_, _) => lower_expr(body_node),
         _ => LBlock(
           body_node,
           [
@@ -5589,12 +5595,12 @@ fn lower_body_reified(body_node) = match k_spine_next(body_node, []) {
 fn k2_guard(e) = if ls_program_may_yield() { k2_floor_guard(e, true) } else { e }
 
 fn k2_floor_guard(e, terminus) = match e {
-  LLet(h, name, init) => // A `__kr_` let is the k2 COMPOSITION JUNCTION's own park (the spine
+  // A `__kr_` let is the k2 COMPOSITION JUNCTION's own park (the spine
   // machinery minted the flag-check + LKExtend right below it), so its
   // init's yield is already composed — walk it under terminus so the
   // call-boundary wrap never double-wraps a handled boundary (the
   // pre-cut LSuspend park exclusion, carried to the bare-call carrier).
-  LLet(h, name, k2_floor_guard(init, k2_is_park(name))),
+  LLet(h, name, init) => LLet(h, name, k2_floor_guard(init, k2_is_park(name))),
   LBlock(h, stmts) => LBlock(h, k2_floor_last(stmts, terminus)),
   LIf(h, c, t, el) => LIf(h, k2_floor_guard(c, false), k2_floor_last(t, terminus), k2_floor_last(el, terminus)),
   LMatch(h, s, arms) => LMatch(
@@ -5626,9 +5632,9 @@ fn k2_floor_guard(e, terminus) = match e {
       LHandleWith(h, k2_floor_guard(b, true), k2_floor_guard(hn, false), hd, k2_floor_list(inits), an)
     if terminus { rebuilt } else { k2_floor_wrap(h, rebuilt) }
   },
-  LDerive(h, seed, b) => // The derivative reading brackets nothing: its body's value lands where
+  // The derivative reading brackets nothing: its body's value lands where
   // the reading's own does, so the terminus passes straight through.
-  LDerive(h, seed, k2_floor_guard(b, terminus)),
+  LDerive(h, seed, b) => LDerive(h, seed, k2_floor_guard(b, terminus)),
   LArena(h, b) => {
     // A yield the body carries out suspends the arena at its exit — its
     // region kept, its re-entry wrapped around the continuation — and flows
@@ -5639,11 +5645,11 @@ fn k2_floor_guard(e, terminus) = match e {
     if terminus || !arena_may_yield(h) { walked } else { k2_floor_wrap(h, walked) }
   },
   LReturn(h, inner) => LReturn(h, k2_floor_guard(inner, true)),
-  LCall(h, f, args) => // The k2 call-boundary rides EVERY can-yield non-tail call (the carrier
+  // The k2 call-boundary rides EVERY can-yield non-tail call (the carrier
   // was LSuspend when evidence-threaded calls were a separate node; bare
   // calls carry the same boundary by the same predicate). A tail call
   // needs no wrap — the yield propagates through the return.
-  {
+  LCall(h, f, args) => {
     let wf = k2_floor_guard(f, false)
     let walked = LCall(h, wf, k2_floor_list(args))
     if terminus || !can_yield(lexpr_handle(wf)) { walked } else { k2_floor_wrap(h, walked) }
@@ -5659,9 +5665,9 @@ fn k2_floor_guard(e, terminus) = match e {
   LUnaryOp(h, op, x) => LUnaryOp(h, op, k2_floor_guard(x, false)),
   LMakeClosure(h, fn_, caps) => LMakeClosure(h, fn_, k2_floor_list(caps)),
   LMakeContinuation(h, fn_, caps, si, rs) => LMakeContinuation(h, fn_, k2_floor_list(caps), si, rs),
-  LResumeK(h, k, v) => // The resume invocation is NEVER k2-wrapped: lower_resume_callk's own
+  // The resume invocation is NEVER k2-wrapped: lower_resume_callk's own
   // redrive LIf owns the raised flag at this exact boundary.
-  LResumeK(h, k2_floor_guard(k, false), k2_floor_guard(v, false)),
+  LResumeK(h, k, v) => LResumeK(h, k2_floor_guard(k, false), k2_floor_guard(v, false)),
   LYield(h, op, args, k) => LYield(h, op, k2_floor_list(args), k2_floor_guard(k, false)),
   LKExtend(h, k) => LKExtend(h, k2_floor_guard(k, false)),
   LAbandon(h, op, args) => LAbandon(h, op, k2_floor_list(args)),
@@ -5670,9 +5676,9 @@ fn k2_floor_guard(e, terminus) = match e {
   LMakeList(h, es) => LMakeList(h, k2_floor_list(es)),
   LMakeTuple(h, es) => LMakeTuple(h, k2_floor_list(es)),
   LSimdLanes(h, ls) => LSimdLanes(h, k2_floor_list(ls)),
-  LFanout(h, lex, br, forms) => // Every form is a value in the fanout's own position, so each
+  // Every form is a value in the fanout's own position, so each
   // takes the walk the site takes.
-  LFanout(h, lex, br, map(k2_floor_form(terminus), forms)),
+  LFanout(h, lex, br, forms) => LFanout(h, lex, br, map(k2_floor_form(terminus), forms)),
   LMakeRecord(h, fs) => LMakeRecord(h, k2_floor_list(fs)),
   LMakeVariant(h, t, fs) => LMakeVariant(h, t, k2_floor_list(fs)),
   LFeedback(h, d, home, b, s) => LFeedback(h, d, home, k2_floor_guard(b, false), k2_floor_guard(s, false)),
@@ -6610,29 +6616,29 @@ fn low_refs(acc, expr) = match expr {
   LLet(_h, _n, inner) => low_refs(acc, inner),
   LMakeClosure(_h, LFn(_n, _a, _p, body, _f, _l), caps) => low_refs_list(low_refs_list(acc, body), caps),
   LMakeContinuation(_h, LFn(_n, _a, _p, body, _f, _l), caps, _, _) => low_refs_list(low_refs_list(acc, body), caps),
-  LResumeK(_h, k, v) => // The resume invocation reaches through its k expr and value; the __k
+  // The resume invocation reaches through its k expr and value; the __k
   // fn itself reaches via its LMakeContinuation record above.
-  low_refs(low_refs(acc, k), v),
-  LYield(_h, _op, args, k) => // A yield reaches through its k record (the __k fn's body + captures + ev);
+  LResumeK(_h, k, v) => low_refs(low_refs(acc, k), v),
+  // A yield reaches through its k record (the __k fn's body + captures + ev);
   // the ARM reaches through the install's arm groups, the existing channel.
-  low_refs(low_refs_list(acc, args), k),
-  LKExtend(_h, k) => // A k2 boundary reaches through its frame_k record the same way.
-  low_refs(acc, k),
+  LYield(_h, _op, args, k) => low_refs(low_refs_list(acc, args), k),
+  // A k2 boundary reaches through its frame_k record the same way.
+  LKExtend(_h, k) => low_refs(acc, k),
   LAbandon(_h, _op, args) => low_refs_list(acc, args),
   LUnwind(_h) => acc,
   LDeclareFn(LFn(_n, _a, _p, body, _f, _l)) => low_refs_list(acc, body),
   LBlock(_h, stmts) => low_refs_list(acc, stmts),
   LIf(_h, c, t, e) => low_refs_list(low_refs_list(low_refs(acc, c), t), e),
-  LBinOp(_h, op, l, r) => // ==/ordering on a wide-element sequence mints list_eq_f64/list_compare_f64
+  // ==/ordering on a wide-element sequence mints list_eq_f64/list_compare_f64
   // (emit_eq_for_ty / emit_cmp_for_ty); contribute it where emit reads it.
-  low_refs(low_refs(fold(acc, name_ref, wide_binop_seed(op, l)), l), r),
+  LBinOp(_h, op, l, r) => low_refs(low_refs(fold(acc, name_ref, wide_binop_seed(op, l)), l), r),
   LUnaryOp(_h, _op, x) => low_refs(acc, x),
   LCall(_h, f, args) => low_refs_list(low_refs(acc, f), args),
-  LShow(_h, x) => // show/hash contribute the names emit will mint, projected from the SAME
+  // show/hash contribute the names emit will mint, projected from the SAME
   // live type read the emit dispatch makes — including the generated
   // aggregate leaf's interior renderers (the minimal-module
   // undefined-$int_to_str break, gate mn-aggregate-show).
-  low_refs(fold(acc, name_ref, show_reach_names(x)), x),
+  LShow(_h, x) => low_refs(fold(acc, name_ref, show_reach_names(x)), x),
   LHash(_h, x) => low_refs(fold(acc, name_ref, hash_reach_names(x)), x),
   LTailCall(_h, f, args) => low_refs_list(low_refs(acc, f), args),
   LReturn(_h, x) => low_refs(acc, x),
@@ -6742,8 +6748,8 @@ fn reach_decl_name(stmt) = match stmt {
   LDeclareFn(LFn(n, _, _, _, _, _)) => n,
   LLet(_, n, LMakeClosure(_, _, _)) => n,
   LLet(_, n, LMakeContinuation(_, _, _, _, _)) => n,
-  _ => // drift-audit: ignore — "" = stmt is not a named fn (module value lets run in __init_lets)
-  "",
+  // drift-audit: ignore — "" = stmt is not a named fn (module value lets run in __init_lets)
+  _ => "",
 }
 
 // The top-level declaration a lowered reference reaches. A reference carries
@@ -6798,8 +6804,8 @@ fn vocabulary_target(n: String) = match env_resolve_linked(n) {
 // canonical main). A library folds false and emits whole.
 fn stmt_is_main_fn(node) = match graph_node_body(node) {
   NStmt(FnStmt(name, _, _, _, _)) => name == "main",
-  _ => // not a fn decl — cannot be the entry
-  false,
+  // not a fn decl — cannot be the entry
+  _ => false,
 }
 
 // A stmt DEFERS to the demand frontier when it runs only where a reference
@@ -7219,8 +7225,8 @@ fn hash_agg_reach(ty) = {
 // spec_subst_pairs / lookup_ty_graph) — the specialization projection reads
 // the graph, and both this module and the bracket (infer.mn) reach it there.
 fn spec_pairs_add(pairs, root, t) = match spec_pairs_find(pairs, root) {
-  Some(_) => // first binding wins; the unifier proved consistency
-  pairs,
+  // first binding wins; the unifier proved consistency
+  Some(_) => pairs,
   None => [(root, t)] ++ pairs,
 }
 
@@ -7249,20 +7255,20 @@ fn spec_resolve_changes(t) = match t {
   TFun(ps, r, _) => spec_resolve_changes_params(ps, 0) || spec_resolve_changes(r),
   TName(_, args) => spec_resolve_changes_list(args, 0),
   TRecord(fs) => spec_resolve_changes_fields(fs, 0),
-  TRecordOpen(fs, v) => // The row var resolves like any other var — this arm read only the field
+  // The row var resolves like any other var — this arm read only the field
   // TYPES, so a site whose ONLY change was the row closing reported
   // "unchanged" and kept the open form. That is what left an INTERIOR site (a
   // call inside another twin's body) reading the decl's unlearned row after
   // the outer site had already been keyed on the proven set.
-  match lookup_ty(v) {
+  TRecordOpen(fs, v) => match lookup_ty(v) {
     TVar(h2) => h2 != v || spec_resolve_changes_fields(fs, 0),
     _ => true,
   },
   TRefined(b, _) => spec_resolve_changes(b),
   TAlias(_, i) => spec_resolve_changes(i),
   TCont(i, a, _, _) => spec_resolve_changes(i) || spec_resolve_changes(a),
-  _ => // scalars (TInt/TFloat/TUnit/TByte)
-  false,
+  // scalars (TInt/TFloat/TUnit/TByte)
+  _ => false,
 }
 
 // Raw-recursion loops (the battery's own law): a closure-taking any()
@@ -7294,8 +7300,8 @@ fn spec_resolve_changes_fields(ref fs, i) = if i >= len(fs) {
 
 fn spec_resolve_build(t) = match t {
   TVar(h) => match lookup_ty(h) {
-    TVar(h2) => // genuinely free — the floor terminal
-    TVar(h2),
+    // genuinely free — the floor terminal
+    TVar(h2) => TVar(h2),
     other => if any((fv) => fv == h, free_in_ty(other)) {
       // The polymorphic-recursion self-reference: a sig'd self-call's
       // demand ctx maps the base's own var to a type CONTAINING it
@@ -7315,11 +7321,11 @@ fn spec_resolve_build(t) = match t {
   TFun(ps, r, eff) => TFun(map((p) => param_with_ty(p, spec_resolve(param_ty(p))), ps), spec_resolve(r), eff),
   TName(n, args) => TName(n, map(spec_resolve, args)),
   TRecord(fs) => TRecord(map({ (n, ft) => (n, spec_resolve(ft)) }, fs)),
-  TRecordOpen(fs, v) => // The row read to its end, its rest through the same live channel as every
+  // The row read to its end, its rest through the same live channel as every
   // other var: when the site closed it, the learned fields and the residual
   // the site proved past them ARE the resolved receiver and the open form is
   // gone. Anything else keeps the open form, every learned field resolved.
-  match record_row_full(fs, v) {
+  TRecordOpen(fs, v) => match record_row_full(fs, v) {
     (all, end) => {
       let learned = map({ (n, ft) => (n, spec_resolve(ft)) }, all)
       match end {
@@ -7334,8 +7340,8 @@ fn spec_resolve_build(t) = match t {
   TRefined(b, p) => TRefined(spec_resolve(b), p),
   TAlias(n, i) => TAlias(n, spec_resolve(i)),
   TCont(i, a, d, w) => TCont(spec_resolve(i), spec_resolve(a), d, w),
-  _ => // scalars (TInt/TFloat/TUnit/TByte)
-  t,
+  // scalars (TInt/TFloat/TUnit/TByte)
+  _ => t,
 }
 
 // The parallel walk: scheme side vs site side, same shape by construction
@@ -7376,7 +7382,7 @@ fn spec_pairs_walk(st0, it0, acc) = {
       },
       _ => acc,
     },
-    TRecordOpen(fs, v) => // The ROW's free REST is a quantified var like any other, and it keys the
+    // The ROW's free REST is a quantified var like any other, and it keys the
     // twin. Dropping it made every record shape share one body, so the offset
     // came from the decl's own row instead of the call's proven set: two
     // shapes through one open-row callee answered 10 and 6 where both are 6,
@@ -7394,7 +7400,7 @@ fn spec_pairs_walk(st0, it0, acc) = {
     // slot — 3 for 2 over `{a: 1, b: 2, c: 3}`, a virgin 0 for `rest.c` —
     // while the rest record was built at the residual's layout (measured
     // 2026-09-30, tests/micros/mn-record-rest-through-param.mn).
-    match record_row_full(fs, v) {
+    TRecordOpen(fs, v) => match record_row_full(fs, v) {
       (sall, send) => match site_record_full(it0) {
         Some(full) => spec_pairs_key_rest(send, record_fields_diff(full, sall), spec_pairs_walk_fields(sall, full, acc)),
         None => spec_pairs_walk_fields(sall, site_record_known(it0), acc),
@@ -7404,8 +7410,8 @@ fn spec_pairs_walk(st0, it0, acc) = {
       TCont(i2, a2, _, _) => spec_pairs_walk(a1, a2, spec_pairs_walk(i1, i2, acc)),
       _ => acc,
     },
-    _ => // scalars carry no vars
-    acc,
+    // scalars carry no vars
+    _ => acc,
   }
 }
 
@@ -7723,18 +7729,18 @@ fn evac_of(ty) = match fold_strip(slot_ty(ty)) {
   TInt => EvWord,
   TByte => EvWord,
   TUnit => EvWord,
-  TAddr => // a word that names memory nothing here can read: the region it
+  // a word that names memory nothing here can read: the region it
   // points into stays whole rather than move what it cannot see
-  EvOpaque,
+  TAddr => EvOpaque,
   TFloat => EvWide,
   TList(e) => EvShape(ShSeq(e)),
   TTuple(es) => EvShape(ShProduct(es)),
   TRecord(fs) => evac_record(record_full_fields(TRecord(fs))),
   TRecordOpen(fs, v) => evac_record(record_full_fields(TRecordOpen(fs, v))),
   TName(n, args) => match nominal_record_fields(n) {
-    Some(fs) => // A nominal record's fields are read off its declaration, which a type
+    // A nominal record's fields are read off its declaration, which a type
     // argument does not ground — a generic one's layout is not known here.
-    if len(args) == 0 { EvShape(ShProduct(map(field_type_of, fs))) } else { EvOpaque },
+    Some(fs) => if len(args) == 0 { EvShape(ShProduct(map(field_type_of, fs))) } else { EvOpaque },
     None => evac_sum(variant_specs_at(TName(n, args))),
   },
   TFun(_, _, _) => EvOpaque,

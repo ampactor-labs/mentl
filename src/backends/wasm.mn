@@ -317,16 +317,16 @@ fn show_is_leaf(ty) = match ty {
 fn hash_node_of(h, x) = {
   let ty = show_hash_ty(x)
   match ty {
-    TList(e) => // The byte face hashes as TEXT (str_hash) — the same projection a
+    // The byte face hashes as TEXT (str_hash) — the same projection a
     // String FIELD takes (emit_field_hash's byte face), closing the hash
     // route split the A.4 recon surfaced: top-level hash(s) ran the
     // length-seeded list mix while a field ran the text mix — one type,
     // two hash fns, the divergence the fold family exists to forbid.
-    match seq_elem_face(e) {
+    TList(e) => match seq_elem_face(e) {
       TByte => LCall(h, LGlobal(h, vocabulary_callee("str_hash")), [x]),
-      TFloat => // the field twin's route (emit_field_hash) — one type, one
+      // the field twin's route (emit_field_hash) — one type, one
       // hash fn; the word list_hash here hashed the f64 REFERENCES
-      LCall(h, LGlobal(h, vocabulary_callee("list_hash_f64")), [x]),
+      TFloat => LCall(h, LGlobal(h, vocabulary_callee("list_hash_f64")), [x]),
       _ => LCall(h, LGlobal(h, vocabulary_callee("list_hash")), [x]),
     },
     TFloat => LCall(
@@ -468,9 +468,9 @@ fn ref_demand(lineage, r) = match r {
   RefName(n) => DemandBase(vocab_symbol(n)),
   RefDeclArm(_, n) => DemandBase(n),
   RefSite(h, c) => key_demand(callee_symbol(c), twin_site_key(h, c), lineage),
-  RefCall(h, c) => // A direct call's key carries the bracket's schedule into a callee that
+  // A direct call's key carries the bracket's schedule into a callee that
   // reaches a fanout (`twin_call_key`): the demand is the schedule twin.
-  key_demand(callee_symbol(c), twin_call_key(h, c), lineage),
+  RefCall(h, c) => key_demand(callee_symbol(c), twin_call_key(h, c), lineage),
   RefArm(ih, n) => key_demand(n, arm_twin_key(ih), lineage),
 }
 
@@ -658,22 +658,22 @@ fn settle_floors(site: String, expr) = {
 // the same bracket, so the settle and the floor cannot disagree.
 fn settle_node(site: String, expr) = match expr {
   LBinOp(h, op, l, _) => settle_binop(site, h, op, l),
-  LFieldLoad(h, rec, sel) => // said at the access, which names the receiver and the selector together
+  // said at the access, which names the receiver and the selector together
   // (a parameter receiver's own handle carries no span)
-  if field_sel_offset(rec, sel) < 0 {
+  LFieldLoad(h, rec, sel) => if field_sel_offset(rec, sel) < 0 {
     report_at(h, EFieldOffsetUnprovable(field_offset_unprovable_why(rec, sel), graph_span_of(h)))
   },
   LShow(h, x) => settle_shape(site, h, "a show", x),
   LHash(h, x) => settle_shape(site, h, "a hash", x),
-  LArena(h, _) => // the exit moves the value by its whole structure, which a variable
+  // the exit moves the value by its whole structure, which a variable
   // does not have
-  settle_shape(site, h, "an arena's exit", expr),
+  LArena(h, _) => settle_shape(site, h, "an arena's exit", expr),
   LMatch(_, _, arms) => each({ (p, _) => settle_pattern(p) }, arms),
   LMakeClosure(_, LFn(_, _, _, _, _, lines), _) => settle_minted_lines(site, lines),
   LMakeContinuation(_, LFn(_, _, _, _, _, lines), _, _, _) => settle_minted_lines(site, lines),
-  LDeclareFn(LFn(name, _, _, _, _, lines)) => // below the root a declared fn is a handler's arm or init fn, whose lines
+  // below the root a declared fn is a handler's arm or init fn, whose lines
   // live in the install's record (`lower_handler_arms_as_decls`)
-  settle_minted_lines(name, lines),
+  LDeclareFn(LFn(name, _, _, _, _, lines)) => settle_minted_lines(name, lines),
   LInvariantFailure(h, inv) => report_at(
     h,
     EInternalInvariant("{show_boundary_invariant(inv)}, emitting {site}", graph_span_of(h))
@@ -702,9 +702,9 @@ fn settle_node(site: String, expr) = match expr {
   LMakeVariant(_, _, _) => (),
   LResumeK(_, _, _) => (),
   LHandleWith(_, _, _, _, _, _) => (),
-  LDerive(_, _, _) => // The reading's forward body settles through the walk; the program derive
+  // The reading's forward body settles through the walk; the program derive
   // adds beside it is f64 arithmetic over names its own reads bind.
-  (),
+  LDerive(_, _, _) => (),
   LFeedback(_, _, _, _, _) => (),
   LFeedbackPrior(_) => (),
   LPerform(_, _, _) => (),
@@ -1112,10 +1112,10 @@ fn alloc_unit_named(name: String, sym: String, enc: String, parent) = match pare
         EfkPartial => AllocUnit({enc, names: p.names, row: alloc_owner_row(OwnedByFn(e.origin)), sym}),
         EfkArm(op, hd) => AllocUnit({enc, names: "{stmt_decl_name(hd)}.{op}", row: alloc_owner_row(OwnedByHandler(hd)), sym}),
         EfkInit(hd) => AllocUnit({enc, names: stmt_decl_name(hd), row: alloc_owner_row(OwnedByInstall(hd)), sym}),
-        EfkThunk => // A branch thunk exists only under a spawning schedule: its carrier is
+        // A branch thunk exists only under a spawning schedule: its carrier is
         // that schedule's, and its body is the branch the frame's own row
         // already answers for in the in-frame form.
-        AllocUnit({
+        EfkThunk => AllocUnit({
           enc,
           names: p.names,
           row: RowGranted("a branch thunk is built and run by the spawning schedule, at the cost of the install that runs it"),
@@ -1314,8 +1314,8 @@ fn alloc_walk(unit, e) = match e {
     alloc_walk_nested(unit, name, body)
     false
   },
-  LShow(h, x) => // a show through a generated leaf builds its string there
-  if show_is_leaf(show_hash_ty(x)) {
+  // a show through a generated leaf builds its string there
+  LShow(h, x) => if show_is_leaf(show_hash_ty(x)) {
     let built = alloc_at(unit, h, AsShow)
     let below = alloc_walk(unit, x)
     built || below
@@ -1436,8 +1436,8 @@ fn alloc_walk(unit, e) = match e {
     let below = alloc_walk(unit, v)
     built || below
   },
-  LFeedback(_, _, _, b, _) => // the recurrence's spec is a type the site reads, never constructed
-  alloc_walk(unit, b),
+  // the recurrence's spec is a type the site reads, never constructed
+  LFeedback(_, _, _, b, _) => alloc_walk(unit, b),
   LDerive(_, seed, b) => {
     let s = alloc_walk(unit, seed)
     let body = alloc_walk(unit, b)
@@ -1459,12 +1459,12 @@ fn alloc_walk(unit, e) = match e {
   },
   LBlock(_, stmts) => alloc_walk_list(unit, stmts, 0),
   LSimdLanes(_, lanes) => alloc_walk_list(unit, lanes, 0),
-  LFanout(_, lex, branches, forms) => // A spawning form's thunk records, spawn tickets and join are the
+  // A spawning form's thunk records, spawn tickets and join are the
   // schedule's construction, built at the cost of the install that runs it
   // (charged where that install stands, here or at a demanding caller); each
   // thunk's body is a unit of its own, judged against this unit's row. The
   // in-frame forms build nothing of their own and are walked as written.
-  match fanout_schedule(lex, forms) {
+  LFanout(_, lex, branches, forms) => match fanout_schedule(lex, forms) {
     Threaded => alloc_spawned(unit, branches, fanout_form(lex, forms)),
     Persisted => alloc_spawned(unit, branches, fanout_form(lex, forms)),
     _ => alloc_walk(unit, fanout_form(lex, forms)),
@@ -2100,10 +2100,10 @@ fn race_body(local, ctx, rowpairs, visited, recs, e) = match e {
     race_body(local ++ [Installed(ih, hd, projection_of(hd))], ctx, rowpairs, visited, recs, b)
   },
   LFanout(h, lex, br, _forms) => match lex {
-    None => // the demanded form runs here: the site's own frame installs nothing,
+    // the demanded form runs here: the site's own frame installs nothing,
     // and the chain a spawned branch walks is the callee's local installs
     // (innermost) on top of the demanding site's
-    race_fanout(h, br, ctx ++ local, rowpairs),
+    None => race_fanout(h, br, ctx ++ local, rowpairs),
     Some(_) => (),
   },
   LDirectCall(_h, fh, c, _t, args) => {
@@ -2302,11 +2302,11 @@ fn plan_reached(lowered, fn_records, twin_bases, all_records, spec_demands, twin
         Some(rec) => match rec {
           (_n, ps, body, f) => [{base, enc, pairs, rec: (m, ps, body, f)}] ++ map(
             {
-              (nn, nps, nbody, nf) => // A nested record takes the schedule only where it cannot
+              // A nested record takes the schedule only where it cannot
               // outlive the install (`nested_twin`): a branch thunk does, a
               // lambda keeps the instantiation alone — and at the floor it
               // is the base lambda itself, under the floor bracket.
-              {
+              (nn, nps, nbody, nf) => {
                 let t = nested_twin(nn, enc)
                 {
                   base: nn,
@@ -2319,8 +2319,8 @@ fn plan_reached(lowered, fn_records, twin_bases, all_records, spec_demands, twin
             spec_nested_records(pairs, enc, body)
           ),
         },
-        None => // record-less names are never worthy; unreachable by construction
-        [],
+        // record-less names are never worthy; unreachable by construction
+        None => [],
       },
     },
     spec_demands
@@ -3030,10 +3030,10 @@ fn walk_lemit_top_one(expr) = {
 // Drift 9 closed: every arm explicit; no `_ =>` catch-all would silently
 // miss projections for a new variant.
 fn walk_lemit_expr(expr) = match expr {
-  LShow(h, x) => // Delegate through the builders so the pre-pass sees the SAME synthesized
+  // Delegate through the builders so the pre-pass sees the SAME synthesized
   // shapes emit will drive (the scalar renderer LGlobal names join
   // all_fn_names exactly as the lower-baked calls did — byte parity).
-  walk_lemit_expr(show_node_of(h, x)),
+  LShow(h, x) => walk_lemit_expr(show_node_of(h, x)),
   LHash(h, x) => walk_lemit_expr(hash_node_of(h, x)),
   LMakeClosure(_, LFn(name, _, _, body, _, lines), captures) => {
     visit_fn(name)
@@ -3051,11 +3051,11 @@ fn walk_lemit_expr(expr) = match expr {
     walk_lemit_expr(k)
     walk_lemit_expr(v)
   },
-  LYield(_, op_name, args, k) => // band B k1: a yield reads the yield globals and interns its op key (the
+  // band B k1: a yield reads the yield globals and interns its op key (the
   // driver's compare reads the SAME offset); its arguments size the area
   // they cross in; descend the k record. The floor form ("" op) interns the
   // empty string — harmless, gated modules only.
-  {
+  LYield(_, op_name, args, k) => {
     visit_yield()
     visit_yield_args(len(args))
     visit_string(op_name)
@@ -3063,21 +3063,21 @@ fn walk_lemit_expr(expr) = match expr {
     walk_lemit_list(args)
     walk_lemit_expr(k)
   },
-  LAbandon(_, op_name, args) => // An abandoning perform is a perform: its op is demanded, its arguments
+  // An abandoning perform is a perform: its op is demanded, its arguments
   // cross in the same area, and the module yields (AN-2).
-  {
+  LAbandon(_, op_name, args) => {
     visit_yield()
     visit_yield_args(len(args))
     visit_string(op_name)
     visit_effect_demand(op_name)
     walk_lemit_list(args)
   },
-  LUnwind(_) => // A boundary check reads the yield globals.
-  visit_yield(),
-  LKExtend(_, k) => // band B M1.3: a k2 boundary needs the yield machinery (globals + the
+  // A boundary check reads the yield globals.
+  LUnwind(_) => visit_yield(),
+  // band B M1.3: a k2 boundary needs the yield machinery (globals + the
   // composer pair) exactly as a yield does; its frame_k record descends
   // like LYield's k.
-  {
+  LKExtend(_, k) => {
     visit_yield()
     walk_lemit_expr(k)
   },
@@ -3151,10 +3151,10 @@ fn walk_lemit_expr(expr) = match expr {
       multishot_ops_of(hd)
     )
   },
-  LDerive(_h, seed, b) => // The derivative reading's forward body is what its expansion keeps, in
+  // The derivative reading's forward body is what its expansion keeps, in
   // order — every string, name, line and perform the projections collect
   // is the body's own.
-  {
+  LDerive(_h, seed, b) => {
     walk_lemit_expr(seed)
     walk_lemit_expr(b)
   },
@@ -3163,12 +3163,12 @@ fn walk_lemit_expr(expr) = match expr {
     walk_lemit_expr(b)
     walk_lemit_expr(s)
   },
-  LPerform(_, disp, args) => // ONE arm, because there is one perform. Every dispatch that WALKS
+  // ONE arm, because there is one perform. Every dispatch that WALKS
   // interns its effect key through the SAME visit_string channel user
   // literals flow through, so string_offset resolves it to a stable nonzero
   // data offset (else every key collides at 0), and registers the effect as
   // a demand. The lexical dispatch walks nothing, so it registers nothing.
-  {
+  LPerform(_, disp, args) => {
     match disp {
       PdFrame(_, _, _) => (),
       PdWalk(ekey, _, op_name, _) => {
@@ -3187,10 +3187,10 @@ fn walk_lemit_expr(expr) = match expr {
   LFieldLoad(_, rec, _) => walk_lemit_expr(rec),
   LConvert(_, _, operand) => walk_lemit_expr(operand),
   LStateSlotStore(_, _, v, _) => walk_lemit_expr(v),
-  LStateInit(h, hd, _, v) => // A state init walks under its own handler: the init fn runs before the
+  // A state init walks under its own handler: the init fn runs before the
   // install's world_push, so a direct perform of an op THIS handler answers
   // cannot reach it. The span is the init's own.
-  {
+  LStateInit(h, hd, _, v) => {
     walk_lemit_expr(v)
   } ~> preinstall_init_scope(hd, reason_span_or_zero(graph_reason_at(h))),
 }
@@ -3775,8 +3775,8 @@ fn escape_into(out, pos, b) = if b >= 32 && b < 127 && b != 34 && b != 92 {
 fn extract_top_fn_name(stmt) with Pure = match stmt {
   LLet(_, name, LMakeClosure(_, _, _)) => name,
   LLet(_, name, LMakeContinuation(_, _, _, _, _)) => name,
-  _ => // drift-audit: ignore — "" = non-binding shape (caller treats "" as no-op)
-  "",
+  // drift-audit: ignore — "" = non-binding shape (caller treats "" as no-op)
+  _ => "",
 }
 
 // The VALUE peer of extract_top_fn_name: a top-level LLet whose init is
@@ -3867,10 +3867,10 @@ fn dedup_fn_records(records) = {
 
 fn fn_record_verdict(kept, r) = match kept {
   None => FrFresh,
-  Some(existing) => // Names match, so the whole-record compare is the CONTENT compare —
+  // Names match, so the whole-record compare is the CONTENT compare —
   // structural `==` to the bottom over the five node-kinds, which is the
   // one equality the medium has (PLAN §5.U); no bespoke body walk.
-  if existing == r { FrIdentical } else { FrCollision },
+  Some(existing) => if existing == r { FrIdentical } else { FrCollision },
 }
 
 fn dedup_fn_records_flat(records, i, n, out, count, seen) = if i >= n {
@@ -4486,14 +4486,14 @@ fn collect_call_vectors_expr(expr, acc) = match expr {
   LDirectCall(_h, _fh, _n, _t, args) => collect_call_vectors_list(args, acc),
   LCall(h, f, args) => collect_call_vectors_expr(f, collect_call_vectors_list(args, [call_site_vector(f, args, h)] ++ acc)),
   LTailCall(h, f, args) => collect_call_vectors_expr(f, collect_call_vectors_list(args, [call_site_vector(f, args, h)] ++ acc)),
-  LResumeK(_h, k, v) => // The resume speaks the word face (`emit_word_face_call`) — its arity's
+  // The resume speaks the word face (`emit_word_face_call`) — its arity's
   // all-word vector, exactly what the emit names.
-  collect_call_vectors_expr(k, collect_call_vectors_expr(v, [word_vector(1)] ++ acc)),
-  LPerform(h, d, args) => // Every perform's vector is registered — the walked forms dispatch through
+  LResumeK(_h, k, v) => collect_call_vectors_expr(k, collect_call_vectors_expr(v, [word_vector(1)] ++ acc)),
+  // Every perform's vector is registered — the walked forms dispatch through
   // call_indirect and need the type; the direct ones cost nothing to include
   // and the set is deduped. The site's own vector, or a driver's word face —
   // the same choice the emit arm makes.
-  collect_call_vectors_list(args, [perform_site_vector(h, d, args)] ++ acc),
+  LPerform(h, d, args) => collect_call_vectors_list(args, [perform_site_vector(h, d, args)] ++ acc),
   LLet(_h, _n, inner) => collect_call_vectors_expr(inner, acc),
   LBinOp(_h, _op, l, r) => collect_call_vectors_expr(r, collect_call_vectors_expr(l, acc)),
   LUnaryOp(_h, _op, i) => collect_call_vectors_expr(i, acc),
@@ -5757,12 +5757,10 @@ fn fn_emit_records_arms(arms, i) = if i >= len(arms) {
 fn collect_fn_emit_records_expr(expr) = match expr {
   LShow(_h, x) => collect_fn_emit_records_expr(x),
   LHash(_h, x) => collect_fn_emit_records_expr(x),
-  LMakeClosure(_h, LFn(name, _arity, param_names, body, fence, _lines), captures) => // The LowFn fence IS the body-context every fn shape carries: closures
+  // The LowFn fence IS the body-context every fn shape carries: closures
   // pass their capture count, handler arm fns nstate+total_arms, plain fns
   // 0 — one rule, set at lower time, not re-derived per shape.
-  {
-    [(name, param_names, body, fence)] ++ collect_fn_emit_records(body) ++ collect_fn_emit_records(captures)
-  },
+  LMakeClosure(_h, LFn(name, _arity, param_names, body, fence, _lines), captures) => [(name, param_names, body, fence)] ++ collect_fn_emit_records(body) ++ collect_fn_emit_records(captures),
   LMakeContinuation(_h, LFn(name, _arity, param_names, body, fence, _lines), captures, _, _) => [(name, param_names, body, fence)] ++ collect_fn_emit_records(body) ++ collect_fn_emit_records(captures),
   LYield(_h, _op, args, k) => collect_fn_emit_records(args) ++ collect_fn_emit_records_expr(k),
   LKExtend(_h, k) => collect_fn_emit_records_expr(k),
@@ -5797,9 +5795,9 @@ fn collect_fn_emit_records_expr(expr) = match expr {
   LConvert(_h, _, operand) => collect_fn_emit_records_expr(operand),
   LStateSlotStore(_h, _o, v, _) => collect_fn_emit_records_expr(v),
   LStateInit(_h, _hn, _s, v) => collect_fn_emit_records_expr(v),
-  LConst(_, _) => // H6: exhaustive LowExpr. Leaves with no fn-containing
+  // H6: exhaustive LowExpr. Leaves with no fn-containing
   // descendants contribute no records.
-  [],
+  LConst(_, _) => [],
   LLocal(_, _) => [],
   LFeedbackPrior(_) => [],
   LGlobal(_, _) => [],
@@ -5923,7 +5921,7 @@ fn walk_locals_expr(expr, acc) = match expr {
     let r = llet_repr(h, inner)
     walk_locals_expr(inner, [local_wat_name(name, r) ++ " " ++ repr_wat(r)] ++ acc)
   },
-  LMakeClosure(h, _, captures) => // The FN body is a boundary (its locals are its own) — but the CAPTURES
+  // The FN body is a boundary (its locals are its own) — but the CAPTURES
   // evaluate in the ENCLOSING frame at the mint (a partial's supplied arg
   // may be a call minting a result local here). Lambda captures are bare
   // LLocal/LUpval reads contributing no locals, so walking them is
@@ -5934,40 +5932,40 @@ fn walk_locals_expr(expr, acc) = match expr {
   // locals", and that WAS the whole bug: a capture which is itself a
   // closure contributes the most important one — a place to keep the outer
   // record while the inner is built.
-  [mkclo_local(h) ++ " i32"] ++ walk_locals_list(captures, acc),
-  LMakeContinuation(h, _, captures, _, _) => // resume_fn boundary — its locals are its own (H7)
+  LMakeClosure(h, _, captures) => [mkclo_local(h) ++ " i32"] ++ walk_locals_list(captures, acc),
+  // resume_fn boundary — its locals are its own (H7)
   // The resume invocation: its two bracket locals + whatever the delegated
   // LCall shape mints (staging locals) — mirror-true to the emit arm, which
   // means its record slot too: the head IS the closure head.
-  [mkclo_local(h) ++ " i32"] ++ walk_locals_list(captures, acc),
-  LResumeK(h, k, v) => // The answer comes back off the continuation face at its own width
+  LMakeContinuation(h, _, captures, _, _) => [mkclo_local(h) ++ " i32"] ++ walk_locals_list(captures, acc),
+  // The answer comes back off the continuation face at its own width
   // (`emit_from_continuation`), so its scratch is declared there — a word
   // scratch under a Float answer refused to assemble.
-  {
+  LResumeK(h, k, v) => {
     let r = repr_of(lookup_ty(h))
     walk_locals_expr(
       LCall(h, k, [v]),
       ["__rk_wprev_{int_to_str(h)} i32"] ++ (["{local_wat_name("__rk_val_{int_to_str(h)}", r)} {repr_wat(r)}"] ++ acc)
     )
   },
-  LYield(_, _, args, k) => // k = the record boundary above; the arguments cross in the instance's
+  // k = the record boundary above; the arguments cross in the instance's
   // area through the operand stack, so a yield declares nothing of its own.
-  walk_locals_expr(k, walk_locals_list(args, acc)),
+  LYield(_, _, args, k) => walk_locals_expr(k, walk_locals_list(args, acc)),
   LAbandon(_, _, args) => walk_locals_list(args, acc),
   LUnwind(_) => acc,
-  LKExtend(_, k) => // same boundary rule; the extend's own emit is a call + a const
-  walk_locals_expr(k, acc),
-  LDeclareFn(_) => // module-level fn declaration — its body has its own locals
-  acc,
+  // same boundary rule; the extend's own emit is a call + a const
+  LKExtend(_, k) => walk_locals_expr(k, acc),
+  // module-level fn declaration — its body has its own locals
+  LDeclareFn(_) => acc,
   LBlock(_h, stmts) => walk_locals_list(stmts, acc),
   LIf(_h, c, t, e) => walk_locals_list(e, walk_locals_list(t, walk_locals_expr(c, acc))),
   LBinOp(_h, _op, l, r) => walk_locals_expr(r, walk_locals_expr(l, acc)),
   LUnaryOp(_h, _op, inner) => walk_locals_expr(inner, acc),
   LDirectCall(_h, _fh, _n, _t, args) => walk_locals_list(args, acc),
-  LCall(h, f, args) => // $call_<h> parks the CALLEE RECORD pointer — a handle IS a word,
+  // $call_<h> parks the CALLEE RECORD pointer — a handle IS a word,
   // i32 invariantly; the call's RESULT rides the stack at the ft's
   // width, never through this scratch. One entry into the set (deduped).
-  walk_locals_list(args, walk_locals_expr(f, ["call_{int_to_str(h)} i32"] ++ acc)),
+  LCall(h, f, args) => walk_locals_list(args, walk_locals_expr(f, ["call_{int_to_str(h)} i32"] ++ acc)),
   LShow(h, x) => walk_locals_expr(show_node_of(h, x), acc),
   LHash(h, x) => walk_locals_expr(hash_node_of(h, x), acc),
   LTailCall(h, f, args) => walk_locals_list(args, walk_locals_expr(f, ["call_{int_to_str(h)} i32"] ++ acc)),
@@ -5975,9 +5973,9 @@ fn walk_locals_expr(expr, acc) = match expr {
   LMakeList(_h, elems) => walk_locals_list(elems, acc),
   LMakeTuple(h, elems) => walk_locals_list(elems, if len(elems) > 0 { ["tuple_{int_to_str(h)} i32"] ++ acc } else { acc }),
   LFanout(_h, lex, _, forms) => walk_locals_expr(fanout_form(lex, forms), acc),
-  LSimdLanes(h, lanes) => // SIMD lanes need a v128 accumulator local — replace_lane reads-modifies the
+  // SIMD lanes need a v128 accumulator local — replace_lane reads-modifies the
   // running vector. No heap local (the value is pure stack v128, not a pointer).
-  walk_locals_list(lanes, if len(lanes) > 0 { ["simd_{int_to_str(h)} v128"] ++ acc } else { acc }),
+  LSimdLanes(h, lanes) => walk_locals_list(lanes, if len(lanes) > 0 { ["simd_{int_to_str(h)} v128"] ++ acc } else { acc }),
   LMakeRecord(h, fs) => walk_locals_list(fs, ["record_{int_to_str(h)} i32"] ++ acc),
   LMakeVariant(h, _t, fs) => walk_locals_list(fs, if len(fs) > 0 { ["variant_{int_to_str(h)} i32"] ++ acc } else { acc }),
   LMatch(_h, s, arms) => {
@@ -6041,19 +6039,19 @@ fn walk_locals_expr(expr, acc) = match expr {
       )
     )
   },
-  LDerive(h, _seed, _body) => // The derivative reading emits its DERIVED program, so its locals are that
+  // The derivative reading emits its DERIVED program, so its locals are that
   // program's — every tangent and every residual name derive introduced.
-  match derived_at(h, spec_enc_active()) {
+  LDerive(h, _seed, _body) => match derived_at(h, spec_enc_active()) {
     Some(x) => match x {
       Expansion(r) => walk_locals_expr(r.body, acc),
     },
     None => acc,
   },
   LArena(h, b) => if arena_live() { walk_locals_expr(b, arena_locals(h) ++ acc) } else { walk_locals_expr(b, acc) },
-  LWasiCall(h, n, args) => // The reading's lane ops park a record's address in a per-site local
+  // The reading's lane ops park a record's address in a per-site local
   // (`lane_local`), mirror-true to their emission; the calls, performs and
   // installs the reading marks declare their own inside.
-  match derive_op_of(n) {
+  LWasiCall(h, n, args) => match derive_op_of(n) {
     Some(DoLaneRead) => walk_locals_list(args, ["{lane_local(h)} i32"] ++ acc),
     Some(DoLaneWrite) => walk_locals_list(args, ["{lane_local(h)} i32"] ++ acc),
     Some(DoMintLanes) => walk_locals_list(args, ["{lane_local(h)} i32"] ++ acc),
@@ -6064,13 +6062,13 @@ fn walk_locals_expr(expr, acc) = match expr {
     Some(DoAdjOut) => walk_locals_list(args, acc),
     None => walk_locals_list(args, acc),
   },
-  LPerform(h, _d, a) => // The perform's per-site pair, mirror-true to the ONE emit arm: evw holds
+  // The perform's per-site pair, mirror-true to the ONE emit arm: evw holds
   // the world saved around the arm call and EVERY dispatch needs it, because
   // the bracket is not a property of any one of them; evn holds the resolved
   // node and only the walking forms fill it. Declaring both for all is the
   // honest read of "one arm, one shape" — a local nobody sets costs a word of
   // frame and cannot be the thing that makes two forms differ.
-  walk_locals_list(
+  LPerform(h, _d, a) => walk_locals_list(
     a,
     ["evn_{int_to_str(h)} i32", "evw_{int_to_str(h)} i32", "evpw_{int_to_str(h)} i32"] ++ acc
   ),
@@ -6079,12 +6077,12 @@ fn walk_locals_expr(expr, acc) = match expr {
   LConvert(_h, _, operand) => walk_locals_expr(operand, acc),
   LStateSlotStore(_h, _o, v, _) => walk_locals_expr(v, acc),
   LStateInit(_h, _hn, _s, v) => walk_locals_expr(v, acc),
-  LConst(_, _) => // H6: exhaustive LowExpr. Leaves declare no locals; LUpval,
+  // H6: exhaustive LowExpr. Leaves declare no locals; LUpval,
   // LConst, LLocal, LGlobal are pure reads. New LIR
   // variants with let-bindings inside must add their recursion
   // explicitly — silent fall-through misses locals and WAT
   // validation fails.
-  acc,
+  LConst(_, _) => acc,
   LLocal(_, _) => acc,
   LFeedbackPrior(_) => acc,
   LGlobal(_, _) => acc,
@@ -6151,25 +6149,25 @@ fn walk_locals_arms(arms, sr, acc) = if len(arms) == 0 {
 fn walk_locals_pat(pat, r, acc) = match pat {
   LPVar(name) => [local_wat_name(name, r) ++ " " ++ repr_wat(r)] ++ acc,
   LPCon(_, _, pairs) => walk_locals_pat_con(ty_of_pairs(pairs), pat_of_pairs(pairs), acc),
-  LPUnresolvedCon(_, sub_pats) => // No declaration proves the payload tys — declare each sub-binder at the
+  // No declaration proves the payload tys — declare each sub-binder at the
   // word floor so the (dead — predicate false) arm body still assembles.
-  fold(acc, (a, p) => walk_locals_pat(p, RI32, a), sub_pats),
+  LPUnresolvedCon(_, sub_pats) => fold(acc, (a, p) => walk_locals_pat(p, RI32, a), sub_pats),
   LPTuple(elem_binds) => walk_locals_pat_tuple(elem_binds, acc),
   LPList(elem, sub_pats, rest, _) => walk_locals_pat_rest(rest, walk_locals_pat_list(sub_pats, slot_repr(elem), acc)),
   LPRecord(_, rty, field_binds, rest) => walk_locals_pat_rest(rest, walk_locals_pat_record(record_full_fields(rty), rty, field_binds, acc)),
   LPWild => acc,
   LPLit(_) => acc,
-  LPAlt(branches) => // Branches bind the same names (infer's alternation law) — branch 0's
+  // Branches bind the same names (infer's alternation law) — branch 0's
   // set carries the whole alternation's bindings.
-  match branches {
+  LPAlt(branches) => match branches {
     [] => acc,
     [b0, ..._] => walk_locals_pat(b0, r, acc),
   },
-  LPAs(name, inner) => // The as-binder is the whole matched VALUE at the repr its position
+  // The as-binder is the whole matched VALUE at the repr its position
   // proves — a word for records, lists and sums (pointers), the root's
   // own width over a Float scrutinee. The inner pattern's binders follow
   // at the same repr.
-  walk_locals_pat(inner, r, [local_wat_name(name, r) ++ " " ++ repr_wat(r)] ++ acc),
+  LPAs(name, inner) => walk_locals_pat(inner, r, [local_wat_name(name, r) ++ " " ++ repr_wat(r)] ++ acc),
 }
 
 // Each con-payload sub declares at its payload's slot width — sub i pairs
@@ -6293,18 +6291,18 @@ fn body_result_repr(body) =
 fn tail_expr_repr(expr) = match expr {
   LReturn(_h, inner) => tail_expr_repr(inner),
   LBlock(_h, stmts) => if len(stmts) == 0 { RI32 } else { tail_expr_repr(list_index(stmts, len(stmts) - 1)) },
-  LIf(_h, _c, t, e) => // Both branches joined — the floor yields to either side's proof,
+  // Both branches joined — the floor yields to either side's proof,
   // the same join the LIf emission declares (one width, two readers).
-  repr_join(body_result_repr(t), body_result_repr(e)),
+  LIf(_h, _c, t, e) => repr_join(body_result_repr(t), body_result_repr(e)),
   LMatch(_h, _s, arms) => match_arms_repr(arms),
-  LConvert(_h, kind, _) => // The reliable STRUCTURAL leaves — the width emission ACTUALLY produces.
+  // The reliable STRUCTURAL leaves — the width emission ACTUALLY produces.
   // An IntToFloat convert IS f64 by construction; an arithmetic binop carries
   // operand width (f64 iff either operand is — same-typed operands, §4①, so
   // the join reads the truth). A call reads its NODE's proven type — the same
   // live graph edge inference wrote and every use-site reads, so decl and use
   // agree by construction (the fn-result side-ledger was a Carried-Truth
   // violation: inference already types the call node Float; read it live).
-  match kind {
+  LConvert(_h, kind, _) => match kind {
     IntToFloat => RF64,
     FloatToInt => RI32,
   },
@@ -6316,11 +6314,11 @@ fn tail_expr_repr(expr) = match expr {
   LShow(_h, _x) => RI32,
   LHash(_h, _x) => RI32,
   LTailCall(ch, callee, _) => call_result_repr(callee, ch),
-  LFieldLoad(h, rec, sel) => // what the load emits, read from the receiver's layout
-  field_load_repr(h, rec, sel),
-  LWasiCall(h, n, args) => // The reading's ops: a lane read is an f64, a lane write and a lanes mint
+  // what the load emits, read from the receiver's layout
+  LFieldLoad(h, rec, sel) => field_load_repr(h, rec, sel),
+  // The reading's ops: a lane read is an f64, a lane write and a lanes mint
   // leave a word, and a marked call, perform or install is what it wraps.
-  match derive_op_of(n) {
+  LWasiCall(h, n, args) => match derive_op_of(n) {
     Some(DoLaneRead) => RF64,
     Some(DoLaneWrite) => RI32,
     Some(DoMintLanes) => RI32,
@@ -6427,14 +6425,14 @@ fn emit_value_run(run) = match run {
 // the arms enumerated here are the forms whose emission consumes its
 // own result (local.set / store / decl) or never falls through.
 fn lexpr_leaves_value(e) = match e {
-  LFanout(_, lex, _, forms) => // The form the site runs IS its emission: one that binds its parts to a
+  // The form the site runs IS its emission: one that binds its parts to a
   // consumer's registers leaves no word, exactly as the `let` spelling it
   // costs the same as does.
-  lexpr_leaves_value(fanout_form(lex, forms)),
-  LBlock(_, stmts) => // A block is its last statement's emission (`emit_body`), so a block of
+  LFanout(_, lex, _, forms) => lexpr_leaves_value(fanout_form(lex, forms)),
+  // A block is its last statement's emission (`emit_body`), so a block of
   // lets — a product's parts bound to its consumer's registers — leaves no
   // word either.
-  if len(stmts) == 0 { false } else { lexpr_leaves_value(last(stmts)) },
+  LBlock(_, stmts) => if len(stmts) == 0 { false } else { lexpr_leaves_value(last(stmts)) },
   LLet(_, _, _) => false,
   LStateSlotStore(_, _, _, _) => false,
   LStateInit(_, _, _, _) => false,
@@ -7145,9 +7143,9 @@ fn emit_perform(h, disp, args, jvp) = if perform_is_query(disp) {
       wat_emit("))\n")
       emit_install_world(disp, hs)
       match perform_callee(disp, jvp) {
-        Some(name) => // A direct call names the arm at its own face, the one the site's
+        // A direct call names the arm at its own face, the one the site's
         // arguments were emitted at.
-        wat_emit("    (call ${name})\n"),
+        Some(name) => wat_emit("    (call ${name})\n"),
         None => {
           wat_emit("    (call_indirect (type ")
           wat_emit(perform_ft(h, disp, args))
@@ -7199,9 +7197,9 @@ fn emit_expr(expr) = match expr {
     wat_emit(local_wat_name(name, r))
     wat_emit(")\n")
   },
-  LFeedbackPrior(h) => // (LF.B) The `<~` prior-iteration output — read live from the local the
+  // (LF.B) The `<~` prior-iteration output — read live from the local the
   // LFeedback cycle declares + sets. The recurrence's y[n-1] term; no copy.
-  {
+  LFeedbackPrior(h) => {
     wat_emit("    (local.get $__fb_prev_")
     wat_emit(int_to_str(h))
     wat_emit(")\n")
@@ -7426,7 +7424,7 @@ fn emit_expr(expr) = match expr {
     // Result: continuation pointer on stack.
     wat_emit("    (local.get ${rec_local})\n")
   },
-  LYield(h, op_name, args, k_expr) => // band B k1/M1.4 — the MultiShot yield, a LIVE continuation. The REAL
+  // band B k1/M1.4 — the MultiShot yield, a LIVE continuation. The REAL
   // form (k = the reified remainder record): the op's args into the
   // instance's area (`emit_yield_arg_stores`), k into $yield_k, the interned
   // op key into $yield_op, raise $yield_flag, and return a width-honest
@@ -7438,7 +7436,7 @@ fn emit_expr(expr) = match expr {
   // $yield_k. The FLOOR form carries the EMPTY op name (an off-spine resume
   // perform) — the loud comment-marked refusal, said at the settle point. A
   // dead continuation never comes here: an abandoning perform is `LAbandon`.
-  if op_name == "" {
+  LYield(h, op_name, args, k_expr) => if op_name == "" {
     wat_emit("    (unreachable) ;; multishot yield floor — off-spine perform / arm-state / re-yield (k2/k3)\n")
   } else {
     emit_yield_arg_stores(args)
@@ -7450,14 +7448,14 @@ fn emit_expr(expr) = match expr {
     wat_emit("    (i32.const 1) (global.set $yield_flag)\n")
     emit_zero_at(repr_of(lookup_ty(h)))
   },
-  LAbandon(_h, op_name, args) => // AN-2 — the DEAD continuation: the arm never resumes, so nothing of
+  // AN-2 — the DEAD continuation: the arm never resumes, so nothing of
   // this frame after the perform runs and nothing is reified. The args into
   // the instance's area, no continuation ($yield_k zero), the op key, the
   // flag, and the frame leaves by its innermost landing — the install
   // body's block (the driver runs the arm), the arena body's (the arena
   // exits), or the function's return (`emit_unwind`). The branch is
   // stack-polymorphic, so the position needs no dummy.
-  {
+  LAbandon(_h, op_name, args) => {
     emit_yield_arg_stores(args)
     wat_emit("    (i32.const 0) (global.set $yield_k)\n")
     wat_emit("    (i32.const ")
@@ -7466,13 +7464,13 @@ fn emit_expr(expr) = match expr {
     wat_emit("    (i32.const 1) (global.set $yield_flag)\n")
     emit_unwind()
   },
-  LUnwind(_h) => // AN-2 — a boundary's raised flag: a dead continuation unwinds this
+  // AN-2 — a boundary's raised flag: a dead continuation unwinds this
   // frame to its landing; a live one is the floor — this frame holds no
   // remainder for it (the k2 spine reified one only where a callee may
   // yield LIVE on the spine), refused at the settle point where the
   // callee's row proves the op (`settle_unwind`) and the runtime's loud
   // floor otherwise.
-  {
+  LUnwind(_h) => {
     wat_emit("    (if (global.get $yield_k) (then (unreachable))) ;; a live continuation past a boundary this frame cannot reify\n")
     emit_unwind()
   },
@@ -7625,13 +7623,13 @@ fn emit_expr(expr) = match expr {
     wat_emit("    (local.get ${rk_val})\n")
   },
   LHandleWith(h, body, _handler, hd, inits, arm_names) => emit_install(h, body, hd, inits, arm_names, None),
-  LDerive(h, _seed, _body) => // The derivative reading: the install builds no record and pushes no world
+  // The derivative reading: the install builds no record and pushes no world
   // — its DERIVED program stands where it stood. Opening the reading
   // advances the epoch every lane is read against, so state and captures
   // that live past the extent enter it held fixed, and zeroes the tangent
   // ring of every `<~` line its reach ticks, so each line's history before
   // the extent is held fixed; then the program runs.
-  match derived_at(h, spec_enc_active()) {
+  LDerive(h, _seed, _body) => match derived_at(h, spec_enc_active()) {
     Some(x) => match x {
       Expansion(r) => {
         wat_emit(match r.mode {
@@ -7643,10 +7641,10 @@ fn emit_expr(expr) = match expr {
         emit_expr(r.body)
       },
     },
-    None => // Unreachable by construction: `derive_program` reads the very record
+    // Unreachable by construction: `derive_program` reads the very record
     // sets this module writes, under their brackets, and expands every
     // install in them or refuses before the gate — emission says nothing.
-    wat_emit("    (unreachable)  ;; derivative reading with no derived program\n"),
+    None => wat_emit("    (unreachable)  ;; derivative reading with no derived program\n"),
   },
   LArena(h, b) => if arena_live() { emit_arena(h, b) } else { emit_expr(b) },
   LFeedback(h, depth, home, body, _spec) => {
@@ -7906,15 +7904,15 @@ fn emit_expr(expr) = match expr {
       }
     },
   },
-  LInvariantFailure(_h, invariant) => // Compiler-created executable boundaries have no productive-under-error
+  // Compiler-created executable boundaries have no productive-under-error
   // value. Preserve the typed invariant in the WAT diagnostic and terminate;
   // no backend is permitted to guess a handle, row, representation, or edge.
-  {
+  LInvariantFailure(_h, invariant) => {
     wat_emit("    (unreachable)  ;; executable-boundary invariant: ")
     wat_emit(show_boundary_invariant(invariant))
     wat_emit("\n")
   },
-  LFieldLoad(h, rec, sel) => // W6: field load. The offset PROJECTS HERE from the receiver's live type
+  // W6: field load. The offset PROJECTS HERE from the receiver's live type
   // through field_sel_offset — under the active specialization bracket, so a
   // twin's instantiation closes a generic receiver (the last lower-time
   // layout bake, moved to the read).
@@ -7922,7 +7920,7 @@ fn emit_expr(expr) = match expr {
   // (`field_load_repr`): an i32/pointer field is i32.load (byte-identical to
   // the pre-gradient form, Law 7), an f64 field is f64.load at its
   // width-summed offset — the genuine 8 inline bytes, no box, no chase.
-  {
+  LFieldLoad(h, rec, sel) => {
     let offset = field_sel_offset(rec, sel)
     if offset < 0 {
       // An offset the graph cannot prove writes the named trap, never an
@@ -7951,7 +7949,7 @@ fn emit_expr(expr) = match expr {
     wat_emit(convert_op(kind))
     wat_emit(")\n")
   },
-  LStateSlotStore(_h, slot_offset, value, record) => // Hβ.first-light.resume-with-state-mutation: store VALUE into the
+  // Hβ.first-light.resume-with-state-mutation: store VALUE into the
   // handler state record at slot_offset, mutating handler state across
   // resume calls. The RECORD is a resolved read minted at lower (the
   // __hrec ladder: the arm's LLet alias of its own $__state, a lambda's
@@ -7970,7 +7968,7 @@ fn emit_expr(expr) = match expr {
   // handler's per-sample state as cheap to update as a local. The first form
   // stored the f64 into the word slot itself, eight bytes over a four-byte
   // slot and its neighbor, where the read side expected an address.
-  if slot_offset < 0 {
+  LStateSlotStore(_h, slot_offset, value, record) => if slot_offset < 0 {
     emit_expr(value)
     wat_emit("    (drop)\n")
   } else {
@@ -8003,12 +8001,12 @@ fn emit_expr(expr) = match expr {
     emit_wide_ref(tail_expr_repr(value))
     wat_emit("    (i32.store offset={int_to_str(8 + slot * 4)})\n")
   },
-  LDeclareFn(_fn_ir) => // H1.4: module-level fn declaration. The fn body is emitted
+  // H1.4: module-level fn declaration. The fn body is emitted
   // by emit_fns_expr's deep walk; this expression-position
   // appearance is a no-op (returns 0 as the LBlock placeholder
   // value). Lower wraps these in LBlock so they're discoverable
   // without ever materializing at runtime.
-  wat_emit("    (i32.const 0) ;; LDeclareFn marker\n"),
+  LDeclareFn(_fn_ir) => wat_emit("    (i32.const 0) ;; LDeclareFn marker\n"),
 }
 
 fn emit_expr_list(exprs) = emit_expr_list_at(exprs, 0, len(exprs))
@@ -8028,7 +8026,7 @@ fn emit_const(v, h) = match v {
     wat_emit(int_to_str(n))
     wat_emit(")\n")
   },
-  LFloat(f) => // Float = Word + a representation gradient (PLAN §4①). The literal's
+  // Float = Word + a representation gradient (PLAN §4①). The literal's
   // PROVEN type (read live at the const handle) projects its machine width:
   // the inferred default is RF64, so a bare `3.14` is a native unboxed
   // (f64.const 3.14) flowing into an f64 slot the gradient made f64
@@ -8038,7 +8036,7 @@ fn emit_const(v, h) = match v {
   // f64.reinterpret_i64 re-boxing are DELETED — unsayable: with every slot
   // width-typed by repr_of, the float never flows into an i32 slot, so
   // there is nothing to box and no precision to fabricate.
-  emit_float_const(f, repr_of(lookup_ty(h))),
+  LFloat(f) => emit_float_const(f, repr_of(lookup_ty(h))),
   LBool(b) => if b { wat_emit("    (i32.const 1)\n") } else { wat_emit("    (i32.const 0)\n") },
   LString(s) => {
     // W5: string literals live in statically-emitted (data ...)
@@ -8115,7 +8113,7 @@ fn emit_float_const(f: Float, r) = match r {
 fn emit_binop_for(op, l, r) = {
   let left_h = lexpr_handle(l)
   match op {
-    BConcat => // ++ is ONE seq_concat over the unified sequence node-kind (SYNTAX.md
+    // ++ is ONE seq_concat over the unified sequence node-kind (SYNTAX.md
     // §Concatenation: "no String-vs-List dispatch because there is no
     // split"). The element/representation cash-out (byte-buffer vs
     // element-node) is a lower-time projection of the PROVEN element type —
@@ -8124,7 +8122,7 @@ fn emit_binop_for(op, l, r) = {
     // An UNRESOLVED operand is NOT a silent representation guess (the
     // dissolved E_ConcatTypeUnresolved / unresolved→str_concat fallback) —
     // it surfaces a Reason-carrying diagnostic, the no-silent-fallback law.
-    {
+    BConcat => {
       wat_emit("    (local.set $callee_closure)\n")
       wat_emit("    (local.set $state_tmp)\n")
       wat_emit("    (local.get $__state)\n")
@@ -8139,7 +8137,7 @@ fn emit_binop_for(op, l, r) = {
         other => emit_concat_unresolved(other),
       }
     },
-    BEq => // == / != is ONE structural-equality derivation, total over the five
+    // == / != is ONE structural-equality derivation, total over the five
     // node-kinds, directed by the operand Ty read live (SYNTAX.md §Equality):
     //   scalar (Int/Bool/byte/nullary tag)      -> i32.eq / i32.ne
     //   sequence ([a], incl String = [Byte])    -> length-then-element
@@ -8152,9 +8150,9 @@ fn emit_binop_for(op, l, r) = {
     // silent fallback — a TRecord/TTuple/TRecordOpen surfaces the deep-eq
     // diagnostic, never (i32.eq) on the address. Handle-less LowExpr
     // (left_h == 0) is a flat scalar by construction.
-    emit_struct_eq(left_h, false),
+    BEq => emit_struct_eq(left_h, false),
     BNe => emit_struct_eq(left_h, true),
-    BLt => // < / > / <= / >= over an AGGREGATE operand: the ordering leaf of the SAME
+    // < / > / <= / >= over an AGGREGATE operand: the ordering leaf of the SAME
     // structural fold. A record/tuple/sum/sequence has no machine-width compare
     // instruction — a bare i32.lt_s on the heap address is a pointer compare
     // lying as a value ordering, the SAME silent footgun pointer-eq is for `==`
@@ -8162,11 +8160,11 @@ fn emit_binop_for(op, l, r) = {
     // never its address). emit_struct_cmp routes aggregates to the generated
     // 3-way $compare_<sig> helper (-1/0/1) + the sign test the op selects;
     // scalar words keep the byte-identical emit_binop_repr floor (Law 7).
-    emit_struct_cmp(op, left_h),
+    BLt => emit_struct_cmp(op, left_h),
     BGt => emit_struct_cmp(op, left_h),
     BLe => emit_struct_cmp(op, left_h),
     BGe => emit_struct_cmp(op, left_h),
-    _ => // Arithmetic dispatches on the operand's TYPE, exactly as `==` and `<`
+    // Arithmetic dispatches on the operand's TYPE, exactly as `==` and `<`
     // do (emit_struct_eq / emit_struct_cmp). The width join alone read the
     // operands' emitted widths, so a record, sum, sequence, function or
     // continuation floored to RI32 and `{x: 1} * {x: 2}` multiplied the two
@@ -8175,7 +8173,7 @@ fn emit_binop_for(op, l, r) = {
     // arithmetic operand's cell numeric (infer.mn numeric_demand), so what
     // reaches this arm is a word at its proven repr, or a floor twin's
     // quantified var — a word at the floor width by construction.
-    emit_arith_for(op, left_h, l, r),
+    _ => emit_arith_for(op, left_h, l, r),
   }
 }
 
@@ -8184,21 +8182,21 @@ fn emit_arith_for(op, left_h, l, r) = if left_h == 0 {
   emit_binop_repr(op, repr_join(tail_expr_repr(l), tail_expr_repr(r)))
 } else {
   match arith_operand_class(chase_deep(lookup_ty(left_h))) {
-    AoWord => // The type's own repr: the pin's width where one is authored
+    // The type's own repr: the pin's width where one is authored
     // (repr_of's TReprPin arm), the gradient's default otherwise — the same
     // fact the join of the emitted widths reads, at its one home.
-    emit_binop_repr(op, slot_repr(lookup_ty(left_h))),
-    AoUnproven(_) => // A variable at emit is a FLOOR twin's quantified var: every wide
+    AoWord => emit_binop_repr(op, slot_repr(lookup_ty(left_h))),
+    // A variable at emit is a FLOOR twin's quantified var: every wide
     // instantiation minted its own twin and bound the var under its
     // bracket, so this operand is a word at the floor width. A var the
     // judgment never gated numeric is an invariant broken upstream, which
     // the settle point said before this byte (`settle_arith`).
-    emit_binop_repr(op, RI32),
-    AoAggregate => // Unreachable by construction — the judgment refused the bind that would
+    AoUnproven(_) => emit_binop_repr(op, RI32),
+    // Unreachable by construction — the judgment refused the bind that would
     // put an aggregate here, and the settle point refused the module that
     // reached it anyway (`settle_arith`) — so this floor is written only
     // where nothing runs it.
-    wat_emit("    (unreachable)  ;; arithmetic on an aggregate past the gate\n"),
+    AoAggregate => wat_emit("    (unreachable)  ;; arithmetic on an aggregate past the gate\n"),
   }
 }
 
@@ -8480,7 +8478,7 @@ fn emit_struct_eq(left_h, neg) = if left_h == 0 {
 // recursion — is the positive-form peer Hβ.eq.fold-sum-leaf (the generator
 // receives it next; nullary ADT tags ARE words and fold here as i32.eq).
 fn emit_eq_for_ty(ty, neg) = match ty {
-  TList(e) => // ONE sequence arm, dispatched on the element's RESOLVED face: a byte
+  // ONE sequence arm, dispatched on the element's RESOLVED face: a byte
   // sequence routes to the [byte] family (so String and [byte] — one type
   // under §4① — can never diverge), a float sequence compares by VALUE
   // through the word protocol (list_eq_f64 derefs each reference; the word
@@ -8488,7 +8486,7 @@ fn emit_eq_for_ty(ty, neg) = match ty {
   // generated sequence walker (emit_eq_leaf_seq — word compare on a
   // struct element is pointer identity), and a word element keeps the
   // floor, which IS value-faithful for single-word elements.
-  {
+  TList(e) => {
     emit_fold_state_insert()
     match seq_elem_face(e) {
       TByte => emit_vocab_call("str_eq"),
@@ -8503,30 +8501,30 @@ fn emit_eq_for_ty(ty, neg) = match ty {
     }
     if neg { wat_emit("    (i32.eqz)\n") } else { () }
   },
-  TRecord(fields) => // Product — field-wise structural recursion. The generated $eq_<sig>
+  // Product — field-wise structural recursion. The generated $eq_<sig>
   // helper (emit_one_eq_helper) takes (__state, a, b) and ANDs each
   // field's eq at the canonical width-summed offset, recursing for nested
   // products. The eq/hash-disagreement footgun is unsayable: ONE traversal.
-  emit_eq_product_call(fold_sig(ty), neg),
+  TRecord(fields) => emit_eq_product_call(fold_sig(ty), neg),
   TRecordOpen(fields, _) => emit_eq_product_call(fold_sig(ty), neg),
   TTuple(elems) => emit_eq_product_call(fold_sig(ty), neg),
-  TName(_, _) => // Sum payload-ADT — per-variant tag-then-payload recursion via the generated
+  // Sum payload-ADT — per-variant tag-then-payload recursion via the generated
   // $eq_n<Name> helper (the fifth leaf, reading the env's ConstructorScheme
   // variant payload types). A purely-nullary ADT folds to a tag i32.eq inside
   // the helper; a fielded ADT loads tags then recurses each payload.
-  emit_eq_sum_call(fold_sig(ty), neg),
-  TFloat => // The word leaf READS THE GRADIENT (§5.U: "the word-leaf reads the
+  TName(_, _) => emit_eq_sum_call(fold_sig(ty), neg),
+  // The word leaf READS THE GRADIENT (§5.U: "the word-leaf reads the
   // gradient — f64.eq for an f64 field"): a proven-Float operand compares
   // at its native width. i32.eq on two f64 operands was the one leaf the
   // cmp twin (emit_cmp_for_ty's TFloat arm) had and this one lacked —
   // float_is_zero's `f == 0.0` emitted (f64.const 0.0)(i32.eq).
-  if neg { wat_emit("    (f64.ne)\n") } else { wat_emit("    (f64.eq)\n") },
-  _ => // Scalar word: Int / Unit / fn-table index / continuation pointer —
+  TFloat => if neg { wat_emit("    (f64.ne)\n") } else { wat_emit("    (f64.eq)\n") },
+  // Scalar word: Int / Unit / fn-table index / continuation pointer —
   // resolved types whose value IS one word, so i32.eq IS structural;
   // `==` leaves a Bool regardless of operand width. A VARIABLE reaches this
   // arm only where the settle point proved nothing runs it as anything but a
   // word (`settle_node` refused every executable site where it would be).
-  if neg { wat_emit("    (i32.ne)\n") } else { wat_emit("    (i32.eq)\n") },
+  _ => if neg { wat_emit("    (i32.ne)\n") } else { wat_emit("    (i32.eq)\n") },
 }
 
 // A ++ on a genuinely-unresolved operand element type: no representation
@@ -8702,9 +8700,9 @@ fn collect_fold_tys_expr(expr, acc: {cmp: [Ty], eq: [Ty], evac: [Ty], hash: [Ty]
   LReturn(_h, i) => collect_fold_tys_expr(i, acc),
   LMakeClosure(_h, LFn(_n, _a, _p, body, _f, _l), caps) => collect_fold_tys_list(body, collect_fold_tys_list(caps, acc)),
   LMakeContinuation(_h, LFn(_n, _a, _p, body, _f, _l), caps, _, _) => collect_fold_tys_list(body, collect_fold_tys_list(caps, acc)),
-  LYield(_h, _op, args, k) => // the arguments stored into the area are moved by their types at an
+  // the arguments stored into the area are moved by their types at an
   // arena's exit, as a state commit's value is
-  collect_fold_tys_expr(k, collect_fold_tys_list(args, fold_acc_evac_args(acc, args))),
+  LYield(_h, _op, args, k) => collect_fold_tys_expr(k, collect_fold_tys_list(args, fold_acc_evac_args(acc, args))),
   LKExtend(_h, k) => collect_fold_tys_expr(k, acc),
   LAbandon(_h, _op, args) => collect_fold_tys_list(args, fold_acc_evac_args(acc, args)),
   LUnwind(_h) => acc,
@@ -9127,8 +9125,8 @@ fn convert_op(k) with Pure = match k {
 // sum -> the named-peer floor. The eq/hash family CANNOT split: this IS the
 // same five-node-kind leaf emit_eq_for_ty drives at the top-level `==`.
 fn emit_field_eq(fty) = match fty {
-  TList(e) => // One sequence arm, element-face dispatched (the top-level eq's twin).
-  {
+  // One sequence arm, element-face dispatched (the top-level eq's twin).
+  TList(e) => {
     wat_emit("    (local.get $__state)\n")
     emit_swap_under_state()
     match seq_elem_face(e) {
@@ -9146,14 +9144,14 @@ fn emit_field_eq(fty) = match fty {
   TRecord(_) => emit_field_product_eq(fold_sig(fty)),
   TRecordOpen(_, _) => emit_field_product_eq(fold_sig(fty)),
   TTuple(_) => emit_field_product_eq(fold_sig(fty)),
-  TName(_, _) => // A sum-typed field: insert __state under the pair and recurse into the
+  // A sum-typed field: insert __state under the pair and recurse into the
   // variant's own generated $eq_n<Name> helper (same convention as a nested
   // product). Recursive ADTs descend the value at runtime — finite, the call
   // (never inline) is what makes a self-referential type well-founded.
-  emit_field_product_eq(fold_sig(fty)),
+  TName(_, _) => emit_field_product_eq(fold_sig(fty)),
   TFloat => wat_emit("    (f64.eq)\n"),
-  _ => // Int / Unit / resolved-TVar / nullary-tag / fn-idx / cont-ptr — word eq.
-  wat_emit("    (i32.eq)\n"),
+  // Int / Unit / resolved-TVar / nullary-tag / fn-idx / cont-ptr — word eq.
+  _ => wat_emit("    (i32.eq)\n"),
 }
 
 // A nested product field: the two field pointers are on the stack; insert
@@ -9208,8 +9206,8 @@ fn emit_struct_cmp(op, left_h) = if left_h == 0 {
 // the arithmetic binops ride). A sequence is the str_compare/list_compare
 // [Byte]/[a] instance; a product/sum the generated $compare_<sig>.
 fn emit_cmp_for_ty(op, ty) = match ty {
-  TList(e) => // One sequence arm, element-face dispatched (the eq routing's twin).
-  match seq_elem_face(e) {
+  // One sequence arm, element-face dispatched (the eq routing's twin).
+  TList(e) => match seq_elem_face(e) {
     TByte => emit_cmp_seq_call(vocab_symbol("str_compare"), op),
     TFloat => emit_cmp_seq_call(vocab_symbol("list_compare_f64"), op),
     face => if seq_face_structural(face) {
@@ -9223,9 +9221,9 @@ fn emit_cmp_for_ty(op, ty) = match ty {
   TTuple(_) => emit_cmp_agg_call(fold_sig(ty), op),
   TName(_, _) => emit_cmp_agg_call(fold_sig(ty), op),
   TFloat => emit_binop_repr(op, RF64),
-  _ => // Int / Unit / resolved-TVar / nullary-tag / fn-idx / cont-ptr / address —
+  // Int / Unit / resolved-TVar / nullary-tag / fn-idx / cont-ptr / address —
   // word compare, in the word's own order.
-  match word_order_of(ty) {
+  _ => match word_order_of(ty) {
     Signed => emit_binop_repr(op, RI32),
     Unsigned => emit_unsigned_cmp(op),
   },
@@ -9456,8 +9454,8 @@ fn emit_cmp_helper_chain(fields, i, n, off) = if n == 0 {
 // recursive $compare_<sig> call. The SAME five-node-kind leaf emit_cmp_for_ty
 // drives at the top-level compare — eq and compare cannot diverge.
 fn emit_field_cmp(fty) = match fty {
-  TList(e) => // One sequence arm, element-face dispatched (the eq routing's twin).
-  {
+  // One sequence arm, element-face dispatched (the eq routing's twin).
+  TList(e) => {
     wat_emit("    (local.get $__state)\n")
     emit_swap_under_state()
     match seq_elem_face(e) {
@@ -9476,20 +9474,20 @@ fn emit_field_cmp(fty) = match fty {
   TRecordOpen(_, _) => emit_field_agg_cmp(fold_sig(fty)),
   TTuple(_) => emit_field_agg_cmp(fold_sig(fty)),
   TName(_, _) => emit_field_agg_cmp(fold_sig(fty)),
-  TFloat => // f64 sign: gt ⇒ 1, else lt ⇒ -1, else 0 — the word arm's shape at f64
+  // f64 sign: gt ⇒ 1, else lt ⇒ -1, else 0 — the word arm's shape at f64
   // width. The select consumes the pair TWICE (lt AND gt), so stash both
   // through the f64 scratch pair and re-reference; the bare-(f64.lt) form
   // consumed the pair once and did not assemble (the sortpairs probe).
-  {
+  TFloat => {
     wat_emit("    (local.set $fb)\n")
     wat_emit("    (local.set $fa)\n")
     wat_emit("    (select (i32.const 1) (select (i32.const -1) (i32.const 0) (f64.lt (local.get $fa) (local.get $fb))) (f64.gt (local.get $fa) (local.get $fb)))\n")
   },
-  _ => // Int / Unit / resolved-TVar / nullary-tag / address — word
+  // Int / Unit / resolved-TVar / nullary-tag / address — word
   // sign-of-difference in the word's own order. The stack has [a_field,
   // b_field]; (select 1 (select -1 0 (i32.lt_s)) (i32.gt_s)) needs the pair
   // twice, so reload through scratch.
-  emit_word_field_sign_compare(word_order_of(fty)),
+  _ => emit_word_field_sign_compare(word_order_of(fty)),
 }
 
 // Word field compare with the pair on the stack: save both, then emit the
@@ -9550,21 +9548,21 @@ fn eq_subtys(ty, seen, acc) = match fold_strip(ty) {
   TRecord(fields) => eq_subtys_fields(fields, 0, len(fields), seen, [ty] ++ acc),
   TRecordOpen(fields, _) => eq_subtys_fields(fields, 0, len(fields), seen, [ty] ++ acc),
   TTuple(elems) => eq_subtys_list(elems, 0, len(elems), seen, [ty] ++ acc),
-  TList(elem) => // A structural-face list contributes ITSELF (its generated sequence
+  // A structural-face list contributes ITSELF (its generated sequence
   // walker) plus its element's closure; word/byte/float faces ride the
   // runtime families and contribute only what the element reaches.
-  if seq_face_structural(seq_elem_face(elem)) {
+  TList(elem) => if seq_face_structural(seq_elem_face(elem)) {
     eq_subtys(elem, seen, [ty] ++ acc)
   } else {
     eq_subtys(elem, seen, acc)
   },
-  TName(_, _) => // The seen-set keys by the fold SIG, not by the type's name. The sig IS
+  // The seen-set keys by the fold SIG, not by the type's name. The sig IS
   // the helper's identity, so keying by it terminates a recursive ADT
   // exactly as the name did — `Tree(Int)` reaching `Tree(Int)` is one sig —
   // while keeping `Option(Int)` and `Option(Boxed)` the two collections they
   // are. Keyed by name, the second instantiation was silently skipped and
   // its helper went uncollected.
-  if ls_find_str_local(seen, fold_sig(fold_strip(ty)), 0) >= 0 {
+  TName(_, _) => if ls_find_str_local(seen, fold_sig(fold_strip(ty)), 0) >= 0 {
     acc
   } else {
     // The specs at THIS instantiation: a payload that is the type's own
@@ -9733,9 +9731,9 @@ fn show_field_name(fname: String, is_record) = if is_record { "{fname}: " } else
 // renderer's argument. The renderer-name is the only degree of freedom; the
 // load is the SAME width-typed read the eq leaf and the store side use.
 fn emit_show_field_render(off, r, fty) = match fty {
-  TList(TByte) => // A byte sequence RENDERS AS TEXT (§4①: String is the text VIEW of [byte]) —
+  // A byte sequence RENDERS AS TEXT (§4①: String is the text VIEW of [byte]) —
   // never the bracket-list render ("hi", not [104, 105]).
-  emit_show_field_load(off, r),
+  TList(TByte) => emit_show_field_load(off, r),
   TFloat => emit_show_call_field(vocab_symbol("float_to_str"), off, r),
   TList(_) => emit_show_call_field("show_{fold_sig(fty)}", off, r),
   TRecord(_) => emit_show_call_field("show_{fold_sig(fty)}", off, r),
@@ -9743,8 +9741,8 @@ fn emit_show_field_render(off, r, fty) = match fty {
   TTuple(_) => emit_show_call_field("show_{fold_sig(fty)}", off, r),
   TName(_, _) => emit_show_call_field("show_{fold_sig(fty)}", off, r),
   TAddr => emit_show_call_field("show_{fold_sig(fty)}", off, r),
-  _ => // Int / Unit / resolved-TVar / closure / continuation — render the word.
-  emit_show_call_field(vocab_symbol("int_to_str"), off, r),
+  // Int / Unit / resolved-TVar / closure / continuation — render the word.
+  _ => emit_show_call_field(vocab_symbol("int_to_str"), off, r),
 }
 
 // emit_show_call_field — a folded `(call $name (local.get $__state) <field-load>)`.
@@ -9860,8 +9858,8 @@ fn emit_show_variant_payloads(payloads, i, n) = if i >= n {
 // is the payload's repr (emit_show_variant_load reads repr_of), so the show
 // reads the SAME width the store wrote (Carried-Truth).
 fn emit_show_variant_payload_render(off, pty) = match pty {
-  TList(TByte) => // text view (§4①)
-  emit_show_variant_load(off, pty),
+  // text view (§4①)
+  TList(TByte) => emit_show_variant_load(off, pty),
   TFloat => emit_show_call_variant(vocab_symbol("float_to_str"), off, pty),
   TList(_) => emit_show_call_variant("show_{fold_sig(pty)}", off, pty),
   TRecord(_) => emit_show_call_variant("show_{fold_sig(pty)}", off, pty),
@@ -9949,10 +9947,10 @@ fn emit_show_list_body_helper(sig, elem) = {
 // Render list element i: list_index(__state, a, i), wrapped in its leaf renderer.
 // The renderer-name is the only degree of freedom; the indexed load is its arg.
 fn emit_show_list_elem_render(elem) = match elem {
-  TList(TByte) => // text view (§4①)
+  // text view (§4①)
   // The element read yields the f64's REFERENCE (the word protocol); deref
   // before the native-faced renderer.
-  emit_show_list_index(),
+  TList(TByte) => emit_show_list_index(),
   TFloat => emit_show_call_listidx_deref(vocab_symbol("float_to_str")),
   TList(_) => emit_show_call_listidx("show_{fold_sig(elem)}"),
   TRecord(_) => emit_show_call_listidx("show_{fold_sig(elem)}"),
@@ -10015,7 +10013,7 @@ fn show_subtys(ty, seen, acc) = match fold_strip(ty) {
   TRecord(fields) => show_subtys_fields(fields, 0, len(fields), seen, [ty] ++ acc),
   TRecordOpen(fields, _) => show_subtys_fields(fields, 0, len(fields), seen, [ty] ++ acc),
   TTuple(elems) => show_subtys_list(elems, 0, len(elems), seen, [ty] ++ acc),
-  TList(TByte) => // text view (§4①): every render surface — the dispatch
+  // text view (§4①): every render surface — the dispatch
   // (spec_is_agg), the product field, the list element, the variant
   // payload — treats a byte sequence AS-IS, so no $show_lb leaf is
   // callable from anywhere. Collecting one minted an UNCALLED body
@@ -10024,17 +10022,17 @@ fn show_subtys(ty, seen, acc) = match fold_strip(ty) {
   // worklist ended (its dead-decl wide seeds no longer flow), caught
   // as the interp micros' undefined-$int_to_str assembly break. The
   // collector reads the same fact the dispatch reads.
-  acc,
+  TList(TByte) => acc,
   TList(elem) => show_subtys(elem, seen, [ty] ++ acc),
-  TName(_, _) => // Keyed by the fold SIG, the helper's own identity — see eq_subtys.
-  if ls_find_str_local(seen, fold_sig(fold_strip(ty)), 0) >= 0 {
+  // Keyed by the fold SIG, the helper's own identity — see eq_subtys.
+  TName(_, _) => if ls_find_str_local(seen, fold_sig(fold_strip(ty)), 0) >= 0 {
     acc
   } else {
     let specs = variant_specs_at(fold_strip(ty))
     show_subtys_variants(specs, 0, len(specs), [fold_sig(fold_strip(ty))] ++ seen, [ty] ++ acc)
   },
-  TAddr => // an address renders through its own leaf, wherever it sits
-  [ty] ++ acc,
+  // an address renders through its own leaf, wherever it sits
+  TAddr => [ty] ++ acc,
   _ => acc,
 }
 
@@ -10185,10 +10183,10 @@ fn emit_hash_field_mix(fields, i, n, off) = if i >= n {
 // product/sum → a recursive $hash_<sig> call. The SAME five-node-kind leaf the
 // lower_hash_dispatch drives — eq, compare, and hash cannot diverge.
 fn emit_field_hash(off, r, fty) = match fty {
-  TList(e) => // Byte sequence == the String family (§4①). Load-bearing here: list_hash
+  // Byte sequence == the String family (§4①). Load-bearing here: list_hash
   // seeds its FNV mix with the length, str_hash does not — one type must
   // hash through ONE route or eq-equal values hash unequal.
-  match seq_elem_face(e) {
+  TList(e) => match seq_elem_face(e) {
     TByte => emit_field_hash_seq_call(off, vocab_symbol("str_hash")),
     TFloat => emit_field_hash_seq_call(off, vocab_symbol("list_hash_f64")),
     face => if seq_face_structural(face) {
@@ -10201,14 +10199,14 @@ fn emit_field_hash(off, r, fty) = match fty {
   TRecordOpen(_, _) => emit_field_hash_agg_call(off, fold_sig(fty)),
   TTuple(_) => emit_field_hash_agg_call(off, fold_sig(fty)),
   TName(_, _) => emit_field_hash_agg_call(off, fold_sig(fty)),
-  TFloat => // Float field: hash the decimal rendering of the loaded f64 (value-faithful).
-  {
+  // Float field: hash the decimal rendering of the loaded f64 (value-faithful).
+  TFloat => {
     wat_emit("(call ${vocab_symbol("str_hash")} (call ${vocab_symbol("float_to_str")} (f64.load offset=")
     wat_emit(int_to_str(off))
     wat_emit(" (local.get $a))))")
   },
-  _ => // Int / Unit / resolved-TVar / nullary-tag — the loaded word IS its hash.
-  {
+  // Int / Unit / resolved-TVar / nullary-tag — the loaded word IS its hash.
+  _ => {
     wat_emit("(")
     wat_emit(repr_load_op(r))
     wat_emit(" offset=")
@@ -10259,10 +10257,10 @@ fn emit_binop_f64(op) = match op {
   BGt => wat_emit("    (f64.gt)\n"),
   BLe => wat_emit("    (f64.le)\n"),
   BGe => wat_emit("    (f64.ge)\n"),
-  _ => // BMod/BAnd/BOr/BEq/BNe/BConcat are not float operations; an inferred-float
+  // BMod/BAnd/BOr/BEq/BNe/BConcat are not float operations; an inferred-float
   // operand reaching them is an HM type error upstream (Reason-carrying),
   // never a fabricated f64 instruction. Loud floor, no silent guess.
-  emit_binop_repr_unsupported("f64", op),
+  _ => emit_binop_repr_unsupported("f64", op),
 }
 
 fn emit_binop_f32(op) = match op {
@@ -10293,8 +10291,8 @@ fn emit_binop_i64(op) = match op {
 }
 
 fn emit_binop_v128(op) = match op {
-  BAdd => // Homogeneous f32x4 lanes — the value layer meeting the >< parallel verb.
-  wat_emit("    (f32x4.add)\n"),
+  // Homogeneous f32x4 lanes — the value layer meeting the >< parallel verb.
+  BAdd => wat_emit("    (f32x4.add)\n"),
   BSub => wat_emit("    (f32x4.sub)\n"),
   BMul => wat_emit("    (f32x4.mul)\n"),
   BDiv => wat_emit("    (f32x4.div)\n"),
@@ -10324,12 +10322,12 @@ fn emit_binop(op) = match op {
   BGe => wat_emit("    (i32.ge_s)\n"),
   BAnd => wat_emit("    (i32.and)\n"),
   BOr => wat_emit("    (i32.or)\n"),
-  BConcat => // Per Hβ.emit.runtime-helper-state-push: list_concat is W7-compiled
+  // Per Hβ.emit.runtime-helper-state-push: list_concat is W7-compiled
   // (state, a, b). Stack here has [a, b]; insert state UNDER via
   // save-reload through pre-declared $state_tmp + $callee_closure.
   // ONE concat (§4①): the carrier's sc rides the node, so the handle-less
   // default is the same list_concat every typed site emits.
-  {
+  BConcat => {
     wat_emit("    (local.set $callee_closure)\n")
     wat_emit("    (local.set $state_tmp)\n")
     wat_emit("    (local.get $__state)\n")
@@ -10340,7 +10338,7 @@ fn emit_binop(op) = match op {
 }
 
 fn emit_unaryop_for(h, op) = match op {
-  UNeg => // UNeg reads the node's repr live — the handle proves the operand's
+  // UNeg reads the node's repr live — the handle proves the operand's
   // width, and the word-floor dance on an f64 was an assembly refusal
   // (caught 2026-07-28 by the wheel's first negative float literal in
   // argument position, the mcp error codes). Floats negate natively;
@@ -10350,7 +10348,7 @@ fn emit_unaryop_for(h, op) = match op {
   // restore x above, i32.sub. An RI64/RV128 operand falls to the same
   // word dance, whose i32 scratch local refuses at assembly — loud by
   // construction until those producers exist (the wide-ref residue).
-  match repr_of(lookup_ty(h)) {
+  UNeg => match repr_of(lookup_ty(h)) {
     RF64 => wat_emit("    (f64.neg)\n"),
     RF32 => wat_emit("    (f32.neg)\n"),
     RI32 | RI64 | RV128 => wat_emit("    (local.set $state_tmp) (i32.const 0) (local.get $state_tmp) (i32.sub)\n"),
@@ -10484,18 +10482,18 @@ fn emit_line_mints(lines, rec_local: String) = each(
         wat_emit(int_to_str(8 + slot * 4))
         wat_emit(")\n")
       },
-      LhShare(slot, from) => // a branch thunk's line is its enclosing frame's, read where the thunk
+      // a branch thunk's line is its enclosing frame's, read where the thunk
       // is minted — this frame's `__state` or its static global
-      {
+      LhShare(slot, from) => {
         wat_emit("    (local.get ${rec_local})\n")
         emit_ring_address(h, from)
         wat_emit("    (i32.store offset={int_to_str(8 + slot * 4)})\n")
       },
-      LhStatic => // A minted record has no static line: the settle point refused the
+      // A minted record has no static line: the settle point refused the
       // module that would carry one (`settle_minted_lines`).
-      (),
-      LhStaticJvp => // nor a static derivative line, refused by the same settle
-      (),
+      LhStatic => (),
+      // nor a static derivative line, refused by the same settle
+      LhStaticJvp => (),
     },
   },
   lines
@@ -10779,11 +10777,11 @@ fn emit_pat_predicate(pat) = emit_pat_predicate_at(pat, make_list(8), 0)
 fn emit_pat_predicate_at(pat, path, path_len) = match pat {
   LPWild => wat_emit("    (i32.const 1)\n"),
   LPVar(_) => wat_emit("    (i32.const 1)\n"),
-  LPUnresolvedCon(_, _) => // A ctor no declaration proves can match nothing — the honest constant,
+  // A ctor no declaration proves can match nothing — the honest constant,
   // never a fabricated out-of-domain tag compare.
-  wat_emit("    (i32.const 0)\n"),
+  LPUnresolvedCon(_, _) => wat_emit("    (i32.const 0)\n"),
   LPLit(lv) => match lv {
-    LString(_) => // A STRING-literal pattern is `scrutinee == "literal"` at the match layer,
+    // A STRING-literal pattern is `scrutinee == "literal"` at the match layer,
     // so it is the SAME structural sequence-eq `==` derives — str_eq over the
     // [Byte] view, NEVER the i32.eq the scalar floor below emits on the two
     // POINTERS. The pointer-eq floored every `match s { "lit" => }` in the
@@ -10793,17 +10791,17 @@ fn emit_pat_predicate_at(pat, path, path_len) = match pat {
     // m3 mistyped `len(argv)` as List and emitted list_compare — the m4
     // blocker. The W7 state-insert (scrut, const → __state, scrut, const),
     // then str_eq → Bool (a drop-in for the i32.eq the predicate expects).
-    {
+    LString(_) => {
       emit_scrut_at_repr(path, path_len, RI32)
       emit_low_value_const(lv)
       emit_fold_state_insert()
       emit_vocab_call("str_eq")
     },
-    _ => // Scalars: value-eq IS structural. A float LOADS the scrutinee f64-wide
+    // Scalars: value-eq IS structural. A float LOADS the scrutinee f64-wide
     // (emit_scrut_at_repr at low_value_repr) and compares f64.eq (the gradient
     // at the match layer); Int/Bool/Unit take the i32.eq floor (byte-identical,
     // Law 7). The leaf load, the const, and the compare project the SAME repr.
-    {
+    _ => {
       emit_scrut_at_repr(path, path_len, low_value_repr(lv))
       emit_low_value_const(lv)
       wat_emit("    (")
@@ -10873,8 +10871,8 @@ fn emit_pat_predicate_at(pat, path, path_len) = match pat {
     emit_pat_subs_predicate(sub_pats, list_elem_read(srep, elem), path, path_len)
   },
   LPAlt(branches) => emit_pat_alt_predicate(branches, path, path_len),
-  LPAs(_, inner) => // The binder never affects MATCHING — the predicate is the inner's.
-  emit_pat_predicate_at(inner, path, path_len),
+  // The binder never affects MATCHING — the predicate is the inner's.
+  LPAs(_, inner) => emit_pat_predicate_at(inner, path, path_len),
 }
 
 // Each refutable field sub-pattern tests at its field's offset in the WHOLE
@@ -10979,9 +10977,9 @@ fn emit_pat_binds_at(pat, path, path_len, val_repr) = match pat {
   LPWild => (),
   LPLit(_) => (),
   LPCon(_, _, pairs) => emit_pat_con_subs_binds(ty_of_pairs(pairs), pat_of_pairs(pairs), 0, path, path_len),
-  LPUnresolvedCon(_, sub_pats) => // Dead arm (predicate false) — bind each sub at the scrutinee root, word
+  // Dead arm (predicate false) — bind each sub at the scrutinee root, word
   // floor: never executes, always assembles.
-  each((p) => emit_pat_binds_at(p, path, path_len, RI32), sub_pats),
+  LPUnresolvedCon(_, sub_pats) => each((p) => emit_pat_binds_at(p, path, path_len, RI32), sub_pats),
   LPTuple(ebs) => emit_pat_tuple_binds(ebs, path, path_len),
   LPRecord(_rh, rty, fbs, rest) => match record_full_fields(rty) {
     Some(full) => {
@@ -11300,12 +11298,12 @@ fn emit_load_chain_repr(path, k, path_len, leaf_repr) = if k == path_len {
   ()
 } else {
   match list_index(path, k) {
-    POff(off) => // NO negative offset reaches WAT: off < 0 = resolve_field_offset could
+    // NO negative offset reaches WAT: off < 0 = resolve_field_offset could
     // not PROVE this field's offset (the scrutinee's type is non-record/
     // unresolved or the field is absent). Emit (unreachable) — the loud
     // floor — never i32.load offset=-1 (invalid WAT) nor a silent
     // foreign-field read. The chain stops here: the rest is dead.
-    if off < 0 {
+    POff(off) => if off < 0 {
       wat_emit("    (unreachable)\n")
     } else {
       // The last step loads at leaf_repr; every prior step is an i32
@@ -11319,13 +11317,13 @@ fn emit_load_chain_repr(path, k, path_len, leaf_repr) = if k == path_len {
       wat_emit(")\n")
       emit_load_chain_repr(path, k + 1, path_len, leaf_repr)
     },
-    PIdx(i) => // A sequence element reads through the runtime's total reader — the
+    // A sequence element reads through the runtime's total reader — the
     // SAME tag- and stride-dispatch every subscript takes, so a rope,
     // snoc, or slice scrutinee matches exactly like a flat list. The
     // result is the element's word face (a wide element's is its address —
     // the word protocol), so a deeper step chains unchanged and a wide leaf
     // loads its width through the address.
-    {
+    PIdx(i) => {
       wat_emit("    (i32.const ")
       wat_emit(int_to_str(i))
       wat_emit(")\n")
@@ -11349,31 +11347,31 @@ fn emit_low_value_const(lv) = match lv {
     wat_emit(if b { "1" } else { "0" })
     wat_emit(")\n")
   },
-  LFloat(f) => // Float literal pattern: the native (f64.const v) at the default float repr,
+  // Float literal pattern: the native (f64.const v) at the default float repr,
   // compared with f64.eq (the LPLit guard). The i32-floor zero and its boxed-
   // f64 peer are DELETED — unsayable now that the value flows at its real
   // width. The pattern and expression positions project the SAME repr.
-  {
+  LFloat(f) => {
     wat_emit("    (f64.const ")
     wat_emit(float_to_str(f))
     wat_emit(")\n")
   },
-  LString(s) => // A string literal in pattern position is the SAME interned constant the
+  // A string literal in pattern position is the SAME interned constant the
   // expression position emits (emit_const's LString arm) — walk_lemit_pat
   // registered it through visit_string, string_offset reads it back. The
   // prior `(i32.const 0)` floor made every string-pattern compare
   // str_eq(operand, address-0): every arm missed, wildcards swallowed the
   // dispatch, and infer_seq_op typed every len/slice/... call TList — the
   // eq-dispatch flips that stood between m3 and m4 (2026-07-10).
-  {
+  LString(s) => {
     let offset = string_offset(s)
     wat_emit("    (i32.const ")
     wat_emit(int_to_str(offset))
     wat_emit(")\n")
   },
-  LZero => // No pattern is written with a placeholder zero; a literal pattern's word
+  // No pattern is written with a placeholder zero; a literal pattern's word
   // compare would read it as the word 0.
-  wat_emit("    (i32.const 0)\n"),
+  LZero => wat_emit("    (i32.const 0)\n"),
 }
 
 // The repr a low-value (a literal) projects: a float literal is RF64 (the
@@ -11448,8 +11446,8 @@ fn list_literal_callee(sc) = if sc == 0 { "make_list" } else { "make_list_sc" }
 // An unresolved/non-list shape is the word floor (sc 0).
 fn literal_stride_class(h) = match fold_strip(lookup_ty(h)) {
   TList(e) => stride_class(stride_of(seq_elem_face(e))),
-  _ => // drift-audit: ignore — the fn's own comment names it: an unresolved/non-list shape IS the word floor (sc 0)
-  0,
+  // drift-audit: ignore — the fn's own comment names it: an unresolved/non-list shape IS the word floor (sc 0)
+  _ => 0,
 }
 
 fn emit_list_stores(elems, base_idx) = each(

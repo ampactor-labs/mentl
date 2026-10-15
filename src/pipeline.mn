@@ -1436,23 +1436,23 @@ fn render_query_result(result) = match result {
   QREffects(row) => "→ {show_effrow(row)}",
   QROwnership(params) => "→ {int_to_str(len(params))} params",
   QRWhy(reasons) => join("\n", map(show_reason, reasons)),
-  QRRefs(sites) => // The refs facet renders WHAT the graph computed, not just how much:
+  // The refs facet renders WHAT the graph computed, not just how much:
   // one located line per inbound use-edge (the seam the propose-facet fix
   // convicted once already — the graph computed it, the terminal threw it
   // away). Every "who calls X" grep this replaces was a re-derivation of
   // edges the weave holds — and the answer is only a replacement once it
   // names the FILE, which is why it renders through the census's own site
   // line rather than a second renderer that knew one half of an address.
-  "→ {int_to_str(len(sites))} reference(s){render_noted_sites(sites)}",
-  QRVerifyDebt(obligations) => // The debt renders WHAT is owed, not just how much (the refs facet's
+  QRRefs(sites) => "→ {int_to_str(len(sites))} reference(s){render_noted_sites(sites)}",
+  // The debt renders WHAT is owed, not just how much (the refs facet's
   // own lesson): each obligation located with its predicate, so the
   // discharge work has an instrument instead of a count.
-  "→ {int_to_str(len(obligations))} verification obligations pending{render_debt_lines(obligations)}",
-  QRSmt(obligations) => // The same obligations in the solver's language, each assertion located
+  QRVerifyDebt(obligations) => "→ {int_to_str(len(obligations))} verification obligations pending{render_debt_lines(obligations)}",
+  // The same obligations in the solver's language, each assertion located
   // so a discharged one can be walked back to the claim that raised it.
   // `predicate_to_smt_lib` is verify.mn's own serializer — this render is
   // its first reader, and Phase 8.3's handler swap is its second.
-  "→ {int_to_str(len(obligations))} obligation(s) as SMT-LIB{render_smt_lines(obligations)}",
+  QRSmt(obligations) => "→ {int_to_str(len(obligations))} obligation(s) as SMT-LIB{render_smt_lines(obligations)}",
   QRHandlerProvider(sites) => if len(sites) == 0 {
     "→ no handler declares an arm for it"
   } else {
@@ -1461,9 +1461,9 @@ fn render_query_result(result) = match result {
   QRFlowLabel(label, reason) => "→ {show_flow_label(label)}\n  Reason: {show_reason(reason)}",
   QRCensus(label, sites) => "→ {int_to_str(len(sites))} {label}{render_noted_sites(sites)}",
   QRCensusRoster(rows) => "→ {int_to_str(len(rows))} census shape(s) — ask one as `census <name>`{rows |> map(roster_line) |> str_concat_all}",
-  QRDecls(names) => // The decls column's projection: every name the judged declarations
+  // The decls column's projection: every name the judged declarations
   // declare, beside where it is declared.
-  "→ {int_to_str(len(names))} declared name(s){render_named_sites(names)}",
+  QRDecls(names) => "→ {int_to_str(len(names))} declared name(s){render_named_sites(names)}",
   QRModules(paths) => "→ {int_to_str(len(paths))} module(s) in the weave\n  {str_join_indented(paths)}",
   QRImports(rows) => render_import_rows(rows),
   QRUnreferenced(rows) => render_unref_rows(rows),
@@ -1629,10 +1629,10 @@ fn parse_query_string(scope: String, q) = {
     [] => QUnknown(q),
     [w0] => build_question(classify_query_verb(w0), "", q, scope),
     [w0, w1] => build_question(classify_query_verb(w0), w1, q, scope),
-    [w0, w1, w2] => // Three words: a scoped question (`ghosts in asm`), the why verb's
+    // Three words: a scoped question (`ghosts in asm`), the why verb's
     // effect question (`why quiet WASI`), or a verb whose argument is the
     // last word (`refs of X`).
-    if w1 == "in" {
+    [w0, w1, w2] => if w1 == "in" {
       QIn(parse_query_string(scope, w0), w2)
     } else {
       match classify_query_verb(w0) {
@@ -1683,9 +1683,9 @@ fn build_question(verb, arg, raw, scope: String) = match verb {
   QVGhosts => QGhosts,
   QVHeads => QHeads,
   QVSmt => QSmt,
-  QVText => // The needle is everything after the verb, spaces included: a WAT
+  // The needle is everything after the verb, spaces included: a WAT
   // fragment such as `(type $ft1)` is one question, never its last word.
-  QCensus(CsText(words_after_the_verb(raw))),
+  QVText => QCensus(CsText(words_after_the_verb(raw))),
   QVProse => QCensus(CsProse(words_after_the_verb(raw))),
   QVWrites => QStateWrites(arg),
   QVReads => QCensus(CsFieldRead(arg)),

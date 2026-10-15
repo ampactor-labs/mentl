@@ -75,7 +75,7 @@ handler affine_ledger with used = [], used_sites = [], branches = [], fn_saved =
   // Hβ.infer.arm-binder-op-param-type — and the word floor rendered
   // the consumed name as a pointer numeral. The named call anchors it.
   match ownership {
-    Own => // A name the ledger already moved admits NO further use. The used-set
+    // A name the ledger already moved admits NO further use. The used-set
     // read comes FIRST: a consuming second use is the affine violation
     // (armed), and a borrow-read of a moved name is use-after-move —
     // narration until the wheel's census reaches 0 (the arming law). The
@@ -83,7 +83,7 @@ handler affine_ledger with used = [], used_sites = [], branches = [], fn_saved =
     // value, sound only because the heap never frees — the
     // accident-invariant §5.O layer 3's arena deletes. A borrow BEFORE
     // any move stays a recordless read.
-    if set_contains(used, name) {
+    Own => if set_contains(used, name) {
       let first = find_first_span(used_sites, name)
       if borrow_depth > 0 {
         report(EUseAfterMove(read_after_move_msg(name, first), span))
@@ -485,46 +485,46 @@ fn usage_of(ref binder, ref node, mode) = match graph_node_body(node) {
   NExpr(CallExpr(f, args)) => pair_seq(usage_of(binder, f, MRead), usage_args(binder, args, callee_borrow_params(f), 0)),
   NExpr(BinOpExpr(_, l, r)) => pair_seq(usage_of(binder, l, mode), usage_of(binder, r, mode)),
   NExpr(UnaryOpExpr(_, inner)) => usage_of(binder, inner, mode),
-  NExpr(IfExpr(c, t, e)) => // The condition is read to PICK the branch (⊗ before), and exactly
+  // The condition is read to PICK the branch (⊗ before), and exactly
   // one branch runs (⊔ across) — the two laws the additive sum broke.
-  pair_seq(
+  NExpr(IfExpr(c, t, e)) => pair_seq(
     usage_of(binder, c, MRead),
     pair_join(usage_of(binder, t, mode), usage_of(binder, e, mode))
   ),
   NExpr(BlockExpr(stmts, final_e)) => pair_seq(usage_elems(binder, stmts, mode), usage_of(binder, final_e, mode)),
-  NExpr(LambdaExpr(_, lb)) => // A closure runs 0..N times: a consume inside widens to UMany (the
+  // A closure runs 0..N times: a consume inside widens to UMany (the
   // borrow-safe Ref direction); reads stay reads. The body opens in
   // consume mode — its own positions re-derive from there.
-  match usage_of(binder, lb, MConsume) {
+  NExpr(LambdaExpr(_, lb)) => match usage_of(binder, lb, MConsume) {
     (c, r) => match c {
       UZero => (UZero, r),
       _ => (UMany, r),
     },
   },
-  NExpr(PipeExpr(_, l, r)) => // The datum's true slot mode is the completed call's own param; the
+  // The datum's true slot mode is the completed call's own param; the
   // enclosing mode threads both sides (the ledger's borrow bracket at
   // the completed call is the runtime truth, and a divergence here
   // surfaces as an E_UseAfterMove refusal, which is now the arbiter —
   // the zero ratchet that used to arbitrate it retired into the arming).
-  pair_seq(usage_of(binder, l, mode), usage_of(binder, r, mode)),
-  NExpr(FanoutExpr(branches)) => // Parallel branches ALL run — ⊗, exactly the ledger's BParallel
+  NExpr(PipeExpr(_, l, r)) => pair_seq(usage_of(binder, l, mode), usage_of(binder, r, mode)),
+  // Parallel branches ALL run — ⊗, exactly the ledger's BParallel
   // collision semantics (consumed in two branches is consumed twice).
-  usage_elems(binder, branches, mode),
+  NExpr(FanoutExpr(branches)) => usage_elems(binder, branches, mode),
   NExpr(RestExpr(_)) => pair_zero(),
   NExpr(MatchExpr(s, arms)) => pair_seq(usage_of(binder, s, MRead), usage_arms(binder, arms, mode)),
   NExpr(MakeListExpr(elems)) => usage_elems(binder, elems, mode),
   NExpr(MakeTupleExpr(elems)) => usage_elems(binder, elems, mode),
   NExpr(MakeStringExpr(fragments)) => usage_elems(binder, fragments, mode),
   NExpr(ShowExpr(inner)) => usage_of(binder, inner, mode),
-  NExpr(IndexExpr(receiver, index)) => // xs[i] is the seq-op borrow: receiver and index are reads.
-  pair_seq(usage_of(binder, receiver, MRead), usage_of(binder, index, MRead)),
+  // xs[i] is the seq-op borrow: receiver and index are reads.
+  NExpr(IndexExpr(receiver, index)) => pair_seq(usage_of(binder, receiver, MRead), usage_of(binder, index, MRead)),
   NExpr(MakeRecordExpr(flds)) => usage_flds(binder, flds, mode),
-  NExpr(RecordUpdateExpr(base, flds)) => // {...base, f: v} copies non-destructively — the base is READ.
-  pair_seq(usage_of(binder, base, MRead), usage_flds(binder, flds, mode)),
+  // {...base, f: v} copies non-destructively — the base is READ.
+  NExpr(RecordUpdateExpr(base, flds)) => pair_seq(usage_of(binder, base, MRead), usage_flds(binder, flds, mode)),
   NExpr(NamedRecordExpr(_, flds)) => usage_flds(binder, flds, mode),
-  NExpr(FieldExpr(rec, _)) => // A field access reads the record; what the enclosing mode consumes
+  // A field access reads the record; what the enclosing mode consumes
   // is the value read OUT, never the record itself.
-  usage_of(binder, rec, MRead),
+  NExpr(FieldExpr(rec, _)) => usage_of(binder, rec, MRead),
   NExpr(LitInt(_)) => pair_zero(),
   NExpr(LitFloat(_)) => pair_zero(),
   NExpr(LitString(_)) => pair_zero(),
@@ -533,15 +533,15 @@ fn usage_of(ref binder, ref node, mode) = match graph_node_body(node) {
   NExpr(ResumeExpr(v, _)) => usage_of(binder, v, mode),
   NExpr(LabeledArg(_, v)) => usage_of(binder, v, mode),
   NExpr(ExprPlaceholder) => pair_zero(),
-  NStmt(LetStmt(_, v, _)) => // The binding's value embeds under the binder — a consume-shape use.
+  // The binding's value embeds under the binder — a consume-shape use.
   // The deleted additive count's `NStmt(_) => 0` blanket missed EVERY
   // statement-level use; the walk descends.
-  usage_of(binder, v, MConsume),
+  NStmt(LetStmt(_, v, _)) => usage_of(binder, v, MConsume),
   NStmt(ExprStmt(e)) => usage_of(binder, e, mode),
-  NStmt(FnStmt(_, _, _, _, _)) => // A nested fn declaration is not an execution (resume_grade's own
+  // A nested fn declaration is not an execution (resume_grade's own
   // ruling); its capture-and-call usage stays uncounted — parity with
   // the deleted count, Ref-safe when it under-counts.
-  pair_zero(),
+  NStmt(FnStmt(_, _, _, _, _)) => pair_zero(),
   NStmt(TypeDefStmt(_, _)) => pair_zero(),
   NStmt(EffectDeclStmt(_, _, _)) => pair_zero(),
   NStmt(HandlerDeclStmt(_, _, _, _, _, _)) => pair_zero(),

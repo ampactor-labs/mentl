@@ -115,7 +115,7 @@ handler synth_default {
     // Threading it locally is a binding; carrying it across the op
     // boundary was a copy.
     match context_target_ty(context) {
-      target_ty => // The in-scope VOCABULARY first (PLAN §1's second moat: type-directed
+      // The in-scope VOCABULARY first (PLAN §1's second moat: type-directed
       // search over what is already in scope, pruned by the row at every
       // step), then the shape enumerators; every candidate through the ONE
       // proof gate. Row-rejected vocabulary keeps its Reasons.
@@ -123,7 +123,7 @@ handler synth_default {
       // mints into it: the form half saturates exactly the range this propose
       // minted (PLAN §5's fork/merge duality — the range is what keeps merging
       // cheap at a cursor position).
-      match graph_next() {
+      target_ty => match graph_next() {
         cand_start => match enumerate_vocabulary_calls(
           target_ty,
           allowed_effects,
@@ -178,25 +178,25 @@ fn enumerate_typed(target_ty, allowed_effects, context) = match target_ty {
   TByte => enumerate_int_literals(context),
   TFloat => enumerate_float_literals(context),
   TUnit => one_unit_candidate(context),
-  TAddr => // an address has no literal: only the ops that answer one mint it
-  [],
+  // an address has no literal: only the ops that answer one mint it
+  TAddr => [],
   TVar(_) => one_hole_candidate(context),
   TRecord(fields) => enumerate_records(fields, context),
   TRecordOpen(fields, rest) => enumerate_records(fields, context),
-  TRefined(_, _) => // The refinement is the strongest thing known about the hole, and this arm
+  // The refinement is the strongest thing known about the hole, and this arm
   // used to recurse on the BASE and drop it — the predicate sitting one field
   // away while three integer seeds were minted for a type that admits one.
   // The DOMAIN is that predicate read as inhabitants (verify.mn), so the seeds
   // come FROM it and the ones it excludes are never constructed. The post-hoc
   // gate stays: a domain over-approximates by contract, so it decides what to
   // build and `refinement_admits` still decides what survives.
-  enumerate_domain(target_ty, allowed_effects, context),
+  TRefined(_, _) => enumerate_domain(target_ty, allowed_effects, context),
   TAlias(_, inner) => enumerate_typed(inner, allowed_effects, context),
   TReprPin(_, base) => enumerate_typed(base, allowed_effects, context),
   TCont(_, _, _, _) => one_continuation_candidate(context),
-  TList(elem) => // A byte-element list IS String (the canonical alias's inner) — a
+  // A byte-element list IS String (the canonical alias's inner) — a
   // String-typed hole proposes string literals, never list literals.
-  match seq_elem_face(elem) {
+  TList(elem) => match seq_elem_face(elem) {
     TByte => enumerate_string_literals(context),
     _ => enumerate_list_candidates(elem, context),
   },
@@ -239,11 +239,11 @@ fn enumerate_vocabulary_calls(target_ty, allowed_row, context, rings) with !Muta
 fn vocabulary_step(target_ty, allowed_row, rings, reaching, acc, entry) with !Mutate = match acc {
   (accepted, rejected) => match entry {
     (name, scheme, reason, kind, decl) => match kind {
-      FnScheme | ValueScheme => // A value binding of function type is vocabulary exactly as a
+      // A value binding of function type is vocabulary exactly as a
       // declared fn is: a reference to it fills a function-typed hole.
       // A declaration in none of the rings is in scope through the link
       // alone and is neither offered nor listed as refused.
-      match ring_of_decl(rings, decl) {
+      FnScheme | ValueScheme => match ring_of_decl(rings, decl) {
         None => (accepted, rejected),
         Some(ring) => match judgment_ty(scheme) {
           TFun(params, ret, row) => if len(params) == 0 && heads_may_unify(ret, target_ty) && !reaches_hole(reaching, decl) {
@@ -552,8 +552,8 @@ fn candidate_rank(decl, hole_h, reach) with !Mutate = match decl {
 fn rank_of(c, hole_h, reach) with !Mutate = match c {
   EnrichedCandidate(cr) => match graph_node_body(cr.node) {
     NExpr(CallExpr(callee, _)) => candidate_rank(graph_ref_decl(callee), hole_h, reach),
-    NExpr(VarRef(_)) => // A reference ranks by the same local-intent read as a call of it.
-    candidate_rank(graph_ref_decl(cr.node), hole_h, reach),
+    // A reference ranks by the same local-intent read as a call of it.
+    NExpr(VarRef(_)) => candidate_rank(graph_ref_decl(cr.node), hole_h, reach),
     _ => 0.5,
   },
 }
@@ -607,8 +607,8 @@ fn rank_insert(sorted, rc) = match sorted {
   [] => [rc],
   [h, ...rest] => match rc {
     (r, _) => match h {
-      (hr, _) => // drift-audit: ignore — insertion into the small survivor list, not a loop accumulator
-      if r > hr { [rc] ++ sorted } else { [h] ++ rank_insert(rest, rc) },
+      // drift-audit: ignore — insertion into the small survivor list, not a loop accumulator
+      (hr, _) => if r > hr { [rc] ++ sorted } else { [h] ++ rank_insert(rest, rc) },
     },
   },
 }
@@ -978,8 +978,8 @@ fn keep_named_refusal(verdicts, acc, indexed) = match indexed {
       acc
     } else {
       match candidate_head_name(candidate_node(cand)) {
-        Some(name) => // drift-audit: ignore — bounded by the candidate set, not a loop accumulator
-        acc ++ [(name, v.reason)],
+        // drift-audit: ignore — bounded by the candidate set, not a loop accumulator
+        Some(name) => acc ++ [(name, v.reason)],
         None => acc,
       }
     },
@@ -1272,10 +1272,10 @@ fn divergence_of_terms(nodes, target_ty) = match first_row_split(nodes) {
     (a, b) => DivRow(a, b),
   },
   None => match target_ty {
-    TFun(_, _, _) => // At a function-typed hole the survivors are different COMPUTATIONS of
+    // At a function-typed hole the survivors are different COMPUTATIONS of
     // one type: no denotation read separates them, and "shape" was the
     // wrong word for two functions with the same shape.
-    DivBehavior,
+    TFun(_, _, _) => DivBehavior,
     _ => divergence_by_denotation(nodes, target_ty),
   },
 }
