@@ -656,13 +656,25 @@ a provenance diff, a search over live shared cells.
 **THE STANDING CURSOR** — the order work runs in:
 
 2. **Every position is a cell — #108** (`Hβ.graph.positions-are-cells`). A
-   parameter is declared at its own node, as every pattern's binder is, where
-   it is declared at a cell the judgment mints today. Then the writes the
-   structure cut was for: a rename is one write at the declaration
-   (the `rename` verb, through the formatter); the session re-judges the nodes
-   an edit rewrote rather than re-parsing a module (the declaration-grain cone
-   over the in-edges); accepting a proposal rewrites the hole's node in place,
-   and the position-keyed accept column
+   parameter is a node of its own — a field of the parameter product, holding
+   its binder pattern, its annotation, its default and its ownership marker —
+   and its pattern binds against the argument's cell exactly as a let's binds
+   against its value (`declare_binder`), so a destructured parameter IS its
+   pattern: the synthesized name (`dp_prefix`) and the `let` prepended to the
+   body delete, and `al_prefix` follows when §11.12 makes the arm list and
+   the binder form one node. A handler arm's arguments and a state field's
+   name are binder nodes by the same rule. `TParam` stays the function type's
+   slot alone, built from the nodes at the judgment; a binder field added to
+   `TParam` instead would be a bolt this design deletes. Then the writes the
+   structure cut was for: a rename is one write at the declaration (the
+   `rename` verb: every reference renders its spelling from its edge, a
+   comment's mention is rewritten along its mention edge, the program is
+   judged again under the new name and a rename that moves any edge — a
+   capture, a shadow — refuses, whatever the scope rules then are, and the
+   formatter writes the files); the
+   session re-judges the nodes an edit rewrote rather than re-parsing a
+   module (the declaration-grain cone over the in-edges); accepting a proposal
+   rewrites the hole's node in place, and the position-keyed accept column
    (`Hβ.synth.accepted-edge-keyed-by-position`) deletes.
 3. **A module is a scope** (`Hβ.driver.per-module-env-overlay`,
    `Hβ.query.facets-read-the-link`, `Hβ.modules.import-block-is-maintained`,
@@ -692,6 +704,16 @@ a provenance diff, a search over live shared cells.
    facet; lib/strings and src/types first), its prefixes becoming module names.
    The page's "reports in linked modules" collapse deletes, since a library
    judged clean at its own boundary produces nothing in a user's link.
+   Handlers are package management, so there is no package manager: an
+   `import` performs `resolve(path)`, and the handler installed over the link
+   answers — the project's folder and the library today, a content-addressed
+   store or a registry beside them — so a version is that handler's config,
+   the lock is the hashes the link's import edges resolved to (kept in the
+   image, so a build is reproduced by its handler and its lock), and a
+   dependency's capabilities are a negation its import edge states (`import
+   vendor/json with !Network`), proven over everything the module exports.
+   The root table (`module_roots`) deletes into the handler, and a module's
+   layer is what the handler answers about where it found the module.
 4. **Names, the host boundary, and the catalog**
    (`Hβ.syntax.parameter-product-has-identity`,
    `Hβ.io.filesystem-failure-is-said`,
