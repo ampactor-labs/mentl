@@ -2151,15 +2151,20 @@ fn written_cells(ty) = match ty {
   TInt | TFloat | TUnit | TByte | TAddr => [],
 }
 
-// A pattern's sub-patterns, each a node of its own.
+// A pattern's sub-patterns, each a node of its own, a rest among them.
 fn pat_child_handles(p) = match p {
   PCon(_, ps) => ps,
   PTuple(ps) => ps,
-  PList(ps, _) => ps,
-  PRecord(fields, _) => map({ (_, f) => f }, fields),
+  PList(ps, rest) => ps ++ option_nodes(rest),
+  PRecord(fields, rest) => map({ (_, f) => f }, fields) ++ option_nodes(rest),
   PAlt(ps) => ps,
   PAs(_, inner) => [inner],
   PVar(_) | PWild | PLit(_) => [],
+}
+
+fn option_nodes(rest) = match rest {
+  Some(r) => [r],
+  None => [],
 }
 
 // ── THE FANOUT REACH — one rule, asked one name at a time ────────────

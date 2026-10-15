@@ -2334,7 +2334,7 @@ fn cover_pat_body(e) = match graph_node_body(e) {
   // HERE, so it never reaches infer on the lambda path.
   NExpr(MakeListExpr(elems)) => if len(elems) > 0 {
     match graph_node_body(last(elems)) {
-      NExpr(RestExpr(rest_nm)) => PList(map(cover_pat, drop_last(elems)), Some(rest_nm)),
+      NExpr(RestExpr(rest_nm)) => PList(map(cover_pat, drop_last(elems)), Some(cover_rest(last(elems), rest_nm))),
       _ => PList(map(cover_pat, elems), None),
     }
   } else {
@@ -2345,6 +2345,12 @@ fn cover_pat_body(e) = match graph_node_body(e) {
 
 fn cover_pat(e) = {
   graph_register_node(e, NPat(cover_pat_body(e)))
+  e
+}
+
+// The cover's rest is the rest pattern it spells, re-registered as one.
+fn cover_rest(e, name: String) = {
+  graph_register_node(e, NPat(rest_pat_named(name)))
   e
 }
 
@@ -2608,7 +2614,7 @@ fn parse_list_elems(ref tokens, pos, own buf, count) = {
     // cover_pat_body consumes this into PList's rest, and infer refuses
     // it loudly anywhere else). Rest closes the list — it is the tail.
     let rest_name = ident_at(tokens, p + 3)
-    let elem = nexpr(RestExpr(rest_name), span_at(tokens, p))
+    let elem = nexpr(RestExpr(rest_name), span_at(tokens, p + 3))
     match push_node(buf, count, elem) {
       (b1, c1) => (b1, c1, expect(tokens, skip_ws(tokens, p + 4), TRBracket)),
     }
@@ -3044,25 +3050,17 @@ fn desugar_block(stmts, final_e, span: ValidSpan) = match find_destructure_let(s
   },
 }
 
-// The names a pattern binds, in source order.
+// The names a pattern binds, in source order: every binder under it, a
+// rest's among them. An alternation's branches bind the same names, by law,
+// so its first branch answers for it.
 fn pat_binder_names(pat) = match pat_of(pat) {
   PVar(n) => [n],
-  PWild => [],
-  PLit(_) => [],
-  PCon(_, ps) => flat_map(pat_binder_names, ps),
-  PTuple(ps) => flat_map(pat_binder_names, ps),
-  PList(ps, rest) => flat_map(pat_binder_names, ps) ++ option_names(rest),
-  PRecord(fields, rest) => flat_map({ (_, p) => pat_binder_names(p) }, fields) ++ option_names(rest),
+  PAs(n, inner) => [n] ++ pat_binder_names(inner),
   PAlt(branches) => match branches {
     [first, ..._] => pat_binder_names(first),
     [] => [],
   },
-  PAs(n, inner) => [n] ++ pat_binder_names(inner),
-}
-
-fn option_names(rest) = match rest {
-  Some(n) => [n],
-  None => [],
+  p @ (PWild | PLit(_) | PCon(_, _) | PTuple(_) | PList(_, _) | PRecord(_, _)) => flat_map(pat_binder_names, pat_child_handles(p)),
 }
 
 fn find_destructure_let(stmts, i) = if i >= len(stmts) {
@@ -3437,9 +3435,8 @@ fn parse_pat_record_fields(ref tokens, pos) = {
     ([], None, p + 1)
   } else if at_ellipsis(tokens, p) {
     let name_pos = skip_ws(tokens, p + 3)
-    let rest_name = ident_at(tokens, name_pos)
     let p_after_name = skip_ws(tokens, name_pos + 1)
-    ([], Some(rest_name), expect(tokens, p_after_name, TRBrace))
+    ([], Some(rest_pat_at(tokens, name_pos)), expect(tokens, p_after_name, TRBrace))
   } else {
     let name = ident_at(tokens, p)
     let p1 = p + 1
@@ -3496,17 +3493,11 @@ fn parse_pat_list_args(ref tokens, pos) = {
     ([], None, p + 1)
   } else if at_ellipsis(tokens, p) {
     let name_pos = skip_ws(tokens, p + 3)
-    let rest_name = ident_at(tokens, name_pos)
     let p_after_name = skip_ws(tokens, name_pos + 1)
-    // `..._` accepts any remaining tail WITHOUT binding it — but the rest
-    // slot carries TWO facts: PRESENCE (the predicate: length ≥ prefix,
-    // never exact) and the BIND name. Mapping "_" to None destroyed
-    // presence to answer binding — the exact-length lie that floored
-    // walk_locals on every multi-element list (faces 12-14; the seed had
-    // the same conflation, independently rationalized). Presence always
-    // survives here; the bind side skips "_" (bind_pat_rest's law).
-    let rest = Some(rest_name)
-    ([], rest, expect(tokens, p_after_name, TRBracket))
+    // The rest slot carries two facts: its PRESENCE (the list may be longer
+    // than the prefix) and what it binds. `..._` keeps the presence and
+    // binds nothing, so it is a wildcard node, never an absent rest.
+    ([], Some(rest_pat_at(tokens, name_pos)), expect(tokens, p_after_name, TRBracket))
   } else {
     match parse_pat(tokens, p) {
       (pat, p2) => {
@@ -3525,6 +3516,13 @@ fn parse_pat_list_args(ref tokens, pos) = {
 
 fn at_ellipsis(ref tokens, pos) =
   at(tokens, pos, TDot) && at(tokens, pos + 1, TDot) && at(tokens, pos + 2, TDot)
+
+// A rest is the part past the prefix, a pattern node at its name's own
+// position: a binder, or `_`.
+fn rest_pat_at(tokens, name_pos) =
+  npat(rest_pat_named(ident_at(tokens, name_pos)), span_at(tokens, name_pos))
+
+fn rest_pat_named(name: String) = if name == "_" { PWild } else { PVar(name) }
 
 // Per Hβ.first-light.first-char-code-via-byte-at: chars/char_code aren't
 // defined in the wheel runtime; byte_at is the substrate-honest primitive.
@@ -4109,7 +4107,10 @@ fn field_cuts_list_rest(fld) = match fld {
 }
 
 fn rest_names_a_binder(rest) = match rest {
-  Some(name) => !field_name_eq(name, "_"),
+  Some(r) => match pat_of(r) {
+    PVar(_) => true,
+    PWild | PLit(_) | PCon(_, _) | PTuple(_) | PList(_, _) | PRecord(_, _) | PAlt(_) | PAs(_, _) => false,
+  },
   None => false,
 }
 
@@ -4148,7 +4149,7 @@ fn free_vars_run_step(acc, run) = match acc {
     Lone(stmt) => match graph_node_body(stmt) {
       NStmt(LetStmt(pat, expr, _)) => (
         free_uses_merge(frees, collect_free_uses(expr, bound)),
-        free_vars_merge(bound, free_vars_pat_binds(pat))
+        free_vars_merge(bound, pat_binder_names(pat))
       ),
       _ => (free_uses_merge(frees, collect_free_uses(stmt, bound)), bound),
     },
@@ -4199,7 +4200,7 @@ fn free_vars_match_arms(arms, bound) = fold(
   [],
   (acc, arm) => match arm {
     (pat, body) => {
-      let arm_bound = free_vars_merge(bound, free_vars_pat_binds(pat))
+      let arm_bound = free_vars_merge(bound, pat_binder_names(pat))
       free_uses_merge(acc, collect_free_uses(body, arm_bound))
     },
   },
@@ -4207,45 +4208,6 @@ fn free_vars_match_arms(arms, bound) = fold(
 )
 
 fn free_vars_param_names(params) = map(param_name, params)
-
-// H6: exhaustive Pat enumeration. PVar is the only leaf that
-// binds a name; compound patterns recurse into sub-patterns.
-// PWild / PLit bind nothing. New Pat variants must decide their
-// binder-name contribution explicitly.
-fn free_vars_pat_binds(pat) = match pat_of(pat) {
-  PVar(name) => [name],
-  PCon(_, sub_pats) => free_vars_pat_binds_list(sub_pats),
-  PTuple(sub_pats) => free_vars_pat_binds_list(sub_pats),
-  PList(sub_pats, rest) => free_vars_merge(free_vars_pat_binds_list(sub_pats), free_vars_pat_rest_binds(rest)),
-  PRecord(flds, rest) => free_vars_merge(free_vars_pat_binds_fields(flds), free_vars_pat_rest_binds(rest)),
-  PAs(name, inner) => free_vars_merge([name], free_vars_pat_binds(inner)),
-  // Alternation branches bind the SAME name set by law (SYNTAX
-  // §"Pattern alternation" — E_PatternAlternationBindingMismatch
-  // enforces it), so the first branch's binders ARE the arm's.
-  // Face 9: this was the one Pat walker missing the arm; the testing
-  // lib's alternation matches hit the floor at the input's tail.
-  PAlt(branches) => free_vars_pat_binds(list_index(branches, 0)),
-  PWild => [],
-  PLit(_) => [],
-}
-
-fn free_vars_pat_rest_binds(rest) = match rest {
-  None => [],
-  Some(name) => if field_name_eq(name, "_") { [] } else { [name] },
-}
-
-// Extract binder names from record-pattern fields `[(name, Pat)]`.
-// Each field contributes its sub-pat's binders.
-fn free_vars_pat_binds_fields(flds) = fold(
-  [],
-  (acc, fld) => match fld {
-    (_, sub_pat) => free_vars_merge(acc, free_vars_pat_binds(sub_pat)),
-  },
-  flds
-)
-
-fn free_vars_pat_binds_list(pats) =
-  fold([], (acc, p) => free_vars_merge(acc, free_vars_pat_binds(p)), pats)
 
 fn free_vars_merge(a, b) = if len(b) == 0 {
   a

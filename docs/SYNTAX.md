@@ -2431,6 +2431,18 @@ in, and `with !Alloc` refuses it (real, 2026-09-30: sixteen of the wheel's
 own rests were unrowed until the allocation audit's first run;
 `tests/micros/mn-list-rest-alloc.mn`). `..._` cuts nothing.
 
+**A sub-pattern is the cell of the part it takes apart, and a binder is
+declared where it is written** (real, 2026-10-15). In `Pair(a, b) => a / b`
+the `b` the arm reads reaches the `b` the pattern binds, and the caret's Why
+there names that line; the two elements of `[x, y]` are two values, a rest is
+a node of its own (a binder, or `_` holding its presence), and `w @ pat`
+names the value its position takes apart. A destructuring pattern's shape
+claim is located at the value it claims. Until then each sub-pattern's binder
+was declared at a cell minted beside it with no position at all (`0:0`), the
+elements of one list pattern shared one, so the Why at `x` said `let y`, and
+the claim of `let Some([x, y]) = o` sat at the whole block rather than at `o`
+(tests/micros/mn-declared-*.mn).
+
 ### Exhaustiveness
 
 Match arms must cover all variants OR include a wildcard. Missing-variant errors include the missing variants by name (per H3's exhaustiveness machinery).

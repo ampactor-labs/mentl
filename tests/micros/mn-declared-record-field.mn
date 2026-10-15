@@ -1,0 +1,8 @@
+// declared 5:16 at 5:10
+// A record pattern's field is the cell of that field: the edge from `n`
+// reaches the `n` the field binds.
+fn name_of(u) = match u {
+  {name: n} => n + 1,
+}
+
+fn main() = name_of({age: 2, name: 4})

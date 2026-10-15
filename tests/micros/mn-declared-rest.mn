@@ -1,0 +1,9 @@
+// declared 5:24 at 5:10
+// A rest is a node of its own, the cell of the list past the prefix: the
+// edge from `t` reaches the `t` the pattern binds.
+fn tail_len(xs) = match xs {
+  [h, ...t] => h + len(t),
+  [] => 0,
+}
+
+fn main() = tail_len([1, 2, 3])

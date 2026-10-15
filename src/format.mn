@@ -461,7 +461,11 @@ fn render_pat_value(p) = match p {
   PList(ps, rest) => "[{render_plist_inner(ps, rest)}]",
   PRecord(fields, rest) => match rest {
     None => "\{{render_pat_fields(fields, 0)}\}",
-    Some(rn) => if len(fields) == 0 { "\{...{rn}\}" } else { "\{{render_pat_fields(fields, 0)}, ...{rn}\}" },
+    Some(r) => if len(fields) == 0 {
+      "\{...{render_pat_tokens(r)}\}"
+    } else {
+      "\{{render_pat_fields(fields, 0)}, ...{render_pat_tokens(r)}\}"
+    },
   },
   // Branches that each bind the whole value under one name are that
   // binder over the alternation, `b @ (C(_) | D)` — the lift `lifted_at`
@@ -1378,10 +1382,10 @@ fn byte_index_from(s: String, b, i) = if i >= byte_len(s) {
   byte_index_from(s, b, i + 1)
 }
 
-fn render_plist_inner(ref ps, rest: Option(String)) = {
+fn render_plist_inner(ref ps, rest) = {
   let prefix = render_pat_list(ps, ", ")
   match rest {
-    Some(rname) => if len(ps) == 0 { "...{rname}" } else { "{prefix}, ...{rname}" },
+    Some(r) => if len(ps) == 0 { "...{render_pat_tokens(r)}" } else { "{prefix}, ...{render_pat_tokens(r)}" },
     None => prefix,
   }
 }

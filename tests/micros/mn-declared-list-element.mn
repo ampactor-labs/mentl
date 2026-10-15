@@ -1,0 +1,10 @@
+// declared 7:3 at 6:13
+// Each element a list pattern writes is its own cell of the list's one
+// element type: `x` and `y` are two values, and the edge from `x` reaches
+// the `x` the pattern binds, never a cell the two share.
+fn first_two(o) = {
+  let Some([x, y]) = o
+  x + y
+}
+
+fn main() = first_two(Some([1, 2]))

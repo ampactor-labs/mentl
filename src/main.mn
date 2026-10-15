@@ -1539,7 +1539,9 @@ fn test_check_run(entry_module) =
 // the refs facet's: what stands at each reference to the declaration the
 // name denotes, counted by role — calls, values, patterns — the roles with
 // none unsaid. `// fmt: canonical` is the formatter's: the fixture is its own
-// render, byte for byte, through the render the fmt verb writes.
+// render, byte for byte, through the render the fmt verb writes. `// declared
+// L:C at L2:C2` is the reference edge's: the name at L:C reads the
+// declaration that stands at L2:C2.
 type Expect
   = ExpectRun(Int)
   | ExpectRefuse(String)
@@ -1547,6 +1549,7 @@ type Expect
   | ExpectTeach(Int, TeachWant)
   | ExpectUnreachable(String)
   | ExpectRefs(String, String)
+  | ExpectDeclared(Int, Int, Int, Int)
   | ExpectCanonical
 
 // A teach fixture's contract (D4): what the gradient answers at the
@@ -1577,6 +1580,8 @@ fn battery_expect(src) = {
     Some(ExpectUnreachable(battery_line_rest(src, 16, 16)))
   } else if byte_len(src) >= 11 && str_eq(str_slice(src, 0, 11), "// refs of ") {
     battery_refs_expect(src)
+  } else if byte_len(src) >= 12 && str_eq(str_slice(src, 0, 12), "// declared ") {
+    battery_declared_expect(src)
   } else if byte_len(src) >= 17 && str_eq(str_slice(src, 0, 17), "// fmt: canonical") {
     Some(ExpectCanonical)
   } else if byte_len(src) < 12 {
@@ -1673,6 +1678,42 @@ fn battery_line_rest(src, start, i) = if i >= byte_len(src) {
 fn battery_refs_expect(src) = {
   let colon = index_of(src, ":")
   Some(ExpectRefs(str_slice(src, 11, colon), battery_line_rest(src, colon + 2, colon + 2)))
+}
+
+// `// declared L:C at L2:C2` — the reference's address, then its
+// declaration's.
+fn battery_declared_expect(src) = {
+  let line = battery_expect_digits(src, 12, 0)
+  let col_start = battery_skip_digits(src, 12) + 1
+  let col = battery_expect_digits(src, col_start, 0)
+  let at_start = battery_skip_digits(src, col_start) + 4
+  let dline = battery_expect_digits(src, at_start, 0)
+  let dcol_start = battery_skip_digits(src, at_start) + 1
+  Some(ExpectDeclared(line, col, dline, battery_expect_digits(src, dcol_start, 0)))
+}
+
+// THE DECLARATION BATTERY: the name at the address follows its reference
+// edge, and the contract holds when the declaration it reaches stands where
+// the fixture says — a binder declared at its own position. The edge is read
+// inside the judgment that holds the graph; only the position crosses out.
+fn battery_declared_step(stem, path: String, line, col, dline, dcol) = {
+  let got = match address_node(driver_link(path), path, line, col) {
+    None => "no node at the address",
+    Some(r) => match graph_ref_decl(r) {
+      None => "no declaration",
+      Some(d) => match graph_span_of(d) {
+        Span(l, c, _, _) => "{int_to_str(l)}:{int_to_str(c)}",
+      },
+    },
+  } ~> cursor_default ~> synth_default ~> mentl_default ~> diag_bank ~> infer_context
+  let want = "{int_to_str(dline)}:{int_to_str(dcol)}"
+  if str_eq(got, want) {
+    print_string("PASS {stem}: declared at {want}\n")
+    0
+  } else {
+    print_string("FAIL(declared) {stem}: wanted {want}, got {got}\n")
+    1
+  }
 }
 
 // THE REFS BATTERY: the fixture's link judged as the query verb judges it,
@@ -1988,6 +2029,7 @@ fn battery_step(path: String) = {
       ExpectTeach(line, want) => battery_teach_step(stem, path_to_module(path), line, want),
       ExpectUnreachable(want) => battery_reach_step(stem, path_to_module(path), want),
       ExpectRefs(name, want) => battery_refs_step(stem, path_to_module(path), name, want),
+      ExpectDeclared(line, col, dline, dcol) => battery_declared_step(stem, path_to_module(path), line, col, dline, dcol),
       ExpectCanonical => battery_fmt_step(stem, path, src),
       ExpectRun(want) => match battery_compile(path_to_module(path), stem) {
         (left, nerr, _) => match left {

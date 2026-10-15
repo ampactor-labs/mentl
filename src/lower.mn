@@ -4517,7 +4517,10 @@ fn ctor_kind_at(node) = match graph_ref_decl(node) {
 // for it binds under the no-proof type, and `..._` binds nothing.
 fn bind_rest(bind, rest) = match rest {
   None => None,
-  Some(name) => if field_name_eq(name, "_") { Some(name) } else { Some(bind(name, TVar(0))) },
+  Some(r) => match pat_of(r) {
+    PVar(name) => Some(bind(name, TVar(0))),
+    PWild | PLit(_) | PCon(_, _) | PTuple(_) | PList(_, _) | PRecord(_, _) | PAlt(_) | PAs(_, _) => Some("_"),
+  },
 }
 
 // A record pattern's field, lowered at the field's type.

@@ -1,0 +1,11 @@
+// declared 8:21 at 8:11
+// A binder a pattern writes is declared at its own position: the edge from
+// the b in the arm's body reaches the b the constructor's pattern binds, the
+// cell of the part it takes apart, never the match the pattern stands in.
+type Pair = Pair(Int, Int)
+
+fn ratio(p) = match p {
+  Pair(a, b) => a / b,
+}
+
+fn main() = ratio(Pair(10, 2))

@@ -796,7 +796,7 @@ fn comment_locals(h) = match graph_node_body(h) {
   NStmt(FnStmt(_, params, _, _, fbody)) => body_binders(fbody, cl_param_names(params, 0, [])),
   NStmt(HandlerDeclStmt(_, _, config, states, arms, _)) => cl_arm_names(arms, 0, cl_state_names(states, 0, cl_param_names(config, 0, []))),
   NStmt(EffectDeclStmt(_, _, ops)) => cl_op_names(ops, 0, []),
-  NStmt(LetStmt(pat, val, _)) => body_binders(val, pat_binders(pat)),
+  NStmt(LetStmt(pat, val, _)) => body_binders(val, pat_binder_names(pat)),
   NStmt(TypeDefStmt(_, ctors)) => cl_ctor_names(ctors, 0, []),
   NStmt(ExprStmt(e)) => body_binders(e, []),
   _ => [],
@@ -856,7 +856,7 @@ fn body_binders(ref node, acc) = match graph_node_body(node) {
   NExpr(MakeRecordExpr(flds)) => bb_fields(flds, 0, acc),
   NExpr(RecordUpdateExpr(b, flds)) => bb_fields(flds, 0, body_binders(b, acc)),
   NExpr(NamedRecordExpr(_, flds)) => bb_fields(flds, 0, acc),
-  NStmt(LetStmt(pat, val, _)) => body_binders(val, acc ++ pat_binders(pat)),
+  NStmt(LetStmt(pat, val, _)) => body_binders(val, acc ++ pat_binder_names(pat)),
   NStmt(FnStmt(nm, ps, _, _, fb)) => body_binders(fb, cl_param_names(ps, 0, acc ++ [nm])),
   NStmt(ExprStmt(e)) => body_binders(e, acc),
   _ => acc,
@@ -869,7 +869,7 @@ fn bb_arms(ref arms, i, acc) = if i >= len(arms) {
   acc
 } else {
   match list_index(arms, i) {
-    (pat, abody) => bb_arms(arms, i + 1, body_binders(abody, acc ++ pat_binders(pat))),
+    (pat, abody) => bb_arms(arms, i + 1, body_binders(abody, acc ++ pat_binder_names(pat))),
   }
 }
 
@@ -9312,27 +9312,37 @@ fn infer_unaryop(handle, op, ih, span: ValidSpan) = match op {
 // shape and the scrutinee UNIFIES with it, so proven element/payload types
 // flow into the binders and a shape mismatch is a diagnostic, never a
 // silent retype.
-fn constrain_scrutinee(pat, scrutinee_h, ty, span: ValidSpan, reason) = {
+fn constrain_scrutinee(pat, scrutinee_h, ty, span: ValidSpan, reason) = if pat == scrutinee_h {
+  // A sub-pattern is its part's cell, bound to the part's type where the
+  // whole was taken apart: its shape meets that type.
+  unify_types(TVar(pat), ty, span, reason)
+} else {
   graph_bind(pat, ty, Located(graph_span_of(pat), reason))
   // drift-audit: ignore — the two sides of ONE unification edge (scrutinee node, pattern-shape node), not parallel arrays
   unify(scrutinee_h, pat, span, reason)
 }
 
 // A pattern that asks nothing of its value's shape is that value: its node
-// is bound to the scrutinee's cell.
-fn pat_is_value(pat, handle) =
+// is bound to the scrutinee's cell, and a sub-pattern's node is its part's.
+fn pat_is_value(pat, handle) = if pat == handle {
+  ()
+} else {
   graph_bind(pat, TVar(handle), Located(graph_span_of(pat), Inferred("pattern")))
+}
 
 // Every pattern node is judged here, once: the shape it asks of the value
 // at its position, the names it binds, and at a constructor the edge to the
-// declaration its name resolves to.
+// declaration its name resolves to. `handle` is the cell of the value the
+// pattern takes apart — the scrutinee for a pattern a match or a let holds,
+// the pattern's own node for a sub-pattern, which is the cell of the part it
+// takes apart — and a binder is declared at that cell, where it is written.
 fn infer_pat(pat, handle, span: ValidSpan) = match pat_of(pat) {
   PVar(name) => {
     pat_is_value(pat, handle)
     env_extend(
       name,
       Frozen([], TVar(handle)),
-      Located(span, LetBinding(name, Inferred("pattern"))),
+      Located(graph_span_of(pat), LetBinding(name, Inferred("pattern"))),
       ValueScheme,
       handle
     )
@@ -9355,18 +9365,12 @@ fn infer_pat(pat, handle, span: ValidSpan) = match pat_of(pat) {
     None => {
       pat_is_value(pat, handle)
       report(EMissingVariable("constructor: {name}", graph_span_of(pat)))
-      each(
-        { s => infer_pat(s, mint(Inferred("a pattern under an unknown constructor")), span) },
-        sub_pats
-      )
+      each(infer_pat_unknown_part(??, span), sub_pats)
     },
     Some(decl) => match graph_published(decl) {
       None => {
         pat_is_value(pat, handle)
-        each(
-          { s => infer_pat(s, mint(Inferred("a pattern under an unknown constructor")), span) },
-          sub_pats
-        )
+        each(infer_pat_unknown_part(??, span), sub_pats)
       },
       // ConstructorScheme bindings carry one of two ty shapes:
       //   nullary  → TName(type_name, args)         — bind scrutinee to it
@@ -9407,9 +9411,9 @@ fn infer_pat(pat, handle, span: ValidSpan) = match pat_of(pat) {
   PRecord(flds, rest) => {
     // Bind scrutinee to TRecordOpen of the named fields with a
     // fresh row variable — the pattern accepts any record with AT
-    // LEAST these fields. Each sub-pattern infers against a fresh
-    // handle of the field's type; field-puning patterns are PVar
-    // and bind into env via infer_pat's recursion.
+    // LEAST these fields. Each field's sub-pattern is the cell of
+    // that field; field-puning patterns are PVar and bind into env
+    // via infer_pat's recursion.
     let row_h = graph_fresh_row(Inferred("record pattern row"))
     let field_specs = build_pat_record_field_specs(flds, span)
     let pat_ty = mk_record_open(field_specs, row_h)
@@ -9418,26 +9422,20 @@ fn infer_pat(pat, handle, span: ValidSpan) = match pat_of(pat) {
     shape_demand(handle, OuterShape)
     infer_pat_record_subs(flds, field_specs, handle, span)
     match rest {
-      Some(rn) => if rn == "_" {
-        ()
-      } else {
-        // The rest binds the record of the REMAINING fields — the
-        // SAME residual row the open pattern carries, as a record
-        // with no named fields of its own: when the scrutinee
-        // resolves, the row does, and the rest's type IS that
-        // record (SYNTAX §"Pattern syntax for records").
-        let rest_h = mint(Located(span, LetBinding(rn, Inferred("record pattern rest"))))
-        graph_bind(rest_h, mk_record_open([], row_h), Located(span, Inferred("record pattern rest")))
-        note_part(rest_h, handle, PartRest)
-        env_extend(
-          rn,
-          Frozen([], TVar(rest_h)),
-          Located(span, LetBinding(rn, Inferred("record pattern rest"))),
-          ValueScheme,
-          rest_h
+      // The rest is the record of the REMAINING fields — the SAME residual
+      // row the open pattern carries, as a record with no named fields of
+      // its own: when the scrutinee resolves, the row does, and the rest's
+      // type IS that record (SYNTAX §"Pattern syntax for records").
+      Some(r) => {
+        infer_pat_part(
+          r,
+          mk_record_open([], row_h),
+          part_of(handle, PartRest),
+          Inferred("record pattern rest"),
+          span
         )
-        // the remaining fields are copied into a record built here
-        inf_add_row_at(handle, construction_row())
+        // a bound rest's fields are copied into a record built here
+        if rest_names_a_binder(rest) { inf_add_row_at(handle, construction_row()) }
       },
       None => (),
     }
@@ -9455,30 +9453,47 @@ fn infer_pat(pat, handle, span: ValidSpan) = match pat_of(pat) {
     enforce_alt_binding_law(branch_binds, span)
   },
   PAs(name, inner) => {
-    // The as-pattern binds the WHOLE value: the name's cell IS the
-    // scrutinee's (one unify edge — the binder sees exactly the
-    // matched value's type), then the inner pattern destructures the
-    // same handle.
+    // The as-pattern binds the WHOLE value its position takes apart: the
+    // binder is declared at that value's cell, as a binder standing alone
+    // is, and the inner pattern destructures the same value.
     pat_is_value(pat, handle)
-    let as_h = mint(Located(span, LetBinding(name, Inferred("as-pattern binds the whole value"))))
-    graph_bind(as_h, TVar(handle), Located(span, LetBinding(name, Inferred("as-pattern"))))
-    note_part(as_h, handle, PartWhole)
     env_extend(
       name,
-      Frozen([], TVar(as_h)),
-      Located(span, LetBinding(name, Inferred("as-pattern"))),
+      Frozen([], TVar(handle)),
+      Located(graph_span_of(pat), LetBinding(name, Inferred("as-pattern"))),
       ValueScheme,
-      as_h
+      handle
     )
     infer_pat(inner, handle, span)
   },
 }
 
+// A sub-pattern is the cell of the part it takes apart: its node is bound to
+// the part's type, carries the edge to the whole it was taken from, and is
+// judged as the value it is — a binder it writes declared at it.
+fn infer_pat_part(sub, ty, fact, reason, span: ValidSpan) = {
+  graph_bind(sub, ty, Located(graph_span_of(sub), reason))
+  graph_binder_note(sub, fact)
+  infer_pat(sub, sub, span)
+}
+
+// A sub-pattern under a constructor no declaration answers is its own cell,
+// of a type nothing constrains; it takes apart no known part.
+fn infer_pat_unknown_part(sub, span: ValidSpan) = {
+  let reason = Inferred("a pattern under an unknown constructor")
+  graph_bind(sub, TVar(mint(reason)), Located(graph_span_of(sub), reason))
+  infer_pat(sub, sub, span)
+}
+
+// The edge from a part to the whole it was destructured from, where nothing
+// declares the part's contract.
+fn part_of(whole, step) = PartFact({declared: None, step, whole})
+
 // Walk one alternation branch, then snapshot its (name, type) binds
 // while they are still the latest env entries.
 fn infer_pat_alt_branch(b, handle, span: ValidSpan) = {
   infer_pat(b, handle, span)
-  map((n) => (n, alt_binder_ty(n, span)), pat_binders(b))
+  map((n) => (n, alt_binder_ty(n, span)), pat_binder_names(b))
 }
 
 fn alt_binder_ty(ref n, span: ValidSpan) = match env_lookup(n) {
@@ -9521,31 +9536,8 @@ fn enforce_alt_binding_law(branch_binds, span: ValidSpan) = match branch_binds {
 
 fn alt_same_name_set(a, b) = len(a) == len(b) && all({ (n, _) => any({ (m, _) => m == n }, b) }, a)
 
-// pat_binders — the names a pattern binds (pure structural walk).
-// Wildcards and literals bind nothing; a PList rest name binds
-// unless `_`; a nested alternation's binders are branch 0's (its
-// own law check fires on its own walk).
-fn pat_binders(pat) = match pat_of(pat) {
-  PVar(name) => [name],
-  PWild => [],
-  PLit(_) => [],
-  PCon(_, subs) => flat_map(pat_binders, subs),
-  PTuple(subs) => flat_map(pat_binders, subs),
-  PList(subs, rest) => flatten([flat_map(pat_binders, subs), plist_rest_binders(rest)]),
-  PRecord(flds, rest) => flatten([flat_map({ (_, sub) => pat_binders(sub) }, flds), plist_rest_binders(rest)]),
-  // Branch 0 carries the whole alternation's binder set (infer's law).
-  // Read through len/list_index — total over every representation — so
-  // this walk runs identically under a boot whose list-pattern emit
-  // predates the PIdx step (the ladder's one exposed rung).
-  PAlt(branches) => if len(branches) == 0 { [] } else { pat_binders(list_index(branches, 0)) },
-  PAs(name, inner) => [name] ++ pat_binders(inner),
-}
-
-fn plist_rest_binders(rest) = match rest {
-  None => [],
-  Some(n) => if field_name_eq(n, "_") { [] } else { [n] },
-}
-
+// A record pattern's field types, one variable each, the record the pattern
+// asks of its value built from them.
 fn build_pat_record_field_specs(flds, span: ValidSpan) = map(
   {
     (name, _) => {
@@ -9556,27 +9548,29 @@ fn build_pat_record_field_specs(flds, span: ValidSpan) = map(
   flds
 )
 
+// Each field's sub-pattern is the cell of that field.
 fn infer_pat_record_subs(flds, specs, whole, span: ValidSpan) = each(
   {
-    ((fname, sub_pat), (_, ty)) => match ty {
-      TVar(h) => {
-        note_part(h, whole, PartField(fname))
-        infer_pat(sub_pat, h, span)
-      },
-      _ => (),
-    },
+    ((fname, sub_pat), (_, ty)) => infer_pat_part(
+      sub_pat,
+      ty,
+      part_of(whole, PartField(fname)),
+      Inferred("record pattern field"),
+      span
+    ),
   },
   zip(flds, specs)
 )
 
+// Each element's sub-pattern is the cell of its position, at a type of its
+// own the tuple the pattern asks of its value is built from.
 fn infer_pat_tuple(pat, pats, parent_handle, span: ValidSpan) = {
   let elem_tys = map(
     {
       (i, p) => {
-        let sub_h = mint(Inferred("tuple pattern element"))
-        note_part(sub_h, parent_handle, PartIndex(i))
-        infer_pat(p, sub_h, span)
-        TVar(sub_h)
+        let ty = TVar(mint(Inferred("tuple pattern element")))
+        infer_pat_part(p, ty, part_of(parent_handle, PartIndex(i)), Inferred("tuple pattern element"), span)
+        ty
       },
     },
     enumerate(pats)
@@ -9587,68 +9581,58 @@ fn infer_pat_tuple(pat, pats, parent_handle, span: ValidSpan) = {
   constrain_scrutinee(pat, parent_handle, TTuple(elem_tys), span, Inferred("tuple pattern"))
 }
 
+// A list's elements share one type, and each element's sub-pattern is its
+// own cell of it — two binders of one list pattern are two values. The rest
+// is the cell of the list past the prefix.
 fn infer_pat_list(pat, pats, rest, parent_handle, span: ValidSpan) = {
-  let elem_h = mint(Inferred("list pattern element"))
-  note_part(elem_h, parent_handle, PartElem)
-  each((p) => infer_pat(p, elem_h, span), pats)
-  let list_ty = TList(TVar(elem_h))
+  let elem_ty = TVar(mint(Inferred("list pattern element")))
+  each(
+    infer_pat_part(
+      ??,
+      elem_ty,
+      part_of(parent_handle, PartElem),
+      Inferred("list pattern element"),
+      span
+    ),
+    pats
+  )
+  let list_ty = TList(elem_ty)
   constrain_scrutinee(pat, parent_handle, list_ty, span, Inferred("list pattern"))
   match rest {
     None => (),
-    Some(name) => if field_name_eq(name, "_") {
-      ()
-    } else {
-      // The rest is a binder of its own, the edge to the list it was cut
-      // from beside it — the record rest's form.
-      let rest_h = mint(Located(span, LetBinding(name, Inferred("list rest pattern"))))
-      graph_bind(rest_h, list_ty, Located(span, Inferred("list rest pattern")))
-      note_part(rest_h, parent_handle, PartRest)
-      env_extend(
-        name,
-        Frozen([], TVar(rest_h)),
-        Located(span, LetBinding(name, Inferred("list rest pattern"))),
-        ValueScheme,
-        rest_h
-      )
-      // the rest is cut as a slice at run time: the pattern calls the slice
-      // and the list it cuts pays what the slice costs
-      sugar_calls(pat, parent_handle, list_rest_callee())
+    Some(r) => {
+      infer_pat_part(r, list_ty, part_of(parent_handle, PartRest), Inferred("list rest pattern"), span)
+      // a bound rest is cut as a slice at run time: the pattern calls the
+      // slice and the list it cuts pays what the slice costs
+      if rest_names_a_binder(rest) { sugar_calls(pat, parent_handle, list_rest_callee()) }
     },
   }
 }
 
-// Bind each PCon sub-pattern to its corresponding constructor param
-// type. Mints a fresh handle per sub-pat so PVar bindings carry a
-// distinct entry into env. An arity mismatch reports EConstructorArity
-// FIRST; the aligned prefix still binds (productive-under-error).
+// Each PCon sub-pattern is the cell of its constructor field, at the field's
+// type. Its fact is the edge to the value it was destructured from, with the
+// field's declared refinement — owed by every construction where it was
+// built. An arity mismatch reports EConstructorArity FIRST; the aligned
+// prefix still binds (productive-under-error).
 fn bind_pcon_subpats(params, sub_pats, whole, span: ValidSpan, reason, ctor_name) = {
   if len(params) != len(sub_pats) {
     report(EConstructorArity(ctor_name, len(params), len(sub_pats), span))
   }
   each(
     {
-      (i, (param, sub_pat)) => {
-        let sub_h = mint(VarLookup(ctor_name, reason))
-        graph_bind(sub_h, param_ty(param), Located(span, VarLookup(ctor_name, reason)))
-        // The cell holds the field's shape. The binder's fact is the edge
-        // to the value it was destructured from, with the field's declared
-        // refinement — owed by every construction where it was built.
-        graph_binder_note(
-          sub_h,
-          PartFact({declared: refined_or_none(param_ty(param)), step: PartCtor(ctor_name, i), whole})
-        )
-        infer_pat(sub_pat, sub_h, span)
-      },
+      (i, (param, sub_pat)) => infer_pat_part(
+        sub_pat,
+        param_ty(param),
+        PartFact({declared: refined_or_none(param_ty(param)), step: PartCtor(ctor_name, i), whole}),
+        VarLookup(ctor_name, reason),
+        span
+      ),
     },
     enumerate(zip(params, sub_pats))
   )
 }
 
 fn refined_or_none(ty) = if ty_carries_refinement(ty) { Some(ty) } else { None }
-
-// A destructured part's binder: the edge from the part to the whole it
-// was destructured from, where nothing declares the part's contract.
-fn note_part(sub_h, whole, step) = graph_binder_note(sub_h, PartFact({declared: None, step, whole}))
 
 fn infer_match_arms(arms, scrut, result_h, handle, span: ValidSpan) = {
   // Match arms are ALTERNATIVE — exactly one runs — so an `own` value
@@ -9687,7 +9671,7 @@ fn infer_match_arms(arms, scrut, result_h, handle, span: ValidSpan) = {
   // `([h, ...t]) => h` and the arm list `mentl fmt` writes it as are one graph.
   match uncovered(flat_map(arm_row, arms), 1) {
     Some(witness) => match arms {
-      [arm] => claim_shape(scrut, handle, span, join(", ", witness), arm),
+      [arm] => claim_shape(scrut, handle, join(", ", witness), arm),
       [] | [_, _, ..._] => report(EPatternInexhaustive(join(", ", witness), span)),
     },
     None => (),
@@ -9695,18 +9679,20 @@ fn infer_match_arms(arms, scrut, result_h, handle, span: ValidSpan) = {
 }
 
 // A destructuring pattern's shape, claimed of its value as a partial read's
-// precondition is (the TRAP law at `infer_index_force`): proven, it costs
-// nothing; refuted, the ledger refuses at the let (E_RefinementRejected);
-// open, the let's own row carries the Trap a mismatch is, and `with !Trap`
-// refuses it until the shape is proven or matched. The value walk decides it
-// (`shape_decide`, verify.mn) from what the value's edges say it is.
-fn claim_shape(scrut, handle, span: ValidSpan, witness: String, arm) = match arm {
+// precondition is (the TRAP law at `infer_index_force`), and located at that
+// value: proven, it costs nothing; refuted, the ledger refuses there
+// (E_RefinementRejected); open, the let's own row carries the Trap a mismatch
+// is, and `with !Trap` refuses it until the shape is proven or matched. The
+// value walk decides it (`shape_decide`, verify.mn) from what the value's
+// edges say it is.
+fn claim_shape(scrut, handle, witness: String, arm) = match arm {
   (pat, _) => {
+    let at = graph_span_of(scrut)
     let proven = match verify_claim(
       graph_module_current(),
-      span,
+      at,
       PPatternMatch(pat, scrut),
-      Located(span, Inferred("a destructuring pattern is partial: `{witness}` escapes it"))
+      Located(at, Inferred("a destructuring pattern is partial: `{witness}` escapes it"))
     ) {
       Some(held) => held,
       None => false,

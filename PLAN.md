@@ -434,7 +434,9 @@ landing that closes it. A gate that did not run is UNKNOWN, never green.
   each holding the text its judgment read and its imports as edges, and every
   reader starts from it — the compile, the session, the address, the battery. A
   value reference is linked to the declaration it resolved to. A pattern is a
-  node the judgment binds, its constructor linked the same way; a name written
+  node the judgment binds, its constructor linked the same way, and a
+  sub-pattern — a rest among them — is the cell of the part it takes apart,
+  so a binder is declared where it is written; a name written
   in a type is a node linked to the type it names, and so are an effect a
   declaration's row or a function type's row names, the op a handler arm
   serves and a sugar that calls a primitive (`xs[i]`, `++`, an interpolation's
@@ -648,15 +650,12 @@ a provenance diff, a search over live shared cells.
 
 **THE STANDING CURSOR** — the order work runs in:
 
-2. **Every position is a cell — #108** (`Hβ.graph.positions-are-cells`). A
-   sub-pattern's node is the cell of the part it takes apart, where a second
-   cell is minted beside it today, so a binder is declared at its own
-   position, and a claim is located at the value it claims. Then the writes
-   the structure cut was for: a rename is one write at the declaration (the
-   `rename` verb, through the formatter); the session re-judges the nodes an
-   edit rewrote rather than re-parsing a module (the declaration-grain cone
-   over the in-edges); accepting a proposal rewrites the hole's node in
-   place, and the position-keyed accept column
+2. **Every position is a cell — #108** (`Hβ.graph.positions-are-cells`). The
+   writes the structure cut was for: a rename is one write at the declaration
+   (the `rename` verb, through the formatter); the session re-judges the nodes
+   an edit rewrote rather than re-parsing a module (the declaration-grain cone
+   over the in-edges); accepting a proposal rewrites the hole's node in place,
+   and the position-keyed accept column
    (`Hβ.synth.accepted-edge-keyed-by-position`) deletes.
 3. **A module is a scope** (`Hβ.driver.per-module-env-overlay`,
    `Hβ.query.facets-read-the-link`, `Hβ.modules.import-block-is-maintained`,

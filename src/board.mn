@@ -202,8 +202,10 @@ fn board_bounds() = [
   // the voice surface, the eight-loop, the never-installed SMT handler —
   // left with its lambdas. 149 -> 141 (2026-10-15): the link became a node,
   // and the range tuples, the warm buckets and the scan tuples each reader
-  // took apart in a lambda left with the readers.
-  Bound({ceiling: 141, question: QCensus(CsEffectfulLambda)}),
+  // took apart in a lambda left with the readers. 141 -> 138: the walkers
+  // that each computed the names a pattern binds became one
+  // (`pat_binder_names`), and their accumulator lambdas left with them.
+  Bound({ceiling: 138, question: QCensus(CsEffectfulLambda)}),
   // Drift mode 10 — the seven survivors are documented sentinels, not masked
   // cases. Every wildcard that is NOT one of them is a variant the author
   // declined to enumerate, and the medium cannot tell the difference, which
@@ -256,10 +258,12 @@ fn board_bounds() = [
   // by spelling became one; 1,181 when the link became a node, its module
   // readers written as the roster a link and a module make; 1,179 when a
   // function type's row became a node, and the walk over type values that
-  // judged its names left for the walk over the annotation's nodes. It falls
-  // to zero where the migration lands
+  // judged its names left for the walk over the annotation's nodes; 1,178
+  // when a sub-pattern became the cell of the part it takes apart, and the
+  // record field walk's catch-all over the minted field cell left with the
+  // cell. It falls to zero where the migration lands
   // (`Hβ.match.catch-all-over-a-sum-is-the-roster`).
-  Bound({ceiling: 1179, question: QCensus(CsWildcardOverSum)}),
+  Bound({ceiling: 1178, question: QCensus(CsWildcardOverSum)}),
   // Drift mode 15 — a value given a leading-underscore name instead of being
   // deleted. The rename silences the reader, never the fact that nothing
   // reads it.

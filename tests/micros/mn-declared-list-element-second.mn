@@ -1,0 +1,9 @@
+// declared 6:7 at 5:16
+// The second element of a list pattern is a cell of its own beside the
+// first: the edge from `y` reaches the `y` the pattern binds.
+fn first_two(o) = {
+  let Some([x, y]) = o
+  x + y
+}
+
+fn main() = first_two(Some([1, 2]))

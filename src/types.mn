@@ -2820,12 +2820,13 @@ type Pat
   | PLit(LitValue)
   | PCon(String, [Node])
   | PTuple([Node])
-  // prefix pats, optional rest name (`...rest`)
-  | PList([Node], Option(String))
-  // [(fieldname, pattern)], optional rest name (`...rest` — SYNTAX
-  // §"Pattern syntax for records": the rest binds a record of the
-  // remaining fields, the list-pattern rest's sibling)
-  | PRecord([(String, Node)], Option(String))
+  // prefix pats, then the rest (`...rest`) when one is written: a pattern
+  // node of its own, a binder or `_`, whose presence admits a longer list
+  | PList([Node], Option(Node))
+  // [(fieldname, pattern)], then the rest (`...rest` — SYNTAX §"Pattern
+  // syntax for records": the rest binds a record of the remaining fields,
+  // the list-pattern rest's sibling)
+  | PRecord([(String, Node)], Option(Node))
   // pat_1 | pat_2 | ... — any branch matches; branches
   // bind the same names with unifiable types (SYNTAX.md
   // §"Pattern alternation — rule")
@@ -5766,7 +5767,7 @@ fn show_pat(h) = match pat_of(h) {
 }
 
 fn show_pat_rest(rest) = match rest {
-  Some(name) => ["...{name}"],
+  Some(r) => ["...{show_pat(r)}"],
   None => [],
 }
 

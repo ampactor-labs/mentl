@@ -1,0 +1,11 @@
+// declared 6:27 at 6:8
+// An as-pattern under a constructor names the part it takes apart, and is
+// that part's cell: the edge from `w` reaches the `w @ [a, b]` that names
+// it.
+fn width(o) = match o {
+  Some(w @ [a, b]) => len(w) + a + b,
+  Some(_) => 0,
+  None => 0,
+}
+
+fn main() = width(Some([1, 2]))
