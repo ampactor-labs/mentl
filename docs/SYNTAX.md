@@ -2098,6 +2098,21 @@ on boot cf8a6d50). A never-returning op answers a bare variable
 (`proc_exit(Int) -> !`), so an arm ending in one — `fail_exit`'s
 `proc_exit(1)` — answers any install.
 
+**The right side of `~>` is a handler, and its type says so** (real,
+2026-10-15). The install resolves its handler once, along the edge its
+reference draws, before the body it governs is judged; whatever the right
+side is, its type meets `Handler(P, A)` there, a configured handler named
+bare meeting it with its scheme's result. So `ask() + 1 ~> r.zero` over a
+record whose `zero` is an Int refuses `E_TypeMismatch` at the install. Until
+this landed the judgment read an install's handler by the right side's
+SPELLING — for a field, the field's name — so that install borrowed the
+absorption of a handler named `zero`: `mentl check` was clean and the
+program ran to a memory fault (`tests/micros/mn-install-of-a-non-handler.mn`,
+exit 134 on boot 7010a2a9). A handler held by a value — `let h = one`, then
+`~> h` — types, and its emit names a global nothing defines, so the module
+does not assemble: a handler named as a value has no record yet
+(`Hβ.effects.handler-value-is-its-record`).
+
 ### State updates via `with` on resume
 
 When an arm wants to evolve state, it uses a `with` clause on `resume`:

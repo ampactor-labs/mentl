@@ -439,8 +439,9 @@ landing that closes it. A gate that did not run is UNKNOWN, never green.
   not (§11.2).
 - **Names are still read where an edge exists** (§11.1): the lowered program's
   identity is a spelling, so the reach walks walk names and the emit resolves
-  a callee's spelling through the scope again; the judgment re-resolves
-  references it linked.
+  a callee's spelling through the scope again; the judgment still names an
+  op's effect at a continuation boundary, the substrate's fast path and the
+  desugar's prelude vocabulary.
 - **A module sees its whole import closure** (§11.3): visibility is the closure,
   so a user cannot declare a name the prelude declares, one namespace is paid
   for in prefixes, and the compiler recognizes library effects by their
@@ -640,7 +641,9 @@ a provenance diff, a search over live shared cells.
 1. **A reference is an edge, and nothing re-resolves it — M1 whole, with M5**
    (`Hβ.lower.reach-edge-on-node`, `Hβ.emit.symbol-is-the-declarations`). The
    judgment draws the edge at the one writer (`graph_ref_link`), and the scope,
-   the gradient, the value walk, the caret and the facets read it. What still
+   the gradient, the value walk, the caret, the facets, a call's binding
+   (`callee_binding`) and an install's handler read it — an install resolves
+   its handler once, before its body is judged (`install_decl`). What still
    reads names: (a) the lowered program's identity is a spelling
    (`LFn(String, …)`), so the three reach walks (`reach_entry_names`,
    `plan_reached`, `reach_units`) walk names, and the emit asks the schedule's
@@ -648,17 +651,12 @@ a provenance diff, a search over live shared cells.
    (`fanout_reach_known`) — the form is a lowered unit keyed by its
    declaration's handle, reachability the edge followed from `main`, a symbol
    read off its declaration (`$module.name`, nested paths `.`-joined), and the
-   name-keyed walks deleted, a TRANSITION; (b) a call reads its callee's
-   binding off the edge (`callee_binding`), but an install reads its handler
-   by spelling (`chain_of`, `handler_arms_of`, `handler_e_r`, `answer_reason`,
-   `ages_install`) because the body is judged before the handler side's
-   reference is linked — the install resolves its handler once, first, and
-   every reader takes the declaration; a continuation boundary asks its op's
-   effect by spelling (`op_effect_of`), and the substrate fast path and the
-   desugar's prelude vocabulary name their callees; (c) the proposer's rings
-   and its declaration index key by the binding's declaration. Gate: `mentl
-   query src/main.mn unreachable` names the same set read off the edge, and
-   m3 == m4.
+   name-keyed walks deleted, a TRANSITION; (b) a continuation boundary asks
+   its op's effect by spelling (`op_effect_of`), and the substrate fast path
+   and the desugar's prelude vocabulary name their callees; (c) the proposer's
+   rings and its declaration index key by the binding's declaration. Gate:
+   `mentl query src/main.mn unreachable` names the same set read off the
+   edge, and m3 == m4.
 2. **Every position is a cell — #108** (`Hβ.graph.positions-are-cells`). A
    pattern's constructor, a type annotation's name, a row's effect name and a
    handler arm's op name are nodes that draw the same edge, so `refs of` a
@@ -757,7 +755,11 @@ a provenance diff, a search over live shared cells.
     swallow an op nobody reads. A handler's config parameter named in the
     instance position serves that instance alone (`handler sample_at(rate) with
     Sample(rate)`), refused statically at an install a provably distinct claim
-    reaches.
+    reaches. A handler named as a value is its record
+    (`Hβ.effects.handler-value-is-its-record`): `let h = one` binds it, a
+    parameter holds it, and an install of a value pushes the record it holds
+    and absorbs the effect its `Handler(P, A)` type names — today the value's
+    emit names a global nothing defines, and the module does not assemble.
 11. **The medium authors the migration — iteration is topology**
     (`Hβ.wheel.iteration-is-topology`). The costume detector convicts index flow
     (a parameter threaded ±k into an index read), with let-chains, nested-call

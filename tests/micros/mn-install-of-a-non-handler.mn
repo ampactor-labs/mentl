@@ -1,0 +1,21 @@
+// expect: refuse E_TypeMismatch
+// AN INSTALL'S RIGHT SIDE IS A HANDLER, resolved along the edge it draws. A
+// field read is no reference to a handler, and an Int is no handler, so
+// `~> r.zero` refuses where it stands. Measured on boot 7010a2a9 before the
+// install read its handler off the edge: the judgment read the handler by
+// the right side's SPELLING, the field's name, so the install borrowed the
+// absorption of the handler `zero`; `mentl check` was clean, the executable
+// compiled, and it ran to a memory fault reading evidence no install had
+// pushed (exit 134).
+effect Ask {
+  ask() -> Int
+}
+
+handler zero {
+  ask() => resume(0),
+}
+
+fn main() = {
+  let r = {zero: 5}
+  ask() + 1 ~> r.zero
+}

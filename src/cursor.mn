@@ -850,7 +850,7 @@ fn allowed_row_at(path, k, effs) = {
 // the hole, which the path already knows.
 fn absorbed_step(path, acc, i) with !Mutate = match graph_node_body(list_index(path, i)) {
   NExpr(PipeExpr(PTee, left, right)) => if left == list_index(path, i + 1) {
-    match handler_arms_of(right) {
+    match tee_arms(right) {
       Some(arms) => name_set_union(acc, derive_handler_enames(arms, 0, [])),
       None => acc,
     }
