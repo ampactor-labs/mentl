@@ -34,3 +34,8 @@ fn stored() = {
 }
 
 fn main() = both(3) + stage(5) + ticks() + ramp(2) + open(9) + later() + len(greeting()) + stored()
+
+fn shadowed(xs) = {
+  let xs = 5
+  xs + xs
+}

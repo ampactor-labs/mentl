@@ -1921,9 +1921,8 @@ for i in "${!compilers[@]}"; do
   fi
   run_program "$compiler" threaded-branch-state-read \
     "$ROOT/tests/frontier/mn-threaded-branch-state-read.mn" 14 yes "$dir"
-  # Two branches storing into ONE buffer they both capture: a race with no
-  # handler between, read off the store's target — memory older than the
-  # branch (exit 3 on boot 65e2f966, which declared this leg red).
+  # Two branches storing into ONE buffer they both capture: a race read off the
+  # store's target, older than the branch (exit 3 on boot 65e2f966).
   run_refusal_linked "$compiler" threaded-branch-captured-store \
     "$ROOT/tests/frontier/mn-threaded-branch-captured-store.mn" E_ThreadedBranchEffect "$dir"
   if grep -q 'stores into memory older than itself at' "$dir/threaded-branch-captured-store.compile.err" 2>/dev/null; then
@@ -3017,10 +3016,11 @@ for i in "${!compilers[@]}"; do
     fail "caret why (got: $(printf '%s' "$cpar" | grep -A1 '^Why'); see $dir/caret.err)"
   fi
   cwhere=$( (cd "$cdemo" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$cdemo" --dir /tmp "$compiler" where walk.mn inv 2>>"$dir/caret.err") | head -1)
-  if [ "$cwhere" = "→ inv(own n: Positive) -> Int  at walk:11" ]; then
-    pass "where answers where (the declaration's address beside its head)"
+  cshadow=$( (cd "$cdemo" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$cdemo" --dir /tmp "$compiler" where walk.mn shadowed 2>>"$dir/caret.err") | head -1)
+  if [ "$cwhere" = "→ inv(own n: Positive) -> Int  at walk:11" ] && [ "$cshadow" = "→ shadowed(xs: a) -> Int  at walk:38" ]; then
+    pass "where answers where (the declaration's address beside its head; a parameter only a shadowing binder's spelling reads is unmarked — ref on boot 59f854f1)"
   else
-    fail "where answers where (got: $cwhere; see $dir/caret.err)"
+    fail "where answers where (got: $cwhere / $cshadow; see $dir/caret.err)"
   fi
   if printf '%s' "$cx" | grep -q '^Topology: branch 1 of 2 of the >< at walk:15:15, inside the source of the |> at walk:15:14$' \
      && printf '%s' "$cstage" | grep -q '^Topology: stage 2 of 2 of the |> at walk:17:15$' \

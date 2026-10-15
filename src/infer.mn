@@ -2990,7 +2990,7 @@ fn infer_fn(name, params, body_node, ret_ann, effs, handle, span: ValidSpan, pol
     TVar(_) => hand_on_value(body_node),
     _ => (),
   }
-  let inferred_params = infer_ownership(resolved_params, body_node)
+  let inferred_params = infer_ownership(resolved_params, param_handles, body_node)
   graph_bind(
     handle,
     // The ret slot carries the SAME pinned value the pre-body signature

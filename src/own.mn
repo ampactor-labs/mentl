@@ -488,22 +488,33 @@ fn find_first_span(ref sites, ref name: String) = {
 // the Usage lattice unification the types.mn ADT comment names): never
 // consumed and never read → `Unmarked`; never consumed but read → `Ref`;
 // consumed exactly once on every path → `Own`; consumed more → `Ref`.
-fn infer_ownership(ref params, ref body) = map(
-  (p) => {
-    let inferred = match param_authored(p) {
-      Unmarked => classify_usage(param_name(p), body),
-      _ => param_authored(p),
-    }
-    // Only the resolved-ownership slot is written; type, name, authored
-    // marker, and default travel unchanged BY CONSTRUCTION via the updater
-    // (Carried-Truth — dropping the default would lose the param's `= expr`
-    // fallback at every call site; param_with_resolved cannot drop it).
-    param_with_resolved(p, inferred)
-  },
-  list_to_flat(params)
-)
+fn infer_ownership(params, binders, body) =
+  zip(list_to_flat(params), binders) |> map(param_ownership(body, ??))
 
-fn classify_usage(ref name, ref body) = match usage_of(name, body, MConsume) {
+// Only the resolved-ownership slot is written; type, name, authored marker
+// and default travel unchanged BY CONSTRUCTION via the updater (Carried-Truth
+// — dropping the default would lose the param's `= expr` fallback at every
+// call site; param_with_resolved cannot drop it).
+fn param_ownership(body, pair) = match pair {
+  (p, binder) => param_with_resolved(
+    p,
+    match param_authored(p) {
+      Unmarked => classify_usage(binder, body),
+      Own => Own,
+      Ref => Ref,
+    }
+  ),
+}
+
+// A parameter nothing reads is unmarked without a walk: its uses are its
+// binder's in-edges.
+fn classify_usage(binder, body) = if len(graph_refs_of(binder)) == 0 {
+  Unmarked
+} else {
+  classify_pair(usage_of(binder, body, MConsume))
+}
+
+fn classify_pair(usage) = match usage {
   (consume, read) => match consume {
     UZero => match read {
       UZero => Unmarked,
@@ -549,19 +560,22 @@ fn pair_join(a, b) = match a {
 // (infer.mn) is this walk's sibling over the same lattice — they stay two
 // walks because resume carries call-substitution this walk must not, and
 // this walk carries mode resume must not (the stamped two-walks ruling).
-fn usage_of(ref name: String, ref node, mode) = match graph_node_body(node) {
-  NExpr(VarRef(n)) => if n == name { use_leaf(mode) } else { pair_zero() },
-  NExpr(CallExpr(f, args)) => pair_seq(usage_of(name, f, MRead), usage_args(name, args, callee_borrow_params(f), 0)),
-  NExpr(BinOpExpr(_, l, r)) => pair_seq(usage_of(name, l, mode), usage_of(name, r, mode)),
-  NExpr(UnaryOpExpr(_, inner)) => usage_of(name, inner, mode),
+fn usage_of(ref binder, ref node, mode) = match graph_node_body(node) {
+  NExpr(VarRef(_)) => if graph_ref_decl(node) == Some(binder) { use_leaf(mode) } else { pair_zero() },
+  NExpr(CallExpr(f, args)) => pair_seq(usage_of(binder, f, MRead), usage_args(binder, args, callee_borrow_params(f), 0)),
+  NExpr(BinOpExpr(_, l, r)) => pair_seq(usage_of(binder, l, mode), usage_of(binder, r, mode)),
+  NExpr(UnaryOpExpr(_, inner)) => usage_of(binder, inner, mode),
   NExpr(IfExpr(c, t, e)) => // The condition is read to PICK the branch (⊗ before), and exactly
   // one branch runs (⊔ across) — the two laws the additive sum broke.
-  pair_seq(usage_of(name, c, MRead), pair_join(usage_of(name, t, mode), usage_of(name, e, mode))),
-  NExpr(BlockExpr(stmts, final_e)) => pair_seq(usage_elems(name, stmts, mode), usage_of(name, final_e, mode)),
+  pair_seq(
+    usage_of(binder, c, MRead),
+    pair_join(usage_of(binder, t, mode), usage_of(binder, e, mode))
+  ),
+  NExpr(BlockExpr(stmts, final_e)) => pair_seq(usage_elems(binder, stmts, mode), usage_of(binder, final_e, mode)),
   NExpr(LambdaExpr(_, lb)) => // A closure runs 0..N times: a consume inside widens to UMany (the
   // borrow-safe Ref direction); reads stay reads. The body opens in
   // consume mode — its own positions re-derive from there.
-  match usage_of(name, lb, MConsume) {
+  match usage_of(binder, lb, MConsume) {
     (c, r) => match c {
       UZero => (UZero, r),
       _ => (UMany, r),
@@ -572,38 +586,38 @@ fn usage_of(ref name: String, ref node, mode) = match graph_node_body(node) {
   // the completed call is the runtime truth, and a divergence here
   // surfaces as an E_UseAfterMove refusal, which is now the arbiter —
   // the zero ratchet that used to arbitrate it retired into the arming).
-  pair_seq(usage_of(name, l, mode), usage_of(name, r, mode)),
+  pair_seq(usage_of(binder, l, mode), usage_of(binder, r, mode)),
   NExpr(FanoutExpr(branches)) => // Parallel branches ALL run — ⊗, exactly the ledger's BParallel
   // collision semantics (consumed in two branches is consumed twice).
-  usage_elems(name, branches, mode),
+  usage_elems(binder, branches, mode),
   NExpr(RestExpr(_)) => pair_zero(),
-  NExpr(MatchExpr(s, arms)) => pair_seq(usage_of(name, s, MRead), usage_arms(name, arms, mode)),
-  NExpr(MakeListExpr(elems)) => usage_elems(name, elems, mode),
-  NExpr(MakeTupleExpr(elems)) => usage_elems(name, elems, mode),
-  NExpr(MakeStringExpr(fragments)) => usage_elems(name, fragments, mode),
-  NExpr(ShowExpr(inner)) => usage_of(name, inner, mode),
+  NExpr(MatchExpr(s, arms)) => pair_seq(usage_of(binder, s, MRead), usage_arms(binder, arms, mode)),
+  NExpr(MakeListExpr(elems)) => usage_elems(binder, elems, mode),
+  NExpr(MakeTupleExpr(elems)) => usage_elems(binder, elems, mode),
+  NExpr(MakeStringExpr(fragments)) => usage_elems(binder, fragments, mode),
+  NExpr(ShowExpr(inner)) => usage_of(binder, inner, mode),
   NExpr(IndexExpr(receiver, index)) => // xs[i] is the seq-op borrow: receiver and index are reads.
-  pair_seq(usage_of(name, receiver, MRead), usage_of(name, index, MRead)),
-  NExpr(MakeRecordExpr(flds)) => usage_flds(name, flds, mode),
+  pair_seq(usage_of(binder, receiver, MRead), usage_of(binder, index, MRead)),
+  NExpr(MakeRecordExpr(flds)) => usage_flds(binder, flds, mode),
   NExpr(RecordUpdateExpr(base, flds)) => // {...base, f: v} copies non-destructively — the base is READ.
-  pair_seq(usage_of(name, base, MRead), usage_flds(name, flds, mode)),
-  NExpr(NamedRecordExpr(_, flds)) => usage_flds(name, flds, mode),
+  pair_seq(usage_of(binder, base, MRead), usage_flds(binder, flds, mode)),
+  NExpr(NamedRecordExpr(_, flds)) => usage_flds(binder, flds, mode),
   NExpr(FieldExpr(rec, _)) => // A field access reads the record; what the enclosing mode consumes
   // is the value read OUT, never the record itself.
-  usage_of(name, rec, MRead),
+  usage_of(binder, rec, MRead),
   NExpr(LitInt(_)) => pair_zero(),
   NExpr(LitFloat(_)) => pair_zero(),
   NExpr(LitString(_)) => pair_zero(),
   NExpr(LitBool(_)) => pair_zero(),
   NExpr(LitUnit) => pair_zero(),
-  NExpr(ResumeExpr(v, _)) => usage_of(name, v, mode),
-  NExpr(LabeledArg(_, v)) => usage_of(name, v, mode),
+  NExpr(ResumeExpr(v, _)) => usage_of(binder, v, mode),
+  NExpr(LabeledArg(_, v)) => usage_of(binder, v, mode),
   NExpr(ExprPlaceholder) => pair_zero(),
   NStmt(LetStmt(_, v, _)) => // The binding's value embeds under the binder — a consume-shape use.
   // The deleted additive count's `NStmt(_) => 0` blanket missed EVERY
   // statement-level use; the walk descends.
-  usage_of(name, v, MConsume),
-  NStmt(ExprStmt(e)) => usage_of(name, e, mode),
+  usage_of(binder, v, MConsume),
+  NStmt(ExprStmt(e)) => usage_of(binder, e, mode),
   NStmt(FnStmt(_, _, _, _, _)) => // A nested fn declaration is not an execution (resume_grade's own
   // ruling); its capture-and-call usage stays uncounted — parity with
   // the deleted count, Ref-safe when it under-counts.
@@ -625,62 +639,55 @@ fn usage_of(ref name: String, ref node, mode) = match graph_node_body(node) {
 // ⊗ over a node list (block stmts, list/tuple/string elems, parallel
 // branches): all evaluate on one path. last/drop_last are the O(1)
 // snoc-end reads and both pair ops are order-insensitive — the exact
-// shape of resume_grade's grade_nodes (a named walk, not a fold lambda:
-// usage_of performs EnvRead, and an effectful lambda is the anonymity
-// tier's own conviction).
-fn usage_elems(ref name, ref nodes, mode) = if len(nodes) == 0 {
+// shape of resume_grade's grade_nodes.
+fn usage_elems(ref binder, ref nodes, mode) = if len(nodes) == 0 {
   pair_zero()
 } else {
-  pair_seq(usage_of(name, last(nodes), mode), usage_elems(name, drop_last(nodes), mode))
+  pair_seq(usage_of(binder, last(nodes), mode), usage_elems(binder, drop_last(nodes), mode))
 }
 
 // ⊔ over match arms ((pat, body) tuples): exactly one arm runs.
-fn usage_arms(ref name, ref arms, mode) = if len(arms) == 0 {
+fn usage_arms(ref binder, ref arms, mode) = if len(arms) == 0 {
   pair_zero()
 } else {
   match last(arms) {
-    (_, b) => pair_join(usage_of(name, b, mode), usage_arms(name, drop_last(arms), mode)),
+    (_, b) => pair_join(usage_of(binder, b, mode), usage_arms(binder, drop_last(arms), mode)),
   }
 }
 
 // ⊗ over record fields ((name, value) tuples).
-fn usage_flds(ref name, ref flds, mode) = if len(flds) == 0 {
+fn usage_flds(ref binder, ref flds, mode) = if len(flds) == 0 {
   pair_zero()
 } else {
   match last(flds) {
-    (_, v) => pair_seq(usage_of(name, v, mode), usage_flds(name, drop_last(flds), mode)),
+    (_, v) => pair_seq(usage_of(binder, v, mode), usage_flds(binder, drop_last(flds), mode)),
   }
 }
 
-// The callee's param product, when readable: a VarRef callee resolved in
-// env to an arrow scheme. None (a lambda/expr callee, an env miss, a
-// non-arrow) mirrors the arg walk's callee-miss borrow guard: every bare
-// arg reads.
+// The callee's param product, when readable: the binding published at the
+// declaration or binder the callee's edge reaches, an arrow scheme. None (a
+// lambda or expression callee, a reference nothing answers, a non-arrow)
+// mirrors the arg walk's callee-miss borrow guard: every bare arg reads.
 //
 // The read goes THROUGH the posture, and that is load-bearing rather than
-// tidy. A frozen entry is a snapshot taken when the callee finished; a live
-// one is the callee's own cell, and the shallow chase to its bound node is
-// the layer's live read (own.mn sits below infer, so judgment_ty — which
+// tidy. A frozen binding is a snapshot taken when the callee finished; a
+// live one is the callee's own cell, and the shallow chase to its bound node
+// is the layer's live read (own.mn sits below infer, so judgment_ty — which
 // would also run the quantifier split this reader has no use for — is not
-// in scope). Reading only the frozen shape here was what the two-pass
-// tower's trial/final divergence was MADE of: when the entry was not yet
-// an arrow the answer was None, every bare arg read, the grade landed
-// ref, and the second judgment flipped it to own. With one judgment
-// (2026-09-17) the read is the shape at this moment, and the callee-first
-// walk makes it an arrow for every acyclic callee before its callers ask.
-fn callee_borrow_params(ref f) with !Mutate = match graph_node_body(f) {
-  NExpr(VarRef(cn)) => match env_lookup(cn) {
-    Some(entry) => match entry {
-      (scheme, _, _) => match scheme {
-        Frozen(_, TFun(ps, _, _)) => Some(ps),
-        Frozen(_, TVar(h)) => chased_borrow_params(h),
-        Live(h) => chased_borrow_params(h),
-        _ => None,
-      },
+// in scope). With one judgment the read is the shape at this moment, and the
+// callee-first walk makes it an arrow for every acyclic callee before its
+// callers ask.
+fn callee_borrow_params(f) with !Mutate = match graph_ref_decl(f) {
+  Some(d) => match graph_published(d) {
+    Some((scheme, _, _)) => match scheme {
+      Frozen(_, TFun(ps, _, _)) => Some(ps),
+      Frozen(_, TVar(h)) => chased_borrow_params(h),
+      Live(h) => chased_borrow_params(h),
+      _ => None,
     },
     None => None,
   },
-  _ => None,
+  None => None,
 }
 
 // A cell's arrow, one hop: the params when the bound node is a function,
@@ -695,13 +702,13 @@ fn chased_borrow_params(h) = match graph_chase(h) {
 // slot pairing is positional (infer_call_arg_list's own idiom); a labeled
 // arg resolves its param by NAME, exactly as resolve_call_args does one
 // phase earlier.
-fn usage_args(ref name, ref args, borrow_slots, i) = if i >= len(args) {
+fn usage_args(ref binder, ref args, borrow_slots, i) = if i >= len(args) {
   pair_zero()
 } else {
   let arg = list_index(args, i)
   pair_seq(
-    usage_of(name, arg, arg_slot_mode(arg, borrow_slots, i)),
-    usage_args(name, args, borrow_slots, i + 1)
+    usage_of(binder, arg, arg_slot_mode(arg, borrow_slots, i)),
+    usage_args(binder, args, borrow_slots, i + 1)
   )
 }
 

@@ -440,7 +440,7 @@ landing that closes it. A gate that did not run is UNKNOWN, never green.
 - **Names are still read where an edge exists** (§11.1): the lowered program's
   identity is a spelling, so the reach walks walk names and the emit resolves
   a callee's spelling through the scope again; the judgment re-resolves
-  references it linked; `usage_of` counts by name.
+  references it linked.
 - **A module sees its whole import closure** (§11.3): visibility is the closure,
   so a user cannot declare a name the prelude declares, one namespace is paid
   for in prefixes, and the compiler recognizes library effects by their
@@ -650,11 +650,10 @@ a provenance diff, a search over live shared cells.
    read off its declaration (`$module.name`, nested paths `.`-joined), and the
    name-keyed walks deleted, a TRANSITION; (b) the judgment re-resolves by name
    references it has linked (`callee_name`, `env_lookup` at call sites,
-   `op_effect_of`'s readers), and each reads the edge instead; (c) `usage_of`
-   (src/own.mn) counts uses by name, and reads the declaration's in-edges
-   instead; (d) the proposer's rings and its declaration index key by the
-   binding's declaration. Gate: `mentl query src/main.mn unreachable` names the
-   same set read off the edge, and m3 == m4.
+   `op_effect_of`'s readers), and each reads the edge instead; (c) the
+   proposer's rings and its declaration index key by the binding's
+   declaration. Gate: `mentl query src/main.mn unreachable` names the same set
+   read off the edge, and m3 == m4.
 2. **Every position is a cell — #108** (`Hβ.graph.positions-are-cells`). A
    pattern's constructor, a type annotation's name, a row's effect name and a
    handler arm's op name are nodes that draw the same edge, so `refs of` a
