@@ -232,9 +232,11 @@ fn board_bounds() = [
   // their rosters. 1,228 when the lowering's reach came to follow the edges
   // (2026-10-15): the name-keyed readers and dead declarations M1's later
   // pins deleted took their catch-alls with them, and so did the map that
-  // keyed every top-level statement by spelling. It falls to zero where the
-  // migration lands (`Hβ.match.catch-all-over-a-sum-is-the-roster`).
-  Bound({ceiling: 1228, question: QCensus(CsWildcardOverSum)}),
+  // keyed every top-level statement by spelling; 1,226 when the gate read an
+  // effect's ops off its declaration rather than scanning every binding. It
+  // falls to zero where the migration lands
+  // (`Hβ.match.catch-all-over-a-sum-is-the-roster`).
+  Bound({ceiling: 1226, question: QCensus(CsWildcardOverSum)}),
   // Drift mode 15 — a value given a leading-underscore name instead of being
   // deleted. The rename silences the reader, never the fact that nothing
   // reads it.

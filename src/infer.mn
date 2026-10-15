@@ -14245,7 +14245,11 @@ fn handler_missing_ops(en: String, arms) = filter(
   effect_op_names(en)
 )
 
-// An effect declaration's ops, read off its env entry.
+// An effect declaration's ops in declaration order — the order a handler's
+// arm region is laid out in — read off its env entry. Effects register after
+// types, so the effect answers where a type shares its name (`effect Sample`
+// beside `type Sample`); a name no effect declares has no ops, which is the
+// honest answer, never a fabricated list.
 fn effect_op_names(en: String) = match env_lookup(en) {
   Some(entry) => match entry {
     (_, _, EffectDeclKind(ops, _)) => ops,

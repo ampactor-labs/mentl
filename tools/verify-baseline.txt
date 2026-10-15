@@ -1455,11 +1455,11 @@ selfcompile_peak_kb_max: 477000
 # peak RSS differed — so it is the memory ratchet no machine moves, refused
 # on a breach by `read_line` (tools/march.sh) with no re-measure. A landing
 # that breaches it pays the cost down, never raises it. Held at 1% over the
-# landed form's 377,913 KB (2026-10-15), set where the module is written:
-# the lowering's reach, keyed by declaration with each root's reads an extent
-# of their own, holds the line at the 328,975 KB it entered with, and with
-# its roots in the walk's one region it set the high-water (443,820 KB).
-selfcompile_line_peak_kb_max: 381700
+# landed form's 363,329 KB (2026-10-15), set where the module is written: the
+# lowering's reach holds the line it entered with, each root's reads an extent
+# of their own (one region for all of them set the peak at 443,820 KB), and the
+# gate reads an effect's ops off its declaration, never a snapshot of the env.
+selfcompile_line_peak_kb_max: 367000
 # THE HEAD ROUND TRIP (render lane, 2026-10-06): module-level function heads,
 # formatter's and eye's, that do not come back as themselves through
 # parse∘render. Born at the measured 92 of 4,550 (the base renderer: 787 of
