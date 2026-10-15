@@ -1566,12 +1566,16 @@ fn test_check_run(entry_module) =
 // ones surface-and-emit per the sound-incomplete contract; the battery
 // judges the JUDGMENT, never stricter than the medium). This contract
 // is the frontier bash's dissolution channel: a refusal leg becomes a
-// fixture the medium reads itself.
+// fixture the medium reads itself. `// unreachable: a b` is a facet's
+// contract: the fn declarations of the fixture's own layer that `main`
+// cannot reach, in source order, exactly — the deletion instruction the
+// unreachable facet gives a person.
 type Expect
   = ExpectRun(Int)
   | ExpectRefuse(String)
   | ExpectPropose(Int, Int, ProposeWant)
   | ExpectTeach(Int, TeachWant)
+  | ExpectUnreachable(String)
 
 // A teach fixture's contract (D4): what the gradient answers at the
 // declaration on line L — one proven annotation whose source is the text,
@@ -1597,6 +1601,8 @@ fn battery_expect(src) = {
     battery_propose_expect(src)
   } else if byte_len(src) >= 9 && str_eq(str_slice(src, 0, 9), "// teach ") {
     battery_teach_expect(src)
+  } else if byte_len(src) >= 16 && str_eq(str_slice(src, 0, 16), "// unreachable: ") {
+    Some(ExpectUnreachable(battery_line_rest(src, 16, 16)))
   } else if byte_len(src) < 12 {
     None
   } else if !str_eq(str_slice(src, 0, 11), prefix) {
@@ -1745,6 +1751,23 @@ fn battery_teach_step(stem, path: String, line, want) = battery_view(
     },
   }
 )
+
+// THE REACH BATTERY: the fixture's link judged as the query verb judges it,
+// and the names `mentl query <fixture> unreachable` lists compared to the
+// contract's, in source order. The rows are read inside the judgment that
+// holds the graph; only the names cross out of it.
+fn battery_reach_step(stem, path: String, want: String) = {
+  let dead = match driver_entry_with_ranges(path) {
+    (_ast, _ranges) => reach_report(module_cells()) |> filter(unref_row_is_dead) |> map({ (_, n, _) => n }) |> join(" ", ??),
+  } ~> cursor_default ~> synth_default ~> interrogate_default ~> mentl_default ~> diag_bank ~> infer_context
+  if str_eq(dead, want) {
+    print_string("PASS {stem}: unreachable {want}\n")
+    0
+  } else {
+    print_string("FAIL(unreachable) {stem}: wanted {want}, got {dead}\n")
+    1
+  }
+}
 
 // The eight-aspect view at a fixture's address — the one read both
 // contracts judge, built as the CLI's `mentl <file>:<line>:<col>` builds it
@@ -1928,6 +1951,7 @@ fn battery_step(path: String) = {
       // as the CLI's address form hands it over (path_to_module, cli.mn).
       battery_propose_step(stem, path_to_module(path), line, col, want),
       ExpectTeach(line, want) => battery_teach_step(stem, path_to_module(path), line, want),
+      ExpectUnreachable(want) => battery_reach_step(stem, path_to_module(path), want),
       ExpectRun(want) => match battery_compile(path_to_module(path), stem) {
         (left, nerr, _) => match left {
           BatteryRefused => {

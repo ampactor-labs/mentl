@@ -1,0 +1,20 @@
+// unreachable: helper_dead shadow
+// The dead code `mentl query <entry> unreachable` names: the fn declarations
+// of the entry's own layer that the edges drawn from `main` never reach.
+// `table` runs before `main`, so what its init calls is live; the nested
+// `shadow` is main's own, so the module's `shadow` is dead; and the library
+// beneath the program is never this program's dead code.
+let table = build(3)
+
+fn build(n) = n * 2
+
+fn helper_dead() = 1
+
+fn shadow() = 5
+
+fn live(x) = x + 1
+
+fn main() = {
+  fn shadow() = 3
+  live(shadow())
+}

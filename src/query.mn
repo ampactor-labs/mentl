@@ -826,10 +826,6 @@ fn decl_links_of(d) = match graph_node_body(d) {
   _ => [],
 }
 
-fn link_name(link) = match link {
-  (name, _) => name,
-}
-
 // A reference stands inside a declaration when the declaration is among its
 // ancestors — the parent edge read, never a span compared without its module.
 fn ref_within(d, r) with !Mutate = if r == d {
@@ -891,31 +887,50 @@ fn decl_ref_verdict(path: String, stmt, link) with !Mutate = match link {
 // ─── unreachable — unreferenced's transitive face ───────────────────
 //
 // UNREFERENCED is one hop: a fn kept alive only by other dead fns reads
-// referenced. When the wheel's second judgment pass came out (2026-09-17)
-// its 32 dead fns were found by grepping the emitted WAT for what the
-// emitter dropped — a projection this verb was one facet from holding,
-// and the grep is the confession this facet answers. The edges are the
-// frees DAG the judgment already orders by (collect_free_vars, the walk
-// scc_groups takes its binding groups from), walked from `main` exactly
-// as emit's reachable_from_main walks it; a module without main is the
-// library path, where every decl is a root and nothing is unreachable.
-// Rows are fn decls only — the unit emit keeps or drops. A type reached
-// only through a signature has no frees edge; that is unreferenced's
-// read, not this walk's.
+// referenced. This walks the reference edges the judgment drew, from `main`
+// and from every module value let — each runs before `main` — and a module
+// without main is the library path, where every decl is a root and nothing
+// is unreachable. Rows are the fn decls of the entry's own LAYER: the
+// program a person asks about, never the library beneath it, which is a
+// surface every program calls and whose runtime the emit calls by spelling.
+// A type reached only through a signature draws no reference edge; that is
+// unreferenced's read, not this walk's.
 fn reach_report(cells) = {
   let decls = list_to_flat(fold([], ur_cell_decls, cells))
-  let n = len(decls)
-  let idx = ur_index(decls, 0, n, smap_new())
-  match smap_get(idx, "main") {
+  match find(ur_is_main, decls) {
     None => [],
-    Some(_) => ur_rows(
-      decls,
-      ur_walk(decls, idx, ["main"] ++ refine_roots(decls), smap_new(), smap_new()),
-      0,
-      n,
-      []
-    ),
+    Some(entry) => match entry {
+      (_, main_d, layer) => {
+        let roots = [main_d] ++ refine_roots(decls) ++ flat_map(ur_value_let, decls)
+        ur_rows(decls, layer, ur_walk(roots, wmap_new(4096), wmap_new(1024)))
+      },
+    },
   }
+}
+
+fn ur_is_main(entry) = match entry {
+  (_, d, _) => stmt_decl_name(d) == "main",
+}
+
+// A module value let runs in the module's init before `main`, so it is a
+// root whether or not `main` names it.
+fn ur_value_let(entry) = match entry {
+  (_, d, _) => match graph_node_body(d) {
+    NStmt(s) => match s {
+      LetStmt(_, _, _) => [d],
+      FnStmt(_, _, _, _, _)
+      | TypeDefStmt(_, _)
+      | EffectDeclStmt(_, _, _)
+      | HandlerDeclStmt(_, _, _, _, _, _)
+      | HandlerChainStmt(_, _)
+      | ImportStmt(_)
+      | RefineStmt(_, _, _)
+      | AliasStmt(_, _)
+      | RowAliasStmt(_, _)
+      | ExprStmt(_) => [],
+    },
+    NExpr(_) | NPat(_) | NHole(_) | NModule(_) | NTypeAnn(_) => [],
+  },
 }
 
 // A REFINEMENT PREDICATE IS A ROOT. Before it was one, this walk reported
@@ -930,26 +945,28 @@ fn reach_report(cells) = {
 // INSTRUCTION, so under-reporting reachability is the one direction it may
 // never be wrong in, and it was.
 //
-// The root cause is one constructor: `free_vars_stmt` (src/parser.mn) answers
-// `RefineStmt(_, _, _) => []`, so a predicate's references reach nothing. That
-// is the SAME shape as the `HandlerDeclStmt => []` that took the single-pass
-// landing's m4 leg to a trap — one arm over in the same match —  and it is
-// still live for the judgment's own callee-first DAG ordering, where a
-// refinement calling a later-declared fn has no edge.
-// `Hβ.parser.refine-stmt-frees-are-empty` carries that half; this is the
-// facet's, fixed here because the facet is what people act on.
-//
-// SEEDED AS ROOTS rather than as edges from the type's uses, deliberately: a
-// `where` clause is discharged wherever its type is annotated, and the walk
-// cannot cheaply know where. Over-approximating is the safe direction for a
-// report whose output is "delete this".
-fn refine_roots(decls) = decls |> map(refine_decl_names) |> flatten
+// A predicate is not judged as an expression, so its references draw no edge
+// (`Hβ.types.predicate-is-expr`): the names it spells resolve at the link's
+// own scope, the text boundary where a person typed them. SEEDED AS ROOTS
+// rather than as edges from the type's uses, deliberately: a `where` clause
+// is discharged wherever its type is annotated, and the walk cannot cheaply
+// know where. Over-approximating is the safe direction for a report whose
+// output is "delete this".
+fn refine_roots(decls) = decls |> flat_map(refine_decl_names) |> flat_map(refine_root)
 
 fn refine_decl_names(entry) = match entry {
-  (_, d) => match graph_node_body(d) {
+  (_, d, _) => match graph_node_body(d) {
     NStmt(RefineStmt(_, _, pred)) => predicate_names(pred),
     _ => [],
   },
+}
+
+fn refine_root(name: String) = match env_resolve_linked(name) {
+  Some(d) => match enclosing_decl(d) {
+    Some(s) => [s],
+    None => [],
+  },
+  None => [],
 }
 
 // The names a Predicate references, walked through the handles it carries —
@@ -984,93 +1001,122 @@ fn handle_var_names(h) = {
 }
 
 fn ur_cell_decls(acc, cell) = match cell {
-  (_h, path, _, ds) => acc ++ map((d) => (path, d), ds),
+  (h, path, _, ds) => {
+    let layer = module_layer_of_handle(h)
+    acc ++ map((d) => (path, d, layer), ds)
+  },
 }
 
-// name -> decl index, every declared name (a ctor or an op leads to its
-// declaring node, which has no frees — a harmless leaf).
-fn ur_index(ref decls, i, n, idx) = if i >= n {
-  idx
-} else {
-  match decls[i] {
-    (_, d) => ur_index(decls, i + 1, n, fold(idx, (m, link) => smap_add(m, link_name(link), i), decl_links_of(d))),
-  }
-}
-
-// The worklist: pop a name, mark it, push the frees of its declaration —
+// The worklist: pop a declaration, mark it, push what its references reach —
 // except a DISPATCHED handler's arms, which run only when something reached
-// performs their operation: each arm's frees park under its op's name and are
-// released when that name is reached. Walking every arm of a reached handler
-// kept two Format operations nothing performs alive, with the whole-graph
-// parent scan one of them carried (measured 2026-10-02). A schedule class's
-// arms stay reached with the handler — the lowering performs them on a
-// fanout's behalf, and no source name ever does — read off the one roster
-// the judgment and the lowering classify an install by.
-fn ur_walk(ref decls, idx, work, reached, parked) = match work {
+// performs their operation: each arm's reach parks under its op's declaration
+// and is released when a reached reference performs that op. Walking every
+// arm of a reached handler kept two Format operations nothing performs alive,
+// with the whole-graph parent scan one of them carried (measured 2026-10-02).
+// A schedule class's arms stay reached with the handler — the lowering
+// performs them on a fanout's behalf, and no source name ever does — read off
+// the one roster the judgment and the lowering classify an install by.
+fn ur_walk(work, reached, parked) = match work {
   [] => reached,
-  [name, ...more] => match smap_get(reached, name) {
-    Some(_) => ur_walk(decls, idx, more, reached, parked),
+  [d, ...more] => match wmap_get(reached, d) {
+    Some(_) => ur_walk(more, reached, parked),
     None => {
-      let now = smap_add(reached, name, 1)
-      let released = flatten(smap_get_all(parked, name))
-      match smap_get(idx, name) {
-        None => ur_walk(decls, idx, more ++ released, now, parked),
-        Some(i) => match decls[i] {
-          (_, d) => match ur_decl_frees(d, now) {
-            (frees, park) => ur_walk(decls, idx, more ++ released ++ frees, now, fold(parked, ur_park, park)),
-          },
-        },
+      wmap_add(reached, d, 1)
+      let released = flatten(wmap_get_all(parked, d))
+      match ur_decl_edges(d, reached) {
+        (now, park) => ur_walk(more ++ released ++ now, reached, fold(parked, ur_park, park)),
       }
     },
   },
 }
 
-// A declaration's frees to walk now, and the arms it parks as (op, frees).
-fn ur_decl_frees(d, reached) = match graph_node_body(d) {
+// A declaration's reach to walk now, and the arms it parks as (op, reach). A
+// parameter's default and a handler's config default are its parts though no
+// child projection holds them.
+fn ur_decl_edges(d, reached) = match graph_node_body(d) {
   NStmt(HandlerDeclStmt(_, _, config, state, arms, _)) => match projection_of_effects(handler_effect_names(arms)) {
-    PDispatch => {
-      let cfg = free_vars_param_names(config)
-      let in_arms = cfg ++ map({ st => st.name }, state)
-      fold(
-        (flatten(map({ st => collect_free_vars(st.init, cfg) }, state)), []),
-        ur_arm(reached, in_arms, ??, ??),
-        arms
-      )
-    },
-    _ => (collect_free_vars(d, []), []),
+    PDispatch => fold(
+      (flat_map(ur_targets(d, ??), ur_defaults(config) ++ map({ st => st.init }, state)), []),
+      ur_arm(reached, d, ??, ??),
+      arms
+    ),
+    _ => (ur_targets(d, d) ++ flat_map(ur_targets(d, ??), ur_defaults(config)), []),
   },
-  _ => (collect_free_vars(d, []), []),
+  NStmt(FnStmt(_, params, _, _, _)) => (ur_targets(d, d) ++ flat_map(ur_targets(d, ??), ur_defaults(params)), []),
+  _ => (ur_targets(d, d), []),
 }
 
-fn ur_arm(reached, in_arms, acc, arm) = match acc {
+fn ur_defaults(params) = flat_map(
+  {
+    p => match param_default(p) {
+      Some(n) => [n],
+      None => [],
+    },
+  },
+  params
+)
+
+// An arm's op is a spelling with no node (`Hβ.graph.positions-are-cells`), so
+// it resolves at the link's own scope, the text boundary.
+fn ur_arm(reached, self, acc, arm) = match acc {
   (now, park) => {
-    let frees = collect_free_vars(arm.body, in_arms ++ arm.args)
-    match smap_get(reached, handler_arm_op_name(arm)) {
-      Some(_) => (now ++ frees, park),
-      None => (now, push(park, (handler_arm_op_name(arm), frees))),
+    let reach = ur_targets(self, arm.body)
+    match env_resolve_linked(handler_arm_op_name(arm)) {
+      Some(op) => match wmap_get(reached, op) {
+        Some(_) => (now ++ reach, park),
+        None => (now, push(park, (op, reach))),
+      },
+      None => (now ++ reach, park),
     }
   },
 }
 
 fn ur_park(parked, entry) = match entry {
-  (op, frees) => smap_add(parked, op, frees),
+  (op, reach) => wmap_add(parked, op, reach),
 }
 
-fn ur_rows(ref decls, reached, i, n, acc) = if i >= n {
-  acc
-} else {
-  match decls[i] {
-    (path, d) => match graph_node_body(d) {
-      NStmt(FnStmt(name, _, _, _, _)) => {
-        let hit = match smap_get(reached, name) {
-          Some(_) => 1,
-          None => 0,
-        }
-        ur_rows(decls, reached, i + 1, n, push(acc, (path, name, hit)))
-      },
-      _ => ur_rows(decls, reached, i + 1, n, acc),
+// What the references under H reach, past SELF's own declarations: a perform
+// reaches its op's declaration, which releases the arms parked under it, and
+// every other reference the top-level declaration holding what it names. A
+// binder no module holds (a lambda's parameter, an arm's argument) reaches
+// nothing to walk.
+fn ur_targets(self, h) = {
+  let here = match graph_ref_decl(h) {
+    Some(t) => match ref_op_effect(h) {
+      Some(_) => [t],
+      None => ur_holder(self, t),
     },
+    None => [],
   }
+  here ++ flat_map(ur_targets(self, ??), body_child_handles(graph_node_body(h)))
+}
+
+fn ur_holder(self, t) = match enclosing_decl(t) {
+  Some(s) => if s == self { [] } else { [s] },
+  None => [],
+}
+
+// The rows of the entry's own layer: each fn declaration, reached or not.
+fn ur_rows(decls, layer, reached) = decls |> flat_map(ur_row(layer, reached, ??))
+
+fn ur_row(layer, reached, entry) = match entry {
+  (path, d, l) => if l == layer {
+    match graph_node_body(d) {
+      NStmt(FnStmt(name, _, _, _, _)) => [
+        (
+          path,
+          name,
+          match wmap_get(reached, d) {
+            Some(_) => 1,
+            None => 0,
+          }
+        )
+      ],
+      _ => [],
+    }
+  } else {
+    []
+  },
 }
 
 // ─── The claims prose makes that the refs column refutes ─────────────

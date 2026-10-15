@@ -641,12 +641,15 @@ a provenance diff, a search over live shared cells.
    (`Hβ.lower.reach-edge-on-node`, `Hβ.emit.symbol-is-the-declarations`). The
    judgment draws the edge at the one writer (`graph_ref_link`), and the scope,
    the gradient, the value walk, the caret, the facets, a call's binding
-   (`callee_binding`), an install's handler, the proposer's candidates and the
-   lowering's reach read it — an install resolves its handler once, before
-   its body is judged (`install_decl`), a candidate is minted linked to the
-   declaration it proposes (`linked_ref`), each lowered reference leads to its
-   declaration's statement (`ref_target`), and an op's sole handler is its
-   declaration on the op's scheme. What still reads names: (a) the lowered
+   (`callee_binding`), an install's handler, the proposer's candidates, the
+   lowering's reach and the unreachable facet read it — an install resolves
+   its handler once, before its body is judged (`install_decl`), a candidate
+   is minted linked to the declaration it proposes (`linked_ref`), each
+   lowered reference leads to its declaration's statement (`ref_target`), an
+   op's sole handler is its declaration on the op's scheme, and the facet
+   walks from `main` and the module value lets over the edges, naming the
+   dead code of the entry's own layer (`reach_report`). What still reads
+   names: (a) the lowered
    program's identity is a spelling (`LFn(String, …)`), so a call the
    lowering mints at a borrowed site — `map` where the source wrote `fanout`
    — is told from the reference's own projection by its spelling, the emit's
@@ -663,8 +666,7 @@ a provenance diff, a search over live shared cells.
    judgment charges each as resolved at the link's own scope and the lowering
    calls the symbol the spelling names — the form is the sugar node's edge to
    the primitive's declaration, drawn where the sugar is judged, the symbol
-   (a) reads. Gate: `mentl query src/main.mn unreachable` names the same set
-   read off the edge, and m3 == m4.
+   (a) reads. Gate: m3 == m4 with the name-keyed walks deleted.
 2. **Every position is a cell — #108** (`Hβ.graph.positions-are-cells`). A
    pattern's constructor, a type annotation's name, a row's effect name and a
    handler arm's op name are nodes that draw the same edge, so `refs of` a

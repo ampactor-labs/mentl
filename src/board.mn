@@ -292,7 +292,9 @@ fn board_bounds() = [
   // pin (2026-10-14): the query's index walks over names left with the
   // name-keyed refs. 181 → 180 (2026-10-15): a cycle's settlements read its
   // members' handles, taken once, rather than indexing the statements again.
-  Bound({ceiling: 180, question: QVerifyDebt}),
+  // 180 → 177 the same day: the unreachable facet walks the reference edges,
+  // and its index walks over a name table left with the table.
+  Bound({ceiling: 177, question: QVerifyDebt}),
   // The iteration costumes — a function that threads an incremented index
   // through its own self-call, the imperative loop in recursion's costume
   // (CLAUDE.md Anchor 6). 390 when the detector was born on 2026-07-30, 490
