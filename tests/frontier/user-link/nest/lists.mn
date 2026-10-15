@@ -1,0 +1,4 @@
+// A module of the program's own, named as the library's list module is: two
+// files one name spells are two modules of the link, each its own node, so
+// the library's lists keeps its imports and the program's is its own.
+fn shelf() = 5

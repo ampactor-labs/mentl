@@ -68,28 +68,25 @@ type Viewed = {
   tights: [(EffRow, EffRow, String, Span, String)],
 }
 
-// The module the address names, as the judgment left it, or a refusal on
-// stderr (the process log on every transport): a module not in the link,
-// or one that minted no module node.
-fn viewed(ranges, target: String) = match range_of_module(ranges, target) {
+// The module the address names, as the judgment left it — its node, the
+// caller's one resolution of the name a person typed — or a refusal on
+// stderr (the process log on every transport) where no module was read for
+// the name. The text is the one the module's judgment read, which every span
+// of the module indexes.
+fn viewed(found, target: String) = match found {
   None => {
     eprint_string("mentl: {target} did not load — nothing to project\n")
     None
   },
-  Some(r) => match r {
-    (_m, _p, text) => match graph_module_now(target) {
-      None => {
-        eprint_string("mentl: {target} is in the weave but minted no module node — nothing to address\n")
-        None
-      },
-      Some(mh) => Some(Viewed({
-        name: target,
-        node: mh,
-        spans: spans_of_module(span_index_of_snapshot(), mh),
-        text,
-        tights: module_tightenings(target),
-      })),
-    },
+  Some(mh) => {
+    let m = module_of(mh)
+    Some(Viewed({
+      name: m.path,
+      node: mh,
+      spans: spans_of_module(span_index_of_snapshot(), mh),
+      text: m.text,
+      tights: module_tightenings(m.path),
+    }))
   },
 }
 
@@ -1382,7 +1379,7 @@ type Addressed = AddressNode(Viewed, Span, Int) | AddressField(Viewed) | Address
 // README's own voice.mn:9 answers OVER its unresolved name mix — an env
 // miss binds NErrorHole and the graph still projects). A module's first
 // line is 1, because its spans are its own.
-fn address_locate(ranges, target: String, line, col) = match viewed(ranges, target) {
+fn address_locate(found, target: String, line, col) = match viewed(found, target) {
   None => AddressRefused,
   Some(m) => match m {
     Viewed(v) => {
@@ -1413,7 +1410,7 @@ fn address_locate(ranges, target: String, line, col) = match viewed(ranges, targ
 // The address surface's projection — `mentl <file>:<line>[:<col>]`: the
 // ring at the node, or the ranked field of the whole file at line 0. The
 // exit code is the verdict.
-fn address_project(ranges, target: String, line, col) = match address_locate(ranges, target, line, col) {
+fn address_project(found, target: String, line, col) = match address_locate(found, target, line, col) {
   AddressRefused => 1,
   AddressField(Viewed(v)) => {
     field_text(space_field_view(v))
@@ -1427,7 +1424,7 @@ fn address_project(ranges, target: String, line, col) = match address_locate(ran
 
 // The space verb's projection — `mentl space <file>:<line>[:<col>]`: the
 // View as one JSON line on stdout; the same resolution, the same refusals.
-fn space_project(ranges, target: String, line, col, needle) = match address_locate(ranges, target, line, col) {
+fn space_project(found, target: String, line, col, needle) = match address_locate(found, target, line, col) {
   AddressRefused => 1,
   AddressField(Viewed(v)) => {
     print("{view_json(space_module_view(v, needle))}\n")
@@ -1442,7 +1439,7 @@ fn space_project(ranges, target: String, line, col, needle) = match address_loca
 // The node an address names, for a verb that acts there rather than
 // projecting it — the accept and the battery's view read the one resolution
 // the projections read, so each lands exactly where the address projects.
-fn address_node(ranges, target: String, line, col) = match address_locate(ranges, target, line, col) {
+fn address_node(found, target: String, line, col) = match address_locate(found, target, line, col) {
   AddressNode(_, _, ph) => Some(ph),
   AddressField(_) => None,
   AddressRefused => None,

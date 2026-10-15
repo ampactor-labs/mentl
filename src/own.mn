@@ -553,6 +553,7 @@ fn usage_of(ref binder, ref node, mode) = match graph_node_body(node) {
   NPat(_) => pair_zero(),
   NHole(_) => pair_zero(),
   NModule(_) => pair_zero(),
+  NLink(_) => pair_zero(),
   NTypeAnn(_) => pair_zero(),
   NName(_) => pair_zero(),
 }

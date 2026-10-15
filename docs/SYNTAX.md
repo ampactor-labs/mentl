@@ -2506,7 +2506,13 @@ own imports probe from where IT was found — a user module's folder, a library
 module's root — so `sub/b`'s `import c` is `sub/c.mn` beside it, and the
 entry's `import sub/c` is the same file: the walk keys a module by the path a
 spelling resolved to, so two spellings of one file are one module and one
-edge (`tests/frontier/user-link/nest` holds the shape). A repository-relative
+edge, and one spelling of two files is two modules — a program's own
+`lists.mn` beside the library's (`tests/frontier/user-link/nest` holds both
+shapes). Each module is a node of the program's link, and an import is an
+edge to the node it resolved to, never a name matched again (real,
+2026-10-15: the library's `lists` was matched by name to a program's own
+`lists.mn`, and every program holding a module of that name refused
+`E_MissingImport`). A repository-relative
 spelling (`lib/lists`) names a module only where the program's own folder
 holds the repository's layout; the library's name is `lists`.
 

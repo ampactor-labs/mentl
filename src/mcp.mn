@@ -264,12 +264,15 @@ fn mcp_tools_result() = JObj([
 // verdict is a SUCCESSFUL tool result whether the gate proved or refused
 // (isError is reserved for a malformed call); the head line + the
 // diagnostic lines are the content.
-fn mcp_tool_call(id, params, ast, ranges, at_read) = {
+fn mcp_tool_call(id, params, at_read) = {
   let name = match json_obj_get(params, "name") {
     Some(JStr(s)) => s,
     // drift-audit: ignore — the protocol-null sentinel: no real tool name is empty, and the match below refuses "" with -32602
     _ => "",
   }
+  // The session's reads answer over the link the graph holds; a server
+  // started outside a project judged none.
+  let absent = len(link_modules()) == 0
   match name {
     "propose" => {
       let srco = match json_obj_get(params, "arguments") {
@@ -306,7 +309,7 @@ fn mcp_tool_call(id, params, ast, ranges, at_read) = {
         ),
       }
     },
-    "at" => if len(ranges) == 0 {
+    "at" => if absent {
       mcp_response(
         id,
         JObj([
@@ -342,7 +345,7 @@ fn mcp_tool_call(id, params, ast, ranges, at_read) = {
           // The SAME address core the CLI serves, under the collecting
           // console — the transport is the install (at_read is the
           // closure main.mn built where the renders live).
-          let banked = at_read(ranges, float_to_int(lf), col)
+          let banked = at_read(float_to_int(lf), col)
           mcp_response(
             id,
             JObj([
@@ -365,7 +368,7 @@ fn mcp_tool_call(id, params, ast, ranges, at_read) = {
         ),
       }
     },
-    "frontier" => if len(ranges) == 0 {
+    "frontier" => if absent {
       mcp_response(
         id,
         JObj([
@@ -387,7 +390,7 @@ fn mcp_tool_call(id, params, ast, ranges, at_read) = {
     } else {
       // The field read (address line 0 — the whole ranked absence
       // field) through the same at transport.
-      let banked = at_read(ranges, 0, 1)
+      let banked = at_read(0, 1)
       mcp_response(
         id,
         JObj([
@@ -396,7 +399,7 @@ fn mcp_tool_call(id, params, ast, ranges, at_read) = {
         ])
       )
     },
-    "audit" => if len(ranges) == 0 {
+    "audit" => if absent {
       mcp_response(
         id,
         JObj([
@@ -417,9 +420,9 @@ fn mcp_tool_call(id, params, ast, ranges, at_read) = {
       )
     } else {
       // The SAME projection the CLI's audit verb serves (audit_project,
-      // one home) over the RESIDENT entry ast — no derivation, a living
-      // read.
-      let text = audit_project(ast)
+      // one home) over the declarations of the module the session holds —
+      // no derivation, a living read.
+      let text = audit_project(link_entry_decls())
       mcp_response(
         id,
         JObj([
@@ -428,7 +431,7 @@ fn mcp_tool_call(id, params, ast, ranges, at_read) = {
         ])
       )
     },
-    "teach" => if len(ranges) == 0 {
+    "teach" => if absent {
       mcp_response(
         id,
         JObj([
@@ -449,8 +452,9 @@ fn mcp_tool_call(id, params, ast, ranges, at_read) = {
       )
     } else {
       // teach_project — the gradient's next-annotation read, the CLI
-      // verb's own projection over the resident entry ast.
-      let text = teach_project(ast)
+      // verb's own projection over the declarations of the module the
+      // session holds.
+      let text = teach_project(link_entry_decls())
       mcp_response(
         id,
         JObj([
@@ -459,7 +463,7 @@ fn mcp_tool_call(id, params, ast, ranges, at_read) = {
         ])
       )
     },
-    "query" => if len(ranges) == 0 {
+    "query" => if absent {
       mcp_response(
         id,
         JObj([
@@ -524,17 +528,17 @@ fn mcp_params_of(req) = match json_obj_get(req, "params") {
   None => JObj([]),
 }
 
-fn mcp_request(id, method, params, ast, ranges, at_read) = match method {
+fn mcp_request(id, method, params, at_read) = match method {
   "initialize" => mcp_response(id, mcp_initialize_result(params)),
   "tools/list" => mcp_response(id, mcp_tools_result()),
-  "tools/call" => mcp_tool_call(id, params, ast, ranges, at_read),
+  "tools/call" => mcp_tool_call(id, params, at_read),
   "ping" => mcp_response(id, JObj([])),
   _ => mcp_error(id, -32601, "method not found: {method}"),
 }
 
 // A message without an id is a notification (initialized, cancelled, …):
 // consumed, never answered — the empty response line is the no-response.
-fn mcp_dispatch(req, ast, ranges, at_read) = {
+fn mcp_dispatch(req, at_read) = {
   let method = match json_obj_get(req, "method") {
     Some(JStr(s)) => s,
     // drift-audit: ignore — the protocol-null sentinel: no real method is empty, and mcp_request refuses "" with -32601
@@ -542,12 +546,12 @@ fn mcp_dispatch(req, ast, ranges, at_read) = {
   }
   match json_obj_get(req, "id") {
     None => "",
-    Some(id) => mcp_request(id, method, mcp_params_of(req), ast, ranges, at_read),
+    Some(id) => mcp_request(id, method, mcp_params_of(req), at_read),
   }
 }
 
-fn mcp_handle(line, ast, ranges, at_read) = match json_parse(line) {
-  JOk(req, _) => mcp_dispatch(req, ast, ranges, at_read),
+fn mcp_handle(line, at_read) = match json_parse(line) {
+  JOk(req, _) => mcp_dispatch(req, at_read),
   JErr(m, pos) => mcp_error(JNull, -32700, "parse error at byte {int_to_str(pos)}: {m}"),
 }
 
@@ -565,79 +569,51 @@ fn strip_cr(line) = {
 // module whose text moved and everything downstream of it, the warm
 // compile's own cone (driver_session_cone) — re-registration shadows
 // the stale entries (the env's latest edge wins, the B-i incremental
-// law), the new generation's nodes join the living image, and (ast,
-// ranges, manifest) replace. NEVER a restore: the swap-crossing law's
-// third constraint IS this form — the image stays the session's own
-// memory, and the update is durable growth. The no-project session
-// passes through untouched. Named residue: a DELETED decl's env entry
-// lingers until a re-registration shadows it (env has no unregister;
-// the epoch/arena face retires it).
-fn session_current(ast, ranges, manifest) = if len(ranges) == 0 {
-  (ast, ranges, manifest)
+// law), the new generation's nodes join the living image and the link,
+// and the manifest replaces the banked one. NEVER a restore: the
+// swap-crossing law's third constraint IS this form — the image stays the
+// session's own memory, and the update is durable growth. Named residue: a
+// DELETED decl's env entry lingers until a re-registration shadows it (env
+// has no unregister; the epoch/arena face retires it).
+//
+// The check reads every module's text to hash it, and on an unmoved tree
+// nothing it allocated outlives the comparison: the bytes die with the
+// answer's arena (session_line_loop). Structural == over the word-triple
+// lists.
+fn session_current(manifest) = if driver_manifest() == manifest {
+  manifest
 } else {
-  // The check reads every module's text to hash it, and on an unmoved tree
-  // nothing it allocated outlives the comparison: the bytes die with the
-  // answer's arena (session_line_loop). Structural == over the word-triple
-  // lists — the sequence-of-struct eq walker's first wheel-internal consumer
-  // (the manifest_same hand walk dissolved into it, its written destiny).
-  if driver_manifest(ranges) == manifest {
-    (ast, ranges, manifest)
-  } else {
-    // The generation boundary's clear, BEFORE the re-judgment and only for
-    // the cone: the new judgment re-fires every report and re-accrues every
-    // obligation that still holds of the modules it re-judges; a stale
-    // generation's entries must not shadow the current truth (their spans
-    // belong to a tree that no longer exists), and a module outside the cone
-    // keeps its own.
-    match driver_session_cone("main", ranges, session_forget) {
-      (cone, r2) => {
-        eprint_string("session: tree moved — re-judged {names_join(cone)}; the graph is current\n")
-        // The modules the old link held and the new one does not are cleared
-        // the same way. The entry's own decls are read off its NModule node,
-        // the cone's fresh one.
-        session_prune(ranges, r2)
-        (driver_module_ast(ast, "main"), r2, driver_manifest(r2))
-      },
-    }
-  }
+  let cone = driver_session_cone("main", session_forget)
+  eprint_string("session: tree moved — re-judged {names_join(cone)}; the graph is current\n")
+  driver_manifest()
 }
 
-// The session's generation clear: the banked reports of the named modules
-// and the obligations raised in their current nodes go, and every other
-// module's stand. Handed to the cone as a value, so the re-judgment and a
-// module leaving the link clear both ledgers through this one function.
+// The session's generation clear, handed to the cone as a value: the banked
+// reports and the claims of each module node it is given go, and every other
+// module's stand. The cone hands it the nodes its judgment replaces, BEFORE
+// the judgment — a stale generation's entries must not shadow the current
+// truth, their spans belonging to a tree that no longer exists — and the
+// modules the new link no longer holds, which no judgment would ever clear:
+// a project opened over a lesson's session kept its libraries' reports, and
+// the Lens over the next four-line lesson held 519 of them (measured in the
+// browser, 2026-10-06).
 fn session_forget(modules) = {
-  diag_forget(modules)
-  forget_claims(modules)
+  diag_forget(map(module_name_of_handle, modules))
+  verify_forget(modules)
 }
 
-// A module that LEFT the link keeps nothing. The cone's clear forgets what is
-// re-judged; a module the new tree no longer links is never re-judged, so its
-// reports and claims stood for the session's life — measured in the browser
-// 2026-10-06: a project opened over a lesson's session brought its libraries'
-// reports in, and the Lens over the next four-line lesson held 519 of them.
-// The modules that left are the old link's less the new one's.
-fn session_prune(ranges, r2) = {
-  let linked = map(range_module, r2)
-  ranges |> map(range_module) |> filter({ m => !module_in(linked, m) }) |> session_forget
-}
-
-fn range_module(r) = match r {
-  (m, _, _) => m,
-}
-
-// The serve loop — a RAW recursion over the session triple (ast,
-// ranges, manifest — the battery_loop law holds; at_read is a stored
-// value). Each message is an ARENA (lib/arena.mn): the response prints
-// inside it, and its exit reclaims what the message allocated except
-// what it published — the next triple, and what it stored into older
+// The serve loop — a RAW recursion over the session's manifest (the
+// battery_loop law holds; at_read is a stored value). Each message is an
+// ARENA (lib/arena.mn): the response prints inside it, and its exit
+// reclaims what the message allocated except what it published — the next
+// manifest, and what it stored into older
 // memory: a read's parse nodes and any spine page they opened, a moved
 // tree's fresh generation, every one journaled where it was stored. So
 // the server's heap holds what the session learned and nothing else,
 // every propose's full compile included. read_stdin_line answers "" at
 // EOF; a blank line is outside the newline-delimited-JSON contract, so
 // "" ends the session on either reading.
-fn mcp_loop(ast, ranges, manifest, at_read, current) = {
+fn mcp_loop(manifest, at_read, current) = {
   let next = {
     let line = read_stdin_line()
     if byte_len(line) == 0 {
@@ -648,18 +624,15 @@ fn mcp_loop(ast, ranges, manifest, at_read, current) = {
       // absorbed by the session bracket — and the no-project path passes
       // the Pure identity, so the loop stays row-polymorphic and the
       // derivation effects never reach the bare root.
-      match current(ast, ranges, manifest) {
-        (a2, r2, m2) => {
-          let out = mcp_handle(strip_cr(line), a2, r2, at_read)
-          if byte_len(out) > 0 { print_string(out) }
-          Some((a2, r2, m2))
-        },
-      }
+      let m2 = current(manifest)
+      let out = mcp_handle(strip_cr(line), at_read)
+      if byte_len(out) > 0 { print_string(out) }
+      Some(m2)
     }
   } ~> arena
   match next {
     None => (),
-    Some((a2, r2, m2)) => mcp_loop(a2, r2, m2, at_read, current),
+    Some(m2) => mcp_loop(m2, at_read, current),
   }
 }
 
@@ -698,14 +671,9 @@ fn session_run(answer) = if driver_module_path("main") == None {
   eprint_string("mentl session: no resolvable main here — the session holds a project's living graph; run it in a project directory\n")
   1
 } else {
-  match driver_entry_with_ranges("main") {
-    (ast, ranges) => {
-      let entry = driver_module_ast(ast, "main")
-      let manifest = driver_manifest(ranges)
-      eprint_string("mentl session: graph resident on stdin — each line is a verb's argv, tab-joined; the answer is written before the next line is read\n")
-      session_line_loop(entry, ranges, manifest, answer, session_current)
-    },
-  }
+  driver_link("main")
+  eprint_string("mentl session: graph resident on stdin — each line is a verb's argv, tab-joined; the answer is written before the next line is read\n")
+  session_line_loop(driver_manifest(), answer, session_current)
   0
 } ~>
 // The filesystem is the OUTERMOST install: an arm's performs resolve outer
@@ -727,28 +695,26 @@ fn session_cost(before) =
 // complete at the moment the session reads again — exact by construction,
 // with no delimiter in the answer to strip. EOF (or an empty line, outside
 // the wire's grammar as in the mcp loop) ends the session.
-fn session_line_loop(ast, ranges, manifest, answer, current) = {
+fn session_line_loop(manifest, answer, current) = {
   let before = heap_mark()
   let next = {
     let line = strip_cr(read_stdin_line())
     if byte_len(line) == 0 {
       None
     } else {
-      match current(ast, ranges, manifest) {
-        (a2, r2, m2) => match answer(line, a2, r2, m2) {
-          (text, held) => {
-            print_string(text)
-            Some(held)
-          },
+      match answer(line, current(manifest)) {
+        (text, held) => {
+          print_string(text)
+          Some(held)
         },
       }
     }
   } ~> arena
   match next {
     None => (),
-    Some((a3, r3, m3)) => {
+    Some(m3) => {
       session_cost(before)
-      session_line_loop(a3, r3, m3, answer, current)
+      session_line_loop(m3, answer, current)
     },
   }
 }
@@ -797,19 +763,13 @@ fn mcp_run(at_read) = {
     fs_mkdir(".build")
     fs_mkdir(".build/mcp")
     if driver_module_path("main") != None {
-      match driver_entry_with_ranges("main") {
-        (ast, ranges) => {
-          eprint_string("session: graph resident — {int_to_str(len(ranges))} modules; queries answer live\n")
-          // The entry's own top-level nodes, cut once at session start —
-          // audit/teach project exactly these (the CLI's entry-parsed
-          // scope), never the whole weave's prelude/lib fns. The banked
-          // manifest is the tree identity this derivation answered;
-          // session_current compares against it per message.
-          mcp_loop(driver_module_ast(ast, "main"), ranges, driver_manifest(ranges), at_read, session_current)
-        },
-      }
+      driver_link("main")
+      eprint_string("session: graph resident — {int_to_str(len(link_modules()))} modules; queries answer live\n")
+      // The banked manifest is the tree identity this derivation answered;
+      // session_current compares against it per message.
+      mcp_loop(driver_manifest(), at_read, session_current)
     } else {
-      mcp_loop([], [], [], at_read, (a, r, m) => (a, r, m))
+      mcp_loop([], at_read, { m => m })
     }
   } ~> query_default ~> mentl_default ~> arm_state_ctx([], OneShot, None) ~> spec_registry ~> diag_bank ~> wasi_filesystem ~> infer_context
   0

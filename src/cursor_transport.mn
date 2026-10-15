@@ -512,7 +512,7 @@ handler patch_to_file with target_module = "" {
   patch_set_target(name) => resume() with target_module = name,
   write_module(module, text) => {
     module_write(module, text)
-    driver_entry_with_ranges(target_module)
+    driver_link(target_module)
     resume()
   },
 }

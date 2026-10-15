@@ -3447,16 +3447,16 @@ for i in "${!compilers[@]}"; do
   else
     fail "user link shim (exit=$ulsrc: $(grep -v '^verify:' "$dir/user-link-shim.err" | head -1 | cut -c1-140))"
   fi
-  # Two spellings of one file from one program — sub/c from the entry, c
-  # from its sibling in sub/ — are one module in the DAG: the walk keys the
-  # path it resolved, and a user module's own folder is its first root. RED
-  # on boot 454c3aaf: every importer probed the cwd first, so the entry's
-  # `import sub/b` was E_MissingModule (searched sub/b.mn, src/sub/b.mn,
-  # lib/sub/b.mn, …) with `seven` and `eight` unbound behind it.
+  # Two spellings of one file — sub/c from the entry, c from its sibling in
+  # sub/ — are one module (the walk keys the path it resolved, and a user
+  # module's own folder is its first root), and one name spelling two files
+  # — the program's lists.mn and the library's — is two: a module is a node
+  # of the link, its imports edges to nodes. RED on boot 037aea22: the
+  # library's `lists` was matched by name to the program's, E_MissingImport.
   cp -r "$ROOT/tests/frontier/user-link/nest" "$uld/"
   (cd "$uld" && MENTL_BOOT="$compiler" "$ulbin/mentl" run nest/a.mn >/dev/null 2>"$dir/user-link-nest.err"); ulnrc=$?
-  if [ "$ulnrc" = 15 ] && ! grep -qv '^verify:' "$dir/user-link-nest.err"; then
-    pass "user link: two spellings of one file are one module (nest/a.mn exits 15, silent)"
+  if [ "$ulnrc" = 20 ] && ! grep -qv '^verify:' "$dir/user-link-nest.err"; then
+    pass "user link: one file two spellings is one module, one name two files is two (nest/a.mn exits 20, silent)"
   else
     fail "user link nest (exit=$ulnrc: $(grep -v '^verify:' "$dir/user-link-nest.err" | head -1 | cut -c1-140))"
   fi
@@ -4729,16 +4729,16 @@ for i in "${!compilers[@]}"; do
   # ─── The module-set facet (`modules` — the DAG the driver proves on
   # every invocation and could show nobody; answering "which modules does
   # this entry pull" meant a shell transitive-closure loop over grep
-  # '^import'). It reads the weave's own NModule cells, so the count is
+  # '^import'). It reads the link node's own modules, so the count is
   # the judged set, not a re-walk of the filesystem. Born RED 2026-08-17
   # (the prior boot answered unknown-query). The fixture imports nothing
   # of its own, so the answer is the prelude floor plus itself, and the
   # named members pin that it is the real set and not a bare number.
   md_out=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" query "$ROOT/tests/frontier/mn-usage-grade.mn" "modules" 2>/dev/null)
-  if printf '%s' "$md_out" | grep -q "module(s) in the weave" \
+  if printf '%s' "$md_out" | grep -q "module(s) in the link" \
      && printf '%s' "$md_out" | grep -q "prelude" \
      && printf '%s' "$md_out" | grep -q "threading"; then
-    pass "modules facet: the weave's module set projects ($(printf '%s' "$md_out" | grep -o '[0-9]* module(s)' | head -1))"
+    pass "modules facet: the link's module set projects ($(printf '%s' "$md_out" | grep -o '[0-9]* module(s)' | head -1))"
   else
     fail "modules facet (got: $(printf '%s' "$md_out" | head -1))"
   fi

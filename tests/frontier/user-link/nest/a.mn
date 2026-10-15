@@ -1,7 +1,10 @@
 // The entry imports sub/b and sub/c, and b imports c as its sibling: two
 // spellings reach one file, and the DAG holds it once — seven is declared
-// once, and main answers 15, the process's exit code.
+// once. And it imports its own lists, which the library's list module shares
+// a name with: one name, two files, two modules. main answers 20, the
+// process's exit code.
 import sub/b
 import sub/c
+import lists
 
-fn main() = seven() + eight()
+fn main() = seven() + eight() + shelf()

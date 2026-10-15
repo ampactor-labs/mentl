@@ -324,17 +324,18 @@ fn map_debt_to_diagnostics(debt, i, n, acc_rev) with !Mutate = if i >= n {
   }
 }
 
-// handle_did_open — judge the opened module (and its import DAG) into the
-// session's graph, the one every later hover, definition and reference
-// reads. The judgment's writes land in serve_run's session-level handlers,
-// so they persist across the session; the client opens a document once, so
-// it is judged once, and an edit is not re-judged (change kind 0).
+// handle_did_open — judge the opened module's link into the session's graph,
+// the one every later hover, definition and reference reads: the document
+// and every module it reaches judged as one program, as the CLI judges it.
+// The judgment's writes land in serve_run's session-level handlers, so they
+// persist across the session; the client opens a document once, so it is
+// judged once, and an edit is not re-judged (change kind 0).
 fn handle_did_open(params) = {
-  driver_check(uri_to_module(lsp_extract_uri(params)))
+  driver_link(uri_to_module(lsp_extract_uri(params)))
   ()
 }
 
-// uri_to_module — the opened document's module name for driver_check. Strips
+// uri_to_module — the opened document's module name for driver_link. Strips
 // the file:// scheme (uri_to_path) and the .mn suffix; driver_module_path
 // re-adds .mn and resolves it (its DIRECT-read arm accepts an absolute or
 // relative path as itself), so an editor's file://<abs>/foo.mn reaches foo.mn

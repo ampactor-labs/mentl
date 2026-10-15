@@ -934,7 +934,7 @@ fn cl_op_names(ref ops, i, acc) = if i >= len(ops) {
 // reaches, and its facts are published at that cell like any declaration's.
 fn register_primitives() = {
   let here = graph_module_current()
-  match graph_module_now("prelude") {
+  match link_prelude() {
     Some(p) => graph_module_enter(p),
     None => (),
   }
@@ -1419,12 +1419,17 @@ handler poly_capture with held = [] {
   poly_captured() => resume(held),
 }
 
-// A single source IS a module — stdin's, the REPL line's, the march blob's.
-// There is no unattributed parse and therefore no absent case for any reader
-// to carry: the column is total because entering a module is what parsing is.
+// A single source IS a module — the REPL line's, a proposal the gate judges
+// — and the program a link of it alone: its declarations answer. There is no
+// unattributed parse and therefore no absent case for any reader to carry:
+// the column is total because entering a module is what parsing is.
 fn infer_program_converged(src) = {
-  enter_link_root(User)
-  infer_modules_converged([("<stdin>", [], src, User)])
+  let link = enter_link_root(User)
+  let start = graph_next()
+  let mh = mint_module("<stdin>", "<stdin>", src, User)
+  link_register(link, Some(mh), [mh], None)
+  infer_modules_converged([mh], start)
+  module_of(mh).decls
 }
 
 // ─── The per-module parse — one text per module, never one weave ─────────
@@ -1437,43 +1442,50 @@ fn infer_program_converged(src) = {
 // that threw away.
 //
 // One-namespace judgment never required one TEXT, only one ENV. So: parse each
-// module on its own, concatenate the DECL LISTS, judge as one program. Spans
+// module on its own, judge every module's declarations as one program. Spans
 // are local from birth because each lex starts at line 1, and the module is on
 // the node because the parse runs inside it.
 //
-// The NModule node is minted BEFORE its own parse so it can be entered, then
-// its body is re-registered with the decls that parse returned — exactly the
-// decls, with no span-containment filter, because there is no weave to cut.
-// The LINK'S OWN module, entered before anything else can mint or report.
-// Without it the window between graph install and the first per-file parse
-// has no module in force — discovery's E_MissingModule fires there — and the
-// readers would each need a "which file, if any" arm, which is the absent
-// case this column exists to not have. The link is a module: it is the
-// program the developer asked for, and the per-file parses enter their own
-// inside it.
+// THE LINK, entered before anything else can mint or report. Without it the
+// window between graph install and the first per-file parse has no module in
+// force — discovery's E_MissingModule fires there — and the readers would
+// each need a "which file, if any" arm, which is the absent case this column
+// exists to not have. Its members are registered once the walk has found
+// them (`link_register`).
 fn enter_link_root(layer) = {
   let rspan = Span(1, 0, 1, 0)
-  mint_node(NModule({decls: [], imports: [], layer, path: "<link>", span: rspan}), rspan) |> graph_module_enter
+  let link = mint_node(NLink({entry: None, layer, modules: [], prelude: None}), rspan)
+  graph_module_enter(link)
+  link
 }
 
-fn parse_modules(ref mods) = mods |> map(parse_one_module) |> flatten
+// The link's members, registered on its node: the module a person named, the
+// modules in the order the walk judged them, and the prelude.
+fn link_register(link, entry, modules, prelude) =
+  graph_register_node(link, NLink({...link_of(link), entry, modules, prelude}))
 
-// One module: (identity, import identities, source, layer). The imports are
-// the driver's resolved edges and the layer the root the driver found the
-// module under, both carried onto the NModule so the module DAG is graph
-// content read by identity — never an authored spelling re-resolved.
-fn parse_one_module(m) = match m {
-  (path, imports, text, layer) => {
-    let mspan = Span(1, 0, count_lines(text) + 2, 0)
-    let mh = mint_node(NModule({decls: [], imports, layer, path, span: mspan}), mspan)
-    graph_module_enter(mh)
-    // The parse is an ARENA (lib/arena.mn): it publishes the module's
-    // statements and the nodes it wrote into the graph, and the tokens and
-    // everything built on the way to them die at its exit.
-    let stmts = lex(text) |> parse_program |> import_set ~> arena
-    graph_register_node(mh, NModule({decls: stmts, imports, layer, path, span: mspan}))
-    stmts
-  },
+// A module's node, minted with its text before any module is parsed, so every
+// module can be an import edge of the others before one of them is judged.
+fn mint_module(name: String, file: String, text: String, layer) = {
+  let span = Span(1, 0, count_lines(text) + 2, 0)
+  mint_node(NModule({decls: [], file, imports: [], layer, path: name, span, text}), span)
+}
+
+// The module nodes a module's import lines reach, drawn on its node.
+fn module_imports_draw(mh, imports) = graph_register_node(mh, NModule({...module_of(mh), imports}))
+
+// One module parsed inside its node, its declarations registered there —
+// exactly the decls, with no span-containment filter, because there is no
+// weave to cut.
+fn parse_one_module(mh) = {
+  let m = module_of(mh)
+  graph_module_enter(mh)
+  // The parse is an ARENA (lib/arena.mn): it publishes the module's
+  // statements and the nodes it wrote into the graph, and the tokens and
+  // everything built on the way to them die at its exit.
+  let stmts = lex(m.text) |> parse_program |> import_set ~> arena
+  graph_register_node(mh, NModule({...m, decls: stmts}))
+  stmts
 }
 
 // THE ONE JUDGE (Hβ.infer.order-independent-verdicts): every judgment
@@ -1534,16 +1546,16 @@ fn parse_one_module(m) = match m {
 // The `passes:` line and the movers report both measured the second pass
 // and go with it; the movers ratchet reads zero because there is nothing
 // left for a scheme to move between.
-fn infer_modules_converged(ref mods) = {
-  let parse_start = graph_next()
-  let stmts = parse_modules(mods)
-  let parse_end = graph_next()
-  infer_program_once(stmts, parse_start, parse_end)
+//
+// The modules arrive as their nodes, minted from `start` on, so the judgment's
+// own generation begins where its modules were minted.
+fn infer_modules_converged(ref modules, start) = {
+  let stmts = modules |> map(parse_one_module) |> flatten
+  infer_program_once(stmts, start, graph_next())
   match diag_scope_of() {
     ScopeAll => eprint_string("heap: {heap_mark()} byte(s) when the judgment ends\n"),
     _ => (),
   }
-  stmts
 }
 
 // Every stmt's free-name list, collected once from the parse tree.
@@ -3593,6 +3605,7 @@ fn charge_word(body) = match body {
   NPat(_) => "the pattern",
   NHole(_) => "the hole",
   NModule(_) => "the module",
+  NLink(_) => "the link",
   NTypeAnn(_) => "the annotation",
   NName(_) => "the row",
 }
@@ -4382,6 +4395,7 @@ fn infer_expr(ref handle) = {
     // expression position — degenerate; NModule
     // is never itself an expression node
     NModule(_) => (),
+    NLink(_) => (),
     // an authored type annotation at expression
     // position — degenerate; NTypeAnn is read
     // directly by return-type/let-annotation call
@@ -6121,6 +6135,7 @@ fn instance_body(chain: String, body, copy, span: ValidSpan) = match body {
   NPat(p) => NPat(p),
   NTypeAnn(t) => NTypeAnn(t),
   NModule(m) => NModule(m),
+  NLink(l) => NLink(l),
   NName(written) => NName(written),
 }
 
@@ -13881,7 +13896,7 @@ fn resolve_written(h, ty, qmap, owner) = match graph_node_body(h) {
       },
     }
   },
-  NTypeAnn(_) | NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NName(_) => (ty, qmap),
+  NTypeAnn(_) | NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NName(_) => (ty, qmap),
 }
 
 // A written name linked where every declaration of the link is registered,
@@ -13895,7 +13910,7 @@ fn link_written(c) = {
       Some(d) => graph_ref_link(c, d),
       None => (),
     },
-    NTypeAnn(_) | NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NName(_) => (),
+    NTypeAnn(_) | NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NName(_) => (),
   }
   each(link_written, body_child_handles(graph_node_body(c)))
 }
@@ -15103,6 +15118,7 @@ fn collect_fn_decls(node, acc) = match graph_node_body(node) {
   NHole(_) => acc,
   NPat(_) => acc,
   NModule(_) => acc,
+  NLink(_) => acc,
   NTypeAnn(_) => acc,
   NName(_) => acc,
 }
@@ -15267,6 +15283,7 @@ fn resume_grade(node) = match graph_node_body(node) {
   NHole(_) => RNone,
   NPat(_) => RNone,
   NModule(_) => RNone,
+  NLink(_) => RNone,
   NTypeAnn(_) => RNone,
   NName(_) => RNone,
 }

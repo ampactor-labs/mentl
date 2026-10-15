@@ -163,7 +163,8 @@ fn spine_put_module(ref spine, h, m) = {
 // the row leak its comment names.
 fn spine_module_name(ref spine, spine_open, m) = match spine_body_at(spine, spine_open, m) {
   NModule(mm) => mm.path,
-  _ => {
+  NLink(_) => "<link>",
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NTypeAnn(_) | NName(_) => {
     out_of_range()
     ""
   },
@@ -209,12 +210,11 @@ fn module_unsuperseded(superseded, module) = match wmap_get(superseded, module) 
 fn born_outside(spine, spine_open, module: Int, handle) =
   spine_module_at(spine, spine_open, handle) != module
 
-fn handle_is_not(module: Int, handle: Int) = handle != module
-
 // The tree's own edge, child to parent: drawn here, where a parent's body
-// registers, for every node that body holds — a module's declarations
-// included. The cell is BIASED BY ONE like the module column's, since a
-// module node may be handle 0, and a virgin cell reads as no parent. Not
+// registers, for every node that body holds — a module's declarations and
+// the link's modules included. The cell is BIASED BY ONE like the module
+// column's, since a module node may be handle 0, and a virgin cell reads as
+// no parent. Not
 // trail-backed, for the module column's reason: a candidate a rolled-back
 // segment minted held only nodes minted in that segment, and a re-mint at
 // the same handle redraws its edge when its own parent registers. The last
@@ -222,6 +222,7 @@ fn handle_is_not(module: Int, handle: Int) = handle != module
 // is a child of the match its block becomes).
 fn spine_put_parents(spine, parent, body) = match body {
   NModule(m) => m.decls |> each(spine_put_parent(spine, ??, parent)),
+  NLink(l) => l.modules |> each(spine_put_parent(spine, ??, parent)),
   _ => body_child_handles(body) |> each(spine_put_parent(spine, ??, parent)),
 }
 
@@ -449,7 +450,7 @@ fn occurs_in_live(handle, ref ty) with !Mutate = match graph_branch_seed() {
 // costs one 4KB word-list per process and no write tests for it — and a
 // table minted lazily inside a speculation would be copied out of the
 // speculation's arena at its exit, a cost the eager one never pays.
-handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spine_open = spine_open0, trail = [], trail_len = 0, epoch = 0, next = 0, span_index = span_index0, checkpoint_stack = [], in_edges = wmap_new(4096), published = wmap_new(4096), decls_col = [], emitfns_col = [], emitfns_idx = [], emitfns_idx_covers = 0, sigs_col = [], holes_pend = [], holes_col = [], cur_module = 0, guard_diags = [], gates = wmap_new(1024), instances = wmap_new(1024), demands = wmap_new(1024), accepted = [], rows = wmap_new(1024), binders = wmap_new(1024), births = wmap_new(1024), late = wmap_new(1024), claims = wmap_new(1024), store_claims = wmap_new(1024), modules_now = smap_new(), superseded = wmap_new(64), modules_col = [] {
+handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spine_open = spine_open0, trail = [], trail_len = 0, epoch = 0, next = 0, span_index = span_index0, checkpoint_stack = [], in_edges = wmap_new(4096), published = wmap_new(4096), decls_col = [], emitfns_col = [], emitfns_idx = [], emitfns_idx_covers = 0, sigs_col = [], holes_pend = [], holes_col = [], cur_module = 0, guard_diags = [], gates = wmap_new(1024), instances = wmap_new(1024), demands = wmap_new(1024), accepted = [], rows = wmap_new(1024), binders = wmap_new(1024), births = wmap_new(1024), late = wmap_new(1024), claims = wmap_new(1024), store_claims = wmap_new(1024), modules_now = smap_new(), superseded = wmap_new(64), link_now = None {
   graph_chase(handle) => // checkpoint_stack is the speculation depth: each
   // graph_push_checkpoint pushes the current trail_len and each
   // graph_rollback pops it. A write with the stack empty is at the outermost
@@ -537,36 +538,36 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
   // COLUMN of the handle's own SpinePage. Every AST node registers here at
   // construction, so any handle resolves to its body live (graph_node_body)
   // — the incremental cursor keys per-module recomputation on the driver's
-  // tree scan and warm buckets, never a graph-side ledger. The
+  // tree scan, never a graph-side ledger. The
   // parse-written program projection, distinct from the mutable
   // union-find type cell in the same page's nodes column — one handle, one
   // page, six columns. In-place cell write: no trail, no state rebind.
   //
   // A MODULE node's registration is also where its generation turns over:
-  // the path's previous module node is SUPERSEDED here, the one moment the
+  // the file's previous module node is SUPERSEDED here, the one moment the
   // fact exists, so every read after it can ask "is this node current?" in
   // one word (graph_node_current) instead of walking the graph for module
-  // cells and keeping the last. The module column takes the handle in
-  // registration order, which is the order the walk it replaces kept, and
-  // the name-keyed columns drop what the superseded node's generation noted
-  // here too — once per supersession, so a read returns its column as it
-  // stands. Filtering at every read copied the column at every read, and
-  // the proof fragment reads the decls column at every global name it folds
-  // (module_let_const): the judgment ran 154 MB higher on the wheel's own
-  // source, where nothing is ever superseded.
+  // cells and keeping the last, and the name-keyed columns drop what the
+  // superseded node's generation noted here too — once per supersession, so
+  // a read returns its column as it stands. Filtering at every read copied
+  // the column at every read, and the proof fragment reads the decls column
+  // at every global name it folds (module_let_const): the judgment ran 154
+  // MB higher on the wheel's own source, where nothing is ever superseded. A
+  // LINK's registration makes it the link the graph holds.
   {
     spine_put_body(spine, handle, body)
     spine_put_parents(spine, handle, body)
     match body {
-      NModule(m) => match smap_get(modules_now, m.path) {
+      NModule(m) => match smap_get(modules_now, m.file) {
         Some(old) => if old == handle {
           resume()
         } else {
           let keep = born_outside(spine, spine_open, old, ??)
-          resume() with modules_now = smap_add(modules_now, m.path, handle), superseded = wmap_add(superseded, old, 1), modules_col = push(filter(handle_is_not(old, ??), modules_col), handle), decls_col = filter(keep, decls_col), in_edges = smap_retain(in_edges, in_edge_kept(keep, ??))
+          resume() with modules_now = smap_add(modules_now, m.file, handle), superseded = wmap_add(superseded, old, 1), decls_col = filter(keep, decls_col), in_edges = smap_retain(in_edges, in_edge_kept(keep, ??))
         },
-        None => resume() with modules_now = smap_add(modules_now, m.path, handle), modules_col = push(modules_col, handle),
+        None => resume() with modules_now = smap_add(modules_now, m.file, handle),
       },
+      NLink(_) => resume() with link_now = Some(handle),
       _ => resume(),
     }
   },
@@ -944,8 +945,8 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
   resume() with decls_col = push(decls_col, decl_handle),
   graph_decls_at() => resume(decls_col),
   graph_node_current(h) => resume(spine_current(spine, spine_open, superseded, h)),
-  graph_module_now(path) => resume(smap_get(modules_now, path)),
-  graph_modules() => resume(modules_col),
+  graph_module_now(file) => resume(smap_get(modules_now, file)),
+  graph_link() => resume(link_now),
   graph_hole_note(h) => // The value-holes column's pending half: lower's authored-hole arm is
   // the one writer (value-position is a lowering decision); the reach
   // drains it with each declaration it constructs.
@@ -2103,6 +2104,7 @@ fn body_child_handles(body) = match body {
   NPat(p) => pat_child_handles(p),
   NHole(_) => [],
   NModule(_) => [],
+  NLink(_) => [],
   NTypeAnn(ty) => written_cells(ty),
   NName(_) => [],
 }
@@ -2393,15 +2395,13 @@ fn stage_open_slots(right) = match graph_node_body(right) {
 // show anyone: answering "which modules does this entry pull?" meant a shell
 // transitive-closure loop over `grep '^import'`, re-deriving by name what the
 // graph holds by edge. That hand walk is what this projection retires, and it
-// is a read of the weave, never a second walk of the filesystem.
-// ONE CELL PER MODULE, as `(handle, path, span, decls)`, read off the module
-// column graph_register_node writes: every current module node, in the order
-// the modules were registered. A module's identity is what it RESOLVES TO,
-// never the node that happens to represent it — a later parse of a path
-// supersedes its earlier node at registration, so no consumer is handed two
-// cells for one module. This walked every handle in the graph for module
-// bodies and kept the last per path with a quadratic dedup, once per query —
-// and a resident session's walk lengthened with every generation it kept.
+// is a read of the link, never a second walk of the filesystem.
+// ONE CELL PER MODULE OF THE LINK, as `(handle, path, span, decls)`: the
+// modules of the program the graph holds, in the order the walk judged them.
+// A module that left the program on an edit is no member of the link that
+// replaced it, and a module a later parse of its file superseded is replaced
+// by that parse where the link was registered, so no consumer is handed a
+// module the program does not hold.
 //
 // The HANDLE leads because it is the module's identity and the other three
 // are projections of the node it names; the cell's DECLS ride out with its
@@ -2409,14 +2409,49 @@ fn stage_open_slots(right) = match graph_node_body(right) {
 // content re-derive it from text — which is how 52 dead imports sat unseen: a
 // grep cannot tell a used name from one named in a comment, and the graph
 // can.
-fn module_cells() with !Mutate = graph_modules() |> fold([], module_cell_of)
+fn module_cells() with !Mutate = link_modules() |> fold([], module_cell_of)
 
-// A module handle's cell. The column holds only handles registered as module
-// nodes, so the other arm keeps nothing.
+// A member of the link's cell. A link holds modules alone.
 fn module_cell_of(acc, h) with !Mutate = match graph_node_body(h) {
   NModule(m) => push(acc, (h, m.path, m.span, m.decls)),
-  _ => acc,
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NLink(_) | NTypeAnn(_) | NName(_) => out_of_range(),
 }
+
+// The program the graph holds, read off its link: its modules, the module a
+// person named and the prelude every module speaks. None of them before any
+// derivation.
+fn link_modules() with !Mutate = match graph_link() {
+  None => [],
+  Some(l) => link_of(l).modules,
+}
+
+fn link_entry() with !Mutate = match graph_link() {
+  None => None,
+  Some(l) => link_of(l).entry,
+}
+
+fn link_prelude() with !Mutate = match graph_link() {
+  None => None,
+  Some(l) => link_of(l).prelude,
+}
+
+// The link's record at its handle; a handle the graph holds as its link is a
+// link.
+fn link_of(l) with !Mutate = match graph_node_body(l) {
+  NLink(k) => k,
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NTypeAnn(_) | NName(_) => out_of_range(),
+}
+
+// A module's own record at its handle; an import edge and a member of the
+// link reach a module.
+fn module_of(mh) with !Mutate = match graph_node_body(mh) {
+  NModule(m) => m,
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NLink(_) | NTypeAnn(_) | NName(_) => out_of_range(),
+}
+
+// The program's declarations, every module's in the link's order: what a
+// compile lowers.
+fn link_program() with !Mutate = link_modules() |> flat_map({ mh => module_of(mh).decls })
 
 fn module_paths() with !Mutate = map({ (_h, p, _s, _d) => p }, module_cells())
 
@@ -2453,61 +2488,40 @@ fn enclosing_decl(h) with !Mutate = match graph_parent_of(h) {
 // is deleted with the span-read decay it served (2026-10-01).
 //
 // The whole module DAG's reachability in ONE graph walk (F0b, 2026-09-27):
-// every module cell, its direct import paths read off its own decls, and
-// each module's closure by a walk over that small graph. Built once per
-// judgment (infer_ctx caches it) so the per-reference import check is a
-// table read, never a graph scan per VarRef.
+// every module of the link and its closure along the import edges its node
+// holds. Built once per judgment (infer_ctx caches it) so the per-reference
+// import check is a table read, never a graph scan per VarRef.
 fn module_reach_table() = {
-  let cells = module_cells()
-  let ambient = ambient_closure(cells)
-  fold(wmap_new(64), reach_table_add(cells, ambient), cells)
+  let ambient = ambient_closure()
+  fold(wmap_new(64), reach_table_add(ambient), link_modules())
 }
 
-// The prelude is linked into every compile unasked (driver_collect_dag
-// seeds it before the entry), so its closure is every module's — the
-// ambient world, absent only where no prelude resolves.
-fn ambient_closure(cells) = match fold([], cell_handle_for("prelude"), cells) {
-  [] => [],
-  [ph, ..._] => module_closure(ph, cells),
+// The prelude is linked into every compile unasked (the link's prelude
+// edge), so its closure is every module's — the ambient world, absent only
+// where no prelude resolves.
+fn ambient_closure() = match link_prelude() {
+  None => [],
+  Some(p) => module_closure(p),
 }
 
 // One module's row of the table: the modules it reaches through import
 // edges, the ambient world included — for a reader asking of one module,
 // which builds no table for the rest.
-fn module_reach_of(mh: Int) with !Mutate = {
-  let cells = module_cells()
-  module_closure(mh, cells) ++ ambient_closure(cells)
-}
+fn module_reach_of(mh: Int) with !Mutate = module_closure(mh) ++ ambient_closure()
 
-fn reach_table_add(cells, ambient, table, cell) = match cell {
-  (h, _p, _s, _d) => wmap_add(table, h, module_closure(h, cells) ++ ambient),
-}
+fn reach_table_add(ambient, table, mh: Int) = wmap_add(table, mh, module_closure(mh) ++ ambient)
 
-fn module_closure(h, cells) = closure_walk(cells, [h], [])
+fn module_closure(mh: Int) = closure_walk([mh], [])
 
-fn closure_walk(cells, frontier, seen) = match frontier {
+// The walk along the import edges each module node holds — the edges the
+// driver drew where its walk resolved them, so no spelling is matched here.
+fn closure_walk(frontier, seen) = match frontier {
   [] => seen,
   [m, ...rest] => if handles_contain(seen, m) {
-    closure_walk(cells, rest, seen)
+    closure_walk(rest, seen)
   } else {
-    closure_walk(cells, rest ++ direct_import_handles(m, cells), push(seen, m))
+    closure_walk(rest ++ module_of(m).imports, push(seen, m))
   },
-}
-
-// A module's direct imports are the identities the driver resolved and
-// carried onto its NModule — read by identity against the cells, never an
-// authored spelling re-resolved here.
-fn direct_import_handles(m: Int, cells) = match graph_node_body(m) {
-  NModule(mod) => paths_to_handles(mod.imports, cells),
-  _ => [],
-}
-
-fn paths_to_handles(paths, cells) = fold([], path_handle_join(cells), paths)
-
-fn path_handle_join(cells, acc, path: String) = fold(acc, cell_handle_for(path), cells)
-
-fn cell_handle_for(path: String, acc, c) = match c {
-  (h, p, _s, _d) => if p == path { push(acc, h) } else { acc },
 }
 
 fn handles_contain(xs, h: Int) = any({ x => x == h }, xs)
@@ -2515,26 +2529,6 @@ fn handles_contain(xs, h: Int) = any({ x => x == h }, xs)
 fn reach_table_has(table, from: Int, to: Int) = match wmap_get(table, from) {
   None => false,
   Some(closure) => handles_contain(closure, to),
-}
-
-fn contains_path(paths, target) = if len(paths) == 0 {
-  false
-} else if last(paths) == target {
-  true
-} else {
-  contains_path(drop_last(paths), target)
-}
-
-fn import_paths_of_decls(decls) = decls |> filter_map_imports
-
-fn filter_map_imports(decls) = if len(decls) == 0 {
-  []
-} else {
-  let head_imports = match graph_node_body(last(decls)) {
-    NStmt(ImportStmt(p)) => [p],
-    _ => [],
-  }
-  head_imports ++ filter_map_imports(drop_last(decls))
 }
 
 // The total source the medium processed for this entry — the SUM of every

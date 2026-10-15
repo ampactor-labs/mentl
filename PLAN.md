@@ -429,7 +429,10 @@ landing that closes it. A gate that did not run is UNKNOWN, never green.
 
 - **The program is the graph, and its one-write operations are not all built.**
   A node is its handle (`type Node = Int`), a body holds its children as handles,
-  and everything the judgment learns about a node is a column at that handle; a
+  and everything the judgment learns about a node is a column at that handle;
+  the program itself is a node, the link, whose members are its module nodes,
+  each holding the text its judgment read and its imports as edges, and every
+  reader starts from it — the compile, the session, the address, the battery. A
   value reference is linked to the declaration it resolved to. A pattern is a
   node the judgment binds, its constructor linked the same way; a name written
   in a type is a node linked to the type it names, and so are an effect a

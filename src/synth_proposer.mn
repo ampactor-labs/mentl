@@ -376,37 +376,30 @@ fn refusal_words(refusal) = match refusal {
 }
 
 // The ring a declaration is found in, read off the module that declares it:
-// the hole's own, one the hole's module names in its own import statements,
-// or the prelude — or none, for a declaration the module reaches through the
-// link alone. They are what the module SEES once a module's scope is its own
+// the hole's own, one the hole's module's import lines reach, or the
+// prelude — or none, for a declaration the module reaches through the link
+// alone. They are what the module SEES once a module's scope is its own
 // declarations, its direct imports' and the prelude's
 // (`Hβ.driver.per-module-env-overlay`); the import closure the judgment still
 // resolves through is not vocabulary the developer chose.
-fn ring_of_decl(rings, decl) = match graph_node_body(graph_module_of(decl)) {
-  NModule(dm) => if dm.path == rings.home {
+fn ring_of_decl(rings, decl) = {
+  let dm = graph_module_of(decl)
+  if dm == rings.home {
     Some(OwnModule)
-  } else if contains_path(rings.imported, dm.path) {
+  } else if handles_contain(rings.imported, dm) {
     Some(AuthoredImport)
-  } else if dm.path == "prelude" {
+  } else if rings.prelude == Some(dm) {
     Some(Prelude)
   } else {
     None
-  },
-  NExpr(_) | NStmt(_) | NHole(_) | NPat(_) | NTypeAnn(_) | NName(_) => None,
+  }
 }
 
-// The hole's module and the modules its own import statements name, read
-// once per proposal from the hole's module node.
-fn vocabulary_rings(hole_h) = match graph_node_body(graph_module_of(hole_h)) {
-  NModule(m) => {home: m.path, imported: import_paths_of_decls(m.decls)},
-  _ => {
-    // The module column is written only with NModule handles, so a hole
-    // whose module is anything else was minted outside every module — a
-    // defect in the caller, which traps rather than answering with an
-    // empty vocabulary nobody could tell from a real one.
-    out_of_range()
-    {home: "", imported: []}
-  },
+// The hole's module, the modules its import edges reach and the link's
+// prelude, read once per proposal: three module nodes, compared by handle.
+fn vocabulary_rings(hole_h) = {
+  let home = graph_module_of(hole_h)
+  {home, imported: module_of(home).imports, prelude: link_prelude()}
 }
 
 // Answers whether two types COULD unify, from their head constructors alone —

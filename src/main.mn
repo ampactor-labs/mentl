@@ -188,30 +188,23 @@ fn edit_run(target_opt) = {
   0
 }
 
-// The session reads ONE weave — the same driver_entry_with_ranges the
-// address transport projects — never the per-module check walk: per-module
-// parses give every module its own span space, so the closure's seven
-// authored-absence positions (the entry's `??` plus the runtime's parse-
-// recovery holes) aliased near offset zero and the argmax focused a
-// prelude node (the 13-red frontier family). One weave, one span space;
-// and the caret OPENS AT THE ENTRY — its Located span is the entry's first
-// weave line, so the module-aware proximity decay ranks the entry's own
-// absences above the closure's.
-fn mentl_edit_session(entry_module) = match driver_entry_with_ranges(entry_module) {
-  (_ast, _mods) => match graph_module_now(entry_module) {
-    None => eprint_string("mentl edit: {entry_module} minted no module node — nothing to edit\n"),
-    Some(mh) => {
-      patch_set_target(entry_module)
-      cursor_session(entry_start_caret(mh))
-      ()
-    },
+// The session reads the link the address transport projects (`driver_link`),
+// and the caret OPENS AT THE MODULE IT NAMES — its own node, line 1 of its
+// own file — so the module-aware proximity ranks that module's absences above
+// the rest of the link's.
+fn mentl_edit_session(entry_module) = match driver_link(entry_module) {
+  None => eprint_string("mentl edit: {entry_module} did not load — nothing to edit\n"),
+  Some(mh) => {
+    patch_set_target(entry_module)
+    cursor_session(entry_start_caret(mh))
+    ()
   },
 }
 
 // The entry's opening caret stands at the entry's MODULE NODE — line 1 of
 // its own file, and the module every position the session ranks belongs
-// to. It stood at handle 0 (the link root) until 2026-10-01, which named no
-// module, so the session ranked the whole link and opened on the prelude.
+// to. A caret at the link would name no module, so the session would rank
+// the whole link and open on the prelude.
 fn entry_start_caret(mh) =
   Caret(mh, Located(Span(1, 1, 1, 1), Inferred("mentl edit session start — at the entry")))
 
@@ -238,9 +231,7 @@ fn space_run(addr) = match addr {
     eprint_string("mentl space: the page is served by the mentl command — from the repo, `bash tools/space-stage.sh && python3 tools/space-serve.py`, then open http://127.0.0.1:7397/ (the deployed page is https://space.ampactor.dev/); `mentl space <file>:<line>[:<col>]` answers the View at an address\n")
     2
   },
-  Some(SpaceAt(target, line, col, needle)) => match driver_entry_with_ranges(target) {
-    (_ast, ranges) => space_project(ranges, target, line, col, needle),
-  } ~> patch_to_file ~> terminal_transport ~> cursor_default ~> synth_default ~> mentl_default ~> stdout_console ~> wasi_filesystem ~> diag_bank ~> infer_context,
+  Some(SpaceAt(target, line, col, needle)) => space_project(driver_link(target), target, line, col, needle) ~> patch_to_file ~> terminal_transport ~> cursor_default ~> synth_default ~> mentl_default ~> stdout_console ~> wasi_filesystem ~> diag_bank ~> infer_context,
 }
 
 // ─── march_run — the medium judges its own generation (`mentl march`)
@@ -278,19 +269,18 @@ fn march_run() = match march_entry() {
       1
     } else {
       match march_emit(entry, fd) {
-        (mods, errors) => {
+        (names, lines, errors) => {
           fs_close(fd)
-          let lines = fold(0, (n, m) => n + march_text_lines(m), mods)
-          print_string("march: link {join(" ", map(march_module_name, mods))}\n")
+          print_string("march: link {join(" ", names)}\n")
           if errors > 0 {
             fs_unlink(new_path)
-            print_string("march: {int_to_str(len(mods))} modules · {int_to_str(lines)} source lines · census {int_to_str(errors)}\n")
+            print_string("march: {int_to_str(len(names))} modules · {int_to_str(lines)} source lines · census {int_to_str(errors)}\n")
             print_string("march: the judgment REFUSES — no verdict from a refused wheel\n")
             1
           } else {
             let emission = fs_read_file(new_path)
             fs_rename(new_path, gen_path)
-            print_string("march: {int_to_str(len(mods))} modules · {int_to_str(lines)} source lines · {int_to_str(count_newlines(emission))} wat lines · census 0\n")
+            print_string("march: {int_to_str(len(names))} modules · {int_to_str(lines)} source lines · {int_to_str(count_newlines(emission))} wat lines · census 0\n")
             if byte_len(prev) == 0 {
               print_string("march: baseline written ({gen_path}) — the next march compares against it\n")
               0
@@ -308,16 +298,21 @@ fn march_run() = match march_entry() {
   },
 } ~> stdout_console ~> wasi_filesystem ~> diagnostics_handler ~> no_state_walked ~> graph_handler([], 0, []) ~> mutate_sink
 
-// The DAG's judgment with the streaming sink, as `mentl compile` reads it
-// (driver_entry_scoped, cold: the fixed point never restores an image) and
-// under ScopeAll, so the census is the whole link's; the census count reads
-// INSIDE the same install (the count and the counter are one handler —
-// pipeline_check's own law).
-fn march_emit(entry, fd) = match driver_entry_scoped(entry, Census) {
-  (ast, mods) => {
-    compile_remainder(ast)
-    (mods, diag_errors())
-  },
+// The link's judgment with the streaming sink, as `mentl compile` reads it
+// (cold: the fixed point never restores an image) and under ScopeAll, so the
+// census is the whole link's. The census count, the modules' names and their
+// source lines are read INSIDE the install that holds the graph (the count
+// and the counter are one handler — pipeline_check's own law), and only
+// those values cross out of it.
+fn march_emit(entry, fd) = {
+  driver_link_scoped(entry, Census)
+  compile_remainder()
+  let modules = link_modules()
+  (
+    map({ mh => module_of(mh).path }, modules),
+    fold(0, (n, mh) => n + count_newlines(module_of(mh).text), modules),
+    diag_errors()
+  )
 } ~> wat_to_file(fd) ~> wasi_filesystem ~> compile_context
 
 // The wheel's entry: the repo's own main, or the installed shim's mount when
@@ -385,14 +380,6 @@ fn mn_walk(dir, reach, names, i, acc) = if i >= len(names) {
       },
     }
   }
-}
-
-fn march_module_name(m) = match m {
-  (name, _, _) => name,
-}
-
-fn march_text_lines(m) = match m {
-  (_, _, text) => count_newlines(text),
 }
 
 fn count_newlines(s) = count_newlines_from(s, 0, byte_len(s), 0)
@@ -514,14 +501,14 @@ fn fmt_file(stamps, path: String) = {
 fn fmt_render_file(path: String, src: String) = {
   let module = path_to_module(path)
   let from = graph_next()
-  let ast = parse_one_module((module, [], src, User))
+  let ast = parse_one_module(mint_module(module, path, src, User))
   let to = graph_next()
   let parse_errors = parse_refusals()
   if parse_errors > 0 {
     FmtUnparsed(path, parse_errors)
   } else {
     let first = respell(src, format_program(ast))
-    let again = parse_one_module((module, [], first, User))
+    let again = parse_one_module(mint_module(module, path, first, User))
     if parse_refusals() > 0 {
       FmtRefused(path, ["the canonical render does not parse — the formatter's defect, reported above"])
     } else {
@@ -802,35 +789,34 @@ fn tighten_run(target_opt) = {
     Some(t) => t,
     None => "main",
   }
-  match driver_entry_with_ranges(entry_module) {
-    (_ast, ranges) => {
-      let cands = tightenables()
-      let rosters = project_sites(catch_all_sites())
-      // The refuted ownership markers first: a release rewrites one word of
-      // a head and moves no line, so the clause patches below read the same
-      // line numbers whichever runs first.
-      let released = own_releases() |> fold(0, apply_own_release)
-      // Batch-apply: every proposal was computed against the CURRENT
-      // declarations, and the patch is the clause's RESIDUE — the
-      // negations and instance pins the judgment cannot infer (A4,
-      // 2026-09-27) — so a batch member never narrows below what the body
-      // proves: the positive row it drops is projected, not lost, and
-      // nothing authored is ever a row the parser cannot read back. Per
-      // file, patch bottom-up so line offsets hold.
-      let n = apply_tightenings(cands)
-      // The catch-alls over sums last: each is written at its match node and
-      // the module rendered whole, which moves lines, so every patch that
-      // reads a line number has run by now; a module those patches changed
-      // is refused here and rewritten by the next run's judgment.
-      let rostered = apply_pattern_tightenings(ranges, rosters)
-      if len(cands) + len(rosters) == 0 && released == 0 {
-        print_string("mentl tighten: nothing to tighten — no declared row is an inventory or over-declared, no `own` is refuted, and no catch-all stands over a sum\n")
-        0
-      } else {
-        print_string("tighten: {int_to_str(n)} of {int_to_str(len(cands))} clause(s) applied, {int_to_str(released)} ownership marker(s) released, {int_to_str(rostered)} of {int_to_str(len(rosters))} catch-all arm(s) written as the roster each stood for — the medium authored these; verify with a fresh check + the gates\n")
-        if n + released + rostered > 0 { 0 } else { 1 }
-      }
-    },
+  {
+    driver_link(entry_module)
+    let cands = tightenables()
+    let rosters = project_sites(catch_all_sites())
+    // The refuted ownership markers first: a release rewrites one word of a
+    // head and moves no line, so the clause patches below read the same line
+    // numbers whichever runs first.
+    let released = own_releases() |> fold(0, apply_own_release)
+    // Batch-apply: every proposal was computed against the CURRENT
+    // declarations, and the patch is the clause's RESIDUE — the negations
+    // and instance pins the judgment cannot infer (A4, 2026-09-27) — so a
+    // batch member never narrows below what the body proves: the positive
+    // row it drops is projected, not lost, and nothing authored is ever a
+    // row the parser cannot read back. Per file, patch bottom-up so line
+    // offsets hold.
+    let n = apply_tightenings(cands)
+    // The catch-alls over sums last: each is written at its match node and
+    // the module rendered whole, which moves lines, so every patch that reads
+    // a line number has run by now; a module those patches changed is refused
+    // here and rewritten by the next run's judgment.
+    let rostered = apply_pattern_tightenings(rosters)
+    if len(cands) + len(rosters) == 0 && released == 0 {
+      print_string("mentl tighten: nothing to tighten — no declared row is an inventory or over-declared, no `own` is refuted, and no catch-all stands over a sum\n")
+      0
+    } else {
+      print_string("tighten: {int_to_str(n)} of {int_to_str(len(cands))} clause(s) applied, {int_to_str(released)} ownership marker(s) released, {int_to_str(rostered)} of {int_to_str(len(rosters))} catch-all arm(s) written as the roster each stood for — the medium authored these; verify with a fresh check + the gates\n")
+      if n + released + rostered > 0 { 0 } else { 1 }
+    }
   } ~> diag_bank ~> wasi_filesystem ~> mentl_default ~> infer_context
 }
 
@@ -848,7 +834,7 @@ fn tighten_run(target_opt) = {
 // above just patched at a line; each refusal says which. Writing those
 // passes at the node too, so one render projects every tightening, is the
 // verb's next form (`Hβ.match.catch-all-over-a-sum-is-the-roster`).
-fn apply_pattern_tightenings(ranges, sites) = fold(0, roster_module(sites, ??, ??), ranges)
+fn apply_pattern_tightenings(sites) = fold(0, roster_module(sites, ??, ??), link_modules())
 
 // The sites of the entry's own layer: a user's `tighten` never writes the
 // library its program links, as its reports never name it (ScopeProject).
@@ -857,20 +843,22 @@ fn project_sites(sites) = match diag_scope_of() {
   ScopeAll | ScopeNone => sites,
 }
 
-fn roster_module(sites, acc, range) = match range {
-  (m, path, judged) => match filter({ h => module_name_of_handle(graph_module_of(h)) == m }, sites) {
-    [] => acc,
-    mine @ [first, ..._] => {
-      let verdict = roster_render(path, judged, module_decls_of(first), mine) ~> arena
-      fmt_print_refused(verdict)
-      fmt_write(verdict)
-      if fmt_is_render(verdict) {
-        print_string("tighten: {path} — {int_to_str(len(mine))} catch-all arm(s) written as the roster each stood for\n")
-        acc + len(mine)
-      } else {
-        acc
-      }
-    },
+// One module of the link with its sites written: the sites the module holds,
+// its file, the text its judgment read and its declarations, all off its
+// node.
+fn roster_module(sites, acc, mh) = match filter({ h => graph_module_of(h) == mh }, sites) {
+  [] => acc,
+  mine => {
+    let m = module_of(mh)
+    let verdict = roster_render(m.file, m.text, m.decls, mine) ~> arena
+    fmt_print_refused(verdict)
+    fmt_write(verdict)
+    if fmt_is_render(verdict) {
+      print_string("tighten: {m.file} — {int_to_str(len(mine))} catch-all arm(s) written as the roster each stood for\n")
+      acc + len(mine)
+    } else {
+      acc
+    }
   },
 }
 
@@ -897,7 +885,7 @@ fn roster_render(path: String, judged: String, decls, sites) = {
   } else {
     let consumed = flat_map(write_roster, sites)
     let first = respell(src, format_program(decls))
-    let again = parse_one_module((path_to_module(path), [], first, User))
+    let again = parse_one_module(mint_module(path_to_module(path), path, first, User))
     if parse_refusals() > 0 {
       FmtRefused(path, ["the render does not parse — the formatter's defect, reported above"])
     } else {
@@ -909,16 +897,6 @@ fn roster_render(path: String, judged: String, decls, sites) = {
     }
   }
 } ~> format_default ~> diag_bank
-
-// A node's module's declarations, off the module node the parse minted for
-// its file — the same read as `module_name_of_handle`, the same refusal.
-fn module_decls_of(h) = match graph_node_body(graph_module_of(h)) {
-  NModule(m) => m.decls,
-  NExpr(_) | NStmt(_) | NHole(_) | NPat(_) | NTypeAnn(_) | NName(_) => {
-    out_of_range()
-    []
-  },
-}
 
 // One site's write: the roster registered over the catch-all arm, the body
 // kept. Answers the atom the roster leaves out of the arm's pattern — a
@@ -933,7 +911,7 @@ fn write_roster(h) = match graph_node_body(h) {
     },
     None => [],
   },
-  NExpr(_) | NStmt(_) | NHole(_) | NPat(_) | NTypeAnn(_) | NModule(_) | NName(_) => [],
+  NExpr(_) | NStmt(_) | NHole(_) | NPat(_) | NTypeAnn(_) | NModule(_) | NLink(_) | NName(_) => [],
 }
 
 // The roster as the pattern written in the catch-all's place: each
@@ -1164,14 +1142,11 @@ fn doc_run(target_opt) = {
     Some(t) => t,
     None => "main",
   }
-  // The same one-namespace weave check reads (driver_entry_with_ranges):
-  // this verb ran driver_check's per-module walk until 2026-09-17, so the
-  // prelude's own body missed the vocabulary its layer supplies and every
-  // `mentl doc` opened with E_MissingVariable noise on a clean program —
-  // the reader-facing verb of the comment paradigm, broken at its root, and
-  // its own comment ("today the doc projection IS driver_check") said so.
+  // The link the check reads (`driver_link`): a module judged alone misses
+  // the vocabulary its layer supplies, and `mentl doc` opened with
+  // E_MissingVariable noise on a clean program.
   {
-    driver_entry_with_ranges(entry_module)
+    driver_link(entry_module)
     doc_render(entry_module, module_cells())
   } ~> stdout_console ~> wasi_filesystem ~> mentl_default ~> infer_context
   0
@@ -1340,13 +1315,10 @@ fn check_run(target_opt) = {
 // writes at birth), project the eight aspects THROUGH the same CursorView
 // `mentl edit` reads (cursor_at_handle — by handle, no re-resolution),
 // and render the facets whose content is non-trivial (the voice's
-// silence predicate at the terminal). Spans render back to file:line
-// through the module-range map the driver's own concatenation fold
-// carries (driver_entry_with_ranges — computed where the fold runs,
-// once, never a second ledger).
-fn at_run(target, line, col) = match driver_entry_with_ranges(target) {
-  (_ast, ranges) => address_project(ranges, target, line, col),
-} ~> patch_to_file ~> terminal_transport ~> cursor_default ~> synth_default ~> mentl_default ~> stdout_console ~> wasi_filesystem ~> diag_bank ~> infer_context
+// silence predicate at the terminal). Spans render back to file:line against
+// the text the module's node carries — the text its judgment read.
+fn at_run(target, line, col) =
+  address_project(driver_link(target), target, line, col) ~> patch_to_file ~> terminal_transport ~> cursor_default ~> synth_default ~> mentl_default ~> stdout_console ~> wasi_filesystem ~> diag_bank ~> infer_context
 
 // accept_run — the second graph operation at the address surface (C4).
 // `mentl <address>` PROJECTS the position; `mentl accept <address>` DRAWS
@@ -1358,19 +1330,16 @@ fn at_run(target, line, col) = match driver_entry_with_ranges(target) {
 // re-derived graph, so what the verb prints is the position's new truth
 // with the Why walking to the proposal it came from. A tie or a filled
 // position draws nothing, says why on stderr, and exits 1.
-fn accept_run(target, line, col) = match driver_entry_with_ranges(target) {
-  (_ast, ranges) => accept_project(ranges, target, line, col),
-} ~> patch_written ~> terminal_transport ~> cursor_default ~> synth_default ~> mentl_default ~> stdout_console ~> wasi_filesystem ~> diag_bank ~> infer_context
+fn accept_run(target, line, col) =
+  accept_project(driver_link(target), target, line, col) ~> patch_written ~> terminal_transport ~> cursor_default ~> synth_default ~> mentl_default ~> stdout_console ~> wasi_filesystem ~> diag_bank ~> infer_context
 
 // The draw writes the module's new text and nothing else; the projection is
-// over the module derived again from that text, its ranges included, as the
-// session's accept projects over the ranges its re-judgment returns. The
-// ranges read before the write carry the old text, and slicing the new
-// node's span out of it printed `?` where the accepted `1` stands.
-fn accept_project(ranges, target: String, line, col) = if accept_draw(ranges, target, line, col) == 0 {
-  match driver_entry_with_ranges(target) {
-    (_ast, after) => address_project(after, target, line, col),
-  }
+// over the link derived again from that text, as the session's accept
+// projects over the module its re-judgment leaves. The module read before
+// the write carries the old text, and slicing the new node's span out of it
+// printed `?` where the accepted `1` stands.
+fn accept_project(found, target: String, line, col) = if accept_draw(found, target, line, col) == 0 {
+  address_project(driver_link(target), target, line, col)
 } else {
   1
 }
@@ -1379,11 +1348,11 @@ fn accept_project(ranges, target: String, line, col) = if accept_draw(ranges, ta
 // edge drawn and the text written through whatever PatchWrite is installed —
 // shared by the CLI verb and the resident session, which differ only in what
 // re-judges the write. Answers the exit code the verb's verdict is.
-fn accept_draw(ranges, target: String, line, col) = if line <= 0 {
+fn accept_draw(found, target: String, line, col) = if line <= 0 {
   eprint_string("mentl accept: an accept names one position — {target}:<line>:<col>\n")
   1
 } else {
-  match address_node(ranges, target, line, col) {
+  match address_node(found, target, line, col) {
     None => 1,
     Some(ph) => {
       patch_set_target(target)
@@ -1410,25 +1379,25 @@ fn accept_draw(ranges, target: String, line, col) = if line <= 0 {
 // answers after it, where the cold route drew it in a process that ended
 // with the reply — the next projection at that position said "int literal".
 //
-// An answer hands back the session it LEAVES — the entry's decls, the range
-// map and the manifest — because a writer moves the tree, and the session
-// that answered it has already judged the move.
-fn session_answer(line, ast, ranges, manifest) = match parse_cli_args(session_argv(line)) {
+// An answer hands back the manifest the session LEAVES, because a writer
+// moves the tree, and the session that answered it has already judged the
+// move.
+fn session_answer(line, manifest) = match parse_cli_args(session_argv(line)) {
   // the cold route says a parse error whole: on stderr, exit 1
-  ParseError(_) => (session_miss(), (ast, ranges, manifest)),
+  ParseError(_) => (session_miss(), manifest),
   Invocation(verb) => match verb {
-    VAccept(target, l, c) => session_accept(target, l, c, (ast, ranges, manifest)),
-    _ => (session_read(verb, ast, ranges), (ast, ranges, manifest)),
+    VAccept(target, l, c) => session_accept(target, l, c, manifest),
+    _ => (session_read(verb), manifest),
   },
 }
 
 // The verbs that read the session without moving it. The address and the
 // View are one resolution with two projections (src/space.mn): the text the
 // terminal reads, and the JSON the page paints.
-fn session_read(verb, ast, ranges) = match verb {
-  VAt(target, l, c) => session_whole(session_address(ranges, target, l, c)),
+fn session_read(verb) = match verb {
+  VAt(target, l, c) => session_whole(session_address(target, l, c)),
   VSpace(addr) => match addr {
-    Some(SpaceAt(target, l, c, needle)) => session_whole(session_banked(() => space_project(ranges, target, l, c, needle))),
+    Some(SpaceAt(target, l, c, needle)) => session_whole(session_banked(() => space_project(session_module(target), target, l, c, needle))),
     None => session_miss(),
   },
   VQuery(target, q) => if target == "main" {
@@ -1436,11 +1405,11 @@ fn session_read(verb, ast, ranges) = match verb {
   } else {
     session_miss()
   },
-  VAudit(target) => if target == "main" { audit_project(ast) } else { session_miss() },
+  VAudit(target) => if target == "main" { audit_project(link_entry_decls()) } else { session_miss() },
   // A bare `teach` means "teach HERE" — the resident entry is here.
   VTeach(target) => match target {
-    Some(m) => if m == "main" { teach_project(ast) } else { session_miss() },
-    None => teach_project(ast),
+    Some(m) => if m == "main" { teach_project(link_entry_decls()) } else { session_miss() },
+    None => teach_project(link_entry_decls()),
   },
   // drift-audit: ignore — the wildcard IS the policy (cold-only verbs answer MISS by design; a new verb defaults to the cold path, never to a wrong resident answer)
   _ => session_miss(),
@@ -1451,16 +1420,22 @@ fn session_read(verb, ast, ranges) = match verb {
 // then the session's OWN living check re-judges what the write moved — the
 // motion an outside edit makes, through the one door that tracks the tree —
 // before the position is projected over the result.
-fn session_accept(target: String, l, c, held) = match held {
-  (ast, ranges, manifest) => match session_banked(() => accept_draw(ranges, target, l, c)) {
-    (drawn, _) => if drawn != 0 {
-      (session_miss(), held)
-    } else {
-      match session_current(ast, ranges, manifest) {
-        (a2, r2, m2) => (session_whole(session_address(r2, target, l, c)), (a2, r2, m2)),
-      }
-    },
+fn session_accept(target: String, l, c, manifest) = match session_banked(() => accept_draw(session_module(target), target, l, c)) {
+  (drawn, _) => if drawn != 0 {
+    (session_miss(), manifest)
+  } else {
+    let moved = session_current(manifest)
+    (session_whole(session_address(target, l, c)), moved)
   },
+}
+
+// The module a person named at the session: the name resolved as the cold
+// verb resolves the one it is handed, then the module of the session's link
+// read from that file — so the session and the cold verb address one module,
+// and a module the link does not hold answers nothing.
+fn session_module(target: String) = match driver_module_path(target) {
+  Some(file) => find({ mh => module_of(mh).file == file }, link_modules()),
+  None => None,
 }
 
 // AN ANSWER IS RESIDENT ONLY WHEN IT IS WHOLE. A verb that refuses says why
@@ -1486,13 +1461,13 @@ fn session_banked(project) = {
 
 // The address projection, banked — the one bracket the session's reads, its
 // accept's projection and the mcp gate's at tool all answer through.
-fn session_address(ranges, target: String, l, c) =
-  session_banked(() => address_project(ranges, target, l, c))
+fn session_address(target: String, l, c) =
+  session_banked(() => address_project(session_module(target), target, l, c))
 
 // session_at_read — the mcp gate's at tool, the same banked core: passed
 // INTO mcp_run as a value (a stored fn carrying its row — the
 // transport-as-value the effect-poly ctor landing made a capability).
-fn session_at_read(ranges, line, col) = match session_address(ranges, "main", line, col) {
+fn session_at_read(line, col) = match session_address("main", line, col) {
   (_, lines) => lines,
 }
 
@@ -1702,13 +1677,14 @@ fn battery_refs_expect(src) = {
 
 // THE REFS BATTERY: the fixture's link judged as the query verb judges it,
 // and the references `mentl query <fixture> "refs of Name"` answers in the
-// fixture's own text counted by what stands at each — a primitive the
-// library calls throughout is counted where the fixture writes it. The rows
-// are read inside the judgment that holds the graph; only the counts cross
-// out of it.
+// fixture's own module — the node the link names, so a primitive the library
+// calls throughout is counted where the fixture writes it — counted by what
+// stands at each. The references are read inside the judgment that holds the
+// graph; only the counts cross out of it.
 fn battery_refs_step(stem, path: String, name: String, want: String) = {
-  let got = match driver_entry_with_ranges(path) {
-    (_ast, _ranges) => refs_of_name(name) |> filter({ (m, _, _) => m == path }) |> refs_role_counts,
+  let got = match driver_link(path) {
+    None => "nothing: the fixture did not load",
+    Some(fixture) => name_decls(name) |> flat_map(decl_ref_handles) |> filter({ h => graph_module_of(h) == fixture }) |> map(ref_role) |> refs_role_counts,
   } ~> cursor_default ~> synth_default ~> mentl_default ~> diag_bank ~> infer_context
   if str_eq(got, want) {
     print_string("PASS {stem}: refs of {name} {want}\n")
@@ -1748,10 +1724,10 @@ fn battery_fmt_step(stem, path: String, src: String) = {
 
 // The roles in one order — calls, values, patterns, annotations — each with
 // its count, a role nothing stands in unsaid.
-fn refs_role_counts(sites) =
-  ["call", "value", "pattern", "annotation", "row", "arm"] |> flat_map(role_count(sites, ??)) |> join(" ", ??)
+fn refs_role_counts(roles) =
+  ["call", "value", "pattern", "annotation", "row", "arm"] |> flat_map(role_count(roles, ??)) |> join(" ", ??)
 
-fn role_count(sites, role: String) = match count({ (_, _, r) => r == Some(role) }, sites) {
+fn role_count(roles, role: String) = match count({ r => r == role }, roles) {
   0 => [],
   n => ["{int_to_str(n)} {role}"],
 }
@@ -1820,8 +1796,9 @@ fn battery_teach_step(stem, path: String, line, want) = battery_view(
 // contract's, in source order. The rows are read inside the judgment that
 // holds the graph; only the names cross out of it.
 fn battery_reach_step(stem, path: String, want: String) = {
-  let dead = match driver_entry_with_ranges(path) {
-    (_ast, _ranges) => reach_report(module_cells()) |> filter(ur_row_is_dead) |> map({ (_, n, _, _) => n }) |> join(" ", ??),
+  let dead = {
+    driver_link(path)
+    reach_report(module_cells()) |> filter(ur_row_is_dead) |> map({ (_, n, _, _) => n }) |> join(" ", ??)
   } ~> cursor_default ~> synth_default ~> mentl_default ~> diag_bank ~> infer_context
   if str_eq(dead, want) {
     print_string("PASS {stem}: unreachable {want}\n")
@@ -1841,12 +1818,10 @@ fn battery_reach_step(stem, path: String, want: String) = {
 // a body the graph did not hold, and every fill compared as `??` (measured
 // 2026-10-13 on the battery's eleven fill fixtures, the day the renderer
 // stopped reading the record). The judge's answer is the step's exit.
-fn battery_view(path: String, line, col, judge) = match driver_entry_with_ranges(path) {
-  (_ast, ranges) => judge(match address_node(ranges, path, line, col) {
-    None => None,
-    Some(ph) => Some((body_decl_name(graph_node_body(ph)), cursor_at_handle(ph))),
-  }),
-} ~> cursor_default ~> synth_default ~> mentl_default ~> diag_bank ~> infer_context
+fn battery_view(path: String, line, col, judge) = judge(match address_node(driver_link(path), path, line, col) {
+  None => None,
+  Some(ph) => Some((body_decl_name(graph_node_body(ph)), cursor_at_handle(ph))),
+}) ~> cursor_default ~> synth_default ~> mentl_default ~> diag_bank ~> infer_context
 
 fn teach_meets(want, teach) = match want {
   WantAdd(text) => match teach {
@@ -1935,14 +1910,11 @@ fn battery_wat_path(stem) = ".build/battery/{stem}.wat"
 //
 // The fixture is a MODULE: its link is its import DAG plus the prelude edge,
 // judged as every compile judges one (driver.mn), so a run fixture compiles
-// from its module path exactly as a propose fixture is read at one. It used
-// to be text joined to a hand-listed four-file prefix — memory, strings,
-// lists, prelude — which was a copy of the prelude's closure that had
-// already lost threading, and which ignored a fixture's own imports.
+// from its module path exactly as a propose fixture is read at one, and the
+// program lowered is the one its link holds.
 fn battery_compile(module: String, stem) = {
-  let lowered = match driver_entry_scoped(module, Census) {
-    (ast, _) => ast |> saturate_pass |> lower_program |> reachable_from_main,
-  }
+  driver_link_scoped(module, Census)
+  let lowered = link_program() |> saturate_pass |> lower_program |> reachable_from_main
   // THE SAME law the CLI compile applies, batch-shaped: refusal = holes +
   // ARMED classes only, the plan's settle point included. Unarmed errors
   // surface on stderr and the compile proceeds — the sound-incomplete
@@ -2195,27 +2167,25 @@ fn verify_run(target_opt) = {
   // defect, and while it inherited the narrowing the comment-reference count
   // could only ever see the entry module's prose (measured 2026-09-20:
   // 0 on the entry link against 58 across the modules).
-  match driver_entry_scoped(entry_module, Census) {
-    (_ast, ranges) => match range_of_module(ranges, entry_module) {
-      None => {
-        eprint_string("mentl verify: no source to judge — {entry_module} never joined the weave\n")
-        1
-      },
-      // AND THE WEAVE MUST HAVE JUDGED CLEAN, which is the same vacuity one
-      // layer in and the instrument gate is what found it: a module whose own
-      // file loads but whose IMPORT does not still joins the weave, so the
-      // arm above admits it, the census walks a graph missing that module's
-      // content, and every bound reads a number too small to breach. It
-      // answered "12 bound(s) hold" for a program the driver had just
-      // refused. A partial measurement is worse than none because it looks
-      // like one, so the board reads the judgment's own error count and
-      // declines to measure rather than measuring less.
-      Some(_) => if diag_errors() > 0 {
-        eprint_string("mentl verify: {entry_module} did not judge clean — a board over a refused weave measures a program nobody has\n")
-        1
-      } else {
-        verify_board(entry_module)
-      },
+  match driver_link_scoped(entry_module, Census) {
+    None => {
+      eprint_string("mentl verify: no source to judge — {entry_module} did not load\n")
+      1
+    },
+    // AND THE LINK MUST HAVE JUDGED CLEAN, which is the same vacuity one
+    // layer in and the instrument gate is what found it: a module whose own
+    // file loads but whose IMPORT does not still names its link, so the arm
+    // above admits it, the census walks a graph missing that module's
+    // content, and every bound reads a number too small to breach. It
+    // answered "12 bound(s) hold" for a program the driver had just refused.
+    // A partial measurement is worse than none because it looks like one, so
+    // the board reads the judgment's own error count and declines to measure
+    // rather than measuring less.
+    Some(_) => if diag_errors() > 0 {
+      eprint_string("mentl verify: {entry_module} did not judge clean — a board over a refused link measures a program nobody has\n")
+      1
+    } else {
+      verify_board(entry_module)
     },
   }
 } ~> stdout_console ~> wasi_filesystem ~> mentl_default ~> infer_context

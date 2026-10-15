@@ -2340,6 +2340,7 @@ fn lower_expr(handle) = match graph_node_body(handle) {
       NHole(_) => LConst(canon, LInt(0)),
       // never an expr position — module entity, not a value
       NModule(_) => LConst(canon, LInt(0)),
+      NLink(_) => LConst(canon, LInt(0)),
       // never an expr position — an authored return annotation, not a value
       NTypeAnn(_) => LConst(canon, LInt(0)),
       NName(_) => LConst(canon, LInt(0)),
@@ -4074,6 +4075,7 @@ fn lower_stmt(handle) = {
     NHole(_) => LConst(handle, LInt(0)),
     // module entity at stmt position — degenerate
     NModule(_) => LConst(handle, LInt(0)),
+    NLink(_) => LConst(handle, LInt(0)),
     // type annotation at stmt position — degenerate
     NTypeAnn(_) => LConst(handle, LInt(0)),
     NName(_) => LConst(handle, LInt(0)),
@@ -6844,6 +6846,7 @@ fn reach_stmt_defers(node) = match graph_node_body(node) {
   NPat(_) => false,
   NHole(_) => false,
   NModule(_) => false,
+  NLink(_) => false,
   NTypeAnn(_) => false,
   NName(_) => false,
 }

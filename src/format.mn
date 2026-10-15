@@ -264,6 +264,7 @@ fn render_body_tokens(body) with !Mutate = match body {
   NPat(p) => render_pat_value(p),
   NHole(_) => "??",
   NModule(m) => "// module {m.path}",
+  NLink(_) => "// link",
   NTypeAnn(ty) => render_type_tokens(ty),
   NName(written) => match written {
     RowEffect(name) => render_authored_eff_name(name),
@@ -1477,6 +1478,7 @@ fn render_line_break_after(kind) with Pure = match kind {
   NPat(_) => "",
   NHole(_) => "",
   NModule(_) => "\n",
+  NLink(_) => "\n",
   NTypeAnn(_) => "",
   NName(_) => "",
 }

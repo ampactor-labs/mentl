@@ -488,7 +488,7 @@ fn cw_scan_index(ref idx, i, h_from, ref runs: [CwRun], leads, trails) = if i >=
 // prose: a comment on an arm's line belongs to the arm, not the op it names.
 fn written_name_at(h) = match graph_node_body(h) {
   NName(_) => true,
-  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NTypeAnn(_) => false,
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) => false,
 }
 
 // bsearch: the run whose start_line == line (runs are token-ordered, so
@@ -1290,7 +1290,7 @@ fn row_term_joins(tokens, pos) = match kind_at(tokens, pos) {
 fn written_constructor(ty) = match ty {
   TVar(n) => match graph_node_body(n) {
     NTypeAnn(TName(vname, fields)) => Some((vname, fields, n)),
-    NTypeAnn(_) | NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NName(_) => None,
+    NTypeAnn(_) | NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NName(_) => None,
   },
   TInt
   | TFloat
@@ -1630,7 +1630,7 @@ fn handler_arm_op_decl(a: {args: [String], body: Node, op: Node}) = graph_ref_de
 // The op an arm serves, as written at its node.
 fn handler_arm_op_name(a: {args: [String], body: Node, op: Node}) -> String = match graph_node_body(a.op) {
   NName(ArmOp(name)) => name,
-  NName(RowEffect(_)) | NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NTypeAnn(_) => out_of_range(),
+  NName(RowEffect(_)) | NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) => out_of_range(),
 }
 
 fn handler_arm_arity(a: {args: [String], body: Node, op: Node}) -> Int = len(a.args)
@@ -3885,6 +3885,7 @@ fn collect_free_uses(node, bound) = match graph_node_body(node) {
   NHole(_) => [],
   // a module entity contains no VarRef of its own
   NModule(_) => [],
+  NLink(_) => [],
   // an authored type annotation contains no VarRef
   NTypeAnn(_) => [],
   NName(_) => [],

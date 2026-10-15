@@ -200,8 +200,10 @@ fn board_bounds() = [
   // fixpoint's folds and maps with it, since the yield gate it fed reads the
   // callee's own row. 157 -> 149 (2026-10-15): the code nothing reached —
   // the voice surface, the eight-loop, the never-installed SMT handler —
-  // left with its lambdas.
-  Bound({ceiling: 149, question: QCensus(CsEffectfulLambda)}),
+  // left with its lambdas. 149 -> 141 (2026-10-15): the link became a node,
+  // and the range tuples, the warm buckets and the scan tuples each reader
+  // took apart in a lambda left with the readers.
+  Bound({ceiling: 141, question: QCensus(CsEffectfulLambda)}),
   // Drift mode 10 — the seven survivors are documented sentinels, not masked
   // cases. Every wildcard that is NOT one of them is a variant the author
   // declined to enumerate, and the medium cannot tell the difference, which
@@ -251,9 +253,10 @@ fn board_bounds() = [
   // node instead; 1,190 when a site's span came to be read off its node
   // rather than off its reason; 1,189 when a sugar came to call its
   // primitive through the edge at its node and two readers of a callee's row
-  // by spelling became one. It falls to zero where the migration lands
-  // (`Hβ.match.catch-all-over-a-sum-is-the-roster`).
-  Bound({ceiling: 1189, question: QCensus(CsWildcardOverSum)}),
+  // by spelling became one; 1,181 when the link became a node, its module
+  // readers written as the roster a link and a module make. It falls to zero
+  // where the migration lands (`Hβ.match.catch-all-over-a-sum-is-the-roster`).
+  Bound({ceiling: 1181, question: QCensus(CsWildcardOverSum)}),
   // Drift mode 15 — a value given a leading-underscore name instead of being
   // deleted. The rename silences the reader, never the fact that nothing
   // reads it.
@@ -391,8 +394,10 @@ fn board_bounds() = [
   // extension in prose with no line after it. 27 -> 23 (2026-10-14, WILD):
   // the dead narrowing walk's header cited four. 23 -> 17 (2026-10-15): the
   // headers of the dead voice, eight-loop and proposer chain, and the
-  // composition tallies trued with the modules they described.
-  Bound({ceiling: 17, question: QCensus(CsProseClass(PcCoordinate))}),
+  // composition tallies trued with the modules they described. 17 -> 15
+  // (2026-10-15): the session's and the pipeline's notes over the walk the
+  // link node replaced.
+  Bound({ceiling: 15, question: QCensus(CsProseClass(PcCoordinate))}),
   // Repository paths that name no file: a comment citing a path the tree
   // does not hold.
   Bound({ceiling: 1, question: QCensus(CsProseClass(PcPathNoFile))}),
@@ -407,8 +412,9 @@ fn board_bounds() = [
   Bound({ceiling: 38, question: QCensus(CsProseClass(PcLifecycle))}),
   // Archaeology — the seed era's vocabulary and its design notes. 68 -> 67
   // (2026-10-15): the note over the type annotation's node kind that said
-  // why its tag stood last.
-  Bound({ceiling: 67, question: QCensus(CsProseClass(PcArchaeology))}),
+  // why its tag stood last. 67 -> 66 (2026-10-15): a stale note over the
+  // stdin route left.
+  Bound({ceiling: 66, question: QCensus(CsProseClass(PcArchaeology))}),
   // Decoration runs; the formatter's decoration strip takes this to zero
   // (PLAN §11, the project canonical). 267 -> 266 (2026-10-15): the pattern
   // type's banner left when a pattern became a node.

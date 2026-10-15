@@ -726,7 +726,7 @@ fn some_param_ty(p) = Some(param_ty(p))
 fn unwritten_cell(ty) = match ty {
   TVar(h) => match graph_node_body(h) {
     NTypeAnn(_) => None,
-    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NName(_) => Some(h),
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NName(_) => Some(h),
   },
   TInt
   | TFloat
@@ -2422,19 +2422,23 @@ type NodeBody
   | NStmt(Stmt)
   | NPat(Pat)
   // Hazel marked hole — inference populates with reason
-  // Synthetic module entity — one per source file. An orphan module-level
-  // comment attaches to this handle in the comment weave (graph_attach_comment);
-  // decls lists every top-level Handle so a doc/render projection can
-  // walk the module without re-parsing source.
   | NHole(Int)
-  // imports: the modules this one imports, as the IDENTITIES their own
-  // cells carry — resolved by the driver's walk once and carried here as
-  // edges (F0b), so no reader re-resolves an authored spelling.
-  // layer: the root the driver's walk found the module under — the user's
-  // own folder, the library, or the compiler — the fact the diagnostics
-  // register and every projection of "whose module is this" read, never a
-  // path prefix re-tested.
-  | NModule({decls: [Node], imports: [String], layer: Layer, path: String, span: Span})
+  // A module: one source file, and every node of it born inside it. decls:
+  // its top-level declarations, in the order its text writes them. text: the
+  // text its parse read, which every span of the module indexes. imports:
+  // the module nodes its import lines reach, drawn where the driver's walk
+  // resolved them, so no reader re-resolves a spelling. layer: the root the
+  // walk found it under — the user's own folder, the library or the
+  // compiler. path: the name its importer spelled; file: where it was read
+  // from, which is its identity, so two files one name spells are two
+  // modules.
+  | NModule({decls: [Node], file: String, imports: [Node], layer: Layer, path: String, span: Span, text: String})
+  // The link: the program a person asked for — the module they named, the
+  // prelude every module speaks without an import line, and every module
+  // the walk from the two reached, in the order the walk judged them. A
+  // report made before any module is read is the link's, and its layer is
+  // the named module's.
+  | NLink({entry: Option(Node), layer: Layer, modules: [Node], prelude: Option(Node)})
   // An authored type annotation carried live in the graph — a return's, a
   // let's, a constructor's fields, an op's result — and every name written
   // in a type, its children the names its arguments write. The source wrote
@@ -2828,7 +2832,7 @@ type Pat
 // The pattern at a node; every handle a pattern holds is one.
 fn pat_of(h) = match graph_node_body(h) {
   NPat(p) => p,
-  NExpr(_) | NStmt(_) | NHole(_) | NModule(_) | NTypeAnn(_) | NName(_) => out_of_range(),
+  NExpr(_) | NStmt(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) => out_of_range(),
 }
 
 // The constructors a catch-all over a sum stands for, read off the arms
@@ -3237,21 +3241,15 @@ effect GraphRead {
   // answers about a program that no longer exists — measured 2026-10-02,
   // the proposer offering `main()` at a hole main calls, after one edit.
   graph_node_current(Int) -> Bool
-  // the current module node of a path — the latest parse registered under
-  // it, read where the registration happened rather than by walking the
-  // whole graph for module cells and keeping the last. None when the weave
-  // holds no such module: a caller refuses rather than guessing, and the
-  // answer is an Option rather than a 0 sentinel because the link root is
-  // itself a module node and 0 is a handle it can legitimately hold. It is
-  // what makes `mentl <file>:<line>` an address: a node's module is stamped
-  // at its mint (graph_module_of reads it back), so naming the file resolves
-  // ONCE here and every downstream comparison is a word compare against that
-  // handle — never a path re-matched per candidate, and never span
-  // containment, which cannot answer once each module's spans are its own
-  // 1-based coordinates
-  graph_module_now(String) -> Option(Int)
-  // every current module node, in the order the modules were registered
-  graph_modules() -> [Int]
+  // the current module node read from a file — the latest parse of it,
+  // read where the registration happened. None when no module was read from
+  // the file: a caller refuses rather than guessing. It is what makes
+  // `mentl <file>:<line>` an address: naming the file resolves ONCE here,
+  // and every downstream comparison is a word compare against that handle
+  graph_module_now(file: String) -> Option(Int)
+  // the link the graph holds — the program the latest derivation judged —
+  // or None before any derivation
+  graph_link() -> Option(Int)
   // resolve a node's parse-attached comment prose from the parallel comment weave (empty string if absent); the Why engine / formatter / cursor project it
   graph_comment_at(Int) -> String
   // the comment's own source span, carried from parse (zero span if absent) — the reference diagnostics anchor here
@@ -5112,16 +5110,18 @@ fn report(diag) = report_at(graph_module_current(), diag)
 // about one report.
 fn diag_report_at(diag, dmod, dlayer) = diag_report(diag, diag_message(diag), dmod, dlayer)
 
-// A module handle's own name, read from its node. The non-NModule arm REFUSES
-// rather than answering "": every value in the module column was written by
-// graph_module_enter with an NModule handle, and every compile enters its link
-// root before anything can report, so a miss here is a node minted outside any
-// module — a defect in the caller. Answering with an empty name would hand
-// every downstream reader a file called nothing and make the defect invisible,
-// which is the wildcard-fabrication the census convicts.
+// A module handle's own name, read from its node: a module's, or the link's
+// for what is born or reported before any module is read. Any other node
+// REFUSES rather than answering "": every value in the module column was
+// written by graph_module_enter with a module or the link, and every compile
+// enters its link before anything can report, so a miss here is a node minted
+// outside the link — a defect in the caller. Answering with an empty name
+// would hand every downstream reader a file called nothing and make the
+// defect invisible, which is the wildcard-fabrication the census convicts.
 fn module_name_of_handle(h) = match graph_node_body(h) {
   NModule(m) => m.path,
-  _ => {
+  NLink(_) => "<link>",
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NTypeAnn(_) | NName(_) => {
     out_of_range()
     ""
   },
@@ -5131,7 +5131,8 @@ fn module_name_of_handle(h) = match graph_node_body(h) {
 // and the same refusal for a handle no module column named.
 fn module_layer_of_handle(h) = match graph_node_body(h) {
   NModule(m) => m.layer,
-  _ => {
+  NLink(l) => l.layer,
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NTypeAnn(_) | NName(_) => {
     out_of_range()
     User
   },
@@ -5256,7 +5257,7 @@ fn render_ty(ty) with !Mutate = match ty {
   // its binding.
   TVar(id) => match graph_node_body(id) {
     NTypeAnn(written) => render_ty(written),
-    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NName(_) => render_var(id),
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NName(_) => render_var(id),
   },
   TName(name, args) => if len(args) == 0 { name } else { "{name}({show_list(args, render_ty, ", ")})" },
   TRecord(fields) => "\{{show_list(fields_by_name(fields), render_field, ", ")}\}",
