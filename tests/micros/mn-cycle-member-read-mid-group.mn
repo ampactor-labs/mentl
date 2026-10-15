@@ -1,0 +1,26 @@
+// expect: 12
+// A CYCLE'S MEMBER READ BY A LATER MEMBER IS ITS LIVE CELL. The three below
+// are one binding group: render's result is render_value's, and
+// render_list, judged last, splices a call to render into a string. When
+// render's judgment ended it generalized its scheme while render_value's
+// result was still free, so the splice read a fresh copy of that variable,
+// the show had no type to dispatch on, and the emit refused a correct
+// program (E_ShapeUnprovable). Measured on boot 3c0ab36a: refused, exit 1.
+type Shape = Dot | Pair(Int, Int)
+
+fn shape_of(h) = if h == 0 { Dot } else { Pair(h, h + 1) }
+
+fn render(h) = render_value(shape_of(h))
+
+fn render_value(s) = match s {
+  Dot => "dot",
+  Pair(a, b) => "pair({render_list([a, b], 0)})",
+}
+
+fn render_list(xs, i) = if i >= len(xs) {
+  ""
+} else {
+  "{render(xs[i] - xs[i])}{render_list(xs, i + 1)}"
+}
+
+fn main() = len(render(3))

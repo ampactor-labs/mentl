@@ -3018,8 +3018,23 @@ fn infer_fn(name, params, body_node, ret_ann, effs, handle, span: ValidSpan, pol
   // Generalize and re-extend. Located: this is the entry every later
   // reader resolves (the flat env scans newest-first), so the decl span
   // rides the reason for the Why chain and the executable gate's
-  // unhandled-effect diagnostic.
-  let scheme = generalize(handle)
+  // unhandled-effect diagnostic. A member of a cycle still being judged
+  // quantifies its rows alone, as the view the group opened with does: a
+  // type variable quantified here could be one a co-member judged later
+  // binds, and that co-member's reference would read a fresh copy of it — a
+  // call spliced into a string answered a type variable where it answered
+  // String, and the emit refused the show (2026-10-15,
+  // tests/micros/mn-cycle-member-read-mid-group.mn). The group publishes
+  // every member's final as it closes (`group_final_publish`). A Mycroft
+  // round's assumption is a polymorphic scheme by intent, and a signature is
+  // its declared polymorphism.
+  let scheme = match generalize_pair(handle) {
+    (qs, ty) => if ages_in_cycle(handle) && !poly_hint && !fn_fully_sigd(params, ret_ann) {
+      Frozen(row_handles_only(qs, 0), ty)
+    } else {
+      Frozen(qs, ty)
+    },
+  }
   env_extend(name, scheme, Located(span, Declared(name)), FnScheme, handle)
   each(report_guard_note, graph_guard_drain())
 }
@@ -8318,6 +8333,9 @@ effect StoreAges {
   // them each member defers; and the group's close, handing both back.
   ages_group_open([Int])
   ages_in_group(Int) -> Bool
+  // Whether the declaration is a member of a cycle being judged: a group of
+  // two or more, whose members' views stay monomorphic until it closes.
+  ages_in_cycle(Int) -> Bool
   ages_defer(Int, [(Int, Int, [(Bool, [Int])])])
   ages_group_close() -> ([Int], [(Int, Int, Int, [(Bool, [Int])])])
 }
@@ -8344,6 +8362,13 @@ handler store_ages with scopes = [], groups = [] {
       (members, deferred) => resume() with groups = push(drop_last(groups), (members, deferred ++ map(deferred_by(caller, ??), calls))),
     }
   },
+  ages_in_cycle(decl) => resume(if len(groups) == 0 {
+    false
+  } else {
+    match last(groups) {
+      (members, _) => len(members) > 1 && any(handle_is(decl, ??), members),
+    }
+  }),
   ages_group_close() => if len(groups) == 0 {
     resume(([], []))
   } else {
