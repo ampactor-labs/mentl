@@ -434,9 +434,11 @@ landing that closes it. A gate that did not run is UNKNOWN, never green.
   each holding the text its judgment read and its imports as edges, and every
   reader starts from it — the compile, the session, the address, the battery. A
   value reference is linked to the declaration it resolved to. A pattern is a
-  node the judgment binds, its constructor linked the same way, and a
-  sub-pattern — a rest among them — is the cell of the part it takes apart,
-  so a binder is declared where it is written; a name written
+  node the judgment binds, its constructor linked the same way, a sub-pattern
+  — a rest among them — is the cell of the part it takes apart, and every
+  binder a pattern writes, a let's and a match arm's among them, is declared
+  where it is written, so the caret at a binder says its uses; a parameter is
+  still declared at a cell the judgment mints (§11.2); a name written
   in a type is a node linked to the type it names, and so are an effect a
   declaration's row or a function type's row names, the op a handler arm
   serves and a sugar that calls a primitive (`xs[i]`, `++`, an interpolation's
@@ -477,6 +479,9 @@ landing that closes it. A gate that did not run is UNKNOWN, never green.
   and one that does not open answers fd 0.
 - **Executable refusal is partial**: `diag_refuses` holds the live list; a class
   born at zero arms at birth, and the rest are §11's work.
+- **A module's init stores what one binder names** (§11.18): a module-scope
+  let whose pattern is a discard, a literal or a destructure refuses where the
+  program is emitted (`E_InternalInvariant`).
 - **Regions are runtime**: every extent runs in an arena — each module's
   parse, binding groups, declaration lowerings and the reach walk, emitted
   units, session answers, speculations, spawned instances' runs — and
@@ -650,8 +655,10 @@ a provenance diff, a search over live shared cells.
 
 **THE STANDING CURSOR** — the order work runs in:
 
-2. **Every position is a cell — #108** (`Hβ.graph.positions-are-cells`). The
-   writes the structure cut was for: a rename is one write at the declaration
+2. **Every position is a cell — #108** (`Hβ.graph.positions-are-cells`). A
+   parameter is declared at its own node, as every pattern's binder is, where
+   it is declared at a cell the judgment mints today. Then the writes the
+   structure cut was for: a rename is one write at the declaration
    (the `rename` verb, through the formatter); the session re-judges the nodes
    an edit rewrote rather than re-parsing a module (the declaration-grain cone
    over the in-edges); accepting a proposal rewrites the hole's node in place,
@@ -834,7 +841,10 @@ a provenance diff, a search over live shared cells.
     (`plan_reached`, `reach_units`) key their units by it, and a function
     bound to a handler's resume is the declaration the arm's references
     reach, where it is found by its spelling (`ls_resume_bind_of`); the
-    gate is m3 == m4 with the symbol-keyed walks deleted; incrementality has the
+    gate is m3 == m4 with the symbol-keyed walks deleted; a module value is a
+    column on its binder, so a module-scope let binds every binder its pattern
+    writes, each at a global of its own, and runs its value for effect when it
+    binds none, where any pattern but one binder refuses today; incrementality has the
     trail as the delta's home (`Hβ.graph.mutation-delta-is-write-only`), the
     session paying for what an edit moved (`Hβ.session.edit-pays-for-the-program`)
     and outliving its process (`Hβ.felt.accept-outlives-the-process`); persist

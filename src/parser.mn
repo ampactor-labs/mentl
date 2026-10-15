@@ -3050,18 +3050,21 @@ fn desugar_block(stmts, final_e, span: ValidSpan) = match find_destructure_let(s
   },
 }
 
-// The names a pattern binds, in source order: every binder under it, a
-// rest's among them. An alternation's branches bind the same names, by law,
-// so its first branch answers for it.
-fn pat_binder_names(pat) = match pat_of(pat) {
-  PVar(n) => [n],
-  PAs(n, inner) => [n] ++ pat_binder_names(inner),
+// The binders a pattern writes, in source order, each its name and the node
+// it is written at: every binder under it, a rest's among them. An
+// alternation's branches bind the same names, by law, so its first branch
+// answers for it.
+fn pat_binders(pat) = match pat_of(pat) {
+  PVar(n) => [(n, pat)],
+  PAs(n, inner) => [(n, pat)] ++ pat_binders(inner),
   PAlt(branches) => match branches {
-    [first, ..._] => pat_binder_names(first),
+    [first, ..._] => pat_binders(first),
     [] => [],
   },
-  p @ (PWild | PLit(_) | PCon(_, _) | PTuple(_) | PList(_, _) | PRecord(_, _)) => flat_map(pat_binder_names, pat_child_handles(p)),
+  p @ (PWild | PLit(_) | PCon(_, _) | PTuple(_) | PList(_, _) | PRecord(_, _)) => flat_map(pat_binders, pat_child_handles(p)),
 }
+
+fn pat_binder_names(pat) = pat_binders(pat) |> map({ (n, _) => n })
 
 fn find_destructure_let(stmts, i) = if i >= len(stmts) {
   None

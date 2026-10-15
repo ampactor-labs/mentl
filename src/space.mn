@@ -672,17 +672,33 @@ fn trace_cells(t) = match t {
 // edge. A reference answers every reference to the declaration it links —
 // a parameter, a local and a module's function alike, each the node that
 // declares it — and a declaration answers its own: the in-edges that are
-// uses (`graph_refs_of`).
-fn refs_at(h, v) = match graph_node_body(h) {
-  NExpr(VarRef(name)) => match graph_ref_decl(h) {
-    Some(d) => FoundRefs(name, refs_of_decl(d) |> map(noted_address), []),
-    None => FoundNothing,
+// uses (`graph_refs_of`). A pattern's binder is a declaration, and its
+// constructor a reference.
+fn refs_at(h, v) = match declared_at(h) {
+  Some(name) => FoundRefs(name, uses_of(h), []),
+  None => match graph_node_body(h) {
+    NExpr(VarRef(name)) => linked_refs(name, h),
+    NPat(PCon(name, _)) => linked_refs(name, h),
+    _ => FoundNothing,
   },
-  NStmt(s) => match stmt_declared_name(s) {
-    Some(name) => FoundRefs(name, refs_of_decl(h) |> map(noted_address), []),
-    None => FoundNothing,
+}
+
+fn linked_refs(name: String, h) = match graph_ref_decl(h) {
+  Some(d) => FoundRefs(name, uses_of(d), []),
+  None => FoundNothing,
+}
+
+fn uses_of(d) = refs_of_decl(d) |> map(noted_address)
+
+// The name the node declares: a declaration's own, or the binder a pattern
+// writes. A let declares through its binder.
+fn declared_at(h) = match graph_node_body(h) {
+  NStmt(s) => stmt_declared_name(s),
+  NPat(p) => match p {
+    PVar(name) | PAs(name, _) => Some(name),
+    PWild | PLit(_) | PCon(_, _) | PTuple(_) | PList(_, _) | PRecord(_, _) | PAlt(_) => None,
   },
-  _ => FoundNothing,
+  NExpr(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) => None,
 }
 
 fn stmt_declared_name(s) = match s {
@@ -1418,8 +1434,21 @@ fn address_project(found, target: String, line, col) = match address_locate(foun
   },
   AddressNode(Viewed(v), pspan, ph) => {
     ring_text(ring_of(cursor_at_handle(ph), ph, pspan, v))
+    uses_text(ph)
     0
   },
+}
+
+// At a declaration the terminal says where it is used, the sites the page's
+// find draws at the same caret; at a reference the Why names the declaration
+// it links.
+fn uses_text(h) = match declared_at(h) {
+  Some(name) => {
+    let sites = uses_of(h)
+    print("Uses: {int_to_str(len(sites))} of {name}\n")
+    each({ (m, sp) => print("  at {m}:{show_span(sp)}\n") }, sites)
+  },
+  None => (),
 }
 
 // The space verb's projection — `mentl space <file>:<line>[:<col>]`: the

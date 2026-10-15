@@ -1,0 +1,6 @@
+// expect: refuse E_InternalInvariant
+// A module's init stores the value one binder names, so a module value
+// taken apart by a pattern is refused where the program is emitted.
+let (w, h) = (40, 2)
+
+fn main() = w + h

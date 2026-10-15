@@ -494,9 +494,9 @@ fn inf_add_row_unified(row) = {
 // is a projection (comments heal under rename; the audit's
 // referenced-by line is the reverse read) — or narrates
 // W_CommentRefUnresolved through the ordinary diagnostics chain at the
-// comment's own span. The resolution surfaces, in order: the owner's
-// own names (a fn's params, a handler's config / state / ops / arm
-// args — they live ON the commented node); the surface's vocabulary
+// comment's own span. The resolution surfaces, in order: the binders of
+// the commented node and of the declaration around it (`cites_binder`);
+// the surface's vocabulary
 // (keywords via the lexer's keyword_kind — its one home — and the repr
 // words); the declared program (the decl index — these draw the edge);
 // the env's primitive schemes. A `$`-opening span is the program's
@@ -509,11 +509,7 @@ fn inf_add_row_unified(row) = {
 // non-ident bytes are quoted CODE (illustrative; compiling them is the
 // doc-test frontier) and `<...>` marks a schematic template — neither
 // is a reference.
-fn comment_refs_check(ref stmts, parse_start, parse_end) = {
-  // Each top-level declaration's own names, computed once and kept at its
-  // handle: an interior comment reaches the declaration around it up the
-  // parent edge and reads them there.
-  let scopes = fold(wmap_new(1024), (acc, h) => wmap_add(acc, h, comment_locals(h)), stmts)
+fn comment_refs_check(parse_start, parse_end) = {
   // The walk's bounds are THIS pass's own parse range: comments attach
   // only at parse (graph_attach_comment, like graph_index_span), so
   // handles above the frontend's frontier are comment-free by
@@ -522,7 +518,7 @@ fn comment_refs_check(ref stmts, parse_start, parse_end) = {
   // graph_next walk judged every stale generation's copy and probed
   // the judgment's millions of mints for prose (the crc share of the
   // healed profile, 19%, 2026-07-26).
-  let dollars = crc_walk(parse_start, parse_end, scopes, [])
+  let dollars = crc_walk(parse_start, parse_end, [])
   if len(dollars) > 0 {
     let lvix = lit_vocab_build(0, graph_next(), smap_new())
     crc_judge_dollars(dollars, 0, lvix)
@@ -531,16 +527,8 @@ fn comment_refs_check(ref stmts, parse_start, parse_end) = {
   }
 }
 
-// The names of the top-level declaration a node stands inside: its
-// ancestor whose parent is the module, read up the parent edge.
-fn enclosing_names(scopes, h) = match top_declaration_of(h) {
-  Some(top) => match wmap_get(scopes, top) {
-    Some(names) => names,
-    None => [],
-  },
-  None => [],
-}
-
+// The top-level declaration a node stands inside: its ancestor whose parent
+// is the module, read up the parent edge.
 fn top_declaration_of(h) = match graph_parent_of(h) {
   Some(p) => match graph_node_body(p) {
     NModule(_) => Some(h),
@@ -549,30 +537,22 @@ fn top_declaration_of(h) = match graph_parent_of(h) {
   None => None,
 }
 
-fn crc_walk(h, n, ref scopes, dollars) = if h >= n {
+fn crc_walk(h, n, dollars) = if h >= n {
   dollars
 } else {
   let t = graph_comment_at(h)
-  let d2 = if byte_len(t) > 0 {
-    crc_scan(t, 0, byte_len(t), h, comment_locals(h) ++ enclosing_names(scopes, h), dollars)
-  } else {
-    dollars
-  }
-  crc_walk(h + 1, n, scopes, d2)
+  let d2 = if byte_len(t) > 0 { crc_scan(t, 0, byte_len(t), h, dollars) } else { dollars }
+  crc_walk(h + 1, n, d2)
 }
 
-fn crc_scan(ref t, i, n, h, ref locals, dollars) = if i >= n {
+fn crc_scan(ref t, i, n, h, dollars) = if i >= n {
   dollars
 } else {
   if byte_at(t, i) == 96 {
     let j = ctick_close(t, i + 1, n)
-    if j < n {
-      crc_scan(t, j + 1, n, h, locals, crc_judge(t, i + 1, j, h, locals, dollars))
-    } else {
-      dollars
-    }
+    if j < n { crc_scan(t, j + 1, n, h, crc_judge(t, i + 1, j, h, dollars)) } else { dollars }
   } else {
-    crc_scan(t, i + 1, n, h, locals, dollars)
+    crc_scan(t, i + 1, n, h, dollars)
   }
 }
 
@@ -582,7 +562,7 @@ fn ctick_close(ref t, i, n) =
 // One span, one verdict. A `$`-opening ident span queues for the lazy
 // emitted-vocabulary judgment; a pure ident span resolves now; anything
 // else in backticks is quoted code or schema, not a reference.
-fn crc_judge(ref t, a, b, h, ref locals, dollars) = if b <= a {
+fn crc_judge(ref t, a, b, h, dollars) = if b <= a {
   dollars
 } else {
   if byte_at(t, a) == 36 {
@@ -593,7 +573,7 @@ fn crc_judge(ref t, a, b, h, ref locals, dollars) = if b <= a {
     } else {
       if span_is_ident(t, a, b) {
         let name = str_slice(t, a, b)
-        if crc_resolve(name, h, locals) { dollars } else { dollars ++ [(h, name)] }
+        if crc_resolve(name, h) { dollars } else { dollars ++ [(h, name)] }
       } else {
         dollars
       }
@@ -636,7 +616,7 @@ fn span_ident_walk(ref t, a, b) = if a >= b {
 // prose judged alone as its own entry narrated 139 unresolved references the
 // board never saw (Hβ.voice.comment-ref-gate-reads-the-flattened-link, M7).
 // A resolved name draws the comment's edge to its declaration.
-fn crc_resolve(ref name, h, ref locals) = if in_owner_names(locals, name, 0) {
+fn crc_resolve(ref name, h) = if cites_binder(h, name) {
   true
 } else {
   match keyword_kind(name) {
@@ -775,12 +755,6 @@ fn ident_byte(b) with Pure =
 fn is_surface_word(ref name) =
   name == "self" || name == "_" || name == "i32" || name == "i64" || name == "f32" || name == "f64" || name == "v128"
 
-fn in_owner_names(ref xs, ref name, i) = if i >= len(xs) {
-  false
-} else {
-  if list_index(xs, i) == name { true } else { in_owner_names(xs, name, i + 1) }
-}
-
 fn comment_owner(h) = match graph_node_body(h) {
   NStmt(FnStmt(name, _, _, _, _)) => name,
   NStmt(TypeDefStmt(name, _)) => name,
@@ -789,129 +763,128 @@ fn comment_owner(h) = match graph_node_body(h) {
   _ => "node {int_to_str(h)}",
 }
 
-// The owner's own names — a comment on a fn legitimately references its
-// parameters; a comment on a handler its config, state fields, ops and
-// arm args; a comment on an effect its ops. They live ON the owning node.
-fn comment_locals(h) = match graph_node_body(h) {
-  NStmt(FnStmt(_, params, _, _, fbody)) => body_binders(fbody, cl_param_names(params, 0, [])),
-  NStmt(HandlerDeclStmt(_, _, config, states, arms, _)) => cl_arm_names(arms, 0, cl_state_names(states, 0, cl_param_names(config, 0, []))),
-  NStmt(EffectDeclStmt(_, _, ops)) => cl_op_names(ops, 0, []),
-  NStmt(LetStmt(pat, val, _)) => body_binders(val, pat_binder_names(pat)),
-  NStmt(TypeDefStmt(_, ctors)) => cl_ctor_names(ctors, 0, []),
-  NStmt(ExprStmt(e)) => body_binders(e, []),
-  _ => [],
+// A name a comment cites resolves to a binder of the node the comment is
+// attached to, or of the top-level declaration around it: a fn's
+// parameters, a handler's config, state, ops and arm arguments, an effect's
+// ops, a type's constructors and record fields, and every binder written
+// inside them. It is asked one name at a time and answered by the first
+// binder found, so nothing is collected.
+fn cites_binder(h, name: String) = owner_binds(h, name) || match top_declaration_of(h) {
+  Some(top) => top != h && owner_binds(top, name),
+  None => false,
 }
 
-// A type's comment references its ctors and its record fields — both
-// live in the declaration itself.
-fn cl_ctor_names(ref ctors, i, acc) = if i >= len(ctors) {
-  acc
+fn owner_binds(h, name: String) = match graph_node_body(h) {
+  NStmt(FnStmt(_, params, _, _, fbody)) => params_bind(params, name, 0) || binds_inside(fbody, name),
+  NStmt(HandlerDeclStmt(_, _, config, states, arms, _)) => params_bind(config, name, 0) || states_bind(states, name, 0) || arms_bind(arms, name, 0),
+  NStmt(EffectDeclStmt(_, _, ops)) => ops_bind(ops, name, 0),
+  NStmt(LetStmt(pat, val, _)) => pat_binds(pat, name) || binds_inside(val, name),
+  NStmt(TypeDefStmt(_, ctors)) => ctors_bind(ctors, name, 0),
+  NStmt(ExprStmt(e)) => binds_inside(e, name),
+  _ => false,
+}
+
+// A type's constructors, and the fields of its record payloads.
+fn ctors_bind(ctors, name: String, i) = if i >= len(ctors) {
+  false
 } else {
   match list_index(ctors, i) {
-    (cname, tys, _) => cl_ctor_names(ctors, i + 1, cl_ctor_field_names(tys, 0, acc ++ [cname])),
+    (cname, tys, _) => cname == name || payload_fields_bind(tys, name, 0) || ctors_bind(ctors, name, i + 1),
   }
 }
 
-fn cl_ctor_field_names(ref tys, i, acc) = if i >= len(tys) {
-  acc
+fn payload_fields_bind(tys, name: String, i) = if i >= len(tys) {
+  false
 } else {
-  let acc2 = match list_index(tys, i) {
-    TRecord(fs) => cl_record_field_names(fs, 0, acc),
-    _ => acc,
+  match list_index(tys, i) {
+    TRecord(fs) => record_fields_bind(fs, name, 0) || payload_fields_bind(tys, name, i + 1),
+    _ => payload_fields_bind(tys, name, i + 1),
   }
-  cl_ctor_field_names(tys, i + 1, acc2)
 }
 
-fn cl_record_field_names(ref fs, i, acc) = if i >= len(fs) {
-  acc
+fn record_fields_bind(fs, name: String, i) = if i >= len(fs) {
+  false
 } else {
   match list_index(fs, i) {
-    (fname, _) => cl_record_field_names(fs, i + 1, acc ++ [fname]),
+    (fname, _) => fname == name || record_fields_bind(fs, name, i + 1),
   }
 }
 
-// The binder-side dual of own.mn's count_uses: every name a decl's
-// subtree BINDS — let patterns, match-arm patterns, nested fn names
-// and params, lambda params. The comment resolver reads it as the
-// owner's own namespace. (uses / binders / reach / spec-scan are one
-// AST fold in larval form — the forked-cursor rewrite unifies them,
-// the PLAN §7 ruling.)
-fn body_binders(ref node, acc) = match graph_node_body(node) {
-  NExpr(LambdaExpr(params, lb)) => body_binders(lb, cl_param_names(params, 0, acc)),
-  NExpr(BlockExpr(stmts, fe)) => body_binders(fe, bb_list(stmts, 0, acc)),
-  NExpr(IfExpr(c, t, e)) => body_binders(e, body_binders(t, body_binders(c, acc))),
-  NExpr(MatchExpr(sc, arms)) => bb_arms(arms, 0, body_binders(sc, acc)),
-  NExpr(CallExpr(f, args)) => bb_list(args, 0, body_binders(f, acc)),
-  NExpr(BinOpExpr(_, l, r)) => body_binders(r, body_binders(l, acc)),
-  NExpr(UnaryOpExpr(_, inner)) => body_binders(inner, acc),
-  NExpr(PipeExpr(_, l, r)) => body_binders(r, body_binders(l, acc)),
-  NExpr(MakeListExpr(es)) => bb_list(es, 0, acc),
-  NExpr(MakeTupleExpr(es)) => bb_list(es, 0, acc),
-  NExpr(MakeStringExpr(fs)) => bb_list(fs, 0, acc),
-  NExpr(ShowExpr(inner)) => body_binders(inner, acc),
-  NExpr(IndexExpr(rc, ix)) => body_binders(ix, body_binders(rc, acc)),
-  NExpr(FieldExpr(rc, _)) => body_binders(rc, acc),
-  NExpr(ResumeExpr(v, _)) => body_binders(v, acc),
-  NExpr(LabeledArg(_, v)) => body_binders(v, acc),
-  NExpr(MakeRecordExpr(flds)) => bb_fields(flds, 0, acc),
-  NExpr(RecordUpdateExpr(b, flds)) => bb_fields(flds, 0, body_binders(b, acc)),
-  NExpr(NamedRecordExpr(_, flds)) => bb_fields(flds, 0, acc),
-  NStmt(LetStmt(pat, val, _)) => body_binders(val, acc ++ pat_binder_names(pat)),
-  NStmt(FnStmt(nm, ps, _, _, fb)) => body_binders(fb, cl_param_names(ps, 0, acc ++ [nm])),
-  NStmt(ExprStmt(e)) => body_binders(e, acc),
-  _ => acc,
+// Whether a binder named `name` is written inside a node: a let's or an
+// arm's pattern, a lambda's or a nested fn's parameter, a nested fn's own
+// name.
+fn binds_inside(node, name: String) = match graph_node_body(node) {
+  NExpr(LambdaExpr(params, lb)) => params_bind(params, name, 0) || binds_inside(lb, name),
+  NExpr(BlockExpr(stmts, fe)) => nodes_bind(stmts, name, 0) || binds_inside(fe, name),
+  NExpr(IfExpr(c, t, e)) => binds_inside(c, name) || binds_inside(t, name) || binds_inside(e, name),
+  NExpr(MatchExpr(sc, arms)) => binds_inside(sc, name) || match_arms_bind(arms, name, 0),
+  NExpr(CallExpr(f, args)) => binds_inside(f, name) || nodes_bind(args, name, 0),
+  NExpr(BinOpExpr(_, l, r)) => binds_inside(l, name) || binds_inside(r, name),
+  NExpr(UnaryOpExpr(_, inner)) => binds_inside(inner, name),
+  NExpr(PipeExpr(_, l, r)) => binds_inside(l, name) || binds_inside(r, name),
+  NExpr(MakeListExpr(es)) => nodes_bind(es, name, 0),
+  NExpr(MakeTupleExpr(es)) => nodes_bind(es, name, 0),
+  NExpr(MakeStringExpr(fs)) => nodes_bind(fs, name, 0),
+  NExpr(ShowExpr(inner)) => binds_inside(inner, name),
+  NExpr(IndexExpr(rc, ix)) => binds_inside(rc, name) || binds_inside(ix, name),
+  NExpr(FieldExpr(rc, _)) => binds_inside(rc, name),
+  NExpr(ResumeExpr(v, _)) => binds_inside(v, name),
+  NExpr(LabeledArg(_, v)) => binds_inside(v, name),
+  NExpr(MakeRecordExpr(flds)) => fields_bind(flds, name, 0),
+  NExpr(RecordUpdateExpr(b, flds)) => binds_inside(b, name) || fields_bind(flds, name, 0),
+  NExpr(NamedRecordExpr(_, flds)) => fields_bind(flds, name, 0),
+  NStmt(LetStmt(pat, val, _)) => pat_binds(pat, name) || binds_inside(val, name),
+  NStmt(FnStmt(nm, ps, _, _, fb)) => nm == name || params_bind(ps, name, 0) || binds_inside(fb, name),
+  NStmt(ExprStmt(e)) => binds_inside(e, name),
+  _ => false,
 }
 
-fn bb_list(ref nodes, i, acc) =
-  if i >= len(nodes) { acc } else { bb_list(nodes, i + 1, body_binders(list_index(nodes, i), acc)) }
+fn nodes_bind(nodes, name: String, i) =
+  i < len(nodes) && (binds_inside(list_index(nodes, i), name) || nodes_bind(nodes, name, i + 1))
 
-fn bb_arms(ref arms, i, acc) = if i >= len(arms) {
-  acc
+fn match_arms_bind(arms, name: String, i) = if i >= len(arms) {
+  false
 } else {
   match list_index(arms, i) {
-    (pat, abody) => bb_arms(arms, i + 1, body_binders(abody, acc ++ pat_binder_names(pat))),
+    (pat, abody) => pat_binds(pat, name) || binds_inside(abody, name) || match_arms_bind(arms, name, i + 1),
   }
 }
 
-fn bb_fields(ref flds, i, acc) = if i >= len(flds) {
-  acc
+fn fields_bind(flds, name: String, i) = if i >= len(flds) {
+  false
 } else {
   match list_index(flds, i) {
-    (_, v) => bb_fields(flds, i + 1, body_binders(v, acc)),
+    (_, v) => binds_inside(v, name) || fields_bind(flds, name, i + 1),
   }
 }
 
-fn cl_param_names(ref params, i, acc) = if i >= len(params) {
-  acc
-} else {
-  cl_param_names(params, i + 1, acc ++ [param_name(list_index(params, i))])
-}
+fn pat_binds(pat, name: String) = names_hold(pat_binder_names(pat), name, 0)
 
-// The two record annotations below are the LAST pins of this family — the
-// String pin on in_owner_names is GONE (its site twins under the structured
-// enc and the twin's emit reads str_eq). A field read on a CONSTRAINED-open
-// record (TRecordOpen) does not yet heal: the witness matches TVar receivers
-// only, and open-record offsets over a partial field set are the wrong-field
-// bug — the row must resolve under the bracket. That dig deletes these two.
-fn cl_state_names(ref states: [{init: Node, name: String}], i, acc) = if i >= len(states) {
-  acc
-} else {
-  let st = list_index(states, i)
-  cl_state_names(states, i + 1, acc ++ [st.name])
-}
+fn names_hold(xs, name: String, i) =
+  i < len(xs) && (list_index(xs, i) == name || names_hold(xs, name, i + 1))
 
-fn cl_arm_names(ref arms: [{args: [String], body: Node, op: Node}], i, acc) = if i >= len(arms) {
-  acc
+fn params_bind(params, name: String, i) =
+  i < len(params) && (param_name(list_index(params, i)) == name || params_bind(params, name, i + 1))
+
+// The two record annotations are pins: a field read on a constrained-open
+// record (TRecordOpen) does not yet resolve its offset, since the witness
+// matches TVar receivers only, so the row is closed here at its Intent
+// Boundary.
+fn states_bind(states: [{init: Node, name: String}], name: String, i) =
+  i < len(states) && (list_index(states, i).name == name || states_bind(states, name, i + 1))
+
+fn arms_bind(arms: [{args: [String], body: Node, op: Node}], name: String, i) = if i >= len(arms) {
+  false
 } else {
   let arm = list_index(arms, i)
-  cl_arm_names(arms, i + 1, body_binders(arm.body, acc ++ [handler_arm_op_name(arm)] ++ arm.args))
+  handler_arm_op_name(arm) == name || names_hold(arm.args, name, 0) || binds_inside(arm.body, name) || arms_bind(arms, name, i + 1)
 }
 
-fn cl_op_names(ref ops, i, acc) = if i >= len(ops) {
-  acc
+fn ops_bind(ops, name: String, i) = if i >= len(ops) {
+  false
 } else {
   match list_index(ops, i) {
-    (opname, _, _, _) => cl_op_names(ops, i + 1, acc ++ [opname]),
+    (opname, _, _, _) => opname == name || ops_bind(ops, name, i + 1),
   }
 }
 
@@ -1356,7 +1329,7 @@ fn infer_program_once(stmts, parse_start, parse_end) = {
   // cone's few. The lazy `$`-vocabulary (lit_vocab_build) still reads every
   // generation's literals, which can only resolve more, never less.
   finalize_continuation_boundaries(parse_start, graph_next())
-  comment_refs_check(stmts, parse_start, parse_end)
+  comment_refs_check(parse_start, parse_end)
 } ~> row_gate ~> store_ages ~> infer_ctx ~> fresh_for_inference ~> resume_summaries_ctx
 
 // Reports said to no one: the discovery parse's import read (the weave
@@ -6084,7 +6057,7 @@ fn instance_body(chain: String, body, copy, span: ValidSpan) = match body {
   NExpr(e) => NExpr(instance_expr(chain, e, span)),
   NStmt(s) => NStmt(instance_stmt(chain, s, span)),
   NHole(_) => NHole(copy),
-  NPat(p) => NPat(p),
+  NPat(p) => NPat(instance_pat(chain, p, span)),
   NTypeAnn(t) => NTypeAnn(t),
   NModule(m) => NModule(m),
   NLink(l) => NLink(l),
@@ -6099,7 +6072,25 @@ fn instance_pair(chain: String, span: ValidSpan, field) = match field {
 }
 
 fn instance_arm(chain: String, span: ValidSpan, arm) = match arm {
-  (p, b) => (p, chain_instance(chain, b, span)),
+  (p, b) => (chain_instance(chain, p, span), chain_instance(chain, b, span)),
+}
+
+// A pattern is copied whole: each of its nodes is the cell of what it takes
+// apart and declares the binder it writes, so two installs judge two
+// patterns.
+fn instance_pat(chain: String, p, span: ValidSpan) = {
+  let go = instance_of(chain, span, ??)
+  match p {
+    PVar(name) => PVar(name),
+    PWild => PWild,
+    PLit(v) => PLit(v),
+    PCon(name, subs) => PCon(name, map(go, subs)),
+    PTuple(subs) => PTuple(map(go, subs)),
+    PList(subs, rest) => PList(map(go, subs), map_option(go, rest)),
+    PRecord(fields, rest) => PRecord(map(instance_pair(chain, span, ??), fields), map_option(go, rest)),
+    PAlt(branches) => PAlt(map(go, branches)),
+    PAs(name, inner) => PAs(name, go(inner)),
+  }
 }
 
 fn instance_update(chain: String, span: ValidSpan, u) =
@@ -6147,7 +6138,11 @@ fn instance_stmt(chain: String, s, span: ValidSpan) = match s {
     let v = chain_instance(chain, value, span)
     // an absent annotation IS the value node (the parser's sentinel), so the
     // copy keeps the alias
-    LetStmt(pat, v, if ann == value { v } else { chain_instance(chain, ann, span) })
+    LetStmt(
+      chain_instance(chain, pat, span),
+      v,
+      if ann == value { v } else { chain_instance(chain, ann, span) }
+    )
   },
   ExprStmt(e) => ExprStmt(chain_instance(chain, e, span)),
   FnStmt(_, _, _, _, _) => s,
@@ -9335,17 +9330,12 @@ fn pat_is_value(pat, handle) = if pat == handle {
 // declaration its name resolves to. `handle` is the cell of the value the
 // pattern takes apart — the scrutinee for a pattern a match or a let holds,
 // the pattern's own node for a sub-pattern, which is the cell of the part it
-// takes apart — and a binder is declared at that cell, where it is written.
+// takes apart — and a binder is declared at its pattern's node, where it is
+// written.
 fn infer_pat(pat, handle, span: ValidSpan) = match pat_of(pat) {
   PVar(name) => {
     pat_is_value(pat, handle)
-    env_extend(
-      name,
-      Frozen([], TVar(handle)),
-      Located(graph_span_of(pat), LetBinding(name, Inferred("pattern"))),
-      ValueScheme,
-      handle
-    )
+    declare_binder(name, pat, handle, Inferred("pattern"))
   },
   PWild => pat_is_value(pat, handle),
   PLit(v) => {
@@ -9453,20 +9443,26 @@ fn infer_pat(pat, handle, span: ValidSpan) = match pat_of(pat) {
     enforce_alt_binding_law(branch_binds, span)
   },
   PAs(name, inner) => {
-    // The as-pattern binds the WHOLE value its position takes apart: the
-    // binder is declared at that value's cell, as a binder standing alone
-    // is, and the inner pattern destructures the same value.
+    // The as-pattern binds the WHOLE value its position takes apart, as a
+    // binder standing alone does, and the inner pattern destructures the
+    // same value.
     pat_is_value(pat, handle)
-    env_extend(
-      name,
-      Frozen([], TVar(handle)),
-      Located(graph_span_of(pat), LetBinding(name, Inferred("as-pattern"))),
-      ValueScheme,
-      handle
-    )
+    declare_binder(name, pat, handle, Inferred("as-pattern"))
     infer_pat(inner, handle, span)
   },
 }
+
+// A binder is declared where it is written, at its pattern's node, and is
+// the cell of the value at its position: a sub-pattern's node is that cell
+// itself, and a pattern a match or a let holds names the value it is handed
+// whole, whose cell it publishes.
+fn declare_binder(name: String, pat, handle, why) = env_extend(
+  name,
+  Frozen([], TVar(handle)),
+  Located(graph_span_of(pat), LetBinding(name, why)),
+  ValueScheme,
+  pat
+)
 
 // A sub-pattern is the cell of the part it takes apart: its node is bound to
 // the part's type, carries the edge to the whole it was taken from, and is

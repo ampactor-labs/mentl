@@ -802,16 +802,13 @@ fn part_read(whole, step, read) = path_read(whole, [step], read)
 // applied where the path ends.
 fn path_read(whole, path, read) = match path {
   [] => read(whole),
-  [step, ...rest] => match step {
-    PartWhole => path_read(whole, rest, read),
-    _ => match graph_binder_of(whole) {
-      Some(fact) => match fact {
-        PartFact(f) => path_read(f.whole, [f.step] ++ path, read),
-        ParamFact(_) => None,
-        StateFact(f) => state_path_read(whole, f.writes, path, read),
-      },
-      None => expr_path_read(whole, step, rest, read),
+  [step, ...rest] => match graph_binder_of(whole) {
+    Some(fact) => match fact {
+      PartFact(f) => path_read(f.whole, [f.step] ++ path, read),
+      ParamFact(_) => None,
+      StateFact(f) => state_path_read(whole, f.writes, path, read),
     },
+    None => expr_path_read(whole, step, rest, read),
   },
 }
 
@@ -1056,7 +1053,6 @@ fn whole_path(w) = match graph_binder_of(w) {
 fn path_step(at, step) = match at {
   Some(found) => match found {
     (b, path) => match step {
-      PartWhole => Some((b, path)),
       PartIndex(_) => Some((b, path ++ [step])),
       PartField(_) => Some((b, path ++ [step])),
       PartElem => Some((b, path ++ [step])),

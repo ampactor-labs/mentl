@@ -513,11 +513,16 @@ fn emit_reach_roots(program, library, i, n, live, roots) = if i >= n {
     emit_reach_roots(program, library, i + 1, n, list_set(live, i, Reached), low_refs(roots, stmt))
   } else if keyless {
     // An executable's value let runs in `$__init_lets` at module scope, so
-    // its init is settled there, unbracketed, under the let's own name.
+    // its init is settled there, unbracketed, under the let's own name; a
+    // module-scope let the init cannot store is refused there.
     let roots2 = match stmt {
       LLet(_, name, init) => {
         settle_floors(name, init)
         low_refs(roots, init)
+      },
+      LInvariantFailure(_, _) => {
+        settle_floors("__init_lets", stmt)
+        roots
       },
       _ => roots,
     }

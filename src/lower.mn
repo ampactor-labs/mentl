@@ -236,6 +236,10 @@ type BoundaryInvariant
   // — a Thread-class handler declared beside no `fanout_threaded`. The
   // name is the implementation the schedule's vocabulary owes.
   | SequenceFanoutUnlinked(String)
+  // A module-scope `let` whose pattern is not one binder: the init function
+  // stores the value a single binder names, and nothing else, so the let is
+  // refused where it is emitted rather than dropped with its value.
+  | ModuleLetPattern
 
 fn show_boundary_invariant(invariant) = match invariant {
   MissingFanoutBoundary => "missing fanout boundary",
@@ -252,6 +256,7 @@ fn show_boundary_invariant(invariant) = match invariant {
   ProjectionOriginShape(h) => "column projection at {int_to_str(h)}: the program-column node is not the projector's shape",
   TangentOutsideReading => "tangent_of outside a derivative reading — refused at the call",
   SequenceFanoutUnlinked(impl) => "the sequence fanout runs under a schedule whose implementation `{impl}` is not linked — import the library that declares this schedule's vocabulary",
+  ModuleLetPattern => "a module-scope let binds one name, and this one binds a pattern the module's init does not store — bind the value to one name and take it apart where it is read",
 }
 
 // What a lowered reference to module scope denotes, decided once by the
@@ -4092,14 +4097,13 @@ fn lower_stmt_body(s, handle, span) = match s {
       // VarRef lookups; the bound expr's handle IS the local's type handle),
       // set at the register the binding took.
       PVar(name) => LLet(handle, ls_bind_local(name, expr), lo),
-      // PWild / PLit: evaluate for effect, no binding. DESTRUCTURE patterns
-      // (PTuple/PCon/PList/PRecord) never reach here — the parser desugars
-      // `let pat = v; rest` to `match v { pat => rest }` at the node's birth
-      // (desugar_block), so LetStmt is PVar-only by construction. Binding +
-      // field-load + nesting all come from the ONE match projection
-      // (`lower_match_arms`, whose one pattern walk binds and lowers), no
-      // parallel destructure re-derivation.
-      _ => lo,
+      // In a block `let _ = e` evaluates e for effect, and a destructuring
+      // pattern never reaches here: the parser makes `let pat = v; rest` the
+      // `match v { pat => rest }` it is at the node's birth (desugar_block),
+      // whose one pattern walk binds and lowers (`lower_match_arms`). The
+      // module's init stores only what one binder names, so at module scope
+      // any other pattern is refused.
+      _ => if ls_frame_depth() == 0 { LInvariantFailure(handle, ModuleLetPattern) } else { lo },
     }
   },
   // Bind the fn's name in the enclosing frame (the fn's handle is the type

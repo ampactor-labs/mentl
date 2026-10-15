@@ -1,0 +1,9 @@
+// declared 6:3 at 5:7
+// A let's binder is declared where it is written: the edge from `total`
+// reaches the `total` the let binds, never the value it was handed.
+fn main() = {
+  let total = sum3(1, 2, 3)
+  total - 6
+}
+
+fn sum3(a, b, c) = a + b + c

@@ -1,0 +1,9 @@
+// declared 6:11 at 6:3
+// A match arm's binder names the whole value the match is handed, and is
+// declared where it is written: the edge from `n` reaches the arm's `n`.
+fn clip(k) = match k {
+  0 => 0,
+  n => if n > 9 { 9 } else { n },
+}
+
+fn main() = clip(0)

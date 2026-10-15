@@ -274,15 +274,23 @@ fn in_edge_kept(keep, e) = match e {
 // The binder a reference reads, when what it names is a value binder — a
 // parameter, a pattern's binder, a handler's state field, a declaration's
 // own cell while its group is judged — whose cell the reference shares: the
-// declaration's published binding is that cell, unquantified. A declaration
+// declaration's published binding is that cell, unquantified. A pattern's
+// binder that names the whole value it was handed — a let's, a match arm's —
+// publishes that value's cell from the node where it is written, so the
+// reference reads the value and its edge reaches the binder. A declaration
 // that generalizes (a function, a constructor, an op) is reached by the same
 // edge and is no binder.
 fn binder_read_by(r) = match graph_ref_decl(r) {
   Some(d) => match graph_published(d) {
-    Some((Frozen([], TVar(b)), _, _)) => if b == d { Some(d) } else { None },
+    Some((Frozen([], TVar(b)), _, _)) => if b == d || is_pattern(d) { Some(b) } else { None },
     _ => None,
   },
   None => None,
+}
+
+fn is_pattern(h) = match graph_node_body(h) {
+  NPat(_) => true,
+  NExpr(_) | NStmt(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) => false,
 }
 
 fn spine_parent_at(spine, spine_open, h) = if spine_band(h) >= spine_open {

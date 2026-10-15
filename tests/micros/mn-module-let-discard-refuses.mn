@@ -1,0 +1,9 @@
+// expect: refuse E_InternalInvariant
+// A module's init stores the value one binder names, so a discard at module
+// scope is refused where the program is emitted, never run without the value
+// it was written for.
+import io
+
+let _ = print_string("evaluated\n")
+
+fn main() = 0

@@ -776,8 +776,8 @@ fn import_edge_join(acc, d) = match graph_node_body(d) {
 // handle its references link to: a function or a handler its own node, a
 // type its own node (the names annotations write) and its constructors their
 // variants, an alias, a refinement or a named row its own node, an effect its
-// own node (the names rows write) and its ops theirs, a module value its
-// value's cell (a `let`'s binder IS its value's cell).
+// own node (the names rows write) and its ops theirs, and a module value's
+// let the binders it writes, each at its own node.
 fn decl_links_of(d) = match graph_node_body(d) {
   NStmt(s) => match s {
     FnStmt(n, _, _, _, _) => [(n, d)],
@@ -787,10 +787,7 @@ fn decl_links_of(d) = match graph_node_body(d) {
     RowAliasStmt(n, _) => [(n, d)],
     EffectDeclStmt(n, _, ops) => [(n, d)] ++ map({ (on, _, _, onode) => (on, onode) }, ops),
     HandlerDeclStmt(n, _, _, _, _, _) => [(n, d)],
-    LetStmt(pat, value, _) => match pat_of(pat) {
-      PVar(n) => [(n, value)],
-      PWild | PLit(_) | PCon(_, _) | PTuple(_) | PList(_, _) | PRecord(_, _) | PAlt(_) | PAs(_, _) => [],
-    },
+    LetStmt(pat, _, _) => pat_binders(pat),
     _ => [],
   },
   _ => [],

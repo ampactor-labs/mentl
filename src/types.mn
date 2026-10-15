@@ -1563,15 +1563,13 @@ effect StateWalk {
   walking_state(b: Int) -> Bool
 }
 
-// Where a destructured part sits in its whole: the whole itself (an
-// as-pattern binds the value it matches), a tuple's element, a
+// Where a destructured part sits in its whole: a tuple's element, a
 // constructor's field by the constructor's name, a record's field, one of
 // a list's elements, a list's or a record's rest, or — a nominal type read
 // as a container — the values of one of its type arguments, wherever its
 // constructors hold them.
 type PartStep
-  = PartWhole
-  | PartIndex(Int)
+  = PartIndex(Int)
   | PartCtor(String, Int)
   | PartField(String)
   | PartElem

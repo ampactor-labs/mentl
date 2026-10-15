@@ -2443,6 +2443,16 @@ elements of one list pattern shared one, so the Why at `x` said `let y`, and
 the claim of `let Some([x, y]) = o` sat at the whole block rather than at `o`
 (tests/micros/mn-declared-*.mn).
 
+**Every binder is declared where it is written** (real, 2026-10-15). A let's
+binder and a match arm's are their pattern's nodes, each the cell of the value
+it names, so the edge from `total` reaches the `total` the let binds, and
+`mentl <file>:<line>:<col>` at a binder says its uses — the sites the page's
+find draws at the same caret. Until then such a binder was declared at the
+value it was handed: the Why at a use of a let named the value's line, at a
+use of an arm's binder the scrutinee's (tests/micros/mn-declared-let-binder.mn,
+mn-declared-arm-binder.mn). A parameter is still declared at a cell the
+judgment mints.
+
 ### Exhaustiveness
 
 Match arms must cover all variants OR include a wildcard. Missing-variant errors include the missing variants by name (per H3's exhaustiveness machinery).
@@ -3038,6 +3048,16 @@ executable's: an effect no handler serves refuses at the let as it would in
 `main` (real, 2026-10-02 — `let x = op()` compiled and trapped at init
 before). `main`'s declared row judges `main` alone
 (`Hβ.effects.executable-row-includes-inits`).
+
+A module value let binds every binder its pattern writes, and a discard runs
+its value for effect. The init stores what one binder names and nothing
+else today, so a module-scope `let _ = e`, `let 5 = e` or `let (w, h) = e`
+refuses where the program is emitted (`E_InternalInvariant`, real
+2026-10-15), never runs without the value it was written for: until then the
+discard and the destructure were dropped unrun, and a destructure's binders
+named a global no init set, so the module did not assemble
+(tests/micros/mn-module-let-discard-refuses.mn,
+mn-module-let-destructure-refuses.mn; PLAN §11.18).
 
 ---
 
