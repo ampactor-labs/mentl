@@ -241,10 +241,11 @@ fn board_bounds() = [
   // effect's ops off its declaration rather than scanning every binding;
   // 1,212 when the dead code the facets named left (2026-10-15); 1,201 when
   // a handler's facts came to be read off its declaration, one roster where
-  // each by-name reader had kept a catch-all over the binding's kind. It
-  // falls to zero where the migration lands
+  // each by-name reader had kept a catch-all over the binding's kind; 1,200
+  // when a lowered reference came to carry its declaration and a callee's
+  // judgment was read off it. It falls to zero where the migration lands
   // (`Hβ.match.catch-all-over-a-sum-is-the-roster`).
-  Bound({ceiling: 1201, question: QCensus(CsWildcardOverSum)}),
+  Bound({ceiling: 1200, question: QCensus(CsWildcardOverSum)}),
   // Drift mode 15 — a value given a leading-underscore name instead of being
   // deleted. The rename silences the reader, never the fact that nothing
   // reads it.

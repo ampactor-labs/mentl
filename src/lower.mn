@@ -254,6 +254,15 @@ fn show_boundary_invariant(invariant) = match invariant {
   SequenceFanoutUnlinked(impl) => "the sequence fanout runs under a schedule whose implementation `{impl}` is not linked — import the library that declares this schedule's vocabulary",
 }
 
+// What a lowered reference to module scope denotes, decided once by the
+// node's writer: a DECLARATION — the edge the reference drew at the
+// judgment, or the vocabulary a lowering or an emit names, resolved where it
+// is minted — or a unit the compiler SYNTHESIZES (a runtime global, a
+// derivative twin), which no declaration answers and whose symbol is its
+// identity. Every reader takes the declaration for what it asks; the symbol
+// is spelled off it in one place (`callee_symbol`).
+type Callee = DeclaredAt(Int) | Synthesized(String)
+
 // Every value-bearing variant carries a source TypeHandle (Int), never a cached Ty.
 // Type reads go through `perform lookup_ty(h)`. Emit consumes this IR;
 // the handle is the live bridge back to the graph.
@@ -261,8 +270,8 @@ type LowExpr
   = LConst(Int, LowValue)
   // handle, local name (matches LLet storage)
   | LLocal(Int, String)
-  // handle, name
-  | LGlobal(Int, String)
+  // handle, what the reference denotes
+  | LGlobal(Int, Callee)
   | LLet(Int, String, LowExpr)
   | LUpval(Int, Int)
   | LBinOp(Int, BinOp, LowExpr, LowExpr)
@@ -270,8 +279,8 @@ type LowExpr
   // monomorphic direct call
   | LCall(Int, LowExpr, [LowExpr])
   | LTailCall(Int, LowExpr, [LowExpr])
-  // call handle, callee-ref handle, fn name, tail, args — the DIRECT native call to a known top-level fn: lower resolved the callee's FnScheme, so the emit calls $name with NATIVE argument types (an f64 arg stays f64 — no spill cell, no word face, no wrapper hop) and the WAT instruction return_call in tail position (true tails for wide results too — the word-face demotion and the wrapper's per-iteration frame leak both die at this node). __state stays the callee's own static-closure global, byte-equal semantics to the closure convention minus the table hop. The closure path remains for genuine VALUE callees; the callee-ref handle feeds the twin-demand scan (the reference's instantiated TFun lives there)
-  | LDirectCall(Int, Int, String, Bool, [LowExpr])
+  // call handle, callee-ref handle, callee, tail, args — the DIRECT native call to a known top-level fn: lower resolved the callee's FnScheme, so the emit calls its symbol with NATIVE argument types (an f64 arg stays f64 — no spill cell, no word face, no wrapper hop) and the WAT instruction return_call in tail position (true tails for wide results too — the word-face demotion and the wrapper's per-iteration frame leak both die at this node). __state stays the callee's own static-closure global, byte-equal semantics to the closure convention minus the table hop. The closure path remains for genuine VALUE callees; the callee-ref handle feeds the twin-demand scan (the reference's instantiated TFun lives there)
+  | LDirectCall(Int, Int, Callee, Bool, [LowExpr])
   | LReturn(Int, LowExpr)
   // handle, fn, captures
   // The YIELD of a MultiShot perform (band B, continuation-reification k1):
@@ -725,15 +734,45 @@ fn mark_tail_last_in(stmts) = {
 
 fn mark_tail_arms(arms) = map({ (pat, body) => (pat, mark_tail(body)) }, arms)
 
-// Read the construction-origin metadata an env entry carries.
-// `None` when the name isn't bound (a missing-var diagnostic has
-// already fired at infer time; lower's path falls through to the
-// default `LGlobal`/`LCall` shape).
+// What a pattern's constructor name was published as — a pattern's
+// constructor is a name with no node yet (PLAN §11.2), so it is read by its
+// spelling; `None` when the name isn't bound (infer already reported it).
 fn env_kind_of(name) = match env_lookup(name) {
   None => None,
   Some(entry) => match entry {
     (_, _, kind) => Some(kind),
   },
+}
+
+// The symbol a callee is emitted under at the floor: the name of the
+// declaration that constructs it (`callee_target`), or a synthesized unit's
+// identity. A twin mangles it (`spec_mangle`).
+fn callee_symbol(c) = match c {
+  DeclaredAt(d) => enclosing_decl_name(d),
+  Synthesized(s) => s,
+}
+
+// A name of the compiler's own vocabulary — a library function a lowering
+// or an emit calls by name — as the declaration it resolves to at the link's
+// scope, read where the call is minted. A name the link declares nowhere is
+// the symbol it spells.
+fn vocabulary_callee(n: String) = match env_resolve_linked(n) {
+  Some(d) => DeclaredAt(d),
+  None => Synthesized(n),
+}
+
+// What a callee's declaration was published as; a synthesized unit was
+// published as nothing.
+fn callee_kind(c) = match c {
+  DeclaredAt(d) => published_kind(Some(d)),
+  Synthesized(_) => None,
+}
+
+// The callee a module-scope reference denotes: the declaration its edge
+// reaches. None where the judgment drew no edge — a name it refused.
+fn ref_callee(h) = match graph_ref_decl(h) {
+  Some(d) => Some(DeclaredAt(d)),
+  None => None,
 }
 
 // The NAME a callee expression carries — read by the resume-bind read
@@ -801,8 +840,8 @@ fn lower_call_of(handle, fh, lo_f, lo_args) = {
   // recursion routed through a wide fn's word face, measured at 4096
   // frames under the signal crucible).
   match lo_f {
-    LGlobal(gh, gname) => match env_kind_of(gname) {
-      Some(FnScheme) => LDirectCall(handle, gh, gname, false, args2),
+    LGlobal(gh, c) => match callee_kind(c) {
+      Some(FnScheme) => LDirectCall(handle, gh, c, false, args2),
       _ => LCall(handle, lo_f, args2),
     },
     _ => LCall(handle, lo_f, args2),
@@ -909,7 +948,7 @@ fn lower_global_call(handle, fh, name: String, r_args, lo_args) = if name == "to
   // node; emit dispatches the name to its instruction.
   LWasiCall(handle, name, lo_args)
 } else {
-  match env_kind_of(name) {
+  match published_kind(graph_ref_decl(fh)) {
     Some(ConstructorScheme(tag_id, _)) => LMakeVariant(handle, tag_id, lo_args),
     Some(RecordSchemeKind(_)) => // Nominal-record CALL-form construction `Pri({...})`: the runtime
     // representation IS the bare record (NamedRecordExpr's own arm
@@ -1042,7 +1081,7 @@ fn open_slot_handle(open, k, handle) = if k < len(open) {
 // perform's (handler, op, stateful) triple · a local callee's value. Each
 // carries exactly what apply_callee_form needs and nothing the site could
 // re-derive.
-type PartialCalleeForm = PcfCall(String) | PcfVariant(TagId) | PcfPerform(PerformDispatch) | PcfLocal(LowExpr)
+type PartialCalleeForm = PcfCall(Callee) | PcfVariant(TagId) | PcfPerform(PerformDispatch) | PcfLocal(LowExpr)
 
 // The callee is resolved ONCE, by scope, exactly as the saturated call's
 // dispatch resolves it (`lower_call_dispatch`): a binding the lowering's
@@ -1057,25 +1096,30 @@ type PartialCalleeForm = PcfCall(String) | PcfVariant(TagId) | PcfPerform(Perfor
 // global), ADT construction (LMakeVariant), an op reified as a value.
 fn partial_callee_form(handle, fbody, fh) = match fbody {
   NExpr(VarRef(name)) => match ls_resolve(name) {
-    (RGlobal, _) => partial_global_callee_form(handle, name),
+    (RGlobal, _) => partial_global_callee_form(fh, name),
     (res, local_h) => Some(PcfLocal(lower_resolved_ref(fh, name, res, local_h))),
   },
   _ => None,
 }
 
-// A module-scope callee's form, by its env kind. The name-keyed intrinsic
+// A module-scope callee's form, by what its declaration was published as —
+// the declaration the reference's edge reaches. The name-keyed intrinsic
 // projections (the show/hash fold leaves, the gradient's converts) and the
 // substrate/wasi instruction ops have no global fn to LCall — a partial
 // over one floors typed with the rest of the unbuilt shapes, never a call
 // past the projection.
-fn partial_global_callee_form(handle, name) = if is_substrate_mem_op(name) || is_wasi_import_op(name) || name == "to_string" || name == "hash" || name == "float_of_int" || name == "float_to_int" {
+fn partial_global_callee_form(fh, name) = if is_substrate_mem_op(name) || is_wasi_import_op(name) || name == "to_string" || name == "hash" || name == "float_of_int" || name == "float_to_int" {
   None
 } else {
-  match env_kind_of(name) {
+  let decl = graph_ref_decl(fh)
+  match published_kind(decl) {
     Some(FnScheme) | Some(ValueScheme) => // A module value holding a closure is called through its global
     // exactly as a declared fn's static closure is. Only module-scope
     // entries answer here: a local's binding left the env with its scope.
-    Some(PcfCall(name)),
+    match decl {
+      Some(d) => Some(PcfCall(DeclaredAt(d))),
+      None => None,
+    },
     Some(ConstructorScheme(tag_id, _)) => Some(PcfVariant(tag_id)),
     Some(EffectOpScheme(_, _, _, _)) => // An OP reified as a value, and it passes None for the lexical
     // answer — not to disable a tier, but because it HAS no lexical
@@ -1103,7 +1147,7 @@ fn partial_global_callee_form(handle, name) = if is_substrate_mem_op(name) || is
 // dispatch is a match, so the decision is a VALUE the caller can read,
 // name and test — and the three lambdas are gone rather than relocated.
 fn apply_callee_form(form, handle, fh, bargs, n_caps) = match form {
-  PcfCall(name) => LCall(handle, LGlobal(fh, name), bargs),
+  PcfCall(c) => LCall(handle, LGlobal(fh, c), bargs),
   PcfVariant(tag_id) => LMakeVariant(handle, tag_id, bargs),
   PcfPerform(disp) => LPerform(handle, disp, bargs),
   PcfLocal(v) => // The callee value rides the record past the supplied fields, at the
@@ -2317,8 +2361,8 @@ fn lower_resolved_ref(handle, name: String, res, local_h) = match res {
   // ASSEMBLER was the first thing in the chain to object, hundreds of
   // thousands of WAT lines from the name the developer wrote.
   //
-  // The env proves the answer AT the reference — ConstructorScheme and
-  // EffectOpScheme are distinct tags written at the declaration — and
+  // The declaration the reference reaches proves the answer — ConstructorScheme
+  // and EffectOpScheme are distinct tags written at the declaration — and
   // the reification the developer was writing by hand is the medium's
   // own hole-product: a bare name IS the parameter product with every
   // field unsupplied (SYNTAX §«Partial application»), so it lowers
@@ -2329,39 +2373,44 @@ fn lower_resolved_ref(handle, name: String, res, local_h) = match res {
   // written at the reference (`bare_reference_product`, infer.mn): the
   // judgment knows whether the reference is an arrow, so the use site
   // no longer asks the env scheme by name for an arity it could not
-  // tell from an unresolved type.
-  match env_kind_of(name) {
-    Some(ConstructorScheme(tag_id, _)) => match graph_product_at(handle) {
-      NoProduct => // Not a function type: the reference IS the value — a nullary
-      // variant, the sentinel form emit already knows.
-      LMakeVariant(handle, tag_id, []),
-      ProductOf(_, open, _) => lower_call_partial(handle, graph_node_body(handle), handle, [], open, len(open)),
-    },
-    Some(EffectOpScheme(_, _, _, _)) => match graph_product_at(handle) {
-      NoProduct => // An op's declared scheme is always a signature, zero-arg
-      // included, so a missing product is an unresolved judgment and the
-      // typed floor is the honest answer — lower_call_partial's own
-      // None path, reached with the arity the graph actually proved.
-      LInvariantFailure(handle, PartialCalleeShape(handle)),
-      ProductOf(_, open, _) => lower_call_partial(handle, graph_node_body(handle), handle, [], open, len(open)),
-    },
-    Some(FnScheme) => // A named-fn VALUE reference (FnScheme tag-0 — excludes HandlerKind,
-    // the PTee guard). ALWAYS the bare LGlobal — emit resolves it to the
-    // fn's static closure record; the fn's performs dispatch through the
-    // live world chain when the consumer (`each(f, xs)`) calls it.
-    LGlobal(handle, name),
-    Some(_) => // Found, some other kind (a value binding, a record) — the global read
-    // is the right projection.
-    LGlobal(handle, name),
-    None => // NOT FOUND. `_ => LGlobal(handle, name)` stood here and conflated
-    // these two: it guessed an unbound name into `(global.get $name)`,
-    // fabricating the one fact infer had just proved false. The guess is
-    // never reachable code — it is WAT no assembler accepts — so it did
-    // not "keep going"; it moved the medium's own precise, spanned
-    // E_MissingVariable to a wat2wasm error hundreds of thousands of
-    // lines away, about a symbol the developer never wrote.
+  // tell from an unresolved type. What the reference denotes is the
+  // declaration its edge reaches.
+  match graph_ref_decl(handle) {
+    Some(d) => lower_declared_ref(handle, d),
+    None => // NO EDGE: the judgment refused the name. `_ => LGlobal(handle, name)`
+    // stood here once and guessed an unbound name into `(global.get
+    // $name)`, fabricating the one fact infer had just proved false: WAT no
+    // assembler accepts, the medium's own spanned E_MissingVariable moved to
+    // a wat2wasm error hundreds of thousands of lines away.
     LInvariantFailure(handle, MissingName(name)),
   },
+}
+
+fn lower_declared_ref(handle, d) = match published_kind(Some(d)) {
+  Some(ConstructorScheme(tag_id, _)) => match graph_product_at(handle) {
+    NoProduct => // Not a function type: the reference IS the value — a nullary
+    // variant, the sentinel form emit already knows.
+    LMakeVariant(handle, tag_id, []),
+    ProductOf(_, open, _) => lower_call_partial(handle, graph_node_body(handle), handle, [], open, len(open)),
+  },
+  Some(EffectOpScheme(_, _, _, _)) => match graph_product_at(handle) {
+    NoProduct => // An op's declared scheme is always a signature, zero-arg
+    // included, so a missing product is an unresolved judgment and the
+    // typed floor is the honest answer — lower_call_partial's own
+    // None path, reached with the arity the graph actually proved.
+    LInvariantFailure(handle, PartialCalleeShape(handle)),
+    ProductOf(_, open, _) => lower_call_partial(handle, graph_node_body(handle), handle, [], open, len(open)),
+  },
+  Some(FnScheme) => // A named-fn VALUE reference (FnScheme tag-0 — excludes HandlerKind,
+  // the PTee guard). ALWAYS the bare LGlobal — emit resolves it to the
+  // fn's static closure record; the fn's performs dispatch through the
+  // live world chain when the consumer (`each(f, xs)`) calls it.
+  LGlobal(handle, DeclaredAt(d)),
+  Some(_) => // Found, some other kind (a value binding, a record) — the global read
+  // is the right projection.
+  LGlobal(handle, DeclaredAt(d)),
+  None => // a declaration that published nothing: the judgment stopped at it
+  LInvariantFailure(handle, MissingName(enclosing_decl_name(d))),
 }
 
 fn lower_expr_body(e, handle, span) = match e {
@@ -2652,7 +2701,7 @@ fn bind_stage_param(pair) = match pair {
 
 fn lower_pipe_stage(lo_ls, right, handle) = {
   let rbody = graph_node_body(right)
-  match stage_op_name(rbody) {
+  match stage_op_name(right, rbody) {
     Some(name) => // A bare op reference standing as the stage is the perform `op(x)` in
     // the frame the pipe stands in — applied, never minted. The judgment
     // charges the stage the op's row and nothing else, and an op has no
@@ -2664,11 +2713,11 @@ fn lower_pipe_stage(lo_ls, right, handle) = {
   }
 }
 
-// The op a bare reference stage names, when the name is an effect op at
+// The op a bare reference stage names, when its edge reaches an effect op at
 // module scope; a local, a function or a constructor is the value it is.
-fn stage_op_name(rbody) = match rbody {
+fn stage_op_name(right, rbody) = match rbody {
   NExpr(VarRef(name)) => match ls_resolve(name) {
-    (RGlobal, _) => match env_kind_of(name) {
+    (RGlobal, _) => match published_kind(graph_ref_decl(right)) {
       Some(EffectOpScheme(_, _, _, _)) => Some(name),
       _ => None,
     },
@@ -2974,10 +3023,20 @@ fn splice_at(xs, i, v) = slice(xs, 0, i) ++ [v] ++ slice(xs, i + 1, len(xs))
 // twin of the arm `lower_global_call` holds for a direct call, since the
 // stage was dispatched with its hole open and only the completion sees
 // both fields; every other completed call is the call itself.
-fn completed_call(dh, dfh, dn: String, dt, args) = if str_eq(dn, "fanout") && len(args) == 2 {
+fn completed_call(dh, dfh, c, dt, args) = if callee_is_vocabulary(c, "fanout") && len(args) == 2 {
   lower_fanout_seq(dh, dfh, lexpr_handle(list_index(args, 0)), args)
 } else {
-  LDirectCall(dh, dfh, dn, dt, args)
+  LDirectCall(dh, dfh, c, dt, args)
+}
+
+// Whether a callee is the declaration a vocabulary name resolves to at the
+// link's scope — the callee's identity compared, never its spelling.
+fn callee_is_vocabulary(c, n: String) = match c {
+  DeclaredAt(d) => match env_resolve_linked(n) {
+    Some(v) => v == d,
+    None => false,
+  },
+  Synthesized(_) => false,
 }
 
 // binds prev to the feedback site's prior local and inlines the body —
@@ -3581,9 +3640,9 @@ fn lower_fanout_seq(handle, fh, f_h, lo_args) = {
     Some(s) => [(s, fanout_seq_form(handle, fh, s, lo_args))],
     None => [(Seq, fanout_seq_form(handle, fh, Seq, lo_args))] ++ fanout_seq_linked(handle, fh, lo_args, Threaded, "fanout_threaded") ++ fanout_seq_linked(handle, fh, lo_args, Persisted, "fanout_persisted"),
   }
-  // The forms' callees are names the lowering introduced — no source name
-  // reaches their declarations — so construction is told them here, where
-  // they are chosen, and enqueues them beside the constructed decl's own
+  // The forms' callees are declarations the lowering chose — no source
+  // reference reaches them — so construction is told them here, where they
+  // are chosen, and enqueues them beside the constructed decl's own
   // references (`reach_root`); the emit reach walks the selected form alone
   // and decides what is emitted.
   fanout_form_note(fold([], fanout_form_callee, forms))
@@ -3591,29 +3650,40 @@ fn lower_fanout_seq(handle, fh, f_h, lo_args) = {
 }
 
 fn fanout_form_callee(acc, sf) = match sf {
-  (_, LDirectCall(_, _, n, _, _)) => push(acc, n),
+  (_, LDirectCall(_, fh, DeclaredAt(d), _, _)) => push(acc, (fh, d)),
   (_, _) => acc,
 }
 
+// A form's callee as the reference construction enqueues.
+fn fanout_form_ref(p) = match p {
+  (fh, d) => RefCall(fh, DeclaredAt(d)),
+}
+
 // A spawning schedule's form, when its implementation is linked.
-fn fanout_seq_linked(handle, fh, lo_args, s, impl: String) = match env_kind_of(impl) {
-  Some(FnScheme) => [(s, LDirectCall(handle, fh, impl, false, lo_args))],
-  _ => [],
+fn fanout_seq_linked(handle, fh, lo_args, s, impl: String) = {
+  let c = vocabulary_callee(impl)
+  match callee_kind(c) {
+    Some(FnScheme) => [(s, LDirectCall(handle, fh, c, false, lo_args))],
+    _ => [],
+  }
 }
 
 fn fanout_seq_form(handle, fh, schedule, lo_args) = match schedule {
-  Seq => LDirectCall(handle, fh, "map", false, lo_args),
+  Seq => LDirectCall(handle, fh, vocabulary_callee("map"), false, lo_args),
   Threaded => fanout_seq_impl(handle, fh, lo_args, "fanout_threaded"),
   Persisted => fanout_seq_impl(handle, fh, lo_args, "fanout_persisted"),
   Simd => // Simd and Gpu pack a FIXED lane count; a runtime sequence runs
   // sequentially under them, as the syntactic Gpu arm does today.
-  LDirectCall(handle, fh, "map", false, lo_args),
-  Gpu => LDirectCall(handle, fh, "map", false, lo_args),
+  LDirectCall(handle, fh, vocabulary_callee("map"), false, lo_args),
+  Gpu => LDirectCall(handle, fh, vocabulary_callee("map"), false, lo_args),
 }
 
-fn fanout_seq_impl(handle, fh, lo_args, impl: String) = match env_kind_of(impl) {
-  Some(FnScheme) => LDirectCall(handle, fh, impl, false, lo_args),
-  _ => LInvariantFailure(handle, SequenceFanoutUnlinked(impl)),
+fn fanout_seq_impl(handle, fh, lo_args, impl: String) = {
+  let c = vocabulary_callee(impl)
+  match callee_kind(c) {
+    Some(FnScheme) => LDirectCall(handle, fh, c, false, lo_args),
+    _ => LInvariantFailure(handle, SequenceFanoutUnlinked(impl)),
+  }
 }
 
 // Walk branch_nodes producing one LMakeClosure per branch. Each thunk body is
@@ -4912,7 +4982,7 @@ fn lower_resume_callk(handle, val, state_updates) = {
             kr2,
             LIf(
               handle,
-              LGlobal(handle, "yield_flag"),
+              LGlobal(handle, Synthesized("yield_flag")),
               [
                 LBlock(
                   handle,
@@ -4931,8 +5001,8 @@ fn lower_resume_callk(handle, val, state_updates) = {
                     // genuinely-unhandled op still traps LOUDLY at the _start backstop.
                     LIf(
                       handle,
-                      LGlobal(handle, "yield_flag"),
-                      [LIf(handle, LGlobal(handle, "yield_k"), [LLocal(handle, rd)], [LUnwind(handle)])],
+                      LGlobal(handle, Synthesized("yield_flag")),
+                      [LIf(handle, LGlobal(handle, Synthesized("yield_k")), [LLocal(handle, rd)], [LUnwind(handle)])],
                       [LLocal(handle, rd)]
                     )
                   ]
@@ -5463,7 +5533,7 @@ fn lower_body_reified(body_node) = match k_spine_next(body_node, []) {
             LLet(ph, kr, lower_expr(ph)),
             LIf(
               ph,
-              LGlobal(ph, "yield_flag"),
+              LGlobal(ph, Synthesized("yield_flag")),
               [LKExtend(body_node, reify_frame_k(body_node, ph, []))],
               [c_inline]
             )
@@ -5647,7 +5717,11 @@ fn k2_floor_wrap(h, s) = {
   let kf = "__kf_{int_to_str(h)}"
   LBlock(
     h,
-    [LLet(h, kf, s), LIf(h, LGlobal(h, "yield_flag"), [LUnwind(h)], [LConst(h, LZero)]), LLocal(h, kf)]
+    [
+      LLet(h, kf, s),
+      LIf(h, LGlobal(h, Synthesized("yield_flag")), [LUnwind(h)], [LConst(h, LZero)]),
+      LLocal(h, kf)
+    ]
   )
 }
 
@@ -5926,7 +6000,7 @@ fn lower_index(handle, receiver, index) = match lookup_ty(receiver) {
 // vector — `(i32, i32, i32) -> f64` against a callee that signs a word — the
 // moment a closure call stopped boxing, and every `[Float]` index trapped.
 fn lower_index_runtime(handle, receiver, index) = {
-  let callee = subscript_callee(graph_narrow_at(index) != 0)
+  let callee = vocabulary_callee(subscript_callee(graph_narrow_at(index) != 0))
   LDirectCall(handle, handle, callee, false, [lower_expr(receiver), lower_expr(index)])
 }
 
@@ -5986,7 +6060,7 @@ fn lower_string_interpolation(handle, lowered_fragments) = {
       let chained = fold(
         head,
         (acc, pair) => match pair {
-          (frag, ch) => LCall(ch, LGlobal(ch, "str_concat"), [acc, frag]),
+          (frag, ch) => LCall(ch, LGlobal(ch, vocabulary_callee("str_concat")), [acc, frag]),
         },
         zip(rest, cells)
       )
@@ -6478,16 +6552,16 @@ fn ls_find_in_order_loop(lst, target: String, i, n) = if i >= n {
 // the second also collected operand handles nothing had read since the
 // worthiness gate was deleted.
 type LowRef
-  // a named reference as a VALUE and the handle its instantiation is read
-  // at: an LGlobal
-  = RefSite(Int, String)
+  // a reference as a VALUE — what it denotes — and the handle its
+  // instantiation is read at: an LGlobal
+  = RefSite(Int, Callee)
   // a direct call's callee and the handle its instantiation is read at.
   // Distinct from a value reference because only a CALL carries a schedule
   // into its callee (`spec_call_name`): a function value minted under a
   // spawning schedule and called outside the install would perform `spawn`
   // with no handler on the chain, so a value keeps its callee's own frame's
   // schedule (`Hβ.lower.schedule-through-a-value`).
-  | RefCall(Int, String)
+  | RefCall(Int, Callee)
   // an install's arm: the install's handle is where the key it runs the
   // arm under is read (`arm_site_pairs`)
   | RefArm(Int, String)
@@ -6499,8 +6573,8 @@ type LowRef
   | RefName(String)
 
 fn ref_name(r) = match r {
-  RefSite(_, n) => n,
-  RefCall(_, n) => n,
+  RefSite(_, c) => callee_symbol(c),
+  RefCall(_, c) => callee_symbol(c),
   RefArm(_, n) => n,
   RefDeclArm(_, n) => n,
   RefName(n) => n,
@@ -6532,8 +6606,8 @@ fn perform_target_refs(acc, disp) = match perform_target(disp) {
 }
 
 fn low_refs(acc, expr) = match expr {
-  LGlobal(h, n) => [RefSite(h, n)] ++ acc,
-  LDirectCall(_h, fh, n, _t, args) => low_refs_list([RefCall(fh, n)] ++ acc, args),
+  LGlobal(h, c) => [RefSite(h, c)] ++ acc,
+  LDirectCall(_h, fh, c, _t, args) => low_refs_list([RefCall(fh, c)] ++ acc, args),
   LFanout(_h, lex, _br, forms) => low_refs(acc, fanout_form(lex, forms)),
   LPerform(_h, disp, args) => low_refs_list(perform_target_refs(acc, disp), args),
   LHandleWith(ih, b, hn, hd, inits, arm_names) => low_refs_list(low_refs(low_refs(init_refs(arm_refs(acc, ih, arm_names), ih, hd), b), hn), inits),
@@ -6661,8 +6735,8 @@ fn match_arm_body(arm) = match arm {
 fn wide_seed(refs) = if any(ref_is_wide, refs) { spec_wide_family() } else { [] }
 
 fn ref_is_wide(r) = match r {
-  RefSite(h, n) => !spec_enc_is_floor(twin_site_key(h, n).enc),
-  RefCall(h, n) => !spec_enc_is_floor(twin_site_key(h, n).enc),
+  RefSite(h, c) => !spec_enc_is_floor(twin_site_key(h, c).enc),
+  RefCall(h, c) => !spec_enc_is_floor(twin_site_key(h, c).enc),
   RefArm(ih, _) => byte_len(arm_install_enc(ih)) > 0,
   RefDeclArm(_, _) => false,
   RefName(_) => false,
@@ -6678,35 +6752,25 @@ fn reach_decl_name(stmt) = match stmt {
   "",
 }
 
-// The top-level declaration a lowered reference reaches. A reference the
-// lowering projects from the source follows the edge the judgment drew —
-// through a nested scope, a shadow, a module that spells the name too —
-// and an install's arm follows the install to its handler's declaration.
-// What the lowering mints by spelling — a sugar's callee, a schedule's
-// implementation, the runtime a show or a comparison calls — is
-// vocabulary, resolved once here at the link's scope, and a spelling no
-// declaration answers (a runtime global, a synthesized driver) reaches
-// nothing to construct.
+// The top-level declaration a lowered reference reaches. A reference carries
+// the declaration its writer decided — the edge the judgment drew at a
+// source reference, through a nested scope, a shadow, a module that spells
+// the name too, or the vocabulary a lowering minted at a borrowed site (`map`
+// where the source wrote `fanout`, `str_concat` at an interpolation's cell)
+// — and an install's arm follows the install to its handler's declaration.
+// The runtime an emit's show or comparison calls is vocabulary resolved once
+// here at the link's scope; a synthesized unit reaches nothing to construct.
 fn ref_target(r) = match r {
-  RefSite(h, n) => site_target(h, n),
-  RefCall(h, n) => site_target(h, n),
+  RefSite(_, c) => callee_target(c),
+  RefCall(_, c) => callee_target(c),
   RefArm(ih, _) => install_target(ih),
   RefDeclArm(hd, _) => enclosing_decl(hd),
   RefName(n) => vocabulary_target(n),
 }
 
-// A site the lowering projected from the reference standing there carries
-// that reference's spelling; one it minted at a borrowed site — `map` where
-// the source wrote `fanout`, `str_concat` at an interpolation's cell —
-// carries vocabulary of its own, which that reference's edge does not
-// reach.
-fn site_target(h, n: String) = if callee_name(h) == n {
-  match graph_ref_decl(h) {
-    Some(d) => enclosing_decl(d),
-    None => vocabulary_target(n),
-  }
-} else {
-  vocabulary_target(n)
+fn callee_target(c) = match c {
+  DeclaredAt(d) => enclosing_decl(d),
+  Synthesized(_) => None,
 }
 
 fn install_target(ih) = match graph_install_at(ih) {
@@ -6821,7 +6885,7 @@ fn reach_root(w, s, e, frontier) = {
     let refs = low_refs([], e)
     reach_enqueue(
       w,
-      map(RefName, fanout_form_drain()) ++ refs ++ map(RefName, wide_seed(refs)),
+      map(fanout_form_ref, fanout_form_drain()) ++ refs ++ map(RefName, wide_seed(refs)),
       frontier
     )
   } ~> arena
@@ -6832,7 +6896,11 @@ fn reach_root(w, s, e, frontier) = {
 // frontier.
 fn reach_mint_root(w, s, e, frontier) = {
   wmap_add(w.rooted, s, 1)
-  reach_enqueue(w, map(RefName, fanout_form_drain() ++ wide_seed(low_refs([], e))), frontier) ~> arena
+  reach_enqueue(
+    w,
+    map(fanout_form_ref, fanout_form_drain()) ++ map(RefName, wide_seed(low_refs([], e))),
+    frontier
+  ) ~> arena
 }
 
 // The frontier drain: pop a declaration (LIFO, a deterministic
@@ -7484,29 +7552,40 @@ fn init_fn_name(hd) = "{stmt_decl_name(hd)}$init"
 
 fn redrive_fn_name(hd) = "op___redrive_{stmt_decl_name(hd)}"
 
-// The site's instantiation pairs — [] when the name is not generic: a value
-// let, a monomorphic fn, or an internal synthesized name. The scheme's
+// The site's instantiation pairs — [] when the callee is not generic: a
+// value let, a monomorphic fn, or a synthesized unit. The scheme's
 // quantified vars are the roots; the site's chased type carries the bindings.
-fn spec_site_pairs_resolved(name: String, rt) = match fn_judgment(name) {
+fn spec_site_pairs_resolved(c, rt) = match fn_judgment(c) {
   None => [],
   Some(j) => match j {
     (qs, sty) => if len(qs) == 0 { [] } else { spec_pairs_sort(spec_pairs_walk(sty, rt, [])) },
   },
 }
 
-// A fn's settled judgment — None for a name that is not a fn: ctor, record,
-// effect-op and value schemes never specialize.
-fn fn_judgment(name: String) = match env_lookup(name) {
-  None => None,
-  Some(entry) => match entry {
-    (scheme, _r, kind) => match kind {
+// A fn's settled judgment, read off its declaration — None for a callee
+// that is not a fn: ctor, record, effect-op and value schemes never
+// specialize, and a synthesized unit has no scheme.
+fn fn_judgment(c) = match c {
+  DeclaredAt(d) => match graph_published(d) {
+    Some((scheme, _, kind)) => match kind {
       FnScheme => Some(judgment_pair(scheme)),
-      _ => None,
+      ValueScheme
+      | ParamScheme(_)
+      | ConstructorScheme(_, _)
+      | EffectOpScheme(_, _, _, _)
+      | RecordSchemeKind(_)
+      | EffectDeclKind(_, _)
+      | HandlerKind(_, _, _, _, _)
+      | HandlerChainKind(_)
+      | RowAliasKind(_)
+      | TypeVariants(_) => None,
     },
+    None => None,
   },
+  Synthesized(_) => None,
 }
 
-fn spec_site_pairs(h, name: String) = spec_site_pairs_resolved(name, spec_resolve(lookup_ty(h)))
+fn spec_site_pairs(h, c) = spec_site_pairs_resolved(c, spec_resolve(lookup_ty(h)))
 
 // A TWIN IS KEYED BY WHAT ITS BASE OBSERVES. A twin is its base's body
 // emitted under an instantiation, and two instantiations emit different bytes
@@ -7716,7 +7795,7 @@ fn evac_boxes(ev) = match ev {
 }
 
 // A reference site's key.
-fn twin_site_key(h, name: String) = twin_key(spec_site_pairs(h, name))
+fn twin_site_key(h, c) = twin_key(spec_site_pairs(h, c))
 
 // THE INSTALL KEYS ITS ARMS. An arm is lowered once, from the handler's
 // declaration, so every install ran one arm set that read its config and its
@@ -7833,9 +7912,11 @@ fn handler_may_key(hd) = match graph_published(hd) {
 }
 
 // The ONE naming projection every reference-emitting arm reads: the site's
-// key, mangled when it names more than the floor, the plain name there.
-fn spec_global_name(h, name: String) = {
-  let enc = twin_site_key(h, name).enc
+// key, mangled when it names more than the floor, the callee's own symbol
+// there.
+fn spec_global_name(h, c) = {
+  let enc = twin_site_key(h, c).enc
+  let name = callee_symbol(c)
   if spec_enc_is_floor(enc) { name } else { spec_mangle(name, enc) }
 }
 
@@ -7849,15 +7930,16 @@ fn spec_global_name(h, name: String) = {
 // is what the demand reads (`Hβ.lower.schedule-specialized-callee`). Only a
 // call carries the schedule; a value reference (`spec_global_name`) never
 // does, since the value may outlive the install.
-fn spec_call_name(h, name: String) = {
-  let enc = twin_call_key(h, name).enc
+fn spec_call_name(h, c) = {
+  let enc = twin_call_key(h, c).enc
+  let name = callee_symbol(c)
   if spec_enc_is_floor(enc) { name } else { spec_mangle(name, enc) }
 }
 
 // A direct call's key: the site's instantiation key, its enc carrying the
 // demanded schedule's letter when the callee takes it.
-fn twin_call_key(h, name: String) = {
-  let key = twin_site_key(h, name)
+fn twin_call_key(h, c) = {
+  let key = twin_site_key(h, c)
   // the site's own install governs; a site that installs none inherits the
   // bracket's demand (`site_schedule`, noted at the lowering)
   let demanded = match site_schedule(h) {
@@ -7866,12 +7948,19 @@ fn twin_call_key(h, name: String) = {
   }
   match demanded {
     Seq => key,
-    _ => if fanout_reach_known(name) {
+    _ => if callee_reaches_fanout(c) {
       {enc: key.enc ++ sched_suffix(demanded), pairs: key.pairs}
     } else {
       key
     },
   }
+}
+
+// Whether a callee reaches a fanout through its direct calls — asked of its
+// declaration (`fanout_reach_known`); a synthesized unit reaches none.
+fn callee_reaches_fanout(c) = match c {
+  DeclaredAt(d) => fanout_reach_known(d),
+  Synthesized(_) => false,
 }
 
 fn eff_name_is(ename: String, n) = str_eq(eff_name_str(n), ename)
@@ -7883,11 +7972,14 @@ fn eff_name_is(ename: String, n) = str_eq(eff_name_str(n), ename)
 // module (every all-word program, Law 7) at one op per reference. Every
 // reference surface the emit writes and the derivative reading's own
 // callee resolution read this one projection.
-fn spec_target_name(h, name: String) = if !spec_twins_exist() {
-  name
-} else {
-  let m = spec_global_name(h, name)
-  if m == name { name } else if spec_twin_known(m) { m } else { name }
+fn spec_target_name(h, c) = {
+  let name = callee_symbol(c)
+  if !spec_twins_exist() {
+    name
+  } else {
+    let m = spec_global_name(h, c)
+    if m == name { name } else if spec_twin_known(m) { m } else { name }
+  }
 }
 
 // The wide runtime family a twin's emission can mint that its floor did not

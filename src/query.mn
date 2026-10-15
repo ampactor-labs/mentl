@@ -2937,11 +2937,6 @@ fn handler_crosses_host(d) = match graph_published(d) {
   None => false,
 }
 
-fn enclosing_decl_name(h) = match enclosing_decl(h) {
-  None => "",
-  Some(d) => body_decl_name(graph_node_body(d)),
-}
-
 fn env_read_site(c) = match graph_span_of(c) {
   Span(l, col, _, _) => "{module_name_of_handle(graph_module_of(c))}:{int_to_str(l)}:{int_to_str(col)}",
 }

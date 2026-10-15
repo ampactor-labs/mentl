@@ -181,8 +181,8 @@ type Beside
   | SMatch(Int, String, LowExpr, [(LowPat, Int, [Beside])])
   | SQuery(Int, Int, String, Lin)
   | SOut(Int, Lin)
-  | STwinCall(Int, String, Int, String, String, String, [LowExpr], [Option(Lin)], Option(String))
-  | STail(Int, Int, String, String, String, [LowExpr], [Option(Lin)])
+  | STwinCall(Int, String, Int, Callee, String, String, [LowExpr], [Option(Lin)], Option(String))
+  | STail(Int, Int, Callee, String, String, [LowExpr], [Option(Lin)])
   | SArena(Int, String, [Beside])
 
 // What a value answers when it is a query of a product seed: the gradient,
@@ -344,14 +344,17 @@ fn stmt_forward(s) = match s {
   SQuery(h, _qh, v, l) => [LLet(h, v, lin_expr(h, l))],
   SOut(h, l) => [LWasiCall(h, "tangent_out", [lin_expr(h, l)])],
   STwinCall(h, v, fh, _name, sym, key, vals, lins, rt) => {
-    let call =
-      LLet(h, v, LDirectCall(h, fh, twin_name(sym, key, false), false, twin_args_of(vals, lins, 0, [])))
+    let call = LLet(
+      h,
+      v,
+      LDirectCall(h, fh, Synthesized(twin_name(sym, key, false)), false, twin_args_of(vals, lins, 0, []))
+    )
     match rt {
       Some(t) => [call, LLet(h, t, LWasiCall(h, "tangent_in", []))],
       None => [call],
     }
   },
-  STail(h, fh, _name, sym, key, vals, lins) => [LDirectCall(h, fh, twin_name(sym, key, false), true, twin_args_of(vals, lins, 0, []))],
+  STail(h, fh, _name, sym, key, vals, lins) => [LDirectCall(h, fh, Synthesized(twin_name(sym, key, false)), true, twin_args_of(vals, lins, 0, []))],
   SArena(h, v, stmts) => bound_choice(h, v, LArena(h, LBlock(h, lower_forward(stmts)))),
 }
 
@@ -962,8 +965,8 @@ fn jvp_arith(h, op, jl, jr) = match op {
 // forward callee runs, and its result does not move with the seed. The
 // twin demanded here is the forward one, whose result's activity the walk
 // reads; the transpose demands the callee's adjoint twin where it lowers.
-fn twin_for(fh, name: String, jargs) = {
-  let sym = spec_target_name(fh, name)
+fn twin_for(fh, callee, jargs) = {
+  let sym = spec_target_name(fh, callee)
   let key = key_of(jargs)
   if dv_has_record(sym) && (key_carries(key) || dv_touches(sym)) {
     let twin = dv_twin(sym, key)
@@ -973,7 +976,7 @@ fn twin_for(fh, name: String, jargs) = {
   }
 }
 
-fn jvp_direct(h, fh, name: String, jargs) = match twin_for(fh, name, jargs) {
+fn jvp_direct(h, fh, name, jargs) = match twin_for(fh, name, jargs) {
   Some((sym, key, result)) => match seq_values(h, jargs) {
     (pre, vals, _) => {
       let v = temp(h, 3)
@@ -997,7 +1000,7 @@ fn jvp_direct(h, fh, name: String, jargs) = match twin_for(fh, name, jargs) {
   None => jvp_direct_plain(h, fh, name, false, jargs),
 }
 
-fn jvp_direct_plain(h, fh, name: String, tail, jargs) = match seq_values(h, jargs) {
+fn jvp_direct_plain(h, fh, name, tail, jargs) = match seq_values(h, jargs) {
   (pre, vals, a) => jv(pre, LDirectCall(h, fh, name, tail, vals), LinZero, unentered_from(h, a, LwUnentered)),
 }
 
@@ -2211,7 +2214,7 @@ fn rv_zero_of(h) = if is_float_at(h) { LConst(h, LFloat(0.0)) } else { LConst(h,
 // tangent receives the register the twin wrote for it.
 fn rv_adjoint_call(h, fh, sym: String, key: String, vals, lins, g) = {
   dv_vjp(sym, key)
-  [LDirectCall(h, fh, twin_name(sym, key, true), false, vals ++ [g])] ++ rv_arg_adjoints(h, lins, 0, 0, [])
+  [LDirectCall(h, fh, Synthesized(twin_name(sym, key, true)), false, vals ++ [g])] ++ rv_arg_adjoints(h, lins, 0, 0, [])
 }
 
 fn rv_arg_adjoints(h, lins, i, j, out) = if i >= len(lins) {
@@ -3132,7 +3135,7 @@ fn twin_rec_refs(names, tw) = match tw.rec {
 fn twin_refs_in_stmt(names, e) = fold(names, twin_ref_add, flat_map(subtree, [e]))
 
 fn twin_ref_add(names, e) = match e {
-  LDirectCall(_, _, name, _, _) => if (str_contains(name, "$vjp") || str_contains(name, "$jvp")) && !any(field_name_eq(name, ??), names) {
+  LDirectCall(_, _, Synthesized(name), _, _) => if (str_contains(name, "$vjp") || str_contains(name, "$jvp")) && !any(field_name_eq(name, ??), names) {
     push(names, name)
   } else {
     names

@@ -647,20 +647,21 @@ a provenance diff, a search over live shared cells.
    lowering and the emit take the handler as that declaration, reading its
    config, state, arms and class off it and spelling its symbols off it in
    one place each (`installed_handler`, `arm_fn_name`), a candidate
-   is minted linked to the declaration it proposes (`linked_ref`), each
-   lowered reference leads to its declaration's statement (`ref_target`), an
-   op's sole handler is its declaration on the op's scheme, and the facet
-   walks from `main` and the module value lets over the edges, naming the
-   dead code of the entry's own layer (`reach_report`). What still reads
-   names: (a) the lowered
-   program's identity is a spelling (`LFn(String, …)`), so a call the
-   lowering mints at a borrowed site — `map` where the source wrote `fanout`
-   — is told from the reference's own projection by its spelling, the emit's
-   and the reading's reach walks (`plan_reached`, `reach_units`) walk names,
-   the emit asks the schedule's reach of a lowered callee by resolving its
-   spelling through the scope again (`fanout_reach_known`), and a function
-   bound to a handler's resume is found by its spelling
-   (`ls_resume_bind_of`) — the form is a lowered
+   is minted linked to the declaration it proposes (`linked_ref`), a lowered
+   reference carries the declaration its writer decided (`Callee`) — the
+   edge the judgment drew, or the vocabulary a lowering mints at a borrowed
+   site resolved where it is minted — and leads to that declaration's
+   statement (`ref_target`), a callee's kind, judgment and schedule reach
+   are read off its declaration (`callee_kind`, `fn_judgment`,
+   `fanout_reach_known`), an op's sole handler is its declaration on the
+   op's scheme, and the facet walks from `main` and the module value lets
+   over the edges, naming the dead code of the entry's own layer
+   (`reach_report`). What still reads names: (a) the lowered program's
+   identity is a spelling (`LFn(String, …)`, a callee's symbol its
+   declaration's bare name), so the emit's and the reading's reach walks
+   (`plan_reached`, `reach_units`) walk names, and a function bound to a
+   handler's resume is found by its spelling (`ls_resume_bind_of`) — the
+   form is a lowered
    unit keyed by its declaration's handle, reachability the edge followed
    from `main`, a symbol read off its declaration (`$module.name`, nested
    paths `.`-joined), and the name-keyed walks deleted, a TRANSITION; (b) a

@@ -1899,6 +1899,15 @@ fn judge_stmt_one(ref node) = {
 
 fn stmt_decl_name(ref node) = node |> graph_node_body |> body_decl_name
 
+// The name of the top-level declaration holding a position (`enclosing_decl`):
+// a declaration names itself, and a module value's binder — the value's own
+// cell, which a variable pattern binds (`infer_pat`) — is named by the let
+// that holds it. A position no declaration holds names nothing.
+fn enclosing_decl_name(h) = match enclosing_decl(h) {
+  None => "",
+  Some(d) => stmt_decl_name(d),
+}
+
 // The name a declaration's body declares — read off the body, so a reader
 // holding only a handle asks `graph_node_body` and lands here.
 fn body_decl_name(body) = match body {
@@ -5842,8 +5851,9 @@ fn install_decl(right) = {
   }
 }
 
-// What an install's handler was published as.
-fn install_kind(hd) = match hd {
+// What a declaration was published as — an install's handler, a call's
+// callee — None where no declaration stands.
+fn published_kind(hd) = match hd {
   Some(d) => match graph_published(d) {
     Some((_, _, kind)) => Some(kind),
     None => None,
@@ -5912,7 +5922,7 @@ fn member_install(body, member, span: ValidSpan) = {
 // The chain an install's handler side names and its members, flattened — a
 // member that names another chain stands for that chain's members. None for
 // a handler, a value or an anonymous install.
-fn chain_of(hd, right) = match install_kind(hd) {
+fn chain_of(hd, right) = match published_kind(hd) {
   Some(HandlerChainKind(chain)) => Some((callee_name(right), chain_members(chain))),
   _ => None,
 }
@@ -5941,7 +5951,7 @@ fn judge_chain(name: String, h) = match graph_node_body(h) {
   _ => judge_chain_member(name, h),
 }
 
-fn judge_chain_member(name: String, h) = match install_kind(install_decl(h)) {
+fn judge_chain_member(name: String, h) = match published_kind(install_decl(h)) {
   Some(HandlerKind(_, _, _, _, _)) => {
     member_declarations(h) |> each(member_declared(name, ??))
     infer_expr(h)
@@ -6342,7 +6352,7 @@ fn remainder_gates_check(resid_h, body_row, handled_names, span: ValidSpan) = ma
   },
 }
 
-fn handler_e_r(hd, right) = match install_kind(hd) {
+fn handler_e_r(hd, right) = match published_kind(hd) {
   Some(HandlerKind(r, w, config, _, arms)) => // The handled effect is a live projection of the arms (§2 follow-the-
   // edge), never a stored field — arms→op→EffectOpScheme carries it.
   // The config TParams ride along for the residual's install read, and
@@ -6605,7 +6615,7 @@ fn installed_handler_ty(ty) = match ty {
 fn install_reason(hd, right, span: ValidSpan) =
   Located(span, InferredPipeResult("~>", answer_reason(hd, right)))
 
-fn answer_reason(hd, right) = match install_kind(hd) {
+fn answer_reason(hd, right) = match published_kind(hd) {
   Some(HandlerKind(_, _, _, _, arms)) => match find(arm_own_value, arms) {
     Some(arm) => Located(graph_span_of(arm.body), Inferred("the arm {arm.op_name} of handler {callee_name(right)}")),
     None => Inferred("handler attachment"),
@@ -8921,7 +8931,7 @@ fn state_store_note(b, cells) = match graph_binder_of(b) {
 // either writer — the values its commits write past the init, and what it
 // stores in place — read off the state fields' facts: what an install's
 // arena must move.
-fn handler_state_writes(hd) = match install_kind(hd) {
+fn handler_state_writes(hd) = match published_kind(hd) {
   Some(HandlerKind(_, _, _, state, _)) => flat_map(state_field_written_cells, state),
   _ => [],
 }

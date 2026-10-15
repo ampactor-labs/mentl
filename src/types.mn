@@ -2630,7 +2630,8 @@ effect SpecTwins {
   // a fanout through direct calls — the fact a direct call under a spawning
   // demand reads before it demands the callee's schedule twin. Computed on
   // the first ask and held; a module nothing demands never computes it.
-  fanout_reach_known(String) -> Bool
+  // Asked of the callee's declaration.
+  fanout_reach_known(Int) -> Bool
   // A global call site's INSTALLED schedule — the innermost schedule-class
   // install of the site's own frame — noted by the lowering, which holds
   // the frame's chain, and read by the emit before it reads the bracket: a
@@ -2644,10 +2645,10 @@ effect SpecTwins {
   // no demand chain to check and pays nothing for the rule's existence.
   threaded_site_noted() -> Bool
   // The callees of the sequence-fanout forms the lowering built since the
-  // last drain — names the lowering introduced, which construction enqueues
-  // beside the constructed decl's own references.
-  fanout_form_note([String])
-  fanout_form_drain() -> [String]
+  // last drain — each form's site and the declaration the lowering chose,
+  // which construction enqueues beside the constructed decl's own references.
+  fanout_form_note([(Int, Int)])
+  fanout_form_drain() -> [(Int, Int)]
 }
 
 // EmitSite — WHERE an emit-time diagnostic is standing. A node minted after

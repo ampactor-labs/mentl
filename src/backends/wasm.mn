@@ -232,18 +232,13 @@ handler spec_registry with twins = smap_new(), count = 0, reach = wmap_new(64), 
     None => false,
   }),
   set_spec_twins(ns) => resume() with twins = fold(smap_new(), smap_add(??, ??, 1), ns), count = len(ns),
-  fanout_reach_known(n) => // Asked only by a call under a spawning demand. The lowered program names
-  // its callee by spelling, so the name resolves once through the scope, to
-  // the declaration it denotes at module level, and the rule walks that
-  // declaration's own reach and no further (`fanout_reach_ask`, graph.mn,
-  // which `mentl where` asks the same way), the answers settled across asks
-  // in `reach`. A symbol the scope holds no declaration for — a twin's —
-  // reaches nothing. A schedule-free module never asks.
-  match env_resolve(n) {
-    Some(d) => match fanout_reach_ask(reach, d) {
-      (found, memo) => resume(found) with reach = memo,
-    },
-    None => resume(false),
+  fanout_reach_known(d) => // Asked only by a call under a spawning demand, of the declaration the
+  // lowered call carries: the rule walks that declaration's own reach and
+  // no further (`fanout_reach_ask`, graph.mn, which `mentl where` asks the
+  // same way), the answers settled across asks in `reach`. A schedule-free
+  // module never asks.
+  match fanout_reach_ask(reach, d) {
+    (found, memo) => resume(found) with reach = memo,
   },
   site_schedule_note(h, s) => resume() with sites = wmap_add(sites, h, s), threaded = threaded || schedule_eq(s, Threaded),
   site_schedule(h) => resume(wmap_get(sites, h)),
@@ -301,14 +296,14 @@ fn show_node_of(h, x) = {
   let ty = show_hash_ty(x)
   match ty {
     TList(TByte) => x,
-    TFloat => LCall(h, LGlobal(h, "float_to_str"), [x]),
+    TFloat => LCall(h, LGlobal(h, vocabulary_callee("float_to_str")), [x]),
     TList(_) => x,
     TTuple(_) => x,
     TName(_, _) => x,
     TRecord(_) => x,
     TRecordOpen(_, _) => x,
     TAddr => x,
-    _ => LCall(h, LGlobal(h, "int_to_str"), [x]),
+    _ => LCall(h, LGlobal(h, vocabulary_callee("int_to_str")), [x]),
   }
 }
 
@@ -328,13 +323,17 @@ fn hash_node_of(h, x) = {
     // length-seeded list mix while a field ran the text mix — one type,
     // two hash fns, the divergence the fold family exists to forbid.
     match seq_elem_face(e) {
-      TByte => LCall(h, LGlobal(h, "str_hash"), [x]),
+      TByte => LCall(h, LGlobal(h, vocabulary_callee("str_hash")), [x]),
       TFloat => // the field twin's route (emit_field_hash) — one type, one
       // hash fn; the word list_hash here hashed the f64 REFERENCES
-      LCall(h, LGlobal(h, "list_hash_f64"), [x]),
-      _ => LCall(h, LGlobal(h, "list_hash"), [x]),
+      LCall(h, LGlobal(h, vocabulary_callee("list_hash_f64")), [x]),
+      _ => LCall(h, LGlobal(h, vocabulary_callee("list_hash")), [x]),
     },
-    TFloat => LCall(h, LGlobal(h, "str_hash"), [LCall(h, LGlobal(h, "float_to_str"), [x])]),
+    TFloat => LCall(
+      h,
+      LGlobal(h, vocabulary_callee("str_hash")),
+      [LCall(h, LGlobal(h, vocabulary_callee("float_to_str")), [x])]
+    ),
     TTuple(_) => x,
     TName(_, _) => x,
     TRecord(_) => x,
@@ -468,10 +467,10 @@ fn spec_find_rec(recs, target: String) = find({ (n, _p, _b, _f) => n == target }
 fn ref_demand(lineage, r) = match r {
   RefName(n) => DemandBase(n),
   RefDeclArm(_, n) => DemandBase(n),
-  RefSite(h, n) => key_demand(n, twin_site_key(h, n), lineage),
-  RefCall(h, n) => // A direct call's key carries the bracket's schedule into a callee that
+  RefSite(h, c) => key_demand(callee_symbol(c), twin_site_key(h, c), lineage),
+  RefCall(h, c) => // A direct call's key carries the bracket's schedule into a callee that
   // reaches a fanout (`twin_call_key`): the demand is the schedule twin.
-  key_demand(n, twin_call_key(h, n), lineage),
+  key_demand(callee_symbol(c), twin_call_key(h, c), lineage),
   RefArm(ih, n) => key_demand(n, arm_twin_key(ih), lineage),
 }
 
@@ -891,8 +890,8 @@ fn settle_minted_lines(site: String, lines) = each(
 // what the twin existed to prevent. A wide value nothing reads crosses the
 // word protocol boxed and back, and is sound.
 fn settle_depth(site: String, base: String, r) = match r {
-  RefSite(h, n) => settle_depth_at(site, base, h, n, twin_site_key(h, n).pairs),
-  RefCall(h, n) => settle_depth_at(site, base, h, n, twin_site_key(h, n).pairs),
+  RefSite(h, c) => settle_depth_at(site, base, h, callee_symbol(c), twin_site_key(h, c).pairs),
+  RefCall(h, c) => settle_depth_at(site, base, h, callee_symbol(c), twin_site_key(h, c).pairs),
   RefArm(ih, n) => settle_depth_at(site, base, ih, n, arm_twin_key(ih).pairs),
   RefDeclArm(_, _) => (),
   RefName(_) => (),
@@ -993,7 +992,7 @@ type AllocVerdict = Allocates | AllocFree | Unaudited
 // read once — kept as two membership sets so a read allocates nothing.
 effect AllocAudit {
   alloc_unit_done(String, Bool)
-  alloc_callee_builds(String) -> Bool
+  alloc_callee_builds(Callee) -> Bool
   alloc_concat_builds() -> Bool
   alloc_units() -> [[(String, Bool)]]
 }
@@ -1005,18 +1004,21 @@ handler alloc_audit_state with units = smap_new(), building = smap_new(), quiet 
   match concat {
     Some(b) => resume(b),
     None => {
-      let b = any(alloc_named_answer, concat_callees())
+      let b = any(alloc_named_answer, map(vocabulary_callee, concat_callees()))
       resume(b) with concat = Some(b)
     },
   },
-  alloc_callee_builds(name) => if smap_has(building, name) {
-    resume(true)
-  } else if smap_has(quiet, name) {
-    resume(false)
-  } else if alloc_named_answer(name) {
-    resume(true) with building = smap_add(building, name, true)
-  } else {
-    resume(false) with quiet = smap_add(quiet, name, false)
+  alloc_callee_builds(c) => {
+    let name = callee_symbol(c)
+    if smap_has(building, name) {
+      resume(true)
+    } else if smap_has(quiet, name) {
+      resume(false)
+    } else if alloc_named_answer(c) {
+      resume(true) with building = smap_add(building, name, true)
+    } else {
+      resume(false) with quiet = smap_add(quiet, name, false)
+    }
   },
   alloc_units() => resume(units),
 }
@@ -1161,16 +1163,18 @@ fn row_read_allows(r) = match r {
 }
 
 // Whether a called function's own row says `Alloc`: its enumeration entry
-// when lowering built it, else its scheme — a primitive's declared row.
-fn alloc_named_answer(name: String) = match graph_emitfn_at(name) {
-  [] => match env_lookup(name) {
-    Some(entry) => match entry {
-      (scheme, _, _) => match judgment_ty(scheme) {
+// when lowering built it, else its declaration's scheme — a primitive's
+// declared row.
+fn alloc_named_answer(c) = match graph_emitfn_at(callee_symbol(c)) {
+  [] => match c {
+    DeclaredAt(d) => match graph_published(d) {
+      Some((scheme, _, _)) => match judgment_ty(scheme) {
         TFun(_, _, row) => row_read_allows(alloc_row_read(row)),
         _ => false,
       },
+      None => false,
     },
-    None => false,
+    Synthesized(_) => false,
   },
   entries => match last(entries) {
     EmitFnEntry(e) => match e.kind {
@@ -1332,11 +1336,11 @@ fn alloc_walk(unit, e) = match e {
     let right = alloc_walk(unit, r)
     built || left || right
   },
-  LDirectCall(h, fh, cname, _, args) => {
+  LDirectCall(h, fh, c, _, args) => {
     let spill =
-      alloc_args_may_spill(args, 0) && alloc_direct_spills(fh, cname, args) && alloc_boxed(unit, h, cname)
+      alloc_args_may_spill(args, 0) && alloc_direct_spills(fh, c, args) && alloc_boxed(unit, h, callee_symbol(c))
     let call =
-      alloc_callee_builds(cname) && (alloc_unit_allows(unit) || alloc_refuse(unit, h, AsCall(cname)))
+      alloc_callee_builds(c) && (alloc_unit_allows(unit) || alloc_refuse(unit, h, AsCall(callee_symbol(c))))
     let below = alloc_walk_list(unit, args, 0)
     spill || call || below
   },
@@ -1367,7 +1371,7 @@ fn alloc_walk(unit, e) = match e {
   },
   LMakeList(h, es) => {
     let built =
-      alloc_callee_builds(list_literal_callee(literal_stride_class(h))) && alloc_at(unit, h, AsList)
+      alloc_callee_builds(vocabulary_callee(list_literal_callee(literal_stride_class(h)))) && alloc_at(unit, h, AsList)
     let below = alloc_walk_list(unit, es, 0)
     built || below
   },
@@ -1498,7 +1502,7 @@ fn alloc_walk_arms(unit, h, arms, i) = if i >= len(arms) {
 fn alloc_pat(unit, h, p) = match p {
   LPList(_, subs, rest, _) => {
     let built =
-      rest_binds(rest) && alloc_callee_builds(list_rest_callee()) && alloc_at(unit, h, AsListRest)
+      rest_binds(rest) && alloc_callee_builds(vocabulary_callee(list_rest_callee())) && alloc_at(unit, h, AsListRest)
     alloc_pats(unit, h, subs, 0) || built
   },
   LPRecord(rh, _, fbs, rest) => {
@@ -1549,7 +1553,7 @@ fn alloc_args_may_spill(args, i) =
 
 // Whether a direct call spills: the face the emission reads for it
 // (`sig_of_symbol`, at the twin the site names).
-fn alloc_direct_spills(fh, cname: String, args) = match sig_of_symbol(spec_call_name(fh, cname), len(args)) {
+fn alloc_direct_spills(fh, c, args) = match sig_of_symbol(spec_call_name(fh, c), len(args)) {
   (declared, _) => args_spill_at(declared, args, 0),
 }
 
@@ -2054,9 +2058,10 @@ fn race_scan(path, recs, e) = match e {
     race_scan_list(inits, path, recs)
     race_scan(path ++ [Installed(ih, hd, projection_of(hd))], recs, b)
   },
-  LDirectCall(_h, fh, n, _t, args) => {
-    if schedule_demands(path) && fanout_reach_known(n) {
-      race_check_reach(n, path, row_pairs_at(fh, n), [n], recs)
+  LDirectCall(_h, fh, c, _t, args) => {
+    if schedule_demands(path) && callee_reaches_fanout(c) {
+      let n = callee_symbol(c)
+      race_check_reach(n, path, row_pairs_at(fh, c), [n], recs)
     } else {
       ()
     }
@@ -2098,9 +2103,10 @@ fn race_body(local, ctx, rowpairs, visited, recs, e) = match e {
     race_fanout(h, br, ctx ++ local, rowpairs),
     Some(_) => (),
   },
-  LDirectCall(_h, fh, n, _t, args) => {
-    if fanout_reach_known(n) && !string_in_list(visited, n) {
-      race_check_reach(n, ctx ++ local, row_pairs_at(fh, n) ++ rowpairs, visited ++ [n], recs)
+  LDirectCall(_h, fh, c, _t, args) => {
+    let n = callee_symbol(c)
+    if callee_reaches_fanout(c) && !string_in_list(visited, n) {
+      race_check_reach(n, ctx ++ local, row_pairs_at(fh, c) ++ rowpairs, visited ++ [n], recs)
     } else {
       ()
     }
@@ -2134,7 +2140,7 @@ fn race_branch(stack, rowpairs, b) = match b {
 // at — the argument's own row, resolved. The scheme's row cells are the
 // callee's parameters' cells, which is what a branch's row inside the
 // callee chases to.
-fn row_pairs_at(fh, name: String) = match fn_judgment(name) {
+fn row_pairs_at(fh, c) = match fn_judgment(c) {
   None => [],
   Some(j) => match j {
     (_qs, sty) => row_pairs_walk(sty, spec_resolve(lookup_ty(fh)), []),
@@ -7187,14 +7193,14 @@ fn emit_expr(expr) = match expr {
     wat_emit(int_to_str(h))
     wat_emit(")\n")
   },
-  LGlobal(h, name) => {
+  LGlobal(h, c) => {
     // The ONE reference surface every named use routes through (direct calls,
     // tail calls and fn-as-value all evaluate their callee
     // here). spec_target_name redirects a wide-keyed generic site to its
     // twin's record; everything else — value lets, monomorphic fns, floor
-    // keys — prints the plain name, byte-identical.
+    // keys — prints the callee's own symbol.
     wat_emit("    (global.get $")
-    wat_emit(spec_target_name(h, name))
+    wat_emit(spec_target_name(h, c))
     wat_emit(")\n")
   },
   LLet(h, name, val) => match minted_binding(expr) {
@@ -7231,7 +7237,7 @@ fn emit_expr(expr) = match expr {
     emit_expr(inner)
     emit_unaryop_for(h, op)
   },
-  LDirectCall(h, fh, cname, tail, args) => {
+  LDirectCall(h, fh, callee, tail, args) => {
     // The direct native call — the dispatch gradient's cash-out for a
     // callee lower proved to be a top-level fn. Args emit at their PROVEN
     // widths (an f64 argument rides the stack as f64 — no spill cell, no
@@ -7244,7 +7250,7 @@ fn emit_expr(expr) = match expr {
     // The twin redirect reads the SAME projection every reference surface
     // routes through (the callee-ref handle carries the site's
     // instantiated TFun, so a wide-keyed generic call lands on its twin).
-    let cname2 = spec_call_name(fh, cname)
+    let cname2 = spec_call_name(fh, callee)
     // The callee's EMITTED widths, read from the column at the symbol this
     // call names. The site follows them arg by arg: native where the slot is
     // wide, the word spill (address of a fresh cell) where the slot is a
@@ -8628,8 +8634,11 @@ fn fold_acc_evac_at(acc: {cmp: [Ty], eq: [Ty], evac: [Ty], hash: [Ty], show: [Ty
   if h == 0 { acc } else { fold_acc_evac(acc, evac_type_at(h)) }
 
 // A list slot's store moves the value it stores by the value's type.
-fn fold_acc_store(acc: {cmp: [Ty], eq: [Ty], evac: [Ty], hash: [Ty], show: [Ty]}, n: String, args) =
-  if n == "list_set" && len(args) == 3 { fold_acc_evac_expr(acc, args[2]) } else { acc }
+fn fold_acc_store(acc: {cmp: [Ty], eq: [Ty], evac: [Ty], hash: [Ty], show: [Ty]}, c, args) = if len(args) == 3 && callee_is_vocabulary(c, "list_set") {
+  fold_acc_evac_expr(acc, args[2])
+} else {
+  acc
+}
 
 // An expression's value is moved by the type at its handle.
 fn fold_acc_evac_expr(acc: {cmp: [Ty], eq: [Ty], evac: [Ty], hash: [Ty], show: [Ty]}, x) =
@@ -8671,7 +8680,7 @@ fn collect_fold_tys_expr(expr, acc: {cmp: [Ty], eq: [Ty], evac: [Ty], hash: [Ty]
   LShow(_h, x) => collect_fold_tys_expr(x, fold_acc_show(acc, x)),
   LHash(_h, x) => collect_fold_tys_expr(x, fold_acc_hash(acc, x)),
   LCall(_h, f, args) => collect_fold_tys_expr(f, collect_fold_tys_list(args, acc)),
-  LDirectCall(_h, _fh, n, _t, args) => collect_fold_tys_list(args, fold_acc_store(acc, n, args)),
+  LDirectCall(_h, _fh, c, _t, args) => collect_fold_tys_list(args, fold_acc_store(acc, c, args)),
   LTailCall(_h, f, args) => collect_fold_tys_expr(f, collect_fold_tys_list(args, acc)),
   LBinOp(_h, op, l, r) => collect_fold_tys_expr(r, collect_fold_tys_expr(l, fold_trigger_binop(op, lexpr_handle(l), acc))),
   LResumeK(_h, k, v) => collect_fold_tys_expr(v, collect_fold_tys_expr(k, acc)),
