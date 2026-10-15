@@ -360,6 +360,13 @@ fn board_bounds() = [
   // same day with the return annotations of the five record accessors the
   // install stack's entry type replaced.
   Bound({ceiling: 86, question: QGhosts}),
+  // Dead code: a function of the wheel's own layer the entry cannot reach
+  // over the reference edges (`mentl query src/main.mn unreachable`). It
+  // read zero when the facet first walked the edges and one a landing later
+  // (2026-10-15, a callee reader in src/lower.mn), since nothing bounded it; a
+  // function the wheel stops calling leaves in the landing that stops
+  // calling it.
+  Bound({ceiling: 0, question: QUnreachable}),
   // ─ PROSE BY CLASS (SA-5, MOD-13). A comment is graph content, so what
   // SYNTAX §Comments says a comment is not is a census, never a review
   // finding. Each class falls as the module carrying it is touched; F strips

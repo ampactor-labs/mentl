@@ -789,13 +789,6 @@ fn callee_kind(c) = match c {
   Synthesized(_) => None,
 }
 
-// The callee a module-scope reference denotes: the declaration its edge
-// reaches. None where the judgment drew no edge — a name it refused.
-fn ref_callee(h) = match graph_ref_decl(h) {
-  Some(d) => Some(DeclaredAt(d)),
-  None => None,
-}
-
 // The NAME a callee expression carries — read by the resume-bind read
 // (`callee_name_of_handle`); "" for an anonymous
 // callee. A call's argument product and a partial's

@@ -1310,27 +1310,15 @@ fn unref_row_is_dead(row) with Pure = match row {
   (_, _, outside) => outside == 0,
 }
 
-// The transitive face: a row's third field is reached-from-entry, so the
-// same zero test names the fns the entry cannot reach.
-// THE FACET ANSWERED TWO DIFFERENT QUESTIONS IN ONE FLAT LIST, and the
-// measurement is why it is split. `mentl query src/main.mn unreachable`
-// answered 276 fn decls, and 202 of them sat in modules where NOTHING is
-// reached — prelude, combinators, dsp/*, ml/*, math, lists, strings: the
-// library surface a program LINKS and does not call, which is not dead code
-// and never was. The other 74 sat inside modules the entry runs through every
-// time, which IS dead code and is the whole finding. Handed one list of 276,
-// a reader acts on neither.
-//
-// The distinguishing fact is a RATIO this walk already holds. A module whose
-// unreached count equals its total is surface; a module with reached decls
-// standing beside unreached ones is carrying weight. No path convention
-// decides it — not `src/` versus `lib/`, which is a directory habit the graph
-// knows nothing about — the reachability walk does, from edges it already has.
+// The transitive face, read by module: a module with reached declarations
+// beside unreached ones carries weight, and its unreached ones are DEAD; a
+// module the entry links and never calls into is SURFACE, linked whole. The
+// ratio is the reachability walk's own, never a path convention.
 fn render_unreach_rows(rows) = {
   let groups = unreach_groups(rows)
   let carrying = groups |> filter(group_carries_dead)
   let surface = groups |> filter(group_is_surface)
-  let dead_n = count(unref_row_is_dead, rows)
+  let dead_n = count(ur_row_is_dead, rows)
   let header = "→ {int_to_str(len(rows))} fn decl(s); {int_to_str(dead_n)} the entry cannot reach\n"
   let carrying_section = if len(carrying) == 0 {
     ""
@@ -1366,14 +1354,14 @@ fn render_surface_group(g) = match g {
 fn unreach_groups(rows) = rows |> fold([], unreach_group_add)
 
 fn unreach_group_add(acc, row) = match row {
-  (m, name, hit) => if len(acc) == 0 {
-    [(m, 1, unreach_dead_one(name, hit))]
+  (m, name, reached, _) => if len(acc) == 0 {
+    [(m, 1, unreach_dead_one(name, reached))]
   } else {
     match last(acc) {
       (gm, total, dead) => if same_module_path(gm, m) {
-        drop_last(acc) ++ [(gm, total + 1, dead ++ unreach_dead_one(name, hit))]
+        drop_last(acc) ++ [(gm, total + 1, dead ++ unreach_dead_one(name, reached))]
       } else {
-        acc ++ [(m, 1, unreach_dead_one(name, hit))]
+        acc ++ [(m, 1, unreach_dead_one(name, reached))]
       },
     }
   },
@@ -1385,7 +1373,7 @@ fn unreach_group_add(acc, row) = match row {
 // fresh and the roster would read one module per decl.
 fn same_module_path(a: String, b: String) = a == b
 
-fn unreach_dead_one(name, hit) = if hit == 0 { [name] } else { [] }
+fn unreach_dead_one(name, reached) = if reached { [] } else { [name] }
 
 fn group_carries_dead(g) = match g {
   (_, total, dead) => len(dead) > 0 && len(dead) < total,

@@ -303,8 +303,8 @@ type QueryResult
   // (importing module, imported path, is any name it brings referenced here)
   | QRImports([(String, String, Bool)])
   | QRUnreferenced([(String, String, Int)])
-  // (module, fn name, reached-from-entry: 1 or 0)
-  | QRUnreachable([(String, String, Int)])
+  // (module, fn name, whether the entry reaches it, where it is declared)
+  | QRUnreachable([(String, String, Bool, Span)])
   // (module, effect, op count, the ops nothing performs)
   | QRPerforms([(String, String, Int, [String])])
   | QREnv([EnvDemand])
@@ -1038,27 +1038,29 @@ fn ur_holder(self, t) = match enclosing_decl(t) {
   None => [],
 }
 
-// The rows of the entry's own layer: each fn declaration, reached or not.
+// The rows of the entry's own layer: each fn declaration, whether the walk
+// reached it, and where it is declared.
 fn ur_rows(decls, layer, reached) = decls |> flat_map(ur_row(layer, reached, ??))
 
 fn ur_row(layer, reached, entry) = match entry {
   (path, d, l) => if l == layer {
     match graph_node_body(d) {
-      NStmt(FnStmt(name, _, _, _, _)) => [
-        (
-          path,
-          name,
-          match wmap_get(reached, d) {
-            Some(_) => 1,
-            None => 0,
-          }
-        )
-      ],
+      NStmt(FnStmt(name, _, _, _, _)) => [(path, name, is_some(wmap_get(reached, d)), span_of_node_raw(d))],
       _ => [],
     }
   } else {
     []
   },
+}
+
+// A row the entry cannot reach — what the facet lists as dead and the board
+// bounds at zero.
+fn ur_row_is_dead(row) with Pure = match row {
+  (_, _, reached, _) => !reached,
+}
+
+fn ur_site(row) = match row {
+  (m, name, _, at) => (m, at, Some(name)),
 }
 
 // ─── The claims prose makes that the refs column refutes ─────────────
@@ -1360,7 +1362,7 @@ fn noted_answer(r) = match r {
   QRModules(_) => None,
   QRImports(_) => None,
   QRUnreferenced(_) => None,
-  QRUnreachable(_) => None,
+  QRUnreachable(rows) => Some(("fn decl(s) the entry cannot reach", rows |> filter(ur_row_is_dead) |> map(ur_site))),
   QRPerforms(_) => None,
   QREnv(_) => None,
   QROrphanClaims(_) => None,

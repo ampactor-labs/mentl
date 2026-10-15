@@ -1725,7 +1725,7 @@ fn battery_teach_step(stem, path: String, line, want) = battery_view(
 // holds the graph; only the names cross out of it.
 fn battery_reach_step(stem, path: String, want: String) = {
   let dead = match driver_entry_with_ranges(path) {
-    (_ast, _ranges) => reach_report(module_cells()) |> filter(unref_row_is_dead) |> map({ (_, n, _) => n }) |> join(" ", ??),
+    (_ast, _ranges) => reach_report(module_cells()) |> filter(ur_row_is_dead) |> map({ (_, n, _, _) => n }) |> join(" ", ??),
   } ~> cursor_default ~> synth_default ~> mentl_default ~> diag_bank ~> infer_context
   if str_eq(dead, want) {
     print_string("PASS {stem}: unreachable {want}\n")
