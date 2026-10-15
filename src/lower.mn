@@ -2334,7 +2334,7 @@ fn lower_expr(handle) = match graph_node_body(handle) {
       NModule(_) => LConst(canon, LInt(0)),
       // never an expr position — an authored return annotation, not a value
       NTypeAnn(_) => LConst(canon, LInt(0)),
-      NRowName(_) => LConst(canon, LInt(0)),
+      NName(_) => LConst(canon, LInt(0)),
     }
   },
 }
@@ -4068,7 +4068,7 @@ fn lower_stmt(handle) = {
     NModule(_) => LConst(handle, LInt(0)),
     // type annotation at stmt position — degenerate
     NTypeAnn(_) => LConst(handle, LInt(0)),
-    NRowName(_) => LConst(handle, LInt(0)),
+    NName(_) => LConst(handle, LInt(0)),
   }
 }
 
@@ -4799,8 +4799,9 @@ fn at_instance(sub, oty) = match oty {
   None => None,
 }
 
-fn lower_one_arm_decl(arm: {args: [String], body: Node, op_name: String}, hd, config, state, fence, line_base) = {
-  let fn_name = arm_fn_name(hd, arm.op_name)
+fn lower_one_arm_decl(arm: {args: [String], body: Node, op: Node}, hd, config, state, fence, line_base) = {
+  let op_name = handler_arm_op_name(arm)
+  let fn_name = arm_fn_name(hd, op_name)
   // Hβ.first-light.arm-body-fresh-frame: each handler-arm body is
   // its own WASM function with __state IS the handler state record
   // (per PLAN §5.U). The
@@ -4824,7 +4825,7 @@ fn lower_one_arm_decl(arm: {args: [String], body: Node, op_name: String}, hd, co
   // record as its leading param (the driver pushes (record, k); resume(v)
   // calls __k — band B k1). OneShot arms keep their params, arity, and
   // fence byte-identically (Law 7).
-  let disc = op_resume_discipline(arm.op_name)
+  let disc = op_resume_discipline(op_name)
   let arm_params = match disc {
     MultiShot => ["__k"] ++ arm.args,
     // M4 — the driver pushes (record, k) uniformly; an Abandon arm takes __k and ignores it (it never resumes), returning its value flag-clear so the driver delivers it as the install's
@@ -4843,8 +4844,8 @@ fn lower_one_arm_decl(arm: {args: [String], body: Node, op_name: String}, hd, co
   // read as f64 — a Float op's handler did not assemble. Both are read at the
   // HANDLER's instance (`op_instance_subst`), so a twin keyed there signs the
   // widths its body reads.
-  let at_inst = op_instance_subst(arm.op_name, hd)
-  let arm_arg_tys = map(at_instance(at_inst, ??), op_param_tys(arm.op_name))
+  let at_inst = op_instance_subst(op_name, hd)
+  let arm_arg_tys = map(at_instance(at_inst, ??), op_param_tys(op_name))
   let arm_param_tys = if len(arm_arg_tys) == len(arm.args) {
     match disc {
       MultiShot => floor_tys(1) ++ arm_arg_tys,
@@ -4860,12 +4861,12 @@ fn lower_one_arm_decl(arm: {args: [String], body: Node, op_name: String}, hd, co
   let arm_ret = match disc {
     MultiShot => Some(lookup_ty(arm.body)),
     Abandon => Some(lookup_ty(arm.body)),
-    _ => at_instance(at_inst, op_ret_ty(arm.op_name)),
+    _ => at_instance(at_inst, op_ret_ty(op_name)),
   }
   graph_emitfn_note(EmitFnEntry{
     caps: [],
     fence,
-    kind: EfkArm(arm.op_name, hd),
+    kind: EfkArm(op_name, hd),
     name: fn_name,
     origin: arm.body,
     params: zip(arm_params, arm_param_tys),
@@ -6835,7 +6836,7 @@ fn reach_stmt_defers(node) = match graph_node_body(node) {
   NHole(_) => false,
   NModule(_) => false,
   NTypeAnn(_) => false,
-  NRowName(_) => false,
+  NName(_) => false,
 }
 
 // The seed — the always-live set constructs in source order. A module value

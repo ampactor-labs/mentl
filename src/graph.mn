@@ -2104,7 +2104,7 @@ fn body_child_handles(body) = match body {
   NHole(_) => [],
   NModule(_) => [],
   NTypeAnn(ty) => written_cells(ty),
-  NRowName(_) => [],
+  NName(_) => [],
 }
 
 // A type annotation's children: the names it writes. Every variable a type

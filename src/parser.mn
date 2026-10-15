@@ -468,7 +468,7 @@ fn cw_scan_index(ref idx, i, h_from, ref runs: [CwRun], leads, trails) = if i >=
   ()
 } else {
   match idx[i] {
-    (span, h) => if h < h_from {
+    (span, h) => if h < h_from || written_name_at(h) {
       cw_scan_index(idx, i + 1, h_from, runs, leads, trails)
     } else {
       match span {
@@ -482,6 +482,13 @@ fn cw_scan_index(ref idx, i, h_from, ref runs: [CwRun], leads, trails) = if i >=
       }
     },
   }
+}
+
+// A name written where no expression stands is a reference, never a home for
+// prose: a comment on an arm's line belongs to the arm, not the op it names.
+fn written_name_at(h) = match graph_node_body(h) {
+  NName(_) => true,
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NTypeAnn(_) => false,
 }
 
 // bsearch: the run whose start_line == line (runs are token-ordered, so
@@ -1012,7 +1019,7 @@ fn written_row_name(site, name, span: ValidSpan) = match site {
   DeclaredRow => if is_pure_eff_name(name) || row_var_spelled(name) {
     None
   } else {
-    Some(mint_node(NRowName(name), span))
+    Some(mint_node(NName(RowEffect(name)), span))
   },
   TypeRow => None,
 }
@@ -1283,7 +1290,7 @@ fn row_term_joins(tokens, pos) = match kind_at(tokens, pos) {
 fn written_constructor(ty) = match ty {
   TVar(n) => match graph_node_body(n) {
     NTypeAnn(TName(vname, fields)) => Some((vname, fields, n)),
-    NTypeAnn(_) | NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NRowName(_) => None,
+    NTypeAnn(_) | NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NName(_) => None,
   },
   TInt
   | TFloat
@@ -1612,19 +1619,23 @@ fn state_field_name(f: {init: Node, name: String}) -> String = f.name
 
 fn state_field_init(f: {init: Node, name: String}) -> Node = f.init
 
-// The handler-arm record's typed projection ({args, body, op_name},
-// minted in parse_handler_arm) — same pin, same discipline.
-fn handler_arm_op_name(a: {args: [String], body: Node, op_name: String}) -> String = a.op_name
+// The handler-arm record's typed projections ({args, body, op}, minted in
+// parse_handler_arms): the arm-record type resolves only in a scope that
+// closed it, so each annotated accessor reads it from any context.
+//
+// The op an arm serves, as written at its node.
+fn handler_arm_op_name(a: {args: [String], body: Node, op: Node}) -> String = match graph_node_body(a.op) {
+  NName(ArmOp(name)) => name,
+  NName(RowEffect(_)) | NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NTypeAnn(_) => out_of_range(),
+}
 
-fn handler_arm_arity(a: {args: [String], body: Node, op_name: String}) -> Int = len(a.args)
+fn handler_arm_arity(a: {args: [String], body: Node, op: Node}) -> Int = len(a.args)
 
 // The arm's body node — the typed projection draw_op_edges folds the resume
-// Usage grade over (the arm-record type only resolves in a scope that closed
-// {args, body, op_name}, so this annotated accessor reads it from any context,
-// exactly as handler_arm_op_name reads the op name).
-fn handler_arm_body(a: {args: [String], body: Node, op_name: String}) -> Node = a.body
+// Usage grade over.
+fn handler_arm_body(a: {args: [String], body: Node, op: Node}) -> Node = a.body
 
-fn handler_arm_args(a: {args: [String], body: Node, op_name: String}) -> [String] = a.args
+fn handler_arm_args(a: {args: [String], body: Node, op: Node}) -> [String] = a.args
 
 fn parse_handler_state_fields(ref tokens, pos) = {
   let name = ident_at(tokens, pos)
@@ -1697,7 +1708,9 @@ fn parse_handler_arms(ref tokens, pos) = {
     // parse_effect_ops.
     parse_handler_arms(tokens, skip_sep(tokens, p + 1))
   } else {
-    let op_name = ident_at(tokens, p)
+    // The op the arm serves is a name written at its own node, linked where
+    // the handler is judged.
+    let op = mint_node(NName(ArmOp(ident_at(tokens, p))), span_at(tokens, p))
     let p2 = expect(tokens, skip_ws(tokens, p + 1), TLParen)
     match parse_arg_names(tokens, skip_ws(tokens, p2)) {
       (args, p3) => {
@@ -1714,11 +1727,9 @@ fn parse_handler_arms(ref tokens, pos) = {
             let p6 = if at(tokens, p5b, TComma) { p5b + 1 } else { p5b }
             match parse_handler_arms(tokens, skip_ws(tokens, p6)) {
               (rest, p7) => {
-                // Per Ω.5 frame-record discipline + H1.4 future wiring,
-                // arms are records keyed by field name. New fields (e.g.,
-                // arm_fn_idx for handler arm fn indexing) land additively.
-                let arm = {args, body, op_name}
-                // (handler_arm_op_name below is this record's typed projection)
+                // An arm is a record keyed by field name; its typed
+                // projections stand below the state fields'.
+                let arm = {args, body, op}
                 ([arm] ++ rest, p7)
               },
             }
@@ -3872,7 +3883,7 @@ fn collect_free_uses(node, bound) = match graph_node_body(node) {
   NModule(_) => [],
   // an authored type annotation contains no VarRef
   NTypeAnn(_) => [],
-  NRowName(_) => [],
+  NName(_) => [],
 }
 
 // The free NAMES — the uses projected to their names, for the readers that

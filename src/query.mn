@@ -608,11 +608,13 @@ fn name_decls(name) with !Mutate = {
 }
 
 // What stands at a reference: a pattern taking the value apart, a type an
-// annotation names, an effect a row names, the callee of a call, or a value.
+// annotation names, an effect a row names, the op an arm serves, the callee
+// of a call, or a value.
 fn ref_role(h) with !Mutate = match graph_node_body(h) {
   NPat(_) => "pattern",
   NTypeAnn(_) => "annotation",
-  NRowName(_) => "row",
+  NName(RowEffect(_)) => "row",
+  NName(ArmOp(_)) => "arm",
   NExpr(_) | NStmt(_) | NHole(_) | NModule(_) => if callee_of_parent(h) { "call" } else { "value" },
 }
 
@@ -907,7 +909,7 @@ fn ur_value_let(entry) = match entry {
       | RowAliasStmt(_, _)
       | ExprStmt(_) => [],
     },
-    NExpr(_) | NPat(_) | NHole(_) | NModule(_) | NTypeAnn(_) | NRowName(_) => [],
+    NExpr(_) | NPat(_) | NHole(_) | NModule(_) | NTypeAnn(_) | NName(_) => [],
   },
 }
 
@@ -947,7 +949,7 @@ fn refine_root(entry) = match entry {
       | RowAliasStmt(_, _)
       | ExprStmt(_) => [],
     },
-    NExpr(_) | NPat(_) | NHole(_) | NModule(_) | NTypeAnn(_) | NRowName(_) => [],
+    NExpr(_) | NPat(_) | NHole(_) | NModule(_) | NTypeAnn(_) | NName(_) => [],
   },
 }
 
@@ -1116,8 +1118,8 @@ fn authored_hole(handle) with !Mutate = match graph_node_body(handle) {
 // file, not a cell inside it.
 fn node_is_ghost(h) with !Mutate = match graph_node_body(h) {
   NModule(_) => false,
-  // A row's name is judged by the link it draws.
-  NRowName(_) => !is_some(graph_ref_decl(h)),
+  // A written name is judged by the link it draws.
+  NName(_) => !is_some(graph_ref_decl(h)),
   _ => match graph_reason_at(h) {
     Placeholder(_) => !authored_hole(h),
     _ => false,
@@ -1213,7 +1215,13 @@ fn effect_row_join(path: String, acc, d) with !Mutate = match graph_node_body(d)
 }
 
 fn op_is_unperformed(stmt, op) with !Mutate = match op {
-  (_, _, _, onode) => len(outside_refs(stmt, onode)) == 0,
+  (_, _, _, onode) => !any(performs_at, outside_refs(stmt, onode)),
+}
+
+// A reference performs its op unless it is the name an arm serves.
+fn performs_at(r) with !Mutate = match graph_node_body(r) {
+  NName(ArmOp(_)) => false,
+  NName(RowEffect(_)) | NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NTypeAnn(_) => true,
 }
 
 fn op_name(op) with Pure = match op {
@@ -1433,7 +1441,7 @@ fn census_note(shape, h) with !Mutate = match shape {
 // (`catch_all_arm`, src/infer.mn); any other node answers nothing.
 fn catch_all_of(body) with !Mutate = match body {
   NExpr(MatchExpr(scrut, arms)) => catch_all_arm(scrut, arms),
-  NExpr(_) | NStmt(_) | NHole(_) | NPat(_) | NTypeAnn(_) | NModule(_) | NRowName(_) => None,
+  NExpr(_) | NStmt(_) | NHole(_) | NPat(_) | NTypeAnn(_) | NModule(_) | NName(_) => None,
 }
 
 // Every match the census convicts, as its handle — the node `mentl tighten`
@@ -3067,7 +3075,7 @@ fn arms_for_op(op_name: String, h) with !Mutate = match graph_node_body(h) {
   _ => [],
 }
 
-fn arm_answers(op_name: String, arm) = arm.op_name == op_name
+fn arm_answers(op_name: String, arm) = handler_arm_op_name(arm) == op_name
 
 fn arm_site(hname: String, arm) with !Mutate = (hname, decl_at(arm.body))
 

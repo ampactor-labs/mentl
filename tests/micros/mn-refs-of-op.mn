@@ -1,0 +1,23 @@
+// refs of tick: 2 call 2 arm
+// The op a handler arm serves is a name the arm writes, linked to the op's
+// declaration where the handler is judged, so `refs of tick` answers the
+// arms that serve it beside the calls that perform it.
+effect Tick {
+  tick()
+}
+
+handler count with n = 0 {
+  tick() => resume() with n = n + 1,
+}
+
+handler quiet {
+  tick() => resume(),
+}
+
+fn twice() = {
+  tick()
+  tick()
+  2
+}
+
+fn main() = (twice() ~> count) + (twice() ~> quiet)

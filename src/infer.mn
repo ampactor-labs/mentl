@@ -900,11 +900,11 @@ fn cl_state_names(ref states: [{init: Node, name: String}], i, acc) = if i >= le
   cl_state_names(states, i + 1, acc ++ [st.name])
 }
 
-fn cl_arm_names(ref arms: [{args: [String], body: Node, op_name: String}], i, acc) = if i >= len(arms) {
+fn cl_arm_names(ref arms: [{args: [String], body: Node, op: Node}], i, acc) = if i >= len(arms) {
   acc
 } else {
   let arm = list_index(arms, i)
-  cl_arm_names(arms, i + 1, body_binders(arm.body, acc ++ [arm.op_name] ++ arm.args))
+  cl_arm_names(arms, i + 1, body_binders(arm.body, acc ++ [handler_arm_op_name(arm)] ++ arm.args))
 }
 
 fn cl_op_names(ref ops, i, acc) = if i >= len(ops) {
@@ -3594,7 +3594,7 @@ fn charge_word(body) = match body {
   NHole(_) => "the hole",
   NModule(_) => "the module",
   NTypeAnn(_) => "the annotation",
-  NRowName(_) => "the row",
+  NName(_) => "the row",
 }
 
 fn expr_charge_word(e) = match e {
@@ -4389,8 +4389,9 @@ fn infer_expr(ref handle) = {
     // directly by return-type/let-annotation call
     // sites, never reached through infer_expr
     NTypeAnn(_) => (),
-    // a row's name is linked where its row is judged
-    NRowName(_) => (),
+    // a row's name is linked where its row is judged, an arm's op where its
+    // handler is
+    NName(_) => (),
   }
 }
 
@@ -6122,7 +6123,7 @@ fn instance_body(chain: String, body, copy, span: ValidSpan) = match body {
   NPat(p) => NPat(p),
   NTypeAnn(t) => NTypeAnn(t),
   NModule(m) => NModule(m),
-  NRowName(name) => NRowName(name),
+  NName(written) => NName(written),
 }
 
 fn instance_of(chain: String, span: ValidSpan, h) = chain_instance(chain, h, span)
@@ -6717,7 +6718,10 @@ fn install_reason(hd, right, span: ValidSpan) =
 
 fn answer_reason(hd, right) = match published_kind(hd) {
   Some(HandlerKind(_, _, _, _, arms)) => match find(arm_own_value, arms) {
-    Some(arm) => Located(graph_span_of(arm.body), Inferred("the arm {arm.op_name} of handler {callee_name(right)}")),
+    Some(arm) => Located(
+      graph_span_of(arm.body),
+      Inferred("the arm {handler_arm_op_name(arm)} of handler {callee_name(right)}")
+    ),
     None => Inferred("handler attachment"),
   },
   _ => Inferred("handler attachment"),
@@ -10140,27 +10144,32 @@ fn infer_match_arm_iter(arms, scrut, result_h, span: ValidSpan, i, n) = if i >= 
 // value IS the handle result, whether it resumes or aborts.
 //
 // drift-audit: ignore — result_h (arm result) and inst_h (effect instance) are distinct handles
-fn infer_one_handler_arm(arm: {args: [String], body: Node, op_name: String}, result_h, inst_h, world_h) = {
+fn infer_one_handler_arm(arm: {args: [String], body: Node, op: Node}, result_h, inst_h, world_h) = {
   let arm_span = graph_span_of(arm.body)
-  let op_ret_ty = match env_lookup(arm.op_name) {
-    Some(entry) => match entry {
-      (scheme, _, _) => match instantiate(scheme) {
-        TFun(params, ret_ty, op_row) => {
-          // The op's instantiated payload (Iterate(a) ⇒ a) IS this handler's
-          // P, so the arm param binds the var `~>` unifies with the body's
-          // performed E. Payload flows performer→handler through P.
-          unify_op_payload(op_row, inst_h, arm_span)
-          bind_arm_args(arm.args, params, arm.op_name, arm_span)
-          ret_ty
+  let op_name = handler_arm_op_name(arm)
+  // The op the arm serves resolves once, here, and the name the arm writes
+  // is linked to its declaration, so `refs of` the op answers the arm.
+  let op_ret_ty = match env_resolve(op_name) {
+    Some(d) => {
+      graph_ref_link(arm.op, d)
+      match graph_published(d) {
+        Some((scheme, _, _)) => match instantiate(scheme) {
+          TFun(params, ret_ty, op_row) => {
+            // The op's instantiated payload (Iterate(a) ⇒ a) IS this
+            // handler's P, so the arm param binds the var `~>` unifies with
+            // the body's performed E. Payload flows performer→handler
+            // through P.
+            unify_op_payload(op_row, inst_h, arm_span)
+            bind_arm_args(arm.args, params, op_name, arm_span)
+            ret_ty
+          },
+          // An op registered without param structure IS its result type.
+          other => other,
         },
-        // An op registered without param structure IS its result type.
-        other => other,
-      },
+        None => undeclared_arm_op(op_name, arm_span),
+      }
     },
-    None => {
-      report(EMissingVariable("handler arm op: {arm.op_name}", arm_span))
-      TVar(mint(Inferred("undeclared op result")))
-    },
+    None => undeclared_arm_op(op_name, arm_span),
   }
   let continuation_h = mint(Inferred("handler arm continuation"))
   // The continuation's DISCIPLINE is the representation the resume is lowered
@@ -10173,7 +10182,7 @@ fn infer_one_handler_arm(arm: {args: [String], body: Node, op_name: String}, res
   // arm frame's own row cell, which is what the arms PERFORM, not what a
   // resume RUNS.
   let continuation_disc =
-    disc_join(arm_disc_of(resume_grade(arm.body)), op_resume_discipline(arm.op_name))
+    disc_join(arm_disc_of(resume_grade(arm.body)), op_resume_discipline(op_name))
   graph_bind(
     continuation_h,
     TCont(op_ret_ty, TVar(result_h), continuation_disc, mk_ef_open([], world_h)),
@@ -10185,11 +10194,21 @@ fn infer_one_handler_arm(arm: {args: [String], body: Node, op_name: String}, res
   unify(arm.body, result_h, arm_span, Inferred("handler arm result"))
 }
 
+// An arm naming no op the link declares is refused at the arm, and its result
+// is a variable nothing binds.
+fn undeclared_arm_op(op_name: String, arm_span: ValidSpan) = {
+  report(EMissingVariable("handler arm op: {op_name}", arm_span))
+  TVar(mint(Inferred("undeclared op result")))
+}
+
 // An arm may not resume an op declared `-> !` (`EResumeOfNever`): its result
 // is quantified per perform, so the value the arm would hand back has no one
 // type every performer can receive.
-fn never_resume_check(hname: String, arm: {args: [String], body: Node, op_name: String}) = if op_never_returns(arm.op_name) && resume_grade(arm.body) != RNone {
-  report(EResumeOfNever(hname, arm.op_name, graph_span_of(arm.body)))
+fn never_resume_check(hname: String, arm: {args: [String], body: Node, op: Node}) = {
+  let op_name = handler_arm_op_name(arm)
+  if op_never_returns(op_name) && resume_grade(arm.body) != RNone {
+    report(EResumeOfNever(hname, op_name, graph_span_of(arm.body)))
+  }
 }
 
 // An op whose result is a variable its own scheme quantifies and nothing else
@@ -13888,7 +13907,7 @@ fn resolve_written(h, ty, qmap, owner) = match graph_node_body(h) {
       },
     }
   },
-  NTypeAnn(_) | NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NRowName(_) => (ty, qmap),
+  NTypeAnn(_) | NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NName(_) => (ty, qmap),
 }
 
 // A written name linked where every declaration of the link is registered,
@@ -13902,7 +13921,7 @@ fn link_written(c) = {
       Some(d) => graph_ref_link(c, d),
       None => (),
     },
-    NTypeAnn(_) | NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NRowName(_) => (),
+    NTypeAnn(_) | NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NName(_) => (),
   }
   each(link_written, body_child_handles(graph_node_body(c)))
 }
@@ -15111,7 +15130,7 @@ fn collect_fn_decls(node, acc) = match graph_node_body(node) {
   NPat(_) => acc,
   NModule(_) => acc,
   NTypeAnn(_) => acc,
-  NRowName(_) => acc,
+  NName(_) => acc,
 }
 
 fn collect_fn_decls_arms(arms, acc) = if len(arms) == 0 {
@@ -15275,7 +15294,7 @@ fn resume_grade(node) = match graph_node_body(node) {
   NPat(_) => RNone,
   NModule(_) => RNone,
   NTypeAnn(_) => RNone,
-  NRowName(_) => RNone,
+  NName(_) => RNone,
 }
 
 // Sequential composition over a node list (block stmts, call args, list

@@ -432,10 +432,10 @@ landing that closes it. A gate that did not run is UNKNOWN, never green.
   and everything the judgment learns about a node is a column at that handle; a
   value reference is linked to the declaration it resolved to. A pattern is a
   node the judgment binds, its constructor linked the same way; a name written
-  in a type is a node linked to the type it names, and so is an effect a
-  declaration's row names. A function type's row and a handler arm's op still
-  hold names with no node (§11.2); a type, a Reason and the lowered program are
-  still value trees (§11.18). The first one-write operation is built: a named handler
+  in a type is a node linked to the type it names, and so are an effect a
+  declaration's row names and the op a handler arm serves. A function type's
+  row still holds names with no node (§11.2); a type, a Reason and the lowered
+  program are still value trees (§11.18). The first one-write operation is built: a named handler
   chain's install becomes its members' installs (SYNTAX §«Handler chains»); a
   rename, the session's edit and a proposal's accept are not (§11.2).
 - **Names are still read where an edge exists** (§11.2, §11.18): the lowered
@@ -640,20 +640,24 @@ a provenance diff, a search over live shared cells.
 **THE STANDING CURSOR** — the order work runs in:
 
 2. **Every position is a cell — #108** (`Hβ.graph.positions-are-cells`). A
-   pattern, a name written in a type and an effect a declaration's row names
-   are nodes that draw the edge a value reference draws (`graph_ref_link`), so
-   `refs of` a constructor answers the patterns that take its values apart,
-   `refs of` a type its annotations and nominal constructions, `refs of` an
-   effect the rows that name it; `unreferenced` counts a type or an effect
-   used wherever its name is written or a value of it is built, taken apart
-   or performed, and the imports facet reads an import used only by a
-   pattern, an annotation or a row as used. A function type's row is folded
-   where the type is parsed into a row that holds names, so the effects a
-   callback's type demands are not among their references until the type
-   holds its row as written. A handler arm's op name and a sugar's primitive
-   are nodes that draw the same edge, so `refs of` an op answers the arms
-   that serve it and `refs of slice` its list-rest patterns; the sugar's
-   callee is the edge at its node, which the lowering reads where it
+   pattern, a name written in a type, an effect a declaration's row names and
+   the op a handler arm serves are nodes that draw the edge a value reference
+   draws (`graph_ref_link`), so `refs of` a constructor answers the patterns
+   that take its values apart, `refs of` a type its annotations and nominal
+   constructions, `refs of` an effect the rows that name it, `refs of` an op
+   the arms that serve it beside the calls that perform it; `unreferenced`
+   counts a type or an effect used wherever its name is written or a value of
+   it is built, taken apart or performed, and the imports facet reads an
+   import used only by a pattern, an annotation, a row or an arm as used. A
+   function type's row is folded where the type is parsed into a row that
+   holds names, so the effects a callback's type demands are not among their
+   references until the type holds its row as written. An arm's readers still
+   resolve its op by spelling where the edge now stands (`op_resume_discipline`,
+   `op_instance_subst`, `op_param_tys`, `op_ret_ty`, `op_never_returns`), and
+   take the declaration once they read the edge. A sugar's primitive is a node
+   that draws the same edge, so `refs of slice` answers its list-rest
+   patterns; the sugar's callee is the edge at its node, which the lowering
+   reads where it
    now resolves `concat_callees`, `subscript_callee` and `list_rest_callee` by
    spelling at the link's scope (the two concats one `seq_concat`, §4①). A
    sub-pattern's node is the cell of the part it takes apart, where a second

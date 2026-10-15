@@ -447,7 +447,7 @@ fn absorb_scan(ref bindings, i, n, ename: String, own acc) = if i >= n {
   }
 }
 
-fn handler_arms_touch(ref arms: [{args: [String], body: Node, op_name: String}], i, n, ename: String) = if i >= n {
+fn handler_arms_touch(ref arms: [{args: [String], body: Node, op: Node}], i, n, ename: String) = if i >= n {
   false
 } else {
   // The receiver is ANNOTATED, which is what makes the destructure below
@@ -463,8 +463,8 @@ fn handler_arms_touch(ref arms: [{args: [String], body: Node, op_name: String}],
   // The annotation closes the row, and the offsets become a proof.
   // `Hβ.lower.record-pattern-param-receiver` carries the class.
   match list_index(arms, i) {
-    {args: _, body: _, op_name: opn} => {
-      let touches = match env_lookup(opn) {
+    arm => {
+      let touches = match env_lookup(handler_arm_op_name(arm)) {
         Some(op_entry) => match op_entry {
           (_, _, op_kind) => match op_kind {
             EffectOpScheme(op_effect, _, _, _) => op_effect == ename,

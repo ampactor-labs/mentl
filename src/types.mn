@@ -726,7 +726,7 @@ fn some_param_ty(p) = Some(param_ty(p))
 fn unwritten_cell(ty) = match ty {
   TVar(h) => match graph_node_body(h) {
     NTypeAnn(_) => None,
-    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NRowName(_) => Some(h),
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NName(_) => Some(h),
   },
   TInt
   | TFloat
@@ -1007,7 +1007,7 @@ type SchemeKind
   // `Environ("PORT")`).
   | EffectDeclKind([String], [String])
   // tag 6 — (residual_row_handle, remainder_world_handle, config params [the fn-param carrier: name + default ride the TParam, names project via lower_param_names], state fields, arms). The remainder world is the row a held resume of this handler RUNS — the cell its arms' continuations carry as their world, never bound: callees reached through a resume gate it, and every install judges those gates against its own remainder (infer.mn's remainder_gates_check). Typed payloads: a bare List here erased the element types the consumers prove (the 581a92f class), and the pattern-constraint unification surfaces the conflict as E_TypeMismatch at every destructure.
-  | HandlerKind(Int, Int, [TParam], [{init: Node, name: String}], [{args: [String], body: Node, op_name: String}])
+  | HandlerKind(Int, Int, [TParam], [{init: Node, name: String}], [{args: [String], body: Node, op: Node}])
   // tag 7 — parameter binding carries authored ownership at the env edge
   | ParamScheme(Ownership)
   // tag 8 — a named effect row (`type X = A + B`, SYNTAX §«Named effect
@@ -2441,10 +2441,14 @@ type NodeBody
   // a type, so the node holds that type: the judgment reads it and binds the
   // node to what it resolves to.
   | NTypeAnn(Ty)
-  // A name written in an authored row (`with !Alloc`, a named row's term):
-  // the position the judgment links to the effect or named row it denotes,
-  // so `refs of` an effect answers the rows that name it.
-  | NRowName(EffName)
+  // A name written where no expression stands — a row's effect, a handler
+  // arm's op: the position the judgment links to the declaration the name
+  // denotes, so `refs of` that declaration answers it.
+  | NName(WrittenName)
+
+// What a name written outside an expression names: an effect or a named row
+// in an authored row (`with !Alloc`), or the op a handler arm serves.
+type WrittenName = RowEffect(EffName) | ArmOp(String)
 
 // ─── Expr (spec 03) ────────────────────────────────────────────────
 type Expr
@@ -2719,7 +2723,7 @@ type Stmt
   // same [TParam] product fn params and handler config ride; they
   // register as the effect's env scheme (the instance signature every
   // authored `Sample(44100)` judges against).
-  | HandlerDeclStmt(String, String, [TParam], [{init: Node, name: String}], [{args: [String], body: Node, op_name: String}], [(RowTerm, Bool, EConn)])
+  | HandlerDeclStmt(String, String, [TParam], [{init: Node, name: String}], [{args: [String], body: Node, op: Node}], [(RowTerm, Bool, EConn)])
   // handler name, effect name, config-params, state-fields, arms, the
   // authored `with` row (the same signed triples a FnStmt carries — until
   // 2026-09-27 the parser skipped it to the arms, so a handler's `!F` bound
@@ -2824,7 +2828,7 @@ type Pat
 // The pattern at a node; every handle a pattern holds is one.
 fn pat_of(h) = match graph_node_body(h) {
   NPat(p) => p,
-  NExpr(_) | NStmt(_) | NHole(_) | NModule(_) | NTypeAnn(_) | NRowName(_) => out_of_range(),
+  NExpr(_) | NStmt(_) | NHole(_) | NModule(_) | NTypeAnn(_) | NName(_) => out_of_range(),
 }
 
 // The constructors a catch-all over a sum stands for, read off the arms
@@ -5253,7 +5257,7 @@ fn render_ty(ty) with !Mutate = match ty {
   // its binding.
   TVar(id) => match graph_node_body(id) {
     NTypeAnn(written) => render_ty(written),
-    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NRowName(_) => render_var(id),
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NName(_) => render_var(id),
   },
   TName(name, args) => if len(args) == 0 { name } else { "{name}({show_list(args, render_ty, ", ")})" },
   TRecord(fields) => "\{{show_list(fields_by_name(fields), render_field, ", ")}\}",
