@@ -477,9 +477,12 @@ landing that closes it. A gate that did not run is UNKNOWN, never green.
   frontier).
 - **Threads are real**: `~> parallel_compose` runs branches on host threads over
   the shared image, a branch runs in the world it was spawned in, and
-  `E_ThreadedBranchEffect` refuses a stateful handler a branch reaches. SIMD and
-  GPU run their branches sequentially. Two branches storing in place into one
-  captured buffer race unseen, since a branch's row says only `Memory`.
+  `E_ThreadedBranchEffect` refuses a stateful handler a branch reaches, a store
+  a branch makes into memory older than itself, and code a branch reaches that
+  writes memory older than its own frame. SIMD and GPU run their branches
+  sequentially. A write made through a function value is charged where the call
+  stands, whatever memory it writes, so `!Mutate` and the race rule refuse some
+  programs that write only fresh memory through a callback (§11.18).
 - **The judgment is one pass; schemes are still values** (§11.18): a candidate
   is judged inside a checkpoint on the one live graph, and a declaration's type
   is frozen at its exit.
@@ -741,7 +744,9 @@ a provenance diff, a search over live shared cells.
    GraphWrite, `graph_install_at` and `graph_product_at` into GraphRead. Word
    arithmetic leaves `Memory` in two pins at the bootstrap seam (registered as
    primitives the library shadows, then the library's declarations deleted), so a
-   function doing only arithmetic on words is `Pure`.
+   function doing only arithmetic on words is `Pure`. Memory's stores become an
+   effect of their own, so the store-age judgment reads a raw store off the op's
+   edge, where it reads the op's spelling today (`raw_store_target`).
 10. **Handlers installed once, pinned to their instance**
     (`Hβ.effects.handler-pins-its-instance`). One install per extent; a
     handler's start state its own; a chain named once; nothing installed only to
@@ -826,7 +831,10 @@ a provenance diff, a search over live shared cells.
     trail as the delta's home (`Hβ.graph.mutation-delta-is-write-only`), the
     session paying for what an edit moved (`Hβ.session.edit-pays-for-the-program`)
     and outliving its process (`Hβ.felt.accept-outlives-the-process`); persist
-    resumes across machines (`Hβ.persist.cross-machine-resume`).
+    resumes across machines (`Hβ.persist.cross-machine-resume`); and a function
+    value carries its store claim on its type, as it carries its contract, so a
+    call through it pays `Mutate` only where the memory it hands is older than
+    the caller's frame (`Hβ.effects.store-claim-travels-with-the-function`).
 
 ---
 

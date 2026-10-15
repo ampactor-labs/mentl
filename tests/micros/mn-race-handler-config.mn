@@ -1,0 +1,23 @@
+// expect: refuse E_ThreadedBranchEffect
+// Both branches perform `bump`, whose arm stores into the buffer its install
+// hands it as config: one buffer, written from two spawned instances. On
+// boot 65e2f966 this compiled and ran.
+import threading
+
+effect Bump {
+  bump() -> Int
+}
+
+handler bumper(buf) {
+  bump() => {
+    list_set(buf, 0, list_index(buf, 0) + 1)
+    resume(list_index(buf, 0))
+  },
+}
+
+fn main() = {
+  let buf = make_list(1)
+  match (bump()) >< (bump()) ~> parallel_compose ~> bumper(buf) {
+    (a, b) => a + b,
+  }
+}

@@ -1,0 +1,17 @@
+// expect: 5
+// A store into memory the frame allocated builds a value: `fill` writes the
+// list it is handed, and `make` hands it one it just allocated, through a
+// pipe and through a cycle that threads it, so `make`'s `!Mutate` holds.
+fn fill(buf, v) = list_set(buf, 0, v)
+
+fn grow(buf, n) = if n <= 0 { buf } else { shrink(fill(buf, n), n - 1) }
+
+fn shrink(buf, n) = grow(buf, n - 1)
+
+fn make() with !Mutate = {
+  let a = make_list(1) |> fill(??, 4)
+  let b = grow(make_list(1), 5)
+  list_index(a, 0) + list_index(b, 0)
+}
+
+fn main() = make()

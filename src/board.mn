@@ -285,8 +285,9 @@ fn board_bounds() = [
   // Every verb's builder takes its words apart by pattern, and the help
   // catalog maps the verb table, 204 → 184 (L-F). 184 → 181 at M1's first
   // pin (2026-10-14): the query's index walks over names left with the
-  // name-keyed refs.
-  Bound({ceiling: 181, question: QVerifyDebt}),
+  // name-keyed refs. 181 → 180 (2026-10-15): a cycle's settlements read its
+  // members' handles, taken once, rather than indexing the statements again.
+  Bound({ceiling: 180, question: QVerifyDebt}),
   // The iteration costumes — a function that threads an incremented index
   // through its own self-call, the imperative loop in recursion's costume
   // (CLAUDE.md Anchor 6). 390 when the detector was born on 2026-07-30, 490

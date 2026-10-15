@@ -1,0 +1,19 @@
+// `!Mutate` refuses naming the store each refusal reaches: through the calls
+// that hand a parameter on, down to the raw store, and through a partial
+// application handed to a callee, entered where it runs. On boot 65e2f966
+// nothing performed Mutate and both declarations checked clean.
+fn fill(buf, v) = list_set(buf, 0, v)
+
+fn relay(b) = fill(b, 1)
+
+fn apply(f, b) = f(b)
+
+fn relayed(b) with !Mutate = relay(b)
+
+fn handed(b) with !Mutate = apply(fill(??, 2), b)
+
+fn main() = {
+  let b = make_list(1)
+  let c = relayed(b)
+  len(handed(c))
+}

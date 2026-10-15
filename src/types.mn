@@ -1281,7 +1281,7 @@ type GNode = GNode(NodeKind, Reason)
 //
 //   <fanout> -> FanoutBoundary([
 //     BoundaryEdge(result_h, thunk_h, carrier_h, thread_ticket_h,   // drift-audit: ignore — doc-comment example of the BoundaryEdge record shape
-//                  persist_ticket_h), ...
+//                  persist_ticket_h, older_stores), ...
 //   ])
 //
 // The branch index is the topology; no reverse lookup through a tuple type is
@@ -1290,10 +1290,13 @@ type GNode = GNode(NodeKind, Reason)
 // local representation carrier: generic scheduling handlers transport one word
 // while the field keeps the result's exact repr (f64/f32/v128 included). Lower
 // follows the edge and immediately projects field 0. No name lookup, cache, or
-// boxing policy exists outside the graph.
-type BoundaryEdge = BoundaryEdge(Int, Int, Int, Int, Int)
+// boxing policy exists outside the graph. The last field is every site where
+// the branch stores into memory older than the branch — a buffer bound before
+// it, a parameter's memory, the shared input — which two spawned instances
+// would both write; the race rule reads it.
+type BoundaryEdge = BoundaryEdge(Int, Int, Int, Int, Int, [Int])
 
-// result, thunk, carrier, Thread ticket, Persist ticket
+// result, thunk, carrier, Thread ticket, Persist ticket, older-store sites
 //
 // A suspended effect call has three identities: resume_input_h is the typed R
 // hole the continuation accepts, answer_h is the enclosing frame's S result,
@@ -1496,6 +1499,18 @@ type Mutation
   // what the judgment published about a declaration, entered under its
   // handle (undo = pop the newest)
   | MPublish(Int)
+  // a declaration's store claim entered under its handle (undo = pop the
+  // newest)
+  | MStoreClaim(Int)
+
+// A declaration's store claim, written where its judgment ends and read at
+// every call of it: the parameters its result may be (Some([]) a fresh
+// result, None one older than the call), the parameters it stores cells into
+// for an arena, by position, with the cells a move demands, the parameters
+// it writes, by position, and whether it writes memory older than its frame
+// beyond them. A handler's claim reads its config parameters the same way,
+// each install standing for the call.
+type StoreClaim = {beyond: Bool, mutated: [Int], returns: Option([Int]), stores: [(Int, [Int])]}
 
 // An edge arriving at a declaration, held at the declaration's handle: a
 // reference the judgment linked to it, a node whose comment names it in
@@ -3348,6 +3363,8 @@ effect GraphRead {
   graph_binder_of(Int) -> Option(BinderFact)
   // the birth the parse noted at the node, if any
   graph_birth_of(Int) -> Option(Birth)
+  // a declaration's store claim, newest first; None until its judgment ends
+  graph_store_claim_of(Int) -> Option(StoreClaim)
   // THE LATE PAYERS' read (P0): every frame row cell that called through an
   // open guard cell — its declaration not yet exited — newest first.
   graph_late_payers(Int) -> [Int]
@@ -3521,6 +3538,10 @@ effect GraphWrite {
   graph_binder_note(Int, BinderFact)
   // how the parse made the node of another spelling (a let-born match)
   graph_birth_note(Int, Birth)
+  // a declaration's store claim, written where its judgment ends and again
+  // where its binding group settles — trailed as MStoreClaim, so a
+  // speculative judgment's claims roll back with it
+  graph_store_claim_note(Int, StoreClaim)
   // THE LATE PAYERS' write (P0): a call reached a guard cell its
   // declaration has not written yet, so the frame owes whatever the exit
   // writes there. Keyed by the open cell, the payer's row cell the value;
@@ -5981,10 +6002,12 @@ fn site_address(h) with !Mutate = match graph_span_of(h) {
 }
 
 // How an effect crosses a site: through the callee a call applies, through
-// the stage a pipe applies, through the handler a tee installs, or inside a
-// function value whose body the chain enters.
+// the stage a pipe applies, through the handler a tee installs, through the
+// function a reference hands in, or inside a function value whose body the
+// chain enters.
 fn site_phrase(body) with !Mutate = match body {
   NExpr(CallExpr(f, _)) => "through `{show_callee_name(f)}`",
+  NExpr(VarRef(n)) => "through `{n}`",
   NExpr(PipeExpr(PForward, _, stage)) => stage_phrase(stage),
   NExpr(PipeExpr(PTee, _, h)) => "through `~> {install_name(h)}`",
   NExpr(LambdaExpr(_, _)) => "inside the function value",

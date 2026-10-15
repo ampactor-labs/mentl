@@ -1,0 +1,13 @@
+// expect: refuse E_ThreadedBranchEffect
+// Every element's branch of a sequence fanout applies one function, and this
+// one stores into a buffer every branch captures: under a spawning schedule
+// that is one buffer written from every instance. On boot 65e2f966 the race
+// rule never read a sequence fanout's function, and this compiled and ran.
+import threading
+
+fn main() = {
+  let buf = make_list(1)
+  let n =
+    fanout({ x => list_set(buf, 0, list_index(buf, 0) + x) }, [1, 2, 3]) |> len ~> parallel_compose
+  n + list_index(buf, 0)
+}

@@ -1,56 +1,15 @@
 // expect: 30
-// mn-feedback-iir — W24 / LF.B gate: the `<~` prior-iteration BINDING.
-//
-// THE GENUINE DSP NOVELTY (PLAN §2, the `<~` arm): the feedback operator binds
-// the PRIOR iteration's output as a live node the body reads. `(prev) => body`
-// names that prior; the recurrence y[n] = f(x[n], y[n-1]) is EXPRESSED, not
-// commented. This is the form Faust's untyped `~` reaches for — but here the
-// prior is a typed graph node, read live from $__fb_prev_<h>, with NO closure
-// allocation (a `<~` recurrence allocating per tick would defeat !Alloc).
-//
-// Integer IIR accumulator (float arithmetic is the seed's separate gap, STEP 1):
-//   y[n] = x[n] + y[n-1],  x = 10 constant
-//   y[0] = 10 + 0  = 10
-//   y[1] = 10 + 10 = 20
-//   y[2] = 10 + 20 = 30   <- the prior CARRIED across calls
-// The state-global $s<h> persists the prior across iterative-context handler
-// re-invocations; `(prev)` resolves to RFbPrior → LFeedbackPrior → the prior
-// local. If the prior did NOT bind, every call returns 10 (the floor) and the
-// result is 10, not 30 — so exit 30 proves the recurrence.
-//
-// THE SEED LAGS THIS FORM (the .mn LEADS, PLAN §5). The disposable seed's lower
-// predates LF.B: its PFeedback arm lowers the `<~` LHS lambda as a CLOSURE
-// (capturing `input`), never inlining the body with `prev` bound to the prior.
-// So the seed-compiled result builds a closure record and never threads the
-// prior — it computes the current input only. This gate therefore runs through
-// MENTL2 (the wheel compiled by the seed — it carries the wheel's LF.B inline
-// path: PFeedback → lower_feedback_body → ls_bind_fb_prior → LFeedbackPrior),
-// NOT the seed directly. Named peer: Hβ.seed.feedback-prior-inline — the seed
-// mirrors the LF.B lambda-inline when next required (STEP 5's coordinated seed
-// edit); the .mn leads until then.
-//
-// LAW 7: the unbound `<~` form (a bare expression LHS, every prior structural
-// filter) stays byte-identical — LF.B is an ADDED path keyed on a lambda LHS,
-// not a perturbation of the existing emit.
+// The `<~` prior binding: the literal's parameter names the prior iteration's
+// output, so the recurrence y[n] = x[n] + y[n-1] is expressed. With x = 10
+// the three calls answer 10, 20 and 30, the prior carried across calls by
+// the line the record of `accum` owns, with no context installed around it;
+// were the prior unbound, every call would answer 10.
+fn accum(input) = ((prev) => input + prev) <~ delay(1)
 
-effect Sample { sample_rate() -> Int }
-effect IterContext { iter_context() -> Bool }
-
-handler iterate_context {
-  iter_context() => resume(True)
+fn run() = {
+  let _ = accum(10)
+  let _ = accum(10)
+  accum(10)
 }
 
-// The `<~` body reads the prior via its `(prev)` param — the recurrence.
-fn accum(input) -> Int with Sample =
-  ((prev) => input + prev) <~ delay(1)
-
-fn run() -> Int with Sample = {
-  let a = accum(10)
-  let b = accum(10)
-  let c = accum(10)
-  c
-}
-
-fn main() -> Int = {
-  { run() } ~> iterate_context
-}
+fn main() = run()

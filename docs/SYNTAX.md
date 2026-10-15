@@ -711,10 +711,17 @@ replaces the record's word, or an in-place store into what the field holds
 parameter), the same fact an install's arena reads — so a state that is only
 read is shared read-only across instances and runs (real, 2026-10-06: until
 then the rule read the updates alone, and two branches bumping a count kept
-in a state buffer ran; the refusal names the store). Two branches storing in
-place into one buffer both capture race with no handler between, and the rule
-does not see it yet: a branch's row says only `Memory`, which carries loads and
-stores alike (`Hβ.threads.captured-store-race`).
+in a state buffer ran; the refusal names the store). And the rule reads a
+branch's own stores by their targets (real, 2026-10-15): a store into memory
+older than the branch — a buffer both branches capture, a module value — is
+one memory written from every instance, and refuses naming the store; a
+branch reaching code that stores into memory older than that code's frame
+carries `Mutate` (§«Negation in `with` clauses») and refuses the same way,
+so two branches calling one function whose feedback line both tick refuse;
+a store into memory the branch allocated builds a value and runs. Until then
+`0 <| (bump(buf), bump(buf)) ~> parallel_compose`, each `bump` storing into
+the one `buf`, compiled and exited 3
+(tests/frontier/mn-threaded-branch-captured-store.mn).
 
 **A spawned instance shares the module's values** (real, 2026-10-06). A
 module value let is the root's: its init runs once, in the root, before
@@ -777,10 +784,15 @@ applications independent, which is the whole difference between them.
 Simd and Gpu pack a fixed lane count and run a sequence fanout sequentially.
 The ??-fan is written this way (`segment_verify`, src/synth_proposer.mn):
 the candidates fan through their judgment under the schedule of the propose
-site — none installed, sequential by property — and a `~> parallel_compose`
-over it is refused by the race rule, each branch writing the one graph
-through a stateful handler, which is 9.2's deterministic partition stated as
-a gate.
+site — none installed, sequential by property. The race rule reads the
+function a sequence fanout applies as every branch's (real, 2026-10-15), so a
+`~> parallel_compose` over the fan refuses, each branch writing the one graph
+through a stateful handler — the deterministic partition (`PLAN.md §11.16`)
+stated as a gate. Until then the rule never read that function, and a
+fanout whose function stored into a captured buffer or performed into a
+stateful handler compiled and ran
+(tests/micros/mn-race-sequence-fanout-store.mn,
+mn-race-sequence-fanout-stateful.mn).
 
 **`><` is a structural N-ary construct the formatter renders in one of two layouts** (a presentation choice, never a parse distinction — there are no semantic "forms," only render shapes):
 
@@ -1873,6 +1885,8 @@ body whose row was a parameter's was vacuous — the program compiled and
 ran.
 
 When used alone (e.g., `with !Mutate`), it creates a **negative capability stance** representing "anything except this effect" (universe-minus). This is how Mentl expresses region-freezes and borrows (`ref`) mathematically without a separate borrow-checker.
+
+**`Mutate` is a store into memory older than the frame that makes it** (real, 2026-10-15): a parameter's memory, a capture, a module value, a part of another value, the feedback line a function's record owns. So `!Mutate` proves a function leaves every memory that existed before it ran as it found it, and `fn poke(ref xs) with !Mutate = list_set(xs, 0, 5)` refuses. A store into memory the frame allocated builds a value and performs nothing. A store into a parameter's memory performs `Mutate` in the function that makes it, and a caller pays it only where the argument it hands is older than its own frame: with `fn fill(buf, v) = list_set(buf, 0, v)`, `fn make() with !Mutate = make_list(1) |> fill(??, 4)` holds, and a caller that hands `fill` its own parameter hands the write on to its callers. An install answers its arms the same way: a state its init built is the install's own, and a config the arms write is charged by the age of what the install hands them. A `<~` tick writes its line, which every call shares, so `fn step(x) with !Mutate = ({ prev => prev + x }) <~ delay(1)` refuses. The members of a cycle say what they write when the cycle's judgment ends, read again until no claim grows; a write through a function value is charged where the call stands, since a value publishes no claim of what it writes. Until this landed nothing performed `Mutate`, every `!Mutate` was vacuous, and both of those refusals checked clean (tests/micros/mn-mutate-negation-refuses.mn, mn-mutate-tick-refuses.mn, mn-mutate-fresh-is-construction.mn).
 
 **Modal-readiness is a mechanism, not a claim (`PLAN.md §4③`, forward-pointer).** The modal effect synthesis (rows + capabilities unified, closing the higher-order leak) threads effects as *lexical capabilities* through the EXISTING `~>` binding: `~> h` lexically scopes the effect `h` absorbs — that IS the capability mechanism. So the modal form adds only a typing rule (a row variable becomes a lexical capability handle at `~>`), no new surface form: rows give `!E`, `~>` gives the lexical capability, modal is their unification on forms that already exist. Sequenced post-real (§5).
 
@@ -3211,7 +3225,7 @@ stage, which the parse builds as the pipe it is (§«`<|` — diverge»).
 | `E_HandlerUninstallable` | handler arms need effects context disallows. **Not yet born**: what an arm performs enters the install's row (`row(h)`, §«`~>` — tee»), so a context that forbids it refuses as `E_EffectMismatch` | `MaybeIncorrect`   | widen ambient row or restructure handler       |
 | `E_HandlerInexhaustive` | a handler's arms answer some ops of an effect and not others (§«A handler is exhaustive») — an install absorbs every op of the effects its arms answer, so the missing op would escape the row and reach nothing at runtime. ARMED at birth, 2026-09-30, born at wheel-zero; the shape it refuses was a false absence proof that trapped | `HasPlaceholders` | add the arm; forward the op outward (`op(…) => resume(op(…))`); or declare the ops this handler answers as their own effect |
 | `E_ResumeOfNever` | a handler arm resumes an op declared `-> !` (§«Never-returning ops») — the never type is quantified per perform, so no value the arm hands back is one every performer can receive. ARMED at birth, 2026-10-06; the boot compiled the shape clean and returned from the op | `MaybeIncorrect` | end the arm with the value the install answers, or declare the op's result type if it does return |
-| `E_ThreadedBranchEffect` | under a threaded schedule, a branch's row carries an effect whose covering handler at the fanout's frame — or, for a fanout a caller's schedule demands, along the demand's chain of installs, the callback parameter's row read at the instantiating site — writes its state (`resume … with`), lies beyond the frame fence with no demand reaching it, or reaches such a handler through its own arms (§`><`). ARMED, born at wheel-zero | `MaybeIncorrect` | install a handler that writes no state at the fanout's frame, or install the handler inside the branch |
+| `E_ThreadedBranchEffect` | under a threaded schedule, a branch's row carries an effect whose covering handler at the fanout's frame — or, for a fanout a caller's schedule demands, along the demand's chain of installs, the callback parameter's row read at the instantiating site — writes its state (`resume … with`), lies beyond the frame fence with no demand reaching it, or reaches such a handler through its own arms (§`><`); or the branch stores into memory older than itself, or reaches code that writes memory older than its own frame (`Mutate`) — a sequence fanout's function read as every branch's (real, 2026-10-15). ARMED, born at wheel-zero | `MaybeIncorrect` | install a handler that writes no state at the fanout's frame, or install the handler inside the branch; give each branch memory it allocates |
 | `E_ContinuationUncapturable` | a held or multi-shot perform standing where its continuation cannot be captured: not the first work of its function, block or arena — bound by a `let`, past a statement, after an operand that does work (§«Where a continuation is captured») — or a CALL standing there whose callee's row proves such an op (the message names the callee, whose row carries the op). An abandoning perform never triggers it: a dead continuation unwinds from any position. Said at the settle point over the emitted reach, so a body nothing runs is never refused. ARMED at birth, 2026-10-03: it compiled clean and trapped at a runtime floor no diagnostic named (exit 134); the call face the same day (AN-2) | `MaybeIncorrect` | move the perform or the call to the front of its function, block or arena, or move what precedes it into a function the perform's function calls |
 | `E_DerivativeUnreachable` | a `d(v)` under a derivative reading whose argument's tangent was lost — into an aggregate, across a multi-shot perform, off a line ticked by forward code or a line a closure record owns, or through another `d` — a mint, an install or a state write under the reading that would store a lost tangent into a record, or a reading whose seed is not a Float variable in scope (§`~>`). The message names the loss site. ARMED at birth: the alternative is a slope of zero the program never has | `Unspecified` | keep the value out of the aggregate until it is asked for, or seed the reading at a Float variable |
 | `E_EnvNameUngrounded` | a required environment read (`env`, lib/environ.mn) whose name is not a literal at the read — the program's demand on its host could not be stated before it runs, so its launch gate could not check it (§«Configuration — the environment is an effect»). ARMED at birth, 2026-10-06, born at wheel-zero | `MaybeIncorrect` | write the variable's name at the read, or ask `env_opt` and decide what an absent value means |

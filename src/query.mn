@@ -2001,7 +2001,7 @@ fn drift_roster() = [
   CsEnvFrame
 ]
 
-fn drift_shapes_of(fn_handle) with !Mutate = {
+fn drift_shapes_of(fn_handle) = {
   // The walk starts at the FN NODE, not its body: a shape can live ON
   // the FnStmt itself (the param-adjacency face), and
   // body_child_handles already descends into the body — one uniform
@@ -2010,7 +2010,7 @@ fn drift_shapes_of(fn_handle) with !Mutate = {
   zip(roster, subtree_drift_counts(fn_handle, roster, map((_) => 0, roster), 128))
 }
 
-fn subtree_drift_counts(h, roster, counts, fuel) with !Mutate = if fuel <= 0 {
+fn subtree_drift_counts(h, roster, counts, fuel) = if fuel <= 0 {
   counts
 } else {
   let body = graph_node_body(h)
@@ -2018,7 +2018,7 @@ fn subtree_drift_counts(h, roster, counts, fuel) with !Mutate = if fuel <= 0 {
   subtree_drift_children(body_child_handles(body), roster, counts2, fuel - 1)
 }
 
-fn roster_bump(roster, counts, i, n, h, body) with !Mutate = if i >= n {
+fn roster_bump(roster, counts, i, n, h, body) = if i >= n {
   counts
 } else {
   let c2 = if census_matches(list_index(roster, i), h, body) {
@@ -2029,7 +2029,7 @@ fn roster_bump(roster, counts, i, n, h, body) with !Mutate = if i >= n {
   roster_bump(roster, c2, i + 1, n, h, body)
 }
 
-fn subtree_drift_children(hs, roster, counts, fuel) with !Mutate = match hs {
+fn subtree_drift_children(hs, roster, counts, fuel) = match hs {
   [] => counts,
   [ch, ...rest] => subtree_drift_children(rest, roster, subtree_drift_counts(ch, roster, counts, fuel), fuel),
 }
@@ -2765,13 +2765,13 @@ fn seed_callee(seed) = match seed {
   (callee, _) => callee,
 }
 
-fn demand_round(target: Int, frontier, st) with !Mutate = match fold((false, [], st), demand_step(target, ??, ??), frontier) {
+fn demand_round(target: Int, frontier, st) = match fold((false, [], st), demand_step(target, ??, ??), frontier) {
   (true, _, _) => true,
   (false, [], _) => false,
   (false, next, st2) => demand_round(target, next, st2),
 }
 
-fn demand_step(target: Int, acc, callee: Int) with !Mutate = match acc {
+fn demand_step(target: Int, acc, callee: Int) = match acc {
   (true, _, _) => acc,
   (false, next, st) => match wmap_get(st.walked, callee) {
     Some(_) => acc,

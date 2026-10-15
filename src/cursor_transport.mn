@@ -228,7 +228,7 @@ fn cursor_session(initial_caret) = {
 // read the human action, fold it into the next state. The `<~` closure
 // feeds this next state back as the cycle's input (no self-recursion —
 // the feedback verb carries the loop).
-fn cursor_step(state) with !Mutate = match state {
+fn cursor_step(state) = match state {
   TransportState(s) => {
     // Compute the cursor: gradient argmax with caret bias.
     let cursor = cursor_argmax(s.caret)
@@ -288,7 +288,7 @@ fn handle_of_cursor(cursor) = match cursor {
 }
 
 // handle_at_span() — see src/cursor.mn (the module-scoped resolver).
-fn apply_suggestion(cursor, view) with !Mutate = match cursor {
+fn apply_suggestion(cursor, view) = match cursor {
   Cursor(handle, _, _) => match view {
     CursorView(_, propose, _, _, _, _, teach, _) => // A hole accepts its PROPOSE survivor: the verdict says whether there
     // is one, and the accept path READS it rather than re-deriving it from
@@ -347,7 +347,7 @@ fn accept_fill(handle, survivor, proof) with !Mutate = {
 // the declaration's head; a question is refused with its alternatives named
 // (a tie between meanings is never guessed); a need says what is missing;
 // nothing to accept says so. Answers whether anything was written.
-fn accept_teaching(handle, teach) with !Mutate = match teach {
+fn accept_teaching(handle, teach) = match teach {
   TeachAdd(s) => accept_annotation(handle, s),
   TeachAsk(_) => {
     eprint_string("mentl accept: {show_teaching(teach)}\n")
@@ -375,7 +375,7 @@ fn accept_teaching(handle, teach) with !Mutate = match teach {
 // landed at that line of the wrong file. The head render is guarded by the
 // formatter's conservation census: a head whose render would lose a name, a
 // literal or a comment is not written.
-fn accept_annotation(handle, s) with !Mutate = match s {
+fn accept_annotation(handle, s) = match s {
   AnnotationSuggestion(ann, _, _) => match graph_node_body(handle) {
     NStmt(FnStmt(name, params, retty, effs, body)) => {
       let module = module_name_of_handle(graph_module_of(handle))
@@ -491,7 +491,7 @@ fn accepted_extent(span, text: String) = match span {
 // main.mn:4:1` on a declaration writes the annotation its Teach facet names.
 // Answers whether anything was written, so the verb's exit code is the
 // verdict.
-fn accept_at(handle, view) with !Mutate = match view {
+fn accept_at(handle, view) = match view {
   CursorView(_, propose, _, _, _, _, teach, _) => match propose {
     Proposal(p) => match p.verdict {
       VFill(survivor, reason) => if authored_hole(handle) {

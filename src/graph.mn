@@ -467,7 +467,7 @@ fn occurs_in_live(handle, ref ty) with !Mutate = match graph_branch_seed() {
 // costs one 4KB word-list per process and no write tests for it — and a
 // table minted lazily inside a speculation would be copied out of the
 // speculation's arena at its exit, a cost the eager one never pays.
-handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spine_open = spine_open0, trail = [], trail_len = 0, epoch = 0, next = 0, span_index = span_index0, checkpoint_stack = [], in_edges = wmap_new(4096), published = wmap_new(4096), decls_col = [], emitfns_col = [], emitfns_idx = [], emitfns_idx_covers = 0, sigs_col = [], holes_pend = [], holes_col = [], cur_module = 0, guard_diags = [], gates = wmap_new(1024), instances = wmap_new(1024), demands = wmap_new(1024), accepted = [], rows = wmap_new(1024), binders = wmap_new(1024), births = wmap_new(1024), late = wmap_new(1024), claims = wmap_new(1024), modules_now = smap_new(), superseded = wmap_new(64), modules_col = [] {
+handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spine_open = spine_open0, trail = [], trail_len = 0, epoch = 0, next = 0, span_index = span_index0, checkpoint_stack = [], in_edges = wmap_new(4096), published = wmap_new(4096), decls_col = [], emitfns_col = [], emitfns_idx = [], emitfns_idx_covers = 0, sigs_col = [], holes_pend = [], holes_col = [], cur_module = 0, guard_diags = [], gates = wmap_new(1024), instances = wmap_new(1024), demands = wmap_new(1024), accepted = [], rows = wmap_new(1024), binders = wmap_new(1024), births = wmap_new(1024), late = wmap_new(1024), claims = wmap_new(1024), store_claims = wmap_new(1024), modules_now = smap_new(), superseded = wmap_new(64), modules_col = [] {
   graph_chase(handle) => // checkpoint_stack is the speculation depth: each
   // graph_push_checkpoint pushes the current trail_len and each
   // graph_rollback pops it. A write with the stack empty is at the outermost
@@ -1025,8 +1025,20 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
     if !j { graph_mutated(new_epoch, m) }
     resume() with epoch = new_epoch, trail = trail_after(trail, trail_len, j, m), trail_len = trail_len_after(trail_len, j)
   },
+  graph_store_claim_note(h, claim) => // A declaration's store claim, trailed as MStoreClaim like a binder's
+  // fact: a declaration judged inside a speculation takes its claim back
+  // with it, and the image carries every claim to a warm start.
+  {
+    wmap_add(store_claims, h, claim)
+    let m = MStoreClaim(h)
+    let j = journaling(checkpoint_stack)
+    let new_epoch = epoch + 1
+    if !j { graph_mutated(new_epoch, m) }
+    resume() with epoch = new_epoch, trail = trail_after(trail, trail_len, j, m), trail_len = trail_len_after(trail_len, j)
+  },
   graph_binder_of(h) => resume(wmap_get(binders, h)),
   graph_birth_of(h) => resume(wmap_get(births, h)),
+  graph_store_claim_of(h) => resume(wmap_get(store_claims, h)),
   graph_owe_late(g, payer) => // THE LATE PAYERS' write (P0): a frame called through a guard cell its
   // declaration has not written yet. Newest first under the cell, trailed
   // as MOweLate, so a rolled-back judgment's payments go with it.
@@ -1174,7 +1186,7 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
         trail_len,
         target_idx,
         next,
-        {binders, births, claims, demands, gates, in_edges, instances, late, published, rows}
+        {binders, births, claims, demands, gates, in_edges, instances, late, published, rows, store_claims}
       )
       resume() with next = new_next, trail_len = target_idx
     } else {
@@ -1193,7 +1205,7 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
         trail,
         trail_len,
         target_idx,
-        {binders, births, claims, demands, gates, in_edges, instances, late, published, rows}
+        {binders, births, claims, demands, gates, in_edges, instances, late, published, rows, store_claims}
       )
       // drop_last, never slice: on the always-snoc stack drop_last is
       // the parent READ — the pop allocates nothing and the surviving
@@ -1510,7 +1522,7 @@ fn graph_node_at(ref spine, mint_bound, idx) = if idx >= mint_bound {
 // admits infinite types. Every current Ty variant is named; any
 // future variant fails to compile until its containment semantics
 // are decided explicitly.
-fn occurs_in(spine, mint_bound, handle, ref ty) with !Mutate = match ty {
+fn occurs_in(spine, mint_bound, handle, ref ty) = match ty {
   TInt => false,
   TFloat => false,
   TUnit => false,
@@ -1571,12 +1583,12 @@ fn occurs_in(spine, mint_bound, handle, ref ty) with !Mutate = match ty {
   TReprPin(_, base) => occurs_in(spine, mint_bound, handle, base),
 }
 
-fn occurs_in_params(spine, mint_bound, handle, ref params) with !Mutate = {
+fn occurs_in_params(spine, mint_bound, handle, ref params) = {
   let flat = list_to_flat(params)
   occurs_in_params_loop(spine, mint_bound, handle, flat, 0, len(flat))
 }
 
-fn occurs_in_params_loop(spine, mint_bound, handle, ref params, i, n) with !Mutate = if i >= n {
+fn occurs_in_params_loop(spine, mint_bound, handle, ref params, i, n) = if i >= n {
   false
 } else {
   let ty = param_ty(list_index(params, i))
@@ -1587,12 +1599,12 @@ fn occurs_in_params_loop(spine, mint_bound, handle, ref params, i, n) with !Muta
   }
 }
 
-fn occurs_in_list(spine, mint_bound, handle, ref tys) with !Mutate = {
+fn occurs_in_list(spine, mint_bound, handle, ref tys) = {
   let flat = list_to_flat(tys)
   occurs_in_list_loop(spine, mint_bound, handle, flat, 0, len(flat))
 }
 
-fn occurs_in_list_loop(spine, mint_bound, handle, ref tys, i, n) with !Mutate = if i >= n {
+fn occurs_in_list_loop(spine, mint_bound, handle, ref tys, i, n) = if i >= n {
   false
 } else {
   if occurs_in(spine, mint_bound, handle, list_index(tys, i)) {
@@ -1602,12 +1614,12 @@ fn occurs_in_list_loop(spine, mint_bound, handle, ref tys, i, n) with !Mutate = 
   }
 }
 
-fn occurs_in_fields(spine, mint_bound, handle, ref fields) with !Mutate = {
+fn occurs_in_fields(spine, mint_bound, handle, ref fields) = {
   let flat = list_to_flat(fields)
   occurs_in_fields_loop(spine, mint_bound, handle, flat, 0, len(flat))
 }
 
-fn occurs_in_fields_loop(spine, mint_bound, handle, ref fields, i, n) with !Mutate = if i >= n {
+fn occurs_in_fields_loop(spine, mint_bound, handle, ref fields, i, n) = if i >= n {
   false
 } else {
   match list_index(fields, i) {
@@ -1640,10 +1652,10 @@ fn occurs_in_fields_loop(spine, mint_bound, handle, ref fields, i, n) with !Muta
 // already entered and a second arrival reads only the edge's own mask. The
 // table is made where a row walk begins, which most occurs checks never
 // reach.
-fn occurs_in_row(spine, mint_bound, handle, ref eff) with !Mutate =
+fn occurs_in_row(spine, mint_bound, handle, ref eff) =
   occurs_in_row_seen(spine, mint_bound, handle, eff, wmap_new(16))
 
-fn occurs_in_row_seen(spine, mint_bound, handle, eff, seen) with !Mutate = match eff {
+fn occurs_in_row_seen(spine, mint_bound, handle, eff, seen) = match eff {
   EfRow(p, a, t) => if occurs_in_eff_names(spine, mint_bound, handle, p) {
     true
   } else {
@@ -1663,7 +1675,7 @@ fn occurs_in_row_seen(spine, mint_bound, handle, eff, seen) with !Mutate = match
   },
 }
 
-fn occurs_in_edges(spine, mint_bound, handle, ref vs: [RowEdge], seen) with !Mutate = match vs {
+fn occurs_in_edges(spine, mint_bound, handle, ref vs: [RowEdge], seen) = match vs {
   [] => false,
   [e, ...rest] => {
     let v = edge_cell(e)
@@ -1692,7 +1704,7 @@ fn occurs_in_edges(spine, mint_bound, handle, ref vs: [RowEdge], seen) with !Mut
   },
 }
 
-fn occurs_in_record_fields(spine, mint_bound, handle, ref fields) with !Mutate = if len(fields) == 0 {
+fn occurs_in_record_fields(spine, mint_bound, handle, ref fields) = if len(fields) == 0 {
   false
 } else {
   match last(fields) {
@@ -1704,7 +1716,7 @@ fn occurs_in_record_fields(spine, mint_bound, handle, ref fields) with !Mutate =
 // continues at the very handle being bound is the row sort's own infinite
 // type, and subst would walk it forever. The other two arms carry no
 // handle, so there is nothing to close.
-fn occurs_in_row_tail(spine, mint_bound, handle, tail) with !Mutate = match tail {
+fn occurs_in_row_tail(spine, mint_bound, handle, tail) = match tail {
   RowClosed => false,
   RowContinues(next) => occurs_in(spine, mint_bound, handle, TRecordOpen([], next)),
 }
@@ -1714,12 +1726,12 @@ fn record_row_tail_is(tail, handle) with Pure = match tail {
   RowContinues(v) => v == handle,
 }
 
-fn occurs_in_eff_names(spine, mint_bound, handle, ref names) with !Mutate = {
+fn occurs_in_eff_names(spine, mint_bound, handle, ref names) = {
   let flat = list_to_flat(names)
   occurs_in_eff_names_loop(spine, mint_bound, handle, flat, 0, len(flat))
 }
 
-fn occurs_in_eff_names_loop(spine, mint_bound, handle, ref names, i, n) with !Mutate = if i >= n {
+fn occurs_in_eff_names_loop(spine, mint_bound, handle, ref names, i, n) = if i >= n {
   false
 } else {
   let occ = match list_index(names, i) {
@@ -1730,12 +1742,12 @@ fn occurs_in_eff_names_loop(spine, mint_bound, handle, ref names, i, n) with !Mu
   if occ { true } else { occurs_in_eff_names_loop(spine, mint_bound, handle, names, i + 1, n) }
 }
 
-fn occurs_in_eff_args(spine, mint_bound, handle, ref args) with !Mutate = {
+fn occurs_in_eff_args(spine, mint_bound, handle, ref args) = {
   let flat = list_to_flat(args)
   occurs_in_eff_args_loop(spine, mint_bound, handle, flat, 0, len(flat))
 }
 
-fn occurs_in_eff_args_loop(spine, mint_bound, handle, ref args, i, n) with !Mutate = if i >= n {
+fn occurs_in_eff_args_loop(spine, mint_bound, handle, ref args, i, n) = if i >= n {
   false
 } else {
   let occ = match list_index(args, i) {
@@ -1828,6 +1840,10 @@ fn revert_trail_into(ref spine, spine_open, ref trail, current, target, cols) = 
       wmap_pop(cols.claims, h)
       revert_trail_into(spine, spine_open, trail, idx, target, cols)
     },
+    MStoreClaim(h) => {
+      wmap_pop(cols.store_claims, h)
+      revert_trail_into(spine, spine_open, trail, idx, target, cols)
+    },
     MRefLink(r, decl, prior) => {
       if spine_band(r) < spine_open { spine_put_link(spine, r, prior) }
       wmap_pop(cols.in_edges, decl)
@@ -1902,6 +1918,10 @@ fn revert_trail(ref spine, spine_open, ref trail, current, target, next_handle, 
       wmap_pop(cols.claims, h)
       revert_trail(spine, spine_open, trail, idx, target, next_handle, cols)
     },
+    MStoreClaim(h) => {
+      wmap_pop(cols.store_claims, h)
+      revert_trail(spine, spine_open, trail, idx, target, next_handle, cols)
+    },
     MRefLink(r, decl, prior) => {
       if spine_band(r) < spine_open { spine_put_link(spine, r, prior) }
       wmap_pop(cols.in_edges, decl)
@@ -1960,6 +1980,7 @@ fn written_step(below, acc, m) = match m {
   | MBirth(_)
   | MOweLate(_)
   | MClaimNote(_)
+  | MStoreClaim(_)
   | MRefLink(_, _, _)
   | MInEdge(_)
   | MPublish(_) => acc,
@@ -2082,12 +2103,14 @@ fn arm_body_handle(arm) with Pure = arm.body
 // its body's row with the handler's absorption removed, so descending would
 // re-add what the install absorbs). A hole answers None:
 // an authored absence performs whatever the position may, and a reader
-// asking "is this provably pure?" must hear no. The e-graph's absorb gate
+// asking "is this provably pure?" must hear no — except the slot a partial
+// application leaves open, which is the field the closure awaits: the call
+// that mints the closure runs nothing of it. The e-graph's absorb gate
 // reads it; a sub-expression's Effects facet can.
 fn row_of_subtree(h) with !Mutate = {
   let here = fold(mk_ef_pure(), (acc, r) => union_row(acc, resolve_row(r)), graph_rows_at(h))
   match graph_node_body(h) {
-    NHole(_) => None,
+    NHole(_) => if hole_is_open_slot(h) { Some(here) } else { None },
     NExpr(LambdaExpr(_, _)) => Some(here),
     NStmt(FnStmt(_, _, _, _, _)) => Some(here),
     NStmt(HandlerDeclStmt(_, _, _, _, _, _)) => Some(here),
@@ -2095,6 +2118,21 @@ fn row_of_subtree(h) with !Mutate = {
     NExpr(PipeExpr(PFeedback, l, _)) => row_of_child(Some(here), l),
     body => fold(Some(here), row_of_child, body_child_handles(body)),
   }
+}
+
+// A slot of a suspended call's product, the hole standing in it directly or
+// under its label.
+fn hole_is_open_slot(h) = match graph_parent_of(h) {
+  Some(p) => suspended_at(p, h) || match graph_parent_of(p) {
+    Some(q) => suspended_at(q, h),
+    None => false,
+  },
+  None => false,
+}
+
+fn suspended_at(p, h) = match graph_product_at(p) {
+  ProductOf(nodes, _, CallSuspended) => any({ n => n == h }, nodes),
+  ProductOf(_, _, CallApplied) | NoProduct => false,
 }
 
 fn row_of_child(acc, c) = match acc {
@@ -2445,7 +2483,7 @@ fn enclosing_decl(h) with !Mutate = match graph_parent_of(h) {
 // each module's closure by a walk over that small graph. Built once per
 // judgment (infer_ctx caches it) so the per-reference import check is a
 // table read, never a graph scan per VarRef.
-fn module_reach_table() with !Mutate = {
+fn module_reach_table() = {
   let cells = module_cells()
   let ambient = ambient_closure(cells)
   fold(wmap_new(64), reach_table_add(cells, ambient), cells)

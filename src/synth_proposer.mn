@@ -588,7 +588,7 @@ fn candidate_rank(name: String, hole_h, reach, decls) with !Mutate = {
 // The env cannot answer this: a judged binding is published as a scheme
 // VALUE with no edge back to its declaration
 // (Hβ.synth.vocabulary-ring-is-read-by-name).
-fn decl_index() with !Mutate = fold(smap_new(), decl_index_cell, module_cells())
+fn decl_index() = fold(smap_new(), decl_index_cell, module_cells())
 
 fn decl_index_cell(acc, c) = match c {
   (_h, _p, _s, decls) => fold(acc, decl_index_node, decls),
@@ -768,7 +768,7 @@ fn ctors_of_type(entries, type_name, context) with !Mutate = {
   reverse(ctors_of_type_from(entries, type_name, 0, n, make_list(n), 0))
 }
 
-fn ctors_of_type_from(entries, type_name, i, n, own buf, count) with !Mutate = if i >= n {
+fn ctors_of_type_from(entries, type_name, i, n, own buf, count) = if i >= n {
   slice(buf, 0, count)
 } else {
   match list_index(entries, i) {

@@ -1,0 +1,17 @@
+// expect: refuse E_ThreadedBranchEffect
+// Both branches perform `step`, whose arm ticks a feedback line the install
+// record owns: two spawned instances tick one line. On boot 65e2f966 this
+// compiled and ran.
+import threading
+
+effect Step {
+  step(x: Int) -> Int
+}
+
+handler stepper {
+  step(x) => resume(({ prev => prev + x }) <~ delay(1)),
+}
+
+fn main() = match (step(1)) >< (step(2)) ~> parallel_compose ~> stepper {
+  (a, b) => a + b,
+}

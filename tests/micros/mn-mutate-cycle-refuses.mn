@@ -1,0 +1,15 @@
+// expect: refuse E_EffectMismatch
+// `pong` and `ping` are one cycle, judged one member at a time: when `pong`
+// is judged, `ping` has not said what it writes. The cycle's claims are read
+// again when its judgment ends, `ping` writes a module buffer, and `pong`'s
+// `!Mutate` refuses there. On boot 65e2f966 it checked clean.
+let shared = make_list(1)
+
+fn ping(n) = if n <= 0 { list_set(shared, 0, 1) } else { pong(n - 1) }
+
+fn pong(n) with !Mutate = ping(n)
+
+fn main() = {
+  pong(3)
+  list_index(shared, 0)
+}

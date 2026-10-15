@@ -1,0 +1,18 @@
+// expect: refuse E_ThreadedBranchEffect
+// The function a sequence fanout applies performs an op whose handler at the
+// fanout's frame writes its state: two instances, one state record. On boot
+// 65e2f966 the race rule never read a sequence fanout's function, and this
+// compiled and ran.
+import threading
+
+effect Tick {
+  tick() -> Int
+}
+
+handler counter with n = 0 {
+  tick() => resume(n) with n = n + 1,
+}
+
+fn work(x) = x + tick()
+
+fn main() = fanout(work, [1, 2, 3]) |> len ~> parallel_compose ~> counter

@@ -1,0 +1,12 @@
+// teach 8: none
+// `quiet` declares `!WASI` and hands `apply` a callback that prints, so
+// `quiet` is refused for WASI and stands on nothing of the row of `apply`:
+// no lock is taught there. On boot 65e2f966 Teach offered `apply` the
+// `!WASI` lock and said `quiet` stood on it.
+import io
+
+fn apply(f, b) = f(b)
+
+fn quiet() with !WASI = apply(print_string, "x")
+
+fn main() = quiet()

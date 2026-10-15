@@ -1,0 +1,17 @@
+// expect: refuse E_EffectMismatch
+// `!Mutate` claims a function leaves every memory that existed before it ran
+// as it found it, its parameters included. `poke` writes the list it is
+// handed and `bump` a module buffer, so both claims refuse. On boot 65e2f966
+// nothing performed Mutate: both checked clean and the program exited 12.
+let shared = make_list(1)
+
+fn poke(ref xs) with !Mutate = list_set(xs, 0, 5)
+
+fn bump() with !Mutate = list_set(shared, 0, 7)
+
+fn main() = {
+  let b = make_list(1)
+  poke(b)
+  bump()
+  list_index(b, 0) + list_index(shared, 0)
+}

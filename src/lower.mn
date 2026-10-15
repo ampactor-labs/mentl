@@ -2933,7 +2933,7 @@ fn part_handles_of(ph) = match graph_node_body(ph) {
 }
 
 fn boundary_result_handle(edge) = match edge {
-  BoundaryEdge(result_h, _, _, _, _) => result_h,
+  BoundaryEdge(result_h, _, _, _, _, _) => result_h,
 }
 
 // A tuple literal's parts are lowered where they stand; a fanout's are the
@@ -3275,7 +3275,7 @@ fn fanout_inframe_walk(branch_nodes, share, boundaries, i, n) = if i >= n {
 } else {
   let branch = list_index(branch_nodes, i)
   let value = match fanout_boundary_at(boundaries, i, branch) {
-    Ok(BoundaryEdge(result_h, _, _, _, _)) => fanout_inframe_value(branch, result_h, share),
+    Ok(BoundaryEdge(result_h, _, _, _, _, _)) => fanout_inframe_value(branch, result_h, share),
     Err(invariant) => LInvariantFailure(branch, invariant),
   }
   [value] ++ fanout_inframe_walk(branch_nodes, share, boundaries, i + 1, n)
@@ -3371,8 +3371,27 @@ fn executable_boundary_row(thunk_h) = match lookup_ty(thunk_h) {
 // residual cell) is checked against the stack BELOW it, until every path
 // ends at a stateless handler whose arms perform nothing, a substrate
 // name, or a refusal.
-fn threaded_branch_check(branch_h, thunk_row) = match lower_fanout_schedule() {
+//
+// THE BRANCH'S OWN WRITES are the other half (2026-10-14). A branch that
+// stores into memory older than itself — a buffer bound before the fanout,
+// a parameter's memory, the shared input — is the race with no handler
+// between: the judgment records each such site on the branch's boundary
+// (`older_stores`), and a branch whose row carries `Mutate` reaches code
+// that writes memory older than its own frame, which every instance shares.
+fn threaded_branch_check(branch_h, thunk_row, older_stores) = match lower_fanout_schedule() {
   Threaded => if schedule_spawns(lower_handler_stack_now()) {
+    if len(older_stores) > 0 {
+      report_at(
+        branch_h,
+        EThreadedBranchEffect(
+          "Mutate",
+          "the branch stores into memory older than itself at {show_span(graph_span_of(list_index(older_stores, 0)))} — one buffer, written from every instance",
+          graph_span_of(branch_h)
+        )
+      )
+    } else {
+      ()
+    }
     each(
       { ename => threaded_effect_check(branch_h, lower_handler_stack_now(), "", ename) },
       effects_of_row(thunk_row)
@@ -3396,7 +3415,16 @@ fn schedule_spawns(stack) = match threaded_handler_for(stack, "Thread") {
   None => false,
 }
 
-fn threaded_effect_check(branch_h, stack, via: String, ename: String) = if effect_ops_substrate_grounded(ename) {
+fn threaded_effect_check(branch_h, stack, via: String, ename: String) = if ename == "Mutate" {
+  report_at(
+    branch_h,
+    EThreadedBranchEffect(
+      ename,
+      "{via}the branch reaches code that stores into memory older than that code's own frame — a capture, a parameter's memory, a module value, a feedback line — which every instance writes",
+      graph_span_of(branch_h)
+    )
+  )
+} else if effect_ops_substrate_grounded(ename) {
   ()
 } else {
   match threaded_handler_for(stack, ename) {
@@ -3474,7 +3502,9 @@ fn handler_arm_effects(hname: String) = match env_lookup(hname) {
 // count kept in a state buffer ran.
 //
 // The answer says how, for the refusal: the first written field, by the
-// writer that writes it.
+// writer that writes it. A feedback line an arm ticks lives in the install
+// record past the arms, and the arms' row says they write it (infer.mn's
+// `tick_mutation`), which the walk down each handler's residual row reads.
 fn handler_state_writer(hname: String) = match handler_decl_of(hname) {
   Some((_, state, _)) => fold(None, state_writer_or, state),
   None => None,
@@ -3681,6 +3711,26 @@ fn persist_join_at(handle, indexed) = match indexed {
 // site's own, so the call's twin key is read off `fanout`'s instantiation
 // there — the same shape `map` and its threaded twin declare.
 fn lower_fanout_seq(handle, fh, f_h, lo_args) = {
+  // Every element's branch applies the one function: the race rule reads
+  // that function's row, as it reads a syntactic branch's.
+  match lookup_ty(f_h) {
+    TFun(_, _, f_row) => threaded_branch_check(f_h, f_row, []),
+    TInt
+    | TFloat
+    | TUnit
+    | TByte
+    | TAddr
+    | TList(_)
+    | TTuple(_)
+    | TVar(_)
+    | TName(_, _)
+    | TRecord(_)
+    | TRecordOpen(_, _)
+    | TRefined(_, _)
+    | TCont(_, _, _, _)
+    | TAlias(_, _)
+    | TReprPin(_, _) => (),
+  }
   let lexical = lower_site_schedule()
   let forms = match lexical {
     Some(s) => [(s, fanout_seq_form(handle, fh, s, lo_args))],
@@ -3731,7 +3781,7 @@ fn fanout_seq_impl(handle, fh, lo_args, impl: String) = match env_kind_of(impl) 
 // written lambdas; compiler-synthesized thunks reuse it.
 fn synthesize_diverge_thunk(parent_handle, input_h, input_local_name, i, branch_node, boundary_at) = match boundary_at {
   Ok(boundary) => match boundary {
-    BoundaryEdge(result_h, thunk_h, carrier_h, thread_ticket_h, persist_ticket_h) => {
+    BoundaryEdge(result_h, thunk_h, carrier_h, thread_ticket_h, persist_ticket_h, older_stores) => {
       let thunk_name = "diverge_{int_to_str(i)}_{int_to_str(parent_handle)}"
       // A diverge thunk is a closure exactly like a branch thunk (`><`,
       // synthesize_branch_thunk) — ONE closure-synthesis discipline, not two.
@@ -3751,7 +3801,7 @@ fn synthesize_diverge_thunk(parent_handle, input_h, input_local_name, i, branch_
           let captures_handles = [input_h] ++ b_handles
           match executable_boundary_row(thunk_h) {
             Ok(thunk_row) => {
-              threaded_branch_check(branch_node, thunk_row)
+              threaded_branch_check(branch_node, thunk_row, older_stores)
               // A branch thunk takes nothing — its input rides capture
               // slot 0 — so the param vector is empty by construction
               // and the result is the thunk node's own judged type.
@@ -3808,13 +3858,13 @@ fn synthesize_diverge_thunk(parent_handle, input_h, input_local_name, i, branch_
 // "compiler-synthesized" thunks vs. user-written ones.
 fn synthesize_branch_thunk(parent_handle, side_label: String, branch_node, boundary) = match boundary {
   Ok(edge) => match edge {
-    BoundaryEdge(result_h, thunk_h, carrier_h, thread_ticket_h, persist_ticket_h) => {
+    BoundaryEdge(result_h, thunk_h, carrier_h, thread_ticket_h, persist_ticket_h, older_stores) => {
       let thunk_name = "compose_{side_label}_{int_to_str(parent_handle)}"
       let free_uses = collect_free_uses(branch_node, [])
       match resolve_captures_outer(free_uses, parent_handle) {
         (captures_names, captures_exprs, captures_handles) => match executable_boundary_row(thunk_h) {
           Ok(thunk_row) => {
-            threaded_branch_check(branch_node, thunk_row)
+            threaded_branch_check(branch_node, thunk_row, older_stores)
             graph_emitfn_note(EmitFnEntry{
               caps: zip(captures_names, captures_handles),
               fence: len(captures_exprs),

@@ -1,0 +1,11 @@
+// expect: refuse E_ThreadedBranchEffect
+// Both branches call `step`, whose feedback line is one record every call
+// ticks: under a spawning schedule two instances tick it at once. On boot
+// 65e2f966 this compiled and ran.
+import threading
+
+fn step(x) = ({ prev => prev + x }) <~ delay(1)
+
+fn main() = match (step(1)) >< (step(2)) ~> parallel_compose {
+  (a, b) => a + b,
+}

@@ -166,10 +166,10 @@ effect Alloc {
   heap_mark() -> Addr
 }
 
-// Mutate — the mutation marker: `!Mutate` on a function proves read-only
-// access to its parameters (Vale's region-freeze through the algebra that
-// proves `!Alloc`). No operations — the negation is the claim. Declared in the
-// library every program links; the compiler's graph event is GraphMutated.
+// Mutate — a store into memory older than the frame that makes it: a
+// parameter's memory, a capture, a module value, a feedback line. `!Mutate`
+// proves a function leaves all memory that existed before it ran as it found
+// it. No operations: the judgment charges it wherever a store's target is older.
 effect Mutate {}
 
 // PARTIALITY IS A ROW FACT. The substrate traps a partial primitive whose

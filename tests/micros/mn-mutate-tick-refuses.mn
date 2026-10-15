@@ -1,0 +1,7 @@
+// expect: refuse E_EffectMismatch
+// A feedback line is the record of the function that owns it, older than
+// every call: each tick writes it, so `step` performs Mutate and its claim
+// refuses. On boot 65e2f966 the claim checked clean.
+fn step(x) with !Mutate = ({ prev => prev + x }) <~ delay(1)
+
+fn main() = step(1) + step(2)

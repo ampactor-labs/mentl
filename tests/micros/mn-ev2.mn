@@ -20,12 +20,12 @@ fn deep(span) with G + D = {
   g_mint(span)
 }
 
-fn mid(e) with G + D + Memory = {
+fn mid(e) with G + D + Memory + Mutate = {
   store_i32(null_addr(), 0)
   deep(e)
 }
 
-fn outer(x) with G + D + Memory = mid(x)
+fn outer(x) with G + D + Memory + Mutate = mid(x)
 
 fn main(q) = {
   outer(7)

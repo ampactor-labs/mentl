@@ -1922,10 +1922,15 @@ for i in "${!compilers[@]}"; do
   run_program "$compiler" threaded-branch-state-read \
     "$ROOT/tests/frontier/mn-threaded-branch-state-read.mn" 14 yes "$dir"
   # Two branches storing into ONE buffer they both capture: a race with no
-  # handler between, which a branch's row cannot say while Memory's loads
-  # and stores are one effect (Hβ.threads.captured-store-race, declared red).
+  # handler between, read off the store's target — memory older than the
+  # branch (exit 3 on boot 65e2f966, which declared this leg red).
   run_refusal_linked "$compiler" threaded-branch-captured-store \
     "$ROOT/tests/frontier/mn-threaded-branch-captured-store.mn" E_ThreadedBranchEffect "$dir"
+  if grep -q 'stores into memory older than itself at' "$dir/threaded-branch-captured-store.compile.err" 2>/dev/null; then
+    pass "threaded-branch-captured-store names the store"
+  else
+    fail "threaded-branch-captured-store refusal does not name the store (see $dir/threaded-branch-captured-store.compile.err)"
+  fi
   # A spawned instance takes the ROOT's module values through the task
   # record and never re-runs an init: the buffer the root updated reads the
   # same in both branches (exit 0 on boot c8ba5799 — each branch read a
@@ -3032,15 +3037,15 @@ for i in "${!compilers[@]}"; do
     fail "caret handler (got: $(printf '%s' "$ctick" | grep '^Handler') / $(printf '%s' "$craw" | grep '^Handler'); see $dir/caret.err)"
   fi
   if printf '%s' "$cx" | grep -q '^Effects: Pure$' \
-     && printf '%s' "$cfb" | grep -q '^Effects: Pure$' \
+     && printf '%s' "$cfb" | grep -q '^Effects: Mutate$' \
      && printf '%s' "$clet" | grep -q '^Effects: Memory + Alloc, and Tick when called$' \
      && printf '%s' "$cdiv" | grep -q '^Effects: Trap$' \
      && printf '%s' "$cstage" | grep -q '^Effects: Pure when called$' \
      && printf '%s' "$cdiv" | grep -q '^Verify: pending partiality k - 1 != 0 && 100 / (k - 1) fits' \
      && ! printf '%s' "$cstage" | grep -q '^Verify:'; then
-    pass "caret effects and verify (what running the node performs, said Pure too; each obligation inside the node, named)"
+    pass "caret effects and verify (what running the node performs — a tick's store into its line included — said Pure too; each obligation inside the node, named)"
   else
-    fail "caret effects/verify (got: $(printf '%s' "$cdiv" | grep -E '^(Effects|Verify)'); see $dir/caret.err)"
+    fail "caret effects/verify (got: $(printf '%s' "$cfb$cdiv" | grep -E '^(Effects|Verify)'); see $dir/caret.err)"
   fi
   # ── THE GRADIENT READS ADDRESSES (D3) ─────────────────────────────
   # The field of ONE module in the ONE order the session's argmax reads:
@@ -3509,6 +3514,10 @@ for i in "${!compilers[@]}"; do
   else
     fail "effect-enters-absorbed (exit=$abs_rc: $(printf '%s' "$abs_out" | grep -F 'E_EffectMismatch' | head -1 | cut -c1-240))"
   fi
+  # `!Mutate` refuses naming the store, through calls and through a partial handed to a callee (clean on boot 65e2f966).
+  mut_out=$(cd "$ROOT" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT" --dir /tmp "$compiler" check tests/frontier/mn-mutate-enters.mn 2>&1)
+  if printf '%s' "$mut_out" | grep -q 'declared as relayed; Mutate enters at [a-z/-]*mn-mutate-enters:11:[0-9]* through `relay` → at [a-z/-]*mn-mutate-enters:7:[0-9]* through `fill` → at [a-z/-]*mn-mutate-enters:5:[0-9]* through `list_set` → at lists:[0-9:]*, `store_i32`, a store into memory older' \
+     && printf '%s' "$mut_out" | grep -q 'declared as handed; Mutate enters at [a-z/-]*mn-mutate-enters:13:[0-9]* through `apply` → at [a-z/-]*mn-mutate-enters:13:[0-9]* through `fill`'; then pass "mutate-enters (each !Mutate refusal names the store)"; else fail "mutate-enters ($(printf '%s' "$mut_out" | grep -F 'E_EffectMismatch' | head -1 | cut -c1-240))"; fi
   # ── the installed command keeps a path under the cwd as written ──────
   # The shim hands a path OUTSIDE the cwd to the guest absolute (a `..`
   # above the cwd preopen is refused), and a path under the cwd as the

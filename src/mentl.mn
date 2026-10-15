@@ -190,13 +190,32 @@ fn standing_at(seen, app_h) = match enclosing_decl(app_h) {
       []
     } else {
       let masked = masked_between(app_h, dh)
-      let here = clause_locks(effs) |> map(stood_by(dname, ??))
+      let here = clause_locks(effs) |> filter(clause_holds_at(dh, ??)) |> map(stood_by(dname, ??))
       here ++ standing_clauses(dh, push(seen, dh)) |> filter(lock_unmasked(masked, ??))
     },
   },
 }
 
 fn stood_by(dname: String, ann) = (ann, dname)
+
+// A clause stands on its callees' rows only while it holds: a declaration
+// whose row already carries the effect its clause negates is refused for it,
+// and stands on nothing of it. A `!WASI` caller handing a printing callback
+// to a higher-order function was taught to rest on that function's absence
+// of WASI, which the function does not have once the callback performs it.
+fn clause_holds_at(dh, ann) = match resolve_row(extract_row(chase_ty(TVar(dh)))) {
+  EfRow(present, _, _) => match ann {
+    ANotEffect(name, _) => !any({ p => eff_name_str(p) == name }, present),
+    APure(_) => !any(effect_named, present),
+    ARefined(_) => false,
+    AReturns(_) => false,
+  },
+}
+
+fn effect_named(p) = match p {
+  ENamed(_) | EParameterized(_, _) => true,
+  EPure => false,
+}
 
 // A declaration's name and authored clause — a function's or a handler's.
 fn decl_clause(dh) = match graph_node_body(dh) {
