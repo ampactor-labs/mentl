@@ -398,24 +398,6 @@ fn arm_has_tan(arm) = match arm {
   (_, _, stmts) => stmts_have_tan(stmts),
 }
 
-fn count_queries(stmts) = fold(0, stmt_queries, stmts)
-
-fn stmt_queries(n, s) = match s {
-  SPrim(_) => n,
-  STan(_, _, _) => n,
-  SIf(_, _, _, t, e) => n + count_queries(t) + count_queries(e),
-  SMatch(_, _, _, arms) => fold(n, arm_queries, arms),
-  SQuery(_, _, _, _) => n + 1,
-  SOut(_, _) => n,
-  STwinCall(_, _, _, _, _, _, _, _, _) => n,
-  STail(_, _, _, _, _, _, _) => n,
-  SArena(_, _, stmts) => n + count_queries(stmts),
-}
-
-fn arm_queries(n, arm) = match arm {
-  (_, _, stmts) => n + count_queries(stmts),
-}
-
 // ─── One value under the reading ──────────────────────────────────────
 //
 // The statements that must run first, in the primal's own order; the primal

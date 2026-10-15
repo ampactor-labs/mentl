@@ -927,33 +927,6 @@ fn emitted_artifact_path(fh) = match fh {
   FileHandle(i) => Path(".build/unit-{int_to_str(i)}.wasm"),
 }
 
-// The voice as text: a VoiceLine's [Slot] folds through render_slot, each
-// slot through the one canonical renderer the compiler reads (show_type,
-// show_effrow, show_reason, show_span), so a hover and a compile error are
-// one projection of one graph; silence renders empty. Nothing calls it: the
-// `propose` arm below builds a VoiceLine and banks it in a TurnRecord, and
-// the LSP projects slots its own way (src/lsp.mn), so the medium composes
-// its voice and never speaks it. Deleting the renderer would delete the
-// voice, so the gap is named (`Hβ.voice.voiceline-renders-to-nobody`).
-fn render_voiceline(line) with !Mutate = match line {
-  Silence => "",
-  VoiceLine(_, _, slots) => render_slots(slots),
-}
-
-fn render_slots(slots) with !Mutate =
-  if len(slots) == 0 { "" } else { "{render_slot(last(slots))}{render_slots(drop_last(slots))}" }
-
-fn render_slot(slot) with !Mutate = match slot {
-  SIdent(name) => "`{name}`",
-  SType(ty) => show_type(ty),
-  SRow(row) => show_effrow(row),
-  SSpan(span) => "({show_span(span)})",
-  SReason(reason) => show_reason(reason),
-  SCap(name) => name,
-  SAnnot(text) => "`{text}`",
-  SLit(text) => text,
-}
-
 // ─── MV.2.e.Session — Session-tentacle helpers ────────────────────────
 //
 // Two pure helpers for intent management. Per drift mode 7 prevention:

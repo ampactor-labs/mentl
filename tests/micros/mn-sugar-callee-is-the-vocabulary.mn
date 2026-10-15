@@ -1,0 +1,17 @@
+// expect: refuse E_EffectMismatch
+// A SUGAR CALLS THE LANGUAGE'S VOCABULARY, never what its name binds where it
+// stands: `xs[i]` calls the prelude's list_index and a rest pattern cuts with
+// its slice, so each charges that declaration's row whatever the local scope
+// binds. Measured on boot 0a0cc116 before the charge resolved its callee at
+// the link's own scope: a parameter named `list_index` swallowed the index's
+// charge and `with !Memory` was accepted over a body that reads memory, and
+// a parameter named `slice` did the same for the rest's `!Alloc` — a false
+// proof of each negative. Under a neutral parameter name both refused.
+fn first(list_index, xs) with !Memory = xs[0] + list_index
+
+fn after_head(slice, xs) with !Alloc = match xs {
+  [_, ...rest] => len(rest) + slice,
+  [] => slice,
+}
+
+fn main() = first(1, [5, 6]) + after_head(2, [7, 8, 9])

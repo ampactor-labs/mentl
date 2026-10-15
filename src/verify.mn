@@ -1576,18 +1576,12 @@ fn int_max(a, b) with Pure = if a > b { a } else { b }
 
 fn int_min(a, b) with Pure = if a < b { a } else { b }
 
-// The bounds a domain states, for the readers that want one end. A finite set
-// bounds itself; a member the integral bound cannot speak about leaves the end
-// open rather than inventing one.
+// The low bound a domain states. A finite set bounds itself; a member the
+// integral bound cannot speak about leaves the end open rather than inventing
+// one.
 fn domain_lo(d) = match d {
   DRange(lo, _) => lo,
   DFinite(vs) => if vs |> all(is_lv_int) { vs |> fold(None, min_of_lit) } else { None },
-  DUndecided => None,
-}
-
-fn domain_hi(d) = match d {
-  DRange(_, hi) => hi,
-  DFinite(vs) => if vs |> all(is_lv_int) { vs |> fold(None, max_of_lit) } else { None },
   DUndecided => None,
 }
 
@@ -1602,14 +1596,6 @@ fn is_lv_int(v) with Pure = match v {
 fn min_of_lit(acc, v) = match v {
   LVInt(n) => match acc {
     Some(a) => if n < a { Some(n) } else { Some(a) },
-    None => Some(n),
-  },
-  _ => acc,
-}
-
-fn max_of_lit(acc, v) = match v {
-  LVInt(n) => match acc {
-    Some(a) => if n > a { Some(n) } else { Some(a) },
     None => Some(n),
   },
   _ => acc,

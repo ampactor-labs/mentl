@@ -440,8 +440,8 @@ landing that closes it. A gate that did not run is UNKNOWN, never green.
 - **Names are still read where an edge exists** (§11.1): the lowered program's
   identity is a spelling, so the reach walks walk names and the emit resolves
   a callee's spelling through the scope again; the judgment still names an
-  op's effect at a continuation boundary, the substrate's fast path and the
-  desugar's prelude vocabulary.
+  op's effect at a continuation boundary and the desugar's prelude
+  vocabulary.
 - **A module sees its whole import closure** (§11.3): visibility is the closure,
   so a user cannot declare a name the prelude declares, one namespace is paid
   for in prefixes, and the compiler recognizes library effects by their
@@ -651,10 +651,13 @@ a provenance diff, a search over live shared cells.
    (`fanout_reach_known`) — the form is a lowered unit keyed by its
    declaration's handle, reachability the edge followed from `main`, a symbol
    read off its declaration (`$module.name`, nested paths `.`-joined), and the
-   name-keyed walks deleted, a TRANSITION; (b) a continuation boundary asks
-   its op's effect by spelling (`op_effect_of`), and the substrate fast path
-   and the desugar's prelude vocabulary name their callees; (c) the proposer's
-   rings and its declaration index key by the binding's declaration. Gate:
+   name-keyed walks deleted, a TRANSITION; (b) a sugar's callees are
+   spellings (`concat_callees`, `subscript_callee`, `list_rest_callee`): the
+   judgment charges each as resolved at the link's own scope and the lowering
+   calls the symbol the spelling names — the form is the sugar node's edge to
+   the primitive's declaration, drawn where the sugar is judged, the symbol
+   (a) reads; (c) the proposer's rings and its declaration index key by the
+   binding's declaration. Gate:
    `mentl query src/main.mn unreachable` names the same set read off the
    edge, and m3 == m4.
 2. **Every position is a cell — #108** (`Hβ.graph.positions-are-cells`). A
@@ -748,7 +751,13 @@ a provenance diff, a search over live shared cells.
    primitives the library shadows, then the library's declarations deleted), so a
    function doing only arithmetic on words is `Pure`. Memory's stores become an
    effect of their own, so the store-age judgment reads a raw store off the op's
-   edge, where it reads the op's spelling today (`raw_store_target`).
+   edge, where it reads the op's spelling today (`raw_store_target`). A
+   substrate primitive's face lives on its declaration
+   (`Hβ.infer.seq-op-signature-driven`): the faces are a table in the judgment
+   (`seq_op_sig`), read along the edge a reference draws to the primitive, and
+   they become each primitive's own signature, its body typed through it, once
+   a list's element crosses its slot at its own width — `list_set`'s journal of
+   the value it stores is the face's today.
 10. **Handlers installed once, pinned to their instance**
     (`Hβ.effects.handler-pins-its-instance`). One install per extent; a
     handler's start state its own; a chain named once; nothing installed only to

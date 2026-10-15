@@ -3133,6 +3133,10 @@ type Env = Env([(String, Binding, Reason, SchemeKind, Int)])
 effect EnvRead {
   // The declaration a name denotes in scope, the newest binding first.
   env_resolve(name: String) -> Option(Int)
+  // The declaration a name denotes at the link's own scope, below every
+  // scope the judgment has open: where a sugar's callee resolves, since
+  // `xs[i]` calls the language's index whatever a local binds.
+  env_resolve_linked(name: String) -> Option(Int)
   // The newest binding whose declaration is a TYPE (an alias or a nominal
   // record), past any later declaration of another kind under the name.
   env_resolve_type(name: String) -> Option(Int)
@@ -3146,6 +3150,11 @@ effect EnvRead {
 // person's input at the text boundary; a holder of a reference follows its
 // edge (`graph_ref_decl`) to the same handle and never asks the name.
 fn env_lookup(name: String) = match env_resolve(name) {
+  Some(d) => graph_published(d),
+  None => None,
+}
+
+fn env_lookup_linked(name: String) = match env_resolve_linked(name) {
   Some(d) => graph_published(d),
   None => None,
 }
@@ -5673,8 +5682,6 @@ fn show_discipline(d) with Pure = match d {
   Abandon => "Abandon",
 }
 
-fn show_field(field: (String, Ty)) with !Mutate = render_field(field) ~> var_names
-
 // A function's row after its type: nothing when it performs nothing, else
 // `with` and the row — under the authored face only what an author wrote.
 fn render_row_suffix(row) with !Mutate = match ty_row_face() {
@@ -5705,8 +5712,6 @@ fn render_row_suffix(row) with !Mutate = match ty_row_face() {
     _ => " with {render_row(row)}",
   },
 }
-
-fn show_row_suffix(row) with !Mutate = render_row_suffix(row) ~> var_names
 
 // An edge in the row's own algebra: the cell alone, or `(e - E - F)` when a
 // `~>` on its path subtracts — the difference SYNTAX already spells, so the
@@ -5854,8 +5859,6 @@ fn render_eff_name(name) with !Mutate = match name {
   _ => // drift-audit: ignore — display-totality floor; honest placeholder, not data classification
   "«invalid-effect»",
 }
-
-fn show_eff_arg(arg) with !Mutate = render_eff_arg(arg) ~> var_names
 
 fn render_eff_arg(arg) with !Mutate = match arg {
   EAInt(n) => int_to_str(n),

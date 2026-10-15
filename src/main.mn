@@ -580,7 +580,7 @@ fn render_cannot_fix(entry) = match entry {
 // trip loses (this absorbed the hand-run comment census — ⟳; and the LEXICAL
 // count sees lines the parse never attaches, which a weave-to-weave compare
 // was blind to). AND THE NAMES: every identifier and literal the source lexes
-// to must lex out of the render as well (`lost_atoms`). A render that drops
+// to must lex out of the render as well (`lost_atoms_beside`). A render that drops
 // one says something else — measured 2026-09-28, when the effect head's
 // parameter render deleted `rate: Int`'s annotation, the declared
 // `Sample(48000)` then refused, and this gate's sibling reported "prose

@@ -1283,6 +1283,22 @@ matrix[i][j]                 // chained indexing
 
 Bounds-checking is runtime for lists (traps on out-of-range); compile-time for tuples (H6 exhaustiveness).
 
+**A sugar calls the language's primitive, whatever its name binds where the
+sugar stands** (real, 2026-10-15). `xs[i]` calls the prelude's `list_index`,
+`++` and an interpolation's seams the sequence concat, and a rest pattern
+cuts with `slice`; each charges that primitive's row, read at the link's own
+scope. Until this landed the charge resolved the name in the local scope, so
+a parameter named `list_index` swallowed the index's charge and `fn
+first(list_index, xs) with !Memory = xs[0] + list_index` checked clean over a
+body that reads memory — a false proof of the negative, and a parameter named
+`slice` did the same for a rest pattern's `!Alloc`
+(`tests/micros/mn-sugar-callee-is-the-vocabulary.mn`, accepted on boot
+0a0cc116). A parameter sharing a primitive's name is the parameter when it is
+called: a substrate primitive's face belongs to its declaration and travels
+along the edge a reference draws to it, so `fn apply(len) = len(5)` is
+judged against the callback it is handed, where it was refused as the
+sequence primitive (`tests/micros/mn-param-named-like-a-primitive.mn`).
+
 Refinements over the index tighten bounds:
 ```
 fn safe_get(xs: [a], i: ValidIndex(xs)) -> a = xs[i]

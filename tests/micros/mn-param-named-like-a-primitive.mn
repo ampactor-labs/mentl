@@ -1,0 +1,12 @@
+// expect: 16
+// A substrate primitive's face belongs to its declaration: a reference takes
+// it along the edge that reaches the primitive, and a parameter sharing the
+// primitive's name is the parameter. Measured on boot 0a0cc116 before the
+// face followed the edge: the call `len(5)` was typed by the sequence
+// primitive's face because the callee was named `len`, and this correct
+// program was refused (E_TypeMismatch: Int vs [a]).
+fn apply(len) = len(5)
+
+fn twice(last, x) = last(last(x))
+
+fn main() = apply({ x => x + 1 }) + twice({ x => x * 2 }, 1) + 6

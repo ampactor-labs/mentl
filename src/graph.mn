@@ -2345,19 +2345,6 @@ fn destructure_body(arms) = match arms {
   _ => None,
 }
 
-// Whether the product at `h` is taken apart where it is built. Read UP the
-// parent edge, so the product's own lowering can ask it without the
-// consumer telling it. The types are settled by then; the JUDGMENT asks
-// `product_fate` instead, because a pipe's stage is judged after its left.
-fn product_consumed_in_place(h) = match graph_parent_of(h) {
-  None => false,
-  Some(p) => match graph_node_body(p) {
-    NExpr(MatchExpr(scrut, arms)) => scrut == h && is_some(destructure_subs(arms, product_arity_at(h))),
-    NExpr(PipeExpr(PForward, left, right)) => left == h && product_fills_stage(h, right),
-    _ => false,
-  },
-}
-
 // WHO DECIDES whether a product is a record. A positional destructure is an
 // AST fact, so the product's own judgment reads it; a pipe's merge turns on
 // the stage's ARROW, which is judged after the product, so the PIPE charges

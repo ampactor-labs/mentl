@@ -1918,27 +1918,6 @@ fn judge_stmt_one(ref node) = {
   infer_stmt(node)
 }
 
-// The stmt's declared name — the layer projection's index key. A stmt with
-// no single name (a destructured let, an expression statement) contributes
-// no key; missing edges DEGRADE TO SOURCE ORDER (equal depths walk in
-// source order), never reorder a dependent before its dependency.
-fn stmt_declared_names(node) = match graph_node_body(node) {
-  NStmt(stmt) => match stmt {
-    FnStmt(name, _, _, _, _) => [name],
-    TypeDefStmt(name, variants) => [name] ++ map({ (vname, _, _) => vname }, variants),
-    EffectDeclStmt(name, _, ops) => [name] ++ map({ (op, _, _, _) => op }, ops),
-    HandlerDeclStmt(name, _, _, _, _, _) => [name],
-    HandlerChainStmt(name, _) => [name],
-    LetStmt(pat, _, _) => pat_binders(pat),
-    RefineStmt(name, _, _) => [name],
-    AliasStmt(name, _) => [name],
-    RowAliasStmt(name, _) => [name],
-    ExprStmt(_) => [],
-    ImportStmt(_) => [],
-  },
-  _ => [],
-}
-
 fn stmt_decl_name(ref node) = node |> graph_node_body |> body_decl_name
 
 // The name a declaration's body declares — read off the body, so a reader
@@ -3993,8 +3972,8 @@ fn infer_expr(ref handle) = {
       // A product is a RECORD only where it escapes: one a consumer takes
       // apart where it is built — a positional destructure, the N-ary stage
       // a `|>` fills — is its parts in registers, which is what its `let`
-      // spelling costs (`product_consumed_in_place`, graph.mn; the lowering
-      // reads the same rule to bind them).
+      // spelling costs (`product_fate`, graph.mn; the lowering reads the same
+      // facts, `destructure_subs` and `product_fills_stage`, to bind them).
       charge_product(handle)
       graph_bind(handle, TTuple(collect_tvar_types(elems)), Located(span, Inferred("tuple literal")))
       tag_alloc_join(handle, elems)
@@ -4475,7 +4454,7 @@ fn judge_reference(name: String, handle, span: ValidSpan, use, scheme, reason, k
   // measured as `xs |> len` unifying List against Int while emitting
   // correctly, the 3.3 false-diagnostic drift). The row stays the callee's
   // own declared row.
-  let ty = if is_seq_op(name) { seq_face_ty(name, scheme) } else { instantiate(scheme) }
+  let ty = if reaches_substrate(handle) { seq_face_ty(name, scheme) } else { instantiate(scheme) }
   graph_bind(handle, ty, Located(span, VarLookup(name, reason)))
   // Carry parameter ownership from the declaration into Consume. No
   // recovery lookup: SchemeKind names the binding's construction origin.
@@ -4584,6 +4563,15 @@ fn callee_params_at(fh) = match lookup_ty(fh) {
 // DERIVE their own types from their bodies now that Iterate.result returns the
 // handler-delivered value (result() -> r, prelude.mn) instead of a fabricated
 // (). Zero re-derivation — the type is read from the one place it lives.
+// A primitive's face belongs to its declaration: a reference takes it along
+// the edge that reaches the primitive — a module-level declaration of a name
+// in the table — and a parameter, a local or a nested fn sharing that name is
+// judged as itself.
+fn reaches_substrate(ref_h) = match graph_ref_decl(ref_h) {
+  Some(d) => at_module_level(d) && is_seq_op(callee_name(ref_h)),
+  None => false,
+}
+
 fn is_seq_op(cname: String) with Pure = cname == "len" || cname == "list_index" || cname == "last" || cname == "drop_last" || cname == "list_set" || cname == "list_concat" || cname == "list_to_flat" || cname == "make_list" || cname == "slice" || cname == "push" ||
 // The String-builder half of the same boundary: int_to_str assembles a
 // [len][bytes] record by address arithmetic (a word), and the table
@@ -4745,7 +4733,7 @@ fn infer_seq_op(cname, fh, args, handle, span: ValidSpan) = {
   // machinery with NoBoundary at exactly four wheel sites (a seq-op call on
   // the k2 spine: alt_same_name_set, rows_equal, splice_at, k2_is_park) —
   // the census's last E_UnresolvedType class.
-  stage_continuation_boundary(cname, handle)
+  stage_continuation_boundary(cname, None, handle)
 }
 
 // What a call's judgment built: the applied result, the product with holes —
@@ -4857,7 +4845,7 @@ fn infer_call(func, args, handle, span: ValidSpan, site) = {
   // `??` never became the partial the pipe completes, and every seq-op
   // pipe stage mismatched (14 census sites). An under-applied or holed
   // seq-op call is the product-with-holes like any other call.
-  if is_seq_op(cname) && (call_hole_index(args, 0) < 0 || site_is_operand(site)) && len(args) == len(callee_params_at(func)) {
+  if reaches_substrate(func) && (call_hole_index(args, 0) < 0 || site_is_operand(site)) && len(args) == len(callee_params_at(func)) {
     infer_seq_op(cname, func, args, handle, span)
     CallSaturated
   }
@@ -4867,7 +4855,7 @@ fn infer_call(func, args, handle, span: ValidSpan, site) = {
   // body's own (list_set's `l + 8` types l Int), and typing a caller's
   // partial from it unified every `|> list_set(??, …)` pipe datum with
   // Int the moment the lib-first order made the scheme visible.
-  else if is_seq_op(cname) {
+  else if reaches_substrate(func) {
     let elem = TVar(mint(Inferred("sequence element")))
     match seq_op_sig(cname, elem) {
       Some(sig) => match sig {
@@ -5423,7 +5411,7 @@ fn infer_call_saturated(args, fh, handle, span: ValidSpan, cname) = {
   // callee can be demands, read along its edges (`call_owes`).
   call_owes(fn_leaves(fh), args, handle, span)
   ages_call(handle, fh, cname, args)
-  stage_continuation_boundary(cname, handle)
+  stage_continuation_boundary(cname, ref_op_effect(fh), handle)
 }
 
 // THE PERFORM GROUNDS ITS INSTANCE (E1). An op parameter that shares its name
@@ -5665,19 +5653,16 @@ fn discharge_arg_refinements(dps, arg_handles, i, span: ValidSpan, call_h) = if 
 // the record identity while the enclosing InferCtx frame is live (the world is
 // the frame's LIVE row variable; the answer is the frame's answer handle);
 // bind its TCont only after all handler arms have joined their usage grades
-// onto the op scheme (finalize).
-fn stage_continuation_boundary(cname: String, resume_input_h) = {
+// onto the op scheme (finalize). `eff` is the effect the boundary performs —
+// an op's, read along its callee's edge (`ref_op_effect`) — and None for a
+// boundary an operator stages.
+fn stage_continuation_boundary(cname: String, eff, resume_input_h) = {
   let continuation_h = mint(InferredCallReturn(cname, Inferred("continuation boundary")))
   let current_answer_h = inf_current_answer()
   let answer_h = if current_answer_h < 0 { resume_input_h } else { current_answer_h }
   graph_boundary_set(
     resume_input_h,
-    PendingContinuationBoundary(
-      resume_input_h,
-      answer_h,
-      continuation_h,
-      inf_remainder_world(op_effect_of(cname))
-    )
+    PendingContinuationBoundary(resume_input_h, answer_h, continuation_h, inf_remainder_world(eff))
   )
 }
 
@@ -6157,7 +6142,7 @@ fn infer_pipe_tee_one(left, right, hd, handle, span: ValidSpan, born) = {
     // A body that suspends leaves the arena's frame, and the rest of THIS
     // frame resumes at the arena's value — the arena is a boundary as a
     // call is, staged while this frame is the live one.
-    stage_continuation_boundary("~>", handle)
+    stage_continuation_boundary("~>", None, handle)
   } else {
     ()
   }
@@ -6743,7 +6728,7 @@ fn infer_pipe(kind, left, right, handle, span: ValidSpan) = match kind {
     // A pipe stage is an application; its result node is a suspension
     // boundary exactly as a CallExpr's is (lower's k2 spine keys the
     // bare-VarRef stage's completion call by THIS pipe node's handle).
-    stage_continuation_boundary("|>", handle)
+    stage_continuation_boundary("|>", None, handle)
     match graph_chase(right) {
       GNode(NBound(TFun(_, _, crow)), _) => inf_add_row_unified_at(
         handle,
@@ -6931,8 +6916,8 @@ fn infer_fanout_nary(branches, handle, span: ValidSpan) = {
   // the branches are evaluated in the frame the fanout stands in and the
   // tuple of their results is a record only where it ESCAPES, so a fanout
   // taken apart where it stands charges nothing — its `let` spelling
-  // charges nothing (`product_consumed_in_place`, graph.mn, the one rule
-  // the lowering reads to bind the parts). A spawning schedule's thunks and
+  // charges nothing (`product_fate`, graph.mn, whose facts the lowering
+  // reads to bind the parts). A spawning schedule's thunks and
   // tickets are the install's cost, which the install itself charges, and
   // a schedule TWIN demanded into a callee whose row does not say `Alloc`
   // is refused at the settle point by the allocation audit
@@ -6983,7 +6968,7 @@ fn infer_fanout_value_boundary(branch, span: ValidSpan, label: String) = {
   )
   // The branch evaluation is an application inside the thunk frame; its
   // suspension boundary carries THIS frame's world (staged before exit).
-  stage_continuation_boundary("><", result_h)
+  stage_continuation_boundary("><", None, result_h)
   let older_stores = ages_branch_close()
   exit_frame()
   let thunk_row = mk_ef_open([], thunk_row_h)
@@ -7099,7 +7084,7 @@ fn infer_fanout_apply_one(branch, input_h, span: ValidSpan) = {
     },
   }
   // The implicit application is a suspension boundary inside the thunk frame.
-  stage_continuation_boundary("<|", ret_h)
+  stage_continuation_boundary("<|", None, ret_h)
   let older_stores = ages_branch_close()
   exit_frame()
   let thunk_row = mk_ef_open([], thunk_row_h)
@@ -7928,13 +7913,13 @@ fn infer_index_force(rh, ih, handle, span: ValidSpan) = {
   if proven { () } else { inf_add_row_at(handle, trap_row()) }
   // The sugar charges what its lowering performs: `xs[i]` emits the
   // list_index call, so the judgment charges list_index's own declared
-  // row — read live from the env, never a literal (the seq-op charge's
-  // law at the sugar). Measured before the charge existed: sugar_once
-  // published Pure while call_once published Memory on one file — the
-  // teaching surface lying about a memory-touching fn (the four-face
-  // probe, 2026-08-01). The tuple-const route stays chargeless: its
-  // extraction is compile-time.
-  match env_lookup(subscript_callee(proven)) {
+  // row — read live from the link's own scope, never a literal and never a
+  // local the name binds where the sugar stands (the seq-op charge's law at
+  // the sugar). Measured before the charge existed: sugar_once published
+  // Pure while call_once published Memory on one file — the teaching surface
+  // lying about a memory-touching fn (the four-face probe, 2026-08-01). The
+  // tuple-const route stays chargeless: its extraction is compile-time.
+  match env_lookup_linked(subscript_callee(proven)) {
     Some((sch, _, _)) => match judgment_ty(sch) {
       TFun(_, _, lrow) => inf_add_row_at(handle, lrow),
       _ => (),
@@ -9265,12 +9250,14 @@ fn concat_callee_row() = fold(mk_ef_pure(), union_named_row, concat_callees())
 
 fn union_named_row(acc, name: String) = union_row(acc, named_fn_row(name))
 
-// A named fn's declared row, live from the env edge. A name that is absent
-// or not a function contributes the pure row — the union's identity — which is the
-// true statement "this primitive is not in scope here, so `++` cannot be
-// calling it"; a `++` with NEITHER primitive in scope has no concat to emit
-// and fails at the callee, where that absence actually lives.
-fn named_fn_row(name: String) = match env_lookup(name) {
+// A sugar callee's declared row, read at the link's own scope: the sugar
+// calls the language's primitive whatever a local binds under its name. A
+// name that is absent or not a function contributes the pure row — the
+// union's identity — which is the true statement "this primitive is not in
+// the link, so `++` cannot be calling it"; a `++` with NEITHER primitive
+// linked has no concat to emit and fails at the callee, where that absence
+// actually lives.
+fn named_fn_row(name: String) = match env_lookup_linked(name) {
   Some(entry) => match entry {
     (scheme, _, _) => match instantiate(scheme) {
       TFun(_, _, row) => row,
@@ -13851,9 +13838,9 @@ fn construction_row() = mk_ef_closed([ENamed(intern_str("Memory")), ENamed(inter
 // literal and a fanout each answer a product, and a consumer that takes the
 // product apart where it stands — a one-arm positional destructure, the
 // N-ary stage a `|>` fills — reads its parts out of registers, so nothing is
-// built and nothing is charged. The lowering reads the SAME rule
-// (`product_consumed_in_place`, graph.mn) to bind those registers, which is
-// what keeps the row and the emit from disagreeing about the cost.
+// built and nothing is charged. The lowering reads the SAME facts
+// (`destructure_subs`, `product_fills_stage`) to bind those registers, which
+// is what keeps the row and the emit from disagreeing about the cost.
 fn charge_product(handle) = match product_fate(handle) {
   PfConsumed => (),
   PfByPipe => (),

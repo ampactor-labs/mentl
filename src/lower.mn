@@ -738,15 +738,6 @@ fn mark_tail_last_in(stmts) = {
 
 fn mark_tail_arms(arms) = map({ (pat, body) => (pat, mark_tail(body)) }, arms)
 
-// True when the row carries no effect names — the callee performs
-// nothing, so no handler evidence is needed at the call site.
-fn row_is_effectless(row) = match row {
-  EfRow(p, _, t) => match t {
-    EtClosed => len(p) == 0,
-    _ => false,
-  },
-}
-
 // Read the construction-origin metadata an env entry carries.
 // `None` when the name isn't bound (a missing-var diagnostic has
 // already fired at infer time; lower's path falls through to the
@@ -759,7 +750,7 @@ fn env_kind_of(name) = match env_lookup(name) {
 }
 
 // The NAME a callee expression carries — read by the resume-bind read
-// (`callee_name_of_handle`) and by `partial_unfilled`; "" for an anonymous
+// (`callee_name_of_handle`); "" for an anonymous
 // callee. A call's argument product and a partial's
 // callee are never resolved through it: those are the call node's own facts
 // (`call_product_at`, `partial_callee_form`).
@@ -996,9 +987,9 @@ fn lower_global_call(handle, fh, name: String, r_args, lo_args) = if name == "to
 // arity therefore reaches a floor, never a wrong call. Measured beside it:
 // a callee that failed to resolve raises E_MissingVariable, an armed class,
 // so that program emits zero bytes and has no module to collapse.
-fn partial_unfilled(cname, fh, shape) = match shape {
+fn partial_unfilled(fh, shape) = match shape {
   CallApplied => None,
-  CallSuspended => if is_seq_op(cname) {
+  CallSuspended => if reaches_substrate(fh) {
     None
   } else {
     match lookup_ty(fh) {
@@ -2539,7 +2530,7 @@ fn lower_expr_body(e, handle, span) = match e {
       // lower_pipe_complete dispatches them fork-free (the pipe owns its
       // hole; the inline splice is the zero-record projection of the same
       // hole-filling).
-      match partial_unfilled(lower_callee_name(fbody), f, shape) {
+      match partial_unfilled(f, shape) {
         Some(n_ps) => lower_call_partial(handle, fbody, f, r_args, open, n_ps),
         None => lower_call_dispatch(handle, f, fbody, r_args),
       },
@@ -3197,8 +3188,8 @@ fn extract_handler_config_args(node) = match graph_node_body(node) {
 // THE FANOUT, LOWERED TO WHAT CONSUMES IT. `FdValue` is the tuple of the
 // branches' results; `FdRegs(regs)` is the parts bound to the registers a
 // positional destructure or a merge took, with no tuple built at all — the
-// product's own law, read at the consumer (`product_consumed_in_place`,
-// graph.mn).
+// product's own law, read at the consumer (`destructure_subs`,
+// `product_fills_stage`).
 fn lower_fanout_to(handle, fan_own, left, right, dest) = match fanout_boundaries(handle) {
   Ok(boundaries) => match fan_own {
     FanDistribute => // The N-ary carrier owns `><` (Hβ.parser.pcompose-nary); the
@@ -8387,30 +8378,3 @@ fn ls_find_str_local_loop(lst: [String], target: String, i, n) = if i >= n {
 // (TypeVariants, minted at registration). The whole-env backward scan
 // this replaces re-derived the grouping per read.
 fn variant_specs_of(type_name) = variant_specs_at(TName(type_name, []))
-
-// A constructor's scheme result type is TName(type_name, _) (nullary, bare) or
-// TFun(_, TName(type_name, _), _) (fielded) — the same test synth uses.
-//
-// The constructor's payload types, in field order: a fielded ctor's TFun params
-// (each TParam carries its ty); a nullary ctor (bare TName) has none.
-fn ctor_payload_tys(ty) = match ty {
-  TFun(params, _ret, _) => param_tys_of(params, 0, len(params)),
-  _ => [],
-}
-
-fn ctor_result_is(ty, type_name: String) with Pure = match ty {
-  TName(n, _) => n == type_name,
-  TFun(_, ret, _) => ctor_result_is(ret, type_name),
-  _ => false,
-}
-
-fn param_tys_of(params, i, n) =
-  if i >= n { [] } else { [param_ty(list_index(params, i))] ++ param_tys_of(params, i + 1, n) }
-
-// ctor_payload_tys_of — the payload types of a constructor BY NAME, read live
-// from its env scheme (the same ConstructorScheme channel variant_specs_of uses,
-// keyed on the ctor name the LPCon match carries). The match-bind reads the SAME
-// payload types the store wrote, so the variant-payload offsets agree at one
-// width fold (Carried-Truth). A name with no constructor scheme → [] (a nullary
-// or unresolved ctor — the uniform-stride fallback is then byte-identical).
-

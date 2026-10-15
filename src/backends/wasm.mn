@@ -10718,14 +10718,6 @@ fn tuple_pats_always_match(ebs) = if len(ebs) == 0 {
   }
 }
 
-fn pats_always_match(subs) = if len(subs) == 0 {
-  true
-} else if pat_always_matches(last(subs)) {
-  pats_always_match(drop_last(subs))
-} else {
-  false
-}
-
 fn record_pats_always_match(fbs) = if len(fbs) == 0 {
   true
 } else {
