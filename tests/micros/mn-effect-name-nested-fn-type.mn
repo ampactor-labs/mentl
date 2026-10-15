@@ -1,0 +1,19 @@
+// expect: refuse E_MissingVariable
+// THE SAME LAW INSIDE A TYPE'S ARGUMENT: the function type
+// `Option(() -> Int with !Raed)` writes is read where the declaration is
+// judged, its names resolved like any other row's. Measured on boot 493a5619:
+// checked clean.
+effect Read {
+  rd() -> Int
+}
+
+fn run(fs: Option(() -> Int with !Raed)) = match fs {
+  Some(f) => f(),
+  None => 0,
+}
+
+handler hr {
+  rd() => resume(7),
+}
+
+fn main() = run(Some(() => rd())) ~> hr

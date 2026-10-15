@@ -1,0 +1,25 @@
+// CROWN — negation distributes over a named effect row inside a FUNCTION
+// TYPE. `f: () -> Int with !Both` forbids both of Both's members to every
+// callback `run` is handed, exactly as `with !Both` on a declaration forbids
+// them to its body. A function type's row was folded where the type was
+// parsed, before any declaration was registered, so `Both` read as an effect
+// of that name and the negation forbade nothing: a callback performing A
+// checked clean and ran to 7 on boot 493a5619. The row is read where every
+// named row is known. Expect E_EffectMismatch.
+effect A {
+  opa() -> Int
+}
+
+effect B {
+  opb() -> Int
+}
+
+type Both = A + B
+
+fn run(f: () -> Int with !Both) = f()
+
+handler ha {
+  opa() => resume(7),
+}
+
+fn main() = run(() => opa()) ~> ha

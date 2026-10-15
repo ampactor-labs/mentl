@@ -270,6 +270,7 @@ fn render_body_tokens(body) with !Mutate = match body {
     RowEffect(name) => render_authored_eff_name(name),
     ArmOp(op) => op,
   },
+  NRow(terms) => render_authored_row(terms),
 }
 
 fn render_expr_tokens(e) with !Mutate = match e {
@@ -402,7 +403,7 @@ fn render_stmt_tokens(s) with !Mutate = match s {
     _ => render_grouped_body(e),
   },
   AliasStmt(name, ty) => "type {name} = {render_decl_type(ty)}",
-  RowAliasStmt(name, effs) => "type {name} = {render_signed_effs(effs, 0)}",
+  RowAliasStmt(name, effs) => "type {name} = {render_authored_row(effs)}",
   LetStmt(pat, value, ann) => {
     let lhead = "let {render_pat_tokens(pat)}{render_let_ann(ann)} ="
     let lv = render_tokens_for(value)
@@ -1182,7 +1183,7 @@ fn render_state_inits(ref states, i) with !Mutate = if i >= len(states) {
 // its own effect row when it authors one, else its state inits — the
 // parse's inverse over what the node carries.
 fn render_handler_clause(effs, states) with !Mutate =
-  if len(effs) > 0 { " with {render_signed_effs(effs, 0)}" } else { render_state_inits(states, 0) }
+  if len(effs) > 0 { " with {render_authored_row(effs)}" } else { render_state_inits(states, 0) }
 
 fn render_handler_arms(ref arms, i) with !Mutate = if i >= len(arms) {
   ""
@@ -1402,40 +1403,15 @@ fn render_pat_fields(ref fields, i) = if i >= len(fields) {
 }
 
 // The declared with-clause — and a named row's right side, and a handler's
-// `with` — rendered from the parser's SIGNED TERMS verbatim: the first term
-// bare, each later one led by the connective its author joined it with,
-// negation as `!`, a group in its parentheses. The authored surface is the
-// only faithful render: a closed-row rebuild cannot represent `-` / `&`
-// connectors, per-term `!`, or a group.
+// `with` — rendered from the parser's SIGNED TERMS verbatim. The authored
+// surface is the only faithful render: a closed-row rebuild cannot represent
+// `-` / `&` connectors, per-term `!`, or a group.
 fn render_with_clause(effs) with !Mutate =
-  if len(effs) == 0 { "" } else { " with {render_signed_effs(effs, 0)}" }
+  if len(effs) == 0 { "" } else { " with {render_authored_row(effs)}" }
 
-fn render_signed_effs(ref effs, i) with !Mutate = if i >= len(effs) {
-  ""
-} else {
-  match effs[i] {
-    (term, negated, conn) => {
-      // The first entry's connector is its position; each later entry
-      // carries the operator the author joined it with.
-      let lead = if i == 0 {
-        ""
-      } else {
-        match conn {
-          EcUnion => " + ",
-          EcDiff => " - ",
-          EcInter => " & ",
-        }
-      }
-      let bang = if negated { "!" } else { "" }
-      "{lead}{bang}{render_row_term(term)}{render_signed_effs(effs, i + 1)}"
-    },
-  }
-}
-
-fn render_row_term(t) with !Mutate = match t {
-  RtEff(name, _) => render_authored_eff_name(name),
-  RtGroup(ts) => "({render_signed_effs(ts, 0)})",
-}
+// A row as its author wrote it, under the authored face.
+fn render_authored_row(effs) with !Mutate =
+  render_written_row(effs) ~> authored_names(render_predicate_tokens)
 
 // An authored effect name — the one name renderer (`render_eff_name`, the
 // voice's and the page's alike) under the authored face.
@@ -1481,6 +1457,7 @@ fn render_line_break_after(kind) with Pure = match kind {
   NLink(_) => "\n",
   NTypeAnn(_) => "",
   NName(_) => "",
+  NRow(_) => "",
 }
 
 // The one comment, read LIVE from the comment weave at the node's handle

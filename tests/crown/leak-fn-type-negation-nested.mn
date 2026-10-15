@@ -1,0 +1,26 @@
+// CROWN — a named row negated in a function type that a type's argument
+// writes: `Held(() -> Int with !Both)` forbids its function A and B as the
+// bare function type does. Measured on boot 493a5619: checked clean. Expect
+// E_EffectMismatch.
+effect A {
+  opa() -> Int
+}
+
+effect B {
+  opb() -> Int
+}
+
+type Both = A + B
+
+type Held = Has(a) | Empty
+
+fn call_held(fs: Held(() -> Int with !Both)) = match fs {
+  Has(f) => f(),
+  Empty => 0,
+}
+
+handler ha {
+  opa() => resume(7),
+}
+
+fn main() = call_held(Has(() => opa())) ~> ha

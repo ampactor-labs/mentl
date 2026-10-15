@@ -1,0 +1,21 @@
+// CROWN — a named row negated in a let annotation's function type: the value
+// the let binds is a function performing A, and `!Both` forbids it. Measured
+// on boot 493a5619: checked clean. Expect E_EffectMismatch.
+effect A {
+  opa() -> Int
+}
+
+effect B {
+  opb() -> Int
+}
+
+type Both = A + B
+
+handler ha {
+  opa() => resume(7),
+}
+
+fn main() = {
+  let g: () -> Int with !Both = () => opa()
+  g()
+} ~> ha

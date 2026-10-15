@@ -1,0 +1,25 @@
+// CROWN — a named row negated inside a function type an ALIAS names, the
+// alias declared after the function that reads it. The alias's body is read
+// through the alias, never through a signature's intake, so its written row
+// is folded where the alias is first read: a use the walk reaches before the
+// alias's own judgment reads `!A + !B`, never a variable its call could bind.
+// Measured on boot 493a5619: checked clean. Expect E_EffectMismatch.
+effect A {
+  opa() -> Int
+}
+
+effect B {
+  opb() -> Int
+}
+
+fn run(f: Thunk) = f()
+
+handler ha {
+  opa() => resume(7),
+}
+
+fn main() = run(() => opa()) ~> ha
+
+type Thunk = () -> Int with !Both
+
+type Both = A + B

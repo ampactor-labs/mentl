@@ -203,12 +203,26 @@ fn audio_stage(samples) with Sample(44100) + !Alloc + IO =
 `Pure`, or the declaration refuses.** A term that names no effect in the
 module's reach — in a function's clause, a handler's, an op signature's,
 inside a function type (`f: () -> Int with !Nowhere`) or in a named row
-(§«Named effect rows») — is `E_MissingVariable` at the declaration (real,
-2026-10-13: until then the expansion took an unknown name as an effect OF
-THAT NAME, so `fn quiet() with !Nowhere = 1` checked clean and constrained
-nothing, and lib/persist.mn's `!Network` held two weeks after the last
-Network effect left the tree on 2026-09-28;
+(§«Named effect rows») — is `E_MissingVariable` at the declaration, and
+inside a type at the name itself (real, 2026-10-13: until then the expansion
+took an unknown name as an effect OF THAT NAME, so `fn quiet() with !Nowhere
+= 1` checked clean and constrained nothing, and lib/persist.mn's `!Network`
+held two weeks after the last Network effect left the tree on 2026-09-28;
 tests/micros/mn-effect-name-resolves.mn, mn-effect-name-in-fn-type.mn).
+
+**A function type's row means what a declaration's clause means** (real,
+2026-10-15). `f: () -> Int with !Both` holds its row as its author wrote it,
+read where every named row is known, whatever writes the type — a parameter,
+a return, a let's annotation, an op's signature, a constructor's field, a
+handler's configuration, a type's argument, an alias's body — so `!Both`
+forbids every member of `type Both = A + B`, and each name is a reference
+`refs of` answers. Until then the type folded its row where it was parsed,
+before any named row was registered: `Both` read as an effect of that name,
+the negation forbade nothing, and a callback performing `A` checked clean
+through every one of those positions (tests/crown/leak-fn-type-*.mn); a name
+in an alias's body or a type's argument was never judged at all
+(tests/micros/mn-effect-name-in-alias-fn-type.mn,
+mn-effect-name-nested-fn-type.mn).
 
 **A lowercase name in a row is a row variable** — the case rule read at a row, as it is read at a type. `f: () -> a with e` takes a callback performing anything, and `e` written again anywhere in the same signature — another parameter's type, the declaration's own clause — is the same variable, as a type variable named twice is. A parenthesized group is a row term the clause folds whole, its outer connective applied to what it spells: `with Memory + Alloc + (e - Intern)` is the row of a body that absorbs `Intern` around the callback and pays for the install, and it is how the medium writes such a row back (real, 2026-10-06: a lowercase name was read as an EFFECT named `e`, so `run(() => op())` against `f: () -> Int with e` refused `E vs e`, and a group did not parse).
 

@@ -1,0 +1,20 @@
+// CROWN — a named row negated in a declared return's function type: the
+// function `mk` hands back performs neither A nor B. Measured on boot
+// 493a5619: checked clean. Expect E_EffectMismatch.
+effect A {
+  opa() -> Int
+}
+
+effect B {
+  opb() -> Int
+}
+
+type Both = A + B
+
+fn mk() -> () -> Int with !Both = () => opa()
+
+handler ha {
+  opa() => resume(7),
+}
+
+fn main() = mk()() ~> ha

@@ -1,0 +1,24 @@
+// CROWN — the sound twin of leak-fn-type-alias-negation: a callback
+// performing an effect OUTSIDE the named row is admitted under `!Both`, so
+// the row inside the function type forbids its members and nothing else.
+effect A {
+  opa() -> Int
+}
+
+effect B {
+  opb() -> Int
+}
+
+effect C {
+  opc() -> Int
+}
+
+type Both = A + B
+
+fn run(f: () -> Int with !Both) = f()
+
+handler hc {
+  opc() => resume(7),
+}
+
+fn main() = run(() => opc()) ~> hc

@@ -2224,7 +2224,10 @@ fn infer_stmt(ref node) = {
       // on the literal — `let bad: Sample = 1.5` rejects, `0.5` compiles.
       // Absent = LitUnit, skipped.
       match graph_node_body(ann) {
-        NTypeAnn(ann_ty) => apply_let_annotation(ann, ann_ty, expr, graph_span_of(expr)),
+        NTypeAnn(ann_ty) => {
+          link_written(ann)
+          apply_let_annotation(ann, ann_ty, expr, graph_span_of(expr))
+        },
         _ => (),
       }
     },
@@ -2244,11 +2247,11 @@ fn infer_stmt(ref node) = {
       each({ (_, _, vnode) => link_written(vnode) }, variants)
       declaration_noted(node, name)
     },
-    NStmt(EffectDeclStmt(name, _, ops)) => {
-      // Every `with` row inside an op's signature resolves, judged HERE —
-      // after every effect of the link is registered — so an op naming an
+    NStmt(EffectDeclStmt(name, params, ops)) => {
+      // Every name an op's signature writes resolves, judged HERE — after
+      // every declaration of the link is registered — so an op naming an
       // effect declared below it in source is not refused for the order.
-      each(check_op_effect_names, ops)
+      link_params_written(params)
       each(link_op_written, ops)
       declaration_noted(node, name)
     },
@@ -2259,6 +2262,7 @@ fn infer_stmt(ref node) = {
       // where the decl is judged. A handler declares a value, as a fn
       // does, so its node carries the handler's type once registered.
       note_decl(node)
+      link_params_written(config)
       register_handler(hname, ename, config, state, arms, effs, span, node)
       match graph_published(node) {
         Some((Frozen(_, ty), _, _)) => bind_declared(node, ty, hname),
@@ -2291,6 +2295,7 @@ fn infer_stmt(ref node) = {
     // live value node for self (value-proof R2) and decides or pends against
     // a value that exists.
     NStmt(RefineStmt(name, base_ty, pred)) => {
+      each(link_written, written_cells(base_ty))
       judge_predicate(name, base_ty, pred)
       declaration_noted(node, name)
     },
@@ -2300,6 +2305,7 @@ fn infer_stmt(ref node) = {
     // where it is declared, so each name it writes is linked to the
     // declaration the name denotes.
     NStmt(AliasStmt(name, ty)) => {
+      each(link_written, written_cells(ty))
       let _ = quantify_ctor_ty(ty, [], Declared(name))
       declaration_noted(node, name)
     },
@@ -2879,8 +2885,8 @@ fn infer_fn(name, params, body_node, ret_ann, effs, handle, span: ValidSpan, pol
   // link declares, or the declaration refuses (check_effect_names's law, at
   // the function-type altitude: `f: () -> a with !Network` constrained
   // nothing while no Network existed).
-  each(check_param_effect_names(span), params)
-  check_ret_ann_effect_names(ret_ann)
+  link_params_written(params)
+  link_written(ret_ann)
   let resolved_params =
     declare_params(params, param_tys, param_handles, judged_guards(handle, params, name))
   // THE ASSUMED SIGNATURE RIDES THE SLOT AS A VALUE — prereg's own law
@@ -3606,6 +3612,7 @@ fn charge_word(body) = match body {
   NHole(_) => "the hole",
   NModule(_) => "the module",
   NLink(_) => "the link",
+  NRow(_) => "the row",
   NTypeAnn(_) => "the annotation",
   NName(_) => "the row",
 }
@@ -3821,74 +3828,18 @@ fn check_effect_name(ename, at, span: ValidSpan) = if row_var_spelled(ename) || 
   }
 }
 
-// One parameter's type, walked at the declaration's span — the stage every
-// parameter list below is walked with.
-fn check_param_effect_names(span: ValidSpan, p) = check_ty_effect_names(param_ty(p), span)
-
-// The same law at the function-type altitude: every `with` row a TYPE holds
-// — a function-typed parameter's, a continuation's world, a row inside a
-// record's field or a nominal type's argument — names effects the link
-// declares. The parser builds those rows before any effect is registered
-// (build_declared_row at parse time takes a name on faith), so the judgment
-// walks the type where the declaration is judged, with every effect in the
-// env. The walk mirrors free_in_ty's over the type constructors.
-fn check_ty_effect_names(ty, span: ValidSpan) = match ty {
-  TInt => (),
-  TFloat => (),
-  TUnit => (),
-  TByte => (),
-  TAddr => (),
-  TVar(_) => (),
-  TList(elem) => check_ty_effect_names(elem, span),
-  TTuple(elems) => each(check_ty_effect_names(??, span), elems),
-  TFun(params, ret, eff) => {
-    each(check_param_effect_names(span), params)
-    check_ty_effect_names(ret, span)
-    check_row_effect_names(eff, span)
-  },
-  TName(_, args) => each(check_ty_effect_names(??, span), args),
-  TRecord(fields) => each({ (_, fty) => check_ty_effect_names(fty, span) }, fields),
-  TRecordOpen(fields, _) => each({ (_, fty) => check_ty_effect_names(fty, span) }, fields),
-  TRefined(base, _) => check_ty_effect_names(base, span),
-  TCont(input, answer, _, world) => {
-    check_ty_effect_names(input, span)
-    check_ty_effect_names(answer, span)
-    check_row_effect_names(world, span)
-  },
-  TAlias(_, inner) => check_ty_effect_names(inner, span),
-  TReprPin(_, base) => check_ty_effect_names(base, span),
-}
-
-// A built row's names, present and absent alike; its tail is a cell.
-fn check_row_effect_names(row, span: ValidSpan) = match row {
-  EfRow(present, absent, _) => each(check_effect_name(??, None, span), present ++ absent),
-}
-
 // An op's signature, its names linked where the link is whole: the return
 // its node holds, and each parameter's type.
 fn link_op_written(op) = match op {
   (_, op_params, _, op_node) => {
     link_written(op_node)
-    each({ p => each(link_written, written_cells(param_ty(p))) }, op_params)
+    link_params_written(op_params)
   },
 }
 
-// An effect op's signature: its parameters' types and its return, each at
-// the op's own span.
-fn check_op_effect_names(op) = match op {
-  (_op_name, op_params, ret, op_node) => {
-    let op_span = graph_span_of(op_node)
-    each(check_param_effect_names(op_span), op_params)
-    check_ty_effect_names(ret, op_span)
-  },
-}
-
-// A function's authored return type, when one was written (the parser mints
-// LitUnit where no `->` is authored).
-fn check_ret_ann_effect_names(ret_ann) = match graph_node_body(ret_ann) {
-  NTypeAnn(t) => check_ty_effect_names(t, graph_span_of(ret_ann)),
-  _ => (),
-}
+// A parameter list's written types, each name linked where the link is whole.
+fn link_params_written(params) =
+  each({ p => each(link_written, written_cells(param_ty(p))) }, params)
 
 fn check_instance_args(effs, span: ValidSpan) = each(
   {
@@ -4396,6 +4347,7 @@ fn infer_expr(ref handle) = {
     // is never itself an expression node
     NModule(_) => (),
     NLink(_) => (),
+    NRow(_) => (),
     // an authored type annotation at expression
     // position — degenerate; NTypeAnn is read
     // directly by return-type/let-annotation call
@@ -6136,6 +6088,7 @@ fn instance_body(chain: String, body, copy, span: ValidSpan) = match body {
   NTypeAnn(t) => NTypeAnn(t),
   NModule(m) => NModule(m),
   NLink(l) => NLink(l),
+  NRow(t) => NRow(t),
   NName(written) => NName(written),
 }
 
@@ -13768,6 +13721,48 @@ fn quantify_ctor_row(row, qmap, owner) = match row {
   },
 }
 
+// A function type's row as its author wrote it — the cell whose node holds
+// the terms — read for what the terms mean. A row the type was given any
+// other way is what it says.
+fn written_fn_row(row, owner) = match row {
+  EfRow(_, _, EtOpen([e])) => match graph_node_body(edge_cell(e)) {
+    NRow(terms) => written_row_meaning(edge_cell(e), terms, owner),
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) => row,
+  },
+  EfRow(_, _, EtOpen(_)) | EfRow(_, _, EtClosed) | EfRow(_, _, EtAll) => row,
+}
+
+// What a written row means: its terms folded where the type is first read,
+// after every named row is registered, and its cell bound to the fold, so
+// every later read reads the same row.
+fn written_row_meaning(c, terms, owner) = match graph_chase(c) {
+  GNode(NRowBound(bound), _) => bound,
+  GNode(NBound(_), _)
+  | GNode(NFree(_), _)
+  | GNode(NRowFree(_), _)
+  | GNode(NRecordRowBound(_, _), _)
+  | GNode(NErrorHole(_), _) => {
+    let folded = build_declared_row(terms)
+    graph_bind_row(c, folded, owner)
+    folded
+  },
+}
+
+// Every written row under an annotation's node, read for its meaning — an
+// alias's body is read through the alias, never through the intake, and a use
+// the walk reaches before the alias's own judgment reads the row it means,
+// never a variable a call could bind.
+fn read_written_rows(c, owner) = {
+  match graph_node_body(c) {
+    NRow(terms) => {
+      let _ = written_row_meaning(c, terms, owner)
+      ()
+    },
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) => (),
+  }
+  each(read_written_rows(??, owner), body_child_handles(graph_node_body(c)))
+}
+
 // Each open edge becomes a quantified row variable, its mask kept: one the
 // author named (`with e`) is the signature's one cell for that name, the
 // parse's anonymous tail a cell of its own.
@@ -13843,7 +13838,7 @@ fn quantify_ctor_ty(ty, qmap, owner) = match ty {
       // stored closure then "violated Pure" (the CLI verb table). Re-mint the tail
       // as a row var here and quantify it; result_ty filters row handles out by
       // node-kind, so the type stays non-parametric.
-      (r2, q2) => match quantify_ctor_row(row, q2, owner) {
+      (r2, q2) => match quantify_ctor_row(written_fn_row(row, owner), q2, owner) {
         (row2, q3) => (TFun(ps2, r2, row2), q3),
       },
     },
@@ -13896,12 +13891,14 @@ fn resolve_written(h, ty, qmap, owner) = match graph_node_body(h) {
       },
     }
   },
-  NTypeAnn(_) | NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NName(_) => (ty, qmap),
+  NTypeAnn(_) | NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NName(_) | NRow(_) => (ty, qmap),
 }
 
 // A written name linked where every declaration of the link is registered,
-// then the names its arguments write. A constructor's fields and an op's
-// signature are read when their declarations register, before a type
+// then the names its children write: a type name to the type it denotes, and
+// an effect name in a function type's row to the effect or named row it
+// denotes, refused when it denotes neither. A constructor's fields and an
+// op's signature are read when their declarations register, before a type
 // declared later in the link — or the declaring type itself — has a
 // declaration to link to.
 fn link_written(c) = {
@@ -13910,7 +13907,16 @@ fn link_written(c) = {
       Some(d) => graph_ref_link(c, d),
       None => (),
     },
-    NTypeAnn(_) | NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NName(_) => (),
+    NName(RowEffect(ename)) => check_effect_name(ename, Some(c), graph_span_of(c)),
+    NTypeAnn(_)
+    | NExpr(_)
+    | NStmt(_)
+    | NPat(_)
+    | NHole(_)
+    | NModule(_)
+    | NLink(_)
+    | NName(ArmOp(_))
+    | NRow(_) => (),
   }
   each(link_written, body_child_handles(graph_node_body(c)))
 }
@@ -13933,7 +13939,10 @@ fn type_decl_named(name: String) = match env_resolve_type(name) {
 fn named_type(name: String, decl) = match decl {
   Some(d) => match graph_published(d) {
     Some((scheme, _, _)) => match judgment_ty(scheme) {
-      TAlias(an, inner) => TAlias(an, chase_deep(inner)),
+      TAlias(an, inner) => {
+        each(read_written_rows(??, Declared(an)), written_cells(inner))
+        TAlias(an, chase_deep(inner))
+      },
       _ => TName(name, []),
     },
     None => TName(name, []),
@@ -15119,6 +15128,7 @@ fn collect_fn_decls(node, acc) = match graph_node_body(node) {
   NPat(_) => acc,
   NModule(_) => acc,
   NLink(_) => acc,
+  NRow(_) => acc,
   NTypeAnn(_) => acc,
   NName(_) => acc,
 }
@@ -15284,6 +15294,7 @@ fn resume_grade(node) = match graph_node_body(node) {
   NPat(_) => RNone,
   NModule(_) => RNone,
   NLink(_) => RNone,
+  NRow(_) => RNone,
   NTypeAnn(_) => RNone,
   NName(_) => RNone,
 }

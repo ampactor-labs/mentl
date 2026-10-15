@@ -554,6 +554,7 @@ fn usage_of(ref binder, ref node, mode) = match graph_node_body(node) {
   NHole(_) => pair_zero(),
   NModule(_) => pair_zero(),
   NLink(_) => pair_zero(),
+  NRow(_) => pair_zero(),
   NTypeAnn(_) => pair_zero(),
   NName(_) => pair_zero(),
 }

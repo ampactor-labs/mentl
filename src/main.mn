@@ -911,7 +911,7 @@ fn write_roster(h) = match graph_node_body(h) {
     },
     None => [],
   },
-  NExpr(_) | NStmt(_) | NHole(_) | NPat(_) | NTypeAnn(_) | NModule(_) | NLink(_) | NName(_) => [],
+  NExpr(_) | NStmt(_) | NHole(_) | NPat(_) | NTypeAnn(_) | NModule(_) | NLink(_) | NName(_) | NRow(_) => [],
 }
 
 // The roster as the pattern written in the catch-all's place: each

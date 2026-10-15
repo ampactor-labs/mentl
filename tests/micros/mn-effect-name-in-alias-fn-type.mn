@@ -1,0 +1,18 @@
+// expect: refuse E_MissingVariable
+// THE SAME LAW IN AN ALIAS'S BODY: a function type an alias names writes a
+// row whose names resolve, or the alias refuses at the name. `!Raed` forbade
+// nothing, since no Raed exists, and the callback reading Read ran. Measured
+// on boot 493a5619: checked clean.
+effect Read {
+  rd() -> Int
+}
+
+fn run(f: Thunk) = f()
+
+handler hr {
+  rd() => resume(7),
+}
+
+fn main() = run(() => rd()) ~> hr
+
+type Thunk = () -> Int with !Raed

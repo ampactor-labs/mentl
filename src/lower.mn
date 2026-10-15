@@ -2341,9 +2341,10 @@ fn lower_expr(handle) = match graph_node_body(handle) {
       // never an expr position — module entity, not a value
       NModule(_) => LConst(canon, LInt(0)),
       NLink(_) => LConst(canon, LInt(0)),
-      // never an expr position — an authored return annotation, not a value
+      // never an expr position — an authored annotation, not a value
       NTypeAnn(_) => LConst(canon, LInt(0)),
       NName(_) => LConst(canon, LInt(0)),
+      NRow(_) => LConst(canon, LInt(0)),
     }
   },
 }
@@ -4079,6 +4080,7 @@ fn lower_stmt(handle) = {
     // type annotation at stmt position — degenerate
     NTypeAnn(_) => LConst(handle, LInt(0)),
     NName(_) => LConst(handle, LInt(0)),
+    NRow(_) => LConst(handle, LInt(0)),
   }
 }
 
@@ -6849,6 +6851,7 @@ fn reach_stmt_defers(node) = match graph_node_body(node) {
   NLink(_) => false,
   NTypeAnn(_) => false,
   NName(_) => false,
+  NRow(_) => false,
 }
 
 // The seed — the always-live set constructs in source order. A module value

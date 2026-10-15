@@ -164,7 +164,7 @@ fn spine_put_module(ref spine, h, m) = {
 fn spine_module_name(ref spine, spine_open, m) = match spine_body_at(spine, spine_open, m) {
   NModule(mm) => mm.path,
   NLink(_) => "<link>",
-  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NTypeAnn(_) | NName(_) => {
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NTypeAnn(_) | NName(_) | NRow(_) => {
     out_of_range()
     ""
   },
@@ -2107,6 +2107,30 @@ fn body_child_handles(body) = match body {
   NLink(_) => [],
   NTypeAnn(ty) => written_cells(ty),
   NName(_) => [],
+  NRow(terms) => written_row_nodes(terms),
+}
+
+// A function type's row cells: every open edge of its row, the written
+// row's among them.
+fn row_cells(row) = match row {
+  EfRow(_, _, EtOpen(edges)) => map(
+    {
+      ed => match ed {
+        RowEdge(r) => r.cell,
+      },
+    },
+    edges
+  ),
+  EfRow(_, _, EtClosed) | EfRow(_, _, EtAll) => [],
+}
+
+// The nodes a written row places its names at, groups included.
+fn written_row_nodes(terms) = flat_map({ (t, _, _) => term_nodes(t) }, terms)
+
+fn term_nodes(t) = match t {
+  RtEff(_, Some(n)) => [n],
+  RtEff(_, None) => [],
+  RtGroup(ts) => written_row_nodes(ts),
 }
 
 // A type annotation's children: the names it writes. Every variable a type
@@ -2116,7 +2140,7 @@ fn written_cells(ty) = match ty {
   TVar(h) => [h],
   TList(elem) => written_cells(elem),
   TTuple(elems) => flat_map(written_cells, elems),
-  TFun(params, ret, _) => flat_map({ p => written_cells(param_ty(p)) }, params) ++ written_cells(ret),
+  TFun(params, ret, row) => flat_map({ p => written_cells(param_ty(p)) }, params) ++ written_cells(ret) ++ row_cells(row),
   TName(_, args) => flat_map(written_cells, args),
   TRecord(fields) => flat_map({ (_, fty) => written_cells(fty) }, fields),
   TRecordOpen(fields, _) => flat_map({ (_, fty) => written_cells(fty) }, fields),
@@ -2414,7 +2438,7 @@ fn module_cells() with !Mutate = link_modules() |> fold([], module_cell_of)
 // A member of the link's cell. A link holds modules alone.
 fn module_cell_of(acc, h) with !Mutate = match graph_node_body(h) {
   NModule(m) => push(acc, (h, m.path, m.span, m.decls)),
-  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NLink(_) | NTypeAnn(_) | NName(_) => out_of_range(),
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) => out_of_range(),
 }
 
 // The program the graph holds, read off its link: its modules, the module a
@@ -2439,14 +2463,14 @@ fn link_prelude() with !Mutate = match graph_link() {
 // link.
 fn link_of(l) with !Mutate = match graph_node_body(l) {
   NLink(k) => k,
-  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NTypeAnn(_) | NName(_) => out_of_range(),
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NTypeAnn(_) | NName(_) | NRow(_) => out_of_range(),
 }
 
 // A module's own record at its handle; an import edge and a member of the
 // link reach a module.
 fn module_of(mh) with !Mutate = match graph_node_body(mh) {
   NModule(m) => m,
-  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NLink(_) | NTypeAnn(_) | NName(_) => out_of_range(),
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) => out_of_range(),
 }
 
 // The program's declarations, every module's in the link's order: what a

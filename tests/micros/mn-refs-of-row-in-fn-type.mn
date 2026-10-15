@@ -1,0 +1,25 @@
+// refs of Both: 3 row
+// A name a function type's row writes is a reference, as a clause's is: the
+// judgment links it where every named row is known, so `refs of Both`
+// answers an alias's body, a parameter's type and a type nested in a type's
+// argument.
+effect A {
+  opa() -> Int
+}
+
+effect B {
+  opb() -> Int
+}
+
+type Both = A + B
+
+type Thunk = () -> Int with !Both
+
+fn run(f: () -> Int with !Both) = f()
+
+fn call_some(fs: Option(() -> Int with !Both)) = match fs {
+  Some(f) => f(),
+  None => 0,
+}
+
+fn main() = run(() => 1) + call_some(Some(() => 2))

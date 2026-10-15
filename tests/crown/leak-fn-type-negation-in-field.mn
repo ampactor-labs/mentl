@@ -1,0 +1,24 @@
+// CROWN — a named row negated in a constructor's field: a function stored in
+// a Box performs neither A nor B. Measured on boot 493a5619: checked clean.
+// Expect E_EffectMismatch.
+effect A {
+  opa() -> Int
+}
+
+effect B {
+  opb() -> Int
+}
+
+type Both = A + B
+
+type Box = Box(() -> Int with !Both)
+
+fn open_box(b) = match b {
+  Box(f) => f(),
+}
+
+handler ha {
+  opa() => resume(7),
+}
+
+fn main() = open_box(Box(() => opa())) ~> ha

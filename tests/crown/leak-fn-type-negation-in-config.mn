@@ -1,0 +1,26 @@
+// CROWN — a named row negated in a handler's configuration: the function an
+// install hands `apply` performs neither A nor B. Measured on boot 493a5619:
+// checked clean. Expect E_EffectMismatch.
+effect A {
+  opa() -> Int
+}
+
+effect B {
+  opb() -> Int
+}
+
+type Both = A + B
+
+effect Go {
+  go() -> Int
+}
+
+handler apply(f: () -> Int with !Both) {
+  go() => resume(f()),
+}
+
+handler ha {
+  opa() => resume(7),
+}
+
+fn main() = go() ~> apply(() => opa()) ~> ha

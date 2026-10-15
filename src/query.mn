@@ -613,7 +613,7 @@ fn name_decls(name) with !Mutate = {
 fn ref_role(h) with !Mutate = match graph_node_body(h) {
   NPat(_) => "pattern",
   NTypeAnn(_) => "annotation",
-  NName(RowEffect(_)) => "row",
+  NName(RowEffect(_)) | NRow(_) => "row",
   NName(ArmOp(_)) => "arm",
   NExpr(IndexExpr(_, _)) | NExpr(BinOpExpr(_, _, _)) | NExpr(MakeStringExpr(_)) => "call",
   NExpr(_) | NStmt(_) | NHole(_) | NModule(_) | NLink(_) => if callee_of_parent(h) { "call" } else { "value" },
@@ -910,7 +910,7 @@ fn ur_value_let(entry) = match entry {
       | RowAliasStmt(_, _)
       | ExprStmt(_) => [],
     },
-    NExpr(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) => [],
+    NExpr(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) => [],
   },
 }
 
@@ -950,7 +950,7 @@ fn refine_root(entry) = match entry {
       | RowAliasStmt(_, _)
       | ExprStmt(_) => [],
     },
-    NExpr(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) => [],
+    NExpr(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) => [],
   },
 }
 
@@ -1224,7 +1224,15 @@ fn op_is_unperformed(stmt, op) with !Mutate = match op {
 // A reference performs its op unless it is the name an arm serves.
 fn performs_at(r) with !Mutate = match graph_node_body(r) {
   NName(ArmOp(_)) => false,
-  NName(RowEffect(_)) | NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) => true,
+  NName(RowEffect(_))
+  | NExpr(_)
+  | NStmt(_)
+  | NPat(_)
+  | NHole(_)
+  | NModule(_)
+  | NLink(_)
+  | NTypeAnn(_)
+  | NRow(_) => true,
 }
 
 fn op_name(op) with Pure = match op {
@@ -1444,7 +1452,7 @@ fn census_note(shape, h) with !Mutate = match shape {
 // (`catch_all_arm`, src/infer.mn); any other node answers nothing.
 fn catch_all_of(body) with !Mutate = match body {
   NExpr(MatchExpr(scrut, arms)) => catch_all_arm(scrut, arms),
-  NExpr(_) | NStmt(_) | NHole(_) | NPat(_) | NTypeAnn(_) | NModule(_) | NLink(_) | NName(_) => None,
+  NExpr(_) | NStmt(_) | NHole(_) | NPat(_) | NTypeAnn(_) | NModule(_) | NLink(_) | NName(_) | NRow(_) => None,
 }
 
 // Every match the census convicts, as its handle — the node `mentl tighten`

@@ -1,0 +1,26 @@
+// CROWN — a named row negated in an op's parameter type: every perform of
+// `run_it` hands a function the row forbids to perform A or B. Measured on
+// boot 493a5619: checked clean. Expect E_EffectMismatch.
+effect A {
+  opa() -> Int
+}
+
+effect B {
+  opb() -> Int
+}
+
+type Both = A + B
+
+effect Run {
+  run_it(f: () -> Int with !Both) -> Int
+}
+
+handler runner {
+  run_it(f) => resume(f()),
+}
+
+handler ha {
+  opa() => resume(7),
+}
+
+fn main() = run_it(() => opa()) ~> runner ~> ha

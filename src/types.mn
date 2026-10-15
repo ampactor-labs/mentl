@@ -726,7 +726,7 @@ fn some_param_ty(p) = Some(param_ty(p))
 fn unwritten_cell(ty) = match ty {
   TVar(h) => match graph_node_body(h) {
     NTypeAnn(_) => None,
-    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NName(_) => Some(h),
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NName(_) | NRow(_) => Some(h),
   },
   TInt
   | TFloat
@@ -2449,6 +2449,11 @@ type NodeBody
   // arm's op: the position the judgment links to the declaration the name
   // denotes, so `refs of` that declaration answers it.
   | NName(WrittenName)
+  // A function type's row as its author wrote it: its terms, each name a
+  // node. The node is the row's cell, which the judgment binds to what the
+  // terms mean once every named row is known, so a name it writes is
+  // resolved where declarations are, never where the type is parsed.
+  | NRow([(RowTerm, Bool, EConn)])
 
 // What a name written outside an expression names: an effect or a named row
 // in an authored row (`with !Alloc`), or the op a handler arm serves.
@@ -2832,7 +2837,7 @@ type Pat
 // The pattern at a node; every handle a pattern holds is one.
 fn pat_of(h) = match graph_node_body(h) {
   NPat(p) => p,
-  NExpr(_) | NStmt(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) => out_of_range(),
+  NExpr(_) | NStmt(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) => out_of_range(),
 }
 
 // The constructors a catch-all over a sum stands for, read off the arms
@@ -5121,7 +5126,7 @@ fn diag_report_at(diag, dmod, dlayer) = diag_report(diag, diag_message(diag), dm
 fn module_name_of_handle(h) = match graph_node_body(h) {
   NModule(m) => m.path,
   NLink(_) => "<link>",
-  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NTypeAnn(_) | NName(_) => {
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NTypeAnn(_) | NName(_) | NRow(_) => {
     out_of_range()
     ""
   },
@@ -5132,7 +5137,7 @@ fn module_name_of_handle(h) = match graph_node_body(h) {
 fn module_layer_of_handle(h) = match graph_node_body(h) {
   NModule(m) => m.layer,
   NLink(l) => l.layer,
-  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NTypeAnn(_) | NName(_) => {
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NTypeAnn(_) | NName(_) | NRow(_) => {
     out_of_range()
     User
   },
@@ -5257,7 +5262,7 @@ fn render_ty(ty) with !Mutate = match ty {
   // its binding.
   TVar(id) => match graph_node_body(id) {
     NTypeAnn(written) => render_ty(written),
-    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NName(_) => render_var(id),
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NName(_) | NRow(_) => render_var(id),
   },
   TName(name, args) => if len(args) == 0 { name } else { "{name}({show_list(args, render_ty, ", ")})" },
   TRecord(fields) => "\{{show_list(fields_by_name(fields), render_field, ", ")}\}",
@@ -5621,21 +5626,12 @@ fn show_discipline(d) with Pure = match d {
 fn render_row_suffix(row) with !Mutate = match ty_row_face() {
   FaceAuthored => match row {
     EfRow(p, a, t) => {
-      // An author writes a row variable by its name; the parse's own open
-      // tail — the absence of a clause — has none and renders nothing.
-      let named = match t {
-        EtOpen(vs) => filter({ e => is_named_var(e.cell) }, vs),
-        _ => [],
+      let head = if len(p) == 0 && len(a) == 0 { [] } else { [render_row_head(p, a)] }
+      let written = match t {
+        EtOpen(vs) => flat_map(render_authored_edge, vs),
+        EtClosed | EtAll => [],
       }
-      if len(p) == 0 && len(a) == 0 && len(named) == 0 {
-        ""
-      } else if len(named) == 0 {
-        " with {render_row_head(p, a)}"
-      } else if len(p) == 0 && len(a) == 0 {
-        " with {show_list(named, render_row_edge, " + ")}"
-      } else {
-        " with {render_row_head(p, a)} + {show_list(named, render_row_edge, " + ")}"
-      }
+      if len(head) == 0 && len(written) == 0 { "" } else { " with {join(" + ", head ++ written)}" }
     },
   },
   FaceInferred => match row {
@@ -5661,6 +5657,41 @@ fn render_row_head(p, a) with !Mutate = {
   let negs = show_list(a, (n) => "!{render_eff_name(n)}", " + ")
   let joiner = if len(p) > 0 && len(a) > 0 { " + " } else { "" }
   "{parts}{joiner}{negs}"
+}
+
+// An open edge as an author wrote it: a function type's row as its terms, a
+// row variable by its name. The parse's own open tail — the absence of a
+// clause — has neither and renders nothing.
+fn render_authored_edge(e: RowEdge) with !Mutate = match graph_node_body(e.cell) {
+  NRow(terms) => [render_written_row(terms)],
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) => if is_named_var(e.cell) { [render_row_edge(e)] } else { [] },
+}
+
+// A row as its author wrote it — a declaration's clause, a named row, a
+// function type's: the first term bare, each later one led by the connective
+// its author joined it with, a negation as `!`, a group in its parentheses.
+fn render_written_row(terms) with !Mutate = match terms {
+  [] => "",
+  [(term, negated, _), ...rest] => "{render_written_term(term, negated)}{rest |> map(render_joined_term) |> join("")}",
+}
+
+fn render_joined_term(entry) with !Mutate = match entry {
+  (term, negated, conn) => {
+    let glyph = match conn {
+      EcUnion => " + ",
+      EcDiff => " - ",
+      EcInter => " & ",
+    }
+    "{glyph}{render_written_term(term, negated)}"
+  },
+}
+
+fn render_written_term(term, negated) with !Mutate = {
+  let bang = if negated { "!" } else { "" }
+  match term {
+    RtEff(name, _) => "{bang}{render_eff_name(name)}",
+    RtGroup(ts) => "{bang}({render_written_row(ts)})",
+  }
 }
 
 // The triple, as SYNTAX writes a row: presents joined with `+`, the absent
