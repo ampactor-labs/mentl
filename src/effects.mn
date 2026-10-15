@@ -265,14 +265,14 @@ fn apply_connective(conn, acc, term) = match conn {
 fn has_pure_declared(effs) = any({ (t, _, _) => term_is_pure(t) }, effs)
 
 fn term_is_pure(t) = match t {
-  RtEff(name) => is_pure_eff_name(name),
+  RtEff(name, _) => is_pure_eff_name(name),
   RtGroup(_) => false,
 }
 
 // Whether a term names the effect `ename`: the name itself, or a group that
 // adds it.
 fn term_spells(t, ename: String) = match t {
-  RtEff(n) => eff_name_str(n) == ename,
+  RtEff(n, _) => eff_name_str(n) == ename,
   RtGroup(ts) => any({ (u, neg, conn) => !neg && conn == EcUnion && term_spells(u, ename) }, ts),
 }
 
@@ -357,12 +357,12 @@ fn row_alias_triples(name) = match env_lookup(eff_name_str(name)) {
 // connectives first, the outer one applied to what it spells, the rule a
 // named row's reference follows.
 fn term_row(t, seen, rvars) = match t {
-  RtEff(name) => leaf_row_of(name, seen, rvars),
+  RtEff(name, _) => leaf_row_of(name, seen, rvars),
   RtGroup(ts) => build_row_seen(ts, seen, rvars),
 }
 
 fn term_neg_names(t, seen, rvars) = match t {
-  RtEff(name) => if row_var_spelled(name) {
+  RtEff(name, _) => if row_var_spelled(name) {
     // A row variable stands for a set nothing here closes; its negation
     // is no forbidden set at all.
     report(ERowAliasNegation(eff_name_str(name), span_zero()))

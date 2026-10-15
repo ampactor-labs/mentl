@@ -1706,6 +1706,12 @@ fn node_query_line(h, kind) = match graph_node_body(h) {
   NStmt(EffectDeclStmt(name, _, ops)) => "effect {name} — {int_to_str(len(ops))} op(s)",
   NStmt(HandlerDeclStmt(name, _, _, state, arms, _)) => "handler {name} — {int_to_str(len(arms))} arm(s), {int_to_str(len(state))} state field(s)",
   NStmt(RowAliasStmt(name, _)) => "{name} — a named effect row",
+  // A row's name answers with what it denotes, read off the link the
+  // judgment drew.
+  NRowName(name) => match graph_ref_decl(h) {
+    Some(d) => node_query_line(d, kind),
+    None => "{eff_name_str(name)} — names no effect in reach",
+  },
   // An UNDETERMINED hole never leaks the raw var — substrate
   // vocabulary at the exact moment the medium should ASK (§1's law: the
   // question beats the guess; the fan cannot enumerate an open type, so

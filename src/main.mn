@@ -914,7 +914,7 @@ fn roster_render(path: String, judged: String, decls, sites) = {
 // its file — the same read as `module_name_of_handle`, the same refusal.
 fn module_decls_of(h) = match graph_node_body(graph_module_of(h)) {
   NModule(m) => m.decls,
-  NExpr(_) | NStmt(_) | NHole(_) | NPat(_) | NTypeAnn(_) => {
+  NExpr(_) | NStmt(_) | NHole(_) | NPat(_) | NTypeAnn(_) | NRowName(_) => {
     out_of_range()
     []
   },
@@ -933,7 +933,7 @@ fn write_roster(h) = match graph_node_body(h) {
     },
     None => [],
   },
-  NExpr(_) | NStmt(_) | NHole(_) | NPat(_) | NTypeAnn(_) | NModule(_) => [],
+  NExpr(_) | NStmt(_) | NHole(_) | NPat(_) | NTypeAnn(_) | NModule(_) | NRowName(_) => [],
 }
 
 // The roster as the pattern written in the catch-all's place: each
@@ -1747,7 +1747,7 @@ fn battery_fmt_step(stem, path: String, src: String) = {
 // The roles in one order — calls, values, patterns, annotations — each with
 // its count, a role nothing stands in unsaid.
 fn refs_role_counts(sites) =
-  ["call", "value", "pattern", "annotation"] |> flat_map(role_count(sites, ??)) |> join(" ", ??)
+  ["call", "value", "pattern", "annotation", "row"] |> flat_map(role_count(sites, ??)) |> join(" ", ??)
 
 fn role_count(sites, role: String) = match count({ (_, _, r) => r == Some(role) }, sites) {
   0 => [],

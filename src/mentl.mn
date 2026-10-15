@@ -227,7 +227,7 @@ fn clause_locks(effs) =
   if has_pure_declared(effs) { [APure(None)] } else { effs |> flat_map(term_locks(false, ??)) }
 
 fn term_locks(flipped, term) = match term {
-  (RtEff(n), neg, _) => match n {
+  (RtEff(n, _), neg, _) => match n {
     ENamed(_) => if neg != flipped { [ANotEffect(eff_name_str(n), None)] } else { [] },
     EParameterized(_, _) => [],
     EPure => [],

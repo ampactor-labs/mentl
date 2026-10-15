@@ -726,7 +726,7 @@ fn some_param_ty(p) = Some(param_ty(p))
 fn unwritten_cell(ty) = match ty {
   TVar(h) => match graph_node_body(h) {
     NTypeAnn(_) => None,
-    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) => Some(h),
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NRowName(_) => Some(h),
   },
   TInt
   | TFloat
@@ -1241,11 +1241,13 @@ type EConn
   // `&` — set intersection
   | EcInter
 
-// An authored row term: an effect name, or a parenthesized row the clause
-// folds whole, its outer connective applied to what the group spells — the
-// rule a named row's reference already follows. A group is how a masked
-// row variable reads back: `with Memory + (e - Intern)`.
-type RowTerm = RtEff(EffName) | RtGroup([(RowTerm, Bool, EConn)])
+// An authored row term: an effect name with the node it is written at (none
+// for `Pure`, a row variable, or a clause the medium writes), or a
+// parenthesized row the clause folds whole, its outer connective applied to
+// what the group spells — the rule a named row's reference already follows.
+// A group is how a masked row variable reads back: `with Memory + (e -
+// Intern)`.
+type RowTerm = RtEff(EffName, Option(Int)) | RtGroup([(RowTerm, Bool, EConn)])
 
 // Substrate owned by graph.mn. The ADTs live here because every
 // consumer of the graph names them — Read/Write/Speculate effects,
@@ -2433,15 +2435,16 @@ type NodeBody
   // register and every projection of "whose module is this" read, never a
   // path prefix re-tested.
   | NModule({decls: [Node], imports: [String], layer: Layer, path: String, span: Span})
-  // An authored type annotation carried live in the graph — the `-> RetTy`
-  // return annotation (SYNTAX.md «Return type omission»: absent = inferred,
-  // present = a CONSTRAINT). parse_type_expr mints this carrying the real Ty
-  // it parsed; infer reads the Ty LIVE and unifies the inferred body return
-  // against it (E_TypeMismatch on violation). The Carried-Truth form: the
-  // source wrote a type, so the node holds that type — never fabricated away
-  // into a dummy LitUnit. Appended last so existing NodeBody tags (the seed's
-  // 110-114 view) stay byte-identical.
+  // An authored type annotation carried live in the graph — a return's, a
+  // let's, a constructor's fields, an op's result — and every name written
+  // in a type, its children the names its arguments write. The source wrote
+  // a type, so the node holds that type: the judgment reads it and binds the
+  // node to what it resolves to.
   | NTypeAnn(Ty)
+  // A name written in an authored row (`with !Alloc`, a named row's term):
+  // the position the judgment links to the effect or named row it denotes,
+  // so `refs of` an effect answers the rows that name it.
+  | NRowName(EffName)
 
 // ─── Expr (spec 03) ────────────────────────────────────────────────
 type Expr
@@ -2821,7 +2824,7 @@ type Pat
 // The pattern at a node; every handle a pattern holds is one.
 fn pat_of(h) = match graph_node_body(h) {
   NPat(p) => p,
-  NExpr(_) | NStmt(_) | NHole(_) | NModule(_) | NTypeAnn(_) => out_of_range(),
+  NExpr(_) | NStmt(_) | NHole(_) | NModule(_) | NTypeAnn(_) | NRowName(_) => out_of_range(),
 }
 
 // The constructors a catch-all over a sum stands for, read off the arms
@@ -5250,7 +5253,7 @@ fn render_ty(ty) with !Mutate = match ty {
   // its binding.
   TVar(id) => match graph_node_body(id) {
     NTypeAnn(written) => render_ty(written),
-    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) => render_var(id),
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NRowName(_) => render_var(id),
   },
   TName(name, args) => if len(args) == 0 { name } else { "{name}({show_list(args, render_ty, ", ")})" },
   TRecord(fields) => "\{{show_list(fields_by_name(fields), render_field, ", ")}\}",

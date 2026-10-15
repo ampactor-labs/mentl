@@ -42,7 +42,7 @@ import parser
 // names a row the signature quantifies and a group states a mask; both are
 // decisions, never an inventory.
 fn term_is_bare_positive(term) = match term {
-  (RtEff(name), false, _) => match name {
+  (RtEff(name, _), false, _) => match name {
     ENamed(_) => !row_var_spelled(name),
     _ => false,
   },
@@ -608,10 +608,11 @@ fn name_decls(name) with !Mutate = {
 }
 
 // What stands at a reference: a pattern taking the value apart, a type an
-// annotation names, the callee of a call, or a value.
+// annotation names, an effect a row names, the callee of a call, or a value.
 fn ref_role(h) with !Mutate = match graph_node_body(h) {
   NPat(_) => "pattern",
   NTypeAnn(_) => "annotation",
+  NRowName(_) => "row",
   NExpr(_) | NStmt(_) | NHole(_) | NModule(_) => if callee_of_parent(h) { "call" } else { "value" },
 }
 
@@ -771,17 +772,17 @@ fn import_edge_join(acc, d) = match graph_node_body(d) {
 // What a statement declares that a reference can link to, each name with the
 // handle its references link to: a function or a handler its own node, a
 // type its own node (the names annotations write) and its constructors their
-// variants, an alias or a refinement its own node, an effect's ops their
-// nodes, a module value its value's cell (a `let`'s binder IS its value's
-// cell). An effect's name is not yet a reference — a row holds names, not
-// nodes (`Hβ.graph.positions-are-cells`) — so it has no row to measure.
+// variants, an alias, a refinement or a named row its own node, an effect its
+// own node (the names rows write) and its ops theirs, a module value its
+// value's cell (a `let`'s binder IS its value's cell).
 fn decl_links_of(d) = match graph_node_body(d) {
   NStmt(s) => match s {
     FnStmt(n, _, _, _, _) => [(n, d)],
     TypeDefStmt(n, ctors) => [(n, d)] ++ map({ (cn, _, vn) => (cn, vn) }, ctors),
     AliasStmt(n, _) => [(n, d)],
     RefineStmt(n, _, _) => [(n, d)],
-    EffectDeclStmt(_, _, ops) => map({ (on, _, _, onode) => (on, onode) }, ops),
+    RowAliasStmt(n, _) => [(n, d)],
+    EffectDeclStmt(n, _, ops) => [(n, d)] ++ map({ (on, _, _, onode) => (on, onode) }, ops),
     HandlerDeclStmt(n, _, _, _, _, _) => [(n, d)],
     LetStmt(pat, value, _) => match pat_of(pat) {
       PVar(n) => [(n, value)],
@@ -906,7 +907,7 @@ fn ur_value_let(entry) = match entry {
       | RowAliasStmt(_, _)
       | ExprStmt(_) => [],
     },
-    NExpr(_) | NPat(_) | NHole(_) | NModule(_) | NTypeAnn(_) => [],
+    NExpr(_) | NPat(_) | NHole(_) | NModule(_) | NTypeAnn(_) | NRowName(_) => [],
   },
 }
 
@@ -946,7 +947,7 @@ fn refine_root(entry) = match entry {
       | RowAliasStmt(_, _)
       | ExprStmt(_) => [],
     },
-    NExpr(_) | NPat(_) | NHole(_) | NModule(_) | NTypeAnn(_) => [],
+    NExpr(_) | NPat(_) | NHole(_) | NModule(_) | NTypeAnn(_) | NRowName(_) => [],
   },
 }
 
@@ -1115,6 +1116,8 @@ fn authored_hole(handle) with !Mutate = match graph_node_body(handle) {
 // file, not a cell inside it.
 fn node_is_ghost(h) with !Mutate = match graph_node_body(h) {
   NModule(_) => false,
+  // A row's name is judged by the link it draws.
+  NRowName(_) => !is_some(graph_ref_decl(h)),
   _ => match graph_reason_at(h) {
     Placeholder(_) => !authored_hole(h),
     _ => false,
@@ -1430,7 +1433,7 @@ fn census_note(shape, h) with !Mutate = match shape {
 // (`catch_all_arm`, src/infer.mn); any other node answers nothing.
 fn catch_all_of(body) with !Mutate = match body {
   NExpr(MatchExpr(scrut, arms)) => catch_all_arm(scrut, arms),
-  NExpr(_) | NStmt(_) | NHole(_) | NPat(_) | NTypeAnn(_) | NModule(_) => None,
+  NExpr(_) | NStmt(_) | NHole(_) | NPat(_) | NTypeAnn(_) | NModule(_) | NRowName(_) => None,
 }
 
 // Every match the census convicts, as its handle — the node `mentl tighten`
@@ -1445,14 +1448,11 @@ fn prose_line(holds, text) = match find(holds, lines(text)) {
   None => None,
 }
 
-// The weave walk's span is the node's OWN (raw) reason — the parse site.
-// span_of_handle CHASES to the union-find root, which conflates a node's
-// identity with its type-class representative: a `<~` node's chase lands
-// on the continuation-boundary cell (bound with a bare Inferred), answers
-// span_zero, and the census skipped every feedback site as synthetic —
-// the 2.0 dig's true root, found after the eq itself measured TRUE
-// (3 vs 3) on the pair the divergence hypothesis had accused.
-fn span_of_node_raw(handle) with !Mutate = span_of_reason(graph_reason_at(handle))
+// A site's span is the node's own extent, the column its parse indexed —
+// never its type class's representative, whose reason may name another
+// node or none, and never its reason, which a node the judgment never binds
+// (a row's name) does not locate.
+fn span_of_node_raw(handle) with !Mutate = graph_span_of(handle)
 
 // The dedup key is (MODULE, span), not the span alone. It was the span alone
 // while spans were offsets into ONE concatenated weave, where a coordinate was
@@ -3050,11 +3050,6 @@ fn variant_name(v) = match v {
 
 fn op_decl_name(op) = match op {
   (name, _, _, _) => name,
-}
-
-fn span_of_reason(reason) = match reason {
-  Located(sp, _) => sp,
-  _ => span_zero(),
 }
 
 // ─── Which handler declarations provide OP ─────────────────────────

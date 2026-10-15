@@ -554,6 +554,7 @@ fn usage_of(ref binder, ref node, mode) = match graph_node_body(node) {
   NHole(_) => pair_zero(),
   NModule(_) => pair_zero(),
   NTypeAnn(_) => pair_zero(),
+  NRowName(_) => pair_zero(),
 }
 
 // ⊗ over a node list (block stmts, list/tuple/string elems, parallel

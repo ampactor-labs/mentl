@@ -3120,7 +3120,7 @@ fn resolve_instance_triple(eff) = match eff {
 }
 
 fn resolve_instance_term(t) = match t {
-  RtEff(name) => RtEff(resolve_instance_name(name)),
+  RtEff(name, at) => RtEff(resolve_instance_name(name), at),
   RtGroup(ts) => RtGroup(resolve_declared_instances(ts)),
 }
 
@@ -3594,6 +3594,7 @@ fn charge_word(body) = match body {
   NHole(_) => "the hole",
   NModule(_) => "the module",
   NTypeAnn(_) => "the annotation",
+  NRowName(_) => "the row",
 }
 
 fn expr_charge_word(e) = match e {
@@ -3772,21 +3773,36 @@ fn callee_binding(h) = match tee_handler_decl(h) {
 fn check_effect_names(effs, span: ValidSpan) = each(
   {
     (RtGroup(ts), _negated, _conn) => check_effect_names(ts, span),
-    (RtEff(ename), _negated, _conn) => check_effect_name(ename, span),
+    (RtEff(ename, at), _negated, _conn) => check_effect_name(ename, at, span),
   },
   effs
 )
 
 // One name of a row, resolved: a row variable, `Pure`, an effect the env
-// declares or a row alias; anything else is refused at the span given.
-fn check_effect_name(ename, span: ValidSpan) = if row_var_spelled(ename) || is_pure_eff_name(ename) {
+// declares or a row alias; anything else is refused at the span given. A
+// name an author wrote is linked, at the node it is written at, to the
+// declaration it names, so `refs of` an effect answers the rows that name it.
+fn check_effect_name(ename, at, span: ValidSpan) = if row_var_spelled(ename) || is_pure_eff_name(ename) {
   ()
 } else {
-  match env_lookup(eff_name_str(ename)) {
-    Some(entry) => match entry {
-      (_, _, EffectDeclKind(_, _)) => (),
-      (_, _, RowAliasKind(_)) => (),
-      _ => report(EMissingVariable("effect: {eff_name_str(ename)}", span)),
+  match env_resolve(eff_name_str(ename)) {
+    Some(d) => match graph_published(d) {
+      Some((_, _, kind)) => match kind {
+        EffectDeclKind(_, _) | RowAliasKind(_) => match at {
+          Some(n) => graph_ref_link(n, d),
+          None => (),
+        },
+        FnScheme
+        | ValueScheme
+        | ParamScheme(_)
+        | EffectOpScheme(_, _, _, _)
+        | HandlerKind(_, _, _, _, _)
+        | HandlerChainKind(_)
+        | ConstructorScheme(_, _)
+        | RecordSchemeKind(_)
+        | TypeVariants(_) => report(EMissingVariable("effect: {eff_name_str(ename)}", span)),
+      },
+      None => report(EMissingVariable("effect: {eff_name_str(ename)}", span)),
     },
     None => report(EMissingVariable("effect: {eff_name_str(ename)}", span)),
   }
@@ -3832,7 +3848,7 @@ fn check_ty_effect_names(ty, span: ValidSpan) = match ty {
 
 // A built row's names, present and absent alike; its tail is a cell.
 fn check_row_effect_names(row, span: ValidSpan) = match row {
-  EfRow(present, absent, _) => each(check_effect_name(??, span), present ++ absent),
+  EfRow(present, absent, _) => each(check_effect_name(??, None, span), present ++ absent),
 }
 
 // An op's signature, its names linked where the link is whole: the return
@@ -3864,7 +3880,7 @@ fn check_ret_ann_effect_names(ret_ann) = match graph_node_body(ret_ann) {
 fn check_instance_args(effs, span: ValidSpan) = each(
   {
     (RtGroup(ts), _negated, _conn) => check_instance_args(ts, span),
-    (RtEff(ename), _negated, _conn) => match ename {
+    (RtEff(ename, _), _negated, _conn) => match ename {
       EParameterized(h, args) => match env_lookup(intern_name_of(h)) {
         Some(entry) => match entry {
           (sch, _, EffectDeclKind(_, _)) => match judgment_ty(sch) {
@@ -4373,6 +4389,8 @@ fn infer_expr(ref handle) = {
     // directly by return-type/let-annotation call
     // sites, never reached through infer_expr
     NTypeAnn(_) => (),
+    // a row's name is linked where its row is judged
+    NRowName(_) => (),
   }
 }
 
@@ -6104,6 +6122,7 @@ fn instance_body(chain: String, body, copy, span: ValidSpan) = match body {
   NPat(p) => NPat(p),
   NTypeAnn(t) => NTypeAnn(t),
   NModule(m) => NModule(m),
+  NRowName(name) => NRowName(name),
 }
 
 fn instance_of(chain: String, span: ValidSpan, h) = chain_instance(chain, h, span)
@@ -13869,7 +13888,7 @@ fn resolve_written(h, ty, qmap, owner) = match graph_node_body(h) {
       },
     }
   },
-  NTypeAnn(_) | NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) => (ty, qmap),
+  NTypeAnn(_) | NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NRowName(_) => (ty, qmap),
 }
 
 // A written name linked where every declaration of the link is registered,
@@ -13883,7 +13902,7 @@ fn link_written(c) = {
       Some(d) => graph_ref_link(c, d),
       None => (),
     },
-    NTypeAnn(_) | NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) => (),
+    NTypeAnn(_) | NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NRowName(_) => (),
   }
   each(link_written, body_child_handles(graph_node_body(c)))
 }
@@ -15092,6 +15111,7 @@ fn collect_fn_decls(node, acc) = match graph_node_body(node) {
   NPat(_) => acc,
   NModule(_) => acc,
   NTypeAnn(_) => acc,
+  NRowName(_) => acc,
 }
 
 fn collect_fn_decls_arms(arms, acc) = if len(arms) == 0 {
@@ -15255,6 +15275,7 @@ fn resume_grade(node) = match graph_node_body(node) {
   NPat(_) => RNone,
   NModule(_) => RNone,
   NTypeAnn(_) => RNone,
+  NRowName(_) => RNone,
 }
 
 // Sequential composition over a node list (block stmts, call args, list

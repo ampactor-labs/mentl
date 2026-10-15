@@ -265,6 +265,7 @@ fn render_body_tokens(body) with !Mutate = match body {
   NHole(_) => "??",
   NModule(m) => "// module {m.path}",
   NTypeAnn(ty) => render_type_tokens(ty),
+  NRowName(name) => render_authored_eff_name(name),
 }
 
 fn render_expr_tokens(e) with !Mutate = match e {
@@ -1428,7 +1429,7 @@ fn render_signed_effs(ref effs, i) with !Mutate = if i >= len(effs) {
 }
 
 fn render_row_term(t) with !Mutate = match t {
-  RtEff(name) => render_authored_eff_name(name),
+  RtEff(name, _) => render_authored_eff_name(name),
   RtGroup(ts) => "({render_signed_effs(ts, 0)})",
 }
 
@@ -1474,6 +1475,7 @@ fn render_line_break_after(kind) with Pure = match kind {
   NHole(_) => "",
   NModule(_) => "\n",
   NTypeAnn(_) => "",
+  NRowName(_) => "",
 }
 
 // The one comment, read LIVE from the comment weave at the node's handle

@@ -954,23 +954,22 @@ fn parse_one_param(ref tokens, pos) = match match kind_at(tokens, pos) {
 // §«Named effect rows» (`with E1 + !E2 & E3 - E4`). `!` is the per-term
 // negation flag; `+ - &` are the connectives joining each term to the
 // row accumulated to its left. The first term carries EcUnion (joining
-// onto the pure-row base = itself). Each entry is (EffName, negated,
+// onto the pure-row base = itself). Each entry is (RowTerm, negated,
 // EConn); infer folds the list applying each connective via the
 // existing union_row / diff_row / inter_row algebra (build_declared_row)
 // — the parser names the topology, infer reads the algebra live.
-fn parse_effect_list(ref tokens, pos) = parse_effect_list_from(tokens, pos, EcUnion)
+fn parse_effect_list(ref tokens, pos) = parse_effect_list_from(tokens, pos, EcUnion, DeclaredRow)
 
-// The AUTHORED row on this mutually-recursive pair is load-bearing
-// (the signature price at a cycle, the same one every HM judge
-// charges at polymorphic-recursion points): with no declaration the
-// pair's row tails oscillated open ↔ closed between judgment rounds —
-// the last surviving bound-hit mover — and WHICH attractor the bound
-// cut decided whether downstream install subtractions held or dropped
-// (the Intern this pair honestly performs then reached main's row as
-// the "phantom" that struck three times on 2026-07-30). The declared
-// row closes the tail deterministically; the attractors cease to
-// exist.
-fn parse_effect_list_from(ref tokens, pos, conn) = match parse_one_effect(tokens, pos) {
+// The row of a function type, folded where it is parsed.
+fn parse_type_row(tokens, pos) = parse_effect_list_from(tokens, pos, EcUnion, TypeRow)
+
+// Where a row is written: a declaration's clause or a named row, judged
+// where it is declared, each name it writes placed at a node the judgment
+// links to what the name denotes; or a function type's row, folded where it
+// is parsed into a row that holds names, so they stand at no node.
+type RowSite = DeclaredRow | TypeRow
+
+fn parse_effect_list_from(ref tokens, pos, conn, site) = match parse_one_effect(tokens, pos, site) {
   (name, negated, p) => {
     let entry = (name, negated, conn)
     let p2 = skip_ws(tokens, p)
@@ -984,7 +983,7 @@ fn parse_effect_list_from(ref tokens, pos, conn) = match parse_one_effect(tokens
       None
     }
     match next_conn {
-      Some(c) => match parse_effect_list_from(tokens, skip_ws(tokens, p2 + 1), c) {
+      Some(c) => match parse_effect_list_from(tokens, skip_ws(tokens, p2 + 1), c, site) {
         (rest, p3) => ([entry] ++ rest, p3),
       },
       None => ([entry], p2),
@@ -995,16 +994,27 @@ fn parse_effect_list_from(ref tokens, pos, conn) = match parse_one_effect(tokens
 // Parse a single row term — bare IO, negated !IO, parameterized
 // `Sample(44100)`, a lowercase row variable `e`, or a parenthesized group
 // `(e - Intern)` the clause folds whole — each optionally negated.
-fn parse_one_effect(ref tokens, pos) = match if at(tokens, pos, TBang) { (true, pos + 1) } else { (false, pos) } {
+fn parse_one_effect(ref tokens, pos, site) = match if at(tokens, pos, TBang) { (true, pos + 1) } else { (false, pos) } {
   (negated, p) => if at(tokens, p, TLParen) {
-    match parse_effect_list(tokens, skip_ws(tokens, p + 1)) {
+    match parse_effect_list_from(tokens, skip_ws(tokens, p + 1), EcUnion, site) {
       (inner, p_in) => (RtGroup(inner), negated, expect(tokens, skip_ws(tokens, p_in), TRParen)),
     }
   } else {
     match parse_effect_name(tokens, p) {
-      (name, p_name) => (RtEff(name), negated, p_name),
+      (name, p_name) => (RtEff(name, written_row_name(site, name, span_at(tokens, p))), negated, p_name),
     }
   },
+}
+
+// The node a declaration's row writes a name at; `Pure` and a row variable
+// name no declaration.
+fn written_row_name(site, name, span: ValidSpan) = match site {
+  DeclaredRow => if is_pure_eff_name(name) || row_var_spelled(name) {
+    None
+  } else {
+    Some(mint_node(NRowName(name), span))
+  },
+  TypeRow => None,
 }
 
 // An effect name, bare or with its instance arguments.
@@ -1273,7 +1283,7 @@ fn row_term_joins(tokens, pos) = match kind_at(tokens, pos) {
 fn written_constructor(ty) = match ty {
   TVar(n) => match graph_node_body(n) {
     NTypeAnn(TName(vname, fields)) => Some((vname, fields, n)),
-    NTypeAnn(_) | NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) => None,
+    NTypeAnn(_) | NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NRowName(_) => None,
   },
   TInt
   | TFloat
@@ -3525,7 +3535,7 @@ fn parse_type_ty(ref tokens, pos) = match type_head_items(tokens, pos) {
           // position the `with` binds the INNER fn type; parenthesize
           // for the outer clause. Absent, the open var as before.
           match if at(tokens, skip_ws(tokens, p2), TWith) {
-            match parse_effect_list(tokens, skip_ws(tokens, skip_ws(tokens, p2) + 1)) {
+            match parse_type_row(tokens, skip_ws(tokens, skip_ws(tokens, p2) + 1)) {
               (row_effs, p3) => (build_declared_row(row_effs), p3),
             }
           } else {
@@ -3862,6 +3872,7 @@ fn collect_free_uses(node, bound) = match graph_node_body(node) {
   NModule(_) => [],
   // an authored type annotation contains no VarRef
   NTypeAnn(_) => [],
+  NRowName(_) => [],
 }
 
 // The free NAMES — the uses projected to their names, for the readers that

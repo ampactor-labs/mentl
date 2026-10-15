@@ -392,7 +392,7 @@ fn ring_of_decl(rings, decl) = match graph_node_body(graph_module_of(decl)) {
   } else {
     None
   },
-  NExpr(_) | NStmt(_) | NHole(_) | NPat(_) | NTypeAnn(_) => None,
+  NExpr(_) | NStmt(_) | NHole(_) | NPat(_) | NTypeAnn(_) | NRowName(_) => None,
 }
 
 // The hole's module and the modules its own import statements name, read

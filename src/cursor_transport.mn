@@ -306,8 +306,14 @@ fn accept_annotation(handle, s) = match s {
 // return set to it. `ret` is the declaration's return annotation itself,
 // and a return contract writes the alias as the annotation in its place.
 fn annotated_head(ann, name: String, params, ret, effs, body) with !Mutate = match ann {
-  APure(_) => render_fn_head(name, params, ret, effs ++ [(RtEff(EPure), false, EcUnion)], body),
-  ANotEffect(n, _) => render_fn_head(name, params, ret, effs ++ [(RtEff(ENamed(intern_str(n))), true, EcUnion)], body),
+  APure(_) => render_fn_head(name, params, ret, effs ++ [(RtEff(EPure, None), false, EcUnion)], body),
+  ANotEffect(n, _) => render_fn_head(
+    name,
+    params,
+    ret,
+    effs ++ [(RtEff(ENamed(intern_str(n)), None), true, EcUnion)],
+    body
+  ),
   ARefined(r) => render_fn_head(name, params |> map(restated_param(r.param, r.alias, ??)), ret, effs, body),
   AReturns(r) => render_fn_head(name, params, NTypeAnn(TName(r.alias, [])), effs, body),
 }
