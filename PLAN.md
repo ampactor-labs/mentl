@@ -646,7 +646,8 @@ person and the medium, nothing else needed at any scope.
 
 **ONE LAW, FIVE FACES.** The largest open items are one violation — a
 materialized view stored where an edge belonged: STRUCTURE (cut: a node is its
-handle), REFERENCES (cut for value references; items 1 and 2 finish it), SCHEMES
+handle), REFERENCES (cut: a name is a node linked to what it names, and a
+parameter's binder, item 2's, is the one still minted apart from it), SCHEMES
 (a declaration's type frozen at its exit), PROVENANCE (a `Reason` is a value
 tree copying handles, structure, types and spans into every node) and the
 LOWERED PROGRAM (`LowExpr`, a second tree whose walks read names). The oracle is
