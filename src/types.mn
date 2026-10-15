@@ -1903,15 +1903,16 @@ type Leverage = {discharged: Int, locks: [String], opened: Int, refuted: Int, st
 // no longer parsed, in whatever file the session happened to target.
 type AnnotationSuggestion = AnnotationSuggestion(Annotation, Leverage, Reason)
 
-// The gradient's ANSWER at a declaration, as one value (§11.1's law at the
-// gradient: a list is the medium admitting it does not know). One proven
-// annotation is proposed. Two or more proven for ONE position — the same
-// parameter, or the return — that discharge the same obligations and
-// refute the same calls mean different things the program cannot choose
-// between, so the medium ASKS which is meant, naming them. An open
-// obligation that leans on a parameter while no alias in reach discharges
-// it is a NEED: the medium states the predicate the parameter must carry
-// and that no declared type says it — the missing vocabulary, taught.
+// The gradient's ANSWER at a declaration, as one value (the question beats
+// the guess at the gradient too: a list is the medium admitting it does not
+// know). One proven annotation is proposed. Two or more proven for ONE
+// position — the same parameter, or the return — that discharge the same
+// obligations and refute the same calls mean different things the program
+// cannot choose between, so the medium ASKS which is meant, naming them. An
+// open obligation that leans on a parameter while no alias in reach
+// discharges it is a NEED: the medium states the predicate the parameter
+// must carry and that no declared type says it — the missing vocabulary,
+// taught.
 type Teaching
   = TeachAdd(AnnotationSuggestion)
   | TeachAsk([AnnotationSuggestion])
@@ -2824,7 +2825,7 @@ type Domain
 // Proposal — the oracle's ANSWER at a hole, as one value.
 //
 // The Synth op answered with a LIST, and a list is the medium admitting it
-// does not know (PLAN §11.1). Five surfaces then re-derived the same verdict
+// does not know. Five surfaces then re-derived the same verdict
 // from `len` — the address render, the edit transport's accept path and its
 // projection, the teach entry, the cursor's empty case — and the render's
 // one-survivor arm DROPPED the Reason while its tie arm kept it: the medium
@@ -2841,7 +2842,7 @@ type Proposal = {rejected: [(String, Reason)], verdict: Verdict}
 // shape — the render cannot drop what the type does not let it separate.
 type Verdict = VFill(Node, Reason) | VAsk(Divergence, [(Node, Reason)]) | VNone
 
-// WHERE the survivors diverge — PLAN §11.1's first divergence, classified.
+// WHERE the survivors diverge — the first divergence of two trails, classified.
 // Read from the facts the cursor already projects, never clustered from the
 // candidate set, so there is no clustering to be bad at and no scaling in
 // candidate count. Precedence is a judgment, most consequential first: a

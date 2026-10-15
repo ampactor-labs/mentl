@@ -35,7 +35,7 @@ VERBS = """Ask the medium first:
   mentl query src/main.mn "census <shape>"   a structural shape, counted
   mentl query src/main.mn census             the census roster, every shape with its count
   mentl query src/main.mn "text NEEDLE"      every string literal holding it (the emit's WAT)
-  mentl query src/main.mn "prose NEEDLE"     every comment holding it, at the comment
+  mentl query src/main.mn "prose NEEDLE"     every comment holding it, at its line
   mentl query src/main.mn "writes of FIELD"  every value written into a handler state field
   mentl query src/main.mn "provider of OP"   every handler with an arm for it, at the arm
   mentl doc <module>                         a module's decls with types and ledes

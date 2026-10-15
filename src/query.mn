@@ -1477,11 +1477,27 @@ fn census_walk(shape, i, n, acc) with !Mutate = if i >= n {
 }
 
 // A site is where the shape stands: the node's own span, except for prose,
-// which stands where the comment does.
+// which stands at the comment line that carries it.
 fn census_site_at(shape, h) with !Mutate = match shape {
-  CsProse(_) => graph_comment_span_at(h),
-  CsProseClass(_) => graph_comment_span_at(h),
+  CsProse(needle) => prose_site(prose_holds(??, needle), h),
+  CsProseClass(c) => prose_site(prose_class_holds(c), h),
   _ => span_of_node_raw(h),
+}
+
+// The line the note shows, located: a comment's lines are its source lines
+// from its first, each a `//` and its text, so that line is the comment's
+// first moved down by its index. A class no single line carries — a
+// decoration run — stands at the comment. Until 2026-10-15 every prose site
+// stood at the comment's first line, so a hit sixteen lines into a block was
+// addressed sixteen lines above the text the facet printed beside it.
+fn prose_site(holds, h) with !Mutate = {
+  let at = graph_comment_span_at(h)
+  match find({ (_, l) => holds(l) }, enumerate(lines(graph_comment_at(h)))) {
+    Some((i, l)) => match at {
+      Span(sl, sc, _, _) => Span(sl + i, sc, sl + i, sc + 2 + len(l)),
+    },
+    None => at,
+  }
 }
 
 fn site_in(ref acc, ref m: String, ref sp, i) = if i >= len(acc) {

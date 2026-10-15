@@ -1,0 +1,24 @@
+// expect: refuse E_MissingVariable
+// A ROW ALIAS'S TERMS RESOLVE AS A CLAUSE'S DO. The alias below misspells
+// Read, so `with !File` forbade Write alone and the body's `rd()`, the read
+// its author meant to forbid, checked clean: a negation proving less than it
+// says. The terms are judged at the alias, where the misspelling is written,
+// and the misspelled one is E_MissingVariable there. Measured on boot
+// cc6c88d2: this program compiled clean and ran to 7.
+effect Read {
+  rd() -> Int
+}
+
+effect Write {
+  wr(v: Int)
+}
+
+type File = Raed + Write
+
+fn sealed() with !File = rd()
+
+handler disk {
+  rd() => resume(7),
+}
+
+fn main() = sealed() ~> disk

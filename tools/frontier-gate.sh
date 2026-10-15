@@ -4562,7 +4562,7 @@ for i in "${!compilers[@]}"; do
   # ─── The reading facets: text, prose, writes of, reads of ───────────
   # What a program SAYS, WRITES and READS, asked of one fixture: the string
   # literal holding facet-literal-marker, the comment holding
-  # facet-prose-marker (sited at the comment), the two values written
+  # facet-prose-marker (sited at its line, 4), the two values written
   # into the counter's state (its init, its update), and the one read of
   # the record field width (in area). The first and third were built with
   # no gate; the second was confessed as a verb gap four times in a day,
@@ -4576,10 +4576,10 @@ for i in "${!compilers[@]}"; do
   rf_writes=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" query "$rf_doc" "writes of sum" 2>/dev/null)
   rf_reads=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" query "$rf_doc" "reads of width" 2>/dev/null)
   if printf '%s' "$rf_text" | grep -q "1 string literal(s)" && printf '%s' "$rf_text" | grep -q "mn-reading-facets:20" \
-     && printf '%s' "$rf_prose" | grep -q "1 comment(s)" && printf '%s' "$rf_prose" | grep -q "mn-reading-facets:1:" \
+     && printf '%s' "$rf_prose" | grep -q "1 comment(s)" && printf '%s' "$rf_prose" | grep -q "mn-reading-facets:4:" \
      && printf '%s' "$rf_writes" | grep -q "counter.sum: 2 write(s)" && printf '%s' "$rf_writes" | grep -q "sum + n" \
      && printf '%s' "$rf_reads" | grep -q "1 read(s) of the field" && printf '%s' "$rf_reads" | grep -q "mn-reading-facets:24:"; then
-    pass "reading facets: text (the literal at 20), prose (the comment at 1), writes of (init and update), reads of (the field read at 24)"
+    pass "reading facets: text (the literal at 20), prose (the comment line at 4), writes of (init and update), reads of (the field read at 24)"
   else
     fail "reading facets (text: $(printf '%s' "$rf_text" | head -1) · prose: $(printf '%s' "$rf_prose" | head -1) · writes: $(printf '%s' "$rf_writes" | head -1) · reads: $(printf '%s' "$rf_reads" | head -1))"
   fi

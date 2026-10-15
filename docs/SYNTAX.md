@@ -201,12 +201,13 @@ fn audio_stage(samples) with Sample(44100) + !Alloc + IO =
 
 **Every name in a row is a declared effect, a row alias, a row variable or
 `Pure`, or the declaration refuses.** A term that names no effect in the
-module's reach — in a function's clause, a handler's, an op signature's, or
-inside a function type (`f: () -> Int with !Nowhere`) — is `E_MissingVariable`
-at the declaration (real, 2026-10-13: until then the expansion took an unknown
-name as an effect OF THAT NAME, so `fn quiet() with !Nowhere = 1` checked
-clean and constrained nothing, and lib/persist.mn's `!Network` held two
-weeks after the last Network effect left the tree on 2026-09-28;
+module's reach — in a function's clause, a handler's, an op signature's,
+inside a function type (`f: () -> Int with !Nowhere`) or in a named row
+(§«Named effect rows») — is `E_MissingVariable` at the declaration (real,
+2026-10-13: until then the expansion took an unknown name as an effect OF
+THAT NAME, so `fn quiet() with !Nowhere = 1` checked clean and constrained
+nothing, and lib/persist.mn's `!Network` held two weeks after the last
+Network effect left the tree on 2026-09-28;
 tests/micros/mn-effect-name-resolves.mn, mn-effect-name-in-fn-type.mn).
 
 **A lowercase name in a row is a row variable** — the case rule read at a row, as it is read at a type. `f: () -> a with e` takes a callback performing anything, and `e` written again anywhere in the same signature — another parameter's type, the declaration's own clause — is the same variable, as a type variable named twice is. A parenthesized group is a row term the clause folds whole, its outer connective applied to what it spells: `with Memory + Alloc + (e - Intern)` is the row of a body that absorbs `Intern` around the callback and pays for the install, and it is how the medium writes such a row back (real, 2026-10-06: a lowercase name was read as an EFFECT named `e`, so `run(() => op())` against `f: () -> Int with e` refused `E vs e`, and a group did not parse).
@@ -2212,12 +2213,21 @@ it (`row_alias_triples`, src/effects.mn), so an alias that resolves to `Pure`
 can be dropped. No narration says so yet — the catalog's `W_EmptyRow` is not yet
 born (§«Diagnostic catalog»). A cycle through an alias's own expansion refuses
 (`E_RowAliasCycle`), and so does a negated alias whose row is not positive and
-closed (`E_RowAliasNegation`). A row term that names no declared effect is a
-silent wrong today: the expansion takes an unknown name as an effect of that
-name, so `!Network` in a module that declares no `Network` checks clean and
-constrains nothing; the reference link refuses the unresolved name at the term
-(`Hβ.lower.reach-edge-on-node`, whose link carries every reference to its
-declaration).
+closed (`E_RowAliasNegation`). A named row's terms are judged where they are
+written, as a clause's are: each names a declared effect, another named row or
+a row variable, and an instance's arguments meet its effect's parameters, so a
+misspelled term refuses at the `type` (`E_MissingVariable`). Until 2026-10-15
+nothing judged them: `type File = Raed + Write` checked clean, and `with
+!File` forbade `Write` alone while the body read
+(tests/micros/mn-effect-name-in-row-alias.mn).
+
+A named row joins two or more terms, or opens with `!`. One name alone is the
+type it spells — `type Locked = Lock` a transparent alias, `type Locked =
+Lock(Held)` a type of one constructor — because a second name for one effect
+is the redundant form, so `with !Locked` over it refuses as a name that is no
+effect. A constructor that shares an effect's name shadows the effect in the
+one namespace a link has today, and every row naming the effect then refuses
+(the collision a module's scope settles, `PLAN.md §11`).
 
 ### A SIGNATURE IS NOT AN INVENTORY — name the capability, author the negation
 

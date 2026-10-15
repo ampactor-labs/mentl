@@ -2274,9 +2274,17 @@ fn infer_stmt(ref node) = {
     // No predicate, no Verify — the difference from RefineStmt is exactly
     // the absent `where` (SYNTAX.md §«Type aliases»).
     declaration_noted(node, name),
-    NStmt(RowAliasStmt(name, _)) => // Named effect row: registered at pre_register_alias; expansion
-    // at build_declared_row (Hβ.types.named-effect-rows).
-    declaration_noted(node, name),
+    NStmt(RowAliasStmt(name, effs)) => {
+      // A named row's terms are judged where they are written, as a
+      // clause's are at its declaration: each names an effect, a row alias
+      // or a row variable, and an instance's arguments meet its effect's
+      // parameters. Registered at pre_register_alias; expanded where a
+      // signature reads it.
+      let resolved = resolve_declared_instances(effs)
+      check_effect_names(resolved, span)
+      check_instance_args(resolved, span)
+      declaration_noted(node, name)
+    },
     _ => (),
   }
 }
@@ -3688,8 +3696,8 @@ fn callee_binding(h) = match tee_handler_decl(h) {
 // mismatch. Type- and node-shaped args carry the instance-unification
 // flow (the modal frontier's admit-through-instantiation face) and
 // pass this ground check.
-// Every name a clause writes RESOLVES — to an effect the link declares or to
-// a row alias — or the clause refuses at its declaration. A lowercase name is
+// Every name a clause or a named row writes RESOLVES — to an effect the link
+// declares or to a row alias — or the declaration refuses. A lowercase name is
 // a row variable (SYNTAX's case rule) and `Pure` is the identity; anything
 // else that the env does not hold as an effect is a word the program
 // invented, and a negation of it constrains nothing: `with !Network` over a

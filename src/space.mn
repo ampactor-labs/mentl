@@ -766,8 +766,8 @@ fn query_fact(h, kind, pspan, v) = {
 // VERDICT is read, never re-derived from a count: a fill arrives with the
 // Reason its constructor carries, and a tie TEACHES by naming what
 // separates the survivors — never a hidden first-wins pick (PLAN §5's
-// tie-break law at this surface too). A tie is a QUESTION, never a list
-// (§11.1): the members render while a glance can hold them — three — and
+// tie-break law at this surface too). A tie is a QUESTION, never a list:
+// the members render while a glance can hold them — three — and
 // past that width the surface carries the count and the computed question
 // alone. The refusals stand under the proposal: every name the medium
 // considered and would not offer, each with its Why, so the audit trail

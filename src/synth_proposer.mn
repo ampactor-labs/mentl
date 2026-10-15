@@ -413,7 +413,7 @@ fn vocabulary_rings(hole_h) = match graph_node_body(graph_module_of(hole_h)) {
 // the sound index that keeps the vocabulary from judging the whole prelude at
 // every hole. It never rejects a unifiable pair, so it can hide no survivor.
 //
-// PROPAGATION PRECEDES ENUMERATION (PLAN §11.1), and this is the sound
+// PROPAGATION PRECEDES ENUMERATION, and this is the sound
 // form of it at the vocabulary. The question a pre-filter may ask is not
 // "are these the same type" — that is unification's, and asking it here is
 // how the old matcher hid proven survivors — but "could these POSSIBLY
@@ -1002,7 +1002,7 @@ fn keep_named_refusal(verdicts, acc, indexed) = match indexed {
 // defect: with a fresh copy there is no cell to bind, so the candidate was
 // never checked against the hole at all, only against a type-shaped
 // rumour of it. A `??` is a cell in the same union-find as every type
-// variable (PLAN §11.1), and this is where that stops being a design
+// variable, and this is where that stops being a design
 // sentence: infer the candidate, UNIFY its cell with the hole's, and let
 // the one machine answer. Safe by construction — the caller's segment
 // brackets this in graph_push_checkpoint + heap_mark + world_top and rolls

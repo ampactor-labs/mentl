@@ -374,7 +374,7 @@ Cost is on the board: the march's m3 leg ratchets its peak RSS and the image's
 own high-water, and a ceiling never rises (a landing whose cost breaches one pays
 it down). The build order, each layer making the next O(1): (1) a name is a
 handle from the lexer on; (2) every read an O(1) chase — the environment, the
-reach walks (§11.1), instantiation shared rather than cloned; (3) the arena —
+reach walks (§11.18), instantiation shared rather than cloned; (3) the arena —
 every extent reclaims at its exit what its publication does not reach (built);
 (4) parallel cursors on deterministic `{arena, offset}` handles (§11.16).
 
@@ -437,10 +437,10 @@ landing that closes it. A gate that did not run is UNKNOWN, never green.
   built: a named handler chain's install becomes its members' installs (SYNTAX
   §«Handler chains»); a rename, the session's edit and a proposal's accept are
   not (§11.2).
-- **Names are still read where an edge exists** (§11.1): the lowered program's
-  identity is a spelling, so the emit's reach walks names, the emit resolves
-  a callee's spelling through the scope again and the lowering reads a
-  handler by its name; a sugar's callee is a spelling the lowering calls.
+- **Names are still read where an edge exists** (§11.2, §11.18): the lowered
+  program's identity is its symbol, so the emit's reach walks key their units
+  by it and a resume-bound function is found by its spelling; a sugar's
+  callee is a spelling the lowering resolves at the link's scope.
 - **A module sees its whole import closure** (§11.3): visibility is the closure,
   so a user cannot declare a name the prelude declares, one namespace is paid
   for in prefixes, and the compiler recognizes library effects by their
@@ -638,47 +638,17 @@ a provenance diff, a search over live shared cells.
 
 **THE STANDING CURSOR** — the order work runs in:
 
-1. **A reference is an edge, and nothing re-resolves it — M1 whole, with M5**
-   (`Hβ.lower.reach-edge-on-node`, `Hβ.emit.symbol-is-the-declarations`). The
-   judgment draws the edge at the one writer (`graph_ref_link`), and the scope,
-   the gradient, the value walk, the caret, the facets, a call's binding
-   (`callee_binding`), an install's handler, the proposer's candidates, the
-   lowering's reach and the unreachable facet read it — an install resolves
-   its handler once, before its body is judged (`install_decl`), and the
-   lowering and the emit take the handler as that declaration, reading its
-   config, state, arms and class off it and spelling its symbols off it in
-   one place each (`installed_handler`, `arm_fn_name`), a candidate
-   is minted linked to the declaration it proposes (`linked_ref`), a lowered
-   reference carries the declaration its writer decided (`Callee`) — the
-   edge the judgment drew, or the vocabulary a lowering mints at a borrowed
-   site resolved where it is minted — and leads to that declaration's
-   statement (`ref_target`), a callee's kind, judgment and schedule reach
-   are read off its declaration (`callee_kind`, `fn_judgment`,
-   `fanout_reach_known`), a symbol is read off its declaration
-   (`decl_symbol`: `$module.name`, a nested function's path `.`-joined under
-   it, a handler's arms, init and redrive spelled off it, the vocabulary the
-   emit calls resolved to its declaration's, `vocab_symbol`), so two modules
-   that declare one name emit two symbols, an op's sole handler is its
-   declaration on the op's scheme, and the facet walks from `main` and the
-   module value lets over the edges, naming the dead code of the entry's own
-   layer (`reach_report`). What still reads names: (a) the lowered program's
-   identity is its symbol (`LFn(String, …)`), so the emit's and the
-   reading's reach walks (`plan_reached`, `reach_units`) key their units by
-   it, and a function bound to a handler's resume is found by its spelling
-   (`ls_resume_bind_of`) — the form is a lowered unit keyed by its
-   declaration's handle and reachability the edge followed from `main`, the
-   symbol-keyed walks deleted; (b) a sugar's callees are spellings
-   (`concat_callees`, `subscript_callee`, `list_rest_callee`): the judgment
-   charges each as resolved at the link's own scope and the lowering calls
-   the symbol its declaration names — the form is the sugar node's edge to
-   the primitive's declaration, drawn where the sugar is judged. Gate: m3 ==
-   m4 with the symbol-keyed walks deleted.
 2. **Every position is a cell — #108** (`Hβ.graph.positions-are-cells`). A
-   pattern's constructor, a type annotation's name, a row's effect name and a
-   handler arm's op name are nodes that draw the same edge, so `refs of` a
-   constructor or a type answers its pattern and annotation sites, `unreferenced`
-   stops calling `Ty`, `Option` and `Alloc` dead, and the imports facet stops
-   reading an import used only by a pattern, an annotation or a row as DEAD.
+   pattern's constructor, a type annotation's name, a row's effect name, a
+   handler arm's op name and a sugar's primitive are nodes that draw the same
+   edge the judgment draws for a value reference (`graph_ref_link`), so `refs
+   of` a constructor or a type answers its pattern and annotation sites, `refs
+   of slice` its list-rest patterns, `unreferenced` stops calling `Ty`,
+   `Option` and `Alloc` dead, and the imports facet stops reading an import
+   used only by a pattern, an annotation or a row as DEAD; the sugar's callee
+   is the edge at its node, which the lowering reads where it now resolves
+   `concat_callees`, `subscript_callee` and `list_rest_callee` by spelling at
+   the link's scope (the two concats one `seq_concat`, §4①).
    Binders, sub-patterns, annotations and predicates become the cells inference
    binds: the ghosts (`mentl query <entry> ghosts`) fall to zero and a claim is
    located at the value it claims. Then the writes the structure cut was for: a
@@ -696,7 +666,12 @@ a provenance diff, a search over live shared cells.
    newest entry of one flat environment — so a user's `count` beside lib/lists is
    legal, a library's own reference never rebinds to a user's declaration of the
    same name, and a collision is settled at the import edge by a selective set
-   (`E_ImportNameCollision`, born armed). The medium proposes a missing edge at
+   (`E_ImportNameCollision`, born armed). Two declarations of one name inside a
+   module refuse at the second, naming the first, whatever their kinds: today a
+   constructor sharing an effect's name shadows the effect and every row naming
+   it refuses as no effect, two effects of one name merge their ops, and two
+   types' constructors of one name surface as type mismatches at the uses
+   (measured 2026-10-15). The medium proposes a missing edge at
    the reference, writes a conduit as a direct import and narrates a dead one
    (`T_DeadImport`); fmt dedups and orders the block. The facets follow:
    `imports` prints what crosses each edge and `conduit`, `DEAD` or `DUPLICATE`;
@@ -853,7 +828,13 @@ a provenance diff, a search over live shared cells.
     (`Hβ.infer.schemes-are-edges`: instantiation a correspondence edge, never a
     clone); a `Reason` is an edge to the node it names, never a copied tree;
     lowering is columns on the program's own handles, the `LowExpr` tree and its
-    walkers deleted (`Hβ.lower.lowering-is-a-column`); incrementality has the
+    walkers deleted (`Hβ.lower.lowering-is-a-column`) — a lowered unit is a
+    column on its declaration's handle, where its identity is the symbol
+    `LFn(String, …)` carries and the emit's and the reading's reach walks
+    (`plan_reached`, `reach_units`) key their units by it, and a function
+    bound to a handler's resume is the declaration the arm's references
+    reach, where it is found by its spelling (`ls_resume_bind_of`); the
+    gate is m3 == m4 with the symbol-keyed walks deleted; incrementality has the
     trail as the delta's home (`Hβ.graph.mutation-delta-is-write-only`), the
     session paying for what an edit moved (`Hβ.session.edit-pays-for-the-program`)
     and outliving its process (`Hβ.felt.accept-outlives-the-process`); persist
