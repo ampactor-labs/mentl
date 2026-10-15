@@ -10182,7 +10182,7 @@ fn infer_one_handler_arm(arm: {args: [String], body: Node, op: Node}, result_h, 
   // arm frame's own row cell, which is what the arms PERFORM, not what a
   // resume RUNS.
   let continuation_disc =
-    disc_join(arm_disc_of(resume_grade(arm.body)), op_resume_discipline(op_name))
+    disc_join(arm_disc_of(resume_grade(arm.body)), op_resume_discipline(graph_ref_decl(arm.op)))
   graph_bind(
     continuation_h,
     TCont(op_ret_ty, TVar(result_h), continuation_disc, mk_ef_open([], world_h)),
@@ -10204,18 +10204,15 @@ fn undeclared_arm_op(op_name: String, arm_span: ValidSpan) = {
 // An arm may not resume an op declared `-> !` (`EResumeOfNever`): its result
 // is quantified per perform, so the value the arm would hand back has no one
 // type every performer can receive.
-fn never_resume_check(hname: String, arm: {args: [String], body: Node, op: Node}) = {
-  let op_name = handler_arm_op_name(arm)
-  if op_never_returns(op_name) && resume_grade(arm.body) != RNone {
-    report(EResumeOfNever(hname, op_name, graph_span_of(arm.body)))
-  }
+fn never_resume_check(hname: String, arm: {args: [String], body: Node, op: Node}) = if op_never_returns(graph_ref_decl(arm.op)) && resume_grade(arm.body) != RNone {
+  report(EResumeOfNever(hname, handler_arm_op_name(arm), graph_span_of(arm.body)))
 }
 
 // An op whose result is a variable its own scheme quantifies and nothing else
 // in it names — not a parameter, not the effect's instance: the never type,
 // minted per occurrence and quantified per perform. The structure IS the
 // declaration's `!`; no marker is kept beside it.
-fn op_never_returns(op: String) = match env_lookup(op) {
+fn op_never_returns(od) = match published_at(od) {
   Some(entry) => match entry {
     (scheme, _, EffectOpScheme(_, _, _, _)) => match judgment_pair(scheme) {
       (qs, TFun(params, TVar(r), row)) => any({ q => q == r }, qs) && !any({ v => v == r }, free_in_params(params) ++ free_in_row(row)),

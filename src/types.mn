@@ -3116,7 +3116,11 @@ effect EnvRead {
 // scope. A holder of a NAME reads it so — the judgment at its writer, a
 // person's input at the text boundary; a holder of a reference follows its
 // edge (`graph_ref_decl`) to the same handle and never asks the name.
-fn env_lookup(name: String) = match env_resolve(name) {
+fn env_lookup(name: String) = published_at(env_resolve(name))
+
+// What the judgment published about the declaration a reference's edge or a
+// name's one resolution yields, when either yields one.
+fn published_at(od) = match od {
   Some(d) => graph_published(d),
   None => None,
 }

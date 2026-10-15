@@ -1,12 +1,18 @@
-// expect: 7
-// A parameter named like an effect op is the parameter where it is called.
-// `result` below is `apply`'s own argument, and the judgment resolves the
-// call to it; the lowering resolved the name against the module env instead
-// and emitted a perform of the prelude's `Iterate` op `result`, which no
-// handler serves here, so the program checked clean and aborted at run
-// time. Found in the compiler's own source (src/derive.mn's `jvp_pair`,
-// whose parameter `result` shadows the same op) on 2026-09-28, measured on
-// boot 51f332d7.
-fn apply(result, x: Int) -> Int = result(x)
+// expect: 38
+// A parameter that shares an op's name is the parameter: the lowering reads a
+// call's op off the edge its callee drew, so `twice`'s calls of its `pick`
+// call the function it is handed, where reading the spelling took them for
+// the multi-shot op and the program answered 30.
+effect Pick {
+  pick() -> Int
+}
 
-fn main() -> Int = apply({ n => n + 2 }, 5)
+handler both {
+  pick() => resume(1) + resume(2),
+}
+
+fn twice(pick) = pick() + pick()
+
+fn chosen() = pick() * 10
+
+fn main() = twice(() => 4) + (chosen() ~> both)

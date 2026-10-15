@@ -438,10 +438,13 @@ landing that closes it. A gate that did not run is UNKNOWN, never green.
   program are still value trees (§11.18). The first one-write operation is built: a named handler
   chain's install becomes its members' installs (SYNTAX §«Handler chains»); a
   rename, the session's edit and a proposal's accept are not (§11.2).
-- **Names are still read where an edge exists** (§11.2, §11.18): the lowered
-  program's identity is its symbol, so the emit's reach walks key their units
-  by it and a resume-bound function is found by its spelling; a sugar's
-  callee is a spelling the lowering resolves at the link's scope.
+- **Names are still read where an edge exists** (§11.2, §11.3, §11.18): the
+  lowered program's identity is its symbol, so the emit's reach walks key their
+  units by it and a resume-bound function is found by its spelling; a sugar's
+  callee is a spelling the lowering resolves at the link's scope; an emitted
+  arm's kind holds its op's spelling, and the performs the lowering writes for
+  a schedule (`spawn`, `thread_join`, `persist_branch`, `join_persist`) name
+  their ops, the compiler's own vocabulary.
 - **A module sees its whole import closure** (§11.3): visibility is the closure,
   so a user cannot declare a name the prelude declares, one namespace is paid
   for in prefixes, and the compiler recognizes library effects by their
@@ -651,10 +654,7 @@ a provenance diff, a search over live shared cells.
    import used only by a pattern, an annotation, a row or an arm as used. A
    function type's row is folded where the type is parsed into a row that
    holds names, so the effects a callback's type demands are not among their
-   references until the type holds its row as written. An arm's readers still
-   resolve its op by spelling where the edge now stands (`op_resume_discipline`,
-   `op_instance_subst`, `op_param_tys`, `op_ret_ty`, `op_never_returns`), and
-   take the declaration once they read the edge. A sugar's primitive is a node
+   references until the type holds its row as written. A sugar's primitive is a node
    that draws the same edge, so `refs of slice` answers its list-rest
    patterns; the sugar's callee is the edge at its node, which the lowering
    reads where it

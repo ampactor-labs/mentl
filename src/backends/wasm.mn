@@ -721,12 +721,9 @@ fn settle_node(site: String, expr) = match expr {
 // never floors: its continuation is dead and it unwinds, `LAbandon`.)
 fn settle_yield(h, op: String) = if op == "" {
   match graph_node_body(h) {
-    NExpr(CallExpr(f, _)) => {
-      let name = callee_name(f)
-      match op_resume_discipline(name) {
-        MultiShot => report_at(h, EContinuationUncapturable(name, "", graph_span_of(h))),
-        _ => (),
-      }
+    NExpr(CallExpr(f, _)) => match op_resume_discipline(graph_ref_decl(f)) {
+      MultiShot => report_at(h, EContinuationUncapturable(callee_name(f), "", graph_span_of(h))),
+      _ => (),
     },
     _ => (),
   }

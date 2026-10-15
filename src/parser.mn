@@ -1623,6 +1623,10 @@ fn state_field_init(f: {init: Node, name: String}) -> Node = f.init
 // parse_handler_arms): the arm-record type resolves only in a scope that
 // closed it, so each annotated accessor reads it from any context.
 //
+// The op an arm serves, by the edge its name draws once the handler is
+// judged.
+fn handler_arm_op_decl(a: {args: [String], body: Node, op: Node}) = graph_ref_decl(a.op)
+
 // The op an arm serves, as written at its node.
 fn handler_arm_op_name(a: {args: [String], body: Node, op: Node}) -> String = match graph_node_body(a.op) {
   NName(ArmOp(name)) => name,

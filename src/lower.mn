@@ -97,7 +97,7 @@ fn installed_handler(right) = match tee_handler_decl(right) {
 // arity drives the driver's $yield_args loads). An all-OneShot handler
 // answers [], so its install keeps the ungated emission byte-for-byte.
 fn multishot_ops_of(hd) = match handler_shape_at(hd) {
-  Some((_, _, _, arms)) => arms |> filter((a) => match op_resume_discipline(handler_arm_op_name(a)) {
+  Some((_, _, _, arms)) => arms |> filter((a) => match op_resume_discipline(handler_arm_op_decl(a)) {
     MultiShot => true,
     // M4 — an abandon op needs the driver too: it delivers the arm value on flag-clear (the redrive's existing behaviour IS abandon)
     Abandon => true,
@@ -1491,7 +1491,7 @@ fn disc_live(d) = match d {
 
 // An op's discipline satisfies the predicate — the one test every reader of
 // an effect's ops applies, a reference with its predicate supplied.
-fn op_disc_holds(disc_pred, op) = disc_pred(op_resume_discipline(op))
+fn op_disc_holds(disc_pred, op) = disc_pred(op_resume_discipline(env_resolve(op)))
 
 fn effect_has_op_by(ename, disc_pred) = any(op_disc_holds(disc_pred), effect_op_names(ename))
 
@@ -1566,7 +1566,7 @@ fn bind_from_arms(arms, hd, in_arms, summaries, decls, binds) = if len(arms) == 
   binds
 } else {
   let arm = last(arms)
-  let binds2 = match op_resume_discipline(handler_arm_op_name(arm)) {
+  let binds2 = match op_resume_discipline(handler_arm_op_decl(arm)) {
     MultiShot => bind_closure(
       callable_names(handler_arm_body(arm), in_arms ++ arm.args),
       hd,
@@ -2142,7 +2142,7 @@ fn expr_diverges(node) = match graph_node_body(node) {
   NStmt(ExprStmt(e)) => expr_diverges(e),
   NStmt(LetStmt(_, init, _)) => expr_diverges(init),
   NExpr(CallExpr(f, _)) => match graph_node_body(f) {
-    NExpr(VarRef(name)) => match op_resume_discipline(name) {
+    NExpr(VarRef(_)) => match op_resume_discipline(graph_ref_decl(f)) {
       Abandon => true,
       _ => false,
     },
@@ -2186,7 +2186,7 @@ fn diverging_expr(stmt) = match graph_node_body(stmt) {
 
 // Lexical install wins over the keyed forward (a nested handler shadows the
 // caller's evidence) — the seed's $lower_perform order, byte-faithful.
-fn lower_perform_dispatch(handle, op_name, lo_args) = match op_resume_discipline(op_name) {
+fn lower_perform_dispatch(handle, op_name, lo_args) = match op_resume_discipline(env_resolve(op_name)) {
   // A MultiShot perform NEVER calls the arm — it YIELDS (band B k1). The
   // on-spine sites are consumed by lower_body_reified, which constructs
   // the real k; one reaching the ordinary dispatch is OFF-spine (a `let`'s
@@ -4762,7 +4762,7 @@ fn lower_init_decl(hd, config, state: [{init: Node, name: String}], fence, line_
 // met the twin's pairs, and a Float twin signed a word under a body reading
 // f64 (it did not assemble). The arm's parameters have no handles of their
 // own to read the edge through.
-fn op_instance_subst(op: String, hd) = match op_scheme_instance(op) {
+fn op_instance_subst(op, hd) = match op_scheme_instance(op) {
   None => [],
   Some(oi) => match handler_decl_instance(hd) {
     None => [],
@@ -4770,7 +4770,7 @@ fn op_instance_subst(op: String, hd) = match op_scheme_instance(op) {
   },
 }
 
-fn op_scheme_instance(op: String) = match env_lookup(op) {
+fn op_scheme_instance(op) = match published_at(op) {
   Some(entry) => match entry {
     (scheme, _, kind) => match kind {
       EffectOpScheme(_, _, _, _) => match scheme {
@@ -4801,6 +4801,7 @@ fn at_instance(sub, oty) = match oty {
 
 fn lower_one_arm_decl(arm: {args: [String], body: Node, op: Node}, hd, config, state, fence, line_base) = {
   let op_name = handler_arm_op_name(arm)
+  let op = handler_arm_op_decl(arm)
   let fn_name = arm_fn_name(hd, op_name)
   // Hβ.first-light.arm-body-fresh-frame: each handler-arm body is
   // its own WASM function with __state IS the handler state record
@@ -4825,7 +4826,7 @@ fn lower_one_arm_decl(arm: {args: [String], body: Node, op: Node}, hd, config, s
   // record as its leading param (the driver pushes (record, k); resume(v)
   // calls __k — band B k1). OneShot arms keep their params, arity, and
   // fence byte-identically (Law 7).
-  let disc = op_resume_discipline(op_name)
+  let disc = op_resume_discipline(op)
   let arm_params = match disc {
     MultiShot => ["__k"] ++ arm.args,
     // M4 — the driver pushes (record, k) uniformly; an Abandon arm takes __k and ignores it (it never resumes), returning its value flag-clear so the driver delivers it as the install's
@@ -4844,8 +4845,8 @@ fn lower_one_arm_decl(arm: {args: [String], body: Node, op: Node}, hd, config, s
   // read as f64 — a Float op's handler did not assemble. Both are read at the
   // HANDLER's instance (`op_instance_subst`), so a twin keyed there signs the
   // widths its body reads.
-  let at_inst = op_instance_subst(op_name, hd)
-  let arm_arg_tys = map(at_instance(at_inst, ??), op_param_tys(op_name))
+  let at_inst = op_instance_subst(op, hd)
+  let arm_arg_tys = map(at_instance(at_inst, ??), op_param_tys(op))
   let arm_param_tys = if len(arm_arg_tys) == len(arm.args) {
     match disc {
       MultiShot => floor_tys(1) ++ arm_arg_tys,
@@ -4861,7 +4862,7 @@ fn lower_one_arm_decl(arm: {args: [String], body: Node, op: Node}, hd, config, s
   let arm_ret = match disc {
     MultiShot => Some(lookup_ty(arm.body)),
     Abandon => Some(lookup_ty(arm.body)),
-    _ => at_instance(at_inst, op_ret_ty(op_name)),
+    _ => at_instance(at_inst, op_ret_ty(op)),
   }
   graph_emitfn_note(EmitFnEntry{
     caps: [],
@@ -5156,7 +5157,7 @@ fn resolve_resume_k(handle) = match ls_resolve("__k") {
 // every non-op floors OneShot).
 fn ms_op_of_call(node) = match graph_node_body(node) {
   NExpr(CallExpr(f, args)) => match graph_node_body(f) {
-    NExpr(VarRef(name)) => match op_resume_discipline(name) {
+    NExpr(VarRef(name)) => match op_resume_discipline(graph_ref_decl(f)) {
       MultiShot => Some((name, args)),
       _ => None,
     },
@@ -7868,7 +7869,7 @@ fn arm_pair_step(acc, pc) = match pc {
 
 // Whether an op's arms are reached by its driver, at the continuation face
 // (wasm.mn), rather than called by the performer at the op's declared one.
-fn op_answers_its_driver(op: String) = match op_resume_discipline(op) {
+fn op_answers_its_driver(op: String) = match op_resume_discipline(env_resolve(op)) {
   OneShot => false,
   MultiShot => true,
   Abandon => true,
