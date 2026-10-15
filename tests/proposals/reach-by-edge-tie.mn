@@ -1,0 +1,19 @@
+// propose 12:3: ask name
+// A candidate is excluded only when its own references reach the hole's
+// enclosing declaration. The nested `helper` calls `choose`; the module's
+// `helper`, which `pick` calls, does not. Measured on boot 85efb3b9, where
+// the exclusion walked names and took the nested `helper` for the module's:
+// `helper()` and `pick()` were excluded as recursion and the hole filled with
+// the literal alone.
+type Seven = Int where self == 7
+
+fn choose() -> Seven = {
+  fn helper() = choose()
+  ??
+}
+
+fn helper() -> Seven = 7
+
+fn pick() -> Seven = helper()
+
+fn main() = choose()

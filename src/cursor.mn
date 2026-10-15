@@ -254,24 +254,6 @@ fn hole_gate(handle) with !Mutate = if authored_hole(handle) { 1 } else { 0 }
 fn enumerate_hole_positions(mh) with !Mutate =
   latest_generation(filter(authored_hole, module_handles(mh)))
 
-// The name a ZERO-ARG call candidate calls, or None for every other shape.
-// One home for a read the proposer and the transport both make — the
-// transport to render the candidate as source, the proposer to ask the
-// callee's own row and body what the candidate means. An arg-bearing call
-// answers None because nothing downstream can yet say what its arguments
-// are (`Hβ.synth.vocabulary-arg-holes` is where they start being sayable).
-fn callee_name_of(node) = match graph_node_body(node) {
-  NExpr(CallExpr(callee, args)) => if len(args) == 0 {
-    match graph_node_body(callee) {
-      NExpr(VarRef(name)) => Some(name),
-      _ => None,
-    }
-  } else {
-    None
-  },
-  _ => None,
-}
-
 // A gradient position IS a fn declaration — the teach verb's own scope
 // (map_fn_stmts feeds FnStmt handles). The kind gate runs BEFORE the
 // teach read: the ungated walk asked teach_gradient about every cell in
@@ -796,16 +778,16 @@ fn propose_at(h) with !Mutate = if authored_hole(h) {
 // Synth's Context reads LIVE from the graph the cursor sits in — never
 // fabricated: scope bindings ARE the env snapshot (the same bindings
 // infer wrote); the row is what the hole's position may perform
-// (`allowed_row_at`); the enclosing NAME feeds the vocabulary's
+// (`allowed_row_at`); the enclosing declaration feeds the vocabulary's
 // nontermination exclusion. At a top-level position with no enclosing
-// fn, the node's own row stands and the name is "".
+// fn, the node's own row stands and there is no enclosing declaration.
 fn mentl_context_at(handle) with !Mutate = match env_snapshot() {
   Env(scope_bindings) => match graph_chase(handle) {
     GNode(kind, _) => {
       let path = decl_path_to(handle)
       match fold(None, innermost_fn(path, ??, ??), range(0, len(path) - 1)) {
-        Some((fname, effs, k)) => Context(scope_bindings, allowed_row_at(path, k, effs), fname, handle),
-        None => Context(scope_bindings, row_of_kind(kind), "", handle),
+        Some((effs, k)) => Context(scope_bindings, allowed_row_at(path, k, effs), Some(list_index(path, k)), handle),
+        None => Context(scope_bindings, row_of_kind(kind), None, handle),
       }
     },
   },
@@ -816,7 +798,7 @@ fn mentl_context_at(handle) with !Mutate = match env_snapshot() {
 // found by scanning every handle in the graph for a function whose body
 // contained the position, a walk of each candidate's subtree per handle.
 fn innermost_fn(path, found, i) with !Mutate = match graph_node_body(list_index(path, i)) {
-  NStmt(FnStmt(name, _, _, effs, _)) => Some((name, effs, i)),
+  NStmt(FnStmt(_, _, _, effs, _)) => Some((effs, i)),
   _ => found,
 }
 

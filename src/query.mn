@@ -658,9 +658,10 @@ fn noted_address(site) = match site {
   (m, sp, _) => (m, sp),
 }
 
-// The same sites as their HANDLES — what a reader that measures nearness
-// between positions needs (the proposer's rank), one per source site.
-fn ref_handles_of(name) with !Mutate = map({ (_m, _sp, h) => h }, ref_sites_of(name))
+// A declaration's references as their HANDLES — what a reader that measures
+// nearness between positions needs (the proposer's rank), one per source
+// site.
+fn decl_ref_handles(d) with !Mutate = map({ (_m, _sp, h) => h }, decl_ref_sites(d))
 
 // The references to the declaration a name names at module level — the
 // env's own resolution once the judgment is done, followed by its link. A

@@ -439,9 +439,8 @@ landing that closes it. A gate that did not run is UNKNOWN, never green.
   not (§11.2).
 - **Names are still read where an edge exists** (§11.1): the lowered program's
   identity is a spelling, so the reach walks walk names and the emit resolves
-  a callee's spelling through the scope again; the judgment still names an
-  op's effect at a continuation boundary and the desugar's prelude
-  vocabulary.
+  a callee's spelling through the scope again; a sugar's callee is a
+  spelling the lowering calls.
 - **A module sees its whole import closure** (§11.3): visibility is the closure,
   so a user cannot declare a name the prelude declares, one namespace is paid
   for in prefixes, and the compiler recognizes library effects by their
@@ -642,8 +641,10 @@ a provenance diff, a search over live shared cells.
    (`Hβ.lower.reach-edge-on-node`, `Hβ.emit.symbol-is-the-declarations`). The
    judgment draws the edge at the one writer (`graph_ref_link`), and the scope,
    the gradient, the value walk, the caret, the facets, a call's binding
-   (`callee_binding`) and an install's handler read it — an install resolves
-   its handler once, before its body is judged (`install_decl`). What still
+   (`callee_binding`), an install's handler and the proposer's candidates read
+   it — an install resolves its handler once, before its body is judged
+   (`install_decl`), and a candidate is minted linked to the declaration it
+   proposes (`linked_ref`). What still
    reads names: (a) the lowered program's identity is a spelling
    (`LFn(String, …)`), so the three reach walks (`reach_entry_names`,
    `plan_reached`, `reach_units`) walk names, and the emit asks the schedule's
@@ -656,10 +657,8 @@ a provenance diff, a search over live shared cells.
    judgment charges each as resolved at the link's own scope and the lowering
    calls the symbol the spelling names — the form is the sugar node's edge to
    the primitive's declaration, drawn where the sugar is judged, the symbol
-   (a) reads; (c) the proposer's rings and its declaration index key by the
-   binding's declaration. Gate:
-   `mentl query src/main.mn unreachable` names the same set read off the
-   edge, and m3 == m4.
+   (a) reads. Gate: `mentl query src/main.mn unreachable` names the same set
+   read off the edge, and m3 == m4.
 2. **Every position is a cell — #108** (`Hβ.graph.positions-are-cells`). A
    pattern's constructor, a type annotation's name, a row's effect name and a
    handler arm's op name are nodes that draw the same edge, so `refs of` a

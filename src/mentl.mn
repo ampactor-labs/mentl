@@ -55,9 +55,9 @@ type Patch = Patch(Span, String)
 // ALLOWED row refused, each refusal keeping its Why (PLAN §5: the row pruning
 // IS the second moat, and a pruned candidate the developer cannot see is a
 // guess they cannot audit).
-type Context = Context([(String, Binding, Reason, SchemeKind, Int)], EffRow, String, Int)
+type Context = Context([(String, Binding, Reason, SchemeKind, Int)], EffRow, Option(Int), Int)
 
-// scope bindings (the Env's own entries), the LIVE active-effect row, the enclosing decl's name ("" at top level — the vocabulary excludes candidates whose free-name closure reaches it: proposing the hole's own enclosing fn, or anything that transitively calls it, is nontermination by construction), and the HOLE'S OWN HANDLE — the cell the proposals are for. The fourth field was the hole's SPAN, a coordinate copied beside the very handle that gives it live, and the copy was load-bearing in the worst way: with only a span the proof gate had no cell to bind, so it instantiated a FRESH target and called that safety. The handle carries the span (graph_span_of), the type (ty_of_kind over its live kind), and the union-find root every candidate must agree with. One edge where three copies were.
+// scope bindings (the Env's own entries), the LIVE active-effect row, the enclosing declaration (None at top level — the vocabulary excludes every declaration whose references reach it: proposing the hole's own enclosing fn, or anything that transitively calls it, is nontermination by construction), and the HOLE'S OWN HANDLE — the cell the proposals are for. The fourth field was the hole's SPAN, a coordinate copied beside the very handle that gives it live, and the copy was load-bearing in the worst way: with only a span the proof gate had no cell to bind, so it instantiated a FRESH target and called that safety. The handle carries the span (graph_span_of), the type (ty_of_kind over its live kind), and the union-find root every candidate must agree with. One edge where three copies were.
 // The full Boolean row reaches synth — not a
 // flattened positive [EffName]. So `!E` (the
 // negative capability, PLAN §4⑥) is readable at

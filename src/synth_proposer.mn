@@ -282,75 +282,108 @@ fn concat_candidates(a: [EnrichedCandidate], b: [EnrichedCandidate]) -> [Enriche
 //   admitted  — a node, minted with its Why, into the proof gate;
 //   rejected  — the row refused it; the (name, Reason) pair SURVIVES to
 //               the projection (the rejection teaches);
-//   excluded  — its free-name closure reaches the enclosing decl:
-//               proposing choose() inside choose, or main() where main
-//               calls choose, is nontermination by construction (silent —
-//               a structural impossibility, not a teaching moment).
+//   excluded  — its references reach the enclosing decl: proposing
+//               choose() inside choose, or main() where main calls choose,
+//               is nontermination by construction (silent — a structural
+//               impossibility, not a teaching moment).
 // Calls that take arguments are the recursive-hole general form
-// (Hβ.synth.vocabulary-arg-holes); the reach walk's O(1) form is the
-// call-edge index (Hβ.synth.vocabulary-reach-index).
+// (Hβ.synth.vocabulary-arg-holes).
 fn enumerate_vocabulary_calls(target_ty, allowed_row, context, rings) with !Mutate = match context {
-  Context(scope_bindings, _active, enclosing, _hole_h) => fold(
-    ([], []),
-    (acc, entry) => match acc {
-      (accepted, rejected) => match entry {
-        (name, scheme, reason, kind, _) => match kind {
-          FnScheme | ValueScheme => // A value binding of function type is vocabulary exactly as a
-          // declared fn is: a reference to it fills a function-typed hole.
-          // A name in none of the rings is in scope through the link alone
-          // and is neither offered nor listed as refused.
-          match ring_of_name(rings, name) {
-            None => (accepted, rejected),
-            Some(ring) => match judgment_ty(scheme) {
-              TFun(params, ret, row) => if len(params) == 0 && heads_may_unify(ret, target_ty) && !reaches_decl(name, enclosing, []) {
-                if row_subsumes(row, allowed_row) {
-                  // drift-audit: ignore — bounded by the in-scope zero-arg vocabulary, not a loop accumulator
-                  (accepted ++ [vocabulary_call_candidate(name, row, allowed_row, ring)], rejected)
-                } else {
+  Context(scope_bindings, _active, enclosing, _hole_h) => {
+    let reaching = decls_reaching(enclosing)
+    fold(([], []), vocabulary_step(target_ty, allowed_row, rings, reaching, ??, ??), scope_bindings)
+  },
+}
+
+fn vocabulary_step(target_ty, allowed_row, rings, reaching, acc, entry) with !Mutate = match acc {
+  (accepted, rejected) => match entry {
+    (name, scheme, reason, kind, decl) => match kind {
+      FnScheme | ValueScheme => // A value binding of function type is vocabulary exactly as a
+      // declared fn is: a reference to it fills a function-typed hole.
+      // A declaration in none of the rings is in scope through the link
+      // alone and is neither offered nor listed as refused.
+      match ring_of_decl(rings, decl) {
+        None => (accepted, rejected),
+        Some(ring) => match judgment_ty(scheme) {
+          TFun(params, ret, row) => if len(params) == 0 && heads_may_unify(ret, target_ty) && !reaches_hole(reaching, decl) {
+            if row_subsumes(row, allowed_row) {
+              // drift-audit: ignore — bounded by the in-scope zero-arg vocabulary, not a loop accumulator
+              (accepted ++ [vocabulary_call_candidate(name, decl, row, allowed_row, ring)], rejected)
+            } else {
+              (
+                accepted,
+                // drift-audit: ignore — bounded by the in-scope zero-arg vocabulary, not a loop accumulator
+                rejected ++ [
                   (
-                    accepted,
-                    // drift-audit: ignore — bounded by the in-scope zero-arg vocabulary, not a loop accumulator
-                    rejected ++ [
-                      (
-                        name,
-                        Inferred("performs {show_effrow(row)} — refused by the target row {show_effrow(allowed_row)}"),
-                        ring
-                      )
-                    ]
+                    name,
+                    Inferred("performs {show_effrow(row)} — refused by the target row {show_effrow(allowed_row)}"),
+                    ring
                   )
-                }
-              } else if fn_heads_may_unify(params, ret, target_ty) && !reaches_decl(name, enclosing, []) {
-                // A FUNCTION-typed hole is filled first by a REFERENCE to a
-                // function already in scope. The reference's row is charged
-                // where the stage applies, so the same row gate judges it.
-                if row_subsumes(row, allowed_row) {
-                  // drift-audit: ignore — bounded by the in-scope vocabulary of one arity, not a loop accumulator
-                  (accepted ++ [vocabulary_ref_candidate(name, row, allowed_row, ring)], rejected)
-                } else {
+                ]
+              )
+            }
+          } else if fn_heads_may_unify(params, ret, target_ty) && !reaches_hole(reaching, decl) {
+            // A FUNCTION-typed hole is filled first by a REFERENCE to a
+            // function already in scope. The reference's row is charged
+            // where the stage applies, so the same row gate judges it.
+            if row_subsumes(row, allowed_row) {
+              // drift-audit: ignore — bounded by the in-scope vocabulary of one arity, not a loop accumulator
+              (accepted ++ [vocabulary_ref_candidate(name, decl, row, allowed_row, ring)], rejected)
+            } else {
+              (
+                accepted,
+                // drift-audit: ignore — bounded by the in-scope vocabulary of one arity, not a loop accumulator
+                rejected ++ [
                   (
-                    accepted,
-                    // drift-audit: ignore — bounded by the in-scope vocabulary of one arity, not a loop accumulator
-                    rejected ++ [
-                      (
-                        name,
-                        Inferred("performs {show_effrow(row)} when applied — refused by the target row {show_effrow(allowed_row)}"),
-                        ring
-                      )
-                    ]
+                    name,
+                    Inferred("performs {show_effrow(row)} when applied — refused by the target row {show_effrow(allowed_row)}"),
+                    ring
                   )
-                }
-              } else {
-                (accepted, rejected)
-              },
-              _ => (accepted, rejected),
-            },
+                ]
+              )
+            }
+          } else {
+            (accepted, rejected)
           },
           _ => (accepted, rejected),
         },
       },
+      _ => (accepted, rejected),
     },
-    scope_bindings
-  ),
+  },
+}
+
+// The declarations whose references reach the hole's enclosing declaration,
+// it included, followed back along its in-edges: each reference stands in the
+// top-level declaration that holds it (`enclosing_decl`), and proposing any of
+// them at the hole is nontermination by construction — a reference that is
+// not a call counts too, the safe direction. One walk per proposal; each
+// candidate is then a membership test.
+fn decls_reaching(enclosing) with !Mutate = match enclosing {
+  None => wmap_new(64),
+  Some(d) => reaching_walk([d], wmap_add(wmap_new(256), d, true)),
+}
+
+fn reaching_walk(work, seen) = if len(work) == 0 {
+  seen
+} else {
+  match fold((drop_last(work), seen), push_holder, graph_refs_of(last(work))) {
+    (more, grown) => reaching_walk(more, grown),
+  }
+}
+
+fn push_holder(acc, r) = match acc {
+  (work, seen) => match enclosing_decl(r) {
+    Some(h) => if is_some(wmap_get(seen, h)) { acc } else { (push(work, h), wmap_add(seen, h, true)) },
+    None => acc,
+  },
+}
+
+// A candidate's declaration reaches the hole when the top-level declaration
+// holding it does: a module value's binder stands inside its `let`.
+fn reaches_hole(reaching, decl) with !Mutate = match enclosing_decl(decl) {
+  Some(top) => is_some(wmap_get(reaching, top)),
+  None => is_some(wmap_get(reaching, decl)),
 }
 
 // ─── The vocabulary is searched OUTWARD from the hole ─────────────────
@@ -401,57 +434,38 @@ fn refusal_words(refusal) = match refusal {
   (name, reason, _) => (name, reason),
 }
 
-// The ring a name is found in: declared by the hole's own module, by a
-// module it imports, or by the prelude — or none, for a name the module
-// reaches through the link alone.
-fn ring_of_name(rings, name: String) = if any({ n => n == name }, rings.home) {
-  Some(OwnModule)
-} else if any({ n => n == name }, rings.imported) {
-  Some(AuthoredImport)
-} else if any({ n => n == name }, rings.prelude) {
-  Some(Prelude)
-} else {
-  None
+// The ring a declaration is found in, read off the module that declares it:
+// the hole's own, one the hole's module names in its own import statements,
+// or the prelude — or none, for a declaration the module reaches through the
+// link alone. They are what the module SEES once a module's scope is its own
+// declarations, its direct imports' and the prelude's
+// (`Hβ.driver.per-module-env-overlay`); the import closure the judgment still
+// resolves through is not vocabulary the developer chose.
+fn ring_of_decl(rings, decl) = match graph_node_body(graph_module_of(decl)) {
+  NModule(dm) => if dm.path == rings.home {
+    Some(OwnModule)
+  } else if contains_path(rings.imported, dm.path) {
+    Some(AuthoredImport)
+  } else if dm.path == "prelude" {
+    Some(Prelude)
+  } else {
+    None
+  },
+  NExpr(_) | NStmt(_) | NHole(_) | NPat(_) | NTypeAnn(_) => None,
 }
 
-// The rings, read once per proposal from the hole's own module node: the
-// names its decls declare, the names declared by the modules its own import
-// statements name, and the prelude's. They are what the module SEES once a
-// module's scope is its own declarations, its direct imports' and the
-// prelude's (`Hβ.driver.per-module-env-overlay`); the import closure the
-// judgment still resolves through is not vocabulary the developer chose.
-//
-// The membership is read BY NAME because the env entry the vocabulary
-// enumerates carries no edge to its decl: a judged fn is published as
-// `Frozen(qs, ty)` by `generalize`, so the handle `graph_module_of` would
-// read is gone by the time anything enumerates the env (PLAN §7, "Schemes
-// are VALUES, not edges"). When the binding keeps its decl handle, the ring
-// is one column read and these name lists are deleted.
+// The hole's module and the modules its own import statements name, read
+// once per proposal from the hole's module node.
 fn vocabulary_rings(hole_h) = match graph_node_body(graph_module_of(hole_h)) {
-  NModule(m) => {
-    let cells = module_cells()
-    {
-      home: map(stmt_decl_name, m.decls),
-      imported: cells |> filter(cell_in(import_paths_of_decls(m.decls))) |> map(cell_decl_names) |> flatten,
-      prelude: cells |> filter(cell_in(["prelude"])) |> map(cell_decl_names) |> flatten,
-    }
-  },
+  NModule(m) => {home: m.path, imported: import_paths_of_decls(m.decls)},
   _ => {
     // The module column is written only with NModule handles, so a hole
     // whose module is anything else was minted outside every module — a
     // defect in the caller, which traps rather than answering with an
     // empty vocabulary nobody could tell from a real one.
     out_of_range()
-    {home: [], imported: [], prelude: []}
+    {home: "", imported: []}
   },
-}
-
-fn cell_in(paths, c) = match c {
-  (_h, p, _s, _d) => contains_path(paths, p),
-}
-
-fn cell_decl_names(c) = match c {
-  (_h, _p, _s, d) => map(stmt_decl_name, d),
 }
 
 // Answers whether two types COULD unify, from their head constructors alone —
@@ -521,19 +535,28 @@ fn same_head(a, b) with Pure = match a {
 // every other expression in the language — by unifying the candidate's own
 // cell with the hole's, inside the segment, with rollback. The proof
 // becomes the dispatch.
-fn vocabulary_call_candidate(name, row, allowed_row, ring) with !Mutate = EnrichedCandidate({
-  node: synth_node(CallExpr(synth_node(VarRef(name)), [])),
+fn vocabulary_call_candidate(name, decl, row, allowed_row, ring) with !Mutate = EnrichedCandidate({
+  node: synth_node(CallExpr(linked_ref(name, decl), [])),
   origin: ProposerVocabulary(ring),
   reason: Inferred("an in-scope call {name}() — row {show_effrow(row)} admitted by {show_effrow(allowed_row)}"),
   writes: [],
 })
 
-fn vocabulary_ref_candidate(name, row, allowed_row, ring) with !Mutate = EnrichedCandidate({
-  node: synth_node(VarRef(name)),
+fn vocabulary_ref_candidate(name, decl, row, allowed_row, ring) with !Mutate = EnrichedCandidate({
+  node: linked_ref(name, decl),
   origin: ProposerVocabulary(ring),
   reason: Inferred("the in-scope function {name} — row {show_effrow(row)} admitted by {show_effrow(allowed_row)}"),
   writes: [],
 })
+
+// A candidate names a declaration the hole's scope holds, so its reference
+// is minted linked to it: the candidate's judgment, its rank and its
+// denotation read the declaration it proposes and never resolve the name.
+fn linked_ref(name: String, decl) with !Mutate = {
+  let r = synth_node(VarRef(name))
+  graph_ref_link(r, decl)
+  r
+}
 
 // Could a function of this arity, parameters and return fill a
 // function-typed hole? The sound index again: equal arity (a function type
@@ -568,70 +591,28 @@ fn params_heads_agree(pair) with Pure = match pair {
 // the name's declaration, each use — so a use in another file is as far as
 // its module is from the hole's. Until 2026-10-01 the terms compared bare
 // spans, and a reference at line 12 of any module read as maximally near a
-// hole at line 12 (Hβ.synth.proximity-compares-across-modules). A name with
-// no declaration node (a primitive) sits at the farthest tier: the gradient
-// never reaches zero, and a position nothing places is never near.
-fn candidate_rank(name: String, hole_h, reach, decls) with !Mutate = {
-  let decl_near = match smap_get(decls, name) {
-    Some(dh) => position_proximity(hole_h, dh, reach),
-    None => cross_module_weight(),
-  }
-  let use_near =
-    fold(0.0, (acc, h) => acc + position_proximity(hole_h, h, reach), ref_handles_of(name))
-  0.5 + decl_near + use_near
-}
-
-// Every module's top-level declarations by the names they bind — a
-// function or handler by its own name, a type's constructors and an
-// effect's ops by theirs, each at its declaration's node — built once per
-// proposal so a candidate's declaration is a handle the proximity reads.
-// The env cannot answer this: a judged binding is published as a scheme
-// VALUE with no edge back to its declaration
-// (Hβ.synth.vocabulary-ring-is-read-by-name).
-fn decl_index() = fold(smap_new(), decl_index_cell, module_cells())
-
-fn decl_index_cell(acc, c) = match c {
-  (_h, _p, _s, decls) => fold(acc, decl_index_node, decls),
-}
-
-fn decl_index_node(acc, h) = match graph_node_body(h) {
-  NStmt(FnStmt(name, _, _, _, _)) => smap_add(acc, name, h),
-  NStmt(HandlerDeclStmt(hname, _, _, _, _, _)) => smap_add(acc, hname, h),
-  NStmt(TypeDefStmt(_, variants)) => fold(
-    acc,
-    (a, v) => match v {
-      (vname, _, _) => smap_add(a, vname, h),
-    },
-    variants
-  ),
-  NStmt(EffectDeclStmt(_, _, ops)) => fold(
-    acc,
-    (a, op) => match op {
-      (oname, _, _, _) => smap_add(a, oname, h),
-    },
-    ops
-  ),
-  _ => acc,
+// hole at line 12 (Hβ.synth.proximity-compares-across-modules). A candidate
+// whose reference carries no declaration sits at the farthest tier: the
+// gradient never reaches zero, and a position nothing places is never near.
+fn candidate_rank(decl, hole_h, reach) with !Mutate = match decl {
+  Some(dh) => 0.5 + position_proximity(hole_h, dh, reach) + fold(0.0, (acc, h) => acc + position_proximity(hole_h, h, reach), decl_ref_handles(dh)),
+  None => 0.5 + cross_module_weight(),
 }
 
 // rank_of — RANK IS A PROJECTION of the LIVE candidate (the resolved
 // peer Hβ.synth.rank-is-a-projection-not-a-field): a named callee — a
 // vocabulary or constructor call, one arm because a ctor call IS a
-// CallExpr(VarRef) — ranks by the gradient's proximity read, its decl
-// reason read live from the env; a nameless candidate (a lambda, a
+// CallExpr(VarRef) — ranks by the gradient's proximity read along the
+// edge its reference was minted with; a nameless candidate (a lambda, a
 // literal) carries the bare base with no invented differentiation (the
 // stored form compared a measured proximity against enumerator
 // constants, and a swapped e-class member rode a stale number).
-// Computed ONCE per candidate at sort entry — the same refs walk the
-// stored form paid at enrichment, moved to the read point.
-fn rank_of(c, hole_h, reach, decls) with !Mutate = match c {
+// Computed ONCE per candidate at sort entry.
+fn rank_of(c, hole_h, reach) with !Mutate = match c {
   EnrichedCandidate(cr) => match graph_node_body(cr.node) {
-    NExpr(CallExpr(callee, _)) => match graph_node_body(callee) {
-      NExpr(VarRef(name)) => candidate_rank(name, hole_h, reach, decls),
-      _ => 0.5,
-    },
-    NExpr(VarRef(name)) => // A reference ranks by the same local-intent read as a call of it.
-    candidate_rank(name, hole_h, reach, decls),
+    NExpr(CallExpr(callee, _)) => candidate_rank(graph_ref_decl(callee), hole_h, reach),
+    NExpr(VarRef(_)) => // A reference ranks by the same local-intent read as a call of it.
+    candidate_rank(graph_ref_decl(cr.node), hole_h, reach),
     _ => 0.5,
   },
 }
@@ -675,12 +656,10 @@ fn hole_demand(hole_h) = match graph_claims_of(hole_h) {
 // vocabulary plus the shape enumerators). The ORDER is the only thing
 // rank decides; a constraint-tie still teaches (the render's collapse
 // line is unchanged — rank is a prior, never a guess). The hole's module
-// reach and the declarations' index are read once here, for every
-// candidate the sort ranks.
+// reach is read once here, for every candidate the sort ranks.
 fn rank_sort(hole_h, cands) with !Mutate = {
   let reach = module_reach_of(graph_module_of(hole_h))
-  let decls = decl_index()
-  cands |> map((c) => (rank_of(c, hole_h, reach, decls), c)) |> fold([], rank_insert) |> map({ (_, c) => c })
+  cands |> map((c) => (rank_of(c, hole_h, reach), c)) |> fold([], rank_insert) |> map({ (_, c) => c })
 }
 
 fn rank_insert(sorted, rc) = match sorted {
@@ -691,57 +670,6 @@ fn rank_insert(sorted, rc) = match sorted {
       if r > hr { [rc] ++ sorted } else { [h] ++ rank_insert(rest, rc) },
     },
   },
-}
-
-// Does `name`'s free-name closure reach `target`? collect_free_vars
-// over-approximates the call edge (a reference without a call also
-// excludes — the safe direction). `seen` breaks cycles. The walk runs over
-// the DECLARATION, so its parameters bind its body: walked over the body
-// alone, a parameter named like a declaration read as a call to it.
-fn reaches_decl(name: String, target: String, seen) with !Mutate = if target == "" {
-  false
-} else if name == target {
-  true
-} else if contains_name(seen, name) {
-  false
-} else {
-  match fn_decl_by_name(name) {
-    None => false,
-    Some((params, body)) => // drift-audit: ignore — bounded by call-graph depth (the seen set), not a loop accumulator
-    any(
-      (n) => reaches_decl(n, target, [name] ++ seen),
-      collect_free_vars(body, free_vars_param_names(params))
-    ),
-  }
-}
-
-fn contains_name(names, target: String) = any((n) => n == target, names)
-
-// A named fn's parameters and body, read from the program weave directly by
-// name. (The NModule-decls indirection read a projection the edit session's
-// weave does not always carry — main() leaked past the reach exclusion
-// because its body was unreachable through it; the weave is the one
-// truth both walks read.)
-fn fn_decl_by_name(name: String) with !Mutate = {
-  let snapshot = graph_snapshot()
-  match snapshot {
-    Graph(next, _spans) => fn_decl_scan(name, 0, next),
-  }
-}
-
-// The first CURRENT declaration of the name — a superseded generation's
-// `main` calls what the program used to call (graph_node_current).
-fn fn_decl_scan(name: String, i, n) with !Mutate = if i >= n {
-  None
-} else {
-  match graph_node_body(i) {
-    NStmt(FnStmt(fname, params, _ret, _effs, body)) => if fname == name && graph_node_current(i) {
-      Some((params, body))
-    } else {
-      fn_decl_scan(name, i + 1, n)
-    },
-    _ => fn_decl_scan(name, i + 1, n),
-  }
 }
 
 // ─── Per-target-shape enumerators ──────────────────────────────────
@@ -772,13 +700,13 @@ fn ctors_of_type_from(entries, type_name, i, n, own buf, count) = if i >= n {
   slice(buf, 0, count)
 } else {
   match list_index(entries, i) {
-    (name, scheme, reason, kind, _) => if is_ctor_of(kind, scheme, type_name) {
+    (name, scheme, reason, kind, decl) => if is_ctor_of(kind, scheme, type_name) {
       ctors_of_type_from(
         entries,
         type_name,
         i + 1,
         n,
-        list_set(buf, count, ctor_to_enriched_candidate(name, scheme, reason)),
+        list_set(buf, count, ctor_to_enriched_candidate(name, scheme, reason, decl)),
         count + 1
       )
     } else {
@@ -787,8 +715,8 @@ fn ctors_of_type_from(entries, type_name, i, n, own buf, count) = if i >= n {
   }
 }
 
-fn ctor_to_enriched_candidate(name, scheme, reason) with !Mutate =
-  seed_candidate(synthesize_ctor_call_node(name, scheme), VarLookup(name, reason))
+fn ctor_to_enriched_candidate(name, scheme, reason, decl) with !Mutate =
+  seed_candidate(synthesize_ctor_call_node(name, scheme, decl), VarLookup(name, reason))
 
 // A seed the enumerator proposes: the node it stands as, and why the type
 // admits it. It moves no context cell until it is judged.
@@ -1323,7 +1251,7 @@ fn distinct_by_canon(cands, acc) = if len(cands) == 0 {
 // WHERE the survivors diverge — the trail first, then the term (C6).
 fn divergence_of(survivors, target_ty, context) = match first_context_split(survivors) {
   Some(d) => d,
-  None => divergence_of_terms(map(candidate_node, survivors), target_ty, context),
+  None => divergence_of_terms(map(candidate_node, survivors), target_ty),
 }
 
 // THE TRAIL FIRST: the earliest context cell the top survivor's segment
@@ -1391,14 +1319,14 @@ fn candidate_writes(candidate) with Pure = match candidate {
 // THE TERM: no context cell separates the survivors, so the question is
 // about what stands at the position, in the precedence types.mn's
 // `Divergence` states — row, then denotation, then value, then shape.
-// Every read is LIVE at question time — a callee's row from the very env
-// entry the vocabulary enumerator admitted it through, a denotation from the
-// callee's own body — so nothing rides on the candidate record and nothing
-// can go stale between the enumeration and the question.
+// Every read is LIVE at question time — a callee's row from the declaration
+// its reference was minted linked to, a denotation from the callee's own body
+// — so nothing rides on the candidate record and nothing can go stale between
+// the enumeration and the question.
 //
 // The nodes arrive RANK-SORTED, so a row split is reported as the top
 // survivor against the first one that may do something it may not.
-fn divergence_of_terms(nodes, target_ty, context) = match first_row_split(context, nodes) {
+fn divergence_of_terms(nodes, target_ty) = match first_row_split(nodes) {
   Some(split) => match split {
     (a, b) => DivRow(a, b),
   },
@@ -1440,7 +1368,7 @@ fn add_denotation(acc, d) = match d {
 }
 
 // Every survivor's constructor name when each is a bare nullary constructor
-// reference — read from the env entry the reference resolves to — else None.
+// reference — read off the declaration its edge reaches — else None.
 fn nullary_ctor_names(nodes) = fold(Some([]), nullary_ctor_step, nodes)
 
 fn nullary_ctor_step(acc, node) = match acc {
@@ -1452,12 +1380,10 @@ fn nullary_ctor_step(acc, node) = match acc {
 }
 
 fn nullary_ctor_name(node) = match graph_node_body(node) {
-  NExpr(VarRef(name)) => match env_lookup(name) {
-    Some(entry) => match entry {
-      (_, _, kind) => match kind {
-        ConstructorScheme(_, _) => Some(name),
-        _ => None,
-      },
+  NExpr(VarRef(name)) => match graph_ref_decl(node) {
+    Some(d) => match graph_published(d) {
+      Some((_, _, ConstructorScheme(_, _))) => Some(name),
+      _ => None,
     },
     None => None,
   },
@@ -1466,8 +1392,8 @@ fn nullary_ctor_name(node) = match graph_node_body(node) {
 
 // Rows compare by MUTUAL subsumption — the crown's own algebra, never a
 // structural compare, because two spellings of one row are one row.
-fn first_row_split(context, nodes) = {
-  let rows = map(candidate_row(context), nodes)
+fn first_row_split(nodes) = {
+  let rows = map(candidate_row, nodes)
   let base = head(rows)
   match find(row_differs(base), rest(rows)) {
     Some(r) => Some((base, r)),
@@ -1479,28 +1405,22 @@ fn row_differs(a, b) = !(row_subsumes(a, b) && row_subsumes(b, a))
 
 // A literal, a constructor, a lambda skeleton performs nothing by itself,
 // and Pure is that reading rather than a fallback. A call carries its
-// callee's declared row.
-fn candidate_row(context, node) = match callee_name_of(node) {
+// callee's declared row, read off the declaration its reference was minted
+// linked to.
+fn candidate_row(node) = match zero_arg_callee_decl(node) {
   None => mk_ef_pure(),
-  Some(name) => scope_row_of(name, context),
-}
-
-// The callee's row, re-read from the scope the enumerator admitted this
-// candidate through — one home, read live, never carried on the candidate
-// record beside its rendered Reason text. The scan is by NAME and pays the
-// O(1) law's standing debt with every other env read (`Hβ.perf.env-o1-index`,
-// `Hβ.perf.name-is-handle`); it runs once per survivor of a tie.
-fn scope_row_of(name: String, context) = match context {
-  Context(scope_bindings, _, _, _) => match find(binding_is_named(name), scope_bindings) {
-    Some(entry) => match entry {
-      (_, scheme, _, _, _) => extract_row(judgment_ty(scheme)),
-    },
+  Some(d) => match graph_published(d) {
+    Some((scheme, _, _)) => extract_row(judgment_ty(scheme)),
     None => mk_ef_pure(),
   },
 }
 
-fn binding_is_named(name: String, entry) = match entry {
-  (ename, _, _, _, _) => ename == name,
+// The declaration a zero-arg call calls, along its callee's edge; None for
+// every other shape — an arg-bearing call's arguments are not yet sayable
+// (`Hβ.synth.vocabulary-arg-holes`).
+fn zero_arg_callee_decl(node) = match graph_node_body(node) {
+  NExpr(CallExpr(callee, args)) => if len(args) == 0 { graph_ref_decl(callee) } else { None },
+  _ => None,
 }
 
 // What this candidate DENOTES, if the medium can read it: a literal denotes
@@ -1515,14 +1435,13 @@ fn binding_is_named(name: String, entry) = match entry {
 // two collapse into one class and extraction answers with a fill; until
 // then, asking which name carries the intent is the honest answer, not a
 // stand-in for one (`Hβ.synth.fan-extraction-needs-a-feeder`).
-fn candidate_denotation(seen, node) = match callee_name_of(node) {
-  Some(name) => if contains_name(seen, name) {
+fn candidate_denotation(seen, node) = match zero_arg_callee_decl(node) {
+  Some(d) => if any({ s => s == d }, seen) {
     None
   } else {
-    match fn_decl_by_name(name) {
-      None => None,
-      Some((_, body)) => // drift-audit: ignore — bounded by call-graph depth (the seen set), not a loop accumulator
-      candidate_denotation([name] ++ seen, body),
+    match graph_node_body(d) {
+      NStmt(FnStmt(_, _, _, _, body)) => candidate_denotation(push(seen, d), body),
+      _ => None,
     }
   },
   None => node_const(node),
@@ -1608,9 +1527,9 @@ fn synthesize_record_node(fields) with !Mutate =
 // constructor filter already reads (nullary ctors carry TName directly;
 // fielded ones carry TFun(_, TName, _)), so this is a read, never a new
 // fact: SYNTAX's own surface says `let nothing = None`.
-fn synthesize_ctor_call_node(name, scheme) with !Mutate = match judgment_ty(scheme) {
-  TFun(params, _, _) => synth_node(CallExpr(synth_node(VarRef(name)), synth_holes_for(params))),
-  _ => synth_node(VarRef(name)),
+fn synthesize_ctor_call_node(name, scheme, decl) with !Mutate = match judgment_ty(scheme) {
+  TFun(params, _, _) => synth_node(CallExpr(linked_ref(name, decl), synth_holes_for(params))),
+  _ => linked_ref(name, decl),
 }
 
 // params arrive as the scheme's own [TParam] — LambdaExpr's exact
