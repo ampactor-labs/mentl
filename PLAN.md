@@ -438,9 +438,9 @@ landing that closes it. A gate that did not run is UNKNOWN, never green.
   §«Handler chains»); a rename, the session's edit and a proposal's accept are
   not (§11.2).
 - **Names are still read where an edge exists** (§11.1): the lowered program's
-  identity is a spelling, so the reach walks walk names and the emit resolves
-  a callee's spelling through the scope again; a sugar's callee is a
-  spelling the lowering calls.
+  identity is a spelling, so the emit's reach walks names, the emit resolves
+  a callee's spelling through the scope again and the lowering reads a
+  handler by its name; a sugar's callee is a spelling the lowering calls.
 - **A module sees its whole import closure** (§11.3): visibility is the closure,
   so a user cannot declare a name the prelude declares, one namespace is paid
   for in prefixes, and the compiler recognizes library effects by their
@@ -641,18 +641,24 @@ a provenance diff, a search over live shared cells.
    (`Hβ.lower.reach-edge-on-node`, `Hβ.emit.symbol-is-the-declarations`). The
    judgment draws the edge at the one writer (`graph_ref_link`), and the scope,
    the gradient, the value walk, the caret, the facets, a call's binding
-   (`callee_binding`), an install's handler and the proposer's candidates read
-   it — an install resolves its handler once, before its body is judged
-   (`install_decl`), and a candidate is minted linked to the declaration it
-   proposes (`linked_ref`). What still
-   reads names: (a) the lowered program's identity is a spelling
-   (`LFn(String, …)`), so the three reach walks (`reach_entry_names`,
-   `plan_reached`, `reach_units`) walk names, and the emit asks the schedule's
-   reach of a lowered callee by resolving its spelling through the scope again
-   (`fanout_reach_known`) — the form is a lowered unit keyed by its
-   declaration's handle, reachability the edge followed from `main`, a symbol
-   read off its declaration (`$module.name`, nested paths `.`-joined), and the
-   name-keyed walks deleted, a TRANSITION; (b) a sugar's callees are
+   (`callee_binding`), an install's handler, the proposer's candidates and the
+   lowering's reach read it — an install resolves its handler once, before
+   its body is judged (`install_decl`), a candidate is minted linked to the
+   declaration it proposes (`linked_ref`), each lowered reference leads to its
+   declaration's statement (`ref_target`), and an op's sole handler is its
+   declaration on the op's scheme. What still reads names: (a) the lowered
+   program's identity is a spelling (`LFn(String, …)`), so a call the
+   lowering mints at a borrowed site — `map` where the source wrote `fanout`
+   — is told from the reference's own projection by its spelling, the emit's
+   and the reading's reach walks (`plan_reached`, `reach_units`) walk names,
+   the emit asks the schedule's reach of a lowered callee by resolving its
+   spelling through the scope again (`fanout_reach_known`), and the lowering
+   reads a handler's facts by its name (`handler_decl_of`,
+   `lookup_handler_arm_names_of`, `projection_of`) — the form is a lowered
+   unit keyed by its declaration's handle, reachability the edge followed
+   from `main`, a symbol read off its declaration (`$module.name`, nested
+   paths `.`-joined), and the name-keyed walks deleted, a TRANSITION; (b) a
+   sugar's callees are
    spellings (`concat_callees`, `subscript_callee`, `list_rest_callee`): the
    judgment charges each as resolved at the link's own scope and the lowering
    calls the symbol the spelling names — the form is the sugar node's edge to

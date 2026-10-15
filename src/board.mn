@@ -229,9 +229,12 @@ fn board_bounds() = [
   // escaping-row pre-pass went whole. 1,243 at M1's first pin (2026-10-14):
   // the readers that re-checked a name-keyed note at each handle went with
   // the note, and the reads of a declaration's kind along the new edge write
-  // their rosters. It falls to zero where the migration lands
-  // (`Hβ.match.catch-all-over-a-sum-is-the-roster`).
-  Bound({ceiling: 1243, question: QCensus(CsWildcardOverSum)}),
+  // their rosters. 1,228 when the lowering's reach came to follow the edges
+  // (2026-10-15): the name-keyed readers and dead declarations M1's later
+  // pins deleted took their catch-alls with them, and so did the map that
+  // keyed every top-level statement by spelling. It falls to zero where the
+  // migration lands (`Hβ.match.catch-all-over-a-sum-is-the-roster`).
+  Bound({ceiling: 1228, question: QCensus(CsWildcardOverSum)}),
   // Drift mode 15 — a value given a leading-underscore name instead of being
   // deleted. The rename silences the reader, never the fact that nothing
   // reads it.

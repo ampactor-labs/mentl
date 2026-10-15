@@ -1449,20 +1449,17 @@ authored_ref_max: 617
 # tools/state.sh prints the march's cost line on every run now, so the
 # reading is on the next board log, main's push run among them.
 selfcompile_peak_kb_max: 477000
-# THE IMAGE'S OWN HIGH-WATER (2026-10-13, Landing 4 S2): the guest prints its
-# bump line's peak on the m3 leg's stderr (`arena: … line peak N KB`), and
-# that number is a pure function of the computation — two self-compiles of
-# one source read 494,011 KB both times while their peak RSS read 460,108 and
-# 460,036 — so it is the memory ratchet no machine moves. Born at 1% over
-# the landed form's 494,011 KB (the RSS ceiling's own rule), seen RED at
-# 494,000 through `read_line` (tools/march.sh), which refuses the repin on a
-# breach with no re-measure, since there is no jitter to die. A landing that
-# breaches it pays the cost down, never raises it. WILD's first pin
-# (2026-10-14) read 502,012 KB and was refused; the peak was the
-# escaping-row pre-pass's extent, which recomputed the judgment's own rows
-# for the yield gate (`Hβ.lower.esc-row-on-node`), and with it deleted the
-# landed form reads 435,048 KB — held at 1% over it.
-selfcompile_line_peak_kb_max: 440000
+# THE IMAGE'S OWN HIGH-WATER: the guest prints its bump line's peak on the
+# m3 leg's stderr (`arena: … line peak N KB`), a pure function of the
+# computation — two self-compiles of one source read the same KB while their
+# peak RSS differed — so it is the memory ratchet no machine moves, refused
+# on a breach by `read_line` (tools/march.sh) with no re-measure. A landing
+# that breaches it pays the cost down, never raises it. Held at 1% over the
+# landed form's 377,913 KB (2026-10-15), set where the module is written:
+# the lowering's reach, keyed by declaration with each root's reads an extent
+# of their own, holds the line at the 328,975 KB it entered with, and with
+# its roots in the walk's one region it set the high-water (443,820 KB).
+selfcompile_line_peak_kb_max: 381700
 # THE HEAD ROUND TRIP (render lane, 2026-10-06): module-level function heads,
 # formatter's and eye's, that do not come back as themselves through
 # parse∘render. Born at the measured 92 of 4,550 (the base renderer: 787 of

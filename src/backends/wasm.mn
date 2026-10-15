@@ -467,6 +467,7 @@ fn spec_find_rec(recs, target: String) = find({ (n, _p, _b, _f) => n == target }
 // by.
 fn ref_demand(lineage, r) = match r {
   RefName(n) => DemandBase(n),
+  RefDeclArm(_, n) => DemandBase(n),
   RefSite(h, n) => key_demand(n, twin_site_key(h, n), lineage),
   RefCall(h, n) => // A direct call's key carries the bracket's schedule into a callee that
   // reaches a fanout (`twin_call_key`): the demand is the schedule twin.
@@ -893,6 +894,7 @@ fn settle_depth(site: String, base: String, r) = match r {
   RefSite(h, n) => settle_depth_at(site, base, h, n, twin_site_key(h, n).pairs),
   RefCall(h, n) => settle_depth_at(site, base, h, n, twin_site_key(h, n).pairs),
   RefArm(ih, n) => settle_depth_at(site, base, ih, n, arm_twin_key(ih).pairs),
+  RefDeclArm(_, _) => (),
   RefName(_) => (),
 }
 
@@ -2751,7 +2753,10 @@ handler preinstall_init_scope(own_handler, init_span) {
   // arc: a name cannot be attributed, a handle can).
   {
     match lower_op_default_handler(n) {
-      Some(hn) => if hn == own_handler { report(EInitPerformsOwnOp(hn, n, init_span)) } else { () },
+      Some(hd) => {
+        let hn = stmt_decl_name(hd)
+        if hn == own_handler { report(EInitPerformsOwnOp(hn, n, init_span)) } else { () }
+      },
       None => (),
     }
     visit_effect_demand(n)
@@ -6714,6 +6719,7 @@ fn ref_symbol(r) = match r {
   RefArm(ih, n) => arm_symbol(n, arm_install_enc(ih)),
   RefSite(h, n) => spec_target_name(h, n),
   RefCall(h, n) => spec_call_name(h, n),
+  RefDeclArm(_, n) => n,
   RefName(n) => n,
 }
 

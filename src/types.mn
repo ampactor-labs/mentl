@@ -939,12 +939,13 @@ type Binding = Frozen([Int], Ty) | Live(Int)
 // EffectOpScheme(effect_name, default_handler, ambiguous, disc): the op
 // binding IS the dispatch fact. effect_name is the declaring effect — read to
 // know which effect this op participates in without re-inspecting the row.
-// default_handler is the UNIQUE handler that declares an arm for this op,
-// drawn as an edge at register_handler ("" until then); ambiguous is True
+// default_handler is the declaration of the UNIQUE handler with an arm for
+// this op, drawn as an edge at register_handler (None until then), so a
+// reader holds the handler itself and resolves no name; ambiguous is True
 // once a SECOND distinct handler also declares it. lower reads them to cash
-// a non-lexical perform of a uniquely-handled op to a direct call against
-// the singleton's $<hname>_state_g home (never a threaded ev-slot copy —
-// Carried-Truth); an ambiguous op threads evidence instead. disc is the op's
+// a non-lexical perform of a uniquely-handled op to a direct call of its
+// arm, the record found by the walk; an ambiguous op takes the arm out of
+// the record. disc is the op's
 // resume cardinality — the JOIN of every handler arm's Usage grade (MultiShot
 // iff some arm resumes twice on one path, else OneShot): the op-level join
 // is SOUND for lowering every arm (never under-classifies a genuine
@@ -968,7 +969,7 @@ type SchemeKind
   // tag 1
   | ConstructorScheme(TagId, Int)
   // tag 2 — (effect_name, default_handler, ambiguous, resume cardinality — the join over handlers' arm grades)
-  | EffectOpScheme(String, String, Bool, ResumeDiscipline)
+  | EffectOpScheme(String, Option(Int), Bool, ResumeDiscipline)
   // tag 3 — [(field_name, ty)]
   | RecordSchemeKind([(String, Ty)])
   // tag 5 — ([op_name: String], [param_name: String]) — the ops, and the
@@ -3327,10 +3328,10 @@ effect GraphRead {
   // scheme, the reason it was bound and its kind (`env_extend` writes it).
   graph_published(decl: Int) -> Option((Binding, Reason, SchemeKind))
   graph_decls_at() -> [Int]
-  // The value-holes column's read: (hole handle, entry name) pairs — the
-  // executable gate's whole input (lowering-is-a-column (ii), the first
-  // walker swap; the four-fn LowExpr walk retired onto this read).
-  graph_holes_at() -> [(Int, String)]
+  // The value holes of the executable — the holes the reach's kept
+  // declarations carry (`graph_holes_publish`) — the executable gate's
+  // whole input.
+  graph_holes_at() -> [Int]
   // The emittable-fn enumeration's by-name read: every entry noted under
   // NAME (the identity projection beside the ordered column). The
   // synthesized-family repr read and the enumeration reader take this
@@ -3485,13 +3486,12 @@ effect GraphWrite {
   graph_decl_note(Int)
   // The value-holes column's writes: lower's authored-hole arm NOTES the
   // surviving hole (value-position is a lowering decision — a consumed
-  // call-arg/pipe hole never reaches that arm), and each constructed
-  // entry DRAINS pending holes against its own name, so a hole pairs
-  // with the name reachability speaks ("" = a module value let, always
-  // live via __init_lets). Append-only telemetry, the decls-column
-  // contract.
+  // call-arg/pipe hole never reaches that arm); the reach DRAINS what each
+  // declaration's construction noted and PUBLISHES the holes of the
+  // declarations it keeps, so a hole nothing reaches never refuses.
   graph_hole_note(Int)
-  graph_hole_drain(String)
+  graph_hole_drain() -> [Int]
+  graph_holes_publish([Int])
   // THE ACCEPT EDGE's write (C4): a proposal accepted at a hole is a
   // fact of the GRAPH first and of the text second. The column holds
   // (module path, the extent the accepted text occupies in that module's

@@ -973,16 +973,14 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
   graph_module_now(path) => resume(smap_get(modules_now, path)),
   graph_modules() => resume(modules_col),
   graph_hole_note(h) => // The value-holes column's pending half: lower's authored-hole arm is
-  // the one writer (value-position is a lowering decision); the pair
-  // lands at the next entry drain.
+  // the one writer (value-position is a lowering decision); the reach
+  // drains it with each declaration it constructs.
   resume() with holes_pend = push(holes_pend, h),
-  graph_hole_drain(entry_name) => // Empty pending — the overwhelming case — resumes without a state
-  // rebind, so the per-stmt drain costs nothing when no hole is waiting.
-  if len(holes_pend) == 0 {
-    resume()
-  } else {
-    resume() with holes_col = hole_pairs_into(holes_pend, entry_name, holes_col), holes_pend = []
-  },
+  graph_hole_drain() => // Empty pending — the overwhelming case — resumes without a state
+  // rebind, so the per-declaration drain costs nothing when no hole is
+  // waiting.
+  if len(holes_pend) == 0 { resume(holes_pend) } else { resume(holes_pend) with holes_pend = [] },
+  graph_holes_publish(hs) => resume() with holes_col = hs,
   graph_guard_drain() => // The write guard's stored refusals, handed to the body that can narrate
   // them. Empty — the overwhelming case — resumes without a state rebind,
   // so the per-judgment drain costs nothing when no bind refused.
@@ -1312,14 +1310,6 @@ fn chase_node(ref spine, mint_bound, handle, depth) with !Mutate = if depth > 10
   }
 }
 
-// chase_handle — union-find `find`: follow the TVar chain to the
-// canonical ROOT handle (the integer), not the node. unify unions the
-// roots; binding a surface alias instead strands the canonical var
-// free. Mirror of chase_node's NBound(TVar) arm, returning the handle.
-// The value-holes drain's pairing fold: every pending hole pairs with the
-// draining entry's name, appended onto the column.
-fn hole_pairs_into(hs, name: String, acc) = fold(acc, (a, h) => push(a, (h, name)), hs)
-
 // The emitfn index's extension — the column's UNCOVERED SUFFIX folded
 // into the by-name smap. `i` is the coverage the caller already holds,
 // so the first read folds the whole column and a read after later notes
@@ -1336,6 +1326,10 @@ fn emitfns_index_build(col, idx, i) = if i >= len(col) {
 // The unnote's filter — the pipe-consumed hole leaves the pending buffer.
 fn holes_pend_without(hs, h) = fold([], (a, x) => if x == h { a } else { push(a, x) }, hs)
 
+// chase_handle — union-find `find`: follow the TVar chain to the
+// canonical ROOT handle (the integer), not the node. unify unions the
+// roots; binding a surface alias instead strands the canonical var
+// free. Mirror of chase_node's NBound(TVar) arm, returning the handle.
 fn chase_handle(ref spine, mint_bound, handle, depth) with !Mutate = if depth > 100 {
   handle
 } else {

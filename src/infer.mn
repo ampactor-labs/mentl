@@ -1212,7 +1212,7 @@ fn pre_register_handler_sig(hname, config, state, arms, decl) = {
   // facts of source ORDER. register_handler still draws them for a handler
   // declared inside a body, which this walk never reaches; the join is
   // idempotent.
-  draw_op_edges(arms, hname)
+  draw_op_edges(arms, decl)
 }
 
 fn pre_register_fn_sig(name, params, ret_ann, handle, span: ValidSpan) = {
@@ -2122,12 +2122,13 @@ fn branch_replay_one(name, scheme, reason, kind, decl) = match scheme {
         let joined = match env_lookup(name) {
           Some((_, _, EffectOpScheme(_, rd, ra, rdisc))) => {
             let disc = disc_join(rdisc, bdisc)
-            match if ra || field_name_eq(rd, bd) {
+            match if ra || rd == bd {
               (rd, ra)
-            } else if field_name_eq(rd, "") {
-              (bd, ba)
             } else {
-              (rd, true)
+              match rd {
+                None => (bd, ba),
+                Some(_) => (rd, true),
+              }
             } {
               (nd, na) => EffectOpScheme(ename, nd, na, disc),
             }
@@ -14168,7 +14169,7 @@ fn register_one_op(effect_name, eff_name, op) = match op {
       Declared(op_name),
       // OneShot is the join identity (grade UZero → OneShot): an op with no
       // handler stays the fast path; each handler's arm joins its grade in.
-      EffectOpScheme(effect_name, "", false, OneShot),
+      EffectOpScheme(effect_name, None, false, OneShot),
       op_node
     )
   },
@@ -14496,22 +14497,16 @@ fn register_handler(hname, ename_parsed, config, state, arms, effs, span: ValidS
   // HandlerKind bind above does. `arms` are read via handler_arm_op_name, whose
   // annotated param type resolves op_name from any context (no in-scope type
   // closure needed). The op binding IS the dispatch fact — lower reads it to cash
-  // a non-lexical perform of a uniquely-handled op to a direct call against the
-  // singleton's $<hname>_state_g home (Carried-Truth: read the once-installed
-  // record live, never thread a copy through the deep chain that trapped at
-  // fresh_handle).
-  draw_op_edges(arms, hname)
+  // a non-lexical perform of a uniquely-handled op to a direct call of its arm.
+  draw_op_edges(arms, decl)
 }
 
 // Recur over a handler's arms, drawing op→handler onto each op's EffectOpScheme.
 // A top-level recursive definition, never an each-lambda, so the env_extend
-// writes through a fn body and reaches env_handler. The FIRST handler to name an
-// op sets default_handler; a SECOND distinct handler marks it ambiguous;
-// a SECOND distinct handler marks it ambiguous (no static singleton — lower
-// threads evidence); the same handler or an already-ambiguous op is a no-op.
-// field_name_eq forces str_eq (a bare `== ""`/`== hname` is pointer-eq under the
-// seed — §9 name-compare class).
-fn draw_op_edges(arms, hname) = if len(arms) == 0 {
+// writes through a fn body and reaches env_handler. `hd` is the handler's own
+// declaration, so the edge is drawn to the node and no reader resolves its
+// name again.
+fn draw_op_edges(arms, hd) = if len(arms) == 0 {
   ()
 } else {
   let arm = last(arms)
@@ -14533,14 +14528,7 @@ fn draw_op_edges(arms, hname) = if len(arms) == 0 {
           // hedge this replaced.
           let arm_disc = arm_disc_of(grade)
           let disc = disc_join(cur_disc, arm_disc)
-          // default/ambiguous evolve as before; disc always joins in.
-          match if ambiguous || field_name_eq(cur_default, hname) {
-            (cur_default, ambiguous)
-          } else if field_name_eq(cur_default, "") {
-            (hname, false)
-          } else {
-            (cur_default, true)
-          } {
+          match default_joined(cur_default, ambiguous, hd) {
             (nd, na) => env_extend(
               op_name,
               scheme_with_disc_cost(scheme, disc),
@@ -14556,7 +14544,15 @@ fn draw_op_edges(arms, hname) = if len(arms) == 0 {
     },
     None => (),
   }
-  draw_op_edges(drop_last(arms), hname)
+  draw_op_edges(drop_last(arms), hd)
+}
+
+// The op's handler once `hd` declares an arm for it: the first handler to
+// name the op is its default, a second distinct one makes it ambiguous, and
+// the same handler again, or an already-ambiguous op, changes nothing.
+fn default_joined(cur, ambiguous, hd: Int) = match cur {
+  None => if ambiguous { (cur, true) } else { (Some(hd), false) },
+  Some(d) => (cur, ambiguous || d != hd),
 }
 
 // A MultiShot op's row carries the remainder record. The perform site

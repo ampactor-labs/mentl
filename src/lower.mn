@@ -537,8 +537,8 @@ type ConvertKind
 //
 // PdFrame(install, handler, op) — the install is in this very frame.
 // PdWalk(effect key, op slot, op, target) — the walk yields record and world;
-//   the target names the handler when one declares the op, else ArmSlot and
-//   the arm comes out of the record.
+//   the target holds the declaration of the handler when one declares the
+//   op, else ArmSlot and the arm comes out of the record.
 // PdDriver(fn, record) — NOT a dispatch. A direct call to a synthesized fn
 //   (the k drivers) against the INSTALL record it drives, read through the
 //   record ladder (`resolve_hrec`): the arm's own `$__state` at arm level, a
@@ -559,7 +559,7 @@ type ConvertKind
 // E_InitPerformsOwnOp the moment the name went in pre-joined. The emit
 // spells the symbol where it calls it — under the install's key for a frame
 // answer (`arm_site_pairs`) — and nothing stores it.
-type ArmTarget = ArmNamed(String) | ArmSlot
+type ArmTarget = ArmNamed(Int) | ArmSlot
 
 type PerformDispatch = PdFrame(Int, String, String) | PdWalk(String, Int, String, ArmTarget) | PdDriver(String, LowExpr)
 
@@ -2259,18 +2259,18 @@ fn perform_dispatch_at(handle, op_name, ename, slot, lexical) = match lexical {
     PdFrame(resolve_handle(r), hname, op_name)
   },
   None => match lower_op_default_handler(op_name) {
-    Some(hname) => // The arm is static (one handler declares it) and the record is not. The
+    Some(hd) => // The arm is static (one handler declares it) and the record is not. The
     // record comes from the SAME walk the unbound case uses — it used to come
     // from a second one keyed on the handler name, which could not answer an
     // ambiguous op and was the whole of the eta ceiling. A handler whose
     // installs may key their arms has no ONE arm to name: the record the walk
     // finds holds the arm its own install runs.
-    if handler_may_key(hname) {
+    if handler_may_key(hd) {
       graph_dispatch_note(handle, DtEvidence(ename, slot))
       PdWalk(ename, slot, op_name, ArmSlot)
     } else {
-      graph_dispatch_note(handle, DtSingleton(hname))
-      PdWalk(ename, slot, op_name, ArmNamed(hname))
+      graph_dispatch_note(handle, DtSingleton(stmt_decl_name(hd)))
+      PdWalk(ename, slot, op_name, ArmNamed(hd))
     },
     None => {
       graph_dispatch_note(handle, DtEvidence(ename, slot))
@@ -2291,20 +2291,18 @@ fn perform_dispatch_at(handle, op_name, ename, slot, lexical) = match lexical {
 // to decide, under whatever bracket the two readers stand in.
 fn perform_target(disp) = match disp {
   PdFrame(ih, hname, op_name) => Some(RefArm(ih, arm_fn_name(hname, op_name))),
-  PdWalk(_, _, op_name, ArmNamed(hname)) => Some(RefName(arm_fn_name(hname, op_name))),
+  PdWalk(_, _, op_name, ArmNamed(hd)) => Some(RefDeclArm(hd, arm_fn_name(stmt_decl_name(hd), op_name))),
   PdWalk(_, _, _, ArmSlot) => None,
   PdDriver(name, _) => Some(RefName("op_{name}")),
 }
 
-// The op's UNIQUE default handler, read from the EffectOpScheme edge drawn at
-// register_handler — None when unset (no handler declares it) or ambiguous
-// (≥2 do → thread evidence, no static singleton to read).
+// The declaration of the op's UNIQUE default handler, read from the
+// EffectOpScheme edge drawn at register_handler — None when no handler
+// declares it, or when two do and the arm comes out of the record.
 fn lower_op_default_handler(op_name) = match env_lookup(op_name) {
   Some(entry) => match entry {
     (_, _, kind) => match kind {
-      EffectOpScheme(_, default_handler, ambiguous, _) => // field_name_eq forces str_eq (a bare `== ""` is pointer-eq under the
-      // seed — §9 name-compare class); default_handler "" ⇒ unset.
-      if ambiguous || field_name_eq(default_handler, "") { None } else { Some(default_handler) },
+      EffectOpScheme(_, default_handler, ambiguous, _) => if ambiguous { None } else { default_handler },
       _ => None,
     },
   },
@@ -3730,8 +3728,8 @@ fn lower_fanout_seq(handle, fh, f_h, lo_args) = {
   // The forms' callees are names the lowering introduced — no source name
   // reaches their declarations — so construction is told them here, where
   // they are chosen, and enqueues them beside the constructed decl's own
-  // references (`reach_construct_loop`); the emit reach walks the selected
-  // form alone and decides what is emitted.
+  // references (`reach_root`); the emit reach walks the selected form alone
+  // and decides what is emitted.
   fanout_form_note(fold([], fanout_form_callee, forms))
   LFanout(handle, lexical, FanSeq(f_h), forms)
 }
@@ -4090,22 +4088,12 @@ fn lower_member_into(acc, member) = match member {
   },
 }
 
-// A lowered statement appended to the buffer. The value-holes drain at the
-// top-level boundary: any hole not drained by an inner arm construction
-// pairs with this stmt's reach name — a nested lambda/thunk/partial hole
-// shares its container's reachability class, and "" (a module value let)
-// is always live via __init_lets. The block-depth pairing question is MOOT
-// under container-keep: a zero-nested container is unconditionally
-// emitted, so its name is in the reach universe under any pairing — a
-// block-let hole in an unreached fn refuses because the fn IS in the
-// emitted tree (SYNTAX's "pruned dead code" means NOT-EMITTED); the seam
-// dissolves at the relocation, where dead entries never construct (the
-// 2026-08-12 refutation's corrected defect 3).
+// A lowered statement appended to the buffer. Its holes stay pending to the
+// top-level declaration being constructed, which the reach keeps or drops
+// whole (`reach_construct`): a nested lambda's, thunk's or arm's hole shares
+// its declaration's reachability.
 fn lowered_into(acc, lo) = match acc {
-  (buf, count) => {
-    graph_hole_drain(reach_decl_name(lo))
-    (list_set(list_extend_to(buf, count + 1), count, lo), count + 1)
-  },
+  (buf, count) => (list_set(list_extend_to(buf, count + 1), count, lo), count + 1),
 }
 
 // Module scope is a frame: the frame of $__init_lets, the one WAT function
@@ -4826,7 +4814,6 @@ fn lower_init_decl(discriminator, config, state: [{init: Node, name: String}], f
     { (i, field) => LStateInit(field.init, discriminator, nconfig + i, lower_expr(field.init)) },
     enumerate(state)
   )
-  graph_hole_drain(fn_name)
   lower_handler_pop()
   let lines = ls_exit_frame()
   LDeclareFn(LFn(fn_name, 0, [], stores ++ [LConst(0, LInt(0))], fence, lines))
@@ -4980,11 +4967,6 @@ fn lower_one_arm_decl(arm: {args: [String], body: Node, op_name: String}, discri
   let lo_body = k2_guard(mark_tail({
     lower_expr(arm.body)
   } ~> arm_state_ctx(captures_names, disc, discriminator)))
-  // The value-holes drain at the arm's own name — an arm hole pairs with
-  // the entry reachability names (its container lowers to ""), so a
-  // never-installed handler's arm hole never over-refuses (measured on
-  // the dead-arm fixture before the swap).
-  graph_hole_drain(fn_name)
   lower_handler_pop()
   let lines = ls_exit_frame()
   // fence = nstate + total_arms; the arm's LEvPerform reads land on the
@@ -6703,14 +6685,18 @@ type LowRef
   // an install's arm: the install's handle is where the key it runs the
   // arm under is read (`arm_site_pairs`)
   | RefArm(Int, String)
-  // a name no instantiation keys: a walked perform's arm target, a driver,
-  // a runtime fn emit mints for a show, a hash or a wide comparison
+  // the arm a walked perform calls by its handler's declaration, the one
+  // handler that declares the op: no install keys it
+  | RefDeclArm(Int, String)
+  // a name no instantiation keys: a driver, a runtime fn emit mints for a
+  // show, a hash or a wide comparison
   | RefName(String)
 
 fn ref_name(r) = match r {
   RefSite(_, n) => n,
   RefCall(_, n) => n,
   RefArm(_, n) => n,
+  RefDeclArm(_, n) => n,
   RefName(n) => n,
 }
 
@@ -6864,7 +6850,7 @@ fn match_arm_body(arm) = match arm {
 // The wide-twin seed, PER ENTRY: a constructed body any of whose sites
 // projects a wide key contributes the runtime family a twin's emission can
 // mint and its floor did not. A dead decl's wide sites seed nothing
-// (nothing will twin for them); reach_enqueue's set discipline absorbs the
+// (nothing will twin for them); the frontier's set discipline absorbs the
 // family's re-arrivals.
 fn wide_seed(refs) = if any(ref_is_wide, refs) { spec_wide_family() } else { [] }
 
@@ -6872,12 +6858,9 @@ fn ref_is_wide(r) = match r {
   RefSite(h, n) => !spec_enc_is_floor(twin_site_key(h, n).enc),
   RefCall(h, n) => !spec_enc_is_floor(twin_site_key(h, n).enc),
   RefArm(ih, _) => byte_len(arm_install_enc(ih)) > 0,
+  RefDeclArm(_, _) => false,
   RefName(_) => false,
 }
-
-// What lower's reach enqueues for one constructed entry: every reference by
-// NAME, and the wide family when a site projects wide.
-fn reach_entry_names(refs) = map(ref_name, refs) ++ wide_seed(refs)
 
 // The decl's emitted name — "" for statements that are not named fns
 // (module value lets stay unconditionally; they run in __init_lets).
@@ -6889,35 +6872,62 @@ fn reach_decl_name(stmt) = match stmt {
   "",
 }
 
-// The reached set and the frontier are flat buffer-counter pairs —
-// membership is scanned per enqueue, so the reads must be O(1) flat
-// indexing, never a concat-chain walk (the mode-11 law).
-fn reach_has(buf, count, target: String) = reach_has_loop(buf, count, target, 0)
-
-fn reach_has_loop(buf, count, target: String, i) = if i >= count {
-  false
-} else if list_index(buf, i) == target {
-  true
-} else {
-  reach_has_loop(buf, count, target, i + 1)
+// The top-level declaration a lowered reference reaches. A reference the
+// lowering projects from the source follows the edge the judgment drew —
+// through a nested scope, a shadow, a module that spells the name too —
+// and an install's arm follows the install to its handler's declaration.
+// What the lowering mints by spelling — a sugar's callee, a schedule's
+// implementation, the runtime a show or a comparison calls — is
+// vocabulary, resolved once here at the link's scope, and a spelling no
+// declaration answers (a runtime global, a synthesized driver) reaches
+// nothing to construct.
+fn ref_target(r) = match r {
+  RefSite(h, n) => site_target(h, n),
+  RefCall(h, n) => site_target(h, n),
+  RefArm(ih, _) => install_target(ih),
+  RefDeclArm(hd, _) => enclosing_decl(hd),
+  RefName(n) => vocabulary_target(n),
 }
 
-// ─── The demand worklist (Hβ.lower.lowering-is-a-column — the
-// enumeration-reader relocation): construction IS reachability. The
-// deleted name→edges index (build_reach_index and its nested walkers)
-// answered "what does NAME reference?" by walking trees that had ALL
-// been constructed up front; the worklist inverts it — a name popping
-// from the frontier CONSTRUCTS its decl, and the constructed body is
-// the edge list, read once. A lower-minted reference (a synthesized
-// thunk's callee, a twin's wide leaf) exists exactly when its parent
-// constructs; a dead decl never constructs at all — its holes never
-// note, and emission and reachability agree by construction. The
-// container-keep truth the index carried (reaching one arm reaches
-// every sibling — no fn-value edge dangles) lives in the map below:
-// every arm name keys its WHOLE container stmt. The deletion-ultimate
-// stays Hβ.lower.reach-edge-on-node (a reach edge on the node),
-// generalized by Hβ.perf.name-is-handle (§5.O); reach_has's linear
-// membership stays Hβ.lower.reach-membership-o1.
+// A site the lowering projected from the reference standing there carries
+// that reference's spelling; one it minted at a borrowed site — `map` where
+// the source wrote `fanout`, `str_concat` at an interpolation's cell —
+// carries vocabulary of its own, which that reference's edge does not
+// reach.
+fn site_target(h, n: String) = if callee_name(h) == n {
+  match graph_ref_decl(h) {
+    Some(d) => enclosing_decl(d),
+    None => vocabulary_target(n),
+  }
+} else {
+  vocabulary_target(n)
+}
+
+fn install_target(ih) = match graph_install_at(ih) {
+  NoInstall => None,
+  InstallOf(_, right, _, _) => match tee_handler_decl(right) {
+    Some(hd) => enclosing_decl(hd),
+    None => None,
+  },
+}
+
+fn vocabulary_target(n: String) = match env_resolve_linked(n) {
+  Some(d) => enclosing_decl(d),
+  None => None,
+}
+
+// THE DEMAND WORKLIST (Hβ.lower.lowering-is-a-column): construction IS
+// reachability. A declaration popping from the frontier CONSTRUCTS, and the
+// constructed body is the edge list, read once. A lower-minted reference (a
+// synthesized thunk's callee, a twin's wide leaf) exists exactly when its
+// parent constructs; a dead decl never constructs at all, and emission and
+// reachability agree by construction. Every reference leads to the top-level
+// declaration holding what it reaches (`ref_target`), so the frontier, the
+// reached set and the constructed declarations are keyed by that statement's
+// handle: membership is one word-keyed read, and the walk is linear in what
+// it reaches. Reaching one arm reaches every sibling, so no function value
+// dangles: an arm's target is its handler's statement, which constructs
+// whole.
 //
 // An executable is a module whose top level declares `fn main` — the
 // program's own read (main_param_count's precedent: the FnStmt is the
@@ -6928,13 +6938,12 @@ fn stmt_is_main_fn(node) = match graph_node_body(node) {
   false,
 }
 
-// A stmt DEFERS to the demand frontier when its construction is
-// name-keyed: a named fn constructs when its name pops; a container
-// with arms constructs when any arm name pops (container-keep — the
-// whole stmt constructs). Everything else is the always-live set:
-// module value lets (__init_lets runs them), zero-arm containers, the
-// trivial type/effect/import decls, bare exprs — phase A constructs
-// them in source order.
+// A stmt DEFERS to the demand frontier when it runs only where a reference
+// reaches it: a named fn, and a container with arms, which constructs whole
+// when any arm is reached. Everything else is the always-live set: module
+// value lets (__init_lets runs them), zero-arm containers, the trivial
+// type/effect/import decls, bare exprs — the seed constructs them in source
+// order.
 fn reach_stmt_defers(node) = match graph_node_body(node) {
   NStmt(s) => match s {
     FnStmt(_, _, _, _, _) => true,
@@ -6956,138 +6965,123 @@ fn reach_stmt_defers(node) = match graph_node_body(node) {
   NTypeAnn(_) => false,
 }
 
-// name → the source stmt index that constructs under it: every
-// top-level fn and let name keys its own stmt; every arm name
-// (op_<handler>_<op>, the program-derivable arm_fn_name) keys its
-// CONTAINER's stmt — container-keep reproduced at the map. The handler
-// NAME itself deliberately keys nothing (the deleted index answered []
-// for it: an install reaches the arms through its own arm-name groups,
-// never through the handler's value name).
-fn reach_name_map(stmts, i, n, map) = if i >= n {
-  map
+// The seed — the always-live set constructs in source order. A module value
+// let ROOTS its init's references (it RUNS before main in __init_lets, so
+// its callees are live by construction); a closure-valued let leaves its
+// references to a reference that reaches it; every other always-live entry
+// roots nothing (a bare expr or a trivial decl draws no reach edge) past
+// what its construction minted.
+fn reach_seed(stmts, i, w, frontier) = if i >= len(stmts) {
+  frontier
 } else {
-  let m2 = match graph_node_body(list_index(stmts, i)) {
-    NStmt(FnStmt(name, _, _, _, _)) => smap_add(map, name, i),
-    NStmt(LetStmt(PVar(name), _, _)) => smap_add(map, name, i),
-    NStmt(HandlerDeclStmt(hname, _, _, state, arms, _)) => {
-      let with_arms = fold(map, (m, arm) => smap_add(m, arm_fn_name(hname, arm.op_name), i), arms)
-      if len(state) == 0 { with_arms } else { smap_add(with_arms, init_fn_name(hname), i) }
-    },
-    _ => // no name keys this stmt — phase A owns it
-    map,
-  }
-  reach_name_map(stmts, i + 1, n, m2)
-}
-
-// Phase A — the always-live set constructs in source order. A module
-// value let ROOTS its init's references (it RUNS before main in
-// __init_lets, so its callees are live by construction); a
-// closure-valued let leaves its references keyed on its name instead
-// (the enq flag stays 0 — the name's own pop enqueues, the by-name
-// edge the deleted index held); every other always-live entry roots
-// nothing by name (a bare expr / trivial decl draws no reach edge —
-// the emitted-set law unchanged). Every constructed entry contributes
-// its per-entry wide seed.
-fn reach_seed_stmts(stmts, i, n, outs, enq, r0, fbuf, fc) = if i >= n {
-  (fbuf, fc)
-} else if reach_stmt_defers(list_index(stmts, i)) {
-  reach_seed_stmts(stmts, i + 1, n, outs, enq, r0, fbuf, fc)
-} else {
-  let lo = lower_stmt(list_index(stmts, i)) ~> arena
-  graph_hole_drain(reach_decl_name(lo))
-  let outs2 = list_set(outs, i, lo)
-  match lo {
-    LLet(_, _, LMakeClosure(_, _, _)) => reach_seed_stmts(stmts, i + 1, n, outs2, enq, r0, fbuf, fc),
-    LLet(_, _, LMakeContinuation(_, _, _, _, _)) => reach_seed_stmts(stmts, i + 1, n, outs2, enq, r0, fbuf, fc),
-    LLet(_, _, init) => match reach_enqueue(fanout_form_drain() ++ reach_entry_names(low_refs([], init)), r0, 0, fbuf, fc) {
-      (fbuf2, fc2) => reach_seed_stmts(stmts, i + 1, n, outs2, list_set(enq, i, 1), r0, fbuf2, fc2),
-    },
-    _ => match reach_enqueue(fanout_form_drain() ++ wide_seed(low_refs([], lo)), r0, 0, fbuf, fc) {
-      (fbuf2, fc2) => reach_seed_stmts(stmts, i + 1, n, outs2, list_set(enq, i, 1), r0, fbuf2, fc2),
-    },
-  }
-}
-
-// The frontier drain — the deleted reach_grow with construction fused
-// in: pop a name (LIFO, the same deterministic discipline), record it
-// reached, and when the name keys a decl, construct that decl on first
-// touch and enqueue its constructed body's references + per-entry wide
-// seed exactly once (the enq flag — a closure-let constructed in phase
-// A enqueues here, on its name's pop). An unmapped name (a
-// runtime-contract fn from lib, an uninstalled arm target, a value-let
-// name whose roots already flowed) moves on — the deleted index
-// answered [] for exactly these. The worklist order is a pure function
-// of the program; the reach SET is its order-invariant fixpoint.
-fn reach_construct_loop(stmts, map, outs, enq, rbuf, rn, fbuf, fc) = if fc == 0 {
-  (rbuf, rn)
-} else {
-  let name = list_index(fbuf, fc - 1)
-  let rbuf2 = list_set(list_extend_to(rbuf, rn + 1), rn, name)
-  match smap_get(map, name) {
-    None => reach_construct_loop(stmts, map, outs, enq, rbuf2, rn + 1, fbuf, fc - 1),
-    Some(i) => {
-      let outs2 = if slot_present(list_index(outs, i)) {
-        outs
-      } else {
-        let lo = lower_stmt(list_index(stmts, i)) ~> arena
-        graph_hole_drain(reach_decl_name(lo))
-        list_set(outs, i, lo)
+  let s = list_index(stmts, i)
+  if reach_stmt_defers(s) {
+    reach_seed(stmts, i + 1, w, frontier)
+  } else {
+    let lo = reach_construct(w, s)
+    reach_seed(
+      stmts,
+      i + 1,
+      w,
+      match lo {
+        LLet(_, _, LMakeClosure(_, _, _)) => frontier,
+        LLet(_, _, LMakeContinuation(_, _, _, _, _)) => frontier,
+        LLet(_, _, init) => reach_root(w, s, init, frontier),
+        _ => reach_mint_root(w, s, lo, frontier),
       }
-      if list_index(enq, i) == 0 {
-        let d = list_index(outs2, i)
-        match reach_enqueue(
-          fanout_form_drain() ++ reach_entry_names(low_refs([], d)),
-          rbuf2,
-          rn + 1,
-          fbuf,
-          fc - 1
-        ) {
-          (fbuf2, fc2) => reach_construct_loop(stmts, map, outs2, list_set(enq, i, 1), rbuf2, rn + 1, fbuf2, fc2),
-        }
-      } else {
-        reach_construct_loop(stmts, map, outs2, enq, rbuf2, rn + 1, fbuf, fc - 1)
-      }
-    },
+    )
   }
 }
 
-// EMISSION is source order from the decls' own order (the written
-// decision; demand order is 9.2's option): walk the slots 0..n, keep
-// each constructed decl by the same filter the tree-handoff form
-// applied — a named decl by its reached name (a closure-valued let
-// constructed in phase A but never popped drops here, exactly as the
-// filtered tree dropped it), a name-less decl by its nested set
-// (empty = unconditionally live: the value let, the zero-arm
-// container; else any-reached — an armed container constructs only
-// via a reached arm, so its check holds by construction).
-fn reach_collect(outs, rbuf, rn, i, n, buf, count) = if i >= n {
+// One declaration constructed: lowered in an extent of its own, with the
+// holes its lowering noted kept beside it, so the executable gate reads a
+// hole exactly where the declaration that holds it is kept.
+fn reach_construct(w, s) = {
+  let lo = lower_stmt(s) ~> arena
+  wmap_add(w.built, s, lo)
+  wmap_add(w.holes, s, graph_hole_drain())
+  lo
+}
+
+// What one constructed entry adds to the frontier, once: the runtime its
+// construction minted (a fanout's schedule forms), the references E draws,
+// and the wide family when a site of E projects wide. The reads are an
+// extent of their own: the frontier and the maps keep what they gain, and
+// the reference lists and every lookup die here, so the walk's scratch is
+// one entry's, never the program's.
+fn reach_root(w, s, e, frontier) = {
+  wmap_add(w.rooted, s, 1)
+  {
+    let refs = low_refs([], e)
+    reach_enqueue(
+      w,
+      map(RefName, fanout_form_drain()) ++ refs ++ map(RefName, wide_seed(refs)),
+      frontier
+    )
+  } ~> arena
+}
+
+// An always-live entry that roots nothing of its own: only what its
+// construction minted and the wide family its sites project join the
+// frontier.
+fn reach_mint_root(w, s, e, frontier) = {
+  wmap_add(w.rooted, s, 1)
+  reach_enqueue(w, map(RefName, fanout_form_drain() ++ wide_seed(low_refs([], e))), frontier) ~> arena
+}
+
+// The frontier drain: pop a declaration (LIFO, a deterministic
+// discipline), construct it on first touch, and root its constructed body
+// exactly once — a closure-valued let the seed constructed roots here, when
+// a reference reaches it. The order is a pure function of the program; the
+// reach SET is its order-invariant fixpoint.
+fn reach_drain(w, frontier) = if len(frontier) == 0 {
+  ()
+} else {
+  let s = last(frontier)
+  let rest = drop_last(frontier)
+  let d = match wmap_get(w.built, s) {
+    Some(lo) => lo,
+    None => reach_construct(w, s),
+  }
+  match wmap_get(w.rooted, s) {
+    Some(_) => reach_drain(w, rest),
+    None => reach_drain(w, reach_root(w, s, d, rest)),
+  }
+}
+
+// EMISSION is source order from the decls' own order: walk the statements
+// and keep each constructed decl the program keeps (`reach_kept`).
+fn reach_collect(stmts, w, i, buf, count) = if i >= len(stmts) {
   slice(buf, 0, count)
 } else {
-  let slot = list_index(outs, i)
-  if !slot_present(slot) {
-    reach_collect(outs, rbuf, rn, i + 1, n, buf, count)
-  } else {
-    let nm = reach_decl_name(slot)
-    let keep = if nm == "" {
-      let nested = reach_nested_names(slot, [])
-      len(nested) == 0 || reach_any_reached(nested, rbuf, rn)
-    } else {
-      reach_has(rbuf, rn, nm)
-    }
-    if keep {
-      reach_collect(
-        outs,
-        rbuf,
-        rn,
-        i + 1,
-        n,
-        list_set(list_extend_to(buf, count + 1), count, slot),
-        count + 1
-      )
-    } else {
-      reach_collect(outs, rbuf, rn, i + 1, n, buf, count)
-    }
+  match reach_kept(w, list_index(stmts, i)) {
+    Some(d) => reach_collect(stmts, w, i + 1, list_set(list_extend_to(buf, count + 1), count, d), count + 1),
+    None => reach_collect(stmts, w, i + 1, buf, count),
   }
+}
+
+// A constructed declaration the program keeps: one a reference reached, or
+// one that waits for no reference — no name of its own and no function
+// inside it, as the value let and the zero-arm container; a closure-valued
+// let the seed constructed and nothing reached drops here.
+fn reach_kept(w, s) = match wmap_get(w.built, s) {
+  None => None,
+  Some(d) => match wmap_get(w.reached, s) {
+    Some(_) => Some(d),
+    None => if reach_decl_name(d) == "" && len(reach_nested_names(d, [])) == 0 { Some(d) } else { None },
+  },
+}
+
+// The value holes of the executable: what each kept declaration's
+// construction noted, in source order.
+fn reach_holes(stmts, w) = flat_map(kept_holes(w, ??), stmts)
+
+fn kept_holes(w, s) = match reach_kept(w, s) {
+  None => [],
+  Some(_) => match wmap_get(w.holes, s) {
+    Some(hs) => hs,
+    None => [],
+  },
 }
 
 // Every nested decl name a container holds — the container LIVES iff
@@ -7110,30 +7104,23 @@ fn reach_nested_names_list(stmts, acc) = if len(stmts) == 0 {
   reach_nested_names_list(drop_last(stmts), reach_nested_names(last(stmts), acc))
 }
 
-fn reach_any_reached(names, rbuf, rn) = if len(names) == 0 {
-  false
-} else if reach_has(rbuf, rn, last(names)) {
-  true
+// Queue each reference's declaration not yet reached — the frontier stays a
+// set, its membership one word-keyed read.
+fn reach_enqueue(w, refs, frontier) = if len(refs) == 0 {
+  frontier
 } else {
-  reach_any_reached(drop_last(names), rbuf, rn)
+  reach_enqueue(w, drop_last(refs), reach_push(w, frontier, ref_target(last(refs))))
 }
 
-// Queue each ref not already reached or queued — the set stays a set.
-fn reach_enqueue(refs, rbuf, rn, fbuf, fcount) = if len(refs) == 0 {
-  (fbuf, fcount)
-} else {
-  let n = last(refs)
-  if reach_has(rbuf, rn, n) || reach_has(fbuf, fcount, n) {
-    reach_enqueue(drop_last(refs), rbuf, rn, fbuf, fcount)
-  } else {
-    reach_enqueue(
-      drop_last(refs),
-      rbuf,
-      rn,
-      list_set(list_extend_to(fbuf, fcount + 1), fcount, n),
-      fcount + 1
-    )
-  }
+fn reach_push(w, frontier, target) = match target {
+  None => frontier,
+  Some(s) => match wmap_get(w.reached, s) {
+    Some(_) => frontier,
+    None => {
+      wmap_add(w.reached, s, 1)
+      push(frontier, s)
+    },
+  },
 }
 
 // The surviving-hole census over the REACHABLE emitted tree — the executable
@@ -7156,47 +7143,6 @@ fn reach_enqueue(refs, rbuf, rn, fbuf, fcount) = if len(refs) == 0 {
 fn executable_hole(handle) with !Mutate = match graph_node_body(handle) {
   NHole(id) => id != 0 && !span_eq(graph_span_of(handle), span_zero()),
   _ => false,
-}
-
-// The value-holes read (lowering-is-a-column (ii), the first walker
-// swap): the gate's holes are the COLUMN's (hole, entry-name) pairs
-// filtered by the reachable name universe — "" (a module value let) is
-// always live via __init_lets, and an unreachable entry's hole never
-// over-refuses (SYNTAX §«Partial application»; the dead-fn/arm/init
-// fixtures measured the law before the swap). Replaces the four-fn
-// LowExpr walk that re-enumerated the whole tree to test one graph fact
-// per carried handle.
-fn column_value_holes(lowered) = {
-  let uni = lowered_name_universe(lowered, smap_new(), 0)
-  holes_filter(graph_holes_at(), uni, [], 0)
-}
-
-fn lowered_name_universe(lowered, idx, i) = if i >= len(lowered) {
-  idx
-} else {
-  let d = list_index(lowered, i)
-  let nm = reach_decl_name(d)
-  let idx1 = if nm == "" { idx } else { smap_add(idx, nm, 0) }
-  lowered_name_universe(lowered, universe_add_names(reach_nested_names(d, []), idx1, 0), i + 1)
-}
-
-fn universe_add_names(names, idx, i) = if i >= len(names) {
-  idx
-} else {
-  universe_add_names(names, smap_add(idx, list_index(names, i), 0), i + 1)
-}
-
-fn holes_filter(pairs, uni, acc, i) = if i >= len(pairs) {
-  acc
-} else {
-  match list_index(pairs, i) {
-    (h, nm) => holes_filter(
-      pairs,
-      uni,
-      if nm == "" || len(smap_get_all(uni, nm)) > 0 { push(acc, h) } else { acc },
-      i + 1
-    ),
-  }
 }
 
 // A type NAMES a wide-element sequence — directly or nested — when some
@@ -8067,8 +8013,8 @@ fn arm_symbol(arm: String, enc: String) = if byte_len(enc) == 0 {
 // variable in its scheme, in its config or its effect's instance. A perform
 // no install of it answers in its own frame then reaches the arm through the
 // record the walk finds, never through the base arm's symbol, which a keyed
-// install does not run.
-fn handler_may_key(hname) = match env_lookup(hname) {
+// install does not run. The facts are the ones the declaration published.
+fn handler_may_key(hd) = match graph_published(hd) {
   None => false,
   Some(entry) => match entry {
     (scheme, _r, kind) => match kind {
@@ -8147,58 +8093,47 @@ fn spec_wide_family() = ["float_to_str", "list_compare_f64", "list_eq_f64", "lis
 
 // The demand worklist's driver — reachable_from_main takes the PROGRAM
 // (lower_program is its pre-passes) and constructs exactly what emission
-// keeps. Phase A builds the always-live set in source order; the frontier
-// then drains — "main" first — constructing each popped name's decl and
+// keeps. The seed builds the always-live set in source order; the frontier
+// then drains from `main`, constructing each popped declaration and
 // enqueuing the CONSTRUCTED body's references, so construction IS
-// reachability and every entry constructs at most once, before any
-// assembly byte (construction-before-assembly, the landing shape).
-// _start reads live argv via wasi_args ONLY when main takes it
-// (Hβ.emit.wasi-argv-in-start); root it just then, so a 0-param main()
-// (the micros, which don't link io.mn) never pulls an undefined
-// $wasi_args. The runtime contract roots as before (emit mints those
-// calls after construction). The wide-twin family seeds per entry at
-// each construction (wide_seed).
+// reachability and every entry constructs at most once, before any assembly
+// byte. The runtime emit mints calls to after construction roots as
+// vocabulary: the contract, `wasi_args` where main takes argv
+// (Hβ.emit.wasi-argv-in-start), so a 0-param main() never pulls it, and the
+// launch gate the module's start may call (lib/environ.mn), which reaches
+// nothing where the program does not link it. Then the holes of what is
+// kept are published for the executable gate.
 //
 // The walk is an EXTENT (lib/arena.mn): what it publishes is the constructed
 // declarations in source order, and everything else it builds on the way —
 // each entry's reference list, the twin key read at every site to seed the
-// wide family, the frontier and the reached set — dies at its exit. Measured
-// 2026-10-13 on the self-compile: the declarations published 8.2 MB past
-// their own arenas while the walk's scratch stood at 56 MB of the heap with
-// nothing to reclaim it, 8 MB more than on the source before the landing,
-// and the cost ratchet refused the pin.
+// wide family, the frontier and the maps keyed by statement — dies at its
+// exit. Measured 2026-10-13 on the self-compile: the declarations published
+// 8.2 MB past their own arenas while the walk's scratch stood at 56 MB of
+// the heap with nothing to reclaim it, 8 MB more than on the source before
+// the landing, and the cost ratchet refused the pin.
 fn reachable_from_main(stmts) = {
   let has_main = any(stmt_is_main_fn, stmts)
   // THE LIBRARY PATH seeds ALL decls: every stmt constructs, source
   // order — the whole module emits (narrowing would shift the
   // installed-effect census on programs that compile today; refused,
-  // the written decision).
+  // the written decision), and every hole it carries is the gate's.
   if !has_main {
-    lower_stmt_list(stmts)
+    let lowered = lower_stmt_list(stmts)
+    graph_holes_publish(graph_hole_drain())
+    lowered
   } else {
-    let n = len(stmts)
-    let map = reach_name_map(stmts, 0, n, smap_new())
-    // The slots + enq-flags columns, stmt-indexed (the spine's
-    // parallel-buffer discipline; an unwritten slot reads 0 — the
-    // slot_present niche, types.mn's precedent).
-    let outs = make_list(n)
-    let enq = make_list(n)
-    let fbuf0 = list_set(list_extend_to(make_list(16), 1), 0, "main")
+    let w =
+      {built: wmap_new(4096), holes: wmap_new(4096), reached: wmap_new(4096), rooted: wmap_new(4096)}
     let argv_root = if main_param_count() > 0 { ["wasi_args"] } else { [] }
-    // The launch gate the module's start may call (lib/environ.mn): lowered
-    // wherever the program links it, and emitted only where the emit's
-    // roster is non-empty (wasm.mn's env_launch_roster).
-    let gate_root = match env_lookup("env_demand_check") {
-      Some(_) => ["env_demand_check"],
-      None => [],
-    }
-    match reach_enqueue(emit_runtime_contract() ++ argv_root ++ gate_root, make_list(4), 0, fbuf0, 1) {
-      (fbuf1, fc1) => match reach_seed_stmts(stmts, 0, n, outs, enq, make_list(4), fbuf1, fc1) {
-        (fbuf2, fc2) => match reach_construct_loop(stmts, map, outs, enq, make_list(16), 0, fbuf2, fc2) {
-          (rbuf, rn) => reach_collect(outs, rbuf, rn, 0, n, make_list(n), 0),
-        },
-      },
-    }
+    let roots = reach_enqueue(
+      w,
+      map(RefName, emit_runtime_contract() ++ argv_root ++ ["env_demand_check"]),
+      reach_push(w, [], find(stmt_is_main_fn, stmts))
+    )
+    reach_drain(w, reach_seed(stmts, 0, w, roots))
+    graph_holes_publish(reach_holes(stmts, w))
+    reach_collect(stmts, w, 0, make_list(len(stmts)), 0)
   }
 } ~> arena
 

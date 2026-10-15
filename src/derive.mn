@@ -2656,7 +2656,7 @@ fn callee_of(e) = match e {
   LPerform(_, disp, _) => match disp {
     PdFrame(_, hname, op) => [arm_fn_name(hname, op)],
     PdWalk(_, _, op, target) => match target {
-      ArmNamed(hname) => [arm_fn_name(hname, op)],
+      ArmNamed(hd) => [arm_fn_name(stmt_decl_name(hd), op)],
       ArmSlot => [],
     },
     PdDriver(_, _) => [],
