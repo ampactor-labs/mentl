@@ -345,7 +345,7 @@ type Reach = Level | Tree
 // 3,000-byte paths, +2 per level, until the alloc ceiling), `.build`'s
 // artifacts and `.git`'s objects alike. A root that is not a directory
 // answers no files.
-fn mn_files(root, reach) = match fs_list_dir_impl(root) {
+fn mn_files(root, reach) = match fs_list_dir(root) {
   None => [],
   Some(names) => mn_walk(root, reach, sort(names), 0, make_list(0)),
 }
@@ -373,7 +373,7 @@ fn mn_walk(dir, reach, names, i, acc) = if i >= len(names) {
     mn_walk(dir, reach, names, i + 1, acc)
   } else {
     let path = if dir == "." { name } else { "{dir}/{name}" }
-    match fs_list_dir_impl(path) {
+    match fs_list_dir(path) {
       Some(sub) => match reach {
         Tree => mn_walk(dir, reach, names, i + 1, mn_walk(path, reach, sort(sub), 0, acc)),
         Level => mn_walk(dir, reach, names, i + 1, acc),
@@ -455,7 +455,7 @@ fn fmt_targets(targets) = if len(targets) == 0 {
   flat_map(fmt_target_files, targets)
 }
 
-fn fmt_target_files(t) = match fs_list_dir_impl(t) {
+fn fmt_target_files(t) = match fs_list_dir(t) {
   Some(_) => map(FmtPath, mn_files(dir_base(t), Tree)),
   None => if fs_exists(t) {
     [FmtPath(t)]
@@ -1506,7 +1506,7 @@ fn test_run(target_opt) = {
   // so the bracket covers the scrutinee too; test_check_run keeps its own
   // inner chain, which shadows these installs for its extent.
   {
-    match fs_list_dir_impl(entry_module) {
+    match fs_list_dir(entry_module) {
       Some(_) => battery_run(entry_module),
       None => test_check_run(entry_module),
     }
@@ -1907,7 +1907,7 @@ fn battery_loop(micros: [String], i, fails) = if i >= len(micros) {
 
 fn battery_step(path: String) = {
   let stem = path_stem(path)
-  let src = fs_read_file_impl(path)
+  let src = fs_read_file(path)
   match battery_expect(src) {
     None => {
       print_string("NOEXPECT {stem}\n")
@@ -2314,10 +2314,10 @@ fn print_help() = eprint_string(verb_catalog())
 // ─── the welcome — bare `mentl` in a terminal, `mentl help` ────────
 //
 // Not a manpage: a PROJECTION of where you are (the cursor law at the
-// shell). The medium reads the current directory through the preopen,
-// names the .mn sources it sees, and offers each one's next keystroke;
-// an empty directory gets the beginning. stdout, exit 0 — help asked
-// for is never an error (the ERROR surface, print_error_and_help,
+// shell). The medium lists the current directory through the Filesystem
+// capability, names the .mn sources it sees, and offers each one's next
+// keystroke; an empty directory gets the beginning. stdout, exit 0 — help
+// asked for is never an error (the ERROR surface, print_error_and_help,
 // stays on stderr).
 fn welcome_run() = {
   print_string("mentl — the medium between intent and execution\n")
@@ -2325,7 +2325,7 @@ fn welcome_run() = {
   project_directory()
   print_string(verb_catalog())
   0
-}
+} ~> wasi_filesystem
 
 // project_directory — the cursor law at the shell: read where you ARE and
 // name each source's next keystroke. The welcome opens with it; `new`
@@ -2333,7 +2333,7 @@ fn welcome_run() = {
 // the projection reads the live directory back). An empty directory gets
 // the beginning, so the surface is never a dead end.
 fn project_directory() = {
-  let sources = filter((n) => ends_with(n, ".mn"), fs_list_dir_names())
+  let sources = filter((n) => ends_with(n, ".mn"), unwrap_or(fs_list_dir("."), []))
   if len(sources) > 0 {
     print_string("in this directory:\n")
     each(

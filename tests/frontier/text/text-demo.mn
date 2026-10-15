@@ -46,7 +46,7 @@ fn top_letter_loop(hist, b: Int, best_b: Int, best_c: Int) ={
 fn top_letter(hist) =top_letter_loop(hist, 97, 0, 0 - 1)
 
 fn main() = {
-  let text = fs_read_file_impl("/tmp/mentl-text-corpus.txt")
+  let text = fs_read_file("/tmp/mentl-text-corpus.txt")
   let nbytes = byte_len(text)
   let ce = count_byte(text, 101)      // 'e'
   let ct = count_byte(text, 116)      // 't'
@@ -56,4 +56,4 @@ fn main() = {
   else if ct != 32 { 3 }
   else if top != 101 { 4 }            // 'e' is the most frequent letter
   else { 42 }
-}
+} ~> wasi_filesystem

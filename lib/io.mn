@@ -243,9 +243,9 @@ fn eprint_string(s) = {
 //
 // fd_read_all — slurp an fd to EOF into a heap-allocated flat string.
 // Reads into a raw doubling byte buffer, then materializes one flat
-// [count][tag][bytes] byte record (bytes_buf). ONE loop serves stdin
-// (read_stdin) and opened files (fs_read_file_impl) — the stream does
-// not care where the fd came from.
+// [count][tag][bytes] byte record (bytes_buf). It serves stdin
+// (read_stdin), whose size nothing states — the stream does not care where
+// the fd came from.
 fn fd_read_all(fd) = {
   let initial_cap = 65536
   let buf = alloc(initial_cap)

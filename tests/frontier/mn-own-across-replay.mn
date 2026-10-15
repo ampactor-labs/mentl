@@ -19,4 +19,4 @@ fn safe() = {
 
 fn main() = {
   risky([1, 2, 3]) + safe()
-} ~> persist_to_disk
+} ~> persist_to_disk ~> wasi_filesystem

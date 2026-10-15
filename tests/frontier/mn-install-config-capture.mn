@@ -38,13 +38,13 @@ handler to_void {
 fn ctx(body) = body()
 
 fn main() = {
-  let fd = fs_create_impl("/tmp/config-capture-probe.txt")
+  let fd = fs_create("/tmp/config-capture-probe.txt")
   // fd is a CAPTURE of this thunk, referenced ONLY in the install's
   // config args — the failing shape.
   ctx(() => {
     put("hello ")
     put("world\n")
   } ~> to_fd(fd))
-  fs_close_impl(fd)
-  proc_exit(byte_len(fs_read_file_impl("/tmp/config-capture-probe.txt")))
-}
+  fs_close(fd)
+  proc_exit(byte_len(fs_read_file("/tmp/config-capture-probe.txt")))
+} ~> wasi_filesystem

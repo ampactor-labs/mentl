@@ -88,7 +88,7 @@ fn candidate_paths(candidates) = map({ (_, _, path) => path }, candidates)
 fn driver_dir_path(name: String) =
   module_roots() |> map({ (_, root) => "{root}{name}" }) |> find(is_dir)
 
-fn is_dir(path) = match fs_list_dir_impl(path) {
+fn is_dir(path) = match fs_list_dir(path) {
   Some(_) => true,
   None => false,
 }

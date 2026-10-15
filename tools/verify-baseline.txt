@@ -800,12 +800,12 @@ census_errors_max: 0
 # impls and every one of these becomes an op the handler can see.
 # Held at the measured 7 the landing after — the board read 7 the night the
 # entry above was written and the ceiling was left at 8 to spare a gate cycle.
-# 7 -> 2 (2026-10-06, M9): the march verb's in-wheel blob assembly
-# (march_walk, its fs_list_dir_impl reads) and the battery's hand-listed
-# prefix (battery_libs, its fs_read_file_impl reads) are deleted; every
-# fixture and the fixed point read their modules through the driver's DAG
-# walk now.
-fs_impl_bypass_max: 2
+# 2 -> 0 (2026-10-15, N1): every filesystem operation is an op of
+# Filesystem whose implementation is the handler's arm — listing a directory
+# and writing an image joined them — so persist and the compiler perform the
+# ops, and the leg counts the raw filesystem calls themselves, which stand in
+# lib/fs.mn alone.
+fs_impl_bypass_max: 0
 
 # 2026-08-07: the ANONYMITY ratchet (PLAN §11 Phase 2.5, second half) —
 # the census tier's convictions on the wheel link, monotone DOWN. Two

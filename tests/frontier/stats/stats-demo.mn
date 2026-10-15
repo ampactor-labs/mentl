@@ -37,7 +37,7 @@ fn parse_float_lines(strs, num: Int, out, i: Int, w: Int) ={
 }
 
 fn read_floats(path) = {
-  let strs = lines(fs_read_file_impl(path))
+  let strs = lines(fs_read_file(path))
   parse_float_lines(strs, len(strs), make_list(len(strs)), 0, 0)
 }
 
@@ -89,4 +89,4 @@ fn main() = {
   else if amax != 298 { 2 }
   else if above != 199 { 3 }
   else { 42 }
-}
+} ~> wasi_filesystem

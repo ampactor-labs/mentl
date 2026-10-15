@@ -12,4 +12,4 @@ fn main() = {
     42
   })
   join_persist(h)
-} ~> persist_to_disk
+} ~> persist_to_disk ~> wasi_filesystem

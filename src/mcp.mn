@@ -792,10 +792,8 @@ fn mcp_run(at_read) = {
   // the empty path.
   {
     // The artifact directory is made INSIDE the bracket, because that is
-    // where the Filesystem handler is. Outside it these were fs_mkdir_impl
-    // calls reaching past the effect — the op is unreachable there, so the
-    // bypass was the only spelling available and the row said this server
-    // touched no filesystem while it created directories.
+    // where the Filesystem handler is: the op answers here, and this
+    // server's row says it creates directories.
     fs_mkdir(".build")
     fs_mkdir(".build/mcp")
     if driver_module_path("main") != None {

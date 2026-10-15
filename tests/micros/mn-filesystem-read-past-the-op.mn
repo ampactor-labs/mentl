@@ -1,0 +1,11 @@
+// expect: refuse E_EffectMismatch
+// Reading a persisted image reads a file, so `!Filesystem` over a function
+// that restores one refuses. Through boot 2b5b0c6d `image_resume` read its
+// wire through the implementation function, past the Filesystem op, and this
+// declaration checked clean: the negation proved the absence of the file
+// read the function makes.
+import persist
+
+fn warm(path) with !Filesystem = image_resume(path)
+
+fn main() = 0

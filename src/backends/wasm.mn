@@ -51,8 +51,8 @@ handler wat_stdout {
   },
 }
 
-// wat_to_file — the write-through sink aimed at an fd (fs_create_impl's
-// streaming open). Region-immune by construction: each arm hands the
+// wat_to_file — the write-through sink aimed at an fd (the one `fs_create`
+// opens for streaming). Region-immune by construction: each arm hands the
 // segment's bytes to the HOST before resuming, so the emit phase's
 // per-fn region resets can never touch the product — the property
 // wat_stdout always had, with the destination a config edge instead of

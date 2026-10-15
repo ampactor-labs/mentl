@@ -1,0 +1,11 @@
+// expect: refuse E_EffectMismatch
+// Checkpointing a branch writes its image to a file, so `!Filesystem` over a
+// function that installs the disk policy refuses. Through boot 2b5b0c6d the
+// policy's arms wrote the wire through the implementation function, past the
+// Filesystem op, so the install's row carried no Filesystem and this
+// declaration checked clean over a write to /tmp.
+import persist
+
+fn checkpoint(x) with !Filesystem = persist_branch(() => x * 2) |> join_persist ~> persist_to_disk
+
+fn main() = 0

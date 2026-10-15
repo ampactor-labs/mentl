@@ -459,9 +459,10 @@ landing that closes it. A gate that did not run is UNKNOWN, never green.
 - **Effect names lie about their ops** (§11.9): GraphRead holds writes,
   GraphWrite holds reads, and `Memory` holds pure word arithmetic, so a
   function doing only arithmetic on words is not `Pure`.
-- **Effect-op parameters are nameless, and the filesystem is bypassed** (§11.4):
-  callers reach past the `Filesystem` ops to their implementations, so
-  `!Filesystem` holds over routes that read files and directories.
+- **Effect-op parameters are nameless, and a filesystem failure is silent**
+  (§11.4): every filesystem operation is a `Filesystem` op whose implementation
+  is its handler's arm, but a path that does not read answers an empty string
+  and one that does not open answers fd 0.
 - **Executable refusal is partial**: `diag_refuses` holds the live list; a class
   born at zero arms at birth, and the rest are §11's work.
 - **Regions are runtime**: every extent runs in an arena — binding groups,
@@ -711,15 +712,13 @@ a provenance diff, a search over live shared cells.
    judged clean at its own boundary produces nothing in a user's link.
 4. **Names, the host boundary, and the catalog**
    (`Hβ.syntax.parameter-product-has-identity`,
-   `Hβ.io.filesystem-impl-bypasses-the-effect`,
+   `Hβ.io.filesystem-failure-is-said`,
    `Hβ.diag.catalog-as-projection`). An effect op's parameters are named as a
    function's are: the medium proposes each name from what its handlers' arms
    bind and asks where they disagree, `mentl tighten` writes the sweep, and the
-   positional form then refuses (`E_UnnamedParameter`). Filesystem is one
-   capability unit: its implementation is its handler's arms, so nothing callable
-   reaches past `!Filesystem`; listing a directory and writing an image become
-   ops; every failure is said — an unreadable path performs `Fail`, never answers
-   an empty string or a sentinel handle. `mentl diagnostics` projects the catalog
+   positional form then refuses (`E_UnnamedParameter`). Every filesystem
+   failure is said — an unreadable path performs `Fail`, never answers an empty
+   string or a sentinel handle. `mentl diagnostics` projects the catalog
    from the `DiagKind` constructors, SYNTAX's tables become its text, and each
    class the docs name that no constructor declares is born with its fixture or
    struck.

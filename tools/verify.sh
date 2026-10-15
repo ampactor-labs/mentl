@@ -475,12 +475,12 @@ if C=$(wt_m2_ensure); then
   vj_out=$(mktemp); vj_err=$(mktemp)
   wt_run --dir . "$C/m2.wasm" verify src/main.mn > "$vj_out" 2> "$vj_err" &
   vj_pid=$!
-  # The effect seam's nine refs questions fly beside it, one cursor each
+  # The effect seam's eight refs questions fly beside it, one cursor each
   # (each is a whole judgment until the seam is a board bound in
   # src/board.mn, where one graph would answer all nine).
   fs_seam_out=$(mktemp)
-  printf '%s\n' fs_exists_impl fs_read_file_impl fs_write_file_impl fs_mkdir_impl \
-         fs_open_impl fs_create_impl fs_close_impl fs_unlink_impl fs_rename_impl \
+  printf '%s\n' path_open path_filestat_get path_create_directory path_unlink_file \
+         path_rename fd_readdir fd_prestat_get fd_prestat_dir_name \
     | FS_ROOT="$ROOT" FS_C="$C/m2.wasm" xargs -P "${FRONTIER_POOL:-$(nproc)}" -I{} bash -c '
         source "$FS_ROOT/tools/wt-env.sh" >/dev/null 2>&1
         wt_run --dir "$FS_ROOT" "$FS_C" query src/main.mn "refs of {}" 2>/dev/null \
@@ -561,12 +561,12 @@ if C=$(wt_m2_ensure); then
   # held over routes that created, wrote, renamed and unlinked files, and
   # the severance the handler's own comment promises ("drops path_open /
   # fd_close from that binary") would have qualified a file-writing binary.
-  # Every fs_*_impl reference must be inside the handler that owns it or
-  # its own definition — one module since 2026-10-13, lib/fs.mn, where the
-  # Filesystem capability's declaration, handler and implementations live
-  # together (N1's module half; they were src/types.mn, src/pipeline.mn and
-  # lib/io.mn, and this leg excluded the latter two by name). Anything
-  # else is a bypass. SEEN RED at 3 before the first fix: fs_close_impl
+  # Every raw filesystem call — a path syscall, a directory read, a preopen
+  # read — must stand in lib/fs.mn, whose handler's arms ARE the Filesystem
+  # implementation (N1, 2026-10-15: the impl functions any module could call
+  # are gone, each op's arm holding its own), so a call anywhere else names
+  # a file to the host past the op and `!Filesystem` stops meaning what it
+  # says. Anything else is a bypass. SEEN RED at 3 before the first fix: fs_close_impl
   # answered main:425, main:1826, mcp:128 beside its one legitimate site in
   # the handler; and at 13 the day the capability moved, every reference
   # inside lib/fs.mn counted until the leg named the module that owns them.
@@ -576,12 +576,12 @@ if C=$(wt_m2_ensure); then
   wait "$fs_seam_pid"
   fsbp=$(awk '{s+=$1} END{print s+0}' "$fs_seam_out"); fs_seam_n=$(grep -c . "$fs_seam_out" || true)
   rm -f "$fs_seam_out"
-  if [[ "$fs_seam_n" != 9 ]]; then
-    say "✗ effect seam: $fs_seam_n of 9 refs questions answered — the flight dropped a result"
+  if [[ "$fs_seam_n" != 8 ]]; then
+    say "✗ effect seam: $fs_seam_n of 8 refs questions answered — the flight dropped a result"
     fail=1
   fi
   fsmax=$(grep -E '^fs_impl_bypass_max:' "$BASELINE" | head -1 | cut -d: -f2 | tr -d ' ')
-  say "· effect seam: $fsbp filesystem impl call(s) outside the handler that owns them"
+  say "· effect seam: $fsbp raw filesystem call(s) outside lib/fs.mn, whose handler's arms are the implementation"
   if [[ -n "$fsmax" && "$fsbp" -gt "$fsmax" ]]; then
     say "✗ effect-seam RATCHET: impl bypasses rose $fsmax -> $fsbp — a caller reached past the op; the handler can no longer see the operation and the row stops naming it."
     fail=1

@@ -250,8 +250,8 @@ fn eprint_matrix(matrix, num_low: Int, num_high: Int, li: Int) = if li >= num_lo
 //
 // The research face: a recording on disk is one float per line. Read the
 // file, split on newlines, parse each into the native [Float] signal the
-// comodulogram consumes. `fs_read_file_impl` crosses the WASI boundary
-// (the host IS an effect); the parse is pure. Gated end to end by
+// comodulogram consumes. The read is the Filesystem op `fs_read_file`, so a
+// caller grants that capability; the parse is pure. Gated end to end by
 // tests/frontier/cfc-rec (Mentl's argmax cross-validated against a numpy
 // oracle over the same on-disk bytes) — the representation-stress the
 // m3==m4 fixpoint is blind to.
@@ -276,6 +276,6 @@ fn fill_recording(strs, num: Int, out, i: Int, w: Int) = if i >= num {
 }
 
 fn read_recording(path) = {
-  let strs = lines(fs_read_file_impl(path))
+  let strs = lines(fs_read_file(path))
   fill_recording(strs, len(strs), make_list(len(strs)), 0, 0)
 }
