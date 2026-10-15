@@ -653,9 +653,8 @@ a provenance diff, a search over live shared cells.
    spelling at the link's scope (the two concats one `seq_concat`, §4①). A
    sub-pattern's node is the cell of the part it takes apart, where a second
    cell is minted beside it today, so a binder is declared at its own
-   position; annotations and predicates become the cells inference binds: the
-   ghosts (`mentl query <entry> ghosts`) fall to zero and a claim is located
-   at the value it claims. Then the writes the structure cut was for: a
+   position, and a claim is located at the value it claims. Then the writes
+   the structure cut was for: a
    rename is one write at the declaration (the `rename` verb, through the
    formatter); the session re-judges the nodes an edit rewrote rather than
    re-parsing a module (the declaration-grain cone over the in-edges); accepting
@@ -858,7 +857,8 @@ a provenance diff, a search over live shared cells.
 - **Flow** (§4⑥): the influence walk gains control edges, a label is a
   refinement on a source's declared type and a sink's demand a precondition, and
   `FlowLabel` and its readers retire.
-- **Verification whole**: predicates are ordinary expressions; a bug trap
+- **Verification whole**: the verifier decides a predicate's expression, where
+  it decides the projection a type carries (`node_to_predicate`); a bug trap
   unwinds with the graph as its payload; every diagnostic class refuses the
   executable.
 - **The fused oracle**: N forked cursors on N threads over one image, form

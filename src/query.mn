@@ -894,59 +894,32 @@ fn ur_value_let(entry) = match entry {
 // INSTRUCTION, so under-reporting reachability is the one direction it may
 // never be wrong in, and it was.
 //
-// A predicate is not judged as an expression, so its references draw no edge
-// (`Hβ.types.predicate-is-expr`): the names it spells resolve at the link's
-// own scope, the text boundary where a person typed them. SEEDED AS ROOTS
-// rather than as edges from the type's uses, deliberately: a `where` clause
-// is discharged wherever its type is annotated, and the walk cannot cheaply
-// know where. Over-approximating is the safe direction for a report whose
-// output is "delete this".
-fn refine_roots(decls) = decls |> flat_map(refine_decl_names) |> flat_map(refine_root)
+// A predicate is judged as the expression it is, so each name it calls is a
+// reference edge the walk follows from the refinement's declaration. The
+// declaration is SEEDED AS A ROOT rather than reached from the type's uses: a
+// `where` clause is discharged wherever its type is annotated, and an
+// annotation's name draws no edge yet (`Hβ.graph.positions-are-cells`).
+// Over-approximating is the safe direction for a report whose output is
+// "delete this".
+fn refine_roots(decls) = decls |> flat_map(refine_root)
 
-fn refine_decl_names(entry) = match entry {
+fn refine_root(entry) = match entry {
   (_, d, _) => match graph_node_body(d) {
-    NStmt(RefineStmt(_, _, pred)) => predicate_names(pred),
-    _ => [],
+    NStmt(s) => match s {
+      RefineStmt(_, _, _) => [d],
+      LetStmt(_, _, _)
+      | FnStmt(_, _, _, _, _)
+      | TypeDefStmt(_, _)
+      | EffectDeclStmt(_, _, _)
+      | HandlerDeclStmt(_, _, _, _, _, _)
+      | HandlerChainStmt(_, _)
+      | ImportStmt(_)
+      | AliasStmt(_, _)
+      | RowAliasStmt(_, _)
+      | ExprStmt(_) => [],
+    },
+    NExpr(_) | NPat(_) | NHole(_) | NModule(_) | NTypeAnn(_) => [],
   },
-}
-
-fn refine_root(name: String) = match env_resolve_linked(name) {
-  Some(d) => match enclosing_decl(d) {
-    Some(s) => [s],
-    None => [],
-  },
-  None => [],
-}
-
-// The names a Predicate references, walked through the handles it carries —
-// the AST lives in the graph, so the predicate holds edges and this follows
-// them rather than re-parsing anything.
-fn predicate_names(pred) = match pred {
-  PTrue => [],
-  PCompare(_, l, r) => handle_var_names(l) ++ handle_var_names(r),
-  PAnd(a, b) => predicate_names(a) ++ predicate_names(b),
-  POr(a, b) => predicate_names(a) ++ predicate_names(b),
-  PNot(p) => predicate_names(p),
-  PBoolNode(h) => handle_var_names(h),
-  PPatternMatch(_, h) => handle_var_names(h),
-  PFlowLe(_, _) => [],
-  PWithSelf(_, inner) => predicate_names(inner),
-  PTotalDiv(_, a, b) => handle_var_names(a) ++ handle_var_names(b),
-  PInBounds(recv, idx) => handle_var_names(recv) ++ handle_var_names(idx),
-  PProvides(provided) => match provided {
-    ProvidedAt(nodes) => nodes |> flat_map(handle_var_names),
-    ProvidedBeyond(nodes) => nodes |> flat_map(handle_var_names),
-    ProvidedNone => [],
-  },
-}
-
-fn handle_var_names(h) = {
-  let body = graph_node_body(h)
-  let here = match body {
-    NExpr(VarRef(n)) => [n],
-    _ => [],
-  }
-  here ++ (body_child_handles(body) |> map(handle_var_names) |> flatten)
 }
 
 fn ur_cell_decls(acc, cell) = match cell {

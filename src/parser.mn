@@ -3478,7 +3478,10 @@ fn parse_type_ty(ref tokens, pos) = match type_head_items(tokens, pos) {
               (row_effs, p3) => (build_declared_row(row_effs), p3),
             }
           } else {
-            (mk_ef_open([], fresh_handle(span_at(tokens, pos))), p2)
+            // The open tail no author wrote stands at no position: it is a
+            // cell, never indexed where the caret or the census could find
+            // it as text.
+            (mk_ef_open([], graph_fresh_ty(Placeholder(span_at(tokens, pos)))), p2)
           } {
             (row, p_row) => (TFun(map((t) => mk_param("_", t), param_tys), ret, row), p_row),
           }
@@ -3740,52 +3743,21 @@ fn parse_type_expr(ref tokens, pos) = match parse_type_ty(tokens, pos) {
   },
 }
 
-// Predicates — minimal (expressions after `where`)
-//
-// Per T1.3 refinement-types-with-predicate-capture: parse the
-// predicate body as a generic expression via parse_expr, then
-// walk the resulting AST and project to the Predicate ADT. The
-// expression form admits comparisons (`<`, `<=`, `==`), logical
-// composition (`&&`, `||`, `!`), and fn application
-// (`even(self)`, `bytes_valid_utf8(self)`). `self` in the body
-// refers to the value being refined; node_to_predicate reads each
-// operand node LIVE (no PExpr copy).
-//
-// W_RedundantWhere narration: if the resulting Predicate is the
-// literal PTrue (no constraint), emit the gradient hint per
-// SYNTAX.md:1604-1611 — the where-clause adds nothing.
+// A predicate — the expression after `where` — is an expression like any
+// other: comparisons, `&&`, `||`, `!`, calls (`even(self)`), with `self` the
+// value being refined. The statement holds the expression's node; the
+// judgment judges it where the type is declared, and the Predicate the
+// verifier decides is projected from it where the type registers
+// (`node_to_predicate`). A predicate that constrains nothing (`where true`)
+// narrates W_RedundantWhere — the clause adds nothing.
 fn parse_predicate(ref tokens, pos) = match parse_expr(tokens, pos) {
   (expr_node, p) => {
-    let span = graph_span_of(expr_node)
-    let pred = node_to_predicate(expr_node, span)
-    match pred {
-      PTrue => report(WRedundantWhere(span)),
+    match node_to_predicate(expr_node) {
+      PTrue => report(WRedundantWhere(graph_span_of(expr_node))),
       _ => (),
     }
-    (pred, p)
+    (expr_node, p)
   },
-}
-
-// Project a predicate-body AST node to the Predicate ADT, carrying each
-// operand node's HANDLE — every node is registered in the one graph at
-// construction (mint_node), so graph_node_body resolves its Expr live and
-// the predicate holds the edge, not a copy. A comparison carries its two
-// operand handles; `>`/`>=` normalize to `<`/`<=` with swapped operands;
-// `&&`/`||`/`!` compose recursively; ANY other boolean expression (a
-// refinement call, a bare bool var) IS its graph node — PBoolNode(handle),
-// read live. No lossy fallback.
-fn node_to_predicate(node, span: ValidSpan) = match graph_node_body(node) {
-  NExpr(BinOpExpr(BEq, l, r)) => PCompare(BEq, l, r),
-  NExpr(BinOpExpr(BNe, l, r)) => PNot(PCompare(BEq, l, r)),
-  NExpr(BinOpExpr(BLt, l, r)) => PCompare(BLt, l, r),
-  NExpr(BinOpExpr(BLe, l, r)) => PCompare(BLe, l, r),
-  NExpr(BinOpExpr(BGt, l, r)) => PCompare(BLt, r, l),
-  NExpr(BinOpExpr(BGe, l, r)) => PCompare(BLe, r, l),
-  NExpr(BinOpExpr(BAnd, l, r)) => PAnd(node_to_predicate(l, span), node_to_predicate(r, span)),
-  NExpr(BinOpExpr(BOr, l, r)) => POr(node_to_predicate(l, span), node_to_predicate(r, span)),
-  NExpr(UnaryOpExpr(UNot, inner)) => PNot(node_to_predicate(inner, span)),
-  NExpr(LitBool(true)) => PTrue,
-  _ => PBoolNode(node),
 }
 
 // ─── free variables — the parse tree's own reference projection ──────
@@ -3946,8 +3918,6 @@ fn free_vars_state_updates(updates, bound) = fold(
 // every scheme first (PLAN §11's "forward-reference table carried by
 // shadow" — this is the carrier). The graph's own reverse edge knew the
 // reference the whole time; two homes for one fact, disagreeing.
-// RefineStmt keeps [] for a different reason: its predicate is not yet an
-// expression this walk can descend (Hβ.types.predicate-is-expr).
 fn free_vars_stmt(s, bound) = match s {
   LetStmt(_, expr, _) => collect_free_uses(expr, bound),
   // A function's parameters bind its body, as a lambda's do. They read as
@@ -3979,7 +3949,9 @@ fn free_vars_stmt(s, bound) = match s {
   // chain.
   HandlerChainStmt(_, chain) => collect_free_uses(chain, bound),
   ImportStmt(_) => [],
-  RefineStmt(_, _, _) => [],
+  // A predicate's free names are a refinement's edges, `self` its own binder,
+  // so a refinement is judged after the functions its predicate calls.
+  RefineStmt(_, _, pred) => collect_free_uses(pred, free_vars_merge(bound, ["self"])),
   AliasStmt(_, _) => [],
   RowAliasStmt(_, _) => [],
 }

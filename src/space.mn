@@ -1700,7 +1700,7 @@ fn node_query_line(h, kind) = match graph_node_body(h) {
     },
     None => show_type(ty_of_kind(h, kind)),
   },
-  NStmt(RefineStmt(name, base, pred)) => "{name} = {show_type(base)} where {show_predicate(pred)}",
+  NStmt(RefineStmt(name, base, pred)) => "{name} = {show_type(base)} where {show_predicate(node_to_predicate(pred))}",
   NStmt(AliasStmt(name, ty)) => "{name} = {show_type(ty)}",
   NStmt(TypeDefStmt(name, variants)) => "{name} — {int_to_str(len(variants))} variant(s)",
   NStmt(EffectDeclStmt(name, _, ops)) => "effect {name} — {int_to_str(len(ops))} op(s)",

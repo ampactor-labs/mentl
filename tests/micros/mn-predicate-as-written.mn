@@ -1,0 +1,13 @@
+// fmt: canonical
+// A refinement's predicate is the expression its author wrote, and the
+// formatter writes it back as written: `self > 0` stays `self > 0` and
+// `self != 0` stays `self != 0`. Rendered from the verifier's projection of
+// the predicate they came back as `0 < self` and `!(self == 0)`, a different
+// tree.
+type Pos = Int where self > 0
+
+type NonZero = Int where self != 0
+
+fn inv(n: NonZero) = 100 / n
+
+fn main() = inv(4)

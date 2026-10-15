@@ -244,9 +244,11 @@ fn board_bounds() = [
   // each by-name reader had kept a catch-all over the binding's kind; 1,200
   // when a lowered reference came to carry its declaration and a callee's
   // judgment was read off it; 1,199 when a pattern became a node, each
-  // reader of a pattern's kind written as its roster. It falls to zero where
-  // the migration lands (`Hβ.match.catch-all-over-a-sum-is-the-roster`).
-  Bound({ceiling: 1199, question: QCensus(CsWildcardOverSum)}),
+  // reader of a pattern's kind written as its roster; 1,197 when a
+  // predicate's references became edges and the walk that collected them by
+  // spelling left. It falls to zero where the migration lands
+  // (`Hβ.match.catch-all-over-a-sum-is-the-roster`).
+  Bound({ceiling: 1197, question: QCensus(CsWildcardOverSum)}),
   // Drift mode 15 — a value given a leading-underscore name instead of being
   // deleted. The rename silences the reader, never the fact that nothing
   // reads it.
@@ -361,8 +363,11 @@ fn board_bounds() = [
   // (2026-10-14) with the escaping-row walk's name-list concat, 112 -> 111;
   // 111 -> 91 (2026-10-15) with the dead code the facets named; 91 -> 86 the
   // same day with the return annotations of the five record accessors the
-  // install stack's entry type replaced.
-  Bound({ceiling: 86, question: QGhosts}),
+  // install stack's entry type replaced. 86 -> 0 the same day: an authored
+  // return or let annotation is bound to the type it declares, a function
+  // type's implicit row tail stands at no position, and a refinement's
+  // predicate is judged as the expression it is.
+  Bound({ceiling: 0, question: QGhosts}),
   // Dead code: a function of the wheel's own layer the entry cannot reach
   // over the reference edges (`mentl query src/main.mn unreachable`). It
   // read zero when the facet first walked the edges and one a landing later

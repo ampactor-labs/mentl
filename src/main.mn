@@ -1563,7 +1563,8 @@ fn test_check_run(entry_module) =
 // unreachable facet gives a person. `// refs of Name: 1 call 4 pattern` is
 // the refs facet's: what stands at each reference to the declaration the
 // name denotes, counted by role — calls, values, patterns — the roles with
-// none unsaid.
+// none unsaid. `// fmt: canonical` is the formatter's: the fixture is its own
+// render, byte for byte, through the render the fmt verb writes.
 type Expect
   = ExpectRun(Int)
   | ExpectRefuse(String)
@@ -1571,6 +1572,7 @@ type Expect
   | ExpectTeach(Int, TeachWant)
   | ExpectUnreachable(String)
   | ExpectRefs(String, String)
+  | ExpectCanonical
 
 // A teach fixture's contract (D4): what the gradient answers at the
 // declaration on line L — one proven annotation whose source is the text,
@@ -1600,6 +1602,8 @@ fn battery_expect(src) = {
     Some(ExpectUnreachable(battery_line_rest(src, 16, 16)))
   } else if byte_len(src) >= 11 && str_eq(str_slice(src, 0, 11), "// refs of ") {
     battery_refs_expect(src)
+  } else if byte_len(src) >= 17 && str_eq(str_slice(src, 0, 17), "// fmt: canonical") {
+    Some(ExpectCanonical)
   } else if byte_len(src) < 12 {
     None
   } else if !str_eq(str_slice(src, 0, 11), prefix) {
@@ -1710,6 +1714,33 @@ fn battery_refs_step(stem, path: String, name: String, want: String) = {
   } else {
     print_string("FAIL(refs) {stem}: wanted {want}, got {got}\n")
     1
+  }
+}
+
+// THE FORMAT BATTERY: the fixture rendered as the fmt verb renders a file,
+// and the contract holds when the render is the fixture. A render that would
+// change it names the first line it changes.
+fn battery_fmt_step(stem, path: String, src: String) = {
+  let verdict = fmt_render_file(path, src) ~> mentl_default
+  match verdict {
+    FmtCanonical(_, _) => {
+      print_string("PASS {stem}: canonical\n")
+      0
+    },
+    FmtRenders(_, _, rendered) => match first_changed_line(src, rendered) {
+      (n, was, now) => {
+        print_string("FAIL(fmt) {stem}:{int_to_str(n)} renders `{now}` for `{was}`\n")
+        1
+      },
+    },
+    FmtRefused(_, lines) => {
+      print_string("FAIL(fmt) {stem}: {join("; ", lines)}\n")
+      1
+    },
+    FmtUnparsed(_, n) => {
+      print_string("FAIL(fmt) {stem}: its parse recovered from {int_to_str(n)} problem(s)\n")
+      1
+    },
   }
 }
 
@@ -1983,6 +2014,7 @@ fn battery_step(path: String) = {
       ExpectTeach(line, want) => battery_teach_step(stem, path_to_module(path), line, want),
       ExpectUnreachable(want) => battery_reach_step(stem, path_to_module(path), want),
       ExpectRefs(name, want) => battery_refs_step(stem, path_to_module(path), name, want),
+      ExpectCanonical => battery_fmt_step(stem, path, src),
       ExpectRun(want) => match battery_compile(path_to_module(path), stem) {
         (left, nerr, _) => match left {
           BatteryRefused => {

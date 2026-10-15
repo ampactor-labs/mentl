@@ -2009,10 +2009,8 @@ fn tuple_field_handle(field) with Pure = match field {
 }
 
 // stmt_child_handles — expr_child_handles' Stmt sibling (the projection
-// made TOTAL, Hβ.cursor.enclosing-decl-edge's dep): the VALUE-position
-// child nodes of a statement. Type-level carriers (a variant's or op's
-// comment node, an import, a refinement's predicate) hold no value
-// holes and contribute none.
+// made TOTAL, Hβ.cursor.enclosing-decl-edge's dep): the child nodes of a
+// statement. An import and an alias hold none.
 fn stmt_child_handles(s) = match s {
   // the annotation channel is a child only when it IS one: an absent
   // annotation IS the value node (the parser's sentinel at every LetStmt
@@ -2033,7 +2031,8 @@ fn stmt_child_handles(s) = match s {
   TypeDefStmt(_, variants) => map(variant_node, variants),
   EffectDeclStmt(_, _, ops) => map(op_node, ops),
   ImportStmt(_) => [],
-  RefineStmt(_, _, _) => [],
+  // A refinement's predicate is an expression over `self`, its child.
+  RefineStmt(_, _, pred) => [pred],
   AliasStmt(_, _) => [],
   RowAliasStmt(_, _) => [],
 }

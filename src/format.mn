@@ -427,7 +427,10 @@ fn render_stmt_tokens(s) with !Mutate = match s {
   // A chain declaration is one line, its members joined by ` ~> ` — the
   // layout of a composition, not of an install over a body.
   HandlerChainStmt(name, chain) => "handler {name} = {render_chain_members(chain)}",
-  RefineStmt(name, ty, pred) => "type {name} = {render_decl_type(ty)} where {render_predicate_tokens(pred)}",
+  // The predicate renders as the expression its author wrote: `self > 0`
+  // stays `self > 0`, where a render of the verifier's projection wrote
+  // `0 < self`.
+  RefineStmt(name, ty, pred) => "type {name} = {render_decl_type(ty)} where {render_pred_node(pred)}",
 }
 
 // A representation pin at a type declaration's right-hand side renders
@@ -1057,8 +1060,9 @@ fn render_variants_vertical(ref variants, i) with !Mutate = if i >= len(variants
 // authored face. A row renders only what an author wrote (present and
 // `!absent`), because a bare parse-minted tail IS authored absence; a free
 // variable has no spelling on a page and renders as its forensic handle,
-// loud in fmt's own re-parse; a refinement's predicate is the parse's own
-// inverse (`render_predicate_tokens`), never the voice's compression.
+// loud in fmt's own re-parse; a predicate a type carries renders through
+// its projection's inverse (`render_predicate_tokens`), never the voice's
+// compression, and a refinement's declaration renders its expression.
 fn render_type_tokens(ty) with !Mutate = render_ty(ty) ~> authored_names(render_predicate_tokens)
 
 // The formatter's OWN predicate projection — the parse's inverse, never

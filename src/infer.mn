@@ -1034,7 +1034,13 @@ fn type_decl_claim(seen, name, span) = match smap_get(seen, name) {
 // The alias edges — registration's ONE home. The main walk keeps only
 // RefineStmt's predicate Verify obligation.
 fn pre_register_alias(ref node) = match graph_node_body(node) {
-  NStmt(RefineStmt(name, base_ty, pred)) => env_extend(name, Frozen([], TAlias(name, TRefined(base_ty, pred))), Declared(name), FnScheme, node),
+  NStmt(RefineStmt(name, base_ty, pred)) => env_extend(
+    name,
+    Frozen([], TAlias(name, TRefined(base_ty, node_to_predicate(pred)))),
+    Declared(name),
+    FnScheme,
+    node
+  ),
   NStmt(AliasStmt(name, ty)) => env_extend(name, Frozen([], TAlias(name, ty)), Declared(name), FnScheme, node),
   // A named effect row is an ENV fact: the triples stored verbatim,
   // expansion at build_declared_row (Hβ.types.named-effect-rows).
@@ -2209,7 +2215,7 @@ fn infer_stmt(ref node) = {
       // on the literal — `let bad: Sample = 1.5` rejects, `0.5` compiles.
       // Absent = LitUnit, skipped.
       match graph_node_body(ann) {
-        NTypeAnn(ann_ty) => apply_let_annotation(ann_ty, expr, graph_span_of(expr)),
+        NTypeAnn(ann_ty) => apply_let_annotation(ann, ann_ty, expr, graph_span_of(expr)),
         _ => (),
       }
     },
@@ -2265,14 +2271,16 @@ fn infer_stmt(ref node) = {
     NStmt(ImportStmt(path)) => bind_declared(node, TUnit, path),
     // Registered at pre_register_stmt (the one home — TAlias(name,
     // TRefined(base, pred)), so X and its base unify transparently and
-    // the authored name travels for Reason chains). The declaration is a
-    // SCHEMA — there is no value for `self` to bind, so it accrues NO
-    // obligation here (the old decl-site verify pended one undecidable
-    // entry per refined type, permanently — self unbound). Discharge
-    // lives at CONSTRUCTION sites: apply_refinement_constraint substitutes
-    // the live value node for self (value-proof R2) and decides or pends
-    // against a value that exists. What is noted is the declaration.
-    NStmt(RefineStmt(name, _, _)) => declaration_noted(node, name),
+    // the authored name travels for Reason chains). The predicate is judged
+    // here as the expression it is; the declaration raises no claim of its
+    // own — there is no value for `self` to be — and discharge lives at
+    // CONSTRUCTION sites, where apply_refinement_constraint substitutes the
+    // live value node for self (value-proof R2) and decides or pends against
+    // a value that exists.
+    NStmt(RefineStmt(name, base_ty, pred)) => {
+      judge_predicate(name, base_ty, pred)
+      declaration_noted(node, name)
+    },
     // Transparent alias `type X = T`: registered at pre_register_stmt.
     // No predicate, no Verify — the difference from RefineStmt is exactly
     // the absent `where` (SYNTAX.md §«Type aliases»).
@@ -2290,6 +2298,35 @@ fn infer_stmt(ref node) = {
     },
     _ => (),
   }
+}
+
+// A refinement's predicate is an expression over the value it refines, judged
+// where the type is declared with `self` that value at the base type: its
+// calls are references, its nodes are cells, and a predicate that is not a
+// Bool refuses here, where a chained bound (`-1.0 <= self <= 1.0`) degraded
+// to debt at every value that claimed the type. A module scope has no store
+// age of its own, so the judgment opens one as a module value's init does.
+fn judge_predicate(name: String, base_ty, pred) = {
+  let span = graph_span_of(pred)
+  env_scope_enter()
+  match quantify_ctor_ty(base_ty, [], Located(span, Declared(name))) {
+    (base, _q) => {
+      let self_h = mint(Located(span, Declared(name)))
+      graph_bind(self_h, base, Located(span, Declared(name)))
+      env_extend(
+        "self",
+        Frozen([], TVar(self_h)),
+        Located(span, LetBinding("self", Declared(name))),
+        ValueScheme,
+        self_h
+      )
+    },
+  }
+  ages_open(AgeClosure)
+  infer_expr(pred)
+  ages_pop()
+  unify_types(TVar(pred), TName("Bool", []), span, Inferred("a refinement's predicate"))
+  env_scope_exit()
 }
 
 // A declaration with no value — a type, an effect, an alias — is noted in
@@ -2843,9 +2880,12 @@ fn infer_fn(name, params, body_node, ret_ann, effs, handle, span: ValidSpan, pol
   // cell still binds (forward-ref grounding + quantification), exactly as
   // at prereg. Absent annotation ⇒ the fresh var, inferred as before.
   let authored_pin = match graph_node_body(ret_ann) {
+    // The annotation is a cell: its node holds the type it declares, where
+    // the caret reads it.
     NTypeAnn(pin_ty) => match quantify_ctor_ty(pin_ty, sig_scope, Located(span, Declared(name))) {
       (resolved_pin, _pq) => {
         graph_bind(ret_handle, resolved_pin, Located(graph_span_of(ret_ann), Declared(name)))
+        graph_bind(ret_ann, resolved_pin, Located(graph_span_of(ret_ann), Declared(name)))
         Some(resolved_pin)
       },
     },
@@ -12251,9 +12291,11 @@ fn flow_param(h) = match flow_param_path(h) {
 // `let bad: Sample = 1.5` rejects, `let ok: Sample = 0.5` compiles; a
 // non-constant value stays V_Pending (node_const → None). Resolve the annotation
 // through its alias edge (quantify_ctor_ty — the same resolution build_param_types
-// uses), then discharge the refinement.
-fn apply_let_annotation(ann_ty, value_handle, span: ValidSpan) = match quantify_ctor_ty(ann_ty, [], Located(span, Inferred("let annotation"))) {
+// uses), then discharge the refinement. The annotation's node is a cell holding
+// the type it declares.
+fn apply_let_annotation(ann, ann_ty, value_handle, span: ValidSpan) = match quantify_ctor_ty(ann_ty, [], Located(span, Inferred("let annotation"))) {
   (resolved, _q) => {
+    graph_bind(ann, resolved, Located(graph_span_of(ann), Inferred("let annotation")))
     // The refinement is a CLAIM about the value, decided where the value
     // is made; a reader of the binder reads the value itself (the value
     // walk follows the reference's link to it), so an open claim stays

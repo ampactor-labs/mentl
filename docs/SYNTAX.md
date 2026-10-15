@@ -1548,15 +1548,25 @@ type Even = Int where self % 2 == 0
 
 `self` refers to the value being refined. The refinement is a `Predicate` discharged by the `Verify` effect at construction sites and elsewhere as needed.
 
+**A predicate is an ordinary expression, judged where its type is declared**
+(real, 2026-10-15). `self` is the value being refined, at the base type, and
+the expression must be a `Bool`: the functions it calls are references (`refs
+of even` answers `type Even = Int where even(self)`), and `mentl fmt` writes it
+back as its author wrote it. What `Verify` decides is a projection of that
+expression the type carries. Until this landed a predicate was parsed into
+that projection alone: nothing judged it, a function only a predicate called
+read as unreferenced, and the formatter wrote `self > 0` back as `0 < self`
+and `self != 0` as `!(self == 0)` (tests/micros/mn-predicate-as-written.mn,
+mn-refs-of-predicate-callee.mn).
+
 **The bounds join with `&&` — there is no comparison chaining.** A chained
 `-1.0 <= self <= 1.0` parses left-associatively as `(-1.0 <= self) <= 1.0`
 (one precedence table, no special case), an ill-sorted `Bool <= Float` that
-principle 2 already rules against as a second spelling of the conjunction.
-Today's predicate walk accepts that shape opaquely and degrades it to honest
-`V_Pending` debt (measured 2026-07-24 — this section's own examples carried
-the chain and silently lost their refusals); the loud inference rejection
-with a Reason arrives when predicates become ordinary expressions
-(`Hβ.types.predicate-is-expr`, the band-F chain head).
+principle 2 already rules against as a second spelling of the conjunction, so
+the declaration refuses: `E_TypeMismatch`, `Bool vs Float` at the outer `<=`.
+Until the predicate was judged the shape degraded to `V_Pending` debt at every
+value claiming the type, and `let s: Sample = 1.5` compiled
+(tests/micros/mn-predicate-chain-refuses.mn).
 
 ```
 let s: Sample = 0.5      // Verify discharges -1.0 <= 0.5 && 0.5 <= 1.0 statically

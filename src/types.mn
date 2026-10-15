@@ -2724,8 +2724,11 @@ type Stmt
   | HandlerChainStmt(String, Node)
   | ExprStmt(Node)
   | ImportStmt(String)
-  | RefineStmt(String, Ty, Predicate)
-  // type X = T where P — nominal refinement
+  | RefineStmt(String, Ty, Node)
+  // type X = T where P — nominal refinement: the name, the base, and the
+  // predicate's expression as its author wrote it, judged where the type is
+  // declared (infer.mn's judge_predicate) and projected to a Predicate
+  // where the type registers (`node_to_predicate`)
   | AliasStmt(String, Ty)
   // type X = A + B — a named effect row (SYNTAX §«Named effect rows»):
   // the RHS is the with-clause's own signed-triple grammar, stored
@@ -5783,6 +5786,26 @@ fn render_eff_arg(arg) with !Mutate = match arg {
   // re-parses to EANode and re-resolves to the same folded form.
   EAEffect(h) => intern_name_of(h),
   EACon(h) => intern_name_of(h),
+}
+
+// A predicate's expression as the Predicate the verifier decides, carrying
+// each operand node's HANDLE, so the projection holds edges into the
+// expression, never a copy of it. A comparison carries its two operands;
+// `>`/`>=` normalize to `<`/`<=` with the operands swapped; `&&`/`||`/`!`
+// compose recursively; any other Bool expression (a call, a bare Bool name)
+// IS its node, read live.
+fn node_to_predicate(node) = match graph_node_body(node) {
+  NExpr(BinOpExpr(BEq, l, r)) => PCompare(BEq, l, r),
+  NExpr(BinOpExpr(BNe, l, r)) => PNot(PCompare(BEq, l, r)),
+  NExpr(BinOpExpr(BLt, l, r)) => PCompare(BLt, l, r),
+  NExpr(BinOpExpr(BLe, l, r)) => PCompare(BLe, l, r),
+  NExpr(BinOpExpr(BGt, l, r)) => PCompare(BLt, r, l),
+  NExpr(BinOpExpr(BGe, l, r)) => PCompare(BLe, r, l),
+  NExpr(BinOpExpr(BAnd, l, r)) => PAnd(node_to_predicate(l), node_to_predicate(r)),
+  NExpr(BinOpExpr(BOr, l, r)) => POr(node_to_predicate(l), node_to_predicate(r)),
+  NExpr(UnaryOpExpr(UNot, inner)) => PNot(node_to_predicate(inner)),
+  NExpr(LitBool(true)) => PTrue,
+  _ => PBoolNode(node),
 }
 
 fn show_predicate(ref pred) = match pred {

@@ -1,0 +1,12 @@
+// refs of even: 1 call
+// A refinement's predicate is judged as the expression it is, so the function
+// it calls is referenced there: `refs of even` answers the predicate's call,
+// and a function a refinement alone stands on is never read as dead.
+fn even(n) = n % 2 == 0
+
+type Even = Int where even(self)
+
+fn main() = {
+  let e: Even = 4
+  e + 1
+}
