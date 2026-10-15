@@ -1327,16 +1327,14 @@ type ExecutableBoundary
   // lower-time mint dies here.
   | InterpBoundary([Int])
 
-// The install-shape column's value: a `~>`
-// install site's handler name, the PROGRAM handle of its handler expression,
-// its config-arg program handles, and the per-effect arm-name groups — the
-// decl-side state inits stay readable at the handler decl through the name.
-// The handler expression's type is the instantiated `Handler(inst)`, the
-// effect instance this install serves, and the config handles are where the
-// config's instantiation is read: together they key the arms it runs
-// (lower.mn's arm_site_pairs). `NoInstall` comes first so a virgin cell
-// reads as it.
-type InstallShape = NoInstall | InstallOf(String, Int, [Int], [{arms: [String], ename: String}])
+// The install-shape column's value: a `~>` install site's handler
+// expression and its config-arg program handles. The handler expression's
+// reference leads to the handler's declaration, and its type is the
+// instantiated `Handler(inst)`, the effect instance this install serves; the
+// config handles are where the config's instantiation is read: together they
+// key the arms it runs (lower.mn's arm_site_pairs). `NoInstall` comes first
+// so a virgin cell reads as it.
+type InstallShape = NoInstall | InstallOf(Int, [Int])
 
 // What a call's judgment built of its product: the APPLIED call, whose value
 // is the callee's result, or the product SUSPENDED at a slot — a partial
@@ -1372,10 +1370,10 @@ type CallProduct = NoProduct | ProductOf([Node], [Int], CallShape)
 // because its callers name it by that op — a direct perform's target
 // (lower.mn's perform_target) and the allocation audit's unit name alike;
 // a handler's state init is a fn of its own that the install calls
-// directly. Both carry their handler's
-// name, because the row their code answers to is the handler's own
-// (the wasm backend's alloc_unit_named), and neither origin handle reaches it.
-type EmitFnKind = EfkPartial | EfkLambda | EfkThunk | EfkNested | EfkArm(String, String) | EfkInit(String) | EfkK
+// directly. Both carry their handler's declaration, because the row their
+// code answers to is the handler's own (the wasm backend's
+// alloc_unit_named), and neither origin handle reaches it.
+type EmitFnKind = EfkPartial | EfkLambda | EfkThunk | EfkNested | EfkArm(String, Int) | EfkInit(Int) | EfkK
 
 // THE ENUMERATION'S ENTRY — one record per emittable symbol, written by
 // lower's seven LFn writers at construction. A record, not a widening
@@ -4882,10 +4880,10 @@ effect LowerScope {
   ls_register_unwinding_ops([String])
   // whether a direct perform of this op must be followed by the boundary check — an arm abandoning past it returns with the flag raised
   ls_unwinding_op(String) -> Bool
-  // THE CUT (bank A3) — [(fn_name, hname)]: resume-bearing fns reachable from a MultiShot arm, bound to their handler (computed once at lower_program)
-  ls_register_resume_binds([(String, String)])
-  // the fn's bound handler name; "" = unbound (no wrap, no evidence threading)
-  ls_resume_bind_of(String) -> String
+  // THE CUT (bank A3) — [(fn_name, handler declaration)]: resume-bearing fns reachable from a MultiShot arm, bound to their handler (computed once at lower_program)
+  ls_register_resume_binds([(String, Int)])
+  // the declaration of the handler a fn is bound to; None = unbound (no wrap, no evidence threading)
+  ls_resume_bind_of(String) -> Option(Int)
   // whether a nominal type holds a wide-element sequence anywhere in its structure — settled once per name (the reach walk's read at an ==/ordering site), None while unsettled
   ls_wide_memo(String) -> Option(Bool)
   // settle a nominal type's wide-sequence fact

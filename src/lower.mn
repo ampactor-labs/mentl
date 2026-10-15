@@ -42,58 +42,51 @@ import persist
 
 import types
 
-// Hβ.first-light.resume-with-state-mutation — handler-arm-state context.
-// `lower_handler_arms_as_decls` installs `arm_state_ctx(state, disc)` around
-// each arm body's lower_expr call; ResumeExpr reads `current_state_fields()`
-// to resolve `with field = NEW` updates' slot offsets AND
-// `current_resume_discipline()` to pick its representation (OneShot →
-// LReturn floor, byte-identical; MultiShot → the LMakeContinuation record).
-// The discipline is carried LIVE on the context — read at the resume site,
-// never re-derived from a side-ledger (the deleted resume_kinds ledger, Anchor 1).
-// Config-param-only handler (no state-fields), so it works regardless of
-// resume-with-state-update lowering — bootstrap-safe per
-// SYNTAX §State updates via with on resume.
+// The handler-arm context. `lower_one_arm_decl` installs `arm_state_ctx`
+// around each arm body's lowering, and a resume-bound fn around its own;
+// ResumeExpr reads `current_state_fields()` to resolve `with field = NEW`
+// updates' slot offsets AND `current_resume_discipline()` to pick its
+// representation (OneShot → LReturn floor; MultiShot → the
+// LMakeContinuation record). The discipline is carried LIVE on the context
+// — read at the resume site, never re-derived from a side-ledger.
 effect ArmStateContext {
   current_state_fields() -> [String]
   current_resume_discipline() -> ResumeDiscipline
-  // band B M2b — the enclosing arm's handler name; the resume flag-arm names $op___redrive_<hname> with it ("" outside arms)
-  current_arm_handler() -> String
+  // band B M2b — the declaration of the enclosing arm's handler, whose redrive the resume flag-arm calls (None outside arms)
+  current_arm_handler() -> Option(Int)
 }
 
-handler arm_state_ctx(fields, disc, hname) {
+handler arm_state_ctx(fields, disc, hd) {
   current_state_fields() => resume(fields),
   current_resume_discipline() => resume(disc),
-  current_arm_handler() => resume(hname),
+  current_arm_handler() => resume(hd),
 }
 
-// There is NO second handler. The non-arm default ([], OneShot, "") is the
-// pipeline BOUNDARY install `~> arm_state_ctx([], OneShot, "")` — so the op
-// edge is UNIQUE and every arm-context read dispatches through the singleton
-// tier's LIVE per-handler state global (the bracket-scoped $<hname>_state_g every
-// install saves/restores — S1's home). The context is a DYNAMIC fact; its
-// one home is the innermost live bracket. The DELETED arm_state_default
-// twin made the op AMBIGUOUS, pushing these reads to the lexical evidence
-// floor — clone-chain threading for a dynamically-scoped truth — and the
-// row math (install absorption) then correctly told callers NOT to thread
-// it: the give-arm resume read a starved pair four hops from its live
-// bracket (the rw4 trap, 2026-07-12). One handler, one home, read live.
+// There is NO second handler. The non-arm default ([], OneShot, None) is the
+// pipeline BOUNDARY install `~> arm_state_ctx([], OneShot, None)`, so the op
+// edge is UNIQUE and every arm-context read reaches the innermost live
+// install. The context is a DYNAMIC fact; its one home is the innermost live
+// bracket. A second, default handler would make the op AMBIGUOUS, pushing
+// these reads to the evidence walk — the give-arm resume read a starved pair
+// four hops from its live bracket that way (the rw4 trap, 2026-07-12). One
+// handler, one home, read live.
 //
-// The handler's static shape — config, state, arms — read LIVE from the
-// env's HandlerKind (register_handler populates it). No side-ledger, no
-// pre-register pass: the graph already names the handler's node, so an
-// install resolves its handler's decl directly (Anchor 1 — Carried-Truth).
-// The DISSOLVED handler_state_inits_registry re-derived into a name-keyed
-// ledger exactly what env_lookup holds live, and its own by-name filter
-// scan ran inside a handler arm — re-triggering
-// the nested-arm evidence gap it was a workaround for. The LHandleWith emit
-// arm stores each state-init at offset 8+i*4 of the freshly-allocated state
-// record per PLAN §5.U.
-fn handler_decl_of(hname) = match env_lookup(hname) {
-  Some(entry) => match entry {
-    (_, _, kind) => match kind {
-      HandlerKind(_, _, config, state, arms) => Some((config, state, arms)),
-      _ => None,
-    },
+// A handler is its declaration. An install reads the declaration its
+// reference reaches (`installed_handler`), the declaration's own lowering
+// holds its statement, and everything the lowering and the emit ask of the
+// handler — its config, state and arms (`handler_shape_at`), the class it
+// answers, the symbols its arms and init are emitted under — is read off
+// that one handle; the handler's name is spelled only where a symbol is.
+//
+// The handler declaration an install's reference reaches, read along the
+// edge the judgment drew when it resolved the install (infer.mn's
+// `install_decl`). None for a handler held by a value — a let, a parameter
+// — which the judgment reads as absorbing nothing, so its install lowers to
+// its body (a value carrying its handler's record is PLAN §11.10).
+fn installed_handler(right) = match tee_handler_decl(right) {
+  Some(d) => match handler_shape_at(d) {
+    Some(_) => Some(d),
+    None => None,
   },
   None => None,
 }
@@ -101,13 +94,10 @@ fn handler_decl_of(hname) = match env_lookup(hname) {
 // The handler's MultiShot-classified ops as (name, arity) pairs, projected
 // live from its decl arms + the op scheme's disc (band B k1/M1.4 — the ONE
 // decider the emit's locals walk (walk_lemit) and the LHandleWith emit read; the
-// arity drives the driver's $yield_args loads). [] for an unknown/anonymous
-// name, so an ungated install keeps the existing emission byte-for-byte
-// (Law 7); the anonymous-install-of-a-MultiShot-handler form is the named
-// floor Hβ.lower.multishot-anonymous-install (its yield trips the _start
-// backstop, loud, never a silent dummy).
-fn multishot_ops_of(hname) = match handler_decl_of(hname) {
-  Some((_, _, arms)) => arms |> filter((a) => match op_resume_discipline(handler_arm_op_name(a)) {
+// arity drives the driver's $yield_args loads). An all-OneShot handler
+// answers [], so its install keeps the ungated emission byte-for-byte.
+fn multishot_ops_of(hd) = match handler_shape_at(hd) {
+  Some((_, _, _, arms)) => arms |> filter((a) => match op_resume_discipline(handler_arm_op_name(a)) {
     MultiShot => true,
     Abandon => // M4 — an abandon op needs the driver too: it delivers the arm value on flag-clear (the redrive's existing behaviour IS abandon)
     true,
@@ -116,16 +106,23 @@ fn multishot_ops_of(hname) = match handler_decl_of(hname) {
   None => [],
 }
 
-// How many `with` state fields a handler declares — 0 for an anonymous
-// install, which has no declaration to carry state.
-fn handler_state_count(hname) = match handler_decl_of(hname) {
-  Some((_, state, _)) => len(state),
+// How many `with` state fields a handler declares.
+fn handler_state_count(hd) = match handler_shape_at(hd) {
+  Some((_, _, state, _)) => len(state),
   None => 0,
 }
 
 // Per-effect arm-name groups for a handler, projected live from its decl.
-fn lookup_handler_arm_names_of(hname) = match handler_decl_of(hname) {
-  Some((_, _, arms)) => build_handler_arm_names(hname, arms),
+fn handler_arm_groups(hd) = match handler_shape_at(hd) {
+  Some((_, _, _, arms)) => build_handler_arm_names(hd, arms),
+  None => [],
+}
+
+// The names a handler's record holds, in slot order: its config parameters,
+// then its state fields.
+fn arm_capture_names(hd) = match handler_shape_at(hd) {
+  Some((_, config, state, _)) => // drift-audit: ignore — one-shot name-list build
+  lower_param_names(config) ++ state_field_names_of(state),
   None => [],
 }
 
@@ -147,19 +144,22 @@ fn lookup_handler_arm_names_of(hname) = match handler_decl_of(hname) {
 // is straight-line paired with its pop (the PTee arm and the five
 // frame-fence sites), so the stack is empty at every decl boundary and
 // the widened extent is behaviour-identical.
+// An entry of the stack: the frame fence, or an install — its handle, its
+// handler's declaration, and the install CLASS that declaration answers
+// (`projection_of`), read once where the install is pushed: every global
+// call inside the extent asks the stack which schedule governs it, and
+// classifying the handler per ask re-read its declaration's arms each time.
+type StackEntry = Fence | Installed(Int, Int, Projection)
+
 effect LowerHandlerStack {
-  // An entry carries its handler's install CLASS (`projection_of`), read
-  // once where the install is pushed: every global call inside the extent
-  // asks the stack which schedule governs it, and classifying the handler
-  // per ask re-read its declaration's arms each time.
-  lower_handler_push(String, Int, Projection) -> Int
+  lower_handler_push(StackEntry) -> Int
   lower_handler_pop() -> Int
-  lower_handler_stack_now() -> [{handle: Int, name: String, proj: Projection}]
+  lower_handler_stack_now() -> [StackEntry]
 }
 
 handler lower_handler_stack_ctx with stack = [] {
-  lower_handler_push(name, install_handle, proj) => // drift-audit: ignore — O(1) push at the end last/drop_last read (the one stack law)
-  resume(0) with stack = stack ++ [{handle: install_handle, name, proj}],
+  lower_handler_push(entry) => // drift-audit: ignore — O(1) push at the end last/drop_last read (the one stack law)
+  resume(0) with stack = stack ++ [entry],
   lower_handler_pop() => if len(stack) == 0 { resume(0) } else { resume(0) with stack = drop_last(stack) },
   lower_handler_stack_now() => // Head-first = innermost-first; resolution walks it as a plain fn.
   resume(stack),
@@ -176,9 +176,8 @@ handler lower_handler_stack_ctx with stack = [] {
 // re-lowered pipeline remainders inside fresh k frames while the lexical
 // stack still held compile_source's installs (a reified k frame's dangling
 // per-install state global); the each-with-effects lambda gap is the
-// same hole. The fence entry is name "" — no handler is nameless, so it
-// can never shadow a real install.
-fn lower_frame_fence_push() = lower_handler_push("", 0, PDispatch)
+// same hole.
+fn lower_frame_fence_push() = lower_handler_push(Fence)
 
 fn index_of_name(names: [String], target: String, i) = if i >= len(names) {
   -1
@@ -383,15 +382,16 @@ type LowExpr
   // handle, k_expr, value
   // ~> desugaring. ONE handler record (handler IS state IS closure):
   // [_@0][nstate FENCE@4][state@8..][arms per-effect-contiguous].
-  //   4th = handler_name ("" for anonymous — no per-handler state global).
-  //   5th = the state inits ([LowExpr], source-order; written at 8+i*4).
+  //   4th = the handler's declaration.
+  //   5th = the config arguments ([LowExpr], source order, written at
+  //         8+i*4); the declaration's init fn writes the state after them.
   //   6th = arm_names — per-effect groups of (effect name, arm-fn names), op-decl
   //         order within each effect; emit lays each group contiguously and
   //         builds a thin [record, base] evidence-entry per effect (the world
   //         chain node's entry — what the perform's walk reads to reach an arm).
   // Per PLAN §5.U.
   | LResumeK(Int, LowExpr, LowExpr)
-  | LHandleWith(Int, LowExpr, LowExpr, String, [LowExpr], [{arms: [String], ename: String}])
+  | LHandleWith(Int, LowExpr, LowExpr, Int, [LowExpr], [{arms: [String], ename: String}])
   // The DERIVATIVE READING's install, `(e) ~> grad(w)`: handle, the seed
   // (the lowered w — a local or a capture), the body. It builds no record
   // and pushes no world, because the projection replaces the install:
@@ -461,13 +461,13 @@ type LowExpr
   | LConvert(Int, ConvertKind, LowExpr)
   // handle, slot_offset, value, record READ — resolved at lower through the __hrec ladder (arm frame: the LLet alias of the arm's own $__state; lambda: the seeded capture; resume-bound fn: the trailing param after __k). The record is a value the frame was born holding — the retired $<hname>_state_g singleton was a bracket-scoped CACHE of it, and a closure's own $__state is its closure record (the measured 32-not-46 / 20-not-25 silent state loss, both disciplines)
   | LStateSlotStore(Int, Int, LowExpr, LowExpr)
-  // handle, handler name, slot index, value — a state field's FIRST store,
-  // in its handler's init fn (`lower_init_decl`), whose $__state is the
-  // install record. A commit writes through a wide field's cell
-  // (LStateSlotStore); the init makes the cell. The handler's name is what
-  // the emit walk judges a perform inside the init against: that handler is
-  // not installed yet while its init runs.
-  | LStateInit(Int, String, Int, LowExpr)
+  // handle, handler declaration, slot index, value — a state field's FIRST
+  // store, in its handler's init fn (`lower_init_decl`), whose $__state is
+  // the install record. A commit writes through a wide field's cell
+  // (LStateSlotStore); the init makes the cell. The handler is what the emit
+  // walk judges a perform inside the init against: that handler is not
+  // installed yet while its init runs.
+  | LStateInit(Int, Int, Int, LowExpr)
   // to_string — operand type read at EMIT under the active
   //   specialization bracket (show_node_of, backends/wasm.mn —
   //   the one dispatch home; emit_binop_for's altitude)
@@ -521,12 +521,13 @@ type ConvertKind
 // unconstructible: a frame answer knows the handler, so it always knows the
 // symbol, and only a walk can reach an arm through a slot.
 //
-// PdFrame(install, handler, op) — the install is in this very frame.
+// PdFrame(install, handler declaration, op) — the install is in this very
+//   frame.
 // PdWalk(effect key, op slot, op, target) — the walk yields record and world;
 //   the target holds the declaration of the handler when one declares the
 //   op, else ArmSlot and the arm comes out of the record.
-// PdDriver(fn, record) — NOT a dispatch. A direct call to a synthesized fn
-//   (the k drivers) against the INSTALL record it drives, read through the
+// PdDriver(handler declaration, record) — NOT a dispatch. A direct call to
+//   the handler's redrive (`redrive_fn_name`) against the INSTALL record it drives, read through the
 //   record ladder (`resolve_hrec`): the arm's own `$__state` at arm level, a
 //   lambda's captured record, a bound callee's trailing param. It used to be
 //   the CALLER's own `$__state`, which is the install record only in the
@@ -547,7 +548,7 @@ type ConvertKind
 // answer (`arm_site_pairs`) — and nothing stores it.
 type ArmTarget = ArmNamed(Int) | ArmSlot
 
-type PerformDispatch = PdFrame(Int, String, String) | PdWalk(String, Int, String, ArmTarget) | PdDriver(String, LowExpr)
+type PerformDispatch = PdFrame(Int, Int, String) | PdWalk(String, Int, String, ArmTarget) | PdDriver(Int, LowExpr)
 
 // The op a dispatch performs — None for a driver, which is not an op.
 fn perform_op_name(disp) = match disp {
@@ -789,13 +790,7 @@ fn lower_call_default(handle, f, lo_args) = lower_call_of(handle, f, lower_expr(
 // A call whose callee is already lowered: the dispatch that resolved the
 // callee's name hands its read over, so the name is resolved once per call.
 fn lower_call_of(handle, fh, lo_f, lo_args) = {
-  // The append is unconditional on the CALLEE's boundness (never gated on
-  // the caller's discipline): a bound fn's emitted arity always includes
-  // __k, so every call must match it — resume_k_arg passes the live k
-  // where one is in scope and the loud dead-k word where none is.
-  let args2 = if ls_resume_bind_of(callee_name_of_handle(fh)) == "" {
-    lo_args
-  } else // drift-audit: ignore — one k+record arg pair per call site, not a loop
+  let args2 = resume_bound_args(handle, fh, lo_args)
   // The direct cash-out: a callee lower resolved to a top-level fn's
   // OWN global (LGlobal minted from a FnScheme VarRef — locals shadowed
   // it first, value bindings carry another kind) calls the fn BY NAME
@@ -805,9 +800,6 @@ fn lower_call_of(handle, fh, lo_f, lo_args) = {
   // frame leak — one leaked frame per iteration of every deep tail
   // recursion routed through a wide fn's word face, measured at 4096
   // frames under the signal crucible).
-  {
-    lo_args ++ [resume_k_arg(handle), resume_hrec_arg(handle)]
-  }
   match lo_f {
     LGlobal(gh, gname) => match env_kind_of(gname) {
       Some(FnScheme) => LDirectCall(handle, gh, gname, false, args2),
@@ -815,6 +807,18 @@ fn lower_call_of(handle, fh, lo_f, lo_args) = {
     },
     _ => LCall(handle, lo_f, args2),
   }
+}
+
+// A call to a callee bound to a handler's resume (`ls_resume_bind_of`)
+// carries the arm's k and the install record as trailing arguments. The
+// append is unconditional on the CALLEE's boundness (never gated on the
+// caller's discipline): a bound fn's emitted arity always includes them, so
+// every call must match it — resume_k_arg passes the live k where one is in
+// scope and the loud dead-k word where none is.
+fn resume_bound_args(handle, callee, lo_args) = match ls_resume_bind_of(callee_name_of_handle(callee)) {
+  None => lo_args,
+  Some(_) => // drift-audit: ignore — one k+record arg pair per call site, not a loop
+  lo_args ++ [resume_k_arg(handle), resume_hrec_arg(handle)],
 }
 
 // The saturated call's ONE dispatch body — two callers project through it:
@@ -1161,20 +1165,21 @@ fn project_lambda_fn(origin, cap_pairs) = match graph_node_body(origin) {
 // The nested-fn body projector (landing shape α, second kind): the ONE
 // construction of a nested FnStmt's LowFn — params re-derived from the
 // origin's program-column node plus the resume-binding appendage, the
-// frame from the entry's capture pairs. fn_name and bind_h arrive as
-// arguments: the composed name already rides the enumeration entry,
-// and the resume-binding fact's column home is the dispatch-tier
-// column (named in the stamp), so the seam is explicit until it lands.
-fn project_nested_fn(origin, fn_name, bind_h, cap_pairs) = match graph_node_body(origin) {
+// frame from the entry's capture pairs. The composed name rides the
+// enumeration entry, and the handler the fn is bound to is the
+// resume-binding closure's (`ls_resume_bind_of`). A bound fn takes the
+// arm's k and the install record as trailing parameters and lowers under
+// its handler's arm context.
+fn project_nested_fn(origin, fn_name, bind, cap_pairs) = match graph_node_body(origin) {
   NStmt(FnStmt(_name, params, _ret_ann, _effs, body_node)) => {
     let cap_names = map({ (n, _) => n }, cap_pairs)
     let cap_handles = map({ (_, h) => h }, cap_pairs)
-    let base_param_names = lower_param_names(params)
-    let param_names_list =
-      if bind_h == "" { base_param_names } else { base_param_names ++ ["__k", "__hrec"] }
-    let base_param_handles = param_handles_of(origin, params)
-    let param_handles_list =
-      if bind_h == "" { base_param_handles } else { base_param_handles ++ [0, 0] }
+    let (bound_names, bound_handles, bind_fields, bind_disc) = match bind {
+      None => ([], [], [], OneShot),
+      Some(hd) => (["__k", "__hrec"], [0, 0], arm_capture_names(hd), MultiShot),
+    }
+    let param_names_list = lower_param_names(params) ++ bound_names
+    let param_handles_list = param_handles_of(origin, params) ++ bound_handles
     // A top-level fn's frame is entered with no frame below it; its record
     // is the module's static data record, so its lines are STATIC — an
     // instance global per site. A nested fn is a closure: its lines follow
@@ -1182,19 +1187,9 @@ fn project_nested_fn(origin, fn_name, bind_h, cap_pairs) = match graph_node_body
     let line_base = if ls_frame_depth() == 0 { -1 } else { len(cap_pairs) }
     ls_enter_frame(fn_name, param_names_list, param_handles_list, cap_names, cap_handles, line_base)
     lower_frame_fence_push()
-    let bind_fields = if bind_h == "" {
-      []
-    } else {
-      match handler_decl_of(bind_h) {
-        Some((config, state, _)) => // drift-audit: ignore — one-shot name-list build
-        lower_param_names(config) ++ state_field_names_of(state),
-        None => [],
-      }
-    }
-    let bind_disc = if bind_h == "" { OneShot } else { MultiShot }
     let lo_body = k2_guard(mark_tail({
       lower_body_reified(body_node)
-    } ~> arm_state_ctx(bind_fields, bind_disc, bind_h)))
+    } ~> arm_state_ctx(bind_fields, bind_disc, bind)))
     lower_handler_pop()
     let lines = ls_exit_frame()
     Some(LFn(fn_name, len(param_names_list), param_names_list, [lo_body], len(cap_pairs), lines))
@@ -1350,9 +1345,11 @@ fn may_yield_by(callee_handle, effect_pred) = if !ls_program_may_yield() {
 }
 
 // Whether an install's handler is an arena — the one roster's answer,
-// read off the effects its arms answer.
-fn is_arena_tee(handler_node) =
-  install_opens_arena(projection_of(extract_handler_name(handler_node)))
+// read off the effects its declaration's arms answer.
+fn is_arena_tee(handler_node) = match installed_handler(handler_node) {
+  Some(hd) => install_opens_arena(projection_of(hd)),
+  None => false,
+}
 
 // Whether an arena's body may suspend: a module that never yields cannot,
 // and otherwise the arena's own row says whether its body may carry an
@@ -1476,10 +1473,10 @@ fn effect_live_op(ename) = find(op_disc_holds(disc_live), effect_op_names(ename)
 fn effect_joins_a_thread(ename: String) = ename == "WasiThreads"
 
 fn resume_bind_assoc(binds, name: String, i) = if i >= len(binds) {
-  ""
+  None
 } else {
   match list_index(binds, i) {
-    (n, h) => if n == name { h } else { resume_bind_assoc(binds, name, i + 1) },
+    (n, hd) => if n == name { Some(hd) } else { resume_bind_assoc(binds, name, i + 1) },
   }
 }
 
@@ -1489,11 +1486,11 @@ fn resume_bind_assoc(binds, name: String, i) = if i >= len(binds) {
 // re-run here over the same stmts infer already classified, which is
 // Hβ.lower.classifier-rerun-at-lower; collect_free_vars over-approximates the call
 // edge, which only ever binds a dormant wrap). Each bound fn lowers under
-// its handler's arm context (disc MultiShot, the redrive's hname, the
-// state fields read live from the decl) and every call to it from a
-// MultiShot context threads the "__resume" k evidence. A fn reached from
-// arms of TWO handlers is E_ResumeAmbiguousOp — narrow the call graph;
-// the first binding stands (productive-under-error).
+// its handler's arm context (disc MultiShot, the handler whose redrive a
+// resume calls, the state fields read live from the decl) and every call
+// to it from a MultiShot context threads the "__resume" k evidence. A fn
+// reached from arms of TWO handlers is E_ResumeAmbiguousOp — narrow the
+// call graph; the first binding stands (productive-under-error).
 fn resume_bindings(stmts) = match classify_fixpoint(stmts) {
   (summaries, _) => {
     let decls = collect_fn_decls_list(stmts, [])
@@ -1504,33 +1501,34 @@ fn resume_bindings(stmts) = match classify_fixpoint(stmts) {
 fn bind_from_handlers(stmts, summaries, decls, binds) = if len(stmts) == 0 {
   binds
 } else {
-  let binds2 = match graph_node_body(last(stmts)) {
-    NStmt(HandlerDeclStmt(hname, _, config, state, arms, _)) => {
+  let hd = last(stmts)
+  let binds2 = match graph_node_body(hd) {
+    NStmt(HandlerDeclStmt(_, _, config, state, arms, _)) => {
       // An arm's config, state fields and arguments are its binders, never
       // a call — the arm walk binds them as the free-name walk does.
       let in_arms = free_vars_param_names(config) ++ map({ st => st.name }, state)
-      bind_from_arms(arms, hname, in_arms, summaries, decls, binds)
+      bind_from_arms(arms, hd, in_arms, summaries, decls, binds)
     },
     _ => binds,
   }
   bind_from_handlers(drop_last(stmts), summaries, decls, binds2)
 }
 
-fn bind_from_arms(arms, hname, in_arms, summaries, decls, binds) = if len(arms) == 0 {
+fn bind_from_arms(arms, hd, in_arms, summaries, decls, binds) = if len(arms) == 0 {
   binds
 } else {
   let arm = last(arms)
   let binds2 = match op_resume_discipline(handler_arm_op_name(arm)) {
     MultiShot => bind_closure(
       callable_names(handler_arm_body(arm), in_arms ++ arm.args),
-      hname,
+      hd,
       summaries,
       decls,
       binds
     ),
     _ => binds,
   }
-  bind_from_arms(drop_last(arms), hname, in_arms, summaries, decls, binds2)
+  bind_from_arms(drop_last(arms), hd, in_arms, summaries, decls, binds2)
 }
 
 // The functions a body can reach by name: its free names, and every fn
@@ -1549,33 +1547,31 @@ fn decl_entry_name(entry) = match entry {
 
 // Worklist closure: bind each marked free name, then its body's marked
 // frees, until no new name binds.
-fn bind_closure(names, hname, summaries, decls, binds) = if len(names) == 0 {
+fn bind_closure(names, hd, summaries, decls, binds) = if len(names) == 0 {
   binds
 } else {
   let n = last(names)
   let rest = drop_last(names)
   if usage_is_marked(usage_summary_lookup(summaries, n, 0)) {
-    let bound = resume_bind_assoc(binds, n, 0)
-    if bound == "" {
-      let deeper = collect_free_vars_of_decl(decls, n)
-      bind_closure(
-        free_vars_merge(rest, deeper),
-        hname,
-        summaries,
-        decls,
-        // drift-audit: ignore — decl-count-bounded cons, not a hot loop
-        [(n, hname)] ++ binds
-      )
-    } else {
-      if bound == hname {
-        bind_closure(rest, hname, summaries, decls, binds)
-      } else {
-        report(EResumeAmbiguousOp(n, span_zero()))
-        bind_closure(rest, hname, summaries, decls, binds)
-      }
+    match resume_bind_assoc(binds, n, 0) {
+      None => {
+        let deeper = collect_free_vars_of_decl(decls, n)
+        bind_closure(
+          free_vars_merge(rest, deeper),
+          hd,
+          summaries,
+          decls,
+          // drift-audit: ignore — decl-count-bounded cons, not a hot loop
+          [(n, hd)] ++ binds
+        )
+      },
+      Some(bound) => {
+        if bound != hd { report(EResumeAmbiguousOp(n, span_zero())) }
+        bind_closure(rest, hd, summaries, decls, binds)
+      },
     }
   } else {
-    bind_closure(rest, hname, summaries, decls, binds)
+    bind_closure(rest, hd, summaries, decls, binds)
   }
 }
 
@@ -1607,7 +1603,7 @@ fn collect_free_vars_of_decl(decls, name: String) = {
 fn unwinding_ops(stmts) = flat_map(
   {
     s => match graph_node_body(s) {
-      NStmt(HandlerDeclStmt(hname, _, _, _, arms, _)) => if handler_may_unwind(hname) { map(handler_arm_op_name, arms) } else { [] },
+      NStmt(HandlerDeclStmt(_, _, _, _, arms, _)) => if handler_may_unwind(s) { map(handler_arm_op_name, arms) } else { [] },
       _ => [],
     },
   },
@@ -1616,15 +1612,10 @@ fn unwinding_ops(stmts) = flat_map(
 
 // A handler may unwind when its residual row — the cell `register_handler`
 // judged the arms under, read as `handler_arm_effects` reads it — may yield.
-fn handler_may_unwind(hname: String) = match env_lookup(hname) {
-  Some(entry) => match entry {
-    (_, _, kind) => match kind {
-      HandlerKind(r, _, _, _, _) => {
-        let row = mk_ef_open([], r)
-        row_may_multishot(row) || row_may_yield_by(row, effect_joins_a_thread)
-      },
-      _ => false,
-    },
+fn handler_may_unwind(hd) = match handler_shape_at(hd) {
+  Some((r, _, _, _)) => {
+    let row = mk_ef_open([], r)
+    row_may_multishot(row) || row_may_yield_by(row, effect_joins_a_thread)
   },
   None => false,
 }
@@ -1700,40 +1691,27 @@ fn clamp_index(i) = if i < 0 { 0 } else { i }
 fn callee_name_of_handle(h) = lower_callee_name(graph_node_body(h))
 
 // ─── Lexical handler resolution (lower-phase, install-handle-bearing) ──
-// Walk the lower-handler-stack innermost-first; return the discriminated
-// arm target "<handler>_<op>" and the install handle of the first stacked
-// handler whose effect-groups cover op_name's effect. None when no lexical
-// handler handles it — the Tier-2 evidence path. The install handle gives
-// emit the `__hstate_<h>` record the arm runs against.
+// Walk the lower-handler-stack innermost-first; return the install handle
+// and the handler declaration of the first stacked install whose handler
+// declares op_name. None when no lexical install answers it — the Tier-2
+// evidence path. The install handle gives emit the `__hstate_<h>` record the
+// arm runs against.
 fn lower_resolve_handler_for_op(op_name) = {
   let ename = lower_effect_name_of_op(op_name)
   resolve_in_stack(op_name, ename, lower_handler_stack_now())
 }
 
-// Typed projections for the install-stack entry ({handle, name}, pushed
-// at the ~> install ledger) and the resolve result ({handle, target},
-// minted below) — the boundary pins that keep every generic read proven.
-fn stack_entry_name(e: {handle: Int, name: String, proj: Projection}) -> String = e.name
-
-fn stack_entry_handle(e: {handle: Int, name: String, proj: Projection}) -> Int = e.handle
-
-fn stack_entry_proj(e: {handle: Int, name: String, proj: Projection}) -> Projection = e.proj
-
-fn resolve_target(r: {handle: Int, target: String}) -> String = r.target
-
-fn resolve_handle(r: {handle: Int, target: String}) -> Int = r.handle
-
 fn resolve_in_stack(op_name: String, ename, stack) = if ename == "" || len(stack) == 0 {
   None
 } else {
-  let e = last(stack)
-  // the frame fence — enclosing installs live in another WASM frame
-  if field_name_eq(stack_entry_name(e), "") {
-    None
-  } else if handler_declares_op(stack_entry_name(e), ename, op_name) {
-    Some({handle: stack_entry_handle(e), target: stack_entry_name(e)})
-  } else {
-    resolve_in_stack(op_name, ename, drop_last(stack))
+  match last(stack) {
+    Fence => // the frame fence — enclosing installs live in another WASM frame
+    None,
+    Installed(ih, hd, _) => if handler_declares_op(hd, ename, op_name) {
+      Some((ih, hd))
+    } else {
+      resolve_in_stack(op_name, ename, drop_last(stack))
+    },
   }
 }
 
@@ -1762,12 +1740,12 @@ fn resolve_in_stack(op_name: String, ename, stack) = if ename == "" || len(stack
 // the effect at all. Both questions below are reads of this one list, and
 // the find is the find place_arm_in_groups already uses, so the group lookup
 // has one home and neither question carries a scanning lambda of its own.
-fn handler_arms_for(hname: String, ename: String) = match split_group_by_ename(lookup_handler_arm_names_of(hname), ename) {
+fn handler_arms_for(hd, ename: String) = match split_group_by_ename(handler_arm_groups(hd), ename) {
   (_, grp, _) => group_arms(grp),
 }
 
-fn handler_declares_op(hname: String, ename: String, op_name: String) = {
-  let arms = handler_arms_for(hname, ename)
+fn handler_declares_op(hd, ename: String, op_name: String) = {
+  let arms = handler_arms_for(hd, ename)
   let slot = lower_compute_ev_slot_for_op(op_name)
   if slot >= len(arms) { false } else { !field_name_eq(arms[slot], "") }
 }
@@ -1967,17 +1945,15 @@ fn schedule_installed(stack) = schedule_installed_at(stack, len(stack) - 1)
 fn schedule_installed_at(stack, i) = if i < 0 {
   None
 } else {
-  let e = list_index(stack, i)
-  // the frame fence — the LEXICAL read stops at the frame; a caller's
-  // schedule reaches a fanout in another frame by DEMAND, through a direct
-  // call (`spec_call_name`, `fanout_form`), never through this stack
-  if field_name_eq(stack_entry_name(e), "") {
-    None
-  } else {
-    match stack_entry_proj(e) {
+  match list_index(stack, i) {
+    Fence => // the frame fence — the LEXICAL read stops at the frame; a caller's
+    // schedule reaches a fanout in another frame by DEMAND, through a direct
+    // call (`spec_call_name`, `fanout_form`), never through this stack
+    None,
+    Installed(_, _, proj) => match proj {
       PSchedule(s) => Some(s),
-      _ => schedule_installed_at(stack, i - 1),
-    }
+      PDispatch | PDerivative | PArena => schedule_installed_at(stack, i - 1),
+    },
   }
 }
 
@@ -1998,13 +1974,13 @@ effect ArenaDemand {
 }
 
 // A handler's install class (src/effects.mn's roster) at the lowering.
-fn projection_of(hname: String) = projection_of_effects(handler_arm_enames(hname))
+fn projection_of(hd) = projection_of_effects(handler_arm_enames(hd))
 
 // The effects a handler's arms answer, read off its declaration in one pass —
 // the class is a fact of the declaration, so an install reads it rather than
 // rebuilding the handler's arm groups once per class it asks about.
-fn handler_arm_enames(hname: String) = match handler_decl_of(hname) {
-  Some((_, _, arms)) => arms |> map({ arm => lower_effect_name_of_op(handler_arm_op_name(arm)) }),
+fn handler_arm_enames(hd) = match handler_shape_at(hd) {
+  Some((_, _, _, arms)) => arms |> map({ arm => lower_effect_name_of_op(handler_arm_op_name(arm)) }),
   None => [],
 }
 
@@ -2014,14 +1990,14 @@ fn handler_arm_enames(hname: String) = match handler_decl_of(hname) {
 // a flat region would collide (each effect's op 0 wants slot 0). Grouping
 // by effect (read from the graph via lower_effect_name_of_op) lets emit lay
 // each group contiguously and build a thin per-effect [record, base] entry.
-fn build_handler_arm_names(hname, arms) = {
+fn build_handler_arm_names(hd, arms) = {
   let placements = map(
     (arm) => {
       let op = handler_arm_op_name(arm)
       let ename = lower_effect_name_of_op(op)
       {
         ename: if ename == "" { op } else { ename },
-        name: arm_fn_name(hname, op),
+        name: arm_fn_name(hd, op),
         slot: lower_compute_ev_slot_for_op(op),
       }
     },
@@ -2204,7 +2180,7 @@ fn perform_dispatch_of(op_name, lexical) = {
   let ename = lower_effect_name_of_op(op_name)
   let slot = lower_compute_ev_slot_for_op(op_name)
   match lexical {
-    Some(r) => PdFrame(resolve_handle(r), resolve_target(r), op_name),
+    Some((ih, hd)) => PdFrame(ih, hd, op_name),
     None => match lower_op_default_handler(op_name) {
       Some(hd) => // The arm is static (one handler declares it) and the record is not. The
       // record comes from the SAME walk the unbound case uses — it used to come
@@ -2233,10 +2209,10 @@ fn perform_dispatch_of(op_name, lexical) = {
 // arm REFERENCE, not a spelled name: which arm the install runs is its key's
 // to decide, under whatever bracket the two readers stand in.
 fn perform_target(disp) = match disp {
-  PdFrame(ih, hname, op_name) => Some(RefArm(ih, arm_fn_name(hname, op_name))),
-  PdWalk(_, _, op_name, ArmNamed(hd)) => Some(RefDeclArm(hd, arm_fn_name(stmt_decl_name(hd), op_name))),
+  PdFrame(ih, hd, op_name) => Some(RefArm(ih, arm_fn_name(hd, op_name))),
+  PdWalk(_, _, op_name, ArmNamed(hd)) => Some(RefDeclArm(hd, arm_fn_name(hd, op_name))),
   PdWalk(_, _, _, ArmSlot) => None,
-  PdDriver(name, _) => Some(RefName("op_{name}")),
+  PdDriver(hd, _) => Some(RefName(redrive_fn_name(hd))),
 }
 
 // The declaration of the op's UNIQUE default handler, read from the
@@ -2764,19 +2740,11 @@ fn lower_pipe_stage_value(lo_ls, right, handle, rbody) = {
     } else {
       LCall(handle, lo_r, lo_ls)
     },
-    _ => {
-      // A bare fn-VALUE stage (`7 |> outer`): the completion call runs the
-      // SAME k-append fork every call runs — a resume-bound stage takes the
-      // arm's k as the trailing argument (the "argument, not evidence"
-      // ruling; the callee's performs dispatch through the world chain).
-      let args2 = if ls_resume_bind_of(callee_name_of_handle(right)) == "" {
-        lo_ls
-      } else // drift-audit: ignore — one k+record arg pair per stage, not a loop
-      {
-        lo_ls ++ [resume_k_arg(handle), resume_hrec_arg(handle)]
-      }
-      LCall(handle, lo_r, args2)
-    },
+    _ => // A bare fn-VALUE stage (`7 |> outer`): the completion call runs the
+    // SAME k-append fork every call runs — a resume-bound stage takes the
+    // arm's k as the trailing argument (the "argument, not evidence"
+    // ruling; the callee's performs dispatch through the world chain).
+    LCall(handle, lo_r, resume_bound_args(handle, right, lo_ls)),
   }
 }
 
@@ -2883,56 +2851,11 @@ fn lower_pipe(kind, left, right, handle) = match kind {
   } else {
     lower_pipe_complete(lower_expr(left), right, handle)
   },
-  PTee => {
-    // ~> tee — handler attachment. One precedence, one kind: the parser's
-    // table already scoped the handler over the whole chain to its left.
-    // Push the handler onto the lower-stack BEFORE lowering the body so a
-    // Tier-1 perform inside resolves to it AND learns the install handle
-    // (→ `__hstate_<h>`, the SAME record the arm runs against). Pop after.
-    //
-    // The ONE handler record (protocol_handler_is_state_is_closure_is_evidence)
-    // carries config args (from `~> handler(args)`, written FIRST) then the
-    // state its declaration's init fn writes, and the per-effect arm groups;
-    // the arm bodies' performs dispatch through the live world chain, so the
-    // install threads no captured-evidence region.
-    let lo_r = lower_expr(right)
-    let hname = extract_handler_name(right)
-    lower_handler_push(hname, handle, projection_of(hname))
-    // The install body takes the k1 split too — upstream of tier selection,
-    // so an inline `{ pick() } ~> twice` spelling yields instead of baking a
-    // lexical-tier arm call the driver could never intercept.
-    let lo_l = lower_body_reified(left)
-    lower_handler_pop()
-    let config_args = extract_handler_config_args(right)
-    let arm_groups = lookup_handler_arm_names_of(hname)
-    // The install-shape column (lowering-is-a-column step i): the install's
-    // decision facts — handler name, the handler expression and config-arg
-    // program handles, arm-name groups — note at the install node. The config
-    // arguments are this frame's own expressions; the state belongs to the
-    // declaration, whose init fn the install calls (`lower_init_decl`).
-    graph_install_note(handle, InstallOf(hname, right, config_args, arm_groups))
-    let config_inits = config_args |> map(lower_expr)
-    match projection_of(hname) {
-      PDerivative => // The reading replaces the install: no record, no world push. The
-      // seed is the reading's one config argument, and it keeps the lowered
-      // shape every read of it has (a local or a capture), which is how
-      // derive knows its uses.
-      {
-        derivative_demand_note()
-        match config_inits {
-          [seed, ..._] => LDerive(handle, seed, lo_l),
-          [] => LDerive(handle, LConst(handle, LFloat(0.0)), lo_l),
-        }
-      },
-      PArena => // The arena replaces the install the same way: no record, no world
-      // push. Its exit asks no one — every store its body made into older
-      // memory journaled its own type where it happened.
-      {
-        arena_demand_note()
-        LArena(handle, lo_l)
-      },
-      _ => LHandleWith(handle, lo_l, lo_r, hname, config_inits, arm_groups),
-    }
+  PTee => match installed_handler(right) {
+    Some(hd) => lower_install(left, right, hd, handle),
+    None => // A handler held by a value absorbs nothing at the judgment
+    // (`installed_handler`), so the install is its body.
+    lower_body_reified(left),
   },
   PFeedback => {
     // <~ feedback. The site's line is a ring owned by the record of the
@@ -2952,6 +2875,57 @@ fn lower_pipe(kind, left, right, handle) = match kind {
     let lo_r = lower_expr(right)
     LFeedback(handle, depth, home, lo_l, lo_r)
   },
+}
+
+// ~> tee — handler attachment. One precedence, one kind: the parser's table
+// already scoped the handler over the whole chain to its left. The install
+// is pushed onto the lower-stack BEFORE its body lowers, so a Tier-1 perform
+// inside resolves to it AND learns the install handle (→ `__hstate_<h>`, the
+// SAME record the arm runs against), and popped after.
+//
+// The ONE handler record (protocol_handler_is_state_is_closure_is_evidence)
+// carries config args (from `~> handler(args)`, written FIRST) then the
+// state its declaration's init fn writes, and the per-effect arm groups; the
+// arm bodies' performs dispatch through the live world chain, so the install
+// threads no captured-evidence region.
+fn lower_install(left, right, hd, handle) = {
+  let lo_r = lower_expr(right)
+  let proj = projection_of(hd)
+  lower_handler_push(Installed(handle, hd, proj))
+  // The install body takes the k1 split too — upstream of tier selection,
+  // so an inline `{ pick() } ~> twice` spelling yields instead of baking a
+  // lexical-tier arm call the driver could never intercept.
+  let lo_l = lower_body_reified(left)
+  lower_handler_pop()
+  let config_args = extract_handler_config_args(right)
+  // The install-shape column (lowering-is-a-column step i): the handler
+  // expression and the config-arg program handles, noted at the install
+  // node. The config arguments are this frame's own expressions; the state
+  // belongs to the declaration, whose init fn the install calls
+  // (`lower_init_decl`).
+  graph_install_note(handle, InstallOf(right, config_args))
+  let config_inits = config_args |> map(lower_expr)
+  match proj {
+    PDerivative => // The reading replaces the install: no record, no world push. The
+    // seed is the reading's one config argument, and it keeps the lowered
+    // shape every read of it has (a local or a capture), which is how
+    // derive knows its uses.
+    {
+      derivative_demand_note()
+      match config_inits {
+        [seed, ..._] => LDerive(handle, seed, lo_l),
+        [] => LDerive(handle, LConst(handle, LFloat(0.0)), lo_l),
+      }
+    },
+    PArena => // The arena replaces the install the same way: no record, no world
+    // push. Its exit asks no one — every store its body made into older
+    // memory journaled its own type where it happened.
+    {
+      arena_demand_note()
+      LArena(handle, lo_l)
+    },
+    PSchedule(_) | PDispatch => LHandleWith(handle, lo_l, lo_r, hd, config_inits, handler_arm_groups(hd)),
+  }
 }
 
 // How many priors does this site's line carry? The authored literal when
@@ -3018,38 +2992,6 @@ fn lower_feedback_body(left, fb_handle) = match inlinable_lambda(left) {
     lo
   },
   None => lower_expr(left),
-}
-
-// Extract the handler-name string from the AST node on the right side
-// of a `body ~> handler` pipe. Recognized shapes:
-//   VarRef(name)                  — `~> map_h`
-//   CallExpr(VarRef(name), args)  — `~> map_h(f)` (handler-decl with config)
-// Returns "" for anonymous handle-expressions or unrecognized shapes
-// (productive-under-error per Hazel; emit checks "" sentinel and
-// skips global-set for anonymous handlers).
-//
-// Drift refused:
-// - 7 parallel-rep: returning a record `{kind, name}` would duplicate
-//   info already encoded in the AST shape. String + "" sentinel IS the
-//   canonical projection.
-// - 8 string-keyed-when-structured: name is genuinely a String here
-//   (handler symbol resolved at install); this is NOT a mode-int.
-// - 9 deferred-by-omission: named here so the omission is loud.
-// The install's handler NAME, read off the node's body in the graph (and,
-// for a config'd install, off its callee's body). "" is the MEANINGFUL
-// sentinel for a genuinely anonymous install expression: an install whose
-// name is lost reads as anonymous — no arm groups, no lexical Tier-1
-// resolve, the record's arm slot zero — so a named install must never
-// reach it.
-fn extract_handler_name(node) = match graph_node_body(node) {
-  NExpr(VarRef(name)) => name,
-  NExpr(CallExpr(callee, _args)) => match graph_node_body(callee) {
-    NExpr(VarRef(name)) => name,
-    _ => // drift-audit: ignore — "" = genuinely anonymous install (the meaningful sentinel)
-    "",
-  },
-  _ => // drift-audit: ignore — "" = genuinely anonymous install (the meaningful sentinel)
-  "",
 }
 
 // Config args from `~> handler(arg1, arg2)` — the parameterized-handler
@@ -3319,7 +3261,7 @@ fn threaded_branch_check(branch_h, thunk_row, older_stores) = match lower_fanout
 // first form read the schedule CLASS and refused the sequential twin
 // (measured on the frontier's scheduled-effect leg before the pin).
 fn schedule_spawns(stack) = match threaded_handler_for(stack, "Thread") {
-  Some((hname, _)) => index_of_name(handler_arm_effects(hname), "WasiThreads", 0) >= 0,
+  Some((hd, _)) => index_of_name(handler_arm_effects(hd), "WasiThreads", 0) >= 0,
   None => false,
 }
 
@@ -3336,12 +3278,12 @@ fn threaded_effect_check(branch_h, stack, via: String, ename: String) = if ename
   ()
 } else {
   match threaded_handler_for(stack, ename) {
-    Some((hname, below)) => match handler_state_writer(hname) {
+    Some((hd, below)) => match handler_state_writer(hd) {
       Some(how) => report_at(
         branch_h,
         EThreadedBranchEffect(
           ename,
-          "{via}the handler it reaches at the fanout's frame, `{hname}`, WRITES its state from an arm ({how}) — one record, two instances",
+          "{via}the handler it reaches at the fanout's frame, `{stmt_decl_name(hd)}`, WRITES its state from an arm ({how}) — one record, two instances",
           graph_span_of(branch_h)
         )
       ),
@@ -3350,11 +3292,11 @@ fn threaded_effect_check(branch_h, stack, via: String, ename: String) = if ename
           inner => threaded_effect_check(
             branch_h,
             below,
-            "reached through `{hname}`, which absorbs the branch's {ename} statelessly at the fanout's frame and performs {inner} from an arm (an arm runs in the spawned instance too) — and ",
+            "reached through `{stmt_decl_name(hd)}`, which absorbs the branch's {ename} statelessly at the fanout's frame and performs {inner} from an arm (an arm runs in the spawned instance too) — and ",
             inner
           ),
         },
-        handler_arm_effects(hname)
+        handler_arm_effects(hd)
       ),
     },
     None => report_at(
@@ -3374,27 +3316,22 @@ fn threaded_effect_check(branch_h, stack, via: String, ename: String) = if ename
 fn threaded_handler_for(stack, ename: String) = if len(stack) == 0 {
   None
 } else {
-  let e = last(stack)
   let below = drop_last(stack)
-  if field_name_eq(stack_entry_name(e), "") {
-    None
-  } else if string_in_list(handler_arm_enames(stack_entry_name(e)), ename) {
-    Some((stack_entry_name(e), below))
-  } else {
-    threaded_handler_for(below, ename)
+  match last(stack) {
+    Fence => None,
+    Installed(_, hd, _) => if string_in_list(handler_arm_enames(hd), ename) {
+      Some((hd, below))
+    } else {
+      threaded_handler_for(below, ename)
+    },
   }
 }
 
 // What a handler's arms perform: its residual row, the cell `register_handler`
-// judged the arms under and the tee re-adds as `row(h)` — read live from the
-// env entry's HandlerKind, never re-derived from the arms' text.
-fn handler_arm_effects(hname: String) = match env_lookup(hname) {
-  Some(entry) => match entry {
-    (_, _, kind) => match kind {
-      HandlerKind(r, _, _, _, _) => effects_of_row(mk_ef_open([], r)),
-      _ => [],
-    },
-  },
+// judged the arms under and the tee re-adds as `row(h)` — read live off the
+// declaration, never re-derived from the arms' text.
+fn handler_arm_effects(hd) = match handler_shape_at(hd) {
+  Some((r, _, _, _)) => effects_of_row(mk_ef_open([], r)),
   None => [],
 }
 
@@ -3413,8 +3350,8 @@ fn handler_arm_effects(hname: String) = match env_lookup(hname) {
 // writer that writes it. A feedback line an arm ticks lives in the install
 // record past the arms, and the arms' row says they write it (infer.mn's
 // `tick_mutation`), which the walk down each handler's residual row reads.
-fn handler_state_writer(hname: String) = match handler_decl_of(hname) {
-  Some((_, state, _)) => fold(None, state_writer_or, state),
+fn handler_state_writer(hd) = match handler_shape_at(hd) {
+  Some((_, _, state, _)) => fold(None, state_writer_or, state),
   None => None,
 }
 
@@ -4084,39 +4021,24 @@ fn lower_stmt_body(s, handle, span) = match s {
   lower_fn_mint(name, params, body_node, handle, ls_bind_local(name, handle)),
   TypeDefStmt(_name, _variants) => LConst(handle, LInt(0)),
   EffectDeclStmt(_name, _params, _ops) => LConst(handle, LInt(0)),
-  HandlerDeclStmt(name, _ename, config, state, arms, _effs) => {
-    // H1.4: each handler arm becomes a callable wasm function. With
-    // the Hβ.first-light.handler-arm-fn-name-discriminator landing,
-    // arm fns are named `op_<handler_name>_<op_name>` — unique even
-    // when multiple handlers handle the same op (lib/prelude.mn has
-    // many handlers all defining `yield`-arms for the Iterate effect).
-    // Pre-substrate the unprefixed `op_<op_name>` collided across them.
-    // emit_fns_expr's deep walk picks up LDeclareFn entries and emits
-    // each as a wasm function with a registered fn_idx global.
-    //
-    // Per Hβ.first-light.handler-config-state-substrate (2026-05-06):
-    // config-params + state-field-names are bound as arm-scope locals
-    // before lowering each arm body so their references resolve to
-    // captures (config) or state-loads (state). Threaded through
-    // lower_handler_arms_as_decls.
-    //
-    // The handler's (config, state, arms) is in the env's HandlerKind
-    // (register_handler), so an install in an earlier-sorted module resolves
-    // a handler whose decl follows it, and lower_handler_arms_as_decls reads
-    // the arm-name groups for its fence live (handler_decl_of) — order-free
-    // with no pre-register pass. Here we only lower the arms to their
-    // `op_<handler>_<op>` fn declarations.
+  HandlerDeclStmt(_name, _ename, config, state, arms, _effs) => {
+    // Each arm becomes a wasm function, `op_<handler>_<op>` (`arm_fn_name`,
+    // read off this statement, the handler's declaration) — unique where
+    // many handlers answer one op, as the prelude's handlers all answer
+    // Iterate's `yield`. The config parameters and state fields are bound as
+    // the arm's captures, so their references read the record's slots. The
+    // arm-name groups that size the record's fence are read off the same
+    // declaration an install reads, so the two agree in any module order.
     //
     // A PROJECTION's arms are not lowered: an install of it builds no
     // record, so nothing could ever call them. The derivative reading's arm
     // states what `d(v)` means and derive reads that meaning as a rewrite; its
     // body names a primitive with no forward lowering on purpose. An arena's
     // arms forward its body's allocation, which the substrate answers anyway.
-    let arm_decls = match projection_of(name) {
+    let arm_decls = match projection_of(handle) {
       PDerivative => [],
       PArena => [],
-      PSchedule(_) => lower_handler_arms_as_decls(arms, name, config, state),
-      PDispatch => lower_handler_arms_as_decls(arms, name, config, state),
+      PSchedule(_) | PDispatch => lower_handler_arms_as_decls(arms, handle, config, state),
     }
     LBlock(handle, list_concat(arm_decls, [LConst(handle, LInt(0))]))
   },
@@ -4142,22 +4064,24 @@ fn lower_fn_mint(name, params, body_node, handle, reg) = {
   // by every MultiShot-context call site (lower_call_default), so the
   // body's resumes resolve it as an ordinary local — never evidence.
   //
-  let bind_h = ls_resume_bind_of(name)
-  let base_param_names = lower_param_names(params)
-  let param_names_list =
-    if bind_h == "" { base_param_names } else { base_param_names ++ ["__k", "__hrec"] }
+  let bind = ls_resume_bind_of(name)
   // The param TYPES the enumeration entry carries — the resume-binding
   // appendage floors, because __k and __hrec are the machinery's own
-  // words and the graph judged no type for them. (The handle-valued
-  // twin of this line was dead: project_nested_fn computes its own for
-  // the frame, and nothing here read it.)
-  let base_param_tys = entry_param_tys(handle, params)
-  let param_tys_list = if bind_h == "" { base_param_tys } else { base_param_tys ++ floor_tys(2) }
+  // words and the graph judged no type for them.
+  let (bound_names, bound_tys) = match bind {
+    None => ([], []),
+    Some(_) => (["__k", "__hrec"], floor_tys(2)),
+  }
+  let param_names_list = lower_param_names(params) ++ bound_names
+  let param_tys_list = entry_param_tys(handle, params) ++ bound_tys
   // The same "__k" seeding the lambda mint applies (an UNBOUND nested
   // fn inside an arm may still call a bound sibling); a bound fn's own
   // __k param shadows the seed harmlessly.
   let free_uses0 = collect_free_uses(body_node, param_names_list)
-  let free_uses = if bind_h == "" { lower_seed_hrec(lower_seed_k(free_uses0)) } else { free_uses0 }
+  let free_uses = match bind {
+    None => lower_seed_hrec(lower_seed_k(free_uses0)),
+    Some(_) => free_uses0,
+  }
   match resolve_captures_outer(free_uses, handle) {
     (captures_names, captures_exprs, captures_handles) => {
       // The emitted symbol, asked BEFORE this fn's own frame is entered so
@@ -4178,7 +4102,7 @@ fn lower_fn_mint(name, params, body_node, handle, reg) = {
       // context (THE CUT, bank A3 — the arm_state_ctx install, the
       // appended __k/__hrec params) lives in project_nested_fn; the
       // site keeps what feeds the columns.
-      match project_nested_fn(handle, fn_name, bind_h, zip(captures_names, captures_handles)) {
+      match project_nested_fn(handle, fn_name, bind, zip(captures_names, captures_handles)) {
         Some(fn_ir) => // Two namespaces meet here, each carried by its own node. The LLet
         // holds the LOCAL one — the register the name is bound at (the source
         // name unless it shadows), which the body's own references, a
@@ -4666,19 +4590,18 @@ fn lower_lit_value(v) = match v {
   LVBool(b) => LBool(b),
 }
 
-// H1.4 — lower handler arms to `LDeclareFn` entries: pure module-level
-// fn declarations, no runtime allocation. Each arm body becomes a wasm
-// function `op_<op_name>` taking the arm's args (plus the implicit
-// `__state` per the calling convention). Stateful handlers (with state
-// slots) land with H1.6's evidence wiring.
-fn lower_handler_arms_as_decls(arms, discriminator, config, state) = {
+// A handler's arms as `LDeclareFn` entries: module-level fn declarations,
+// no runtime allocation. Each arm body becomes a wasm function
+// (`arm_fn_name`) taking the arm's args after the implicit `__state`, which
+// is the install record; a state init is a fn of its own
+// (`lower_init_decl`). `hd` is the handler's declaration.
+fn lower_handler_arms_as_decls(arms, hd, config, state) = {
   // The arm fn's __state IS the handler record [_, nstate FENCE, state..,
   // arms.., evs..]; its captured-ev region starts past state AND arms, so
-  // fence = nstate + total_arms — summed from the SAME registered arm-name
-  // groups the install's emit lays the arms by (the two sides agree by
-  // construction). Inline handle-exprs have no decl in env → 0 arms.
+  // fence = nstate + total_arms — summed from the SAME arm-name groups the
+  // install's emit lays the arms by (the two sides agree by construction).
   let nstate = len(config) + len(state)
-  let fence = nstate + sum_group_arm_lens(lookup_handler_arm_names_of(discriminator))
+  let fence = nstate + sum_group_arm_lens(handler_arm_groups(hd))
   // The arms share ONE record — the install's — so their `<~` lines share
   // one slot space past the fence: each arm's lines begin where the arms
   // before it ended, threaded through the fold (the install's emit sizes
@@ -4687,7 +4610,7 @@ fn lower_handler_arms_as_decls(arms, discriminator, config, state) = {
   match fold(
     ([], fence),
     (acc, arm) => match acc {
-      (decls, line_base) => match lower_one_arm_decl(arm, discriminator, config, state, fence, line_base) {
+      (decls, line_base) => match lower_one_arm_decl(arm, hd, config, state, fence, line_base) {
         LDeclareFn(LFn(n, a, p, b, f, lines)) => (decls ++ [LDeclareFn(LFn(n, a, p, b, f, lines))], line_base + len(lines)),
         other => (decls ++ [other], line_base),
       },
@@ -4697,7 +4620,7 @@ fn lower_handler_arms_as_decls(arms, discriminator, config, state) = {
     (decls, line_base) => if len(state) == 0 {
       decls
     } else {
-      decls ++ [lower_init_decl(discriminator, config, state, fence, line_base)]
+      decls ++ [lower_init_decl(hd, config, state, fence, line_base)]
     },
   }
 }
@@ -4713,15 +4636,15 @@ fn lower_handler_arms_as_decls(arms, discriminator, config, state) = {
 // (`with n = cfg.x`) reached the unbound-name floor, and the special case
 // that served a bare config name read every capture in the install's list
 // as the record's own slot, so a captured config argument arrived as 0.
-fn lower_init_decl(discriminator, config, state: [{init: Node, name: String}], fence, line_base) = {
-  let fn_name = init_fn_name(discriminator)
+fn lower_init_decl(hd, config, state: [{init: Node, name: String}], fence, line_base) = {
+  let fn_name = init_fn_name(hd)
   let config_names = lower_param_names(config)
   let captures_names = config_names ++ state_field_names_of(state)
   let nconfig = len(config_names)
   graph_emitfn_note(EmitFnEntry{
     caps: [],
     fence,
-    kind: EfkInit(discriminator),
+    kind: EfkInit(hd),
     name: fn_name,
     origin: list_index(state, 0).init,
     params: [],
@@ -4730,7 +4653,7 @@ fn lower_init_decl(discriminator, config, state: [{init: Node, name: String}], f
   ls_enter_frame(fn_name, [], [], captures_names, zeros_of_len(len(captures_names)), line_base)
   lower_frame_fence_push()
   let stores = map(
-    { (i, field) => LStateInit(field.init, discriminator, nconfig + i, lower_expr(field.init)) },
+    { (i, field) => LStateInit(field.init, hd, nconfig + i, lower_expr(field.init)) },
     enumerate(state)
   )
   lower_handler_pop()
@@ -4747,9 +4670,9 @@ fn lower_init_decl(discriminator, config, state: [{init: Node, name: String}], f
 // met the twin's pairs, and a Float twin signed a word under a body reading
 // f64 (it did not assemble). The arm's parameters have no handles of their
 // own to read the edge through.
-fn op_instance_subst(op: String, hname: String) = match op_scheme_instance(op) {
+fn op_instance_subst(op: String, hd) = match op_scheme_instance(op) {
   None => [],
-  Some(oi) => match handler_decl_instance(hname) {
+  Some(oi) => match handler_decl_instance(hd) {
     None => [],
     Some(hi) => spec_pairs_walk(oi, hi, []),
   },
@@ -4768,15 +4691,11 @@ fn op_scheme_instance(op: String) = match env_lookup(op) {
   None => None,
 }
 
-fn handler_decl_instance(hname: String) = match env_lookup(hname) {
-  Some(entry) => match entry {
-    (scheme, _, kind) => match kind {
-      HandlerKind(_, _, _, _, _) => match judgment_pair(scheme) {
-        (_, sty) => match handler_result_ty(sty) {
-          TName(_, [inst, _]) => Some(inst),
-          _ => None,
-        },
-      },
+// The effect instance a handler declaration's scheme handles.
+fn handler_decl_instance(hd) = match graph_published(hd) {
+  Some((scheme, _, _)) => match judgment_pair(scheme) {
+    (_, sty) => match handler_result_ty(sty) {
+      TName(_, [inst, _]) => Some(inst),
       _ => None,
     },
   },
@@ -4788,8 +4707,8 @@ fn at_instance(sub, oty) = match oty {
   None => None,
 }
 
-fn lower_one_arm_decl(arm: {args: [String], body: Node, op_name: String}, discriminator, config, state, fence, line_base) = {
-  let fn_name = arm_fn_name(discriminator, arm.op_name)
+fn lower_one_arm_decl(arm: {args: [String], body: Node, op_name: String}, hd, config, state, fence, line_base) = {
+  let fn_name = arm_fn_name(hd, arm.op_name)
   // Hβ.first-light.arm-body-fresh-frame: each handler-arm body is
   // its own WASM function with __state IS the handler state record
   // (per PLAN §5.U). The
@@ -4832,7 +4751,7 @@ fn lower_one_arm_decl(arm: {args: [String], body: Node, op_name: String}, discri
   // read as f64 — a Float op's handler did not assemble. Both are read at the
   // HANDLER's instance (`op_instance_subst`), so a twin keyed there signs the
   // widths its body reads.
-  let at_inst = op_instance_subst(arm.op_name, discriminator)
+  let at_inst = op_instance_subst(arm.op_name, hd)
   let arm_arg_tys = map(at_instance(at_inst, ??), op_param_tys(arm.op_name))
   let arm_param_tys = if len(arm_arg_tys) == len(arm.args) {
     match disc {
@@ -4854,7 +4773,7 @@ fn lower_one_arm_decl(arm: {args: [String], body: Node, op_name: String}, discri
   graph_emitfn_note(EmitFnEntry{
     caps: [],
     fence,
-    kind: EfkArm(arm.op_name, discriminator),
+    kind: EfkArm(arm.op_name, hd),
     name: fn_name,
     origin: arm.body,
     params: zip(arm_params, arm_param_tys),
@@ -4885,7 +4804,7 @@ fn lower_one_arm_decl(arm: {args: [String], body: Node, op_name: String}, discri
   // Hβ.lower.tail-call-mark-pass — handler arm body is in tail; k2_guard floors off-spine boundaries (M1.3)
   let lo_body = k2_guard(mark_tail({
     lower_expr(arm.body)
-  } ~> arm_state_ctx(captures_names, disc, discriminator)))
+  } ~> arm_state_ctx(captures_names, disc, Some(hd))))
   lower_handler_pop()
   let lines = ls_exit_frame()
   // fence = nstate + total_arms; the arm's LEvPerform reads land on the
@@ -4969,7 +4888,6 @@ fn lower_resume_callk(handle, val, state_updates) = {
   let kr = "__kr_{int_to_str(handle)}"
   let kr2 = "__kr2_{int_to_str(handle)}"
   let rd = "__rd_{int_to_str(handle)}"
-  let hname = current_arm_handler()
   match if len(state_updates) == 0 {
     ([], "")
   } else {
@@ -4999,11 +4917,7 @@ fn lower_resume_callk(handle, val, state_updates) = {
                 LBlock(
                   handle,
                   [
-                    LLet(
-                      handle,
-                      rd,
-                      LPerform(handle, PdDriver("__redrive_{hname}", resolve_hrec(handle)), [LLocal(handle, kr)])
-                    ),
+                    LLet(handle, rd, redrive_perform(handle, kr)),
                     // The redrive LOOPS this handler's OWN ops (dispatch-until-clear),
                     // so a flag STILL raised after it is a FOREIGN op. A DEAD one (an
                     // abandon the continuation performed — backtrack's try-fn resume
@@ -5032,6 +4946,15 @@ fn lower_resume_callk(handle, val, state_updates) = {
       )
     },
   }
+}
+
+// The redrive a held resume calls when its remainder yields again: the
+// enclosing arm's handler's (`current_arm_handler`). A resume outside every
+// arm was refused at the judgment (E_ResumeOutsideArm), so a context with no
+// arm is the impossible branch's typed floor, never a call.
+fn redrive_perform(handle, kr: String) = match current_arm_handler() {
+  Some(hd) => LPerform(handle, PdDriver(hd, resolve_hrec(handle)), [LLocal(handle, kr)]),
+  None => LInvariantFailure(handle, ResumeKOutsideLadder),
 }
 
 // drift-audit: ignore — one-shot stmt-list concat, no loop
@@ -5595,7 +5518,7 @@ fn k2_floor_guard(e, terminus) = match e {
     k2_floor_guard(s, false),
     map({ (pat, body) => (pat, k2_floor_guard(body, terminus)) }, arms)
   ),
-  LHandleWith(h, b, hn, hname, inits, an) => {
+  LHandleWith(h, b, hn, hd, inits, an) => {
     // A4 — the install crossing COMPOSES. An install is TRANSPARENT to the
     // terminus flag: a yield exiting its bracket lands exactly where the
     // install's own value lands, and that position is ALWAYS checked — by
@@ -5616,7 +5539,7 @@ fn k2_floor_guard(e, terminus) = match e {
     // unchecked until AN-2 (`has_driver || terminus`): its driver bubbled a
     // foreign yield out with the flag raised and the frame ran on the dummy.
     let rebuilt =
-      LHandleWith(h, k2_floor_guard(b, true), k2_floor_guard(hn, false), hname, k2_floor_list(inits), an)
+      LHandleWith(h, k2_floor_guard(b, true), k2_floor_guard(hn, false), hd, k2_floor_list(inits), an)
     if terminus { rebuilt } else { k2_floor_wrap(h, rebuilt) }
   },
   LDerive(h, seed, b) => // The derivative reading brackets nothing: its body's value lands where
@@ -6223,9 +6146,9 @@ fn lower_program(stmts) = {
   // THE CUT — the resume-capability bindings (dormant when no op grades
   // MultiShot: zero arms seed the closure, the list is empty).
   ls_register_resume_binds(resume_bindings(stmts) ~> arena)
-  // No pre-register pass: every handler decl's (config, state, arms) is
-  // already in the env's HandlerKind (register_handler), so an install
-  // resolves its handler's decl live (handler_decl_of) regardless of source
+  // No pre-register pass: every handler decl's (config, state, arms) was
+  // published at its declaration (register_handler), so an install reads
+  // its handler's declaration off its reference's edge regardless of source
   // order. The lower-handler-stack is installed by the compile chain, not
   // here — its extent is the whole remainder (see the effect's own decl).
   //
@@ -6317,14 +6240,8 @@ handler lower_scope with frames = [], globals = [], may_yield = false, yield_fac
   ls_program_may_yield() => resume(may_yield),
   ls_register_unwinding_ops(ops) => resume() with unwinding = ops,
   ls_unwinding_op(op) => resume(string_in_list(unwinding, op)),
-  ls_register_resume_binds(bs) => // The actually-performed effect set — noted once per perform site at the
-  // dispatch choke point, deduped by name. The executable gate reads it:
-  // a row name with no perform anywhere reachable is a declared contract
-  // (the `<~` iterative-class style — `with Sample` on a recurrence fn),
-  // never an evidence hole.
-  //
-  // THE CUT (bank A3) — the resume-capability bindings: fn name → the
-  // handler whose MultiShot arm's call graph reaches it.
+  ls_register_resume_binds(bs) => // THE CUT (bank A3) — the resume-capability bindings: fn name → the
+  // declaration of the handler whose MultiShot arm's call graph reaches it.
   resume() with resume_binds = bs,
   ls_resume_bind_of(name) => resume(resume_bind_assoc(resume_binds, name, 0)),
   ls_enter_frame(fn_name, locals_in, locals_h, captures_in, captures_h, line_base) => // drift-audit: ignore — the capture side's paired name and handle lists (LUpval reads a capture by position); the local side is one binder list
@@ -6597,8 +6514,8 @@ fn arm_refs(acc, ih, groups) =
   fold(acc, (a, n) => [RefArm(ih, n)] ++ a, flatten(map(group_arms, groups)))
 
 // The init fn an install calls is keyed as its arms are.
-fn init_refs(acc, ih, hname) =
-  if handler_state_count(hname) > 0 { [RefArm(ih, init_fn_name(hname))] ++ acc } else { acc }
+fn init_refs(acc, ih, hd) =
+  if handler_state_count(hd) > 0 { [RefArm(ih, init_fn_name(hd))] ++ acc } else { acc }
 
 fn arm_body_refs(acc, arm) = match arm {
   (_, body) => low_refs(acc, body),
@@ -6619,7 +6536,7 @@ fn low_refs(acc, expr) = match expr {
   LDirectCall(_h, fh, n, _t, args) => low_refs_list([RefCall(fh, n)] ++ acc, args),
   LFanout(_h, lex, _br, forms) => low_refs(acc, fanout_form(lex, forms)),
   LPerform(_h, disp, args) => low_refs_list(perform_target_refs(acc, disp), args),
-  LHandleWith(ih, b, hn, hname, inits, arm_names) => low_refs_list(low_refs(low_refs(init_refs(arm_refs(acc, ih, arm_names), ih, hname), b), hn), inits),
+  LHandleWith(ih, b, hn, hd, inits, arm_names) => low_refs_list(low_refs(low_refs(init_refs(arm_refs(acc, ih, arm_names), ih, hd), b), hn), inits),
   LDerive(_h, seed, b) => low_refs(low_refs(acc, b), seed),
   LArena(_h, b) => low_refs(acc, b),
   LLet(_h, _n, inner) => low_refs(acc, inner),
@@ -6794,7 +6711,7 @@ fn site_target(h, n: String) = if callee_name(h) == n {
 
 fn install_target(ih) = match graph_install_at(ih) {
   NoInstall => None,
-  InstallOf(_, right, _, _) => match tee_handler_decl(right) {
+  InstallOf(right, _) => match tee_handler_decl(right) {
     Some(hd) => enclosing_decl(hd),
     None => None,
   },
@@ -6981,7 +6898,7 @@ fn reach_nested_names(d, acc) = match d {
   LBlock(_h, stmts) => reach_nested_names_list(stmts, acc),
   LLet(_h, _n, inner) => reach_nested_names(inner, acc),
   LIf(_h, _c, t, e) => reach_nested_names_list(e, reach_nested_names_list(t, acc)),
-  LHandleWith(_h, b, _hn, _hname, _inits, _an) => reach_nested_names(b, acc),
+  LHandleWith(_h, b, _hn, _hd, _inits, _an) => reach_nested_names(b, acc),
   LDerive(_h, _seed, b) => reach_nested_names(b, acc),
   LArena(_h, b) => reach_nested_names(b, acc),
   _ => acc,
@@ -7554,14 +7471,18 @@ fn spec_mangle(name: String, enc: String) = "{name}$sp{enc}"
 fn spec_unmangle(sym: String, enc: String) =
   str_slice(sym, 0, byte_len(sym) - byte_len(spec_mangle("", enc)))
 
-// The handler-arm fn name's ONE spelling (the arm decl, the ev-slot
-// placement, and the redrive liveness probe all read it here). The same
-// String pins as spec_mangle, for the same reason.
-fn arm_fn_name(hname: String, op: String) = "op_{hname}_{op}"
+// The symbols a handler's code is emitted under, each spelled in this one
+// place off the handler's declaration: an arm (the arm decl, the ev-slot
+// placement and the redrive liveness probe all read it here), the state
+// init the install calls (`lower_init_decl` — the `$` is no identifier's
+// character, so no declaration can share the name), and the redrive a held
+// resume calls when its remainder yields again. The op keeps the String pin
+// spec_mangle's parameters carry, for the same reason.
+fn arm_fn_name(hd, op: String) = "op_{stmt_decl_name(hd)}_{op}"
 
-// A handler's init fn (`lower_init_decl`). The `$` is no identifier's
-// character, so no declaration can share the name.
-fn init_fn_name(hname: String) = "{hname}$init"
+fn init_fn_name(hd) = "{stmt_decl_name(hd)}$init"
+
+fn redrive_fn_name(hd) = "op___redrive_{stmt_decl_name(hd)}"
 
 // The site's instantiation pairs — [] when the name is not generic: a value
 // let, a monomorphic fn, or an internal synthesized name. The scheme's
@@ -7822,14 +7743,11 @@ fn twin_site_key(h, name: String) = twin_key(spec_site_pairs(h, name))
 // face, wasm.mn).
 fn arm_site_pairs(install_h) = match graph_install_at(install_h) {
   NoInstall => [],
-  InstallOf(hname, hexpr_h, cfg_hs, _) => match env_lookup(hname) {
+  InstallOf(hexpr_h, cfg_hs) => match tee_handler_decl(hexpr_h) {
     None => [],
-    Some(entry) => match entry {
-      (scheme, _r, kind) => match kind {
-        HandlerKind(_, _, _, _, _) => arm_pairs_of(judgment_pair(scheme), hexpr_h, cfg_hs),
-        _ => // a name that is not a handler has no arms to key
-        [],
-      },
+    Some(hd) => match graph_published(hd) {
+      Some((scheme, _, _)) => arm_pairs_of(judgment_pair(scheme), hexpr_h, cfg_hs),
+      None => [],
     },
   },
 }

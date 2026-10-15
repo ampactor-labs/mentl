@@ -700,7 +700,7 @@ fn jvp(e, env, cx) = match e {
     )
   },
   LFeedback(h, depth, home, body, spec) => jvp_feedback(h, depth, home, body, spec, env, cx),
-  LHandleWith(h, b, hn, hname, inits, arms) => jvp_install(h, b, hn, hname, inits, arms, env, cx),
+  LHandleWith(h, b, hn, hd, inits, arms) => jvp_install(h, b, hn, hd, inits, arms, env, cx),
   LDerive(h, _, _) => {
     dv_refuse(
       "a derivative reading inside a derivative reading is the second-order reading, which is not built yet (`Hβ.derive.second-order`)",
@@ -1299,10 +1299,10 @@ fn jvp_query(h, jargs, cx) = match jargs {
 // which may tick a line, and what comes back is lost at the perform.
 fn jvp_op(h, disp, jargs) = match disp {
   PdDriver(_, _) => jvp_op_forward(h, disp, jargs),
-  PdFrame(ih, hname, op) => if any_lost(jargs) {
+  PdFrame(ih, hd, op) => if any_lost(jargs) {
     jvp_op_forward(h, disp, jargs)
   } else {
-    let sym = arm_symbol(arm_fn_name(hname, op), arm_install_enc(ih))
+    let sym = arm_symbol(arm_fn_name(hd, op), arm_install_enc(ih))
     if dv_has_record(sym) {
       dv_forward_only(h, LwPerform)
       dv_arm_face(ih, op, sym)
@@ -1882,8 +1882,8 @@ fn body_of(h, jb) =
 // lost has no lane to ride, and the install refuses rather than let an arm
 // read it as fixed. A multi-shot install reifies remainders the reading does
 // not enter. An install carrying tangents is the forward projection's alone.
-fn jvp_install(h, b, hn, hname: String, inits, arms, env, cx) = if len(multishot_ops_of(hname)) > 0 {
-  jvp_unentered(h, LHandleWith(h, b, hn, hname, inits, arms))
+fn jvp_install(h, b, hn, hd, inits, arms, env, cx) = if len(multishot_ops_of(hd)) > 0 {
+  jvp_unentered(h, LHandleWith(h, b, hn, hd, inits, arms))
 } else {
   let jinits = jvp_list(inits, env, cx)
   match seq_values(h, jinits) {
@@ -1896,7 +1896,7 @@ fn jvp_install(h, b, hn, hname: String, inits, arms, env, cx) = if len(multishot
         AActive => (),
         AInactive => (),
       }
-      install_init_face(h, hname)
+      install_init_face(h, hd)
       let jb = jvp(b, env, cx)
       grad_consumed(h, jb)
       let hb = lexpr_handle(jv_val(jb))
@@ -1909,7 +1909,7 @@ fn jvp_install(h, b, hn, hname: String, inits, arms, env, cx) = if len(multishot
         body_of(hb, jb)
       }
       let v = temp(h, 9)
-      let install = LHandleWith(h, body, hn, hname, vals, arms)
+      let install = LHandleWith(h, body, hn, hd, vals, arms)
       jv(
         pre ++ [SPrim(LLet(h, v, LWasiCall(h, "jvp_install", [install] ++ lane_pairs(jinits, vals, 0, []))))],
         LLocal(h, v),
@@ -1923,8 +1923,8 @@ fn jvp_install(h, b, hn, hname: String, inits, arms, env, cx) = if len(multishot
 // The init fn an install under the reading runs: its derivative twin, which
 // writes each state field's tangent beside the field. A handler with no
 // state has no init to twin.
-fn install_init_face(h, hname: String) = if handler_state_count(hname) > 0 {
-  let sym = arm_symbol(init_fn_name(hname), arm_install_enc(h))
+fn install_init_face(h, hd) = if handler_state_count(hd) > 0 {
+  let sym = arm_symbol(init_fn_name(hd), arm_install_enc(h))
   if dv_has_record(sym) {
     dv_arm_face(h, "$init", sym)
   } else {
@@ -2650,9 +2650,9 @@ fn callees_in(body) = flat_map(callee_of, flat_map(subtree, body))
 fn callee_of(e) = match e {
   LDirectCall(_, fh, name, _, _) => [spec_call_name(fh, name)],
   LPerform(_, disp, _) => match disp {
-    PdFrame(_, hname, op) => [arm_fn_name(hname, op)],
+    PdFrame(_, hd, op) => [arm_fn_name(hd, op)],
     PdWalk(_, _, op, target) => match target {
-      ArmNamed(hd) => [arm_fn_name(stmt_decl_name(hd), op)],
+      ArmNamed(hd) => [arm_fn_name(hd, op)],
       ArmSlot => [],
     },
     PdDriver(_, _) => [],

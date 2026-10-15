@@ -219,8 +219,11 @@ fn board_bounds() = [
   // `TVar`, `"Pure"` or `""` is a fabricated judgment, and a fabricated
   // judgment is indistinguishable downstream from a proven one. 20 -> 19
   // (2026-10-14, WILD): the escaping-row walk's handler-name read answered
-  // `""` for an install it could not name, and left with the walk.
-  Bound({ceiling: 19, question: QCensus(CsWildcardFabricates)}),
+  // `""` for an install it could not name, and left with the walk. 19 -> 17
+  // (2026-10-15): the lowering's two `""` answers for an install whose
+  // handler name it could not read left with the read — an install is its
+  // handler's declaration.
+  Bound({ceiling: 17, question: QCensus(CsWildcardFabricates)}),
   // Drift mode 10 at the arm itself (Morgan, 2026-10-13): a `_` or a bare
   // binder after other arms of a match over a sum is the roster the author
   // declined to write, and a constructor declared later joins it unread.
@@ -236,10 +239,12 @@ fn board_bounds() = [
   // pins deleted took their catch-alls with them, and so did the map that
   // keyed every top-level statement by spelling; 1,226 when the gate read an
   // effect's ops off its declaration rather than scanning every binding;
-  // 1,212 when the dead code the facets named left (2026-10-15). It falls to
-  // zero where the migration lands
+  // 1,212 when the dead code the facets named left (2026-10-15); 1,201 when
+  // a handler's facts came to be read off its declaration, one roster where
+  // each by-name reader had kept a catch-all over the binding's kind. It
+  // falls to zero where the migration lands
   // (`Hβ.match.catch-all-over-a-sum-is-the-roster`).
-  Bound({ceiling: 1212, question: QCensus(CsWildcardOverSum)}),
+  Bound({ceiling: 1201, question: QCensus(CsWildcardOverSum)}),
   // Drift mode 15 — a value given a leading-underscore name instead of being
   // deleted. The rename silences the reader, never the fact that nothing
   // reads it.
@@ -350,8 +355,10 @@ fn board_bounds() = [
   // is the type it names. Next are the return and parameter annotations and
   // refinement predicates; one of the return annotations' left at WILD
   // (2026-10-14) with the escaping-row walk's name-list concat, 112 -> 111;
-  // 111 -> 91 (2026-10-15) with the dead code the facets named.
-  Bound({ceiling: 91, question: QGhosts}),
+  // 111 -> 91 (2026-10-15) with the dead code the facets named; 91 -> 86 the
+  // same day with the return annotations of the five record accessors the
+  // install stack's entry type replaced.
+  Bound({ceiling: 86, question: QGhosts}),
   // ─ PROSE BY CLASS (SA-5, MOD-13). A comment is graph content, so what
   // SYNTAX §Comments says a comment is not is a census, never a review
   // finding. Each class falls as the module carrying it is touched; F strips
@@ -369,13 +376,13 @@ fn board_bounds() = [
   // does not hold.
   Bound({ceiling: 1, question: QCensus(CsProseClass(PcPathNoFile))}),
   // Hex commit tokens — history belongs to git, never on the node.
-  Bound({ceiling: 46, question: QCensus(CsProseClass(PcCommit))}),
+  Bound({ceiling: 45, question: QCensus(CsProseClass(PcCommit))}),
   // Numbered citations of the archived spec corpus.
   Bound({ceiling: 20, question: QCensus(CsProseClass(PcSpecCitation))}),
   // Lifecycle prose — what was, where SYNTAX asks for what is.
   Bound({ceiling: 39, question: QCensus(CsProseClass(PcLifecycle))}),
   // Archaeology — the seed era's vocabulary and its design notes.
-  Bound({ceiling: 69, question: QCensus(CsProseClass(PcArchaeology))}),
+  Bound({ceiling: 68, question: QCensus(CsProseClass(PcArchaeology))}),
   // Decoration runs; the formatter's decoration strip takes this to zero
   // (PLAN §11, the project canonical).
   Bound({ceiling: 267, question: QCensus(CsProseClass(PcBanner))}),
@@ -388,8 +395,10 @@ fn board_bounds() = [
   // name read leaving with the read; 131 -> 129 at WILD (2026-10-14), the
   // two inside the escaping-row walk leaving with the walk; 129 -> 128 at
   // M1's first pin, the env's scope-mark marker leaving with the rewrite;
-  // 128 -> 124 (2026-10-15), four over dead code leaving with it.
-  Bound({ceiling: 124, question: QCensus(CsProseClass(PcSilencer))})
+  // 128 -> 124 (2026-10-15), four over dead code leaving with it; 124 -> 121
+  // the same day, the two over the install's name sentinel leaving with the
+  // name read and a resume-bound call's pair of markers becoming one.
+  Bound({ceiling: 121, question: QCensus(CsProseClass(PcSilencer))})
 ]
 
 // The board: every bound answered by the medium's own answer to its question.

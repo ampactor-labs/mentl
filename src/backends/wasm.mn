@@ -942,8 +942,9 @@ fn read_past_a_move(d) = !is_move_demand(d)
 // its enumeration entry names; a handler's row, for its arms; the install,
 // for a state init, whose cells are the install record's and built at the
 // install's own cost; or nothing the enumeration lists. A thunk or a
-// remainder answers to the owner of the unit it was cut from.
-type AllocOwner = OwnedByFn(Int) | OwnedByHandler(String) | OwnedByInstall(String) | OwnedByNothing
+// remainder answers to the owner of the unit it was cut from. A handler is
+// carried by its declaration.
+type AllocOwner = OwnedByFn(Int) | OwnedByHandler(Int) | OwnedByInstall(Int) | OwnedByNothing
 
 // The owner's row, read once and resolved: the row itself with what it says
 // of `Alloc` (the ask every construct makes) beside it; a grant where no row
@@ -1107,8 +1108,8 @@ fn alloc_unit_named(name: String, sym: String, enc: String, parent) = match pare
         EfkNested => AllocUnit({enc, names: name, row: alloc_owner_row(OwnedByFn(e.origin)), sym}),
         EfkLambda => AllocUnit({enc, names: p.names, row: alloc_owner_row(OwnedByFn(e.origin)), sym}),
         EfkPartial => AllocUnit({enc, names: p.names, row: alloc_owner_row(OwnedByFn(e.origin)), sym}),
-        EfkArm(op, hname) => AllocUnit({enc, names: "{hname}.{op}", row: alloc_owner_row(OwnedByHandler(hname)), sym}),
-        EfkInit(hname) => AllocUnit({enc, names: hname, row: alloc_owner_row(OwnedByInstall(hname)), sym}),
+        EfkArm(op, hd) => AllocUnit({enc, names: "{stmt_decl_name(hd)}.{op}", row: alloc_owner_row(OwnedByHandler(hd)), sym}),
+        EfkInit(hd) => AllocUnit({enc, names: stmt_decl_name(hd), row: alloc_owner_row(OwnedByInstall(hd)), sym}),
         EfkThunk => // A branch thunk exists only under a spawning schedule: its carrier is
         // that schedule's, and its body is the branch the frame's own row
         // already answers for in the in-frame form.
@@ -1129,9 +1130,9 @@ fn alloc_owner_row(owner) = match owner {
     TFun(_, _, row) => alloc_row_read(row),
     other => RowAbsent("its origin is not a function: {show_type(other)}"),
   },
-  OwnedByHandler(hname) => alloc_handler_row(hname),
-  OwnedByInstall(hname) => match projection_of(hname) {
-    PDerivative => alloc_handler_row(hname),
+  OwnedByHandler(hd) => alloc_handler_row(hd),
+  OwnedByInstall(hd) => match projection_of(hd) {
+    PDerivative => alloc_handler_row(hd),
     PSchedule(_) => RowGranted("an install's cells are built at the install's own cost"),
     PDispatch => RowGranted("an install's cells are built at the install's own cost"),
     PArena => RowGranted("an arena's exit moves what survives at the arena's own cost"),
@@ -1139,14 +1140,9 @@ fn alloc_owner_row(owner) = match owner {
   OwnedByNothing => RowAbsent("it has no enumeration entry, so no row"),
 }
 
-fn alloc_handler_row(hname: String) = match env_lookup(hname) {
-  Some(entry) => match entry {
-    (_, _, kind) => match kind {
-      HandlerKind(r, _, _, _, _) => alloc_row_read(read_bound_row(r)),
-      _ => RowAbsent("`{hname}` is not a handler"),
-    },
-  },
-  None => RowAbsent("no handler is named `{hname}`"),
+fn alloc_handler_row(hd) = match handler_shape_at(hd) {
+  Some((r, _, _, _)) => alloc_row_read(read_bound_row(r)),
+  None => RowAbsent("`{stmt_decl_name(hd)}` is not a handler"),
 }
 
 // The row resolved once, with its answer to the ask every construct makes.
@@ -1181,7 +1177,7 @@ fn alloc_named_answer(name: String) = match graph_emitfn_at(name) {
       EfkNested => row_read_allows(alloc_owner_row(OwnedByFn(e.origin))),
       EfkLambda => row_read_allows(alloc_owner_row(OwnedByFn(e.origin))),
       EfkPartial => row_read_allows(alloc_owner_row(OwnedByFn(e.origin))),
-      EfkArm(_, hname) => row_read_allows(alloc_handler_row(hname)),
+      EfkArm(_, hd) => row_read_allows(alloc_handler_row(hd)),
       EfkInit(_) => true,
       EfkThunk => false,
       EfkK => false,
@@ -2053,10 +2049,10 @@ fn race_check_record(recs, rec) = match rec {
 fn race_scan_list(stmts, path, recs) = each(race_scan(path, recs), stmts)
 
 fn race_scan(path, recs, e) = match e {
-  LHandleWith(ih, b, hn, hname, inits, _arms) => {
+  LHandleWith(ih, b, hn, hd, inits, _arms) => {
     race_scan(path, recs, hn)
     race_scan_list(inits, path, recs)
-    race_scan(path ++ [{handle: ih, name: hname, proj: projection_of(hname)}], recs, b)
+    race_scan(path ++ [Installed(ih, hd, projection_of(hd))], recs, b)
   },
   LDirectCall(_h, fh, n, _t, args) => {
     if schedule_demands(path) && fanout_reach_known(n) {
@@ -2090,17 +2086,10 @@ fn race_body_list(stmts, local, ctx, rowpairs, visited, recs) =
   each(race_body(local, ctx, rowpairs, visited, recs), stmts)
 
 fn race_body(local, ctx, rowpairs, visited, recs, e) = match e {
-  LHandleWith(ih, b, hn, hname, inits, _arms) => {
+  LHandleWith(ih, b, hn, hd, inits, _arms) => {
     race_body(local, ctx, rowpairs, visited, recs, hn)
     race_body_list(inits, local, ctx, rowpairs, visited, recs)
-    race_body(
-      local ++ [{handle: ih, name: hname, proj: projection_of(hname)}],
-      ctx,
-      rowpairs,
-      visited,
-      recs,
-      b
-    )
+    race_body(local ++ [Installed(ih, hd, projection_of(hd))], ctx, rowpairs, visited, recs, b)
   },
   LFanout(h, lex, br, _forms) => match lex {
     None => // the demanded form runs here: the site's own frame installs nothing,
@@ -2746,15 +2735,11 @@ handler effect_census_collector with demands = [] {
 handler preinstall_init_scope(own_handler, init_span) {
   visit_effect_demand(n) => // The inits' demands are the module's demands: both flow on to the
   // collector outside (an arm's own perform resolves OUTER of its install).
-  // The site has nothing to report AT — the walk identifies handlers by
-  // name — and falls back to the module in force (shape 4 of the identity
-  // arc: a name cannot be attributed, a handle can).
+  // The walk carries the init's span, not its node, so the report falls
+  // back to the module in force.
   {
     match lower_op_default_handler(n) {
-      Some(hd) => {
-        let hn = stmt_decl_name(hd)
-        if hn == own_handler { report(EInitPerformsOwnOp(hn, n, init_span)) } else { () }
-      },
+      Some(hd) => if hd == own_handler { report(EInitPerformsOwnOp(stmt_decl_name(hd), n, init_span)) } else { () },
       None => (),
     }
     visit_effect_demand(n)
@@ -3125,19 +3110,19 @@ fn walk_lemit_expr(expr) = match expr {
     walk_lemit_expr(s)
     walk_lemit_arms(arms)
   },
-  LHandleWith(ih, b, hn, hname, inits, arm_names) => {
+  LHandleWith(ih, b, hn, hd, inits, arm_names) => {
     walk_install_groups(arm_names, 0)
     walk_lemit_expr(b)
     walk_lemit_expr(hn)
     // The config arguments (a default among them) walk under this install's
-    // own name. A direct perform of an op THIS handler answers cannot reach
-    // it: the world_push is below. The span comes off the install's own node
-    // — the reason the graph already carries, never a coordinate re-derived
-    // here. The state inits walk under the same scope inside the init fn
-    // (the LStateInit arm).
+    // own handler. A direct perform of an op THIS handler answers cannot
+    // reach it: the world_push is below. The span comes off the install's
+    // own node — the reason the graph already carries, never a coordinate
+    // re-derived here. The state inits walk under the same scope inside the
+    // init fn (the LStateInit arm).
     {
       walk_lemit_list(inits)
-    } ~> preinstall_init_scope(hname, reason_span_or_zero(graph_reason_at(ih)))
+    } ~> preinstall_init_scope(hd, reason_span_or_zero(graph_reason_at(ih)))
     // band B k1: a MultiShot-armed install carries the driver loop, which
     // reads the yield globals and compares the interned op keys — register
     // both through the same channels (the one decider multishot_ops_of;
@@ -3149,7 +3134,7 @@ fn walk_lemit_expr(expr) = match expr {
           visit_string(op)
         },
       },
-      multishot_ops_of(hname)
+      multishot_ops_of(hd)
     )
   },
   LDerive(_h, seed, b) => // The derivative reading's forward body is what its expansion keeps, in
@@ -3188,12 +3173,12 @@ fn walk_lemit_expr(expr) = match expr {
   LFieldLoad(_, rec, _) => walk_lemit_expr(rec),
   LConvert(_, _, operand) => walk_lemit_expr(operand),
   LStateSlotStore(_, _, v, _) => walk_lemit_expr(v),
-  LStateInit(h, hname, _, v) => // A state init walks under its own handler's name: the init fn runs before
-  // the install's world_push, so a direct perform of an op THIS handler
-  // answers cannot reach it. The span is the init's own.
+  LStateInit(h, hd, _, v) => // A state init walks under its own handler: the init fn runs before the
+  // install's world_push, so a direct perform of an op THIS handler answers
+  // cannot reach it. The span is the init's own.
   {
     walk_lemit_expr(v)
-  } ~> preinstall_init_scope(hname, reason_span_or_zero(graph_reason_at(h))),
+  } ~> preinstall_init_scope(hd, reason_span_or_zero(graph_reason_at(h))),
 }
 
 fn walk_lemit_list(exprs) = walk_lemit_list_loop(exprs, 0)
@@ -3555,22 +3540,21 @@ fn emit_driver_arg_loads(n, i) = if i >= n {
 // name: an install whose key twinned its arms stored the twins in that
 // record, so one driver per handler serves every key an install runs.
 //
-// Emission == reachability (the dcac3b8 law, at the redrive seam): the env
-// holds every DECLARED MultiShot handler, dead ones included (the wheel's own
-// backtrack/pick_first are uninstalled dead code), and a dead handler has no
-// install bracket and no resume flag-arm, so no caller either: a handler
-// runs a driver iff each of its MultiShot arms is in the module, declared or
-// twinned.
+// Emission == reachability, at the redrive seam: the env holds every
+// DECLARED MultiShot handler, uninstalled ones included, and an uninstalled
+// handler has no install bracket and no resume flag-arm, so no caller
+// either: a handler runs a driver iff each of its MultiShot arms is in the
+// module, declared or twinned.
 fn redrive_handlers(table_names, twin_base_set) = {
-  let hnames = match env_snapshot() {
-    Env(entries) => ms_handler_names(entries, []),
+  let hds = match env_snapshot() {
+    Env(entries) => ms_handler_decls(entries, len(entries), []),
   }
   filter(
-    (hname) => all(
-      { (op, _arity) => arm_in_module(table_names, twin_base_set, arm_fn_name(hname, op)) },
-      multishot_ops_of(hname)
+    (hd) => all(
+      { (op, _arity) => arm_in_module(table_names, twin_base_set, arm_fn_name(hd, op)) },
+      multishot_ops_of(hd)
     ),
-    hnames
+    hds
   )
 }
 
@@ -3585,49 +3569,36 @@ fn arm_in_module(table_names, twin_base_set, arm: String) = if name_seen_at(tabl
 
 // Each driver's arm call is a word-face indirect: the record, the k, and
 // the op's arguments.
-fn redrive_vectors(hnames) = flat_map(
-  (hname) => map({ (_op, arity) => (list_filled(2 + arity, RI32), RI32) }, multishot_ops_of(hname)),
-  hnames
+fn redrive_vectors(hds) = flat_map(
+  (hd) => map({ (_op, arity) => (list_filled(2 + arity, RI32), RI32) }, multishot_ops_of(hd)),
+  hds
 )
 
 // Where an install's record holds an op's arm: past the header, the state
 // (config first) and the arms before it in group order — the layout
 // `emit_handler_effect_entries` writes.
-fn arm_slot_offset(hname, op) = {
-  let nstate = match handler_decl_of(hname) {
-    Some((config, state, _)) => len(config) + len(state),
+fn arm_slot_offset(hd, op) = {
+  let nstate = match handler_shape_at(hd) {
+    Some((_, config, state, _)) => len(config) + len(state),
     None => 0,
   }
-  let arms = flatten(map(group_arms, lookup_handler_arm_names_of(hname)))
-  8 + 4 * (nstate + ls_find_str_local(arms, arm_fn_name(hname, op), 0))
+  let arms = flatten(map(group_arms, handler_arm_groups(hd)))
+  8 + 4 * (nstate + ls_find_str_local(arms, arm_fn_name(hd, op), 0))
 }
 
-// Every declared handler with a MultiShot-graded arm — the same env-live
-// read the singleton globals walk uses (one criterion, N readers, never a
-// registry).
-fn ms_handler_names(entries, acc) = ms_handler_names_at(entries, len(entries), acc)
-
-fn ms_handler_names_at(entries, i, acc) = if i == 0 {
+// Every handler the environment declares with a MultiShot-graded arm, in
+// declaration order: the snapshot holds each name's latest binding once,
+// with the declaration it was published at.
+fn ms_handler_decls(entries, i, acc) = if i == 0 {
   acc
 } else {
   match list_index(entries, i - 1) {
-    (name, _scheme, _reason, kind, _) => {
-      let acc2 = match kind {
-        HandlerKind(_row, _world, _config, _state, _arms) => if len(multishot_ops_of(name)) > 0 && ls_find_str_local(acc, name, 0) < 0 {
-          [name] ++ acc
-        } else {
-          acc
-        },
-        _ => acc,
-      }
-      ms_handler_names_at(entries, i - 1, acc2)
-    },
+    (_name, _scheme, _reason, _kind, hd) => ms_handler_decls(entries, i - 1, if len(multishot_ops_of(hd)) > 0 { [hd] ++ acc } else { acc }),
   }
 }
 
-fn emit_one_redrive(hname) = {
-  wat_emit("  (func $op___redrive_")
-  wat_emit(hname)
+fn emit_one_redrive(hd) = {
+  wat_emit("  (func ${redrive_fn_name(hd)}")
   wat_emit(" (param $__state i32) (param $acc i32) (result i32) (local $k i32)\n")
   wat_emit("    (block $rdone (loop $rdrive\n")
   wat_emit("      (global.get $yield_flag)(i32.eqz)(br_if $rdone)\n")
@@ -3643,18 +3614,17 @@ fn emit_one_redrive(hname) = {
         // The arm's record is the driver's OWN $__state — both callers pass the
         // install record (the install boundary its bracket's record; a held
         // resume's flag-check the record its frame reads through the record
-        // ladder, `PdDriver`'s second field). The old global re-read was the
-        // Carried-Truth re-derivation of a value in hand.
+        // ladder, `PdDriver`'s second field).
         wat_emit("        (local.get $__state)(local.get $k)\n")
         emit_driver_arg_loads(arity, 0)
-        wat_emit("        (local.get $__state)(i32.load offset={int_to_str(arm_slot_offset(hname, op))})")
+        wat_emit("        (local.get $__state)(i32.load offset={int_to_str(arm_slot_offset(hd, op))})")
         wat_emit("(call_indirect (type $ft{int_to_str(2 + arity)}))\n")
         wat_emit("        (local.set $acc)\n")
         wat_emit("        (br $rdrive)\n")
         wat_emit("      ))\n")
       },
     },
-    multishot_ops_of(hname)
+    multishot_ops_of(hd)
   )
   wat_emit("      (br $rdone)))\n")
   wat_emit("    (local.get $acc)\n")
@@ -5801,7 +5771,7 @@ fn collect_fn_emit_records_expr(expr) = match expr {
   LMakeVariant(_h, _t, fs) => collect_fn_emit_records(fs),
   LMatch(_h, s, arms) => collect_fn_emit_records_expr(s) ++ fn_emit_records_arms(arms, 0),
   LResumeK(_h, k, v) => collect_fn_emit_records_expr(k) ++ collect_fn_emit_records_expr(v),
-  LHandleWith(_h, b, hn, _hname, inits, _arm_names) => collect_fn_emit_records_expr(b) ++ collect_fn_emit_records_expr(hn) ++ collect_fn_emit_records(inits),
+  LHandleWith(_h, b, hn, _hd, inits, _arm_names) => collect_fn_emit_records_expr(b) ++ collect_fn_emit_records_expr(hn) ++ collect_fn_emit_records(inits),
   LDerive(_h, seed, b) => collect_fn_emit_records_expr(seed) ++ collect_fn_emit_records_expr(b),
   LArena(_h, b) => collect_fn_emit_records_expr(b),
   LFeedback(_h, _d, _home, b, s) => collect_fn_emit_records_expr(b) ++ collect_fn_emit_records_expr(s),
@@ -6005,14 +5975,12 @@ fn walk_locals_expr(expr, acc) = match expr {
     }
     walk_locals_arms(arms, sr, with_scratch)
   },
-  LHandleWith(h, b, hn, hname, inits, arm_names) => {
-    // The install's OWN minted locals — the handler record, the scoped-
-    // singleton save (named installs only), and one [record, base] entry
-    // per effect group — mirror-true to the LHandleWith emit arm +
-    // emit_handler_effect_entries local.set. All collect into the set.
-    // Every install brackets the world chain (save/restore is
-    // unconditional — the invariant, not an optimization), so the
-    // world-save local declares for anonymous installs too.
+  LHandleWith(h, b, hn, hd, inits, arm_names) => {
+    // The install's OWN minted locals — the handler record, the world save,
+    // and one [record, base] entry per effect group — mirror-true to the
+    // LHandleWith emit arm + emit_handler_effect_entries local.set. All
+    // collect into the set. Every install brackets the world chain
+    // (save/restore is unconditional — the invariant, not an optimization).
     let base = ["__hstate_{int_to_str(h)} i32", "__hstate_{int_to_str(h)}_wprev i32"] ++ acc
     let with_groups =
       fold(base, (a, g) => ["__hstate_{int_to_str(h)}_{group_ename(g)} i32"] ++ a, arm_names)
@@ -6020,7 +5988,7 @@ fn walk_locals_expr(expr, acc) = match expr {
     // ($__hres, the install node's proven width) and hands it to the
     // redrive — the caught k lives in the redrive's own local now. Same
     // multishot_ops_of decider the emit reads — mirror-true by construction.
-    let with_ms = if len(multishot_ops_of(hname)) > 0 {
+    let with_ms = if len(multishot_ops_of(hd)) > 0 {
       ["__hres_{int_to_str(h)} {repr_wat(repr_of(lookup_ty(h)))}"] ++ with_groups
     } else {
       with_groups
@@ -6897,7 +6865,7 @@ fn emit_derive_op(h, op, args) = match op {
   },
   DoJvpInstall => match args {
     [install, ...pairs] => match install {
-      LHandleWith(ih, body, _handler, hname, inits, arm_names) => emit_install(ih, body, hname, inits, arm_names, Some(pairs)),
+      LHandleWith(ih, body, _handler, hd, inits, arm_names) => emit_install(ih, body, hd, inits, arm_names, Some(pairs)),
       _ => wat_emit("    (unreachable)  ;; jvp_install: not an install\n"),
     },
     _ => wat_emit("    (unreachable)  ;; jvp_install: no install\n"),
@@ -6918,18 +6886,18 @@ fn emit_derive_op(h, op, args) = match op {
 // ~> install — build the ONE handler record (handler IS state IS closure;
 // protocol_handler_is_state_is_closure_is_evidence):
 //   [_@0][nstate FENCE@4][state@8..][arms per-effect-contiguous]
-// The record is built regardless of hname; commits reach it through the
-// resolved record read on LStateSlotStore (the __hrec ladder), so anonymous
-// and named installs are ONE shape — no global binds. Under the derivative
-// reading (`lanes`: the config tangents the reading passes) the record's
-// lanes take each active config's tangent after the config is written, and
-// the declaration's init runs as its derivative twin, so a state field born
-// from a config carries the config's tangent from its first read.
-fn emit_install(h, body, hname, inits, arm_names, lanes) = {
+// Commits reach it through the resolved record read on LStateSlotStore (the
+// __hrec ladder) — no global binds. `hd` is the handler's declaration.
+// Under the derivative reading (`lanes`: the config tangents the reading
+// passes) the record's lanes take each active config's tangent after the
+// config is written, and the declaration's init runs as its derivative twin,
+// so a state field born from a config carries the config's tangent from its
+// first read.
+fn emit_install(h, body, hd, inits, arm_names, lanes) = {
   let local_name = "__hstate_{int_to_str(h)}"
   // INITS are the install's config arguments; the declaration's state
   // follows them, written by its init fn.
-  let nfields = handler_state_count(hname)
+  let nfields = handler_state_count(hd)
   let nstate = len(inits) + nfields
   let total_arms = sum_arm_name_lens(arm_names)
   // The arms' `<~` lines follow the arms in this record — one ring per
@@ -6938,7 +6906,7 @@ fn emit_install(h, body, hname, inits, arm_names, lanes) = {
   // the init fn's after them; each line carries the slot lower assigned it
   // past the fence.
   let arm_lines =
-    handler_arm_lines(arm_names) ++ if nfields > 0 { fn_lines_of(init_fn_name(hname)) } else { [] }
+    handler_arm_lines(arm_names) ++ if nfields > 0 { fn_lines_of(init_fn_name(hd)) } else { [] }
   let size = 8 + 4 * (nstate + total_arms + len(arm_lines))
   emit_record_alloc(size, nstate, local_name)
   // FENCE @ offset 4 = nstate — dispatch locates arms fence-relative.
@@ -6968,9 +6936,9 @@ fn emit_install(h, body, hname, inits, arm_names, lanes) = {
     let init_sym = match lanes {
       Some(_) => match arm_face_at(h, "$init", spec_enc_active()) {
         Some(twin) => twin,
-        None => arm_symbol(init_fn_name(hname), enc),
+        None => arm_symbol(init_fn_name(hd), enc),
       },
-      None => arm_symbol(init_fn_name(hname), enc),
+      None => arm_symbol(init_fn_name(hd), enc),
     }
     wat_emit("(local.get ${local_name})(call ${init_sym})(drop)\n")
   } else {
@@ -7037,11 +7005,11 @@ fn emit_install(h, body, hname, inits, arm_names, lanes) = {
   // install to the enclosing driver (or the _start backstop).
   // Gated on the ONE multishot_ops_of decider (walk_locals reads it
   // identically); an all-OneShot install emits the pre-k1 bytes exactly.
-  let ms_ops = multishot_ops_of(hname)
+  let ms_ops = multishot_ops_of(hd)
   if len(ms_ops) > 0 {
     // band B M2b — the driver IS one redrive call: park the body result,
-    // hand (record, parked) to $op___redrive_<hname> (the dispatch loop's
-    // ONE home, shared with every resume flag-arm). A flag still raised
+    // hand (record, parked) to the handler's redrive (`redrive_fn_name` — the
+    // dispatch loop's ONE home, shared with every resume flag-arm). A flag still raised
     // on return is a FOREIGN op — the value falls out of the bracket
     // with the flag intact and the enclosing boundary sees it (the
     // bubble, k1's law, unchanged).
@@ -7051,7 +7019,7 @@ fn emit_install(h, body, hname, inits, arm_names, lanes) = {
     wat_emit("    (local.set $__hres_{hs})\n")
     wat_emit("    (local.get ${local_name})(local.get $__hres_{hs})\n")
     emit_to_continuation(answer)
-    wat_emit("    (call $op___redrive_{hname})\n")
+    wat_emit("    (call ${redrive_fn_name(hd)})\n")
     emit_from_continuation(answer)
     wat_emit("    (local.set $__hres_{hs})\n")
     wat_emit("    (local.get $__hres_{hs})\n")
@@ -7122,11 +7090,7 @@ fn emit_perform(h, disp, args, jvp) = if perform_is_query(disp) {
   // it is not a dispatch: it is a direct call to a synthesized driver
   // against the install record it drives.
   match disp {
-    PdDriver(name, _) => {
-      wat_emit("    (call $op_")
-      wat_emit(name)
-      wat_emit(")\n")
-    },
+    PdDriver(hd, _) => wat_emit("    (call ${redrive_fn_name(hd)})\n"),
     _ => {
       // The record holds the arm's WORD face, as every fn_ptr does; a site
       // whose own vector is wide dispatches at the native face, and one
@@ -7196,7 +7160,7 @@ fn perform_callee(disp, jvp) = if jvp {
       None => Some("__jvp_absent"),
     },
     PdWalk(_, _, _, _) => None,
-    PdDriver(name, _) => Some("op_{name}"),
+    PdDriver(hd, _) => Some(redrive_fn_name(hd)),
   }
 } else {
   match perform_target(disp) {
@@ -7641,7 +7605,7 @@ fn emit_expr(expr) = match expr {
     wat_emit("    (global.set $world_g (local.get $__rk_wprev_{int_to_str(h)}))\n")
     wat_emit("    (local.get ${rk_val})\n")
   },
-  LHandleWith(h, body, _handler, hname, inits, arm_names) => emit_install(h, body, hname, inits, arm_names, None),
+  LHandleWith(h, body, _handler, hd, inits, arm_names) => emit_install(h, body, hd, inits, arm_names, None),
   LDerive(h, _seed, _body) => // The derivative reading: the install builds no record and pushes no world
   // — its DERIVED program stands where it stood. Opening the reading
   // advances the epoch every lane is read against, so state and captures
@@ -8011,7 +7975,7 @@ fn emit_expr(expr) = match expr {
       }
     }
   },
-  LStateInit(_h, _hname, slot, value) => {
+  LStateInit(_h, _hd, slot, value) => {
     // A state field's first store, in its handler's init fn, whose $__state
     // IS the install record. A wide value takes a cell of its own here — the
     // slot ABI is words, and every later commit writes through this cell.

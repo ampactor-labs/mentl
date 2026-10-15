@@ -214,8 +214,9 @@ fn verb_specs() = [
   VerbSpec(
     "query",
     "<path> <question>",
+    // The question is every word after the target, quoted or not.
     {
-      [target, question, ..._] => Invocation(VQuery(path_to_module(target), question)),
+      [target, first, ...more] => Invocation(VQuery(path_to_module(target), join(" ", [first] ++ more))),
       short => ParseError("query needs a target and a question: mentl query <path> <question>"),
     },
     "why / type / effects / ownership, walked to your words; `… in <module>` keeps one module's sites; a directory: a site facet across its programs"

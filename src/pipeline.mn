@@ -162,7 +162,7 @@ handler infer_context = affine_ledger ~> region_tracker ~> verify_ledger ~> look
 // unhandled floor on every march the verb ran — the wheel unable to judge
 // its own generation while tools/march.sh, which the board actually calls,
 // stayed green. A chain with one home cannot lose a handler to a copy.
-handler emit_context = string_table ~> line_registry ~> mentl_default ~> lower_scope ~> lower_handler_stack_ctx ~> arm_state_ctx([], OneShot, "") ~> spec_registry ~> derived_registry ~> arena_registry ~> emit_site_module
+handler emit_context = string_table ~> line_registry ~> mentl_default ~> lower_scope ~> lower_handler_stack_ctx ~> arm_state_ctx([], OneShot, None) ~> spec_registry ~> derived_registry ~> arena_registry ~> emit_site_module
 
 // A route that LOWERS installs both stacks, emit inside analysis, and that
 // nesting order is itself a fact — so it has one home too rather than being
@@ -631,7 +631,7 @@ fn query_judged(entry_module: String, read) = match driver_entry_with_ranges(ent
     None => None,
     Some(_) => Some(read(entry_module)),
   },
-} ~> query_default ~> mentl_default ~> arm_state_ctx([], OneShot, "") ~> spec_registry ~>
+} ~> query_default ~> mentl_default ~> arm_state_ctx([], OneShot, None) ~> spec_registry ~>
 // the derivation's fs_read — handled in-chain, as compile/check do; outermost
 // of the query's own installs, because a query arm reads the filesystem too
 // and an arm's performs resolve outer of its own install
@@ -770,7 +770,7 @@ fn analyze_fns(entry_module, projection) = {
 // diag_bank banks the judgment's reports so the audit projection can speak
 // the tightenings per decl — the bank sits INSIDE the infer_context body
 // chain, where the judgment's performs reach it.
-wasi_filesystem ~> mentl_default ~> arm_state_ctx([], OneShot, "") ~> spec_registry ~> diag_bank ~> infer_context
+wasi_filesystem ~> mentl_default ~> arm_state_ctx([], OneShot, None) ~> spec_registry ~> diag_bank ~> infer_context
 
 // The pure projection pair — audit and teach as `ast -> String`, the ONE
 // home the CLI verb and the resident session's tool both call (the

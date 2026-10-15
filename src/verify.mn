@@ -468,11 +468,12 @@ fn tee_ref(r) = match graph_node_body(r) {
 // the frame fence.
 fn tee_handler_decl(r) = graph_ref_decl(tee_ref(r))
 
-// The arms of the handler a declaration was published as; None for a
+// What a handler declaration was published as: the residual row cell its
+// arms were judged under, its config, its state and its arms. None for a
 // declaration that is no handler — a parameter or a local holding one.
-fn handler_arms_at(d) = match graph_published(d) {
+fn handler_shape_at(d) = match graph_published(d) {
   Some((_, _, kind)) => match kind {
-    HandlerKind(_, _, _, _, arms) => Some(arms),
+    HandlerKind(r, _, config, state, arms) => Some((r, config, state, arms)),
     FnScheme
     | ValueScheme
     | ParamScheme(_)
@@ -484,6 +485,11 @@ fn handler_arms_at(d) = match graph_published(d) {
     | RowAliasKind(_)
     | TypeVariants(_) => None,
   },
+  None => None,
+}
+
+fn handler_arms_at(d) = match handler_shape_at(d) {
+  Some((_, _, _, arms)) => Some(arms),
   None => None,
 }
 
