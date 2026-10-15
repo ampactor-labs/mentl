@@ -1691,17 +1691,17 @@ type BinOpKind
   // ++
   | BKConcat
 
-// The primitives the sugar CALLS: `++` and every seam of an interpolation
-// call the sequence concat, `xs[i]` calls `list_index`, and a list pattern
-// that binds its rest (`[head, ...rest]`) cuts the rest as a slice. They are
-// the construct's callees exactly as f is the callee of `f(x)` — the judgment reads
-// their rows live (the concat, subscript and rest charges), and the
-// free-name walk draws the edges its callee-first order needs, both from
-// these homes. Until 2026-09-28 the walk drew none, so a fn whose only call
-// was `++` could be judged before the concat primitive: the judgment read a
-// signature not yet judged, and a refusal under `!Alloc` landed at the
-// primitive's declaration, twice, instead of at the developer's line.
-fn concat_callees() = ["str_concat", "list_concat"]
+// The primitives the sugar CALLS: `++` calls the sequence concat, every seam
+// of an interpolation the byte-sequence concat that pins its operands to
+// String, `xs[i]` calls `list_index`, and a list pattern that binds its rest
+// (`[head, ...rest]`) cuts the rest as a slice. They are the construct's
+// callees exactly as f is the callee of `f(x)`: the judgment links the
+// sugar's node to the primitive and charges its row, the lowering reads the
+// edge, and the free-name walk draws the edges its callee-first order needs,
+// all from these homes.
+fn concat_callee() with Pure = "list_concat"
+
+fn interpolation_callee() with Pure = "str_concat"
 
 // `xs[i]` calls the checked read where its bounds claim is open and the
 // traversal beneath it where the fragment proved the claim (`PInBounds`,
@@ -3121,11 +3121,6 @@ fn env_lookup(name: String) = published_at(env_resolve(name))
 // What the judgment published about the declaration a reference's edge or a
 // name's one resolution yields, when either yields one.
 fn published_at(od) = match od {
-  Some(d) => graph_published(d),
-  None => None,
-}
-
-fn env_lookup_linked(name: String) = match env_resolve_linked(name) {
   Some(d) => graph_published(d),
   None => None,
 }

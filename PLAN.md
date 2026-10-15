@@ -433,15 +433,18 @@ landing that closes it. A gate that did not run is UNKNOWN, never green.
   value reference is linked to the declaration it resolved to. A pattern is a
   node the judgment binds, its constructor linked the same way; a name written
   in a type is a node linked to the type it names, and so are an effect a
-  declaration's row names and the op a handler arm serves. A function type's
+  declaration's row names, the op a handler arm serves and a sugar that calls
+  a primitive (`xs[i]`, `++`, an interpolation's seams, a list rest), so
+  `refs of` reaches every one of them. A function type's
   row still holds names with no node (§11.2); a type, a Reason and the lowered
   program are still value trees (§11.18). The first one-write operation is built: a named handler
   chain's install becomes its members' installs (SYNTAX §«Handler chains»); a
   rename, the session's edit and a proposal's accept are not (§11.2).
 - **Names are still read where an edge exists** (§11.2, §11.3, §11.18): the
   lowered program's identity is its symbol, so the emit's reach walks key their
-  units by it and a resume-bound function is found by its spelling; a sugar's
-  callee is a spelling the lowering resolves at the link's scope; an emitted
+  units by it and a resume-bound function is found by its spelling; the emit
+  cuts a list rest by the slice's spelling, its lowered pattern holding no
+  handle; an emitted
   arm's kind holds its op's spelling, and the performs the lowering writes for
   a schedule (`spawn`, `thread_join`, `persist_branch`, `join_persist`) name
   their ops, the compiler's own vocabulary.
@@ -643,32 +646,18 @@ a provenance diff, a search over live shared cells.
 **THE STANDING CURSOR** — the order work runs in:
 
 2. **Every position is a cell — #108** (`Hβ.graph.positions-are-cells`). A
-   pattern, a name written in a type, an effect a declaration's row names and
-   the op a handler arm serves are nodes that draw the edge a value reference
-   draws (`graph_ref_link`), so `refs of` a constructor answers the patterns
-   that take its values apart, `refs of` a type its annotations and nominal
-   constructions, `refs of` an effect the rows that name it, `refs of` an op
-   the arms that serve it beside the calls that perform it; `unreferenced`
-   counts a type or an effect used wherever its name is written or a value of
-   it is built, taken apart or performed, and the imports facet reads an
-   import used only by a pattern, an annotation, a row or an arm as used. A
-   function type's row is folded where the type is parsed into a row that
-   holds names, so the effects a callback's type demands are not among their
-   references until the type holds its row as written. A sugar's primitive is a node
-   that draws the same edge, so `refs of slice` answers its list-rest
-   patterns; the sugar's callee is the edge at its node, which the lowering
-   reads where it
-   now resolves `concat_callees`, `subscript_callee` and `list_rest_callee` by
-   spelling at the link's scope (the two concats one `seq_concat`, §4①). A
-   sub-pattern's node is the cell of the part it takes apart, where a second
-   cell is minted beside it today, so a binder is declared at its own
-   position, and a claim is located at the value it claims. Then the writes
-   the structure cut was for: a
-   rename is one write at the declaration (the `rename` verb, through the
-   formatter); the session re-judges the nodes an edit rewrote rather than
-   re-parsing a module (the declaration-grain cone over the in-edges); accepting
-   a proposal rewrites the hole's node in place, and the position-keyed accept
-   column (`Hβ.synth.accepted-edge-keyed-by-position`) deletes.
+   function type's row holds its names as written, each a node linked to the
+   effect it names, so the effects a callback's type demands are references
+   of those effects; today the type folds its row where it is parsed, into a
+   row of names. A sub-pattern's node is the cell of the part it takes apart,
+   where a second cell is minted beside it today, so a binder is declared at
+   its own position, and a claim is located at the value it claims. Then the
+   writes the structure cut was for: a rename is one write at the declaration
+   (the `rename` verb, through the formatter); the session re-judges the
+   nodes an edit rewrote rather than re-parsing a module (the
+   declaration-grain cone over the in-edges); accepting a proposal rewrites
+   the hole's node in place, and the position-keyed accept column
+   (`Hβ.synth.accepted-edge-keyed-by-position`) deletes.
 3. **A module is a scope** (`Hβ.driver.per-module-env-overlay`,
    `Hβ.query.facets-read-the-link`, `Hβ.modules.import-block-is-maintained`,
    `Hβ.modules.vocabulary-held-by-declaration`,

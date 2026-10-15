@@ -772,6 +772,14 @@ fn vocabulary_callee(n: String) = match env_resolve_linked(n) {
   None => Synthesized(n),
 }
 
+// The primitive a sugar calls, read off the edge the judgment drew at the
+// sugar's node; a sugar whose primitive the link does not declare calls the
+// runtime's own, under the vocabulary's name.
+fn sugar_callee(h, n: String) = match graph_ref_decl(h) {
+  Some(d) => DeclaredAt(d),
+  None => Synthesized(n),
+}
+
 // What a callee's declaration was published as; a synthesized unit was
 // published as nothing.
 fn callee_kind(c) = match c {
@@ -6024,7 +6032,7 @@ fn lower_index(handle, receiver, index) = match lookup_ty(receiver) {
 // vector — `(i32, i32, i32) -> f64` against a callee that signs a word — the
 // moment a closure call stopped boxing, and every `[Float]` index trapped.
 fn lower_index_runtime(handle, receiver, index) = {
-  let callee = vocabulary_callee(subscript_callee(graph_narrow_at(index) != 0))
+  let callee = sugar_callee(handle, subscript_callee(graph_narrow_at(index) != 0))
   LDirectCall(handle, handle, callee, false, [lower_expr(receiver), lower_expr(index)])
 }
 
@@ -6084,7 +6092,7 @@ fn lower_string_interpolation(handle, lowered_fragments) = {
       let chained = fold(
         head,
         (acc, pair) => match pair {
-          (frag, ch) => LCall(ch, LGlobal(ch, vocabulary_callee("str_concat")), [acc, frag]),
+          (frag, ch) => LCall(ch, LGlobal(ch, sugar_callee(handle, interpolation_callee())), [acc, frag]),
         },
         zip(rest, cells)
       )

@@ -1,0 +1,10 @@
+// refs of slice: 1 call 1 pattern
+// A sugar calls its primitive as a call names its callee: the judgment links
+// the pattern that binds a list's rest to the slice it cuts, so `refs of
+// slice` answers the pattern beside the call that names it.
+fn rest_len(xs) = match xs {
+  [_, ...rest] => len(rest),
+  [] => 0,
+}
+
+fn main() = rest_len([1, 2, 3]) + len(slice([4, 5, 6], 0, 2))

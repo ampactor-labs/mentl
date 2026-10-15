@@ -990,21 +990,11 @@ type AllocVerdict = Allocates | AllocFree | Unaudited
 effect AllocAudit {
   alloc_unit_done(String, Bool)
   alloc_callee_builds(Callee) -> Bool
-  alloc_concat_builds() -> Bool
   alloc_units() -> [[(String, Bool)]]
 }
 
-handler alloc_audit_state with units = smap_new(), building = smap_new(), quiet = smap_new(), concat = None {
+handler alloc_audit_state with units = smap_new(), building = smap_new(), quiet = smap_new() {
   alloc_unit_done(sym, builds) => resume() with units = smap_add(units, sym, builds),
-  alloc_concat_builds() => // `++` builds when a callee its sugar names does: their own rows, read
-  // once through their one home
-  match concat {
-    Some(b) => resume(b),
-    None => {
-      let b = any(alloc_named_answer, map(vocabulary_callee, concat_callees()))
-      resume(b) with concat = Some(b)
-    },
-  },
   alloc_callee_builds(c) => {
     let name = callee_symbol(c)
     if smap_has(building, name) {
@@ -1326,7 +1316,7 @@ fn alloc_walk(unit, e) = match e {
   },
   LBinOp(h, op, l, r) => {
     let built = match op {
-      BConcat => alloc_concat_builds() && alloc_at(unit, h, AsConcat),
+      BConcat => alloc_callee_builds(sugar_callee(h, concat_callee())) && alloc_at(unit, h, AsConcat),
       _ => false,
     }
     let left = alloc_walk(unit, l)
@@ -7231,10 +7221,10 @@ fn emit_expr(expr) = match expr {
     wat_emit(")\n")
     emit_wide_deref(repr_of(lookup_ty(h)))
   },
-  LBinOp(_h, op, l, r) => {
+  LBinOp(h, op, l, r) => {
     emit_expr(l)
     emit_expr(r)
-    emit_binop_for(op, l, r)
+    emit_binop_for(h, op, l, r)
   },
   LShow(h, x) => emit_show(h, x),
   LHash(h, x) => emit_hash(h, x),
@@ -8107,7 +8097,7 @@ fn emit_float_const(f: Float, r) = match r {
 // graph (perform lookup_ty) only to PROJECT the representation cash-out,
 // never to select between surface operators. The non-aggregate binops
 // (arithmetic/comparison/logical) fall through to emit_binop.
-fn emit_binop_for(op, l, r) = {
+fn emit_binop_for(h, op, l, r) = {
   let left_h = lexpr_handle(l)
   match op {
     // ++ is ONE seq_concat over the unified sequence node-kind (SYNTAX.md
@@ -8126,11 +8116,11 @@ fn emit_binop_for(op, l, r) = {
       wat_emit("    (local.get $state_tmp)\n")
       wat_emit("    (local.get $callee_closure)\n")
       // ONE concat: a String IS a stride-1 list — the strip resolves the
-      // alias to its byte-list truth, and the one list arm emits the O(1)
-      // concat node (list_concat threads the carrier's sc). An unresolved
-      // operand keeps the loud floor.
+      // alias to its byte-list truth, and the one list arm calls the O(1)
+      // concat the judgment linked the `++` to (the carrier's sc rides it).
+      // An unresolved operand keeps the loud floor.
       match fold_strip(lookup_ty(left_h)) {
-        TList(_) => emit_vocab_call("list_concat"),
+        TList(_) => wat_emit("    (call ${callee_symbol(sugar_callee(h, concat_callee()))})\n"),
         other => emit_concat_unresolved(other),
       }
     },

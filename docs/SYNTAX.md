@@ -1284,9 +1284,12 @@ Bounds-checking is runtime for lists (traps on out-of-range); compile-time for t
 
 **A sugar calls the language's primitive, whatever its name binds where the
 sugar stands** (real, 2026-10-15). `xs[i]` calls the prelude's `list_index`,
-`++` and an interpolation's seams the sequence concat, and a rest pattern
-cuts with `slice`; each charges that primitive's row, read at the link's own
-scope. Until this landed the charge resolved the name in the local scope, so
+`++` the sequence concat `list_concat`, an interpolation's seams
+`str_concat`, and a rest pattern cuts with `slice`. The node that writes the
+sugar is linked to the primitive it calls, as a call's callee is: `refs of
+slice` answers a rest pattern beside the calls that name it, the lowering
+calls what the edge reaches, and the sugar charges the primitive's row, read
+off its declaration. Until this landed the charge resolved the name in the local scope, so
 a parameter named `list_index` swallowed the index's charge and `fn
 first(list_index, xs) with !Memory = xs[0] + list_index` checked clean over a
 body that reads memory — a false proof of the negative, and a parameter named

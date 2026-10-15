@@ -609,12 +609,13 @@ fn name_decls(name) with !Mutate = {
 
 // What stands at a reference: a pattern taking the value apart, a type an
 // annotation names, an effect a row names, the op an arm serves, the callee
-// of a call, or a value.
+// of a call or a sugar calling its primitive, or a value.
 fn ref_role(h) with !Mutate = match graph_node_body(h) {
   NPat(_) => "pattern",
   NTypeAnn(_) => "annotation",
   NName(RowEffect(_)) => "row",
   NName(ArmOp(_)) => "arm",
+  NExpr(IndexExpr(_, _)) | NExpr(BinOpExpr(_, _, _)) | NExpr(MakeStringExpr(_)) => "call",
   NExpr(_) | NStmt(_) | NHole(_) | NModule(_) => if callee_of_parent(h) { "call" } else { "value" },
 }
 

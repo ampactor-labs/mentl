@@ -249,9 +249,11 @@ fn board_bounds() = [
   // spelling left; 1,191 when a name written in a type became a node, and
   // the readers that took a bare variable for an unwritten type read the
   // node instead; 1,190 when a site's span came to be read off its node
-  // rather than off its reason. It falls to zero where the migration lands
+  // rather than off its reason; 1,189 when a sugar came to call its
+  // primitive through the edge at its node and two readers of a callee's row
+  // by spelling became one. It falls to zero where the migration lands
   // (`Hβ.match.catch-all-over-a-sum-is-the-roster`).
-  Bound({ceiling: 1190, question: QCensus(CsWildcardOverSum)}),
+  Bound({ceiling: 1189, question: QCensus(CsWildcardOverSum)}),
   // Drift mode 15 — a value given a leading-underscore name instead of being
   // deleted. The rename silences the reader, never the fact that nothing
   // reads it.
@@ -399,8 +401,10 @@ fn board_bounds() = [
   // Numbered citations of the archived spec corpus. 20 -> 19 (2026-10-15):
   // the banner over the pattern type left when a pattern became a node.
   Bound({ceiling: 19, question: QCensus(CsProseClass(PcSpecCitation))}),
-  // Lifecycle prose — what was, where SYNTAX asks for what is.
-  Bound({ceiling: 39, question: QCensus(CsProseClass(PcLifecycle))}),
+  // Lifecycle prose — what was, where SYNTAX asks for what is. 39 -> 38
+  // (2026-10-15): the note over the sugar's callees that dated when the
+  // free-name walk began drawing them left with the by-spelling rows.
+  Bound({ceiling: 38, question: QCensus(CsProseClass(PcLifecycle))}),
   // Archaeology — the seed era's vocabulary and its design notes. 68 -> 67
   // (2026-10-15): the note over the type annotation's node kind that said
   // why its tag stood last.

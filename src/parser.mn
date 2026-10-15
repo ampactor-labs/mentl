@@ -3925,7 +3925,7 @@ fn free_vars_expr(e, h, bound) = match e {
   },
   MakeListExpr(elems) => free_vars_list(elems, bound),
   MakeTupleExpr(elems) => free_vars_list(elems, bound),
-  MakeStringExpr(fragments) => free_uses_merge(callee_uses(concat_callees(), h, bound), free_vars_list(fragments, bound)),
+  MakeStringExpr(fragments) => free_uses_merge(callee_use(h, bound, interpolation_callee()), free_vars_list(fragments, bound)),
   ShowExpr(inner) => collect_free_uses(inner, bound),
   IndexExpr(receiver, index) => free_uses_merge(
     callee_uses(subscript_callees(), h, bound),
@@ -4058,7 +4058,7 @@ fn callee_uses(names, h, bound) = flat_map(callee_use(h, bound, ??), names)
 fn callee_use(h, bound, n: String) = if free_vars_contains(bound, n) { [] } else { [(n, h)] }
 
 fn binop_callee_uses(op, h, bound) = match binop_kind(op) {
-  BKConcat => callee_uses(concat_callees(), h, bound),
+  BKConcat => callee_use(h, bound, concat_callee()),
   BKArith => [],
   BKCmp => [],
   BKBool => [],

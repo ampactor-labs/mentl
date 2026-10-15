@@ -1701,12 +1701,14 @@ fn battery_refs_expect(src) = {
 }
 
 // THE REFS BATTERY: the fixture's link judged as the query verb judges it,
-// and the references `mentl query <fixture> "refs of Name"` answers counted
-// by what stands at each. The rows are read inside the judgment that holds
-// the graph; only the counts cross out of it.
+// and the references `mentl query <fixture> "refs of Name"` answers in the
+// fixture's own text counted by what stands at each — a primitive the
+// library calls throughout is counted where the fixture writes it. The rows
+// are read inside the judgment that holds the graph; only the counts cross
+// out of it.
 fn battery_refs_step(stem, path: String, name: String, want: String) = {
   let got = match driver_entry_with_ranges(path) {
-    (_ast, _ranges) => refs_of_name(name) |> refs_role_counts,
+    (_ast, _ranges) => refs_of_name(name) |> filter({ (m, _, _) => m == path }) |> refs_role_counts,
   } ~> cursor_default ~> synth_default ~> mentl_default ~> diag_bank ~> infer_context
   if str_eq(got, want) {
     print_string("PASS {stem}: refs of {name} {want}\n")

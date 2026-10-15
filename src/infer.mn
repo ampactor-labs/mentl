@@ -4137,11 +4137,9 @@ fn infer_expr(ref handle) = {
       // The count mirrors lower's elision (empty literals drop).
       let cells = interp_concat_cells(fragments, span)
       graph_boundary_set(handle, InterpBoundary(cells))
-      // Each interior concat IS a call to the concat primitive, so it carries
-      // that callee's row — the read `++` makes (`concat_callee_row`). This
-      // arm made none, and `!Alloc` accepted "a{x}" while it built 48 bytes
-      // per call (measured 2026-09-28).
-      if len(cells) > 0 { inf_add_row_at(handle, concat_callee_row()) } else { () }
+      // Each interior concat IS a call to the byte-sequence concat, so the
+      // interpolation calls it as `++` calls its own, and carries its row.
+      if len(cells) > 0 { sugar_calls(handle, handle, interpolation_callee()) } else { () }
       graph_bind(handle, ty_string, Located(span, Inferred("string interpolation")))
     },
     NExpr(ShowExpr(inner)) => {
@@ -7963,21 +7961,11 @@ fn infer_index_force(rh, ih, handle, span: ValidSpan) = {
   // callee the link happens to carry (a program judged with no library
   // still traps at the read).
   if proven { () } else { inf_add_row_at(handle, trap_row()) }
-  // The sugar charges what its lowering performs: `xs[i]` emits the
-  // list_index call, so the judgment charges list_index's own declared
-  // row — read live from the link's own scope, never a literal and never a
-  // local the name binds where the sugar stands (the seq-op charge's law at
-  // the sugar). Measured before the charge existed: sugar_once published
-  // Pure while call_once published Memory on one file — the teaching surface
-  // lying about a memory-touching fn (the four-face probe, 2026-08-01). The
-  // tuple-const route stays chargeless: its extraction is compile-time.
-  match env_lookup_linked(subscript_callee(proven)) {
-    Some((sch, _, _)) => match judgment_ty(sch) {
-      TFun(_, _, lrow) => inf_add_row_at(handle, lrow),
-      _ => (),
-    },
-    None => (),
-  }
+  // The sugar calls what its lowering performs: `xs[i]` emits the read the
+  // claim's verdict chose, so the node is linked to it and charges its
+  // declared row (`sugar_calls`). The tuple-const route stays chargeless:
+  // its extraction is compile-time.
+  sugar_calls(handle, handle, subscript_callee(proven))
 }
 
 fn type_mismatch(ref a, ref b, span: ValidSpan, reason) = report(ETypeMismatch(a, b, reason, span))
@@ -9289,44 +9277,32 @@ fn infer_binop(handle, op, lh, rh, span: ValidSpan) = {
       //   fn f(ref n) with !Alloc = str_concat("a", n)   -> E_EffectMismatch
       // Byte-identical work, opposite verdicts, because one path read the
       // row the graph proved and the other re-derived it as nothing.
-      inf_add_row_at(handle, concat_callee_row())
+      sugar_calls(handle, handle, concat_callee())
     },
   }
 }
 
-// The concat primitive's row, read LIVE from its own scheme. Never a
-// fabricated `Memory + Alloc` here: the vocabulary declares that row at
-// the primitives (`concat_callees` names them, lib/strings.mn and
-// lib/lists.mn declare them), and a second home for it in infer is the
-// re-derivation this fix exists to delete. The free-name walk draws the
-// same names as edges, so each primitive is judged before any fn whose
-// sugar calls it and this read meets a judged scheme.
-//
-// No element-type dispatch: the row is INVARIANT under the representation
-// emit chooses (both primitives carry the same row), which is why infer can
-// know it while the element type is still open. The union of the two is that
-// one row today and stays sound if they ever diverge. When the seq_concat
-// unification lands (PLAN §4①, "the str_concat-vs-list_concat split does not
-// exist at the bottom") this reads ONE name and the union dissolves.
-fn concat_callee_row() = fold(mk_ef_pure(), union_named_row, concat_callees())
-
-fn union_named_row(acc, name: String) = union_row(acc, named_fn_row(name))
-
-// A sugar callee's declared row, read at the link's own scope: the sugar
-// calls the language's primitive whatever a local binds under its name. A
-// name that is absent or not a function contributes the pure row — the
-// union's identity — which is the true statement "this primitive is not in
-// the link, so `++` cannot be calling it"; a `++` with NEITHER primitive
-// linked has no concat to emit and fails at the callee, where that absence
-// actually lives.
-fn named_fn_row(name: String) = match env_lookup_linked(name) {
-  Some(entry) => match entry {
-    (scheme, _, _) => match instantiate(scheme) {
-      TFun(_, _, row) => row,
-      _ => mk_ef_pure(),
-    },
+// A sugar calls its primitive as `f(x)` calls f: the node that writes it is
+// linked, once, to the primitive the link declares under the vocabulary's
+// name — never a local the name binds where the sugar stands — so `refs of`
+// the primitive answers the sugar, the lowering reads the edge, and the
+// primitive's row is charged where the sugar's cost lands, read off the
+// declaration. The free-name walk draws the same names, so the primitive is
+// judged before any fn whose sugar calls it. A primitive absent from the
+// link draws no edge and charges nothing — the sugar cannot be calling it,
+// and the lowering fails at the callee, where that absence lives.
+fn sugar_calls(at, charged, name: String) = match env_resolve_linked(name) {
+  Some(d) => {
+    graph_ref_link(at, d)
+    match graph_published(d) {
+      Some((scheme, _, _)) => match instantiate(scheme) {
+        TFun(_, _, row) => inf_add_row_at(charged, row),
+        _ => (),
+      },
+      None => (),
+    }
   },
-  None => mk_ef_pure(),
+  None => (),
 }
 
 // The op is the parser's UnaryOp ADT (UNeg | UNot — types.mn), matched
@@ -9666,8 +9642,9 @@ fn infer_pat_list(pat, pats, rest, parent_handle, span: ValidSpan) = {
         ValueScheme,
         rest_h
       )
-      // the rest is cut as a slice at run time, and costs what its callee does
-      inf_add_row_at(parent_handle, named_fn_row(list_rest_callee()))
+      // the rest is cut as a slice at run time: the pattern calls the slice
+      // and the list it cuts pays what the slice costs
+      sugar_calls(pat, parent_handle, list_rest_callee())
     },
   }
 }
