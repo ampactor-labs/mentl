@@ -941,10 +941,9 @@ fn read_past_a_move(d) = !is_move_demand(d)
 // What a unit's allocations answer to: a function's own row, at the node
 // its enumeration entry names; a handler's row, for its arms; the install,
 // for a state init, whose cells are the install record's and built at the
-// install's own cost; module scope, where the init lets run and no row is
-// claimed; or nothing the enumeration lists. A thunk or a remainder answers
-// to the owner of the unit it was cut from.
-type AllocOwner = OwnedByFn(Int) | OwnedByHandler(String) | OwnedByInstall(String) | OwnedByModule | OwnedByNothing
+// install's own cost; or nothing the enumeration lists. A thunk or a
+// remainder answers to the owner of the unit it was cut from.
+type AllocOwner = OwnedByFn(Int) | OwnedByHandler(String) | OwnedByInstall(String) | OwnedByNothing
 
 // The owner's row, read once and resolved: the row itself with what it says
 // of `Alloc` (the ask every construct makes) beside it; a grant where no row
@@ -1137,7 +1136,6 @@ fn alloc_owner_row(owner) = match owner {
     PDispatch => RowGranted("an install's cells are built at the install's own cost"),
     PArena => RowGranted("an arena's exit moves what survives at the arena's own cost"),
   },
-  OwnedByModule => RowGranted("module scope claims no row"),
   OwnedByNothing => RowAbsent("it has no enumeration entry, so no row"),
 }
 

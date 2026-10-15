@@ -36,8 +36,6 @@ import derive
 
 import driver
 
-import dsp/clock
-
 import effects
 
 import egraph
@@ -351,24 +349,9 @@ fn report_unhandled_init(performed, stmt) = match stmt {
 
 // A drained demand is an ename already (the floor's ekey) or a yield's
 // OP name — resolve ops to their effect through the live scheme; a name
-// that is no op passes through as itself. That is the WHOLE job.
-//
-// THE THREE TIERS ARE DELETED, and they were one question the substrate no
-// longer asks. Each tier was a soundness story about how a perform reaches
-// its handler: a STATELESS singleton "grounded" because a chainless direct
-// call ignores __state; a STATEFUL singleton cleared on an install anywhere
-// because a direct call needed a record the chain might supply; an
-// EVIDENCE-floor demand was strict because it alone walked. Every one of
-// those distinctions described the dispatch TIER, and there are no tiers —
-// one walk, one refusal, the same belt under all of them. What remained was
-// handler_stateful, whose only other reader built a `DtSingleton` Bool that
-// nothing ever read.
-//
-// The licence the stateless tier carried is what let a handler's own arms
-// escape unnoticed: `format_default` re-emits `Format`, so `Format` survives
-// to main's root row (measured — a declared `!Render` on the same shape
-// refuses with `Memory + Alloc + Render`), and the gate dropped the demand
-// before it could be seen. The ROW is authoritative and always was.
+// that is no op passes through as itself. Every perform reaches its handler
+// by the one walk, so the row is the whole authority on what reaches the
+// root.
 fn demands_to_enames(ref demands, i, acc) = if i >= len(demands) {
   acc
 } else {
@@ -589,10 +572,9 @@ fn stdin_link(text) = match driver_text_scoped(text, Census) {
 // tally is honestly zero. The count and the counter are one handler; a reader
 // outside the install is reading a different ledger.
 //
-// Check runs the same analyses as compile — the region-op and null-page
-// classes this chain paid for (the zero-state sentinel reads, the
-// SingletonUninstalled catches) are why EVERY inference-reaching chain
-// installs the whole core; infer_context is that law as one home.
+// Check runs the same analyses as compile, so it installs the whole core:
+// every inference-reaching chain does, and infer_context is that law as one
+// home.
 fn pipeline_check(entry_module) = {
   // Check reads the SAME one-namespace weave every other driver verb
   // reads (compile / at / edit — driver_entry_with_ranges): whole-program
@@ -612,13 +594,6 @@ fn pipeline_check(entry_module) = {
   driver_entry_scoped(entry_module, Project)
   diag_errors()
 } ~> wasi_filesystem ~> mentl_default ~> infer_context
-
-// Legacy single-source entry — for tests that pass raw source
-// without filesystem layout. No caching; full re-infer each call.
-fn compile_source(source) =
-  source |> infer_program_converged |> compile_remainder ~> wat_stdout ~> compile_context
-
-fn check_source(source) = source |> infer_program_converged ~> mentl_default ~> infer_context
 
 fn query(entry_module, question) = match query_judged(entry_module, query_render(question, ??)) {
   None => {
@@ -895,14 +870,6 @@ handler diagnostics_handler with errors = 0, refusals = 0, narrations = 0, scope
   diag_narrations() => resume(narrations),
   diag_scope(sc) => resume() with scope = sc,
   diag_scope_of() => resume(scope),
-}
-
-// The display mint: ids a query's answer renders with, never stored in the
-// graph. Inference mints through graph_fresh_ty, whose handler lives with
-// its op in infer.mn; both answer FreshHandle.
-handler fresh_for_query with next_display = 0 {
-  mint(_reason) => resume(next_display) with next_display = next_display + 1,
-  mint_row(_reason) => resume(next_display) with next_display = next_display + 1,
 }
 
 // Every top-level FnStmt projected to `project(name, handle)`, the other
@@ -1438,14 +1405,15 @@ fn render_unref_rows(rows) =
 // bypassed at its callers, or dead with its handler still installed, and
 // those three are the finds of the last three landings.
 fn render_perform_row(row) = match row {
-  (m, name, total, done) => {
+  (m, name, total, unperformed) => {
+    let done = total - len(unperformed)
     let mark = if done == 0 { "NONE" } else { "PART" }
-    "  {mark}  {m} -> {name}  {int_to_str(done)}/{int_to_str(total)} ops performed"
+    "  {mark}  {m} -> {name}  {int_to_str(done)}/{int_to_str(total)} ops performed; nothing performs {join(", ", unperformed)}"
   },
 }
 
-fn perform_row_is_partial(row) with Pure = match row {
-  (_, _, total, done) => done < total,
+fn perform_row_is_partial(row) = match row {
+  (_, _, _, unperformed) => len(unperformed) > 0,
 }
 
 // The manifest: each variable the host must pass, at the line that reads it.
@@ -1476,9 +1444,7 @@ fn render_provider_site(site) = match site {
 
 fn render_query_result(result) = match result {
   QRType(ty, reason) => "→ {show_type(ty)}\n  Reason: {show_reason(reason)}",
-  QRIntent(effs) => "→ {render_signed_effs(effs, 0)}",
   QRUnresolved(entries) => "→ {int_to_str(len(entries))} unresolved entries",
-  QRChain(hops) => "→ {int_to_str(len(hops))} hops in chain",
   QREffects(row) => "→ {show_effrow(row)}",
   QROwnership(params) => "→ {int_to_str(len(params))} params",
   QRWhy(reasons) => join("\n", map(show_reason, reasons)),

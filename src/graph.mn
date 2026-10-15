@@ -112,11 +112,9 @@ fn spine_open_loop(own spine, opened, b) = if opened > b {
   (spine, opened)
 } else {
   let page = SpinePage{
-    bind: make_list(spine_slots),
     boundaries: make_list(spine_slots),
     canon: make_list(spine_slots),
     comments: make_list(spine_slots),
-    dispatch: make_list(spine_slots),
     installs: make_list(spine_slots),
     links: make_list(spine_slots),
     module: make_list(spine_slots),
@@ -125,7 +123,6 @@ fn spine_open_loop(own spine, opened, b) = if opened > b {
     parent: make_list(spine_slots),
     products: make_list(spine_slots),
     program: make_list(spine_slots),
-    slots: make_list(spine_slots),
     spans: make_list(spine_slots),
   }
   spine_open_loop(list_set(spine, opened, page), opened + 1, b)
@@ -355,21 +352,6 @@ fn spine_put_narrowing(ref spine, h, pred) = {
 
 fn spine_put_boundary(ref spine, h, boundary) = {
   let _ = list_set(spine_page(spine, h).boundaries, spine_slot(h), boundary)
-  ()
-}
-
-fn spine_put_bind(ref spine, h, bh) = {
-  let _ = list_set(spine_page(spine, h).bind, spine_slot(h), bh)
-  ()
-}
-
-fn spine_put_dispatch(spine, h, dt) = {
-  let _ = list_set(spine_page(spine, h).dispatch, spine_slot(h), dt)
-  ()
-}
-
-fn spine_put_slots(spine, h, sh) = {
-  let _ = list_set(spine_page(spine, h).slots, spine_slot(h), sh)
   ()
 }
 
@@ -614,14 +596,6 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
   },
   graph_comment_span_at(handle) => match spine_comment_at(spine, spine_open, handle) {
     (_, span) => resume(span),
-  },
-  graph_clear_comment(handle) => // The take-side of a re-home: restore the cell to the column's own
-  // absent form. A separate op because attach MERGES behind existing
-  // text (the blank-separated-blocks rule above) — an empty attach
-  // would prepend an empty paragraph, never clear.
-  {
-    spine_put_comment(spine, handle, ("", span_zero()))
-    resume()
   },
   graph_attach_comment_ref(owner, referent) => // A resolved backticked reference is an edge from the comment's node to
   // the declaration it names, entered among the declaration's in-edges with
@@ -1012,11 +986,11 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
     if !j { graph_mutated(new_epoch, m) }
     resume() with epoch = new_epoch, trail = trail_after(trail, trail_len, j, m), trail_len = trail_len_after(trail_len, j)
   },
-  graph_birth_note(h, birth) => // The parse's note of how it made the node (types.mn `Birth`), trailed
+  graph_let_born_note(h) => // The parse's note that it made the node of a destructuring `let`, trailed
   // as MBirth for the same reason a binder's fact is: a node minted inside
   // a speculation is a handle the rollback hands out again.
   {
-    wmap_add(births, h, birth)
+    wmap_add(births, h, ())
     let m = MBirth(h)
     let j = journaling(checkpoint_stack)
     let new_epoch = epoch + 1
@@ -1035,7 +1009,10 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
     resume() with epoch = new_epoch, trail = trail_after(trail, trail_len, j, m), trail_len = trail_len_after(trail_len, j)
   },
   graph_binder_of(h) => resume(wmap_get(binders, h)),
-  graph_birth_of(h) => resume(wmap_get(births, h)),
+  graph_let_born(h) => resume(match wmap_get(births, h) {
+    Some(_) => true,
+    None => false,
+  }),
   graph_store_claim_of(h) => resume(wmap_get(store_claims, h)),
   graph_owe_late(g, payer) => // THE LATE PAYERS' write (P0): a frame called through a guard cell its
   // declaration has not written yet. Newest first under the cell, trailed
@@ -1075,26 +1052,10 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
     if len(checkpoint_stack) > 0 { out_of_range() } else { 0 }
     resume() with accepted = push(accepted, (path, span, text, proof))
   },
-  graph_bind_note(use_handle, bh) => // The bind-home column (lowering-is-a-column
-  // step i): an in-place spine cell store at the USE node's handle — no
-  // state rebind, non-trailed (lowering runs post-judgment; a re-lower
-  // overwrites with the same verdict).
+  graph_install_note(h, ish) => // The install-shape column: an in-place spine cell store at the install
+  // node's handle, non-trailed — lowering runs after the judgment, and a
+  // re-lower writes the same shape.
   {
-    spine_put_bind(spine, use_handle, bh)
-    resume()
-  },
-  graph_dispatch_note(h, dt) => // The dispatch-tier column (lowering-is-a-column step i): the
-  // perform/wasi fork's arms note the chosen tier — same in-place,
-  // non-trailed contract as the bind note (lowering runs post-judgment).
-  {
-    spine_put_dispatch(spine, h, dt)
-    resume()
-  },
-  graph_state_slots_note(h, sh) => {
-    spine_put_slots(spine, h, sh)
-    resume()
-  },
-  graph_install_note(h, ish) => {
     spine_put_install(spine, h, ish)
     resume()
   },

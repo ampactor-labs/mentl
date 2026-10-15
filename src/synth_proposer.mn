@@ -1,61 +1,10 @@
-// synth_proposer.mn — Hμ.synth-proposer peer handle
-//
-// The oracle's exploration substrate. Replaces the DELETED OneShot
-// enumeration stub (it returned []) with real MultiShot
-// candidate enumeration over the constraint space. This is what
-// makes `??` THE developer's primary write-mode verb (SYNTAX §Partial
-// application — one absence marker across space and time): with this
-// handler installed, every `??` position invokes
-// the proposer chain; the gradient narrows the candidate space; the
-// surviving candidate IS the synthesized residue.
-//
-// Per PLAN §2's cached cursor: the oracle's runtime IS IC + Pure-
-// over-broader-input + the multi-shot resume primitive composed.
-// This file is that composition; the kernel does the work.
-//
-// Anchor 0 dream code. Wheel canonical IS the ULTIMATE FORM.
-// Verification by simulation, walkthrough, audit. lux3.wasm is not
-// the arbiter. The seed transcribes after first-light-L1 + H7
-// MultiShot emit per Tier 3 growth pattern.
-//
-// Anchor 4 — build the wheel; never wrap the axle. The proposer
-// chain (enumerative / smt / llm-handler / user-fed) is FOUR peer
-// handlers on the SAME Synth effect; swap the chain, swap the
-// proposer; the verification stays in the kernel.
-//
-// Composition tally — every read is from substrate that exists today:
-//
-//   Synth effect (3 ops; OneShot/MultiShot mix)  — src/mentl.mn:89-93
-//   AnnotationSuggestion / Cursor                — src/types.mn (Hμ.cursor)
-//   graph_push_checkpoint / graph_rollback        — src/graph.mn + types.mn
-//   verify_after_apply (the proof gate)           — src/mentl.mn:277-286
-//   Reason chain (per-candidate provenance)       — src/types.mn Reason ADT
-//   MultiShot resume discipline                   — PLAN §2's cached cursor
-//   Pure-over-broader-input enumeration           — primitive #4 row algebra
-//
-// Drift modes refused per edit site:
-//
-//   Drift 1 (vtable):       Synth handler chain via ~> composition;
-//                           no fn-pointer table for proposer dispatch.
-//   Drift 2 (env frame):    Candidate state is the proposer's
-//                           handler-state, NOT a parallel enumeration
-//                           frame stack.
-//   Drift 4 (MTL):          ONE Synth effect + multiple peer handlers
-//                           on it; not stacked single-concern wrappers.
-//   Drift 6 (special):      Each candidate (Empty/SuggestEffectRow/
-//                           Constructor-fill/Lambda-shape) goes through
-//                           the SAME `candidate_proven` gate; no special-
-//                           case for "easy" cases.
-//   Drift 7 (parallel arr): Candidate is one record-shape with Node +
-//                           Reason; not parallel (asts[], reasons[]).
-//   Drift 8 (string flag):  ProposerKind is a tagged ADT.
-//   Drift 9 (deferred):     The chain is named in full; each proposer
-//                           bodied; BOTH arms live — propose (the
-//                           OneShot survivor-set) and
-//                           enumerate_inhabitants (the multi-shot
-//                           resume-per-proven fan, gated by its own
-//                           frontier fixture; the fork pair =
-//                           graph checkpoint + heap region).
+// synth_proposer.mn — the ??-fan: at a hole the medium enumerates the
+// candidates its constraint space admits — type-directed fills and the
+// in-scope vocabulary, searched outward from the hole's module — judges each
+// on its own trail (checkpoint → infer → Verify → rollback), and surfaces
+// only the proven survivors, each carrying the Reason it was found for. A
+// proposer outside the medium plugs in as a handler on the same Synth
+// effect; the verification stays in the kernel.
 import types
 
 import cursor
@@ -87,14 +36,6 @@ type ProposerKind
   // the in-scope vocabulary, searched outward from the hole's module, and
   // the ring the name was found in
   | ProposerVocabulary(VocabRing)
-  // SMT solver via Verify-handler-swap (Arc F.1)
-  | ProposerSMT
-  // the handler catalog: an install proposed at a `?? ~> h` hole, named and
-  // not yet built. A wrap changes what the body means, so it is a fill
-  // judged here when it lands, never an annotation the gradient offers
-  | ProposerHandlerCatalog
-  // seeds the developer supplies at the position
-  | ProposerUser
 
 // Where the vocabulary search found a name, nearest first. The hole's own
 // module is what the developer wrote; an authored import is vocabulary they
@@ -419,7 +360,7 @@ fn search_ring(vocab, row_rejected, hole_h, cand_start, acc, ring) = match acc {
 fn found_in(ring, c) with Pure = match c {
   EnrichedCandidate(cr) => match cr.origin {
     ProposerVocabulary(r) => r == ring,
-    _ => false,
+    ProposerEnumerative => false,
   },
 }
 

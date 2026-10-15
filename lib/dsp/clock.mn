@@ -58,39 +58,6 @@ effect Deadline {
   remaining() -> Duration
 }
 
-// IterContext — the Iterate-class MARKER capability: the vocabulary an
-// inferred clock calculus reads when it proves what advances a cycle
-// (`Hβ.dataflow.clock-calculus-sample-rate`). Membership is a STRUCTURAL
-// property, never a name-allowlist (a name-allowlist is the string-keyed
-// drift, drift mode 8): an effect joins the class by its handler providing
-// this marker. `iter_context()` returns a Bool — pure presence, no string
-// tag (the tag re-derived what the handler stack already proves;
-// Carried-Truth). Clock / Tick / Sample are INSTANCES of the class — they
-// provide the marker; any user-defined register of that shape (a value
-// that performs an iterative effect carrying state across ticks) provides
-// it too. A `<~` site does not read it: the site's line is a per-site
-// register the enclosing function's next call advances, so a cycle needs
-// no context to exist, and E_FeedbackNoContext has no construction site
-// by design (SYNTAX §«<~»).
-effect IterContext {
-  iter_context() -> Bool
-}
-
-// no_iter_context is the identity element — the safe default the compile
-// chains install when no Iterate-class handler is on the stack; an
-// Iterate-class time handler (installed nearer a cycle) shadows it with
-// `true`. Read by the clock calculus when it lands, by nothing today.
-handler no_iter_context {
-  iter_context() => resume(False),
-}
-
-// iterate_context — the marker provider every Iterate-class time handler
-// installs alongside itself. One handler, not three per-name: presence,
-// not identity, is what `<~` needs.
-handler iterate_context {
-  iter_context() => resume(True),
-}
-
 // Tier 1: real — delegates to host via HostClock. In WASM builds, host_*
 // effects are mapped at emit time to WASI imports; pure composition here.
 effect HostClock {

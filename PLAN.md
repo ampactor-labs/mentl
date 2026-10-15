@@ -413,11 +413,11 @@ trail, checkpoints) · `types` (the metaschema: `Ty`, `Reason`, `NodeBody`,
 value walk, obligations) · `egraph` · `derive` (derivative readings) · `lower`,
 `backends/wasm` (the projection to WAT) · `asm` (WAT to bytes) · `driver` (the
 module DAG and layers) · `pipeline` (handler stacks, diagnostics) · `format` ·
-`query`, `cursor`, `cursor_transport`, `space`, `voice`, `mentl` (the reads: the
-facets, the eight aspects, the View, the gradient) · `synth_proposer` (the
-??-fan) · `board` (the standing bounds) · `cli`, `main` (the verbs) · `lsp`,
-`mcp` (transports) · `eight_loop` · `canon`. The runtime library is `lib/`,
-which never imports the compiler (§7).
+`query`, `cursor`, `cursor_transport`, `space`, `mentl` (the reads: the facets,
+the eight aspects, the View, the gradient) · `synth_proposer` (the ??-fan) ·
+`board` (the standing bounds) · `cli`, `main` (the verbs) · `lsp`, `mcp`
+(transports) · `canon`. The runtime library is `lib/`, which never imports the
+compiler (§7).
 
 ---
 

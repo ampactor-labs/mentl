@@ -994,8 +994,9 @@ desugar_vocabulary: 47
 # when the walk's resolved step took its accumulators unmarked — the two
 # helpers the ratchet refused at 55 and 664 carry none, the grade reading
 # each parameter; `mentl check` named the two kept markers T_OwnUnconsumed
-# the moment their callee stopped consuming.
-authored_own_max: 49
+# the moment their callee stopped consuming. 49 -> 48 (2026-10-15): the dead
+# voice surface's buffer marker left with it.
+authored_own_max: 48
 # 2026-09-17: 807 -> 805. Two markers retired with the duplicate map
 # primitive's deletion — the honest grade needs no marker where there is no
 # second copy to annotate.
@@ -1062,8 +1063,9 @@ authored_own_max: 49
 # 658 -> 655 (2026-10-13, Landing 4 S2): `collect_handles(ref nodes)` left
 # when a node became its handle and the function became the identity, and
 # `sort_unique(ref names)` and `lookup_tag(ref idx, handle)` left as second
-# names for `name_set_canonicalize` and `wmap_get`.
-authored_ref_max: 617
+# names for `name_set_canonicalize` and `wmap_get`. 617 -> 601 (2026-10-15): M1's
+# name-keyed walks, then the dead code the facets named, left with their markers.
+authored_ref_max: 601
 
 # 2026-08-08: the DRIFT-SHAPE ratchet (PLAN §11 5.6's absorption,
 # enforcement half) — the three absorbed drift modes counted by the
@@ -1438,28 +1440,22 @@ authored_ref_max: 617
 # and on a breach the march re-reads the leg and takes the minimum of three
 # (`read_cost`, tools/march.sh) — that minimum is what this ceiling is
 # measured against. The reading no machine moves is the line peak below.
-# HELD at 477,000 through Landing 4 S3's fourth pin (2026-10-13): the
-# third pin read 474,248 here and the runner refused it at 486,712 (min of
-# 3, run 38470081484) with every other gate green; the reach walk became
-# an extent (src/lower.mn's `reachable_from_main`) and the m3 leg reads
-# 427,956 here. The next ceiling is 1% over the runner's reading of THIS
-# boot, written when that reading exists — a ceiling set from a predicted
-# reading is a number nobody read. A green board printed no reading until
-# this pin (the runner's 486,712 was visible only because it breached);
-# tools/state.sh prints the march's cost line on every run now, so the
-# reading is on the next board log, main's push run among them.
-selfcompile_peak_kb_max: 477000
+# 1% over the runner's reading of the boot it holds: ec3d9271 read 416,912 KB
+# (run 38699616297), and the pin after it reads 386,996 KB here. A ceiling set
+# from a predicted reading is a number nobody read; tools/state.sh prints the
+# march's cost line on every run, so each boot's reading is on main's board log.
+selfcompile_peak_kb_max: 421100
 # THE IMAGE'S OWN HIGH-WATER: the guest prints its bump line's peak on the
 # m3 leg's stderr (`arena: … line peak N KB`), a pure function of the
 # computation — two self-compiles of one source read the same KB while their
 # peak RSS differed — so it is the memory ratchet no machine moves, refused
 # on a breach by `read_line` (tools/march.sh) with no re-measure. A landing
 # that breaches it pays the cost down, never raises it. Held at 1% over the
-# landed form's 363,329 KB (2026-10-15), set where the module is written: the
-# lowering's reach holds the line it entered with, each root's reads an extent
-# of their own (one region for all of them set the peak at 443,820 KB), and the
-# gate reads an effect's ops off its declaration, never a snapshot of the env.
-selfcompile_line_peak_kb_max: 367000
+# landed form's 347,014 KB (2026-10-15): the lowering's reach holds the line it
+# entered with, each root's reads an extent of their own, the gate reads an
+# effect's ops off its declaration, and the code nothing reached is gone with
+# the three spine columns nothing read.
+selfcompile_line_peak_kb_max: 350500
 # THE HEAD ROUND TRIP (render lane, 2026-10-06): module-level function heads,
 # formatter's and eye's, that do not come back as themselves through
 # parse∘render. Born at the measured 92 of 4,550 (the base renderer: 787 of

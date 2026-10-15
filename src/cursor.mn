@@ -72,7 +72,6 @@ effect CursorRead {
   // through a module-blind scan
   cursor_at_handle(Handle) -> CursorView
   cursor_argmax(Caret) -> Cursor
-  cursor_pinned(Handle) -> Cursor
 }
 
 // ─── The handler ────────────────────────────────────────────────────
@@ -97,18 +96,6 @@ handler cursor_default {
   // cursor's handle, and re-resolving either here is the re-derivation.
   resume(cursor_view_of(handle)),
   cursor_argmax(caret) => resume(cursor_argmax_compute(caret)),
-  cursor_pinned(handle) => {
-    let span = graph_span_of(handle)
-    match graph_chase(handle) {
-      GNode(_, _anchor) => // Pinned-ness is STRUCTURAL — the Reason IS Located(span, "user pinned"),
-      // read by case (reason_is_pinned), never a 1e308 float magnitude that
-      // argmax can't distinguish from "scored absurdly high." The pin is an
-      // override edge the cursor follows FIRST (argmax_or_default checks it
-      // before the auto-scored reduce); impact stays 0.0 because the pin does
-      // not compete on the gradient's score axis — it dominates by structure.
-      resume(Cursor(handle, Located(span, Inferred("user pinned via ??")), 0.0)),
-    }
-  },
 }
 
 // ─── Multi-cursor projection — map over a position list ─────────────
@@ -136,15 +123,11 @@ handler cursor_default {
 // caret and IC-narrows toward the gradient's argmax. Convergence test:
 // reason-equality between cycles.
 //
-// `<~` does NOT require an ambient iterative context, and this comment
-// claimed it did until 2026-08-16. The clock is INFERRED, never
-// demanded: a `<~` site is a per-site register whose previous iteration
-// is the enclosing fn's NEXT CALL, so requiring an upstream Sample /
-// Tick / Clock would refuse correct code — the wheel's own sixteen
-// `<~` sites among it. E_FeedbackNoContext therefore has zero
-// construction sites by design (SYNTAX §feedback, measured
-// 2026-08-12). The causality rule that IS armed is
-// E_ZeroDelayFeedback: `<~ delay(0)` has no prior to read.
+// `<~` does NOT require an ambient iterative context. The clock is
+// INFERRED, never demanded: a `<~` site is a per-site line whose previous
+// iteration is the enclosing fn's NEXT CALL (SYNTAX §feedback). The
+// causality rule that is armed is E_ZeroDelayFeedback: `<~ delay(0)` has
+// no prior to read.
 //
 // The eight-aspect projection runs per cycle — `<|` IS what's repeated
 // inside the `<~` loop. Multi-cursor mode threads through `><` per
@@ -396,35 +379,13 @@ fn transitive_dep_weight() -> Float with Pure = 0.4
 
 fn cross_module_weight() -> Float with Pure = 0.2
 
-// ─── Argmax with default ────────────────────────────────────────────
-//
-// Per the cursor walkthrough §3: the no-candidates case is "fully annotated";
-// returns a CursorRead with impact=0 co-located with the caret. Same
-// shape, same record, same code path — drift 6 closure (no
-// primitive-type-special-case).
-//
-// The pin is an OVERRIDE edge, followed FIRST: if the caret's Reason marks
-// a `??`-pinned position, that position dominates the argmax by STRUCTURE
-// (reason_is_pinned), never by a float magnitude. Only when no pin is set
-// does the ranked field's head answer. No 1e308 sentinel — the override is
-// a case, not a comparison.
+// The ranked field's head, or — where nothing is left to rank — the caret
+// itself at impact 0, "fully annotated": the same record either way.
 fn argmax_or_default(ranked: [(Float, Handle)], caret) = match caret {
-  Caret(handle, reason) => if reason_is_pinned(reason) {
-    Cursor(handle, reason, 0.0)
-  } else {
-    match ranked {
-      [] => Cursor(handle, Located(caret_span_from_reason(reason), Inferred("fully annotated")), 0.0),
-      [(score, h), ..._] => position_cursor(h, score),
-    }
+  Caret(handle, reason) => match ranked {
+    [] => Cursor(handle, Located(caret_span_from_reason(reason), Inferred("fully annotated")), 0.0),
+    [(score, h), ..._] => position_cursor(h, score),
   },
-}
-
-// The pin override is read by case from the Reason chain: a `??`-pinned
-// cursor carries Located(span, Inferred("user pinned via ??")). Structural
-// projection — no magic float.
-fn reason_is_pinned(reason) = match reason {
-  Located(_, Inferred(ctx)) => contains(ctx, "user pinned"),
-  _ => false,
 }
 
 // ─── Local pure helpers — one read each from the graph ──────────────
@@ -460,29 +421,6 @@ fn cursor_view_of(handle) = match graph_chase(handle) {
       (query, propose, topology, row, trace, verify, teach, why) => CursorView(query, propose, topology, row, trace, verify, teach, why),
     }
   },
-}
-
-// The SESSION's resolver — exact match on the REASON span, deliberately.
-// The edit transport re-parses the module per projection pass, so the graph
-// carries one hole node PER GENERATION at the same weave span; only the
-// generation live inference walked carries a Located reason, and the exact
-// reason-span match is what keeps the session off the stale mints (measured
-// 2026-07-18: swapping this for find_tightest over MINT spans resolved a
-// stale generation's node and 13 edit-workflow fixtures went red at once).
-// This resolver DISSOLVES with Hβ.cursor.session-weave-epoch-scope (the
-// session `<~` loop deletes the re-parse and with it the generations); the
-// cursor-address transport does not ride it — it resolves once over mint
-// spans (address_resolve, main.mn) and projects via cursor_at_handle.
-// The span is read INSIDE the session's module, because a span alone names
-// a line in every file at once; a miss answers the module itself, the
-// caret at the file's start.
-fn handle_at_span(span, mh: Int) -> Handle with !Mutate = match find({ h => span_eq(span, reason_span_of(h)) }, module_handles(mh)) {
-  Some(h) => h,
-  None => mh,
-}
-
-fn reason_span_of(h) with !Mutate = match graph_chase(h) {
-  GNode(_, reason) => caret_span_from_reason(reason),
 }
 
 // The CARET-flavored span read (caret_span_from_reason, not the plain
@@ -843,9 +781,8 @@ fn absorbed_step(path, acc, i) with !Mutate = match graph_node_body(list_index(p
 }
 
 // verify_pending_at — Verify ledger holds ALL pending refinement
-// obligations as (Span, Predicate, Reason) rows — the one order both
-// accrual sites (verify_ledger and verify_smt's unknown-debt) speak and
-// CursorView's verify slot declares. Consumers want the subset at one
+// obligations as (Span, Predicate, Reason) rows — the one order
+// `verify_ledger` keeps and CursorView's verify slot declares. Consumers want the subset at one
 // handle, WHOLE: the Reason is the Why-walk's edge and the Span the
 // render's anchor — the old map-to-Predicate discarded both (the
 // converged judge caught the slot mismatch it left).

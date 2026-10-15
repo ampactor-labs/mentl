@@ -198,8 +198,10 @@ fn board_bounds() = [
   //
   // 164 -> 157 (2026-10-14, WILD): the escaping-row pre-pass left whole, its
   // fixpoint's folds and maps with it, since the yield gate it fed reads the
-  // callee's own row.
-  Bound({ceiling: 157, question: QCensus(CsEffectfulLambda)}),
+  // callee's own row. 157 -> 149 (2026-10-15): the code nothing reached —
+  // the voice surface, the eight-loop, the never-installed SMT handler —
+  // left with its lambdas.
+  Bound({ceiling: 149, question: QCensus(CsEffectfulLambda)}),
   // Drift mode 10 — the seven survivors are documented sentinels, not masked
   // cases. Every wildcard that is NOT one of them is a variant the author
   // declined to enumerate, and the medium cannot tell the difference, which
@@ -233,10 +235,11 @@ fn board_bounds() = [
   // (2026-10-15): the name-keyed readers and dead declarations M1's later
   // pins deleted took their catch-alls with them, and so did the map that
   // keyed every top-level statement by spelling; 1,226 when the gate read an
-  // effect's ops off its declaration rather than scanning every binding. It
-  // falls to zero where the migration lands
+  // effect's ops off its declaration rather than scanning every binding;
+  // 1,212 when the dead code the facets named left (2026-10-15). It falls to
+  // zero where the migration lands
   // (`Hβ.match.catch-all-over-a-sum-is-the-roster`).
-  Bound({ceiling: 1226, question: QCensus(CsWildcardOverSum)}),
+  Bound({ceiling: 1212, question: QCensus(CsWildcardOverSum)}),
   // Drift mode 15 — a value given a leading-underscore name instead of being
   // deleted. The rename silences the reader, never the fact that nothing
   // reads it.
@@ -293,8 +296,9 @@ fn board_bounds() = [
   // name-keyed refs. 181 → 180 (2026-10-15): a cycle's settlements read its
   // members' handles, taken once, rather than indexing the statements again.
   // 180 → 177 the same day: the unreachable facet walks the reference edges,
-  // and its index walks over a name table left with the table.
-  Bound({ceiling: 177, question: QVerifyDebt}),
+  // and its index walks over a name table left with the table. 177 → 174:
+  // the dead voice surface's index walks left with it.
+  Bound({ceiling: 174, question: QVerifyDebt}),
   // The iteration costumes — a function that threads an incremented index
   // through its own self-call, the imperative loop in recursion's costume
   // (CLAUDE.md Anchor 6). 390 when the detector was born on 2026-07-30, 490
@@ -313,8 +317,9 @@ fn board_bounds() = [
   // segment's bytes fold into one buffer. 460 -> 450 at M1's first pin: the
   // name indexes the reference edge replaced were each an index walk — the
   // comment gate's declaration index and its span scopes, the env's
-  // per-name scans, the query's name-keyed collectors.
-  Bound({ceiling: 450, question: QCensus(CsIterationCostume)}),
+  // per-name scans, the query's name-keyed collectors. 450 -> 426
+  // (2026-10-15): the dead code the facets named left with its index walks.
+  Bound({ceiling: 426, question: QCensus(CsIterationCostume)}),
   // The ghosts — cells the parser minted and the judgment never bound
   // (`mentl query <entry> ghosts`): names, parameters, predicates and
   // annotations that are not yet cells inference writes, which is why `refs
@@ -344,8 +349,9 @@ fn board_bounds() = [
   // itself and left it the class's root; and a nominal record literal's head
   // is the type it names. Next are the return and parameter annotations and
   // refinement predicates; one of the return annotations' left at WILD
-  // (2026-10-14) with the escaping-row walk's name-list concat, 112 -> 111.
-  Bound({ceiling: 111, question: QGhosts}),
+  // (2026-10-14) with the escaping-row walk's name-list concat, 112 -> 111;
+  // 111 -> 91 (2026-10-15) with the dead code the facets named.
+  Bound({ceiling: 91, question: QGhosts}),
   // ─ PROSE BY CLASS (SA-5, MOD-13). A comment is graph content, so what
   // SYNTAX §Comments says a comment is not is a census, never a review
   // finding. Each class falls as the module carrying it is touched; F strips
@@ -355,22 +361,24 @@ fn board_bounds() = [
   // the edge; each rots at the first edit above it. 29 where a substring
   // read of the extension and colon answered 34: five of those were the
   // extension in prose with no line after it. 27 -> 23 (2026-10-14, WILD):
-  // the dead narrowing walk's header cited four.
-  Bound({ceiling: 23, question: QCensus(CsProseClass(PcCoordinate))}),
+  // the dead narrowing walk's header cited four. 23 -> 17 (2026-10-15): the
+  // headers of the dead voice, eight-loop and proposer chain, and the
+  // composition tallies trued with the modules they described.
+  Bound({ceiling: 17, question: QCensus(CsProseClass(PcCoordinate))}),
   // Repository paths that name no file: a comment citing a path the tree
   // does not hold.
   Bound({ceiling: 1, question: QCensus(CsProseClass(PcPathNoFile))}),
   // Hex commit tokens — history belongs to git, never on the node.
-  Bound({ceiling: 48, question: QCensus(CsProseClass(PcCommit))}),
+  Bound({ceiling: 46, question: QCensus(CsProseClass(PcCommit))}),
   // Numbered citations of the archived spec corpus.
-  Bound({ceiling: 23, question: QCensus(CsProseClass(PcSpecCitation))}),
+  Bound({ceiling: 20, question: QCensus(CsProseClass(PcSpecCitation))}),
   // Lifecycle prose — what was, where SYNTAX asks for what is.
-  Bound({ceiling: 40, question: QCensus(CsProseClass(PcLifecycle))}),
+  Bound({ceiling: 39, question: QCensus(CsProseClass(PcLifecycle))}),
   // Archaeology — the seed era's vocabulary and its design notes.
-  Bound({ceiling: 83, question: QCensus(CsProseClass(PcArchaeology))}),
+  Bound({ceiling: 69, question: QCensus(CsProseClass(PcArchaeology))}),
   // Decoration runs; the formatter's decoration strip takes this to zero
   // (PLAN §11, the project canonical).
-  Bound({ceiling: 319, question: QCensus(CsProseClass(PcBanner))}),
+  Bound({ceiling: 267, question: QCensus(CsProseClass(PcBanner))}),
   // A COMMENT NEVER SILENCES A GATE (SYNTAX §Comments). Each marker mutes a
   // text row of tools/drift-patterns.tsv that a structural census reads
   // correctly — a string literal is text, a one-shot concat is not an
@@ -379,8 +387,9 @@ fn board_bounds() = [
   // landing; 132 -> 131 at L-F, the marker over the nominal record head's
   // name read leaving with the read; 131 -> 129 at WILD (2026-10-14), the
   // two inside the escaping-row walk leaving with the walk; 129 -> 128 at
-  // M1's first pin, the env's scope-mark marker leaving with the rewrite.
-  Bound({ceiling: 128, question: QCensus(CsProseClass(PcSilencer))})
+  // M1's first pin, the env's scope-mark marker leaving with the rewrite;
+  // 128 -> 124 (2026-10-15), four over dead code leaving with it.
+  Bound({ceiling: 124, question: QCensus(CsProseClass(PcSilencer))})
 ]
 
 // The board: every bound answered by the medium's own answer to its question.

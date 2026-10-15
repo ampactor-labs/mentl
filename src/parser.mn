@@ -59,8 +59,8 @@ fn nexpr(e, span: ValidSpan) = mint_node(NExpr(e), span)
 fn nstmt(s, span: ValidSpan) = {
   let h = mint_node_as(NStmt(s), span, stmt_birth(s, span))
   // The birth is a FACT of the node beside the reason: the judgment's bind
-  // overwrites the reason, and the render reads the fact (types.mn `Birth`).
-  if is_let_born(s) { graph_birth_note(h, LetBorn) } else { () }
+  // overwrites the reason, and the render reads the fact (`graph_let_born`).
+  if is_let_born(s) { graph_let_born_note(h) } else { () }
   h
 }
 
@@ -193,7 +193,6 @@ fn show_token_kind(k) with Pure = match k {
   TIdent(s) => s,
   TIntLit(_) => "<int>",
   TFloatLit(_) => "<float>",
-  TStringLit(_) => "<string>",
   TComment(_) => "<comment>",
   TStringPart(_) => "<string-part>",
   TStringSplice => "<string-splice>",
@@ -662,7 +661,7 @@ fn parse_stmt(ref tokens, pos, scope) = match kind_at(tokens, pos) {
   // that decl's handle in the comment weave (graph_attach_comment) — the Why
   // engine / formatter / cursor project it live. No wrapper node: the comment
   // edge holds the prose, the decl node is returned directly. With no following
-  // decl (EOF), the orphan surfaces P_OrphanDocstring — never discarded.
+  // decl (EOF), the run attaches to a unit carrier — never discarded.
   {
     let comment_span = span_at(tokens, pos)
     match collect_comment(tokens, pos + 1, first_line) {
@@ -2088,7 +2087,6 @@ fn parse_primary(ref tokens, pos, slot) = {
   match kind_at(tokens, pos) {
     TIntLit(n) => (nexpr(LitInt(n), span), pos + 1),
     TFloatLit(f) => (nexpr(LitFloat(f), span), pos + 1),
-    TStringLit(s) => (nexpr(LitString(s), span), pos + 1),
     TStringPart(s) => parse_string_interpolation(tokens, pos + 1, s, span),
     TTrue => (nexpr(LitBool(true), span), pos + 1),
     TFalse => (nexpr(LitBool(false), span), pos + 1),
@@ -3191,10 +3189,10 @@ fn parse_body(ref tokens, pos) = {
     // SYNTAX.md «Function declarations»: braces are required EXACTLY when the
     // body is a BlockExpr (it introduces let-bindings/statements) — NEVER keyed
     // on line count. A single expression, even a multi-line if/match/pipe chain,
-    // needs no braces. So a braceless body IS one expression: parse_expr is the
-    // whole story, nothing is emitted. (A braceless body that introduces
-    // statements is a parse error at the statement keyword; E_BlockNeedsBraces
-    // is the recovery diagnostic there — peer Hβ.parser.block-needs-braces.)
+    // needs no braces. So a braceless body is parse_expr's whole story, and a
+    // braceless body that opens with a statement reads as the block it is,
+    // whose braces the render writes (measured: `fn f(x) =` over a `let`
+    // line checks clean and `mentl fmt` writes `fn f(x) = {`).
     parse_expr(tokens, p)
   }
 }

@@ -30,14 +30,8 @@ effect Filesystem {
   fs_read_file(String) -> String
   fs_write_file(String, String)
   fs_mkdir(String)
-  // The FileHandle-shaped surface the voice's Interact ops need. Returns are
-  // domain-free (Int fd / Bool errno); ADT projection (FileHandle /
-  // TreeEntry) is the voice's.
-  fs_open(String) -> Int
-  // create+truncate for writing, returning the fd — distinct from fs_open's
-  // read/write open (WASI oflags CREAT|TRUNC, write rights). It was missing
-  // while three routes wrote files, which is the whole reason those routes
-  // reached past this effect to fs_create_impl.
+  // create+truncate for writing, returning the fd (WASI oflags CREAT|TRUNC,
+  // write rights), for a writer that streams through the fd.
   fs_create(String) -> Int
   fs_close(Int)
   fs_unlink(String) -> Bool
@@ -61,7 +55,6 @@ handler wasi_filesystem {
     fs_mkdir_impl(path)
     resume()
   },
-  fs_open(path) => resume(fs_open_impl(path)),
   fs_create(path) => resume(fs_create_impl(path)),
   fs_close(fd) => {
     fs_close_impl(fd)
@@ -347,21 +340,10 @@ fn fs_write_image_impl(path_str, hdr_ptr, hdr_len, base, len) = {
   }
 }
 
-// fs_open_impl — path_open for read+write+create. Returns WASI fd
-// integer or 0 on failure (caller checks via fs_exists for distinction).
-// FS_OFLAGS_CREAT = 0x1; FS_RIGHTS_READ|WRITE = 0x42.
-fn fs_open_impl(path_str) = match fs_at(path_str) {
-  (dfd, pp, plen) => {
-    let fd_cell = alloc(4)
-    let open_errno = path_open(dfd, 0, pp, plen, 1, 66, 66, 0, fd_cell)
-    if open_errno != 0 { 0 } else { load_i32(fd_cell) }
-  },
-}
-
 // fs_create_impl — path_open write+create+trunc RETURNING the fd: the
 // streaming half of fs_write_file (same flags), for writers that emit
 // through the fd across a long extent instead of banking one buffer.
-// 0 on failure (the fs_open_impl convention).
+// 0 on failure.
 fn fs_create_impl(path_str) = match fs_at(path_str) {
   (dfd, pp, plen) => {
     let fd_cell = alloc(4)

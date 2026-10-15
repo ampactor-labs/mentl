@@ -54,8 +54,6 @@ import synth_proposer
 
 import verify
 
-import voice
-
 // The module a View stands in, read once per View: its name, its node, the
 // text the judgment read, its own nodes with their spans, and the
 // tightenings the judgment banked for it. Every reader takes this one
@@ -227,7 +225,6 @@ fn token_class(kind, prev, next) = match kind {
   TIdent(w) => Some(ident_class(w, prev)),
   TIntLit(_) => Some(TkNumber),
   TFloatLit(_) => Some(TkNumber),
-  TStringLit(_) => Some(TkString),
   TStringPart(_) => Some(TkString),
   TStringSplice => Some(TkSplice),
   TComment(_) => Some(TkComment),
@@ -1310,6 +1307,20 @@ fn note_json(n) = match n {
   NoteObligation(s, m, sp) => JObj([("kind", JStr("obligation")), ("text", JStr(s)), ("module", JStr(m)), ("site", span_json(sp))]),
   NoteHop(s) => JObj([("kind", JStr("hop")), ("text", JStr(s))]),
   NoteTypeChain(first, hops) => JObj([("kind", JStr("type-chain")), ("text", JStr(first)), ("hops", JArr(map(JStr, hops)))]),
+}
+
+// The Lens's lead sentence over a diagnostic: the medium's own words for
+// what the top report means. A capability a row forbids, an effect nothing
+// handles, a name out of scope and a claim proven false each lead with their
+// sentence; a step the medium takes by itself is offered as one; every other
+// report leads with its message, which already says what it is.
+fn diag_lead(d, msg: String) = match d {
+  EEffectMismatch(_, _, _, _) => "this path performs a capability its row forbids. {msg}",
+  EPurityViolated(_, _) => "this path performs a capability its row forbids. {msg}",
+  EEffectUnhandled(_, _, _) => "this path performs an effect no handler around it answers. {msg}",
+  EMissingVariable(_, _) => "a name here isn't in scope — check the spelling or the import. {msg}",
+  ERefinementRejected(_, _) => "a claim is proven false — the value cannot meet its bound. {msg}",
+  _ => if diag_applies_itself(d) { "a step the medium can take: {msg}" } else { msg },
 }
 
 // A diagnostic on the wire carries its own lead — the sentence the page

@@ -69,7 +69,6 @@ effect InferCtx {
   // registrations reach, as the ceiling keeps the module's.
   inf_keep_open([Int])
   inf_keep_close()
-  inf_add_effect(EffName)
   inf_add_row(EffRow)
   // A frame that owns no record of its own: a fanout branch's thunk, and a
   // literal a verb applies in place. A feedback line's tick charges the
@@ -242,16 +241,6 @@ handler infer_ctx with stack = [], arm_stack = [], install_marks = [], mint_ceil
     }
   }),
   inf_remainder_world(ename) => resume(remainder_world(stack, install_marks, ename)),
-  inf_add_effect(name) => if len(stack) == 0 {
-    resume()
-  } else {
-    let frame = last(stack)
-    // `name` is an EffName — joined into the row directly. The single-name
-    // case of inf_add_row; parameterized effects flow through inf_add_row.
-    let extended = union_row(frame.accumulated_row, mk_ef_closed([name]))
-    // drift-audit: ignore — top-frame REPLACE on a bounded-depth stack (§9 push-at-END), not a loop accumulator
-    resume() with stack = push(drop_last(stack), {...frame, accumulated_row: extended})
-  },
   inf_mark_transparent() => if len(stack) == 0 {
     resume()
   } else {
@@ -348,11 +337,9 @@ fn exit_frame() = match inf_exit_fn() {
 }
 
 // fresh_for_inference — the FreshHandle install inference runs under:
-// `mint` resolves to real graph handles (graph_fresh_ty), never display
-// ids. Declared HERE, the op's own layer, so every re-inference chain
-// (synth's candidate verify included) reaches it through `import infer`;
-// the query/teach entry installs fresh_for_query (pipeline.mn) for
-// ephemeral display ids — the swappable peer.
+// `mint` resolves to real graph handles (graph_fresh_ty). Declared HERE, the
+// op's own layer, so every re-inference chain (synth's candidate verify
+// included) reaches it through `import infer`.
 handler fresh_for_inference {
   mint(reason) => {
     let h = graph_fresh_ty(reason)
@@ -364,14 +351,6 @@ handler fresh_for_inference {
   },
 }
 
-// Entry point — wraps the walk in `infer_ctx` (row accumulation) and
-// `fresh_for_inference` (the FreshHandle install: `mint` resolves to real graph
-// handles, not display ids). The install EDGE was missing — `fresh_for_inference`
-// was declared but never `~>`-installed, so every `mint` in the inference extent
-// floored its FreshHandle evidence (the slot-0 fabrication). Drawing the edge
-// roots the chain at the handler the graph now connects; the query/teach entry
-// installs pipeline.mn's fresh_for_query for ephemeral display ids (the
-// swappable peer).
 // The callee-row accumulation seam. Same-named effect-instance FRAGMENTS
 // join by position ONLY inside an INSTALL frame (a tee body — one
 // install's scope: yield's Iterate(el, r) and result's Iterate(el', r')
@@ -2079,13 +2058,11 @@ fn branch_replay_pubs(ref pubs, i) = if i >= len(pubs) {
 }
 
 // An EffectOpScheme publish is a READ-MODIFY-WRITE of the op→handler
-// edge — value-replay is the banked ambiguity loss (two same-layer
-// handlers each evolve the FROZEN base independently and latest-wins
-// erases the second sighting; measured as graph_mutated collapsing to a
-// lsp_adapter singleton and the SingletonUninstalled floor firing at
-// every compile's first commit-boundary mint). The join RE-RUNS
-// draw_op_edges' own default/ambiguous algebra against the root's live
-// entry, the branch's verdict as the sighting; disc joins monotone.
+// edge: replaying the branch's value would let two same-layer handlers
+// each evolve the frozen base and the latest erase the first sighting. The
+// join RE-RUNS draw_op_edges' own default/ambiguous algebra against the
+// root's live entry, the branch's verdict as the sighting; disc joins
+// monotone.
 //
 // THE VALUE BOUNDARY AT EVERY PUBLISH: the scheme crosses the join as
 // a chase_deep'd VALUE — quantified vars stay free leaves; everything
@@ -2905,7 +2882,7 @@ fn infer_fn(name, params, body_node, ret_ann, effs, handle, span: ValidSpan, pol
   let body_region = region_enter(span)
   // The body is a consume scope — its `own` params are its own linear
   // resources. Without this bracket, a name consumed here (affine_ledger
-  // is installed once at the pipeline, not per body) stays in `used` and
+  // is installed once at the pipeline, not per body) stays in its used set and
   // collides in the NEXT function that names the same `own` param — the
   // cross-function buf/acc false positives.
   consume_enter_fn()
@@ -3393,10 +3370,8 @@ fn entry_at(eff, h, seen) = match graph_node_body(h) {
 
 // What a node charges by itself, in words: a match the parse made of a
 // destructuring `let` is the let, whose shape claim is the charge.
-fn charge_word_at(h, body) = match graph_birth_of(h) {
-  Some(LetBorn) => "the destructuring let",
-  Some(Authored) | None => charge_word(body),
-}
+fn charge_word_at(h, body) =
+  if graph_let_born(h) { "the destructuring let" } else { charge_word(body) }
 
 // Through a stage: a reference or a call the pipe completes with the piped
 // value, or a literal applied in place, whose body runs in this frame.
@@ -4122,7 +4097,7 @@ fn infer_expr(ref handle) = {
       inf_add_row_at(handle, construction_row())
       let head_span = graph_span_of(head)
       match graph_node_body(head) {
-        NExpr(VarRef(type_name)) => match env_lookup(type_name) {
+        NExpr(VarRef(type_name)) => match ref_resolve(type_name, head) |> and_then(graph_published) {
           None => report(EMissingVariable("record type: {type_name}", head_span)),
           Some(entry) => match entry {
             (_, _, kind) => match kind {
@@ -6027,10 +6002,7 @@ fn chain_instance(chain: String, h, span: ValidSpan) = {
   graph_register_node(copy, instance_body(chain, graph_node_body(h), copy, span))
   // A destructuring `let` stays one in the copy: its birth is a fact of the
   // node, read by the judgment (a shape claim, not a dispatch) and the render.
-  match graph_birth_of(h) {
-    Some(birth) => graph_birth_note(copy, birth),
-    None => (),
-  }
+  if graph_let_born(h) { graph_let_born_note(copy) } else { () }
   copy
 }
 
@@ -6750,20 +6722,10 @@ fn infer_pipe(kind, left, right, handle, span: ValidSpan) = match kind {
   //
   // unreachable; handled in infer_pipe_tee
   (),
-  PFeedback => // <~ feedback — SYNTAX §«<~» requires an iterative context: an
-  // Iterate-class effect in the enclosing stack AT THE SITE. The check
-  // that stood here read iter_context() — the COMPILER'S OWN runtime
-  // handler stack — while inferring the COMPILED PROGRAM's structure: a
-  // category error that reported E_FeedbackNoContext on every real `<~`
-  // in the wheel (11 sites, including SYNTAX's own canonical lowpass)
-  // because the pipeline chains install no_iter_context. The honest
-  // compile-time question — does the site's AMBIENT ROW carry an
-  // Iterate-CLASS effect? — needs class membership as a DECLARED fact
-  // (not a name-allowlist): the named peer
-  // Hβ.effects.iterate-class-declaration. Until it lands, the verb
-  // types by unification and a genuinely driverless `<~` surfaces at
-  // runtime (ev-miss, loud); the E_FeedbackNoContext DiagKind stays
-  // for the check's return.
+  PFeedback => // <~ feedback types by unification, its RHS checked as a FeedbackSpec.
+  // The iterative context is the clock, inferred rather than demanded
+  // (SYNTAX §«<~»): a `<~` prior is a per-site line the enclosing
+  // function's next call advances, so the site requires no ambient effect.
   {
     // SYNTAX §«<~» — the recurrence form: `((prev) => body) <~ delay(1)`
     // binds PREV to the PRIOR ITERATION'S OUTPUT, so the lambda's param
@@ -7352,8 +7314,7 @@ fn unify_types(ref a, ref b, span: ValidSpan, reason) = {
           // resume input R. (2) answer S. (3) resume cardinality:
           // OneShot/MultiShot are distinct
           // representations (stack frame vs heap record), so a mismatch is a
-          // hard E_ResumeWorldMismatch; Either is gradient-undecided and
-          // unifies with either. (4) the effect-WORLD: a row unification at the
+          // hard E_ResumeWorldMismatch. (4) the effect-WORLD: a row unification at the
           // resume edge — resuming a continuation under a changed handler-set
           // is unify(captured_world, resume_site_world). !E lifted to the TIME
           // axis (§4③ modal frontier); a now-unhandled resume is a compile/load
@@ -7460,35 +7421,11 @@ fn same_ground(ref a, ref b) with Pure = match a {
   same_ground(base, b),
 }
 
-// Two resume cardinalities unify iff they pick the SAME representation, OR
-// one side is Either (gradient-undecided — it instantiates to the other).
-// OneShot (stack frame) vs MultiShot (heap continuation record) is the
-// representation conflict E_ResumeWorldMismatch names. H6-exhaustive over the
-// ResumeDiscipline ADT (drift 8: no count-as-int — the ADT IS the comparison).
-fn disciplines_compatible(a, b) with Pure = match a {
-  Either => true,
-  OneShot => match b {
-    OneShot => true,
-    Either => true,
-    MultiShot => false,
-    Abandon => false,
-  },
-  MultiShot => match b {
-    MultiShot => true,
-    Either => true,
-    OneShot => false,
-    Abandon => false,
-  },
-  Abandon => // M4 — Abandon (dead continuation) reconciles with itself or the
-  // gradient-undecided Either; it is a distinct representation from the
-  // stack-frame OneShot and the heap-k MultiShot (E_ResumeWorldMismatch).
-  match b {
-    Abandon => true,
-    Either => true,
-    OneShot => false,
-    MultiShot => false,
-  },
-}
+// Two resume cardinalities unify iff they pick the SAME representation: the
+// stack frame (OneShot), the heap continuation record (MultiShot) and the
+// dead continuation (Abandon) are three, and any two that differ are the
+// conflict E_ResumeWorldMismatch names. The pins carry the equality's proof.
+fn disciplines_compatible(a: ResumeDiscipline, b: ResumeDiscipline) with Pure = a == b
 
 fn unify_type_lists(as_list, bs_list, span: ValidSpan, reason) = if len(as_list) == 0 && len(bs_list) == 0 {
   ()
@@ -9648,7 +9585,7 @@ fn infer_match_arms(arms, scrut, result_h, handle, span: ValidSpan) = {
   // where several arms would dispatch on it: the read is partial as `xs[i]`
   // is, so the site raises the shape as the claim it is (`claim_shape`), the
   // escaping value riding the claim's reason. The spelling is the render's to
-  // keep (`graph_birth_of`), never the meaning's: the binder form
+  // keep (`graph_let_born`), never the meaning's: the binder form
   // `([h, ...t]) => h` and the arm list `mentl fmt` writes it as are one graph.
   match uncovered(flat_map(arm_row, arms), 1) {
     Some(witness) => match arms {
@@ -10044,7 +9981,7 @@ fn infer_match_arm_iter(arms, scrut, result_h, span: ValidSpan, i, n) = if i >= 
       infer_expr(body)
       unify(body, result_h, span, MatchBranch(Inferred("arm body"), Inferred("result")))
       env_scope_exit()
-      // Divide BETWEEN arms only — the affine ledger resets `used` to the
+      // Divide BETWEEN arms only — the affine ledger resets its used set to the
       // frame base so the next arm sees the pre-match scope, never the
       // prior arm's consumes.
       if i + 1 < n { branch_divider(span) }
@@ -14574,7 +14511,6 @@ fn scheme_with_disc_cost(scheme, disc) = match disc {
     Live(h) => Live(h),
   },
   OneShot => scheme,
-  Either => scheme,
   Abandon => scheme,
 }
 
@@ -15026,7 +14962,7 @@ fn arm_disc_of(grade) = match grade {
 }
 
 // disc_join — the monotone op-level join: OneShot is the identity, MultiShot
-// absorbs. Either is never produced by resume_grade, so it passes b through.
+// absorbs.
 fn disc_join(a, b) = match a {
   MultiShot => MultiShot,
   Abandon => // M4 — the join order is OneShot < Abandon < MultiShot: any resuming arm
@@ -15036,10 +14972,9 @@ fn disc_join(a, b) = match a {
   // (the perform can't know at lower which catches → the live-k path).
   match b {
     MultiShot => MultiShot,
-    _ => Abandon,
+    OneShot | Abandon => Abandon,
   },
   OneShot => b,
-  Either => b,
 }
 
 // Whether a resume of this discipline CALLS its continuation, so the
@@ -15050,7 +14985,6 @@ fn continuation_held(disc) = match disc {
   MultiShot => true,
   Abandon => true,
   OneShot => false,
-  Either => false,
 }
 
 // The grade is a `ResumeUse` (types.mn): the multiplicity of the arm's

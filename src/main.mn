@@ -61,10 +61,6 @@ import cursor_transport
 
 import driver
 
-import dsp/clock
-
-import eight_loop
-
 import format
 
 import fs
@@ -86,8 +82,6 @@ import space
 import synth_proposer
 
 import test
-
-import voice
 
 // The verb grammar — EntryVerb, the VerbSpec table, parse_cli_args and
 // its address/target helpers — lives in src/cli.mn now (PLAN §11 Phase
@@ -171,19 +165,13 @@ fn dispatch_invocation(verb) = match verb {
   VWelcome => welcome_run(),
 } ~> verify_ledger ~> env_handler(make_list(0), 0, env_index_new()) ~> no_state_walked ~> graph_handler([], 0, []) ~> mutate_sink ~> diagnostics_handler
 
-// ─── edit_run — canonical Web IDE (browser-WASM; per IE walkthrough)
+// ─── edit_run — the cursor session at the terminal
 //
-// Six Phase μ peer handlers compose: the medium running on the
-// developer's surface. cursor_session opens the bus-compressor loop;
-// each iteration reads the gradient argmax, projects the eight-aspect
-// CursorView, surfaces it via terminal_transport, receives an action,
-// applies (echoed via patch_echo today; full filesystem rewrite is
-// the named follow-up `Hμ.cursor.transport.patch-to-file`),
-// advances. Silence ONLY when the project queue is empty — gradient
-// at top.
-//
-// Browser-WASM transport (per IE §0): same kernel, different transport
-// adapter. Named follow-up: Hμ.cursor.transport.browser-wasm.
+// Each step reads the gradient's argmax, projects the eight-aspect
+// CursorView, surfaces it through terminal_transport, receives the
+// person's action and applies it (`patch_to_file` writes the accepted
+// patch). Silence only when nothing is left to propose — the gradient at
+// its top.
 fn edit_run(target_opt) = {
   let entry_module = match target_opt {
     Some(t) => t,
@@ -192,22 +180,11 @@ fn edit_run(target_opt) = {
   }
   // The session's final TransportState is a record pointer, not an exit
   // code (main's result IS the process exit); the chain is a statement —
-  // its value drops — and a completed session exits 0.
-  // The whole analysis core installs as ONE bracket (infer_context,
-  // pipeline.mn — the order law lives there). This chain paid for two of
-  // the classes the bracket makes unforgettable: the driverless
-  // affine/region ledgers reading the sentinel page as empty, and every
-  // lookup_ty running as a null-state singleton until the
-  // SingletonUninstalled guard refused it.
-  mentl_edit_session(entry_module) ~> patch_to_file ~> terminal_transport ~>
-  // cursor_default innermost of the projection handlers: its arms fan the
-  // eight tentacles, performing Synth / Interrogate / Teach / Verify /
-  // Graph ops that bubble OUTWARD to the installs around them. Without
-  // this install the Cursor ops (cursor_at_handle / cursor_argmax / cursor_pinned)
-  // have no evidence on the session route — cursor_argmax is AMBIGUOUS
-  // (ic_fixpoint_handler carries an arm too), so the singleton tier
-  // cannot pick, and the first perform met the strict ev-scan miss.
-  cursor_default ~> synth_default ~> interrogate_default ~> mentl_default ~> wasi_filesystem ~> infer_context
+  // its value drops — and a completed session exits 0. The whole analysis
+  // core installs as one bracket (infer_context); cursor_default is the
+  // innermost projection handler, its arms performing Synth, Teach, Verify
+  // and Graph ops that reach the installs around them.
+  mentl_edit_session(entry_module) ~> patch_to_file ~> terminal_transport ~> cursor_default ~> synth_default ~> mentl_default ~> wasi_filesystem ~> infer_context
   0
 }
 
@@ -263,7 +240,7 @@ fn space_run(addr) = match addr {
   },
   Some(SpaceAt(target, line, col, needle)) => match driver_entry_with_ranges(target) {
     (_ast, ranges) => space_project(ranges, target, line, col, needle),
-  } ~> patch_to_file ~> terminal_transport ~> cursor_default ~> synth_default ~> interrogate_default ~> mentl_default ~> stdout_console ~> wasi_filesystem ~> diag_bank ~> infer_context,
+  } ~> patch_to_file ~> terminal_transport ~> cursor_default ~> synth_default ~> mentl_default ~> stdout_console ~> wasi_filesystem ~> diag_bank ~> infer_context,
 }
 
 // ─── march_run — the medium judges its own generation (`mentl march`)
@@ -329,7 +306,7 @@ fn march_run() = match march_entry() {
       }
     }
   },
-} ~> stdout_console ~> wasi_filesystem ~> no_iter_context ~> diagnostics_handler ~> no_state_walked ~> graph_handler([], 0, []) ~> mutate_sink
+} ~> stdout_console ~> wasi_filesystem ~> diagnostics_handler ~> no_state_walked ~> graph_handler([], 0, []) ~> mutate_sink
 
 // The DAG's judgment with the streaming sink, as `mentl compile` reads it
 // (driver_entry_scoped, cold: the fixed point never restores an image) and
@@ -1139,18 +1116,11 @@ fn line_end_offset(ref text, ls) = {
 // kernel is identical to edit_run; the surface adapter (lsp_adapter)
 // is OUTERMOST. Per the LSP-adapter walkthrough substrate.
 fn serve_run() = {
-  // The transport reads a LIVE graph: handle_did_open runs driver_check, whose
-  // inference performs Consume / Region / Verify / LookupTy (the analysis ops
-  // the judgment leaks past its own infer_ctx install). The core installs
-  // HERE, at the session boundary via infer_context (pipeline.mn — this
-  // chain's env-before-graph comment is that bracket's written law), so the
-  // graph the frontend populates persists across every hover / definition /
-  // reference in the session — the driverless chain (open_file only) read an
-  // unpopulated graph and every query fell to AnsSilence
-  // (Hβ.lsp.transport-runs-frontend).
-  lsp_session() ~> lsp_adapter ~> mentl_voice_filesystem ~> mentl_voice_default ~>
-  // consult/run_query bubble Query.ask here — the live forensic read
-  query_default ~> wasi_filesystem ~> no_iter_context ~> infer_context
+  // The transport reads a LIVE graph: handle_did_open judges the opened
+  // module, and the judgment's writes land in infer_context installed HERE,
+  // at the session boundary, so the graph persists across every hover,
+  // definition and reference the session answers.
+  lsp_session() ~> lsp_adapter ~> wasi_filesystem ~> infer_context
   0
 }
 
@@ -1244,7 +1214,7 @@ fn doc_render_lines(lines, h) = {
 // wires) — its handler body crosses out of the medium into the host
 // process boundary, named Hβ.cli.process-exec-wire.
 fn compile_run(target) = {
-  compile(target) ~> wat_stdout ~> wasi_filesystem ~> no_iter_context ~> diagnostics_handler ~> no_state_walked ~> graph_handler([], 0, []) ~> mutate_sink
+  compile(target) ~> wat_stdout ~> wasi_filesystem ~> diagnostics_handler ~> no_state_walked ~> graph_handler([], 0, []) ~> mutate_sink
   // The dispatch exit-code contract: main's value IS the process exit.
   // Refusal paths already exit nonzero through the gate; success is 0.
   0
@@ -1279,7 +1249,7 @@ fn asm_write(wat) = match assemble(wat) {
 // `mentl resume <image>` — the compile projection re-entered from a
 // persisted image (pipeline.mn resume_image); same outer belt as compile.
 fn resume_run(img) = {
-  resume_image(img) ~> wat_stdout ~> wasi_filesystem ~> no_iter_context ~> diagnostics_handler ~> no_state_walked ~> graph_handler([], 0, []) ~> mutate_sink
+  resume_image(img) ~> wat_stdout ~> wasi_filesystem ~> diagnostics_handler ~> no_state_walked ~> graph_handler([], 0, []) ~> mutate_sink
   0
 }
 
@@ -1289,7 +1259,7 @@ fn resume_run(img) = {
 // handler chain — wat_stdout for emit + wasi_filesystem (stdin via fd 0
 // goes through the same handler) + the substrate stack.
 fn compile_stdin_run() = {
-  compile_stdin() ~> no_iter_context ~> diagnostics_handler ~> no_state_walked ~> graph_handler([], 0, []) ~> mutate_sink
+  compile_stdin() ~> diagnostics_handler ~> no_state_walked ~> graph_handler([], 0, []) ~> mutate_sink
   0
 }
 
@@ -1352,7 +1322,7 @@ fn check_run(target_opt) = {
 // once, never a second ledger).
 fn at_run(target, line, col) = match driver_entry_with_ranges(target) {
   (_ast, ranges) => address_project(ranges, target, line, col),
-} ~> patch_to_file ~> terminal_transport ~> cursor_default ~> synth_default ~> interrogate_default ~> mentl_default ~> stdout_console ~> wasi_filesystem ~> diag_bank ~> infer_context
+} ~> patch_to_file ~> terminal_transport ~> cursor_default ~> synth_default ~> mentl_default ~> stdout_console ~> wasi_filesystem ~> diag_bank ~> infer_context
 
 // accept_run — the second graph operation at the address surface (C4).
 // `mentl <address>` PROJECTS the position; `mentl accept <address>` DRAWS
@@ -1366,7 +1336,7 @@ fn at_run(target, line, col) = match driver_entry_with_ranges(target) {
 // position draws nothing, says why on stderr, and exits 1.
 fn accept_run(target, line, col) = match driver_entry_with_ranges(target) {
   (_ast, ranges) => accept_project(ranges, target, line, col),
-} ~> patch_written ~> terminal_transport ~> cursor_default ~> synth_default ~> interrogate_default ~> mentl_default ~> stdout_console ~> wasi_filesystem ~> diag_bank ~> infer_context
+} ~> patch_written ~> terminal_transport ~> cursor_default ~> synth_default ~> mentl_default ~> stdout_console ~> wasi_filesystem ~> diag_bank ~> infer_context
 
 // The draw writes the module's new text and nothing else; the projection is
 // over the module derived again from that text, its ranges included, as the
@@ -1488,7 +1458,7 @@ fn session_whole(result) = match result {
 fn session_banked(project) = {
   let exit = project()
   (exit, console_taken())
-} ~> console_bank ~> patch_written ~> cursor_default ~> synth_default ~> interrogate_default ~> mentl_default
+} ~> console_bank ~> patch_written ~> cursor_default ~> synth_default ~> mentl_default
 
 // The address projection, banked — the one bracket the session's reads, its
 // accept's projection and the mcp gate's at tool all answer through.
@@ -1532,12 +1502,9 @@ fn test_run(target_opt) = {
   // no process-spawn; the shim owns exec — the one seam). One process
   // replaces one wasmtime invocation per micro.
   // The directory probe and the battery run in the SAME handler extent the
-  // single-file sibling installs — the fs probe itself is a WasiFilesystem
-  // op, so the bracket must cover the scrutinee too. This install was
-  // MISSING (the battery's fs/console ops ran as null-state singletons,
-  // reading the null page as their state — tolerated by accident until the
-  // SingletonUninstalled guard refused it); test_check_run keeps its own
-  // inner chain, which shadows these installs for its extent, unchanged.
+  // single-file sibling installs — the fs probe itself is a filesystem op,
+  // so the bracket covers the scrutinee too; test_check_run keeps its own
+  // inner chain, which shadows these installs for its extent.
   {
     match fs_list_dir_impl(entry_module) {
       Some(_) => battery_run(entry_module),
@@ -1547,7 +1514,7 @@ fn test_run(target_opt) = {
 }
 
 fn test_check_run(entry_module) =
-  pipeline_check(entry_module) ~> assert_reporter ~> stdout_console ~> wasi_filesystem ~> no_iter_context ~> diagnostics_handler ~> no_state_walked ~> graph_handler([], 0, []) ~> mutate_sink
+  pipeline_check(entry_module) ~> assert_reporter ~> stdout_console ~> wasi_filesystem ~> diagnostics_handler ~> no_state_walked ~> graph_handler([], 0, []) ~> mutate_sink
 
 // ─── The battery: `mentl test <dir>` ────────────────────────────────────
 // The micro battery IS the medium reading its own gates: glob the directory,
@@ -1759,7 +1726,7 @@ fn battery_teach_step(stem, path: String, line, want) = battery_view(
 fn battery_reach_step(stem, path: String, want: String) = {
   let dead = match driver_entry_with_ranges(path) {
     (_ast, _ranges) => reach_report(module_cells()) |> filter(unref_row_is_dead) |> map({ (_, n, _) => n }) |> join(" ", ??),
-  } ~> cursor_default ~> synth_default ~> interrogate_default ~> mentl_default ~> diag_bank ~> infer_context
+  } ~> cursor_default ~> synth_default ~> mentl_default ~> diag_bank ~> infer_context
   if str_eq(dead, want) {
     print_string("PASS {stem}: unreachable {want}\n")
     0
@@ -1783,7 +1750,7 @@ fn battery_view(path: String, line, col, judge) = match driver_entry_with_ranges
     None => None,
     Some(ph) => Some((body_decl_name(graph_node_body(ph)), cursor_at_handle(ph))),
   }),
-} ~> cursor_default ~> synth_default ~> interrogate_default ~> mentl_default ~> diag_bank ~> infer_context
+} ~> cursor_default ~> synth_default ~> mentl_default ~> diag_bank ~> infer_context
 
 fn teach_meets(want, teach) = match want {
   WantAdd(text) => match teach {
@@ -2223,10 +2190,7 @@ fn teach_run(target_opt) = {
   // chain was the eighth found missing the analysis handlers, by design
   // pass not by trap; query_default's env_lookup / env_snapshot resolve
   // into the bracket's env).
-  teach(entry_module) ~> stdout_console ~> mentl_voice_default ~>
-  // mentl_voice_default's consult/run_query bubble Query.ask here; the
-  // filesystem stands outside it because a query arm reads it
-  query_default ~> wasi_filesystem ~> infer_context
+  teach(entry_module) ~> stdout_console ~> query_default ~> wasi_filesystem ~> infer_context
   0
 }
 
@@ -2242,7 +2206,7 @@ fn teach_run(target_opt) = {
 fn repl_run() = {
   // The line-eval runs infer; the core installs as the one bracket (the
   // driverless-zero-state class the bounds trap unmasked lives in its law).
-  repl_eval_line(read_stdin_line()) ~> stdout_console ~> mentl_voice_default ~> query_default ~> wasi_filesystem ~> infer_context
+  repl_eval_line(read_stdin_line()) ~> stdout_console ~> query_default ~> wasi_filesystem ~> infer_context
   0
 }
 
@@ -2283,7 +2247,7 @@ fn repl_eval_line(line) = if byte_len(line) == 0 {
 // itself — a write followed by the live read is unfalsifiable, and it is
 // the same `<~` the cursor session runs (draw the edge, re-project).
 fn new_project(name) = {
-  scaffold_project(name) ~> wasi_filesystem ~> no_iter_context ~> diagnostics_handler ~> no_state_walked ~> graph_handler([], 0, []) ~> mutate_sink
+  scaffold_project(name) ~> wasi_filesystem ~> diagnostics_handler ~> no_state_walked ~> graph_handler([], 0, []) ~> mutate_sink
   0
 }
 

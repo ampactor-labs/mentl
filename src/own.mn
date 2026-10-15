@@ -246,11 +246,8 @@ fn report_branch_collisions(ref deltas, ref span) = {
 // takes the deepest (innermost) region across a composite value's
 // fields — preventing inner-region pointers from escaping via the
 // composite.
-// The bucket count is a CONFIG PARAMETER because the two installs index
-// different amounts of work: the root chain indexes a whole program's
-// handles, a judged branch indexes one statement's. It was one fixed 65536
-// for both, and the branch paid the root's sizing on every install — see
-// region_index_new for the measurement.
+// The region index is the word-keyed map family (lib/imap.mn): a region tag
+// is keyed by a handle, and a handle is a word.
 handler region_tracker with region_stack = [], next_region = 0, region_index = wmap_new(65536) {
   region_enter(span) => {
     // Push at the END — every Mentl stack does (§9's wrong-end class: the
@@ -367,52 +364,6 @@ handler region_tracker with region_stack = [], next_region = 0, region_index = w
   },
 }
 
-// The bucket count is the INDEX'S OWN, read live from its header.
-//
-// It used to be the literal 65536 here and the literal 65535 in both
-// accessors' masks — one fact written three times, and the reason that
-// mattered is cost, not tidiness: a fixed 65536-slot fill is paid by EVERY
-// install of region_tracker, and branch_bracket installs it once per judged
-// branch. `fn main() = 7` judges 433 branches, so it filled 28 million slots
-// to hold a few dozen entries — `list_filled_from` measured 25.91% SELF and
-// its caller branch_bracket 55.95% inclusive (Hβ.own.region-index-per-install).
-// `len` is `load_i32`, so the mask costs nothing to read from the list that
-// already knows it, and the count becomes a parameter with no second copy to
-// keep in sync. A caller sizes the index to the work it actually indexes.
-// The two sizings, named where the index is. Both must be powers of two —
-// wmap_bucket masks with len(idx) - 1.
-//
-// PROGRAM indexes a whole program's handles: the root chain and the trial's
-// own world, which both judge everything. BRANCH indexes ONE statement's,
-// and a statement mints its own handles plus the overflow quota, so a few
-// hundred buckets leave the chains short while costing 64× less to build.
-//
-// BOTH CONSTANTS HAVE ZERO READERS, and this block used to read as though
-// the sizing had landed ("a caller sizes the index to the work it actually
-// indexes"). It has not: region_tracker's state init is still the literal
-// 65536 at both of its installs (pipeline.mn's root chain and infer.mn's
-// branch_bracket), so a judged branch still fills 65536 slots to hold a few
-// dozen entries — the measured 28 million slot-writes for `fn main() = 7`
-// that Hβ.own.region-index-per-install names. Commit c88408e9 is explicit
-// that only the precondition landed and that making the count a handler
-// config param "trapped m3 at exit 134 with zero bytes … unexplained".
-//
-// That exit-134-with-no-diagnostic is the silent-floor signature, and it is
-// now cheap to test rather than guess: the open-row field-offset class
-// refuses with its reason (E_FieldOffsetUnprovable), so parameterising the
-// handler and reading the diagnostic says whether it is what refused it. Until
-// that probe runs, the cause is unmeasured and these constants stay what
-// they are — named residue, not a fix.
-//
-// The index ITSELF is the wmap family (lib/imap.mn) — the word-keyed
-// primitive. A region tag is keyed by a handle and a handle is a word, so this
-// file holds no map of its own: a second bucket-array-and-scan here would be
-// the one primitive spelled twice, which is what the imap header's own law
-// refuses.
-let region_buckets_program = 65536
-
-let region_buckets_branch = 1024
-
 fn region_on_stack(ref stack, rid) = any({ Region(rid_on_stack, _) => rid_on_stack == rid }, stack)
 
 // H4.1: join field regions with current region — returns the MAX
@@ -452,37 +403,6 @@ fn find_first_span(ref sites, ref name: String) = {
   }
 }
 
-// W8.2 / Phase-A2: `used` now maintains sort invariant by
-// construction (set_insert in consume), so set_contains runs at
-// O(log N) without boundary canonicalize. The local string_in_list
-// adapter is gone — call sites use set_contains directly.
-//
-// DELETED 2026-07-17 (Stage 1b): check_ref_escape / collect_ref_params /
-// walk_return_positions / walk_match_arms — a purely SYNTACTIC escape check with
-// ZERO hazard model. It fired when a param inference had graded `Ref` (use-count
-// >= 2) also appeared as a bare tail return, never asking whether a mutation or
-// aliasing conflict was actually possible. So it flagged `min(a,b) = if a <= b
-// { a } else { b }`, every fold-accumulator return, and egraph.mn's
-// extract_chase — 356 of the census, every sampled case provably safe to
-// return from.
-//
-// It was a cruder, older stand-in for the hazard the region tracker now covers.
-// check_escape (own.mn ~201) tracks allocation regions and reports a GENUINE
-// escape — a value outliving the region it was allocated in — via the return
-// TRANSFER (Hβ.own.region-return-transfer); it reports 0 on the wheel, because
-// the wheel has no real lifetime violations. Two checks for one property, one
-// modelling the hazard and one guessing from syntax; the guess is deleted. Its
-// one caller existed and nothing downstream read its verdict
-// (grep-verified at deletion). §4⑤'s bar — "if the developer has to think about it, the
-// inference failed" — is met by removal: 356 false alarms on the medium's own
-// source were exactly the developer being made to think.
-//
-// The named peer Hβ.infer.usage-grade-unifies-cardinality-ownership survives as
-// a SEPARATE, real item: own.mn's count_uses sums disjoint branches additively
-// (the anti-pattern types.mn:288 warns against) instead of sharing resume_grade's
-// usage_seq/usage_join lattice. Worth doing as a Usage-lattice dedup, but NOT
-// this deletion, and it would not have cleared the compare-then-return subclass.
-//
 // Deduce `Own` vs `Ref` for `Unmarked`-marked parameters from the body's
 // (consume, read) Usage pair (§11 4.2, Hβ.infer.grade-is-join-and-mode —
 // the Usage lattice unification the types.mn ADT comment names): never

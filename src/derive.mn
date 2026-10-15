@@ -156,7 +156,6 @@ type LostWhy
 // the rule would have written.
 type Lin
   = LinZero
-  | LinUnit
   | LinName(Int, String)
   | LinAdd(Int, Lin, Lin)
   | LinSub(Int, Lin, Lin)
@@ -294,7 +293,6 @@ fn span_words(h) = match graph_span_of(h) {
 // forward program never adds or scales a zero it can see.
 fn lin_is_zero(l) = match l {
   LinZero => true,
-  LinUnit => false,
   LinName(_, _) => false,
   LinAdd(_, _, _) => false,
   LinSub(_, _, _) => false,
@@ -324,7 +322,6 @@ fn lin_quot(h, a, b) = if lin_is_zero(a) { a } else { LinQuot(h, a, b) }
 // width reads it.
 fn lin_expr(h, l) = match l {
   LinZero => LConst(h, LFloat(0.0)),
-  LinUnit => LConst(h, LFloat(1.0)),
   LinName(nh, n) => LLocal(nh, n),
   LinAdd(ah, a, b) => LBinOp(ah, BAdd, lin_expr(ah, a), lin_expr(ah, b)),
   LinSub(ah, a, b) => LBinOp(ah, BSub, lin_expr(ah, a), lin_expr(ah, b)),
@@ -2237,7 +2234,6 @@ fn rv_arg_adjoints(h, lins, i, j, out) = if i >= len(lins) {
 // expression scaled it by.
 fn rv_transpose(l, g) = match l {
   LinZero => [],
-  LinUnit => [],
   LinName(nh, n) => [LLet(nh, adj_name(n), LBinOp(nh, BAdd, LLocal(nh, adj_name(n)), g))],
   LinAdd(_, a, b) => rv_transpose(a, g) ++ rv_transpose(b, g),
   LinSub(h, a, b) => rv_transpose(a, g) ++ rv_transpose(b, LUnaryOp(h, UNeg, g)),

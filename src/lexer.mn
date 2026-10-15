@@ -695,8 +695,10 @@ fn scan_triple_after_splice(ref source, n: ValidOffset, pos: ValidOffset, line, 
 // everything else, so 0b1012 read 5 and the trailing 2 became a separate
 // token nobody complained about, 0o1238 read 83, and a bare 0x read 0.
 // The ADT makes the disagreement unconstructible: the radix and the digit
-// set are arms of one value.
-type NumBase = BBin | BOct | BDec | BHex
+// set are arms of one value. These are the PREFIXED bases; a decimal literal
+// scans on its own path, where the `.` of a float is the one byte the
+// prefixed bases never meet.
+type NumBase = BBin | BOct | BHex
 
 // What the scanner PROVED, not a position for the caller to re-read.
 // NumInt carries the accumulated value; NumFloat carries only the extent,
@@ -708,14 +710,12 @@ type NumScan = NumInt(Int, Int, Int) | NumFloat(Int, Int) | NumNoDigits(Int, Int
 fn base_radix(b) with Pure = match b {
   BBin => 2,
   BOct => 8,
-  BDec => 10,
   BHex => 16,
 }
 
 fn base_name(b) with Pure = match b {
   BBin => "binary",
   BOct => "octal",
-  BDec => "decimal",
   BHex => "hexadecimal",
 }
 
@@ -733,7 +733,6 @@ fn base_name(b) with Pure = match b {
 fn base_digit(b, byte) = match b {
   BBin => if byte >= 48 && byte <= 49 { Some(byte - 48) } else { None },
   BOct => if byte >= 48 && byte <= 55 { Some(byte - 48) } else { None },
-  BDec => if byte >= 48 && byte <= 57 { Some(byte - 48) } else { None },
   BHex => if byte >= 48 && byte <= 57 {
     Some(byte - 48)
   } else if byte >= 65 && byte <= 70 {

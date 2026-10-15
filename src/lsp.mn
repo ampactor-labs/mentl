@@ -1,24 +1,11 @@
-// lsp.mn — Mentl's LSP transport handler (MV-LSP.scaffold + dispatch + responses + handlers)
+// lsp.mn — the LSP transport: an editor's JSON-RPC over stdio, answered by
+// the same reads the medium's own verbs make.
 //
-// Per MV-LSP-adapter walkthrough (commit 4d0fce1). Layer C of the
-// transport stack: lsp_adapter handler + session loop + LSP method
-// → Interact op routing + LspResponseBody projection.
-//
-// Composition (per Insight #1: handler chain IS capability stack):
-//
-//   lsp_session()
-//     ~> lsp_adapter                 ← outermost = least trusted; sandbox boundary
-//     ~> mentl_voice_filesystem      ← FX.B: 7 file ops + handles_table
-//     ~> mentl_voice_default         ← MV.2.e: 10 voice/state arms
-//     ~> wasi_filesystem             ← FX.A.basics: 9 fs syscalls
-//     ~> graph_handler / oracle handlers / etc.
-//
-// VS Code → JSON-RPC over stdin → lsp_frame → JsonValue → LspMessage
-// → classify_method → dispatch_* → handle_* → Interact ops →
-// LspResponseBody → JsonValue → frame → stdout → VS Code.
-//
-// Per kernel-closure (insight #13): pure composition on the closed
-// Interact substrate. No new effects; no new primitives.
+// A frame becomes a JsonValue, an LspMessage and an LspMethodKind at the
+// boundary; opening a document judges its module, and hover, diagnostics,
+// definition and references read the judged graph — the type at a span,
+// the open obligations, a name's declaration and its references — and
+// project each answer back to JSON.
 import types
 
 import driver
@@ -36,8 +23,6 @@ import mentl
 import query
 
 import strings
-
-import voice
 
 // ─── LspMessage — incoming JSON-RPC message shape ─────────────────────
 //
@@ -64,21 +49,16 @@ type LspMethodKind
   | LspTextDocDidSave
   | LspTextDocDidClose
   | LspTextDocHover
-  | LspTextDocCompletion
-  | LspTextDocCodeAction
   | LspTextDocDiagnostic
   | LspTextDocDefinition
   | LspTextDocReferences
   | LspUnknown(String)
 
 // LspResponseBody — typed shape of an LSP response payload. Each
-// variant projects to JsonValue via response_to_json. Variants cover
-// the 12 v1 LSP method response shapes per MV-LSP-adapter §1.3.
+// variant projects to JsonValue via response_to_json.
 type LspResponseBody
   = LspNullResp
   | LspHoverResp(Option(HoverContent))
-  | LspCompletionResp([CompletionItem])
-  | LspCodeActionResp([CodeAction])
   | LspDiagnosticResp([LspDiagnostic])
   | LspDefinitionResp(Option(Location))
   | LspReferencesResp([Location])
@@ -87,12 +67,6 @@ type LspResponseBody
 
 // markdown text
 type HoverContent = HoverContent(String)
-
-// label, detail, kind
-type CompletionItem = CompletionItem(String, String, Int)
-
-// title, edit_text
-type CodeAction = CodeAction(String, String)
 
 type LspDiagnostic = LspDiagnostic(Int, Int, Int, Int, Int, String, String)
 
@@ -163,10 +137,6 @@ fn classify_method(method) = if method == "initialize" {
   LspTextDocDidClose
 } else if method == "textDocument/hover" {
   LspTextDocHover
-} else if method == "textDocument/completion" {
-  LspTextDocCompletion
-} else if method == "textDocument/codeAction" {
-  LspTextDocCodeAction
 } else if method == "textDocument/diagnostic" {
   LspTextDocDiagnostic
 } else if method == "textDocument/definition" {
@@ -186,8 +156,6 @@ fn dispatch_request(kind, params) = match kind {
   LspInitialize => handle_initialize(params),
   LspShutdown => LspNullResp,
   LspTextDocHover => handle_hover(params),
-  LspTextDocCompletion => handle_completion(params),
-  LspTextDocCodeAction => handle_code_action(params),
   LspTextDocDiagnostic => handle_diagnostic(params),
   LspTextDocDefinition => handle_definition(params),
   LspTextDocReferences => handle_references(params),
@@ -207,14 +175,12 @@ fn dispatch_notification(kind, params) = match kind {
   LspInitialized => (),
   LspExit => (),
   LspTextDocDidOpen => handle_did_open(params),
-  LspTextDocDidChange => handle_did_change(params),
-  LspTextDocDidSave => handle_did_save(params),
-  LspTextDocDidClose => handle_did_close(params),
+  LspTextDocDidChange => (),
+  LspTextDocDidSave => (),
+  LspTextDocDidClose => (),
   LspInitialize => (),
   LspShutdown => (),
   LspTextDocHover => (),
-  LspTextDocCompletion => (),
-  LspTextDocCodeAction => (),
   LspTextDocDiagnostic => (),
   LspTextDocDefinition => (),
   LspTextDocReferences => (),
@@ -259,18 +225,13 @@ fn position_to_span(pos) = match pos {
 
 // ─── handle_* — LSP method bodies ─────────────────────────────────────
 //
-// handle_initialize — capability negotiation. v1 declares fixed
-// capabilities (text-sync = full; hover; completion; codeAction;
-// diagnostic; definition; references). Project root extracted from
-// rootUri or workspaceFolders.
+// handle_initialize — the capabilities the transport answers: a document's
+// open (which judges its module; its edits are not synced, change kind 0),
+// hover, diagnostics, definition and references.
 fn handle_initialize(_params) = {
-  project_root()
   let caps = JObj([
-    // 1 = Full
-    ("textDocumentSync", JNum(1.0)),
+    ("textDocumentSync", JObj([("openClose", JBool(true)), ("change", JNum(0.0))])),
     ("hoverProvider", JBool(true)),
-    ("completionProvider", JObj([])),
-    ("codeActionProvider", JBool(true)),
     ("diagnosticProvider", JObj([])),
     ("definitionProvider", JBool(true)),
     ("referencesProvider", JBool(true))
@@ -280,72 +241,17 @@ fn handle_initialize(_params) = {
   LspInitializeResp(result)
 }
 
-// handle_hover — focus + ask(QTypeAt) → HoverContent. Per MV §2.8 AT1.
-fn handle_hover(params) = {
-  let uri = lsp_extract_uri(params)
-  let pos = lsp_extract_position(params)
-  let span = position_to_span(pos)
-  ensure_doc_open(uri)
-  focus(TargetSpan(span))
-  let answer = consult(QTypeAt(span))
-  match answer {
-    AnsSilence => LspHoverResp(None),
-    AnsType(ty, reason) => LspHoverResp(Some(hover_from_type(ty, reason))),
-    AnsRow(row, reason) => LspHoverResp(Some(hover_from_row(row, reason))),
-    AnsReason(reason) => LspHoverResp(Some(hover_from_reason(reason))),
-    AnsRefs(_, _) => LspHoverResp(None),
-    AnsDebt(_, _) => LspHoverResp(None),
-  }
+// handle_hover — the type of the node under the caret, with the reason it
+// was bound for (`type_at_span`, the read `mentl query … type at` makes).
+fn handle_hover(params) = match type_at_span(position_to_span(lsp_extract_position(params))) {
+  None => LspHoverResp(None),
+  Some((ty, reason)) => LspHoverResp(Some(hover_from_type(ty, reason))),
 }
 
-// handle_completion — propose at the cursor position; project the
-// returned VoiceLine's slots to CompletionItems. The cursor's Propose
-// tentacle IS the completion source (PLAN §2 proposing-cursor): one
-// propose, the SIdent slots become items. Silence → empty list.
-fn handle_completion(params) = {
-  let uri = lsp_extract_uri(params)
-  let pos = lsp_extract_position(params)
-  let span = position_to_span(pos)
-  ensure_doc_open(uri)
-  focus(TargetSpan(span))
-  match propose(TargetSpan(span)) {
-    Silence => LspCompletionResp([]),
-    VoiceLine(_, _, slots) => LspCompletionResp(completion_items_from_slots(slots)),
-  }
-}
-
-// handle_code_action — propose at the cursor; project the VoiceLine's
-// offering slots to CodeActions. Same propose path as completion (MV
-// §2.7.6: codeAction and completion both surface Propose-tentacle
-// voice). SLit slots (offering closers) become the quick-fix actions.
-fn handle_code_action(params) = {
-  let uri = lsp_extract_uri(params)
-  let pos = lsp_extract_position(params)
-  let span = position_to_span(pos)
-  ensure_doc_open(uri)
-  focus(TargetSpan(span))
-  match propose(TargetSpan(span)) {
-    Silence => LspCodeActionResp([]),
-    VoiceLine(_, _, slots) => LspCodeActionResp(code_actions_from_slots(slots)),
-  }
-}
-
-// handle_diagnostic — consult(QVerifyDebt) for the live pending
-// obligations the graph holds; project each (span, predicate, reason)
-// to an LSP LspDiagnostic. The verify-debt IS the diagnostic set (the
-// graph proved it) — read live, never an empty []-fabrication.
-fn handle_diagnostic(params) = {
-  let uri = lsp_extract_uri(params)
-  ensure_doc_open(uri)
-  match consult(QVerifyDebt) {
-    AnsDebt(debt, _) => LspDiagnosticResp(diagnostics_from_debt_lsp(debt, uri)),
-    AnsSilence => LspDiagnosticResp([]),
-    AnsType(_, _) => LspDiagnosticResp([]),
-    AnsRow(_, _) => LspDiagnosticResp([]),
-    AnsReason(_) => LspDiagnosticResp([]),
-    AnsRefs(_, _) => LspDiagnosticResp([]),
-  }
-}
+// handle_diagnostic — the open obligations the judged graph holds, each a
+// diagnostic at its site.
+fn handle_diagnostic(params) =
+  LspDiagnosticResp(diagnostics_from_debt_lsp(verify_debt(), lsp_extract_uri(params)))
 
 // handle_definition — resolve the identifier at the cursor, then read
 // its binding span LIVE from the env entry's Located Reason (the graph
@@ -353,10 +259,7 @@ fn handle_diagnostic(params) = {
 // the defining span IS the goto target. None when unresolved.
 fn handle_definition(params) with !Mutate = {
   let uri = lsp_extract_uri(params)
-  let pos = lsp_extract_position(params)
-  let span = position_to_span(pos)
-  ensure_doc_open(uri)
-  focus(TargetSpan(span))
+  let span = position_to_span(lsp_extract_position(params))
   match name_at_span(span) {
     None => LspDefinitionResp(None),
     Some(name) => match defining_span_of(name) {
@@ -366,26 +269,14 @@ fn handle_definition(params) with !Mutate = {
   }
 }
 
-// handle_references — resolve the identifier at the cursor, then
-// consult(QRefsOf(name)) for the live use-edge set (every VarRef the
-// parser wove). Each span projects to a Location. This [Location] IS
-// the rename edit set — read live, never an empty []-fabrication.
+// handle_references — the identifier at the cursor resolved, then every
+// reference to it (`refs_of_name`, the read `mentl query … refs of` makes),
+// each site a Location.
 fn handle_references(params) with !Mutate = {
   let uri = lsp_extract_uri(params)
-  let pos = lsp_extract_position(params)
-  let span = position_to_span(pos)
-  ensure_doc_open(uri)
-  focus(TargetSpan(span))
-  match name_at_span(span) {
+  match name_at_span(position_to_span(lsp_extract_position(params))) {
     None => LspReferencesResp([]),
-    Some(name) => match consult(QRefsOf(name)) {
-      AnsRefs(spans, _) => LspReferencesResp(spans_to_locations(spans, uri)),
-      AnsSilence => LspReferencesResp([]),
-      AnsType(_, _) => LspReferencesResp([]),
-      AnsRow(_, _) => LspReferencesResp([]),
-      AnsReason(_) => LspReferencesResp([]),
-      AnsDebt(_, _) => LspReferencesResp([]),
-    },
+    Some(name) => LspReferencesResp(spans_to_locations(map({ (_m, sp, _note) => sp }, refs_of_name(name)), uri)),
   }
 }
 
@@ -433,21 +324,13 @@ fn map_debt_to_diagnostics(debt, i, n, acc_rev) with !Mutate = if i >= n {
   }
 }
 
-// handle_did_open — register the doc handle, then RUN THE FRONTEND so the
-// transport queries a LIVE graph. driver_check lex/parse/infers the opened
-// module (and its import DAG) into the ambient graph_handler — the SAME graph
-// every subsequent hover / definition / reference then projects. Without this
-// the transport read an unpopulated graph and every query fell to AnsSilence
-// (Hβ.lsp.transport-runs-frontend). driver_check's Env/Graph/Consume/Region/
-// Verify writes land in serve_run's session-level handlers, so they persist
-// across the whole session; the LSP client opens a document exactly once, so
-// the inference runs once. Live re-inference on didChange / didSave (the
-// session <~ loop, which needs a graph reset or IC re-projection to avoid
-// re-registration) is the named peer Hβ.lsp.session-reinfer.
+// handle_did_open — judge the opened module (and its import DAG) into the
+// session's graph, the one every later hover, definition and reference
+// reads. The judgment's writes land in serve_run's session-level handlers,
+// so they persist across the session; the client opens a document once, so
+// it is judged once, and an edit is not re-judged (change kind 0).
 fn handle_did_open(params) = {
-  let uri = lsp_extract_uri(params)
-  ensure_doc_open(uri)
-  driver_check(uri_to_module(uri))
+  driver_check(uri_to_module(lsp_extract_uri(params)))
   ()
 }
 
@@ -456,56 +339,19 @@ fn handle_did_open(params) = {
 // re-adds .mn and resolves it (its DIRECT-read arm accepts an absolute or
 // relative path as itself), so an editor's file://<abs>/foo.mn reaches foo.mn
 // from any directory — the same resolver `mentl check <path>` rides.
-fn uri_to_module(uri) = match uri_to_path(uri) {
-  Path(p) => if ends_with(p, ".mn") { str_slice(p, 0, byte_len(p) - 3) } else { p },
+fn uri_to_module(uri) = {
+  let p = uri_to_path(uri)
+  if ends_with(p, ".mn") { str_slice(p, 0, byte_len(p) - 3) } else { p }
 }
 
-// handle_did_change — text-sync = Full; replace cached text via edit.
-// v1 uses re-open semantics as the honest fallback (edit substrate
-// gates on MV.2.e.P.edit peer sub-handle which lands separately).
-fn handle_did_change(params) = {
-  let uri = lsp_extract_uri(params)
-  ensure_doc_open(uri)
-  ()
-}
-
-// handle_did_save — save_file on the cached FileHandle. The
-// mentl_voice_filesystem handler's save arm writes cached text to disk.
-fn handle_did_save(params) = {
-  let uri = lsp_extract_uri(params)
-  let fh = ensure_doc_open(uri)
-  save_file(fh)
-  ()
-}
-
-// handle_did_close — v1 no-op; the close op is a named Interact peer.
-fn handle_did_close(_params) with Pure = ()
-
-// ─── Doc table — URI ↔ FileHandle plumbing ────────────────────────────
-//
-// The lsp_adapter caches uri ↔ FileHandle mappings so didOpen + subsequent
-// hover/completion/etc. share the same handle. ensure_doc_open looks
-// up or opens. The cache lives in lsp_adapter handler state; access
-// here is via Workspace.open_file which mentl_voice_filesystem handles.
-//
-// v1 simplification: every ensure_doc_open performs open_file
-// unconditionally; mentl_voice_filesystem's handles_table grows
-// monotonically. Cache eviction is MV-LSP.doctable-evict peer.
-fn ensure_doc_open(uri) = {
-  let path = uri_to_path(uri)
-  open_file(path)
-}
-
-// uri_to_path — strip "file://" prefix; pass through other schemes.
-// v1 supports file: scheme only; richer URI parsing (file:///host/...,
-// percent-encoding) is MV-LSP.uri-parse peer.
+// uri_to_path — the path a file: URI names; any other scheme passes through.
 fn uri_to_path(uri) = {
   let prefix = "file://"
   let plen = byte_len(prefix)
   if byte_len(uri) > plen && uri_starts_with(uri, prefix, 0, plen) {
-    Path(str_slice(uri, plen, byte_len(uri)))
+    str_slice(uri, plen, byte_len(uri))
   } else {
-    Path(uri)
+    uri
   }
 }
 
@@ -517,51 +363,10 @@ fn uri_starts_with(uri, prefix, i, n) = if i >= n {
   false
 }
 
-// ─── HoverContent / CompletionItem / CodeAction projection ────────────
 fn hover_from_type(ty, _reason) with !Mutate = {
   let type_text = show_type(ty)
   HoverContent("`{type_text}`")
 }
-
-fn hover_from_row(row, _reason) with !Mutate = {
-  let row_text = show_effrow(row)
-  HoverContent("Effect row: `{row_text}`")
-}
-
-fn hover_from_reason(reason) with !Mutate = HoverContent("Reason: {show_reason(reason)}")
-
-// completion_items_from_slots — project VoiceLine slots to LSP
-// CompletionItems. SIdent slots become items (label = ident,
-// kind=14 = Keyword as v1 placeholder). Other slot kinds skipped.
-fn completion_items_from_slots(slots) = flatten(map(
-  {
-    SIdent(name) => [CompletionItem(name, "", 14)],
-    SType(_) => [],
-    SRow(_) => [],
-    SSpan(_) => [],
-    SReason(_) => [],
-    SCap(_) => [],
-    SAnnot(_) => [],
-    SLit(_) => [],
-  },
-  slots
-))
-
-// code_actions_from_slots — project VoiceLine slots to LSP
-// CodeActions. SLit slots carrying suggestion text become actions.
-fn code_actions_from_slots(slots) = flatten(map(
-  {
-    SLit(text) => [CodeAction(text, "")],
-    SIdent(_) => [],
-    SType(_) => [],
-    SRow(_) => [],
-    SSpan(_) => [],
-    SReason(_) => [],
-    SCap(_) => [],
-    SAnnot(_) => [],
-  },
-  slots
-))
 
 // ─── response_to_json — LspResponseBody → JsonValue ───────────────────
 //
@@ -571,8 +376,6 @@ fn response_to_json(body) = match body {
   LspNullResp => JNull,
   LspHoverResp(None) => JNull,
   LspHoverResp(Some(content)) => hover_content_to_json(content),
-  LspCompletionResp(items) => JArr(map_completion_items_to_json(items, 0, len(items), [])),
-  LspCodeActionResp(actions) => JArr(map_code_actions_to_json(actions, 0, len(actions), [])),
   LspDiagnosticResp(diags) => JObj([("kind", JStr("full")), ("items", JArr(map_diagnostics_to_json(diags, 0, len(diags), [])))]),
   LspDefinitionResp(None) => JNull,
   LspDefinitionResp(Some(loc)) => location_to_json(loc),
@@ -582,31 +385,6 @@ fn response_to_json(body) = match body {
 
 fn hover_content_to_json(content) = match content {
   HoverContent(md) => JObj([("contents", JObj([("kind", JStr("markdown")), ("value", JStr(md))]))]),
-}
-
-fn map_completion_items_to_json(items, i, n, acc_rev) = if i >= n {
-  reverse(acc_rev)
-} else {
-  let item = list_index(items, i)
-  match item {
-    CompletionItem(label, detail, kind) => {
-      let json =
-        JObj([("label", JStr(label)), ("detail", JStr(detail)), ("kind", JNum(float_of_int(kind)))])
-      map_completion_items_to_json(items, i + 1, n, [json] ++ acc_rev)
-    },
-  }
-}
-
-fn map_code_actions_to_json(actions, i, n, acc_rev) = if i >= n {
-  reverse(acc_rev)
-} else {
-  let action = list_index(actions, i)
-  match action {
-    CodeAction(title, _edit) => {
-      let json = JObj([("title", JStr(title)), ("kind", JStr("quickfix"))])
-      map_code_actions_to_json(actions, i + 1, n, [json] ++ acc_rev)
-    },
-  }
 }
 
 fn map_diagnostics_to_json(diags, i, n, acc_rev) = if i >= n {

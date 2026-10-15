@@ -222,19 +222,6 @@ type BoundaryInvariant
   | MissingName(String)
   // the handler name — a singleton-tier perform whose state global is still
   // 0 at runtime: the handler was never installed in THIS dynamic extent.
-  // The singleton tier's evidence IS the global; a null global is a
-  // missing-evidence refusal, the direct-call twin of the typed-absence
-  // evidence floor. Without the guard the arm reads address 0+offset (the
-  // null page) as its state — below every region mark, never reset — and
-  // the corruption surfaces compiles later as a stale pointer walk (the
-  // address-12 census root, 2026-07-22). The compile-time gate
-  // (E_EffectUnhandled) refuses every name main's row carries with no
-  // enclosing install — it reads the row alone since 2026-09-27, so a
-  // perform outside every install's extent refuses before a byte of WAT;
-  // this guard is the runtime floor beneath it, reachable only where the
-  // row is coarser than the world (an install's own arms shadowed by an
-  // inner install of the same handler, A5's rule).
-  | SingletonUninstalled(String)
   // The column-projection invariant (the lowering-column arc): a
   // projector was asked to build a fn body from an origin whose
   // program-column node is not the expected shape. Probe-proven
@@ -263,7 +250,6 @@ fn show_boundary_invariant(invariant) = match invariant {
   ResumeKOutsideLadder => "resume k outside the argument/capture ladder — impossible past E_ResumeOutsideArm",
   PartialCalleeShape(h) => "partial over non-global callee shape {int_to_str(h)}",
   MissingName(name) => "`{name}` has no binding the lowering can see, though the judgment resolved it — the lowering will not guess it into a global",
-  SingletonUninstalled(hname) => "singleton op call with no live install: {hname} — the state global is 0 in this extent; install the handler (~> {hname}) around the calling walk",
   ProjectionOriginShape(h) => "column projection at {int_to_str(h)}: the program-column node is not the projector's shape",
   TangentOutsideReading => "tangent_of outside a derivative reading — refused at the call",
   SequenceFanoutUnlinked(impl) => "the sequence fanout runs under a schedule whose implementation `{impl}` is not linked — import the library that declares this schedule's vocabulary",
@@ -917,10 +903,7 @@ fn lower_global_call(handle, fh, name: String, r_args, lo_args) = if name == "to
   // walk (the scan recursing into itself — the handler rung's
   // runtime stack overflow). LWasiCall is the direct-substrate
   // node; emit dispatches the name to its instruction.
-  {
-    graph_dispatch_note(handle, DtWasi(name))
-    LWasiCall(handle, name, lo_args)
-  }
+  LWasiCall(handle, name, lo_args)
 } else {
   match env_kind_of(name) {
     Some(ConstructorScheme(tag_id, _)) => LMakeVariant(handle, tag_id, lo_args),
@@ -948,7 +931,6 @@ fn lower_global_call(handle, fh, name: String, r_args, lo_args) = if name == "to
     if is_cast_erased_op(name) {
       list_index(lo_args, 0)
     } else if is_wasi_import_op(name) {
-      graph_dispatch_note(handle, DtWasi(name))
       LWasiCall(handle, name, lo_args)
     } else {
       lower_perform_dispatch(handle, name, lo_args)
@@ -1104,7 +1086,7 @@ fn partial_global_callee_form(handle, name) = if is_substrate_mem_op(name) || is
     // ambiguous op has no single one. That refusal was the whole of the
     // eta-wrapper ceiling. The op-keyed walk has no such gap, so there is
     // nothing left to decline.
-    Some(PcfPerform(perform_dispatch_of(handle, name, None))),
+    Some(PcfPerform(perform_dispatch_of(name, None))),
     _ => None,
   }
 }
@@ -1454,14 +1436,12 @@ fn disc_yields(d) = match d {
   MultiShot => true,
   Abandon => true,
   OneShot => false,
-  Either => false,
 }
 
 fn disc_live(d) = match d {
   MultiShot => true,
   Abandon => false,
   OneShot => false,
-  Either => false,
 }
 
 // An op's discipline satisfies the predicate — the one test every reader of
@@ -2212,51 +2192,34 @@ fn lower_perform_dispatch(handle, op_name, lo_args) = match op_resume_discipline
 // not the record; nothing bound answers neither. Three residuals, one
 // operation, and no arm of the emit may differ on what it MEANS — which is
 // why the world bracket is not a property of any of them.
-fn lower_perform_walk(handle, op_name, lo_args) = LPerform(
-  handle,
-  perform_dispatch_of(handle, op_name, lower_resolve_handler_for_op(op_name)),
-  lo_args
-)
+fn lower_perform_walk(handle, op_name, lo_args) =
+  LPerform(handle, perform_dispatch_of(op_name, lower_resolve_handler_for_op(op_name)), lo_args)
 
 // `lexical` is not a flag, it is the binding-time INPUT: how much of the walk
 // this site can finish now. An ordinary perform passes what the install stack
 // says; a REIFIED op (a bare op name lowered as a value) passes None, because
 // its body becomes a lifted fn and the frame a lexical answer would name will
 // not exist when it runs. Same walk, fewer bound edges, later epoch.
-fn perform_dispatch_of(handle, op_name, lexical) = {
+fn perform_dispatch_of(op_name, lexical) = {
   let ename = lower_effect_name_of_op(op_name)
   let slot = lower_compute_ev_slot_for_op(op_name)
-  perform_dispatch_at(handle, op_name, ename, slot, lexical)
-}
-
-fn perform_dispatch_at(handle, op_name, ename, slot, lexical) = match lexical {
-  Some(r) => {
-    let hname = resolve_target(r)
-    graph_dispatch_note(
-      handle,
-      DtLexical("{hname}_{op_name}", "__hstate_{int_to_str(resolve_handle(r))}")
-    )
-    PdFrame(resolve_handle(r), hname, op_name)
-  },
-  None => match lower_op_default_handler(op_name) {
-    Some(hd) => // The arm is static (one handler declares it) and the record is not. The
-    // record comes from the SAME walk the unbound case uses — it used to come
-    // from a second one keyed on the handler name, which could not answer an
-    // ambiguous op and was the whole of the eta ceiling. A handler whose
-    // installs may key their arms has no ONE arm to name: the record the walk
-    // finds holds the arm its own install runs.
-    if handler_may_key(hd) {
-      graph_dispatch_note(handle, DtEvidence(ename, slot))
-      PdWalk(ename, slot, op_name, ArmSlot)
-    } else {
-      graph_dispatch_note(handle, DtSingleton(stmt_decl_name(hd)))
-      PdWalk(ename, slot, op_name, ArmNamed(hd))
+  match lexical {
+    Some(r) => PdFrame(resolve_handle(r), resolve_target(r), op_name),
+    None => match lower_op_default_handler(op_name) {
+      Some(hd) => // The arm is static (one handler declares it) and the record is not. The
+      // record comes from the SAME walk the unbound case uses — it used to come
+      // from a second one keyed on the handler name, which could not answer an
+      // ambiguous op and was the whole of the eta ceiling. A handler whose
+      // installs may key their arms has no ONE arm to name: the record the walk
+      // finds holds the arm its own install runs.
+      if handler_may_key(hd) {
+        PdWalk(ename, slot, op_name, ArmSlot)
+      } else {
+        PdWalk(ename, slot, op_name, ArmNamed(hd))
+      },
+      None => PdWalk(ename, slot, op_name, ArmSlot),
     },
-    None => {
-      graph_dispatch_note(handle, DtEvidence(ename, slot))
-      PdWalk(ename, slot, op_name, ArmSlot)
-    },
-  },
+  }
 }
 
 // The fn this dispatch calls — None when it reaches the arm through the
@@ -2289,15 +2252,6 @@ fn lower_op_default_handler(op_name) = match env_lookup(op_name) {
   None => None,
 }
 
-// DELETED WITH THE TIER: singleton_perform_block built an LBlock of
-// LWorldResolve + LPerform, guarded by an LIf on the record pointer when the
-// handler was stateful, refusing SingletonUninstalled on a chain miss. All of
-// it is gone. The record now comes from the one walk, which TRAPS on a miss
-// with the effect key in the postmortem window — so the guard, its
-// LInvariantFailure, and the whole second block shape had nothing left to do.
-// A second refusal for a case the first refusal already covers is the same
-// duplication as a second walk, one layer up.
-//
 // Look up which effect an op belongs to via EffectOpScheme.
 fn lookup_parent_effect(op_name) = match env_lookup(op_name) {
   Some(entry) => match entry {
@@ -2371,81 +2325,67 @@ fn lower_expr(handle) = match graph_node_body(handle) {
 // ConstructorScheme is a value-position constructor reference (`None`,
 // `True`, `False`). Lower it as LMakeVariant(handle, tag, []) — emit emits
 // the sentinel i32.const form for nullary tags.
-fn lower_resolved_ref(handle, name: String, res, local_h) = {
-  // The bind-home column's dual-write (lowering-is-a-column step i):
-  // the verdict noted at the USE handle — the identity the tree mint
-  // below discards in favor of the binding-time handle.
-  graph_bind_note(
-    handle,
-    match res {
-      RLocal(_) => BindLocal(local_h),
-      RUpval(slot) => BindUpval(local_h, slot),
-      RFbPrior(fb_h) => BindPrior(fb_h),
-      RGlobal => BindGlobal,
-    }
-  )
-  match res {
-    RLocal(reg) => LLocal(local_ty_handle(local_h, handle), reg),
-    RUpval(slot) => LUpval(local_ty_handle(local_h, handle), slot),
-    RFbPrior(fb_h) => // (LF.B) a `<~` lambda param resolves to the feedback site's prior local,
-    // read LIVE — the recurrence's y[n-1] term IS this node.
-    LFeedbackPrior(fb_h),
-    RGlobal => // A NON-FN BINDING IN VALUE POSITION IS A REIFICATION, and until
-    // 2026-09-09 it was two silent wrongs. A constructor lowered to
-    // LMakeVariant(handle, tag, []) whatever its arity, so mapping a
-    // one-field constructor over a list checked with zero diagnostics
-    // and built payload-less variants that trapped `unreachable` in the
-    // match reading them; an op fell to the catch-all's LGlobal and emitted
-    // `(global.get $note)` for a global that never exists, so the
-    // ASSEMBLER was the first thing in the chain to object, hundreds of
-    // thousands of WAT lines from the name the developer wrote.
-    //
-    // The env proves the answer AT the reference — ConstructorScheme and
-    // EffectOpScheme are distinct tags written at the declaration — and
-    // the reification the developer was writing by hand is the medium's
-    // own hole-product: a bare name IS the parameter product with every
-    // field unsupplied (SYNTAX §«Partial application»), so it lowers
-    // through the SAME partial mint an authored hole already used, with
-    // no supplied args and no new mechanism. The callee shape is read live from the
-    // node's own program cell, never rebuilt from the matched Expr, and
-    // the product — no arguments, a cell per slot — is the judgment's own,
-    // written at the reference (`bare_reference_product`, infer.mn): the
-    // judgment knows whether the reference is an arrow, so the use site
-    // no longer asks the env scheme by name for an arity it could not
-    // tell from an unresolved type.
-    match env_kind_of(name) {
-      Some(ConstructorScheme(tag_id, _)) => match graph_product_at(handle) {
-        NoProduct => // Not a function type: the reference IS the value — a nullary
-        // variant, the sentinel form emit already knows.
-        LMakeVariant(handle, tag_id, []),
-        ProductOf(_, open, _) => lower_call_partial(handle, graph_node_body(handle), handle, [], open, len(open)),
-      },
-      Some(EffectOpScheme(_, _, _, _)) => match graph_product_at(handle) {
-        NoProduct => // An op's declared scheme is always a signature, zero-arg
-        // included, so a missing product is an unresolved judgment and the
-        // typed floor is the honest answer — lower_call_partial's own
-        // None path, reached with the arity the graph actually proved.
-        LInvariantFailure(handle, PartialCalleeShape(handle)),
-        ProductOf(_, open, _) => lower_call_partial(handle, graph_node_body(handle), handle, [], open, len(open)),
-      },
-      Some(FnScheme) => // A named-fn VALUE reference (FnScheme tag-0 — excludes HandlerKind,
-      // the PTee guard). ALWAYS the bare LGlobal — emit resolves it to the
-      // fn's static closure record; the fn's performs dispatch through the
-      // live world chain when the consumer (`each(f, xs)`) calls it.
-      LGlobal(handle, name),
-      Some(_) => // Found, some other kind (a value binding, a record) — the global read
-      // is the right projection.
-      LGlobal(handle, name),
-      None => // NOT FOUND. `_ => LGlobal(handle, name)` stood here and conflated
-      // these two: it guessed an unbound name into `(global.get $name)`,
-      // fabricating the one fact infer had just proved false. The guess is
-      // never reachable code — it is WAT no assembler accepts — so it did
-      // not "keep going"; it moved the medium's own precise, spanned
-      // E_MissingVariable to a wat2wasm error hundreds of thousands of
-      // lines away, about a symbol the developer never wrote.
-      LInvariantFailure(handle, MissingName(name)),
+fn lower_resolved_ref(handle, name: String, res, local_h) = match res {
+  RLocal(reg) => LLocal(local_ty_handle(local_h, handle), reg),
+  RUpval(slot) => LUpval(local_ty_handle(local_h, handle), slot),
+  RFbPrior(fb_h) => // (LF.B) a `<~` lambda param resolves to the feedback site's prior local,
+  // read LIVE — the recurrence's y[n-1] term IS this node.
+  LFeedbackPrior(fb_h),
+  RGlobal => // A NON-FN BINDING IN VALUE POSITION IS A REIFICATION, and until
+  // 2026-09-09 it was two silent wrongs. A constructor lowered to
+  // LMakeVariant(handle, tag, []) whatever its arity, so mapping a
+  // one-field constructor over a list checked with zero diagnostics
+  // and built payload-less variants that trapped `unreachable` in the
+  // match reading them; an op fell to the catch-all's LGlobal and emitted
+  // `(global.get $note)` for a global that never exists, so the
+  // ASSEMBLER was the first thing in the chain to object, hundreds of
+  // thousands of WAT lines from the name the developer wrote.
+  //
+  // The env proves the answer AT the reference — ConstructorScheme and
+  // EffectOpScheme are distinct tags written at the declaration — and
+  // the reification the developer was writing by hand is the medium's
+  // own hole-product: a bare name IS the parameter product with every
+  // field unsupplied (SYNTAX §«Partial application»), so it lowers
+  // through the SAME partial mint an authored hole already used, with
+  // no supplied args and no new mechanism. The callee shape is read live from the
+  // node's own program cell, never rebuilt from the matched Expr, and
+  // the product — no arguments, a cell per slot — is the judgment's own,
+  // written at the reference (`bare_reference_product`, infer.mn): the
+  // judgment knows whether the reference is an arrow, so the use site
+  // no longer asks the env scheme by name for an arity it could not
+  // tell from an unresolved type.
+  match env_kind_of(name) {
+    Some(ConstructorScheme(tag_id, _)) => match graph_product_at(handle) {
+      NoProduct => // Not a function type: the reference IS the value — a nullary
+      // variant, the sentinel form emit already knows.
+      LMakeVariant(handle, tag_id, []),
+      ProductOf(_, open, _) => lower_call_partial(handle, graph_node_body(handle), handle, [], open, len(open)),
     },
-  }
+    Some(EffectOpScheme(_, _, _, _)) => match graph_product_at(handle) {
+      NoProduct => // An op's declared scheme is always a signature, zero-arg
+      // included, so a missing product is an unresolved judgment and the
+      // typed floor is the honest answer — lower_call_partial's own
+      // None path, reached with the arity the graph actually proved.
+      LInvariantFailure(handle, PartialCalleeShape(handle)),
+      ProductOf(_, open, _) => lower_call_partial(handle, graph_node_body(handle), handle, [], open, len(open)),
+    },
+    Some(FnScheme) => // A named-fn VALUE reference (FnScheme tag-0 — excludes HandlerKind,
+    // the PTee guard). ALWAYS the bare LGlobal — emit resolves it to the
+    // fn's static closure record; the fn's performs dispatch through the
+    // live world chain when the consumer (`each(f, xs)`) calls it.
+    LGlobal(handle, name),
+    Some(_) => // Found, some other kind (a value binding, a record) — the global read
+    // is the right projection.
+    LGlobal(handle, name),
+    None => // NOT FOUND. `_ => LGlobal(handle, name)` stood here and conflated
+    // these two: it guessed an unbound name into `(global.get $name)`,
+    // fabricating the one fact infer had just proved false. The guess is
+    // never reachable code — it is WAT no assembler accepts — so it did
+    // not "keep going"; it moved the medium's own precise, spanned
+    // E_MissingVariable to a wat2wasm error hundreds of thousands of
+    // lines away, about a symbol the developer never wrote.
+    LInvariantFailure(handle, MissingName(name)),
+  },
 }
 
 fn lower_expr_body(e, handle, span) = match e {
@@ -2659,7 +2599,6 @@ fn lower_expr_body(e, handle, span) = match e {
   // after evaluating all RHS into scratch locals in source order.
   match current_resume_discipline() {
     OneShot => lower_resume_oneshot(handle, val, state_updates),
-    Either => lower_resume_oneshot(handle, val, state_updates),
     MultiShot => // MultiShot: resume(v) CALLS the k record the driver bound to the
     // arm's __k param — the W7 closure convention on fn_ptr@0, N times
     // (k is immutable data; the reification happened at the PERFORMING
@@ -4982,7 +4921,6 @@ fn disc_redrives(disc) = match disc {
   MultiShot => true,
   Abandon => true,
   OneShot => false,
-  Either => false,
 }
 
 // OneShot resume — the zero-cost stack return, byte-identical to the
@@ -5838,10 +5776,6 @@ fn resume_commit_prefix(handle, val, updates, fields, record) = {
     (upd) => LLet(state_field_init(upd), resume_upd_local(upd, handle), lower_expr(state_field_init(upd))),
     updates
   )
-  // The state-slot-home column (lowering-is-a-column step i): the resolved
-  // (field, offset) pairs note at the resume node — the same one-home
-  // resolver the stores read, so column and tree cannot drift apart.
-  graph_state_slots_note(handle, SlotPairs(map(resume_upd_pair(??, fields), updates)))
   // Each commit reads its scratch at the update's own value handle — the
   // width the scratch was declared at.
   let stores = map(
@@ -5864,11 +5798,6 @@ fn resume_commit_prefix(handle, val, updates, fields, record) = {
 // LLocal read can never drift apart.
 fn resume_upd_local(upd: {init: Node, name: String}, handle) =
   "__resume_upd_{upd.name}_{int_to_str(handle)}"
-
-// The slot-home pair — the column's per-update value, through the one
-// resolver the stores read.
-fn resume_upd_pair(upd, fields) =
-  (state_field_name(upd), resolve_state_slot_offset(state_field_name(upd), fields))
 
 // Resolve a field name to its byte offset in the handler state
 // record. `fields` is the slot-order NAME list — config ++ state in
@@ -7941,7 +7870,6 @@ fn arm_pair_step(acc, pc) = match pc {
 fn op_answers_its_driver(op: String) = match op_resume_discipline(op) {
   OneShot => false,
   MultiShot => true,
-  Either => false,
   Abandon => true,
 }
 
@@ -8244,14 +8172,6 @@ fn seq_face_structural(face) = match face {
   _ => false,
 }
 
-// A handler is STATEFUL when its arm reads the state record — which happens
-// for config params AND `with` state fields alike (the record packs config
-// into the same slots; a config-only arm's `n * f` loads offset 8). The old
-// state-fields-only read left config-only handlers "stateless": their
-// uninstalled performs skipped the SingletonUninstalled guard and silently
-// multiplied by the null page (the mn-world-resume-frozen fixture's silent
-// 30). One fn, two readers — the mint's guard shape and the compile gate's
-// refusal conjunct — so both altitudes tighten together.
 fn ls_find_str_local_loop(lst: [String], target: String, i, n) = if i >= n {
   -1
 } else if list_index(lst, i) == target {

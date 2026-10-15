@@ -1,40 +1,12 @@
-// format.mn — canonical-render handler · the medium handles formatting
+// format.mn — the canonical render: the developer types meaning and the
+// file on disk is the graph projected back in canonical form, the same
+// bytes for the same program on every save.
 //
-// The substrate-honest answer to "what about indent / tabs / 2-space-
-// vs-4-space?": the formatter renders the cursor's projection back to
-// disk in canonical form. The developer types meaning; the editor
-// renders properly; the file on disk is canonical regardless of what
-// the developer typed. Same source, same bytes, every save.
-//
-// Layout is projection, never contract (chain-link-5): the parser
-// tolerates any structurally-
-// valid indent (relative ordering of verb-vs-operand suffices); the
-// formatter normalizes column counts. Indent is a render decision, not
-// a parse contract — the same chain-link-5 realization at the layout
-// layer that earlier closed `with EXPR` parsing and the seed's
-// ident-fabrication.
-//
-// The formatter IS a `~>` handler on the cursor — same kernel primitive
-// as every other tentacle. Composes:
-//
-//   keystroke
-//     |> tokenize
-//     |> parse_to_graph
-//     ~> format_default        // canonical render before display
-//     ~> render_to_transport   // terminal / LSP frame / web
-//       <~ accumulate(graph)   // IC re-renders on next keystroke
-//
-// Five verbs realized inside the formatter itself: each rendering
-// pipeline composes |> sequentially, ~> attaches per-form handlers,
-// <| fans out per-form rendering, >< parallelizes independent
-// sub-renders, <~ closes on stability (canonical form is a fixpoint —
-// running format twice IS the same as running once).
-//
-// SYNTAX.md §1185 governs the canonical layout. Authority:
-// - SYNTAX.md §342-389 (per-verb layout rules)
-// - SYNTAX.md §1142-1186 (layout enforcement)
-// - PLAN §2 (the cursor as the gradient's argmax)
-// - CLAUDE.md Anchor 2 (parse structurally; never a form-special-case)
+// Layout is projection, never contract: the parser reads no whitespace, so
+// indent, line breaks and the parentheses precedence already implies are
+// this module's decisions, and a render is canonical exactly when it is
+// its own fixpoint — formatting twice is formatting once. SYNTAX's
+// canonical layout is the authority this render answers to.
 import types
 
 import effects
@@ -45,49 +17,16 @@ import parser
 
 import strings
 
-// ─── The Format effect ──────────────────────────────────────────────
-//
-// Three ops:
-//   format_program — render the whole AST as canonical String
-//   format_at_handle — render one node + canonical-spaced surroundings
-//   format_chain — render a single |> / ~> / <| / >< / <~ chain
-//
-// Resume cardinality is INFERRED from arm body structure per Phase B
-// substrate (CLAUDE.md ⌁ Mentl's anchor — interrogation #2).
-// format_default arms call resume exactly once → OneShot.
+// A program's top-level statements rendered as its canonical text.
 effect Format {
   format_program([Node]) -> String
-  format_at_handle(Int) -> String
-  format_chain(Node) -> String
 }
 
-// ─── format_default — canonical render handler ──────────────────────
-//
-// `with !Mutate` — read-only over graph + AST; same constraint as
-// cursor_default + interrogate_default per the read-only-projection
-// discipline.
-//
-// Each arm composes the five verbs in its own rendering logic:
-//   <|  per-node-kind branches (each NodeBody variant gets its own
-//       render branch; the eight aspects of the cursor's projection
-//       fan out into eight render-aspect branches)
-//   ><  parallel sub-render (independent siblings render concurrently)
-//   |>  sequential through tokenize → indent → emit
-//   ~>  buffer handler attaches output sink
-//   <~  fixpoint check (running format twice = running once)
-//
-// Drift refused: 1 (no dispatch table; render IS graph projection); 6
-// (no primitive special-case — each NodeBody variant is one branch
-// of the same fanout); 7 (one record per RenderResult, not parallel-
-// arrays); 9 (every NodeBody variant bodied; no "later").
+// The canonical render, read-only over the graph.
 handler format_default {
   format_program(ast) => resume(render_program(ast)),
-  format_at_handle(handle) => resume(render_node_at(handle)),
-  format_chain(chain_node) => resume(render_chain_node(chain_node)),
 }
 
-// ─── THE THREE IMPLEMENTATIONS, as plain fns ────────────────────────
-//
 // AN ARM MAY NOT PERFORM ITS OWN HANDLER'S OPS. A deep handler is not
 // installed for its own arms — the arm body runs in the world OUTSIDE the
 // install, which is what `tests/frontier/mn-deep-handler-arm.mn` pins at 51
@@ -171,48 +110,8 @@ fn render_node_at(handle) with !Mutate = {
   render_comment_at(handle) ++ render_indent_for(body) ++ render_body_tokens(body) ++ render_line_break_after(body)
 }
 
-// ─── render_chain_node — render one verb-chain ────────────────────
-//
-// Distinguishes the five verb-classes; each gets canonical layout
-// per SYNTAX.md §342-389. `<|` opens-tuple-on-same-line with branches
-// indented. `><` alone-on-line at indented center between paren-
-// pipelines. `<~` indented center, optionally inline. `|>` and `~>`
-// at left edge with stages on indented lines.
-fn render_chain_node(chain_node) = {
-  let kind = graph_node_body(chain_node)
-  // A node's body is the NodeBody altitude — the Expr sits one
-  // constructor in (NExpr(PipeExpr(..))); arms over the bare Expr never
-  // matched, and every chain fell to the plain node render (order-masked;
-  // the order-independent judge named it, 2026-07-25).
-  let rendered = match kind {
-    NExpr(PipeExpr(PForward, l, r)) => // |>
-    // `<|`/`><` are ONE PFanout; the formatter projects the glyph from
-    // the ownership aspect — FanShare → `<|`, FanDistribute → `><` (the
-    // surface keeps both authored glyphs as intent).
-    render_converge_chain(l, r),
-    NExpr(PipeExpr(PFanout(FanShare), l, r)) => // <|
-    render_diverge_chain(l, r),
-    NExpr(FanoutExpr(branches)) => // >< — the N-ary carrier
-    render_compose_chain(branches),
-    NExpr(PipeExpr(PTee, l, r)) => // ~> — an install the judgment wrote as a named chain's member
-    // installs renders as the author wrote it: the body under the chain's
-    // installs, then `~> NAME` (the name the install node was bound with).
-    match chain_installed(chain_node) {
-      Some((name, n)) => render_tee_text(chain_body(l, n - 1), name, ""),
-      None => render_tee(l, r),
-    },
-    NExpr(PipeExpr(PFeedback, l, r)) => // <~
-    render_feedback_chain(l, r),
-    _ => render_node_at(chain_node),
-  }
-  rendered
-}
-
-// ─── Canonical layout constants (SYNTAX.md §1185) ───────────────────
-//
-// 2-space indent for left-edge verbs (|>, ~>, <|).
-// 4-space indent for indented-center convergent verbs (><, <~).
-// Tabs convert to spaces at format time.
+// The canonical indents: two spaces for the left-edge verbs (`|>`, `~>`,
+// `<|`), four for the convergent verbs at indented center (`><`, `<~`).
 fn left_edge_indent() with Pure = 2
 
 fn indented_center() with Pure = 4
@@ -222,58 +121,6 @@ fn indented_center() with Pure = 4
 // so arms that need its precedence or glyph read this one binding —
 // constructed once, never per render call (the row stays alloc-free).
 let fanout_distribute_kind = PFanout(FanDistribute)
-
-// ─── Render a |> chain — sequential left-edge ───────────────────────
-//
-// canonical layout per SYNTAX.md §342-346:
-//
-//   input
-//     |> stage_a
-//     |> stage_b
-//
-// Input on its own line at base indent; |> at base + 2; stages on
-// the same line as their |>. The chain reads top-to-bottom = data flow.
-//
-// A chain-position operand below every operator's precedence (the lambda,
-// prec 0 — its body extends maximally rightward) re-wraps, or the re-parse
-// absorbs the verb into the body (the recurrence `((prev) => …) <~ delay(1)`
-// rendered bare read back as `delay(1)(prev)` — an application). One read
-// of the ONE table, shared by every chain renderer's head.
-fn render_chain_pos(node) =
-  if expr_prec_of(node) < 1 { parenthesize(render_chain_node(node)) } else { render_chain_node(node) }
-
-fn render_converge_chain(left, right) = {
-  let left_str = render_chain_pos(left)
-  let right_str = render_chain_pos(right)
-  "{left_str}\n{spaces(left_edge_indent())}|> {right_str}"
-}
-
-fn render_diverge_chain(input, branches_tuple) = {
-  let input_str = render_chain_node(input)
-  // The right operand is the branch-tuple NODE; render_branch_tuple eats
-  // its stages (`share_stages`), the element LIST.
-  let branches = render_branch_tuple(share_stages(branches_tuple))
-  "{input_str}\n{spaces(left_edge_indent())}<| (\n{branches}\n{spaces(left_edge_indent())})"
-}
-
-// ─── Render a >< fanout — parallel composition, N-ary ───────────────
-//
-// Canonical per SYNTAX.md §><:
-//
-//   (pipeline_a)
-//       ><
-//   (pipeline_b)
-//       ><
-//   (pipeline_c)
-//
-// Each branch parenthesized at base indent; >< alone on its line at
-// indented center (4-space) between consecutive branches. The carrier
-// is FanoutExpr's branch LIST (the N-ary law) — the render walks it.
-fn render_compose_chain(branches) = match branches {
-  [] => "",
-  [one] => parenthesize(render_chain_node(one)),
-  [h, ...t] => "{parenthesize(render_chain_node(h))}\n{spaces(indented_center())}><\n{render_compose_chain(t)}",
-}
 
 // Every branch renders parenthesized, inline as in the vertical layout
 // (SYNTAX §`><`, the render rule): the parentheses are the branch's visual
@@ -290,36 +137,6 @@ fn render_fanout_vertical(branches) = match branches {
   [] => "",
   [one] => parenthesize(render_tokens_for(one)),
   [h, ...t] => "{parenthesize(render_tokens_for(h))}\n{spaces(indented_center())}><\n{render_fanout_vertical(t)}",
-}
-
-// ─── Render a ~> chain — handler-attach ────────────────────────────
-//
-// One PTee node; layout is the formatter's projection of the LHS
-// shape (layout is never semantics — SYNTAX.md §~>). A chain body
-// earns the block layout, ~> on its own line at left-edge indent:
-//
-//   source
-//     |> lex
-//     |> parse
-//     ~> env_handler          // governs the whole prior chain
-//     ~> diagnostics_handler  // outermost — sandbox boundary
-//
-// A single-stage body renders inline — same tree, same scope:
-//
-//   (try_fn()) ~> recover
-fn render_tee(body, handler_expr) =
-  render_tee_text(body, render_chain_pos(handler_expr), graph_comment_at(handler_expr))
-
-fn render_tee_text(body, handler_str: String, hc: String) = {
-  let body_str = render_chain_pos(body)
-  match graph_node_body(body) {
-    NExpr(PipeExpr(_, _, _)) => "{body_str}\n{spaces(left_edge_indent())}~> {handler_str}",
-    _ => if hc == "" {
-      "{body_str} ~> {handler_str}"
-    } else {
-      "{body_str}\n{spaces(left_edge_indent())}~> {handler_str}"
-    },
-  }
 }
 
 // An install node the judgment bound `ChainInstall`: the chain's name and
@@ -351,23 +168,6 @@ fn render_chain_members(h) with !Mutate = match graph_node_body(h) {
   _ => render_tokens_for(h),
 }
 
-// ─── Render a <~ chain — feedback / iterative ──────────────────────
-//
-// Canonical per SYNTAX.md §483-489:
-//
-//   signal
-//       <~ delay(3)
-//
-// <~ at indented center (4-space) with the FeedbackSpec on the same
-// line. Requires iterative context (Sample / Tick / Clock / IC handler
-// installed upstream); without it, parser rejects with E_FeedbackNoContext.
-fn render_feedback_chain(input, spec) = {
-  let input_str = render_chain_pos(input)
-  let spec_str = render_chain_pos(spec)
-  "{input_str}\n{spaces(indented_center())}<~ {spec_str}"
-}
-
-// ─── Helper functions — transforms over String (each builds its answer) ──
 fn spaces(n) = if n == 0 { "" } else { " {spaces(n - 1)}" }
 
 fn parenthesize(s: String) = "({s})"
@@ -431,7 +231,7 @@ fn render_installed_tokens(node) with !Mutate = {
 // match pyramid one level deeper per destructure. A `match` the author wrote
 // is born a placeholder and renders as a match.
 fn let_born(n) = match graph_node_body(n) {
-  NExpr(MatchExpr(scrut, arms)) => if len(arms) == 1 && born_of_let(n) {
+  NExpr(MatchExpr(scrut, arms)) => if len(arms) == 1 && graph_let_born(n) {
     match arms[0] {
       (pat, body) => Some((scrut, pat, body)),
     }
@@ -439,17 +239,6 @@ fn let_born(n) = match graph_node_body(n) {
     None
   },
   _ => None,
-}
-
-// The birth the parse noted at the node (types.mn `Birth`) — a fact of the
-// node, never its reason: the judgment's bind at a match overwrites the
-// reason cell, and read through it every destructuring let in a judged
-// module rendered as the match pyramid (measured 2026-10-14 at `mentl
-// tighten`'s render of src/infer.mn).
-fn born_of_let(h) = match graph_birth_of(h) {
-  Some(LetBorn) => true,
-  Some(Authored) => false,
-  None => false,
 }
 
 fn render_let_chain(scrut, pat, body) with !Mutate =
@@ -1667,16 +1456,6 @@ fn render_comment_at(h) with !Mutate = {
   if text == "" { "" } else { "//{replace(text, "\n", "\n//")}\n" }
 }
 
-fn render_branch_tuple(branches) = if len(branches) == 0 {
-  ""
-} else {
-  let head = last(branches)
-  let tail = drop_last(branches)
-  let head_str = render_chain_node(head)
-  let head_line = spaces(indented_center()) ++ head_str ++ ","
-  if len(tail) == 0 { head_line } else { head_line ++ "\n" ++ render_branch_tuple(tail) }
-}
-
 fn ast_top_level_stmts(ast) with Pure = ast
 
 fn canonical_indent_depth(kind) with Pure = match kind {
@@ -1744,7 +1523,6 @@ fn atom_key(t) = match token_kind(t) {
   TIdent(s) => Some(s),
   TIntLit(n) => Some("#{int_to_str(n)}"),
   TFloatLit(f) => Some("#{float_to_str(f)}"),
-  TStringLit(s) => Some("\"{s}"),
   TStringPart(s) => Some("\"{s}"),
   _ => None,
 }

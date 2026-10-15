@@ -1,56 +1,8 @@
-// cursor_transport.mn — Hμ.cursor.transport peer handle
-//
-// Routes `cursor_default`'s `CursorView` projection through a
-// transport handler to a human-facing surface. The kernel-projection-
-// to-human loop closes here. Per the cursor walkthrough §10: surfacing cadence
-// (real-time / idle-debounced / on-save / on-explicit-ask) is a
-// transport handler choice; the kernel substrate is invariant.
-//
-// Anchor 0 dream code. The wheel is the canonical; the seed
-// transcribes after first-light-L1 per Tier 3 growth pattern
-// (the bootstrap walkthrough §12.5). Verification is by simulation, walkthrough,
-// and audit, not compilation.
-//
-// Anchor 4 — build the wheel; never wrap the axle. This file IS the
-// wheel-side authoring of cursor_transport. lux3.wasm is not the
-// arbiter.
-//
-// Anchor 5 — if it needs to exist, it's a handler. Every transport is
-// a handler on the same Surface effect; swap the handler, swap the
-// surface, same kernel underneath. Mentl solves Mentl's IDE problem
-// because the medium IS the editor.
-//
-// Composition tally — every read is from substrate that exists today:
-//
-//   cursor_at / cursor_argmax / cursor_pinned  — src/cursor.mn Cursor effect
-//   CursorView fields (8 aspects of one read)  — src/types.mn
-//   fd_write / fd_read                         — lib/io.mn
-//   Iterate effect for streamed updates        — lib/prelude.mn
-//   <~ feedback at the human boundary           — primitive #3 (Five verbs)
-//
-// Drift-mode audit per CLAUDE.md ⌁ + nine modes:
-//
-//   Drift 1 (vtable):       Surface effect dispatches via
-//                           handler; no fn-pointer table; no vtable.
-//   Drift 2 (env frame):    Transport state lives in handler.with state,
-//                           NOT a parallel env-frame stack.
-//   Drift 3 (Python dict):  RenderState is a typed record; no string
-//                           keys for fields.
-//   Drift 4 (MTL):          One transport-handler chain (~>); not
-//                           stacked single-concern wrappers per surface.
-//   Drift 5 (split state):  Buffer + cursor + cadence fold into one
-//                           TransportState record; not parallel slots.
-//   Drift 6 (special):      Terminal AND LSP AND web AND vim are FOUR
-//                           handler arms on the SAME effect; no Bool-
-//                           special-case for "primary surface."
-//   Drift 7 (parallel arr): RenderSlot is one record-shape walked once
-//                           by the renderer; no per-aspect arrays.
-//   Drift 8 (string flag):  Cadence is a tagged Cadence ADT, not a
-//                           string ("realtime" / "debounced" / ...).
-//   Drift 9 (deferred):     Every transport arm bodied; no "later".
-//                           Web-WASM substrate is a separate handle
-//                           (Hμ.cursor.transport.web) for Tier 3 +
-//                           browser-WASM compile.
+// cursor_transport.mn — the cursor's projection handed to a person: a
+// transport renders the CursorView at the cursor's argmax, reads what the
+// person does there, and folds it into the next step, the `<~` loop at the
+// human boundary. Every transport is a handler on the one Surface effect,
+// so swapping the handler swaps the surface over the same kernel.
 import types
 
 import cursor
@@ -75,8 +27,6 @@ import strings
 
 import verify
 
-import voice
-
 // ─── The Surface effect ─────────────────────────────────────────────
 //
 // One effect; four canonical handlers. Each handler renders the
@@ -99,53 +49,16 @@ effect Surface {
 
 // ─── ADTs the transport reads + writes ──────────────────────────────
 //
-// What the human can do at a Cursor's surfaced proposal. The four
-// arms are exhaustive per the cursor walkthrough §5.3:
-//
-//   Accept  — apply the gradient_next suggestion; commit the patch
-//   Defer  — skip; cursor advances to next argmax
-//   Override(span) — pin cursor to user-chosen position (`??`)
-//   CaretMove(span) — text-caret moved; argmax may shift
-type Action = AccAccept | AccDefer | AccOverride(Span) | AccCaretMove(Span)
+// What the human does at a Cursor's surfaced proposal: accept it (apply
+// the gradient's suggestion and commit the patch) or defer it (the cursor
+// advances to the next argmax).
+type Action = AccAccept | AccDefer
 
-// Cadence — when the transport surfaces Cursor updates.
-// Drift 8 closure: tagged ADT, not string flag.
-type Cadence
-  // every keystroke
-  = CadRealtime
-  // ms idle pause threshold
-  | CadDebounced(Int)
-  // explicit save events
-  | CadOnSave
-  // user invokes "what's next?"
-  | CadOnAsk
+// The transport's one record: the caret, the cursor, the reason of the last
+// render and the session's step count.
+type TransportState = {caret: Caret, cursor: Cursor, last_render: Reason, session_id: Int}
 
-// Default cadence per the cursor walkthrough §10.4: ~250ms idle-debounced.
-fn default_cadence() = CadDebounced(250)
-
-// ─── TransportState — one record-shape carried by all handlers ──────
-//
-// Drift 5 + Drift 7 closure: caret + cursor + cadence + buffer fold
-// into ONE record. No parallel arrays of {names, spans, ...}.
-type TransportState = {
-  cadence: Cadence,
-  caret: Caret,
-  cursor: Cursor,
-  last_render: Reason,
-  session_id: Int,
-}
-
-// user's text-attention
-//
-// gradient argmax (cached read)
-//
-// surfacing strategy
-//
-// monotonically incrementing
-//
-// why-chain of last surfaced view
 fn transport_state_init(initial_caret) = TransportState({
-  cadence: default_cadence(),
   caret: initial_caret,
   cursor: Cursor(0, Inferred("session-init"), 0.0),
   last_render: Inferred("none"),
@@ -245,11 +158,6 @@ fn cursor_step(state) = match state {
         state_advance(state, cursor)
       },
       AccDefer => state_advance(state, cursor),
-      AccOverride(span) => state_with_caret(state, Caret(handle_at_span(span, caret_module(s.caret)), Inferred("?? override"))),
-      AccCaretMove(span) => state_with_caret(
-        state,
-        Caret(handle_at_span(span, caret_module(s.caret)), Inferred("text-caret-move"))
-      ),
     }
   },
 }
@@ -257,30 +165,14 @@ fn cursor_step(state) = match state {
 // ─── Helpers ────────────────────────────────────────────────────────
 fn state_advance(state, latest_cursor) = match state {
   TransportState(s) => match latest_cursor {
-    Cursor(_, reason, _) => TransportState({
-      cadence: s.cadence,
-      caret: s.caret,
-      cursor: latest_cursor,
-      last_render: reason,
-      session_id: s.session_id + 1,
-    }),
+    Cursor(_, reason, _) => TransportState({caret: s.caret, cursor: latest_cursor, last_render: reason, session_id: s.session_id + 1}),
   },
 }
 
 fn state_with_render(state, cursor) = match state {
   TransportState(s) => match cursor {
-    Cursor(_, reason, _) => TransportState({cadence: s.cadence, caret: s.caret, cursor, last_render: reason, session_id: s.session_id}),
+    Cursor(_, reason, _) => TransportState({caret: s.caret, cursor, last_render: reason, session_id: s.session_id}),
   },
-}
-
-fn state_with_caret(state, new_caret) = match state {
-  TransportState(s) => TransportState({
-    cadence: s.cadence,
-    caret: new_caret,
-    cursor: s.cursor,
-    last_render: s.last_render,
-    session_id: s.session_id + 1,
-  }),
 }
 
 fn handle_of_cursor(cursor) = match cursor {

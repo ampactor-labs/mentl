@@ -170,14 +170,8 @@ type ProseClass
 type Question
   // "type of NAME"
   = QTypeOf(String)
-  // "type at L:C"
-  | QTypeAt(Span)
-  // "intent of handle N"
-  | QIntentOf(Int)
   // every handle that chases to NFree
   | QUnresolved
-  // "subst trace for handle N"
-  | QSubstChain(Int)
   // "effects of NAME"
   | QEffects(String)
   // "ownership of NAME"
@@ -236,8 +230,9 @@ type Question
   // its read site and declaration (`env_demand`)
   | QEnv
   | QOrphanClaims
-  // "smt" — every undischarged obligation rendered as an SMT-LIB assertion,
-  // the exact text Phase 8.3's `~> verify_smt` handler will hand a solver.
+  // "smt" — every undischarged obligation rendered as an SMT-LIB query over
+  // its negation (`predicate_to_smt_lib`), the question an external
+  // proposer answers with a certificate.
   | QSmt
   // "cost" — what this question cost the medium, in the medium's own
   // facts: modules linked, source lines processed, nodes minted. A wall
@@ -261,11 +256,8 @@ type Question
 
 type QueryResult
   = QRType(Ty, Reason)
-  | QRIntent([(RowTerm, Bool, EConn)])
   // [(name, ty, free-tvars)]
   | QRUnresolved([(String, Ty, [Ty])])
-  // [(handle, GNode)]
-  | QRChain([(Int, GNode)])
   | QREffects(EffRow)
   | QROwnership([TParam])
   // The chains a why question answers with: the declaration's own reason
@@ -283,16 +275,10 @@ type QueryResult
   | QRVerifyDebt([(Int, Span, Predicate, Reason)])
   // THE SAME OBLIGATIONS, PROJECTED AS SMT-LIB — `mentl query <f> "smt"`.
   // One read (`verify_debt()`), two renders: `QRVerifyDebt` speaks the
-  // predicate in the medium's own voice for a person, and this one speaks it
-  // in the solver's, which is exactly what Phase 8.3's handler swap will
-  // hand to Z3/CVC5. The payload is identical because the FACT is.
-  //
-  // It exists because the serializer did, unreached: fourteen decls in
-  // src/verify.mn rendered a complete SMT-LIB assertion and NOTHING called
-  // them — `mentl query src/main.mn unreachable` named the whole family.
-  // A serializer with no caller is a claim, not a capability; giving it a
-  // projection is what turns it back into one, and it means 8.3 arrives with
-  // this half already exercised instead of re-derived.
+  // predicate in the medium's own voice for a person, and this one speaks
+  // each open claim's negation in a solver's, the question an external
+  // proposer answers with a certificate. The payload is identical because
+  // the FACT is.
   | QRSmt([(Int, Span, Predicate, Reason)])
   // every handler declaring an arm for the op, with the arm's address
   | QRHandlerProvider([(String, String)])
@@ -319,7 +305,8 @@ type QueryResult
   | QRUnreferenced([(String, String, Int)])
   // (module, fn name, reached-from-entry: 1 or 0)
   | QRUnreachable([(String, String, Int)])
-  | QRPerforms([(String, String, Int, Int)])
+  // (module, effect, op count, the ops nothing performs)
+  | QRPerforms([(String, String, Int, [String])])
   | QREnv([EnvDemand])
   | QROrphanClaims([(String, String, Int)])
   // modules linked, source lines processed, nodes minted
@@ -366,39 +353,9 @@ fn query_answer(q) = match q {
       (scheme, reason, _kind) => QRType(scheme |> judgment_ty |> chase_type_deep, reason),
     },
   },
-  QTypeAt(span) => // One live cursor read: tightest enclosing span → handle → the node's
-  // bound type, chased deep. No throwaway TName("Unknown") chase — the
-  // graph_chase below IS the live read; an unbound node's type IS its own
-  // TVar (the chase terminated there), so the projection is total over the
-  // NodeKind without a fabricated "Unresolved" name.
-  match graph_snapshot() {
-    Graph(_, span_index) => match find_tightest(span_index, span, None, 999999999) {
-      None => QRError("no enclosing span found in AST index"),
-      Some(handle) => match graph_chase(handle) {
-        GNode(kind, reason) => match kind {
-          NBound(ty) => QRType(chase_type_deep(ty), reason),
-          NFree(_) => QRType(TVar(handle), reason),
-          NRowBound(_) => QRType(TVar(handle), reason),
-          NRecordRowBound(_, _) => QRType(TVar(handle), reason),
-          NRowFree(_) => QRType(TVar(handle), reason),
-          NErrorHole(_) => QRType(TVar(handle), reason),
-        },
-      },
-    },
-  },
-  QIntentOf(handle) => // The authored intent row is a field on the FnStmt node the handle
-  // names — read it LIVE (graph_node_body), never a parallel
-  // intent ledger re-found by scan (Carried-Truth). A non-fn node
-  // carries no authored intent.
-  match graph_node_body(handle) {
-    NStmt(FnStmt(_, _, _, effs, _)) => QRIntent(effs),
-    _ => // drift-audit: ignore
-    QRError("no authored intent at handle {int_to_str(handle)}"),
-  },
   QUnresolved => match env_snapshot() {
     Env(entries) => QRUnresolved(find_unresolved(entries)),
   },
-  QSubstChain(handle) => QRChain(walk_chain(handle, 0)),
   QEffects(name) => match env_lookup(name) {
     None => QRError("not found: {name}"),
     Some(entry) => match entry {
@@ -486,6 +443,21 @@ fn query_answer(q) = match q {
   QHeads => QRWhere(head_round_trip(), []),
   QIn(inner, m) => query_answer(inner) |> sites_in(m),
   QUnknown(raw) => QRError("unknown query: {raw}"),
+}
+
+// The type of the tightest node enclosing a span, chased deep, with the
+// reason it was bound for; None where no node encloses the span. An unbound
+// node's type is its own variable, where the chase ended.
+fn type_at_span(span) = match graph_snapshot() {
+  Graph(_, span_index) => match find_tightest(span_index, span, None, 999999999) {
+    None => None,
+    Some(handle) => match graph_chase(handle) {
+      GNode(kind, reason) => match kind {
+        NBound(ty) => Some((chase_type_deep(ty), reason)),
+        NFree(_) | NRowBound(_) | NRecordRowBound(_, _) | NRowFree(_) | NErrorHole(_) => Some((TVar(handle), reason)),
+      },
+    },
+  },
 }
 
 // The sites of an answer that stand in module `m`, named as every site line
@@ -604,24 +576,6 @@ fn has_free_tvar_fields(ref fields) = if len(fields) == 0 {
   }
 }
 
-// Walk every substitution hop from a starting handle to its terminal.
-// Returned by `QSubstChain` — useful for tracing cross-module `TVar`
-// resolution.
-fn walk_chain(handle, depth) = if depth > 50 || handle < 0 {
-  []
-} else {
-  let node = graph_chase(handle)
-  match node {
-    GNode(kind, _) => match kind {
-      NBound(ty) => match ty {
-        TVar(next) => [(handle, node)] ++ walk_chain(next, depth + 1),
-        _ => [(handle, node)],
-      },
-      _ => [(handle, node)],
-    },
-  }
-}
-
 // ─── Live use-edge projection — refs-of (rename) ───────────────────
 //
 // Every reference the judgment linked to a declaration is among the
@@ -662,16 +616,6 @@ fn noted_address(site) = match site {
 // nearness between positions needs (the proposer's rank), one per source
 // site.
 fn decl_ref_handles(d) with !Mutate = map({ (_m, _sp, h) => h }, decl_ref_sites(d))
-
-// The references to the declaration a name names at module level — the
-// env's own resolution once the judgment is done, followed by its link. A
-// local binder that shares the spelling is another declaration and none of
-// its references are counted here (`refs of lines` answered the emitter's
-// local `let lines` beside the prelude's until the link, 2026-10-14).
-fn ref_sites_of(name) with !Mutate = match name_decl(name) {
-  Some(d) => decl_ref_sites(d),
-  None => [],
-}
 
 // A declaration's references, one per source site, oldest first.
 fn decl_ref_sites(d) with !Mutate = {
@@ -770,8 +714,8 @@ fn import_verdict(path: String, importer: Int, cells, imported) with !Mutate =
 // importer links to? A module the weave does not carry answers False for its
 // edge — never a fabricated True that would hide a real dead import. The
 // reference's own module is the read, never a span compared without its
-// module (the span test it replaced answered `used` for spans that overlapped in another
-// file until the link, 2026-10-14).
+// module (the span test it replaced answered "used" for spans that overlapped
+// in another file until the link, 2026-10-14).
 fn import_is_used(imported: String, importer: Int, cells, i) with !Mutate = if i >= len(cells) {
   false
 } else {
@@ -805,20 +749,18 @@ fn import_edge_join(acc, d) = match graph_node_body(d) {
   _ => acc,
 }
 
-// What a statement declares, each name with the handle its references link
-// to: a function or a handler its own node, a type's constructors their
-// variants, an effect's ops their nodes, a module value its value's cell
-// (a `let`'s binder IS its value's cell). A type whose constructor shares
-// its name is that constructor's to answer — a type name is not yet a
-// reference (`Hβ.graph.positions-are-cells`), so its own node links nothing.
+// What a statement declares that a reference can link to, each name with the
+// handle its references link to: a function or a handler its own node, a
+// type's constructors their variants, an effect's ops their nodes, a module
+// value its value's cell (a `let`'s binder IS its value's cell). A type's
+// name and an effect's name are not yet references — an annotation and a
+// row hold names, not nodes (`Hβ.graph.positions-are-cells`) — so neither
+// has a row to measure until they are.
 fn decl_links_of(d) = match graph_node_body(d) {
   NStmt(s) => match s {
     FnStmt(n, _, _, _, _) => [(n, d)],
-    TypeDefStmt(n, ctors) => {
-      let vs = map({ (cn, _, vn) => (cn, vn) }, ctors)
-      if any({ (cn, _) => cn == n }, vs) { vs } else { [(n, d)] ++ vs }
-    },
-    EffectDeclStmt(n, _, ops) => [(n, d)] ++ map({ (on, _, _, onode) => (on, onode) }, ops),
+    TypeDefStmt(_, ctors) => map({ (cn, _, vn) => (cn, vn) }, ctors),
+    EffectDeclStmt(_, _, ops) => map({ (on, _, _, onode) => (on, onode) }, ops),
     HandlerDeclStmt(n, _, _, _, _, _) => [(n, d)],
     LetStmt(PVar(n), value, _) => [(n, value)],
     _ => [],
@@ -1246,16 +1188,22 @@ fn effect_rows_for(cell) with !Mutate = match cell {
   (_h, path, _, decls) => fold([], effect_row_join(path), decls),
 }
 
+// A row is the effect, its op count and the names of the ops nothing
+// performs — the ops a deletion takes with their arms.
 fn effect_row_join(path: String, acc, d) with !Mutate = match graph_node_body(d) {
   NStmt(s) => match s {
-    EffectDeclStmt(n, _, ops) => push(acc, (path, n, len(ops), count(op_is_performed(d), ops))),
+    EffectDeclStmt(n, _, ops) => push(acc, (path, n, len(ops), ops |> filter(op_is_unperformed(d, ??)) |> map(op_name))),
     _ => acc,
   },
   _ => acc,
 }
 
-fn op_is_performed(stmt, op) with !Mutate = match op {
-  (_, _, _, onode) => len(outside_refs(stmt, onode)) > 0,
+fn op_is_unperformed(stmt, op) with !Mutate = match op {
+  (_, _, _, onode) => len(outside_refs(stmt, onode)) == 0,
+}
+
+fn op_name(op) with Pure = match op {
+  (name, _, _, _) => name,
 }
 
 // ─── The decls column's projection — one home, two readers ──────────
@@ -1402,9 +1350,7 @@ fn noted_answer(r) = match r {
   QRDecls(names) => Some(("declared name(s)", names |> map(name_site) |> map(unnoted))),
   QRRefs(sites) => Some(("reference(s)", sites)),
   QRType(_, _) => None,
-  QRIntent(_) => None,
   QRUnresolved(_) => None,
-  QRChain(_) => None,
   QREffects(_) => None,
   QROwnership(_) => None,
   QRWhy(_) => None,
@@ -2689,12 +2635,11 @@ fn op_resume_ty(scheme) with !Mutate = match chase_type_deep(judgment_ty(scheme)
   other => show_type(other),
 }
 
-// SYNTAX §«Resume discipline»: ->1 one-shot, ->* multi-shot, ->? either;
-// ->0 is Abandon — the arm never resumes, the continuation deadens.
+// SYNTAX §«Resume discipline»: ->1 one-shot, ->* multi-shot; ->0 is
+// Abandon — the arm never resumes, the continuation deadens.
 fn disc_glyph(disc) with Pure = match disc {
   OneShot => "->1",
   MultiShot => "->*",
-  Either => "->?",
   Abandon => "->0",
 }
 

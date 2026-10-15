@@ -11,10 +11,10 @@
 //
 //   graph.mn (spec 00)   → chase / occurs / trail revert / graph_handler
 //   effects.mn (spec 01) → row algebra (normalize / subsumes / unify)
-//   clock.mn (spec 11)   → Clock / Tick / Sample / Deadline + IterContext
+//   clock.mn (spec 11)   → Clock / Tick / Sample / Deadline
 //   own.mn (spec 07)     → affine_ledger handler arms, escape check
 //   verify.mn (spec 02)  → verify_ledger handler arms
-//   mentl.mn (spec 09)   → Capability / Patch / Context + Teach + Synth
+//   mentl.mn (spec 09)   → Capability / Context + Teach + Synth
 //                          + mentl_default (the Annotation a suggestion
 //                          carries, and the Teaching it answers with, live
 //                          here beside the CursorView that reads them)
@@ -790,8 +790,8 @@ fn mk_param(name, ty) = TParam(name, ty, Unmarked, Unmarked, None, guards_nothin
 type ResumeDiscipline
   = OneShot
   | MultiShot
-  | Either
-  // M4 — the arm NEVER resumes AND returns a meaningful value: it delivers that value as the INSTALL's, abandoning the continuation (a UZero grade over a concrete return; `abort() -> Option`). A dead continuation, so the perform yields with a dummy k and the remainder deadens — distinct from MultiShot (live k, off-spine unsupportable → floor) and OneShot (bottom/noreturn: `fail -> a`, no value to abandon)
+  // the arm never resumes: its value is the install's, the continuation is
+  // dead, and the perform unwinds to the install whose arm answers
   | Abandon
 
 // ─── Usage — the coeffect multiplicity grade {0, 1, ω} ─────────────
@@ -1327,39 +1327,7 @@ type ExecutableBoundary
   // lower-time mint dies here.
   | InterpBoundary([Int])
 
-// The bind-home column cell (Hβ.lower.lowering-is-a-column, marched
-// step i): lower's ls_resolve decision at a VarRef use site, written
-// once at the resolution arm, keyed by the USE node's handle — the
-// identity the LowExpr tree DISCARDS at mint (LLocal replaces it with
-// the binding-time handle). Payloads carry only what no live read
-// answers: the binding-time type-bearing handle and the capture slot;
-// the RGlobal sub-split (ctor / fn / missing) stays a live env read.
-// First constructor nullary — an unwritten spine cell (0) reads as it.
-// READERS ARRIVE AT STEP iii (the emit walk re-rooted on
-// program+columns); until then the column is the dual-write
-// migration's priced write-only interval, retired by that landing.
-type BindHome = BindUnwritten | BindLocal(Int) | BindUpval(Int, Int) | BindPrior(Int) | BindGlobal
-
-// The dispatch-tier column's value (lowering-is-a-column step i, the
-// decision-carrier enumeration): lower's perform/wasi fork notes WHICH
-// tier it chose at the perform node's handle. All-payload constructors
-// by design — the sparse column's absent contract is the addr-0 virgin
-// cell, so no nullary tag may alias it.
-// The Bool DtSingleton carried was the handler's statefulness, written at the
-// one mint site and read NOWHERE — the last residue of the deleted singleton
-// dispatch tier, where statefulness answered "can this direct call run
-// without a record?". One walk answers it for every dispatch now, so the
-// question is gone and so is its field.
-type DispatchTier = DtLexical(String, String) | DtSingleton(String) | DtEvidence(String, Int) | DtWasi(String)
-
-// The state-slot-home column's value (lowering-is-a-column step i): a
-// resume site's `with field = NEW` updates, each field name paired with
-// its resolved byte-slot offset in the handler state record. One
-// all-payload constructor — the sparse column's absent contract is the
-// addr-0 virgin cell.
-type StateSlotHome = SlotPairs([(String, Int)])
-
-// The install-shape column's value (lowering-is-a-column step i): a `~>`
+// The install-shape column's value: a `~>`
 // install site's handler name, the PROGRAM handle of its handler expression,
 // its config-arg program handles, and the per-effect arm-name groups — the
 // decl-side state inits stay readable at the handler decl through the name.
@@ -1367,7 +1335,7 @@ type StateSlotHome = SlotPairs([(String, Int)])
 // effect instance this install serves, and the config handles are where the
 // config's instantiation is read: together they key the arms it runs
 // (lower.mn's arm_site_pairs). `NoInstall` comes first so a virgin cell
-// reads as it, the `BindUnwritten` precedent.
+// reads as it.
 type InstallShape = NoInstall | InstallOf(String, Int, [Int], [{arms: [String], ename: String}])
 
 // What a call's judgment built of its product: the APPLIED call, whose value
@@ -1484,7 +1452,7 @@ type Mutation
   | MRowNote(Int)
   // a binder's fact entered under its handle (undo = pop the newest)
   | MBinderFact(Int)
-  // a node's birth noted under its handle (undo = pop the newest)
+  // a node noted let-born under its handle (undo = pop the newest)
   | MBirth(Int)
   // a payer recorded under an open guard cell (undo = pop the newest)
   | MOweLate(Int)
@@ -1518,14 +1486,6 @@ type StoreClaim = {beyond: Bool, mutated: [Int], returns: Option([Int]), stores:
 // backticks, or a call the judgment proved applies it — through a local
 // that holds it, a branch's tail or a pipe's stage as much as directly.
 type InEdge = UseBy(Int) | MentionBy(Int) | AppliedAt(Int)
-
-// How a node was born, where the parse made one node of another's spelling:
-// a destructuring `let` is the one-arm match it becomes (desugar_block), and
-// the match is born remembering it, so the render writes the let back. A
-// FACT of the node, never its reason: the judgment's bind at the match
-// overwrites the reason cell, and read through it every destructuring let in
-// a judged module rendered as a match (measured 2026-10-14).
-type Birth = Authored | LetBorn
 
 // What the graph knows of a BINDER the value walk reads through (P0),
 // keyed by the binder's own handle; the walk reaches it through a
@@ -1815,9 +1775,7 @@ type Reason
   | LetBinding(String, Reason)
   | Unified(Reason, Reason)
   | Instantiation(String, Reason)
-  | UnifyFailed(Ty, Ty)
   | Placeholder(Span)
-  | BinOpPlaceholder(BinOp)
   | MissingVar(String)
   | Refinement(Predicate, Predicate)
   // spec I13 — site-annotated reasoning edge
@@ -1827,20 +1785,12 @@ type Reason
   | InferredCallReturn(String, Reason)
   // pipe_verb ("|>", "~>", "<~"), inner — verb identity in Why chain
   | InferredPipeResult(String, Reason)
-  // handle, context_name — "fresh in 'process'" not "fresh 42"
-  | FreshInContext(Int, String)
   // a param defaulted from `= expr` at the
   // decl_site — the Why projection at a
   // defaulted call slot walks here ("ratio
   // defaulted to its declaration; annotate to
   // pin"). SYNTAX.md §«Default parameter values».
   | DefaultReason(String, Span)
-  // the SAT model the SMT handler produced
-  // for a discharged obligation — proof-
-  // evidence the Why-walker reaches (the
-  // counterexample/model, surpassing Dafny/F*'s
-  // separate dump: the witness IS a Reason edge).
-  | VerifyWitness(String)
   // THE ACCEPT EDGE (C4, 2026-09-30): the text the medium proposed at a
   // hole, rendered as the source it became; the proof it was offered
   // with, carried verbatim as the medium said it at proposal time; and
@@ -2211,11 +2161,9 @@ fn applicability_text(a) = match a {
 // copies of one type is the Carried-Truth Law at the declaration layer; the
 // name is its one home, and the next column is one line.
 type SpinePage = {
-  bind: [BindHome],
   boundaries: [ExecutableBoundary],
   canon: [Int],
   comments: [(String, Span)],
-  dispatch: [DispatchTier],
   installs: [InstallShape],
   links: [Int],
   module: [Int],
@@ -2224,7 +2172,6 @@ type SpinePage = {
   parent: [Int],
   products: [CallProduct],
   program: [NodeBody],
-  slots: [StateSlotHome],
   spans: [ValidSpan],
 }
 
@@ -2352,11 +2299,10 @@ type TokenKind
   | TPure
   | TTrue
   | TFalse
-  // ─── Identifiers and literals (7) ────────────────────────────────
+  // ─── Identifiers and literals (6) ────────────────────────────────
   | TIdent(String)
   | TIntLit(Int)
   | TFloatLit(Float)
-  | TStringLit(String)
   // // — every comment is graph content,
   //   attached to the next decl / enclosing node
   | TComment(String)
@@ -2721,27 +2667,6 @@ effect EmitSite {
   emit_site() -> String
 }
 
-// Evidence (spec W4) — runtime witness of an effect-to-handler-arm
-// binding. A polymorphic function that performs an op dispatches
-// via an evidence slot: the caller threads the evidence record into
-// the callee via `__state`, and the callee loads the arm's fn_idx
-// from its evidence slot and invokes it through call_indirect.
-//
-// DESIGN Ch 4 "handler IS state" — closure captures and evidence
-// slots are both frozen handler state, projections of the same
-// underlying record. `__state`'s layout:
-//   offset 0        : fn_ptr (i32, table index)
-//   offset 4        : capture_count (i32)
-//   offset 8+4*i    : the i-th capture      (i in 0..capture_count)
-//   offset 8+4*C+4*j: the j-th evidence fn idx (C = capture_count)
-// The body's evidence count and capture_count are known at emit time;
-// the perform's offset arithmetic is compile-time-resolved.
-type Evidence = Ev(String, Int)
-
-// op_name, slot_idx — the slot in __state where
-// the arm's fn_idx was written by the caller.
-//
-// ─── Stmt (spec 03) ────────────────────────────────────────────────
 type Stmt
   // pat, value, annotation node — NTypeAnn(ty) when present; ABSENT
   // aliases the value node (the parser's no-fresh-mint sentinel at all
@@ -2964,8 +2889,8 @@ type Divergence
   // survivors at a FUNCTION-typed hole: different computations of one type
   | DivBehavior
 
-// Decidable shape. Verify discharges: ledger (Phase 1) accumulates;
-// verify_smt (Arc F.1) routes by theory — Z3 / cvc5 / Bitwuzla.
+// A claim's decidable shape: the operands are handles into the graph, read
+// live where the claim is decided.
 type Predicate
   = PTrue
   // op over two operand node HANDLES — graph_node_body resolves each Expr live; the AST lives in the graph, the predicate carries the edge
@@ -3042,9 +2967,7 @@ type Provided = ProvidedNone | ProvidedAt([Int]) | ProvidedBeyond([Int])
 //   Public  — safe to observe and log. Default for all unannotated expressions.
 //   Tainted — derived from a Secret via a computation (e.g. hash(secret)) — the
 //             result is not the secret itself, but the path touched it. Tainted
-//             stays tainted through further transformations until an explicit
-//             declassify annotation proves the result provably non-invertible
-//             (arc F.1 SMT discharge).
+//             stays tainted through further transformations.
 //   Secret  — must not flow into any Public observable (log, network, stderr).
 //             `"msg: {secret}" ~> Log` is E_IFCFlowViolation: the string splice
 //             carries secret's label UP into the string literal, which then
@@ -3058,10 +2981,9 @@ type Provided = ProvidedNone | ProvidedAt([Int]) | ProvidedBeyond([Int])
 // (Secret); Tainted is the intermediate that lets us distinguish "used secret"
 // from "IS secret".
 //
-// Per SYNTAX.md §4⑥: the IFC flow-constraint is sequenced after first-light.
-// The ADT is real now; infer.mn's MakeStringExpr arm emits the flow check when the
-// splice is Secret or Tainted into a Public-bound context (Arc F.1 discharge).
-// The handler swap is verify_smt (not verify_ledger). No new surface form.
+// infer.mn's MakeStringExpr arm checks a Secret or Tainted splice into a
+// Public-bound context. PLAN §4⑥ retires this lattice into the influence
+// walk, where a label is a refinement on a source's declared type.
 type FlowLabel
   // safe to observe; default for all unannotated expressions
   = Public
@@ -3366,8 +3288,13 @@ effect GraphRead {
   // walk reads through — a declared parameter or a constructor field's
   // binder — by its handle; None for every other handle.
   graph_binder_of(Int) -> Option(BinderFact)
-  // the birth the parse noted at the node, if any
-  graph_birth_of(Int) -> Option(Birth)
+  // whether the parse made the node of a destructuring `let` — the one-arm
+  // match the let becomes, born remembering it so the render writes the let
+  // back. A FACT of the node, never its reason: the judgment's bind at the
+  // match overwrites the reason cell, and read through it every
+  // destructuring let in a judged module rendered as a match (measured
+  // 2026-10-14).
+  graph_let_born(Int) -> Bool
   // a declaration's store claim, newest first; None until its judgment ends
   graph_store_claim_of(Int) -> Option(StoreClaim)
   // THE LATE PAYERS' read (P0): every frame row cell that called through an
@@ -3414,8 +3341,6 @@ effect GraphWrite {
   graph_register_node(Int, NodeBody)
   // attach parse-collected comment prose + its span to a node's handle (the comment column of the handle's page); resolves via graph_comment_at — a comment is graph content
   graph_attach_comment(Int, String, Span)
-  // restore a comment cell to the column's absent form ("", zero span) — the seam re-homing's take-side; attach cannot clear because its arm MERGES behind existing text
-  graph_clear_comment(Int)
   // draw the e-graph equivalence edge from ≡ to — point the from-side's canonical pointer at the cheaper target. The union-find union step over the equivalence weave; saturation reads it back via graph_canon_at (find). Idempotent: re-pointing an already-rooted source overwrites in place (one cell), never grows a ledger.
   graph_canon_set(Int, Int)
   // write what the judgment proved at a program point — a sequence read's index node carries 1 where its bounds claim held (TRAP). One co-indexed weave like the canon column; one cell per handle, written both ways by every judgment of the read, read back via graph_narrow_at by lower's check-elision.
@@ -3540,8 +3465,8 @@ effect GraphWrite {
   // where its pattern binds — trailed as MBinderFact, so a speculative
   // judgment's notes roll back with it; the newest note is the fact.
   graph_binder_note(Int, BinderFact)
-  // how the parse made the node of another spelling (a let-born match)
-  graph_birth_note(Int, Birth)
+  // the parse made the node of a destructuring `let`
+  graph_let_born_note(Int)
   // a declaration's store claim, written where its judgment ends and again
   // where its binding group settles — trailed as MStoreClaim, so a
   // speculative judgment's claims roll back with it
@@ -3555,24 +3480,9 @@ effect GraphWrite {
   // noted by infer.mn's claim_refinement where the claim is raised. Trailed as
   // MClaimNote, so a rolled-back judgment's claims go with it.
   graph_claim_note(Int, Ty)
-  // The bind-home column's write (Hβ.lower.lowering-is-a-column step i):
-  // lower's VarRef resolution arm — the ONE decision site — notes its
-  // ls_resolve verdict at the use node's handle, an in-place spine cell
-  // store. Non-trailed by the ref-note contract: lowering runs after
-  // judgment, a re-lower overwrites with the same verdict. The read
-  // face lands with step iii's re-rooted emit walk.
-  graph_bind_note(Int, BindHome)
-  // The dispatch-tier column's write (lowering-is-a-column step i): the
-  // perform/wasi fork's arms note the chosen tier at the node's handle —
-  // an in-place spine cell store, non-trailed by the bind-note contract.
-  graph_dispatch_note(Int, DispatchTier)
-  // The state-slot-home column's write: the resume-commit construction
-  // notes its update pairs (field name, slot offset) at the resume
-  // node's handle — same in-place, non-trailed contract.
-  graph_state_slots_note(Int, StateSlotHome)
-  // The install-shape column's write: the ~> install's lowering notes
-  // the shape at the install node's handle — same in-place, non-trailed
-  // contract.
+  // The install-shape column's write: the ~> install's lowering notes the
+  // shape at the install node's handle, an in-place cell store, non-trailed
+  // because lowering runs after the judgment.
   graph_install_note(Int, InstallShape)
   // Its read, by the install's handle: the install emit, a perform the
   // install answers in its own frame, and the emitted reach all key the
@@ -3647,13 +3557,11 @@ type DiagKind
   //
   // expected one kind, found another
   = PExpectedToken(String, Span)
-  | POrphanDocstring(Span)
   // construct name
   | PUnclosedConstruct(String, Span)
   // context note
   | PUnexpectedToken(String, Span)
   | ERedundantBraces(Span)
-  | EBlockNeedsBraces(Span)
   | ELambdaFence(Span)
   | ERedundantFnOnLambda(Span)
   | ELambdaAsOrOr(Span)
@@ -3697,7 +3605,6 @@ type DiagKind
   | EResumeWorldMismatch(ResumeDiscipline, ResumeDiscipline, Span)
   // the label-resolution detail
   | EUnknownArgLabel(String, Span)
-  | EFeedbackNoContext(Span)
   // `<~ delay(0)` — the causality rule (Faust's, at Mentl's typed
   // altitude). A cycle whose declared delay is ZERO is non-computable:
   // the prior IS the current output, so the value depends on itself
@@ -4027,11 +3934,9 @@ effect BranchDiag {
 // are READS of it.
 fn diag_span(d) with Pure = match d {
   PExpectedToken(_, s) => s,
-  POrphanDocstring(s) => s,
   PUnclosedConstruct(_, s) => s,
   PUnexpectedToken(_, s) => s,
   ERedundantBraces(s) => s,
-  EBlockNeedsBraces(s) => s,
   ELambdaFence(s) => s,
   ERedundantFnOnLambda(s) => s,
   ELambdaAsOrOr(s) => s,
@@ -4055,7 +3960,6 @@ fn diag_span(d) with Pure = match d {
   EResumeAmbiguousOp(_, s) => s,
   EResumeWorldMismatch(_, _, s) => s,
   EUnknownArgLabel(_, s) => s,
-  EFeedbackNoContext(s) => s,
   EZeroDelayFeedback(s) => s,
   EInitPerformsOwnOp(_, _, s) => s,
   EHandlerInexhaustive(_, _, _, s) => s,
@@ -4109,11 +4013,9 @@ fn diag_span(d) with Pure = match d {
 // The originating tentacle/stage — a projection, not a copied label.
 fn diag_source(d) with Pure = match d {
   PExpectedToken(_, _) => "parser",
-  POrphanDocstring(_) => "parser",
   PUnclosedConstruct(_, _) => "parser",
   PUnexpectedToken(_, _) => "parser",
   ERedundantBraces(_) => "parser",
-  EBlockNeedsBraces(_) => "parser",
   ELambdaFence(_) => "parser",
   ERedundantFnOnLambda(_) => "parser",
   ELambdaAsOrOr(_) => "parser",
@@ -4138,7 +4040,6 @@ fn diag_source(d) with Pure = match d {
   EResumeAmbiguousOp(_, _) => "lower",
   EResumeWorldMismatch(_, _, _) => "infer",
   EUnknownArgLabel(_, _) => "infer",
-  EFeedbackNoContext(_) => "infer",
   EZeroDelayFeedback(_) => "infer",
   EInitPerformsOwnOp(_, _, _) => "effects",
   EHandlerInexhaustive(_, _, _, _) => "effects",
@@ -4195,11 +4096,9 @@ fn diag_source(d) with Pure = match d {
 // row, ownership, a claim, a step the gradient takes, a Reason's prose.
 fn diag_arm(d) with Pure = match d {
   PExpectedToken(_, _) => OnQuery,
-  POrphanDocstring(_) => OnWhy,
   PUnclosedConstruct(_, _) => OnQuery,
   PUnexpectedToken(_, _) => OnQuery,
   ERedundantBraces(_) => OnTeach,
-  EBlockNeedsBraces(_) => OnTeach,
   ELambdaFence(_) => OnQuery,
   ERedundantFnOnLambda(_) => OnQuery,
   ELambdaAsOrOr(_) => OnQuery,
@@ -4223,7 +4122,6 @@ fn diag_arm(d) with Pure = match d {
   EResumeWorldMismatch(_, _, _) => OnEffects,
   EEnvNameUngrounded(_) => OnEffects,
   EUnknownArgLabel(_, _) => OnQuery,
-  EFeedbackNoContext(_) => OnTopology,
   EZeroDelayFeedback(_) => OnTopology,
   EInitPerformsOwnOp(_, _, _) => OnEffects,
   EHandlerInexhaustive(_, _, _, _) => OnEffects,
@@ -4277,11 +4175,9 @@ fn diag_arm(d) with Pure = match d {
 // The wire code — the stable identifier (`docs/errors/<CODE>.md`).
 fn diag_code(d) with Pure = match d {
   PExpectedToken(_, _) => "P_ExpectedToken",
-  POrphanDocstring(_) => "P_OrphanDocstring",
   PUnclosedConstruct(_, _) => "P_UnclosedConstruct",
   PUnexpectedToken(_, _) => "P_UnexpectedToken",
   ERedundantBraces(_) => "E_RedundantBraces",
-  EBlockNeedsBraces(_) => "E_BlockNeedsBraces",
   ELambdaFence(_) => "E_LambdaFence",
   ERedundantFnOnLambda(_) => "E_RedundantFnOnLambda",
   ELambdaAsOrOr(_) => "E_LambdaAsOrOr",
@@ -4305,7 +4201,6 @@ fn diag_code(d) with Pure = match d {
   EResumeAmbiguousOp(_, _) => "E_ResumeAmbiguousOp",
   EResumeWorldMismatch(_, _, _) => "E_ResumeWorldMismatch",
   EUnknownArgLabel(_, _) => "E_UnknownArgLabel",
-  EFeedbackNoContext(_) => "E_FeedbackNoContext",
   EZeroDelayFeedback(_) => "E_ZeroDelayFeedback",
   EInitPerformsOwnOp(_, _, _) => "E_InitPerformsOwnOp",
   EHandlerInexhaustive(_, _, _, _) => "E_HandlerInexhaustive",
@@ -4358,9 +4253,7 @@ fn diag_code(d) with Pure = match d {
 
 // Severity — the error-vs-narration axis (a projection).
 fn diag_severity(d) with Pure = match d {
-  POrphanDocstring(_) => SWarning,
   ERedundantBraces(_) => SWarning,
-  EBlockNeedsBraces(_) => SWarning,
   ELambdaFence(_) => SWarning,
   ERedundantFnOnLambda(_) => SWarning,
   ELambdaAsOrOr(_) => SWarning,
@@ -4725,7 +4618,6 @@ fn diag_kind(d) with Pure = match diag_severity(d) {
 fn diag_applicability(d) with Pure = match d {
   ERedundantBraces(_) => MachineApplicable,
   EDuplicateImport(_, _) => MachineApplicable,
-  EBlockNeedsBraces(_) => MachineApplicable,
   WRedundantWhere(_) => MachineApplicable,
   WCommentRefUnresolved(_, _, _) => MaybeIncorrect,
   TOverDeclared(_, _, _, _) => MachineApplicable,
@@ -4782,12 +4674,10 @@ fn diag_applies_itself(d) = diag_applicability(d) == MachineApplicable
 // is structured; the prose is its projection.
 fn diag_message(d) with !Mutate = match d {
   PExpectedToken(note, _) => "expected token: {note}",
-  POrphanDocstring(_) => "comment has no following declaration to attach to",
   PUnclosedConstruct(detail, _) => detail,
   PUnexpectedToken(detail, _) => detail,
   ERedundantBraces(_) => "redundant braces around a non-block body",
   EDuplicateImport(path, _) => "`import {path}` again: the edge is already drawn, so this line draws nothing — `mentl fmt` lifts it",
-  EBlockNeedsBraces(_) => "statements require braces",
   ELambdaFence(_) => // drift-audit: ignore — diagnostic message prose, not Mentl syntax
   "`|params|` lambda fence — use `(params) => body`",
   ERedundantFnOnLambda(_) => // drift-audit: ignore — diagnostic message prose
@@ -4813,7 +4703,6 @@ fn diag_message(d) with !Mutate = match d {
   EResumeAmbiguousOp(name, _) => "'{name}' resumes under arms of two different handlers — the k record's op binding is ambiguous",
   EResumeWorldMismatch(da, db, _) => "resume cardinality mismatch: {show_discipline(da)} vs {show_discipline(db)}",
   EUnknownArgLabel(detail, _) => detail,
-  EFeedbackNoContext(_) => "`<~` used outside an iterative context",
   EZeroDelayFeedback(_) => "`<~ delay(0)` closes a cycle with no delay — the prior would be the value being computed. Raise the delay to at least 1",
   EInitPerformsOwnOp(hname, op, _) => "handler {hname} performs {op} while building itself — in a state init or a config default, both of which run before the install exists — and {hname} is what answers {op}, so nothing can absorb it. Move the perform into an arm, or compute the value from a handler installed around this one",
   EResumeOfNever(hname, op, _) => "handler {hname} resumes {op}, which is declared `-> !`: the op never returns to its performer, and each perform meets a result type of its own, so no value can be handed back to all of them. End the arm with the value the install answers, or declare the op's result type if it does return",
@@ -5008,9 +4897,8 @@ effect LowerScope {
   ls_wide_leave()
 }
 
-// Every refinement unification performs verify(span, pred, reason).
-// verify_ledger accumulates (V_Pending); verify_smt discharges (E_RefinementRejected on
-// reject). Handler swap; source code unchanged.
+// Every claim performs `verify`; the ledger decides what its fragment can
+// and keeps the rest as pending debt.
 effect Verify {
   // the module the obligation was raised in rides the perform: the ledger arm
   // is graph-free (its row rides every install), so it cannot read the module
@@ -5054,7 +4942,7 @@ effect Verify {
 // Branching ops implement the branching ledger for BOTH parallel
 // (`><` / `<|`) and alternative (`if` / `match`) arms — the BranchMode
 // carried at branch_enter tells them apart. At branch_enter the handler
-// stashes `used` as a base and the mode; branch_divider captures the
+// stashes its used set as a base and the mode; branch_divider captures the
 // delta since base, stashes it in the frame, resets used to base;
 // branch_exit captures the final arm's delta, unions all deltas into
 // used, pops the frame — and, for BParallel only, pairwise-checks
@@ -5678,7 +5566,6 @@ fn show_ownership(o) with Pure = match o {
 fn show_discipline(d) with Pure = match d {
   OneShot => "OneShot",
   MultiShot => "MultiShot",
-  Either => "Either",
   Abandon => "Abandon",
 }
 
@@ -5976,17 +5863,13 @@ fn reason_phrase(reason) with !Mutate = match reason {
   LetBinding(name, _) => "let {name}",
   Unified(_, _) => "two provenances unified",
   Instantiation(name, _) => "an instance of {name}",
-  UnifyFailed(_, _) => "a unification that failed",
   Placeholder(_) => "authored here",
-  BinOpPlaceholder(_) => "an operator's operand",
   MissingVar(name) => "{name} is unresolved",
   Refinement(_, _) => "a refinement",
   Located(_, inner) => reason_phrase(inner),
   InferredCallReturn(name, _) => "the call to {name}",
   InferredPipeResult(v, _) => "through {v}",
-  FreshInContext(_, ctx) => "fresh in {ctx}",
   DefaultReason(name, _) => "{name} defaulted",
-  VerifyWitness(w) => "the witness {w}",
   Accepted(text, proof, _) => "accepted `{text}` — proposed: {show_reason(proof)}",
   EffectEnters(eff, _, _) => "{eff} enters here",
   ChainInstall(name, _) => "the handler chain {name}, installed here",
@@ -6048,18 +5931,14 @@ fn show_reason(ref reason) with !Mutate = match reason {
   LetBinding(name, inner) => "let {name} = {show_reason(inner)}",
   Unified(a, b) => "{show_reason(a)} unified with {show_reason(b)}",
   Instantiation(name, inner) => "instantiate {name} → {show_reason(inner)}",
-  UnifyFailed(ta, tb) => "cannot unify {render_ty(ta)} with {render_ty(tb)}" ~> var_names,
   Placeholder(span) => "placeholder at {show_span(span)}",
-  BinOpPlaceholder(op) => "binop {binop_to_str(op)}",
   MissingVar(name) => "unbound variable: {name}",
   Refinement(p, q) => "refinement: {show_predicate(p)} ∧ {show_predicate(q)}",
   Located(span, inner) => "at {show_span(span)}: {show_reason(inner)}",
   InferredCallReturn(callee, inner) => // RX.2 — high-intent structured variants
   "call to '{callee}' → {show_reason(inner)}",
   InferredPipeResult(verb, inner) => "{verb} pipe → {show_reason(inner)}",
-  FreshInContext(id, ctx) => "fresh {show_handle(id)} in '{ctx}'",
   DefaultReason(pname, span) => "{pname} defaulted at {show_span(span)}",
-  VerifyWitness(model) => "proved by SMT witness: {model}",
   Accepted(text, proof, inner) => "accepted `{text}` — {show_reason(proof)} → {show_reason(inner)}",
   EffectEnters(eff, site, next) => // The chain's three shapes, read off the site node: the declaration the
   // effect enters, the effect's own declaration where the chain ends at

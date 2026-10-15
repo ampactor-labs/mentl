@@ -47,9 +47,6 @@ type Capability
   // !E for an effect with no domain meaning: the absence itself
   | CProvenAbsence(String)
 
-// span to replace, new text — the voice's edit request
-type Patch = Patch(Span, String)
-
 // The propose projection is `Proposal` (types.mn), beside the `Domain` its
 // value question carries: one VERDICT plus every vocabulary candidate the
 // ALLOWED row refused, each refusal keeping its Why (PLAN §5: the row pruning
