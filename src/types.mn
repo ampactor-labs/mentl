@@ -3138,11 +3138,6 @@ effect EnvRead {
   env_resolve_type(name: String) -> Option(Int)
   // The newest binding whose declaration carries a type's variants.
   env_resolve_variants(name: String) -> Option(Int)
-  // Whether the name's live binding is MODULE-LEVEL: published below every
-  // open scope mark. The env is the scope stack, so the entry's position
-  // is the fact — false for a parameter, a let, a nested fn, and for a
-  // name bound nowhere.
-  env_lookup_is_global(name: String) -> Bool
   env_snapshot() -> Env
 }
 
@@ -3188,7 +3183,7 @@ effect BranchEnv {
   // The fourth component is the base's MODULE-LEVEL extent — the root's
   // first open scope mark, or its count when no scope is open — so a
   // branch instance answers env_lookup_is_global for a base hit exactly.
-  env_base_view() -> ([(String, Int)], Int, [[(String, Int)]], Int)
+  env_base_view() -> ([(String, Int)], Int, [[(String, Int)]])
   // The branch's publishes, each read with the facts its declaration holds
   // while the segment's writes are still live.
   env_publishes() -> [(String, Binding, Reason, SchemeKind, Int)]

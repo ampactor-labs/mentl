@@ -648,12 +648,17 @@ a provenance diff, a search over live shared cells.
    (`fanout_reach_known`) — the form is a lowered unit keyed by its
    declaration's handle, reachability the edge followed from `main`, a symbol
    read off its declaration (`$module.name`, nested paths `.`-joined), and the
-   name-keyed walks deleted, a TRANSITION; (b) the judgment re-resolves by name
-   references it has linked (`callee_name`, `env_lookup` at call sites,
-   `op_effect_of`'s readers), and each reads the edge instead; (c) the
-   proposer's rings and its declaration index key by the binding's
-   declaration. Gate: `mentl query src/main.mn unreachable` names the same set
-   read off the edge, and m3 == m4.
+   name-keyed walks deleted, a TRANSITION; (b) a call reads its callee's
+   binding off the edge (`callee_binding`), but an install reads its handler
+   by spelling (`chain_of`, `handler_arms_of`, `handler_e_r`, `answer_reason`,
+   `ages_install`) because the body is judged before the handler side's
+   reference is linked — the install resolves its handler once, first, and
+   every reader takes the declaration; a continuation boundary asks its op's
+   effect by spelling (`op_effect_of`), and the substrate fast path and the
+   desugar's prelude vocabulary name their callees; (c) the proposer's rings
+   and its declaration index key by the binding's declaration. Gate: `mentl
+   query src/main.mn unreachable` names the same set read off the edge, and
+   m3 == m4.
 2. **Every position is a cell — #108** (`Hβ.graph.positions-are-cells`). A
    pattern's constructor, a type annotation's name, a row's effect name and a
    handler arm's op name are nodes that draw the same edge, so `refs of` a

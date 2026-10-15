@@ -2034,8 +2034,8 @@ fn layer_name_index(ref names, i, idx) = if i >= len(names) {
 // is reachable, and the trail records the segment's binds where a diff can
 // read them.
 fn segment_bracket(body, base, iseed) = match base {
-  (bb, bc, bi, bg) => match iseed {
-    (ib, ie, ic) => body() ~> row_gate ~> store_ages ~> infer_ctx ~> fresh_for_inference ~> resume_summaries_ctx ~> affine_ledger ~> region_tracker ~> verify_ledger ~> lookup_ty_graph ~> env_handler(bb, bc, bi, bg) ~> mutate_sink ~> diag_branch ~> intern_view(ib, ie, ic),
+  (bb, bc, bi) => match iseed {
+    (ib, ie, ic) => body() ~> row_gate ~> store_ages ~> infer_ctx ~> fresh_for_inference ~> resume_summaries_ctx ~> affine_ledger ~> region_tracker ~> verify_ledger ~> lookup_ty_graph ~> env_handler(bb, bc, bi) ~> mutate_sink ~> diag_branch ~> intern_view(ib, ie, ic),
   },
 }
 
@@ -3670,18 +3670,23 @@ fn gate_terminal_edges(g, vs: [RowEdge], row_handle, span: ValidSpan) = match vs
 // here only via degenerate CallExpr — canonical form is
 // NamedRecordExpr. Either way the result handle deserves region
 // tracking.
-fn call_is_alloc_returning(func) = match graph_node_body(func) {
-  NExpr(VarRef(name)) => match env_lookup(name) {
-    Some(entry) => match entry {
-      (_, _, kind) => match kind {
-        ConstructorScheme(_, _) => true,
-        RecordSchemeKind(_) => true,
-        _ => false,
-      },
-    },
-    None => false,
+fn call_is_alloc_returning(func) = match callee_binding(func) {
+  Some((_, _, kind)) => match kind {
+    ConstructorScheme(_, _) => true,
+    RecordSchemeKind(_) => true,
+    _ => false,
   },
-  _ => false,
+  None => false,
+}
+
+// The binding a callee's edge reaches — a reference's declaration or binder,
+// or for a callee applied to its configuration the reference it applies — as
+// that declaration published it: what an env lookup of the spelling answered
+// before the judgment linked the reference, read off the link instead, so a
+// local that shares a module-level name is the local.
+fn callee_binding(h) = match tee_handler_decl(h) {
+  Some(d) => graph_published(d),
+  None => None,
 }
 
 // H4 alloc-region tracking (region_enter/region_exit) opened a region
@@ -4488,15 +4493,13 @@ fn seq_face_ty(name: String, scheme) = {
   }
 }
 
-// A NAMED callee that misses env — the shape whose parameter product the
-// move-vs-borrow read cannot ground. Param-position and lambda callees have
-// resolvable schemes and keep normal inference; only the VarRef-with-no-entry
+// A NAMED callee that resolved to nothing — the shape whose parameter
+// product the move-vs-borrow read cannot ground: a reference the judgment
+// could not link (`infer_var_ref`). Param-position and lambda callees have
+// resolvable schemes and keep normal inference; only the VarRef-with-no-link
 // shape borrows its direct args (the miss already reported once).
-fn callee_missing_in_env(ref func, cname: String) = match graph_node_body(func) {
-  NExpr(VarRef(_)) => match env_lookup(cname) {
-    None => true,
-    Some(_) => false,
-  },
+fn callee_missing_in_env(ref func) = match graph_node_body(func) {
+  NExpr(VarRef(_)) => graph_ref_decl(func) == None,
   _ => false,
 }
 
@@ -4810,7 +4813,7 @@ fn infer_call_node(func, args, handle, span: ValidSpan, site) = {
   // was the ownership false-positive cascade (`len(buf)` unresolved
   // consuming buf). Borrow the args under the miss; param-position and
   // lambda callees keep normal inference (their schemes resolve).
-  if callee_missing_in_env(func, cname) {
+  if callee_missing_in_env(func) {
     borrow_enter()
     infer_call_arg_list(pos_args, params, 0)
     borrow_exit()
@@ -4883,7 +4886,7 @@ fn infer_call(func, args, handle, span: ValidSpan, site) = {
     // the read — the same view the pattern path already builds (infer_pat's
     // RecordSchemeKind arm): one view, two readers; the ordinary saturated
     // machinery does the rest.
-    match record_ctor_arrow_view(cname, span) {
+    match record_ctor_arrow_view(func, cname, span) {
       Some(vh) => {
         infer_call_saturated(args, vh, handle, span, cname)
         CallSaturated
@@ -4955,24 +4958,23 @@ fn bind_stage_product(fh, args, span: ValidSpan, cname) = {
 }
 
 // The record ctor's arrow VIEW, minted at the read — Some(handle bound to
-// TFun([TRecord(declared)], TName(X, ...), Pure)) when cname is a nominal
-// record's constructor, None otherwise. The identical instantiation the
-// pattern path's RecordSchemeKind arm performs; the env's scheme stays the
-// RESULT (one home), the arrow exists only as this projection.
-fn record_ctor_arrow_view(cname: String, span: ValidSpan) = match env_lookup(cname) {
-  Some(entry) => match entry {
-    (scheme, reason, kind) => match kind {
-      RecordSchemeKind(declared_fields) => match judgment_pair(scheme) {
-        (q, body) => {
-          let view =
-            instantiate(Frozen(q, TFun(build_ctor_params([TRecord(declared_fields)], 0), body, mk_ef_pure())))
-          let vh = mint(Inferred("record-ctor arrow view of '{cname}'"))
-          graph_bind(vh, view, Located(span, VarLookup(cname, reason)))
-          Some(vh)
-        },
+// TFun([TRecord(declared)], TName(X, ...), Pure)) when the callee's edge
+// reaches a nominal record's constructor, None otherwise. The identical
+// instantiation the pattern path's RecordSchemeKind arm performs; the
+// published scheme stays the RESULT (one home), the arrow exists only as
+// this projection.
+fn record_ctor_arrow_view(func, cname: String, span: ValidSpan) = match callee_binding(func) {
+  Some((scheme, reason, kind)) => match kind {
+    RecordSchemeKind(declared_fields) => match judgment_pair(scheme) {
+      (q, body) => {
+        let view =
+          instantiate(Frozen(q, TFun(build_ctor_params([TRecord(declared_fields)], 0), body, mk_ef_pure())))
+        let vh = mint(Inferred("record-ctor arrow view of '{cname}'"))
+        graph_bind(vh, view, Located(span, VarLookup(cname, reason)))
+        Some(vh)
       },
-      _ => None,
     },
+    _ => None,
   },
   None => None,
 }
@@ -5391,7 +5393,10 @@ fn infer_call_saturated(args, fh, handle, span: ValidSpan, cname) = {
   // a second callee's edge survive the frame's accumulation. The
   // unify-failure path charges nothing (the mismatch already reported).
   match graph_chase(fh) {
-    GNode(NBound(TFun(_, _, crow)), _) => inf_add_row_unified_at(handle, grounded_perform_row(cname, mutation_masked(fh, crow), args, span)),
+    GNode(NBound(TFun(_, _, crow)), _) => inf_add_row_unified_at(
+      handle,
+      grounded_perform_row(fh, cname, mutation_masked(fh, crow), args, span)
+    ),
     _ => (),
   }
   // The call boundary is a refinement CONSTRUCTION site: each declared
@@ -5421,7 +5426,7 @@ fn infer_call_saturated(args, fh, handle, span: ValidSpan, cname) = {
 // computed argument leaves the dim opaque: an ungrounded instance, provably
 // distinct from none, so a negation over it holds exactly when the reads it
 // guards are literal.
-fn grounded_perform_row(cname: String, crow, args, span: ValidSpan) = match perform_dim_slots(cname) {
+fn grounded_perform_row(fh, cname: String, crow, args, span: ValidSpan) = match perform_dim_slots(fh) {
   None => crow,
   Some((en, slots)) => {
     let dims = map(perform_slot_value(args, ??), slots)
@@ -5433,21 +5438,18 @@ fn grounded_perform_row(cname: String, crow, args, span: ValidSpan) = match perf
 }
 
 // The (argument position, dim position) pairs an op grounds, with its
-// effect's name — None for a callee that is no op, or an op none of whose
-// parameters names its effect's.
-fn perform_dim_slots(cname: String) = match env_lookup(cname) {
-  Some(entry) => match entry {
-    (sch, _, EffectOpScheme(en, _, _, _)) => match judgment_ty(sch) {
-      TFun(ps, _, _) => {
-        let dims = effect_dim_names(en)
-        let slots = fold([], perform_slot_of(dims, ??, ??), enumerate(ps))
-        if len(slots) == 0 { None } else { Some((en, slots)) }
-      },
-      _ => None,
+// effect's name — None for a callee whose edge reaches no op, or an op none
+// of whose parameters names its effect's.
+fn perform_dim_slots(func) = match callee_binding(func) {
+  Some((sch, _, EffectOpScheme(en, _, _, _))) => match judgment_ty(sch) {
+    TFun(ps, _, _) => {
+      let dims = effect_dim_names(en)
+      let slots = fold([], perform_slot_of(dims, ??, ??), enumerate(ps))
+      if len(slots) == 0 { None } else { Some((en, slots)) }
     },
     _ => None,
   },
-  None => None,
+  _ => None,
 }
 
 fn effect_dim_names(en: String) = match env_lookup(en) {
@@ -5580,13 +5582,24 @@ fn note_application(call_h, leaf) = match graph_node_body(leaf) {
 // returns its caller's choice too.
 fn callee_in_sight(leaf) = match graph_node_body(leaf) {
   NExpr(LambdaExpr(_, _)) => true,
-  NExpr(VarRef(name)) => if env_lookup_is_global(name) { true } else { stated_parameter(leaf) },
+  NExpr(VarRef(_)) => if reaches_module_decl(leaf) { true } else { stated_parameter(leaf) },
   NExpr(CallExpr(callee, _)) => callee_in_sight(callee),
   NExpr(PipeExpr(PForward, _, stage)) => callee_in_sight(stage),
   _ => false,
 }
 
 fn callee_seen(leaf) = learning_param(leaf) || callee_in_sight(leaf)
+
+// Whether a reference's edge reaches a declaration of the program's own
+// scope — a module-level declaration, or a constructor or an op declared
+// inside one — never a local that shares its spelling.
+fn reaches_module_decl(r) = match graph_ref_decl(r) {
+  Some(d) => at_module_level(d) || match graph_parent_of(d) {
+    Some(p) => at_module_level(p),
+    None => false,
+  },
+  None => false,
+}
 
 fn stated_parameter(leaf) = match binder_read_by(leaf) {
   Some(b) => match graph_binder_of(b) {
@@ -5690,17 +5703,9 @@ fn finalize_continuation_boundaries(i, n) = if i >= n {
 // yield already unwinding, and a composed k is called as many times as the k
 // it extends — MultiShot by construction, never the callee's own cardinality.
 fn continuation_discipline_at(site_h) = match graph_node_body(site_h) {
-  NExpr(CallExpr(func, _)) => {
-    let name = callee_name(func)
-    match env_lookup(name) {
-      Some(entry) => match entry {
-        (_, _, kind) => match kind {
-          EffectOpScheme(_, _, _, disc) => disc,
-          _ => MultiShot,
-        },
-      },
-      None => MultiShot,
-    }
+  NExpr(CallExpr(func, _)) => match callee_binding(func) {
+    Some((_, _, EffectOpScheme(_, _, _, disc))) => disc,
+    _ => MultiShot,
   },
   _ => MultiShot,
 }
@@ -13097,30 +13102,24 @@ fn is_authored_hole(n) = match graph_node_body(n) {
   _ => false,
 }
 
-// A declared function's signature with its quantified variables, read
-// through the env by the reference's name — the reference holds an
-// instance, never the scheme
-// (Hβ.verify.generic-callee-scheme-read-by-name).
-fn declared_scheme(callee_h) = match graph_node_body(callee_h) {
-  NExpr(VarRef(name)) => if env_lookup_is_global(name) {
-    match env_lookup(name) {
-      Some(entry) => match entry {
-        (binding, _, kind) => match kind {
-          FnScheme => match judgment_pair(binding) {
-            (qs, ty) => match ty {
-              TFun(dps, dret, drow) => Some((qs, dps, dret, drow)),
-              _ => None,
-            },
-          },
+// A declared function's signature with its quantified variables, read off
+// the module-level declaration the reference's edge reaches — the reference
+// holds an instance, never the scheme.
+fn declared_scheme(callee_h) = match graph_ref_decl(callee_h) {
+  Some(d) => if at_module_level(d) {
+    match graph_published(d) {
+      Some((binding, _, FnScheme)) => match judgment_pair(binding) {
+        (qs, ty) => match ty {
+          TFun(dps, dret, drow) => Some((qs, dps, dret, drow)),
           _ => None,
         },
       },
-      None => None,
+      _ => None,
     }
   } else {
     None
   },
-  _ => None,
+  None => None,
 }
 
 // ─── The channel through a generic call (H4·D) ──────────────────────────
