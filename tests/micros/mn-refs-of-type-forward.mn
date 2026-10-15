@@ -1,0 +1,13 @@
+// refs of Tree: 3 annotation
+// A name a type writes is linked where every declaration of the link is
+// registered: a field naming a type declared below it, and a type naming
+// itself, answer `refs of` as a function's annotation does.
+type Forest = Grove([Tree])
+
+type Tree = Leaf(Int) | Node(Tree, Tree)
+
+fn size(f) = match f {
+  Grove(ts) => len(ts),
+}
+
+fn main() = size(Grove([Leaf(1), Node(Leaf(2), Leaf(3))]))

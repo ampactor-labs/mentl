@@ -2228,12 +2228,16 @@ fn infer_stmt(ref node) = {
     // are declarations a name names, so `mentl where` finds them where it
     // finds a function — by what they declare, in the column — and the
     // decls facet lists them.
-    NStmt(TypeDefStmt(name, _)) => declaration_noted(node, name),
+    NStmt(TypeDefStmt(name, variants)) => {
+      each({ (_, _, vnode) => link_written(vnode) }, variants)
+      declaration_noted(node, name)
+    },
     NStmt(EffectDeclStmt(name, _, ops)) => {
       // Every `with` row inside an op's signature resolves, judged HERE —
       // after every effect of the link is registered — so an op naming an
       // effect declared below it in source is not refused for the order.
       each(check_op_effect_names, ops)
+      each(link_op_written, ops)
       declaration_noted(node, name)
     },
     NStmt(HandlerDeclStmt(hname, ename, config, state, arms, effs)) => {
@@ -3829,6 +3833,15 @@ fn check_ty_effect_names(ty, span: ValidSpan) = match ty {
 // A built row's names, present and absent alike; its tail is a cell.
 fn check_row_effect_names(row, span: ValidSpan) = match row {
   EfRow(present, absent, _) => each(check_effect_name(??, span), present ++ absent),
+}
+
+// An op's signature, its names linked where the link is whole: the return
+// its node holds, and each parameter's type.
+fn link_op_written(op) = match op {
+  (_, op_params, _, op_node) => {
+    link_written(op_node)
+    each({ p => each(link_written, written_cells(param_ty(p))) }, op_params)
+  },
 }
 
 // An effect op's signature: its parameters' types and its return, each at
@@ -13857,6 +13870,22 @@ fn resolve_written(h, ty, qmap, owner) = match graph_node_body(h) {
     }
   },
   NTypeAnn(_) | NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) => (ty, qmap),
+}
+
+// A written name linked where every declaration of the link is registered,
+// then the names its arguments write. A constructor's fields and an op's
+// signature are read when their declarations register, before a type
+// declared later in the link — or the declaring type itself — has a
+// declaration to link to.
+fn link_written(c) = {
+  match graph_node_body(c) {
+    NTypeAnn(TName(name, _)) => match type_decl_named(name) {
+      Some(d) => graph_ref_link(c, d),
+      None => (),
+    },
+    NTypeAnn(_) | NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) => (),
+  }
+  each(link_written, body_child_handles(graph_node_body(c)))
 }
 
 // The declaration a type name denotes: an alias or a nominal record, else a

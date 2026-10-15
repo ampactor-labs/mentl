@@ -2103,7 +2103,25 @@ fn body_child_handles(body) = match body {
   NPat(p) => pat_child_handles(p),
   NHole(_) => [],
   NModule(_) => [],
-  NTypeAnn(_) => [],
+  NTypeAnn(ty) => written_cells(ty),
+}
+
+// A type annotation's children: the names it writes. Every variable a type
+// holds as written is a name's cell (the parse's written_type_name), and a
+// name's own arguments are its children in turn.
+fn written_cells(ty) = match ty {
+  TVar(h) => [h],
+  TList(elem) => written_cells(elem),
+  TTuple(elems) => flat_map(written_cells, elems),
+  TFun(params, ret, _) => flat_map({ p => written_cells(param_ty(p)) }, params) ++ written_cells(ret),
+  TName(_, args) => flat_map(written_cells, args),
+  TRecord(fields) => flat_map({ (_, fty) => written_cells(fty) }, fields),
+  TRecordOpen(fields, _) => flat_map({ (_, fty) => written_cells(fty) }, fields),
+  TRefined(base, _) => written_cells(base),
+  TCont(input, answer, _, _) => written_cells(input) ++ written_cells(answer),
+  TAlias(_, inner) => written_cells(inner),
+  TReprPin(_, base) => written_cells(base),
+  TInt | TFloat | TUnit | TByte | TAddr => [],
 }
 
 // A pattern's sub-patterns, each a node of its own.

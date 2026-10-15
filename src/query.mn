@@ -587,10 +587,24 @@ fn has_free_tvar_fields(ref fields) = if len(fields) == 0 {
 fn refs_of_decl(d) with !Mutate =
   map({ (m, sp, h) => (m, sp, Some(ref_role(h))) }, decl_ref_sites(d))
 
-// The text boundary's form: a person typed the name.
-fn refs_of_name(name) with !Mutate = match name_decl(name) {
-  Some(d) => refs_of_decl(d),
-  None => [],
+// The text boundary's form: a person typed the name, and every declaration
+// it names answers.
+fn refs_of_name(name) with !Mutate = name_decls(name) |> flat_map(refs_of_decl)
+
+// The declarations a name names at module level, one per namespace: a
+// constructor and the type it builds may share one (`Span`), and a person
+// typing it asks after both.
+fn name_decls(name) with !Mutate = {
+  let as_type = match env_resolve_type(name) {
+    Some(d) => Some(d),
+    None => env_resolve_variants(name),
+  }
+  match (name_decl(name), as_type) {
+    (Some(v), Some(t)) => if v == t { [v] } else { [v, t] },
+    (Some(v), None) => [v],
+    (None, Some(t)) => [t],
+    (None, None) => [],
+  }
 }
 
 // What stands at a reference: a pattern taking the value apart, a type an
@@ -834,7 +848,12 @@ fn decl_ref_rows_for(cell) with !Mutate = match cell {
 }
 
 fn decl_ref_row_join(path: String, acc, d) with !Mutate =
-  acc ++ map(decl_ref_verdict(path, d), decl_links_of(d))
+  acc ++ map(decl_ref_verdict(path, d), named_once(d, decl_links_of(d)))
+
+// A statement's names, each once: a constructor named for the type it builds
+// is the type's own row, which counts its references.
+fn named_once(stmt, links) with !Mutate =
+  links |> filter({ (n, h) => h == stmt || !any({ (n2, h2) => h2 == stmt && n2 == n }, links) })
 
 // The per-name verdict: the declaring module, the name, and how many of its
 // references stand outside its own declaration. Zero is the finding.
@@ -1131,7 +1150,10 @@ fn orphan_row_join(path: String, acc, d) with !Mutate = {
     // Parenthesised deliberately: `++` binds tighter than `|>` (§Precedence),
     // so `acc ++ filter(…) |> map(…)` maps over the ACCUMULATOR. Written as
     // a pipe first and caught by the medium in one check.
-    acc ++ map(orphan_verdict(path, byte_len(prose)), filter(name_is_orphaned(d), decl_links_of(d)))
+    acc ++ map(
+      orphan_verdict(path, byte_len(prose)),
+      filter(name_is_orphaned(d), named_once(d, decl_links_of(d)))
+    )
   }
 }
 
