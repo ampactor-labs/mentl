@@ -1423,7 +1423,11 @@ the alternation of the constructors that reach it, each payload `_`, under
 the arm's binder when it bound one: after `Dot => 1`, the arm `other =>
 "many"` over `type Shape = Dot | Line(Int) | Box(Int, Int) | Blob` becomes
 `other @ (Line(_) | Box(_, _) | Blob) => "many"`, and `_ => 4` after `Dot`
-and `Line(_)` becomes `Box(_, _) | Blob => 4` (tests/frontier/tighten-demo/wild.mn).
+and `Line(_)` becomes `Box(_, _) | Blob => 4`, the comment the arm carries
+kept above it (tests/frontier/tighten-demo/wild.mn). The roster is written
+at the arm's own pattern node, so the arm keeps its body and its prose (real,
+2026-10-16: the rewrite minted a fresh pattern, the arm's comment was lost,
+and the formatter refused to write the file).
 The write costs nothing at run time: the last arm of an exhaustive match runs
 untested, as the `_` did. Three shapes are not the roster and are never
 counted: a `_` inside a payload, which ignores a part the arm does not read;

@@ -901,16 +901,17 @@ fn roster_render(path: String, judged: String, decls, sites) = {
   }
 } ~> format_default ~> diag_bank
 
-// One site's write: the roster registered over the catch-all arm, the body
-// kept. Answers the atom the roster leaves out of the arm's pattern — a
+// One site's write: the roster written at the catch-all arm's own pattern
+// node, so the arm, its body and the comment the arm carries stay where they
+// are. Answers the atom the roster leaves out of the arm's pattern — a
 // wildcard arm's `_`, which the roster says in constructors; a binder
 // survives as the name over the grouped alternation.
 fn write_roster(h) = match graph_node_body(h) {
   NExpr(MatchExpr(scrut, arms)) => match catch_all_arm(scrut, arms) {
-    Some((i, pat, roster)) => {
-      let written = roster_pattern_node(roster, graph_span_of(pat))
-      graph_register_node(h, NExpr(MatchExpr(scrut, map(roster_arm(i, written, ??), enumerate(arms)))))
-      consumed_by(pat)
+    Some((_, pat, roster)) => {
+      let consumed = consumed_by(pat)
+      graph_register_node(pat, NPat(roster_pattern(roster, graph_span_of(pat))))
+      consumed
     },
     None => [],
   },
@@ -930,23 +931,22 @@ fn write_roster(h) = match graph_node_body(h) {
 // constructor with its payload left to `_`, Bool's two by their literals,
 // their alternation under the arm's binder when it bound one. The module is
 // rendered from these nodes and parsed again, so nothing judges them.
-fn roster_pattern_node(roster, span) = match roster {
-  Roster(binder, ctors) => {
-    let alt = match map(roster_ctor_node(span, ??), ctors) {
-      [one] => one,
-      many => npat(PAlt(many), span),
-    }
-    match binder {
-      Some(name) => npat(PAs(name, alt), span),
-      None => alt,
-    }
+fn roster_pattern(roster, span) = match roster {
+  Roster(binder, ctors) => match binder {
+    Some(name) => PAs(name, npat(roster_alternation(ctors, span), span)),
+    None => roster_alternation(ctors, span),
   },
 }
 
-fn roster_ctor_node(span, entry) = match entry {
-  ("True", 0) => npat(PLit(LVBool(true)), span),
-  ("False", 0) => npat(PLit(LVBool(false)), span),
-  (cname, k) => npat(PCon(cname, map({ _ => npat(PWild, span) }, range(0, k))), span),
+fn roster_alternation(ctors, span) = match ctors {
+  [one] => roster_ctor(span, one),
+  many => PAlt(map({ c => npat(roster_ctor(span, c), span) }, many)),
+}
+
+fn roster_ctor(span, entry) = match entry {
+  ("True", 0) => PLit(LVBool(true)),
+  ("False", 0) => PLit(LVBool(false)),
+  (cname, k) => PCon(cname, map({ _ => npat(PWild, span) }, range(0, k))),
 }
 
 fn consumed_by(pat) = match pat_of(pat) {
@@ -954,16 +954,6 @@ fn consumed_by(pat) = match pat_of(pat) {
   PAs(_, inner) => consumed_by(inner),
   PAlt(ps) => flat_map(consumed_by, ps),
   PVar(_) | PLit(_) | PCon(_, _) | PTuple(_) | PList(_, _) | PRecord(_, _) => [],
-}
-
-fn roster_arm(i, roster, indexed) = match indexed {
-  (j, arm) => if j == i {
-    match arm {
-      (_, body) => (roster, body),
-    }
-  } else {
-    arm
-  },
 }
 
 // The batch applier: locate every candidate (drop unmappable spans),

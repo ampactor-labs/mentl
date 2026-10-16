@@ -2640,10 +2640,10 @@ for i in "${!compilers[@]}"; do
   # (Morgan, 2026-10-13). wild.mn stands a `_` and a bare binder after other
   # arms over `Dot | Line(Int) | Box(Int, Int) | Blob`, and a `_` over an Int.
   # The census names the two over the sum with the roster each stands for;
-  # tighten writes the rosters — the binder's as the binder over the group;
-  # the result checks clean and runs to 5; the second run finds nothing; the
-  # file is canonical. RED on boot 82692525: no such census shape, the file
-  # untouched.
+  # tighten writes the rosters — the binder's as the binder over the group,
+  # the arm's comment kept; the result checks clean and runs to 5; the second
+  # run finds nothing; the file is canonical. RED on boot 7730b750: the arm's
+  # comment was lost, so the formatter refused the file.
   cp "$ROOT/tests/frontier/tighten-demo/wild.mn" "$tdemo/wild.mn"
   (cd "$tdemo" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$tdemo" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" query wild.mn "census wildcard-over-sum") >"$dir/wild-census.out" 2>&1
   if grep -q '^→ 2 catch-all arm(s) over a sum' "$dir/wild-census.out" && grep -q 'other @ (Line(_) | Box(_, _) | Blob)' "$dir/wild-census.out"; then
@@ -2653,8 +2653,8 @@ for i in "${!compilers[@]}"; do
   fi
   (cd "$tdemo" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$tdemo" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" tighten wild.mn) >"$dir/wild-tighten.out" 2>&1
   wrc=$?
-  if [ $wrc -eq 0 ] && grep -q '^  Box(_, _) | Blob => 4,' "$tdemo/wild.mn" && grep -q '^  other @ (Line(_) | Box(_, _) | Blob) => "many",' "$tdemo/wild.mn" && grep -q '^  _ => 1,' "$tdemo/wild.mn"; then
-    pass "tighten writes the roster each catch-all stood for, the binder over its group, the word's complement kept"
+  if [ $wrc -eq 0 ] && grep -q '^  Box(_, _) | Blob => 4,' "$tdemo/wild.mn" && grep -q '^  // a box and a blob have four sides each$' "$tdemo/wild.mn" && grep -q '^  other @ (Line(_) | Box(_, _) | Blob) => "many",' "$tdemo/wild.mn" && grep -q '^  _ => 1,' "$tdemo/wild.mn"; then
+    pass "tighten writes the roster each catch-all stood for, the binder over its group, the arm's comment and the word's complement kept"
   else
     fail "wildcard-over-sum tighten (exit=$wrc; see $dir/wild-tighten.out)"
   fi
