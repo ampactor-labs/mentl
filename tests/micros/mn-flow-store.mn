@@ -1,0 +1,23 @@
+// expect: refuse E_RefinementRejected
+// flow: refused at 22
+// Memory written in place holds what was stored there: the list is built of a
+// constant, then an untrusted value is stored over its slot, so reading the
+// slot back hands the sink an untrusted value. The value walk reads a list as
+// it was built, and on boot cb12aeea the claim was pending debt.
+effect Trust {
+  untrusted(v: String) -> Bool
+}
+
+type Untrusted = String where untrusted(self)
+
+type Trusted = String where !untrusted(self)
+
+fn read_cmd() -> Untrusted = "rm -rf /"
+
+fn exec(cmd: Trusted) = len(cmd)
+
+fn main() = {
+  let cmds = ["ls"]
+  list_set(cmds, 0, read_cmd())
+  exec(cmds[0])
+}

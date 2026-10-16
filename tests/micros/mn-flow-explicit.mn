@@ -1,0 +1,20 @@
+// expect: refuse E_RefinementRejected
+// flow: refused at 20
+// An untrusted value reaching a trusted sink through a concatenation. The
+// label is an op the program declares, so it has no body to read: the medium
+// gives it its meaning, and `untrusted(v)` holds of every value a source
+// declared `Untrusted` can influence. On boot cb12aeea both claims were
+// pending debt and the command ran.
+effect Trust {
+  untrusted(v: String) -> Bool
+}
+
+type Untrusted = String where untrusted(self)
+
+type Trusted = String where !untrusted(self)
+
+fn read_cmd() -> Untrusted = "rm -rf /"
+
+fn exec(cmd: Trusted) = len(cmd)
+
+fn main() = exec("ls -l " ++ read_cmd())

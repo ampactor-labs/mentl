@@ -170,12 +170,35 @@ fn variant_named_specs_at(applied) = match applied {
     Some(entry) => match entry {
       (binding, _r, kind) => match kind {
         TypeVariants(specs) => if len(args) == 0 { specs } else { map(ground_variant_spec(type_params_of(binding), args), specs) },
-        _ => [],
+        FnScheme
+        | ConstructorScheme(_, _)
+        | EffectOpScheme(_, _, _, _)
+        | RecordSchemeKind(_)
+        | EffectDeclKind(_, _)
+        | HandlerKind(_, _, _, _, _)
+        | ParamScheme(_)
+        | RowAliasKind(_)
+        | HandlerChainKind(_)
+        | ValueScheme => [],
       },
     },
     None => [],
   },
-  _ => [],
+  TInt
+  | TFloat
+  | TUnit
+  | TByte
+  | TAddr
+  | TList(_)
+  | TTuple(_)
+  | TFun(_, _, _)
+  | TVar(_)
+  | TRecord(_)
+  | TRecordOpen(_, _)
+  | TRefined(_, _)
+  | TReprPin(_, _)
+  | TCont(_, _, _, _)
+  | TAlias(_, _) => [],
 }
 
 // The variants of the type a constructor belongs to, from the type's own
@@ -183,7 +206,7 @@ fn variant_named_specs_at(applied) = match applied {
 // exhaustiveness matrix reads it, and so does a destructuring pattern's claim.
 fn ctor_roster(cname: String) = match env_lookup(cname) {
   Some((Frozen(_, ty), _, ConstructorScheme(_, _))) => roster_of_result(ty),
-  _ => [],
+  None | Some(_) => [],
 }
 
 // The roster behind a constructor's scheme: its result is the type applied
@@ -191,7 +214,20 @@ fn ctor_roster(cname: String) = match env_lookup(cname) {
 fn roster_of_result(ty) = match ty {
   TFun(_, ret, _) => roster_of_result(ret),
   TName(t, _) => variant_named_specs_at(TName(t, [])),
-  _ => [],
+  TInt
+  | TFloat
+  | TUnit
+  | TByte
+  | TAddr
+  | TList(_)
+  | TTuple(_)
+  | TVar(_)
+  | TRecord(_)
+  | TRecordOpen(_, _)
+  | TRefined(_, _)
+  | TReprPin(_, _)
+  | TCont(_, _, _, _)
+  | TAlias(_, _) => [],
 }
 
 fn spec_named(cname: String, spec) = match spec {
@@ -211,7 +247,21 @@ fn spec_named(cname: String, spec) = match spec {
 fn type_params_of(binding) = match binding {
   Frozen(_, ty) => match ty {
     TName(_, params) => params,
-    _ => [],
+    TInt
+    | TFloat
+    | TUnit
+    | TByte
+    | TAddr
+    | TList(_)
+    | TTuple(_)
+    | TFun(_, _, _)
+    | TVar(_)
+    | TRecord(_)
+    | TRecordOpen(_, _)
+    | TRefined(_, _)
+    | TReprPin(_, _)
+    | TCont(_, _, _, _)
+    | TAlias(_, _) => [],
   },
   // A Live binding here would mean the entry came from somewhere the
   // registration does not reach; inventing parameters for it is the
@@ -274,7 +324,21 @@ fn ground_var(params, args, h, ty) = match find(param_at_root(h), enumerate(para
 fn param_at_root(h, indexed) = match indexed {
   (_, p) => match p {
     TVar(ph) => graph_chase_handle(ph) == graph_chase_handle(h),
-    _ => false,
+    TInt
+    | TFloat
+    | TUnit
+    | TByte
+    | TAddr
+    | TList(_)
+    | TTuple(_)
+    | TFun(_, _, _)
+    | TName(_, _)
+    | TRecord(_)
+    | TRecordOpen(_, _)
+    | TRefined(_, _)
+    | TReprPin(_, _)
+    | TCont(_, _, _, _)
+    | TAlias(_, _) => false,
   },
 }
 
@@ -476,7 +540,21 @@ fn repr_is_wide(r) with Pure = match r {
 // reads it (the RI64/RF32 gradient-arm precedent — a trigger, not a live path).
 fn stride_of(elem_ty) with Pure = match elem_ty {
   TByte => 1,
-  _ => repr_width(repr_of(elem_ty)),
+  TInt
+  | TFloat
+  | TUnit
+  | TAddr
+  | TList(_)
+  | TTuple(_)
+  | TFun(_, _, _)
+  | TVar(_)
+  | TName(_, _)
+  | TRecord(_)
+  | TRecordOpen(_, _)
+  | TRefined(_, _)
+  | TReprPin(_, _)
+  | TCont(_, _, _, _)
+  | TAlias(_, _) => repr_width(repr_of(elem_ty)),
 }
 
 // stride_class — the ZERO-BIASED carrier codec, EMIT side: the stride-code the
@@ -570,7 +648,19 @@ fn fold_strip(ty) with Pure = match ty {
   // fold_sig(TList(TByte)) and a String field and a [byte] field share the one
   // generated `$eq_<sig>`/`$hash_<sig>`/`$show_<sig>` helpers at sig "lb" —
   // the eq/hash-divergence footgun unsayable.
-  _ => ty,
+  TInt
+  | TFloat
+  | TUnit
+  | TByte
+  | TAddr
+  | TList(_)
+  | TTuple(_)
+  | TFun(_, _, _)
+  | TVar(_)
+  | TName(_, _)
+  | TRecord(_)
+  | TRecordOpen(_, _)
+  | TCont(_, _, _, _) => ty,
 }
 
 // fold_sig — a deterministic structural name for a type: the dedup key and the
@@ -852,7 +942,7 @@ fn usage_seq(a, b) = match a {
   UMany => UMany,
   UOne => match b {
     UZero => UOne,
-    _ => UMany,
+    UOne | UMany => UMany,
   },
 }
 
@@ -861,7 +951,7 @@ fn usage_join(a, b) = match a {
   UMany => UMany,
   UOne => match b {
     UMany => UMany,
-    _ => UOne,
+    UZero | UOne => UOne,
   },
 }
 
@@ -1149,9 +1239,23 @@ fn edge_row_of(kind) = match kind {
   NRowBound(inner) => Some(inner),
   NBound(ty) => match ty {
     TFun(_, _, frow) => Some(frow),
-    _ => None,
+    TInt
+    | TFloat
+    | TUnit
+    | TByte
+    | TAddr
+    | TList(_)
+    | TTuple(_)
+    | TVar(_)
+    | TName(_, _)
+    | TRecord(_)
+    | TRecordOpen(_, _)
+    | TRefined(_, _)
+    | TReprPin(_, _)
+    | TCont(_, _, _, _)
+    | TAlias(_, _) => None,
   },
-  _ => None,
+  NFree(_) | NRowFree(_) | NRecordRowBound(_, _) | NErrorHole(_) => None,
 }
 
 // Effect names carry optional install-time arguments. The `with IO`
@@ -1273,17 +1377,6 @@ type NodeKind
   // tried and the march broke on it, for the reason this kind exists.
   | NRecordRowBound([(String, Ty)], RecordRowTail)
   // inference observed failure (Hazel marked hole)
-  // IFC (§4⑥): no separate NFlowBound/NFlowFree dimension needed. The existing
-  // graph already encodes information-flow constraints through two mechanisms:
-  //   1. the row's absent set (`!IO + !Network`) — a function proved to carry !IO
-  //      cannot let its return value reach a Log/stderr handler; the row unification
-  //      catches the violation structurally (not through a parallel label lattice).
-  //   2. TRefined(Ty, Predicate) + TName — `type SecretKey = Bytes where classified(self)`
-  //      brands values at the type level; the type checker refuses to pass SecretKey
-  //      where Bytes is expected. Nominal branding IS the flow label.
-  // FlowLabel (below) remains as a pure lattice for use in annotations and the
-  // mentl-voice projection (`mentl query flow name`) — a read over the type the graph
-  // already holds, not a new graph dimension.
   | NErrorHole(Reason)
 
 // WHAT LIES PAST A RESIDUAL'S FIELDS: nothing, proven — or the rest of the
@@ -1643,7 +1736,7 @@ fn int_fold(op, a, b) = if int_op_defined(op, a, b) {
     BMul => Some(a * b),
     BDiv => Some(a / b),
     BMod => Some(a % b),
-    _ => None,
+    BEq | BNe | BLt | BGt | BLe | BGe | BAnd | BOr | BConcat => None,
   }
 } else {
   None
@@ -1657,7 +1750,7 @@ fn int_fold(op, a, b) = if int_op_defined(op, a, b) {
 fn int_op_defined(op, a, b) = match op {
   BMod => b != 0,
   BDiv => b != 0 && (b != -1 || a != i32_min()),
-  _ => true,
+  BAdd | BSub | BMul | BEq | BNe | BLt | BGt | BLe | BGe | BAnd | BOr | BConcat => true,
 }
 
 // The least signed word: the one dividend whose quotient by -1 does not fit.
@@ -1835,6 +1928,12 @@ type Reason
   // lists one per effect of a declaration's row, and `mentl why <entry>
   // <fn> <Effect>` prints it.
   | EffectEnters(String, Int, Reason)
+  // WHERE A LABEL ENTERS (2026-10-16): the walk from a claim of a label's
+  // absence to the source that states it — the label as its author wrote it,
+  // the SITE where the walk met the source, and what that source is. A
+  // refused claim of information flow carries it, from the settle in
+  // verify.mn.
+  | LabelEnters(String, Int, Reason)
   // AN INSTALL OF A NAMED CHAIN (S3, 2026-10-13): the node the author wrote
   // the chain's name at, whose edge reaches the chain's declaration, and how
   // many members the chain had, borne by the install node whose body became
@@ -2283,7 +2382,30 @@ fn span_zero() -> ValidSpan = Span(0, 0, 0, 0)
 // read THIS instead of flooring to 0:0 (SYNTAX principle 5).
 fn reason_span_or_zero(ref reason) = match reason {
   Located(span, _) => span,
-  _ => span_zero(),
+  Declared(_)
+  | Inferred(_)
+  | Fresh(_)
+  | OpConstraint(_, _, _)
+  | VarLookup(_, _)
+  | FnReturn(_, _)
+  | FnParam(_, _, _)
+  | MatchBranch(_, _)
+  | ListElement(_)
+  | IfBranch(_)
+  | LetBinding(_, _)
+  | Unified(_, _)
+  | Instantiation(_, _)
+  | Placeholder(_)
+  | MissingVar(_)
+  | Refinement(_, _)
+  | InferredCallReturn(_, _)
+  | InferredPipeResult(_, _)
+  | DefaultReason(_, _)
+  | Accepted(_, _, _)
+  | EffectEnters(_, _, _)
+  | LabelEnters(_, _, _)
+  | ChainInstall(_, _)
+  | StateBinding(_, _) => span_zero(),
 }
 
 // Inference + Verify ledger discharges obligations at construction
@@ -2749,7 +2871,9 @@ type Stmt
   // NTypeAnn — infer's arm and stmt_child_handles both read it so.
   = LetStmt(Node, Node, Node)
   | FnStmt(String, [Node], Node, [(RowTerm, Bool, EConn)], Node)
-  // name, the parameter nodes (NParam), retty, effects, body
+  // name, the parameter nodes (NParam), the return annotation — NTypeAnn(ty)
+  // when present, ABSENT aliasing the body node as a let's aliases its
+  // value — effects, body
   | TypeDefStmt(String, [(String, [Ty], Node)])
   // name, then per variant its name + field types
   | EffectDeclStmt(String, [Node], [(String, [TParam], Ty, Node)])
@@ -3033,12 +3157,6 @@ type Predicate
   | PBoolNode(Int)
   // the scrutinee node's value matches the pattern node — match-narrowing
   | PPatternMatch(Int, Int)
-  // IFC obligation (§4⑥): src ⊑ dst in the flow lattice.
-  // Compile-time decidable by flow_le — ALWAYS Some(true/false),
-  // never deferred. verify(span, PFlowLe(src, dst), reason)
-  // IS the flow check; ERefinementRejected carries the violation.
-  // No new effect op, no new diagnostic, no new handler arm.
-  | PFlowLe(FlowLabel, FlowLabel)
   // the `self` BINDER: the value-node handle self resolves
   // to, carried WITH the predicate as data. self may sit
   // NESTED inside an arithmetic operand (`self + 1`), where a
@@ -3082,89 +3200,6 @@ type Predicate
 // kept beside the unnamed ones: a function handed there is still judged,
 // and a value handed there still refutes a demand it breaks.
 type Provided = ProvidedNone | ProvidedAt([Int]) | ProvidedBeyond([Int])
-
-// PExpr is DELETED: its leaves (PSelf/PInt/PEVar/PApp) were a lossy COPY of the
-// expression the AST node already holds (the deleted node_to_pexpr re-derived it with a
-// `_ => PEVar("?")` surrender). The predicate now carries the live operand Node
-// and Verify reads its Expr live — carry the handle, read live, delete the copy.
-//
-// ─── FlowLabel — the IFC frontier (PLAN.md §4⑥, SYNTAX.md §4⑥) ──────────
-//
-// The three-level information-flow lattice. Every expression node in the graph
-// carries a FlowLabel alongside its Ty and EffRow; infer accumulates it at
-// MakeStringExpr splice sites and at handler-install boundaries.
-//
-// Lattice: Public ⊑ Tainted ⊑ Secret.
-//   Public  — safe to observe and log. Default for all unannotated expressions.
-//   Tainted — derived from a Secret via a computation (e.g. hash(secret)) — the
-//             result is not the secret itself, but the path touched it. Tainted
-//             stays tainted through further transformations.
-//   Secret  — must not flow into any Public observable (log, network, stderr).
-//             `"msg: {secret}" ~> Log` is E_IFCFlowViolation: the string splice
-//             carries secret's label UP into the string literal, which then
-//             flows into the IO-row Log handler — a non-interference violation
-//             the type system proves before runtime.
-//
-// Why a 3-level lattice instead of 2? Tainted models the realistic case where
-// secrets MUST be used in computation (signing keys, HMAC) — the output of
-// those computations is not the secret, but tracing taint through them is
-// necessary for IFC completeness. The lattice has a meet (Public) and a join
-// (Secret); Tainted is the intermediate that lets us distinguish "used secret"
-// from "IS secret".
-//
-// infer.mn's MakeStringExpr arm checks a Secret or Tainted splice into a
-// Public-bound context. PLAN §4⑥ retires this lattice into the influence
-// walk, where a label is a refinement on a source's declared type.
-type FlowLabel
-  // safe to observe; default for all unannotated expressions
-  = Public
-  // derived from Secret through computation — carries the taint
-  | Tainted
-  // must not flow into any Public-observable (log/net/stderr)
-  | Secret
-
-// flow_label_join — lattice join: the label of a derived expression reaches the
-// join of its operands' labels. Pure — the lattice is a compile-time fact.
-// H6: exhaustive over all 3×3 pairs; no wildcard arms on a load-bearing ADT.
-fn flow_label_join(a, b) with Pure = match a {
-  Secret => Secret,
-  Tainted => match b {
-    Secret => Secret,
-    Tainted => Tainted,
-    Public => Tainted,
-  },
-  Public => match b {
-    Secret => Secret,
-    Tainted => Tainted,
-    Public => Public,
-  },
-}
-
-// flow_le — lattice order: a ⊑ b (a is at least as restrictive as b).
-// Public ⊑ Public ⊑ Tainted ⊑ Secret. H6: exhaustive over both dimensions.
-fn flow_le(a, b) with Pure = match a {
-  Secret => match b {
-    Secret => true,
-    Tainted => false,
-    Public => false,
-  },
-  Tainted => match b {
-    Secret => true,
-    Tainted => true,
-    Public => false,
-  },
-  Public => match b {
-    Secret => true,
-    Tainted => true,
-    Public => true,
-  },
-}
-
-fn show_flow_label(label) with Pure = match label {
-  Public => "Public",
-  Tainted => "Tainted",
-  Secret => "Secret",
-}
 
 // Option lives in lib/prelude.mn — the vocabulary type at the vocabulary
 // home, ONE declaration serving the wheel's self-build (src+lib) and every
@@ -3863,7 +3898,7 @@ type DiagKind
   // the offending row
   // ─── verify / own / graph / driver ───────────────────────────────
   | EPurityViolated(EffRow, Span)
-  | ERefinementRejected(Predicate, Span)
+  | ERefinementRejected(Predicate, Span, Reason)
   // a predicate operand the SMT renderer
   // cannot encode — accrues as undischarged
   // (never a fabricated `true` at the proof gate)
@@ -4190,7 +4225,7 @@ fn diag_span(d) with Pure = match d {
   EUseAfterMove(_, s) => s,
   EEffectMismatch(_, _, _, s) => s,
   EPurityViolated(_, s) => s,
-  ERefinementRejected(_, s) => s,
+  ERefinementRejected(_, s, _) => s,
   EVerifyUnencodable(s) => s,
   VPending(_, s) => s,
   EOwnershipViolation(_, s) => s,
@@ -4270,7 +4305,7 @@ fn diag_source(d) with Pure = match d {
   EUseAfterMove(_, _) => "ownership",
   EEffectMismatch(_, _, _, _) => "effects",
   EPurityViolated(_, _) => "effects",
-  ERefinementRejected(_, _) => "verify",
+  ERefinementRejected(_, _, _) => "verify",
   EVerifyUnencodable(_) => "verify",
   VPending(_, _) => "verify",
   EOwnershipViolation(_, _) => "ownership",
@@ -4351,7 +4386,7 @@ fn diag_arm(d) with Pure = match d {
   EUseAfterMove(_, _) => OnOwnership,
   EEffectMismatch(_, _, _, _) => OnEffects,
   EPurityViolated(_, _) => OnEffects,
-  ERefinementRejected(_, _) => OnVerify,
+  ERefinementRejected(_, _, _) => OnVerify,
   EVerifyUnencodable(_) => OnVerify,
   VPending(_, _) => OnVerify,
   EOwnershipViolation(_, _) => OnOwnership,
@@ -4431,7 +4466,7 @@ fn diag_code(d) with Pure = match d {
   EUseAfterMove(_, _) => "E_UseAfterMove",
   EEffectMismatch(_, _, _, _) => "E_EffectMismatch",
   EPurityViolated(_, _) => "E_PurityViolated",
-  ERefinementRejected(_, _) => "E_RefinementRejected",
+  ERefinementRejected(_, _, _) => "E_RefinementRejected",
   EVerifyUnencodable(_) => "E_VerifyUnencodable",
   VPending(_, _) => "V_Pending",
   EOwnershipViolation(_, _) => "E_OwnershipViolation",
@@ -4483,7 +4518,61 @@ fn diag_severity(d) with Pure = match d {
   EUseAfterMove(_, _) => SError,
   VPending(_, _) => SVerificationPending,
   EVerifyUnencodable(_) => SVerificationPending,
-  _ => SError,
+  PUnclosedConstruct(_, _)
+  | EOrphanHandlerAttach(_)
+  | EEffArgNotLiteral(_)
+  | EInternalInvariant(_, _)
+  | ETypeMismatch(_, _, _, _)
+  | ETypeArityMismatch(_, _, _)
+  | EConstructorArity(_, _, _, _)
+  | EHandlerArmArity(_, _, _, _)
+  | EFnArityMismatch(_, _, _)
+  | EOccursCheck(_, _, _)
+  | EMissingVariable(_, _)
+  | EMissingImport(_, _, _, _)
+  | EDuplicateImport(_, _)
+  | ENotARecordType(_, _)
+  | EResumeOutsideArm(_)
+  | EResumeAmbiguousOp(_, _)
+  | EResumeWorldMismatch(_, _, _)
+  | EUnknownArgLabel(_, _)
+  | EZeroDelayFeedback(_)
+  | EInitPerformsOwnOp(_, _, _)
+  | EHandlerInexhaustive(_, _, _, _)
+  | EResumeOfNever(_, _, _)
+  | EComputedDelayDepth(_)
+  | ERestOutsideDestructure(_)
+  | ERowAliasCycle(_, _)
+  | EDeclaredRowContradiction(_, _)
+  | EMalformedNumericLiteral(_, _, _)
+  | ERowAliasNegation(_, _)
+  | ERecordFieldExtra(_, _, _)
+  | ERecordFieldMissing(_, _, _)
+  | EPatternInexhaustive(_, _)
+  | EPatternAlternationBindingMismatch(_, _)
+  | EIfMissingElse(_)
+  | EEffectMismatch(_, _, _, _)
+  | EPurityViolated(_, _)
+  | ERefinementRejected(_, _, _)
+  | EOwnershipViolation(_, _)
+  | ERegionEscape(_, _)
+  | EMissingModule(_, _, _)
+  | EHandlerStateShadowsOp(_, _, _)
+  | EFnShadowsOp(_, _, _)
+  | EOpShadowsOp(_, _, _, _)
+  | EDuplicateFnName(_, _)
+  | EDuplicateTypeName(_, _)
+  | EDuplicateBinder(_, _, _)
+  | EEmittedNameCollision(_, _)
+  | EUnresolvedType(_, _, _)
+  | EEffectUnhandled(_, _, _)
+  | EThreadedBranchEffect(_, _, _)
+  | EEnvNameUngrounded(_)
+  | EUnresolvedHole(_, _)
+  | EFieldOffsetUnprovable(_, _)
+  | EShapeUnprovable(_, _)
+  | EInstantiationDepth(_, _)
+  | EHandlerChainShape(_, _) => SError,
 }
 
 // diag_refuses — the ARMED classes of the refusal law, a projection beside
@@ -4647,7 +4736,7 @@ fn diag_refuses(d) with Pure = match d {
   // callee's move default) died with graph_bind_hole + the callee-miss borrow
   // guard; the detector survived adversarial falsification on resolved
   // programs (a genuine double move still refuses, disjoint arms still pass).
-  ERefinementRejected(_, _) => True,
+  ERefinementRejected(_, _, _) => True,
   EOwnershipViolation(_, _) => True,
   // ARMED 2026-09-15 — the affine tier's READ half joining the consume half
   // above, and the arming condition was written by the class itself: its
@@ -4808,7 +4897,44 @@ fn diag_refuses(d) with Pure = match d {
   // would read that structure as a word. Measured the day it was born: two
   // ten-deep lists compared unequal and a nested show printed an address.
   EInstantiationDepth(_, _) => True,
-  _ => False,
+  PExpectedToken(_, _)
+  | PUnclosedConstruct(_, _)
+  | PUnexpectedToken(_, _)
+  | ERedundantBraces(_)
+  | ELambdaFence(_)
+  | ERedundantFnOnLambda(_)
+  | ELambdaAsOrOr(_)
+  | EOrphanHandlerAttach(_)
+  | ENotAKeyword(_, _)
+  | EEffArgNotLiteral(_)
+  | WRedundantWhere(_)
+  | WCommentRefUnresolved(_, _, _)
+  | ETypeArityMismatch(_, _, _)
+  | EConstructorArity(_, _, _, _)
+  | EHandlerArmArity(_, _, _, _)
+  | ENotARecordType(_, _)
+  | EResumeOutsideArm(_)
+  | EResumeAmbiguousOp(_, _)
+  | EResumeWorldMismatch(_, _, _)
+  | EUnknownArgLabel(_, _)
+  | ERestOutsideDestructure(_)
+  | ERowAliasCycle(_, _)
+  | ERowAliasNegation(_, _)
+  | ERecordFieldExtra(_, _, _)
+  | ERecordFieldMissing(_, _, _)
+  | EPatternAlternationBindingMismatch(_, _)
+  | EIfMissingElse(_)
+  | TOverDeclared(_, _, _, _)
+  | TRowInventory(_, _, _, _)
+  | TWordSlotBox(_, _, _)
+  | TPolyRecursionSignature(_, _)
+  | TOwnUnconsumed(_, _)
+  | TOwnAcrossReplay(_, _)
+  | EVerifyUnencodable(_)
+  | VPending(_, _)
+  | ERegionEscape(_, _)
+  | EUnresolvedType(_, _, _)
+  | EUnresolvedHole(_, _) => False,
 }
 
 // The word a report's line prints for its severity.
@@ -4849,7 +4975,7 @@ fn diag_applicability(d) with Pure = match d {
   EShapeUnprovable(_, _) => MaybeIncorrect,
   EInstantiationDepth(_, _) => Unspecified,
   EArithOnAggregate(_, _) => Unspecified,
-  ERefinementRejected(_, _) => Unspecified,
+  ERefinementRejected(_, _, _) => Unspecified,
   EVerifyUnencodable(_) => Unspecified,
   ETypeMismatch(_, _, _, _) => Unspecified,
   ETypeArityMismatch(_, _, _) => Unspecified,
@@ -4864,7 +4990,45 @@ fn diag_applicability(d) with Pure = match d {
   // Nothing the reader can apply — the collision is in the compiler's own
   // naming, and the program that provoked it is correct.
   EEmittedNameCollision(_, _) => Unspecified,
-  _ => MaybeIncorrect,
+  PExpectedToken(_, _)
+  | PUnclosedConstruct(_, _)
+  | PUnexpectedToken(_, _)
+  | ELambdaFence(_)
+  | ERedundantFnOnLambda(_)
+  | ELambdaAsOrOr(_)
+  | ENotAKeyword(_, _)
+  | EEffArgNotLiteral(_)
+  | EInternalInvariant(_, _)
+  | EMissingVariable(_, _)
+  | EMissingImport(_, _, _, _)
+  | ENotARecordType(_, _)
+  | EResumeWorldMismatch(_, _, _)
+  | EUnknownArgLabel(_, _)
+  | EZeroDelayFeedback(_)
+  | EInitPerformsOwnOp(_, _, _)
+  | EComputedDelayDepth(_)
+  | ERestOutsideDestructure(_)
+  | ERowAliasCycle(_, _)
+  | EDeclaredRowContradiction(_, _)
+  | EMalformedNumericLiteral(_, _, _)
+  | ERowAliasNegation(_, _)
+  | ERecordFieldExtra(_, _, _)
+  | ERecordFieldMissing(_, _, _)
+  | EPatternAlternationBindingMismatch(_, _)
+  | EIfMissingElse(_)
+  | EEffectMismatch(_, _, _, _)
+  | EPurityViolated(_, _)
+  | VPending(_, _)
+  | ERegionEscape(_, _)
+  | EMissingModule(_, _, _)
+  | EHandlerStateShadowsOp(_, _, _)
+  | EFnShadowsOp(_, _, _)
+  | EOpShadowsOp(_, _, _, _)
+  | EDuplicateFnName(_, _)
+  | EDuplicateTypeName(_, _)
+  | EDuplicateBinder(_, _, _)
+  | EUnresolvedType(_, _, _)
+  | EHandlerChainShape(_, _) => MaybeIncorrect,
 }
 
 // Whether the step a report names is one the medium takes by itself: the one
@@ -4932,7 +5096,7 @@ fn diag_message(d) with !Mutate = match d {
   EUseAfterMove(msg, _) => msg,
   EEffectMismatch(declared, inferred, why, _) => "effect row mismatch: {render_row(declared)} vs {render_row(inferred)} — {show_reason(why)}" ~> var_names,
   EPurityViolated(row, _) => "expected Pure but found effects: {show_effrow(row)}",
-  ERefinementRejected(pred, _) => "refinement predicate proven false at compile time: {show_predicate(pred)}",
+  ERefinementRejected(pred, _, why) => "refinement predicate proven false at compile time: {show_predicate(pred)}{label_entry(why)}",
   // drift-audit: ignore — diagnostic message string
   EVerifyUnencodable(_) => "refinement predicate operand cannot be encoded for the solver — obligation accrued as pending",
   VPending(count, _) => "{int_to_str(count)} verification obligations pending",
@@ -5126,6 +5290,14 @@ effect Verify {
   // them at their sites; the decision was made once, here, and kept rather
   // than discarded the moment it was returned.
   verify_decided() -> [(Int, Span, Predicate, Bool)]
+  // The claims naming a label the judgment raised, each decided once the
+  // program is judged, by the settle in verify.mn, since what can reach a
+  // value is a fact of the whole program.
+  verify_flows() -> [(Int, Span, Predicate, Reason)]
+  // What the settle decided of every such claim and of every demand they
+  // stand on, replacing what the last settle decided: None owed, Some(true)
+  // proven, Some(false) refuted.
+  verify_settle(entries: [(Int, Span, Predicate, Reason, Option(Bool))])
   // The generation boundary's clear, for what an edit replaced: the
   // obligations raised in a replaced module, or within a replaced
   // statement's extent, are dropped before the judgment re-accrues them, and
@@ -5140,11 +5312,6 @@ effect Verify {
   verify_forget([Replaced])
 }
 
-// ifc non-interference: verify(span, PFlowLe(src, dst), reason)
-// predicate_decide(PFlowLe(a,b)) = Some(flow_le(a,b)) — always compile-time decidable.
-// ERefinementRejected carries the violation; show_predicate renders "Secret ⊑ Public".
-// No separate op. No separate handler arm. No separate diagnostic.
-//
 // Every VarRef performs consume(name, ownership, span), carrying authored
 // parameter ownership from the env lookup that already happened at the use-site.
 // affine_ledger enforces linearity only for authored Own. Unmarked params are
@@ -5378,7 +5545,30 @@ fn fresh_var_name(taken, h, sort) = match sort {
 // clause's row variable (effects.mn's leaf_row_of), a record's named rest.
 fn declared_var_name(h) = match graph_reason_at(h) {
   Declared(n) => if is_var_spelling(n) { Some(n) } else { None },
-  _ => None,
+  Inferred(_)
+  | Fresh(_)
+  | OpConstraint(_, _, _)
+  | VarLookup(_, _)
+  | FnReturn(_, _)
+  | FnParam(_, _, _)
+  | MatchBranch(_, _)
+  | ListElement(_)
+  | IfBranch(_)
+  | LetBinding(_, _)
+  | Unified(_, _)
+  | Instantiation(_, _)
+  | Placeholder(_)
+  | MissingVar(_)
+  | Refinement(_, _)
+  | Located(_, _)
+  | InferredCallReturn(_, _)
+  | InferredPipeResult(_, _)
+  | DefaultReason(_, _)
+  | Accepted(_, _, _)
+  | EffectEnters(_, _, _)
+  | LabelEnters(_, _, _)
+  | ChainInstall(_, _)
+  | StateBinding(_, _) => None,
 }
 
 fn is_named_var(h) = match declared_var_name(graph_chase_handle(h)) {
@@ -5476,7 +5666,6 @@ fn pred_is_provision(pred) = match pred {
   PNot(_) => false,
   PBoolNode(_) => false,
   PPatternMatch(_, _) => false,
-  PFlowLe(_, _) => false,
   PTotalDiv(_, _, _) => false,
   PInBounds(_, _) => false,
 }
@@ -5493,9 +5682,22 @@ fn render_ty_top(ty) with !Mutate = match ty {
   TFun(params, ret, row) => "({show_list(params, render_tparam, ", ")}){render_ret(ret)}{render_row_suffix(row)}",
   TVar(h) => match graph_chase(h) {
     GNode(NBound(b), _) => render_ty_top(b),
-    _ => render_ty(ty),
+    GNode(_, _) => render_ty(ty),
   },
-  _ => render_ty(ty),
+  TInt
+  | TFloat
+  | TUnit
+  | TByte
+  | TAddr
+  | TList(_)
+  | TTuple(_)
+  | TName(_, _)
+  | TRecord(_)
+  | TRecordOpen(_, _)
+  | TRefined(_, _)
+  | TReprPin(_, _)
+  | TCont(_, _, _, _)
+  | TAlias(_, _) => render_ty(ty),
 }
 
 fn render_field(field: (String, Ty)) with !Mutate = match field {
@@ -5518,7 +5720,7 @@ fn render_var(h) with !Mutate = match graph_chase(h) {
 fn render_open_record(fields, v) with !Mutate = match graph_chase(v) {
   GNode(NRecordRowBound(more, tail), _) => render_record_row_residual(fields ++ more, tail),
   GNode(NRowFree(_), _) => "\{{show_list(fields, render_field, ", ")}{rest_lead(fields)}...{rest_name(v)}\}",
-  _ => "\{{show_list(fields, render_field, ", ")}{rest_lead(fields)}...{authored_rest_name(v)}\}",
+  GNode(_, _) => "\{{show_list(fields, render_field, ", ")}{rest_lead(fields)}...{authored_rest_name(v)}\}",
 }
 
 fn rest_name(v) with !Mutate = match ty_row_face() {
@@ -5553,7 +5755,7 @@ fn show_record_row_residual(fields, tail) with !Mutate =
 fn show_handle_forensic(h) with !Mutate = match graph_chase(h) {
   GNode(NRowFree(epoch), _) => "r{int_to_str(h)}@e{int_to_str(epoch)}",
   GNode(NFree(epoch), _) => "t{int_to_str(h)}@e{int_to_str(epoch)}",
-  _ => show_handle(h),
+  GNode(_, _) => show_handle(h),
 }
 
 // show_handle — the live-chase projection. Resolved handles show the
@@ -5597,7 +5799,16 @@ fn resolve_call_args(params, args, cname: String) =
 // Unwrap a LabeledArg to its value node; a positional arg passes through.
 fn unwrap_labeled_arg(arg) = match graph_node_body(arg) {
   NExpr(LabeledArg(_, v)) => v,
-  _ => arg,
+  NExpr(_)
+  | NStmt(_)
+  | NPat(_)
+  | NHole(_)
+  | NModule(_)
+  | NLink(_)
+  | NTypeAnn(_)
+  | NName(_)
+  | NRow(_)
+  | NParam(_) => arg,
 }
 
 // Build the positional slot buffer (one slot per declared param, 0 = unfilled
@@ -5629,7 +5840,16 @@ fn place_labeled(params, args, i, slots, cname: String) = if i >= len(args) {
         list_set(slots, idx, v)
       }
     },
-    _ => slots,
+    NExpr(_)
+    | NStmt(_)
+    | NPat(_)
+    | NHole(_)
+    | NModule(_)
+    | NLink(_)
+    | NTypeAnn(_)
+    | NName(_)
+    | NRow(_)
+    | NParam(_) => slots,
   }
   place_labeled(params, args, i + 1, next, cname)
 }
@@ -5643,7 +5863,16 @@ fn place_positional(args, cur, slot, slots, n) = if cur >= len(args) {
   let arg = list_index(args, cur)
   match graph_node_body(arg) {
     NExpr(LabeledArg(_, _)) => place_positional(args, cur + 1, slot, slots, n),
-    _ => {
+    NExpr(_)
+    | NStmt(_)
+    | NPat(_)
+    | NHole(_)
+    | NModule(_)
+    | NLink(_)
+    | NTypeAnn(_)
+    | NName(_)
+    | NRow(_)
+    | NParam(_) => {
       let free = next_free_slot(slots, slot, n)
       if free >= n {
         // An argument with no slot is the refusal, and it must be
@@ -5725,7 +5954,7 @@ fn minted_param_name(nm) = name_has_prefix(nm, al_prefix)
 fn render_tparam(tp) with !Mutate = {
   let marker = match param_authored(tp) {
     Unmarked => ownership_marker(param_resolved(tp)),
-    authored => ownership_marker(authored),
+    authored @ (Own | Ref) => ownership_marker(authored),
   }
   if param_is_unnamed(param_name(tp)) {
     "{marker}{render_ty(param_ty(tp))}"
@@ -5760,7 +5989,20 @@ fn render_head(name: String, params, ret, row) with !Mutate =
 fn render_ret(ret) with !Mutate = match chase_ret(ret) {
   TUnit => "",
   TFun(_, _, _) => " -> ({render_ty(ret)})",
-  _ => " -> {render_ty(ret)}",
+  TInt
+  | TFloat
+  | TByte
+  | TAddr
+  | TList(_)
+  | TTuple(_)
+  | TVar(_)
+  | TName(_, _)
+  | TRecord(_)
+  | TRecordOpen(_, _)
+  | TRefined(_, _)
+  | TReprPin(_, _)
+  | TCont(_, _, _, _)
+  | TAlias(_, _) => " -> {render_ty(ret)}",
 }
 
 // A result type read through the variables bound to it, so a unit bound to a
@@ -5768,9 +6010,23 @@ fn render_ret(ret) with !Mutate = match chase_ret(ret) {
 fn chase_ret(t) = match t {
   TVar(h) => match graph_chase(h) {
     GNode(NBound(b), _) => chase_ret(b),
-    _ => t,
+    GNode(_, _) => t,
   },
-  _ => t,
+  TInt
+  | TFloat
+  | TUnit
+  | TByte
+  | TAddr
+  | TList(_)
+  | TTuple(_)
+  | TFun(_, _, _)
+  | TName(_, _)
+  | TRecord(_)
+  | TRecordOpen(_, _)
+  | TRefined(_, _)
+  | TReprPin(_, _)
+  | TCont(_, _, _, _)
+  | TAlias(_, _) => t,
 }
 
 fn show_head(name: String, params, ret, row) with !Mutate =
@@ -5806,7 +6062,7 @@ fn render_row_suffix(row) with !Mutate = match ty_row_face() {
     // Every effect may cross: the row states no constraint, and no
     // clause spells that — a type with no `with` is unconstrained.
     EfRow([], [], EtAll) => "",
-    _ => " with {render_row(row)}",
+    EfRow(_, _, _) => " with {render_row(row)}",
   },
 }
 
@@ -6038,7 +6294,16 @@ fn render_eff_arg(arg) with !Mutate = match arg {
   // name keeps the honest placeholder (display totality).
   EANode(h) => match graph_node_body(h) {
     NExpr(VarRef(name)) => name,
-    _ => "<operand #{int_to_str(h)}>",
+    NExpr(_)
+    | NStmt(_)
+    | NPat(_)
+    | NHole(_)
+    | NModule(_)
+    | NLink(_)
+    | NTypeAnn(_)
+    | NName(_)
+    | NRow(_)
+    | NParam(_) => "<operand #{int_to_str(h)}>",
   },
   // The bare spelling holds the fmt fixpoint: the render
   // re-parses to EANode and re-resolves to the same folded form.
@@ -6063,7 +6328,16 @@ fn node_to_predicate(node) = match graph_node_body(node) {
   NExpr(BinOpExpr(BOr, l, r)) => POr(node_to_predicate(l), node_to_predicate(r)),
   NExpr(UnaryOpExpr(UNot, inner)) => PNot(node_to_predicate(inner)),
   NExpr(LitBool(true)) => PTrue,
-  _ => PBoolNode(node),
+  NExpr(_)
+  | NStmt(_)
+  | NPat(_)
+  | NHole(_)
+  | NModule(_)
+  | NLink(_)
+  | NTypeAnn(_)
+  | NName(_)
+  | NRow(_)
+  | NParam(_) => PBoolNode(node),
 }
 
 fn show_predicate(ref pred) = match pred {
@@ -6074,15 +6348,13 @@ fn show_predicate(ref pred) = match pred {
   PNot(p) => "!{show_predicate(p)}",
   PBoolNode(n) => show_pred_operand(n),
   PPatternMatch(p, n) => "{show_pred_operand(n)} matches {show_pat(p)}",
-  // IFC: src must not exceed dst in the lattice
   // The binder renders as its body — the diagnostic reads `self + 1 <= 10`
   // with self SYMBOLIC (the SYNTAX-canonical spelling), never the
   // substituted value.
-  PFlowLe(src, dst) => "{show_flow_label(src)} ⊑ {show_flow_label(dst)}",
   PWithSelf(_, inner) => show_predicate(inner),
   PTotalDiv(op, a, b) => match op {
     BMod => "{show_pred_operand(b)} != 0 (the divisor of {show_pred_atom(a)} % {show_pred_atom(b)})",
-    _ => "{show_pred_operand(b)} != 0 && {show_pred_atom(a)} / {show_pred_atom(b)} fits (never INT_MIN / -1)",
+    BAdd | BSub | BMul | BDiv | BEq | BNe | BLt | BGt | BLe | BGe | BAnd | BOr | BConcat => "{show_pred_operand(b)} != 0 && {show_pred_atom(a)} / {show_pred_atom(b)} fits (never INT_MIN / -1)",
   },
   PProvides(provided) => show_provided(provided),
   PInBounds(recv, idx) => "0 <= {show_pred_operand(idx)} && {show_pred_operand(idx)} < len({show_pred_operand(recv)})",
@@ -6105,7 +6377,7 @@ fn show_cmp_op(ref op) with Pure = match op {
   BLe => "<=",
   BGt => ">",
   BGe => ">=",
-  _ => "?",
+  BAdd | BSub | BMul | BDiv | BMod | BAnd | BOr | BConcat => "?",
 }
 
 // Resolve a predicate operand HANDLE to its Expr live and render it. A
@@ -6123,7 +6395,16 @@ fn show_pred_operand(handle) = match graph_node_body(handle) {
   NExpr(UnaryOpExpr(UNeg, inner)) => "-{show_pred_operand(inner)}",
   NExpr(UnaryOpExpr(UNot, inner)) => "!{show_pred_operand(inner)}",
   NExpr(BinOpExpr(op, l, r)) => "{show_pred_atom(l)} {binop_to_str(op)} {show_pred_atom(r)}",
-  _ => "<expr>",
+  NExpr(_)
+  | NStmt(_)
+  | NPat(_)
+  | NHole(_)
+  | NModule(_)
+  | NLink(_)
+  | NTypeAnn(_)
+  | NName(_)
+  | NRow(_)
+  | NParam(_) => "<expr>",
 }
 
 // An operand standing beside an operator keeps the parentheses its source
@@ -6132,12 +6413,30 @@ fn show_pred_operand(handle) = match graph_node_body(handle) {
 // boot 8b071ba3 at the caret's Verify facet and in the ledger's line alike).
 fn show_pred_atom(handle) = match graph_node_body(handle) {
   NExpr(BinOpExpr(_, _, _)) => "({show_pred_operand(handle)})",
-  _ => show_pred_operand(handle),
+  NExpr(_)
+  | NStmt(_)
+  | NPat(_)
+  | NHole(_)
+  | NModule(_)
+  | NLink(_)
+  | NTypeAnn(_)
+  | NName(_)
+  | NRow(_)
+  | NParam(_) => show_pred_operand(handle),
 }
 
 fn show_callee_name(ref callee) = match graph_node_body(callee) {
   NExpr(VarRef(n)) => n,
-  _ => "_",
+  NExpr(_)
+  | NStmt(_)
+  | NPat(_)
+  | NHole(_)
+  | NModule(_)
+  | NLink(_)
+  | NTypeAnn(_)
+  | NName(_)
+  | NRow(_)
+  | NParam(_) => "_",
 }
 
 // One hop of a Reason chain in a developer's words, never its subtree: the
@@ -6167,6 +6466,7 @@ fn reason_phrase(reason) with !Mutate = match reason {
   DefaultReason(name, _) => "{name} defaulted",
   Accepted(text, proof, _) => "accepted `{text}` — proposed: {show_reason(proof)}",
   EffectEnters(eff, _, _) => "{eff} enters here",
+  LabelEnters(label, _, _) => "{label} enters here",
   ChainInstall(r, _) => "the handler chain {chain_spelling(r)}, installed here",
   StateBinding(field, hname) => "state {field} of {hname}",
 }
@@ -6188,21 +6488,48 @@ fn site_phrase(body) with !Mutate = match body {
   NExpr(PipeExpr(PForward, _, stage)) => stage_phrase(stage),
   NExpr(PipeExpr(PTee, _, h)) => "through `~> {install_name(h)}`",
   NExpr(LambdaExpr(_, _)) => "inside the function value",
-  _ => "here",
+  NExpr(_)
+  | NStmt(_)
+  | NPat(_)
+  | NHole(_)
+  | NModule(_)
+  | NLink(_)
+  | NTypeAnn(_)
+  | NName(_)
+  | NRow(_)
+  | NParam(_) => "here",
 }
 
 fn stage_phrase(stage) = match graph_node_body(stage) {
   NExpr(VarRef(n)) => "through `{n}`",
   NExpr(CallExpr(f, _)) => "through `{show_callee_name(f)}`",
   NExpr(LambdaExpr(_, _)) => "inside the stage's function value",
-  _ => "through the stage",
+  NExpr(_)
+  | NStmt(_)
+  | NPat(_)
+  | NHole(_)
+  | NModule(_)
+  | NLink(_)
+  | NTypeAnn(_)
+  | NName(_)
+  | NRow(_)
+  | NParam(_) => "through the stage",
 }
 
 // The handler a tee installs, named: a bare reference or a configured call.
 fn install_name(h) = match graph_node_body(h) {
   NExpr(VarRef(n)) => n,
   NExpr(CallExpr(f, _)) => show_callee_name(f),
-  _ => "_",
+  NExpr(_)
+  | NStmt(_)
+  | NPat(_)
+  | NHole(_)
+  | NModule(_)
+  | NLink(_)
+  | NTypeAnn(_)
+  | NName(_)
+  | NRow(_)
+  | NParam(_) => "_",
 }
 
 // The chain an install names, read through the edge its authored reference
@@ -6301,7 +6628,59 @@ fn ref_spelling(r, written: String) = match graph_ref_decl(r) {
 // the one sentence a chain with no site has to say.
 fn enters_tail(next) with !Mutate = match next {
   Inferred(what) => what,
-  _ => show_reason(next),
+  Declared(_)
+  | Fresh(_)
+  | OpConstraint(_, _, _)
+  | VarLookup(_, _)
+  | FnReturn(_, _)
+  | FnParam(_, _, _)
+  | MatchBranch(_, _)
+  | ListElement(_)
+  | IfBranch(_)
+  | LetBinding(_, _)
+  | Unified(_, _)
+  | Instantiation(_, _)
+  | Placeholder(_)
+  | MissingVar(_)
+  | Refinement(_, _)
+  | Located(_, _)
+  | InferredCallReturn(_, _)
+  | InferredPipeResult(_, _)
+  | DefaultReason(_, _)
+  | Accepted(_, _, _)
+  | EffectEnters(_, _, _)
+  | LabelEnters(_, _, _)
+  | ChainInstall(_, _)
+  | StateBinding(_, _) => show_reason(next),
+}
+
+// A refused claim of information flow says where the label enters it.
+fn label_entry(why) with !Mutate = match why {
+  LabelEnters(_, _, _) => " — {show_reason(why)}",
+  Declared(_)
+  | Inferred(_)
+  | Fresh(_)
+  | OpConstraint(_, _, _)
+  | VarLookup(_, _)
+  | FnReturn(_, _)
+  | FnParam(_, _, _)
+  | MatchBranch(_, _)
+  | ListElement(_)
+  | IfBranch(_)
+  | LetBinding(_, _)
+  | Unified(_, _)
+  | Instantiation(_, _)
+  | Placeholder(_)
+  | MissingVar(_)
+  | Refinement(_, _)
+  | Located(_, _)
+  | InferredCallReturn(_, _)
+  | InferredPipeResult(_, _)
+  | DefaultReason(_, _)
+  | Accepted(_, _, _)
+  | EffectEnters(_, _, _)
+  | ChainInstall(_, _)
+  | StateBinding(_, _) => "",
 }
 
 fn show_reason(ref reason) with !Mutate = match reason {
@@ -6336,11 +6715,46 @@ fn show_reason(ref reason) with !Mutate = match reason {
   EffectEnters(eff, site, next) => match graph_node_body(site) {
     NStmt(FnStmt(name, _, _, _, _)) => "declared as {name}; {eff} enters {enters_tail(next)}",
     NStmt(EffectDeclStmt(ename, _, _)) => "{show_reason(next)}, an op of {ename} declared at {site_address(site)}",
-    body => match next {
+    body @ (
+      NExpr(_)
+      | NStmt(_)
+      | NPat(_)
+      | NHole(_)
+      | NModule(_)
+      | NLink(_)
+      | NTypeAnn(_)
+      | NName(_)
+      | NRow(_)
+      | NParam(_)
+    ) => match next {
       Inferred(what) => "at {site_address(site)}, {what}",
-      _ => "at {site_address(site)} {site_phrase(body)} → {show_reason(next)}",
+      Declared(_)
+      | Fresh(_)
+      | OpConstraint(_, _, _)
+      | VarLookup(_, _)
+      | FnReturn(_, _)
+      | FnParam(_, _, _)
+      | MatchBranch(_, _)
+      | ListElement(_)
+      | IfBranch(_)
+      | LetBinding(_, _)
+      | Unified(_, _)
+      | Instantiation(_, _)
+      | Placeholder(_)
+      | MissingVar(_)
+      | Refinement(_, _)
+      | Located(_, _)
+      | InferredCallReturn(_, _)
+      | InferredPipeResult(_, _)
+      | DefaultReason(_, _)
+      | Accepted(_, _, _)
+      | EffectEnters(_, _, _)
+      | LabelEnters(_, _, _)
+      | ChainInstall(_, _)
+      | StateBinding(_, _) => "at {site_address(site)} {site_phrase(body)} → {show_reason(next)}",
     },
   },
+  LabelEnters(label, site, next) => "{label} enters at {site_address(site)} through {enters_tail(next)}",
   ChainInstall(r, n) => "installed through the handler chain '{chain_spelling(r)}', {int_to_str(n)} member(s)",
   StateBinding(field, hname) => "state {field} of {hname}",
 }
@@ -6351,7 +6765,30 @@ fn show_reason(ref reason) with !Mutate = match reason {
 // an install says which arm answered the second.
 fn reason_line(reason) with !Mutate = match reason {
   Located(_, inner) => show_reason(inner),
-  _ => show_reason(reason),
+  Declared(_)
+  | Inferred(_)
+  | Fresh(_)
+  | OpConstraint(_, _, _)
+  | VarLookup(_, _)
+  | FnReturn(_, _)
+  | FnParam(_, _, _)
+  | MatchBranch(_, _)
+  | ListElement(_)
+  | IfBranch(_)
+  | LetBinding(_, _)
+  | Unified(_, _)
+  | Instantiation(_, _)
+  | Placeholder(_)
+  | MissingVar(_)
+  | Refinement(_, _)
+  | InferredCallReturn(_, _)
+  | InferredPipeResult(_, _)
+  | DefaultReason(_, _)
+  | Accepted(_, _, _)
+  | EffectEnters(_, _, _)
+  | LabelEnters(_, _, _)
+  | ChainInstall(_, _)
+  | StateBinding(_, _) => show_reason(reason),
 }
 
 fn show_span(ref span) = match span {
@@ -6398,128 +6835,6 @@ fn show_list_from(ref items, ref render, ref sep, i, n) with !Mutate = if i >= n
   render(items[i])
 } else {
   render(items[i]) ++ sep ++ show_list_from(items, render, sep, i + 1, n)
-}
-
-// ── DAG-homed here (the import-truth sweep, 2026-07-23): each fn below
-// moved from a module DOWNSTREAM of its users so every user reaches it
-// through a forward import edge — the manifest tells the truth.
-//
-// query_flow_label — the IFC projection (§4⑥).
-// Reads FlowLabel from the Ty the graph already holds; no new state.
-//
-//   TRefined  — pred |> predicate_flow_label; join with base's label
-//   TName     — follow env to the TypeDecl's predicate (graph-native; no string matching)
-//   TFun      — row  |> row_flow_label (the absent set IS the non-interference proof)
-//   TList     — elem |> query_flow_label (label propagates through containers)
-//   TTuple    — elems |> map |> fold(Public, flow_label_join)
-//   TRecord   — fields |> map |> fold(Public, flow_label_join)
-//   _         — Public (open-world default; unannotated = observable)
-//
-// H6: exhaustive over every Ty constructor.
-// GraphRead + EnvRead: predicate_flow_label follows PBoolNode handles into graph;
-// TName arm follows the type's env entry to read its predicate.
-fn query_flow_label(ref ty) = match ty {
-  TRefined(base, pred) => flow_label_join(pred |> predicate_flow_label, query_flow_label(base)),
-  // Follow the type's env entry to its TypeDecl predicate — graph-native.
-  // A nominal type with a refinement predicate (e.g. `type SecretKey = Bytes
-  // where classified(self)`) carries its IFC classification in that predicate.
-  // No string matching: the graph's env entry IS the source of truth.
-  TName(name, _) => match env_lookup(name) {
-    // unknown type: open-world default
-    None => Public,
-    Some(entry) => match entry {
-      (scheme, _, _) => match scheme {
-        Frozen(_, ty) => match ty {
-          TAlias(_, TRefined(_, pred)) => predicate_flow_label(pred),
-          TRefined(_, pred) => predicate_flow_label(pred),
-          // non-refined nominal: Public
-          _ => Public,
-        },
-        Live(h) => match graph_chase(h) {
-          GNode(kind, _) => match kind {
-            NBound(ty) => query_flow_label(ty),
-            // a type decl's cell is NBound; row and error kinds carry no nominal label
-            _ => Public,
-          },
-        },
-      },
-    },
-  },
-  // A fn's flow character joins its RETURN's label with its row
-  // confinement — a source returning Secret is a Secret channel
-  // whatever its capabilities (the 2026-08-08 Phase-7 walk: `flow
-  // getpw` on a `-> Secret where classified(self)` source answered
-  // Public because this arm read the row alone).
-  TFun(_, ret, row) => flow_label_join(query_flow_label(ret), row_flow_label(row)),
-  TAlias(_, inner) => inner |> query_flow_label,
-  TReprPin(_, base) => base |> query_flow_label,
-  TList(elem) => elem |> query_flow_label,
-  TTuple(elems) => elems |> map(query_flow_label) |> fold(Public, flow_label_join),
-  TRecord(fields) => fields |> map({ (_, fty) => query_flow_label(fty) }) |> fold(Public, flow_label_join),
-  TRecordOpen(fields, _) => fields |> map({ (_, fty) => query_flow_label(fty) }) |> fold(Public, flow_label_join),
-  TCont(input, answer, _, _) => flow_label_join(query_flow_label(input), query_flow_label(answer)),
-  TInt => Public,
-  TFloat => Public,
-  TUnit => Public,
-  TByte => Public,
-  TAddr => Public,
-  // unresolved: open-world default (no proof = observable)
-  TVar(_) => Public,
-}
-
-// predicate_flow_label — classify a Predicate's flow sensitivity.
-// PBoolNode follows the handle into the graph to read the actual call node.
-// A predicate call to a function whose name contains secret / classified /
-// sensitive raises the label. This reads the AUTHORED name
-// from the graph — not re-deriving, reading what the graph holds.
-// H6: exhaustive over every Predicate variant.
-fn predicate_flow_label(ref pred) = match pred {
-  PTrue => Public,
-  // numeric comparison: not a secrecy annotation
-  PCompare(_, _, _) => Public,
-  // a destructuring's shape: not a secrecy signal
-  PPatternMatch(_, _) => Public,
-  // negation of secret IS NOT secret (non-monotone)
-  PNot(_) => Public,
-  // the predicate itself carries the src label
-  PFlowLe(a, _) => a,
-  PAnd(a, b) => flow_label_join(predicate_flow_label(a), predicate_flow_label(b)),
-  POr(a, b) => flow_label_join(predicate_flow_label(a), predicate_flow_label(b)),
-  // the `self` binder is transparent to flow
-  PWithSelf(_, inner) => predicate_flow_label(inner),
-  // a primitive's precondition: not a secrecy annotation
-  PTotalDiv(_, _, _) => Public,
-  // a primitive's precondition: not a secrecy annotation
-  PInBounds(_, _) => Public,
-  // a provision names the values handed, not a secrecy annotation
-  PProvides(_) => Public,
-  // Follow the handle into the graph — read the actual call node's callee name.
-  // The callee name IS the authored intent; reading it is reading the graph.
-  PBoolNode(h) => match graph_node_body(h) {
-    NExpr(CallExpr(callee, _)) => match graph_node_body(callee) {
-      NExpr(VarRef(fname)) => if str_contains(fname, "secret") || str_contains(fname, "classified") || str_contains(fname, "sensitive") {
-        Secret
-      } else {
-        Public
-      },
-      _ => Public,
-    },
-    _ => Public,
-  },
-}
-
-// row_flow_label — the absent set in a function's row IS the non-interference
-// proof. `with !IO + !Network` proves the function cannot route output to
-// public sinks. On the canonical triple the stance is the TAIL: EtAll is the
-// proved-absence form (masked universe); EtClosed/EtOpen rows are observably
-// Public (their absent set records proofs but the row itself flows). H6:
-// exhaustive over the three tails.
-fn row_flow_label(ref row) with Pure = match row {
-  // A universal tail is the proved-absence stance (!E) — Secret; every
-  // other form is observably Public (subtraction/openness conservative).
-  EfRow(_, _, EtAll) => Secret,
-  EfRow(_, _, EtOpen(_)) => Public,
-  EfRow(_, _, EtClosed) => Public,
 }
 
 // Resolve every `TVar` transitively through the graph. Every query

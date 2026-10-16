@@ -1,0 +1,22 @@
+// expect: 10
+// flow: proven
+// Endorsement is a declared return: `quote` states that what it answers is
+// trusted, so a call of it is trusted whatever it was handed. The statement is
+// the declaration's own, never claimed of its body — that is what makes it an
+// endorsement. On boot cb12aeea the return was a pending claim of the body
+// and the sink's claim pending beside it.
+effect Trust {
+  untrusted(v: String) -> Bool
+}
+
+type Untrusted = String where untrusted(self)
+
+type Trusted = String where !untrusted(self)
+
+fn read_cmd() -> Untrusted = "rm -rf /"
+
+fn exec(cmd: Trusted) = len(cmd)
+
+fn quote(s) -> Trusted = "'" ++ s ++ "'"
+
+fn main() = exec(quote(read_cmd()))

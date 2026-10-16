@@ -280,17 +280,21 @@ constraint; filled from use count). **If the developer has to think about it,
 the inference failed.**
 
 **⑥ Information flow is the influence walk, not a row element** (decided
-2026-10-02). `!E` + `~>` already subsumes capability security; flow adds WHICH
-value may reach a sink, and the graph already carries that relation: a
-refinement is read along a value's flow edges, a handler's state is every value
-written into it, and the parent edge gives control dependence. So a
-classification is a refinement on a source's declared type (`-> Untrusted`), a
-sink's demand is a precondition on its parameter (`exec(cmd: Trusted)`), a leak
-is `E_RefinementRejected` at the argument, endorsement is a function whose
-declared return states the stronger label, and an implicit flow is the ancestry
-walk to a classified scrutinee. A `Flow(Src, Sink)` row element beside it would
-be a second home for one fact. The proof says where OUTPUT may go, never what a
-model does inside its window.
+2026-10-02, built 2026-10-16). `!E` + `~>` already subsumes capability
+security; flow adds WHICH value may reach a sink, and the graph already carries
+that relation: a refinement is read along a value's flow edges, a handler's
+state is every value written into it, memory holds what was stored there, and
+the parent edge gives control dependence. So a label is an op named in a
+refinement over `self` (`type Untrusted = String where untrusted(self)`): a
+source's declared type states it (`-> Untrusted`), a sink's demand is its
+absence on a parameter (`exec(cmd: Trusted)`), a leak is `E_RefinementRejected`
+at the sink's claim naming where the label entered, endorsement is a function
+whose declared return states the absence, and an implicit flow is what decides
+whether the code reaching the sink runs — a branch, a call made under a
+condition, an abandon. Each declared function's reading is a summary over its
+own parameters, read once per settle. A `Flow(Src, Sink)` row element beside it
+would be a second home for one fact. The proof says where OUTPUT may go, never
+what a model does inside its window.
 
 **⑦ The felt experience is co-equal — reactivity IS the cursor's `<~`.** The
 cursor re-projecting on graph delta at the human boundary IS fine-grained
@@ -307,9 +311,9 @@ full. The `.mn` answers only to "what is the ultimate form?".
    emitting correct WAT at its own fixed point.
 2. **FELT — the human surface (L6).** `mentl where`, `mentl why`, the caret's
    eight aspects, the gradient, reactivity — projections, never add-ons.
-3. **UNSURPASSABLE — the frontier.** Modal effect synthesis (§4③), flow (§4⑥),
-   durable execution as a handler (§4④), Verify's own solver, native and GPU
-   backends, the e-graph — each a move *within* the medium.
+3. **UNSURPASSABLE — the frontier.** Modal effect synthesis (§4③), durable
+   execution as a handler (§4④), Verify's own solver, native and GPU backends,
+   the e-graph — each a move *within* the medium.
 
 **The felt endpoint.** A `??` is a typed CONSTRAINT: the cursor forks a finite,
 latency-budgeted set of candidates, each run checkpoint → infer → Verify →
@@ -678,10 +682,6 @@ a provenance diff, a search over live shared cells.
 
 **THE FRONTIER LEADS** — each a move inside the medium, in the order work runs:
 
-- **Flow** (§4⑥): the influence walk gains control edges, a label is a
-  refinement on a source's declared type and a sink's demand a precondition, and
-  `FlowLabel` and its readers retire — an `Untrusted` value reaching a `Trusted`
-  sink refused, implicit flows included.
 - **The fused oracle**: the compiler forks first — the ??-fan performs
   `choose`, its candidates the resumptions of one perform, each judged on the
   trail a forking handler checkpoints and rolls back, so the fixed point
@@ -698,7 +698,11 @@ a provenance diff, a search over live shared cells.
 - **Verification whole**: the verifier decides a predicate's expression, where
   it decides the projection a type carries (`node_to_predicate`); a bug trap
   unwinds with the graph as its payload; every diagnostic class refuses the
-  executable.
+  executable. A label's claim on a part read off the value a call answers is
+  owed where the callee built that part in sight: `exec(mk().cmd)` over `fn
+  mk() = {cmd: "ls", n: 1}` is owed, the walk naming a prelude site out of
+  sight, while the same record built in place is proven
+  (`Hβ.verify.part-of-a-call-answer`).
 - **`!Outside` closes**, last: the native backend (`docs/NATIVE.md`, frames in
   the image and the deterministic partition its keystones), diverse double
   compilation (`Hβ.closure.diverse-double-compilation`), the correctness oracle
@@ -709,6 +713,18 @@ a provenance diff, a search over live shared cells.
 
 **THE STANDING CURSOR** — the order work runs in once the frontier has moved:
 
+1. **A record update in a recursive group is judged in time linear in the
+   group** (`Hβ.infer.update-relations-multiply`). An update's relation to its
+   base (`DemandCopy`) is copied with its rows at every instantiation and
+   carried across every alias, so a recursive group whose members hand one
+   record on through updates multiplies the relations its rows carry: the flow
+   walk's context written as `{...ctx, install: t, self: d}` across its
+   hundred-function group judged for over four minutes on boot cb12aeea, and a
+   candidate deduplicating the relations by their chased rows ran out of memory
+   in `row_copy_carry` after eighty seconds (measured 2026-10-16). The walk
+   builds its context as a record literal (`ctx_at`), which carries no
+   relation; the update form is the one SYNTAX asks a person to write, so the
+   judgment owes it.
 2. **Every position is a cell — #108** (`Hβ.graph.positions-are-cells`). The
    write the structure cut was for that is not yet built: accepting a
    proposal rewrites the hole's node in place, the position-keyed accept

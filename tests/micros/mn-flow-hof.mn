@@ -1,0 +1,19 @@
+// expect: refuse E_RefinementRejected
+// flow: refused at 19
+// A function handed to another is applied to what that function is handed:
+// `each` applies its stage to the elements of an untrusted list, so the
+// stage's parameter is untrusted where it reaches the sink. On boot cb12aeea
+// the claim was pending debt.
+effect Trust {
+  untrusted(v: String) -> Bool
+}
+
+type Untrusted = String where untrusted(self)
+
+type Trusted = String where !untrusted(self)
+
+fn read_args() -> [Untrusted] = ["a", "b"]
+
+fn exec(cmd: Trusted) = len(cmd)
+
+fn main() = read_args() |> each({ c => { let _ = exec(c) } })

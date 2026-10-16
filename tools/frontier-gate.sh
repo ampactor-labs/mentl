@@ -4574,69 +4574,29 @@ for i in "${!compilers[@]}"; do
     fail "reading facets (text: $(printf '%s' "$rf_text" | head -1) · prose: $(printf '%s' "$rf_prose" | head -1) · writes: $(printf '%s' "$rf_writes" | head -1) · reads: $(printf '%s' "$rf_reads" | head -1))"
   fi
 
-  # ─── The flow facet on a refined source (PLAN §11 Phase 7 walk) ─────
-  # `query <fixture> "flow NAME"` projects the flow label. Two altitudes
-  # over one refined alias (Vault = String where classified(self)): the
-  # VALUE's own scheme, and a source FN's flow character. Born RED
-  # 2026-08-08: the boot's TFun arm read the row alone, so `flow getpw`
-  # on a `-> Vault` source answered Public while `flow pw` answered
-  # Secret; the return-label join closes it.
-  fl_val=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" query "$ROOT/tests/frontier/mn-flow-refined-source.mn" "flow pw" 2>/dev/null)
-  fl_fn=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" query "$ROOT/tests/frontier/mn-flow-refined-source.mn" "flow getpw" 2>/dev/null)
-  if printf '%s' "$fl_val" | grep -q "Secret" && printf '%s' "$fl_fn" | grep -q "Secret"; then
-    pass "flow facet: refined source labels Secret at value AND fn altitude"
+  # ─── Information flow (PLAN §4⑥): a label is an effect op over `self`
+  # and a sink's demand is its absence. Each tests/micros/mn-flow-*
+  # fixture's second line is its contract at the sink — `flow: refused at
+  # L…` names every line a claim refuses at, `flow: proven` says none
+  # refuses and none is owed — and the facet says what a source answers and
+  # what an endorsement states. Seen RED on boot cb12aeea: every claim was
+  # pending debt.
+  fl_bad=""
+  for fx in "$ROOT"/tests/micros/mn-flow-*.mn; do
+    fl_want=$(sed -n 2p "$fx")
+    fl_got=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" check "$fx" 2>&1 >/dev/null | grep "E_RefinementRejected" | sed -n 's/.* at [^ ]*:\([0-9]*\):[0-9]*-[0-9]*:[0-9]*$/\1/p' | sort -n | tr '\n' ' ' | sed 's/ $//')
+    fl_owed=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" query "$fx" verification 2>/dev/null | grep -c "$(basename "$fx" .mn):" || true)
+    case "$fl_want" in
+      "// flow: proven") { [ -z "$fl_got" ] && [ "$fl_owed" -eq 0 ]; } || fl_bad="$fl_bad $(basename "$fx")" ;;
+      *) [ "$fl_got" = "$(printf '%s' "${fl_want#// flow: refused at }" | tr ' ' '\n' | sort -n | tr '\n' ' ' | sed 's/ $//')" ] || fl_bad="$fl_bad $(basename "$fx")" ;;
+    esac
+  done
+  fl_src=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" query "$ROOT/tests/micros/mn-flow-explicit.mn" "flow of read_cmd" 2>/dev/null)
+  fl_end=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" query "$ROOT/tests/micros/mn-flow-endorse.mn" "flow of quote" 2>/dev/null)
+  if [ -z "$fl_bad" ] && printf '%s' "$fl_src" | grep -q "answers untrusted" && printf '%s' "$fl_end" | grep -q "endorses"; then
+    pass "information flow: every mn-flow contract holds at its sink; the facet names a source and an endorsement"
   else
-    fail "flow facet (value: $(printf '%s' "$fl_val" | head -1) · fn: $(printf '%s' "$fl_fn" | head -1))"
-  fi
-
-  # ─── The DCC noninterference gate, first face (§11 Phase 7,
-  # Hβ.ifc.dcc-noninterference-gate): a classified splice REFUSES
-  # (E_RefinementRejected via PFlowLe(Secret, Public), decidable-false)
-  # and the Public dual accepts — the pair differs only in the source's
-  # classification. Born RED 2026-08-08: the ShowExpr wrap bound every
-  # splice fragment to String, so the label read classified Public and
-  # the obligation silently discharged — the leak checked CLEAN on the
-  # pre-fix pin; the fix reads through the wrapper to the inner node.
-  ifc_leak=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" check "$ROOT/tests/frontier/mn-ifc-splice-leak.mn" 2>&1 >/dev/null | grep -c "E_RefinementRejected" || true)
-  ifc_sound=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" check "$ROOT/tests/frontier/mn-ifc-splice-sound.mn" 2>&1 >/dev/null | grep -c "E_RefinementRejected" || true)
-  if [ "$ifc_leak" -ge 1 ] && [ "$ifc_sound" -eq 0 ]; then
-    pass "dcc gate: classified splice refuses ($ifc_leak), public splice accepts"
-  else
-    fail "dcc gate (leak rejections: $ifc_leak, want >=1; sound rejections: $ifc_sound, want 0)"
-  fi
-  # The let face (P0): a value a `let` annotated classified carries the label
-  # through its binder — the claim the let made, read where it was noted.
-  # Seen RED on the P0 tree before the claims column (0 rejections).
-  ifc_let=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" check "$ROOT/tests/frontier/mn-ifc-splice-let-annotation.mn" 2>&1 >/dev/null | grep -c "E_RefinementRejected" || true)
-  if [ "$ifc_let" -ge 1 ]; then
-    pass "dcc gate: a let-annotated classified splice refuses ($ifc_let)"
-  else
-    fail "dcc gate let face (rejections: $ifc_let, want >=1)"
-  fi
-  # The derived face (P0): a value BUILT from a classified one — an
-  # operator's result, a record's field, a computation over a classified
-  # parameter, a constructor's or a tuple's part — refuses at its splice,
-  # five of five; and the public half of a mixed tuple is public, read at
-  # its position. Seen RED on the P0 tree before the influence read: 0 of 5.
-  ifc_derived=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" check "$ROOT/tests/frontier/mn-ifc-splice-derived.mn" 2>&1 >/dev/null | grep -c "E_RefinementRejected" || true)
-  ifc_public=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" check "$ROOT/tests/frontier/mn-ifc-splice-part-public.mn" 2>&1 >/dev/null | grep -c "E_RefinementRejected" || true)
-  if [ "$ifc_derived" -eq 5 ] && [ "$ifc_public" -eq 0 ]; then
-    pass "dcc gate: derived values carry their sources' labels (5/5), a public part stays public"
-  else
-    fail "dcc gate derived face (rejections: $ifc_derived, want 5; public-part rejections: $ifc_public, want 0)"
-  fi
-
-  # The install face (AN-1): a tee's value is every value its install can
-  # answer, so an arm answering a classified value classifies the install's
-  # value and its splice refuses; the public twin accepts. Seen RED on boot
-  # cf8a6d50: the label walk joined the tee's children — the perform and the
-  # handler's name, both Public — and the leak compiled clean (0 rejections).
-  ifc_tee_leak=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" check "$ROOT/tests/frontier/mn-ifc-tee-arm-leak.mn" 2>&1 >/dev/null | grep -c "E_RefinementRejected" || true)
-  ifc_tee_public=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" check "$ROOT/tests/frontier/mn-ifc-tee-arm-public.mn" 2>&1 >/dev/null | grep -c "E_RefinementRejected" || true)
-  if [ "$ifc_tee_leak" -ge 1 ] && [ "$ifc_tee_public" -eq 0 ]; then
-    pass "dcc gate: an arm's classified answer classifies the install ($ifc_tee_leak), a public arm stays public"
-  else
-    fail "dcc gate install face (leak rejections: $ifc_tee_leak, want >=1; public rejections: $ifc_tee_public, want 0)"
+    fail "information flow (broken:${fl_bad:- none} · source: $(printf '%s' "$fl_src" | tail -1) · endorse: $(printf '%s' "$fl_end" | tail -1))"
   fi
 
   # ─── The unused-wide-param gate (Hβ.emit.unused-wide-param-floor): an

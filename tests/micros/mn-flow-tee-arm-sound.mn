@@ -1,0 +1,22 @@
+// expect: 2
+// flow: proven
+// The sound twin of mn-flow-tee-arm: `plain`'s arm answers a constant, so
+// every value the install can answer is trusted and the claim is proven, not
+// owed. On boot cb12aeea it was pending debt.
+effect Trust {
+  untrusted(v: String) -> Bool
+}
+
+type Trusted = String where !untrusted(self)
+
+fn exec(cmd: Trusted) = len(cmd)
+
+effect Ask {
+  ask() -> String
+}
+
+handler plain {
+  ask() => "ls",
+}
+
+fn main() = exec(ask() ~> plain)

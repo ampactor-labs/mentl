@@ -547,7 +547,6 @@ fn claim_is_marked(pred) = match pred {
   PNot(_) => true,
   PBoolNode(_) => true,
   PPatternMatch(_, _) => true,
-  PFlowLe(_, _) => true,
   PWithSelf(_, inner) => claim_is_marked(inner),
   PTotalDiv(_, _, _) => true,
   PInBounds(_, _) => true,
@@ -1332,7 +1331,7 @@ fn diag_lead(d, msg: String) = match d {
   EPurityViolated(_, _) => "this path performs a capability its row forbids. {msg}",
   EEffectUnhandled(_, _, _) => "this path performs an effect no handler around it answers. {msg}",
   EMissingVariable(_, _) => "a name here isn't in scope — check the spelling or the import. {msg}",
-  ERefinementRejected(_, _) => "a claim is proven false — the value cannot meet its bound. {msg}",
+  ERefinementRejected(_, _, _) => "a claim is proven false — the value cannot meet its bound. {msg}",
   _ => if diag_applies_itself(d) { "a step the medium can take: {msg}" } else { msg },
 }
 

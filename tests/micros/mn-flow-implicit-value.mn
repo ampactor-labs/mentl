@@ -1,0 +1,21 @@
+// expect: refuse E_RefinementRejected
+// flow: refused at 20
+// An implicit flow into a value: the let holds one of two constants, and
+// which one is decided by an untrusted value, so the let carries it and the
+// sink refuses. On boot cb12aeea the claim was pending debt.
+effect Trust {
+  untrusted(v: String) -> Bool
+}
+
+type Untrusted = String where untrusted(self)
+
+type Trusted = String where !untrusted(self)
+
+fn read_cmd() -> Untrusted = "yes"
+
+fn exec(cmd: Trusted) = len(cmd)
+
+fn main() = {
+  let cmd = if read_cmd() == "yes" { "rm" } else { "ls" }
+  exec(cmd)
+}

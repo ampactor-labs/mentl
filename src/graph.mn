@@ -231,7 +231,7 @@ fn born_outside(spine, spine_open, module: Int, handle) =
 fn spine_put_parents(spine, parent, body) = match body {
   NModule(m) => m.decls |> each(spine_put_parent(spine, ??, parent)),
   NLink(l) => l.modules |> each(spine_put_parent(spine, ??, parent)),
-  _ => body_child_handles(body) |> each(spine_put_parent(spine, ??, parent)),
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => body_child_handles(body) |> each(spine_put_parent(spine, ??, parent)),
 }
 
 fn spine_put_parent(spine, h, parent) = {
@@ -314,7 +314,7 @@ fn in_edge_kept(keep, e) = match e {
 fn binder_read_by(r) = match graph_ref_decl(r) {
   Some(d) => match graph_published(d) {
     Some((Frozen([], TVar(b)), _, _)) => if b == d || is_pattern(d) { Some(b) } else { None },
-    _ => None,
+    None | Some(_) => None,
   },
   None => None,
 }
@@ -345,7 +345,7 @@ fn spine_parent_at(spine, spine_open, h) = if spine_band(h) >= spine_open {
 fn at_module_level(h) = match graph_parent_of(h) {
   Some(p) => match graph_node_body(p) {
     NModule(_) => true,
-    _ => false,
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => false,
   },
   None => false,
 }
@@ -382,10 +382,55 @@ fn accepted_here(p: String, path: String, asp, sp) = p == path && span_eq(asp, s
 fn accept_wrap(reason, text, proof) = match reason {
   Located(sp, inner) => match inner {
     Accepted(_, _, _) => reason,
-    _ => Located(sp, Accepted(text, proof, inner)),
+    Declared(_)
+    | Inferred(_)
+    | Fresh(_)
+    | OpConstraint(_, _, _)
+    | VarLookup(_, _)
+    | FnReturn(_, _)
+    | FnParam(_, _, _)
+    | MatchBranch(_, _)
+    | ListElement(_)
+    | IfBranch(_)
+    | LetBinding(_, _)
+    | Unified(_, _)
+    | Instantiation(_, _)
+    | Placeholder(_)
+    | MissingVar(_)
+    | Refinement(_, _)
+    | Located(_, _)
+    | InferredCallReturn(_, _)
+    | InferredPipeResult(_, _)
+    | DefaultReason(_, _)
+    | EffectEnters(_, _, _)
+    | LabelEnters(_, _, _)
+    | ChainInstall(_, _)
+    | StateBinding(_, _) => Located(sp, Accepted(text, proof, inner)),
   },
   Accepted(_, _, _) => reason,
-  _ => Accepted(text, proof, reason),
+  Declared(_)
+  | Inferred(_)
+  | Fresh(_)
+  | OpConstraint(_, _, _)
+  | VarLookup(_, _)
+  | FnReturn(_, _)
+  | FnParam(_, _, _)
+  | MatchBranch(_, _)
+  | ListElement(_)
+  | IfBranch(_)
+  | LetBinding(_, _)
+  | Unified(_, _)
+  | Instantiation(_, _)
+  | Placeholder(_)
+  | MissingVar(_)
+  | Refinement(_, _)
+  | InferredCallReturn(_, _)
+  | InferredPipeResult(_, _)
+  | DefaultReason(_, _)
+  | EffectEnters(_, _, _)
+  | LabelEnters(_, _, _)
+  | ChainInstall(_, _)
+  | StateBinding(_, _) => Accepted(text, proof, reason),
 }
 
 fn spine_put_canon(ref spine, h, to) = {
@@ -611,7 +656,7 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
         None => resume() with modules_now = smap_add(modules_now, m.file, handle),
       },
       NLink(_) => resume() with link_now = Some(handle),
-      _ => resume(),
+      NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => resume(),
     }
   },
   graph_attach_comment(handle, text, span) => // The comment column — parse-attached prose in the handle's own page. A
@@ -733,7 +778,29 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
       GNode(_, mint_r) => match mint_r {
         FnParam(owner, _, _) => push(g1, (TPolyRecursionSignature(owner, reason_span_or_zero(reason)), dm)),
         FnReturn(owner, _) => push(g1, (TPolyRecursionSignature(owner, reason_span_or_zero(reason)), dm)),
-        _ => g1,
+        Declared(_)
+        | Inferred(_)
+        | Fresh(_)
+        | OpConstraint(_, _, _)
+        | VarLookup(_, _)
+        | MatchBranch(_, _)
+        | ListElement(_)
+        | IfBranch(_)
+        | LetBinding(_, _)
+        | Unified(_, _)
+        | Instantiation(_, _)
+        | Placeholder(_)
+        | MissingVar(_)
+        | Refinement(_, _)
+        | Located(_, _)
+        | InferredCallReturn(_, _)
+        | InferredPipeResult(_, _)
+        | DefaultReason(_, _)
+        | Accepted(_, _, _)
+        | EffectEnters(_, _, _)
+        | LabelEnters(_, _, _)
+        | ChainInstall(_, _)
+        | StateBinding(_, _) => g1,
       },
     }
     resume() with guard_diags = g2
@@ -808,7 +875,7 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
         }
         row_join(prev, row)
       },
-      _ => row,
+      GNode(_, _) => row,
     }
     // THE FLAT-CELL LAW at the teaching write: the joined value folds
     // before it stores, so the cell holds depth-1 truth and every
@@ -1298,7 +1365,21 @@ fn chase_node(ref spine, mint_bound, handle, depth) with !Mutate = if depth > 10
     GNode(kind, reason) => match kind {
       NBound(ty) => match ty {
         TVar(next) => chase_node(spine, mint_bound, next, depth + 1),
-        _ => GNode(kind, reason),
+        TInt
+        | TFloat
+        | TUnit
+        | TByte
+        | TAddr
+        | TList(_)
+        | TTuple(_)
+        | TFun(_, _, _)
+        | TName(_, _)
+        | TRecord(_)
+        | TRecordOpen(_, _)
+        | TRefined(_, _)
+        | TReprPin(_, _)
+        | TCont(_, _, _, _)
+        | TAlias(_, _) => GNode(kind, reason),
       },
       NRowBound(row) => match row {
         // The chase folds the chain under the READING LAW: each level's
@@ -1318,9 +1399,9 @@ fn chase_node(ref spine, mint_bound, handle, depth) with !Mutate = if depth > 10
         } else {
           GNode(kind, reason)
         },
-        _ => GNode(kind, reason),
+        EfRow(_, _, _) => GNode(kind, reason),
       },
-      _ => GNode(kind, reason),
+      NFree(_) | NRowFree(_) | NRecordRowBound(_, _) | NErrorHole(_) => GNode(kind, reason),
     },
   }
 }
@@ -1352,7 +1433,21 @@ fn chase_handle(ref spine, mint_bound, handle, depth) with !Mutate = if depth > 
     GNode(kind, _) => match kind {
       NBound(ty) => match ty {
         TVar(next) => chase_handle(spine, mint_bound, next, depth + 1),
-        _ => handle,
+        TInt
+        | TFloat
+        | TUnit
+        | TByte
+        | TAddr
+        | TList(_)
+        | TTuple(_)
+        | TFun(_, _, _)
+        | TName(_, _)
+        | TRecord(_)
+        | TRecordOpen(_, _)
+        | TRefined(_, _)
+        | TReprPin(_, _)
+        | TCont(_, _, _, _)
+        | TAlias(_, _) => handle,
       },
       // Row aliases: unify_row links open row cells as `va → EfRow(_, _, EtOpen([vb]))`.
       // find follows a SINGLE edge to the canonical root, exactly as it
@@ -1366,9 +1461,9 @@ fn chase_handle(ref spine, mint_bound, handle, depth) with !Mutate = if depth > 
         } else {
           handle
         },
-        _ => handle,
+        EfRow(_, _, _) => handle,
       },
-      _ => handle,
+      NFree(_) | NRowFree(_) | NRecordRowBound(_, _) | NErrorHole(_) => handle,
     },
   }
 }
@@ -1388,7 +1483,7 @@ fn merge_chased_row(ref chased, ref names, ref absents, free_handle) = match cha
     // and a final-pass publish whose chain ends at a free param cell
     // published Pure under a declared row (the forward-hof
     // false-absence root; the CELT-vs-CELB differential measured it).
-    _ => if len(names) == 0 && len(absents) == 0 {
+    NBound(_) | NFree(_) | NRowFree(_) | NRecordRowBound(_, _) | NErrorHole(_) => if len(names) == 0 && len(absents) == 0 {
       chased
     } else {
       GNode(NRowBound(ef_make(names, absents, EtOpen([bare_edge(free_handle)]))), cr)
@@ -1433,7 +1528,7 @@ fn flatten_row_stored(ref spine, mint_bound, row, written) with !Mutate = match 
     EtOpen(vs) => match flatten_row_edges(spine, mint_bound, edges_masked(vs, a), (p, [], [], false), written) {
       (rp, am, res, saw_all) => row_of_fold(rp, am, res, saw_all),
     },
-    _ => row,
+    EtClosed | EtAll => row,
   },
 }
 
@@ -1489,7 +1584,21 @@ fn chain_passes(spine, mint_bound, v, written, depth) with !Mutate = if v == wri
     GNode(kind, _) => match kind {
       NBound(ty) => match ty {
         TVar(n) => chain_passes(spine, mint_bound, n, written, depth + 1),
-        _ => false,
+        TInt
+        | TFloat
+        | TUnit
+        | TByte
+        | TAddr
+        | TList(_)
+        | TTuple(_)
+        | TFun(_, _, _)
+        | TName(_, _)
+        | TRecord(_)
+        | TRecordOpen(_, _)
+        | TRefined(_, _)
+        | TReprPin(_, _)
+        | TCont(_, _, _, _)
+        | TAlias(_, _) => false,
       },
       NRowBound(row) => match row {
         EfRow(_, _, EtOpen(edges)) => if len(edges) == 1 {
@@ -1497,9 +1606,9 @@ fn chain_passes(spine, mint_bound, v, written, depth) with !Mutate = if v == wri
         } else {
           false
         },
-        _ => false,
+        EfRow(_, _, _) => false,
       },
-      _ => false,
+      NFree(_) | NRowFree(_) | NRecordRowBound(_, _) | NErrorHole(_) => false,
     },
   }
 }
@@ -1560,7 +1669,7 @@ fn occurs_in(spine, mint_bound, handle, ref ty) = match ty {
       match chase_node(spine, mint_bound, root, 0) {
         GNode(NBound(inner), _) => occurs_in(spine, mint_bound, handle, inner),
         GNode(NRecordRowBound(fields, tail), _) => occurs_in_fields(spine, mint_bound, handle, fields) || occurs_in_row_tail(spine, mint_bound, handle, tail),
-        _ => false,
+        GNode(_, _) => false,
       }
     }
   },
@@ -1582,7 +1691,7 @@ fn occurs_in(spine, mint_bound, handle, ref ty) = match ty {
       match chase_node(spine, mint_bound, vroot, 0) {
         GNode(NRecordRowBound(rest, tail), _) => occurs_in_fields(spine, mint_bound, handle, rest) || occurs_in_row_tail(spine, mint_bound, handle, tail),
         GNode(NBound(inner), _) => occurs_in(spine, mint_bound, handle, inner),
-        _ => false,
+        GNode(_, _) => false,
       }
     }
   },
@@ -1678,7 +1787,7 @@ fn occurs_in_row_seen(spine, mint_bound, handle, eff, seen) = match eff {
         // rows — any edge occurring is the row occurring). Structural
         // walk — the mechanism layer's own discipline.
         EtOpen(vs) => occurs_in_edges(spine, mint_bound, handle, vs, seen),
-        _ => false,
+        EtClosed | EtAll => false,
       }
     }
   },
@@ -2042,7 +2151,14 @@ fn expr_child_handles(e) = match e {
   // the labeled value is a child node
   LabeledArg(_, v) => [v],
   // LitInt/LitFloat/LitString/LitBool/LitUnit/VarRef/ExprPlaceholder — no child Nodes
-  _ => [],
+  LitInt(_)
+  | LitFloat(_)
+  | LitString(_)
+  | LitBool(_)
+  | LitUnit
+  | VarRef(_)
+  | RestExpr(_)
+  | ExprPlaceholder => [],
 }
 
 // The field IS the parser's {name, init} record — read by field name (the
@@ -2078,8 +2194,10 @@ fn stmt_child_handles(s) = match s {
   // parent edges through this projection, and an arm's performs resolve
   // outside its own install.
   LetStmt(pat, value, ann) => if ann == value { [pat, value] } else { [pat, value, ann] },
-  // a declaration's parameters are nodes of its own, before its body
-  FnStmt(_name, params, _ret, _effs, body) => params ++ [body],
+  // a declaration's parameters and its return annotation are nodes of its
+  // own, before its body; an absent annotation IS the body, as a let's is
+  // its value
+  FnStmt(_name, params, ret, _effs, body) => if ret == body { params ++ [body] } else { params ++ [ret, body] },
   ExprStmt(e) => [e],
   HandlerDeclStmt(_hname, _ename, config, states, arms, _effs) => config ++ flat_map(state_field_children, states) ++ flat_map(arm_children, arms),
   HandlerChainStmt(_, chain) => [chain],
@@ -2132,7 +2250,17 @@ fn row_of_subtree(h) with !Mutate = {
     NStmt(HandlerDeclStmt(_, _, _, _, _, _)) => Some(here),
     NExpr(PipeExpr(PTee, _, _)) => Some(here),
     NExpr(PipeExpr(PFeedback, l, _)) => row_of_child(Some(here), l),
-    body => fold(Some(here), row_of_child, body_child_handles(body)),
+    body @ (
+      NExpr(_)
+      | NStmt(_)
+      | NPat(_)
+      | NModule(_)
+      | NLink(_)
+      | NTypeAnn(_)
+      | NName(_)
+      | NRow(_)
+      | NParam(_)
+    ) => fold(Some(here), row_of_child, body_child_handles(body)),
   }
 }
 
@@ -2345,7 +2473,16 @@ fn fanout_reach_of(st, decl: Int) = match wmap_get(st.memo, decl) {
           },
         }
       },
-      _ => (false, st),
+      NExpr(_)
+      | NStmt(_)
+      | NPat(_)
+      | NHole(_)
+      | NModule(_)
+      | NLink(_)
+      | NTypeAnn(_)
+      | NName(_)
+      | NRow(_)
+      | NParam(_) => (false, st),
     },
   },
 }
@@ -2371,7 +2508,18 @@ fn fanout_fact(acc, h) = {
     NExpr(CallExpr(f, _)) => fold(fact_call(acc, f), fanout_fact, body_child_handles(body)),
     NExpr(LambdaExpr(_, _)) => acc,
     NStmt(FnStmt(_, _, _, _, _)) => acc,
-    other => fold(acc, fanout_fact, body_child_handles(other)),
+    other @ (
+      NExpr(_)
+      | NStmt(_)
+      | NPat(_)
+      | NHole(_)
+      | NModule(_)
+      | NLink(_)
+      | NTypeAnn(_)
+      | NName(_)
+      | NRow(_)
+      | NParam(_)
+    ) => fold(acc, fanout_fact, body_child_handles(other)),
   }
 }
 
@@ -2384,7 +2532,16 @@ fn fact_call(acc, f) = match graph_node_body(f) {
   NExpr(VarRef(_)) => match acc {
     (has_own, callees) => (has_own || callee_is_fanout(f), direct_callee(callees, f)),
   },
-  _ => acc,
+  NExpr(_)
+  | NStmt(_)
+  | NPat(_)
+  | NHole(_)
+  | NModule(_)
+  | NLink(_)
+  | NTypeAnn(_)
+  | NName(_)
+  | NRow(_)
+  | NParam(_) => acc,
 }
 
 // A call is DIRECT when its callee's edge reaches a module-level
@@ -2398,7 +2555,16 @@ fn direct_callee(callees, f) = match graph_ref_decl(f) {
 
 fn callee_is_fanout(f) = match graph_node_body(f) {
   NExpr(VarRef(name)) => str_eq(name, "fanout"),
-  _ => false,
+  NExpr(_)
+  | NStmt(_)
+  | NPat(_)
+  | NHole(_)
+  | NModule(_)
+  | NLink(_)
+  | NTypeAnn(_)
+  | NName(_)
+  | NRow(_)
+  | NParam(_) => false,
 }
 
 // ── A PRODUCT BUILT AT A SITE, AND WHAT TAKES IT APART THERE ──────────
@@ -2423,7 +2589,16 @@ fn product_arity_at(h) = match graph_node_body(h) {
     FanDistribute => 2,
     FanShare => len(share_stages(right)),
   },
-  _ => -1,
+  NExpr(_)
+  | NStmt(_)
+  | NPat(_)
+  | NHole(_)
+  | NModule(_)
+  | NLink(_)
+  | NTypeAnn(_)
+  | NName(_)
+  | NRow(_)
+  | NParam(_) => -1,
 }
 
 // A `<|`'s stages: the elements of the tuple it fans into, read here once for
@@ -2434,7 +2609,16 @@ fn product_arity_at(h) = match graph_node_body(h) {
 // the broken invariant where a reader would have guessed a branch.
 fn share_stages(right) = match graph_node_body(right) {
   NExpr(MakeTupleExpr(elems)) => elems,
-  _ => out_of_range(),
+  NExpr(_)
+  | NStmt(_)
+  | NPat(_)
+  | NHole(_)
+  | NModule(_)
+  | NLink(_)
+  | NTypeAnn(_)
+  | NName(_)
+  | NRow(_)
+  | NParam(_) => out_of_range(),
 }
 
 // The one arm whose tuple pattern binds every part of the product it
@@ -2487,7 +2671,16 @@ fn product_fate(h) = match graph_parent_of(h) {
       PfEscapes
     },
     NExpr(PipeExpr(PForward, left, _)) => if left == h && product_arity_at(h) > 1 { PfByPipe } else { PfEscapes },
-    _ => PfEscapes,
+    NExpr(_)
+    | NStmt(_)
+    | NPat(_)
+    | NHole(_)
+    | NModule(_)
+    | NLink(_)
+    | NTypeAnn(_)
+    | NName(_)
+    | NRow(_)
+    | NParam(_) => PfEscapes,
   },
 }
 
@@ -2508,9 +2701,32 @@ fn product_fills_stage(h, right) = {
 // left first).
 fn stage_open_slots(right) = match graph_node_body(right) {
   NExpr(LambdaExpr(params, _)) => len(params),
-  _ => match lookup_ty(right) {
+  NExpr(_)
+  | NStmt(_)
+  | NPat(_)
+  | NHole(_)
+  | NModule(_)
+  | NLink(_)
+  | NTypeAnn(_)
+  | NName(_)
+  | NRow(_)
+  | NParam(_) => match lookup_ty(right) {
     TFun(ps, _, _) => len(ps),
-    _ => -1,
+    TInt
+    | TFloat
+    | TUnit
+    | TByte
+    | TAddr
+    | TList(_)
+    | TTuple(_)
+    | TVar(_)
+    | TName(_, _)
+    | TRecord(_)
+    | TRecordOpen(_, _)
+    | TRefined(_, _)
+    | TReprPin(_, _)
+    | TCont(_, _, _, _)
+    | TAlias(_, _) => -1,
   },
 }
 
@@ -2727,7 +2943,20 @@ fn record_row_full(fields, v) = match graph_chase(v) {
       TRecord(more) => (fields ++ more, RowEndClosed),
       // A row cell bound to any other type is ill-sorted; its rest is not
       // known, and a reader that needs it floors.
-      _ => (fields, RowEndFree(graph_chase_handle(v))),
+      TInt
+      | TFloat
+      | TUnit
+      | TByte
+      | TAddr
+      | TList(_)
+      | TTuple(_)
+      | TFun(_, _, _)
+      | TVar(_)
+      | TName(_, _)
+      | TRefined(_, _)
+      | TReprPin(_, _)
+      | TCont(_, _, _, _)
+      | TAlias(_, _) => (fields, RowEndFree(graph_chase_handle(v))),
     },
     NFree(_) => (fields, RowEndFree(graph_chase_handle(v))),
     NRowFree(_) => (fields, RowEndFree(graph_chase_handle(v))),
@@ -2858,7 +3087,23 @@ fn spec_subst_pairs(t, pairs) = match t {
           Some(residual) => match residual {
             TRecord(rfs) => TRecord(field_canonicalize(learned ++ rfs)),
             // only lower.mn's spec_pairs_key_rest pairs a row terminal, always as a closed record
-            other => other,
+            other @ (
+              TInt
+              | TFloat
+              | TUnit
+              | TByte
+              | TAddr
+              | TList(_)
+              | TTuple(_)
+              | TFun(_, _, _)
+              | TVar(_)
+              | TName(_, _)
+              | TRecordOpen(_, _)
+              | TRefined(_, _)
+              | TReprPin(_, _)
+              | TCont(_, _, _, _)
+              | TAlias(_, _)
+            ) => other,
           },
           None => mk_record_open(learned, t),
         },
@@ -2869,7 +3114,7 @@ fn spec_subst_pairs(t, pairs) = match t {
   TRefined(b, p) => TRefined(spec_subst_pairs(b, pairs), p),
   TAlias(n, i) => TAlias(n, spec_subst_pairs(i, pairs)),
   TCont(i, a, d, w) => TCont(spec_subst_pairs(i, pairs), spec_subst_pairs(a, pairs), d, w),
-  _ => t,
+  TInt | TFloat | TUnit | TByte | TAddr | TReprPin(_, _) => t,
 }
 
 // lookup_ty_graph — GraphRead → LookupTy bridge (spec 05)

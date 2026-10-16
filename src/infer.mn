@@ -82,9 +82,9 @@ effect InferCtx {
   inf_cut_edge(Int)
   inf_current_row() -> EffRow
   inf_current_world() -> EffRow
-  inf_enter_arm(Int)
+  inf_enter_arm(Int, Ty)
   inf_exit_arm()
-  inf_arm_tys() -> Option(Int)
+  inf_arm_tys() -> Option((Int, Ty))
   // The install-frame mark: a tee body's frame is ONE install's scope, so
   // same-named instance fragments of an effect ITS HANDLER answers (yield's
   // + result's) join by position; an effect the handler does not answer is
@@ -130,11 +130,12 @@ handler infer_ctx with stack = [], arm_stack = [], install_marks = [], mint_ceil
   //    params: [Int], row_handle: Int}
   //   declared = [(EffName, negated)] — the fn's authored annotation, born
   //   with the frame and returned by inf_exit_fn (nested fns get their own)
-  // arm_stack = [the continuation handle, ...] — the typed-resume
-  //   context (SYNTAX §Effect declarations): inside `op(args) => body` for
-  //   `op : (P...) -> R` under a handler whose handle-result is S,
-  //   `resume : R -> S`. ResumeExpr reads the top frame; a stack because
-  //   handler decls nest inside arm bodies.
+  // arm_stack = [(the continuation handle, the op's declared return), ...]
+  //   — the typed-resume context (SYNTAX §Effect declarations): inside
+  //   `op(args) => body` for `op : (P...) -> R` under a handler whose
+  //   handle-result is S, `resume : R -> S`, and R as the op declares it,
+  //   which every resumed value owes. ResumeExpr reads the top frame; a
+  //   stack because handler decls nest inside arm bodies.
   {
     // The frame is BORN with its declaration: `effs` = the FnStmt's authored
     // [(EffName, negated)] list (empty for lambdas / tee bodies / arm scopes).
@@ -280,8 +281,8 @@ handler infer_ctx with stack = [], arm_stack = [], install_marks = [], mint_ceil
   {
     if len(stack) == 0 { resume(mk_ef_pure()) } else { resume(mk_ef_open([], last(stack).row_handle)) }
   },
-  inf_enter_arm(continuation_h) => // drift-audit: ignore — bounded-depth arm-frame PUSH (§9 push-at-END), not a loop accumulator
-  resume() with arm_stack = arm_stack ++ [continuation_h],
+  inf_enter_arm(continuation_h, declared) => // drift-audit: ignore — bounded-depth arm-frame PUSH (§9 push-at-END), not a loop accumulator
+  resume() with arm_stack = arm_stack ++ [(continuation_h, declared)],
   inf_exit_arm() => if len(arm_stack) == 0 { resume() } else { resume() with arm_stack = drop_last(arm_stack) },
   inf_arm_tys() => if len(arm_stack) == 0 { resume(None) } else { resume(Some(last(arm_stack))) },
   set_mint_ceiling(n) => resume() with mint_ceiling = n,
@@ -409,12 +410,6 @@ fn lean_guards(h, row) = leaves_params(value_leaves(h, NoSelf)) |> each(carry_gu
 fn trap_row() = mk_ef_closed([ENamed(intern_str("Trap"))])
 
 fn mutate_row() = mk_ef_closed([ENamed(intern_str("Mutate"))])
-
-fn names_mutate(e) = eff_name_str(e) == "Mutate"
-
-fn row_names_mutate(row) = match row {
-  EfRow(present, _, _) => any(names_mutate, present),
-}
 
 fn row_without_mutate(row) = match row {
   EfRow(present, absent, tail) => ef_make(filter(names_other_than_mutate, present), absent, tail),
@@ -1309,6 +1304,9 @@ fn infer_program_once(stmts, parse_start, parse_end) = {
   // reads every generation's literals, which can only resolve more, never
   // less.
   comment_refs_check(parse_start, parse_end)
+  // What can reach a value is a fact of the whole program, so the claims
+  // naming a label are decided here, once every declaration is judged.
+  flow_settle()
 } ~> row_gate ~> store_ages ~> infer_ctx ~> fresh_for_inference ~> resume_summaries_ctx
 
 // Reports said to no one: the discovery parse's import read (the weave
@@ -2927,7 +2925,7 @@ fn infer_fn(name, params, body_node, ret_ann, effs, handle, span: ValidSpan, pol
   // the function-type altitude: `f: () -> a with !Network` constrained
   // nothing while no Network existed).
   link_params_written(params)
-  link_written(ret_ann)
+  if ret_ann != body_node { link_written(ret_ann) }
   declare_param_binders(params, name)
   let resolved_params = declare_params(params, param_tys, judged_guards(handle, params, name))
   // THE ASSUMED SIGNATURE RIDES THE SLOT AS A VALUE — prereg's own law
@@ -4143,7 +4141,6 @@ fn infer_expr(ref handle) = {
       // emitted BARE — Hβ.emit.int-splice-empty's judge half), and would
       // refuse "{3}" outright if unify were strict. Deleted whole.
       infer_expr_list(fragments)
-      check_splice_flow_labels(fragments, span)
       // The interior-concat cells, minted ONCE here (the concat-key
       // dossier's settled design): lower's fold reads them from the
       // boundary column instead of minting per run — every
@@ -4247,22 +4244,21 @@ fn infer_expr(ref handle) = {
       // value is the continuation's completion (S).
       infer_expr(val)
       match inf_arm_tys() {
-        Some(continuation_h) => match graph_chase(continuation_h) {
+        Some((continuation_h, declared)) => match graph_chase(continuation_h) {
           GNode(NBound(TCont(resume_input, answer, disc, world)), _) => {
             let r_h = mint(Inferred("op result at resume"))
             graph_bind(r_h, resume_input, Located(span, Inferred("resume carries the continuation input")))
             unify(val, r_h, span, Inferred("resume carries the continuation input"))
-            // The op's declared return is a STATED position the resumed
-            // value crosses into, in the arm's frame: a function demanding
-            // more than the declared type provides pays its guard here,
-            // where the performer, reading the op's declared type, cannot.
-            // Unified alone, `resume(inv)` into `get_fn() -> (Int) -> Int`
-            // let `get_fn()(0)` under `!Trap` divide by zero (pin
-            // 852184886f52a848, S6). A refined value return reaches here
-            // as its shape — the continuation's cell holds shapes — and
-            // the performer never stands on it
-            // (`Hβ.verify.op-return-is-a-contract`).
-            claim_refinement(resume_input, val, span)
+            // The op's declared return is a contract every resumed value
+            // owes, claimed here in the arm's frame as a declared field's
+            // is at every construction, so a performer stands on it as on
+            // a declared function's return: a refinement it states is
+            // decided of the value, a label's absence is owed, and a
+            // function demanding more than the declared type provides
+            // pays its guard here, where the performer, reading the
+            // declaration, cannot. The continuation's cell holds the
+            // shape, so the contract is the declaration the arm read.
+            claim_refinement(declared, val, span)
             graph_bind(handle, answer, Located(span, Inferred("resume yields the continuation answer")))
             // A HELD continuation is a record this resume CALLS, so its
             // remainder runs here, inside whatever frame holds the resume —
@@ -6846,9 +6842,7 @@ fn infer_pipe(kind, left, right, handle, span: ValidSpan) = match kind {
 // The depth is decidable exactly when it is written as a literal —
 // `delay(3)` through the prelude fn or `Delay(3)` through the
 // constructor, the two spellings of one FeedbackSpec variant. The callee
-// name IS the authored intent, and reading it is reading the graph
-// (predicate_flow_label's PBoolNode arm, the same read at the same
-// altitude).
+// name IS the authored intent, and reading it is reading the graph.
 type FeedbackDepth
   // an authored literal — the line is exactly this many priors deep
   = DepthLiteral(Int)
@@ -9113,21 +9107,6 @@ fn stage_row(site, stage, piped, crow) = match stage_application(stage, [piped])
   None => crow,
 }
 
-// The Memory ops that write (lib/memory.mn): each the address it writes, or
-// the whole image.
-type RawStore = RsNone | RsAt(Int) | RsAll
-
-fn raw_store_target(cname: String) = match cname {
-  "store_i32" => RsAt(0),
-  "store_i8" => RsAt(0),
-  "store_addr" => RsAt(0),
-  "store_f64" => RsAt(0),
-  "mem_copy" => RsAt(0),
-  "globals_save" => RsAt(0),
-  "image_restore" => RsAll,
-  _ => RsNone,
-}
-
 // A tick stores the output into the line its record owns, older than every
 // call of its owner, which performs Mutate for it. An arm's record is its
 // install's: the arms write it as they write a config they were handed — the
@@ -10287,7 +10266,7 @@ fn infer_one_handler_arm(arm: {args: [Node], body: Node, op: Node}, result_h, in
     TCont(op_ret_ty, TVar(result_h), continuation_disc, mk_ef_open([], world_h)),
     Located(arm_span, Inferred("handler arm continuation R -> S"))
   )
-  inf_enter_arm(continuation_h)
+  inf_enter_arm(continuation_h, op_ret_ty)
   infer_expr(arm.body)
   inf_exit_arm()
   unify(arm.body, result_h, arm_span, Inferred("handler arm result"))
@@ -11714,7 +11693,9 @@ fn published_params(params, handles, owner: String, span: ValidSpan) = {
 fn claim_authored_return(ret_ann, body_node, name: String, span: ValidSpan) = match graph_node_body(ret_ann) {
   NTypeAnn(ann_ty) => match quantify_ctor_ty(ann_ty, [], Located(span, Declared(name))) {
     (resolved_ann, _) => {
-      claim_refinement(resolved_ann, body_node, graph_span_of(ret_ann))
+      // A label the return states is the declaration's statement — a source,
+      // or an endorsement where it is negated — and never a claim of the body.
+      claim_refinement(ty_without_labels(resolved_ann), body_node, graph_span_of(ret_ann))
       ()
     },
   },
@@ -12027,8 +12008,11 @@ fn carry_guard(row, param_h) = match graph_binder_of(param_h) {
 // precondition: its own callers owe it from then on, and the claim here is
 // discharged by it. Only a pure flow learns — the parameter itself, or a
 // let of it — since a join or a computation is not the parameter's value.
-// A provision is what a position is handed, never a demand on it.
-fn learn_precondition(ah, contract) = if ty_carries_refinement(contract) && !is_provision(contract) {
+// A provision is what a position is handed, never a demand on it. A label is
+// what can influence a value, which a computation carries and a learned
+// precondition would not, so a contract naming one is owed where the settle
+// finds its demands (verify.mn's `flow_settle`), never learned here.
+fn learn_precondition(ah, contract) = if ty_carries_refinement(contract) && !is_provision(contract) && !ty_names_a_label(contract) {
   match flow_param(ah) {
     Some(b) => match graph_binder_of(b) {
       Some(fact) => match fact {
@@ -12736,7 +12720,9 @@ fn claim_value_node(pt, span: ValidSpan, n) = {
 // part (verify.mn `path_leaves`): where every leaf states the part's
 // refinement — a parameter's precondition, a declared return, a let's claim,
 // each projected to the position — the claim holds on it, and otherwise it
-// is owed here. A structured part is read the same way at each of its own.
+// is owed here. What can bring a label to the part can bring it to the
+// whole, so the part's labels are claimed of the whole. A structured part is
+// read the same way at each of its own.
 fn opaque_value_part(h, path, pt, span: ValidSpan) = and_decide(
   opaque_surface(h, path, pt, span),
   value_parts(pt) |> fold(Some(true), opaque_sub_part(h, path, span, ??, ??))
@@ -12750,6 +12736,16 @@ fn opaque_surface(h, path, pt, span: ValidSpan) = match demand_refinement(pt) {
   Some(found) => match found {
     (aname, pred) => if leaves_carry_alias(path_leaves(h, path), aname) {
       Some(true)
+    } else if pred_names_label(pred) {
+      and_decide(
+        verify_claim(graph_module_current(), span, pred_without_labels(pred), Refinement(pred, PTrue)),
+        verify_claim(
+          graph_module_current(),
+          span,
+          subst_self(pred_only_labels(pred), h),
+          Refinement(pred, PTrue)
+        )
+      )
     } else {
       verify_claim(graph_module_current(), span, pred, Refinement(pred, PTrue))
     },
@@ -13350,39 +13346,6 @@ fn application_of(h) = match graph_node_body(h) {
   _ => None,
 }
 
-// A callee leaf applied to arguments: a reference applied to them, or a
-// partial application completed by them — the authored `??` slots first,
-// then the slots past its arguments.
-fn stage_application(sh, applied) = match graph_node_body(sh) {
-  NExpr(VarRef(_)) => Some((sh, applied)),
-  NExpr(CallExpr(callee, _)) => match graph_product_at(sh) {
-    ProductOf(nodes, _, CallSuspended) => Some((callee, completed_args(nodes, applied))),
-    ProductOf(_, _, CallApplied) => None,
-    NoProduct => None,
-  },
-  _ => None,
-}
-
-fn completed_args(nodes, applied) = {
-  let filled = nodes |> enumerate |> map(completed_slot(nodes, applied, ??))
-  let holes = count(is_authored_hole, nodes)
-  if holes < len(applied) { filled ++ slice(applied, holes, len(applied)) } else { filled }
-}
-
-fn completed_slot(nodes, applied, slot) = match slot {
-  (i, n) => if is_authored_hole(n) {
-    let k = count(is_authored_hole, slice(nodes, 0, i))
-    if k < len(applied) { applied[k] } else { n }
-  } else {
-    n
-  },
-}
-
-fn is_authored_hole(n) = match graph_node_body(n) {
-  NHole(id) => id != 0,
-  _ => false,
-}
-
 // A declared function's signature with its quantified variables, read off
 // the module-level declaration the reference's edge reaches — the reference
 // holds an instance, never the scheme.
@@ -13539,15 +13502,16 @@ fn is_source_end(end) = match end {
 }
 
 fn occurrence_sources(args, occ) = match occ {
-  Occ(_, i, path, end, sub) => if i < len(args) {
-    match end {
-      AtValue => sources_at(args[i], path),
-      AtResult => sources_at(args[i], path) |> flat_map(result_sources(sub, ??)),
-      AtParam(_) => [],
-    }
-  } else {
-    [SrcUnknown]
+  Occ(_, i, path, end, sub) => match take(1, drop(i, args)) {
+    [a] => arg_sources(path, end, sub, a),
+    _ => [SrcUnknown],
   },
+}
+
+fn arg_sources(path, end, sub, a) = match end {
+  AtValue => sources_at(a, path),
+  AtResult => sources_at(a, path) |> flat_map(result_sources(sub, ??)),
+  AtParam(_) => [],
 }
 
 // The values at a path of an argument, along its edges: each part the value
@@ -15644,17 +15608,6 @@ fn collect_tvar_types(ref nodes) = map(TVar, nodes)
 fn unify_list_elems(elems, target_h, span: ValidSpan) =
   each({ e => unify(e, target_h, span, ListElement(Inferred("list element"))) }, elems)
 
-// Each string-interpolation fragment binds to the canonical String
-// alias node directly;
-// post-Show-typeclass (peer Hβ.infer.show-typeclass), non-String
-// splices register a Show obligation that verify_ledger discharges.
-// IFC enforcement at string interpolation sites (§4⑥).
-// For each splice (non-literal fragment), read its value's flow label along
-// the value's leaves (value_flow_label), then emit verify(PFlowLe(label, Public)).
-// predicate_decide(PFlowLe(label, Public)) = Some(flow_le(label, Public)) — the
-// finite lattice makes this ALWAYS compile-time decidable. A Secret or Tainted
-// splice surfaces as ERefinementRejected("Secret ⊑ Public") at compile time.
-// Literal parts (LitString nodes) are always Public — no check needed.
 // The judge-side mirror of lower's empty-literal elision: a fragment
 // elides iff it is the "" literal the parser keeps for the alternation
 // invariant. M surviving fragments need M−1 interior concat cells; the
@@ -15683,40 +15636,6 @@ fn mint_concat_cells(n, span: ValidSpan, acc) = if n <= 0 {
     span,
     acc ++ [graph_fresh_ty(Located(span, Inferred("interp segment concat")))]
   )
-}
-
-fn check_splice_flow_labels(fragments, span: ValidSpan) = each(
-  {
-    frag => {
-      let fspan = graph_span_of(frag)
-      match graph_node_body(frag) {
-        // literal part: always Public, no IFC check
-        NExpr(LitString(_)) => (),
-        // the parser wraps every splice in ShowExpr, and the WRAPPER
-        // binds to String — reading the wrapper's type classified every
-        // splice Public and silently discharged the flow obligation (the
-        // regression the DCC gate's first probe caught, 2026-08-08). The
-        // label lives on the INNER node; read through the wrap.
-        NExpr(ShowExpr(inner)) => splice_flow_check(inner, fspan),
-        // an unwrapped splice (pre-ShowExpr shapes): classify its own node
-        _ => splice_flow_check(frag, fspan),
-      }
-    },
-  },
-  fragments
-)
-
-// The splice's label is its VALUE's, read along the edges the value flowed
-// (value_flow_label); the class holds a shape, which says nothing of where
-// the value came from.
-fn splice_flow_check(h, fspan: ValidSpan) = {
-  verify_claim(
-    graph_module_current(),
-    fspan,
-    PFlowLe(value_flow_label(h), Public),
-    Located(fspan, Inferred("ifc: string splice flow label"))
-  )
-  ()
 }
 
 // Effect-name projection of a row — the handled-name set read live from

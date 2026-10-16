@@ -35,16 +35,6 @@ fn fresh_handle_as(span: ValidSpan, reason) = {
 // second copy of what it registered.
 fn mint_node(body, span: ValidSpan) = mint_node_as(body, span, Placeholder(span))
 
-// An absent annotation — a declaration with no `-> T` — is a node its readers
-// read as absence (`LitUnit`), and it stands at no position: it is registered
-// and never indexed at a span, so the caret, the comment weave and the
-// census of unjudged cells never find a unit literal standing on the name.
-fn mint_absent(span: ValidSpan) = {
-  let h = graph_fresh_ty(Placeholder(span))
-  graph_register_node(h, NExpr(LitUnit))
-  h
-}
-
 // A node born with the reason its parse knows: the one-arm match a
 // destructuring let becomes is born `LetBinding`, so the formatter writes
 // the `let` the author wrote and a hand-written `match` stays a match.
@@ -743,18 +733,19 @@ fn collect_comment(ref tokens, pos, own acc) = match kind_at(tokens, pos) {
 
 // Parse `fn name(params) [-> retty] [with effects] = body`.
 fn parse_fn(ref tokens, pos) = {
-  let start = span_at(tokens, pos)
   let name = ident_at(tokens, pos)
   let p = expect(tokens, pos + 1, TLParen)
   match parse_fn_params(tokens, p, name) {
     (params, p2) => {
       let p3 = skip_ws(tokens, p2)
       match if at(tokens, p3, TArrow) {
-        parse_type_expr(tokens, skip_ws(tokens, p3 + 1))
+        match parse_type_expr(tokens, skip_ws(tokens, p3 + 1)) {
+          (written, p) => (Some(written), p),
+        }
       } else {
-        (mint_absent(start), p3)
+        (None, p3)
       } {
-        (ret_node, p4) => {
+        (ret, p4) => {
           let p5 = skip_ws(tokens, p4)
           match if at(tokens, p5, TWith) { parse_effect_list(tokens, skip_ws(tokens, p5 + 1)) } else { ([], p5) } {
             (effs, p6) => {
@@ -768,8 +759,9 @@ fn parse_fn(ref tokens, pos) = {
                 // The decl's span is its whole extent, like every node's (SYNTAX
                 // §Parser obligations); the caret reaches the declaration around
                 // a position up the parent edges the registration draws, never by
-                // comparing spans.
-                (body, p9) => (FnStmt(name, params, ret_node, effs, body), p9),
+                // comparing spans. An absent return annotation IS the body's
+                // node, as a let's absent annotation is its value's.
+                (body, p9) => (FnStmt(name, params, unwrap_or(ret, body), effs, body), p9),
               }
             },
           }
@@ -1152,7 +1144,7 @@ fn let_head_node(head) = match head {
 fn let_at_scope(head, val, ann, scope) = match (scope, head) {
   (AtModule, LhName(name, _)) => if ann == val {
     match graph_node_body(val) {
-      NExpr(LambdaExpr(params, body)) => FnStmt(name, params, mint_absent(graph_span_of(val)), [], body),
+      NExpr(LambdaExpr(params, body)) => FnStmt(name, params, body, [], body),
       _ => LetStmt(let_head_node(head), val, ann),
     }
   } else {
@@ -4168,38 +4160,26 @@ fn free_vars_match_arms(arms, bound) = fold(
 // The names a parameter list binds: every binder its patterns write.
 fn param_bound_names(params) = flat_map({ p => pat_binder_names(param_pat(p)) }, params)
 
+// The union of two name sets: the names of `b` that `a` lacks, after every
+// name of `a`. The union is flat, so every membership test a later use makes
+// reads it in place, and the walk's cost is the names it meets.
 fn free_vars_merge(a, b) = if len(b) == 0 {
   a
 } else {
-  let x = last(b)
-  let rest = drop_last(b)
-  if free_vars_contains(a, x) {
-    free_vars_merge(a, rest)
-  } else // drift-audit: ignore — real drift 11 in free_vars_* set-union family; buffer-counter rewrite adds Memory+Alloc to row rippling through callers; tracked by Hβ.perf.name-is-handle; buffer-counter sweep. Explicit list_concat (was `a ++ [x]`) — BConcat's emit dispatches via lookup_ty which returned NFree at infer-time, falling to str_concat and trapping in mentl2's runtime when list arms walked the bytes as elements. Direct call avoids the dispatch.
-  {
-    free_vars_merge(list_concat(a, [x]), rest)
-  }
+  list_to_flat(list_concat(a, filter({ x => !free_vars_contains(a, x) }, b)))
 }
 
 fn free_vars_contains(lst, s) = any((x) => x == s, lst)
 
 // The union of two use lists, keyed by NAME: a name already in `a` keeps
 // the handle `a` saw it with, so a use list names each free variable once,
-// at its first reference — the order and the dedup of `free_vars_merge`
-// exactly, which is what keeps the names half of the answer unchanged.
+// at its first reference, in the order `free_vars_merge` keeps names — which
+// is what keeps the names half of the answer unchanged — and flat, as that
+// union is.
 fn free_uses_merge(a, b) = if len(b) == 0 {
   a
 } else {
-  let x = last(b)
-  let rest = drop_last(b)
-  match x {
-    (name, _) => if free_uses_contains(a, name) {
-      free_uses_merge(a, rest)
-    } else // drift-audit: ignore — the same set-union family as free_vars_merge above, tracked by Hβ.perf.name-is-handle's buffer-counter sweep.
-    {
-      free_uses_merge(list_concat(a, [x]), rest)
-    },
-  }
+  list_to_flat(list_concat(a, filter({ (name, _) => !free_uses_contains(a, name) }, b)))
 }
 
 fn free_uses_contains(uses, name: String) = any({ (n, _) => n == name }, uses)

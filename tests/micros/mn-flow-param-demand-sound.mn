@@ -1,0 +1,16 @@
+// expect: 8
+// flow: proven
+// The sound twin of mn-flow-param-demand: `main` hands `run` a constant, so
+// the demand its parameter owes is met where it is paid and nothing is
+// pending.
+effect Trust {
+  untrusted(v: String) -> Bool
+}
+
+type Trusted = String where !untrusted(self)
+
+fn exec(cmd: Trusted) = len(cmd)
+
+fn run(cmd) = exec("sh -c " ++ cmd)
+
+fn main() = run("ls")

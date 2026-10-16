@@ -1,0 +1,20 @@
+// expect: refuse E_RefinementRejected
+// flow: refused at 19
+// A let's annotation that states the label is a source: the let holds an
+// untrusted value whatever it was built from, so the sink refuses with the
+// annotation as where the label enters. On boot cb12aeea the claim was
+// pending debt.
+effect Trust {
+  untrusted(v: String) -> Bool
+}
+
+type Untrusted = String where untrusted(self)
+
+type Trusted = String where !untrusted(self)
+
+fn exec(cmd: Trusted) = len(cmd)
+
+fn main() = {
+  let cmd: Untrusted = "ls"
+  exec(cmd)
+}

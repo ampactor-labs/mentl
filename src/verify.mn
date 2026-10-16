@@ -10,21 +10,45 @@
 // proposer whose certificate the kernel checks.
 import types
 
+import effects
+
 import graph
 
 import io
 
 // Each claim decided by `predicate_decide` where it can be, the verdict
-// recorded; an undecided claim kept as debt.
-handler verify_ledger with debt = [], decided = [] {
+// recorded; an undecided claim kept as debt. A claim naming a label is the
+// settle's (`flow_settle`): kept among the flows the judgment raised, and
+// owed or decided as the latest settle left it.
+handler verify_ledger with debt = [], decided = [], flows = [], settled = [] {
   verify(modh, span, predicate, reason) => match predicate_decide(predicate) {
     Some(true) => resume(Some(true)) with decided = [(modh, span, predicate, true)] ++ decided,
     Some(false) => resume(Some(false)) with decided = [(modh, span, predicate, false)] ++ decided,
-    None => resume(None) with debt = [(modh, span, predicate, reason)] ++ debt,
+    None => if pred_names_label(predicate) {
+      resume(None) with flows = [(modh, span, predicate, reason)] ++ flows
+    } else {
+      resume(None) with debt = [(modh, span, predicate, reason)] ++ debt
+    },
   },
-  verify_debt() => resume(debt),
-  verify_decided() => resume(decided),
-  verify_forget(gone) => resume() with debt = filter(debt_outside(gone, ??), debt), decided = filter(debt_outside(gone, ??), decided),
+  verify_debt() => resume(debt ++ flat_map(settled_owed, settled)),
+  verify_decided() => resume(decided ++ flat_map(settled_verdict, settled)),
+  verify_flows() => resume(flows),
+  verify_settle(entries) => resume() with settled = entries,
+  verify_forget(gone) => resume() with debt = filter(debt_outside(gone, ??), debt), decided = filter(debt_outside(gone, ??), decided), flows = filter(debt_outside(gone, ??), flows), settled = filter(settled_outside(gone, ??), settled),
+}
+
+fn settled_owed(entry) = match entry {
+  (modh, span, pred, reason, None) => [(modh, span, pred, reason)],
+  _ => [],
+}
+
+fn settled_verdict(entry) = match entry {
+  (modh, span, pred, _, Some(held)) => [(modh, span, pred, held)],
+  _ => [],
+}
+
+fn settled_outside(gone, entry) = match entry {
+  (modh, span, _, _, _) => !any(obligation_replaced(modh, span, ??), gone),
 }
 
 // An obligation survives a forget unless an edit replaced what raised it:
@@ -67,8 +91,6 @@ fn predicate_decide_at(ref pred, bind) = match pred {
   PBoolNode(_) => None,
   // a destructuring pattern's shape, read off the value's edges
   PPatternMatch(pat, n) => shape_decide(pat, n),
-  // IFC: finite lattice, always decidable
-  PFlowLe(a, b) => Some(flow_le(a, b)),
   // bind `self` = sh over inner, through its tails when sh is a join
   PWithSelf(sh, inner) => decide_with_self(inner, SelfNode(sh)),
   PTotalDiv(op, a, b) => total_div_decide(op, a, b, bind),
@@ -77,8 +99,6 @@ fn predicate_decide_at(ref pred, bind) = match pred {
   PProvides(_) => Some(true),
 }
 
-// ─── Partiality — a primitive's precondition decided as a claim (C5) ──
-//
 // Integer `/` and `%` trap on a zero divisor, and `/` on INT_MIN / -1 (the
 // one quotient a signed word cannot hold). The claim decides from what the
 // graph holds about the two operands: a constant decides a face outright,
@@ -96,9 +116,9 @@ fn predicate_decide_at(ref pred, bind) = match pred {
 fn total_div_decide(op, a, b, bind) = match node_const_at(a, bind) {
   Some(LVInt(na)) => match node_const_at(b, bind) {
     Some(LVInt(nb)) => Some(int_op_defined(op, na, nb)),
-    _ => total_div_faces(op, a, b, bind),
+    None | Some(_) => total_div_faces(op, a, b, bind),
   },
-  _ => total_div_faces(op, a, b, bind),
+  None | Some(_) => total_div_faces(op, a, b, bind),
 }
 
 fn total_div_faces(op, a, b, bind) = match op {
@@ -107,7 +127,7 @@ fn total_div_faces(op, a, b, bind) = match op {
     node_excludes(b, 0, bind),
     or_decide(node_excludes(b, -1, bind), node_excludes(a, i32_min(), bind))
   ),
-  _ => Some(true),
+  BAdd | BSub | BMul | BEq | BNe | BLt | BGt | BLe | BGe | BAnd | BOr | BConcat => Some(true),
 }
 
 // A sequence read's precondition (TRAP): `0 <= i` and `i < len(xs)`, each
@@ -134,7 +154,7 @@ fn nonneg_step(acc, leaf) = and_decide(acc, leaf_nonneg(leaf))
 fn leaf_nonneg(leaf) = match leaf {
   LPoint(v) => match v {
     LVInt(n) => Some(n >= 0),
-    _ => None,
+    LVFloat(_) | LVString(_) | LVBool(_) => None,
   },
   LLength => Some(true),
   LParam(_, c) => match domain_lo(ty_domain(c)) {
@@ -163,10 +183,10 @@ fn below_step(lengths, acc, leaf) = and_decide(acc, leaf_below(leaf, lengths))
 fn leaf_below(leaf, lengths) = match leaf {
   LPoint(v) => match v {
     LVInt(k) => fold(Some(true), point_step(k, ??, ??), lengths),
-    _ => None,
+    LVFloat(_) | LVString(_) | LVBool(_) => None,
   },
   LClaimed(_, beneath) => leaf_below(beneath, lengths),
-  _ => None,
+  LParam(_, _) | LPost(_) | LSum(_) | LLength | LRet(_) | LBuilt(_) | LUnknown => None,
 }
 
 fn point_step(k, acc, n) = and_decide(acc, point_below(k, n))
@@ -183,7 +203,7 @@ fn point_below(k, n) = match n {
 // be, so a join answers each of its tails.
 fn seq_lengths(h) = match node_const_at(h, NoSelf) {
   Some(LVString(s)) => [Some(len(s))],
-  _ => match value_tails(h) {
+  None | Some(_) => match value_tails(h) {
     Some(tails) => tails |> flat_map(seq_lengths),
     None => match graph_node_body(h) {
       NExpr(MakeListExpr(elems)) => [Some(len(elems))],
@@ -191,7 +211,16 @@ fn seq_lengths(h) = match node_const_at(h, NoSelf) {
         Some(b) => binder_lengths(b),
         None => [None],
       },
-      _ => [None],
+      NExpr(_)
+      | NStmt(_)
+      | NPat(_)
+      | NHole(_)
+      | NModule(_)
+      | NLink(_)
+      | NTypeAnn(_)
+      | NName(_)
+      | NRow(_)
+      | NParam(_) => [None],
     },
   },
 }
@@ -202,12 +231,10 @@ fn binder_lengths(b) = match graph_binder_of(b) {
   Some(_) => [None],
   None => match graph_node_body(b) {
     NExpr(_) => seq_lengths(b),
-    _ => [None],
+    NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => [None],
   },
 }
 
-// ─── A destructuring pattern's shape — the claim a `let` asserts ──────
-//
 // `let [a, b] = xs`, `let Some(v) = o` and a parameter written as a pattern
 // ASSERT the shape of a value where a `match` would dispatch on it, so the
 // assertion is a partial read's claim, decided as the index's is: along the
@@ -363,12 +390,24 @@ fn contract_excludes(c, k) = match c {
   TAlias(_, inner) => contract_excludes(inner, k),
   TRefined(base, pred) => pred_excludes(pred, k) || contract_excludes(base, k),
   TReprPin(_, base) => contract_excludes(base, k),
-  _ => false,
+  TInt
+  | TFloat
+  | TUnit
+  | TByte
+  | TAddr
+  | TList(_)
+  | TTuple(_)
+  | TFun(_, _, _)
+  | TVar(_)
+  | TName(_, _)
+  | TRecord(_)
+  | TRecordOpen(_, _)
+  | TCont(_, _, _, _) => false,
 }
 
 fn pred_excludes(pred, k) = match predicate_decide_at(pred, SelfVal(LVInt(k))) {
   Some(false) => true,
-  _ => false,
+  None | Some(_) => false,
 }
 
 // A claim about a JOIN's value is a claim about every value the join can
@@ -387,7 +426,7 @@ fn decide_with_self(inner, bind) = match bind {
     Some(tails) => fold(Some(true), decide_tail(inner, ??, ??), tails),
     None => predicate_decide_at(inner, bind),
   },
-  _ => predicate_decide_at(inner, bind),
+  NoSelf | SelfVal(_) => predicate_decide_at(inner, bind),
 }
 
 fn decide_tail(inner, acc, tail) = and_decide(acc, decide_with_self(inner, SelfNode(tail)))
@@ -401,7 +440,16 @@ fn join_tails(h) = match graph_node_body(h) {
   NExpr(IfExpr(_, t, e)) => Some([t, e]),
   NExpr(MatchExpr(_, arms)) => Some(arms |> map(tail_of_arm)),
   NExpr(BlockExpr(_, final_expr)) => Some([final_expr]),
-  _ => None,
+  NExpr(_)
+  | NStmt(_)
+  | NPat(_)
+  | NHole(_)
+  | NModule(_)
+  | NLink(_)
+  | NTypeAnn(_)
+  | NName(_)
+  | NRow(_)
+  | NParam(_) => None,
 }
 
 fn tail_of_arm(arm) = match arm {
@@ -421,7 +469,16 @@ fn value_tails(h) = match join_tails(h) {
       Some(tails) => Some([left] ++ tails),
       None => None,
     },
-    _ => None,
+    NExpr(_)
+    | NStmt(_)
+    | NPat(_)
+    | NHole(_)
+    | NModule(_)
+    | NLink(_)
+    | NTypeAnn(_)
+    | NName(_)
+    | NRow(_)
+    | NParam(_) => None,
   },
 }
 
@@ -448,7 +505,16 @@ fn install_arm_tails(right) = match tee_handler_decl(right) {
       } else {
         Some(arms |> flat_map({ arm => arm_tails(arm.body) }) ~> walking_state_of(r_handle))
       },
-      _ => None,
+      FnScheme
+      | ConstructorScheme(_, _)
+      | EffectOpScheme(_, _, _, _)
+      | RecordSchemeKind(_)
+      | EffectDeclKind(_, _)
+      | ParamScheme(_)
+      | RowAliasKind(_)
+      | TypeVariants(_)
+      | HandlerChainKind(_)
+      | ValueScheme => None,
     },
     None => None,
   },
@@ -459,7 +525,16 @@ fn install_arm_tails(right) = match tee_handler_decl(right) {
 // applied to its config — or the side itself when it is no reference.
 fn tee_ref(r) = match graph_node_body(r) {
   NExpr(CallExpr(f, _)) => tee_ref(f),
-  _ => r,
+  NExpr(_)
+  | NStmt(_)
+  | NPat(_)
+  | NHole(_)
+  | NModule(_)
+  | NLink(_)
+  | NTypeAnn(_)
+  | NName(_)
+  | NRow(_)
+  | NParam(_) => r,
 }
 
 // The declaration a tee installs: its reference followed along its edge.
@@ -512,17 +587,44 @@ fn tee_handler_name(r) = match graph_node_body(r) {
   NExpr(CallExpr(callee, _)) => match graph_node_body(callee) {
     NExpr(VarRef(n)) => n,
     // drift-audit: ignore — the frame-fence sentinel, documented above
-    _ => "",
+    NExpr(_)
+    | NStmt(_)
+    | NPat(_)
+    | NHole(_)
+    | NModule(_)
+    | NLink(_)
+    | NTypeAnn(_)
+    | NName(_)
+    | NRow(_)
+    | NParam(_) => "",
   },
   // drift-audit: ignore — the frame-fence sentinel, documented above
-  _ => "",
+  NExpr(_)
+  | NStmt(_)
+  | NPat(_)
+  | NHole(_)
+  | NModule(_)
+  | NLink(_)
+  | NTypeAnn(_)
+  | NName(_)
+  | NRow(_)
+  | NParam(_) => "",
 }
 
 fn arm_tails(h) = match value_tails(h) {
   Some(tails) => tails |> flat_map(arm_tails),
   None => match graph_node_body(h) {
     NExpr(ResumeExpr(_, _)) => [],
-    _ => [h],
+    NExpr(_)
+    | NStmt(_)
+    | NPat(_)
+    | NHole(_)
+    | NModule(_)
+    | NLink(_)
+    | NTypeAnn(_)
+    | NName(_)
+    | NRow(_)
+    | NParam(_) => [h],
   },
 }
 
@@ -545,11 +647,11 @@ fn interval_ge_decide(ref op, ref lv, rh, bind) = match lv {
     Some(lo) => match op {
       BLe => if n <= lo { Some(true) } else { None },
       BLt => if n < lo { Some(true) } else { None },
-      _ => None,
+      BAdd | BSub | BMul | BDiv | BMod | BEq | BNe | BGt | BGe | BAnd | BOr | BConcat => None,
     },
     None => None,
   },
-  _ => None,
+  LVFloat(_) | LVString(_) | LVBool(_) => None,
 }
 
 // Resolve an operand HANDLE to a ground constant, reading the Expr LIVE from the
@@ -569,7 +671,16 @@ fn node_const_at(handle, bind) = match graph_node_body(handle) {
   NExpr(VarRef(name)) => resolve_self_operand(handle, name, bind),
   NExpr(BinOpExpr(op, l, r)) => litval_arith_opt(op, node_const_at(l, bind), node_const_at(r, bind)),
   NExpr(UnaryOpExpr(op, x)) => litval_unary_opt(op, node_const_at(x, bind)),
-  _ => None,
+  NExpr(_)
+  | NStmt(_)
+  | NPat(_)
+  | NHole(_)
+  | NModule(_)
+  | NLink(_)
+  | NTypeAnn(_)
+  | NName(_)
+  | NRow(_)
+  | NParam(_) => None,
 }
 
 // `self` resolves through its binding — the value node, read as a ground
@@ -599,15 +710,22 @@ fn module_let_const(r) = match binder_read_by(r) {
         PVar(_) => if value == v && at_module_level(s) { node_const_at(v, NoSelf) } else { None },
         PWild | PLit(_) | PCon(_, _) | PTuple(_) | PList(_, _) | PRecord(_, _) | PAlt(_) | PAs(_, _) => None,
       },
-      _ => None,
+      NExpr(_)
+      | NStmt(_)
+      | NPat(_)
+      | NHole(_)
+      | NModule(_)
+      | NLink(_)
+      | NTypeAnn(_)
+      | NName(_)
+      | NRow(_)
+      | NParam(_) => None,
     },
     None => None,
   },
   None => None,
 }
 
-// ─── The value walk — what a value is, read along the edges it flowed ──
-//
 // A refinement is a fact about a VALUE, and the edges the value flowed
 // through say what it is. Its unification class says nothing: a cell holds
 // a shape (types.mn `shape_of`), because union-find merges every value a
@@ -677,13 +795,22 @@ fn value_leaves(h, bind) = match node_const_at(h, bind) {
       },
       NExpr(BinOpExpr(op, l, r)) => match op {
         BAdd => [LSum(lo_add(leaves_lo(value_leaves(l, bind)), leaves_lo(value_leaves(r, bind))))],
-        _ => [LUnknown],
+        BSub | BMul | BDiv | BMod | BEq | BNe | BLt | BGt | BLe | BGe | BAnd | BOr | BConcat => [LUnknown],
       },
       NExpr(CallExpr(callee, _)) => call_leaves(callee),
       NExpr(PipeExpr(PForward, _, stage)) => call_leaves(stage),
       NExpr(FieldExpr(recv, fname)) => part_leaves(recv, PartField(fname)),
       NExpr(IndexExpr(recv, idx)) => part_leaves(recv, index_step(recv, idx)),
-      _ => [LUnknown],
+      NExpr(_)
+      | NStmt(_)
+      | NPat(_)
+      | NHole(_)
+      | NModule(_)
+      | NLink(_)
+      | NTypeAnn(_)
+      | NName(_)
+      | NRow(_)
+      | NParam(_) => [LUnknown],
     },
   },
 }
@@ -720,7 +847,7 @@ fn leaves_at_binder(b) = match graph_binder_of(b) {
   },
   None => match graph_node_body(b) {
     NExpr(_) => graph_claims_of(b) |> fold(value_leaves(b, NoSelf), claimed_under),
-    _ => [LUnknown],
+    NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => [LUnknown],
   },
 }
 
@@ -754,9 +881,18 @@ fn claimed_under(leaves, contract) = leaves |> map(LClaimed(contract, ??))
 fn claim_is_a_holes_demand(pred) = match pred {
   PWithSelf(h, _) => match graph_node_body(h) {
     NHole(_) => true,
-    _ => false,
+    NExpr(_) | NStmt(_) | NPat(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => false,
   },
-  _ => false,
+  PTrue
+  | PCompare(_, _, _)
+  | PAnd(_, _)
+  | POr(_, _)
+  | PNot(_)
+  | PBoolNode(_)
+  | PPatternMatch(_, _)
+  | PTotalDiv(_, _, _)
+  | PProvides(_)
+  | PInBounds(_, _) => false,
 }
 
 // The leaves of whatever stands at a handle: a binder's (a destructured
@@ -766,8 +902,6 @@ fn node_leaves(h) = match graph_binder_of(h) {
   None => value_leaves(h, NoSelf),
 }
 
-// ── Destructuring — a part read off its whole (P0) ──────────────────────
-//
 // A pattern's binder for a part of the value it matched carries the edge to
 // that value (PartFact), and a field read names its receiver. The part's
 // value is read off the whole: where the whole was BUILT in sight — a tuple,
@@ -780,7 +914,7 @@ fn part_leaves(whole, step) = match part_read(whole, step, node_leaves_read) {
   Some(leaves) => leaves,
   None => match step {
     PartRest => [LUnknown],
-    _ => node_leaves(whole) |> map(project_leaf(??, step)),
+    PartIndex(_) | PartCtor(_, _) | PartField(_) | PartElem | PartTypeArg(_) => node_leaves(whole) |> map(project_leaf(??, step)),
   },
 }
 
@@ -842,7 +976,16 @@ fn built_path_read(whole, step, rest, read) = match graph_node_body(whole) {
       None => None,
     }
   },
-  _ => nodes_path_read(built_part(whole, step), rest, read),
+  NExpr(_)
+  | NStmt(_)
+  | NPat(_)
+  | NHole(_)
+  | NModule(_)
+  | NLink(_)
+  | NTypeAnn(_)
+  | NName(_)
+  | NRow(_)
+  | NParam(_) => nodes_path_read(built_part(whole, step), rest, read),
 }
 
 fn nodes_path_read(found, rest, read) = match found {
@@ -863,19 +1006,37 @@ fn gather_read(read, acc, h) = match acc {
 fn built_part(whole, step) = match graph_node_body(whole) {
   NExpr(MakeTupleExpr(elems)) => match step {
     PartIndex(i) => nth_handle(elems, i),
-    _ => None,
+    PartCtor(_, _) | PartField(_) | PartElem | PartRest | PartTypeArg(_) => None,
   },
   NExpr(CallExpr(callee, args)) => match graph_node_body(callee) {
     NExpr(VarRef(made)) => if ref_is_constructor(callee) { construction_part(made, args, step) } else { None },
-    _ => None,
+    NExpr(_)
+    | NStmt(_)
+    | NPat(_)
+    | NHole(_)
+    | NModule(_)
+    | NLink(_)
+    | NTypeAnn(_)
+    | NName(_)
+    | NRow(_)
+    | NParam(_) => None,
   },
   NExpr(MakeRecordExpr(fields)) => field_part(fields, step),
   NExpr(NamedRecordExpr(_, fields)) => field_part(fields, step),
   NExpr(MakeListExpr(elems)) => match step {
     PartElem => Some(elems),
-    _ => None,
+    PartIndex(_) | PartCtor(_, _) | PartField(_) | PartRest | PartTypeArg(_) => None,
   },
-  _ => None,
+  NExpr(_)
+  | NStmt(_)
+  | NPat(_)
+  | NHole(_)
+  | NModule(_)
+  | NLink(_)
+  | NTypeAnn(_)
+  | NName(_)
+  | NRow(_)
+  | NParam(_) => None,
 }
 
 // A construction's part: the argument at its constructor's field, and none at
@@ -887,14 +1048,14 @@ fn built_part(whole, step) = match graph_node_body(whole) {
 fn construction_part(made: String, args, step) = match step {
   PartCtor(cname, i) => if made == cname { nth_handle(args, i) } else { Some([]) },
   PartTypeArg(_) => Some(args),
-  _ => None,
+  PartIndex(_) | PartField(_) | PartElem | PartRest => None,
 }
 
 // A constructor named bare is a construction with no fields.
 fn bare_construction_part(step) = match step {
   PartCtor(_, _) => Some([]),
   PartTypeArg(_) => Some([]),
-  _ => None,
+  PartIndex(_) | PartField(_) | PartElem | PartRest => None,
 }
 
 fn nth_handle(nodes, i) = if i < len(nodes) { Some([list_index(nodes, i)]) } else { None }
@@ -904,7 +1065,7 @@ fn field_part(fields, step) = match step {
     Some((_, v)) => Some([v]),
     None => None,
   },
-  _ => None,
+  PartIndex(_) | PartCtor(_, _) | PartElem | PartRest | PartTypeArg(_) => None,
 }
 
 // A whole's leaf read at a position: a contract projects to the position's
@@ -943,21 +1104,21 @@ fn contract_part(c, step) = match c {
   TReprPin(_, base) => contract_part(base, step),
   TTuple(es) => match step {
     PartIndex(i) => if i < len(es) { Some(list_index(es, i)) } else { None },
-    _ => None,
+    PartCtor(_, _) | PartField(_) | PartElem | PartRest | PartTypeArg(_) => None,
   },
   TRecord(fs) => field_contract(fs, step),
   TRecordOpen(fs, _) => field_contract(fs, step),
   TList(e) => match step {
     PartElem => Some(e),
-    _ => None,
+    PartIndex(_) | PartCtor(_, _) | PartField(_) | PartRest | PartTypeArg(_) => None,
   },
   TName(_, args) => match step {
     PartTypeArg(k) => if k < len(args) { Some(list_index(args, k)) } else { None },
     PartCtor(cname, i) => ctor_field_contract(c, cname, i),
-    _ => None,
+    PartIndex(_) | PartField(_) | PartElem | PartRest => None,
   },
   TRefined(base, _) => contract_part(base, step),
-  _ => None,
+  TInt | TFloat | TUnit | TByte | TAddr | TFun(_, _, _) | TVar(_) | TCont(_, _, _, _) => None,
 }
 
 // A nominal contract at a constructor's field: the field's declared type with
@@ -977,7 +1138,7 @@ fn field_contract(fs, step) = match step {
     Some((_, t)) => Some(t),
     None => None,
   },
-  _ => None,
+  PartIndex(_) | PartCtor(_, _) | PartElem | PartRest | PartTypeArg(_) => None,
 }
 
 // A call is a length when the callee is len / byte_len, and a construction
@@ -992,11 +1153,18 @@ fn call_leaves(ref callee) = match graph_node_body(callee) {
   } else {
     applied_leaves(callee)
   },
-  _ => applied_leaves(callee),
+  NExpr(_)
+  | NStmt(_)
+  | NPat(_)
+  | NHole(_)
+  | NModule(_)
+  | NLink(_)
+  | NTypeAnn(_)
+  | NName(_)
+  | NRow(_)
+  | NParam(_) => applied_leaves(callee),
 }
 
-// ── The declared parameter a value IS, and where in it (H4·D) ───────────
-//
 // A value flows from a parameter when it is the parameter, a part of it — an
 // element of a list parameter, a field of a record one, a position of a
 // tuple one, read by an index, a field access or a pattern that
@@ -1017,7 +1185,16 @@ fn flow_param_path(h) = match graph_node_body(h) {
   NExpr(IndexExpr(recv, idx)) => path_step(flow_param_path(recv), index_step(recv, idx)),
   NExpr(FieldExpr(recv, fname)) => path_step(flow_param_path(recv), PartField(fname)),
   NExpr(BlockExpr(_, f)) => flow_param_path(f),
-  _ => None,
+  NExpr(_)
+  | NStmt(_)
+  | NPat(_)
+  | NHole(_)
+  | NModule(_)
+  | NLink(_)
+  | NTypeAnn(_)
+  | NName(_)
+  | NRow(_)
+  | NParam(_) => None,
 }
 
 // What an index reads: a list's element, or — a literal index over a
@@ -1025,9 +1202,18 @@ fn flow_param_path(h) = match graph_node_body(h) {
 fn index_step(recv_h, idx) = match graph_node_body(idx) {
   NExpr(LitInt(k)) => match graph_chase(recv_h) {
     GNode(NBound(TTuple(_)), _) => PartIndex(k),
-    _ => PartElem,
+    GNode(_, _) => PartElem,
   },
-  _ => PartElem,
+  NExpr(_)
+  | NStmt(_)
+  | NPat(_)
+  | NHole(_)
+  | NModule(_)
+  | NLink(_)
+  | NTypeAnn(_)
+  | NName(_)
+  | NRow(_)
+  | NParam(_) => PartElem,
 }
 
 fn binder_path(b) = match graph_binder_of(b) {
@@ -1038,7 +1224,7 @@ fn binder_path(b) = match graph_binder_of(b) {
   },
   None => match graph_node_body(b) {
     NExpr(_) => flow_param_path(b),
-    _ => None,
+    NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => None,
   },
 }
 
@@ -1091,7 +1277,21 @@ fn param_result(ch) = match flow_param_path(ch) {
           Some(c) => match contract_at(c, path) {
             Some(t) => match t {
               TFun(_, ret, _) => if ty_carries_refinement(ret) { Some(LParam(b, ret)) } else { None },
-              _ => None,
+              TInt
+              | TFloat
+              | TUnit
+              | TByte
+              | TAddr
+              | TList(_)
+              | TTuple(_)
+              | TVar(_)
+              | TName(_, _)
+              | TRecord(_)
+              | TRecordOpen(_, _)
+              | TRefined(_, _)
+              | TReprPin(_, _)
+              | TCont(_, _, _, _)
+              | TAlias(_, _) => None,
             },
             None => None,
           },
@@ -1112,10 +1312,24 @@ fn post_leaves(ch) = match graph_chase(ch) {
   } else {
     match ret {
       TVar(r) => [LRet(r)],
-      _ => [LUnknown],
+      TInt
+      | TFloat
+      | TUnit
+      | TByte
+      | TAddr
+      | TList(_)
+      | TTuple(_)
+      | TFun(_, _, _)
+      | TName(_, _)
+      | TRecord(_)
+      | TRecordOpen(_, _)
+      | TRefined(_, _)
+      | TReprPin(_, _)
+      | TCont(_, _, _, _)
+      | TAlias(_, _) => [LUnknown],
     }
   },
-  _ => [LUnknown],
+  GNode(_, _) => [LUnknown],
 }
 
 // The return a declaration PROVES when it authored none: the contract every
@@ -1147,14 +1361,14 @@ fn leaves_contract(leaves) = match leaves {
 
 fn leaf_is_ret(root, leaf) = match leaf {
   LRet(r) => graph_chase_handle(r) == root,
-  _ => false,
+  LPoint(_) | LParam(_, _) | LPost(_) | LSum(_) | LLength | LClaimed(_, _) | LBuilt(_) | LUnknown => false,
 }
 
 fn leaf_contract(leaf) = match leaf {
   LParam(_, c) => Some(c),
   LPost(c) => Some(c),
   LClaimed(c, _) => Some(c),
-  _ => None,
+  LPoint(_) | LSum(_) | LLength | LRet(_) | LBuilt(_) | LUnknown => None,
 }
 
 // The alias a contract is named by, through refinements and width pins.
@@ -1162,11 +1376,21 @@ fn contract_alias(c) = match c {
   TAlias(n, _) => Some(n),
   TRefined(base, _) => contract_alias(base),
   TReprPin(_, base) => contract_alias(base),
-  _ => None,
+  TInt
+  | TFloat
+  | TUnit
+  | TByte
+  | TAddr
+  | TList(_)
+  | TTuple(_)
+  | TFun(_, _, _)
+  | TVar(_)
+  | TName(_, _)
+  | TRecord(_)
+  | TRecordOpen(_, _)
+  | TCont(_, _, _, _) => None,
 }
 
-// ── What the leaves answer — each reader asks its own question ──────────
-//
 // A ROW fact, three-valued over the leaves (`and_decide`): proven when every
 // leaf excludes the point, on what is proven (a constant, a length) or
 // assumed under contract (a parameter's precondition) — never on a
@@ -1206,7 +1430,7 @@ fn leaf_lo_meet(acc, leaf) = match acc {
 fn leaf_lo(leaf) = match leaf {
   LPoint(v) => match v {
     LVInt(n) => Some(n),
-    _ => None,
+    LVFloat(_) | LVString(_) | LVBool(_) => None,
   },
   LParam(_, c) => domain_lo(ty_domain(c)),
   LPost(c) => domain_lo(ty_domain(c)),
@@ -1250,14 +1474,26 @@ fn leaf_carries(aname: String, leaf) = match leaf {
   LParam(_, c) => ty_names_alias(c, aname),
   LPost(c) => ty_names_alias(c, aname),
   LClaimed(c, beneath) => ty_names_alias(c, aname) || leaf_carries(aname, beneath),
-  _ => false,
+  LPoint(_) | LSum(_) | LLength | LRet(_) | LBuilt(_) | LUnknown => false,
 }
 
 fn ty_names_alias(ty, aname: String) = match ty {
   TAlias(n, inner) => n == aname || ty_names_alias(inner, aname),
   TRefined(base, _) => ty_names_alias(base, aname),
   TReprPin(_, base) => ty_names_alias(base, aname),
-  _ => false,
+  TInt
+  | TFloat
+  | TUnit
+  | TByte
+  | TAddr
+  | TList(_)
+  | TTuple(_)
+  | TFun(_, _, _)
+  | TVar(_)
+  | TName(_, _)
+  | TRecord(_)
+  | TRecordOpen(_, _)
+  | TCont(_, _, _, _) => false,
 }
 
 // What a held claim STANDS ON, for the row it guards: the parameters whose
@@ -1269,7 +1505,7 @@ fn leaves_params(leaves) = leaves |> flat_map(leaf_param)
 fn leaf_param(leaf) = match leaf {
   LParam(b, _) => [b],
   LClaimed(_, beneath) => leaf_param(beneath),
-  _ => [],
+  LPoint(_) | LPost(_) | LSum(_) | LLength | LRet(_) | LBuilt(_) | LUnknown => [],
 }
 
 fn leaves_unproven(leaves) = leaves |> any(leaf_unproven)
@@ -1280,96 +1516,2538 @@ fn leaf_unproven(leaf) = match leaf {
   LPost(_) => true,
   LSum(_) => true,
   LClaimed(_, _) => true,
-  _ => false,
+  LPoint(_) | LParam(_, _) | LLength | LRet(_) | LBuilt(_) | LUnknown => false,
 }
 
-// ── The flow label a value carries (§4⑥'s seed) ─────────────────────────
+// A LABEL is an op named in a refinement over `self`: under `effect Trust {
+// untrusted(v: String) -> Bool }`, `type Trusted = String where
+// !untrusted(self)` demands of a value that nothing untrusted reaches it. An
+// op has no body to read, so the medium gives the label its meaning: it holds
+// of every value a SOURCE stating it can influence — through what the value
+// is built from, the branches it is computed under, the calls it is made
+// under, the statements before it that can unwind past it and the memory it
+// is read out of. A source is a contract that states the label: a declared
+// return, a parameter's annotation, a field's, an op's declared return. A
+// declared return's label is the declaration's own statement, never a claim
+// of its body (`ty_without_labels`), so a function whose return states the
+// label's negation ENDORSES what it answers.
 //
-// A value is as classified as everything it was BUILT FROM, read along the
-// edges it flowed and never off its class, which holds a shape since P0: a
-// constant is Public; a reference reads its binder — a parameter's
-// precondition, a destructured part's whole (at the position, where the
-// whole was built in sight), a let's value joined with every contract the
-// let claimed of it; a join is all of its tails; a call is its callee's
-// declared return joined with its arguments; any other expression joins
-// what it was computed from. On the P0 tree before this walk, `pw ++ "x"`,
-// a record's classified field, `p ++ "!"` over a classified parameter and a
-// value destructured from `Some(pw)` each read Public at a splice — the
-// class had carried them, by the same merging that laundered refinements.
-fn value_flow_label(h) = match node_const_at(h, NoSelf) {
-  Some(_) => Public,
-  None => match value_tails(h) {
-    Some(tails) => labels_join(tails),
-    None => match graph_node_body(h) {
-      NExpr(VarRef(_)) => match binder_read_by(h) {
-        Some(b) => binder_flow_label(b),
-        None => Public,
-      },
-      NExpr(CallExpr(callee, args)) => flow_label_join(leaves_flow_label(call_leaves(callee)), labels_join(args)),
-      NExpr(FieldExpr(recv, fname)) => part_flow_label(recv, PartField(fname)),
-      body => labels_join(body_child_handles(body)),
-    },
+// What can reach a value is a fact of the whole program, so a claim naming a
+// label is decided once the program is judged (`flow_settle`): the judgment
+// hands each one to the ledger's flows, and every judgment of the program
+// decides them all again. A claim stands on what the claim's own function is
+// handed and on whether that function runs; both are DEMANDS, owed at every
+// call of it, the function's own calls among them.
+//
+// The op a predicate's atom names over `self` — `untrusted(self)` — read
+// along the callee's edge to its declaration; None for any other atom.
+fn label_of(h) = match graph_node_body(h) {
+  NExpr(CallExpr(callee, args)) => match args {
+    [arg] => if is_self_node(arg) { op_declared_at(callee) } else { None },
+    _ => None,
+  },
+  NExpr(_)
+  | NStmt(_)
+  | NPat(_)
+  | NHole(_)
+  | NModule(_)
+  | NLink(_)
+  | NTypeAnn(_)
+  | NName(_)
+  | NRow(_)
+  | NParam(_) => None,
+}
+
+fn op_declared_at(callee) = match graph_ref_decl(callee) {
+  Some(d) => match graph_published(d) {
+    Some((_, _, EffectOpScheme(_, _, _, _))) => Some(d),
+    None | Some(_) => None,
+  },
+  None => None,
+}
+
+fn pred_names_label(pred) = match pred {
+  PBoolNode(h) => label_of(h) != None,
+  PNot(inner) => pred_names_label(inner),
+  PAnd(a, b) => pred_names_label(a) || pred_names_label(b),
+  POr(a, b) => pred_names_label(a) || pred_names_label(b),
+  PWithSelf(_, inner) => pred_names_label(inner),
+  PTrue
+  | PCompare(_, _, _)
+  | PPatternMatch(_, _)
+  | PTotalDiv(_, _, _)
+  | PProvides(_)
+  | PInBounds(_, _) => false,
+}
+
+// What a contract states of a label at the value it types: Some(true) that
+// the label holds, Some(false) that it does not, None neither. A conjunction
+// states what either side states; a disjunction states the label where either
+// side might hold it, and its absence only where both sides state that.
+fn ty_states(t, label) = match t {
+  TAlias(_, inner) => ty_states(inner, label),
+  TRefined(base, pred) => match pred_states(pred, label) {
+    Some(s) => Some(s),
+    None => ty_states(base, label),
+  },
+  TReprPin(_, base) => ty_states(base, label),
+  TInt
+  | TFloat
+  | TUnit
+  | TByte
+  | TAddr
+  | TList(_)
+  | TTuple(_)
+  | TFun(_, _, _)
+  | TVar(_)
+  | TName(_, _)
+  | TRecord(_)
+  | TRecordOpen(_, _)
+  | TCont(_, _, _, _) => None,
+}
+
+fn pred_states(pred, label) = match pred {
+  PBoolNode(h) => if label_of(h) == Some(label) { Some(true) } else { None },
+  PNot(PBoolNode(h)) => if label_of(h) == Some(label) { Some(false) } else { None },
+  PAnd(a, b) => match pred_states(a, label) {
+    Some(s) => Some(s),
+    None => pred_states(b, label),
+  },
+  POr(a, b) => either_states(pred_states(a, label), pred_states(b, label)),
+  PWithSelf(_, inner) => pred_states(inner, label),
+  PTrue
+  | PCompare(_, _, _)
+  | PNot(_)
+  | PPatternMatch(_, _)
+  | PTotalDiv(_, _, _)
+  | PProvides(_)
+  | PInBounds(_, _) => None,
+}
+
+fn either_states(a, b) = match a {
+  Some(true) => Some(true),
+  Some(false) => match b {
+    Some(true) => Some(true),
+    Some(false) => Some(false),
+    None => None,
+  },
+  None => match b {
+    Some(true) => Some(true),
+    None | Some(_) => None,
   },
 }
 
-fn labels_join(hs) = hs |> map(node_flow_label) |> fold(Public, flow_label_join)
-
-fn node_flow_label(h) = match graph_binder_of(h) {
-  Some(_) => binder_flow_label(h),
-  None => value_flow_label(h),
+// Whether a contract states the label of the value or of any part of it: a
+// list of untrusted strings holds untrusted values.
+fn ty_carries_label(t, label) = match ty_states(t, label) {
+  Some(s) => s,
+  None => match t {
+    TAlias(_, inner) => ty_carries_label(inner, label),
+    TRefined(base, _) => ty_carries_label(base, label),
+    TReprPin(_, base) => ty_carries_label(base, label),
+    TList(e) => ty_carries_label(e, label),
+    TTuple(es) => any(ty_carries_label(??, label), es),
+    TRecord(fs) => any({ (_, ft) => ty_carries_label(ft, label) }, fs),
+    TRecordOpen(fs, _) => any({ (_, ft) => ty_carries_label(ft, label) }, fs),
+    TName(_, args) => any(ty_carries_label(??, label), args),
+    TInt | TFloat | TUnit | TByte | TAddr | TFun(_, _, _) | TVar(_) | TCont(_, _, _, _) => false,
+  },
 }
 
-fn binder_flow_label(b) = match graph_binder_of(b) {
-  Some(fact) => match fact {
-    ParamFact(f) => match pre_contract(f.pre) {
-      Some(c) => query_flow_label(c),
-      None => Public,
+// A contract with its labels taken out: what a declaration's body owes of
+// its declared return, and an arm of what its op declares it answers. The
+// labels are the declaration's statement — a source where they hold, an
+// endorsement where they are negated — and never a claim of the body.
+fn ty_without_labels(t) = match t {
+  TAlias(n, inner) => TAlias(n, ty_without_labels(inner)),
+  TRefined(base, pred) => TRefined(ty_without_labels(base), pred_without_labels(pred)),
+  TReprPin(w, base) => TReprPin(w, ty_without_labels(base)),
+  TList(e) => TList(ty_without_labels(e)),
+  TTuple(es) => TTuple(map(ty_without_labels, es)),
+  TRecord(fs) => TRecord(map({ (n, ft) => (n, ty_without_labels(ft)) }, fs)),
+  TRecordOpen(fs, r) => TRecordOpen(map({ (n, ft) => (n, ty_without_labels(ft)) }, fs), r),
+  TName(n, args) => TName(n, map(ty_without_labels, args)),
+  TInt | TFloat | TUnit | TByte | TAddr | TFun(_, _, _) | TVar(_) | TCont(_, _, _, _) => t,
+}
+
+fn pred_without_labels(pred) = if pred_names_label(pred) {
+  match pred {
+    PAnd(a, b) => PAnd(pred_without_labels(a), pred_without_labels(b)),
+    PWithSelf(s, inner) => PWithSelf(s, pred_without_labels(inner)),
+    PTrue
+    | PCompare(_, _, _)
+    | POr(_, _)
+    | PNot(_)
+    | PBoolNode(_)
+    | PPatternMatch(_, _)
+    | PTotalDiv(_, _, _)
+    | PProvides(_)
+    | PInBounds(_, _) => PTrue,
+  }
+} else {
+  pred
+}
+
+// The conjuncts of a predicate that name a label.
+fn pred_only_labels(pred) = if pred_names_label(pred) {
+  match pred {
+    PAnd(a, b) => PAnd(pred_only_labels(a), pred_only_labels(b)),
+    PWithSelf(s, inner) => PWithSelf(s, pred_only_labels(inner)),
+    PTrue
+    | PCompare(_, _, _)
+    | POr(_, _)
+    | PNot(_)
+    | PBoolNode(_)
+    | PPatternMatch(_, _)
+    | PTotalDiv(_, _, _)
+    | PProvides(_)
+    | PInBounds(_, _) => pred,
+  }
+} else {
+  PTrue
+}
+
+fn ty_names_a_label(t) = match t {
+  TAlias(_, inner) => ty_names_a_label(inner),
+  TRefined(base, pred) => pred_names_label(pred) || ty_names_a_label(base),
+  TReprPin(_, base) => ty_names_a_label(base),
+  TList(e) => ty_names_a_label(e),
+  TTuple(es) => any(ty_names_a_label, es),
+  TRecord(fs) => any({ (_, ft) => ty_names_a_label(ft) }, fs),
+  TRecordOpen(fs, _) => any({ (_, ft) => ty_names_a_label(ft) }, fs),
+  TName(_, args) => any(ty_names_a_label, args),
+  TInt | TFloat | TUnit | TByte | TAddr | TFun(_, _, _) | TVar(_) | TCont(_, _, _, _) => false,
+}
+
+// What brings a label to a value: a source stating it, carried as the chain
+// from where the walk met it; what the call being read hands a parameter of
+// the function whose summary is being read, which each call of it supplies;
+// a declared function's parameter whose contract says nothing of it, which
+// every call of the function hands it; the reach of a declared function,
+// which the calls of it decide; or a node the walk cannot read.
+type FlowAtom = FaSource(Reason) | FaArg(Int) | FaParam(Int) | FaReach(Int) | FaOpen(Int)
+
+// The memory a value may be: the binders and the literals it was built as,
+// or any memory at all.
+type Roots = RootsAt([Int]) | RootsAny
+
+// The nodes a walk has met, each once: a value, a reach, a declaration
+// whose code it asked whether a statement unwinds. A walk carries, beside
+// them, a context: the label and the name its author wrote it by, the
+// declaration whose summary it reads (its parameters are what each call
+// hands them), and every store the program makes into memory.
+effect FlowWalked {
+  value_met(node: Int) -> Bool
+  reach_met(node: Int) -> Bool
+  decl_met(decl: Int) -> Bool
+}
+
+handler flow_walk with values = [], reaches = [], decls = [] {
+  value_met(h) => if any({ v => v == h }, values) {
+    resume(true)
+  } else {
+    resume(false) with values = push(values, h)
+  },
+  reach_met(h) => if any({ v => v == h }, reaches) {
+    resume(true)
+  } else {
+    resume(false) with reaches = push(reaches, h)
+  },
+  decl_met(d) => if any({ v => v == d }, decls) { resume(true) } else { resume(false) with decls = push(decls, d) },
+}
+
+fn flow_source(ctx, site, what: String) = FaSource(LabelEnters(ctx.name, site, Inferred(what)))
+
+// What a declared function does with the label, each read once per settle and
+// stated over its own parameters: what it answers, what it hands the function
+// it is given at a slot at each position, what decides whether it applies
+// that function, and what it stores into the memory it is handed at a slot.
+// A call reads a summary with its own arguments standing for the parameters.
+type FlowFact
+  = FfAnswer
+  | FfHand(Int, Int)
+  | FfApply(Int)
+  | FfWrite(Int)
+  | FfHanded(Int)
+  | FfReach
+  // a handler's reading at one install of it: what it hands the function
+  // in its configuration at a slot at a position, and whether it applies it
+  | FfHandAt(Int, Int, Int)
+  | FfApplyAt(Int, Int)
+  // what a function's performs of an op hand at a position, and what
+  // decides whether it performs it
+  | FfPerform(Int, Int)
+  | FfPerformReach(Int)
+
+// The summaries read so far, each with the round it was read in; the ones
+// being read now; the round; whether this round grew any; and every store the
+// program makes into memory, gathered once for the settle.
+effect FlowSummaries {
+  facts_stores() -> [{by: StoreBy, call: Int, local: Bool, owner: Int, roots: Roots}]
+  fact_known(decl: Int, label: Int, fact: FlowFact) -> Option(([FlowAtom], Int))
+  fact_keep(decl: Int, label: Int, fact: FlowFact, atoms: [FlowAtom])
+  fact_reading(decl: Int, label: Int, fact: FlowFact) -> Bool
+  fact_enter(decl: Int, label: Int, fact: FlowFact)
+  fact_leave()
+  facts_round() -> Int
+  facts_grew() -> Bool
+}
+
+handler flow_summaries(stores) with memo = wmap_new(256), reading = [], round = 0, grew = false {
+  facts_stores() => resume(stores),
+  fact_known(d, label, fact) => resume(fact_found(wmap_get_all(memo, d), label, fact)),
+  fact_keep(d, label, fact, atoms) => resume() with memo = wmap_add(memo, d, (label, fact, atoms, round)), grew = grew || len(atoms) > len(known_atoms(fact_found(wmap_get_all(memo, d), label, fact))),
+  fact_reading(d, label, fact) => resume(any({ r => r == (d, label, fact) }, reading)),
+  fact_enter(d, label, fact) => resume() with reading = push(reading, (d, label, fact)),
+  fact_leave() => resume() with reading = drop_last(reading),
+  facts_round() => resume(round),
+  facts_grew() => resume(grew) with grew = false, round = round + 1,
+}
+
+fn fact_found(entries, label, fact) = match find({ (l, f, _, _) => l == label && f == fact }, entries) {
+  Some((_, _, atoms, r)) => Some((atoms, r)),
+  None => None,
+}
+
+fn known_atoms(known) = match known {
+  Some((atoms, _)) => atoms,
+  None => [],
+}
+
+// A summary, read at most once a round. A recursion through one being read
+// reads what the round before left, and the rounds repeat until none grows —
+// the least fixed point.
+fn flow_fact(ctx, d, fact) = {
+  let known = fact_known(d, ctx.label, fact)
+  let prior = known_atoms(known)
+  if read_this_round(known, facts_round()) || fact_reading(d, ctx.label, fact) {
+    prior
+  } else {
+    fact_enter(d, ctx.label, fact)
+    let atoms = atoms_union(prior, read_fact(ctx, d, fact))
+    fact_leave()
+    fact_keep(d, ctx.label, fact, atoms)
+    atoms
+  }
+}
+
+fn read_this_round(known, round) = match known {
+  Some((_, r)) => r == round,
+  None => false,
+}
+
+// A reading over summaries, repeated until no summary grows.
+fn until_settled(read, x) = {
+  let v = read(x)
+  if facts_grew() { until_settled(read, x) } else { v }
+}
+
+fn read_fact(ctx, d, fact) = {
+  let inside = ctx_at(ctx, 0, d)
+  let outside = ctx_at(ctx, 0, 0)
+  match fact {
+    FfAnswer => answers_of(inside, d),
+    FfHand(k, i) => at_param_uses(d, k, hand_use(inside, i, ??)),
+    FfApply(k) => at_param_uses(d, k, apply_use(inside, ??)),
+    FfWrite(k) => writes_of(inside, d, k),
+    FfHanded(k) => handed_of(outside, d, k),
+    FfReach => reached_of(outside, d),
+    FfHandAt(t, k, i) => at_param_uses(d, k, hand_use(ctx_at(ctx, t, owning_fn(t)), i, ??)),
+    FfApplyAt(t, k) => at_param_uses(d, k, apply_use(ctx_at(ctx, t, owning_fn(t)), ??)),
+    FfPerform(op, i) => answers_body(d) |> flat_map(performs_in(inside, ??, op, i)),
+    FfPerformReach(op) => answers_body(d) |> flat_map(perform_reach_in(inside, ??, op)),
+  } ~> flow_walk
+}
+
+// The walk's context at an install of a handler and in the summary of a
+// declaration.
+fn ctx_at(ctx, install, self) = {install, label: ctx.label, name: ctx.name, self}
+
+fn atoms_union(prior, more) = more |> fold(prior, atom_add)
+
+fn atom_add(acc, a) = if any(atom_same(a, ??), acc) { acc } else { push(acc, a) }
+
+fn atom_same(a, b) = match a {
+  FaSource(ca) => match b {
+    FaSource(cb) => source_site(ca) == source_site(cb),
+    FaArg(_) | FaParam(_) | FaReach(_) | FaOpen(_) => false,
+  },
+  FaArg(x) => match b {
+    FaArg(y) => x == y,
+    FaSource(_) | FaParam(_) | FaReach(_) | FaOpen(_) => false,
+  },
+  FaParam(x) => match b {
+    FaParam(y) => x == y,
+    FaSource(_) | FaArg(_) | FaReach(_) | FaOpen(_) => false,
+  },
+  FaReach(x) => match b {
+    FaReach(y) => x == y,
+    FaSource(_) | FaArg(_) | FaParam(_) | FaOpen(_) => false,
+  },
+  FaOpen(x) => match b {
+    FaOpen(y) => x == y,
+    FaSource(_) | FaArg(_) | FaParam(_) | FaReach(_) => false,
+  },
+}
+
+fn source_site(chain) = match chain {
+  LabelEnters(_, site, _) => site,
+  Declared(_)
+  | Inferred(_)
+  | Fresh(_)
+  | OpConstraint(_, _, _)
+  | VarLookup(_, _)
+  | FnReturn(_, _)
+  | FnParam(_, _, _)
+  | MatchBranch(_, _)
+  | ListElement(_)
+  | IfBranch(_)
+  | LetBinding(_, _)
+  | Unified(_, _)
+  | Instantiation(_, _)
+  | Placeholder(_)
+  | MissingVar(_)
+  | Refinement(_, _)
+  | Located(_, _)
+  | InferredCallReturn(_, _)
+  | InferredPipeResult(_, _)
+  | DefaultReason(_, _)
+  | Accepted(_, _, _)
+  | EffectEnters(_, _, _)
+  | ChainInstall(_, _)
+  | StateBinding(_, _) => 0,
+}
+
+// What a declared function answers: its body's value.
+fn answers_of(ctx, d) = answers_body(d) |> flat_map(value_flow(ctx, ??))
+
+fn answers_body(d) = match graph_node_body(d) {
+  NStmt(FnStmt(_, _, _, _, body)) => [body],
+  NExpr(_)
+  | NStmt(_)
+  | NPat(_)
+  | NHole(_)
+  | NModule(_)
+  | NLink(_)
+  | NTypeAnn(_)
+  | NName(_)
+  | NRow(_)
+  | NParam(_) => [],
+}
+
+// What the performs of an op in code hand at a position: each perform's
+// argument, what a declared function the code calls performs, and — where it
+// calls a function value, whose code is out of sight — that call. A nested
+// install that answers the op absorbs the performs inside it, and a nested
+// declaration performs where it is called.
+fn performs_in(ctx, h, op, i) = match graph_node_body(h) {
+  NExpr(CallExpr(callee, _)) => call_performs(ctx, h, callee, op, i) ++ flat_map(performs_in(ctx, ??, op, i), body_child_handles(graph_node_body(h))),
+  NExpr(PipeExpr(PTee, body, right)) => if install_serves(right, op) { [] } else { performs_in(ctx, body, op, i) } ++ performs_in(ctx, right, op, i),
+  NExpr(PipeExpr(PForward, left, stage)) => stage_performs(ctx, h, stage, op, i) ++ performs_in(ctx, left, op, i) ++ performs_in(ctx, stage, op, i),
+  NStmt(FnStmt(_, _, _, _, _)) => [],
+  body @ (
+    NExpr(_)
+    | NStmt(_)
+    | NPat(_)
+    | NHole(_)
+    | NModule(_)
+    | NLink(_)
+    | NTypeAnn(_)
+    | NName(_)
+    | NRow(_)
+    | NParam(_)
+  ) => flat_map(performs_in(ctx, ??, op, i), body_child_handles(body)),
+}
+
+fn call_performs(ctx, call, callee, op, i) = match graph_node_body(callee) {
+  NExpr(VarRef(_)) => if ref_is_constructor(callee) {
+    []
+  } else {
+    match graph_ref_decl(callee) {
+      Some(d) => if d == op {
+        applied_arg_flow(ctx, i, call)
+      } else {
+        match graph_node_body(d) {
+          NStmt(FnStmt(_, _, _, _, _)) => subst_at(ctx, call, d, flow_fact(ctx, d, FfPerform(op, i))),
+          NExpr(_)
+          | NStmt(_)
+          | NPat(_)
+          | NHole(_)
+          | NModule(_)
+          | NLink(_)
+          | NTypeAnn(_)
+          | NName(_)
+          | NRow(_)
+          | NParam(_) => if binder_read_by(callee) == None { [] } else { [FaOpen(call)] },
+        }
+      },
+      None => [FaOpen(call)],
+    }
+  },
+  NExpr(LambdaExpr(_, _)) => [],
+  NExpr(_)
+  | NStmt(_)
+  | NPat(_)
+  | NHole(_)
+  | NModule(_)
+  | NLink(_)
+  | NTypeAnn(_)
+  | NName(_)
+  | NRow(_)
+  | NParam(_) => [FaOpen(call)],
+}
+
+fn stage_performs(ctx, pipe, stage, op, i) = match stage_application(stage, []) {
+  Some((callee, _)) => call_performs(ctx, pipe, callee, op, i),
+  None => [],
+}
+
+// What decides whether code performs an op: whatever decides whether each
+// perform, and each call that performs it, runs.
+fn perform_reach_in(ctx, h, op) = match graph_node_body(h) {
+  NExpr(CallExpr(callee, _)) => call_perform_reach(ctx, h, callee, op) ++ flat_map(perform_reach_in(ctx, ??, op), body_child_handles(graph_node_body(h))),
+  NExpr(PipeExpr(PTee, body, right)) => if install_serves(right, op) { [] } else { perform_reach_in(ctx, body, op) } ++ perform_reach_in(ctx, right, op),
+  NExpr(PipeExpr(PForward, left, stage)) => match stage_application(stage, []) {
+    Some((callee, _)) => call_perform_reach(ctx, h, callee, op),
+    None => [],
+  } ++ perform_reach_in(ctx, left, op) ++ perform_reach_in(ctx, stage, op),
+  NStmt(FnStmt(_, _, _, _, _)) => [],
+  body @ (
+    NExpr(_)
+    | NStmt(_)
+    | NPat(_)
+    | NHole(_)
+    | NModule(_)
+    | NLink(_)
+    | NTypeAnn(_)
+    | NName(_)
+    | NRow(_)
+    | NParam(_)
+  ) => flat_map(perform_reach_in(ctx, ??, op), body_child_handles(body)),
+}
+
+fn call_perform_reach(ctx, call, callee, op) = match graph_node_body(callee) {
+  NExpr(VarRef(_)) => match graph_ref_decl(callee) {
+    Some(d) => if d == op {
+      reach_flow(ctx, call)
+    } else {
+      match graph_node_body(d) {
+        NStmt(FnStmt(_, _, _, _, _)) => reach_flow(ctx, call) ++ subst_at(ctx, call, d, flow_fact(ctx, d, FfPerformReach(op))),
+        NExpr(_)
+        | NStmt(_)
+        | NPat(_)
+        | NHole(_)
+        | NModule(_)
+        | NLink(_)
+        | NTypeAnn(_)
+        | NName(_)
+        | NRow(_)
+        | NParam(_) => if binder_read_by(callee) == None { [] } else { reach_flow(ctx, call) ++ [FaOpen(call)] },
+      }
     },
-    PartFact(f) => flow_label_join(declared_label(f.declared), part_flow_label(f.whole, f.step)),
-    StateFact(f) => state_flow_label(b, f.writes),
+    None => [FaOpen(call)],
+  },
+  NExpr(_)
+  | NStmt(_)
+  | NPat(_)
+  | NHole(_)
+  | NModule(_)
+  | NLink(_)
+  | NTypeAnn(_)
+  | NName(_)
+  | NRow(_)
+  | NParam(_) => [],
+}
+
+// Whether an install's handler answers an op.
+fn install_serves(right, op) = match tee_arms(right) {
+  Some(arms) => any({ arm => graph_ref_decl(arm.op) == Some(op) }, arms),
+  None => false,
+}
+
+// The install a handler applied to its configuration stands in, and whether
+// the walk reads a handler at one.
+fn install_of(call) = match graph_parent_of(call) {
+  Some(t) => match graph_node_body(t) {
+    NExpr(PipeExpr(PTee, _, right)) => if right == call { Some(t) } else { None },
+    NExpr(_)
+    | NStmt(_)
+    | NPat(_)
+    | NHole(_)
+    | NModule(_)
+    | NLink(_)
+    | NTypeAnn(_)
+    | NName(_)
+    | NRow(_)
+    | NParam(_) => None,
+  },
+  None => None,
+}
+
+fn installed_here(ctx, hd) = ctx.install != 0 && match graph_node_body(ctx.install) {
+  NExpr(PipeExpr(PTee, _, right)) => tee_handler_decl(right) == Some(hd),
+  NExpr(_)
+  | NStmt(_)
+  | NPat(_)
+  | NHole(_)
+  | NModule(_)
+  | NLink(_)
+  | NTypeAnn(_)
+  | NName(_)
+  | NRow(_)
+  | NParam(_) => false,
+}
+
+fn install_body(t) = match graph_node_body(t) {
+  NExpr(PipeExpr(PTee, body, _)) => [body],
+  NExpr(_)
+  | NStmt(_)
+  | NPat(_)
+  | NHole(_)
+  | NModule(_)
+  | NLink(_)
+  | NTypeAnn(_)
+  | NName(_)
+  | NRow(_)
+  | NParam(_) => [],
+}
+
+// What a declared function does with its parameter at a slot, read at each
+// use of the name it binds; a parameter it takes apart holds the function it
+// is handed among parts the walk does not follow, so what it does there is
+// out of sight.
+fn at_param_uses(d, k, read) = {
+  let params = decl_params(d)
+  if k < len(params) {
+    let p = list_index(params, k)
+    match graph_node_body(p) {
+      NParam(fields) => match graph_node_body(fields.pat) {
+        NPat(PVar(_)) => graph_refs_of(fields.pat) |> flat_map(read),
+        NExpr(_)
+        | NStmt(_)
+        | NPat(_)
+        | NHole(_)
+        | NModule(_)
+        | NLink(_)
+        | NTypeAnn(_)
+        | NName(_)
+        | NRow(_)
+        | NParam(_) => [FaOpen(p)],
+      },
+      NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) => [FaOpen(p)],
+    }
+  } else {
+    []
+  }
+}
+
+// A declaration's parameters: a function's, or a handler's configuration,
+// which its install hands it.
+fn decl_params(d) = match graph_node_body(d) {
+  NStmt(FnStmt(_, params, _, _, _)) => params,
+  NStmt(HandlerDeclStmt(_, _, config, _, _, _)) => config,
+  NExpr(_)
+  | NStmt(_)
+  | NPat(_)
+  | NHole(_)
+  | NModule(_)
+  | NLink(_)
+  | NTypeAnn(_)
+  | NName(_)
+  | NRow(_)
+  | NParam(_) => [],
+}
+
+// The declaration a call applies whose summaries the walk reads: a declared
+// function, or a handler applied to its configuration.
+fn applied_summarized(call) = match applied_decl(call) {
+  Some(d) => Some(d),
+  None => match graph_node_body(call) {
+    NExpr(CallExpr(callee, _)) => match graph_ref_decl(callee) {
+      Some(d) => match graph_node_body(d) {
+        NStmt(HandlerDeclStmt(_, _, _, _, _, _)) => Some(d),
+        NExpr(_)
+        | NStmt(_)
+        | NPat(_)
+        | NHole(_)
+        | NModule(_)
+        | NLink(_)
+        | NTypeAnn(_)
+        | NName(_)
+        | NRow(_)
+        | NParam(_) => None,
+      },
+      None => None,
+    },
+    NExpr(_)
+    | NStmt(_)
+    | NPat(_)
+    | NHole(_)
+    | NModule(_)
+    | NLink(_)
+    | NTypeAnn(_)
+    | NName(_)
+    | NRow(_)
+    | NParam(_) => None,
+  },
+}
+
+// What a function parameter is handed at one of its uses: the argument at the
+// position where the use is the callee, what the function it is passed to
+// hands it there, the piped value where it is a stage; anywhere else what it
+// is handed is out of sight.
+fn hand_use(ctx, i, r) = match graph_parent_of(r) {
+  Some(q) => match graph_node_body(q) {
+    NExpr(CallExpr(callee, _)) => if callee == r { applied_arg_flow(ctx, i, q) } else { passed_on(ctx, q, r, FfHand(0, i)) },
+    NExpr(PipeExpr(PForward, left, stage)) => if stage == r { if i == 0 { value_flow(ctx, left) } else { [] } } else { [FaOpen(r)] },
+    NExpr(_)
+    | NStmt(_)
+    | NPat(_)
+    | NHole(_)
+    | NModule(_)
+    | NLink(_)
+    | NTypeAnn(_)
+    | NName(_)
+    | NRow(_)
+    | NParam(_) => [FaOpen(r)],
+  },
+  None => [FaOpen(r)],
+}
+
+// What decides whether a function parameter is applied at one of its uses.
+fn apply_use(ctx, r) = match graph_parent_of(r) {
+  Some(q) => match graph_node_body(q) {
+    NExpr(CallExpr(callee, _)) => if callee == r {
+      reach_flow(ctx, q)
+    } else {
+      reach_flow(ctx, q) ++ passed_on(ctx, q, r, FfApply(0))
+    },
+    NExpr(PipeExpr(PForward, _, stage)) => if stage == r { reach_flow(ctx, q) } else { [FaOpen(r)] },
+    NExpr(_)
+    | NStmt(_)
+    | NPat(_)
+    | NHole(_)
+    | NModule(_)
+    | NLink(_)
+    | NTypeAnn(_)
+    | NName(_)
+    | NRow(_)
+    | NParam(_) => [FaOpen(r)],
+  },
+  None => [FaOpen(r)],
+}
+
+// A function parameter handed on to a declared function: that function's
+// summary at the slot it is handed in, read at the call. The fact names the
+// slot it is read at; its own slot is the call's. A handler applied to its
+// configuration where it is installed is read at that install, its arms
+// served by the performs of the body it governs.
+fn passed_on(ctx, call, r, fact) = match applied_summarized(call) {
+  Some(e) => match find_slot(r, applied_args(call)) {
+    Some(m) => match install_of(call) {
+      Some(t) => from_install(ctx, t, flow_fact(ctx, e, at_install(fact, t, m))),
+      None => subst_at(ctx, call, e, flow_fact(ctx, e, at_slot(fact, m))),
+    },
+    None => [FaOpen(r)],
+  },
+  None => [FaOpen(r)],
+}
+
+fn at_slot(fact, m) = match fact {
+  FfHand(_, i) => FfHand(m, i),
+  FfApply(_) => FfApply(m),
+  FfWrite(_) => FfWrite(m),
+  FfHanded(_) => FfHanded(m),
+  FfHandAt(t, _, i) => FfHandAt(t, m, i),
+  FfApplyAt(t, _) => FfApplyAt(t, m),
+  FfAnswer | FfReach | FfPerform(_, _) | FfPerformReach(_) => fact,
+}
+
+fn at_install(fact, t, m) = match fact {
+  FfHand(_, i) => FfHandAt(t, m, i),
+  FfApply(_) => FfApplyAt(t, m),
+  FfWrite(_)
+  | FfHanded(_)
+  | FfHandAt(_, _, _)
+  | FfApplyAt(_, _)
+  | FfAnswer
+  | FfReach
+  | FfPerform(_, _)
+  | FfPerformReach(_) => at_slot(fact, m),
+}
+
+// A reading at an install is stated over the parameters of the function the
+// install stands in: its own where that is the function being read, and what
+// every call of that function hands them anywhere else.
+fn from_install(ctx, t, atoms) =
+  if ctx.self == owning_fn(t) { atoms } else { map(as_demand, atoms) }
+
+fn find_slot(h, nodes) = match find({ (_, n) => n == h }, enumerate(nodes)) {
+  Some((i, _)) => Some(i),
+  None => None,
+}
+
+// What a declared function stores into the memory it is handed at a slot:
+// every store its own code makes into that memory.
+fn writes_of(ctx, d, k) = match graph_node_body(d) {
+  NStmt(FnStmt(_, params, _, _, body)) => if k < len(params) && writes_param(d, k) {
+    let p = list_index(params, k)
+    stores_in(d, body) |> filter({ s => roots_hold(s.roots, p) }) |> flat_map(write_atoms(ctx, ??))
+  } else {
+    []
+  },
+  NExpr(_)
+  | NStmt(_)
+  | NPat(_)
+  | NHole(_)
+  | NModule(_)
+  | NLink(_)
+  | NTypeAnn(_)
+  | NName(_)
+  | NRow(_)
+  | NParam(_) => [],
+}
+
+fn roots_hold(roots, p) = match roots {
+  RootsAt(xs) => any({ x => x == p }, xs),
+  RootsAny => false,
+}
+
+// A summary read at a call: what the summary says each call hands a
+// parameter is what this call hands it.
+fn subst_at(ctx, call, d, atoms) = flat_map(subst_atom(ctx, call, d, ??), atoms)
+
+fn subst_atom(ctx, call, d, a) = match a {
+  FaArg(b) => if graph_parent_of(b) == Some(d) {
+    match nth_handle(applied_args(call), param_slot(d, b)) {
+      Some(found) => flat_map(value_flow(ctx, ??), found),
+      None => [FaOpen(call)],
+    }
+  } else {
+    [FaParam(b)]
+  },
+  FaSource(_) | FaParam(_) | FaReach(_) | FaOpen(_) => [a],
+}
+
+fn param_slot(d, b) = match graph_node_body(d) {
+  NStmt(FnStmt(_, params, _, _, _)) => node_index(b, params),
+  NExpr(_)
+  | NStmt(_)
+  | NPat(_)
+  | NHole(_)
+  | NModule(_)
+  | NLink(_)
+  | NTypeAnn(_)
+  | NName(_)
+  | NRow(_)
+  | NParam(_) => 0,
+}
+
+// What every call of a function hands its parameters, where a summary's
+// arguments are read beyond the call that hands them.
+fn as_demand(a) = match a {
+  FaArg(b) => FaParam(b),
+  FaSource(_) | FaParam(_) | FaReach(_) | FaOpen(_) => a,
+}
+
+// Everything that can bring the label to the value at `h`: what it is built
+// from, read along its edges, and what decides which value it is.
+fn value_flow(ctx, h) = if value_met(h) { [] } else { value_flow_at(ctx, h) }
+
+fn value_flow_at(ctx, h) = match node_const_at(h, NoSelf) {
+  Some(_) => [],
+  None => match graph_node_body(h) {
+    NExpr(e) => expr_flow(ctx, h, e),
+    NStmt(LetStmt(_, value, _)) => value_flow(ctx, value),
+    NStmt(ExprStmt(x)) => value_flow(ctx, x),
+    NHole(_) => [FaOpen(h)],
+    NStmt(_) | NPat(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => [],
+  },
+}
+
+fn expr_flow(ctx, h, e) = match e {
+  VarRef(_) => ref_flow(ctx, h),
+  CallExpr(callee, args) => call_flow(ctx, h, callee, args),
+  LabeledArg(_, v) => value_flow(ctx, v),
+  PipeExpr(kind, left, right) => pipe_flow(ctx, h, kind, left, right),
+  FanoutExpr(branches) => flat_map(value_flow(ctx, ??), branches),
+  IfExpr(c, t, f) => value_flow(ctx, c) ++ value_flow(ctx, t) ++ value_flow(ctx, f),
+  MatchExpr(scrut, arms) => dispatch_flow(ctx, scrut, arms) ++ flat_map(arm_body_flow(ctx, ??), arms),
+  BlockExpr(stmts, final) => value_flow(ctx, final) ++ flat_map(unwind_flow(ctx, ??), stmts),
+  BinOpExpr(_, l, r) => value_flow(ctx, l) ++ value_flow(ctx, r),
+  UnaryOpExpr(_, x) => value_flow(ctx, x),
+  MakeStringExpr(frags) => flat_map(value_flow(ctx, ??), frags),
+  ShowExpr(x) => value_flow(ctx, x),
+  MakeListExpr(xs) => flat_map(value_flow(ctx, ??), xs) ++ stores_flow(ctx, h, RootsAt([h])),
+  MakeTupleExpr(xs) => flat_map(value_flow(ctx, ??), xs),
+  MakeRecordExpr(fields) => flat_map(field_flow(ctx, ??), fields),
+  NamedRecordExpr(head, fields) => flat_map(named_field_flow(ctx, head, ??), fields),
+  RecordUpdateExpr(base, fields) => value_flow(ctx, base) ++ flat_map(field_flow(ctx, ??), fields),
+  FieldExpr(recv, fname) => part_flow(ctx, recv, PartField(fname)),
+  IndexExpr(recv, idx) => part_flow(ctx, recv, index_step(recv, idx)) ++ value_flow(ctx, idx),
+  LambdaExpr(_, body) => value_flow(ctx, body),
+  ResumeExpr(_, _) => [FaOpen(h)],
+  RestExpr(_) => [FaOpen(h)],
+  ExprPlaceholder => [FaOpen(h)],
+  LitInt(_) | LitFloat(_) | LitString(_) | LitBool(_) | LitUnit => [],
+}
+
+fn field_flow(ctx, field) = match field {
+  (_, v) => value_flow(ctx, v),
+}
+
+// A field whose declared type states the label is a source whatever is
+// placed in it, as a declared return is whatever its body computes; any
+// other field is what was placed there.
+fn named_field_flow(ctx, head, field) = match field {
+  (name, v) => if declared_field_carries(ctx, head, name) {
+    [flow_source(ctx, v, "the field's declared contract")]
+  } else {
+    value_flow(ctx, v)
+  },
+}
+
+// Whether a nominal record's declaration states the label at a field, read
+// along the record's name to its declaration.
+fn declared_field_carries(ctx, head, name: String) = match graph_ref_decl(head) {
+  Some(v) => match graph_published(v) {
+    Some((_, _, RecordSchemeKind(fields))) => match find({ (n, _) => n == name }, fields) {
+      Some((_, t)) => ty_carries_label(t, ctx.label),
+      None => false,
+    },
+    None | Some(_) => false,
+  },
+  None => false,
+}
+
+fn arm_body_flow(ctx, arm) = match arm {
+  (_, body) => value_flow(ctx, body),
+}
+
+// A match of two or more arms dispatches on its scrutinee, so which arm
+// answers is the scrutinee's to decide; a match of one arm asserts its shape
+// and decides nothing.
+fn dispatch_flow(ctx, scrut, arms) = if len(arms) >= 2 { value_flow(ctx, scrut) } else { [] }
+
+// A statement that can unwind past its block, or run what follows it more
+// than once, decides whether and how often everything after it runs, so
+// everything it reads reaches what follows.
+fn unwind_flow(ctx, s) = if stmt_alters(s) { subtree_flow(ctx, s) } else { [] }
+
+fn subtree_flow(ctx, h) =
+  value_flow(ctx, h) ++ flat_map(subtree_flow(ctx, ??), body_child_handles(graph_node_body(h)))
+
+// A reference reads its binder, along the reference's own edge.
+fn ref_flow(ctx, r) = if is_self_node(r) {
+  [FaOpen(r)]
+} else if ref_is_constructor(r) {
+  []
+} else {
+  match binder_read_by(r) {
+    Some(b) => binder_flow(ctx, b),
+    None => match graph_ref_decl(r) {
+      Some(d) => fn_value_flow(ctx, r, d),
+      None => [FaOpen(r)],
+    },
+  }
+}
+
+// A declaration named as a value is what calling it can answer — whoever
+// calls it hands it its arguments, and those are theirs to walk: a function's
+// declared return or what its summary answers beyond its arguments, an op's
+// declared return or every value an arm resumes it with. A handler, a type or
+// a constructor named as a value answers no value of its own.
+fn fn_value_flow(ctx, r, d) = match graph_published(d) {
+  Some((_, _, EffectOpScheme(_, _, _, _))) => match ret_states(d, ctx.label) {
+    Some(true) => [flow_source(ctx, r, "what the op is declared to answer")],
+    Some(false) => [],
+    None => flat_map(arm_resume_flow(ctx, ??), serving_arms(d)),
+  },
+  None | Some(_) => match graph_node_body(d) {
+    NStmt(FnStmt(_, _, _, _, _)) => match ret_states(d, ctx.label) {
+      Some(true) => [flow_source(ctx, r, "what `{decl_name(d)}` is declared to answer")],
+      Some(false) => [],
+      None => flow_fact(ctx, d, FfAnswer) |> filter({ a => !is_arg(a) }),
+    },
+    NExpr(_)
+    | NStmt(_)
+    | NPat(_)
+    | NHole(_)
+    | NModule(_)
+    | NLink(_)
+    | NTypeAnn(_)
+    | NName(_)
+    | NRow(_)
+    | NParam(_) => [],
+  },
+}
+
+fn is_arg(a) = match a {
+  FaArg(_) => true,
+  FaSource(_) | FaParam(_) | FaReach(_) | FaOpen(_) => false,
+}
+
+fn binder_flow(ctx, b) = match graph_binder_of(b) {
+  Some(fact) => match fact {
+    ParamFact(f) => param_flow(ctx, b, f.pre),
+    PartFact(f) => if value_met(b) { [] } else { declared_flow(ctx, f.declared, b, part_flow(ctx, f.whole, f.step)) },
+    StateFact(f) => if value_met(b) {
+      []
+    } else {
+      flat_map(value_flow(ctx, ??), f.writes) ++ stores_flow(ctx, b, RootsAt([b]))
+    },
   },
   None => match graph_node_body(b) {
-    NExpr(_) => graph_claims_of(b) |> map(query_flow_label) |> fold(value_flow_label(b), flow_label_join),
-    _ => Public,
+    NExpr(_) => let_flow(ctx, b),
+    NParam(_) => param_flow(ctx, b, Unstated),
+    NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) => [FaOpen(b)],
   },
 }
 
-// A state is as classified as everything written into it, each writer read
-// as the expression it is. Inside its own writers it adds nothing, and that
-// is exact: a write's label joins the state's with what the write adds, so
-// the least label is the init's joined with every write's.
-fn state_flow_label(b, writes) = if walking_state(b) {
-  Public
+// A contract a part was declared with states the label, or its absence, of
+// whatever the part holds; otherwise the part is what was placed there.
+fn declared_flow(ctx, declared, at, beneath) = match declared {
+  Some(c) => match ty_states(c, ctx.label) {
+    Some(true) => [flow_source(ctx, at, "the field's declared contract")],
+    Some(false) => [],
+    None => beneath,
+  },
+  None => beneath,
+}
+
+// A let is its value, under every contract the let claimed of it: a claim of
+// the label's absence is owed where the let stands and a reader may stand on
+// it, and a claim of the label is a source.
+fn let_flow(ctx, b) = match claims_state(ctx, b) {
+  Some(false) => [],
+  Some(true) => [flow_source(ctx, b, "the let's annotation")],
+  None => value_flow(ctx, b) ++ stores_flow(ctx, b, value_roots(b)),
+}
+
+fn claims_state(ctx, b) =
+  graph_claims_of(b) |> map(ty_states(??, ctx.label)) |> fold(None, either_states)
+
+// A parameter is what its function is handed: a declared function's
+// parameter is what every call of it hands, owed there; an arm's is what
+// every perform of its op hands; a handler's configuration what every install
+// of it hands; a function literal's what it is applied to where it is
+// applied.
+fn param_flow(ctx, b, pre) = if value_met(b) {
+  []
 } else {
-  writes |> map(value_flow_label) |> fold(Public, flow_label_join) ~> walking_state_of(b)
+  match graph_parent_of(b) {
+    Some(p) => match graph_node_body(p) {
+      NStmt(FnStmt(_, _, _, _, _)) => fn_param_flow(ctx, p, b, pre),
+      NStmt(HandlerDeclStmt(_, _, config, _, arms, _)) => handler_param_flow(ctx, p, b, config, arms),
+      NExpr(LambdaExpr(params, body)) => lambda_param_flow(ctx, p, b, params, body),
+      NExpr(_)
+      | NStmt(_)
+      | NPat(_)
+      | NHole(_)
+      | NModule(_)
+      | NLink(_)
+      | NTypeAnn(_)
+      | NName(_)
+      | NRow(_)
+      | NParam(_) => [FaOpen(b)],
+    },
+    None => [FaOpen(b)],
+  }
 }
 
-fn declared_label(declared) = match declared {
-  Some(c) => query_flow_label(c),
-  None => Public,
+// A declared function's parameter, beside what it is handed, holds what the
+// function itself stores into the memory it is handed.
+fn fn_param_flow(ctx, d, b, pre) = {
+  let stated = match pre_contract(pre) {
+    Some(c) => if ty_carries_label(c, ctx.label) { Some(true) } else { ty_states(c, ctx.label) },
+    None => None,
+  }
+  let handed = match stated {
+    Some(true) => [flow_source(ctx, b, "the parameter's annotation")],
+    Some(false) => [],
+    None => if ctx.self == d { [FaArg(b)] } else { [FaParam(b)] },
+  }
+  let k = param_slot(d, b)
+  let written = if writes_param(d, k) { flow_fact(ctx, d, FfWrite(k)) } else { [] }
+  handed ++ stores_flow(ctx, b, RootsAt([b])) ++ if ctx.self == d { written } else { map(as_demand, written) }
 }
 
-// A part is as classified as the nodes it can be where its whole was built
-// in sight, and as its whole where it was not.
-fn part_flow_label(whole, step) = match part_read(whole, step, flow_label_read) {
-  Some(labels) => labels |> fold(Public, flow_label_join),
-  None => node_flow_label(whole),
+// An arm's argument is what its op is declared to be handed where the
+// declaration states the label — a source where it holds, owed by every
+// perform where it is absent — and otherwise every value a perform hands:
+// at the install being read, each perform of the body it governs; anywhere
+// else, every perform of the op. A configuration parameter is what the
+// install hands it, or what every install does.
+fn handler_param_flow(ctx, hd, b, config, arms) = match find({ arm => any({ a => a == b }, arm.args) }, arms) {
+  Some(arm) => match graph_ref_decl(arm.op) {
+    Some(op) => {
+      let i = node_index(b, arm.args)
+      match op_param_states(op, i, ctx.label) {
+        Some(true) => [flow_source(ctx, b, "what the op is declared to be handed")],
+        Some(false) => [],
+        None => if installed_here(ctx, hd) {
+          install_body(ctx.install) |> flat_map(performs_in(ctx_at(ctx, 0, ctx.self), ??, op, i))
+        } else {
+          flat_map(applied_arg_flow(ctx, i, ??), graph_applies_of(op))
+        },
+      }
+    },
+    None => [FaOpen(b)],
+  },
+  None => if any({ c => c == b }, config) {
+    if installed_here(ctx, hd) {
+      install_config_at(ctx_at(ctx, 0, ctx.self), ctx.install, node_index(b, config))
+    } else {
+      config_flow(ctx, hd, node_index(b, config))
+    }
+  } else {
+    [FaOpen(b)]
+  },
 }
 
-fn flow_label_read(n) = Some([node_flow_label(n)])
+fn install_config_at(ctx, t, i) = match graph_node_body(t) {
+  NExpr(PipeExpr(PTee, _, right)) => match graph_node_body(right) {
+    NExpr(CallExpr(_, args)) => match nth_handle(args, i) {
+      Some(found) => flat_map(value_flow(ctx, ??), found),
+      None => [FaOpen(right)],
+    },
+    NExpr(_)
+    | NStmt(_)
+    | NPat(_)
+    | NHole(_)
+    | NModule(_)
+    | NLink(_)
+    | NTypeAnn(_)
+    | NName(_)
+    | NRow(_)
+    | NParam(_) => [FaOpen(right)],
+  },
+  NExpr(_)
+  | NStmt(_)
+  | NPat(_)
+  | NHole(_)
+  | NModule(_)
+  | NLink(_)
+  | NTypeAnn(_)
+  | NName(_)
+  | NRow(_)
+  | NParam(_) => [FaOpen(t)],
+}
 
-fn leaves_flow_label(leaves) = leaves |> map(leaf_flow_label) |> fold(Public, flow_label_join)
+fn node_index(h, nodes) = match find({ (_, n) => n == h }, enumerate(nodes)) {
+  Some((i, _)) => i,
+  None => len(nodes),
+}
 
-fn leaf_flow_label(leaf) = match leaf {
-  LParam(_, c) => query_flow_label(c),
-  LPost(c) => query_flow_label(c),
-  LClaimed(c, beneath) => flow_label_join(query_flow_label(c), leaf_flow_label(beneath)),
-  LPoint(_) => Public,
-  LSum(_) => Public,
-  LLength => Public,
-  LRet(_) => Public,
-  LBuilt(_) => Public,
-  LUnknown => Public,
+// What an application hands at a position.
+fn applied_arg_flow(ctx, i, app) = match nth_handle(applied_args(app), i) {
+  Some(found) => flat_map(value_flow(ctx, ??), found),
+  None => [FaOpen(app)],
+}
+
+// A handler's configuration is what each install of it hands: the handler
+// applied to its arguments.
+fn config_flow(ctx, hd, i) = graph_refs_of(hd) |> flat_map(install_config_flow(ctx, i, ??))
+
+fn install_config_flow(ctx, i, r) = match graph_parent_of(r) {
+  Some(q) => match graph_node_body(q) {
+    NExpr(CallExpr(callee, args)) => if callee == r {
+      match nth_handle(args, i) {
+        Some(found) => flat_map(value_flow(ctx, ??), found),
+        None => [FaOpen(q)],
+      }
+    } else {
+      [FaOpen(r)]
+    },
+    NExpr(_)
+    | NStmt(_)
+    | NPat(_)
+    | NHole(_)
+    | NModule(_)
+    | NLink(_)
+    | NTypeAnn(_)
+    | NName(_)
+    | NRow(_)
+    | NParam(_) => [],
+  },
+  None => [FaOpen(r)],
+}
+
+// A function literal's parameter: the piped value where the literal is a
+// stage, the recurrence's own output where it is a `<~` body, the argument
+// where it is applied in place, what the callee hands it where it is handed
+// to a declared function, and what every call of it hands where a let binds
+// it.
+fn lambda_param_flow(ctx, lam, b, params, body) = match graph_parent_of(lam) {
+  Some(q) => match graph_node_body(q) {
+    NExpr(PipeExpr(PForward, left, stage)) => if stage == lam { value_flow(ctx, left) } else { [FaOpen(b)] },
+    NExpr(PipeExpr(PFeedback, lhs, _)) => if lhs == lam { value_flow(ctx, body) } else { [FaOpen(b)] },
+    NExpr(CallExpr(callee, args)) => if callee == lam {
+      applied_arg_flow(ctx, node_index(b, params), q)
+    } else if any({ a => a == lam }, args) {
+      passed_on(ctx, q, lam, FfHand(0, node_index(b, params)))
+    } else {
+      [FaOpen(b)]
+    },
+    NStmt(LetStmt(pat, value, _)) => if value == lam {
+      graph_refs_of(pat) |> flat_map(called_arg_flow(ctx, node_index(b, params), ??))
+    } else {
+      [FaOpen(b)]
+    },
+    NExpr(_)
+    | NStmt(_)
+    | NPat(_)
+    | NHole(_)
+    | NModule(_)
+    | NLink(_)
+    | NTypeAnn(_)
+    | NName(_)
+    | NRow(_)
+    | NParam(_) => [FaOpen(b)],
+  },
+  None => [FaOpen(b)],
+}
+
+fn called_arg_flow(ctx, i, r) = match graph_parent_of(r) {
+  Some(q) => match graph_node_body(q) {
+    NExpr(CallExpr(callee, _)) => if callee == r { applied_arg_flow(ctx, i, q) } else { [FaOpen(r)] },
+    NExpr(_)
+    | NStmt(_)
+    | NPat(_)
+    | NHole(_)
+    | NModule(_)
+    | NLink(_)
+    | NTypeAnn(_)
+    | NName(_)
+    | NRow(_)
+    | NParam(_) => [FaOpen(r)],
+  },
+  None => [FaOpen(r)],
+}
+
+// The declared function a call applies, read along its callee's edge.
+fn applied_decl(call) = match graph_node_body(call) {
+  NExpr(CallExpr(callee, _)) => match graph_ref_decl(callee) {
+    Some(d) => match graph_node_body(d) {
+      NStmt(FnStmt(_, _, _, _, _)) => Some(d),
+      NExpr(_)
+      | NStmt(_)
+      | NPat(_)
+      | NHole(_)
+      | NModule(_)
+      | NLink(_)
+      | NTypeAnn(_)
+      | NName(_)
+      | NRow(_)
+      | NParam(_) => None,
+    },
+    None => None,
+  },
+  NExpr(PipeExpr(PForward, _, stage)) => applied_decl(stage),
+  NExpr(VarRef(_)) => match graph_ref_decl(call) {
+    Some(d) => match graph_node_body(d) {
+      NStmt(FnStmt(_, _, _, _, _)) => Some(d),
+      NExpr(_)
+      | NStmt(_)
+      | NPat(_)
+      | NHole(_)
+      | NModule(_)
+      | NLink(_)
+      | NTypeAnn(_)
+      | NName(_)
+      | NRow(_)
+      | NParam(_) => None,
+    },
+    None => None,
+  },
+  NExpr(_)
+  | NStmt(_)
+  | NPat(_)
+  | NHole(_)
+  | NModule(_)
+  | NLink(_)
+  | NTypeAnn(_)
+  | NName(_)
+  | NRow(_)
+  | NParam(_) => None,
+}
+
+// What an application hands its callee, slot by slot: the judgment's
+// product at a call — every argument, default and hole in declaration order
+// — or a stage's slots with the piped value in the open one.
+fn applied_args(app) = match graph_node_body(app) {
+  NExpr(PipeExpr(PForward, left, stage)) => match stage_application(stage, [left]) {
+    Some((_, args)) => args,
+    None => [left],
+  },
+  NExpr(CallExpr(_, args)) => match graph_parent_of(app) {
+    Some(q) => match graph_node_body(q) {
+      NExpr(PipeExpr(PForward, _, stage)) => if stage == app { applied_args(q) } else { call_slots(app, args) },
+      NExpr(_)
+      | NStmt(_)
+      | NPat(_)
+      | NHole(_)
+      | NModule(_)
+      | NLink(_)
+      | NTypeAnn(_)
+      | NName(_)
+      | NRow(_)
+      | NParam(_) => call_slots(app, args),
+    },
+    None => call_slots(app, args),
+  },
+  NExpr(_)
+  | NStmt(_)
+  | NPat(_)
+  | NHole(_)
+  | NModule(_)
+  | NLink(_)
+  | NTypeAnn(_)
+  | NName(_)
+  | NRow(_)
+  | NParam(_) => [],
+}
+
+fn call_slots(call, args) = match graph_product_at(call) {
+  ProductOf(nodes, _, _) => nodes,
+  NoProduct => args,
+}
+
+// A call: a constructor builds its parts, a literal applied in place is its
+// body, an op is every value its arms resume it with, a declared function is
+// its return as its declaration states it or as its body computes it from
+// what it was handed, and a function value is what it computes from what it
+// was handed.
+fn call_flow(ctx, h, callee, args) = if ref_is_constructor(callee) {
+  flat_map(value_flow(ctx, ??), args)
+} else {
+  match graph_node_body(callee) {
+    NExpr(LambdaExpr(_, body)) => value_flow(ctx, body),
+    NExpr(VarRef(_)) => match graph_ref_decl(callee) {
+      Some(d) => match graph_published(d) {
+        Some((_, _, EffectOpScheme(_, _, _, _))) => perform_flow(ctx, h, d, args),
+        None | Some(_) => match graph_node_body(d) {
+          NStmt(FnStmt(_, _, _, _, _)) => declared_call_flow(ctx, h, d),
+          NExpr(_)
+          | NStmt(_)
+          | NPat(_)
+          | NHole(_)
+          | NModule(_)
+          | NLink(_)
+          | NTypeAnn(_)
+          | NName(_)
+          | NRow(_)
+          | NParam(_) => match binder_read_by(callee) {
+            Some(b) => binder_flow(ctx, b) ++ flat_map(value_flow(ctx, ??), args),
+            None => flat_map(value_flow(ctx, ??), args),
+          },
+        },
+      },
+      None => [FaOpen(h)],
+    },
+    NExpr(_)
+    | NStmt(_)
+    | NPat(_)
+    | NHole(_)
+    | NModule(_)
+    | NLink(_)
+    | NTypeAnn(_)
+    | NName(_)
+    | NRow(_)
+    | NParam(_) => value_flow(ctx, callee) ++ flat_map(value_flow(ctx, ??), args),
+  }
+}
+
+// A call of a declared function: what its declaration states, else what its
+// summary answers, read with this call's arguments.
+fn declared_call_flow(ctx, h, d) = match ret_states(d, ctx.label) {
+  Some(true) => [flow_source(ctx, h, "what `{decl_name(d)}` is declared to answer")],
+  Some(false) => [],
+  None => subst_at(ctx, h, d, flow_fact(ctx, d, FfAnswer)),
+}
+
+fn decl_name(d) = match graph_node_body(d) {
+  NStmt(FnStmt(name, _, _, _, _)) => name,
+  NExpr(_)
+  | NStmt(_)
+  | NPat(_)
+  | NHole(_)
+  | NModule(_)
+  | NLink(_)
+  | NTypeAnn(_)
+  | NName(_)
+  | NRow(_)
+  | NParam(_) => "the declaration",
+}
+
+// What a declaration's published return states of the label.
+fn ret_states(d, label) = match published_fn_ty(d) {
+  Some(TFun(_, ret, _)) => {
+    let r = bound_ty(ret)
+    if ty_carries_label(r, label) { Some(true) } else { ty_states(r, label) }
+  },
+  None | Some(_) => None,
+}
+
+// What an op's declaration states of the label at one of its parameters.
+fn op_param_states(op, i, label) = match published_fn_ty(op) {
+  Some(TFun(params, _, _)) => if i < len(params) {
+    match some_param_ty(list_index(params, i)) {
+      Some(t) => if ty_carries_label(t, label) { Some(true) } else { ty_states(t, label) },
+      None => None,
+    }
+  } else {
+    None
+  },
+  None | Some(_) => None,
+}
+
+fn published_fn_ty(d) = match graph_published(d) {
+  Some((binding, _, _)) => match binding {
+    Frozen(_, ty) => Some(bound_ty(ty)),
+    Live(h) => Some(bound_ty(TVar(h))),
+  },
+  None => None,
+}
+
+fn bound_ty(t) = match t {
+  TVar(h) => match graph_chase(h) {
+    GNode(NBound(inner), _) => if inner == t { t } else { bound_ty(inner) },
+    GNode(_, _) => t,
+  },
+  TInt
+  | TFloat
+  | TUnit
+  | TByte
+  | TAddr
+  | TList(_)
+  | TTuple(_)
+  | TFun(_, _, _)
+  | TName(_, _)
+  | TRecord(_)
+  | TRecordOpen(_, _)
+  | TRefined(_, _)
+  | TReprPin(_, _)
+  | TCont(_, _, _, _)
+  | TAlias(_, _) => t,
+}
+
+// A perform: what its op declares it answers — a source where the label
+// holds, nothing where it is absent, since every arm owes that at each
+// resume — else every value an arm serving the op resumes it with, and what
+// it was handed.
+fn perform_flow(ctx, h, op, args) = match ret_states(op, ctx.label) {
+  Some(true) => [flow_source(ctx, h, "what the op is declared to answer")],
+  Some(false) => [],
+  None => flat_map(value_flow(ctx, ??), args) ++ flat_map(arm_resume_flow(ctx, ??), serving_arms(op)),
+}
+
+// Every arm serving an op, read off the op's references: an arm names the op
+// it serves.
+fn serving_arms(op) = graph_refs_of(op) |> flat_map(arm_named_by)
+
+fn arm_named_by(r) = match graph_parent_of(r) {
+  Some(p) => match graph_node_body(p) {
+    NStmt(HandlerDeclStmt(_, _, _, _, arms, _)) => filter({ arm => arm.op == r }, arms),
+    NExpr(_)
+    | NStmt(_)
+    | NPat(_)
+    | NHole(_)
+    | NModule(_)
+    | NLink(_)
+    | NTypeAnn(_)
+    | NName(_)
+    | NRow(_)
+    | NParam(_) => [],
+  },
+  None => [],
+}
+
+fn arm_resume_flow(ctx, arm) = flat_map(value_flow(ctx, ??), resumed_values(arm.body))
+
+// The values a body resumes with, wherever its resumes stand.
+fn resumed_values(h) = match graph_node_body(h) {
+  NExpr(ResumeExpr(v, _)) => [v] ++ resumed_values(v),
+  body @ (
+    NExpr(_)
+    | NStmt(_)
+    | NPat(_)
+    | NHole(_)
+    | NModule(_)
+    | NLink(_)
+    | NTypeAnn(_)
+    | NName(_)
+    | NRow(_)
+    | NParam(_)
+  ) => flat_map(resumed_values, body_child_handles(body)),
+}
+
+// A pipe: a stage is applied where the pipe stands; a tee is its body or any
+// arm's answer, and where an arm answers in place of the body, everything
+// that decides whether the body reached that perform; a feedback is its
+// body; a fanout is its branches.
+fn pipe_flow(ctx, h, kind, left, right) = match kind {
+  PForward => match graph_node_body(right) {
+    NExpr(LambdaExpr(_, body)) => value_flow(ctx, body),
+    NExpr(_)
+    | NStmt(_)
+    | NPat(_)
+    | NHole(_)
+    | NModule(_)
+    | NLink(_)
+    | NTypeAnn(_)
+    | NName(_)
+    | NRow(_)
+    | NParam(_) => match stage_application(right, [left]) {
+      Some((callee, _)) => stage_call_flow(ctx, h, callee),
+      None => value_flow(ctx, right) ++ value_flow(ctx, left),
+    },
+  },
+  PTee => value_flow(ctx, left) ++ tee_answer_flow(ctx, left, right),
+  PFeedback => value_flow(ctx, left),
+  PFanout(_) => value_flow(ctx, left) ++ value_flow(ctx, right),
+}
+
+fn stage_call_flow(ctx, pipe, callee) = match graph_ref_decl(callee) {
+  Some(d) => match graph_published(d) {
+    Some((_, _, EffectOpScheme(_, _, _, _))) => perform_flow(ctx, pipe, d, applied_args(pipe)),
+    None | Some(_) => match graph_node_body(d) {
+      NStmt(FnStmt(_, _, _, _, _)) => declared_call_flow(ctx, pipe, d),
+      NExpr(_)
+      | NStmt(_)
+      | NPat(_)
+      | NHole(_)
+      | NModule(_)
+      | NLink(_)
+      | NTypeAnn(_)
+      | NName(_)
+      | NRow(_)
+      | NParam(_) => value_flow(ctx, callee) ++ flat_map(value_flow(ctx, ??), applied_args(pipe)),
+    },
+  },
+  None => value_flow(ctx, callee) ++ flat_map(value_flow(ctx, ??), applied_args(pipe)),
+}
+
+fn tee_answer_flow(ctx, body, right) = match tee_arms(right) {
+  Some(arms) => {
+    let answers = flat_map({ arm => arm_tails(arm.body) }, arms)
+    if len(answers) == 0 {
+      []
+    } else {
+      flat_map(value_flow(ctx, ??), answers) ++ subtree_flow(ctx, body)
+    }
+  },
+  None => [FaOpen(right)],
+}
+
+// A part read off its whole: the node it is where the whole was built in
+// sight, through every branch the whole was chosen by, and what the whole's
+// own contract states there where it was not.
+fn part_flow(ctx, whole, step) =
+  part_flow_at(ctx, whole, step) ++ stores_flow(ctx, whole, value_roots(whole))
+
+fn part_flow_at(ctx, whole, step) = match graph_node_body(whole) {
+  NExpr(VarRef(_)) => match binder_read_by(whole) {
+    Some(b) => binder_part_flow(ctx, b, step),
+    None => value_flow(ctx, whole),
+  },
+  NExpr(IfExpr(c, t, f)) => value_flow(ctx, c) ++ part_flow(ctx, t, step) ++ part_flow(ctx, f, step),
+  NExpr(MatchExpr(scrut, arms)) => dispatch_flow(ctx, scrut, arms) ++ flat_map({ (_, body) => part_flow(ctx, body, step) }, arms),
+  NExpr(BlockExpr(stmts, final)) => part_flow(ctx, final, step) ++ flat_map(unwind_flow(ctx, ??), stmts),
+  NExpr(NamedRecordExpr(head, _)) => match step {
+    PartField(name) => if declared_field_carries(ctx, head, name) {
+      [flow_source(ctx, whole, "the field's declared contract")]
+    } else {
+      built_flow(ctx, whole, step)
+    },
+    PartIndex(_) | PartCtor(_, _) | PartElem | PartRest | PartTypeArg(_) => built_flow(ctx, whole, step),
+  },
+  NExpr(_)
+  | NStmt(_)
+  | NPat(_)
+  | NHole(_)
+  | NModule(_)
+  | NLink(_)
+  | NTypeAnn(_)
+  | NName(_)
+  | NRow(_)
+  | NParam(_) => built_flow(ctx, whole, step),
+}
+
+fn built_flow(ctx, whole, step) = match built_part(whole, step) {
+  Some(nodes) => flat_map(value_flow(ctx, ??), nodes),
+  None => value_flow(ctx, whole),
+}
+
+fn binder_part_flow(ctx, b, step) = match graph_binder_of(b) {
+  Some(fact) => match fact {
+    ParamFact(f) => match pre_contract(f.pre) {
+      Some(c) => match contract_part(c, step) {
+        Some(pc) => match ty_states(pc, ctx.label) {
+          Some(true) => [flow_source(ctx, b, "the parameter's annotation at the part")],
+          Some(false) => [],
+          None => param_flow(ctx, b, f.pre),
+        },
+        None => param_flow(ctx, b, f.pre),
+      },
+      None => param_flow(ctx, b, f.pre),
+    },
+    PartFact(_) => binder_flow(ctx, b),
+    StateFact(_) => binder_flow(ctx, b),
+  },
+  None => match graph_node_body(b) {
+    NExpr(_) => match claims_state(ctx, b) {
+      Some(false) => [],
+      Some(true) => [flow_source(ctx, b, "the let's annotation")],
+      None => part_flow(ctx, b, step),
+    },
+    NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => binder_flow(ctx, b),
+  },
+}
+
+// A callee leaf applied to arguments: a reference applied to them, or a
+// partial application completed by them — the authored `??` slots first,
+// then the slots past its arguments.
+fn stage_application(sh, applied) = match graph_node_body(sh) {
+  NExpr(VarRef(_)) => Some((sh, applied)),
+  NExpr(CallExpr(callee, _)) => match graph_product_at(sh) {
+    ProductOf(nodes, _, CallSuspended) => Some((callee, completed_args(nodes, applied))),
+    ProductOf(_, _, CallApplied) => None,
+    NoProduct => None,
+  },
+  NExpr(_)
+  | NStmt(_)
+  | NPat(_)
+  | NHole(_)
+  | NModule(_)
+  | NLink(_)
+  | NTypeAnn(_)
+  | NName(_)
+  | NRow(_)
+  | NParam(_) => None,
+}
+
+// Each authored hole takes the next applied value, in order, and the applied
+// values no hole took follow the slots.
+fn completed_args(nodes, applied) = match fold(([], applied), fill_slot, nodes) {
+  (filled, left) => filled ++ left,
+}
+
+fn fill_slot(acc, n) = match acc {
+  (filled, left) => if is_authored_hole(n) {
+    match left {
+      [v, ...more] => (push(filled, v), more),
+      [] => (push(filled, n), []),
+    }
+  } else {
+    (push(filled, n), left)
+  },
+}
+
+fn is_authored_hole(n) = match graph_node_body(n) {
+  NHole(id) => id != 0,
+  NExpr(_) | NStmt(_) | NPat(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => false,
+}
+
+// The Memory ops that write (lib/memory.mn): each the address it writes, or
+// the whole image.
+type RawStore = RsNone | RsAt(Int) | RsAll
+
+fn raw_store_target(cname: String) = match cname {
+  "store_i32" => RsAt(0),
+  "store_i8" => RsAt(0),
+  "store_addr" => RsAt(0),
+  "store_f64" => RsAt(0),
+  "mem_copy" => RsAt(0),
+  "globals_save" => RsAt(0),
+  "image_restore" => RsAll,
+  _ => RsNone,
+}
+
+// The memory a value may be: a binder it names and what that binder was
+// bound to, a literal it was built as, a fresh allocation, the argument a
+// callee answers back, through every branch it was chosen by — or any
+// memory, where it is a part of another value or comes from where the walk
+// cannot see.
+fn value_roots(t) = match graph_node_body(t) {
+  NExpr(VarRef(_)) => match binder_read_by(t) {
+    Some(b) => match graph_binder_of(b) {
+      Some(PartFact(_)) => RootsAny,
+      Some(_) => RootsAt([b]),
+      None => if b == t { RootsAt([b]) } else { roots_join(RootsAt([b]), value_roots(b)) },
+    },
+    None => RootsAny,
+  },
+  NExpr(CallExpr(callee, args)) => call_roots(t, callee, args),
+  NExpr(MakeListExpr(_))
+  | NExpr(MakeTupleExpr(_))
+  | NExpr(MakeRecordExpr(_))
+  | NExpr(NamedRecordExpr(_, _))
+  | NExpr(MakeStringExpr(_)) => RootsAt([t]),
+  NParam(_) => RootsAt([t]),
+  NExpr(LitString(_)) => RootsAt([t]),
+  NExpr(IfExpr(_, a, b)) => roots_join(value_roots(a), value_roots(b)),
+  NExpr(MatchExpr(_, arms)) => arms |> map(arm_roots) |> fold(RootsAt([]), roots_join),
+  NExpr(BlockExpr(_, final)) => value_roots(final),
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) => RootsAny,
+}
+
+fn arm_roots(arm) = match arm {
+  (_, body) => value_roots(body),
+}
+
+fn roots_join(a, b) = match a {
+  RootsAny => RootsAny,
+  RootsAt(xs) => match b {
+    RootsAny => RootsAny,
+    RootsAt(ys) => RootsAt(xs ++ ys),
+  },
+}
+
+// A call's result: a constructor's is fresh, an address `addr_at` moves stays
+// in the allocation its base names, `alloc`'s is fresh, and a declared
+// function's is what its store claim says of the arguments it answers back.
+fn call_roots(call, callee, args) = if ref_is_constructor(callee) {
+  RootsAt([call])
+} else {
+  match graph_node_body(callee) {
+    NExpr(VarRef(cname)) => if cname == "alloc" {
+      RootsAt([call])
+    } else if cname == "addr_at" || cname == "addr" {
+      match args {
+        [base, ..._] => value_roots(base),
+        [] => RootsAny,
+      }
+    } else {
+      match graph_ref_decl(callee) {
+        Some(d) => match graph_store_claim_of(d) {
+          Some(StoreClaim(s)) => match s.returns {
+            Some(idxs) => idxs |> map(slot_roots(args, ??)) |> fold(RootsAt([call]), roots_join),
+            None => RootsAny,
+          },
+          None => RootsAny,
+        },
+        None => RootsAny,
+      }
+    },
+    NExpr(_)
+    | NStmt(_)
+    | NPat(_)
+    | NHole(_)
+    | NModule(_)
+    | NLink(_)
+    | NTypeAnn(_)
+    | NName(_)
+    | NRow(_)
+    | NParam(_) => RootsAny,
+  }
+}
+
+fn slot_roots(args, i) = match nth_handle(args, i) {
+  Some([a]) => value_roots(a),
+  None | Some(_) => RootsAny,
+}
+
+fn roots_meet(store, read) = match store {
+  RootsAny => true,
+  RootsAt(xs) => match read {
+    RootsAny => true,
+    RootsAt(ys) => any({ x => any({ y => y == x }, ys) }, xs),
+  },
+}
+
+// What the stores into a value's memory wrote there. A value whose memory is
+// out of sight is never a function's own allocation, which is read where it
+// was made, so a store into such memory meets only a value whose memory names
+// it. A value whose type is a word holds no memory.
+fn stores_flow(ctx, h, roots) = if holds_memory(h) {
+  facts_stores() |> filter(store_meets(roots, ??)) |> flat_map(store_atoms(ctx, ??))
+} else {
+  []
+}
+
+fn store_meets(read, s) = match read {
+  RootsAny => !s.local,
+  RootsAt(ys) => match s.roots {
+    RootsAt(_) => roots_meet(s.roots, read),
+    RootsAny => !s.local || any({ y => owning_fn(y) == s.owner }, ys),
+  },
+}
+
+// The declared function a node stands in, read up the parent edges; 0 at
+// module level.
+fn owning_fn(h) = match graph_parent_of(h) {
+  None => 0,
+  Some(p) => match graph_node_body(p) {
+    NStmt(FnStmt(_, _, _, _, _)) => p,
+    NModule(_) => 0,
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => owning_fn(p),
+  },
+}
+
+// What a store writes — read in the activation that makes it where the memory
+// is its function's own, and as any activation's otherwise: a raw store
+// writes what it is handed, a call into a function that writes its parameter
+// writes what that function's summary stores there.
+fn store_atoms(ctx, s) = write_atoms(if s.local { ctx } else { ctx_at(ctx, 0, 0) }, s)
+
+fn write_atoms(at, s) = match s.by {
+  ByRaw => match graph_node_body(s.call) {
+    NExpr(CallExpr(_, args)) => flat_map(value_flow(at, ??), args),
+    NExpr(_)
+    | NStmt(_)
+    | NPat(_)
+    | NHole(_)
+    | NModule(_)
+    | NLink(_)
+    | NTypeAnn(_)
+    | NName(_)
+    | NRow(_)
+    | NParam(_) => [FaOpen(s.call)],
+  },
+  BySlot(k) => match applied_decl(s.call) {
+    Some(d) => subst_at(at, s.call, d, flow_fact(at, d, FfWrite(k))),
+    None => [FaOpen(s.call)],
+  },
+  ByInstall(hd, k) => config_writes(at, hd, k),
+}
+
+// What a handler's arms store into the memory its install hands it as
+// configuration: a handler's configuration is its install's parameters.
+fn config_writes(ctx, hd, k) = match graph_node_body(hd) {
+  NStmt(HandlerDeclStmt(_, _, config, _, arms, _)) => if k < len(config) {
+    let c = list_index(config, k)
+    arm_stores(hd, arms) |> filter({ s => roots_hold(s.roots, c) }) |> flat_map(store_atoms(ctx, ??))
+  } else {
+    []
+  },
+  NExpr(_)
+  | NStmt(_)
+  | NPat(_)
+  | NHole(_)
+  | NModule(_)
+  | NLink(_)
+  | NTypeAnn(_)
+  | NName(_)
+  | NRow(_)
+  | NParam(_) => [],
+}
+
+fn arm_stores(hd, arms) = arms |> flat_map({ arm => stores_in(hd, arm.body) })
+
+fn holds_memory(h) = match graph_chase(h) {
+  GNode(NBound(ty), _) => match ty {
+    TInt | TFloat | TUnit | TByte | TAddr => false,
+    TList(_)
+    | TTuple(_)
+    | TFun(_, _, _)
+    | TVar(_)
+    | TName(_, _)
+    | TRecord(_)
+    | TRecordOpen(_, _)
+    | TRefined(_, _)
+    | TReprPin(_, _)
+    | TCont(_, _, _, _)
+    | TAlias(_, _) => true,
+  },
+  GNode(_, _) => true,
+}
+
+// How a store writes: a raw Memory store writes what it is handed into the
+// address it is handed; a call into a function that writes one of its
+// parameters (its store claim names which) writes there what that function
+// stores into the memory the call hands it.
+type StoreBy = ByRaw | BySlot(Int) | ByInstall(Int, Int)
+
+// Every store the program makes, read off its declarations once per settle:
+// the call that makes it, how it writes, the memory it writes, and whether
+// that memory is its function's own — a parameter of it or a value it built.
+// A function's stores into the memory it is handed alone are its write
+// summary, and reach the program through its calls.
+fn flow_stores() = link_program() |> flat_map(decl_stores)
+
+fn decl_stores(d) = match graph_node_body(d) {
+  NStmt(FnStmt(_, params, _, _, body)) => scope_stores(d, params, body),
+  NStmt(HandlerDeclStmt(_, _, config, _, _, _)) => scope_stores(d, config, d),
+  NExpr(_)
+  | NStmt(_)
+  | NPat(_)
+  | NHole(_)
+  | NModule(_)
+  | NLink(_)
+  | NTypeAnn(_)
+  | NName(_)
+  | NRow(_)
+  | NParam(_) => scope_stores(0, [], d),
+}
+
+fn scope_stores(owner, params, h) = match graph_node_body(h) {
+  NStmt(FnStmt(_, inner, _, _, body)) => scope_stores(h, inner, body),
+  body @ (
+    NExpr(_)
+    | NStmt(_)
+    | NPat(_)
+    | NHole(_)
+    | NModule(_)
+    | NLink(_)
+    | NTypeAnn(_)
+    | NName(_)
+    | NRow(_)
+    | NParam(_)
+  ) => filter({ s => !roots_within(s.roots, params) }, node_stores(owner, h)) ++ flat_map(scope_stores(owner, params, ??), body_child_handles(body)),
+}
+
+fn roots_within(roots, params) = match roots {
+  RootsAny => false,
+  RootsAt(xs) => len(xs) > 0 && all({ x => any({ p => p == x }, params) }, xs),
+}
+
+// The stores a function's own code makes, a nested function's aside.
+fn stores_in(d, h) = match graph_node_body(h) {
+  NStmt(FnStmt(_, _, _, _, _)) => [],
+  body @ (
+    NExpr(_)
+    | NStmt(_)
+    | NPat(_)
+    | NHole(_)
+    | NModule(_)
+    | NLink(_)
+    | NTypeAnn(_)
+    | NName(_)
+    | NRow(_)
+    | NParam(_)
+  ) => node_stores(d, h) ++ flat_map(stores_in(d, ??), body_child_handles(body)),
+}
+
+fn node_stores(owner, h) = match graph_node_body(h) {
+  NExpr(CallExpr(callee, args)) => callee_stores(owner, h, callee, args),
+  NExpr(_)
+  | NStmt(_)
+  | NPat(_)
+  | NHole(_)
+  | NModule(_)
+  | NLink(_)
+  | NTypeAnn(_)
+  | NName(_)
+  | NRow(_)
+  | NParam(_) => [],
+}
+
+fn callee_stores(owner, call, callee, args) = match graph_node_body(callee) {
+  NExpr(VarRef(cname)) => match raw_store_target(cname) {
+    RsAt(i) => [store_at(owner, call, ByRaw, slot_roots(args, i))],
+    RsAll => [store_at(owner, call, ByRaw, RootsAny)],
+    RsNone => match graph_ref_decl(callee) {
+      Some(d) => match graph_store_claim_of(d) {
+        Some(StoreClaim(s)) => map({ i => store_at(owner, call, writes_by(d, i), slot_roots(applied_args(call), i)) }, s.mutated),
+        None => [],
+      },
+      None => [],
+    },
+  },
+  NExpr(_)
+  | NStmt(_)
+  | NPat(_)
+  | NHole(_)
+  | NModule(_)
+  | NLink(_)
+  | NTypeAnn(_)
+  | NName(_)
+  | NRow(_)
+  | NParam(_) => [],
+}
+
+// A function writes the memory a slot hands it through its summary; a
+// handler applied to its configuration writes it through its arms.
+fn writes_by(d, i) = match graph_node_body(d) {
+  NStmt(HandlerDeclStmt(_, _, _, _, _, _)) => ByInstall(d, i),
+  NExpr(_)
+  | NStmt(_)
+  | NPat(_)
+  | NHole(_)
+  | NModule(_)
+  | NLink(_)
+  | NTypeAnn(_)
+  | NName(_)
+  | NRow(_)
+  | NParam(_) => BySlot(i),
+}
+
+// A store the judgment saw write memory older than its frame charged Mutate
+// where it stands; any other wrote memory its own activation built.
+fn store_at(owner, call, by, roots) =
+  {by, call, local: !any(row_names_mutate, graph_rows_at(call)), owner, roots}
+
+// Whether a declared function writes the memory it is handed at a slot, as
+// its store claim says.
+fn writes_param(d, k) = match graph_store_claim_of(d) {
+  Some(StoreClaim(s)) => any({ i => i == k }, s.mutated),
+  None => false,
+}
+
+// A statement unwinds past its block, or runs what follows it more than once,
+// where it performs — outside every install inside it that answers — an op
+// some arm serving it does not resume on every path or resumes more than
+// once, calls a function that does, or calls a function value, whose code
+// the statement cannot see.
+fn stmt_alters(s) = alters_within(s, []) ~> flow_walk
+
+fn alters_within(h, absorbed) = match graph_node_body(h) {
+  NExpr(CallExpr(callee, args)) => callee_alters(callee, absorbed) || any(alters_within(??, absorbed), args),
+  NExpr(PipeExpr(PTee, body, right)) => alters_within(body, absorbed ++ served_ops(right)) || arms_alter(right, absorbed),
+  NExpr(PipeExpr(PForward, left, stage)) => alters_within(left, absorbed) || stage_alters(stage, absorbed),
+  body @ (
+    NExpr(_)
+    | NStmt(_)
+    | NPat(_)
+    | NHole(_)
+    | NModule(_)
+    | NLink(_)
+    | NTypeAnn(_)
+    | NName(_)
+    | NRow(_)
+    | NParam(_)
+  ) => any(alters_within(??, absorbed), body_child_handles(body)),
+}
+
+fn stage_alters(stage, absorbed) = match graph_node_body(stage) {
+  NExpr(VarRef(_)) => callee_alters(stage, absorbed),
+  NExpr(CallExpr(callee, args)) => callee_alters(callee, absorbed) || any(alters_within(??, absorbed), args),
+  NExpr(_)
+  | NStmt(_)
+  | NPat(_)
+  | NHole(_)
+  | NModule(_)
+  | NLink(_)
+  | NTypeAnn(_)
+  | NName(_)
+  | NRow(_)
+  | NParam(_) => alters_within(stage, absorbed),
+}
+
+fn callee_alters(callee, absorbed) = match graph_node_body(callee) {
+  NExpr(VarRef(_)) => if ref_is_constructor(callee) {
+    false
+  } else {
+    match graph_ref_decl(callee) {
+      Some(d) => match graph_published(d) {
+        Some((_, _, EffectOpScheme(_, _, _, disc))) => !any({ a => a == d }, absorbed) && op_alters(d, disc),
+        None | Some(_) => match graph_node_body(d) {
+          NStmt(FnStmt(_, _, _, _, body)) => if decl_met(d) { false } else { alters_within(body, absorbed) },
+          NExpr(_)
+          | NStmt(_)
+          | NPat(_)
+          | NHole(_)
+          | NModule(_)
+          | NLink(_)
+          | NTypeAnn(_)
+          | NName(_)
+          | NRow(_)
+          | NParam(_) => binder_read_by(callee) != None,
+        },
+      },
+      None => true,
+    }
+  },
+  NExpr(LambdaExpr(_, _)) => false,
+  NExpr(_)
+  | NStmt(_)
+  | NPat(_)
+  | NHole(_)
+  | NModule(_)
+  | NLink(_)
+  | NTypeAnn(_)
+  | NName(_)
+  | NRow(_)
+  | NParam(_) => true,
+}
+
+fn op_alters(op, disc) =
+  disc == MultiShot || any({ arm => len(arm_tails(arm.body)) > 0 }, serving_arms(op))
+
+// The ops a tee's handler answers, read off its arms' edges.
+fn served_ops(right) = match tee_arms(right) {
+  Some(arms) => flat_map({ arm => arm_op_decls(arm) }, arms),
+  None => [],
+}
+
+fn arm_op_decls(arm) = match graph_ref_decl(arm.op) {
+  Some(op) => [op],
+  None => [],
+}
+
+fn arms_alter(right, absorbed) = match tee_arms(right) {
+  Some(arms) => any({ arm => alters_within(arm.body, absorbed) }, arms),
+  None => true,
+}
+
+// Everything that decides whether the code at `h` runs: the conditions of the
+// branches it stands in, the statements before it that can unwind past it,
+// the context of the function literal it stands in, every perform of the op
+// whose arm it stands in, and — at a declared function's edge — whether the
+// function runs, which every call of it owes.
+fn reach_flow(ctx, h) = match graph_parent_of(h) {
+  None => [],
+  Some(p) => reach_step(ctx, h, p),
+}
+
+fn reach_step(ctx, h, p) = match graph_node_body(p) {
+  NExpr(IfExpr(c, _, _)) => if c == h { [] } else { value_flow(ctx, c) } ++ reach_flow(ctx, p),
+  NExpr(MatchExpr(scrut, arms)) => if scrut == h { [] } else { dispatch_flow(ctx, scrut, arms) } ++ reach_flow(ctx, p),
+  NExpr(BinOpExpr(op, l, r)) => if r == h && short_circuits(op) { value_flow(ctx, l) } else { [] } ++ reach_flow(ctx, p),
+  NExpr(BlockExpr(stmts, _)) => flat_map(unwind_flow(ctx, ??), stmts_before(stmts, h)) ++ reach_flow(ctx, p),
+  NExpr(LambdaExpr(_, _)) => lambda_reach(ctx, p),
+  NStmt(FnStmt(_, _, _, _, _)) => if ctx.self == p { [] } else { [FaReach(p)] },
+  NStmt(HandlerDeclStmt(_, _, _, _, arms, _)) => arm_reach(ctx, p, h, arms),
+  NModule(_) => [],
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => reach_flow(ctx, p),
+}
+
+fn short_circuits(op) = match op {
+  BAnd => true,
+  BOr => true,
+  BAdd | BSub | BMul | BDiv | BMod | BEq | BNe | BLt | BGt | BLe | BGe | BConcat => false,
+}
+
+fn stmts_before(stmts, h) = match find({ (_, s) => s == h }, enumerate(stmts)) {
+  Some((i, _)) => take(i, stmts),
+  None => stmts,
+}
+
+fn lambda_reach(ctx, lam) = if reach_met(lam) {
+  []
+} else {
+  match graph_parent_of(lam) {
+    Some(q) => match graph_node_body(q) {
+      NExpr(PipeExpr(PForward, _, stage)) => if stage == lam { reach_flow(ctx, q) } else { [FaOpen(lam)] },
+      NExpr(PipeExpr(PFeedback, lhs, _)) => if lhs == lam { reach_flow(ctx, q) } else { [FaOpen(lam)] },
+      NExpr(CallExpr(callee, args)) => if callee == lam {
+        reach_flow(ctx, q)
+      } else if any({ a => a == lam }, args) {
+        reach_flow(ctx, q) ++ passed_on(ctx, q, lam, FfApply(0))
+      } else {
+        [FaOpen(lam)]
+      },
+      NStmt(LetStmt(pat, value, _)) => if value == lam { graph_refs_of(pat) |> flat_map(call_reach(ctx, ??)) } else { [FaOpen(lam)] },
+      NExpr(_)
+      | NStmt(_)
+      | NPat(_)
+      | NHole(_)
+      | NModule(_)
+      | NLink(_)
+      | NTypeAnn(_)
+      | NName(_)
+      | NRow(_)
+      | NParam(_) => [FaOpen(lam)],
+    },
+    None => [FaOpen(lam)],
+  }
+}
+
+fn call_reach(ctx, r) = match graph_parent_of(r) {
+  Some(q) => match graph_node_body(q) {
+    NExpr(CallExpr(callee, _)) => if callee == r { reach_flow(ctx, q) } else { [FaOpen(r)] },
+    NExpr(_)
+    | NStmt(_)
+    | NPat(_)
+    | NHole(_)
+    | NModule(_)
+    | NLink(_)
+    | NTypeAnn(_)
+    | NName(_)
+    | NRow(_)
+    | NParam(_) => [FaOpen(r)],
+  },
+  None => [FaOpen(r)],
+}
+
+// An arm runs where its op is performed: inside the body the install being
+// read governs, or wherever the op is performed.
+fn arm_reach(ctx, hd, h, arms) = match find({ arm => arm.body == h || any({ a => a == h }, arm.args) }, arms) {
+  Some(arm) => if reach_met(arm.body) {
+    []
+  } else {
+    match graph_ref_decl(arm.op) {
+      Some(op) => if installed_here(ctx, hd) {
+        install_body(ctx.install) |> flat_map(perform_reach_in(ctx_at(ctx, 0, ctx.self), ??, op))
+      } else {
+        graph_applies_of(op) |> flat_map(reach_flow(ctx, ??))
+      },
+      None => [FaOpen(h)],
+    }
+  },
+  None => [FaOpen(h)],
+}
+
+// What a declaration states and owes of every label the program declares:
+// what a function's return answers or endorses and what each parameter
+// demands, and, for a value, the source that can reach it. One line each;
+// none where the declaration has nothing to say of any label.
+fn flow_facts(d) = program_labels() |> flat_map(label_facts(d, ??))
+
+// Every label a type declaration of the program names: each the op and the
+// name its author wrote it by, once.
+fn program_labels() = link_program() |> flat_map(decl_labels) |> fold([], label_add)
+
+fn label_add(acc, l) = if any({ k => fst_of(k) == fst_of(l) }, acc) { acc } else { push(acc, l) }
+
+fn fst_of(pair) = match pair {
+  (a, _) => a,
+}
+
+fn decl_labels(d) = match graph_node_body(d) {
+  NStmt(RefineStmt(_, _, pred)) => pred_labels(node_to_predicate(pred)),
+  NExpr(_)
+  | NStmt(_)
+  | NPat(_)
+  | NHole(_)
+  | NModule(_)
+  | NLink(_)
+  | NTypeAnn(_)
+  | NName(_)
+  | NRow(_)
+  | NParam(_) => [],
+}
+
+fn pred_labels(pred) = match pred {
+  PBoolNode(h) => match label_of(h) {
+    Some(op) => [(op, label_name(h))],
+    None => [],
+  },
+  PNot(inner) => pred_labels(inner),
+  PAnd(a, b) => pred_labels(a) ++ pred_labels(b),
+  POr(a, b) => pred_labels(a) ++ pred_labels(b),
+  PWithSelf(_, inner) => pred_labels(inner),
+  PTrue
+  | PCompare(_, _, _)
+  | PPatternMatch(_, _)
+  | PTotalDiv(_, _, _)
+  | PProvides(_)
+  | PInBounds(_, _) => [],
+}
+
+fn label_facts(d, label) = match label {
+  (op, name) => match graph_node_body(d) {
+    NStmt(FnStmt(fname, _, _, _, _)) => fn_label_facts(d, fname, op, name) ++ decl_claim_facts(d, op),
+    NStmt(LetStmt(_, value, _)) => value_label_facts(value, op, name) ++ decl_claim_facts(d, op),
+    NExpr(_)
+    | NStmt(_)
+    | NPat(_)
+    | NHole(_)
+    | NModule(_)
+    | NLink(_)
+    | NTypeAnn(_)
+    | NName(_)
+    | NRow(_)
+    | NParam(_) => [],
+  },
+}
+
+// Every claim naming the label inside a declaration, with what the settle
+// decided of it: proven, refused, or owed.
+fn decl_claim_facts(d, op) =
+  (verify_decided() |> flat_map(decided_claim_fact(d, op, ??))) ++ (verify_debt() |> flat_map(owed_claim_fact(d, op, ??)))
+
+fn decided_claim_fact(d, op, entry) = match entry {
+  (modh, span, pred, held) => if claim_within(d, op, modh, span, pred) {
+    [if held { "proven" } else { "refused" } ++ ": {show_predicate(pred)} at {show_span(span)}"]
+  } else {
+    []
+  },
+}
+
+fn owed_claim_fact(d, op, entry) = match entry {
+  (modh, span, pred, why) => if claim_within(d, op, modh, span, pred) {
+    ["owed: {show_predicate(pred)} at {show_span(span)} — {show_reason(why)}"]
+  } else {
+    []
+  },
+}
+
+fn claim_within(d, op, modh, span, pred) =
+  modh == graph_module_of(d) && span_contains(graph_span_of(d), span) && any({ l => fst_of(l) == op }, pred_labels(pred))
+
+fn fn_label_facts(d, fname: String, op, name: String) = match published_fn_ty(d) {
+  Some(TFun(params, ret, _)) => {
+    let answers = match ret_states(d, op) {
+      Some(true) => ["`{fname}` answers {name}"],
+      Some(false) => ["`{fname}` endorses: what it answers carries no {name}"],
+      None => answer_label_facts(d, fname, op, name),
+    }
+    answers ++ flat_map(param_label_fact(fname, op, name, ??), params)
+  },
+  None | Some(_) => [],
+}
+
+// What brings the label into what a function answers, from beyond what it
+// is handed: the first source its return tails reach, as the walk met it.
+fn answer_label_facts(d, fname: String, op, name: String) = {
+  let ctx = {install: 0, label: op, name, self: 0}
+  let atoms = until_settled(flow_fact(ctx, d, ??), FfAnswer) ~> flow_summaries(flow_stores())
+  match find_map(atom_source, atoms) {
+    Some(chain) => ["what `{fname}` answers carries {name}: {show_reason(chain)}"],
+    None => atoms |> flat_map(open_fact(fname, ??)),
+  }
+}
+
+fn open_fact(fname: String, a) = match a {
+  FaOpen(h) => ["what `{fname}` answers is out of sight at {site_address(h)}"],
+  FaSource(_) | FaArg(_) | FaParam(_) | FaReach(_) => [],
+}
+
+fn param_label_fact(fname: String, op, name: String, p) = match ty_states(bound_ty(param_ty(p)), op) {
+  Some(true) => ["`{fname}` demands of `{param_name(p)}`: {name}"],
+  Some(false) => ["`{fname}` demands of `{param_name(p)}`: no {name}"],
+  None => [],
+}
+
+fn walked_flow(ctx, h) = value_flow(ctx, h) ~> flow_walk
+
+fn value_label_facts(value, op, name: String) = {
+  let ctx = {install: 0, label: op, name, self: 0}
+  let atoms = until_settled(walked_flow(ctx, ??), value) ~> flow_summaries(flow_stores())
+  match find_map(atom_source, atoms) {
+    Some(chain) => [show_reason(chain)],
+    None => [],
+  }
+}
+
+// A label literal in a predicate: the atom's node, the op, and whether it
+// states the label or its absence.
+fn label_literal(pred) = match pred {
+  PBoolNode(h) => match label_of(h) {
+    Some(op) => Some((h, op, true)),
+    None => None,
+  },
+  PNot(PBoolNode(h)) => match label_of(h) {
+    Some(op) => Some((h, op, false)),
+    None => None,
+  },
+  PTrue
+  | PCompare(_, _, _)
+  | PAnd(_, _)
+  | POr(_, _)
+  | PNot(_)
+  | PPatternMatch(_, _)
+  | PWithSelf(_, _)
+  | PTotalDiv(_, _, _)
+  | PProvides(_)
+  | PInBounds(_, _) => None,
+}
+
+fn conjuncts(pred) = match pred {
+  PAnd(a, b) => conjuncts(a) ++ conjuncts(b),
+  PTrue
+  | PCompare(_, _, _)
+  | POr(_, _)
+  | PNot(_)
+  | PBoolNode(_)
+  | PPatternMatch(_, _)
+  | PWithSelf(_, _)
+  | PTotalDiv(_, _, _)
+  | PProvides(_)
+  | PInBounds(_, _) => [pred],
+}
+
+fn label_name(lit) = match graph_node_body(lit) {
+  NExpr(CallExpr(callee, _)) => show_callee_name(callee),
+  NExpr(_)
+  | NStmt(_)
+  | NPat(_)
+  | NHole(_)
+  | NModule(_)
+  | NLink(_)
+  | NTypeAnn(_)
+  | NName(_)
+  | NRow(_)
+  | NParam(_) => "the label",
+}
+
+// What a claim's decision leaves: its verdict, and the chain from a source
+// where one reaches it.
+fn flow_verdict(v) = {chain: None, verdict: v}
+
+// One literal read at a subject: whether a source can reach its value. What
+// every call hands a parameter and whether a function runs are summaries of
+// their own, read through until only sources and what the walk cannot read
+// remain.
+fn literal_verdict(subject, lit, op, holds) = {
+  let ctx = {install: 0, label: op, name: label_name(lit), self: 0}
+  let atoms = expand(ctx, value_flow(ctx, subject) ++ reach_flow(ctx, subject) ~> flow_walk)
+  match find_map(atom_source, atoms) {
+    Some(chain) => {chain: Some(chain), verdict: Some(holds)},
+    None => match find(atom_open, atoms) {
+      Some(FaOpen(h)) => {chain: Some(Inferred("what can reach it is out of sight at {site_address(h)}")), verdict: None},
+      None | Some(_) => flow_verdict(Some(!holds)),
+    },
+  }
+}
+
+// A demand read through: what every call of a function hands its parameter,
+// and whether the function runs.
+fn expand(ctx, atoms) = expand_from(ctx, atoms, [], [])
+
+fn expand_from(ctx, todo, seen, out) = match todo {
+  [] => out,
+  [a, ...rest] => if any(atom_same(a, ??), seen) {
+    expand_from(ctx, rest, seen, out)
+  } else {
+    match a {
+      FaArg(b) => expand_from(ctx, rest ++ handed(ctx, b), push(seen, a), out),
+      FaParam(b) => expand_from(ctx, rest ++ handed(ctx, b), push(seen, a), out),
+      FaReach(fd) => expand_from(ctx, rest ++ flow_fact(ctx, fd, FfReach), push(seen, a), out),
+      FaSource(_) | FaOpen(_) => expand_from(ctx, rest, push(seen, a), push(out, a)),
+    }
+  },
+}
+
+fn handed(ctx, b) = match graph_parent_of(b) {
+  Some(fd) => flow_fact(ctx, fd, FfHanded(param_slot(fd, b))),
+  None => [FaOpen(b)],
+}
+
+// What every call of a declared function hands its parameter at a slot: the
+// argument at each call, and what decides whether the call runs; where the
+// function is handed on as a value, what the function it is handed to hands
+// it there, and anywhere else values out of sight.
+fn handed_of(ctx, d, k) =
+  (graph_applies_of(d) |> flat_map({ app => slot_flow(ctx, app, k) ++ reach_flow(ctx, app) })) ++ (graph_refs_of(d) |> filter(escapes) |> flat_map(escape_hand(ctx, k, ??)))
+
+fn slot_flow(ctx, app, k) = match nth_handle(applied_args(app), k) {
+  Some(found) => flat_map(value_flow(ctx, ??), found),
+  None => [FaOpen(app)],
+}
+
+fn escape_hand(ctx, k, r) = match graph_parent_of(r) {
+  Some(q) => match graph_node_body(q) {
+    NExpr(CallExpr(_, _)) => reach_flow(ctx, q) ++ passed_on(ctx, q, r, FfHand(0, k)),
+    NExpr(_)
+    | NStmt(_)
+    | NPat(_)
+    | NHole(_)
+    | NModule(_)
+    | NLink(_)
+    | NTypeAnn(_)
+    | NName(_)
+    | NRow(_)
+    | NParam(_) => [FaOpen(r)],
+  },
+  None => [FaOpen(r)],
+}
+
+// Whether a declared function runs: what decides whether each call of it
+// runs, and whether the function it is handed to as a value applies it.
+fn reached_of(ctx, d) =
+  (graph_applies_of(d) |> flat_map(reach_flow(ctx, ??))) ++ (graph_refs_of(d) |> filter(escapes) |> flat_map(escape_apply(ctx, ??)))
+
+fn escape_apply(ctx, r) = match graph_parent_of(r) {
+  Some(q) => match graph_node_body(q) {
+    NExpr(CallExpr(_, _)) => reach_flow(ctx, q) ++ passed_on(ctx, q, r, FfApply(0)),
+    NExpr(_)
+    | NStmt(_)
+    | NPat(_)
+    | NHole(_)
+    | NModule(_)
+    | NLink(_)
+    | NTypeAnn(_)
+    | NName(_)
+    | NRow(_)
+    | NParam(_) => [FaOpen(r)],
+  },
+  None => [FaOpen(r)],
+}
+
+fn atom_source(a) = match a {
+  FaSource(chain) => Some(chain),
+  FaArg(_) | FaParam(_) | FaReach(_) | FaOpen(_) => None,
+}
+
+fn atom_open(a) = match a {
+  FaOpen(_) => true,
+  FaSource(_) | FaArg(_) | FaParam(_) | FaReach(_) => false,
+}
+
+// A claim decided: each conjunct of its predicate a label read by the walk or
+// a value read by the fragment, joined as the conjunction joins them; a label
+// under a disjunction or a further negation stays open.
+fn claim_verdict(subject, pred) =
+  fold(flow_verdict(Some(true)), verdict_and, map(conjunct_verdict(subject, ??), conjuncts(pred)))
+
+fn conjunct_verdict(subject, c) = match label_literal(c) {
+  Some((lit, op, holds)) => literal_verdict(subject, lit, op, holds),
+  None => if pred_names_label(c) {
+    flow_verdict(None)
+  } else {
+    flow_verdict(predicate_decide(PWithSelf(subject, c)))
+  },
+}
+
+fn verdict_and(a, b) = {
+  chain: match a.chain {
+    Some(c) => Some(c),
+    None => b.chain,
+  },
+  verdict: and_decide(a.verdict, b.verdict),
+}
+
+// The settle: every claim naming a label decided over the judged program, and
+// the ledger handed what was decided. A refuted claim is reported where it was
+// raised, with the chain from the source that reaches it.
+fn flow_settle() = match verify_flows() {
+  [] => verify_settle([]),
+  claims => {
+    let done = until_settled(map(settle_claim, ??), claims) ~> flow_summaries(flow_stores())
+    done |> each(report_refuted)
+    verify_settle(map({ t => t.entry }, done))
+  },
+}
+
+fn report_refuted(t) = match t.entry {
+  (modh, span, pred, _, Some(false)) => report_at(modh, ERefinementRejected(pred, span, t.why)),
+  _ => (),
+}
+
+// One claim decided. A claim with no value to read — a contract claimed of a
+// part of a value built out of sight — stays owed where it was raised.
+fn settle_claim(claim) = match claim {
+  (modh, span, pred, reason) => {
+    let out = match pred {
+      PWithSelf(subject, inner) => claim_verdict(subject, inner),
+      PTrue
+      | PCompare(_, _, _)
+      | PAnd(_, _)
+      | POr(_, _)
+      | PNot(_)
+      | PBoolNode(_)
+      | PPatternMatch(_, _)
+      | PTotalDiv(_, _, _)
+      | PProvides(_)
+      | PInBounds(_, _) => flow_verdict(None),
+    }
+    let why = match out.chain {
+      Some(c) => c,
+      None => reason,
+    }
+    {entry: (modh, span, pred, why, out.verdict), why}
+  },
+}
+
+fn escapes(r) = match graph_parent_of(r) {
+  Some(q) => match graph_node_body(q) {
+    NExpr(CallExpr(callee, _)) => callee != r,
+    NExpr(PipeExpr(PForward, _, stage)) => stage != r,
+    NExpr(_)
+    | NStmt(_)
+    | NPat(_)
+    | NHole(_)
+    | NModule(_)
+    | NLink(_)
+    | NTypeAnn(_)
+    | NName(_)
+    | NRow(_)
+    | NParam(_) => true,
+  },
+  None => true,
 }
 
 // The domain a CONTRACT states about its inhabitants. An alias is
@@ -1380,11 +4058,21 @@ fn ty_domain(ty) = match ty {
   TAlias(_, inner) => ty_domain(inner),
   TRefined(base, pred) => domain_meet(ty_domain(base), pred_domain(pred)),
   TReprPin(_, base) => ty_domain(base),
-  _ => dom_top(),
+  TInt
+  | TFloat
+  | TUnit
+  | TByte
+  | TAddr
+  | TList(_)
+  | TTuple(_)
+  | TFun(_, _, _)
+  | TVar(_)
+  | TName(_, _)
+  | TRecord(_)
+  | TRecordOpen(_, _)
+  | TCont(_, _, _, _) => dom_top(),
 }
 
-// ── The DOMAIN read — what a predicate states about `self` ───────────
-//
 // The whole fact, in one walk: both ends of what a refinement admits, read
 // together. A walk that answers one end alone forces any consumer wanting the
 // other to grow a mirror family beside it — two walks over one fact, the
@@ -1404,9 +4092,6 @@ fn pred_domain(pred) = match pred {
   PNot(_) => dom_top(),
   PBoolNode(_) => DUndecided,
   PPatternMatch(_, _) => DUndecided,
-  // A flow obligation constrains WHERE a value may go, never which values it
-  // may be — the domain is untouched, which is a reading, not a gap.
-  PFlowLe(_, _) => dom_top(),
   PWithSelf(_, inner) => pred_domain(inner),
   // a precondition on two operands states nothing about `self`
   PTotalDiv(_, _, _) => dom_top(),
@@ -1418,7 +4103,16 @@ fn dom_top() = DRange(None, None)
 
 fn is_self_node(handle) = match graph_node_body(handle) {
   NExpr(VarRef(name)) => name == "self",
-  _ => false,
+  NExpr(_)
+  | NStmt(_)
+  | NPat(_)
+  | NHole(_)
+  | NModule(_)
+  | NLink(_)
+  | NTypeAnn(_)
+  | NName(_)
+  | NRow(_)
+  | NParam(_) => false,
 }
 
 // One comparison, read from whichever side `self` stands on: the other side
@@ -1445,7 +4139,7 @@ fn flip_cmp(op) with Pure = match op {
   BGt => BLt,
   BLe => BGe,
   BGe => BLe,
-  _ => op,
+  BAdd | BSub | BMul | BDiv | BMod | BEq | BNe | BAnd | BOr | BConcat => op,
 }
 
 // `self OP v`. The strict bounds step by one, which is why DRange is integral;
@@ -1457,23 +4151,23 @@ fn self_op_const(op, v) = match op {
   BNe => dom_top(),
   BLt => match v {
     LVInt(n) => DRange(None, Some(n - 1)),
-    _ => DUndecided,
+    LVFloat(_) | LVString(_) | LVBool(_) => DUndecided,
   },
   BLe => match v {
     LVInt(n) => DRange(None, Some(n)),
-    _ => DUndecided,
+    LVFloat(_) | LVString(_) | LVBool(_) => DUndecided,
   },
   BGt => match v {
     LVInt(n) => DRange(Some(n + 1), None),
-    _ => DUndecided,
+    LVFloat(_) | LVString(_) | LVBool(_) => DUndecided,
   },
   BGe => match v {
     LVInt(n) => DRange(Some(n), None),
-    _ => DUndecided,
+    LVFloat(_) | LVString(_) | LVBool(_) => DUndecided,
   },
   // An arithmetic operator in a comparison slot states nothing this
   // fragment can read.
-  _ => DUndecided,
+  BAdd | BSub | BMul | BDiv | BMod | BAnd | BOr | BConcat => DUndecided,
 }
 
 // MEET — both predicates hold, so the truth is the intersection. An unreadable
@@ -1523,7 +4217,7 @@ fn lit_in(v, ws) = ws |> any(lit_same(v, ??))
 // about is KEPT, because the meet may only over-approximate.
 fn lit_in_range(v, lo, hi) = match v {
   LVInt(n) => bound_admits_lo(lo, n) && bound_admits_hi(hi, n),
-  _ => true,
+  LVFloat(_) | LVString(_) | LVBool(_) => true,
 }
 
 fn bound_admits_lo(lo, n) with Pure = match lo {
@@ -1574,7 +4268,7 @@ fn domain_lo(d) = match d {
 
 fn is_lv_int(v) with Pure = match v {
   LVInt(_) => true,
-  _ => false,
+  LVFloat(_) | LVString(_) | LVBool(_) => false,
 }
 
 // The guard above admits only integral members, so the other arm carries the
@@ -1585,7 +4279,7 @@ fn min_of_lit(acc, v) = match v {
     Some(a) => if n < a { Some(n) } else { Some(a) },
     None => Some(n),
   },
-  _ => acc,
+  LVFloat(_) | LVString(_) | LVBool(_) => acc,
 }
 
 // Bind the refinement's `self` to the value node being refined. A predicate's
@@ -1620,7 +4314,20 @@ fn refinement_admits(ty, value_handle) = match ty {
     Some(decided) => decided,
     None => false,
   },
-  _ => true,
+  TInt
+  | TFloat
+  | TUnit
+  | TByte
+  | TAddr
+  | TList(_)
+  | TTuple(_)
+  | TFun(_, _, _)
+  | TVar(_)
+  | TName(_, _)
+  | TRecord(_)
+  | TRecordOpen(_, _)
+  | TReprPin(_, _)
+  | TCont(_, _, _, _) => true,
 }
 
 // Fold a comparison over two constant operand values.
@@ -1634,7 +4341,7 @@ fn litval_compare(ref op, ref a, ref b) = match op {
   BLe => litval_le(a, b),
   BGt => litval_lt(b, a),
   BGe => litval_le(b, a),
-  _ => None,
+  BAdd | BSub | BMul | BDiv | BMod | BAnd | BOr | BConcat => None,
 }
 
 // Equality over constants. Same-kind compares; cross-kind is Some(false)
@@ -1740,7 +4447,7 @@ fn litval_arith(ref op, ref a, ref b) = match a {
       BSub => Some(LVFloat(fa - fb)),
       BMul => Some(LVFloat(fa * fb)),
       BDiv => Some(LVFloat(fa / fb)),
-      _ => None,
+      BMod | BEq | BNe | BLt | BGt | BLe | BGe | BAnd | BOr | BConcat => None,
     },
     LVInt(_) => None,
     LVString(_) => None,
@@ -1807,22 +4514,112 @@ fn not_decide(ref e) = match e {
   None => None,
 }
 
-// THE LEDGER DECIDES, THE SITE NARRATES (C5). A claim's one perform: the
-// installed ledger answers its verdict (proven, refused, open) and the
-// SITE reports a refusal — from the body, inside every capture bracket
-// the judgment installed. The arms used to report it themselves, and an
-// arm's performs resolve OUTER of its own install, so the refusal sailed
-// past the battery's class capture: `mn-div-const-zero-refuses` counted
-// one error and banked no class, the exact shape
-// `Hβ.diag.an-arms-report-escapes-an-inner-capture` names at the occurs
-// belt. An arm may note; only the body may narrate.
-fn verify_claim(modh, span, pred, reason) = {
-  let verdict = verify(modh, span, pred, reason)
-  match verdict {
-    Some(false) => report_refinement_rejected(pred, span, reason),
-    _ => (),
-  }
-  verdict
+// A claim's one perform: the installed ledger answers its verdict — proven,
+// refused, open — and the site reports a refusal from the body, inside every
+// capture bracket the judgment installed, since an arm's performs resolve
+// outside its own install. A label's presence is never claimed: a value may
+// always be handled as though a source had reached it, so a position declared
+// to hold the label demands nothing of what it is handed, and the walk reads
+// the declaration as a source instead. Only the label's absence is owed.
+fn verify_claim(modh, span, pred, reason) = match owed_of(pred) {
+  None => Some(true),
+  Some(owed) => {
+    let verdict = verify(modh, span, owed, reason)
+    match verdict {
+      Some(false) => report_refinement_rejected(owed, span, reason),
+      None | Some(_) => (),
+    }
+    verdict
+  },
+}
+
+fn owed_of(pred) = {
+  let owed = if pred_names_label(pred) { without_presence(pred) } else { pred }
+  if owed == PTrue { None } else { Some(owed) }
+}
+
+fn without_presence(pred) = match pred {
+  PBoolNode(h) => if label_of(h) == None { pred } else { PTrue },
+  PAnd(a, b) => match without_presence(a) {
+    PTrue => without_presence(b),
+    oa @ (
+      PCompare(_, _, _)
+      | PAnd(_, _)
+      | POr(_, _)
+      | PNot(_)
+      | PBoolNode(_)
+      | PPatternMatch(_, _)
+      | PWithSelf(_, _)
+      | PTotalDiv(_, _, _)
+      | PProvides(_)
+      | PInBounds(_, _)
+    ) => match without_presence(b) {
+      PTrue => oa,
+      ob @ (
+        PCompare(_, _, _)
+        | PAnd(_, _)
+        | POr(_, _)
+        | PNot(_)
+        | PBoolNode(_)
+        | PPatternMatch(_, _)
+        | PWithSelf(_, _)
+        | PTotalDiv(_, _, _)
+        | PProvides(_)
+        | PInBounds(_, _)
+      ) => PAnd(oa, ob),
+    },
+  },
+  POr(a, b) => match without_presence(a) {
+    PTrue => PTrue,
+    oa @ (
+      PCompare(_, _, _)
+      | PAnd(_, _)
+      | POr(_, _)
+      | PNot(_)
+      | PBoolNode(_)
+      | PPatternMatch(_, _)
+      | PWithSelf(_, _)
+      | PTotalDiv(_, _, _)
+      | PProvides(_)
+      | PInBounds(_, _)
+    ) => match without_presence(b) {
+      PTrue => PTrue,
+      ob @ (
+        PCompare(_, _, _)
+        | PAnd(_, _)
+        | POr(_, _)
+        | PNot(_)
+        | PBoolNode(_)
+        | PPatternMatch(_, _)
+        | PWithSelf(_, _)
+        | PTotalDiv(_, _, _)
+        | PProvides(_)
+        | PInBounds(_, _)
+      ) => POr(oa, ob),
+    },
+  },
+  PWithSelf(s, inner) => match without_presence(inner) {
+    PTrue => PTrue,
+    owed @ (
+      PCompare(_, _, _)
+      | PAnd(_, _)
+      | POr(_, _)
+      | PNot(_)
+      | PBoolNode(_)
+      | PPatternMatch(_, _)
+      | PWithSelf(_, _)
+      | PTotalDiv(_, _, _)
+      | PProvides(_)
+      | PInBounds(_, _)
+    ) => PWithSelf(s, owed),
+  },
+  PTrue
+  | PCompare(_, _, _)
+  | PNot(_)
+  | PPatternMatch(_, _)
+  | PTotalDiv(_, _, _)
+  | PProvides(_)
+  | PInBounds(_, _) => pred,
 }
 
 // Compile-time refusal at the construction site. The verifier proved
@@ -1830,7 +4627,7 @@ fn verify_claim(modh, span, pred, reason) = {
 // is invariant-violating by literal evidence. Span is the call site;
 // reason carries the predicate-as-Why for the chain-walker.
 fn report_refinement_rejected(ref pred, ref span, ref reason) with !Mutate =
-  report(ERefinementRejected(pred, span))
+  report(ERefinementRejected(pred, span, reason))
 
 // The pending ledger speaks WHOLE — one line per obligation (span,
 // class, predicate) before the summary count. The count alone hid the
@@ -1855,7 +4652,7 @@ fn report_verify_debt(debt) = if len(debt) == 0 {
   // reported seventeen obligations it had no way to discharge, every one
   // the library's, while the lines beside the count filtered them out.
   let scope = diag_scope_of()
-  debt_lines(debt, scope, 0)
+  debt |> each(debt_line(scope, ??))
   // The summary is reported at the module of an obligation it counts — the
   // project's own — never at whichever module the judgment entered last,
   // which under the project register could be the library's and hide it.
@@ -1867,21 +4664,15 @@ fn report_verify_debt(debt) = if len(debt) == 0 {
   }
 }
 
-// The seams argument is GONE with the weave: the span is already the
-// developer's own coordinate, so there is no offset to subtract and no
-// containment scan to run. The module rides the obligation, so scoping is a
-// name compare instead of a line-range test that two files could both pass.
-fn debt_lines(ref debt, ref scope, i) = if i >= len(debt) {
-  ()
-} else {
-  match debt[i] {
-    (modh, dspan, pred, _) => if debt_in_scope(modh, scope) {
-      eprint_string("verify: {obligation_text(modh, dspan, pred)}\n")
-    } else {
-      ()
-    },
-  }
-  debt_lines(debt, scope, i + 1)
+// One open obligation's line, where the scope renders it: the span is the
+// developer's own coordinate and the module rides the obligation, so scoping
+// is a compare of modules.
+fn debt_line(ref scope, entry) = match entry {
+  (modh, dspan, pred, _) => if debt_in_scope(modh, scope) {
+    eprint_string("verify: {obligation_text(modh, dspan, pred)}\n")
+  } else {
+    ()
+  },
 }
 
 // One open obligation said once: the ledger's summary lines and the Verify
@@ -1903,8 +4694,6 @@ fn classify_predicate(pred) with Pure = match pred {
   PCompare(_, _, _) => "comparison",
   PBoolNode(_) => "graph-deferred",
   PPatternMatch(_, _) => "shape",
-  // IFC: always decides at compile time via flow_le
-  PFlowLe(_, _) => "ifc-flow",
   // the binder classifies as its body
   PWithSelf(_, inner) => classify_predicate(inner),
   PTotalDiv(_, _, _) => "partiality",
@@ -1926,14 +4715,12 @@ fn predicate_to_smt(ref pred) = match pred {
   PNot(inner) => "(not {predicate_to_smt(inner)})",
   PBoolNode(n) => handle_to_smt(n),
   PPatternMatch(_, n) => handle_to_smt(n),
-  // finite lattice: literal
   // The self binder renders as its body — `self` stays symbolic in SMT-LIB
   // (the solver's declared variable), exactly the diagnostic's reading.
-  PFlowLe(a, b) => if flow_le(a, b) { "true" } else { "false" },
   PWithSelf(_, inner) => predicate_to_smt(inner),
   PTotalDiv(op, a, b) => match op {
     BMod => "(distinct {handle_to_smt(b)} 0)",
-    _ => "(and (distinct {handle_to_smt(b)} 0) (or (distinct {handle_to_smt(b)} (- 1)) (distinct {handle_to_smt(a)} (- 2147483648))))",
+    BAdd | BSub | BMul | BDiv | BEq | BNe | BLt | BGt | BLe | BGe | BAnd | BOr | BConcat => "(and (distinct {handle_to_smt(b)} 0) (or (distinct {handle_to_smt(b)} (- 1)) (distinct {handle_to_smt(a)} (- 2147483648))))",
   },
   PInBounds(recv, idx) => "(and (<= 0 {handle_to_smt(idx)}) (< {handle_to_smt(idx)} (len {handle_to_smt(recv)})))",
   PProvides(_) => "true",
@@ -1946,7 +4733,7 @@ fn smt_cmp_op(ref op) with Pure = match op {
   BLe => "<=",
   BGt => ">",
   BGe => ">=",
-  _ => "=",
+  BAdd | BSub | BMul | BDiv | BMod | BAnd | BOr | BConcat => "=",
 }
 
 fn smt_logop(ref op, ref a, ref b) = "({op} {predicate_to_smt(a)} {predicate_to_smt(b)})"
@@ -1983,7 +4770,16 @@ fn handle_to_smt(handle) = match graph_node_body(handle) {
   NExpr(CallExpr(callee, args)) => smt_call(callee, args),
   NExpr(BinOpExpr(op, l, r)) => smt_binop(op, l, r),
   NExpr(UnaryOpExpr(op, x)) => smt_unop(op, x),
-  _ => {
+  NExpr(_)
+  | NStmt(_)
+  | NPat(_)
+  | NHole(_)
+  | NModule(_)
+  | NLink(_)
+  | NTypeAnn(_)
+  | NName(_)
+  | NRow(_)
+  | NParam(_) => {
     report(EVerifyUnencodable(span_zero()))
     "false"
   },
@@ -2005,7 +4801,16 @@ fn handle_to_smt(handle) = match graph_node_body(handle) {
 fn smt_call(callee, args) = {
   let fname = match graph_node_body(callee) {
     NExpr(VarRef(n)) => n,
-    _ => {
+    NExpr(_)
+    | NStmt(_)
+    | NPat(_)
+    | NHole(_)
+    | NModule(_)
+    | NLink(_)
+    | NTypeAnn(_)
+    | NName(_)
+    | NRow(_)
+    | NParam(_) => {
       report(EVerifyUnencodable(span_zero()))
       "false"
     },

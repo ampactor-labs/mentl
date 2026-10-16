@@ -1,0 +1,18 @@
+// expect: refuse E_RefinementRejected
+// flow: refused at 18
+// A splice is a computation like any other: the string carries what it was
+// built from to wherever it goes, and the sink refuses it. On boot cb12aeea
+// the claim was pending debt.
+effect Trust {
+  untrusted(v: String) -> Bool
+}
+
+type Untrusted = String where untrusted(self)
+
+type Trusted = String where !untrusted(self)
+
+fn read_cmd() -> Untrusted = "rm -rf /"
+
+fn exec(cmd: Trusted) = len(cmd)
+
+fn main() = exec("echo {read_cmd()}")

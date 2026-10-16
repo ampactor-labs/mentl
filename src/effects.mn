@@ -250,7 +250,7 @@ fn mk_ef_neg(ref names) = ef_make([], names, EtAll)
 // their meet; an authored Pure is absolute and dominates the clause.
 fn is_pure_eff_name(name) = match name {
   EPure => true,
-  _ => false,
+  ENamed(_) | EParameterized(_, _) => false,
 }
 
 // Neither operand is `own`: the row algebra's three verbs all BORROW
@@ -382,7 +382,7 @@ fn row_var_key(n: String) = "with {n}"
 // name in a clause is a row variable.
 fn row_var_spelled(name) = match name {
   ENamed(_) => is_var_spelling(eff_name_str(name)),
-  _ => false,
+  EParameterized(_, _) | EPure => false,
 }
 
 fn leaf_row_of(name, seen, rvars) = if row_var_spelled(name) {
@@ -434,7 +434,7 @@ fn row_name_seen_at(seen, target: String, i, n) = if i >= n {
 
 fn row_tail_closed(t) with Pure = match t {
   EtClosed => true,
-  _ => false,
+  EtOpen(_) | EtAll => false,
 }
 
 fn mk_record_open(ref fields, v) = TRecordOpen(field_canonicalize(fields), v)
@@ -526,7 +526,7 @@ fn resolve_row(row) = match row {
     EtOpen(vs) => match resolve_edges(edges_masked(vs, a), (p, [], [], false, false)) {
       (rp, am, res, saw_all, progressed) => if progressed { row_of_fold(rp, am, res, saw_all) } else { row },
     },
-    _ => row,
+    EtClosed | EtAll => row,
   },
 }
 
@@ -584,7 +584,7 @@ fn resolve_row_compress(row) = match row {
     EtOpen(vs) => match resolve_edges_compress(edges_masked(vs, a), (p, [], [], false, false)) {
       (rp, am, res, saw_all, progressed) => if progressed { row_of_fold(rp, am, res, saw_all) } else { row },
     },
-    _ => row,
+    EtClosed | EtAll => row,
   },
 }
 
@@ -608,7 +608,7 @@ fn resolve_edge_compress(acc, e) = match acc {
       // A fn-typed edge FOLDS its row but is NEVER compressed: the cell's
       // binding IS the function type, and a compress write here would
       // overwrite the TFun with a row (the cell serves the type reads too).
-      k => match edge_row_of(k) {
+      k @ (NBound(_) | NFree(_) | NRowFree(_) | NRecordRowBound(_, _) | NErrorHole(_)) => match edge_row_of(k) {
         Some(inner) => edge_content_into(p, am, res, saw_all, edge_mask(e), resolve_row_compress(inner)),
         None => (p, am, tail_set_insert(res, e), saw_all, progressed),
       },
@@ -651,7 +651,7 @@ fn frag_collision_walk(ref pa, ref pb, i) = if i >= len(pb) {
 } else {
   let hit = match list_index(pb, i) {
     EParameterized(h2, args2) => frag_name_clash(pa, h2, args2, 0),
-    _ => false,
+    ENamed(_) | EPure => false,
   }
   if hit { true } else { frag_collision_walk(pa, pb, i + 1) }
 }
@@ -661,7 +661,7 @@ fn frag_name_clash(ref pa, h2, args2, j) = if j >= len(pa) {
 } else {
   let hit = match list_index(pa, j) {
     EParameterized(h1, args1) => h1 == h2 && !frag_args_same(args1, args2),
-    _ => false,
+    ENamed(_) | EPure => false,
   }
   if hit { true } else { frag_name_clash(pa, h2, args2, j + 1) }
 }
@@ -713,39 +713,67 @@ fn frag_args_same_walk(ref a1, ref a2, i) = if i >= len(a1) {
 fn frag_arg_same(x, y) = match x {
   EAInt(p) => match y {
     EAInt(q) => p == q,
-    _ => false,
+    EAFloat(_) | EAString(_) | EAType(_) | EANode(_) | EAEffect(_) | EACon(_) => false,
   },
   EAFloat(p) => match y {
     EAFloat(q) => p == q,
-    _ => false,
+    EAInt(_) | EAString(_) | EAType(_) | EANode(_) | EAEffect(_) | EACon(_) => false,
   },
   EAString(p) => match y {
     EAString(q) => p == q,
-    _ => false,
+    EAInt(_) | EAFloat(_) | EAType(_) | EANode(_) | EAEffect(_) | EACon(_) => false,
   },
   EAType(tx) => match tx {
     TVar(hx) => match y {
       EAType(ty2) => match ty2 {
         TVar(hy) => hx == hy,
-        _ => false,
+        TInt
+        | TFloat
+        | TUnit
+        | TByte
+        | TAddr
+        | TList(_)
+        | TTuple(_)
+        | TFun(_, _, _)
+        | TName(_, _)
+        | TRecord(_)
+        | TRecordOpen(_, _)
+        | TRefined(_, _)
+        | TReprPin(_, _)
+        | TCont(_, _, _, _)
+        | TAlias(_, _) => false,
       },
-      _ => false,
+      EAInt(_) | EAFloat(_) | EAString(_) | EANode(_) | EAEffect(_) | EACon(_) => false,
     },
-    _ => false,
+    TInt
+    | TFloat
+    | TUnit
+    | TByte
+    | TAddr
+    | TList(_)
+    | TTuple(_)
+    | TFun(_, _, _)
+    | TName(_, _)
+    | TRecord(_)
+    | TRecordOpen(_, _)
+    | TRefined(_, _)
+    | TReprPin(_, _)
+    | TCont(_, _, _, _)
+    | TAlias(_, _) => false,
   },
   EANode(nx) => match y {
     EANode(ny) => nx == ny,
-    _ => false,
+    EAInt(_) | EAFloat(_) | EAString(_) | EAType(_) | EAEffect(_) | EACon(_) => false,
   },
   EAEffect(hx) => match y {
     // The registration fold's constants: one interned identity each, so
     // sameness is the word compare (eff_arg_scalar_unequal's dual).
     EAEffect(hy) => hx == hy,
-    _ => false,
+    EAInt(_) | EAFloat(_) | EAString(_) | EAType(_) | EANode(_) | EACon(_) => false,
   },
   EACon(hx) => match y {
     EACon(hy) => hx == hy,
-    _ => false,
+    EAInt(_) | EAFloat(_) | EAString(_) | EAType(_) | EANode(_) | EAEffect(_) => false,
   },
 }
 
@@ -825,14 +853,14 @@ fn inter_row(ref a, ref b) = match a {
   EfRow(pa, aa, ta) => match b {
     EfRow(pb, ab, tb) => match ta {
       EtAll => if len(pa) == 0 { diff_row(b, mk_ef_closed(aa)) } else { EfRow(pa, aa, ta) },
-      _ => match tb {
+      EtClosed | EtOpen(_) => match tb {
         EtAll => if len(pb) == 0 { diff_row(a, mk_ef_closed(ab)) } else { EfRow(pa, aa, ta) },
-        _ => match ta {
+        EtClosed | EtOpen(_) => match ta {
           EtClosed => match tb {
             EtClosed => ef_make(name_set_intersect(pa, pb), [], EtClosed),
-            _ => ef_make(name_set_intersect(pa, pb), [], EtClosed),
+            EtOpen(_) | EtAll => ef_make(name_set_intersect(pa, pb), [], EtClosed),
           },
-          _ => ef_make(name_set_intersect(pa, pb), [], EtClosed),
+          EtOpen(_) | EtAll => ef_make(name_set_intersect(pa, pb), [], EtClosed),
         },
       },
     },
@@ -875,7 +903,7 @@ fn row_without_self(row, self_h) = match resolve_row(row) {
       let others = edges_without_self(vs, graph_chase_handle(self_h))
       if len(others) == 0 { ef_make(p, a, EtClosed) } else { ef_make(p, a, EtOpen(others)) }
     },
-    _ => EfRow(p, a, t),
+    EtClosed | EtAll => EfRow(p, a, t),
   },
 }
 
@@ -922,7 +950,7 @@ fn row_keep_completion(row, ceiling: Int, sig_keep: [Int]) = if ceiling == 0 {
         let kept = edges_keep_completion(vs, ceiling, sig_keep)
         if len(kept) == 0 { ef_make(p, a, EtClosed) } else { ef_make(p, a, EtOpen(kept)) }
       },
-      _ => row,
+      EtClosed | EtAll => row,
     },
   }
 }
@@ -1133,7 +1161,7 @@ fn gate_judge(g: Gate, v, span) = if row_subsumes(v, gate_row(g)) {
 fn gate_push(g: Gate, v, span) = match v {
   EfRow(_, _, t) => match t {
     EtOpen(vs) => gate_push_edges(g, vs, span),
-    _ => (),
+    EtClosed | EtAll => (),
   },
 }
 
@@ -1196,7 +1224,7 @@ fn gate_install_instances(is, g: Gate, span) = match is {
 fn row_var_is_free_cell(v) = match graph_chase(v) {
   GNode(NRowFree(_), _) => true,
   GNode(NFree(_), _) => true,
-  _ => false,
+  GNode(_, _) => false,
 }
 
 // THE CHECKING WRITER's half, before the raw bind: every gate on the
@@ -1220,7 +1248,7 @@ fn gate_check_push(cell, row, span) = {
 fn notes_follow(notes, v) = match v {
   EfRow(_, _, t) => match t {
     EtOpen(vs) => notes_follow_edges(notes, vs),
-    _ => (),
+    EtClosed | EtAll => (),
   },
 }
 
@@ -1416,7 +1444,7 @@ fn report_effect_mismatch(ref a, ref b, ref span, ref reason) with !Mutate =
 fn row_is_ground(ref row) with Pure = match row {
   EfRow(_, _, t) => match t {
     EtOpen(_) => false,
-    _ => true,
+    EtClosed | EtAll => true,
   },
 }
 
@@ -1443,6 +1471,14 @@ fn eff_name_str(name: EffName) -> String = match name {
   ENamed(h) => intern_name_of(h),
   EParameterized(h, _) => intern_name_of(h),
   EPure => "",
+}
+
+// Whether a row names Mutate, what a store into memory older than its frame
+// performs where it stands.
+fn names_mutate(e) = eff_name_str(e) == "Mutate"
+
+fn row_names_mutate(row) = match row {
+  EfRow(present, _, _) => any(names_mutate, present),
 }
 
 // body ∩ forbidden = ∅ BY NAME — the crown's negation membership. A body effect
@@ -1535,15 +1571,15 @@ fn eff_args_provably_distinct(ref a, ref b, i) = if len(a) != len(b) {
 fn eff_arg_scalar_unequal(fa, pa) with Pure = match fa {
   EAInt(x) => match pa {
     EAInt(y) => x != y,
-    _ => false,
+    EAFloat(_) | EAString(_) | EAType(_) | EANode(_) | EAEffect(_) | EACon(_) => false,
   },
   EAFloat(x) => match pa {
     EAFloat(y) => x != y,
-    _ => false,
+    EAInt(_) | EAString(_) | EAType(_) | EANode(_) | EAEffect(_) | EACon(_) => false,
   },
   EAString(x) => match pa {
     EAString(y) => x != y,
-    _ => false,
+    EAInt(_) | EAFloat(_) | EAType(_) | EANode(_) | EAEffect(_) | EACon(_) => false,
   },
   EAType(_) => false,
   EANode(_) => false,
@@ -1555,11 +1591,11 @@ fn eff_arg_scalar_unequal(fa, pa) with Pure = match fa {
   // refusal, never a distinctness claim).
   EAEffect(x) => match pa {
     EAEffect(y) => x != y,
-    _ => false,
+    EAInt(_) | EAFloat(_) | EAString(_) | EAType(_) | EANode(_) | EACon(_) => false,
   },
   EACon(x) => match pa {
     EACon(y) => x != y,
-    _ => false,
+    EAInt(_) | EAFloat(_) | EAString(_) | EAType(_) | EANode(_) | EAEffect(_) => false,
   },
 }
 
@@ -1722,9 +1758,9 @@ fn row_entry_collides(a: EffName, b: EffName) = if eff_name_handle(a) != eff_nam
   match a {
     EParameterized(_, xa) => match b {
       EParameterized(_, xb) => !eff_args_provably_distinct(xa, xb, 0),
-      _ => true,
+      ENamed(_) | EPure => true,
     },
-    _ => true,
+    ENamed(_) | EPure => true,
   }
 }
 
@@ -1737,11 +1773,11 @@ fn row_entry_collides(a: EffName, b: EffName) = if eff_name_handle(a) != eff_nam
 fn collision_upgrades(held: EffName, x: EffName) = match held {
   ENamed(_) => match x {
     EParameterized(_, _) => true,
-    _ => false,
+    ENamed(_) | EPure => false,
   },
   EParameterized(_, hargs) => match x {
     EParameterized(_, xargs) => all(eff_arg_ground, hargs) && !all(eff_arg_ground, xargs),
-    _ => false,
+    ENamed(_) | EPure => false,
   },
   EPure => false,
 }

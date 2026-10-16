@@ -1,0 +1,26 @@
+// expect: refuse E_RefinementRejected
+// flow: refused at 26
+// A tee's value is every value its install can answer: `reveal`'s arm never
+// resumes and answers an untrusted value, so the install's value is untrusted
+// and the sink refuses. On boot cb12aeea the claim was pending debt.
+effect Trust {
+  untrusted(v: String) -> Bool
+}
+
+type Untrusted = String where untrusted(self)
+
+type Trusted = String where !untrusted(self)
+
+fn read_cmd() -> Untrusted = "rm -rf /"
+
+fn exec(cmd: Trusted) = len(cmd)
+
+effect Ask {
+  ask() -> String
+}
+
+handler reveal {
+  ask() => read_cmd(),
+}
+
+fn main() = exec(ask() ~> reveal)

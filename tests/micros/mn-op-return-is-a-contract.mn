@@ -1,0 +1,18 @@
+// expect: refuse E_RefinementRejected
+// An op's declared return is a contract every resume owes: `get` is declared
+// to answer a Positive, so `inv(get())` stands on it, and the arm resuming 0
+// refuses where it resumes. On boot cb12aeea the arm owed nothing, the
+// program checked clean under `!Trap` and divided by zero.
+type Positive = Int where self > 0
+
+effect Get {
+  get() -> Positive
+}
+
+handler zero {
+  get() => resume(0),
+}
+
+fn inv(n: Positive) with !Trap = 100 / n
+
+fn main() = inv(get()) ~> zero

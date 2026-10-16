@@ -1,0 +1,20 @@
+// expect: refuse E_RefinementRejected
+// flow: refused at 18
+// A demand is owed at every call, the function's own among them: `retry`
+// hands itself an untrusted command, and the call refuses at that argument.
+// On boot cb12aeea the sink's claim was pending debt.
+effect Trust {
+  untrusted(v: String) -> Bool
+}
+
+type Untrusted = String where untrusted(self)
+
+type Trusted = String where !untrusted(self)
+
+fn read_cmd() -> Untrusted = "rm -rf /"
+
+fn exec(cmd: Trusted) = len(cmd)
+
+fn retry(cmd, k) = if k == 0 { exec(cmd) } else { retry(read_cmd(), k - 1) }
+
+fn main() = retry("ls", 1)

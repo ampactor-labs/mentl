@@ -1,0 +1,26 @@
+// expect: refuse E_RefinementRejected
+// flow: refused at 26
+// A perform's value is every value an arm serving its op resumes it with:
+// `feed` resumes `ask` with an untrusted value, so `ask()` is untrusted
+// where the sink is handed it. On boot cb12aeea the claim was pending debt.
+effect Trust {
+  untrusted(v: String) -> Bool
+}
+
+type Untrusted = String where untrusted(self)
+
+type Trusted = String where !untrusted(self)
+
+fn read_cmd() -> Untrusted = "rm -rf /"
+
+fn exec(cmd: Trusted) = len(cmd)
+
+effect Ask {
+  ask() -> String
+}
+
+handler feed {
+  ask() => resume(read_cmd()),
+}
+
+fn main() = exec(ask()) ~> feed

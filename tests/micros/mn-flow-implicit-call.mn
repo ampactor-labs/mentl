@@ -1,0 +1,22 @@
+// expect: refuse E_RefinementRejected
+// flow: refused at 20
+// An implicit flow through a call: `wipe` reaches a trusted sink, so what
+// decides whether `wipe` runs reaches the sink, and the call `main` makes
+// under an untrusted value refuses the sink's claim, naming the condition
+// where the label enters. On boot cb12aeea the sink's claim was pending debt
+// and the call was never asked.
+effect Trust {
+  untrusted(v: String) -> Bool
+}
+
+type Untrusted = String where untrusted(self)
+
+type Trusted = String where !untrusted(self)
+
+fn read_cmd() -> Untrusted = "yes"
+
+fn exec(cmd: Trusted) = len(cmd)
+
+fn wipe() = exec("rm -rf /tmp/x")
+
+fn main() = if read_cmd() == "yes" { wipe() } else { 0 }

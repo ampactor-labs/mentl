@@ -1,0 +1,21 @@
+// expect: 2
+// flow: proven
+// The precision control beside mn-flow-field: a part is read at its position
+// in what it was built from, so the constant half of a pair whose other half
+// is untrusted reaches the sink proven. A pattern of one arm asserts its
+// shape and dispatches on nothing, so taking the pair apart is no branch.
+effect Trust {
+  untrusted(v: String) -> Bool
+}
+
+type Untrusted = String where untrusted(self)
+
+type Trusted = String where !untrusted(self)
+
+fn read_cmd() -> Untrusted = "rm -rf /"
+
+fn exec(cmd: Trusted) = len(cmd)
+
+fn main() = match (read_cmd(), "ls") {
+  (_, c) => exec(c),
+}

@@ -29,10 +29,10 @@ This document is **the authoritative syntactic spec for Mentl**. It binds the pa
 > form, so it IS the form on the page — the *lowering* is sequenced to catch up to
 > the surface (`PLAN.md §5`), never the surface lowered to current lowering. The one
 > genuinely post-real forward-pointer is the **effect system** (`§4③`): `!E` is
-> present and load-bearing now; the modal synthesis that closes the higher-order
-> leak, and the IFC flow-constraint (`§4⑥`), are sequenced after first-light —
-> their absence named in positive form where each would land, never a hedge that
-> the present forms are "pragmatic, not final."
+> present and load-bearing now, and so is information flow (`§4⑥`, §«Refinement
+> types»); the modal synthesis that closes the higher-order leak is sequenced
+> after first-light — its absence named in positive form where it would land,
+> never a hedge that the present forms are "pragmatic, not final."
 
 ---
 
@@ -1742,13 +1742,50 @@ the installed handler — an arm whose tail is the `resume` hands the
 remainder's answer through and adds no value of its own — so `100 / (({ let _
 = ask(); 5 }) ~> zero)` with `zero`'s arm answering `0` is refuted
 (`E_RefinementRejected`), and with the arm answering `5` it is proven under
-`!Trap` and runs; the flow label reads the same leaves, so an arm answering a
-classified value classifies the install and its splice refuses. Until this
-landed every walk read a tee as nothing it could read: the refutation was
-debt, the proof was a refusal the program did not owe, and the classified
-arm's splice compiled clean on boot cf8a6d50
-(`tests/micros/mn-refine-install-answer.mn`,
-`mn-refine-install-answer-proven.mn`, `tests/frontier/mn-ifc-tee-arm-leak.mn`).
+`!Trap` and runs; a label is read through the same answers, so an arm
+answering an untrusted value brings the label through the install
+(`tests/micros/mn-flow-tee-arm.mn`). Until this landed every walk read a tee
+as nothing it could read: the refutation was debt and the proof was a refusal
+the program did not owe (`tests/micros/mn-refine-install-answer.mn`,
+`mn-refine-install-answer-proven.mn`).
+
+**An op's declared return is a contract every resume owes** (real,
+2026-10-16). A performer stands on what its op is declared to answer, so a
+refinement there is claimed of the value each arm resumes with: under `get()
+-> Positive`, `get() => resume(0)` refuses where it resumes, and `inv(get())`
+owes nothing. A resumed value the medium cannot prove is owed once, at the
+resume, never assumed by every performer. Until this landed the arm owed
+nothing, and `inv(get()) ~> zero` checked clean under `!Trap` and divided by
+zero (`tests/micros/mn-op-return-is-a-contract.mn`).
+
+**A label is an op named in a refinement over `self`, and what can bring it
+to a value is read along the value's edges** (real, 2026-10-16, `PLAN.md
+§4⑥`). Under `effect Trust { untrusted(v: String) -> Bool }`, `type Untrusted
+= String where untrusted(self)` states the label and `type Trusted = String
+where !untrusted(self)` states its absence. Presence is never claimed: a
+position declared to hold the label — a function's declared return, a
+parameter, a field, a let's annotation, what an op is declared to be handed —
+is where the label enters. Absence is a claim: `exec(cmd: Trusted)` owes it of
+every argument, and a value the label can reach refuses there
+(`E_RefinementRejected`), the refusal naming where it entered (`untrusted
+enters at main:20:30 through what read_cmd is declared to answer`). What can
+reach a value is everything it is computed from — an operand, a splice, a
+field placed in a record, a value stored in place into memory it reads, an
+arm's answer, a state's writes — and everything that decides whether the code
+computing it runs: a branch's condition, a call made under one, a statement
+before it that can abandon. A function handed to another is applied to what
+that function hands it, read at the install that runs it, so a stage handed to
+`each` over an untrusted list reaches the sink with an untrusted element; a
+parameter is what every call hands it. Endorsement is a declared return that
+states the absence (`fn quote(s) -> Trusted`), read by callers and never
+claimed of the body. A secret is the same law over another op (`type Secret =
+String where secret(self)`, `log_line(msg: Public)`). Each declared function's reading is a
+summary over its own parameters, read once per settle and repeated to its
+least fixed point, so recursion terminates. `mentl query <file> "flow of
+NAME"` says what a function answers, endorses and demands
+(`tests/micros/mn-flow-*.mn`, each fixture's second line its contract at the
+sink). Until this landed a classification was a lattice beside the walk, a
+splice refused by a gate of its own, and every claim above was pending debt.
 
 The predicate is a compile-time obligation; at gradient-top it erases entirely (no runtime check). `Verify`'s default ledger accrues what it cannot discharge statically (`V_Pending`); Verify's own solver discharges more of it as its fragment grows (`PLAN.md §11`, Verify's own solver: path narrowing, overflow-aware intervals, linear arithmetic, case splits by fork) — same source, deeper proof engine. An external solver plugs in only as a proposer whose certificate the kernel checks.
 
@@ -2182,7 +2219,7 @@ inc() => resume() with n = n + 1
 
 The `with` clause lists state updates by field name. Unlisted state stays unchanged. A name that is not one of the handler's state fields is refused (`E_MissingVariable`, "state field: m") — the write would reach nothing anything reads (real, 2026-10-02; until then `resume(0) with m = n + 1` beside `with n = 0` compiled clean and dropped the write).
 
-**A state is every value written into it** (real, 2026-10-02, S5). At any read in an arm, a state field holds its init or whatever some arm last wrote, so everything the medium proves of it is proven of all of them: `100 / d` over `with d = 5` owes `d != 0` of every write — `with d = d - 5` in another arm leaves the division's claim open and refuses under `!Trap`, and `with d = 0` in another arm REFUTES it where it stands (`E_RefinementRejected`, real 2026-10-03: a writer that is the fatal point fails the claim as a join's `0` tail does; it was owed, never refuted, before) — a classified write makes the state classified, and a function written into it is applied under every function it can be. A state no arm writes is its init at every read and proves what the init proves. A write that reads the state it writes (`with d = d + 1`) reads it there as unknown, so a counter's bound is owed rather than proven; reading it as the claim's own hypothesis — an inductive invariant — is the named next step (`Hβ.verify.state-reads-its-invariant`). Until this landed the proof read a state as its init alone, and all three of those shapes checked clean and failed at run.
+**A state is every value written into it** (real, 2026-10-02, S5). At any read in an arm, a state field holds its init or whatever some arm last wrote, so everything the medium proves of it is proven of all of them: `100 / d` over `with d = 5` owes `d != 0` of every write — `with d = d - 5` in another arm leaves the division's claim open and refuses under `!Trap`, and `with d = 0` in another arm REFUTES it where it stands (`E_RefinementRejected`, real 2026-10-03: a writer that is the fatal point fails the claim as a join's `0` tail does; it was owed, never refuted, before) — a label a write brings reaches every read of the state, and a function written into it is applied under every function it can be. A state no arm writes is its init at every read and proves what the init proves. A write that reads the state it writes (`with d = d + 1`) reads it there as unknown, so a counter's bound is owed rather than proven; reading it as the claim's own hypothesis — an inductive invariant — is the named next step (`Hβ.verify.state-reads-its-invariant`). Until this landed the proof read a state as its init alone, and all three of those shapes checked clean and failed at run.
 
 ### Installation
 
@@ -2720,10 +2757,11 @@ live**:
 ```
 
 **Interpolation is a graph edge, not runtime substitution.** A `{expr}` splice
-carries the spliced node's type, **effect row**, and (under the IFC frontier,
-`§4⑥`) flow-label up into the enclosing string-construction expression: so
-`"{network_call()}"` adds `Network` to the row, and `"{secret}" ~> Log` is a
-provable non-interference violation — not a runtime surprise. Splice rendering
+carries the spliced node's type, **effect row** and labels up into the
+enclosing string-construction expression: so `"{network_call()}"` adds the
+call's effects to the row, and `exec("sh -c {cmd}")` over an untrusted `cmd`
+refuses at the sink (§«Refinement types», `tests/micros/mn-flow-splice.mn`) —
+not a runtime surprise. Splice rendering
 dispatches `to_string` structurally at lower from the spliced node's inferred type
 (the `++`/`==` proof-becomes-dispatch precedent — no `Show` trait-bound).
 

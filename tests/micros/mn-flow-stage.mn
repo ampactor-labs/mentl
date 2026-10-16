@@ -1,0 +1,18 @@
+// expect: refuse E_RefinementRejected
+// flow: refused at 18
+// A stage's parameter is the value piped into it, so an untrusted value piped
+// into a stage that hands it to a sink refuses at the sink's argument. On boot
+// cb12aeea the claim was pending debt.
+effect Trust {
+  untrusted(v: String) -> Bool
+}
+
+type Untrusted = String where untrusted(self)
+
+type Trusted = String where !untrusted(self)
+
+fn read_cmd() -> Untrusted = "rm -rf /"
+
+fn exec(cmd: Trusted) = len(cmd)
+
+fn main() = read_cmd() |> { c => exec(c) }

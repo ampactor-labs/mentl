@@ -1,0 +1,21 @@
+// expect: refuse E_RefinementRejected
+// flow: refused at 20
+// A field holds what was placed in it: the record's cmd field is untrusted, so
+// reading it back hands the sink an untrusted value. On boot cb12aeea the
+// claim was pending debt.
+effect Trust {
+  untrusted(v: String) -> Bool
+}
+
+type Untrusted = String where untrusted(self)
+
+type Trusted = String where !untrusted(self)
+
+fn read_cmd() -> Untrusted = "rm -rf /"
+
+fn exec(cmd: Trusted) = len(cmd)
+
+fn main() = {
+  let req = {cmd: read_cmd(), n: 1}
+  exec(req.cmd) + req.n
+}

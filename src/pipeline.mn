@@ -1425,7 +1425,11 @@ fn render_query_result(result) = match result {
   } else {
     "→ {int_to_str(len(sites))} handler(s) declare an arm for it{str_concat_all(map(render_provider_site, sites))}"
   },
-  QRFlowLabel(label, reason) => "→ {show_flow_label(label)}\n  Reason: {show_reason(reason)}",
+  QRFlow(name, facts) => if len(facts) == 0 {
+    "→ no label reaches `{name}`, and it states and demands none"
+  } else {
+    "→ {int_to_str(len(facts))} flow fact(s){str_concat_all(map({ f => "\n  {f}" }, facts))}"
+  },
   QRCensus(label, sites) => "→ {int_to_str(len(sites))} {label}{render_noted_sites(sites)}",
   QRCensusRoster(rows) => "→ {int_to_str(len(rows))} census shape(s) — ask one as `census <name>`{rows |> map(roster_line) |> str_concat_all}",
   // The decls column's projection: every name the judged declarations
@@ -1483,8 +1487,6 @@ fn site_width(shape) = match shape {
 
 fn site_demand(vias) = if len(vias) == 0 { "" } else { "; Thread demanded via {join(", ", vias)}" }
 
-// show_flow_label — defined in types.mn alongside flow_label_join/flow_le.
-//
 // The query surface is a tiny grammar: <verb> [arg]. The query strings are
 // unavoidable external input (like LSP method strings, lsp.mn classify_method)
 // — projected to the QueryVerb ADT at ONE boundary (classify_query_verb),

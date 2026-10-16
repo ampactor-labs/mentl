@@ -1,0 +1,27 @@
+// expect: 2
+// flow: proven
+// The sound twin of mn-flow-state: every value `put` is performed with is a
+// constant, so the state holds nothing untrusted and the sink's claim is
+// proven.
+effect Trust {
+  untrusted(v: String) -> Bool
+}
+
+type Trusted = String where !untrusted(self)
+
+fn exec(cmd: Trusted) = len(cmd)
+
+effect Store {
+  put(s: String)
+  get() -> String
+}
+
+handler store with kept = "" {
+  put(s) => resume() with kept = s,
+  get() => resume(kept),
+}
+
+fn main() = {
+  put("ls")
+  exec(get())
+} ~> store

@@ -115,8 +115,10 @@ fn board_bounds() = [
   // `""` for an install it could not name, and left with the walk. 19 -> 17
   // (2026-10-15): the lowering's two `""` answers for an install whose
   // handler name it could not read left with the read — an install is its
-  // handler's declaration.
-  Bound({ceiling: 17, question: QCensus(CsWildcardFabricates)}),
+  // handler's declaration. 17 -> 15 (2026-10-16): the verifier's catch-alls
+  // were written as their rosters when the flow walk replaced the label
+  // lattice.
+  Bound({ceiling: 15, question: QCensus(CsWildcardFabricates)}),
   // Drift mode 10 at the arm itself (Morgan, 2026-10-13): a `_` or a bare
   // binder after other arms of a match over a sum is the roster the author
   // declined to write, and a constructor declared later joins it unread.
@@ -132,8 +134,10 @@ fn board_bounds() = [
   // position's declaration names its roster where the session's cone reads it.
   // 1167 -> 1141: the lowering's spine of capture points and the judgment's
   // continuation boundaries left when a continuation was captured at any
-  // position.
-  Bound({ceiling: 1141, question: QCensus(CsWildcardOverSum)}),
+  // position. 1141 -> 937: `mentl tighten` wrote every catch-all of the
+  // verifier and of the graph, type and effect modules it imports as its
+  // roster, the day information flow became the verifier's walk.
+  Bound({ceiling: 937, question: QCensus(CsWildcardOverSum)}),
   // Drift mode 15 — a value given a leading-underscore name instead of being
   // deleted. The rename silences the reader, never the fact that nothing
   // reads it.
@@ -229,8 +233,9 @@ fn board_bounds() = [
   // the formatter's and the cursor transport's scans for a line's first byte
   // became one, and the list flatten's walks one range fill. 409 -> 406: the
   // lowering's spine of capture points left when a continuation was captured
-  // at any position.
-  Bound({ceiling: 406, question: QCensus(CsIterationCostume)}),
+  // at any position. 406 -> 405: the ledger's per-obligation line became an
+  // `each` over the debt.
+  Bound({ceiling: 405, question: QCensus(CsIterationCostume)}),
   // The ghosts — cells the parser minted and the judgment never bound
   // (`mentl query <entry> ghosts`): names, parameters, predicates and
   // annotations that are not yet cells inference writes, which is why `refs
@@ -242,8 +247,8 @@ fn board_bounds() = [
   // landings did (18,681 → 19,734). The first class paid: an unannotated
   // parameter's parser cell is bound to the parameter's own cell
   // (`build_param_types`), 19,747 → 10,604. The second: an absent return
-  // annotation stands at no position (`mint_absent`), where a unit literal was
-  // indexed at every unannotated function's name, 10,665 → 6,089. The third,
+  // annotation is no node of its own, where a unit literal was indexed at
+  // every unannotated function's name, 10,665 → 6,089. The third,
   // 6,092 → 477 when the verbs integration's line fixes rose it by three: a
   // declaration's node is bound where the judgment registers it — a variant
   // to its constructor, an op to its operation, a handler to its type, any
@@ -293,8 +298,9 @@ fn board_bounds() = [
   // Repository paths that name no file: a comment citing a path the tree
   // does not hold.
   Bound({ceiling: 1, question: QCensus(CsProseClass(PcPathNoFile))}),
-  // Hex commit tokens — history belongs to git, never on the node.
-  Bound({ceiling: 44, question: QCensus(CsProseClass(PcCommit))}),
+  // Hex commit tokens — history belongs to git, never on the node. 44 -> 43
+  // (2026-10-16): a note on the label lattice left with the lattice.
+  Bound({ceiling: 43, question: QCensus(CsProseClass(PcCommit))}),
   // Numbered citations of the archived spec corpus. 20 -> 19 (2026-10-15):
   // the banner over the pattern type left when a pattern became a node.
   Bound({ceiling: 19, question: QCensus(CsProseClass(PcSpecCitation))}),
@@ -306,13 +312,16 @@ fn board_bounds() = [
   // (2026-10-15): the note over the type annotation's node kind that said
   // why its tag stood last. 67 -> 66 (2026-10-15): a stale note over the
   // stdin route left. 66 -> 65 (2026-10-16): the session's note over its
-  // module-grain re-derivation left with it.
-  Bound({ceiling: 65, question: QCensus(CsProseClass(PcArchaeology))}),
+  // module-grain re-derivation left with it. 65 -> 63 the same day: the
+  // notes on the label lattice left with the lattice.
+  Bound({ceiling: 63, question: QCensus(CsProseClass(PcArchaeology))}),
   // Decoration runs; the formatter's decoration strip takes this to zero
   // (PLAN §11, the project canonical). 267 -> 266 (2026-10-15): the pattern
   // type's banner left when a pattern became a node. 266 -> 265
   // (2026-10-16): the parameter re-sugar's banner left with the re-sugar.
-  Bound({ceiling: 265, question: QCensus(CsProseClass(PcBanner))}),
+  // 265 -> 255 the same day: the verifier's section banners left when its
+  // comments were trued with the flow walk.
+  Bound({ceiling: 255, question: QCensus(CsProseClass(PcBanner))}),
   // A COMMENT NEVER SILENCES A GATE (SYNTAX §Comments). Each marker mutes a
   // text row of tools/drift-patterns.tsv that a structural census reads
   // correctly — a string literal is text, a one-shot concat is not an
@@ -324,8 +333,10 @@ fn board_bounds() = [
   // M1's first pin, the env's scope-mark marker leaving with the rewrite;
   // 128 -> 124 (2026-10-15), four over dead code leaving with it; 124 -> 121
   // the same day, the two over the install's name sentinel leaving with the
-  // name read and a resume-bound call's pair of markers becoming one.
-  Bound({ceiling: 121, question: QCensus(CsProseClass(PcSilencer))})
+  // name read and a resume-bound call's pair of markers becoming one. 121 ->
+  // 115 (2026-10-16): the count read 117 at the pin before, and the two over
+  // the free-name walk's unions left when each union became one flat list.
+  Bound({ceiling: 115, question: QCensus(CsProseClass(PcSilencer))})
 ]
 
 // The board: every bound answered by the medium's own answer to its question.

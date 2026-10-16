@@ -190,13 +190,10 @@ type Question
   // error, and each narration the register hears
   | QReports
   // "which handler provides OP"
-  // QFlowOf — the IFC tentacle (§4⑥). Reads the existing graph — TRefined,
-  // TName, and the row's absent set — to classify NAME's FlowLabel without any
-  // new graph state. The security classification IS already in the type;
-  // this is the projection that names it. Novel: no other language exposes
-  // IFC as a read of its existing type system. `mentl query flow key` answers
-  // "what does the graph already know about key's sensitivity?"
   | QHandlerProvider(String)
+  // "flow NAME" — what NAME states and owes of every label the program
+  // declares (§4⑥): what a function answers or endorses, what each of its
+  // parameters demands, and the source that can reach a value
   | QFlowOf(String)
   // "census <shape>" — count + sites of a structural shape in the weave
   | QCensus(CensusShape)
@@ -288,8 +285,8 @@ type QueryResult
   | QRSmt([(Int, Span, Predicate, Reason)])
   // every handler declaring an arm for the op, with the arm's address
   | QRHandlerProvider([(String, String)])
-  // IFC projection — the FlowLabel the type already proves
-  | QRFlowLabel(FlowLabel, Reason)
+  // the name asked about, and one line per flow fact it states or owes
+  | QRFlow(String, [String])
   // census label + the located sites (count = len)
   // the sites as (module, span, note): a local span names a line, the module
   // names whose line it is — the two halves the weave used to fuse into one
@@ -422,13 +419,11 @@ fn query_answer(q) = match q {
   // arms name the ops it provides. Which handlers provide OP are the decls
   // with an arm for it, each answered at the arm's own line.
   QHandlerProvider(op_name) => QRHandlerProvider(handlers_providing_op(op_name)),
-  // The IFC tentacle: the FlowLabel NAME carries, read over the graph
-  // with no state of its own (`name_flow_label`).
-  QFlowOf(name) => match env_lookup(name) {
+  // The information-flow facet, read off the declaration's contracts and the
+  // influence walk (verify.mn's `flow_facts`).
+  QFlowOf(name) => match name_decl(name) {
     None => QRError("not found: {name}"),
-    Some(entry) => match entry {
-      (scheme, reason, _kind) => QRFlowLabel(name_flow_label(scheme), reason),
-    },
+    Some(d) => QRFlow(name, flow_facts(d)),
   },
   QCensus(shape) => QRCensus(census_label(shape), census_noted(shape)),
   QCensusRoster => QRCensusRoster(census_roster() |> map(roster_row)),
@@ -503,21 +498,6 @@ fn noted_in_module(m, site) = site_in_module(m, noted_address(site))
 fn named_in_module(m, named) = site_in_module(m, name_site(named))
 
 fn obligation_in_module(m, ob) = site_in_module(m, debt_site(ob))
-
-// The label a name carries: what its type names — a declaration's
-// return, a nominal type's predicate, a row's confinement — joined, for a
-// value binding, with its VALUE's label read along the edges the value
-// flowed (a parameter's precondition, a let's annotation, a callee's
-// declared return). The type alone read every refined value Public once
-// the class held a shape (P0).
-fn name_flow_label(scheme) = {
-  let ty = judgment_ty(scheme)
-  let by_type = ty |> chase_type_deep |> query_flow_label
-  match ty {
-    TVar(b) => flow_label_join(by_type, binder_flow_label(b)),
-    _ => by_type,
-  }
-}
 
 fn chase_type_deep(ref ty) = match ty {
   TVar(h) => match graph_chase(h) {
@@ -1408,7 +1388,7 @@ fn noted_answer(r) = match r {
   QROwnership(_) => None,
   QRWhy(_) => None,
   QRHandlerProvider(_) => None,
-  QRFlowLabel(_, _) => None,
+  QRFlow(_, _) => None,
   QRCensusRoster(_) => None,
   QRModules(_) => None,
   QRImports(_) => None,

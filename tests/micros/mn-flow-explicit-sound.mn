@@ -1,0 +1,14 @@
+// expect: 10
+// flow: proven
+// The sound twin of mn-flow-explicit: every value the argument is built from
+// is a constant, so nothing untrusted reaches the sink and the claim is
+// proven, not owed. On boot cb12aeea it was pending debt.
+effect Trust {
+  untrusted(v: String) -> Bool
+}
+
+type Trusted = String where !untrusted(self)
+
+fn exec(cmd: Trusted) = len(cmd)
+
+fn main() = exec("ls -l " ++ "/tmp")

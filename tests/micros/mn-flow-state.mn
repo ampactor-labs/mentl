@@ -1,0 +1,33 @@
+// expect: refuse E_RefinementRejected
+// flow: refused at 32
+// A handler's state is every value written into it, and an arm's argument is
+// every value its op is performed with: `put` writes what it is handed into
+// the state, `main` hands it an untrusted value, and `get` answers the state,
+// so the sink refuses at `get()`. On boot cb12aeea the claim was pending
+// debt.
+effect Trust {
+  untrusted(v: String) -> Bool
+}
+
+type Untrusted = String where untrusted(self)
+
+type Trusted = String where !untrusted(self)
+
+fn read_cmd() -> Untrusted = "rm -rf /"
+
+fn exec(cmd: Trusted) = len(cmd)
+
+effect Store {
+  put(s: String)
+  get() -> String
+}
+
+handler store with kept = "" {
+  put(s) => resume() with kept = s,
+  get() => resume(kept),
+}
+
+fn main() = {
+  put(read_cmd())
+  exec(get())
+} ~> store
