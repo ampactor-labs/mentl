@@ -1275,8 +1275,15 @@ fn infer_program_once(stmts, parse_start, parse_end) = {
   // (parse-independent). Pre-registration draws each handler's op edges
   // from these grades, so every op's discipline — and the MultiShot cost on
   // its row — is settled before any body is judged.
-  match classify_fixpoint(stmts) {
-    (summ, tails) => set_summaries(summ, tails),
+  // The grades the last judgment settled stand for every function this one
+  // does not judge, and the table it leaves is the program's (graph_summaries).
+  match graph_summaries() {
+    (prior, prior_tails) => match classify_fixpoint(stmts, prior, prior_tails) {
+      (summ, tails) => {
+        set_summaries(summ, tails)
+        graph_summaries_note(summ, tails)
+      },
+    },
   }
   pre_register_decls(stmts)
   // The completion prune's boundary: everything below this frontier is a
@@ -1452,6 +1459,97 @@ fn parse_one_module(mh) = {
   let stmts = lex(m.text) |> parse_program |> import_set ~> arena
   graph_register_node(mh, NModule({...m, decls: stmts}))
   stmts
+}
+
+// A run of a module's lines read again, its text starting at line `line`:
+// parsed inside the module's node, its tokens carrying the module's own
+// coordinates, so the statements it answers are the ones the whole text's
+// parse would have minted there. The module's node takes them when the edit
+// is committed.
+fn parse_lines(mh, run, line) = {
+  graph_module_enter(mh)
+  lex_lines(run, line) |> parse_program |> import_set ~> arena
+}
+
+// What a replaced or a judged handler serves, op by op: its name, the
+// discipline each arm adds to the op it answers under a table of settled
+// grades (an arm whose grade is the join's identity adds none), and the
+// effects its arms' ops are declared in.
+fn handler_served(table, h) = match handler_arms_of(h) {
+  [] => [],
+  arms => match decl_spelling(h) {
+    Some(name) => [(name, served_disciplines(arms, table), flat_map(arm_effect, arms))],
+    None => [],
+  },
+}
+
+fn served_disciplines(arms, table) = match table {
+  (entries, tails) => {
+    arms |> map(arm_discipline) |> filter(adds_discipline)
+  } ~> summaries_frozen(smap_build(entries), smap_build(tails)),
+}
+
+fn arm_discipline(arm) =
+  (handler_arm_op_name(arm), arm_disc_of(resume_grade(handler_arm_body(arm))))
+
+fn adds_discipline(served) = match served {
+  (_, OneShot) => false,
+  (_, MultiShot) | (_, Abandon) => true,
+}
+
+fn arm_effect(arm) = match graph_ref_decl(handler_arm_op(arm)) {
+  Some(d) => match enclosing_decl(d) {
+    Some(e) => [e],
+    None => [],
+  },
+  None => [],
+}
+
+fn handler_arms_of(h) = match graph_node_body(h) {
+  NStmt(s) => match s {
+    HandlerDeclStmt(_, _, _, _, arms, _) => arms,
+    FnStmt(_, _, _, _, _)
+    | TypeDefStmt(_, _)
+    | EffectDeclStmt(_, _, _)
+    | HandlerChainStmt(_, _)
+    | RefineStmt(_, _, _)
+    | AliasStmt(_, _)
+    | RowAliasStmt(_, _)
+    | LetStmt(_, _, _)
+    | ExprStmt(_)
+    | ImportStmt(_) => [],
+  },
+  NExpr(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => [],
+}
+
+// The effects whose ops' disciplines an edit moved: a handler's arms graded
+// differently after the judgment than before, or a handler gone or new whose
+// arms add a discipline. The join an op's entry carries only rises, so the
+// effect declaring the op is judged again, from its own declaration, with
+// every handler that serves it and every perform of it.
+fn served_moved(before, after) = {
+  let moved = flat_map(served_change(after, ??), before) ++ flat_map(served_new(before, ??), after)
+  filter(graph_node_current, moved)
+}
+
+fn served_change(after, b) = match b {
+  (name, discs, effects) => match find(served_named(name, ??), after) {
+    Some(a) => match a {
+      (_, now, now_effects) => if now == discs { [] } else { effects ++ now_effects },
+    },
+    None => if len(discs) == 0 { [] } else { effects },
+  },
+}
+
+fn served_new(before, a) = match a {
+  (name, discs, effects) => match find(served_named(name, ??), before) {
+    Some(_) => [],
+    None => if len(discs) == 0 { [] } else { effects },
+  },
+}
+
+fn served_named(name: String, s) = match s {
+  (n, _, _) => n == name,
 }
 
 // THE ONE JUDGE (Hβ.infer.order-independent-verdicts): every judgment
@@ -14785,7 +14883,13 @@ fn draw_op_edges(arms, hd) = if len(arms) == 0 {
 // the same handler again, or an already-ambiguous op, changes nothing.
 fn default_joined(cur, ambiguous, hd: Int) = match cur {
   None => if ambiguous { (cur, true) } else { (Some(hd), false) },
-  Some(d) => (cur, ambiguous || d != hd),
+  // A handler an edit replaced is no handler of the op: its next version
+  // takes its place rather than making the op ambiguous.
+  Some(d) => if graph_node_current(d) {
+    (cur, ambiguous || d != hd)
+  } else {
+    default_joined(None, ambiguous, hd)
+  },
 }
 
 // A MultiShot op's row carries the remainder record. The perform site
@@ -14967,26 +15071,46 @@ handler summaries_frozen(idx, tidx) {
 // Answers (summaries, tails): the per-fn resume grade at the fixpoint, and
 // the per-fn tail-transparent parameter indices (a parse fact, computed
 // once at collection, read by every round through the same frozen ctx).
-fn classify_fixpoint(stmts) = {
+// `prior` is what the last judgment settled: the grades of every function
+// these statements do not declare stand as written, since a statement the
+// judgment keeps calls nothing it judges again, and the answer is the whole
+// table. The cold judgment hands the empty table.
+fn classify_fixpoint(stmts, prior, prior_tails) = {
   // Flatten decls ONCE — collect_fn_decls builds a cons-list, so the classifier's
   // list_index(decls, i) would be O(N²) per round (§5.O: read a flat array O(1),
   // never re-walk a spine). Both decls and the entries are flat hereafter.
   let decls = list_to_flat(collect_fn_decls_list(stmts, []))
-  let tails = list_to_flat(map({ (n, _, t, _) => (n, t) }, decls))
-  let summaries =
-    classify_rounds(decls, smap_build(tails), list_to_flat(map({ (n, _, _, _) => (n, RNone) }, decls)))
-  (summaries, tails)
+  let judged = smap_build(map({ (n, _, _, _) => (n, 1) }, decls))
+  let kept = list_to_flat(filter(not_judged(judged, ??), prior))
+  let tails =
+    list_to_flat(filter(not_judged(judged, ??), prior_tails)) ++ list_to_flat(map({ (n, _, t, _) => (n, t) }, decls))
+  let summaries = classify_rounds(
+    decls,
+    smap_build(tails),
+    kept,
+    list_to_flat(map({ (n, _, _, _) => (n, RNone) }, decls))
+  )
+  (kept ++ summaries, tails)
 }
 
-fn classify_rounds(decls, tidx, entries) = {
+// A settled entry the judgment does not grade again: its name is declared by
+// none of the statements judged.
+fn not_judged(judged, entry) = match entry {
+  (n, _) => match smap_get(judged, n) {
+    Some(_) => false,
+    None => true,
+  },
+}
+
+fn classify_rounds(decls, tidx, kept, entries) = {
   // One round: every declaration graded under the frozen summaries, a `map`
   // under the install — a perform inside the mapped function walks the live
   // install chain like any other, so the round needs no hand recursion.
-  let idx = smap_build(entries)
+  let idx = smap_build(kept ++ entries)
   let next = list_to_flat({
     decls |> map(classify_grade)
   } ~> summaries_frozen(idx, tidx))
-  if usage_entries_eq(entries, next, 0) { next } else { classify_rounds(decls, tidx, next) }
+  if usage_entries_eq(entries, next, 0) { next } else { classify_rounds(decls, tidx, kept, next) }
 }
 
 // One declaration's grade. The walk over the declarations is a `map`: it

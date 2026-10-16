@@ -160,10 +160,11 @@ const READ_BAR_MS = 50;   // PLAN §11.2's felt bar, measured here rather than a
   console.log(`    the same read cold: ${(performance.now() - t0).toFixed(0)} ms, exit ${cold.exit} (a fresh instance re-deriving the program)`);
   console.log(`    what a read costs the session's image: ${reads.map((r) => (cost(r) / 1024).toFixed(0) + ' KB').join(', ')}`);
 
-  // ── Leg 5: an edit re-judges its cone in place, and the next read is a read
+  // ── Leg 5: an edit re-judges its cone in place, and the next read is a read.
+  // The edit rewrites the module's every statement, so its three are judged.
   const hole = 'type Positive = Int where 0 < self\n\nfn choose() -> Positive with Pure = ??\n\nfn main() = choose()\n';
   const r5 = await sess.call(['mentl', 'main.mn:3:37'], { 'main.mn': hole });
-  const ok5 = r5.exit === 0 && r5.resident && r5.out.includes('Query: ?? :') && /Propose: \S/.test(r5.out) && /re-judged main\.mn/.test(r5.err);
+  const ok5 = r5.exit === 0 && r5.resident && r5.out.includes('Query: ?? :') && /Propose: \S/.test(r5.out) && /re-judged 3 declaration\(s\) in 1 module\(s\)/.test(r5.err);
   console.log(`[5] an edit re-judges the cone in the same instance: ${ms(r5)} -> ${ok5 ? 'PASS' : 'FAIL'}`);
   console.log('    ' + r5.out.trim().split('\n').join('\n    '));
   if (!ok5) { bad++; console.log('    err: ' + r5.err.trim()); }

@@ -637,9 +637,9 @@ fn driver_incremental() = match link_entry() {
         if len(changed) == 0 {
           eprint_string("warm: inference restored — lowering and emit re-derive\n")
         } else {
-          let cone = downstream_closure(entries, changed)
-          eprint_string("warm: re-deriving {names_join(map(module_path_of, cone))}\n")
-          rederive_cone(cone, entries, module_of(em).file, prelude_key, verify_forget)
+          match edit_judged(entries, module_of(em).file, prelude_key, verify_forget) {
+            (n, m) => eprint_string("warm: re-judged {int_to_str(n)} declaration(s) in {int_to_str(m)} module(s)\n"),
+          }
           driver_warm_persist(entry_module)
         }
       },
@@ -661,17 +661,8 @@ fn manifest_hash_of(ref pairs, name: String) = match find({ (m, _) => m == name 
   None => 0,
 }
 
-// The downstream closure over the walked tree: a module joins the cone when
-// any module it imports is in it; iterate to the fixpoint, then the cone is
-// the walk's own ENTRIES in the walk's order, so the one judgment of the
-// cone reads its modules as the cold route reads the link, and each
-// module's path, name, text and imports ride with it.
-fn downstream_closure(ref entries, changed) = {
-  let dag = map({ e => (module_path_of(e), module_imports_of(e)) }, entries)
-  let cone = closure_fix(dag, changed)
-  filter({ e => module_in(cone, module_path_of(e)) }, entries)
-}
-
+// The downstream closure over the walked tree: a module joins when any module
+// it imports is in it, to the fixpoint.
 fn closure_fix(ref dag, cone) = {
   let grown = fold(
     cone,
@@ -691,26 +682,104 @@ fn closure_fix(ref dag, cone) = {
 
 fn module_in(ref xs, m: String) = any((x) => x == m, xs)
 
-fn names_join(ref xs) = fold("", (acc, m) => if byte_len(acc) == 0 { m } else { "{acc} {m}" }, xs)
+// A module's statements after an edit, in order: one the edit keeps, a run of
+// its lines to read again, or the statements such a run was read as.
+type Segment = KeptStmt(Int) | ReadLines(Int, Int) | ReadStmts([Int])
 
-// Re-judge the cone as ONE judgment — the cold route's own machine over a
-// subset of the link: the cone's modules are minted afresh from the text the
-// walk read, each import edge drawn to the fresh node where the import is in
-// the cone and to the current one where it is not, the link registered with
-// every module the walk found, and the fresh modules parsed and judged
-// together into the world that holds the rest (re-registration shadows their
-// stale entries). One judgment is the whole law: infer_program_once walks its
-// binding groups callee-first across every statement it holds, so a module
-// judged beside its importer needs no order and a cycle of modules no
-// grouping. `forget` is the route's generation clear, handed the cone's
-// current nodes before any of them is judged again: the warm compile's
-// clears the proof ledger, the session's its bank of reports as well.
-fn rederive_cone(ref cone, entries, entry_key: String, prelude_key, forget) = {
-  forget(flat_map(current_node, cone))
+// One module of the walk as an edit leaves it: its node, the text it holds,
+// its statements before the edit beside the line extents they stood at, its
+// statements after, and the import edges a module read whole draws again.
+type ModuleEdit = {
+  imports: Option([String]),
+  node: Int,
+  old: [Int],
+  segments: [Segment],
+  spans: [Span],
+  text: String,
+}
+
+fn edit_of(e) = match e {
+  ModuleEdit(r) => r,
+}
+
+fn edit_with(e, segments) = match e {
+  ModuleEdit(r) => ModuleEdit{imports: r.imports, node: r.node, old: r.old, segments, spans: r.spans, text: r.text},
+}
+
+fn edit_node(e) = edit_of(e).node
+
+// A program judged once, then edited, is judged again where the edit was
+// made. Every module the walk reads keeps each top-level statement whose text
+// and lines the edit left as they were — its nodes, and everything its
+// judgment wrote at them — and reads again, from their own lines, the
+// statements the edit rewrote or moved. A moved statement is read again
+// because its positions are copied into its reasons and its reports; a Reason
+// that is an edge to its node (PLAN §11.18) lets a moved statement keep its
+// judgment. Every statement whose judgment read a replaced one is read again
+// with it: one holding a reference or a comment mention into its subtree,
+// transitively; one declaring a name a rewritten statement now declares, with
+// every reader of it; and one the bank holds a report for, since a report can
+// name what moved. A module holding a report with no position is read whole
+// once anything in it is, since such a report could have come from any of its
+// statements; so is a module whose import lines moved, or that the walk reads
+// for the first time, with every module downstream of it, since what a name
+// resolves to follows the import edges. What stays was judged against exactly
+// the program it stands in now, and what was read again is judged as one
+// judgment, the cold route's own machine over those statements. Answers how
+// many statements the edit judged and in how many modules.
+fn edit_judged(entries, entry_key: String, prelude_key, forget) = {
+  let changed = changed_modules(link_text_pairs(), walked_text_pairs(entries))
+  let reread = closure_fix(entries_dag(entries), flat_map(imports_moved, entries))
+  let zeros = unplaced_report_modules()
   let start = graph_next()
-  let fresh = fold([], mint_entry, cone)
-  let keyed = flat_map(link_member(fresh, ??), entries)
-  each(draw_entry_imports(keyed, ??), cone)
+  let planned =
+    entries |> flat_map(module_edit(entries, changed, reread, zeros, ??)) |> map(read_runs)
+  let seeds =
+    flat_map(edit_gone, planned) ++ (planned |> flat_map(edit_read) |> flat_map(name_collisions)) ++ flat_map(reporting_stmts(planned, ??), diag_banked())
+  edit_round(planned, seeds, zeros, entry_key, prelude_key, forget, start, (0, 0))
+}
+
+// One round of the judgment: the cone the seeds start, its statements read
+// again, the program rewritten, and what was read judged. A replaced handler
+// whose arms now grade an op differently moves that op's discipline, which
+// every perform of it reads, so the effect declaring it starts a round of
+// its own.
+fn edit_round(planned, seeds, zeros, entry_key: String, prelude_key, forget, start, counted) = match cone_of(seeds, zeros) {
+  (gone, gone_set) => {
+    let edits = planned |> map(flip_gone(gone_set, ??)) |> map(read_runs)
+    let served_before = flat_map(handler_served(graph_summaries(), ??), gone)
+    commit_edits(edits, gone, entry_key, prelude_key, forget)
+    let fresh = flat_map(edit_read, edits)
+    if len(fresh) > 0 { infer_program_once(fresh, start, graph_next()) } else { () }
+    let tally = match counted {
+      (n, m) => (n + len(fresh), m + len(filter(edit_reads, edits))),
+    }
+    match served_moved(served_before, flat_map(handler_served(graph_summaries(), ??), fresh)) {
+      [] => tally,
+      effects => edit_round(
+        map(kept_now, edits),
+        effects,
+        zeros,
+        entry_key,
+        prelude_key,
+        forget,
+        graph_next(),
+        tally
+      ),
+    }
+  },
+}
+
+// The program rewritten to what the edit leaves: each module that moved holds
+// its new statements, text and import edges; the replaced statements stand
+// in no current program, their declarations leave the scope, and the reports
+// and obligations they made go; the link holds the modules the walk read.
+fn commit_edits(edits, gone, entry_key: String, prelude_key, forget) = {
+  let keyed = map({ e => (module_of(edit_node(e)).file, edit_node(e)) }, edits)
+  edits |> filter(edit_moves) |> each(rewrite_module(keyed, ??))
+  graph_supersede(gone)
+  gone |> each(retract_stmt)
+  forget(flat_map(edit_replaced, edits))
   match graph_link() {
     Some(link) => link_register(
       link,
@@ -720,33 +789,406 @@ fn rederive_cone(ref cone, entries, entry_key: String, prelude_key, forget) = {
     ),
     None => (),
   }
-  infer_modules_converged(map({ (_, mh) => mh }, fresh), start)
 }
 
-// A walked module's current node, where one was read from its file.
-fn current_node(entry) = match graph_module_now(module_path_of(entry)) {
-  Some(mh) => [mh],
-  None => [],
+fn rewrite_module(keyed, e) = {
+  let r = edit_of(e)
+  let m = module_of(r.node)
+  let imports = match r.imports {
+    Some(keys) => flat_map(keyed_nodes(keyed, ??), keys),
+    None => m.imports,
+  }
+  graph_register_node(
+    r.node,
+    NModule({
+      ...m,
+      decls: flat_map(segment_stmts, r.segments),
+      imports,
+      span: Span(1, 0, count_lines(r.text) + 2, 0),
+      text: r.text,
+    })
+  )
 }
 
-// A module of the link a cone leaves: the node the cone minted for it, else
-// the current node its file was read into.
-fn link_member(fresh, entry) = match keyed_node(fresh, module_path_of(entry)) {
-  Some(mh) => [(module_path_of(entry), mh)],
-  None => match graph_module_now(module_path_of(entry)) {
-    Some(mh) => [(module_path_of(entry), mh)],
-    None => [],
+fn retract_stmt(s) = stmt_names(s) |> each(env_retract(??, s))
+
+// The module path's walk edges, as the downstream closure reads them.
+fn entries_dag(entries) = map({ e => (module_path_of(e), module_imports_of(e)) }, entries)
+
+// A module read whole: one the walk reads for the first time, one whose
+// import lines moved or repeat an edge (the parse refuses a repeat, and only
+// a whole read sees both lines).
+fn imports_moved(entry) = match graph_module_now(module_path_of(entry)) {
+  None => [module_path_of(entry)],
+  Some(mh) => if import_files(mh) == module_imports_of(entry) && len(unique(module_imports_of(entry))) == len(module_imports_of(entry)) {
+    []
+  } else {
+    [module_path_of(entry)]
   },
 }
 
-// The session's cone: driver_incremental re-judges the changed cone inside a
-// RESTORED image, and the resident session holds that world live, so the
-// same cone re-judges into it directly. Discovery runs as the cold route runs
-// it — silenced, its reports the link's — the cone is every module whose text
-// moved plus everything downstream of it, and the answer is the cone's
-// paths. A module the program no longer links is handed to `forget` with the
-// cone's current nodes, so nothing the program left keeps a report or a
-// claim.
+fn import_files(mh) = map({ h => module_of(h).file }, module_of(mh).imports)
+
+// The modules a report with no position stands in.
+fn unplaced_report_modules() = diag_banked() |> flat_map(unplaced_report)
+
+fn unplaced_report(entry) = match entry {
+  (diag, _, dmod, _) => match diag_span(diag) {
+    Span(line, _, _, _) => if line == 0 { [dmod] } else { [] },
+  },
+}
+
+// What the edit does to one module of the walk. A module with no file is
+// reported where an import line naming it was just read; a module read for
+// the first time is minted and read whole.
+fn module_edit(entries, changed, reread, zeros, entry) = match module_source_of(entry) {
+  None => {
+    if any(imports_key(reread, module_path_of(entry), ??), entries) {
+      report(EMissingModule(module_name_of(entry), module_path_of(entry), span_zero()))
+    } else {
+      ()
+    }
+    []
+  },
+  Some(text) => match graph_module_now(module_path_of(entry)) {
+    None => [
+      whole_edit(
+        mint_module(module_name_of(entry), module_path_of(entry), text, module_layer_of(entry)),
+        [],
+        text,
+        Some(module_imports_of(entry))
+      )
+    ],
+    Some(mh) => [planned_edit(changed, reread, zeros, entry, mh, text)],
+  },
+}
+
+fn imports_key(reread, key: String, entry) =
+  module_in(reread, module_path_of(entry)) && module_in(module_imports_of(entry), key)
+
+fn planned_edit(changed, reread, zeros, entry, mh, text) = {
+  let m = module_of(mh)
+  let path = module_path_of(entry)
+  if module_in(reread, path) {
+    whole_edit(mh, m.decls, text, Some(module_imports_of(entry)))
+  } else if module_in(changed, path) && module_in(zeros, module_name_of_handle(mh)) {
+    whole_edit(mh, m.decls, text, None)
+  } else if module_in(changed, path) {
+    diff_edit(mh, m.decls, m.text, text)
+  } else {
+    kept_edit(mh, m.decls, text)
+  }
+}
+
+fn whole_edit(mh, old, text, imports) = ModuleEdit{
+  imports,
+  node: mh,
+  old,
+  segments: [ReadLines(1, count_lines(text) + 1)],
+  spans: stmt_extents(old),
+  text,
+}
+
+fn kept_edit(mh, old, text) =
+  ModuleEdit{imports: None, node: mh, old, segments: map(KeptStmt, old), spans: stmt_extents(old), text}
+
+// The module as an earlier round of the same edit left it.
+fn kept_now(e) = kept_edit(edit_node(e), module_of(edit_node(e)).decls, edit_of(e).text)
+
+// A module whose text moved keeps the statements before the first line the
+// edit changed and, when the edit left its line count alone, those after the
+// last; the lines between are read again.
+fn diff_edit(mh, old, old_text, text) = {
+  let spans = stmt_extents(old)
+  let p = common_prefix(old_text, text)
+  let first = line_of(old_text, p)
+  let through = line_of(old_text, max(p, byte_len(old_text) - common_suffix(old_text, text, p) - 1))
+  let same = count_lines(old_text) == count_lines(text)
+  ModuleEdit{
+    imports: None,
+    node: mh,
+    old,
+    segments: diff_segments(line_groups(old, spans), first, through, same, text),
+    spans,
+    text,
+  }
+}
+
+fn diff_segments(groups, first, through, same, text) = {
+  let before = filter(group_ends_before(first, ??), groups)
+  let after = if same { filter(group_starts_after(through, ??), groups) } else { [] }
+  let from = match before {
+    [] => 1,
+    _ => group_last_line(last(before)) + 1,
+  }
+  let upto = match after {
+    [] => count_lines(text) + 1,
+    [g, ..._] => group_first_line(g) - 1,
+  }
+  flat_map(group_kept, before) ++ [ReadLines(from, upto)] ++ flat_map(group_kept, after)
+}
+
+// Each statement's line extent: from the line after the statement before it
+// ends — or its own first line, where it starts on that line — through its
+// own last line, so the comments above a statement are its own.
+fn stmt_extents(old) = match fold((0, []), extent_step, old) {
+  (_, spans) => spans,
+}
+
+fn extent_step(acc, s) = match acc {
+  (prev_end, spans) => match graph_span_of(s) {
+    Span(sl, _, el, _) => (el, push(spans, Span(min(prev_end + 1, sl), 0, el, 0))),
+  },
+}
+
+// The statements in groups that share no line: one that starts on the line
+// the statement before it ends joins its group, so a run of lines read again
+// never cuts a statement in two.
+fn line_groups(old, spans) = fold([], join_group, zip(old, spans))
+
+fn join_group(groups, pair) = match pair {
+  (s, sp) => match groups {
+    [] => [([s], sp)],
+    _ => match last(groups) {
+      (members, gsp) => if span_first_line(sp) <= span_last_line(gsp) {
+        push(drop_last(groups), (push(members, s), Span(span_first_line(gsp), 0, span_last_line(sp), 0)))
+      } else {
+        push(groups, ([s], sp))
+      },
+    },
+  },
+}
+
+fn span_first_line(sp) = match sp {
+  Span(a, _, _, _) => a,
+}
+
+fn span_last_line(sp) = match sp {
+  Span(_, _, b, _) => b,
+}
+
+fn group_first_line(g) = match g {
+  (_, sp) => span_first_line(sp),
+}
+
+fn group_last_line(g) = match g {
+  (_, sp) => span_last_line(sp),
+}
+
+fn group_ends_before(line, g) = group_last_line(g) < line
+
+fn group_starts_after(line, g) = group_first_line(g) > line
+
+fn group_kept(g) = match g {
+  (members, _) => map(KeptStmt, members),
+}
+
+// The bytes two texts share from their start.
+fn common_prefix(a, b) = match fold((0, false), prefix_step(a, b, ??, ??), range(0, min(byte_len(a), byte_len(b)))) {
+  (p, _) => p,
+}
+
+fn prefix_step(a, b, acc, i) = match acc {
+  (p, true) => (p, true),
+  (p, false) => if byte_at(a, i) == byte_at(b, i) { (p + 1, false) } else { (p, true) },
+}
+
+// The bytes two texts share at their end, short of the `p` they share at
+// their start.
+fn common_suffix(a, b, p) = match fold((0, false), suffix_step(a, b, ??, ??), range(0, min(byte_len(a), byte_len(b)) - p)) {
+  (s, _) => s,
+}
+
+fn suffix_step(a, b, acc, k) = match acc {
+  (s, true) => (s, true),
+  (s, false) => if byte_at(a, byte_len(a) - 1 - k) == byte_at(b, byte_len(b) - 1 - k) {
+    (s + 1, false)
+  } else {
+    (s, true)
+  },
+}
+
+// The line the byte at `q` stands on.
+fn line_of(text, q) = 1 + count_lines(str_slice(text, 0, max(0, q)))
+
+// The statements one module's runs of lines are read as, each run found
+// through the text's line starts, read once for the module.
+fn read_runs(e) = {
+  let r = edit_of(e)
+  if any(is_run, r.segments) {
+    let starts = line_starts(r.text)
+    edit_with(e, map(read_segment(r, starts, ??), r.segments))
+  } else {
+    e
+  }
+}
+
+fn is_run(seg) = match seg {
+  ReadLines(_, _) => true,
+  KeptStmt(_) | ReadStmts(_) => false,
+}
+
+fn read_segment(r, starts, seg) = match seg {
+  ReadLines(a, b) => ReadStmts(parse_lines(
+    r.node,
+    str_slice(r.text, nth(starts, a - 1, byte_len(r.text)), nth(starts, b, byte_len(r.text))),
+    a
+  )),
+  KeptStmt(s) => KeptStmt(s),
+  ReadStmts(f) => ReadStmts(f),
+}
+
+fn segment_stmts(seg) = match seg {
+  KeptStmt(s) => [s],
+  ReadStmts(f) => f,
+  ReadLines(_, _) => [],
+}
+
+fn kept_stmt(seg) = match seg {
+  KeptStmt(s) => [s],
+  ReadStmts(_) | ReadLines(_, _) => [],
+}
+
+fn read_stmt(seg) = match seg {
+  ReadStmts(f) => f,
+  KeptStmt(_) | ReadLines(_, _) => [],
+}
+
+// The statements one module's edit read again, and those it replaced.
+fn edit_read(e) = flat_map(read_stmt, edit_of(e).segments)
+
+fn edit_reads(e) = len(edit_read(e)) > 0
+
+fn edit_gone(e) = {
+  let kept = edit_of(e).segments |> flat_map(kept_stmt) |> fold(wmap_new(64), mark_handle)
+  filter(unmarked(kept, ??), edit_of(e).old)
+}
+
+fn edit_moves(e) = edit_reads(e) || len(edit_gone(e)) > 0 || match edit_of(e).imports {
+  Some(_) => true,
+  None => false,
+}
+
+fn mark_handle(set, h: Int) = wmap_add(set, h, 1)
+
+fn unmarked(set, h: Int) = match wmap_get(set, h) {
+  Some(_) => false,
+  None => true,
+}
+
+// What a module's edit replaced, as the generation boundary's clear reads it:
+// the module whole when it kept none of its statements, else the extents of
+// the statements it replaced.
+fn edit_replaced(e) = match edit_gone(e) {
+  [] => [],
+  gone => if any({ seg => len(kept_stmt(seg)) > 0 }, edit_of(e).segments) {
+    [ReplacedExtents(edit_node(e), module_name_of_handle(edit_node(e)), gone_extents(edit_of(e), gone))]
+  } else {
+    [ReplacedModule(edit_node(e), module_name_of_handle(edit_node(e)))]
+  },
+}
+
+fn gone_extents(r, gone) = {
+  let set = fold(wmap_new(64), mark_handle, gone)
+  zip(r.old, r.spans) |> filter({ (s, _) => !unmarked(set, s) }) |> map({ (_, sp) => sp })
+}
+
+fn module_replaced(mh) = ReplacedModule(mh, module_name_of_handle(mh))
+
+// A module's kept statements in a group the cone reached become one run of
+// lines read again.
+fn flip_gone(gone_set, e) = {
+  let r = edit_of(e)
+  let flipped = filter(group_reached(gone_set, ??), line_groups(r.old, r.spans))
+  edit_with(e, flat_map(flip_segment(flipped, ??), r.segments))
+}
+
+fn group_reached(gone_set, g) = match g {
+  (members, _) => any({ s => !unmarked(gone_set, s) }, members),
+}
+
+fn flip_segment(flipped, seg) = match seg {
+  KeptStmt(s) => match find(group_holds(s, ??), flipped) {
+    Some(g) => match g {
+      (members, sp) => if head(members) == s { [ReadLines(span_first_line(sp), span_last_line(sp))] } else { [] },
+    },
+    None => [KeptStmt(s)],
+  },
+  ReadLines(a, b) => [ReadLines(a, b)],
+  ReadStmts(f) => [ReadStmts(f)],
+}
+
+fn group_holds(s: Int, g) = match g {
+  (members, _) => any({ m => m == s }, members),
+}
+
+// The statements the edit judges, wave by wave: the seeds, and every
+// statement whose judgment read one of them — a reference or a comment
+// mention into its subtree. A module holding a report with no position joins
+// whole. Answers the statements and the set of them.
+fn cone_of(seeds, zeros) = cone_wave(wmap_new(256), seeds, zeros, [])
+
+fn cone_wave(seen, frontier, zeros, acc) = match frontier |> flat_map(whole_if_unplaced(zeros, ??)) |> fold(([], seen), admit) {
+  (admitted, seen2) => if len(admitted) == 0 {
+    (acc, seen2)
+  } else {
+    cone_wave(seen2, flat_map(stmt_dependents, admitted), zeros, acc ++ admitted)
+  },
+}
+
+fn admit(acc, s: Int) = match acc {
+  (admitted, seen) => if unmarked(seen, s) { (push(admitted, s), mark_handle(seen, s)) } else { acc },
+}
+
+fn whole_if_unplaced(zeros, s) = match graph_parent_of(s) {
+  Some(mh) => if module_in(zeros, module_name_of_handle(mh)) { module_of(mh).decls } else { [s] },
+  None => [s],
+}
+
+// The statements whose judgment read a statement: each one holding a
+// reference whose edge reaches a node under it, or a comment that mentions
+// one.
+fn stmt_dependents(s) = nodes_under(s) |> flat_map(in_edge_owners) |> flat_map(owner_stmt)
+
+fn in_edge_owners(n) = graph_refs_of(n) ++ graph_comment_refs_of(n)
+
+fn owner_stmt(o) = match enclosing_decl(o) {
+  Some(t) => [t],
+  None => [],
+}
+
+// A statement a rewritten one collides with: the current holder of a name the
+// rewritten one declares, which every reader of the name resolved to.
+fn name_collisions(s) = stmt_names(s) |> flat_map(name_holders)
+
+fn name_holders(name) = holder_of(env_resolve(name)) ++ holder_of(env_resolve_type(name))
+
+fn holder_of(found) = match found {
+  Some(d) => owner_stmt(d),
+  None => [],
+}
+
+// The statement a banked report stands in, read where the report placed it.
+fn reporting_stmts(edits, entry) = match entry {
+  (diag, _, dmod, _) => match diag_span(diag) {
+    Span(line, _, _, _) => if line == 0 {
+      []
+    } else {
+      edits |> filter({ e => module_name_of_handle(edit_node(e)) == dmod }) |> flat_map(stmts_at_line(line, ??))
+    },
+  },
+}
+
+fn stmts_at_line(line, e) =
+  zip(edit_of(e).old, edit_of(e).spans) |> filter({ (_, sp) => span_first_line(sp) <= line && line <= span_last_line(sp) }) |> map({ (s, _) => s })
+
+// The session's cone: driver_incremental judges an edit inside a RESTORED
+// image, and the resident session holds that world live, so the edit is
+// judged into it directly. Discovery runs as the cold route runs it —
+// silenced, its reports the link's — and a module the program no longer links
+// is handed to `forget` whole, so nothing the program left keeps a report or
+// a claim. Answers how many statements the edit judged, and in how many
+// modules.
 fn driver_session_cone(ref entry_module, forget) = {
   diag_scope(ScopeNone)
   let resolved = driver_resolve(entry_module, module_roots())
@@ -757,12 +1199,10 @@ fn driver_session_cone(ref entry_module, forget) = {
   match driver_collect_dag_resolved(entry_module, resolved) {
     (entries, prelude_key) => {
       let before = link_modules()
-      let cone =
-        downstream_closure(entries, changed_modules(link_text_pairs(), walked_text_pairs(entries)))
       diag_scope(link_scope(Project, resolved_layer(resolved)))
-      rederive_cone(cone, entries, resolved_key(entry_module, resolved), prelude_key, forget)
-      forget(left_the_link(before))
-      map(module_path_of, cone)
+      let judged = edit_judged(entries, resolved_key(entry_module, resolved), prelude_key, forget)
+      forget(map(module_replaced, left_the_link(before)))
+      judged
     },
   }
 }

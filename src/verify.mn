@@ -24,16 +24,15 @@ handler verify_ledger with debt = [], decided = [] {
   },
   verify_debt() => resume(debt),
   verify_decided() => resume(decided),
-  verify_forget(superseded) => resume() with debt = filter(debt_outside(superseded), debt), decided = filter(debt_outside(superseded), decided),
+  verify_forget(gone) => resume() with debt = filter(debt_outside(gone, ??), debt), decided = filter(debt_outside(gone, ??), decided),
 }
 
-// An obligation survives a forget unless it was raised in one of the module
-// nodes the caller is about to supersede by re-judging. `superseded: [Int]` is
-// the Intent Boundary carrying the eq proof the handle compare needs. A
-// decided claim is the same four-place fact with its verdict where the debt
-// carries its Why, so one test serves both.
-fn debt_outside(superseded: [Int], entry) = match entry {
-  (modh, _, _, _) => !any((h) => h == modh, superseded),
+// An obligation survives a forget unless an edit replaced what raised it:
+// its module whole, or the statement whose extent holds it. A decided claim
+// is the same four-place fact with its verdict where the debt carries its
+// Why, so one test serves both.
+fn debt_outside(gone, entry) = match entry {
+  (modh, span, _, _) => !any(obligation_replaced(modh, span, ??), gone),
 }
 
 // Compile-time decidable discharge. Returns Some(true) when the predicate

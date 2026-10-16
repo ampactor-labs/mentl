@@ -128,7 +128,10 @@ import verify
 // program; within-run incrementality IS the epoch cursor (§2 cached-cursor
 // mode), and cross-run skip is the image-persist peer
 // (Hβ.persist.module-image-cache).
-handler infer_context = affine_ledger ~> region_tracker ~> verify_ledger ~> lookup_ty_graph ~> env_handler(make_list(0), 0, env_index_new()) ~> no_state_walked ~> graph_handler([], 0, []) ~> mutate_sink ~> diagnostics_handler ~> intern_table
+// The bank keeps every report the judgment makes as the fact it carried, so
+// any reader inside the judgment's world (the reports facet, the Lens,
+// tighten, a battery's refuse contract) reads what the judgment said.
+handler infer_context = affine_ledger ~> region_tracker ~> verify_ledger ~> lookup_ty_graph ~> env_handler(make_list(0), 0, env_index_new()) ~> no_state_walked ~> graph_handler([], 0, []) ~> mutate_sink ~> diag_bank ~> diagnostics_handler ~> intern_table
 
 // The LOWERING/EMIT stack's one home — infer_context's peer on the far side
 // of the cursor. Every route that lowers installs exactly this: string_table
@@ -644,17 +647,7 @@ fn own_sites(answer, m) = noted_answer(sites_in(m, answer))
 // collector keeps a copy. Every report re-performs outward from the arm,
 // which is sound because an arm's own performs resolve in the INSTALL's
 // world (the deep-handler law): they reach the bracket's
-// diagnostics_handler and never re-enter this bank. diag_forget is the
-// generation boundary's clear for the modules a session is about to
-// re-judge, so a stale generation's reports never shadow the current truth
-// while a module outside the cone keeps its own.
-effect DiagBank {
-  // every report since the last forget, as the report carried it: the kind,
-  // its message, its module and the module's layer
-  diag_banked() -> [(DiagKind, String, String, Layer)]
-  diag_forget([String])
-}
-
+// diagnostics_handler and never re-enter this bank.
 handler diag_bank with banked = [] {
   diag_report(diag, msg, dmod, dlayer) => {
     diag_report(diag, msg, dmod, dlayer)
@@ -664,13 +657,13 @@ handler diag_bank with banked = [] {
   diag_refusals() => resume(diag_refusals()),
   diag_narrations() => resume(diag_narrations()),
   diag_banked() => resume(banked),
-  diag_forget(modules) => resume() with banked = filter(diag_outside(modules), banked),
+  diag_forget(gone) => resume() with banked = filter(diag_outside(gone, ??), banked),
 }
 
-// A banked report survives a forget unless its module is about to be
-// re-judged.
-fn diag_outside(modules: [String], entry) = match entry {
-  (_, _, dmod, _) => !any((m) => m == dmod, modules),
+// A banked report survives a forget unless an edit replaced what made it:
+// its module whole, or the statement whose extent holds it.
+fn diag_outside(gone, entry) = match entry {
+  (diag, _, dmod, _) => !any(report_replaced(dmod, diag_span(diag), ??), gone),
 }
 
 // The tightenings the judgment banked, read off the bank: T_OverDeclared
@@ -707,6 +700,11 @@ fn banked_line(entry) = match entry {
   (diag, msg, dmod, _) => diag_line(diag, msg, dmod),
 }
 
+// A banked report under the reports facet's header, as the check prints it.
+fn report_line(entry) = match entry {
+  (diag, msg, dmod, _) => "\n{diag_text(diag, msg, dmod)}",
+}
+
 // The banked reports' CLASSES, in report order — what a refuse contract
 // compares, never a substring of rendered prose.
 fn banked_classes() = map(banked_class, diag_banked())
@@ -739,11 +737,10 @@ fn analyze_fns(entry_module, projection) = {
   }
   projection(link_entry_decls()) |> print_string
 } ~>
-// The weave's own fs_read — handled in-chain, as compile/check do.
-// diag_bank banks the judgment's reports so the audit projection can speak
-// the tightenings per decl — the bank sits INSIDE the infer_context body
-// chain, where the judgment's performs reach it.
-wasi_filesystem ~> mentl_default ~> arm_state_ctx([], OneShot, None) ~> spec_registry ~> diag_bank ~> infer_context
+// The weave's own fs_read — handled in-chain, as compile/check do; the
+// judgment's bank, which the audit projection reads for the tightenings per
+// decl, is infer_context's own.
+wasi_filesystem ~> mentl_default ~> arm_state_ctx([], OneShot, None) ~> spec_registry ~> infer_context
 
 // The pure projection pair — audit and teach as `ast -> String`, the ONE
 // home the CLI verb and the resident session's tool both call (the
@@ -826,16 +823,10 @@ handler diagnostics_handler with errors = 0, refusals = 0, narrations = 0, scope
     // duplicate copy, which the weave parse reports again where it can be
     // placed, so it is neither printed nor counted; a narration the project
     // register scoped away still counts, because the board reads the link.
+    if scope_hears(scope, diag, dlayer) { eprint_string(diag_line(diag, msg, dmod)) } else { () }
     match scope {
-      ScopeAll => {
-        eprint_string(diag_line(diag, msg, dmod))
-        resume() with narrations = narrations + 1
-      },
       ScopeNone => resume(),
-      ScopeProject(layer) => {
-        if dlayer == layer { eprint_string(diag_line(diag, msg, dmod)) } else { () }
-        resume() with narrations = narrations + 1
-      },
+      ScopeAll | ScopeProject(_) => resume() with narrations = narrations + 1,
     }
   },
   diag_errors() => resume(errors),
@@ -1421,6 +1412,9 @@ fn render_query_result(result) = match result {
   // own lesson): each obligation located with its predicate, so the
   // discharge work has an instrument instead of a count.
   QRVerifyDebt(obligations) => "→ {int_to_str(len(obligations))} verification obligations pending{render_debt_lines(obligations)}",
+  // Each report as the check prints it, so a session's answer and a cold
+  // check of the same tree can be compared line for line.
+  QRReports(entries) => "→ {int_to_str(len(entries))} report(s){entries |> map(report_line) |> str_concat_all}",
   // The same obligations in the solver's language, each assertion located
   // so a discharged one can be walked back to the claim that raised it.
   // `predicate_to_smt_lib` is verify.mn's own serializer — this render is
@@ -1507,6 +1501,7 @@ type QueryVerb
   | QVProvider
   | QVUnresolved
   | QVVerification
+  | QVReports
   | QVFlow
   | QVCensus
   | QVWhere
@@ -1545,6 +1540,8 @@ fn classify_query_verb(w: String) with Pure = if w == "type" {
   QVUnresolved
 } else if w == "verification" {
   QVVerification
+} else if w == "reports" {
+  QVReports
 } else if w == "flow" {
   QVFlow
 } else if w == "census" {
@@ -1627,6 +1624,7 @@ fn parse_query_string(scope: String, q) = {
 fn build_question(verb, arg, raw, scope: String) = match verb {
   QVUnresolved => QUnresolved,
   QVVerification => QVerifyDebt,
+  QVReports => QReports,
   QVType => QTypeOf(arg),
   QVEffects => QEffects(arg),
   QVOwnership => QOwnership(arg),

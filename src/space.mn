@@ -1582,11 +1582,13 @@ fn span_index_of_snapshot() = match graph_snapshot() {
 // The module NODE itself is excluded. Its span is the whole file, so it
 // covers every line and would win the covering case at any line no decl
 // reaches, answering with the module's own placeholder Why; the whole-file
-// reading has its own spelling, the field at line 0.
+// reading has its own spelling, the field at line 0. So is every node of a
+// statement an edit replaced: its extent is a span of the text before the
+// edit.
 fn spans_of_module(spans, mh) = list_to_flat(filter(span_in_module(mh), spans))
 
 fn span_in_module(mh, e) = match e {
-  (_s, h) => h != mh && graph_module_of(h) == mh,
+  (_s, h) => h != mh && graph_module_of(h) == mh && graph_node_current(h),
 }
 
 // The three-case line rule (the panel's corrected form, deterministic):

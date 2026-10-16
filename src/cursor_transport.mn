@@ -355,8 +355,8 @@ fn splice_decl_head(ref source, decl_sp, body_sp, ref head: String, stated: [Str
   match decl_sp {
     Span(dl, dc, _, _) => match body_sp {
       Span(bl, bc, _, _) => {
-        let start = find_line_start(source, dl, 1, 0, n) + (dc - 1)
-        let body_at = find_line_start(source, bl, 1, 0, n) + (bc - 1)
+        let start = line_start(source, dl) + (dc - 1)
+        let body_at = line_start(source, bl) + (bc - 1)
         let head_end = fold(
           body_at,
           (e, i) => if is_space_byte(byte_at(source, i)) && i + 1 == e { i } else { e },
@@ -535,23 +535,10 @@ handler patch_written {
 
 // Replace the byte range a source span covers. Lines and columns are
 // 1-based (the lexer's token spans); the end column is exclusive.
-fn splice_span(ref source, ref span, ref text: String) = {
-  let n = byte_len(source)
-  match span {
-    Span(sl, sc, el, ec) => {
-      let start = find_line_start(source, sl, 1, 0, n) + (sc - 1)
-      let end = find_line_start(source, el, 1, 0, n) + (ec - 1)
-      "{str_slice(source, 0, start)}{text}{str_slice(source, end, n)}"
-    },
-  }
-}
-
-fn find_line_start(ref source, target, current, idx, n) = if current >= target {
-  idx
-} else if idx >= n {
-  n
-} else if byte_at(source, idx) == 10 {
-  find_line_start(source, target, current + 1, idx + 1, n)
-} else {
-  find_line_start(source, target, current, idx + 1, n)
+fn splice_span(ref source, ref span, ref text: String) = match span {
+  Span(sl, sc, el, ec) => {
+    let start = line_start(source, sl) + (sc - 1)
+    let end = line_start(source, el) + (ec - 1)
+    "{str_slice(source, 0, start)}{text}{str_slice(source, end, byte_len(source))}"
+  },
 }

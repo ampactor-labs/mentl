@@ -384,7 +384,7 @@ fn push_node(buf, count, node) = {
 // replacing match mints after the dead let at the same span and wins.
 // Runs attach in REVERSE source order so the weave's prepend-merge reads
 // source-ordered.
-fn attach_comment_weave(ref tokens, h_from) = {
+fn attach_comment_weave(ref tokens, h_from, k_from) = {
   // Flatten ONCE before the per-node bsearches (the iterate-flattens-once
   // law): the push-built runs list is snoc-spined, so every bsearch probe's
   // runs[mid] walked the spine — O(R) per probe, O(nodes × R log R) per
@@ -396,8 +396,11 @@ fn attach_comment_weave(ref tokens, h_from) = {
     ()
   } else {
     match graph_snapshot() {
+      // The parse's own entries are the span index past where it stood when
+      // the parse began: the walk reads those and no earlier node, so a parse
+      // costs what it read, not every node the graph holds.
       Graph(_, span_index) => {
-        let flat_idx = list_to_flat(span_index)
+        let flat_idx = list_to_flat(slice(span_index, k_from, len(span_index)))
         let leads = cw_seed_slots(len(runs), make_list(len(runs)), 0)
         let trails = cw_seed_slots(len(runs), make_list(len(runs)), 0)
         cw_scan_index(flat_idx, 0, h_from, runs, leads, trails)
@@ -598,10 +601,13 @@ fn cw_attach_all(ref runs: [CwRun], ref leads, ref trails, k, next_target) = if 
 
 fn parse_program(ref tokens) = {
   let h0 = graph_next()
+  let k0 = match graph_snapshot() {
+    Graph(_, span_index) => len(span_index),
+  }
   let buf = make_list(16)
   match parse_stmt_list(tokens, 0, buf, 0) {
     (final_buf, final_count, _) => {
-      attach_comment_weave(tokens, h0)
+      attach_comment_weave(tokens, h0, k0)
       slice(final_buf, 0, final_count)
     },
   }

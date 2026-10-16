@@ -218,14 +218,19 @@ else if b == 64 {
 // `Int` byte code at a position. No intermediate `[String]` of
 // 1-char strings is allocated; all per-byte dispatch is `Int`-eq, not
 // string-eq (drift mode 12 cure).
-fn lex(ref source) = {
+fn lex(ref source) = lex_lines(source, 1)
+
+// The tokens of a run of a module's lines whose first is line `line`: a span
+// is a line and a column, so the run's tokens carry the module's own
+// coordinates, and a session re-reading one statement's lines mints exactly
+// the nodes the whole text's parse would have minted there.
+fn lex_lines(source, line) = {
   // ValidOffset by the len leg: byte_len is >= 0 by the sequence
   // representation, so the annotation's own obligation discharges at
   // this construction and the lex_from arg edge reads the proof.
   let n: ValidOffset = byte_len(source)
-  let initial_capacity = if n < 16 { 16 } else { n }
-  let buf = make_list(initial_capacity)
-  match lex_from(source, n, 0, 1, 1, buf, 0, 0, 0) {
+  let buf = make_list(if n < 16 { 16 } else { n })
+  match lex_from(source, n, 0, line, 1, buf, 0, 0, 0) {
     (_final_pos, _final_line, _final_col, final_buf, final_count) => slice(final_buf, 0, final_count),
   }
 }

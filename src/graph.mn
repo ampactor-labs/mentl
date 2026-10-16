@@ -190,17 +190,25 @@ fn spine_module_at(spine, spine_open, handle) = {
   cell - 1
 }
 
-// Whether the node at `handle` belongs to its module's CURRENT generation:
-// the module node it was born in has not been superseded by a later parse of
-// the same path (graph_register_node's one write), so the answer is the
-// module column's word and one probe of the superseded set.
+// Whether the node at `handle` belongs to the program as it stands: the
+// module node it was born in has not been superseded by a later parse of the
+// same path (graph_register_node's one write), and no node on its parent
+// walk — the top-level statement it stands in, above all — was replaced by
+// an edit (graph_supersede). The module column's word answers for a cell the
+// judgment minted, which no parent holds.
 fn spine_current(spine, spine_open, superseded, handle) =
-  module_unsuperseded(superseded, spine_module_at(spine, spine_open, handle))
+  unsuperseded(superseded, spine_module_at(spine, spine_open, handle)) && ancestry_unsuperseded(spine, spine_open, superseded, handle)
 
-// Whether a MODULE node is its path's latest parse. A module node's own
-// module column names the module that was open when it was minted, never
-// itself, so the question is asked of the handle directly.
-fn module_unsuperseded(superseded, module) = match wmap_get(superseded, module) {
+fn ancestry_unsuperseded(spine, spine_open, superseded, h) = unsuperseded(superseded, h) && match spine_parent_at(spine, spine_open, h) {
+  None => true,
+  Some(p) => ancestry_unsuperseded(spine, spine_open, superseded, p),
+}
+
+// Whether a node was neither superseded as its path's module nor replaced
+// as a statement. A module node's own module column names the module that
+// was open when it was minted, never itself, so the question is asked of
+// the handle directly.
+fn unsuperseded(superseded, h) = match wmap_get(superseded, h) {
   Some(_) => false,
   None => true,
 }
@@ -247,22 +255,45 @@ fn spine_link_at(spine, spine_open, h) = {
   if cell == 0 { None } else { Some(cell - 1) }
 }
 
-// The three kinds of a declaration's in-edges, each read off the one store.
-// A use still names its reference when the reference's cell links to the
-// declaration it stands under: a reference re-resolved to another
-// declaration leaves its old entry behind, and the read drops it.
-fn use_still_linked(spine, spine_open, decl, e) = match e {
-  UseBy(r) => if spine_link_cell(spine, spine_open, r) == decl + 1 { [r] } else { [] },
+// The three kinds of a declaration's in-edges, each read off the one store,
+// each answered only from a node the program still holds. A use still names
+// its reference when the reference's cell links to the declaration it stands
+// under: a reference re-resolved to another declaration leaves its old entry
+// behind, and the read drops it, as it drops one an edit replaced.
+fn use_still_linked(spine, spine_open, superseded, decl, e) = match e {
+  UseBy(r) => if spine_link_cell(spine, spine_open, r) == decl + 1 && spine_current(spine, spine_open, superseded, r) {
+    [r]
+  } else {
+    []
+  },
   MentionBy(_) | AppliedAt(_) => [],
 }
 
-fn mention_owner(e) = match e {
-  MentionBy(owner) => [owner],
+// Each handle once, in the order first seen: one probe per handle into a set
+// the walk builds, where comparing every pair made a declaration read by two
+// thousand references cost four million comparisons.
+fn distinct_handles(hs) = if len(hs) < 2 {
+  hs
+} else {
+  match fold(([], wmap_new(len(hs))), distinct_step, hs) {
+    (kept, _) => kept,
+  }
+}
+
+fn distinct_step(acc, h: Int) = match acc {
+  (kept, seen) => match wmap_get(seen, h) {
+    Some(_) => acc,
+    None => (push(kept, h), wmap_add(seen, h, 1)),
+  },
+}
+
+fn mention_owner(spine, spine_open, superseded, e) = match e {
+  MentionBy(owner) => if spine_current(spine, spine_open, superseded, owner) { [owner] } else { [] },
   UseBy(_) | AppliedAt(_) => [],
 }
 
-fn application_at(e) = match e {
-  AppliedAt(call) => [call],
+fn application_at(spine, spine_open, superseded, e) = match e {
+  AppliedAt(call) => if spine_current(spine, spine_open, superseded, call) { [call] } else { [] },
   UseBy(_) | MentionBy(_) => [],
 }
 
@@ -466,7 +497,7 @@ fn occurs_in_live(handle, ref ty) with !Mutate = match graph_branch_seed() {
 // costs one 4KB word-list per process and no write tests for it — and a
 // table minted lazily inside a speculation would be copied out of the
 // speculation's arena at its exit, a cost the eager one never pays.
-handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spine_open = spine_open0, trail = [], trail_len = 0, epoch = 0, next = 0, span_index = span_index0, checkpoint_stack = [], in_edges = wmap_new(4096), published = wmap_new(4096), decls_col = [], emitfns_col = [], emitfns_idx = [], emitfns_idx_covers = 0, sigs_col = [], holes_pend = [], holes_col = [], cur_module = 0, guard_diags = [], gates = wmap_new(1024), instances = wmap_new(1024), demands = wmap_new(1024), accepted = [], rows = wmap_new(1024), binders = wmap_new(1024), births = wmap_new(1024), late = wmap_new(1024), claims = wmap_new(1024), store_claims = wmap_new(1024), modules_now = smap_new(), superseded = wmap_new(64), link_now = None {
+handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spine_open = spine_open0, trail = [], trail_len = 0, epoch = 0, next = 0, span_index = span_index0, checkpoint_stack = [], in_edges = wmap_new(4096), published = wmap_new(4096), decls_col = [], emitfns_col = [], emitfns_idx = [], emitfns_idx_covers = 0, sigs_col = [], holes_pend = [], holes_col = [], cur_module = 0, guard_diags = [], gates = wmap_new(1024), instances = wmap_new(1024), demands = wmap_new(1024), accepted = [], rows = wmap_new(1024), binders = wmap_new(1024), births = wmap_new(1024), late = wmap_new(1024), claims = wmap_new(1024), store_claims = wmap_new(1024), modules_now = smap_new(), superseded = wmap_new(64), link_now = None, summaries = ([], []) {
   graph_chase(handle) => // checkpoint_stack is the speculation depth: each
   // graph_push_checkpoint pushes the current trail_len and each
   // graph_rollback pops it. A write with the stack empty is at the outermost
@@ -626,7 +657,7 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
     let j = journaling(checkpoint_stack)
     resume() with trail = trail_after(trail, trail_len, j, MInEdge(referent)), trail_len = trail_len_after(trail_len, j)
   },
-  graph_comment_refs_of(referent) => resume(unique(flat_map(mention_owner, wmap_get_all(in_edges, referent)))),
+  graph_comment_refs_of(referent) => resume(distinct_handles(flat_map(mention_owner(spine, spine_open, superseded, ??), wmap_get_all(in_edges, referent)))),
   graph_canon_set(from, to) => // The e-graph equivalence weave — union-find as a fabric EDGE, a column of
   // the handle's own page beside the program/comments/nodes columns (the TVar
   // union-find precedent). `graph_canon_set(from, to)` draws the equivalence edge `from ≡
@@ -936,13 +967,13 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
   // a reader handed a re-judged module's older references counts a program
   // that no longer exists (the generation oracle, 2026-10-02). A reference
   // re-linked elsewhere leaves its entry here, and its own cell says so.
-  resume(unique(flat_map(use_still_linked(spine, spine_open, decl, ??), wmap_get_all(in_edges, decl)))),
+  resume(distinct_handles(flat_map(use_still_linked(spine, spine_open, superseded, decl, ??), wmap_get_all(in_edges, decl)))),
   graph_apply_note(decl, call) => {
     wmap_add(in_edges, decl, AppliedAt(call))
     let j = journaling(checkpoint_stack)
     resume() with trail = trail_after(trail, trail_len, j, MInEdge(decl)), trail_len = trail_len_after(trail_len, j)
   },
-  graph_applies_of(decl) => resume(unique(flat_map(application_at, wmap_get_all(in_edges, decl)))),
+  graph_applies_of(decl) => resume(distinct_handles(flat_map(application_at(spine, spine_open, superseded, ??), wmap_get_all(in_edges, decl)))),
   graph_publish(decl, scheme, reason, kind) => // What the judgment learned about a declaration, at its handle, newest
   // first — the facts the env's entries carried by name until 2026-10-14.
   {
@@ -957,6 +988,16 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
   resume() with decls_col = push(decls_col, decl_handle),
   graph_decls_at() => resume(decls_col),
   graph_node_current(h) => resume(spine_current(spine, spine_open, superseded, h)),
+  graph_supersede(stmts) => // An edit's replaced statements, marked where every currency read asks
+  // (spine_current), and the decls column kept to what the program still
+  // declares — once per edit, as a module's supersession keeps it, so the
+  // proof fragment's per-name read of the column never filters it again.
+  {
+    let gone = fold(superseded, (acc, s) => wmap_add(acc, s, 1), stmts)
+    resume() with superseded = gone, decls_col = filter(spine_current(spine, spine_open, gone, ??), decls_col)
+  },
+  graph_summaries_note(entries, tails) => resume() with summaries = (entries, tails),
+  graph_summaries() => resume(summaries),
   graph_module_now(file) => resume(smap_get(modules_now, file)),
   graph_link() => resume(link_now),
   graph_hole_note(h) => // The value-holes column's pending half: lower's authored-hole arm is
@@ -2115,6 +2156,51 @@ fn row_of_child(acc, c) = match acc {
   },
 }
 
+// A node's children: the handles its body holds.
+fn node_children(h) = body_child_handles(graph_node_body(h))
+
+// A node and every node below it, in the walk's order.
+fn nodes_under(h) = [h] ++ flat_map(nodes_under, node_children(h))
+
+// The names a top-level statement declares into the link's scope: its head,
+// each constructor or op its entry lists, and every binder a module value's
+// pattern writes. A statement's retraction and the session's collision read
+// both start here.
+fn stmt_names(stmt) = match graph_node_body(stmt) {
+  NStmt(s) => match s {
+    TypeDefStmt(n, variants) => [n] ++ map(part_variant_name, variants),
+    EffectDeclStmt(n, _, ops) => [n] ++ map(part_op_name, ops),
+    LetStmt(pat, _, _) => nodes_under(pat) |> flat_map(binder_name_at),
+    FnStmt(_, _, _, _, _)
+    | HandlerDeclStmt(_, _, _, _, _, _)
+    | HandlerChainStmt(_, _)
+    | RefineStmt(_, _, _)
+    | AliasStmt(_, _)
+    | RowAliasStmt(_, _)
+    | ExprStmt(_)
+    | ImportStmt(_) => option_list(head_spelling(s)),
+  },
+  NExpr(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => [],
+}
+
+fn binder_name_at(h) = match graph_node_body(h) {
+  NPat(p) => option_list(binder_spelling(p)),
+  NExpr(_)
+  | NStmt(_)
+  | NHole(_)
+  | NModule(_)
+  | NLink(_)
+  | NTypeAnn(_)
+  | NName(_)
+  | NRow(_)
+  | NParam(_) => [],
+}
+
+fn option_list(o) = match o {
+  Some(x) => [x],
+  None => [],
+}
+
 fn body_child_handles(body) = match body {
   NExpr(e) => expr_child_handles(e),
   NStmt(s) => stmt_child_handles(s),
@@ -2502,19 +2588,6 @@ fn module_of(mh) with !Mutate = match graph_node_body(mh) {
 fn link_program() with !Mutate = link_modules() |> flat_map({ mh => module_of(mh).decls })
 
 fn module_paths() with !Mutate = map({ (_h, p, _s, _d) => p }, module_cells())
-
-// The top-level declaration that holds a position: the module node's child
-// on the parent walk up from it. A module node itself sits in none of its
-// declarations and answers None. One walk for the cursor's proximity, the
-// gradient's dependents and the query facets' declaration names (it had a
-// home in cursor.mn and a by-name twin in query.mn before 2026-10-13).
-fn enclosing_decl(h) with !Mutate = match graph_parent_of(h) {
-  None => None,
-  Some(p) => match graph_node_body(p) {
-    NModule(_) => Some(h),
-    _ => enclosing_decl(p),
-  },
-}
 
 // ─── Import reachability — can module A see module B's names? ────────
 //

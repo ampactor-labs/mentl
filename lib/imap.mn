@@ -28,8 +28,8 @@
 // `n` is the bucket count and MUST be a power of two — the bucket index is a
 // mask, not a modulo, so a non-power-of-two silently loses the high keys.
 //
-// A bucket is a SNOC STACK: add pushes at the END, the reads scan from the
-// end (newest first), and wmap_pop drops the newest entry by reading the
+// A bucket is a SNOC STACK: add pushes at the END, the reads walk down from
+// the end (newest first), and wmap_pop drops the newest entry by reading the
 // snoc's parent — the same push-at-END / drop_last discipline every Mentl
 // stack keeps (graph_handler's checkpoint_stack). That discipline is what
 // lets a trail-backed map be undone inside a speculation for nothing: the
@@ -51,16 +51,18 @@ fn wmap_add(idx, k: Int, val) = {
   list_set(idx, b, push(list_index(idx, b), (k, val)))
 }
 
-fn wmap_get(ref idx, k: Int) = {
-  let bucket = list_index(idx, wmap_bucket(idx, k))
-  wmap_bucket_scan(bucket, k, len(bucket) - 1)
-}
+fn wmap_get(ref idx, k: Int) = wmap_bucket_scan(list_index(idx, wmap_bucket(idx, k)), k)
 
-fn wmap_bucket_scan(ref bucket, k: Int, i) = if i < 0 {
+// A bucket is read down its own spine, newest first: `last` and `drop_last`
+// are a snoc stack's O(1) reads, so a scan costs the entries it passes.
+// Indexing the bucket from its end descended the spine once per entry, and
+// at the in-edges of a declaration thousands of references reach that was
+// 61% of a resident session's edit (measured 2026-10-16).
+fn wmap_bucket_scan(ref bucket, k: Int) = if len(bucket) == 0 {
   None
 } else {
-  match list_index(bucket, i) {
-    (bk, val) => if bk == k { Some(val) } else { wmap_bucket_scan(bucket, k, i - 1) },
+  match last(bucket) {
+    (bk, val) => if bk == k { Some(val) } else { wmap_bucket_scan(drop_last(bucket), k) },
   }
 }
 
@@ -73,16 +75,14 @@ let wmap_none = []
 
 // The MULTI-map read — every value entered under K, newest first,
 // collected in one bucket scan: O(bucket), never O(map).
-fn wmap_get_all(ref idx, k: Int) = {
-  let bucket = list_index(idx, wmap_bucket(idx, k))
-  wmap_bucket_collect(bucket, k, len(bucket) - 1, wmap_none)
-}
+fn wmap_get_all(ref idx, k: Int) =
+  wmap_bucket_collect(list_index(idx, wmap_bucket(idx, k)), k, wmap_none)
 
-fn wmap_bucket_collect(ref bucket, k: Int, i, acc) = if i < 0 {
+fn wmap_bucket_collect(ref bucket, k: Int, acc) = if len(bucket) == 0 {
   acc
 } else {
-  match list_index(bucket, i) {
-    (bk, val) => wmap_bucket_collect(bucket, k, i - 1, if bk == k { push(acc, val) } else { acc }),
+  match last(bucket) {
+    (bk, val) => wmap_bucket_collect(drop_last(bucket), k, if bk == k { push(acc, val) } else { acc }),
   }
 }
 

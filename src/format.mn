@@ -1675,17 +1675,6 @@ fn span_range(starts, sp) = match sp {
   Span(l, c, el, ec) => (starts[l - 1] + c - 1, starts[el - 1] + ec - 1),
 }
 
-// The byte offset each line starts at.
-fn line_starts(s: String) = list_to_flat(line_starts_from(s, 0, [0]))
-
-fn line_starts_from(s: String, i, acc) = if i >= byte_len(s) {
-  acc
-} else if byte_at(s, i) == 10 {
-  line_starts_from(s, i + 1, push(acc, i + 1))
-} else {
-  line_starts_from(s, i + 1, acc)
-}
-
 // One TComment token per authored prose line — the lexical census the
 // conservation gate reads on both sides of a round trip.
 fn count_comment_tokens(tokens, i, acc) = if i >= len(tokens) {

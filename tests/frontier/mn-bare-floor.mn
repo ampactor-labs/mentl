@@ -1,7 +1,6 @@
 // The prelude floor's own fixture: a program that asks the medium for
 // nothing. Whatever `mentl query mn-bare-floor.mn "cost"` reports is the
-// vocabulary the medium processes before it can compile a constant —
-// 6307 source lines at the pin that measured it, for a program of one.
+// vocabulary the medium processes before it can compile a constant.
 //
 // It exists to be RATCHETED, not to be run. The frontier's cost leg holds
 // the line count under a ceiling that may only fall, and what lowers it is

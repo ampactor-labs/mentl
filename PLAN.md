@@ -449,13 +449,19 @@ landing that closes it. A gate that did not run is UNKNOWN, never green.
   serves and a sugar that calls a primitive (`xs[i]`, `++`, an interpolation's
   seams, a list rest), so `refs of` reaches every one of them. A type, a
   Reason and the lowered program are still value trees (§11.18), so a name
-  written inside a type renders from the type's value. Two one-write
+  written inside a type renders from the type's value. Three one-write
   operations are built: a named handler chain's install becomes its members'
-  installs (SYNTAX §«Handler chains»), and a rename is one write at the
+  installs (SYNTAX §«Handler chains»); a rename is one write at the
   declaration (`mentl rename`), every reference, label and comment mention
   rendering through its edge, a rename that moves an edge refused, and one
-  that reaches a name inside a type refused; the session's edit and a
-  proposal's accept are not (§11.2).
+  that reaches a name inside a type refused; and an edit is judged at the
+  grain it was made — the statements it rewrote or moved are read again from
+  their own lines into the module's node, the declarations whose judgment
+  read them are judged again with them, and every other statement keeps its
+  nodes and its judgment. A proposal's accept is not (§11.2).
+- **An update forgets the fields it does not write** where its record's
+  fields are not known as it is judged: `fn with_b(r, b) = {...r, b}` types
+  its result as `{b}` alone, and a caller reading `s.a` refuses (§11.1).
 - **Names are still read where an edge exists** (§11.2, §11.3, §11.18): the
   lowered program's identity is its symbol, so the emit's reach walks key their
   units by it and a resume-bound function is found by its spelling; the emit
@@ -518,8 +524,13 @@ landing that closes it. A gate that did not run is UNKNOWN, never green.
   is frozen at its exit.
 - **Incrementality is not a cached cursor** (§11.18): `graph_mutated` carries
   the handle and its prior value at every write, and every handler discards
-  both; the session re-judges an edit's cone and still pays for the program; the
-  warm start restores an image and re-derives the compile over it.
+  both. An edit's cone has no cutoff: every declaration whose judgment read a
+  rewritten one is judged again, transitively, whether or not what the
+  rewritten one publishes moved, so an edit to `chain_spelling`, which a
+  third of the wheel's functions read transitively, judges 1,767
+  declarations, about what a cold judgment costs, where an edit to a leaf
+  judges seventeen; and every edit's judgment stays in the image. The warm
+  start restores an image and judges the edit's cone over it.
 - **The resident Space keeps its graph for a session's life**; a session derives
   once per open, and a fresh process derives cold (§11.18).
 - **The wheel never performs a multi-shot op**, and its speculation is
@@ -538,7 +549,7 @@ landing that closes it. A gate that did not run is UNKNOWN, never green.
 bash tools/state.sh                 # THE BOARD, ground first: verify, march, frontier, proof-exactness, crown, effect identity, threads, ide — one scoreboard; --quick = verify only
 mentl verify [path]                 # the standing bounds on the medium's own source (src/board.mn), read off one judged graph; a rise refuses
 mentl check [path]                  # every module of the link judged, no emit; no path: the project
-mentl query <entry> <question>      # refs of NAME · unreachable · unreferenced · census <shape> · ghosts · imports · performs · smt · text · prose · writes of · reads of · provider of · heads · env
+mentl query <entry> <question>      # refs of NAME · unreachable · unreferenced · census <shape> · ghosts · imports · performs · smt · text · prose · writes of · reads of · provider of · heads · env · reports
 mentl why <file> <fn> [<Effect>]    # the declaration's reason, then where each effect of its row enters
 mentl where <file> <name>           # a declaration's head, row, widths and address
 mentl <file>:<line>[:<col>]         # the eight aspects at the caret, with the Lede
@@ -668,12 +679,19 @@ a provenance diff, a search over live shared cells.
 
 **THE STANDING CURSOR** — the order work runs in:
 
+1. **An update keeps the fields it does not write**
+   (`Hβ.infer.record-update-keeps-the-row`). `{...r, b}` is typed as the
+   base's row with `b` written: the base's fields known where it is judged,
+   each written one replaced, and the base's own tail for the rest, so a
+   function updating a record it is handed returns every field the caller
+   passed in. Where the base's fields are not known, a written field is
+   required of it, which an update over an open row can only overwrite. The
+   driver's nominal `ModuleEdit`, rebuilt field by field (`edit_with`), is
+   the shape that stood in for the update and becomes one.
 2. **Every position is a cell — #108** (`Hβ.graph.positions-are-cells`). The
-   writes the structure cut was for that are not yet built: the session
-   re-judges the nodes an edit rewrote rather than re-parsing a module (the
-   declaration-grain cone over the in-edges), and accepting a proposal
-   rewrites the hole's node in place, the position-keyed accept column
-   (`Hβ.synth.accepted-edge-keyed-by-position`) deleted.
+   write the structure cut was for that is not yet built: accepting a
+   proposal rewrites the hole's node in place, the position-keyed accept
+   column (`Hβ.synth.accepted-edge-keyed-by-position`) deleted.
 3. **A module is a scope** (`Hβ.driver.per-module-env-overlay`,
    `Hβ.query.facets-read-the-link`, `Hβ.modules.import-block-is-maintained`,
    `Hβ.modules.vocabulary-held-by-declaration`,

@@ -103,7 +103,7 @@ fn mcp_judge(source, wat_path) = {
   match verdict {
     (refused, emitted) => (text, nerr, refused, emitted),
   }
-} ~> diag_bank ~> wasi_filesystem ~> compile_context
+} ~> wasi_filesystem ~> compile_context
 
 // The verdict's head states exactly what the gate did — refused, emitted
 // with surfaced errors (unarmed classes; the sound-incomplete contract,
@@ -565,16 +565,14 @@ fn strip_cr(line) = {
 // The LIVING check — the session graph tracks the tree (the
 // incremental cursor's session face): before a message is answered,
 // the tree's manifest recomputes and compares against the banked one;
-// a moved tree re-judges its CONE into the resident world — every
-// module whose text moved and everything downstream of it, the warm
-// compile's own cone (driver_session_cone) — re-registration shadows
-// the stale entries (the env's latest edge wins, the B-i incremental
-// law), the new generation's nodes join the living image and the link,
-// and the manifest replaces the banked one. NEVER a restore: the
-// swap-crossing law's third constraint IS this form — the image stays the
-// session's own memory, and the update is durable growth. Named residue: a
-// DELETED decl's env entry lingers until a re-registration shadows it (env
-// has no unregister; the epoch/arena face retires it).
+// a moved tree has its edit judged into the resident world at the grain
+// it was made (driver_session_cone): the statements the edit rewrote or
+// moved, and every statement whose judgment read one of them, are read
+// again and judged, the rest keep their nodes, and the manifest replaces
+// the banked one. NEVER a restore: the swap-crossing law's third
+// constraint IS this form — the image stays the session's own memory, and
+// the update is durable growth. What the session judged is said on its
+// log, so the cost of an edit is a number a person reads.
 //
 // The check reads every module's text to hash it, and on an unmoved tree
 // nothing it allocated outlives the comparison: the bytes die with the
@@ -583,23 +581,24 @@ fn strip_cr(line) = {
 fn session_current(manifest) = if driver_manifest() == manifest {
   manifest
 } else {
-  let cone = driver_session_cone("main", session_forget)
-  eprint_string("session: tree moved — re-judged {names_join(cone)}; the graph is current\n")
+  match driver_session_cone("main", session_forget) {
+    (n, m) => eprint_string("session: tree moved — re-judged {int_to_str(n)} declaration(s) in {int_to_str(m)} module(s); the graph is current\n"),
+  }
   driver_manifest()
 }
 
 // The session's generation clear, handed to the cone as a value: the banked
-// reports and the claims of each module node it is given go, and every other
-// module's stand. The cone hands it the nodes its judgment replaces, BEFORE
-// the judgment — a stale generation's entries must not shadow the current
-// truth, their spans belonging to a tree that no longer exists — and the
-// modules the new link no longer holds, which no judgment would ever clear:
-// a project opened over a lesson's session kept its libraries' reports, and
-// the Lens over the next four-line lesson held 519 of them (measured in the
-// browser, 2026-10-06).
-fn session_forget(modules) = {
-  diag_forget(map(module_name_of_handle, modules))
-  verify_forget(modules)
+// reports and the claims made where the edit replaced go, and every other
+// statement's stand. The cone hands it what its judgment replaces BEFORE the
+// judgment — a stale generation's entries must not shadow the current truth,
+// their spans belonging to a tree that no longer exists — and the modules the
+// new link no longer holds, which no judgment would ever clear: a project
+// opened over a lesson's session kept its libraries' reports, and the Lens
+// over the next four-line lesson held 519 of them (measured in the browser,
+// 2026-10-06).
+fn session_forget(gone) = {
+  diag_forget(gone)
+  verify_forget(gone)
 }
 
 // The serve loop — a RAW recursion over the session's manifest (the
@@ -679,7 +678,7 @@ fn session_run(answer) = if driver_module_path("main") == None {
 // The filesystem is the OUTERMOST install: an arm's performs resolve outer
 // of its own install, and the query handler's arms read the filesystem (the
 // census's path class asks whether a cited path names a file).
-query_default ~> mentl_default ~> arm_state_ctx([], OneShot, None) ~> spec_registry ~> diag_bank ~> wasi_filesystem ~> infer_context
+query_default ~> mentl_default ~> arm_state_ctx([], OneShot, None) ~> spec_registry ~> wasi_filesystem ~> infer_context
 
 // What an answer cost the image, on the session's log. Each answer is an
 // arena (lib/arena.mn), so this is what it PUBLISHED: the nodes a question
@@ -771,6 +770,6 @@ fn mcp_run(at_read) = {
     } else {
       mcp_loop([], at_read, { m => m })
     }
-  } ~> query_default ~> mentl_default ~> arm_state_ctx([], OneShot, None) ~> spec_registry ~> diag_bank ~> wasi_filesystem ~> infer_context
+  } ~> query_default ~> mentl_default ~> arm_state_ctx([], OneShot, None) ~> spec_registry ~> wasi_filesystem ~> infer_context
   0
 }

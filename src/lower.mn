@@ -1539,15 +1539,15 @@ fn resume_bind_assoc(binds, name: String, i) = if i >= len(binds) {
 // THE CUT (bank Ruling 6 + A3) — the resume-capability bindings: from each
 // handler arm whose op grades MultiShot, the transitive closure of called
 // resume-bearing fns (summary other than RNone — the classifier's fixpoint,
-// re-run here over the same stmts infer already classified, which is
-// Hβ.lower.classifier-rerun-at-lower; collect_free_vars over-approximates the call
-// edge, which only ever binds a dormant wrap). Each bound fn lowers under
+// read off the graph where the judgment left it; collect_free_vars
+// over-approximates the call edge, which only ever binds a dormant wrap).
+// Each bound fn lowers under
 // its handler's arm context (disc MultiShot, the handler whose redrive a
 // resume calls, the state fields read live from the decl) and every call
 // to it from a MultiShot context threads the "__resume" k evidence. A fn
 // reached from arms of TWO handlers is E_ResumeAmbiguousOp — narrow the
 // call graph; the first binding stands (productive-under-error).
-fn resume_bindings(stmts) = match classify_fixpoint(stmts) {
+fn resume_bindings(stmts) = match graph_summaries() {
   (summaries, _) => {
     let decls = collect_fn_decls_list(stmts, [])
     bind_from_handlers(stmts, summaries, decls, [])

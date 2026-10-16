@@ -860,7 +860,7 @@ run_warm_debt() {
   wt_run --dir "$wdir::." --dir "$ROOT::/mentl-home" "$compiler" compile main \
     > "$dir/$label.wat" 2> "$dir/$label.2.err"
   n=$(grep -c '^verify: pending comparison 0 < self' "$dir/$label.2.err")
-  if grep -q '^warm: re-deriving main\.mn$' "$dir/$label.2.err" && [ "$n" = "1" ] \
+  if grep -q '^warm: re-judged 1 declaration(s) in 1 module(s)$' "$dir/$label.2.err" && [ "$n" = "1" ] \
      && grep -q '^verify: pending comparison 0 < self at main:5:13-5:36$' "$dir/$label.2.err"; then
     pass "$label: the warm compile reports the edited claim once, at its new span"
   else
@@ -891,24 +891,14 @@ run_warm_incremental() {
     fail "$label incremental compile (exit=$rc; see $dir/$label.2.err)"
     return
   fi
-  # The cone names RESOLVED PATHS, because a path is what a module's identity
-  # IS (pin f58dfc10 — `lists` and `lib/lists` were two identities for one
-  # file until the tree scan keyed the path). Rendering names here would mean
-  # a path->name lookup, which is the re-derivation the same landing deleted.
-  # The assertion is unchanged in substance and re-derived by hand before it
-  # was re-banked (Law 11): b is the edited module, main its importer, and the
-  # `$` anchor still proves a stayed CACHED — an unchanged dep must not appear.
-  # A failure here does NOT return: the divergence check below reads the same
-  # two artifacts and does not depend on this one. It used to return, and that
-  # is how a REAL incremental bug rode a pin — the cone line went red on a
-  # rendering change, the leg stopped, and "incremental == cold" never ran to
-  # report that the warm path had dropped every cached module. A leg that
-  # halts at its first failure hides the rest of its own coverage; only a
-  # genuine precondition (no artifact to read) earns an early return.
-  if ! grep -q '^warm: re-deriving b\.mn main\.mn$' "$dir/$label.2.err"; then
-    fail "$label cone line (want 'warm: re-deriving b.mn main.mn'; see $dir/$label.2.err)"
+  # The edit rewrites `mid`, and `main` reads it: two declarations in two
+  # modules, `base` kept. A failure here does not return: the divergence check
+  # below reads the same two artifacts, and a leg that halts at its first
+  # failure hides the rest of its own coverage.
+  if ! grep -q '^warm: re-judged 2 declaration(s) in 2 module(s)$' "$dir/$label.2.err"; then
+    fail "$label cone line (want 'warm: re-judged 2 declaration(s) in 2 module(s)'; see $dir/$label.2.err)"
   else
-    pass "$label cone named (b main re-derived, a cached)"
+    pass "$label cone counted (mid and main judged again, base kept)"
   fi
   cp "$wdir/a.mn" "$wdir/b.mn" "$wdir/main.mn" "$refdir/"
   wt_run --dir "$refdir::." --dir "$ROOT::/mentl-home" "$compiler" compile main \
@@ -3590,6 +3580,29 @@ for i in "${!compilers[@]}"; do
   else
     fail "session accept (see $acdir/answers.txt and $acdir/session.log)"
   fi
+  # ── an edit between two reads re-judges what it rewrote ────────────
+  # The edit keeps `width`, adds `triple` and rewrites `main`, so the session
+  # judges two declarations again, and its reports after the edit are the
+  # cold verb's over the edited tree. RED on boot 6aaec713: the session read
+  # the whole module again, and `reports` was no facet.
+  eddir="$dir/session-edit"
+  rm -rf "$eddir"; mkdir -p "$eddir"; mkfifo "$eddir/in"
+  printf 'fn width(n) = n + 2\n\nfn main() = width(40)\n' > "$eddir/main.mn"
+  (cd "$eddir" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$eddir::." --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" session < in > out.txt 2> err.log) &
+  ed_srv=$!
+  exec 8> "$eddir/in"
+  ed_wait() { for _i in $(seq 1 150); do [ "$(grep -c '^→ ' "$eddir/out.txt")" -ge "$1" ] && return 0; sleep 0.2; done; return 1; }
+  printf 'query\tmain\treports\n' >&8; ed_wait 1
+  printf 'fn width(n) = n + 2\n\nfn triple(x) = x * 3\n\nfn main() = triple(true) + width(40)\n' > "$eddir/main.mn"
+  printf 'query\tmain\treports\n' >&8; ed_wait 2
+  exec 8>&-; wait $ed_srv 2>/dev/null
+  (cd "$eddir" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$eddir::." --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" query main.mn reports 2>/dev/null) > "$eddir/want.txt"
+  if grep -q 'tree moved — re-judged 2 declaration(s) in 1 module(s)' "$eddir/err.log" \
+     && tail -n +2 "$eddir/out.txt" | sort | cmp -s - <(sort "$eddir/want.txt"); then
+    pass "session edit: two declarations judged again, the reports the cold verb's"
+  else
+    fail "session edit (see $eddir/out.txt, $eddir/want.txt and $eddir/err.log)"
+  fi
   # `mentl space` is the page — static files the mentl command stages and
   # serves (tools/space-stage.sh, tools/space-serve.py) — and its gate is
   # tools/ide-gate.sh's leg 2 over the staged artifact; the wheel serves no
@@ -3699,21 +3712,10 @@ for i in "${!compilers[@]}"; do
   fi
   # ── the FRONTIER READ (rung 5): the oracle's field as a session tool ─
   # The ranked absence field over the resident graph — the gradient's
-  # argmax uncollapsed, the same read `mentl main.mn:0` serves. Seen RED
-  # on the pre-rung boot three ways: the hole rendered at the WRONG
-  # address with the wrong Query slice (caret_span_of_handle read the
-  # chase TERMINAL's span — a hole unified with a call answered the
-  # call's site; the birth span index is the only never-rebound
-  # channel), and the gradient tier held 7 positions for a 3-fn file
-  # (the enumerator asked teach_gradient about every cell in
-  # range(0, next) — virgin cells included — and junk suggestions
-  # entered under garbage coordinates; the kind gate scopes it to real
-  # fn decls). Known residue asserted AS-IS: the last lib's tail
-  # comment attaches forward across the module seam to the entry's
-  # first decl (Hβ.parser.comment-attach-module-boundary). Since T2
-  # (2026-10-13) main declares `!Alloc`, so the gradient tier holds the two
-  # locks it stands on (width, banner) and not main's own; the boot's three
-  # were locks nothing stood on.
+  # argmax uncollapsed, the same read `mentl main.mn:0` serves: the hole at
+  # its own address with its fan, and a gradient tier scoped to the real fn
+  # declarations. main declares `!Alloc`, so the tier holds the two locks it
+  # stands on (width, banner) and not main's own.
   fro_dir="$dir/mcp-frontier"
   mkdir -p "$fro_dir"
   printf 'fn width(x) = x * 2\n\nfn banner(n) = {\n  let w = width(n)\n  w + ??\n}\n\nfn main() with !Alloc = banner(21)\n' > "$fro_dir/main.mn"
@@ -3763,8 +3765,6 @@ for i in "${!compilers[@]}"; do
   # field lists in its own tier, and main authors a clause. After the edit
   # removes noisy's row, main's `!Alloc` stands on noisy and the lock appears
   # as a second gradient position — the living frontier in both directions.
-  # (2026-09-25 to 2026-10-13 the counts were two and three: a lock on main,
-  # and on noisy, that nothing stood on.)
   if grep '"id":2' "$prob_dir/out.jsonl" | grep -q 'Field: 1 hole(s), 1 pending proof(s), 1 tightening(s), 1 gradient position(s)' \
      && grep '"id":2' "$prob_dir/out.jsonl" | grep -q 'Pending: 0 < self' \
      && grep '"id":2' "$prob_dir/out.jsonl" | grep -q 'Tighten: noisy declares IO — the body proves Pure' \
@@ -3781,14 +3781,8 @@ for i in "${!compilers[@]}"; do
   # deterministically); the session's manifest check re-derives INTO the
   # resident world exactly once, and the post-edit reads answer the NEW
   # truth: query resolves the new fn, audit lists it, and the at reaches
-  # a line that did not exist before the edit (the range map replaced).
-  # Seen RED on the pre-living boot (measured 2026-07-29): moved=0,
-  # triple absent from every face — the startup snapshot answering
-  # stale. The staleness check is a PURE READ (driver_manifest over the
-  # banked range paths — no discovery, no parse, no graph write): its
-  # first form re-ran collect_dag per message and the discovery parse's
-  # spine growth died in a resettable message's region reclaim (the
-  # fork-spine class, measured as spine_comment_at's list_index trap).
+  # a line that did not exist before the edit. The staleness check is a
+  # pure read (driver_manifest) — no discovery, no parse, no graph write.
   liv_dir="$dir/mcp-living"
   mkdir -p "$liv_dir"
   printf 'fn double(x) = x * 2\n\nfn main() = double(21)\n' > "$liv_dir/main.mn"
@@ -4772,121 +4766,10 @@ for i in "${!compilers[@]}"; do
   # vocabulary the medium processes to answer nothing, and that number
   # may only FALL — Hβ.driver.link-is-reachability is what lowers it.
   # A RISE means the medium started processing more source to answer the
-  # same trivial question. Born RED 2026-08-17 (unknown-query on the
-  # prior boot); the ceiling was seen RED by setting it under the
-  # measured 6307.
-  # 6366 (2026-08-18): RAISED by 6, and the reason is recorded because the
-  # direction is otherwise forbidden. E_FnShadowsOp landed as a real
-  # diagnostic class — six arms in src/types.mn, which is 57% of this
-  # floor — and a class is permanent content, not prose. Trimming its
-  # comments to the constraint recovered 6 of the 12 lines it first cost;
-  # the rest is the class itself.
-  #
-  # This is the SECOND ceiling event in three iterations and both were
-  # types.mn additions, which is evidence FOR
-  # `Hβ.driver.link-is-reachability` rather than against the ratchet: a
-  # program that asks for nothing should not link the whole diagnostic
-  # catalog. When the link is reachability-judged this number falls hard
-  # and the ceiling follows it down.
-  #
-  # Prior: 6360 (down from 6400) after the numeric-scanner landing measured
-  # 6352. Held tight on purpose — a floor with room to grow is not a floor.
-  # 6385 (2026-09-03): RAISED by 19, the THIRD ceiling event in four
-  # iterations and the third caused by a types.mn addition — here the
-  # licence recorded at diag_refuses' new EPurityViolated arm, which states
-  # at the site why the class could arm (wheel census zero, 372 corpus
-  # fixtures clean but the two expecting the refusal). The comment above
-  # already called this pattern evidence FOR
-  # `Hβ.driver.link-is-reachability`, and a third instance is the
-  # measurement it asked for: a fixture importing nothing links the whole
-  # diagnostic catalog, so prose justifying one arm of one projection
-  # enters a bare program's floor. Shrinking the justification to fit the
-  # ceiling would be shaping the wheel around the gate; the ceiling follows
-  # the link when the link is reachability-judged.
-  # 2737 (2026-09-04): FELL 6385 → 2737, and this is the ceiling event the
-  # three raises above were evidence for. lib/lists, lib/strings and
-  # lib/threading each carried `import types` and referenced not one name from
-  # it — every apparent use was a comment mention. Those three lines put the
-  # compiler's own module, and with it ~170 op names (Abort, FreshHandle,
-  # Consume, GraphRead/Write, Diagnostic, EnvRead/Write, Verify), into the
-  # namespace of every program that touches a list or a string. Deleting them
-  # takes `types` out of a bare weave entirely: 7 modules to 6.
-  #
-  # The comment above called the repeated types.mn raises evidence FOR
-  # `Hβ.driver.link-is-reachability` and predicted the number would fall hard
-  # once the link was judged. It was not the whole judgment — dead imports are
-  # the crudest possible unreachability — and it still more than halved.
-  # 2760 (2026-09-10): ROSE 2737 → 2760, and the +23 is a capability, not
-  # slack. The world-chain walk stopped keying on the EFFECT alone — which
-  # dispatched an op through a handler that merely COVERS its effect, silently
-  # wrong at tests/frontier/mn-split-effect-evidence.mn — and now asks the
-  # record whether it declares the op. That question is `node_arm_at`, a new
-  # fn in lib/memory.mn plus the comment that says what it reads and why the
-  # walk and the emit must compute the same address. Everything transitional
-  # was taken back in the same landing: `ev_perform_node` and the effect-only
-  # `world_find_from` are DELETED, and `miss_or_node` — extracted to give two
-  # walks one refusal — was inlined the moment the second walk died, which is
-  # 2783 → 2773 → 2760 measured at each step. What remains is the smallest
-  # form of the fix, and this ceiling still falls with
-  # `Hβ.driver.link-is-reachability`: a bare program has no handlers and
-  # dispatches nothing, so it links this walk for no reason at all.
-  # 2822 (2026-09-18): ROSE 2760 → 2822, a capability of the same class —
-  # `str_escape`, the formatter's exact inverse of `str_unescape`, landed
-  # beside its decoder in lib/strings.mn (one home for the escape set:
-  # `mentl fmt` rendered a NUL as a raw byte and was not a fixpoint on the
-  # wheel's own argv wire) with the shared hex-glyph table the emitter's
-  # data escapes now read too, its walk a pure count-fold and a `ByteSink`
-  # handler whose write cursor is handler state (the audit's iteration-
-  # shape tier convicted the index-threaded form). A bare program formats
-  # nothing, so it links the encoder for no reason at all — the same
-  # sentence as the line above, and the same peer takes it back.
-  # 2794 (2026-09-28): FELL 2822 → 2794. lib/memory.mn carried a second copy
-  # of the world walk (`world_declaring_from`, `node_arm_at` and
-  # `ev_declaring_node`) that nothing called — the emitted preamble's walk is
-  # the one dispatch reads — and it is deleted; `world_key`, which files a
-  # warm image under the handler world that wrote it, took eight of those
-  # lines back.
-  # 2796 (2026-09-30): ROSE 2794 → 2796, one arm and its prose — lib/prelude's
-  # `each_handler` answers `result` now (`result() => resume(())`), because a
-  # handler is exhaustive over every effect its arms answer
-  # (`E_HandlerInexhaustive`, L5): the half-handler subtracted the WHOLE of
-  # `Iterate` from every `each` install's row while `result` walked past it.
-  # A bare program links the prelude, so it links the arm; the same peer as
-  # every line above takes it back.
-  # 2805 (2026-09-30): ROSE 2796 → 2805, one effect and its lede — lib/prelude's
-  # `effect Trap {}` (C5): partiality is a row fact, so a bare `t / n` performs
-  # a name every program must be born knowing, and `!Trap` is a claim any
-  # signature may make. A bare program links the prelude, so it links the
-  # effect; the same peer takes it back.
-  # 2833 (2026-09-30): ROSE 2805 → 2833, the sequence fanout's vocabulary
-  # (B4 + C9): lib/prelude's `fanout(f, xs)` — `map` by declaration, the
-  # fanout node at the lowering, twelve lines with its lede — and
-  # lib/threading's `fanout_threaded` with its `spawn_branch` helper, the
-  # form a Thread-class schedule selects for it, sixteen lines with the
-  # header's demand sentence. A bare program fans nothing out, so it links
-  # both for no reason at all; the same peer takes them back.
-  # 2835 (2026-10-06): ROSE 2833 → 2835 with N2's head projection, which
-  # names the prelude's ops in the parameter products SYNTAX writes; the
-  # parameters are the decisions the render now shows, two lines net.
-  # 2829 (2026-10-09): FELL 2835 → 2829 at L-F, the word's bit operations
-  # one paragraph over their named parameters where each op carried its own
-  # comment, the three it gained (shr_u, shr_s, clz) included.
-  # 2837 (2026-10-13): ROSE 2829 → 2837 at Landing 1. lib/memory.mn declares
-  # `effect Mutate {}` — the ownership marker every program may negate, which
-  # had lived in src/types.mn beside the compiler's graph event and reached a
-  # user only through a dead import (five lines with its lede); and
-  # lib/prelude.mn's `each` states its stage law in its comment and
-  # `each_handler`'s arm resumes with the stage's answer (two lines net).
-  # A bare program pays both: the marker because `with !Mutate` must resolve
-  # in every program, the law because its stage is every program's.
-  # 2825 (2026-10-14): FELL 2837 → 2825 at WILD. The landing's own lines
-  # rose it 17 — lib/lists.mn's `SeqKind`, the sum the sequence tag word
-  # names, and lib/memory.mn's `trap() -> !` — and the debt was paid in the
-  # modules a bare program links: the nineteen decoration banners there
-  # deleted (SYNTAX: a declaration's name is its heading), all but one the
-  # stolen lede of the declaration below it, and the two new comments
-  # trued to what is.
-  cost_ceiling=2825
+  # same trivial question; the landing that causes one pays it down in the
+  # modules a bare program links. The ceiling is the measured floor, so a
+  # landing that lowers the floor lowers the ceiling with it.
+  cost_ceiling=2731
   ct_out=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" query "$ROOT/tests/frontier/mn-bare-floor.mn" "cost" 2>/dev/null)
   ct_lines=$(printf '%s' "$ct_out" | grep -o '[0-9]* source line' | grep -o '[0-9]*' | head -1)
   if [ -n "$ct_lines" ] && [ "$ct_lines" -le "$cost_ceiling" ]; then

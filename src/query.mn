@@ -186,6 +186,9 @@ type Question
   | QStateWrites(String)
   // "verification" — pending obligations
   | QVerifyDebt
+  // "reports" — what the program reports now, as a check prints it: every
+  // error, and each narration the register hears
+  | QReports
   // "which handler provides OP"
   // QFlowOf — the IFC tentacle (§4⑥). Reads the existing graph — TRefined,
   // TName, and the row's absent set — to classify NAME's FlowLabel without any
@@ -273,6 +276,9 @@ type QueryResult
   // constructions from its patterns by opening each line.
   | QRRefs([(String, Span, Option(String))])
   | QRVerifyDebt([(Int, Span, Predicate, Reason)])
+  // The banked reports the register hears, in report order: the kind, its
+  // message, its module and the module's layer, the facts a check prints
+  | QRReports([(DiagKind, String, String, Layer)])
   // THE SAME OBLIGATIONS, PROJECTED AS SMT-LIB — `mentl query <f> "smt"`.
   // One read (`verify_debt()`), two renders: `QRVerifyDebt` speaks the
   // predicate in the medium's own voice for a person, and this one speaks
@@ -405,6 +411,7 @@ fn query_answer(q) = match q {
   },
   QDecls => QRDecls(flat_map(decl_names_at, decl_handles())),
   QVerifyDebt => QRVerifyDebt(verify_debt()),
+  QReports => QRReports(filter(heard_now(diag_scope_of(), ??), diag_banked())),
   // The same bank, handed to the render that speaks solver. Nothing is
   // re-derived here and nothing may be: a second walk that collected the
   // obligations again would be the violation this facet's own subject —
@@ -470,8 +477,21 @@ fn sites_in(m, answer) = match answer {
   QRDecls(named) => QRDecls(filter(named_in_module(m, ??), named)),
   QRVerifyDebt(debt) => QRVerifyDebt(filter(obligation_in_module(m, ??), debt)),
   QRSmt(debt) => QRSmt(filter(obligation_in_module(m, ??), debt)),
+  QRReports(entries) => QRReports(filter(report_in_module(m, ??), entries)),
   QRError(msg) => QRError(msg),
-  unscoped => QRError("`in` keeps a site facet's sites: refs of, reads of, census, text, prose, ghosts, decls, verification, smt"),
+  unscoped => QRError("`in` keeps a site facet's sites: refs of, reads of, census, text, prose, ghosts, decls, verification, smt, reports"),
+}
+
+// A banked report the register prints under the scope in force.
+fn heard_now(scope, entry) = match entry {
+  (diag, _, _, dlayer) => scope_hears(scope, diag, dlayer),
+}
+
+fn report_in_module(m, entry) = site_in_module(m, report_site(entry))
+
+// Where a banked report stands: its module and the span its kind carries.
+fn report_site(entry) = match entry {
+  (diag, _, dmod, _) => (dmod, diag_span(diag)),
 }
 
 fn site_in_module(m, site) = match site {
@@ -1381,6 +1401,7 @@ fn noted_answer(r) = match r {
   QRSmt(obligations) => Some(("open obligation(s)", obligations |> map(debt_site) |> map(unnoted))),
   QRDecls(names) => Some(("declared name(s)", names |> map(name_site) |> map(unnoted))),
   QRRefs(sites) => Some(("reference(s)", sites)),
+  QRReports(entries) => Some(("report(s)", entries |> map(report_site) |> map(unnoted))),
   QRType(_, _) => None,
   QRUnresolved(_) => None,
   QREffects(_) => None,
@@ -3172,11 +3193,14 @@ fn span_area(s) with Pure = match s {
   Span(sl, sc, el, ec) => if sl == el { ec - sc } else { (el - sl) * 1000 + ec - sc },
 }
 
+// The tightest node of the program as it stands whose span holds the target:
+// a node of a statement an edit replaced has an extent in the text before the
+// edit.
 fn find_tightest(ref idx, target, best_h, best_area) = if len(idx) == 0 {
   best_h
 } else {
   match last(idx) {
-    (s, h) => if span_contains(s, target) {
+    (s, h) => if span_contains(s, target) && graph_node_current(h) {
       let area = span_area(s)
       if area < best_area {
         find_tightest(drop_last(idx), target, Some(h), area)

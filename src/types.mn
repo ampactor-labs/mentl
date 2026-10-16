@@ -2218,6 +2218,26 @@ fn count_lines_from(ref s, n, i, acc) = if i >= n {
   count_lines_from(s, n, i + 1, acc + step)
 }
 
+// The byte each line of `s` starts at, line 1 first: one walk of the text, so
+// a reader finding many lines of one text finds each in one step.
+fn line_starts(s) = list_to_flat(fold([0], line_start_step(s, ??, ??), range(0, byte_len(s))))
+
+fn line_start_step(s, acc, i) = if byte_at(s, i) == 10 { push(acc, i + 1) } else { acc }
+
+// The byte where line `line` (1-based, as the lexer counts) starts in `s`,
+// or its length when the text has fewer lines.
+fn line_start(s, line) = line_start_from(s, line, 1, 0, byte_len(s))
+
+fn line_start_from(s, target, current, idx, n) = if current >= target {
+  idx
+} else if idx >= n {
+  n
+} else if byte_at(s, idx) == 10 {
+  line_start_from(s, target, current + 1, idx + 1, n)
+} else {
+  line_start_from(s, target, current, idx + 1, n)
+}
+
 type Span = Span(Int, Int, Int, Int)
 
 // start_line, start_col, end_line, end_col
@@ -3206,6 +3226,11 @@ effect EnvWrite {
   env_extend(name: String, scheme: Binding, reason: Reason, kind: SchemeKind, decl: Int)
   env_scope_enter()
   env_scope_exit()
+  // A replaced statement's declarations leaving the scope: every live entry
+  // of the name whose declaration stands in the statement, so the name
+  // resolves to what it resolved to before the statement declared it, or to
+  // nothing. Performed between judgments, where no scope is open.
+  env_retract(name: String, stmt: Int)
 }
 
 // The branch cursor's env join surface (Phase C, C1c-2). Both ops are
@@ -3424,6 +3449,26 @@ effect GraphRead {
   // handles above the frontier are the segment's own mints and mean nothing
   // across segments (they collide numerically after rollback).
   graph_written_since(Int, Int) -> [Int]
+  // The resume grades the classifier settled for the program's functions,
+  // and each one's tail-transparent parameters, as the last judgment left
+  // them: a session judging only the statements an edit moved grades its
+  // own functions against these, since nothing it keeps calls what it
+  // judges again.
+  graph_summaries() -> ([(String, ResumeUse)], [(String, [Int])])
+}
+
+// The top-level declaration that holds a position: the module node's child
+// on the parent walk up from it. A module node itself sits in none of its
+// declarations and answers None. One walk for the cursor's proximity, the
+// gradient's dependents, the query facets' declaration names, the scope's
+// retraction of a replaced statement and the session's cone over its
+// in-edges.
+fn enclosing_decl(h) with !Mutate = match graph_parent_of(h) {
+  None => None,
+  Some(p) => match graph_node_body(p) {
+    NModule(_) => Some(h),
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => enclosing_decl(p),
+  },
 }
 
 // THE ROW WRITES ARE THEIR OWN EFFECT because they have two handlers with
@@ -3625,6 +3670,15 @@ effect GraphWrite {
   // whole. N notes would re-open the window a reader could observe half a
   // table through, which is the time-varying read this column exists to end.
   graph_sigs_publish([(String, EmitSig)])
+  // An edit replaced these top-level statements: each node under one stands
+  // in the program before the edit, so every read that asks whether a
+  // node is current answers no for it, a reference it made leaves the
+  // in-edges its declaration answers, and the decls column drops what it
+  // declared. Written between judgments, never under a checkpoint.
+  graph_supersede(stmts: [Int])
+  // The classifier's grades as a judgment settled them, every function's,
+  // the ones it judged replacing theirs (`graph_summaries`).
+  graph_summaries_note(entries: [(String, ResumeUse)], tails: [(String, [Int])])
 }
 
 // ─── Diagnostics as a graph projection (SYNTAX.md §Diagnostic catalog) ──
@@ -3948,6 +4002,47 @@ effect Diagnostic {
   diag_narrations() -> Int
 }
 
+// What an edit replaced in one module, as the generation boundary's clear
+// reads it: the whole module (its node and its name), or the top-level
+// statements a session judges again, as the line spans they stood at in the
+// text the replaced judgment read. A report or an obligation made there goes
+// with them, and everything else in the module stands.
+type Replaced = ReplacedModule(Int, String) | ReplacedExtents(Int, String, [Span])
+
+// Whether a report made at `span` in the module named `dmod` went with what
+// an edit replaced. The bank keys its reports by the module's name.
+fn report_replaced(dmod: String, span, gone) = match gone {
+  ReplacedModule(_, name) => name == dmod,
+  ReplacedExtents(_, name, extents) => name == dmod && span_in_extents(span, extents),
+}
+
+// Whether an obligation raised at `span` in the module node `modh` went with
+// what an edit replaced. The ledger keys its obligations by the module's node.
+fn obligation_replaced(modh: Int, span, gone) = match gone {
+  ReplacedModule(h, _) => h == modh,
+  ReplacedExtents(h, _, extents) => h == modh && span_in_extents(span, extents),
+}
+
+fn span_in_extents(span, extents) = match span {
+  Span(sl, _, _, _) => any({ e => line_in_extent(sl, e) }, extents),
+}
+
+fn line_in_extent(line, extent) = match extent {
+  Span(a, _, b, _) => a <= line && line <= b,
+}
+
+// The diagnostic bank's reads (its handler is the pipeline's, a member of
+// the judgment's own world): every report the judgment makes, kept as the
+// structured fact the report carried, and the generation boundary's clear
+// for what an edit replaced, so a stale generation's reports never shadow
+// the current truth while a statement outside the cone keeps its own.
+effect DiagBank {
+  // every report since the last forget, as the report carried it: the kind,
+  // its message, its module and the module's layer
+  diag_banked() -> [(DiagKind, String, String, Layer)]
+  diag_forget([Replaced])
+}
+
 // The render REGISTER (SYNTAX: how much surfaces is the gradient reading
 // relevance at the cursor — the same law at the diagnostic surface). A
 // user-target compile scopes NARRATION to the file the user asked about:
@@ -3979,6 +4074,16 @@ effect Diagnostic {
 // library's prose. The layer rides each report from its writer (report_at
 // reads it off the module node) because this register's arm is graph-free.
 type DiagScope = ScopeAll | ScopeNone | ScopeProject(Layer)
+
+// Whether the register prints a report under a scope: an error in every
+// scope, a narration where the scope hears its module's layer. The register
+// reads it as it prints and the reports facet as it answers, so what a check
+// prints and what the facet lists are one set.
+fn scope_hears(scope, diag, dlayer) = diag_severity(diag) == SError || match scope {
+  ScopeAll => true,
+  ScopeNone => false,
+  ScopeProject(layer) => dlayer == layer,
+}
 
 // Where a module was found, by the root that resolved it (src/driver.mn
 // module_roots): a user's own folder — the entry's directory, or a path
@@ -5039,17 +5144,18 @@ effect Verify {
   // them at their sites; the decision was made once, here, and kept rather
   // than discarded the moment it was returned.
   verify_decided() -> [(Int, Span, Predicate, Bool)]
-  // The generation boundary's clear, for the modules about to be re-judged:
-  // the obligations raised in each one's CURRENT node are dropped before its
-  // judgment re-accrues them, and every other module's stand, because a
-  // module outside the re-judged cone was judged against exactly the tree it
-  // is judged against now. It cleared the WHOLE ledger while the session
-  // re-derived the whole weave, which was the only thing that made that
-  // sound; and the warm compile, which re-judges a cone inside a restored
-  // image, never cleared at all — measured 2026-10-02 on boot 713745c6, one
-  // edit to an entry carrying one open claim and the warm compile reported
-  // it twice. Keyed by the module HANDLE so the arm stays graph-free.
-  verify_forget([Int])
+  // The generation boundary's clear, for what an edit replaced: the
+  // obligations raised in a replaced module, or within a replaced
+  // statement's extent, are dropped before the judgment re-accrues them, and
+  // every other stands, because a statement outside the re-judged cone was
+  // judged against exactly the program it is judged against now. It cleared
+  // the WHOLE ledger while the session re-derived the whole weave, which was
+  // the only thing that made that sound; and the warm compile, which
+  // re-judges a cone inside a restored image, never cleared at all —
+  // measured 2026-10-02 on boot 713745c6, one edit to an entry carrying one
+  // open claim and the warm compile reported it twice. Keyed by the module
+  // HANDLE so the arm stays graph-free.
+  verify_forget([Replaced])
 }
 
 // ifc non-interference: verify(span, PFlowLe(src, dst), reason)
@@ -5126,10 +5232,14 @@ effect Consume {
   consume_log() -> [(String, Span)]
 }
 
-// diag_line — the line a report prints, one home: a pure read of the kind
+// The line a report prints: its text and the line end.
+fn diag_line(diag, msg: String, dmod: String) with !Mutate = "{diag_text(diag, msg, dmod)}\n"
+
+// diag_text — the text a report prints, one home: a pure read of the kind
 // around the message the report carried, so any arm can print it and none
-// re-renders the graph-reading part. Sequenced projections, then ONE
-// splice-of-vars line: a single 5-splice interpolation mis-rendered the
+// re-renders the graph-reading part; the register prints it as a line and
+// the reports facet lists it under its header. Sequenced projections, then
+// ONE splice-of-vars line: a single 5-splice interpolation mis-rendered the
 // LAST splice when an earlier splice's evaluation allocated (the
 // shared-scratch clobber class, §9); a splice list of pre-built values has
 // nothing to clobber.
@@ -5142,12 +5252,12 @@ effect Consume {
 // "rides along unread" — so this was a rendered fact one parameter from being
 // an address. Measured 2026-09-14 by a representation probe whose ~135 type
 // errors named lines in fifteen different files and no file at all.
-fn diag_line(diag, msg: String, dmod: String) with !Mutate = {
+fn diag_text(diag, msg: String, dmod: String) with !Mutate = {
   let src = diag_source(diag)
   let code = diag_code(diag)
   let kindw = diag_kind(diag)
   let sp = show_span(diag_span(diag))
-  "{src}: {code} {kindw}: {msg} at {dmod}:{sp}\n"
+  "{src}: {code} {kindw}: {msg} at {dmod}:{sp}"
 }
 
 // A diagnostic AT a node: the module is the node's own column read

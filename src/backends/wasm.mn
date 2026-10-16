@@ -1997,8 +1997,6 @@ fn symbol_is_wide(name: String) = match graph_sig_at(name) {
   None => false,
 }
 
-fn sig_wide_names(names) = filter(symbol_is_wide, names)
-
 // ─── THE PLAN — every decision the module's bytes read, made before one ───
 //
 // The module is decided whole before a byte of it is written: the emitted
@@ -2363,9 +2361,6 @@ fn plan_reached(lowered, fn_records, twin_bases, all_records, spec_demands, twin
   // fanouts with the site's installs and row pairs, said before the gate.
   if settles { race_check_demands(fn_records, all_records) } else { () }
   let alloc_units = if settles { Some(alloc_audit(lowered, spec_demands, all_records)) } else { None }
-  let wide_fn_names = sig_wide_names(map({ (nm, _, _, _) => nm }, fn_records))
-  let spec_wide = sig_wide_names(spec_names)
-  let jvp_wide = sig_wide_names(jvp_names)
   // The fold-leaf collection — the base tree once, then each twin's body
   // under its own bracket, so a twin's show/hash on substituted types
   // collects the sigs its emission will name (the float-element leaf beside
@@ -2432,7 +2427,6 @@ fn plan_reached(lowered, fn_records, twin_bases, all_records, spec_demands, twin
         jvp_faces: jvp_face_map(derived.faces),
         jvp_names,
         jvp_recs,
-        jvp_wide,
         line_owners: static_line_owners(
           top_fn_names,
           fn_lines,
@@ -2443,14 +2437,12 @@ fn plan_reached(lowered, fn_records, twin_bases, all_records, spec_demands, twin
         redrives,
         spec_names,
         spec_recs,
-        spec_wide,
         string_entries,
         table_fn_names,
         tangent_rings: derived.rings,
         top_fn_names,
         vectors,
         wasi_ops,
-        wide_fn_names,
         yield_arity,
         yield_seen,
       }
@@ -2468,7 +2460,7 @@ fn k_helper_names(yields, arena_on) =
 // reads was settled before the gate, and the registries the writes consult
 // (the twins, the string offsets, the per-fn lines) were seeded by the plan.
 fn emit_planned(plan) = match plan {
-  {adjoint_registers, alloc_units, arena_on, env_roster, fn_records, fold_closures, jvp_faces, jvp_names, jvp_recs, jvp_wide, line_owners, lowered, redrives, spec_names, spec_recs, spec_wide, string_entries, table_fn_names, tangent_rings, top_fn_names, vectors, wasi_ops, wide_fn_names, yield_arity, yield_seen} => {
+  {adjoint_registers, alloc_units, arena_on, env_roster, fn_records, fold_closures, jvp_faces, jvp_names, jvp_recs, line_owners, lowered, redrives, spec_names, spec_recs, string_entries, table_fn_names, tangent_rings, top_fn_names, vectors, wasi_ops, yield_arity, yield_seen} => {
     let line_globals = line_global_slots(line_owners)
     // Each step of the module's head is an extent of its own (lib/arena.mn),
     // as each function's emission is: the text it streams dies at its exit,
@@ -2528,10 +2520,8 @@ fn emit_planned(plan) = match plan {
     // derivative reading's twins append after the spec twins, so a module with
     // no reading is byte-identical.
     let table_all = table_fn_names ++ spec_names ++ jvp_names
-    let wide_all = wide_fn_names ++ spec_wide ++ jvp_wide
     emit_fn_table(
       table_all,
-      wide_all,
       any(vector_is_wide, vectors),
       if derivative_demanded() { Some(jvp_face_names(jvp_faces, table_all)) } else { None },
       arena_leaves()
@@ -3934,7 +3924,7 @@ fn fn_record_span(r) with !Mutate = match r {
 // the exit dispatches a leaf by index through one `call_indirect` — index
 // 0 the opaque answer, a leaf that never scans its none — and the module
 // a dispatcher writes is as flat at three hundred leaves as at one.
-fn emit_fn_table(fn_names, wide_names, native_half, jvp_faces, leaves) = {
+fn emit_fn_table(fn_names, native_half, jvp_faces, leaves) = {
   let n = len(fn_names)
   let live = arena_live()
   if n == 0 && !live {
@@ -3950,7 +3940,7 @@ fn emit_fn_table(fn_names, wide_names, native_half, jvp_faces, leaves) = {
     wat_emit(int_to_str(fn_table_base() + faces * n + leaf_slots))
     wat_emit(" funcref)\n")
     if live { emit_arena_table(fn_table_base() + faces * n, leaves) } else { () }
-    if n == 0 { () } else { emit_fn_faces(fn_names, wide_names, native_half, jvp_faces, n, word_faces) }
+    if n == 0 { () } else { emit_fn_faces(fn_names, native_half, jvp_faces, n, word_faces) }
   }
 }
 
@@ -3972,11 +3962,11 @@ fn emit_scan_ref(leaf) = if evac_leaf_scans(leaf) {
   wat_emit(" $ar_scan_none")
 }
 
-fn emit_fn_faces(fn_names, wide_names, native_half, jvp_faces, n, word_faces) = {
+fn emit_fn_faces(fn_names, native_half, jvp_faces, n, word_faces) = {
   wat_emit("  (elem $fns (i32.const ")
   wat_emit(int_to_str(fn_table_base()))
   wat_emit(")")
-  emit_fn_refs(fn_names, wide_names)
+  emit_fn_refs(fn_names)
   wat_emit(")\n")
   if native_half {
     wat_emit("  (global $native_face i32 (i32.const {int_to_str(n)}))\n")
@@ -4040,11 +4030,14 @@ fn fn_table_base() = 1
 fn fn_table_idx(all_names, name) = fn_table_base() + ls_find_str_local(all_names, name, 0)
 
 // A wide-signatured fn's table slot holds its $wf$ word wrapper — the same
-// POSITION (every idx global and closure mint unchanged), a word FACE.
-fn emit_fn_refs(names, wide_names) = each(
+// POSITION (every idx global and closure mint unchanged), a word FACE. The
+// width is the signature column's answer at each slot; a list of the wide
+// names searched once per slot was flattened again at every one of the
+// table's seven thousand slots, the self-compile's peak (measured
+// 2026-10-16).
+fn emit_fn_refs(names) = each(
   (name) => {
-    let wide = any((w) => field_name_eq(w, name), wide_names)
-    wat_emit(if wide { " $wf$" } else { " $" })
+    wat_emit(if symbol_is_wide(name) { " $wf$" } else { " $" })
     wat_emit(slot_face(name))
   },
   names

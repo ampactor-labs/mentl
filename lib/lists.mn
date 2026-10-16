@@ -564,186 +564,93 @@ fn drop_last(list) = {
 // leak that refused map(f, "abc") in libs-isolation, 2026-07-21).
 fn list_to_flat(list) = flat_raw(list)
 
-fn flat_raw(list) = {
-  let n = load_i32(list)
-  if n == 0 {
-    list
-  } else {
-    if seq_tag(list) == 0 {
-      list
-    } else {
-      let flat = alloc_list_sc(n, seq_sc(list))
-      flat_fill(flat, list, 0, n)
-      flat
-    }
-  }
+fn flat_raw(list) = if load_i32(list) == 0 || seq_tag(list) == 0 {
+  list
+} else {
+  let flat = alloc_list_sc(load_i32(list), seq_sc(list))
+  fill_range(flat, list, 0, 0, load_i32(list), decode_stride(load_i32(addr_at(flat, 4)) / 16))
+  flat
 }
 
-// flat_fill — walk the tree in forward order, storing each element into
-// the flat array. Dispatches on tag to read snoc structure directly where
-// possible, falls back to list_index for concat/slice nodes.
-fn flat_fill(flat, tree, i, n) = if i >= n {
+// fill_range — node[src .. src + n) into flat[dest ..], each element read
+// once off the node's own structure. The stride is uniform through a fill:
+// flat_raw allocates the destination with the tree's own sc, and every
+// sub-node carries its parent's, so a flat node is one mem_copy for word,
+// byte and wide elements alike, and a slice composes its offset.
+fn fill_range(flat, node, dest, src, n, st) = if n == 0 {
   ()
 } else {
-  match seq_tag(tree) {
-    0 => flat_fill_flat_src(flat, tree, i, n),
-    1 => flat_fill_snoc(flat, tree, i, n),
-    3 => flat_fill_concat(flat, tree, i, n),
-    4 => flat_fill_slice(flat, tree, i, n),
+  match seq_tag(node) {
+    0 => mem_copy(addr_at(flat, 8 + dest * st), addr_at(node, 8 + src * st), n * st),
+    1 => fill_snoc(flat, node, dest, src, n, st),
+    3 => if n == load_i32(node) {
+      ff_concat_drain(flat, ff_push(ff_push(make_list(16), 0, null_addr(), 0), 1, node, dest), 2, st)
+    } else {
+      fill_concat_part(flat, node, dest, src, n, st)
+    },
+    4 => fill_range(flat, load_addr(addr_at(node, 8)), dest, load_i32(addr_at(node, 12)) + src, n, st),
     _ => out_of_range(),
   }
 }
 
-// A flat source into a flat destination at the same index range is ONE
-// contiguous copy — the per-element strided loop re-derived two loop-invariant
-// strides per element (the ceremony the 2026-07-24 perf pass priced). The
-// stride is uniform through a fill by construction: flat_raw allocates the
-// destination with the tree's own sc, and every sub-node carries its parent's
-// sc — so one mem_copy is byte-exact for word, byte, and wide elements alike.
-fn flat_fill_flat_src(flat, src, i, n) = if i >= n {
-  ()
-} else {
-  let st = decode_stride(load_i32(addr_at(flat, 4)) / 16)
-  mem_copy(addr_at(flat, 8 + i * st), addr_at(src, 8 + i * st), (n - i) * st)
-}
-
-fn flat_fill_snoc(flat, tree, i, n) = {
-  // snoc node: [count][tag=1][left:ptr][last at stride]
-  // Write from right: the last element goes at position n-1, then recurse
-  // into left for positions 0..n-2. A snoc CHAIN pays this once per element,
-  // so the stride derives once from the node's own tag word (uniform through
-  // the fill) and the word case is a direct load/store pair.
-  let count = load_i32(tree)
-  let last_pos = count - 1
-  let st = decode_stride(load_i32(addr_at(tree, 4)) / 16)
-  if st == 4 {
-    store_i32(addr_at(flat, 8 + last_pos * 4), load_i32(addr_at(tree, 12)))
+// A snoc node is [count][tag=1][left][last]: the last element sits at the
+// count less one, so past the range it is skipped, inside it it is the
+// range's last, and the left link holds the rest. A suffix of a chain costs
+// its own length; indexing each element instead descended the chain from its
+// end once per element, and a module's span-index suffix cost the whole
+// graph per node.
+fn fill_snoc(flat, node, dest, src, n, st) = {
+  let left = load_addr(addr_at(node, 8))
+  if load_i32(node) - 1 >= src + n {
+    fill_range(flat, left, dest, src, n, st)
   } else {
-    store_strided(addr_at(flat, 8), last_pos, st, load_strided(addr_at(tree, 12), 0, st))
+    if st == 4 {
+      store_i32(addr_at(flat, 8 + (dest + n - 1) * 4), load_i32(addr_at(node, 12)))
+    } else {
+      store_strided(addr_at(flat, 8), dest + n - 1, st, load_strided(addr_at(node, 12), 0, st))
+    }
+    fill_range(flat, left, dest, src, n - 1, st)
   }
-  let left = load_addr(addr_at(tree, 8))
-  flat_fill(flat, left, i, last_pos)
 }
 
-// The concat fill drains an EXPLICIT heap stack of (node, offset) pairs —
+// A range covering part of a concat: the part in its right half first, then
+// the part in its left half as the tail call, so a ++-folded rope, which
+// leans left, is walked down its spine without the call stack growing.
+fn fill_concat_part(flat, node, dest, src, n, st) = {
+  let left = load_addr(addr_at(node, 8))
+  let left_len = load_i32(left)
+  let in_left = if src >= left_len { 0 } else if src + n <= left_len { n } else { left_len - src }
+  let right_src = if src >= left_len { src - left_len } else { 0 }
+  fill_range(flat, load_addr(addr_at(node, 12)), dest + in_left, right_src, n - in_left, st)
+  fill_range(flat, left, dest, src, in_left, st)
+}
+
+// A whole concat drains an EXPLICIT heap stack of (node, offset) pairs:
 // destinations are absolute, so sibling order is irrelevant and the walk
-// needs no call stack. The native left-recursion form died at rope depth:
-// a ++-folded chain leans left one node per append, and the full-wheel
-// emission collect was the first caller to materialize a fold-built line
-// thousands of nodes deep (call stack exhausted at flat_fill_concat).
-// Non-concat nodes fall to their own walkers; a concat reached THROUGH a
-// snoc or slice re-enters here as a fresh drain, so call depth is the
-// representation ALTERNATION depth, never the concat depth.
-fn flat_fill_concat(flat, tree, i, n) =
-  ff_concat_drain(flat, ff_push(ff_push(make_list(16), 0, null_addr(), 0), 1, tree, 0), 2)
-
-fn flat_fill_concat_offset(flat, src, offset, n) =
-  ff_concat_drain(flat, ff_push(ff_push(make_list(16), 0, null_addr(), 0), 1, src, offset), 2)
-
-// The stack: two words per entry, [2k] = node, [2k+1] = absolute offset;
-// entry 0 is a permanent floor so sp == 1 means empty. A node crosses its
-// word slot as its address punned (addr_word in, word_addr out) — the
-// runtime's word protocol, and the stack dies with the drain.
+// needs no call stack. Native recursion died at rope depth — a ++-folded
+// chain leans left one node per append, thousands deep. A concat reached
+// through a snoc or a slice re-enters as a fresh drain, so call depth is the
+// representation's alternation depth, never the concat depth. Two words an
+// entry, [2k] the node as its address punned (addr_word in, word_addr out,
+// the runtime's word protocol) and [2k+1] its offset, since the stack of the
+// emitted module's rope holds a pair for every node of its spine; entry 0 is
+// a permanent floor, so sp == 1 means empty.
 fn ff_push(stack, k, node, off) = {
   let grown = list_extend_to(stack, k * 2 + 2)
   list_set(list_set(grown, k * 2, addr_word(node)), k * 2 + 1, off)
 }
 
-fn ff_concat_drain(flat, stack, sp) = if sp <= 1 {
+fn ff_concat_drain(flat, stack, sp, st) = if sp <= 1 {
   ()
 } else {
   let node = word_addr(stack[(sp - 1) * 2])
   let off = stack[(sp - 1) * 2 + 1]
   if seq_tag(node) == 3 {
     let left = load_addr(addr_at(node, 8))
-    let right = load_addr(addr_at(node, 12))
-    let left_len = load_i32(left)
-    ff_concat_drain(flat, ff_push(ff_push(stack, sp - 1, right, off + left_len), sp, left, off), sp + 1)
+    let right_entry = ff_push(stack, sp - 1, load_addr(addr_at(node, 12)), off + load_i32(left))
+    ff_concat_drain(flat, ff_push(right_entry, sp, left, off), sp + 1, st)
   } else {
-    flat_fill_at_offset(flat, node, off, load_i32(node))
-    ff_concat_drain(flat, stack, sp - 1)
+    fill_range(flat, node, off, 0, load_i32(node), st)
+    ff_concat_drain(flat, stack, sp - 1, st)
   }
-}
-
-fn flat_fill_at_offset(flat, src, offset, n) = if n == 0 {
-  ()
-} else {
-  match seq_tag(src) {
-    0 => flat_fill_flat_src_offset(flat, src, offset, n),
-    1 => flat_fill_snoc_offset(flat, src, offset, n),
-    3 => flat_fill_concat_offset(flat, src, offset, n),
-    4 => flat_fill_slice_offset(flat, src, offset, n),
-    _ => out_of_range(),
-  }
-}
-
-fn flat_fill_flat_src_offset(flat, src, offset, n) = if n == 0 {
-  ()
-} else {
-  let src_len = load_i32(src)
-  copy_range(flat, src, offset, 0, src_len)
-}
-
-// Flat-to-flat at distinct offsets: the same one-mem_copy collapse as
-// flat_fill_flat_src (uniform stride through the fill by construction).
-fn copy_range(flat, src, dest_off, src_off, n) = if n == 0 {
-  ()
-} else {
-  let st = decode_stride(load_i32(addr_at(flat, 4)) / 16)
-  mem_copy(addr_at(flat, 8 + dest_off * st), addr_at(src, 8 + src_off * st), n * st)
-}
-
-fn flat_fill_snoc_offset(flat, src, offset, n) = {
-  // The offset twin of flat_fill_snoc — same once-per-element cost, same
-  // one-read stride derivation and word fast path.
-  let count = load_i32(src)
-  let pos = offset + count - 1
-  let st = decode_stride(load_i32(addr_at(src, 4)) / 16)
-  if st == 4 {
-    store_i32(addr_at(flat, 8 + pos * 4), load_i32(addr_at(src, 12)))
-  } else {
-    store_strided(addr_at(flat, 8), pos, st, load_strided(addr_at(src, 12), 0, st))
-  }
-  let left = load_addr(addr_at(src, 8))
-  flat_fill_at_offset(flat, left, offset, count - 1)
-}
-
-fn flat_fill_slice_offset(flat, src, offset, n) = {
-  let base = load_addr(addr_at(src, 8))
-  let slice_start = load_i32(addr_at(src, 12))
-  let slice_len = load_i32(src)
-  flat_fill_slice_range(flat, base, offset, slice_start, slice_len)
-}
-
-fn flat_fill_slice_range(flat, base, dest_off, src_start, n) = if n == 0 {
-  ()
-} else {
-  // A slice over a FLAT base — the dominant shape — is one contiguous
-  // mem_copy. A structured base falls to the per-element walk with the
-  // stride hoisted once (it is loop-invariant; deriving it per element was
-  // the priced ceremony).
-  let st = decode_stride(load_i32(addr_at(flat, 4)) / 16)
-  if i32_and(load_i32(addr_at(base, 4)), 15) == 0 {
-    mem_copy(addr_at(flat, 8 + dest_off * st), addr_at(base, 8 + src_start * st), n * st)
-  } else {
-    flat_fill_slice_walk(flat, base, dest_off, src_start, n, st)
-  }
-}
-
-fn flat_fill_slice_walk(flat, base, dest_off, src_start, n, st) = if n == 0 {
-  ()
-} else {
-  // Unchecked by construction: the walk's n came from the slice node's own
-  // length, so src_start stays inside base for every step — the checked
-  // list_index would also be a table-typed call forcing [a] onto this raw
-  // walk's addresses.
-  store_strided(addr_at(flat, 8), dest_off, st, list_index_unchecked(base, src_start))
-  flat_fill_slice_walk(flat, base, dest_off + 1, src_start + 1, n - 1, st)
-}
-
-fn flat_fill_slice(flat, tree, i, n) = {
-  let base = load_addr(addr_at(tree, 8))
-  let slice_start = load_i32(addr_at(tree, 12))
-  let slice_len = load_i32(tree)
-  flat_fill_slice_range(flat, base, i, slice_start, slice_len)
 }

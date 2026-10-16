@@ -362,8 +362,6 @@ fn placed_node(i, acc, h) = match acc {
   (at, j) => fold((wmap_add(at, h, i * 2097152 + j), j + 1), placed_node(i, ??, ??), node_children(h)),
 }
 
-fn node_children(h) = body_child_handles(graph_node_body(h))
-
 fn module_edges(at, im) = match im {
   (_, mh) => module_of(mh).decls |> flat_map(subtree_edges(at, ??)),
 }
@@ -390,7 +388,7 @@ fn place_of(at, h) = match wmap_get(at, h) {
 // it — its files read from memory — and its edges compared with the
 // program's. None where they agree and it judges clean; else why.
 fn judged_again(entry: String, files, print) =
-  renamed_verdict(entry, print) ~> fs_overlay(map(file_text, files)) ~> diag_bank ~> infer_context
+  renamed_verdict(entry, print) ~> fs_overlay(map(file_text, files)) ~> infer_context
 
 fn renamed_verdict(entry: String, print) = match driver_link_scoped(entry, Unheard) {
   None => Some((RfError, "the renamed program does not load")),
@@ -448,6 +446,3 @@ fn node_at_place(k) = match drop(k / 2097152, link_modules()) {
   },
   [] => None,
 }
-
-// A node and every node below it, in the walk's order.
-fn nodes_under(h) = [h] ++ flat_map(nodes_under, node_children(h))

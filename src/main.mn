@@ -234,7 +234,7 @@ fn space_run(addr) = match addr {
     eprint_string("mentl space: the page is served by the mentl command — from the repo, `bash tools/space-stage.sh && python3 tools/space-serve.py`, then open http://127.0.0.1:7397/ (the deployed page is https://space.ampactor.dev/); `mentl space <file>:<line>[:<col>]` answers the View at an address\n")
     2
   },
-  Some(SpaceAt(target, line, col, needle)) => space_project(driver_link(target), target, line, col, needle) ~> patch_to_file ~> terminal_transport ~> cursor_default ~> synth_default ~> mentl_default ~> stdout_console ~> wasi_filesystem ~> diag_bank ~> infer_context,
+  Some(SpaceAt(target, line, col, needle)) => space_project(driver_link(target), target, line, col, needle) ~> patch_to_file ~> terminal_transport ~> cursor_default ~> synth_default ~> mentl_default ~> stdout_console ~> wasi_filesystem ~> infer_context,
 }
 
 // ─── march_run — the medium judges its own generation (`mentl march`)
@@ -526,7 +526,7 @@ fn fmt_render_file(path: String, src: String) = {
       }
     }
   }
-} ~> format_default ~> diag_bank ~> infer_context
+} ~> format_default ~> infer_context
 
 // The parse's reports a render cannot fix: every report but the formatter's
 // own lifts. A MachineApplicable class is the lift — a duplicate import is a
@@ -820,7 +820,7 @@ fn tighten_run(target_opt) = {
       print_string("tighten: {int_to_str(n)} of {int_to_str(len(cands))} clause(s) applied, {int_to_str(released)} ownership marker(s) released, {int_to_str(rostered)} of {int_to_str(len(rosters))} catch-all arm(s) written as the roster each stood for — the medium authored these; verify with a fresh check + the gates\n")
       if n + released + rostered > 0 { 0 } else { 1 }
     }
-  } ~> diag_bank ~> wasi_filesystem ~> mentl_default ~> infer_context
+  } ~> wasi_filesystem ~> mentl_default ~> infer_context
 }
 
 // THE CATCH-ALLS OVER SUMS, WRITTEN AS THEIR ROSTERS (Morgan, 2026-10-13: a
@@ -1330,7 +1330,7 @@ fn check_run(target_opt) = {
 // silence predicate at the terminal). Spans render back to file:line against
 // the text the module's node carries — the text its judgment read.
 fn at_run(target, line, col) =
-  address_project(driver_link(target), target, line, col) ~> patch_to_file ~> terminal_transport ~> cursor_default ~> synth_default ~> mentl_default ~> stdout_console ~> wasi_filesystem ~> diag_bank ~> infer_context
+  address_project(driver_link(target), target, line, col) ~> patch_to_file ~> terminal_transport ~> cursor_default ~> synth_default ~> mentl_default ~> stdout_console ~> wasi_filesystem ~> infer_context
 
 // accept_run — the second graph operation at the address surface (C4).
 // `mentl <address>` PROJECTS the position; `mentl accept <address>` DRAWS
@@ -1343,12 +1343,12 @@ fn at_run(target, line, col) =
 // with the Why walking to the proposal it came from. A tie or a filled
 // position draws nothing, says why on stderr, and exits 1.
 fn accept_run(target, line, col) =
-  accept_project(driver_link(target), target, line, col) ~> patch_written ~> terminal_transport ~> cursor_default ~> synth_default ~> mentl_default ~> stdout_console ~> wasi_filesystem ~> diag_bank ~> infer_context
+  accept_project(driver_link(target), target, line, col) ~> patch_written ~> terminal_transport ~> cursor_default ~> synth_default ~> mentl_default ~> stdout_console ~> wasi_filesystem ~> infer_context
 
 // The rename verb: decided by the rename module (`rename_at`), and its files
 // written only when the renamed program keeps every edge and judges clean.
 fn rename_run(target, line, col, name) =
-  rename_settle(rename_at(target, line, col, name)) ~> format_default ~> wasi_filesystem ~> diag_bank ~> infer_context
+  rename_settle(rename_at(target, line, col, name)) ~> format_default ~> wasi_filesystem ~> infer_context
 
 fn rename_settle(v) = match v {
   Renamed(n, files) => {
@@ -1753,7 +1753,7 @@ fn battery_rename_expect(src) = {
 // it, nothing written, and the contract holds when the verdict is the one the
 // fixture states — the names it writes, or the refusal by its word.
 fn battery_rename_step(stem, path: String, line, col, name: String, want: String) = {
-  let v = rename_at(path, line, col, name) ~> format_default ~> diag_bank ~> infer_context
+  let v = rename_at(path, line, col, name) ~> format_default ~> infer_context
   let got = match v {
     Renamed(n, _) => "{int_to_str(n)} name(s)",
     RenameRefused(r, _) => "refuses {refusal_word(r)}",
@@ -1784,7 +1784,7 @@ fn battery_declared_step(stem, path: String, line, col, dline, dcol) = {
         Span(l, c, _, _) => "{int_to_str(l)}:{int_to_str(c)}",
       },
     },
-  } ~> cursor_default ~> synth_default ~> mentl_default ~> diag_bank ~> infer_context
+  } ~> cursor_default ~> synth_default ~> mentl_default ~> infer_context
   let want = "{int_to_str(dline)}:{int_to_str(dcol)}"
   if str_eq(got, want) {
     print_string("PASS {stem}: declared at {want}\n")
@@ -1805,7 +1805,7 @@ fn battery_refs_step(stem, path: String, name: String, want: String) = {
   let got = match driver_link(path) {
     None => "nothing: the fixture did not load",
     Some(fixture) => name_decls(name) |> flat_map(decl_ref_handles) |> filter({ h => graph_module_of(h) == fixture }) |> map(ref_role) |> refs_role_counts,
-  } ~> cursor_default ~> synth_default ~> mentl_default ~> diag_bank ~> infer_context
+  } ~> cursor_default ~> synth_default ~> mentl_default ~> infer_context
   if str_eq(got, want) {
     print_string("PASS {stem}: refs of {name} {want}\n")
     0
@@ -1919,7 +1919,7 @@ fn battery_reach_step(stem, path: String, want: String) = {
   let dead = {
     driver_link(path)
     reach_report(module_cells()) |> filter(ur_row_is_dead) |> map({ (_, n, _, _) => n }) |> join(" ", ??)
-  } ~> cursor_default ~> synth_default ~> mentl_default ~> diag_bank ~> infer_context
+  } ~> cursor_default ~> synth_default ~> mentl_default ~> infer_context
   if str_eq(dead, want) {
     print_string("PASS {stem}: unreachable {want}\n")
     0
@@ -1941,7 +1941,7 @@ fn battery_reach_step(stem, path: String, want: String) = {
 fn battery_view(path: String, line, col, judge) = judge(match address_node(driver_link(path), path, line, col) {
   None => None,
   Some(ph) => Some((body_decl_name(graph_node_body(ph)), cursor_at_handle(ph))),
-}) ~> cursor_default ~> synth_default ~> mentl_default ~> diag_bank ~> infer_context
+}) ~> cursor_default ~> synth_default ~> mentl_default ~> infer_context
 
 fn teach_meets(want, teach) = match want {
   WantAdd(text) => match teach {
@@ -2063,7 +2063,7 @@ fn battery_compile(module: String, stem) = {
   let classes = banked_classes()
   let nerr = diag_errors()
   (left, nerr, classes)
-} ~> diag_bank ~> wasi_filesystem ~> compile_context
+} ~> wasi_filesystem ~> compile_context
 
 fn battery_run(dir) = {
   // The fixture paths are flat before the first micro: each step indexes

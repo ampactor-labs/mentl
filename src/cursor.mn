@@ -213,16 +213,16 @@ fn module_of_position(h) = match graph_node_body(h) {
   _ => graph_module_of(h),
 }
 
-// Every handle the module minted, in mint order — one word compare per
-// node against the module stamped at its birth.
+// Every handle the module minted that the program still holds, in mint order
+// — one word compare per node against the module stamped at its birth, and
+// none of a statement an edit replaced.
 fn module_handles(mh: Int) with !Mutate = match graph_snapshot() {
-  Graph(next, _spans) => filter({ h => graph_module_of(h) == mh }, range(0, next)),
+  Graph(next, _spans) => filter({ h => graph_module_of(h) == mh && graph_node_current(h) }, range(0, next)),
 }
 
-// A position in a session that has re-derived exists once per generation
-// at the same source position; the latest mint is the live one. The
-// identity is the span's START: an edit that reshapes a decl changes its
-// extent but not where it begins.
+// Two mints can stand at one source position, and the latest is the live
+// one. The identity is the span's START: a reshaped node changes its extent
+// but not where it begins.
 fn latest_generation(handles) with !Mutate = filter(
   (h) => !any((h2) => h2 > h && span_start_eq(graph_span_of(h2), graph_span_of(h)), handles),
   handles
