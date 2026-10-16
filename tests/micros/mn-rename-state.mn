@@ -1,0 +1,12 @@
+// rename 8:22 to total: 4 name(s)
+effect Count {
+  bump() -> Int
+}
+
+// A state field renames at its binder: the arm's reads and the update that
+// writes it follow their edges.
+handler counter with n = 40 {
+  bump() => resume(n) with n = n + 2,
+}
+
+fn main() = (bump() ~> counter) - 40

@@ -1617,6 +1617,9 @@ fn state_field_init(f: {init: Node, name: Node}) -> Node = f.init
 // judged.
 fn handler_arm_op_decl(a: {args: [Node], body: Node, op: Node}) = graph_ref_decl(a.op)
 
+// The node an arm's op name is written at.
+fn handler_arm_op(a: {args: [Node], body: Node, op: Node}) -> Node = a.op
+
 // The op an arm serves, as written at its node.
 fn handler_arm_op_name(a: {args: [Node], body: Node, op: Node}) -> String = match graph_node_body(a.op) {
   NName(ArmOp(name)) => name,
@@ -2676,7 +2679,11 @@ fn arm_list_of(params, body) = if len(params) != 1 {
     match pat_of(param_pat(p)) {
       PVar(nm) => match graph_node_body(body) {
         NExpr(MatchExpr(scrut, arms)) => match graph_node_body(scrut) {
-          NExpr(VarRef(snm)) => if snm == nm && !free_uses_contains(free_vars_match_arms(arms, []), nm) { Some(arms) } else { None },
+          NExpr(VarRef(snm)) => if ref_spelling(scrut, snm) == nm && !read_past(scrut, param_pat(p), arms, nm) {
+            Some(arms)
+          } else {
+            None
+          },
           _ => None,
         },
         _ => None,
@@ -2686,6 +2693,12 @@ fn arm_list_of(params, body) = if len(params) != 1 {
     }
   }
 }
+
+// Whether the parameter is read anywhere but the scrutinee: a use the
+// judgment linked to its binder, or, in text no judgment has read, a free
+// use the arms spell.
+fn read_past(scrut, binder, arms, nm: String) =
+  any({ r => r != scrut }, graph_refs_of(binder)) || free_uses_contains(free_vars_match_arms(arms, []), nm)
 
 // What a `{` opens. Four forms, decided by a bounded lookahead that never
 // backtracks and never reports — no ambiguity escapes the parser.

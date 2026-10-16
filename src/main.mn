@@ -77,6 +77,8 @@ import own
 
 import query
 
+import rename
+
 import space
 
 import synth_proposer
@@ -151,6 +153,7 @@ fn dispatch_invocation(verb) = match verb {
   VCheck(target) => check_run(target),
   VAt(target, line, col) => at_run(target, line, col),
   VAccept(target, line, col) => accept_run(target, line, col),
+  VRename(target, line, col, name) => rename_run(target, line, col, name),
   VTest(target) => test_run(target),
   VAudit(target) => audit_run(target),
   VQuery(target, q) => query_run(target, q),
@@ -1342,6 +1345,30 @@ fn at_run(target, line, col) =
 fn accept_run(target, line, col) =
   accept_project(driver_link(target), target, line, col) ~> patch_written ~> terminal_transport ~> cursor_default ~> synth_default ~> mentl_default ~> stdout_console ~> wasi_filesystem ~> diag_bank ~> infer_context
 
+// The rename verb: decided by the rename module (`rename_at`), and its files
+// written only when the renamed program keeps every edge and judges clean.
+fn rename_run(target, line, col, name) =
+  rename_settle(rename_at(target, line, col, name)) ~> format_default ~> wasi_filesystem ~> diag_bank ~> infer_context
+
+fn rename_settle(v) = match v {
+  Renamed(n, files) => {
+    each(rename_file_written, files)
+    print_string("rename: {int_to_str(n)} name(s) written in {int_to_str(len(files))} file(s); the program draws every edge it drew\n")
+    0
+  },
+  RenameRefused(_, why) => {
+    print_string("rename: nothing written — {why}\n")
+    1
+  },
+}
+
+fn rename_file_written(f) = match f {
+  (path, src, text) => {
+    fmt_write(FmtRenders(path, src, text))
+    print_string("rename: wrote {path}\n")
+  },
+}
+
 // The draw writes the module's new text and nothing else; the projection is
 // over the link derived again from that text, as the session's accept
 // projects over the module its re-judgment leaves. The module read before
@@ -1550,7 +1577,9 @@ fn test_check_run(entry_module) =
 // none unsaid. `// fmt: canonical` is the formatter's: the fixture is its own
 // render, byte for byte, through the render the fmt verb writes. `// declared
 // L:C at L2:C2` is the reference edge's: the name at L:C reads the
-// declaration that stands at L2:C2.
+// declaration that stands at L2:C2. `// rename L:C to NEW: N name(s)` is the
+// rename verb's, decided as the verb decides it with nothing written: the
+// names it writes, or `refuses <word>` for why it writes none.
 type Expect
   = ExpectRun(Int)
   | ExpectRefuse(String)
@@ -1559,6 +1588,7 @@ type Expect
   | ExpectUnreachable(String)
   | ExpectRefs(String, String)
   | ExpectDeclared(Int, Int, Int, Int)
+  | ExpectRename(Int, Int, String, String)
   | ExpectCanonical
 
 // A teach fixture's contract (D4): what the gradient answers at the
@@ -1591,6 +1621,8 @@ fn battery_expect(src) = {
     battery_refs_expect(src)
   } else if byte_len(src) >= 12 && str_eq(str_slice(src, 0, 12), "// declared ") {
     battery_declared_expect(src)
+  } else if byte_len(src) >= 10 && str_eq(str_slice(src, 0, 10), "// rename ") {
+    battery_rename_expect(src)
   } else if byte_len(src) >= 17 && str_eq(str_slice(src, 0, 17), "// fmt: canonical") {
     Some(ExpectCanonical)
   } else if byte_len(src) < 12 {
@@ -1699,6 +1731,44 @@ fn battery_declared_expect(src) = {
   let dline = battery_expect_digits(src, at_start, 0)
   let dcol_start = battery_skip_digits(src, at_start) + 1
   Some(ExpectDeclared(line, col, dline, battery_expect_digits(src, dcol_start, 0)))
+}
+
+// `// rename L:C to NEW: <want>` — the address, the name to its colon, the
+// verdict after it.
+fn battery_rename_expect(src) = {
+  let line = battery_expect_digits(src, 10, 0)
+  let col_start = battery_skip_digits(src, 10) + 1
+  let col = battery_expect_digits(src, col_start, 0)
+  let name_start = battery_skip_digits(src, col_start) + 4
+  let name_end = name_start + index_of(str_slice(src, name_start, byte_len(src)), ":")
+  Some(ExpectRename(
+    line,
+    col,
+    str_slice(src, name_start, name_end),
+    battery_line_rest(src, name_end + 2, name_end + 2)
+  ))
+}
+
+// THE RENAME BATTERY: the rename at the address decided as the verb decides
+// it, nothing written, and the contract holds when the verdict is the one the
+// fixture states — the names it writes, or the refusal by its word.
+fn battery_rename_step(stem, path: String, line, col, name: String, want: String) = {
+  let v = rename_at(path, line, col, name) ~> format_default ~> diag_bank ~> infer_context
+  let got = match v {
+    Renamed(n, _) => "{int_to_str(n)} name(s)",
+    RenameRefused(r, _) => "refuses {refusal_word(r)}",
+  }
+  if str_eq(got, want) {
+    print_string("PASS {stem}: rename {want}\n")
+    0
+  } else {
+    let why = match v {
+      Renamed(_, _) => "",
+      RenameRefused(_, reason) => " — {reason}",
+    }
+    print_string("FAIL(rename) {stem}: wanted {want}, got {got}{why}\n")
+    1
+  }
 }
 
 // THE DECLARATION BATTERY: the name at the address follows its reference
@@ -2039,6 +2109,7 @@ fn battery_step(path: String) = {
       ExpectUnreachable(want) => battery_reach_step(stem, path_to_module(path), want),
       ExpectRefs(name, want) => battery_refs_step(stem, path_to_module(path), name, want),
       ExpectDeclared(line, col, dline, dcol) => battery_declared_step(stem, path_to_module(path), line, col, dline, dcol),
+      ExpectRename(line, col, name, want) => battery_rename_step(stem, path_to_module(path), line, col, name, want),
       ExpectCanonical => battery_fmt_step(stem, path, src),
       ExpectRun(want) => match battery_compile(path_to_module(path), stem) {
         (left, nerr, _) => match left {

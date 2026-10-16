@@ -415,7 +415,8 @@ value walk, obligations) · `egraph` · `derive` (derivative readings) · `lower
 module DAG and layers) · `pipeline` (handler stacks, diagnostics) · `format` ·
 `query`, `cursor`, `cursor_transport`, `space`, `mentl` (the reads: the facets,
 the eight aspects, the View, the gradient) · `synth_proposer` (the ??-fan) ·
-`board` (the standing bounds) · `cli`, `main` (the verbs) · `lsp`, `mcp`
+`rename` (a rename, one write at a declaration) · `board` (the standing
+bounds) · `cli`, `main` (the verbs) · `lsp`, `mcp`
 (transports) · `canon`. The runtime library is `lib/`, which never imports the
 compiler (§7).
 
@@ -447,10 +448,14 @@ landing that closes it. A gate that did not run is UNKNOWN, never green.
   declaration's row or a function type's row names, the op a handler arm
   serves and a sugar that calls a primitive (`xs[i]`, `++`, an interpolation's
   seams, a list rest), so `refs of` reaches every one of them. A type, a
-  Reason and the lowered program are still value trees (§11.18). The first
-  one-write operation is built: a named handler chain's install becomes its
-  members' installs (SYNTAX §«Handler chains»); a rename, the session's edit
-  and a proposal's accept are not (§11.2).
+  Reason and the lowered program are still value trees (§11.18), so a name
+  written inside a type renders from the type's value. Two one-write
+  operations are built: a named handler chain's install becomes its members'
+  installs (SYNTAX §«Handler chains»), and a rename is one write at the
+  declaration (`mentl rename`), every reference, label and comment mention
+  rendering through its edge, a rename that moves an edge refused, and one
+  that reaches a name inside a type refused; the session's edit and a
+  proposal's accept are not (§11.2).
 - **Names are still read where an edge exists** (§11.2, §11.3, §11.18): the
   lowered program's identity is its symbol, so the emit's reach walks key their
   units by it and a resume-bound function is found by its spelling; the emit
@@ -471,6 +476,9 @@ landing that closes it. A gate that did not run is UNKNOWN, never green.
 - **A dropped value is silent** outside the stage of `each` (§11.6).
 - **Early exit cannot be said and every cycle is hand recursion** (§11.7):
   `any`, `all`, `find` and `take` visit every element.
+- **A derived fold over a sequence is one call per element** (§11.11): `==`
+  over two lists of twenty thousand pairs exhausts the stack, where five
+  thousand compare, and compare, hash and show recurse the same way.
 - **Teach answers locks and preconditions, and little else** (§11.8): no
   refinement at a part, no call with argument holes, no record proposed for a
   positional product.
@@ -661,16 +669,11 @@ a provenance diff, a search over live shared cells.
 **THE STANDING CURSOR** — the order work runs in:
 
 2. **Every position is a cell — #108** (`Hβ.graph.positions-are-cells`). The
-   writes the structure cut was for: a rename is one write at the declaration
-   (the `rename` verb: every reference renders its spelling from its edge, a
-   comment's mention is rewritten along its mention edge, the program is
-   judged again under the new name and a rename that moves any edge — a
-   capture, a shadow — refuses, whatever the scope rules then are, and the
-   formatter writes the files); the session re-judges the nodes an edit
-   rewrote rather than re-parsing a module (the declaration-grain cone over
-   the in-edges); accepting a proposal rewrites the hole's node in place, and
-   the position-keyed accept column (`Hβ.synth.accepted-edge-keyed-by-position`)
-   deletes.
+   writes the structure cut was for that are not yet built: the session
+   re-judges the nodes an edit rewrote rather than re-parsing a module (the
+   declaration-grain cone over the in-edges), and accepting a proposal
+   rewrites the hole's node in place, the position-keyed accept column
+   (`Hβ.synth.accepted-edge-keyed-by-position`) deleted.
 3. **A module is a scope** (`Hβ.driver.per-module-env-overlay`,
    `Hβ.query.facets-read-the-link`, `Hβ.modules.import-block-is-maintained`,
    `Hβ.modules.vocabulary-held-by-declaration`,
@@ -756,7 +759,7 @@ a provenance diff, a search over live shared cells.
    `Hβ.memory.word-arithmetic-is-memory`). A `*Write` effect's ops write and a
    `*Read` effect's read, held by a census at zero read through the published
    write fact: `graph_push_checkpoint` and `graph_attach_comment_ref` move into
-   GraphWrite, `graph_install_at` and `graph_product_at` into GraphRead. Word
+   GraphWrite. Word
    arithmetic leaves `Memory` in two pins at the bootstrap seam (registered as
    primitives the library shadows, then the library's declarations deleted), so a
    function doing only arithmetic on words is `Pure`. Memory's stores become an
@@ -787,7 +790,11 @@ a provenance diff, a search over live shared cells.
     datum-first signatures (`reduce`, `scanl`, `nth`, `clamp`) among them; a
     speculation is one extent — the cursor an arena with an overlay — and the
     trail ops leave the program-facing surface; the user gets a TIME library.
-    Recursion that survives is priced by a signature.
+    Recursion that survives is priced by a signature. The structural folds the
+    emitter derives over a sequence — `==`, compare, hash and show — are loops,
+    where each is emitted today as one call per element, so two lists of
+    twenty thousand pairs exhaust the stack where they are compared (measured
+    2026-10-16, first by the rename's edge lists).
 12. **The project is canonical, and a render that changes the tree is not
     written** (`Hβ.fmt.the-project-is-canonical`,
     `Hβ.fmt.render-must-parse-to-the-same-tree`). fmt lifts every

@@ -3123,12 +3123,12 @@ fn state_writes(hname: String, st) with !Mutate = match graph_binder_of(st.init)
 }
 
 fn write_line(w) with !Mutate =
-  "  {head(split("\n", render_body_tokens(graph_node_body(w))))}{decl_at(w)}"
+  "  {head(split("\n", render_body_tokens(w, graph_node_body(w))))}{decl_at(w)}"
 
 // An in-place store, as the value it stores (or the argument a callee
 // stores through).
 fn store_line(c) with !Mutate =
-  "  store {head(split("\n", render_body_tokens(graph_node_body(c))))}{decl_at(c)}"
+  "  store {head(split("\n", render_body_tokens(c, graph_node_body(c))))}{decl_at(c)}"
 
 // ─── Span → name — the inverse use-edge read (goto/rename anchor) ──
 //

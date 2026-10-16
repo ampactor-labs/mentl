@@ -1,0 +1,6 @@
+// rename 4:10 to count: 3 name(s)
+// A parameter renames by one write at its binder, its uses following their
+// edges and the comment's mention of `n` following its own.
+fn twice(n) = n + n
+
+fn main() = twice(21) - 42

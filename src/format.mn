@@ -107,7 +107,7 @@ fn import_before(p: String, s) = match import_path_of(s) {
 // found; the cursor's and the eight-loop's read the declaration's path now).
 fn render_node_at(handle) with !Mutate = {
   let body = graph_node_body(handle)
-  render_comment_at(handle) ++ render_indent_for(body) ++ render_body_tokens(body) ++ render_line_break_after(body)
+  render_comment_at(handle) ++ render_indent_for(body) ++ render_body_tokens(handle, body) ++ render_line_break_after(body)
 }
 
 // The canonical indents: two spaces for the left-edge verbs (`|>`, `~>`,
@@ -139,14 +139,14 @@ fn render_fanout_vertical(branches) = match branches {
   [h, ...t] => "{parenthesize(render_tokens_for(h))}\n{spaces(indented_center())}><\n{render_fanout_vertical(t)}",
 }
 
-// An install node the judgment bound `ChainInstall`: the chain's name and
-// how many members it became (infer.mn's infer_chain_install). A parse-only
-// render never meets one — the rewrite is the judgment's — so `mentl fmt`
-// reads the authored reference as written.
+// An install node the judgment bound `ChainInstall`: the node its author
+// wrote the chain's name at and how many members it became (infer.mn's
+// infer_chain_install). A parse-only render never meets one — the rewrite is
+// the judgment's — so `mentl fmt` reads the authored reference as written.
 fn chain_installed(h) = chain_of_reason(graph_reason_at(h))
 
 fn chain_of_reason(reason) = match reason {
-  ChainInstall(name, n) => Some((name, n)),
+  ChainInstall(r, n) => Some((r, n)),
   Located(_, inner) => chain_of_reason(inner),
   _ => None,
 }
@@ -217,8 +217,8 @@ fn render_tokens_for(node) with !Mutate = {
 fn render_installed_tokens(node) with !Mutate = {
   let body = graph_node_body(node)
   match (chain_installed(node), body) {
-    (Some((name, n)), NExpr(PipeExpr(PTee, l, _))) => "{render_operand(chain_body(l, n - 1), pipe_prec(PTee), false)} ~> {name}",
-    _ => render_body_tokens(body),
+    (Some((r, n)), NExpr(PipeExpr(PTee, l, _))) => "{render_operand(chain_body(l, n - 1), pipe_prec(PTee), false)} ~> {render_tokens_for(r)}",
+    _ => render_body_tokens(node, body),
   }
 }
 
@@ -258,24 +258,28 @@ fn render_block_final(final) with !Mutate = match let_born(final) {
   None => render_grouped_body(final),
 }
 
-fn render_body_tokens(body) with !Mutate = match body {
-  NExpr(e) => render_expr_tokens(e),
+// A node's body as tokens. Every name a reference writes is its
+// declaration's, read through the reference's edge (`ref_spelling`), so a
+// rename is one write at the declaration and the page follows it; a node
+// the judgment never linked writes the name it holds.
+fn render_body_tokens(node, body) with !Mutate = match body {
+  NExpr(e) => render_expr_tokens(node, e),
   NStmt(s) => render_stmt_tokens(s),
-  NPat(p) => render_pat_value(p),
+  NPat(p) => render_pat_value(node, p),
   NHole(_) => "??",
   NModule(m) => "// module {m.path}",
   NLink(_) => "// link",
   NTypeAnn(ty) => render_type_tokens(ty),
   NName(written) => match written {
-    RowEffect(name) => render_authored_eff_name(name),
-    ArmOp(op) => op,
-    StateWrite(field) => field,
+    RowEffect(name) => render_authored_eff_name(term_spelled(name, Some(node))),
+    ArmOp(op) => ref_spelling(node, op),
+    StateWrite(field) => ref_spelling(node, field),
   },
   NRow(terms) => render_authored_row(terms),
   NParam(p) => render_param_body(p),
 }
 
-fn render_expr_tokens(e) with !Mutate = match e {
+fn render_expr_tokens(node, e) with !Mutate = match e {
   // A negative literal node is a literal the lexer WRAPPED — `0x811C9DC5`,
   // `2147483648` — since an authored `-5` parses as UNeg(5). int_to_str
   // prints its minus, which re-parses as a unary minus over a different
@@ -288,7 +292,7 @@ fn render_expr_tokens(e) with !Mutate = match e {
   LitString(s) => "\"{str_escape(s)}\"",
   LitBool(b) => if b { "true" } else { "false" },
   LitUnit => "()",
-  VarRef(name) => name,
+  VarRef(name) => ref_spelling(node, name),
   BinOpExpr(op, l, r) => {
     let rc = graph_comment_at(r)
     if lifts_zero_minus(op, l, r) {
@@ -308,7 +312,7 @@ fn render_expr_tokens(e) with !Mutate = match e {
       "{render_postfix_head(callee)}(\n{indent_block(render_arg_lines(args, 0))}\n)"
     }
   },
-  LabeledArg(label, v) => "{label} = {render_tokens_for(v)}",
+  LabeledArg(label, v) => "{label_spelling(node, label, v)} = {render_tokens_for(v)}",
   FieldExpr(recv, field) => "{render_postfix_head(recv)}.{field}",
   IndexExpr(recv, idx) => "{render_postfix_head(recv)}[{render_tokens_for(idx)}]",
   PipeExpr(verb, l, r) => {
@@ -447,12 +451,17 @@ fn render_decl_type(ty) with !Mutate = match ty {
   t => render_type_tokens(t),
 }
 
-fn render_pat_tokens(h) = render_pat_value(pat_of(h))
+fn render_pat_tokens(h) = render_pat_value(h, pat_of(h))
 
-fn render_pat_value(p) = match p {
+// A pattern as written: a binder writes the name it declares, a
+// constructor the name its edge reaches.
+fn render_pat_value(node, p) = match p {
   PVar(name) => name,
   PWild => "_",
-  PCon(name, ps) => if len(ps) == 0 { name } else { "{name}({render_pat_list(ps, ", ")})" },
+  PCon(name, ps) => {
+    let cname = ref_spelling(node, name)
+    if len(ps) == 0 { cname } else { "{cname}({render_pat_list(ps, ", ")})" }
+  },
   PLit(lv) => render_lit_value(lv),
   PTuple(ps) => "({render_pat_list(ps, ", ")})",
   PList(ps, rest) => "[{render_plist_inner(ps, rest)}]",
@@ -781,10 +790,10 @@ fn field_init(field) with !Mutate = match field {
 
 fn field_line(field) with !Mutate = "{field_init(field)},"
 
-// A value that is the variable its field is named for, with no prose of its
-// own to carry.
+// A value that is the variable its field is named for, as the variable
+// renders, with no prose of its own to carry.
 fn field_puns(fname, v) = match graph_node_body(v) {
-  NExpr(VarRef(n)) => n == fname && graph_comment_at(v) == "",
+  NExpr(VarRef(n)) => ref_spelling(v, n) == fname && graph_comment_at(v) == "",
   other => false,
 }
 
@@ -926,7 +935,7 @@ fn render_state_updates(ref updates: [{init: Node, name: Node}], i) with !Mutate
   ""
 } else {
   let u = updates[i]
-  let one = "{state_field_name(u)} = {render_tokens_for(u.init)}"
+  let one = "{ref_spelling(state_field_node(u), state_field_name(u))} = {render_tokens_for(u.init)}"
   let lead = if i == 0 { " with " } else { ", " }
   "{lead}{one}{render_state_updates(updates, i + 1)}"
 }
@@ -1061,7 +1070,7 @@ fn pred_prec(pred) with Pure = match pred {
   _ => 90,
 }
 
-fn render_pred_node(h) with !Mutate = render_body_tokens(graph_node_body(h))
+fn render_pred_node(h) with !Mutate = render_body_tokens(h, graph_node_body(h))
 
 fn render_ty_list(tys) with !Mutate = join(", ", map(render_type_tokens, tys))
 
@@ -1125,7 +1134,110 @@ fn render_handler_arms(ref arms, i) with !Mutate = if i >= len(arms) {
   ""
 } else {
   let a = arms[i]
-  "{handler_arm_op_name(a)}({render_param_list(handler_arm_args(a))}) => {render_grouped_body(handler_arm_body(a))},\n{render_handler_arms(arms, i + 1)}"
+  let op = ref_spelling(handler_arm_op(a), handler_arm_op_name(a))
+  "{op}({render_param_list(handler_arm_args(a))}) => {arm_head_prose(a)}{render_grouped_body(handler_arm_body(a))},\n{render_handler_arms(arms, i + 1)}"
+}
+
+// The prose an arm's head carries, written where its body's prose goes,
+// after the `=>`. A run on the arm's line or above it lands on the widest
+// node the line starts past the op's name — the first parameter, where the
+// arm has one.
+fn arm_head_prose(a) =
+  handler_arm_args(a) |> flat_map(param_prose_homes) |> map(render_comment_at) |> join("", ??)
+
+fn param_prose_homes(p) = [p, param_pat(p)]
+
+// A label as the name of the parameter its slot fills, read through the
+// call's product and its callee's edge, so a renamed parameter's labels
+// follow it; a label the judgment placed nowhere writes the name it holds.
+fn label_spelling(node, label: String, v) = match graph_parent_of(node) {
+  Some(call) => match call_slot_param(call, v) {
+    Some(p) => match decl_spelling(param_pat(p)) {
+      Some(s) => s,
+      None => label,
+    },
+    None => label,
+  },
+  None => label,
+}
+
+// The parameter node whose slot a value fills in a call's product.
+fn call_slot_param(call, v) = match graph_product_at(call) {
+  ProductOf(slots, _, _) => match call_callee_decl(call) {
+    Some(d) => map_option(slot_param, find(slot_is(v, ??), zip(slots, callee_params(d)))),
+    None => None,
+  },
+  NoProduct => None,
+}
+
+fn slot_is(v, pair) = match pair {
+  (s, _) => s == v,
+}
+
+fn slot_param(pair) = match pair {
+  (_, p) => p,
+}
+
+fn call_callee_decl(call) = match graph_node_body(call) {
+  NExpr(CallExpr(f, _)) => graph_ref_decl(f),
+  NExpr(_)
+  | NStmt(_)
+  | NPat(_)
+  | NHole(_)
+  | NModule(_)
+  | NLink(_)
+  | NTypeAnn(_)
+  | NName(_)
+  | NRow(_)
+  | NParam(_) => None,
+}
+
+// The parameter nodes a callee's declaration holds: a function's, a
+// handler's configuration, or the function literal a let binds.
+fn callee_params(d) = match graph_node_body(d) {
+  NStmt(FnStmt(_, ps, _, _, _)) => ps,
+  NStmt(HandlerDeclStmt(_, _, cfg, _, _, _)) => cfg,
+  NPat(_) => bound_literal_params(d),
+  NStmt(_)
+  | NExpr(_)
+  | NHole(_)
+  | NModule(_)
+  | NLink(_)
+  | NTypeAnn(_)
+  | NName(_)
+  | NRow(_)
+  | NParam(_) => [],
+}
+
+fn bound_literal_params(b) = match graph_parent_of(b) {
+  Some(s) => match graph_node_body(s) {
+    NStmt(LetStmt(_, value, _)) => literal_params(value),
+    NStmt(_)
+    | NExpr(_)
+    | NPat(_)
+    | NHole(_)
+    | NModule(_)
+    | NLink(_)
+    | NTypeAnn(_)
+    | NName(_)
+    | NRow(_)
+    | NParam(_) => [],
+  },
+  None => [],
+}
+
+fn literal_params(value) = match graph_node_body(value) {
+  NExpr(LambdaExpr(ps, _)) => ps,
+  NExpr(_)
+  | NStmt(_)
+  | NPat(_)
+  | NHole(_)
+  | NModule(_)
+  | NLink(_)
+  | NTypeAnn(_)
+  | NName(_)
+  | NRow(_)
+  | NParam(_) => [],
 }
 
 fn render_lit_value(lv) = match lv {

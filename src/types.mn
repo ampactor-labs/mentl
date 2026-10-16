@@ -1838,12 +1838,14 @@ type Reason
   // lists one per effect of a declaration's row, and `mentl why <entry>
   // <fn> <Effect>` prints it.
   | EffectEnters(String, Int, Reason)
-  // AN INSTALL OF A NAMED CHAIN (S3, 2026-10-13): the chain's name and how
-  // many members it had, borne by the install node whose body became its
-  // members' installs. The Why at the `~>` glyph names the chain the author
-  // wrote; the formatter reads it to write `body ~> NAME` back over the
-  // installs the graph holds (format.mn's chain_installed).
-  | ChainInstall(String, Int)
+  // AN INSTALL OF A NAMED CHAIN (S3, 2026-10-13): the node the author wrote
+  // the chain's name at, whose edge reaches the chain's declaration, and how
+  // many members the chain had, borne by the install node whose body became
+  // its members' installs. The Why at the `~>` glyph names the chain the
+  // author wrote; the formatter renders that node to write `body ~> NAME`
+  // back over the installs the graph holds (format.mn's chain_installed), so
+  // the name it writes is the declaration's, read through the edge.
+  | ChainInstall(Int, Int)
   // A HANDLER'S STATE FIELD (2026-10-16): the field's name and the handler
   // that holds it, borne by the binder its name is written at. A state field
   // is no let: each install builds its own from the init, and every arm
@@ -3404,6 +3406,16 @@ effect GraphRead {
   // node, newest first. At a hole it is what the fill must satisfy; at a
   // let's value it is the annotation a reader of the binder may stand on.
   graph_claims_of(Int) -> [Ty]
+  // The install-shape column's read, by the install's handle: the install
+  // emit, a perform the install answers in its own frame, and the emitted
+  // reach all key the install's arms from one home.
+  graph_install_at(Int) -> InstallShape
+  // The call-product column's read: the lowering's, which resolves no
+  // callee by name and re-decides no shape
+  // (Hβ.lower.callee-resolved-by-name-in-the-module-env), and the
+  // formatter's, which writes a label as the name of the parameter its
+  // slot fills.
+  graph_product_at(Int) -> CallProduct
   // THE SEGMENT'S WRITE SET (C6): the cells below a handle frontier that a
   // bind since a checkpoint moved — a type or row cell overwritten in the
   // trail's MSetNode / MSetRow entries — each once, in first-write order.
@@ -3441,6 +3453,8 @@ effect GraphWrite {
   graph_register_node(Int, NodeBody)
   // attach parse-collected comment prose + its span to a node's handle (the comment column of the handle's page); resolves via graph_comment_at — a comment is graph content
   graph_attach_comment(Int, String, Span)
+  // rewrite the prose at a node's handle in place, its span kept — the write a rename makes along each mention edge, so the comment says the name its declaration now holds
+  graph_reword_comment(Int, String)
   // draw the e-graph equivalence edge from ≡ to — point the from-side's canonical pointer at the cheaper target. The union-find union step over the equivalence weave; saturation reads it back via graph_canon_at (find). Idempotent: re-pointing an already-rooted source overwrites in place (one cell), never grows a ledger.
   graph_canon_set(Int, Int)
   // write what the judgment proved at a program point — a sequence read's index node carries 1 where its bounds claim held (TRAP). One co-indexed weave like the canon column; one cell per handle, written both ways by every judgment of the read, read back via graph_narrow_at by lower's check-elision.
@@ -3584,19 +3598,12 @@ effect GraphWrite {
   // shape at the install node's handle, an in-place cell store, non-trailed
   // because lowering runs after the judgment.
   graph_install_note(Int, InstallShape)
-  // Its read, by the install's handle: the install emit, a perform the
-  // install answers in its own frame, and the emitted reach all key the
-  // install's arms from one home.
-  graph_install_at(Int) -> InstallShape
   // The call-product column's write: the judgment notes each call's
   // positional product at the call node — the ONE reader of a callee's
   // parameters — with the open slots' cells and the shape it decided
   // (applied, or suspended as a partial), trailed as MSetProduct so a
-  // rolled-back judgment leaves no product at a reused handle. Its read is
-  // the lowering's, which resolves no callee by name and re-decides no
-  // shape (Hβ.lower.callee-resolved-by-name-in-the-module-env).
+  // rolled-back judgment leaves no product at a reused handle.
   graph_product_note(Int, [Node], [Int], CallShape)
-  graph_product_at(Int) -> CallProduct
   // The emittable-fn enumeration's write (the no-mint resolution):
   // each of lower's seven LFn construction sites notes (kind, origin
   // handle, deterministic name, fence, captures) at the moment those
@@ -3983,10 +3990,13 @@ type DiagScope = ScopeAll | ScopeNone | ScopeProject(Layer)
 type Layer = User | Lib | Compiler
 
 // Who a route's register prints for: the census (the board, the march, the
-// stdin compile — every narration of every module) or the project — the
+// stdin compile — every narration of every module), the project — the
 // modules of the entry's layer, which the weave reads off the entry once the
-// walk has resolved it, so a route names the audience and never a module.
-type Audience = Census | Project
+// walk has resolved it, so a route names the audience and never a module —
+// or no one: a judgment its caller reads through a bank, as a rename reads
+// its judgment of the program it would write. Errors render for every
+// audience.
+type Audience = Census | Project | Unheard
 
 // Armed on the root diagnostics_handler only (the register lives where
 // the render lives); a separate effect so the quiet trial, the branch
@@ -5762,9 +5772,29 @@ fn render_joined_term(entry) with !Mutate = match entry {
 fn render_written_term(term, negated) with !Mutate = {
   let bang = if negated { "!" } else { "" }
   match term {
-    RtEff(name, _) => "{bang}{render_eff_name(name)}",
+    RtEff(name, node) => "{bang}{render_eff_name(term_spelled(name, node))}",
     RtGroup(ts) => "{bang}({render_written_row(ts)})",
   }
+}
+
+// A written row term as its edge spells it: the effect or the named row its
+// node reaches, with its instance arguments as written; an unlinked term — a
+// row variable, `Pure`, a clause the medium writes — as it was written.
+fn term_spelled(name, node) = match node {
+  Some(n) => match graph_ref_decl(n) {
+    Some(d) => match decl_spelling(d) {
+      Some(s) => eff_named(name, intern_str(s)),
+      None => name,
+    },
+    None => name,
+  },
+  None => name,
+}
+
+fn eff_named(name, h) = match name {
+  ENamed(_) => ENamed(h),
+  EParameterized(_, args) => EParameterized(h, args),
+  EPure => EPure,
 }
 
 // The triple, as SYNTAX writes a row: presents joined with `+`, the absent
@@ -6045,7 +6075,7 @@ fn reason_phrase(reason) with !Mutate = match reason {
   DefaultReason(name, _) => "{name} defaulted",
   Accepted(text, proof, _) => "accepted `{text}` — proposed: {show_reason(proof)}",
   EffectEnters(eff, _, _) => "{eff} enters here",
-  ChainInstall(name, _) => "the handler chain {name}, installed here",
+  ChainInstall(r, _) => "the handler chain {chain_spelling(r)}, installed here",
   StateBinding(field, hname) => "state {field} of {hname}",
 }
 
@@ -6081,6 +6111,98 @@ fn install_name(h) = match graph_node_body(h) {
   NExpr(VarRef(n)) => n,
   NExpr(CallExpr(f, _)) => show_callee_name(f),
   _ => "_",
+}
+
+// The chain an install names, read through the edge its authored reference
+// draws.
+fn chain_spelling(r) = match graph_ref_decl(r) {
+  Some(d) => match decl_spelling(d) {
+    Some(s) => s,
+    None => install_name(r),
+  },
+  None => install_name(r),
+}
+
+// A declaration's name, read where the declaration holds it — the one
+// spelling every reference to it renders (`ref_spelling`): a binder's
+// pattern, a declaration's head, a constructor's or an op's entry in the
+// type or effect that declares it. None for a node that writes no name: a
+// cell the judgment minted for a primitive, a pattern that binds nothing.
+fn decl_spelling(d) = match graph_node_body(d) {
+  NPat(p) => binder_spelling(p),
+  NStmt(s) => head_spelling(s),
+  NTypeAnn(_) => part_spelling(d),
+  NExpr(_) | NHole(_) | NModule(_) | NLink(_) | NName(_) | NRow(_) | NParam(_) => None,
+}
+
+fn binder_spelling(p) = match p {
+  PVar(n) | PAs(n, _) => Some(n),
+  PWild | PLit(_) | PCon(_, _) | PTuple(_) | PList(_, _) | PRecord(_, _) | PAlt(_) => None,
+}
+
+fn head_spelling(s) = match s {
+  FnStmt(n, _, _, _, _)
+  | TypeDefStmt(n, _)
+  | EffectDeclStmt(n, _, _)
+  | HandlerDeclStmt(n, _, _, _, _, _)
+  | HandlerChainStmt(n, _)
+  | RefineStmt(n, _, _)
+  | AliasStmt(n, _)
+  | RowAliasStmt(n, _) => Some(n),
+  LetStmt(_, _, _) | ExprStmt(_) | ImportStmt(_) => None,
+}
+
+// A constructor's node and an op's node are parts of the declaration that
+// holds them, and each one's name is written in that declaration's entry
+// for it, read up the parent edge.
+fn part_spelling(d) = match graph_parent_of(d) {
+  Some(p) => match graph_node_body(p) {
+    NStmt(s) => part_of_head(s, d),
+    NExpr(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => None,
+  },
+  None => None,
+}
+
+fn part_of_head(s, d) = match s {
+  TypeDefStmt(_, variants) => map_option(part_variant_name, find(part_variant_at(d, ??), variants)),
+  EffectDeclStmt(_, _, ops) => map_option(part_op_name, find(part_op_at(d, ??), ops)),
+  LetStmt(_, _, _)
+  | FnStmt(_, _, _, _, _)
+  | HandlerDeclStmt(_, _, _, _, _, _)
+  | HandlerChainStmt(_, _)
+  | ExprStmt(_)
+  | ImportStmt(_)
+  | RefineStmt(_, _, _)
+  | AliasStmt(_, _)
+  | RowAliasStmt(_, _) => None,
+}
+
+fn part_variant_at(d, v) = match v {
+  (_, _, n) => n == d,
+}
+
+fn part_variant_name(v) = match v {
+  (n, _, _) => n,
+}
+
+fn part_op_at(d, op) = match op {
+  (_, _, _, n) => n == d,
+}
+
+fn part_op_name(op) = match op {
+  (n, _, _, _) => n,
+}
+
+// The name a reference renders: its declaration's, read through its edge —
+// so a rename is one write at the declaration and every use, wherever it
+// stands, follows it — or, where no edge was drawn, the name it was written
+// with.
+fn ref_spelling(r, written: String) = match graph_ref_decl(r) {
+  Some(d) => match decl_spelling(d) {
+    Some(s) => s,
+    None => written,
+  },
+  None => written,
 }
 
 // What an effect enters at a declaration's head: the chain beneath it, or
@@ -6127,7 +6249,7 @@ fn show_reason(ref reason) with !Mutate = match reason {
       _ => "at {site_address(site)} {site_phrase(body)} → {show_reason(next)}",
     },
   },
-  ChainInstall(name, n) => "installed through the handler chain '{name}', {int_to_str(n)} member(s)",
+  ChainInstall(r, n) => "installed through the handler chain '{chain_spelling(r)}', {int_to_str(n)} member(s)",
   StateBinding(field, hname) => "state {field} of {hname}",
 }
 

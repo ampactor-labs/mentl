@@ -1,0 +1,16 @@
+// fmt: canonical
+effect Box {
+  put(x: Int) -> Int
+  take() -> Int
+}
+
+// An arm's prose renders after its `=>`, whether the arm has parameters or
+// not.
+handler doubled {
+  put(v) => // the value comes back twice
+  resume(v + v),
+  take() => // nothing to double
+  resume(0),
+}
+
+fn main() = (put(21) ~> doubled) - 42

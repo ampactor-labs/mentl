@@ -474,9 +474,7 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
   // value; a speculative write leaves the stack non-empty and performs
   // nothing, so a reader of the delta never sees a write that was rolled
   // back.
-  {
-    resume(chase_node(spine, next, handle, 0))
-  },
+  resume(chase_node(spine, next, handle, 0)),
   graph_chase_handle(handle) => resume(chase_handle(spine, next, handle, 0)),
   graph_epoch() => resume(epoch),
   graph_next() => resume(next),
@@ -528,17 +526,15 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
   // the overflow branch was provably unreachable. The apparatus is gone
   // rather than left switched off: a branch nothing can take still costs
   // every mint the test, and a reader the price of believing it matters.
-  {
-    match spine_ensure(spine, spine_open, spine_band(next)) {
-      (sp, so) => {
-        spine_put_node(sp, next, GNode(NFree(epoch), reason))
-        spine_put_module(sp, next, cur_module + 1)
-        let m = MFreshNode(next)
-        let j = journaling(checkpoint_stack)
-        if !j { graph_mutated(epoch, m) }
-        resume(next) with spine = sp, spine_open = so, next = next + 1, trail = trail_after(trail, trail_len, j, m), trail_len = trail_len_after(trail_len, j)
-      },
-    }
+  match spine_ensure(spine, spine_open, spine_band(next)) {
+    (sp, so) => {
+      spine_put_node(sp, next, GNode(NFree(epoch), reason))
+      spine_put_module(sp, next, cur_module + 1)
+      let m = MFreshNode(next)
+      let j = journaling(checkpoint_stack)
+      if !j { graph_mutated(epoch, m) }
+      resume(next) with spine = sp, spine_open = so, next = next + 1, trail = trail_after(trail, trail_len, j, m), trail_len = trail_len_after(trail_len, j)
+    },
   },
   graph_fresh_row(reason) => match spine_ensure(spine, spine_open, spine_band(next)) {
     (sp, so) => {
@@ -606,6 +602,14 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
       resume()
     },
   },
+  graph_reword_comment(handle, text) => // A rename's write along a mention edge: the prose replaced, the span its
+  // parse attached kept.
+  match spine_comment_at(spine, spine_open, handle) {
+    (_, span) => {
+      spine_put_comment(spine, handle, (text, span))
+      resume()
+    },
+  },
   graph_comment_at(handle) => // A virgin cell reads as ("", zero span) — the same absent-contract every
   // column read shares.
   match spine_comment_at(spine, spine_open, handle) {
@@ -642,9 +646,7 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
   // the extracted term. A virgin cell holds 0, and handle 0 is the synthetic
   // Module root (never an expr operand), so a 0 cell reads as "no edge" ⇒
   // return the handle itself.
-  {
-    resume(spine_canon_at(spine, spine_open, handle))
-  },
+  resume(spine_canon_at(spine, spine_open, handle)),
   graph_narrow_set(handle, pred_handle) => // The refinement-narrowing column — in the handle's page beside canon.
   // graph_narrow_set(handle, verdict) records what the judgment proved AT
   // program-point `handle`: a sequence read's index node carries 1 where its
@@ -663,9 +665,7 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
   // infer canon/narrowing, inference writes this weave while the oracle may be
   // under a checkpoint, so every replacement is trailed and rolls back with
   // the type nodes it names.
-  {
-    resume(spine_boundary_at(spine, spine_open, site_handle))
-  },
+  resume(spine_boundary_at(spine, spine_open, site_handle)),
   graph_boundary_set(site_handle, boundary) => {
     let old_boundary = spine_boundary_at(spine, spine_open, site_handle)
     spine_put_boundary(spine, site_handle, boundary)
@@ -831,15 +831,13 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
   // order-dependent, so a segment diff filters them
   // (`Hβ.synth.divergence-from-the-trail`).
   {
-    {
-      let old_node = graph_node_at(spine, next, v)
-      spine_put_node(spine, v, GNode(NRowBound(row), Inferred("row path compression")))
-      let m = MSetRow(v, old_node)
-      let j = journaling(checkpoint_stack)
-      let new_epoch = epoch + 1
-      if !j { graph_mutated(new_epoch, m) }
-      resume() with epoch = new_epoch, trail = trail_after(trail, trail_len, j, m), trail_len = trail_len_after(trail_len, j)
-    }
+    let old_node = graph_node_at(spine, next, v)
+    spine_put_node(spine, v, GNode(NRowBound(row), Inferred("row path compression")))
+    let m = MSetRow(v, old_node)
+    let j = journaling(checkpoint_stack)
+    let new_epoch = epoch + 1
+    if !j { graph_mutated(new_epoch, m) }
+    resume() with epoch = new_epoch, trail = trail_after(trail, trail_len, j, m), trail_len = trail_len_after(trail_len, j)
   },
   graph_gate_add(handle, gate) => // The gate column's one write: a LIFO push under the cell's handle,
   // trailed as MSetGate(handle) so a checkpoint's rollback pops it — a
@@ -881,21 +879,19 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
   // catch-all silently crossed. The occurs guard is the TYPE-side check over
   // each field ty (a residual's self-reference is a real infinite type), and
   // the tail's own self-reference is the row-side half of the same check.
-  {
-    if occurs_in_record_fields(spine, next, handle, fields) || record_row_tail_is(tail, handle) {
-      resume()
-    } else {
-      let old_node = graph_node_at(spine, next, handle)
-      // The TAIL rides from the writer that knew it (types.mn RecordRowTail):
-      // proven, continuing, or assumed. It is never re-derived here, because
-      // the fields alone cannot say which of the three produced them.
-      spine_put_node(spine, handle, GNode(NRecordRowBound(fields, tail), reason))
-      let m = MSetRow(handle, old_node)
-      let j = journaling(checkpoint_stack)
-      let new_epoch = epoch + 1
-      if !j { graph_mutated(new_epoch, m) }
-      resume() with epoch = new_epoch, trail = trail_after(trail, trail_len, j, m), trail_len = trail_len_after(trail_len, j)
-    }
+  if occurs_in_record_fields(spine, next, handle, fields) || record_row_tail_is(tail, handle) {
+    resume()
+  } else {
+    let old_node = graph_node_at(spine, next, handle)
+    // The TAIL rides from the writer that knew it (types.mn RecordRowTail):
+    // proven, continuing, or assumed. It is never re-derived here, because
+    // the fields alone cannot say which of the three produced them.
+    spine_put_node(spine, handle, GNode(NRecordRowBound(fields, tail), reason))
+    let m = MSetRow(handle, old_node)
+    let j = journaling(checkpoint_stack)
+    let new_epoch = epoch + 1
+    if !j { graph_mutated(new_epoch, m) }
+    resume() with epoch = new_epoch, trail = trail_after(trail, trail_len, j, m), trail_len = trail_len_after(trail_len, j)
   },
   graph_index_span(span, handle) => // ─── Rollback — the oracle's undo ────────────────────────────────
   // Walk the trail backwards from trail_len down to target. Each

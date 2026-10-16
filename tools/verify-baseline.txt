@@ -1451,11 +1451,11 @@ selfcompile_peak_kb_max: 421100
 # peak RSS differed — so it is the memory ratchet no machine moves, refused
 # on a breach by `read_line` (tools/march.sh) with no re-measure. A landing
 # that breaches it pays the cost down, never raises it. Held at 1% over the
-# landed form's 260,874 KB (2026-10-15): a let's binder became its own
-# declaration and the line read 271,624 KB, refused; the comment gate had
-# collected every declaration's binder names before reading a comment, and
-# now asks the binders a cited name could be, one name at a time.
-selfcompile_line_peak_kb_max: 263500
+# landed form's 257,945 KB (2026-10-16): a cited binder became a mention edge
+# found by a walk of the child projection, and the line read 277,283 KB,
+# refused, until each citation became an extent whose child lists die at its
+# exit; the comment gate's form of 2026-10-15 read 260,874 KB.
+selfcompile_line_peak_kb_max: 260600
 # THE HEAD ROUND TRIP (render lane, 2026-10-06): module-level function heads,
 # formatter's and eye's, that do not come back as themselves through
 # parse∘render. Born at the measured 92 of 4,550 (the base renderer: 787 of

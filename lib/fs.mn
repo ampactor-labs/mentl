@@ -173,6 +173,40 @@ handler wasi_filesystem {
   }),
 }
 
+// The filesystem with some files answered from memory: a read of a listed
+// path answers the text listed for it, and every other operation is the
+// enclosing handler's, each arm performing its own op outward. A judgment
+// under it reads a program as it would be written before a byte of it is,
+// which is how the rename verb judges the program it would write.
+handler fs_overlay(files: [(String, String)]) {
+  fs_exists(path) => resume(fs_exists(path)),
+  fs_read_file(path) => resume(match find(overlay_at(path, ??), files) {
+    Some((_, text)) => text,
+    None => fs_read_file(path),
+  }),
+  fs_write_file(path, bytes) => {
+    fs_write_file(path, bytes)
+    resume()
+  },
+  fs_mkdir(path) => {
+    fs_mkdir(path)
+    resume()
+  },
+  fs_create(path) => resume(fs_create(path)),
+  fs_close(fd) => {
+    fs_close(fd)
+    resume()
+  },
+  fs_unlink(path) => resume(fs_unlink(path)),
+  fs_rename(old_p, new_p) => resume(fs_rename(old_p, new_p)),
+  fs_list_dir(path) => resume(fs_list_dir(path)),
+  fs_write_image(path, hdr, hdr_len, base, len) => resume(fs_write_image(path, hdr, hdr_len, base, len)),
+}
+
+fn overlay_at(path: String, file) = match file {
+  (p, _) => p == path,
+}
+
 // What the arms share: a String path's resolution against the preopen table,
 // handing the syscall a (ptr, len) view straight into the string's payload.
 //

@@ -1,0 +1,8 @@
+// rename 4:6 to Size: refuses type
+// A name written inside a type renders from the type's value, so a rename
+// that reaches one refuses rather than leave it behind.
+type Width = Int
+
+fn widen(w: Width) = w + 1
+
+fn main() = widen(41) - 42

@@ -1,0 +1,9 @@
+// rename 4:10 to y: refuses edge
+// The parameter renamed to the let's name would be read as the let: the
+// edge from its use would move, so the rename writes nothing.
+fn shift(x) = {
+  let y = 1
+  x + y
+}
+
+fn main() = shift(41) - 42

@@ -1,0 +1,12 @@
+// rename 3:3 to give: 3 name(s)
+effect Box {
+  put(x: Int) -> Int
+}
+
+// An op renames in its effect's entry: the arm that serves it and the call
+// that performs it follow their edges.
+handler doubled {
+  put(v) => resume(v + v),
+}
+
+fn main() = (put(21) ~> doubled) - 42

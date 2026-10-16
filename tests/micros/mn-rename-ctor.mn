@@ -1,0 +1,11 @@
+// rename 8:3 to Empty: 3 name(s)
+// A constructor renames in its type's entry, and its patterns and its calls
+// follow their edges.
+type Box = Full(Int) | Nothing
+
+fn open(b) = match b {
+  Full(v) => v,
+  Nothing => 0,
+}
+
+fn main() = open(Nothing) + open(Full(0))

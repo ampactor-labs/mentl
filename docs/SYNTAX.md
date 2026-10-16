@@ -265,7 +265,7 @@ queue_task(priority = 5, config = current, timeout_ms = 5000)   // all labeled
 
 **Defaults and labeled args are not two features — they are the parameter list AS a product node-kind.** A parameter list is a positional product (`PLAN.md §2`, L1); like every product it may be constructed positionally (`f(a, b)`), by field (`f(x = a, y = b)`), or mixed (`f(a, y = b)`) — the identical machinery as record literals `{a, b}` / `{x: a, y: b}` (punning + field-naming), and a default is a product field's fallback construction (the identical machinery as a record-field default). There is no second call-site feature; the product node-kind mandates all four forms. Labels resolve against the declared parameter names; an unknown label is `E_UnknownArgLabel`. (Under threading/multi-shot a labeled call is order-independent at the product level — the cursor may fill fields in any order.)
 
-**Identity, not position — the field's NAME is the key; the order is a projection.** A parameter product is not the position-keyed disease (`CLAUDE.md` drift-8, evidence-by-row-slot, `mode == 0/1/2`, parallel arrays): those use position as a *fragile proxy* for an identity. A product's fields *have* identity — their names — exactly as record fields do (sorted by name at parse, source order irrelevant). `queue_task(priority = 5, config = c)` resolves by name; the positional `queue_task(5, c)` is a *convenience* that fills fields in declaration order and resolves immediately *to* the names. Position is a deterministic layout over an identity-keyed set, never the key itself.
+**Identity, not position — the field's NAME is the key; the order is a projection.** A parameter product is not the position-keyed disease (`CLAUDE.md` drift-8, evidence-by-row-slot, `mode == 0/1/2`, parallel arrays): those use position as a *fragile proxy* for an identity. A product's fields *have* identity — their names — exactly as record fields do (sorted by name at parse, source order irrelevant). `queue_task(priority = 5, config = c)` resolves by name; the positional `queue_task(5, c)` is a *convenience* that fills fields in declaration order and resolves immediately *to* the names. Position is a deterministic layout over an identity-keyed set, never the key itself. And a label is the name of the field its slot fills: the page writes it as that parameter's name, read through the call's product and its callee's edge (real, 2026-10-16), so renaming the parameter rewrites every label that names it (tests/micros/mn-rename-label.mn).
 
 ### Partial application — the product with a hole
 
@@ -2057,8 +2057,9 @@ handler's instance and answer are the install's own), the installs are nested
 over the body, and the install's node is registered again as the outermost
 of them. Every reader after the judgment asks the graph and sees the installs
 the author would have spelled; the formatter writes `~> judgment` back, since
-the install node is bound with the chain's name (`ChainInstall`), and `refs
-of judgment` counts the install. Until this landed the only way to hand a
+the install node is bound with the reference its author wrote
+(`ChainInstall`), whose edge reaches the chain, and `refs of judgment` counts
+the install. Until this landed the only way to hand a
 body to a fixed stack of handlers was a thunk and a wrapper function
 (`infer_context(() => …)`, 23 thunks in the wheel on 2026-09-20).
 
@@ -2483,6 +2484,23 @@ binder was read by a rule no author wrote down: of two parameters the later,
 and a destructured part over a parameter on either side of it
 (tests/micros/mn-duplicate-binder-head.mn, mn-duplicate-binder-pattern.mn).
 
+**A rename is one write at the declaration** (real, 2026-10-16). Every
+reference renders the name its edge reaches, a label the name of the
+parameter its slot fills, and a comment's backticked mention is an edge as
+well, so `mentl rename <file>:<line>:<col> <name>` writes the new name where
+the declaration holds it — a binder, a declaration's head, a constructor's or
+an op's entry — and rewrites each mention along its edge. The program is then
+judged again, its rewritten files read from memory, and its edges compared
+with the edges it drew: a rename that would move one — a use another
+declaration of the new name captures, a use of the new name the renamed
+declaration captures, a mention that resolves elsewhere — or that would leave
+an error, writes nothing and says why. A name written inside a type renders
+from the type's value, so a rename that reaches one refuses; so does a new
+name that breaks the case rule or is a word of the language, and a
+declaration outside the program's own layer. The battery states each verdict
+as `// rename L:C to NEW: N name(s)` or `refuses <word>`
+(tests/micros/mn-rename-*.mn).
+
 ### Exhaustiveness
 
 Match arms must cover all variants OR include a wildcard. Missing-variant errors include the missing variants by name (per H3's exhaustiveness machinery).
@@ -2630,7 +2648,7 @@ fn lowpass_filter(samples: [Sample]) -> [Sample] with !Alloc =
 
 - **Pure prose, graph-attached.** Contiguous `//` lines concatenate to one String; a blank `//` line is a paragraph break. The comment attaches to the immediately-following declaration (`fn`/`type`/`effect`/`handler`/`let`), or — with none — to the enclosing block / the file's `Module` handle; a decl-boundary comment is **never dropped**: a run at the file's tail, with no declaration after it, attaches to a unit carrier that renders as its prose alone. An INTERIOR comment (inside a `{ }` body) attaches to the finest FOLLOWING node — the next statement, the final expr, or the block's own unit node when nothing follows — and a TRAILING same-line comment attaches BACKWARD to the node whose line it shares (same-line is structural: the comment token sits before any newline, one token of lookahead). Both are graph content in the same weave the decl comment fills, judged by the same backtick gate, and the address surface renders the attached prose's first line as the `Lede:` facet. A match arm's pattern is a node, so a comment above an arm, or trailing its `=>`, attaches to the pattern, and `mentl fmt` writes it above the arm (real, 2026-10-15). **Attachment is by SPAN, so an ANONYMOUS node is a home like any other**: a comment above a lambda inside an argument list attaches to the lambda (measured 2026-09-17 — `Lede:` at the lambda's address, its backticked params resolving through the enclosing decl's binders), and a lambda's span is its whole extent, head through body, so `mentl <file:line>` on the lambda's line reaches it (it used to be the head alone, and the line's widest-node rule reached a body sub-node instead — the address rule and the weave's rule are one question, and the span is the one fact both read). Expression-interior comments elsewhere (inside parens / match-arm headers) attach by the same span rule (`Hβ.parser.expr-interior-comment-attach` names what the gate has not measured there).
 - **Register is a projection, not a delimiter.** How much surfaces — the one-line lede, or the full body — is the gradient reading the comment's relevance at the cursor (the same gradient that drives every projection), NOT an author-chosen `//`-vs-`///` audience split. The author writes prose; the cursor decides what shows. First sentence = lede.
-- **Surfaces verbatim, rendered per target.** The substrate stores the raw String; render handlers interpret presentation — HTML `<code>` for `` `backticks` ``, terminal ANSI, markdown fence. `` `backticks` `` cross-reference identifiers; the author writes the reference, the handler resolves it — **in the comment's own module's reach**: a declaration of its own module, of a module it imports or of the prelude, a binder of the commented node, a keyword or surface word, or a word a string literal of a module it reaches writes (the WAT and WASI vocabulary the emitter's literals write resolves in the emitter, and nowhere the emitter is not imported). A name the whole link carries but the module never imports is no edge the module can draw, so it does not resolve: `W_CommentRefUnresolved`, and the author points the reference at what resolves or writes the word as prose (real, 2026-10-13 — until then the declaration index, the env and the literal vocabulary were read over the flattened link, so a library module's prose cited the compiler's declarations and checked clean, and the same prose judged as its own entry narrated; the sweep that made the law true re-pointed, de-ticked or wrote as prose 140 references in the wheel and three in the library).
+- **Surfaces verbatim, rendered per target.** The substrate stores the raw String; render handlers interpret presentation — HTML `<code>` for `` `backticks` ``, terminal ANSI, markdown fence. `` `backticks` `` cross-reference identifiers; the author writes the reference, the handler resolves it — **in the comment's own module's reach**: a declaration of its own module, of a module it imports or of the prelude, a binder of the commented node, a keyword or surface word, or a word a string literal of a module it reaches writes (the WAT and WASI vocabulary the emitter's literals write resolves in the emitter, and nowhere the emitter is not imported). A resolved reference is a mention edge to what it names — a binder's as much as a declaration's (real, 2026-10-16) — so a rename rewrites the mention along it. A name the whole link carries but the module never imports is no edge the module can draw, so it does not resolve: `W_CommentRefUnresolved`, and the author points the reference at what resolves or writes the word as prose (real, 2026-10-13 — until then the declaration index, the env and the literal vocabulary were read over the flattened link, so a library module's prose cited the compiler's declarations and checked clean, and the same prose judged as its own entry narrated; the sweep that made the law true re-pointed, de-ticked or wrote as prose 140 references in the wheel and three in the library).
 - **Code blocks compile via the same pipeline.** A comment containing Mentl source IS Mentl source — the compile verifies it; there is no separate doc-test category.
 
 ### What a comment TRENDS TO

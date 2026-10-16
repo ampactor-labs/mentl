@@ -417,7 +417,7 @@ fn accept_at(handle, view) = match view {
 // skeleton. Until C7 this was a literal renderer with a hole-marker floor,
 // so every structured candidate showed as `??` — the medium showing a
 // proposal it could not name (`Hβ.felt.candidate-render-is-format`, closed).
-fn render_candidate_source(node) with !Mutate = render_body_tokens(graph_node_body(node))
+fn render_candidate_source(node) with !Mutate = render_body_tokens(node, graph_node_body(node))
 
 // ─── Format / parse helpers per transport ──────────────────────────
 fn show_handle_label(cursor) = match cursor {

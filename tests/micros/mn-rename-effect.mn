@@ -1,0 +1,14 @@
+// rename 4:8 to Tally: 2 name(s)
+// An effect renames at its declaration, and the row that negates it follows
+// its edge.
+effect Count {
+  bump() -> Int
+}
+
+handler counter {
+  bump() => resume(1),
+}
+
+fn quiet() with !Count = 1
+
+fn main() = (bump() ~> counter) + quiet() - 2

@@ -63,6 +63,11 @@ infrastructure a named landing in PLAN §11 stands on, or it is not done.
    then `bash tools/state.sh` — micros, the fixed-point march, frontier,
    crown, proof-exactness and the rest, one scoreboard. RED first: a new
    fixture or bound is measured failing on the pinned boot before the change.
+   `mentl` runs the pinned boot, so a landing that moves the parse or the
+   render runs its fmt check through the candidate too
+   (`.build/probe/m2.wasm`): the boot's check passed over a formatter that
+   lost the prose of every handler arm with a parameter, and the next pin
+   shipped it (2026-10-16).
 4. When the wheel moved: `MARCH_REPIN=1 bash tools/march.sh`, then write the
    one narrative line in `boot/PROVENANCE.md`.
 5. Commit on main through the hooks and push. No branches, no pull requests

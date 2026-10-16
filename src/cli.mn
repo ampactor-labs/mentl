@@ -48,6 +48,10 @@ type EntryVerb
   // operation surfaced beside the first. `mentl <address>` PROJECTS the
   // position; `mentl accept <address>` DRAWS the accept edge there (C4)
   | VAccept(String, Int, Int)
+  // the rename form — `mentl rename <path>:<line>:<col> <name>`: the
+  // declaration at the address, or the one the reference there reaches,
+  // renamed by one write at it
+  | VRename(String, Int, Int, String)
   | VTest(Option(String))
   | VAudit(String)
   // target, question — both required
@@ -139,6 +143,15 @@ fn accept_verb_args(words) = match words {
   [] => ParseError("accept needs an address: mentl accept <path>:<line>:<col>"),
 }
 
+// The rename verb's subject is an address, then the name it writes there.
+fn rename_verb_args(words) = match words {
+  [at, name, ..._] => match parse_address(at) {
+    Some((target, line, col)) => Invocation(VRename(path_to_module(target), line, col, name)),
+    None => ParseError("rename needs an address and a name: mentl rename <path>:<line>:<col> <name>"),
+  },
+  short => ParseError("rename needs an address and a name: mentl rename <path>:<line>:<col> <name>"),
+}
+
 // Where a View is asked for: the module, the line and column, and the needle
 // a find typed — the name whose references the View carries, beside the
 // string literals holding it — when one was.
@@ -204,6 +217,12 @@ fn verb_specs() = [
     "<path>:<line>:<col>",
     accept_verb_args,
     "accept the one proven proposal at the address — a graph edge first, the text its projection"
+  ),
+  VerbSpec(
+    "rename",
+    "<path>:<line>:<col> <name>",
+    rename_verb_args,
+    "rename the declaration at the address — one write at the declaration, every reference and mention following its edge; a rename that would move any edge refuses"
   ),
   VerbSpec(
     "audit",

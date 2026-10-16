@@ -1,0 +1,453 @@
+// rename.mn — a rename is one write at the declaration.
+//
+// A declaration holds its name, and every reference renders the name its
+// edge reaches (`ref_spelling`), so renaming writes the declaration and each
+// comment that mentions it, along its mention edge, and nothing else. The
+// program is then judged again under the new name, its rewritten files read
+// from memory (`fs_overlay`), and its edges are compared with the edges it
+// drew before: a rename that moves any edge — a use another declaration of
+// the new name captures, a use of the new name the renamed declaration
+// captures, a mention that resolves elsewhere — or that leaves an error,
+// refuses, whatever the scope rules are, because the edges are compared and
+// the rules are never re-derived. Only then are the files written, each its
+// module's canonical render.
+import driver
+
+import format
+
+import fs
+
+import graph
+
+import imap
+
+import infer
+
+import lexer
+
+import pipeline
+
+import space
+
+import strings
+
+import types
+
+// Why a rename writes nothing.
+type RenameRefusal
+  // the new name is not one the declaration can hold
+  = RfName
+  // the address holds no declaration and no reference to one
+  | RfDeclaration
+  // the declaration stands outside the program's own layer
+  | RfOutside
+  // a reference stands inside a type, which renders from its value
+  | RfType
+  // the program reports an error before the rename
+  | RfUnjudged
+  // a file the rename writes is not its own canonical render, or moved since
+  // it was judged
+  | RfCanonical
+  // the renamed program reports an error
+  | RfError
+  // the renamed program draws an edge somewhere else
+  | RfEdge
+
+// What a rename does: how many names it writes and each file it writes — its
+// path, its text and its render — or why it writes nothing.
+type RenameVerdict = Renamed(Int, [(String, String, String)]) | RenameRefused(RenameRefusal, String)
+
+// The word a battery contract names a refusal by.
+fn refusal_word(r) = match r {
+  RfName => "name",
+  RfDeclaration => "declaration",
+  RfOutside => "outside",
+  RfType => "type",
+  RfUnjudged => "unjudged",
+  RfCanonical => "canonical",
+  RfError => "error",
+  RfEdge => "edge",
+}
+
+// The rename at an address, inside the bracket of the judgment that reads
+// it: the declaration the address names, what a rename owes before it
+// writes, the write, the renders, and the judgment of what it would write.
+fn rename_at(entry: String, line, col, new: String) = match driver_link(entry) {
+  None => RenameRefused(RfDeclaration, "{entry} did not load"),
+  Some(link) => match address_node(Some(link), entry, line, col) {
+    None => RenameRefused(RfDeclaration, "no node stands at {entry}:{int_to_str(line)}:{int_to_str(col)}"),
+    Some(n) => match renamed_target(n) {
+      None => RenameRefused(RfDeclaration, "the address holds no declaration and no reference to one"),
+      Some(d) => rename_owed(entry, n, d, new),
+    },
+  },
+}
+
+// What a rename at a node renames: the declaration the node is — a binder, a
+// declaration's head, a constructor's or an op's entry — or the one its
+// reference edge reaches.
+fn renamed_target(n) = match decl_spelling(n) {
+  Some(_) => Some(n),
+  None => match graph_ref_decl(n) {
+    Some(d) => match decl_spelling(d) {
+      Some(_) => Some(d),
+      None => None,
+    },
+    None => None,
+  },
+}
+
+fn spelled_at(d) = match decl_spelling(d) {
+  Some(s) => s,
+  None => "",
+}
+
+// What a rename owes before it writes: a name the declaration can hold, a
+// declaration of the program's own, no reference inside a type, and a
+// program that judges clean, whose edges are the ones to keep.
+fn rename_owed(entry: String, n, d, new: String) = {
+  let old = spelled_at(d)
+  match name_refusal(old, new) {
+    Some(why) => RenameRefused(RfName, why),
+    None => if module_layer_of_handle(graph_module_of(d)) != module_layer_of_handle(graph_module_of(n)) {
+      RenameRefused(
+        RfOutside,
+        "`{old}` is declared in {module_name_of_handle(graph_module_of(d))}, outside the program's own layer"
+      )
+    } else {
+      match typed_refusal(d, old) {
+        Some(why) => RenameRefused(RfType, why),
+        None => {
+          let errors = banked_errors()
+          if errors > 0 {
+            RenameRefused(
+              RfUnjudged,
+              "the program reports {int_to_str(errors)} error(s) before the rename, and a rename keeps the edges of a program that judges clean"
+            )
+          } else {
+            rename_written(entry, d, old, new)
+          }
+        },
+      }
+    },
+  }
+}
+
+// A new name the declaration can hold: an identifier, never a word of the
+// language, its first letter's case the old name's — the case rule is what
+// tells a constructor, an effect or a type from a value.
+fn name_refusal(old: String, new: String) = if new == old {
+  Some("`{old}` is already its name")
+} else if !name_is_identifier(new) {
+  Some("`{new}` is not a name: a name starts with a letter or `_` and holds letters, digits and `_`")
+} else if is_some(keyword_kind(new)) || is_surface_word(new) {
+  Some("`{new}` is a word of the language")
+} else if name_capitalized(new) != name_capitalized(old) {
+  Some("`{new}` and `{old}` begin in different cases, and the case rule reads the first letter: a capital names a constructor, an effect or a type")
+} else {
+  None
+}
+
+fn name_is_identifier(s: String) =
+  byte_len(s) > 0 && !byte_is_digit(byte_at(s, 0)) && all(ident_byte, s)
+
+fn byte_is_digit(b) = b >= 48 && b <= 57
+
+fn name_capitalized(s: String) = byte_len(s) > 0 && byte_at(s, 0) >= 65 && byte_at(s, 0) <= 90
+
+// A reference inside a type renders from the type's value, which keeps the
+// name it was written with, so a rename would leave it behind; and a
+// nominal record's constructor is its type's name.
+fn typed_refusal(d, old: String) = match find(written_in_a_type, graph_refs_of(d)) {
+  Some(r) => Some("`{old}` is written inside a type at {site_address(r)}, and a type renders from its value, which keeps the name"),
+  None => if nominal_constructor(d) {
+    Some("`{old}` is the constructor of a nominal record, which is its type's name")
+  } else {
+    None
+  },
+}
+
+fn written_in_a_type(r) = match graph_node_body(r) {
+  NTypeAnn(_) => true,
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NName(_) | NRow(_) | NParam(_) => false,
+}
+
+fn nominal_constructor(d) = match graph_parent_of(d) {
+  Some(p) => match graph_node_body(p) {
+    NStmt(TypeDefStmt(tname, variants)) => any(nominal_variant(tname, d, ??), variants),
+    NStmt(_)
+    | NExpr(_)
+    | NPat(_)
+    | NHole(_)
+    | NModule(_)
+    | NLink(_)
+    | NTypeAnn(_)
+    | NName(_)
+    | NRow(_)
+    | NParam(_) => false,
+  },
+  None => false,
+}
+
+fn nominal_variant(tname: String, d, v) = match v {
+  (vname, [TRecord(_)], n) => n == d && vname == tname,
+  _ => false,
+}
+
+fn banked_errors() = count(banked_error, diag_banked())
+
+fn banked_error(entry) = match entry {
+  (d, _, _, _) => diag_severity(d) == SError,
+}
+
+// The write and what it renders. Every module of the declaration's layer
+// renders before the write and after it, and a module whose render moved is
+// one the rename writes: its source its own render and the text it was
+// judged from, and its render different only in the names the rename writes.
+fn rename_written(entry: String, d, old: String, new: String) = {
+  let layer = module_layer_of_handle(graph_module_of(d))
+  let mods = filter(in_layer(layer, ??), link_modules())
+  let before = map(module_render, mods)
+  let print = edge_print()
+  write_name(d, new)
+  each(reword_mention(old, new, ??), graph_comment_refs_of(d))
+  match fold(Renamed(0, []), module_written(old, new, ??, ??), zip(mods, before)) {
+    Renamed(0, _) => RenameRefused(RfDeclaration, "no page writes `{old}`"),
+    Renamed(n, files) => match judged_again(entry, files, print) {
+      Some((r, why)) => RenameRefused(r, why),
+      None => Renamed(n, files),
+    },
+    RenameRefused(r, why) => RenameRefused(r, why),
+  }
+}
+
+fn in_layer(layer, mh) = module_of(mh).layer == layer
+
+fn module_render(mh) = {
+  let m = module_of(mh)
+  respell(m.text, format_program(m.decls))
+}
+
+fn module_written(old: String, new: String, acc, pair) = match acc {
+  RenameRefused(_, _) => acc,
+  Renamed(n, files) => match pair {
+    (mh, was) => {
+      let now = module_render(mh)
+      if now == was {
+        acc
+      } else {
+        let m = module_of(mh)
+        if was != m.text || fs_read_file(m.file) != m.text {
+          RenameRefused(
+            RfCanonical,
+            "{m.file} is not its own canonical render, or changed since it was judged — `mentl fmt` it, then rename"
+          )
+        } else {
+          match names_only(m.text, now, old, new) {
+            Some(k) => Renamed(n + k, push(files, (m.file, m.text, now))),
+            None => RenameRefused(RfCanonical, "{m.file} would change in more than the names the rename writes"),
+          }
+        }
+      }
+    },
+  },
+}
+
+// The one write: the declaration's node holds the new name — a constructor's
+// or an op's in the entry its type or effect keeps for it.
+fn write_name(d, new: String) = match graph_node_body(d) {
+  NPat(PVar(_)) => graph_register_node(d, NPat(PVar(new))),
+  NPat(PAs(_, inner)) => graph_register_node(d, NPat(PAs(new, inner))),
+  NStmt(s) => graph_register_node(d, NStmt(head_named(s, new))),
+  NTypeAnn(_) => match graph_parent_of(d) {
+    Some(p) => part_written(p, d, new),
+    None => (),
+  },
+  NPat(_) | NExpr(_) | NHole(_) | NModule(_) | NLink(_) | NName(_) | NRow(_) | NParam(_) => (),
+}
+
+fn head_named(s, new: String) = match s {
+  FnStmt(_, ps, r, e, b) => FnStmt(new, ps, r, e, b),
+  TypeDefStmt(_, vs) => TypeDefStmt(new, vs),
+  EffectDeclStmt(_, ps, ops) => EffectDeclStmt(new, ps, ops),
+  HandlerDeclStmt(_, en, c, st, a, e) => HandlerDeclStmt(new, en, c, st, a, e),
+  HandlerChainStmt(_, c) => HandlerChainStmt(new, c),
+  RefineStmt(_, t, p) => RefineStmt(new, t, p),
+  AliasStmt(_, t) => AliasStmt(new, t),
+  RowAliasStmt(_, t) => RowAliasStmt(new, t),
+  LetStmt(p, v, a) => LetStmt(p, v, a),
+  ExprStmt(e) => ExprStmt(e),
+  ImportStmt(path) => ImportStmt(path),
+}
+
+fn part_written(p, d, new: String) = match graph_node_body(p) {
+  NStmt(TypeDefStmt(tname, vs)) => graph_register_node(p, NStmt(TypeDefStmt(tname, map(variant_named(d, new, ??), vs)))),
+  NStmt(EffectDeclStmt(ename, ps, ops)) => graph_register_node(p, NStmt(EffectDeclStmt(ename, ps, map(op_named_as(d, new, ??), ops)))),
+  NStmt(_)
+  | NExpr(_)
+  | NPat(_)
+  | NHole(_)
+  | NModule(_)
+  | NLink(_)
+  | NTypeAnn(_)
+  | NName(_)
+  | NRow(_)
+  | NParam(_) => (),
+}
+
+fn variant_named(d, new: String, v) = match v {
+  (vname, tys, n) => if n == d { (new, tys, n) } else { (vname, tys, n) },
+}
+
+fn op_named_as(d, new: String, op) = match op {
+  (oname, ps, r, n) => if n == d { (new, ps, r, n) } else { (oname, ps, r, n) },
+}
+
+// A comment's mention, rewritten along its edge: every backticked use of the
+// old name in the owner's prose — the edge says each resolved here, since one
+// name resolves one way in one comment.
+fn reword_mention(old: String, new: String, owner) =
+  graph_reword_comment(owner, mention_reworded(graph_comment_at(owner), old, new))
+
+fn mention_reworded(text: String, old: String, new: String) = replace(text, "`{old}`", "`{new}`")
+
+// What a rename may change in a file: the names it renames, a comment's
+// mention of them, and layout. The two lexes compare token for token past
+// their line breaks; any other difference is a render the rename did not ask
+// for. The answer counts the names written.
+fn names_only(src: String, out: String, old: String, new: String) = {
+  let a = lex(src) |> map(token_kind) |> filter(not_layout)
+  let b = lex(out) |> map(token_kind) |> filter(not_layout)
+  if len(a) != len(b) { None } else { fold(Some(0), renamed_pair(old, new, ??, ??), zip(a, b)) }
+}
+
+fn not_layout(k) = k != TNewline
+
+fn renamed_pair(old: String, new: String, acc, pair) = match acc {
+  None => None,
+  Some(count) => match pair {
+    (x, y) => if x == y {
+      acc
+    } else {
+      match (x, y) {
+        (TIdent(p), TIdent(q)) => if p == old && q == new { Some(count + 1) } else { None },
+        (TComment(p), TComment(q)) => if mention_reworded(p, old, new) == q { acc } else { None },
+        _ => None,
+      }
+    },
+  },
+}
+
+// THE PROGRAM'S EDGES BY PLACE: each reference and each mention as the place
+// it stands and the place its declaration stands. A place is a module's
+// index in the link and a node's index in its module's walk — the module's
+// declarations in order, each node before its children — so two judgments of
+// one tree under two spellings compare edge for edge, whatever handles each
+// minted. A declaration no walk meets, a cell the judgment minted for a
+// primitive, stands at place -1, and a mention's comment at the negated place
+// past it.
+fn edge_print() = {
+  let mods = enumerate(link_modules())
+  let at = fold(wmap_new(4096), placed_module, mods)
+  mods |> flat_map(module_edges(at, ??))
+}
+
+fn placed_module(at, im) = match im {
+  (i, mh) => match fold((at, 0), placed_node(i, ??, ??), module_of(mh).decls) {
+    (at2, _) => at2,
+  },
+}
+
+fn placed_node(i, acc, h) = match acc {
+  (at, j) => fold((wmap_add(at, h, i * 2097152 + j), j + 1), placed_node(i, ??, ??), node_children(h)),
+}
+
+fn node_children(h) = body_child_handles(graph_node_body(h))
+
+fn module_edges(at, im) = match im {
+  (_, mh) => module_of(mh).decls |> flat_map(subtree_edges(at, ??)),
+}
+
+fn subtree_edges(at, h) = node_edges(at, h) ++ flat_map(subtree_edges(at, ??), node_children(h))
+
+fn node_edges(at, h) = {
+  let k = place_of(at, h)
+  let uses = match graph_ref_decl(h) {
+    Some(d) => [(k, place_of(at, d))],
+    None => [],
+  }
+  uses ++ map(mention_edge(at, k, ??), graph_comment_refs_of(h))
+}
+
+fn mention_edge(at, k, owner) = (-1 - place_of(at, owner), k)
+
+fn place_of(at, h) = match wmap_get(at, h) {
+  Some(k) => k,
+  None => -1,
+}
+
+// The renamed program, judged in a bracket of its own as the verb would write
+// it — its files read from memory — and its edges compared with the
+// program's. None where they agree and it judges clean; else why.
+fn judged_again(entry: String, files, print) =
+  renamed_verdict(entry, print) ~> fs_overlay(map(file_text, files)) ~> diag_bank ~> infer_context
+
+fn renamed_verdict(entry: String, print) = match driver_link_scoped(entry, Unheard) {
+  None => Some((RfError, "the renamed program does not load")),
+  Some(_) => {
+    let errors = banked_errors()
+    if errors > 0 {
+      Some((RfError, "the renamed program reports {int_to_str(errors)} error(s), printed above"))
+    } else {
+      match first_moved(print, edge_print()) {
+        Some(why) => Some((RfEdge, why)),
+        None => None,
+      }
+    }
+  },
+}
+
+fn file_text(f) = match f {
+  (path, _, text) => (path, text),
+}
+
+// The first edge the renamed program draws that the program did not, said at
+// its place in the renamed text; None where the two agree. One tree walked
+// in one order lists its edges in one order, so the lists align edge by edge.
+fn first_moved(before, after) = match find(pair_differs, zip(before, after)) {
+  Some((_, (k, d))) => Some(moved_edge(k, d)),
+  None => if len(before) == len(after) {
+    None
+  } else {
+    Some("the renamed program draws {int_to_str(len(after))} edge(s) where the program drew {int_to_str(len(before))}")
+  },
+}
+
+fn pair_differs(p) = match p {
+  (e, f) => e != f,
+}
+
+fn moved_edge(k, d) = if k < 0 {
+  "the mention in the comment on {place_text(-1 - k)} would read {decl_text(d)}, in the renamed text"
+} else {
+  "the name at {place_text(k)} would read {decl_text(d)}, in the renamed text"
+}
+
+fn decl_text(d) =
+  if d < 0 { "nothing the program declares" } else { "the declaration at {place_text(d)}" }
+
+fn place_text(k) = match node_at_place(k) {
+  Some(h) => site_address(h),
+  None => "place {int_to_str(k)}",
+}
+
+fn node_at_place(k) = match drop(k / 2097152, link_modules()) {
+  [mh, ..._] => match drop(k % 2097152, module_of(mh).decls |> flat_map(nodes_under)) {
+    [h, ..._] => Some(h),
+    [] => None,
+  },
+  [] => None,
+}
+
+// A node and every node below it, in the walk's order.
+fn nodes_under(h) = [h] ++ flat_map(nodes_under, node_children(h))

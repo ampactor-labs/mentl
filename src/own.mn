@@ -112,51 +112,45 @@ handler affine_ledger with used = [], used_sites = [], branches = [], fn_saved =
   // alternative's divider and exit operated on the ENCLOSING frame —
   // the measured break the hoist workarounds were passing around,
   // Hβ.infer.nested-alternative-branch-bracketing's true root).
-  {
-    // drift-audit: ignore — bounded by lexical branch-nesting depth, not a data loop
-    resume() with branches = branches ++ [(used, [], mode)]
-  },
+  // drift-audit: ignore — bounded by lexical branch-nesting depth, not a data loop
+  resume() with branches = branches ++ [(used, [], mode)],
   branch_divider(_span) => // branch_divider — called between branches of `><` or between
   // non-last branches of `<|`. Captures the just-finished branch's
   // delta (names consumed in this branch, i.e. used \ base), appends
   // to the frame's deltas list, then resets `used` to base so the
   // next branch sees the original scope.
-  {
-    if len(branches) == 0 {
-      resume()
-    } else {
-      match last(branches) {
-        (base, deltas, mode) => {
-          let delta = set_diff(used, base)
-          // drift-audit: ignore — bounded by lexical branch-nesting depth, not a data loop
-          resume() with used = base, branches = drop_last(branches) ++ [(base, [delta] ++ deltas, mode)]
-        },
-      }
+  if len(branches) == 0 {
+    resume()
+  } else {
+    match last(branches) {
+      (base, deltas, mode) => {
+        let delta = set_diff(used, base)
+        // drift-audit: ignore — bounded by lexical branch-nesting depth, not a data loop
+        resume() with used = base, branches = drop_last(branches) ++ [(base, [delta] ++ deltas, mode)]
+      },
     }
   },
   branch_exit(span) => // branch_exit — captures the last branch's delta, pairwise-checks
   // collisions against already-captured deltas (each collision is an
   // E_OwnershipViolation at the branch site), merges all deltas into
   // `used` as base ∪ union(deltas), pops the frame.
-  {
-    if len(branches) == 0 {
-      resume()
-    } else {
-      match last(branches) {
-        (base, prior_deltas, mode) => {
-          let last_delta = set_diff(used, base)
-          let all_deltas = [last_delta] ++ prior_deltas
-          // Parallel arms both run, so a name in two deltas is consumed
-          // twice at runtime — a violation. Alternative arms run exactly
-          // one, so a name across deltas is one consume on the taken path:
-          // union it in, never a collision.
-          match mode {
-            BParallel => report_branch_collisions(all_deltas, span),
-            BAlternative => (),
-          }
-          resume() with used = set_union(base, union_all_deltas(all_deltas)), branches = drop_last(branches)
-        },
-      }
+  if len(branches) == 0 {
+    resume()
+  } else {
+    match last(branches) {
+      (base, prior_deltas, mode) => {
+        let last_delta = set_diff(used, base)
+        let all_deltas = [last_delta] ++ prior_deltas
+        // Parallel arms both run, so a name in two deltas is consumed
+        // twice at runtime — a violation. Alternative arms run exactly
+        // one, so a name across deltas is one consume on the taken path:
+        // union it in, never a collision.
+        match mode {
+          BParallel => report_branch_collisions(all_deltas, span),
+          BAlternative => (),
+        }
+        resume() with used = set_union(base, union_all_deltas(all_deltas)), branches = drop_last(branches)
+      },
     }
   },
   consume_seed(names) => // The branch-cursor triple (the fan, C1c-2 — the op decl carries the

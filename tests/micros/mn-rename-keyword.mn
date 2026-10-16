@@ -1,0 +1,5 @@
+// rename 3:10 to match: refuses name
+// A word of the language is never a name.
+fn twice(n) = n + n
+
+fn main() = twice(21) - 42

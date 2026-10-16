@@ -124,8 +124,11 @@ fn board_bounds() = [
   // landing that lowers it; it falls to zero where the migration lands
   // (`Hβ.match.catch-all-over-a-sum-is-the-roster`). 1177 -> 1171
   // (2026-10-16): the parameter desugar and its re-sugaring render left
-  // with their catch-alls when a parameter became its node.
-  Bound({ceiling: 1171, question: QCensus(CsWildcardOverSum)}),
+  // with their catch-alls when a parameter became its node. 1171 -> 1168
+  // the same day: the comment gate's walks over binder names became one
+  // search over the child projection, and a comment's owner reads its
+  // declaration's spelling.
+  Bound({ceiling: 1168, question: QCensus(CsWildcardOverSum)}),
   // Drift mode 15 — a value given a leading-underscore name instead of being
   // deleted. The rename silences the reader, never the fact that nothing
   // reads it.
@@ -215,8 +218,10 @@ fn board_bounds() = [
   // formatter's renderer of a written row's terms became the type renderer's
   // map over them. 424 -> 422 (2026-10-16): the re-sugaring walk over a
   // head's parameters and the scan for unannotated ones left with the
-  // parameter desugar.
-  Bound({ceiling: 422, question: QCensus(CsIterationCostume)}),
+  // parameter desugar. 422 -> 411 the same day: the comment gate's eleven
+  // index walks over binders, constructors, fields and ops became one fold
+  // over the child projection that answers the binder's node.
+  Bound({ceiling: 411, question: QCensus(CsIterationCostume)}),
   // The ghosts — cells the parser minted and the judgment never bound
   // (`mentl query <entry> ghosts`): names, parameters, predicates and
   // annotations that are not yet cells inference writes, which is why `refs

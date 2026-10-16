@@ -495,8 +495,9 @@ fn inf_add_row_unified(row) = {
 // referenced-by line is the reverse read) — or narrates
 // W_CommentRefUnresolved through the ordinary diagnostics chain at the
 // comment's own span. The resolution surfaces, in order: the binders of
-// the commented node and of the declaration around it (`cites_binder`);
-// the surface's vocabulary
+// the commented node and of the declaration around it (`cited_binder`,
+// whose citation draws the edge to the binder's node); the surface's
+// vocabulary
 // (keywords via the lexer's keyword_kind — its one home — and the repr
 // words); the declared program (the decl index — these draw the edge);
 // the env's primitive schemes. A `$`-opening span is the program's
@@ -615,26 +616,35 @@ fn span_ident_walk(ref t, a, b) = if a >= b {
 // prose cited the compiler's declarations and checked clean, and the same
 // prose judged alone as its own entry narrated 139 unresolved references the
 // board never saw (Hβ.voice.comment-ref-gate-reads-the-flattened-link, M7).
-// A resolved name draws the comment's edge to its declaration.
-fn crc_resolve(ref name, h) = if cites_binder(h, name) {
-  true
-} else {
-  match keyword_kind(name) {
-    Some(_) => true,
-    None => if is_surface_word(name) {
-      true
-    } else {
-      match env_resolve(name) {
-        Some(referent) => if inf_module_reaches(graph_module_of(h), graph_module_of(referent)) {
-          graph_attach_comment_ref(h, referent)
-          true
-        } else {
-          false
-        },
-        None => false,
-      }
-    },
-  }
+// A resolved name draws the comment's edge to its declaration, a binder's
+// as much as a module's, so a rename rewrites the mention along it. The
+// binder search is an extent whose publication is the binder it finds: the
+// child lists it walks die at its exit.
+fn crc_resolve(ref name, h) = match cited_binder(h, name) ~> arena {
+  Some(b) => {
+    graph_attach_comment_ref(h, b)
+    true
+  },
+  None => if cites_field(h, name) {
+    true
+  } else {
+    match keyword_kind(name) {
+      Some(_) => true,
+      None => if is_surface_word(name) {
+        true
+      } else {
+        match env_resolve(name) {
+          Some(referent) => if inf_module_reaches(graph_module_of(h), graph_module_of(referent)) {
+            graph_attach_comment_ref(h, referent)
+            true
+          } else {
+            false
+          },
+          None => false,
+        }
+      },
+    }
+  },
 }
 
 // The `$`-vocabulary judgment: what the program's own literals write IS
@@ -755,137 +765,121 @@ fn ident_byte(b) with Pure =
 fn is_surface_word(ref name) =
   name == "self" || name == "_" || name == "i32" || name == "i64" || name == "f32" || name == "f64" || name == "v128"
 
-fn comment_owner(h) = match graph_node_body(h) {
-  NStmt(FnStmt(name, _, _, _, _)) => name,
-  NStmt(TypeDefStmt(name, _)) => name,
-  NStmt(EffectDeclStmt(name, _, _)) => name,
-  NStmt(HandlerDeclStmt(name, _, _, _, _, _)) => name,
-  _ => "node {int_to_str(h)}",
+fn comment_owner(h) = match decl_spelling(h) {
+  Some(name) => name,
+  None => "node {int_to_str(h)}",
 }
 
 // A name a comment cites resolves to a binder of the node the comment is
 // attached to, or of the top-level declaration around it: a fn's
-// parameters, a handler's config, state, ops and arm arguments, an effect's
-// ops, a type's constructors and record fields, and every binder written
-// inside them. It is asked one name at a time and answered by the first
-// binder found, so nothing is collected.
-fn cites_binder(h, name: String) = owner_binds(h, name) || match top_declaration_of(h) {
-  Some(top) => top != h && owner_binds(top, name),
+// parameters, a handler's config, state, the ops its arms serve and their
+// arguments, an effect's ops, a type's constructors, and every binder
+// written inside them. It is asked one name at a time and answered by the
+// first binder found — its node, so the citation draws an edge as a
+// declaration's does.
+fn cited_binder(h, name: String) = match owner_binder(h, name) {
+  Some(b) => Some(b),
+  None => match top_declaration_of(h) {
+    Some(top) => if top != h { owner_binder(top, name) } else { None },
+    None => None,
+  },
+}
+
+// A handler's arms name the ops they serve, an effect its ops and a type its
+// constructors, each in an entry of the declaration; every other binder is
+// written inside the node.
+fn owner_binder(h, name: String) = match graph_node_body(h) {
+  NStmt(HandlerDeclStmt(_, _, _, _, arms, _)) => match find(serves_op(name, ??), arms) {
+    Some(arm) => handler_arm_op_decl(arm),
+    None => binder_within(h, name),
+  },
+  NStmt(EffectDeclStmt(_, _, ops)) => match find(op_named(name, ??), ops) {
+    Some(op) => Some(op_entry_node(op)),
+    None => binder_within(h, name),
+  },
+  NStmt(TypeDefStmt(_, ctors)) => map_option(ctor_entry_node, find(ctor_named(name, ??), ctors)),
+  NStmt(_)
+  | NExpr(_)
+  | NPat(_)
+  | NHole(_)
+  | NModule(_)
+  | NLink(_)
+  | NTypeAnn(_)
+  | NName(_)
+  | NRow(_)
+  | NParam(_) => binder_within(h, name),
+}
+
+fn serves_op(name: String, arm) = handler_arm_op_name(arm) == name
+
+fn op_named(name: String, op) = part_op_name(op) == name
+
+fn op_entry_node(op) = match op {
+  (_, _, _, n) => n,
+}
+
+fn ctor_named(name: String, ctor) = part_variant_name(ctor) == name
+
+fn ctor_entry_node(ctor) = match ctor {
+  (_, _, n) => n,
+}
+
+// The first binder named `name` written inside a node, in the order the one
+// child projection meets them: a pattern's binder, or a nested fn's own name.
+fn binder_within(h, name: String) =
+  fold(None, binder_step(name, ??, ??), body_child_handles(graph_node_body(h)))
+
+fn binder_step(name: String, found, c) = match found {
+  Some(_) => found,
+  None => if binds_name(c, name) { Some(c) } else { binder_within(c, name) },
+}
+
+fn binds_name(c, name: String) = match graph_node_body(c) {
+  NPat(p) => binder_spelling(p) == Some(name),
+  NStmt(FnStmt(n, _, _, _, _)) => n == name,
+  NStmt(_)
+  | NExpr(_)
+  | NHole(_)
+  | NModule(_)
+  | NLink(_)
+  | NTypeAnn(_)
+  | NName(_)
+  | NRow(_)
+  | NParam(_) => false,
+}
+
+// A field of a constructor's record payload: a name a comment may cite that
+// no node declares.
+fn cites_field(h, name: String) = owner_fields(h, name) || match top_declaration_of(h) {
+  Some(top) => top != h && owner_fields(top, name),
   None => false,
 }
 
-fn owner_binds(h, name: String) = match graph_node_body(h) {
-  NStmt(FnStmt(_, params, _, _, fbody)) => params_bind(params, name, 0) || binds_inside(fbody, name),
-  NStmt(HandlerDeclStmt(_, _, config, states, arms, _)) => params_bind(config, name, 0) || states_bind(states, name, 0) || arms_bind(arms, name, 0),
-  NStmt(EffectDeclStmt(_, _, ops)) => ops_bind(ops, name, 0),
-  NStmt(LetStmt(pat, val, _)) => pat_binds(pat, name) || binds_inside(val, name),
-  NStmt(TypeDefStmt(_, ctors)) => ctors_bind(ctors, name, 0),
-  NStmt(ExprStmt(e)) => binds_inside(e, name),
+fn owner_fields(h, name: String) = match graph_node_body(h) {
+  NStmt(TypeDefStmt(_, ctors)) => any(ctor_has_field(name, ??), ctors),
+  NStmt(_)
+  | NExpr(_)
+  | NPat(_)
+  | NHole(_)
+  | NModule(_)
+  | NLink(_)
+  | NTypeAnn(_)
+  | NName(_)
+  | NRow(_)
+  | NParam(_) => false,
+}
+
+fn ctor_has_field(name: String, ctor) = match ctor {
+  (_, tys, _) => any(record_has_field(name, ??), tys),
+}
+
+fn record_has_field(name: String, ty) = match ty {
+  TRecord(fs) => any(record_field_named(name, ??), fs),
   _ => false,
 }
 
-// A type's constructors, and the fields of its record payloads.
-fn ctors_bind(ctors, name: String, i) = if i >= len(ctors) {
-  false
-} else {
-  match list_index(ctors, i) {
-    (cname, tys, _) => cname == name || payload_fields_bind(tys, name, 0) || ctors_bind(ctors, name, i + 1),
-  }
-}
-
-fn payload_fields_bind(tys, name: String, i) = if i >= len(tys) {
-  false
-} else {
-  match list_index(tys, i) {
-    TRecord(fs) => record_fields_bind(fs, name, 0) || payload_fields_bind(tys, name, i + 1),
-    _ => payload_fields_bind(tys, name, i + 1),
-  }
-}
-
-fn record_fields_bind(fs, name: String, i) = if i >= len(fs) {
-  false
-} else {
-  match list_index(fs, i) {
-    (fname, _) => fname == name || record_fields_bind(fs, name, i + 1),
-  }
-}
-
-// Whether a binder named `name` is written inside a node: a let's or an
-// arm's pattern, a lambda's or a nested fn's parameter, a nested fn's own
-// name.
-fn binds_inside(node, name: String) = match graph_node_body(node) {
-  NExpr(LambdaExpr(params, lb)) => params_bind(params, name, 0) || binds_inside(lb, name),
-  NExpr(BlockExpr(stmts, fe)) => nodes_bind(stmts, name, 0) || binds_inside(fe, name),
-  NExpr(IfExpr(c, t, e)) => binds_inside(c, name) || binds_inside(t, name) || binds_inside(e, name),
-  NExpr(MatchExpr(sc, arms)) => binds_inside(sc, name) || match_arms_bind(arms, name, 0),
-  NExpr(CallExpr(f, args)) => binds_inside(f, name) || nodes_bind(args, name, 0),
-  NExpr(BinOpExpr(_, l, r)) => binds_inside(l, name) || binds_inside(r, name),
-  NExpr(UnaryOpExpr(_, inner)) => binds_inside(inner, name),
-  NExpr(PipeExpr(_, l, r)) => binds_inside(l, name) || binds_inside(r, name),
-  NExpr(MakeListExpr(es)) => nodes_bind(es, name, 0),
-  NExpr(MakeTupleExpr(es)) => nodes_bind(es, name, 0),
-  NExpr(MakeStringExpr(fs)) => nodes_bind(fs, name, 0),
-  NExpr(ShowExpr(inner)) => binds_inside(inner, name),
-  NExpr(IndexExpr(rc, ix)) => binds_inside(rc, name) || binds_inside(ix, name),
-  NExpr(FieldExpr(rc, _)) => binds_inside(rc, name),
-  NExpr(ResumeExpr(v, _)) => binds_inside(v, name),
-  NExpr(LabeledArg(_, v)) => binds_inside(v, name),
-  NExpr(MakeRecordExpr(flds)) => fields_bind(flds, name, 0),
-  NExpr(RecordUpdateExpr(b, flds)) => binds_inside(b, name) || fields_bind(flds, name, 0),
-  NExpr(NamedRecordExpr(_, flds)) => fields_bind(flds, name, 0),
-  NStmt(LetStmt(pat, val, _)) => pat_binds(pat, name) || binds_inside(val, name),
-  NStmt(FnStmt(nm, ps, _, _, fb)) => nm == name || params_bind(ps, name, 0) || binds_inside(fb, name),
-  NStmt(ExprStmt(e)) => binds_inside(e, name),
-  _ => false,
-}
-
-fn nodes_bind(nodes, name: String, i) =
-  i < len(nodes) && (binds_inside(list_index(nodes, i), name) || nodes_bind(nodes, name, i + 1))
-
-fn match_arms_bind(arms, name: String, i) = if i >= len(arms) {
-  false
-} else {
-  match list_index(arms, i) {
-    (pat, abody) => pat_binds(pat, name) || binds_inside(abody, name) || match_arms_bind(arms, name, i + 1),
-  }
-}
-
-fn fields_bind(flds, name: String, i) = if i >= len(flds) {
-  false
-} else {
-  match list_index(flds, i) {
-    (_, v) => binds_inside(v, name) || fields_bind(flds, name, i + 1),
-  }
-}
-
-fn pat_binds(pat, name: String) = names_hold(pat_binder_names(pat), name, 0)
-
-fn names_hold(xs, name: String, i) =
-  i < len(xs) && (list_index(xs, i) == name || names_hold(xs, name, i + 1))
-
-fn params_bind(params, name: String, i) =
-  i < len(params) && (pat_binds(param_pat(list_index(params, i)), name) || params_bind(params, name, i + 1))
-
-// The two record annotations are pins: a field read on a constrained-open
-// record (TRecordOpen) does not yet resolve its offset, since the witness
-// matches TVar receivers only, so the row is closed here at its Intent
-// Boundary.
-fn states_bind(states: [{init: Node, name: Node}], name: String, i) =
-  i < len(states) && (state_field_name(list_index(states, i)) == name || states_bind(states, name, i + 1))
-
-fn arms_bind(arms: [{args: [Node], body: Node, op: Node}], name: String, i) = if i >= len(arms) {
-  false
-} else {
-  let arm = list_index(arms, i)
-  handler_arm_op_name(arm) == name || params_bind(arm.args, name, 0) || binds_inside(arm.body, name) || arms_bind(arms, name, i + 1)
-}
-
-fn ops_bind(ops, name: String, i) = if i >= len(ops) {
-  false
-} else {
-  match list_index(ops, i) {
-    (opname, _, _, _) => opname == name || ops_bind(ops, name, i + 1),
-  }
+fn record_field_named(name: String, field) = match field {
+  (fname, _) => fname == name,
 }
 
 // float_of_int / float_to_int are PRIMITIVES — the Int↔Float conversions lower
@@ -5958,7 +5952,7 @@ fn infer_chain_install(left, right, name: String, members, handle, span: ValidSp
     install_decl(outermost),
     handle,
     span,
-    Located(span, ChainInstall(name, len(members)))
+    Located(span, ChainInstall(right, len(members)))
   )
 }
 

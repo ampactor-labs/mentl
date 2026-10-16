@@ -427,6 +427,7 @@ fn resolved_key(module_name: String, resolved) = match resolved {
 fn link_scope(audience, layer) = match audience {
   Census => ScopeAll,
   Project => ScopeProject(layer),
+  Unheard => ScopeNone,
 }
 
 // What discovery found, judged as ONE program in the walk's order. Every
