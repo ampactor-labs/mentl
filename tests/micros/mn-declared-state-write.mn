@@ -1,0 +1,12 @@
+// declared 9:28 at 8:22
+effect Count {
+  bump() -> Int
+}
+
+// A `resume … with` update names the state field it writes: the edge from
+// the `n` it writes reaches the `n` in `with n = 40`.
+handler counter with n = 40 {
+  bump() => resume(n) with n = n + 2,
+}
+
+fn main() = ((bump()) ~> counter) - 40

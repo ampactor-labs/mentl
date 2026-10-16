@@ -1007,7 +1007,7 @@ type SchemeKind
   // `Environ("PORT")`).
   | EffectDeclKind([String], [String])
   // tag 6 — (residual_row_handle, remainder_world_handle, config params [the fn-param carrier: name + default ride the TParam, names project via lower_param_names], state fields, arms). The remainder world is the row a held resume of this handler RUNS — the cell its arms' continuations carry as their world, never bound: callees reached through a resume gate it, and every install judges those gates against its own remainder (infer.mn's remainder_gates_check). Typed payloads: a bare List here erased the element types the consumers prove (the 581a92f class), and the pattern-constraint unification surfaces the conflict as E_TypeMismatch at every destructure.
-  | HandlerKind(Int, Int, [TParam], [{init: Node, name: String}], [{args: [String], body: Node, op: Node}])
+  | HandlerKind(Int, Int, [TParam], [{init: Node, name: Node}], [{args: [Node], body: Node, op: Node}])
   // tag 7 — parameter binding carries authored ownership at the env edge
   | ParamScheme(Ownership)
   // tag 8 — a named effect row (`type X = A + B`, SYNTAX §«Named effect
@@ -1844,6 +1844,11 @@ type Reason
   // wrote; the formatter reads it to write `body ~> NAME` back over the
   // installs the graph holds (format.mn's chain_installed).
   | ChainInstall(String, Int)
+  // A HANDLER'S STATE FIELD (2026-10-16): the field's name and the handler
+  // that holds it, borne by the binder its name is written at. A state field
+  // is no let: each install builds its own from the init, and every arm
+  // reads and writes the one its install built.
+  | StateBinding(String, String)
 
 // Caret — the user's text-attention position. ONE input among many to
 // Cursor's argmax computation. Updated by the editor's transport
@@ -2463,8 +2468,9 @@ type NodeBody
   | NParam({ann: Option(Node), dflt: Option(Node), marker: Ownership, pat: Node})
 
 // What a name written outside an expression names: an effect or a named row
-// in an authored row (`with !Alloc`), or the op a handler arm serves.
-type WrittenName = RowEffect(EffName) | ArmOp(String)
+// in an authored row (`with !Alloc`), the op a handler arm serves, or the
+// state field a `resume … with` update writes.
+type WrittenName = RowEffect(EffName) | ArmOp(String) | StateWrite(String)
 
 // ─── Expr (spec 03) ────────────────────────────────────────────────
 type Expr
@@ -2495,8 +2501,9 @@ type Expr
   | BlockExpr([Node], Node)
   // scrutinee, arms: each a pattern node and a body
   | MatchExpr(Node, [(Node, Node)])
-  // value, state updates
-  | ResumeExpr(Node, [{init: Node, name: String}])
+  // value, state updates: each the value written and the node naming the
+  // field it writes
+  | ResumeExpr(Node, [{init: Node, name: Node}])
   | MakeListExpr([Node])
   | MakeTupleExpr([Node])
   // [(field_name: String, value: Node)] — sorted at parse
@@ -2739,7 +2746,7 @@ type Stmt
   // `effect Sample(rate: Int)`) — parameter nodes, the product fn params
   // and handler config ride; they register as the effect's env scheme (the
   // instance signature every authored `Sample(44100)` judges against).
-  | HandlerDeclStmt(String, String, [Node], [{init: Node, name: String}], [{args: [String], body: Node, op: Node}], [(RowTerm, Bool, EConn)])
+  | HandlerDeclStmt(String, String, [Node], [{init: Node, name: Node}], [{args: [Node], body: Node, op: Node}], [(RowTerm, Bool, EConn)])
   // handler name, effect name, config-params, state-fields, arms, the
   // authored `with` row (the same signed triples a FnStmt carries — until
   // 2026-09-27 the parser skipped it to the arms, so a handler's `!F` bound
@@ -2750,12 +2757,13 @@ type Stmt
   //   each param carries the product's default slot); values are
   //   closure-captured at install site, absent fields fill from
   //   param_default through resolve_call_args
-  // state:  List<{name: String, init: Node}> — per-arm scope; updates via `resume(...) with f = e`
+  // state:  each field's init and the binder node its name is written at —
+  //   per-arm scope; updates via `resume(...) with f = e`
   // The state element type is CARRIED in the ADT field
   // (not a bare list) so `.name`/`.init` resolve to sorted
   // offsets at lower-time — never field-offset-resolution's
   // silent offset-0 fabrication on an erased element type.
-  // arms:   List<{args, body, op_name}>
+  // arms:   each its parameter nodes, its body and the node naming its op
   // Per Hβ.first-light.handler-config-state-substrate (2026-05-06):
   // config + state extracted at parse time; bound in arm scope at infer + lower
   // `handler NAME = h1 ~> h2(cfg) ~> h3` — a HANDLER CHAIN: the name and the
@@ -6038,6 +6046,7 @@ fn reason_phrase(reason) with !Mutate = match reason {
   Accepted(text, proof, _) => "accepted `{text}` — proposed: {show_reason(proof)}",
   EffectEnters(eff, _, _) => "{eff} enters here",
   ChainInstall(name, _) => "the handler chain {name}, installed here",
+  StateBinding(field, hname) => "state {field} of {hname}",
 }
 
 // Where a hop of an effect's entry chain stands: the module the node
@@ -6119,6 +6128,7 @@ fn show_reason(ref reason) with !Mutate = match reason {
     },
   },
   ChainInstall(name, n) => "installed through the handler chain '{name}', {int_to_str(n)} member(s)",
+  StateBinding(field, hname) => "state {field} of {hname}",
 }
 
 // A diagnostic's reason on the diagnostic's own line: the outer address is

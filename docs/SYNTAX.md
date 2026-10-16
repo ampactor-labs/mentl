@@ -2366,7 +2366,8 @@ Reading top-to-bottom = inner-to-outer trust hierarchy.
 
 ## Pattern syntax
 
-Patterns appear in `let`, `match`, function parameters, and lambda parameters.
+Patterns appear in `let`, `match`, function parameters, lambda parameters and
+handler arm arguments.
 
 ### Variants
 
@@ -2460,8 +2461,17 @@ uses, and a destructured parameter is its pattern, with no name minted for
 it. Until then a parameter was declared at a cell the judgment minted with no
 position (`0:0`), and a destructured one under a synthesized name the body
 took apart with a `let` (tests/micros/mn-declared-fn-param.mn,
-mn-declared-lambda-param.mn). A handler arm's arguments are still declared at
-cells the judgment mints.
+mn-declared-lambda-param.mn). A handler arm's arguments are parameters by the
+same rule (real, 2026-10-16), each the cell of the op's argument at its
+position, so an arm takes a pair apart where its body begins (`give((a, b))
+=> resume(a + b)`). A state field's name is the binder of its init, and the
+name a `resume … with` update writes is a node linked to it, so the caret at
+a field lists its reads and the updates that write it, and the Why at an
+update's name walks to `state n of counter`. Until then an arm's argument was
+declared at a cell the judgment minted with no position, a state field at its
+init, and an update's name was a string nothing linked
+(tests/micros/mn-declared-arm-arg.mn, mn-declared-state-field.mn,
+mn-declared-state-write.mn, mn-arm-arg-pattern.mn).
 
 **A head and a pattern bind each name once** (real, 2026-10-16). Two binders
 of one name — across a head's parameters and inside their patterns, or in one

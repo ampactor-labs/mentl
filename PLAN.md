@@ -440,8 +440,9 @@ landing that closes it. A gate that did not run is UNKNOWN, never green.
   where it is written, so the caret at a binder says its uses; a parameter is
   a node of its own, the cell of the argument its position takes, so a
   destructured parameter is its pattern and its names are declared where
-  they are written, each once per head; a handler arm's arguments are still
-  declared at cells the judgment mints (§11.2); a name written
+  they are written, each once per head; a handler arm's arguments are
+  parameters by the same rule, and a state field's name is the binder of its
+  init, linked from every `resume … with` that writes it; a name written
   in a type is a node linked to the type it names, and so are an effect a
   declaration's row or a function type's row names, the op a handler arm
   serves and a sugar that calls a primitive (`xs[i]`, `++`, an interpolation's
@@ -650,8 +651,7 @@ person and the medium, nothing else needed at any scope.
 **ONE LAW, FIVE FACES.** The largest open items are one violation — a
 materialized view stored where an edge belonged: STRUCTURE (cut: a node is its
 handle), REFERENCES (cut: a name is a node linked to what it names, and a
-handler arm's arguments, item 2's, are the binders still minted apart from
-where they are written), SCHEMES
+binder is declared where it is written), SCHEMES
 (a declaration's type frozen at its exit), PROVENANCE (a `Reason` is a value
 tree copying handles, structure, types and spans into every node) and the
 LOWERED PROGRAM (`LowExpr`, a second tree whose walks read names). The oracle is
@@ -660,24 +660,17 @@ a provenance diff, a search over live shared cells.
 
 **THE STANDING CURSOR** — the order work runs in:
 
-2. **Every position is a cell — #108** (`Hβ.graph.positions-are-cells`). A
-   handler arm's arguments and a state field's name are binder nodes by the
-   rule a parameter follows: an arm's argument a field of the op's parameter
-   product whose pattern binds against the op's slot, and a state field's
-   name a node of its own beside its init — where today an arm's argument is
-   declared at a cell the judgment mints and a state at its init's node.
-   `TParam` stays the function type's slot alone, built from the nodes at the
-   judgment. Then the writes the
-   structure cut was for: a rename is one write at the declaration (the
-   `rename` verb: every reference renders its spelling from its edge, a
+2. **Every position is a cell — #108** (`Hβ.graph.positions-are-cells`). The
+   writes the structure cut was for: a rename is one write at the declaration
+   (the `rename` verb: every reference renders its spelling from its edge, a
    comment's mention is rewritten along its mention edge, the program is
    judged again under the new name and a rename that moves any edge — a
    capture, a shadow — refuses, whatever the scope rules then are, and the
-   formatter writes the files); the
-   session re-judges the nodes an edit rewrote rather than re-parsing a
-   module (the declaration-grain cone over the in-edges); accepting a proposal
-   rewrites the hole's node in place, and the position-keyed accept column
-   (`Hβ.synth.accepted-edge-keyed-by-position`) deletes.
+   formatter writes the files); the session re-judges the nodes an edit
+   rewrote rather than re-parsing a module (the declaration-grain cone over
+   the in-edges); accepting a proposal rewrites the hole's node in place, and
+   the position-keyed accept column (`Hβ.synth.accepted-edge-keyed-by-position`)
+   deletes.
 3. **A module is a scope** (`Hβ.driver.per-module-env-overlay`,
    `Hβ.query.facets-read-the-link`, `Hβ.modules.import-block-is-maintained`,
    `Hβ.modules.vocabulary-held-by-declaration`,

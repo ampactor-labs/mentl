@@ -269,6 +269,7 @@ fn render_body_tokens(body) with !Mutate = match body {
   NName(written) => match written {
     RowEffect(name) => render_authored_eff_name(name),
     ArmOp(op) => op,
+    StateWrite(field) => field,
   },
   NRow(terms) => render_authored_row(terms),
   NParam(p) => render_param_body(p),
@@ -921,11 +922,11 @@ fn render_resume_head(v) with !Mutate = match graph_node_body(v) {
   _ => "resume({render_tokens_for(v)})",
 }
 
-fn render_state_updates(ref updates: [{init: Node, name: String}], i) with !Mutate = if i >= len(updates) {
+fn render_state_updates(ref updates: [{init: Node, name: Node}], i) with !Mutate = if i >= len(updates) {
   ""
 } else {
   let u = updates[i]
-  let one = "{u.name} = {render_tokens_for(u.init)}"
+  let one = "{state_field_name(u)} = {render_tokens_for(u.init)}"
   let lead = if i == 0 { " with " } else { ", " }
   "{lead}{one}{render_state_updates(updates, i + 1)}"
 }
@@ -1100,14 +1101,6 @@ fn render_op_param(p) with !Mutate = if param_name(p) == "_" {
 fn render_config_params(ref config) with !Mutate =
   if len(config) == 0 { "" } else { "({render_param_list(config)})" }
 
-fn render_name_list(ref names, i) = if i >= len(names) {
-  ""
-} else if i == len(names) - 1 {
-  names[i]
-} else {
-  "{names[i]}, {render_name_list(names, i + 1)}"
-}
-
 // Both handler renders read through the TYPED closed projections
 // (state_field_name/init, handler_arm_op_name/args/body — parser.mn's own
 // accessors): the bare field reads on the open records computed offsets
@@ -1132,7 +1125,7 @@ fn render_handler_arms(ref arms, i) with !Mutate = if i >= len(arms) {
   ""
 } else {
   let a = arms[i]
-  "{handler_arm_op_name(a)}({render_name_list(handler_arm_args(a), 0)}) => {render_grouped_body(handler_arm_body(a))},\n{render_handler_arms(arms, i + 1)}"
+  "{handler_arm_op_name(a)}({render_param_list(handler_arm_args(a))}) => {render_grouped_body(handler_arm_body(a))},\n{render_handler_arms(arms, i + 1)}"
 }
 
 fn render_lit_value(lv) = match lv {

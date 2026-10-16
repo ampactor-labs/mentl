@@ -90,8 +90,10 @@ fn board_bounds() = [
   // rises to meet a breach has stopped ratcheting, which is why the board
   // reports the counts it is inside as well as the ones it is over. 137 ->
   // 136 (2026-10-16): the parameters' minted cells left with their lambdas
-  // when a parameter became its node.
-  Bound({ceiling: 136, question: QCensus(CsEffectfulLambda)}),
+  // when a parameter became its node. 136 -> 135 the same day: the walk that
+  // paired each state field's name with its init left when the name became
+  // its binder.
+  Bound({ceiling: 135, question: QCensus(CsEffectfulLambda)}),
   // Drift mode 10 — the seven survivors are documented sentinels, not masked
   // cases. Every wildcard that is NOT one of them is a variant the author
   // declined to enumerate, and the medium cannot tell the difference, which
@@ -184,8 +186,10 @@ fn board_bounds() = [
   // the dead voice surface's index walks left with it. 174 → 173: a written
   // row renders by a map over its terms, where an index walked them. 173 →
   // 170 (2026-10-16): the parameter builders' index reads into a list of
-  // cells beside the parameters left with the list.
-  Bound({ceiling: 170, question: QVerifyDebt}),
+  // cells beside the parameters left with the list. 170 → 168 the same day:
+  // the formatter's index walk over an arm's argument names left when an
+  // arm's arguments became parameters.
+  Bound({ceiling: 168, question: QVerifyDebt}),
   // The iteration costumes — a function that threads an incremented index
   // through its own self-call, the imperative loop in recursion's costume
   // (CLAUDE.md Anchor 6). 390 when the detector was born on 2026-07-30, 490

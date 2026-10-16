@@ -1584,13 +1584,30 @@ fn parse_handler_arms_decl(tokens, name, p_after_name) = match if at(tokens, p_a
 // (drift mode 7 refusal — no (names_list, inits_list) parallel arrays).
 // Reuses parse_expr for inits.
 // Typed projections for the {init, name} record this file mints (state
-// fields + resume updates share the shape). A map/fold lambda's param is
-// a bare generic under the seed, and an unproven receiver's field access
-// hits the loud emit floor; the call-site unification with the declared
-// param IS the pin. One home — the mint — every consumer reads through.
-fn state_field_name(f: {init: Node, name: String}) -> String = f.name
+// fields + resume updates share the shape: a field's name is the binder
+// node it is declared at, an update's the node naming the field it writes).
+// A map/fold lambda's param is a bare generic under the seed, and an
+// unproven receiver's field access hits the loud emit floor; the call-site
+// unification with the declared param IS the pin. One home — the mint —
+// every consumer reads through.
+fn state_field_name(f: {init: Node, name: Node}) -> String = match graph_node_body(f.name) {
+  NPat(PVar(n)) => n,
+  NName(StateWrite(n)) => n,
+  NPat(_)
+  | NName(_)
+  | NExpr(_)
+  | NStmt(_)
+  | NHole(_)
+  | NModule(_)
+  | NLink(_)
+  | NTypeAnn(_)
+  | NRow(_)
+  | NParam(_) => out_of_range(),
+}
 
-fn state_field_init(f: {init: Node, name: String}) -> Node = f.init
+fn state_field_node(f: {init: Node, name: Node}) -> Node = f.name
+
+fn state_field_init(f: {init: Node, name: Node}) -> Node = f.init
 
 // The handler-arm record's typed projections ({args, body, op}, minted in
 // parse_handler_arms): the arm-record type resolves only in a scope that
@@ -1598,12 +1615,13 @@ fn state_field_init(f: {init: Node, name: String}) -> Node = f.init
 //
 // The op an arm serves, by the edge its name draws once the handler is
 // judged.
-fn handler_arm_op_decl(a: {args: [String], body: Node, op: Node}) = graph_ref_decl(a.op)
+fn handler_arm_op_decl(a: {args: [Node], body: Node, op: Node}) = graph_ref_decl(a.op)
 
 // The op an arm serves, as written at its node.
-fn handler_arm_op_name(a: {args: [String], body: Node, op: Node}) -> String = match graph_node_body(a.op) {
+fn handler_arm_op_name(a: {args: [Node], body: Node, op: Node}) -> String = match graph_node_body(a.op) {
   NName(ArmOp(name)) => name,
   NName(RowEffect(_))
+  | NName(StateWrite(_))
   | NExpr(_)
   | NStmt(_)
   | NPat(_)
@@ -1615,16 +1633,18 @@ fn handler_arm_op_name(a: {args: [String], body: Node, op: Node}) -> String = ma
   | NParam(_) => out_of_range(),
 }
 
-fn handler_arm_arity(a: {args: [String], body: Node, op: Node}) -> Int = len(a.args)
+fn handler_arm_arity(a: {args: [Node], body: Node, op: Node}) -> Int = len(a.args)
 
 // The arm's body node — the typed projection draw_op_edges folds the resume
 // Usage grade over.
-fn handler_arm_body(a: {args: [String], body: Node, op: Node}) -> Node = a.body
+fn handler_arm_body(a: {args: [Node], body: Node, op: Node}) -> Node = a.body
 
-fn handler_arm_args(a: {args: [String], body: Node, op: Node}) -> [String] = a.args
+// The arm's parameter nodes, one per argument of the op it serves.
+fn handler_arm_args(a: {args: [Node], body: Node, op: Node}) -> [Node] = a.args
 
+// A state field's name is a binder, declared where it is written.
 fn parse_handler_state_fields(ref tokens, pos) = {
-  let name = ident_at(tokens, pos)
+  let name = npat(PVar(ident_at(tokens, pos)), span_at(tokens, pos))
   let p_eq = expect(tokens, skip_ws(tokens, pos + 1), TEq)
   match parse_header_expr(tokens, skip_ws(tokens, p_eq)) {
     (init, p_after_init) => {
@@ -1652,7 +1672,9 @@ fn parse_handler_state_fields(ref tokens, pos) = {
 // mirrors the seed's $parse_handler_state / $parse_resume_state_updates
 // two-function split).
 fn parse_resume_state_updates(ref tokens, pos) = {
-  let name = ident_at(tokens, pos)
+  // The field an update writes is a name written at its own node, linked to
+  // the field's binder where the update is judged.
+  let name = mint_node(NName(StateWrite(ident_at(tokens, pos))), span_at(tokens, pos))
   let p_eq = expect(tokens, skip_ws(tokens, pos + 1), TEq)
   match parse_expr(tokens, skip_ws(tokens, p_eq)) {
     (init, p_after_init) => {
@@ -1698,7 +1720,7 @@ fn parse_handler_arms(ref tokens, pos) = {
     // the handler is judged.
     let op = mint_node(NName(ArmOp(ident_at(tokens, p))), span_at(tokens, p))
     let p2 = expect(tokens, skip_ws(tokens, p + 1), TLParen)
-    match parse_arg_names(tokens, skip_ws(tokens, p2)) {
+    match parse_arm_params(tokens, skip_ws(tokens, p2), ident_at(tokens, p)) {
       (args, p3) => {
         let p4 = expect(tokens, skip_ws(tokens, p3), TFatArrow)
         match parse_expr(tokens, skip_ws(tokens, p4)) {
@@ -1726,19 +1748,27 @@ fn parse_handler_arms(ref tokens, pos) = {
   }
 }
 
-fn parse_arg_names(ref tokens, pos) = {
+// An arm's arguments: each a parameter node whose pattern binds the op's
+// argument at its position, as a function's parameter binds its argument.
+fn parse_arm_params(ref tokens, pos, owner: String) = parse_arm_params_from(tokens, pos, owner, 0)
+
+fn parse_arm_params_from(tokens, pos, owner: String, idx) = {
   let p = skip_ws(tokens, pos)
   if at(tokens, p, TRParen) {
     ([], p + 1)
   } else {
-    let name = ident_at(tokens, p)
-    let p2 = skip_ws(tokens, p + 1)
-    if at(tokens, p2, TComma) {
-      match parse_arg_names(tokens, skip_ws(tokens, p2 + 1)) {
-        (rest, p3) => ([name] ++ rest, p3),
-      }
-    } else {
-      ([name], expect(tokens, p2, TRParen))
+    match parse_pat(tokens, p) {
+      (pat, p_pat) => {
+        let param = mint_param(pat, None, None, Unmarked, graph_span_of(pat), owner, idx)
+        let p2 = skip_ws(tokens, p_pat)
+        if at(tokens, p2, TComma) {
+          match parse_arm_params_from(tokens, skip_ws(tokens, p2 + 1), owner, idx + 1) {
+            (rest, p3) => ([param] ++ rest, p3),
+          }
+        } else {
+          ([param], expect(tokens, p2, TRParen))
+        }
+      },
     }
   }
 }
@@ -3937,7 +3967,7 @@ fn free_vars_stmt(s, bound) = match s {
     // arm additionally binds the state names and its own args. `resume` is
     // a keyword and never a reference.
     let init_bound = free_vars_merge(bound, param_bound_names(config))
-    let arm_bound = free_vars_merge(init_bound, map((st) => st.name, state))
+    let arm_bound = free_vars_merge(init_bound, map(state_field_name, state))
     free_uses_merge(
       free_vars_list(map((st) => st.init, state), init_bound),
       free_vars_handler_arms(arms, arm_bound)
@@ -3958,7 +3988,10 @@ fn free_vars_stmt(s, bound) = match s {
 
 fn free_vars_handler_arms(arms, bound) = fold(
   [],
-  (acc, arm) => free_uses_merge(acc, collect_free_uses(arm.body, free_vars_merge(bound, arm.args))),
+  (acc, arm) => free_uses_merge(
+    acc,
+    collect_free_uses(arm.body, free_vars_merge(bound, param_bound_names(arm.args)))
+  ),
   arms
 )
 

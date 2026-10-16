@@ -1986,9 +1986,9 @@ fn expr_child_handles(e) = match e {
   // the projection partial and tree containment blind below any match
   // (the enclosing-decl guard's measured hole).
   MatchExpr(scrut, arms) => [scrut] ++ flat_map({ (p, b) => [p, b] }, arms),
-  // A resume-with update is the parser's {name, init} record — the handle
-  // lives on its init edge (record_field_handle's exact sibling).
-  ResumeExpr(v, updates) => [v] ++ map(record_field_handle, updates),
+  // A resume-with update is the parser's {name, init} record: the node
+  // naming the field it writes, then the value written.
+  ResumeExpr(v, updates) => [v] ++ flat_map(state_field_children, updates),
   MakeListExpr(elems) => elems,
   MakeTupleExpr(elems) => elems,
   // Record LITERALS carry the parser's (name, value) tuples
@@ -2008,9 +2008,11 @@ fn expr_child_handles(e) = match e {
   _ => [],
 }
 
-// The field IS the parser's {name, init} record — read the init edge by
-// name (the tuple destructure read a record as positions and met Node).
-fn record_field_handle(field) with Pure = field.init
+// The field IS the parser's {name, init} record — read by field name (the
+// tuple destructure read a record as positions and met Node): the binder
+// node its name is written at, or the node naming the field an update
+// writes, then its init.
+fn state_field_children(field) = [field.name, field.init]
 
 // A variant's node: the third of its (name, field types, node).
 fn variant_node(variant) with Pure = match variant {
@@ -2042,7 +2044,7 @@ fn stmt_child_handles(s) = match s {
   // a declaration's parameters are nodes of its own, before its body
   FnStmt(_name, params, _ret, _effs, body) => params ++ [body],
   ExprStmt(e) => [e],
-  HandlerDeclStmt(_hname, _ename, config, states, arms, _effs) => config ++ map(record_field_handle, states) ++ map(arm_body_handle, arms),
+  HandlerDeclStmt(_hname, _ename, config, states, arms, _effs) => config ++ flat_map(state_field_children, states) ++ flat_map(arm_children, arms),
   HandlerChainStmt(_, chain) => [chain],
   // A type's variants and an effect's ops are its parts: each is a node the
   // parse minted, its parent the declaration that holds it, so an op reaches
@@ -2056,7 +2058,8 @@ fn stmt_child_handles(s) = match s {
   RowAliasStmt(_, _) => [],
 }
 
-fn arm_body_handle(arm) with Pure = arm.body
+// An arm's parameter nodes, then its body.
+fn arm_children(arm) = arm.args ++ [arm.body]
 
 // body_child_handles — the ONE total child projection over NodeBody:
 // tree walks (containment, the enclosing-decl descent) read this,

@@ -615,6 +615,7 @@ fn ref_role(h) with !Mutate = match graph_node_body(h) {
   NTypeAnn(_) => "annotation",
   NName(RowEffect(_)) | NRow(_) => "row",
   NName(ArmOp(_)) => "arm",
+  NName(StateWrite(_)) => "write",
   NExpr(IndexExpr(_, _)) | NExpr(BinOpExpr(_, _, _)) | NExpr(MakeStringExpr(_)) => "call",
   NExpr(_) | NStmt(_) | NHole(_) | NModule(_) | NLink(_) | NParam(_) => if callee_of_parent(h) { "call" } else { "value" },
 }
@@ -1220,7 +1221,7 @@ fn op_is_unperformed(stmt, op) with !Mutate = match op {
 
 // A reference performs its op unless it is the name an arm serves.
 fn performs_at(r) with !Mutate = match graph_node_body(r) {
-  NName(ArmOp(_)) => false,
+  NName(ArmOp(_)) | NName(StateWrite(_)) => false,
   NName(RowEffect(_))
   | NExpr(_)
   | NStmt(_)
@@ -3112,13 +3113,13 @@ fn field_write_lines(field: String, h) with !Mutate = match graph_node_body(h) {
   _ => [],
 }
 
-fn state_named(field: String, st) = st.name == field
+fn state_named(field: String, st) = state_field_name(st) == field
 
 fn state_writes(hname: String, st) with !Mutate = match graph_binder_of(st.init) {
   Some(StateFact(f)) => [
-    "{hname}.{st.name}: {int_to_str(len(f.writes))} write(s), {int_to_str(len(f.stores))} in-place store(s)"
+    "{hname}.{state_field_name(st)}: {int_to_str(len(f.writes))} write(s), {int_to_str(len(f.stores))} in-place store(s)"
   ] ++ map(write_line, f.writes) ++ map(store_line, f.stores),
-  _ => ["{hname}.{st.name}: no writers noted — the handler was never judged"],
+  _ => ["{hname}.{state_field_name(st)}: no writers noted — the handler was never judged"],
 }
 
 fn write_line(w) with !Mutate =

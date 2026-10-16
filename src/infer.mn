@@ -870,14 +870,14 @@ fn params_bind(params, name: String, i) =
 // record (TRecordOpen) does not yet resolve its offset, since the witness
 // matches TVar receivers only, so the row is closed here at its Intent
 // Boundary.
-fn states_bind(states: [{init: Node, name: String}], name: String, i) =
-  i < len(states) && (list_index(states, i).name == name || states_bind(states, name, i + 1))
+fn states_bind(states: [{init: Node, name: Node}], name: String, i) =
+  i < len(states) && (state_field_name(list_index(states, i)) == name || states_bind(states, name, i + 1))
 
-fn arms_bind(arms: [{args: [String], body: Node, op: Node}], name: String, i) = if i >= len(arms) {
+fn arms_bind(arms: [{args: [Node], body: Node, op: Node}], name: String, i) = if i >= len(arms) {
   false
 } else {
   let arm = list_index(arms, i)
-  handler_arm_op_name(arm) == name || names_hold(arm.args, name, 0) || binds_inside(arm.body, name) || arms_bind(arms, name, i + 1)
+  handler_arm_op_name(arm) == name || params_bind(arm.args, name, 0) || binds_inside(arm.body, name) || arms_bind(arms, name, i + 1)
 }
 
 fn ops_bind(ops, name: String, i) = if i >= len(ops) {
@@ -4217,23 +4217,28 @@ fn infer_expr(ref handle) = {
       // element is exactly the lower_scope ls_push_scope trap (resolve_field_offset
       // returns -1 → unreachable). Carry the update's type into the field; never
       // discard what the graph could prove (Carried-Truth).
+      // The field an update writes is the edge its name drew where the handler
+      // bound its states (`link_update`); the name's node is the field's cell
+      // where the update is written.
       each(
         (upd) => {
           infer_expr(state_field_init(upd))
           let uh = state_field_init(upd)
-          match env_lookup(state_field_name(upd)) {
-            Some(entry) => match entry {
-              (scheme, reason, _) => {
-                let fh = mint(Inferred("resume state field type"))
-                graph_bind(fh, instantiate(scheme), Located(span, VarLookup(state_field_name(upd), reason)))
-                unify(uh, fh, span, Inferred("resume state update carries the state field's type"))
+          let nh = state_field_node(upd)
+          match graph_ref_decl(nh) {
+            Some(field) => match graph_published(field) {
+              Some((scheme, reason, _)) => {
+                let fty = instantiate(scheme)
+                graph_bind(nh, fty, Located(graph_span_of(nh), VarLookup(state_field_name(upd), reason)))
+                unify(uh, nh, span, Inferred("resume state update carries the state field's type"))
                 // The commit stores into the install's record: its claim is
                 // on the state field it names.
-                match instantiate(scheme) {
+                match fty {
                   TVar(sb) => ages_store_binder(sb, [uh]),
                   _ => demand_move(uh),
                 }
               },
+              None => (),
             },
             None => (),
           }
@@ -6116,8 +6121,10 @@ fn instance_pat(chain: String, p, span: ValidSpan) = {
   }
 }
 
-fn instance_update(chain: String, span: ValidSpan, u) =
-  {init: chain_instance(chain, state_field_init(u), span), name: state_field_name(u)}
+fn instance_update(chain: String, span: ValidSpan, u) = {
+  init: chain_instance(chain, state_field_init(u), span),
+  name: chain_instance(chain, state_field_node(u), span),
+}
 
 fn instance_expr(chain: String, e, span: ValidSpan) = {
   let go = instance_of(chain, span, ??)
@@ -8517,10 +8524,6 @@ fn same_claim(a, b) = match a {
 
 fn index_in(ys, x) = any(handle_is(x, ??), ys)
 
-fn state_bind_handle(bind) = match bind {
-  (_, ih) => ih,
-}
-
 // The parameters a result may be, each once.
 fn returns_of(targets, params) = if all(target_is_param, targets) {
   Some(fold([], add_index, map(target_param_index(params, ??), targets)))
@@ -10087,7 +10090,7 @@ fn infer_match_arm_iter(arms, scrut, result_h, span: ValidSpan, i, n) = if i >= 
 // value IS the handle result, whether it resumes or aborts.
 //
 // drift-audit: ignore — result_h (arm result) and inst_h (effect instance) are distinct handles
-fn infer_one_handler_arm(arm: {args: [String], body: Node, op: Node}, result_h, inst_h, world_h) = {
+fn infer_one_handler_arm(arm: {args: [Node], body: Node, op: Node}, result_h, inst_h, world_h) = {
   let arm_span = graph_span_of(arm.body)
   let op_name = handler_arm_op_name(arm)
   // The op the arm serves resolves once, here, and the name the arm writes
@@ -10147,7 +10150,7 @@ fn undeclared_arm_op(op_name: String, arm_span: ValidSpan) = {
 // An arm may not resume an op declared `-> !` (`EResumeOfNever`): its result
 // is quantified per perform, so the value the arm would hand back has no one
 // type every performer can receive.
-fn never_resume_check(hname: String, arm: {args: [String], body: Node, op: Node}) = if op_never_returns(graph_ref_decl(arm.op)) && resume_grade(arm.body) != RNone {
+fn never_resume_check(hname: String, arm: {args: [Node], body: Node, op: Node}) = if op_never_returns(graph_ref_decl(arm.op)) && resume_grade(arm.body) != RNone {
   report(EResumeOfNever(hname, handler_arm_op_name(arm), graph_span_of(arm.body)))
 }
 
@@ -10166,27 +10169,19 @@ fn op_never_returns(od) = match published_at(od) {
   None => false,
 }
 
-// Arm params take the op's declared param types, positionally. An
-// arity mismatch reports EHandlerArmArity FIRST; the aligned prefix
-// still binds (productive-under-error).
+// An arm's parameters take the op's declared parameter types, positionally:
+// each parameter node is the cell of the op's argument at its position, and
+// its pattern is declared there as a function's is. An arity mismatch
+// reports EHandlerArmArity FIRST; the aligned prefix still binds
+// (productive-under-error).
 fn bind_arm_args(args, params, op_name, span: ValidSpan) = {
   if len(args) != len(params) { report(EHandlerArmArity(op_name, len(params), len(args), span)) }
-  each(
-    {
-      (name, param) => {
-        let h = mint(Located(span, LetBinding(name, Declared(op_name))))
-        graph_bind(h, param_ty(param), Located(span, Declared(op_name)))
-        env_extend(
-          name,
-          Frozen([], TVar(h)),
-          Located(span, LetBinding(name, Declared(op_name))),
-          ValueScheme,
-          h
-        )
-      },
-    },
-    zip(args, params)
-  )
+  each(bind_arm_arg(op_name, ??), zip(args, params))
+  declare_param_binders(args, op_name)
+}
+
+fn bind_arm_arg(op_name: String, pair) = match pair {
+  (a, param) => graph_bind(a, param_ty(param), Located(graph_span_of(a), Declared(op_name))),
 }
 
 // Unify a handler's payload var with the op's payload type carried in its
@@ -13991,6 +13986,7 @@ fn link_written(c) = {
     | NModule(_)
     | NLink(_)
     | NName(ArmOp(_))
+    | NName(StateWrite(_))
     | NRow(_)
     | NParam(_) => (),
   }
@@ -14675,12 +14671,12 @@ fn register_handler(hname, ename_parsed, config, state, arms, effs, span: ValidS
     },
     config_tparams
   )
-  let state_binds = infer_handler_state_inits(state)
-  bind_handler_state_names(state_binds, arms, hname, span)
+  infer_handler_state_inits(state)
+  bind_handler_state_names(state, arms, hname)
   // The arms store into the state their install allocated, and an install
   // answers for it (`ages_install`), as it answers for the config it hands
   // the arms (`install_mutation`).
-  ages_open(AgeArm(hname, map(state_bind_handle, state_binds), config_cells))
+  ages_open(AgeArm(hname, map(state_field_init, state), config_cells))
   each(
     (arm) => {
       env_scope_enter()
@@ -14823,13 +14819,7 @@ fn ty_with_row_added(ty, extra) = match ty {
 
 // Walk each state field's init ONCE per decl; the init's inferred
 // type IS the field's type in arm scope.
-fn infer_handler_state_inits(state) = map(
-  (sf) => {
-    infer_expr(state_field_init(sf))
-    (state_field_name(sf), state_field_init(sf))
-  },
-  state
-)
+fn infer_handler_state_inits(state) = each({ sf => infer_expr(state_field_init(sf)) }, state)
 
 // A config parameter is a parameter node like a function's, the cell its
 // install's argument fills: its name is declared where it is written, and
@@ -14840,30 +14830,40 @@ fn bind_handler_config_params(config, hname: String) = {
   config
 }
 
-fn bind_handler_state_names(state_binds, arms, hname, span: ValidSpan) = {
+fn bind_handler_state_names(state, arms, hname) = {
   let updates = arms |> flat_map(arm_updates)
-  state_binds |> each(bind_handler_state_name(updates, hname, span, ??))
-  updates |> each(refuse_stray_update(state_binds, ??))
+  updates |> each(link_update(state, ??))
+  state |> each(bind_handler_state_name(updates, hname, ??))
 }
 
-// A state field binds where its init stands, and the init is one of its
-// values among the arms' writes: noted before any arm is judged, so no claim
-// an arm raises over the state reads it as its init alone.
-fn bind_handler_state_name(updates, hname: String, span: ValidSpan, bind) = match bind {
-  (name, ih) => {
-    env_extend(
-      name,
-      Frozen([], TVar(ih)),
-      Located(span, LetBinding(name, Declared(hname))),
-      ValueScheme,
-      ih
-    )
-    graph_binder_note(
-      ih,
-      StateFact({stores: [], writes: [ih] ++ (updates |> filter(update_names(name, ??)) |> map(state_field_init))})
-    )
-  },
+// The field an update writes resolves once, among its handler's state
+// fields, where the name was typed, and its node is linked to the field's
+// binder. An update naming no field writes nothing anything reads, so it is
+// refused, never dropped: `resume(0) with m = n + 1` beside `with n = 0`
+// compiled clean and `n` stayed 0 (pin 53f7404b).
+fn link_update(state, upd) = match find({ sf => state_field_name(sf) == state_field_name(upd) }, state) {
+  Some(sf) => graph_ref_link(state_field_node(upd), state_field_node(sf)),
+  None => report(EMissingVariable("state field: {state_field_name(upd)}", graph_span_of(state_field_node(upd)))),
 }
+
+// A state field is declared where its name is written, its binder the cell
+// of its init, and the init is one of its values among the arms' writes —
+// each update whose name links to it: noted before any arm is judged, so no
+// claim an arm raises over the state reads it as its init alone.
+fn bind_handler_state_name(updates, hname: String, sf) = {
+  let name = state_field_name(sf)
+  let nh = state_field_node(sf)
+  let ih = state_field_init(sf)
+  let why = Located(graph_span_of(nh), StateBinding(name, hname))
+  graph_bind(nh, TVar(ih), why)
+  env_extend(name, Frozen([], TVar(ih)), why, ValueScheme, nh)
+  graph_binder_note(
+    ih,
+    StateFact({stores: [], writes: [ih] ++ (updates |> filter(writes_field(nh, ??)) |> map(state_field_init))})
+  )
+}
+
+fn writes_field(nh, upd) = graph_ref_decl(state_field_node(upd)) == Some(nh)
 
 // Every `resume … with` update in an arm's body, read off the one total
 // child projection before the arm is judged.
@@ -14876,21 +14876,6 @@ fn subtree_updates(h) = {
     _ => [],
   }
   here ++ (body_child_handles(body) |> flat_map(subtree_updates))
-}
-
-fn update_names(name: String, upd) = state_field_name(upd) == name
-
-// An update naming no field of its handler writes nothing anything reads,
-// so it is refused, never dropped: `resume(0) with m = n + 1` beside `with n
-// = 0` compiled clean and `n` stayed 0 (pin 53f7404b).
-fn refuse_stray_update(state_binds, upd) = if any(bind_named(state_field_name(upd), ??), state_binds) {
-  ()
-} else {
-  report(EMissingVariable("state field: {state_field_name(upd)}", graph_span_of(state_field_init(upd))))
-}
-
-fn bind_named(name: String, bind) = match bind {
-  (n, _) => n == name,
 }
 
 // ─── Resume cardinality — the arm's continuation multiplicity (Usage) ─────

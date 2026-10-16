@@ -1748,12 +1748,15 @@ fn node_query_line(h, kind) = match graph_node_body(h) {
   NStmt(RowAliasStmt(name, _)) => "{name} — a named effect row",
   // A written name answers with what it denotes, read off the link the
   // judgment drew: an effect or a named row its declaration's line, the op
-  // an arm serves its declared type.
+  // an arm serves its declared type, the state field an update writes its
+  // type.
   NName(written) => match (written, graph_ref_decl(h)) {
     (RowEffect(_), Some(d)) => node_query_line(d, kind),
     (ArmOp(op), Some(d)) => "the op {op} : {show_type(lookup_ty(d))}",
+    (StateWrite(field), Some(d)) => "the state field {field} : {show_type(lookup_ty(d))}",
     (RowEffect(name), None) => "{eff_name_str(name)} — names no effect in reach",
     (ArmOp(op), None) => "{op} — names no op in reach",
+    (StateWrite(field), None) => "{field} — names no state field of its handler",
   },
   // An UNDETERMINED hole never leaks the raw var — substrate
   // vocabulary at the exact moment the medium should ASK (§1's law: the

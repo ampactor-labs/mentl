@@ -1,0 +1,12 @@
+// expect: 7
+// An arm's argument is a pattern, as a function's parameter is: the arm takes
+// the op's pair apart where its body begins.
+effect Pairs {
+  give(p: (Int, Int)) -> Int
+}
+
+handler summed {
+  give((a, b)) => resume(a + b),
+}
+
+fn main() = (give((3, 4))) ~> summed

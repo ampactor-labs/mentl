@@ -431,7 +431,7 @@ fn absorb_scan(ref bindings, i, n, ename: String, own acc) = if i >= n {
   }
 }
 
-fn handler_arms_touch(ref arms: [{args: [String], body: Node, op: Node}], i, n, ename: String) = if i >= n {
+fn handler_arms_touch(ref arms: [{args: [Node], body: Node, op: Node}], i, n, ename: String) = if i >= n {
   false
 } else {
   // The receiver is ANNOTATED, which is what makes the destructure below

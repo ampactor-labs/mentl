@@ -1,0 +1,12 @@
+// declared 9:20 at 9:7
+effect Box {
+  put(x: Int) -> Int
+}
+
+// A handler arm's argument is declared where it is written: the edge from
+// the body's `v` reaches the `v` the arm `put(v)` binds.
+handler doubled {
+  put(v) => resume(v + v),
+}
+
+fn main() = ((put(21)) ~> doubled) - 42

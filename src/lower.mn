@@ -1562,7 +1562,7 @@ fn bind_from_handlers(stmts, summaries, decls, binds) = if len(stmts) == 0 {
     NStmt(HandlerDeclStmt(_, _, config, state, arms, _)) => {
       // An arm's config, state fields and arguments are its binders, never
       // a call — the arm walk binds them as the free-name walk does.
-      let in_arms = param_bound_names(config) ++ map({ st => st.name }, state)
+      let in_arms = param_bound_names(config) ++ map(state_field_name, state)
       bind_from_arms(arms, hd, in_arms, summaries, decls, binds)
     },
     _ => binds,
@@ -1576,7 +1576,7 @@ fn bind_from_arms(arms, hd, in_arms, summaries, decls, binds) = if len(arms) == 
   let arm = last(arms)
   let binds2 = match op_resume_discipline(handler_arm_op_decl(arm)) {
     MultiShot => bind_closure(
-      callable_names(handler_arm_body(arm), in_arms ++ arm.args),
+      callable_names(handler_arm_body(arm), in_arms ++ param_bound_names(arm.args)),
       hd,
       summaries,
       decls,
@@ -4746,7 +4746,7 @@ fn lower_handler_arms_as_decls(arms, hd, config, state) = {
 // (`with n = cfg.x`) reached the unbound-name floor, and the special case
 // that served a bare config name read every capture in the install's list
 // as the record's own slot, so a captured config argument arrived as 0.
-fn lower_init_decl(hd, config, state: [{init: Node, name: String}], fence, line_base) = {
+fn lower_init_decl(hd, config, state: [{init: Node, name: Node}], fence, line_base) = {
   let fn_name = init_fn_name(hd)
   let config_names = lower_param_names(config)
   let captures_names = config_names ++ state_field_names_of(state)
@@ -4817,7 +4817,7 @@ fn at_instance(sub, oty) = match oty {
   None => None,
 }
 
-fn lower_one_arm_decl(arm: {args: [String], body: Node, op: Node}, hd, config, state, fence, line_base) = {
+fn lower_one_arm_decl(arm: {args: [Node], body: Node, op: Node}, hd, config, state, fence, line_base) = {
   let op_name = handler_arm_op_name(arm)
   let op = handler_arm_op_decl(arm)
   let fn_name = arm_fn_name(hd, op_name)
@@ -4845,11 +4845,12 @@ fn lower_one_arm_decl(arm: {args: [String], body: Node, op: Node}, hd, config, s
   // calls __k — band B k1). OneShot arms keep their params, arity, and
   // fence byte-identically (Law 7).
   let disc = op_resume_discipline(op)
+  let arg_names = lower_param_names(arm.args)
   let arm_params = match disc {
-    MultiShot => ["__k"] ++ arm.args,
+    MultiShot => ["__k"] ++ arg_names,
     // M4 — the driver pushes (record, k) uniformly; an Abandon arm takes __k and ignores it (it never resumes), returning its value flag-clear so the driver delivers it as the install's
-    Abandon => ["__k"] ++ arm.args,
-    _ => arm.args,
+    Abandon => ["__k"] ++ arg_names,
+    _ => arg_names,
   }
   let locals_handles = zeros_of_len(len(arm_params))
   // The arm's param edges are the OP's declared arg types, read from the
@@ -4915,7 +4916,8 @@ fn lower_one_arm_decl(arm: {args: [String], body: Node, op: Node}, hd, config, s
   //
   // Hβ.lower.tail-call-mark-pass — handler arm body is in tail; k2_guard floors off-spine boundaries (M1.3)
   let lo_body = k2_guard(mark_tail({
-    lower_expr(arm.body)
+    let layers = lower_param_destructures(arm.args)
+    wrap_param_destructures(layers, lower_expr(arm.body))
   } ~> arm_state_ctx(captures_names, disc, Some(hd))))
   lower_handler_pop()
   let lines = ls_exit_frame()
@@ -4938,7 +4940,7 @@ fn sum_group_arm_lens(groups: [{arms: [String], ename: String}]) =
 // Per parse_handler_state_fields, each entry is `{name, init}`, and
 // state_field_name / state_field_init live at the record's mint (parser.mn,
 // beside it) — one home per truth.
-fn state_field_names_of(state: [{init: Node, name: String}]) = map(state_field_name, state)
+fn state_field_names_of(state: [{init: Node, name: Node}]) = map(state_field_name, state)
 
 // Build a list of n zero handles. Used as the handle-list for arm
 // captures and locals where lower-time has no type-handle info.
@@ -5835,8 +5837,8 @@ fn resume_commit_prefix(handle, val, updates, fields, record) = {
 // identity the name already carries) + the resume site's handle. Both
 // map lambdas above mint through this one home, so the LLet and its
 // LLocal read can never drift apart.
-fn resume_upd_local(upd: {init: Node, name: String}, handle) =
-  "__resume_upd_{upd.name}_{int_to_str(handle)}"
+fn resume_upd_local(upd: {init: Node, name: Node}, handle) =
+  "__resume_upd_{state_field_name(upd)}_{int_to_str(handle)}"
 
 // Resolve a field name to its byte offset in the handler state
 // record. `fields` is the slot-order NAME list — config ++ state in
