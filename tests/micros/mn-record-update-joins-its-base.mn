@@ -1,0 +1,15 @@
+// expect: 58
+// An update joins the record it copies. Its result is the written field in
+// front of a copy of the base past it, so `bump` returns a record of the shape
+// it was handed whichever branch runs: the copy is the base's row without
+// `fb`, and the base holding `fb` makes the two branches one record. On boot
+// db6881c7 the join refused, `{} vs {fb: Int}`: the update's rest was the
+// base's own row, so the branch returning the base and the branch returning
+// the update were one row with a field and the same row without it.
+fn bump(sc, c) = if c { sc } else { {...sc, fb: 1} }
+
+fn main() = {
+  let a = bump({fb: 5, x: 3}, true)
+  let b = bump({fb: 5, x: 4}, false)
+  a.fb * 10 + a.x + b.fb + b.x
+}

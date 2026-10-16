@@ -1,0 +1,35 @@
+// expect: 92
+// AN UPDATE'S COPY IS THE BASE'S ROW WITHOUT THE WRITTEN NAMES, wherever the
+// update is read. `get_x` reads a field of an update inside its own body, so
+// no caller pairs the copy's row and each copy of `get_x` reads it off the
+// base's record under its own pairs; `twice` updates an update; `rest_of`
+// takes apart an update's result; `pick` joins two updates of different
+// records, `both` two updates of one record, which must then hold both
+// written fields; `bump` writes a field its signature's rest lacks. On boot
+// db6881c7 `both` refused, `{a: Int} vs {b: Int}`: the update's rest was the
+// base's own row, so the two branches were one row with `a` in front and the
+// same row with `b` in front.
+fn get_x(r) = {...r, b: 1}.x
+
+fn pick(c, r, s) = if c { {...r, a: 1} } else { {...s, a: 1} }
+
+fn both(c, r) = if c { {...r, a: 1} } else { {...r, b: 2} }
+
+fn twice(r) = {...{...r, a: 1}, b: 2}
+
+fn rest_of(r) = {
+  let {b, ...rest} = {...r, b: 9}
+  rest.a + b
+}
+
+fn bump(x: {a: Int, ...r}) -> {a: Int, ...r} = {...x, a: x.a + 1}
+
+fn main() = {
+  let g = get_x({b: 3, x: 1, y: 2}) + get_x({x: 5, z: 6})
+  let p = pick(true, {a: 0, b: 2}, {a: 7, b: 3})
+  let q = pick(false, {a: 0, b: 2}, {a: 7, b: 3})
+  let o = both(true, {a: 0, b: 0, c: 5})
+  let t = twice({a: 0, c: 4})
+  let u = bump({a: 10, z: 1})
+  g * 1000 + (p.a + p.b + q.a + q.b) * 100 + (o.a + o.b + o.c) * 10 + t.a + t.b + t.c + rest_of({a: 4}) + u.a + u.z - 6700
+}

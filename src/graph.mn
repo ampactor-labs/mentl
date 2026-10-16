@@ -2717,11 +2717,11 @@ type RowEnd = RowEndClosed | RowEndFree(Int)
 
 fn record_row_full(fields, v) = match graph_chase(v) {
   GNode(kind, _) => match kind {
-    NRecordRowBound(residual, RowClosed) => (record_row_join(fields, residual), RowEndClosed),
-    NRecordRowBound(residual, RowContinues(next)) => record_row_full(record_row_join(fields, residual), next),
+    NRecordRowBound(residual, RowClosed) => (fields ++ residual, RowEndClosed),
+    NRecordRowBound(residual, RowContinues(next)) => record_row_full(fields ++ residual, next),
     NBound(t) => match t {
-      TRecordOpen(more, next) => record_row_full(record_row_join(fields, more), next),
-      TRecord(more) => (record_row_join(fields, more), RowEndClosed),
+      TRecordOpen(more, next) => record_row_full(fields ++ more, next),
+      TRecord(more) => (fields ++ more, RowEndClosed),
       // A row cell bound to any other type is ill-sorted; its rest is not
       // known, and a reader that needs it floors.
       _ => (fields, RowEndFree(graph_chase_handle(v))),
@@ -2746,6 +2746,67 @@ fn spec_pair_or_var(u, pairs) = match spec_pairs_find(pairs, graph_chase_handle(
   None => TVar(u),
 }
 
+// A free record row's rest under a twin: the residual the site proved past
+// it, or — for the copy an update makes, which no site pairs when the update
+// is read inside its own body — the base's whole record under the same
+// pairs with the written names taken out, less what the copy's chain holds
+// in front of this end. A row that is its own base reads nothing through
+// the relation.
+fn spec_row_rest(t, pairs) = match spec_pairs_find(pairs, t) {
+  Some(c) => Some(c),
+  None => graph_demands_of(t) |> fold(None, spec_copy_rest(t, pairs, ??, ??)),
+}
+
+fn spec_copy_rest(t, pairs, found, d) = match found {
+  Some(_) => found,
+  None => match d {
+    DemandCopy(base, copy, names) => match record_row_full([], copy) {
+      (in_front, end) => match record_row_full([], base) {
+        (_, base_end) => if row_ends_at(end, t) && !row_ends_at(base_end, t) {
+          spec_copy_fields(spec_subst_pairs(TRecordOpen([], base), pairs), names, in_front)
+        } else {
+          None
+        },
+      },
+    },
+    DemandNumber(_) | DemandShape(_) | DemandLacks(_) => None,
+  },
+}
+
+// The base's record, once the pairs close it, less the written names and
+// the fields the copy's chain holds in front of its end.
+fn spec_copy_fields(whole, names, in_front) = match whole {
+  TRecord(fs) => Some(TRecord(filter({ f => copy_holds_past(names, in_front, f) }, fs))),
+  TInt
+  | TFloat
+  | TUnit
+  | TByte
+  | TAddr
+  | TList(_)
+  | TTuple(_)
+  | TFun(_, _, _)
+  | TVar(_)
+  | TName(_, _)
+  | TRecordOpen(_, _)
+  | TRefined(_, _)
+  | TCont(_, _, _, _)
+  | TAlias(_, _)
+  | TReprPin(_, _) => None,
+}
+
+fn row_ends_at(end, t) = match end {
+  RowEndFree(e) => graph_chase_handle(e) == t,
+  RowEndClosed => false,
+}
+
+fn copy_holds_past(names, in_front, f) = match f {
+  (n, _) => !any({ m => m == n }, names) && !any(field_is_named(n, ??), in_front),
+}
+
+fn field_is_named(n: String, g) = match g {
+  (gn, _) => gn == n,
+}
+
 fn spec_subst_pairs(t, pairs) = match t {
   TVar(u) => match graph_chase(u) {
     GNode(kind, _r) => match kind {
@@ -2761,7 +2822,10 @@ fn spec_subst_pairs(t, pairs) = match t {
       // twin's own body, read the decl's unlearned row again. A bound cell is
       // a link in a chain, so it answers as the record the chain spells.
       NRecordRowBound(_, _) => spec_subst_pairs(TRecordOpen([], u), pairs),
-      NRowFree(_) => spec_pair_or_var(u, pairs),
+      NRowFree(_) => match spec_row_rest(graph_chase_handle(u), pairs) {
+        Some(c) => c,
+        None => TVar(u),
+      },
     },
   },
   TList(e) => TList(spec_subst_pairs(e, pairs)),
@@ -2787,9 +2851,9 @@ fn spec_subst_pairs(t, pairs) = match t {
     (all, end) => {
       let learned = map({ (n, ft) => (n, spec_subst_pairs(ft, pairs)) }, all)
       match end {
-        RowEndFree(t) => match spec_pairs_find(pairs, t) {
+        RowEndFree(t) => match spec_row_rest(t, pairs) {
           Some(residual) => match residual {
-            TRecord(rfs) => TRecord(field_canonicalize(record_row_join(learned, rfs))),
+            TRecord(rfs) => TRecord(field_canonicalize(learned ++ rfs)),
             // only lower.mn's spec_pairs_key_rest pairs a row terminal, always as a closed record
             other => other,
           },
@@ -2838,7 +2902,7 @@ handler lookup_ty_graph with spec_pairs = [], spec_enc = "" {
         // in the pair space and keeps the unit it always read. Answering unit
         // for the paired row too left every open record a twin had closed
         // still open to lower.mn's spec_resolve, which reads a row's end through this op.
-        NRowFree(_) => resume(match spec_pairs_find(spec_pairs, graph_chase_handle(h)) {
+        NRowFree(_) => resume(match spec_row_rest(graph_chase_handle(h), spec_pairs) {
           Some(c) => c,
           None => TUnit,
         }),

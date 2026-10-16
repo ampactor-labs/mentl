@@ -1243,6 +1243,16 @@ BUILDS that record, so it charges `Memory + Alloc` in the frame the pattern
 stands in, and `with !Alloc` refuses it (real, 2026-09-30 — it was unrowed
 before; `tests/micros/mn-record-rest-alloc.mn`).
 
+**A record holds one field of each name**, so the rest has none of the
+fields the pattern names: the row behind them lacks their names, and
+`rest.name` refuses where it is written (real, 2026-10-16;
+`tests/micros/mn-record-rest-lacks-the-field.mn`). A rest named twice in a
+signature lacks every field written in front of it in either place. Until
+then a row read to its end kept the first field of each name, so the field
+`rest.name` demanded behind the pattern's `name` was dropped unread: `let
+{a, ...rest} = r; len(rest.a)` checked clean and read the Int in `r.a` as a
+list.
+
 **A record pattern reads its fields BY NAME** through its receiver's whole
 field set, which the twin of each caller proves: a parameter's record may
 carry fields the pattern never names, sorted before or after the ones it
@@ -1277,7 +1287,7 @@ let tagged = {...event, timestamp: now(), processed: true}
 
 `{...existing, field: new_value, ...}` creates a NEW record by copying `existing`'s fields and overwriting/adding the listed fields. Non-destructive; original record unchanged (ownership preserved).
 
-**An update keeps every field it does not write** (real, 2026-10-16). Its type is the written fields in front of the base's own row, so a field the base holds under a written name is shadowed — the record holds one field of that name, the written one, at the written value's type — and every other field of the base is kept, including those not known where the update is judged. So `fn with_b(r, b) = {...r, b}` hands back every field its caller passed in: over `{a: 1, b: 2, c: 3}` it overwrites `b`, over `{a: 4, c: 6, z: 1}` it adds one, and each record shape is built in its own copy of `with_b`, whose layout the emit reads under that copy (tests/micros/mn-record-update-keeps-the-row.mn, mn-record-update-shadows-the-field.mn, mn-record-update-in-a-stage.mn). Until then the update was typed by the base fields known where it was judged, so over an open row it was the written field alone, and every caller reading `s.a` refused.
+**An update keeps every field it does not write** (real, 2026-10-16). Its type is the written fields in front of a COPY of the base past them: the copy is the base's row without the written names, a relation the two rows' free ends carry, so a field either learns reaches the other whichever is known first. A field the base holds under a written name stays the base's — the record holds one field of that name, the written one, at the written value's type — and every other field of the base is kept, including those not known where the update is judged. So `fn with_b(r, b) = {...r, b}` hands back every field its caller passed in: over `{a: 1, b: 2, c: 3}` it overwrites `b`, over `{a: 4, c: 6, z: 1}` it adds one, and each record shape is built in its own copy of `with_b`, whose layout the emit reads under that copy — off the base's record under the copy's pairs where the update is read inside its own body (tests/micros/mn-record-update-keeps-the-row.mn, mn-record-update-shadows-the-field.mn, mn-record-update-in-a-stage.mn, mn-record-update-copies-the-base.mn). An update joins the record it copies, and a function threading a record through its own recursion by updates returns the shape it was handed: `if c { sc } else { {...sc, fb: 1} }` is one record, and so is `{...walk(sc, n - 1), fb: 1}` returned beside `sc` (mn-record-update-joins-its-base.mn, mn-record-update-through-recursion.mn). Until the copy, the update's rest was the base's own row — so those two forms were one row with a field and the same row without it, and refused — and before that the update was typed by the base fields known where it was judged, so over an open row it was the written field alone, and every caller reading `s.a` refused.
 
 ---
 

@@ -4205,28 +4205,30 @@ fn infer_expr(ref handle) = {
       tag_alloc_join(handle, record_field_handles(fields))
     },
     NExpr(RecordUpdateExpr(base, overrides)) => {
-      // {...base, f: v} — non-destructive update. The spread base MUST be
-      // record-shaped — the same open-record constraint field access
-      // erects, so `{...5, f: v}` is a type error at the spread, never a
-      // zero-field fabrication — and its row is what the result carries:
-      // the written fields in front, shadowing a field of the same name
-      // the base holds (`record_row_join`), and the base's own row behind them,
-      // so a base whose fields are not known where the update is judged
-      // keeps every one of them.
+      // {...base, f: v} — a new record: the fields it writes, then a copy of
+      // the base past them. The base MUST be record-shaped — the same
+      // open-record constraint field access erects, so `{...5, f: v}` is a
+      // type error at the spread, never a zero-field fabrication — and the
+      // copy is the base's row without the written names (`rows_copy`): a
+      // field the base holds under a written name is replaced, whatever its
+      // type, and every other field is kept, including those not known
+      // where the update is judged.
       infer_expr(base)
-      let base_row_h = graph_fresh_row(Inferred("record update row"))
+      let written = build_record_field_types(overrides)
+      let names = map(field_name, written)
+      let base_row = graph_fresh_row(Inferred("the row an update copies"))
       let expected_h = mint(Inferred("record update base"))
-      graph_bind(expected_h, mk_record_open([], base_row_h), Located(span, Inferred("expected record")))
+      graph_bind(expected_h, mk_record_open([], base_row), Located(span, Inferred("expected record")))
       unify(base, expected_h, span, Inferred("record spread base"))
-      // The copy reads each field of the base by name.
+      let copy = graph_fresh_row(Inferred("the copy past an update's fields"))
+      // The copy reads each field of the base by name, and lays out the
+      // record it builds by the fields the copy holds.
       shape_demand(base, OuterShape)
       infer_record_field_values(overrides)
       inf_add_row_at(handle, construction_row())
-      graph_bind(
-        handle,
-        mk_record_open(build_record_field_types(overrides), base_row_h),
-        Located(span, Inferred("record update"))
-      )
+      graph_bind(handle, mk_record_open(written, copy), Located(span, Inferred("record update")))
+      shape_demand(handle, OuterShape)
+      rows_relate(base_row, copy, names, span, Inferred("record update"))
       tag_alloc_join(handle, record_field_handles(overrides))
     },
     NExpr(NamedRecordExpr(head, fields)) => {
@@ -7681,7 +7683,7 @@ fn unify_record_open_against_closed(closed_fields, open_fields, open_var, span: 
     match end {
       // PROVEN. The other side is closed, so its fields are the whole set
       // and the rest is exactly what remains — nothing further can arrive.
-      RowEndFree(t) => record_row_write(t, residual, RowClosed, Located(span, reason)),
+      RowEndFree(t) => record_row_write(t, residual, RowClosed, span, reason),
       // Both ends closed: one record, so one field set.
       RowEndClosed => if len(residual) == 0 {
         ()
@@ -7748,7 +7750,7 @@ fn unify_two_open_records(fa, va, fb, vb, span: ValidSpan, reason) = match recor
 // the open side lacks — and the open side may not know anything the record
 // does not.
 fn row_end_closes(t, rest, stray, closed, open, span: ValidSpan, reason) = if len(stray) == 0 {
-  record_row_write(t, rest, RowClosed, Located(span, reason))
+  record_row_write(t, rest, RowClosed, span, reason)
 } else {
   type_mismatch(TRecord(closed), TRecord(open), span, reason)
 }
@@ -7774,13 +7776,41 @@ fn rows_meet(ta, extra_b, tb, extra_a, ka, kb, span: ValidSpan, reason) = if ta 
   demands_ride(tb, ta, span)
   graph_bind(tb, TVar(ta), Located(span, reason))
 } else if len(extra_b) == 0 {
-  record_row_write(tb, extra_a, RowContinues(ta), Located(span, reason))
+  record_row_write(tb, extra_a, RowContinues(ta), span, reason)
 } else if len(extra_a) == 0 {
-  record_row_write(ta, extra_b, RowContinues(tb), Located(span, reason))
+  record_row_write(ta, extra_b, RowContinues(tb), span, reason)
 } else {
   let unseen = graph_fresh_row(Located(span, reason))
-  record_row_write(ta, extra_b, RowContinues(unseen), Located(span, reason))
-  record_row_write(tb, extra_a, RowContinues(unseen), Located(span, reason))
+  record_row_write(ta, extra_b, RowContinues(unseen), span, reason)
+  row_learns_past(tb, extra_a, unseen, span, reason)
+}
+
+// A write the first one may have moved: the first write's row can be the
+// base or the copy of an update this row is the other side of, so this row
+// is read to its end again — a field it learned meanwhile is one field with
+// the written one — and what remains is written there, the row continuing at
+// the rest both sides share.
+fn row_learns_past(t, fields, next, span: ValidSpan, reason) = match record_row_full([], t) {
+  (known, end) => {
+    unify_record_fields_loop_shared(fields, known, intersect_record_fields(fields, known), span, reason)
+    let fresh = record_fields_diff(fields, known)
+    match end {
+      RowEndFree(e) => {
+        let re = graph_chase_handle(e)
+        let rn = graph_chase_handle(next)
+        if len(fresh) > 0 {
+          let behind = if re == rn { graph_fresh_row(Located(span, reason)) } else { rn }
+          record_row_write(re, fresh, RowContinues(behind), span, reason)
+        } else if re == rn {
+          ()
+        } else {
+          demands_ride(re, rn, span)
+          graph_bind(re, TVar(rn), Located(span, reason))
+        }
+      },
+      RowEndClosed => if len(fresh) == 0 { () } else { type_mismatch(TRecord(fields), TRecord(known), span, reason) },
+    }
+  },
 }
 
 fn unify_record_fields_loop_shared(fa, fb, names, span: ValidSpan, reason) = if len(names) == 0 {
@@ -8036,7 +8066,7 @@ fn numeric_gates_of(cell) = flat_map(demand_number, graph_demands_of(cell))
 
 fn demand_number(d) = match d {
   DemandNumber(g) => [g],
-  DemandShape(_) => [],
+  DemandShape(_) | DemandLacks(_) | DemandCopy(_, _, _) => [],
 }
 
 fn numeric_demand(lh, op, span: ValidSpan) = {
@@ -8153,11 +8183,34 @@ fn demands_ride(ra, rb, span: ValidSpan) = {
         NFree(_) => demands_install(ds, rb, span),
         NRowFree(_) => demands_install(ds, rb, span),
         NBound(tb) => demands_push(ds, tb, span),
-        NRecordRowBound(fields, tail) => each(shape_push_row(??, fields, tail), flat_map(demand_shape, ds)),
+        NRecordRowBound(fields, tail) => {
+          each(shape_push_row(??, fields, tail), flat_map(demand_shape, ds))
+          rows_reach(ds, rb, span)
+        },
         _ => (),
       },
     }
   }
+}
+
+// A row variable's demands reaching a row already bound: what it lacks is
+// judged against the fields the row holds and carried to its free end, and
+// an update's relation is kept in step from there.
+fn rows_reach(ds, rb, span: ValidSpan) = match record_row_full([], rb) {
+  (fields, end) => {
+    let lacks = flat_map(demand_lacks, ds)
+    let held = filter(field_named_in(lacks, ??), fields)
+    if len(held) > 0 { row_lacks_refuse(held, rb, span, Inferred("a row variable's alias")) }
+    let copies = flat_map(demand_copy, ds)
+    match end {
+      RowEndFree(t) => {
+        row_lacks_install(t, lacks)
+        each(row_copy_carry(t, ??), copies)
+      },
+      RowEndClosed => (),
+    }
+    each(rows_in_step(??, span, Inferred("a row variable's alias")), copies)
+  },
 }
 
 // A type entering a cell that carries demands: each number judges it, each
@@ -8173,23 +8226,62 @@ fn demands_install(ds: [TypeDemand], cell, span: ValidSpan) =
 fn demand_install(cell, d, span: ValidSpan) = match d {
   DemandNumber(g) => numeric_gate_install(cell, g, span),
   DemandShape(read) => shape_install(cell, read),
+  DemandLacks(_) | DemandCopy(_, _, _) => graph_demand_add(cell, d),
 }
 
 fn demand_shape(d) = match d {
-  DemandNumber(_) => [],
   DemandShape(read) => [read],
+  DemandNumber(_) | DemandLacks(_) | DemandCopy(_, _, _) => [],
+}
+
+fn demand_lacks(d) = match d {
+  DemandLacks(names) => names,
+  DemandNumber(_) | DemandShape(_) | DemandCopy(_, _, _) => [],
 }
 
 // Instantiation's copy: the fresh var carries every demand its root does
 // (the qualified-type reading, `∀t. numeric(t) ⇒ …`, with the constraint on
 // the variable — the row gate's gates_copy, one sort over). For a shape it
 // is the whole propagation: a callee's read, copied onto the instance, meets
-// the caller's own variable at the argument edge and marks it.
+// the caller's own variable at the argument edge and marks it. An update's
+// relation names another cell, so it is copied once every quantified cell
+// has its copy (`relations_copy`).
 fn demands_copy(ds: [TypeDemand], fresh) = match ds {
   [] => (),
   [d, ...rest] => {
-    graph_demand_add(fresh, d)
+    match d {
+      DemandNumber(_) | DemandShape(_) | DemandLacks(_) => graph_demand_add(fresh, d),
+      DemandCopy(_, _, _) => (),
+    }
     demands_copy(rest, fresh)
+  },
+}
+
+// An update's relation, copied with its two rows on their copies. The
+// relation names the two whole rows, and by the time a scheme is taken they
+// agree on every field either knows, so the instance relates what is still
+// unknown: each row's free end, read through the mapping — whole only once
+// every quantified cell has been minted. An end the scheme did not quantify,
+// or a row already closed, stays the cell it is.
+fn relations_copy(mapping) = each(relation_copy(mapping, ??), mapping)
+
+fn relation_copy(mapping, pair) = match pair {
+  (root, fresh) => each(relation_copy_one(mapping, fresh, ??), graph_demands_of(root)),
+}
+
+fn relation_copy_one(mapping, fresh, d) = match d {
+  DemandCopy(base, copy, names) => graph_demand_add(fresh, DemandCopy(mapped_end(mapping, base), mapped_end(mapping, copy), names)),
+  DemandNumber(_) | DemandShape(_) | DemandLacks(_) => (),
+}
+
+fn mapped_end(mapping, h) = match record_row_full([], h) {
+  (_, end) => match end {
+    RowEndFree(t) => {
+      let r = graph_chase_handle(t)
+      let m = find_mapping(mapping, r)
+      if m >= 0 { m } else { r }
+    },
+    RowEndClosed => h,
   },
 }
 
@@ -8265,7 +8357,7 @@ fn shape_reach(cell, read) = match graph_instances_of(cell) {
 // far but keys coarser, and an outer read keys as fine but reaches less, so
 // neither covers the other. The dedup is also what ends the walk on a cycle.
 fn shape_covers(read, d) = match d {
-  DemandNumber(_) => false,
+  DemandNumber(_) | DemandLacks(_) | DemandCopy(_, _, _) => false,
   DemandShape(have) => match have {
     WholeShape => true,
     OuterShape => match read {
@@ -8372,10 +8464,153 @@ fn row_end_roots(end) = match end {
 }
 
 // A record row variable's write: what it is bound to learns the reads the
-// variable carries, then the bind. Every row writer goes through here.
-fn record_row_write(t, fields, tail, reason) = {
-  each(shape_push_row(??, fields, tail), flat_map(demand_shape, graph_demands_of(t)))
-  graph_bind_record_row(t, fields, tail, reason)
+// variable carries, then the bind. Every row writer goes through here. A
+// field the row lacks refuses, since a record holds one field of each name.
+// A row is said to lack names only where a view reads it without the fields
+// in front of it — a bound rest, a rest named twice in a signature — since
+// every other view holds those fields in front and cannot learn them again;
+// so the row past the written fields lacks them, and everything this row
+// lacked, exactly when this row lacked anything. Every update relation this
+// row's free end carried rides to the next, and the other side of each
+// learns what this row learned.
+fn record_row_write(t, fields, tail, span: ValidSpan, reason) = {
+  let ds = graph_demands_of(t)
+  let lacks = flat_map(demand_lacks, ds)
+  let held = filter(field_named_in(lacks, ??), fields)
+  if len(held) > 0 {
+    row_lacks_refuse(held, t, span, reason)
+  } else {
+    let copies = flat_map(demand_copy, ds)
+    each(shape_push_row(??, fields, tail), flat_map(demand_shape, ds))
+    graph_bind_record_row(t, fields, tail, Located(span, reason))
+    match tail {
+      RowContinues(next) => {
+        if len(lacks) > 0 { row_lacks_install(next, lacks ++ map(field_name, fields)) }
+        each(row_copy_carry(next, ??), copies)
+      },
+      RowClosed => (),
+    }
+    each(rows_in_step(??, span, reason), copies)
+  }
+}
+
+fn demand_copy(d) = match d {
+  DemandCopy(_, _, _) => [d],
+  DemandNumber(_) | DemandShape(_) | DemandLacks(_) => [],
+}
+
+// A row's free end carries a relation once.
+fn row_copy_carry(end, d) = {
+  let r = graph_chase_handle(end)
+  if any({ have => have == d }, graph_demands_of(r)) { () } else { graph_demand_add(r, d) }
+}
+
+fn rows_in_step(d, span: ValidSpan, reason) = match d {
+  DemandCopy(base, copy, names) => rows_copy(base, copy, names, span, reason),
+  DemandNumber(_) | DemandShape(_) | DemandLacks(_) => (),
+}
+
+// An update's relation drawn: carried by the free end of both rows, then the
+// two brought into step.
+fn rows_relate(base, copy, names, span: ValidSpan, reason) = {
+  let d = DemandCopy(base, copy, names)
+  each(row_copy_carry(??, d), row_free_ends(base) ++ row_free_ends(copy))
+  rows_copy(base, copy, names, span, reason)
+}
+
+fn row_free_ends(h) = match record_row_full([], h) {
+  (_, end) => match end {
+    RowEndFree(t) => [t],
+    RowEndClosed => [],
+  },
+}
+
+fn field_name(f) = match f {
+  (n, _) => n,
+}
+
+fn field_named_in(names, f) = match f {
+  (n, _) => any({ m => m == n }, names),
+}
+
+fn row_lacks(t) = flat_map(demand_lacks, graph_demands_of(graph_chase_handle(t)))
+
+fn row_lacks_install(t, names) = {
+  let r = graph_chase_handle(t)
+  let lacked = row_lacks(r)
+  let more = filter({ n => !any({ m => m == n }, lacked) }, names)
+  if len(more) == 0 { () } else { graph_demand_add(r, DemandLacks(more)) }
+}
+
+// THE COPY AN UPDATE MAKES, kept in step with the base it copies: every field
+// the base holds outside the written names is a field of the copy, at the
+// same type, and every field of the copy is the base's. Both whole rows are
+// read to their ends; a field both know is one field, and a field only one
+// side knows is written into the other — whose free end carries the
+// relation, so that write brings the two into step again — and once the two
+// agree on every name either knows, what lies past them is settled.
+fn rows_copy(base, copy, names, span: ValidSpan, reason) = match record_row_full([], base) {
+  (kb, eb) => match record_row_full([], copy) {
+    (kc, ec) => {
+      unify_record_fields_loop_shared(kb, kc, intersect_record_fields(kb, kc), span, reason)
+      let to_copy = record_fields_diff(filter({ f => !field_named_in(names, f) }, kb), kc)
+      let to_base = record_fields_diff(kc, kb)
+      if len(to_copy) > 0 {
+        row_learns(ec, to_copy, kc, span, reason)
+      } else if len(to_base) > 0 {
+        row_learns(eb, to_base, kb, span, reason)
+      } else {
+        // The base's free end lacks every field in front of it, so a
+        // written name the base holds is settled; the rest stay open.
+        rows_copy_rest(eb, ec, filter({ n => !any({ f => field_name(f) == n }, kb) }, names), span, reason)
+      }
+    },
+  },
+}
+
+fn row_lacks_refuse(held, t, span: ValidSpan, reason) = {
+  let names = show_list(map(field_name, held), { n => "`{n}`" }, ", ")
+  let why = Inferred("a row that lacks {names}, since a field in front of it holds the name")
+  type_mismatch(TRecord(held), mk_record_open([], t), span, Unified(reason, why))
+}
+
+// One side learns fields the other holds, written at its free end with a
+// fresh rest behind them; a closed end holds no more, so the two disagree.
+fn row_learns(end, fields, have, span: ValidSpan, reason) = match end {
+  RowEndFree(t) => record_row_write(t, fields, RowContinues(graph_fresh_row(Located(span, reason))), span, reason),
+  RowEndClosed => type_mismatch(TRecord(fields), TRecord(have), span, reason),
+}
+
+// The two rows agree on every name either knows, so only what lies past them
+// is open. Past a closed base the copy closes. Past a closed copy the base
+// may hold only the written names, which the relation its end carries keeps
+// checking. Past two free ends the relation stays on both — until the base
+// lacks every written name, when the copy IS the base's rest and the two
+// ends are one row.
+fn rows_copy_rest(eb, ec, names, span: ValidSpan, reason) = match eb {
+  RowEndClosed => match ec {
+    RowEndClosed => (),
+    RowEndFree(c) => record_row_write(c, [], RowClosed, span, reason),
+  },
+  RowEndFree(b) => {
+    let lacked = row_lacks(b)
+    let open = filter({ n => !any({ m => m == n }, lacked) }, names)
+    match ec {
+      RowEndClosed => if len(open) == 0 { record_row_write(b, [], RowClosed, span, reason) } else { () },
+      RowEndFree(c) => {
+        let rb = graph_chase_handle(b)
+        let rc = graph_chase_handle(c)
+        if rb == rc {
+          row_lacks_install(rb, open)
+        } else if len(open) == 0 {
+          demands_ride(rc, rb, span)
+          graph_bind(rc, TVar(rb), Located(span, reason))
+        } else {
+          ()
+        }
+      },
+    }
+  },
 }
 
 // ─── THE ARENA'S STORE CLAIM — a store's target is as old as what it names ──
@@ -9485,6 +9720,10 @@ fn infer_pat(pat, handle, span: ValidSpan) = match pat_of(pat) {
     // via infer_pat's recursion.
     let row_h = graph_fresh_row(Inferred("record pattern row"))
     let field_specs = build_pat_record_field_specs(flds, span)
+    // A bound rest reads the row without the named fields in front of it,
+    // so the row lacks them, or the rest could learn one and the record
+    // hold it twice.
+    if rest_names_a_binder(rest) { row_lacks_install(row_h, map(field_name, field_specs)) }
     let pat_ty = mk_record_open(field_specs, row_h)
     constrain_scrutinee(pat, handle, pat_ty, span, Inferred("record pattern"))
     // The pattern places each field by the receiver's whole field set.
@@ -10341,7 +10580,7 @@ fn mint_instance_vars(ename: String, n, i) = if i >= n {
 // kind gets its own arm with the same fallback spelled out; if a
 // new NodeKind is added, this function fails to compile until its
 // generalization semantic is decided.
-fn generalize_pair(handle) = {
+fn generalize_signature(handle) = {
   let node = graph_chase(handle)
   match node {
     GNode(kind, _) => match kind {
@@ -10422,6 +10661,37 @@ fn generalize_pair(handle) = {
 
 // The cell→scheme projection: generalize_pair's verdict wrapped as the env's
 // currency. Publishers freeze through it; instantiate clones through it.
+// A signature's quantified variables, with every row an update relates to
+// one of them: the relation is copied with the scheme, so its two ends are
+// freshened together, or a copy's end would still name the declaration's
+// own cell and every caller would write into it.
+fn generalize_pair(handle) = match generalize_signature(handle) {
+  (qs, ty) => if any(row_carries_copy, qs) { (rows_related_closure(qs, qs), ty) } else { (qs, ty) },
+}
+
+fn row_carries_copy(q) =
+  is_row_handle(q) && any(is_copy_demand, graph_demands_of(graph_chase_handle(q)))
+
+fn is_copy_demand(d) = match d {
+  DemandCopy(_, _, _) => true,
+  DemandNumber(_) | DemandShape(_) | DemandLacks(_) => false,
+}
+
+fn rows_related_closure(seen, todo) = match todo {
+  [] => seen,
+  [q, ...rest] => {
+    let ps = filter({ p => !any({ s => s == p }, seen) }, row_relatives(q))
+    rows_related_closure(seen ++ ps, rest ++ ps)
+  },
+}
+
+fn row_relatives(q) = flat_map(demand_relative, graph_demands_of(graph_chase_handle(q)))
+
+fn demand_relative(d) = match d {
+  DemandCopy(base, copy, _) => filter(row_var_is_free, row_free_ends(base) ++ row_free_ends(copy)),
+  DemandNumber(_) | DemandShape(_) | DemandLacks(_) => [],
+}
+
 fn generalize(handle) = match generalize_pair(handle) {
   (qs, ty) => Frozen(qs, ty),
 }
@@ -10920,6 +11190,7 @@ fn instantiate(scheme) = match scheme {
     ty
   } else {
     let mapping = build_inst_mapping(qs)
+    relations_copy(mapping)
     subst_ty(ty, mapping)
   },
   // A judgment-published decl: the quantifier is a projection the caller
@@ -11208,11 +11479,11 @@ fn subst_row_walk(fields, v, mapping) = {
   } else {
     match graph_chase(r) {
       GNode(kind, _) => match kind {
-        NRecordRowBound(residual, RowClosed) => (record_row_join(fields, residual), RowEndClosed),
-        NRecordRowBound(residual, RowContinues(next)) => subst_row_walk(record_row_join(fields, residual), next, mapping),
+        NRecordRowBound(residual, RowClosed) => (fields ++ residual, RowEndClosed),
+        NRecordRowBound(residual, RowContinues(next)) => subst_row_walk(fields ++ residual, next, mapping),
         NBound(t) => match t {
-          TRecordOpen(more, next) => subst_row_walk(record_row_join(fields, more), next, mapping),
-          TRecord(more) => (record_row_join(fields, more), RowEndClosed),
+          TRecordOpen(more, next) => subst_row_walk(fields ++ more, next, mapping),
+          TRecord(more) => (fields ++ more, RowEndClosed),
           _ => (fields, RowEndFree(r)),
         },
         NFree(_) => (fields, RowEndFree(r)),
@@ -13972,13 +14243,17 @@ fn quantify_ctor_ty(ty, qmap, owner) = match ty {
   // An open record's fields quantify as a closed one's; a rest its author
   // named (`...r`) is the signature's one row variable for that name, so
   // `{name: String, ...r} -> {name: String, age: Int, ...r}` carries the
-  // same remainder through.
+  // same remainder through, lacking every field written in front of it.
   TRecordOpen(fields, v) => match quantify_field_list(fields, qmap, owner) {
     (fs2, q2) => match declared_var_name(v) {
       Some(r) => match qmap_find(q2, "...{r}") {
-        Some(h) => (TRecordOpen(fs2, h), q2),
+        Some(h) => {
+          row_lacks_install(h, map(field_name, fs2))
+          (TRecordOpen(fs2, h), q2)
+        },
         None => {
           let h = graph_fresh_row(Declared(r))
+          row_lacks_install(h, map(field_name, fs2))
           (TRecordOpen(fs2, h), push(q2, ("...{r}", h)))
         },
       },

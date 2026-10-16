@@ -2,6 +2,6 @@
 // AN UPDATE IN A LITERAL ADDS A FIELD TO EACH ELEMENT. The call judges the
 // literal before the list, so its parameter is still open when the update is
 // judged, and the elements close it after; an update that asked the base to
-// hold the written field would refuse this form, and the written field in
-// front of the base's row needs nothing of the base.
+// hold the written field would refuse this form, and the copy past the
+// written field asks nothing of the base but what it holds.
 fn main() = fold(0, (acc, s) => acc + s.n + s.a, map({ r => {...r, n: 10} }, [{a: 1}, {a: 2}]))

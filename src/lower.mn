@@ -3896,7 +3896,7 @@ fn record_full_fields(ty) = match ty {
     (all, end) => match end {
       RowEndClosed => Some(sort_record_type_fields(all)),
       RowEndFree(t) => match lookup_ty(t) {
-        TRecord(residual) => Some(sort_record_type_fields(record_row_join(all, residual))),
+        TRecord(residual) => Some(sort_record_type_fields(all ++ residual)),
         _ => None,
       },
     },
@@ -7392,7 +7392,7 @@ fn spec_resolve_build(t) = match t {
       match end {
         RowEndClosed => TRecord(field_canonicalize(learned)),
         RowEndFree(t) => match lookup_ty(t) {
-          TRecord(residual) => TRecord(field_canonicalize(record_row_join(learned, residual))),
+          TRecord(residual) => TRecord(field_canonicalize(learned ++ residual)),
           _ => mk_record_open(learned, t),
         },
       }
@@ -7745,7 +7745,7 @@ fn is_structure_demand(d) = match d {
     OuterShape => true,
     MovedShape => false,
   },
-  DemandNumber(_) => false,
+  DemandNumber(_) | DemandLacks(_) | DemandCopy(_, _, _) => false,
 }
 
 fn is_move_demand(d) = match d {
@@ -7754,7 +7754,7 @@ fn is_move_demand(d) = match d {
     WholeShape => false,
     OuterShape => false,
   },
-  DemandNumber(_) => false,
+  DemandNumber(_) | DemandLacks(_) | DemandCopy(_, _, _) => false,
 }
 
 // Whether the program opens an arena. An arena's install charges `Arena` to

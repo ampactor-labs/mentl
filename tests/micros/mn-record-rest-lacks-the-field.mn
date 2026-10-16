@@ -1,0 +1,13 @@
+// expect: refuse E_TypeMismatch
+// A record holds one field of each name, so the rest of `{a, ...rest}` has no
+// `a`: the row behind a field lacks the field's name, and reading `rest.a`
+// refuses where it is written. On boot db6881c7 this checked clean and ran to
+// exit 7, reading the Int in `r.a` as a list: a row read to its end kept the
+// first field of each name, so the `a` the field access wrote behind the
+// pattern's `a` was dropped unread and the list type it demanded met nothing.
+fn g(r) = {
+  let {a, ...rest} = r
+  len(rest.a) + a
+}
+
+fn main() = g({a: 7, b: 2})

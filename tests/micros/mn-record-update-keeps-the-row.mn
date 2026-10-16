@@ -1,10 +1,10 @@
 // expect: 42
 // AN UPDATE KEEPS THE FIELDS IT DOES NOT WRITE. The update is the written
-// field in front of the base's own row, so a function updating a record it is
-// handed returns every field the caller passed in: over a record holding b it
-// overwrites b, over one without it adds b, each shape its own twin. The
-// result was typed as the written field alone, so reading s.a refused at
-// every caller.
+// field in front of a copy of the base past it, so a function updating a
+// record it is handed returns every field the caller passed in: over a record
+// holding b it overwrites b, over one without it adds b, each shape its own
+// twin. The result was typed as the written field alone, so reading s.a
+// refused at every caller.
 fn with_b(r, b) = {...r, b}
 
 fn main() = {

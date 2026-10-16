@@ -1782,7 +1782,20 @@ type NumericGate = {op: BinOp, span: Span}
 // there a barrier to read it.
 type ShapeRead = WholeShape | OuterShape | MovedShape
 
-type TypeDemand = DemandNumber(NumericGate) | DemandShape(ShapeRead)
+// A row LACKS a name when a field of that name is in front of it: a record
+// holds one field of each name, so a row variable behind `a` never holds an
+// `a` of its own, and a write of one refuses — the rest of `{a, ...rest}`
+// has no `a` to read. An UPDATE copies its base past the names it writes,
+// so the row behind its written fields is the base's row without them: a
+// relation between the two whole rows — the base, the copy, the names the
+// copy leaves out — carried by the free end of each, so a field either one
+// learns reaches the other whichever is known first, and whatever the base
+// holds under a written name stays its own.
+type TypeDemand
+  = DemandNumber(NumericGate)
+  | DemandShape(ShapeRead)
+  | DemandLacks([String])
+  | DemandCopy(Int, Int, [String])
 
 // Every graph node and every unification records a Reason. Mentl's
 // teach_why (spec 09) walks this DAG. Full provenance falls out.
@@ -5530,28 +5543,11 @@ fn render_var(h) with !Mutate = match graph_chase(h) {
   GNode(NErrorHole(reason), _) => "!hole[{show_reason(reason)}]",
 }
 
-// A record row read along its chain: a field known nearer the head shadows
-// one of the same name further along — an update's written field over the
-// field of the record it copies — so the row keeps the first of each name.
-// Every walk that reads a row to its end joins its links here.
-fn record_row_join(fields, more) = match more {
-  [] => fields,
-  _ => fields ++ filter(row_unshadowed(fields, ??), more),
-}
-
-fn row_unshadowed(fields, field) = match field {
-  (n, _) => !any(row_field_named(n, ??), fields),
-}
-
-fn row_field_named(n: String, field) = match field {
-  (m, _) => m == n,
-}
-
 // An open record: its known fields, then the rest — `...e` for the row
 // variable that still stands for it, nothing past `...` when it was bound.
 // The authored face names the rest only where its author did (`...r`).
 fn render_open_record(fields, v) with !Mutate = match graph_chase(v) {
-  GNode(NRecordRowBound(more, tail), _) => render_record_row_residual(record_row_join(fields, more), tail),
+  GNode(NRecordRowBound(more, tail), _) => render_record_row_residual(fields ++ more, tail),
   GNode(NRowFree(_), _) => "\{{show_list(fields, render_field, ", ")}{rest_lead(fields)}...{rest_name(v)}\}",
   _ => "\{{show_list(fields, render_field, ", ")}{rest_lead(fields)}...{authored_rest_name(v)}\}",
 }

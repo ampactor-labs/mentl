@@ -1,8 +1,8 @@
 // expect: 5
-// A WRITTEN FIELD SHADOWS THE BASE'S, WHATEVER ITS TYPE. The result's row is
-// the text field b in front of the base's row, which holds an Int field b of
-// its own; a row read to its end keeps the first of each name, so s.b is the
-// text and the record holds one b.
+// A WRITTEN FIELD REPLACES THE BASE'S, WHATEVER ITS TYPE. The result is the
+// text field b in front of a copy of the base past b, and the copy is the
+// base's row without the name, so the base's Int field b stays the base's:
+// s.b is the text and the record holds one b.
 fn relabel(r) = {...r, b: "four"}
 
 fn main() = {
