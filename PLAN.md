@@ -925,7 +925,13 @@ a provenance diff, a search over live shared cells.
     places writes its tail n times; a module value is a
     column on its binder, so a module-scope let binds every binder its pattern
     writes, each at a global of its own, and runs its value for effect when it
-    binds none, where any pattern but one binder refuses today; incrementality has the
+    binds none, where any pattern but one binder refuses today; an arm's resume
+    grade is a column on the arm, written once where its op edge is drawn, and
+    a nested fn's grade a column on its declaration, where every reader of an
+    arm's discipline grades the arm again (`arm_grade`: the op edge, the
+    never-returning op's check, the continuation's discipline, the session's
+    comparison), each re-running the arm's fixpoint and scanning its
+    declarations per reference; incrementality has the
     trail as the delta's home (`Hβ.graph.mutation-delta-is-write-only`), the
     session paying for what an edit moved (`Hβ.session.edit-pays-for-the-program`)
     and outliving its process (`Hβ.felt.accept-outlives-the-process`); persist
