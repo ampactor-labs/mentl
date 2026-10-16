@@ -716,19 +716,24 @@ fn jvp(e, env, cx) = match e {
     jv([], e, LinZero, ALost(h, LwUnentered))
   },
   LArena(h, b) => jvp_arena(h, b, env, cx),
-  LMakeContinuation(h, _, _, _, _) => jvp_unentered(h, e),
   LResumeK(h, _, _) => jvp_unentered(h, e),
   LYield(h, _, _, _) => jvp_unentered(h, e),
-  LKExtend(h, _) => jvp_unentered(h, e),
+  // A boundary check that mints a remainder stands where a continuation
+  // resumes later. One that mints none is crossed only by a dead
+  // continuation, which leaves the frame with nothing after it run, so its
+  // value and tangent are the expression's own.
+  LCheck(h, inner, k) => match k {
+    Some(_) => jvp_unentered(h, e),
+    None => match jvp(inner, env, cx) {
+      Jvp(r) => Jvp({...r, val: LCheck(h, r.val, None)}),
+    },
+  },
   // An abandoning perform: its arguments are evaluated here and handed to a
   // handler outside the reading, and the extent is left — nothing after it
   // runs, so no tangent of it is ever asked for.
   LAbandon(h, op, args) => match seq_values(h, jvp_list(args, env, cx)) {
     (pre, vals, _) => jv(pre, LAbandon(h, op, vals), LinZero, AInactive),
   },
-  // A boundary check: the frame leaves when the flag is up, and the position
-  // carries no value the reading could differentiate.
-  LUnwind(_) => jv_plain(e),
   LDeclareFn(_) => jv_plain(e),
   LInvariantFailure(_, _) => jv_plain(e),
 }
@@ -1211,10 +1216,8 @@ fn leaves_value(e) = match e {
   LDirectCall(_, _, _, _, _) => true,
   LMakeClosure(_, _, _) => true,
   LYield(_, _, _, _) => true,
-  LKExtend(_, _) => true,
+  LCheck(_, _, _) => true,
   LAbandon(_, _, _) => true,
-  LUnwind(_) => true,
-  LMakeContinuation(_, _, _, _, _) => true,
   LIf(_, _, _, _) => true,
   LBlock(_, _) => true,
   LMakeList(_, _) => true,
@@ -2624,10 +2627,8 @@ fn node_touches(e) = match e {
   LReturn(_, _) => false,
   LMakeClosure(_, _, _) => false,
   LYield(_, _, _, _) => false,
-  LKExtend(_, _) => false,
+  LCheck(_, _, _) => false,
   LAbandon(_, _, _) => false,
-  LUnwind(_) => false,
-  LMakeContinuation(_, _, _, _, _) => false,
   LDeclareFn(_) => false,
   LIf(_, _, _, _) => false,
   LBlock(_, _) => false,
@@ -2678,10 +2679,8 @@ fn callee_of(e) = match e {
   LReturn(_, _) => [],
   LMakeClosure(_, _, _) => [],
   LYield(_, _, _, _) => [],
-  LKExtend(_, _) => [],
+  LCheck(_, _, _) => [],
   LAbandon(_, _, _) => [],
-  LUnwind(_) => [],
-  LMakeContinuation(_, _, _, _, _) => [],
   LDeclareFn(_) => [],
   LIf(_, _, _, _) => [],
   LBlock(_, _) => [],
@@ -2838,10 +2837,8 @@ fn seed_lanes(h, seed) = match seed {
   LReturn(_, _) => None,
   LMakeClosure(_, _, _) => None,
   LYield(_, _, _, _) => None,
-  LKExtend(_, _) => None,
+  LCheck(_, _, _) => None,
   LAbandon(_, _, _) => None,
-  LUnwind(_) => None,
-  LMakeContinuation(_, _, _, _, _) => None,
   LDeclareFn(_) => None,
   LIf(_, _, _, _) => None,
   LBlock(_, _) => None,

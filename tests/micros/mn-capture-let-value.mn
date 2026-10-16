@@ -1,0 +1,22 @@
+// expect: 3
+// A multi-shot perform as a `let`'s value: the rest of the block is the
+// continuation, so the binder takes each resumption's value and the code past
+// it runs once per resumption. `v + 1` answers 1 and 2, and the arm sums them.
+effect Pick {
+  pick() -> Int
+}
+
+handler both {
+  pick() => {
+    let a = resume(0)
+    let b = resume(1)
+    a + b
+  },
+}
+
+fn body() = {
+  let v = pick()
+  v + 1
+}
+
+fn main() = body() ~> both

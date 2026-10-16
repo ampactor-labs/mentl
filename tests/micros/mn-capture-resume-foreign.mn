@@ -1,0 +1,32 @@
+// expect: 67
+// An arm whose resumption performs another handler's multi-shot op: the arm's
+// rest after its `resume` is captured where the foreign yield crosses it, so
+// the outer handler's resumption finishes the arm. Under deep handlers the
+// first resumption answers 1 + 5 = 6, the second 2 + 5 = 7, and the arm
+// answers 6 * 10 + 7.
+effect Deal {
+  deal() -> Int
+}
+
+handler twice_deal {
+  deal() => {
+    let a = resume(1)
+    let b = resume(2)
+    a * 10 + b
+  },
+}
+
+effect Pick {
+  pick() -> Int
+}
+
+handler five {
+  pick() => {
+    let r = resume(5)
+    r
+  },
+}
+
+fn body() = deal() + pick()
+
+fn main() = body() ~> twice_deal ~> five

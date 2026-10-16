@@ -1,0 +1,19 @@
+// expect: 30
+// A perform inside the branch an `if` took, the `if` itself an operand: each
+// resumption finishes the branch it is in and the multiplication around it,
+// (0 + 1) * 10 and (1 + 1) * 10.
+effect Pick {
+  pick() -> Int
+}
+
+handler both {
+  pick() => {
+    let a = resume(0)
+    let b = resume(1)
+    a + b
+  },
+}
+
+fn body(c) = if c { pick() + 1 } else { 0 } * 10
+
+fn main() = body(true) ~> both

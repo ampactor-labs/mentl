@@ -2095,8 +2095,11 @@ fn stmt_child_handles(s) = match s {
   RowAliasStmt(_, _) => [],
 }
 
-// An arm's parameter nodes, then its body.
-fn arm_children(arm) = arm.args ++ [arm.body]
+// An arm's op name, its parameter nodes, then its body. The op name is a
+// reference to the op it serves, so it is a node of the arm: the walk up from
+// it reaches the handler, and an edit that replaces the effect judges the
+// handlers serving its ops again, whose arms grade each op's discipline.
+fn arm_children(arm) = [arm.op] ++ arm.args ++ [arm.body]
 
 // body_child_handles — the ONE total child projection over NodeBody:
 // tree walks (containment, the enclosing-decl descent) read this,

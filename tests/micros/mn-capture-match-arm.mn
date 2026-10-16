@@ -1,0 +1,25 @@
+// expect: 111
+// A perform inside a match arm whose pattern bound a name: each resumption
+// finishes the arm with the name the pattern bound, then the addition around
+// the match, (5 + 0 + 50) + (5 + 1 + 50).
+effect Pick {
+  pick() -> Int
+}
+
+handler both {
+  pick() => {
+    let a = resume(0)
+    let b = resume(1)
+    a + b
+  },
+}
+
+fn body(o) = match o {
+  Some(k) => {
+    let v = pick()
+    k + v
+  },
+  None => 0,
+} + 50
+
+fn main() = body(Some(5)) ~> both

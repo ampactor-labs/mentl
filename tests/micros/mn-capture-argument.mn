@@ -1,0 +1,38 @@
+// expect: 26
+// A perform as the second argument of a call: the first argument was computed
+// before the suspension, so each resumption reads its value rather than
+// computing it again. `seven()` bumps the tally once, `total()` runs after the
+// perform in each resumption: 7 + 0 + 1 and 7 + 10 + 1. Computed again it
+// would answer 29; lost, 12.
+effect Pick {
+  pick() -> Int
+}
+
+handler both {
+  pick() => {
+    let a = resume(0)
+    let b = resume(1)
+    a + b
+  },
+}
+
+effect Tally {
+  bump()
+  total() -> Int
+}
+
+handler tally with n = 0 {
+  bump() => resume() with n = n + 1,
+  total() => resume(n),
+}
+
+fn seven() = {
+  bump()
+  7
+}
+
+fn add3(a, b, c) = a + b * 10 + c
+
+fn body() = add3(seven(), pick(), total())
+
+fn main() = body() ~> both ~> tally

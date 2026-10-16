@@ -650,7 +650,6 @@ fn lineage_depth(lineage, base: String) =
 // static and only what it holds is settled as minted.
 fn settle_decl(site: String, stmt) = match stmt {
   LLet(_, _, LMakeClosure(_, LFn(_, _, _, body, _, _), caps)) => each(settle_floors(site, ??), caps ++ body),
-  LLet(_, _, LMakeContinuation(_, LFn(_, _, _, body, _, _), caps, _, _)) => each(settle_floors(site, ??), caps ++ body),
   _ => settle_floors(site, stmt),
 }
 
@@ -681,7 +680,11 @@ fn settle_node(site: String, expr) = match expr {
   LArena(h, _) => settle_shape(site, h, "an arena's exit", expr),
   LMatch(_, _, arms) => each({ (p, _) => settle_pattern(p) }, arms),
   LMakeClosure(_, LFn(_, _, _, _, _, lines), _) => settle_minted_lines(site, lines),
-  LMakeContinuation(_, LFn(_, _, _, _, _, lines), _, _, _) => settle_minted_lines(site, lines),
+  LYield(_, _, _, k) => settle_minted_lines(site, site_lines(k)),
+  LCheck(_, _, k) => match k {
+    Some(s) => settle_minted_lines(site, site_lines(s)),
+    None => (),
+  },
   // below the root a declared fn is a handler's arm or init fn, whose lines
   // live in the install's record (`lower_handler_arms_as_decls`)
   LDeclareFn(LFn(name, _, _, _, _, lines)) => settle_minted_lines(name, lines),
@@ -699,10 +702,7 @@ fn settle_node(site: String, expr) = match expr {
   LTailCall(_, _, _) => (),
   LDirectCall(_, _, _, _, _) => (),
   LReturn(_, _) => (),
-  LYield(h, op, _, _) => settle_yield(h, op),
-  LKExtend(_, _) => (),
   LAbandon(_, _, _) => (),
-  LUnwind(h) => settle_unwind(h),
   LIf(_, _, _, _) => (),
   LBlock(_, _) => (),
   LMakeList(_, _) => (),
@@ -723,49 +723,6 @@ fn settle_node(site: String, expr) = match expr {
   LStateSlotStore(_, _, _, _) => (),
   LStateInit(_, _, _, _) => (),
   LWasiCall(_, _, _) => (),
-}
-
-// A floor standing where a perform stands: the op suspends the computation
-// around it — its handler resumes it more than once, or after doing more
-// work — and nothing captured the rest of the computation at this position,
-// so every evaluation of it would reach the floor. (An abandoning perform
-// never floors: its continuation is dead and it unwinds, `LAbandon`.)
-fn settle_yield(h, op: String) = if op == "" {
-  match graph_node_body(h) {
-    NExpr(CallExpr(f, _)) => match op_resume_discipline(graph_ref_decl(f)) {
-      MultiShot => report_at(h, EContinuationUncapturable(callee_name(f), "", graph_span_of(h))),
-      _ => (),
-    },
-    _ => (),
-  }
-} else {
-  ()
-}
-
-// A boundary check standing where a LIVE continuation may cross: the
-// callee's row proves an op whose handler resumes it, and this frame holds
-// no remainder for it — a dead continuation unwinds through the check, a
-// live one is the floor at run time (`LUnwind`). Said at the call, naming
-// the callee and the op. A callee whose row is open proves nothing, and the
-// floor stays the runtime's there; a boundary that is not a call — an
-// install, an arena, a resume, a fanout's branch — is checked by the row
-// of what it brackets and never refused here.
-fn settle_unwind(h) = match graph_node_body(h) {
-  NExpr(CallExpr(f, _)) => {
-    let name = callee_name(f)
-    if field_name_eq(lower_effect_name_of_op(name), "") {
-      match lookup_ty(f) {
-        TFun(_, _, row) => match row_live_op(row) {
-          Some(op) => report_at(h, EContinuationUncapturable(op, name, graph_span_of(h))),
-          None => (),
-        },
-        _ => (),
-      }
-    } else {
-      ()
-    }
-  },
-  _ => (),
 }
 
 // A binary operator's operand, read where its emission reads it
@@ -1098,6 +1055,20 @@ fn alloc_walk_nested(unit, name: String, body) = match unit {
   },
 }
 
+// A continuation site: its record is the op's cost, recorded and never
+// refused here; what it captures is evaluated in the frame, and the
+// remainder it declares is a unit of its own.
+fn alloc_walk_site(unit, k) = match k {
+  KSite(kfn, caps, _) => {
+    let _ = alloc_walk_list(unit, caps, 0)
+    match kfn {
+      KDef(LFn(name, _, _, body, _, _)) => alloc_walk_nested(unit, name, body),
+      KRef(_) => (),
+    }
+    true
+  },
+}
+
 // A unit, read off its own fn's enumeration entry: the row it answers to is
 // read here, once, and a thunk or remainder takes its parent's.
 fn alloc_unit_named(name: String, sym: String, enc: String, parent) = match parent {
@@ -1301,13 +1272,6 @@ fn alloc_walk(unit, e) = match e {
     alloc_walk_nested(unit, name, body)
     built || below
   },
-  LMakeContinuation(_, LFn(name, _, _, body, _, _), caps, _, _) => {
-    // the remainder record: the op's cost, recorded and never refused here
-    let built = true
-    let below = alloc_walk_list(unit, caps, 0)
-    alloc_walk_nested(unit, name, body)
-    built || below
-  },
   LDeclareFn(LFn(name, _, _, body, _, _)) => {
     alloc_walk_nested(unit, name, body)
     false
@@ -1354,18 +1318,20 @@ fn alloc_walk(unit, e) = match e {
   },
   LYield(_, _, args, k) => {
     // A perform's arguments cross in the per-instance area the start
-    // allocated once (`emit_yield_arg_stores`): nothing is built here.
+    // allocated once (`emit_yield_arg_stores`); the remainder's record is
+    // the op's cost.
     let below = alloc_walk_list(unit, args, 0)
-    let rest = alloc_walk(unit, k)
+    let rest = alloc_walk_site(unit, k)
     below || rest
   },
   LAbandon(_, _, args) => alloc_walk_list(unit, args, 0),
-  LUnwind(_) => false,
-  LKExtend(_, k) => {
-    // the continuation's extension: the op's cost, recorded
-    let built = true
-    let below = alloc_walk(unit, k)
-    built || below
+  LCheck(_, inner, k) => {
+    let below = alloc_walk(unit, inner)
+    let rest = match k {
+      Some(s) => alloc_walk_site(unit, s),
+      None => false,
+    }
+    below || rest
   },
   LMakeList(h, es) => {
     let built =
@@ -2703,7 +2669,7 @@ handler yield_seen_collector with n = 0, arity = 0 {
 
 // The seventh projection — the executable gate's EVIDENCE CENSUS: every
 // walking perform's demand (the dispatch's own effect key, carried on the
-// node; LYield's non-empty op). The gate walks the SAME post-reach tree
+// node; a yield's op). The gate walks the SAME post-reach tree
 // emit walks and reads THIS drain — the artifact is the truth source; a
 // lower-side ledger caching the same facts was the Carried-Truth violation
 // this projection deleted.
@@ -3031,27 +2997,20 @@ fn walk_lemit_expr(expr) = match expr {
     walk_lemit_list(body)
     walk_lemit_list(captures)
   },
-  LMakeContinuation(_, LFn(name, _, _, body, _, lines), captures, _, _) => {
-    visit_fn(name)
-    visit_fn_lines(name, lines)
-    walk_lemit_list(body)
-    walk_lemit_list(captures)
-  },
   LResumeK(_, k, v) => {
     walk_lemit_expr(k)
     walk_lemit_expr(v)
   },
-  // band B k1: a yield reads the yield globals and interns its op key (the
-  // driver's compare reads the SAME offset); its arguments size the area
-  // they cross in; descend the k record. The floor form ("" op) interns the
-  // empty string — harmless, gated modules only.
+  // A yield reads the yield globals and interns its op key (the driver's
+  // compare reads the SAME offset); its arguments size the area they cross
+  // in; its site declares the remainder and evaluates what it captures.
   LYield(_, op_name, args, k) => {
     visit_yield()
     visit_yield_args(len(args))
     visit_string(op_name)
-    if field_name_eq(op_name, "") { () } else { visit_effect_demand(op_name) }
+    visit_effect_demand(op_name)
     walk_lemit_list(args)
-    walk_lemit_expr(k)
+    walk_lemit_site(k)
   },
   // An abandoning perform is a perform: its op is demanded, its arguments
   // cross in the same area, and the module yields (AN-2).
@@ -3062,14 +3021,15 @@ fn walk_lemit_expr(expr) = match expr {
     visit_effect_demand(op_name)
     walk_lemit_list(args)
   },
-  // A boundary check reads the yield globals.
-  LUnwind(_) => visit_yield(),
-  // band B M1.3: a k2 boundary needs the yield machinery (globals + the
-  // composer pair) exactly as a yield does; its frame_k record descends
-  // like LYield's k.
-  LKExtend(_, k) => {
+  // A boundary check reads the yield globals, and a live one needs the
+  // composer pair; its site declares the remainder as a yield's does.
+  LCheck(_, inner, k) => {
     visit_yield()
-    walk_lemit_expr(k)
+    walk_lemit_expr(inner)
+    match k {
+      Some(s) => walk_lemit_site(s),
+      None => (),
+    }
   },
   LDeclareFn(LFn(name, _, _, body, _, lines)) => {
     visit_fn(name)
@@ -3188,6 +3148,22 @@ fn walk_lemit_expr(expr) = match expr {
 
 fn walk_lemit_list(exprs) = walk_lemit_list_loop(exprs, 0)
 
+// A continuation site: the remainder it declares is a function of its own,
+// and what it captures is evaluated in the frame.
+fn walk_lemit_site(k) = match k {
+  KSite(kfn, caps, _) => {
+    match kfn {
+      KDef(LFn(name, _, _, body, _, lines)) => {
+        visit_fn(name)
+        visit_fn_lines(name, lines)
+        walk_lemit_list(body)
+      },
+      KRef(_) => (),
+    }
+    walk_lemit_list(caps)
+  },
+}
+
 fn walk_lemit_list_loop(exprs, i) = if i >= len(exprs) {
   ()
 } else {
@@ -3292,7 +3268,8 @@ fn init_lets_lines(value_lets) = flat_map({ (_, init) => init_static_lines(init)
 fn init_static_lines(expr) = match expr {
   LFeedback(h, d, LhStatic, b, s) => [(h, d, LhStatic)] ++ init_static_lines(b) ++ init_static_lines(s),
   LMakeClosure(_, _, caps) => flat_map(init_static_lines, caps),
-  LMakeContinuation(_, _, caps, _, _) => flat_map(init_static_lines, caps),
+  LYield(_, _, args, k) => flat_map(init_static_lines, args ++ site_caps(k)),
+  LCheck(_, inner, k) => init_static_lines(inner) ++ flat_map(init_static_lines, opt_site_caps(k)),
   LDeclareFn(_) => [],
   _ => flat_map(init_static_lines, low_children(expr)),
 }
@@ -3639,7 +3616,7 @@ fn emit_one_redrive(hd) = {
 // The composer pair + the world reader (band B M1.2, the k2/k3 bank Ruling 1) —
 // the one generic self-re-composing junction. compose(inner, frame_k) is
 // ITSELF a k with the closure-identical head [fn_ptr=$__k_compose_idx][nc=2]
-// [inner@8][frame_k@12][state_idx=0@16][ret_slot=0@20][world@24]
+// [inner@8][frame_k@12][world@16]
 // — resume calls it through the SAME W7 convention as every k
 // (no second calling convention, no chain walker). The body: r = inner(v); a
 // still-raised $yield_flag means inner suspended DEEPER — re-compose the
@@ -3656,33 +3633,31 @@ fn emit_one_redrive(hd) = {
 // named after), never a silent truncation. Dormant until a k2 boundary or a
 // junction calls $__k_extend; emitted only when the module yields (Law 7).
 fn emit_k_compose_pair() = {
-  // $__k_world(k) — the frozen-world read: the record's LAST word at the
-  // FIXED offset 16 + 4*capture_count (head 8 + captures + state_idx +
-  // ret_slot precede it; no keyed region, no sentinel walk — the region
-  // died with the evidence machinery). LResumeK and the composer both
-  // read through this one projection.
+  // $__k_world(k) — the frozen-world read: the word right past the
+  // captures, at 8 + 4*capture_count; the `<~` lines a remainder ticks
+  // follow it. LResumeK and the composer both read through this one
+  // projection.
   wat_emit("  (func $__k_world (param $k i32) (result i32)\n")
   wat_emit("    (i32.load (i32.add (local.get $k)\n")
-  wat_emit("      (i32.add (i32.const 16) (i32.shl (i32.load offset=4 (local.get $k)) (i32.const 2)))))\n")
+  wat_emit("      (i32.add (i32.const 8) (i32.shl (i32.load offset=4 (local.get $k)) (i32.const 2)))))\n")
   wat_emit("  )\n")
-  // $__k_extend(frame_k) — the one operation every bubble junction performs:
-  // $yield_k := compose($yield_k, frame_k). Reads the unwinding k, mints the
-  // 28-byte composer record, republishes. The composed record's world = the
-  // INNER k's world (the first-entered segment; each deeper composition
-  // preserves the deepest-first world by the same rule), so the LResumeK
-  // bracket's set-from-record is right for the first instruction that runs;
-  // $__k_compose re-sets at the fk transition.
+  // $__k_extend(frame_k) — the one operation every boundary a live
+  // continuation crosses performs: $yield_k := compose($yield_k, frame_k).
+  // Reads the unwinding k, mints the 20-byte composer record, republishes.
+  // The composed record's world = the INNER k's world (the first-entered
+  // segment; each deeper composition preserves the deepest-first world by
+  // the same rule), so the LResumeK bracket's set-from-record is right for
+  // the first instruction that runs; $__k_compose re-sets at the fk
+  // transition.
   wat_emit("  (func $__k_extend (param $fk i32) (local $nk i32)\n")
   // A dead continuation composes nothing: nothing resumes it (AN-2).
   wat_emit("    (if (i32.eqz (global.get $yield_k)) (then (return)))\n")
-  wat_emit("    (local.set $nk (call $alloc (i32.const 28)))\n")
+  wat_emit("    (local.set $nk (call $alloc (i32.const 20)))\n")
   wat_emit("    (i32.store offset=0 (local.get $nk) (global.get $__k_compose_idx))\n")
   wat_emit("    (i32.store offset=4 (local.get $nk) (i32.const 2))\n")
   wat_emit("    (i32.store offset=8 (local.get $nk) (global.get $yield_k))\n")
   wat_emit("    (i32.store offset=12 (local.get $nk) (local.get $fk))\n")
-  wat_emit("    (i32.store offset=16 (local.get $nk) (i32.const 0))\n")
-  wat_emit("    (i32.store offset=20 (local.get $nk) (i32.const 0))\n")
-  wat_emit("    (i32.store offset=24 (local.get $nk) (call $__k_world (global.get $yield_k)))\n")
+  wat_emit("    (i32.store offset=16 (local.get $nk) (call $__k_world (global.get $yield_k)))\n")
   wat_emit("    (global.set $yield_k (local.get $nk))\n")
   wat_emit("  )\n")
   // $__k_compose(__state, v) — W7 through and through: inner and frame_k are
@@ -3760,27 +3735,22 @@ fn escape_into(out, pos, b) = if b >= 32 && b < 127 && b != 34 && b != 92 {
 }
 
 // extract_top_fn_name — read the binding name from a top-level LLet
-// that wraps a closure/continuation. Used by walk_lemit_top_one to
-// fire visit_top_fn at the correct sites. Returns "" for non-binding
-// shapes (caller treats "" as no-op).
+// that wraps a closure. Used by walk_lemit_top_one to fire visit_top_fn
+// at the correct sites. Returns "" for non-binding shapes (caller treats
+// "" as no-op).
 fn extract_top_fn_name(stmt) with Pure = match stmt {
   LLet(_, name, LMakeClosure(_, _, _)) => name,
-  LLet(_, name, LMakeContinuation(_, _, _, _, _)) => name,
   // drift-audit: ignore — "" = non-binding shape (caller treats "" as no-op)
   _ => "",
 }
 
 // The VALUE peer of extract_top_fn_name: a top-level LLet whose init is
-// NOT a closure/continuation is a module VALUE binding — it needs a
-// (global $<name>) declaration and an init-before-main write ($__init_lets).
-// ONE projection over lowered's direct children feeds both consumers
+// NOT a closure is a module VALUE binding — it needs a (global $<name>)
+// declaration and an init-before-main write ($__init_lets). ONE
+// projection over lowered's direct children feeds both consumers
 // (declaration + init) — never two walks of one tree.
-fn collect_top_value_lets(stmts) = stmts |> map({
-  LLet(_, _, LMakeClosure(_, _, _)) => [],
-  LLet(_, _, LMakeContinuation(_, _, _, _, _)) => [],
-  LLet(_, name, init) => [(name, init)],
-  _ => [],
-}) |> flatten
+fn collect_top_value_lets(stmts) =
+  stmts |> map({ LLet(_, _, LMakeClosure(_, _, _)) => [], LLet(_, name, init) => [(name, init)], _ => [] }) |> flatten
 
 // The module's fn set IS a set. The k machinery's dual-residency and
 // nested reification legitimately SHARE LFn subtrees — one node, many
@@ -4493,11 +4463,12 @@ fn collect_call_vectors_expr(expr, acc) = match expr {
   LUnaryOp(_h, _op, i) => collect_call_vectors_expr(i, acc),
   LReturn(_h, i) => collect_call_vectors_expr(i, acc),
   LMakeClosure(_h, LFn(_n, _a, _p, body, _f, _l), caps) => collect_call_vectors_list(body, collect_call_vectors_list(caps, acc)),
-  LMakeContinuation(_h, LFn(_n, _a, _p, body, _f, _l), caps, _, _) => collect_call_vectors_list(body, collect_call_vectors_list(caps, acc)),
-  LYield(_h, _op, args, k) => collect_call_vectors_expr(k, collect_call_vectors_list(args, acc)),
-  LKExtend(_h, k) => collect_call_vectors_expr(k, acc),
+  LYield(_h, _op, args, k) => collect_call_vectors_list(site_held(k), collect_call_vectors_list(args, acc)),
+  LCheck(_h, inner, k) => match k {
+    Some(s) => collect_call_vectors_list(site_held(s), collect_call_vectors_expr(inner, acc)),
+    None => collect_call_vectors_expr(inner, acc),
+  },
   LAbandon(_h, _op, args) => collect_call_vectors_list(args, acc),
-  LUnwind(_h) => acc,
   LDeclareFn(LFn(_n, _a, _p, body, _f, _l)) => collect_call_vectors_list(body, acc),
   LIf(_h, c, t, e) => collect_call_vectors_list(e, collect_call_vectors_list(t, collect_call_vectors_expr(c, acc))),
   LBlock(_h, stmts) => collect_call_vectors_list(stmts, acc),
@@ -5088,8 +5059,8 @@ fn emit_arena_runtime(spawns) = {
 // THE ARENA'S RE-ENTRY — the continuation segment a suspended arena wraps
 // around everything its body's yield carried out. Emitted where an arena
 // lives and a computation can yield; called through the table like every k
-// (`[fn_ptr@0][nc=2][inner@8][leaf@12][state_idx=0@16][ret_slot=0@20]
-// [world@24]`, the composer's head). Running it opens a FRESH instance, runs
+// (`[fn_ptr@0][nc=2][inner@8][leaf@12][world@16]`, the composer's head).
+// Running it opens a FRESH instance, runs
 // the wrapped chain — the rest of the arena's body and every segment the
 // yield composed inside it — and exits where the body ends: the value moves
 // through the leaf the record carries, as the arena's own exit moves it. A
@@ -5103,14 +5074,12 @@ fn emit_arena_runtime(spawns) = {
 fn emit_arena_reentry() = {
   wat_emit("  (func $__k_arena_extend (param $leaf i32) (local $nk i32)\n")
   wat_emit("    (if (i32.eqz (global.get $yield_k)) (then (return)))\n")
-  wat_emit("    (local.set $nk (call $alloc (i32.const 28)))\n")
+  wat_emit("    (local.set $nk (call $alloc (i32.const 20)))\n")
   wat_emit("    (i32.store offset=0 (local.get $nk) (global.get $__k_arena_idx))\n")
   wat_emit("    (i32.store offset=4 (local.get $nk) (i32.const 2))\n")
   wat_emit("    (i32.store offset=8 (local.get $nk) (global.get $yield_k))\n")
   wat_emit("    (i32.store offset=12 (local.get $nk) (local.get $leaf))\n")
-  wat_emit("    (i32.store offset=16 (local.get $nk) (i32.const 0))\n")
-  wat_emit("    (i32.store offset=20 (local.get $nk) (i32.const 0))\n")
-  wat_emit("    (i32.store offset=24 (local.get $nk) (call $__k_world (global.get $yield_k)))\n")
+  wat_emit("    (i32.store offset=16 (local.get $nk) (call $__k_world (global.get $yield_k)))\n")
   wat_emit("    (global.set $yield_k (local.get $nk))\n")
   wat_emit("  )\n")
   wat_emit("  (func $__k_arena (param $__state i32) (param $v i32) (result i32) (local $ik i32) (local $o i32) (local $j i32) (local $m i32) (local $r i32) (local $t i32) (local $g i32) (local $k i32) (local $mv i32)\n")
@@ -5741,6 +5710,13 @@ fn emit_one_fn_to_string(record, units) = match record {
 // $<name>_idx globals line up with the function table.
 fn collect_fn_emit_records(exprs) = exprs |> map(collect_fn_emit_records_expr) |> flatten
 
+// A continuation site's remainder, where the site declares it, is a fn of
+// its own, its fence the captures its record holds.
+fn site_fn_emit_records(k) = match k {
+  KSite(KDef(LFn(name, _arity, param_names, body, fence, _lines)), caps, _) => [(name, param_names, body, fence)] ++ collect_fn_emit_records(body) ++ collect_fn_emit_records(caps),
+  KSite(KRef(_), caps, _) => collect_fn_emit_records(caps),
+}
+
 fn fn_emit_records_arms(arms, i) = if i >= len(arms) {
   []
 } else {
@@ -5756,11 +5732,12 @@ fn collect_fn_emit_records_expr(expr) = match expr {
   // pass their capture count, handler arm fns nstate+total_arms, plain fns
   // 0 — one rule, set at lower time, not re-derived per shape.
   LMakeClosure(_h, LFn(name, _arity, param_names, body, fence, _lines), captures) => [(name, param_names, body, fence)] ++ collect_fn_emit_records(body) ++ collect_fn_emit_records(captures),
-  LMakeContinuation(_h, LFn(name, _arity, param_names, body, fence, _lines), captures, _, _) => [(name, param_names, body, fence)] ++ collect_fn_emit_records(body) ++ collect_fn_emit_records(captures),
-  LYield(_h, _op, args, k) => collect_fn_emit_records(args) ++ collect_fn_emit_records_expr(k),
-  LKExtend(_h, k) => collect_fn_emit_records_expr(k),
+  LYield(_h, _op, args, k) => collect_fn_emit_records(args) ++ site_fn_emit_records(k),
+  LCheck(_h, inner, k) => collect_fn_emit_records_expr(inner) ++ match k {
+    Some(s) => site_fn_emit_records(s),
+    None => [],
+  },
   LAbandon(_h, _op, args) => collect_fn_emit_records(args),
-  LUnwind(_h) => [],
   LDeclareFn(LFn(name, _arity, param_names, body, fence, _lines)) => [(name, param_names, body, fence)] ++ collect_fn_emit_records(body),
   LLet(_h, _n, inner) => collect_fn_emit_records_expr(inner),
   LBinOp(_h, _op, l, r) => collect_fn_emit_records_expr(l) ++ collect_fn_emit_records_expr(r),
@@ -5929,11 +5906,6 @@ fn walk_locals_expr(expr, acc) = match expr {
   // closure contributes the most important one — a place to keep the outer
   // record while the inner is built.
   LMakeClosure(h, _, captures) => [mkclo_local(h) ++ " i32"] ++ walk_locals_list(captures, acc),
-  // resume_fn boundary — its locals are its own (H7)
-  // The resume invocation: its two bracket locals + whatever the delegated
-  // LCall shape mints (staging locals) — mirror-true to the emit arm, which
-  // means its record slot too: the head IS the closure head.
-  LMakeContinuation(h, _, captures, _, _) => [mkclo_local(h) ++ " i32"] ++ walk_locals_list(captures, acc),
   // The answer comes back off the continuation face at its own width
   // (`emit_from_continuation`), so its scratch is declared there — a word
   // scratch under a Float answer refused to assemble.
@@ -5944,13 +5916,22 @@ fn walk_locals_expr(expr, acc) = match expr {
       ["__rk_wprev_{int_to_str(h)} i32"] ++ (["{local_wat_name("__rk_val_{int_to_str(h)}", r)} {repr_wat(r)}"] ++ acc)
     )
   },
-  // k = the record boundary above; the arguments cross in the instance's
-  // area through the operand stack, so a yield declares nothing of its own.
-  LYield(_, _, args, k) => walk_locals_expr(k, walk_locals_list(args, acc)),
+  // The arguments cross in the instance's area through the operand stack;
+  // the remainder's record is minted in a slot of the yield's own, its
+  // captures evaluated here and its function a boundary of its own.
+  LYield(h, _, args, k) => [mkclo_local(h) ++ " i32"] ++ walk_locals_list(site_caps(k), walk_locals_list(args, acc)),
   LAbandon(_, _, args) => walk_locals_list(args, acc),
-  LUnwind(_) => acc,
-  // same boundary rule; the extend's own emit is a call + a const
-  LKExtend(_, k) => walk_locals_expr(k, acc),
+  // A boundary parks the value it checks at the value's own width, and a
+  // live one mints its remainder's record as a yield does.
+  LCheck(h, inner, k) => {
+    let r = llet_repr(h, inner)
+    let parked =
+      [local_wat_name(check_park_name(h), r) ++ " " ++ repr_wat(r)] ++ walk_locals_expr(inner, acc)
+    match k {
+      Some(s) => [mkclo_local(h) ++ " i32"] ++ walk_locals_list(site_caps(s), parked),
+      None => parked,
+    }
+  },
   // module-level fn declaration — its body has its own locals
   LDeclareFn(_) => acc,
   LBlock(_h, stmts) => walk_locals_list(stmts, acc),
@@ -7349,101 +7330,21 @@ fn emit_expr(expr) = match expr {
     emit_closure_fill(captures_exprs, lines, mkclo_local(h))
     wat_emit("    (local.get ${mkclo_local(h)})\n")
   },
-  LMakeContinuation(h, LFn(resume_fn_name, _arity, _param_names, _body, _fence, lines), captures_exprs, state_idx, ret_slot) => {
-    // H7 — the multi-shot continuation record, CLOSURE-IDENTICAL HEAD
-    // (band B k1): the k is CALLED through the same W7 convention every
-    // closure takes (park as __state, LUpval reads captures at 8+4*i), so
-    // its head must BE the closure head. The continuation metadata rides
-    // in a TAIL — one contiguous record, so persist = memcpy carries it
-    // whole.
-    //
-    //   offset 0:            fn_ptr (i32) — __k fn table index
-    //   offset 4:            capture_count (i32)
-    //   offset 8 + 4*i:      capture_i
-    //   offset 8 + 4*nc:     state_idx — perform-site discriminator
-    //   +4:                  ret_slot (documented: no live reader)
-    //   +8:                  the FROZEN WORLD — the live $world_g at this
-    //                        reify moment (world-as-value R4). LAST word;
-    //                        $__k_world reads it at fixed offset 16+4*nc;
-    //                        LResumeK rebinds through it so the remainder
-    //                        performs in the world where it was captured.
-    //
-    // The continuation IS Mentl's oracle substrate — allocated through the
-    // SAME emit_alloc swap surface as every heap value (the heap has one
-    // story); trail rollback (graph_rollback) reverts speculative binds
-    // between branch runs. No vtable: fn_ptr indexes the funcref table;
-    // resume is call_indirect — Koka evidence passing (JFP 2022).
-    let nc = len(captures_exprs)
-    // head (8) + captures + [state_idx, ret, world] + the remainder's `<~`
-    // lines (one ring each, shared by every resumption of this k as every
-    // other heap write of the remainder is).
-    let size = 8 + 4 * nc + 12 + 4 * len(lines)
-    // Per-handle, for the reason `mkclo_local` states: the head IS the
-    // closure head, so it inherits the clobber too — a continuation
-    // capturing a closure would return the capture.
-    let rec_local = mkclo_local(h)
-    emit_alloc(size, rec_local)
-    // table index at 0 — the closure head (twin-redirected under a bracket).
-    wat_emit("    (local.get ${rec_local})\n")
-    wat_emit("    (global.get $")
-    wat_emit(spec_closure_name(resume_fn_name))
-    wat_emit("_idx)\n")
-    wat_emit("    (i32.store offset=0)\n")
-    // capture count at 4 — the SAME slot every closure carries.
-    wat_emit("    (local.get ${rec_local})\n")
-    wat_emit("    (i32.const ")
-    wat_emit(int_to_str(nc))
-    wat_emit(") (i32.store offset=4)\n")
-    // captures at 8 + 4*i — where LUpval reads (base_i 0 = offset 8).
-    emit_capture_stores(captures_exprs, 0, rec_local)
-    // The metadata tail.
-    let state_idx_offset = 8 + 4 * nc
-    wat_emit("    (local.get ${rec_local})\n")
-    wat_emit("    (i32.const ")
-    wat_emit(int_to_str(state_idx))
-    wat_emit(") (i32.store offset=")
-    wat_emit(int_to_str(state_idx_offset))
-    wat_emit(")\n")
-    wat_emit("    (local.get ${rec_local})\n")
-    wat_emit("    (i32.const ")
-    wat_emit(int_to_str(ret_slot))
-    wat_emit(") (i32.store offset=")
-    wat_emit(int_to_str(state_idx_offset + 4))
-    wat_emit(")\n")
-    wat_emit("    (local.get ${rec_local})\n")
-    wat_emit("    (global.get $world_g)\n")
-    wat_emit("    (i32.store offset=")
-    wat_emit(int_to_str(state_idx_offset + 8))
-    wat_emit(")\n")
-    // The remainder's `<~` lines follow the tail (lower slotted them at
-    // nc + 3 onward).
-    emit_line_mints(lines, rec_local)
-    // Result: continuation pointer on stack.
-    wat_emit("    (local.get ${rec_local})\n")
-  },
-  // band B k1/M1.4 — the MultiShot yield, a LIVE continuation. The REAL
-  // form (k = the reified remainder record): the op's args into the
-  // instance's area (`emit_yield_arg_stores`), k into $yield_k, the interned
-  // op key into $yield_op, raise $yield_flag, and return a width-honest
-  // dummy through the frame's own result type (h = the REWRITTEN FRAME's
-  // tail node; a Float-tailed frame keeps its f64 ft — never the perform's
-  // width): the rest of this frame is the k's, and the frame's caller is a
-  // boundary that composes, or the driver. The args go FIRST — evaluating
-  // one may run a yield-and-resume cycle inside a callee, which moves
-  // $yield_k. The FLOOR form carries the EMPTY op name (an off-spine resume
-  // perform) — the loud comment-marked refusal, said at the settle point. A
-  // dead continuation never comes here: an abandoning perform is `LAbandon`.
-  LYield(h, op_name, args, k_expr) => if op_name == "" {
-    wat_emit("    (unreachable) ;; multishot yield floor — off-spine perform / arm-state / re-yield (k2/k3)\n")
-  } else {
+  // A LIVE continuation's yield: the op's args into the instance's area
+  // (`emit_yield_arg_stores`), the remainder's record into $yield_k, the
+  // interned op key into $yield_op, the flag raised, and the frame leaves
+  // by its innermost landing, as an abandon does — everything after the
+  // perform is the remainder's. The args go FIRST: evaluating one may run a
+  // yield-and-resume cycle inside a callee, which moves $yield_k.
+  LYield(h, op_name, args, k) => {
     emit_yield_arg_stores(args)
-    emit_expr(k_expr)
+    emit_k_site(h, k)
     wat_emit("    (global.set $yield_k)\n")
     wat_emit("    (i32.const ")
     wat_emit(int_to_str(string_offset(op_name)))
     wat_emit(") (global.set $yield_op)\n")
     wat_emit("    (i32.const 1) (global.set $yield_flag)\n")
-    emit_zero_at(repr_of(lookup_ty(h)))
+    emit_unwind()
   },
   // AN-2 — the DEAD continuation: the arm never resumes, so nothing of
   // this frame after the perform runs and nothing is reified. The args into
@@ -7461,31 +7362,28 @@ fn emit_expr(expr) = match expr {
     wat_emit("    (i32.const 1) (global.set $yield_flag)\n")
     emit_unwind()
   },
-  // AN-2 — a boundary's raised flag: a dead continuation unwinds this
-  // frame to its landing; a live one is the floor — this frame holds no
-  // remainder for it (the k2 spine reified one only where a callee may
-  // yield LIVE on the spine), refused at the settle point where the
-  // callee's row proves the op (`settle_unwind`) and the runtime's loud
-  // floor otherwise.
-  LUnwind(_h) => {
-    wat_emit("    (if (global.get $yield_k) (then (unreachable))) ;; a live continuation past a boundary this frame cannot reify\n")
+  // A boundary check: the value is parked; at a raised flag a live
+  // continuation first takes this frame's remainder, composed onto it
+  // ($yield_k := compose($yield_k, remainder) — `$__k_extend`), a dead one
+  // composes nothing, and the frame leaves by its innermost landing. A
+  // check that mints no remainder stands where no live continuation can
+  // cross, so one arriving there traps loudly.
+  LCheck(h, inner, k) => {
+    let park = local_wat_name(check_park_name(h), llet_repr(h, inner))
+    emit_expr(inner)
+    wat_emit("    (local.set ${park})\n")
+    wat_emit("    (if (global.get $yield_flag) (then\n")
+    match k {
+      Some(s) => {
+        wat_emit("    (if (global.get $yield_k) (then\n")
+        emit_k_site(h, s)
+        wat_emit("    (call $__k_extend)))\n")
+      },
+      None => wat_emit("    (if (global.get $yield_k) (then (unreachable))) ;; a live continuation past a boundary that mints no remainder\n"),
+    }
     emit_unwind()
-  },
-  LKExtend(h, k_expr) => {
-    // band B M1.3 — the k2 boundary's yield path: compose the frame's
-    // reified remainder onto the unwinding k ($yield_k := compose($yield_k,
-    // frame_k) — M1.2's $__k_extend) and evaluate to the frame's
-    // width-honest dummy with $yield_flag AND $yield_op UNTOUCHED — the
-    // unwind continues as pure dataflow through the same value position the
-    // fast path uses (h = the frame's tail node, the same width law
-    // LYield's dummy follows; a return here would skip an install's driver
-    // bracket). A DEAD continuation composes nothing — the remainder is
-    // never built for it — and the dummy flows on to the boundary the
-    // frame's caller checks (AN-2).
-    wat_emit("    (if (global.get $yield_k) (then\n")
-    emit_expr(k_expr)
-    wat_emit("    (call $__k_extend)))\n")
-    emit_zero_at(repr_of(lookup_ty(h)))
+    wat_emit("    ))\n")
+    wat_emit("    (local.get ${park})\n")
   },
   LIf(_h, cond, then_body, else_body) => {
     // The if's result WIDTH is the branches' proven join, read live
@@ -7596,8 +7494,8 @@ fn emit_expr(expr) = match expr {
   LResumeK(h, k_expr, val_expr) => {
     // The MultiShot resume invoking its continuation record — the ONE site
     // that rebinds the world (the world-as-value arc's R4): save $world_g,
-    // set it from the k record's frozen last word ($__k_world — fixed
-    // offset 16 + 4*capture_count), run the remainder through the ordinary
+    // set it from the k record's frozen world ($__k_world — the word past
+    // the captures, 8 + 4*capture_count), run the remainder through the ordinary
     // W7 closure call, restore. The remainder's performs thereby resolve
     // in the world where the continuation was CAPTURED, never the world it
     // happens to be resumed under (the arm-config class's TIME sibling).
@@ -8697,13 +8595,14 @@ fn collect_fold_tys_expr(expr, acc: {cmp: [Ty], eq: [Ty], evac: [Ty], hash: [Ty]
   LUnaryOp(_h, _op, i) => collect_fold_tys_expr(i, acc),
   LReturn(_h, i) => collect_fold_tys_expr(i, acc),
   LMakeClosure(_h, LFn(_n, _a, _p, body, _f, _l), caps) => collect_fold_tys_list(body, collect_fold_tys_list(caps, acc)),
-  LMakeContinuation(_h, LFn(_n, _a, _p, body, _f, _l), caps, _, _) => collect_fold_tys_list(body, collect_fold_tys_list(caps, acc)),
   // the arguments stored into the area are moved by their types at an
   // arena's exit, as a state commit's value is
-  LYield(_h, _op, args, k) => collect_fold_tys_expr(k, collect_fold_tys_list(args, fold_acc_evac_args(acc, args))),
-  LKExtend(_h, k) => collect_fold_tys_expr(k, acc),
+  LYield(_h, _op, args, k) => collect_fold_tys_list(site_held(k), collect_fold_tys_list(args, fold_acc_evac_args(acc, args))),
+  LCheck(_h, inner, k) => match k {
+    Some(s) => collect_fold_tys_list(site_held(s), collect_fold_tys_expr(inner, acc)),
+    None => collect_fold_tys_expr(inner, acc),
+  },
   LAbandon(_h, _op, args) => collect_fold_tys_list(args, fold_acc_evac_args(acc, args)),
-  LUnwind(_h) => acc,
   LDeclareFn(LFn(_n, _a, _p, body, _f, _l)) => collect_fold_tys_list(body, acc),
   LIf(_h, c, t, e) => collect_fold_tys_list(e, collect_fold_tys_list(t, collect_fold_tys_expr(c, acc))),
   LBlock(_h, stmts) => collect_fold_tys_list(stmts, acc),
@@ -10394,6 +10293,33 @@ fn emit_closure_fill(captures, lines, rec_local: String) = {
   emit_capture_stores(captures, 0, rec_local)
   emit_line_mints(lines, rec_local)
 }
+
+// A remainder's record, left on the stack: the closure head every
+// continuation is called through (its table index — the twin's under a
+// bracket — and its capture count), the captures at 8 + 4·i, then the world
+// it was captured in at 8 + 4·nc, which a resume enters and `$__k_world`
+// reads, then the rings of the `<~` lines the remainder ticks, each shared
+// from the frame that owns it, so every resumption of one continuation
+// ticks one line. One contiguous record, so persisting the image carries it
+// whole.
+fn emit_k_site(h, k) = match k {
+  KSite(kfn, caps, lines) => {
+    let nc = len(caps)
+    let rec_local = mkclo_local(h)
+    emit_alloc(8 + 4 * nc + 4 + 4 * len(lines), rec_local)
+    wat_emit("    (local.get ${rec_local})\n")
+    wat_emit("    (global.get ${spec_closure_name(kfn_name(kfn))}_idx)\n")
+    wat_emit("    (i32.store offset=0)\n")
+    wat_emit("    (local.get ${rec_local}) (i32.const {int_to_str(nc)}) (i32.store offset=4)\n")
+    emit_capture_stores(caps, 0, rec_local)
+    wat_emit("    (local.get ${rec_local}) (global.get $world_g) (i32.store offset={int_to_str(8 + 4 * nc)})\n")
+    emit_line_mints(lines, rec_local)
+    wat_emit("    (local.get ${rec_local})\n")
+  },
+}
+
+// Where a boundary parks the value it checks.
+fn check_park_name(h) = "__kf_{int_to_str(h)}"
 
 // A closure binding the emit mints in two phases: the register the binding
 // sets, and the mint — its record's handle, its table entry, its captures

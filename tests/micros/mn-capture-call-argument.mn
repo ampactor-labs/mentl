@@ -1,0 +1,38 @@
+// expect: 46
+// A call that may suspend as the second argument of another, after an argument
+// computed by a call: the first argument's value is captured with the frame's
+// rest, and the third runs after the resumption, (7 + 10 + 1) + (7 + 20 + 1).
+effect Pick {
+  pick() -> Int
+}
+
+handler both {
+  pick() => {
+    let a = resume(0)
+    let b = resume(1)
+    a + b
+  },
+}
+
+effect Tally {
+  bump()
+  total() -> Int
+}
+
+handler tally with n = 0 {
+  bump() => resume() with n = n + 1,
+  total() => resume(n),
+}
+
+fn seven() = {
+  bump()
+  7
+}
+
+fn inner() = pick() * 10 + 10
+
+fn add3(a, b, c) = a + b + c
+
+fn outer() = add3(seven(), inner(), total())
+
+fn main() = outer() ~> both ~> tally

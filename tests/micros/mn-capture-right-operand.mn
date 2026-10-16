@@ -1,0 +1,34 @@
+// expect: 73
+// A perform as a right operand after a call: the left operand's value was
+// computed before the suspension and is read, never computed again, so the
+// tally reads 1 in both resumptions: (35 + 0 + 1) + (35 + 1 + 1).
+effect Pick {
+  pick() -> Int
+}
+
+handler both {
+  pick() => {
+    let a = resume(0)
+    let b = resume(1)
+    a + b
+  },
+}
+
+effect Tally {
+  bump()
+  total() -> Int
+}
+
+handler tally with n = 0 {
+  bump() => resume() with n = n + 1,
+  total() => resume(n),
+}
+
+fn seven() = {
+  bump()
+  7
+}
+
+fn body() = seven() * 5 + pick() + total()
+
+fn main() = body() ~> both ~> tally

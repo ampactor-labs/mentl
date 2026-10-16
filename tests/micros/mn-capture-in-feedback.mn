@@ -1,0 +1,24 @@
+// expect: 60
+// A perform inside a `<~` recurrence: the remainder reads the prior the cycle
+// loaded before the suspension and ticks the function's own line, so the
+// second call reads the first call's output: 0 + 5 = 5, then 5 + 5 = 10, and
+// 5 * 10 + 10. A remainder ticking a line of its own would leave the second
+// call reading 0 and answer 55.
+effect Pick {
+  pick() -> Int
+}
+
+handler five {
+  pick() => {
+    let r = resume(5)
+    r
+  },
+}
+
+fn step(x) = ({ prev => prev + x * pick() }) <~ delay(1)
+
+fn main() = {
+  let a = step(1)
+  let b = step(1)
+  a * 10 + b
+} ~> five

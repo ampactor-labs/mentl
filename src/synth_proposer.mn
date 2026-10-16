@@ -1202,15 +1202,10 @@ fn first_context_split(survivors) = match survivors {
 
 fn first_split_over(writes, others) = match writes {
   [] => None,
-  [(h, fact), ...more] => match fold(None, first_some(split_against(h, fact)), others) {
+  [(h, fact), ...more] => match find_map(split_against(h, fact), others) {
     Some(d) => Some(d),
     None => first_split_over(more, others),
   },
-}
-
-fn first_some(f, acc, x) = match acc {
-  Some(d) => Some(d),
-  None => f(x),
 }
 
 // The divergence at cell `h` between the fact one survivor wrote and what

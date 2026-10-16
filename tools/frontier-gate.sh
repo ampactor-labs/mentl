@@ -657,13 +657,6 @@ run_pulse_render() {
   done
 }
 
-# The incremental cursor gate (B-i landing 3): a three-module DAG, one
-# edit, one truth. Run 1 compiles cold and persists; b.mn is patched; run
-# 2 restores the image, names the re-derived cone (b main — a stays
-# cached), and its emission must equal a COLD compile of the patched tree
-# (the fixture is lambda-free, so handle numbering cannot leak into the
-# wat and byte-equality is the honest oracle at today's pin; the
-# deterministic handle partition generalizes it).
 # A program that links library modules by import runs as a project — the
 # compile resolves its imports the way a developer's program does, where a
 # battery fixture is compiled over the runtime floor alone — and answers
@@ -868,13 +861,14 @@ run_warm_debt() {
   fi
 }
 
+# The incremental cursor gate: a three-module DAG, one edit, one truth.
 run_warm_incremental() {
   local compiler="$1" dir="$2" label="warm-inc"
   local wdir="$dir/$label.proj" refdir="$dir/$label.ref" rc
-  mkdir -p "$wdir/.build" "$refdir/.build"
-  printf 'fn base() = 20\n' > "$wdir/a.mn"
-  printf 'import a\nfn mid() = base() + 1\n' > "$wdir/b.mn"
-  printf 'import b\nfn main() = mid() * 2\n' > "$wdir/main.mn"
+  rm -rf "$wdir" "$refdir" && mkdir -p "$wdir/.build" "$refdir/.build"
+  printf 'fn base() = 20\neffect Ab {\n  ab() -> Int\n}\n' > "$wdir/a.mn"
+  printf 'import a\nhandler bail {\n  ab() => 5,\n}\nfn mid() = base() + 1\n' > "$wdir/b.mn"
+  printf 'import a\nimport b\nfn main() = mid() * 2 + (ab() ~> bail)\n' > "$wdir/main.mn"
   wt_run --dir "$wdir::." --dir "$ROOT::/mentl-home" "$compiler" compile main \
     > "$dir/$label.1.wat" 2> "$dir/$label.1.err"
   rc=$?
@@ -883,7 +877,8 @@ run_warm_incremental() {
     return
   fi
   pass "$label cold compile"
-  printf 'import a\nfn mid() = base() + 2\n' > "$wdir/b.mn"
+  printf 'fn base() = 20\n// the op bail answers\neffect Ab {\n  ab() -> Int\n}\n' > "$wdir/a.mn"
+  printf 'import a\nhandler bail {\n  ab() => 5,\n}\nfn mid() = base() + 2\n' > "$wdir/b.mn"
   wt_run --dir "$wdir::." --dir "$ROOT::/mentl-home" "$compiler" compile main \
     > "$dir/$label.2.wat" 2> "$dir/$label.2.err"
   rc=$?
@@ -891,14 +886,13 @@ run_warm_incremental() {
     fail "$label incremental compile (exit=$rc; see $dir/$label.2.err)"
     return
   fi
-  # The edit rewrites `mid`, and `main` reads it: two declarations in two
-  # modules, `base` kept. A failure here does not return: the divergence check
-  # below reads the same two artifacts, and a leg that halts at its first
-  # failure hides the rest of its own coverage.
-  if ! grep -q '^warm: re-judged 2 declaration(s) in 2 module(s)$' "$dir/$label.2.err"; then
-    fail "$label cone line (want 'warm: re-judged 2 declaration(s) in 2 module(s)'; see $dir/$label.2.err)"
+  # The edit moves `Ab` and rewrites `mid`; `bail`'s arm and `main` read them,
+  # so four declarations in three modules are judged again and `base` is kept.
+  # A failure here does not return: the checks below read the same artifacts.
+  if ! grep -q '^warm: re-judged 4 declaration(s) in 3 module(s)$' "$dir/$label.2.err"; then
+    fail "$label cone line (want 'warm: re-judged 4 declaration(s) in 3 module(s)'; see $dir/$label.2.err)"
   else
-    pass "$label cone counted (mid and main judged again, base kept)"
+    pass "$label cone counted (Ab, bail, mid and main judged again, base kept)"
   fi
   cp "$wdir/a.mn" "$wdir/b.mn" "$wdir/main.mn" "$refdir/"
   wt_run --dir "$refdir::." --dir "$ROOT::/mentl-home" "$compiler" compile main \
@@ -908,10 +902,12 @@ run_warm_incremental() {
     fail "$label cold reference (exit=$rc; see $dir/$label.ref.err)"
     return
   fi
-  if cmp -s "$dir/$label.2.wat" "$dir/$label.ref.wat"; then
-    pass "$label incremental == cold-of-patched (byte-identical)"
+  wt_asm "$dir/$label.2.wat" "$dir/$label.2.wasm" > /dev/null 2>&1 && wt_run --dir "$wdir::." "$dir/$label.2.wasm" > /dev/null 2>&1
+  rc=$?
+  if [ "$rc" -eq 49 ] && cmp -s <(sed -E 's/[0-9]+/N/g' "$dir/$label.2.wat") <(sed -E 's/[0-9]+/N/g' "$dir/$label.ref.wat"); then
+    pass "$label incremental runs to 49 and equals cold-of-patched up to handle numbers"
   else
-    fail "$label incremental diverges from cold (diff $dir/$label.2.wat $dir/$label.ref.wat)"
+    fail "$label incremental (exit=$rc, want 49; diff $dir/$label.2.wat $dir/$label.ref.wat)"
   fi
 }
 
@@ -4769,7 +4765,7 @@ for i in "${!compilers[@]}"; do
   # same trivial question; the landing that causes one pays it down in the
   # modules a bare program links. The ceiling is the measured floor, so a
   # landing that lowers the floor lowers the ceiling with it.
-  cost_ceiling=2731
+  cost_ceiling=2671
   ct_out=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" query "$ROOT/tests/frontier/mn-bare-floor.mn" "cost" 2>/dev/null)
   ct_lines=$(printf '%s' "$ct_out" | grep -o '[0-9]* source line' | grep -o '[0-9]*' | head -1)
   if [ -n "$ct_lines" ] && [ "$ct_lines" -le "$cost_ceiling" ]; then

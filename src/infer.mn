@@ -56,7 +56,7 @@ import verify
 // it live and inf_add_row joins it). On scope exit, the accumulated row
 // binds to the handle via `graph_bind_row`. One write; no conflict.
 effect InferCtx {
-  inf_enter_fn(Int, Int, Span, [(RowTerm, Bool, EConn)])
+  inf_enter_fn(Int, Span, [(RowTerm, Bool, EConn)])
   // The frame's exit hands back what the CALLER finalizes — its authored
   // declaration, its row cell, the published row, its span — so the write
   // and the gate check that judges it run in the body's world (exit_frame),
@@ -82,14 +82,6 @@ effect InferCtx {
   inf_cut_edge(Int)
   inf_current_row() -> EffRow
   inf_current_world() -> EffRow
-  // A5 (LENS §2.4): the world a perform site's REMAINDER requires — the
-  // union of every frame's live row cell from the site up to the nearest
-  // lexically enclosing tee that absorbs the named effect, read off the
-  // frame stack; a tee absorbing nothing of it is crossed, and with none
-  // the union reaches the declaration's own frame. None names no effect (a
-  // pipe or fanout boundary) and takes the whole stack.
-  inf_remainder_world(Option(String)) -> EffRow
-  inf_current_answer() -> Int
   inf_enter_arm(Int)
   inf_exit_arm()
   inf_arm_tys() -> Option(Int)
@@ -100,9 +92,8 @@ effect InferCtx {
   // caller's independent callee instances unified Float with Int across the
   // wheel — the 286-error m3 census — and, inside persist's install, a cast
   // of a list with a cast of a thunk, which no handler serves).
-  // The mark carries what the tee ABSORBS, so the remainder world knows
-  // which enclosing tee delimits a perform site's continuation, and the
-  // accumulation seam knows which instances are one install's.
+  // The mark carries what the tee ABSORBS, so the accumulation seam knows
+  // which instances are one install's.
   inf_mark_install_frame([EffName])
   inf_install_absorbs() -> [EffName]
   // The pass's prereg ceiling — graph_next at the moment pre-registration
@@ -134,9 +125,9 @@ handler infer_ctx with stack = [], arm_stack = [], install_marks = [], mint_ceil
     let table = if len(reach) == 0 { module_reach_table() } else { reach }
     resume(reach_table_has(table, from, to)) with reach = table
   },
-  inf_enter_fn(h, answer_h, fn_span, effs) => // stack = [InferFrame, ...] where each InferFrame is a record:
-  //   {accumulated_row: EffRow, answer_handle: Int, declared: List,
-  //    fn_span: Span, row_handle: Int}
+  inf_enter_fn(h, fn_span, effs) => // stack = [InferFrame, ...] where each InferFrame is a record:
+  //   {accumulated_row: EffRow, declared: List, fn_span: Span, owner: Bool,
+  //    params: [Int], row_handle: Int}
   //   declared = [(EffName, negated)] — the fn's authored annotation, born
   //   with the frame and returned by inf_exit_fn (nested fns get their own)
   // arm_stack = [the continuation handle, ...] — the typed-resume
@@ -148,15 +139,8 @@ handler infer_ctx with stack = [], arm_stack = [], install_marks = [], mint_ceil
     // The frame is BORN with its declaration: `effs` = the FnStmt's authored
     // [(EffName, negated)] list (empty for lambdas / tee bodies / arm scopes).
     // No ambient declared-scalar to clobber — a nested fn gets its own.
-    let frame = {
-      accumulated_row: mk_ef_pure(),
-      answer_handle: answer_h,
-      declared: effs,
-      fn_span,
-      owner: true,
-      params: [],
-      row_handle: h,
-    }
+    let frame =
+      {accumulated_row: mk_ef_pure(), declared: effs, fn_span, owner: true, params: [], row_handle: h}
     // drift-audit: ignore — bounded-depth frame PUSH (one per fn nesting level, popped at exit; §9 push-at-END), not a loop accumulator
     resume() with stack = stack ++ [frame]
   },
@@ -240,7 +224,6 @@ handler infer_ctx with stack = [], arm_stack = [], install_marks = [], mint_ceil
       (depth, handled) => if depth == len(stack) { handled } else { [] },
     }
   }),
-  inf_remainder_world(ename) => resume(remainder_world(stack, install_marks, ename)),
   inf_mark_transparent() => if len(stack) == 0 {
     resume()
   } else {
@@ -297,7 +280,6 @@ handler infer_ctx with stack = [], arm_stack = [], install_marks = [], mint_ceil
   {
     if len(stack) == 0 { resume(mk_ef_pure()) } else { resume(mk_ef_open([], last(stack).row_handle)) }
   },
-  inf_current_answer() => if len(stack) == 0 { resume(-1) } else { resume(last(stack).answer_handle) },
   inf_enter_arm(continuation_h) => // drift-audit: ignore — bounded-depth arm-frame PUSH (§9 push-at-END), not a loop accumulator
   resume() with arm_stack = arm_stack ++ [continuation_h],
   inf_exit_arm() => if len(arm_stack) == 0 { resume() } else { resume() with arm_stack = drop_last(arm_stack) },
@@ -1315,20 +1297,17 @@ fn infer_program_once(stmts, parse_start, parse_end) = {
   let name_idx = layer_name_index(map(stmt_decl_name, stmts), 0, smap_new())
   let groups = scc_groups(frees_all, name_idx)
   trial_group_walk(stmts, groups, 0)
-  // Both walks below read THIS judgment's own cells and nothing older. The
-  // boundaries this walk recorded sit at handles the judgment minted, past
-  // its parse; the comment cells the prose gate judges are the one
-  // generation the parse minted, [parse_start, parse_end). The cold route
-  // parses from handle 0, so the two ranges used to start there — and the
-  // session's cone, which judges into a graph that already holds every
-  // generation the session has seen, walked every superseded generation's
-  // comment cells on every edit: three cone judgments of one four-line
-  // lesson narrated the SAME thirty-six unresolved references of types.mn
-  // three times over (the bank read 39, then 79, then 119), and the
-  // boundary walk re-read a program's worth of handles per edit for the
-  // cone's few. The lazy `$`-vocabulary (lit_vocab_build) still reads every
-  // generation's literals, which can only resolve more, never less.
-  finalize_continuation_boundaries(parse_start, graph_next())
+  // The prose gate reads THIS judgment's own cells and nothing older: the
+  // comment cells are the one generation the parse minted, [parse_start,
+  // parse_end). The cold route parses from handle 0, so the range used to
+  // start there — and the session's cone, which judges into a graph that
+  // already holds every generation the session has seen, walked every
+  // superseded generation's comment cells on every edit: three cone
+  // judgments of one four-line lesson narrated the SAME thirty-six
+  // unresolved references of types.mn three times over (the bank read 39,
+  // then 79, then 119). The lazy `$`-vocabulary (lit_vocab_build) still
+  // reads every generation's literals, which can only resolve more, never
+  // less.
   comment_refs_check(parse_start, parse_end)
 } ~> row_gate ~> store_ages ~> infer_ctx ~> fresh_for_inference ~> resume_summaries_ctx
 
@@ -3023,7 +3002,7 @@ fn infer_fn(name, params, body_node, ret_ann, effs, handle, span: ValidSpan, pol
   // arena resets at): every value the body walk constructs tags with this
   // region; nested fn decls nest their own; the return check below either
   // TRANSFERS the body value to the parent region or proves the escape.
-  inf_enter_fn(row_handle, ret_handle, span, effs)
+  inf_enter_fn(row_handle, span, effs)
   inf_frame_params(params ++ [ret_handle])
   let body_region = region_enter(span)
   // The body is a consume scope — its `own` params are its own linear
@@ -4388,7 +4367,7 @@ fn infer_expr(ref handle) = {
         // branch B — the RHS as a static depth annotation, the lowering
         // deleted — stays open and would delete this frame with it.
         let spec_row_h = graph_fresh_row(Inferred("feedback spec — static, its row never charges"))
-        inf_enter_fn(spec_row_h, right, span, [])
+        inf_enter_fn(spec_row_h, span, [])
         infer_expr(right)
         exit_frame()
         infer_pipe(kind, left, right, handle, span)
@@ -4862,13 +4841,6 @@ fn infer_seq_op(cname, fh, args, handle, span: ValidSpan) = {
   }
   // What the face writes, asked of the arguments it writes.
   ages_mutation_call(handle, fh, args)
-  // EVERY application result is a possible suspension boundary
-  // (stage_continuation_boundary's own law) — the fast path is still an
-  // application. Skipping the staging here left lower's k2 crossing
-  // machinery with NoBoundary at exactly four wheel sites (a seq-op call on
-  // the k2 spine: alt_same_name_set, rows_equal, splice_at, k2_is_park) —
-  // the census's last E_UnresolvedType class.
-  stage_continuation_boundary(cname, None, handle)
 }
 
 // What a call's judgment built: the applied result, the product with holes —
@@ -5546,7 +5518,6 @@ fn infer_call_saturated(args, fh, handle, span: ValidSpan, cname) = {
   // callee can be demands, read along its edges (`call_owes`).
   call_owes(fn_leaves(fh), args, handle, span)
   ages_call(handle, fh, cname, args)
-  stage_continuation_boundary(cname, ref_op_effect(fh), handle)
 }
 
 // THE PERFORM GROUNDS ITS INSTANCE (E1). An op parameter that shares its name
@@ -5781,67 +5752,6 @@ fn discharge_arg_refinements(dps, arg_handles, i, span: ValidSpan, call_h) = if 
   discharge_arg_refinements(dps, arg_handles, i + 1, span, call_h)
 }
 
-// EVERY application result is a possible suspension boundary — not only an
-// effect op's perform. k1 reifies the remainder AT the perform; k2 composes a
-// frame remainder onto the unwinding k at an ordinary CALL or PIPE STAGE the
-// yield crosses (lower_body_reified's spine). Both read this one edge. Mint
-// the record identity while the enclosing InferCtx frame is live (the world is
-// the frame's LIVE row variable; the answer is the frame's answer handle);
-// bind its TCont only after all handler arms have joined their usage grades
-// onto the op scheme (finalize). `eff` is the effect the boundary performs —
-// an op's, read along its callee's edge (`ref_op_effect`) — and None for a
-// boundary an operator stages.
-fn stage_continuation_boundary(cname: String, eff, resume_input_h) = {
-  let continuation_h = mint(InferredCallReturn(cname, Inferred("continuation boundary")))
-  let current_answer_h = inf_current_answer()
-  let answer_h = if current_answer_h < 0 { resume_input_h } else { current_answer_h }
-  graph_boundary_set(
-    resume_input_h,
-    PendingContinuationBoundary(resume_input_h, answer_h, continuation_h, inf_remainder_world(eff))
-  )
-}
-
-// The heal fixpoint (see the judgment passes' call sites): heal the recorded
-// sites until a sweep binds nothing — a LOCAL boundary fixpoint (graph
-// teaching via graph_bind; downstream reads see the healed cells), NOT the
-// judgment's pass cadence. The trail position is the progress meter (a
-// sweep that asserts no new constraint leaves it unmoved).
-fn finalize_continuation_boundaries(i, n) = if i >= n {
-  ()
-} else {
-  match graph_boundary_at(i) {
-    PendingContinuationBoundary(resume_input_h, answer_h, continuation_h, world) => {
-      let disc = continuation_discipline_at(i)
-      graph_bind(
-        continuation_h,
-        TCont(TVar(resume_input_h), TVar(answer_h), disc, world),
-        Inferred("inference-owned continuation boundary")
-      )
-      graph_boundary_set(
-        i,
-        ContinuationBoundary(ContinuationEdge(resume_input_h, answer_h, continuation_h, disc, world))
-      )
-    },
-    _ => (),
-  }
-  finalize_continuation_boundaries(i + 1, n)
-}
-
-// The discipline at a boundary is read LIVE at finalize, after every handler
-// arm has joined its usage grade onto the op scheme. An effect op's perform
-// carries the op's own joined discipline (k1 — the yield site). Every OTHER
-// application boundary (an ordinary call, a pipe stage, a fanout apply) is a
-// k2 CROSSING site: a frame-k there only materializes as a SEGMENT of a
-// yield already unwinding, and a composed k is called as many times as the k
-// it extends — MultiShot by construction, never the callee's own cardinality.
-fn continuation_discipline_at(site_h) = match graph_node_body(site_h) {
-  NExpr(CallExpr(func, _)) => match callee_binding(func) {
-    Some((_, _, EffectOpScheme(_, _, _, disc))) => disc,
-    _ => MultiShot,
-  },
-  _ => MultiShot,
-}
-
 // `~>` handler attachment — the row algebra's handler operator. A handler is
 // (a ! E+r) ⟿ (a ! R+r): row(expr ~> h) = (row(expr) − E) ⊕ R. The body is
 // inferred in a NESTED row scope so its effects do NOT leak (subtraction would
@@ -5888,7 +5798,7 @@ fn infer_lambda(params, body_node, handle, span: ValidSpan, binder, site) = {
     BoundByCallers => declare_params(params, typed, guard_cells(params, "lambda")),
     BoundByTheCycle => typed,
   }
-  inf_enter_fn(row_handle, body_node, span, [])
+  inf_enter_fn(row_handle, span, [])
   inf_frame_params(params ++ [body_node])
   claim_param_shapes(params)
   match site {
@@ -6302,19 +6212,11 @@ fn infer_pipe_tee_one(left, right, hd, handle, span: ValidSpan, born) = {
   let projection = projection_of_effects(map(eff_name_str, arm_names))
   let opens_arena = install_opens_arena(projection)
   if opens_arena { ages_depth(1) } else { () }
-  inf_enter_fn(body_row_h, left, span, [])
+  inf_enter_fn(body_row_h, span, [])
   inf_mark_install_frame(arm_names)
   infer_expr(left)
   exit_frame()
-  if opens_arena {
-    ages_depth(-1)
-    // A body that suspends leaves the arena's frame, and the rest of THIS
-    // frame resumes at the arena's value — the arena is a boundary as a
-    // call is, staged while this frame is the live one.
-    stage_continuation_boundary("~>", None, handle)
-  } else {
-    ()
-  }
+  if opens_arena { ages_depth(-1) } else { () }
   infer_expr(right)
   let attach = install_reason(hd, right, span)
   install_answer(right, left, span, attach)
@@ -6426,51 +6328,11 @@ fn mark_depth(mark) = match mark {
   (depth, _handled) => depth,
 }
 
-// A5 (LENS §2.4): the remainder's requirement at a perform site — every
-// frame's live row cell from the site (the top of the stack) down to the
-// body frame of the nearest enclosing tee that absorbs the effect, as one
-// open row over those cells. No absorbing tee, or no effect named: the
-// whole stack, the declaration's own frame included — its row flows to the
-// caller, whose tee is then the delimiter.
-fn remainder_world(stack, marks, ename) = if len(stack) == 0 {
-  mk_ef_pure()
-} else {
-  let stop = absorbing_frame(marks, ename, len(marks) - 1)
-  ef_make([], [], EtOpen(frame_edges(stack, stop, len(stack) - 1, [])))
-}
-
-// The index of the body frame under the innermost mark absorbing the
-// effect, or 0 when none does.
-fn absorbing_frame(marks, ename, i) = match ename {
-  None => 0,
-  Some(en) => if i < 0 {
-    0
-  } else {
-    match list_index(marks, i) {
-      (depth, handled) => if name_set_contains(handled, ENamed(intern_str(en))) {
-        if depth > 0 { depth - 1 } else { 0 }
-      } else {
-        absorbing_frame(marks, Some(en), i - 1)
-      },
-    }
-  },
-}
-
-fn frame_edges(stack, i, top, acc) = if i > top {
-  acc
-} else {
-  frame_edges(stack, i + 1, top, push(acc, bare_edge(frame_row_handle(list_index(stack, i)))))
-}
-
-// A frame's row cell, read through the frame record's declared shape — the
-// Intent Boundary an INTERIOR field read needs: an element of the frame
-// stack arrives at emit with its row unresolved, and an unprovable offset
-// is a refusal (E_FieldOffsetUnprovable), never a read.
-fn frame_row_handle(frame: {accumulated_row: EffRow, answer_handle: Int, declared: [(RowTerm, Bool, EConn)], fn_span: Span, owner: Bool, params: [Int], row_handle: Int}) -> Int =
-  frame.row_handle
-
-// Whether the frame owns a record, read through the same declared shape.
-fn frame_owns(frame: {accumulated_row: EffRow, answer_handle: Int, declared: [(RowTerm, Bool, EConn)], fn_span: Span, owner: Bool, params: [Int], row_handle: Int}) =
+// Whether the frame owns a record, read through the frame record's declared
+// shape — the Intent Boundary an INTERIOR field read needs: an element of the
+// frame stack arrives at emit with its row unresolved, and an unprovable
+// offset is a refusal (E_FieldOffsetUnprovable), never a read.
+fn frame_owns(frame: {accumulated_row: EffRow, declared: [(RowTerm, Bool, EConn)], fn_span: Span, owner: Bool, params: [Int], row_handle: Int}) =
   frame.owner
 
 // The effect an op name performs; None for a name that is not an op (a
@@ -6889,10 +6751,6 @@ fn infer_pipe(kind, left, right, handle, span: ValidSpan) = match kind {
       ()
     }
     call_owes(fn_leaves(right), [left], handle, span)
-    // A pipe stage is an application; its result node is a suspension
-    // boundary exactly as a CallExpr's is (lower's k2 spine keys the
-    // bare-VarRef stage's completion call by THIS pipe node's handle).
-    stage_continuation_boundary("|>", None, handle)
     match graph_chase(right) {
       GNode(NBound(TFun(_, _, crow)), _) => inf_add_row_unified_at(
         handle,
@@ -7111,7 +6969,7 @@ fn infer_fanout_value_boundary(branch, span: ValidSpan, label: String) = {
   let persist_ticket_h = mint(InferredPipeResult("><", Inferred("{label} persist schedule ticket")))
   let thunk_row_h = graph_fresh_row(InferredPipeResult("><", Inferred("{label} boundary effects")))
   // drift-audit: ignore — two independent frame inputs (row handle, answer handle) — one frame record's fields, not parallel arrays
-  inf_enter_fn(thunk_row_h, carrier_h, span, [])
+  inf_enter_fn(thunk_row_h, span, [])
   inf_mark_transparent()
   ages_branch_open(branch)
   infer_expr(branch)
@@ -7120,9 +6978,6 @@ fn infer_fanout_value_boundary(branch, span: ValidSpan, label: String) = {
     TVar(branch),
     Located(span, InferredPipeResult("><", Inferred("{label} branch evaluation")))
   )
-  // The branch evaluation is an application inside the thunk frame; its
-  // suspension boundary carries THIS frame's world (staged before exit).
-  stage_continuation_boundary("><", None, result_h)
   let older_stores = ages_branch_close()
   exit_frame()
   let thunk_row = mk_ef_open([], thunk_row_h)
@@ -7218,7 +7073,7 @@ fn infer_fanout_apply_one(branch, input_h, span: ValidSpan) = {
   // projected into the enclosing function.
   //
   // drift-audit: ignore — two independent frame inputs (row handle, answer handle) — one frame record's fields, not parallel arrays
-  inf_enter_fn(thunk_row_h, carrier_h, span, [])
+  inf_enter_fn(thunk_row_h, span, [])
   inf_mark_transparent()
   ages_branch_open(branch)
   // The branch is a STAGE applied to the borrowed input, judged as a `|>`
@@ -7237,8 +7092,6 @@ fn infer_fanout_apply_one(branch, input_h, span: ValidSpan) = {
       _ => (),
     },
   }
-  // The implicit application is a suspension boundary inside the thunk frame.
-  stage_continuation_boundary("<|", None, ret_h)
   let older_stores = ages_branch_close()
   exit_frame()
   let thunk_row = mk_ef_open([], thunk_row_h)
@@ -14972,7 +14825,7 @@ fn register_handler(hname, ename_parsed, config, state, arms, effs, span: ValidS
   // to a function-valued config arg) into r_handle via inf_add_effect/
   // inf_add_row. On
   // exit, r_handle binds to R — the row `~> h` adds to the caller.
-  inf_enter_fn(r_handle, s_h, span, effs)
+  inf_enter_fn(r_handle, span, effs)
   // The remainder world is part of the handler's signature: a lambda in an
   // arm carries it out of its own frame, and the completion prune keeps what
   // the signature names.

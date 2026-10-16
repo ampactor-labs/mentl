@@ -16,4 +16,4 @@ fn f() = {
   v + 1
 }
 
-fn main() = (f()) ~> h
+fn main() = f() ~> h

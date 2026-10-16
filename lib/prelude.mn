@@ -9,8 +9,7 @@
 // The imports ARE the manifest (there is no config file, ever): a user
 // program's one `import prelude` pulls the whole vocabulary through the
 // driver's dep walk — memory (the substrate ops), strings, lists,
-// threading.  The wheel's own one-namespace concatenation reads these as
-// inert statements; the driver reads them as the dep DAG.
+// threading.
 import memory
 
 import lists
@@ -105,25 +104,10 @@ effect Iterate {
   result() -> r
 }
 
-// Flatten ONCE so iterate_from's xs[i] is O(1).  map/fold/filter build their
-// inputs via push/++ (snoc/concat, tags 1/3), where list_index(xs, i) is O(i)
-// -> the whole iteration O(N²); it was 48.85% of the self-compile (perf,
-// 2026-07-14).  list_to_flat no-ops on an already-flat list (tag 0), so flat
-// inputs pay nothing; the flat copy preserves order, so every yield is
-// byte-identical.
-// Top-level tail-recursive iteration — no nested closure.  Lower's
-// tail-call-mark-pass recognizes `iterate_from(xs, i+1, n)` as the
-// tail call of the then-branch; emit produces a return_call, the
-// frame doesn't accumulate.  For wheel-class lists (hundreds of
-// elements), this keeps the wasm stack bounded — without this form,
-// mentl2's self-compile trapped via the map handler's per-element yield recursion (one
-// frame per element × handler-stack-depth).
-// Declared BEFORE its caller (callee-first): a caller judged against the
-// PRE-scheme reads the authored bare row (mk_ef_open of declared names),
-// and that bare accumulation bakes into the caller's own published row —
-// the Iterate instance args died exactly there, orphaning every
-// fold-family element.  Source order kills this instance; the class
-// (order-independent verdicts) is the named peer in PLAN.
+// Flattened once, so each `xs[i]` is O(1): a list built by push or `++` is a
+// snoc or concat tree, where an index read is O(i), and `list_to_flat` leaves
+// a flat list as it is. The walk is a tail call, so the stack stays bounded
+// at any length.
 fn iterate_from(xs, i, n) = if i < n {
   yield(xs[i])
   iterate_from(xs, i + 1, n)
@@ -133,28 +117,9 @@ fn iterate_from(xs, i, n) = if i < n {
 
 fn iterate(xs) = iterate_from(list_to_flat(xs), 0, len(xs))
 
-// One handler per `~>` install: transform + materialize fused into
-// ONE state record.  The substrate-honest form per the eight interrogations:
-//   Graph: one handler IS one graph node at the `~>` site.
-//   Handler: single arm performs the work; no chain dispatch.
-//   Verb: one `~>` install, not a chain of two.
-//   Row: Iterate handled here, ownership of buf threads through state.
-//   Ownership: buf owned across yields; consumed at result via slice.
-//   Refinement: slice(buf, 0, count) IS the refined output.
-//   Gradient: single-fused-handler form is the locked gradient state.
-//   Reason: "<op>_collector for <op>" — one Reason chain per result.
-//
-// Chained transform→materialize handlers (Haskell-pipeline fluency)
-// require evidence-passing for arm-internal performs to reach outer
-// handlers — not yet substrate.  Fused single-handler form sidesteps
-// that gap and IS the Mentl-canonical shape.  Buffer-counter (Ω.3)
-// substrate via list_extend_to + list_set + slice keeps O(N) total
-// vs the O(N²) concat-plus-element pattern (drift mode 11).
-//
-// Scalar-producing operations (fold, any, all, find, count, each)
-// use named handlers + ~> pipe — uniform with map/filter/take/drop.
-// Per Hβ.prelude-ultimate-form (2026-05-14): all iteration operations
-// use the canonical ~> pipe verb form per SYNTAX.md §1466-1468.
+// One handler per `~>` install: the transform and the collection fused into
+// one state record, its buffer grown in place and sliced at `result`, so a
+// collection costs O(N) in all.
 handler map_collector(f) with buf = make_list(16), count = 0 {
   yield(elem) => {
     let v = f(elem)
@@ -242,13 +207,6 @@ fn drop(n, xs) = {
   result()
 } ~> drop_collector(n)
 
-// Scalar-producing operations — named handler + ~> pipe form.
-// Per Hβ.prelude-ultimate-form (2026-05-14): the inline handle-block
-// escape hatch is dissolved into `~>`, the one install verb (SYNTAX.md
-// §«Installation»).  Named handlers + `~>` make these uniform with
-// map/filter/take/drop above, and the PTee path pushes the handler
-// stack and carries the row algebra `(body − E) ⊕ R` live.  Zero
-// call-site changes — function signatures unchanged.
 handler fold_handler(f, init) with acc = init {
   yield(elem) => resume() with acc = f(acc, elem),
   result() => resume(acc),
@@ -282,12 +240,19 @@ handler find_handler(pred) with found = None {
   result() => resume(found),
 }
 
+handler find_map_handler(f) with found = None {
+  yield(elem) => match found {
+    Some(_) => resume(),
+    None => resume() with found = f(elem),
+  },
+  result() => resume(found),
+}
+
 handler count_handler(pred) with n = 0 {
   yield(elem) => if pred(elem) { resume() with n = n + 1 } else { resume() },
   result() => resume(n),
 }
 
-// Scalar-producing operations — ~> pipe with named handlers.
 fn fold(init, f, xs) = {
   iterate(xs)
   result()
@@ -314,6 +279,12 @@ fn find(pred, xs) = {
   result()
 } ~> find_handler(pred)
 
+// The first answer `f` gives: `f` of the first element it maps to `Some`.
+fn find_map(f, xs) = {
+  iterate(xs)
+  result()
+} ~> find_map_handler(f)
+
 fn count(pred, xs) = {
   iterate(xs)
   result()
@@ -337,13 +308,8 @@ fn concat(xss) = flatten(xss)
 
 fn reduce(xs, f) = fold(head(xs), f, rest(xs))
 
-// The buffer-counter tail form (range_fill's own shape): one exact-size
-// flat buffer, one tail-recursive fill — O(min(n)) work, O(1) stack.  The
-// old cons-recursive form spent a non-tail frame per element and died at
-// the ambient stack cliff: the wheel's own emit enumerates its fn table
-// under thousands of compile frames and sat ~1,000 fns from that death
-// (found 2026-08-07 by the total-twinning forensics; mn-zip-deep pins
-// 200,000 on a fresh stack).  Declared callee-first (iterate_from's law).
+// One exact-size flat buffer and one tail-recursive fill: O(min(n)) work and
+// O(1) stack at any length.
 fn zip_with_fill(f, xs, ys, buf, i, n) =
   if i < n { zip_with_fill(f, xs, ys, list_set(buf, i, f(xs[i], ys[i])), i + 1, n) } else { buf }
 
@@ -404,11 +370,7 @@ fn max(a, b) with Pure = if a <= b { b } else { a }
 
 fn clamp(x, lo, hi) with Pure = min(max(x, lo), hi)
 
-// Float-typed by its own literals: every caller in the corpus is a dsp
-// Float site, and the old `0` pins made abs Int -> Int — each forward
-// call site unified Float against the LOOSE pre-scheme while the compiled
-// body word-floored, so abs was an identity on negative floats (caught by
-// the order-independent judge, 2026-07-25).  An integer magnitude reads
+// Float-typed by its own literals; an integer magnitude reads
 // `if n < 0 { 0 - n } else { n }` at its own width.
 fn abs(x) with Pure = if x < 0.0 { 0.0 - x } else { x }
 
@@ -429,20 +391,10 @@ fn sort(xs) = if len(xs) <= 1 {
   merge(sort(slice(xs, 0, mid)), sort(slice(xs, mid, len(xs))))
 }
 
-// THE PINS ARE LOAD-BEARING, and their absence shipped a RUNTIME TRAP on
-// the plainest line a beginner writes: unannotated params leave the
-// element type free, so `acc ++ sep ++ xs[i]` reaches `++`'s no-guess
-// floor — the refusal is RIGHT (a representation cannot be guessed) and
-// its FORM was a wasm unreachable in shipped library code.  `join(["ab",
-// "cd"], "-")` exited 134 with zero diagnostics until 2026-07-31.  The
-// comment that stood here claimed "explicit str_concat threads the String
-// type directly through the loop" — a repair that was never in the body;
-// the Intent Boundaries below are that repair, made real.
-//
-// The order is the STAGE LAW's (SYNTAX §"The Stage Law"): configuration
-// first, the flowing datum LAST, so `names |> join(", ")` fills `xs` and
-// reads as the graph.  Datum-first, the pipe filled `sep` with the datum
-// and joined the SEPARATOR by the list — silently, at exit 0.
+// The pins are the representation: with the element type free, `acc ++ sep
+// ++ xs[i]` has no sequence to concatenate. The order is the Stage Law's —
+// the separator first, the flowing datum last — so `names |> join(", ")`
+// fills `xs`.
 fn join_loop(ref xs: [String], sep: String, i, acc: String) =
   if i >= len(xs) { acc } else { join_loop(xs, sep, i + 1, acc ++ sep ++ xs[i]) }
 
@@ -457,20 +409,8 @@ fn lines(s) = split("\n", s)
 
 fn unlines(ls) = join("\n", ls)
 
-// String functions use str_slice (byte-level) not slice (list-level).
-// This separation is load-bearing for WASM: the HM checker doesn't
-// instantiate user-defined generic functions, so all call sites of
-// `slice` share the same type variable.  If both string and list call
-// sites use `slice`, the type variable unifies with the String alias, and the
-// WASM lowerer dispatches list-slicing to str_slice — corrupting
-// pointers.  Using str_slice here keeps `slice` list-only.
-// str_eq BY NAME (the render-family precedent — the author states the
-// representation): str_slice builds its view by address arithmetic, so the
-// slice's word proof wins the == dispatch and the compare goes pointer-eq —
-// ends_with was false for every (view, literal) pair, discovered when the
-// mentl server routed every "/dir/" request to a 404 (2026-07-10).  The
-// param pins alone were refuted at the artifact; §4① String=[Byte]
-// dissolves the residue.
+// A string is read here through its byte-level view, `str_slice`, and
+// compared byte by byte, `str_eq`.
 fn starts_with(s: String, prefix: String) =
   byte_len(s) >= byte_len(prefix) && str_eq(str_slice(s, 0, byte_len(prefix)), prefix)
 

@@ -1,0 +1,27 @@
+// expect: 66
+// Two calls that may suspend in one block: the second is captured from the
+// frame that reached it, the function's own on the first pass and the first
+// call's continuation on each resumption, under one remainder. The nested
+// resumptions answer (10 + 1) + (10 + 2) and (20 + 1) + (20 + 2), and the arm
+// sums 23 and 43.
+effect Pick {
+  pick() -> Int
+}
+
+handler both {
+  pick() => {
+    let a = resume(0)
+    let b = resume(1)
+    a + b
+  },
+}
+
+fn inner() = pick() + 1
+
+fn outer() = {
+  let a = inner()
+  let b = inner()
+  a * 10 + b
+}
+
+fn main() = outer() ~> both

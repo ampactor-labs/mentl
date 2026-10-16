@@ -1,0 +1,9 @@
+// expect: 80
+// `find_map(f, xs)` answers `f` of the first element `f` maps to `Some`: 3
+// maps to nothing, 8 to `Some(80)`, and 5 is never asked.
+fn tenfold_over_four(x) = if x > 4 { Some(x * 10) } else { None }
+
+fn main() = match [3, 8, 5] |> find_map(tenfold_over_four) {
+  Some(v) => v,
+  None => 1,
+}

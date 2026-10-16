@@ -1,0 +1,37 @@
+// expect: 73
+// A perform as a record field after a field computed by a call: each
+// resumption builds its own record from the first field's value and its own
+// second field, (35 + 0 + 1) + (35 + 1 + 1), and the tally was bumped once.
+effect Pick {
+  pick() -> Int
+}
+
+handler both {
+  pick() => {
+    let a = resume(0)
+    let b = resume(1)
+    a + b
+  },
+}
+
+effect Tally {
+  bump()
+  total() -> Int
+}
+
+handler tally with n = 0 {
+  bump() => resume() with n = n + 1,
+  total() => resume(n),
+}
+
+fn seven() = {
+  bump()
+  7
+}
+
+fn body() = {
+  let r = {a: seven(), b: pick()}
+  r.a * 5 + r.b + total()
+}
+
+fn main() = body() ~> both ~> tally

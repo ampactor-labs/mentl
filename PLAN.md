@@ -531,7 +531,8 @@ landing that closes it. A gate that did not run is UNKNOWN, never green.
 - **The resident Space keeps its graph for a session's life**; a session derives
   once per open, and a fresh process derives cold (§11.18).
 - **The wheel never performs a multi-shot op**, and its speculation is
-  bracketed by hand (§11.11, §11.15).
+  bracketed by hand (§11.11, the fused oracle). A continuation is captured at
+  any position, by a copy of its frame's lowered tail (§11.18).
 - **The compile is sequential by construction** (§11.16).
 - **The prose still asserts machinery that is not there**: decoration banners,
   coordinates in prose, ledes that are another comment's text. Each module's
@@ -641,10 +642,11 @@ type) · a blind token-walk absorber eating comma-less siblings.
 
 ## §11 · The program — the one list of open work
 
-The order follows four rules, in this order: protect what exists; keep the net
-that verifies every landing trustworthy; close any false proof a user can hit
-before anything else (§0's property 2 failing at a shape a real program writes
-preempts this list); then the faces of the one law, hardest first. A landing is
+The order is biggest moves first (Morgan, 2026-10-16): the frontier leads, in
+the order it is written below, and the standing cursor follows it, the native
+backend last. Two rules preempt both: a false proof a user can hit (§0's
+property 2 failing at a shape a real program writes) is closed before anything
+else, and the net that verifies every landing stays trustworthy. A landing is
 committed whole; a gap found inside it is fixed inside it; when it lands its
 paragraph leaves this list. Each `Hβ.*` label names the landing's design as git
 keeps it.
@@ -674,7 +676,38 @@ LOWERED PROGRAM (`LowExpr`, a second tree whose walks read names). The oracle is
 their sum: a fan that judges context once and reads it live, a tie-break that is
 a provenance diff, a search over live shared cells.
 
-**THE STANDING CURSOR** — the order work runs in:
+**THE FRONTIER LEADS** — each a move inside the medium, in the order work runs:
+
+- **Flow** (§4⑥): the influence walk gains control edges, a label is a
+  refinement on a source's declared type and a sink's demand a precondition, and
+  `FlowLabel` and its readers retire — an `Untrusted` value reaching a `Trusted`
+  sink refused, implicit flows included.
+- **The fused oracle**: the compiler forks first — the ??-fan performs
+  `choose`, its candidates the resumptions of one perform, each judged on the
+  trail a forking handler checkpoints and rolls back, so the fixed point
+  exercises a multi-shot op and the speculation the wheel brackets by hand
+  becomes that handler's arm. Then N forked cursors on N threads over one
+  image, each fork writing the one graph through the deterministic handle
+  partition (§11.16), form variants merged as e-graph classes, meanings forked
+  only at genuine disjunctions, the question computed from the first
+  divergence of two trails — the default judge.
+- **The crown, modal** (`Hβ.effects.modal-world-index`): rows, capabilities and
+  negation sound together as a graph fact, one crucible per modal rule, red
+  first; the TIME face — a resumed continuation refused under a changed world —
+  rides the continuation made a first-class value, its world on its record.
+- **Verification whole**: the verifier decides a predicate's expression, where
+  it decides the projection a type carries (`node_to_predicate`); a bug trap
+  unwinds with the graph as its payload; every diagnostic class refuses the
+  executable.
+- **`!Outside` closes**, last: the native backend (`docs/NATIVE.md`, frames in
+  the image and the deterministic partition its keystones), diverse double
+  compilation (`Hβ.closure.diverse-double-compilation`), the correctness oracle
+  absorbed into the wheel's own Verify
+  (`Hβ.closure.correctness-oracle-internal`), and every scaffold under tools/
+  absorbed into a verb — the march is `mentl march` and the board `mentl verify`
+  already; the state script is next.
+
+**THE STANDING CURSOR** — the order work runs in once the frontier has moved:
 
 2. **Every position is a cell — #108** (`Hβ.graph.positions-are-cells`). The
    write the structure cut was for that is not yet built: accepting a
@@ -840,12 +873,6 @@ a provenance diff, a search over live shared cells.
     W1 renders offline from a checked-in snapshot; W3 plays live in the page; W2
     adds the keyed sources (UTA's real-time TRAX first) through a host-applied
     key the guest never holds — the open half of configuration as an effect.
-15. **A continuation is captured at any position**
-    (`Hβ.lower.offspine-perform-is-the-frame-not-in-the-image`). Frames live in
-    the image: a frame is a record, a continuation its extent, capture a copy,
-    so a held or multi-shot perform reifies from any position and
-    `E_ContinuationUncapturable` has nothing left to refuse. Then the ??-fan
-    performs `choose`, so the fixed point exercises a multi-shot op.
 16. **The compile runs on every core** (`Hβ.driver.level-set-par-walk`,
     `Hβ.native.deterministic-handle-partition`). A handle becomes an
     `{arena, offset}` product (one word by a repr pin), deterministic under any
@@ -871,7 +898,12 @@ a provenance diff, a search over live shared cells.
     (`plan_reached`, `reach_units`) key their units by it, and a function
     bound to a handler's resume is the declaration the arm's references
     reach, where it is found by its spelling (`ls_resume_bind_of`); the
-    gate is m3 == m4 with the symbol-keyed walks deleted; a module value is a
+    gate is m3 == m4 with the symbol-keyed walks deleted; a continuation is
+    its frame's record in the image and the node it stopped at, captured by a
+    copy and resumed by entering the frame's one function at that node, where
+    the lowering copies the frame's tail into a function of its own at each
+    place the frame can suspend (`capture_frame`), so a block with n such
+    places writes its tail n times; a module value is a
     column on its binder, so a module-scope let binds every binder its pattern
     writes, each at a global of its own, and runs its value for effect when it
     binds none, where any pattern but one binder refuses today; incrementality has the
@@ -884,30 +916,5 @@ a provenance diff, a search over live shared cells.
     the caller's frame (`Hβ.effects.store-claim-travels-with-the-function`).
 
 ---
-
-### The frontier — each a move inside the medium
-
-- **The crown, modal** (`Hβ.effects.modal-world-index`): rows, capabilities and
-  negation sound together as a graph fact, one crucible per modal rule, red
-  first; the TIME face — a resumed continuation refused under a changed world —
-  rides persist.
-- **Flow** (§4⑥): the influence walk gains control edges, a label is a
-  refinement on a source's declared type and a sink's demand a precondition, and
-  `FlowLabel` and its readers retire.
-- **Verification whole**: the verifier decides a predicate's expression, where
-  it decides the projection a type carries (`node_to_predicate`); a bug trap
-  unwinds with the graph as its payload; every diagnostic class refuses the
-  executable.
-- **The fused oracle**: N forked cursors on N threads over one image, form
-  variants merged as e-graph classes, meanings forked only at genuine
-  disjunctions, the question computed from the first divergence of two trails —
-  the default judge.
-- **`!Outside` closes**: the native backend (`docs/NATIVE.md`, frames in the
-  image and the deterministic partition its keystones), diverse double
-  compilation (`Hβ.closure.diverse-double-compilation`), the correctness oracle
-  absorbed into the wheel's own Verify
-  (`Hβ.closure.correctness-oracle-internal`), and every scaffold under tools/
-  absorbed into a verb — the march is `mentl march` and the board `mentl verify`
-  already; the state script is next.
 
 Excluded by hardware only: MI300X execution, wasmFX, shared-everything threads.

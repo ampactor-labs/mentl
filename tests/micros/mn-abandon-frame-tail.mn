@@ -13,4 +13,4 @@ handler h {
 
 fn f() = boom("x")
 
-fn main() = (f()) ~> h
+fn main() = f() ~> h

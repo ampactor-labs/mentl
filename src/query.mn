@@ -2774,8 +2774,6 @@ fn where_site(h, shape, tees) with !Mutate =
 fn boundary_width(h) with !Mutate = match graph_boundary_at(h) {
   FanoutBoundary(edges) => len(edges),
   NoBoundary => 0,
-  PendingContinuationBoundary(_, _, _, _) => 0,
-  ContinuationBoundary(_) => 0,
   InterpBoundary(_) => 0,
 }
 

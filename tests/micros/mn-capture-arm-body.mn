@@ -1,0 +1,31 @@
+// expect: 12
+// A handler arm that performs another handler's multi-shot op: the arm's own
+// rest is captured where it performs, then the performer's rest where the arm
+// was called, so each resumption finishes the arm and returns through the
+// perform that called it, (0 * 10 + 1) + (1 * 10 + 1).
+effect Pick {
+  pick() -> Int
+}
+
+handler both {
+  pick() => {
+    let a = resume(0)
+    let b = resume(1)
+    a + b
+  },
+}
+
+effect Ask {
+  ask() -> Int
+}
+
+handler asker {
+  ask() => {
+    let v = pick()
+    resume(v * 10)
+  },
+}
+
+fn body() = ask() + 1
+
+fn main() = body() ~> asker ~> both

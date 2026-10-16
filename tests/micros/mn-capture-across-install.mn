@@ -1,0 +1,30 @@
+// expect: 32
+// A yield that crosses an install standing as an operand: the install's value
+// is the left operand of `+ 10`, so the frame around it captures `+ 10` onto
+// the continuation and each resumption finishes it, (1 + 10) + (11 + 10).
+effect Pick {
+  pick() -> Int
+}
+
+handler both {
+  pick() => {
+    let a = resume(0)
+    let b = resume(1)
+    a + b
+  },
+}
+
+effect Ask {
+  ask() -> Int
+}
+
+handler asker {
+  ask() => {
+    let v = pick()
+    resume(v * 10)
+  },
+}
+
+fn body() = ask() + 1
+
+fn main() = (body() ~> asker) + 10 ~> both

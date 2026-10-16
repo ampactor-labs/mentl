@@ -1,0 +1,34 @@
+// expect: 3
+// A perform past a statement that performs: the statement ran once, before the
+// suspension, and each resumption continues after the perform. `total()` reads
+// 1 in both resumptions; a remainder that ran the prefix again would read 2
+// and 3 and answer 6.
+effect Pick {
+  pick() -> Int
+}
+
+handler both {
+  pick() => {
+    let a = resume(0)
+    let b = resume(1)
+    a + b
+  },
+}
+
+effect Tally {
+  bump()
+  total() -> Int
+}
+
+handler tally with n = 0 {
+  bump() => resume() with n = n + 1,
+  total() => resume(n),
+}
+
+fn body() = {
+  bump()
+  let v = pick()
+  v + total()
+}
+
+fn main() = body() ~> both ~> tally

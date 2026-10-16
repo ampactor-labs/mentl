@@ -1,0 +1,21 @@
+// expect: 32
+// A call that may suspend, bound by a `let`: when the callee yields, this
+// frame's rest is captured onto the continuation the callee's perform began,
+// so each resumption returns through the call and finishes the block,
+// (10 + 1) + (20 + 1).
+effect Choice {
+  choose() -> Int
+}
+
+handler both {
+  choose() => resume(1) + resume(2),
+}
+
+fn inner() = choose() * 10
+
+fn outer() = {
+  let x = inner()
+  x + 1
+}
+
+fn main() = outer() ~> both
