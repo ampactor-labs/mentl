@@ -43,8 +43,8 @@ import persist
 import types
 
 // The handler-arm context. `lower_one_arm_decl` installs `arm_state_ctx`
-// around each arm body's lowering, and a resume-bound fn around its own;
-// ResumeExpr reads `current_state_fields()` to resolve `with field = NEW`
+// around each arm body's lowering, and a lambda or a nested fn minted in the
+// arm lowers inside it; ResumeExpr reads `current_state_fields()` to resolve `with field = NEW`
 // updates' slot offsets AND `current_resume_discipline()` to pick its
 // representation (OneShot → LReturn floor; MultiShot → a call of the
 // continuation record). The discipline is carried LIVE on the context
@@ -115,14 +115,6 @@ fn handler_state_count(hd) = match handler_shape_at(hd) {
 // Per-effect arm-name groups for a handler, projected live from its decl.
 fn handler_arm_groups(hd) = match handler_shape_at(hd) {
   Some((_, _, _, arms)) => build_handler_arm_names(hd, arms),
-  None => [],
-}
-
-// The names a handler's record holds, in slot order: its config parameters,
-// then its state fields.
-fn arm_capture_names(hd) = match handler_shape_at(hd) {
-  // drift-audit: ignore — one-shot name-list build
-  Some((_, config, state, _)) => map(param_name, config) ++ state_field_names_of(state),
   None => [],
 }
 
@@ -350,15 +342,16 @@ type LowExpr
   | LMakeVariant(Int, TagId, [LowExpr])
   | LMatch(Int, LowExpr, [(LowPat, LowExpr)])
   // The MultiShot resume INVOKING its continuation record: handle, the k
-  // expr (the arm's __k argument / a lambda's captured __k), the resume
-  // value. Its own node — not an LCall — because the invocation REBINDS the
-  // world: emit brackets the call in the k record's frozen world (save
-  // $world_g, set from the record's last word, call through fn_ptr@0 by the
-  // W7 convention, restore), so the remainder's performs resolve where the
-  // continuation was captured, never where it happens to be resumed (the
-  // world-as-value arc's R4 — the arm-config class's TIME-axis sibling).
+  // expr (the arm's __k argument / a lambda's captured __k), the record of
+  // the install whose arm holds it, the resume value. Its own node — not an
+  // LCall — because the invocation REBINDS the world: emit brackets the call
+  // in the remainder's world and restores the resumer's after it. That world
+  // is the continuation's own segment of the world it froze, through the
+  // nodes of the install whose record this is, rooted on the world where the
+  // resume stands, so an install the resumer stands under governs every
+  // perform past that segment, as the rows judge it.
   //
-  // handle, k_expr, value
+  // handle, k_expr, hrec_expr, value
   // ~> desugaring. ONE handler record (handler IS state IS closure):
   // [_@0][nstate FENCE@4][state@8..][arms per-effect-contiguous].
   //   4th = the handler's declaration.
@@ -369,7 +362,7 @@ type LowExpr
   //         builds a thin [record, base] evidence-entry per effect (the world
   //         chain node's entry — what the perform's walk reads to reach an arm).
   // Per PLAN §5.U.
-  | LResumeK(Int, LowExpr, LowExpr)
+  | LResumeK(Int, LowExpr, LowExpr, LowExpr)
   | LHandleWith(Int, LowExpr, LowExpr, Int, [LowExpr], [{arms: [String], ename: String}])
   // The DERIVATIVE READING's install, `(e) ~> grad(w)`: handle, the seed
   // (the lowered w — a local or a capture), the body. It builds no record
@@ -438,7 +431,7 @@ type LowExpr
   // PLAN §5.U, so the store
   // mutates handler state across resume calls.
   | LConvert(Int, ConvertKind, LowExpr)
-  // handle, slot_offset, value, record READ — resolved at lower through the __hrec ladder (arm frame: the LLet alias of the arm's own $__state; lambda: the seeded capture; resume-bound fn: the trailing param after __k). The record is a value the frame was born holding — the retired $<hname>_state_g singleton was a bracket-scoped CACHE of it, and a closure's own $__state is its closure record (the measured 32-not-46 / 20-not-25 silent state loss, both disciplines)
+  // handle, slot_offset, value, record READ — resolved at lower through the __hrec ladder (arm frame: the LLet alias of the arm's own $__state; a lambda or a nested fn minted in the arm: the seeded capture). The record is a value the frame was born holding — the retired $<hname>_state_g singleton was a bracket-scoped CACHE of it, and a closure's own $__state is its closure record (the measured 32-not-46 / 20-not-25 silent state loss, both disciplines)
   | LStateSlotStore(Int, Int, LowExpr, LowExpr)
   // handle, handler declaration, slot index, value — a state field's FIRST
   // store, in its handler's init fn (`lower_init_decl`), whose $__state is
@@ -508,7 +501,7 @@ type ConvertKind
 // PdDriver(handler declaration, record) — NOT a dispatch. A direct call to
 //   the handler's redrive (`redrive_fn_name`) against the INSTALL record it drives, read through the
 //   record ladder (`resolve_hrec`): the arm's own `$__state` at arm level, a
-//   lambda's captured record, a bound callee's trailing param. It used to be
+//   lambda's or a nested fn's captured record. It used to be
 //   the CALLER's own `$__state`, which is the install record only in the
 //   arm's own frame; a resume inside a lambda re-drove through the closure
 //   record and the install answered an address (measured 2026-10-01,
@@ -637,7 +630,7 @@ fn lexpr_handle(e) with Pure = match e {
   LMakeClosure(h, _, _) => h,
   LShow(h, _) => h,
   LHash(h, _) => h,
-  LResumeK(h, _, _) => h,
+  LResumeK(h, _, _, _) => h,
   LYield(h, _, _, _) => h,
   LCheck(h, _, _) => h,
   LAbandon(h, _, _) => h,
@@ -1161,21 +1154,17 @@ fn project_lambda_fn(origin, cap_pairs) = match graph_node_body(origin) {
 }
 
 // The nested-fn body projector (landing shape α, second kind): the ONE
-// construction of a nested FnStmt's LowFn — params re-derived from the
-// origin's program-column node plus the resume-binding appendage, the
-// frame from the entry's capture pairs. The composed name rides the
-// enumeration entry, and the handler the fn is bound to is the
-// resume-binding closure's (`ls_resume_bind_of`). A bound fn takes the
-// arm's k and the install record as trailing parameters and lowers under
-// its handler's arm context.
-fn project_nested_fn(origin, fn_name, bind, cap_pairs) = match graph_node_body(origin) {
+// construction of a nested FnStmt's LowFn — params from the origin's node,
+// the frame from the entry's capture pairs, the composed name from the
+// enumeration entry. A nested fn is minted where it is declared, as a lambda
+// is, so its body lowers in the context it stands in: a resume in it belongs
+// to the arm that encloses the declaration, reads the k and the install
+// record its record captured there (`lower_seed_k`), and resolves its state
+// fields and its discipline through that arm's context.
+fn project_nested_fn(origin, fn_name, cap_pairs) = match graph_node_body(origin) {
   NStmt(FnStmt(_name, params, _ret_ann, _effs, body_node)) => {
     let cap_names = map({ (n, _) => n }, cap_pairs)
     let cap_handles = map({ (_, h) => h }, cap_pairs)
-    let (bind_fields, bind_disc) = match bind {
-      None => ([], OneShot),
-      Some(hd) => (arm_capture_names(hd), MultiShot),
-    }
     let param_names_list = lower_param_names(params)
     // A top-level fn's frame is entered with no frame below it; its record
     // is the module's static data record, so its lines are STATIC — an
@@ -1184,13 +1173,9 @@ fn project_nested_fn(origin, fn_name, bind, cap_pairs) = match graph_node_body(o
     let line_base = if ls_frame_depth() == 0 { -1 } else { len(cap_pairs) }
     ls_enter_frame(fn_name, param_names_list, params, cap_names, cap_handles, line_base)
     lower_frame_fence_push()
-    let lo_body = capture_frame(
-      mark_tail({
-        let layers = lower_param_destructures(params)
-        wrap_param_destructures(layers, lower_expr(body_node))
-      } ~> arm_state_ctx(bind_fields, bind_disc, bind)),
-      ret_ty_of(origin)
-    )
+    let layers = lower_param_destructures(params)
+    let lo_body =
+      capture_frame(mark_tail(wrap_param_destructures(layers, lower_expr(body_node))), ret_ty_of(origin))
     lower_handler_pop()
     let lines = ls_exit_frame()
     Some(LFn(fn_name, len(param_names_list), param_names_list, [lo_body], len(cap_pairs), lines))
@@ -1442,126 +1427,6 @@ fn effect_has_op_by(ename, disc_pred) = any(op_disc_holds(disc_pred), effect_op_
 // performer of such a handler's op checks after it as it checks after one
 // whose arms may yield.
 fn effect_joins_a_thread(ename: String) = ename == "WasiThreads"
-
-fn resume_bind_assoc(binds, name: String, i) = if i >= len(binds) {
-  None
-} else {
-  match list_index(binds, i) {
-    (n, hd) => if n == name { Some(hd) } else { resume_bind_assoc(binds, name, i + 1) },
-  }
-}
-
-// THE CUT (bank Ruling 6 + A3) — the resume-capability bindings: from each
-// handler arm whose op grades MultiShot, the transitive closure of called
-// resume-bearing fns (summary other than RNone — the classifier's fixpoint,
-// read off the graph where the judgment left it; collect_free_vars
-// over-approximates the call edge, which only ever binds a dormant wrap).
-// Each bound fn lowers under its handler's arm context (disc MultiShot, the
-// handler whose redrive a resume calls, the state fields read live from the
-// decl), and reads the k its record captured where the arm minted it. A fn
-// reached from arms of TWO handlers is E_ResumeAmbiguousOp — narrow the
-// call graph; the first binding stands (productive-under-error).
-fn resume_bindings(stmts) = match graph_summaries() {
-  (summaries, _) => {
-    let decls = collect_fn_decls_list(stmts, [])
-    bind_from_handlers(stmts, summaries, decls, [])
-  },
-}
-
-fn bind_from_handlers(stmts, summaries, decls, binds) = if len(stmts) == 0 {
-  binds
-} else {
-  let hd = last(stmts)
-  let binds2 = match graph_node_body(hd) {
-    NStmt(HandlerDeclStmt(_, _, config, state, arms, _)) => {
-      // An arm's config, state fields and arguments are its binders, never
-      // a call — the arm walk binds them as the free-name walk does.
-      let in_arms = param_bound_names(config) ++ map(state_field_name, state)
-      bind_from_arms(arms, hd, in_arms, summaries, decls, binds)
-    },
-    _ => binds,
-  }
-  bind_from_handlers(drop_last(stmts), summaries, decls, binds2)
-}
-
-fn bind_from_arms(arms, hd, in_arms, summaries, decls, binds) = if len(arms) == 0 {
-  binds
-} else {
-  let arm = last(arms)
-  let binds2 = match op_resume_discipline(handler_arm_op_decl(arm)) {
-    MultiShot => bind_closure(
-      callable_names(handler_arm_body(arm), in_arms ++ param_bound_names(arm.args)),
-      hd,
-      summaries,
-      decls,
-      binds
-    ),
-    _ => binds,
-  }
-  bind_from_arms(drop_last(arms), hd, in_arms, summaries, decls, binds2)
-}
-
-// The functions a body can reach by name: its free names, and every fn
-// declared inside it. A nested fn's name is bound by its own declaration, so
-// the free-name walk never reports it, yet the arm reaches it — the closure
-// found the arm's nested try_each in tests/micros/mn-backtrack-full.mn only
-// because the walk leaked a nested fn's self-reference out as a free name,
-// and when the leak closed (2026-10-03) that fn lost its continuation and
-// the program trapped.
-fn callable_names(body, bound) =
-  free_vars_merge(collect_free_vars(body, bound), map(decl_entry_name, collect_fn_decls(body, [])))
-
-fn decl_entry_name(entry) = match entry {
-  (n, _, _, _) => n,
-}
-
-// Worklist closure: bind each marked free name, then its body's marked
-// frees, until no new name binds.
-fn bind_closure(names, hd, summaries, decls, binds) = if len(names) == 0 {
-  binds
-} else {
-  let n = last(names)
-  let rest = drop_last(names)
-  if usage_is_marked(usage_summary_lookup(summaries, n, 0)) {
-    match resume_bind_assoc(binds, n, 0) {
-      None => {
-        let deeper = collect_free_vars_of_decl(decls, n)
-        bind_closure(
-          free_vars_merge(rest, deeper),
-          hd,
-          summaries,
-          decls,
-          // drift-audit: ignore — decl-count-bounded cons, not a hot loop
-          [(n, hd)] ++ binds
-        )
-      },
-      Some(bound) => {
-        if bound != hd { report(EResumeAmbiguousOp(n, span_zero())) }
-        bind_closure(rest, hd, summaries, decls, binds)
-      },
-    }
-  } else {
-    bind_closure(rest, hd, summaries, decls, binds)
-  }
-}
-
-fn usage_is_marked(u) = match u {
-  RNone => false,
-  RTail => true,
-  RDeep => true,
-  RMany => true,
-}
-
-fn collect_free_vars_of_decl(decls, name: String) = {
-  let hits = filter({ (n, _, _, _) => n == name }, decls)
-  if len(hits) == 0 {
-    []
-  } else {
-    match head(hits) {
-      (_, body, _, pnames) => callable_names(body, pnames),
-    }
-  }
-}
 
 // AN-2 — the ops a direct perform must CHECK after: every op of every
 // handler whose residual row (what its arms perform) may yield, by name or
@@ -2493,11 +2358,11 @@ fn lower_expr_body(e, handle, span) = match e {
     let lambda_name = "lambda_{int_to_str(handle)}"
     let param_names_list = lower_param_names(params)
     let param_handles_list = params
-    // Seed "__k" whenever a k is lexically in scope at the mint: any call
-    // to a resume-bound callee inside this body takes the k as a trailing
-    // argument (lower_call_default), so the closure must carry it — and
-    // the chain holds for arbitrary nesting by induction (each inner mint
-    // re-seeds from its own enclosing frame). Where no k is in scope the
+    // Seed "__k" whenever a k is lexically in scope at the mint: a resume
+    // in this body, or in a lambda or a nested fn minted inside it, reads
+    // the k the closure carries — and the chain holds for arbitrary nesting
+    // by induction (each inner mint re-seeds from its own enclosing frame).
+    // Where no k is in scope the
     // seed adds nothing. One dormant word per arm-context closure that
     // never uses it — the price of a walk-free, stateless rule. Every name
     // the parameters' patterns bind is the body's own, never a capture.
@@ -4073,10 +3938,9 @@ fn lower_fn_mint(name, params, body_node, handle, reg) = {
         ret: ret_ty_of(handle),
       })
       // THE DIRECT SWAP (landing shape α, second kind): the LowFn is
-      // built by the column-seeded projector. The resume-binding
-      // context (THE CUT, bank A3 — the arm_state_ctx install) lives in
-      // project_nested_fn; the site keeps what feeds the columns.
-      match project_nested_fn(handle, fn_name, ls_resume_bind_of(name), zip(captures_names, captures_handles)) {
+      // built by the column-seeded projector; the site keeps what feeds the
+      // columns.
+      match project_nested_fn(handle, fn_name, zip(captures_names, captures_handles)) {
         // Two namespaces meet here, each carried by its own node. The LLet
         // holds the LOCAL one — the register the name is bound at (the source
         // name unless it shadows), which the body's own references, a
@@ -4782,7 +4646,7 @@ fn lower_one_arm_decl(arm: {args: [Node], body: Node, op: Node}, hd, config, sta
   // An arm that COMMITS state or may RE-DRIVE binds `__hrec` to its own
   // $__state — the install record the driver passed — so every depth
   // reaches it through the ONE ladder: at arm level the LLet local, in a
-  // lambda the seeded capture, in a bound callee the trailing param. A
+  // lambda or a nested fn the seeded capture. A
   // held resume re-drives this handler when its remainder performs again
   // (`lower_resume_callk`), and the driver dispatches through the install
   // record, so a re-driving arm needs the ladder whether or not it has
@@ -4876,55 +4740,55 @@ fn lower_resume_oneshot(handle, val, state_updates) = if len(state_updates) == 0
 // twice-refuted correction of the bank's "driver re-entry" sketch, which
 // ABANDONED the outer arm): a raised flag means the remainder yielded
 // again mid-resume. An OWNED op re-enters this handler's own dispatch —
-// $op___redrive_<hname>, the install driver's loop factored to ONE home —
+// $op___redrive_<hname>, the install driver's dispatch factored to ONE home —
 // and the dispatched arm's return IS this resume's value (the deep-handler
 // equation handle(E[perform]) = arm(k = λv. handle(E[v])), independently
 // re-derived: pick()+pick()*10 under twice = 66, never the abandonment's
 // 32). A FOREIGN op is still flagged after the redrive: the redrive is a
 // boundary of the arm's frame, so a live one takes the rest of the arm with
-// it and a dead one unwinds the arm (`capture_frame`). With state updates (band
-// B M1.5, bank Ruling 4): the SAME commit prefix OneShot uses — snapshot,
-// then the slot stores COMMIT — runs BEFORE the k-call, and the k-call
-// takes the SNAPSHOTTED val local (the ev8d race). One prefix, two tails.
+// it and a dead one unwinds the arm (`capture_frame`). The SAME commit prefix
+// OneShot uses runs BEFORE the k-call: it binds the value, and with state
+// updates (band B M1.5, bank Ruling 4) snapshots them and COMMITS the slot
+// stores, and the k-call takes the bound val local (the ev8d race). One
+// prefix, two tails.
 fn lower_resume_callk(handle, val, state_updates) = {
   let kr = "__kr_{int_to_str(handle)}"
   let kr2 = "__kr2_{int_to_str(handle)}"
-  match if len(state_updates) == 0 {
-    ([], "")
-  } else {
-    // The commit's record is a value the frame was BORN holding — the
-    // __hrec ladder resolves it (arm: the LLet alias of $__state;
-    // lambda: the seeded capture; bound fn: the trailing param), the
-    // same rails as __k. A closure's own $__state is its closure
-    // record (the measured 32-not-46 silent state loss, S1's unmasking
-    // gate), so the record is CARRIED, never re-read from a
-    // bracket-scoped cache a rebind can stale.
-    let fields = current_state_fields()
-    resume_commit_prefix(handle, val, state_updates, fields, resolve_hrec(handle))
-  } {
-    (prefix, val_name) => {
-      let val_lo = if len(state_updates) == 0 { lower_expr(val) } else { LLocal(val, val_name) }
-      LBlock(
-        handle,
-        prefix ++ [
-          LLet(handle, kr, LResumeK(handle, resolve_resume_k(handle), val_lo)),
-          // The redrive LOOPS this handler's OWN ops (dispatch-until-clear),
-          // so a flag still raised after it is a FOREIGN op, and the frame's
-          // check after the redrive is where the arm meets it.
-          LLet(
+  // The commit's record is a value the frame was BORN holding — the __hrec
+  // ladder resolves it (arm: the LLet alias of $__state; a lambda or a
+  // nested fn minted in the arm: the seeded capture), the same rails as
+  // __k. A closure's own $__state is its closure record (the measured
+  // 32-not-46 silent state loss, S1's unmasking gate), so the record is
+  // CARRIED, never re-read from a bracket-scoped cache a rebind can stale.
+  let hrec = resolve_hrec(handle)
+  // The resumed value is computed in the arm's world, before the resume
+  // enters the remainder's, so a perform it makes resolves outside the
+  // install as every perform the arm makes does: the prefix binds it, and
+  // with state updates commits them, ahead of the call.
+  let fields = if len(state_updates) == 0 { [] } else { current_state_fields() }
+  match resume_commit_prefix(handle, val, state_updates, fields, hrec) {
+    (prefix, val_name) => LBlock(
+      handle,
+      prefix ++ [
+        LLet(handle, kr, LResumeK(handle, resolve_resume_k(handle), hrec, LLocal(val, val_name))),
+        // The redrive dispatches the remainder's re-yield of this
+        // handler's OWN op to the arm, so a flag still raised after it is
+        // a yield the arm's run raised outward — a FOREIGN op, or the
+        // arm's own perform — and the frame's check after the redrive is
+        // where the arm meets it.
+        LLet(
+          handle,
+          kr2,
+          LIf(
             handle,
-            kr2,
-            LIf(
-              handle,
-              LGlobal(handle, Synthesized("yield_flag")),
-              [redrive_perform(handle, kr)],
-              [LLocal(handle, kr)]
-            )
-          ),
-          LLocal(handle, kr2)
-        ]
-      )
-    },
+            LGlobal(handle, Synthesized("yield_flag")),
+            [redrive_perform(handle, kr)],
+            [LLocal(handle, kr)]
+          )
+        ),
+        LLocal(handle, kr2)
+      ]
+    ),
   }
 }
 
@@ -5150,7 +5014,7 @@ fn cp_checked(root, e, terminus) = match e {
   | LMakeRecord(_, _)
   | LRecordUpdate(_, _, _)
   | LMakeVariant(_, _, _)
-  | LResumeK(_, _, _)
+  | LResumeK(_, _, _, _)
   | LFieldLoad(_, _, _)
   | LConvert(_, _, _)
   | LStateSlotStore(_, _, _, _)
@@ -5289,7 +5153,7 @@ fn pass_kids(e) = match e {
   | LRecordUpdate(_, _, _)
   | LMakeVariant(_, _, _)
   | LMatch(_, _, _)
-  | LResumeK(_, _, _)
+  | LResumeK(_, _, _, _)
   | LDerive(_, _, _)
   | LFeedback(_, _, _, _, _)
   | LFeedbackPrior(_)
@@ -5331,7 +5195,7 @@ fn pass_rebuild(e, kids) = match e {
   LRecordUpdate(h, _, ws) => update_from_parts(h, ws, kids),
   LMakeVariant(h, t, _) => LMakeVariant(h, t, kids),
   LMatch(h, _, arms) => LMatch(h, list_index(kids, 0), zip_with(arm_with, arms, rest(kids))),
-  LResumeK(h, _, _) => LResumeK(h, list_index(kids, 0), list_index(kids, 1)),
+  LResumeK(h, _, _, _) => LResumeK(h, list_index(kids, 0), list_index(kids, 1), list_index(kids, 2)),
   LHandleWith(h, b, _, hd, _, an) => LHandleWith(h, b, list_index(kids, 0), hd, rest(kids), an),
   LDerive(h, _, _) => LDerive(h, list_index(kids, 0), list_index(kids, 1)),
   LArena(_, _) => e,
@@ -5454,7 +5318,7 @@ fn site_walk(mode, e) = match e {
   | LRecordUpdate(_, _, _)
   | LMakeVariant(_, _, _)
   | LMatch(_, _, _)
-  | LResumeK(_, _, _)
+  | LResumeK(_, _, _, _)
   | LHandleWith(_, _, _, _, _, _)
   | LDerive(_, _, _)
   | LArena(_, _)
@@ -5664,7 +5528,7 @@ fn zip_at(e, name, hole) = match e {
   | LMakeRecord(_, _)
   | LRecordUpdate(_, _, _)
   | LMakeVariant(_, _, _)
-  | LResumeK(_, _, _)
+  | LResumeK(_, _, _, _)
   | LHandleWith(_, _, _, _, _, _)
   | LDerive(_, _, _)
   | LArena(_, _)
@@ -5817,7 +5681,7 @@ fn ref_walk(mode, e, sc) = match e {
   | LMakeRecord(_, _)
   | LRecordUpdate(_, _, _)
   | LMakeVariant(_, _, _)
-  | LResumeK(_, _, _)
+  | LResumeK(_, _, _, _)
   | LDerive(_, _, _)
   | LFieldLoad(_, _, _)
   | LConvert(_, _, _)
@@ -5935,7 +5799,7 @@ fn let_binds(s) = match s {
   | LRecordUpdate(_, _, _)
   | LMakeVariant(_, _, _)
   | LMatch(_, _, _)
-  | LResumeK(_, _, _)
+  | LResumeK(_, _, _, _)
   | LHandleWith(_, _, _, _, _, _)
   | LDerive(_, _, _)
   | LArena(_, _)
@@ -6486,9 +6350,6 @@ fn lower_program(stmts) = {
   // the ops whose direct performs may hand back a LIVE continuation, which
   // takes the rest of the performer's frame with it
   ls_register_live_ops(if yields { live_ops(stmts) ~> arena } else { [] })
-  // THE CUT — the resume-capability bindings (dormant when no op grades
-  // MultiShot: zero arms seed the closure, the list is empty).
-  ls_register_resume_binds(resume_bindings(stmts) ~> arena)
   // No pre-register pass: every handler decl's (config, state, arms) was
   // published at its declaration (register_handler), so an install reads
   // its handler's declaration off its reference's edge regardless of source
@@ -6527,7 +6388,7 @@ fn lower_program(stmts) = {
 //
 // Records are stored with their fields sorted by name; Mentl source reads
 // them by `.field`, so the physical layout is the emit's business.
-handler lower_scope with frames = [], may_yield = false, yield_facts = smap_new(), unwinding = [], live = [], resume_binds = [], wide = smap_new(), walking = [], fn_symbols = wmap_new(64), symbol_counts = smap_new() {
+handler lower_scope with frames = [], may_yield = false, yield_facts = smap_new(), unwinding = [], live = [], wide = smap_new(), walking = [], fn_symbols = wmap_new(64), symbol_counts = smap_new() {
   ls_register_yield_facts(facts) => resume() with yield_facts = smap_build(facts),
   ls_effect_yield_fact(name) => resume(smap_get(yield_facts, name)),
   ls_wide_memo(name) => // A nominal type's wide-sequence fact, settled once per name by
@@ -6546,10 +6407,6 @@ handler lower_scope with frames = [], may_yield = false, yield_facts = smap_new(
   ls_unwinding_op(op) => resume(string_in_list(unwinding, op)),
   ls_register_live_ops(ops) => resume() with live = ops,
   ls_live_op(op) => resume(string_in_list(live, op)),
-  ls_register_resume_binds(bs) => // THE CUT (bank A3) — the resume-capability bindings: fn name → the
-  // declaration of the handler whose MultiShot arm's call graph reaches it.
-  resume() with resume_binds = bs,
-  ls_resume_bind_of(name) => resume(resume_bind_assoc(resume_binds, name, 0)),
   ls_enter_frame(fn_name, locals_in, locals_h, captures_in, captures_h, line_base) => // drift-audit: ignore — the capture side's paired name and handle lists (LUpval reads a capture by position); the local side is one binder list
   // fn_name is the frame's emitted symbol, the path a nested fn declared
   // inside it extends (`ls_fn_symbol`); lambda and synthetic frames pass
@@ -6878,7 +6735,7 @@ fn low_refs(acc, expr) = match expr {
   LMakeClosure(_h, LFn(_n, _a, _p, body, _f, _l), caps) => low_refs_list(low_refs_list(acc, body), caps),
   // The resume invocation reaches through its k expr and value; the __k
   // fn itself reaches through the site that declares it.
-  LResumeK(_h, k, v) => low_refs(low_refs(acc, k), v),
+  LResumeK(_h, k, r, v) => low_refs(low_refs(low_refs(acc, k), r), v),
   // A yield reaches through its site (the remainder's body where the site
   // declares it, and its captures); the ARM reaches through the install's
   // arm groups, the existing channel.
@@ -6979,7 +6836,7 @@ fn frame_children(expr) = match expr {
   LRecordUpdate(_, b, ws) => update_parts(b, ws),
   LMakeVariant(_, _, fs) => fs,
   LMatch(_, s, arms) => [s] ++ map(match_arm_body, arms),
-  LResumeK(_, k, v) => [k, v],
+  LResumeK(_, k, r, v) => [k, r, v],
   LHandleWith(_, b, hn, _, inits, _) => [b, hn] ++ inits,
   LDerive(_, seed, b) => [seed, b],
   LArena(_, b) => [b],

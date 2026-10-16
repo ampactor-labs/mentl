@@ -1,0 +1,45 @@
+// expect: 21
+// `finish` is declared `!WASI`, and the medium proves it: the remainder `k`
+// resumes performs `get`, which the `quiet_get` around the call answers. The
+// run agrees with the proof, because a resumed remainder answers to the
+// world it is resumed in. Until 2026-10-16 it answered to the world it was
+// captured in, so on boot 7393d485 the stale `loud_get` printed from inside
+// `finish` and the program answered 11: a false proof of the negative.
+import io
+
+effect Ask {
+  ask() -> Int
+}
+
+effect Get {
+  get() -> Int
+}
+
+type Step = Done(Int) | Paused((Int) -> Step)
+
+handler pause {
+  ask() => Paused({ x => resume(x) }),
+}
+
+handler loud_get {
+  get() => {
+    print_string("leaked\n")
+    resume(10)
+  },
+}
+
+handler quiet_get(v) {
+  get() => resume(v),
+}
+
+fn body() = Done(ask() + get())
+
+fn finish(k) with !WASI = match k(1) ~> quiet_get(20) {
+  Done(n) => n,
+  Paused(_) => 0,
+}
+
+fn main() = match (body() ~> pause) ~> loud_get {
+  Paused(k) => finish(k),
+  Done(n) => n + 100,
+}

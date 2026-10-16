@@ -18,11 +18,11 @@ handler every {
 // The first option whose answer is something: the options are resumed in
 // order until one answers `Some`, and none after it is resumed.
 handler first {
-  choose(options) => options |> fold(
-    None,
-    (found, o) => match found {
+  choose(options) => {
+    fn try_option(found, o) = match found {
       None => resume(o),
       Some(_) => found,
     }
-  ),
+    options |> fold(None, try_option)
+  },
 }

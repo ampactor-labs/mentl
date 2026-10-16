@@ -1,0 +1,36 @@
+// expect: 21
+// A continuation that leaves its installs is resumed in the world where it is
+// called: `k(1)` stands under `const_get(20)`, so the remainder's `get`
+// answers 20, the install that enclosed the capture having returned. Until
+// 2026-10-16 the remainder ran in the world it was captured in, and on boot
+// 7393d485 this answered 11, from the `const_get(10)` whose extent had ended.
+effect Ask {
+  ask() -> Int
+}
+
+effect Get {
+  get() -> Int
+}
+
+type Step = Done(Int) | Paused((Int) -> Step)
+
+handler pause {
+  ask() => Paused({ x => resume(x) }),
+}
+
+handler const_get(v) {
+  get() => resume(v),
+}
+
+fn body() = Done(ask() + get())
+
+fn main() = {
+  let s = (body() ~> pause) ~> const_get(10)
+  match s {
+    Paused(k) => match k(1) ~> const_get(20) {
+      Done(n) => n,
+      Paused(_) => 0,
+    },
+    Done(n) => n + 100,
+  }
+}

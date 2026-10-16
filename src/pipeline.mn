@@ -309,7 +309,7 @@ fn refuse_to_emit(refused) = {
 fn report_unhandled_effects(lowered) = match env_lookup("main") {
   Some(entry) => match entry {
     (scheme, reason, _) => match judgment_ty(scheme) {
-      TFun(_, _, row) => match resolve_row(row) {
+      TFun(_, _, row) => match row_through_instances(row) {
         EfRow(p, _, _) => {
           // The evidence census — the emit's OWN single-walk projection
           // (the seventh: visit_effect_demand/install), run over the
@@ -333,6 +333,26 @@ fn report_unhandled_effects(lowered) = match env_lookup("main") {
   },
   None => (),
 }
+
+// The root's row read through every free cell's instances: a handler's world
+// is a cell no install binds, and each install holds what it hands its
+// continuations as an instance of it (`note_world_remainder`), so a
+// continuation the arms handed out and the root resumed with nothing around
+// it brings those remainders to the root.
+fn row_through_instances(row) = match resolve_row(row) {
+  EfRow(p, a, t) => match t {
+    EtOpen(edges) => edges |> fold(EfRow(p, a, t), instance_rows),
+    EtClosed | EtAll => EfRow(p, a, t),
+  },
+}
+
+// Each instance of an edge's cell, read through the edge's own mask.
+fn instance_rows(acc, edge) = match edge {
+  RowEdge(e) => graph_instances_of(e.cell) |> fold(acc, masked_instance(e.mask, ??, ??)),
+}
+
+fn masked_instance(mask, acc, i) =
+  union_row(acc, resolve_row(EfRow([], [], EtOpen([RowEdge({cell: i, mask})]))))
 
 // A module value let's init runs in `$__init_lets` before `main`, so what it
 // performs is the executable's as much as what `main` performs, and it meets

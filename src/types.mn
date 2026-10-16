@@ -3482,12 +3482,11 @@ effect GraphRead {
   // cells; the handles above the frontier are the segment's own mints and
   // mean nothing across segments (they collide numerically after rollback).
   graph_written_since(Int) -> [Int]
-  // The resume grades the classifier settled for the program's functions,
-  // and each one's tail-transparent parameters, as the last judgment left
-  // them: a session judging only the statements an edit moved grades its
-  // own functions against these, since nothing it keeps calls what it
-  // judges again.
-  graph_summaries() -> ([(String, ResumeUse)], [(String, [Int])])
+  // The parameters each top-level function calls only at its own tail, by
+  // name, as the judgments so far wrote them: the newest judgment of a name
+  // answers, so a session judging only the statements an edit moved reads
+  // every other function's facts as the last judgment left them.
+  graph_tails() -> [[(String, [Int])]]
 }
 
 // The top-level declaration that holds a position: the module node's child
@@ -3709,9 +3708,9 @@ effect GraphWrite {
   // in-edges its declaration answers, and the decls column drops what it
   // declared. Written between judgments, never under a checkpoint.
   graph_supersede(stmts: [Int])
-  // The classifier's grades as a judgment settled them, every function's,
-  // the ones it judged replacing theirs (`graph_summaries`).
-  graph_summaries_note(entries: [(String, ResumeUse)], tails: [(String, [Int])])
+  // A judgment's tail facts for the top-level functions it judged, each
+  // answering for its name from now on (`graph_tails`).
+  graph_tails_note(tails: [(String, [Int])])
 }
 
 // ─── Diagnostics as a graph projection (SYNTAX.md §Diagnostic catalog) ──
@@ -3794,8 +3793,6 @@ type DiagKind
   // the type name
   | ENotARecordType(String, Span)
   | EResumeOutsideArm(Span)
-  // THE CUT (bank A3): a resume-bearing fn reachable from arms of TWO different handlers — the k's op binding is ambiguous; narrow the call graph
-  | EResumeAmbiguousOp(String, Span)
   | EResumeWorldMismatch(ResumeDiscipline, ResumeDiscipline, Span)
   // the label-resolution detail
   | EUnknownArgLabel(String, Span)
@@ -4201,7 +4198,6 @@ fn diag_span(d) with Pure = match d {
   EDuplicateImport(_, s) => s,
   ENotARecordType(_, s) => s,
   EResumeOutsideArm(s) => s,
-  EResumeAmbiguousOp(_, s) => s,
   EResumeWorldMismatch(_, _, s) => s,
   EUnknownArgLabel(_, s) => s,
   EZeroDelayFeedback(s) => s,
@@ -4281,7 +4277,6 @@ fn diag_source(d) with Pure = match d {
   EDuplicateImport(_, _) => "parser",
   ENotARecordType(_, _) => "infer",
   EResumeOutsideArm(_) => "infer",
-  EResumeAmbiguousOp(_, _) => "lower",
   EResumeWorldMismatch(_, _, _) => "infer",
   EUnknownArgLabel(_, _) => "infer",
   EZeroDelayFeedback(_) => "infer",
@@ -4362,7 +4357,6 @@ fn diag_arm(d) with Pure = match d {
   EMissingImport(_, _, _, _) => OnQuery,
   ENotARecordType(_, _) => OnQuery,
   EResumeOutsideArm(_) => OnEffects,
-  EResumeAmbiguousOp(_, _) => OnEffects,
   EResumeWorldMismatch(_, _, _) => OnEffects,
   EEnvNameUngrounded(_) => OnEffects,
   EUnknownArgLabel(_, _) => OnQuery,
@@ -4442,7 +4436,6 @@ fn diag_code(d) with Pure = match d {
   EDuplicateImport(_, _) => "E_DuplicateImport",
   ENotARecordType(_, _) => "E_NotARecordType",
   EResumeOutsideArm(_) => "E_ResumeOutsideArm",
-  EResumeAmbiguousOp(_, _) => "E_ResumeAmbiguousOp",
   EResumeWorldMismatch(_, _, _) => "E_ResumeWorldMismatch",
   EUnknownArgLabel(_, _) => "E_UnknownArgLabel",
   EZeroDelayFeedback(_) => "E_ZeroDelayFeedback",
@@ -4540,7 +4533,6 @@ fn diag_severity(d) with Pure = match d {
   | EDuplicateImport(_, _)
   | ENotARecordType(_, _)
   | EResumeOutsideArm(_)
-  | EResumeAmbiguousOp(_, _)
   | EResumeWorldMismatch(_, _, _)
   | EUnknownArgLabel(_, _)
   | EZeroDelayFeedback(_)
@@ -4631,7 +4623,6 @@ fn diag_applicability(d) with Pure = match d {
   EOwnershipViolation(_, _) => Unspecified,
   EOrphanHandlerAttach(_) => Unspecified,
   EResumeOutsideArm(_) => Unspecified,
-  EResumeAmbiguousOp(_, _) => MaybeIncorrect,
   // Nothing the reader can apply — the collision is in the compiler's own
   // naming, and the program that provoked it is correct.
   EEmittedNameCollision(_, _) => Unspecified,
@@ -4712,7 +4703,6 @@ fn diag_message(d) with !Mutate = match d {
   EMissingImport(name, rm, dm, _) => "`{name}` resolves only because the whole link carries it: it is declared in `{dm}`, which `{rm}` never imports — on its own, `{rm}` would not compile. Add `import {dm}` to `{rm}`",
   ENotARecordType(name, _) => "{name} is not a record type",
   EResumeOutsideArm(_) => "`resume` outside a handler arm",
-  EResumeAmbiguousOp(name, _) => "'{name}' resumes under arms of two different handlers — the k record's op binding is ambiguous",
   EResumeWorldMismatch(da, db, _) => "resume cardinality mismatch: {show_discipline(da)} vs {show_discipline(db)}",
   EUnknownArgLabel(detail, _) => detail,
   EZeroDelayFeedback(_) => "`<~ delay(0)` closes a cycle with no delay — the prior would be the value being computed. Raise the delay to at least 1",
@@ -4901,10 +4891,6 @@ effect LowerScope {
   ls_register_live_ops([String])
   // whether the boundary check after a direct perform of this op takes the rest of the performer's frame
   ls_live_op(String) -> Bool
-  // THE CUT (bank A3) — [(fn_name, handler declaration)]: resume-bearing fns reachable from a MultiShot arm, bound to their handler (computed once at lower_program)
-  ls_register_resume_binds([(String, Int)])
-  // the declaration of the handler a fn is bound to; None = unbound (no wrap, no evidence threading)
-  ls_resume_bind_of(String) -> Option(Int)
   // whether a nominal type holds a wide-element sequence anywhere in its structure — settled once per name (the reach walk's read at an ==/ordering site), None while unsettled
   ls_wide_memo(String) -> Option(Bool)
   // settle a nominal type's wide-sequence fact

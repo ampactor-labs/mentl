@@ -1,0 +1,59 @@
+// expect: 29
+// A `resume` stands only inside an arm, so a function resumes only when an
+// arm declares it, and its summary is read in that arm alone. `bump` never
+// resumes: its local shares a name with the stage `firstly` declares and
+// nothing more, so the two handlers' multi-shot arms call one plain function.
+// Through boot 7393d485 the summaries were one table for the whole program
+// keyed by name, `bump` read the stage's summary through its local, and the
+// program was refused as an ambiguous resume.
+effect Pick {
+  pick(options: [Int]) -> Int
+}
+
+effect Both {
+  both() -> Int
+}
+
+// Resumes once per option until one answers.
+handler firstly {
+  pick(options) => {
+    fn step(found, o) = match found {
+      None => resume(o),
+      Some(_) => found,
+    }
+    options |> fold(None, step) |> bump
+  },
+}
+
+// Resumes twice and adds what each resumption answered.
+handler twice {
+  both() => match resume(1) {
+    Some(a) => match resume(2) {
+      Some(b) => Some(bump(a + b)),
+      None => None,
+    },
+    None => None,
+  },
+}
+
+fn bump(x) = {
+  let step = x
+  step
+}
+
+fn main() = {
+  let p = match {
+    let x = pick([1, 2, 3])
+    if x == 2 { Some(x * 10) } else { None }
+  } ~> firstly {
+    Some(v) => v,
+    None => 0,
+  }
+  let q = match {
+    Some(both() * 3)
+  } ~> twice {
+    Some(v) => v,
+    None => 0,
+  }
+  p + q
+}

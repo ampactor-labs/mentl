@@ -546,7 +546,7 @@ fn occurs_in_live(handle, ref ty) with !Mutate = match graph_branch_seed() {
 // costs one 4KB word-list per process and no write tests for it — and a
 // table minted lazily inside a speculation would be copied out of the
 // speculation's arena at its exit, a cost the eager one never pays.
-handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spine_open = spine_open0, trail = [], trail_len = 0, epoch = 0, next = 0, span_index = span_index0, checkpoint_stack = [], in_edges = wmap_new(4096), published = wmap_new(4096), decls_col = [], emitfns_col = [], emitfns_idx = [], emitfns_idx_covers = 0, sigs_col = [], holes_pend = [], holes_col = [], cur_module = 0, guard_diags = [], gates = wmap_new(1024), instances = wmap_new(1024), demands = wmap_new(1024), accepted = [], rows = wmap_new(1024), binders = wmap_new(1024), births = wmap_new(1024), late = wmap_new(1024), claims = wmap_new(1024), store_claims = wmap_new(1024), modules_now = smap_new(), superseded = wmap_new(64), link_now = None, summaries = ([], []) {
+handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spine_open = spine_open0, trail = [], trail_len = 0, epoch = 0, next = 0, span_index = span_index0, checkpoint_stack = [], in_edges = wmap_new(4096), published = wmap_new(4096), decls_col = [], emitfns_col = [], emitfns_idx = [], emitfns_idx_covers = 0, sigs_col = [], holes_pend = [], holes_col = [], cur_module = 0, guard_diags = [], gates = wmap_new(1024), instances = wmap_new(1024), demands = wmap_new(1024), accepted = [], rows = wmap_new(1024), binders = wmap_new(1024), births = wmap_new(1024), late = wmap_new(1024), claims = wmap_new(1024), store_claims = wmap_new(1024), modules_now = smap_new(), superseded = wmap_new(64), link_now = None, tails_idx = smap_new() {
   graph_chase(handle) => // checkpoint_stack is the speculation depth: each
   // graph_push_checkpoint pushes the current trail_len and each
   // graph_rollback pops it. A write with the stack empty is at the outermost
@@ -1067,8 +1067,8 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
     let gone = fold(superseded, (acc, s) => wmap_add(acc, s, 1), stmts)
     resume() with superseded = gone, decls_col = filter(spine_current(spine, spine_open, gone, ??), decls_col)
   },
-  graph_summaries_note(entries, tails) => resume() with summaries = (entries, tails),
-  graph_summaries() => resume(summaries),
+  graph_tails_note(tails) => resume() with tails_idx = smap_build_from(tails, len(tails) - 1, tails_idx),
+  graph_tails() => resume(tails_idx),
   graph_module_now(file) => resume(smap_get(modules_now, file)),
   graph_link() => resume(link_now),
   graph_hole_note(h) => // The value-holes column's pending half: lower's authored-hole arm is

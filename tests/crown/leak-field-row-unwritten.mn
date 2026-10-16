@@ -1,0 +1,27 @@
+// CROWN — latency rides a field whose function type names no row: a closure
+// performing E stored in `Holds(() -> Int)`, matched out and CALLED under
+// `with !E`. The field's row is one cell of the declaration, written by the
+// construction and read by the match, so the call charges E.
+// Expect E_EffectMismatch.
+//
+// Until 2026-10-16 the row was freshened at each use of the constructor, so
+// the match read a row nothing wrote: `bad` checked clean and the program ran
+// to 7, `op` answered inside a function declared never to perform it.
+effect E {
+  op() -> Int
+}
+
+type Box = Empty | Holds(() -> Int)
+
+handler give {
+  op() => resume(7),
+}
+
+fn make() = Holds(() => op())
+
+fn bad() with !E = match make() {
+  Holds(f) => f(),
+  Empty => 0,
+}
+
+fn main() = bad() ~> give

@@ -1,0 +1,33 @@
+// CROWN — the sound dual of the TIME face: a continuation the arm hands out
+// is resumed under an install that answers its remainder's Get, inside a
+// function declared `!WASI`; the remainder performs nothing the negation
+// names, and the install around the call absorbs its Get. Must accept.
+effect Ask {
+  ask() -> Int
+}
+
+effect Get {
+  get() -> Int
+}
+
+type Step = Done(Int) | Paused((Int) -> Step)
+
+handler pause {
+  ask() => Paused({ x => resume(x) }),
+}
+
+handler const_get(v) {
+  get() => resume(v),
+}
+
+fn body() = Done(ask() + get())
+
+fn finish(k) with !WASI = match k(1) ~> const_get(20) {
+  Done(n) => n,
+  Paused(_) => 0,
+}
+
+fn main() = match (body() ~> pause) ~> const_get(10) {
+  Paused(k) => finish(k),
+  Done(n) => n + 100,
+}

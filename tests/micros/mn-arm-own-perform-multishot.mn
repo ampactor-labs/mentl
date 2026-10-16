@@ -1,0 +1,19 @@
+// expect: 32
+// A multi-shot arm's own perform reaches the handler outside its install:
+// each `ask()` in `twice`'s arm is answered by `base`, so the body resumes
+// with 11 and with 21. Until 2026-10-16 the install's driver caught the
+// arm's own yield and ran the arm again, and on boot 7393d485 the program
+// never finished.
+effect Ask {
+  ask() -> Int
+}
+
+handler base {
+  ask() => resume(1),
+}
+
+handler twice {
+  ask() => resume(ask() + 10) + resume(ask() + 20),
+}
+
+fn main() = (ask() ~> twice) ~> base

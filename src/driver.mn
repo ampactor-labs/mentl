@@ -745,14 +745,14 @@ fn edit_judged(entries, entry_key: String, prelude_key, forget) = {
 fn edit_round(planned, seeds, zeros, entry_key: String, prelude_key, forget, start, counted) = match cone_of(seeds, zeros) {
   (gone, gone_set) => {
     let edits = planned |> map(flip_gone(gone_set, ??)) |> map(read_runs)
-    let served_before = flat_map(handler_served(graph_summaries(), ??), gone)
+    let served_before = flat_map(handler_served, gone)
     commit_edits(edits, gone, entry_key, prelude_key, forget)
     let fresh = flat_map(edit_read, edits)
     if len(fresh) > 0 { infer_program_once(fresh, start, graph_next()) } else { () }
     let tally = match counted {
       (n, m) => (n + len(fresh), m + len(filter(edit_reads, edits))),
     }
-    match served_moved(served_before, flat_map(handler_served(graph_summaries(), ??), fresh)) {
+    match served_moved(served_before, flat_map(handler_served, fresh)) {
       [] => tally,
       effects => edit_round(
         map(kept_now, edits),

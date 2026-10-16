@@ -1,0 +1,28 @@
+// expect: 100
+// An install an arm wraps around its resume governs the remainder the resume
+// runs: the remainder is the continuation's own segment, through the install
+// that caught it, rooted on the world where it is resumed. So the remainder's
+// `get` reaches `inner_get`, as the rows judge it. Until 2026-10-16 a resume
+// ran its remainder in the whole world it was captured in, and on boot
+// 7393d485 this answered 1, from `outer_get`.
+effect Ask {
+  ask() -> Int
+}
+
+effect Get {
+  get() -> Int
+}
+
+handler outer_get {
+  get() => resume(1),
+}
+
+handler inner_get {
+  get() => resume(100),
+}
+
+handler h {
+  ask() => resume(0) ~> inner_get,
+}
+
+fn main() = ((ask() + get()) ~> h) ~> outer_get

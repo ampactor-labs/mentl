@@ -465,8 +465,10 @@ landing that closes it. A gate that did not run is UNKNOWN, never green.
   nodes and its judgment. A proposal's accept is not (§11.2).
 - **Names are still read where an edge exists** (§11.2, §11.3, §11.18): the
   lowered program's identity is its symbol, so the emit's reach walks key their
-  units by it and a resume-bound function is found by its spelling; the emit
-  cuts a list rest by the slice's spelling, its lowered pattern holding no
+  units by it; an arm's resume grade is settled before the judgment draws
+  any edge, so it reads the functions its body declares, and the parameters a
+  callee calls at its tail, by their spelling; the emit cuts a list rest by
+  the slice's spelling, its lowered pattern holding no
   handle; an emitted
   arm's kind holds its op's spelling, and the performs the lowering writes for
   a schedule (`spawn`, `thread_join`, `persist_branch`, `join_persist`) name
@@ -507,9 +509,13 @@ landing that closes it. A gate that did not run is UNKNOWN, never green.
   `image_resume` gates on the build key, `mentl resume <image>` re-enters it.
   Host resources (descriptors, sockets) do not restore; cross-machine resume and
   a session that outlives its process are open (§11.18).
-- **`TCont`'s world is a rule at every install and inert as a value**: there is
-  no first-class `k` whose resume under a changed world could be refused (the
-  frontier).
+- **A continuation answers to the world it is resumed in, and a row names
+  effects, not installs**: a continuation carries its own segment of the world
+  it was captured in and reaches the installs around its resume past it, and
+  each install's remainder is an instance of its handler's world cell, which a
+  negation and the root judge wherever the program states them. A row says
+  which effects a computation performs and never which install answers one, so
+  absence is proven per effect, not per install (the modal crown, §11).
 - **Threads are real**: `~> parallel_compose` runs branches on host threads over
   the shared image, a branch runs in the world it was spawned in, and
   `E_ThreadedBranchEffect` refuses a stateful handler a branch reaches, a store
@@ -693,9 +699,9 @@ a provenance diff, a search over live shared cells.
   disjunctions, the question computed from the first divergence of two
   trails — the default judge.
 - **The crown, modal** (`Hβ.effects.modal-world-index`): rows, capabilities and
-  negation sound together as a graph fact, one crucible per modal rule, red
-  first; the TIME face — a resumed continuation refused under a changed world —
-  rides the continuation made a first-class value, its world on its record.
+  negation sound together as a graph fact — an effect in a row indexed by the
+  install that answers it, a row variable a lexical capability at the `~>`
+  edge — one crucible per modal rule, red first.
 - **Verification whole**: the verifier decides a predicate's expression, where
   it decides the projection a type carries (`node_to_predicate`); a bug trap
   unwinds with the graph as its payload. A label's claim on a part read off the value a call answers is
@@ -910,10 +916,8 @@ a provenance diff, a search over live shared cells.
     walkers deleted (`Hβ.lower.lowering-is-a-column`) — a lowered unit is a
     column on its declaration's handle, where its identity is the symbol
     `LFn(String, …)` carries and the emit's and the reading's reach walks
-    (`plan_reached`, `reach_units`) key their units by it, and a function
-    bound to a handler's resume is the declaration the arm's references
-    reach, where it is found by its spelling (`ls_resume_bind_of`); the
-    gate is m3 == m4 with the symbol-keyed walks deleted; a continuation is
+    (`plan_reached`, `reach_units`) key their units by it; the gate is m3 ==
+    m4 with the symbol-keyed walks deleted; a continuation is
     its frame's record in the image and the node it stopped at, captured by a
     copy and resumed by entering the frame's one function at that node, where
     the lowering copies the frame's tail into a function of its own at each

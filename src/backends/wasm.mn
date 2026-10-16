@@ -711,7 +711,7 @@ fn settle_node(site: String, expr) = match expr {
   LFanout(_, _, _, _) => (),
   LMakeRecord(_, _) => (),
   LMakeVariant(_, _, _) => (),
-  LResumeK(_, _, _) => (),
+  LResumeK(_, _, _, _) => (),
   LHandleWith(_, _, _, _, _, _) => (),
   // The reading's forward body settles through the walk; the program derive
   // adds beside it is f64 arithmetic over names its own reads bind.
@@ -1364,12 +1364,15 @@ fn alloc_walk(unit, e) = match e {
     let below = alloc_walk_arms(unit, h, arms, 0)
     scrut || below
   },
-  LResumeK(_, k, v) => {
-    // a resumed value's cell at the word face: the op's cost, recorded
-    let built = wide_ref_allocates(tail_expr_repr(v))
+  LResumeK(_, k, r, v) => {
+    // a resumed value's cell at the word face, and the continuation's world
+    // copied when the resume enters it from another: the continuation's
+    // cost, priced where the judgment rows the resume, recorded
     let cont = alloc_walk(unit, k)
+    let record = alloc_walk(unit, r)
     let value = alloc_walk(unit, v)
-    built || cont || value
+    let _ = cont || record || value
+    true
   },
   LHandleWith(h, b, hn, _, inits, _) => {
     let built = alloc_at(unit, h, AsInstall)
@@ -2558,8 +2561,8 @@ fn emit_planned(plan) = match plan {
     if yield_seen > 0 { emit_k_compose_pair() }
     if yield_seen > 0 && arena_on { emit_arena_reentry() }
     // band B M2b — one redrive fn per LIVE MultiShot-armed handler: the
-    // dispatch loop's one home (the install bracket and every resume
-    // flag-arm call the same fn).
+    // dispatch's one home (the install bracket and every resume flag-arm
+    // call the same fn).
     each(emit_one_redrive, redrives)
     emit_init_lines(line_owners, tangent_rings)
     emit_init_lets(value_lets)
@@ -2997,8 +3000,9 @@ fn walk_lemit_expr(expr) = match expr {
     walk_lemit_list(body)
     walk_lemit_list(captures)
   },
-  LResumeK(_, k, v) => {
+  LResumeK(_, k, r, v) => {
     walk_lemit_expr(k)
+    walk_lemit_expr(r)
     walk_lemit_expr(v)
   },
   // A yield reads the yield globals and interns its op key (the driver's
@@ -3357,6 +3361,11 @@ fn emit_yield_globals() = {
   wat_emit("  (global $yield_k (mut i32) (i32.const 0))\n")
   wat_emit("  (global $yield_args (mut i32) (i32.const 0))\n")
   wat_emit("  (global $__lane_f64 (mut f64) (f64.const 0))\n")
+  // The resumption the running segment belongs to: the record of the
+  // install that caught its continuation and the world its resume stood in,
+  // set by each resume around its call and restored after it.
+  wat_emit("  (global $k_hrec_g (mut i32) (i32.const 0))\n")
+  wat_emit("  (global $k_cur_g (mut i32) (i32.const 0))\n")
 }
 
 // ─── THE CONTINUATION FACE ─────────────────────────────────────────────
@@ -3579,10 +3588,16 @@ fn ms_handler_decls(entries, i, acc) = if i == 0 {
   }
 }
 
+// The yield pending when the driver is called — the install body's, or the
+// remainder a held resume ran — is dispatched to its arm ONCE. The arm runs
+// outside the install, so a yield it raises is the enclosing install's and
+// bubbles out with the flag intact: its own perform of an op this handler
+// answers, or a foreign op its resumed remainder raised. A remainder's own
+// re-yields never reach here: the resume site that ran it drives them.
 fn emit_one_redrive(hd) = {
   wat_emit("  (func ${redrive_fn_name(hd)}")
   wat_emit(" (param $__state i32) (param $acc i32) (result i32) (local $k i32)\n")
-  wat_emit("    (block $rdone (loop $rdrive\n")
+  wat_emit("    (block $rdone\n")
   wat_emit("      (global.get $yield_flag)(i32.eqz)(br_if $rdone)\n")
   each(
     {
@@ -3602,13 +3617,13 @@ fn emit_one_redrive(hd) = {
         wat_emit("        (local.get $__state)(i32.load offset={int_to_str(arm_slot_offset(hd, op))})")
         wat_emit("(call_indirect (type $ft{int_to_str(2 + arity)}))\n")
         wat_emit("        (local.set $acc)\n")
-        wat_emit("        (br $rdrive)\n")
+        wat_emit("        (br $rdone)\n")
         wat_emit("      ))\n")
       },
     },
     multishot_ops_of(hd)
   )
-  wat_emit("      (br $rdone)))\n")
+  wat_emit("    )\n")
   wat_emit("    (local.get $acc)\n")
   wat_emit("  )\n")
 }
@@ -3641,6 +3656,53 @@ fn emit_k_compose_pair() = {
   wat_emit("    (i32.load (i32.add (local.get $k)\n")
   wat_emit("      (i32.add (i32.const 8) (i32.shl (i32.load offset=4 (local.get $k)) (i32.const 2)))))\n")
   wat_emit("  )\n")
+  // $__k_world_at(k) — the world a record's segment runs in during the
+  // resumption that entered it: the frozen chain down through the nodes of
+  // the install that caught the continuation ($k_hrec_g, the record those
+  // nodes' evidence entries name), rooted on the world the resume stood in
+  // ($k_cur_g). A continuation resumed where it was caught finds the two
+  // worlds one node and shares the frozen chain whole; any other resume
+  // copies the segment, so every perform past it reaches the installs the
+  // resumer stands under, as the rows judge it.
+  wat_emit("  (func $__k_world_at (param $k i32) (result i32)\n")
+  wat_emit("    (call $world_reroot (call $__k_world (local.get $k)) (global.get $k_hrec_g) (global.get $k_cur_g))\n")
+  wat_emit("  )\n")
+  // $world_reroot(top, hrec, cur) — the boundary is the catching install's
+  // outer world, the iw of its first node from the top (a node is
+  // [key@0][entry@4][prev@8][iw@12], an entry [record@0][base@4]). A chain
+  // with no node of that install is a continuation the install never
+  // caught, and traps.
+  wat_emit("  (func $world_reroot (param $top i32) (param $hrec i32) (param $cur i32) (result i32) (local $n i32) (local $outer i32)\n")
+  wat_emit("    (local.set $n (local.get $top))\n")
+  wat_emit("    (block $found (loop $walk\n")
+  wat_emit("      (if (i32.eqz (local.get $n)) (then (unreachable)))\n")
+  wat_emit("      (br_if $found (i32.eq (i32.load (i32.load offset=4 (local.get $n))) (local.get $hrec)))\n")
+  wat_emit("      (local.set $n (i32.load offset=8 (local.get $n)))\n")
+  wat_emit("      (br $walk)))\n")
+  wat_emit("    (local.set $outer (i32.load offset=12 (local.get $n)))\n")
+  wat_emit("    (if (i32.eq (local.get $outer) (local.get $cur)) (then (return (local.get $top))))\n")
+  wat_emit("    (call $world_copy (local.get $top) (local.get $outer) (local.get $cur)))\n")
+  // $world_copy(n, outer, cur) — the chain from n down to outer, copied
+  // onto cur bottom first. A node's iw is the world its install was pushed
+  // over: outer maps to cur, and a node inside the segment to its copy,
+  // found by walking the old chain and the copy in step.
+  wat_emit("  (func $world_copy (param $n i32) (param $outer i32) (param $cur i32) (result i32) (local $below i32) (local $o i32) (local $c i32) (local $new i32)\n")
+  wat_emit("    (if (i32.eq (local.get $n) (local.get $outer)) (then (return (local.get $cur))))\n")
+  wat_emit("    (local.set $below (call $world_copy (i32.load offset=8 (local.get $n)) (local.get $outer) (local.get $cur)))\n")
+  wat_emit("    (local.set $o (i32.load offset=8 (local.get $n)))\n")
+  wat_emit("    (local.set $c (local.get $below))\n")
+  wat_emit("    (block $done (loop $step\n")
+  wat_emit("      (br_if $done (i32.eq (local.get $o) (i32.load offset=12 (local.get $n))))\n")
+  wat_emit("      (br_if $done (i32.eq (local.get $o) (local.get $outer)))\n")
+  wat_emit("      (local.set $o (i32.load offset=8 (local.get $o)))\n")
+  wat_emit("      (local.set $c (i32.load offset=8 (local.get $c)))\n")
+  wat_emit("      (br $step)))\n")
+  wat_emit("    (local.set $new (call $alloc (i32.const 16)))\n")
+  wat_emit("    (i32.store offset=0 (local.get $new) (i32.load offset=0 (local.get $n)))\n")
+  wat_emit("    (i32.store offset=4 (local.get $new) (i32.load offset=4 (local.get $n)))\n")
+  wat_emit("    (i32.store offset=8 (local.get $new) (local.get $below))\n")
+  wat_emit("    (i32.store offset=12 (local.get $new) (local.get $c))\n")
+  wat_emit("    (local.get $new))\n")
   // $__k_extend(frame_k) — the one operation every boundary a live
   // continuation crosses performs: $yield_k := compose($yield_k, frame_k).
   // Reads the unwinding k, mints the 20-byte composer record, republishes.
@@ -3663,7 +3725,8 @@ fn emit_k_compose_pair() = {
   // $__k_compose(__state, v) — W7 through and through: inner and frame_k are
   // its own captures; each junction call is the same park-push-load-indirect
   // every closure call emits. Segment transition: before the frame_k's tail
-  // call the world SETS from fk's own frozen slot (no save/restore — the
+  // call the world SETS from fk's own frozen slot, rooted on the world the
+  // resumption entered from as the inner segment was (no save/restore — the
   // outer LResumeK bracket restores at the resume expression's end).
   wat_emit("  (func $__k_compose (param $__state i32) (param $v i32) (result i32) (local $ik i32) (local $r i32)\n")
   wat_emit("    (local.set $ik (i32.load offset=8 (local.get $__state)))\n")
@@ -3675,7 +3738,7 @@ fn emit_k_compose_pair() = {
   wat_emit("      (call $__k_extend (i32.load offset=12 (local.get $__state)))\n")
   wat_emit("      (i32.const 0) (return)))\n")
   wat_emit("    (local.set $ik (i32.load offset=12 (local.get $__state)))\n")
-  wat_emit("    (global.set $world_g (call $__k_world (local.get $ik)))\n")
+  wat_emit("    (global.set $world_g (call $__k_world_at (local.get $ik)))\n")
   wat_emit("    (local.get $ik) (local.get $r)\n")
   wat_emit("    (local.get $ik) (i32.load offset=0)\n")
   wat_emit("    (return_call_indirect (type $ft2))\n")
@@ -4452,7 +4515,10 @@ fn collect_call_vectors_expr(expr, acc) = match expr {
   LTailCall(h, f, args) => collect_call_vectors_expr(f, collect_call_vectors_list(args, [call_site_vector(f, args, h)] ++ acc)),
   // The resume speaks the word face (`emit_word_face_call`) — its arity's
   // all-word vector, exactly what the emit names.
-  LResumeK(_h, k, v) => collect_call_vectors_expr(k, collect_call_vectors_expr(v, [word_vector(1)] ++ acc)),
+  LResumeK(_h, k, r, v) => collect_call_vectors_expr(
+    k,
+    collect_call_vectors_expr(r, collect_call_vectors_expr(v, [word_vector(1)] ++ acc))
+  ),
   // Every perform's vector is registered — the walked forms dispatch through
   // call_indirect and need the type; the direct ones cost nothing to include
   // and the set is deduped. The site's own vector, or a driver's word face —
@@ -5756,7 +5822,7 @@ fn collect_fn_emit_records_expr(expr) = match expr {
   LRecordUpdate(_h, b, ws) => collect_fn_emit_records(update_parts(b, ws)),
   LMakeVariant(_h, _t, fs) => collect_fn_emit_records(fs),
   LMatch(_h, s, arms) => collect_fn_emit_records_expr(s) ++ fn_emit_records_arms(arms, 0),
-  LResumeK(_h, k, v) => collect_fn_emit_records_expr(k) ++ collect_fn_emit_records_expr(v),
+  LResumeK(_h, k, r, v) => collect_fn_emit_records_expr(k) ++ collect_fn_emit_records_expr(r) ++ collect_fn_emit_records_expr(v),
   LHandleWith(_h, b, hn, _hd, inits, _arm_names) => collect_fn_emit_records_expr(b) ++ collect_fn_emit_records_expr(hn) ++ collect_fn_emit_records(inits),
   LDerive(_h, seed, b) => collect_fn_emit_records_expr(seed) ++ collect_fn_emit_records_expr(b),
   LArena(_h, b) => collect_fn_emit_records_expr(b),
@@ -5909,11 +5975,12 @@ fn walk_locals_expr(expr, acc) = match expr {
   // The answer comes back off the continuation face at its own width
   // (`emit_from_continuation`), so its scratch is declared there — a word
   // scratch under a Float answer refused to assemble.
-  LResumeK(h, k, v) => {
+  LResumeK(h, k, hrec, v) => {
     let r = repr_of(lookup_ty(h))
+    let hs = int_to_str(h)
     walk_locals_expr(
-      LCall(h, k, [v]),
-      ["__rk_wprev_{int_to_str(h)} i32"] ++ (["{local_wat_name("__rk_val_{int_to_str(h)}", r)} {repr_wat(r)}"] ++ acc)
+      LCall(h, k, [hrec, v]),
+      ["__rk_wprev_{hs} i32", "__rk_hprev_{hs} i32", "__rk_cprev_{hs} i32"] ++ (["{local_wat_name("__rk_val_{hs}", r)} {repr_wat(r)}"] ++ acc)
     )
   },
   // The arguments cross in the instance's area through the operand stack;
@@ -6986,32 +7053,35 @@ fn emit_install(h, body, hd, inits, arm_names, lanes) = {
     emit_expr(body)
   }
   // band B k1 — the yield DRIVER. Takes this install's record as its own
-  // __state (the arm call carries it — no global re-read) and is a LOOP
-  // (a re-yield of an owned op re-enters the SAME driver with the new
-  // k). A remainder's performs resolve through the LIVE world chain the
-  // k record froze — the deep-handler law by REPRESENTATION, which the
-  // old "the state_g bracket covers every k(v) re-entry" claim was not:
-  // a k crossing an EXITED inner install found that install's global
-  // restored to 0 while the frozen chain still carried its record (the
-  // mn-world-resume-frozen fixture's silent 30). Body returned normally
-  // → the flag is clear → the loop exits on its first check with the
-  // body's parked value: semantically the ungated leg. A yield of a
-  // FOREIGN op exits with the flag INTACT — it bubbles through this
-  // install to the enclosing driver (or the _start backstop).
+  // __state (the arm call carries it — no global re-read) and dispatches
+  // the yield the body left pending to its arm once. A remainder's performs
+  // resolve through its own segment of the world chain the k record froze —
+  // the deep-handler law by REPRESENTATION, so a k crossing an EXITED inner
+  // install still reaches that install's record (the mn-world-resume-frozen
+  // fixture's silent 30 before the chain was frozen) — rooted on the world
+  // where it is resumed. Body returned normally → the flag is clear → the
+  // driver answers the body's parked value: semantically the ungated leg. A
+  // yield of a FOREIGN op exits with the flag INTACT — it bubbles through
+  // this install to the enclosing driver (or the _start backstop).
   // Gated on the ONE multishot_ops_of decider (walk_locals reads it
   // identically); an all-OneShot install emits the pre-k1 bytes exactly.
   let ms_ops = multishot_ops_of(hd)
   if len(ms_ops) > 0 {
     // band B M2b — the driver IS one redrive call: park the body result,
     // hand (record, parked) to the handler's redrive (`redrive_fn_name` — the
-    // dispatch loop's ONE home, shared with every resume flag-arm). A flag still raised
-    // on return is a FOREIGN op — the value falls out of the bracket
-    // with the flag intact and the enclosing boundary sees it (the
-    // bubble, k1's law, unchanged).
+    // dispatch's ONE home, shared with every resume flag-arm). A flag still
+    // raised on return is a yield the arm's run raised outward — a foreign
+    // op, or the arm's own perform — and the value falls out of the bracket
+    // with the flag intact for the enclosing boundary (the bubble, k1's law).
     // The driver speaks the continuation face: a wide answer is parked, handed
     // to it in the lane and read back from the lane, which holds what was
     // handed when no arm ran and the last arm's answer when one did.
     wat_emit("    (local.set $__hres_{hs})\n")
+    // The arm runs in the world outside this install, as a dispatch runs
+    // it: a body that yielded leaves the world it stood in, so without this
+    // an arm's own perform of the op it answers met the install again
+    // (`ask() => { let r = resume(ask() + 10); r * 2 }` looped).
+    wat_emit("    (local.get ${local_name}_wprev)(global.set $world_g)\n")
     wat_emit("    (local.get ${local_name})(local.get $__hres_{hs})\n")
     emit_to_continuation(answer)
     wat_emit("    (call ${redrive_fn_name(hd)})\n")
@@ -7491,31 +7561,40 @@ fn emit_expr(expr) = match expr {
     wat_emit("    (local.set ${scrut_local(sr)})\n")
     emit_match_arms(arms, match_arms_repr(arms), h, sr)
   },
-  LResumeK(h, k_expr, val_expr) => {
+  LResumeK(h, k_expr, hrec_expr, val_expr) => {
     // The MultiShot resume invoking its continuation record — the ONE site
-    // that rebinds the world (the world-as-value arc's R4): save $world_g,
-    // set it from the k record's frozen world ($__k_world — the word past
-    // the captures, 8 + 4*capture_count), run the remainder through the ordinary
-    // W7 closure call, restore. The remainder's performs thereby resolve
-    // in the world where the continuation was CAPTURED, never the world it
-    // happens to be resumed under (the arm-config class's TIME sibling).
-    // Save/restore lives HERE (caller side) so the k body's own tail
-    // calls cannot leak the frozen world past the resume expression; the
-    // composer's interior segment transitions bare-set under this bracket.
-    // k_expr is the arm's __k param / a lambda's captured __k — a pure
-    // local/upval read, evaluable twice.
-    wat_emit("    (global.get $world_g) (local.set $__rk_wprev_{int_to_str(h)})\n")
-    wat_emit("    (global.set $world_g (call $__k_world ")
+    // that rebinds the world: save $world_g and the resumption it belongs
+    // to, name this one (the install whose arm holds the k, and the world
+    // standing here), set the world to the record's segment rooted on this
+    // one ($__k_world_at), run the remainder through the ordinary W7 closure
+    // call, restore all three. The remainder's performs thereby resolve in
+    // its own segment, through the install that caught it, and past it in
+    // the world where it is resumed, never in a world whose installs may
+    // have returned. Save/restore lives HERE (caller side) so the k body's
+    // own tail calls cannot leak a segment's world past the resume
+    // expression; the composer's interior segment transitions bare-set under
+    // this bracket. k_expr and hrec_expr are the arm's own locals or a
+    // lambda's captures — pure reads, evaluable twice.
+    let hs = int_to_str(h)
+    wat_emit("    (global.get $world_g) (local.set $__rk_wprev_{hs})\n")
+    wat_emit("    (global.get $k_hrec_g) (local.set $__rk_hprev_{hs})\n")
+    wat_emit("    (global.get $k_cur_g) (local.set $__rk_cprev_{hs})\n")
+    emit_expr(hrec_expr)
+    wat_emit("    (global.set $k_hrec_g)\n")
+    wat_emit("    (global.set $k_cur_g (global.get $world_g))\n")
+    wat_emit("    (global.set $world_g (call $__k_world_at ")
     emit_expr(k_expr)
     wat_emit("))\n")
     // A continuation is the one closure kind a runtime helper also calls
     // blind to its type ($__k_compose), so its table face is the WORD face
     // and the resume speaks it (`emit_word_face_call`); the answer comes
     // back at its own width and parks in a scratch of that width.
-    let rk_val = local_wat_name("__rk_val_{int_to_str(h)}", repr_of(lookup_ty(h)))
+    let rk_val = local_wat_name("__rk_val_{hs}", repr_of(lookup_ty(h)))
     emit_word_face_call(h, k_expr, [val_expr])
     wat_emit("    (local.set ${rk_val})\n")
-    wat_emit("    (global.set $world_g (local.get $__rk_wprev_{int_to_str(h)}))\n")
+    wat_emit("    (global.set $world_g (local.get $__rk_wprev_{hs}))\n")
+    wat_emit("    (global.set $k_hrec_g (local.get $__rk_hprev_{hs}))\n")
+    wat_emit("    (global.set $k_cur_g (local.get $__rk_cprev_{hs}))\n")
     wat_emit("    (local.get ${rk_val})\n")
   },
   LHandleWith(h, body, _handler, hd, inits, arm_names) => emit_install(h, body, hd, inits, arm_names, None),
@@ -7848,8 +7927,8 @@ fn emit_expr(expr) = match expr {
   // Hβ.first-light.resume-with-state-mutation: store VALUE into the
   // handler state record at slot_offset, mutating handler state across
   // resume calls. The RECORD is a resolved read minted at lower (the
-  // __hrec ladder: the arm's LLet alias of its own $__state, a lambda's
-  // capture, a bound callee's trailing param) — a value the frame was
+  // __hrec ladder: the arm's LLet alias of its own $__state, a lambda's or
+  // a nested fn's capture) — a value the frame was
   // born holding, so no bracket-scoped cache exists to go stale. The
   // retired $<hname>_state_g singleton was that cache; a closure's own
   // $__state is its closure record (the measured 32-not-46 / 20-not-25
@@ -8590,7 +8669,7 @@ fn collect_fold_tys_expr(expr, acc: {cmp: [Ty], eq: [Ty], evac: [Ty], hash: [Ty]
   LDirectCall(_h, _fh, c, _t, args) => collect_fold_tys_list(args, fold_acc_store(acc, c, args)),
   LTailCall(_h, f, args) => collect_fold_tys_expr(f, collect_fold_tys_list(args, acc)),
   LBinOp(_h, op, l, r) => collect_fold_tys_expr(r, collect_fold_tys_expr(l, fold_trigger_binop(op, lexpr_handle(l), acc))),
-  LResumeK(_h, k, v) => collect_fold_tys_expr(v, collect_fold_tys_expr(k, acc)),
+  LResumeK(_h, k, r, v) => collect_fold_tys_expr(v, collect_fold_tys_expr(r, collect_fold_tys_expr(k, acc))),
   LLet(_h, _n, inner) => collect_fold_tys_expr(inner, acc),
   LUnaryOp(_h, _op, i) => collect_fold_tys_expr(i, acc),
   LReturn(_h, i) => collect_fold_tys_expr(i, acc),

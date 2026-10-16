@@ -1136,7 +1136,7 @@ fn pre_register_handler_sig(hname, config, state, arms, decl) = {
   // The op→handler edges — each arm's discipline JOINED onto its op's
   // scheme, and the MultiShot cost onto the op's row — are drawn HERE,
   // before any body is judged: an arm's grade is parse structure plus the
-  // classifier's summaries, both in hand before pre-registration, so a
+  // program's tail facts, both in hand before pre-registration, so a
   // perform judged ahead of its handler in source order reads the same op
   // the one judged after it does. Until 2026-09-27 the edges were drawn
   // only at the walk's registration, so an op's discipline and cost were
@@ -1249,21 +1249,12 @@ fn pre_register_fn_sig(name, params, ret_ann, handle, span: ValidSpan) = {
 // kept the wheel above the warm-start line.
 fn infer_program_once(stmts, parse_start, parse_end) = {
   register_primitives()
-  // The summaries classify ONCE, here, BEFORE pre-registration — the grades
-  // read arm STRUCTURE, which no pass changes, and the value is name-keyed
-  // (parse-independent). Pre-registration draws each handler's op edges
-  // from these grades, so every op's discipline — and the MultiShot cost on
-  // its row — is settled before any body is judged.
-  // The grades the last judgment settled stand for every function this one
-  // does not judge, and the table it leaves is the program's (graph_summaries).
-  match graph_summaries() {
-    (prior, prior_tails) => match classify_fixpoint(stmts, prior, prior_tails) {
-      (summ, tails) => {
-        set_summaries(summ, tails)
-        graph_summaries_note(summ, tails)
-      },
-    },
-  }
+  // The tail facts of these statements' functions join the program's BEFORE
+  // pre-registration, which draws each handler's op edges from its arms'
+  // grades (`arm_grade`), so every op's discipline — and the MultiShot cost
+  // on its row — is settled before any body is judged. A function this
+  // judgment does not judge keeps the facts the last one wrote.
+  graph_tails_note(program_tails(stmts))
   pre_register_decls(stmts)
   // The completion prune's boundary: everything below this frontier is a
   // prereg cell (a decl's live accumulator — kept as a shared link);
@@ -1309,7 +1300,7 @@ fn infer_program_once(stmts, parse_start, parse_end) = {
   // What can reach a value is a fact of the whole program, so the claims
   // naming a label are decided here, once every declaration is judged.
   flow_settle()
-} ~> row_gate ~> store_ages ~> infer_ctx ~> fresh_for_inference ~> resume_summaries_ctx
+} ~> row_gate ~> store_ages ~> infer_ctx ~> fresh_for_inference
 
 // Reports said to no one: the discovery parse's import read (the weave
 // parse reports every lex diagnostic again, placeably) and the gradient's
@@ -1443,25 +1434,17 @@ fn parse_lines(mh, run, line) = {
 }
 
 // What a replaced or a judged handler serves, op by op: its name, the
-// discipline each arm adds to the op it answers under a table of settled
-// grades (an arm whose grade is the join's identity adds none), and the
-// effects its arms' ops are declared in.
-fn handler_served(table, h) = match handler_arms_of(h) {
+// discipline each arm adds to the op it answers (an arm whose grade is the
+// join's identity adds none), and the effects its arms' ops are declared in.
+fn handler_served(h) = match handler_arms_of(h) {
   [] => [],
   arms => match decl_spelling(h) {
-    Some(name) => [(name, served_disciplines(arms, table), flat_map(arm_effect, arms))],
+    Some(name) => [(name, arms |> map(arm_discipline) |> filter(adds_discipline), flat_map(arm_effect, arms))],
     None => [],
   },
 }
 
-fn served_disciplines(arms, table) = match table {
-  (entries, tails) => {
-    arms |> map(arm_discipline) |> filter(adds_discipline)
-  } ~> summaries_frozen(smap_build(entries), smap_build(tails)),
-}
-
-fn arm_discipline(arm) =
-  (handler_arm_op_name(arm), arm_disc_of(resume_grade(handler_arm_body(arm))))
+fn arm_discipline(arm) = (handler_arm_op_name(arm), arm_disc_of(arm_grade(arm)))
 
 fn adds_discipline(served) = match served {
   (_, OneShot) => false,
@@ -2000,10 +1983,7 @@ fn layer_name_index(ref names, i, idx) = if i >= len(names) {
 // The bracket mirrors the ambient chain's order whole (the final's
 // trio innermost, then pipeline.mn's spine law — ledgers inside env
 // inside diagnostics): infer_ctx's frames and fresh_for_inference are
-// stmt-local, so fresh instances are exact; the summaries instance
-// re-arms over the SAME value the root computed (set_summaries at
-// entry — a fresh ctx would answer UZero and mis-tier dispatch). The
-// affine instance seeds from the root's frozen consumed-set; its log
+// stmt-local, so fresh instances are exact. The affine instance seeds from the root's frozen consumed-set; its log
 // replays at the join. verify accrues branch-locally; the debt
 // replays by re-perform — EXACT because a predicate's operands live
 // in the branch's own planned range, so no sibling bind can move a
@@ -2046,7 +2026,7 @@ fn layer_name_index(ref names, i, idx) = if i >= len(names) {
 // read them.
 fn segment_bracket(body, base, iseed) = match base {
   (bb, bc, bi) => match iseed {
-    (ib, ie, ic) => body() ~> row_gate ~> store_ages ~> infer_ctx ~> fresh_for_inference ~> resume_summaries_ctx ~> affine_ledger ~> region_tracker ~> verify_ledger ~> lookup_ty_graph ~> env_handler(bb, bc, bi) ~> mutate_sink ~> diag_branch ~> intern_view(ib, ie, ic),
+    (ib, ie, ic) => body() ~> row_gate ~> store_ages ~> infer_ctx ~> fresh_for_inference ~> affine_ledger ~> region_tracker ~> verify_ledger ~> lookup_ty_graph ~> env_handler(bb, bc, bi) ~> mutate_sink ~> diag_branch ~> intern_view(ib, ie, ic),
   },
 }
 
@@ -4274,9 +4254,18 @@ fn infer_expr(ref handle) = {
             // `apply(() => resume(1))` while the remainder printed inside
             // apply (measured 2026-10-01, boot 477bb667): a resume charged
             // nothing, so the callback's row was Pure and apply's gate had
-            // nothing to judge. A stack return runs the remainder after the
-            // arm returns, outside every frame here, and charges nothing.
-            if continuation_held(disc) { inf_add_row_at(handle, world) } else { () }
+            // nothing to judge. The record's world is its own segment rooted
+            // on the world the resume stands in, copied where the resume
+            // enters it from a world other than the one its install caught
+            // it in, so a held resume also builds. A stack return runs the
+            // remainder after the arm returns, outside every frame here, and
+            // charges nothing.
+            if continuation_held(disc) {
+              inf_add_row_at(handle, world)
+              inf_add_row_at(handle, construction_row())
+            } else {
+              ()
+            }
           },
           _ => report(EUnresolvedType(continuation_h, graph_epoch(), span)),
         },
@@ -6253,6 +6242,11 @@ fn infer_pipe_tee_one(left, right, hd, handle, span: ValidSpan, born) = {
       // handler's remainder-world cell when the arms were judged, and
       // this install's remainder is what that cell stands for here.
       remainder_gates_check(er.world, body_row, handled_names, span)
+      // A gate that reaches the world later — the caller of a continuation
+      // the arms handed out, judged after this install — meets this
+      // install's remainder through an instance of the world cell, so the
+      // verdict does not wait on which of the two the program states first.
+      note_world_remainder(er.world, body_row, handled_names, span)
       inf_add_row_at(
         handle,
         absorb_row(
@@ -6379,6 +6373,18 @@ fn enforce_handler_clause(hname: String, declared_effs, r_handle, span: ValidSpa
       graph_gate_add(r_handle, mk_gate(mk_ef_neg(absent), Located(span, Declared(hname))))
     },
   }
+}
+
+// One install's remainder, held as an instance of its handler's world cell:
+// a row cell bound to what the body performs past the effects the install
+// handles. `gate_install` reaches every instance of a cell it gates, so a
+// negation that lands on the world after the install judges this remainder
+// where it stands.
+fn note_world_remainder(world_h, body_row, handled_names, span: ValidSpan) = {
+  let why = Located(span, Inferred("the remainder an install hands its continuations"))
+  let cell = graph_fresh_row(why)
+  graph_bind_row(cell, diff_row(resolve_row(body_row), mk_ef_closed(handled_names)), why)
+  graph_instance_note(graph_chase_handle(world_h), cell)
 }
 
 // A5: the remainder's requirement at one install of h, judged against h's
@@ -10266,7 +10272,7 @@ fn infer_one_handler_arm(arm: {args: [Node], body: Node, op: Node}, result_h, in
   // arm frame's own row cell, which is what the arms PERFORM, not what a
   // resume RUNS.
   let continuation_disc =
-    disc_join(arm_disc_of(resume_grade(arm.body)), op_resume_discipline(graph_ref_decl(arm.op)))
+    disc_join(arm_disc_of(arm_grade(arm)), op_resume_discipline(graph_ref_decl(arm.op)))
   graph_bind(
     continuation_h,
     TCont(op_ret_ty, TVar(result_h), continuation_disc, mk_ef_open([], world_h)),
@@ -10288,7 +10294,7 @@ fn undeclared_arm_op(op_name: String, arm_span: ValidSpan) = {
 // An arm may not resume an op declared `-> !` (`EResumeOfNever`): its result
 // is quantified per perform, so the value the arm would hand back has no one
 // type every performer can receive.
-fn never_resume_check(hname: String, arm: {args: [Node], body: Node, op: Node}) = if op_never_returns(graph_ref_decl(arm.op)) && resume_grade(arm.body) != RNone {
+fn never_resume_check(hname: String, arm: {args: [Node], body: Node, op: Node}) = if op_never_returns(graph_ref_decl(arm.op)) && arm_grade(arm) != RNone {
   report(EResumeOfNever(hname, handler_arm_op_name(arm), graph_span_of(arm.body)))
 }
 
@@ -13801,15 +13807,20 @@ fn register_type_constructors(type_name, variants, decl) = {
   match quantify_variants(variants, make_list(total), 0, total, [], Declared(type_name)) {
     (converted, qmap) => {
       // result_ty's argument list is the TYPE parameters only (the type is applied
-      // as `TName(type_name, [params])`); a function-field's quantified ROW var is
-      // in qmap for the Forall but is NOT a type parameter, so filter it out by
-      // node-kind (is_row_handle). qhandles keeps ALL — params AND row vars — so
-      // every ctor scheme quantifies (and instantiate freshens) the stored-function
-      // rows.
+      // as `TName(type_name, [params])`). A function field's ROW the author did
+      // not write is no parameter of the type, so it is one cell of the
+      // declaration, quantified by no scheme: every construction writes the row
+      // of the function it stores into that cell, and every match reads the
+      // cell back, so a function taken out of the field performs what any
+      // function put in it performs. Freshened per use, as it was until
+      // 2026-10-16, it was a different row at each construction and each
+      // match, so `fn bad() with !E = match make() { Holds(f) => f(), … }`
+      // over `Holds(() -> Int)` checked clean and performed E
+      // (tests/crown/leak-field-row-unwritten.mn).
       let all_handles = map({ (_, h) => h }, qmap)
       let param_handles = filter((h) => !is_row_handle(h), all_handles)
       let result_ty = TName(type_name, map(TVar, param_handles))
-      let qhandles = all_handles
+      let qhandles = param_handles
       // THE GROUPING IS CARRIED, NEVER RE-DERIVED: the type's own env entry
       // holds its variant specs — minted here where the list is already in
       // hand. Every reader (the eq/show sum leaves, the worthiness witness's
@@ -14910,11 +14921,11 @@ fn draw_op_edges(arms, hd) = if len(arms) == 0 {
   let arm = last(arms)
   let op_name = handler_arm_op_name(arm)
   // The arm's resume cardinality, read off the arm's parse structure
-  // (resume_grade — the ResumeUse fold), JOINED onto the op's scheme. This
+  // (`arm_grade` — the ResumeUse fold), JOINED onto the op's scheme. This
   // is the write: cardinality is inference's, carried on the op's type, read
   // live by lower — no second hand-walk at lower. The join is monotone
   // toward MultiShot, so a re-drawn arm only ever raises disc.
-  let grade = resume_grade(handler_arm_body(arm))
+  let grade = arm_grade(arm)
   match env_resolve(op_name) {
     Some(decl) => match graph_published(decl) {
       Some((scheme, reason, kind)) => match kind {
@@ -15064,129 +15075,101 @@ fn subtree_updates(h) = {
 // Hβ.infer.tail-recursion-resume-cardinality (the old walk was no better: it
 // only detected a never-emitted NLoopExpr ancestor).
 //
-// ─── THE CUT — the resume-summary classifier (bank Ruling 6) ────────────
-// Per-fn summaries g(f) = the fn body's resume grade WITH call-substitution,
-// run as a monotone fixpoint over the 3-point Usage lattice: recursion
-// saturates to UMany by round 2 (try_each's self-call through its catch
-// lambda), no cycle detection needed. Runs in every judgment pass between
-// registration and the walk; builds its own name→body map from
-// the stmts directly (top-level AND nested fn decls — a nested name
-// colliding across scopes JOINS, the sound over-approximation direction).
-// draw_op_edges reads the summaries through resume_grade's substitution, so
-// an arm's grade sees resumes in called fns and choose/enumerate_inhabitants
-// flip MultiShot on machinery that can carry them.
+// An arm's grade sees the resumes of the functions it calls: a call to a
+// function with a resume summary contributes it (`resume_grade`'s
+// substitution), so an arm that hands `fold` a nested fn that resumes is a
+// resuming arm, and backtrack's try_each, calling itself through a resuming
+// lambda, saturates to RMany by its second round. A `resume` stands only
+// inside an arm, so the only functions with a summary are the ones declared
+// inside an arm, and each is in scope only there: an arm's summaries are a
+// fixpoint over the functions its own body declares, which nothing outside
+// it reads (`arm_grade`). Every other callee contributes the parameters it
+// calls at its own tail, a parse fact of the program's top-level
+// declarations (`program_tails`), whose names the link holds once each
+// (real, 2026-10-16). The summaries were one table for the whole program
+// keyed by name until then, so a local `let step` anywhere read a resuming
+// nested fn's summary: the function holding it was graded as resuming, the
+// lowering bound it to the handler by its spelling, and a correct program
+// whose two handlers' arms called it was refused as an ambiguous resume
+// (tests/micros/mn-resume-summary-is-the-arms.mn).
 effect ResumeSummaries {
   summary_of(String) -> ResumeUse
   tail_params_of(String) -> [Int]
 }
 
-// The write is its own effect because its two handlers hold different
-// capabilities: the standing ctx answers reads AND the one write the root
-// performs; a frozen round answers reads alone. One effect for both made the
-// frozen round a PARTIAL handler — an install subtracting `ResumeSummaries`
-// whole while a write would have walked past it — and the exhaustive-handler
-// rule refused it (`E_HandlerInexhaustive`, 2026-09-30). A forwarding arm was
-// the first fix and the row killed it: the frozen round is installed where no
-// ctx encloses it, so the forwarded write reached the executable root and the
-// boot refused the wheel (`E_EffectUnhandled`). A read capability and a write
-// capability are two effects; each handler answers what it holds, whole.
-effect ResumeSummariesWrite {
-  set_summaries([(String, ResumeUse)], [(String, [Int])])
-}
-
-// The standing ctx — every judgment pass installs it; the fixpoint's result lives
-// here for every later resume_grade call (draw_op_edges at each handler).
-handler resume_summaries_ctx with entries = [], tails = [] {
-  summary_of(name) => resume(usage_summary_lookup(entries, name, 0)),
-  tail_params_of(name) => resume(tail_params_lookup(tails, name, 0)),
-  set_summaries(es, ts) => resume() with entries = es, tails = ts,
-}
-
-// Linear summary lookup — kept for the COLD readers (resume_summaries_ctx, read
-// once per handler arm by draw_op_edges; lower.mn:1012's per-fn grade read). The
-// HOT per-round fixpoint path uses the O(1) summary_index below (summaries_frozen).
-fn usage_summary_lookup(entries, name: String, i) = if i >= len(entries) {
-  RNone
-} else {
-  match list_index(entries, i) {
-    (n, u) => if n == name { u } else { usage_summary_lookup(entries, name, i + 1) },
-  }
-}
-
-// One frozen round of the fixpoint — resume_grade's summary reads answer from
-// the PREVIOUS round's entries, O(1) via a str_hash index. The former linear
-// usage_summary_lookup — an O(N) by-name scan per call-node per round — was 98%
-// of the ENTIRE self-compile (perf, 2026-07-13): the grade is a per-fn fact keyed
-// by name, and re-scanning it linearly per lookup is the Carried-Truth violation
-// at the performance scale (§5.O — the same str_hash index the env resolution
-// uses). The index is built once per round (O(N)); every summary_of is O(1).
-// The name → resume-grade index is the shared smap (lib/imap.mn);
-// a miss is UZero (the identity grade), unwrapped from smap's Option. Reverse
-// insertion keeps the first-match grade byte-identical to the old linear scan
-// when a nested fn shadows a top-level name.
-handler summaries_frozen(idx, tidx) {
-  summary_of(name) => resume(match smap_get(idx, name) {
-    Some(g) => g,
-    None => RNone,
-  }),
-  tail_params_of(name) => resume(match smap_get(tidx, name) {
-    Some(t) => t,
-    None => [],
+// One arm's summaries: the grade of a function its body declares, two of
+// one name there joining theirs (either is the one a reference may reach),
+// and the parameters a callee calls at its own tail — read off the arm's own
+// declaration of the name first, the program's second.
+handler arm_summaries(grades, decls, tidx) {
+  summary_of(name) => resume(fold(RNone, join_named(name, ??, ??), grades)),
+  tail_params_of(name) => resume(match find(declares(name, ??), decls) {
+    Some((_, _, t)) => t,
+    None => match smap_get(tidx, name) {
+      Some(t) => t,
+      None => [],
+    },
   }),
 }
 
-// Answers (summaries, tails): the per-fn resume grade at the fixpoint, and
-// the per-fn tail-transparent parameter indices (a parse fact, computed
-// once at collection, read by every round through the same frozen ctx).
-// `prior` is what the last judgment settled: the grades of every function
-// these statements do not declare stand as written, since a statement the
-// judgment keeps calls nothing it judges again, and the answer is the whole
-// table. The cold judgment hands the empty table.
-fn classify_fixpoint(stmts, prior, prior_tails) = {
-  // Flatten decls ONCE — collect_fn_decls builds a cons-list, so the classifier's
-  // list_index(decls, i) would be O(N²) per round (§5.O: read a flat array O(1),
-  // never re-walk a spine). Both decls and the entries are flat hereafter.
-  let decls = list_to_flat(collect_fn_decls_list(stmts, []))
-  let judged = smap_build(map({ (n, _, _, _) => (n, 1) }, decls))
-  let kept = list_to_flat(filter(not_judged(judged, ??), prior))
-  let tails =
-    list_to_flat(filter(not_judged(judged, ??), prior_tails)) ++ list_to_flat(map({ (n, _, t, _) => (n, t) }, decls))
-  let summaries = classify_rounds(
-    decls,
-    smap_build(tails),
-    kept,
-    list_to_flat(map({ (n, _, _, _) => (n, RNone) }, decls))
-  )
-  (kept ++ summaries, tails)
+fn join_named(name: String, acc, entry) = match entry {
+  (n, g) => if n == name { resume_join(acc, g) } else { acc },
 }
 
-// A settled entry the judgment does not grade again: its name is declared by
-// none of the statements judged.
-fn not_judged(judged, entry) = match entry {
-  (n, _) => match smap_get(judged, n) {
-    Some(_) => false,
-    None => true,
-  },
+fn declares(name: String, decl) = match decl {
+  (n, _, _) => n == name,
 }
 
-fn classify_rounds(decls, tidx, kept, entries) = {
-  // One round: every declaration graded under the frozen summaries, a `map`
-  // under the install — a perform inside the mapped function walks the live
-  // install chain like any other, so the round needs no hand recursion.
-  let idx = smap_build(kept ++ entries)
-  let next = list_to_flat({
+// An arm's resume grade: its body's, against the functions it declares and
+// the program's tail facts. The one reader of an arm's discipline — the op
+// edge it draws, the never-returning op it may not resume, the session's
+// comparison of what a handler served.
+fn arm_grade(arm) = {
+  let body = handler_arm_body(arm)
+  let decls = collect_fn_decls(body, [])
+  let tidx = graph_tails()
+  let grades = arm_rounds(decls, tidx, map(ungraded, decls))
+  resume_grade(body) ~> arm_summaries(grades, decls, tidx)
+}
+
+fn ungraded(decl) = match decl {
+  (n, _, _) => (n, RNone),
+}
+
+// The arm's declarations graded to their fixpoint: each round grades every
+// one under the last round's grades, and the rounds climb a finite lattice,
+// so they settle.
+fn arm_rounds(decls, tidx, grades) = {
+  let next = {
     decls |> map(classify_grade)
-  } ~> summaries_frozen(idx, tidx))
-  if usage_entries_eq(entries, next, 0) { next } else { classify_rounds(decls, tidx, kept, next) }
+  } ~> arm_summaries(grades, decls, tidx)
+  if next == grades { next } else { arm_rounds(decls, tidx, next) }
 }
 
-// One declaration's grade. The walk over the declarations is a `map`: it
-// was a prepend-cons recursion one frame per declaration of the program,
-// and the wheel's own count crossed the engine's stack on 2026-10-06 — the
-// compile of the wheel trapped with 9,300 frames of it, when one landing
-// added a hundred declarations.
-fn classify_grade(d) = match d {
-  (n, b, _, _) => (n, resume_grade(b)),
+fn classify_grade(decl) = match decl {
+  (n, b, _) => (n, resume_grade(b)),
+}
+
+// The parameters each top-level function of these statements calls only at
+// its own tail (`tail_transparent_params`) — the one program-wide fact an
+// arm's grade reads beside its own declarations.
+fn program_tails(stmts) = flat_map(top_tails, stmts)
+
+fn top_tails(s) = match graph_node_body(s) {
+  NStmt(stmt) => match stmt {
+    FnStmt(name, params, _, _, b) => [(name, tail_transparent_params(params, b))],
+    LetStmt(_, _, _)
+    | ExprStmt(_)
+    | TypeDefStmt(_, _)
+    | EffectDeclStmt(_, _, _)
+    | HandlerDeclStmt(_, _, _, _, _, _)
+    | HandlerChainStmt(_, _)
+    | ImportStmt(_)
+    | RefineStmt(_, _, _)
+    | AliasStmt(_, _)
+    | RowAliasStmt(_, _) => [],
+  },
+  NExpr(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NRow(_) | NTypeAnn(_) | NName(_) | NParam(_) => [],
 }
 
 // ─── Tail-transparent parameters — a proof, never an accident ─────────
@@ -15265,50 +15248,10 @@ fn tail_transparent(node, p: String) = match graph_node_body(node) {
   _ => !string_in_list(collect_free_vars(node, []), p),
 }
 
-fn tail_params_lookup(entries, name: String, i) = if i >= len(entries) {
-  []
-} else {
-  match list_index(entries, i) {
-    (n, t) => if n == name { t } else { tail_params_lookup(entries, name, i + 1) },
-  }
-}
-
-// Monotone lattice ⇒ the fixpoint compares by VALUE; the name lists are
-// positionally identical across rounds (same decls order).
-fn usage_entries_eq(a, b, i) = if i >= len(a) {
-  true
-} else {
-  match list_index(a, i) {
-    (_, ua) => match list_index(b, i) {
-      (_, ub) => if resume_use_eq(ua, ub) { usage_entries_eq(a, b, i + 1) } else { false },
-    },
-  }
-}
-
-fn resume_use_eq(a, b) = match a {
-  RNone => match b {
-    RNone => true,
-    _ => false,
-  },
-  RTail => match b {
-    RTail => true,
-    _ => false,
-  },
-  RDeep => match b {
-    RDeep => true,
-    _ => false,
-  },
-  RMany => match b {
-    RMany => true,
-    _ => false,
-  },
-}
-
-// Every fn decl in the program — top-level and nested — as (name, body,
-// tail-transparent parameter indices, parameter names): the names are what
-// a walk of the body alone binds, since a parameter is never a reference.
-// The walk mirrors resume_grade's enumeration (the same child-bearing
-// forms); a form added to one without the other starves the summary map.
+// Every fn declared under a node — the node itself, and every one nested in
+// it — as (name, body, tail-transparent parameter indices). The walk mirrors
+// resume_grade's enumeration (the same child-bearing forms); a form added to
+// one without the other starves an arm's summaries.
 fn collect_fn_decls_list(nodes, acc) = if len(nodes) == 0 {
   acc
 } else {
@@ -15317,10 +15260,7 @@ fn collect_fn_decls_list(nodes, acc) = if len(nodes) == 0 {
 
 fn collect_fn_decls(node, acc) = match graph_node_body(node) {
   // drift-audit: ignore — decl-count-bounded cons, not a hot loop
-  NStmt(FnStmt(name, params, _, _, b)) => collect_fn_decls(
-    b,
-    [(name, b, tail_transparent_params(params, b), param_bound_names(params))] ++ acc
-  ),
+  NStmt(FnStmt(name, params, _, _, b)) => collect_fn_decls(b, [(name, b, tail_transparent_params(params, b))] ++ acc),
   NStmt(HandlerDeclStmt(_, _, _, _, arms, _)) => collect_fn_decls_arms(arms, acc),
   NStmt(HandlerChainStmt(_, chain)) => collect_fn_decls(chain, acc),
   NStmt(LetStmt(_, v, _)) => collect_fn_decls(v, acc),
@@ -15462,13 +15402,11 @@ fn resume_grade(node) = match graph_node_body(node) {
   NExpr(BlockExpr(stmts, final)) => resume_seq(grade_nodes(stmts), resume_grade(final)),
   NExpr(IfExpr(c, t, e)) => resume_seq(resume_grade(c), resume_join(resume_grade(t), resume_grade(e))),
   NExpr(MatchExpr(scrut, arms)) => resume_seq(resume_grade(scrut), grade_join_arms(arms)),
-  // THE CUT (bank Ruling 6): call-substitution — a call to a fn with a
-  // resume summary contributes that summary (the classifier fixpoint
-  // wrote it; summary_of answers RNone for unknown names, params, and
-  // ops). This is what makes backtrack's try_each recursion saturate
-  // to RMany by round 2 and lets an arm's grade see resumes in CALLED
-  // fns (yield_inhabitants' shape) — the classifier gap closed. The
-  // callee's uses sit at the CALL's result: a tail call into a helper
+  // Call-substitution: a call to a fn with a resume summary contributes
+  // that summary (the arm's fixpoint wrote it; summary_of answers RNone for
+  // every name the arm does not declare). This is what makes backtrack's
+  // try_each recursion saturate to RMany by round 2 and lets an arm's grade
+  // see resumes in the fns it CALLS. The callee's uses sit at the CALL's result: a tail call into a helper
   // that resumes at its own tail is still the stack return, while a
   // resume inside an argument is held by the call that follows it.
   NExpr(CallExpr(f, args)) => match match graph_node_body(f) {

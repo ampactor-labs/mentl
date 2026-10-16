@@ -1,0 +1,28 @@
+// expect: 96
+// An alternation stands wherever a pattern does: a constructor's payload, a
+// record field, a list element. Until 2026-10-16 those positions read a
+// plain pattern, so `W(Dot | Line(_))` did not parse, and `mentl fmt`
+// refused to write a file holding `W((Dot | Line(_)))`, whose canonical
+// render it is.
+type Shape = Dot | Line(Int) | Box(Int, Int)
+
+type Wrap = W(Shape) | Nothing
+
+fn wrapped(w) = match w {
+  W(Dot | Line(_)) => 1,
+  W(Box(_, _)) => 2,
+  Nothing => 0,
+}
+
+fn field(r) = match r {
+  {kind: Dot | Box(_, _), n} => n,
+  {kind: Line(k), n} => k + n,
+}
+
+fn element(xs) = match xs {
+  [Dot | Line(_), ...rest] => len(rest),
+  _ => 100,
+}
+
+fn main() =
+  wrapped(W(Line(3))) + wrapped(W(Box(1, 2))) * 10 + field({kind: Dot, n: 30}) + field({kind: Line(4), n: 1}) + element([Dot, Box(1, 1), Dot]) * 20

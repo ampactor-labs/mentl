@@ -1,0 +1,39 @@
+// CROWN — the TIME face: a continuation the arm hands out, resumed inside a
+// function declared `!Get` whose remainder performs Get. The negation gates
+// the handler's world, and the install's remainder is an instance of that
+// world, so the gate meets it whichever the program states first.
+// Expect E_EffectMismatch.
+//
+// Until 2026-10-16 the install judged the world's gates once, before the
+// call in the match arm placed this one: `sneaky` checked clean and the
+// remainder's `get` ran inside it, answered 20 by the install around the
+// call (11, from an install that had returned, on boot 7393d485).
+effect Ask {
+  ask() -> Int
+}
+
+effect Get {
+  get() -> Int
+}
+
+type Step = Done(Int) | Paused((Int) -> Step)
+
+handler pause {
+  ask() => Paused({ x => resume(x) }),
+}
+
+handler const_get(v) {
+  get() => resume(v),
+}
+
+fn body() = Done(ask() + get())
+
+fn sneaky(k) with !Get = match k(1) {
+  Done(n) => n,
+  Paused(_) => 0,
+}
+
+fn main() = match (body() ~> pause) ~> const_get(10) {
+  Paused(k) => sneaky(k) ~> const_get(20),
+  Done(n) => n + 100,
+}

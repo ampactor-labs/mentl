@@ -1,0 +1,36 @@
+// CROWN — the TIME face at the root: a continuation the arm hands out,
+// resumed at the top of `main` with nothing around it to answer the Get its
+// remainder performs. The root reads the handler's world through the
+// remainders its installs hand out, so Get reaches the root unhandled.
+// Expect E_EffectUnhandled.
+//
+// Until 2026-10-16 the world was a cell no install bound and the root read
+// nothing in it: the program compiled, and on boot 7393d485 it answered 11
+// from an install whose extent had ended.
+effect Ask {
+  ask() -> Int
+}
+
+effect Get {
+  get() -> Int
+}
+
+type Step = Done(Int) | Paused((Int) -> Step)
+
+handler pause {
+  ask() => Paused({ x => resume(x) }),
+}
+
+handler const_get(v) {
+  get() => resume(v),
+}
+
+fn body() = Done(ask() + get())
+
+fn main() = match (body() ~> pause) ~> const_get(10) {
+  Paused(k) => match k(1) {
+    Done(n) => n,
+    Paused(_) => 0,
+  },
+  Done(n) => n + 100,
+}

@@ -976,7 +976,7 @@ fn keep_named_refusal(verdicts, acc, indexed) = match indexed {
 fn candidate_proven(node, hole_h, reason) = {
   {
     infer_expr(node)
-  } ~> row_gate ~> store_ages ~> infer_ctx ~> fresh_for_inference ~> resume_summaries_ctx
+  } ~> row_gate ~> store_ages ~> infer_ctx ~> fresh_for_inference
   unify(hole_h, node, graph_span_of(node), reason)
   verify_after_apply(node) && all(refinement_admits(??, node), graph_claims_of(hole_h))
 }

@@ -1,0 +1,18 @@
+// CROWN — the sound dual of leak-field-row-unwritten: a field whose function
+// type names no row holds only functions that perform nothing, so the one
+// row of the declaration carries nothing and the call under `with !E` is
+// clean. Must accept.
+effect E {
+  op() -> Int
+}
+
+type Box = Empty | Holds(() -> Int)
+
+fn make() = Holds(() => 7)
+
+fn good() with !E = match make() {
+  Holds(f) => f(),
+  Empty => 0,
+}
+
+fn main() = good()

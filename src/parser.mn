@@ -3321,7 +3321,7 @@ fn parse_pat(ref tokens, pos) = {
         // Capitalized identifier — constructor pattern
         let p2 = pos + 1
         if at(tokens, p2, TLParen) {
-          match parse_pat_args(tokens, skip_ws(tokens, p2 + 1)) {
+          match parse_pat_elems(tokens, skip_ws(tokens, p2 + 1)) {
             (sub, p3) => (npat(PCon(v, sub), upto(tokens, start, p3)), p3),
           }
         } else {
@@ -3351,7 +3351,7 @@ fn parse_pat(ref tokens, pos) = {
     // the value under any branch (SYNTAX §«As-patterns — rule») — and one
     // pattern in parens is that pattern, since there is no product of one;
     // `(a, b)` is the pair as before.
-    TLParen => match parse_pat_elems(tokens, skip_ws(tokens, pos + 1), parse_pat_alt) {
+    TLParen => match parse_pat_elems(tokens, skip_ws(tokens, pos + 1)) {
       ([one], p) => (one, p),
       (sub, p) => (npat(PTuple(sub), upto(tokens, start, p)), p),
     },
@@ -3386,7 +3386,7 @@ fn parse_pat_record_fields(ref tokens, pos) = {
     let p1 = p + 1
     let p2 = skip_ws(tokens, p1)
     match if at(tokens, p2, TColon) {
-      parse_pat(tokens, skip_ws(tokens, p2 + 1))
+      parse_pat_alt(tokens, skip_ws(tokens, p2 + 1))
     } else {
       (npat(PVar(name), span_at(tokens, p)), p1)
     } {
@@ -3406,21 +3406,19 @@ fn parse_pat_record_fields(ref tokens, pos) = {
 
 fn sort_pat_fields(fields) = sort_record_fields_loop(fields, 0, len(fields), [])
 
-fn parse_pat_args(ref tokens, pos) = parse_pat_elems(tokens, pos, parse_pat)
-
-// Comma-separated patterns to the closing paren, each read by `elem`: a
-// constructor's payloads are plain patterns, a parenthesized group's
-// elements may each be an alternation.
-fn parse_pat_elems(tokens, pos, elem) = {
+// Comma-separated patterns to the closing paren — a constructor's payloads
+// or a parenthesized group's elements. Each is a whole pattern, so each may
+// be an alternation, as a record field's and a list element's may.
+fn parse_pat_elems(tokens, pos) = {
   let p = skip_ws(tokens, pos)
   if at(tokens, p, TRParen) {
     ([], p + 1)
   } else {
-    match elem(tokens, p) {
+    match parse_pat_alt(tokens, p) {
       (pat, p2) => {
         let p3 = skip_ws(tokens, p2)
         if at(tokens, p3, TComma) {
-          match parse_pat_elems(tokens, skip_ws(tokens, p3 + 1), elem) {
+          match parse_pat_elems(tokens, skip_ws(tokens, p3 + 1)) {
             (rest, p4) => ([pat] ++ rest, p4),
           }
         } else {
@@ -3443,7 +3441,7 @@ fn parse_pat_list_args(ref tokens, pos) = {
     // binds nothing, so it is a wildcard node, never an absent rest.
     ([], Some(rest_pat_at(tokens, name_pos)), expect(tokens, p_after_name, TRBracket))
   } else {
-    match parse_pat(tokens, p) {
+    match parse_pat_alt(tokens, p) {
       (pat, p2) => {
         let p3 = skip_ws(tokens, p2)
         if at(tokens, p3, TComma) {
@@ -3848,7 +3846,7 @@ fn collect_free_uses(node, bound) = match graph_node_body(node) {
 
 // The free NAMES — the uses projected to their names, for the readers that
 // ask only who is referenced: the judgment's DAG, tail transparency, the
-// ownership check, the resume-binding closure.
+// ownership check.
 fn collect_free_vars(node, bound) = free_use_names(collect_free_uses(node, bound))
 
 fn free_vars_expr(e, h, bound) = match e {

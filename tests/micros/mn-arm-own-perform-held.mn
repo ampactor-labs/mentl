@@ -1,0 +1,23 @@
+// expect: 22
+// An arm runs outside its install, so its own `ask()` reaches `base`, even
+// where the resume is held and the op yields: the install's driver dispatches
+// the body's pending perform to the arm once, and a yield the arm raises
+// bubbles past it. Until 2026-10-16 the driver looped on every yield of its
+// own op, caught the arm's `ask()` and ran the arm again, and on boot
+// 7393d485 the program never finished.
+effect Ask {
+  ask() -> Int
+}
+
+handler base {
+  ask() => resume(1),
+}
+
+handler held {
+  ask() => {
+    let r = resume(ask() + 10)
+    r * 2
+  },
+}
+
+fn main() = (ask() ~> held) ~> base
