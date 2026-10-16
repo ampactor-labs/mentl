@@ -12,6 +12,8 @@
 // proposed.
 import types
 
+import choice
+
 import effects
 
 import graph
@@ -360,32 +362,22 @@ type Proven = Proven(Site, AnnotationSuggestion)
 // ── The row clause: a lock some clause stands on, proven ───────────────
 //
 // Each candidate is a lock a dependent's clause stands on (above), proven by
-// the declaration gate's own engine: the narrowed row bound in a checkpoint,
-// the body's row asked to subsume it, rolled back. A proven clause locks an
-// absence the body already has — the gate every edit of the body must meet
-// — and discharges nothing.
-fn row_suggestions(f) =
-  standing_clauses(f.handle, [f.handle]) |> lock_candidates |> filter(lock_holds(f.handle, f.ty, ??)) |> map(row_suggestion)
-
-fn lock_holds(handle, base_ty, c) = match c {
-  (ann, _) => row_clause_holds(handle, base_ty, ann),
+// the declaration gate's own engine on a trail of its own (`speculate`): the
+// narrowed row bound, the body's row asked to subsume it, undone. A proven
+// clause locks an absence the body already has — the gate every edit of the
+// body must meet — and discharges nothing.
+fn row_suggestions(f) = {
+  let candidates = standing_clauses(f.handle, [f.handle]) |> lock_candidates
+  let held = {
+    let c = choose(candidates)
+    if lock_holds(f.handle, f.ty, c) { [c] } else { [] }
+  } ~> speculate
+  held |> map(row_suggestion)
 }
 
-// One candidate's bracket — the synth fan's shape (judge_in_segment): the
-// graph's checkpoint and the world's top, each restored, inside an arena
-// (lib/arena.mn), and a word carried out. The arena reclaims what the
-// candidate allocated and keeps what it stored into older memory that the
-// rollback did not undo — a name it was the first to intern stays in the
-// table, as interning anywhere else would leave it.
-fn row_clause_holds(handle, base_ty, ann) = {
-  let cp = graph_push_checkpoint()
-  let w = world_top()
-  let proven = apply_annotation_tentatively(handle, ann, base_ty)
-  let ok = proven && verify_after_apply(handle)
-  graph_rollback(cp)
-  world_restore(w)
-  ok
-} ~> arena
+fn lock_holds(handle, base_ty, c) = match c {
+  (ann, _) => apply_annotation_tentatively(handle, ann, base_ty) && verify_after_apply(handle),
+}
 
 // A lock's leverage: the guarantees it names, and the declarations whose
 // clauses stand on it.
@@ -550,7 +542,15 @@ fn refinement_alias(d) = match graph_node_body(d) {
 }
 
 fn param_candidates(f, owed, aliases, lean) = match lean {
-  (b, name, i) => aliases |> filter(binder_fits(b, ??)) |> filter(writable_over(written_param_ty(list_index(f.params, i)), ??)) |> flat_map(prove_precondition(f, owed, b, i, name, ??)),
+  (b, name, i) => {
+    let fitting =
+      aliases |> filter(binder_fits(b, ??)) |> filter(writable_over(written_param_ty(list_index(f.params, i)), ??))
+    let counted = {
+      let alias = choose(fitting)
+      [(alias, precondition_counts(f, owed, b, i, alias))]
+    } ~> speculate
+    counted |> flat_map(precondition_proven(i, name, ??))
+  },
 }
 
 // What a parameter's author wrote as its type: the annotation's type, or the
@@ -615,11 +615,10 @@ fn same_base(a, b) = match a {
 // judgment's own decisions run against it: every open obligation of the
 // declaration through the ledger's decision, and every application of the
 // declaration the judgment drew through the call site's own two steps
-// (`dry_claim`). Counted inside, rolled back, built after: the bracket is an
-// arena (lib/arena.mn) and its counts are what cross its exit. An
-// application the edge does not hold — a
-// partial's supplied argument, the declaration handed to another function
-// as a value — is judged when the annotation is accepted, not counted here
+// (`dry_claim`). Counted on a trail of their own (`speculate`), undone,
+// built after. An application the edge does not hold — a partial's supplied
+// argument, the declaration handed to another function as a value — is
+// judged when the annotation is accepted, not counted here
 // (`Hβ.teach.leverage-reads-direct-applications`).
 //
 // A candidate that refutes a body claim is no precondition; one that
@@ -627,39 +626,37 @@ fn same_base(a, b) = match a {
 // under the requirement the body states, it is a call that breaks it — the
 // program's own defect — and a stronger candidate refuting more calls is the
 // one asking more than the body needs.
-fn prove_precondition(f, owed, b, i, name: String, alias) = match alias {
-  (aname, contract) => {
-    let counts = {
-      let cp = graph_push_checkpoint()
-      let w = world_top()
-      restate_param(b, contract)
-      let discharged = owed |> filter(obligation_holds) |> len
-      let broken = owed |> filter(obligation_refuted) |> len
-      let verdicts =
-        latest_applications(graph_applies_of(f.handle)) |> map(claim_at_call(contract, i, ??))
-      let refuted = verdicts |> filter(verdict_refuted) |> len
-      let opened = verdicts |> filter(verdict_open) |> len
-      graph_rollback(cp)
-      world_restore(w)
-      (discharged, broken, refuted, opened)
-    } ~> arena
-    match counts {
-      (discharged, broken, refuted, opened) => if discharged == 0 || broken > 0 {
-        []
-      } else {
-        let ann = ARefined({alias: aname, contract, param: name})
-        [
-          Proven(
-            SiteParam(i),
-            AnnotationSuggestion(
-              ann,
-              Leverage({discharged, locks: [], opened, refuted, stands: []}),
-              suggestion_reason(ann)
-            )
-          )
-        ]
-      },
-    }
+fn precondition_counts(f, owed, b, i, alias) = match alias {
+  (_, contract) => {
+    restate_param(b, contract)
+    let discharged = owed |> filter(obligation_holds) |> len
+    let broken = owed |> filter(obligation_refuted) |> len
+    let verdicts =
+      latest_applications(graph_applies_of(f.handle)) |> map(claim_at_call(contract, i, ??))
+    (
+      discharged,
+      broken,
+      verdicts |> filter(verdict_refuted) |> len,
+      verdicts |> filter(verdict_open) |> len
+    )
+  },
+}
+
+fn precondition_proven(i, name: String, counted) = match counted {
+  ((aname, contract), (discharged, broken, refuted, opened)) => if discharged == 0 || broken > 0 {
+    []
+  } else {
+    let ann = ARefined({alias: aname, contract, param: name})
+    [
+      Proven(
+        SiteParam(i),
+        AnnotationSuggestion(
+          ann,
+          Leverage({discharged, locks: [], opened, refuted, stands: []}),
+          suggestion_reason(ann)
+        )
+      )
+    ]
   },
 }
 
@@ -754,7 +751,14 @@ fn return_suggestions(f) = if authored_return(f.retty) {
 } else {
   match verify_debt() |> flat_map(resting_on(f.handle, ??)) {
     [] => [],
-    resting => aliases_in_reach(graph_module_of(f.handle)) |> filter(ret_fits(f.ret, ??)) |> flat_map(prove_return(f, resting, ??)),
+    resting => {
+      let fitting = aliases_in_reach(graph_module_of(f.handle)) |> filter(ret_fits(f.ret, ??))
+      let counted = {
+        let alias = choose(fitting)
+        [(alias, return_counts(f, resting, alias))]
+      } ~> speculate
+      counted |> flat_map(return_proven)
+    },
   }
 }
 
@@ -797,37 +801,30 @@ fn value_calls(h, decl) = match join_tails(h) {
 // return's own claim would (`claim_authored_return`: the claim alone, no
 // learning); each resting claim is then re-decided with every call it rests
 // on read as returning the contract — the edge `post_leaves` follows — and
-// counted, in an arena whose counts are what cross its exit.
-fn prove_return(f, resting, alias) = match alias {
-  (aname, contract) => {
-    let counts = {
-      let cp = graph_push_checkpoint()
-      let w = world_top()
-      let body_holds = verdict_holds(dry_return_claim(contract, f.body))
-      resting |> each(rest_on_contract(contract, ??))
-      let discharged = resting |> filter(rest_holds) |> len
-      let refuted = resting |> filter(rest_refuted) |> len
-      graph_rollback(cp)
-      world_restore(w)
-      (body_holds, discharged, refuted)
-    } ~> arena
-    match counts {
-      (body_holds, discharged, refuted) => if body_holds && discharged > 0 {
-        let ann = AReturns({alias: aname, contract})
-        [
-          Proven(
-            SiteReturn,
-            AnnotationSuggestion(
-              ann,
-              Leverage({discharged, locks: [], opened: 0, refuted, stands: []}),
-              suggestion_reason(ann)
-            )
-          )
-        ]
-      } else {
-        []
-      },
-    }
+// counted on a trail of their own (`speculate`), undone, built after.
+fn return_counts(f, resting, alias) = match alias {
+  (_, contract) => {
+    let body_holds = verdict_holds(dry_return_claim(contract, f.body))
+    resting |> each(rest_on_contract(contract, ??))
+    (body_holds, resting |> filter(rest_holds) |> len, resting |> filter(rest_refuted) |> len)
+  },
+}
+
+fn return_proven(counted) = match counted {
+  ((aname, contract), (body_holds, discharged, refuted)) => if body_holds && discharged > 0 {
+    let ann = AReturns({alias: aname, contract})
+    [
+      Proven(
+        SiteReturn,
+        AnnotationSuggestion(
+          ann,
+          Leverage({discharged, locks: [], opened: 0, refuted, stands: []}),
+          suggestion_reason(ann)
+        )
+      )
+    ]
+  } else {
+    []
   },
 }
 
@@ -953,8 +950,8 @@ fn apply_annotation_tentatively(handle, ann, base_ty) = match ann {
   // mint; identity is the intern handle from here on (EffName-is-a-
   // handle LANDED — comparisons are word i32.eq by type).
   ANotEffect(name, sp) => narrow_row_proven(handle, base_ty, mk_ef_neg([ENamed(intern_str(name))]), sp),
-  // A refinement is proven in its own bracket against the obligations it
-  // discharges (`prove_precondition`, `prove_return`); it narrows no row,
+  // A refinement is proven on its own trail against the obligations it
+  // discharges (`precondition_counts`, `return_counts`); it narrows no row,
   // and a narrowing of its own would prove nothing it claims. Until D4 this
   // arm performed `verify` on a predicate no candidate ever supplied and
   // answered true, and the ownership arms answered true with no proof at
@@ -1042,7 +1039,7 @@ fn narrow_row(handle, base_ty, narrow, source_span) = match base_ty {
 // This is NOT the proof — a bind always sticks, so boundness alone once
 // admitted an !Alloc claim on an allocating body; the proof is the
 // row subsumption apply_annotation_tentatively now returns, conjoined
-// with this read at `row_clause_holds`. Failure modes here:
+// with this read at `lock_holds`. Failure modes here:
 //   NErrorHole — occurs check or a structural conflict caused
 //                inference to record failure on the handle.
 //   NFree     — the apply didn't bind (shouldn't happen for a

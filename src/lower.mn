@@ -768,19 +768,6 @@ fn callee_kind(c) = match c {
   Synthesized(_) => None,
 }
 
-// The NAME a callee expression carries — read by the resume-bind read
-// (`callee_name_of_handle`); "" for an anonymous
-// callee. A call's argument product and a partial's
-// callee are never resolved through it: those are the call node's own facts
-// (`call_product_at`, `partial_callee_form`).
-fn lower_callee_name(fbody) = match fbody {
-  NExpr(VarRef(name)) => name,
-  NExpr(FieldExpr(_, field)) => field,
-  NExpr(CallExpr(callee, _)) => lower_callee_name(graph_node_body(callee)),
-  // drift-audit: ignore — "" = callee has no declared name (positional passthrough)
-  _ => "",
-}
-
 // A call's positional product, read where the judgment wrote it (the
 // call-product column): the argument nodes in declaration order — labels
 // resolved, absent fields filled by their defaults, an authored `??` in
@@ -810,47 +797,26 @@ fn call_product_nodes(handle, args) = match call_product_at(handle, args) {
 // The `CallExpr` dispatch falls back to this when the callee isn't a
 // `SchemeKind`-recognized constructor or effect op. Every call is BARE:
 // the callee's performs dispatch through the LIVE WORLD CHAIN
-// (the world-as-value arc's R2), so no call threads an
-// evidence region. The one thing a call may carry is the CONTINUATION:
-// a resume-BOUND callee (reachable from a MultiShot arm per the
-// resume_bindings closure)
-// takes the arm's k as a REAL trailing argument — the "argument, not
-// evidence" ruling executed: the callee's own resolve_resume_k finds its
-// __k as an ordinary param (RLocal), a lambda's as a capture (RUpval).
-fn lower_call_default(handle, f, lo_args) = lower_call_of(handle, f, lower_expr(f), lo_args)
+// (the world-as-value arc's R2), so no call threads an evidence region,
+// and a callee that resumes reads the continuation its own record carries.
+fn lower_call_default(handle, f, lo_args) = lower_call_of(handle, lower_expr(f), lo_args)
 
 // A call whose callee is already lowered: the dispatch that resolved the
 // callee's name hands its read over, so the name is resolved once per call.
-fn lower_call_of(handle, fh, lo_f, lo_args) = {
-  let args2 = resume_bound_args(handle, fh, lo_args)
-  // The direct cash-out: a callee lower resolved to a top-level fn's
-  // OWN global (LGlobal minted from a FnScheme VarRef — locals shadowed
-  // it first, value bindings carry another kind) calls the fn BY NAME
-  // with native args. Carried-Truth at the dispatch: lower proved the
-  // callee's identity; routing through the closure re-derived it at
-  // runtime through a table hop that broke tail-calls (the wf$ wrapper
-  // frame leak — one leaked frame per iteration of every deep tail
-  // recursion routed through a wide fn's word face, measured at 4096
-  // frames under the signal crucible).
-  match lo_f {
-    LGlobal(gh, c) => match callee_kind(c) {
-      Some(FnScheme) => LDirectCall(handle, gh, c, false, args2),
-      _ => LCall(handle, lo_f, args2),
-    },
-    _ => LCall(handle, lo_f, args2),
-  }
-}
-
-// A call to a callee bound to a handler's resume (`ls_resume_bind_of`)
-// carries the arm's k and the install record as trailing arguments. The
-// append is unconditional on the CALLEE's boundness (never gated on the
-// caller's discipline): a bound fn's emitted arity always includes them, so
-// every call must match it — resume_k_arg passes the live k where one is in
-// scope and the loud dead-k word where none is.
-fn resume_bound_args(handle, callee, lo_args) = match ls_resume_bind_of(callee_name_of_handle(callee)) {
-  None => lo_args,
-  // drift-audit: ignore — one k+record arg pair per call site, not a loop
-  Some(_) => lo_args ++ [resume_k_arg(handle), resume_hrec_arg(handle)],
+// The direct cash-out: a callee lower resolved to a top-level fn's OWN
+// global (LGlobal minted from a FnScheme VarRef — locals shadowed it first,
+// value bindings carry another kind) calls the fn BY NAME with native args.
+// Carried-Truth at the dispatch: lower proved the callee's identity;
+// routing through the closure re-derived it at runtime through a table hop
+// that broke tail-calls (the wf$ wrapper frame leak — one leaked frame per
+// iteration of every deep tail recursion routed through a wide fn's word
+// face, measured at 4096 frames under the signal crucible).
+fn lower_call_of(handle, lo_f, lo_args) = match lo_f {
+  LGlobal(gh, c) => match callee_kind(c) {
+    Some(FnScheme) => LDirectCall(handle, gh, c, false, lo_args),
+    _ => LCall(handle, lo_f, lo_args),
+  },
+  _ => LCall(handle, lo_f, lo_args),
 }
 
 // The saturated call's ONE dispatch body — two callers project through it:
@@ -874,7 +840,7 @@ fn lower_call_dispatch(handle, f, fbody, r_args) = {
         site_schedule_seed(f)
         lower_global_call(handle, f, name, r_args, lo_args)
       },
-      (res, local_h) => lower_call_of(handle, f, lower_resolved_ref(f, name, res, local_h), lo_args),
+      (res, local_h) => lower_call_of(handle, lower_resolved_ref(f, name, res, local_h), lo_args),
     },
     _ => lower_call_default(handle, f, lo_args),
   }
@@ -971,7 +937,7 @@ fn lower_global_call(handle, fh, name: String, r_args, lo_args) = if name == "to
     } else {
       lower_perform_dispatch(handle, name, lo_args)
     },
-    _ => lower_call_of(handle, fh, lower_resolved_ref(fh, name, RGlobal, 0), lo_args),
+    _ => lower_call_of(handle, lower_resolved_ref(fh, name, RGlobal, 0), lo_args),
   }
 }
 
@@ -1206,18 +1172,17 @@ fn project_nested_fn(origin, fn_name, bind, cap_pairs) = match graph_node_body(o
   NStmt(FnStmt(_name, params, _ret_ann, _effs, body_node)) => {
     let cap_names = map({ (n, _) => n }, cap_pairs)
     let cap_handles = map({ (_, h) => h }, cap_pairs)
-    let (bound_names, bound_handles, bind_fields, bind_disc) = match bind {
-      None => ([], [], [], OneShot),
-      Some(hd) => (["__k", "__hrec"], [0, 0], arm_capture_names(hd), MultiShot),
+    let (bind_fields, bind_disc) = match bind {
+      None => ([], OneShot),
+      Some(hd) => (arm_capture_names(hd), MultiShot),
     }
-    let param_names_list = lower_param_names(params) ++ bound_names
-    let param_handles_list = params ++ bound_handles
+    let param_names_list = lower_param_names(params)
     // A top-level fn's frame is entered with no frame below it; its record
     // is the module's static data record, so its lines are STATIC — an
     // instance global per site. A nested fn is a closure: its lines follow
     // its captures in the record its mint builds.
     let line_base = if ls_frame_depth() == 0 { -1 } else { len(cap_pairs) }
-    ls_enter_frame(fn_name, param_names_list, param_handles_list, cap_names, cap_handles, line_base)
+    ls_enter_frame(fn_name, param_names_list, params, cap_names, cap_handles, line_base)
     lower_frame_fence_push()
     let lo_body = capture_frame(
       mark_tail({
@@ -1491,10 +1456,9 @@ fn resume_bind_assoc(binds, name: String, i) = if i >= len(binds) {
 // resume-bearing fns (summary other than RNone — the classifier's fixpoint,
 // read off the graph where the judgment left it; collect_free_vars
 // over-approximates the call edge, which only ever binds a dormant wrap).
-// Each bound fn lowers under
-// its handler's arm context (disc MultiShot, the handler whose redrive a
-// resume calls, the state fields read live from the decl) and every call
-// to it from a MultiShot context threads the "__resume" k evidence. A fn
+// Each bound fn lowers under its handler's arm context (disc MultiShot, the
+// handler whose redrive a resume calls, the state fields read live from the
+// decl), and reads the k its record captured where the arm minted it. A fn
 // reached from arms of TWO handlers is E_ResumeAmbiguousOp — narrow the
 // call graph; the first binding stands (productive-under-error).
 fn resume_bindings(stmts) = match graph_summaries() {
@@ -1703,10 +1667,6 @@ fn lower_compute_ev_slot_for_op(op_name) = match lookup_parent_effect(op_name) {
 // overwriting yield in the install record) is gone; the clamp's floor is
 // named residue until the diagnostic path reaches this site.
 fn clamp_index(i) = if i < 0 { 0 } else { i }
-
-// The name a callee handle reads as: a VarRef or CallExpr callee yields its
-// name, an anonymous one (a lambda, a resume body) the empty string.
-fn callee_name_of_handle(h) = lower_callee_name(graph_node_body(h))
 
 // ─── Lexical handler resolution (lower-phase, install-handle-bearing) ──
 // Walk the lower-handler-stack innermost-first; return the install handle
@@ -2754,11 +2714,10 @@ fn lower_pipe_stage_value(lo_ls, right, handle, rbody) = {
     } else {
       LCall(handle, lo_r, lo_ls)
     },
-    // A bare fn-VALUE stage (`7 |> outer`): the completion call runs the
-    // SAME k-append fork every call runs — a resume-bound stage takes the
-    // arm's k as the trailing argument (the "argument, not evidence"
-    // ruling; the callee's performs dispatch through the world chain).
-    _ => LCall(handle, lo_r, resume_bound_args(handle, right, lo_ls)),
+    // A bare fn-VALUE stage (`7 |> outer`): the completion call is a call
+    // like any other — the callee's performs dispatch through the world
+    // chain, and a stage that resumes reads the k its record carries.
+    _ => LCall(handle, lo_r, lo_ls),
   }
 }
 
@@ -4089,30 +4048,15 @@ fn lower_stmt_body(s, handle, span) = match s {
 
 // A named fn's mint, at the register its name is bound to.
 fn lower_fn_mint(name, params, body_node, handle, reg) = {
-  // A resume-BOUND callee — reachable from a MultiShot arm, per the
-  // resume_bindings closure at lower_program — takes the arm's continuation
-  // as an implicit TRAILING "__k" param: the k is an ARGUMENT, threaded
-  // by every MultiShot-context call site (lower_call_default), so the
-  // body's resumes resolve it as an ordinary local — never evidence.
-  //
-  let bind = ls_resume_bind_of(name)
-  // The param TYPES the enumeration entry carries — the resume-binding
-  // appendage floors, because __k and __hrec are the machinery's own
-  // words and the graph judged no type for them.
-  let (bound_names, bound_tys) = match bind {
-    None => ([], []),
-    Some(_) => (["__k", "__hrec"], floor_tys(2)),
-  }
-  let param_names_list = lower_param_names(params) ++ bound_names
-  let param_tys_list = entry_param_tys(handle, params) ++ bound_tys
-  // The same "__k" seeding the lambda mint applies (an UNBOUND nested
-  // fn inside an arm may still call a bound sibling); a bound fn's own
-  // __k param shadows the seed harmlessly.
-  let free_uses0 = collect_free_uses(body_node, param_bound_names(params) ++ bound_names)
-  let free_uses = match bind {
-    None => lower_seed_hrec(lower_seed_k(free_uses0)),
-    Some(_) => free_uses0,
-  }
+  // A nested fn captures the continuation and the install record its arm
+  // holds, as a lambda minted there does: a resume in its body reads the k
+  // its record carries, so it is called with its own arguments alone and
+  // handed out as a value like any closure. Where no arm encloses the mint,
+  // the seeds add nothing.
+  let free_uses =
+    collect_free_uses(body_node, param_bound_names(params)) |> lower_seed_k |> lower_seed_hrec
+  let param_names_list = lower_param_names(params)
+  let param_tys_list = entry_param_tys(handle, params)
   match resolve_captures_outer(free_uses, handle) {
     (captures_names, captures_exprs, captures_handles) => {
       // The emitted symbol, asked BEFORE this fn's own frame is entered so
@@ -4130,10 +4074,9 @@ fn lower_fn_mint(name, params, body_node, handle, reg) = {
       })
       // THE DIRECT SWAP (landing shape α, second kind): the LowFn is
       // built by the column-seeded projector. The resume-binding
-      // context (THE CUT, bank A3 — the arm_state_ctx install, the
-      // appended __k/__hrec params) lives in project_nested_fn; the
-      // site keeps what feeds the columns.
-      match project_nested_fn(handle, fn_name, bind, zip(captures_names, captures_handles)) {
+      // context (THE CUT, bank A3 — the arm_state_ctx install) lives in
+      // project_nested_fn; the site keeps what feeds the columns.
+      match project_nested_fn(handle, fn_name, ls_resume_bind_of(name), zip(captures_names, captures_handles)) {
         // Two namespaces meet here, each carried by its own node. The LLet
         // holds the LOCAL one — the register the name is bound at (the source
         // name unless it shadows), which the body's own references, a
@@ -4997,34 +4940,18 @@ fn redrive_perform(handle, kr: String) = match current_arm_handler() {
 // drift-audit: ignore — one-shot stmt-list concat, no loop
 //
 // The resume-resolution LADDER (band B M1.6, bank Ruling 2 as amended by
-// A3) — the k is an ARGUMENT, never evidence:
-//   lexical  — "__k" is the arm's own leading param (the k1 fast path),
-//              or a resume-bound callee's appended trailing param
-//              (lower_call_default threads it as a real argument).
-//   capture  — "__k" was captured into this lambda's record (the
-//              ResumeExpr free-vars arm reports it; resolve_captures_outer
-//              threaded it) — the LUpval read, N frames deep.
+// A3) — the k is a value the frame was born holding, never evidence:
+//   lexical  — "__k" is the arm's own leading param (the k1 fast path).
+//   capture  — "__k" was captured into the record of a lambda or a nested
+//              fn minted inside the arm (`lower_seed_k`) — the LUpval
+//              read, N frames deep.
 // A resume whose "__k" resolves NEITHER way is E_ResumeOutsideArm at
 // infer (the armed class), so the remaining two shapes are the
 // impossible branch — the typed loud floor, never a fabricated k.
-// The k as a CALL ARGUMENT — the tolerant sibling of resolve_resume_k:
-// where the strict form floors (a bound callee called from a context with
-// no k in scope — legal when that path never resumes), the argument form
-// passes the DEAD-K WORD 0, so the callee's arity always matches its
-// emitted signature and a resume through the dead k traps loudly at the
-// fn_ptr load of address 0, never silently.
-fn resume_k_arg(handle) = match ls_resolve("__k") {
-  (res, _lh) => match res {
-    RLocal(reg) => LLocal(0, reg),
-    RUpval(slot) => LUpval(0, slot),
-    RFbPrior(_) => LConst(handle, LInt(0)),
-    RGlobal => LConst(handle, LInt(0)),
-  },
-}
-
+//
 // Merge "__k" into a closure mint's free set when a k is lexically in
-// scope (the arm's param, a bound fn's appended param, or an enclosing
-// capture) — read through the SAME ls_resolve ladder the resumes use.
+// scope (the arm's param or an enclosing capture) — read through the SAME
+// ls_resolve ladder the resumes use.
 fn lower_seed_k(free_uses) = match ls_resolve("__k") {
   (res, _lh) => match res {
     RLocal(_) => free_uses_merge([("__k", 0)], free_uses),
@@ -5047,33 +4974,17 @@ fn lower_seed_hrec(free_uses) = match ls_resolve("__hrec") {
 // The commit's record, resolved through the SAME ladder as the k (the
 // record is an ARGUMENT or a CAPTURE, never a global): the arm frame
 // binds `__hrec` as an LLet alias of its own $__state (the record the
-// driver passed), a lambda captures it (lower_seed_hrec), a resume-bound
-// fn takes it as the trailing param after __k. The unresolved arms fall
-// back to the frame's own $__state — sound exactly where no __hrec was
-// ever minted, because a frame with commits and no binding IS the
-// record's owner (the arm-level identity).
+// driver passed), and a lambda or a nested fn minted inside the arm
+// captures it (lower_seed_hrec). The unresolved arms fall back to the
+// frame's own $__state — sound exactly where no __hrec was ever minted,
+// because a frame with commits and no binding IS the record's owner (the
+// arm-level identity).
 fn resolve_hrec(handle) = match ls_resolve("__hrec") {
   (res, _lh) => match res {
     RLocal(reg) => LLocal(0, reg),
     RUpval(slot) => LUpval(0, slot),
     RFbPrior(_) => LLocal(0, "__state"),
     RGlobal => LLocal(0, "__state"),
-  },
-}
-
-// The record as a CALL ARGUMENT — the tolerant sibling (resume_k_arg's
-// exact shape): a resume-bound callee's emitted arity always includes
-// __hrec after __k, so every call site passes the live record where one
-// is in scope and the dead word 0 where none is. A path that never
-// resumes never commits; a commit on a dead-record path stores just
-// before its paired k-call's dead-word trap, so the path still dies
-// loudly at the resume itself.
-fn resume_hrec_arg(handle) = match ls_resolve("__hrec") {
-  (res, _lh) => match res {
-    RLocal(reg) => LLocal(0, reg),
-    RUpval(slot) => LUpval(0, slot),
-    RFbPrior(_) => LConst(handle, LInt(0)),
-    RGlobal => LConst(handle, LInt(0)),
   },
 }
 

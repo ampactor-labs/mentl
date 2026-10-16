@@ -93,8 +93,10 @@ fn board_bounds() = [
   // when a parameter became its node. 136 -> 135 the same day: the walk that
   // paired each state field's name with its init left when the name became
   // its binder. 135 -> 132: the lowering's spine of capture points left when
-  // a continuation was captured at any position.
-  Bound({ceiling: 132, question: QCensus(CsEffectfulLambda)}),
+  // a continuation was captured at any position. 132 -> 131: the forking
+  // handler's step is one lambda more, and two wrappers of the specializer's
+  // substitution became the holes they were.
+  Bound({ceiling: 131, question: QCensus(CsEffectfulLambda)}),
   // Drift mode 10 — the seven survivors are documented sentinels, not masked
   // cases. Every wildcard that is NOT one of them is a variant the author
   // declined to enumerate, and the medium cannot tell the difference, which
@@ -117,8 +119,9 @@ fn board_bounds() = [
   // handler name it could not read left with the read — an install is its
   // handler's declaration. 17 -> 15 (2026-10-16): the verifier's catch-alls
   // were written as their rosters when the flow walk replaced the label
-  // lattice.
-  Bound({ceiling: 15, question: QCensus(CsWildcardFabricates)}),
+  // lattice. 15 -> 14 the same day: the callee-name read's `""` left with the
+  // trailing pair a resume-bound fn took, once a nested fn captured its k.
+  Bound({ceiling: 14, question: QCensus(CsWildcardFabricates)}),
   // Drift mode 10 at the arm itself (Morgan, 2026-10-13): a `_` or a bare
   // binder after other arms of a match over a sum is the roster the author
   // declined to write, and a constructor declared later joins it unread.
@@ -136,8 +139,10 @@ fn board_bounds() = [
   // continuation boundaries left when a continuation was captured at any
   // position. 1141 -> 937: `mentl tighten` wrote every catch-all of the
   // verifier and of the graph, type and effect modules it imports as its
-  // roster, the day information flow became the verifier's walk.
-  Bound({ceiling: 937, question: QCensus(CsWildcardOverSum)}),
+  // roster, the day information flow became the verifier's walk. 937 -> 936
+  // the same day: the callee-name read left with the resume-bound fn's
+  // trailing pair.
+  Bound({ceiling: 936, question: QCensus(CsWildcardOverSum)}),
   // Drift mode 15 — a value given a leading-underscore name instead of being
   // deleted. The rename silences the reader, never the fact that nothing
   // reads it.
@@ -280,6 +285,13 @@ fn board_bounds() = [
   // function the wheel stops calling leaves in the landing that stops
   // calling it.
   Bound({ceiling: 0, question: QUnreachable}),
+  // Speculation is a choice whose resumptions the trail brackets: a
+  // checkpoint is pushed by the graph handler's own arm and by the arms of
+  // the two forking handlers that answer `choose`, and by nothing else. A
+  // function that pushes one has bracketed a speculation by hand — the
+  // bracket the forking handlers hold once. Seen RED at 8 the day the five
+  // hand brackets became performs of `choose` (2026-10-16).
+  Bound({ceiling: 3, question: QRefsOf("graph_push_checkpoint")}),
   // ─ PROSE BY CLASS (SA-5, MOD-13). A comment is graph content, so what
   // SYNTAX §Comments says a comment is not is a census, never a review
   // finding. Each class falls as the module carrying it is touched; F strips
@@ -320,8 +332,9 @@ fn board_bounds() = [
   // type's banner left when a pattern became a node. 266 -> 265
   // (2026-10-16): the parameter re-sugar's banner left with the re-sugar.
   // 265 -> 255 the same day: the verifier's section banners left when its
-  // comments were trued with the flow walk.
-  Bound({ceiling: 255, question: QCensus(CsProseClass(PcBanner))}),
+  // comments were trued with the flow walk. 255 -> 254: the segment walk's
+  // banner left when the ??-fan became one choice.
+  Bound({ceiling: 254, question: QCensus(CsProseClass(PcBanner))}),
   // A COMMENT NEVER SILENCES A GATE (SYNTAX §Comments). Each marker mutes a
   // text row of tools/drift-patterns.tsv that a structural census reads
   // correctly — a string literal is text, a one-shot concat is not an
@@ -336,7 +349,9 @@ fn board_bounds() = [
   // name read and a resume-bound call's pair of markers becoming one. 121 ->
   // 115 (2026-10-16): the count read 117 at the pin before, and the two over
   // the free-name walk's unions left when each union became one flat list.
-  Bound({ceiling: 115, question: QCensus(CsProseClass(PcSilencer))})
+  // 115 -> 113 the same day: the two over a resume-bound call's trailing
+  // pair and its callee-name read left when a nested fn captured its k.
+  Bound({ceiling: 113, question: QCensus(CsProseClass(PcSilencer))})
 ]
 
 // The board: every bound answered by the medium's own answer to its question.

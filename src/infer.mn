@@ -29,6 +29,8 @@ import arena
 
 import canon
 
+import choice
+
 import effects
 
 import env
@@ -2035,10 +2037,9 @@ fn layer_name_index(ref names, i, idx) = if i >= len(names) {
 //
 // Every handler the deleted branch bracket installed EXCEPT `graph_handler`, so the
 // body's graph performs resolve OUTER to the root's own instance and the
-// judgment happens on the one live graph. Isolation is the caller's fork
-// triple (`graph_push_checkpoint` + `world_top` … rollback + restore), the
-// same triple mentl.mn's row_clause_holds runs at the annotation gradient — the
-// gradient's own comment names this site as its shape.
+// judgment happens on the one live graph. Isolation is the forking
+// handler's (`speculate`): the checkpoint and the world's top taken before
+// the candidate's resumption and restored after it.
 //
 // The fresh ledgers stay, and that is the point of keeping the chain: the
 // triple covers graph, heap and world ONLY, while a candidate's judgment
@@ -2799,100 +2800,113 @@ fn mycroft_field_pairs(fs1, fs2, i, acc) = if i >= len(fs1) || i >= len(fs2) {
   }
 }
 
-// The speculative decl judgment (§11 5.3's fragment — Mycroft iteration
-// on the medium's own checkpoint substrate). Round 1 is the plain
-// judgment under diag capture; a refusal carrying the poly teach's own
-// fingerprint rolls back and retries under the general assumption
-// (round 2); a clean round 2 is RECHECKED under its own result scheme
-// (round 3 — the stability round that makes the acceptance sound: the
-// self-call is checked against the scheme that will be published, per
-// Mycroft; Henglein's single-call fragment is the termination
-// argument). Any round's failure falls back to the plain re-run — the
-// honest refusal, never worse than today. K = 3 rounds.
+// The speculative decl judgment (§11 5.3's fragment — Mycroft iteration on
+// the medium's own trail). Its rounds are the options of one choice, judged
+// in order, and the first that holds is kept (`first_held`): the plain
+// judgment under report capture, held when no refusal carries the poly
+// teach's own fingerprint; the general assumption, judged and undone for the
+// scheme it publishes, then RECHECKED under that scheme (the stability round
+// that makes the acceptance sound: the self-call is checked against the
+// scheme that will be published, per Mycroft; Henglein's single-call
+// fragment is the termination argument); and the plain judgment again,
+// whose refusal is the honest one — never worse than the plain judgment
+// alone. That last round always holds, so which round held is the graph's
+// to say and the install's answer is discarded.
 fn infer_fn_speculative(name, params, body_node, ret_ann, effs, handle, span: ValidSpan) = {
-  let cp = graph_push_checkpoint()
-  let held = {
-    infer_fn(name, params, body_node, ret_ann, effs, handle, span, false)
-    poly_captured()
-  } ~> poly_capture
-  if held_has_poly(held, name) {
-    graph_rollback(cp)
-    let cp2 = graph_push_checkpoint()
-    let held2 = {
-      mycroft_prebind(name, params, span, handle)
-      infer_fn(name, params, body_node, ret_ann, effs, handle, span, true)
+  let _ = judged_round(
+    name,
+    params,
+    body_node,
+    ret_ann,
+    effs,
+    handle,
+    span,
+    choose([MonoRound, PolyRound, ReportRound])
+  ) ~> first_held
+  ()
+}
+
+fn judged_round(name, params, body_node, ret_ann, effs, handle, span: ValidSpan, round) = match round {
+  MonoRound => {
+    let held = {
+      infer_fn(name, params, body_node, ret_ann, effs, handle, span, false)
       poly_captured()
     } ~> poly_capture
-    if held_has_error(held2) {
-      graph_rollback(cp2)
-      infer_fn(name, params, body_node, ret_ann, effs, handle, span, false)
+    if held_has_poly(held, name) {
+      false
     } else {
-      match env_lookup(name) {
-        Some(entry) => match entry {
-          (sch, _, _) => match judgment_pair(sch) {
-            (q, ty) => {
-              let detached = chase_deep(ty)
-              graph_rollback(cp2)
-              let cp3 = graph_push_checkpoint()
-              // The assumption is written before the capture bracket: it
-              // mints and binds, reports nothing, and its type rides to the
-              // accept's gate transfer below.
-              let assumed = rebind_recheck(name, q, detached, span, handle)
-              let held3 = {
-                infer_fn(name, params, body_node, ret_ann, effs, handle, span, true)
-                poly_captured()
-              } ~> poly_capture
-              if held_has_error(held3) {
-                graph_rollback(cp3)
-                infer_fn(name, params, body_node, ret_ann, effs, handle, span, false)
-              } else {
-                // THE STABILITY BELT: the recheck's PUBLISHED scheme must
-                // be alpha-equal to the ASSUMED one, or the self-calls were
-                // checked against a scheme that is not the one published —
-                // the unsound window Mycroft's fixpoint exists to close.
-                // Both sides are detached value trees (round 2's pre-
-                // rollback, round 3's live), so the bijective TVar pairing
-                // is what makes the comparison rollback-safe.
-                let published = match env_lookup(name) {
-                  Some(e3) => match e3 {
-                    (sch3, _, _) => Some(chase_deep(judgment_ty(sch3))),
-                  },
-                  None => None,
-                }
-                let stable = match published {
-                  Some(p) => match ty_alpha_eq(p, detached, []) {
-                    (ok, _) => ok,
-                  },
-                  None => false,
-                }
-                if stable {
-                  // The published cells' gates reach the assumed cells'
-                  // noted copies — the self-calls' arguments, judged now.
-                  match published {
-                    Some(p) => mycroft_gate_transfer(p, assumed, span),
-                    None => (),
-                  }
-                  graph_commit_checkpoint(cp3)
-                  each(replay_report, held3)
-                } else {
-                  graph_rollback(cp3)
-                  infer_fn(name, params, body_node, ret_ann, effs, handle, span, false)
-                }
-              }
-            },
-          },
-        },
-        None => {
-          graph_rollback(cp2)
-          infer_fn(name, params, body_node, ret_ann, effs, handle, span, false)
-        },
-      }
+      each(replay_report, held)
+      true
     }
+  },
+  // The general assumption is a speculation of one: judged on a trail of its
+  // own and undone, carrying out the scheme it published, chased off its
+  // cells before the undo so the value outlives them.
+  PolyRound => match general_scheme(choose([name]), params, body_node, ret_ann, effs, handle, span) ~> speculate {
+    [] => false,
+    [(q, detached), ..._] => rechecked(name, params, body_node, ret_ann, effs, handle, span, q, detached),
+  },
+  ReportRound => {
+    infer_fn(name, params, body_node, ret_ann, effs, handle, span, false)
+    true
+  },
+}
+
+fn general_scheme(name, params, body_node, ret_ann, effs, handle, span: ValidSpan) = {
+  let held = {
+    mycroft_prebind(name, params, span, handle)
+    infer_fn(name, params, body_node, ret_ann, effs, handle, span, true)
+    poly_captured()
+  } ~> poly_capture
+  if held_has_error(held) {
+    []
   } else {
-    graph_commit_checkpoint(cp)
-    each(replay_report, held)
+    match env_lookup(name) {
+      Some((sch, _, _)) => match judgment_pair(sch) {
+        (q, ty) => [(q, chase_deep(ty))],
+      },
+      None => [],
+    }
   }
 }
+
+// The recheck: the assumption is written before the capture bracket — it
+// mints and binds, reports nothing, and its type rides to the accept's gate
+// transfer. THE STABILITY BELT: the recheck's PUBLISHED scheme must be
+// alpha-equal to the ASSUMED one, or the self-calls were checked against a
+// scheme that is not the one published — the unsound window Mycroft's
+// fixpoint exists to close. Both sides are detached value trees, so the
+// bijective TVar pairing is what makes the comparison undo-safe; on a match
+// the published cells' gates reach the assumed cells' noted copies — the
+// self-calls' arguments, judged now.
+fn rechecked(name, params, body_node, ret_ann, effs, handle, span: ValidSpan, q, detached) = {
+  let assumed = rebind_recheck(name, q, detached, span, handle)
+  let held = {
+    infer_fn(name, params, body_node, ret_ann, effs, handle, span, true)
+    poly_captured()
+  } ~> poly_capture
+  if held_has_error(held) {
+    false
+  } else {
+    match env_lookup(name) {
+      Some((sch, _, _)) => {
+        let published = chase_deep(judgment_ty(sch))
+        match ty_alpha_eq(published, detached, []) {
+          (true, _) => {
+            mycroft_gate_transfer(published, assumed, span)
+            each(replay_report, held)
+            true
+          },
+          (false, _) => false,
+        }
+      },
+      None => false,
+    }
+  }
+}
+
+// The Mycroft rounds, in the order `first_held` judges them.
+type Round = MonoRound | PolyRound | ReportRound
 
 // One declaration judged: its parameters and body inferred under a frame,
 // its row published, its scheme generalized and bound. Its tail reports what
@@ -15466,15 +15480,17 @@ fn resume_grade(node) = match graph_node_body(node) {
   // that resumes at its own tail is still the stack return, while a
   // resume inside an argument is held by the call that follows it.
   NExpr(CallExpr(f, args)) => match match graph_node_body(f) {
-    NExpr(VarRef(cn)) => (summary_of(cn), tail_params_of(cn)),
-    _ => (RNone, []),
+    // A named callee runs its body at the call, so its uses count once, as
+    // the call's own — never again as a value handed out.
+    NExpr(VarRef(cn)) => (RNone, summary_of(cn), tail_params_of(cn)),
+    _ => (resume_grade(f), RNone, []),
   } {
-    // Arguments in order, the callee's own uses, then the arguments the
-    // callee calls at its tail — those run at the CALL's result
-    // (tail_transparent_params), so a lambda there keeps its body's
-    // grade and a reference there contributes its summary.
-    (callee_g, tails) => resume_seq(
-      resume_seq(resume_seq(resume_grade(f), grade_args_interior(args, tails, 0, RNone)), callee_g),
+    // The callee's own evaluation, the arguments in order, the callee's own
+    // uses, then the arguments the callee calls at its tail — those run at
+    // the CALL's result (tail_transparent_params), so a lambda there keeps
+    // its body's grade and a reference there contributes its summary.
+    (callee_value, callee_g, tails) => resume_seq(
+      resume_seq(resume_seq(callee_value, grade_args_interior(args, tails, 0, RNone)), callee_g),
       grade_args_tail(args, tails, 0, RNone)
     ),
   },
@@ -15498,9 +15514,9 @@ fn resume_grade(node) = match graph_node_body(node) {
   NExpr(LabeledArg(_, v)) => resume_grade(v),
   NStmt(LetStmt(_, v, _)) => resume_interior(resume_grade(v)),
   NStmt(ExprStmt(e)) => resume_grade(e),
-  // A nested fn DECLARATION is not an execution — its resumes count at
-  // its CALL sites via the summary substitution (the pre-cut descend
-  // double-counted a define-once-call-once helper into RMany).
+  // A nested fn DECLARATION is not an execution — its resumes count at its
+  // CALL sites and its references via the summary substitution (the pre-cut
+  // descend double-counted a define-once-call-once helper into RMany).
   NStmt(FnStmt(_, _, _, _, _)) => RNone,
   // Decls nested in an arm carry no resume of THIS arm's continuation; leaves
   // carry no children. Both are the grade identity RNone (explicit, never a
@@ -15518,7 +15534,14 @@ fn resume_grade(node) = match graph_node_body(node) {
   NExpr(LitString(_)) => RNone,
   NExpr(LitBool(_)) => RNone,
   NExpr(LitUnit) => RNone,
-  NExpr(VarRef(_)) => RNone,
+  // A reference hands a function out as a value, to be called from wherever
+  // it is called and as often, so the uses its body holds are held, as a
+  // lambda's are: an arm that hands `fold` a nested fn that resumes is a
+  // resuming arm, never an abandoning one whose `resume` answers its
+  // argument without running the remainder
+  // (tests/micros/mn-resume-in-referenced-fn.mn). A name with no summary — a
+  // parameter, a local, an op — carries none.
+  NExpr(VarRef(n)) => resume_interior(summary_of(n)),
   NExpr(ExprPlaceholder) => RNone,
   NHole(_) => RNone,
   NPat(_) => RNone,

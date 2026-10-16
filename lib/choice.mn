@@ -1,0 +1,28 @@
+// choice.mn — a choice among options: `choose(options)` suspends the
+// computation around it, and the handler that catches its resumptions says
+// what choosing means. Search, backtracking and speculation are handlers over
+// this one perform, never a second mechanism (PLAN §4④): `every` resumes once
+// per option and joins what each answered, `first` resumes in order until an
+// option answers something, and the compiler's own forking handlers bracket
+// each resumption on the graph's trail.
+effect Choice {
+  choose(options: [a]) -> a
+}
+
+// Every option's answers, in the options' order: the body answers a list, and
+// each resumption's list joins the install's.
+handler every {
+  choose(options) => options |> flat_map({ o => resume(o) }),
+}
+
+// The first option whose answer is something: the options are resumed in
+// order until one answers `Some`, and none after it is resumed.
+handler first {
+  choose(options) => options |> fold(
+    None,
+    (found, o) => match found {
+      None => resume(o),
+      Some(_) => found,
+    }
+  ),
+}

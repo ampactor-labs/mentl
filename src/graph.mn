@@ -41,6 +41,10 @@
 // never a span — every module numbers its lines from 1.
 import types
 
+import arena
+
+import choice
+
 import effects
 
 import imap
@@ -1159,11 +1163,12 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
     resume() with epoch = new_epoch, trail = trail_after(trail, trail_len, j, m), trail_len = trail_len_after(trail_len, j)
   },
   graph_claims_of(h) => resume(wmap_get_all(claims, h)),
-  graph_written_since(cp, below) => // The segment's write set, read off the trail's live tail — a slice
-  // view (no copy) from the checkpoint to the logical length, folded for
-  // the cells a bind moved. Entries above trail_len are stale by the
+  graph_written_since(below) => // The write set of the innermost open checkpoint — the trail the
+  // speculation that asks was opened on — read off the trail's live tail as
+  // a slice view (no copy) from that checkpoint to the logical length, folded
+  // for the cells a bind moved. Entries above trail_len are stale by the
   // logical-length discipline and never enter the slice.
-  resume(written_since(slice(trail, cp, trail_len), below)),
+  resume(written_since(slice(trail, innermost_mark(checkpoint_stack), trail_len), below)),
   graph_accept_note(path, span, text, proof) => // THE ACCEPT EDGE's write (C4): an outermost-boundary fact. A human
   // accepted a proposal; nothing speculative writes here, and a rollback
   // must never lose it — so a non-empty checkpoint stack is a defect in
@@ -1317,6 +1322,60 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
       resume() with checkpoint_stack = rest
     }
   },
+}
+
+// Where the innermost open checkpoint begins on the trail; with none open
+// the trail is empty and every entry is the outermost boundary's.
+fn innermost_mark(checkpoint_stack) =
+  if len(checkpoint_stack) == 0 { 0 } else { last(checkpoint_stack).trail_len }
+
+// THE FORKING HANDLERS. Speculation is a choice whose resumptions the trail
+// brackets: each handler answers `choose` (lib/choice.mn) by resuming the
+// computation once per option on the graph's trail. A site that judges
+// candidates says what one candidate's judgment is; the handler that
+// catches the resumptions says how they are judged, and the bracket — the
+// checkpoint, the world's top, the undo or the keep — is written here and
+// nowhere else.
+//
+// `speculate` judges every option on its own trail and undoes it, carrying
+// out what each answered, in the options' order. Each resumption runs in an
+// arena (lib/arena.mn): what crosses its exit is the answer and whatever the
+// resumption stored into older memory that the rollback did not undo — a
+// name it was the first to intern stays in the table, as interning anywhere
+// else would leave it. The world is restored after the rollback, and both
+// before anything replays a branch's facts, so the replay's performs resolve
+// to the root's chain.
+handler speculate {
+  choose(options) => options |> flat_map({
+    o => {
+      let cp = graph_push_checkpoint()
+      let w = world_top()
+      let answers = resume(o)
+      graph_rollback(cp)
+      world_restore(w)
+      answers
+    } ~> arena,
+  }),
+}
+
+// `first_held` judges the options in order on the trail and keeps the first
+// whose answer holds, undoing every other; none after it is resumed. The
+// kept resumption's writes stand as truth: its checkpoint is committed,
+// never restored, so a speculation around it can still undo them.
+handler first_held {
+  choose(options) => options |> fold(
+    false,
+    (held, o) => held || {
+      let cp = graph_push_checkpoint()
+      if resume(o) {
+        graph_commit_checkpoint(cp)
+        true
+      } else {
+        graph_rollback(cp)
+        false
+      }
+    }
+  ),
 }
 
 // Acknowledges a mutation and drops it — and today that is EVERY handler
@@ -3061,13 +3120,13 @@ fn spec_subst_pairs(t, pairs) = match t {
     },
   },
   TList(e) => TList(spec_subst_pairs(e, pairs)),
-  TTuple(es) => TTuple(map((x) => spec_subst_pairs(x, pairs), es)),
+  TTuple(es) => TTuple(map(spec_subst_pairs(??, pairs), es)),
   TFun(ps, r, eff) => TFun(
     map((p) => param_with_ty(p, spec_subst_pairs(param_ty(p), pairs)), ps),
     spec_subst_pairs(r, pairs),
     eff
   ),
-  TName(n, args) => TName(n, map((x) => spec_subst_pairs(x, pairs), args)),
+  TName(n, args) => TName(n, map(spec_subst_pairs(??, pairs), args)),
   TRecord(fs) => TRecord(map({ (n, ft) => (n, spec_subst_pairs(ft, pairs)) }, fs)),
   // A row var is a var, and its pair is the RESIDUAL the site proved past
   // it. The row is read to its END first: a key sits on the chain's free

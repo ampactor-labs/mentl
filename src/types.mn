@@ -3314,9 +3314,10 @@ effect Intern {
 // A perform graph_bind in a read-only handler is a type error at
 // handler install — caught structurally, never shipped to runtime.
 //
-// graph_push_checkpoint / graph_rollback are the speculative surface:
-// Mentl's oracle captures the trail length, tries a tentative patch,
-// rolls back to restore. Trail-based; O(M) where M is mutations.
+// graph_push_checkpoint / graph_rollback are the speculative surface, and
+// the graph module's forking handlers are its one performer: a resumption of
+// a choice runs between the checkpoint and its undo or its keep.
+// Trail-based; O(M) where M is mutations.
 effect GraphRead {
   graph_chase(Int) -> GNode
   // the canonical ROOT handle of a TVar chain (union-find find)
@@ -3474,13 +3475,13 @@ effect GraphRead {
   // slot fills.
   graph_product_at(Int) -> CallProduct
   // THE SEGMENT'S WRITE SET (C6): the cells below a handle frontier that a
-  // bind since a checkpoint moved — a type or row cell overwritten in the
-  // trail's MSetNode / MSetRow entries — each once, in first-write order.
-  // A speculative segment reads it BEFORE its rollback, so what a candidate
-  // taught the context survives the undo as facts about those cells; the
-  // handles above the frontier are the segment's own mints and mean nothing
-  // across segments (they collide numerically after rollback).
-  graph_written_since(Int, Int) -> [Int]
+  // bind since the innermost open checkpoint moved — a type or row cell
+  // overwritten in the trail's MSetNode / MSetRow entries — each once, in
+  // first-write order. A speculation reads it BEFORE its undo, so what a
+  // candidate taught the context survives the undo as facts about those
+  // cells; the handles above the frontier are the segment's own mints and
+  // mean nothing across segments (they collide numerically after rollback).
+  graph_written_since(Int) -> [Int]
   // The resume grades the classifier settled for the program's functions,
   // and each one's tail-transparent parameters, as the last judgment left
   // them: a session judging only the statements an edit moved grades its
@@ -3567,9 +3568,9 @@ effect GraphWrite {
   // The speculation's ACCEPT: pop the newest checkpoint WITHOUT
   // restoring — every write since it stands, and mutation events
   // resume when the stack empties. graph_rollback is the reject half;
-  // a speculative judgment that SUCCEEDS (the Mycroft retry, §11 5.3)
-  // commits through this op — leaving the record on the stack forever
-  // would suppress graph_mutated for the rest of the compile.
+  // the resumption a forking handler keeps commits through this op —
+  // leaving the record on the stack forever would suppress graph_mutated
+  // for the rest of the compile.
   graph_commit_checkpoint(Int)
   // a node's birth span, by handle — the column takes it and the ordered
   // (span, handle) log gains the pair. Indexed again for a cell whose extent
@@ -4626,6 +4627,13 @@ fn diag_refuses(d) with Pure = match d {
   // ARMED at birth, 2026-10-16: two binders of one name in one head or one
   // pattern compiled clean, the later read by a rule no author wrote down.
   EDuplicateBinder(_, _, _) => True,
+  // ARMED 2026-10-16: a resume stands where a continuation exists — an arm,
+  // or a lambda or nested fn minted inside one, whose record captures the
+  // arm's k. A top-level fn an arm calls holds none, and until a nested fn
+  // captured its k it compiled anyway, handed the k as a hidden trailing
+  // argument (tests/micros/mn-resume-in-called-fn.mn). Census on the wheel
+  // at arming: 0.
+  EResumeOutsideArm(_) => True,
   // ARMED 2026-10-03, the day its one false shape closed: an as-pattern
   // read as covering nothing, so `whole @ Leaf(_)` beside `Pair(a, b)` was
   // "misses 1 of 2" (infer.mn's pat_tops). Unarmed, a match missing a variant

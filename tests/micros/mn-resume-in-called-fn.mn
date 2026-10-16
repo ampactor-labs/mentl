@@ -1,29 +1,25 @@
 // expect: 9
-// THE CUT gate — yield_inhabitants' distilled shape: a resume in a CALLED
-// top-level fn. The classifier's call-substitution grades the arm UMany
-// through drive's summary (pick flips MultiShot); the bindings walk bounds
-// drive to twice; drive's body lowers under the arm context (disc
-// MultiShot, the redrive's hname), its resumes resolve k through the
-// EVIDENCE tier (resolve_resume_k's RGlobal arm → LEvRef "__resume"), and
-// the arm's call threads [__resume][__k] through the sst_ clone — the M1.6
-// dormant tier's writer, landed at the cut.
-//   k = ?? + 3: a = resume(1) → 4; b = resume(2) → 5; arm = drive() = 9 →
-//   exit 9. (Infer still reports E_ResumeOutsideArm ×2 on drive — the
-//   recovered diagnostic; the typed R→S binding is the named follow-up.)
+// A resume in a fn the arm declares and calls: `drive` is minted inside the
+// arm, so its record captures the arm's continuation, and the classifier's
+// call-substitution grades the arm through drive's summary (pick flips
+// MultiShot). k = ?? + 3: a = resume(1) → 4; b = resume(2) → 5; the arm
+// answers drive() = 9. The same resumes in a top-level fn have no
+// continuation to read and refuse (mn-resume-outside-arm-refuses.mn).
 effect Choice {
   pick() -> Int
 }
 
-fn drive() = {
-  let a = resume(1)
-  let b = resume(2)
-  a + b
-}
-
 handler twice {
-  pick() => drive()
+  pick() => {
+    fn drive() = {
+      let a = resume(1)
+      let b = resume(2)
+      a + b
+    }
+    drive()
+  },
 }
 
 fn body() = pick() + 3
 
-fn main() = { body() } ~> twice
+fn main() = body() ~> twice

@@ -534,9 +534,15 @@ landing that closes it. A gate that did not run is UNKNOWN, never green.
   start restores an image and judges the edit's cone over it.
 - **The resident Space keeps its graph for a session's life**; a session derives
   once per open, and a fresh process derives cold (§11.18).
-- **The wheel never performs a multi-shot op**, and its speculation is
-  bracketed by hand (§11.11, the fused oracle). A continuation is captured at
-  any position, by a copy of its frame's lowered tail (§11.18).
+- **Speculation is a choice, one fork at a time**: every judgment the
+  medium tries and may undo performs `choose` (lib/choice.mn), and a forking
+  handler brackets each resumption on the graph's trail — the ??-fan's
+  candidates, teach's locks and contracts, and the Mycroft rounds every
+  unsigned declaration's judgment runs, so the self-compile performs a
+  multi-shot op once per such declaration. The resumptions run one after
+  another on the one trail; forks on threads are the fused oracle. A
+  continuation is captured at any position, by a copy of its frame's lowered
+  tail (§11.18).
 - **The compile is sequential by construction** (§11.16).
 - **The prose still asserts machinery that is not there**: decoration banners,
   coordinates in prose, ledes that are another comment's text. Each module's
@@ -682,15 +688,12 @@ a provenance diff, a search over live shared cells.
 
 **THE FRONTIER LEADS** — each a move inside the medium, in the order work runs:
 
-- **The fused oracle**: the compiler forks first — the ??-fan performs
-  `choose`, its candidates the resumptions of one perform, each judged on the
-  trail a forking handler checkpoints and rolls back, so the fixed point
-  exercises a multi-shot op and the speculation the wheel brackets by hand
-  becomes that handler's arm. Then N forked cursors on N threads over one
-  image, each fork writing the one graph through the deterministic handle
-  partition (§11.16), form variants merged as e-graph classes, meanings forked
-  only at genuine disjunctions, the question computed from the first
-  divergence of two trails — the default judge.
+- **The fused oracle**: N forked cursors on N threads over one image — a
+  forking handler that resumes a choice's options on threads, each fork
+  writing the one graph through the deterministic handle partition (§11.16)
+  — form variants merged as e-graph classes, meanings forked only at genuine
+  disjunctions, the question computed from the first divergence of two
+  trails — the default judge.
 - **The crown, modal** (`Hβ.effects.modal-world-index`): rows, capabilities and
   negation sound together as a graph fact, one crucible per modal rule, red
   first; the TIME face — a resumed continuation refused under a changed world —
@@ -843,9 +846,8 @@ a provenance diff, a search over live shared cells.
     pipes, `<|`/`><` invitations, repeated install suffixes and partial eta
     (`(row) => dot(row, x)`) as shapes; tighten rewrites by edge, the prelude's
     datum-first signatures (`reduce`, `scanl`, `nth`, `clamp`) among them; a
-    speculation is one extent — the cursor an arena with an overlay — and the
-    trail ops leave the program-facing surface; the user gets a TIME library.
-    Recursion that survives is priced by a signature. The structural folds the
+    speculation's cursor is an arena with an overlay. Recursion that survives
+    is priced by a signature. The structural folds the
     emitter derives over a sequence — `==`, compare, hash and show — are loops,
     where each is emitted today as one call per element, so two lists of
     twenty thousand pairs exhaust the stack where they are compared (measured

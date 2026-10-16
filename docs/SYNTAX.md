@@ -416,7 +416,7 @@ fn check_exhaustive(patterns) = {
 
 A nested `fn name(params) = body` is a declaration scoped to its block, and consecutive `fn` declarations in a block form one RUN — a local letrec scope: every name of the run is in scope in every body of the run and in everything after it, so siblings call each other in either direction. The run is judged as the module's declarations are, callee-first by binding group with each cycle judged as one unit, so every member is generalized — one nested `fn ident(x) = x` serves an Int and a String even where its caller is declared above it. Any other statement between two `fn` declarations ends the run: a later fn may capture what that statement computes, which does not exist while an earlier fn can already be called, so in `fn first() = second() + 1; let k = 2; fn second() = k` the name `second` is out of scope at `first`'s call (`E_MissingVariable`). Two declarations of one name in one run refuse (`E_DuplicateFnName`), as two at module level do, and a fn in a later run shadows one of its name in an earlier run for what follows it (real, 2026-10-03; until then a nested fn's name was in scope only in its own body and after its declaration, so a sibling calling one declared below it was refused). A block-scope `let name = (params) => body` is a closure VALUE, and the two differ in exactly that: the `let` binds after its value, so its name is not in scope in its own body, it is not generalized, and it may shadow — `let f = (x) => f(x) * 10` calls the `f` bound before it.
 
-**A nested fn is MINTED where it is declared** (real, 2026-09-30). Its closure record — its captures, or an empty record with none — is built when the block reaches its run, every record of the run allocated and bound before any is filled, so a record that holds a sibling declared after it, or itself, holds the sibling's record. The declaring frame pays `Memory + Alloc` once per nested fn, exactly as it pays for a lambda it mints (§«Function literals»): `fn adder(k) with !Alloc = { fn add(x) = x + k; add }` refuses. Until this landed the judgment never charged it, and every maker in lib/dsp returning its nested stage carried a row of `Pure`. A nested fn that captures nothing could be the module's static record and cost nothing; the charge follows that representation the day the lowering builds it (`Hβ.lower.captureless-nested-fn-is-static`).
+**A nested fn is MINTED where it is declared** (real, 2026-09-30). Its closure record — its captures, or an empty record with none — is built when the block reaches its run, every record of the run allocated and bound before any is filled, so a record that holds a sibling declared after it, or itself, holds the sibling's record. The declaring frame pays `Memory + Alloc` once per nested fn, exactly as it pays for a lambda it mints (§«Function literals»): `fn adder(k) with !Alloc = { fn add(x) = x + k; add }` refuses. Until this landed the judgment never charged it, and every maker in lib/dsp returning its nested stage carried a row of `Pure`. A nested fn that captures nothing could be the module's static record and cost nothing; the charge follows that representation the day the lowering builds it (`Hβ.lower.captureless-nested-fn-is-static`). A nested fn minted inside a handler arm captures the arm's continuation as a lambda minted there does, so its body may `resume` and the fn is a value like any other: an arm may hand it to `fold` and resume once per call (real, 2026-10-16; until then such a fn took the continuation as hidden trailing parameters, a reference to it counted no resume, and the arm was graded never to resume — tests/micros/mn-resume-in-referenced-fn.mn answered 21 for 23).
 
 **A binder shadows its name for its own scope and no further.** A `let` in a block, a pattern in a match arm, a pipe stage's parameter, a recurrence's prior and a binding inside the recurrence body each hide the same name while their scope is open, and the hidden binding is read again, unchanged, once it closes: `fn f(x) = { let y = { let x = 5; x + 1 }; x + y }` answers `f(100) = 106`. Two binders of one name are two values at their own widths, never one storage place (real, 2026-09-28: until then an arm's `Some(x)` or a block's `let x` wrote the parameter's register, and that program answered 11 with zero diagnostics — `Hβ.lower.shadowing-binder-clobbers-its-register`). The ownership a parameter is graded reads its own uses, the references whose edge reaches it, never a shadowing binder's (real, 2026-10-15: `fn shadowed(xs) = { let xs = 5; xs + xs }` graded its unread parameter `ref`, because the grade counted the spelling).
 
@@ -795,17 +795,25 @@ checkpointed and joined (`fanout_persisted`, lib/persist). `map` itself stays
 a sequential loop by construction (§Vocabulary): only a fanout declares its
 applications independent, which is the whole difference between them.
 Simd and Gpu pack a fixed lane count and run a sequence fanout sequentially.
-The ??-fan is written this way (`segment_verify`, src/synth_proposer.mn):
-the candidates fan through their judgment under the schedule of the propose
-site — none installed, sequential by property. The race rule reads the
-function a sequence fanout applies as every branch's (real, 2026-10-15), so a
-`~> parallel_compose` over the fan refuses, each branch writing the one graph
-through a stateful handler — the deterministic partition (`PLAN.md §11.16`)
-stated as a gate. Until then the rule never read that function, and a
-fanout whose function stored into a captured buffer or performed into a
-stateful handler compiled and ran
+The race rule reads the function a sequence fanout applies as every branch's
+(real, 2026-10-15), so a `~> parallel_compose` over a fanout whose function
+writes through a stateful handler refuses — the deterministic partition
+(`PLAN.md §11.16`) stated as a gate. Until then the rule never read that
+function, and a fanout whose function stored into a captured buffer or
+performed into a stateful handler compiled and ran
 (tests/micros/mn-race-sequence-fanout-store.mn,
 mn-race-sequence-fanout-stateful.mn).
+
+**Alternatives are a choice, never a fanout** (real, 2026-10-16). A fanout's
+branches are independent work whose results are all wanted; alternatives are
+one computation tried several ways, and `choose(options)` (lib/choice.mn)
+says so: it suspends the computation around it, and the handler that catches
+its resumptions says what choosing means — `every` joins what each option
+answered, `first` stops at the first option that answers `Some`. The ??-fan is
+one choice (`segment_verify`, src/synth_proposer.mn): its candidates are the
+resumptions of one `choose`, and the compiler's forking handler judges each
+on its own trail of the graph and undoes it, the bracket written once in
+that handler's arm (tests/micros/mn-choice-every-first.mn).
 
 **`><` is a structural N-ary construct the formatter renders in one of two layouts** (a presentation choice, never a parse distinction — there are no semantic "forms," only render shapes):
 
@@ -3442,7 +3450,7 @@ stage, which the parse builds as the pipe it is (§«`<|` — diverge»).
 | `E_NotAKeyword`       | user typed `for`/`while`/`loop`/`break`/`continue`/`return` | `MaybeIncorrect` | rewrite as verb form per substrate             |
 | `E_PatternAlternationBindingMismatch` | branches in `\|` bind different names or types | `MaybeIncorrect` | adjust patterns to bind same names with unifiable types |
 | `E_DuplicateBinder` | a name bound twice in one head — across its parameters and inside their patterns — or by one pattern (`fn f(x, x)`, `(x, x) => x`); the second binder is refused, naming the first, and an alternation's branches, which bind the same names by law, are one binder each. ARMED at birth, 2026-10-16: until then each shape compiled clean and one binder was read silently | `MaybeIncorrect` | rename one binder |
-| `E_ResumeOutsideArm`  | `resume` outside a handler-arm body           | `Unspecified`        | move the resume into an arm; the continuation only exists there |
+| `E_ResumeOutsideArm`  | `resume` where no continuation exists — outside a handler arm and every lambda or nested fn minted inside one, whose record captures the arm's k. ARMED 2026-10-16: a top-level fn an arm called compiled anyway, handed the k as a hidden trailing argument (tests/micros/mn-resume-outside-arm-refuses.mn) | `Unspecified`        | move the resume into an arm, or declare the fn inside the arm; the continuation only exists there |
 | `E_ResumeWorldMismatch` | two continuations (`TCont(R, S, discipline, world)`) unify with incompatible resume DISCIPLINES — OneShot, MultiShot and Abandon are distinct representations (stack frame, heap record, dead continuation), so the mismatch is hard. The WORLD half is the row unification in the same TCont arm (`!E` lifted to the TIME axis, §4③). A resume under a changed world has no runtime refusal of its own yet: a persisted image restores the world it was written with, and `image_resume` (lib/persist.mn) refuses only an image of another build — the typed, located refusal of a changed-world resume is band B's, and no class names it yet | `MaybeIncorrect` | align the handler arms' resume cardinality; for a world clash, re-install the absorbing handler before the resume OR widen the continuation's world |
 | `E_ConcatTypeMismatch` | `++` operands' element types fail to unify (e.g. `[Int] ++ [Bool]`). **Not yet born**: the failure is `E_TypeMismatch`, its Reason naming the `++` (§«Concatenation operator») | `MaybeIncorrect` | unify the element types |
 | `E_DeclaredRowContradiction` | one authored clause asserts a name present AND absent (`with E + !E`, instance-aware — a bare present beside an instance absent stays a refinement). Reported at the signed fold BEFORE the meet's drop; ARMED (refuses the executable): the pre-diagnostic meet let a performing body check clean under a declared `!E` | `MachineApplicable` | drop one side of the contradiction |

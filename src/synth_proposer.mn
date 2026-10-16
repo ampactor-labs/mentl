@@ -7,6 +7,8 @@
 // effect; the verification stays in the kernel.
 import types
 
+import choice
+
 import cursor
 
 import effects
@@ -786,89 +788,42 @@ fn enumerate_tuple_candidates(elems, context) = [
 // impossible, op. cit. §8). An EMPTY fan is Fail-Fast's theorem: no
 // valid completion exists from here — a teachable refusal, never a
 // shrug.
-// ─── THE SEGMENT WALK — candidates judged on the ONE live graph ──────
 //
-// Every candidate is judged inside the fork TRIPLE — checkpoint, world top,
-// judge, rollback, restore — over the graph the cursor is already sitting
-// in. The copy this replaces spawned each candidate as a task against a
-// FRESH graph instance seeded from four root views inside a pre-planned
-// `n × (2048 + 64)`-handle band, and the measurement that condemned it is
-// that its in-flight window was 1: one task spawned per block and joined
-// immediately, so the isolation machinery was protecting against a
-// concurrency that was switched off. It bought nothing and cost four
-// things — a fact proven in one branch was invisible to the next, the
-// hole's own cell was unreachable, the image paid ~10.5k planned handles
-// per five-survivor propose, and the trail recorded the binds in an
-// instance no diff could read.
+// THE SEGMENT WALK judges every candidate on the ONE live graph the cursor
+// is already sitting in, so the hole's own cell is reachable, a candidate
+// binds it as any expression would, and the trail records the binds where a
+// diff between two survivors can read them.
 //
-// THE ORDER IS LOAD-BEARING. The world is restored before the facts are
-// replayed, because the replay re-performs `env_extend` and `diag_report`
-// and those must resolve to the ROOT chain. The rollback comes first for
-// the same reason: a replay must not run while the candidate's own graph
-// writes are still live.
+// THE FAN IS ONE CHOICE: every candidate is a resumption of one `choose`,
+// and `speculate` judges each on its own trail and undoes it — in the
+// candidates' order, by that handler's arm, never by a constant here. The
+// candidates are minted BEFORE any checkpoint (the arm reads the mint
+// frontier at the arm's head, ahead of enumeration), so the undo's
+// MFreshNode shrink never un-allocates the node being judged.
 //
-// The candidates are minted BEFORE any checkpoint (the arm reads the mint
-// frontier at
-// the arm's head, ahead of enumeration), so `graph_rollback`'s MFreshNode
-// shrink never un-allocates the node being judged.
-fn segment_verify(candidates, hole_h, below) = if len(candidates) == 0 {
-  []
-} else {
+// A REFUTED BRANCH'S FACTS DO NOT REACH THE ROOT. A refused candidate
+// reports an ordinary type mismatch, and that mismatch is the SEARCH
+// discovering a dead branch, never the developer's program being wrong;
+// replaying it would make the proposer print errors about code nobody
+// wrote. So a branch's facts join the root only when it proved, once its
+// trail is undone and the world restored, because the replay re-performs
+// `env_extend` and `diag_report` and those must resolve to the root chain.
+// Every segment reads the root's views as they stood before the fan, so the
+// joins wait for the last candidate and change no candidate's judgment.
+fn segment_verify(candidates, hole_h, below) = {
   let base = env_base_view()
   let seed = consume_base()
   let iseed = intern_seed()
-  // THE FAN IS A FANOUT: the candidates fan through their judgment as
-  // independent branches, and the width is whatever schedule governs the
-  // propose — none installed, so the walk is sequential by PROPERTY, never
-  // by a constant. A `~> parallel_compose` over a propose is refused where
-  // it stands: each branch writes the one graph through `graph_handler`, a
-  // stateful handler beyond this frame, which is the race rule's own verdict
-  // and the deterministic partition (PLAN §11.16) stated as a gate.
-  candidates |> fanout(judge_in_segment(hole_h, base, seed, iseed, below))
+  let judged = [segment_judge(choose(candidates), hole_h, base, seed, iseed, below)] ~> speculate
+  judged |> map(joined)
 }
 
-// Judges one candidate inside its own trail segment and joins its facts to the
-// root only if it proved.
-//
-// A REFUTED BRANCH'S FACTS DO NOT REACH THE ROOT, and that changed here.
-// The copy-era join replayed every branch "proven or not", which was benign
-// only while a structural pre-filter guaranteed no candidate could fail to
-// type. With the hole a real cell, a refused candidate reports an ordinary
-// type mismatch — and that mismatch is the SEARCH discovering a dead
-// branch, never the developer's program being wrong. Replaying it would
-// make the proposer print errors about code nobody wrote. So the join is
-// the proven branch's alone; the refutation survives as the verdict.
-//
-// The segment is an arena (lib/arena.mn): the candidate's judgment
-// allocates as much as a declaration's, and what crosses its exit is the
-// outcome it carries out — the branch's facts, the context cells it moved —
-// and what it stored into older memory that the rollback did not undo.
-fn judge_in_segment(hole_h, base, seed, iseed, below, candidate) = {
-  let outcome = {
-    let cp = graph_push_checkpoint()
-    let w = world_top()
-    let judged = segment_judge(
-      candidate_node(candidate),
-      hole_h,
-      candidate_reason(candidate),
-      base,
-      seed,
-      iseed,
-      cp,
-      below
-    )
-    graph_rollback(cp)
-    world_restore(w)
-    judged
-  } ~> arena
-  match outcome {
-    (proven, inner, writes) => if proven {
-      branch_join(inner)
-      SegmentVerdict({proven: true, reason: candidate_reason(candidate), writes})
-    } else {
-      SegmentVerdict({proven: false, reason: refusal_reason(inner), writes: []})
-    },
-  }
+fn joined(judged) = match judged {
+  (verdict, Some(facts)) => {
+    branch_join(facts)
+    verdict
+  },
+  (verdict, None) => verdict,
 }
 
 // Why a segment refused its candidate: the message its first report carried,
@@ -887,38 +842,46 @@ fn refusal_reason(inner) with !Mutate = match inner {
   },
 }
 
-// The candidate's judgment under the segment bracket — the branch chain
-// minus its graph copy. The facts are read INSIDE, where the per-segment
-// ledgers are still installed, and replayed by the caller once the graph
-// and world are the root's again.
+// One candidate's judgment, on the trail `speculate` opened for it, under
+// the segment bracket — the branch chain minus its graph copy — and its
+// verdict: the candidate's own Reason when it proved, the medium's refusal
+// otherwise. The facts are read INSIDE, where the per-segment ledgers are
+// still installed, and carried out for the root to join once the graph and
+// world are the root's again.
 //
 // The diagnostic fact list is the TYPE-ADMISSION verdict, not merely
 // baggage for the replay: a candidate whose cell refuses the hole's says so
 // through the same report path every other expression uses, so an empty
 // list IS "this candidate unified". Reading the medium's own voice beats
 // any comparison standing beside it.
-fn segment_judge(node, hole_h, reason, base, seed, iseed, cp, below) = {
+fn segment_judge(candidate, hole_h, base, seed, iseed, below) = {
   let body = () => {
     consume_seed(seed)
-    let admitted = candidate_proven(node, hole_h, reason)
+    let admitted = candidate_proven(candidate_node(candidate), hole_h, candidate_reason(candidate))
     let vdebt = verify_debt()
     let clog = consume_log()
     let pubs = env_publishes()
     let dfacts = diag_lines_taken()
     // The context cells this candidate bound, read while the binds are
-    // still live — the rollback that follows is exactly why the segment
-    // carries them out as facts (C6).
-    let writes = context_writes(cp, below)
+    // still live — the undo that follows is exactly why the segment carries
+    // them out as facts (C6).
+    let writes = context_writes(below)
     (admitted && len(dfacts) == 0, (pubs, dfacts, vdebt, clog), writes)
   }
-  segment_bracket(body, base, iseed)
+  match segment_bracket(body, base, iseed) {
+    (proven, inner, writes) => if proven {
+      (SegmentVerdict({proven: true, reason: candidate_reason(candidate), writes}), Some(inner))
+    } else {
+      (SegmentVerdict({proven: false, reason: refusal_reason(inner), writes: []}), None)
+    },
+  }
 }
 
 // Each moved context cell with what it now means: a type chased deep (an
 // in-segment variable left inside it is a fresh cell of this segment,
 // which the comparison reads up to renaming), a row resolved. A cell the
 // bind left FREE, or a record-row residual, carries no fact to compare.
-fn context_writes(cp, below) = graph_written_since(cp, below) |> fold([], context_write_step)
+fn context_writes(below) = graph_written_since(below) |> fold([], context_write_step)
 
 fn context_write_step(acc, h) = match context_fact(h) {
   Some(f) => push(acc, (h, f)),
@@ -997,9 +960,9 @@ fn keep_named_refusal(verdicts, acc, indexed) = match indexed {
 // rumour of it. A `??` is a cell in the same union-find as every type
 // variable, and this is where that stops being a design
 // sentence: infer the candidate, UNIFY its cell with the hole's, and let
-// the one machine answer. Safe by construction — the caller's segment
-// brackets this in graph_push_checkpoint + heap_mark + world_top and rolls
-// it back, so a bind made here is undone before the next candidate.
+// the one machine answer. Safe by construction — `speculate` runs each
+// candidate on a trail of its own and undoes it, so a bind made here is
+// undone before the next candidate.
 //
 // The unify carries the CANDIDATE'S OWN Reason rather than a minted one:
 // the bind dies at rollback, so a fresh Reason constructor would have zero

@@ -1,0 +1,39 @@
+// expect: 23
+// An arm that hands `fold` a nested fn whose body resumes is a resuming arm:
+// the function runs wherever `fold` calls it, as often as it does, so the
+// resume it holds is a held one. The options are tried in order and the
+// first that holds is kept — option 1 does not, option 2 does — so the
+// remainder runs twice and ticks the counter twice: 20 + 2 + 1. Graded as
+// never resuming, the perform unwound and each resume answered the option
+// itself, so nothing ticked and the program answered 21.
+effect Choice {
+  choose(options: [a]) -> a
+}
+
+effect Count {
+  tick()
+  seen() -> Int
+}
+
+handler counter with n = 0 {
+  tick() => resume() with n = n + 1,
+  seen() => resume(n),
+}
+
+handler first_held {
+  choose(options) => {
+    fn kept_first(held, o) = held || resume(o)
+    options |> fold(false, kept_first)
+  },
+}
+
+fn holds(x) = {
+  tick()
+  x > 1
+}
+
+fn main() = {
+  let held = holds(choose([1, 2, 3, 4])) ~> first_held
+  let n = seen()
+  if held { 20 + n + 1 } else { 0 }
+} ~> counter

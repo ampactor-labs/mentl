@@ -1,0 +1,28 @@
+// expect: 62
+// A choice is one perform, and the handler that catches its resumptions says
+// what choosing means (lib/choice.mn). Under `first` the options are resumed
+// in order until one answers `Some`: the first Pythagorean triple below 20 is
+// (3, 4, 5), whose sides sum to 12. Under `every` every option's answers
+// join: five triples have each side below 20. 12 + 10 * 5 = 62.
+import choice
+
+fn triple(n) = {
+  let a = choose(range(1, n))
+  let b = choose(range(a + 1, n))
+  let c = choose(range(b + 1, n))
+  if a * a + b * b == c * c { Some((a, b, c)) } else { None }
+}
+
+fn sum3(t) = match t {
+  Some((a, b, c)) => a + b + c,
+  None => 0,
+}
+
+fn main() = {
+  let found = triple(20) ~> first
+  let all = match triple(20) {
+    Some(t) => [t],
+    None => [],
+  } ~> every
+  sum3(found) + 10 * len(all)
+}

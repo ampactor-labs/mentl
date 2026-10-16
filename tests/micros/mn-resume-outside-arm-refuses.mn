@@ -1,0 +1,18 @@
+// expect: refuse E_ResumeOutsideArm
+// A resume stands where a continuation exists: an arm, or a lambda or nested
+// fn minted inside one, whose record holds the arm's k. `drive` is a
+// top-level fn an arm calls, so it holds none, and its resume is refused
+// where it stands. Until 2026-10-16 the class reported and the program
+// compiled anyway, the k handed to `drive` as a hidden trailing argument;
+// the nested form is mn-resume-in-called-fn.mn.
+effect Choice {
+  pick() -> Int
+}
+
+fn drive() = resume(1) + 1
+
+handler twice {
+  pick() => drive(),
+}
+
+fn main() = pick() + 3 ~> twice
