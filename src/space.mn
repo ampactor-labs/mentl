@@ -576,12 +576,12 @@ fn owed_mark(entry) = match entry {
   (_, sp, pred, _) => ProofMark(CellOpen, sp, show_predicate(pred)),
 }
 
-// A diagnostic of the module, in the column of the aspect it speaks for: a
-// refusal refuses there, a narration narrates.
+// A diagnostic of the module, in the column of the aspect it speaks for: an
+// error refuses there, a narration narrates.
 fn diag_cell(f) = match f {
   (d, msg, _, _) => cell_at(
     diag_arm(d),
-    if diag_refuses(d) { CellRefused } else { CellWarned },
+    if diag_severity(d) == SError { CellRefused } else { CellWarned },
     diag_code(d),
     diag_span(d),
     msg
@@ -990,16 +990,13 @@ fn diag_interest_of(f) = match f {
   (d, _, _, _) => diag_interest(d),
 }
 
-// How much a diagnostic matters: a refusal above everything, then an error,
-// then an open claim, then a step the medium takes by itself, then a warning.
-fn diag_interest(d) = if diag_refuses(d) {
-  1.0
-} else {
-  match diag_severity(d) {
-    SError => 0.9,
-    SVerificationPending => 0.7,
-    SWarning => if diag_applies_itself(d) { 0.6 } else { 0.4 },
-  }
+// How much a diagnostic matters: an error above everything, since it
+// refuses the executable, then an open claim, then a step the medium takes by
+// itself, then a warning.
+fn diag_interest(d) = match diag_severity(d) {
+  SError => 1.0,
+  SVerificationPending => 0.7,
+  SWarning => if diag_applies_itself(d) { 0.6 } else { 0.4 },
 }
 
 // The Ledger — the module's own facts, ranked for the caret: every top-level
@@ -1349,7 +1346,6 @@ fn lens_json(f) = match f {
     ("source", JStr(diag_source(d))),
     ("severity", JStr(diag_kind(d))),
     ("applicability", JStr(applicability_text(diag_applicability(d)))),
-    ("refuses", JBool(diag_refuses(d))),
     ("interest", JNum(diag_interest(d)))
   ]),
 }

@@ -1319,33 +1319,26 @@ fn infer_program_once(stmts, parse_start, parse_end) = {
 handler diag_quiet {
   diag_report(_d, _msg, _dmod, _dlayer) => resume(),
   diag_errors() => resume(0),
-  diag_refusals() => resume(0),
   diag_narrations() => resume(0),
 }
 
 // diag_branch — the branch cursor's per-statement collector: each report
 // held as the fact it carried (the kind, its message rendered at the
 // perform against the branch's live values, its module); the local tally
-// answers any in-branch diag_errors/diag_refusals read with branch-local
-// truth; diag_lines_taken hands the facts to the join, which re-performs
-// each into the root chain, so every Diagnostic forwarder — the bank among
-// them — sees a branch report exactly as a live one.
-handler diag_branch with lines = make_list(16), count = 0, errors = 0, refusals = 0 {
+// answers any in-branch diag_errors read with branch-local truth;
+// diag_lines_taken hands the facts to the join, which re-performs each into
+// the root chain, so every Diagnostic forwarder — the bank among them — sees
+// a branch report exactly as a live one.
+handler diag_branch with lines = make_list(16), count = 0, errors = 0 {
   diag_report(diag, msg, dmod, dlayer) => {
-    let iserr = diag_severity(diag) == SError
     let grown = list_set(list_extend_to(lines, count + 1), count, (diag, msg, dmod, dlayer))
-    if iserr {
-      if diag_refuses(diag) {
-        resume() with lines = grown, count = count + 1, errors = errors + 1, refusals = refusals + 1
-      } else {
-        resume() with lines = grown, count = count + 1, errors = errors + 1
-      }
+    if diag_severity(diag) == SError {
+      resume() with lines = grown, count = count + 1, errors = errors + 1
     } else {
       resume() with lines = grown, count = count + 1
     }
   },
   diag_errors() => resume(errors),
-  diag_refusals() => resume(refusals),
   diag_narrations() => resume(count - errors),
   diag_lines_taken() => resume(list_to_flat(slice(lines, 0, count))),
 }
@@ -1366,7 +1359,6 @@ effect PolyCapture {
 handler poly_capture with held = [] {
   diag_report(diag, msg, dmod, dlayer) => resume() with held = push(held, (diag, msg, dmod, dlayer)),
   diag_errors() => resume(diag_errors()),
-  diag_refusals() => resume(diag_refusals()),
   diag_narrations() => resume(diag_narrations()),
   poly_captured() => resume(held),
 }

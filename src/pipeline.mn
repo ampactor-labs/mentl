@@ -189,11 +189,14 @@ fail_exit ~>
 // FS — per-file byte I/O for driver / cache
 wasi_filesystem ~> compile_context
 
-// THE EXECUTABLE GATE (SYNTAX §«Partial application» — a hole is productive,
-// never executable; §0's "nothing executes unproven" at its honest scope).
+// THE EXECUTABLE GATE (§0's "nothing executes unproven" at its honest scope).
 // Runs BETWEEN reachability and the first byte — wat_stdout streams every
 // emit immediately, so the refusal must precede the first one; refusing here
-// leaves stdout with ZERO WAT bytes. Three reads, one law each:
+// leaves stdout with ZERO WAT bytes. Four reads, one law each:
+//   AN ERROR REFUSES. The judgment is productive under error at the walk (a
+//   mismatch binds an error hole and the walk goes on, so ten mismatches are
+//   ten reports), and every error it reported withholds the module. The
+//   count is the one the diagnostics handler keeps, read live.
 //   HOLES REFUSE. An authored value-position hole surviving in the
 //   reachable set (the value-holes COLUMN read — call-arg holes became
 //   partial params, pipe holes were spliced/unnoted, so survival IS
@@ -211,29 +214,23 @@ wasi_filesystem ~> compile_context
 //   THE PLAN SETTLES. A clean judgment is planned (`emit_plan`), and the
 //   plan's settle point says every floor the module would carry — an offset,
 //   a shape or a specialization it cannot prove where the body is emitted,
-//   a boundary lowering could not build — so an armed one refuses here too,
+//   a boundary lowering could not build — so a floor refuses here too,
 //   before the byte that would have carried it.
-// `check` never routes here — the productive surfaces admit holes; only an
-// EXECUTABLE refuses to exist around one.
+// `check` never routes here — the productive surfaces admit holes and
+// errors; only an EXECUTABLE refuses to exist around one.
 // gate_reads — the gate LAW's judge half, one home for its three policies:
 // the CLI compile (refuse + proc_exit, one process one verdict),
 // battery_compile (batch: count and continue), and the mcp judge (serve:
 // verdict as data, the server outlives every refusal). The reports land
-// before the diag_refusals read — the teaching precedes the tally it feeds.
+// before the error count is read — the teaching precedes the tally it feeds.
 fn gate_reads(lowered) = {
   report_verify_debt(verify_debt())
   report_unhandled_effects(lowered)
   let holes = graph_holes_at()
-  // The ARMED classes, read LIVE off the ledger the diagnostics handler keeps
-  // (diag_refuses names them; a class arms only when the wheel's own census of it
-  // is zero, so this can never refuse the medium). The hole gate was this law
-  // with one arm; these are its others. Productive at the walk, refusing at the
-  // boundary — SYNTAX's "a hole is productive, never executable", generalized.
-  //
-  // The verdict binds BEFORE the hole report so refusals never double-count
-  // a hole (report_holes raises the armed E_UnresolvedHole; the tally read
-  // above deliberately precedes it — len(holes) is the hole half).
-  let refused = diag_refusals()
+  // The count binds BEFORE the hole report, so a hole is never counted
+  // twice: report_holes raises E_UnresolvedHole, an error, and len(holes)
+  // is the hole half of the verdict.
+  let refused = diag_errors()
   let nholes = len(holes)
   let verdict = (nholes, refused)
   if nholes > 0 { report_holes(holes, 0) }
@@ -241,29 +238,53 @@ fn gate_reads(lowered) = {
 }
 
 // The gate's verdict: the plan a module is written from, or the module
-// withheld with the holes and the claims that stopped it — the holes apart,
+// withheld with the holes and the errors that stopped it — the holes apart,
 // since each is its own report and the tally never counts one twice.
 type Emission = Planned(p) | Withheld(Int, Int)
 
 // The gate whole, for every route: the judgment's reads first, and the plan
 // only over a judgment they left clean, since planning a refused program
 // would narrate floors the refusal already explains. The plan's own reports
-// are then the only refusals the ledger can have gained.
+// are then the only errors the ledger can have gained.
 fn gated_plan(lowered) = match gate_reads(lowered) {
   (nholes, refused) => if nholes > 0 || refused > 0 {
     Withheld(nholes, refused)
   } else {
     let plan = emit_plan(lowered)
-    let settled = diag_refusals()
+    let settled = diag_errors()
     if settled > 0 { Withheld(0, settled) } else { Planned(plan) }
   },
 }
 
-// The CLI's refusal: say the count when there are claims, and exit 1 with
+// What a gated compile left at its artifact's path: the gate withheld the
+// module, the file could not be opened (a host fault, never a verdict on the
+// program), or the module is on disk.
+type Artifact = ArtifactRefused | ArtifactUnwritable | ArtifactWritten
+
+// The gate carried to a file, for the routes that write one rather than
+// stream to stdout: the module is streamed to `path` through wat_to_file, so
+// its text is never held whole.
+fn gated_write(lowered, path) = match gated_plan(lowered) {
+  Withheld(_, _) => ArtifactRefused,
+  Planned(plan) => {
+    let fd = fs_create(path)
+    if fd == 0 {
+      ArtifactUnwritable
+    } else {
+      {
+        emit_planned(plan)
+      } ~> wat_to_file(fd)
+      fs_close(fd)
+      ArtifactWritten
+    }
+  },
+}
+
+// The CLI's refusal: say the count when there are errors, and exit 1 with
 // nothing on stdout.
 fn refuse_to_emit(refused) = {
   if refused > 0 {
-    eprint_string("mentl: refusing to emit — {int_to_str(refused)} claim(s) the medium could not discharge\n")
+    eprint_string("mentl: refusing to emit — {int_to_str(refused)} error(s) the medium reported\n")
   }
   proc_exit(1)
 }
@@ -654,7 +675,6 @@ handler diag_bank with banked = [] {
     resume() with banked = push(banked, (diag, msg, dmod, dlayer))
   },
   diag_errors() => resume(diag_errors()),
-  diag_refusals() => resume(diag_refusals()),
   diag_narrations() => resume(diag_narrations()),
   diag_banked() => resume(banked),
   diag_forget(gone) => resume() with banked = filter(diag_outside(gone, ??), banked),
@@ -796,22 +816,18 @@ fn audit(entry_module) = analyze_fns(entry_module, audit_project)
 // outermost in every route. The message arrives rendered at the report
 // boundary (diag_report_at, types.mn), so the arm composes the printed line
 // from the kind (diag_line), a pure read.
-handler diagnostics_handler with errors = 0, refusals = 0, narrations = 0, scope = ScopeAll {
+handler diagnostics_handler with errors = 0, narrations = 0, scope = ScopeAll {
   diag_report(diag, msg, dmod, dlayer) => // The message arrives MADE (rendered at the report boundary, in the
-  // reporter's own world) — this arm's projections (severity, refuses,
-  // the line, the register's scope) are pure ctor/string reads, so the
-  // arm's row carries no graph or intern demand and its residual stays
-  // clean through every install. The tally IS the projection continued:
-  // the exit code and the emit gate read it.
+  // reporter's own world) — this arm's projections (severity, the line,
+  // the register's scope) are pure ctor/string reads, so the arm's row
+  // carries no graph or intern demand and its residual stays clean through
+  // every install. The tally IS the projection continued: the exit code and
+  // the emit gate read it.
   if diag_severity(diag) == SError {
     // An error renders in EVERY scope — a broken claim anywhere in the
     // weave changes the answer's validity; the register never silences it.
     eprint_string(diag_line(diag, msg, dmod))
-    if diag_refuses(diag) {
-      resume() with errors = errors + 1, refusals = refusals + 1
-    } else {
-      resume() with errors = errors + 1
-    }
+    resume() with errors = errors + 1
   } else {
     // Narration is the register's business: ScopeAll (the census paths)
     // prints everything; ScopeProject renders the modules of the entry's
@@ -830,7 +846,6 @@ handler diagnostics_handler with errors = 0, refusals = 0, narrations = 0, scope
     }
   },
   diag_errors() => resume(errors),
-  diag_refusals() => resume(refusals),
   diag_narrations() => resume(narrations),
   diag_scope(sc) => resume() with scope = sc,
   diag_scope_of() => resume(scope),

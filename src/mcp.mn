@@ -9,11 +9,8 @@
 //
 //   propose {source} -> PROVEN   (artifact streamed to .build/mcp/last.wat
 //                                 — only proven bytes ever land there)
-//                     | EMITTED  (diagnostics surfaced by classes not yet
-//                                 armed to refuse — the sound-incomplete
-//                                 contract, stated, never hidden)
-//                     | REFUSED  (each undischarged claim named at its
-//                                 file-local span; the refusal teaches)
+//                     | REFUSED  (each error named at its file-local span;
+//                                 the refusal teaches)
 //
 // Beside it, the RESIDENT SESSION's reads (Hβ.session.resident-verbs):
 // query / at / audit / teach each answer from the graph the server
@@ -75,53 +72,26 @@ handler console_bank with lines = [] {
 }
 
 // mcp_judge — the canonical judgment over one proposal, batch-shaped at
-// the gate (battery_compile's law: refusal = holes + armed classes;
-// gate_reads is the one home; no proc_exit — the server outlives every
-// verdict). Emission streams through wat_to_file so stdout stays
-// protocol-only; a refused proposal never opens the artifact at all.
-// Returns (diagnostic lines, errors, refusals, emitted-bit).
+// the gate (battery_compile's law: an error or a hole refuses; gated_plan is
+// the one home; no proc_exit — the server outlives every verdict). Emission
+// streams through wat_to_file so stdout stays protocol-only; a refused
+// proposal never opens the artifact at all. Returns the diagnostic lines,
+// the errors the judgment reported and what the gate did.
 fn mcp_judge(source, wat_path) = {
   let lowered =
     source |> infer_program_converged |> saturate_pass |> lower_program |> reachable_from_main
-  let verdict = match gated_plan(lowered) {
-    Withheld(_, refused) => (refused, 0),
-    Planned(plan) => {
-      let fd = fs_create(wat_path)
-      if fd == 0 {
-        (0, 0)
-      } else {
-        {
-          emit_planned(plan)
-        } ~> wat_to_file(fd)
-        fs_close(fd)
-        (0, 1)
-      }
-    },
-  }
-  let text = banked_lines()
-  let nerr = diag_errors()
-  match verdict {
-    (refused, emitted) => (text, nerr, refused, emitted),
-  }
+  let left = gated_write(lowered, wat_path)
+  (banked_lines(), diag_errors(), left)
 } ~> wasi_filesystem ~> compile_context
 
-// The verdict's head states exactly what the gate did — refused, emitted
-// with surfaced errors (unarmed classes; the sound-incomplete contract,
-// spoken), or proven whole. The diagnostic text follows verbatim: the
-// refusal's teaching IS the payload.
-fn mcp_verdict_text(text, nerr, nref, emitted, wat_path) = {
-  let head = if nref > 0 {
-    "REFUSED — {int_to_str(nref)} claim(s) the medium could not discharge; nothing was emitted\n"
-  } else {
-    if nerr > 0 {
-      "EMITTED with {int_to_str(nerr)} surfaced error(s) — classes not yet armed to refuse (the sound-incomplete contract); artifact: {wat_path}\n"
-    } else {
-      if emitted == 1 {
-        "PROVEN — every claim discharged; artifact: {wat_path}\n"
-      } else {
-        "PROVEN — every claim discharged; the artifact write failed at {wat_path}\n"
-      }
-    }
+// The verdict's head states exactly what the gate did — refused or proven
+// whole. The diagnostic text follows verbatim: the refusal's teaching IS the
+// payload.
+fn mcp_verdict_text(text, nerr, left, wat_path) = {
+  let head = match left {
+    ArtifactRefused => "REFUSED — {int_to_str(nerr)} error(s) the medium reported; nothing was emitted\n",
+    ArtifactWritten => "PROVEN — every claim discharged; artifact: {wat_path}\n",
+    ArtifactUnwritable => "PROVEN — every claim discharged; the artifact write failed at {wat_path}\n",
   }
   head ++ text
 }
@@ -281,8 +251,8 @@ fn mcp_tool_call(id, params, at_read) = {
       }
       match srco {
         Some(JStr(source)) => match mcp_judge(source, ".build/mcp/last.wat") {
-          (banked, nerr, nref, emitted) => {
-            let text = mcp_verdict_text(banked, nerr, nref, emitted, ".build/mcp/last.wat")
+          (banked, nerr, left) => {
+            let text = mcp_verdict_text(banked, nerr, left, ".build/mcp/last.wat")
             mcp_response(
               id,
               JObj([

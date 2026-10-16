@@ -3631,13 +3631,11 @@ for i in "${!compilers[@]}"; do
   # claim on stdin, so a teaching span that pointed at any OTHER file
   # would now fail where before it passed — which is exactly the
   # file-local property the pass line claims.
-  # TWO claims since 2026-09-25, re-derived by hand before re-banking
-  # (§9.11): `fn bad() with !E = op()` with no handler anywhere violates its
-  # own declared `!E` (E_EffectMismatch — a REFUSING claim since the class
-  # was armed that day; before, it narrated beside the one refusal) AND lets
-  # E reach the executable root unhandled (E_EffectUnhandled). Two
-  # independent claims fail; "1 claim" was the unarmed era's count.
-  if grep -q 'REFUSED — 2 claim' "$mcp_dir/out.jsonl" \
+  # TWO errors, re-derived by hand (§9.11): `fn bad() with !E = op()` with
+  # no handler anywhere violates its own declared `!E` (E_EffectMismatch)
+  # AND lets E reach the executable root unhandled (E_EffectUnhandled), and
+  # every error refuses.
+  if grep -q 'REFUSED — 2 error' "$mcp_dir/out.jsonl" \
      && grep -q 'E_EffectMismatch' "$mcp_dir/out.jsonl" \
      && grep -q 'at <stdin>:3:1' "$mcp_dir/out.jsonl" \
      && grep -q 'E_EffectUnhandled' "$mcp_dir/out.jsonl"; then

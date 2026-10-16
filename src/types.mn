@@ -3922,7 +3922,11 @@ type DiagKind
   // tests/crown/leak-handler-residual, whose `effect Feed { yield(x: Int) }`
   // collided with prelude's `Iterate.yield` and turned a 16-line crucible into
   // 44 spurious E_TypeMismatch inside lib, burying the one refusal it exists
-  // to prove. Renaming the op left exactly that one.
+  // to prove. Renaming the op left exactly that one. Two effects sharing an
+  // op name is ordinary in effect systems (`Reader.get` beside `State.get`),
+  // and the refusal is what makes the limit sayable: an op's identity is its
+  // bare name until the env keys it by effect and name
+  // (`Hβ.env.op-identity-is-effect-and-name`).
   | EOpShadowsOp(String, String, String, Span)
   // a second `fn name` in one namespace — the emitter would pick one silently (invalid WAT today; silent under a native path)
   | EDuplicateFnName(String, Span)
@@ -4016,10 +4020,8 @@ effect Diagnostic {
   // missing module printed E_MissingModule and exited 0. Carried-Truth at the
   // instrument: the handler knows; nobody read it.
   //
-  // every SError seen. `check`'s exit code.
+  // every SError seen: `check`'s exit code, and the emit gate's verdict.
   diag_errors() -> Int
-  // only the ARMED classes (diag_refuses). The emit gate.
-  diag_refusals() -> Int
   // every report that is NOT an error — warnings and teachings — counted in
   // every scope, whether the register rendered it or not. The board's
   // project line: the wheel carries zero diagnostics over every module it
@@ -4493,7 +4495,15 @@ fn diag_code(d) with Pure = match d {
   EHandlerChainShape(_, _) => "E_HandlerChainShape",
 }
 
-// Severity — the error-vs-narration axis (a projection).
+// Severity — the error-vs-narration axis. An error refuses: a program the
+// medium reports one in never compiles, because the emit gate reads the count
+// of errors (`diag_errors`), and nothing executes unproven. A warning narrates
+// and the program compiles: a spelling the parse reads as its canonical graph,
+// which the formatter writes back, or a teaching. A parse error is an error,
+// since the parser recovers only to keep judging, and a recovery is a guess
+// at text it could not read: a stray token in pattern position became a
+// wildcard that swallowed every value the arms after it were written for
+// (tests/micros/mn-pattern-token-refuses.mn).
 fn diag_severity(d) with Pure = match d {
   ERedundantBraces(_) => SWarning,
   ELambdaFence(_) => SWarning,
@@ -4502,24 +4512,20 @@ fn diag_severity(d) with Pure = match d {
   ENotAKeyword(_, _) => SWarning,
   WRedundantWhere(_) => SWarning,
   WCommentRefUnresolved(_, _, _) => SWarning,
-  PExpectedToken(_, _) => SWarning,
-  PUnexpectedToken(_, _) => SWarning,
   TOverDeclared(_, _, _, _) => SWarning,
   TRowInventory(_, _, _, _) => SWarning,
   TWordSlotBox(_, _, _) => SWarning,
   TPolyRecursionSignature(_, _) => SWarning,
   TOwnUnconsumed(_, _) => SWarning,
   TOwnAcrossReplay(_, _) => SWarning,
-  // ARMED at birth: arithmetic on an aggregate has no meaning, and the
-  // wheel's census of it is zero (measured at the arming commit).
-  EArithOnAggregate(_, _) => SError,
-  // ARMED at birth: the alternative is a derivative answered as zero where
-  // the program asked for one, and the wheel writes no derivative reading.
-  EDerivativeUnreachable(_, _) => SError,
-  EUseAfterMove(_, _) => SError,
   VPending(_, _) => SVerificationPending,
   EVerifyUnencodable(_) => SVerificationPending,
-  PUnclosedConstruct(_, _)
+  PExpectedToken(_, _)
+  | PUnexpectedToken(_, _)
+  | EArithOnAggregate(_, _)
+  | EDerivativeUnreachable(_, _)
+  | EUseAfterMove(_, _)
+  | PUnclosedConstruct(_, _)
   | EOrphanHandlerAttach(_)
   | EEffArgNotLiteral(_)
   | EInternalInvariant(_, _)
@@ -4574,375 +4580,6 @@ fn diag_severity(d) with Pure = match d {
   | EShapeUnprovable(_, _)
   | EInstantiationDepth(_, _)
   | EHandlerChainShape(_, _) => SError,
-}
-
-// diag_refuses — the ARMED classes of the refusal law, a projection beside
-// diag_severity.
-//
-// SYNTAX already wrote this law, for one class: "A hole is productive, never
-// executable." That is Hazel's own shape, which infer.mn:24 cites by name —
-// productive under error at the WALK (a mismatch binds NErrorHole and continues;
-// ten mismatches yield ten holes, not one-and-halt), refusing at the BOUNDARY.
-// The walk's half was built; the boundary's half was drawn for holes and for
-// decidable-false refinements, and never for the other twelve classes. This is
-// that same law reaching them — nothing new is invented here.
-//
-// A class is ARMED when the wheel's own census of it is ZERO: the medium never
-// violates it on ITSELF, so enforcing it on everyone cannot refuse the medium.
-// The census ratchet (tools/verify-baseline.txt) holds it at zero, so an armed
-// class can never un-arm. That licence is the self-hosting property doing the
-// work — rustc and tsc gate from day one because they never had errors on their
-// own source; here the wheel is the medium's first user, so "a class the medium
-// keeps on itself" is a MECHANICAL licence, not a policy.
-//
-// The all-at-once form — refuse on any SError — was designed, dispatched to an
-// adversarial fleet, and REFUTED on the artifact by three independent verifiers:
-// the wheel reports 2,266 errors about its own source, so that gate refuses the
-// medium itself and no m2 exists. The target does not lower; the WORK sequences
-// (§9.3). Classes arm one at a time as their census falls.
-//
-// `_ => False` is not a fabrication: "not yet armed" is TRUE of every class not
-// listed, and the list only grows. When the last one arms, this projection and
-// the census line are both DELETED and the law is `diag_severity(d) == SError`.
-fn diag_refuses(d) with Pure = match d {
-  // ARMED 2026-07-17. Census on the wheel: 0. Its silent skip in
-  // driver_compile_entry's fold was fixed the same day — `mentl check` reported
-  // it while `mentl compile` on the same source said nothing and shipped 2,432
-  // bytes of WAT.
-  EMissingModule(_, _, _) => True,
-  // ARMED at birth (2026-07-18): both are DECL-SITE facts read from parsed
-  // structure — no resolution dependency, so the blob-vs-user-path licence
-  // gap the adversarial panel found for name-dependent classes cannot apply.
-  // Census on the wheel at arming: 0 (the wheel's one state-shadow — the
-  // voice history field — was renamed in the arming commit; the wheel has
-  // no duplicate fn names, measured).
-  EHandlerStateShadowsOp(_, _, _) => True,
-  // ARMED at birth (2026-09-27): a TYPE fact — arithmetic's operand is a
-  // product, sum, sequence, function, continuation or unit — judged at the
-  // operator for a bound operand and at the one writer for a gated cell
-  // bound later (NumericGate), so the judgment refuses and no WAT streams.
-  // Census on the wheel at arming: 0.
-  EArithOnAggregate(_, _) => True,
-  EDuplicateFnName(_, _) => True,
-  // ARMED at birth, 2026-10-16: two binders of one name in one head or one
-  // pattern compiled clean, the later read by a rule no author wrote down.
-  EDuplicateBinder(_, _, _) => True,
-  // ARMED 2026-10-16: a resume stands where a continuation exists — an arm,
-  // or a lambda or nested fn minted inside one, whose record captures the
-  // arm's k. A top-level fn an arm calls holds none, and until a nested fn
-  // captured its k it compiled anyway, handed the k as a hidden trailing
-  // argument (tests/micros/mn-resume-in-called-fn.mn). Census on the wheel
-  // at arming: 0.
-  EResumeOutsideArm(_) => True,
-  // ARMED 2026-10-03, the day its one false shape closed: an as-pattern
-  // read as covering nothing, so `whole @ Leaf(_)` beside `Pair(a, b)` was
-  // "misses 1 of 2" (infer.mn's pat_tops). Unarmed, a match missing a variant
-  // compiled and trapped when the variant arrived — the hard error SYNTAX
-  // names, emitted. Census on the wheel at arming: 0.
-  EPatternInexhaustive(_, _) => True,
-  // ARMED 2026-10-13, the day the class was born unarmed: a chain applied to
-  // arguments printed the error and the program compiled and RAN (the
-  // landing's claim-reading pass measured exit 4 with the WAT written). A
-  // DECL-SITE fact read from parsed structure — a member that is not a
-  // handler, a chain applied to arguments, a declaration inside a member's
-  // argument — so the judgment refuses and no WAT streams. Census on the
-  // wheel at arming: 0.
-  EHandlerChainShape(_, _) => True,
-  // ARMED at birth (2026-09-10) and born at ZERO on every program measured,
-  // which is the point: it does not police a mistake, it holds an invariant
-  // that was true by two unrelated accidents. Authored duplicates are refused
-  // upstream by EDuplicateFnName; synthesized symbols were unique only
-  // because a mint counter is unique, and the emitter's keep-first dedup
-  // compares NAMES — so the day a symbol stops being minted from a counter,
-  // an unchecked collision drops one body and silently redirects every call
-  // that meant it. Emitting a program whose calls go to the wrong function is
-  // not something to report and proceed through.
-  EEmittedNameCollision(_, _) => True,
-  // ARMED at birth (2026-09-04), and the arming is the whole point: a
-  // reported-but-emitted collision is the corruption plus a note about it.
-  // The env holds ONE entry per name, so two effects declaring the same op
-  // are not both representable — the second write REPLACES the first and
-  // every prior call retypes against a signature its author never wrote.
-  // Measured: tests/crown/leak-handler-residual declared `Feed.yield` beside
-  // prelude's `Iterate.yield` and compiled to 42 spurious E_TypeMismatch
-  // INSIDE lib, burying the one refusal the crucible exists to prove.
-  // Renaming the op left exactly that one.
-  //
-  // Licence, both halves measured: the wheel declares 325 ops across its
-  // effects with ZERO cross-effect name reuse, so this cannot refuse the
-  // medium; and the corpus fixtures that collide are being renamed in the
-  // same landing.
-  //
-  // WHAT THE REFUSAL COSTS, stated rather than hidden: two effects sharing
-  // an op name is ordinary in effect systems (`Reader.get` beside
-  // `State.get`), and Mentl cannot express it TODAY because op identity is
-  // the bare name. The capability arrives when the env keys an op by
-  // (effect, name) — the entry already carries its effect, so the key is
-  // what throws it away. `Hβ.env.op-identity-is-effect-and-name` carries it,
-  // and this refusal is what makes the limit sayable instead of silent.
-  EOpShadowsOp(_, _, _, _) => True,
-  // ARMED 2026-09-03, the first of the CROWN's own two verdicts to reach
-  // the refusal law. §0's first property is "nothing executes unproven",
-  // and a violated `with Pure` was proven, printed, and then emitted: the
-  // probe was `fn claims_pure(n) with Pure = shout(n)`, which reported the
-  // violation and shipped 38,750 bytes.
-  //
-  // Both halves of the licence above, measured rather than assumed. The
-  // wheel's own census of this class is ZERO (verify's census line), so
-  // arming cannot refuse the medium. And the user-path channel was checked
-  // across all 372 corpus fixtures: the only carriers left are the two that
-  // EXPECT the refusal (mn-constructor-row-charge, mn-index-sugar-row). The
-  // one true blocker was mn-cli-dispatch, whose parse_verb and
-  // build_question declared `with Pure` while constructing payload-carrying
-  // variants — an honestly wrong signature, widened in the same landing,
-  // and it had gone unnoticed because this class did not refuse and the
-  // micro battery's diagnostic counter could not report a nonzero number.
-  //
-  // The recorded refutation against the all-at-once form — "the wheel
-  // reports 2,266 errors about its own source" — is era-stale; that count
-  // is 0 today. It refuted arming EVERY class at once, which is still the
-  // right refusal; classes arm one at a time as their census falls, and
-  // this one has.
-  EPurityViolated(_, _) => True,
-  // ARMED at birth (2026-08-18), read at the op's env write — the one
-  // place both claims on the name are present. Wheel census 0.
-  EFnShadowsOp(_, _, _) => True,
-  // ARMED at birth (2026-07-25), same licence as the two above: a DECL-SITE
-  // fact read from parsed structure — no resolution dependency. Census on
-  // the wheel blob at arming: 0 (the one Level pair lives in two tutorial
-  // files, both outside the blob and compiled standalone).
-  EDuplicateTypeName(_, _) => True,
-  // ARMED at birth (2026-09-27), the same licence as the root gate one arm
-  // down: a LOWER-TIME fact read off the branch thunk's row and the
-  // fanout's own lexical install stack, born at wheel-ZERO by construction
-  // (the wheel installs no threaded schedule). A stateful handler two
-  // spawned instances resume into is a definite race on one shared state
-  // record; a handler beyond the frame fence is unprovable from the site.
-  EThreadedBranchEffect(_, _, _) => True,
-  // ARMED at birth (2026-10-06), born at wheel-ZERO (the wheel reads no
-  // environment). A required read of a computed name has no name the launch
-  // gate can check, so the program would start and fail mid-run instead.
-  EEnvNameUngrounded(_) => True,
-  // ARMED at birth (2026-09-28), born at wheel-ZERO by construction (the
-  // wheel installs no derivative reading). What it refuses is a derivative
-  // the reading would otherwise answer as ZERO — the silent wrong the whole
-  // reading exists not to tell — so it can never be a narration.
-  EDerivativeUnreachable(_, _) => True,
-  // ARMED at birth (2026-07-22): an EXECUTABLE-root fact read from main's
-  // resolved row at the gate — the row representation is true (the triple),
-  // the wheel's own main carries only substrate-grounded names (census 0 at
-  // arming), and check/edit never route through the gate, so the productive
-  // surfaces stay open. The unhandled effect was the LAST undiagnosed
-  // 0x100000000 class: a perform whose evidence no install threads.
-  EEffectUnhandled(_, _, _) => True,
-  // ARMED 2026-07-18, panel-corrected licence: census 0 on the wheel AND the
-  // user-path channel verified. ERefinementRejected fires only on a predicate
-  // DECIDED false (undecidable defers to V_Pending, decidable-true passes —
-  // the panel found no false-refusal channel); §11 claimed this class was
-  // locked while a decidable-false `let bad: Sample = 1.5` emitted 2,513
-  // bytes at exit 0. EOwnershipViolation's one false channel (an unresolved
-  // callee's move default) died with graph_bind_hole + the callee-miss borrow
-  // guard; the detector survived adversarial falsification on resolved
-  // programs (a genuine double move still refuses, disjoint arms still pass).
-  ERefinementRejected(_, _, _) => True,
-  EOwnershipViolation(_, _) => True,
-  // ARMED 2026-09-15 — the affine tier's READ half joining the consume half
-  // above, and the arming condition was written by the class itself: its
-  // decl and its fixture both said "narration until the wheel's own count
-  // reaches 0 (the census arming law)". The count reached 0 at the Phase 4.1
-  // landing (pin 8ba768c810c4) and has held every board since, so what
-  // remained was a counter standing in for a proof — `use_after_move_max: 0`
-  // in verify-baseline, retired by this arm because an armed class has
-  // nothing to count: a wheel carrying one cannot compile.
-  // WHAT IT HOLDS, and why proceeding is not an option: the ledger already
-  // proved the name moved, and the read takes the bytes anyway. Today that is
-  // sound only by accident — the bump heap never frees, the
-  // accident-invariant §5.O layer 3's arena deletes — so this is a
-  // use-after-free the day ownership gets a real reclaim, emitted silently
-  // at exit 0. The licence is the same one its sibling holds: the detector
-  // reads the used-set BEFORE borrow_depth (4.1's ordering fix), so a borrow
-  // of a live name cannot reach it, and tests/frontier/mn-use-after-move.mn
-  // is the falsifying witness, re-banked from run_narration to the refusal
-  // contract in the same landing and seen RED first (exit 0, 4,474 WAT bytes
-  // against the unarmed tree).
-  EUseAfterMove(_, _) => True,
-  // ARMED at birth (F0b, 2026-09-27): born at zero on the wheel — the solo
-  // sweep it replaces held `solo_violations_max: 0` across 63 modules — and
-  // the class is exactly what that sweep ran 63 processes to find.
-  EMissingImport(_, _, _, _) => True,
-  // ARMED at birth (F, 2026-10-06): a syntax error, as Rust and Go refuse
-  // a repeated import; born RED-first on a program the boot compiled clean,
-  // and at zero on the wheel once infer.mn's two repeated lines were lifted.
-  EDuplicateImport(_, _) => True,
-  // ARMED 2026-07-18, the manifest arc's dividend: wheel census 0, and the
-  // user-path licence MEASURED — a no-import stdlib program (map / fold /
-  // len / any) resolves via the DAG's prelude seed and runs; the stdin
-  // contract is self-contained input (the wheel's own build form), where a
-  // missing name is a real break. Pre-arming, the refusal fixture compiled
-  // a missing-name executable to 2,795 bytes at exit 0 with the diagnostic
-  // on stderr — the silent-wrong this class's arming deletes.
-  EMissingVariable(_, _) => True,
-  // ARMED 2026-07-18, the eighth — the same day its fixture found the spin:
-  // a genuinely infinite type (selfapply f = f(f)) used to TRAP the compiler
-  // (chase_deep / subst_ty stack exhaustion, zero reports) because the occurs
-  // leaf compared handles where the cycle lived in BOUND STRUCTURE (bind
-  // graph_bind(a, TFun([b], r)) first, then graph_bind(b, TVar(a)) closes
-  // the cycle — no comparison sees
-  // it). The leaf now recurses into the root's binding, the write guard is
-  // total, and the fixture reports E_OccursCheck and refuses. Wheel census 0
-  // throughout; the phantom cascade stayed dead (one miss, one diagnostic).
-  EOccursCheck(_, _, _) => True,
-  // ARMED at birth (2026-08-08), the decl-site licence: a fact read from
-  // the authored clause's own signed fold — no resolution dependency.
-  // Census on the wheel at arming: 0 (the birth landing's march measured
-  // the whole wheel contradiction-free). The pre-diagnostic meet let a
-  // performing body check CLEAN under a declared !E; an unsatisfiable
-  // clause must never reach an executable.
-  EDeclaredRowContradiction(_, _) => True,
-  // ARMED at birth (2026-08-18), the lexical licence: the judgment is
-  // read from the source bytes themselves at the scan, so it has no
-  // resolution dependency and cannot differ between the blob link and a
-  // user path. Census on the wheel at arming: 0 — every literal the
-  // medium's own source writes is well-formed, and the march is the
-  // proof. This is the class the armed contract exists for: 0b1012 read
-  // 5 and ran, 0o1238 read 83 and ran, a bare 0x read 0 and ran. A
-  // value the medium cannot read is not a proven value, and nothing
-  // executes unproven.
-  EMalformedNumericLiteral(_, _, _) => True,
-  // ARMED at birth (2026-08-12), the literal licence: the depth is read
-  // from the authored `delay(<int literal>)` at the `<~` site — no
-  // resolution dependency, so the blob-vs-user-path gap cannot apply.
-  // Census on the wheel at arming: 0 (all thirteen `<~` sites declare
-  // delay(1) or accumulate). A cycle with no delay has no computable
-  // value, and today it SILENTLY became a one-sample delay — the emit
-  // never read the depth at all, measured by probe (delay(0), delay(1)
-  // and delay(3) each returned 30).
-  EZeroDelayFeedback(_) => True,
-  // ARMED at birth (2026-09-30): the judgment is the declaration's own
-  // arms against the effect's declared ops, both parse facts; the wheel
-  // and the runtime floor carry zero partial handlers, and the one shape
-  // that admitted one was a false absence proof that trapped.
-  EHandlerInexhaustive(_, _, _, _) => true,
-  // ARMED at birth (2026-10-06): an arm's resume of an op its declaration
-  // says never returns, read off the op's own scheme. The wheel and the
-  // runtime floor resume no such op.
-  EResumeOfNever(_, _, _) => true,
-  // ARMED at birth (2026-08-18): the judgment is STRUCTURAL, read from
-  // the lowered install itself — a direct-perform inside lower.mn's LHandleWith's
-  // own inits list, naming that same install's handler. No resolution
-  // dependency and no extent guess: the install's world_push has not run
-  // while its inits run, for every install, so the dispatch's walk
-  // provably reaches the chain's end. The runtime already refuses precisely
-  // there (ev_declaring_node's own trap); arming moves the same verdict to a
-  // point where nothing has been emitted. Census on the wheel at arming:
-  // 0 — every handler in it has a pure init, which is why no gate saw the
-  // shape until one was written for it.
-  EInitPerformsOwnOp(_, _, _) => True,
-  // ARMED 2026-09-25 — the crown's own verdict, and it was not armed:
-  // a declared row's refusal printed and the program RAN. Measured on the
-  // boot the day it was armed: `fn f() with !E = op()` under an outer
-  // handler reported the mismatch and exited 7 (the op's value); the
-  // authored-parameter form `fn run(f: () -> Int with !E) = f()` called
-  // with a performing callback reported and ran; a fixture in the frontier
-  // battery (`mn-hof-row-gate`) banked "exit 42 with exactly one
-  // E_EffectMismatch" as its expectation — a real `!WASI` leak canonized by
-  // the era that banked it (§9.11). The licence is the standard one: the
-  // wheel's own census of the class is ZERO (`mentl check src/main.mn`
-  // answers no diagnostics; the blob compile carries none), so this cannot
-  // refuse the medium. What it refuses is exactly PLAN §0's first property
-  // at its own boundary: a program whose declared row is contradicted by
-  // its inferred row is a program whose proof is false, and nothing
-  // executes unproven.
-  EEffectMismatch(_, _, _, _) => True,
-  // ARMED 2026-09-25, one pin after E_EffectMismatch, on the harm that
-  // pin measured: a build of the compiler whose own source carried two
-  // E_TypeMismatch (a frame record missing a field at two literals) reported
-  // them, EMITTED anyway, and the resulting compiler trapped on every program
-  // including `fn main() = 3`. A narrated type error is a program whose
-  // meaning the judgment could not establish; emitting it is exactly what
-  // PLAN §0 says never happens. The licence is the same one: the wheel's
-  // census of the class is zero (`mentl check src/main.mn` answers no
-  // diagnostics; the blob compile carries none). The proposer's refused
-  // candidates are unaffected: infer.mn's segment_bracket judges each under its own
-  // diag_branch, and only a proven candidate joins the root — which it
-  // does carrying no diagnostic, since a diagnostic is what refuses it.
-  ETypeMismatch(_, _, _, _) => True,
-  // ARMED 2026-09-27, the day the tuple-decomposition rule left
-  // pair_fn_params: a call whose argument count is not its callee's
-  // parameter count has no calling convention to emit into — the four
-  // shapes that rule admitted trapped at the indirect call or returned 0.
-  // Its surface name is E_TypeMismatch, the arity face of the class armed
-  // above, on the same licence: the wheel's census is zero (the m2 built
-  // under the refusal with no diagnostic).
-  EFnArityMismatch(_, _, _) => True,
-  // ARMED at birth (2026-08-12), the same literal licence its sibling
-  // rides: the judgment is "was a literal written here", read from the
-  // authored RHS with no resolution dependency. Census on the wheel at
-  // arming: 0 — every `delay(...)` in src/ and lib/ is `delay(1)`, and
-  // the other feedback sites are `accumulate`. A line is a fixed set of
-  // globals, so an unreadable depth cannot be held; refusing is what
-  // keeps the depth read honest, because the alternative is handing a
-  // site that asked for n the one slot it did not ask for.
-  EComputedDelayDepth(_) => True,
-  // An invariant the judgment guaranteed and a later pass found broken
-  // is a module the medium cannot vouch for — "nothing executes unproven"
-  // applies to the compiler's own claims first. Zero on the wheel (the
-  // trial pass that muted thirteen of these is gone, 2026-09-17).
-  EInternalInvariant(_, _) => True,
-  // ARMED 2026-09-28 (R0″) at wheel-zero, the settle point being what made
-  // arming possible: the class was decided inside per-fn emission, after the
-  // gate and after bytes, so an armed report would have refused a module
-  // already on stdout. It is asked of every body the emitted reach walks,
-  // under that body's bracket, before the gate reads.
-  EFieldOffsetUnprovable(_, _) => True,
-  // ARMED 2026-09-28 (R0″) with its row sibling. The eq and show narrations
-  // it replaces counted two sites on the wheel, both `list_compare_loop`'s
-  // element compares; the loop reads its elements as the words the emit's
-  // by-name dispatch guarantees, and the count is zero.
-  EShapeUnprovable(_, _) => True,
-  // ARMED at birth (2026-09-28, R0″): a twin chain reaches its cap only when
-  // a structurally-read type grows with every call, so the floor it falls to
-  // would read that structure as a word. Measured the day it was born: two
-  // ten-deep lists compared unequal and a nested show printed an address.
-  EInstantiationDepth(_, _) => True,
-  PExpectedToken(_, _)
-  | PUnclosedConstruct(_, _)
-  | PUnexpectedToken(_, _)
-  | ERedundantBraces(_)
-  | ELambdaFence(_)
-  | ERedundantFnOnLambda(_)
-  | ELambdaAsOrOr(_)
-  | EOrphanHandlerAttach(_)
-  | ENotAKeyword(_, _)
-  | EEffArgNotLiteral(_)
-  | WRedundantWhere(_)
-  | WCommentRefUnresolved(_, _, _)
-  | ETypeArityMismatch(_, _, _)
-  | EConstructorArity(_, _, _, _)
-  | EHandlerArmArity(_, _, _, _)
-  | ENotARecordType(_, _)
-  | EResumeOutsideArm(_)
-  | EResumeAmbiguousOp(_, _)
-  | EResumeWorldMismatch(_, _, _)
-  | EUnknownArgLabel(_, _)
-  | ERestOutsideDestructure(_)
-  | ERowAliasCycle(_, _)
-  | ERowAliasNegation(_, _)
-  | ERecordFieldExtra(_, _, _)
-  | ERecordFieldMissing(_, _, _)
-  | EPatternAlternationBindingMismatch(_, _)
-  | EIfMissingElse(_)
-  | TOverDeclared(_, _, _, _)
-  | TRowInventory(_, _, _, _)
-  | TWordSlotBox(_, _, _)
-  | TPolyRecursionSignature(_, _)
-  | TOwnUnconsumed(_, _)
-  | TOwnAcrossReplay(_, _)
-  | EVerifyUnencodable(_)
-  | VPending(_, _)
-  | ERegionEscape(_, _)
-  | EUnresolvedType(_, _, _)
-  | EUnresolvedHole(_, _) => False,
 }
 
 // The word a report's line prints for its severity.

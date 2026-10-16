@@ -643,7 +643,7 @@ async function project(edited){
   LAST = { ms: r.ms, resident: !!r.resident, bytes: (r.out || "").length, why: r.why || "" };
   BAD = VIEW ? new Set(VIEW.lens.filter(f => f.kind === "diag" && f.module === VIEW.at.module).map(f => f.site.line)) : new Set();
   $("sessinfo").textContent = `${LAST.resident ? "resident" : "cold"} · ${LAST.ms.toFixed(0)} ms · ${LAST.bytes.toLocaleString()} B`;
-  $("dot").className = REFUSAL ? "bad" : VIEW.lens.some(f => f.kind === "diag" && f.refuses) ? "diag" : "ok";
+  $("dot").className = REFUSAL ? "bad" : VIEW.lens.some(f => f.kind === "diag" && f.severity === "error") ? "diag" : "ok";
   busy = false;
   renderAll();
   if (pendingEdit){ pendingEdit = false; project(true); }
@@ -709,8 +709,8 @@ function renderLens(){
     p.innerHTML = `<div class="empty"><div class="big">✓</div>clean — the graph is coherent<div class="sub">${PROGRAM ? esc(PROGRAM) : ""}${linked.length ? ` · ${linked.length} report${linked.length > 1 ? "s" : ""} in linked modules` : ""}</div></div>`;
     return;
   }
-  // the hue is the fact's: its severity, whether it refuses, and whether its step is one the medium takes itself
-  const row = d => `<div class="diag sev-${esc(d.severity)}${d.refuses ? " refuses" : ""} appl-${esc(d.applicability)}" data-l="${d.module === VIEW.at.module ? d.site.line : ""}">
+  // the hue is the fact's: its severity (an error refuses) and whether its step is one the medium takes itself
+  const row = d => `<div class="diag sev-${esc(d.severity)} appl-${esc(d.applicability)}" data-l="${d.module === VIEW.at.module ? d.site.line : ""}">
       <div class="row1"><span class="code">${esc(d.code)}</span><span class="at">${esc(d.source)} · ${esc(d.module)}:${d.site.line}:${d.site.col} · ${esc(d.severity)}</span><span class="appl">${esc(d.applicability)}</span></div>
       <div class="msg">${esc(d.text)}</div></div>`;
   p.innerHTML = `<div class="lead"><b>Mentl:</b> ${esc(own[0].lead || "")}${own.length > 1 ? `<span class="subtle" style="display:block;margin-top:4px">the gradient ranks — one step first, ${own.length - 1} more below</span>` : ""}</div>`
@@ -944,14 +944,14 @@ async function smoke(){
   const diag = f => f.kind === "diag";
   const viewOf = r => { try { return r.exit === 0 ? JSON.parse(r.out) : null; } catch (e) { return null; } };
   let v = viewOf(b);
-  console.log(`SMOKE-VIEW open=${(session().opened ? session().opened.ms : a.ms).toFixed(0)} read=${b.ms.toFixed(1)} resident=${!!(a.resident && b.resident)} bytes=${b.out.length} ring=${v ? v.ring.length : 0} lens=${v ? v.lens.filter(diag).length : -1} refusing=${v ? v.lens.filter(f => diag(f) && f.refuses).length : -1} ledger=${v ? v.ledger.length : -1}`);
+  console.log(`SMOKE-VIEW open=${(session().opened ? session().opened.ms : a.ms).toFixed(0)} read=${b.ms.toFixed(1)} resident=${!!(a.resident && b.resident)} bytes=${b.out.length} ring=${v ? v.ring.length : 0} lens=${v ? v.lens.filter(diag).length : -1} refusing=${v ? v.lens.filter(f => diag(f) && f.severity === "error").length : -1} ledger=${v ? v.ledger.length : -1}`);
   // THE PROJECT: a folder of modules the manifest names opens in the same
   // session — its main.mn the entry, its View from the resident session
   const pr = PROJECTS[0], pm = pr && ENTRIES.find(e => e.dir === pr.dir && e.file === "main.mn");
   if (pm){
     openEntry(pm.key); await settled();
     const pv = VIEW, members = pr.members.length;
-    console.log(`SMOKE-PROJECT dir=${pr.dir} members=${members} file=${FILE} resident=${!!(LAST && LAST.resident)} ring=${pv ? pv.ring.length : 0} refusing=${pv ? pv.lens.filter(f => diag(f) && f.refuses).length : -1} module=${pv ? pv.at.module : "-"} canvas-lines=${CANVAS ? CANVAS.lines : 0} painted=${document.querySelectorAll("#hl .ln").length}`);
+    console.log(`SMOKE-PROJECT dir=${pr.dir} members=${members} file=${FILE} resident=${!!(LAST && LAST.resident)} ring=${pv ? pv.ring.length : 0} refusing=${pv ? pv.lens.filter(f => diag(f) && f.severity === "error").length : -1} module=${pv ? pv.at.module : "-"} canvas-lines=${CANVAS ? CANVAS.lines : 0} painted=${document.querySelectorAll("#hl .ln").length}`);
     openEntry(ENTRIES[0].key); await settled();
   }
   // THE PRODUCT: what the page renders, measured — fidelity (every painted

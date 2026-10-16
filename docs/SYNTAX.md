@@ -3388,7 +3388,7 @@ class or strikes the row.
 
 The three groupings below are **derived bands**, not authored law:
 - **Format-liftable** ≡ `MachineApplicable` ∧ the redundant form has no graph node (next section).
-- **Hard error** ≡ severity=error — a substrate violation the medium cannot auto-recover.
+- **Hard error** ≡ severity=error — a substrate violation the medium cannot auto-recover. Every one refuses the executable: the gate reads the count of errors the judgment reported, so a program carrying one is never emitted, and `mentl check` exits nonzero over it (real, 2026-10-16: until then a class refused only once it was armed, one class at a time, and an unarmed one reported and compiled — an unknown label trapped, a pattern missing a constructor field answered the first field, a missing record field read as zero; tests/micros/mn-*-refuses.mn).
 - **Gradient narration** ≡ severity=narration — Mentl's voice; accept or dismiss.
 
 ### Format-liftable (parse-canonicalized — no graph node to "strip")
@@ -3425,6 +3425,9 @@ stage, which the parse builds as the pipe it is (§«`<|` — diverge»).
 | Code                  | Trigger                                       | Applicability        | Quick Fix                                      |
 |-----------------------|-----------------------------------------------|----------------------|-------------------------------------------------|
 | `E_PatternInexhaustive` | a value escapes every arm of a match of two or more arms — a match of one arm, a destructuring `let` among them, claims its shape instead (§«Exhaustiveness») — read over the whole pattern, column by column, so a variant missing INSIDE a constructor's payload refuses too; the message names the escaping value as a pattern. An alternation covers its branches, an as-pattern its inner pattern; a list column is `[]` or a head before a rest, a record its fields, Bool's literals its constructors, and any other literal column is covered only by a wild row (`0` beside `1` misses `_`). ARMED 2026-10-03 (refuses the executable); nested since 2026-10-13; strict over every pattern kind since 2026-10-14 | `HasPlaceholders`    | insert the arm the witness names |
+| `P_ExpectedToken`     | the parser expected one token and found another. It recovers so the judgment can go on, and a recovery is a guess at text it could not read, so the program refuses | `MaybeIncorrect`     | write the token it expected |
+| `P_UnexpectedToken`   | a token not valid at its position. In pattern position the recovery was a wildcard that swallowed every value the arms after it were written for, and the class was a warning (real, 2026-10-16: `pick(7)` answered 20 over a `]` where a pattern stood; tests/micros/mn-pattern-token-refuses.mn) | `MaybeIncorrect`     | restructure per the surrounding form |
+| `P_UnclosedConstruct` | EOF inside a construct (block, match arms, etc.) before its closer | `MaybeIncorrect` | close the construct OR remove its opening token |
 | `E_RefinementRejected`| value violates refinement predicate — or a partial primitive's precondition refuted by constants (`1 / 0`, `INT_MIN / -1`; §«Partiality»), or a destructuring pattern's shape refuted by how the value was built (`let Some(v) = None`; §«Exhaustiveness») | `Unspecified`        | adjust value or widen refinement               |
 | `E_EffectMismatch`    | declared row doesn't subsume body row. The Reason names the declaration and, for a function, the chain of sites the first refused effect enters through — each a `module:line:col` naming what the effect crosses there (a callee, a stage, a handler, a function value entered) or the construct that charges it (`rendering the value`, `building the list`) — to the op where the chain reaches one (real, 2026-10-13; the span stays the declaration's, whose clause is what the body violates) | `MaybeIncorrect`     | widen declaration OR install absorbing handler at the site the chain names |
 | `E_PurityViolated`    | `with Pure` body performs non-empty effects   | `MaybeIncorrect`     | remove `with Pure` or absorb the effect        |
@@ -3471,9 +3474,6 @@ stage, which the parse builds as the pipe it is (§«`<|` — diverge»).
 | `W_Suggestion`        | probable Quick Fix available. **Not yet born**: a proposal reaches the developer through the Teach facet (`mentl teach`), and a narration that carries its fix is its own `T_` class | `MaybeIncorrect`     | (Mentl-proposed)                                |
 | `W_RedundantWhere`    | `type X = Y where true` — vacuous predicate   | `MachineApplicable`  | drop the `where true`; alias is transparent     |
 | `W_EmptyRow`          | a named row (`type X = <row>`) resolves to `Pure`. **Not yet born**: the alias expands to `Pure` where a signature reads it and nothing is said (§«Named effect rows») | `MaybeIncorrect`     | drop the alias; the row IS `Pure` already       |
-| `P_ExpectedToken`     | parser expected one token kind, found another | `MaybeIncorrect`     | (parser-emitted; pre-substrate-classification)  |
-| `P_UnexpectedToken`   | token kind not valid at this position         | `MaybeIncorrect`     | restructure per the surrounding form            |
-| `P_UnclosedConstruct` | EOF inside a construct (block, match arms, etc.) before its closer | `MaybeIncorrect` | close the construct OR remove its opening token |
 
 ---
 

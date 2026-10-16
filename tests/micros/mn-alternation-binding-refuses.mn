@@ -1,0 +1,13 @@
+// expect: refuse E_PatternAlternationBindingMismatch
+// The branches of an alternation bind the same names, and here `A(x)` binds
+// `x` where `B(y)` binds `y`, so under `B` the arm's `x` names nothing.
+// Every error refuses the executable. Until 2026-10-16 this class reported
+// and the program compiled anyway: on boot 969f2559 the module it wrote did
+// not assemble.
+type T = A(Int) | B(Int)
+
+fn get(t) = match t {
+  A(x) | B(y) => x,
+}
+
+fn main() = get(B(5))

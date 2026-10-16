@@ -1,0 +1,8 @@
+// expect: refuse E_TypeMismatch
+// `Option` takes one type argument and the annotation hands it two, the arity
+// face of a type mismatch. Every error refuses the executable. Until
+// 2026-10-16 this face reported and the program compiled anyway: on boot
+// 969f2559 it answered 3, the annotation dropped.
+fn f(x: Option(Int, Int)) = 3
+
+fn main() = f(None)

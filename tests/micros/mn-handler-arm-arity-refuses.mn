@@ -1,0 +1,14 @@
+// expect: refuse E_HandlerArmArity
+// `ask` takes no argument and its arm binds one, so the arm reads a value
+// no perform hands it. Every error refuses the executable. Until 2026-10-16
+// this class reported and the program compiled anyway, and on boot 969f2559
+// the module trapped.
+effect Ask {
+  ask() -> Int
+}
+
+handler h {
+  ask(x) => resume(x),
+}
+
+fn main() = ask() + 1 ~> h

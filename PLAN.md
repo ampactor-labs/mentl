@@ -496,8 +496,6 @@ landing that closes it. A gate that did not run is UNKNOWN, never green.
   (§11.4): every filesystem operation is a `Filesystem` op whose implementation
   is its handler's arm, but a path that does not read answers an empty string
   and one that does not open answers fd 0.
-- **Executable refusal is partial**: `diag_refuses` holds the live list; a class
-  born at zero arms at birth, and the rest are §11's work.
 - **A module's init stores what one binder names** (§11.18): a module-scope
   let whose pattern is a discard, a literal or a destructure refuses where the
   program is emitted (`E_InternalInvariant`).
@@ -700,8 +698,7 @@ a provenance diff, a search over live shared cells.
   rides the continuation made a first-class value, its world on its record.
 - **Verification whole**: the verifier decides a predicate's expression, where
   it decides the projection a type carries (`node_to_predicate`); a bug trap
-  unwinds with the graph as its payload; every diagnostic class refuses the
-  executable. A label's claim on a part read off the value a call answers is
+  unwinds with the graph as its payload. A label's claim on a part read off the value a call answers is
   owed where the callee built that part in sight: `exec(mk().cmd)` over `fn
   mk() = {cmd: "ls", n: 1}` is owed, the walk naming a prelude site out of
   sight, while the same record built in place is proven

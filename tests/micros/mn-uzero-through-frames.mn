@@ -13,7 +13,7 @@
 //   arm's None directly, no chain) — the pin survives the cut; only the
 //   FRAGILITY (the non-tail break) disappears.
 effect Abort {
-  abort() -> Option
+  abort() -> Option(Int)
 }
 
 handler my_catch {

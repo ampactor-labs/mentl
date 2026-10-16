@@ -1,0 +1,11 @@
+// expect: refuse E_RecordFieldMissing
+// A nominal record is built with every field its type declares, and this
+// one leaves out `y`. Every error refuses the executable. Until 2026-10-16
+// this class reported and the program compiled anyway: on boot 969f2559 it
+// answered 2, the missing field read as zero.
+type P = {x: Int, y: Int}
+
+fn main() = {
+  let p = P{x: 1}
+  p.y + 2
+}

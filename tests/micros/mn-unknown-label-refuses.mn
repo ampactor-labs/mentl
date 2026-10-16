@@ -1,0 +1,9 @@
+// expect: refuse E_UnknownArgLabel
+// A label names a parameter, and `fatcor` names none of `scale`'s, so the
+// call has no field for it and the medium cannot say what the program
+// means. Every error refuses the executable. Until 2026-10-16 this class
+// reported and the program compiled anyway (41,444 bytes of WAT on boot
+// 969f2559), and the module trapped where the label's slot was read.
+fn scale(x, factor) = x * factor
+
+fn main() = scale(3, fatcor = 4)

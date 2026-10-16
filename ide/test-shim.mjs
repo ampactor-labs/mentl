@@ -273,10 +273,10 @@ const READ_BAR_MS = 50;   // PLAN §11.2's felt bar, measured here rather than a
     const warn = diags.find((f) => f.code === 'W_CommentRefUnresolved');
     const mism = diags.find((f) => f.code === 'E_TypeMismatch');
     const okW = !!warn && /warning/i.test(warn.severity) && warn.site.line === 1 && warn.module === 'main';
-    const okM = !!mism && mism.site.line === 4 && mism.refuses === true && /error/i.test(mism.severity);
+    const okM = !!mism && mism.site.line === 4 && mism.severity === 'error';
     // every fact carries its lead, so the sentence over the Lens is the first
     // fact's — never a fact of its own standing beside the facts it is about
-    const okL = diags.length > 0 && diags.every((d) => typeof d.lead === 'string' && d.lead.length > 0) && diags[0].refuses === true;
+    const okL = diags.length > 0 && diags.every((d) => typeof d.lead === 'string' && d.lead.length > 0) && diags[0].severity === 'error';
     console.log(`    a Warning lands in the Lens as a Warning at its line: ${okW ? 'PASS' : 'FAIL'} · a mismatch sits at its own site, not its Reason's: ${okM ? 'PASS' : 'FAIL'} · every fact carries its lead and the refusal ranks first: ${okL ? 'PASS' : 'FAIL'}`);
     if (!okW || !okM || !okL) { bad++; console.log('    lens: ' + JSON.stringify(diags.map((d) => [d.code, d.severity, d.site && d.site.line])) + (v ? '' : '\n    ' + (r.out || r.err || '').trim().split('\n').slice(0, 3).join('\n    '))); }
     await asCold(r, ['mentl', 'space', 'main.mn:2:4'], 'the Lens');
@@ -296,7 +296,7 @@ const READ_BAR_MS = 50;   // PLAN §11.2's felt bar, measured here rather than a
     const delta = { 'base.mn': 'fn two() = 2\n', 'ops.mn': 'import base\n\nfn twice(x) = x * two()\n', 'main.mn': 'import ops\n\nfn main() = twice(21)\n' };
     const r10 = await sess.call(['mentl', 'space', 'ops.mn:3:4'], delta);
     const v = parseView(r10);
-    const refusing = v ? v.lens.filter((f) => f.kind === 'diag' && f.refuses) : [];
+    const refusing = v ? v.lens.filter((f) => f.kind === 'diag' && f.severity === 'error') : [];
     const ok10 = !!v && r10.resident && v.at.module === 'ops' && v.ring.length === 8 && v.ring[0].text.includes('twice') && refusing.length === 0;
     console.log(`[10] a sibling module's View, resident, the cone judged deps-first: ${ms(r10)} -> ${ok10 ? 'PASS' : 'FAIL'}`);
     if (!ok10) { bad++; console.log('    ' + (v ? 'refusing: ' + JSON.stringify(refusing.map((d) => [d.code, d.module, d.site && d.site.line, d.text.slice(0, 80)])) : (r10.out || r10.err || '').trim().split('\n').slice(0, 3).join('\n    '))); }
@@ -314,7 +314,7 @@ const READ_BAR_MS = 50;   // PLAN §11.2's felt bar, measured here rather than a
     const cyc = { 'sig.mn': 'import proc\n\neffect Proc { process(x: Float) -> Float }\n', 'proc.mn': 'import sig\n\nhandler pass {\n  process(x) => resume(x),\n}\n', 'main.mn': 'import proc\nimport sig\n\nfn main() = (process(1.0)) ~> pass\n' };
     const r10c = await sess.call(['mentl', 'space', 'proc.mn:3:9'], cyc);
     const vc = parseView(r10c);
-    const refusingC = vc ? vc.lens.filter((f) => f.kind === 'diag' && f.refuses) : [];
+    const refusingC = vc ? vc.lens.filter((f) => f.kind === 'diag' && f.severity === 'error') : [];
     const ok10c = !!vc && r10c.resident && vc.at.module === 'proc' && refusingC.length === 0;
     console.log(`    a cycle of modules is one judgment unit: ${ms(r10c)} -> ${ok10c ? 'PASS' : 'FAIL'}`);
     if (!ok10c) { bad++; console.log('    ' + (vc ? 'refusing: ' + JSON.stringify(refusingC.map((d) => [d.code, d.module, d.site && d.site.line, d.text.slice(0, 80)])) : (r10c.out || r10c.err || '').trim().split('\n').slice(0, 3).join('\n    '))); }

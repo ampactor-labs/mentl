@@ -23,9 +23,10 @@
 // WHAT A BOUND IS NOT. A bound is not a proof. Fourteen of the old file's
 // keys read ZERO, and a ratchet held at zero is a proxy for a proof nobody
 // minted (PLAN §7, in those words). The ultimate form of every line here is
-// its own DELETION: the shape becomes a `DiagKind` the executable refuses,
-// `diag_refuses` holds the invariant directly, and the line retires the way
-// the use-after-move ratchet did at pin 21696779. So this roster is a COUNTDOWN,
+// its own DELETION: the shape becomes a `DiagKind` of error severity, which
+// the executable refuses, so the judgment holds the invariant directly and
+// the line retires the way the use-after-move ratchet did at pin 21696779.
+// So this roster is a COUNTDOWN,
 // and a line that never falls is not a passing gate — it is 8.4's universal
 // executable refusal, unbuilt, saying so.
 import types

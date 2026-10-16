@@ -1,0 +1,13 @@
+// expect: refuse P_UnexpectedToken
+// A `]` stands where the second arm's pattern belongs. The parser recovers so
+// it can keep judging the rest of the module, and the pattern it recovers to
+// is a guess at text it could not read, so the program refuses. Until
+// 2026-10-16 a parse error was a warning: the guess was a wildcard, and on
+// boot 969f2559 `pick(7)` answered 20, the arm after it never reached.
+fn pick(n) = match n {
+  0 => 10,
+  ] => 20,
+  _ => 30,
+}
+
+fn main() = pick(7)

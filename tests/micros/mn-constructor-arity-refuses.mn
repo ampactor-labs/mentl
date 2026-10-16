@@ -1,0 +1,12 @@
+// expect: refuse E_ConstructorArity
+// `Pair` holds two fields and the pattern names one, so the arm takes apart
+// a shape the type does not have. Every error refuses the executable. Until
+// 2026-10-16 this class reported and the program compiled anyway: on boot
+// 969f2559 it answered 7, the first field, as though the pattern were whole.
+type Pair = Pair(Int, Int)
+
+fn first(p) = match p {
+  Pair(a) => a,
+}
+
+fn main() = first(Pair(7, 8))

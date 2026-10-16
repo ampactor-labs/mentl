@@ -1545,18 +1545,16 @@ fn test_check_run(entry_module) =
 // The micro battery IS the medium reading its own gates: glob the directory,
 // read each micro's own `// expect: N` header, compile each as its own link
 // in ONE process, write the WATs, print the manifest. The
-// refusal law holds batch-shaped: a micro whose ledger shows errors / holes /
-// armed refusals gets a FAILC line and NO WAT (the same
-// errors-holes-refusals read `gated_plan` makes for the CLI; here the
-// boundary is the batch, so the verdict is a manifest line instead of
-// proc_exit).
+// refusal law holds batch-shaped: a micro whose ledger shows an error or a
+// hole gets a FAILC line and NO WAT (the same read `gated_plan` makes for
+// the CLI; here the boundary is the batch, so the verdict is a manifest line
+// instead of proc_exit).
 // The fixture's own contract, first line — the expectation lives ON the
 // artifact (SYNTAX §Comments), and the grammar mirrors the medium's own
 // two verdicts: `// expect: N` (the program compiles and its run answers
-// N) and `// expect: refuse E_Class` (the judgment REPORTS the named
-// class as an error — armed classes also withhold the artifact, unarmed
-// ones surface-and-emit per the sound-incomplete contract; the battery
-// judges the JUDGMENT, never stricter than the medium). This contract
+// N) and `// expect: refuse E_Class` (the gate withholds the artifact and
+// the judgment reports the named class as an error, so the battery asserts
+// exactly what the medium asserts). This contract
 // is the frontier bash's dissolution channel: a refusal leg becomes a
 // fixture the medium reads itself. `// unreachable: a b` is a facet's
 // contract: the fn declarations of the fixture's own layer that `main`
@@ -2001,11 +1999,6 @@ fn show_want(want) = match want {
   WantAsk(arm) => "ask {arm}",
 }
 
-// What one micro's compile left behind: the gate withheld the module, the
-// artifact could not be opened (a host fault, never a verdict on the
-// program), or the module is on disk for the host to run.
-type BatteryEmit = BatteryRefused | BatteryUnwritable | BatteryWritten
-
 fn battery_wat_path(stem) = ".build/battery/{stem}.wat"
 
 // One micro, one fresh chain — the same chain compile_stdin drives, with
@@ -2025,29 +2018,12 @@ fn battery_wat_path(stem) = ".build/battery/{stem}.wat"
 fn battery_compile(module: String, stem) = {
   driver_link_scoped(module, Census)
   let lowered = link_program() |> saturate_pass |> lower_program |> reachable_from_main
-  // THE SAME law the CLI compile applies, batch-shaped: refusal = holes +
-  // ARMED classes only, the plan's settle point included. Unarmed errors
-  // surface on stderr and the compile proceeds — the sound-incomplete
-  // contract; the battery must not be stricter than the medium (it FAILC'd
-  // ev2 for an unarmed row mismatch the check verb tolerates). `gated_plan`
-  // is the law's one home; this policy counts and continues where the CLI
-  // compile proc_exits. The refuse contract judges the JUDGMENT through the
-  // bank, which forwards every report, so every line still reaches stderr.
-  let left = match gated_plan(lowered) {
-    Withheld(_, _) => BatteryRefused,
-    Planned(plan) => {
-      let fd = fs_create(battery_wat_path(stem))
-      if fd == 0 {
-        BatteryUnwritable
-      } else {
-        {
-          emit_planned(plan)
-        } ~> wat_to_file(fd)
-        fs_close(fd)
-        BatteryWritten
-      }
-    },
-  }
+  // THE SAME law the CLI compile applies, batch-shaped: an error or a hole
+  // refuses, the plan's settle point included. `gated_plan` is the law's one
+  // home; this policy counts and continues where the CLI compile proc_exits.
+  // The refuse contract reads the classes through the bank, which forwards
+  // every report, so every line still reaches stderr.
+  let left = gated_write(lowered, battery_wat_path(stem))
   // THE CLASSES, never the rendered lines: the refuse contract compares
   // names, so no substring scan over prose decides a verdict.
   let classes = banked_classes()
@@ -2103,32 +2079,28 @@ fn battery_step(path: String) = {
       ExpectCanonical => battery_fmt_step(stem, path, src),
       ExpectRun(want) => match battery_compile(path_to_module(path), stem) {
         (left, nerr, _) => match left {
-          BatteryRefused => {
+          ArtifactRefused => {
             print_string("FAILC {stem}\n")
             1
           },
-          BatteryUnwritable => {
+          ArtifactUnwritable => {
             print_string("FAIL(write) {stem}: cannot open {battery_wat_path(stem)}\n")
             1
           },
           // The verdict is the host's: the RUN line hands over the module,
-          // the exit it must answer and the error COUNT (a fixture that
-          // runs true while reporting errors is the sound-incomplete
-          // contract at work, and a count nobody prints is a count nobody
-          // reads); the command that invoked the battery runs the module
-          // and prints PASS or FAIL(run) in this line's place.
-          BatteryWritten => {
+          // the exit it must answer and the error count, which the gate has
+          // already held at zero; the command that invoked the battery runs
+          // the module and prints PASS or FAIL(run) in this line's place.
+          ArtifactWritten => {
             print_string("RUN {stem} {battery_wat_path(stem)} {int_to_str(want)} {int_to_str(nerr)}\n")
             0
           },
         },
       },
       ExpectRefuse(cls) => match battery_compile(path_to_module(path), stem) {
-        // The contract judges the JUDGMENT: the named class reported as an
-        // error. Armed classes also withhold the artifact; unarmed ones
-        // surface-and-emit — both are the medium's own law, and the
-        // battery asserts exactly what the medium asserts.
-        (_, nerr, classes) => if nerr > 0 && any((c) => c == cls, classes) {
+        // The contract is the gate's verdict: the artifact withheld, and the
+        // named class among what the judgment reported.
+        (left, nerr, classes) => if left == ArtifactRefused && any((c) => c == cls, classes) {
           print_string("REFUSE {stem} {cls}\n")
           0
         } else {
