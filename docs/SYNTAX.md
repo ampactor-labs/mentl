@@ -1432,10 +1432,11 @@ the shape refuses — the third step of
 `Hβ.match.catch-all-over-a-sum-is-the-roster`.
 
 **A match of several arms dispatches; a match of one arm asserts** (real,
-2026-10-14). `let [a, b] = xs`, `let Some(v) = o`, a parameter written as a
-pattern (`fn h([p, q]) = p - q`), a one-arm literal (`{ [h, ...t] => h }`)
-and `match v { p => e }` are one graph — a match of one arm — and each
-ASSERTS the value's shape where several arms would dispatch on it. So the
+2026-10-14). `let [a, b] = xs`, `let Some(v) = o`, a one-arm literal
+(`{ [h, ...t] => h }`) and `match v { p => e }` are one graph — a match of
+one arm — and a parameter written as a pattern (`fn h([p, q]) = p - q`)
+makes the same claim of its argument; each ASSERTS the value's shape where
+several arms would dispatch on it. So the
 case its pattern leaves is not a refusal: the shape is a claim, decided along
 the value's edges as an index's precondition is (§«Partiality — a
 primitive's precondition is a claim»). It is proven where every value the
@@ -1445,8 +1446,8 @@ Some(v) = None` is `E_RefinementRejected` at the let; and open otherwise, the
 match's own row carrying the `Trap` a mismatch is, so `with !Trap` refuses a
 destructure of a parameter until its shape is proven or its value is matched
 by arms of its own. The arms of a match of several stay the roster of what it
-handles. The law reads the arms, never the spelling: the binder form
-`([h, ...t]) => h` and the arm list `mentl fmt` writes it as are one graph
+handles. The law reads the patterns, never the spelling: the binder form
+`([h, ...t]) => h` and the arm list `mentl fmt` writes it as assert one shape
 with one meaning. Before this, a destructure of a sum was refused as the
 dispatch it is desugared into, at a line with no `match`, while a list
 pattern was read as covering every list
@@ -2450,8 +2451,27 @@ it names, so the edge from `total` reaches the `total` the let binds, and
 find draws at the same caret. Until then such a binder was declared at the
 value it was handed: the Why at a use of a let named the value's line, at a
 use of an arm's binder the scrutinee's (tests/micros/mn-declared-let-binder.mn,
-mn-declared-arm-binder.mn). A parameter is still declared at a cell the
-judgment mints.
+mn-declared-arm-binder.mn). A parameter is declared the same way (real,
+2026-10-16): it is a node of its own, the cell of the argument its position
+takes, holding its pattern, its annotation, its default and its ownership
+marker, and its pattern binds against that cell as a let's binds against its
+value. So the caret at a parameter's name names the parameter and says its
+uses, and a destructured parameter is its pattern, with no name minted for
+it. Until then a parameter was declared at a cell the judgment minted with no
+position (`0:0`), and a destructured one under a synthesized name the body
+took apart with a `let` (tests/micros/mn-declared-fn-param.mn,
+mn-declared-lambda-param.mn). A handler arm's arguments are still declared at
+cells the judgment mints.
+
+**A head and a pattern bind each name once** (real, 2026-10-16). Two binders
+of one name — across a head's parameters and inside their patterns, or in one
+pattern — leave a use that could reach either, and a parameter list holds one
+field per name, which a label names. The second is refused, naming the first
+(`E_DuplicateBinder`). The branches of an alternation bind the same names by
+law and are not two binders. Until then each shape compiled clean and one
+binder was read by a rule no author wrote down: of two parameters the later,
+and a destructured part over a parameter on either side of it
+(tests/micros/mn-duplicate-binder-head.mn, mn-duplicate-binder-pattern.mn).
 
 ### Exhaustiveness
 
@@ -3340,6 +3360,7 @@ stage, which the parse builds as the pipe it is (§«`<|` — diverge»).
 | `E_PipeHoleAmbiguous` | `x \|> f(…)` where `f(…)` has more than one hole and none is marked `??`. **Not yet born**: the same unification refuses it as `E_TypeMismatch`, its arity face | `MaybeIncorrect` | mark the pipe's target field with `??` (`nodes \|> list_set(??, i, v)`) |
 | `E_NotAKeyword`       | user typed `for`/`while`/`loop`/`break`/`continue`/`return` | `MaybeIncorrect` | rewrite as verb form per substrate             |
 | `E_PatternAlternationBindingMismatch` | branches in `\|` bind different names or types | `MaybeIncorrect` | adjust patterns to bind same names with unifiable types |
+| `E_DuplicateBinder` | a name bound twice in one head — across its parameters and inside their patterns — or by one pattern (`fn f(x, x)`, `(x, x) => x`); the second binder is refused, naming the first, and an alternation's branches, which bind the same names by law, are one binder each. ARMED at birth, 2026-10-16: until then each shape compiled clean and one binder was read silently | `MaybeIncorrect` | rename one binder |
 | `E_ResumeOutsideArm`  | `resume` outside a handler-arm body           | `Unspecified`        | move the resume into an arm; the continuation only exists there |
 | `E_ResumeWorldMismatch` | two continuations (`TCont(R, S, discipline, world)`) unify with incompatible resume DISCIPLINES — OneShot, MultiShot and Abandon are distinct representations (stack frame, heap record, dead continuation), so the mismatch is hard. The WORLD half is the row unification in the same TCont arm (`!E` lifted to the TIME axis, §4③). A resume under a changed world has no runtime refusal of its own yet: a persisted image restores the world it was written with, and `image_resume` (lib/persist.mn) refuses only an image of another build — the typed, located refusal of a changed-world resume is band B's, and no class names it yet | `MaybeIncorrect` | align the handler arms' resume cardinality; for a world clash, re-install the absorbing handler before the resume OR widen the continuation's world |
 | `E_ConcatTypeMismatch` | `++` operands' element types fail to unify (e.g. `[Int] ++ [Bool]`). **Not yet born**: the failure is `E_TypeMismatch`, its Reason naming the `++` (§«Concatenation operator») | `MaybeIncorrect` | unify the element types |

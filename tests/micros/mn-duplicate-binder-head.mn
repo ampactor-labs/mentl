@@ -1,0 +1,6 @@
+// expect: refuse E_DuplicateBinder
+// A head binds each name once. With two parameters named `x`, `f(x = 1)`
+// names no one field, and the body's `x` could be either argument.
+fn f(x, x) = x
+
+fn main() = f(1, 2)

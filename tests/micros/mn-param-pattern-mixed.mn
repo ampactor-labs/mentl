@@ -1,0 +1,13 @@
+// expect: 23
+// A parameter is its pattern: a destructure stands beside a plain name, an
+// authored marker and a default in one head, and a lambda's destructure binds
+// the same way. f = 3, g = 1 + 5 - 2 + 4 = 8, both = 0, add = 12.
+fn f((a, b)) = a + b
+
+fn g(x, (p, q), own y: Int = 3) = x + p - q + y
+
+fn main() = {
+  let both = (_, _) => 0
+  let add = ((u, v)) => u * v
+  f((1, 2)) + g(1, (5, 2), 4) + both(1, 2) + add((3, 4))
+}

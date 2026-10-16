@@ -1,0 +1,7 @@
+// expect: refuse E_DuplicateBinder
+// A pattern binds each name once: the arm's `x` could be either element.
+fn pick(p) = match p {
+  (x, x) => x,
+}
+
+fn main() = pick((3, 4))

@@ -427,11 +427,27 @@ fn param_ownership(body, pair) = match pair {
 }
 
 // A parameter nothing reads is unmarked without a walk: its uses are its
-// binder's in-edges.
-fn classify_usage(binder, body) = if len(graph_refs_of(binder)) == 0 {
-  Unmarked
-} else {
-  classify_pair(usage_of(binder, body, MConsume))
+// binder's in-edges. A parameter written as a destructuring pattern is read
+// where the argument is taken apart, as a match reads its scrutinee, so the
+// pattern counts as one read of the whole beside the body's uses of a name
+// it binds to the whole (an as-pattern's).
+fn classify_usage(binder, body) = {
+  let taken_apart = if pat_destructures(binder) { use_leaf(MRead) } else { pair_zero() }
+  if len(graph_refs_of(binder)) == 0 {
+    classify_pair(taken_apart)
+  } else {
+    classify_pair(pair_seq(taken_apart, usage_of(binder, body, MConsume)))
+  }
+}
+
+// Whether a parameter's pattern takes its argument apart: a name or a
+// wildcard reads nothing of it, and an as-pattern reads what its inner
+// pattern does.
+fn pat_destructures(binder) = match pat_of(binder) {
+  PVar(_) => false,
+  PWild => false,
+  PAs(_, inner) => pat_destructures(inner),
+  PLit(_) | PCon(_, _) | PTuple(_) | PList(_, _) | PRecord(_, _) | PAlt(_) => true,
 }
 
 fn classify_pair(usage) = match usage {
@@ -557,6 +573,7 @@ fn usage_of(ref binder, ref node, mode) = match graph_node_body(node) {
   NRow(_) => pair_zero(),
   NTypeAnn(_) => pair_zero(),
   NName(_) => pair_zero(),
+  NParam(_) => pair_zero(),
 }
 
 // ⊗ over a node list (block stmts, list/tuple/string elems, parallel

@@ -698,7 +698,7 @@ fn declared_at(h) = match graph_node_body(h) {
     PVar(name) | PAs(name, _) => Some(name),
     PWild | PLit(_) | PCon(_, _) | PTuple(_) | PList(_, _) | PRecord(_, _) | PAlt(_) => None,
   },
-  NExpr(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) => None,
+  NExpr(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => None,
 }
 
 fn stmt_declared_name(s) = match s {
@@ -1599,11 +1599,25 @@ fn span_in_module(mh, e) = match e {
 //  (b) else the tightest node COVERING the point (a continuation line);
 //  (c) else the nearest node by start line (the no-Module-root top-level
 //      gap — blank lines between decls are ordinary addresses, not errors).
-fn address_resolve(spans, gline, col) = match fold(None, address_case_a(gline, col, ??, ??), spans) {
-  Some(pick) => Some(pick),
-  None => match find_tightest(spans, caret_span(gline, if col > 0 { col } else { 1 }), None, 1000000000) {
-    Some(h) => span_pick_of(spans, h),
-    None => fold(None, address_case_c(gline, ??, ??), spans),
+fn address_resolve(spans, gline, col) = map_option(
+  answer_at_binder,
+  match fold(None, address_case_a(gline, col, ??, ??), spans) {
+    Some(pick) => Some(pick),
+    None => match find_tightest(spans, caret_span(gline, if col > 0 { col } else { 1 }), None, 1000000000) {
+      Some(h) => span_pick_of(spans, h),
+      None => fold(None, address_case_c(gline, ??, ??), spans),
+    },
+  }
+)
+
+// A parameter answers at its binder, as a let does: the uses link to the
+// node its pattern is, where the name is written. A bare name's parameter
+// shares its binder's span, and the tie toward the later mint would answer
+// with the parameter that holds it.
+fn answer_at_binder(pick) = match pick {
+  (_, h) => match graph_node_body(h) {
+    NParam(p) => (graph_span_of(p.pat), p.pat),
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) => pick,
   },
 }
 

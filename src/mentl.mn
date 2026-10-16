@@ -136,7 +136,7 @@ type Decl = {
   effs: [(RowTerm, Bool, EConn)],
   handle: Int,
   name: String,
-  params: [TParam],
+  params: [Node],
   ret: Ty,
   retty: Node,
   ty: Ty,
@@ -550,7 +550,14 @@ fn refinement_alias(d) = match graph_node_body(d) {
 }
 
 fn param_candidates(f, owed, aliases, lean) = match lean {
-  (b, name, i) => aliases |> filter(binder_fits(b, ??)) |> filter(writable_over(param_ty(list_index(f.params, i)), ??)) |> flat_map(prove_precondition(f, owed, b, i, name, ??)),
+  (b, name, i) => aliases |> filter(binder_fits(b, ??)) |> filter(writable_over(written_param_ty(list_index(f.params, i)), ??)) |> flat_map(prove_precondition(f, owed, b, i, name, ??)),
+}
+
+// What a parameter's author wrote as its type: the annotation's type, or the
+// parameter's own cell where none was written.
+fn written_param_ty(p) = match param_ann(p) {
+  Some(a) => ann_ty_of(a),
+  None => TVar(p),
 }
 
 // A refinement can be written over what the parameter says: nothing, or a

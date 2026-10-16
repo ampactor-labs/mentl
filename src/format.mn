@@ -271,6 +271,7 @@ fn render_body_tokens(body) with !Mutate = match body {
     ArmOp(op) => op,
   },
   NRow(terms) => render_authored_row(terms),
+  NParam(p) => render_param_body(p),
 }
 
 fn render_expr_tokens(e) with !Mutate = match e {
@@ -366,12 +367,7 @@ fn render_expr_tokens(e) with !Mutate = match e {
   BlockExpr(stmts, final) => "\{\n{indent_block("{render_block_stmts(stmts, 0)}{render_block_final(final)}")}\n\}",
   LambdaExpr(params, body) => match arm_list_of(params, body) {
     Some(arms) => render_arm_literal(arms),
-    None => match resugar_head(params, body) {
-      Some(pair) => match pair {
-        (plist, inner) => "({plist}) => {render_grouped_body(inner)}",
-      },
-      None => "({render_param_list(params)}) => {render_grouped_body(body)}",
-    },
+    None => "({render_param_list(params)}) => {render_grouped_body(body)}",
   },
   MakeRecordExpr(fields) => render_record(fields, ""),
   NamedRecordExpr(head, fields) => "{render_tokens_for(head)}{render_record(fields, "")}",
@@ -578,60 +574,41 @@ fn render_pat_list_from(ref pats, i, sep: String) = if i >= len(pats) {
   "{render_pat_tokens(pats[i])}{sep}{render_pat_list_from(pats, i + 1, sep)}"
 }
 
-// A param renders its AUTHORED intent boundaries — the ownership marker
-// (TParam's authored slot, never the resolved one), the annotation when
-// one was written (an unannotated param's ty is the parse-minted TVar —
-// the structural discriminator), and the default. Dropping any of these
-// on round-trip would change semantics the affine/refinement checks read.
+// A parameter renders as it was written: its ownership marker, its pattern,
+// the annotation when one was written, and the default. Dropping any of
+// these on round-trip would change semantics the affine/refinement checks
+// read.
 fn render_param_list(ref params) with !Mutate = join(", ", map(render_one_param, params))
 
-fn render_one_param(p) with !Mutate = {
-  let marker = match param_authored(p) {
-    Own => "own ",
-    Ref => "ref ",
-    Unmarked => "",
+fn render_one_param(p) with !Mutate = render_param_body(param_of(p))
+
+fn render_param_body(p) with !Mutate = render_param_typed(
+  p,
+  match p.ann {
+    Some(a) => ": {render_type_tokens(ann_ty_of(a))}",
+    None => "",
   }
-  let ann = match unwritten_cell(param_ty(p)) {
-    Some(_) => "",
-    None => ": {render_type_tokens(param_ty(p))}",
-  }
-  let dflt = match param_default(p) {
+)
+
+// A parameter's head with its annotation as given — the one its author
+// wrote, or the alias an accepted refinement restates it as.
+fn render_param_typed(p, ann: String) with !Mutate = {
+  let dflt = match p.dflt {
     Some(d) => " = {render_tokens_for(d)}",
     None => "",
   }
-  "{marker}{param_name(p)}{ann}{dflt}"
+  "{ownership_marker(p.marker)}{render_pat_tokens(p.pat)}{ann}{dflt}"
 }
 
-// ─── The lambda-destructure re-sugar ────────────────────────────────
-//
-// Parse desugars a pattern-shaped param to a fresh __dp<handle> param
-// whose body head destructures it (parser.mn fresh_param_name — the
-// prepend-let that desugar_block turns into the one-arm match). The
-// render is the parse's inverse, so the sugar comes BACK: a canonical
-// page must never bake the minted names (handle numbers in source
-// text) nor the machine match. Recognition is the desugar's own
-// contract — a __dp-prefixed param whose body is a one-arm match on
-// exactly that name — applied left-to-right across the param list
-// (each __dp param consumes one match layer, the prepend order); any
-// miss falls back to the literal render, productive never refusing.
-fn resugar_head(ref params, body) with !Mutate = resugar_walk(params, 0, body, "")
-
-// A declared fn's head and body. A pattern-shaped param rides the same
-// desugar as a lambda's (one parse_one_param), so the head re-sugars
-// through the same recognizer.
-fn render_fn_decl(name, params, retty, effs, body) with !Mutate = match match resugar_head(params, body) {
-  Some(pair) => pair,
-  None => (render_param_list(params), body),
-} {
-  (plist, b_node) => {
-    let head = fn_head_text(name, plist, graph_node_body(retty), effs)
-    let b = render_grouped_body(b_node)
-    if str_contains(b, "\n") || fits_inline("{head} {b}") {
-      "{head} {b}"
-    } else {
-      "{head}\n{indent_block(b)}"
-    }
-  },
+// A declared fn's head and body.
+fn render_fn_decl(name, params, retty, effs, body) with !Mutate = {
+  let head = fn_head_text(name, render_param_list(params), graph_node_body(retty), effs)
+  let b = render_grouped_body(body)
+  if str_contains(b, "\n") || fits_inline("{head} {b}") {
+    "{head} {b}"
+  } else {
+    "{head}\n{indent_block(b)}"
+  }
 }
 
 // A declaration's head through its binder — the one shape the whole
@@ -641,19 +618,18 @@ fn fn_head_text(name, plist, ann, effs) with !Mutate =
   "fn {name}({plist}){render_retty(ann, effs)}{render_with_clause(effs)} ="
 
 // The head ALONE, for a reader that writes a declaration's signature back
-// without its body: the same param re-sugaring the whole render does.
-fn render_fn_head(name, params, ann, effs, body) with !Mutate = match resugar_head(params, body) {
-  Some(pair) => match pair {
-    (plist, _) => fn_head_text(name, plist, ann, effs),
-  },
-  None => fn_head_text(name, render_param_list(params), ann, effs),
-}
+// without its body.
+fn render_fn_head(name, params, ann, effs) with !Mutate =
+  fn_head_text(name, render_param_list(params), ann, effs)
 
 // The arms of a declaration whose only parameter an arm-list literal
 // minted — never a parameter an author named, since `fn f(o) = match o
 // { … }` is written that way on purpose.
-fn module_arm_list(params, body) =
-  if len(params) == 1 && is_al_name(param_name(params[0])) { arm_list_of(params, body) } else { None }
+fn module_arm_list(params, body) = if len(params) == 1 && is_al_name(param_binder(params[0])) {
+  arm_list_of(params, body)
+} else {
+  None
+}
 
 // The literal renders as the arms alone — the head it would otherwise
 // carry is the wrapper this form exists to delete, and `match`'s own
@@ -670,30 +646,6 @@ fn render_arm_literal(arms) with !Mutate = {
   }
 }
 
-fn resugar_walk(ref params, i, body, acc) with !Mutate = if i >= len(params) {
-  Some((acc, body))
-} else {
-  let sep = if i == 0 { "" } else { ", " }
-  let p = params[i]
-  let nm = param_name(p)
-  if is_dp_name(nm) {
-    match dp_match_arm(body, nm) {
-      Some(arm) => match arm {
-        (pat, inner) => resugar_walk(params, i + 1, inner, "{acc}{sep}{render_pat_tokens(pat)}"),
-      },
-      None => None,
-    }
-  } else {
-    resugar_walk(params, i + 1, body, "{acc}{sep}{render_one_param(p)}")
-  }
-}
-
-// A name the PARAM-POSITION desugar minted rather than an author wrote,
-// read back through `dp_prefix`. The arm-list literal's own prefix never
-// answers true here, which is the whole point of their being two
-// (parser.mn `fresh_param_under`).
-fn is_dp_name(nm) = name_has_prefix(nm, dp_prefix)
-
 // The arm-list literal's own minted parameter, read back through
 // `al_prefix`.
 fn is_al_name(nm) = name_has_prefix(nm, al_prefix)
@@ -707,19 +659,6 @@ fn render_arm_list_inline(arms, i) with !Mutate = if i >= len(arms) {
   match arms[i] {
     (pat, body) => "{sep}{render_comment_at(pat)}{render_pat_tokens(pat)} => {render_grouped_body(body)}{render_arm_list_inline(arms, i + 1)}",
   }
-}
-
-// The one-arm match the desugar minted: the scrutinee IS the __dp name.
-fn dp_match_arm(body, nm) = match graph_node_body(body) {
-  NExpr(MatchExpr(scrut, arms)) => if len(arms) == 1 {
-    match graph_node_body(scrut) {
-      NExpr(VarRef(snm)) => if snm == nm { Some(arms[0]) } else { None },
-      _ => None,
-    }
-  } else {
-    None
-  },
-  _ => None,
 }
 
 // ─── Precedence-inverse parenthesization ────────────────────────────
@@ -1462,6 +1401,7 @@ fn render_line_break_after(kind) with Pure = match kind {
   NTypeAnn(_) => "",
   NName(_) => "",
   NRow(_) => "",
+  NParam(_) => "",
 }
 
 // The one comment, read LIVE from the comment weave at the node's handle

@@ -726,7 +726,7 @@ fn some_param_ty(p) = Some(param_ty(p))
 fn unwritten_cell(ty) = match ty {
   TVar(h) => match graph_node_body(h) {
     NTypeAnn(_) => None,
-    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NName(_) | NRow(_) => Some(h),
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NName(_) | NRow(_) | NParam(_) => Some(h),
   },
   TInt
   | TFloat
@@ -2452,6 +2452,15 @@ type NodeBody
   // terms mean once every named row is known, so a name it writes is
   // resolved where declarations are, never where the type is parsed.
   | NRow([(RowTerm, Bool, EConn)])
+  // A parameter: a field of a declaration's parameter product — a function's,
+  // a lambda's, a handler's config, an effect's instance signature. It holds
+  // the pattern the parameter binds, the annotation its author wrote, its
+  // default and its ownership marker. The node is the argument's cell, and
+  // the pattern binds against it as a let's pattern binds against its value,
+  // so a destructured parameter IS its pattern and every binder it writes is
+  // declared where it is written. `TParam`, the function type's slot, is
+  // built from these nodes at the judgment.
+  | NParam({ann: Option(Node), dflt: Option(Node), marker: Ownership, pat: Node})
 
 // What a name written outside an expression names: an effect or a named row
 // in an authored row (`with !Alloc`), or the op a handler arm serves.
@@ -2479,8 +2488,8 @@ type Expr
   // see the identical order). The wrapper never reaches
   // infer_expr / lower_expr — it is resolved away first.
   | LabeledArg(String, Node)
-  // params, body
-  | LambdaExpr([TParam], Node)
+  // the parameter nodes (NParam), then the body
+  | LambdaExpr([Node], Node)
   | IfExpr(Node, Node, Node)
   // stmts, final expr
   | BlockExpr([Node], Node)
@@ -2713,30 +2722,30 @@ type Stmt
   // unannotated let). Readers include the channel only when it is
   // NTypeAnn — infer's arm and stmt_child_handles both read it so.
   = LetStmt(Node, Node, Node)
-  | FnStmt(String, [TParam], Node, [(RowTerm, Bool, EConn)], Node)
-  // name, params (TParam), retty, effects, body
+  | FnStmt(String, [Node], Node, [(RowTerm, Bool, EConn)], Node)
+  // name, the parameter nodes (NParam), retty, effects, body
   | TypeDefStmt(String, [(String, [Ty], Node)])
   // name, then per variant its name + field types
-  | EffectDeclStmt(String, [TParam], [(String, [TParam], Ty, Node)])
+  | EffectDeclStmt(String, [Node], [(String, [TParam], Ty, Node)])
   // effect name, instance params, ops (each op is (op_name, params,
   // ret_ty, comment-carrier); ResumeDiscipline is inferred at
   // handler-decl time from each arm body, not declared on the effect
-  // op). An op's params are parameters like a fn's: `print(msg: String)`
-  // carries its name, and a bare `print(String)` is the wildcard `_`, the
-  // spelling a function type's params already use. Until 2026-09-28 the
-  // op kept its types alone, so `mentl fmt` rewrote the named form as the
-  // bare one. The instance params are the parameterized effect's signature
-  // (SYNTAX §«Parameterized effect»: `effect Sample(rate: Int)`) — the
-  // same [TParam] product fn params and handler config ride; they
-  // register as the effect's env scheme (the instance signature every
-  // authored `Sample(44100)` judges against).
-  | HandlerDeclStmt(String, String, [TParam], [{init: Node, name: String}], [{args: [String], body: Node, op: Node}], [(RowTerm, Bool, EConn)])
+  // op). An op's params are the op's signature, a function type's slots:
+  // `print(msg: String)` carries its name, and a bare `print(String)` is
+  // the wildcard `_`, the spelling a function type's params already use.
+  // Until 2026-09-28 the op kept its types alone, so `mentl fmt` rewrote
+  // the named form as the bare one. The instance params are the
+  // parameterized effect's signature (SYNTAX §«Parameterized effect»:
+  // `effect Sample(rate: Int)`) — parameter nodes, the product fn params
+  // and handler config ride; they register as the effect's env scheme (the
+  // instance signature every authored `Sample(44100)` judges against).
+  | HandlerDeclStmt(String, String, [Node], [{init: Node, name: String}], [{args: [String], body: Node, op: Node}], [(RowTerm, Bool, EConn)])
   // handler name, effect name, config-params, state-fields, arms, the
   // authored `with` row (the same signed triples a FnStmt carries — until
   // 2026-09-27 the parser skipped it to the arms, so a handler's `!F` bound
   // nothing; A5 carries it: enforced on the arms at registration and on
   // every install's remainder through the handler's own absorption)
-  // config: [TParam] — the fn-param carrier (SYNTAX §«Handler
+  // config: parameter nodes, the fn-param carrier (SYNTAX §«Handler
   //   declarations»: the config list IS a parameter product, so
   //   each param carries the product's default slot); values are
   //   closure-captured at install site, absent fields fill from
@@ -2836,7 +2845,50 @@ type Pat
 // The pattern at a node; every handle a pattern holds is one.
 fn pat_of(h) = match graph_node_body(h) {
   NPat(p) => p,
-  NExpr(_) | NStmt(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) => out_of_range(),
+  NExpr(_)
+  | NStmt(_)
+  | NHole(_)
+  | NModule(_)
+  | NLink(_)
+  | NTypeAnn(_)
+  | NName(_)
+  | NRow(_)
+  | NParam(_) => out_of_range(),
+}
+
+// The parameter at a node; every handle a parameter list holds is one.
+fn param_of(h) = match graph_node_body(h) {
+  NParam(p) => p,
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) => out_of_range(),
+}
+
+fn param_pat(h) = param_of(h).pat
+
+fn param_ann(h) = param_of(h).ann
+
+fn param_dflt(h) = param_of(h).dflt
+
+fn param_marker(h) = param_of(h).marker
+
+// The field's name in the parameter product: the name its pattern binds the
+// whole value to, or `_` where no label could name it — a wildcard, or a
+// destructure that binds only parts.
+fn param_binder(h) = match pat_of(param_pat(h)) {
+  PVar(n) => n,
+  PAs(n, _) => n,
+  PWild | PLit(_) | PCon(_, _) | PTuple(_) | PList(_, _) | PRecord(_, _) | PAlt(_) => "_",
+}
+
+// Whether a parameter's author wrote its type.
+fn param_annotated(h) = match param_ann(h) {
+  Some(_) => true,
+  None => false,
+}
+
+// The type a parameter's annotation node holds.
+fn ann_ty_of(a) = match graph_node_body(a) {
+  NTypeAnn(t) => t,
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NName(_) | NRow(_) | NParam(_) => out_of_range(),
 }
 
 // The constructors a catch-all over a sum stands for, read off the arms
@@ -3774,6 +3826,8 @@ type DiagKind
   | EDuplicateFnName(String, Span)
   // a second `type name` in one namespace — the decls silently MERGE: disjoint ctor sets share tag ids and a cross-tag match returns the wrong arm (measured: exit 13 where 99 was meant, zero diagnostics)
   | EDuplicateTypeName(String, Span)
+  // a second binder of one name in one head or one pattern: the name, the first binder's span, this one's. A use could reach either, and a parameter product's fields are keyed by their names
+  | EDuplicateBinder(String, Span, Span)
   // two DISTINCT emitted fn records claim one symbol. Not a program error — the naming function collided, and the emitter's keep-first dedup would silently drop the second body while every call meaning it went to the first. The sibling above refuses that for AUTHORED names; synthesized ones (lambda_/partial_/__k_/the twins) never reached it, being unique only because a mint counter happens to be unique. This is that invariant checked instead of assumed (symbol)
   | EEmittedNameCollision(String, Span)
   // unresolved handle, epoch (lower-time NFree)
@@ -4035,6 +4089,7 @@ fn diag_span(d) with Pure = match d {
   EOpShadowsOp(_, _, _, s) => s,
   EDuplicateFnName(_, s) => s,
   EDuplicateTypeName(_, s) => s,
+  EDuplicateBinder(_, _, s) => s,
   EEmittedNameCollision(_, s) => s,
   EUnresolvedType(_, _, s) => s,
   EEffectUnhandled(_, _, s) => s,
@@ -4115,6 +4170,7 @@ fn diag_source(d) with Pure = match d {
   EOpShadowsOp(_, _, _, _) => "infer",
   EDuplicateFnName(_, _) => "infer",
   EDuplicateTypeName(_, _) => "infer",
+  EDuplicateBinder(_, _, _) => "infer",
   EEmittedNameCollision(_, _) => "emit",
   EUnresolvedType(_, _, _) => "lower",
   EEffectUnhandled(_, _, _) => "effects",
@@ -4196,6 +4252,7 @@ fn diag_arm(d) with Pure = match d {
   EOpShadowsOp(_, _, _, _) => OnEffects,
   EDuplicateFnName(_, _) => OnQuery,
   EDuplicateTypeName(_, _) => OnQuery,
+  EDuplicateBinder(_, _, _) => OnQuery,
   EEmittedNameCollision(_, _) => OnQuery,
   EUnresolvedType(_, _, _) => OnQuery,
   EEffectUnhandled(_, _, _) => OnEffects,
@@ -4276,6 +4333,7 @@ fn diag_code(d) with Pure = match d {
   EOpShadowsOp(_, _, _, _) => "E_OpShadowsOp",
   EDuplicateFnName(_, _) => "E_DuplicateFnName",
   EDuplicateTypeName(_, _) => "E_DuplicateTypeName",
+  EDuplicateBinder(_, _, _) => "E_DuplicateBinder",
   EEmittedNameCollision(_, _) => "E_EmittedNameCollision",
   EUnresolvedType(_, _, _) => "E_UnresolvedType",
   EEffectUnhandled(_, _, _) => "E_EffectUnhandled",
@@ -4368,6 +4426,9 @@ fn diag_refuses(d) with Pure = match d {
   // Census on the wheel at arming: 0.
   EArithOnAggregate(_, _) => True,
   EDuplicateFnName(_, _) => True,
+  // ARMED at birth, 2026-10-16: two binders of one name in one head or one
+  // pattern compiled clean, the later read by a rule no author wrote down.
+  EDuplicateBinder(_, _, _) => True,
   // ARMED 2026-10-03, the day its one false shape closed: an as-pattern
   // read as covering nothing, so `whole @ Leaf(_)` beside `Pair(a, b)` was
   // "misses 1 of 2" (infer.mn's pat_tops). Unarmed, a match missing a variant
@@ -4781,6 +4842,7 @@ fn diag_message(d) with !Mutate = match d {
   EOpShadowsOp(name, prior, now, _) => "effect `{now}` declares an op `{name}` that effect `{prior}` already declares, and this program links both. The env holds one entry per name, so the second declaration REPLACES the first rather than joining it: every existing call to `{name}` is now judged against `{now}`'s signature, and the errors surface wherever those calls are — inside the library, at spans your program never wrote. Rename this op",
   EDuplicateFnName(name, _) => "a second `fn {name}` in one namespace — the first declaration already binds it; rename one",
   EDuplicateTypeName(name, _) => "a second `type {name}` in one namespace — the declarations would merge and their constructor sets share tag ids; rename one",
+  EDuplicateBinder(name, first, _) => "`{name}` is bound twice in one scope — first at {show_span(first)}, so a use could reach either, and a parameter list holds one field per name; rename one",
   EEmittedNameCollision(symbol, _) => "two different functions both emit as `{symbol}` — the dedup keeps the first, so every call meaning the second would reach the first instead. This is the compiler's own naming, not your program: report it",
   EUnresolvedType(h, epoch, _) => "handle {int_to_str(h)} @epoch={int_to_str(epoch)}",
   EEffectUnhandled(ename, proposal, _) => "effect {ename} reaches the executable root with no absorbing handler — calling one of its ops would read garbage evidence at runtime; nothing executes unproven. {proposal}",
@@ -5125,7 +5187,7 @@ fn diag_report_at(diag, dmod, dlayer) = diag_report(diag, diag_message(diag), dm
 fn module_name_of_handle(h) = match graph_node_body(h) {
   NModule(m) => m.path,
   NLink(_) => "<link>",
-  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NTypeAnn(_) | NName(_) | NRow(_) => {
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => {
     out_of_range()
     ""
   },
@@ -5136,7 +5198,7 @@ fn module_name_of_handle(h) = match graph_node_body(h) {
 fn module_layer_of_handle(h) = match graph_node_body(h) {
   NModule(m) => m.layer,
   NLink(l) => l.layer,
-  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NTypeAnn(_) | NName(_) | NRow(_) => {
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => {
     out_of_range()
     User
   },
@@ -5261,7 +5323,7 @@ fn render_ty(ty) with !Mutate = match ty {
   // its binding.
   TVar(id) => match graph_node_body(id) {
     NTypeAnn(written) => render_ty(written),
-    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NName(_) | NRow(_) => render_var(id),
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NName(_) | NRow(_) | NParam(_) => render_var(id),
   },
   TName(name, args) => if len(args) == 0 { name } else { "{name}({show_list(args, render_ty, ", ")})" },
   TRecord(fields) => "\{{show_list(fields_by_name(fields), render_field, ", ")}\}",
@@ -5530,15 +5592,11 @@ fn collect_slot_nodes(params, slots, i, n, out, count) = if i >= n {
   }
 }
 
-// The prefixes a desugar mints a parameter's name under, one home for the
-// spelling: `dp_prefix` for a pattern written in parameter position,
-// `al_prefix` for the arm-list literal's one parameter. They are two because
-// the formatter may render only the first back into parameter position: a
-// parameter-position pattern is one the parser could read as an expression,
-// while an arm's pattern is arbitrary, and rendering `{ 0 => 1 }` as a
-// parameter would turn its literal into a wildcard.
-let dp_prefix = "__dp"
-
+// The prefix the arm-list literal's one parameter is named under, one home
+// for the spelling: the literal `{ p => e }` is a lambda over a parameter no
+// author named, whose body matches it against the arms, and the formatter
+// writes the arms back where the body is that match. A pattern written in
+// parameter position needs no minted name: the parameter is its pattern.
 let al_prefix = "__al"
 
 fn name_has_prefix(nm, prefix) =
@@ -5546,7 +5604,7 @@ fn name_has_prefix(nm, prefix) =
 
 // A parameter no author named. A type renders it as its type alone, since
 // the name it carries exists in no source a developer can read.
-fn minted_param_name(nm) = name_has_prefix(nm, dp_prefix) || name_has_prefix(nm, al_prefix)
+fn minted_param_name(nm) = name_has_prefix(nm, al_prefix)
 
 // A parameter in a head, as SYNTAX writes one: its ownership marker before
 // the name — the authored one, else the grade the inference resolved, which
@@ -5663,7 +5721,15 @@ fn render_row_head(p, a) with !Mutate = {
 // clause — has neither and renders nothing.
 fn render_authored_edge(e: RowEdge) with !Mutate = match graph_node_body(e.cell) {
   NRow(terms) => [render_written_row(terms)],
-  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) => if is_named_var(e.cell) { [render_row_edge(e)] } else { [] },
+  NExpr(_)
+  | NStmt(_)
+  | NPat(_)
+  | NHole(_)
+  | NModule(_)
+  | NLink(_)
+  | NTypeAnn(_)
+  | NName(_)
+  | NParam(_) => if is_named_var(e.cell) { [render_row_edge(e)] } else { [] },
 }
 
 // A row as its author wrote it — a declaration's clause, a named row, a

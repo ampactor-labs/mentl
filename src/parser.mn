@@ -488,7 +488,7 @@ fn cw_scan_index(ref idx, i, h_from, ref runs: [CwRun], leads, trails) = if i >=
 // prose: a comment on an arm's line belongs to the arm, not the op it names.
 fn written_name_at(h) = match graph_node_body(h) {
   NName(_) => true,
-  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NRow(_) => false,
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NRow(_) | NParam(_) => false,
 }
 
 // bsearch: the run whose start_line == line (runs are token-ordered, so
@@ -740,8 +740,8 @@ fn parse_fn(ref tokens, pos) = {
   let start = span_at(tokens, pos)
   let name = ident_at(tokens, pos)
   let p = expect(tokens, pos + 1, TLParen)
-  match parse_fn_params(tokens, p) {
-    (params, dlets, p2) => {
+  match parse_fn_params(tokens, p, name) {
+    (params, p2) => {
       let p3 = skip_ws(tokens, p2)
       match if at(tokens, p3, TArrow) {
         parse_type_expr(tokens, skip_ws(tokens, p3 + 1))
@@ -755,23 +755,15 @@ fn parse_fn(ref tokens, pos) = {
               let p7 = skip_ws(tokens, p6)
               let p8 = if at(tokens, p7, TEq) { p7 + 1 } else { p7 }
               match parse_body(tokens, skip_ws(tokens, p8)) {
-                (raw_body, p9) => {
-                  // Fold any destructure-param bindings into the body — a destructure param
-                  // IS the same match projection a destructuring `let` is. The
-                  // block that carries them has no text of its own, so it takes the
-                  // declaration's extent (`fn` sits one token before the name), and
-                  // the declaration, minted after it, wins every address tie.
-                  let body = bind_param_destructures(dlets, raw_body, upto(tokens, span_at(tokens, pos - 1), p9))
-                  // The authored intent row IS the FnStmt's effs field on the node —
-                  // read live by QIntentOf / oracle intent_weight via graph_node_body.
-                  // No parallel intent ledger to write (Carried-Truth).
-                  //
-                  // The decl's span is its whole extent, like every node's (SYNTAX
-                  // §Parser obligations); the caret reaches the declaration around
-                  // a position up the parent edges the registration draws, never by
-                  // comparing spans.
-                  (FnStmt(name, params, ret_node, effs, body), p9)
-                },
+                // The authored intent row IS the FnStmt's effs field on the node —
+                // read live by QIntentOf / oracle intent_weight via graph_node_body.
+                // No parallel intent ledger to write (Carried-Truth).
+                //
+                // The decl's span is its whole extent, like every node's (SYNTAX
+                // §Parser obligations); the caret reaches the declaration around
+                // a position up the parent edges the registration draws, never by
+                // comparing spans.
+                (body, p9) => (FnStmt(name, params, ret_node, effs, body), p9),
               }
             },
           }
@@ -845,116 +837,89 @@ fn skip_to_rparen(ref tokens, p) = if at(tokens, p, TRParen) {
   skip_to_rparen(tokens, p + 1)
 }
 
-// Returns (params, destructure-lets, pos). The lets are the prepend-bindings
-// for any destructuring params (empty when all params are bare names);
-// parse_fn / the lambda paths fold them into the body via
-// bind_param_destructures, so a destructure param IS the same match projection
-// a destructuring let is.
-fn parse_fn_params(ref tokens, pos) = {
+// The parameter list of a declaration named `owner`: (params, pos), each
+// parameter a node of its own (`mint_param`).
+fn parse_fn_params(ref tokens, pos, owner: String) = {
   let p = skip_ws(tokens, pos)
   if at(tokens, p, TRParen) {
-    ([], [], p + 1)
+    ([], p + 1)
   } else if !param_starts_here(tokens, p) {
-    // Bare own/ref (no name follows) — seed parse_one_param returns
-    // null → param-list terminates here; tokens to `)` discarded
-    // 0 params; pos past `)`.
-    ([], [], skip_to_rparen(tokens, p))
+    // Bare own/ref (no name follows) — the param-list terminates here;
+    // tokens to `)` discarded, 0 params, pos past `)`.
+    ([], skip_to_rparen(tokens, p))
   } else {
-    match parse_one_param(tokens, p) {
-      (first, fl, p2) => match push_node(make_list(4), 0, first) {
-        (b1, c1) => match push_opt_let(make_list(4), 0, fl) {
-          (lb1, lc1) => match parse_params_tail(tokens, p2, b1, c1, lb1, lc1) {
-            (final_buf, final_count, lbuf, lcount, final_pos) => (slice(final_buf, 0, final_count), slice(lbuf, 0, lcount), final_pos),
-          },
+    match parse_one_param(tokens, p, owner, 0) {
+      (first, p2) => match push_node(make_list(4), 0, first) {
+        (b1, c1) => match parse_params_tail(tokens, p2, b1, c1, owner) {
+          (final_buf, final_count, final_pos) => (slice(final_buf, 0, final_count), final_pos),
         },
       },
     }
   }
 }
 
-// Push an Option(let) into the lets buffer-counter: Some appends, None is a
-// no-op (the buffer is unchanged). The parallel of push_node for the optional
-// prepend-bindings a destructure param yields.
-fn push_opt_let(own buf, count, opt) = match opt {
-  Some(letstmt) => push_node(buf, count, letstmt),
-  None => (buf, count),
-}
-
-fn parse_params_tail(ref tokens, pos, own buf, count, own lbuf, lcount) = {
+fn parse_params_tail(ref tokens, pos, own buf, count, owner: String) = {
   let p = skip_ws(tokens, pos)
   if at(tokens, p, TComma) {
     let pn = skip_ws(tokens, p + 1)
     if !param_starts_here(tokens, pn) {
-      // Bare own/ref after `,` — list terminates (seed parity:
-      // `fn f(a, own)` → [a], rest discarded to `)`).
-      (buf, count, lbuf, lcount, skip_to_rparen(tokens, pn))
+      // Bare own/ref after `,` — the list terminates (`fn f(a, own)` →
+      // [a], the rest discarded to `)`).
+      (buf, count, skip_to_rparen(tokens, pn))
     } else {
-      match parse_one_param(tokens, pn) {
-        (next, nl, p2) => match push_node(buf, count, next) {
-          (b1, c1) => match push_opt_let(lbuf, lcount, nl) {
-            (lb1, lc1) => parse_params_tail(tokens, p2, b1, c1, lb1, lc1),
-          },
+      match parse_one_param(tokens, pn, owner, count) {
+        (next, p2) => match push_node(buf, count, next) {
+          (b1, c1) => parse_params_tail(tokens, p2, b1, c1, owner),
         },
       }
     }
   } else {
-    (buf, count, lbuf, lcount, expect(tokens, p, TRParen))
+    (buf, count, expect(tokens, p, TRParen))
   }
 }
 
-// One parameter: a bare name (degenerate) or a destructure pattern
-// (`{name, age}` / `[h, ...t]` / `(a, b)` — SYNTAX.md §«Function declarations»,
-// §«Anonymous functions»). A destructure param desugars at fn entry to a
-// fresh-named param plus a `let <pat> = <fresh>` prepended to the body (the
-// SAME projection desugar_block gives a destructuring let). Returns
-// (TParam, Option(prepend-let), pos): the let is None for a bare name.
-fn parse_one_param(ref tokens, pos) = match match kind_at(tokens, pos) {
+// One parameter — `[own|ref] pattern [: Ty] [= default]` — as the node it
+// is. The pattern is any pattern (SYNTAX §«Pattern syntax»: patterns appear
+// in function parameters as in a `let`), a bare name the commonest; the
+// marker, the annotation and the default ride the node beside it, and the
+// judgment binds the pattern against the node, the argument's cell.
+fn parse_one_param(ref tokens, pos, owner: String, idx) = match match kind_at(tokens, pos) {
   TOwn => (Own, skip_ws(tokens, pos + 1)),
   TRef => (Ref, skip_ws(tokens, pos + 1)),
   _ => (Unmarked, pos),
 } {
-  (own_marker, p) => {
-    // A pattern-shaped param starts with `{` / `[` / `(` — parse the full Pat
-    // and desugar it to (fresh param, prepend-let). The own/ref marker rides on
-    // the fresh param (the whole destructured value carries the ownership).
-    let psp = span_at(tokens, p)
-    if at(tokens, p, TLBrace) || at(tokens, p, TLBracket) || at(tokens, p, TLParen) {
-      match parse_pat(tokens, p) {
-        (pat, p_pat) => match fresh_param_marked(dp_prefix, psp, own_marker) {
-          (fresh, param) => {
-            // reuse as the absent-annotation sentinel (byte-identical)
-            let vref = nexpr(VarRef(fresh), psp)
-            let bind = nstmt(LetStmt(pat, vref, vref), psp)
-            (param, Some(bind), p_pat)
-          },
-        },
-      }
-    } else {
-      let name = ident_or_kw_at(tokens, p)
-      let p2 = skip_ws(tokens, p + 1)
-      // Optional `: Ty` annotation (the Intent Boundary), then optional
-      // `= default` (SYNTAX.md §«Default parameter values»). The default
-      // expr is parser-minted graph content; it rides in the TParam's
-      // default slot to its one home, evaluated in the callee's scope when
-      // a call omits the arg edge.
-      match if at(tokens, p2, TColon) {
-        parse_type_ty(tokens, skip_ws(tokens, p2 + 1))
-      } else {
-        (TVar(fresh_handle(span_at(tokens, p))), p2)
-      } {
-        (ty, p_ty) => {
-          let p_after_ty = skip_ws(tokens, p_ty)
-          if at(tokens, p_after_ty, TEq) {
-            match parse_expr(tokens, skip_ws(tokens, p_after_ty + 1)) {
-              (default_expr, p_def) => (TParam(name, ty, own_marker, own_marker, Some(default_expr), guards_nothing()), None, p_def),
-            }
-          } else {
-            (TParam(name, ty, own_marker, own_marker, None, guards_nothing()), None, p_ty)
-          }
-        },
-      }
-    }
+  (marker, p) => match parse_pat(tokens, p) {
+    (pat, p_pat) => parse_param_tail(tokens, pat, marker, span_at(tokens, pos), p_pat, owner, idx),
   },
+}
+
+// The rest of a parameter after its pattern: the optional `: Ty` annotation
+// (the Intent Boundary), then the optional `= default` (SYNTAX.md §«Default
+// parameter values»). The default is graph content minted here and rides the
+// parameter node to its one home, evaluated in the callee's scope when a call
+// omits the arg edge. Answers the parameter node and the position after it.
+fn parse_param_tail(tokens, pat, marker, start: ValidSpan, pos, owner: String, idx) = {
+  let p = skip_ws(tokens, pos)
+  match if at(tokens, p, TColon) {
+    match parse_type_expr(tokens, skip_ws(tokens, p + 1)) {
+      (a, p_ty) => (Some(a), p_ty),
+    }
+  } else {
+    (None, pos)
+  } {
+    (ann, p_ann) => {
+      let p2 = skip_ws(tokens, p_ann)
+      match if at(tokens, p2, TEq) {
+        match parse_expr(tokens, skip_ws(tokens, p2 + 1)) {
+          (d, p_def) => (Some(d), p_def),
+        }
+      } else {
+        (None, p_ann)
+      } {
+        (dflt, p_end) => (mint_param(pat, ann, dflt, marker, upto(tokens, start, p_end), owner, idx), p_end),
+      }
+    },
+  }
 }
 
 // Effect rows use the full Boolean algebra `+ - & ! Pure` per SYNTAX.md
@@ -1289,7 +1254,16 @@ fn row_term_joins(tokens, pos) = match kind_at(tokens, pos) {
 fn written_constructor(ty) = match ty {
   TVar(n) => match graph_node_body(n) {
     NTypeAnn(TName(vname, fields)) => Some((vname, fields, n)),
-    NTypeAnn(_) | NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NName(_) | NRow(_) => None,
+    NTypeAnn(_)
+    | NExpr(_)
+    | NStmt(_)
+    | NPat(_)
+    | NHole(_)
+    | NModule(_)
+    | NLink(_)
+    | NName(_)
+    | NRow(_)
+    | NParam(_) => None,
   },
   TInt
   | TFloat
@@ -1429,7 +1403,7 @@ fn parse_effect_decl(ref tokens, pos) = {
   // (SYNTAX §«Parameterized effect»: `effect Sample(rate: Int)`), the
   // same [TParam] carrier fn params and handler config ride.
   match if at(tokens, p_after_name, TLParen) {
-    parse_config_params(tokens, skip_ws(tokens, p_after_name + 1))
+    parse_config_params(tokens, skip_ws(tokens, p_after_name + 1), name)
   } else {
     ([], p_after_name)
   } {
@@ -1567,7 +1541,7 @@ fn parse_handler_decl(ref tokens, pos) = {
 //
 // Optional `(config_params)` — closure-captured at install site.
 fn parse_handler_arms_decl(tokens, name, p_after_name) = match if at(tokens, p_after_name, TLParen) {
-  parse_config_params(tokens, skip_ws(tokens, p_after_name + 1))
+  parse_config_params(tokens, skip_ws(tokens, p_after_name + 1), name)
 } else {
   ([], p_after_name)
 } {
@@ -1637,7 +1611,8 @@ fn handler_arm_op_name(a: {args: [String], body: Node, op: Node}) -> String = ma
   | NModule(_)
   | NLink(_)
   | NTypeAnn(_)
-  | NRow(_) => out_of_range(),
+  | NRow(_)
+  | NParam(_) => out_of_range(),
 }
 
 fn handler_arm_arity(a: {args: [String], body: Node, op: Node}) -> Int = len(a.args)
@@ -1768,55 +1743,33 @@ fn parse_arg_names(ref tokens, pos) = {
   }
 }
 
-// A handler's config list — the fn-param product's scalar face at the
-// handler decl (SYNTAX §«Handler declarations» + §«Default parameter
-// values»: "Defaults and labeled args are not two features — they are
-// the parameter list AS a product node-kind"). `name [= default]` mints
-// the SAME TParam parse_one_param mints for a bare fn param, so the
-// default has ONE representation (the TParam's fifth slot) and one fill
-// (resolve_call_args) for fns and handlers alike. The parse-time TVar is
-// the placeholder mint_handler_config_tparams supersedes with the
-// graph-registered var — parse_one_param's own unannotated shape.
-// Destructure patterns and `: Ty` annotations stay fn-only (a config
-// param is a captured value; the annotated-config form is the named
-// lathe-lag measured 2026-07-24 — `scaler(f: Int)` — and lands with its
-// own resolution, never as a silently-discarded parse).
-fn parse_config_params(ref tokens, pos) = {
+// A handler's config list and an effect's instance signature — the fn-param
+// product's bare-name face (SYNTAX §«Handler declarations», §«Parameterized
+// effect», §«Default parameter values»: "Defaults and labeled args are not
+// two features — they are the parameter list AS a product node-kind"). Each
+// `name [: Ty] [= default]` is the parameter node a fn param is, so the
+// default has ONE representation and one fill (resolve_call_args) for fns
+// and handlers alike. A config param is a captured value the arms read by
+// name, so its pattern is a name.
+fn parse_config_params(ref tokens, pos, owner: String) =
+  parse_config_params_from(tokens, pos, owner, 0)
+
+fn parse_config_params_from(tokens, pos, owner: String, idx) = {
   let p = skip_ws(tokens, pos)
   if at(tokens, p, TRParen) {
     ([], p + 1)
   } else {
-    let name = ident_at(tokens, p)
-    let p2 = skip_ws(tokens, p + 1)
-    // Optional `: Ty` annotation — the same Intent-Boundary arm
-    // parse_one_param carries. The annotated config param
-    // (`scaler(f: Int)`, the 2026-07-24 measured lathe-lag) and the
-    // parameterized effect head (`effect Sample(rate: Int)`) both
-    // land here; absent, the fresh var as before.
-    match if at(tokens, p2, TColon) {
-      parse_type_ty(tokens, skip_ws(tokens, p2 + 1))
-    } else {
-      (TVar(fresh_handle(span_at(tokens, p))), p2)
-    } {
-      (pty, p_ty) => {
-        let p_after_ty = skip_ws(tokens, p_ty)
-        match if at(tokens, p_after_ty, TEq) {
-          match parse_expr(tokens, skip_ws(tokens, p_after_ty + 1)) {
-            (default_expr, p_def) => (TParam(name, pty, Unmarked, Unmarked, Some(default_expr), guards_nothing()), p_def),
+    let start = span_at(tokens, p)
+    let pat = npat(PVar(ident_at(tokens, p)), start)
+    match parse_param_tail(tokens, pat, Unmarked, start, p + 1, owner, idx) {
+      (param, p_done) => {
+        let p_next = skip_ws(tokens, p_done)
+        if at(tokens, p_next, TComma) {
+          match parse_config_params_from(tokens, skip_ws(tokens, p_next + 1), owner, idx + 1) {
+            (rest, p_end) => ([param] ++ rest, p_end),
           }
         } else {
-          (TParam(name, pty, Unmarked, Unmarked, None, guards_nothing()), p_after_ty)
-        } {
-          (param, p_done) => {
-            let p_next = skip_ws(tokens, p_done)
-            if at(tokens, p_next, TComma) {
-              match parse_config_params(tokens, skip_ws(tokens, p_next + 1)) {
-                (rest, p_end) => ([param] ++ rest, p_end),
-              }
-            } else {
-              ([param], expect(tokens, p_next, TRParen))
-            }
-          },
+          ([param], expect(tokens, p_next, TRParen))
         }
       },
     }
@@ -2237,14 +2190,11 @@ fn parse_primary(ref tokens, pos, slot) = {
       report(ERedundantFnOnLambda(span))
       let p = skip_ws(tokens, pos + 1)
       let p2 = expect(tokens, p, TLParen)
-      match parse_fn_params(tokens, p2) {
-        (params, dlets, p3) => {
+      match parse_fn_params(tokens, p2, "lambda") {
+        (params, p3) => {
           let p4 = expect(tokens, skip_ws(tokens, p3), TFatArrow)
           match parse_body(tokens, skip_ws(tokens, p4)) {
-            (raw_body, p5) => {
-              let whole = upto(tokens, span, p5)
-              (nexpr(LambdaExpr(params, bind_param_destructures(dlets, raw_body, whole)), whole), p5)
-            },
+            (body, p5) => (nexpr(LambdaExpr(params, body), upto(tokens, span, p5)), p5),
           }
         },
       }
@@ -2287,34 +2237,19 @@ fn parse_primary(ref tokens, pos, slot) = {
 // PRecord/PTuple/PList at the parameter. The ultimate form is byte-identical to
 // a destructuring `let`: the param desugars at fn ENTRY to a fresh-named param
 // plus a `let <pat> = <fresh>` prepended to the body — the SAME projection
-// desugar_block turns a destructuring let into a `match`. ONE pattern machinery
-// at let-bind AND param-bind; no new infer/lower path, no TParam shape change.
-//
-// A desugared slot's parameter is named by its own cell's handle, so the name
-// never collides with a source name and costs no cell of its own: a handle
-// minted for the name alone was indexed at the slot's span and never judged,
-// one ghost per destructured parameter and per arm list. The two prefixes,
-// `dp_prefix` and `al_prefix`, live in types.mn beside the type renderer, so
-// the three readers that ask whether a name was minted — this desugar, the
-// formatter and the type renderer — reach one home.
-//
-// A fresh param under a caller-chosen PREFIX. The two surfaces that mint
-// one differ in what the name PROMISES, and conflating them is a silent
-// wrong rather than a naming preference. `dp_prefix` says "this param
-// came from a PATTERN IN PARAM POSITION", which licenses the formatter's
-// one-arm destructure render (format.mn) — sound only because
-// `cover_pat_body` produced the pattern, and it answers PWild for a
-// literal and for a constructor call. `al_prefix` carries ARBITRARY arm
-// patterns, so the same render would turn `{ 0 => 1 }` into `(0) => 1` —
-// a WILDCARD — with nothing anywhere to say it had. Distinct prefixes
-// make that unsayable; fmt's own second render is what would otherwise
-// have found it in production.
-fn fresh_param_under(prefix: String, span: ValidSpan) = fresh_param_marked(prefix, span, Unmarked)
-
-fn fresh_param_marked(prefix: String, span: ValidSpan, marker) = {
+// The arm-list literal's one parameter, named under `al_prefix` by its own
+// pattern's handle, so the name collides with no source name and costs no
+// cell beside the pattern. The literal is a lambda over it whose body
+// matches it against the arms; the formatter writes the arms back where the
+// body is that match (`arm_list_of`), and the arms carry ARBITRARY patterns,
+// which is why the literal keeps a minted name where a pattern written in
+// parameter position needs none: rendering `{ 0 => 1 }` as `(0) => 1` would
+// turn its literal into a wildcard.
+fn arm_list_param(span: ValidSpan) = {
   let h = fresh_handle(span)
-  let nm = "{prefix}{int_to_str(h)}"
-  (nm, TParam(nm, TVar(h), marker, marker, None, guards_nothing()))
+  let nm = "{al_prefix}{int_to_str(h)}"
+  graph_register_node(h, NPat(PVar(nm)))
+  (nm, mint_param(h, None, None, Unmarked, span, "lambda", 0))
 }
 
 // The pattern a cover expression spells — a lambda's head is parsed as an
@@ -2354,62 +2289,19 @@ fn cover_rest(e, name: String) = {
   e
 }
 
-// A parameter drawn from its cover: a bare name is the parameter itself (no
-// desugar); any destructure yields a fresh-named param plus the prepend-let
-// `let <pat> = <fresh>` that binds it at fn entry. Returns (TParam,
-// Option(let)).
-//
-// The parameter's cell is the COVER node's own: the node the expression
-// parse minted at the parameter is the parameter. A second cell minted
-// beside it left the first one unjudged, one ghost per lambda parameter. A
-// destructure's pattern stands beside the cover as a node of its own, and
-// its sub-patterns are the cover's own inner nodes.
-fn pat_param_and_let(cover) = match cover_pat_body_top(cover) {
-  PVar(nm) => (TParam(nm, TVar(cover), Unmarked, Unmarked, None, guards_nothing()), None),
-  PWild => (TParam("_", TVar(cover), Unmarked, Unmarked, None, guards_nothing()), None),
-  pat @ (PLit(_) | PCon(_, _) | PTuple(_) | PList(_, _) | PRecord(_, _) | PAlt(_) | PAs(_, _)) => {
-    let fresh = "{dp_prefix}{int_to_str(cover)}"
-    let span = graph_span_of(cover)
-    // reuse as the absent-annotation sentinel (byte-identical)
-    let vref = nexpr(VarRef(fresh), span)
-    let bind = nstmt(LetStmt(npat(pat, span), vref, vref), span)
-    (TParam(fresh, TVar(cover), Unmarked, Unmarked, None, guards_nothing()), Some(bind))
-  },
+// A parameter drawn from its cover: the node the expression parse minted at
+// the parameter IS the pattern it spells, re-registered as one (`cover_pat`),
+// so no cell stands beside it for the judgment never to reach, and the
+// parameter node holds it. The lambda's head was parsed as an expression
+// before its `=>` said it was a parameter list.
+fn cover_param(cover, idx) = {
+  cover_pat(cover)
+  mint_param(cover, None, None, Unmarked, graph_span_of(cover), "lambda", idx)
 }
 
-// The top of a cover's pattern: a bare name or a wildcard leaves the cover
-// the expression node it is, since the parameter is that cell; a destructure
-// re-registers the cover's inner nodes as its sub-patterns.
-fn cover_pat_body_top(cover) = match graph_node_body(cover) {
-  NExpr(VarRef(nm)) => if nm == "_" { PWild } else { PVar(nm) },
-  NExpr(MakeRecordExpr(_)) | NExpr(MakeTupleExpr(_)) | NExpr(MakeListExpr(_)) => cover_pat_body(cover),
-  _ => PWild,
-}
-
-// Prepend the collected destructure-let bindings to a body and run them
-// through desugar_block — so each `let <pat> = <fresh>` becomes the same
-// `match` a destructuring let would. No lets → the body is untouched
-// (byte-identical to a fn whose params are all bare names).
-fn bind_param_destructures(lets, body, span: ValidSpan) =
-  if len(lets) == 0 { body } else { desugar_block(lets, body, span) }
-
-// Convert a list of parsed expr nodes (paren-lambda params) into a TParam list
-// PLUS the destructure-let bindings — each elem's cover drives
-// pat_param_and_let, so `((x, y)) => …` / `({a, b}) => …` bind their pattern at
-// fn entry. Parallel buffer-counter build (params + lets); returns
-// (params, lets).
-fn exprs_to_params(elems, i, n, own buf, count, own lbuf, lcount) = if i >= n {
-  (slice(buf, 0, count), slice(lbuf, 0, lcount))
-} else {
-  let e = list_index(elems, i)
-  match pat_param_and_let(e) {
-    (param, opt_let) => match push_node(buf, count, param) {
-      (b1, c1) => match push_opt_let(lbuf, lcount, opt_let) {
-        (lb1, lc1) => exprs_to_params(elems, i + 1, n, b1, c1, lb1, lc1),
-      },
-    },
-  }
-}
+// The parameters a paren-lambda's covers spell, in order: `((x, y)) => …`
+// and `({a, b}) => …` bind their pattern as a fn's pattern parameter does.
+fn exprs_to_params(elems) = enumerate(elems) |> map({ (i, e) => cover_param(e, i) })
 
 fn parse_paren_or_tuple(ref tokens, pos, start_span) = {
   let p = skip_ws(tokens, pos)
@@ -2439,13 +2331,11 @@ fn parse_paren_or_tuple(ref tokens, pos, start_span) = {
                   // `(e1, e2, ...) => body` — multi-param lambda; the parsed
                   // tuple-elems reinterpret as params (seed parity:
                   // parser_compound $parse_lambda_from_paren_multi).
-                  let elems = slice(final_buf, 0, final_count)
-                  match exprs_to_params(elems, 0, final_count, make_list(4), 0, make_list(4), 0) {
-                    (params, dlets) => match parse_expr(tokens, skip_ws(tokens, p_after + 1)) {
-                      (raw_body, pb) => {
-                        let whole = upto(tokens, start_span, pb)
-                        (nexpr(LambdaExpr(params, bind_param_destructures(dlets, raw_body, whole)), whole), pb)
-                      },
+                  let params = exprs_to_params(slice(final_buf, 0, final_count))
+                  match parse_expr(tokens, skip_ws(tokens, p_after + 1)) {
+                    (body, pb) => {
+                      let whole = upto(tokens, start_span, pb)
+                      (nexpr(LambdaExpr(params, body), whole), pb)
                     },
                   }
                 } else {
@@ -2465,22 +2355,12 @@ fn parse_paren_or_tuple(ref tokens, pos, start_span) = {
           let p_after = skip_ws(tokens, p4)
           if at(tokens, p_after, TFatArrow) {
             // `(e) => body` — single-param lambda; `first` reinterprets
-            // as the param. A destructure (`({x,y}) => …`) binds its pattern at
-            // entry via the same prepend-let machinery.
-            match pat_param_and_let(first) {
-              (param, opt_let) => match parse_expr(tokens, skip_ws(tokens, p_after + 1)) {
-                (raw_body, pb) => {
-                  let whole = upto(tokens, start_span, pb)
-                  let body = bind_param_destructures(
-                    match opt_let {
-                      Some(l) => [l],
-                      None => [],
-                    },
-                    raw_body,
-                    whole
-                  )
-                  (nexpr(LambdaExpr([param], body), whole), pb)
-                },
+            // as the param, a destructure (`({x,y}) => …`) as its pattern.
+            let param = cover_param(first, 0)
+            match parse_expr(tokens, skip_ws(tokens, p_after + 1)) {
+              (body, pb) => {
+                let whole = upto(tokens, start_span, pb)
+                (nexpr(LambdaExpr([param], body), whole), pb)
               },
             }
           } else {
@@ -2720,7 +2600,7 @@ fn parse_arm_list(tokens, pos, start_span: ValidSpan) = {
       // literal wins every address tie, where the synthetic scrutinee used to
       // answer a caret on the `{` (measured on boot 8b071ba3).
       let whole = upto(tokens, start_span, p)
-      match fresh_param_under(al_prefix, whole) {
+      match arm_list_param(whole) {
         (fresh, param) => {
           let body = nexpr(MatchExpr(nexpr(VarRef(fresh), whole), slice(final_buf, 0, final_count)), whole)
           (nexpr(LambdaExpr([param], body), whole), p)
@@ -2741,31 +2621,39 @@ fn parse_arm_list(tokens, pos, start_span: ValidSpan) = {
 // express — where the conviction that can reach zero is a reference
 // WRITTEN as a mint.
 //
-// Recognition is the shape itself: a sole param, a body that matches
-// exactly that param, and the param NOT free in any arm. The last
-// condition is load-bearing rather than defensive — a param an arm body
-// reads is still bound by the head, and dropping the binder would unbind
-// it. `free_vars_match_arms` already binds each arm's own pattern, so
-// the question is asked of the one walk that answers it.
-//
-// There is NO carve-out for the param-position destructure, and that is
-// a decision rather than an omission: `((a, b)) => e` is a CASE of the
-// arm list, and this arc deletes `(params) => body` at its end, so fmt
-// manufacturing more of the doomed spelling would be the sweep running
-// backwards. The formatter's param-position render keeps every
-// MULTI-param lambda (`(a, (b, c)) => e` has two params, so `len(params)
-// != 1` refuses it here) and every `fn` decl, whose pattern param is a
-// different surface.
+// Recognition is the shape itself, at a sole parameter that carries
+// nothing an arm cannot — no ownership marker, annotation or default. A
+// parameter its pattern takes apart IS one arm, the pattern over the body:
+// `((a, b)) => e` is a CASE of the arm list, and this arc deletes
+// `(params) => body` at its end, so fmt manufacturing more of the doomed
+// spelling would be the sweep running backwards. A bare name is the arms
+// of a body that matches exactly that name, when the name is NOT free in
+// any arm. That condition is load-bearing rather than defensive — a name
+// an arm body reads is still bound by the head, and dropping the binder
+// would unbind it. `free_vars_match_arms` already binds each arm's own
+// pattern, so the question is asked of the one walk that answers it. A
+// wildcard keeps its binder (`(_) => e`), as a bare name over any other
+// body does; the formatter's param-position render keeps every
+// MULTI-param lambda (`(a, (b, c)) => e` has two params) and every `fn`
+// decl, whose pattern param is a different surface.
 fn arm_list_of(params, body) = if len(params) != 1 {
   None
 } else {
-  let nm = param_name(params[0])
-  match graph_node_body(body) {
-    NExpr(MatchExpr(scrut, arms)) => match graph_node_body(scrut) {
-      NExpr(VarRef(snm)) => if snm == nm && !free_uses_contains(free_vars_match_arms(arms, []), nm) { Some(arms) } else { None },
-      _ => None,
-    },
-    _ => None,
+  let p = params[0]
+  if param_marker(p) != Unmarked || param_annotated(p) || is_some(param_dflt(p)) {
+    None
+  } else {
+    match pat_of(param_pat(p)) {
+      PVar(nm) => match graph_node_body(body) {
+        NExpr(MatchExpr(scrut, arms)) => match graph_node_body(scrut) {
+          NExpr(VarRef(snm)) => if snm == nm && !free_uses_contains(free_vars_match_arms(arms, []), nm) { Some(arms) } else { None },
+          _ => None,
+        },
+        _ => None,
+      },
+      PWild => None,
+      PLit(_) | PCon(_, _) | PTuple(_) | PList(_, _) | PRecord(_, _) | PAlt(_) | PAs(_, _) => Some([(param_pat(p), body)]),
+    }
   }
 }
 
@@ -3254,9 +3142,7 @@ fn parse_lambda_params(ref tokens, pos, own buf, count) = {
   if at(tokens, p, TPipe) {
     (buf, count, p + 1)
   } else {
-    let name = ident_at(tokens, p)
-    let h = fresh_handle(span_at(tokens, p))
-    let param = TParam(name, TVar(h), Unmarked, Unmarked, None, guards_nothing())
+    let param = mint_named_param(ident_at(tokens, p), span_at(tokens, p), "lambda", count)
     match push_node(buf, count, param) {
       (b1, c1) => {
         let p2 = skip_ws(tokens, p + 1)
@@ -3368,6 +3254,20 @@ fn is_empty_block_expr(e) = match e {
 // Patterns — each one a node minted over the tokens it consumed, and each
 // pattern inside it a node of its own.
 fn npat(p, span: ValidSpan) = mint_node(NPat(p), span)
+
+// A parameter is a node: the pattern it binds, the annotation its author
+// wrote, its default and its ownership marker, minted over the parameter's
+// whole extent with the reason a parameter's cell carries — its owner and
+// its index — so a type that runs through it is named as the owner's own.
+fn mint_param(pat, ann, dflt, marker, span: ValidSpan, owner: String, idx) = mint_node_as(
+  NParam({ann, dflt, marker, pat}),
+  span,
+  FnParam(owner, idx, Inferred("param of '{owner}'"))
+)
+
+// A parameter that is a bare name, declared where the name is written.
+fn mint_named_param(name: String, span: ValidSpan, owner: String, idx) =
+  mint_param(npat(PVar(name), span), None, None, Unmarked, span, owner, idx)
 
 fn parse_pat(ref tokens, pos) = {
   let start = span_at(tokens, pos)
@@ -3900,6 +3800,9 @@ fn collect_free_uses(node, bound) = match graph_node_body(node) {
   NTypeAnn(_) => [],
   NName(_) => [],
   NRow(_) => [],
+  // a parameter's default is judged in the callee's own scope, where the
+  // parameters before it are bound, never as a use of the frame around it
+  NParam(_) => [],
 }
 
 // The free NAMES — the uses projected to their names, for the readers that
@@ -3947,7 +3850,7 @@ fn free_vars_expr(e, h, bound) = match e {
   RecordUpdateExpr(base, flds) => free_uses_merge(collect_free_uses(base, bound), free_vars_record_fields(flds, bound)),
   NamedRecordExpr(_, flds) => free_vars_record_fields(flds, bound),
   LambdaExpr(params, body) => {
-    let inner_bound = free_vars_merge(bound, free_vars_param_names(params))
+    let inner_bound = free_vars_merge(bound, param_bound_names(params))
     collect_free_uses(body, inner_bound)
   },
   // band B M1.6 (bank Ruling 2/A3): a resume USES the enclosing arm's k,
@@ -4025,7 +3928,7 @@ fn free_vars_stmt(s, bound) = match s {
   // cycle of seventeen through the list substrate and the prelude's `count`.
   // The function's own name stays a reference, which is the self-edge that
   // makes a recursive declaration a cycle.
-  FnStmt(_, params, _, _, body_node) => collect_free_uses(body_node, free_vars_merge(bound, free_vars_param_names(params))),
+  FnStmt(_, params, _, _, body_node) => collect_free_uses(body_node, free_vars_merge(bound, param_bound_names(params))),
   ExprStmt(expr) => collect_free_uses(expr, bound),
   TypeDefStmt(_, _) => [],
   EffectDeclStmt(_, _, _) => [],
@@ -4033,7 +3936,7 @@ fn free_vars_stmt(s, bound) = match s {
     // Inits evaluate in the installer's scope with the config in hand; an
     // arm additionally binds the state names and its own args. `resume` is
     // a keyword and never a reference.
-    let init_bound = free_vars_merge(bound, free_vars_param_names(config))
+    let init_bound = free_vars_merge(bound, param_bound_names(config))
     let arm_bound = free_vars_merge(init_bound, map((st) => st.name, state))
     free_uses_merge(
       free_vars_list(map((st) => st.init, state), init_bound),
@@ -4166,7 +4069,7 @@ fn free_vars_decl_step(acc, decl) = match acc {
     NStmt(FnStmt(_, params, _, _, body_node)) => (
       free_uses_merge(
         frees,
-        collect_free_uses(body_node, free_vars_merge(inner, free_vars_param_names(params)))
+        collect_free_uses(body_node, free_vars_merge(inner, param_bound_names(params)))
       ),
       inner
     ),
@@ -4210,7 +4113,8 @@ fn free_vars_match_arms(arms, bound) = fold(
   arms
 )
 
-fn free_vars_param_names(params) = map(param_name, params)
+// The names a parameter list binds: every binder its patterns write.
+fn param_bound_names(params) = flat_map({ p => pat_binder_names(param_pat(p)) }, params)
 
 fn free_vars_merge(a, b) = if len(b) == 0 {
   a

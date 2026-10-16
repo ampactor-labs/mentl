@@ -864,7 +864,7 @@ fn names_hold(xs, name: String, i) =
   i < len(xs) && (list_index(xs, i) == name || names_hold(xs, name, i + 1))
 
 fn params_bind(params, name: String, i) =
-  i < len(params) && (param_name(list_index(params, i)) == name || params_bind(params, name, i + 1))
+  i < len(params) && (pat_binds(param_pat(list_index(params, i)), name) || params_bind(params, name, i + 1))
 
 // The two record annotations are pins: a field read on a constrained-open
 // record (TRecordOpen) does not yet resolve its offset, since the witness
@@ -1139,7 +1139,7 @@ fn pre_register_handler_sig(hname, config, state, arms, decl) = {
   // meets it with its own body's answer (`install_answer`).
   let answer_h = mint(Inferred("the answer of '{hname}'"))
   let handler_ty = TName("Handler", [inst_ty, TVar(answer_h)])
-  let config_tparams = mint_handler_config_tparams(config, hname, 0)
+  let config_tparams = build_param_types(config)
   let scheme_body =
     if len(config) == 0 { handler_ty } else { TFun(config_tparams, handler_ty, mk_ef_closed([])) }
   let scheme_body_h = mint(Inferred("handler scheme of '{hname}'"))
@@ -1173,13 +1173,12 @@ fn pre_register_handler_sig(hname, config, state, arms, decl) = {
   draw_op_edges(arms, decl)
 }
 
+// The duplicate-fn refusal lives in pre_register_stmt's walk-local
+// seen-set (an env-based check misread a prior judgment's entry as a
+// duplicate the moment the incremental cursor re-registered a module
+// into the restored world).
 fn pre_register_fn_sig(name, params, ret_ann, handle, span: ValidSpan) = {
-  // The duplicate-fn refusal lives in pre_register_stmt's walk-local
-  // seen-set (an env-based check misread a prior judgment's entry as a
-  // duplicate the moment the incremental cursor re-registered a module
-  // into the restored world).
-  let param_handles = mint_param_placeholders(params, name)
-  let (param_tys, sig_scope) = build_param_scope(params, param_handles)
+  let (param_tys, sig_scope) = build_param_scope(params)
   // An authored `-> RetTy` is a CONSTRAINT the pre-scheme must CARRY, not
   // discard (the parse_let-annotation twin at the return position). Binding
   // it here grounds every FORWARD callsite: an unannotated forward ref
@@ -1774,21 +1773,13 @@ fn group_mono_views(ref stmts, ref members, j) = if j >= len(members) {
   group_mono_views(stmts, members, j + 1)
 }
 
-// A member is SIG'D when every param carries an authored type (the parser
-// mints TVar placeholders for unannotated params — the discriminator
-// build_param_types dispatches on) and the return is authored. Lowercase
-// type params in the annotations are the DECLARED polymorphism (the case
-// rule), quantified by the pre-registration — exactly the generality the
-// sig prices.
+// A member is SIG'D when every param carries an authored type and the return
+// is authored. Lowercase type params in the annotations are the DECLARED
+// polymorphism (the case rule), quantified by the pre-registration — exactly
+// the generality the sig prices.
 fn fn_fully_sigd(ref params, ref ret_ann) = match graph_node_body(ret_ann) {
-  NTypeAnn(_) => params_all_annotated(params, 0),
+  NTypeAnn(_) => all(param_annotated, params),
   _ => false,
-}
-
-fn params_all_annotated(ref params, i) = if i >= len(params) {
-  true
-} else {
-  !is_some(unwritten_cell(param_ty(params[i]))) && params_all_annotated(params, i + 1)
 }
 
 fn row_handles_only(ref q, i) = if i >= len(q) {
@@ -2354,7 +2345,14 @@ fn held_has_error(held) = any({ (d, _, _, _) => diag_severity(d) == SError }, he
 // chaining the mono cells. The row is assumed fresh-open; a self-call's
 // row ⊆ the body's own row by the fixpoint argument, so dropping the
 // self-charge under-attributes nothing the body does not already carry.
-fn mycroft_fresh_param(p) = param_with_ty(p, TVar(mint(Inferred("mycroft assumed param"))))
+fn mycroft_fresh_param(p) = TParam(
+  param_binder(p),
+  TVar(mint(Inferred("mycroft assumed param"))),
+  param_marker(p),
+  param_marker(p),
+  param_dflt(p),
+  guards_nothing()
+)
 
 fn mycroft_prebind(name: String, params, span: ValidSpan, decl) = {
   let fresh_params = map(mycroft_fresh_param, params)
@@ -2842,26 +2840,25 @@ fn infer_fn(name, params, body_node, ret_ann, effs, handle, span: ValidSpan, pol
   // needs an origin from.
   note_decl(handle)
   env_scope_enter()
-  let param_handles = mint_params(params, name, span)
   let ret_handle = mint(FnReturn(name, Inferred("return of '{name}'")))
   let row_handle = graph_fresh_row(Inferred("effects of '{name}'"))
-  // Resolve params to shared identities ONCE (binds the handles); reused below
-  // for the ownership pass — never re-derived per consumer (Carried-Truth).
-  // Each is then DECLARED: its precondition noted where the value walk
-  // reads it, and its guard cell the pre-registration's own, so a call
-  // judged against the registered signature charges the cell this judgment
-  // fills.
+  // Resolve params to shared identities ONCE (binds the parameter nodes);
+  // reused below for the ownership pass — never re-derived per consumer
+  // (Carried-Truth). Each is then DECLARED: its pattern bound against its
+  // node, its precondition noted where the value walk reads it, and its
+  // guard cell the pre-registration's own, so a call judged against the
+  // registered signature charges the cell this judgment fills.
   // One scope per signature: a lowercase name means one variable in every
   // parameter, the return and the clause (SYNTAX's case rule).
-  let (param_tys, sig_scope) = build_param_scope(params, param_handles)
+  let (param_tys, sig_scope) = build_param_scope(params)
   // A `with` row inside a parameter's or the return's type names effects the
   // link declares, or the declaration refuses (check_effect_names's law, at
   // the function-type altitude: `f: () -> a with !Network` constrained
   // nothing while no Network existed).
   link_params_written(params)
   link_written(ret_ann)
-  let resolved_params =
-    declare_params(params, param_tys, param_handles, judged_guards(handle, params, name))
+  declare_param_binders(params, name)
+  let resolved_params = declare_params(params, param_tys, judged_guards(handle, params, name))
   // THE ASSUMED SIGNATURE RIDES THE SLOT AS A VALUE — prereg's own law
   // (pre_register_fn_sig: "a value inside the record cannot be
   // class-contaminated ... a chased ret VAR reaches the obligation's own
@@ -2935,7 +2932,7 @@ fn infer_fn(name, params, body_node, ret_ann, effs, handle, span: ValidSpan, pol
   // region; nested fn decls nest their own; the return check below either
   // TRANSFERS the body value to the parent region or proves the escape.
   inf_enter_fn(row_handle, ret_handle, span, effs)
-  inf_frame_params(param_handles ++ [ret_handle])
+  inf_frame_params(params ++ [ret_handle])
   let body_region = region_enter(span)
   // The body is a consume scope — its `own` params are its own linear
   // resources. Without this bracket, a name consumed here (affine_ledger
@@ -2949,14 +2946,15 @@ fn infer_fn(name, params, body_node, ret_ann, effs, handle, span: ValidSpan, pol
   // consumed — affine's exactly-once half
   // (Hβ.own.linear-tier-and-persist-value-barrier). Inside, not before:
   // consume_enter_fn opens a fresh frame and clears the list, so a
-  // declaration made at mint_params is wiped before the walk (measured
+  // declaration made before the bracket is wiped before the walk (measured
   // — the first form reported nothing on a fn that plainly drops its
   // own param). Authored only: infer_ownership runs AFTER the body, so
   // the honest fact here is what the developer wrote.
   declare_authored_owns(params, span)
-  ages_open_fn(param_handles)
+  ages_open_fn(params)
+  claim_param_shapes(params)
   infer_expr(body_node)
-  ages_close_fn(handle, param_handles, body_node)
+  ages_close_fn(handle, params, body_node)
   // The authored return is claimed INSIDE the declaration's frame, where a
   // function crossing into it pays the guard of each demand the stated type
   // does not provide, and before the frame's own guards settle. Raised after
@@ -2966,7 +2964,7 @@ fn infer_fn(name, params, body_node, ret_ann, effs, handle, span: ValidSpan, pol
   // 852184886f52a848, S6). The claim reads the body's own edges, so it
   // needs nothing the return unify below adds.
   claim_authored_return(ret_ann, body_node, name, span)
-  settle_own_guards(param_handles, row_handle)
+  settle_own_guards(params, row_handle)
   report_unconsumed(consume_exit_fn())
   let declared_effs = exit_frame()
   // Unify body's type with the declared return.
@@ -3004,7 +3002,7 @@ fn infer_fn(name, params, body_node, ret_ann, effs, handle, span: ValidSpan, pol
     TVar(_) => hand_on_value(body_node),
     _ => (),
   }
-  let inferred_params = infer_ownership(resolved_params, param_handles, body_node)
+  let inferred_params = infer_ownership(resolved_params, map(param_pat, params), body_node)
   graph_bind(
     handle,
     // The ret slot carries the SAME pinned value the pre-body signature
@@ -3012,7 +3010,7 @@ fn infer_fn(name, params, body_node, ret_ann, effs, handle, span: ValidSpan, pol
     // and a function type's interior is where contracts live. The
     // params publish what the body learned of them (published_params).
     TFun(
-      published_params(inferred_params, param_handles, name, span),
+      published_params(inferred_params, params, name, span),
       published_ret(pinned_ret, body_node, ret_handle),
       mk_ef_open([], row_handle)
     ),
@@ -3588,6 +3586,7 @@ fn charge_word(body) = match body {
   NRow(_) => "the row",
   NTypeAnn(_) => "the annotation",
   NName(_) => "the row",
+  NParam(_) => "the parameter",
 }
 
 fn expr_charge_word(e) = match e {
@@ -3806,13 +3805,21 @@ fn check_effect_name(ename, at, span: ValidSpan) = if row_var_spelled(ename) || 
 fn link_op_written(op) = match op {
   (_, op_params, _, op_node) => {
     link_written(op_node)
-    link_params_written(op_params)
+    each({ p => each(link_written, written_cells(param_ty(p))) }, op_params)
   },
 }
 
-// A parameter list's written types, each name linked where the link is whole.
-fn link_params_written(params) =
-  each({ p => each(link_written, written_cells(param_ty(p))) }, params)
+// A parameter list's written annotations, each name linked where the link is
+// whole.
+fn link_params_written(params) = each(
+  {
+    p => match param_ann(p) {
+      Some(a) => link_written(a),
+      None => (),
+    },
+  },
+  params
+)
 
 fn check_instance_args(effs, span: ValidSpan) = each(
   {
@@ -4329,6 +4336,8 @@ fn infer_expr(ref handle) = {
     // a row's name is linked where its row is judged, an arm's op where its
     // handler is
     NName(_) => (),
+    // a parameter is judged by the declaration that holds it
+    NParam(_) => (),
   }
 }
 
@@ -4519,9 +4528,14 @@ fn callee_missing_in_env(ref func) = match graph_node_body(func) {
 // The authored-own declarations of one signature, in the body's own
 // consume frame. A `ref` or unmarked param declares nothing: only an
 // authored `own` is a promise to finish.
-fn declare_authored_owns(ref params, span: ValidSpan) = params |> each((p) => match param_authored(p) {
-  Own => consume_declare(param_name(p), span),
-  _ => (),
+fn declare_authored_owns(ref params, span: ValidSpan) = params |> each((p) => match param_marker(p) {
+  Own => match pat_of(param_pat(p)) {
+    PVar(n) => consume_declare(n, span),
+    PAs(n, _) => consume_declare(n, span),
+    PWild | PLit(_) | PCon(_, _) | PTuple(_) | PList(_, _) | PRecord(_, _) | PAlt(_) => (),
+  },
+  Ref => (),
+  Unmarked => (),
 })
 
 fn check_consume_at_use(name, kind, span: ValidSpan) = match kind {
@@ -5768,15 +5782,16 @@ type LambdaSite = MintedHere | AppliedInPlace
 
 fn infer_lambda(params, body_node, handle, span: ValidSpan, binder, site) = {
   env_scope_enter()
-  let param_handles = mint_params(params, "lambda", span)
   let row_handle = graph_fresh_row(Inferred("lambda effects"))
-  let typed = build_param_types(params, param_handles)
+  let typed = build_param_types(params)
+  declare_param_binders(params, "lambda")
   let declared = match binder {
-    BoundByCallers => declare_params(params, typed, param_handles, guard_cells(params, "lambda")),
+    BoundByCallers => declare_params(params, typed, guard_cells(params, "lambda")),
     BoundByTheCycle => typed,
   }
   inf_enter_fn(row_handle, body_node, span, [])
-  inf_frame_params(param_handles ++ [body_node])
+  inf_frame_params(params ++ [body_node])
+  claim_param_shapes(params)
   match site {
     MintedHere => {
       ages_open(AgeClosure)
@@ -5791,7 +5806,7 @@ fn infer_lambda(params, body_node, handle, span: ValidSpan, binder, site) = {
   exit_frame()
   hand_on_value(body_node)
   let published = match binder {
-    BoundByCallers => published_params(declared, param_handles, "lambda", span),
+    BoundByCallers => published_params(declared, params, "lambda", span),
     BoundByTheCycle => declared,
   }
   graph_bind(
@@ -6058,6 +6073,14 @@ fn instance_body(chain: String, body, copy, span: ValidSpan) = match body {
   NStmt(s) => NStmt(instance_stmt(chain, s, span)),
   NHole(_) => NHole(copy),
   NPat(p) => NPat(instance_pat(chain, p, span)),
+  // A parameter is copied with its pattern, its annotation and its default:
+  // the copy is the cell of the copy's argument.
+  NParam(p) => NParam({
+    ann: map_option(instance_of(chain, span, ??), p.ann),
+    dflt: map_option(instance_of(chain, span, ??), p.dflt),
+    marker: p.marker,
+    pat: chain_instance(chain, p.pat, span),
+  }),
   NTypeAnn(t) => NTypeAnn(t),
   NModule(m) => NModule(m),
   NLink(l) => NLink(l),
@@ -6109,7 +6132,7 @@ fn instance_expr(chain: String, e, span: ValidSpan) = {
     UnaryOpExpr(op, n) => UnaryOpExpr(op, go(n)),
     CallExpr(f, args) => CallExpr(go(f), map(go, args)),
     LabeledArg(name, v) => LabeledArg(name, go(v)),
-    LambdaExpr(params, body) => LambdaExpr(params, go(body)),
+    LambdaExpr(params, body) => LambdaExpr(map(go, params), go(body)),
     IfExpr(c, t, f) => IfExpr(go(c), go(t), go(f)),
     BlockExpr(stmts, fin) => BlockExpr(map(go, stmts), go(fin)),
     MatchExpr(scrut, arms) => MatchExpr(go(scrut), map(instance_arm(chain, span, ??), arms)),
@@ -6506,14 +6529,6 @@ fn config_row_roots(p) = match param_ty(p) {
   TVar(h) => filter(is_row_handle, signature_free_roots([h])),
   _ => [],
 }
-
-fn tparam_cells(tparams) = flatten(map(
-  (p) => match param_ty(p) {
-    TVar(h) => [h],
-    _ => [],
-  },
-  tparams
-))
 
 fn residual_has_root(resid, root) = match resid {
   EfRow(_, _, EtOpen(vs)) => any((e) => graph_chase_handle(edge_cell(e)) == root, vs),
@@ -10050,6 +10065,7 @@ fn infer_match_arm_iter(arms, scrut, result_h, span: ValidSpan, i, n) = if i >= 
   match list_index(arms, i) {
     (pat, body) => {
       env_scope_enter()
+      binders_once(pat_binders(pat))
       infer_pat(pat, scrut, span)
       infer_expr(body)
       unify(body, result_h, span, MatchBranch(Inferred("arm body"), Inferred("result")))
@@ -11283,48 +11299,28 @@ fn find_mapping_from(mapping, id, i, n) = if i >= n {
 }
 
 // Registration — ADT constructors, effect ops, handlers
-fn mint_param_placeholders(params, owner_name) = map(
-  { (idx, _) => mint(FnParam(owner_name, idx, Inferred("param of '{owner_name}'"))) },
-  enumerate(params)
-)
-
-fn mint_params(params, owner_name, span: ValidSpan) = map(
-  {
-    (idx, p) => {
-      let name = param_name(p)
-      let why = FnParam(owner_name, idx, Inferred("param of '{owner_name}'"))
-      let h = mint(why)
-      // Mint the handle and bind the NAME to it in the body env; the handle's TYPE
-      // (the shared identity for a type-param, the pinned Intent Boundary for a
-      // concrete annotation) is bound ONCE by build_param_types, read live here —
-      // never re-derived per consumer. A body read through the env's TVar(h) then
-      // chases to the resolved param type (the eq/binop/++ dispatch, the emit width).
-      // The entry's reason is the parameter's own, located at the signature that
-      // declares it, so a read's Why ends at the declaration rather than a bare name.
-      env_extend(name, Frozen([], TVar(h)), Located(span, why), ParamScheme(param_authored(p)), h)
-      h
-    },
-  },
-  enumerate(params)
-)
-
-// build_param_types — resolve a signature's params to ONE shared identity each,
-// binding the param HANDLE to that identity so the body read (the handle's
-// bound TVar) and the generalized scheme share one node (Carried-Truth).
-// Threads ONE qmap across the whole signature, so the case rule (lowercase TName
-// leaf → a shared quantified TVar, via quantify_ctor_ty's TFun/TList recursion)
-// makes `init: b` and the `b` inside `f: (b,a) -> b` the SAME var — `fold`'s
-// accumulator propagates. A concrete annotation (`name: String`, a refinement,
-// a repr pin) binds the handle too (the Intent Boundary read live). An
-// unannotated param is a bare TVar; its handle IS its fresh var (quantified).
-// Without the shared conversion a lowercase TName is a RIGID nominal that
-// mismatches every concrete arg (recovered, word-floored) — the pureElem class.
+//
+// A parameter is a node of its own (`NParam`), the cell of the argument its
+// position takes, and its pattern binds against it as a let's pattern binds
+// against its value. build_param_types resolves a signature's parameters to
+// ONE shared identity each, binding the parameter's node to it so the body's
+// reads (the binder's TVar) and the generalized scheme share one cell
+// (Carried-Truth). It threads ONE qmap across the whole signature, so the
+// case rule (a lowercase TName leaf → a shared quantified TVar, through
+// quantify_ctor_ty's TFun/TList recursion) makes `init: b` and the `b` inside
+// `f: (b,a) -> b` the SAME var — `fold`'s accumulator propagates. A concrete
+// annotation (`name: String`, a refinement, a repr pin) binds the node too
+// (the Intent Boundary read live), and the annotation's own node beside it,
+// where the caret reads it. An unannotated parameter is a bare variable: its
+// node IS its fresh var (quantified). Without the shared conversion a
+// lowercase TName is a RIGID nominal that mismatches every concrete arg
+// (recovered, word-floored) — the pureElem class.
 fn param_cell_is_free(ph) = match graph_chase(ph) {
   GNode(NFree(_), _) => true,
   _ => false,
 }
 
-fn build_param_types(params, handles) = match build_param_scope(params, handles) {
+fn build_param_types(params) = match build_param_scope(params) {
   (tys, _scope) => tys,
 }
 
@@ -11332,43 +11328,113 @@ fn build_param_types(params, handles) = match build_param_scope(params, handles)
 // variable a lowercase name declared (type variables by name, row variables
 // and named rests by their keys), so the return and the clause read the
 // same cells.
-fn build_param_scope(params, handles) = build_param_types_loop(params, handles, [], 0)
+fn build_param_scope(params) = build_param_types_loop(params, [], 0)
 
-fn build_param_types_loop(params, handles, qmap, i) = if i >= len(params) {
+fn build_param_types_loop(params, qmap, i) = if i >= len(params) {
   ([], qmap)
 } else {
-  match list_index(params, i) {
-    TParam(name, declared, auth, res, default, prow) => {
-      let h = list_index(handles, i)
-      match match unwritten_cell(declared) {
-        // The parser minted this cell at the parameter's name; it IS the
-        // parameter, so it is bound to the cell the judgment carries rather
-        // than left behind unjudged (a ghost the caret and `refs of` could
-        // only answer with nothing). The first judgment of a signature binds
-        // it; a later one finds it bound and reads through it.
-        Some(ph) => {
-          if ph != h && param_cell_is_free(ph) {
-            graph_bind(ph, TVar(h), Located(span_zero(), Declared(name)))
-          } else {
-            ()
-          }
-          (TVar(h), qmap)
-        },
-        // A written type is quantified into the parameter's cell.
-        None => match quantify_ctor_ty(declared, qmap, graph_reason_at(h)) {
-          (conv, q) => {
-            graph_bind(h, conv, Located(span_zero(), Declared(name)))
-            (conv, q)
-          },
-        },
-      } {
-        (chosen, qmap1) => match build_param_types_loop(params, handles, qmap1, i + 1) {
-          (rest, qmap2) => ([TParam(name, chosen, auth, res, default, prow)] ++ rest, qmap2),
-        },
-      }
+  let p = list_index(params, i)
+  let name = param_binder(p)
+  match match param_ann(p) {
+    None => (TVar(p), qmap),
+    // A written type is quantified into the parameter's cell. The first
+    // judgment of a signature binds the cell; a later one — the declaration's
+    // own after its pre-registration, a Mycroft round — finds it bound and
+    // meets it there.
+    Some(a) => match quantify_ctor_ty(ann_ty_of(a), qmap, graph_reason_at(p)) {
+      (conv, q) => {
+        let at = graph_span_of(a)
+        if param_cell_is_free(p) {
+          graph_bind(p, conv, Located(at, Declared(name)))
+        } else {
+          unify_types(TVar(p), conv, at, Declared(name))
+        }
+        if param_cell_is_free(a) { graph_bind(a, conv, Located(at, Declared(name))) } else { () }
+        (conv, q)
+      },
+    },
+  } {
+    (chosen, qmap1) => match build_param_types_loop(params, qmap1, i + 1) {
+      (rest, qmap2) => (
+        [TParam(name, chosen, param_marker(p), param_marker(p), param_dflt(p), guards_nothing())] ++ rest,
+        qmap2
+      ),
     },
   }
 }
+
+// A parameter's pattern binds against the parameter's node, the cell of the
+// argument its position takes, as a let's pattern binds against its value. A
+// bare name is declared at its own node — so a reference's edge reaches the
+// name in the head, and `binder_read_by` answers the parameter's cell — under
+// the parameter's own reason and its authored ownership marker; an as-pattern
+// binds the whole the same way; any other pattern takes the argument apart,
+// each part declared at its own node (`infer_pat`). The head binds in two
+// passes, the order the lowering binds in: every parameter's whole first, so
+// of two parameters of one name the later is read, then the parts each
+// destructuring pattern takes apart where the body begins, which hide a
+// whole of their name.
+fn declare_param_binders(params, owner: String) = {
+  binders_once(flat_map({ p => pat_binders(param_pat(p)) }, params))
+  params |> enumerate |> each(declare_param_whole(owner, ??))
+  each(declare_param_parts, params)
+}
+
+// A head, across its parameters and their patterns, and a pattern bind each
+// name once: of two binders of one name a use could reach either, and a
+// parameter list holds one field per name. The second is refused, naming
+// the first.
+fn binders_once(binders) = binders |> enumerate |> each(binder_once(binders, ??))
+
+fn binder_once(binders, ib) = match ib {
+  (i, (name, node)) => match find({ (m, _) => m == name }, take(i, binders)) {
+    Some((_, first)) => report(EDuplicateBinder(name, graph_span_of(first), graph_span_of(node))),
+    None => (),
+  },
+}
+
+// A parameter's whole is declared under the parameter's own reason, at the
+// name: its binder is the cell of the argument, and the Why at a use and at
+// the binder both name the parameter.
+fn declare_param_whole(owner: String, ip) = match ip {
+  (i, p) => {
+    let pat = param_pat(p)
+    match pat_of(pat) {
+      PVar(name) | PAs(name, _) => {
+        let why = Located(graph_span_of(pat), FnParam(owner, i, Inferred("param of '{owner}'")))
+        graph_bind(pat, TVar(p), why)
+        env_extend(name, Frozen([], TVar(p)), why, ParamScheme(param_marker(p)), pat)
+      },
+      PWild | PLit(_) | PCon(_, _) | PTuple(_) | PList(_, _) | PRecord(_, _) | PAlt(_) => (),
+    }
+  },
+}
+
+fn declare_param_parts(p) = {
+  let pat = param_pat(p)
+  match pat_of(pat) {
+    PVar(_) => (),
+    PAs(_, inner) => infer_pat(inner, p, graph_span_of(p)),
+    PWild | PLit(_) | PCon(_, _) | PTuple(_) | PList(_, _) | PRecord(_, _) | PAlt(_) => infer_pat(pat, p, graph_span_of(p)),
+  }
+}
+
+// A parameter written as a destructuring pattern asserts the argument's
+// shape, as a match of one arm asserts its scrutinee's: the
+// value a pattern leaves uncovered is the claim, located at the parameter —
+// proven along the argument's edges, refuted there, or open with the frame's
+// row carrying the `Trap` a mismatch is. Raised inside the frame, after the
+// parameter's fact is noted, so the walk reads the precondition and the
+// charge lands in the declaration's row.
+fn claim_param_shapes(params) = params |> each({
+  p => {
+    let pat = param_pat(p)
+    match uncovered([[pat_of(pat)]], 1) {
+      Some(witness) => claim_shape(p, p, join(", ", witness), (pat, p)),
+      None => (),
+    }
+  },
+})
 
 // ─── A declared parameter's precondition and what it guards (P0) ────────
 //
@@ -11410,23 +11476,25 @@ fn guard_cell_of(owner: String, p) = match param_row(p) {
 // Each parameter DECLARED: its precondition noted under its handle, where
 // the value walk (verify.mn) reads it through a reference's link — the
 // cell itself holds the shape alone — and its row the guard cell's.
-fn declare_params(params, resolved, handles, guards) = resolved |> enumerate |> map({
-  (i, p) => {
+fn declare_params(params, resolved, guards) = resolved |> enumerate |> map({
+  (i, tp) => {
     let g = list_index(guards, i)
+    let p = list_index(params, i)
     graph_binder_note(
-      list_index(handles, i),
-      ParamFact({guard: g, owes: guards_nothing(), pre: stated_pre(param_ty(list_index(params, i)), param_ty(p))})
+      p,
+      ParamFact({guard: g, owes: guards_nothing(), pre: stated_pre(p, param_ty(tp))})
     )
-    param_with_row(p, mk_ef_open([], g))
+    param_with_row(tp, mk_ef_open([], g))
   },
 })
 
 // What the developer wrote: a refinement is a stated precondition, a plain
 // type states none (and learns none), and no annotation leaves the
 // parameter to learn one from the edges it is handed through.
-fn stated_pre(authored, resolved) = match unwritten_cell(authored) {
-  Some(_) => Unstated,
-  None => if ty_carries_refinement(resolved) { Stated(resolved) } else { Unrefined },
+fn stated_pre(p, resolved) = if param_annotated(p) {
+  if ty_carries_refinement(resolved) { Stated(resolved) } else { Unrefined }
+} else {
+  Unstated
 }
 
 // At the exit a parameter publishes what it learned — its callers owe the
@@ -13709,7 +13777,15 @@ fn quantify_ctor_row(row, qmap, owner) = match row {
 fn written_fn_row(row, owner) = match row {
   EfRow(_, _, EtOpen([e])) => match graph_node_body(edge_cell(e)) {
     NRow(terms) => written_row_meaning(edge_cell(e), terms, owner),
-    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) => row,
+    NExpr(_)
+    | NStmt(_)
+    | NPat(_)
+    | NHole(_)
+    | NModule(_)
+    | NLink(_)
+    | NTypeAnn(_)
+    | NName(_)
+    | NParam(_) => row,
   },
   EfRow(_, _, EtOpen(_)) | EfRow(_, _, EtClosed) | EfRow(_, _, EtAll) => row,
 }
@@ -13740,7 +13816,15 @@ fn read_written_rows(c, owner) = {
       let _ = written_row_meaning(c, terms, owner)
       ()
     },
-    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) => (),
+    NExpr(_)
+    | NStmt(_)
+    | NPat(_)
+    | NHole(_)
+    | NModule(_)
+    | NLink(_)
+    | NTypeAnn(_)
+    | NName(_)
+    | NParam(_) => (),
   }
   each(read_written_rows(??, owner), body_child_handles(graph_node_body(c)))
 }
@@ -13873,7 +13957,16 @@ fn resolve_written(h, ty, qmap, owner) = match graph_node_body(h) {
       },
     }
   },
-  NTypeAnn(_) | NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NName(_) | NRow(_) => (ty, qmap),
+  NTypeAnn(_)
+  | NExpr(_)
+  | NStmt(_)
+  | NPat(_)
+  | NHole(_)
+  | NModule(_)
+  | NLink(_)
+  | NName(_)
+  | NRow(_)
+  | NParam(_) => (ty, qmap),
 }
 
 // A written name linked where every declaration of the link is registered,
@@ -13898,7 +13991,8 @@ fn link_written(c) = {
     | NModule(_)
     | NLink(_)
     | NName(ArmOp(_))
-    | NRow(_) => (),
+    | NRow(_)
+    | NParam(_) => (),
   }
   each(link_written, body_child_handles(graph_node_body(c)))
 }
@@ -14078,11 +14172,12 @@ fn register_effect_ops(effect_name, params, ops, decl) = {
   // instance judges its args against; a bare effect publishes the
   // empty tuple. The formerly-empty tuple here was a placeholder.
   let op_names = map({ (n, _, _, _) => n }, ops)
+  let tps = build_param_types(params)
   env_extend(
     effect_name,
-    Frozen([], TTuple(map(param_ty, params))),
+    Frozen([], TTuple(map(param_ty, tps))),
     Declared(effect_name),
-    EffectDeclKind(op_names, map(param_name, params)),
+    EffectDeclKind(op_names, map(param_name, tps)),
     decl
   )
   // THE EFFECT'S COMPLETE TYPE-VAR STRUCTURE: the free type vars across ALL
@@ -14468,7 +14563,7 @@ fn register_handler(hname, ename_parsed, config, state, arms, effs, span: ValidS
     None => mint(Inferred("handler result of '{hname}'")),
   }
   let handler_ty = TName("Handler", [inst_ty, TVar(s_h)])
-  let config_tparams = mint_handler_config_tparams(config, hname, 0)
+  let config_tparams = build_param_types(config)
   let scheme_body =
     if len(config) == 0 { handler_ty } else { TFun(config_tparams, handler_ty, mk_ef_closed([])) }
   // Bind the scheme body to a handle so it can be RE-GENERALIZED after the arms
@@ -14539,7 +14634,7 @@ fn register_handler(hname, ename_parsed, config, state, arms, effs, span: ValidS
   // floored (the m3 concat census). One outer env scope holds config + state
   // for every arm; per-arm scopes isolate only the op params.
   env_scope_enter()
-  let config_cells = bind_handler_config_params(config_tparams, hname)
+  let config_cells = bind_handler_config_params(config, hname)
   // Accumulate the arms' residual row R into r_handle: inferring each arm
   // body under this row scope routes every effect it performs (incl. a call
   // to a function-valued config arg) into r_handle via inf_add_effect/
@@ -14549,7 +14644,7 @@ fn register_handler(hname, ename_parsed, config, state, arms, effs, span: ValidS
   // The remainder world is part of the handler's signature: a lambda in an
   // arm carries it out of its own frame, and the completion prune keeps what
   // the signature names.
-  inf_frame_params(tparam_cells(config_tparams) ++ [s_h, w_handle])
+  inf_frame_params(config ++ [s_h, w_handle])
   // EVERYTHING THE INSTALL EVALUATES BELONGS INSIDE THIS SCOPE — the config
   // DEFAULTS and the state INITS both, because both run where the arms' own
   // effects run: at the install, in the installer's world. Judged outside it
@@ -14736,26 +14831,14 @@ fn infer_handler_state_inits(state) = map(
   state
 )
 
-// A config parameter is a cell of its own, bound to the parameter's type, as
-// an arm's parameters are (`bind_arm_args`): its references link to the
-// cell, and what the judgment learns of it is published there. The cells
-// come back in order, for the arms' age scope.
-fn bind_handler_config_params(config_tparams, hname: String) = map(
-  (tp) => {
-    let name = param_name(tp)
-    let h = mint(Located(span_zero(), LetBinding(name, Declared(hname))))
-    graph_bind(h, param_ty(tp), Located(span_zero(), Declared(hname)))
-    env_extend(
-      name,
-      Frozen([], TVar(h)),
-      Located(span_zero(), LetBinding(name, Declared(hname))),
-      ParamScheme(param_authored(tp)),
-      h
-    )
-    h
-  },
-  config_tparams
-)
+// A config parameter is a parameter node like a function's, the cell its
+// install's argument fills: its name is declared where it is written, and
+// its references link there. The cells come back in order, for the arms'
+// age scope.
+fn bind_handler_config_params(config, hname: String) = {
+  declare_param_binders(config, hname)
+  config
+}
 
 fn bind_handler_state_names(state_binds, arms, hname, span: ValidSpan) = {
   let updates = arms |> flat_map(arm_updates)
@@ -14967,7 +15050,7 @@ fn tail_transparent_params(params, body) = {
 fn tail_transparent_loop(params, body, callees, i, acc) = if i >= len(params) {
   acc
 } else {
-  let pname = param_name(list_index(params, i))
+  let pname = param_binder(list_index(params, i))
   let acc2 =
     if string_in_list(callees, pname) && tail_transparent(body, pname) { push(acc, i) } else { acc }
   tail_transparent_loop(params, body, callees, i + 1, acc2)
@@ -15066,7 +15149,7 @@ fn collect_fn_decls(node, acc) = match graph_node_body(node) {
   // drift-audit: ignore — decl-count-bounded cons, not a hot loop
   NStmt(FnStmt(name, params, _, _, b)) => collect_fn_decls(
     b,
-    [(name, b, tail_transparent_params(params, b), free_vars_param_names(params))] ++ acc
+    [(name, b, tail_transparent_params(params, b), param_bound_names(params))] ++ acc
   ),
   NStmt(HandlerDeclStmt(_, _, _, _, arms, _)) => collect_fn_decls_arms(arms, acc),
   NStmt(HandlerChainStmt(_, chain)) => collect_fn_decls(chain, acc),
@@ -15113,6 +15196,7 @@ fn collect_fn_decls(node, acc) = match graph_node_body(node) {
   NRow(_) => acc,
   NTypeAnn(_) => acc,
   NName(_) => acc,
+  NParam(_) => acc,
 }
 
 fn collect_fn_decls_arms(arms, acc) = if len(arms) == 0 {
@@ -15279,6 +15363,7 @@ fn resume_grade(node) = match graph_node_body(node) {
   NRow(_) => RNone,
   NTypeAnn(_) => RNone,
   NName(_) => RNone,
+  NParam(_) => RNone,
 }
 
 // Sequential composition over a node list (block stmts, call args, list
@@ -15351,14 +15436,6 @@ fn grade_fields(fields) = if len(fields) == 0 {
 // and its arms added and compared the addresses of the install's boxes:
 // `sum > init` answered 1 for 3.0 against 5.0, measured 2026-09-28 on boot
 // b29e319b.
-fn mint_handler_config_tparams(config, hname, base_idx) = build_param_types(
-  config,
-  map(
-    { (i, _) => mint(FnParam(hname, base_idx + i, Inferred("config-param of '{hname}'"))) },
-    enumerate(config)
-  )
-)
-
 // Utilities
 fn infer_expr_list(ref nodes) = each(infer_expr, nodes)
 

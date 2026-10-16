@@ -280,7 +280,7 @@ fn accept_annotation(handle, s) = match s {
           fs_read_file(path),
           graph_span_of(handle),
           graph_span_of(body),
-          annotated_head(ann, name, params, graph_node_body(retty), effs, body),
+          annotated_head(ann, name, params, graph_node_body(retty), effs),
           stated_by(ann, params)
         ) {
           Some(edited) => {
@@ -305,21 +305,19 @@ fn accept_annotation(handle, s) = match s {
 // clause joined to its row, a parameter's type set to the alias, or the
 // return set to it. `ret` is the declaration's return annotation itself,
 // and a return contract writes the alias as the annotation in its place.
-fn annotated_head(ann, name: String, params, ret, effs, body) with !Mutate = match ann {
-  APure(_) => render_fn_head(name, params, ret, effs ++ [(RtEff(EPure, None), false, EcUnion)], body),
-  ANotEffect(n, _) => render_fn_head(
-    name,
-    params,
-    ret,
-    effs ++ [(RtEff(ENamed(intern_str(n)), None), true, EcUnion)],
-    body
-  ),
-  ARefined(r) => render_fn_head(name, params |> map(restated_param(r.param, r.alias, ??)), ret, effs, body),
-  AReturns(r) => render_fn_head(name, params, NTypeAnn(TName(r.alias, [])), effs, body),
+fn annotated_head(ann, name: String, params, ret, effs) with !Mutate = match ann {
+  APure(_) => render_fn_head(name, params, ret, effs ++ [(RtEff(EPure, None), false, EcUnion)]),
+  ANotEffect(n, _) => render_fn_head(name, params, ret, effs ++ [(RtEff(ENamed(intern_str(n)), None), true, EcUnion)]),
+  ARefined(r) => fn_head_text(name, join(", ", map(restated_param(r.param, r.alias, ??), params)), ret, effs),
+  AReturns(r) => render_fn_head(name, params, NTypeAnn(TName(r.alias, [])), effs),
 }
 
-fn restated_param(pname: String, alias: String, p) = match p {
-  TParam(n, _, authored, resolved, default, row) => if n == pname { TParam(n, TName(alias, []), authored, resolved, default, row) } else { p },
+// The parameter the refinement restates renders with the alias as its
+// annotation; every other renders as written.
+fn restated_param(pname: String, alias: String, p) with !Mutate = if param_binder(p) == pname {
+  render_param_typed(param_of(p), ": {alias}")
+} else {
+  render_one_param(p)
 }
 
 // The written names an annotation replaces that its alias still states: a
@@ -334,12 +332,16 @@ fn stated_by(ann, params) = match ann {
   AReturns(_) => [],
 }
 
-fn written_base(pname: String, contract, p) = match p {
-  TParam(n, ty, _, _, _, _) => if n == pname && is_word_base(ty) && same_base(base_of(contract), ty) {
-    [show_type(ty)]
-  } else {
-    []
+fn written_base(pname: String, contract, p) = match param_ann(p) {
+  Some(a) => {
+    let ty = ann_ty_of(a)
+    if param_binder(p) == pname && is_word_base(ty) && same_base(base_of(contract), ty) {
+      [show_type(ty)]
+    } else {
+      []
+    }
   },
+  None => [],
 }
 
 // The head is the source from the declaration's start to the whitespace

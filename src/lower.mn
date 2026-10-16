@@ -122,7 +122,7 @@ fn handler_arm_groups(hd) = match handler_shape_at(hd) {
 // then its state fields.
 fn arm_capture_names(hd) = match handler_shape_at(hd) {
   // drift-audit: ignore — one-shot name-list build
-  Some((_, config, state, _)) => lower_param_names(config) ++ state_field_names_of(state),
+  Some((_, config, state, _)) => map(param_name, config) ++ state_field_names_of(state),
   None => [],
 }
 
@@ -1206,16 +1206,10 @@ fn project_lambda_fn(origin, cap_pairs) = match graph_node_body(origin) {
     let cap_handles = map({ (_, h) => h }, cap_pairs)
     let param_names_list = lower_param_names(params)
     // A lambda's lines follow its captures in the closure record.
-    ls_enter_frame(
-      "",
-      param_names_list,
-      param_handles_of(origin, params),
-      cap_names,
-      cap_handles,
-      len(cap_pairs)
-    )
+    ls_enter_frame("", param_names_list, params, cap_names, cap_handles, len(cap_pairs))
     lower_frame_fence_push()
-    let lo_body = k2_guard(mark_tail(lower_body_reified(body_node)))
+    let layers = lower_param_destructures(params)
+    let lo_body = k2_guard(mark_tail(wrap_param_destructures(layers, lower_body_reified(body_node))))
     lower_handler_pop()
     let lines = ls_exit_frame()
     Some(LFn("lambda_{int_to_str(origin)}", len(params), param_names_list, [lo_body], len(cap_pairs), lines))
@@ -1240,7 +1234,7 @@ fn project_nested_fn(origin, fn_name, bind, cap_pairs) = match graph_node_body(o
       Some(hd) => (["__k", "__hrec"], [0, 0], arm_capture_names(hd), MultiShot),
     }
     let param_names_list = lower_param_names(params) ++ bound_names
-    let param_handles_list = param_handles_of(origin, params) ++ bound_handles
+    let param_handles_list = params ++ bound_handles
     // A top-level fn's frame is entered with no frame below it; its record
     // is the module's static data record, so its lines are STATIC — an
     // instance global per site. A nested fn is a closure: its lines follow
@@ -1249,7 +1243,8 @@ fn project_nested_fn(origin, fn_name, bind, cap_pairs) = match graph_node_body(o
     ls_enter_frame(fn_name, param_names_list, param_handles_list, cap_names, cap_handles, line_base)
     lower_frame_fence_push()
     let lo_body = k2_guard(mark_tail({
-      lower_body_reified(body_node)
+      let layers = lower_param_destructures(params)
+      wrap_param_destructures(layers, lower_body_reified(body_node))
     } ~> arm_state_ctx(bind_fields, bind_disc, bind)))
     lower_handler_pop()
     let lines = ls_exit_frame()
@@ -1567,7 +1562,7 @@ fn bind_from_handlers(stmts, summaries, decls, binds) = if len(stmts) == 0 {
     NStmt(HandlerDeclStmt(_, _, config, state, arms, _)) => {
       // An arm's config, state fields and arguments are its binders, never
       // a call — the arm walk binds them as the free-name walk does.
-      let in_arms = free_vars_param_names(config) ++ map({ st => st.name }, state)
+      let in_arms = param_bound_names(config) ++ map({ st => st.name }, state)
       bind_from_arms(arms, hd, in_arms, summaries, decls, binds)
     },
     _ => binds,
@@ -2350,6 +2345,7 @@ fn lower_expr(handle) = match graph_node_body(handle) {
       NTypeAnn(_) => LConst(canon, LInt(0)),
       NName(_) => LConst(canon, LInt(0)),
       NRow(_) => LConst(canon, LInt(0)),
+      NParam(_) => LConst(canon, LInt(0)),
     }
   },
 }
@@ -2588,15 +2584,16 @@ fn lower_expr_body(e, handle, span) = match e {
     // resolution returns the local's actual type handle (Phase-A1).
     let lambda_name = "lambda_{int_to_str(handle)}"
     let param_names_list = lower_param_names(params)
-    let param_handles_list = param_handles_of(handle, params)
+    let param_handles_list = params
     // Seed "__k" whenever a k is lexically in scope at the mint: any call
     // to a resume-bound callee inside this body takes the k as a trailing
     // argument (lower_call_default), so the closure must carry it — and
     // the chain holds for arbitrary nesting by induction (each inner mint
     // re-seeds from its own enclosing frame). Where no k is in scope the
     // seed adds nothing. One dormant word per arm-context closure that
-    // never uses it — the price of a walk-free, stateless rule.
-    let free_uses0 = collect_free_uses(body_node, param_names_list)
+    // never uses it — the price of a walk-free, stateless rule. Every name
+    // the parameters' patterns bind is the body's own, never a capture.
+    let free_uses0 = collect_free_uses(body_node, param_bound_names(params))
     let free_uses = lower_seed_hrec(lower_seed_k(free_uses0))
     match resolve_captures_outer(free_uses, handle) {
       (captures_names, captures_exprs, captures_handles) => {
@@ -2691,7 +2688,7 @@ fn lower_pipe_complete(lo_l, right, handle) = lower_pipe_complete_many([lo_l], r
 // The values a pipe gives its stage: one, or the parts of a product the site
 // builds, which the merge hands to the stage's N open slots.
 fn lower_pipe_complete_many(lo_ls, right, handle) = match inlinable_lambda_arity(right, len(lo_ls)) {
-  Some((params, body)) => lower_applied_in_place(lo_ls, params, body, right, handle),
+  Some((params, body)) => lower_applied_in_place(lo_ls, params, body, handle),
   None => lower_pipe_stage(lo_ls, right, handle),
 }
 
@@ -2700,11 +2697,11 @@ fn lower_pipe_complete_many(lo_ls, right, handle) = match inlinable_lambda_arity
 // body lowers there, so no closure is minted — the judgment charges none, by
 // the same test (`inlinable_lambda_arity`). Each parameter's register is its
 // own, so a parameter spelled like a local of the frame never overwrites it.
-fn lower_applied_in_place(lo_ls, params, body, lam, handle) = {
+fn lower_applied_in_place(lo_ls, params, body, handle) = {
   let cp = ls_push_scope()
-  let phs = param_handles_of(lam, params)
-  let binds = map(bind_stage_param, zip(zip(phs, map(param_name, params)), lo_ls))
-  let lo_body = lower_expr(body)
+  let binds = map(bind_stage_param, zip(zip(params, lower_param_names(params)), lo_ls))
+  let layers = lower_param_destructures(params)
+  let lo_body = wrap_param_destructures(layers, lower_expr(body))
   ls_pop_scope(cp)
   LBlock(handle, binds ++ [lo_body])
 }
@@ -3065,8 +3062,9 @@ fn callee_is_vocabulary(c, n: String) = match c {
 fn lower_feedback_body(left, fb_handle) = match inlinable_lambda(left) {
   Some((params, body)) => {
     let cp = ls_push_scope()
-    ls_bind_fb_prior(param_name(last(params)), fb_handle)
-    let lo = lower_expr(body)
+    ls_bind_fb_prior(lower_param_name(last(params)), fb_handle)
+    let layers = lower_param_destructures(params)
+    let lo = wrap_param_destructures(layers, lower_expr(body))
     ls_pop_scope(cp)
     lo
   },
@@ -4086,6 +4084,7 @@ fn lower_stmt(handle) = {
     NTypeAnn(_) => LConst(handle, LInt(0)),
     NName(_) => LConst(handle, LInt(0)),
     NRow(_) => LConst(handle, LInt(0)),
+    NParam(_) => LConst(handle, LInt(0)),
   }
 }
 
@@ -4169,7 +4168,7 @@ fn lower_fn_mint(name, params, body_node, handle, reg) = {
   // The same "__k" seeding the lambda mint applies (an UNBOUND nested
   // fn inside an arm may still call a bound sibling); a bound fn's own
   // __k param shadows the seed harmlessly.
-  let free_uses0 = collect_free_uses(body_node, param_names_list)
+  let free_uses0 = collect_free_uses(body_node, param_bound_names(params) ++ bound_names)
   let free_uses = match bind {
     None => lower_seed_hrec(lower_seed_k(free_uses0)),
     Some(_) => free_uses0,
@@ -5860,25 +5859,80 @@ fn resolve_state_slot_offset(name: String, fields) = {
   }
 }
 
-// Parameter name lowering (for LFn metadata)
-fn lower_param_names(params) = map(param_name, params)
-
-// Each param's graph handle for the LowerScope frame — read from the fn's
-// INFERRED type, the live graph proof. infer mints a fresh handle per param
-// and `build_param_types` records it as `TParam(name, TVar(h), …)` in the
-// fn's `TFun`; that handle carries the param's resolved type. The parsed
-// `TParam.ty` caches the resolved type and loses the handle, so reading it
-// (lower_param_handles) returns 0 for any concrete-typed param and the
-// lowered local goes type-blind. Reading the TFun keeps the handle: the
-// local then live-chases its type via lookup_ty, so type-dispatched ops
-// (==, ++, to_string) see the type the graph proved. (Discipline: never
-// cache the resolved Ty; carry the handle and chase — types.mn.)
-fn param_handles_of(fn_handle, params) = match lookup_ty(fn_handle) {
-  TFun(tparams, _, _) => if len(tparams) == len(params) { map(tparam_handle, tparams) } else { lower_param_handles(params) },
-  _ => lower_param_handles(params),
+// A parameter's local: the name its pattern binds the whole argument to —
+// a bare name's, an as-pattern's — or, for a pattern binding only parts, a
+// register of the lowering's own named by the parameter's handle, which the
+// destructure wrapping the body takes apart (`lower_param_destructures`).
+// The local's type handle is the parameter's node, the argument's cell, so
+// the local live-chases the type the judgment proved.
+fn lower_param_name(p) = match pat_of(param_pat(p)) {
+  PVar(n) => n,
+  PAs(n, _) => n,
+  PWild | PLit(_) | PCon(_, _) | PTuple(_) | PList(_, _) | PRecord(_, _) | PAlt(_) => "__p{int_to_str(p)}",
 }
 
-fn tparam_handle(tp) = ty_handle_of(param_ty(tp))
+fn lower_param_names(params) = map(lower_param_name, params)
+
+// A parameter written as a destructuring pattern takes its argument apart
+// where the body begins, in the frame the parameters were bound in and the
+// order the judgment declared them: every destructured parameter's local is
+// read first, while the frame holds the parameters alone, then each pattern
+// binds its parts, in parameter order. Each layer is the one-arm match the
+// pattern is — the parameter's local its scrutinee, the pattern its arm, and
+// the match's handle the parameter's, where the judgment charged what the
+// pattern builds (a rest's slice). A name binding the whole argument needs
+// no match; an as-pattern's name is the local, and its inner pattern takes
+// the argument apart.
+fn lower_param_destructures(params) = {
+  let taken_apart = params |> filter({ p => is_some(destructured_pat(param_pat(p))) })
+  let reads = map(param_read, taken_apart)
+  zip(taken_apart, reads) |> map(param_layer)
+}
+
+fn param_layer(pair) = match pair {
+  (p, read) => {
+    let pat = param_pat(p)
+    let inner = match destructured_pat(pat) {
+      Some(i) => i,
+      None => pat,
+    }
+    let whole = match uncovered([[pat_of(inner)]], 1) {
+      None => true,
+      Some(_) => false,
+    }
+    (
+      p,
+      read,
+      lower_pat_value(bind_fresh, arm_pat_lowered(inner, whole), inner, lookup_ty(p), seq_rep_of(p), p)
+    )
+  },
+}
+
+// The body inside the layers, the last parameter's innermost.
+fn wrap_param_destructures(layers, lo_body) = layers |> reverse |> fold(lo_body, wrap_param_layer)
+
+fn wrap_param_layer(inner, layer) = match layer {
+  (p, read, lp) => LMatch(p, read, [(lp, inner)]),
+}
+
+// The pattern a body takes a parameter's argument apart with: none for a
+// name or a wildcard, an as-pattern's inner pattern, the pattern itself
+// otherwise.
+fn destructured_pat(pat) = match pat_of(pat) {
+  PVar(_) => None,
+  PWild => None,
+  PAs(_, inner) => destructured_pat(inner),
+  PLit(_) | PCon(_, _) | PTuple(_) | PList(_, _) | PRecord(_, _) | PAlt(_) => Some(pat),
+}
+
+// The parameter's local, read as a reference to it lowers: a register of the
+// frame, a captured slot, a feedback site's prior.
+fn param_read(p) = {
+  let name = lower_param_name(p)
+  match ls_resolve(name) {
+    (res, local_h) => lower_resolved_ref(p, name, res, local_h),
+  }
+}
 
 // The enumeration entry's param/result EDGES — the fn's own inferred TFun,
 // component by component. Its handle-valued sibling above cannot serve the
@@ -5895,9 +5949,13 @@ fn tparam_handle(tp) = ty_handle_of(param_ty(tp))
 // right: "handle zero means no node" is a convention every reader has to
 // learn, where None is a fact the type states. The reader floors on None.
 fn entry_param_tys(fn_handle, params) = match lookup_ty(fn_handle) {
-  TFun(tparams, _, _) => if len(tparams) == len(params) { map(some_param_ty, tparams) } else { map(some_param_ty, params) },
-  _ => map(some_param_ty, params),
+  TFun(tparams, _, _) => if len(tparams) == len(params) { map(some_param_ty, tparams) } else { map(param_node_ty, params) },
+  _ => map(param_node_ty, params),
 }
+
+// A parameter's type where the declaration's own is not a readable arrow:
+// its node is the argument's cell.
+fn param_node_ty(p) = Some(TVar(p))
 
 fn ret_ty_of(fn_handle) = match lookup_ty(fn_handle) {
   TFun(_, r, _) => Some(r),
@@ -5911,8 +5969,6 @@ fn none_of(_i) = None
 // Fallback when the fn's type isn't a resolved TFun: reads each param's parsed
 // type through the one ty_handle_of projection (TVar → handle; ground → 0).
 // param_handles_of reads the inferred TFun instead.
-fn lower_param_handles(params) = map((p) => ty_handle_of(param_ty(p)), params)
-
 // Every op the effect declares projects to a substrate instruction (the
 // Memory/Alloc table, the WASI import set) — or the name owns no ops at
 // all (a compiler attribution: a row fact, never an evidence dispatch).
@@ -6859,6 +6915,7 @@ fn reach_stmt_defers(node) = match graph_node_body(node) {
   NTypeAnn(_) => false,
   NName(_) => false,
   NRow(_) => false,
+  NParam(_) => false,
 }
 
 // The seed — the always-live set constructs in source order. A module value

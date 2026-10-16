@@ -616,7 +616,7 @@ fn ref_role(h) with !Mutate = match graph_node_body(h) {
   NName(RowEffect(_)) | NRow(_) => "row",
   NName(ArmOp(_)) => "arm",
   NExpr(IndexExpr(_, _)) | NExpr(BinOpExpr(_, _, _)) | NExpr(MakeStringExpr(_)) => "call",
-  NExpr(_) | NStmt(_) | NHole(_) | NModule(_) | NLink(_) => if callee_of_parent(h) { "call" } else { "value" },
+  NExpr(_) | NStmt(_) | NHole(_) | NModule(_) | NLink(_) | NParam(_) => if callee_of_parent(h) { "call" } else { "value" },
 }
 
 // Whether the node is the callee of the call that holds it — the parent edge
@@ -907,7 +907,7 @@ fn ur_value_let(entry) = match entry {
       | RowAliasStmt(_, _)
       | ExprStmt(_) => [],
     },
-    NExpr(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) => [],
+    NExpr(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => [],
   },
 }
 
@@ -947,7 +947,7 @@ fn refine_root(entry) = match entry {
       | RowAliasStmt(_, _)
       | ExprStmt(_) => [],
     },
-    NExpr(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) => [],
+    NExpr(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => [],
   },
 }
 
@@ -999,7 +999,7 @@ fn ur_decl_edges(d, reached) = match graph_node_body(d) {
 
 fn ur_defaults(params) = flat_map(
   {
-    p => match param_default(p) {
+    p => match param_dflt(p) {
       Some(n) => [n],
       None => [],
     },
@@ -1229,7 +1229,8 @@ fn performs_at(r) with !Mutate = match graph_node_body(r) {
   | NModule(_)
   | NLink(_)
   | NTypeAnn(_)
-  | NRow(_) => true,
+  | NRow(_)
+  | NParam(_) => true,
 }
 
 fn op_name(op) with Pure = match op {
@@ -1449,7 +1450,16 @@ fn census_note(shape, h) with !Mutate = match shape {
 // (`catch_all_arm`, src/infer.mn); any other node answers nothing.
 fn catch_all_of(body) with !Mutate = match body {
   NExpr(MatchExpr(scrut, arms)) => catch_all_arm(scrut, arms),
-  NExpr(_) | NStmt(_) | NHole(_) | NPat(_) | NTypeAnn(_) | NModule(_) | NLink(_) | NName(_) | NRow(_) => None,
+  NExpr(_)
+  | NStmt(_)
+  | NHole(_)
+  | NPat(_)
+  | NTypeAnn(_)
+  | NModule(_)
+  | NLink(_)
+  | NName(_)
+  | NRow(_)
+  | NParam(_) => None,
 }
 
 // Every match the census convicts, as its handle — the node `mentl tighten`
@@ -1681,7 +1691,7 @@ fn census_matches(shape: CensusShape, h, body: NodeBody) with !Mutate = match sh
     } else {
       false
     },
-    NStmt(FnStmt(_, params, _, _, _)) => adjacent_handle_params(params |> map(param_name)),
+    NStmt(FnStmt(_, params, _, _, _)) => adjacent_handle_params(params |> map(param_binder)),
     _ => false,
   },
   // Drift mode 1's shape (the eighth absorption): a record
@@ -1722,7 +1732,7 @@ fn census_matches(shape: CensusShape, h, body: NodeBody) with !Mutate = match sh
   // (leak-default-latent / sound-default-transport).
   CsDefaultParam => match body {
     NStmt(FnStmt(_, params, _, _, _)) => any(
-      (p) => match param_default(p) {
+      (p) => match param_dflt(p) {
         Some(_) => true,
         None => false,
       },
@@ -1740,7 +1750,7 @@ fn census_matches(shape: CensusShape, h, body: NodeBody) with !Mutate = match sh
   // signed clauses are FnStmt's own field, and the call is the weave's
   // tree edge walked to the callee's VarRef.
   CsDeclaredRowHof => match body {
-    NStmt(FnStmt(_, params, _, effs, fbody)) => if len(effs) == 0 { false } else { subtree_calls_param(fbody, map(param_name, params), 64) },
+    NStmt(FnStmt(_, params, _, effs, fbody)) => if len(effs) == 0 { false } else { subtree_calls_param(fbody, map(param_binder, params), 64) },
     _ => false,
   },
   // The declared clauses are `FnStmt`'s own field — the row is read where
@@ -2128,7 +2138,7 @@ fn wildcard_body_fabricates(b) = match graph_node_body(b) {
 // (a structural fold's self-call recurses on CHILDREN, never on an
 // incremented counter, so derived-fold-shaped recursion never fires).
 fn recursion_shape_of(fn_handle) = match graph_node_body(fn_handle) {
-  NStmt(FnStmt(name, params, _, _, body)) => self_call_increments(body, name, params |> map(param_name)),
+  NStmt(FnStmt(name, params, _, _, body)) => self_call_increments(body, name, params |> map(param_binder)),
   _ => false,
 }
 
@@ -2299,7 +2309,7 @@ fn lambda_is_written_as_a_mint(params, lbody) = match arm_list_of(params, lbody)
 fn lambda_is_eta(params, lbody) = match graph_node_body(lbody) {
   NExpr(CallExpr(callee, args)) => match graph_node_body(callee) {
     NExpr(VarRef(g)) => {
-      let pnames = params |> map(param_name)
+      let pnames = params |> map(param_binder)
       !string_in_list(pnames, g) && args_mirror_params(args, pnames)
     },
     _ => false,
@@ -2392,8 +2402,8 @@ fn fn_decl_of(h) = match graph_node_body(h) {
 }
 
 fn head_failures(decl) = match decl {
-  (name, params, retty, effs, body) => {
-    let authored = render_fn_head(name, params, graph_node_body(retty), effs, body)
+  (name, params, retty, effs, _) => {
+    let authored = render_fn_head(name, params, graph_node_body(retty), effs)
     let eye = match env_lookup(name) {
       Some((sch, _, _)) => match chase_type_deep(judgment_ty(sch)) {
         TFun(ps, ret, row) => "fn {show_head(name, ps, ret, row)} =",
@@ -2408,8 +2418,8 @@ fn head_failures(decl) = match decl {
 // The head parsed as the declaration it spells, then rendered by the
 // formatter: empty when it comes back as itself.
 fn round_trip_failure(face: String, head: String) = match sole_decl_body("{head} 0" |> lex |> parse_program ~> diag_quiet) {
-  Some(NStmt(FnStmt(n, ps, r, es, b))) => {
-    let back = render_fn_head(n, ps, graph_node_body(r), es, b)
+  Some(NStmt(FnStmt(n, ps, r, es, _))) => {
+    let back = render_fn_head(n, ps, graph_node_body(r), es)
     if back == head { [] } else { ["{face}: {head}  ⇢  {back}"] }
   },
   _ => ["{face}: {head}  ⇢  does not parse as one declaration"],
@@ -2442,7 +2452,7 @@ fn op_badge(op) with !Mutate = match op {
 }
 
 fn effect_params_text(params) with !Mutate =
-  if len(params) == 0 { "" } else { "({join(", ", map(render_tparam, params))})" ~> var_names }
+  if len(params) == 0 { "" } else { "({join(", ", map(render_one_param, params))})" ~> var_names }
 
 fn value_where(name: String, scope: String) with !Mutate = match env_lookup(name) {
   None => binder_badges(name, scope),

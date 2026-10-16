@@ -1466,20 +1466,24 @@ fn synthesize_ctor_call_node(name, scheme, decl) with !Mutate = match judgment_t
   _ => linked_ref(name, decl),
 }
 
-// params arrive as the scheme's own [TParam] — LambdaExpr's exact
-// carrier; rebuilding name lists from them was the mismatch the
-// converged judge caught (the param-product law reaching synth).
+// params arrive as the scheme's own [TParam]; each becomes a parameter node
+// of the proposed lambda binding the NAME the hole's type gives it, or a
+// wildcard where the type names none, and carrying no annotation: the node
+// is the parameter's cell, which the judgment binds when the skeleton meets
+// the hole, and the render stays bare — a lambda parameter takes no
+// annotation on the page, so a skeleton carrying the target's ground types
+// rendered `(_: String, _: Bool) => ??`, which no parse reads (measured at
+// the proposal battery's birth, C7).
 fn synthesize_lambda_node(params, ret) with !Mutate =
-  synth_node(LambdaExpr(map(proposed_param, params), synth_hole_node()))
+  synth_node(LambdaExpr(params |> enumerate |> map(proposed_param), synth_hole_node()))
 
-// A proposed lambda's parameter carries the NAME the hole's type gives it
-// and a fresh cell for its type: the judgment binds the cell when the
-// skeleton meets the hole, and the render stays bare — a lambda parameter
-// takes no annotation on the page, so a skeleton carrying the target's
-// ground types rendered `(_: String, _: Bool) => ??`, which no parse reads
-// (measured at the proposal battery's birth, C7).
-fn proposed_param(p) =
-  mk_param(param_name(p), TVar(graph_fresh_ty(Inferred("a proposed lambda's parameter"))))
+fn proposed_param(ip) with !Mutate = match ip {
+  (i, p) => {
+    let name = param_name(p)
+    let pat = npat(if param_is_unnamed(name) { PWild } else { PVar(name) }, span_zero())
+    mint_param(pat, None, None, Unmarked, span_zero(), "lambda", i)
+  },
+}
 
 // ─── Synthesis primitives — structured Node construction ───────────
 //

@@ -1,0 +1,6 @@
+// declared 4:15 at 4:10
+// A function's parameter is declared where it is written: the edge from a
+// use of `n` reaches the `n` in the head, never a cell with no position.
+fn twice(n) = n + n
+
+fn main() = twice(21) - 42

@@ -1,0 +1,7 @@
+// declared 5:20 at 5:14
+// A lambda's parameter is declared where it is written, as a function's is:
+// the edge from the body's `k` reaches the `k` in the binder.
+fn main() = {
+  let inc = (k) => k + 1
+  inc(41) - 42
+}

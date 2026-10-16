@@ -164,7 +164,7 @@ fn spine_put_module(ref spine, h, m) = {
 fn spine_module_name(ref spine, spine_open, m) = match spine_body_at(spine, spine_open, m) {
   NModule(mm) => mm.path,
   NLink(_) => "<link>",
-  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NTypeAnn(_) | NName(_) | NRow(_) => {
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => {
     out_of_range()
     ""
   },
@@ -290,7 +290,15 @@ fn binder_read_by(r) = match graph_ref_decl(r) {
 
 fn is_pattern(h) = match graph_node_body(h) {
   NPat(_) => true,
-  NExpr(_) | NStmt(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) => false,
+  NExpr(_)
+  | NStmt(_)
+  | NHole(_)
+  | NModule(_)
+  | NLink(_)
+  | NTypeAnn(_)
+  | NName(_)
+  | NRow(_)
+  | NParam(_) => false,
 }
 
 fn spine_parent_at(spine, spine_open, h) = if spine_band(h) >= spine_open {
@@ -1969,7 +1977,8 @@ fn expr_child_handles(e) = match e {
   BinOpExpr(_, l, r) => [l, r],
   UnaryOpExpr(_, n) => [n],
   CallExpr(f, args) => [f] ++ args,
-  LambdaExpr(_, body) => [body],
+  // a lambda's parameters are nodes of its own, then its body
+  LambdaExpr(params, body) => params ++ [body],
   IfExpr(c, t, f) => [c, t, f],
   // order-free: membership test only
   BlockExpr(stmts, fin) => [fin] ++ stmts,
@@ -2030,15 +2039,16 @@ fn stmt_child_handles(s) = match s {
   // parent edges through this projection, and an arm's performs resolve
   // outside its own install.
   LetStmt(pat, value, ann) => if ann == value { [pat, value] } else { [pat, value, ann] },
-  FnStmt(_name, _params, _ret, _effs, body) => [body],
+  // a declaration's parameters are nodes of its own, before its body
+  FnStmt(_name, params, _ret, _effs, body) => params ++ [body],
   ExprStmt(e) => [e],
-  HandlerDeclStmt(_hname, _ename, _config, states, arms, _effs) => map(record_field_handle, states) ++ map(arm_body_handle, arms),
+  HandlerDeclStmt(_hname, _ename, config, states, arms, _effs) => config ++ map(record_field_handle, states) ++ map(arm_body_handle, arms),
   HandlerChainStmt(_, chain) => [chain],
   // A type's variants and an effect's ops are its parts: each is a node the
   // parse minted, its parent the declaration that holds it, so an op reaches
   // its effect and a variant its type by the edge, never by a name.
   TypeDefStmt(_, variants) => map(variant_node, variants),
-  EffectDeclStmt(_, _, ops) => map(op_node, ops),
+  EffectDeclStmt(_, params, ops) => params ++ map(op_node, ops),
   ImportStmt(_) => [],
   // A refinement's predicate is an expression over `self`, its child.
   RefineStmt(_, _, pred) => [pred],
@@ -2116,6 +2126,8 @@ fn body_child_handles(body) = match body {
   NTypeAnn(ty) => written_cells(ty),
   NName(_) => [],
   NRow(terms) => written_row_nodes(terms),
+  // a parameter's pattern, then the annotation and the default it carries
+  NParam(p) => [p.pat] ++ option_nodes(p.ann) ++ option_nodes(p.dflt),
 }
 
 // A function type's row cells: every open edge of its row, the written
@@ -2451,7 +2463,7 @@ fn module_cells() with !Mutate = link_modules() |> fold([], module_cell_of)
 // A member of the link's cell. A link holds modules alone.
 fn module_cell_of(acc, h) with !Mutate = match graph_node_body(h) {
   NModule(m) => push(acc, (h, m.path, m.span, m.decls)),
-  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) => out_of_range(),
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => out_of_range(),
 }
 
 // The program the graph holds, read off its link: its modules, the module a
@@ -2476,14 +2488,14 @@ fn link_prelude() with !Mutate = match graph_link() {
 // link.
 fn link_of(l) with !Mutate = match graph_node_body(l) {
   NLink(k) => k,
-  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NTypeAnn(_) | NName(_) | NRow(_) => out_of_range(),
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => out_of_range(),
 }
 
 // A module's own record at its handle; an import edge and a member of the
 // link reach a module.
 fn module_of(mh) with !Mutate = match graph_node_body(mh) {
   NModule(m) => m,
-  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) => out_of_range(),
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => out_of_range(),
 }
 
 // The program's declarations, every module's in the link's order: what a
