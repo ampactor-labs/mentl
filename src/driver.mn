@@ -702,9 +702,7 @@ fn edit_of(e) = match e {
   ModuleEdit(r) => r,
 }
 
-fn edit_with(e, segments) = match e {
-  ModuleEdit(r) => ModuleEdit{imports: r.imports, node: r.node, old: r.old, segments, spans: r.spans, text: r.text},
-}
+fn edit_with(e, segments) = ModuleEdit({...edit_of(e), segments})
 
 fn edit_node(e) = edit_of(e).node
 

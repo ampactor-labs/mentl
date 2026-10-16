@@ -2717,11 +2717,11 @@ type RowEnd = RowEndClosed | RowEndFree(Int)
 
 fn record_row_full(fields, v) = match graph_chase(v) {
   GNode(kind, _) => match kind {
-    NRecordRowBound(residual, RowClosed) => (fields ++ residual, RowEndClosed),
-    NRecordRowBound(residual, RowContinues(next)) => record_row_full(fields ++ residual, next),
+    NRecordRowBound(residual, RowClosed) => (record_row_join(fields, residual), RowEndClosed),
+    NRecordRowBound(residual, RowContinues(next)) => record_row_full(record_row_join(fields, residual), next),
     NBound(t) => match t {
-      TRecordOpen(more, next) => record_row_full(fields ++ more, next),
-      TRecord(more) => (fields ++ more, RowEndClosed),
+      TRecordOpen(more, next) => record_row_full(record_row_join(fields, more), next),
+      TRecord(more) => (record_row_join(fields, more), RowEndClosed),
       // A row cell bound to any other type is ill-sorted; its rest is not
       // known, and a reader that needs it floors.
       _ => (fields, RowEndFree(graph_chase_handle(v))),
@@ -2789,7 +2789,7 @@ fn spec_subst_pairs(t, pairs) = match t {
       match end {
         RowEndFree(t) => match spec_pairs_find(pairs, t) {
           Some(residual) => match residual {
-            TRecord(rfs) => TRecord(field_canonicalize(learned ++ rfs)),
+            TRecord(rfs) => TRecord(field_canonicalize(record_row_join(learned, rfs))),
             // only lower.mn's spec_pairs_key_rest pairs a row terminal, always as a closed record
             other => other,
           },

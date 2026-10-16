@@ -1,0 +1,11 @@
+// expect: 5
+// A WRITTEN FIELD SHADOWS THE BASE'S, WHATEVER ITS TYPE. The result's row is
+// the text field b in front of the base's row, which holds an Int field b of
+// its own; a row read to its end keeps the first of each name, so s.b is the
+// text and the record holds one b.
+fn relabel(r) = {...r, b: "four"}
+
+fn main() = {
+  let s = relabel({a: 1, b: 2})
+  s.a + len(s.b)
+}

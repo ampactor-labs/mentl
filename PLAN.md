@@ -459,9 +459,6 @@ landing that closes it. A gate that did not run is UNKNOWN, never green.
   their own lines into the module's node, the declarations whose judgment
   read them are judged again with them, and every other statement keeps its
   nodes and its judgment. A proposal's accept is not (§11.2).
-- **An update forgets the fields it does not write** where its record's
-  fields are not known as it is judged: `fn with_b(r, b) = {...r, b}` types
-  its result as `{b}` alone, and a caller reading `s.a` refuses (§11.1).
 - **Names are still read where an edge exists** (§11.2, §11.3, §11.18): the
   lowered program's identity is its symbol, so the emit's reach walks key their
   units by it and a resume-bound function is found by its spelling; the emit
@@ -679,15 +676,6 @@ a provenance diff, a search over live shared cells.
 
 **THE STANDING CURSOR** — the order work runs in:
 
-1. **An update keeps the fields it does not write**
-   (`Hβ.infer.record-update-keeps-the-row`). `{...r, b}` is typed as the
-   base's row with `b` written: the base's fields known where it is judged,
-   each written one replaced, and the base's own tail for the rest, so a
-   function updating a record it is handed returns every field the caller
-   passed in. Where the base's fields are not known, a written field is
-   required of it, which an update over an open row can only overwrite. The
-   driver's nominal `ModuleEdit`, rebuilt field by field (`edit_with`), is
-   the shape that stood in for the update and becomes one.
 2. **Every position is a cell — #108** (`Hβ.graph.positions-are-cells`). The
    write the structure cut was for that is not yet built: accepting a
    proposal rewrites the hole's node in place, the position-keyed accept

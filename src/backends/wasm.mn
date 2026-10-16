@@ -668,6 +668,12 @@ fn settle_node(site: String, expr) = match expr {
   LFieldLoad(h, rec, sel) => if field_sel_offset(rec, sel) < 0 {
     report_at(h, EFieldOffsetUnprovable(field_offset_unprovable_why(rec, sel), graph_span_of(h)))
   },
+  // an update needs both layouts whole: the record it builds and the one it
+  // copies from
+  LRecordUpdate(h, base, _) => match update_layouts(h, base) {
+    Some(_) => (),
+    None => report_at(h, EFieldOffsetUnprovable(update_unprovable_why(h, base), graph_span_of(h))),
+  },
   LShow(h, x) => settle_shape(site, h, "a show", x),
   LHash(h, x) => settle_shape(site, h, "a hash", x),
   // the exit moves the value by its whole structure, which a variable
@@ -1377,6 +1383,11 @@ fn alloc_walk(unit, e) = match e {
     let below = alloc_walk_list(unit, fs, 0)
     built || below
   },
+  LRecordUpdate(h, b, ws) => {
+    let built = alloc_at(unit, h, AsRecord)
+    let below = alloc_walk_list(unit, update_parts(b, ws), 0)
+    built || below
+  },
   LMakeVariant(h, _, fs) => {
     let built = len(fs) > 0 && alloc_at(unit, h, AsVariant)
     let below = alloc_walk_list(unit, fs, 0)
@@ -1659,13 +1670,10 @@ fn field_sel_offset(ref rec, sel) = match sel {
 }
 
 // A field load's WIDTH: its slot's in the receiver's layout, from the same
-// fold as its offset — never the width of the node that asks. A record
-// update's copy is a field load under the update's own handle, a whole
-// record, so reading the asker made every copied field a word: `{...r, b: 9}`
-// over `{a: 1.5, b: 7}` copied half of `a` and the construction placed `b`
-// where the load of `s.b` did not look (2026-09-28). Where the receiver's
-// layout is not whole the offset floors, and the width falls to the asker's
-// type, which the floor's locals still declare at.
+// fold as its offset — never the width of the node that asks, which may be a
+// whole record rather than the field. Where the receiver's layout is not
+// whole the offset floors, and the width falls to the asker's type, which
+// the floor's locals still declare at.
 fn field_load_repr(h, rec, sel) = match field_sel_slot_ty(rec, sel) {
   Some(t) => slot_repr(t),
   None => repr_of(lookup_ty(h)),
@@ -3101,6 +3109,7 @@ fn walk_lemit_expr(expr) = match expr {
   LSimdLanes(_, lanes) => walk_lemit_list(lanes),
   LFanout(_, lex, _, forms) => walk_lemit_expr(fanout_form(lex, forms)),
   LMakeRecord(_, fs) => walk_lemit_list(fs),
+  LRecordUpdate(_, b, ws) => walk_lemit_list(update_parts(b, ws)),
   LMakeVariant(_, _, fs) => walk_lemit_list(fs),
   LMatch(_, s, arms) => {
     walk_lemit_expr(s)
@@ -4497,6 +4506,7 @@ fn collect_call_vectors_expr(expr, acc) = match expr {
   LSimdLanes(_h, lanes) => collect_call_vectors_list(lanes, acc),
   LFanout(_h, lex, _, forms) => collect_call_vectors_expr(fanout_form(lex, forms), acc),
   LMakeRecord(_h, fs) => collect_call_vectors_list(fs, acc),
+  LRecordUpdate(_h, b, ws) => collect_call_vectors_list(update_parts(b, ws), acc),
   LMakeVariant(_h, _t, fs) => collect_call_vectors_list(fs, acc),
   LMatch(_h, s, arms) => collect_call_vectors_arms(arms, collect_call_vectors_expr(s, acc)),
   LHandleWith(_h, b, hn, _hn2, inits, _arms) => collect_call_vectors_expr(b, collect_call_vectors_expr(hn, collect_call_vectors_list(inits, acc))),
@@ -5766,6 +5776,7 @@ fn collect_fn_emit_records_expr(expr) = match expr {
   LSimdLanes(_h, lanes) => collect_fn_emit_records(lanes),
   LFanout(_h, lex, _, forms) => collect_fn_emit_records_expr(fanout_form(lex, forms)),
   LMakeRecord(_h, fs) => collect_fn_emit_records(fs),
+  LRecordUpdate(_h, b, ws) => collect_fn_emit_records(update_parts(b, ws)),
   LMakeVariant(_h, _t, fs) => collect_fn_emit_records(fs),
   LMatch(_h, s, arms) => collect_fn_emit_records_expr(s) ++ fn_emit_records_arms(arms, 0),
   LResumeK(_h, k, v) => collect_fn_emit_records_expr(k) ++ collect_fn_emit_records_expr(v),
@@ -5962,6 +5973,7 @@ fn walk_locals_expr(expr, acc) = match expr {
   // running vector. No heap local (the value is pure stack v128, not a pointer).
   LSimdLanes(h, lanes) => walk_locals_list(lanes, if len(lanes) > 0 { ["simd_{int_to_str(h)} v128"] ++ acc } else { acc }),
   LMakeRecord(h, fs) => walk_locals_list(fs, ["record_{int_to_str(h)} i32"] ++ acc),
+  LRecordUpdate(h, b, ws) => walk_locals_list(update_parts(b, ws), ["record_{int_to_str(h)} i32"] ++ acc),
   LMakeVariant(h, _t, fs) => walk_locals_list(fs, if len(fs) > 0 { ["variant_{int_to_str(h)} i32"] ++ acc } else { acc }),
   LMatch(_h, s, arms) => {
     // The root's scratch at the scrutinee's repr — the word scratch is every
@@ -7519,6 +7531,7 @@ fn emit_expr(expr) = match expr {
     wat_emit(local_name)
     wat_emit(")\n")
   },
+  LRecordUpdate(h, base, written) => emit_record_update(h, base, written),
   LMakeVariant(h, tag_id, fields) => {
     // Per-handle scratch `$variant_<h>` avoids shared-$variant_tmp
     // clobber: for nested constructors like `LConst(handle, LInt(999))`,
@@ -8699,6 +8712,7 @@ fn collect_fold_tys_expr(expr, acc: {cmp: [Ty], eq: [Ty], evac: [Ty], hash: [Ty]
   LSimdLanes(_h, lanes) => collect_fold_tys_list(lanes, acc),
   LFanout(_h, lex, _, forms) => collect_fold_tys_expr(fanout_form(lex, forms), acc),
   LMakeRecord(_h, fs) => collect_fold_tys_list(fs, acc),
+  LRecordUpdate(_h, b, ws) => collect_fold_tys_list(update_parts(b, ws), acc),
   LMakeVariant(_h, _t, fs) => collect_fold_tys_list(fs, acc),
   LMatch(_h, s, arms) => collect_fold_tys_arms(arms, collect_fold_tys_expr(s, acc)),
   LHandleWith(_h, b, hn, _hn2, inits, _arms) => collect_fold_tys_expr(b, collect_fold_tys_expr(hn, collect_fold_tys_list(inits, acc))),
@@ -10560,9 +10574,7 @@ fn variant_payload_offset(ptys, target, i, off) = if i >= len(ptys) {
 // i32.store at 4*i (byte-identical to the pre-gradient form, Law 7).
 // Carried-Truth: construction reads the SAME offset+width the load side reads
 // — never a flat 4*i the load re-derives as f64. The field repr is the width
-// the value is emitted at (`tail_expr_repr`, the one decider): a record
-// update's copied field is a load under the update's own handle, and reading
-// that handle stored every copy as a word.
+// the value is emitted at (`tail_expr_repr`, the one decider).
 fn emit_field_stores_acc(fields, i, n, off, local_name) = if i >= n {
   ()
 } else {
@@ -11190,6 +11202,49 @@ fn record_size_step(off, f) = match f {
   (_, t) => {
     let r = slot_repr(t)
     align_for(off, r) + repr_width(r)
+  },
+}
+
+// An update builds the record its type spells under the bracket the body is
+// emitted in, so a copy of a generic function builds its own caller's shape:
+// each written field from its value, every other field copied from the base
+// at the base's own offset, each at the width its type gives it. The settle
+// point refused a layout that is not whole, so the floor runs nowhere.
+fn emit_record_update(h, base, written) = match update_layouts(h, base) {
+  Some((full, from)) => {
+    let local_name = "record_{int_to_str(h)}"
+    emit_alloc(record_byte_size(full), local_name)
+    each(emit_update_field(full, from, base, written, local_name, ??), full)
+    wat_emit("    (local.get ${local_name})\n")
+  },
+  None => wat_emit("    (unreachable)  ;; field offset unprovable: {update_unprovable_why(h, base)}\n"),
+}
+
+// The two layouts an update reads, each whole under the active bracket: the
+// record it builds and the record it copies from.
+fn update_layouts(h, base) = match record_full_fields(lookup_ty(h)) {
+  Some(full) => match record_full_fields(lookup_ty(lexpr_handle(base))) {
+    Some(from) => Some((full, from)),
+    None => None,
+  },
+  None => None,
+}
+
+fn update_unprovable_why(h, base) =
+  "record update to {show_type(lookup_ty(h))} from {show_type(lookup_ty(lexpr_handle(base)))}"
+
+fn emit_update_field(full, from, base, written, local_name: String, f) = match f {
+  (fname, fty) => {
+    let r = slot_repr(fty)
+    wat_emit("    (local.get ${local_name})\n")
+    match find(field_named(fname, ??), written) {
+      Some((_, v)) => emit_expr(v),
+      None => {
+        emit_expr(base)
+        wat_emit("    ({repr_load_op(r)} offset={int_to_str(field_byte_offset(from, fname, 0, len(from)))})\n")
+      },
+    }
+    wat_emit("    ({repr_store_op(r)} offset={int_to_str(field_byte_offset(full, fname, 0, len(full)))})\n")
   },
 }
 

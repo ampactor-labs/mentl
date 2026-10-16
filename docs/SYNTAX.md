@@ -1275,7 +1275,9 @@ let older = {...user, age: user.age + 1}
 let tagged = {...event, timestamp: now(), processed: true}
 ```
 
-`{...existing, field: new_value, ...}` creates a NEW record by copying `existing`'s fields and overwriting/adding the listed fields. Non-destructive; original record unchanged (ownership preserved). Field lists must be type-compatible with the source shape.
+`{...existing, field: new_value, ...}` creates a NEW record by copying `existing`'s fields and overwriting/adding the listed fields. Non-destructive; original record unchanged (ownership preserved).
+
+**An update keeps every field it does not write** (real, 2026-10-16). Its type is the written fields in front of the base's own row, so a field the base holds under a written name is shadowed — the record holds one field of that name, the written one, at the written value's type — and every other field of the base is kept, including those not known where the update is judged. So `fn with_b(r, b) = {...r, b}` hands back every field its caller passed in: over `{a: 1, b: 2, c: 3}` it overwrites `b`, over `{a: 4, c: 6, z: 1}` it adds one, and each record shape is built in its own copy of `with_b`, whose layout the emit reads under that copy (tests/micros/mn-record-update-keeps-the-row.mn, mn-record-update-shadows-the-field.mn, mn-record-update-in-a-stage.mn). Until then the update was typed by the base fields known where it was judged, so over an open row it was the written field alone, and every caller reading `s.a` refused.
 
 ---
 

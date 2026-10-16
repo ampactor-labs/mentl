@@ -381,6 +381,10 @@ type LowExpr
   | LFanout(Int, Option(Schedule), FanBranches, [(Schedule, LowExpr)])
   // handle, [field_value] sorted by field name
   | LMakeRecord(Int, [LowExpr])
+  // A record update: handle, the record it copies, and the fields it writes
+  // by name. Its layout is a type fact, read where it is emitted, so a copy
+  // of a generic function builds the record its own caller's shape spells.
+  | LRecordUpdate(Int, LowExpr, [(String, LowExpr)])
   // handle, tag_id, field exprs
   | LMakeVariant(Int, TagId, [LowExpr])
   | LMatch(Int, LowExpr, [(LowPat, LowExpr)])
@@ -674,6 +678,7 @@ fn lexpr_handle(e) with Pure = match e {
   LSimdLanes(h, _) => h,
   LFanout(h, _, _, _) => h,
   LMakeRecord(h, _) => h,
+  LRecordUpdate(h, _, _) => h,
   LMakeVariant(h, _, _) => h,
   LMatch(h, _, _) => h,
   LHandleWith(h, _, _, _, _, _) => h,
@@ -2567,13 +2572,6 @@ fn lower_expr_body(e, handle, span) = match e {
   // identity is the judgment's, and the head is a reference to the type,
   // never a value the record holds.
   NamedRecordExpr(head, fields) => LMakeRecord(handle, lower_record_field_values(fields)),
-  // {...base, f: v} — non-destructive update. The RESULT record's
-  // field set is PROVEN by infer (base's fields ∪ overrides), read
-  // live via lookup_ty(handle); each result field is either an
-  // override value or a field-load COPIED from base at its proven
-  // offset — never re-derived, never a runtime field-copy loop. The
-  // base is evaluated once into a temp local (LLet) and field-loaded
-  // N times (LLocal) — the share the spread semantics demand.
   RecordUpdateExpr(base, overrides) => lower_record_update(handle, base, overrides),
   LambdaExpr(params, body_node) => {
     // DESIGN Ch 1: lambdas close over their free variables. Each
@@ -3898,7 +3896,7 @@ fn record_full_fields(ty) = match ty {
     (all, end) => match end {
       RowEndClosed => Some(sort_record_type_fields(all)),
       RowEndFree(t) => match lookup_ty(t) {
-        TRecord(residual) => Some(sort_record_type_fields(all ++ residual)),
+        TRecord(residual) => Some(sort_record_type_fields(record_row_join(all, residual))),
         _ => None,
       },
     },
@@ -5704,6 +5702,7 @@ fn k2_floor_guard(e, terminus) = match e {
   // takes the walk the site takes.
   LFanout(h, lex, br, forms) => LFanout(h, lex, br, map(k2_floor_form(terminus), forms)),
   LMakeRecord(h, fs) => LMakeRecord(h, k2_floor_list(fs)),
+  LRecordUpdate(h, b, ws) => LRecordUpdate(h, k2_floor_guard(b, false), map({ (n, v) => (n, k2_floor_guard(v, false)) }, ws)),
   LMakeVariant(h, t, fs) => LMakeVariant(h, t, k2_floor_list(fs)),
   LFeedback(h, d, home, b, s) => LFeedback(h, d, home, k2_floor_guard(b, false), k2_floor_guard(s, false)),
   LPerform(h, d, args) => {
@@ -6189,58 +6188,21 @@ fn lower_expr_list(nodes) = map(lower_expr, nodes)
 // layout directly, no per-field lookup.
 fn lower_record_field_values(flds) = map({ (_, value) => lower_expr(value) }, flds)
 
-// {...base, f: v} — lower a non-destructive record update. The result
-// record's field set is read LIVE from the inferred type at `handle`
-// (infer proved it = base's fields ∪ overrides); the base is bound once
-// to a temp local, then each result field is filled either from the
-// override expr (carried by name) or by copying the base's proven field
-// (LFieldLoad at base's offset). No runtime copy loop, no re-derivation —
-// the proof IS the layout (Carried-Truth at the record layer).
+// {...base, f: v} — a non-destructive update: the base evaluated once into a
+// local, then the update read off it. The written fields are carried by
+// name and nothing here reads a type: which fields the result holds, and
+// where each sits, is the update's type wherever it is emitted, so every
+// copy of a generic function builds the record its own caller's shape
+// spells.
 fn lower_record_update(handle, base, overrides) = {
-  let result_fields = record_fields_of_handle(handle)
   let tmp = "__upd_{int_to_str(handle)}"
-  let base_lo = lower_expr(base)
-  // The copy-load's receiver carries BASE's handle: the emit projects the
-  // offset from the receiver's live type, and base's layout is the one the
-  // copied field lives in (the result may ADD fields — two layouts).
-  let field_exprs = map(
-    {
-      (fname, _) => match find_override(overrides, fname) {
-        Some(v) => lower_expr(v),
-        None => LFieldLoad(handle, LLocal(base, tmp), FByName(fname)),
-      },
-    },
-    result_fields
+  LBlock(
+    handle,
+    [
+      LLet(handle, tmp, lower_expr(base)),
+      LRecordUpdate(handle, LLocal(base, tmp), map({ (name, v) => (name, lower_expr(v)) }, overrides))
+    ]
   )
-  LBlock(handle, [LLet(handle, tmp, base_lo), LMakeRecord(handle, field_exprs)])
-}
-
-// The sorted field list of the record type inferred at a handle —
-// TRecord / TRecordOpen carry it directly; a nominal TName chases the
-// env to its RecordSchemeKind (same shape resolve_field_offset reads).
-fn record_fields_of_handle(handle) = match lookup_ty(handle) {
-  TRecord(fields) => fields,
-  TRecordOpen(fields, v) => match record_row_full(fields, v) {
-    (all, _) => sort_record_type_fields(all),
-  },
-  TName(name, _) => match env_lookup(name) {
-    Some(entry) => match entry {
-      (_, _, kind) => match kind {
-        RecordSchemeKind(fields) => fields,
-        _ => [],
-      },
-    },
-    None => [],
-  },
-  _ => [],
-}
-
-// The byte offset of `field` within the record inferred at `base`'s
-// handle — base's own field layout (the source we copy from), distinct
-// from the result layout. Reuses resolve_field_offset's proven offset.
-fn find_override(overrides, target: String) = match overrides {
-  [] => None,
-  [(n, v), ...t] => if n == target { Some(v) } else { find_override(t, target) },
 }
 
 // The handle that types a read of a resolved local: the binder's own, or —
@@ -6727,6 +6689,7 @@ fn low_refs(acc, expr) = match expr {
   LMakeTuple(_h, elems) => low_refs_list(acc, elems),
   LSimdLanes(_h, lanes) => low_refs_list(acc, lanes),
   LMakeRecord(_h, fs) => low_refs_list(acc, fs),
+  LRecordUpdate(_h, b, ws) => low_refs_list(acc, update_parts(b, ws)),
   LMakeVariant(_h, _t, fs) => low_refs_list(acc, fs),
   LMatch(_h, s, arms) => fold(low_refs(acc, s), arm_body_refs, arms),
   LFeedback(_h, _d, _home, b, s) => low_refs(low_refs(acc, b), s),
@@ -6785,6 +6748,7 @@ fn frame_children(expr) = match expr {
   LSimdLanes(_, lanes) => lanes,
   LFanout(_, lex, _, forms) => [fanout_form(lex, forms)],
   LMakeRecord(_, fs) => fs,
+  LRecordUpdate(_, b, ws) => update_parts(b, ws),
   LMakeVariant(_, _, fs) => fs,
   LMatch(_, s, arms) => [s] ++ map(match_arm_body, arms),
   LResumeK(_, k, v) => [k, v],
@@ -6806,6 +6770,18 @@ fn frame_children(expr) = match expr {
 
 fn match_arm_body(arm) = match arm {
   (_, body) => body,
+}
+
+// What an update evaluates: the record it copies, then each value it writes.
+fn update_parts(base, written) = [base] ++ map({ (_, v) => v }, written)
+
+// An update rebuilt from its parts in `update_parts`' order, each written
+// value back under its field's name.
+fn update_from_parts(h, written, parts) =
+  LRecordUpdate(h, list_index(parts, 0), zip_with((w, v) => (field_of(w), v), written, rest(parts)))
+
+fn field_of(w) = match w {
+  (name, _) => name,
 }
 
 // The wide-twin seed, PER ENTRY: a constructed body any of whose sites
@@ -7416,7 +7392,7 @@ fn spec_resolve_build(t) = match t {
       match end {
         RowEndClosed => TRecord(field_canonicalize(learned)),
         RowEndFree(t) => match lookup_ty(t) {
-          TRecord(residual) => TRecord(field_canonicalize(learned ++ residual)),
+          TRecord(residual) => TRecord(field_canonicalize(record_row_join(learned, residual))),
           _ => mk_record_open(learned, t),
         },
       }

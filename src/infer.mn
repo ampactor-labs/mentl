@@ -4205,16 +4205,15 @@ fn infer_expr(ref handle) = {
       tag_alloc_join(handle, record_field_handles(fields))
     },
     NExpr(RecordUpdateExpr(base, overrides)) => {
-      // {...base, f: v} — non-destructive update. Infer the base (its
-      // record fields are the copy source) and each override value;
-      // the result type is the base's record fields with each override
-      // overwritten-or-added by name (the field set lower reads live).
-      // The base's proven record type IS the source of truth — the
-      // result is derived from it, never fabricated.
+      // {...base, f: v} — non-destructive update. The spread base MUST be
+      // record-shaped — the same open-record constraint field access
+      // erects, so `{...5, f: v}` is a type error at the spread, never a
+      // zero-field fabrication — and its row is what the result carries:
+      // the written fields in front, shadowing a field of the same name
+      // the base holds (`record_row_join`), and the base's own row behind them,
+      // so a base whose fields are not known where the update is judged
+      // keeps every one of them.
       infer_expr(base)
-      // The spread base MUST be record-shaped — the same open-record
-      // constraint field access erects, so `{...5, f: v}` is a type
-      // error at the spread, never a zero-field fabrication.
       let base_row_h = graph_fresh_row(Inferred("record update row"))
       let expected_h = mint(Inferred("record update base"))
       graph_bind(expected_h, mk_record_open([], base_row_h), Located(span, Inferred("expected record")))
@@ -4223,10 +4222,11 @@ fn infer_expr(ref handle) = {
       shape_demand(base, OuterShape)
       infer_record_field_values(overrides)
       inf_add_row_at(handle, construction_row())
-      let base_fields = record_fields_of_node(base)
-      let override_types = build_record_field_types(overrides)
-      let merged = merge_override_fields(base_fields, override_types)
-      graph_bind(handle, TRecord(merged), Located(span, Inferred("record update")))
+      graph_bind(
+        handle,
+        mk_record_open(build_record_field_types(overrides), base_row_h),
+        Located(span, Inferred("record update"))
+      )
       tag_alloc_join(handle, record_field_handles(overrides))
     },
     NExpr(NamedRecordExpr(head, fields)) => {
@@ -7871,37 +7871,6 @@ fn infer_record_field_values(fields) = if len(fields) == 0 {
 
 fn build_record_field_types(fields) = map({ (name, value) => (name, TVar(value)) }, fields)
 
-// The record field list inferred at a node — chase its handle to the
-// bound type and read its fields LIVE (TRecord / TRecordOpen carry them;
-// any other resolved type yields []). The record-update result derives
-// from this, so it reads the base's proven shape, never a copy.
-fn record_fields_of_node(node) = match graph_chase(node) {
-  GNode(NBound(ty), _) => match ty {
-    TRecord(fields) => fields,
-    TRecordOpen(fields, v) => match record_row_full(fields, v) {
-      (all, _) => all,
-    },
-    _ => [],
-  },
-  _ => [],
-}
-
-// Merge override field-types into a base field list: each override
-// overwrites the same-named base field or is added, and the result is
-// kept in the one canonical name-sorted layout via the parser's
-// record_field_insert (the same sort lower's offset arithmetic assumes
-// — the sort has ONE home, not re-derived here). The override wins by
-// name (last-writer over the base copy) — the spread semantics.
-fn merge_override_fields(base_fields, overrides) = fold(
-  base_fields,
-  (acc, ov) => match ov {
-    (oname, _) => record_field_insert(reject_field(acc, oname), ov),
-  },
-  overrides
-)
-
-fn reject_field(fields, target) = filter({ (n, _) => n != target }, fields)
-
 // H4.1 projection — pull the value handles out of a record-field list
 // for region-join lookup. Field names aren't needed for region
 // tracking; only the per-value handles matter.
@@ -11239,11 +11208,11 @@ fn subst_row_walk(fields, v, mapping) = {
   } else {
     match graph_chase(r) {
       GNode(kind, _) => match kind {
-        NRecordRowBound(residual, RowClosed) => (fields ++ residual, RowEndClosed),
-        NRecordRowBound(residual, RowContinues(next)) => subst_row_walk(fields ++ residual, next, mapping),
+        NRecordRowBound(residual, RowClosed) => (record_row_join(fields, residual), RowEndClosed),
+        NRecordRowBound(residual, RowContinues(next)) => subst_row_walk(record_row_join(fields, residual), next, mapping),
         NBound(t) => match t {
-          TRecordOpen(more, next) => subst_row_walk(fields ++ more, next, mapping),
-          TRecord(more) => (fields ++ more, RowEndClosed),
+          TRecordOpen(more, next) => subst_row_walk(record_row_join(fields, more), next, mapping),
+          TRecord(more) => (record_row_join(fields, more), RowEndClosed),
           _ => (fields, RowEndFree(r)),
         },
         NFree(_) => (fields, RowEndFree(r)),
