@@ -8085,7 +8085,8 @@ fn demands_install(ds: [TypeDemand], cell, span: ValidSpan) =
 fn demand_install(cell, d, span: ValidSpan) = match d {
   DemandNumber(g) => numeric_gate_install(cell, g, span),
   DemandShape(read) => shape_install(cell, read),
-  DemandLacks(_) | DemandCopy(_, _, _) => graph_demand_add(cell, d),
+  DemandLacks(_) => graph_demand_add(cell, d),
+  DemandCopy(_, _, _) => row_copy_carry(cell, d),
 }
 
 fn demand_shape(d) = match d {
@@ -8129,7 +8130,7 @@ fn relation_copy(mapping, pair) = match pair {
 }
 
 fn relation_copy_one(mapping, fresh, d) = match d {
-  DemandCopy(base, copy, names) => graph_demand_add(fresh, DemandCopy(mapped_end(mapping, base), mapped_end(mapping, copy), names)),
+  DemandCopy(base, copy, names) => row_copy_carry(fresh, DemandCopy(mapped_end(mapping, base), mapped_end(mapping, copy), names)),
   DemandNumber(_) | DemandShape(_) | DemandLacks(_) => (),
 }
 
@@ -8358,10 +8359,29 @@ fn demand_copy(d) = match d {
   DemandNumber(_) | DemandShape(_) | DemandLacks(_) => [],
 }
 
-// A row's free end carries a relation once.
+// A row's free end carries a relation once. Two spellings of one relation —
+// the ends chased to their roots and the written names equal — are one
+// entry, however many instantiations and aliases brought the second: an
+// instance's copy of a relation rides back onto the group's own rows when
+// the instance unifies with them, and compared by its raw handles it
+// multiplied there, thousands deep on a forty-function group.
 fn row_copy_carry(end, d) = {
   let r = graph_chase_handle(end)
-  if any({ have => have == d }, graph_demands_of(r)) { () } else { graph_demand_add(r, d) }
+  let canon = relation_canonical(d)
+  if any(relation_same(canon, ??), graph_demands_of(r)) { () } else { graph_demand_add(r, canon) }
+}
+
+fn relation_canonical(d) = match d {
+  DemandCopy(base, copy, names) => DemandCopy(graph_chase_handle(base), graph_chase_handle(copy), names),
+  DemandNumber(_) | DemandShape(_) | DemandLacks(_) => d,
+}
+
+fn relation_same(a, b) = match a {
+  DemandCopy(ab, ac, an) => match b {
+    DemandCopy(bb, bc, bn) => graph_chase_handle(ab) == graph_chase_handle(bb) && graph_chase_handle(ac) == graph_chase_handle(bc) && an == bn,
+    DemandNumber(_) | DemandShape(_) | DemandLacks(_) => false,
+  },
+  DemandNumber(_) | DemandShape(_) | DemandLacks(_) => a == b,
 }
 
 fn rows_in_step(d, span: ValidSpan, reason) = match d {
@@ -10508,9 +10528,13 @@ fn generalize_signature(handle) = {
 // A signature's quantified variables, with every row an update relates to
 // one of them: the relation is copied with the scheme, so its two ends are
 // freshened together, or a copy's end would still name the declaration's
-// own cell and every caller would write into it.
+// own cell and every caller would write into it. A row the signature never
+// reaches can still carry the signature's two ends together — `{...{...r,
+// a: 1}, b: 2}` relates the parameter's row to the result's through the
+// inner update's — so the closure is what an instance needs, never a
+// courtesy.
 fn generalize_pair(handle) = match generalize_signature(handle) {
-  (qs, ty) => if any(row_carries_copy, qs) { (rows_related_closure(qs, qs), ty) } else { (qs, ty) },
+  (qs, ty) => if any(row_carries_copy, qs) { (rows_related_closure(qs), ty) } else { (qs, ty) },
 }
 
 fn row_carries_copy(q) =
@@ -10521,11 +10545,29 @@ fn is_copy_demand(d) = match d {
   DemandNumber(_) | DemandShape(_) | DemandLacks(_) => false,
 }
 
-fn rows_related_closure(seen, todo) = match todo {
-  [] => seen,
-  [q, ...rest] => {
-    let ps = filter({ p => !any({ s => s == p }, seen) }, row_relatives(q))
-    rows_related_closure(seen ++ ps, rest ++ ps)
+// The closure is walked level by level, the rows seen so far a handle-keyed
+// set, so each row is claimed once in discovery order and the walk costs the
+// relations it follows: a membership scan over the rows seen, re-read for
+// every candidate, had grown with the closure and judged a forty-function
+// group threading one record for half a minute.
+fn rows_related_closure(qs) = rows_closure_levels(fold(wmap_new(256), row_seen, qs), qs, qs)
+
+fn row_seen(set, h) = wmap_add(set, h, 1)
+
+fn rows_closure_levels(set, acc, level) = if len(level) == 0 {
+  acc
+} else {
+  let fresh = filter(row_claim(set, ??), flat_map(row_relatives, level))
+  rows_closure_levels(set, acc ++ fresh, fresh)
+}
+
+// A row not yet seen is claimed as it is found, so a row two relatives name
+// enters the closure once.
+fn row_claim(set, h) = match wmap_get(set, h) {
+  Some(_) => false,
+  None => {
+    row_seen(set, h)
+    true
   },
 }
 
@@ -10934,14 +10976,21 @@ fn free_in_fields(fields) = fields |> map({ (_, ty) => free_in_ty(ty) }) |> flat
 // a monomorphic fn's row at every call site. chase_deep leaves the row
 // verbatim, so the freeness check happens here (the row mirror of how
 // chase_deep resolves bound TVars before free_in_ty collects the free ones).
-fn free_in_row(eff) = match eff {
-  // ONE triple walk: a parameterized effect carries its op-payload TYPE
-  // (Iterate(a)) on either field; the payload's free vars are the row's
-  // free vars, and a free TAIL root joins them — generalize quantifies,
-  // instantiate freshens (effect-polymorphism as HM over the row sort).
+// ONE triple walk: a parameterized effect carries its op-payload TYPE
+// (Iterate(a)) on either field; the payload's free vars are the row's
+// free vars, and a free TAIL root joins them — generalize quantifies,
+// instantiate freshens (effect-polymorphism as HM over the row sort). A
+// bound cell the chains reach is read once per walk: the chains of a
+// recursive group are a web whose cells many paths reach, and a walk that
+// descended at every path grew with the paths — an eighty-member group's
+// reference reached its co-members' cells along more paths than the image
+// could hold the leaves of.
+fn free_in_row(eff) = free_in_row_seen(eff, wmap_new(16))
+
+fn free_in_row_seen(eff, seen) = match eff {
   EfRow(p, a, t) => {
     let tail = match t {
-      EtOpen(vs) => free_in_edges(vs),
+      EtOpen(vs) => free_in_edges(vs, seen),
       _ => [],
     }
     free_in_eff_names(p) ++ free_in_eff_names(a) ++ tail
@@ -10954,22 +11003,33 @@ fn free_in_row(eff) = match eff {
 // collection must reach the same leaves: the inner row's payload vars
 // are this row's free vars (the trio law — free/occurs/subst agree
 // over rows, here through every edge's binding).
-fn free_in_edges(ref vs: [RowEdge]) = match vs {
+fn free_in_edges(ref vs: [RowEdge], seen) = match vs {
   [] => [],
   [e, ...rest] => {
     let r = graph_chase_handle(edge_cell(e))
     let here = if row_var_is_free(r) {
       [r]
+    } else if cell_seen(seen, r) {
+      []
     } else {
       match graph_chase(r) {
         GNode(kind, _) => match edge_row_of(kind) {
-          Some(inner) => free_in_row(inner),
+          Some(inner) => free_in_row_seen(inner, seen),
           None => [],
         },
       }
     }
     // The mask's payload vars are the row's too — subst freshens them.
-    free_in_eff_names(edge_mask(e)) ++ here ++ free_in_edges(rest)
+    free_in_eff_names(edge_mask(e)) ++ here ++ free_in_edges(rest, seen)
+  },
+}
+
+// Whether a cell was reached before on this walk, claiming it when not.
+fn cell_seen(seen, r) = match wmap_get(seen, r) {
+  Some(_) => true,
+  None => {
+    wmap_add(seen, r, 1)
+    false
   },
 }
 
@@ -11403,13 +11463,19 @@ fn subst_edges_build(ref vs: [RowEdge], acc, mapping) = match vs {
 // any live chase (the TVar arm's law, one sort over): a quantified edge
 // was free at the freeze, so a later binding is another caller's
 // post-freeze teaching and must freshen — the fresh edge joins the
-// residual. Only a MISS chases: pre-freeze-bound chains fold by
-// RECURSION through the shared assembly (descending exactly as deep as
-// free_in_row's collection — the trio law; the one-level form shared
+// residual. Only a MISS chases. A pre-freeze-bound chain that reaches a
+// quantified root — a free leaf or a payload the mapping names, read as
+// deep as free_in_row's collection (the trio law; the one-level form shared
 // two-deep chains, the measured window-8 first-binder race on
-// handle_to_smt's cell), and a genuinely unquantified free edge (either
-// sort — row_var_is_free's tolerance; the mono self-entry and two-phase
-// registration shapes) SHARES into the residual.
+// handle_to_smt's cell) — folds by RECURSION through the shared assembly,
+// so the root is freshened. A bound chain that reaches none is SHARED as
+// the edge it is, as an unquantified free edge is (either sort —
+// row_var_is_free's tolerance; the mono self-entry and two-phase
+// registration shapes): its content is the declaration's own cells, which
+// every reader resolves live, and a copy of it here is a snapshot the
+// group's later bindings never reach. Copied, a cycle's every reference
+// rebuilt the group's whole edge closure — an eighty-member group threading
+// one record spent its judgment in that fold and exhausted the image.
 fn subst_edge_build_into(acc, e, mapping) = match acc {
   (p, am, res, saw_all) => {
     let v = edge_cell(e)
@@ -11420,17 +11486,29 @@ fn subst_edge_build_into(acc, e, mapping) = match acc {
     } else {
       match graph_chase(v) {
         GNode(kind, _) => match edge_row_of(kind) {
-          Some(inner) => match edge_content_into(p, am, res, saw_all, m, subst_row_build(inner, mapping)) {
-            (p2, am2, r2, s2, _) => (p2, am2, r2, s2),
+          Some(inner) => if row_reaches_mapping(inner, mapping) {
+            match edge_content_into(p, am, res, saw_all, m, subst_row_build(inner, mapping)) {
+              (p2, am2, r2, s2, _) => (p2, am2, r2, s2),
+            }
+          } else {
+            subst_edge_share(p, am, res, saw_all, e, v, m)
           },
-          // An unmapped free edge SHARES: with an unmasked path it is
-          // itself, never a copy.
-          None => (p, am, tail_set_insert(res, if len(m) == 0 { e } else { row_edge(v, m) }), saw_all),
+          None => subst_edge_share(p, am, res, saw_all, e, v, m),
         },
       }
     }
   },
 }
+
+// A shared edge: with an unmasked path it is itself, never a copy.
+fn subst_edge_share(p, am, res, saw_all, e, v, m) =
+  (p, am, tail_set_insert(res, if len(m) == 0 { e } else { row_edge(v, m) }), saw_all)
+
+// Whether a row's chain reaches a root the mapping freshens: the free
+// leaves and payload variables free_in_row collects, each read at its root.
+fn row_reaches_mapping(inner, mapping) = any(root_mapped(mapping, ??), free_in_row(inner))
+
+fn root_mapped(mapping, r) = find_mapping(mapping, graph_chase_handle(r)) >= 0
 
 // Substitute parameterized payload types through an effect-name list
 // (the row mirror of subst_ty over the row's carried types).

@@ -775,21 +775,28 @@ and the artifact:
 **THE STANDING CURSOR** — the order work runs in once the frontier has moved:
 
 1. **The judgment costs what it answers** — the cost law (§5.O) paid where
-   it is measured red, four pieces in one arc, each RED first. (a) A record
-   update's relation is one edge (`Hβ.infer.update-relations-multiply`): an
-   update's relation to its base (`DemandCopy`) is copied with its rows at
-   every instantiation and carried across every alias, so a recursive group
-   whose members hand one record on through updates multiplies the relations
-   its rows carry — the flow walk's context written as `{...ctx, install: t,
-   self: d}` across its hundred-function group judged for over four minutes
-   on boot cb12aeea, and a candidate deduplicating the relations by their
-   chased rows ran out of memory in `row_copy_carry` after eighty seconds
-   (measured 2026-10-16). The relation becomes an edge between the two row
-   cells, written once at the update node and read by the cells' free ends;
-   instantiation copies a cell and keeps the edge. The walk builds its
-   context as a record literal (`ctx_at`) today, which carries no relation;
-   the update form is the one SYNTAX asks a person to write, so the judgment
-   owes it. (b) An arm's resume grade is the column §11.18 names, written
+   it is measured red, four pieces in one arc, each RED first. (a) A
+   recursive group is judged in time linear in the group
+   (`Hβ.infer.update-relations-multiply`). Landed 2026-10-19: a reference
+   to a co-member shares the edges of its row whose chains reach no
+   quantified root, where it copied the group's whole edge closure along
+   every path (`subst_edge_build_into`); the free-leaf walk reads each cell
+   once (`free_in_row`); an update's relation (`DemandCopy`) is written once
+   per pair of row cells, whatever handles spell it (`row_copy_carry`); the
+   rows a generalization closes over are walked once as a set
+   (`rows_related_closure`); and the lowering reads a declaration's
+   judgment once (`ls_judgment_memo`). Twenty, forty and eighty members
+   threading `{...ctx, install: n, self: i}` judge in 0.6, 0.7 and 0.9 s,
+   where boot 8b3c3374 judged forty for 33.5 s and exhausted the image on
+   eighty (tests/micros/mn-record-update-group.mn). What remains is the edge
+   itself: the relation is still a demand copied onto the fresh cells at
+   every instantiation (`relation_copy_one`) and read by chasing, where an
+   edge between the two row cells, kept by the copy of a cell, is the form
+   §11.18's schemes-as-edges names; a reference still substitutes a row's
+   edges (`subst_row_build`) where a correspondence edge would share them
+   all; and the flow walk builds its context as a record literal
+   (`ctx_at`), where the update form is the one SYNTAX asks a person to
+   write. (b) An arm's resume grade is the column §11.18 names, written
    once where the op edge is drawn, and the tail facts a column on the
    declaration the callee's edge reaches, where `arm_grade` re-runs the
    arm's fixpoint per reader and the tail facts are an smap keyed by spelling

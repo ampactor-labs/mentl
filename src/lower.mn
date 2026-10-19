@@ -6388,8 +6388,12 @@ fn lower_program(stmts) = {
 //
 // Records are stored with their fields sorted by name; Mentl source reads
 // them by `.field`, so the physical layout is the emit's business.
-handler lower_scope with frames = [], may_yield = false, yield_facts = smap_new(), unwinding = [], live = [], wide = smap_new(), walking = [], fn_symbols = wmap_new(64), symbol_counts = smap_new() {
+handler lower_scope with frames = [], may_yield = false, yield_facts = smap_new(), unwinding = [], live = [], wide = smap_new(), walking = [], fn_symbols = wmap_new(64), symbol_counts = smap_new(), judgments = wmap_new(1024) {
   ls_register_yield_facts(facts) => resume() with yield_facts = smap_build(facts),
+  ls_judgment_memo(d) => // A declaration's judgment is settled before the lowering reads it, so it
+  // is generalized once and read at every site that keys a twin by it.
+  resume(wmap_get(judgments, d)),
+  ls_judgment_note(d, j) => resume() with judgments = wmap_add(judgments, d, j),
   ls_effect_yield_fact(name) => resume(smap_get(yield_facts, name)),
   ls_wide_memo(name) => // A nominal type's wide-sequence fact, settled once per name by
   // `wide_reach_name` and read at every later site; the names whose
@@ -7708,25 +7712,40 @@ fn spec_site_pairs_resolved(c, rt) = match fn_judgment(c) {
 
 // A fn's settled judgment, read off its declaration — None for a callee
 // that is not a fn: ctor, record, effect-op and value schemes never
-// specialize, and a synthesized unit has no scheme.
+// specialize, and a synthesized unit has no scheme. The judgment is
+// generalized once per declaration (`ls_judgment_memo`): a live scheme's
+// quantifier is a projection the reader runs, and every call site of a
+// declaration keys its twin by it, so a forty-function group threading one
+// record through updates ran its relation closure once per site.
 fn fn_judgment(c) = match c {
-  DeclaredAt(d) => match graph_published(d) {
-    Some((scheme, _, kind)) => match kind {
-      FnScheme => Some(judgment_pair(scheme)),
-      ValueScheme
-      | ParamScheme(_)
-      | ConstructorScheme(_, _)
-      | EffectOpScheme(_, _, _, _)
-      | RecordSchemeKind(_)
-      | EffectDeclKind(_, _)
-      | HandlerKind(_, _, _, _, _)
-      | HandlerChainKind(_)
-      | RowAliasKind(_)
-      | TypeVariants(_) => None,
+  DeclaredAt(d) => match ls_judgment_memo(d) {
+    Some(j) => Some(j),
+    None => match fn_judgment_fresh(d) {
+      Some(j) => {
+        ls_judgment_note(d, j)
+        Some(j)
+      },
+      None => None,
     },
-    None => None,
   },
   Synthesized(_) => None,
+}
+
+fn fn_judgment_fresh(d) = match graph_published(d) {
+  Some((scheme, _, kind)) => match kind {
+    FnScheme => Some(judgment_pair(scheme)),
+    ValueScheme
+    | ParamScheme(_)
+    | ConstructorScheme(_, _)
+    | EffectOpScheme(_, _, _, _)
+    | RecordSchemeKind(_)
+    | EffectDeclKind(_, _)
+    | HandlerKind(_, _, _, _, _)
+    | HandlerChainKind(_)
+    | RowAliasKind(_)
+    | TypeVariants(_) => None,
+  },
+  None => None,
 }
 
 fn spec_site_pairs(h, c) = spec_site_pairs_resolved(c, spec_resolve(lookup_ty(h)))

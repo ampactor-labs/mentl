@@ -1,0 +1,91 @@
+// expect: 89
+// A record threaded through a recursive group by updates: every member hands
+// `{...ctx, install: n, self: i}` on to two others, so the group's rows all
+// relate through one update's copy, and every member's effect row reaches
+// its co-members' through the group's own edges. The judgment is linear in
+// the group: twenty, forty and eighty members judge in the same time within
+// noise, where boot 8b3c3374 judged forty for half a minute and exhausted
+// the image on eighty, rebuilding the group's edge closure at every
+// reference along every path.
+fn f0(ctx, n) = if n == 0 { ctx.a + ctx.install + ctx.self } else if n % 2 == 0 { f1({...ctx, install: n, self: 0}, n - 1) } else { f7({...ctx, install: n, self: 0}, n - 1) }
+fn f1(ctx, n) = if n == 0 { ctx.a + ctx.install + ctx.self } else if n % 2 == 0 { f2({...ctx, install: n, self: 1}, n - 1) } else { f8({...ctx, install: n, self: 1}, n - 1) }
+fn f2(ctx, n) = if n == 0 { ctx.a + ctx.install + ctx.self } else if n % 2 == 0 { f3({...ctx, install: n, self: 2}, n - 1) } else { f9({...ctx, install: n, self: 2}, n - 1) }
+fn f3(ctx, n) = if n == 0 { ctx.a + ctx.install + ctx.self } else if n % 2 == 0 { f4({...ctx, install: n, self: 3}, n - 1) } else { f10({...ctx, install: n, self: 3}, n - 1) }
+fn f4(ctx, n) = if n == 0 { ctx.a + ctx.install + ctx.self } else if n % 2 == 0 { f5({...ctx, install: n, self: 4}, n - 1) } else { f11({...ctx, install: n, self: 4}, n - 1) }
+fn f5(ctx, n) = if n == 0 { ctx.a + ctx.install + ctx.self } else if n % 2 == 0 { f6({...ctx, install: n, self: 5}, n - 1) } else { f12({...ctx, install: n, self: 5}, n - 1) }
+fn f6(ctx, n) = if n == 0 { ctx.a + ctx.install + ctx.self } else if n % 2 == 0 { f7({...ctx, install: n, self: 6}, n - 1) } else { f13({...ctx, install: n, self: 6}, n - 1) }
+fn f7(ctx, n) = if n == 0 { ctx.a + ctx.install + ctx.self } else if n % 2 == 0 { f8({...ctx, install: n, self: 7}, n - 1) } else { f14({...ctx, install: n, self: 7}, n - 1) }
+fn f8(ctx, n) = if n == 0 { ctx.a + ctx.install + ctx.self } else if n % 2 == 0 { f9({...ctx, install: n, self: 8}, n - 1) } else { f15({...ctx, install: n, self: 8}, n - 1) }
+fn f9(ctx, n) = if n == 0 { ctx.a + ctx.install + ctx.self } else if n % 2 == 0 { f10({...ctx, install: n, self: 9}, n - 1) } else { f16({...ctx, install: n, self: 9}, n - 1) }
+fn f10(ctx, n) = if n == 0 { ctx.a + ctx.install + ctx.self } else if n % 2 == 0 { f11({...ctx, install: n, self: 10}, n - 1) } else { f17({...ctx, install: n, self: 10}, n - 1) }
+fn f11(ctx, n) = if n == 0 { ctx.a + ctx.install + ctx.self } else if n % 2 == 0 { f12({...ctx, install: n, self: 11}, n - 1) } else { f18({...ctx, install: n, self: 11}, n - 1) }
+fn f12(ctx, n) = if n == 0 { ctx.a + ctx.install + ctx.self } else if n % 2 == 0 { f13({...ctx, install: n, self: 12}, n - 1) } else { f19({...ctx, install: n, self: 12}, n - 1) }
+fn f13(ctx, n) = if n == 0 { ctx.a + ctx.install + ctx.self } else if n % 2 == 0 { f14({...ctx, install: n, self: 13}, n - 1) } else { f20({...ctx, install: n, self: 13}, n - 1) }
+fn f14(ctx, n) = if n == 0 { ctx.a + ctx.install + ctx.self } else if n % 2 == 0 { f15({...ctx, install: n, self: 14}, n - 1) } else { f21({...ctx, install: n, self: 14}, n - 1) }
+fn f15(ctx, n) = if n == 0 { ctx.a + ctx.install + ctx.self } else if n % 2 == 0 { f16({...ctx, install: n, self: 15}, n - 1) } else { f22({...ctx, install: n, self: 15}, n - 1) }
+fn f16(ctx, n) = if n == 0 { ctx.a + ctx.install + ctx.self } else if n % 2 == 0 { f17({...ctx, install: n, self: 16}, n - 1) } else { f23({...ctx, install: n, self: 16}, n - 1) }
+fn f17(ctx, n) = if n == 0 { ctx.a + ctx.install + ctx.self } else if n % 2 == 0 { f18({...ctx, install: n, self: 17}, n - 1) } else { f24({...ctx, install: n, self: 17}, n - 1) }
+fn f18(ctx, n) = if n == 0 { ctx.a + ctx.install + ctx.self } else if n % 2 == 0 { f19({...ctx, install: n, self: 18}, n - 1) } else { f25({...ctx, install: n, self: 18}, n - 1) }
+fn f19(ctx, n) = if n == 0 { ctx.a + ctx.install + ctx.self } else if n % 2 == 0 { f20({...ctx, install: n, self: 19}, n - 1) } else { f26({...ctx, install: n, self: 19}, n - 1) }
+fn f20(ctx, n) = if n == 0 { ctx.a + ctx.install + ctx.self } else if n % 2 == 0 { f21({...ctx, install: n, self: 20}, n - 1) } else { f27({...ctx, install: n, self: 20}, n - 1) }
+fn f21(ctx, n) = if n == 0 { ctx.a + ctx.install + ctx.self } else if n % 2 == 0 { f22({...ctx, install: n, self: 21}, n - 1) } else { f28({...ctx, install: n, self: 21}, n - 1) }
+fn f22(ctx, n) = if n == 0 { ctx.a + ctx.install + ctx.self } else if n % 2 == 0 { f23({...ctx, install: n, self: 22}, n - 1) } else { f29({...ctx, install: n, self: 22}, n - 1) }
+fn f23(ctx, n) = if n == 0 { ctx.a + ctx.install + ctx.self } else if n % 2 == 0 { f24({...ctx, install: n, self: 23}, n - 1) } else { f30({...ctx, install: n, self: 23}, n - 1) }
+fn f24(ctx, n) = if n == 0 { ctx.a + ctx.install + ctx.self } else if n % 2 == 0 { f25({...ctx, install: n, self: 24}, n - 1) } else { f31({...ctx, install: n, self: 24}, n - 1) }
+fn f25(ctx, n) = if n == 0 { ctx.a + ctx.install + ctx.self } else if n % 2 == 0 { f26({...ctx, install: n, self: 25}, n - 1) } else { f32({...ctx, install: n, self: 25}, n - 1) }
+fn f26(ctx, n) = if n == 0 { ctx.a + ctx.install + ctx.self } else if n % 2 == 0 { f27({...ctx, install: n, self: 26}, n - 1) } else { f33({...ctx, install: n, self: 26}, n - 1) }
+fn f27(ctx, n) = if n == 0 { ctx.a + ctx.install + ctx.self } else if n % 2 == 0 { f28({...ctx, install: n, self: 27}, n - 1) } else { f34({...ctx, install: n, self: 27}, n - 1) }
+fn f28(ctx, n) = if n == 0 { ctx.a + ctx.install + ctx.self } else if n % 2 == 0 { f29({...ctx, install: n, self: 28}, n - 1) } else { f35({...ctx, install: n, self: 28}, n - 1) }
+fn f29(ctx, n) = if n == 0 { ctx.a + ctx.install + ctx.self } else if n % 2 == 0 { f30({...ctx, install: n, self: 29}, n - 1) } else { f36({...ctx, install: n, self: 29}, n - 1) }
+fn f30(ctx, n) = if n == 0 { ctx.a + ctx.install + ctx.self } else if n % 2 == 0 { f31({...ctx, install: n, self: 30}, n - 1) } else { f37({...ctx, install: n, self: 30}, n - 1) }
+fn f31(ctx, n) = if n == 0 { ctx.a + ctx.install + ctx.self } else if n % 2 == 0 { f32({...ctx, install: n, self: 31}, n - 1) } else { f38({...ctx, install: n, self: 31}, n - 1) }
+fn f32(ctx, n) = if n == 0 { ctx.a + ctx.install + ctx.self } else if n % 2 == 0 { f33({...ctx, install: n, self: 32}, n - 1) } else { f39({...ctx, install: n, self: 32}, n - 1) }
+fn f33(ctx, n) = if n == 0 { ctx.a + ctx.install + ctx.self } else if n % 2 == 0 { f34({...ctx, install: n, self: 33}, n - 1) } else { f40({...ctx, install: n, self: 33}, n - 1) }
+fn f34(ctx, n) = if n == 0 { ctx.a + ctx.install + ctx.self } else if n % 2 == 0 { f35({...ctx, install: n, self: 34}, n - 1) } else { f41({...ctx, install: n, self: 34}, n - 1) }
+fn f35(ctx, n) = if n == 0 { ctx.a + ctx.install + ctx.self } else if n % 2 == 0 { f36({...ctx, install: n, self: 35}, n - 1) } else { f42({...ctx, install: n, self: 35}, n - 1) }
+fn f36(ctx, n) = if n == 0 { ctx.a + ctx.install + ctx.self } else if n % 2 == 0 { f37({...ctx, install: n, self: 36}, n - 1) } else { f43({...ctx, install: n, self: 36}, n - 1) }
+fn f37(ctx, n) = if n == 0 { ctx.a + ctx.install + ctx.self } else if n % 2 == 0 { f38({...ctx, install: n, self: 37}, n - 1) } else { f44({...ctx, install: n, self: 37}, n - 1) }
+fn f38(ctx, n) = if n == 0 { ctx.a + ctx.install + ctx.self } else if n % 2 == 0 { f39({...ctx, install: n, self: 38}, n - 1) } else { f45({...ctx, install: n, self: 38}, n - 1) }
+fn f39(ctx, n) = if n == 0 { ctx.a + ctx.install + ctx.self } else if n % 2 == 0 { f40({...ctx, install: n, self: 39}, n - 1) } else { f46({...ctx, install: n, self: 39}, n - 1) }
+fn f40(ctx, n) = if n == 0 { ctx.a + ctx.install + ctx.self } else if n % 2 == 0 { f41({...ctx, install: n, self: 40}, n - 1) } else { f47({...ctx, install: n, self: 40}, n - 1) }
+fn f41(ctx, n) = if n == 0 { ctx.a + ctx.install + ctx.self } else if n % 2 == 0 { f42({...ctx, install: n, self: 41}, n - 1) } else { f48({...ctx, install: n, self: 41}, n - 1) }
+fn f42(ctx, n) = if n == 0 { ctx.a + ctx.install + ctx.self } else if n % 2 == 0 { f43({...ctx, install: n, self: 42}, n - 1) } else { f49({...ctx, install: n, self: 42}, n - 1) }
+fn f43(ctx, n) = if n == 0 { ctx.a + ctx.install + ctx.self } else if n % 2 == 0 { f44({...ctx, install: n, self: 43}, n - 1) } else { f50({...ctx, install: n, self: 43}, n - 1) }
+fn f44(ctx, n) = if n == 0 { ctx.a + ctx.install + ctx.self } else if n % 2 == 0 { f45({...ctx, install: n, self: 44}, n - 1) } else { f51({...ctx, install: n, self: 44}, n - 1) }
+fn f45(ctx, n) = if n == 0 { ctx.a + ctx.install + ctx.self } else if n % 2 == 0 { f46({...ctx, install: n, self: 45}, n - 1) } else { f52({...ctx, install: n, self: 45}, n - 1) }
+fn f46(ctx, n) = if n == 0 { ctx.a + ctx.install + ctx.self } else if n % 2 == 0 { f47({...ctx, install: n, self: 46}, n - 1) } else { f53({...ctx, install: n, self: 46}, n - 1) }
+fn f47(ctx, n) = if n == 0 { ctx.a + ctx.install + ctx.self } else if n % 2 == 0 { f48({...ctx, install: n, self: 47}, n - 1) } else { f54({...ctx, install: n, self: 47}, n - 1) }
+fn f48(ctx, n) = if n == 0 { ctx.a + ctx.install + ctx.self } else if n % 2 == 0 { f49({...ctx, install: n, self: 48}, n - 1) } else { f55({...ctx, install: n, self: 48}, n - 1) }
+fn f49(ctx, n) = if n == 0 { ctx.a + ctx.install + ctx.self } else if n % 2 == 0 { f50({...ctx, install: n, self: 49}, n - 1) } else { f56({...ctx, install: n, self: 49}, n - 1) }
+fn f50(ctx, n) = if n == 0 { ctx.a + ctx.install + ctx.self } else if n % 2 == 0 { f51({...ctx, install: n, self: 50}, n - 1) } else { f57({...ctx, install: n, self: 50}, n - 1) }
+fn f51(ctx, n) = if n == 0 { ctx.a + ctx.install + ctx.self } else if n % 2 == 0 { f52({...ctx, install: n, self: 51}, n - 1) } else { f58({...ctx, install: n, self: 51}, n - 1) }
+fn f52(ctx, n) = if n == 0 { ctx.a + ctx.install + ctx.self } else if n % 2 == 0 { f53({...ctx, install: n, self: 52}, n - 1) } else { f59({...ctx, install: n, self: 52}, n - 1) }
+fn f53(ctx, n) = if n == 0 { ctx.a + ctx.install + ctx.self } else if n % 2 == 0 { f54({...ctx, install: n, self: 53}, n - 1) } else { f60({...ctx, install: n, self: 53}, n - 1) }
+fn f54(ctx, n) = if n == 0 { ctx.a + ctx.install + ctx.self } else if n % 2 == 0 { f55({...ctx, install: n, self: 54}, n - 1) } else { f61({...ctx, install: n, self: 54}, n - 1) }
+fn f55(ctx, n) = if n == 0 { ctx.a + ctx.install + ctx.self } else if n % 2 == 0 { f56({...ctx, install: n, self: 55}, n - 1) } else { f62({...ctx, install: n, self: 55}, n - 1) }
+fn f56(ctx, n) = if n == 0 { ctx.a + ctx.install + ctx.self } else if n % 2 == 0 { f57({...ctx, install: n, self: 56}, n - 1) } else { f63({...ctx, install: n, self: 56}, n - 1) }
+fn f57(ctx, n) = if n == 0 { ctx.a + ctx.install + ctx.self } else if n % 2 == 0 { f58({...ctx, install: n, self: 57}, n - 1) } else { f64({...ctx, install: n, self: 57}, n - 1) }
+fn f58(ctx, n) = if n == 0 { ctx.a + ctx.install + ctx.self } else if n % 2 == 0 { f59({...ctx, install: n, self: 58}, n - 1) } else { f65({...ctx, install: n, self: 58}, n - 1) }
+fn f59(ctx, n) = if n == 0 { ctx.a + ctx.install + ctx.self } else if n % 2 == 0 { f60({...ctx, install: n, self: 59}, n - 1) } else { f66({...ctx, install: n, self: 59}, n - 1) }
+fn f60(ctx, n) = if n == 0 { ctx.a + ctx.install + ctx.self } else if n % 2 == 0 { f61({...ctx, install: n, self: 60}, n - 1) } else { f67({...ctx, install: n, self: 60}, n - 1) }
+fn f61(ctx, n) = if n == 0 { ctx.a + ctx.install + ctx.self } else if n % 2 == 0 { f62({...ctx, install: n, self: 61}, n - 1) } else { f68({...ctx, install: n, self: 61}, n - 1) }
+fn f62(ctx, n) = if n == 0 { ctx.a + ctx.install + ctx.self } else if n % 2 == 0 { f63({...ctx, install: n, self: 62}, n - 1) } else { f69({...ctx, install: n, self: 62}, n - 1) }
+fn f63(ctx, n) = if n == 0 { ctx.a + ctx.install + ctx.self } else if n % 2 == 0 { f64({...ctx, install: n, self: 63}, n - 1) } else { f70({...ctx, install: n, self: 63}, n - 1) }
+fn f64(ctx, n) = if n == 0 { ctx.a + ctx.install + ctx.self } else if n % 2 == 0 { f65({...ctx, install: n, self: 64}, n - 1) } else { f71({...ctx, install: n, self: 64}, n - 1) }
+fn f65(ctx, n) = if n == 0 { ctx.a + ctx.install + ctx.self } else if n % 2 == 0 { f66({...ctx, install: n, self: 65}, n - 1) } else { f72({...ctx, install: n, self: 65}, n - 1) }
+fn f66(ctx, n) = if n == 0 { ctx.a + ctx.install + ctx.self } else if n % 2 == 0 { f67({...ctx, install: n, self: 66}, n - 1) } else { f73({...ctx, install: n, self: 66}, n - 1) }
+fn f67(ctx, n) = if n == 0 { ctx.a + ctx.install + ctx.self } else if n % 2 == 0 { f68({...ctx, install: n, self: 67}, n - 1) } else { f74({...ctx, install: n, self: 67}, n - 1) }
+fn f68(ctx, n) = if n == 0 { ctx.a + ctx.install + ctx.self } else if n % 2 == 0 { f69({...ctx, install: n, self: 68}, n - 1) } else { f75({...ctx, install: n, self: 68}, n - 1) }
+fn f69(ctx, n) = if n == 0 { ctx.a + ctx.install + ctx.self } else if n % 2 == 0 { f70({...ctx, install: n, self: 69}, n - 1) } else { f76({...ctx, install: n, self: 69}, n - 1) }
+fn f70(ctx, n) = if n == 0 { ctx.a + ctx.install + ctx.self } else if n % 2 == 0 { f71({...ctx, install: n, self: 70}, n - 1) } else { f77({...ctx, install: n, self: 70}, n - 1) }
+fn f71(ctx, n) = if n == 0 { ctx.a + ctx.install + ctx.self } else if n % 2 == 0 { f72({...ctx, install: n, self: 71}, n - 1) } else { f78({...ctx, install: n, self: 71}, n - 1) }
+fn f72(ctx, n) = if n == 0 { ctx.a + ctx.install + ctx.self } else if n % 2 == 0 { f73({...ctx, install: n, self: 72}, n - 1) } else { f79({...ctx, install: n, self: 72}, n - 1) }
+fn f73(ctx, n) = if n == 0 { ctx.a + ctx.install + ctx.self } else if n % 2 == 0 { f74({...ctx, install: n, self: 73}, n - 1) } else { f0({...ctx, install: n, self: 73}, n - 1) }
+fn f74(ctx, n) = if n == 0 { ctx.a + ctx.install + ctx.self } else if n % 2 == 0 { f75({...ctx, install: n, self: 74}, n - 1) } else { f1({...ctx, install: n, self: 74}, n - 1) }
+fn f75(ctx, n) = if n == 0 { ctx.a + ctx.install + ctx.self } else if n % 2 == 0 { f76({...ctx, install: n, self: 75}, n - 1) } else { f2({...ctx, install: n, self: 75}, n - 1) }
+fn f76(ctx, n) = if n == 0 { ctx.a + ctx.install + ctx.self } else if n % 2 == 0 { f77({...ctx, install: n, self: 76}, n - 1) } else { f3({...ctx, install: n, self: 76}, n - 1) }
+fn f77(ctx, n) = if n == 0 { ctx.a + ctx.install + ctx.self } else if n % 2 == 0 { f78({...ctx, install: n, self: 77}, n - 1) } else { f4({...ctx, install: n, self: 77}, n - 1) }
+fn f78(ctx, n) = if n == 0 { ctx.a + ctx.install + ctx.self } else if n % 2 == 0 { f79({...ctx, install: n, self: 78}, n - 1) } else { f5({...ctx, install: n, self: 78}, n - 1) }
+fn f79(ctx, n) = if n == 0 { ctx.a + ctx.install + ctx.self } else if n % 2 == 0 { f0({...ctx, install: n, self: 79}, n - 1) } else { f6({...ctx, install: n, self: 79}, n - 1) }
+
+fn main() = f0({a: 80, install: 0, self: 0}, 3)

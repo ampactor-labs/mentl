@@ -4895,6 +4895,11 @@ effect LowerScope {
   ls_wide_memo(String) -> Option(Bool)
   // settle a nominal type's wide-sequence fact
   ls_wide_note(String, Bool)
+  // a fn declaration's settled judgment (its quantified cells and type), read
+  // once per declaration where the lowering keys a twin — None until noted
+  ls_judgment_memo(Int) -> Option(([Int], Ty))
+  // settle a fn declaration's judgment for every later site
+  ls_judgment_note(Int, ([Int], Ty))
   // whether the walk is inside this nominal type's own structure (the cycle cut)
   ls_wide_walking(String) -> Bool
   // enter a nominal type's structure; leave it
