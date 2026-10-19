@@ -690,47 +690,127 @@ LOWERED PROGRAM (`LowExpr`, a second tree whose walks read names). The oracle is
 their sum: a fan that judges context once and reads it live, a tie-break that is
 a provenance diff, a search over live shared cells.
 
-**THE FRONTIER LEADS** — each a move inside the medium, in the order work runs:
+**THE FRONTIER LEADS** — each a move inside the medium, in the order work
+runs, its design written here whole so a session starts from this paragraph
+and the artifact:
 
-- **The fused oracle**: N forked cursors on N threads over one image — a
-  forking handler that resumes a choice's options on threads, each fork
-  writing the one graph through the deterministic handle partition (§11.16)
-  — form variants merged as e-graph classes, meanings forked only at genuine
-  disjunctions, the question computed from the first divergence of two
-  trails — the default judge.
-- **The crown, modal** (`Hβ.effects.modal-world-index`): rows, capabilities and
-  negation sound together as a graph fact — an effect in a row indexed by the
-  install that answers it, a row variable a lexical capability at the `~>`
-  edge — one crucible per modal rule, red first.
-- **Verification whole**: the verifier decides a predicate's expression, where
-  it decides the projection a type carries (`node_to_predicate`); a bug trap
-  unwinds with the graph as its payload. A label's claim on a part read off the value a call answers is
-  owed where the callee built that part in sight: `exec(mk().cmd)` over `fn
-  mk() = {cmd: "ls", n: 1}` is owed, the walk naming a prelude site out of
-  sight, while the same record built in place is proven
-  (`Hβ.verify.part-of-a-call-answer`).
-- **`!Outside` closes**, last: the native backend (`docs/NATIVE.md`, frames in
-  the image and the deterministic partition its keystones), diverse double
-  compilation (`Hβ.closure.diverse-double-compilation`), the correctness oracle
-  absorbed into the wheel's own Verify
-  (`Hβ.closure.correctness-oracle-internal`), and every scaffold under tools/
-  absorbed into a verb — the march is `mentl march` and the board `mentl verify`
-  already; the state script is next.
+- **The fused oracle** — a fork is an OVERLAY, never a trail. Today `choose`
+  (lib/choice.mn) is caught by `speculate` and `first_held` (src/graph.mn),
+  which run every resumption one after another on the one trail of the one
+  `graph_handler`, undo by walking the trail backward in place and restoring
+  `next`, and the compiler is emitted as a thread-free module (a defined
+  memory, a bump allocator, no spawn import). Three pins. (1) Each fork is a
+  `graph_handler` instance over the shared spine whose state is a private
+  mint band — `next` at the base of a band of `spine_slots` handles, its
+  index a function of the choice site and the option's index, never of
+  scheduling — and an overlay for every cell outside its bands, a
+  handle-keyed table every read consults before the page; the three ops keep
+  their names: `graph_push_checkpoint` opens a layer, `graph_rollback` drops
+  it in O(1), `graph_commit_checkpoint` writes it into the layer below in
+  first-write order; the trail, its checkpoint stack and the revert walks
+  delete (`Hβ.oracle.fork-is-an-overlay`). (2) The compiler spawns: the
+  schedule is installed over the judgment at the verb entries —
+  `parallel_compose` where the host answers a spawn, `sequential_compose`
+  otherwise — and the forking handlers fan their options under it, each
+  resumption wrapped in its own graph instance and arena
+  (`(resume(o)) ~> graph_branch(band)`, the install around a resume governing
+  the remainder), interning banded the same way, the kept layer committed and
+  the facts replayed in options order; the race rule accepts exactly this
+  shape and refuses a branch reaching the root's handler, which is its proof;
+  the `mentl` shim and the page's worker instantiate the spawning module
+  (`Hβ.oracle.forks-on-threads`). (3) The first cell two survivors' layers
+  bind differently is the ONE constraint that separates them — the teaching
+  tie-break, computed — and survivors whose layers agree are one meaning
+  shown once with the cheaper form
+  (`Hβ.oracle.first-divergence-is-the-question`). Gates: m3 under
+  `sequential_compose` byte-identical to m3 under `parallel_compose` (§11.16's
+  statement made real), the self-compile's wall falling, every battery green
+  at every pin.
+- **The crown, modal** (`Hβ.effects.modal-world-index`): a row names
+  EFFECTS — `EffName` carries a name and its arguments, a `RowEdge`'s mask
+  names effects, `inf_mark_install_frame` drops the handler the install
+  judgment holds in hand — so absence is proven per effect, never per install.
+  The form: an effect in a row is indexed by the install that answers it
+  (`E@h`, the install node the judgment resolves when it draws the op edge;
+  `E@?` where a caller's install answers), a mask names the installs it
+  subtracts, and a row variable bound at a `~>` edge is that install's lexical
+  capability — the Tang–Lindley synthesis with the negation half carried.
+  The facts that need an install's identity fall out: a handler pinned to its
+  instance (`handler sample_at(rate) with Sample(rate)` answers only its
+  instance, §11.10), a handler held as a value (its record IS the install's
+  identity), two installs of one effect with a negation between them, a
+  closure minted under one install and called under another. Written once,
+  where the op edge is drawn; read by `row_subsumes`, `diff_row`, the gate's
+  mask, the Why walk and `mentl where`. `inter_row`'s silent arm deletes, a
+  world mismatch names its two worlds, and a persisted continuation's world is
+  checked where the image is resumed. One crucible per modal rule, RED first,
+  with its sound twin.
+- **Verification whole**: the verifier decides a predicate's EXPRESSION — the
+  `Predicate` projection, `node_to_predicate` and the copy frozen into
+  `TRefined` delete, the value walk reading the predicate's nodes and a
+  called function's contract and body — so a predicate that calls a function
+  is decided; a claim reads the path's conditions on the parent edge as
+  hypotheses, so a guarded division and a guarded index are proven and an
+  index out of range is the row fact `Trap`
+  (`Hβ.verify.partiality-reads-the-path-narrowing`,
+  `Hβ.effects.index-partiality-is-a-row-fact`); a bug trap performs `Trap`
+  carrying the node, and the root answers it with the node's aspects and
+  Reason chain, never a bare `unreachable`; a label's claim on a part read off
+  a call's answer is read through the callee's return tails, proven where
+  the callee built the part in sight and owed, naming the site, where it did
+  not (`Hβ.verify.part-of-a-call-answer`); then the solver is the search
+  (§11.17), the fragment growing in the order the wheel's own debt names it,
+  the debt ceiling falling with each step.
+- **`!Outside` closes**, last: the keystone — lowering is a column on the
+  program's own handles and a continuation is its frame's record in the image
+  (§11.18, `Hβ.lower.lowering-is-a-column`); the native backend
+  (`docs/NATIVE.md`, the deterministic band its second keystone); diverse
+  double compilation (`Hβ.closure.diverse-double-compilation`); the
+  correctness oracle absorbed into the wheel's own Verify
+  (`Hβ.closure.correctness-oracle-internal`); and every scaffold under tools/
+  absorbed into a verb — the march is `mentl march` and the board
+  `mentl verify` already; the state script is next, and the loop then names
+  no script.
 
 **THE STANDING CURSOR** — the order work runs in once the frontier has moved:
 
-1. **A record update in a recursive group is judged in time linear in the
-   group** (`Hβ.infer.update-relations-multiply`). An update's relation to its
-   base (`DemandCopy`) is copied with its rows at every instantiation and
-   carried across every alias, so a recursive group whose members hand one
-   record on through updates multiplies the relations its rows carry: the flow
-   walk's context written as `{...ctx, install: t, self: d}` across its
-   hundred-function group judged for over four minutes on boot cb12aeea, and a
-   candidate deduplicating the relations by their chased rows ran out of memory
-   in `row_copy_carry` after eighty seconds (measured 2026-10-16). The walk
-   builds its context as a record literal (`ctx_at`), which carries no
-   relation; the update form is the one SYNTAX asks a person to write, so the
-   judgment owes it.
+1. **The judgment costs what it answers** — the cost law (§5.O) paid where
+   it is measured red, four pieces in one arc, each RED first. (a) A record
+   update's relation is one edge (`Hβ.infer.update-relations-multiply`): an
+   update's relation to its base (`DemandCopy`) is copied with its rows at
+   every instantiation and carried across every alias, so a recursive group
+   whose members hand one record on through updates multiplies the relations
+   its rows carry — the flow walk's context written as `{...ctx, install: t,
+   self: d}` across its hundred-function group judged for over four minutes
+   on boot cb12aeea, and a candidate deduplicating the relations by their
+   chased rows ran out of memory in `row_copy_carry` after eighty seconds
+   (measured 2026-10-16). The relation becomes an edge between the two row
+   cells, written once at the update node and read by the cells' free ends;
+   instantiation copies a cell and keeps the edge. The walk builds its
+   context as a record literal (`ctx_at`) today, which carries no relation;
+   the update form is the one SYNTAX asks a person to write, so the judgment
+   owes it. (b) An arm's resume grade is the column §11.18 names, written
+   once where the op edge is drawn, and the tail facts a column on the
+   declaration the callee's edge reaches, where `arm_grade` re-runs the
+   arm's fixpoint per reader and the tail facts are an smap keyed by spelling
+   (`Hβ.cost.arm-grade-is-a-column`). (c) The hot path, measured
+   (`bash tools/profile-self.sh`, `tools/guest-profile.py`), each top caller
+   removed by the law it breaks, never by a number; the super-constant reads
+   found by reading, for the profile to rank: `list_index` on a snoc-built
+   list is linear in the distance from its end, so an index loop over a
+   pushed list is quadratic (the iteration costume the census counts);
+   `smap_add` prepends with `++` and its scan indexes the concat chain;
+   `instantiate(Live(h))` re-generalizes the declaration at every use;
+   `env_snapshot` fills an index per call and each `??` segment installs a
+   fresh env; `row_of_subtree` is an unmemoized whole-subtree fold called per
+   node; `reach_units` and `plan_reached` key their walks by symbol;
+   `set_canonicalize` re-sorts a growing accumulator in the
+   `effects_of_edges` loop (`Hβ.cost.hot-path-by-law`). The self-compile's
+   wall and peak ratchet down. (d) The edit's cone has a cutoff: a
+   declaration whose rewritten dependency publishes the same scheme, row and
+   claims is not judged again (`Hβ.session.edit-cone-cutoff`), where today
+   every declaration whose judgment read a rewritten one is judged again
+   transitively (§7).
 2. **Every position is a cell — #108** (`Hβ.graph.positions-are-cells`). The
    write the structure cut was for that is not yet built: accepting a
    proposal rewrites the hole's node in place, the position-keyed accept

@@ -204,27 +204,22 @@ fn audio_stage(samples) with Sample(44100) + !Alloc + IO =
 module's reach — in a function's clause, a handler's, an op signature's,
 inside a function type (`f: () -> Int with !Nowhere`) or in a named row
 (§«Named effect rows») — is `E_MissingVariable` at the declaration, and
-inside a type at the name itself (real, 2026-10-13: until then the expansion
-took an unknown name as an effect OF THAT NAME, so `fn quiet() with !Nowhere
-= 1` checked clean and constrained nothing, and lib/persist.mn's `!Network`
-held two weeks after the last Network effect left the tree on 2026-09-28;
-tests/micros/mn-effect-name-resolves.mn, mn-effect-name-in-fn-type.mn).
+inside a type at the name itself: an unknown name read as an effect OF THAT
+NAME would make `fn quiet() with !Nowhere = 1` check clean and constrain
+nothing (tests/micros/mn-effect-name-resolves.mn,
+mn-effect-name-in-fn-type.mn).
 
-**A function type's row means what a declaration's clause means** (real,
-2026-10-15). `f: () -> Int with !Both` holds its row as its author wrote it,
-read where every named row is known, whatever writes the type — a parameter,
-a return, a let's annotation, an op's signature, a constructor's field, a
-handler's configuration, a type's argument, an alias's body — so `!Both`
-forbids every member of `type Both = A + B`, and each name is a reference
-`refs of` answers. Until then the type folded its row where it was parsed,
-before any named row was registered: `Both` read as an effect of that name,
-the negation forbade nothing, and a callback performing `A` checked clean
-through every one of those positions (tests/crown/leak-fn-type-*.mn); a name
-in an alias's body or a type's argument was never judged at all
-(tests/micros/mn-effect-name-in-alias-fn-type.mn,
+**A function type's row means what a declaration's clause means.** `f: () ->
+Int with !Both` holds its row as its author wrote it, read where every named
+row is known, whatever writes the type — a parameter, a return, a let's
+annotation, an op's signature, a constructor's field, a handler's
+configuration, a type's argument, an alias's body — so `!Both` forbids every
+member of `type Both = A + B`, and each name is a reference `refs of`
+answers (tests/crown/leak-fn-type-*.mn,
+tests/micros/mn-effect-name-in-alias-fn-type.mn,
 mn-effect-name-nested-fn-type.mn).
 
-**A lowercase name in a row is a row variable** — the case rule read at a row, as it is read at a type. `f: () -> a with e` takes a callback performing anything, and `e` written again anywhere in the same signature — another parameter's type, the declaration's own clause — is the same variable, as a type variable named twice is. A parenthesized group is a row term the clause folds whole, its outer connective applied to what it spells: `with Memory + Alloc + (e - Intern)` is the row of a body that absorbs `Intern` around the callback and pays for the install, and it is how the medium writes such a row back (real, 2026-10-06: a lowercase name was read as an EFFECT named `e`, so `run(() => op())` against `f: () -> Int with e` refused `E vs e`, and a group did not parse).
+**A lowercase name in a row is a row variable** — the case rule read at a row, as it is read at a type. `f: () -> a with e` takes a callback performing anything, and `e` written again anywhere in the same signature — another parameter's type, the declaration's own clause — is the same variable, as a type variable named twice is. A parenthesized group is a row term the clause folds whole, its outer connective applied to what it spells: `with Memory + Alloc + (e - Intern)` is the row of a body that absorbs `Intern` around the callback and pays for the install, and it is how the medium writes such a row back.
 
 **`with` is one keyword, not three.** It reads identically everywhere it appears — *"this construct is accompanied by / carries X"* — and the three surfaces are one concept, not overload: a function carries effects (`fn f() with E`); a handler carries state (`handler h with s = init`); a resume carries a state update (`resume(v) with s = s + 1`). The grammar disambiguates by position (a row after a signature, or `name = init` bindings after a handler/resume); the meaning is constant. (Handler *installation* is not a `with`-surface — it is the `~>` verb.)
 
@@ -265,7 +260,7 @@ queue_task(priority = 5, config = current, timeout_ms = 5000)   // all labeled
 
 **Defaults and labeled args are not two features — they are the parameter list AS a product node-kind.** A parameter list is a positional product (`PLAN.md §2`, L1); like every product it may be constructed positionally (`f(a, b)`), by field (`f(x = a, y = b)`), or mixed (`f(a, y = b)`) — the identical machinery as record literals `{a, b}` / `{x: a, y: b}` (punning + field-naming), and a default is a product field's fallback construction (the identical machinery as a record-field default). There is no second call-site feature; the product node-kind mandates all four forms. Labels resolve against the declared parameter names; an unknown label is `E_UnknownArgLabel`. (Under threading/multi-shot a labeled call is order-independent at the product level — the cursor may fill fields in any order.)
 
-**Identity, not position — the field's NAME is the key; the order is a projection.** A parameter product is not the position-keyed disease (`CLAUDE.md` drift-8, evidence-by-row-slot, `mode == 0/1/2`, parallel arrays): those use position as a *fragile proxy* for an identity. A product's fields *have* identity — their names — exactly as record fields do (sorted by name at parse, source order irrelevant). `queue_task(priority = 5, config = c)` resolves by name; the positional `queue_task(5, c)` is a *convenience* that fills fields in declaration order and resolves immediately *to* the names. Position is a deterministic layout over an identity-keyed set, never the key itself. And a label is the name of the field its slot fills: the page writes it as that parameter's name, read through the call's product and its callee's edge (real, 2026-10-16), so renaming the parameter rewrites every label that names it (tests/micros/mn-rename-label.mn).
+**Identity, not position — the field's NAME is the key; the order is a projection.** A parameter product is not the position-keyed disease (`CLAUDE.md` drift-8, evidence-by-row-slot, `mode == 0/1/2`, parallel arrays): those use position as a *fragile proxy* for an identity. A product's fields *have* identity — their names — exactly as record fields do (sorted by name at parse, source order irrelevant). `queue_task(priority = 5, config = c)` resolves by name; the positional `queue_task(5, c)` is a *convenience* that fills fields in declaration order and resolves immediately *to* the names. Position is a deterministic layout over an identity-keyed set, never the key itself. And a label is the name of the field its slot fills: the page writes it as that parameter's name, read through the call's product and its callee's edge, so renaming the parameter rewrites every label that names it (tests/micros/mn-rename-label.mn).
 
 ### Partial application — the product with a hole
 
@@ -277,7 +272,7 @@ adults(users)                              // fill the hole → the filtered lis
 adults(new_signups)                        // reuse — a hole-product is a first-class value
 ```
 
-*(This section's headline example was `filter(.age > 18)` until 2026-09-20, and the bare `.field` accessor it spelled **does not parse and never did** — measured: `P_UnexpectedToken` at the `.`, then `E_MissingVariable: age`. Nothing in the tree used it, nothing implemented it, and the spec was teaching it as the canonical form in three places. It is struck rather than built, because a field is not a declaration, so `.name` would be a THIRD way to reach a function value beside reference and mint — the one thing §«Function literals» says there is not. `Hβ.syntax.field-accessor-documented-never-built` closes by this deletion.)*
+*(A bare `.field` accessor (`filter(.age > 18)`) is not a form: a field is not a declaration, so `.name` would be a THIRD way to reach a function value beside reference and mint — the one thing §«Function literals» says there is not.)*
 
 **The hole is keyed by IDENTITY, never by position.** `filter({ p => p.age > 18 })` leaves *the parameter `xs`* unfilled — "the parameter `xs`," not "slot 2." When exactly one field is a hole, it is unambiguous. When several are, the hole is named explicitly with `??` at the field it marks:
 
@@ -288,7 +283,7 @@ list_set(xs, ??, v)     // the MIDDLE field is the hole: { i => list_set(xs, i, 
 
 `??` is the same absence marker as the gradient's hole (§«Token enumeration», `THole`): a field the cursor reads as *unsupplied*. What fills it depends on context — Synth proposes a candidate, a call supplies a value, the `|>` pipe supplies the flowing datum, a resumption supplies it later — but the marker is one, and it names *which* field, never a slot.
 
-**Where nothing can fill the field later, the hole is a value hole and the call applies** (real, 2026-10-13). An operand of an operator — `choose(??) + 1`, `-choose(??)`, `choose(??) == 2` — is handed nothing by anyone: no pipe flows into it, no later call fills it, so the product it would suspend into has no filler but the proposer. The call is therefore the applied call, its `??` the slot's value hole under the slot's contract (`choose(??) + 1` over `choose(n: Positive)` proposes `1`), and the judgment records the decision on the call's product (`CallShape`) for the lowering to read. In every other position — an argument (`f(choose(??))`), a binding (`let c = choose(??)`), a value returned — the `??` keeps the suspension above. Through boot c939f5b8 the operand form was the product with a hole, and `+` refused it as arithmetic on a function.
+**Where nothing can fill the field later, the hole is a value hole and the call applies.** An operand of an operator — `choose(??) + 1`, `-choose(??)`, `choose(??) == 2` — is handed nothing by anyone: no pipe flows into it, no later call fills it, so the product it would suspend into has no filler but the proposer. The call is therefore the applied call, its `??` the slot's value hole under the slot's contract (`choose(??) + 1` over `choose(n: Positive)` proposes `1`), and the judgment records the decision on the call's product (`CallShape`) for the lowering to read. In every other position — an argument (`f(choose(??))`), a binding (`let c = choose(??)`), a value returned — the `??` keeps the suspension above.
 
 **The `|>` pipe is hole-completion, not a rewrite.** `x |> f(a)` fills `f(a)`'s remaining hole with `x`:
 
@@ -301,7 +296,7 @@ The pipe's type rule (§«`|>` — converge») requires `right : A -> B` — a p
 
 **One primitive, five surfaces.** Positional construction, field/labeled construction, defaults, the hole (partial application), and pipe-completion are ONE thing — the parameter-list product constructed by identity with any subset of fields supplied, defaulted, or left as holes. There is no currying mechanism distinct from the product: a "curried function" is a product-with-holes, and the arity is never fuzzy, because the holes are named fields, not a hidden nesting of one-argument functions.
 
-**The product is the judgment's, written once at the call** (real, 2026-09-30). Labels resolve, defaults fill and holes are typed against the parameters the CALLEE NODE carries — a let-bound closure's own parameter names, a parameter's own arity, a field's own type — never against a module function that happens to share the name, and the lowering reads that product off the call node instead of resolving it again. Until then the lowering resolved every call a second time, by name in the module env: `g(b = 1, a = 5)` on a let-bound `g` ran as `g(1, 5)` (exit 252 for 4, zero diagnostics); `fn run(f) = f(7)` beside a top-level `f(a, b = 100)` spliced the module's default into the callback's call and trapped at the indirect call; the prelude's `fold_handler` arm `f(acc, elem)` was refused with an arity mismatch inside the library the moment a program declared a one-parameter `f`; and a partial over a local — `let inc = add(1)` on a let-bound `add` — called a top-level `add` of the same name, or floored where there was none. A partial over a local callee carries the callee's value in its record beside the supplied fields, and every open slot of a partial is typed by its own cell, so `fadd(1.5)` over a Float pair assembles where it did not (`Hβ.lower.callee-resolved-by-name-in-the-module-env`, closed).
+**The product is the judgment's, written once at the call.** Labels resolve, defaults fill and holes are typed against the parameters the CALLEE NODE carries — a let-bound closure's own parameter names, a parameter's own arity, a field's own type — never against a module function that happens to share the name, and the lowering reads that product off the call node instead of resolving it again. A partial over a local callee carries the callee's value in its record beside the supplied fields, and every open slot of a partial is typed by its own cell, so `fadd(1.5)` over a Float pair assembles.
 
 **The hole is the suspension point — SPACE and TIME are one.** A hole-product is a computation *suspended at its argument*; filling the hole *resumes* it. On the SPACE axis this is partial application — the field filled by a value, or by the pipe's flowing datum. On the TIME axis it is the multi-shot continuation (`PLAN.md §4④`): a `??` hole reified as a resumable record is a continuation awaiting its argument, fillable now, later, or many times. Partial application and continuation-resumption are the same operation — hole-filling keyed by identity — distinguished only by whether the hole is filled at the call site or captured and resumed. `??` is one absence marker across the whole medium: the gradient's synth-hole, the argument hole, and the continuation's resume-slot are the cursor reading *the same absence* at three altitudes.
 
@@ -348,14 +343,8 @@ it: `map(f, xs)` · `filter(p, xs)` · `each(f, xs)` · `fold(init, f, xs)` ·
 **The stage of `each` answers `()`.** An iteration for effect drops its
 stage's value by definition, so a stage that answers anything else is a value
 the program silently loses, and `each({ x => x + 1 }, xs)` is
-`E_TypeMismatch` at the call (real, 2026-10-13). The shape it refuses was
-measured as a compiler defect first: a report call that had become a PARTIAL
-APPLICATION when its op grew a field — a function value, not a call — was
-the stage of an `each`, which discarded it, and every occurs-check refusal
-the graph's write guard noted vanished with it (`fn f(x) = x == [x]`
-checked clean, and a polymorphic self-call was judged monomorphic). A value
-dropped in any other position is still silent
-(`Hβ.infer.statement-value-is-dropped-silently`). Four prelude
+`E_TypeMismatch` at the call. A value dropped in any other position is still
+silent (`Hβ.infer.statement-value-is-dropped-silently`). Four prelude
 signatures still take the datum first — `reduce(xs, f)`, `scanl(xs, init, f)`,
 `nth(xs, n, default)` and `clamp(x, lo, hi)` — so `x |> clamp(0, 255)` is the
 law the prelude catches up to, through a medium-authored reorder that reads
@@ -378,15 +367,9 @@ projection; see §«What a comment TRENDS TO»). Three rulings:
   substrate already carrying the true name.
 - **Execution strategy never lives in a name.** HOW a stage runs is a `~>`
   handler fact (`>< [Thread ×4]` is a derived badge, §`><`), so
-  `parallel_map` was vocabulary drift over `map ~> Schedule` — DISSOLVED
-  2026-07-02. The blocker
-  was never map's fanout substrate (`PLAN.md §5.U`);
-  it was that a standalone helper can never reach `Thread` scheduling at all:
-  the schedule is read LIVE at the fanout's own install site (§`><` — the
-  same `resolve_in_stack` every op uses), never across a call boundary, so a
-  `><` inside a reusable fn read `Seq` whatever its caller installed. The
-  schedule reaches it now — by DEMAND, through a direct call (real,
-  2026-09-30, §`><`): a `~> parallel_compose` over `render(voices)` runs
+  `parallel_map` is vocabulary drift over `map ~> Schedule`. The schedule
+  reaches a helper's fanout by DEMAND, through a direct call (§`><`): a
+  `~> parallel_compose` over `render(voices)` runs
   every `><` and `fanout` in `render`'s direct-call reach threaded, while
   `map` stays sequential by construction (one loop) and `fanout(f, xs)` is
   the sequence fanout that declares its applications independent. The
@@ -395,8 +378,8 @@ projection; see §«What a comment TRENDS TO»). Three rulings:
   read and remove the LAST element (the snoc end — O(1) by construction);
   the borrowed cons-vocabulary asserts the opposite and has already billed
   the project one real bug (the env-orientation truncation). The true names
-  are **`last`** and **`drop_last`** (symmetric with `take`/`drop`); the
-  sweep is EXECUTED across all layers (283 sites): the primitives are
+  are **`last`** and **`drop_last`** (symmetric with `take`/`drop`): the
+  primitives are
   `last`/`drop_last`; prelude's drop-first is **`rest`**, the pattern
   surface's own word (`[head, ...rest]`), and `tail` is no name at all.
   One home per truth: the positional `last` duplicate dissolved into the
@@ -414,13 +397,13 @@ fn check_exhaustive(patterns) = {
 }
 ```
 
-A nested `fn name(params) = body` is a declaration scoped to its block, and consecutive `fn` declarations in a block form one RUN — a local letrec scope: every name of the run is in scope in every body of the run and in everything after it, so siblings call each other in either direction. The run is judged as the module's declarations are, callee-first by binding group with each cycle judged as one unit, so every member is generalized — one nested `fn ident(x) = x` serves an Int and a String even where its caller is declared above it. Any other statement between two `fn` declarations ends the run: a later fn may capture what that statement computes, which does not exist while an earlier fn can already be called, so in `fn first() = second() + 1; let k = 2; fn second() = k` the name `second` is out of scope at `first`'s call (`E_MissingVariable`). Two declarations of one name in one run refuse (`E_DuplicateFnName`), as two at module level do, and a fn in a later run shadows one of its name in an earlier run for what follows it (real, 2026-10-03; until then a nested fn's name was in scope only in its own body and after its declaration, so a sibling calling one declared below it was refused). A block-scope `let name = (params) => body` is a closure VALUE, and the two differ in exactly that: the `let` binds after its value, so its name is not in scope in its own body, it is not generalized, and it may shadow — `let f = (x) => f(x) * 10` calls the `f` bound before it.
+A nested `fn name(params) = body` is a declaration scoped to its block, and consecutive `fn` declarations in a block form one RUN — a local letrec scope: every name of the run is in scope in every body of the run and in everything after it, so siblings call each other in either direction. The run is judged as the module's declarations are, callee-first by binding group with each cycle judged as one unit, so every member is generalized — one nested `fn ident(x) = x` serves an Int and a String even where its caller is declared above it. Any other statement between two `fn` declarations ends the run: a later fn may capture what that statement computes, which does not exist while an earlier fn can already be called, so in `fn first() = second() + 1; let k = 2; fn second() = k` the name `second` is out of scope at `first`'s call (`E_MissingVariable`). Two declarations of one name in one run refuse (`E_DuplicateFnName`), as two at module level do, and a fn in a later run shadows one of its name in an earlier run for what follows it. A block-scope `let name = (params) => body` is a closure VALUE, and the two differ in exactly that: the `let` binds after its value, so its name is not in scope in its own body, it is not generalized, and it may shadow — `let f = (x) => f(x) * 10` calls the `f` bound before it.
 
-**A nested fn is MINTED where it is declared** (real, 2026-09-30). Its closure record — its captures, or an empty record with none — is built when the block reaches its run, every record of the run allocated and bound before any is filled, so a record that holds a sibling declared after it, or itself, holds the sibling's record. The declaring frame pays `Memory + Alloc` once per nested fn, exactly as it pays for a lambda it mints (§«Function literals»): `fn adder(k) with !Alloc = { fn add(x) = x + k; add }` refuses. Until this landed the judgment never charged it, and every maker in lib/dsp returning its nested stage carried a row of `Pure`. A nested fn that captures nothing could be the module's static record and cost nothing; the charge follows that representation the day the lowering builds it (`Hβ.lower.captureless-nested-fn-is-static`). A nested fn minted inside a handler arm captures the arm's continuation as a lambda minted there does, so its body may `resume` and the fn is a value like any other: an arm may hand it to `fold` and resume once per call (real, 2026-10-16; until then such a fn took the continuation as hidden trailing parameters, a reference to it counted no resume, and the arm was graded never to resume — tests/micros/mn-resume-in-referenced-fn.mn answered 21 for 23).
+**A nested fn is MINTED where it is declared.** Its closure record — its captures, or an empty record with none — is built when the block reaches its run, every record of the run allocated and bound before any is filled, so a record that holds a sibling declared after it, or itself, holds the sibling's record. The declaring frame pays `Memory + Alloc` once per nested fn, exactly as it pays for a lambda it mints (§«Function literals»): `fn adder(k) with !Alloc = { fn add(x) = x + k; add }` refuses. A nested fn that captures nothing could be the module's static record and cost nothing; the charge follows that representation the day the lowering builds it (`Hβ.lower.captureless-nested-fn-is-static`). A nested fn minted inside a handler arm captures the arm's continuation as a lambda minted there does, so its body may `resume` and the fn is a value like any other: an arm may hand it to `fold` and resume once per call (tests/micros/mn-resume-in-referenced-fn.mn).
 
-**A binder shadows its name for its own scope and no further.** A `let` in a block, a pattern in a match arm, a pipe stage's parameter, a recurrence's prior and a binding inside the recurrence body each hide the same name while their scope is open, and the hidden binding is read again, unchanged, once it closes: `fn f(x) = { let y = { let x = 5; x + 1 }; x + y }` answers `f(100) = 106`. Two binders of one name are two values at their own widths, never one storage place (real, 2026-09-28: until then an arm's `Some(x)` or a block's `let x` wrote the parameter's register, and that program answered 11 with zero diagnostics — `Hβ.lower.shadowing-binder-clobbers-its-register`). The ownership a parameter is graded reads its own uses, the references whose edge reaches it, never a shadowing binder's (real, 2026-10-15: `fn shadowed(xs) = { let xs = 5; xs + xs }` graded its unread parameter `ref`, because the grade counted the spelling).
+**A binder shadows its name for its own scope and no further.** A `let` in a block, a pattern in a match arm, a pipe stage's parameter, a recurrence's prior and a binding inside the recurrence body each hide the same name while their scope is open, and the hidden binding is read again, unchanged, once it closes: `fn f(x) = { let y = { let x = 5; x + 1 }; x + y }` answers `f(100) = 106`. Two binders of one name are two values at their own widths, never one storage place. The ownership a parameter is graded reads its own uses, the references whose edge reaches it, never a shadowing binder's (`fn shadowed(xs) = { let xs = 5; xs + xs }` grades its unread parameter by its uses, not its spelling).
 
-**At module scope there is nothing to shadow, and a `let` bound to a function literal IS the declaration** (real, 2026-09-28): `let inc = (x) => x + 1` is born as `fn inc(x) = x + 1` at parse — recursive, generalized, emitted as the symbol its callers call directly — and `mentl fmt` writes it as `fn`. An arm-list literal bound at module scope, `let pick = { Some(v) => v, None => 0 }`, is a declaration too and keeps its spelling, because its one parameter is minted by the literal and never reaches the page. An annotated module let keeps its annotation's constraint and stays a value, and a module value holding a closure (`let add3 = make_adder(3)`) is called through that closure. Until this landed the let was judged a value and lowered as a lambda named for its handle while its callers called `$inc`, a symbol nothing emitted: `mentl check` was clean and the module did not assemble (`Hβ.lower.module-scope-has-no-frame`).
+**At module scope there is nothing to shadow, and a `let` bound to a function literal IS the declaration**: `let inc = (x) => x + 1` is born as `fn inc(x) = x + 1` at parse — recursive, generalized, emitted as the symbol its callers call directly — and `mentl fmt` writes it as `fn`. An arm-list literal bound at module scope, `let pick = { Some(v) => v, None => 0 }`, is a declaration too and keeps its spelling, because its one parameter is minted by the literal and never reaches the page. An annotated module let keeps its annotation's constraint and stays a value, and a module value holding a closure (`let add3 = make_adder(3)`) is called through that closure.
 
 ---
 
@@ -433,7 +416,7 @@ Surfaces primitives **#2** (pattern dispatch, the handler's own shape) and **#8*
 1. **REFERENCE** an existing function, with the fields it is not yet given left as holes — `f`, `f(cfg)`, `f(a, ??, c)` (§«Partial application — the product with a hole»). An edge to a node that exists.
 2. **MINT** a new one, with an **ARM LIST** — `{ pattern => body, … }`.
 
-**What each costs is in the row of the frame that forms it** (real, 2026-09-28). A bare reference to a top-level function reaches its static record and costs nothing. A reference with fields supplied (a partial) and a mint each build a closure record — its captures, its supplied fields — so each charges `Memory + Alloc` where it is formed, and `with !Alloc` refuses it. The exception is structural, not a discount: where a verb APPLIES the literal in place — the stage of a `|>`, the recurrence of a `<~` — nothing is minted, so nothing is charged (§«`|>` — converge»). Calling a closure charges the closure's own row, which rides its type, and never the cost of having made it.
+**What each costs is in the row of the frame that forms it.** A bare reference to a top-level function reaches its static record and costs nothing. A reference with fields supplied (a partial) and a mint each build a closure record — its captures, its supplied fields — so each charges `Memory + Alloc` where it is formed, and `with !Alloc` refuses it. The exception is structural, not a discount: where a verb APPLIES the literal in place — the stage of a `|>`, the recurrence of a `<~` — nothing is minted, so nothing is charged (§«`|>` — converge»). Calling a closure charges the closure's own row, which rides its type, and never the cost of having made it.
 
 ### Canonical form
 
@@ -453,7 +436,7 @@ weights |> filter({ (name, w) => w > 0 })
 
 **The literal takes exactly ONE parameter** — the value its arms match. Several arguments are a product the arms destructure (`{ (a, b) => a + b }` takes a pair), which is the parameter-list-as-product rule (§«Labeled call arguments») read at the literal.
 
-**And a pair is ONE argument, at every altitude.** A call's argument count is its callee's parameter count: `{ (a, b) => a + b }` is called as `f((1, 2))`, never `f(1, 2)`, and it is not a two-argument callback — `fold(0, { (acc, x) => … }, xs)` is refused, because `fold` calls its stage with two arguments; the binder form `(acc, x) => …` or a reference is the two-parameter value. Until 2026-09-27 the type layer decomposed a single tuple parameter against N parameters ("parameters ARE tuples") while the emit did not, so a pair piped into `add(a, b)` checked clean and trapped at the indirect call; the rule is gone and the shapes refuse (`E_TypeMismatch`, its arity face) — `let p = (1, 2); p |> add` among them. A product BUILT where it is piped is the one exception, and it is not a decomposition: `(1, 2) |> add` is the merge, `add(1, 2)`, the tuple never built (§«`|>` — converge»). The calling convention that would make the two one value is `Hβ.lower.parameter-product-calling-convention`.
+**And a pair is ONE argument, at every altitude.** A call's argument count is its callee's parameter count: `{ (a, b) => a + b }` is called as `f((1, 2))`, never `f(1, 2)`, and it is not a two-argument callback — `fold(0, { (acc, x) => … }, xs)` is refused, because `fold` calls its stage with two arguments; the binder form `(acc, x) => …` or a reference is the two-parameter value. The shapes refuse (`E_TypeMismatch`, its arity face) — `let p = (1, 2); p |> add` among them. A product BUILT where it is piped is the one exception, and it is not a decomposition: `(1, 2) |> add` is the merge, `add(1, 2)`, the tuple never built (§«`|>` — converge»). The calling convention that would make the two one value is `Hβ.lower.parameter-product-calling-convention`.
 
 **A brace opens a literal when a PATTERN ends at a `=>`.** That question is answered by a bounded token scan, never by parsing a pattern speculatively and never by layout: one pattern atom — an ident (optionally applied), a literal, or a balanced group — joined to further atoms only by `@` or `|`. Two adjacent atoms are never a pattern, so `{ setup()` newline `(x) => run(x) }` is the block it looks like. Record literal and block discrimination are unchanged and follow (§«Records», §«Function declarations»).
 
@@ -462,7 +445,7 @@ weights |> filter({ (name, w) => w > 0 })
 The binder form still parses, and it is the last of the line that retired `perform`, `handle`, `capability`, the turbofish and `|x|`. A sole-parameter lambda IS an arm list, so the binder is the redundant spelling of one. `mentl fmt` writes the arms wherever the lambda's body is a `match` on its parameter (`arm_list_of`) — every arm list reads back that way, and so does the param-position destructure `((a, b)) => e`. A sole-parameter lambda with any other body keeps its binder today (`(x) => x + 1`), because the parser builds `{ x => x + 1 }` as a `match` on a minted parameter rather than as the one `LambdaExpr` the binder form builds; the formatter landing makes them one node, and every sole-parameter mint then renders as its arms. What survives on the page after that is the honest remainder:
 
 - **multi-parameter** (`(a, b) => a * b`) — the arm list is one-parameter, so these retire by becoming REFERENCES (`fold(0, add, xs)`), which is rule 1 and needs no new form. `Hβ.syntax.multi-param-lambda-is-a-reference`.
-- **the zero-argument thunk** (`() => e`) that handed a body to a handler stack — RETIRED into the named handler chain (§«Handler chains», real 2026-10-13: the wheel's analysis and emit brackets are chains, and the 25 thunks that handed them a body are gone with the four inside the wrappers themselves, `Hβ.syntax.handler-chain-is-a-value`). A thunk that defers a computation for a function to run stays the binder form, the two-parameter case's sibling.
+- **the zero-argument thunk** (`() => e`) that handed a body to a handler stack — RETIRED into the named handler chain (§«Handler chains»). A thunk that defers a computation for a function to run stays the binder form, the two-parameter case's sibling.
 
 The multi-parameter residue retires as the medium authors the migration (`PLAN.md §11`, iteration is topology); neither is a second minting form, and no third is being held open.
 
@@ -527,11 +510,9 @@ fn compose(f, g) = { x => g(f(x)) }
 fn id(x) with Pure = x
 ```
 
-### Match arms ARE the literal — the sentence that became a mechanism
+### Match arms ARE the literal
 
-This section used to read: *"Match arms are `pattern => body`. **Match arms ARE pattern-dispatched lambdas** — same separator, same body discipline. The syntactic unity reflects semantic unity."* That was a remark about RESEMBLANCE, and the medium's own census priced it: **197 of 515 lambda sites (38%) were `(x) => match x { … }`**, with 57 more a single tuple pattern in param position — half the corpus paying a wrapper to reach a form the language already had, and this document conceding the point in prose while the parser charged for it.
-
-It is a mechanism now: an arm list IS a function, `match` is that function applied, and one `parse_match_arms` serves both. The unity is not reflected; it is the same node.
+An arm list IS a function, `match` is that function applied, and one `parse_match_arms` serves both: the unity is not a resemblance between two forms, it is the same node. (Before the mechanism, 197 of the wheel's 515 lambda sites were `(x) => match x { … }` — a wrapper paid to reach a form the language already had.)
 
 ### Rejected forms
 
@@ -583,13 +564,13 @@ x |> double |> square
 
 **Type rule:** if `left: A` and `right: A -> B with E`, then `left |> right: B with E`. The chain's row unions all stage rows.
 
-**A stage is APPLIED, never minted.** A call standing as a stage is completed in place (its hole filled by the piped value), and a function literal standing as a stage — `x |> { v => v * 2 }`, `x |> { 0 => 1, n => n - 1 }` — is the piped value bound to its parameter, its body lowered in the frame the pipe stands in. Neither builds a closure, so neither costs the frame anything, and a stage-shaped chain inside a `with !Alloc` function stays allocation-free (real, 2026-09-28; before, each literal stage minted a closure per call under the same `!Alloc`). The parameter is a binder of that frame like any other: it may share a name with a local there, and the local reads its own value again once the stage closes. A bare op reference standing as a stage is the perform: `x |> put` is `put(x)` in the frame the pipe stands in (real, 2026-10-13 — the lowering built the op's partial record and called it, so `fn pipe_it(x) with !Alloc = x |> put` refused as an internal invariant where `put(x)` ran; tests/micros/mn-pipe-into-op.mn).
+**A stage is APPLIED, never minted.** A call standing as a stage is completed in place (its hole filled by the piped value), and a function literal standing as a stage — `x |> { v => v * 2 }`, `x |> { 0 => 1, n => n - 1 }` — is the piped value bound to its parameter, its body lowered in the frame the pipe stands in. Neither builds a closure, so neither costs the frame anything, and a stage-shaped chain inside a `with !Alloc` function stays allocation-free. The parameter is a binder of that frame like any other: it may share a name with a local there, and the local reads its own value again once the stage closes. A bare op reference standing as a stage is the perform: `x |> put` is `put(x)` in the frame the pipe stands in (tests/micros/mn-pipe-into-op.mn).
 
-**A stage whose callee is not yet known is the Stage Law's product** (real, 2026-10-06). Where the callee's arrow is still a variable — a field of an unannotated record, a parameter, a forward local — `x |> rig.tone(320.0)` is judged as `rig.tone(320.0, x)`: the arguments written, then the piped value's slot. Until then the stage was judged as a complete call returning a function, so the field was typed `(Float) -> (Float) -> Float`, a curried reading the medium has no mechanism for, and Pulse's filter, built `(Hz, Float) -> Float`, was called with one argument and trapped at the indirect call. A callee whose arrow is known is completed by its own parameters, and one whose call is already complete and returns a function is applied whole.
+**A stage whose callee is not yet known is the Stage Law's product.** Where the callee's arrow is still a variable — a field of an unannotated record, a parameter, a forward local — `x |> rig.tone(320.0)` is judged as `rig.tone(320.0, x)`: the arguments written, then the piped value's slot. A callee whose arrow is known is completed by its own parameters, and one whose call is already complete and returns a function is applied whole.
 
-**A product built at the site fills a stage's open slots** (real, 2026-10-06). `((l) >< (r)) |> mix(0.35)` is `mix(0.35, l, r)` when `mix(0.35)` leaves exactly two slots — the parentheses are the precedence table's, since `|>` binds tighter than `><`: the merge, Faust's `,` then `:`, and the tuple is never built. A stage with one open slot takes the product whole, as it takes any value; the merge asks for exact agreement and never guesses.
+**A product built at the site fills a stage's open slots.** `((l) >< (r)) |> mix(0.35)` is `mix(0.35, l, r)` when `mix(0.35)` leaves exactly two slots — the parentheses are the precedence table's, since `|>` binds tighter than `><`: the merge, Faust's `,` then `:`, and the tuple is never built. A stage with one open slot takes the product whole, as it takes any value; the merge asks for exact agreement and never guesses.
 
-**Applying a stage owes what the stage demands.** The piped value fills the stage's parameter exactly as a call's argument fills it, so the parameter's refinement is claimed of the value at the pipe and the row its precondition guards is paid there when the claim is open: `30000.0 |> alpha` over `alpha(c: Hz)` refuses as `alpha(30000.0)` does, and a partial stage owes the contract of the slot it leaves open (real, 2026-10-01; the pipe raised no claim before, §«Refinement types»).
+**Applying a stage owes what the stage demands.** The piped value fills the stage's parameter exactly as a call's argument fills it, so the parameter's refinement is claimed of the value at the pipe and the row its precondition guards is paid there when the claim is open: `30000.0 |> alpha` over `alpha(c: Hz)` refuses as `alpha(30000.0)` does, and a partial stage owes the contract of the slot it leaves open (§«Refinement types»).
 
 ### `<|` — diverge (fanout)
 
@@ -627,13 +608,7 @@ parallel-fanout topology (see §`><`). The read-only borrow is what makes
 execution-as-a-handler PROVABLY race-free: a shared value borrowed read-only is
 safe across threads.
 
-**A fanout over one stage is the pipe** (real, 2026-10-14). A product of one
-field is its field, so `x <| f` answers what `x |> f` answers and the two are
-one graph: the parse builds the pipe, and `mentl fmt` writes `|>`. A tuple
-literal of one, `(a,)`, is `a`, as the pattern `(p)` is `p`. Until then the
-one-stage fanout minted a tuple of one that only the pattern `(e)` could take
-apart, and `let e = 2 <| inc; e + 1` refused arithmetic on it
-(tests/micros/mn-product-of-one.mn, measured on boot 82692525).
+**A fanout over one stage is the pipe.** A product of one field is its field, so `x <| f` answers what `x |> f` answers and the two are one graph: the parse builds the pipe, and `mentl fmt` writes `|>`. A tuple literal of one, `(a,)`, is `a`, as the pattern `(p)` is `p` (tests/micros/mn-product-of-one.mn).
 
 ### `><` — parallel compose (structural N-ary)
 
@@ -666,26 +641,23 @@ a `mode == 0/1/2` int). The verb stays PURE TOPOLOGY in what it performs — it
 contributes no effect of its own to the row, and the schedule is not in it; the
 cursor reads the strategy from the live handler stack (the same `resolve_in_stack`
 every `perform` uses), exactly as persistence is a handler swap (`PLAN.md §4④`).
-What the verb COSTS is what its let-spelling costs (real, 2026-10-06). Under a
-schedule that runs the branches in the frame (`Seq`, and `Simd` and `Gpu` until
-they have a device), each branch is evaluated where the fanout stands — no
-thunk, no carrier — and the tuple of results is built only where it ESCAPES: a
-fanout taken apart where it is made (`match (x + 1) >< (x + 2) { (a, b) => a * b
-}`) binds its parts to registers, and one piped into a stage with as many open
-slots MERGES into it (`((l) >< (r)) |> mix(0.35)` is `mix(0.35, l, r)`, §«`|>` —
-converge»), so neither allocates and `with !Alloc` accepts both. A fanout whose
-tuple escapes — returned, stored, handed whole to a call — builds it and charges
-`Memory + Alloc` in its frame, and `with !Alloc` refuses that (the row said
-nothing of a fanout's cost before 2026-09-28; until 2026-10-06 it charged every
-fanout, destructured or not, so lessons 3 and 5 of the course contradicted each
-other). A spawning schedule builds a thunk per branch at the cost of the install
-that runs it, charged where that install stands — so a callee declared
-`!Alloc`, like one declared `!Thread`, takes no caller's spawning demand and
-runs its in-frame form. A `<~` in a branch literal is the enclosing record's
-line under every schedule: a thunk minted per call holds that line in its slot
-instead of a ring of its own, so `step(1.0)` ticks one recurrence whether its
-caller installs `parallel_compose` or nothing (real, 2026-10-06; until then
-the spawned branch's line was reborn every call).
+What the verb COSTS is what its let-spelling costs. Under a schedule that
+runs the branches in the frame (`Seq`, and `Simd` and `Gpu` until they have a
+device), each branch is evaluated where the fanout stands — no thunk, no
+carrier — and the tuple of results is built only where it ESCAPES: a fanout
+taken apart where it is made (`match (x + 1) >< (x + 2) { (a, b) => a * b }`)
+binds its parts to registers, and one piped into a stage with as many open
+slots MERGES into it (`((l) >< (r)) |> mix(0.35)` is `mix(0.35, l, r)`, §«`|>`
+— converge»), so neither allocates and `with !Alloc` accepts both. A fanout
+whose tuple escapes — returned, stored, handed whole to a call — builds it and
+charges `Memory + Alloc` in its frame, and `with !Alloc` refuses that. A
+spawning schedule builds a thunk per branch at the cost of the install that
+runs it, charged where that install stands — so a callee declared `!Alloc`,
+like one declared `!Thread`, takes no caller's spawning demand and runs its
+in-frame form. A `<~` in a branch literal is the enclosing record's line under
+every schedule: a thunk minted per call holds that line in its slot instead of
+a ring of its own, so `step(1.0)` ticks one recurrence whether its caller
+installs `parallel_compose` or nothing.
 **No `Schedule` installed → `Seq`** — inline-eval in source order, deterministic
 and debuggable, the invisible default. `~> Thread` runs the branches on parallel
 threads; `~> Simd` cashes a `[f32; 4]` branch tuple to a v128 lane (the
@@ -696,94 +668,77 @@ that no spawn occurs (provable like `!Alloc` — Rayon/Faust cannot state this).
 `mentl where` badges the chosen strategy: `>< [Thread ×4]`, output not input —
 each site in the glyph its author wrote with the branches it spawns (`<| [Seq
 ×2]`; a sequence fanout as `fanout [Thread, a branch per element]`), and a
-site whose frame installs no schedule names the callers that demand it (real,
-2026-10-02).
+site whose frame installs no schedule names the callers that demand it.
 
-**The race-freedom claim has its gate (real, 2026-09-27).** A spawned branch
-runs in the world it was spawned in — the task record carries the install
-chain of the PERFORM that spawned it and the fresh instance installs it before
-the branch runs — so an effect a branch performs reaches the handler installed
-at the fanout's frame, from a second instance, and the schedule's own ops
-answer there too: `current_id()` inside a branch reaches the
-`parallel_compose` that started it (real 2026-09-30; until then the record
-carried the spawn arm's world, which by the deep-handler law excluded the
-schedule itself, and the branch faulted at the chain's end). `E_ThreadedBranchEffect` (armed)
-refuses at lowering any effect in a branch's row whose covering handler at
-that frame is STATEFUL (two instances resuming `with n = n + 1` on one state
-record), lies beyond the frame fence with no caller's schedule demanding the
-fanout (a caller's install is provable only along a demand, below), or is stateless but
-performs, from an arm, into a stateful one further out (an arm runs in the
-spawned instance and its performs resolve outer, so the walk follows each
-handler's own residual row down the stack). The fix is stated in the refusal:
-install a stateless handler at the fanout's frame, or install the handler
-inside the branch, where each instance gets its own state record. The rule
-reads WRITES, not declarations: a handler is stateful when an arm writes its
-state by either of a field's two writers — a `resume … with` update, which
-replaces the record's word, or an in-place store into what the field holds
-(`list_set(buf, 0, …)`, directly or through a callee that stores into its
-parameter), the same fact an install's arena reads — so a state that is only
-read is shared read-only across instances and runs (real, 2026-10-06: until
-then the rule read the updates alone, and two branches bumping a count kept
-in a state buffer ran; the refusal names the store). And the rule reads a
-branch's own stores by their targets (real, 2026-10-15): a store into memory
+**The race-freedom claim has its gate.** A spawned branch runs in the world it
+was spawned in — the task record carries the install chain of the PERFORM that
+spawned it and the fresh instance installs it before the branch runs — so an
+effect a branch performs reaches the handler installed at the fanout's frame,
+from a second instance, and the schedule's own ops answer there too:
+`current_id()` inside a branch reaches the `parallel_compose` that started it.
+`E_ThreadedBranchEffect` (armed) refuses at lowering any effect in a branch's
+row whose covering handler at that frame is STATEFUL (two instances resuming
+`with n = n + 1` on one state record), lies beyond the frame fence with no
+caller's schedule demanding the fanout (a caller's install is provable only
+along a demand, below), or is stateless but performs, from an arm, into a
+stateful one further out (an arm runs in the spawned instance and its performs
+resolve outer, so the walk follows each handler's own residual row down the
+stack). The fix is stated in the refusal: install a stateless handler at the
+fanout's frame, or install the handler inside the branch, where each instance
+gets its own state record. The rule reads WRITES, not declarations: a handler
+is stateful when an arm writes its state by either of a field's two writers —
+a `resume … with` update, which replaces the record's word, or an in-place
+store into what the field holds (`list_set(buf, 0, …)`, directly or through a
+callee that stores into its parameter), the same fact an install's arena reads
+— so a state that is only read is shared read-only across instances and runs.
+And the rule reads a branch's own stores by their targets: a store into memory
 older than the branch — a buffer both branches capture, a module value — is
 one memory written from every instance, and refuses naming the store; a
 branch reaching code that stores into memory older than that code's frame
-carries `Mutate` (§«Negation in `with` clauses») and refuses the same way,
-so two branches calling one function whose feedback line both tick refuse;
-a store into memory the branch allocated builds a value and runs. Until then
-`0 <| (bump(buf), bump(buf)) ~> parallel_compose`, each `bump` storing into
-the one `buf`, compiled and exited 3
+carries `Mutate` (§«Negation in `with` clauses») and refuses the same way, so
+two branches calling one function whose feedback line both tick refuse; a
+store into memory the branch allocated builds a value and runs
 (tests/frontier/mn-threaded-branch-captured-store.mn).
 
-**A spawned instance shares the module's values** (real, 2026-10-06). A
-module value let is the root's: its init runs once, in the root, before
-`main`, and every spawned instance reads the root's values through the task
-record — a branch reads the module buffer the root updated in place, and an
-init that prints prints once. Until then each spawned instance re-ran every
-init, so a branch read a fresh copy and the two schedules answered
-differently.
+**A spawned instance shares the module's values.** A module value let is the
+root's: its init runs once, in the root, before `main`, and every spawned
+instance reads the root's values through the task record — a branch reads the
+module buffer the root updated in place, and an init that prints prints once.
 
-**A branch's abandon is re-raised at the join** (real, 2026-10-03). A branch
-whose perform never resumes leaves its thread with the op and its arguments
-banked in the task record; the join re-raises it in the joiner — the first
-abandoned branch in join order wins — and the joiner unwinds from the join
-to the install whose arm answers, which is the fanout's value: `match (0 <|
-({ _ => ab() }, { _ => 10 })) ~> parallel_compose ~> h { (a, b) => a + b }`
-with `ab() => (5, 0)` answers 5, and the same fanout under
-`sequential_compose` answers 5 through the spawn arm's own call boundary. A
-branch that yields a LIVE continuation has nowhere to resume — no joiner can
-hold it — and traps loudly at the thread's end, never silently joining its
-dummy. Until this landed the branch thread trapped at the thunk's floor.
+**A branch's abandon is re-raised at the join.** A branch whose perform never
+resumes leaves its thread with the op and its arguments banked in the task
+record; the join re-raises it in the joiner — the first abandoned branch in
+join order wins — and the joiner unwinds from the join to the install whose
+arm answers, which is the fanout's value: `match (0 <| ({ _ => ab() }, { _ =>
+10 })) ~> parallel_compose ~> h { (a, b) => a + b }` with `ab() => (5, 0)`
+answers 5, and the same fanout under `sequential_compose` answers 5 through
+the spawn arm's own call boundary. A branch that yields a LIVE continuation
+has nowhere to resume — no joiner can hold it — and traps loudly at the
+thread's end, never silently joining its dummy.
 
-**The schedule reaches a callee's fanout by DEMAND (real, 2026-09-30).** A
-fanout's own frame's install wins; a fanout whose frame installs no schedule
-runs under the schedule a CALLER installs over a direct call to it, and so
-does every fanout in that callee's direct-call reach: `fn both() = (a()) ><
-(b())` under `(both()) ~> parallel_compose` spawns both branches, and the
-callee is emitted as a schedule TWIN keyed by the install's schedule beside
-its instantiation — the proof becomes the dispatch, as a twin is keyed by
-what its body reads. Two things bound the reach, each a decision the row
-reads. A callee declared `!Thread` keeps its own frame's schedule: the
-negation is what the demand reads, so a real-time region's fanouts stay
-sequential under any caller. And the demand crosses DIRECT calls only: a
-function value minted under the schedule — a lambda, a partial, a nested fn —
-keeps its own frame's schedule, because a value can outlive the install and a
-spawn it carried out would find no handler on the chain
-(`Hβ.lower.schedule-through-a-value`); a branch thunk, an install's arm and
-a state init never leave the extent and take the schedule. A direct call is
-the declaration its callee's edge reaches, so a nested fn sharing a
-module-level fn's name never answers for it (real, 2026-10-14: the demand
-read its callee by spelling, the nested fn answered, and a caller's `~>
-parallel_compose` ran the module-level fanout in the root;
-tests/micros/mn-schedule-reach-shadowed-name.mn). The race rule is
-read along the same demand: each demanded fanout's branch rows are checked
-against the installs between it and the demanding site, and a branch whose
-row is a callback PARAMETER's is read at the instantiating site — `fn
-tally(f) = (f()) >< (f())` called with a callback that bumps a stateful
-counter refuses, where the lexical rule saw a free row. Until this landed the
-frame fence made a callee's fanout `Seq` whatever its caller installed, and
-no reusable helper could fan out.
+**The schedule reaches a callee's fanout by DEMAND.** A fanout's own frame's
+install wins; a fanout whose frame installs no schedule runs under the
+schedule a CALLER installs over a direct call to it, and so does every fanout
+in that callee's direct-call reach: `fn both() = (a()) >< (b())` under
+`(both()) ~> parallel_compose` spawns both branches, and the callee is emitted
+as a schedule TWIN keyed by the install's schedule beside its instantiation —
+the proof becomes the dispatch, as a twin is keyed by what its body reads. Two
+things bound the reach, each a decision the row reads. A callee declared
+`!Thread` keeps its own frame's schedule: the negation is what the demand
+reads, so a real-time region's fanouts stay sequential under any caller. And
+the demand crosses DIRECT calls only: a function value minted under the
+schedule — a lambda, a partial, a nested fn — keeps its own frame's schedule,
+because a value can outlive the install and a spawn it carried out would find
+no handler on the chain (`Hβ.lower.schedule-through-a-value`); a branch
+thunk, an install's arm and a state init never leave the extent and take the
+schedule. A direct call is the declaration its callee's edge reaches, so a
+nested fn sharing a module-level fn's name never answers for it
+(tests/micros/mn-schedule-reach-shadowed-name.mn). The race rule is read along
+the same demand: each demanded fanout's branch rows are checked against the
+installs between it and the demanding site, and a branch whose row is a
+callback PARAMETER's is read at the instantiating site — `fn tally(f) = (f())
+>< (f())` called with a callback that bumps a stateful counter refuses, where
+the lexical rule saw a free row.
 
 **`fanout(f, xs)` is the SEQUENCE fanout** — `><` over a runtime sequence: `f`
 applied to each element as an independent branch, the results collected in
@@ -793,22 +748,19 @@ every element's branch is spawned and joined in source order
 (`fanout_threaded`, lib/threading), under a Persist-class install
 checkpointed and joined (`fanout_persisted`, lib/persist). `map` itself stays
 a sequential loop by construction (§Vocabulary): only a fanout declares its
-applications independent, which is the whole difference between them.
-Simd and Gpu pack a fixed lane count and run a sequence fanout sequentially.
-The race rule reads the function a sequence fanout applies as every branch's
-(real, 2026-10-15), so a `~> parallel_compose` over a fanout whose function
-writes through a stateful handler refuses — the deterministic partition
-(`PLAN.md §11.16`) stated as a gate. Until then the rule never read that
-function, and a fanout whose function stored into a captured buffer or
-performed into a stateful handler compiled and ran
-(tests/micros/mn-race-sequence-fanout-store.mn,
+applications independent, which is the whole difference between them. Simd
+and Gpu pack a fixed lane count and run a sequence fanout sequentially. The
+race rule reads the function a sequence fanout applies as every branch's, so a
+`~> parallel_compose` over a fanout whose function writes through a stateful
+handler refuses — the deterministic partition (`PLAN.md §11.16`) stated as a
+gate (tests/micros/mn-race-sequence-fanout-store.mn,
 mn-race-sequence-fanout-stateful.mn).
 
-**Alternatives are a choice, never a fanout** (real, 2026-10-16). A fanout's
-branches are independent work whose results are all wanted; alternatives are
-one computation tried several ways, and `choose(options)` (lib/choice.mn)
-says so: it suspends the computation around it, and the handler that catches
-its resumptions says what choosing means — `every` joins what each option
+**Alternatives are a choice, never a fanout.** A fanout's branches are
+independent work whose results are all wanted; alternatives are one
+computation tried several ways, and `choose(options)` (lib/choice.mn) says
+so: it suspends the computation around it, and the handler that catches its
+resumptions says what choosing means — `every` joins what each option
 answered, `first` stops at the first option that answers `Some`. The ??-fan is
 one choice (`segment_verify`, src/synth_proposer.mn): its candidates are the
 resumptions of one `choose`, and the compiler's forking handler judges each
@@ -915,7 +867,7 @@ Same node, same scope, either way.
 
 **Type rule:** `row(expr ~> h) = row(expr) - handled(h) + row(h) + cost(h)`. The handler subtracts what it absorbs; anything its arms perform is added; and the install's own cost, a fact of its class, is charged to the frame it stands in: a dispatched install (a schedule included) builds the record its arms run against and pushes its world, so it costs `Memory + Alloc`, and a derivative reading (`~> grad(w)`, which replaces the install with the extent's derivative program) costs nothing.
 
-*The fourth term is real since 2026-09-28. Until then `with !Alloc` accepted `(ask(w) + 1.0) ~> scaled(w)` while every call grew the heap 48 bytes, and a stateless handler's install grew it 40 (`Hβ.effects.install-allocates-unrowed`). An install whose record never outlives its extent could live in the frame and cost nothing; that is a representation the lowering has not built, and the charge follows it when it does (`Hβ.lower.install-record-in-the-frame`).*
+*An install whose record never outlives its extent could live in the frame and cost nothing; that representation is `Hβ.lower.install-record-in-the-frame`, and the charge follows it when the lowering builds it.*
 
 **`~>` governs the topology to its left — including a `><` / `<|` fanout.** Because
 `~>` is the loosest operator, a `Schedule` handler at the foot of a chain governs
@@ -927,8 +879,7 @@ strategy LIVE from this install edge (§`><`) — adding `~> Thread`, swapping i
 diff between sequential, parallel, lane-packed, and crash-surviving. The schedule
 is a fact in the `~>` edge, never baked into the verb.
 
-**A derivative reading is the other projection an install can be** (real,
-2026-09-28, forward mode). `(body) ~> grad(w)` — lib/ml/grad.mn's `Derivative`
+**A derivative reading is the other projection an install can be.** `(body) ~> grad(w)` — lib/ml/grad.mn's `Derivative`
 effect and its `grad` handler — evaluates `body` exactly as it evaluates without
 the install, and lets it ask `d(v)`: the partial derivative of `v` with respect to
 the seed `w`, every other free variable of the extent held fixed.
@@ -948,7 +899,7 @@ the extent — a `<~` line, a handler's state — enters it held fixed, and a `<
 line inside the extent carries its tangent as a recurrence of its own.
 
 **The reading crosses a function value and a handler's arms through the record
-that holds them** (real, 2026-09-30). Handler = state = closure, read once more:
+that holds them.** Handler = state = closure, read once more:
 a closure minted under the reading carries its captures' tangents in its own
 record, beside the captures, so `d(f(3.0))` for `f = { v => w * v }` minted
 under `~> grad(w)` is 3 wherever `f` is called — through `apply(f, x)`, through
@@ -962,7 +913,7 @@ free variable of the extent and is held fixed: its captures and its state carry
 no tangent where the reading opens, and are differentiated from the first write
 inside it, so `d(g(3.0))` for the same `g` minted before the install is 0.
 
-**A product seed is answered in one reverse sweep** (real, 2026-09-30). The
+**A product seed is answered in one reverse sweep.** The
 seed may be a record or tuple of Floats — `~> grad(ws)` with `ws = {a: 2.0, b:
 1.0}` — and `d(v)` is then the gradient of `v` in every Float field, READ BY
 DESTRUCTURING where it is asked: `let {a: ga, b: gb} = d(v)` binds each field to
@@ -995,8 +946,7 @@ since the record's later readers could not know. A `d` outside every reading
 leaves `Derivative` unhandled at the root. A `<~` line a closure record owns is
 `Hβ.derive.closure-line-tangent`.
 
-**An arena is the third: the extent's allocations die at its exit** (real,
-2026-10-03). `(body) ~> arena` — lib/arena.mn's `arena`, which answers `Alloc`
+**An arena is the third: the extent's allocations die at its exit.** `(body) ~> arena` — lib/arena.mn's `arena`, which answers `Alloc`
 by forwarding — evaluates `body` exactly as it evaluates without the install,
 and at the exit reclaims everything the body allocated except what its
 publication reaches: the body's value, and each value the body stored into
@@ -1023,15 +973,14 @@ reachability from the publication, never a `Consume`: ownership's regions stay
 compile-time facts. In a module that spawns, each instance allocates in a run
 of its own — one atomic add per 64 KB chunk on the image's frontier, a private
 bump inside — so an arena's region is a span of its own instance's run and
-reclaims in a spawned branch as in the root (real, 2026-10-06; until then a
-spawn anywhere in a module turned every arena in it off). An arena open across
+reclaims in a spawned branch as in the root. An arena open across
 a spawn its instance makes, or across a chunk that could not extend its run,
 keeps its region: a spawned child's records lie in the child's run, where the
 exit never looks, and may hold the extent's values
 (`Hβ.arena.extent-spanning-a-spawn-keeps`).
 
 **A suspended arena keeps its region, and each resumption is an arena of its
-own** (real, 2026-10-03). An op performed inside an arena and answered by a
+own.** An op performed inside an arena and answered by a
 handler outside it suspends what the arena encloses: the continuation the
 handler holds and the perform's arguments live in the arena's region, and the
 rest of the body has not run. So the exit does not end the extent — the arena
@@ -1045,10 +994,7 @@ len(build(200)) - 200` grows the heap 96 bytes in all, against 19,240 with no
 arena. An arena whose body suspends is a place the frame it stands in is
 captured at (§«Resume discipline»), so the rest of that frame resumes at the
 arena's value; an arm that never resumes leaves the arena suspended for good,
-its arguments intact. `arena_stat(ArSuspended)` counts the suspensions. Until
-this landed the exit ran on the way out and reclaimed the continuation and the
-arguments from under the arm, which then trapped or read zero
-(`Hβ.arena.suspended-by-a-continuation`).
+its arguments intact. `arena_stat(ArSuspended)` counts the suspensions.
 
 ### `<~` — feedback (cycle closure)
 
@@ -1068,11 +1014,11 @@ signal
 
 **Type rule:** `<~`'s RHS is a **state-element** — `delay(N)`, `accumulate(init)`, `filter_spec(N, coeffs)`, or any user-defined register of that shape — and the verb checks it as one (`FeedbackSpec`); a non-spec RHS fails that unification with a Reason to its own site.
 
-**The causality rule (real, 2026-08-12):** a cycle with no delay has no computable value — the prior would be the very output being computed — so `x <~ delay(0)` is **`E_ZeroDelayFeedback`**, an ARMED refusal at the `<~` site (nonzero exit, zero WAT). Faust makes this unsayable by inserting its delay implicitly; Mentl names the depth, so the depth can be wrong, so the medium refuses it. The refusal is one ARM of the depth read below — the same read that sizes the line judges whether the size is sayable — and both `delay(0)` and `Delay(0)` convict, the two spellings of one FeedbackSpec variant.
+**The causality rule:** a cycle with no delay has no computable value — the prior would be the very output being computed — so `x <~ delay(0)` is **`E_ZeroDelayFeedback`**, an ARMED refusal at the `<~` site (nonzero exit, zero WAT). Faust makes this unsayable by inserting its delay implicitly; Mentl names the depth, so the depth can be wrong, so the medium refuses it. The refusal is one ARM of the depth read below — the same read that sizes the line judges whether the size is sayable — and both `delay(0)` and `Delay(0)` convict, the two spellings of one FeedbackSpec variant.
 
-**The iterative context is the CLOCK, and the clock is inferred, not required** (measured 2026-08-12). A `<~` site is a per-site state register whose *previous iteration* is the enclosing function's next call, which is why the stage `bandpass_stage` mints (`lib/dsp/signal.mn`, four `<~` sites) carries no clock in its row and is correct; requiring an ambient effect would refuse correct code, every `<~` site in the wheel's own link among it. So no class refuses a `<~` for a missing context. Its honest refusal is the inferred clock's (`Hβ.dataflow.clock-calculus-sample-rate`, Lustre's clock calculus): when the medium *proves* what advances a cycle, "nothing advances this one" becomes a measurement, and the refusal is that measurement projected — `Sample`/`Tick`/`Clock` instances of the class by what they do, never a name-allowlist.
+**The iterative context is the CLOCK, and the clock is inferred, not required.** A `<~` site is a per-site state register whose *previous iteration* is the enclosing function's next call, which is why the stage `bandpass_stage` mints (`lib/dsp/signal.mn`, four `<~` sites) carries no clock in its row and is correct; requiring an ambient effect would refuse correct code, every `<~` site in the wheel's own link among it. So no class refuses a `<~` for a missing context. Its honest refusal is the inferred clock's (`Hβ.dataflow.clock-calculus-sample-rate`, Lustre's clock calculus): when the medium *proves* what advances a cycle, "nothing advances this one" becomes a measurement, and the refusal is that measurement projected — `Sample`/`Tick`/`Clock` instances of the class by what they do, never a name-allowlist.
 
-**The declared depth IS the line's depth (real, 2026-08-12), and the line is a RING OWNED BY THE RECORD OF THE FUNCTION THAT CONTAINS THE CYCLE (real, 2026-09-27).** `delay(N)` carries N priors: the site's line is an N-slot ring, the prior the cycle reads is its OLDEST slot — y[n−N] — and each tick stores the output over it and advances the head by one, so a tick is a load, a store and a bounded increment at any depth (`delay(24_000)` costs what `delay(1)` costs per tick; `tests/frontier/mn-feedback-deep-line.mn` drives 2,000,000 ticks at that depth and the frontier leg prints the ticks per second). `delay(1)` is the single register it always was; `delay(3)` is genuinely three deep, measured by the same recurrence driven six times answering 6 under `delay(1)` and 2 under `delay(3)`. The ring is allocated ONCE, where its owner is built — never per tick — and its owner is the record of the function the `<~` sits in (handler = state = closure, read at the site): a lambda's line lives in the closure record past its captures, so every closure minted from one lambda is its own filter (`let lp_l = lowpass(0.3)` and `let lp_r = lowpass(0.3)` are two lines, the two-channel shape every stereo stage writes); a handler arm's line lives in the install record past the arms, so every `~> h` is its own filter; a reified remainder's line lives in the k record, shared by that k's resumptions as every heap write of the remainder is; a top-level fn's line — its record being the module's immutable data record — rides an instance global allocated at start, one per emitted twin, so a generic recurrence reached at Int and at Float ticks two lines at two widths; and a `<~` directly in a module value let's init is static the same way, its line owned by the module's init function, while a fn nested in that init is a closure minted there and keeps its lines in its record (real, 2026-09-28 — module scope is a frame). A filter that must exist once per signal is therefore a MAKER: lib/dsp's `lowpass_filter(sr)`, `highpass_filter(sr)`, `dc_blocker()` and `envelope_follower(attack, release, sr)` each return the stage, and each stage minted owns its line — they were top-level fns until 2026-09-28, one line per program, so a stereo pair through one filter shared one memory. Until this landed the line was N module globals keyed by the site alone: two closures from one lambda, two installs of one handler and two twins of one generic shared one register (the Float twin wrote f64 into an i32 line and refused to assemble), and a deep line was N global moves per tick (`tests/micros/mn-feedback-closure-instances.mn`, `mn-feedback-arm-instances.mn`, `mn-feedback-twin-width.mn`, `mn-feedback-deep-line.mn`, each measured on boot 542ea5a3 before the fix). **The `!Alloc` row survives the cycle (2026-09-25).** The RHS is checked as a `FeedbackSpec` VALUE — its type is what the site reads — but its construction never executes: emit discards the lowered spec and the prior is a register read off the ring, so the site judges the spec in a frame whose row is dropped. Until that landing the constructor's allocation charged the frame: `fn cycle() with !Alloc` around `((prev) => ramp(prev)) <~ Delay(3)` refused with `!Alloc + Any vs Memory + Alloc`, and arming `E_EffectMismatch` turned that false charge into a false refusal of a correct program, which is what closed it (tests/frontier/mn-feedback-transport.mn pins it). The surface question behind it stays open and is the smaller artifact: whether the RHS should stop being an expression and become a static depth annotation, which is what the emit already treats it as (`Hβ.effects.feedback-row-substitutes`, branch B).
+**The declared depth IS the line's depth, and the line is a RING OWNED BY THE RECORD OF THE FUNCTION THAT CONTAINS THE CYCLE.** `delay(N)` carries N priors: the site's line is an N-slot ring, the prior the cycle reads is its OLDEST slot — y[n−N] — and each tick stores the output over it and advances the head by one, so a tick is a load, a store and a bounded increment at any depth (`delay(24_000)` costs what `delay(1)` costs per tick; `tests/frontier/mn-feedback-deep-line.mn` drives 2,000,000 ticks at that depth and the frontier leg prints the ticks per second). `delay(1)` is the single register it always was; `delay(3)` is genuinely three deep: the same recurrence driven six times answers 6 under `delay(1)` and 2 under `delay(3)`. The ring is allocated ONCE, where its owner is built — never per tick — and its owner is the record of the function the `<~` sits in (handler = state = closure, read at the site): a lambda's line lives in the closure record past its captures, so every closure minted from one lambda is its own filter (`let lp_l = lowpass(0.3)` and `let lp_r = lowpass(0.3)` are two lines, the two-channel shape every stereo stage writes); a handler arm's line lives in the install record past the arms, so every `~> h` is its own filter; a reified remainder's line lives in the k record, shared by that k's resumptions as every heap write of the remainder is; a top-level fn's line — its record being the module's immutable data record — rides an instance global allocated at start, one per emitted twin, so a generic recurrence reached at Int and at Float ticks two lines at two widths; and a `<~` directly in a module value let's init is static the same way, its line owned by the module's init function, while a fn nested in that init is a closure minted there and keeps its lines in its record (module scope is a frame). A filter that must exist once per signal is therefore a MAKER: lib/dsp's `lowpass_filter(sr)`, `highpass_filter(sr)`, `dc_blocker()` and `envelope_follower(attack, release, sr)` each return the stage, and each stage minted owns its line (`tests/micros/mn-feedback-closure-instances.mn`, `mn-feedback-arm-instances.mn`, `mn-feedback-twin-width.mn`, `mn-feedback-deep-line.mn`). **The `!Alloc` row survives the cycle.** The RHS is checked as a `FeedbackSpec` VALUE — its type is what the site reads — but its construction never executes: emit discards the lowered spec and the prior is a register read off the ring, so the site judges the spec in a frame whose row is dropped (tests/frontier/mn-feedback-transport.mn pins it). The surface question behind it stays open and is the smaller artifact: whether the RHS should stop being an expression and become a static depth annotation, which is what the emit already treats it as (`Hβ.effects.feedback-row-substitutes`, branch B).
 
 **The depth must be a LITERAL.** The literal is compiled into the line twice: it sizes the ring where its owner allocates it (`line_ring_bytes`, src/backends/wasm.mn — a two-word header, then the slots), and it is the modulus the head wraps at on every tick, an immediate in the emitted code. A depth the medium can only read at runtime is a depth today's line cannot hold — and handing such a site one slot is precisely the silent wrong the depth read exists to end. `delay(n - 1)` is **`E_ComputedDelayDepth`**, armed at the `<~` site. A runtime depth is the same ring with a cap word: the depth stored beside the head in the header's second word (padding today), the ring allocated at the size the value names, and the tick's modulus read from the ring instead of the immediate. That is `Hβ.dataflow.delay-line-runtime-depth`, and it waits on no other landing — only on a program that needs it.
 
@@ -1136,44 +1082,13 @@ fn greet(u: {name: String, ...}) -> String =
   "Hello, " ++ u.name
 ```
 
-`...` is anonymous rest; `...r` binds the rest to a row variable `r`, lowercase by the case rule, and every `...r` of one signature is that one variable (real, 2026-10-06; until then the parse dropped the name, so two `...r` were two rows, and `fn sum_x(a: {x: Int, ...r}, b: {x: Int, ...r})` accepted records with different remainders):
+`...` is anonymous rest; `...r` binds the rest to a row variable `r`, lowercase by the case rule, and every `...r` of one signature is that one variable, so `fn sum_x(a: {x: Int, ...r}, b: {x: Int, ...r})` takes two records with one remainder:
 ```
 fn extend(base: {name: String, ...r}, age: Int) -> {name: String, age: Int, ...r} =
   ...
 ```
 
-**The lathe is turned to this section as of 2026-09-01.** It carried a
-SILENT WRONG for two weeks and the record is kept because the shape is
-instructive: an OPEN row's offsets were computed from the KNOWN field
-set's own ordering instead of the runtime record's, so `greet` above,
-called with a record whose other fields sort before `name`, read one of
-those fields. `fn width(u: {name: Int, ...}) = u.name + 1` over
-`{name: 5, age: 9}` returned 10 — `age + 1` — with no diagnostic and no
-trap; `mentl check` passed.
-
-The repair was never a refusal. Turning it into a floor breaks
-`fn g({x, y})`, whose destructuring parameter is the same open row, and
-the march measured exactly that. The row var is a quantified var like any
-other, and it keys the twin: the call site proves the whole field set, so
-each record shape mints its own specialization and reads its own layout.
-Two sites had dropped the same handle — the specialization walk discarded
-the row var, and the substitution kept it unresolved. Gates:
-`tests/syntax/record-field-param-open` (the red twin of the closed
-control), `record-field-param-open-two-shapes` (two shapes through one
-callee, which is the measurement that named the mechanism rather than the
-symptom), and `record-field-through-list`. A row that nothing closes still
-refuses — `tests/floors/mn-unprovable-offset`, where the receiver is
-main's own parameter.
-
-**The SECOND field reached the same class again (closed 2026-09-28).** A
-body reading two fields met them as two open rows and wrote each side's
-missing fields as the other's whole remainder, leaving no variable to
-generalize, so `fn pick(u) = u.x * 10 + u.y` over `{x: 1, y: 2}` and `{a:
-5, x: 3, y: 4}` read one layout for both and answered 54 for 46, silently
-(`tests/micros/mn-row-two-fields-two-shapes.mn`). The unseen rest of a
-record is always a row variable now, never an assumed remainder: two open
-rows meet at one fresh variable both continue into, so every record shape
-still mints its own twin.
+**An open row keys the twin.** The row var is a quantified var like any other: the call site proves the whole field set, so each record shape mints its own specialization and reads its own layout, and `fn width(u: {name: Int, ...}) = u.name + 1` reads `name` at its own offset whatever other fields the caller's record holds (`tests/syntax/record-field-param-open`, `record-field-param-open-two-shapes`, `record-field-through-list`). A row that nothing closes refuses (`tests/floors/mn-unprovable-offset`, where the receiver is main's own parameter). The unseen rest of a record is always a row variable, never an assumed remainder: two open rows meet at one fresh variable both continue into, so a body reading two fields (`fn pick(u) = u.x * 10 + u.y`) still mints one twin per record shape (`tests/micros/mn-row-two-fields-two-shapes.mn`).
 
 ### Nominal record types
 
@@ -1193,7 +1108,7 @@ let c = Customer{name: "Morgan", age: 30}
 A nominal record's declared field types are claimed where the record is
 built, as a constructor's arguments are: `R{den: 0}` under `type R = {den:
 Positive}` refuses at the `0`, and a function placed at a function-typed
-field crosses into it (real, 2026-10-02 — both compiled clean before).
+field crosses into it.
 
 **Brace-header slots close at `{` — the construction never extends a header.**
 Three grammar slots parse an expression whose own terminator is `{`: an `if`
@@ -1224,16 +1139,7 @@ Everywhere else — bindings, arguments, arm bodies, operands — `TypeName{...}
 extends as written. Layout is never consulted (principle 1); the slot, not
 whitespace, decides.
 
-**Every other brace reads its `{` through ONE discrimination** (real,
-2026-09-28): `...` opens an update, a pattern ending at `=>` opens an arm
-list (§«Function literals»), a field name followed by `:`, `,` or `}` opens a
-record, and anything else opens a block. A function body is such a slot, so
-`fn origin() = {x: 0, y: 0}` returns a record and needs no parens, and `fn
-f() = {x}` is the punned one-field record — never a block holding `x`, which
-the formatter lifts to `fn f() = x` (`E_RedundantBraces`). Until 2026-09-28 a
-fn body carried its own copy of the decision that read every `{` as a block,
-the formatter wrapped body records in parens to compensate, and `fn f() = {
-field: v }` failed to parse on a page written by hand.
+**Every other brace reads its `{` through ONE discrimination**: `...` opens an update, a pattern ending at `=>` opens an arm list (§«Function literals»), a field name followed by `:`, `,` or `}` opens a record, and anything else opens a block. A function body is such a slot, so `fn origin() = {x: 0, y: 0}` returns a record and needs no parens, and `fn f() = {x}` is the punned one-field record — never a block holding `x`, which the formatter lifts to `fn f() = x` (`E_RedundantBraces`).
 
 ### Pattern syntax for records
 
@@ -1243,37 +1149,11 @@ let {name, ...rest} = morgan   // bind name; rest is a record of remaining field
 let {name: n, age: a} = morgan // bind to renamed locals
 ```
 
-The record-pattern REST is real (2026-07-30): `{name, ...rest}` binds `rest`
-to a fresh record of the remaining fields, each copied at its own width, and
-`rest`'s own field accesses read the residual's layout. `..._` keeps the
-open-acceptance without a bind, exactly as in list patterns. Binding a rest
-BUILDS that record, so it charges `Memory + Alloc` in the frame the pattern
-stands in, and `with !Alloc` refuses it (real, 2026-09-30 — it was unrowed
-before; `tests/micros/mn-record-rest-alloc.mn`).
+`{name, ...rest}` binds `rest` to a fresh record of the remaining fields, each copied at its own width, and `rest`'s own field accesses read the residual's layout. `..._` keeps the open-acceptance without a bind, exactly as in list patterns. Binding a rest BUILDS that record, so it charges `Memory + Alloc` in the frame the pattern stands in, and `with !Alloc` refuses it (`tests/micros/mn-record-rest-alloc.mn`).
 
-**A record holds one field of each name**, so the rest has none of the
-fields the pattern names: the row behind them lacks their names, and
-`rest.name` refuses where it is written (real, 2026-10-16;
-`tests/micros/mn-record-rest-lacks-the-field.mn`). A rest named twice in a
-signature lacks every field written in front of it in either place. Until
-then a row read to its end kept the first field of each name, so the field
-`rest.name` demanded behind the pattern's `name` was dropped unread: `let
-{a, ...rest} = r; len(rest.a)` checked clean and read the Int in `r.a` as a
-list.
+**A record holds one field of each name**, so the rest has none of the fields the pattern names: the row behind them lacks their names, and `rest.name` refuses where it is written (`tests/micros/mn-record-rest-lacks-the-field.mn`). A rest named twice in a signature lacks every field written in front of it in either place.
 
-**A record pattern reads its fields BY NAME** through its receiver's whole
-field set, which the twin of each caller proves: a parameter's record may
-carry fields the pattern never names, sorted before or after the ones it
-does, and `fn pick(u) = { let {zeta} = u; zeta }` answers `9` over `{alpha:
-7, zeta: 9}` (real, 2026-09-28). Until then a pattern through a parameter
-read the slot of its own field index and answered `7`, silently, and its
-rest trapped (`tests/syntax/record-pattern-param`, `-param-rest`). And the
-rest's OWN reads spell the residual's layout (real, 2026-09-30): `fn f(u) =
-{ let {a, ...rest} = u; rest.b }` over `{a: 1, b: 2, c: 3}` answers `2`. It
-answered `3` — the receiver's `c` slot — and `rest.c` a virgin `0`, because
-the twin's pair for the row variable was the whole record the call proved
-while the rest's chain starts past the named fields; the pair is the
-residual past them now (`tests/micros/mn-record-rest-through-param.mn`).
+**A record pattern reads its fields BY NAME** through its receiver's whole field set, which the twin of each caller proves: a parameter's record may carry fields the pattern never names, sorted before or after the ones it does, and `fn pick(u) = { let {zeta} = u; zeta }` answers `9` over `{alpha: 7, zeta: 9}` (`tests/syntax/record-pattern-param`, `-param-rest`). The rest's OWN reads spell the residual's layout: `fn f(u) = { let {a, ...rest} = u; rest.b }` over `{a: 1, b: 2, c: 3}` answers `2`, the twin's pair for the row variable being the residual past the named fields (`tests/micros/mn-record-rest-through-param.mn`).
 
 ### Field access
 
@@ -1284,7 +1164,7 @@ nested.outer.inner
 
 Field access lowers to `LFieldLoad` with offset resolved at compile time from the record's type. O(1) load.
 
-A record literal written as a field of another is its own record: `let r = {inner: {den: 5}}` reads `r.inner.den` as 5 (real, 2026-10-02 — until then every record literal parked its base pointer in one shared scratch, so the outer literal answered the inner's pointer and `r.inner.den` read 0 with no diagnostic).
+A record literal written as a field of another is its own record: `let r = {inner: {den: 5}}` reads `r.inner.den` as 5.
 
 ### Record update — spread into new record
 
@@ -1295,7 +1175,7 @@ let tagged = {...event, timestamp: now(), processed: true}
 
 `{...existing, field: new_value, ...}` creates a NEW record by copying `existing`'s fields and overwriting/adding the listed fields. Non-destructive; original record unchanged (ownership preserved).
 
-**An update keeps every field it does not write** (real, 2026-10-16). Its type is the written fields in front of a COPY of the base past them: the copy is the base's row without the written names, a relation the two rows' free ends carry, so a field either learns reaches the other whichever is known first. A field the base holds under a written name stays the base's — the record holds one field of that name, the written one, at the written value's type — and every other field of the base is kept, including those not known where the update is judged. So `fn with_b(r, b) = {...r, b}` hands back every field its caller passed in: over `{a: 1, b: 2, c: 3}` it overwrites `b`, over `{a: 4, c: 6, z: 1}` it adds one, and each record shape is built in its own copy of `with_b`, whose layout the emit reads under that copy — off the base's record under the copy's pairs where the update is read inside its own body (tests/micros/mn-record-update-keeps-the-row.mn, mn-record-update-shadows-the-field.mn, mn-record-update-in-a-stage.mn, mn-record-update-copies-the-base.mn). An update joins the record it copies, and a function threading a record through its own recursion by updates returns the shape it was handed: `if c { sc } else { {...sc, fb: 1} }` is one record, and so is `{...walk(sc, n - 1), fb: 1}` returned beside `sc` (mn-record-update-joins-its-base.mn, mn-record-update-through-recursion.mn). Until the copy, the update's rest was the base's own row — so those two forms were one row with a field and the same row without it, and refused — and before that the update was typed by the base fields known where it was judged, so over an open row it was the written field alone, and every caller reading `s.a` refused.
+**An update keeps every field it does not write.** Its type is the written fields in front of a COPY of the base past them: the copy is the base's row without the written names, a relation the two rows' free ends carry, so a field either learns reaches the other whichever is known first. A field the base holds under a written name stays the base's — the record holds one field of that name, the written one, at the written value's type — and every other field of the base is kept, including those not known where the update is judged. So `fn with_b(r, b) = {...r, b}` hands back every field its caller passed in: over `{a: 1, b: 2, c: 3}` it overwrites `b`, over `{a: 4, c: 6, z: 1}` it adds one, and each record shape is built in its own copy of `with_b`, whose layout the emit reads under that copy (tests/micros/mn-record-update-keeps-the-row.mn, mn-record-update-shadows-the-field.mn, mn-record-update-in-a-stage.mn, mn-record-update-copies-the-base.mn). An update joins the record it copies, and a function threading a record through its own recursion by updates returns the shape it was handed: `if c { sc } else { {...sc, fb: 1} }` is one record, and so is `{...walk(sc, n - 1), fb: 1}` returned beside `sc` (mn-record-update-joins-its-base.mn, mn-record-update-through-recursion.mn).
 
 ---
 
@@ -1316,24 +1196,7 @@ matrix[i][j]                 // chained indexing
 
 Bounds-checking is runtime for lists (traps on out-of-range); compile-time for tuples (H6 exhaustiveness).
 
-**A sugar calls the language's primitive, whatever its name binds where the
-sugar stands** (real, 2026-10-15). `xs[i]` calls the prelude's `list_index`,
-`++` the sequence concat `list_concat`, an interpolation's seams
-`str_concat`, and a rest pattern cuts with `slice`. The node that writes the
-sugar is linked to the primitive it calls, as a call's callee is: `refs of
-slice` answers a rest pattern beside the calls that name it, the lowering
-calls what the edge reaches, and the sugar charges the primitive's row, read
-off its declaration. Until this landed the charge resolved the name in the local scope, so
-a parameter named `list_index` swallowed the index's charge and `fn
-first(list_index, xs) with !Memory = xs[0] + list_index` checked clean over a
-body that reads memory — a false proof of the negative, and a parameter named
-`slice` did the same for a rest pattern's `!Alloc`
-(`tests/micros/mn-sugar-callee-is-the-vocabulary.mn`, accepted on boot
-0a0cc116). A parameter sharing a primitive's name is the parameter when it is
-called: a substrate primitive's face belongs to its declaration and travels
-along the edge a reference draws to it, so `fn apply(len) = len(5)` is
-judged against the callback it is handed, where it was refused as the
-sequence primitive (`tests/micros/mn-param-named-like-a-primitive.mn`).
+**A sugar calls the language's primitive, whatever its name binds where the sugar stands.** `xs[i]` calls the prelude's `list_index`, `++` the sequence concat `list_concat`, an interpolation's seams `str_concat`, and a rest pattern cuts with `slice`. The node that writes the sugar is linked to the primitive it calls, as a call's callee is: `refs of slice` answers a rest pattern beside the calls that name it, the lowering calls what the edge reaches, and the sugar charges the primitive's row, read off its declaration — so a parameter named `list_index` never swallows the index's charge (`tests/micros/mn-sugar-callee-is-the-vocabulary.mn`). A parameter sharing a primitive's name is the parameter when it is called: a substrate primitive's face belongs to its declaration and travels along the edge a reference draws to it, so `fn apply(len) = len(5)` is judged against the callback it is handed (`tests/micros/mn-param-named-like-a-primitive.mn`).
 
 Refinements over the index tighten bounds:
 ```
@@ -1366,18 +1229,15 @@ parameter set (`None : Option(a)` too). Types APPLY with parens,
 the one application syntax at every level: values `f(x)`, effects
 `Sample(44100)`, types `Option(Int)` / `Tree(a)`.
 
-**A function field's unwritten row is the declaration's** (real,
-2026-10-16). A field whose function type names no row —
-`Holds(() -> Int)` — holds one row for the whole type, a cell of the
-declaration no scheme quantifies: every construction writes the row of
-the function it stores into it, and every match reads it back, so a
-function taken out performs what any function put in performs, and
-`fn bad() with !E = match make() { Holds(f) => f(), Empty => 0 }`
-refuses where `make` stores a closure performing E. A field that carries
-a different row at each use says so with a type parameter (`Holds(a)`).
-Until this landed each use of the constructor freshened the row, so the
-match read a row nothing wrote, that `bad` checked clean and the closure
-performed E inside it (tests/crown/leak-field-row-unwritten.mn).
+**A function field's unwritten row is the declaration's.** A field whose
+function type names no row — `Holds(() -> Int)` — holds one row for the whole
+type, a cell of the declaration no scheme quantifies: every construction
+writes the row of the function it stores into it, and every match reads it
+back, so a function taken out performs what any function put in performs, and
+`fn bad() with !E = match make() { Holds(f) => f(), Empty => 0 }` refuses
+where `make` stores a closure performing E. A field that carries a different
+row at each use says so with a type parameter (`Holds(a)`)
+(tests/crown/leak-field-row-unwritten.mn).
 
 ### Constructor calls (value construction)
 
@@ -1415,68 +1275,56 @@ wildcard: a `_` arm over a sum is the roster of variants the author declined
 to write, and the medium bounds the shapes of it that fabricate (`mentl verify`,
 the wildcard-zero and wildcard-fabricates census).
 
-**The check reads the WHOLE pattern, column by column** (real, 2026-10-13):
-the arms are a matrix of pattern rows, a column of constructors is complete
-when the arms name every variant of the type and each variant's payload
-columns are themselves covered, and a column with a wildcard or binder covers
-the rest — so a match naming every `Stmt` variant but one inside `NStmt(…)`
-refuses as `match misses `NStmt(HandlerChainStmt(_, _))``, the witness being
-the first missing variant in declaration order. A tuple column is one constructor of its
-width. **The read is strict over every pattern kind** (real, 2026-10-14): a
-list column is the sum it is, `[]` or a head before a rest, so `[]` beside
-`[h, ...t]` is whole and `[x]` beside `[]` misses `[_, ...]`; a record column
-is the union of the fields its patterns name, an unnamed field `_`; Bool's
-two literals are the constructors they are; and any other literal column is
-covered only by a row that is wild there, since no set of literals covers a
-word or a text — `0` beside `1` misses `_`, and `Some(false)` beside `None`
-misses `Some(True)`. Until then the matrix read a literal, list or record
-column as covered, so each of those three compiled clean and trapped at the
-value no arm named (tests/micros/mn-literal-payload-inexhaustive.mn,
-mn-list-length-inexhaustive.mn, mn-int-literal-inexhaustive.mn, exit 134 on
-boot 82692525). Before 2026-10-13 the check read each arm's TOP constructor alone, and a
-nested variant nobody matched compiled clean and trapped at run time; the
-compiler's own classifier walk did, the day a `Stmt` variant was added
-(the handler chain). An arm covers what its top pattern covers: an
-alternation every branch, an as-pattern `name @ pat` what `pat` does
-(`whole @ Leaf(_)` covers `Leaf`). The refusal is armed (real, 2026-10-03):
-a match missing a variant does not compile to a program that traps when the
-variant arrives. Before that the class narrated and emitted, and an
-as-pattern was read as covering nothing, so `whole @ Leaf(_)` beside
-`Pair(a, b)` reported a false miss.
+**The check reads the WHOLE pattern, column by column**: the arms are a
+matrix of pattern rows, a column of constructors is complete when the arms
+name every variant of the type and each variant's payload columns are
+themselves covered, and a column with a wildcard or binder covers the rest —
+so a match naming every `Stmt` variant but one inside `NStmt(…)` refuses as
+`match misses `NStmt(HandlerChainStmt(_, _))``, the witness being the first
+missing variant in declaration order. A tuple column is one constructor of
+its width. **The read is strict over every pattern kind**: a list column is
+the sum it is, `[]` or a head before a rest, so `[]` beside `[h, ...t]` is
+whole and `[x]` beside `[]` misses `[_, ...]`; a record column is the union
+of the fields its patterns name, an unnamed field `_`; Bool's two literals
+are the constructors they are; and any other literal column is covered only
+by a row that is wild there, since no set of literals covers a word or a
+text — `0` beside `1` misses `_`, and `Some(false)` beside `None` misses
+`Some(True)` (tests/micros/mn-literal-payload-inexhaustive.mn,
+mn-list-length-inexhaustive.mn, mn-int-literal-inexhaustive.mn). An arm
+covers what its top pattern covers: an alternation every branch, an
+as-pattern `name @ pat` what `pat` does (`whole @ Leaf(_)` covers `Leaf`).
+The refusal is armed: a match missing a variant does not compile to a program
+that traps when the variant arrives.
 
-**A catch-all over a sum is the roster its author declined to write**
-(counted 2026-10-14). A `_` or a bare binder after other arms of a match over
-a sum swallows the constructors those arms leave, and a constructor declared
-later joins it unread — the exhaustiveness gate satisfied while what it knew
-is thrown away. So the medium counts the shape (`mentl verify`'s catch-all
-census, bounded at the wheel's count) and `mentl tighten` writes in its place
-the alternation of the constructors that reach it, each payload `_`, under
-the arm's binder when it bound one: after `Dot => 1`, the arm `other =>
-"many"` over `type Shape = Dot | Line(Int) | Box(Int, Int) | Blob` becomes
-`other @ (Line(_) | Box(_, _) | Blob) => "many"`, and `_ => 4` after `Dot`
-and `Line(_)` becomes `Box(_, _) | Blob => 4`, the comment the arm carries
-kept above it (tests/frontier/tighten-demo/wild.mn). The roster is written
-at the arm's own pattern node, so the arm keeps its body and its prose (real,
-2026-10-16: the rewrite minted a fresh pattern, the arm's comment was lost,
-and the formatter refused to write the file).
-The write costs nothing at run time: the last arm of an exhaustive match runs
-untested, as the `_` did. Three shapes are not the roster and are never
-counted: a `_` inside a payload, which ignores a part the arm does not read;
-a `_` over a word, a text or a list, the honest complement no roster could
-name; and a match's only arm, which is a binding (`{ x => body }`, `match v
-{ x => … }`), never a dispatch. Once nothing in the wheel is left to rewrite
-the shape refuses — the third step of
-`Hβ.match.catch-all-over-a-sum-is-the-roster`.
+**A catch-all over a sum is the roster its author declined to write.** A `_`
+or a bare binder after other arms of a match over a sum swallows the
+constructors those arms leave, and a constructor declared later joins it
+unread — the exhaustiveness gate satisfied while what it knew is thrown away.
+So the medium counts the shape (`mentl verify`'s catch-all census, bounded at
+the wheel's count) and `mentl tighten` writes in its place the alternation of
+the constructors that reach it, each payload `_`, under the arm's binder when
+it bound one: after `Dot => 1`, the arm `other => "many"` over `type Shape =
+Dot | Line(Int) | Box(Int, Int) | Blob` becomes `other @ (Line(_) | Box(_, _)
+| Blob) => "many"`, and `_ => 4` after `Dot` and `Line(_)` becomes `Box(_, _)
+| Blob => 4`, the comment the arm carries kept above it
+(tests/frontier/tighten-demo/wild.mn). The roster is written at the arm's own
+pattern node, so the arm keeps its body and its prose. The write costs nothing
+at run time: the last arm of an exhaustive match runs untested, as the `_`
+did. Three shapes are not the roster and are never counted: a `_` inside a
+payload, which ignores a part the arm does not read; a `_` over a word, a
+text or a list, the honest complement no roster could name; and a match's
+only arm, which is a binding (`{ x => body }`, `match v { x => … }`), never a
+dispatch. Once nothing in the wheel is left to rewrite the shape refuses —
+the third step of `Hβ.match.catch-all-over-a-sum-is-the-roster`.
 
-**A match of several arms dispatches; a match of one arm asserts** (real,
-2026-10-14). `let [a, b] = xs`, `let Some(v) = o`, a one-arm literal
-(`{ [h, ...t] => h }`) and `match v { p => e }` are one graph — a match of
-one arm — and a parameter written as a pattern (`fn h([p, q]) = p - q`)
-makes the same claim of its argument; each ASSERTS the value's shape where
-several arms would dispatch on it. So the
-case its pattern leaves is not a refusal: the shape is a claim, decided along
-the value's edges as an index's precondition is (§«Partiality — a
-primitive's precondition is a claim»). It is proven where every value the
+**A match of several arms dispatches; a match of one arm asserts.** `let [a,
+b] = xs`, `let Some(v) = o`, a one-arm literal (`{ [h, ...t] => h }`) and
+`match v { p => e }` are one graph — a match of one arm — and a parameter
+written as a pattern (`fn h([p, q]) = p - q`) makes the same claim of its
+argument; each ASSERTS the value's shape where several arms would dispatch
+on it. So the case its pattern leaves is not a refusal: the shape is a claim,
+decided along the value's edges as an index's precondition is (§«Partiality —
+a primitive's precondition is a claim»). It is proven where every value the
 scrutinee can be has the shape — `let [a, b] = [3, 4]`, `let Some(v) =
 Some(a)` — and costs nothing; refuted where one is built otherwise — `let
 Some(v) = None` is `E_RefinementRejected` at the let; and open otherwise, the
@@ -1485,11 +1333,8 @@ destructure of a parameter until its shape is proven or its value is matched
 by arms of its own. The arms of a match of several stay the roster of what it
 handles. The law reads the patterns, never the spelling: the binder form
 `([h, ...t]) => h` and the arm list `mentl fmt` writes it as assert one shape
-with one meaning. Before this, a destructure of a sum was refused as the
-dispatch it is desugared into, at a line with no `match`, while a list
-pattern was read as covering every list
-(tests/micros/mn-destructure-claim-proven.mn, mn-destructure-claim-open.mn,
-mn-destructure-claim-refuted.mn, each measured on boot 82692525).
+with one meaning (tests/micros/mn-destructure-claim-proven.mn,
+mn-destructure-claim-open.mn, mn-destructure-claim-refuted.mn).
 
 ### Type aliases
 
@@ -1523,17 +1368,16 @@ type LaneGain  = Float repr f32
 type Pixels    = Int repr v128            // four packed lanes
 ```
 
-*Real (2026-07-30):* the authored `repr <width>` suffix parses (`parse_repr_pin`
-after any type-decl base) and the bare-width parameter pin (`s: f64`, `s: f32`,
-`i64`, `v128`) mints the same `TReprPin` in type-atom position. The pin types
+The authored `repr <width>` suffix parses (`parse_repr_pin` after any
+type-decl base) and the bare-width parameter pin (`s: f64`, `s: f32`, `i64`,
+`v128`) mints the same `TReprPin` in type-atom position. The pin types
 transparently — identity is the base's; `repr_of`'s own arm is the one width
 reader — and since both spellings parse to one pin, the formatter decides the
-spelling by POSITION: a pin at a type declaration's right-hand side renders with
-its suffix (`type Coeff = Float repr f64`) and a pin in an annotation renders
-bare (`s: f64`). Until 2026-09-28 a canonical pair rendered bare everywhere, and
-a declaration written as this section writes it came back as `type Coeff = f64`.
-The i64/f32/v128 pins carry full vocabulary; their emission
-cash-outs ride the named wide-producer residue (the RF64 path is fully live).
+spelling by POSITION: a pin at a type declaration's right-hand side renders
+with its suffix (`type Coeff = Float repr f64`) and a pin in an annotation
+renders bare (`s: f64`). The i64/f32/v128 pins carry full vocabulary; their
+emission cash-outs ride the named wide-producer residue (the RF64 path is
+fully live).
 
 `repr <width>` is a **gradient INPUT — a PIN, not a constructor** (the peer of
 `own`/`ref` at the representation altitude; it surfaces primitive #7). The gradient
@@ -1556,7 +1400,7 @@ answers its head — as SYNTAX writes one, its parameters' types and its
 inferred row, each parameter's ownership grade before its name — and the
 address it is declared at (`inv(own n: Int) -> Int with Trap  at main:11`) before its parameters' and return's widths; a value
 whose type is still a variable reads `a : a @ per instantiation`, since every
-instantiation is specialized and takes its own width (real, 2026-10-02).
+instantiation is specialized and takes its own width.
 Every surface that shows a type — `where`, `doc`, `query … type of`, the
 caret, the View, hover, every diagnostic — renders it through one projection,
 the formatter's, with each free variable named by the render as a developer
@@ -1564,9 +1408,9 @@ would write it: a type variable by the name it was declared with, else the
 first free letter; a row variable `e`, `e1`, … from an alphabet the type
 variables never use, so `spawn(f: () -> a with e)` reads which is which. A
 unit result writes no arrow, a parameter no author named shows its bare type,
-and naming writes nothing into the graph (real, 2026-10-06; the head of every
-module-level function comes back as itself through `parse∘render`, counted by
-`mentl query <entry> heads`). A pin that names the width the gradient would already infer
+and naming writes nothing into the graph (the head of every module-level
+function comes back as itself through `parse∘render`, counted by `mentl query
+<entry> heads`). A pin that names the width the gradient would already infer
 is redundant (drop it; the gradient reaches it anyway), and so is a pin equal to the
 floor on an integral type; the narration that would say so, `W_RedundantRepr`, is not
 yet born. **The same `repr` pin is a
@@ -1603,24 +1447,19 @@ type Even = Int where self % 2 == 0
 
 `self` refers to the value being refined. The refinement is a `Predicate` discharged by the `Verify` effect at construction sites and elsewhere as needed.
 
-**A predicate is an ordinary expression, judged where its type is declared**
-(real, 2026-10-15). `self` is the value being refined, at the base type, and
-the expression must be a `Bool`: the functions it calls are references (`refs
-of even` answers `type Even = Int where even(self)`), and `mentl fmt` writes it
-back as its author wrote it. What `Verify` decides is a projection of that
-expression the type carries. Until this landed a predicate was parsed into
-that projection alone: nothing judged it, a function only a predicate called
-read as unreferenced, and the formatter wrote `self > 0` back as `0 < self`
-and `self != 0` as `!(self == 0)` (tests/micros/mn-predicate-as-written.mn,
+**A predicate is an ordinary expression, judged where its type is declared.**
+`self` is the value being refined, at the base type, and the expression must
+be a `Bool`: the functions it calls are references (`refs of even` answers
+`type Even = Int where even(self)`), and `mentl fmt` writes it back as its
+author wrote it. What `Verify` decides is a projection of that expression the
+type carries (tests/micros/mn-predicate-as-written.mn,
 mn-refs-of-predicate-callee.mn).
 
 **The bounds join with `&&` — there is no comparison chaining.** A chained
 `-1.0 <= self <= 1.0` parses left-associatively as `(-1.0 <= self) <= 1.0`
 (one precedence table, no special case), an ill-sorted `Bool <= Float` that
 principle 2 already rules against as a second spelling of the conjunction, so
-the declaration refuses: `E_TypeMismatch`, `Bool vs Float` at the outer `<=`.
-Until the predicate was judged the shape degraded to `V_Pending` debt at every
-value claiming the type, and `let s: Sample = 1.5` compiled
+the declaration refuses: `E_TypeMismatch`, `Bool vs Float` at the outer `<=`
 (tests/micros/mn-predicate-chain-refuses.mn).
 
 ```
@@ -1629,41 +1468,35 @@ let p: ValidPort = 8080  // statically discharged
 let bad: Sample = 1.5    // E_RefinementRejected — 1.5 violates the Sample bounds
 ```
 
-**A claim over a join decides as the AND over its tails** (real,
-2026-09-28). `fn note_hz(k: Int) -> Hz = match k { 0 => 220.0, 1 => 261.63,
-_ => 440.0 }` discharges because every arm folds inside the bound; one arm
-at `30000.0` refuses at the claim; an arm that is not a constant (`_ => f *
-2.0`) leaves the claim honest `V_Pending`. `if`, `match` and a block's final
-expression are read by STRUCTURE, never by guessing which arm runs, so a dead
-arm that writes an out-of-bound constant refuses too — the claim covers every
-tail. Until this landed a claim over a join was never decided, and a
-note table of eight literals carried eight pending obligations.
+**A claim over a join decides as the AND over its tails.** `fn note_hz(k: Int)
+-> Hz = match k { 0 => 220.0, 1 => 261.63, _ => 440.0 }` discharges because
+every arm folds inside the bound; one arm at `30000.0` refuses at the claim;
+an arm that is not a constant (`_ => f * 2.0`) leaves the claim honest
+`V_Pending`. `if`, `match` and a block's final expression are read by
+STRUCTURE, never by guessing which arm runs, so a dead arm that writes an
+out-of-bound constant refuses too — the claim covers every tail.
 
-**A refinement crossing a function-typed argument is judged** (real,
-2026-09-28). The argument's RESULT, where the callee hands it to a refined
-position, is judged on the lambda's own body: with `fn run(f) =
-alpha(f())` and `alpha(c: Hz)`, `run(() => 30000.0)` refuses and `run(() =>
-440.0)` discharges. The argument's PARAMETERS, where it demands a
-refinement, discharge when the callee's own type says it passes one (`fn
-drive(f, c: Hz) = f(c)`) and are honest `V_Pending` otherwise — the values
-a callee passes are made inside the callee, and judging them there is
-refinement variables' work (`Hβ.verify.higher-order-refinement`). Until
-this landed the refinement was DROPPED at the crossing: a 70,900 Hz sweep
-reached an `Hz` filter and `mentl check` was clean.
+**A refinement crossing a function-typed argument is judged.** The argument's
+RESULT, where the callee hands it to a refined position, is judged on the
+lambda's own body: with `fn run(f) = alpha(f())` and `alpha(c: Hz)`, `run(()
+=> 30000.0)` refuses and `run(() => 440.0)` discharges. The argument's
+PARAMETERS, where it demands a refinement, discharge when the callee's own
+type says it passes one (`fn drive(f, c: Hz) = f(c)`) and are honest
+`V_Pending` otherwise — the values a callee passes are made inside the
+callee, and judging them there is refinement variables' work
+(`Hβ.verify.higher-order-refinement`).
 
 **A refinement is a fact a VALUE carries, read along the edges it flowed —
-never a property of its type** (real, 2026-10-01, P0). A value is what its
-sources are: a constant is its point, a reference reads its binder (a
-parameter's refinement, a `let`'s annotation, a constructor field's declared
-contract), a join takes every tail, a call is its callee's declared return,
-and a part a pattern destructured is the argument at that position where its
-whole was built. A computation inherits nothing: `fn dec(x: Positive) ->
-Positive = x - 1` leaves `0 < x - 1` honest `V_Pending`, and `let d = if c {
-n } else { 0 }` is the join of `n` and `0`, never `n`'s refinement. Until this
-landed refinements rode the unification class, so every join and every
-operator that met a refined value carried its refinement onto the result:
-six `with !Trap` programs checked clean and trapped at run time, and `ratio(t,
-n: Positive)` demanded Positive of `t` (boot 13e8484a).
+never a property of its type.** A value is what its sources are: a constant is
+its point, a reference reads its binder (a parameter's refinement, a `let`'s
+annotation, a constructor field's declared contract), a join takes every
+tail, a call is its callee's declared return, and a part a pattern
+destructured is the argument at that position where its whole was built. A
+computation inherits nothing: `fn dec(x: Positive) -> Positive = x - 1`
+leaves `0 < x - 1` honest `V_Pending`, and `let d = if c { n } else { 0 }` is
+the join of `n` and `0`, never `n`'s refinement. A refinement riding the
+unification class would carry it onto every join and every operator's
+result, and `ratio(t, n: Positive)` would demand Positive of `t`.
 
 **A parameter's refinement is a PRECONDITION, and what it guards travels to
 the caller.** Inside the body it is assumed; every call owes it as a claim at
@@ -1684,110 +1517,93 @@ annotation for another claim — the debt is carried once, at the let — and
 never for a row fact.
 
 **A structured contract is claimed part by part where the structure is
-built, as it is assumed part by part where it is taken apart** (real,
-2026-10-02, S4). Under `r: {den: Positive}` a field read or a pattern
-assumes `r.den` is `Positive`, so every construction handed there owes it
-of the part it builds: `den_inv({den: 0})` refuses at the `0`, a list
-literal owes `[Positive]`'s contract of every element, a tuple its
-position's, and a nominal contract its constructors' fields read at the
-type's arguments — `Option(Positive)` owes `Positive` of `Some`'s field and
-nothing of `None`, and `Result(Positive, String)` nothing of `Err`'s. A part
-of a value built out of sight is read off the value: held where every
-source states it at that part — a parameter's precondition, a declared
-return, a let's claim — and owed otherwise, the row its precondition guards
-paid where the claim is open. An index read is a part read (`100 / xs[0]`
-under `xs: [Positive]` is total), and `let xs: [Positive] = [0]` refuses
-where it is written. Until this landed a structure's claim crossed only its
-function parts, so seven shapes of this checked clean under `!Trap` and
-divided by zero.
+built, as it is assumed part by part where it is taken apart.** Under `r:
+{den: Positive}` a field read or a pattern assumes `r.den` is `Positive`, so
+every construction handed there owes it of the part it builds:
+`den_inv({den: 0})` refuses at the `0`, a list literal owes `[Positive]`'s
+contract of every element, a tuple its position's, and a nominal contract its
+constructors' fields read at the type's arguments — `Option(Positive)` owes
+`Positive` of `Some`'s field and nothing of `None`, and `Result(Positive,
+String)` nothing of `Err`'s. A part of a value built out of sight is read off
+the value: held where every source states it at that part — a parameter's
+precondition, a declared return, a let's claim — and owed otherwise, the row
+its precondition guards paid where the claim is open. An index read is a part
+read (`100 / xs[0]` under `xs: [Positive]` is total), and `let xs:
+[Positive] = [0]` refuses where it is written.
 
-**A function's contract travels with the function** (real, 2026-10-01, P0·H).
-A lambda's parameter learns its precondition as a declared one does —
-`(c) => alpha(c)` demands `Hz` of every value it is called with — and every
-application owes it: a call through the value, a function crossing, and a
-pipe stage, which applies its stage and so claims of the piped value what a
-call's argument would owe (`30000.0 |> alpha` refuses as `alpha(30000.0)`
-does). A function-typed parameter learns from how its body applies it: the
-values every application hands each position — `fn drive(f, c: Hz) = f(c)`
-hands its function `c`'s values, which are `Hz`, and `fn feed(f) = f(440.0)`
-hands it `440.0` — and what a refined position demands of the result — `fn
-run(f) = alpha(f())` publishes `f: () -> Hz` — so a caller's crossing judges
-the function it hands in: a lambda's body against the demanded result, its
-own demands against the values the callee hands it. A `<~` cycle binds its
-lambda's parameter with no application to raise a claim, so that parameter
-learns nothing and a demand inside the body stays the body's debt. Until this
-landed the pipe raised no claim at all, and `0 |> inv` under `!Trap` checked
-clean and divided by zero (boot 13e8484a).
+**A function's contract travels with the function.** A lambda's parameter
+learns its precondition as a declared one does — `(c) => alpha(c)` demands
+`Hz` of every value it is called with — and every application owes it: a call
+through the value, a function crossing, and a pipe stage, which applies its
+stage and so claims of the piped value what a call's argument would owe
+(`30000.0 |> alpha` refuses as `alpha(30000.0)` does). A function-typed
+parameter learns from how its body applies it: the values every application
+hands each position — `fn drive(f, c: Hz) = f(c)` hands its function `c`'s
+values, which are `Hz`, and `fn feed(f) = f(440.0)` hands it `440.0` — and
+what a refined position demands of the result — `fn run(f) = alpha(f())`
+publishes `f: () -> Hz` — so a caller's crossing judges the function it hands
+in: a lambda's body against the demanded result, its own demands against the
+values the callee hands it. A `<~` cycle binds its lambda's parameter with no
+application to raise a claim, so that parameter learns nothing and a demand
+inside the body stays the body's debt.
 
-**A function value is every function it can be** (real, 2026-10-02, H4). A
-join of two functions, a list or a record of them, a function a pattern took
-apart, a function a generic call returns: applying the value owes the
-precondition of every function it can be, conjoined per position, and the
-row each one guards — `pick(false)(0)` over `fn pick(c) = if c { inv2 } else
-{ inv }` owes `inv`'s `Positive` whichever branch comes first. What a body
-HANDS a function is never what that function DEMANDS: a function handed to
-`fn outer(g) = drive(g, 440.0) + g(30000.0)` is judged against both values it
-will be handed, not against `drive`'s `Hz` as a demand of its own. A function
-moving through a GENERIC callee is judged by the callee's signature alone —
-parametricity, the callee's body never read: `fold(0, (acc, f) => acc +
-f(0), [inv])` hands the list's `inv` to the callback, which applies it at 0,
-and refuses; a nominal type's arguments carry their values the same way, so
-`opt_apply({ g => g(0) }, Some(inv))` refuses through `Option(a)`. And what a
-body cannot see is never assumed: a function parameter it returns, hands to
-another function its caller chose, or places where the contract is a type
-variable is judged as handed values nothing there can name. Until this landed
-a function's contract rode its type, which unification merged and kept one
-side of: the join and the `fold` shapes checked clean under `!Trap` and
-divided by zero, and `g(30000.0)` refused a correct program (boot e23392f6).
+**A function value is every function it can be.** A join of two functions, a
+list or a record of them, a function a pattern took apart, a function a
+generic call returns: applying the value owes the precondition of every
+function it can be, conjoined per position, and the row each one guards —
+`pick(false)(0)` over `fn pick(c) = if c { inv2 } else { inv }` owes `inv`'s
+`Positive` whichever branch comes first. What a body HANDS a function is never
+what that function DEMANDS: a function handed to `fn outer(g) = drive(g,
+440.0) + g(30000.0)` is judged against both values it will be handed, not
+against `drive`'s `Hz` as a demand of its own. A function moving through a
+GENERIC callee is judged by the callee's signature alone — parametricity, the
+callee's body never read: `fold(0, (acc, f) => acc + f(0), [inv])` hands the
+list's `inv` to the callback, which applies it at 0, and refuses; a nominal
+type's arguments carry their values the same way, so `opt_apply({ g => g(0)
+}, Some(inv))` refuses through `Option(a)`. And what a body cannot see is
+never assumed: a function parameter it returns, hands to another function its
+caller chose, or places where the contract is a type variable is judged as
+handed values nothing there can name.
 
-**A function's contract is never lost at a position** (real, 2026-10-02,
-S6). A declaration or a lambda returning functions publishes, at every
-position of its return that holds one, the meet of every function the
-position can hold: `fn pick(c) = if c { {f: succ} } else { {f: inv} }`
-makes `pick(c).f` demand `Positive` whichever branch runs — through a tuple,
-an `Option`, a list, a relay, a module value and a parameter alike. A
-position whose type is STATED is crossed by every function placed there,
-which pays there the guard of each demand the position does not provide: an
-authored return (`fn mk() -> (Int) -> Int = inv`), a nominal record's
-declared field (`Ops{f: inv}` under `{f: (Int) -> Int}`), an op's declared
-return at `resume` (`resume(inv)` into `get_fn() -> (Int) -> Int`), and the
-functions inside a function's result where it crosses into a parameter that
-applies them. Until this landed a published return kept the first branch's
-contract, a stated position was unified and never claimed, and an authored
-return's payment was dropped outside its declaration's frame: each shape
-checked clean under `!Trap` and divided by zero (pin 85218488).
+**A function's contract is never lost at a position.** A declaration or a
+lambda returning functions publishes, at every position of its return that
+holds one, the meet of every function the position can hold: `fn pick(c) =
+if c { {f: succ} } else { {f: inv} }` makes `pick(c).f` demand `Positive`
+whichever branch runs — through a tuple, an `Option`, a list, a relay, a
+module value and a parameter alike. A position whose type is STATED is
+crossed by every function placed there, which pays there the guard of each
+demand the position does not provide: an authored return (`fn mk() -> (Int)
+-> Int = inv`), a nominal record's declared field (`Ops{f: inv}` under `{f:
+(Int) -> Int}`), an op's declared return at `resume` (`resume(inv)` into
+`get_fn() -> (Int) -> Int`), and the functions inside a function's result
+where it crosses into a parameter that applies them.
 
-**A tee's value is every value its install can answer** (real, 2026-10-03).
-The value walk reads a `~>` node as the body's tails and each arm's tails of
-the installed handler — an arm whose tail is the `resume` hands the
-remainder's answer through and adds no value of its own — so `100 / (({ let _
-= ask(); 5 }) ~> zero)` with `zero`'s arm answering `0` is refuted
-(`E_RefinementRejected`), and with the arm answering `5` it is proven under
-`!Trap` and runs; a label is read through the same answers, so an arm
-answering an untrusted value brings the label through the install
-(`tests/micros/mn-flow-tee-arm.mn`). Until this landed every walk read a tee
-as nothing it could read: the refutation was debt and the proof was a refusal
-the program did not owe (`tests/micros/mn-refine-install-answer.mn`,
-`mn-refine-install-answer-proven.mn`).
+**A tee's value is every value its install can answer.** The value walk reads
+a `~>` node as the body's tails and each arm's tails of the installed handler
+— an arm whose tail is the `resume` hands the remainder's answer through and
+adds no value of its own — so `100 / (({ let _ = ask(); 5 }) ~> zero)` with
+`zero`'s arm answering `0` is refuted (`E_RefinementRejected`), and with the
+arm answering `5` it is proven under `!Trap` and runs; a label is read
+through the same answers, so an arm answering an untrusted value brings the
+label through the install (`tests/micros/mn-flow-tee-arm.mn`,
+`mn-refine-install-answer.mn`, `mn-refine-install-answer-proven.mn`).
 
-**An op's declared return is a contract every resume owes** (real,
-2026-10-16). A performer stands on what its op is declared to answer, so a
-refinement there is claimed of the value each arm resumes with: under `get()
--> Positive`, `get() => resume(0)` refuses where it resumes, and `inv(get())`
-owes nothing. A resumed value the medium cannot prove is owed once, at the
-resume, never assumed by every performer. Until this landed the arm owed
-nothing, and `inv(get()) ~> zero` checked clean under `!Trap` and divided by
-zero (`tests/micros/mn-op-return-is-a-contract.mn`).
+**An op's declared return is a contract every resume owes.** A performer
+stands on what its op is declared to answer, so a refinement there is claimed
+of the value each arm resumes with: under `get() -> Positive`, `get() =>
+resume(0)` refuses where it resumes, and `inv(get())` owes nothing. A
+resumed value the medium cannot prove is owed once, at the resume, never
+assumed by every performer (`tests/micros/mn-op-return-is-a-contract.mn`).
 
 **A label is an op named in a refinement over `self`, and what can bring it
-to a value is read along the value's edges** (real, 2026-10-16, `PLAN.md
-§4⑥`). Under `effect Trust { untrusted(v: String) -> Bool }`, `type Untrusted
-= String where untrusted(self)` states the label and `type Trusted = String
-where !untrusted(self)` states its absence. Presence is never claimed: a
-position declared to hold the label — a function's declared return, a
-parameter, a field, a let's annotation, what an op is declared to be handed —
-is where the label enters. Absence is a claim: `exec(cmd: Trusted)` owes it of
-every argument, and a value the label can reach refuses there
+to a value is read along the value's edges** (`PLAN.md §4⑥`). Under `effect
+Trust { untrusted(v: String) -> Bool }`, `type Untrusted = String where
+untrusted(self)` states the label and `type Trusted = String where
+!untrusted(self)` states its absence. Presence is never claimed: a position
+declared to hold the label — a function's declared return, a parameter, a
+field, a let's annotation, what an op is declared to be handed — is where the
+label enters. Absence is a claim: `exec(cmd: Trusted)` owes it of every
+argument, and a value the label can reach refuses there
 (`E_RefinementRejected`), the refusal naming where it entered (`untrusted
 enters at main:20:30 through what read_cmd is declared to answer`). What can
 reach a value is everything it is computed from — an operand, a splice, a
@@ -1800,13 +1616,12 @@ that function hands it, read at the install that runs it, so a stage handed to
 parameter is what every call hands it. Endorsement is a declared return that
 states the absence (`fn quote(s) -> Trusted`), read by callers and never
 claimed of the body. A secret is the same law over another op (`type Secret =
-String where secret(self)`, `log_line(msg: Public)`). Each declared function's reading is a
-summary over its own parameters, read once per settle and repeated to its
-least fixed point, so recursion terminates. `mentl query <file> "flow of
-NAME"` says what a function answers, endorses and demands
+String where secret(self)`, `log_line(msg: Public)`). Each declared
+function's reading is a summary over its own parameters, read once per settle
+and repeated to its least fixed point, so recursion terminates. `mentl query
+<file> "flow of NAME"` says what a function answers, endorses and demands
 (`tests/micros/mn-flow-*.mn`, each fixture's second line its contract at the
-sink). Until this landed a classification was a lattice beside the walk, a
-splice refused by a gate of its own, and every claim above was pending debt.
+sink).
 
 The predicate is a compile-time obligation; at gradient-top it erases entirely (no runtime check). `Verify`'s default ledger accrues what it cannot discharge statically (`V_Pending`); Verify's own solver discharges more of it as its fragment grows (`PLAN.md §11`, Verify's own solver: path narrowing, overflow-aware intervals, linear arithmetic, case splits by fork) — same source, deeper proof engine. An external solver plugs in only as a proposer whose certificate the kernel checks.
 
@@ -1854,43 +1669,35 @@ sites. The reader who needs suspension points reads the row in the
 signature or the cursor's projection — the medium narrates what a
 keyword would only whisper.
 
-**`perform` is not a keyword** (dissolved 2026-08-08 — the turbofish and
-`handle` precedent, applied a third time): the word lexes as an ordinary
-identifier, so a stale-fluency `perform check(...)` parses as ordinary
-expressions and the general unresolved-name diagnostic teaches the
-bare call in context. No bespoke recognizer, no format-lift class —
-`E_RedundantPerform` and the `TPerform` token are deleted with it.
-`resume` keeps its keyword: it is context-bound to handler arms, typed
-by the typed-resume law (`resume : R -> S`), and names the
-continuation — a value the call site cannot otherwise reach.
+**`perform` is not a keyword**: the word lexes as an ordinary identifier, so
+a stale-fluency `perform check(...)` parses as ordinary expressions and the
+general unresolved-name diagnostic teaches the bare call in context — no
+bespoke recognizer, no format-lift class. `resume` keeps its keyword: it is
+context-bound to handler arms, typed by the typed-resume law (`resume : R ->
+S`), and names the continuation — a value the call site cannot otherwise
+reach.
 
-**A perform costs what a call costs** (real, 2026-09-30). An op's
-arguments cross at the widths the site proves and its result comes back at
-the width the site proves, exactly as a closure call's do — a Float op costs
-a Float call — and the arm that answers is the one twinned at the install's
-instance, which is the site's own instance, so no cell is built at an
-effect's type variable: `fn walk(xs: [Float]) with !Alloc = { put(xs[0]);
-put(xs[1]) }` under `handler total with s = 0.0 { put(v) => resume() with s
-= s + v }` runs and allocates nothing. Until this landed the op's DECLARED
-signature was the call's face, so a value at a variable's position was boxed
-into a fresh cell on every perform, 8 bytes under a row that said nothing of
-it, and a `fold` over Floats paid it per element. A perform under `!Alloc`
-is therefore admitted exactly when the op's own row is — and a held or
-multi-shot op's row says `Memory + Alloc`, because reifying the remainder is
-what such a perform builds (§«Resume discipline»).
+**A perform costs what a call costs.** An op's arguments cross at the widths
+the site proves and its result comes back at the width the site proves,
+exactly as a closure call's do — a Float op costs a Float call — and the arm
+that answers is the one twinned at the install's instance, which is the site's
+own instance, so no cell is built at an effect's type variable: `fn walk(xs:
+[Float]) with !Alloc = { put(xs[0]); put(xs[1]) }` under `handler total with
+s = 0.0 { put(v) => resume() with s = s + v }` runs and allocates nothing. A
+perform under `!Alloc` is therefore admitted exactly when the op's own row is
+— and a held or multi-shot op's row says `Memory + Alloc`, because reifying
+the remainder is what such a perform builds (§«Resume discipline»).
 
-**A wide value crosses a continuation in a register, never a cell** (real,
-2026-10-03). The caller of a continuation, and the driver that runs a
-multi-shot arm, are blind to the types they call through — one word-arity
-face serves every chain — so a Float resumed into a continuation, or answered
-by a multi-shot arm, crosses in a per-instance register beside the word slot,
-set immediately before the call and read immediately after it (the machine
-ABI's own shape: words in the integer slots, a double in a float register),
-and a multi-shot op's arguments cross in the yield's record at their widths.
-Nothing is boxed and no row changes: the same two-resumption program at Int
-and at Float grows the heap by the same bytes
-(`tests/micros/mn-multishot-float-answer-no-box.mn`); until this landed the
-driver read a wide answer as a word and such a program did not assemble.
+**A wide value crosses a continuation in a register, never a cell.** The
+caller of a continuation, and the driver that runs a multi-shot arm, are blind
+to the types they call through — one word-arity face serves every chain — so
+a Float resumed into a continuation, or answered by a multi-shot arm, crosses
+in a per-instance register beside the word slot, set immediately before the
+call and read immediately after it (the machine ABI's own shape: words in the
+integer slots, a double in a float register), and a multi-shot op's arguments
+cross in the yield's record at their widths. Nothing is boxed and no row
+changes: the same two-resumption program at Int and at Float grows the heap by
+the same bytes (`tests/micros/mn-multishot-float-answer-no-box.mn`).
 
 ### Unit return omission
 
@@ -1906,21 +1713,17 @@ effect Console { print(msg: String) }       // returns ()
 to its performer, so its arm never resumes — `abort() -> !` (the control cut
 the Abandon discipline reads), `fail(String) -> !`, and WASI's
 `proc_exit(Int) -> !` (the host ends the process). `!` is quantified per
-PERFORM, never at the effect (real, 2026-10-06): each perform meets a result
-variable of its own, so one function may perform `fail` where a list stands
-and where an Int stands, and an effect whose only non-ground op returns `!`
-carries no type parameter — `Fail` and `WASI` read as bare names in every
-row. That is sound exactly because the arm never resumes: an arm that
-resumes a `-> !` op is `E_ResumeOfNever`, armed at birth. An arm ending in a
-never op answers any install, which is what makes `fail_exit` installable
-over a body of any type (§«Handler declarations»). Until this landed the `!`
-was the effect's parameter: every row touching WASI rendered `WASI(a)`, two
-performs of `fail` at two result types collapsed into one instance, and an
-arm resuming `halt() -> !` compiled clean and returned from an op its
-declaration says never returns (`tests/micros/mn-resume-of-never-refuses.mn`,
+PERFORM, never at the effect: each perform meets a result variable of its own,
+so one function may perform `fail` where a list stands and where an Int
+stands, and an effect whose only non-ground op returns `!` carries no type
+parameter — `Fail` and `WASI` read as bare names in every row. That is sound
+exactly because the arm never resumes: an arm that resumes a `-> !` op is
+`E_ResumeOfNever`, armed. An arm ending in a never op answers any install,
+which is what makes `fail_exit` installable over a body of any type
+(§«Handler declarations»; `tests/micros/mn-resume-of-never-refuses.mn`,
 `mn-never-two-result-types.mn`). A bare variable result (`ask() -> a`) is the
-effect's own parameter, as before: the install fixes it and the arm resumes
-a value of it.
+effect's own parameter: the install fixes it and the arm resumes a value of
+it.
 
 ### Calling resume with unit
 
@@ -1950,7 +1753,7 @@ effect Budget(limit: Int) {
 }
 ```
 
-The effect name itself carries arguments. **Row algebra treats `Sample(44100)` and `Sample(48000)` as distinct effects**, and a body that performs both carries both, in either order: `fast() + slow()` under `!Sample(44100)` refuses exactly as `slow() + fast()` does. Two instances are two row members exactly when they are PROVABLY distinct — the question a negation asks, so the set and the negation cannot disagree — and an instance whose argument nothing grounds (an operand node) stands for every instance it might equal. Until 2026-09-28 a row kept the first of two same-named instances and the verdict depended on the order of the calls (`tests/crown/leak-instance-order.mn`). A TYPE argument is not a value instance: an effect's type variables are shared across its ops, so one handler serves one instantiation and the install unifies the performs; a generic op quantified per perform is `Hβ.effects.two-instances-of-one-effect-do-not-join`.
+The effect name itself carries arguments. **Row algebra treats `Sample(44100)` and `Sample(48000)` as distinct effects**, and a body that performs both carries both, in either order: `fast() + slow()` under `!Sample(44100)` refuses exactly as `slow() + fast()` does. Two instances are two row members exactly when they are PROVABLY distinct — the question a negation asks, so the set and the negation cannot disagree — and an instance whose argument nothing grounds (an operand node) stands for every instance it might equal (`tests/crown/leak-instance-order.mn`). A TYPE argument is not a value instance: an effect's type variables are shared across its ops, so one handler serves one instantiation and the install unifies the performs; a generic op quantified per perform is `Hβ.effects.two-instances-of-one-effect-do-not-join`.
 
 ### Installation in `with` clauses
 
@@ -1963,16 +1766,16 @@ The argument is evaluated at install time and frozen. Two functions declared wit
 
 ### Resume discipline — inferred, not annotated
 
-Resume cardinality is **inferred from each handler arm body** at handler-decl time; the developer never types `@resume=`. The infer pass walks the arm body collecting resume call sites — its own, and those of the functions it declares, read where it calls or hands them on, since a `resume` stands only inside an arm and a function the arm declares is in scope nowhere else (real, 2026-10-16: the grades were one table for the whole program keyed by name, so a plain function whose local shared a resuming nested fn's name was graded as resuming and a correct program calling it from two handlers was refused as an ambiguous resume; tests/micros/mn-resume-summary-is-the-arms.mn); classifies via control-flow ancestry + branch-disjointness:
+Resume cardinality is **inferred from each handler arm body** at handler-decl time; the developer never types `@resume=`. The infer pass walks the arm body collecting resume call sites — its own, and those of the functions it declares, read where it calls or hands them on, since a `resume` stands only inside an arm and a function the arm declares is in scope nowhere else (tests/micros/mn-resume-summary-is-the-arms.mn); classifies via control-flow ancestry + branch-disjointness:
 
 - **`OneShot`** (inferred when zero or one resume site, not under loop ancestor — or multiple sites all in branch-disjoint paths — AND the one use sits at the arm's RESULT position: the arm's value on every path is the resume itself, through `if`/`match`/block tails and a tail call into a helper that resumes at its own tail) — continuation lives on the stack; no heap capture; performance is direct-call equivalent. Compile error never fires here because the inference produces the correct kind from the body's structure.
-- **The held single resume** (inferred when the one resume site is INTERIOR — bound by `let`, an operand, an argument, an element, a lambda body — so the arm keeps computing after the remainder returns: `ask() => { let r = resume(1); r * 2 }`) — the remainder is reified as the continuation record and called once; the code after `resume` runs when the remainder returns, and the arm's value is what the install answers (`ask() + 1` under that arm is 4). *Real 2026-09-27: the count alone chose the representation before, so this shape lowered as the stack return, the code after the resume was dead, and the install answered 2 — measured on boot 83428bcc by `tests/micros/mn-oneshot-nontail-resume.mn`. The grade is `ResumeUse` (types.mn): multiplicity × position, ownership's return-transfer distinction read on the continuation.* The record is the honest cost of holding a continuation; dropping it after its one call, O(1), is `Hβ.lower.held-resume-record-is-not-reclaimed`. A held resume runs the remainder INSIDE the frame that calls it — the arm, or a callee the arm hands a resuming lambda to — so that frame's row carries the remainder's (real, 2026-10-01): the resume performs its continuation's world, the handler's remainder, and every install judges what the frames it runs through forbid against its own body minus what it absorbs. `fn apply(f) with !Log = f() + 0` refuses `apply(() => resume(1))` under an install whose body performs `Log` after the perform; until then the resume charged nothing and `apply` ran the remainder's `Log` under its own `!Log` (`tests/crown/leak-resume-remainder.mn`). When that remainder performs one of the handler's own ops again, the resume re-drives the handler where it stands, deep semantics at any depth (`tests/micros/mn-held-resume-*-reyield.mn` — an address or a trap on every boot through 477bb667).
-- **`MultiShot`** (inferred when one or more resume sites under loop/recursion ancestry, or two sites both reachable from one path) — continuation captured to the heap as a closure. Enables backtracking, non-determinism, generators. **A MultiShot op's row carries `Memory + Alloc`**: the perform site reifies the remainder as a heap record, so performing the op IS an allocation, and a `!Alloc` declaration around such a perform refuses (`tests/micros/mn-multishot-perform-alloc.mn`; it compiled clean with a Pure row until 2026-09-27 — `Hβ.effects.multishot-perform-allocates-unrowed`). The op's discipline and cost are settled at pre-registration, from parse structure, so they never depend on whether the handler precedes its performers in source order.
-- **`Abandon`** (inferred when the arm never resumes — zero resume sites, whatever the op's declared return) — the arm's value is the install's value and the continuation is DEAD: the perform UNWINDS, and nothing after it runs, in its own frame or in any frame between it and the install whose arm answers. The unwind is structured, never a bare return past a bracket: a frame leaves by its innermost landing — an install body's block, so the install's driver runs (its own op dispatches the arm; a foreign one bubbles) and its world restore follows; an arena body's block, so the arena EXITS as any extent does, the perform's arguments moving out of the region through their leaves (their slots in the argument area were journaled where they were stored) and the rest reclaimed — only a LIVE continuation suspends an arena; or the function's own return. Every boundary a raised flag can cross checks after it: a call whose callee's row may abandon, a direct arm call of a handler whose arms may, an install or an arena off the frame's tail, a fanout's spawn and join. An abandoning perform allocates nothing — its arguments cross in a per-instance area allocated once at start — so `with !Alloc` holds over it (`tests/micros/mn-abandon-alloc.mn`). *Real 2026-10-03 (AN-2). Until then the grade read the op's declared return: an arm of an op answering a bare variable or unit (`fail -> a`) was OneShot, so its value flowed back into the performing frame as the op's result — `let s: String = fail("x"); len(s) + 100` answered 100 — an abandon in argument position called the callee with a dummy, a `let`-bound abandon did not assemble, a thread's abandon trapped at the thunk's floor, and the argument record was an allocation no row saw; ten fixtures measured on boot 311479e1.*
+- **The held single resume** (inferred when the one resume site is INTERIOR — bound by `let`, an operand, an argument, an element, a lambda body — so the arm keeps computing after the remainder returns: `ask() => { let r = resume(1); r * 2 }`) — the remainder is reified as the continuation record and called once; the code after `resume` runs when the remainder returns, and the arm's value is what the install answers (`ask() + 1` under that arm is 4; `tests/micros/mn-oneshot-nontail-resume.mn`). The grade is `ResumeUse` (types.mn): multiplicity × position, ownership's return-transfer distinction read on the continuation. The record is the honest cost of holding a continuation; dropping it after its one call, O(1), is `Hβ.lower.held-resume-record-is-not-reclaimed`. A held resume runs the remainder INSIDE the frame that calls it — the arm, or a callee the arm hands a resuming lambda to — so that frame's row carries the remainder's: the resume performs its continuation's world, the handler's remainder, and every install judges what the frames it runs through forbid against its own body minus what it absorbs. `fn apply(f) with !Log = f() + 0` refuses `apply(() => resume(1))` under an install whose body performs `Log` after the perform (`tests/crown/leak-resume-remainder.mn`). When that remainder performs one of the handler's own ops again, the resume re-drives the handler where it stands, deep semantics at any depth (`tests/micros/mn-held-resume-*-reyield.mn`).
+- **`MultiShot`** (inferred when one or more resume sites under loop/recursion ancestry, or two sites both reachable from one path) — continuation captured to the heap as a closure. Enables backtracking, non-determinism, generators. **A MultiShot op's row carries `Memory + Alloc`**: the perform site reifies the remainder as a heap record, so performing the op IS an allocation, and a `!Alloc` declaration around such a perform refuses (`tests/micros/mn-multishot-perform-alloc.mn`). The op's discipline and cost are settled at pre-registration, from parse structure, so they never depend on whether the handler precedes its performers in source order.
+- **`Abandon`** (inferred when the arm never resumes — zero resume sites, whatever the op's declared return) — the arm's value is the install's value and the continuation is DEAD: the perform UNWINDS, and nothing after it runs, in its own frame or in any frame between it and the install whose arm answers. The unwind is structured, never a bare return past a bracket: a frame leaves by its innermost landing — an install body's block, so the install's driver runs (its own op dispatches the arm; a foreign one bubbles) and its world restore follows; an arena body's block, so the arena EXITS as any extent does, the perform's arguments moving out of the region through their leaves (their slots in the argument area were journaled where they were stored) and the rest reclaimed — only a LIVE continuation suspends an arena; or the function's own return. Every boundary a raised flag can cross checks after it: a call whose callee's row may abandon, a direct arm call of a handler whose arms may, an install or an arena off the frame's tail, a fanout's spawn and join. An abandoning perform allocates nothing — its arguments cross in a per-instance area allocated once at start — so `with !Alloc` holds over it (`tests/micros/mn-abandon-alloc.mn`).
 
-**A continuation is captured at any position** (real, 2026-10-16). A held or multi-shot perform suspends the computation around it wherever it stands — a `let`'s value, past a statement, an argument, a right operand, a branch, an element, a field, an arm's body, a `<~` body. Each frame (a function's body, a lambda's, an arm's, an install's, an arena's) is read once for the places a yield may leave it, and at each the frame's REMAINDER is minted as a function: the frame's own lowered tree zipped at that place, with what ran before it dropped, the branch it stands in kept alone, and its value the hole the remainder takes. Each value the remainder reads from before the place is captured into its record, beside the world the perform ran in and the `<~` lines the frame ticks, which stay the frame's own: a remainder reads the prior its cycle loaded and ticks the function's line, never one of its own. A call, an install or an arena whose row may carry a live continuation is such a place too: when the callee yields, the frame composes its remainder onto the continuation the callee's perform began, so each resumption returns through the call and finishes the frame. Under a handler that resumes `choose()` with 1 and then 2, `{ let x = inner(); x + 1 }` over `fn inner() = choose() * 10` answers `(10 + 1) + (20 + 1)`. A part of the frame that ran before the perform and is read after it is held in a register, so a resumption reads it and never runs it again: in `seven() * 5 + pick() + total()`, `seven()` counts once however many times `pick` resumes. An abandoning op, whose arm never resumes, mints no remainder: it performs from any position and unwinds (§«Resume discipline»). A live continuation that reaches a thread's join traps there, since no joiner can hold it (§`><`). Through boot 566fad2b the lowering captured only where the perform was the FIRST work its frame did, and refused anywhere else as `E_ContinuationUncapturable`. Each of the fifteen positions in `tests/micros/mn-capture-*.mn` was measured red on that boot.
+**A continuation is captured at any position.** A held or multi-shot perform suspends the computation around it wherever it stands — a `let`'s value, past a statement, an argument, a right operand, a branch, an element, a field, an arm's body, a `<~` body. Each frame (a function's body, a lambda's, an arm's, an install's, an arena's) is read once for the places a yield may leave it, and at each the frame's REMAINDER is minted as a function: the frame's own lowered tree zipped at that place, with what ran before it dropped, the branch it stands in kept alone, and its value the hole the remainder takes. Each value the remainder reads from before the place is captured into its record, beside the world the perform ran in and the `<~` lines the frame ticks, which stay the frame's own: a remainder reads the prior its cycle loaded and ticks the function's line, never one of its own. A call, an install or an arena whose row may carry a live continuation is such a place too: when the callee yields, the frame composes its remainder onto the continuation the callee's perform began, so each resumption returns through the call and finishes the frame. Under a handler that resumes `choose()` with 1 and then 2, `{ let x = inner(); x + 1 }` over `fn inner() = choose() * 10` answers `(10 + 1) + (20 + 1)`. A part of the frame that ran before the perform and is read after it is held in a register, so a resumption reads it and never runs it again: in `seven() * 5 + pick() + total()`, `seven()` counts once however many times `pick` resumes. An abandoning op, whose arm never resumes, mints no remainder: it performs from any position and unwinds (§«Resume discipline»). A live continuation that reaches a thread's join traps there, since no joiner can hold it (§`><`). The fifteen positions are `tests/micros/mn-capture-*.mn`.
 
-**A resumed remainder answers to the world it is resumed in** (real, 2026-10-16). A continuation carries its own segment of the world it was captured in — every install between the perform and the install that caught it, that install included — and past that segment it reaches the installs standing where it is resumed, which is what the rows judge. So an install an arm wraps around its resume governs the remainder (`ask() => resume(0) ~> inner_get` answers the remainder's `get` from `inner_get`), and a continuation the arm hands out (`ask() => Paused({ x => resume(x) })`) and the program resumes later reaches the installs around that call. Each install's remainder — what its body performs past the effects the install handles — is held as an instance of its handler's world cell, so a negation over a resume judges it wherever the program states it: `fn sneaky(k) with !Get = k(1)` refuses for a `k` whose remainder performs Get, and a `k` resumed at the top of `main` with nothing answering its Get is `E_EffectUnhandled` at the root. An arm runs outside its install on every path, so its own perform reaches the handler outside, a held or multi-shot arm's included: the install's driver hands the body's pending perform to the arm once, and a yield the arm raises bubbles past it. The value a resume hands over is computed in the arm's world, before the remainder's is entered. A resume entering its continuation from a world other than the one its install caught it in copies the segment onto that world, so a held resume charges `Memory + Alloc` beside its continuation's world. Until this landed a resume ran its remainder in the whole world it was captured in: `fn finish(k) with !WASI = k(1) ~> quiet_get(20)` printed through a handler whose install had returned, an install around a resume reached nothing, and a held arm performing its own op looped (tests/micros/mn-resume-world-*.mn, mn-arm-own-perform-*.mn, tests/crown/*resume-escaped*.mn, each measured on boot 7393d485).
+**A resumed remainder answers to the world it is resumed in.** A continuation carries its own segment of the world it was captured in — every install between the perform and the install that caught it, that install included — and past that segment it reaches the installs standing where it is resumed, which is what the rows judge. So an install an arm wraps around its resume governs the remainder (`ask() => resume(0) ~> inner_get` answers the remainder's `get` from `inner_get`), and a continuation the arm hands out (`ask() => Paused({ x => resume(x) })`) and the program resumes later reaches the installs around that call. Each install's remainder — what its body performs past the effects the install handles — is held as an instance of its handler's world cell, so a negation over a resume judges it wherever the program states it: `fn sneaky(k) with !Get = k(1)` refuses for a `k` whose remainder performs Get, and a `k` resumed at the top of `main` with nothing answering its Get is `E_EffectUnhandled` at the root. An arm runs outside its install on every path, so its own perform reaches the handler outside, a held or multi-shot arm's included: the install's driver hands the body's pending perform to the arm once, and a yield the arm raises bubbles past it. The value a resume hands over is computed in the arm's world, before the remainder's is entered. A resume entering its continuation from a world other than the one its install caught it in copies the segment onto that world, so a held resume charges `Memory + Alloc` beside its continuation's world. (tests/micros/mn-resume-world-*.mn, mn-arm-own-perform-*.mn, tests/crown/*resume-escaped*.mn.)
 
 The cardinality is **load-bearing on type+lower** — it's why Mentl can express real-time DSP and constraint-search backtracking under one effect algebra (and why a persisted multi-shot continuation is `memcpy`-serializable while a one-shot is a stack frame). But the **annotation form is drift**: authoring `@resume=` would declare what the body already proves. The body IS the contract — and because a fact this load-bearing must be legible ("systems explain themselves", `PLAN.md §0`), the cursor **projects** it read-only: `mentl where` shows the op's `TCont` as `R ->1 S` (one-shot) or `R ->* S` (multi-shot), a derived badge — never an authored annotation. The body remains the contract; the projection is output, not input.
 
@@ -1985,26 +1788,24 @@ fn pure_op(x: Int) -> Int with !Alloc + !IO =
 
 `!E` proves ABSENCE of effect E. Stronger than not-mentioning E because it propagates transitively through the call graph: any callee that performs E causes the whole declaration to fail with `E_EffectMismatch`.
 
-**The refusal names where E enters** (real, 2026-10-13). Every charge is noted on a node of the construct that makes it, so the Reason the refusal carries is the walk from the declaration to the perform — on tests/frontier/mn-effect-enters.mn, where `fn quiet(x) with !WASI = helper(x)` reaches the host three calls down: `declared as quiet; WASI enters at tests/frontier/mn-effect-enters:19:26 through `helper` → at tests/frontier/mn-effect-enters:15:3 through `log_it` → at tests/frontier/mn-effect-enters:12:18 through `print_string` → at io:209:3 through `fd_write_bytes` → at io:187:3 through `fd_write` → declared as fd_write, an op of WASI declared at io:45:1`. Each hop is a site in its own module's coordinates — a call or a stage names its callee, a tee its handler, a function value handed to a callee is entered, a construct that charges by itself is named (`building the list`), a value in scope is where the walk stops — and the message carries the first refused effect's chain. The same chain is the caret's Why at the declaration, one per effect of its row, and the answer of `mentl why <file> <fn> <Effect>`; `mentl why <file> <fn>` prints the declaration's reason and then every effect's chain. Through boot 6e35c6db the refusal ended at `declared as quiet` and the why verb ignored its third word. An effect an install absorbs enters through the install — the arm whose perform resolves outside it — never through the body it absorbs from: under `fn quiet() with !Log = work() ~> relog`, where `relog` answers `log` by performing `log` again, the chain names `relog`'s arm, not `work`'s `log` (real, 2026-10-13; the walk had descended into the body because the body's note carried the effect — tests/frontier/mn-effect-enters-absorbed.mn).
+**The refusal names where E enters.** Every charge is noted on a node of the construct that makes it, so the Reason the refusal carries is the walk from the declaration to the perform — on tests/frontier/mn-effect-enters.mn, where `fn quiet(x) with !WASI = helper(x)` reaches the host three calls down: `declared as quiet; WASI enters at tests/frontier/mn-effect-enters:19:26 through `helper` → at tests/frontier/mn-effect-enters:15:3 through `log_it` → at tests/frontier/mn-effect-enters:12:18 through `print_string` → at io:209:3 through `fd_write_bytes` → at io:187:3 through `fd_write` → declared as fd_write, an op of WASI declared at io:45:1`. Each hop is a site in its own module's coordinates — a call or a stage names its callee, a tee its handler, a function value handed to a callee is entered, a construct that charges by itself is named (`building the list`), a value in scope is where the walk stops — and the message carries the first refused effect's chain. The same chain is the caret's Why at the declaration, one per effect of its row, and the answer of `mentl why <file> <fn> <Effect>`; `mentl why <file> <fn>` prints the declaration's reason and then every effect's chain. An effect an install absorbs enters through the install — the arm whose perform resolves outside it — never through the body it absorbs from: under `fn quiet() with !Log = work() ~> relog`, where `relog` answers `log` by performing `log` again, the chain names `relog`'s arm, not `work`'s `log` (tests/frontier/mn-effect-enters-absorbed.mn).
 
-**And through the declaration's own parameters (real, 2026-09-27).** A
-negation on a function that calls a callback is a GATE on that callback's
-row: `fn run(f) with !E = f()` refuses `run(() => op())` at the call, and the
-refusal names `run`'s declaration — under polymorphism, through a `~>`
-mask (`fn run(f) with !E + !F = (f()) ~> h` with `h` absorbing E gates `f`
-with `!F` alone), across forward references, sig'd recursion and stored
-callbacks, and instance-precisely (`!Sample(44100)` admits a callback
-performing `Sample(48000)`). A callback that is only RETURNED, never called,
-performs nothing in the declaring body and stays admissible. The same gate
-is what an authored negation on a function-TYPE parameter is: `f: () -> Int
-with !E` constrains `f`'s row at every call of `f`, and beside it a sibling
-parameter's row is judged on its own. Until this landed the negation over a
-body whose row was a parameter's was vacuous — the program compiled and
-ran.
+**And through the declaration's own parameters.** A negation on a function
+that calls a callback is a GATE on that callback's row: `fn run(f) with !E =
+f()` refuses `run(() => op())` at the call, and the refusal names `run`'s
+declaration — under polymorphism, through a `~>` mask (`fn run(f) with !E +
+!F = (f()) ~> h` with `h` absorbing E gates `f` with `!F` alone), across
+forward references, sig'd recursion and stored callbacks, and
+instance-precisely (`!Sample(44100)` admits a callback performing
+`Sample(48000)`). A callback that is only RETURNED, never called, performs
+nothing in the declaring body and stays admissible. The same gate is what an
+authored negation on a function-TYPE parameter is: `f: () -> Int with !E`
+constrains `f`'s row at every call of `f`, and beside it a sibling
+parameter's row is judged on its own.
 
 When used alone (e.g., `with !Mutate`), it creates a **negative capability stance** representing "anything except this effect" (universe-minus). This is how Mentl expresses region-freezes and borrows (`ref`) mathematically without a separate borrow-checker.
 
-**`Mutate` is a store into memory older than the frame that makes it** (real, 2026-10-15): a parameter's memory, a capture, a module value, a part of another value, the feedback line a function's record owns. So `!Mutate` proves a function leaves every memory that existed before it ran as it found it, and `fn poke(ref xs) with !Mutate = list_set(xs, 0, 5)` refuses. A store into memory the frame allocated builds a value and performs nothing. A store into a parameter's memory performs `Mutate` in the function that makes it, and a caller pays it only where the argument it hands is older than its own frame: with `fn fill(buf, v) = list_set(buf, 0, v)`, `fn make() with !Mutate = make_list(1) |> fill(??, 4)` holds, and a caller that hands `fill` its own parameter hands the write on to its callers. An install answers its arms the same way: a state its init built is the install's own, and a config the arms write is charged by the age of what the install hands them. A `<~` tick writes its line, which every call shares, so `fn step(x) with !Mutate = ({ prev => prev + x }) <~ delay(1)` refuses. The members of a cycle say what they write when the cycle's judgment ends, read again until no claim grows; a write through a function value is charged where the call stands, since a value publishes no claim of what it writes. Until this landed nothing performed `Mutate`, every `!Mutate` was vacuous, and both of those refusals checked clean (tests/micros/mn-mutate-negation-refuses.mn, mn-mutate-tick-refuses.mn, mn-mutate-fresh-is-construction.mn).
+**`Mutate` is a store into memory older than the frame that makes it**: a parameter's memory, a capture, a module value, a part of another value, the feedback line a function's record owns. So `!Mutate` proves a function leaves every memory that existed before it ran as it found it, and `fn poke(ref xs) with !Mutate = list_set(xs, 0, 5)` refuses. A store into memory the frame allocated builds a value and performs nothing. A store into a parameter's memory performs `Mutate` in the function that makes it, and a caller pays it only where the argument it hands is older than its own frame: with `fn fill(buf, v) = list_set(buf, 0, v)`, `fn make() with !Mutate = make_list(1) |> fill(??, 4)` holds, and a caller that hands `fill` its own parameter hands the write on to its callers. An install answers its arms the same way: a state its init built is the install's own, and a config the arms write is charged by the age of what the install hands them. A `<~` tick writes its line, which every call shares, so `fn step(x) with !Mutate = ({ prev => prev + x }) <~ delay(1)` refuses. The members of a cycle say what they write when the cycle's judgment ends, read again until no claim grows; a write through a function value is charged where the call stands, since a value publishes no claim of what it writes (tests/micros/mn-mutate-negation-refuses.mn, mn-mutate-tick-refuses.mn, mn-mutate-fresh-is-construction.mn).
 
 **Modal-readiness is a mechanism, not a claim (`PLAN.md §4③`, forward-pointer).** The modal effect synthesis (rows + capabilities unified, closing the higher-order leak) threads effects as *lexical capabilities* through the EXISTING `~>` binding: `~> h` lexically scopes the effect `h` absorbs — that IS the capability mechanism. So the modal form adds only a typing rule (a row variable becomes a lexical capability handle at `~>`), no new surface form: rows give `!E`, `~>` gives the lexical capability, modal is their unification on forms that already exist. Sequenced post-real (§5).
 
@@ -2015,7 +1816,7 @@ fn pure_op(x) with Pure = x + 1
 
 ### The perform grounds its instance
 
-An op parameter that shares its NAME with one of its effect's parameters is that parameter at the perform: the op's argument there is the instance's argument, so a literal grounds the instance where the operation is performed and the row carries it (real, 2026-10-06):
+An op parameter that shares its NAME with one of its effect's parameters is that parameter at the perform: the op's argument there is the instance's argument, so a literal grounds the instance where the operation is performed and the row carries it:
 
 ```
 effect Environ(name: String) {
@@ -2027,7 +1828,7 @@ fn leak() with !Environ("SECRET") = env("SECRET")              // E_EffectMismat
 fn read(n) with !Environ("SECRET") = env(n)                    // E_EffectMismatch: a computed name grounds nothing, and an ungrounded instance is distinct from none
 ```
 
-Until this landed the instance was read off a declaration's `with` clause alone, so a read had to state its variable twice — `fn port() with Environ("PORT") = env("PORT")` — with nothing checking the two agreed, and an authored string instance (`!Environ("SECRET")`) was refused as `String vs String` against its own `effect Environ(name: String)`. A computed argument leaves the instance ungrounded, which is honest: the negation holds exactly when the reads it guards are literal.
+A computed argument leaves the instance ungrounded, which is honest: the negation holds exactly when the reads it guards are literal.
 
 ### Configuration — the environment is an effect
 
@@ -2101,7 +1902,7 @@ handler bounded_log(prefix: String) with count = 0, max = 100 {
 }
 ```
 
-A state init may read the handler's config — `handler window(size) with buf = make_list(size)`, `with n = cfg.x` — because each install builds its state from the config it was given, as a function of its own record, before the handler is installed: an init performs in the installer's world, and one that performs its own handler's ops is `E_InitPerformsOwnOp`. *(Real 2026-09-28, R0c: until then the install lowered the declaration's inits in its own scope, where the config does not exist, so only a bare `with n = cfg` worked and anything more reached a floor and trapped.)*
+A state init may read the handler's config — `handler window(size) with buf = make_list(size)`, `with n = cfg.x` — because each install builds its state from the config it was given, as a function of its own record, before the handler is installed: an init performs in the installer's world, and one that performs its own handler's ops is `E_InitPerformsOwnOp`.
 
 ### Handler chains — a composition is a value
 
@@ -2121,7 +1922,7 @@ handler references, bare or applied to their config. A member may be another
 chain, which stands for its members.
 
 **An install of the name is the installs of its members, innermost first,
-and the graph holds exactly that** (real, 2026-10-13).
+and the graph holds exactly that.**
 `body ~> judgment` is `body ~> affine_ledger ~> region_tracker ~>
 verify_ledger` in every respect — the row (each member's absorption removed,
 each member's arms added, each install's cost charged), the remainder gates,
@@ -2135,21 +1936,16 @@ of them. Every reader after the judgment asks the graph and sees the installs
 the author would have spelled; the formatter writes `~> judgment` back, since
 the install node is bound with the reference its author wrote
 (`ChainInstall`), whose edge reaches the chain, and `refs of judgment` counts
-the install. Until this landed the only way to hand a
-body to a fixed stack of handlers was a thunk and a wrapper function
-(`infer_context(() => …)`, 23 thunks in the wheel on 2026-09-20).
+the install.
 
 A chain carries no config of its own — `~> judgment(x)` is
 `E_HandlerChainShape` — and a member is a handler or a chain: a value that is
 neither, or a member whose argument declares anything (a function, a handler,
 a type, an import — `member_declarations` walks the argument), is refused at
 the declaration with the same class, whether or not anything installs the
-chain. The class is ARMED: nothing of a malformed chain compiles (real,
-2026-10-13 — it was born unarmed the same day, a chain applied to arguments
-printing the error while the program compiled and ran, and the declaration
-refusal fired only at an install; the landing's claim-reading pass caught
-both). The declaration installs nothing and renders on one line, its members
-joined by ` ~> `.
+chain. The class is ARMED: nothing of a malformed chain compiles
+(tests/micros/mn-handler-chain-shape-refuses.mn). The declaration installs
+nothing and renders on one line, its members joined by ` ~> `.
 
 ### A handler is exhaustive
 
@@ -2162,10 +1958,9 @@ with an arm for `inc` and none for `get` is `E_HandlerInexhaustive` at the
 The law is what makes the install's row exact. `expr ~> h` subtracts from
 `expr`'s row the effects `h`'s arms answer, by name; a perform of an op with
 no arm would walk past the install at runtime and reach whatever is outside
-it, which the row never saw. Measured 2026-09-30, and the last known hole
-under `!E`: `fn f() with !State = (get() + inc()) ~> only_inc`, `only_inc`
-answering `inc` alone, compiled clean under the negation and trapped reading
-the evidence at the root (`tests/micros/mn-handler-partial-refuses.mn`).
+it, which the row never saw: `fn f() with !State = (get() + inc()) ~>
+only_inc`, `only_inc` answering `inc` alone, is the shape
+(`tests/micros/mn-handler-partial-refuses.mn`).
 
 A handler that means to answer some ops of an effect FORWARDS the rest — an
 arm that performs its own op resolves to the enclosing handler (deep-handler
@@ -2208,29 +2003,22 @@ and what each install in a function answers (`~> ticker absorbs Tick, answers
 Int at 12:28-12:46`). The arms are keyed at the answer as at the instance, so an
 arm that observes its answer (`a ++ b` over two resumptions) runs at the
 answer its install gives it, and a multi-shot handler answering a Float
-assembles (real, 2026-10-03). Until then the handler's type carried its
-instance alone and no install ever met the arms' answer: the String arm
-above compiled and ran, the observing arm refused `E_ShapeUnprovable`, and
-the Float answer did not assemble (`tests/micros/mn-arm-answer-is-the-install.mn`,
-`mn-arm-answer-observed.mn`, `mn-multishot-float-answer.mn`, each measured
-on boot cf8a6d50). A never-returning op answers a bare variable
+assembles (`tests/micros/mn-arm-answer-is-the-install.mn`,
+`mn-arm-answer-observed.mn`, `mn-multishot-float-answer.mn`). A
+never-returning op answers a bare variable
 (`proc_exit(Int) -> !`), so an arm ending in one — `fail_exit`'s
 `proc_exit(1)` — answers any install.
 
-**The right side of `~>` is a handler, and its type says so** (real,
-2026-10-15). The install resolves its handler once, along the edge its
-reference draws, before the body it governs is judged; whatever the right
-side is, its type meets `Handler(P, A)` there, a configured handler named
-bare meeting it with its scheme's result. So `ask() + 1 ~> r.zero` over a
-record whose `zero` is an Int refuses `E_TypeMismatch` at the install. Until
-this landed the judgment read an install's handler by the right side's
-SPELLING — for a field, the field's name — so that install borrowed the
-absorption of a handler named `zero`: `mentl check` was clean and the
-program ran to a memory fault (`tests/micros/mn-install-of-a-non-handler.mn`,
-exit 134 on boot 7010a2a9). A handler held by a value — `let h = one`, then
-`~> h` — types, and its emit names a global nothing defines, so the module
-does not assemble: a handler named as a value has no record yet
-(`Hβ.effects.handler-value-is-its-record`).
+**The right side of `~>` is a handler, and its type says so.** The install
+resolves its handler once, along the edge its reference draws, before the
+body it governs is judged; whatever the right side is, its type meets
+`Handler(P, A)` there, a configured handler named bare meeting it with its
+scheme's result. So `ask() + 1 ~> r.zero` over a record whose `zero` is an
+Int refuses `E_TypeMismatch` at the install
+(`tests/micros/mn-install-of-a-non-handler.mn`). A handler held by a value —
+`let h = one`, then `~> h` — types, and its emit names a global nothing
+defines, so the module does not assemble: a handler named as a value has no
+record yet (`Hβ.effects.handler-value-is-its-record`).
 
 ### State updates via `with` on resume
 
@@ -2240,9 +2028,9 @@ When an arm wants to evolve state, it uses a `with` clause on `resume`:
 inc() => resume() with n = n + 1
 ```
 
-The `with` clause lists state updates by field name. Unlisted state stays unchanged. A name that is not one of the handler's state fields is refused (`E_MissingVariable`, "state field: m") — the write would reach nothing anything reads (real, 2026-10-02; until then `resume(0) with m = n + 1` beside `with n = 0` compiled clean and dropped the write).
+The `with` clause lists state updates by field name. Unlisted state stays unchanged. A name that is not one of the handler's state fields is refused (`E_MissingVariable`, "state field: m") — the write would reach nothing anything reads.
 
-**A state is every value written into it** (real, 2026-10-02, S5). At any read in an arm, a state field holds its init or whatever some arm last wrote, so everything the medium proves of it is proven of all of them: `100 / d` over `with d = 5` owes `d != 0` of every write — `with d = d - 5` in another arm leaves the division's claim open and refuses under `!Trap`, and `with d = 0` in another arm REFUTES it where it stands (`E_RefinementRejected`, real 2026-10-03: a writer that is the fatal point fails the claim as a join's `0` tail does; it was owed, never refuted, before) — a label a write brings reaches every read of the state, and a function written into it is applied under every function it can be. A state no arm writes is its init at every read and proves what the init proves. A write that reads the state it writes (`with d = d + 1`) reads it there as unknown, so a counter's bound is owed rather than proven; reading it as the claim's own hypothesis — an inductive invariant — is the named next step (`Hβ.verify.state-reads-its-invariant`). Until this landed the proof read a state as its init alone, and all three of those shapes checked clean and failed at run.
+**A state is every value written into it.** At any read in an arm, a state field holds its init or whatever some arm last wrote, so everything the medium proves of it is proven of all of them: `100 / d` over `with d = 5` owes `d != 0` of every write — `with d = d - 5` in another arm leaves the division's claim open and refuses under `!Trap`, and `with d = 0` in another arm REFUTES it where it stands (`E_RefinementRejected`: a writer that is the fatal point fails the claim as a join's `0` tail does) — a label a write brings reaches every read of the state, and a function written into it is applied under every function it can be. A state no arm writes is its init at every read and proves what the init proves. A write that reads the state it writes (`with d = d + 1`) reads it there as unknown, so a counter's bound is owed rather than proven; reading it as the claim's own hypothesis — an inductive invariant — is the named next step (`Hβ.verify.state-reads-its-invariant`).
 
 ### Installation
 
@@ -2261,9 +2049,8 @@ A sub-scope is a brace-block — a first-class `BlockExpr` — installed the sam
 
 There is no `handle { body } with h` keyword spelling — `handle` is NOT a
 keyword. It is the medium's own domain noun (the graph's node pointer), and
-keywording it collided with the codebase's most common identifier: the wheel's
-own `let handle = …` binders degraded to `_` under its own lexer (the 2026-07-05
-pass-2 face — 106 lost binders). The retirement follows the turbofish precedent
+keywording it collided with the codebase's most common identifier. The
+retirement follows the turbofish precedent
 (§«Generic type parameters»): no bespoke keyword for a foreign spelling; a
 stale-fluency `handle { body } with h` parses as ordinary expressions and the
 general unexpected-token diagnostic teaches `(body) ~> h` in context. One verb,
@@ -2277,9 +2064,9 @@ handler affine_ledger with !Consume {
 }
 ```
 
-`with !Consume` on the handler itself is the handler's own row — the same signed clause a fn signature carries, verified the same way — and it binds at TWO altitudes (A5, 2026-09-27, LENS §2.4's arm-world rule): the ARMS may not perform `Consume` themselves (the registration-time gate), and at every install the REMAINDER the arms resume into — the tee body's row with what this handler absorbs removed — may not perform it either, because resuming inside an arm continues that remainder under the handler. So `handler h with !F { op() => resume(1) }` installed over `op() + fop()` refuses at the install, naming `h`; installed over `op() + op()`, or over a body whose `fop()` an inner install absorbs, it holds; and `handler h with !E` over the ops it handles has nothing to check, since the absorption removes them. The check is per install — the body is read where it is known, never joined across installs into the handler's one row.
+`with !Consume` on the handler itself is the handler's own row — the same signed clause a fn signature carries, verified the same way — and it binds at TWO altitudes (the arm-world rule): the ARMS may not perform `Consume` themselves (the registration-time gate), and at every install the REMAINDER the arms resume into — the tee body's row with what this handler absorbs removed — may not perform it either, because resuming inside an arm continues that remainder under the handler. So `handler h with !F { op() => resume(1) }` installed over `op() + fop()` refuses at the install, naming `h`; installed over `op() + op()`, or over a body whose `fop()` an inner install absorbs, it holds; and `handler h with !E` over the ops it handles has nothing to check, since the absorption removes them. The check is per install — the body is read where it is known, never joined across installs into the handler's one row.
 
-*(Until 2026-09-27 the parser SKIPPED a handler's effect-row `with` to the arms as "WAT-invisible", so this clause bound nothing: `handler h with !F` accepted a remainder performing F with no diagnostic, measured RED on boot 39b00d84 by `tests/crown/leak-arm-resume-remainder.mn`. The clause rides the `HandlerDeclStmt` now and the formatter renders it back.)*
+(`tests/crown/leak-arm-resume-remainder.mn`.)
 
 ---
 
@@ -2321,10 +2108,8 @@ born (§«Diagnostic catalog»). A cycle through an alias's own expansion refuse
 closed (`E_RowAliasNegation`). A named row's terms are judged where they are
 written, as a clause's are: each names a declared effect, another named row or
 a row variable, and an instance's arguments meet its effect's parameters, so a
-misspelled term refuses at the `type` (`E_MissingVariable`). Until 2026-10-15
-nothing judged them: `type File = Raed + Write` checked clean, and `with
-!File` forbade `Write` alone while the body read
-(tests/micros/mn-effect-name-in-row-alias.mn).
+misspelled term refuses at the `type` (`E_MissingVariable`;
+tests/micros/mn-effect-name-in-row-alias.mn).
 
 A named row joins two or more terms, or opens with `!`. One name alone is the
 type it spells — `type Locked = Lock` a transparent alias, `type Locked =
@@ -2336,7 +2121,7 @@ one namespace a link has today, and every row naming the effect then refuses
 
 ### A SIGNATURE IS NOT AN INVENTORY — name the capability, author the negation
 
-**The measurement that makes this a rule rather than a preference (2026-09-21).**
+**The measurement that makes this a rule rather than a preference.**
 The wheel's own declared-row distribution is 132 signatures at four effects and
 155 at five — then a tail at 13, 14, 16, 17 (four of them), 18 and **nineteen**.
 A nineteen-name `with` clause breaks three laws at once, and they are this
@@ -2354,7 +2139,7 @@ document's own:
    negation worth reading is a needle in a haystack the author typed.
 
 **The form, and it needs no new syntax — it is the ABSENCE of the clause.**
-The POSITIVE row is inferred and PROJECTED (real, 2026-09-27, A4): what a
+The POSITIVE row is inferred and PROJECTED: what a
 signature authors is a decision — a negation, an instance pin, `Pure` — and the
 full positive row is read at the address surface (`mentl <file:line>` renders
 `-> T with Memory + Alloc`) the way `repr` width and resume cardinality already
@@ -2371,38 +2156,27 @@ worth reading. Three mechanisms carry it:
   negation-only signature is never "over-declared" (it used to narrate
   `!Mutate + Any` against a Pure body).
 - **`mentl tighten`** writes each narrated clause's RESIDUE — its negations and
-  instance pins, or no clause at all — never the proven row (the old form
-  wrote type-instances the grammar cannot read back). The medium authored its
-  own migration: 1,490 clauses over five runs, the wheel judging clean through
+  instance pins, or no clause at all — never the proven row. The medium
+  authored its own migration: 1,490 clauses, the wheel judging clean through
   the inferred rows with zero `E_EffectMismatch` — its negations had been true
   all along.
 - **`mentl verify` bounds the shape** (`CsAuthoredPositiveRow`, `src/board.mn`)
-  at ZERO on the wheel, seen RED at 164 through the half-swept tree. The
-  sixteen-name capability `type Judging` that the first landing named (the
-  wide-row count, 19 → 12) lost its last user and is deleted: a capability
-  nobody authors needs no name.
+  at ZERO on the wheel: a capability nobody authors needs no name.
 
-**A positive row that survives is a CAP, and the cap is a gate (real,
-2026-09-27, A3-pos).** `fn run(f) with E = f()` says `run`'s body, callbacks
+**A positive row that survives is a CAP, and the cap is a gate.** `fn run(f) with E = f()` says `run`'s body, callbacks
 included, performs at most E: the argument edge for `run(() => op_f())`
 refuses `E_EffectMismatch` naming `run`'s declaration, exactly as a negation
 does, and a `~>` mask inside the body widens what reaches the gate (`Pg ∪
 mask` on the push: `fn run2(f) with E = ((f()) ~> hf) + op_e()` admits a
-callback performing F, because `hf` absorbs it before the gate). Before this
-landing a positive cap installed nothing — only its negation half did — and
-that program compiled. So a positive row on a HOF is a decision the medium
+callback performing F, because `hf` absorbs it before the gate). So a
+positive row on a HOF is a decision the medium
 enforces; write one when the cap is meant, and let inference project the row
 otherwise. The two micros that carried `with Abort` on a try/catch HOF whose
 thunks allocate and choose refused on arming and lost their caps — a positive
 row cannot say what their comment asked of it (`try_with_abort_catch`: a row "to
 allow the outer scope's effects to flow").
 
-**Dissolved:** the `capability` keyword and the `TCapability` token. `capability X
-= <row>` was structurally `type X = <row>` — a row is a type-level value, so naming
-one IS a type alias, and a second keyword for it is the redundant form Governing
-Principle 2 rejects. (Want *nominal* row identity — a row that does not unify with its
-structural equal? That is record-style branding; but capabilities want structural
-composition, so the transparent alias is the ultimate form.)
+There is no `capability` keyword: `capability X = <row>` would be structurally `type X = <row>` — a row is a type-level value, so naming one IS a type alias, and a second keyword for it is the redundant form Governing Principle 2 rejects. Nominal row identity would be record-style branding; capabilities want structural composition, so the transparent alias is the ultimate form.
 
 ---
 
@@ -2506,61 +2280,47 @@ accepts any remaining tail without binding it. `|` remains pattern
 alternation / type-variant separation and is never list-cons syntax. A
 bound list rest is CUT — the elements past the prefix, as a slice — so it
 costs what `slice` costs, `Memory + Alloc`, in the frame the match stands
-in, and `with !Alloc` refuses it (real, 2026-09-30: sixteen of the wheel's
-own rests were unrowed until the allocation audit's first run;
-`tests/micros/mn-list-rest-alloc.mn`). `..._` cuts nothing.
+in, and `with !Alloc` refuses it (`tests/micros/mn-list-rest-alloc.mn`).
+`..._` cuts nothing.
 
 **A sub-pattern is the cell of the part it takes apart, and a binder is
-declared where it is written** (real, 2026-10-15). In `Pair(a, b) => a / b`
-the `b` the arm reads reaches the `b` the pattern binds, and the caret's Why
-there names that line; the two elements of `[x, y]` are two values, a rest is
-a node of its own (a binder, or `_` holding its presence), and `w @ pat`
-names the value its position takes apart. A destructuring pattern's shape
-claim is located at the value it claims. Until then each sub-pattern's binder
-was declared at a cell minted beside it with no position at all (`0:0`), the
-elements of one list pattern shared one, so the Why at `x` said `let y`, and
-the claim of `let Some([x, y]) = o` sat at the whole block rather than at `o`
-(tests/micros/mn-declared-*.mn).
+declared where it is written.** In `Pair(a, b) => a / b` the `b` the arm
+reads reaches the `b` the pattern binds, and the caret's Why there names that
+line; the two elements of `[x, y]` are two values, a rest is a node of its own
+(a binder, or `_` holding its presence), and `w @ pat` names the value its
+position takes apart. A destructuring pattern's shape claim is located at the
+value it claims (tests/micros/mn-declared-*.mn).
 
-**Every binder is declared where it is written** (real, 2026-10-15). A let's
-binder and a match arm's are their pattern's nodes, each the cell of the value
-it names, so the edge from `total` reaches the `total` the let binds, and
-`mentl <file>:<line>:<col>` at a binder says its uses — the sites the page's
-find draws at the same caret. Until then such a binder was declared at the
-value it was handed: the Why at a use of a let named the value's line, at a
-use of an arm's binder the scrutinee's (tests/micros/mn-declared-let-binder.mn,
-mn-declared-arm-binder.mn). A parameter is declared the same way (real,
-2026-10-16): it is a node of its own, the cell of the argument its position
-takes, holding its pattern, its annotation, its default and its ownership
-marker, and its pattern binds against that cell as a let's binds against its
-value. So the caret at a parameter's name names the parameter and says its
-uses, and a destructured parameter is its pattern, with no name minted for
-it. Until then a parameter was declared at a cell the judgment minted with no
-position (`0:0`), and a destructured one under a synthesized name the body
-took apart with a `let` (tests/micros/mn-declared-fn-param.mn,
-mn-declared-lambda-param.mn). A handler arm's arguments are parameters by the
-same rule (real, 2026-10-16), each the cell of the op's argument at its
-position, so an arm takes a pair apart where its body begins (`give((a, b))
-=> resume(a + b)`). A state field's name is the binder of its init, and the
-name a `resume … with` update writes is a node linked to it, so the caret at
-a field lists its reads and the updates that write it, and the Why at an
-update's name walks to `state n of counter`. Until then an arm's argument was
-declared at a cell the judgment minted with no position, a state field at its
-init, and an update's name was a string nothing linked
+**Every binder is declared where it is written.** A let's binder and a match
+arm's are their pattern's nodes, each the cell of the value it names, so the
+edge from `total` reaches the `total` the let binds, and `mentl
+<file>:<line>:<col>` at a binder says its uses — the sites the page's find
+draws at the same caret (tests/micros/mn-declared-let-binder.mn,
+mn-declared-arm-binder.mn). A parameter is declared the same way: it is a node
+of its own, the cell of the argument its position takes, holding its pattern,
+its annotation, its default and its ownership marker, and its pattern binds
+against that cell as a let's binds against its value. So the caret at a
+parameter's name names the parameter and says its uses, and a destructured
+parameter is its pattern, with no name minted for it
+(tests/micros/mn-declared-fn-param.mn, mn-declared-lambda-param.mn). A
+handler arm's arguments are parameters by the same rule, each the cell of the
+op's argument at its position, so an arm takes a pair apart where its body
+begins (`give((a, b)) => resume(a + b)`). A state field's name is the binder
+of its init, and the name a `resume … with` update writes is a node linked to
+it, so the caret at a field lists its reads and the updates that write it, and
+the Why at an update's name walks to `state n of counter`
 (tests/micros/mn-declared-arm-arg.mn, mn-declared-state-field.mn,
 mn-declared-state-write.mn, mn-arm-arg-pattern.mn).
 
-**A head and a pattern bind each name once** (real, 2026-10-16). Two binders
-of one name — across a head's parameters and inside their patterns, or in one
-pattern — leave a use that could reach either, and a parameter list holds one
-field per name, which a label names. The second is refused, naming the first
+**A head and a pattern bind each name once.** Two binders of one name —
+across a head's parameters and inside their patterns, or in one pattern —
+leave a use that could reach either, and a parameter list holds one field per
+name, which a label names. The second is refused, naming the first
 (`E_DuplicateBinder`). The branches of an alternation bind the same names by
-law and are not two binders. Until then each shape compiled clean and one
-binder was read by a rule no author wrote down: of two parameters the later,
-and a destructured part over a parameter on either side of it
-(tests/micros/mn-duplicate-binder-head.mn, mn-duplicate-binder-pattern.mn).
+law and are not two binders (tests/micros/mn-duplicate-binder-head.mn,
+mn-duplicate-binder-pattern.mn).
 
-**A rename is one write at the declaration** (real, 2026-10-16). Every
+**A rename is one write at the declaration.** Every
 reference renders the name its edge reaches, a label the name of the
 parameter its slot fills, and a comment's backticked mention is an edge as
 well, so `mentl rename <file>:<line>:<col> <name>` writes the new name where
@@ -2604,16 +2364,14 @@ match v {
 
 When branches bind different names: `E_PatternAlternationBindingMismatch` with the conflict surfaced. When the same name has incompatible types: same diagnostic with the type conflict surfaced.
 
-**An alternation stands wherever a pattern does** (real, 2026-10-16) — an
-arm, a constructor's payload (`W(Dot | Line(_))`), a record field (`{kind:
-Dot | Box(_, _), n}`), a list element (`[Dot | Line(_), ...rest]`) — so the
-parens around a grouped one in those positions are the redundant spelling,
-and `mentl fmt` writes `W(Dot | Line(_))` for `W((Dot | Line(_)))`. Until
-then those positions read a plain pattern: the canonical form did not
-parse, and `mentl fmt` refused to write a file holding the grouped one
+**An alternation stands wherever a pattern does** — an arm, a constructor's
+payload (`W(Dot | Line(_))`), a record field (`{kind: Dot | Box(_, _), n}`),
+a list element (`[Dot | Line(_), ...rest]`) — so the parens around a grouped
+one in those positions are the redundant spelling, and `mentl fmt` writes
+`W(Dot | Line(_))` for `W((Dot | Line(_)))`
 (tests/micros/mn-payload-alternation.mn).
 
-**Layout** (real, 2026-10-14): an alternation renders inline when it fits
+**Layout**: an alternation renders inline when it fits
 and past the width one branch per line, each continuation led by its `|` —
 the roster a catch-all stood for is often forty names, and the parser passes
 over the newline before a `|` as layout. Branches that each bind the whole
@@ -2622,21 +2380,20 @@ value under one name render as that binder over the group, `b @ (C(_) | D)`
 
 ### As-patterns — rule
 
-The as-pattern is real (2026-07-30): `name @ pat` binds the whole value and
-destructures it in one arm; the binder carries the scrutinee's own type, and
-the match predicate is the inner pattern's alone.
+`name @ pat` binds the whole value and destructures it in one arm; the binder
+carries the scrutinee's own type, and the match predicate is the inner
+pattern's alone.
 
 `name @ pat => body`: binds `name` to the entire matched value; `pat` destructures it further. `name` and any bindings inside `pat` are all available in the arm body. Common for "need the whole value AND some pieces" cases — event forwarding, logging, pass-through.
 
-**The binder over a group** (real, 2026-10-14): `name @ (A | B)` binds the
-whole value under any branch of the alternation it groups — the spelling
-`mentl tighten` writes for a binder that stood over a sum — and a
-parenthesized pattern is that pattern, since there is no product of one:
-`(A | B)` is the alternation, `(a, b)` the pair as before. One spelling for
-one graph: `b @ C(_) | b @ D`, every branch under the same binder, is the
-tree the formatter writes back as `b @ (C(_) | D)`, one branch per line past
-the width (tests/micros/mn-grouped-as-pattern.mn; the boot read the parens as
-a one-element tuple pattern and refused to type).
+**The binder over a group**: `name @ (A | B)` binds the whole value under any
+branch of the alternation it groups — the spelling `mentl tighten` writes for
+a binder that stood over a sum — and a parenthesized pattern is that pattern,
+since there is no product of one: `(A | B)` is the alternation, `(a, b)` the
+pair as before. One spelling for one graph: `b @ C(_) | b @ D`, every branch
+under the same binder, is the tree the formatter writes back as `b @ (C(_) |
+D)`, one branch per line past the width
+(tests/micros/mn-grouped-as-pattern.mn).
 
 `@` is TAt (reserved for handler annotations more generally; no current load-bearing user-facing `@`-form on effect ops — `@resume=` was erased per the inference-from-body discipline). Context disambiguates if other `@`-forms are introduced in future kernel additions.
 
@@ -2658,10 +2415,7 @@ module its own directory, then the library roots; a Lib module the library
 roots alone; a Compiler module every root. So a program resolves against its
 own project and the runtime library, and the compiler's roots are never
 offered to it: a user's `import graph` names no module and refuses
-`E_MissingModule` with the paths it probed (real, 2026-10-13 — until then
-every root was probed for every importer, so a program could import the
-compiler's own modules, and did: lib/io.mn's one dead `import types` linked
-the compiler's metaschema into every program that printed). A file the
+`E_MissingModule` with the paths it probed. A file the
 program's own folder holds is the program's whatever it contains — a project
 whose folder is this repository reaches `src/graph` as its own file, under
 its own layer. A lib module importing the compiler is unconstructible by the
@@ -2678,10 +2432,8 @@ spelling resolved to, so two spellings of one file are one module and one
 edge, and one spelling of two files is two modules — a program's own
 `lists.mn` beside the library's (`tests/frontier/user-link/nest` holds both
 shapes). Each module is a node of the program's link, and an import is an
-edge to the node it resolved to, never a name matched again (real,
-2026-10-15: the library's `lists` was matched by name to a program's own
-`lists.mn`, and every program holding a module of that name refused
-`E_MissingImport`). A repository-relative
+edge to the node it resolved to, never a name matched again. A
+repository-relative
 spelling (`lib/lists`) names a module only where the program's own folder
 holds the repository's layout; the library's name is `lists`.
 
@@ -2731,9 +2483,9 @@ fn lowpass_filter(samples: [Sample]) -> [Sample] with !Alloc =
 
 ### What a comment IS
 
-- **Pure prose, graph-attached.** Contiguous `//` lines concatenate to one String; a blank `//` line is a paragraph break. The comment attaches to the immediately-following declaration (`fn`/`type`/`effect`/`handler`/`let`), or — with none — to the enclosing block / the file's `Module` handle; a decl-boundary comment is **never dropped**: a run at the file's tail, with no declaration after it, attaches to a unit carrier that renders as its prose alone. An INTERIOR comment (inside a `{ }` body) attaches to the finest FOLLOWING node — the next statement, the final expr, or the block's own unit node when nothing follows — and a TRAILING same-line comment attaches BACKWARD to the node whose line it shares (same-line is structural: the comment token sits before any newline, one token of lookahead). Both are graph content in the same weave the decl comment fills, judged by the same backtick gate, and the address surface renders the attached prose's first line as the `Lede:` facet. A match arm's pattern is a node, so a comment above an arm, or trailing its `=>`, attaches to the pattern, and `mentl fmt` writes it above the arm (real, 2026-10-15). **Attachment is by SPAN, so an ANONYMOUS node is a home like any other**: a comment above a lambda inside an argument list attaches to the lambda (measured 2026-09-17 — `Lede:` at the lambda's address, its backticked params resolving through the enclosing decl's binders), and a lambda's span is its whole extent, head through body, so `mentl <file:line>` on the lambda's line reaches it (it used to be the head alone, and the line's widest-node rule reached a body sub-node instead — the address rule and the weave's rule are one question, and the span is the one fact both read). Expression-interior comments elsewhere (inside parens / match-arm headers) attach by the same span rule (`Hβ.parser.expr-interior-comment-attach` names what the gate has not measured there).
+- **Pure prose, graph-attached.** Contiguous `//` lines concatenate to one String; a blank `//` line is a paragraph break. The comment attaches to the immediately-following declaration (`fn`/`type`/`effect`/`handler`/`let`), or — with none — to the enclosing block / the file's `Module` handle; a decl-boundary comment is **never dropped**: a run at the file's tail, with no declaration after it, attaches to a unit carrier that renders as its prose alone. An INTERIOR comment (inside a `{ }` body) attaches to the finest FOLLOWING node — the next statement, the final expr, or the block's own unit node when nothing follows — and a TRAILING same-line comment attaches BACKWARD to the node whose line it shares (same-line is structural: the comment token sits before any newline, one token of lookahead). Both are graph content in the same weave the decl comment fills, judged by the same backtick gate, and the address surface renders the attached prose's first line as the `Lede:` facet. A match arm's pattern is a node, so a comment above an arm, or trailing its `=>`, attaches to the pattern, and `mentl fmt` writes it above the arm. **Attachment is by SPAN, so an ANONYMOUS node is a home like any other**: a comment above a lambda inside an argument list attaches to the lambda (`Lede:` at the lambda's address, its backticked params resolving through the enclosing decl's binders), and a lambda's span is its whole extent, head through body, so `mentl <file:line>` on the lambda's line reaches it — the address rule and the weave's rule are one question, and the span is the one fact both read. Expression-interior comments elsewhere (inside parens / match-arm headers) attach by the same span rule (`Hβ.parser.expr-interior-comment-attach` names what the gate has not measured there).
 - **Register is a projection, not a delimiter.** How much surfaces — the one-line lede, or the full body — is the gradient reading the comment's relevance at the cursor (the same gradient that drives every projection), NOT an author-chosen `//`-vs-`///` audience split. The author writes prose; the cursor decides what shows. First sentence = lede.
-- **Surfaces verbatim, rendered per target.** The substrate stores the raw String; render handlers interpret presentation — HTML `<code>` for `` `backticks` ``, terminal ANSI, markdown fence. `` `backticks` `` cross-reference identifiers; the author writes the reference, the handler resolves it — **in the comment's own module's reach**: a declaration of its own module, of a module it imports or of the prelude, a binder of the commented node, a keyword or surface word, or a word a string literal of a module it reaches writes (the WAT and WASI vocabulary the emitter's literals write resolves in the emitter, and nowhere the emitter is not imported). A resolved reference is a mention edge to what it names — a binder's as much as a declaration's (real, 2026-10-16) — so a rename rewrites the mention along it. A name the whole link carries but the module never imports is no edge the module can draw, so it does not resolve: `W_CommentRefUnresolved`, and the author points the reference at what resolves or writes the word as prose (real, 2026-10-13 — until then the declaration index, the env and the literal vocabulary were read over the flattened link, so a library module's prose cited the compiler's declarations and checked clean, and the same prose judged as its own entry narrated; the sweep that made the law true re-pointed, de-ticked or wrote as prose 140 references in the wheel and three in the library).
+- **Surfaces verbatim, rendered per target.** The substrate stores the raw String; render handlers interpret presentation — HTML `<code>` for `` `backticks` ``, terminal ANSI, markdown fence. `` `backticks` `` cross-reference identifiers; the author writes the reference, the handler resolves it — **in the comment's own module's reach**: a declaration of its own module, of a module it imports or of the prelude, a binder of the commented node, a keyword or surface word, or a word a string literal of a module it reaches writes (the WAT and WASI vocabulary the emitter's literals write resolves in the emitter, and nowhere the emitter is not imported). A resolved reference is a mention edge to what it names — a binder's as much as a declaration's — so a rename rewrites the mention along it. A name the whole link carries but the module never imports is no edge the module can draw, so it does not resolve: `W_CommentRefUnresolved`, and the author points the reference at what resolves or writes the word as prose.
 - **Code blocks compile via the same pipeline.** A comment containing Mentl source IS Mentl source — the compile verifies it; there is no separate doc-test category.
 
 ### What a comment TRENDS TO
@@ -2761,7 +2513,7 @@ larval `mentl why` content queued for absorption, never the endpoint
 - **Not a markup language.** No `=== headers ===` decorations; the declaration's name IS the heading. Render handlers add presentation chrome.
 - **Not JSDoc / Sphinx tags.** No `@param`/`@returns`/`@throws`/`@since`/`@deprecated`: the effect row + refinement substrate already carries parameter/return/capability information. Lifecycle vocabulary ("previously", "no longer", "legacy", `@deprecated`) is forbidden by the positive-form discipline — a comment shows what IS, not what was.
 - **Not a gate.** A comment adds, never silences: a declaration with no comment still surfaces Mentl's substrate-derived tentacles (the silence predicate).
-- **Not a blessing.** Prose cannot canonize a compensation: a residue's comment names its RETIREMENT CONDITION (the peer, the count that drives to zero), never its permanence. "Deliberate" written by the builder over a standing cost is the costume, not a fact — "the final IS the verification" (superseded 2026-07-31) is the recorded instance.
+- **Not a blessing.** Prose cannot canonize a compensation: a residue's comment names its RETIREMENT CONDITION (the peer, the count that drives to zero), never its permanence. "Deliberate" written by the builder over a standing cost is the costume, not a fact.
 - **Not the only voice.** Mentl's substrate voice (per-tentacle, derived from the graph) is the second voice. Two speakers per declaration; no editorial third.
 
 **Dissolved:** the `//`-vs-`///` split. `//` was "the medium deliberately does NOT read this" — a category of prose the self-explaining, unsilenceable medium blinded itself to, contradicting `PLAN.md §0`. One form, all graph content, register projected.
@@ -2814,11 +2566,7 @@ let block = """
 """
 ```
 
-**Dissolved** (redundant-form + foreign fluency): the `'...'` literal form, its
-`'''...'''` variant, and `{{`/`}}` brace-doubling. A splice-free `"abc"` and
-`'abc'` produced an identical byte-sequence graph; literalness is a property of a
-*region* (`\{`), read by the cursor — never a mode hoisted onto the quote
-character (the Python/shell convention). One sequence kind ⇒ one string surface.
+There is no `'...'` literal form, no `'''...'''` variant and no `{{`/`}}` brace-doubling: a splice-free `"abc"` and `'abc'` would produce one byte-sequence graph, and literalness is a property of a *region* (`\{`), read by the cursor — never a mode hoisted onto the quote character. One sequence kind ⇒ one string surface.
 
 ---
 
@@ -2895,9 +2643,7 @@ The ordering operators `<` `<=` `>` `>=` are the same derivation with a 3-way
 leaf: a word orders by its value (an address by its magnitude, §«Addresses»),
 a sequence length-then-element, a product field-wise, and a sum by its
 variants' DECLARATION order first and its payloads second — so over `type T =
-B(Int) | A`, `B(5) < A` holds (real, 2026-10-03: the generated compare had
-ranked a nullary variant's word against the other operand's address, and that
-program answered the opposite with no diagnostic).
+B(Int) | A`, `B(5) < A` holds.
 
 **Drift-refusal preserved:** `==` on a heap value never emits pointer comparison —
 pointer-eq lying as structural equality is the silent fallback `PLAN.md §9.2`
@@ -2905,28 +2651,21 @@ deletes. The derivation is **total over the five node-kinds** — this general
 definition, never a carve-out per shape; `str_eq` is the byte-sequence instance
 the surface `==` lowers to, never a developer-facing primitive.
 
-**TWO MEASURED HOLES IN THAT TOTALITY, both CLOSED.** (1) An operand whose
-type is still a VARIABLE where the comparison is emitted has no structure to
-read, and the one-word compare it would fall to is an address lie for
-anything but a word. It REFUSES (real, 2026-09-28): `E_ShapeUnprovable`,
-armed, said at the comparison before a byte of the module exists — the same
-refusal a show, a hash and a `++` of such an operand take
-(`Hβ.emit.eq-on-unresolved-operand-is-pointer-eq`, closed). It had narrated
-as `T_EqTypeUnprovable` since 2026-09-18, and the class could not arm while
-it was decided during emission, after the gate had read the ledger.
-(2) A POLYMORPHIC sum compared its payload by ADDRESS — `Some(BInt(7)) ==
-Some(BInt(7))` was false while the monomorphic `BInt(7) == BInt(7)` was true —
-because the generated helper was keyed on the nominal name alone and the
-constructor's declared payload type is the quantified var. CLOSED the day it
-was measured (2026-09-18, `Hβ.eq.polymorphic-sum-payload-is-pointer-eq`): the
-sig folds its arguments so each instantiation names its own leaf, and the
-specs ground against them, so the payload recursion calls its own type's
-helper. `tests/frontier/mn-eq-polymorphic-sum.mn` holds the contract with its
-monomorphic control beside it. The entry stays written here because its
-blindness is the transferable half: (2) was invisible to (1)'s census, whose
-count held unchanged across the whole discovery, because the unprovable
-operand sat inside a generated leaf rather than at an authored comparison. A
-census that measures one surface does not see the same class one layer in.
+**Two holes in that totality, both closed, kept for what they teach.** (1) An
+operand whose type is still a VARIABLE where the comparison is emitted has no
+structure to read, and the one-word compare it would fall to is an address
+lie for anything but a word. It REFUSES: `E_ShapeUnprovable`, armed, said at
+the comparison before a byte of the module exists — the same refusal a show,
+a hash and a `++` of such an operand take. (2) A POLYMORPHIC sum compared its
+payload by ADDRESS while the monomorphic one compared by value, because the
+generated helper was keyed on the nominal name alone; the sig folds its
+arguments so each instantiation names its own leaf, and the specs ground
+against them, so the payload recursion calls its own type's helper
+(`tests/frontier/mn-eq-polymorphic-sum.mn` holds the contract with its
+monomorphic control beside it). The transferable half: (2) was invisible to
+(1)'s census because the unprovable operand sat inside a generated leaf rather
+than at an authored comparison. A census that measures one surface does not
+see the same class one layer in.
 
 ### Arithmetic operators
 
@@ -2941,31 +2680,20 @@ clauses») — and the operand's cell decides:
 | still FREE at the operator                    | the cell carries the demand (a `NumericGate`); the one writer judges whatever later enters it — a word passes, a variable inherits the gate, an aggregate refuses — and instantiation copies it onto the fresh var, so a generic `a * b` refuses `{x: 1}` at the CALL that instantiates it |
 | bound to a product / sum / sequence / function / continuation / unit, or an address | `E_ArithOnAggregate` REFUSES at the judgment — arithmetic on an aggregate has no meaning the value ontology gives it; the operands are addresses, and an address moves by `addr_at` (§«Addresses») |
 
-**THE THIRD MEASURED HOLE, closed 2026-09-27 in its second form.** The
-arithmetic arm of the emit read only the operands' emitted WIDTHS, so a
-record floored to a word and `{x: 1} * {x: 2}` multiplied the two ADDRESSES
-with zero diagnostics, then trapped at run time reading a field off the
-product (boot 5bf55b68, exit 134). The first form classified the operand's
-TYPE at lower and again at emit under the twin bracket, narrated the
-variable case and added a second gate after the emit for the generic one;
-it passed every test, and the artifact refuted it twice before it was
-pinned: `mentl check` still accepted both programs (only the executable
-refused), and the wheel's own compile narrated the floor twin of a generic
-`Option(t)` add "unproven" over a `t` the judgment had already seen added —
-the emit re-deriving a fact inference held. The demand belongs to the
-JUDGMENT, as a gate on the cell: `{x: 1} * {x: 2}` refuses at the operator
-(`tests/frontier/mn-arith-on-aggregate.mn`); `scale({x: 1}, {x: 2})` over
-`fn scale(a, b) = a * b` refuses at the argument edge that binds the copied
-gate, naming `*`'s site (`mn-arith-on-aggregate-twin.mn`); a copy minted
-before the demand — a signature'd fn's self-reference — is reached through
-the instance column (`mn-arith-on-aggregate-instance.mn`); and `mentl check`
-says so in every case. At emit nothing is decided: a word emits at its
-type's repr, and a variable still free there is a FLOOR twin's quantified
-var — every wide instantiation, through a reference included
-(`tests/micros/mn-arith-generic-ref-float.mn`), minted its own twin and
-bound the var under it — so it is a word at the floor width by
-construction, and the arithmetic narration class the first form minted no
-longer exists. Arithmetic on a USER type is not pointer arithmetic and not
+**The demand belongs to the JUDGMENT, as a gate on the cell.** `{x: 1} * {x:
+2}` refuses at the operator (`tests/frontier/mn-arith-on-aggregate.mn`);
+`scale({x: 1}, {x: 2})` over `fn scale(a, b) = a * b` refuses at the argument
+edge that binds the copied gate, naming `*`'s site
+(`mn-arith-on-aggregate-twin.mn`); a copy minted before the demand — a
+signature'd fn's self-reference — is reached through the instance column
+(`mn-arith-on-aggregate-instance.mn`); and `mentl check` says so in every
+case. At emit nothing is decided: a word emits at its type's repr, and a
+variable still free there is a FLOOR twin's quantified var — every wide
+instantiation, through a reference included
+(`tests/micros/mn-arith-generic-ref-float.mn`), mints its own twin and binds
+the var under it — so it is a word at the floor width by construction. An
+emit that read only the operands' WIDTHS multiplied two record addresses with
+zero diagnostics. Arithmetic on a USER type is not pointer arithmetic and not
 a trait: it arrives as a numeric projection's rules
 (`Hβ.lower.ad-is-a-demanded-projection`), the same mechanism that makes a
 chain differentiable.
@@ -2975,7 +2703,7 @@ chain differentiable.
 An address names memory: the raw memory operations read from and write to
 one (lib/memory.mn's `Memory`). Its type is `Addr`, and it is a word in every
 machine respect — one i32, equal by identity, hashed as itself — and NOT a
-number (real, 2026-10-03). `alloc` and `heap_mark` answer one, `Cast`'s `addr`
+number. `alloc` and `heap_mark` answer one, `Cast`'s `addr`
 answers the address a value lives at, and every raw load and store takes one:
 
 | An address…                       | …is                                                         |
@@ -3012,28 +2740,28 @@ answers 0 there). The medium never totalizes them — a fabricated 0 for a
 division by zero is the surrender fallback `CLAUDE.md` forbids — and it never
 lets a trap hide either. Each site raises its precondition as the claim it
 is, decided by `Verify`'s fragment from what the graph holds about the two
-operands, with three outcomes (real, 2026-09-30):
+operands, with three outcomes:
 
 | The claim at `a / b` | Outcome |
 |---|---|
 | a constant divisor that is not 0 (and, for `/`, not -1 — or a constant dividend that is not INT_MIN) | PROVEN — the site charges nothing |
 | a constant zero divisor (`1 / 0`), or `INT_MIN / -1` by constants | REFUSED — `E_RefinementRejected` at the site: the program's meaning is a trap |
-| a divisor one of whose sources IS the fatal point — a join's tail (`100 / (if c { 5 } else { 0 })`), an installed arm's answer (`100 / ((…) ~> zero)` with `zero` answering `0`) | REFUSED — the text writes the trap on that tail, as a claim over a join refuses at the tail that folds false (real, 2026-10-03; such a tail answered OPEN before, debt where the refutation names the cause) |
+| a divisor one of whose sources IS the fatal point — a join's tail (`100 / (if c { 5 } else { 0 })`), an installed arm's answer (`100 / ((…) ~> zero)` with `zero` answering `0`) | REFUSED — the text writes the trap on that tail, as a claim over a join refuses at the tail that folds false |
 | a divisor whose every source EXCLUDES the fatal point — a constant, a length, or a parameter whose refinement does (`Positive` (`0 < self`) excludes 0 and -1; `NonZero` (`self != 0`) excludes 0, so it proves `%` outright and `/` only beside a dividend that cannot be INT_MIN) | PROVEN — and where it stands on a parameter's refinement, the `Trap` waits in that parameter's guard, paid by a caller whose argument claim is open |
 | a module value bound to a constant (`let lanes = 4`) | PROVEN — the fragment reads the let's own node |
 | anything else — a parameter nothing bounds, a local, a call | OPEN — the site charges **`Trap`** into the row |
 
 `Trap` is the effect the substrate performs when a partial primitive's
 precondition fails (`effect Trap { trap() -> ! }`, lib/memory.mn — its one
-op the deliberate trap, `out_of_range()`, which never returns and says so
-since 2026-10-14, so it stands where a value of any type is owed, as the
+op the deliberate trap, `out_of_range()`, which never returns and says so,
+so it stands where a value of any type is owed, as the
 complement arm of a match over a word the representation bounds; nothing
 handles it, and its absence is the whole point of naming it). It is a row
 fact like `Alloc`: inferred and projected (`fn ratio(t, n) = t / n` renders
 `-> Int with Trap` at the address surface), transitive through calls, and
 provable absent — `fn ratio(t, n) with !Trap = t / n` refuses
 `E_EffectMismatch`, `fn ratio(t, n: Positive) with !Trap = t / n` accepts.
-The gradient PROPOSES the annotation (real, 2026-10-02): at `fn inv(n) =
+The gradient PROPOSES the annotation: at `fn inv(n) =
 100 / n` the Teach facet names `n: NonZero` — the refinement in the module's
 reach that discharges the claim and that every call of `inv` satisfies — and
 `mentl accept <file>:<line>:<col>` at the declaration writes it, over a
@@ -3053,9 +2781,7 @@ never a name-allowlist of "nonzero-ish" types.
 
 The e-graph reads the same fact: `x * 0 ≡ 0` drops its operand only when the
 operand's subtree row is pure, and a division whose claim stays open is not,
-so `(1 / n) * 0` traps at `n = 0` as written. Until this landed the purity
-gate read the operand's SHAPE — arithmetic over a literal and a variable —
-and that program answered 0 (measured on boot 21f8e691).
+so `(1 / n) * 0` traps at `n = 0` as written.
 
 What the fragment cannot yet read, named: a guard on the PATH (`if b == 0 {
 None } else { a / b }` — a read up the parent edge the verifier has not
@@ -3139,9 +2865,9 @@ The parser accepts any whitespace; the precedence table alone draws the tree (Go
 
 **Render rule** (canonical):
 - The formatter renders code in canonical 2-space / 4-space form on save.
-- **A render that would lose what the author wrote is not written** (real, 2026-09-28). `mentl fmt` lexes its render beside the source and spends every identifier, literal (by value, so `48_000` and `48000` are one) and prose line of the source against the render's; anything left unpaid is a loss, the verb names it with its line, leaves the file untouched, and exits nonzero. Until then the gate counted prose alone and wrote whatever it rendered: it deleted an effect parameter's annotation (`rate: Int`), an op parameter's name (`msg: String`) and a pinned alias's base (`Float repr f64`) while reporting "prose conserved", and it wrote a lossy render of a file that did not parse.
-- **The head of a postfix form keeps its parens** (real, 2026-09-28). A call, a field read and an index bind tighter than every operator, so a callee, a receiver or an indexed value that is anything but an atom renders parenthesized: `(r |> keep).level`, `((a, b) => a * b)(2, 3)`, `([1, 2] ++ [3, 4])[2]`. Rendered bare, the re-parse takes the postfix onto the head's last operand — `(run() ~> h).beta` came back as `run() ~> h.beta`, an install of `h.beta`, under "names conserved", because no name was lost. The census of names cannot see a moved operand; a render that re-parses to a different tree is not yet refused (`Hβ.fmt.render-must-parse-to-the-same-tree`).
-- **A destructuring let renders as the let** (real, 2026-10-06). The parse makes `let (a, b) = v` and the rest of its block one arm of a `match`, the same graph a hand-written one-arm `match` makes; the match a let becomes is born remembering it, so `mentl fmt` writes the let back at the block's indent and a written `match` stays a match. Until then every destructuring let came back as a match one level deeper per let.
+- **A render that would lose what the author wrote is not written.** `mentl fmt` lexes its render beside the source and spends every identifier, literal (by value, so `48_000` and `48000` are one) and prose line of the source against the render's; anything left unpaid is a loss, the verb names it with its line, leaves the file untouched, and exits nonzero.
+- **The head of a postfix form keeps its parens.** A call, a field read and an index bind tighter than every operator, so a callee, a receiver or an indexed value that is anything but an atom renders parenthesized: `(r |> keep).level`, `((a, b) => a * b)(2, 3)`, `([1, 2] ++ [3, 4])[2]`. Rendered bare, the re-parse would take the postfix onto the head's last operand under "names conserved", because no name is lost; a render that re-parses to a different tree is not yet refused (`Hβ.fmt.render-must-parse-to-the-same-tree`).
+- **A destructuring let renders as the let.** The parse makes `let (a, b) = v` and the rest of its block one arm of a `match`, the same graph a hand-written one-arm `match` makes; the match a let becomes is born remembering it, so `mentl fmt` writes the let back at the block's indent and a written `match` stays a match.
 - **A tuple, a list or a `><` fanout past the width breaks** — one element per line, or §`><`'s vertical layout — as a call's arguments and a record do.
 - The `Format` effect at `src/format.mn` declares one op, `format_program`; `format_default` is the canonical handler.
 - The editing surfaces format as a projection — keystroke → parse → format → render — so the developer never sees badly-indented code: the page's canvas re-renders the canonical form on idle, never mid-keystroke (the canvas landing), and `mentl edit` takes one action per invocation today (`Hβ.felt.edit-session-reads-one-action`).
@@ -3179,17 +2905,14 @@ A `.mn` file with no `main` function is a LIBRARY module — its declarations ar
 A `.mn` file with `fn main()` is an EXECUTABLE — `_start` invokes `main`.
 Its module value lets run first, so what an init performs is the
 executable's: an effect no handler serves refuses at the let as it would in
-`main` (real, 2026-10-02 — `let x = op()` compiled and trapped at init
-before). `main`'s declared row judges `main` alone
+`main`. `main`'s declared row judges `main` alone
 (`Hβ.effects.executable-row-includes-inits`).
 
 A module value let binds every binder its pattern writes, and a discard runs
 its value for effect. The init stores what one binder names and nothing
 else today, so a module-scope `let _ = e`, `let 5 = e` or `let (w, h) = e`
-refuses where the program is emitted (`E_InternalInvariant`, real
-2026-10-15), never runs without the value it was written for: until then the
-discard and the destructure were dropped unrun, and a destructure's binders
-named a global no init set, so the module did not assemble
+refuses where the program is emitted (`E_InternalInvariant`), never runs
+without the value it was written for
 (tests/micros/mn-module-let-discard-refuses.mn,
 mn-module-let-destructure-refuses.mn; PLAN §11.18).
 
@@ -3245,9 +2968,8 @@ type TokenKind
   // ─── Identifiers and literals (carry payload) ─────────────────────
   // Constructors share ONE namespace (env entries). The literal tokens
   // are named TIntLit/TFloatLit because Ty's canonical nullary
-  // TInt/TFloat (the canonical Ty enumeration) already claim the bare names —
-  // two declarations claiming one constructor name shadow silently and
-  // mis-unify (the 2026-06-09 "expected Ty, found TokenKind" ×95 class).
+  // TInt/TFloat already claim the bare names — two declarations claiming
+  // one constructor name shadow silently and mis-unify.
   | TIdent(String)
   | TIntLit(Int)
   | TFloatLit(Float)
@@ -3412,7 +3134,7 @@ class or strikes the row.
 
 The three groupings below are **derived bands**, not authored law:
 - **Format-liftable** ≡ `MachineApplicable` ∧ the redundant form has no graph node (next section).
-- **Hard error** ≡ severity=error — a substrate violation the medium cannot auto-recover. Every one refuses the executable: the gate reads the count of errors the judgment reported, so a program carrying one is never emitted, and `mentl check` exits nonzero over it (real, 2026-10-16: until then a class refused only once it was armed, one class at a time, and an unarmed one reported and compiled — an unknown label trapped, a pattern missing a constructor field answered the first field, a missing record field read as zero; tests/micros/mn-*-refuses.mn).
+- **Hard error** ≡ severity=error — a substrate violation the medium cannot auto-recover. Every one refuses the executable: the gate reads the count of errors the judgment reported, so a program carrying one is never emitted, and `mentl check` exits nonzero over it (tests/micros/mn-*-refuses.mn).
 - **Gradient narration** ≡ severity=narration — Mentl's voice; accept or dismiss.
 
 ### Format-liftable (parse-canonicalized — no graph node to "strip")
@@ -3430,8 +3152,7 @@ un-normalized source the formatter has not yet touched).
 *The silent lift is the DESIGN. `E_RedundantBraces` still surfaces as a
 warning — it retires when the formatter's canonical projection becomes the
 save path (`PLAN.md §11`, the project canonical), never by
-muting the reporter. `E_RedundantPerform` is DELETED (2026-08-08): `perform` is
-no longer a token, so there is nothing to lift.*
+muting the reporter.*
 
 | Code                  | Trigger (an emitted token, removed/transformed)         | Canonicalization                                 |
 |-----------------------|---------------------------------------------------------|--------------------------------------------------|
@@ -3448,45 +3169,45 @@ stage, which the parse builds as the pipe it is (§«`<|` — diverge»).
 
 | Code                  | Trigger                                       | Applicability        | Quick Fix                                      |
 |-----------------------|-----------------------------------------------|----------------------|-------------------------------------------------|
-| `E_PatternInexhaustive` | a value escapes every arm of a match of two or more arms — a match of one arm, a destructuring `let` among them, claims its shape instead (§«Exhaustiveness») — read over the whole pattern, column by column, so a variant missing INSIDE a constructor's payload refuses too; the message names the escaping value as a pattern. An alternation covers its branches, an as-pattern its inner pattern; a list column is `[]` or a head before a rest, a record its fields, Bool's literals its constructors, and any other literal column is covered only by a wild row (`0` beside `1` misses `_`). ARMED 2026-10-03 (refuses the executable); nested since 2026-10-13; strict over every pattern kind since 2026-10-14 | `HasPlaceholders`    | insert the arm the witness names |
+| `E_PatternInexhaustive` | a value escapes every arm of a match of two or more arms — a match of one arm, a destructuring `let` among them, claims its shape instead (§«Exhaustiveness») — read over the whole pattern, column by column, so a variant missing INSIDE a constructor's payload refuses too; the message names the escaping value as a pattern. An alternation covers its branches, an as-pattern its inner pattern; a list column is `[]` or a head before a rest, a record its fields, Bool's literals its constructors, and any other literal column is covered only by a wild row (`0` beside `1` misses `_`). ARMED | `HasPlaceholders`    | insert the arm the witness names |
 | `P_ExpectedToken`     | the parser expected one token and found another. It recovers so the judgment can go on, and a recovery is a guess at text it could not read, so the program refuses | `MaybeIncorrect`     | write the token it expected |
-| `P_UnexpectedToken`   | a token not valid at its position. In pattern position the recovery was a wildcard that swallowed every value the arms after it were written for, and the class was a warning (real, 2026-10-16: `pick(7)` answered 20 over a `]` where a pattern stood; tests/micros/mn-pattern-token-refuses.mn) | `MaybeIncorrect`     | restructure per the surrounding form |
+| `P_UnexpectedToken`   | a token not valid at its position; in pattern position the recovery is a wildcard, so the program refuses rather than run the arms it swallowed (tests/micros/mn-pattern-token-refuses.mn) | `MaybeIncorrect`     | restructure per the surrounding form |
 | `P_UnclosedConstruct` | EOF inside a construct (block, match arms, etc.) before its closer | `MaybeIncorrect` | close the construct OR remove its opening token |
 | `E_RefinementRejected`| value violates refinement predicate — or a partial primitive's precondition refuted by constants (`1 / 0`, `INT_MIN / -1`; §«Partiality»), or a destructuring pattern's shape refuted by how the value was built (`let Some(v) = None`; §«Exhaustiveness») | `Unspecified`        | adjust value or widen refinement               |
-| `E_EffectMismatch`    | declared row doesn't subsume body row. The Reason names the declaration and, for a function, the chain of sites the first refused effect enters through — each a `module:line:col` naming what the effect crosses there (a callee, a stage, a handler, a function value entered) or the construct that charges it (`rendering the value`, `building the list`) — to the op where the chain reaches one (real, 2026-10-13; the span stays the declaration's, whose clause is what the body violates) | `MaybeIncorrect`     | widen declaration OR install absorbing handler at the site the chain names |
+| `E_EffectMismatch`    | declared row doesn't subsume body row. The Reason names the declaration and, for a function, the chain of sites the first refused effect enters through — each a `module:line:col` naming what the effect crosses there (a callee, a stage, a handler, a function value entered) or the construct that charges it (`rendering the value`, `building the list`) — to the op where the chain reaches one (the span stays the declaration's, whose clause is what the body violates) | `MaybeIncorrect`     | widen declaration OR install absorbing handler at the site the chain names |
 | `E_PurityViolated`    | `with Pure` body performs non-empty effects   | `MaybeIncorrect`     | remove `with Pure` or absorb the effect        |
 | `E_ZeroDelayFeedback` | `x <~ delay(0)` — a cycle with no delay: the prior would be the value being computed. ARMED (refuses the executable); one arm of the depth read, both the `delay` and `Delay` spellings | `MaybeIncorrect` | raise the delay to at least 1 |
 | `E_ComputedDelayDepth` | `x <~ delay(n - 1)` — the depth is a runtime value. A feedback line's ring is sized and wrapped by its literal depth, so an unreadable depth cannot be held, and the site would silently get one slot. ARMED, the sibling arm of the same read | `MaybeIncorrect` | write the depth as a literal, or hold the history yourself |
 | `E_OwnershipViolation`| `own` consumed twice / escapes ref scope      | `Unspecified`        | restructure to single-consume or use `ref`     |
-| `E_UseAfterMove`      | a borrow-READ of a name the affine ledger already moved — the read half of affine beside `E_OwnershipViolation`'s consume half. ARMED 2026-09-15: it narrated while its own census held at zero (the arming law its decl and fixture both stated), and a narration held at zero is a counter standing in for a proof. Sound today only by accident: the heap frees only where an extent ends — an arena's exit, a reset — never at a `Consume`, so it is a use-after-free the day a `Consume` reclaims | `Unspecified` | drop the read, or restructure so the move happens after it — never a patch |
+| `E_UseAfterMove`      | a borrow-READ of a name the affine ledger already moved — the read half of affine beside `E_OwnershipViolation`'s consume half. ARMED. Sound today only by accident: the heap frees only where an extent ends — an arena's exit, a reset — never at a `Consume`, so it is a use-after-free the day a `Consume` reclaims | `Unspecified` | drop the read, or restructure so the move happens after it — never a patch |
 | `E_HandlerUninstallable` | handler arms need effects context disallows. **Not yet born**: what an arm performs enters the install's row (`row(h)`, §«`~>` — tee»), so a context that forbids it refuses as `E_EffectMismatch` | `MaybeIncorrect`   | widen ambient row or restructure handler       |
-| `E_HandlerInexhaustive` | a handler's arms answer some ops of an effect and not others (§«A handler is exhaustive») — an install absorbs every op of the effects its arms answer, so the missing op would escape the row and reach nothing at runtime. ARMED at birth, 2026-09-30, born at wheel-zero; the shape it refuses was a false absence proof that trapped | `HasPlaceholders` | add the arm; forward the op outward (`op(…) => resume(op(…))`); or declare the ops this handler answers as their own effect |
-| `E_ResumeOfNever` | a handler arm resumes an op declared `-> !` (§«Never-returning ops») — the never type is quantified per perform, so no value the arm hands back is one every performer can receive. ARMED at birth, 2026-10-06; the boot compiled the shape clean and returned from the op | `MaybeIncorrect` | end the arm with the value the install answers, or declare the op's result type if it does return |
-| `E_ThreadedBranchEffect` | under a threaded schedule, a branch's row carries an effect whose covering handler at the fanout's frame — or, for a fanout a caller's schedule demands, along the demand's chain of installs, the callback parameter's row read at the instantiating site — writes its state (`resume … with`), lies beyond the frame fence with no demand reaching it, or reaches such a handler through its own arms (§`><`); or the branch stores into memory older than itself, or reaches code that writes memory older than its own frame (`Mutate`) — a sequence fanout's function read as every branch's (real, 2026-10-15). ARMED, born at wheel-zero | `MaybeIncorrect` | install a handler that writes no state at the fanout's frame, or install the handler inside the branch; give each branch memory it allocates |
-| `E_DerivativeUnreachable` | a `d(v)` under a derivative reading whose argument's tangent was lost — into an aggregate, across a multi-shot perform, off a line ticked by forward code or a line a closure record owns, or through another `d` — a mint, an install or a state write under the reading that would store a lost tangent into a record, or a reading whose seed is not a Float variable in scope (§`~>`). The message names the loss site. ARMED at birth: the alternative is a slope of zero the program never has | `Unspecified` | keep the value out of the aggregate until it is asked for, or seed the reading at a Float variable |
-| `E_EnvNameUngrounded` | a required environment read (`env`, lib/environ.mn) whose name is not a literal at the read — the program's demand on its host could not be stated before it runs, so its launch gate could not check it (§«Configuration — the environment is an effect»). ARMED at birth, 2026-10-06, born at wheel-zero | `MaybeIncorrect` | write the variable's name at the read, or ask `env_opt` and decide what an absent value means |
+| `E_HandlerInexhaustive` | a handler's arms answer some ops of an effect and not others (§«A handler is exhaustive») — an install absorbs every op of the effects its arms answer, so the missing op would escape the row and reach nothing at runtime. ARMED; the shape it refuses was a false absence proof that trapped | `HasPlaceholders` | add the arm; forward the op outward (`op(…) => resume(op(…))`); or declare the ops this handler answers as their own effect |
+| `E_ResumeOfNever` | a handler arm resumes an op declared `-> !` (§«Never-returning ops») — the never type is quantified per perform, so no value the arm hands back is one every performer can receive. ARMED | `MaybeIncorrect` | end the arm with the value the install answers, or declare the op's result type if it does return |
+| `E_ThreadedBranchEffect` | under a threaded schedule, a branch's row carries an effect whose covering handler at the fanout's frame — or, for a fanout a caller's schedule demands, along the demand's chain of installs, the callback parameter's row read at the instantiating site — writes its state (`resume … with`), lies beyond the frame fence with no demand reaching it, or reaches such a handler through its own arms (§`><`); or the branch stores into memory older than itself, or reaches code that writes memory older than its own frame (`Mutate`) — a sequence fanout's function read as every branch's. ARMED | `MaybeIncorrect` | install a handler that writes no state at the fanout's frame, or install the handler inside the branch; give each branch memory it allocates |
+| `E_DerivativeUnreachable` | a `d(v)` under a derivative reading whose argument's tangent was lost — into an aggregate, across a multi-shot perform, off a line ticked by forward code or a line a closure record owns, or through another `d` — a mint, an install or a state write under the reading that would store a lost tangent into a record, or a reading whose seed is not a Float variable in scope (§`~>`). The message names the loss site. ARMED: the alternative is a slope of zero the program never has | `Unspecified` | keep the value out of the aggregate until it is asked for, or seed the reading at a Float variable |
+| `E_EnvNameUngrounded` | a required environment read (`env`, lib/environ.mn) whose name is not a literal at the read — the program's demand on its host could not be stated before it runs, so its launch gate could not check it (§«Configuration — the environment is an effect»). ARMED | `MaybeIncorrect` | write the variable's name at the read, or ask `env_opt` and decide what an absent value means |
 | `E_MissingVariable`   | name not in scope                             | `MaybeIncorrect`     | check spelling; check imports                  |
 | `E_ImportNameCollision` | two selective imports bind the same name. **Not yet born**: the selective set does not parse yet (§«Imports»), and a link is one namespace, so two linked modules' functions of one name refuse link-wide (`E_DuplicateFnName`) | `MaybeIncorrect`     | narrow the selective sets so each name binds one edge |
-| `E_MissingImport`     | a name resolves only because the whole link carries it: declared at module level in a module the referencing module never imports, directly or transitively (the prelude's closure is ambient — the driver links it into every compile). ARMED at birth, 2026-09-27: the per-module solo sweep as one read of the one judgment, naming both modules at the reference | `MaybeIncorrect` | add `import <declaring module>` to the referencing module |
+| `E_MissingImport`     | a name resolves only because the whole link carries it: declared at module level in a module the referencing module never imports, directly or transitively (the prelude's closure is ambient — the driver links it into every compile). ARMED, naming both modules at the reference | `MaybeIncorrect` | add `import <declaring module>` to the referencing module |
 | `E_UnknownArgLabel`   | a labeled arg names no declared parameter     | `MaybeIncorrect`     | check the label against the parameter names    |
-| `E_TypeMismatch`      | unification failed — the message carries the Reason the unify was asked with, past the diagnostic's own span (`Int vs [Byte] — ~> pipe → at 15:13-15:27: inferred from the arm bail of handler h`; real 2026-10-03 — the reporter had taken the reason and dropped it, so a mismatch said its two types and nothing of why they met) | `Unspecified`        | adjust types; widen / narrow                   |
+| `E_TypeMismatch`      | unification failed — the message carries the Reason the unify was asked with, past the diagnostic's own span (`Int vs [Byte] — ~> pipe → at 15:13-15:27: inferred from the arm bail of handler h`) | `Unspecified`        | adjust types; widen / narrow                   |
 | `E_OccursCheck`       | infinite type                                 | `Unspecified`        | restructure to break cycle                     |
 | `E_OrphanHandlerAttach` | `~>` with no preceding chain                | `Unspecified`        | delete `~>` or supply body                     |
 | `E_PipeIntoComplete`  | `x \|> f(…)` where `f(…)` has no hole (already a complete value, not a `A -> B`). **Not yet born**: the stage meets the expected one-parameter function by unification (`infer_pipe`), so the shape refuses as `E_TypeMismatch` | `MaybeIncorrect` | leave a hole for the piped value (drop an arg or mark it `??`) |
 | `E_PipeHoleAmbiguous` | `x \|> f(…)` where `f(…)` has more than one hole and none is marked `??`. **Not yet born**: the same unification refuses it as `E_TypeMismatch`, its arity face | `MaybeIncorrect` | mark the pipe's target field with `??` (`nodes \|> list_set(??, i, v)`) |
 | `E_NotAKeyword`       | user typed `for`/`while`/`loop`/`break`/`continue`/`return` | `MaybeIncorrect` | rewrite as verb form per substrate             |
 | `E_PatternAlternationBindingMismatch` | branches in `\|` bind different names or types | `MaybeIncorrect` | adjust patterns to bind same names with unifiable types |
-| `E_DuplicateBinder` | a name bound twice in one head — across its parameters and inside their patterns — or by one pattern (`fn f(x, x)`, `(x, x) => x`); the second binder is refused, naming the first, and an alternation's branches, which bind the same names by law, are one binder each. ARMED at birth, 2026-10-16: until then each shape compiled clean and one binder was read silently | `MaybeIncorrect` | rename one binder |
-| `E_ResumeOutsideArm`  | `resume` where no continuation exists — outside a handler arm and every lambda or nested fn minted inside one, whose record captures the arm's k. ARMED 2026-10-16: a top-level fn an arm called compiled anyway, handed the k as a hidden trailing argument (tests/micros/mn-resume-outside-arm-refuses.mn) | `Unspecified`        | move the resume into an arm, or declare the fn inside the arm; the continuation only exists there |
+| `E_DuplicateBinder` | a name bound twice in one head — across its parameters and inside their patterns — or by one pattern (`fn f(x, x)`, `(x, x) => x`); the second binder is refused, naming the first, and an alternation's branches, which bind the same names by law, are one binder each. ARMED | `MaybeIncorrect` | rename one binder |
+| `E_ResumeOutsideArm`  | `resume` where no continuation exists — outside a handler arm and every lambda or nested fn minted inside one, whose record captures the arm's k. ARMED (tests/micros/mn-resume-outside-arm-refuses.mn) | `Unspecified`        | move the resume into an arm, or declare the fn inside the arm; the continuation only exists there |
 | `E_ResumeWorldMismatch` | two continuations (`TCont(R, S, discipline, world)`) unify with incompatible resume DISCIPLINES — OneShot, MultiShot and Abandon are distinct representations (stack frame, heap record, dead continuation), so the mismatch is hard. The WORLD half is the row unification in the same TCont arm (`!E` lifted to the TIME axis, §4③). A continuation resumed under a changed world answers to that world past its own segment, and a negation over the resume or the root refuses one whose world cannot answer its remainder, as `E_EffectMismatch` or `E_EffectUnhandled` (§«A resumed remainder answers to the world it is resumed in») | `MaybeIncorrect` | align the handler arms' resume cardinality; for a world clash, re-install the absorbing handler before the resume OR widen the continuation's world |
 | `E_ConcatTypeMismatch` | `++` operands' element types fail to unify (e.g. `[Int] ++ [Bool]`). **Not yet born**: the failure is `E_TypeMismatch`, its Reason naming the `++` (§«Concatenation operator») | `MaybeIncorrect` | unify the element types |
 | `E_DeclaredRowContradiction` | one authored clause asserts a name present AND absent (`with E + !E`, instance-aware — a bare present beside an instance absent stays a refinement). Reported at the signed fold BEFORE the meet's drop; ARMED (refuses the executable): the pre-diagnostic meet let a performing body check clean under a declared `!E` | `MachineApplicable` | drop one side of the contradiction |
-| `E_ArithOnAggregate`  | `+ - * / %` or unary `-` whose operand is a product, sum, sequence, function, continuation or unit — the operands are addresses and the arithmetic would be on where the values live. ARMED at birth (the wheel's census is zero): judged at the operator for a bound operand and at the one writer for a gated cell bound later (a `NumericGate` on the cell, copied at instantiation, reached through the instance column), so the judgment refuses, `mentl check` says so, and no WAT streams. Until 2026-09-27 it compiled and multiplied the addresses | `Unspecified` | give the operand a number (a word) or read the field you meant |
+| `E_ArithOnAggregate`  | `+ - * / %` or unary `-` whose operand is a product, sum, sequence, function, continuation or unit — the operands are addresses and the arithmetic would be on where the values live. ARMED: judged at the operator for a bound operand and at the one writer for a gated cell bound later (a `NumericGate` on the cell, copied at instantiation, reached through the instance column), so the judgment refuses, `mentl check` says so, and no WAT streams | `Unspecified` | give the operand a number (a word) or read the field you meant |
 | `E_UnresolvedHole`    | compiling an EXECUTABLE whose reachable emitted tree carries an authored value-position `??` (§«Partial application» — a hole is productive for check/edit, never an executable value; a parameter-product `??` is an executable suspension and runs). Raised by the executable gate between reachability and emit: nonzero exit, zero WAT bytes, the authored weave span on the diagnostic | `HasPlaceholders` | fill the hole (accept a Synth survivor) or suspend it into a parameter product |
-| `E_FieldOffsetUnprovable` | a field read or a record pattern whose receiver's row never closed where the body is emitted — no field set, so no slot. Said at the SETTLE POINT: the plan's emitted reach asks it of every body under the bracket that body is emitted in, a base at the floor and a twin under its own pairs, before the gate reads the ledger, so the compile exits 1 with zero WAT bytes. ARMED 2026-09-28 at wheel-zero. It narrated as `T_FieldOffsetUnprovable` from 2026-09-15 and could not arm while it was decided during emission, after the gate: a program carrying one compiled clean and trapped at the instruction that admits it (`tests/micros/mn-payload3.mn`, exit 134 on every boot before the arming) | `MaybeIncorrect` | close the receiver's row — annotate it at its Intent Boundary, or give the call site a shape its specialization can key on |
-| `E_ShapeUnprovable` | a comparison, a show, a hash or a `++` whose operand is still a type VARIABLE where it is emitted: nothing proves the shape the read needs, and the word reading it would fall to is an address lie for anything but a word. Said at the settle point beside its row sibling and ARMED with it (2026-09-28). The eq and show narrations it replaces (`T_EqTypeUnprovable`, `T_ShowTypeUnprovable`) counted two sites on the wheel, both `list_compare_loop` reading its elements through the typed `list_index`; it reads the words the emit's by-name call guarantees, and the count is zero | `MaybeIncorrect` | prove the operand — give the call site a shape its specialization can key on, or name the type at its Intent Boundary |
-| `E_HandlerChainShape` | a handler chain (`handler NAME = h1 ~> h2`, §«Handler chains») with the wrong shape: a member that is not a handler or a chain, a member whose argument declares anything (a function, a handler, a type, an import), or the chain installed with arguments of its own — a chain carries no config, its members do; all three judged at the declaration or the install, never at the lowering. ARMED 2026-10-13, the day it was born unarmed: a chain applied to arguments printed the error and the program compiled and ran (tests/micros/mn-handler-chain-shape-refuses.mn) | `MaybeIncorrect` | name a handler at the member; move the declaration beside the chain; install the chain bare and give the member its config |
-| `E_InstantiationDepth` | a reference eight instantiations deep in a recursion whose type grows with every call, reaching a callee that READS the growing structure (a comparison, a show, a field — or a number). Monomorphization cannot specialize without bound, and the ninth level would read the structure as a word, so the settle point refuses there. ARMED at birth (2026-09-28): two ten-deep lists compared unequal and a nested show printed an address before it. A wide value nothing reads crosses the word protocol boxed and back, and is admitted | `Unspecified` | recurse over a type that keeps its shape, or leave the growing part unread |
+| `E_FieldOffsetUnprovable` | a field read or a record pattern whose receiver's row never closed where the body is emitted — no field set, so no slot. Said at the SETTLE POINT: the plan's emitted reach asks it of every body under the bracket that body is emitted in, a base at the floor and a twin under its own pairs, before the gate reads the ledger, so the compile exits 1 with zero WAT bytes. ARMED (`tests/micros/mn-payload3.mn`) | `MaybeIncorrect` | close the receiver's row — annotate it at its Intent Boundary, or give the call site a shape its specialization can key on |
+| `E_ShapeUnprovable` | a comparison, a show, a hash or a `++` whose operand is still a type VARIABLE where it is emitted: nothing proves the shape the read needs, and the word reading it would fall to is an address lie for anything but a word. Said at the settle point beside its row sibling and ARMED with it | `MaybeIncorrect` | prove the operand — give the call site a shape its specialization can key on, or name the type at its Intent Boundary |
+| `E_HandlerChainShape` | a handler chain (`handler NAME = h1 ~> h2`, §«Handler chains») with the wrong shape: a member that is not a handler or a chain, a member whose argument declares anything (a function, a handler, a type, an import), or the chain installed with arguments of its own — a chain carries no config, its members do; all three judged at the declaration or the install, never at the lowering. ARMED (tests/micros/mn-handler-chain-shape-refuses.mn) | `MaybeIncorrect` | name a handler at the member; move the declaration beside the chain; install the chain bare and give the member its config |
+| `E_InstantiationDepth` | a reference eight instantiations deep in a recursion whose type grows with every call, reaching a callee that READS the growing structure (a comparison, a show, a field — or a number). Monomorphization cannot specialize without bound, and the ninth level would read the structure as a word, so the settle point refuses there. ARMED. A wide value nothing reads crosses the word protocol boxed and back, and is admitted | `Unspecified` | recurse over a type that keeps its shape, or leave the growing part unread |
 
 ### Gradient narration (teaching surfaces)
 
@@ -3522,12 +3243,12 @@ silently.
 - **`mentl diagnostics`** — the live catalog projected from the `DiagKind`
   constructors, so the tables in this file stop being a hand-kept second home.
 
-*(`mentl verify` LANDED 2026-09-19 and left this list — the medium's standing
-bounds on its own source, each bound and its justification in `src/board.mn`
-where `mentl why` walks them. It absorbs the census half of `tools/verify.sh`;
-the legs that measure the world outside the graph — the micro battery's exec
-seam, the march's peak RSS, the scaffold count — remain the script's, named
-rather than silently inherited.)*
+*(`mentl verify` holds the medium's standing bounds on its own source, each
+bound and its justification in `src/board.mn` where `mentl why` walks them.
+It absorbs the census half of `tools/verify.sh`; the legs that measure the
+world outside the graph — the micro battery's exec seam, the march's peak
+RSS, the scaffold count — remain the script's, named rather than silently
+inherited.)*
 
 ## Authority
 
