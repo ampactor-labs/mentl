@@ -520,7 +520,9 @@ fn top_declaration_of(h) = match graph_parent_of(h) {
 fn crc_walk(h, n, dollars) = if h >= n {
   dollars
 } else {
-  let t = graph_comment_at(h)
+  // A comment's lines concatenate into one text, so the text is a concat
+  // chain and a byte read walks its depth; read flat once for the scan.
+  let t = list_to_flat(graph_comment_at(h))
   let d2 = if byte_len(t) > 0 { crc_scan(t, 0, byte_len(t), h, dollars) } else { dollars }
   crc_walk(h + 1, n, d2)
 }
@@ -1698,11 +1700,9 @@ fn imin(a, b) = if a < b { a } else { b }
 // dies at its end. The group publishes into the graph, the env and the
 // intern table, and every store it makes into their older memory journals
 // itself, with the type the store knows, where it happens.
-fn trial_group_walk(ref stmts, ref groups, g) = if g >= len(groups) {
-  ()
-} else {
-  trial_judge_group(stmts, sort(groups[g])) ~> arena
-  trial_group_walk(stmts, groups, g + 1)
+fn trial_group_walk(ref stmts, ref groups, g) = {
+  fn judge_group(grp) = trial_judge_group(stmts, sort(grp)) ~> arena
+  each(judge_group, slice(groups, g, len(groups)))
 }
 
 // A singleton judges once; a CYCLE iterates locally to its own fixpoint.

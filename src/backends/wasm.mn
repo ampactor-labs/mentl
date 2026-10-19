@@ -2688,9 +2688,18 @@ effect EmitEffectCensus {
   drain_effect_census() -> [String]
 }
 
-handler effect_census_collector with demands = [] {
-  visit_effect_demand(n) => if string_in_list(demands, n) { resume() } else { resume() with demands = push(demands, n) },
-  drain_effect_census() => resume(demands),
+// The demands are kept in a flat buffer under a count, as the fn names
+// are: the membership test indexes it, and an index into a pushed chain
+// walks the chain's depth at every visit.
+handler effect_census_collector with buf = make_list(16), count = 0 {
+  visit_effect_demand(n) => if string_in_list(slice(buf, 0, count), n) {
+    resume()
+  } else {
+    let extended = list_extend_to(buf, count + 1)
+    let written = list_set(extended, count, n)
+    resume() with buf = written, count = count + 1
+  },
+  drain_effect_census() => resume(slice(buf, 0, count)),
 }
 
 // THE INITS' OWN SCOPE, drawn as an install rather than threaded as a flag.
@@ -2739,17 +2748,20 @@ handler top_fn_names_collector with buf = make_list(16), count = 0 {
   drain_top_fn_names() => resume(slice(buf, 0, count)),
 }
 
-handler string_literal_collector with buf = make_list(16), count = 0, next_offset = 65536 {
-  visit_string(s) => if string_entry_exists(buf, s, 0, count) {
-    resume()
-  } else {
-    // 8-byte header [count@0][tag_word@+4] + the bytes @ +8 (§4①: a string
-    // literal is the unified flat-sequence record, a stride-1 byte list).
-    let size = 8 + byte_len(s)
-    let aligned_size = (size + 3) / 4 * 4
-    let extended = list_extend_to(buf, count + 1)
-    let written = list_set(extended, count, (s, next_offset))
-    resume() with buf = written, count = count + 1, next_offset = next_offset + aligned_size
+// The literals seen so far are an smap beside the buffer, so a second
+// sighting is one hash and never a scan of every literal before it.
+handler string_literal_collector with buf = make_list(16), count = 0, next_offset = 65536, seen = smap_new() {
+  visit_string(s) => match smap_get(seen, s) {
+    Some(_) => resume(),
+    None => {
+      // 8-byte header [count@0][tag_word@+4] + the bytes @ +8 (§4①: a string
+      // literal is the unified flat-sequence record, a stride-1 byte list).
+      let size = 8 + byte_len(s)
+      let aligned_size = (size + 3) / 4 * 4
+      let extended = list_extend_to(buf, count + 1)
+      let written = list_set(extended, count, (s, next_offset))
+      resume() with buf = written, count = count + 1, next_offset = next_offset + aligned_size, seen = smap_add(seen, s, next_offset)
+    },
   },
   drain_string_literals() => resume(slice(buf, 0, count)),
 }
@@ -2795,14 +2807,6 @@ handler wasi_ops_collector with buf = make_list(8), count = 0 {
     resume() with buf = written, count = count + 1
   },
   drain_wasi_ops() => resume(slice(buf, 0, count)),
-}
-
-fn string_entry_exists(entries, target: String, i, n) = if i >= n {
-  false
-} else {
-  match list_index(entries, i) {
-    (s, _) => if s == target { true } else { string_entry_exists(entries, target, i + 1, n) },
-  }
 }
 
 // the String proof: bare == was pointer-eq through m2 — dedup dead, triple fd_write imports in m3
@@ -3834,28 +3838,25 @@ fn name_seen_at(names, target: String, i, n) = if i >= n {
   name_seen_at(names, target, i + 1, n)
 }
 
-// Flat-buffer keep-first dedup — byte-identical to the old fold, O(U^2)
-// not O(U^3). The old fold appended onto a concat SPINE, so name_seen_at's
-// list_index was O(depth) per step and the whole dedup O(U^3) (~1.5e9
-// node-steps for U~2100 names — a top wheel-compile cost, PLAN §8 the
-// loop-accumulator class). The result buffer is flat (list_index O(1));
-// slice returns the logical prefix; the membership scan stays linear but
-// the concat-spine re-scan was the real cost, not the linearity
-// (Hβ.emit.flat-accumulator-dedup — the speed IS the Carried-Truth fix:
-// stop re-deriving position by re-walking a spine).   // drift-audit: ignore
+// Keep-first dedup into a flat buffer, O(U) in the names: the input is read
+// flat once, the result is written under a count and sliced to it, and the
+// names kept so far are an smap, so no step walks a spine or scans the
+// result.
 fn dedup_names(names) = {
-  let n = len(names)
-  dedup_names_flat(names, 0, n, make_list(n), 0)
+  let flat = list_to_flat(names)
+  let n = len(flat)
+  dedup_names_flat(flat, 0, n, make_list(n), 0, smap_new())
 }
 
-fn dedup_names_flat(names, i, n, out, count) = if i >= n {
+// The names kept so far are an smap beside the flat result, so the
+// membership test is one hash per name, never a scan of the result.
+fn dedup_names_flat(names, i, n, out, count, seen) = if i >= n {
   slice(out, 0, count)
 } else {
   let name = list_index(names, i)
-  if name_seen_at(out, name, 0, count) {
-    dedup_names_flat(names, i + 1, n, out, count)
-  } else {
-    dedup_names_flat(names, i + 1, n, list_set(out, count, name), count + 1)
+  match smap_get(seen, name) {
+    Some(_) => dedup_names_flat(names, i + 1, n, out, count, seen),
+    None => dedup_names_flat(names, i + 1, n, list_set(out, count, name), count + 1, smap_add(seen, name, 1)),
   }
 }
 
@@ -4065,12 +4066,6 @@ fn vector_is_wide(v) = match v {
 // baked words — so the two cannot drift apart.
 fn fn_table_base() = 1
 
-// The table index of a named fn, the ONE derivation. The static closure
-// data segments bake this word (a data segment cannot read a global, which
-// is why the position is searched here rather than carried), and the
-// per-name idx globals count from the same base.
-fn fn_table_idx(all_names, name) = fn_table_base() + ls_find_str_local(all_names, name, 0)
-
 // A wide-signatured fn's table slot holds its $wf$ word wrapper — the same
 // POSITION (every idx global and closure mint unchanged), a word FACE. The
 // width is the signature column's answer at each slot; a list of the wide
@@ -4225,7 +4220,13 @@ fn image_global_slots(line_globals, value_lets, yield_seen) = {
   } else {
     []
   }
-  [("heap_ptr", "i32"), ("world_g", "i32"), ("tid_g", "i32")] ++ yq ++ line_globals ++ map({ (name, _) => (name, "i32") }, value_lets)
+  [
+    ("heap_ptr", "i32"),
+    ("world_g", "i32"),
+    ("tid_g", "i32"),
+    ("world_gen", "i32"),
+    ("ev_cache_g", "i32")
+  ] ++ yq ++ line_globals ++ map({ (name, _) => (name, "i32") }, value_lets)
 }
 
 fn emit_globals_pair(slots) = {
@@ -4402,10 +4403,25 @@ fn emit_owner_lines(owner) = match owner {
   },
 }
 
-fn emit_static_top_closures(top_names, all_names, base_slot) = each(
+// The table index of a named fn is its position in the names list past
+// `fn_table_base`, indexed ONCE for every name: the static closure data
+// segments bake this word (a data segment cannot read a global), and a
+// search per top-level name over every name walked the whole table once
+// per name.
+fn table_position(positions, name: String) = match smap_get(positions, name) {
+  Some(i) => fn_table_base() + i,
+  None => out_of_range(),
+}
+
+fn emit_static_top_closures(top_names, all_names, base_slot) = {
+  let positions = smap_build(map({ (i, name) => (name, i) }, enumerate(all_names)))
+  emit_static_top_closures_at(top_names, positions, base_slot)
+}
+
+fn emit_static_top_closures_at(top_names, positions, base_slot) = each(
   {
     (i, name) => {
-      let fn_idx = fn_table_idx(all_names, name)
+      let fn_idx = table_position(positions, name)
       let addr = heap_base() + (base_slot + i) * 8
       // Static data segment for the 8-byte closure record.
       wat_emit("  (data (i32.const ")
@@ -4438,11 +4454,15 @@ fn emit_type_section(vectors, yield_seen) = {
   // with only UZero arms may carry no other 2-arg site (the bank's FT SEAM,
   // Ruling 1) — the miss would be a loud assembly error, so the floor
   // interns it.
-  let observed = max_vector_arity(vectors, 0)
+  // The vectors arrive as the concat chain their collection built, where
+  // every `last` and `drop_last` walks the chain's depth; read flat once, so
+  // the two walks below are O(1) a step.
+  let vs = list_to_flat(vectors)
+  let observed = max_vector_arity(vs, 0)
   let floor = if yield_seen > 0 { 2 } else { 1 }
   let max_arity = if observed < floor { floor } else { observed }
   emit_type_decls(0, max_arity)
-  emit_typed_ft_decls(vectors, [])
+  emit_typed_ft_decls(vs, [])
 }
 
 // The typed faces: each DISTINCT vector with a wide slot, declared once under
@@ -4785,6 +4805,20 @@ fn emit_memory_decl(spawns, wants_rmw, yield_slots, carries_lets) = {
   // own swap, per instance, and restores the enclosing value after the arm
   // returns; $spawn_task_impl stores it in the task record.
   wat_emit("  (global $perform_world_g (mut i32) (i32.const 0))\n")
+  // THE DISPATCH MEMO. A perform finds the node that declares its op by
+  // walking the chain from the world's top ($ev_declaring_node), a walk as
+  // long as the installs between the perform and its handler — the
+  // compiler's own graph reads walked twenty nodes each, 18% of the
+  // self-compile. The answer is a function of (top, effect, slot) for as
+  // long as every node on the chain keeps its address, so each instance
+  // keeps a table of answers keyed by exactly that, guarded by a generation
+  // bumped at every arena's close — the one event after which an address
+  // may name a different node, since a push mints a fresh node and a pop
+  // leaves every node as it was. A miss walks once and writes its entry; a
+  // hit is four loads. The table is allocated per instance before anything
+  // performs (`emit_start`, `emit_wasi_thread_start`) and rides the image's
+  // globals record.
+  wat_emit("  (global $world_gen (mut i32) (i32.const 0))\n  (global $ev_cache_g (mut i32) (i32.const 0))\n")
   // THE MODULE'S VALUES, ONCE. A module value let is the root's: its init
   // runs once, in the root's _start, and its word lives in a per-instance
   // global. A spawning module also writes every let's word into one record
@@ -4879,6 +4913,12 @@ fn emit_memory_decl(spawns, wants_rmw, yield_slots, carries_lets) = {
   // reached 4GB, where 0xFFFFFFF8+4 is in bounds: the miss returned a virgin 0
   // and the broken promise surfaced as a garbage dispatch far from here.
   wat_emit("  (func $ev_declaring_node (param $top i32)(param $target i32)(param $slot i32)(result i32)(local $n i32)(local $entry i32)(local $record i32)(local.set $n (local.get $top))(block $done (loop $walk (br_if $done (i32.eqz (local.get $n)))(if (i32.eq (i32.load offset=0 (local.get $n))(local.get $target))(then (local.set $entry (i32.load offset=4 (local.get $n)))(local.set $record (i32.load offset=0 (local.get $entry)))(if (i32.load (i32.add (local.get $record)(i32.add (i32.const 8)(i32.add (i32.mul (i32.const 4)(i32.load offset=4 (local.get $record)))(i32.mul (i32.const 4)(i32.add (i32.load offset=4 (local.get $entry))(local.get $slot)))))))(then (return (local.get $n))))))(local.set $n (i32.load offset=8 (local.get $n)))(br $walk)))(i32.const 0)(local.get $target)(i32.store)(i32.load (i32.const -1)))\n")
+  // The memo in front of the walk: 64 entries of [top@0][effect@4][slot@8]
+  // [gen@12][node@16], 24 bytes each, direct-mapped by the effect's key and
+  // the slot. An entry answers only when all four of its key words match,
+  // so a zeroed table answers nothing (an effect key is a string offset,
+  // never 0) and a stale generation answers nothing.
+  wat_emit("  (func $ev_declaring_memo (param $top i32)(param $target i32)(param $slot i32)(result i32)(local $e i32)(local $n i32)(local.set $e (i32.add (global.get $ev_cache_g) (i32.mul (i32.and (i32.xor (i32.shr_u (local.get $target) (i32.const 2)) (i32.mul (local.get $slot) (i32.const 7))) (i32.const 63)) (i32.const 24))))(if (i32.and (i32.and (i32.eq (i32.load offset=0 (local.get $e)) (local.get $top)) (i32.eq (i32.load offset=4 (local.get $e)) (local.get $target))) (i32.and (i32.eq (i32.load offset=8 (local.get $e)) (local.get $slot)) (i32.eq (i32.load offset=12 (local.get $e)) (global.get $world_gen)))) (then (return (i32.load offset=16 (local.get $e)))))(local.set $n (call $ev_declaring_node (local.get $top) (local.get $target) (local.get $slot)))(i32.store offset=0 (local.get $e) (local.get $top))(i32.store offset=4 (local.get $e) (local.get $target))(i32.store offset=8 (local.get $e) (local.get $slot))(i32.store offset=12 (local.get $e) (global.get $world_gen))(i32.store offset=16 (local.get $e) (local.get $n))(local.get $n))\n")
   // The task record — [task closure@0][completion@4][result@8][world@12],
   // then [op@16][args@20] in a yielding module, then [module values] in a
   // module with value lets (`task_mvals_offset`), allocated per spawn through the ONE allocator (no static slot region,
@@ -5109,7 +5149,7 @@ fn emit_arena_runtime(spawns) = {
   wat_emit("  (func $arena_close (param $m i32) (param $j0 i32) (param $o i32) (param $go i32) (result i32) (local $e i32) (local $k i32)\n")
   wat_emit("    (if (local.get $go) (then (block $done (loop $drain (br_if $done (global.get $ar_abort)) (br_if $done (i32.ge_u (global.get $ar_lscan) (global.get $ar_ln))) (local.set $e (i32.add (global.get $ar_ll) (i32.mul (global.get $ar_lscan) (i32.const 12)))) (global.set $ar_lscan (i32.add (global.get $ar_lscan) (i32.const 1))) (local.set $k (i32.load offset=4 (local.get $e))) (if (i32.gt_s (local.get $k) (i32.const 0)) (then (call $ar_scan_by (local.get $k) (i32.load (i32.load (local.get $e)))))) (br $drain))) (if (global.get $ar_abort) (then (call $ar_restore) (local.set $go (i32.const 0))))))\n")
   wat_emit("    (if (local.get $go) (then (call $ar_commit (local.get $m))) (else (global.set $ar_kept (i32.add (global.get $ar_kept) (i32.const 1))) (if (global.get $ar_bm) (then (call $ar_scratch_clear)))))\n")
-  wat_emit("    (call $ar_pop (local.get $j0) (local.get $o)) (global.set $ar_m (i32.const 0)) (global.set $ar_t (i32.const 0)) (local.get $go))\n")
+  wat_emit("    (call $ar_pop (local.get $j0) (local.get $o)) (global.set $ar_m (i32.const 0)) (global.set $ar_t (i32.const 0)) (global.set $world_gen (i32.add (global.get $world_gen) (i32.const 1))) (local.get $go))\n")
   // Leaving an instance, whether it exited or suspended: one level shallower,
   // and the journal holds only what the extent around it still needs — the
   // stores into memory older than ITS mark, or nothing at the outermost.
@@ -6143,18 +6183,18 @@ fn walk_locals_expr(expr, acc) = match expr {
 // preamble names are NOT seeded — a user binding colliding with
 // $state_tmp must stay a loud assemble error, never a silent merge
 // into a register the emitter clobbers between statements.
-fn emit_named_locals(entries, seen: [String]) = if len(entries) == 0 {
-  ()
-} else {
-  let e = last(entries)
-  if ls_find_str_local(seen, e, 0) >= 0 {
-    emit_named_locals(drop_last(entries), seen)
+// The entries dedup flat (`dedup_names`), then each one the params did not
+// already declare is written; a seen-set grown by `++` and indexed per
+// entry walked its chain's depth at every step.
+fn emit_named_locals(entries, seen: [String]) = {
+  fn emit_local(e) = if string_in_list(seen, e) {
+    ()
   } else {
     wat_emit(" (local $")
     wat_emit(e)
     wat_emit(")")
-    emit_named_locals(drop_last(entries), [e] ++ seen)
   }
+  each(emit_local, dedup_names(list_to_flat(entries)))
 }
 
 // The fn's param entries in the same "name width" spelling the walk
@@ -6510,6 +6550,8 @@ fn emit_start(top_fn_names, value_lets, has_lines, main_params, yield_seen, yiel
     // shared frontier mid-run).
     wat_emit("    (i32.atomic.store (i32.const 64) (i32.const 1048576))\n    (call $seg_refill (i32.const 0))\n")
   }
+  // The dispatch memo's table, before anything performs (`emit_memory_decl`).
+  wat_emit("    (global.set $ev_cache_g (call $alloc (i32.const 1536)))\n")
   // The arenas' journal, before anything else is allocated
   // (`emit_arena_runtime`).
   if arena_on { wat_emit("    (global.set $ar_jb (call $alloc (i32.const 2097152)))\n") }
@@ -6624,6 +6666,8 @@ fn emit_wasi_thread_start(let_names, has_lines, yield_slots) = {
   wat_emit("    (local $clo i32)\n")
   wat_emit("    (global.set $tid_g (local.get $tid))\n")
   wat_emit("    (global.set $world_g (i32.load offset=12 (local.get $start_arg)))\n")
+  // The instance's own dispatch memo, as the root's (`emit_start`).
+  wat_emit("    (global.set $ev_cache_g (call $alloc (i32.const 1536)))\n")
   // The instance's own argument area, as the root's (`emit_start`).
   if yield_slots > 0 {
     wat_emit("    (global.set $yield_args (call $alloc (i32.const {int_to_str(8 * yield_slots)})))\n")
@@ -8223,7 +8267,7 @@ fn emit_wide_deref(r) = match r {
 fn emit_declaring_node(hs: String, ekey: String, slot) = {
   wat_emit("    (local.set $evn_")
   wat_emit(hs)
-  wat_emit(" (call $ev_declaring_node (global.get $world_g) (i32.const ")
+  wat_emit(" (call $ev_declaring_memo (global.get $world_g) (i32.const ")
   wat_emit(int_to_str(string_offset(ekey)))
   wat_emit(") (i32.const ")
   wat_emit(int_to_str(slot))

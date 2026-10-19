@@ -209,7 +209,9 @@ fn board_bounds() = [
   // cells beside the parameters left with the list. 170 → 168 the same day:
   // the formatter's index walk over an arm's argument names left when an
   // arm's arguments became parameters.
-  Bound({ceiling: 168, question: QVerifyDebt}),
+  // 168 -> 167 (2026-10-19): the emitter's name dedup tests membership in
+  // an smap, where it indexed a flat buffer under a count.
+  Bound({ceiling: 167, question: QVerifyDebt}),
   // The iteration costumes — a function that threads an incremented index
   // through its own self-call, the imperative loop in recursion's costume
   // (CLAUDE.md Anchor 6). 390 when the detector was born on 2026-07-30, 490
@@ -245,7 +247,10 @@ fn board_bounds() = [
   // `each` over the debt. 405 -> 401: the program-wide summary table's
   // by-name scans and its equality loop left when an arm's resume summaries
   // became its own.
-  Bound({ceiling: 401, question: QCensus(CsIterationCostume)}),
+  // 401 -> 398 (2026-10-19): the judgment's group walk, the emit-fn index's
+  // build and the string literals' membership scan became folds and an
+  // smap, the profile having ranked their index loops.
+  Bound({ceiling: 398, question: QCensus(CsIterationCostume)}),
   // The ghosts — cells the parser minted and the judgment never bound
   // (`mentl query <entry> ghosts`): names, parameters, predicates and
   // annotations that are not yet cells inference writes, which is why `refs
@@ -319,7 +324,9 @@ fn board_bounds() = [
   Bound({ceiling: 1, question: QCensus(CsProseClass(PcPathNoFile))}),
   // Hex commit tokens — history belongs to git, never on the node. 44 -> 43
   // (2026-10-16): a note on the label lattice left with the lattice.
-  Bound({ceiling: 43, question: QCensus(CsProseClass(PcCommit))}),
+  // 43 -> 42 (2026-10-19): the name dedup's note on an old fold left with
+  // the scan it described.
+  Bound({ceiling: 42, question: QCensus(CsProseClass(PcCommit))}),
   // Numbered citations of the archived spec corpus. 20 -> 19 (2026-10-15):
   // the banner over the pattern type left when a pattern became a node.
   Bound({ceiling: 19, question: QCensus(CsProseClass(PcSpecCitation))}),
@@ -361,7 +368,9 @@ fn board_bounds() = [
   // pair and its callee-name read left when a nested fn captured its k.
   // 113 -> 111 the same day: the two over the walks that bound a function to
   // a handler by its spelling left with the walks.
-  Bound({ceiling: 111, question: QCensus(CsProseClass(PcSilencer))})
+  // 111 -> 110 (2026-10-19): the name dedup's silencer left with the scan
+  // it silenced.
+  Bound({ceiling: 110, question: QCensus(CsProseClass(PcSilencer))})
 ]
 
 // The board: every bound answered by the medium's own answer to its question.

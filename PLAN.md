@@ -795,18 +795,22 @@ and the artifact:
    arm's fixpoint per reader and the tail facts are an smap keyed by spelling
    (`Hβ.cost.arm-grade-is-a-column`). (c) The hot path, measured
    (`bash tools/profile-self.sh`, `tools/guest-profile.py`), each top caller
-   removed by the law it breaks, never by a number; the super-constant reads
-   found by reading, for the profile to rank: `list_index` on a snoc-built
-   list is linear in the distance from its end, so an index loop over a
-   pushed list is quadratic (the iteration costume the census counts);
-   `smap_add` prepends with `++` and its scan indexes the concat chain;
+   removed by the law it breaks, never by a number. Landed 2026-10-19 (pin
+   8b3c3374): the dispatch walk memoized per instance, and the emit's index
+   loops over pushed and concatenated lists read flat, fold or ask an smap
+   — 13 s to 8 s for the self-compile. Still measured and named, for the
+   profile to rank: the memo answers from a hashed table where a dense
+   index per (effect, op) would answer inline from two loads; `fold` and
+   `each` index their flat list through the typed bounds check per element;
    `instantiate(Live(h))` re-generalizes the declaration at every use;
    `env_snapshot` fills an index per call and each `??` segment installs a
    fresh env; `row_of_subtree` is an unmemoized whole-subtree fold called per
    node; `reach_units` and `plan_reached` key their walks by symbol;
    `set_canonicalize` re-sorts a growing accumulator in the
-   `effects_of_edges` loop (`Hβ.cost.hot-path-by-law`). The self-compile's
-   wall and peak ratchet down. (d) The edit's cone has a cutoff: a
+   `effects_of_edges` loop; the `wmap` columns have fixed bucket counts, so a
+   graph read scans a bucket of hundreds; `ls_find_str_local` and
+   `name_set_prefix_contains` scan per lookup (`Hβ.cost.hot-path-by-law`).
+   The self-compile's wall and peak ratchet down. (d) The edit's cone has a cutoff: a
    declaration whose rewritten dependency publishes the same scheme, row and
    claims is not judged again (`Hβ.session.edit-cone-cutoff`), where today
    every declaration whose judgment read a rewritten one is judged again

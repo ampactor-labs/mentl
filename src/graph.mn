@@ -1469,14 +1469,9 @@ fn chase_node(ref spine, mint_bound, handle, depth) with !Mutate = if depth > 10
 // into the by-name smap. `i` is the coverage the caller already holds,
 // so the first read folds the whole column and a read after later notes
 // folds only what those notes added.
-fn emitfns_index_build(col, idx, i) = if i >= len(col) {
-  idx
-} else {
-  {
-    let e = list_index(col, i)
-    emitfns_index_build(col, smap_add(idx, e.name, e), i + 1)
-  }
-}
+fn emitfns_index_build(col, idx, i) = fold(idx, emitfn_index_note, slice(col, i, len(col)))
+
+fn emitfn_index_note(acc, e) = smap_add(acc, e.name, e)
 
 // The unnote's filter — the pipe-consumed hole leaves the pending buffer.
 fn holes_pend_without(hs, h) = fold([], (a, x) => if x == h { a } else { push(a, x) }, hs)
