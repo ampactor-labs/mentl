@@ -621,21 +621,57 @@ fn occurs_in_live(handle, ref ty) with !Mutate = match graph_branch_seed() {
   (spine, _open, _spans) => occurs_in(spine, graph_next(), handle, ty),
 }
 
-// Config: a BRANCH CURSOR (the parallel fan's per-thread instance) installs
-// over the SHARED spine with a private planned range — the root install is
-// bare and the defaults are the empty graph. Handler state records live in
-// shared heap; the install chain stays per-instance, correctly private.
-// The gate and instance columns are SPARSE — a handle-keyed multi-map each
-// (lib/imap.mn's wmap, the own.mn region_index precedent), because a gate
-// sits on the few cells a declared negation reaches and an instance note on
-// the few copies a still-open declaration hands out; a dense spine column
-// would pay 64KB per page for either. Both are allocated at the install,
-// not lazily at the first write: every graph_handler install is a ROOT
-// install (eleven, all at verb entries), never per decl, so the eager table
-// costs one 4KB word-list per process and no write tests for it — and a
-// table minted lazily inside a speculation would be copied out of the
-// speculation's arena at its exit, a cost the eager one never pays.
-handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spine_open = spine_open0, trail = [], trail_len = 0, epoch = 0, next = 0, span_index = span_index0, checkpoint_stack = [], in_edges = wmap_new(4096), published = wmap_new(4096), decls_col = [], emitfns_col = [], emitfns_idx = [], emitfns_idx_covers = 0, sigs_col = [], holes_pend = [], holes_col = [], cur_module = 0, guard_diags = [], gates = wmap_new(1024), instances = wmap_new(1024), demands = wmap_new(1024), accepted = [], rows = wmap_new(1024), binders = wmap_new(1024), births = wmap_new(1024), late = wmap_new(1024), claims = wmap_new(1024), store_claims = wmap_new(1024), modules_now = smap_new(), superseded = wmap_new(64), link_now = None, tails_idx = smap_new(), forks = [], owned = None {
+// The root's seed: the empty graph, which every verb-entry install starts
+// from. The columns that grow sparse — a gate sits on the few cells a
+// declared negation reaches, an instance note on the few copies a still-open
+// declaration hands out — are handle-keyed multi-maps (lib/imap.mn's wmap),
+// since a dense spine column would pay 64KB per page for either; they are
+// allocated here, not lazily at the first write, so no write tests for them.
+fn root_seed() = GraphSeed{
+  accepted: [],
+  binders: wmap_new(1024),
+  births: wmap_new(1024),
+  claims: wmap_new(1024),
+  cur_module: 0,
+  decls_col: [],
+  demands: wmap_new(1024),
+  emitfns_col: [],
+  emitfns_idx: [],
+  emitfns_idx_covers: 0,
+  epoch: 0,
+  gates: wmap_new(1024),
+  guard_diags: [],
+  holes_col: [],
+  holes_pend: [],
+  in_edges: wmap_new(4096),
+  instances: wmap_new(1024),
+  late: wmap_new(1024),
+  link_now: None,
+  modules_now: smap_new(),
+  next: 0,
+  owned: None,
+  published: wmap_new(4096),
+  rows: wmap_new(1024),
+  sigs_col: [],
+  span_index: [],
+  spine: [],
+  spine_open: 0,
+  store_claims: wmap_new(1024),
+  superseded: wmap_new(64),
+  tails_idx: smap_new(),
+}
+
+// Config: THE SEED (types.mn GraphSeed) — every state field this instance
+// starts from. The root's is the empty graph (`root_seed`), installed at the
+// verb entries; a fork's is its parent's state copied shallow where a write
+// lands in place (`graph_fork_seed`), installed around a speculation's
+// resume by the forking handler, so the branch reads its parent's pages,
+// writes copies of its own (`spine_own`) and leaves the parent untouched
+// when it ends: no frame is saved and none restored. Handler state records
+// live in the heap; the install chain stays per-instance, correctly
+// private. The trail and the checkpoint stack are an instance's own and
+// start empty: a fork's trail is its write set.
+handler graph_handler(seed: GraphSeed) with spine = seed.spine, spine_open = seed.spine_open, trail = [], trail_len = 0, epoch = seed.epoch, next = seed.next, span_index = seed.span_index, checkpoint_stack = [], in_edges = seed.in_edges, published = seed.published, decls_col = seed.decls_col, emitfns_col = seed.emitfns_col, emitfns_idx = seed.emitfns_idx, emitfns_idx_covers = seed.emitfns_idx_covers, sigs_col = seed.sigs_col, holes_pend = seed.holes_pend, holes_col = seed.holes_col, cur_module = seed.cur_module, guard_diags = seed.guard_diags, gates = seed.gates, instances = seed.instances, demands = seed.demands, accepted = seed.accepted, rows = seed.rows, binders = seed.binders, births = seed.births, late = seed.late, claims = seed.claims, store_claims = seed.store_claims, modules_now = seed.modules_now, superseded = seed.superseded, link_now = seed.link_now, tails_idx = seed.tails_idx, owned = seed.owned {
   graph_chase(handle) => // checkpoint_stack is the speculation depth: each
   // graph_push_checkpoint pushes the current trail_len and each
   // graph_rollback pops it. A write with the stack empty is at the outermost
@@ -682,43 +718,54 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
   {
     resume(trail_len) with checkpoint_stack = push(checkpoint_stack, {next, span_index, spine, spine_open, trail, trail_len})
   },
-  graph_fork_enter() => // THE FORK's entry (types.mn GraphWrite). What a fork may write is saved
-  // whole in its frame, and the two structures a write stores into in place
-  // — the band table and the eleven handle-keyed columns — are copied
-  // shallow, their pages and buckets shared until the fork writes one
-  // (`spine_own`; a bucket is never mutated, only replaced). A fork mints in
-  // a band of its own, the first band not yet open, so every cell it mints
-  // lies in pages it owns whole and the handle it mints is a function of
-  // the open count, never of what a sibling fork minted. Journaling stays
-  // on inside a fork, so the fork's write set is the trail from this mark
-  // (`graph_written_since`) and no mutation event leaves a fork.
-  {
-    let frame = {
-      checkpoint0: checkpoint_stack,
-      cols0: {binders, births, claims, demands, gates, in_edges, instances, late, published, rows, store_claims},
-      cur_module0: cur_module,
-      decls0: decls_col,
-      guard0: guard_diags,
-      holes_col0: holes_col,
-      holes_pend0: holes_pend,
-      next0: next,
-      owned0: owned,
-      pages0: spine,
-      span_index0: span_index,
-      spine_open0: spine_open,
-      trail0: trail,
-      trail_len0: trail_len,
-    }
-    resume(len(forks)) with forks = push(forks, frame), spine = list_dup(spine), owned = Some(wmap_new(16)), next = spine_open * spine_slots, in_edges = list_dup(in_edges), published = list_dup(published), gates = list_dup(gates), instances = list_dup(instances), demands = list_dup(demands), rows = list_dup(rows), binders = list_dup(binders), births = list_dup(births), late = list_dup(late), claims = list_dup(claims), store_claims = list_dup(store_claims)
-  },
-  graph_fork_exit(_id) => // THE FORK's exit: the state its entry saved is the state again, in one
-  // move, whatever the fork wrote — the copies and the fork's trail entries
-  // are its arena's to reclaim. The epoch stays monotonic, as a rollback
-  // leaves it.
-  {
-    let f = last(forks)
-    resume() with forks = drop_last(forks), spine = f.pages0, spine_open = f.spine_open0, trail = f.trail0, trail_len = f.trail_len0, next = f.next0, span_index = f.span_index0, checkpoint_stack = f.checkpoint0, owned = f.owned0, in_edges = f.cols0.in_edges, published = f.cols0.published, gates = f.cols0.gates, instances = f.cols0.instances, demands = f.cols0.demands, rows = f.cols0.rows, binders = f.cols0.binders, births = f.cols0.births, late = f.cols0.late, claims = f.cols0.claims, store_claims = f.cols0.store_claims, decls_col = f.decls0, holes_pend = f.holes_pend0, holes_col = f.holes_col0, cur_module = f.cur_module0, guard_diags = f.guard0
-  },
+  graph_fork_seed() => // THE FORK's seed (types.mn GraphRead): this instance's state with the
+  // structures a write stores into in place — the band table and the
+  // handle-keyed columns — copied shallow, their pages and buckets shared,
+  // a page's column copied at the fork's first write to it (`spine_own`) and
+  // a bucket replaced, never written in place; the mint at the base of the
+  // first band not yet open, so every cell the fork mints lies in pages it
+  // owns whole and the handle it mints is a function of the open count,
+  // never of what a sibling minted; and an ownership table of its own. The
+  // instance installed with it journals every write, so its write set is its
+  // own trail (`graph_written_since`) and no mutation event leaves it; the
+  // lists it pushes onto are shared by value and never written in place, so
+  // a push lands in the fork's own state alone. The three name-keyed tables
+  // (the modules by file, the superseded cells, the tail facts) are shared
+  // whole, as the frame shared them: a fork writes the tail facts of what it
+  // judges, and the round that follows reads them.
+  resume(GraphSeed{
+    accepted,
+    binders: list_dup(binders),
+    births: list_dup(births),
+    claims: list_dup(claims),
+    cur_module,
+    decls_col,
+    demands: list_dup(demands),
+    emitfns_col,
+    emitfns_idx,
+    emitfns_idx_covers,
+    epoch,
+    gates: list_dup(gates),
+    guard_diags,
+    holes_col,
+    holes_pend,
+    in_edges: list_dup(in_edges),
+    instances: list_dup(instances),
+    late: list_dup(late),
+    link_now,
+    modules_now,
+    next: spine_open * spine_slots,
+    owned: Some(wmap_new(16)),
+    published: list_dup(published),
+    rows: list_dup(rows),
+    sigs_col,
+    span_index,
+    spine: list_dup(spine),
+    spine_open,
+    store_claims: list_dup(store_claims),
+    superseded,
+    tails_idx,
+  }),
   graph_fresh_ty(reason) => // ─── Write ops ───────────────────────────────────────────────────
   // Each write appends a Mutation to the trail. The trail is the
   // inverse log — on rollback we walk it backwards.
@@ -779,7 +826,7 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
       // A module's generation turns over at the outermost boundary alone: the
       // by-file table is stored into in place, which no fork could take back,
       // so a fork registering a module is a defect in the caller and traps.
-      NModule(m) => match if len(forks) > 0 { out_of_range() } else { smap_get(modules_now, m.file) } {
+      NModule(m) => match if in_fork(owned) { out_of_range() } else { smap_get(modules_now, m.file) } {
         Some(old) => if old == handle {
           resume()
         } else {
@@ -1282,18 +1329,19 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
   },
   graph_claims_of(h) => resume(wmap_get_all(claims, h)),
   graph_written_since(below) => // The write set of the innermost open checkpoint — the trail the
-  // speculation that asks was opened on — read off the trail's live tail as
-  // a slice view (no copy) from that checkpoint to the logical length, folded
-  // for the cells a bind moved. Entries above trail_len are stale by the
-  // logical-length discipline and never enter the slice.
-  resume(written_since(slice(trail, fork_mark(forks, checkpoint_stack), trail_len), below)),
+  // speculation that asks was opened on — or, with none open, of this
+  // instance whole, which is a fork's write set; read off the trail's live
+  // tail as a slice view (no copy) from that mark to the logical length,
+  // folded for the cells a bind moved. Entries above trail_len are stale by
+  // the logical-length discipline and never enter the slice.
+  resume(written_since(slice(trail, innermost_mark(checkpoint_stack), trail_len), below)),
   graph_accept_note(path, span, text, proof) => // THE ACCEPT EDGE's write (C4): an outermost-boundary fact. A human
   // accepted a proposal; nothing speculative writes here, and a rollback
   // must never lose it — so a non-empty checkpoint stack is a defect in
   // the caller and traps rather than storing a fact the trail cannot
   // carry. Not trailed for the same reason. The read is graph_bind's.
   {
-    if len(checkpoint_stack) > 0 || len(forks) > 0 { out_of_range() } else { 0 }
+    if len(checkpoint_stack) > 0 || in_fork(owned) { out_of_range() } else { 0 }
     resume() with accepted = push(accepted, (path, span, text, proof))
   },
   graph_install_note(h, ish) => // The install-shape column: an in-place spine cell store at the install
@@ -1445,22 +1493,10 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
 }
 
 // Where the innermost open checkpoint begins on the trail; with none open
-// the trail is empty and every entry is the outermost boundary's.
+// the whole trail is the instance's — empty at the root outside a
+// speculation, a fork's write set inside one.
 fn innermost_mark(checkpoint_stack) =
   if len(checkpoint_stack) == 0 { 0 } else { last(checkpoint_stack).trail_len }
-
-// Where the innermost open speculation begins on the trail: a fork's entry
-// or a checkpoint's push, whichever is inner — the two nest, so the later
-// mark is the inner one.
-fn fork_mark(forks, checkpoint_stack) = {
-  let c = innermost_mark(checkpoint_stack)
-  if len(forks) == 0 {
-    c
-  } else {
-    let f = last(forks).trail_len0
-    if f > c { f } else { c }
-  }
-}
 
 // THE FORKING HANDLERS. Speculation is a choice whose resumptions a bracket
 // isolates: each handler answers `choose` (lib/choice.mn) by resuming the
@@ -1469,24 +1505,26 @@ fn fork_mark(forks, checkpoint_stack) = {
 // they are judged, and the bracket — the fork or the checkpoint, the world's
 // top, the undo or the keep — is written here and nowhere else.
 //
-// `speculate` judges every option in a FORK of the graph and drops it
-// (`graph_fork_enter`, `graph_fork_exit`): a fork's writes land in copies,
-// so the options are independent and the fanout says so — under no schedule
-// it runs them in order, and a schedule installed over the judgment may run
-// them on threads once each option's other handlers are its own. Each
-// resumption runs in an arena (lib/arena.mn): what crosses its exit is the
-// answer and whatever the resumption stored into older memory that the fork
-// did not hold — a name it was the first to intern stays in the table, as
-// interning anywhere else would leave it. The world is restored after the
-// fork is dropped, and both before anything replays a branch's facts, so the
-// replay's performs resolve to the root's chain.
+// `speculate` judges every option in a FORK of the graph and drops it: the
+// resume runs under a graph handler instance of its own, seeded from the
+// instance that answers here (`graph_fork_seed`) and installed around the
+// resume, so the remainder's every graph write lands in the fork's copies,
+// the parent is untouched when the install ends, and the options are
+// independent — the fanout says so: under no schedule it runs them in order,
+// and a schedule installed over the judgment may run them on threads once
+// each option's other handlers are its own. Each resumption runs in an arena
+// (lib/arena.mn): what crosses its exit is the answer and whatever the
+// resumption stored into older memory that the fork did not hold — a name it
+// was the first to intern stays in the table, as interning anywhere else
+// would leave it. The world is restored after the fork ends, and both before
+// anything replays a branch's facts, so the replay's performs resolve to the
+// root's chain.
 handler speculate {
   choose(options) => options |> fanout({
     o => {
-      let f = graph_fork_enter()
+      let seed = graph_fork_seed()
       let w = world_top()
-      let answers = resume(o)
-      graph_fork_exit(f)
+      let answers = resume(o) ~> graph_handler(seed)
       world_restore(w)
       answers
     } ~> arena,
@@ -2255,9 +2293,13 @@ fn trail_append(trail, trail_len, mutation) =
 // checkpoint's rollback, or by a segment's written-set — a fork's as much as
 // a checkpoint's — so with no speculation open nothing can ever read it, and
 // a compile that speculates nowhere grows no trail.
-fn journaling(owned, checkpoint_stack) = match owned {
+fn journaling(owned, checkpoint_stack) = in_fork(owned) || len(checkpoint_stack) > 0
+
+// Whether this instance is a fork: a fork owns the pages it copied, the root
+// owns none.
+fn in_fork(owned) = match owned {
   Some(_) => true,
-  None => len(checkpoint_stack) > 0,
+  None => false,
 }
 
 // The trail and its logical length after one write, as one decision: the

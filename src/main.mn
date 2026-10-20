@@ -166,7 +166,7 @@ fn dispatch_invocation(verb) = match verb {
   VNew(name) => new_project(name),
   VWith(hname, target) => with_run(hname, target),
   VWelcome => welcome_run(),
-} ~> verify_ledger ~> env_handler(make_list(0), 0, env_index_new()) ~> no_state_walked ~> graph_handler([], 0, []) ~> mutate_sink ~> diagnostics_handler
+} ~> verify_ledger ~> env_handler(make_list(0), 0, env_index_new()) ~> no_state_walked ~> graph_handler(root_seed()) ~> mutate_sink ~> diagnostics_handler
 
 // ─── edit_run — the cursor session at the terminal
 //
@@ -299,7 +299,7 @@ fn march_run() = match march_entry() {
       }
     }
   },
-} ~> stdout_console ~> wasi_filesystem ~> diagnostics_handler ~> no_state_walked ~> graph_handler([], 0, []) ~> mutate_sink
+} ~> stdout_console ~> wasi_filesystem ~> diagnostics_handler ~> no_state_walked ~> graph_handler(root_seed()) ~> mutate_sink
 
 // The link's judgment with the streaming sink, as `mentl compile` reads it
 // (cold: the fixed point never restores an image) and under ScopeAll, so the
@@ -1215,7 +1215,7 @@ fn doc_render_lines(lines, h) = {
 // wires) — its handler body crosses out of the medium into the host
 // process boundary, named Hβ.cli.process-exec-wire.
 fn compile_run(target) = {
-  compile(target) ~> wat_stdout ~> wasi_filesystem ~> diagnostics_handler ~> no_state_walked ~> graph_handler([], 0, []) ~> mutate_sink
+  compile(target) ~> wat_stdout ~> wasi_filesystem ~> diagnostics_handler ~> no_state_walked ~> graph_handler(root_seed()) ~> mutate_sink
   // The dispatch exit-code contract: main's value IS the process exit.
   // Refusal paths already exit nonzero through the gate; success is 0.
   0
@@ -1250,7 +1250,7 @@ fn asm_write(wat) = match assemble(wat) {
 // `mentl resume <image>` — the compile projection re-entered from a
 // persisted image (pipeline.mn resume_image); same outer belt as compile.
 fn resume_run(img) = {
-  resume_image(img) ~> wat_stdout ~> wasi_filesystem ~> diagnostics_handler ~> no_state_walked ~> graph_handler([], 0, []) ~> mutate_sink
+  resume_image(img) ~> wat_stdout ~> wasi_filesystem ~> diagnostics_handler ~> no_state_walked ~> graph_handler(root_seed()) ~> mutate_sink
   0
 }
 
@@ -1260,7 +1260,7 @@ fn resume_run(img) = {
 // handler chain — wat_stdout for emit + wasi_filesystem (stdin via fd 0
 // goes through the same handler) + the substrate stack.
 fn compile_stdin_run() = {
-  compile_stdin() ~> diagnostics_handler ~> no_state_walked ~> graph_handler([], 0, []) ~> mutate_sink
+  compile_stdin() ~> diagnostics_handler ~> no_state_walked ~> graph_handler(root_seed()) ~> mutate_sink
   0
 }
 
@@ -1539,7 +1539,7 @@ fn test_run(target_opt) = {
 }
 
 fn test_check_run(entry_module) =
-  pipeline_check(entry_module) ~> assert_reporter ~> stdout_console ~> wasi_filesystem ~> diagnostics_handler ~> no_state_walked ~> graph_handler([], 0, []) ~> mutate_sink
+  pipeline_check(entry_module) ~> assert_reporter ~> stdout_console ~> wasi_filesystem ~> diagnostics_handler ~> no_state_walked ~> graph_handler(root_seed()) ~> mutate_sink
 
 // ─── The battery: `mentl test <dir>` ────────────────────────────────────
 // The micro battery IS the medium reading its own gates: glob the directory,
@@ -2134,7 +2134,7 @@ handler assert_reporter with passed = 0, failed = 0 {
 // Walks the ~> chain; collects effect rows transitively; emits
 // AuditReport. Per DESIGN §9.1 + traces/a-day §1400.
 fn audit_run(target) = {
-  audit(target) ~> stdout_console ~> wasi_filesystem ~> mentl_default ~> verify_ledger ~> diagnostics_handler ~> no_state_walked ~> graph_handler([], 0, []) ~> mutate_sink
+  audit(target) ~> stdout_console ~> wasi_filesystem ~> mentl_default ~> verify_ledger ~> diagnostics_handler ~> no_state_walked ~> graph_handler(root_seed()) ~> mutate_sink
   0
 }
 
@@ -2147,7 +2147,7 @@ fn audit_run(target) = {
 fn query_run(target, question) = match driver_dir_path(dir_base(target)) {
   Some(dir) => query_dir(dir, question),
   None => query(target, question),
-} ~> stdout_console ~> wasi_filesystem ~> mentl_default ~> diagnostics_handler ~> no_state_walked ~> graph_handler([], 0, []) ~> mutate_sink
+} ~> stdout_console ~> wasi_filesystem ~> mentl_default ~> diagnostics_handler ~> no_state_walked ~> graph_handler(root_seed()) ~> mutate_sink
 
 // Every program in the directory judged on its own fresh chain, each inside
 // an arena so the walk's peak is one judgment's live set, and asked the
@@ -2399,7 +2399,7 @@ fn repl_eval_line(line) = if byte_len(line) == 0 {
 // itself — a write followed by the live read is unfalsifiable, and it is
 // the same `<~` the cursor session runs (draw the edge, re-project).
 fn new_project(name) = {
-  scaffold_project(name) ~> wasi_filesystem ~> diagnostics_handler ~> no_state_walked ~> graph_handler([], 0, []) ~> mutate_sink
+  scaffold_project(name) ~> wasi_filesystem ~> diagnostics_handler ~> no_state_walked ~> graph_handler(root_seed()) ~> mutate_sink
   0
 }
 

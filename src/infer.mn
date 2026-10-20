@@ -2026,9 +2026,20 @@ fn layer_name_index(ref names, i, idx) = if i >= len(names) {
 // read them.
 fn segment_bracket(body, base, iseed) = match base {
   (bb, bc, bi) => match iseed {
-    (ib, ie, ic) => body() ~> row_gate ~> store_ages ~> infer_ctx ~> fresh_for_inference ~> affine_ledger ~> region_tracker ~> verify_ledger ~> lookup_ty_graph ~> env_handler(bb, bc, bi) ~> mutate_sink ~> diag_branch ~> intern_view(ib, ie, ic),
+    (ib, ie, ic) => body() ~> row_gate ~> store_ages ~> infer_ctx ~> fresh_for_inference ~> fork_judgment ~> env_handler(bb, bc, bi) ~> mutate_sink ~> diag_branch ~> intern_view(ib, ie, ic),
   },
 }
+
+// THE FORK'S JUDGMENT CHAIN: the handlers whose arms read or write the graph
+// — the ledgers and the type lookup — an instance per fork, installed inside
+// a forking handler's resume above the fork's graph instance with an env view
+// over the root's beside them (`env_handler(bb, bc, bi)`, from an
+// `env_base_view` read before the choice). An arm's perform resolves outward
+// from its own install, so a lookup's chase and the env arm's publish reach
+// the fork's graph through this chain and never the root's below it; the
+// facts these instances accrue die with the fork, and a segment reads the
+// ones it replays before its bracket closes.
+handler fork_judgment = affine_ledger ~> region_tracker ~> verify_ledger ~> lookup_ty_graph
 
 // The join: replay the branch's facts into the root in occurrence order —
 // publishes re-perform env_extend (the Reason edge rides whole), the
@@ -2811,10 +2822,10 @@ fn judged_round(name, params, body_node, ret_ann, effs, handle, span: ValidSpan,
       true
     }
   },
-  // The general assumption is a speculation of one: judged on a trail of its
-  // own and undone, carrying out the scheme it published, chased off its
-  // cells before the undo so the value outlives them.
-  PolyRound => match general_scheme(choose([name]), params, body_node, ret_ann, effs, handle, span) ~> speculate {
+  // The general assumption is a speculation of one: judged in a fork of the
+  // graph and dropped, carrying out the scheme it published, chased off its
+  // cells before the drop so the value outlives them.
+  PolyRound => match general_scheme(choose([name]), params, body_node, ret_ann, effs, handle, span, env_base_view()) ~> speculate {
     [] => false,
     [(q, detached), ..._] => rechecked(name, params, body_node, ret_ann, effs, handle, span, q, detached),
   },
@@ -2824,22 +2835,28 @@ fn judged_round(name, params, body_node, ret_ann, effs, handle, span: ValidSpan,
   },
 }
 
-fn general_scheme(name, params, body_node, ret_ann, effs, handle, span: ValidSpan) = {
-  let held = {
+// The round runs under the judgment's own chain above the fork's graph
+// instance — the ledgers, the type lookup and an env view over the root's —
+// because an arm's perform resolves outward from its own install: the env
+// arm's publish and the lookup's chase must reach the fork's graph, not the
+// root's below it, and the segment bracket gives a candidate the same chain
+// for the same reason. What the round publishes and reads lives and dies
+// with these instances; the scheme it carries out is read inside them.
+fn general_scheme(name, params, body_node, ret_ann, effs, handle, span: ValidSpan, base) = match base {
+  (bb, bc, bi) => {
     mycroft_prebind(name, params, span, handle)
     infer_fn(name, params, body_node, ret_ann, effs, handle, span, true)
-    poly_captured()
-  } ~> poly_capture
-  if held_has_error(held) {
-    []
-  } else {
-    match env_lookup(name) {
-      Some((sch, _, _)) => match judgment_pair(sch) {
-        (q, ty) => [(q, chase_deep(ty))],
-      },
-      None => [],
+    if held_has_error(poly_captured()) {
+      []
+    } else {
+      match env_lookup(name) {
+        Some((sch, _, _)) => match judgment_pair(sch) {
+          (q, ty) => [(q, chase_deep(ty))],
+        },
+        None => [],
+      }
     }
-  }
+  } ~> poly_capture ~> fork_judgment ~> env_handler(bb, bc, bi),
 }
 
 // The recheck: the assumption is written before the capture bracket — it

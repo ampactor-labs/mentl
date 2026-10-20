@@ -538,15 +538,18 @@ landing that closes it. A gate that did not run is UNKNOWN, never green.
   start restores an image and judges the edit's cone over it.
 - **The resident Space keeps its graph for a session's life**; a session derives
   once per open, and a fresh process derives cold (§11.18).
-- **Speculation is a choice, and a fork is a frame of the one graph, one
-  fork at a time**: every judgment the medium tries and may undo performs
-  `choose` (lib/choice.mn). The handler that judges every option runs each
-  resumption in a fork of the graph handler's state — the band table and
-  the fact columns copied shallow at the entry, the fork minting in a band
-  of its own, a page column outside its bands copied the first time the
-  fork writes it, and the whole frame dropped at the exit in one move
-  whatever the fork wrote — so the ??-fan's candidates and teach's locks and
-  contracts undo by a drop. The handler that keeps the first held round
+- **Speculation is a choice, and a fork is an instance of the graph
+  handler, one fork at a time**: every judgment the medium tries and may
+  undo performs `choose` (lib/choice.mn). The handler that judges every
+  option installs a graph handler instance around each resume, seeded from
+  the instance that answers it (the band table and the fact columns copied
+  shallow, the mint in a band of its own, a page column outside its bands
+  copied the first time the fork writes it), with the judgment's chain — the
+  ledgers, the type lookup, an env view — re-installed above it so an arm's
+  perform reaches the fork's graph and never the root's; the parent is
+  untouched by construction and nothing is restored when the install ends,
+  so the ??-fan's candidates and teach's locks and contracts undo by the
+  install's end. The handler that keeps the first held round
   still brackets the Mycroft rounds every unsigned declaration's judgment
   runs on the trail: a round mints a few hundred handles and writes as many
   cells, and a fork opens a 786 KB band of its own and copies eleven bucket
@@ -702,17 +705,24 @@ a provenance diff, a search over live shared cells.
 runs, its design written here whole so a session starts from this paragraph
 and the artifact:
 
-- **The fused oracle** — a fork is a FRAME of the one graph, never a trail
-  walked. `choose` (lib/choice.mn) is caught by `speculate` and `first_held`
-  (src/graph.mn). Landed 2026-10-19: `speculate` runs each resumption in a
-  fork of the `graph_handler` — `graph_fork_enter` saves what a fork may
-  write in a frame, copies the band table and the fact columns shallow and
-  moves `next` to the first band not yet open, so the fork mints in a band
-  of its own and owns those pages whole; a page column outside its bands is
-  copied the first time the fork writes it (`spine_own`), the spans column
-  never, since a span is written where its handle is minted;
-  `graph_fork_exit` is the saved frame again, in one move, whatever the fork
-  wrote. `first_held` keeps the trail for the Mycroft rounds: a round mints
+- **The fused oracle** — a fork is an INSTANCE of the graph handler, never
+  a trail walked. `choose` (lib/choice.mn) is caught by `speculate` and
+  `first_held` (src/graph.mn). Landed 2026-10-20: the graph handler's config
+  is one seed record (`GraphSeed`, every state field named once); the root
+  installs the empty graph (`root_seed`) at the verb entries, and
+  `speculate` installs a fresh instance around each resume, seeded by the
+  instance that answers it (`graph_fork_seed`: the band table and the
+  handle-keyed columns copied shallow, the mint at the base of the first
+  band not yet open, an ownership table of its own), so the remainder's
+  every graph write lands in the fork's copies (`spine_own`), the parent is
+  untouched by construction, and when the install ends nothing is restored;
+  the spans column is never copied, since a span is written where its
+  handle is minted. An arm's perform resolves outward from its own install,
+  so every speculation's body runs under the judgment's chain above the
+  fork's graph instance — the ledgers, the type lookup and an env view over
+  the root's (`fork_judgment ~> env_handler(bb, bc, bi)`), the segment
+  bracket's chain and the poly round's and teach's alike. `first_held`
+  keeps the trail for the Mycroft rounds: a round mints
   a few hundred handles and writes as many cells, and a fork opens a 786 KB
   band and copies eleven bucket tables, so the trail's undo, which costs the
   round's writes, is the round's bracket until a fork can mint in its

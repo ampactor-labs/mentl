@@ -2363,6 +2363,48 @@ type SpineCol
   | CProgram
   | CSpans
 
+// THE SEED of a graph handler instance: every state field an instance starts
+// from, named once. The root's seed is the empty graph (the graph module's
+// root_seed), installed at the verb entries; a fork's seed is its parent's
+// state with the band table and the handle-keyed columns copied shallow, the
+// mint at the base of the first band not yet open and an ownership table of
+// its own (graph_fork_seed), so the instance a forking handler installs
+// around a resume reads its parent's pages, writes copies of its own and
+// leaves the parent untouched when it ends.
+type GraphSeed = {
+  accepted: [(String, Span, String, Reason)],
+  binders: [[(Int, BinderFact)]],
+  births: [[(Int, ())]],
+  claims: [[(Int, Ty)]],
+  cur_module: Int,
+  decls_col: [Int],
+  demands: [[(Int, TypeDemand)]],
+  emitfns_col: [EmitFnEntry],
+  emitfns_idx: [[(String, EmitFnEntry)]],
+  emitfns_idx_covers: Int,
+  epoch: Int,
+  gates: [[(Int, Gate)]],
+  guard_diags: [(DiagKind, Int)],
+  holes_col: [Int],
+  holes_pend: [Int],
+  in_edges: [[(Int, InEdge)]],
+  instances: [[(Int, Int)]],
+  late: [[(Int, Int)]],
+  link_now: Option(Int),
+  modules_now: [[(String, Int)]],
+  next: Int,
+  owned: Option([[(Int, Int)]]),
+  published: [[(Int, (Binding, Reason, SchemeKind))]],
+  rows: [[(Int, EffRow)]],
+  sigs_col: [[(String, EmitSig)]],
+  span_index: [(Span, Int)],
+  spine: [SpinePage],
+  spine_open: Int,
+  store_claims: [[(Int, StoreClaim)]],
+  superseded: [[(Int, Int)]],
+  tails_idx: [[(String, [Int])]],
+}
+
 // Newlines in a flat string — a module's own extent, sized at its parse.
 fn count_lines(ref s) = count_lines_from(s, byte_len(s), 0, 0)
 
@@ -3381,6 +3423,19 @@ effect GraphRead {
   graph_chase(Int) -> GNode
   // the canonical ROOT handle of a TVar chain (union-find find)
   graph_chase_handle(Int) -> Int
+  // THE FORK — a speculation's isolation is an instance of the graph handler
+  // seeded from this one (GraphSeed): the band table and the handle-keyed
+  // columns copied shallow, a page's column copied the first time the fork
+  // writes it (the graph module's spine_own), the mint in a band of its own.
+  // The forking handler that judges every option and keeps none (the graph
+  // module's speculate) installs the instance around each resume, so the
+  // fork reads what this instance holds plus its own writes, nothing it
+  // writes reaches this instance, and when the install ends nothing is
+  // undone, since nothing here was written. The handler that keeps the first
+  // option that holds (first_held there) brackets with a checkpoint, whose
+  // undo walks the trail, since a kept round's writes stand in the graph it
+  // was judged on
+  graph_fork_seed() -> GraphSeed
   graph_epoch() -> Int
   // the fresh-handle counter — the node-space bound for saturation
   graph_next() -> Int
@@ -3630,21 +3685,6 @@ effect GraphWrite {
   // leaving the record on the stack forever would suppress graph_mutated
   // for the rest of the compile.
   graph_commit_checkpoint(Int)
-  // THE FORK — a speculation's isolation. Entering a fork gives every write
-  // after it a copy to land in: the band table and the handle-keyed columns
-  // are copied shallow, and a page's column is copied the first time the
-  // fork writes it (the graph module's spine_own), so the fork reads what the
-  // graph held at its entry plus its own writes, and nothing it writes
-  // reaches the graph outside it. Exiting the fork is one move: the state the
-  // entry saved is the state again, whatever the fork wrote, so the undo
-  // costs nothing the fork wrote. The forking handler that judges every
-  // option and keeps none (the graph module's speculate) brackets each
-  // resumption with this pair; the handler that keeps the first option that
-  // holds (first_held there) brackets with a checkpoint, whose undo walks
-  // the trail, since a kept round's writes stand in the graph it was judged
-  // on
-  graph_fork_enter() -> Int
-  graph_fork_exit(Int)
   // a node's birth span, by handle — the column takes it and the ordered
   // (span, handle) log gains the pair. Indexed again for a cell whose extent
   // widened after its birth (the one-arm match a destructuring let becomes
