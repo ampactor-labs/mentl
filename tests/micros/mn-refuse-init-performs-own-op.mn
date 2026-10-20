@@ -1,4 +1,4 @@
-// expect: refuse E_InitPerformsOwnOp
+// check: refuse E_InitPerformsOwnOp
 // A handler's state init performs an op that handler itself answers. The
 // install's world_push has not run while its inits run — by construction,
 // for every install of it — so the singleton dispatch's world_find provably

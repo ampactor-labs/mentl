@@ -1,4 +1,4 @@
-// expect: refuse E_InitPerformsOwnOp
+// check: refuse E_InitPerformsOwnOp
 // The state init's sibling carrier: a handler's config DEFAULT performing an
 // op that handler itself answers. Defaults and inits lower into one `inits`
 // list, so one class covers both — measured, not assumed, and this fixture

@@ -1,0 +1,12 @@
+// expect: 2
+// A declared effect the body never performs reaches no one: `quiet`'s row is
+// what its body performs, so `main` carries no Sample and the root has nothing
+// to refuse. This is the case the compile's census once existed to skip; the
+// judgment reads the row, and the row was already true.
+effect Sample(rate: Int) {
+  tick()
+}
+
+fn quiet() with Sample(44100) = 1
+
+fn main() = quiet() + 1
