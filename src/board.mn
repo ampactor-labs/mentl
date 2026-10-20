@@ -295,13 +295,15 @@ fn board_bounds() = [
   // function the wheel stops calling leaves in the landing that stops
   // calling it.
   Bound({ceiling: 0, question: QUnreachable}),
-  // Speculation is a choice whose resumptions the trail brackets: a
-  // checkpoint is pushed by the graph handler's own arm and by the arms of
-  // the two forking handlers that answer `choose`, and by nothing else. A
+  // Speculation is a choice whose resumptions a bracket isolates: a
+  // checkpoint is pushed by the graph handler's own arm and by the arm of
+  // the forking handler that keeps the first held round, and by nothing
+  // else — the handler that judges every option forks the graph instead. A
   // function that pushes one has bracketed a speculation by hand — the
   // bracket the forking handlers hold once. Seen RED at 8 the day the five
-  // hand brackets became performs of `choose` (2026-10-16).
-  Bound({ceiling: 3, question: QRefsOf("graph_push_checkpoint")}),
+  // hand brackets became performs of `choose` (2026-10-16); 3 -> 2
+  // (2026-10-19) when the option-judging handler's bracket became the fork.
+  Bound({ceiling: 2, question: QRefsOf("graph_push_checkpoint")}),
   // ─ PROSE BY CLASS (SA-5, MOD-13). A comment is graph content, so what
   // SYNTAX §Comments says a comment is not is a census, never a review
   // finding. Each class falls as the module carrying it is touched; F strips
@@ -348,8 +350,10 @@ fn board_bounds() = [
   // (2026-10-16): the parameter re-sugar's banner left with the re-sugar.
   // 265 -> 255 the same day: the verifier's section banners left when its
   // comments were trued with the flow walk. 255 -> 254: the segment walk's
-  // banner left when the ??-fan became one choice.
-  Bound({ceiling: 254, question: QCensus(CsProseClass(PcBanner))}),
+  // banner left when the ??-fan became one choice. 254 -> 253 (2026-10-19):
+  // the rollback's banner, attached to the span index's arm, left with the
+  // fork.
+  Bound({ceiling: 253, question: QCensus(CsProseClass(PcBanner))}),
   // A COMMENT NEVER SILENCES A GATE (SYNTAX §Comments). Each marker mutes a
   // text row of tools/drift-patterns.tsv that a structural census reads
   // correctly — a string literal is text, a one-shot concat is not an

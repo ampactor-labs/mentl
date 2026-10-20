@@ -1518,8 +1518,11 @@ never for a row fact.
 
 **A structured contract is claimed part by part where the structure is
 built, as it is assumed part by part where it is taken apart.** Under `r:
-{den: Positive}` a field read or a pattern assumes `r.den` is `Positive`, so
-every construction handed there owes it of the part it builds:
+{den: Positive}` a field read or a pattern assumes `r.den` is `Positive`, and
+so it does under `r: R` with `type R = {den: Positive}`, the nominal
+record's field contract read along its name to the declaration
+(tests/micros/mn-nominal-field-contract.mn), so every construction handed
+there owes it of the part it builds:
 `den_inv({den: 0})` refuses at the `0`, a list literal owes `[Positive]`'s
 contract of every element, a tuple its position's, and a nominal contract its
 constructors' fields read at the type's arguments — `Option(Positive)` owes

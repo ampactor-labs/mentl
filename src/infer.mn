@@ -11737,11 +11737,13 @@ fn declare_params(params, resolved, guards) = resolved |> enumerate |> map({
   },
 })
 
-// What the developer wrote: a refinement is a stated precondition, a plain
-// type states none (and learns none), and no annotation leaves the
-// parameter to learn one from the edges it is handed through.
+// What the developer wrote: a refinement is a stated precondition — on the
+// annotation's face, or in the declaration of the nominal record it names
+// (`ty_states_refinement`) — a plain type states none (and learns none), and
+// no annotation leaves the parameter to learn one from the edges it is
+// handed through.
 fn stated_pre(p, resolved) = if param_annotated(p) {
-  if ty_carries_refinement(resolved) { Stated(resolved) } else { Unrefined }
+  if ty_states_refinement(resolved) { Stated(resolved) } else { Unrefined }
 } else {
   Unstated
 }

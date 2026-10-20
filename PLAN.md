@@ -538,15 +538,23 @@ landing that closes it. A gate that did not run is UNKNOWN, never green.
   start restores an image and judges the edit's cone over it.
 - **The resident Space keeps its graph for a session's life**; a session derives
   once per open, and a fresh process derives cold (§11.18).
-- **Speculation is a choice, one fork at a time**: every judgment the
-  medium tries and may undo performs `choose` (lib/choice.mn), and a forking
-  handler brackets each resumption on the graph's trail — the ??-fan's
-  candidates, teach's locks and contracts, and the Mycroft rounds every
-  unsigned declaration's judgment runs, so the self-compile performs a
-  multi-shot op once per such declaration. The resumptions run one after
-  another on the one trail; forks on threads are the fused oracle. A
-  continuation is captured at any position, by a copy of its frame's lowered
-  tail (§11.18).
+- **Speculation is a choice, and a fork is a frame of the one graph, one
+  fork at a time**: every judgment the medium tries and may undo performs
+  `choose` (lib/choice.mn). The handler that judges every option runs each
+  resumption in a fork of the graph handler's state — the band table and
+  the fact columns copied shallow at the entry, the fork minting in a band
+  of its own, a page column outside its bands copied the first time the
+  fork writes it, and the whole frame dropped at the exit in one move
+  whatever the fork wrote — so the ??-fan's candidates and teach's locks and
+  contracts undo by a drop. The handler that keeps the first held round
+  still brackets the Mycroft rounds every unsigned declaration's judgment
+  runs on the trail: a round writes a few hundred cells into the band it
+  mints in, and a frame copies a 64 KB column at its first write there,
+  where the trail's undo costs the round's writes. The forks run one after
+  another and `next` is restored at each exit, so two forks never run at
+  once; forks on threads, each in a band keyed by its choice site and
+  option, are the fused oracle's second pin. A continuation is captured at
+  any position, by a copy of its frame's lowered tail (§11.18).
 - **The compile is sequential by construction** (§11.16).
 - **The prose still asserts machinery that is not there**: decoration banners,
   coordinates in prose, ledes that are another comment's text. Each module's
@@ -694,21 +702,28 @@ a provenance diff, a search over live shared cells.
 runs, its design written here whole so a session starts from this paragraph
 and the artifact:
 
-- **The fused oracle** — a fork is an OVERLAY, never a trail. Today `choose`
-  (lib/choice.mn) is caught by `speculate` and `first_held` (src/graph.mn),
-  which run every resumption one after another on the one trail of the one
-  `graph_handler`, undo by walking the trail backward in place and restoring
-  `next`, and the compiler is emitted as a thread-free module (a defined
-  memory, a bump allocator, no spawn import). Three pins. (1) Each fork is a
-  `graph_handler` instance over the shared spine whose state is a private
-  mint band — `next` at the base of a band of `spine_slots` handles, its
-  index a function of the choice site and the option's index, never of
-  scheduling — and an overlay for every cell outside its bands, a
-  handle-keyed table every read consults before the page; the three ops keep
-  their names: `graph_push_checkpoint` opens a layer, `graph_rollback` drops
-  it in O(1), `graph_commit_checkpoint` writes it into the layer below in
-  first-write order; the trail, its checkpoint stack and the revert walks
-  delete (`Hβ.oracle.fork-is-an-overlay`). (2) The compiler spawns: the
+- **The fused oracle** — a fork is a FRAME of the one graph, never a trail
+  walked. `choose` (lib/choice.mn) is caught by `speculate` and `first_held`
+  (src/graph.mn). Landed 2026-10-19: `speculate` runs each resumption in a
+  fork of the `graph_handler` — `graph_fork_enter` saves what a fork may
+  write in a frame, copies the band table and the fact columns shallow and
+  moves `next` to the first band not yet open, so the fork mints in a band
+  of its own and owns those pages whole; a page column outside its bands is
+  copied the first time the fork writes it (`spine_own`), the spans column
+  never, since a span is written where its handle is minted;
+  `graph_fork_exit` is the saved frame again, in one move, whatever the fork
+  wrote. `first_held` still brackets the Mycroft rounds on the trail and its
+  checkpoint stack, since a round writes a few hundred cells into the band
+  it mints in and a frame copies a 64 KB column at its first write there;
+  and the compiler is still emitted as a thread-free module (a defined
+  memory, a bump allocator, no spawn import). Three pins remain. (1) The
+  fork's band is keyed by the choice site and the option's index, never by
+  the open count, so the handle an option mints is the same under any
+  schedule; a kept fork is written into the frame below — its band table's
+  new pages, its columns' new entries, in first-write order — so
+  `first_held` keeps a round by a fork, and the trail, its checkpoint stack
+  and the revert walks delete with the last checkpoint
+  (`Hβ.oracle.fork-is-an-overlay`). (2) The compiler spawns: the
   schedule is installed over the judgment at the verb entries —
   `parallel_compose` where the host answers a spawn, `sequential_compose`
   otherwise — and the forking handlers fan their options under it, each

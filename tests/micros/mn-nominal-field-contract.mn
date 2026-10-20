@@ -1,0 +1,26 @@
+// expect: 7
+// A nominal record's declared field contract is assumed at a field read
+// through a parameter, as a structural annotation's is: under `r: R` with
+// `type R = {den: Positive, xs: [Positive]}`, `r.den` is Positive and so is
+// every element of `r.xs`, so each division's Trap waits in R's contract
+// and `!Trap` holds at both declarations. The boot refused both
+// (E_EffectMismatch, !Trap vs Trap), reading the nominal type's field as
+// stating nothing where the same read through `r: {den: Positive}` was
+// assumed — the contract read along the name to its declaration
+// (2026-10-19). The list's head is taken by a match of two arms, since an
+// index read charges Trap for its own bounds claim whatever the element is.
+type Positive = Int where 0 < self
+
+type R = {den: Positive, xs: [Positive]}
+
+fn inv(r: R) with !Trap = 100 / r.den
+
+fn first_inv(r: R) with !Trap = match r.xs {
+  [h, ..._] => 100 / h,
+  [] => 0,
+}
+
+fn main() = {
+  let r = R{den: 5, xs: [2]}
+  inv(r) + first_inv(r) - 63
+}

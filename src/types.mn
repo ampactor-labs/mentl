@@ -377,6 +377,48 @@ fn field_carries_refinement(f) = match f {
   (_, t) => ty_carries_refinement(t),
 }
 
+// Whether an annotation STATES a refinement at any part: on its face, or in
+// the declaration of a nominal record it names, whose fields a parameter
+// declared with the name assumes part by part (verify.mn's contract_part) —
+// `page: SpinePage` states `[ValidSpan]` at `page.spans` as `page: {spans:
+// [ValidSpan]}` does. A cell's shape never asks this: the refinement a name
+// holds is in the declaration, not in the cell. A declaration is read one
+// level, so a field that is itself a nominal record states what its own
+// declaration states only where it is projected, and a recursive record
+// reads once.
+fn ty_states_refinement(ty) = ty_carries_refinement(ty) || nominal_fields_carry(ty)
+
+fn nominal_fields_carry(ty) = match ty {
+  TName(name, _) => match published_at(env_resolve_type(name)) {
+    Some((_, _, kind)) => match kind {
+      RecordSchemeKind(fields) => any(field_carries_refinement, fields),
+      FnScheme
+      | ConstructorScheme(_, _)
+      | EffectOpScheme(_, _, _, _)
+      | TypeVariants(_)
+      | EffectDeclKind(_, _)
+      | HandlerKind(_, _, _, _, _)
+      | ParamScheme(_)
+      | RowAliasKind(_)
+      | HandlerChainKind(_)
+      | ValueScheme => false,
+    },
+    None => false,
+  },
+  TAlias(_, inner) => nominal_fields_carry(inner),
+  TReprPin(_, base) => nominal_fields_carry(base),
+  TRefined(base, _) => nominal_fields_carry(base),
+  TList(e) => nominal_fields_carry(e),
+  TTuple(es) => any(nominal_fields_carry, es),
+  TRecord(fs) => any(field_nominal_carries, fs),
+  TRecordOpen(fs, _) => any(field_nominal_carries, fs),
+  TCont(_, _, _, _) | TFun(_, _, _) | TVar(_) | TInt | TFloat | TUnit | TByte | TAddr => false,
+}
+
+fn field_nominal_carries(f) = match f {
+  (_, t) => nominal_fields_carry(t),
+}
+
 // An alias whose inner carries a refinement names that refinement, so its
 // shape is the stripped inner and the name goes with the predicate; a pin
 // keeps its width, which is representation and not a fact about values.
@@ -2304,6 +2346,23 @@ type SpinePage = {
   spans: [ValidSpan],
 }
 
+// A page's columns, named: what a fork owns a column by once it has copied
+// it, so a fork copies the one column it writes and shares the eleven it
+// does not (the graph module's copy-on-write, spine_own).
+type SpineCol
+  = CBoundaries
+  | CCanon
+  | CComments
+  | CInstalls
+  | CLinks
+  | CModule
+  | CNarrowing
+  | CNodes
+  | CParent
+  | CProducts
+  | CProgram
+  | CSpans
+
 // Newlines in a flat string — a module's own extent, sized at its parse.
 fn count_lines(ref s) = count_lines_from(s, byte_len(s), 0, 0)
 
@@ -3571,6 +3630,21 @@ effect GraphWrite {
   // leaving the record on the stack forever would suppress graph_mutated
   // for the rest of the compile.
   graph_commit_checkpoint(Int)
+  // THE FORK — a speculation's isolation. Entering a fork gives every write
+  // after it a copy to land in: the band table and the handle-keyed columns
+  // are copied shallow, and a page's column is copied the first time the
+  // fork writes it (the graph module's spine_own), so the fork reads what the
+  // graph held at its entry plus its own writes, and nothing it writes
+  // reaches the graph outside it. Exiting the fork is one move: the state the
+  // entry saved is the state again, whatever the fork wrote, so the undo
+  // costs nothing the fork wrote. The forking handler that judges every
+  // option and keeps none (the graph module's speculate) brackets each
+  // resumption with this pair; the handler that keeps the first option that
+  // holds (first_held there) brackets with a checkpoint, whose undo walks
+  // the trail, since a kept round's writes stand in the graph it was judged
+  // on
+  graph_fork_enter() -> Int
+  graph_fork_exit(Int)
   // a node's birth span, by handle — the column takes it and the ordered
   // (span, handle) log gains the pair. Indexed again for a cell whose extent
   // widened after its birth (the one-arm match a destructuring let becomes

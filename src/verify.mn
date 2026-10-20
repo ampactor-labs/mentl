@@ -1095,7 +1095,7 @@ fn project_leaf(leaf, step) = match leaf {
 }
 
 fn refined_part(c, step) = match contract_part(c, step) {
-  Some(pc) => if ty_carries_refinement(pc) { Some(pc) } else { None },
+  Some(pc) => if ty_states_refinement(pc) { Some(pc) } else { None },
   None => None,
 }
 
@@ -1112,10 +1112,11 @@ fn contract_part(c, step) = match c {
     PartElem => Some(e),
     PartIndex(_) | PartCtor(_, _) | PartField(_) | PartRest | PartTypeArg(_) => None,
   },
-  TName(_, args) => match step {
+  TName(tname, args) => match step {
     PartTypeArg(k) => if k < len(args) { Some(list_index(args, k)) } else { None },
     PartCtor(cname, i) => ctor_field_contract(c, cname, i),
-    PartIndex(_) | PartField(_) | PartElem | PartRest => None,
+    PartField(name) => named_field_contract(tname, args, name),
+    PartIndex(_) | PartElem | PartRest => None,
   },
   TRefined(base, _) => contract_part(base, step),
   TInt | TFloat | TUnit | TByte | TAddr | TFun(_, _, _) | TVar(_) | TCont(_, _, _, _) => None,
@@ -1129,6 +1130,32 @@ fn contract_part(c, step) = match c {
 fn ctor_field_contract(c, cname: String, i) = match find(spec_named(cname), variant_named_specs_at(c)) {
   Some(spec) => match spec {
     (_, _, tys) => if i < len(tys) { Some(list_index(tys, i)) } else { None },
+  },
+  None => None,
+}
+
+// A nominal record's contract at a field: the field's declared type, read
+// along the record's name to its declaration with the type's parameters
+// grounded at the contract's arguments, as a constructor's field is. So a
+// parameter declared `page: SpinePage` assumes at `page.spans` what the
+// declaration states there, where a structural `{spans: [ValidSpan]}` always
+// did; a name that declares no record states nothing.
+fn named_field_contract(tname: String, args, name) = match published_at(env_resolve_type(tname)) {
+  Some((binding, _, kind)) => match kind {
+    RecordSchemeKind(fields) => match field_contract(fields, PartField(name)) {
+      Some(t) => Some(if len(args) == 0 { t } else { ground_ty(type_params_of(binding), args, t) }),
+      None => None,
+    },
+    FnScheme
+    | ConstructorScheme(_, _)
+    | EffectOpScheme(_, _, _, _)
+    | TypeVariants(_)
+    | EffectDeclKind(_, _)
+    | HandlerKind(_, _, _, _, _)
+    | ParamScheme(_)
+    | RowAliasKind(_)
+    | HandlerChainKind(_)
+    | ValueScheme => None,
   },
   None => None,
 }
