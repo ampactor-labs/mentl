@@ -2221,7 +2221,7 @@ fn emit_plan(program) = {
   let roster = env_launch_roster()
   // The emitted reach (above): the twin demands, and which decls a live
   // reference reaches — the only ones emitted below.
-  match emit_reach(program, all_records, roster) {
+  match emit_reach(program, all_records, roster) ~> arena {
     (spec_demands, live, settles) => {
       reach_heap_line()
       // Every name a twin was demanded of — the unreached decls whose bodies
@@ -2291,7 +2291,7 @@ fn plan_reached(lowered, fn_records, twin_bases, all_records, spec_demands, twin
       },
     },
     spec_demands
-  )) |> spec_recs_dedup |> filter(spec_rec_wanted(fn_records, ??))
+  )) |> spec_recs_dedup |> filter(spec_rec_wanted(fn_records, ??)) ~> arena
   let spec_names = spec_rec_names(spec_recs)
   set_spec_twins(spec_names)
   // THE DERIVATIVE READING settles here too (src/derive.mn): its programs
@@ -2329,21 +2329,27 @@ fn plan_reached(lowered, fn_records, twin_bases, all_records, spec_demands, twin
   // that said otherwise is retracted. The contract decides: ONE rule, "read
   // the symbol's face", with no second rule about what absence means for
   // every reader to learn.
-  graph_sigs_publish(emit_sig_pairs_base(fn_records) ++ emit_sig_pairs_spec(spec_recs) ++ map(emit_sig_pair_of_jvp, jvp_recs))
+  // Each walk of the plan is an extent of its own (an arena, lib/arena.mn):
+  // its value is the facts it collected, moved out by their type, and the
+  // scratch of the walk dies at its exit. Measured 2026-10-20: the plan's
+  // walks grew the line 62 MB on the wheel while every walk's garbage lived
+  // to the end of the plan.
+  graph_sigs_publish(emit_sig_pairs_base(fn_records) ++ emit_sig_pairs_spec(spec_recs) ++ map(emit_sig_pair_of_jvp, jvp_recs)) ~> arena
   // THE ALLOCATION AUDIT reads here, where a spill is a fact (`alloc_audit`):
   // what every emitted unit's code builds, against the row its code answers
   // to, said before the gate reads the ledger.
   // THE RACE RULE THROUGH A CALLEE reads here too (`race_check_demands`):
   // every direct call a spawning install reaches, walked into its callee's
   // fanouts with the site's installs and row pairs, said before the gate.
-  if settles { race_check_demands(fn_records, all_records) } else { () }
-  let alloc_units = if settles { Some(alloc_audit(lowered, spec_demands, all_records)) } else { None }
+  if settles { race_check_demands(fn_records, all_records) ~> arena } else { () }
+  let alloc_units =
+    if settles { Some(alloc_audit(lowered, spec_demands, all_records) ~> arena) } else { None }
   // The fold-leaf collection — the base tree once, then each twin's body
   // under its own bracket, so a twin's show/hash on substituted types
   // collects the sigs its emission will name (the float-element leaf beside
   // the floor's word-element leaf — both generated, each named where used).
   let fold_closures =
-    spec_fold_collect(spec_recs, collect_fold_tys_list(lowered, fold_closures_empty()))
+    spec_fold_collect(spec_recs, collect_fold_tys_list(lowered, fold_closures_empty())) ~> arena
   // Single-walk multi-projection pre-pass. project_emit_state walks the
   // LowExpr tree ONCE; four visitor-handlers chained via `~>` accumulate
   // their projections in encounter order; the wrapper drains all four at
@@ -2357,7 +2363,7 @@ fn plan_reached(lowered, fn_records, twin_bases, all_records, spec_demands, twin
   // data section, the leaf emission below reads all four.
   // (fold collection moved below the spec demand analysis — a twin's body is
   // re-collected under its bracket so its substituted aggregate sigs exist)
-  match project_emit_state(lowered, twin_bases, fold_closures, roster) {
+  match project_emit_state(lowered, twin_bases, fold_closures, roster) ~> arena {
     (all_fn_names, top_fn_names, string_entries, fn_lines, wasi_ops, yield_seen, yield_arity) => {
       // band B M1.2 (the k2/k3 bank, Ruling 1) — the composer is CALLED INDIRECT
       // (it is the fn_ptr@0 of every composed k record), so unlike every other
@@ -2393,7 +2399,7 @@ fn plan_reached(lowered, fn_records, twin_bases, all_records, spec_demands, twin
       let vectors = derived_vector_collect(
         derived,
         spec_vector_collect(spec_recs, collect_call_vectors_list(lowered, []))
-      ) ++ redrive_vectors(redrives)
+      ) ++ redrive_vectors(redrives) ~> arena
       {
         adjoint_registers: derived.adjoint_registers,
         alloc_units,

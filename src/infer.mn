@@ -2026,20 +2026,19 @@ fn layer_name_index(ref names, i, idx) = if i >= len(names) {
 // read them.
 fn segment_bracket(body, base, iseed) = match base {
   (bb, bc, bi) => match iseed {
-    (ib, ie, ic) => body() ~> row_gate ~> store_ages ~> infer_ctx ~> fresh_for_inference ~> fork_judgment ~> env_handler(bb, bc, bi) ~> mutate_sink ~> diag_branch ~> intern_view(ib, ie, ic),
+    (ib, ie, ic) => body() ~> row_gate ~> store_ages ~> infer_ctx ~> fresh_for_inference ~> fork_judgment ~> env_handler(bb, bc, bi) ~> diag_branch ~> intern_view(ib, ie, ic),
   },
 }
 
-// THE FORK'S JUDGMENT CHAIN: the handlers whose arms read or write the graph
-// — the ledgers and the type lookup — an instance per fork, installed inside
-// a forking handler's resume above the fork's graph instance with an env view
+// THE SPECULATION'S JUDGMENT CHAIN: the ledgers, an instance per
+// speculation, installed inside a forking handler's resume with an env view
 // over the root's beside them (`env_handler(bb, bc, bi)`, from an
-// `env_base_view` read before the choice). An arm's perform resolves outward
-// from its own install, so a lookup's chase and the env arm's publish reach
-// the fork's graph through this chain and never the root's below it; the
-// facts these instances accrue die with the fork, and a segment reads the
+// `env_base_view` read before the choice). The graph itself needs no
+// instance — a speculation's graph writes are undone by restoring the version
+// its bracket took — but the facts these ledgers accrue have no version, so
+// each speculation gets its own and they die with it; a segment reads the
 // ones it replays before its bracket closes.
-handler fork_judgment = affine_ledger ~> region_tracker ~> verify_ledger ~> lookup_ty_graph
+handler fork_judgment = affine_ledger ~> region_tracker ~> verify_ledger
 
 // The join: replay the branch's facts into the root in occurrence order —
 // publishes re-perform env_extend (the Reason edge rides whole), the

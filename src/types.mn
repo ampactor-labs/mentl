@@ -1,9 +1,10 @@
 // types.mn — THE vocabulary of Mentl
 //
 // Every ADT the compiler names. Every effect signature every module
-// shares. This file is bedrock — it imports nothing; every other
-// module imports it. Its surface is the narrowest possible surface
-// that empowers every peer.
+// shares. This file is bedrock — it imports one library module, the
+// indexed maps (lib/imap.mn), for the column a graph version carries and
+// the slot-word presence test; every other module imports it. Its surface
+// is the narrowest possible surface that empowers every peer.
 //
 // ─── The empowerment contract ──────────────────────────────────────
 // types.mn owns ONLY shared vocabulary. Every foreign-owned ADT lives
@@ -31,6 +32,8 @@
 // dispatch in backends/wasm.mn uses this threshold to discriminate
 // sentinel from pointer. Bool is the canonical example:
 // `type Bool = False | True` — False=0, True=1, both sentinels.
+import imap
+
 type Ty
   = TInt
   | TFloat
@@ -380,8 +383,8 @@ fn field_carries_refinement(f) = match f {
 // Whether an annotation STATES a refinement at any part: on its face, or in
 // the declaration of a nominal record it names, whose fields a parameter
 // declared with the name assumes part by part (verify.mn's contract_part) —
-// `page: SpinePage` states `[ValidSpan]` at `page.spans` as `page: {spans:
-// [ValidSpan]}` does. A cell's shape never asks this: the refinement a name
+// `v: Version` states `[[[[ValidSpan]]]]` at `v.spans` as a structural record
+// with that field does. A cell's shape never asks this: the refinement a name
 // holds is in the declaration, not in the cell. A declaration is read one
 // level, so a field that is itself a nominal record states what its own
 // declaration states only where it is projected, and a recursive record
@@ -1500,7 +1503,7 @@ type CallShape = CallApplied | CallSuspended
 // cells typing the slots a partial leaves open (one per slot, bound to the
 // slot's parameter type at the judgment, infer.mn's open_slot_cells), and the
 // shape the judgment decided. Written once
-// at the call node, trailed as `MSetProduct`; the lowering reads it and
+// at the call node, a column of the version; the lowering reads it and
 // resolves no callee by name. `NoProduct` comes first so a virgin cell
 // reads as it, the `NoInstall` precedent.
 type CallProduct = NoProduct | ProductOf([Node], [Int], CallShape)
@@ -1562,61 +1565,11 @@ type EmitFnEntry = {
 
 // The snapshot carries exactly what its consumers read: the mint bound
 // and the span index. The node cells are NOT here — they live in the
-// handler's paged spine and are read through graph_chase/graph_node_body
+// handler's columns and are read through graph_chase/graph_node_body
 // (a snapshot copy of them was a write-only field: every destructure
-// ignored it); epoch reads through graph_epoch; and the per-module
-// overlay view is DELETED whole (graph_fork never performed — the module
-// partition never existed at runtime, and module-of-position is the
-// module column stamped at each node's mint, read by graph_module_of).
+// ignored it); epoch reads through graph_epoch; and module-of-position is
+// the module column stamped at each node's mint, read by graph_module_of.
 type Graph = Graph(Int, [(ValidSpan, Int)])
-
-// next: next fresh allocation
-//
-// span_index: [(ValidSpan, Int)] for Mentl QTypeAt queries
-//
-// Trail mutations — append during forward execution, walk backwards
-// on rollback. Powers Mentl's speculative oracle (spec 09).
-type Mutation
-  // handle, old_node (before overwrite)
-  = MSetNode(Int, GNode)
-  // handle, old_node (row variant)
-  | MSetRow(Int, GNode)
-  // fanout site handle, old boundary edges
-  | MSetBoundary(Int, ExecutableBoundary)
-  // handle allocated (undo = shrink)
-  | MFreshNode(Int)
-  // a gate entered on the cell (undo = pop the newest gate; the gate
-  // column is a LIFO multi-map, so the inverse needs no old value)
-  | MSetGate(Int)
-  // an instance noted under its root (undo = pop the newest note)
-  | MInstanceNote(Int)
-  // a demand entered on a type cell (undo = pop the newest)
-  | MSetDemand(Int)
-  // a call's product written at its node (undo = restore the old value)
-  | MSetProduct(Int, CallProduct)
-  // a row note entered on a node (undo = pop the newest note)
-  | MRowNote(Int)
-  // a binder's fact entered under its handle (undo = pop the newest)
-  | MBinderFact(Int)
-  // a node noted let-born under its handle (undo = pop the newest)
-  | MBirth(Int)
-  // a payer recorded under an open guard cell (undo = pop the newest)
-  | MOweLate(Int)
-  // a contract claimed of the value at a node (undo = pop the newest)
-  | MClaimNote(Int)
-  // a reference linked to a declaration: the reference, the declaration,
-  // and the reference's cell before the write (undo = restore the cell and
-  // pop the declaration's newest in-edge)
-  | MRefLink(Int, Int, Int)
-  // a mention or an application entered among a declaration's in-edges
-  // (undo = pop the newest)
-  | MInEdge(Int)
-  // what the judgment published about a declaration, entered under its
-  // handle (undo = pop the newest)
-  | MPublish(Int)
-  // a declaration's store claim entered under its handle (undo = pop the
-  // newest)
-  | MStoreClaim(Int)
 
 // A declaration's store claim, written where its judgment ends and read at
 // every call of it: the parameters its result may be (Some([]) a fresh
@@ -2315,94 +2268,56 @@ fn applicability_text(a) = match a {
 }
 
 // query   propose  topology     row     trace      verify  teach    why
-// ─── SpinePage — the graph's columns, named ONCE ─────────────────────────
-// One band's worth of every per-handle fact, each column a flat array the
-// handle indexes directly. Pages allocate whole at band-open and NEVER move,
-// so a column read is the O(1) chase and a write is one in-place cell store.
+// ─── Version — the graph as a value ──────────────────────────────────────
+// Every per-handle fact is a COLUMN keyed by the handle itself (lib/imap.mn's
+// pt: a four-level trie whose leaves hold the cells), and the graph is the
+// roots of its columns, its mint, its span log and the heap mark its writes
+// are told from. Twelve columns hold one cell per handle; eleven hold every
+// value entered under a handle, newest last.
 //
-// This is a COLUMN STORE, not the parallel-arrays drift (CLAUDE.md mode 7):
+// This is a column store, not the parallel-arrays drift (CLAUDE.md mode 7):
 // mode 7 convicts N lists keyed by POSITION as a fragile proxy for identity,
 // and here the index IS the identity — the handle is the key, so the columns
 // cannot desynchronize any more than a record's fields can.
 //
-// It is declared here because the shape was written out THREE times — the
-// spine_page annotation, the spine_open_loop literal, and graph_branch_seed's
-// op type — so adding a column meant editing a twelve-field record in three
-// files and finding out at the type error which one you missed. Three hand
-// copies of one type is the Carried-Truth Law at the declaration layer; the
-// name is its one home, and the next column is one line.
-type SpinePage = {
-  boundaries: [ExecutableBoundary],
-  canon: [Int],
-  comments: [(String, Span)],
-  installs: [InstallShape],
-  links: [Int],
-  module: [Int],
-  narrowing: [Int],
-  nodes: [GNode],
-  parent: [Int],
-  products: [CallProduct],
-  program: [NodeBody],
-  spans: [ValidSpan],
-}
-
-// A page's columns, named: what a fork owns a column by once it has copied
-// it, so a fork copies the one column it writes and shares the eleven it
-// does not (the graph module's copy-on-write, spine_own).
-type SpineCol
-  = CBoundaries
-  | CCanon
-  | CComments
-  | CInstalls
-  | CLinks
-  | CModule
-  | CNarrowing
-  | CNodes
-  | CParent
-  | CProducts
-  | CProgram
-  | CSpans
-
-// THE SEED of a graph handler instance: every state field an instance starts
-// from, named once. The root's seed is the empty graph (the graph module's
-// root_seed), installed at the verb entries; a fork's seed is its parent's
-// state with the band table and the handle-keyed columns copied shallow, the
-// mint at the base of the first band not yet open and an ownership table of
-// its own (graph_fork_seed), so the instance a forking handler installs
-// around a resume reads its parent's pages, writes copies of its own and
-// leaves the parent untouched when it ends.
-type GraphSeed = {
-  accepted: [(String, Span, String, Reason)],
-  binders: [[(Int, BinderFact)]],
-  births: [[(Int, ())]],
-  claims: [[(Int, Ty)]],
-  cur_module: Int,
-  decls_col: [Int],
-  demands: [[(Int, TypeDemand)]],
-  emitfns_col: [EmitFnEntry],
-  emitfns_idx: [[(String, EmitFnEntry)]],
-  emitfns_idx_covers: Int,
-  epoch: Int,
-  gates: [[(Int, Gate)]],
-  guard_diags: [(DiagKind, Int)],
-  holes_col: [Int],
-  holes_pend: [Int],
-  in_edges: [[(Int, InEdge)]],
-  instances: [[(Int, Int)]],
-  late: [[(Int, Int)]],
-  link_now: Option(Int),
-  modules_now: [[(String, Int)]],
+// A version is taken by remembering the roots and marking the heap line — the
+// mark held as the address's number, since an address stored into the
+// handler's state would be a value no arena's exit can read, and the region
+// around it would be kept whole for its sake
+// (`graph_version`, O(1)): the writes that follow copy what they touch of it
+// and leave it readable, so making it the graph again (`graph_restore`) or
+// dropping it (`graph_keep`) costs nothing whatever was written, and two
+// versions compared are the write set between them. The root installs the
+// empty version (the graph module's root version) at the verb entries; a
+// speculation's bracket is a version taken and restored or kept; a fork on
+// another cursor is an instance installed with a version as its seed.
+type Version = {
+  binders: [[[[[BinderFact]]]]],
+  births: [[[[Int]]]],
+  boundaries: [[[[ExecutableBoundary]]]],
+  canon: [[[[Int]]]],
+  claims: [[[[[Ty]]]]],
+  comments: [[[[(String, Span)]]]],
+  demands: [[[[[TypeDemand]]]]],
+  gates: [[[[[Gate]]]]],
+  in_edges: [[[[[InEdge]]]]],
+  installs: [[[[InstallShape]]]],
+  instances: [[[[[Int]]]]],
+  late: [[[[[Int]]]]],
+  links: [[[[Int]]]],
+  mark: Int,
+  module: [[[[Int]]]],
+  narrowing: [[[[Int]]]],
   next: Int,
-  owned: Option([[(Int, Int)]]),
-  published: [[(Int, (Binding, Reason, SchemeKind))]],
-  rows: [[(Int, EffRow)]],
-  sigs_col: [[(String, EmitSig)]],
+  nodes: [[[[GNode]]]],
+  parent: [[[[Int]]]],
+  products: [[[[CallProduct]]]],
+  program: [[[[NodeBody]]]],
+  published: [[[[[(Binding, Reason, SchemeKind)]]]]],
+  rows: [[[[[EffRow]]]]],
   span_index: [(Span, Int)],
-  spine: [SpinePage],
-  spine_open: Int,
-  store_claims: [[(Int, StoreClaim)]],
-  superseded: [[(Int, Int)]],
-  tails_idx: [[(String, [Int])]],
+  spans: [[[[ValidSpan]]]],
+  store_claims: [[[[[StoreClaim]]]]],
 }
 
 // Newlines in a flat string — a module's own extent, sized at its parse.
@@ -3415,34 +3330,30 @@ effect Intern {
 // A perform graph_bind in a read-only handler is a type error at
 // handler install — caught structurally, never shipped to runtime.
 //
-// graph_push_checkpoint / graph_rollback are the speculative surface, and
-// the graph module's forking handlers are its one performer: a resumption of
-// a choice runs between the checkpoint and its undo or its keep.
-// Trail-based; O(M) where M is mutations.
+// graph_version, graph_restore and graph_keep are the speculative surface,
+// and the graph module's forking handlers are its one performer: a
+// resumption of a choice runs between taking the version and restoring or
+// keeping it, each O(1) whatever the resumption wrote.
 effect GraphRead {
   graph_chase(Int) -> GNode
   // the canonical ROOT handle of a TVar chain (union-find find)
   graph_chase_handle(Int) -> Int
-  // THE FORK — a speculation's isolation is an instance of the graph handler
-  // seeded from this one (GraphSeed): the band table and the handle-keyed
-  // columns copied shallow, a page's column copied the first time the fork
-  // writes it (the graph module's spine_own), the mint in a band of its own.
-  // The forking handler that judges every option and keeps none (the graph
-  // module's speculate) installs the instance around each resume, so the
-  // fork reads what this instance holds plus its own writes, nothing it
-  // writes reaches this instance, and when the install ends nothing is
-  // undone, since nothing here was written. The handler that keeps the first
-  // option that holds (first_held there) brackets with a checkpoint, whose
-  // undo walks the trail, since a kept round's writes stand in the graph it
-  // was judged on
-  graph_fork_seed() -> GraphSeed
+  // THE VERSION (types.mn Version): the graph as it stands, the heap line
+  // marked so the writes that follow copy what they touch of it and leave it
+  // readable. A speculation's bracket opens with it and closes by restoring
+  // or keeping it; the open versions are a stack, and the write set a
+  // speculation reads (graph_written_since) is the graph compared with the
+  // innermost open version
+  graph_version() -> Version
+  // the nodes column's root — the state-passed occurs family's seed, for the
+  // bracketed pre-check that holds no column of its own
+  graph_nodes() -> [[[[GNode]]]]
   graph_epoch() -> Int
   // the fresh-handle counter — the node-space bound for saturation
   graph_next() -> Int
   // the handle's OWN reason cell, unchased — a bind's VarLookup survives here even when the bound type is a var the chase would follow; the stmt-layer projection reads reference edges through it
   graph_reason_at(Int) -> Reason
   graph_snapshot() -> Graph
-  graph_push_checkpoint() -> Int
   // resolve a node's body by its handle from the parallel program weave — every AST node is registered there at construction (NHole if absent)
   graph_node_body(Int) -> NodeBody
   // the birth-span by HANDLE — the spans spine column's O(1) read (the
@@ -3501,14 +3412,7 @@ effect GraphRead {
   // the refinement-narrowing pointer at a handle — the path-predicate's bool-node handle proven to hold AT this program point (0 = no narrowing). One co-indexed weave like the canon column; lower's verify-obligation read chases it live to elide a check the path already proves (§4⑥). Appropriate as a side-table: narrowing is a per-program-point boolean fact, not a unifiable variable.
   graph_narrow_at(Int) -> Int
   // exact compiler-created executable edges keyed by fanout site
-  // The branch cursor's config seed (the fan, C1c-2): the root's live
-  // spine table, open count, and span index, read once after the plan
-  // pre-opens every band — the spine is then stable for the whole walk
-  // and the span index is complete (graph_index_span is parse-only, so
-  // no branch ever appends). A branch graph_handler installs over
-  // these with its stmt's planned range as (next0, limit0).
   graph_boundary_at(Int) -> ExecutableBoundary
-  graph_branch_seed() -> ([SpinePage], Int, [(ValidSpan, Int)])
   // THE REFERENCE LINK's reads. A reference's declaration: the handle the
   // one writer linked it to (`graph_ref_link`), or None for a node no
   // reference resolution reached.
@@ -3588,13 +3492,13 @@ effect GraphRead {
   // formatter's, which writes a label as the name of the parameter its
   // slot fills.
   graph_product_at(Int) -> CallProduct
-  // THE SEGMENT'S WRITE SET (C6): the cells below a handle frontier that a
-  // bind since the innermost open checkpoint moved — a type or row cell
-  // overwritten in the trail's MSetNode / MSetRow entries — each once, in
-  // first-write order. A speculation reads it BEFORE its undo, so what a
+  // THE SEGMENT'S WRITE SET (C6): the cells below a handle frontier whose
+  // type or row the graph and the innermost open version disagree on — each
+  // once, ascending. A speculation reads it BEFORE its undo, so what a
   // candidate taught the context survives the undo as facts about those
   // cells; the handles above the frontier are the segment's own mints and
-  // mean nothing across segments (they collide numerically after rollback).
+  // mean nothing across segments (they collide numerically after a restore).
+  // With no version open, nothing is speculative and the set is empty
   graph_written_since(Int) -> [Int]
   // The parameters each top-level function calls only at its own tail, by
   // name, as the judgments so far wrote them: the newest judgment of a name
@@ -3650,7 +3554,7 @@ effect GraphWrite {
   graph_canon_set(Int, Int)
   // write what the judgment proved at a program point — a sequence read's index node carries 1 where its bounds claim held (TRAP). One co-indexed weave like the canon column; one cell per handle, written both ways by every judgment of the read, read back via graph_narrow_at by lower's check-elision.
   graph_narrow_set(Int, Int)
-  // draw/replace one fanout's executable edges; trail-backed because inference runs under speculative checkpoints
+  // draw/replace one fanout's executable edges; a column of the version, since inference runs under speculation
   graph_boundary_set(Int, ExecutableBoundary)
   // set the module in force for every SUBSEQUENT mint — the parser's own
   // "which file am I in", carried at birth instead of reconstructed. The
@@ -3662,29 +3566,29 @@ effect GraphWrite {
   graph_bind(Int, Ty, Reason)
   // mark a node an OBSERVED FAILURE (NErrorHole) — the productive-under-error poison. An env miss binds this, never TVar(self): the self-var tripped graph_bind's own occurs check (a spurious 0:0 E_OccursCheck per missing name) and read downstream as a normal free var (the ownership move-default cascade). A hole is the fact itself: unify no-ops on it, generalize preserves the handle, consumers stay silent.
   graph_bind_hole(Int, Reason)
-  // enter a gate on a cell — trailed (MSetGate), so a speculative
-  // judgment's gates roll back with its bindings; the checking writer
-  // (effects.mn gate_install) is the one caller, and it judges the
-  // cell's current content and every noted instance in the same move
+  // enter a gate on a cell — a column of the version, so a speculative
+  // judgment's gates go with its bindings when the version is restored; the
+  // checking writer (effects.mn gate_install) is the one caller, and it
+  // judges the cell's current content and every noted instance in the same
+  // move
   graph_gate_add(Int, Gate)
-  // note a fresh instance under the root it was copied from — trailed
-  // (MInstanceNote); build_inst_mapping is the one writer, and a gate
-  // installed on the root later reaches the copy through this column
+  // note a fresh instance under the root it was copied from;
+  // build_inst_mapping is the one writer, and a gate installed on the root
+  // after the copy reaches it through this column
   graph_instance_note(Int, Int)
-  // enter a demand on a type cell — trailed (MSetDemand), so a speculative
-  // judgment's demands roll back with its bindings; the judgment's demand
-  // sites, the checking var binds and instantiation's copy are its callers
-  // (infer.mn demand_install / demands_copy)
+  // enter a demand on a type cell — a column of the version, the row gate
+  // column's twin over type cells; the judgment's demand sites, the checking
+  // var binds and instantiation's copy are its callers (infer.mn
+  // demand_install / demands_copy)
   graph_demand_add(Int, TypeDemand)
   graph_bind_record_row(Int, [(String, Ty)], RecordRowTail, Reason)
-  graph_rollback(Int)
-  // The speculation's ACCEPT: pop the newest checkpoint WITHOUT
-  // restoring — every write since it stands, and mutation events
-  // resume when the stack empties. graph_rollback is the reject half;
-  // the resumption a forking handler keeps commits through this op —
-  // leaving the record on the stack forever would suppress graph_mutated
-  // for the rest of the compile.
-  graph_commit_checkpoint(Int)
+  // A version made the graph again: every column, the mint and the span log
+  // as they stood, the mark handed back, the version popped — a
+  // speculation's undo, O(1) whatever it wrote
+  graph_restore(Version)
+  // A version dropped: the graph stands as it is, the mark handed back, the
+  // version popped — the keep of the first held round
+  graph_keep(Version)
   // a node's birth span, by handle — the column takes it and the ordered
   // (span, handle) log gains the pair. Indexed again for a cell whose extent
   // widened after its birth (the one-arm match a destructuring let becomes
@@ -3695,24 +3599,25 @@ effect GraphWrite {
   graph_index_span(ValidSpan, Int)
   // THE REFERENCE LINK (M1): the one writer, where a name resolves in its
   // scope, links the reference to the node that declares it. The
-  // reference's spine cell holds the declaration forward and the
-  // declaration's in-edges hold the reference back, one trailed write, so a
-  // rolled-back judgment's links go with it. No reader after the judgment
+  // reference's cell holds the declaration forward and the declaration's
+  // in-edges hold the reference back, both columns of the version, so a
+  // restored judgment's links go with it. No reader after the judgment
   // resolves the name again.
   graph_ref_link(reference: Int, decl: Int)
   // An application among a declaration's in-edges: call_owes, the one home
   // where an application fills a declaration's parameters, enters it for each
-  // declaration its callee can be. Trailed, so a speculation's applications
-  // go with it.
+  // declaration its callee can be. A column of the version, so a
+  // speculation's applications go with it.
   graph_apply_note(decl: Int, call: Int)
   // What the judgment learned about a declaration, at its handle: its scheme,
-  // the reason it was bound and its kind. Trailed — a speculative round's
-  // publication goes with its rollback, and the next round publishes again.
+  // the reason it was bound and its kind. A column of the version — a
+  // speculative round's publication goes with its restore, and the next
+  // round publishes again.
   graph_publish(decl: Int, scheme: Binding, reason: Reason, kind: SchemeKind)
   // The decls column — the refs column's sibling at decl granularity:
   // the FnStmt judgment notes its own node handle; the read face is
-  // graph_decls_at (the oracle queue's seed). Judgment rounds re-note,
-  // so readers dedup by handle.
+  // graph_decls_at (the oracle queue's seed). The handler's own, outside
+  // the version: judgment rounds re-note, so readers dedup by handle.
   graph_decl_note(Int)
   // The value-holes column's writes: lower's authored-hole arm NOTES the
   // surviving hole (value-position is a lowering decision — a consumed
@@ -3732,8 +3637,8 @@ effect GraphWrite {
   // POSITION rather than handle because the transport re-parses the
   // module after the splice and the accepted value's node is minted
   // anew (Hβ.synth.accepted-edge-keyed-by-position). An outermost-
-  // boundary write, never speculative: the arm traps on a non-empty
-  // checkpoint stack rather than store a fact a rollback would lose.
+  // boundary write, never speculative: the arm traps while a version is
+  // open rather than store a fact outside the version a restore reverts to.
   graph_accept_note(String, Span, String, Reason)
   // THE WRITE GUARD'S REFUSALS, STORED BY THE ARM AND REPORTED BY THE BODY.
   // graph_bind's occurs belt cannot report where it stands: a diagnostic
@@ -3758,42 +3663,41 @@ effect GraphWrite {
   graph_hole_unnote(Int)
   // THE ROW NOTE (C5): what a construct charges, noted on the node that
   // charges it — the frame join's per-node twin, written by the same
-  // writer (inf_add_row_at) in the same move, trailed as MRowNote so a
-  // speculative judgment's notes roll back with its bindings. A subtree's
-  // row is then a READ over structure (row_of_subtree, graph.mn), which is
-  // what the e-graph's purity gate needs and what the frame-keyed row
-  // could never give a sub-expression.
+  // writer (inf_add_row_at) in the same move, a column of the version so a
+  // speculative judgment's notes go with its bindings. A subtree's row is
+  // then a READ over structure (row_of_subtree, graph.mn), which is what
+  // the e-graph's purity gate needs and what the frame-keyed row could
+  // never give a sub-expression.
   graph_row_note(Int, EffRow)
   // THE BINDER FACT's write (P0): a declared parameter's precondition and
   // guard, noted where the parameter is declared and again where the
   // judgment learns or charges it; a constructor field's binder, noted
-  // where its pattern binds — trailed as MBinderFact, so a speculative
-  // judgment's notes roll back with it; the newest note is the fact.
+  // where its pattern binds — a column of the version, so a speculative
+  // judgment's notes go with it; the newest note is the fact.
   graph_binder_note(Int, BinderFact)
   // the parse made the node of a destructuring `let`
   graph_let_born_note(Int)
   // a declaration's store claim, written where its judgment ends and again
-  // where its binding group settles — trailed as MStoreClaim, so a
-  // speculative judgment's claims roll back with it
+  // where its binding group settles — a column of the version, so a
+  // speculative judgment's claims go with it
   graph_store_claim_note(Int, StoreClaim)
   // THE LATE PAYERS' write (P0): a call reached a guard cell its
   // declaration has not written yet, so the frame owes whatever the exit
-  // writes there. Keyed by the open cell, the payer's row cell the value;
-  // trailed as MOweLate, so a rolled-back judgment's payments go with it.
+  // writes there. Keyed by the open cell, the payer's row cell the value; a
+  // column of the version, so a restored judgment's payments go with it.
   graph_owe_late(Int, Int)
   // THE CLAIMS' write (P0): a refinement claimed of the value at a node,
-  // noted by infer.mn's claim_refinement where the claim is raised. Trailed as
-  // MClaimNote, so a rolled-back judgment's claims go with it.
+  // noted by infer.mn's claim_refinement where the claim is raised. A column
+  // of the version, so a restored judgment's claims go with it.
   graph_claim_note(Int, Ty)
   // The install-shape column's write: the ~> install's lowering notes the
-  // shape at the install node's handle, an in-place cell store, non-trailed
-  // because lowering runs after the judgment.
+  // shape at the install node's handle; lowering runs after the judgment.
   graph_install_note(Int, InstallShape)
   // The call-product column's write: the judgment notes each call's
   // positional product at the call node — the ONE reader of a callee's
   // parameters — with the open slots' cells and the shape it decided
-  // (applied, or suspended as a partial), trailed as MSetProduct so a
-  // rolled-back judgment leaves no product at a reused handle.
+  // (applied, or suspended as a partial), a column of the version so a
+  // restored judgment leaves no product at a reused handle.
   graph_product_note(Int, [Node], [Int], CallShape)
   // The emittable-fn enumeration's write (the no-mint resolution):
   // each of lower's seven LFn construction sites notes (kind, origin
@@ -4872,30 +4776,6 @@ fn diag_message(d) with !Mutate = match d {
   EHandlerChainShape(why, _) => why,
 }
 
-// The graph's mutation event — performed by graph_handler at the OUTERMOST
-// commit boundary so an incremental projection re-projects only on real
-// graph state changes. Speculative writes between graph_push_checkpoint /
-// graph_rollback never reach this op — Mentl's own oracle would otherwise
-// subscribe to her speculations and recursively explore forever. Every
-// handler in the tree discards its arguments today, so the delta is
-// write-only (Hβ.graph.mutation-delta-is-write-only).
-//
-// This effect carried the name `Mutate` and two meanings with it: the
-// ownership marker every program may negate (`with !Mutate` — Vale-style
-// region-freeze, lib/memory.mn's `effect Mutate` since 2026-10-12, where a
-// user's row can reach it) and this compiler-private event. One word, one
-// effect: the event is the graph's.
-//
-// epoch — graph epoch at which the mutation committed. The epoch IS the
-// one cache key: the IC projection memoizes by it, re-deriving the queue
-// only when the epoch bumps (PLAN §2: read live is the meaning, cached
-// by epoch is the mechanism).
-// Mutation — MSetNode | MSetRow | MFreshNode. The event carries enough for
-// the projection to re-derive over the changed graph.
-effect GraphMutated {
-  graph_mutated(Int, Mutation)
-}
-
 // effect LookupTy lives in graph.mn beside lookup_ty_graph — the
 // effect-beside-handler law at the projection's own home.
 //
@@ -5638,16 +5518,10 @@ fn place_positional(args, cur, slot, slots, n) = if cur >= len(args) {
   }
 }
 
-// A slot word's presence — the Option-of-handle niche read at the repr
-// altitude (0 = absent, a node's handle-word = present; §5.U: a handle IS a
-// word). Substrate-table-typed `a -> Bool` so the test never pins the slot's
-// element type onto Int (the census's Node-vs-Int at collect_slot_nodes);
-// the raw body compares the word. The full niche repr — construction and
-// match projection — is Hβ.emit.option-niche-repr; this is its read half,
-// the one piece the arg-slot machinery needs.
-fn slot_present(w) with Pure = w != 0
-
-// The first slot at or after `from` still absent; n when none remain.
+// The first slot at or after `from` still absent; n when none remain. The
+// presence test is lib/imap.mn's `slot_present`, the Option-of-handle niche
+// read at the repr altitude; the full niche repr — construction and match
+// projection — is Hβ.emit.option-niche-repr.
 fn next_free_slot(slots, from, n) = if from >= n {
   n
 } else if slot_present(list_index(slots, from)) {

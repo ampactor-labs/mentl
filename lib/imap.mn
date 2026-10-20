@@ -1,15 +1,19 @@
-// imap — the ONE indexed-map primitive (Hβ.runtime.indexed-map-primitive, §5.O).
+// imap — the indexed maps (Hβ.runtime.indexed-map-primitive, §5.O).
 //
-// THE KEY IS A WORD. The wmap family is the primitive; everything else is a
-// projection of it through a key→word function. That is not a refactor of
+// THE KEY IS A WORD. Two shapes live here and nowhere else. The wmap family
+// is a bucketed map: a bucket array, a push, a scan down the bucket, keyed by
+// a word that a hash of the key makes. The pt family is a COLUMN: a cell per
+// handle, reached by the handle's own digits in four loads, versioned so the
+// graph can be taken as a value in O(1). Everything else is a projection of
+// one of the two through a key→word function. That is not a refactor of
 // taste: a map keyed by anything else re-derives a word at every read, which is
 // §5.O's own law ("a name is a HANDLE ... every table handle-keyed, never a
 // name scan") read at the container.
 //
-// One shape, one home. A bucket array, a prepend, a scan — what varies between
-// uses is only how a key becomes a bucket word and how two keys compare, and
-// both of those are projections rather than primitives. A second copy of this
-// shape elsewhere in the tree is this law violated, however it is spelled.
+// What varies between uses of a bucketed map is only how a key becomes a
+// bucket word and how two keys compare, and both of those are projections
+// rather than primitives. A second copy of either shape elsewhere in the tree
+// is this law violated, however it is spelled.
 //
 // The smap family is the String projection: str_hash makes the bucket word, and
 // the bucket keeps the name because two names can share a hash. It is NOT a
@@ -179,4 +183,337 @@ fn smap_bucket_collect(ref bucket, name: String, i, acc) = if i >= len(bucket) {
   match list_index(bucket, i) {
     (bn, val) => smap_bucket_collect(bucket, name, i + 1, if bn == name { push(acc, val) } else { acc }),
   }
+}
+
+// ─── pt: the persistent column — one cell per handle, versioned ──────────
+// A 64-way trie four levels deep: the root is a flat table that grows with
+// the mint (a root slot spans 64³ handles), the three levels under it are
+// pages of 64, and a leaf's slots are the cells. A read is four loads along
+// the key's digits. A write lands in place when the node it reaches was
+// allocated after the version's MARK and copies the node's one page into its
+// parent's slot otherwise, so a version is taken by remembering the roots
+// and the heap line — O(1) — a write after it costs the path it touches, and
+// the version reads as it was for as long as anything holds its roots.
+//
+// The ownership question is asked of memory, never of a tag: a node at or
+// past the mark was allocated since the version was taken, and nothing older
+// can reach it, so it is the current version's own; a node below the mark
+// may be shared with the version and is copied before it is written. The
+// marks stack with the versions, so a version kept or dropped hands its mark
+// back and the nodes made under it are written in place again.
+//
+// A node is a list of nodes and a leaf a list of cells, never a raw block,
+// because an arena's exit moves a published root through its type and
+// follows only what the type names (lib/arena.mn). A virgin child or cell is
+// the zero word, the allocator's contract: a read past one answers the zero
+// word of the column's own type, which `slot_present` tells from a value, and
+// so does a key beyond the root.
+let pt_absent_cell = make_list(1)
+
+fn pt_absent() = list_index(pt_absent_cell, 0)
+
+// A slot word's presence — the Option-of-handle niche read at the repr
+// altitude (0 = absent, a value's word = present; a handle IS a word). The
+// judgment types it `a -> Bool` (its face in the substrate table), so the
+// test never pins the slot's element type onto Int; the body compares the
+// word.
+fn slot_present(w) with Pure = w != 0
+
+fn pt_empty() = []
+
+// A key's root slot, then its three digits under it.
+fn pt_root_slot(k: Int) = i32_shr_u(k, 18)
+
+fn pt_digit2(k: Int) = i32_and(i32_shr_u(k, 12), 63)
+
+fn pt_digit1(k: Int) = i32_and(i32_shr_u(k, 6), 63)
+
+fn pt_digit0(k: Int) = i32_and(k, 63)
+
+// The cell at a key: four loads, each testing the node it reached.
+fn pt_get(ref root, k: Int) = {
+  let i3 = pt_root_slot(k)
+  if i3 >= len(root) {
+    pt_absent()
+  } else {
+    let n3 = list_index(root, i3)
+    if slot_present(n3) {
+      let n2 = list_index(n3, pt_digit2(k))
+      if slot_present(n2) {
+        let n1 = list_index(n2, pt_digit1(k))
+        if slot_present(n1) { list_index(n1, pt_digit0(k)) } else { pt_absent() }
+      } else {
+        pt_absent()
+      }
+    } else {
+      pt_absent()
+    }
+  }
+}
+
+// The column with the cell at a key written: the root as it stands when it
+// and the path were the version's own, else the copied root.
+fn pt_set(root, mark, k: Int, v) = {
+  let i3 = pt_root_slot(k)
+  let r = pt_root_owned(root, mark, i3)
+  let n1 =
+    pt_child_owned(pt_child_owned(pt_child_owned(r, mark, i3), mark, pt_digit2(k)), mark, pt_digit1(k))
+  list_set(n1, pt_digit0(k), v)
+  r
+}
+
+// At or past the mark: allocated since the version was taken, so the current
+// version's own. The mark travels as the line's number — an address held in
+// a version or a handler's state would be a value no arena's exit can read,
+// and the exit would keep its region whole for it — and is read back as the
+// address it names where the two are compared, by magnitude.
+fn pt_owned(node, mark) = pt_at_or_past(addr(node), word_addr(mark))
+
+fn pt_at_or_past(a: Addr, mark: Addr) = a >= mark
+
+// The root, writable: grown to hold the slot (a grown table is fresh), kept
+// when it is the version's own, copied otherwise.
+fn pt_root_owned(root, mark, i3) = if i3 >= len(root) {
+  list_extend_to(root, i3 + 1)
+} else if pt_owned(root, mark) {
+  root
+} else {
+  pt_dup(root)
+}
+
+// A child, writable: minted where none was, kept when it is the version's
+// own, copied into the parent's slot otherwise. The parent is writable
+// already, since every write descends from pt_root_owned.
+fn pt_child_owned(parent, mark, i) = {
+  let c = list_index(parent, i)
+  if !slot_present(c) {
+    let fresh = make_list(64)
+    list_set(parent, i, fresh)
+    fresh
+  } else if pt_owned(c, mark) {
+    c
+  } else {
+    let copy = pt_dup(c)
+    list_set(parent, i, copy)
+    copy
+  }
+}
+
+// A flat copy: the same elements in a fresh list, so a store into either
+// leaves the other as it was.
+fn pt_dup(xs) = list_copy_into(xs, make_list(len(xs)), 0, len(xs))
+
+// The multi-map face: a cell holds every value entered under its key, in
+// the order entered, the newest last; a key nothing entered answers the one
+// shared empty list, so a miss allocates nothing.
+fn pt_all(ref root, k: Int) = {
+  let c = pt_get(root, k)
+  if slot_present(c) { c } else { wmap_none }
+}
+
+fn pt_push(root, mark, k: Int, v) = pt_set(root, mark, k, push(pt_all(root, k), v))
+
+fn pt_newest(ref root, k: Int) = {
+  let c = pt_all(root, k)
+  if len(c) == 0 { None } else { Some(last(c)) }
+}
+
+// The keys below `below` whose cells differ between two versions of one
+// column, ascending. A node the two versions share is skipped whole, so the
+// walk costs the paths that moved; two cells differ when they are not the
+// same object.
+fn pt_changed(ref a, ref b, below) = fold(
+  [],
+  pt_changed_root(a, b, below, ??, ??),
+  range(0, if len(a) > len(b) { len(a) } else { len(b) })
+)
+
+fn pt_changed_root(ref a, ref b, below, acc, i) = if i32_shl(i, 18) >= below {
+  acc
+} else {
+  pt_changed3(pt_slot(a, i), pt_slot(b, i), below, i32_shl(i, 18), acc)
+}
+
+// The slot at i, absent past the table's end.
+fn pt_slot(ref t, i) = if i < len(t) { list_index(t, i) } else { pt_absent() }
+
+// The digits of one level, walked where two nodes differ.
+let pt_digits = range(0, 64)
+
+fn pt_changed3(na, nb, below, base, acc) = if pt_same(na, nb) {
+  acc
+} else {
+  fold(acc, pt_changed3_at(na, nb, below, base, ??, ??), pt_digits)
+}
+
+fn pt_changed3_at(na, nb, below, base, acc, i) = if base + i32_shl(i, 12) >= below {
+  acc
+} else {
+  pt_changed2(pt_child(na, i), pt_child(nb, i), below, base + i32_shl(i, 12), acc)
+}
+
+fn pt_changed2(na, nb, below, base, acc) = if pt_same(na, nb) {
+  acc
+} else {
+  fold(acc, pt_changed2_at(na, nb, below, base, ??, ??), pt_digits)
+}
+
+fn pt_changed2_at(na, nb, below, base, acc, i) = if base + i32_shl(i, 6) >= below {
+  acc
+} else {
+  pt_changed_leaf(pt_child(na, i), pt_child(nb, i), below, base + i32_shl(i, 6), acc)
+}
+
+fn pt_changed_leaf(la, lb, below, base, acc) = if pt_same(la, lb) {
+  acc
+} else {
+  fold(acc, pt_changed_cell(la, lb, below, base, ??, ??), pt_digits)
+}
+
+fn pt_changed_cell(la, lb, below, base, acc, i) = if base + i >= below || pt_same(pt_child(la, i), pt_child(lb, i)) {
+  acc
+} else {
+  push(acc, base + i)
+}
+
+// A child of a node, the zero word where the node is absent.
+fn pt_child(n, i) = if slot_present(n) { list_index(n, i) } else { pt_absent() }
+
+// Whether two values are one object: identity by address, compared as the
+// addresses they are.
+fn pt_same(x, y) = pt_same_addr(addr(x), addr(y))
+
+fn pt_same_addr(a: Addr, b: Addr) = a == b
+
+// Keep, in every cell, the values `keep` holds — in place: the purge runs at
+// the outermost boundary, where every node is the version's own, and a cell
+// with nothing to drop stays the object it was.
+//
+// THE STORES STAND IN THE FUNCTION THAT OWNS THE TYPE. A store into memory
+// older than an open arena is journaled with the type the store knows, and
+// the exit moves the value through that type (lib/arena.mn); a generic
+// function's twin knows its variable's type only where the move of that
+// variable reaches it — a direct call carries it, a partial application
+// handed to `each` and a function handed as a parameter do not, and a
+// store made through either is emitted where the type is unknown, so the
+// exit keeps the region whole for it (measured 2026-10-20: 4,711 of the
+// self-compile's 33,943 exits kept, 728 MB of line). So each walk below
+// makes its stores in its own lambdas and reaches the level under it by a
+// direct call, never by a partial or a parameter.
+fn pt_retain(root, keep) = {
+  root |> each({
+    n3 => if slot_present(n3) {
+      n3 |> each({
+        n2 => if slot_present(n2) {
+          n2 |> each({
+            n1 => if slot_present(n1) {
+              pt_digits |> each({
+                i => {
+                  let c = list_index(n1, i)
+                  if slot_present(c) && !all(keep, c) {
+                    list_set(n1, i, filter(keep, c))
+                    ()
+                  } else {
+                    ()
+                  }
+                },
+              })
+            } else {
+              ()
+            },
+          })
+        } else {
+          ()
+        },
+      })
+    } else {
+      ()
+    },
+  })
+  root
+}
+
+// A kept version ADOPTED back into the pages it replaced. A write under a
+// version copies the page it touches, and the copy is what the version's
+// successor reads; dropping the version would leave the page it replaced
+// where it lies, in memory older than any extent that could reclaim it, one
+// orphan per page per kept round. So the keep walks the two columns where
+// they differ: a replaced page at or past the enclosing version's mark is
+// that version's own, and it takes the kept words in place, so the copy
+// dies with the extent that made it; a replaced page below the mark is
+// shared with an enclosing version and the copy stands, its children
+// adopted in turn, for that version's keep to settle. A slot is written
+// only where the adopted child is not the one it holds, so a shared page
+// costs no journal entry. O(what the kept version wrote).
+fn pt_adopt(cur, old, mark) = if pt_same(cur, old) {
+  cur
+} else {
+  let into = if len(cur) == len(old) && pt_owned(old, mark) { old } else { cur }
+  range(0, len(old)) |> each({
+    i => {
+      let a = pt_adopt3(list_index(cur, i), list_index(old, i), mark)
+      if pt_same(a, list_index(into, i)) {
+        ()
+      } else {
+        list_set(into, i, a)
+        ()
+      }
+    },
+  })
+  into
+}
+
+fn pt_adopt3(c, o, mark) = if pt_same(c, o) || !slot_present(o) || !slot_present(c) {
+  c
+} else {
+  let into = if pt_owned(o, mark) { o } else { c }
+  pt_digits |> each({
+    i => {
+      let a = pt_adopt2(list_index(c, i), list_index(o, i), mark)
+      if pt_same(a, list_index(into, i)) {
+        ()
+      } else {
+        list_set(into, i, a)
+        ()
+      }
+    },
+  })
+  into
+}
+
+fn pt_adopt2(c, o, mark) = if pt_same(c, o) || !slot_present(o) || !slot_present(c) {
+  c
+} else {
+  let into = if pt_owned(o, mark) { o } else { c }
+  pt_digits |> each({
+    i => {
+      let a = pt_adopt_leaf(list_index(c, i), list_index(o, i), mark)
+      if pt_same(a, list_index(into, i)) {
+        ()
+      } else {
+        list_set(into, i, a)
+        ()
+      }
+    },
+  })
+  into
+}
+
+fn pt_adopt_leaf(c, o, mark) = if pt_same(c, o) || !slot_present(o) || !slot_present(c) {
+  c
+} else if pt_owned(o, mark) {
+  pt_digits |> each({
+    i => {
+      let v = list_index(c, i)
+      if pt_same(v, list_index(o, i)) {
+        ()
+      } else {
+        list_set(o, i, v)
+        ()
+      }
+    },
+  })
+  o
+} else {
+  c
 }

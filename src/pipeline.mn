@@ -83,8 +83,6 @@ import verify
 //     the graph, so graph_handler sits outer to it.
 //   env_handler before graph_handler — env arms read the graph outer
 //     to them.
-//   graph_handler before mutate_sink — graph writes perform
-//     graph_mutated, absorbed outward.
 //   diagnostics_handler outer — graph_bind's occurs-check report
 //     fires FROM a graph arm (graph.mn); the outer placement counts it
 //     independent of dispatch tier.
@@ -131,7 +129,7 @@ import verify
 // The bank keeps every report the judgment makes as the fact it carried, so
 // any reader inside the judgment's world (the reports facet, the Lens,
 // tighten, a battery's refuse contract) reads what the judgment said.
-handler infer_context = affine_ledger ~> region_tracker ~> verify_ledger ~> lookup_ty_graph ~> env_handler(make_list(0), 0, env_index_new()) ~> no_state_walked ~> graph_handler(root_seed()) ~> mutate_sink ~> diag_bank ~> diagnostics_handler ~> intern_table
+handler infer_context = affine_ledger ~> region_tracker ~> verify_ledger ~> lookup_ty_graph ~> env_handler(make_list(0), 0, env_index_new()) ~> no_state_walked ~> graph_handler(root_version()) ~> diag_bank ~> diagnostics_handler ~> intern_table
 
 // The LOWERING/EMIT stack's one home — infer_context's peer on the far side
 // of the cursor. Every route that lowers installs exactly this: string_table

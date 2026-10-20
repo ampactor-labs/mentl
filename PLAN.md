@@ -101,7 +101,7 @@ kernel; the oracle is incremental computation plus one cached value; even
   proves the absence of an outside.
 - **Closed over proposers** — any proposer (a script, a library's tool, a
   model) plugs in as a `Synth` handler whose candidates must survive
-  checkpoint → infer → Verify → rollback before the person at the keyboard
+  version → infer → Verify → restore before the person at the keyboard
   sees one. A stronger proposer strictly strengthens the medium and can never
   surpass it. The unit of conversation with the medium is the **constraint**
   (lossless, monotone, compounding), not the token (lossy, decaying). **Proof
@@ -187,18 +187,19 @@ reductive one):
   record** makes *handler = state = closure = evidence = continuation* ONE shape,
   so a continuation is a contiguous record and **durable execution falls out of
   the memory model** (`persist = memcpy`).
-- **Multi-shot = TIME.** Fork (trail checkpoint), cache (the cursor memoizes live
-  reads — "read live" is the semantics, "cached" the mechanism), persist
-  (continuation to disk). Search, the cached cursor and durable execution are ONE
-  primitive distinguished by which handler catches the resume (§4④).
+- **Multi-shot = TIME.** Fork (a version of the graph, taken in O(1)), cache
+  (the cursor memoizes live reads — "read live" is the semantics, "cached" the
+  mechanism), persist (continuation to disk). Search, the cached cursor and
+  durable execution are ONE primitive distinguished by which handler catches
+  the resume (§4④).
 - **Threading = SPACE.** Parallel cursors read the shared image and fork to
-  per-thread trails; compile, IDE, prover and oracle search are the same graph
-  read at many positions.
+  per-thread versions; compile, IDE, prover and oracle search are the same
+  graph read at many positions.
 
 The cursor projected through {substrate, time, space} IS the subsystem table;
 **the oracle FUSES all three** — N forked cursors on N threads over one shared
-graph with per-fork rollback. The trail, the threads and continuation
-reification are built; their fusion is §11's frontier.
+graph, each fork a version of its own. The version, the threads and
+continuation reification are built; their fusion is §11's frontier.
 
 **The eight arms** (project all eight at every cursor before a line): **Graph?**
 (handle/edge/Reason) · **Handler?** (which projects this, with what resume
@@ -214,9 +215,12 @@ cardinality) · **Verb?** (`\|> <\| >< ~> <~`) · **Row?** (`+ - & ! Pure`) ·
 Each layer's shape is forced by the one below; a non-ultimate fundamental poisons
 everything above it.
 
-- **L0 · The graph.** Nodes and typed edges, live, flat-array O(1) chase,
-  epoch-versioned, trail-backed for checkpoint and rollback. *Only inference
-  writes.*
+- **L0 · The graph.** Nodes and typed edges, live, every fact a column keyed by
+  the handle itself (a four-level trie: an O(1) chase), and the graph a VALUE:
+  a version is taken in O(1) by remembering the column roots and marking the
+  heap line, every write after it copies the one page it touches, and a
+  speculation restores or keeps the version in O(1) whatever it wrote. *Only
+  inference writes.*
 - **L1 · The value ontology** — **five node-kinds**: *word*, *sequence*,
   *product* (record; tuple = positional product), *sum*, *function*
   (closure-with-evidence). Everything else is a **view** (§4①).
@@ -316,8 +320,8 @@ full. The `.mn` answers only to "what is the ultimate form?".
    the e-graph — each a move *within* the medium.
 
 **The felt endpoint.** A `??` is a typed CONSTRAINT: the cursor forks a finite,
-latency-budgeted set of candidates, each run checkpoint → infer → Verify →
-rollback on its own trail, and only proven survivors surface. The ranker reads
+latency-budgeted set of candidates, each run version → infer → Verify →
+restore against its own version, and only proven survivors surface. The ranker reads
 local intent (Reason chains, proximity, in-scope vocabulary); the tie-break
 TEACHES. Verify commits to a decidable fragment or emits honest `V_Pending`
 debt — never a silent assume-true.
@@ -409,8 +413,8 @@ every extent reclaims at its exit what its publication does not reach (built);
   Handler = state = closure: one record, `[fn_ptr][nstate][state…][arms]`;
   dispatch reads the install chain.
 
-**The wheel's modules** (`src/`): `graph` (the graph: spine columns, union-find,
-trail, checkpoints) · `types` (the metaschema: `Ty`, `Reason`, `NodeBody`,
+**The wheel's modules** (`src/`): `graph` (the graph: the versioned columns,
+union-find, the forking handlers) · `types` (the metaschema: `Ty`, `Reason`, `NodeBody`,
 `DiagKind`, the compiler's effects) · `effects` (the row algebra) · `lexer`,
 `parser` (the text boundary) · `infer` (the judgment, the one writer) · `env`
 (the scope) · `intern` · `own` (ownership grades) · `verify` (refinements, the
@@ -525,11 +529,12 @@ landing that closes it. A gate that did not run is UNKNOWN, never green.
   stands, whatever memory it writes, so `!Mutate` and the race rule refuse some
   programs that write only fresh memory through a callback (§11.18).
 - **The judgment is one pass; schemes are still values** (§11.18): a candidate
-  is judged inside a checkpoint on the one live graph, and a declaration's type
+  is judged against a version of the one live graph, and a declaration's type
   is frozen at its exit.
-- **Incrementality is not a cached cursor** (§11.18): `graph_mutated` carries
-  the handle and its prior value at every write, and every handler discards
-  both. An edit's cone has no cutoff: every declaration whose judgment read a
+- **Incrementality is not a cached cursor** (§11.18): the delta between two
+  versions of the graph costs what moved (`graph_written_since` reads it for
+  the tie-break), and nothing re-projects on it. An edit's cone has no
+  cutoff: every declaration whose judgment read a
   rewritten one is judged again, transitively, whether or not what the
   rewritten one publishes moved, so an edit to `chain_spelling`, which a
   third of the wheel's functions read transitively, judges 1,767
@@ -538,26 +543,23 @@ landing that closes it. A gate that did not run is UNKNOWN, never green.
   start restores an image and judges the edit's cone over it.
 - **The resident Space keeps its graph for a session's life**; a session derives
   once per open, and a fresh process derives cold (§11.18).
-- **Speculation is a choice, and a fork is an instance of the graph
-  handler, one fork at a time**: every judgment the medium tries and may
-  undo performs `choose` (lib/choice.mn). The handler that judges every
-  option installs a graph handler instance around each resume, seeded from
-  the instance that answers it (the band table and the fact columns copied
-  shallow, the mint in a band of its own, a page column outside its bands
-  copied the first time the fork writes it), with the judgment's chain — the
-  ledgers, the type lookup, an env view — re-installed above it so an arm's
-  perform reaches the fork's graph and never the root's; the parent is
-  untouched by construction and nothing is restored when the install ends,
-  so the ??-fan's candidates and teach's locks and contracts undo by the
-  install's end. The handler that keeps the first held round
-  still brackets the Mycroft rounds every unsigned declaration's judgment
-  runs on the trail: a round mints a few hundred handles and writes as many
-  cells, and a fork opens a 786 KB band of its own and copies eleven bucket
-  tables, so the trail's undo, which costs the round's writes, is the
-  round's bracket. The forks run one after another and `next` is restored
-  at each exit, so two forks never run at once; forks on threads are the
-  fused oracle's next pin (§11). A continuation is captured at any
-  position, by a copy of its frame's lowered tail (§11.18).
+- **Speculation is a choice, and the graph is a value, one speculation at a
+  time**: every judgment the medium tries and may undo performs `choose`
+  (lib/choice.mn), and the forking handlers bracket each resumption with a
+  version of the graph (`graph_version`: the column roots, the mint, the span
+  log and the heap mark, O(1)). The writes that follow copy the pages they
+  touch and leave the version readable, so the handler that judges every
+  option restores it after each (`graph_restore`, O(1) whatever the option
+  wrote) and the handler that keeps the first held round drops it
+  (`graph_keep`). The ??-fan's candidates, teach's locks and contracts and
+  the Mycroft rounds of every unsigned declaration's judgment undo this way,
+  each under its own ledgers and an env view over the root's, which have no
+  version; a candidate's teaching is read before the restore as the cells on
+  which the graph and its version disagree. The options run one after
+  another and `next` is restored with the version, so two never run at
+  once; forks on threads are the fused oracle's one pin left (§11). A
+  continuation is captured at any position, by a copy of its frame's
+  lowered tail (§11.18).
 - **The compile is sequential by construction** (§11.16).
 - **The prose still asserts machinery that is not there**: decoration banners,
   coordinates in prose, ledes that are another comment's text. Each module's
@@ -705,47 +707,43 @@ a provenance diff, a search over live shared cells.
 runs, its design written here whole so a session starts from this paragraph
 and the artifact:
 
-- **The fused oracle** — a fork is an INSTANCE of the graph handler, never
-  a trail walked. `choose` (lib/choice.mn) is caught by `speculate` and
-  `first_held` (src/graph.mn). Landed 2026-10-20: the graph handler's config
-  is one seed record (`GraphSeed`, every state field named once); the root
-  installs the empty graph (`root_seed`) at the verb entries, and
-  `speculate` installs a fresh instance around each resume, seeded by the
-  instance that answers it (`graph_fork_seed`: the band table and the
-  handle-keyed columns copied shallow, the mint at the base of the first
-  band not yet open, an ownership table of its own), so the remainder's
-  every graph write lands in the fork's copies (`spine_own`), the parent is
-  untouched by construction, and when the install ends nothing is restored;
-  the spans column is never copied, since a span is written where its
-  handle is minted. An arm's perform resolves outward from its own install,
-  so every speculation's body runs under the judgment's chain above the
-  fork's graph instance — the ledgers, the type lookup and an env view over
-  the root's (`fork_judgment ~> env_handler(bb, bc, bi)`), the segment
-  bracket's chain and the poly round's and teach's alike. `first_held`
-  keeps the trail for the Mycroft rounds: a round mints
-  a few hundred handles and writes as many cells, and a fork opens a 786 KB
-  band and copies eleven bucket tables, so the trail's undo, which costs the
-  round's writes, is the round's bracket until a fork can mint in its
-  parent's band. The tie-break is computed: each survivor is sealed with
-  the context cells its judgment bound, read from the fork's write set
-  before the drop (`graph_written_since`), the first cell two survivors
-  bound differently is the question (`DivType` with the cell's own Reason,
-  `DivRow`), and survivors the e-graph extracts to one class are one
-  meaning shown once. The compiler is still emitted as a thread-free module
-  (a defined memory, a bump allocator, no spawn import), and that is the
-  one pin left. The compiler spawns: the schedule is installed over the judgment at
-  the verb entries — `parallel_compose` where the host answers a spawn,
+- **The fused oracle** — the graph is a VALUE, and a fork is a version of
+  it. `choose` (lib/choice.mn) is caught by `speculate` and `first_held`
+  (src/graph.mn). Landed 2026-10-20: every per-handle fact is a column
+  keyed by the handle itself (lib/imap.mn's persistent trie, four levels of
+  64 under a root that grows with the mint), the graph handler's state is a
+  `Version` — the column roots, the mint, the span log and the heap mark —
+  and a version is taken in O(1) (`graph_version`: the roots remembered,
+  the line marked). A write lands in place when the page it reaches was
+  allocated past the mark and copies that one page otherwise, so the
+  version stays readable, and a speculation ends by restoring it
+  (`graph_restore`) or dropping it (`graph_keep`), each O(1) whatever was
+  written: the trail, the checkpoint stack, the fork seed and the mutation
+  event are deleted, nothing is journaled, and the old value is read live
+  through the old root. Every speculation's body runs under its own
+  ledgers and an env view over the root's (`fork_judgment ~>
+  env_handler(bb, bc, bi)`), since those facts have no version. The
+  tie-break is computed: each survivor is sealed with the context cells its
+  judgment bound, read before the restore as the cells on which the graph
+  and its version disagree (`graph_written_since`, a comparison that skips
+  every page the two share), the first cell two survivors bound differently
+  is the question (`DivType` with the cell's own Reason, `DivRow`), and
+  survivors the e-graph extracts to one class are one meaning shown once.
+  The compiler is still emitted as a thread-free module (a defined memory,
+  a bump allocator, no spawn import), and that is the one pin left. The
+  compiler spawns: the schedule is installed over the judgment at the verb
+  entries — `parallel_compose` where the host answers a spawn,
   `sequential_compose` otherwise — and `speculate` fans its options under
-  it, each resumption in a graph instance of its own over the shared spine
-  (the install around a resume governing the remainder), its band keyed by
-  the choice site and the option's index, never by the open count, so the
-  handle an option mints is the same under any schedule; interning banded
-  the same way; a kept fork written into the frame below — its band table's
-  new pages, its columns' new entries, in first-write order — and the facts
-  replayed in options order; the race rule accepts exactly this shape and
-  refuses a branch reaching the root's handler, which is its proof; the
+  it, each resumption a graph handler instance of its own seeded with the
+  version (the install around a resume governing the remainder), its mint
+  in a band keyed by the choice site and the option's index, never by the
+  open count, so the handle an option mints is the same under any schedule;
+  interning banded the same way; a kept fork's version adopted into the
+  parent — the pages past its mark the parent's own to write — and the
+  facts replayed in options order; the race rule accepts exactly this shape
+  and refuses a branch reaching the root's handler, which is its proof; the
   `mentl` shim and the page's worker instantiate the spawning module
-  (`Hβ.oracle.forks-on-threads`, `Hβ.oracle.fork-is-an-overlay`). Gates: m3
+  (`Hβ.oracle.forks-on-threads`). Gates: m3
   under `sequential_compose` byte-identical to m3 under `parallel_compose`
   (§11.16's statement made real), the ??-fan's latency falling with the
   cores, every battery green at every pin.
@@ -933,7 +931,7 @@ and the artifact:
    (`Hβ.effects.op-lives-where-its-behaviour-belongs`,
    `Hβ.memory.word-arithmetic-is-memory`). A `*Write` effect's ops write and a
    `*Read` effect's read, held by a census at zero read through the published
-   write fact: `graph_push_checkpoint` and `graph_attach_comment_ref` move into
+   write fact: `graph_version` and `graph_attach_comment_ref` move into
    GraphWrite. Word
    arithmetic leaves `Memory` in two pins at the bootstrap seam (registered as
    primitives the library shadows, then the library's declarations deleted), so a
@@ -990,7 +988,7 @@ and the artifact:
     contract at its hole, opened by the page as a project; lib/tutorial is
     deleted. The canvas paints the wheel's own tokens at their spans, the aspect
     strip and the ambient-world glyphs, obligation marks, the ownership trace,
-    fmt on idle and the trail as undo. The page runs what it compiles: the worker
+    fmt on idle and a version as undo. The page runs what it compiles: the worker
     instantiates the bytes `mentl asm` writes, and the fixpoint seal runs in the
     page. The Severance Map bands the module and declaration tree in three
     colours — provably absent, present, not yet provable — the third counted and
@@ -1017,8 +1015,8 @@ and the artifact:
     m3 under `Seq` byte-identical to m3 under `parallel_compose`.
 17. **Verify's own solver** (`Hβ.verify.the-solver-is-the-search`). The
     proposer's search is the solver: union-find and the e-graph as congruence
-    closure, the trail as the assignment stack, a fork as a case split, the first
-    divergence of two trails as conflict analysis. The fragment, in the order the
+    closure, the version stack as the assignment stack, a fork as a case split,
+    the first divergence of two versions as conflict analysis. The fragment, in the order the
     wheel's own debt names it: path narrowing (the guarded index reads and the
     divisions under a guard), overflow-aware intervals, linear arithmetic,
     equality from the e-graph. An external solver plugs in only as a proposer
@@ -1045,8 +1043,8 @@ and the artifact:
     arm's discipline grades the arm again (`arm_grade`: the op edge, the
     never-returning op's check, the continuation's discipline, the session's
     comparison), each re-running the arm's fixpoint and scanning its
-    declarations per reference; incrementality has the
-    trail as the delta's home (`Hβ.graph.mutation-delta-is-write-only`), the
+    declarations per reference; incrementality reads an edit's delta as two
+    versions compared (`Hβ.graph.delta-is-two-versions`), the
     session paying for what an edit moved (`Hβ.session.edit-pays-for-the-program`)
     and outliving its process (`Hβ.felt.accept-outlives-the-process`); persist
     resumes across machines (`Hβ.persist.cross-machine-resume`); and a function

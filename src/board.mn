@@ -210,8 +210,10 @@ fn board_bounds() = [
   // the formatter's index walk over an arm's argument names left when an
   // arm's arguments became parameters.
   // 168 -> 167 (2026-10-19): the emitter's name dedup tests membership in
-  // an smap, where it indexed a flat buffer under a count.
-  Bound({ceiling: 167, question: QVerifyDebt}),
+  // an smap, where it indexed a flat buffer under a count. 167 -> 164
+  // (2026-10-20): the trail's index walks left with the trail, the columns
+  // reading by handle through the persistent trie.
+  Bound({ceiling: 164, question: QVerifyDebt}),
   // The iteration costumes — a function that threads an incremented index
   // through its own self-call, the imperative loop in recursion's costume
   // (CLAUDE.md Anchor 6). 390 when the detector was born on 2026-07-30, 490
@@ -249,8 +251,10 @@ fn board_bounds() = [
   // became its own.
   // 401 -> 398 (2026-10-19): the judgment's group walk, the emit-fn index's
   // build and the string literals' membership scan became folds and an
-  // smap, the profile having ranked their index loops.
-  Bound({ceiling: 398, question: QCensus(CsIterationCostume)}),
+  // smap, the profile having ranked their index loops. 398 -> 397
+  // (2026-10-20): the trail's two revert walks left with the trail, and the
+  // persistent column's walks were written as folds over its digits.
+  Bound({ceiling: 397, question: QCensus(CsIterationCostume)}),
   // The ghosts — cells the parser minted and the judgment never bound
   // (`mentl query <entry> ghosts`): names, parameters, predicates and
   // annotations that are not yet cells inference writes, which is why `refs
@@ -295,15 +299,20 @@ fn board_bounds() = [
   // function the wheel stops calling leaves in the landing that stops
   // calling it.
   Bound({ceiling: 0, question: QUnreachable}),
-  // Speculation is a choice whose resumptions a bracket isolates: a
-  // checkpoint is pushed by the graph handler's own arm and by the arm of
-  // the forking handler that keeps the first held round, and by nothing
-  // else — the handler that judges every option forks the graph instead. A
-  // function that pushes one has bracketed a speculation by hand — the
-  // bracket the forking handlers hold once. Seen RED at 8 the day the five
-  // hand brackets became performs of `choose` (2026-10-16); 3 -> 2
-  // (2026-10-19) when the option-judging handler's bracket became the fork.
-  Bound({ceiling: 2, question: QRefsOf("graph_push_checkpoint")}),
+  // Speculation is a choice whose resumptions a bracket isolates, and the
+  // bracket opens by taking a version of the graph: the graph handler's own
+  // arm answers it, and the two forking handlers perform it — the one that
+  // judges every option and restores the version after each, and the one
+  // that keeps the first held round — and nothing else. A function that
+  // takes one has bracketed a speculation by hand, the bracket the forking
+  // handlers hold once. Seen RED at 8 the day the five hand brackets became
+  // performs of `choose` (2026-10-16), as the checkpoint push this op
+  // replaced (2026-10-20: the trail and the checkpoint stack deleted, a
+  // version taken in O(1)).
+  Bound({ceiling: 3, question: QRefsOf("graph_version")}),
+  // The checkpoint push the version replaced: no op of that name is left
+  // (2026-10-20), so nothing can reference it.
+  Bound({ceiling: 0, question: QRefsOf("graph_push_checkpoint")}),
   // ─ PROSE BY CLASS (SA-5, MOD-13). A comment is graph content, so what
   // SYNTAX §Comments says a comment is not is a census, never a review
   // finding. Each class falls as the module carrying it is touched; F strips
@@ -331,7 +340,9 @@ fn board_bounds() = [
   Bound({ceiling: 42, question: QCensus(CsProseClass(PcCommit))}),
   // Numbered citations of the archived spec corpus. 20 -> 19 (2026-10-15):
   // the banner over the pattern type left when a pattern became a node.
-  Bound({ceiling: 19, question: QCensus(CsProseClass(PcSpecCitation))}),
+  // 19 -> 18 (2026-10-20): the graph module's trail prose left with the
+  // trail.
+  Bound({ceiling: 18, question: QCensus(CsProseClass(PcSpecCitation))}),
   // Lifecycle prose — what was, where SYNTAX asks for what is. 39 -> 38
   // (2026-10-15): the note over the sugar's callees that dated when the
   // free-name walk began drawing them left with the by-spelling rows.
@@ -342,8 +353,10 @@ fn board_bounds() = [
   // stdin route left. 66 -> 65 (2026-10-16): the session's note over its
   // module-grain re-derivation left with it. 65 -> 63 the same day: the
   // notes on the label lattice left with the lattice. 63 -> 62 the same day:
-  // the arming history left with the list of armed classes.
-  Bound({ceiling: 62, question: QCensus(CsProseClass(PcArchaeology))}),
+  // the arming history left with the list of armed classes. 62 -> 59
+  // (2026-10-20): the graph module's notes over the trail, the checkpoint
+  // stack and the fork seed left with them.
+  Bound({ceiling: 59, question: QCensus(CsProseClass(PcArchaeology))}),
   // Decoration runs; the formatter's decoration strip takes this to zero
   // (PLAN §11, the project canonical). 267 -> 266 (2026-10-15): the pattern
   // type's banner left when a pattern became a node. 266 -> 265

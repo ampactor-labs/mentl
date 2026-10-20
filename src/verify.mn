@@ -686,8 +686,8 @@ fn node_const_at(handle, bind) = match graph_node_body(handle) {
 // `self` resolves through its binding — the value node, read as a ground
 // constant, or the constant itself; a bare claim has no `self`. Any OTHER
 // name is a constant exactly when it is a MODULE VALUE bound to one
-// (`module_let_const`): `let spine_slots = 16384` is a fact the graph holds
-// at the let's own node, and a division by it is total for that reason.
+// (`module_let_const`): `let lanes = 4` is a fact the graph holds at the
+// let's own node, and a division by it is total for that reason.
 fn resolve_self_operand(r, name: String, bind) = if name == "self" {
   match bind {
     NoSelf => None,
@@ -1137,9 +1137,9 @@ fn ctor_field_contract(c, cname: String, i) = match find(spec_named(cname), vari
 // A nominal record's contract at a field: the field's declared type, read
 // along the record's name to its declaration with the type's parameters
 // grounded at the contract's arguments, as a constructor's field is. So a
-// parameter declared `page: SpinePage` assumes at `page.spans` what the
-// declaration states there, where a structural `{spans: [ValidSpan]}` always
-// did; a name that declares no record states nothing.
+// parameter declared `v: Version` assumes at `v.spans` what the declaration
+// states there, where a structural record with that field always did; a
+// name that declares no record states nothing.
 fn named_field_contract(tname: String, args, name) = match published_at(env_resolve_type(tname)) {
   Some((binding, _, kind)) => match kind {
     RecordSchemeKind(fields) => match field_contract(fields, PartField(name)) {

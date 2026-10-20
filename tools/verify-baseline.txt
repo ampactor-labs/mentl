@@ -972,7 +972,9 @@ loop_scaffold_refs_max: 2
 # the literal is a real name-keyed runtime dependency. The env-protocol gate
 # exercises both the set-variable path and the refusal before main when one is
 # absent.
-desugar_vocabulary: 47
+# 2026-10-20 · 47 -> 48 · `slot_present` moved from types.mn to lib/imap.mn, beside
+# the column it tells a virgin cell for; infer.mn had quoted it as its face's key.
+desugar_vocabulary: 48
 
 # 2026-09-11 · 812 -> 811 · the gate's own DOWN arm, held. Bisected with the
 # gate's regex to pin 0bd0525e, and the retired marker is `ref strict` in
@@ -1449,15 +1451,13 @@ authored_ref_max: 543
 selfcompile_peak_kb_max: 421100
 # THE IMAGE'S OWN HIGH-WATER: the guest prints its bump line's peak on the
 # m3 leg's stderr (`arena: … line peak N KB`), a pure function of the
-# computation — two self-compiles of one source read the same KB while their
-# peak RSS differed — so it is the memory ratchet no machine moves, refused
-# on a breach by `read_line` (tools/march.sh) with no re-measure. A landing
-# that breaches it pays the cost down, never raises it. Held at 1% over the
-# landed form's 250,350 KB (2026-10-16): the flow walk grew the wheel and read
-# 266,311 KB, refused, until the free-name walk's unions became flat lists —
-# its membership test had flattened the whole set at every test, 187 MB of
-# garbage for a table of names.
-selfcompile_line_peak_kb_max: 252853
+# computation, so it is the memory ratchet no machine moves, refused on a
+# breach by `read_line` (tools/march.sh) with no re-measure; a landing that
+# breaches it pays the cost down. Held at 1% over the landed form's 246,116
+# KB (2026-10-20): the versioned columns read 269,910 KB, refused, and fell
+# when the emit plan's collection walks each ran in an arena — 62 MB of their
+# garbage had lived to the end of the plan.
+selfcompile_line_peak_kb_max: 248577
 # THE HEAD ROUND TRIP (render lane, 2026-10-06): module-level function heads,
 # formatter's and eye's, that do not come back as themselves through
 # parse∘render. Born at the measured 92 of 4,550 (the base renderer: 787 of
