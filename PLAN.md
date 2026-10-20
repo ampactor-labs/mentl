@@ -548,13 +548,14 @@ landing that closes it. A gate that did not run is UNKNOWN, never green.
   whatever the fork wrote — so the ??-fan's candidates and teach's locks and
   contracts undo by a drop. The handler that keeps the first held round
   still brackets the Mycroft rounds every unsigned declaration's judgment
-  runs on the trail: a round writes a few hundred cells into the band it
-  mints in, and a frame copies a 64 KB column at its first write there,
-  where the trail's undo costs the round's writes. The forks run one after
-  another and `next` is restored at each exit, so two forks never run at
-  once; forks on threads, each in a band keyed by its choice site and
-  option, are the fused oracle's second pin. A continuation is captured at
-  any position, by a copy of its frame's lowered tail (§11.18).
+  runs on the trail: a round mints a few hundred handles and writes as many
+  cells, and a fork opens a 786 KB band of its own and copies eleven bucket
+  tables, so the trail's undo, which costs the round's writes, is the
+  round's bracket. The forks run one after another and `next` is restored
+  at each exit, so two forks never run at once; the first cell two
+  survivors bind differently, and then forks on threads, are the fused
+  oracle's next pins (§11). A continuation is captured at any position, by
+  a copy of its frame's lowered tail (§11.18).
 - **The compile is sequential by construction** (§11.16).
 - **The prose still asserts machinery that is not there**: decoration banners,
   coordinates in prose, ledes that are another comment's text. Each module's
@@ -712,35 +713,35 @@ and the artifact:
   copied the first time the fork writes it (`spine_own`), the spans column
   never, since a span is written where its handle is minted;
   `graph_fork_exit` is the saved frame again, in one move, whatever the fork
-  wrote. `first_held` still brackets the Mycroft rounds on the trail and its
-  checkpoint stack, since a round writes a few hundred cells into the band
-  it mints in and a frame copies a 64 KB column at its first write there;
-  and the compiler is still emitted as a thread-free module (a defined
-  memory, a bump allocator, no spawn import). Three pins remain. (1) The
-  fork's band is keyed by the choice site and the option's index, never by
-  the open count, so the handle an option mints is the same under any
-  schedule; a kept fork is written into the frame below — its band table's
-  new pages, its columns' new entries, in first-write order — so
-  `first_held` keeps a round by a fork, and the trail, its checkpoint stack
-  and the revert walks delete with the last checkpoint
-  (`Hβ.oracle.fork-is-an-overlay`). (2) The compiler spawns: the
-  schedule is installed over the judgment at the verb entries —
-  `parallel_compose` where the host answers a spawn, `sequential_compose`
-  otherwise — and the forking handlers fan their options under it, each
-  resumption wrapped in its own graph instance and arena
-  (`(resume(o)) ~> graph_branch(band)`, the install around a resume governing
-  the remainder), interning banded the same way, the kept layer committed and
-  the facts replayed in options order; the race rule accepts exactly this
-  shape and refuses a branch reaching the root's handler, which is its proof;
-  the `mentl` shim and the page's worker instantiate the spawning module
-  (`Hβ.oracle.forks-on-threads`). (3) The first cell two survivors' layers
-  bind differently is the ONE constraint that separates them — the teaching
-  tie-break, computed — and survivors whose layers agree are one meaning
-  shown once with the cheaper form
-  (`Hβ.oracle.first-divergence-is-the-question`). Gates: m3 under
-  `sequential_compose` byte-identical to m3 under `parallel_compose` (§11.16's
-  statement made real), the self-compile's wall falling, every battery green
-  at every pin.
+  wrote. `first_held` keeps the trail for the Mycroft rounds: a round mints
+  a few hundred handles and writes as many cells, and a fork opens a 786 KB
+  band and copies eleven bucket tables, so the trail's undo, which costs the
+  round's writes, is the round's bracket until a fork can mint in its
+  parent's band. The compiler is still emitted as a thread-free module (a
+  defined memory, a bump allocator, no spawn import). Two pins remain, in
+  this order. (1) The first cell two survivors bind differently is the ONE
+  constraint that separates them — the teaching tie-break, computed from the
+  forks' own write sets (`graph_written_since`) and surfaced by the Teach
+  facet and the caret as the question — and survivors whose write sets agree
+  are one meaning shown once with the cheaper form
+  (`Hβ.oracle.first-divergence-is-the-question`); RED first on
+  tests/proposals fixtures whose contract names the separating constraint.
+  (2) The compiler spawns: the schedule is installed over the judgment at
+  the verb entries — `parallel_compose` where the host answers a spawn,
+  `sequential_compose` otherwise — and `speculate` fans its options under
+  it, each resumption in a graph instance of its own over the shared spine
+  (the install around a resume governing the remainder), its band keyed by
+  the choice site and the option's index, never by the open count, so the
+  handle an option mints is the same under any schedule; interning banded
+  the same way; a kept fork written into the frame below — its band table's
+  new pages, its columns' new entries, in first-write order — and the facts
+  replayed in options order; the race rule accepts exactly this shape and
+  refuses a branch reaching the root's handler, which is its proof; the
+  `mentl` shim and the page's worker instantiate the spawning module
+  (`Hβ.oracle.forks-on-threads`, `Hβ.oracle.fork-is-an-overlay`). Gates: m3
+  under `sequential_compose` byte-identical to m3 under `parallel_compose`
+  (§11.16's statement made real), the ??-fan's latency falling with the
+  cores, every battery green at every pin.
 - **The crown, modal** (`Hβ.effects.modal-world-index`): a row names
   EFFECTS — `EffName` carries a name and its arguments, a `RowEdge`'s mask
   names effects, `inf_mark_install_frame` drops the handler the install
