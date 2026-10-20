@@ -552,10 +552,9 @@ landing that closes it. A gate that did not run is UNKNOWN, never green.
   cells, and a fork opens a 786 KB band of its own and copies eleven bucket
   tables, so the trail's undo, which costs the round's writes, is the
   round's bracket. The forks run one after another and `next` is restored
-  at each exit, so two forks never run at once; the first cell two
-  survivors bind differently, and then forks on threads, are the fused
-  oracle's next pins (§11). A continuation is captured at any position, by
-  a copy of its frame's lowered tail (§11.18).
+  at each exit, so two forks never run at once; forks on threads are the
+  fused oracle's next pin (§11). A continuation is captured at any
+  position, by a copy of its frame's lowered tail (§11.18).
 - **The compile is sequential by construction** (§11.16).
 - **The prose still asserts machinery that is not there**: decoration banners,
   coordinates in prose, ledes that are another comment's text. Each module's
@@ -717,16 +716,14 @@ and the artifact:
   a few hundred handles and writes as many cells, and a fork opens a 786 KB
   band and copies eleven bucket tables, so the trail's undo, which costs the
   round's writes, is the round's bracket until a fork can mint in its
-  parent's band. The compiler is still emitted as a thread-free module (a
-  defined memory, a bump allocator, no spawn import). Two pins remain, in
-  this order. (1) The first cell two survivors bind differently is the ONE
-  constraint that separates them — the teaching tie-break, computed from the
-  forks' own write sets (`graph_written_since`) and surfaced by the Teach
-  facet and the caret as the question — and survivors whose write sets agree
-  are one meaning shown once with the cheaper form
-  (`Hβ.oracle.first-divergence-is-the-question`); RED first on
-  tests/proposals fixtures whose contract names the separating constraint.
-  (2) The compiler spawns: the schedule is installed over the judgment at
+  parent's band. The tie-break is computed: each survivor is sealed with
+  the context cells its judgment bound, read from the fork's write set
+  before the drop (`graph_written_since`), the first cell two survivors
+  bound differently is the question (`DivType` with the cell's own Reason,
+  `DivRow`), and survivors the e-graph extracts to one class are one
+  meaning shown once. The compiler is still emitted as a thread-free module
+  (a defined memory, a bump allocator, no spawn import), and that is the
+  one pin left. The compiler spawns: the schedule is installed over the judgment at
   the verb entries — `parallel_compose` where the host answers a spawn,
   `sequential_compose` otherwise — and `speculate` fans its options under
   it, each resumption in a graph instance of its own over the shared spine
