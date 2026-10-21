@@ -1499,7 +1499,9 @@ fn test_check_run(entry_module) =
 // two verdicts: `// expect: N` (the program compiles and its run answers
 // N) and `// expect: refuse E_Class` (the gate withholds the artifact and
 // the judgment reports the named class as an error, so the battery asserts
-// exactly what the medium asserts). This contract
+// exactly what the medium asserts); `// check: refuse E_Class` is the
+// judgment's half alone — the class banked with nothing lowered, so `mentl
+// check` refuses where the compile does. This contract
 // is the frontier bash's dissolution channel: a refusal leg becomes a
 // fixture the medium reads itself. `// unreachable: a b` is a facet's
 // contract: the fn declarations of the fixture's own layer that `main`
@@ -1516,6 +1518,7 @@ fn test_check_run(entry_module) =
 type Expect
   = ExpectRun(Int)
   | ExpectRefuse(String)
+  | ExpectCheckRefuse(String)
   | ExpectPropose(Int, Int, ProposeWant)
   | ExpectTeach(Int, TeachWant)
   | ExpectUnreachable(String)
@@ -1539,12 +1542,14 @@ type TeachWant = WantAdd(String) | WantAskOf(String) | WantNeed | WantNoTeach
 type ProposeWant = WantFill(String) | WantAsk(String) | WantNone
 
 // The micro's own expectation: first line `// expect: N`,
-// `// expect: refuse E_Class`, or `// propose L:C: fill <text>` |
-// `// propose L:C: ask <arm>` | `// propose L:C: none`. None = not a
-// battery member (skipped loudly by the manifest consumer).
+// `// expect: refuse E_Class`, `// check: refuse E_Class`, or `// propose
+// L:C: fill <text>` | `// propose L:C: ask <arm>` | `// propose L:C: none`.
+// None = not a battery member, said loudly by the battery.
 fn battery_expect(src) = {
   let prefix = "// expect: "
-  if byte_len(src) >= 11 && str_eq(str_slice(src, 0, 11), "// propose ") {
+  if byte_len(src) >= 17 && str_eq(str_slice(src, 0, 17), "// check: refuse ") {
+    Some(ExpectCheckRefuse(battery_expect_word(src, 17, 17)))
+  } else if byte_len(src) >= 11 && str_eq(str_slice(src, 0, 11), "// propose ") {
     battery_propose_expect(src)
   } else if byte_len(src) >= 9 && str_eq(str_slice(src, 0, 9), "// teach ") {
     battery_teach_expect(src)
@@ -2055,9 +2060,28 @@ fn battery_step(path: String) = {
           1
         },
       },
+      // The judgment's verdict alone: the named class among what it banked
+      // with nothing lowered, so `mentl check` refuses where the compile
+      // does.
+      ExpectCheckRefuse(cls) => match battery_check(path_to_module(path)) {
+        (nerr, classes) => if nerr > 0 && any((c) => c == cls, classes) {
+          print_string("CHECK {stem} {cls}\n")
+          0
+        } else {
+          print_string("FAILK {stem} wanted {cls} at check (errors={int_to_str(nerr)}; banked: {join(", ", classes)})\n")
+          1
+        },
+      },
     },
   }
 }
+
+// The judgment as `mentl check` runs it — the link judged, nothing lowered —
+// and what it banked read back as classes beside the error count.
+fn battery_check(module: String) = {
+  driver_link_scoped(module, Census)
+  (diag_errors(), banked_classes())
+} ~> wasi_filesystem ~> compile_context
 
 // assert_reporter — the Test effect's pass/fail reporter handler. Each
 // check(cond, msg) folds into (passed, failed); get_results projects the

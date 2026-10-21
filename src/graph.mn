@@ -1672,8 +1672,10 @@ fn arm_children(arm) = [arm.op] ++ arm.args ++ [arm.body]
 // recurrence and never evaluates its delay spec, which is judged in a frame
 // whose row is dropped — folding it made the caret say `Memory + Alloc` at
 // a cycle `!Alloc` accepts) or is already summarized (a `~>` tee's note IS
-// its body's row with the handler's absorption removed, so descending would
-// re-add what the install absorbs). A hole answers None:
+// its body's row with the handler's absorption removed, so descending into
+// the body would re-add what the install absorbs; the install's own
+// arguments run in the frame around it, before the install exists, so their
+// row joins the note). A hole answers None:
 // an authored absence performs whatever the position may, and a reader
 // asking "is this provably pure?" must hear no — except the slot a partial
 // application leaves open, which is the field the closure awaits: the call
@@ -1686,7 +1688,7 @@ fn row_of_subtree(h) with !Mutate = {
     NExpr(LambdaExpr(_, _)) => Some(here),
     NStmt(FnStmt(_, _, _, _, _)) => Some(here),
     NStmt(HandlerDeclStmt(_, _, _, _, _, _)) => Some(here),
-    NExpr(PipeExpr(PTee, _, _)) => Some(here),
+    NExpr(PipeExpr(PTee, _, hnd)) => row_of_child(Some(here), hnd),
     NExpr(PipeExpr(PFeedback, l, _)) => row_of_child(Some(here), l),
     body @ (
       NExpr(_)

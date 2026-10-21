@@ -95,9 +95,11 @@ MENTL_BOOT=$PWD/.build/probe/m2.wasm mentl test tests/micros
 
 - A failed build empties `.build/m2cache/key` and leaves `.build/probe` STALE:
   read `.build/m2cache/m2.err` before anything else.
-- `mentl check` reports no root-unhandled effect; `E_EffectUnhandled` surfaces
-  only when the m2 compile runs. A compiler effect nobody handles at the root
-  is found by building, never by checking.
+- `mentl check` refuses what the compile refuses at the executable root: an
+  effect reaching `main` or a module value's init with no handler is
+  `E_EffectUnhandled` at the end of the judgment, naming where it enters, so
+  a compiler effect nobody handles at the root is found by checking
+  `src/main.mn`, never only by building.
 - A fixture's `// expect: N` is an exit code below 126 (134 is a trap), or its
   refusal class on the first line. `tests/micros` through `mentl test`;
   `tests/crown` leak-*/sound-* by `E_EffectMismatch` count

@@ -243,7 +243,7 @@ wt_battery() {
   fi
   out=$(wt_run --dir . "$compiler" test "$dir" 2>/dev/null); rc=$?
   out=$(printf '%s\n' "$out" | wt_battery_host)
-  seen=$(printf '%s\n' "$out" | grep -cE '^(PASS|REFUSE|FAIL[A-Za-z()]*|NOEXPECT) ' || true)
+  seen=$(printf '%s\n' "$out" | grep -cE '^(PASS|REFUSE|CHECK|FAIL[A-Za-z()]*|NOEXPECT) ' || true)
   bad=$(printf '%s\n' "$out" | grep -cE '^(FAIL[A-Za-z()]*|NOEXPECT) ' || true)
   if [ "$rc" -eq 0 ] && [ "$bad" -eq 0 ] && [ "$seen" -eq "$want" ]; then
     echo "✓ battery $label: $seen/$want fixture contracts hold (compiled, run and judged by the medium)"

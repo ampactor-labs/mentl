@@ -1,0 +1,12 @@
+// check: refuse E_EffectUnhandled
+// A module value let's init runs before `main`, so what it performs is the
+// executable's: `seed` asks for something no handler answers, and the
+// judgment refuses at the let. On boot 7c3be609 `mentl check` judged this
+// program clean and exited 0; only the compile refused.
+effect Ask {
+  ask() -> Int
+}
+
+let seed = ask()
+
+fn main() = seed + 1

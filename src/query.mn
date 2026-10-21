@@ -2470,7 +2470,7 @@ fn value_where(name: String, scope: String) with !Mutate = match env_lookup(name
   None => binder_badges(name, scope),
   Some(entry) => match entry {
     (scheme, _, kind) => match kind {
-      EffectOpScheme(ename, _, _, disc) => QRWhere(
+      EffectOpScheme(ename, _, disc) => QRWhere(
         [
           "{name} : {ename} op — resume {op_resume_ty(scheme)} {disc_glyph(disc)} answer{effect_address(ename)}"
         ],
@@ -2656,7 +2656,7 @@ fn read_of(b, read) = match read {
 // vocabulary module calling upward into the judgment layer.
 fn is_ctor_of(kind, scheme, type_name) = match kind {
   ConstructorScheme(_, _) => scheme_result_is(type_name, judgment_ty(scheme)),
-  EffectOpScheme(owner, _, _, _) => owner == type_name,
+  EffectOpScheme(owner, _, _) => owner == type_name,
   _ => false,
 }
 

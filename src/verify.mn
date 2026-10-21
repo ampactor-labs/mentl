@@ -508,7 +508,7 @@ fn install_arm_tails(right) = match tee_handler_decl(right) {
       },
       FnScheme
       | ConstructorScheme(_, _)
-      | EffectOpScheme(_, _, _, _)
+      | EffectOpScheme(_, _, _)
       | RecordSchemeKind(_)
       | EffectDeclKind(_, _)
       | ParamScheme(_)
@@ -553,7 +553,7 @@ fn handler_shape_at(d) = match graph_published(d) {
     | ValueScheme
     | ParamScheme(_)
     | ConstructorScheme(_, _)
-    | EffectOpScheme(_, _, _, _)
+    | EffectOpScheme(_, _, _)
     | RecordSchemeKind(_)
     | EffectDeclKind(_, _)
     | HandlerChainKind(_)
@@ -1149,7 +1149,7 @@ fn named_field_contract(tname: String, args, name) = match published_at(env_reso
     },
     FnScheme
     | ConstructorScheme(_, _)
-    | EffectOpScheme(_, _, _, _)
+    | EffectOpScheme(_, _, _)
     | TypeVariants(_)
     | EffectDeclKind(_, _)
     | HandlerKind(_, _, _, _, _)
@@ -1588,7 +1588,7 @@ fn label_of(h) = match graph_node_body(h) {
 
 fn op_declared_at(callee) = match graph_ref_decl(callee) {
   Some(d) => match graph_published(d) {
-    Some((_, _, EffectOpScheme(_, _, _, _))) => Some(d),
+    Some((_, _, EffectOpScheme(_, _, _))) => Some(d),
     None | Some(_) => None,
   },
   None => None,
@@ -2486,7 +2486,7 @@ fn ref_flow(ctx, r) = if is_self_node(r) {
 // declared return or every value an arm resumes it with. A handler, a type or
 // a constructor named as a value answers no value of its own.
 fn fn_value_flow(ctx, r, d) = match graph_published(d) {
-  Some((_, _, EffectOpScheme(_, _, _, _))) => match ret_states(d, ctx.label) {
+  Some((_, _, EffectOpScheme(_, _, _))) => match ret_states(d, ctx.label) {
     Some(true) => [flow_source(ctx, r, "what the op is declared to answer")],
     Some(false) => [],
     None => flat_map(arm_resume_flow(ctx, ??), serving_arms(d)),
@@ -2853,7 +2853,7 @@ fn call_flow(ctx, h, callee, args) = if ref_is_constructor(callee) {
     NExpr(LambdaExpr(_, body)) => value_flow(ctx, body),
     NExpr(VarRef(_)) => match graph_ref_decl(callee) {
       Some(d) => match graph_published(d) {
-        Some((_, _, EffectOpScheme(_, _, _, _))) => perform_flow(ctx, h, d, args),
+        Some((_, _, EffectOpScheme(_, _, _))) => perform_flow(ctx, h, d, args),
         None | Some(_) => match graph_node_body(d) {
           NStmt(FnStmt(_, _, _, _, _)) => declared_call_flow(ctx, h, d),
           NExpr(_)
@@ -3038,7 +3038,7 @@ fn pipe_flow(ctx, h, kind, left, right) = match kind {
 
 fn stage_call_flow(ctx, pipe, callee) = match graph_ref_decl(callee) {
   Some(d) => match graph_published(d) {
-    Some((_, _, EffectOpScheme(_, _, _, _))) => perform_flow(ctx, pipe, d, applied_args(pipe)),
+    Some((_, _, EffectOpScheme(_, _, _))) => perform_flow(ctx, pipe, d, applied_args(pipe)),
     None | Some(_) => match graph_node_body(d) {
       NStmt(FnStmt(_, _, _, _, _)) => declared_call_flow(ctx, pipe, d),
       NExpr(_)
@@ -3559,7 +3559,7 @@ fn callee_alters(callee, absorbed) = match graph_node_body(callee) {
   } else {
     match graph_ref_decl(callee) {
       Some(d) => match graph_published(d) {
-        Some((_, _, EffectOpScheme(_, _, _, disc))) => !any({ a => a == d }, absorbed) && op_alters(d, disc),
+        Some((_, _, EffectOpScheme(_, _, disc))) => !any({ a => a == d }, absorbed) && op_alters(d, disc),
         None | Some(_) => match graph_node_body(d) {
           NStmt(FnStmt(_, _, _, _, body)) => if decl_met(d) { false } else { alters_within(body, absorbed) },
           NExpr(_)

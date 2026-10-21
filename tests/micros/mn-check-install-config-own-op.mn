@@ -1,0 +1,15 @@
+// check: refuse E_InitPerformsOwnOp
+// An install's config argument runs before the install exists, so a perform
+// there of an op only this handler answers reaches nothing. The judgment
+// refuses at the install, as it refuses the same perform in a state init or
+// a config default. On boot 7c3be609 only the emit's walk found it, so
+// `mentl check` judged this program clean and exited 0.
+effect F {
+  g() -> Int
+}
+
+handler hf(k: Int) {
+  g() => resume(k),
+}
+
+fn main() = (g()) ~> hf(g())

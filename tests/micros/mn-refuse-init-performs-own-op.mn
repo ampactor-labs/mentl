@@ -1,19 +1,11 @@
-// expect: refuse E_InitPerformsOwnOp
-// A handler's state init performs an op that handler itself answers. The
-// install's world_push has not run while its inits run — by construction,
-// for every install of it — so the singleton dispatch's world_find provably
-// returns 0 and the belt beneath it is the only outcome.
-//
-// SEEN RED at pin c3410610ce41: this compiled to 38467 bytes of WAT and
-// trapped at 134. The runtime was already correct and precise — the belt
-// named the op, the handler, the extent and the fix — but it said so after
-// emitting a module. This is the same verdict at a point where nothing has
-// been emitted.
-//
-// The decidable case: a direct perform lexically inside LHandleWith's own
-// `inits`, naming that install's handler. The 1016 sibling guards in the
-// wheel's own emit stay belts, because their world lookup is a live runtime
-// read that no static extent can discharge.
+// check: refuse E_InitPerformsOwnOp
+// A handler's state init performs an op that handler alone answers. The
+// init runs where the install is made, before the install exists — by
+// construction, for every install of it — so nothing can answer the perform,
+// and the judgment refuses it at the declaration with nothing emitted,
+// naming the perform in its chain. On pin c3410610ce41 this compiled to
+// 38467 bytes of WAT and trapped at 134; the runtime's guard named the op,
+// the handler and the fix, but only after a module existed.
 effect F { g() -> Int }
 handler hf with s = g() {
   g() => resume(42),

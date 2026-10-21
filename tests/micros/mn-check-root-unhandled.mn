@@ -1,0 +1,11 @@
+// check: refuse E_EffectUnhandled
+// `main` asks for something no handler answers, so the program cannot run,
+// and the judgment says so: `mentl check` refuses where `mentl compile` does,
+// naming where Ask enters. Until 2026-10-17 the refusal lived in the compile's
+// gate alone, and on boot 7c3be609 `mentl check` judged this program clean and
+// exited 0.
+effect Ask {
+  ask() -> Int
+}
+
+fn main() = ask() + 1

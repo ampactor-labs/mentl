@@ -1936,3 +1936,102 @@ else if eff_name_handle(list_index(set, i)) == eff_name_handle(name) {
 } else {
   name_set_contains_loop(set, name, i + 1, n)
 }
+
+// An effect declaration's ops in declaration order — the order a handler's
+// arm region is laid out in — read off its env entry. Effects register after
+// types, so the effect answers where a type shares its name (`effect Sample`
+// beside `type Sample`); a name no effect declares has no ops, which is the
+// honest answer, never a fabricated list.
+fn effect_op_names(en: String) = match env_lookup(en) {
+  Some(entry) => match entry {
+    (_, _, EffectDeclKind(ops, _)) => ops,
+    _ => [],
+  },
+  None => [],
+}
+
+// Every op the effect declares projects to a substrate instruction (the
+// memory table, the WASI import set, the erased cast) — or the name owns no
+// ops at all (a compiler attribution: a row fact, never an evidence
+// dispatch). Such an effect needs no handler at the executable root, and the
+// two readers that ask — the root settle (infer.mn) and the threaded-branch
+// race rule (lower.mn) — skip it the way they skip nothing else. A default
+// handler does not ground: the perform's singleton tier direct-calls it, but
+// a stateful default with no live install reads its zero state global, the
+// silent wrong the runtime guard refuses.
+fn effect_ops_substrate_grounded(ename: String) = all(substrate_projected, effect_op_names(ename))
+
+fn substrate_projected(op: String) =
+  is_substrate_mem_op(op) || is_wasi_import_op(op) || is_cast_erased_op(op)
+
+// The substrate ops memory.mn declares — the boundary where the language
+// meets the instruction set (the wasi-import list's sibling; the op names
+// ARE the identity, declared in one home).
+fn is_substrate_mem_op(name: String) with Pure =
+  name == "store_i32" || name == "trap" || name == "load_i32" || name == "store_i8" || name == "load_i8" || name == "store_f64" || name == "load_f64" || name == "mem_copy" || name == "addr_at" || name == "addr_diff" || name == "load_addr" || name == "store_addr" || name == "null_addr" || name == "addr_word" || name == "word_addr" || name == "i32_xor" || name == "i32_or" || name == "i32_and" || name == "i32_shl" || name == "i32_shr_u" || name == "i32_shr_s" || name == "i32_clz" || name == "alloc" || name == "heap_mark" || name == "world_top" || name == "world_restore" || name == "image_key" || name == "globals_area" || name == "globals_save" || name == "image_restore" || name == "arena_stat"
+
+// The Cast capability's one op — erased at lower to its operand (the
+// identity at the word level; memory.mn carries the decl and the law).
+fn is_cast_erased_op(name) with Pure = name == "addr"
+
+// Only ops with NO handler arm belong here — raw host imports, atomic
+// instructions, and the substrate preamble fns emit backs them with
+// (spawn_task/join_task allocate-and-cross the task record; thread_id
+// reads the per-instance identity the thread entry stamped). An op with
+// a real handler arm routes through the perform dispatch; listing one here
+// bridges it to a dangling `(call $<op>)` with no import and no arm. The
+// preview1 imports are read off their one home, `wasi_import_reprs`.
+fn is_wasi_import_op(name: String) = name == "spawn_task" || name == "join_task" || name == "thread_id" || name == "atomic_load_i32" || name == "atomic_store_i32" || name == "atomic_rmw" || name == "atomic_cmpxchg" || name == "wait_i32" || name == "notify" || name == "fence" || match wasi_import_reprs(name) {
+  Some(_) => true,
+  None => false,
+}
+
+// The WASI preview1 ABI signatures — the FFI boundary's external facts as
+// DATA (Repr vectors), keyed on the op name LWasiCall carries. ONE home,
+// three readers: the import-decl string (wasi_import_sig), the call-site arg
+// widths (emit_wasi_args_at_widths — a word arg filling an i64 param extends
+// at the boundary), and which ops bridge to an import at all
+// (`is_wasi_import_op`). None = not a preview1 import.
+fn wasi_import_reprs(op: String) = if op == "proc_exit" {
+  Some(([RI32], None))
+} else if op == "fd_write" {
+  Some(([RI32, RI32, RI32, RI32], Some(RI32)))
+} else if op == "fd_read" {
+  Some(([RI32, RI32, RI32, RI32], Some(RI32)))
+} else if op == "fd_close" {
+  Some(([RI32], Some(RI32)))
+} else if op == "fd_prestat_get" {
+  Some(([RI32, RI32], Some(RI32)))
+} else if op == "fd_prestat_dir_name" {
+  Some(([RI32, RI32, RI32], Some(RI32)))
+} else if op == "fd_fdstat_get" {
+  Some(([RI32, RI32], Some(RI32)))
+} else if op == "path_open" {
+  Some(([RI32, RI32, RI32, RI32, RI32, RI64, RI64, RI32, RI32], Some(RI32)))
+} else if op == "path_create_directory" {
+  Some(([RI32, RI32, RI32], Some(RI32)))
+} else if op == "path_filestat_get" {
+  Some(([RI32, RI32, RI32, RI32, RI32], Some(RI32)))
+} else if op == "path_unlink_file" {
+  Some(([RI32, RI32, RI32], Some(RI32)))
+} else if op == "path_rename" {
+  Some(([RI32, RI32, RI32, RI32, RI32, RI32], Some(RI32)))
+} else if op == "fd_readdir" {
+  Some(([RI32, RI32, RI32, RI64, RI32], Some(RI32)))
+}
+// argv, read live at _start — (argc_ptr, buf_size_ptr) and (argv_ptr, buf_ptr),
+// both returning errno. This is what makes `mentl <verb>` reach a verb.
+else if op == "args_sizes_get" {
+  Some(([RI32, RI32], Some(RI32)))
+} else if op == "args_get" {
+  Some(([RI32, RI32], Some(RI32)))
+}
+// the environment, args' shape exactly — (count_ptr, buf_size_ptr) and
+// (environ_ptr, buf_ptr) — read once, at a program's own launch gate.
+else if op == "environ_sizes_get" {
+  Some(([RI32, RI32], Some(RI32)))
+} else if op == "environ_get" {
+  Some(([RI32, RI32], Some(RI32)))
+} else {
+  None
+}

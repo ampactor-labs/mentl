@@ -923,7 +923,7 @@ fn lower_global_call(handle, fh, name: String, r_args, lo_args) = if name == "to
     // the address, so the emission is identity and no demand ever
     // reaches the executable gate — the row carries the whole
     // meaning (with Cast admits; !Cast severs).
-    Some(EffectOpScheme(_, _, _, _)) => if is_cast_erased_op(name) {
+    Some(EffectOpScheme(_, _, _)) => if is_cast_erased_op(name) {
       list_index(lo_args, 0)
     } else if is_wasi_import_op(name) {
       LWasiCall(handle, name, lo_args)
@@ -1086,7 +1086,7 @@ fn partial_global_callee_form(fh, name) = if is_substrate_mem_op(name) || is_was
     // ambiguous op has no single one. That refusal was the whole of the
     // eta-wrapper ceiling. The op-keyed walk has no such gap, so there is
     // nothing left to decline.
-    Some(EffectOpScheme(_, _, _, _)) => Some(PcfPerform(perform_dispatch_of(name, None))),
+    Some(EffectOpScheme(_, _, _)) => Some(PcfPerform(perform_dispatch_of(name, None))),
     _ => None,
   }
 }
@@ -2051,13 +2051,17 @@ fn perform_target(disp) = match disp {
   PdDriver(hd, _) => Some(RefName(redrive_fn_name(hd))),
 }
 
-// The declaration of the op's UNIQUE default handler, read from the
-// EffectOpScheme edge drawn at register_handler — None when no handler
-// declares it, or when two do and the arm comes out of the record.
+// The declaration of the op's ONE handler, read from the providers the
+// EffectOpScheme edge carries (drawn at the handler's registration) — None
+// when no handler declares it, or when two do and the arm comes out of the
+// record.
 fn lower_op_default_handler(op_name) = match env_lookup(op_name) {
   Some(entry) => match entry {
     (_, _, kind) => match kind {
-      EffectOpScheme(_, default_handler, ambiguous, _) => if ambiguous { None } else { default_handler },
+      EffectOpScheme(_, providers, _) => match providers {
+        [hd] => Some(hd),
+        _ => None,
+      },
       _ => None,
     },
   },
@@ -2068,7 +2072,7 @@ fn lower_op_default_handler(op_name) = match env_lookup(op_name) {
 fn lookup_parent_effect(op_name) = match env_lookup(op_name) {
   Some(entry) => match entry {
     (_, _, kind) => match kind {
-      EffectOpScheme(ename, _, _, _) => Some(ename),
+      EffectOpScheme(ename, _, _) => Some(ename),
       _ => None,
     },
   },
@@ -2189,7 +2193,7 @@ fn lower_declared_ref(handle, d) = match published_kind(Some(d)) {
     NoProduct => LMakeVariant(handle, tag_id, []),
     ProductOf(_, open, _) => lower_call_partial(handle, graph_node_body(handle), handle, [], open, len(open)),
   },
-  Some(EffectOpScheme(_, _, _, _)) => match graph_product_at(handle) {
+  Some(EffectOpScheme(_, _, _)) => match graph_product_at(handle) {
     // An op's declared scheme is always a signature, zero-arg
     // included, so a missing product is an unresolved judgment and the
     // typed floor is the honest answer — lower_call_partial's own
@@ -2508,7 +2512,7 @@ fn lower_pipe_stage(lo_ls, right, handle) = {
 fn stage_op_name(right, rbody) = match rbody {
   NExpr(VarRef(name)) => match ls_resolve(name) {
     (RGlobal, _) => match published_kind(graph_ref_decl(right)) {
-      Some(EffectOpScheme(_, _, _, _)) => Some(name),
+      Some(EffectOpScheme(_, _, _)) => Some(name),
       _ => None,
     },
     _ => None,
@@ -4538,7 +4542,7 @@ fn op_instance_subst(op, hd) = match op_scheme_instance(op) {
 fn op_scheme_instance(op) = match published_at(op) {
   Some(entry) => match entry {
     (scheme, _, kind) => match kind {
-      EffectOpScheme(_, _, _, _) => match scheme {
+      EffectOpScheme(_, _, _) => match scheme {
         Frozen(_, TFun(_, _, row)) => op_instance_ty(row),
         _ => None,
       },
@@ -6036,105 +6040,6 @@ fn ret_ty_of(fn_handle) = match lookup_ty(fn_handle) {
 fn floor_tys(n) = map(none_of, range(0, n))
 
 fn none_of(_i) = None
-
-// Fallback when the fn's type isn't a resolved TFun: reads each param's parsed
-// type through the one ty_handle_of projection (TVar → handle; ground → 0).
-// param_handles_of reads the inferred TFun instead.
-// Every op the effect declares projects to a substrate instruction (the
-// Memory/Alloc table, the WASI import set) — or the name owns no ops at
-// all (a compiler attribution: a row fact, never an evidence dispatch).
-// Two readers, one home beside the predicates it is made of: the
-// executable root gate (pipeline.mn) and the threaded-branch race rule
-// below, which skip a substrate name the way they skip nothing else. A
-// default handler does not ground: the perform's singleton tier
-// direct-calls it, but a stateful default with no live install reads its
-// zero state global, the silent wrong the runtime guard refuses.
-fn effect_ops_substrate_grounded(ename: String) = all(substrate_projected, effect_op_names(ename))
-
-fn substrate_projected(op: String) = is_substrate_mem_op(op) || is_wasi_import_op(op)
-
-// Stage 4a: WASI import-name predicate. Recognized op names bridge
-// to the WASM-level import via LWasiCall instead of LPerform's
-// $op_<name> handler-arm dispatch. Per
-// PLAN §5.R band E — the import IS the
-// bridge; no wrapper function required.
-// The substrate ops memory.mn declares — the boundary where the
-// language meets the instruction set (the wasi-import list's sibling;
-// the op names ARE the identity, declared in one home).
-fn is_substrate_mem_op(name: String) with Pure =
-  name == "store_i32" || name == "trap" || name == "load_i32" || name == "store_i8" || name == "load_i8" || name == "store_f64" || name == "load_f64" || name == "mem_copy" || name == "addr_at" || name == "addr_diff" || name == "load_addr" || name == "store_addr" || name == "null_addr" || name == "addr_word" || name == "word_addr" || name == "i32_xor" || name == "i32_or" || name == "i32_and" || name == "i32_shl" || name == "i32_shr_u" || name == "i32_shr_s" || name == "i32_clz" || name == "alloc" || name == "heap_mark" || name == "world_top" || name == "world_restore" || name == "image_key" || name == "globals_area" || name == "globals_save" || name == "image_restore" || name == "arena_stat"
-
-// The Cast capability's one op — erased at lower to its operand (the
-// identity at the word level; memory.mn carries the decl and the law).
-fn is_cast_erased_op(name) with Pure = name == "addr"
-
-// Only ops with NO handler arm belong here — raw host imports, atomic
-// instructions, and the substrate preamble fns emit backs them with
-// (spawn_task/join_task allocate-and-cross the task record; thread_id
-// reads the per-instance identity the thread entry stamped). An op with
-// a real handler arm routes through the else branch
-// (lower_perform_dispatch); listing one here bridges it to a dangling
-// `(call $<op>)` with no import and no arm.
-//
-// The preview1 imports are READ off their one home, `wasi_import_reprs`: this
-// predicate held a hand copy of the same names, so a new host op added to the
-// ABI table (environ_sizes_get / environ_get, E1) was a perform here — the
-// executable root gate refused WASI at a program reading its environment on
-// the boot (measured 2026-10-06), while the emit knew the import.
-fn is_wasi_import_op(name: String) = name == "spawn_task" || name == "join_task" || name == "thread_id" || name == "atomic_load_i32" || name == "atomic_store_i32" || name == "atomic_rmw" || name == "atomic_cmpxchg" || name == "wait_i32" || name == "notify" || name == "fence" || match wasi_import_reprs(name) {
-  Some(_) => true,
-  None => false,
-}
-
-// The WASI preview1 ABI signatures — the FFI boundary's external facts as
-// DATA (Repr vectors), keyed on the op name LWasiCall carries. ONE home,
-// three readers: the import-decl string (wasi_import_sig), the call-site arg
-// widths (emit_wasi_args_at_widths — a word arg filling an i64 param extends
-// at the boundary), and which ops bridge to an import at all
-// (`is_wasi_import_op`). None = not a preview1 import.
-fn wasi_import_reprs(op: String) = if op == "proc_exit" {
-  Some(([RI32], None))
-} else if op == "fd_write" {
-  Some(([RI32, RI32, RI32, RI32], Some(RI32)))
-} else if op == "fd_read" {
-  Some(([RI32, RI32, RI32, RI32], Some(RI32)))
-} else if op == "fd_close" {
-  Some(([RI32], Some(RI32)))
-} else if op == "fd_prestat_get" {
-  Some(([RI32, RI32], Some(RI32)))
-} else if op == "fd_prestat_dir_name" {
-  Some(([RI32, RI32, RI32], Some(RI32)))
-} else if op == "fd_fdstat_get" {
-  Some(([RI32, RI32], Some(RI32)))
-} else if op == "path_open" {
-  Some(([RI32, RI32, RI32, RI32, RI32, RI64, RI64, RI32, RI32], Some(RI32)))
-} else if op == "path_create_directory" {
-  Some(([RI32, RI32, RI32], Some(RI32)))
-} else if op == "path_filestat_get" {
-  Some(([RI32, RI32, RI32, RI32, RI32], Some(RI32)))
-} else if op == "path_unlink_file" {
-  Some(([RI32, RI32, RI32], Some(RI32)))
-} else if op == "path_rename" {
-  Some(([RI32, RI32, RI32, RI32, RI32, RI32], Some(RI32)))
-} else if op == "fd_readdir" {
-  Some(([RI32, RI32, RI32, RI64, RI32], Some(RI32)))
-}
-// argv, read live at _start — (argc_ptr, buf_size_ptr) and (argv_ptr, buf_ptr),
-// both returning errno. This is what makes `mentl <verb>` reach a verb.
-else if op == "args_sizes_get" {
-  Some(([RI32, RI32], Some(RI32)))
-} else if op == "args_get" {
-  Some(([RI32, RI32], Some(RI32)))
-}
-// the environment, args' shape exactly — (count_ptr, buf_size_ptr) and
-// (environ_ptr, buf_ptr) — read once, at a program's own launch gate.
-else if op == "environ_sizes_get" {
-  Some(([RI32, RI32], Some(RI32)))
-} else if op == "environ_get" {
-  Some(([RI32, RI32], Some(RI32)))
-} else {
-  None
-}
 
 // lower_index — `xs[i]` dispatched on the RECEIVER's proven type (the proof IS
 // the dispatch, the ++/== precedent). A TTuple receiver with a CONSTANT index
@@ -7737,7 +7642,7 @@ fn fn_judgment_fresh(d) = match graph_published(d) {
     ValueScheme
     | ParamScheme(_)
     | ConstructorScheme(_, _)
-    | EffectOpScheme(_, _, _, _)
+    | EffectOpScheme(_, _, _)
     | RecordSchemeKind(_)
     | EffectDeclKind(_, _)
     | HandlerKind(_, _, _, _, _)

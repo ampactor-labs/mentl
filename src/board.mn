@@ -144,8 +144,9 @@ fn board_bounds() = [
   // the same day: the callee-name read left with the resume-bound fn's
   // trailing pair. 936 -> 930 the same day: the walks that bound a function
   // to a handler by its spelling left when an arm's resume summaries became
-  // its own.
-  Bound({ceiling: 930, question: QCensus(CsWildcardOverSum)}),
+  // its own. 930 -> 929 (2026-10-21): the root census's op-to-effect read
+  // left the pipeline when the judgment read the row at the root.
+  Bound({ceiling: 929, question: QCensus(CsWildcardOverSum)}),
   // Drift mode 15 — a value given a leading-underscore name instead of being
   // deleted. The rename silences the reader, never the fact that nothing
   // reads it.
@@ -277,8 +278,10 @@ fn board_bounds() = [
   // (2026-10-20): the trail's two revert walks left with the trail, and the
   // persistent column's walks were written as folds over its digits. 397 ->
   // 395 the same day: the publish replay's walk and the map's LIFO pop left
-  // when a kept fork's entries became an adoption.
-  Bound({ceiling: 395, question: QCensus(CsIterationCostume)}),
+  // when a kept fork's entries became an adoption. 395 -> 391 (2026-10-21):
+  // the root census's four index walks left the pipeline when the judgment
+  // read the row at the root and the op scheme carried its handlers.
+  Bound({ceiling: 391, question: QCensus(CsIterationCostume)}),
   // The ghosts — cells the parser minted and the judgment never bound
   // (`mentl query <entry> ghosts`): names, parameters, predicates and
   // annotations that are not yet cells inference writes, which is why `refs
@@ -355,8 +358,9 @@ fn board_bounds() = [
   // Hex commit tokens — history belongs to git, never on the node. 44 -> 43
   // (2026-10-16): a note on the label lattice left with the lattice.
   // 43 -> 42 (2026-10-19): the name dedup's note on an old fold left with
-  // the scan it described.
-  Bound({ceiling: 42, question: QCensus(CsProseClass(PcCommit))}),
+  // the scan it described. 42 -> 41 (2026-10-21): the root census's note on
+  // the init's pin left with the census.
+  Bound({ceiling: 41, question: QCensus(CsProseClass(PcCommit))}),
   // Numbered citations of the archived spec corpus. 20 -> 19 (2026-10-15):
   // the banner over the pattern type left when a pattern became a node.
   // 19 -> 18 (2026-10-20): the graph module's trail prose left with the
@@ -366,8 +370,9 @@ fn board_bounds() = [
   // (2026-10-15): the note over the sugar's callees that dated when the
   // free-name walk began drawing them left with the by-spelling rows. 38 ->
   // 36 (2026-10-20): the publish replay's prose left with the replay, and
-  // the map's pop prose with the pop.
-  Bound({ceiling: 36, question: QCensus(CsProseClass(PcLifecycle))}),
+  // the map's pop prose with the pop. 36 -> 35 (2026-10-21): the emit's
+  // init-scope prose left when the judgment took the check.
+  Bound({ceiling: 35, question: QCensus(CsProseClass(PcLifecycle))}),
   // Archaeology — the seed era's vocabulary and its design notes. 68 -> 67
   // (2026-10-15): the note over the type annotation's node kind that said
   // why its tag stood last. 67 -> 66 (2026-10-15): a stale note over the
@@ -386,8 +391,9 @@ fn board_bounds() = [
   // comments were trued with the flow walk. 255 -> 254: the segment walk's
   // banner left when the ??-fan became one choice. 254 -> 253 (2026-10-19):
   // the rollback's banner, attached to the span index's arm, left with the
-  // fork.
-  Bound({ceiling: 253, question: QCensus(CsProseClass(PcBanner))}),
+  // fork. 253 -> 252 (2026-10-21): the evidence-hole banner left with the
+  // root census.
+  Bound({ceiling: 252, question: QCensus(CsProseClass(PcBanner))}),
   // A COMMENT NEVER SILENCES A GATE (SYNTAX §Comments). Each marker mutes a
   // text row of tools/drift-patterns.tsv that a structural census reads
   // correctly — a string literal is text, a one-shot concat is not an

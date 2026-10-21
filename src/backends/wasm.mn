@@ -2676,66 +2676,6 @@ handler yield_seen_collector with n = 0, arity = 0 {
   drain_yield_arity() => resume(arity),
 }
 
-// The seventh projection — the executable gate's EVIDENCE CENSUS: every
-// walking perform's demand (the dispatch's own effect key, carried on the
-// node; a yield's op). The gate walks the SAME post-reach tree
-// emit walks and reads THIS drain — the artifact is the truth source; a
-// lower-side ledger caching the same facts was the Carried-Truth violation
-// this projection deleted.
-effect EmitEffectCensus {
-  // an ekey (ename) or a yield's op name — the gate resolves ops to enames
-  visit_effect_demand(String)
-  // the demands. The census used to carry a second list — every ename an
-  // install's arm groups absorb, anywhere in the tree — whose one reader
-  // was the executable root gate's "installed somewhere" credit, deleted
-  // 2026-09-27: the row already carries every install's subtraction at
-  // its own extent, so a name-keyed list of installs re-derived a fact the
-  // row holds exactly, and cleared performs no install enclosed.
-  drain_effect_census() -> [String]
-}
-
-// The demands are kept in a flat buffer under a count, as the fn names
-// are: the membership test indexes it, and an index into a pushed chain
-// walks the chain's depth at every visit.
-handler effect_census_collector with buf = make_list(16), count = 0 {
-  visit_effect_demand(n) => if string_in_list(slice(buf, 0, count), n) {
-    resume()
-  } else {
-    let extended = list_extend_to(buf, count + 1)
-    let written = list_set(extended, count, n)
-    resume() with buf = written, count = count + 1
-  },
-  drain_effect_census() => resume(slice(buf, 0, count)),
-}
-
-// THE INITS' OWN SCOPE, drawn as an install rather than threaded as a flag.
-// Walking an install's inits is the one place the lowered tree already
-// proves a perform precedes its handler's existence, so a `~>` over that
-// sub-walk is the whole mechanism. A walking perform of an op THIS handler
-// alone declares walks a chain the install's `world_push` has not yet
-// extended, so the walk provably reaches the end — it refuses here instead
-// of trapping there (`Hβ.emit.self-init-singleton-call-is-statically-uninstalled`).
-// The uniqueness is the op's own fact, read where the dispatch reads it
-// (`lower_op_default_handler`). Until 2026-10-03 it rode the dispatch as a
-// NAMED arm, which a handler whose installs may key their arms never names
-// — every resuming handler, once its answer keys them — so the refusal went
-// quiet and the root gate's `E_EffectUnhandled` was all that stood.
-handler preinstall_init_scope(own_handler, init_span) {
-  visit_effect_demand(n) => // The inits' demands are the module's demands: both flow on to the
-  // collector outside (an arm's own perform resolves OUTER of its install).
-  // The walk carries the init's span, not its node, so the report falls
-  // back to the module in force.
-  {
-    match lower_op_default_handler(n) {
-      Some(hd) => if hd == own_handler { report(EInitPerformsOwnOp(stmt_decl_name(hd), n, init_span)) } else { () },
-      None => (),
-    }
-    visit_effect_demand(n)
-    resume()
-  },
-  drain_effect_census() => resume(drain_effect_census()),
-}
-
 handler fn_names_collector with buf = make_list(64), count = 0 {
   visit_fn(name) => {
     let extended = list_extend_to(buf, count + 1)
@@ -2864,7 +2804,7 @@ fn project_emit_state(lowered, twin_bases, closures: {cmp: [Ty], eq: [Ty], evac:
   let yseen = drain_yield_seen()
   let yarity = drain_yield_arity()
   (names, tops, strs, lines, wasi, yseen, yarity)
-} ~> fn_names_collector ~> top_fn_names_collector ~> string_literal_collector ~> fn_lines_collector ~> wasi_ops_collector ~> yield_seen_collector ~> effect_census_collector
+} ~> fn_names_collector ~> top_fn_names_collector ~> string_literal_collector ~> fn_lines_collector ~> wasi_ops_collector ~> yield_seen_collector
 
 // The names of a decl the module does not emit, dropped where they are
 // visited; every other fact of its body flows on to the collectors outside —
@@ -3022,17 +2962,15 @@ fn walk_lemit_expr(expr) = match expr {
     visit_yield()
     visit_yield_args(len(args))
     visit_string(op_name)
-    visit_effect_demand(op_name)
     walk_lemit_list(args)
     walk_lemit_site(k)
   },
-  // An abandoning perform is a perform: its op is demanded, its arguments
-  // cross in the same area, and the module yields (AN-2).
+  // An abandoning perform is a perform: its arguments cross in the same
+  // area, and the module yields.
   LAbandon(_, op_name, args) => {
     visit_yield()
     visit_yield_args(len(args))
     visit_string(op_name)
-    visit_effect_demand(op_name)
     walk_lemit_list(args)
   },
   // A boundary check reads the yield globals, and a live one needs the
@@ -3093,15 +3031,11 @@ fn walk_lemit_expr(expr) = match expr {
     walk_install_groups(arm_names, 0)
     walk_lemit_expr(b)
     walk_lemit_expr(hn)
-    // The config arguments (a default among them) walk under this install's
-    // own handler. A direct perform of an op THIS handler answers cannot
-    // reach it: the world_push is below. The span comes off the install's
-    // own node — the reason the graph already carries, never a coordinate
-    // re-derived here. The state inits walk under the same scope inside the
-    // init fn (the LStateInit arm).
-    {
-      walk_lemit_list(inits)
-    } ~> preinstall_init_scope(hd, reason_span_or_zero(graph_reason_at(ih)))
+    // The config arguments, a default among them, run before the install
+    // exists; a perform there of an effect this handler alone answers was
+    // refused by the judgment (`E_InitPerformsOwnOp`), so the walk reads
+    // them as any expressions.
+    walk_lemit_list(inits)
     // band B k1: a MultiShot-armed install carries the driver loop, which
     // reads the yield globals and compares the interned op keys — register
     // both through the same channels (the one decider multishot_ops_of;
@@ -3131,15 +3065,12 @@ fn walk_lemit_expr(expr) = match expr {
   // ONE arm, because there is one perform. Every dispatch that WALKS
   // interns its effect key through the SAME visit_string channel user
   // literals flow through, so string_offset resolves it to a stable nonzero
-  // data offset (else every key collides at 0), and registers the effect as
-  // a demand. The lexical dispatch walks nothing, so it registers nothing.
+  // data offset (else every key collides at 0). The lexical dispatch walks
+  // nothing, so it interns nothing.
   LPerform(_, disp, args) => {
     match disp {
       PdFrame(_, _, _) => (),
-      PdWalk(ekey, _, op_name, _) => {
-        visit_string(ekey)
-        visit_effect_demand(op_name)
-      },
+      PdWalk(ekey, _, _, _) => visit_string(ekey),
       PdDriver(_, _) => (),
     }
     walk_lemit_list(args)
@@ -3152,12 +3083,9 @@ fn walk_lemit_expr(expr) = match expr {
   LFieldLoad(_, rec, _) => walk_lemit_expr(rec),
   LConvert(_, _, operand) => walk_lemit_expr(operand),
   LStateSlotStore(_, _, v, _) => walk_lemit_expr(v),
-  // A state init walks under its own handler: the init fn runs before the
-  // install's world_push, so a direct perform of an op THIS handler answers
-  // cannot reach it. The span is the init's own.
-  LStateInit(h, hd, _, v) => {
-    walk_lemit_expr(v)
-  } ~> preinstall_init_scope(hd, reason_span_or_zero(graph_reason_at(h))),
+  // A state init runs before the install exists; a perform there of an
+  // effect its handler alone answers was refused by the judgment.
+  LStateInit(_, _, _, v) => walk_lemit_expr(v),
 }
 
 fn walk_lemit_list(exprs) = walk_lemit_list_loop(exprs, 0)

@@ -1063,7 +1063,7 @@ fn pre_register_stmt(seen, ref node) = match graph_node_body(node) {
     // block's fn shadows an op lexically, as any local binding does, and
     // is not asked.
     match env_lookup(name) {
-      Some((_, _, EffectOpScheme(prior_effect, _, _, _))) => report(EFnShadowsOp(name, prior_effect, graph_span_of(node))),
+      Some((_, _, EffectOpScheme(prior_effect, _, _))) => report(EFnShadowsOp(name, prior_effect, graph_span_of(node))),
       _ => (),
     }
     pre_register_fn_once(seen, node)
@@ -1131,7 +1131,7 @@ fn pre_register_handler_sig(hname, config, state, arms, decl) = {
       match env_lookup(fname) {
         Some(entry) => match entry {
           (_, _, kind) => match kind {
-            EffectOpScheme(op_effect, _, _, _) => if op_effect == ename {
+            EffectOpScheme(op_effect, _, _) => if op_effect == ename {
               report(EHandlerStateShadowsOp(hname, fname, graph_span_of(state_field_init(sf))))
             } else {
               ()
@@ -1342,7 +1342,147 @@ fn infer_program_once(stmts, parse_start, parse_end) = {
   // What can reach a value is a fact of the whole program, so the claims
   // naming a label are decided here, once every declaration is judged.
   flow_settle()
+  root_settle(stmts)
 } ~> row_gate ~> store_ages ~> infer_ctx ~> fresh_for_inference
+
+// THE EXECUTABLE ROOT, judged where the program is judged. `main`'s row is
+// every effect no install absorbed, read through the instances of its free
+// cells (a continuation the arms handed out and the root resumed with
+// nothing around it brings its remainder here), and a module value let's
+// init runs before `main` in the same world, so each is the executable's.
+// An effect among them whose ops the substrate does not project to
+// instructions reaches nothing at run time — some perform of it would read
+// evidence no install threaded — and the judgment refuses it here, naming
+// where it enters, so `mentl check` refuses what `mentl compile` refuses. A
+// row fact with no ops (Mutate, Consume, Arena) and an effect whose every
+// op is an instruction (Memory, WASI, Cast) ground vacuously. The row is the
+// whole authority: a declared positive the body never performs is not
+// published, so no census of the emitted performs stands beside this read.
+fn root_settle(stmts) = {
+  match env_resolve("main") {
+    Some(dh) => match graph_node_body(dh) {
+      NStmt(FnStmt(_, _, _, _, body)) => match chase_ty(TVar(dh)) {
+        TFun(_, _, row) => root_row_check(row, dh, body, graph_span_of(dh)),
+        _ => (),
+      },
+      _ => (),
+    },
+    None => (),
+  }
+  each(root_init_check, stmts)
+}
+
+fn root_row_check(row, dh, body, span) = match row_through_instances(row) {
+  EfRow(present, _, _) => each(root_refuse(dh, body, span, ??), filter(root_unanswered, present)),
+}
+
+fn root_unanswered(eff) = !effect_ops_substrate_grounded(eff_name_str(eff))
+
+fn root_refuse(dh, body, span, eff) = {
+  let ename = eff_name_str(eff)
+  report(EEffectUnhandled(ename, absorbing_proposal(ename), decl_effect_entry(dh, body, eff), span))
+}
+
+// A module value let is judged in no declaration's frame, so its row is the
+// charges its subtree's nodes carry, and its chain starts at the init.
+fn root_init_check(h) = match graph_node_body(h) {
+  NStmt(LetStmt(_, value, _)) => match row_of_subtree(h) {
+    Some(EfRow(present, _, _)) => each(root_init_refuse(h, value, ??), filter(root_unanswered, present)),
+    None => (),
+  },
+  _ => (),
+}
+
+fn root_init_refuse(h, value, eff) = {
+  let ename = eff_name_str(eff)
+  report(EEffectUnhandled(
+    ename,
+    absorbing_proposal(ename),
+    EffectEnters(ename, h, body_entry(eff, value, [h])),
+    graph_span_of(h)
+  ))
+}
+
+// The root's row read through every free cell's instances: a handler's world
+// is a cell no install binds, and each install holds what it hands its
+// continuations as an instance of it (`note_world_remainder`), so a
+// continuation the arms handed out and the root resumed with nothing around
+// it brings those remainders to the root.
+fn row_through_instances(row) = match resolve_row(row) {
+  EfRow(p, a, t) => match t {
+    EtOpen(edges) => edges |> fold(EfRow(p, a, t), instance_rows),
+    EtClosed | EtAll => EfRow(p, a, t),
+  },
+}
+
+// Each instance of an edge's cell, read through the edge's own mask.
+fn instance_rows(acc, edge) = match edge {
+  RowEdge(e) => graph_instances_of(e.cell) |> fold(acc, masked_instance(e.mask, ??, ??)),
+}
+
+fn masked_instance(mask, acc, i) =
+  union_row(acc, resolve_row(EfRow([], [], EtOpen([RowEdge({cell: i, mask})]))))
+
+// The teaching half: the handlers whose arms answer the effect, read off the
+// providers its first op's scheme carries — a handler is exhaustive over the
+// effects it answers (`handler_exhaustive_check`), so every op of the effect
+// carries the same handlers.
+fn handlers_answering(ename: String) = match effect_op_names(ename) {
+  [] => [],
+  [op, ..._] => match env_lookup(op) {
+    Some((_, _, EffectOpScheme(_, providers, _))) => providers,
+    None | Some(_) => [],
+  },
+}
+
+fn absorbing_proposal(ename: String) = match handlers_answering(ename) {
+  [] => "No handler in scope handles {ename} — declare one and install it with ~> over the performing chain.",
+  hs => "Install one over the performing chain: {show_list(map(stmt_decl_name, hs), render_install, " or ")}.",
+}
+
+fn render_install(hname: String) = "~> {hname}"
+
+// A perform of an effect this handler alone answers, made while the handler
+// is still being built: a state init and a config default run at the install,
+// before the install exists, and an install's own arguments run before it
+// too, so nothing can answer it — refused where it stands, the chain naming
+// the perform. An effect another handler also answers is the row's: it
+// carries the perform to whatever install stands around, or to the root.
+fn own_op_check(hd, enames, node) = match row_of_subtree(node) {
+  Some(EfRow(present, _, _)) => each(own_op_refuse(hd, node, ??), filter(sole_answer_is(hd, enames, ??), present)),
+  None => (),
+}
+
+fn sole_answer_is(hd, enames, eff) =
+  any(same_effect(eff, ??), enames) && handlers_answering(eff_name_str(eff)) == [hd]
+
+fn same_effect(a, b) = eff_name_str(a) == eff_name_str(b)
+
+fn own_op_refuse(hd, node, eff) = {
+  let ename = eff_name_str(eff)
+  report(EInitPerformsOwnOp(
+    stmt_decl_name(hd),
+    ename,
+    EffectEnters(ename, node, body_entry(eff, node, [])),
+    graph_span_of(node)
+  ))
+}
+
+// An install's arguments, read as the declaration's inits are, where the
+// install's edge reaches a handler declaration.
+fn install_own_op_check(hd, enames, right) = match hd {
+  Some(d) => match graph_node_body(right) {
+    NExpr(CallExpr(_, args)) => each(own_op_check(d, enames, ??), args),
+    _ => (),
+  },
+  None => (),
+}
+
+// A config parameter's default, where it has one.
+fn default_node(p) = match param_default(p) {
+  Some(d) => [d],
+  None => [],
+}
 
 // Reports said to no one: the discovery parse's import read (the weave
 // parse reports every lex diagnostic again, placeably), the gradient's
@@ -3521,15 +3661,16 @@ fn entry_through(eff, seen, found, c) = match found {
 // declaration mint and install nothing of their bodies; a tee's body may
 // still carry what its handler does not absorb, and carries nothing of what
 // it does, so an absorbed effect enters through the install itself — its
-// arms, read at `entry_at`; a cycle's delay spec never runs; every other
-// node's children run before it.
+// arguments, which run in the frame around the install, else its arms, read
+// at `entry_at`; a cycle's delay spec never runs; every other node's
+// children run before it.
 fn carriers_in_order(eff, h) = carrying_children(
   eff,
   match graph_node_body(h) {
     NExpr(LambdaExpr(_, _)) => [],
     NStmt(FnStmt(_, _, _, _, _)) => [],
     NStmt(HandlerDeclStmt(_, _, _, _, _, _)) => [],
-    NExpr(PipeExpr(PTee, l, hnd)) => if tee_absorbs_here(hnd, eff) { [] } else { [l] },
+    NExpr(PipeExpr(PTee, l, hnd)) => if tee_absorbs_here(hnd, eff) { [hnd] } else { [l, hnd] },
     NExpr(PipeExpr(PFeedback, l, _)) => [l],
     body => body_child_handles(body),
   }
@@ -3595,7 +3736,7 @@ fn install_entry(eff, hnd, seen) = match tee_handler_decl(hnd) {
 fn callee_entry(eff, callee_h, arg_hs, seen) = match graph_node_body(callee_h) {
   NExpr(VarRef(name)) => match graph_ref_decl(callee_h) {
     Some(dh) => match graph_published(dh) {
-      Some((_, _, EffectOpScheme(_, _, _, _))) => Some(op_entry(eff, dh, name)),
+      Some((_, _, EffectOpScheme(_, _, _))) => Some(op_entry(eff, dh, name)),
       Some((_, _, ConstructorScheme(_, _))) => Some(Inferred("building `{name}`")),
       _ => match graph_node_body(dh) {
         NStmt(FnStmt(_, _, _, _, _)) => decl_entry(eff, name, dh, arg_hs, seen),
@@ -3908,7 +4049,7 @@ fn check_effect_name(ename, at, span: ValidSpan) = if row_var_spelled(ename) || 
         FnScheme
         | ValueScheme
         | ParamScheme(_)
-        | EffectOpScheme(_, _, _, _)
+        | EffectOpScheme(_, _, _)
         | HandlerKind(_, _, _, _, _)
         | HandlerChainKind(_)
         | ConstructorScheme(_, _)
@@ -4629,7 +4770,7 @@ fn judge_reference(name: String, handle, span: ValidSpan, use, scheme, reason, k
     RefCalled => (),
     RefValued => match kind {
       ConstructorScheme(_, _) => bare_reference_product(handle, ty, span),
-      EffectOpScheme(_, _, _, _) => bare_reference_product(handle, ty, span),
+      EffectOpScheme(_, _, _) => bare_reference_product(handle, ty, span),
       _ => (),
     },
   }
@@ -5604,7 +5745,7 @@ fn grounded_perform_row(fh, cname: String, crow, args, span: ValidSpan) = match 
 // effect's name — None for a callee whose edge reaches no op, or an op none
 // of whose parameters names its effect's.
 fn perform_dim_slots(func) = match callee_binding(func) {
-  Some((sch, _, EffectOpScheme(en, _, _, _))) => match judgment_ty(sch) {
+  Some((sch, _, EffectOpScheme(en, _, _))) => match judgment_ty(sch) {
     TFun(ps, _, _) => {
       let dims = effect_dim_names(en)
       let slots = fold([], perform_slot_of(dims, ??, ??), enumerate(ps))
@@ -6275,6 +6416,7 @@ fn infer_pipe_tee_one(left, right, hd, handle, span: ValidSpan, born) = {
   exit_frame()
   if opens_arena { ages_depth(-1) } else { () }
   infer_expr(right)
+  install_own_op_check(hd, arm_names, right)
   let attach = install_reason(hd, right, span)
   install_answer(right, left, span, attach)
   // The install itself, in the frame it stands in: a dispatched install
@@ -6402,7 +6544,7 @@ fn frame_owns(frame: {accumulated_row: EffRow, declared: [(RowTerm, Bool, EConn)
 fn op_effect_of(cname: String) = match env_lookup(cname) {
   Some(entry) => match entry {
     (_, _, kind) => match kind {
-      EffectOpScheme(en, _, _, _) => Some(en),
+      EffectOpScheme(en, _, _) => Some(en),
       FnScheme => None,
       ConstructorScheme(_, _) => None,
       RecordSchemeKind(_) => None,
@@ -10372,7 +10514,7 @@ fn never_resume_check(hname: String, arm: {args: [Node], body: Node, op: Node}) 
 // declaration's `!`; no marker is kept beside it.
 fn op_never_returns(od) = match published_at(od) {
   Some(entry) => match entry {
-    (scheme, _, EffectOpScheme(_, _, _, _)) => match judgment_pair(scheme) {
+    (scheme, _, EffectOpScheme(_, _, _)) => match judgment_pair(scheme) {
       (qs, TFun(params, TVar(r), row)) => any({ q => q == r }, qs) && !any({ v => v == r }, free_in_params(params) ++ free_in_row(row)),
       _ => false,
     },
@@ -14667,7 +14809,7 @@ fn register_one_op(effect_name, eff_name, op) = match op {
           // entry per name, so this write replaces rather than joins, and
           // every prior call retypes. Same effect re-registering (the final
           // pass walks the decls again) is the same op and says nothing.
-          EffectOpScheme(prior_effect, _, _, _) => if prior_effect == effect_name {
+          EffectOpScheme(prior_effect, _, _) => if prior_effect == effect_name {
             ()
           } else {
             report(EOpShadowsOp(op_name, prior_effect, effect_name, graph_span_of(op_node)))
@@ -14702,7 +14844,7 @@ fn register_one_op(effect_name, eff_name, op) = match op {
       Declared(op_name),
       // OneShot is the join identity (grade UZero → OneShot): an op with no
       // handler stays the fast path; each handler's arm joins its grade in.
-      EffectOpScheme(effect_name, None, false, OneShot),
+      EffectOpScheme(effect_name, [], OneShot),
       op_node
     )
   },
@@ -14728,7 +14870,7 @@ fn derive_handler_enames(arms, i, own acc) = if i >= len(arms) {
   let acc2 = match env_lookup(handler_arm_op_name(list_index(arms, i))) {
     Some(entry) => match entry {
       (_, _, kind) => match kind {
-        EffectOpScheme(en, _, _, _) => {
+        EffectOpScheme(en, _, _) => {
           let enn = ENamed(intern_str(en))
           if name_set_contains(acc, enn) { acc } else { push(acc, enn) }
         },
@@ -14778,19 +14920,6 @@ fn handler_missing_ops(en: String, arms) = filter(
   effect_op_names(en)
 )
 
-// An effect declaration's ops in declaration order — the order a handler's
-// arm region is laid out in — read off its env entry. Effects register after
-// types, so the effect answers where a type shares its name (`effect Sample`
-// beside `type Sample`); a name no effect declares has no ops, which is the
-// honest answer, never a fabricated list.
-fn effect_op_names(en: String) = match env_lookup(en) {
-  Some(entry) => match entry {
-    (_, _, EffectDeclKind(ops, _)) => ops,
-    _ => [],
-  },
-  None => [],
-}
-
 // What a handler answers, read off the scheme it published: the second
 // argument of its `Handler` type, under the config arrow when the handler
 // takes config — ground once an arm's own value bound it, a variable while
@@ -14823,7 +14952,7 @@ fn derive_handler_ename(arms, fallback: String) = if len(arms) == 0 {
   match env_lookup(handler_arm_op_name(last(arms))) {
     Some(entry) => match entry {
       (_, _, kind) => match kind {
-        EffectOpScheme(en, _, _, _) => en,
+        EffectOpScheme(en, _, _) => en,
         _ => derive_handler_ename(drop_last(arms), fallback),
       },
     },
@@ -15038,6 +15167,12 @@ fn register_handler(hname, ename_parsed, config, state, arms, effs, span: ValidS
   // closure needed). The op binding IS the dispatch fact — lower reads it to cash
   // a non-lexical perform of a uniquely-handled op to a direct call of its arm.
   draw_op_edges(arms, decl)
+  // The inits and the defaults, read once the handler's own edge is drawn,
+  // so a handler declared inside a body is its own provider here too.
+  each(
+    own_op_check(decl, derive_handler_enames(arms, 0, []), ??),
+    map(state_field_init, state) ++ flat_map(default_node, config_tparams)
+  )
 }
 
 // Recur over a handler's arms, drawing op→handler onto each op's EffectOpScheme.
@@ -15059,7 +15194,7 @@ fn draw_op_edges(arms, hd) = if len(arms) == 0 {
   match env_resolve(op_name) {
     Some(decl) => match graph_published(decl) {
       Some((scheme, reason, kind)) => match kind {
-        EffectOpScheme(ename, cur_default, ambiguous, cur_disc) => {
+        EffectOpScheme(ename, providers, cur_disc) => {
           // An arm that never resumes ABANDONS: its value is the install's,
           // delivered by the driver (the arm returns without calling k and
           // the loop exits flag-clear with it), whatever the op's declared
@@ -15067,15 +15202,13 @@ fn draw_op_edges(arms, hd) = if len(arms) == 0 {
           // hedge this replaced.
           let arm_disc = arm_disc_of(grade)
           let disc = disc_join(cur_disc, arm_disc)
-          match default_joined(cur_default, ambiguous, hd) {
-            (nd, na) => env_extend(
-              op_name,
-              scheme_with_disc_cost(scheme, disc),
-              reason,
-              EffectOpScheme(ename, nd, na, disc),
-              decl
-            ),
-          }
+          env_extend(
+            op_name,
+            scheme_with_disc_cost(scheme, disc),
+            reason,
+            EffectOpScheme(ename, providers_joined(providers, hd), disc),
+            decl
+          )
         },
         _ => (),
       },
@@ -15086,18 +15219,12 @@ fn draw_op_edges(arms, hd) = if len(arms) == 0 {
   draw_op_edges(drop_last(arms), hd)
 }
 
-// The op's handler once `hd` declares an arm for it: the first handler to
-// name the op is its default, a second distinct one makes it ambiguous, and
-// the same handler again, or an already-ambiguous op, changes nothing.
-fn default_joined(cur, ambiguous, hd: Int) = match cur {
-  None => if ambiguous { (cur, true) } else { (Some(hd), false) },
-  // A handler an edit replaced is no handler of the op: its next version
-  // takes its place rather than making the op ambiguous.
-  Some(d) => if graph_node_current(d) {
-    (cur, ambiguous || d != hd)
-  } else {
-    default_joined(None, ambiguous, hd)
-  },
+// The op's handlers once `hd` declares an arm for it: `hd` joins the ones
+// already drawn, once, and a handler an edit replaced is no handler of the
+// op — its next version takes its place rather than standing beside it.
+fn providers_joined(providers, hd: Int) = {
+  let current = filter(graph_node_current, providers)
+  if any({ d => d == hd }, current) { current } else { push(current, hd) }
 }
 
 // A MultiShot op's row carries the remainder record. The perform site

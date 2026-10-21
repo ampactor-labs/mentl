@@ -452,12 +452,12 @@ loop_scaffold_refs_max: 2
 desugar_vocabulary: 48
 # each parameter; `mentl check` named the two kept markers T_OwnUnconsumed
 # the moment their callee stopped consuming. 49 -> 48 (2026-10-15): the dead
-# voice surface's buffer marker left with it; 48 -> 44, the parameter desugar.
-authored_own_max: 44
+# voice surface's buffer marker left with it; 48 -> 44, the parameter desugar; 44 -> 40 (2026-10-21), the root census's.
+authored_own_max: 40
 # name-keyed walks and the dead code the facets named; -> 598, a pattern's walks; -> 548, the renames'.
 # 548 -> 544 (2026-10-16): the label lattice's walks left when information flow
-# became the verifier's walk.
-authored_ref_max: 543
+# became the verifier's walk; 543 -> 523 (2026-10-21): the root census left the pipeline for the judgment's row.
+authored_ref_max: 523
 # ── the SELF-COMPILE's PEAK RSS (tools/march.sh, the m3 leg under GNU time) ─
 # The one line in this file that was a bare number with no argument beside it,
 # in the file whose whole point is that a bound and its justification live
@@ -827,11 +827,11 @@ selfcompile_peak_kb_max: 421100
 # m3 leg's stderr (`arena: … line peak N KB`), a pure function of the
 # computation, so it is the memory ratchet no machine moves, refused on a
 # breach by `read_line` (tools/march.sh) with no re-measure; a landing that
-# breaches it pays the cost down. Held at 1% over the landed form's 244,025
-# KB (2026-10-21, the fork an instance of the graph handler): the versioned
-# columns had read 269,910 KB, refused, and fell when the emit plan's walks
-# each ran in an arena (62 MB of their garbage had lived to the plan's end).
-selfcompile_line_peak_kb_max: 246448
+# breaches it pays the cost down. Held at 1% over the landed form's 241,176
+# KB (2026-10-21, the root judged in the judgment, the emit's census gone): the
+# versioned columns had read 269,910 KB, refused, and fell when the emit
+# plan's walks each ran in an arena (62 MB of garbage had lived to the end).
+selfcompile_line_peak_kb_max: 243588
 # THE HEAD ROUND TRIP (render lane, 2026-10-06): module-level function heads,
 # formatter's and eye's, that do not come back as themselves through
 # parse∘render. Born at the measured 92 of 4,550 (the base renderer: 787 of

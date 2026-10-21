@@ -1,13 +1,9 @@
-// expect: refuse E_InitPerformsOwnOp
+// check: refuse E_InitPerformsOwnOp
 // The state init's sibling carrier: a handler's config DEFAULT performing an
-// op that handler itself answers. Defaults and inits lower into one `inits`
-// list, so one class covers both — measured, not assumed, and this fixture
-// is what holds that true as the lowering changes.
-//
-// The state-init half was armed at pin 362ac8b1eeae; this half was the
-// unmeasured sibling that landing named, and it was already covered on the
-// first probe. What was NOT true was the message, which said "state init"
-// for both carriers until this fixture made the imprecision visible.
+// op that handler alone answers. A default and a state init both run where
+// the install is made, before the install exists, so the judgment reads both
+// at the declaration and refuses each the same way; this fixture holds the
+// default's half true beside the init's (mn-refuse-init-performs-own-op).
 effect F { g() -> Int }
 handler hf(k: Int = g()) with s = 1 {
   g() => resume(k),

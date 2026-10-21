@@ -89,7 +89,7 @@ type Ty
 fn ref_op_effect(r) = match graph_ref_decl(r) {
   Some(d) => match graph_published(d) {
     Some((_, _, kind)) => match kind {
-      EffectOpScheme(en, _, _, _) => Some(en),
+      EffectOpScheme(en, _, _) => Some(en),
       FnScheme
       | ValueScheme
       | ParamScheme(_)
@@ -116,7 +116,7 @@ fn ref_is_constructor(r) = match graph_ref_decl(r) {
       FnScheme
       | ValueScheme
       | ParamScheme(_)
-      | EffectOpScheme(_, _, _, _)
+      | EffectOpScheme(_, _, _)
       | RecordSchemeKind(_)
       | EffectDeclKind(_, _)
       | HandlerKind(_, _, _, _, _)
@@ -175,7 +175,7 @@ fn variant_named_specs_at(applied) = match applied {
         TypeVariants(specs) => if len(args) == 0 { specs } else { map(ground_variant_spec(type_params_of(binding), args), specs) },
         FnScheme
         | ConstructorScheme(_, _)
-        | EffectOpScheme(_, _, _, _)
+        | EffectOpScheme(_, _, _)
         | RecordSchemeKind(_)
         | EffectDeclKind(_, _)
         | HandlerKind(_, _, _, _, _)
@@ -397,7 +397,7 @@ fn nominal_fields_carry(ty) = match ty {
       RecordSchemeKind(fields) => any(field_carries_refinement, fields),
       FnScheme
       | ConstructorScheme(_, _)
-      | EffectOpScheme(_, _, _, _)
+      | EffectOpScheme(_, _, _)
       | TypeVariants(_)
       | EffectDeclKind(_, _)
       | HandlerKind(_, _, _, _, _)
@@ -1130,8 +1130,11 @@ type SchemeKind
   = FnScheme
   // tag 1
   | ConstructorScheme(TagId, Int)
-  // tag 2 — (effect_name, default_handler, ambiguous, resume cardinality — the join over handlers' arm grades)
-  | EffectOpScheme(String, Option(Int), Bool, ResumeDiscipline)
+  // tag 2 — (effect_name, the handlers whose arms answer the op in
+  // registration order — one is the direct call's static arm, two make the
+  // dispatch read the record — , resume cardinality: the join over those
+  // arms' grades)
+  | EffectOpScheme(String, [Int], ResumeDiscipline)
   // tag 3 — [(field_name, ty)]
   | RecordSchemeKind([(String, Ty)])
   // tag 5 — ([op_name: String], [param_name: String]) — the ops, and the
@@ -3837,7 +3840,7 @@ type DiagKind
   // runtime already says this precisely; saying it at compile time is the
   // difference between a program that traps and one that never ships
   // (handler name, op name).
-  | EInitPerformsOwnOp(String, String, Span)
+  | EInitPerformsOwnOp(String, String, Reason, Span)
   // handler, effect, the ops of that effect no arm answers — the
   // match-exhaustiveness law at a handler: an install absorbs every op of
   // the effects its arms answer, so an op with no arm would escape the row
@@ -3967,7 +3970,7 @@ type DiagKind
   // main's span — an EVIDENCE hole:
   // the effect reaches the executable
   // root with no absorbing install
-  | EEffectUnhandled(String, String, Span)
+  | EEffectUnhandled(String, String, Reason, Span)
   // an effect performed inside a THREADED fanout branch whose handler is
   // not provable at the fanout's own frame, or is stateful there (two
   // instances resuming with a state update on one shared record): the
@@ -4212,7 +4215,7 @@ fn diag_span(d) with Pure = match d {
   EResumeWorldMismatch(_, _, s) => s,
   EUnknownArgLabel(_, s) => s,
   EZeroDelayFeedback(s) => s,
-  EInitPerformsOwnOp(_, _, s) => s,
+  EInitPerformsOwnOp(_, _, _, s) => s,
   EHandlerInexhaustive(_, _, _, s) => s,
   EResumeOfNever(_, _, s) => s,
   EComputedDelayDepth(s) => s,
@@ -4249,7 +4252,7 @@ fn diag_span(d) with Pure = match d {
   EDuplicateBinder(_, _, s) => s,
   EEmittedNameCollision(_, s) => s,
   EUnresolvedType(_, _, s) => s,
-  EEffectUnhandled(_, _, s) => s,
+  EEffectUnhandled(_, _, _, s) => s,
   EThreadedBranchEffect(_, _, s) => s,
   EDerivativeUnreachable(_, s) => s,
   EEnvNameUngrounded(s) => s,
@@ -4291,7 +4294,7 @@ fn diag_source(d) with Pure = match d {
   EResumeWorldMismatch(_, _, _) => "infer",
   EUnknownArgLabel(_, _) => "infer",
   EZeroDelayFeedback(_) => "infer",
-  EInitPerformsOwnOp(_, _, _) => "effects",
+  EInitPerformsOwnOp(_, _, _, _) => "effects",
   EHandlerInexhaustive(_, _, _, _) => "effects",
   EResumeOfNever(_, _, _) => "effects",
   EComputedDelayDepth(_) => "infer",
@@ -4328,7 +4331,7 @@ fn diag_source(d) with Pure = match d {
   EDuplicateBinder(_, _, _) => "infer",
   EEmittedNameCollision(_, _) => "emit",
   EUnresolvedType(_, _, _) => "lower",
-  EEffectUnhandled(_, _, _) => "effects",
+  EEffectUnhandled(_, _, _, _) => "effects",
   EThreadedBranchEffect(_, _, _) => "lower",
   EDerivativeUnreachable(_, _) => "lower",
   EEnvNameUngrounded(_) => "infer",
@@ -4372,7 +4375,7 @@ fn diag_arm(d) with Pure = match d {
   EEnvNameUngrounded(_) => OnEffects,
   EUnknownArgLabel(_, _) => OnQuery,
   EZeroDelayFeedback(_) => OnTopology,
-  EInitPerformsOwnOp(_, _, _) => OnEffects,
+  EInitPerformsOwnOp(_, _, _, _) => OnEffects,
   EHandlerInexhaustive(_, _, _, _) => OnEffects,
   EComputedDelayDepth(_) => OnTopology,
   ERestOutsideDestructure(_) => OnQuery,
@@ -4408,7 +4411,7 @@ fn diag_arm(d) with Pure = match d {
   EDuplicateBinder(_, _, _) => OnQuery,
   EEmittedNameCollision(_, _) => OnQuery,
   EUnresolvedType(_, _, _) => OnQuery,
-  EEffectUnhandled(_, _, _) => OnEffects,
+  EEffectUnhandled(_, _, _, _) => OnEffects,
   EThreadedBranchEffect(_, _, _) => OnEffects,
   EDerivativeUnreachable(_, _) => OnTopology,
   EUnresolvedHole(_, _) => OnPropose,
@@ -4450,7 +4453,7 @@ fn diag_code(d) with Pure = match d {
   EResumeWorldMismatch(_, _, _) => "E_ResumeWorldMismatch",
   EUnknownArgLabel(_, _) => "E_UnknownArgLabel",
   EZeroDelayFeedback(_) => "E_ZeroDelayFeedback",
-  EInitPerformsOwnOp(_, _, _) => "E_InitPerformsOwnOp",
+  EInitPerformsOwnOp(_, _, _, _) => "E_InitPerformsOwnOp",
   EHandlerInexhaustive(_, _, _, _) => "E_HandlerInexhaustive",
   EResumeOfNever(_, _, _) => "E_ResumeOfNever",
   EComputedDelayDepth(_) => "E_ComputedDelayDepth",
@@ -4487,7 +4490,7 @@ fn diag_code(d) with Pure = match d {
   EDuplicateBinder(_, _, _) => "E_DuplicateBinder",
   EEmittedNameCollision(_, _) => "E_EmittedNameCollision",
   EUnresolvedType(_, _, _) => "E_UnresolvedType",
-  EEffectUnhandled(_, _, _) => "E_EffectUnhandled",
+  EEffectUnhandled(_, _, _, _) => "E_EffectUnhandled",
   EThreadedBranchEffect(_, _, _) => "E_ThreadedBranchEffect",
   EDerivativeUnreachable(_, _) => "E_DerivativeUnreachable",
   EEnvNameUngrounded(_) => "E_EnvNameUngrounded",
@@ -4547,7 +4550,7 @@ fn diag_severity(d) with Pure = match d {
   | EResumeWorldMismatch(_, _, _)
   | EUnknownArgLabel(_, _)
   | EZeroDelayFeedback(_)
-  | EInitPerformsOwnOp(_, _, _)
+  | EInitPerformsOwnOp(_, _, _, _)
   | EHandlerInexhaustive(_, _, _, _)
   | EResumeOfNever(_, _, _)
   | EComputedDelayDepth(_)
@@ -4575,7 +4578,7 @@ fn diag_severity(d) with Pure = match d {
   | EDuplicateBinder(_, _, _)
   | EEmittedNameCollision(_, _)
   | EUnresolvedType(_, _, _)
-  | EEffectUnhandled(_, _, _)
+  | EEffectUnhandled(_, _, _, _)
   | EThreadedBranchEffect(_, _, _)
   | EEnvNameUngrounded(_)
   | EUnresolvedHole(_, _)
@@ -4614,7 +4617,7 @@ fn diag_applicability(d) with Pure = match d {
   EPatternInexhaustive(_, _) => HasPlaceholders,
   EHandlerInexhaustive(_, _, _, _) => HasPlaceholders,
   EResumeOfNever(_, _, _) => MaybeIncorrect,
-  EEffectUnhandled(_, _, _) => MaybeIncorrect,
+  EEffectUnhandled(_, _, _, _) => MaybeIncorrect,
   EThreadedBranchEffect(_, _, _) => MaybeIncorrect,
   EDerivativeUnreachable(_, _) => Unspecified,
   EEnvNameUngrounded(_) => MaybeIncorrect,
@@ -4652,7 +4655,7 @@ fn diag_applicability(d) with Pure = match d {
   | EResumeWorldMismatch(_, _, _)
   | EUnknownArgLabel(_, _)
   | EZeroDelayFeedback(_)
-  | EInitPerformsOwnOp(_, _, _)
+  | EInitPerformsOwnOp(_, _, _, _)
   | EComputedDelayDepth(_)
   | ERestOutsideDestructure(_)
   | ERowAliasCycle(_, _)
@@ -4717,7 +4720,7 @@ fn diag_message(d) with !Mutate = match d {
   EResumeWorldMismatch(da, db, _) => "resume cardinality mismatch: {show_discipline(da)} vs {show_discipline(db)}",
   EUnknownArgLabel(detail, _) => detail,
   EZeroDelayFeedback(_) => "`<~ delay(0)` closes a cycle with no delay — the prior would be the value being computed. Raise the delay to at least 1",
-  EInitPerformsOwnOp(hname, op, _) => "handler {hname} performs {op} while building itself — in a state init or a config default, both of which run before the install exists — and {hname} is what answers {op}, so nothing can absorb it. Move the perform into an arm, or compute the value from a handler installed around this one",
+  EInitPerformsOwnOp(hname, ename, why, _) => "handler {hname} performs {ename} while building itself — in a state init, a config default or an install's argument, each of which runs before the install exists — and {hname} is the one handler that answers {ename}, so nothing can absorb it. Move the perform into an arm, or compute the value from a handler installed around this one; {show_reason(why)}",
   EResumeOfNever(hname, op, _) => "handler {hname} resumes {op}, which is declared `-> !`: the op never returns to its performer, and each perform meets a result type of its own, so no value can be handed back to all of them. End the arm with the value the install answers, or declare the op's result type if it does return",
   EHandlerInexhaustive(hname, en, missing, _) => "handler {hname} answers no {join(", ", missing)} of {en} — an install absorbs every op of the effects its arms answer, so a perform of the missing op would reach nothing and read garbage evidence. Add the arm; an arm that performs its own op forwards it to the enclosing handler (`op(…) => resume(op(…))`), and the ops this handler answers can be declared as their own effect",
   EComputedDelayDepth(_) => "the delay depth must be a literal — a feedback line is a fixed set of slots, and a depth read at runtime would silently get one. Write the depth, or hold the history yourself",
@@ -4757,7 +4760,7 @@ fn diag_message(d) with !Mutate = match d {
   EDuplicateBinder(name, first, _) => "`{name}` is bound twice in one scope — first at {show_span(first)}, so a use could reach either, and a parameter list holds one field per name; rename one",
   EEmittedNameCollision(symbol, _) => "two different functions both emit as `{symbol}` — the dedup keeps the first, so every call meaning the second would reach the first instead. This is the compiler's own naming, not your program: report it",
   EUnresolvedType(h, epoch, _) => "handle {int_to_str(h)} @epoch={int_to_str(epoch)}",
-  EEffectUnhandled(ename, proposal, _) => "effect {ename} reaches the executable root with no absorbing handler — calling one of its ops would read garbage evidence at runtime; nothing executes unproven. {proposal}",
+  EEffectUnhandled(ename, proposal, why, _) => "effect {ename} reaches the executable root with no absorbing handler — calling one of its ops would read garbage evidence at runtime; nothing executes unproven. {proposal} {show_reason(why)}",
   EThreadedBranchEffect(ename, why, _) => "effect {ename} is performed inside a threaded branch and {why} — two spawned instances would race, or reach a handler this site cannot see. Install a stateless handler for {ename} at the fanout's own frame, or install the handler inside the branch",
   EEnvNameUngrounded(_) => "`env` is a required read, and its name here is computed: the program's demand on its host cannot be stated before it runs, so nothing could check it at launch. Write the variable's name at the read — `env(\"PORT\")` — or ask `env_opt` and decide what an absent value means",
   EDerivativeUnreachable(why, _) => "{why} — the derivative reading would answer zero here, and zero is not what the program asked for; nothing is emitted rather than a wrong slope",
@@ -6345,6 +6348,7 @@ fn show_reason(ref reason) with !Mutate = match reason {
   // that charges it by itself.
   EffectEnters(eff, site, next) => match graph_node_body(site) {
     NStmt(FnStmt(name, _, _, _, _)) => "declared as {name}; {eff} enters {enters_tail(next)}",
+    NStmt(LetStmt(_, _, _)) => "a module value's init, which runs before main; {eff} enters {enters_tail(next)}",
     NStmt(EffectDeclStmt(ename, _, _)) => "{show_reason(next)}, an op of {ename} declared at {site_address(site)}",
     body @ (
       NExpr(_)
