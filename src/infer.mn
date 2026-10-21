@@ -6013,9 +6013,19 @@ fn discharge_arg_refinements(dps, arg_handles, i, span: ValidSpan, call_h) = if 
   // met here by an applied call holding a value hole (`choose(??) + 1`).
   match graph_node_body(ah) {
     NHole(id) => if id == 0 { discharge_arg(p, ah, span, call_h) } else { note_contract(param_ty(p), ah) },
-    _ => discharge_arg(p, ah, span, call_h),
+    _ => if handed_to_itself(p, ah) { () } else { discharge_arg(p, ah, span, call_h) },
   }
   discharge_arg_refinements(dps, arg_handles, i + 1, span, call_h)
+}
+
+// A parameter handed back to its own position — a recursive call passing it
+// through — hands exactly what it is, so nothing is claimed and nothing
+// taught. Read as a receiver, its own unlearned class taught it values
+// nothing here could name, and a render loop handing its rig to itself left
+// every filter's cutoff bound open (2026-10-21).
+fn handed_to_itself(p, ah) = match flow_param(ah) {
+  Some(b) => param_ty(p) == TVar(b),
+  None => false,
 }
 
 // `~>` handler attachment — the row algebra's handler operator. A handler is
@@ -7042,6 +7052,7 @@ fn infer_pipe(kind, left, right, handle, span: ValidSpan) = match kind {
       ()
     }
     call_owes(fn_leaves(right), [left], handle, span)
+    stage_teaches(right, left)
     match graph_chase(right) {
       GNode(NBound(TFun(_, _, crow)), _) => inf_add_row_unified_at(
         handle,
@@ -7370,6 +7381,13 @@ fn infer_fanout_apply_one(branch, input_h, span: ValidSpan) = {
   infer_stage(branch, 1)
   graph_bind(expected_h, expected, Located(span, Inferred("<| branch applied to the borrowed input")))
   unify(branch, expected_h, span, Inferred("<| branch borrows the shared input"))
+  // Applied to the input as a pipe's stage is, the branch owes what its
+  // parameter demands of the input, pays the guard where the claim is open,
+  // and teaches a learning parameter the whole product it completes. The
+  // fanout raised nothing until 2026-10-21: `0 <| (inv, inv)` under `!Trap`
+  // checked clean and divided by zero.
+  call_owes(fn_leaves(branch), [input_h], branch, span)
+  stage_teaches(branch, input_h)
   // The branch call's row flows into the boundary frame — the same
   // read-the-callee's-own-row discipline infer_call_saturated uses — and
   // what the stage writes is asked of the input it is handed.
@@ -13180,16 +13198,40 @@ fn fn_at(t, path) = match t {
     u => fn_at(class_scrub(u), path),
   },
   TAlias(_, inner) => fn_at(inner, path),
-  _ => match path {
-    [] => match t {
-      TFun(ps, ret, row) => Some((ps, ret, row)),
-      _ => None,
-    },
-    [step, ...rest] => match contract_part(t, step) {
-      Some(part) => fn_at(part, rest),
-      None => None,
-    },
+  TRecordOpen(fs, v) => match record_seen(fs, v, class_scrub) {
+    (all, end) => fn_at_stated(record_of(all, end), path),
   },
+  _ => fn_at_stated(t, path),
+}
+
+fn fn_at_stated(t, path) = match path {
+  [] => match t {
+    TFun(ps, ret, row) => Some((ps, ret, row)),
+    _ => None,
+  },
+  [step, ...rest] => match contract_part(t, step) {
+    Some(part) => fn_at(part, rest),
+    None => None,
+  },
+}
+
+// An open record read to the end of its row (`record_row_full`): the fields
+// it states, then every field its tail's chain has learned since, read
+// through `read` as the class's. A learned contract states the record as its
+// parameter was when something was learned, and the parameter's class grows
+// after: a frame reading its rig's second filter extends the class past the
+// first, and a contract read one link short had no second filter to learn.
+fn record_seen(fs, v, read) = match record_row_full([], v) {
+  (more, end) => (fs ++ map(read_field(read, ??), more), end),
+}
+
+fn read_field(read, f) = match f {
+  (n, t) => (n, read(t)),
+}
+
+fn record_of(fields, end) = match end {
+  RowEndClosed => TRecord(fields),
+  RowEndFree(e) => TRecordOpen(fields, e),
 }
 
 // A type read through its cell: a variable bound to a type is that type
@@ -13249,7 +13291,9 @@ fn fn_at_path(t, path, part, read) = match path {
       _ => t,
     },
     TRecord(fs) => TRecord(fs |> map(fn_in_field(step, rest, part, read, ??))),
-    TRecordOpen(fs, v) => TRecordOpen(fs |> map(fn_in_field(step, rest, part, read, ??)), v),
+    TRecordOpen(fs, v) => match record_seen(fs, v, read) {
+      (all, end) => record_of(all |> map(fn_in_field(step, rest, part, read, ??)), end),
+    },
     TName(n, args) => match step {
       PartTypeArg(k) => TName(n, args |> enumerate |> map(fn_in_slot(k, rest, part, read, ??))),
       _ => t,
@@ -13337,6 +13381,18 @@ fn learned_result(ret, demand) = if ty_carries_contract(ret) {
 // function it handed in, for a division by 5.
 fn learn_provision(callee_h, arg_handles) = match learning_path(callee_h) {
   Some(at) => applied_by_choice(at, arg_handles),
+  None => (),
+}
+
+// A stage completed in place is one application of its callee with the
+// whole product (`stage_application`), so a learning parameter the callee
+// is learns every slot where the pipe completes it — the configuration the
+// partial was handed and the piped value. The partial alone hands too few
+// slots to teach anything, so a frame piping a sample through its rig's
+// filter at 300 Hz taught the rig nothing, and the filter's cutoff bound
+// stood open at every rig a frame was handed.
+fn stage_teaches(stage, piped) = match stage_application(stage, [piped]) {
+  Some((callee, args)) => if callee == stage { () } else { fn_leaves(callee) |> each(learn_provision(??, args)) },
   None => (),
 }
 

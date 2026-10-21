@@ -608,6 +608,8 @@ parallel-fanout topology (see §`><`). The read-only borrow is what makes
 execution-as-a-handler PROVABLY race-free: a shared value borrowed read-only is
 safe across threads.
 
+**A branch owes what a stage owes.** Each branch is applied to the input as a pipe's stage is, so its parameter's refinement is claimed of the input and the row its precondition guards is paid where the claim is open: `0 <| (inv, inv)` over `inv(n: Positive)` refuses as `0 |> inv` does (tests/micros/mn-refine-fanout-branch-owes.mn).
+
 **A fanout over one stage is the pipe.** A product of one field is its field, so `x <| f` answers what `x |> f` answers and the two are one graph: the parse builds the pipe, and `mentl fmt` writes `|>`. A tuple literal of one, `(a,)`, is `a`, as the pattern `(p)` is `p` (tests/micros/mn-product-of-one.mn).
 
 ### `><` — parallel compose (structural N-ary)
@@ -1558,7 +1560,11 @@ values, which are `Hz`, and `fn feed(f) = f(440.0)` hands it `440.0` — and
 what a refined position demands of the result — `fn run(f) = alpha(f())`
 publishes `f: () -> Hz` — so a caller's crossing judges the function it hands
 in: a lambda's body against the demanded result, its own demands against the
-values the callee hands it. A `<~` cycle binds its lambda's parameter with no
+values the callee hands it. A stage completed in place — `x |> rig.f(5)`, a
+`<|` branch — is one application with the whole product, so a record of
+filters handed to a frame learns each cutoff the frame hands the filter it
+pipes through, and a parameter a recursive call hands back to itself
+teaches nothing (tests/micros/mn-refine-stage-through-field.mn). A `<~` cycle binds its lambda's parameter with no
 application to raise a claim, so that parameter learns nothing and a demand
 inside the body stays the body's debt.
 

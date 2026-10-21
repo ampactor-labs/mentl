@@ -233,10 +233,14 @@ fn board_bounds() = [
   // voices tick lines minted in their own branch — the score's same claim,
   // and Pulse's. The voices lesson fell the same day, when a function
   // value's store claim travelled with it and the race rule read a voice's
-  // tick as the branch's own construction. Each falls as the landing it
-  // names lands; the commit that turns a lesson green names the lesson
-  // (CLAUDE.md).
-  Bound({ceiling: 5, question: QOwed("examples/pulse/course")}),
+  // tick as the branch's own construction. Lessons 2, 5 and 9 fell the same
+  // day, when a stage completed in place taught the frame's rig the cutoff
+  // it hands each filter; two remain, the rate's own bound in lesson 6 and a
+  // division in lesson 7 (§11's verification whole). Pulse and the score
+  // still owe the claims of their own each makes of a computed frequency.
+  // Each falls as the landing it names lands; the commit that turns a lesson
+  // green names the lesson (CLAUDE.md).
+  Bound({ceiling: 2, question: QOwed("examples/pulse/course")}),
   Bound({ceiling: 1, question: QOwed("examples/wasatch")}),
   Bound({ceiling: 1, question: QOwed("examples/pulse/render")}),
   // The iteration costumes — a function that threads an incremented index

@@ -498,12 +498,11 @@ landing that closes it. A gate that did not run is UNKNOWN, never green.
   refinement at a part, no call with argument holes, no record proposed for a
   positional product.
 - **The course and the scores are owed** (`mentl verify`, the `QOwed` bounds;
-  §11's verification whole, §11.18): a filter stage's `Hz` precondition is
-  claimed again where a frame is handed the record that holds the stage, and
-  the verifier cannot read the constant the frame hands it through the
-  function-typed field, so the claim stays open at every rig; and a Nyquist
-  bound that reads the installed rate inside its predicate is left pending.
-  The page cannot yet play a lesson (§11.13).
+  §11's verification whole): a Nyquist bound that reads the installed rate
+  inside its predicate is left pending (lesson 6), a division by a value
+  nothing bounds charges `Trap` (lesson 7, Pulse), and a frequency computed
+  from a sine or a product is a claim the interval fragment has not grown
+  (Pulse, Wasatch). The page cannot yet play a lesson (§11.13).
 - **Effect names lie about their ops** (§11.9): GraphRead holds writes,
   GraphWrite holds reads, and `Memory` holds pure word arithmetic, so a
   function doing only arithmetic on words is not `Pure`.
@@ -702,7 +701,10 @@ property 2 failing at a shape a real program writes) is closed before anything
 else, and the net that verifies every landing stays trustworthy. A landing is
 committed whole; a gap found inside it is fixed inside it; when it lands its
 paragraph leaves this list. Each `Hβ.*` label names the landing's design as git
-keeps it.
+keeps it. The DSP arc runs before the fused oracle's last landing (Morgan,
+2026-10-21): the higher-order refinement's first face, then the instance a
+handler serves (§11.10), a predicate decided as written (verification whole),
+a delay sized from the rate (§11.7) and the prelude's stage order (§11.11).
 
 **THE DEFINITION OF DONE** — one statement per §0 property, each a terminal
 gate: (1) *proof beats review* — the crown sound under polymorphism, Verify
@@ -861,7 +863,15 @@ and the artifact:
   the callee built the part in sight and owed, naming the site, where it did
   not (`Hβ.verify.part-of-a-call-answer`); a refinement a callback demands of
   the values a callee hands it is judged where the callee passes them
-  (`Hβ.verify.higher-order-refinement`, the course's owed claim); a state
+  (`Hβ.verify.higher-order-refinement`) — its first face landed 2026-10-21: a
+stage completed in place, a pipe's or a `<|` branch's, is one application
+of its callee with the whole product, so a learning parameter learns every
+slot and a filter's cutoff handed through a record field is decided where
+the record crosses; a learned contract reads an open record to the end of
+its row; a parameter a recursive call hands back to itself teaches
+nothing; and the `<|` branch, which owed nothing, owes what a stage owes
+(lessons 2, 5 and 9; tests/micros/mn-refine-stage-through-field.mn,
+mn-refine-fanout-branch-owes.mn); a state
   write is read as the claim's own hypothesis, an inductive invariant
   (`Hβ.verify.state-reads-its-invariant`); non-termination is a row fact
   beside `Trap` (`Hβ.effects.divergence-is-a-row-fact`); then the solver is the search
@@ -978,7 +988,9 @@ and the artifact:
    bind and asks where they disagree, `mentl tighten` writes the sweep, and the
    positional form then refuses (`E_UnnamedParameter`). Every filesystem
    failure is said — an unreadable path performs `Fail`, never answers an empty
-   string or a sentinel handle. `mentl diagnostics` projects the catalog
+   string or a sentinel handle. A type name that resolves nowhere refuses
+`E_MissingVariable` at the name, where `fn f(x: Nope) = x + 1` refuses as
+arithmetic on `Nope` (measured 2026-10-21). `mentl diagnostics` projects the catalog
    from the `DiagKind` constructors, SYNTAX's tables become its text, and each
    class the docs name that no constructor declares is born with its fixture or
    struck.
@@ -1006,7 +1018,14 @@ and the artifact:
    a value the ring reads at run time (`Hβ.dataflow.delay-line-runtime-depth`);
    and the delay spec is the static depth the emit already treats it as,
    never an expression judged in a dropped frame
-   (`Hβ.effects.feedback-row-substitutes`).
+   (`Hβ.effects.feedback-row-substitutes`). The line is read at a moving,
+   fractional tap — a chorus, a flanger, a pitch shift — as well as at its
+   oldest slot; a decaying line flushes a denormal in its tick, since wasm
+   has no flush-to-zero mode; a stage's coefficient is computed when its
+   input moves, never once per sample (`compute_alpha`'s `exp` runs per tick
+   in every filter today); and a `<|` or `><` join aligns branches of known
+   latency or refuses the misaligned merge (measured 2026-10-21, after a
+   survey of Sonido).
 8. **Teach says what the program owes**
    (`Hβ.teach.teaches-what-the-program-owes`). A refinement proposed at a part
    (walked back through `PartFact` to its producer, ranked by the obligations it
@@ -1067,7 +1086,13 @@ and the artifact:
     emitter derives over a sequence — `==`, compare, hash and show — are loops,
     where each is emitted today as one call per element, so two lists of
     twenty thousand pairs exhaust the stack where they are compared (measured
-    2026-10-16, first by the rename's edge lists).
+    2026-10-16, first by the rename's edge lists), and the prelude's `sort`
+    exhausts it at twenty thousand elements, its `merge` one call per
+    element. A Float compares, equals and hashes in IEEE total order inside
+    those folds, so `[nan] == [nan]` agrees with `a == a` and `sort` places
+    a NaN, where it answers `[0.0, 0.0, 2.0, NaN, 1.0]` for `[1.0, NaN,
+    -0.0, 0.0, 2.0]` today; `<` on a Float stays IEEE for arithmetic
+    (measured 2026-10-21, after a survey of Turbosort).
 12. **The project is canonical, and a render that changes the tree is not
     written** (`Hβ.fmt.the-project-is-canonical`,
     `Hβ.fmt.render-must-parse-to-the-same-tree`). fmt lifts every
@@ -1144,7 +1169,11 @@ and the artifact:
     today they are emitted once at the word face and a Float-answering
     `fanout` under `parallel_compose` traps at its join. A schedule reaches a
     fanout through a function value minted under it
-    (`Hβ.lower.schedule-through-a-value`). Every step is gated by
+    (`Hβ.lower.schedule-through-a-value`). Two branches writing disjoint
+    ranges of one buffer run, each owning its slice of the memory the fanout
+    hands it, where today they refuse as one buffer written from every
+    instance, and the refusal's advice names a stateless handler for an
+    effect with no ops. Every step is gated by
     m3 under `Seq` byte-identical to m3 under `parallel_compose`.
 17. **Verify's own solver** (`Hβ.verify.the-solver-is-the-search`). The
     proposer's search is the solver: union-find and the e-graph as congruence

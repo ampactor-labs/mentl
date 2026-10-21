@@ -1,0 +1,16 @@
+// expect: 40
+// A stage a record carries is applied through a parameter as a pipe stage,
+// and the crossing reads what that stage is handed: `frame` hands the field
+// the constant 5 at its Positive position, so `scale`'s guard is proven
+// where the record crosses into `frame`, and `main` stays `!Trap`. On boot
+// d7cb8613 the stage's application taught the rig nothing, the claim stood
+// open at the crossing, and its guard refused `main`'s `!Trap`.
+type Positive = Int where self > 0
+
+fn scale(n: Positive, x: Int) with !Trap = x * (100 / n)
+
+fn frame(rig) = 2 |> rig.f(5)
+
+fn kit() = {f: scale}
+
+fn main() with !Trap = frame(kit())

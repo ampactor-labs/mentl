@@ -1,0 +1,11 @@
+// expect: refuse E_RefinementRejected
+// A `<|` branch is a stage applied to the borrowed input, and it owes what
+// a pipe's stage owes: `inv` demands a Positive, the input is 0, and the
+// claim refutes where the fanout applies the branch.
+type Positive = Int where self > 0
+
+fn inv(n: Positive) with !Trap = 100 / n
+
+fn main() with !Trap = match 0 <| (inv, inv) {
+  (a, b) => a + b,
+}

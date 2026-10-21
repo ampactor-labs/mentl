@@ -1,0 +1,13 @@
+// expect: refuse E_RefinementRejected
+// The twin of mn-refine-stage-through-field: `frame` hands the stage 0 at
+// its Positive position, so the crossing refutes the claim where the record
+// crosses into `frame`, never leaving it as debt.
+type Positive = Int where self > 0
+
+fn scale(n: Positive, x: Int) with !Trap = x * (100 / n)
+
+fn frame(rig) = 2 |> rig.f(0)
+
+fn kit() = {f: scale}
+
+fn main() = frame(kit())
