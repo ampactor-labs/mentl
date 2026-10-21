@@ -1074,7 +1074,8 @@ fn chase_node(ref nodes, seed, handle, depth) with !Mutate = if depth > 100 {
         | TRefined(_, _)
         | TReprPin(_, _)
         | TCont(_, _, _, _)
-        | TAlias(_, _) => GNode(kind, reason),
+        | TAlias(_, _)
+        | TValue(_) => GNode(kind, reason),
       },
       NRowBound(row) => match row {
         // The chase folds the chain under the READING LAW: each level's
@@ -1137,7 +1138,8 @@ fn chase_handle(ref nodes, seed, handle, depth) with !Mutate = if depth > 100 {
         | TRefined(_, _)
         | TReprPin(_, _)
         | TCont(_, _, _, _)
-        | TAlias(_, _) => handle,
+        | TAlias(_, _)
+        | TValue(_) => handle,
       },
       // Row aliases: unify_row links open row cells as `va → EfRow(_, _, EtOpen([vb]))`.
       // find follows a SINGLE edge to the canonical root, exactly as it
@@ -1284,7 +1286,8 @@ fn chain_passes(nodes, seed, v, written, depth) with !Mutate = if v == written {
         | TRefined(_, _)
         | TReprPin(_, _)
         | TCont(_, _, _, _)
-        | TAlias(_, _) => false,
+        | TAlias(_, _)
+        | TValue(_) => false,
       },
       NRowBound(row) => match row {
         EfRow(_, _, EtOpen(edges)) => if len(edges) == 1 {
@@ -1316,6 +1319,8 @@ fn chain_passes(nodes, seed, v, written, depth) with !Mutate = if v == written {
 // are decided explicitly.
 fn occurs_in(nodes, seed, handle, ref ty) = match ty {
   TInt => false,
+  // an instance's value holds no variable
+  TValue(_) => false,
   TFloat => false,
   TUnit => false,
   TByte => false,
@@ -1551,6 +1556,7 @@ fn occurs_in_eff_args_loop(nodes, seed, handle, ref args, i, n) = if i >= n {
     // interned identities — no embedded Ty, nothing to occur in
     EAEffect(_) => false,
     EACon(_) => false,
+    EAVar(v) => occurs_in(nodes, seed, handle, TVar(v)),
   }
   if occ { true } else { occurs_in_eff_args_loop(nodes, seed, handle, args, i + 1, n) }
 }
@@ -1834,7 +1840,7 @@ fn written_cells(ty) = match ty {
   TCont(input, answer, _, _) => written_cells(input) ++ written_cells(answer),
   TAlias(_, inner) => written_cells(inner),
   TReprPin(_, base) => written_cells(base),
-  TInt | TFloat | TUnit | TByte | TAddr => [],
+  TInt | TFloat | TUnit | TByte | TAddr | TValue(_) => [],
 }
 
 // A pattern's sub-patterns, each a node of its own, a rest among them.
@@ -2181,7 +2187,8 @@ fn stage_open_slots(right) = match graph_node_body(right) {
     | TRefined(_, _)
     | TReprPin(_, _)
     | TCont(_, _, _, _)
-    | TAlias(_, _) => -1,
+    | TAlias(_, _)
+    | TValue(_) => -1,
   },
 }
 
@@ -2411,7 +2418,8 @@ fn record_row_full(fields, v) = match graph_chase(v) {
       | TRefined(_, _)
       | TReprPin(_, _)
       | TCont(_, _, _, _)
-      | TAlias(_, _) => (fields, RowEndFree(graph_chase_handle(v))),
+      | TAlias(_, _)
+      | TValue(_) => (fields, RowEndFree(graph_chase_handle(v))),
     },
     NFree(_) => (fields, RowEndFree(graph_chase_handle(v))),
     NRowFree(_) => (fields, RowEndFree(graph_chase_handle(v))),
@@ -2478,7 +2486,8 @@ fn spec_copy_fields(whole, names, in_front) = match whole {
   | TRefined(_, _)
   | TCont(_, _, _, _)
   | TAlias(_, _)
-  | TReprPin(_, _) => None,
+  | TReprPin(_, _)
+  | TValue(_) => None,
 }
 
 fn row_ends_at(end, t) = match end {
@@ -2558,6 +2567,7 @@ fn spec_subst_pairs(t, pairs) = match t {
               | TReprPin(_, _)
               | TCont(_, _, _, _)
               | TAlias(_, _)
+              | TValue(_)
             ) => other,
           },
           None => mk_record_open(learned, t),
@@ -2569,7 +2579,7 @@ fn spec_subst_pairs(t, pairs) = match t {
   TRefined(b, p) => TRefined(spec_subst_pairs(b, pairs), p),
   TAlias(n, i) => TAlias(n, spec_subst_pairs(i, pairs)),
   TCont(i, a, d, w) => TCont(spec_subst_pairs(i, pairs), spec_subst_pairs(a, pairs), d, w),
-  TInt | TFloat | TUnit | TByte | TAddr | TReprPin(_, _) => t,
+  TInt | TFloat | TUnit | TByte | TAddr | TReprPin(_, _) | TValue(_) => t,
 }
 
 // lookup_ty_graph — GraphRead → LookupTy bridge (spec 05)

@@ -203,6 +203,8 @@ fn enumerate_typed(target_ty, allowed_effects, context) = match target_ty {
     _ => enumerate_list_candidates(elem, context),
   },
   TTuple(elems) => enumerate_tuple_candidates(elems, context),
+  // an instance's value is no hole's type: nothing proposes into it
+  TValue(_) => [],
 }
 
 // The Intent-Boundary pin grounding the candidate concat: the vocabulary

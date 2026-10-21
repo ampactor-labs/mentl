@@ -1095,6 +1095,7 @@ fn extract_row(ty) with Pure = match ty {
   TCont(_, _, _, world) => world,
   TAlias(_, inner) => extract_row(inner),
   TReprPin(_, base) => extract_row(base),
+  TValue(_) => mk_ef_pure(),
 }
 
 // The annotation's source text — what an accept writes, and what a

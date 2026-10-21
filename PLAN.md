@@ -526,8 +526,10 @@ landing that closes it. A gate that did not run is UNKNOWN, never green.
   it was captured in and reaches the installs around its resume past it, and
   each install's remainder is an instance of its handler's world cell, which a
   negation and the root judge wherever the program states them. A row says
-  which effects a computation performs and never which install answers one, so
-  absence is proven per effect, not per install (the modal crown, §11).
+  which effects a computation performs, each at the instance it performs, and
+  never which install answers one: an install answers the instance it serves,
+  so two installs of one instance are one fact to a negation, and absence is
+  proven per instance, not per install (the modal crown, §11).
 - **Threads are real**: `~> parallel_compose` runs branches on host threads over
   the shared image, a branch runs in the world it was spawned in, and
   `E_ThreadedBranchEffect` refuses a stateful handler a branch reaches, a store
@@ -702,9 +704,9 @@ else, and the net that verifies every landing stays trustworthy. A landing is
 committed whole; a gap found inside it is fixed inside it; when it lands its
 paragraph leaves this list. Each `Hβ.*` label names the landing's design as git
 keeps it. The DSP arc runs before the fused oracle's last landing (Morgan,
-2026-10-21): the higher-order refinement's first face, then the instance a
-handler serves (§11.10), a predicate decided as written (verification whole),
-a delay sized from the rate (§11.7) and the prelude's stage order (§11.11).
+2026-10-21), in this order: a predicate decided as written (verification
+whole), a delay sized from the rate (§11.7) and the prelude's stage order
+(§11.11).
 
 **THE DEFINITION OF DONE** — one statement per §0 property, each a terminal
 gate: (1) *proof beats review* — the crown sound under polymorphism, Verify
@@ -837,11 +839,13 @@ and the artifact:
   `E@?` where a caller's install answers), a mask names the installs it
   subtracts, and a row variable bound at a `~>` edge is that install's lexical
   capability — the Tang–Lindley synthesis with the negation half carried.
-  The facts that need an install's identity fall out: a handler pinned to its
-  instance (`handler sample_at(rate) with Sample(rate)` answers only its
-  instance, §11.10), a handler held as a value (its record IS the install's
-  identity), two installs of one effect with a negation between them, a
-  closure minted under one install and called under another. Written once,
+  The facts that need an install's identity fall out: a handler held as a
+  value (its record IS the install's identity), two installs of one instance
+  with a negation between them, a closure minted under one install and called
+  under another. An install's instance is already its own: a perform reaches
+  the innermost install serving its instance, and an install subtracts only
+  the instance it serves (SYNTAX §«Installation in `with` clauses»), so the
+  index refines what the instance distinguishes. Written once,
   where the op edge is drawn; read by `row_subsumes`, `diff_row`, the gate's
   mask, the Why walk and `mentl where`. `inter_row`'s silent arm deletes, a
   world mismatch names its two worlds, and a persisted continuation's world is
@@ -1059,13 +1063,9 @@ arithmetic on `Nope` (measured 2026-10-21). `mentl diagnostics` projects the cat
    they become each primitive's own signature, its body typed through it, once
    a list's element crosses its slot at its own width — `list_set`'s journal of
    the value it stores is the face's today.
-10. **Handlers installed once, pinned to their instance**
-    (`Hβ.effects.handler-pins-its-instance`). One install per extent; a
-    handler's start state its own; a chain named once; nothing installed only to
-    swallow an op nobody reads. A handler's config parameter named in the
-    instance position serves that instance alone (`handler sample_at(rate) with
-    Sample(rate)`), refused statically at an install a provably distinct claim
-    reaches. A handler named as a value is its record
+10. **Handlers installed once.** One install per extent; a handler's start
+    state its own; a chain named once; nothing installed only to swallow an op
+    nobody reads. A handler named as a value is its record
     (`Hβ.effects.handler-value-is-its-record`): `let h = one` binds it, a
     parameter holds it, and an install of a value pushes the record it holds
     and absorbs the effect its `Handler(P, A)` type names — today the value's

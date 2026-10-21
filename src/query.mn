@@ -2873,30 +2873,52 @@ fn tee_lines(h) with !Mutate = {
 // A handler declaration's line: what its arms absorb and what they answer —
 // the answer under the names a developer writes, as a function's head is,
 // since a handler whose every arm resumes answers each install's body and
-// its answer is a variable of its scheme.
+// its answer is a variable of its scheme. The effect its config pins reads
+// as the instance it serves, `Sample(rate)`.
 fn handler_line(name: String, arms, h) with !Mutate = {
   let answer = match handler_answer_of(name) {
     Some(a) => ", answers {value_type(a) ~> var_names}",
     None => "",
   }
-  "handler {name} absorbs {join(" + ", handler_effect_names(arms))}{answer}{decl_at(h)}"
+  let pinned = handler_pinned_effect(h)
+  let absorbed = handler_effect_names(arms) |> map(pinned_spelling(pinned, ??)) |> join(" + ")
+  "handler {name} absorbs {absorbed}{answer}{decl_at(h)}"
 }
 
-// An install's line in a function's badges: the handler, what it absorbs
-// and what this install answers — the tee's own type, the body's answer met
-// by the arms'.
+fn pinned_spelling(pinned, en: String) = match pinned {
+  Some(p) => if str_eq(p, en) { "{en}({join(", ", effect_dim_names(en))})" } else { en },
+  None => en,
+}
+
+// An install's line in a function's badges: the handler, what it absorbs —
+// the instance it serves, where its config names one — and what this
+// install answers: the tee's own type, the body's answer met by the arms'.
 fn tee_line(h, r) with !Mutate = {
   let hn = tee_handler_name(r)
   if byte_len(hn) == 0 {
     []
   } else {
     match tee_arms(r) {
-      Some(arms) => [
-        "~> {hn} absorbs {join(" + ", handler_effect_names(arms))}, answers {value_type(lookup_ty(h))} at {show_span(span_of_node_raw(h))}"
-      ],
+      Some(arms) => {
+        let served = tee_served(r)
+        let absorbed = handler_effect_names(arms) |> map(served_spelling(served, ??)) |> join(" + ")
+        [
+          "~> {hn} absorbs {absorbed}, answers {value_type(lookup_ty(h))} at {show_span(span_of_node_raw(h))}"
+        ]
+      },
       None => ["~> {hn} at {show_span(span_of_node_raw(h))} — {hn} names no handler declaration"],
     }
   }
+}
+
+fn tee_served(r) = match handler_e_r(tee_handler_decl(r), r) {
+  Some(er) => served_instance(er, r),
+  None => None,
+}
+
+fn served_spelling(served, en: String) = match served {
+  Some(s) => if str_eq(eff_name_str(s), en) { show_eff_name(s) } else { en },
+  None => en,
 }
 
 // The program's demand on its host (E1).

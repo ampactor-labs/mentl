@@ -1,0 +1,17 @@
+// A stage written for 44.1 kHz under an install of the 48 kHz clock: the
+// install serves Sample(48000), the instance its config names, so the
+// stage's Sample(44100) passes it, and with no clock at 44.1 kHz around it
+// the root refuses — the canonical audio bug, a stage reading the wrong rate,
+// refused rather than run. On boot 342695ce the install absorbed every
+// instance of Sample by its name, and the stage read 48000 as its rate.
+effect Sample(rate: Int) {
+  tick() -> Int
+}
+
+handler clock_at(rate) {
+  tick() => resume(rate),
+}
+
+fn rate44() with Sample(44100) = tick()
+
+fn main() = rate44() ~> clock_at(48000)

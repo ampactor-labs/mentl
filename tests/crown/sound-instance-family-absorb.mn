@@ -4,10 +4,10 @@
 // instance, so it is the "explicit handler bridge" SYNTAX §Parameterized
 // names — the family handler serving any instance — and the install's
 // subtraction clears the row, satisfying the enclosing instance-precise
-// !Sample(48000). No surface exists to pin a handler to one instance,
-// so over-absorption (a 44100 handler eating a 48000 perform) is
-// unconstructible today; if that surface ever lands, its precision
-// crucible lands with it. Expect NO E_EffectMismatch.
+// !Sample(48000). A handler pins its instance by a config parameter
+// named like the effect's own; `h` has none, so it serves every instance,
+// and leak-instance-foreign-install is the pinned twin that refuses.
+// Expect NO E_EffectMismatch.
 effect Sample(rate: Int) { tick() -> Int }
 handler h { tick() => resume(1) }
 fn work() with Sample(48000) = tick()

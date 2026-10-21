@@ -96,8 +96,10 @@ fn board_bounds() = [
   // its binder. 135 -> 132: the lowering's spine of capture points left when
   // a continuation was captured at any position. 132 -> 131: the forking
   // handler's step is one lambda more, and two wrappers of the specializer's
-  // substitution became the holes they were.
-  Bound({ceiling: 131, question: QCensus(CsEffectfulLambda)}),
+  // substitution became the holes they were. 131 -> 128 (2026-10-21): the
+  // perform's pin walk over its declared row left when an instance became a
+  // variable the perform, the declaration and the install bind.
+  Bound({ceiling: 128, question: QCensus(CsEffectfulLambda)}),
   // Drift mode 10 — the seven survivors are documented sentinels, not masked
   // cases. Every wildcard that is NOT one of them is a variant the author
   // declined to enumerate, and the medium cannot tell the difference, which
@@ -389,8 +391,10 @@ fn board_bounds() = [
   // notes on the label lattice left with the lattice. 63 -> 62 the same day:
   // the arming history left with the list of armed classes. 62 -> 59
   // (2026-10-20): the graph module's notes over the trail, the checkpoint
-  // stack and the fork seed left with them.
-  Bound({ceiling: 59, question: QCensus(CsProseClass(PcArchaeology))}),
+  // stack and the fork seed left with them. 59 -> 58 (2026-10-21): the
+  // dispatch walk's note over its world entry left when the entry took the
+  // instance it serves.
+  Bound({ceiling: 58, question: QCensus(CsProseClass(PcArchaeology))}),
   // Decoration runs; the formatter's decoration strip takes this to zero
   // (PLAN §11, the project canonical). 267 -> 266 (2026-10-15): the pattern
   // type's banner left when a pattern became a node. 266 -> 265

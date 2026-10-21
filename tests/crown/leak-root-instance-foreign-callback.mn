@@ -1,0 +1,18 @@
+// The callback face of leak-root-instance-foreign-install: `run` installs the
+// 48 kHz clock over a callback whose row is open while `run` is judged, so
+// the install's absorption rides the open row as a mask that subtracts only
+// the instance it serves, and the 44.1 kHz stage a caller hands in passes it
+// to the root.
+effect Sample(rate: Int) {
+  tick() -> Int
+}
+
+handler clock_at(rate) {
+  tick() => resume(rate),
+}
+
+fn rate44() with Sample(44100) = tick()
+
+fn run(f) = f() ~> clock_at(48000)
+
+fn main() = run(rate44)

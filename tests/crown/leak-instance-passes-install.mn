@@ -1,0 +1,18 @@
+// A negation sees the instance an install passes on: the 48 kHz clock
+// absorbs only Sample(48000), so the 44.1 kHz stage's Sample(44100) still
+// escapes `play`, whose declared `!Sample(44100)` refuses it. On boot
+// 342695ce the install absorbed every instance by name and `play` checked
+// clean while its stage read 48000.
+effect Sample(rate: Int) {
+  tick() -> Int
+}
+
+handler clock_at(rate) {
+  tick() => resume(rate),
+}
+
+fn rate44() with Sample(44100) = tick()
+
+fn play() with !Sample(44100) = rate44() ~> clock_at(48000)
+
+fn main() = play() ~> clock_at(44100)

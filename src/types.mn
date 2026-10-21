@@ -83,6 +83,14 @@ type Ty
   | TCont(Ty, Ty, ResumeDiscipline, EffRow)
   // RN.1 — authored alias name (e.g. "Port") wrapping resolved type
   | TAlias(String, Ty)
+  // A VALUE at the type level: what an effect instance's value dimension
+  // is bound to — `Sample(44100)`'s 44100, a literal written at a perform,
+  // in a declaration's row or as a pinned handler's config; an operand
+  // nothing grounds is a value no compile-time fact names (`EANode`). It
+  // stands only in an instance's position, never for a value's type, so
+  // an instance variable instantiates, generalizes, unifies and keys a
+  // twin by the machinery every type variable rides.
+  | TValue(EffArg)
 
 // The effect a reference performs when what it names is an op: the effect
 // its declaration was published under, read along the reference's edge.
@@ -201,7 +209,8 @@ fn variant_named_specs_at(applied) = match applied {
   | TRefined(_, _)
   | TReprPin(_, _)
   | TCont(_, _, _, _)
-  | TAlias(_, _) => [],
+  | TAlias(_, _)
+  | TValue(_) => [],
 }
 
 // The variants of the type a constructor belongs to, from the type's own
@@ -230,7 +239,8 @@ fn roster_of_result(ty) = match ty {
   | TRefined(_, _)
   | TReprPin(_, _)
   | TCont(_, _, _, _)
-  | TAlias(_, _) => [],
+  | TAlias(_, _)
+  | TValue(_) => [],
 }
 
 fn spec_named(cname: String, spec) = match spec {
@@ -264,7 +274,8 @@ fn type_params_of(binding) = match binding {
     | TRefined(_, _)
     | TReprPin(_, _)
     | TCont(_, _, _, _)
-    | TAlias(_, _) => [],
+    | TAlias(_, _)
+    | TValue(_) => [],
   },
   // A Live binding here would mean the entry came from somewhere the
   // registration does not reach; inventing parameters for it is the
@@ -301,6 +312,7 @@ fn ground_ty(params, args, ty) = match ty {
   TUnit => ty,
   TByte => ty,
   TAddr => ty,
+  TValue(_) => ty,
 }
 
 fn ground_field(params, args, field) = match field {
@@ -341,7 +353,8 @@ fn param_at_root(h, indexed) = match indexed {
     | TRefined(_, _)
     | TReprPin(_, _)
     | TCont(_, _, _, _)
-    | TAlias(_, _) => false,
+    | TAlias(_, _)
+    | TValue(_) => false,
   },
 }
 
@@ -374,6 +387,7 @@ fn ty_carries_refinement(ty) = match ty {
   TUnit => false,
   TByte => false,
   TAddr => false,
+  TValue(_) => false,
 }
 
 fn field_carries_refinement(f) = match f {
@@ -415,7 +429,7 @@ fn nominal_fields_carry(ty) = match ty {
   TTuple(es) => any(nominal_fields_carry, es),
   TRecord(fs) => any(field_nominal_carries, fs),
   TRecordOpen(fs, _) => any(field_nominal_carries, fs),
-  TCont(_, _, _, _) | TFun(_, _, _) | TVar(_) | TInt | TFloat | TUnit | TByte | TAddr => false,
+  TCont(_, _, _, _) | TFun(_, _, _) | TVar(_) | TInt | TFloat | TUnit | TByte | TAddr | TValue(_) => false,
 }
 
 fn field_nominal_carries(f) = match f {
@@ -442,6 +456,7 @@ fn shape_strip(ty) = match ty {
   TUnit => ty,
   TByte => ty,
   TAddr => ty,
+  TValue(_) => ty,
 }
 
 fn shape_field(f) = match f {
@@ -551,6 +566,8 @@ fn repr_of(ty) with Pure = match ty {
   TRecordOpen(_, _) => RI32,
   // continuation pointer
   TCont(_, _, _, _) => RI32,
+  // an instance's value is never a value's type; a word if it is ever asked
+  TValue(_) => RI32,
 }
 
 // repr_width — the byte width of a representation class, by ADT match
@@ -599,7 +616,8 @@ fn stride_of(elem_ty) with Pure = match elem_ty {
   | TRefined(_, _)
   | TReprPin(_, _)
   | TCont(_, _, _, _)
-  | TAlias(_, _) => repr_width(repr_of(elem_ty)),
+  | TAlias(_, _)
+  | TValue(_) => repr_width(repr_of(elem_ty)),
 }
 
 // stride_class — the ZERO-BIASED carrier codec, EMIT side: the stride-code the
@@ -678,6 +696,7 @@ fn arith_operand_class(ty) = match ty {
   TRecord(_) => AoAggregate,
   TRecordOpen(_, _) => AoAggregate,
   TCont(_, _, _, _) => AoAggregate,
+  TValue(_) => AoAggregate,
 }
 
 fn fold_strip(ty) with Pure = match ty {
@@ -705,7 +724,8 @@ fn fold_strip(ty) with Pure = match ty {
   | TName(_, _)
   | TRecord(_)
   | TRecordOpen(_, _)
-  | TCont(_, _, _, _) => ty,
+  | TCont(_, _, _, _)
+  | TValue(_) => ty,
 }
 
 // fold_sig — a deterministic structural name for a type: the dedup key and the
@@ -759,7 +779,26 @@ fn sig_of(ty, var_sig: String) = match fold_strip(ty) {
   TAlias(_, inner) => sig_of(inner, var_sig),
   TRefined(base, _) => sig_of(base, var_sig),
   TReprPin(_, base) => sig_of(base, var_sig),
+  // an instance's value names its twin: two rates are two specializations
+  TValue(a) => "v{value_sig(a)}",
 }
+
+// The value an instance dimension holds, as a name fragment: a scalar by its
+// digits, a string by its bytes in hex, so no spelling reaches a symbol's
+// characters; an operand nothing grounds is the one unknown.
+fn value_sig(a) = match a {
+  EAInt(n) => if n < 0 { "m{int_to_str(0 - n)}" } else { int_to_str(n) },
+  EAFloat(f) => "f{bytes_hex(float_to_str(f))}",
+  EAString(s) => "s{bytes_hex(s)}",
+  EAEffect(h) => "e{int_to_str(h)}",
+  EACon(h) => "c{int_to_str(h)}",
+  EANode(_) | EAType(_) | EAVar(_) => "u",
+}
+
+fn bytes_hex(s) = fold("", byte_hex, s)
+
+fn byte_hex(acc, b) =
+  "{acc}{str_of_single_byte(hex_nibble(b / 16))}{str_of_single_byte(hex_nibble(b % 16))}"
 
 fn sig_list(elems, var_sig: String) = fold("", sig_elem(var_sig, ??, ??), elems)
 
@@ -877,7 +916,8 @@ fn unwritten_cell(ty) = match ty {
   | TRefined(_, _)
   | TReprPin(_, _)
   | TCont(_, _, _, _)
-  | TAlias(_, _) => None,
+  | TAlias(_, _)
+  | TValue(_) => None,
 }
 
 fn param_authored(p) = match p {
@@ -1301,7 +1341,8 @@ fn edge_row_of(kind) = match kind {
     | TRefined(_, _)
     | TReprPin(_, _)
     | TCont(_, _, _, _)
-    | TAlias(_, _) => None,
+    | TAlias(_, _)
+    | TValue(_) => None,
   },
   NFree(_) | NRowFree(_) | NRecordRowBound(_, _) | NErrorHole(_) => None,
 }
@@ -1376,6 +1417,15 @@ type EffArg
   // value, never a constant — it stays EANode. Folded at
   // infer's registration; emit erases.
   | EACon(Int)
+  // an INSTANCE VARIABLE — a value dimension not yet known
+  // (`Sample(rate)`'s rate at a stage that names no rate),
+  // the handle of a type cell bound to a `TValue` once a
+  // literal at the perform, a declaration's row or the
+  // install that answers it says which. It instantiates
+  // per call and generalizes per declaration as a type
+  // variable does, so a stage runs at the rate its caller
+  // states and a twin is keyed by it.
+  | EAVar(Int)
 
 // The Boolean connective joining a surface effect term to the row
 // accumulated to its left — the topology the surface `+ - &` draws
@@ -5329,6 +5379,8 @@ fn render_ty(ty) with !Mutate = match ty {
     (RV128, TInt) => "v128",
     _ => "{render_ty(base)} repr {repr_wat(r)}",
   },
+  // an instance's value renders as its author writes it in a row
+  TValue(a) => render_eff_arg(a),
 }
 
 // A record's fields in the order SYNTAX sorts them at parse, by name — a row
@@ -5378,7 +5430,8 @@ fn render_ty_top(ty) with !Mutate = match ty {
   | TRefined(_, _)
   | TReprPin(_, _)
   | TCont(_, _, _, _)
-  | TAlias(_, _) => render_ty(ty),
+  | TAlias(_, _)
+  | TValue(_) => render_ty(ty),
 }
 
 fn render_field(field: (String, Ty)) with !Mutate = match field {
@@ -5677,7 +5730,8 @@ fn render_ret(ret) with !Mutate = match chase_ret(ret) {
   | TRefined(_, _)
   | TReprPin(_, _)
   | TCont(_, _, _, _)
-  | TAlias(_, _) => " -> {render_ty(ret)}",
+  | TAlias(_, _)
+  | TValue(_) => " -> {render_ty(ret)}",
 }
 
 // A result type read through the variables bound to it, so a unit bound to a
@@ -5701,7 +5755,8 @@ fn chase_ret(t) = match t {
   | TRefined(_, _)
   | TReprPin(_, _)
   | TCont(_, _, _, _)
-  | TAlias(_, _) => t,
+  | TAlias(_, _)
+  | TValue(_) => t,
 }
 
 fn show_head(name: String, params, ret, row) with !Mutate =
@@ -5984,6 +6039,9 @@ fn render_eff_arg(arg) with !Mutate = match arg {
   // re-parses to EANode and re-resolves to the same folded form.
   EAEffect(h) => intern_name_of(h),
   EACon(h) => intern_name_of(h),
+  // a variable renders as a type variable does: its value once bound, else
+  // the name the render gives it
+  EAVar(h) => render_ty(TVar(h)),
 }
 
 // A predicate's expression as the Predicate the verifier decides, carrying

@@ -137,11 +137,12 @@ fn handler_arm_groups(hd) = match handler_shape_at(hd) {
 // frame-fence sites), so the stack is empty at every decl boundary and
 // the widened extent is behaviour-identical.
 // An entry of the stack: the frame fence, or an install — its handle, its
-// handler's declaration, and the install CLASS that declaration answers
-// (`projection_of`), read once where the install is pushed: every global
-// call inside the extent asks the stack which schedule governs it, and
-// classifying the handler per ask re-read its declaration's arms each time.
-type StackEntry = Fence | Installed(Int, Int, Projection)
+// handler's declaration, the install CLASS that declaration answers
+// (`projection_of`), and the word of the instance it serves (0 where it
+// serves every instance), each read once where the install is pushed: every
+// global call inside the extent asks the stack which schedule governs it,
+// and every perform which install serves its instance.
+type StackEntry = Fence | Installed(Int, Int, Projection, Int)
 
 effect LowerHandlerStack {
   lower_handler_push(StackEntry) -> Int
@@ -1539,23 +1540,105 @@ fn clamp_index(i) = if i < 0 { 0 } else { i }
 // declares op_name. None when no lexical install answers it — the Tier-2
 // evidence path. The install handle gives emit the `__hstate_<h>` record the
 // arm runs against.
-fn lower_resolve_handler_for_op(op_name) = {
+fn lower_resolve_handler_for_op(op_name, word) = {
   let ename = lower_effect_name_of_op(op_name)
-  resolve_in_stack(op_name, ename, lower_handler_stack_now())
+  resolve_in_stack(op_name, ename, word, lower_handler_stack_now())
 }
 
-fn resolve_in_stack(op_name: String, ename, stack) = if ename == "" || len(stack) == 0 {
+// An install that answers the op and serves an instance route-distinct from
+// the perform's is passed, as the run's walk passes it.
+fn resolve_in_stack(op_name: String, ename, word, stack) = if ename == "" || len(stack) == 0 {
   None
 } else {
   match last(stack) {
     // the frame fence — enclosing installs live in another WASM frame
     Fence => None,
-    Installed(ih, hd, _) => if handler_declares_op(hd, ename, op_name) {
+    Installed(ih, hd, _, iword) => if handler_declares_op(hd, ename, op_name) && !pinned_passes(hd, ename, iword, word) {
       Some((ih, hd))
     } else {
-      resolve_in_stack(op_name, ename, drop_last(stack))
+      resolve_in_stack(op_name, ename, word, drop_last(stack))
     },
   }
+}
+
+// THE INSTANCE A DISPATCH KEYS ON, as one word: the effect's values spelled
+// and interned, or 0 where some value is not known before the run — which
+// any install may serve, and which may reach any. Two words both known and
+// different are route-distinct, the law the judgment's absorption reads
+// (effects.mn), so the static walk above and the run's walk pass exactly
+// the installs the row says do not answer.
+fn instance_word(ename: String, args) = if len(args) > 0 && all(eff_arg_ground, args) {
+  intern_str("{ename}({show_list(args, value_sig, ",")})") + 1
+} else {
+  0
+}
+
+fn words_route_distinct(a, b) = a != 0 && b != 0 && a != b
+
+// The instance a perform names, read under the twin it is emitted in.
+fn perform_instance_word(handle, ename: String) = {
+  let n = len(effect_dim_names(ename))
+  if n == 0 {
+    0
+  } else {
+    match find(eff_name_is(ename, ??), flat_map(row_presents, graph_rows_at(handle))) {
+      Some(e) => instance_word(ename, map(instance_arg_value, take(n, entry_args(e)))),
+      None => 0,
+    }
+  }
+}
+
+fn row_presents(r) = match r {
+  EfRow(p, _, _) => p,
+}
+
+fn instance_arg_value(a) = match instance_value_at(a) {
+  Some(x) => x,
+  None => a,
+}
+
+// The instance an install serves of the effect, read off its handler's
+// config where it pins it; a handler that serves every instance, or a config
+// computed at the run, is 0.
+fn served_word(right, hd, ename: String) = match handler_e_r(Some(hd), right) {
+  Some(er) => match served_instance(er, right) {
+    Some(s) => if eff_name_is(ename, s) { instance_word(ename, entry_args(s)) } else { 0 },
+    None => 0,
+  },
+  None => 0,
+}
+
+// The word of the effect the handler pins, which the static walk carries on
+// the install's stack entry.
+fn pinned_word(right, hd) = match handler_pinned_effect(hd) {
+  Some(en) => served_word(right, hd, en),
+  None => 0,
+}
+
+// The same word read off an install the lowering has finished, through the
+// handler expression its note holds.
+fn install_word_at(ih, hd, ename: String) = match graph_install_at(ih) {
+  InstallOf(right, _) => served_word(right, hd, ename),
+  NoInstall => 0,
+}
+
+// The stack entry of an install the lowering has finished, which the emit's
+// walks push as the lowering pushed it.
+fn installed_entry(ih, hd) = Installed(
+  ih,
+  hd,
+  projection_of(hd),
+  match graph_install_at(ih) {
+    InstallOf(right, _) => pinned_word(right, hd),
+    NoInstall => 0,
+  }
+)
+
+// Whether a pinned install passes the perform: its pinned effect is the
+// perform's, and the two instances are route-distinct.
+fn pinned_passes(hd, ename: String, word, pword) = match handler_pinned_effect(hd) {
+  Some(en) => str_eq(en, ename) && words_route_distinct(word, pword),
+  None => false,
 }
 
 // THE KEY IS THE OP, NOT THE EFFECT. This asked whether a handler covers the
@@ -1793,7 +1876,7 @@ fn schedule_installed_at(stack, i) = if i < 0 {
     // schedule reaches a fanout in another frame by DEMAND, through a direct
     // call (`spec_call_name`, `fanout_form`), never through this stack
     Fence => None,
-    Installed(_, _, proj) => match proj {
+    Installed(_, _, proj, _) => match proj {
       PSchedule(s) => Some(s),
       PDispatch | PDerivative | PArena => schedule_installed_at(stack, i - 1),
     },
@@ -2004,8 +2087,17 @@ fn lower_perform_dispatch(handle, op_name, lo_args) = match op_resume_discipline
 // not the record; nothing bound answers neither. Three residuals, one
 // operation, and no arm of the emit may differ on what it MEANS — which is
 // why the world bracket is not a property of any of them.
-fn lower_perform_walk(handle, op_name, lo_args) =
-  LPerform(handle, perform_dispatch_of(op_name, lower_resolve_handler_for_op(op_name)), lo_args)
+fn lower_perform_walk(handle, op_name, lo_args) = LPerform(
+  handle,
+  perform_dispatch_of(
+    op_name,
+    lower_resolve_handler_for_op(
+      op_name,
+      perform_instance_word(handle, lower_effect_name_of_op(op_name))
+    )
+  ),
+  lo_args
+)
 
 // `lexical` is not a flag, it is the binding-time INPUT: how much of the walk
 // this site can finish now. An ordinary perform passes what the install stack
@@ -2733,7 +2825,7 @@ fn lower_pipe(kind, left, right, handle) = match kind {
 fn lower_install(left, right, hd, handle) = {
   let lo_r = lower_expr(right)
   let proj = projection_of(hd)
-  lower_handler_push(Installed(handle, hd, proj))
+  lower_handler_push(Installed(handle, hd, proj, pinned_word(right, hd)))
   // The body is a frame of its own, whose remainders the enclosing frame's
   // continuation pass reads (`capture_frame`).
   let lo_l = lower_expr(left)
@@ -3163,7 +3255,7 @@ fn threaded_handler_for(stack, ename: String) = if len(stack) == 0 {
   let below = drop_last(stack)
   match last(stack) {
     Fence => None,
-    Installed(_, hd, _) => if string_in_list(handler_arm_enames(hd), ename) {
+    Installed(_, hd, _, _) => if string_in_list(handler_arm_enames(hd), ename) {
       Some((hd, below))
     } else {
       threaded_handler_for(below, ename)
@@ -3419,7 +3511,8 @@ fn lower_fanout_seq(handle, fh, f_h, lo_args) = {
     | TRefined(_, _)
     | TCont(_, _, _, _)
     | TAlias(_, _)
-    | TReprPin(_, _) => (),
+    | TReprPin(_, _)
+    | TValue(_) => (),
   }
   let lexical = lower_site_schedule()
   let forms = match lexical {
@@ -3684,6 +3777,7 @@ fn record_full_fields(ty) = match ty {
   TFun(_, _, _) => None,
   TCont(_, _, _, _) => None,
   TReprPin(_, _) => None,
+  TValue(_) => None,
 }
 
 // A field's byte offset is the prefix-sum of repr_width over the canonically-
@@ -4115,6 +4209,7 @@ fn ty_handle_of(ty) = match ty {
   TCont(_, _, _, _) => 0,
   TAlias(_, _) => 0,
   TReprPin(_, _) => 0,
+  TValue(_) => 0,
 }
 
 // ─── the sequence-representation chase ──────────────────────────────
@@ -4326,7 +4421,8 @@ fn record_known_fields(ty) = match tuple_pat_strip(ty) {
   | TList(_)
   | TTuple(_)
   | TFun(_, _, _)
-  | TCont(_, _, _, _) => [],
+  | TCont(_, _, _, _)
+  | TValue(_) => [],
 }
 
 fn field_named(name: String, f) = match f {
@@ -4349,7 +4445,8 @@ fn tuple_elem_tys(ty) = match tuple_pat_strip(ty) {
   | TName(_, _)
   | TRecord(_)
   | TRecordOpen(_, _)
-  | TCont(_, _, _, _) => [],
+  | TCont(_, _, _, _)
+  | TValue(_) => [],
 }
 
 fn list_elem_ty(ty) = match tuple_pat_strip(ty) {
@@ -4368,7 +4465,8 @@ fn list_elem_ty(ty) = match tuple_pat_strip(ty) {
   | TName(_, _)
   | TRecord(_)
   | TRecordOpen(_, _)
-  | TCont(_, _, _, _) => TVar(0),
+  | TCont(_, _, _, _)
+  | TValue(_) => TVar(0),
 }
 
 // A constructor's payload types at the scrutinee — none where no type
@@ -5119,7 +5217,8 @@ fn ty_may_yield_live(t) = match t {
   | TName(_, _)
   | TRecord(_)
   | TRecordOpen(_, _)
-  | TCont(_, _, _, _) => false,
+  | TCont(_, _, _, _)
+  | TValue(_) => false,
 }
 
 // The expressions a node runs in its own frame, in the order it runs them —
@@ -7420,8 +7519,8 @@ fn spec_pairs_walk(st0, it0, acc) = {
       TTuple(ies) => spec_pairs_walk_list(es, ies, acc),
       _ => acc,
     },
-    TFun(ps, r, _) => match fold_strip(it0) {
-      TFun(ips, ir, _) => spec_pairs_walk(r, ir, spec_pairs_walk_params(ps, ips, acc)),
+    TFun(ps, r, srow) => match fold_strip(it0) {
+      TFun(ips, ir, irow) => spec_pairs_instances(srow, irow, spec_pairs_walk(r, ir, spec_pairs_walk_params(ps, ips, acc))),
       _ => acc,
     },
     TName(_, args) => match fold_strip(it0) {
@@ -7468,6 +7567,82 @@ fn spec_pairs_walk(st0, it0, acc) = {
   }
 }
 
+// A function's instance variables key its twin as its type variables do:
+// each the scheme's row quantifies is paired with the value its copy at the
+// site is bound to, matched entry by entry within one effect in the order the
+// instantiation copied them, so a stage written for no rate is specialized to
+// the clock its caller runs it under.
+fn spec_pairs_instances(srow, irow, acc) = match resolve_row_edges(srow) {
+  EfRow(sp, _, _) => match resolve_row_edges(irow) {
+    EfRow(ip, _, _) => spec_pairs_entries(filter(name_holds_var, sp), filter(name_holds_var, ip), acc),
+  },
+}
+
+fn spec_pairs_entries(ss, is, acc) = match ss {
+  [] => acc,
+  [s, ...rest] => match find(same_effect_at(s, ??), enumerate(is)) {
+    Some((k, i)) => spec_pairs_entries(
+      rest,
+      take(k, is) ++ drop(k + 1, is),
+      spec_pairs_args(entry_args(s), entry_args(i), acc)
+    ),
+    None => spec_pairs_entries(rest, is, acc),
+  },
+}
+
+fn same_effect_at(s, ki) = match ki {
+  (_, i) => eff_name_handle(i) == eff_name_handle(s),
+}
+
+fn entry_args(e) = match e {
+  EParameterized(_, args) => args,
+  ENamed(_) | EPure => [],
+}
+
+fn spec_pairs_args(sargs, iargs, acc) =
+  fold(acc, spec_pair_instance(iargs, ??, ??), enumerate(sargs))
+
+fn spec_pair_instance(iargs, acc, ka) = match ka {
+  (k, a) => match a {
+    EAVar(q) => if k < len(iargs) {
+      match instance_value_at(list_index(iargs, k)) {
+        Some(x) => spec_pairs_add(acc, graph_chase_handle(q), TValue(x)),
+        None => acc,
+      }
+    } else {
+      acc
+    },
+    EAInt(_) | EAFloat(_) | EAString(_) | EAEffect(_) | EACon(_) | EANode(_) | EAType(_) => acc,
+  },
+}
+
+// The value an instance argument holds, read under the bracket it is read in:
+// a variable through its cell and the enclosing twin's pairs, a value as
+// itself; an operand nothing grounds is the one unknown.
+fn instance_value_at(a) = match a {
+  EAVar(f) => match lookup_ty(f) {
+    TValue(x) => Some(x),
+    TInt
+    | TFloat
+    | TUnit
+    | TByte
+    | TAddr
+    | TList(_)
+    | TTuple(_)
+    | TFun(_, _, _)
+    | TVar(_)
+    | TName(_, _)
+    | TRecord(_)
+    | TRecordOpen(_, _)
+    | TRefined(_, _)
+    | TReprPin(_, _)
+    | TCont(_, _, _, _)
+    | TAlias(_, _) => None,
+  },
+  EAInt(_) | EAFloat(_) | EAString(_) | EAEffect(_) | EACon(_) => Some(a),
+  EANode(_) | EAType(_) => None,
+}
+
 // The site's record when its row is proven whole, read to its end.
 fn site_record_full(it0) = match fold_strip(it0) {
   TRecord(ifs) => Some(ifs),
@@ -7486,6 +7661,7 @@ fn site_record_full(it0) = match fold_strip(it0) {
   TReprPin(_, _) => None,
   TCont(_, _, _, _) => None,
   TAlias(_, _) => None,
+  TValue(_) => None,
 }
 
 // Every field the site's row has learned, whether or not its rest is known.
@@ -7508,6 +7684,7 @@ fn site_record_known(it0) = match fold_strip(it0) {
   TReprPin(_, _) => [],
   TCont(_, _, _, _) => [],
   TAlias(_, _) => [],
+  TValue(_) => [],
 }
 
 // A scheme row's free rest keys the residual the site proved past it; a
@@ -7687,11 +7864,37 @@ fn twin_enc_step(acc: String, p) = acc ++ twin_pair_code(p)
 // reads it free. A variable still free at the site proves nothing, and keys
 // at the floor.
 fn twin_pair_code(p) = match p {
-  (w, t) => match var_read(w) {
-    ReadsStructure => observed_code(t),
-    ReadsMove => moved_code(t),
-    ReadsWidth => spec_repr_digit(t),
+  (w, t) => if is_instance_value(t) {
+    fold_sig(t)
+  } else {
+    match var_read(w) {
+      ReadsStructure => observed_code(t),
+      ReadsMove => moved_code(t),
+      ReadsWidth => spec_repr_digit(t),
+    }
   },
+}
+
+// An instance's value is observed wherever the body runs: its performs key
+// their dispatch on it, so it keys the twin and stays bound in it.
+fn is_instance_value(t) = match t {
+  TValue(_) => true,
+  TInt
+  | TFloat
+  | TUnit
+  | TByte
+  | TAddr
+  | TList(_)
+  | TTuple(_)
+  | TFun(_, _, _)
+  | TVar(_)
+  | TName(_, _)
+  | TRecord(_)
+  | TRecordOpen(_, _)
+  | TRefined(_, _)
+  | TReprPin(_, _)
+  | TCont(_, _, _, _)
+  | TAlias(_, _) => false,
 }
 
 fn observed_code(t) = match fold_strip(t) {
@@ -7717,7 +7920,7 @@ fn moved_code(t) = match fold_strip(t) {
 }
 
 fn twin_keeps(p) = match p {
-  (w, t) => match var_read(w) {
+  (w, t) => is_instance_value(t) || match var_read(w) {
     ReadsStructure => true,
     ReadsMove => moved_bound(t),
     ReadsWidth => repr_is_wide(repr_of(t)),
@@ -7817,6 +8020,7 @@ fn evac_of(ty) = match fold_strip(slot_ty(ty)) {
   TAlias(_, inner) => evac_of(inner),
   TRefined(base, _) => evac_of(base),
   TReprPin(_, base) => evac_of(base),
+  TValue(_) => EvWord,
 }
 
 // A record moves by its whole sorted field set; one whose fields the row

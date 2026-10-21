@@ -1,0 +1,12 @@
+// expect: refuse E_EffectUnhandled
+// The library's own clock pins its instance with no text of its own: its
+// config parameter shares its name with Sample's, so `sample_at(48000)`
+// serves Sample(48000), a stage written for 44.1 kHz passes it, and with no
+// clock at its rate the root refuses, proposing `~> sample_at(44100)`. On
+// boot 342695ce the install absorbed every instance of Sample by its name,
+// and the stage read 48000 as its rate.
+import dsp/clock
+
+fn rate44() with Sample(44100) = sample_rate()
+
+fn main() = rate44() - 44090 ~> sample_at(48000)

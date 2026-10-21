@@ -1,0 +1,17 @@
+// expect: 20
+// Two clocks, each answering its own stages: the audio stage written for
+// 48 kHz reaches the inner clock, the control stage written for 750 Hz
+// passes it and reaches the outer one — Sample(48000) and Sample(750) are
+// two effects at run time as they are in the row. The control stage reads
+// its rate through a stage that names none, which runs at the instance
+// its caller declares. On boot 342695ce both reached the inner clock and
+// the control stage read 48000.
+import dsp/clock
+
+fn stage() = sample_rate()
+
+fn lfo() with Sample(750) = stage()
+
+fn audio() with Sample(48000) = sample_rate()
+
+fn main() = audio() - 47990 + lfo() - 740 ~> sample_at(48000) ~> sample_at(750)

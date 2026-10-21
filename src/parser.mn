@@ -1277,7 +1277,8 @@ fn written_constructor(ty) = match ty {
   | TRefined(_, _)
   | TReprPin(_, _)
   | TCont(_, _, _, _)
-  | TAlias(_, _) => None,
+  | TAlias(_, _)
+  | TValue(_) => None,
 }
 
 // A constructor the type parse read as a written name declares a variant:

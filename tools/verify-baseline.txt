@@ -384,8 +384,8 @@ desugar_vocabulary: 48
 authored_own_max: 40
 # name-keyed walks and the dead code the facets named; -> 598, a pattern's walks; -> 548, the renames'.
 # 548 -> 544 (2026-10-16): the label lattice's walks left when information flow
-# became the verifier's walk; 543 -> 523 (2026-10-21): the root census left the pipeline for the judgment's row.
-authored_ref_max: 523
+# became the verifier's walk; 543 -> 523 (2026-10-21): the root census left the pipeline for the judgment's row. 523 -> 520 the same day: the perform's pin walk left.
+authored_ref_max: 520
 # ── the SELF-COMPILE's PEAK RSS (tools/march.sh, the m3 leg under GNU time) ─
 # The one line in this file that was a bare number with no argument beside it,
 # in the file whose whole point is that a bound and its justification live

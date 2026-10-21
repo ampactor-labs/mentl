@@ -1,0 +1,13 @@
+// The sound twin of leak-instance-foreign-install: a stage written for
+// 48 kHz under the 48 kHz clock is served by the install its config names.
+effect Sample(rate: Int) {
+  tick() -> Int
+}
+
+handler clock_at(rate) {
+  tick() => resume(rate),
+}
+
+fn rate48() with Sample(48000) = tick()
+
+fn main() = rate48() - 47990 ~> clock_at(48000)

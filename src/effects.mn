@@ -521,13 +521,69 @@ fn field_copy_suffix_shifted(ref src, own dst, src_idx, dst_idx, n) = if src_idx
 // its install never covered — `f() + ((g()) ~> h)` read as
 // `(r_f + r_g) − E`. A free edge survives into the residual set; a row
 // with no bound edge returns UNTOUCHED (identity until progress).
-fn resolve_row(row) = match row {
+fn resolve_row(row) = instances_read(resolve_row_edges(row))
+
+// The edges folded, each entry as its instantiation wrote it: an instance
+// variable stays the cell it is, which is what a twin's pairing reads.
+fn resolve_row_edges(row) = match row {
   EfRow(p, a, t) => match t {
     EtOpen(vs) => match resolve_edges(edges_masked(vs, a), (p, [], [], false, false)) {
       (rp, am, res, saw_all, progressed) => if progressed { row_of_fold(rp, am, res, saw_all) } else { row },
     },
     EtClosed | EtAll => row,
   },
+}
+
+// Every instance variable an entry names, read through its cell: the value a
+// perform, a declaration or an install bound it to, or its root while free —
+// so the algebra compares what the graph knows, never a stale handle.
+fn instances_read(row) = match row {
+  EfRow(p, a, t) => if any(name_holds_var, p) || any(name_holds_var, a) {
+    ef_make(map(name_read, p), map(name_read, a), t)
+  } else {
+    row
+  },
+}
+
+fn name_holds_var(n) = match n {
+  EParameterized(_, args) => any(arg_is_instance_var, args),
+  ENamed(_) | EPure => false,
+}
+
+fn arg_is_instance_var(a) with Pure = match a {
+  EAVar(_) => true,
+  EAInt(_) | EAFloat(_) | EAString(_) | EAEffect(_) | EACon(_) | EANode(_) | EAType(_) => false,
+}
+
+fn name_read(n) = match n {
+  EParameterized(h, args) => EParameterized(h, map(arg_read, args)),
+  ENamed(_) | EPure => n,
+}
+
+fn arg_read(a) = match a {
+  EAVar(v) => match graph_chase(v) {
+    GNode(NBound(t), _) => match t {
+      TValue(x) => x,
+      TInt
+      | TFloat
+      | TUnit
+      | TByte
+      | TAddr
+      | TList(_)
+      | TTuple(_)
+      | TFun(_, _, _)
+      | TVar(_)
+      | TName(_, _)
+      | TRecord(_)
+      | TRecordOpen(_, _)
+      | TRefined(_, _)
+      | TReprPin(_, _)
+      | TCont(_, _, _, _)
+      | TAlias(_, _) => a,
+    },
+    GNode(_, _) => EAVar(graph_chase_handle(v)),
+  },
+  EAInt(_) | EAFloat(_) | EAString(_) | EAEffect(_) | EACon(_) | EANode(_) | EAType(_) => a,
 }
 
 // The edge walk, STRUCTURAL — mechanism-layer recursion, never the
@@ -713,15 +769,15 @@ fn frag_args_same_walk(ref a1, ref a2, i) = if i >= len(a1) {
 fn frag_arg_same(x, y) = match x {
   EAInt(p) => match y {
     EAInt(q) => p == q,
-    EAFloat(_) | EAString(_) | EAType(_) | EANode(_) | EAEffect(_) | EACon(_) => false,
+    EAFloat(_) | EAString(_) | EAType(_) | EANode(_) | EAEffect(_) | EACon(_) | EAVar(_) => false,
   },
   EAFloat(p) => match y {
     EAFloat(q) => p == q,
-    EAInt(_) | EAString(_) | EAType(_) | EANode(_) | EAEffect(_) | EACon(_) => false,
+    EAInt(_) | EAString(_) | EAType(_) | EANode(_) | EAEffect(_) | EACon(_) | EAVar(_) => false,
   },
   EAString(p) => match y {
     EAString(q) => p == q,
-    EAInt(_) | EAFloat(_) | EAType(_) | EANode(_) | EAEffect(_) | EACon(_) => false,
+    EAInt(_) | EAFloat(_) | EAType(_) | EANode(_) | EAEffect(_) | EACon(_) | EAVar(_) => false,
   },
   EAType(tx) => match tx {
     TVar(hx) => match y {
@@ -741,9 +797,10 @@ fn frag_arg_same(x, y) = match x {
         | TRefined(_, _)
         | TReprPin(_, _)
         | TCont(_, _, _, _)
-        | TAlias(_, _) => false,
+        | TAlias(_, _)
+        | TValue(_) => false,
       },
-      EAInt(_) | EAFloat(_) | EAString(_) | EANode(_) | EAEffect(_) | EACon(_) => false,
+      EAInt(_) | EAFloat(_) | EAString(_) | EANode(_) | EAEffect(_) | EACon(_) | EAVar(_) => false,
     },
     TInt
     | TFloat
@@ -759,21 +816,27 @@ fn frag_arg_same(x, y) = match x {
     | TRefined(_, _)
     | TReprPin(_, _)
     | TCont(_, _, _, _)
-    | TAlias(_, _) => false,
+    | TAlias(_, _)
+    | TValue(_) => false,
   },
   EANode(nx) => match y {
     EANode(ny) => nx == ny,
-    EAInt(_) | EAFloat(_) | EAString(_) | EAType(_) | EAEffect(_) | EACon(_) => false,
+    EAInt(_) | EAFloat(_) | EAString(_) | EAType(_) | EAEffect(_) | EACon(_) | EAVar(_) => false,
   },
   EAEffect(hx) => match y {
     // The registration fold's constants: one interned identity each, so
     // sameness is the word compare (eff_arg_scalar_unequal's dual).
     EAEffect(hy) => hx == hy,
-    EAInt(_) | EAFloat(_) | EAString(_) | EAType(_) | EANode(_) | EACon(_) => false,
+    EAInt(_) | EAFloat(_) | EAString(_) | EAType(_) | EANode(_) | EACon(_) | EAVar(_) => false,
   },
   EACon(hx) => match y {
     EACon(hy) => hx == hy,
-    EAInt(_) | EAFloat(_) | EAString(_) | EAType(_) | EANode(_) | EAEffect(_) => false,
+    EAInt(_) | EAFloat(_) | EAString(_) | EAType(_) | EANode(_) | EAEffect(_) | EAVar(_) => false,
+  },
+  // Two instance variables are one exactly when they are one cell.
+  EAVar(hx) => match y {
+    EAVar(hy) => hx == hy,
+    EAInt(_) | EAFloat(_) | EAString(_) | EAType(_) | EANode(_) | EAEffect(_) | EACon(_) => false,
   },
 }
 
@@ -1534,9 +1597,9 @@ fn eff_forbids(forbidden: EffName, present: EffName) = if eff_name_handle(forbid
 // charge? A bare declared name admits every instance of its name
 // (declaring `with Sample` constrains the NAME; the instance stays the
 // body's own). An instanced declaration admits exactly the structurally
-// same instance — the declared gate's pin (pin_declared_instances) has
-// already written its scalar literals into the charge's unknowable value
-// dims, so a surviving argument difference IS a different instance — and
+// same instance — the declaration has already bound the charge's free
+// instance variables to the values it states, so a surviving argument
+// difference IS a different instance — and
 // refuses a bare charge (it could be any instance; conservative, the
 // same frame eff_forbids holds on the negation side).
 fn eff_admits(gate_name: EffName, body_name: EffName) = if eff_name_handle(gate_name) != eff_name_handle(body_name) {
@@ -1555,6 +1618,26 @@ fn eff_admits(gate_name: EffName, body_name: EffName) = if eff_name_handle(gate_
 
 fn present_admitted(ref bp, ref gp) = all((b) => any((g) => eff_admits(g, b), gp), bp)
 
+// Two instances are ROUTE-distinct when every value either carries is known
+// and one differs: an install serves the instance its pinned config names,
+// a perform reaches the innermost install not route-distinct from its own
+// instance, and the absorption at the install reads the same law, so the
+// row says what the run does. A value no compile-time fact names — an
+// instance variable still free, an operand nothing grounds — may be any
+// instance; a type dimension is the install flow's and keys nothing here.
+fn route_distinct(a: EffName, b: EffName) = match a {
+  EParameterized(_, xa) => match b {
+    EParameterized(_, xb) => all(route_known, xa) && all(route_known, xb) && eff_args_provably_distinct(xa, xb, 0),
+    ENamed(_) | EPure => false,
+  },
+  ENamed(_) | EPure => false,
+}
+
+fn route_known(a) with Pure = match a {
+  EAInt(_) | EAFloat(_) | EAString(_) | EAEffect(_) | EACon(_) | EAType(_) => true,
+  EANode(_) | EAVar(_) => false,
+}
+
 fn eff_args_provably_distinct(ref a, ref b, i) = if len(a) != len(b) {
   // Differing arity never proves distinctness — an effect has ONE
   // declared signature, so the pair is ill-formed and the instance
@@ -1571,18 +1654,19 @@ fn eff_args_provably_distinct(ref a, ref b, i) = if len(a) != len(b) {
 fn eff_arg_scalar_unequal(fa, pa) with Pure = match fa {
   EAInt(x) => match pa {
     EAInt(y) => x != y,
-    EAFloat(_) | EAString(_) | EAType(_) | EANode(_) | EAEffect(_) | EACon(_) => false,
+    EAFloat(_) | EAString(_) | EAType(_) | EANode(_) | EAEffect(_) | EACon(_) | EAVar(_) => false,
   },
   EAFloat(x) => match pa {
     EAFloat(y) => x != y,
-    EAInt(_) | EAString(_) | EAType(_) | EANode(_) | EAEffect(_) | EACon(_) => false,
+    EAInt(_) | EAString(_) | EAType(_) | EANode(_) | EAEffect(_) | EACon(_) | EAVar(_) => false,
   },
   EAString(x) => match pa {
     EAString(y) => x != y,
-    EAInt(_) | EAFloat(_) | EAType(_) | EANode(_) | EAEffect(_) | EACon(_) => false,
+    EAInt(_) | EAFloat(_) | EAType(_) | EANode(_) | EAEffect(_) | EACon(_) | EAVar(_) => false,
   },
   EAType(_) => false,
   EANode(_) => false,
+  EAVar(_) => false,
   // The registration fold's constants (types.mn EffArg): an effect name
   // and a nullary ctor are GLOBAL identities — one namespace each, the
   // intern handle the word — so handle inequality IS value inequality,
@@ -1591,11 +1675,11 @@ fn eff_arg_scalar_unequal(fa, pa) with Pure = match fa {
   // refusal, never a distinctness claim).
   EAEffect(x) => match pa {
     EAEffect(y) => x != y,
-    EAInt(_) | EAFloat(_) | EAString(_) | EAType(_) | EANode(_) | EACon(_) => false,
+    EAInt(_) | EAFloat(_) | EAString(_) | EAType(_) | EANode(_) | EACon(_) | EAVar(_) => false,
   },
   EACon(x) => match pa {
     EACon(y) => x != y,
-    EAInt(_) | EAFloat(_) | EAString(_) | EAType(_) | EANode(_) | EAEffect(_) => false,
+    EAInt(_) | EAFloat(_) | EAString(_) | EAType(_) | EANode(_) | EAEffect(_) | EAVar(_) => false,
   },
 }
 
@@ -1749,7 +1833,14 @@ fn name_set_prefix_index_loop(ref buf, ref name, i, n) = if i >= n {
 // complement of provable distinctness, not structural sameness — instances
 // over type variables are one member, or rows grow by a fresh variable per
 // instantiation and a fixpoint over them never settles (the first form did;
-// the wheel's compile hung). Nested matches, never a pair scrutinee: this runs
+// the wheel's compile hung). A VALUE position is another matter: two
+// instances whose values are not the same — two instance variables, a
+// variable beside a known value, an operand nothing grounds beside a literal
+// — are two members, since the dispatch routes each by its own instance and
+// a row that kept one would say an install absorbs what the run passes on.
+// A declaration's exit joins its free instance variables of one effect (the
+// judgment's join, in infer.mn), so a scheme carries one, and a fixpoint
+// over schemes settles. Nested matches, never a pair scrutinee: this runs
 // for every entry pair every row operation meets, and a tuple is a heap
 // record per call.
 fn row_entry_collides(a: EffName, b: EffName) = if eff_name_handle(a) != eff_name_handle(b) {
@@ -1757,11 +1848,26 @@ fn row_entry_collides(a: EffName, b: EffName) = if eff_name_handle(a) != eff_nam
 } else {
   match a {
     EParameterized(_, xa) => match b {
-      EParameterized(_, xb) => !eff_args_provably_distinct(xa, xb, 0),
+      EParameterized(_, xb) => !eff_args_provably_distinct(xa, xb, 0) && values_alike(xa, xb, 0),
       ENamed(_) | EPure => true,
     },
     ENamed(_) | EPure => true,
   }
+}
+
+// Every value position names the same value; a type position is the
+// install flow's and collapses as before.
+fn values_alike(xa, xb, i) = if i >= len(xa) || i >= len(xb) {
+  true
+} else if value_alike(list_index(xa, i), list_index(xb, i)) {
+  values_alike(xa, xb, i + 1)
+} else {
+  false
+}
+
+fn value_alike(a, b) = match a {
+  EAType(_) => true,
+  EAInt(_) | EAFloat(_) | EAString(_) | EAEffect(_) | EACon(_) | EANode(_) | EAVar(_) => frag_arg_same(a, b),
 }
 
 // Of two colliding entries, which does the set keep? The one that says
@@ -1791,6 +1897,7 @@ fn eff_arg_ground(a) with Pure = match a {
   EACon(_) => true,
   EAType(_) => false,
   EANode(_) => false,
+  EAVar(_) => false,
 }
 
 // Membership against the WRITTEN PREFIX of a buffer under construction.
@@ -1891,12 +1998,19 @@ fn name_set_diff_into(ref a, ref b, i, n, own buf, count) = if i >= n {
   slice(buf, 0, count)
 } else {
   let x = list_index(a, i)
-  if name_set_contains(b, x) {
+  if name_set_absorbs(b, x) {
     name_set_diff_into(a, b, i + 1, n, buf, count)
   } else {
     name_set_diff_into(a, b, i + 1, n, list_set(buf, count, x), count + 1)
   }
 }
+
+// Whether a set subtracts an entry: one of the same effect that is not
+// route-distinct from it, so a bare name subtracts every instance and an
+// install's served instance subtracts every instance it may be.
+fn name_set_absorbs(b, x) = any(absorbs_entry(x, ??), b)
+
+fn absorbs_entry(x, y) = eff_name_handle(y) == eff_name_handle(x) && !route_distinct(y, x)
 
 fn name_set_subset(ref sub, ref sup) = name_set_subset_loop(sub, sup, 0, len(sub))
 

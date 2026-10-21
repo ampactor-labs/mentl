@@ -1,0 +1,14 @@
+// expect: 10
+// A declaration's instance is a fact the run keeps: `lfo` declares 750 Hz
+// and reaches its rate through a stage that names no instance, so that
+// stage runs at 750 Hz and its perform passes the 48 kHz clock to the one
+// serving 750. On boot 342695ce the stage's perform reached the innermost
+// clock by the effect's name, and `lfo` read 48000 under a declaration
+// that said 750 — a false proof of the row it published.
+import dsp/clock
+
+fn stage() = sample_rate()
+
+fn lfo() with Sample(750) = stage()
+
+fn main() = lfo() - 740 ~> sample_at(48000) ~> sample_at(750)

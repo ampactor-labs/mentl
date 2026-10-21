@@ -403,7 +403,8 @@ fn contract_excludes(c, k) = match c {
   | TName(_, _)
   | TRecord(_)
   | TRecordOpen(_, _)
-  | TCont(_, _, _, _) => false,
+  | TCont(_, _, _, _)
+  | TValue(_) => false,
 }
 
 fn pred_excludes(pred, k) = match predicate_decide_at(pred, SelfVal(LVInt(k))) {
@@ -1120,7 +1121,7 @@ fn contract_part(c, step) = match c {
     PartIndex(_) | PartElem | PartRest => None,
   },
   TRefined(base, _) => contract_part(base, step),
-  TInt | TFloat | TUnit | TByte | TAddr | TFun(_, _, _) | TVar(_) | TCont(_, _, _, _) => None,
+  TInt | TFloat | TUnit | TByte | TAddr | TFun(_, _, _) | TVar(_) | TCont(_, _, _, _) | TValue(_) => None,
 }
 
 // A nominal contract at a constructor's field: the field's declared type with
@@ -1319,7 +1320,8 @@ fn param_result(ch) = match flow_param_path(ch) {
               | TRefined(_, _)
               | TReprPin(_, _)
               | TCont(_, _, _, _)
-              | TAlias(_, _) => None,
+              | TAlias(_, _)
+              | TValue(_) => None,
             },
             None => None,
           },
@@ -1354,7 +1356,8 @@ fn post_leaves(ch) = match graph_chase(ch) {
       | TRefined(_, _)
       | TReprPin(_, _)
       | TCont(_, _, _, _)
-      | TAlias(_, _) => [LUnknown],
+      | TAlias(_, _)
+      | TValue(_) => [LUnknown],
     }
   },
   GNode(_, _) => [LUnknown],
@@ -1416,7 +1419,8 @@ fn contract_alias(c) = match c {
   | TName(_, _)
   | TRecord(_)
   | TRecordOpen(_, _)
-  | TCont(_, _, _, _) => None,
+  | TCont(_, _, _, _)
+  | TValue(_) => None,
 }
 
 // A ROW fact, three-valued over the leaves (`and_decide`): proven when every
@@ -1521,7 +1525,8 @@ fn ty_names_alias(ty, aname: String) = match ty {
   | TName(_, _)
   | TRecord(_)
   | TRecordOpen(_, _)
-  | TCont(_, _, _, _) => false,
+  | TCont(_, _, _, _)
+  | TValue(_) => false,
 }
 
 // What a held claim STANDS ON, for the row it guards: the parameters whose
@@ -1631,7 +1636,8 @@ fn ty_states(t, label) = match t {
   | TName(_, _)
   | TRecord(_)
   | TRecordOpen(_, _)
-  | TCont(_, _, _, _) => None,
+  | TCont(_, _, _, _)
+  | TValue(_) => None,
 }
 
 fn pred_states(pred, label) = match pred {
@@ -1678,7 +1684,7 @@ fn ty_carries_label(t, label) = match ty_states(t, label) {
     TRecord(fs) => any({ (_, ft) => ty_carries_label(ft, label) }, fs),
     TRecordOpen(fs, _) => any({ (_, ft) => ty_carries_label(ft, label) }, fs),
     TName(_, args) => any(ty_carries_label(??, label), args),
-    TInt | TFloat | TUnit | TByte | TAddr | TFun(_, _, _) | TVar(_) | TCont(_, _, _, _) => false,
+    TInt | TFloat | TUnit | TByte | TAddr | TFun(_, _, _) | TVar(_) | TCont(_, _, _, _) | TValue(_) => false,
   },
 }
 
@@ -1695,7 +1701,7 @@ fn ty_without_labels(t) = match t {
   TRecord(fs) => TRecord(map({ (n, ft) => (n, ty_without_labels(ft)) }, fs)),
   TRecordOpen(fs, r) => TRecordOpen(map({ (n, ft) => (n, ty_without_labels(ft)) }, fs), r),
   TName(n, args) => TName(n, map(ty_without_labels, args)),
-  TInt | TFloat | TUnit | TByte | TAddr | TFun(_, _, _) | TVar(_) | TCont(_, _, _, _) => t,
+  TInt | TFloat | TUnit | TByte | TAddr | TFun(_, _, _) | TVar(_) | TCont(_, _, _, _) | TValue(_) => t,
 }
 
 fn pred_without_labels(pred) = if pred_names_label(pred) {
@@ -1744,7 +1750,7 @@ fn ty_names_a_label(t) = match t {
   TRecord(fs) => any({ (_, ft) => ty_names_a_label(ft) }, fs),
   TRecordOpen(fs, _) => any({ (_, ft) => ty_names_a_label(ft) }, fs),
   TName(_, args) => any(ty_names_a_label, args),
-  TInt | TFloat | TUnit | TByte | TAddr | TFun(_, _, _) | TVar(_) | TCont(_, _, _, _) => false,
+  TInt | TFloat | TUnit | TByte | TAddr | TFun(_, _, _) | TVar(_) | TCont(_, _, _, _) | TValue(_) => false,
 }
 
 // What brings a label to a value: a source stating it, carried as the chain
@@ -2957,7 +2963,8 @@ fn bound_ty(t) = match t {
   | TRefined(_, _)
   | TReprPin(_, _)
   | TCont(_, _, _, _)
-  | TAlias(_, _) => t,
+  | TAlias(_, _)
+  | TValue(_) => t,
 }
 
 // A perform: what its op declares it answers — a source where the label
@@ -3365,7 +3372,7 @@ fn arm_stores(hd, arms) = arms |> flat_map({ arm => stores_in(hd, arm.body) })
 
 fn holds_memory(h) = match graph_chase(h) {
   GNode(NBound(ty), _) => match ty {
-    TInt | TFloat | TUnit | TByte | TAddr => false,
+    TInt | TFloat | TUnit | TByte | TAddr | TValue(_) => false,
     TList(_)
     | TTuple(_)
     | TFun(_, _, _)
@@ -4098,7 +4105,8 @@ fn ty_domain(ty) = match ty {
   | TName(_, _)
   | TRecord(_)
   | TRecordOpen(_, _)
-  | TCont(_, _, _, _) => dom_top(),
+  | TCont(_, _, _, _)
+  | TValue(_) => dom_top(),
 }
 
 // The whole fact, in one walk: both ends of what a refinement admits, read
@@ -4355,7 +4363,8 @@ fn refinement_admits(ty, value_handle) = match ty {
   | TRecord(_)
   | TRecordOpen(_, _)
   | TReprPin(_, _)
-  | TCont(_, _, _, _) => true,
+  | TCont(_, _, _, _)
+  | TValue(_) => true,
 }
 
 // Fold a comparison over two constant operand values.

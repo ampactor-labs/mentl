@@ -44,9 +44,8 @@ effect Tick {
 // row members, and a path that declares `!Sample(44100)` refuses a stage
 // written for the other rate — the canonical audio bug, refused per
 // instance. A program declares the rate it runs at (`with Sample(48_000)`)
-// and reads it back through `sample_rate()`; the number is authored ONCE.
-// The install does not yet check it: `sample_at` answers every instance
-// (`Hβ.effects.handler-pins-its-instance`), so the refusal lives in the row.
+// and reads it back through `sample_rate()`; the number is authored ONCE,
+// and the install that answers it is the one serving that instance.
 effect Sample(rate: Int) {
   sample_rate() -> Int
   advance_sample()
@@ -76,10 +75,11 @@ handler tick_real with counter = 0 {
 }
 
 // sample_at(rate) — the one Sample handler: the rate is its config, the
-// sample count its state. Installed as `~> sample_at(48_000)` under a chain
-// declared `with Sample(48_000)`, it answers the rate the chain declared
-// (real and test tiers differed only in this constant, so they were one
-// handler wearing two names).
+// sample count its state. Its config shares its name with Sample's
+// parameter, so `~> sample_at(48_000)` serves `Sample(48_000)` alone: a
+// stage declared `with Sample(44_100)` passes it to the install serving its
+// own rate, and with none the root refuses, proposing that install. Nested
+// installs at two rates are two clocks, each answering its own stages.
 handler sample_at(rate) with count = 0 {
   sample_rate() => resume(rate),
   advance_sample() => resume() with count = count + 1,

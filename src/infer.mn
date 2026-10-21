@@ -1417,10 +1417,12 @@ fn root_row_check(row, dh, body, span) = match row_through_instances(row) {
 
 fn root_unanswered(eff) = !effect_ops_substrate_grounded(eff_name_str(eff))
 
-fn root_refuse(dh, body, span, eff) = {
-  let ename = eff_name_str(eff)
-  report(EEffectUnhandled(ename, absorbing_proposal(ename), decl_effect_entry(dh, body, eff), span))
-}
+fn root_refuse(dh, body, span, eff) = report(EEffectUnhandled(
+  show_eff_name(eff),
+  absorbing_proposal(eff),
+  decl_effect_entry(dh, body, eff),
+  span
+))
 
 // A module value let is judged in no declaration's frame, so its row is the
 // charges its subtree's nodes carry, and its chain starts at the init.
@@ -1435,8 +1437,8 @@ fn root_init_check(h) = match graph_node_body(h) {
 fn root_init_refuse(h, value, eff) = {
   let ename = eff_name_str(eff)
   report(EEffectUnhandled(
-    ename,
-    absorbing_proposal(ename),
+    show_eff_name(eff),
+    absorbing_proposal(eff),
     EffectEnters(ename, h, body_entry(eff, value, [h])),
     graph_span_of(h)
   ))
@@ -1474,12 +1476,47 @@ fn handlers_answering(ename: String) = match effect_op_names(ename) {
   },
 }
 
-fn absorbing_proposal(ename: String) = match handlers_answering(ename) {
-  [] => "No handler in scope handles {ename} — declare one and install it with ~> over the performing chain.",
-  hs => "Install one over the performing chain: {show_list(map(stmt_decl_name, hs), render_install, " or ")}.",
+fn absorbing_proposal(eff) = {
+  let ename = eff_name_str(eff)
+  match handlers_answering(ename) {
+    [] => "No handler in scope handles {ename} — declare one and install it with ~> over the performing chain.",
+    hs => "Install one over the performing chain: {show_list(hs, render_install(eff, ??), " or ")}.",
+  }
 }
 
-fn render_install(hname: String) = "~> {hname}"
+// An install of the handler: with the instance at its config where the
+// handler pins it and the refused instance is known, so the proposal is the
+// clock at the rate the stage was written for.
+fn render_install(eff, hd) = match pinned_config_args(eff, hd) {
+  Some(args) => "~> {stmt_decl_name(hd)}({args})",
+  None => "~> {stmt_decl_name(hd)}",
+}
+
+fn pinned_config_args(eff, hd) = match eff {
+  EParameterized(_, args) => match published_kind(Some(hd)) {
+    Some(HandlerKind(_, _, config, _, _)) => {
+      let dims = effect_dim_names(eff_name_str(eff))
+      if len(config) > 0 && all(config_is_dim(dims, ??), config) && all(route_known, args) {
+        Some(show_list(config, config_value(dims, args, ??), ", "))
+      } else {
+        None
+      }
+    },
+    _ => None,
+  },
+  ENamed(_) | EPure => None,
+}
+
+fn config_is_dim(dims, p) = any({ d => d == param_name(p) }, dims)
+
+fn config_value(dims, args, p) = match find(dim_named(param_name(p), ??), enumerate(dims)) {
+  Some((i, _)) => if i < len(args) { render_eff_arg(list_index(args, i)) ~> var_names } else { param_name(p) },
+  None => param_name(p),
+}
+
+fn dim_named(name: String, id) = match id {
+  (_, d) => d == name,
+}
 
 // A perform of an effect this handler alone answers, made while the handler
 // is still being built: a state init and a config default run at the install,
@@ -2789,6 +2826,10 @@ fn ty_alpha_eq(t1, t2, m) = match t1 {
     },
     _ => (false, m),
   },
+  TValue(a1) => match t2 {
+    TValue(a2) => (frag_arg_same(a1, a2), m),
+    _ => (false, m),
+  },
 }
 
 fn ty_list_alpha_eq(xs, ys, m, i) = if len(xs) != len(ys) {
@@ -2979,6 +3020,7 @@ fn mycroft_row_pairs(t1, t2, acc) = match t1 {
   TUnit => acc,
   TByte => acc,
   TAddr => acc,
+  TValue(_) => acc,
 }
 
 fn mycroft_tail_pair(row1, row2, acc) = match row1 {
@@ -3331,6 +3373,7 @@ fn infer_fn(name, params, body_node, ret_ann, effs, handle, span: ValidSpan, pol
   // The declared row IS the gate — row_subsumes is the proof engine.
   // `declared_effs` arrived with inf_exit_fn's return above: the popped
   // frame's own declaration, so a nested fn can never clobber this one's.
+  join_free_instances(row_handle, span)
   if len(declared_effs) > 0 {
     // D3 — `with Pure` is absolute: body row must be the pure row (not
     // merely ⊆ some sugar row named Pure). When Pure appears
@@ -3451,83 +3494,104 @@ fn resolve_one_eff_arg(arg) = match arg {
   EAType(_) => arg,
   EAEffect(_) => arg,
   EACon(_) => arg,
+  EAVar(_) => arg,
 }
 
-// The declared row's INSTANCE PIN — the constraint half the publish law
-// keeps: the declaration publishes NOTHING, but it is still a CONSTRAINT
-// the inferred is verified against (the Intent-Boundary law), and for a
-// value-parameterized effect the authored scalar instance (`with
-// S(48000)`) is exactly such a constraint on the charge's unknowable
-// value dims (register_effect_ops' EANode positions). Position-wise,
-// scalars only, never a name added or a tail touched — the EtAll
-// fabrication the publish law deleted cannot ride this write.
-fn pin_declared_instances(body_row, declared_row) = match declared_row {
-  EfRow(dp, _, _) => match body_row {
-    EfRow(bp, ba, bt) => ef_make(map((b) => pin_present_entry(b, dp), bp), ba, bt),
+// The declared row's INSTANCE — a constraint the inferred is verified
+// against (the Intent-Boundary law), and for a value-parameterized effect
+// the authored instance (`with Sample(48000)`, `with Sample(rate)`) is what
+// the body's instance variables are: each entry of the body whose instance
+// no compile-time fact names yet takes the declared one at its cell, so
+// every perform and call the entry stands for runs at the instance the
+// declaration states. A value already there keeps its own truth, which the
+// subsumption judges.
+fn bind_declared_instances(row_handle, declared_row, span) = match declared_row {
+  EfRow(dp, _, _) => match resolve_row(mk_ef_open([], row_handle)) {
+    EfRow(bp, _, _) => each(bind_to_declared(dp, span, ??), bp),
   },
 }
 
-fn pin_present_entry(b, dp) = match b {
-  EParameterized(bn, bargs) => match find((d) => pin_source_for(bn, bargs, d), dp) {
-    Some(d2) => match d2 {
-      EParameterized(_, dargs) => EParameterized(bn, pin_arg_positions(bargs, dargs, 0)),
-      ENamed(_) => b,
-      EPure => b,
+fn bind_to_declared(dp, span, b) = match b {
+  EParameterized(bn, bargs) => match find(pin_source_for(bn, bargs, ??), dp) {
+    Some(d) => match d {
+      EParameterized(_, dargs) => each(bind_declared_at(dargs, span, ??), enumerate(bargs)),
+      ENamed(_) | EPure => (),
     },
-    None => b,
+    None => (),
   },
-  ENamed(_) => b,
-  EPure => b,
+  ENamed(_) | EPure => (),
 }
 
-fn pin_source_for(bn, ref bargs, d) = match d {
+fn pin_source_for(bn, bargs, d) = match d {
   EParameterized(dn, dargs) => dn == bn && !eff_args_provably_distinct(dargs, bargs, 0),
-  ENamed(_) => false,
-  EPure => false,
+  ENamed(_) | EPure => false,
 }
 
-fn pin_arg_positions(ref bargs, ref dargs, i) = if i >= len(bargs) {
-  []
-} else if i >= len(dargs) {
-  [list_index(bargs, i)] ++ pin_arg_positions(bargs, dargs, i + 1)
-} else {
-  [pin_arg_position(list_index(bargs, i), list_index(dargs, i))] ++ pin_arg_positions(bargs, dargs, i + 1)
+fn bind_declared_at(dargs, span, ib) = match ib {
+  (i, barg) => if i < len(dargs) {
+    bind_instance_arg(barg, list_index(dargs, i), span, Inferred("the instance the declaration states"))
+  } else {
+    ()
+  },
 }
 
-// A charge-side value dim (EANode) takes the declared scalar; a type dim
-// (EAType) is the install flow's, never value-pinned; a concrete scalar
-// keeps its own truth (the subsumes read judges it).
-fn pin_arg_position(barg, darg) = match barg {
-  EANode(_) => pin_scalar_or_keep(barg, darg),
-  EAType(_) => barg,
-  EAInt(_) => barg,
-  EAFloat(_) => barg,
-  EAString(_) => barg,
-  // registration-fold constants: concrete, they keep their own truth
-  // exactly as the scalar literals do (the subsumes read judges them)
-  EAEffect(_) => barg,
-  EACon(_) => barg,
+// An instance variable takes a value: a scalar, or an operand nothing
+// grounds; a type dimension is the install flow's, and a value already there
+// keeps its own truth.
+fn bind_instance_arg(barg, a, span, reason) = match barg {
+  EAVar(v) => match a {
+    EAInt(_) | EAFloat(_) | EAString(_) | EAEffect(_) | EACon(_) | EANode(_) => unify(v, ty_arg_handle(TValue(a)), span, reason),
+    EAType(_) | EAVar(_) => (),
+  },
+  EAInt(_) | EAFloat(_) | EAString(_) | EAEffect(_) | EACon(_) | EANode(_) | EAType(_) => (),
 }
 
-fn pin_scalar_or_keep(barg, darg) = match darg {
-  EAInt(_) => darg,
-  EAFloat(_) => darg,
-  EAString(_) => darg,
-  EAType(_) => barg,
-  // the registration fold's constants pin the charge's unknowable value
-  // dim exactly as the scalar literals do — the declared instance IS the
-  // decl's own truth
-  EAEffect(_) => darg,
-  EACon(_) => darg,
-  // The declared NON-LITERAL instance pins exactly as a scalar does:
-  // the charge's value dim is the entry's unknowable placeholder, and
-  // the declared operand NODE is the decl's own instance truth — same
-  // handle, so same-name instances compare equal and the false
-  // declared-vs-charged mismatch dies (measured 2026-08-08:
-  // `with Sample(rate)` refused its own body's tick()). The
-  // conservative gate against a forbidden literal is untouched — an
-  // EANode is still never provably distinct from it.
-  EANode(_) => darg,
+// A declaration's instance variables of one effect are one: the performs and
+// calls of its body that name no instance run at the one instance the
+// declaration does, so it states one rate and a caller binds one. Joined at
+// the exit, before the declared row binds them and the scheme quantifies.
+fn join_free_instances(row_handle, span) = match resolve_row(mk_ef_open([], row_handle)) {
+  EfRow(present, _, _) => {
+    let _ = fold([], join_instance(span, ??, ??), present)
+    ()
+  },
+}
+
+fn join_instance(span, seen, e) = match e {
+  EParameterized(n, args) => if any(arg_is_instance_var, args) {
+    match find(same_effect_name(n, ??), seen) {
+      Some(prior) => match prior {
+        EParameterized(_, pargs) => {
+          each(join_var_at(pargs, span, ??), enumerate(args))
+          seen
+        },
+        ENamed(_) | EPure => seen,
+      },
+      None => push(seen, e),
+    }
+  } else {
+    seen
+  },
+  ENamed(_) | EPure => seen,
+}
+
+fn same_effect_name(n, e) = match e {
+  EParameterized(m, _) => m == n,
+  ENamed(_) | EPure => false,
+}
+
+fn join_var_at(pargs, span, ia) = match ia {
+  (i, a) => if i < len(pargs) {
+    match a {
+      EAVar(v) => match list_index(pargs, i) {
+        EAVar(w) => unify(v, w, span, Inferred("one instance per declaration")),
+        EAInt(_) | EAFloat(_) | EAString(_) | EAEffect(_) | EACon(_) | EANode(_) | EAType(_) => (),
+      },
+      EAInt(_) | EAFloat(_) | EAString(_) | EAEffect(_) | EACon(_) | EANode(_) | EAType(_) => (),
+    }
+  } else {
+    ()
+  },
 }
 
 // The declared-row gate at a declaration's exit — ONE firing site. The
@@ -3558,13 +3622,7 @@ fn pin_scalar_or_keep(barg, darg) = match darg {
 // every replace — and runs first so the reading below sees it.
 fn enforce_row_gate(name: String, declared_row, has_pure, row_handle, span: ValidSpan, decl) = {
   let why = Located(span, Declared(name))
-  match graph_chase(row_handle) {
-    GNode(NRowBound(raw_row), _) => {
-      let pinned = pin_declared_instances(raw_row, declared_row)
-      if pinned == raw_row { () } else { graph_finalize_row(row_handle, pinned, why) }
-    },
-    _ => (),
-  }
+  bind_declared_instances(row_handle, declared_row, span)
   let body_row = resolve_row(mk_ef_open([], row_handle))
   if row_subsumes(body_row, declared_row) {
     // The ground reading the teaching may judge: a cell nothing ever
@@ -3751,7 +3809,17 @@ fn carriers_in_order(eff, h) = carrying_children(
 // carry: a root leak made by a handler's own arm was answered with another
 // handler's arm under the same chain (measured 2026-10-13).
 fn tee_absorbs_here(hnd, eff) = match tee_arms(hnd) {
-  Some(arms) => any({ n => eff_name_str(n) == eff_name_str(eff) }, derive_handler_enames(arms, 0, [])),
+  Some(arms) => any({ n => eff_name_str(n) == eff_name_str(eff) }, derive_handler_enames(arms, 0, [])) && !tee_serves_another(hnd, eff),
+  None => false,
+}
+
+// Whether the install serves an instance the effect provably is not, so what
+// the body performs of it passes the install and the walk enters the body.
+fn tee_serves_another(hnd, eff) = match handler_e_r(tee_handler_decl(hnd), hnd) {
+  Some(er) => match served_instance(er, hnd) {
+    Some(s) => route_distinct(s, eff),
+    None => false,
+  },
   None => false,
 }
 
@@ -3876,14 +3944,16 @@ fn value_entry(eff, vh, seen) = match graph_node_body(vh) {
   _ => Some(Inferred("a function value handed in")),
 }
 
-// Whether a subtree's row carries the effect, by name.
+// Whether a subtree's row carries the effect: an entry of its name that may
+// be its instance, so the walk descends to the stage written for the rate
+// a refusal names, past one written for another.
 fn carries(eff, h) = match row_of_subtree(h) {
   Some(row) => row_carries(row, eff),
   None => false,
 }
 
-fn row_carries(row, eff) = match row {
-  EfRow(present, _, _) => any({ p => eff_name_handle(p) == eff_name_handle(eff) }, present),
+fn row_carries(row, eff) = match instances_read(row) {
+  EfRow(present, _, _) => any(absorbs_entry(eff, ??), present),
 }
 
 // The children that carry the effect, earliest-placed first — evaluation
@@ -4204,6 +4274,7 @@ fn instance_arg_scalar_ty(arg) = match arg {
   // ground check the way the node arm does
   EAEffect(_) => None,
   EACon(_) => None,
+  EAVar(_) => None,
 }
 
 // is_pure_eff_name / apply_connective / has_pure_declared /
@@ -5789,23 +5860,21 @@ fn infer_call_saturated(args, fh, handle, span: ValidSpan, cname) = {
 // THE PERFORM GROUNDS ITS INSTANCE (E1). An op parameter that shares its name
 // with one of its effect's own parameters IS that parameter at the perform:
 // under `effect Environ(name: String) { env(name: String) -> String }`,
-// `env("PORT")` charges `Environ("PORT")`. The op's registered row carries one
-// opaque value dim per effect parameter (`register_effect_ops`), whose only
-// writer was the declaration's pin (`pin_declared_instances`) — so the
-// instance had to be written twice, once at the read and once in a `with`
-// clause, with nothing checking they agree. The perform's literal argument is
-// the second writer, into the charge, after the arguments are judged. A
-// computed argument leaves the dim opaque: an ungrounded instance, provably
-// distinct from none, so a negation over it holds exactly when the reads it
-// guards are literal.
+// `env("PORT")` charges `Environ("PORT")`. Every perform instantiates its
+// op's instance variables fresh (`register_effect_ops`), and the argument at
+// such a parameter binds its variable after the arguments are judged: a
+// literal is the instance, and a computed argument is an operand nothing
+// grounds, provably distinct from none, so a negation over it holds exactly
+// when the reads it guards are literal.
 fn grounded_perform_row(fh, cname: String, crow, args, span: ValidSpan) = match perform_dim_slots(fh) {
   None => crow,
   Some((en, slots)) => {
     let dims = map(perform_slot_value(args, ??), slots)
     if env_read_is_ungrounded(en, cname, dims) { report(EEnvNameUngrounded(span)) } else { () }
     match crow {
-      EfRow(ps, ab, t) => ef_make(map(perform_ground_entry(intern_str(en), dims, ??), ps), ab, t),
+      EfRow(ps, _, _) => each(perform_ground_entry(intern_str(en), map(perform_slot_arg(args, ??), slots), span, ??), ps),
     }
+    crow
   },
 }
 
@@ -5852,32 +5921,31 @@ fn literal_eff_arg(arg) = match graph_node_body(arg) {
   _ => None,
 }
 
-fn perform_ground_entry(enh, dims, e) = match e {
-  EParameterized(n, eargs) => if n == enh {
-    EParameterized(n, map({ (i, a) => perform_ground_dim(dims, i, a) }, enumerate(eargs)))
-  } else {
-    e
-  },
-  ENamed(_) => e,
-  EPure => e,
+// A slot's argument at this perform: the node handed there, or None where the
+// call leaves the slot to a default or a hole.
+fn perform_slot_arg(args, slot) = match slot {
+  (ai, di) => (di, if ai < len(args) { Some(list_index(args, ai)) } else { None }),
 }
 
-// Only an opaque dim takes the literal: a type dim is the install flow's, and
-// a scalar already there keeps its own truth.
-fn perform_ground_dim(dims, i, a) = match a {
-  EANode(_) => match find({ (d, _) => d == i }, dims) {
-    Some((_, v)) => match v {
-      Some(lit) => lit,
-      None => a,
-    },
-    None => a,
+fn perform_ground_entry(enh, slot_args, span, e) = match e {
+  EParameterized(n, eargs) => if n == enh { each(perform_ground_dim(eargs, span, ??), slot_args) } else { () },
+  ENamed(_) | EPure => (),
+}
+
+// The argument binds the instance variable at its dim: its literal, or the
+// operand itself where nothing grounds it.
+fn perform_ground_dim(eargs, span, slot_arg) = match slot_arg {
+  (di, Some(arg)) => if di < len(eargs) {
+    bind_instance_arg(
+      list_index(eargs, di),
+      eff_arg_of_node(arg),
+      span,
+      Inferred("the instance the perform names")
+    )
+  } else {
+    ()
   },
-  EAType(_) => a,
-  EAInt(_) => a,
-  EAFloat(_) => a,
-  EAString(_) => a,
-  EAEffect(_) => a,
-  EACon(_) => a,
+  (_, None) => (),
 }
 
 // A REQUIRED environment read must name its variable at the read: lib's
@@ -6514,7 +6582,16 @@ fn infer_pipe_tee_one(left, right, hd, handle, span: ValidSpan, born) = {
       // type. This is what makes `field` in `map((field)=>field.name, xs)`
       // resolve to xs's element. The dispatch gradient applied to data.
       unify_install_payload(body_row, er.ename, right, span)
-      let handled_names = if len(arm_names) == 0 { [ENamed(intern_str(er.ename))] } else { arm_names }
+      // A handler whose config names its effect's parameters serves that one
+      // instance: it absorbs what may be that instance, binding the instance
+      // variables of the stages it answers, and what is provably another
+      // passes on to the install that serves it.
+      let served = served_instance(er, right)
+      route_install(served, resolve_row(body_row), span)
+      let handled_names = map(
+        serve_name(served, ??),
+        if len(arm_names) == 0 { [ENamed(intern_str(er.ename))] } else { arm_names }
+      )
       // A5 — the arm-world rule at the install (LENS §2.4): resuming
       // inside an arm of h continues the REMAINDER under h, so h's own
       // declared negation binds the remainder's requirement with h's
@@ -6576,6 +6653,95 @@ fn install_mutation(site, right, residual) = match tee_handler_decl(right) {
 fn install_config(right) = match graph_product_at(right) {
   ProductOf(nodes, _, _) => nodes,
   NoProduct => [],
+}
+
+// The instance an install serves: a config parameter of the handler that
+// shares its name with one of its effect's parameters is that parameter at
+// the install, as an op's parameter is at a perform, so `~> sample_at(48000)`
+// serves `Sample(48000)` and a stage written for 44.1 kHz refuses there. A
+// handler whose config names none of its effect's parameters serves every
+// instance, the family bridge, and pins nothing.
+fn served_instance(er, right) = {
+  let dims = effect_dim_names(er.ename)
+  if len(dims) == 0 {
+    None
+  } else {
+    match fold(Some([]), served_dim(er.config, install_config(right), ??, ??), dims) {
+      Some(args) => Some(EParameterized(intern_str(er.ename), args)),
+      None => None,
+    }
+  }
+}
+
+// The name an install subtracts for an effect: the instance it serves, else
+// the effect's bare name, every instance.
+fn serve_name(served, n) = match served {
+  Some(s) => if eff_name_handle(s) == eff_name_handle(n) { s } else { n },
+  None => n,
+}
+
+// The effect a handler pins to the instance its config names: the one among
+// those its arms answer whose parameters its config parameters all name.
+fn handler_pinned_effect(hd) = match published_kind(Some(hd)) {
+  Some(HandlerKind(_, _, config, _, arms)) => match find(config_pins(config, ??), derive_handler_enames(arms, 0, [])) {
+    Some(n) => Some(eff_name_str(n)),
+    None => None,
+  },
+  _ => None,
+}
+
+fn config_pins(config, n) = {
+  let dims = effect_dim_names(eff_name_str(n))
+  len(dims) > 0 && all(config_names_dim(config, ??), dims)
+}
+
+fn config_names_dim(config, d) = any({ p => param_name(p) == d }, config)
+
+// Each entry of the body the install may serve takes the instance at its
+// variables: a stage written for no rate runs at the rate of the clock that
+// answers it, and is specialized to it.
+fn route_install(served, v, span) = match served {
+  Some(s) => match v {
+    EfRow(present, _, _) => each(route_entry(s, span, ??), present),
+  },
+  None => (),
+}
+
+fn route_entry(s, span, e) = if eff_name_handle(e) == eff_name_handle(s) && !route_distinct(s, e) {
+  match s {
+    EParameterized(_, sargs) => match e {
+      EParameterized(_, eargs) => each(bind_served_at(sargs, span, ??), enumerate(eargs)),
+      ENamed(_) | EPure => (),
+    },
+    ENamed(_) | EPure => (),
+  }
+} else {
+  ()
+}
+
+fn bind_served_at(sargs, span, ie) = match ie {
+  (i, earg) => if i < len(sargs) {
+    bind_instance_arg(earg, list_index(sargs, i), span, Inferred("the instance the install serves"))
+  } else {
+    ()
+  },
+}
+
+fn served_dim(config, cfg, acc, d) = match acc {
+  Some(args) => match find(config_named(d, ??), enumerate(config)) {
+    Some((ci, _)) => if ci < len(cfg) { Some(push(args, eff_arg_of_node(list_index(cfg, ci)))) } else { None },
+    None => None,
+  },
+  None => None,
+}
+
+fn config_named(d, ip) = match ip {
+  (_, p) => param_name(p) == d,
+}
+
+fn eff_arg_of_node(n) = match literal_eff_arg(n) {
+  Some(a) => a,
+  None => EANode(n),
 }
 
 // What an install costs the frame it stands in, by its class (the roster in
@@ -6943,7 +7109,8 @@ fn installed_handler_ty(ty) = match ty {
   | TRefined(_, _)
   | TReprPin(_, _)
   | TCont(_, _, _, _)
-  | TAlias(_, _) => ty,
+  | TAlias(_, _)
+  | TValue(_) => ty,
 }
 
 // What an install's value stands on — the one reason the tee node is bound
@@ -7770,6 +7937,12 @@ fn same_ground(ref a, ref b) with Pure = match a {
   // The pin is a gradient INPUT (an annotation, not a type — §4①):
   // identity is the base's; only emission reads the width.
   TReprPin(_, base) => same_ground(base, b),
+  // Two instance values agree unless both are known and differ: an operand
+  // nothing grounds may be either, and binds nothing.
+  TValue(x) => match b {
+    TValue(y) => !eff_arg_scalar_unequal(x, y),
+    _ => false,
+  },
 }
 
 // Two resume cardinalities unify iff they pick the SAME representation: the
@@ -8563,6 +8736,7 @@ fn shape_whole_roots(t) = match t {
   TReprPin(_, b) => shape_whole_roots(b),
   TCont(i, a, _, _) => shape_whole_roots(i) ++ shape_whole_roots(a),
   TAlias(_, i) => shape_whole_roots(i),
+  TValue(_) => [],
 }
 
 fn param_whole_roots(p) = shape_whole_roots(param_ty(p))
@@ -8599,6 +8773,7 @@ fn shape_outer_roots(t) = match t {
   TRecord(_) => [],
   TReprPin(_, _) => [],
   TCont(_, _, _, _) => [],
+  TValue(_) => [],
 }
 
 fn row_end_roots(end) = match end {
@@ -9050,7 +9225,8 @@ fn returned_fns(body_h) = match chase_ty(TVar(body_h)) {
   | TRefined(_, _)
   | TReprPin(_, _)
   | TCont(_, _, _, _)
-  | TAlias(_, _) => [],
+  | TAlias(_, _)
+  | TValue(_) => [],
 }
 
 // The arms' claim, published where they end, read by each install as a call
@@ -11197,6 +11373,7 @@ fn sum_roster(ty) = match ty {
   TRecord(_) => [],
   TRecordOpen(_, _) => [],
   TCont(_, _, _, _) => [],
+  TValue(_) => [],
 }
 
 // Whether some value of the constructor escapes the rows before the arm —
@@ -11532,6 +11709,7 @@ fn generalize_signature(handle) = {
           TRefined(_, _) => (free_in_ty(body_ty), body_ty),
           TAlias(_, _) => (free_in_ty(body_ty), body_ty),
           TReprPin(_, _) => (free_in_ty(body_ty), body_ty),
+          TValue(_) => ([], body_ty),
         }
       },
       // An unresolved publish QUANTIFIES its own cell: sharing the live cell
@@ -11662,6 +11840,7 @@ fn chase_probe_tag(ty) = match ty {
   TByte => "TByte",
   TAddr => "TAddr",
   TReprPin(_, _) => "TReprPin",
+  TValue(_) => "TValue",
 }
 
 // The canonical snapshot SHARES every unchanged subtree (A.3 — the second
@@ -11693,6 +11872,7 @@ fn chase_changes(ty, d) = if d > 200 {
     TUnit => false,
     TByte => false,
     TAddr => false,
+    TValue(_) => false,
     TVar(h) => match graph_chase(h) {
       GNode(kind, _) => match kind {
         NBound(_) => true,
@@ -11798,7 +11978,8 @@ fn chase_args_changes(args, d, i, n) = if i >= n {
 } else {
   let hit = match list_index(args, i) {
     EAType(t2) => chase_changes(t2, d),
-    _ => false,
+    EAVar(v) => chase_changes(TVar(v), d),
+    EAInt(_) | EAFloat(_) | EAString(_) | EAEffect(_) | EACon(_) | EANode(_) => false,
   }
   if hit { true } else { chase_args_changes(args, d, i + 1, n) }
 }
@@ -11826,6 +12007,7 @@ fn chase_deep_build(ty, d) = if d > 200 {
     TUnit => ty,
     TByte => ty,
     TAddr => ty,
+    TValue(_) => ty,
     TVar(h) => match graph_chase(h) {
       GNode(kind, _) => match kind {
         NBound(inner) => chase_deep_at(inner, d + 1),
@@ -11939,12 +12121,37 @@ fn chase_edges_deep(ref vs: [RowEdge], acc, d) = match vs {
 }
 
 fn chase_eff_names(names, d) = map(
-  {
-    EParameterized(n, args) => EParameterized(n, map({ EAType(t2) => EAType(chase_deep_at(t2, d)), other => other }, args)),
-    other => other,
-  },
+  { EParameterized(n, args) => EParameterized(n, map(chase_eff_arg(??, d), args)), other => other },
   names
 )
+
+// An instance argument read through its cell: a type through its variables,
+// an instance variable as the value bound to it, or its root while free.
+fn chase_eff_arg(a, d) = match a {
+  EAType(t2) => EAType(chase_deep_at(t2, d)),
+  EAVar(v) => value_of_instance(chase_deep_at(TVar(v), d), a),
+  EAInt(_) | EAFloat(_) | EAString(_) | EAEffect(_) | EACon(_) | EANode(_) => a,
+}
+
+fn value_of_instance(t, a) = match t {
+  TValue(x) => x,
+  TVar(h) => EAVar(h),
+  TInt
+  | TFloat
+  | TUnit
+  | TByte
+  | TAddr
+  | TList(_)
+  | TTuple(_)
+  | TFun(_, _, _)
+  | TName(_, _)
+  | TRecord(_)
+  | TRecordOpen(_, _)
+  | TRefined(_, _)
+  | TReprPin(_, _)
+  | TCont(_, _, _, _)
+  | TAlias(_, _) => a,
+}
 
 fn map_chase_ty(tys, d) = map((t) => chase_deep_at(t, d), tys)
 
@@ -11962,6 +12169,7 @@ fn free_in_ty(ty) = match ty {
   TUnit => [],
   TByte => [],
   TAddr => [],
+  TValue(_) => [],
   TVar(id) => [id],
   TList(elem) => free_in_ty(elem),
   TTuple(elems) => free_in_list(elems),
@@ -12088,6 +12296,8 @@ fn free_in_eff_arg(arg) = match arg {
   // interned identities — no embedded Ty, no free vars
   EAEffect(_) => [],
   EACon(_) => [],
+  // an instance variable is a type cell: free until a value binds it
+  EAVar(v) => free_in_ty(TVar(v)),
 }
 
 // The decl's signature frees, read at exit time THROUGH the live cells —
@@ -12212,6 +12422,7 @@ fn subst_changes(ty, mapping) = match ty {
   TUnit => false,
   TByte => false,
   TAddr => false,
+  TValue(_) => false,
   // THE CHECK CHASES, SO THE BUILD CAN SHARE. This answered TRUE for every
   // bound var — "an NBound var inlines its binding (always differs)" — and
   // in a JUDGED decl most vars are bound, so check-then-build was here but
@@ -12329,7 +12540,8 @@ fn subst_args_changes(args, mapping, i, n) = if i >= n {
 } else {
   let hit = match list_index(args, i) {
     EAType(ty) => subst_changes(ty, mapping),
-    _ => false,
+    EAVar(v) => subst_changes(TVar(v), mapping),
+    EAInt(_) | EAFloat(_) | EAString(_) | EAEffect(_) | EACon(_) | EANode(_) => false,
   }
   if hit { true } else { subst_args_changes(args, mapping, i + 1, n) }
 }
@@ -12345,6 +12557,7 @@ fn subst_ty_build(ty, mapping) = match ty {
   TUnit => ty,
   TByte => ty,
   TAddr => ty,
+  TValue(_) => ty,
   TVar(id) => {
     // THE FROZEN READ — the mapping decides BEFORE any live chase. A var in
     // the mapping was free at the freeze, so whatever bound it since is
@@ -12549,18 +12762,10 @@ fn root_mapped(mapping, r) = find_mapping(mapping, graph_chase_handle(r)) >= 0
 // (the row mirror of subst_ty over the row's carried types).
 fn subst_eff_names(names, mapping) = map(
   (n) => match n {
-    // ONLY EParameterized carries substitutable payload TYPES (Iterate(a) ⇒
-    // Iterate(fresh)) — reconstruct it with the fresh args.
-    EParameterized(s, args) => EParameterized(
-      s,
-      map(
-        (arg) => match arg {
-          EAType(ty) => EAType(subst_ty(ty, mapping)),
-          _ => arg,
-        },
-        args
-      )
-    ),
+    // ONLY EParameterized carries substitutable payload — its TYPES
+    // (Iterate(a) ⇒ Iterate(fresh)) and its instance variables — so it is
+    // reconstructed with the fresh args.
+    EParameterized(s, args) => EParameterized(s, map(subst_eff_arg(??, mapping), args)),
     // ENamed and EPure carry NOTHING to substitute — carry the live value,
     // never re-derive it (nothing-drops; carrying the value sidesteps the copy).
     ENamed(_) => n,
@@ -12568,6 +12773,14 @@ fn subst_eff_names(names, mapping) = map(
   },
   names
 )
+
+// An instance argument under a scheme's mapping: a type substituted, an
+// instance variable the quantified one freshened or the value it stands for.
+fn subst_eff_arg(arg, mapping) = match arg {
+  EAType(ty) => EAType(subst_ty(ty, mapping)),
+  EAVar(v) => value_of_instance(subst_ty(TVar(v), mapping), arg),
+  EAInt(_) | EAFloat(_) | EAString(_) | EAEffect(_) | EACon(_) | EANode(_) => arg,
+}
 
 // The mapping probe — a direct walk, no per-leaf filter materialization
 // (the filter allocated a hits list at every TVar leaf of every
@@ -15524,21 +15737,16 @@ fn register_effect_ops(effect_name, params, ops, decl) = {
   let qops = quantified.ops
   let eff_vars = qops |> effect_type_vars |> unique |> filter(var_is_named(quantified.named, ??))
   let enh = intern_str(effect_name)
-  // The instance's VALUE dimensions — one opaque node per declared effect
-  // param (`effect Sample(rate: Int)` carries one), FIRST so an authored
-  // instance's args (`Sample(48000)` — declared-param positions) align
-  // position-wise with the charge's. EANode by design: eparam_arg_tys
-  // skips it, so the type-space install flow (handler payload arity,
-  // unify_op_payload, instances_in_row) never meets a value dim;
-  // free_in_eff_arg answers [], so it never quantifies and rides
-  // instantiation verbatim; the declared gate's pin
-  // (pin_declared_instances) is its one writer. Deriving the instance
-  // from op type vars ALONE minted a bare ENamed for a concrete-op
-  // value-parameterized effect, so every charge erased the instance
-  // identity the row algebra distinguishes (SYNTAX §Parameterized
-  // effect) — masked while the gate published the declared row verbatim,
-  // exposed by the publish law (the inst-sibling fixture's record).
-  let value_dims = map((_) => EANode(mint(Inferred("effect '{effect_name}' value dim"))), params)
+  // The instance's VALUE dimensions — one instance variable per declared
+  // effect param (`effect Sample(rate: Int)` carries one), FIRST so an
+  // authored instance's args (`Sample(48000)` — declared-param positions)
+  // align position-wise with the charge's. Each op's scheme quantifies it
+  // (free_in_eff_arg), so every perform and every call instantiates it
+  // fresh, and a literal at the perform, a declaration's row or the install
+  // that answers it binds it. eparam_arg_tys skips it, so the type-space
+  // install flow (handler payload arity, unify_op_payload,
+  // instances_in_row) never meets a value dimension.
+  let value_dims = map((_) => EAVar(mint(Inferred("effect '{effect_name}' instance"))), params)
   let eff_name = if len(params) == 0 && len(eff_vars) == 0 {
     ENamed(enh)
   } else {
@@ -15643,6 +15851,7 @@ fn cap_result_fn_row(t) = match t {
   TUnit => TUnit,
   TByte => TByte,
   TAddr => TAddr,
+  TValue(a) => TValue(a),
 }
 
 fn cap_result_field(f) = match f {
