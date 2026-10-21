@@ -1,0 +1,5 @@
+// expect: refuse E_TypeMismatch
+// `++` is one sequence concat whose operands' element types unify, so a list
+// of words beside a list of Bools is the unification failure it is, its
+// Reason naming the `++`; no class of its own names the shape.
+fn main() = len([1, 2] ++ [true])

@@ -103,6 +103,14 @@ else
   done
 fi
 
+# PLAN §11 IS THE ONLY LIST OF OPEN WORK (CLAUDE.md): a `Hβ.*` label names a
+# landing's design, so one a document names and PLAN does not is work recorded
+# outside the list. Source comments carry labels too, trued module by module
+# (PLAN §7); the documents are held here.
+for label in $(cat CLAUDE.md README.md docs/*.md ide/README.md lib/dsp/README.md lib/ml/README.md tests/frontier/README.md 2>/dev/null | grep -oE 'Hβ\.[A-Za-z0-9_.-]+' | sed 's/[.]$//' | sort -u); do
+  grep -qF -- "$label" PLAN.md || { echo "doc-truth: '$label' is named outside PLAN §11, which is the one list of open work"; fail=1; }
+done
+
 # THE SWEEP TURNED AROUND (2026-08-16): the docs' claims about the artifact
 # were checked from the start; the SOURCE's claims about the docs never were.
 # Measured on this check's first run: 62 comment lines across 15 modules cite

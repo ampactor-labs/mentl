@@ -1,0 +1,8 @@
+// expect: refuse E_TypeMismatch
+// A stage with no hole: `f(2, 3)` is already a complete call, so the pipe
+// has no field to fill with its datum. The pipe's one rule — the stage meets
+// a one-parameter function by unification — refuses it as the type mismatch
+// it is; no class of its own names the shape.
+fn f(a, b) = a + b
+
+fn main() = 1 |> f(2, 3)

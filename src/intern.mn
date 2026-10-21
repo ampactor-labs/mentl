@@ -1,8 +1,7 @@
-// intern.mn — the intern table's handlers (spec 03's string identity).
-// Relocated from pipeline.mn (PLAN §11 Phase 3.5, the infer→pipeline
-// handler seam): the branch cursor's install chain in infer names
-// intern_view, so the declarations live BELOW infer — the table's own
-// module. effect Intern declares in types.mn — the vocabulary home
+// intern.mn — the intern table's handlers (the string identity).
+// The forking handlers' chain in infer installs an instance of the table
+// over every option it judges, so the declarations live BELOW infer — the
+// table's own module. effect Intern declares in types.mn — the vocabulary home
 // every performer imports (lex and the EffName mints live below this
 // module); the handlers live with the table they manage.
 import types

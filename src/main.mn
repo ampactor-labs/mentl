@@ -1478,7 +1478,7 @@ fn test_run(target_opt) = {
   {
     match fs_list_dir(entry_module) {
       Some(_) => battery_run(entry_module),
-      None => test_check_run(entry_module),
+      None => test_check_run(path_to_module(entry_module)),
     }
   } ~> stdout_console ~> wasi_filesystem ~> diagnostics_handler
 }
@@ -2393,7 +2393,8 @@ fn scaffold_project(name: String) = {
 
 // The seed the medium carries — the smallest program that RUNS and whose
 // own comments are the Reason edges it talks about. Not the curriculum
-// (lib/tutorial/ is the curriculum, and it is not on a user's disk).
+// (the course, examples/pulse/course, is the curriculum, and it is not on
+// a user's disk).
 // The `\{who\}` escapes emit literal braces, so the FILE gets a live
 // interpolation the user's own compile reads.
 fn new_seed() =

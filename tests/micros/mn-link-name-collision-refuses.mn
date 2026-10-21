@@ -1,0 +1,8 @@
+// expect: refuse E_DuplicateFnName
+// A program's declaration of a name the linked library declares: the link is
+// one namespace today, so the second `fn count` refuses naming the first,
+// link-wide. The selective import that would settle the collision at the
+// import edge, E_ImportNameCollision, is the module-as-a-scope landing's.
+fn count(xs) = len(xs)
+
+fn main() = count([1, 2, 3])

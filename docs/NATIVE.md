@@ -95,8 +95,8 @@ once here and inherited, never re-litigated:
   is the use-count read; eviction is e-graph rematerialization** — a value that
   cannot fit is recomputed from its still-live e-graph producer (a pure `LConst`,
   an `LFieldLoad` from a live record) at the extraction cost the e-graph already
-  computes (`Hβ.egraph.extraction-cost-composes-repr`, band G), never round-
-  tripped through a spill slot. No Belady, no second source of truth.
+  computes, never round-tripped through a spill slot. No Belady, no second
+  source of truth.
 - **The global mode flag** (determinism modes, warm/cold call modes,
   substrate-effect-set-as-name-list). Every one is drift-8. A flag becomes an ADT
   or a `~>` handler.
@@ -121,12 +121,12 @@ And two deferrals recurred verbatim and are consolidated:
   the image base lives in one reserved register (`r15`/`x28`), so every deref is
   one `mov reg,[base + h + disp]` and the whole range is relocatable by memcpy
   with zero fixups. `fn_ptr@0` reinterprets table-index → callee handle,
-  byte-compatible with the WASM record. The image-map fold
-  (`Hβ.emit.image-map-fold`) replaces the three magic region bases; the header is
-  the fold's memoized limits, so the image is self-describing and needs no ELF
-  section table. Page 0 (below `heap_base`) is `PROT_NONE` — the sentinel/heap
-  discriminant becomes a hardware MMU guard, which *forces*
-  `Hβ.io.scratch-dissolves-into-alloc` (already landed). **Correction:** the
+  byte-compatible with the WASM record. The image-map fold replaces the three
+  magic region bases; the header is the fold's memoized limits, so the image is
+  self-describing and needs no ELF section table. Page 0 (below `heap_base`) is
+  `PROT_NONE` — the sentinel/heap discriminant becomes a hardware MMU guard, and
+  every allocation is the allocator's, so nothing below the line is ever
+  addressed. **Correction:** the
   persisted/shipped image is DATA-ONLY (arch-neutral); code is a runtime-only
   cache the receiving node re-projects (self-hosting projector), which is what
   keeps W^X honest and the image portable.
@@ -217,8 +217,7 @@ re-prove the fixpoint. That is the discipline's whole point.
 - **S2** `use_profile` generalizing `count_uses` (own.mn:369, a bare Int-sum) to
   `(grade, sorted-use-positions, escape-bit)`, reading the escape set from lower's
   already-computed capture set — zero new escape analysis. THE one liveness
-  analysis five layers needed. Closes
-  `Hβ.infer.usage-grade-unifies-cardinality-ownership`.
+  analysis five layers needed.
 - **S3** The cardinality→frame-representation classifier (**keystone 1**) —
   labels each activation HardwareScratch vs ImageRecord from the cardinality
   lattice + delimited-region containment. Verify in the WASM peer (assert it
@@ -268,14 +267,13 @@ ceiling under everything from S9 on: ship before it, prove after it.
 
 ## §6 · Where the WASM work fits — S3/S4, proven in the peer today
 
-The portable multi-shot proved in the WASM peer is S3/S4 *in the WASM peer*: cardinality already decides
-OneShot-vs-MultiShot (landed), and the correct execution is the captured-segment
-continuation (the ultimate O(1) form) with re-execution as the proven stepping
-stone. Two facts pinned building it: a multi-shot handler's arm is a **UZero-grade
-arm** (it never resumes its *own* op — the reruns resume the nested replay), so it
-must **abort** the triggering continuation, not tail-resume it (Mentl currently
-tail-resumes a zero-resume arm — the fix is cardinality-driven, `UZero → abort`);
-and a body thunk must be a **direct-named global**, not a handler-config lambda
-(config-fn calls carry the wrong evidence — named peer
-`Hβ.lower.config-fn-evidence-in-arm`). Both are S3-tier work, verifiable now
-against `m3 == m4`, and they are the first concrete steps of this whole plan.
+The multi-shot the WASM peer runs is S3/S4 *in that peer*: the resume grade is
+inferred from each arm's body (SYNTAX §«Resume discipline»), a tail resume is a
+direct call, a held or multi-shot perform reifies the frame's REMAINDER as a
+record — the lowered frame zipped at the position, every value it reads after
+the perform captured beside the world the perform ran in — and an arm that
+never resumes unwinds the perform to the install whose arm answers. The native
+frame classifier (S3) reads the same grade: a tail-resumed frame is hardware
+scratch and a reified remainder is an image record, and the body an install
+runs is the frame's own function, entered through the install's record (handler
+= state = closure). Both are verifiable against `m3 == m4`.

@@ -292,7 +292,7 @@ users |> filter({ p => p.age > 18 })              // fills xs → equals filter(
 users |> filter({ p => p.age > 18 }) |> map({ p => p.name }) |> sort
 ```
 
-The pipe's type rule (§«`|>` — converge») requires `right : A -> B` — a product with exactly one hole — and a partial application *is* exactly that. So the pipe is not a syntactic append; it is the product's one remaining hole filled by the piped value. This is why the five verbs compose: every stage is a product pre-filled with its configuration, its data field a hole the pipe completes — `x |> clamp(0, 255)` fills `clamp(lo, hi, x)`'s datum. A call that is genuinely not a stage names the pipe's target with `??` (`nodes |> list_set(??, i, v)`, §«The Stage Law»); a stage with more than one hole and none marked, or with no hole at all, is not an `A -> B`, and the pipe's unification refuses it (`E_PipeHoleAmbiguous` and `E_PipeIntoComplete` name the two shapes, §«Diagnostic catalog»).
+The pipe's type rule (§«`|>` — converge») requires `right : A -> B` — a product with exactly one hole — and a partial application *is* exactly that. So the pipe is not a syntactic append; it is the product's one remaining hole filled by the piped value. This is why the five verbs compose: every stage is a product pre-filled with its configuration, its data field a hole the pipe completes — `x |> clamp(0, 255)` fills `clamp(lo, hi, x)`'s datum. A call that is genuinely not a stage names the pipe's target with `??` (`nodes |> list_set(??, i, v)`, §«The Stage Law»); a stage with more than one hole and none marked, or with no hole at all, is not an `A -> B`, and the pipe's unification refuses it (`E_TypeMismatch`, at its arity face: tests/micros/mn-pipe-into-complete-refuses.mn, mn-pipe-hole-ambiguous-refuses.mn).
 
 **One primitive, five surfaces.** Positional construction, field/labeled construction, defaults, the hole (partial application), and pipe-completion are ONE thing — the parameter-list product constructed by identity with any subset of fields supplied, defaulted, or left as holes. There is no currying mechanism distinct from the product: a "curried function" is a product-with-holes, and the arity is never fuzzy, because the holes are named fields, not a hidden nesting of one-argument functions.
 
@@ -1413,8 +1413,7 @@ and naming writes nothing into the graph (the head of every module-level
 function comes back as itself through `parse∘render`, counted by `mentl query
 <entry> heads`). A pin that names the width the gradient would already infer
 is redundant (drop it; the gradient reaches it anyway), and so is a pin equal to the
-floor on an integral type; the narration that would say so, `W_RedundantRepr`, is not
-yet born. **The same `repr` pin is a
+floor on an integral type. **The same `repr` pin is a
 parameter annotation** (the Intent-Boundary peer of `own`/`ref` — §"The Intent
 Boundary Rule"): `fn gain(s: f32, k: f32) = s * k` pins the bare-width form (`f32`
 ≡ `Float repr f32` at the parameter altitude); the gradient infers every unpinned
@@ -2116,8 +2115,7 @@ fn fetch(url) with ApiClient = {
 A row alias is stored as its authored terms and expanded where a signature reads
 it (`row_alias_triples`, src/effects.mn), so an alias that resolves to `Pure`
 (everything subtracted out) simply IS `Pure` there: it adds no constraint and
-can be dropped. No narration says so yet — the catalog's `W_EmptyRow` is not yet
-born (§«Diagnostic catalog»). A cycle through an alias's own expansion refuses
+can be dropped. A cycle through an alias's own expansion refuses
 (`E_RowAliasCycle`), and so does a negated alias whose row is not positive and
 closed (`E_RowAliasNegation`). A named row's terms are judged where they are
 written, as a clause's are: each names a declared effect, another named row or
@@ -2457,7 +2455,7 @@ holds the repository's layout; the library's name is `lists`.
 import path/to/module {name_a, name_b, name_c}
 ```
 
-Only the listed names are brought into scope. The parser reads the path and stops today (`ImportStmt` carries the path alone), so the selective set, and the collision refusal below that rests on it, are the lathe's next turn — the module as a scope, `Hβ.driver.per-module-env-overlay`.
+Only the listed names are brought into scope. The parser reads the path and stops today (`ImportStmt` carries the path alone), so the selective set, and the collision refusal below that rests on it, are the lathe's next turn — the module as a scope, `Hβ.driver.per-module-env-overlay`. A link is one namespace today, so a program's `fn count` beside the library's refuses link-wide (`E_DuplicateFnName`, tests/micros/mn-link-name-collision-refuses.mn).
 
 ### No rename / alias
 
@@ -3076,7 +3074,7 @@ type TokenKind
 | `TComma`        | `,`              | —         | separator in tuples, params, fields, lists     |
 | `TDot`          | `.`              | —         | field access                                   |
 | `TColon`        | `:`              | —         | type annotation, record field binding          |
-| `TSemicolon`    | `;`              | —         | canonical-never — newlines separate statements; lexed so the formatter can lift it to newline layout (`E_StatementSemicolon`) |
+| `TSemicolon`    | `;`              | —         | canonical-never — newlines separate statements; lexed so the formatter can lift it to newline layout |
 | `TPlus`         | `+`              | —         | addition; effect union                         |
 | `TMinus`        | `-`              | —         | subtraction; unary negate                      |
 | `TStar`         | `*`              | —         | multiplication                                 |
@@ -3147,9 +3145,8 @@ diagnostic surface IS a `~>` handler re-projecting the graph, exactly like
 projections (`diag_source`, `diag_kind`, `diag_applicability`, `diag_message`,
 src/types.mn). What remains is the tables: until they are the
 text of that projection (`mentl diagnostics`, `Hβ.diag.catalog-as-projection`),
-a row here can name a class no constructor declares. Each such row says so —
-**not yet born** — with what the shape does today, and that landing births the
-class or strikes the row.
+every row names a class a constructor declares, and a shape the general class
+refuses is written on that class's row with the fixture that holds it.
 
 The three groupings below are **derived bands**, not authored law:
 - **Format-liftable** ≡ `MachineApplicable` ∧ the redundant form has no graph node (next section).
@@ -3176,13 +3173,15 @@ muting the reporter.*
 | Code                  | Trigger (an emitted token, removed/transformed)         | Canonicalization                                 |
 |-----------------------|---------------------------------------------------------|--------------------------------------------------|
 | `E_RedundantBraces`   | braces wrapping a non-`BlockExpr` (no statements)       | drop the braces; user sees no diagnostic         |
-| `E_BlockNeedsBraces`  | statements (a `BlockExpr`) written without braces. **Not yet born**: the parse reads the statements as their block and the render writes the braces, so the lift is real and silent, and no constructor names it | wrap the statements in `{ }`; user sees no diagnostic |
-| `E_StatementSemicolon`| `;` between statements. **Not yet born**: the parser skips the `;` as a separator (`skip_sep`) and the render writes newline layout, so the lift is real and silent, and no constructor names it | lift to newline layout; canonical text has no `;` |
 
-Three more redundant spellings lift the same way and have no class yet: an
-explicit `-> ()` (§«Unit return omission»), an ownership marker after the
-colon (`ast: own Node`, §«The Intent Boundary Rule»), and a `<|` over one
-stage, which the parse builds as the pipe it is (§«`<|` — diverge»).
+Five more redundant spellings lift silently, with no class, since each parses
+to the same graph as its canonical form: statements written without braces
+(the parse reads them as their block and the render writes the braces,
+§«Missing braces»), a `;` between statements (the parser passes over it as a
+separator and the render writes newline layout), an explicit `-> ()` (§«Unit
+return omission»), an ownership marker after the colon (`ast: own Node`,
+§«The Intent Boundary Rule»), and a `<|` over one stage, which the parse
+builds as the pipe it is (§«`<|` — diverge»).
 
 ### Hard errors (substrate violations)
 
@@ -3193,13 +3192,12 @@ stage, which the parse builds as the pipe it is (§«`<|` — diverge»).
 | `P_UnexpectedToken`   | a token not valid at its position; in pattern position the recovery is a wildcard, so the program refuses rather than run the arms it swallowed (tests/micros/mn-pattern-token-refuses.mn) | `MaybeIncorrect`     | restructure per the surrounding form |
 | `P_UnclosedConstruct` | EOF inside a construct (block, match arms, etc.) before its closer | `MaybeIncorrect` | close the construct OR remove its opening token |
 | `E_RefinementRejected`| value violates refinement predicate — or a partial primitive's precondition refuted by constants (`1 / 0`, `INT_MIN / -1`; §«Partiality»), or a destructuring pattern's shape refuted by how the value was built (`let Some(v) = None`; §«Exhaustiveness») | `Unspecified`        | adjust value or widen refinement               |
-| `E_EffectMismatch`    | declared row doesn't subsume body row. The Reason names the declaration and, for a function, the chain of sites the first refused effect enters through — each a `module:line:col` naming what the effect crosses there (a callee, a stage, a handler, a function value entered) or the construct that charges it (`rendering the value`, `building the list`) — to the op where the chain reaches one (the span stays the declaration's, whose clause is what the body violates) | `MaybeIncorrect`     | widen declaration OR install absorbing handler at the site the chain names |
+| `E_EffectMismatch`    | declared row doesn't subsume body row. The Reason names the declaration and, for a function, the chain of sites the first refused effect enters through — each a `module:line:col` naming what the effect crosses there (a callee, a stage, a handler, a function value entered) or the construct that charges it (`rendering the value`, `building the list`) — to the op where the chain reaches one (the span stays the declaration's, whose clause is what the body violates). An install whose arms perform an effect the installing declaration forbids is this class: what an arm performs enters the install's row (§«`~>` — tee»; tests/micros/mn-handler-arm-forbidden-refuses.mn) | `MaybeIncorrect`     | widen declaration OR install absorbing handler at the site the chain names |
 | `E_PurityViolated`    | `with Pure` body performs non-empty effects   | `MaybeIncorrect`     | remove `with Pure` or absorb the effect        |
 | `E_ZeroDelayFeedback` | `x <~ delay(0)` — a cycle with no delay: the prior would be the value being computed. ARMED (refuses the executable); one arm of the depth read, both the `delay` and `Delay` spellings | `MaybeIncorrect` | raise the delay to at least 1 |
 | `E_ComputedDelayDepth` | `x <~ delay(n - 1)` — the depth is a runtime value. A feedback line's ring is sized and wrapped by its literal depth, so an unreadable depth cannot be held, and the site would silently get one slot. ARMED, the sibling arm of the same read | `MaybeIncorrect` | write the depth as a literal, or hold the history yourself |
 | `E_OwnershipViolation`| `own` consumed twice / escapes ref scope      | `Unspecified`        | restructure to single-consume or use `ref`     |
 | `E_UseAfterMove`      | a borrow-READ of a name the affine ledger already moved — the read half of affine beside `E_OwnershipViolation`'s consume half. ARMED. Sound today only by accident: the heap frees only where an extent ends — an arena's exit, a reset — never at a `Consume`, so it is a use-after-free the day a `Consume` reclaims | `Unspecified` | drop the read, or restructure so the move happens after it — never a patch |
-| `E_HandlerUninstallable` | handler arms need effects context disallows. **Not yet born**: what an arm performs enters the install's row (`row(h)`, §«`~>` — tee»), so a context that forbids it refuses as `E_EffectMismatch` | `MaybeIncorrect`   | widen ambient row or restructure handler       |
 | `E_HandlerInexhaustive` | a handler's arms answer some ops of an effect and not others (§«A handler is exhaustive») — an install absorbs every op of the effects its arms answer, so the missing op would escape the row and reach nothing at runtime. ARMED; the shape it refuses was a false absence proof that trapped | `HasPlaceholders` | add the arm; forward the op outward (`op(…) => resume(op(…))`); or declare the ops this handler answers as their own effect |
 | `E_ResumeOfNever` | a handler arm resumes an op declared `-> !` (§«Never-returning ops») — the never type is quantified per perform, so no value the arm hands back is one every performer can receive. ARMED | `MaybeIncorrect` | end the arm with the value the install answers, or declare the op's result type if it does return |
 | `E_EffectUnhandled` | an effect reaches the executable root — `main`'s row, or a module value's init, which runs before `main` in the same world — with no install absorbing it, and its ops are not the substrate's own instructions (Memory, WASI and Cast ground; a row fact with no ops, Mutate or Arena, grounds vacuously). Judged at the end of the judgment, so `mentl check` refuses it where `mentl compile` does, the chain naming where the effect enters. ARMED (tests/micros/mn-check-root-unhandled.mn, mn-check-root-unhandled-init.mn) | `MaybeIncorrect` | install a handler for it over the performing chain; the message names the handlers in scope that answer it |
@@ -3208,20 +3206,16 @@ stage, which the parse builds as the pipe it is (§«`<|` — diverge»).
 | `E_DerivativeUnreachable` | a `d(v)` under a derivative reading whose argument's tangent was lost — into an aggregate, across a multi-shot perform, off a line ticked by forward code or a line a closure record owns, or through another `d` — a mint, an install or a state write under the reading that would store a lost tangent into a record, or a reading whose seed is not a Float variable in scope (§`~>`). The message names the loss site. ARMED: the alternative is a slope of zero the program never has | `Unspecified` | keep the value out of the aggregate until it is asked for, or seed the reading at a Float variable |
 | `E_EnvNameUngrounded` | a required environment read (`env`, lib/environ.mn) whose name is not a literal at the read — the program's demand on its host could not be stated before it runs, so its launch gate could not check it (§«Configuration — the environment is an effect»). ARMED | `MaybeIncorrect` | write the variable's name at the read, or ask `env_opt` and decide what an absent value means |
 | `E_MissingVariable`   | name not in scope                             | `MaybeIncorrect`     | check spelling; check imports                  |
-| `E_ImportNameCollision` | two selective imports bind the same name. **Not yet born**: the selective set does not parse yet (§«Imports»), and a link is one namespace, so two linked modules' functions of one name refuse link-wide (`E_DuplicateFnName`) | `MaybeIncorrect`     | narrow the selective sets so each name binds one edge |
 | `E_MissingImport`     | a name resolves only because the whole link carries it: declared at module level in a module the referencing module never imports, directly or transitively (the prelude's closure is ambient — the driver links it into every compile). ARMED, naming both modules at the reference | `MaybeIncorrect` | add `import <declaring module>` to the referencing module |
 | `E_UnknownArgLabel`   | a labeled arg names no declared parameter     | `MaybeIncorrect`     | check the label against the parameter names    |
-| `E_TypeMismatch`      | unification failed — the message carries the Reason the unify was asked with, past the diagnostic's own span (`Int vs [Byte] — ~> pipe → at 15:13-15:27: inferred from the arm bail of handler h`) | `Unspecified`        | adjust types; widen / narrow                   |
+| `E_TypeMismatch`      | unification failed — the message carries the Reason the unify was asked with, past the diagnostic's own span (`Int vs [Byte] — ~> pipe → at 15:13-15:27: inferred from the arm bail of handler h`). Three shapes are this class with their own Reasons: a pipe into a stage with no hole (`x \|> f(a, b)` over two parameters) and one into a stage with two holes none marked (`x \|> g(a)` over three), each refused where the stage meets the pipe's one-parameter function, and a `++` whose operands' element types do not unify (`[1] ++ [true]`), its Reason naming the `++` (tests/micros/mn-pipe-into-complete-refuses.mn, mn-pipe-hole-ambiguous-refuses.mn, mn-concat-type-mismatch-refuses.mn) | `Unspecified`        | adjust types; widen / narrow; leave a stage one hole, marking it `??` where it is not the last field |
 | `E_OccursCheck`       | infinite type                                 | `Unspecified`        | restructure to break cycle                     |
 | `E_OrphanHandlerAttach` | `~>` with no preceding chain                | `Unspecified`        | delete `~>` or supply body                     |
-| `E_PipeIntoComplete`  | `x \|> f(…)` where `f(…)` has no hole (already a complete value, not a `A -> B`). **Not yet born**: the stage meets the expected one-parameter function by unification (`infer_pipe`), so the shape refuses as `E_TypeMismatch` | `MaybeIncorrect` | leave a hole for the piped value (drop an arg or mark it `??`) |
-| `E_PipeHoleAmbiguous` | `x \|> f(…)` where `f(…)` has more than one hole and none is marked `??`. **Not yet born**: the same unification refuses it as `E_TypeMismatch`, its arity face | `MaybeIncorrect` | mark the pipe's target field with `??` (`nodes \|> list_set(??, i, v)`) |
 | `E_NotAKeyword`       | user typed `for`/`while`/`loop`/`break`/`continue`/`return` | `MaybeIncorrect` | rewrite as verb form per substrate             |
 | `E_PatternAlternationBindingMismatch` | branches in `\|` bind different names or types | `MaybeIncorrect` | adjust patterns to bind same names with unifiable types |
 | `E_DuplicateBinder` | a name bound twice in one head — across its parameters and inside their patterns — or by one pattern (`fn f(x, x)`, `(x, x) => x`); the second binder is refused, naming the first, and an alternation's branches, which bind the same names by law, are one binder each. ARMED | `MaybeIncorrect` | rename one binder |
 | `E_ResumeOutsideArm`  | `resume` where no continuation exists — outside a handler arm and every lambda or nested fn minted inside one, whose record captures the arm's k. ARMED (tests/micros/mn-resume-outside-arm-refuses.mn) | `Unspecified`        | move the resume into an arm, or declare the fn inside the arm; the continuation only exists there |
 | `E_ResumeWorldMismatch` | two continuations (`TCont(R, S, discipline, world)`) unify with incompatible resume DISCIPLINES — OneShot, MultiShot and Abandon are distinct representations (stack frame, heap record, dead continuation), so the mismatch is hard. The WORLD half is the row unification in the same TCont arm (`!E` lifted to the TIME axis, §4③). A continuation resumed under a changed world answers to that world past its own segment, and a negation over the resume or the root refuses one whose world cannot answer its remainder, as `E_EffectMismatch` or `E_EffectUnhandled` (§«A resumed remainder answers to the world it is resumed in») | `MaybeIncorrect` | align the handler arms' resume cardinality; for a world clash, re-install the absorbing handler before the resume OR widen the continuation's world |
-| `E_ConcatTypeMismatch` | `++` operands' element types fail to unify (e.g. `[Int] ++ [Bool]`). **Not yet born**: the failure is `E_TypeMismatch`, its Reason naming the `++` (§«Concatenation operator») | `MaybeIncorrect` | unify the element types |
 | `E_DeclaredRowContradiction` | one authored clause asserts a name present AND absent (`with E + !E`, instance-aware — a bare present beside an instance absent stays a refinement). Reported at the signed fold BEFORE the meet's drop; ARMED (refuses the executable): the pre-diagnostic meet let a performing body check clean under a declared `!E` | `MachineApplicable` | drop one side of the contradiction |
 | `E_ArithOnAggregate`  | `+ - * / %` or unary `-` whose operand is a product, sum, sequence, function, continuation or unit — the operands are addresses and the arithmetic would be on where the values live. ARMED: judged at the operator for a bound operand and at the one writer for a gated cell bound later (a `NumericGate` on the cell, copied at instantiation, reached through the instance column), so the judgment refuses, `mentl check` says so, and no WAT streams | `Unspecified` | give the operand a number (a word) or read the field you meant |
 | `E_UnresolvedHole`    | compiling an EXECUTABLE whose reachable emitted tree carries an authored value-position `??` (§«Partial application» — a hole is productive for check/edit, never an executable value; a parameter-product `??` is an executable suspension and runs). Raised by the executable gate between reachability and emit: nonzero exit, zero WAT bytes, the authored weave span on the diagnostic | `HasPlaceholders` | fill the hole (accept a Synth survivor) or suspend it into a parameter product |
@@ -3237,9 +3231,7 @@ stage, which the parse builds as the pipe it is (§«`<|` — diverge»).
 | `T_OverDeclared`      | a declared bare positive name beyond the proven row (the positive half only — a negation is a proof claim, never over-declared) | `MachineApplicable`  | `mentl tighten` writes the clause's residue |
 | `T_RowInventory`      | a declared clause whose bare positive names the body's GROUND row proves, every one — the projected row written by hand (§«A signature is not an inventory»). Over an OPEN body row the bare names are a cap the declaration installs as a gate, and nothing is narrated | `MachineApplicable` | `mentl tighten` writes the residue — negations, instance pins, or no clause |
 | `T_WordSlotBox`       | a wide value (a Float) boxed into a fresh cell to cross a callee's slot sized for a word — a list primitive's element (`list_set`) — inside a unit whose row does not say `Alloc`: the representation's cost, not the program's, until the slot takes the value's own width (`Hβ.value.seq-element-stride-carrier`). Said at the settle point by the allocation audit, which refuses every allocation that IS the program's | `MaybeIncorrect` | keep the value at a word's width where the slot is one, or wait for the carrier |
-| `W_Suggestion`        | probable Quick Fix available. **Not yet born**: a proposal reaches the developer through the Teach facet (`mentl teach`), and a narration that carries its fix is its own `T_` class | `MaybeIncorrect`     | (Mentl-proposed)                                |
 | `W_RedundantWhere`    | `type X = Y where true` — vacuous predicate   | `MachineApplicable`  | drop the `where true`; alias is transparent     |
-| `W_EmptyRow`          | a named row (`type X = <row>`) resolves to `Pure`. **Not yet born**: the alias expands to `Pure` where a signature reads it and nothing is said (§«Named effect rows») | `MaybeIncorrect`     | drop the alias; the row IS `Pure` already       |
 
 ---
 

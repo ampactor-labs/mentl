@@ -3735,7 +3735,7 @@ effect GraphWrite {
   // in the program before the edit, so every read that asks whether a
   // node is current answers no for it, a reference it made leaves the
   // in-edges its declaration answers, and the decls column drops what it
-  // declared. Written between judgments, never under a checkpoint.
+  // declared. Written between judgments, never inside a fork.
   graph_supersede(stmts: [Int])
   // A judgment's tail facts for the top-level functions it judged, each
   // answering for its name from now on (`graph_tails`).

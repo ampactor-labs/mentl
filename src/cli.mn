@@ -42,7 +42,7 @@ type EntryVerb
   // no target judges the PROJECT (its main, wherever the resolver finds it);
   // a target judges that entry's link — every module of it reports either way
   | VCheck(Option(String))
-  // the cursor-address form — `mentl lib/tutorial/09-all.mn:40:20`: target, line, col (0 = whole-line). Drift-38's endpoint: the address IS the surface; verbs are transports
+  // the cursor-address form — `mentl examples/pulse/course/01-tone.mn:38:5`: target, line, col (0 = whole-line). The address IS the surface; verbs are transports
   | VAt(String, Int, Int)
   // the accept form — `mentl accept <path>:<line>:<col>`: the second graph
   // operation surfaced beside the first. `mentl <address>` PROJECTS the
@@ -100,9 +100,18 @@ fn req_target(words, mk, msg) = match words {
   [] => ParseError(msg),
 }
 
-// The target-OPTIONAL verbs (check / edit / teach / doc / test / tighten /
+// The target-OPTIONAL verbs (check / edit / teach / doc / tighten /
 // verify): the first word as a module when there is one.
 fn opt_target(mk, words) = Invocation(mk(optional_target(words)))
+
+// The test verb takes a PATH: a directory is the battery it holds, wherever
+// it stands (`mentl test lib/dsp` reads that folder), and a file is the
+// module it names, so the word reaches the verb as written and the verb
+// resolves it.
+fn opt_path(mk, words) = Invocation(mk(match words {
+  [p, ..._] => Some(p),
+  [] => None,
+}))
 
 // The verbs that take no words.
 fn bare_verb(verb, words) = Invocation(verb)
@@ -254,7 +263,7 @@ fn verb_specs() = [
   ),
   VerbSpec("teach", "[path]", opt_target(VTeach, ??), "the gradient narrated"),
   VerbSpec("doc", "[path]", opt_target(VDoc, ??), "documentation projection"),
-  VerbSpec("test", "[path]", opt_target(VTest, ??), "the test chain"),
+  VerbSpec("test", "[path]", opt_path(VTest, ??), "the test chain"),
   VerbSpec(
     "new",
     "<name>",

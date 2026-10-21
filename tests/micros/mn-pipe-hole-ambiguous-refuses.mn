@@ -1,0 +1,8 @@
+// expect: refuse E_TypeMismatch
+// A stage with two holes and none marked: `g(2)` over three parameters leaves
+// two fields open, so the stage is not an `A -> B` and the pipe's unification
+// refuses it at its arity face; `g(2, ??, 4)` names the one field the datum
+// fills. No class of its own names the shape.
+fn g(a, b, c) = a + b + c
+
+fn main() = 1 |> g(2)

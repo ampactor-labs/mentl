@@ -352,9 +352,10 @@ fn board_bounds() = [
   // before, and the summary table's note citing its lowering reader left
   // with the table.
   Bound({ceiling: 13, question: QCensus(CsProseClass(PcCoordinate))}),
-  // Repository paths that name no file: a comment citing a path the tree
-  // does not hold.
-  Bound({ceiling: 1, question: QCensus(CsProseClass(PcPathNoFile))}),
+  // Repository paths that name no file: a comment citing a path the
+  // checkout does not hold. 1 -> 0 (2026-10-21): the import segment's note
+  // on a phantom path left with the history it told.
+  Bound({ceiling: 0, question: QCensus(CsProseClass(PcPathNoFile))}),
   // Hex commit tokens — history belongs to git, never on the node. 44 -> 43
   // (2026-10-16): a note on the label lattice left with the lattice.
   // 43 -> 42 (2026-10-19): the name dedup's note on an old fold left with
@@ -364,8 +365,9 @@ fn board_bounds() = [
   // Numbered citations of the archived spec corpus. 20 -> 19 (2026-10-15):
   // the banner over the pattern type left when a pattern became a node.
   // 19 -> 18 (2026-10-20): the graph module's trail prose left with the
-  // trail.
-  Bound({ceiling: 18, question: QCensus(CsProseClass(PcSpecCitation))}),
+  // trail. 18 -> 17 (2026-10-21): the intern table's header names the
+  // forking handlers' chain in place of the spec it cited.
+  Bound({ceiling: 17, question: QCensus(CsProseClass(PcSpecCitation))}),
   // Lifecycle prose — what was, where SYNTAX asks for what is. 39 -> 38
   // (2026-10-15): the note over the sugar's callees that dated when the
   // free-name walk began drawing them left with the by-spelling rows. 38 ->

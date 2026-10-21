@@ -7,8 +7,8 @@
 //
 // EVERY syscall's argument record — iov, nwritten/nread cell, filestat,
 // prestat, fd-out cell — allocs per use from the one bump image. The
-// record's lifetime IS the call, and the never-freeing image absorbs
-// the droplets (net.mn's precedent). There is NO static scratch: the
+// record's lifetime IS the call, and the extent's arena reclaims the
+// droplets at its exit. There is NO static scratch: the
 // old page-0 map (iov 0x50, print 0x60, fs path 0x100, filestat 0x200,
 // fd 0x240) was an unaccounted allocation evading the Alloc row, and
 // its baked addresses clobbered a real record the day the layout
@@ -177,9 +177,8 @@ handler fail_exit {
 // ptr. The iov + nwritten record is the syscall's argument marshaling,
 // alloc'd per call: [ptr@0][len@4][nwritten@8]. Returns the host's
 // bytes-written count; the print family discards it (a stdout short-
-// write has no recovery worth a loop at this altitude), stream writers
-// that must drain loop on it (net.mn's sock_write_all owns the socket
-// contract — partial writes + EAGAIN — so it marshals its own).
+// write has no recovery worth a loop at this altitude), and a stream
+// writer that must drain loops on it.
 fn fd_write_bytes(fd, ptr, len) = {
   let iov = alloc(12)
   store_addr(iov, ptr)

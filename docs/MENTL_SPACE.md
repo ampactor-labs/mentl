@@ -911,8 +911,8 @@ over the page's console wire, with the product legs: render fidelity, no
   — an accept outliving the process, a session reopened as a value — is
   `Hβ.felt.accept-outlives-the-process`.
 - **The LSP transport** (external editors get the same projections): the
-  server has run the frontend on an open document since 2026-07-19
-  (`Hβ.lsp.transport-runs-frontend`, closed); its hover asks the voice's
+  server has run the frontend on an open document since 2026-07-19; its
+  hover asks the voice's
   `consult` at a bare span (`handle_hover`, src/lsp.mn), and the gate leg over
   it passes whether or not contents come back, which is the first thing to
   make able to fail. The View is the projection every LSP answer should serve.

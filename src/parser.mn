@@ -1809,12 +1809,10 @@ fn parse_config_params_from(tokens, pos, owner: String, idx) = {
 
 // Parse `import path/to/module`.
 // An import segment is a TRANSPORT name (a file on disk), not an expression
-// identifier — so a keyword-spelled word is a legal segment. `import own`
-// lexes TImport TOwn, and ident_at's fabrication floor turned the module
-// name into "" — every module importing src/own.mn walked an empty path
-// (the DAG's phantom E_MissingModule at lib/.mn). The keyword set that
-// collides with a real module name is exactly {own, ref}; other keywords
-// name no file and fall to the same ident_at floor they always did.
+// identifier, so a keyword-spelled word is a legal segment: `import own`
+// lexes TImport TOwn and names src/own.mn. The keyword set that collides
+// with a real module name is exactly {own, ref}; every other keyword names
+// no file and falls to the ident_at floor.
 fn import_segment_at(ref tokens, pos) = if at(tokens, pos, TOwn) {
   "own"
 } else if at(tokens, pos, TRef) {

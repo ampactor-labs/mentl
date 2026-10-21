@@ -580,9 +580,11 @@ landing that closes it. A gate that did not run is UNKNOWN, never green.
   lowered tail (§11.18).
 - **The compile is sequential by construction** (§11.16).
 - **The prose still asserts machinery that is not there**: decoration banners,
-  coordinates in prose, ledes that are another comment's text. Each module's
-  comments are trued in the landing that touches it; fmt strips the decoration
-  (§11.12).
+  coordinates in prose, ledes that are another comment's text, and forward
+  pointers (`Hβ.*` labels) in the wheel's comments that no §11 paragraph
+  names — the documents carry none, held by `tools/doc-truth.sh`. Each
+  module's comments are trued in the landing that touches it; fmt strips the
+  decoration (§11.12).
 
 ---
 
@@ -789,7 +791,8 @@ and the artifact:
   mask, the Why walk and `mentl where`. `inter_row`'s silent arm deletes, a
   world mismatch names its two worlds, and a persisted continuation's world is
   checked where the image is resumed. One crucible per modal rule, RED first,
-  with its sound twin.
+  with its sound twin; the page's hop-by-hop unroll of a `!E` under
+  polymorphism rides it (`Hβ.effects.sound-neg-under-poly`).
 - **Verification whole**: the verifier decides a predicate's EXPRESSION — the
   `Predicate` projection, `node_to_predicate` and the copy frozen into
   `TRefined` delete, the value walk reading the predicate's nodes and a
@@ -803,7 +806,12 @@ and the artifact:
   Reason chain, never a bare `unreachable`; a label's claim on a part read off
   a call's answer is read through the callee's return tails, proven where
   the callee built the part in sight and owed, naming the site, where it did
-  not (`Hβ.verify.part-of-a-call-answer`); then the solver is the search
+  not (`Hβ.verify.part-of-a-call-answer`); a refinement a callback demands of
+  the values a callee hands it is judged where the callee passes them
+  (`Hβ.verify.higher-order-refinement`, the course's owed claim); a state
+  write is read as the claim's own hypothesis, an inductive invariant
+  (`Hβ.verify.state-reads-its-invariant`); non-termination is a row fact
+  beside `Trap` (`Hβ.effects.divergence-is-a-row-fact`); then the solver is the search
   (§11.17), the fragment growing in the order the wheel's own debt names it,
   the debt ceiling falling with each step.
 - **`!Outside` closes**, last: the keystone — lowering is a column on the
@@ -939,7 +947,13 @@ and the artifact:
    `session_line_loop` become one; `cursor_session` folds over its actions), and
    a fixpoint is a `<~` on a convergence clock that refuses rather than answer a
    non-fixpoint. V4: list pipelines are `~>` stage chains that re-yield outward
-   in one pass; deforestation is an `Iterate`-algebra e-graph rewrite.
+   in one pass; deforestation is an `Iterate`-algebra e-graph rewrite. V5: a
+   `<~` cycle's clock is inferred, so a cycle nothing advances is refused as
+   a measurement (`Hβ.dataflow.clock-calculus-sample-rate`); its depth may be
+   a value the ring reads at run time (`Hβ.dataflow.delay-line-runtime-depth`);
+   and the delay spec is the static depth the emit already treats it as,
+   never an expression judged in a dropped frame
+   (`Hβ.effects.feedback-row-substitutes`).
 8. **Teach says what the program owes**
    (`Hβ.teach.teaches-what-the-program-owes`). A refinement proposed at a part
    (walked back through `PartFact` to its producer, ranked by the obligations it
@@ -950,7 +964,12 @@ and the artifact:
    asserting the negation with its declarations); a declaration's Why its
    signature's, and a module a lede of its own; the self-proposal benchmark;
    topology proposed under the race rule's proof; and a base-type pin equal to
-   what inference derives narrated as the inventory it is.
+   what inference derives narrated as the inventory it is. The voice absorbs
+   the comment mass that states mechanism
+   (`Hβ.voice.comment-mass-absorbs-into-projections`), and the Why's thin
+   hops name a call argument's flow (`Hβ.why.flow-naming-at-call`) and a
+   refined alias's provenance (`Hβ.why.refinement-provenance`) and elide the
+   trivial ones (`Hβ.viz.why-walk-elides-trivial-hops`).
 9. **An op lives where its behaviour belongs**
    (`Hβ.effects.op-lives-where-its-behaviour-belongs`,
    `Hβ.memory.word-arithmetic-is-memory`). A `*Write` effect's ops write and a
@@ -978,12 +997,17 @@ and the artifact:
     (`Hβ.effects.handler-value-is-its-record`): `let h = one` binds it, a
     parameter holds it, and an install of a value pushes the record it holds
     and absorbs the effect its `Handler(P, A)` type names — today the value's
-    emit names a global nothing defines, and the module does not assemble.
+    emit names a global nothing defines, and the module does not assemble. A
+    generic op is quantified per perform, so two instantiations of one effect
+    do not join at an install
+    (`Hβ.effects.two-instances-of-one-effect-do-not-join`).
 11. **The medium authors the migration — iteration is topology**
     (`Hβ.wheel.iteration-is-topology`). The costume detector convicts index flow
     (a parameter threaded ±k into an index read), with let-chains, nested-call
     pipes, `<|`/`><` invitations, repeated install suffixes and partial eta
-    (`(row) => dot(row, x)`) as shapes; tighten rewrites by edge, the prelude's
+    (`(row) => dot(row, x)`) as shapes, the multi-parameter lambda retiring
+    into a reference (`Hβ.syntax.multi-param-lambda-is-a-reference`); tighten
+    rewrites by edge, the prelude's
     datum-first signatures (`reduce`, `scanl`, `nth`, `clamp`) among them; a
     speculation's cursor is an arena with an overlay. Recursion that survives
     is priced by a signature. The structural folds the
@@ -1001,6 +1025,8 @@ and the artifact:
     silence, its modes absorbed into the census. A render whose re-parse is a
     different tree (a structural fingerprint over both parses) is refused, and
     the heads round trip falls to zero as the parser grows the rules it misses.
+    A comment inside an expression attaches by the span rule the gate measures
+    (`Hβ.parser.expr-interior-comment-attach`).
     The batteries address a hole and a declaration by identity, never by
     `L:C`, so every fixture can be canonical; `mentl fmt --check` at zero over
     src, lib, examples and tests is a board line.
@@ -1014,7 +1040,16 @@ and the artifact:
     the ambient-world glyphs, obligation marks, the ownership trace, fmt on
     idle and a version as undo. The page runs what it compiles: the worker
     instantiates the bytes `mentl asm` writes, a lesson plays to the speaker,
-    and the fixpoint seal runs in the page. The Severance Map bands the module
+    and the fixpoint seal runs in the page. The page's remaining faces are
+    named: the View as graph content (`Hβ.space.view-is-graph-content`), a
+    folder pick outside Chromium (`Hβ.felt.project-picker-outside-chromium`),
+    the run in the page (`Hβ.felt.ide-run-in-page`), the ambient-world gutter
+    (`Hβ.viz.ambient-world-gutter`), the living runtime's render loop
+    (`Hβ.felt.mentl-edit-runtime`), typed demand-driven reactivity
+    (`Hβ.felt.reactivity-typed-demand-driven`), time travel over the forks
+    (`Hβ.felt.time-travel-debug-forked-cursor`), and the terminal session
+    reading more than one action (`Hβ.felt.edit-session-reads-one-action`).
+    The Severance Map bands the module
     and declaration tree in three colours — provably absent, present, not yet
     provable — the third counted and falling; it ships after its known false
     greens close or counts them in the third colour, and its demo is
@@ -1032,6 +1067,19 @@ and the artifact:
     snapshot was read from) through a host-applied key the guest never holds
     — the open half of configuration as an effect — and the score played in
     the page as the readings change.
+15. **The reading's remaining faces** (`Hβ.derive.vector-forward`,
+    `Hβ.derive.gradient-as-a-value`, `Hβ.derive.transpose-through-iteration`,
+    `Hβ.derive.transpose-through-the-record`,
+    `Hβ.derive.bptt-priced-by-the-row`, `Hβ.derive.closure-line-tangent`,
+    `Hβ.lower.ad-is-a-demanded-projection`). A product seed is answered
+    through a call made through a value, a perform, a `<~` line, a record
+    carrying a tangent, an install, an early return, a query inside a callee
+    and a recursion, where the reverse projection refuses today naming the
+    vector-forward reading; a gradient held as a value is a record the row
+    sees; the transpose crosses iteration and the record; a `<~` line's
+    history is priced by the row; a line a closure record owns carries its
+    tangent; and arithmetic on a user type arrives as a numeric projection's
+    rules, the same mechanism that makes a chain differentiable.
 16. **The compile runs on every core** (`Hβ.driver.level-set-par-walk`,
     `Hβ.native.deterministic-handle-partition`). A handle becomes an
     `{arena, offset}` product (one word by a repr pin), deterministic under any
@@ -1041,7 +1089,9 @@ and the artifact:
     crosses the join at its own width — the task record holds a Float as a
     double and the schedule's arms are twinned at the install's answer, where
     today they are emitted once at the word face and a Float-answering
-    `fanout` under `parallel_compose` traps at its join. Every step is gated by
+    `fanout` under `parallel_compose` traps at its join. A schedule reaches a
+    fanout through a function value minted under it
+    (`Hβ.lower.schedule-through-a-value`). Every step is gated by
     m3 under `Seq` byte-identical to m3 under `parallel_compose`.
 17. **Verify's own solver** (`Hβ.verify.the-solver-is-the-search`). The
     proposer's search is the solver: union-find and the e-graph as congruence
@@ -1067,7 +1117,9 @@ and the artifact:
     places writes its tail n times; a module value is a
     column on its binder, so a module-scope let binds every binder its pattern
     writes, each at a global of its own, and runs its value for effect when it
-    binds none, where any pattern but one binder refuses today; an arm's resume
+    binds none, where any pattern but one binder refuses today; an
+    executable's row is `main`'s and its inits'
+    (`Hβ.effects.executable-row-includes-inits`); an arm's resume
     grade is a column on the arm, written once where its op edge is drawn, and
     a nested fn's grade a column on its declaration, where every reader of an
     arm's discipline grades the arm again (`arm_grade`: the op edge, the
@@ -1081,6 +1133,22 @@ and the artifact:
     value carries its store claim on its type, as it carries its contract, so a
     call through it pays `Mutate` only where the memory it hands is older than
     the caller's frame (`Hβ.effects.store-claim-travels-with-the-function`).
+19. **Every record lives where its extent does**
+    (`Hβ.lower.install-record-in-the-frame`,
+    `Hβ.lower.captureless-nested-fn-is-static`,
+    `Hβ.lower.held-resume-record-is-not-reclaimed`,
+    `Hβ.arena.closure-evac-face`, `Hβ.arena.extent-spanning-a-spawn-keeps`,
+    `Hβ.value.seq-element-stride-carrier`,
+    `Hβ.lower.parameter-product-calling-convention`). An install whose record
+    never outlives its extent lives in the frame and costs nothing; a nested
+    fn that captures nothing is the module's static record; a held resume's
+    record is dropped after its one call; an arena's exit moves a value whose
+    type the store cannot see, and reclaims across a spawn its instance makes;
+    a list's element crosses its slot at its own width, so a Float is never
+    boxed to cross a word slot; and a pair handed to a one-parameter literal
+    and two arguments handed to a two-parameter function are one calling
+    convention. Each charge follows the representation the day the lowering
+    builds it, so `!Alloc` accepts what allocates nothing.
 
 ---
 

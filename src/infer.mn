@@ -2423,9 +2423,9 @@ fn infer_stmt(ref node) = {
     NStmt(FnStmt(name, params, ret_ann, effs, body_node)) => if fn_fully_sigd(params, ret_ann) {
       infer_fn(name, params, body_node, ret_ann, effs, node, span, false)
     } else {
-      // Every unsig'd decl judges SPECULATIVELY (§11 5.3's fragment):
-      // the common mono case pays one checkpoint + one held list and
-      // commits round 1; only a poly-fingerprinted refusal retries.
+      // Every unsig'd decl judges SPECULATIVELY: the common mono case
+      // pays one fork and keeps round 1; only a poly-fingerprinted refusal
+      // retries.
       infer_fn_speculative(name, params, body_node, ret_ann, effs, node, span)
     },
     // The decls column's fourth writer: a type, an effect and an alias

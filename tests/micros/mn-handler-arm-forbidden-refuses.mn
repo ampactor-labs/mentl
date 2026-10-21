@@ -1,0 +1,27 @@
+// expect: refuse E_EffectMismatch
+// A handler whose arm performs an effect the installing context forbids: what
+// an arm performs enters the install's row, so `quiet`'s `!Log` refuses the
+// install of `relog` as a row mismatch naming the arm; no class of its own
+// names the shape.
+effect Ask {
+  ask() -> Int
+}
+
+effect Log {
+  log(msg: String)
+}
+
+handler relog {
+  ask() => {
+    log("asked")
+    resume(1)
+  },
+}
+
+handler sink {
+  log(_m) => resume(),
+}
+
+fn quiet() with !Log = ask() + 1 ~> relog
+
+fn main() = quiet() ~> sink
