@@ -1574,14 +1574,39 @@ type EmitFnEntry = {
 // the module column stamped at each node's mint, read by graph_module_of.
 type Graph = Graph(Int, [(ValidSpan, Int)])
 
-// A declaration's store claim, written where its judgment ends and read at
-// every call of it: the parameters its result may be (Some([]) a fresh
-// result, None one older than the call), the parameters it stores cells into
-// for an arena, by position, with the cells a move demands, the parameters
-// it writes, by position, and whether it writes memory older than its frame
-// beyond them. A handler's claim reads its config parameters the same way,
-// each install standing for the call.
-type StoreClaim = {beyond: Bool, mutated: [Int], returns: Option([Int]), stores: [(Int, [Int])]}
+// What a function hands a slot of a function it applies: a parameter of its
+// own by position; a loop's accumulator — the parameter by position, or what
+// the applied function answered at slot k the time before, which a caller
+// resolves from that function's own claim of what it returns (a fold's state
+// is its init or its stage's answer, and a stage answering its accumulator
+// back keeps it the init); or nothing it can name.
+type Handed = HandedParam(Int) | HandedLoop(Int, Int) | HandedNone
+
+// A function's store claim — a declaration's, a nested fn's, a lambda's —
+// written where its judgment ends and read at every call of it, through
+// whatever value carries it: the parameters its result may be (Some([]) a
+// fresh result, None one older than the call), the parameters it stores
+// cells into for an arena, by position, with the cells a move demands, the
+// parameters it writes, by position, the captures it writes (each the
+// binder, which the frame holding the function resolves at its own age),
+// whether it writes its own record (a feedback line a closure owns, as old
+// as the value), the parameters it APPLIES, each with what it hands every
+// slot, the functions its result can be, whether it writes memory older than
+// its frame beyond all of these, and whether it applies a function it cannot
+// name (opaque: its row is then the only truth of what it writes, and no
+// caller masks it). A handler's claim reads its config parameters the same
+// way, each install standing for the call.
+type StoreClaim = {
+  applies: [(Int, [Handed])],
+  beyond: Bool,
+  captures: [Int],
+  mutated: [Int],
+  opaque: Bool,
+  record: Bool,
+  returned: [Int],
+  returns: Option([Int]),
+  stores: [(Int, [Int])],
+}
 
 // An edge arriving at a declaration, held at the declaration's handle: a
 // reference the judgment linked to it, a node whose comment names it in
@@ -2338,7 +2363,7 @@ type Version = {
   sigs_col: [[(String, EmitSig)]],
   span_index: [(Span, Int)],
   spans: [[[[ValidSpan]]]],
-  store_claims: [[[[[StoreClaim]]]]],
+  store_claims: [[[[StoreClaim]]]],
   superseded: [[(Int, Int)]],
   tails_idx: [[(String, [Int])]],
 }

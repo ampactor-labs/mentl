@@ -2813,37 +2813,38 @@ fn seed_via(seed) = match seed {
 // every callee not yet walked, the ones whose reach holds a fanout hand the
 // demand to their direct callees, and the walk ends when a round meets
 // `target` or adds nothing new.
-fn demand_reaches(seeds, target: Int, via: Int) with !Mutate = demand_round(
-  target,
-  seeds |> filter({ (_, v) => v == via }) |> map(seed_callee),
-  {memo: wmap_new(64), walked: wmap_new(64)}
-)
+fn demand_reaches(seeds, target: Int, via: Int) with !Mutate = {
+  let memo = wmap_new(64)
+  let walked = wmap_new(64)
+  demand_round(target, seeds |> filter({ (_, v) => v == via }) |> map(seed_callee), memo, walked)
+}
 
 fn seed_callee(seed) = match seed {
   (callee, _) => callee,
 }
 
-fn demand_round(target: Int, frontier, st) = match fold((false, [], st), demand_step(target, ??, ??), frontier) {
-  (true, _, _) => true,
-  (false, [], _) => false,
-  (false, next, st2) => demand_round(target, next, st2),
+// The two tables — the reach rule's answers and the callees walked — are the
+// walk's own, written in place by every round.
+fn demand_round(target: Int, frontier, memo, walked) = match fold((false, []), demand_step(target, memo, walked, ??, ??), frontier) {
+  (true, _) => true,
+  (false, []) => false,
+  (false, next) => demand_round(target, next, memo, walked),
 }
 
-fn demand_step(target: Int, acc, callee: Int) = match acc {
-  (true, _, _) => acc,
-  (false, next, st) => match wmap_get(st.walked, callee) {
+fn demand_step(target: Int, memo, walked, acc, callee: Int) = match acc {
+  (true, _) => acc,
+  (false, next) => match wmap_get(walked, callee) {
     Some(_) => acc,
-    None => match fanout_reach_ask(st.memo, callee) {
-      (found, memo) => {
-        let walked = wmap_add(st.walked, callee, 1)
-        if found && callee == target {
-          (true, next, {memo, walked})
-        } else if found {
-          (false, fold(next, push, direct_callees(callee)), {memo, walked})
-        } else {
-          (false, next, {memo, walked})
-        }
-      },
+    None => {
+      let found = fanout_reach_ask(memo, callee)
+      wmap_add(walked, callee, 1)
+      if found && callee == target {
+        (true, next)
+      } else if found {
+        (false, fold(next, push, direct_callees(callee)))
+      } else {
+        (false, next)
+      }
     },
   },
 }

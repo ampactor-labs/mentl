@@ -218,6 +218,13 @@ fn comment_at(ref comments, seed, h) = {
   if slot_present(cell) { cell } else { ("", span_zero()) }
 }
 
+// A declaration's store claim, the one its judgment wrote last; a
+// declaration not yet judged, or a binder, has none.
+fn claim_at(store_claims, seed, h) = {
+  let cell = col_get(h, store_claims, seed, version_store_claims)
+  if slot_present(cell) { Some(cell) } else { None }
+}
+
 fn canon_at(ref canon, seed, h) = {
   let to = col_get(h, canon, seed, version_canon)
   if to == 0 { h } else { to }
@@ -960,11 +967,14 @@ handler graph_handler(seed: Version) with nodes = pt_empty(), program = pt_empty
   resume() with epoch = epoch + 1, births = pt_set(births, h, 1),
   graph_store_claim_note(h, claim) => // A declaration's store claim, a column of the version like a binder's
   // fact: a declaration judged inside a speculation takes its claim back
-  // with it, and the image carries every claim to a warm start.
-  resume() with epoch = epoch + 1, store_claims = col_push(h, store_claims, seed, version_store_claims, claim),
+  // with it, and the image carries every claim to a warm start. The cell
+  // holds the claim last written and nothing else: a claim is rewritten as
+  // its cycle's rounds settle, and the rounds a cell kept as a list were the
+  // self-compile's line peak (2026-10-21).
+  resume() with epoch = epoch + 1, store_claims = pt_set(store_claims, h, claim),
   graph_binder_of(h) => resume(col_newest(h, binders, seed, version_binders)),
   graph_let_born(h) => resume(col_get(h, births, seed, version_births) != 0),
-  graph_store_claim_of(h) => resume(col_newest(h, store_claims, seed, version_store_claims)),
+  graph_store_claim_of(h) => resume(claim_at(store_claims, seed, h)),
   graph_owe_late(g, payer) => // THE LATE PAYERS' write (P0): a frame called through a guard cell its
   // declaration has not written yet. Entered under the cell, a column of the
   // version, so a restored judgment's payments go with it.
@@ -1868,12 +1878,16 @@ fn declares_absent(clause, ename: String) =
   any({ (t, negated, _) => negated && term_spells(t, ename) }, clause)
 
 // ONE ASK of the rule with the answers settled across asks carried in
-// `memo`, keyed by declaration: an ask that found no fanout from its root
-// settles every declaration it entered false (`fanout_reach_settle`), the
-// root's reach being whole. The emit's spec registry and `where`'s demand
-// walk both ask through here.
-fn fanout_reach_ask(memo, decl: Int) = match fanout_reach_of({entered: [], memo, seen: wmap_new(64)}, decl) {
-  (found, st) => (found, if found { st.memo } else { fold(st.memo, fanout_reach_settle, st.entered) }),
+// `memo`, a table written in place and keyed by declaration: an ask that
+// found no fanout from its root settles every declaration it entered false
+// (`fanout_reach_settle`), the root's reach being whole. The emit's spec
+// registry and `where`'s demand walk both ask through here, each holding
+// its own table.
+fn fanout_reach_ask(memo, decl: Int) = match fanout_reach_of(memo, wmap_new(64), [], decl) {
+  (found, entered) => {
+    if found { memo } else { fold(memo, fanout_reach_settle, entered) }
+    found
+  },
 }
 
 // THE RULE WALKED FROM ONE DECLARATION and no further. The memo carries the
@@ -1883,32 +1897,26 @@ fn fanout_reach_ask(memo, decl: Int) = match fanout_reach_of({entered: [], memo,
 // since the ask's root settles it: a chain that found a fanout settles true
 // as it returns, and a root that found none settles every declaration it
 // entered false. A declaration with no fn body — a primitive, an op, a
-// constructor — has nothing to reach through.
-fn fanout_reach_of(st, decl: Int) = match wmap_get(st.memo, decl) {
-  Some(v) => (v == 1, st),
-  None => match wmap_get(st.seen, decl) {
-    Some(_) => (false, st),
+// constructor — has nothing to reach through. The two tables are written in
+// place; the answer carries the verdict and the entered list.
+fn fanout_reach_of(memo, seen, entered, decl: Int) = match wmap_get(memo, decl) {
+  Some(v) => (v == 1, entered),
+  None => match wmap_get(seen, decl) {
+    Some(_) => (false, entered),
     None => match graph_node_body(decl) {
       NStmt(FnStmt(_, _, _, clause, body)) => if declares_absent(clause, "Thread") || declares_absent(clause, "Alloc") {
-        (false, {entered: st.entered, memo: wmap_add(st.memo, decl, 0), seen: st.seen})
+        (false, settled(memo, decl, 0, entered))
       } else {
         match fanout_fact((false, []), body) {
           (has_own, callees) => if has_own {
-            (true, {entered: st.entered, memo: wmap_add(st.memo, decl, 1), seen: st.seen})
+            (true, settled(memo, decl, 1, entered))
           } else {
             match fold(
-              (false, {entered: push(st.entered, decl), memo: st.memo, seen: wmap_add(st.seen, decl, 1)}),
-              fanout_reach_callee,
+              (false, settled(seen, decl, 1, push(entered, decl))),
+              fanout_reach_callee(memo, seen, ??, ??),
               callees
             ) {
-              (found, inner) => (
-                found,
-                {
-                  entered: inner.entered,
-                  memo: if found { wmap_add(inner.memo, decl, 1) } else { inner.memo },
-                  seen: inner.seen,
-                }
-              ),
+              (found, inner) => if found { (true, settled(memo, decl, 1, inner)) } else { (false, inner) },
             }
           },
         }
@@ -1922,14 +1930,21 @@ fn fanout_reach_of(st, decl: Int) = match wmap_get(st.memo, decl) {
       | NTypeAnn(_)
       | NName(_)
       | NRow(_)
-      | NParam(_) => (false, st),
+      | NParam(_) => (false, entered),
     },
   },
 }
 
-fn fanout_reach_callee(acc, callee: Int) = match acc {
+// The table takes the verdict for the declaration; the walk's entered list
+// passes through.
+fn settled(table, decl: Int, verdict: Int, entered) = {
+  wmap_add(table, decl, verdict)
+  entered
+}
+
+fn fanout_reach_callee(memo, seen, acc, callee: Int) = match acc {
   (true, _) => acc,
-  (false, st) => fanout_reach_of(st, callee),
+  (false, entered) => fanout_reach_of(memo, seen, entered, callee),
 }
 
 // An ask that found no fanout from its root settles every declaration it

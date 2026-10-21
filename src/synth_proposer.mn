@@ -307,19 +307,24 @@ fn decls_reaching(enclosing) with !Mutate = match enclosing {
   Some(d) => reaching_walk([d], wmap_add(wmap_new(256), d, true)),
 }
 
+// The visited set is written in place and handed to the stage that grows it
+// as its first slot: what the stage writes is then the walk's own parameter,
+// and `decls_reaching`'s claim holds over a set it allocated.
 fn reaching_walk(work, seen) = if len(work) == 0 {
   seen
 } else {
-  match fold((drop_last(work), seen), push_holder, graph_refs_of(last(work))) {
-    (more, grown) => reaching_walk(more, grown),
-  }
+  let more = fold(drop_last(work), push_holder(seen, ??, ??), graph_refs_of(last(work)))
+  reaching_walk(more, seen)
 }
 
-fn push_holder(acc, r) = match acc {
-  (work, seen) => match enclosing_decl(r) {
-    Some(h) => if is_some(wmap_get(seen, h)) { acc } else { (push(work, h), wmap_add(seen, h, true)) },
-    None => acc,
+fn push_holder(seen, work, r) = match enclosing_decl(r) {
+  Some(h) => if is_some(wmap_get(seen, h)) {
+    work
+  } else {
+    wmap_add(seen, h, true)
+    push(work, h)
   },
+  None => work,
 }
 
 // A candidate's declaration reaches the hole when the top-level declaration

@@ -1,0 +1,15 @@
+// expect: refuse E_EffectMismatch
+// A closure that writes a capture writes the capture's memory: `g` stores
+// into `k`'s parameter, so calling it writes memory older than `k`'s frame,
+// and `k`'s `!Mutate` refuses — the claim names the capture, not the frame
+// the closure was minted in.
+fn k(buf) with !Mutate = {
+  let g = { x => list_set(buf, 0, x) }
+  g(7)
+  list_index(buf, 0)
+}
+
+fn main() = {
+  let b = make_list(1)
+  k(b)
+}

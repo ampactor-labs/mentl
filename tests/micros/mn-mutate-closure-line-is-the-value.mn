@@ -1,0 +1,24 @@
+// expect: 10
+// A closure's feedback line lives in its record, so a tick writes memory as
+// old as the closure value itself: `run` mints the counter in its own frame
+// and ticks it, directly and through a nested fn that `map` applies, and
+// writes nothing that existed before it ran, so its `!Mutate` holds. The
+// counter's own row says Mutate (its record predates its frame), and so does
+// the nested fn's (it ticks a capture); neither write is older than `run`.
+// The line is a running sum: the four ticks answer 1, 2, 3 and 4.
+fn add(a, b) = a + b
+
+fn counter() = {
+  fn tick(x: Int) with !Alloc = { prev => prev + x } <~ delay(1)
+  tick
+}
+
+fn run() with !Mutate = {
+  let c = counter()
+  fn sample(i: Int) = c(i)
+  let a = c(1)
+  let b = fold(0, add, map(sample, [1, 1, 1]))
+  a + b
+}
+
+fn main() = run()

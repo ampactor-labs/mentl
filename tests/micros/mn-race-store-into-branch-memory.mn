@@ -1,0 +1,23 @@
+// expect: 15
+// Each branch of the sequence fanout mints its own voice — a closure whose
+// feedback line lives in its record — and ticks it: a store into memory the
+// branch allocated, which no other branch can reach. The race rule reads the
+// store by the age of what it writes relative to the branch, so the schedule
+// is safe to install and the program runs (lesson 10's shape). Each voice's
+// line is a running sum of its two ticks: 1 + 2 and 4 + 8.
+import threading
+
+fn add(a, b) = a + b
+
+fn counter() = {
+  fn tick(x: Int) with !Alloc = { prev => prev + x } <~ delay(1)
+  tick
+}
+
+fn voice(n: Int) = {
+  let c = counter()
+  fn sample(i: Int) = c(i)
+  fold(0, add, map(sample, [n, n]))
+}
+
+fn main() = fanout(voice, [1, 4]) |> fold(0, add) ~> parallel_compose

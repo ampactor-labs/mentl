@@ -230,11 +230,13 @@ fn board_bounds() = [
   // course's fourteen files — five whose filter's frequency demand the
   // verifier cannot read through the function-typed field a frame hands it
   // (`Hβ.verify.higher-order-refinement`), and the voices lesson, whose
-  // voices tick lines minted in their own branch and are refused by the
-  // race rule's frame-relative read of a store (PLAN §11.18) — the score's
-  // same claim, and Pulse's. Each falls as the landing it names lands;
-  // the commit that turns a lesson green names the lesson (CLAUDE.md).
-  Bound({ceiling: 6, question: QOwed("examples/pulse/course")}),
+  // voices tick lines minted in their own branch — the score's same claim,
+  // and Pulse's. The voices lesson fell the same day, when a function
+  // value's store claim travelled with it and the race rule read a voice's
+  // tick as the branch's own construction. Each falls as the landing it
+  // names lands; the commit that turns a lesson green names the lesson
+  // (CLAUDE.md).
+  Bound({ceiling: 5, question: QOwed("examples/pulse/course")}),
   Bound({ceiling: 1, question: QOwed("examples/wasatch")}),
   Bound({ceiling: 1, question: QOwed("examples/pulse/render")}),
   // The iteration costumes — a function that threads an incremented index

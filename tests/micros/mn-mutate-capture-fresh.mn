@@ -1,0 +1,14 @@
+// expect: 7
+// A closure that writes a capture writes the capture's memory: `g` stores
+// into `buf`, which `f` allocated, so `f` writes nothing older than itself and
+// its `!Mutate` holds, where `g`'s own row says Mutate — `buf` predates `g`'s
+// frame. The twin fixture hands the same closure shape a parameter and
+// refuses.
+fn f() with !Mutate = {
+  let buf = make_list(1)
+  let g = { x => list_set(buf, 0, x) }
+  g(7)
+  list_index(buf, 0)
+}
+
+fn main() = f()

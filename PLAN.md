@@ -501,10 +501,7 @@ landing that closes it. A gate that did not run is UNKNOWN, never green.
   §11's verification whole, §11.18): a filter stage's `Hz` precondition is
   claimed again where a frame is handed the record that holds the stage, and
   the verifier cannot read the constant the frame hands it through the
-  function-typed field, so the claim stays open at every rig; a voice minted
-  inside a threaded branch is refused for the store its line's tick makes
-  into the record minted beside it, since the race rule reads a store's age
-  relative to the frame that writes it, never to the branch; and a Nyquist
+  function-typed field, so the claim stays open at every rig; and a Nyquist
   bound that reads the installed rate inside its predicate is left pending.
   The page cannot yet play a lesson (§11.13).
 - **Effect names lie about their ops** (§11.9): GraphRead holds writes,
@@ -537,9 +534,15 @@ landing that closes it. A gate that did not run is UNKNOWN, never green.
   `E_ThreadedBranchEffect` refuses a stateful handler a branch reaches, a store
   a branch makes into memory older than itself, and code a branch reaches that
   writes memory older than its own frame. SIMD and GPU run their branches
-  sequentially. A write made through a function value is charged where the call
-  stands, whatever memory it writes, so `!Mutate` and the race rule refuse some
-  programs that write only fresh memory through a callback (§11.18). A wide
+  sequentially. A function value's writes are read through its claim, written
+  where its judgment ends — its parameters by the arguments a call hands, a
+  capture by the binder's age in the frame holding the value, its own
+  feedback line by the value's age, the functions it applies by what the
+  callee hands them — so a call through it pays `Mutate` only where the
+  memory it reaches is older than the caller's frame; a call's answer read
+  off a tee (a fold's accumulator, a handler's answer) is memory the
+  store-age walk cannot place, so a function threading a table through a
+  fold's result owes `Mutate` it could prove (§11.18). A wide
   answer does not cross a thread's join: `parallel_compose`'s arms are
   emitted once at the word face, so a Float-answering branch traps where its
   join is read at the site's face (§11.16).
@@ -780,18 +783,32 @@ and the artifact:
   module judgment, the fan and the facets. `mentl why src/infer.mn forked`
   names the substrate's effects, `StateWalk` (the root's stateless walk),
   `Mutate` (the graph instance's own trie store) and the view's refusal,
-  and nothing else. (b) A store claim travels with the function
-  (`Hβ.effects.store-claim-travels-with-the-function`): a function's type
-  carries which memory its body stores into — a parameter's, a capture's,
-  its own line, a module value's — written once at the declaration's exit
-  from the store facts the judgment keeps, and a call pays `Mutate` only
-  where the memory it hands is older than the caller's frame; the race rule
-  reads a branch's `Mutate` through the claim against the BRANCH's start,
-  so a store into memory the branch allocated — a handler instance's
-  state, a voice's line minted in the branch — builds a value and runs, and
-  a store into memory older than the branch refuses naming the store. The
-  tenth lesson (`examples/pulse/course/10-voices.mn`) is owed by exactly
-  this read and turns green here. (c) The compiler spawns
+  and nothing else. (b) A store claim travels with the function — landed
+  2026-10-21: every function's claim is written where its judgment ends, a
+  lambda's and a nested fn's at their own node, and names what the body
+  writes — its parameters by position, the captures it writes, its own
+  record (a closure's feedback line), the parameters it applies with what it
+  hands each slot (a parameter of its own, a loop's accumulator, or nothing
+  it can name), the functions its result can be, and whether it writes
+  beyond all of these; a call through a value reads the claims of every
+  function the value can be (`fn_leaves`), a partial's through its product,
+  a maker's answer through the maker's `returned`, and charges each write
+  by the age of what it reaches in the calling frame, so `Mutate` leaves
+  the callee's row where every write is accounted for, leaves its names
+  where the callee applies a function of the caller's own (the tail carries
+  it to the caller's callers, who read the caller's `applies`), and stands
+  where a write is unaccounted (`mutation_masked`, `charge_leaf`); a
+  closure inside a binding group calling a co-member hands the call to the
+  declaring function to settle. The race rule reads a branch's `Mutate` off
+  the rows so judged, so a voice minted in the branch and ticked there is
+  the branch's own construction and runs. The tenth lesson renders
+  (`mentl run examples/pulse/course/10-voices.mn`), the course's owed count
+  fell 6 → 5, and the boot's silent strip of a callback's `Mutate` from a
+  masked callee row — a false proof a fold writing its accumulator could
+  hit — is closed (tests/micros/mn-mutate-closure-line-is-the-value.mn,
+  mn-mutate-capture-fresh.mn, mn-mutate-capture-param-refuses.mn,
+  mn-mutate-through-callback-param.mn,
+  mn-race-store-into-branch-memory.mn). (c) The compiler spawns
   (`Hβ.oracle.forks-on-threads`): the demand walk that twins a direct
   callee by the install's schedule follows a `~> h` in the demanded reach
   into `h`'s arms, the arm twins keyed by the schedule letter and minted
@@ -1165,10 +1182,11 @@ and the artifact:
     versions compared (`Hβ.graph.delta-is-two-versions`), the
     session paying for what an edit moved (`Hβ.session.edit-pays-for-the-program`)
     and outliving its process (`Hβ.felt.accept-outlives-the-process`); persist
-    resumes across machines (`Hβ.persist.cross-machine-resume`); and a function
-    value carries its store claim on its type, as it carries its contract, so a
-    call through it pays `Mutate` only where the memory it hands is older than
-    the caller's frame (`Hβ.effects.store-claim-travels-with-the-function`).
+    resumes across machines (`Hβ.persist.cross-machine-resume`); and a call's
+    answer read off a tee — a fold's accumulator, a handler's answer — is
+    memory the store-age walk cannot place, where the install's arms say what
+    the body's answer can be, as the value walk already reads them
+    (`Hβ.effects.tee-answer-is-the-arms`).
 19. **Every record lives where its extent does**
     (`Hβ.lower.install-record-in-the-frame`,
     `Hβ.lower.captureless-nested-fn-is-static`,

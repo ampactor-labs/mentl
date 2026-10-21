@@ -1,0 +1,16 @@
+// expect: refuse E_EffectMismatch
+// `run` applies the function it is handed to its second parameter, and `poke`
+// writes the list it is handed, so `h` writes its own parameter through the
+// two of them: its `!Mutate` refuses. A caller's claim travels through the
+// callee that applies it.
+fn poke(buf) = list_set(buf, 0, 9)
+
+fn run(f, xs) = f(xs)
+
+fn h(buf) with !Mutate = run(poke, buf)
+
+fn main() = {
+  let b = make_list(1)
+  h(b)
+  list_index(b, 0)
+}

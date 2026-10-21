@@ -17,13 +17,12 @@
 //
 //   mentl where examples/pulse/course/10-voices.mn render    fanout [Thread, a branch per element]
 //
-// The rule reads a store by the age of what it writes relative to the
-// frame that writes it, and a voice's tick writes the record that owns its
-// line, minted before the tick's frame — so the medium refuses this program
-// today, though the record was minted in the branch and nothing outside it
-// can reach it. The fact it lacks is the store claim travelling with the
-// function value (PLAN §11.18); until it does, `mentl verify` counts this
-// lesson among the programs the medium owes.
+// The rule reads a store by the age of what it writes. A voice's tick writes
+// the record that owns its line, and the voice's claim says so: the frame
+// holding the voice ages that record at its own, and the branch minted it,
+// so the store is a construction and the branches run. The mix never reads a
+// frame by index: the four voices are zipped frame by frame and written into
+// the file, so the lesson owes the medium nothing.
 import audio/wav
 
 import dsp/clock
@@ -63,26 +62,29 @@ fn render_voice(sr: Int, frames: Int, hz: Float) = {
   range(0, frames) |> map(sample)
 }
 
-// The mix: each voice at its place, the pair soft-clipped into the file.
-fn frame(buf, voices, n: Int) with !Alloc = {
-  let a = voices[0][n]
-  let c = voices[1][n]
-  let e = voices[2][n]
-  let a2 = voices[3][n]
-  let l =
-    0.3 * (a * pan_left(place(0)) + c * pan_left(place(1)) + e * pan_left(place(2)) + a2 * pan_left(place(3)))
-  let r =
-    0.3 * (a * pan_right(place(0)) + c * pan_right(place(1)) + e * pan_right(place(2)) + a2 * pan_right(place(3)))
-  wav_frame(buf, n, soft_clip(l), soft_clip(r))
+fn render(sr: Int, frames: Int) = fanout(render_voice(sr, frames), notes()) ~> parallel_compose
+
+// The mix: each voice at its place, as a stereo pair per frame.
+fn placed(v: Int, samples) =
+  map({ s => (0.3 * s * pan_left(place(v)), 0.3 * s * pan_right(place(v))) }, samples)
+
+fn add_pair(a, b) = match (a, b) {
+  ((l1, r1), (l2, r2)) => (l1 + l2, r1 + r2),
 }
 
-fn render(sr: Int, frames: Int) = fanout(render_voice(sr, frames), notes()) ~> parallel_compose
+// The four voices summed frame by frame — zipped, never read by index.
+fn chord(voices) =
+  voices |> enumerate |> map({ (v, samples) => placed(v, samples) }) |> reduce(??, zip_with(add_pair, ??, ??))
+
+// Each pair soft-clipped into the file at its frame.
+fn write_frames(buf, mixed) =
+  mixed |> enumerate |> each({ (n, (l, r)) => wav_frame(buf, n, soft_clip(l), soft_clip(r)) })
 
 fn main() = {
   {
     let frames = frames_of(seconds())
     let buf = wav_header(wav_alloc(frames), frames, rate())
-    play(frames, frame(buf, render(rate(), frames)))
+    write_frames(buf, chord(render(rate(), frames)))
     print(wav_bytes(buf))
   } ~> stdout_console ~> sample_at(48000)
   0

@@ -235,11 +235,9 @@ handler spec_registry with twins = smap_new(), count = 0, reach = wmap_new(64), 
   fanout_reach_known(d) => // Asked only by a call under a spawning demand, of the declaration the
   // lowered call carries: the rule walks that declaration's own reach and
   // no further (`fanout_reach_ask`, graph.mn, which `mentl where` asks the
-  // same way), the answers settled across asks in `reach`. A schedule-free
-  // module never asks.
-  match fanout_reach_ask(reach, d) {
-    (found, memo) => resume(found) with reach = memo,
-  },
+  // same way), the answers settled across asks in `reach`, a table the
+  // rule writes in place. A schedule-free module never asks.
+  resume(fanout_reach_ask(reach, d)),
   site_schedule_note(h, s) => resume() with sites = wmap_add(sites, h, s), threaded = threaded || schedule_eq(s, Threaded),
   site_schedule(h) => resume(wmap_get(sites, h)),
   threaded_site_noted() => resume(threaded),

@@ -247,8 +247,11 @@ fn space_run(addr) = match addr {
 // its link judged (`march: link …`), which is what tools/march.sh holds
 // against `mentl query src/main.mn modules`: one link model, read twice,
 // must answer one set. The fresh
-// generation compares against the verb's OWN previous one
-// (.build/march/m2.wat, read before written). Never the keyed bash
+// generation compares against the verb's OWN previous one by the tally the
+// sink folds as the bytes stream — the line count and the hash, kept beside
+// the generation in .build/march/m2.gen — so neither generation is ever
+// read back whole into the image: two texts of twenty-five megabytes were
+// the self-compile's line peak. Never the keyed bash
 // cache: that cache equals this very emission whenever it is fresh — a
 // comparison that cannot fail. The self-application half (the next
 // generation reproducing itself, m3 == m4) needs the host to run the
@@ -261,9 +264,9 @@ fn march_run() = match march_entry() {
     1
   },
   Some(entry) => {
-    let gen_path = ".build/march/m2.wat"
+    let wat_path = ".build/march/m2.wat"
+    let gen_path = ".build/march/m2.gen"
     let new_path = ".build/march/m2.new"
-    let prev = if fs_exists(gen_path) { fs_read_file(gen_path) } else { "" }
     fs_mkdir(".build")
     fs_mkdir(".build/march")
     let fd = fs_create(new_path)
@@ -272,7 +275,7 @@ fn march_run() = match march_entry() {
       1
     } else {
       match march_emit(entry, fd) {
-        (names, lines, errors) => {
+        (names, lines, errors, (wat_lines, hash)) => {
           fs_close(fd)
           print_string("march: link {join(" ", names)}\n")
           if errors > 0 {
@@ -281,17 +284,21 @@ fn march_run() = match march_entry() {
             print_string("march: the judgment REFUSES — no verdict from a refused wheel\n")
             1
           } else {
-            let emission = fs_read_file(new_path)
-            fs_rename(new_path, gen_path)
-            print_string("march: {int_to_str(len(names))} modules · {int_to_str(lines)} source lines · {int_to_str(count_newlines(emission))} wat lines · census 0\n")
+            // The last generation is its tally, read where it is compared;
+            // the generation's text reaches the host and never the image.
+            let prev = if fs_exists(gen_path) { fs_read_file(gen_path) } else { "" }
+            let tally = "{int_to_str(wat_lines)} {int_to_str(hash)}"
+            fs_write_file(gen_path, tally)
+            fs_rename(new_path, wat_path)
+            print_string("march: {int_to_str(len(names))} modules · {int_to_str(lines)} source lines · {int_to_str(wat_lines)} wat lines · census 0\n")
             if byte_len(prev) == 0 {
-              print_string("march: baseline written ({gen_path}) — the next march compares against it\n")
+              print_string("march: baseline written ({wat_path}) — the next march compares against it\n")
               0
-            } else if emission == prev {
+            } else if tally == prev {
               print_string("march: the emission reproduces the last generation — CLEAN candidate; the exec legs (m3 == m4) arbitrate at the seam: tools/march.sh\n")
               0
             } else {
-              print_string("march: the emission DIVERGES from the last generation ({int_to_str(count_newlines(prev))} → {int_to_str(count_newlines(emission))} wat lines) — a change crossed; the exec legs arbitrate: tools/march.sh\n")
+              print_string("march: the emission DIVERGES from the last generation ({tally_lines(prev)} → {int_to_str(wat_lines)} wat lines) — a change crossed; the exec legs arbitrate: tools/march.sh\n")
               0
             }
           }
@@ -314,9 +321,32 @@ fn march_emit(entry, fd) = {
   (
     map({ mh => module_of(mh).path }, modules),
     fold(0, (n, mh) => n + count_newlines(module_of(mh).text), modules),
-    diag_errors()
+    diag_errors(),
+    wat_tallied()
   )
-} ~> wat_to_file(fd) ~> wasi_filesystem ~> compile_context
+} ~> wat_tally ~> wat_to_file(fd) ~> wasi_filesystem ~> compile_context
+
+// The tally of an emission, folded from each segment as the sink streams it
+// to the host: its line count and the FNV-1a hash of its bytes (the mix
+// `str_hash` runs). Two generations compare by their tallies, so the march
+// holds two words where it held two texts.
+effect WatTally {
+  wat_tallied() -> (Int, Int)
+}
+
+handler wat_tally with lines = 0, hash = -2128831035 {
+  wat_emit(s) => {
+    wat_emit(s)
+    resume() with lines = lines + count_newlines(s), hash = str_hash_loop(s, 0, byte_len(s), hash)
+  },
+  wat_tallied() => resume((lines, hash)),
+}
+
+// The line count a tally names, the word before its space.
+fn tally_lines(tally) = match split(" ", tally) {
+  [l, ..._] => l,
+  [] => "0",
+}
 
 // The wheel's entry: the repo's own main, or the installed shim's mount when
 // the verb runs outside the repo. The repo's is named as the CLI names it
