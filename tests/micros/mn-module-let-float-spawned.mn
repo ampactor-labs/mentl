@@ -1,0 +1,17 @@
+// expect: 0
+// A spawned instance reads the root's module values at their own width: the
+// record the root writes them into holds a Float as a double, and a branch
+// reads 1.5 where the root wrote it. The branch answers a word, since a wide
+// answer does not yet cross a thread's join (PLAN §7).
+import threading
+
+let level = 1.5
+
+let count = 3
+
+fn scaled(x: Int) -> Int = float_to_int(float_of_int(x * count) * level)
+
+fn main() = {
+  let ys = fanout(scaled, [2, 4]) ~> parallel_compose
+  if ys[0] == 9 && ys[1] == 18 { 0 } else { 1 }
+}

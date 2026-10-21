@@ -1,0 +1,78 @@
+// 09 · learn — the effect that learns
+//
+// A sawtooth through two filters, three seconds long: on the left the
+// library's low-pass at 600 Hz, on the right a one-pole whose coefficient
+// starts at zero and LEARNS, sample by sample, to match the left.
+//
+//   mentl run examples/pulse/course/09-learn.mn > 09.wav
+//
+// The verb is `~>` again, with a different kind of handler: `~> grad(a)` is
+// a READING of its extent (lib/ml/grad.mn). The body of `slope` computes the
+// filter's error exactly as the filter computes it, and `d(e * e)` asks how
+// that squared error changes with the coefficient the reading is seeded at.
+// The medium derives
+// the derivative program from the chain's own graph and emits it beside the
+// forward one — no tape records the run, no operator is overloaded, and no
+// second copy of the chain exists to fall out of step. The coefficient is a
+// `<~` line inside the filter's own line, moved against the slope each tick,
+// so the learning step is the calculus it abbreviates, and the frame stays
+// `!Alloc`: the heap does not move while the filter learns.
+//
+//   mentl why examples/pulse/course/09-learn.mn slope Derivative    where the reading is asked
+import audio/wav
+
+import dsp/clock
+
+import dsp/feedback
+
+import dsp/osc
+
+import dsp/signal
+
+import io
+
+import ml/grad
+
+import rate
+
+fn seconds() with Pure = 3
+
+// The slope of the squared error with respect to the coefficient, asked of
+// the same arithmetic the filter runs.
+fn slope(a: Float, x: Float, yprev: Float, want: Float) -> Float = {
+  let e = want - (a * x + (1.0 - a) * yprev)
+  d(e * e)
+} ~> grad(a)
+
+// A one-pole low-pass whose coefficient learns: each tick, the coefficient
+// line moves against the slope of the error between this filter and the
+// signal it is told to match, then the output line ticks with the new
+// coefficient.
+fn learner(mu: Float) = {
+  fn stage(want: Float, x: Float) with !Alloc = {
+    prev => {
+      let a = { aprev => aprev - mu * slope(aprev, x, prev, want) } <~ delay(1)
+      a * x + (1.0 - a) * prev
+    },
+  } <~ delay(1)
+  stage
+}
+
+fn frame(buf, rig, n: Int) with !Alloc = {
+  let saw = rig.voice(220.0) * 0.5
+  let want = saw |> rig.teacher(600.0)
+  let got = rig.learner(want, saw)
+  wav_frame(buf, n, soft_clip(want), soft_clip(got))
+}
+
+fn build_rig(sr: Int) = {learner: learner(0.05), teacher: lowpass_filter(sr), voice: saw_voice(sr)}
+
+fn main() = {
+  {
+    let frames = frames_of(seconds())
+    let buf = wav_header(wav_alloc(frames), frames, rate())
+    play(frames, frame(buf, build_rig(rate())))
+    print(wav_bytes(buf))
+  } ~> stdout_console ~> sample_at(48000)
+  0
+}

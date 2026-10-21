@@ -496,6 +496,16 @@ landing that closes it. A gate that did not run is UNKNOWN, never green.
 - **Teach answers locks and preconditions, and little else** (§11.8): no
   refinement at a part, no call with argument holes, no record proposed for a
   positional product.
+- **The course and the scores are owed** (`mentl verify`, the `QOwed` bounds;
+  §11's verification whole, §11.18): a filter stage's `Hz` precondition is
+  claimed again where a frame is handed the record that holds the stage, and
+  the verifier cannot read the constant the frame hands it through the
+  function-typed field, so the claim stays open at every rig; a voice minted
+  inside a threaded branch is refused for the store its line's tick makes
+  into the record minted beside it, since the race rule reads a store's age
+  relative to the frame that writes it, never to the branch; and a Nyquist
+  bound that reads the installed rate inside its predicate is left pending.
+  The page cannot yet play a lesson (§11.13).
 - **Effect names lie about their ops** (§11.9): GraphRead holds writes,
   GraphWrite holds reads, and `Memory` holds pure word arithmetic, so a
   function doing only arithmetic on words is not `Pure`.
@@ -528,7 +538,10 @@ landing that closes it. A gate that did not run is UNKNOWN, never green.
   writes memory older than its own frame. SIMD and GPU run their branches
   sequentially. A write made through a function value is charged where the call
   stands, whatever memory it writes, so `!Mutate` and the race rule refuse some
-  programs that write only fresh memory through a callback (§11.18).
+  programs that write only fresh memory through a callback (§11.18). A wide
+  answer does not cross a thread's join: `parallel_compose`'s arms are
+  emitted once at the word face, so a Float-answering branch traps where its
+  join is read at the site's face (§11.16).
 - **The judgment is one pass; schemes are still values** (§11.18): a candidate
   is judged against a version of the one live graph, and a declaration's type
   is frozen at its exit.
@@ -579,7 +592,7 @@ landing that closes it. A gate that did not run is UNKNOWN, never green.
 bash tools/state.sh                 # THE BOARD, ground first: verify, march, frontier, proof-exactness, crown, effect identity, threads, ide — one scoreboard; --quick = verify only
 mentl verify [path]                 # the standing bounds on the medium's own source (src/board.mn), read off one judged graph; a rise refuses
 mentl check [path]                  # every module of the link judged, no emit; no path: the project
-mentl query <entry> <question>      # refs of NAME · unreachable · unreferenced · census <shape> · ghosts · imports · performs · smt · text · prose · writes of · reads of · provider of · heads · env · reports
+mentl query <entry> <question>      # refs of NAME · unreachable · unreferenced · census <shape> · ghosts · imports · performs · smt · text · prose · writes of · reads of · provider of · heads · env · reports · owed <dir>
 mentl why <file> <fn> [<Effect>]    # the declaration's reason, then where each effect of its row enters
 mentl where <file> <name>           # a declaration's head, row, widths and address
 mentl <file>:<line>[:<col>]         # the eight aspects at the caret, with the Lede
@@ -695,8 +708,12 @@ themselves* — `mentl audit` live, the docs a projection, the ??-fan with its
 teaching tie-break as the daily loop; (6) *the oracle at its limits* — the fused
 multi-cursor multi-shot search as the default judge; (7) *`!Outside` closed* —
 the native backend, diverse double compilation, and the correctness oracle
-absorbed into the wheel's own Verify. The terminus is §1's closed loop: the
-person and the medium, nothing else needed at any scope.
+absorbed into the wheel's own Verify; (8) *nothing owed* — every ceiling on
+the board at zero or at a decision the author made, the course and the two
+scores judged clean (the `QOwed` bounds at zero), no expected red, no
+silencer, no diagnostic class named and unborn, no landing named outside this
+list. The terminus is §1's closed loop: the person and the medium, nothing
+else needed at any scope.
 
 **ONE LAW, FIVE FACES.** The largest open items are one violation — a
 materialized view stored where an edge belonged: STRUCTURE (cut: a node is its
@@ -987,38 +1004,44 @@ and the artifact:
     The batteries address a hole and a declaration by identity, never by
     `L:C`, so every fixture can be canonical; `mentl fmt --check` at zero over
     src, lib, examples and tests is a board line.
-13. **The course and the page** (`Hβ.course.pulse-is-the-course`,
-    `Hβ.space.the-canvas`, `Hβ.emit.the-medium-assembles-its-output`,
-    `Hβ.viz.severance-map`). The course is Pulse: ten lessons on one growing
-    chain a developer hears (`examples/pulse/course/01…10`), each a program
-    `mentl run` renders, fmt-canonical at zero self-diagnostics, with a proposal
-    contract at its hole, opened by the page as a project; lib/tutorial is
-    deleted. The canvas paints the wheel's own tokens at their spans, the aspect
-    strip and the ambient-world glyphs, obligation marks, the ownership trace,
-    fmt on idle and a version as undo. The page runs what it compiles: the worker
-    instantiates the bytes `mentl asm` writes, and the fixpoint seal runs in the
-    page. The Severance Map bands the module and declaration tree in three
-    colours — provably absent, present, not yet provable — the third counted and
-    falling; it ships after its known false greens close or counts them in the
-    third colour, and its demo is one networking call turning a green band red
-    with the refusal naming the call. Then the stranger test: someone who has
-    never seen the repository finishes lesson 1 from the README alone.
-14. **Wasatch "Inversion" — the first program the world hears**
-    (`Hβ.wasatch.inversion`, `Hβ.wasatch.keyed-sources`,
-    `Hβ.env.configuration-is-an-effect`). A generative score whose every
-    parameter is a reading of Salt Lake — the lake's elevation, the Jordan's
-    discharge, the inversion itself as the mountain warmer than the valley,
-    earthquakes, snowpack, aircraft, the sun, the Jazz — rendered at 48 kHz as
-    Pulse is, and provably unable to reach the Outside on its per-sample path.
-    W1 renders offline from a checked-in snapshot; W3 plays live in the page; W2
-    adds the keyed sources (UTA's real-time TRAX first) through a host-applied
-    key the guest never holds — the open half of configuration as an effect.
+13. **The page plays the course** (`Hβ.space.the-canvas`,
+    `Hβ.emit.the-medium-assembles-its-output`, `Hβ.viz.severance-map`). The
+    course is written — `examples/pulse/course`, ten lessons on one growing
+    chain a developer hears, each a program `mentl run` renders, the page
+    opening the folder as a project, and `mentl verify` counting the lessons
+    the medium cannot yet judge clean (the `QOwed` bounds, src/board.mn). The
+    canvas paints the wheel's own tokens at their spans, the aspect strip and
+    the ambient-world glyphs, obligation marks, the ownership trace, fmt on
+    idle and a version as undo. The page runs what it compiles: the worker
+    instantiates the bytes `mentl asm` writes, a lesson plays to the speaker,
+    and the fixpoint seal runs in the page. The Severance Map bands the module
+    and declaration tree in three colours — provably absent, present, not yet
+    provable — the third counted and falling; it ships after its known false
+    greens close or counts them in the third colour, and its demo is
+    Wasatch's network twin turning a green band red with the refusal naming
+    the call. Then the stranger test: someone who has never seen the
+    repository finishes lesson 1 from the README alone.
+14. **Wasatch "Inversion" — the sources and the player**
+    (`Hβ.wasatch.keyed-sources`, `Hβ.env.configuration-is-an-effect`). The
+    score is written and renders from its snapshot (`examples/wasatch`: every
+    parameter a reading of Salt Lake on the evening of 2026-10-20, each with
+    its source and its time; the per-sample path `!Network + !Filesystem +
+    !Alloc + !Sample(44100)`; the frontier's twin fetching one parameter on
+    that path refused). What remains is the live half: the keyed sources
+    (UTA's real-time TRAX first, then the gauges and the observation the
+    snapshot was read from) through a host-applied key the guest never holds
+    — the open half of configuration as an effect — and the score played in
+    the page as the readings change.
 16. **The compile runs on every core** (`Hβ.driver.level-set-par-walk`,
     `Hβ.native.deterministic-handle-partition`). A handle becomes an
     `{arena, offset}` product (one word by a repr pin), deterministic under any
     order; the schedule is a pool; emission, the classifier rounds and the
     judgment's binding-group levels are fanouts; the battery judges its library
-    once; Pulse renders by block under `parallel_compose`. Every step is gated by
+    once; Pulse renders by block under `parallel_compose`. A branch's answer
+    crosses the join at its own width — the task record holds a Float as a
+    double and the schedule's arms are twinned at the install's answer, where
+    today they are emitted once at the word face and a Float-answering
+    `fanout` under `parallel_compose` traps at its join. Every step is gated by
     m3 under `Seq` byte-identical to m3 under `parallel_compose`.
 17. **Verify's own solver** (`Hβ.verify.the-solver-is-the-search`). The
     proposer's search is the solver: union-find and the e-graph as congruence

@@ -2,8 +2,9 @@
 # staging script (tools/space-stage.sh), the deploy and the IDE gate read.
 # `root` is where the page finds these paths: `..` in the repo (the page
 # lives in ide/), `.` once staged beside the page. A `program` is a
-# one-file project (the lessons); a `project` is a folder of modules, which
-# staging expands into `member` lines (a static host lists no folder).
+# one-file project; a `project` is a folder of modules, which staging expands
+# into `member` lines (a static host lists no folder): Pulse's renderer, the
+# course's ten lessons with the module they share, and Wasatch's score.
 root ..
 wasm boot/mentl.wasm
 wheel src/main.mn
@@ -21,15 +22,11 @@ lib lib/dsp/signal.mn
 lib lib/dsp/spectral.mn
 lib lib/dsp/cfc.mn
 lib lib/dsp/processors.mn
+lib lib/dsp/osc.mn
+lib lib/dsp/envelope.mn
+lib lib/dsp/stereo.mn
 lib lib/audio/wav.mn
+lib lib/ml/grad.mn
 project examples/pulse/render
-program lib/tutorial/00-hello.mn
-program lib/tutorial/01-graph.mn
-program lib/tutorial/02-handlers.mn
-program lib/tutorial/03-verbs.mn
-program lib/tutorial/04-row.mn
-program lib/tutorial/05-ownership.mn
-program lib/tutorial/06-refinement.mn
-program lib/tutorial/07-gradient.mn
-program lib/tutorial/08-reasons.mn
-program lib/tutorial/09-all.mn
+project examples/pulse/course
+project examples/wasatch

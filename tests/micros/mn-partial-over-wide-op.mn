@@ -1,0 +1,18 @@
+// expect: 0
+// A partial over an op whose answer is a Float: `map(ask)` performs through
+// the partial node itself, whose type is the product's arrow, so the site's
+// face is that arrow's return. Read as the node's own type it was a word,
+// and the module did not validate on boot 0d559744 (expected f64, found
+// i32).
+effect Ask {
+  ask(k: Int) -> a
+}
+
+handler halves {
+  ask(k) => resume(float_of_int(k) / 2.0),
+}
+
+fn main() = {
+  let ys = ([1, 3] |> map(ask)) ~> halves
+  if ys[0] == 0.5 && ys[1] == 1.5 { 0 } else { 1 }
+}

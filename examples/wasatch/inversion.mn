@@ -1,0 +1,200 @@
+// Wasatch "Inversion" — Salt Lake, heard
+//
+// Sixteen seconds of 48 kHz stereo on standard output, every parameter of
+// which is a reading of the valley on the evening of 2026-10-20
+// (readings.mn, each value with its source and its time):
+//
+//   mentl run examples/wasatch/inversion.mn > inversion.wav
+//
+// The drone's fundamental is the Great Salt Lake's elevation — one octave
+// across the lake's recorded range, a lower lake a lower drone. The pulse's
+// rate is the Jordan River's discharge. The inversion — the mountain warmer
+// than the valley, the lid the city lives under all winter — is the filter's
+// closure over the mix: a clear evening leaves it open. Each earthquake of
+// the week is a struck tone at its magnitude, placed in the piece where its
+// hour falls in the week. The snowpack is the size of the room. The aircraft
+// overhead set the pace at which the lead crosses the stereo field. The
+// sun's altitude is the lead's brightness. The Jazz score is the meter.
+//
+// Two claims hold over everything that runs once per sample. `render_frame`
+// is `!Alloc`: the oscillators, the lines, the filters, the room and the PCM
+// writes allocate nothing, proven transitively. And it is `!Network +
+// !Filesystem`: this program cannot reach the Outside on its per-sample
+// path. The readings are a module, read once, so the whole program performs
+// neither effect — the medium's audit says the module severs them — and the
+// frontier keeps a twin that fetches one parameter inside the frame refusing
+// (E_EffectMismatch, the chain naming the call). The live sources, a host
+// that applies a key the program never holds, and the page that plays it
+// are what Wasatch still owes (PLAN §11.14).
+import audio/wav
+
+import dsp/clock
+
+import dsp/envelope
+
+import dsp/feedback
+
+import dsp/osc
+
+import dsp/signal
+
+import dsp/stereo
+
+import fs
+
+import io
+
+import math
+
+import readings
+
+fn seconds() with Pure = 16
+
+// ─── The clock ───────────────────────────────────────────────────────
+//
+// The piece runs at 48,000 samples a second, and the rate is pinned here, at
+// the three readers of the clock: every function that calls them carries
+// the instance in its projected row.
+fn clock_rate() with Sample(48000) = sample_rate()
+
+fn now() with Sample(48000) = current_sample()
+
+fn advance() with Sample(48000) = advance_sample()
+
+// ─── The mapping: one maker per reading ───────────────────────────────
+//
+// A ratio of `n` octaves.
+fn octaves_up(n: Float) -> Float with Pure = exp(n * log(2.0))
+
+// The lake's elevation as a pitch: 4,170 ft (the record low, 2022) is A1,
+// 4,212 ft (the record high, 1986) an octave above it.
+fn drone_hz(elevation_ft: Float) -> Hz = 55.0 * octaves_up((elevation_ft - 4170.0) / 42.0)
+
+// The river's discharge as a pace: a hundred cubic feet a second is one
+// pulse a second.
+fn pulse_hz(cfs: Float) -> Float with Pure = cfs / 100.0
+
+// The inversion's strength, in degrees Fahrenheit the mountain is warmer
+// than the valley; negative when the air is as it should be.
+fn inversion_f() -> Float with Pure = mountain_temp_f - valley_temp_f
+
+// The lid: a strong inversion closes the mix's filter to 200 Hz, a clear
+// evening leaves it open to 2 kHz.
+fn lid_hz(inversion: Float) -> Hz = clamp(2000.0 - 60.0 * (inversion + 20.0), 200.0, 2000.0)
+
+// The room's send grows with the snowpack: a dry autumn is a dry room.
+fn room_send(swe_in: Float) -> Float with Pure = clamp(0.1 + 0.1 * swe_in, 0.1, 0.6)
+
+// The lead crosses the field once per minute per aircraft overhead.
+fn crossing_hz(aircraft: Int) -> Float with Pure = float_of_int(aircraft) / 60.0
+
+// The sun's altitude in degrees above the horizon at the reading, from the
+// day's sunrise and sunset: a half sine between them, negative after dark.
+fn sun_altitude(minute: Int) -> Float with Pure = {
+  let day = float_of_int(sunset_minute - sunrise_minute)
+  let since = float_of_int(minute - sunrise_minute)
+  70.0 * sin(3.14159265 * since / day)
+}
+
+// The lead's brightness: dark at ten degrees below the horizon, full at
+// fifty above.
+fn brightness(altitude: Float) -> Float with Pure = clamp((altitude + 10.0) / 60.0, 0.0, 1.0)
+
+// The meter: three beats to the bar, plus the margin the Jazz won by.
+fn meter(won_by: Int) -> Int with Pure = 3 + won_by % 4
+
+// Where in the piece an earthquake falls: the piece is the week, its last
+// second the hour of the reading.
+fn quake_at(hours_ago: Float) -> Float with Pure =
+  float_of_int(seconds()) * (1.0 - hours_ago / 168.0)
+
+// A quake's pitch: magnitude 2 is A4, a tenth of a magnitude a semitone.
+fn quake_hz(magnitude: Float) -> Hz = 440.0 * octaves_up((magnitude - 2.0) * 10.0 / 12.0)
+
+// ─── The instrument ──────────────────────────────────────────────────
+//
+// A struck tone: a sine at the quake's pitch, rung for a second and a half
+// from the moment it strikes, as loud as the quake was strong.
+fn bell(voice, magnitude: Float, struck: Float, t: Float) -> Float with !Alloc = {
+  let since = t - struck
+  if since < 0.0 {
+    0.0
+  } else {
+    voice(quake_hz(magnitude)) * fade(0.5, since) * (magnitude - 1.0) * 0.4
+  }
+}
+
+fn render_frame(buf, rig, n: Int) with !Alloc + !Sample(44100) + !Network + !Filesystem = {
+  let t = float_of_int(n) / float_of_int(clock_rate())
+  // The drone: the lake, as a sawtooth and a sine an octave below it, swelling in over
+  // the first two seconds and out over the last two.
+  let swell = if t < 2.0 { t / 2.0 } else if t > 14.0 { (16.0 - t) / 2.0 } else { 1.0 }
+  let lake = drone_hz(lake_elevation_ft)
+  let drone = (rig.drone(lake) + 0.5 * rig.sub(lake * 0.5)) * 0.35 * swell
+  // The pulse: the river, as a kick on every pulse and an accent on the
+  // first of each bar.
+  let pulses = pulse_hz(jordan_cfs)
+  let beat = float_to_int(t * pulses)
+  let tb = t - float_of_int(beat) / pulses
+  let accent = if beat % meter(jazz_points - opponent_points) == 0 { 1.0 } else { 0.6 }
+  let kick = rig.kick(fall(45.0, 150.0, 0.04, tb)) * fade(0.18, tb) * accent
+  // The lead: a square at the drone's fifth, as bright as the sun is high,
+  // crossing the field at the aircraft's pace.
+  let shine = brightness(sun_altitude(reading_minute))
+  let lead = rig.lead(lake * 3.0) * 0.25 |> rig.lead_tone(400.0 + 3000.0 * shine)
+  let across = sin(two_pi() * crossing_hz(aircraft_airborne) * t)
+  // The quakes: each a bell where its hour falls.
+  let quakes =
+    bell(rig.bell_a, quake_magnitudes[0], quake_at(quake_hours_ago[0]), t) + bell(rig.bell_b, quake_magnitudes[1], quake_at(quake_hours_ago[1]), t) + bell(rig.bell_c, quake_magnitudes[2], quake_at(quake_hours_ago[2]), t) + bell(rig.bell_d, quake_magnitudes[3], quake_at(quake_hours_ago[3]), t)
+  // The mix under the lid, then the room the snow makes, then the file.
+  let dry_l =
+    drone + 0.5 * kick + lead * pan_left(across) + quakes * 0.7 |> rig.lid_l(lid_hz(inversion_f()))
+  let dry_r =
+    drone + 0.5 * kick + lead * pan_right(across) + quakes * 0.7 |> rig.lid_r(lid_hz(inversion_f()))
+  let (room_l, room_r) = (rig.room_l(dry_l)) >< (rig.room_r(dry_r))
+  let send = room_send(snowpack_in)
+  let gain = rig.limiter(dry_l + room_l, dry_r + room_r)
+  wav_frame(
+    buf,
+    n,
+    soft_clip(gain * (dry_l + send * room_l)),
+    soft_clip(gain * (dry_r + send * room_r))
+  )
+  advance()
+}
+
+// Everything with memory, built once before a sample renders.
+fn build_rig(sr: Int) = {
+  bell_a: sine_voice(sr),
+  bell_b: sine_voice(sr),
+  bell_c: sine_voice(sr),
+  bell_d: sine_voice(sr),
+  drone: saw_voice(sr),
+  kick: sine_voice(sr),
+  lead: square_voice(sr),
+  lead_tone: lowpass_filter(sr),
+  lid_l: lowpass_filter(sr),
+  lid_r: lowpass_filter(sr),
+  limiter: limiter(0.9, sr),
+  room_l: room_left(),
+  room_r: room_right(),
+  sub: sine_voice(sr),
+}
+
+fn render_loop(buf, total: Int, rig) with !Alloc + !Sample(44100) = if now() >= total {
+  ()
+} else {
+  render_frame(buf, rig, now())
+  render_loop(buf, total, rig)
+}
+
+fn main() = {
+  {
+    let rate = clock_rate()
+    let frames = rate * seconds()
+    let buf = wav_header(wav_alloc(frames), frames, rate)
+    render_loop(buf, frames, build_rig(rate))
+    print(wav_bytes(buf))
+  } ~> stdout_console ~> sample_at(48000)
+  0
+}

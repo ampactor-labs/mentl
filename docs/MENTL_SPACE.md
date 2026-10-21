@@ -560,54 +560,57 @@ inside the medium.
 
 *(the whole ring, read by a developer who has never seen an effect row)*
 
-The tutorial is not an app beside the editor; it is a PROJECT the page opens
-(§3.8), and the project is Pulse (`examples/pulse`, the flagship: stages
-minted by makers, live `<~` lines, `render_frame` proven `!Alloc`, ten
-seconds of 48 kHz stereo). Each lesson is one growing program a new developer
-HEARS, and each exists because the medium has something to PROVE at that step,
-so the lesson's text is the program's own prose — comments are graph content,
-the Lede renders them — and its exercise is a hole:
+The course is not an app beside the editor; it is a PROJECT the page opens
+(§3.8): `examples/pulse/course`, ten programs on one growing chain and the
+module they share (rate.mn, the three readers of the clock and the render
+loop that carries the course's `!Alloc` oath), beside Pulse's renderer and
+Wasatch's score, each a member the page's select offers under its folder.
+Each lesson is a program a new developer HEARS — `mentl run
+examples/pulse/course/01-tone.mn > 01.wav` — and each exists because the
+medium has something to PROVE at that step, so the lesson's text is the
+program's own prose (comments are graph content, the Lede renders them) and
+its header names the verb that shows the property at the caret:
 
-1. a sine through `|>` to the speaker — the sequential verb, the chain as a
-   diagram;
-2. `<~` a filter — the cycle, its depth written on the loop, the ring the
-   record owns;
-3. `<|` and `><` — a send bus and a stereo pair, the two glyphs of one fanout
-   read through ownership;
-4. `~>` the effect rack — a handler IS an audio effect, the enclosure visibly
-   wrapping its scope;
-5. `!Alloc` on the per-sample path — the refusal you would otherwise hear as
-   a dropout, drawn as a sealed wall before the call is finished;
-6. `Sample(48000)` — the instance pin, the canonical audio bug refused per
-   instance;
-7. `Hz` and `Sample` refinements — a slider whose ends are the proof, and an
-   out-of-band sweep refused at the claim;
-8. the hole — `??` at a stage, the proven survivors as ghost text, the tie
-   that asks its computed question instead of guessing;
-9. the effect that learns — `~> grad(w)`, the derivative program drawn beside
-   the chain, a stage trained in place with the heap not moving;
-10. voices `><` under `~> parallel_compose` — threads with the race rule
-    holding, the join on the time axis.
+1. `01-tone` — a sine through `|>` to the file: the sequential verb, a stage
+   with its datum last, the pipe filling the slot it left open;
+2. `02-line` — `<~` a filter written whole, its depth on the loop, the line
+   the record owns; two filters from one maker are two lines;
+3. `03-bus` — `<|` and `><`: a send bus and a stereo pair, one input shared
+   by every branch, two independent values merged into `mix(0.35)` with no
+   tuple built;
+4. `04-rack` — `~>` the effect rack: a named handler chain of the library's
+   distortion and a limiter written as a handler whose state is its envelope;
+5. `05-silence` — `!Alloc` on the per-sample path, and the course's render
+   loop carrying the same oath as a gate on every frame it is handed;
+6. `06-rate` — `Sample(48000)`: two rates are two effects, `!Sample(44100)` on
+   the frame, and a Nyquist bound that reads the installed rate inside its
+   predicate — the claim the medium leaves pending and the board counts;
+7. `07-bounds` — `Hz` and `Sample` refinements: a constant past Nyquist
+   refuses, a computed sweep is honest debt, and Teach proposes the
+   refinement that discharges a division's claim, which `accept` writes;
+8. `08-hole` — `??` at a stage: the fan over the module's own vocabulary, one
+   survivor, `accept` writing it before the file renders;
+9. `09-learn` — `~> grad(a)`: a one-pole filter whose coefficient learns from
+   the slope of its error, the derivative program drawn beside the chain,
+   the heap not moving;
+10. `10-voices` — `fanout(render_voice(sr), notes) ~> parallel_compose`: every
+    voice minted in its own branch and rendered on its own core, the race
+    rule the proof.
 
-Running a lesson in the page needs L-F (`mentl asm`: the worker instantiates
-the emitted bytes under its WASI shim and the samples reach the page's audio
-output); until it lands, the ten lessons under `lib/tutorial/` are the
-course's text-first form, each fmt-canonical at zero self-diagnostics, and
-Pulse renders through `mentl run` in the terminal.
+What the medium owes the course is a COUNT on the board, never a sentence
+here: `mentl verify` asks `QOwed("examples/pulse/course")`, each program under
+the folder judged on a chain of its own, and holds the ceiling at the
+measured number, which only falls — six lessons today (the verifier's
+higher-order refinement claim through a rig's function-typed field, and the
+race rule's frame-relative read of a line's store in lesson 10). The
+frontier gate renders every lesson the compiler builds, hears its notes
+through an oracle that shares nothing with the medium, accepts lesson 8's
+survivor first, and keeps the course's twins refusing (`run_course`,
+tools/frontier-gate.sh).
 
-The course's landing (PLAN §11, Tier 3) writes the ten lessons as
-`examples/pulse/course/01…10`, each a program `mentl run` renders to a WAV
-and each with a proposal contract at its hole, points the manifest at that
-one project, and deletes `lib/tutorial/`, since two homes for the course is
-one too many. It stands on V2 (a fanout costs no more than its
-desugaring, so lessons 3 and 5 stop contradicting each other), the Stage
-Law in lib/dsp (so lesson 1's `|>` fills the datum), SPACE.1 and RACE
-(lesson 10 spawns), and it is born canonical: SYNTAX's fenced examples are
-fixtures and examples/ joins the board. Lesson 6 states its rate through the
-negation on the render path until a handler pins its instance, and lesson
-8's second half — the developer's own `choose` under the medium's search —
-waits on AU6; each says so in its own prose. The design, whole, is
-PLAN §11's course item (`Hβ.course.pulse-is-the-course`).
+Running a lesson in the page — the worker instantiating the bytes `mentl
+asm` writes, the samples reaching the page's audio output — is PLAN §11's
+course item; until it lands, a lesson renders in the terminal.
 
 ---
 

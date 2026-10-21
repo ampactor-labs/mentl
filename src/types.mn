@@ -4769,6 +4769,16 @@ fn diag_message(d) with !Mutate = match d {
   EHandlerChainShape(why, _) => why,
 }
 
+// The programs a directory holds that the medium cannot yet judge clean, each
+// at one site: its first error's, or its first open claim's, or its first
+// line when it never joins the weave. The board asks it of the course and
+// the score through the owed question (src/query.mn), and a chain that
+// reaches the driver answers it (src/pipeline.mn), since the query layer
+// imports no driver.
+effect Owed {
+  owed_programs(dir: String) -> [(String, Span)]
+}
+
 // effect LookupTy lives in graph.mn beside lookup_ty_graph — the
 // effect-beside-handler law at the projection's own home.
 //

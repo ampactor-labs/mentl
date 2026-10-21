@@ -1,0 +1,31 @@
+// envelope.mn — the shape of a note in time
+//
+// An envelope is pure arithmetic over a note's own time, so it needs no
+// memory line: hand it where the note is and it answers how loud. Each takes
+// its shape first and the time last (the Stage Law), so `tn |> adsr(0.01,
+// 0.2, 0.65, 0.3, len)` reads as the note it shapes.
+import math
+
+// ADSR: a linear rise over `attack` seconds, a fall to the `sustain` level
+// over `decay`, a hold, and a linear release over the last `release` seconds
+// of a note `len` seconds long.
+fn adsr(attack: Float, decay: Float, sustain: Float, release: Float, len: Float, tn: Float) -> Float with Pure = if tn < attack {
+  tn / attack
+} else if tn < attack + decay {
+  1.0 - (1.0 - sustain) * (tn - attack) / decay
+} else if tn < len - release {
+  sustain
+} else if tn < len {
+  sustain * (len - tn) / release
+} else {
+  0.0
+}
+
+// A strike that fades: an exponential fall with time constant `tau` seconds
+// from the onset — a hi-hat at 35 ms, a kick's body at 180 ms.
+fn fade(tau: Float, t: Float) -> Float with Pure = exp(0.0 - t / tau)
+
+// A pitch that falls as it fades — a kick drum's: from `top` toward `floor`
+// with time constant `tau`.
+fn fall(floor: Float, top: Float, tau: Float, t: Float) -> Float with Pure =
+  floor + (top - floor) * fade(tau, t)

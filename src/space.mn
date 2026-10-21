@@ -721,7 +721,7 @@ fn found_needle(m: String, needle: String) = FoundRefs(
   needle,
   sites_of(ask(parse_query_string(m, "refs of {needle}"))),
   sites_of(ask(parse_query_string(m, "text {needle}")))
-) ~> query_default
+) ~> query_context
 
 // The sites an answer carries, read through the one projection of an answer
 // to its places (`located_answer`), so a facet the query grows is a site list

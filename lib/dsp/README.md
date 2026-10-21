@@ -2,7 +2,8 @@
 
 This medium was born for signals. The `<~` verb, the `!Alloc` oath, the
 refinement bounds — each earned its shape here first, on audio, where a
-single wrong allocation is audible.
+single wrong allocation is audible. The course (`examples/pulse/course`)
+teaches each of them on one growing chain; this is the library it plays.
 
 ## Sound has memory
 
@@ -11,28 +12,24 @@ Most languages make you build memory out of scaffolding. Here, memory is a
 shape you draw — a loop in the graph:
 
 ```
-fn echo(mix, x) with Clock(48_000) =
-  ((prev) => x + mix * prev) <~ delay(24_000)
+fn echo(fb: Decay) = {
+  fn stage(x: Float) with !Alloc = { prev => x + fb * prev } <~ delay(12000)
+  stage
+}
 ```
 
-`<~` means "feeds back." What advances the loop is a tick — here the
-function's own next call, at the rate `Clock(48_000)` in the row declares:
-the medium infers a cycle's clock from the cycle's own site (a `<~` is a
-per-site line whose previous iteration is the enclosing function's next
-call), so the row names the rate the program runs at, never a context the
-loop must find before it may exist. The right side is a memory element: it hands back what you gave it 24,000
-ticks ago, and at 48,000 ticks a second that is half a second — the slap of
-a stone room. The left side is what to do each tick: `prev` is the echo's
+`<~` means "feeds back." The right side is a memory element: it hands back
+what this echo put out 12,000 ticks ago, and at 48,000 ticks a second that is
+a quarter second. The left side is what to do each tick: `prev` is the echo's
 own past arriving back; the new sample is now plus a share of before. The
-whole physics of an echo, in one line you can read aloud. And a promise
-rides inside it: `prev` is not a box secretly allocated each tick — the
-line's memory belongs to the record of the function that holds the loop
-(one line per closure, per handler install, per module for a top-level
-fn), allocated once where that record is built and read as a register
-every tick, which is why this same echo can sit inside a function that has
-sworn never to allocate, and the oath holds.
-Lesson `03-verbs` (`mentl run lib/tutorial/03-verbs.mn`) builds the context
-from nothing and walks all five verbs.
+whole physics of an echo, in one line you can read aloud. What advances the
+loop is a tick — the stage's own next call — and a promise rides inside it:
+`prev` is not a box secretly allocated each tick. The line's memory belongs
+to the record of the function that holds the loop, allocated once where that
+record is built and read as a register every tick, which is why the stage
+can swear `!Alloc` and the oath holds. `echo` is a MAKER: each call mints a
+stage that owns its line, so two echoes are two rooms, and a stereo pair is
+two calls. Every stage with memory in this library is written that way.
 
 ## The second hand, on stage
 
@@ -44,20 +41,19 @@ same way: discipline, review, a wiki page that says *never allocate on the
 audio thread*. A promise. Here is the same intention, said in this medium:
 
 ```
-fn voice(x) with Clock(48_000) + !Alloc =
-  x
-    |> gain(-3.0)
-    |> lowpass(0.2)
-    |> echo(0.35)
+fn frame(buf, rig, n: Int) with !Alloc = {
+  let lead = rig.lead(220.0) * adsr(0.01, 0.2, 0.6, 0.3, 1.0, tn) |> rig.tone(1200.0)
+  wav_frame(buf, n, soft_clip(lead), soft_clip(lead))
+}
 ```
 
 `!Alloc`. Read it: *cannot allocate*. Not "does not," not "was tested and
 didn't," not "the team agreed not to." Cannot — proven, transitively: the
-gain, the filter, the echo and its half-second memory, everything they
-call, to the bottom. If one line anywhere beneath this signature allocates,
-the program does not build, and the refusal arrives with the chain of
-reasons walked back to the guilty line. The dread does not get quieter. It
-gets impossible.
+oscillator, the envelope, the filter and its line, the PCM writes, everything
+they call, to the bottom. If one line anywhere beneath this signature
+allocates, the program does not build, and the refusal arrives with the
+chain of reasons walked back to the guilty line. The dread does not get
+quieter. It gets impossible.
 
 And the domain's values carry their own bounds as types:
 
@@ -70,14 +66,22 @@ is a claim the compiler refuses at the line that broke it.
 
 ## The modules
 
-- `clock.mn` — the four peer notions of time (`Clock`, `Tick`, `Sample`,
-  `Deadline`), the rates a program declares it runs at; `<~` infers its
-  clock and requires none of them.
-- `feedback.mn` — the memory elements: `delay(n)`, `accumulate(init)`, the
-  IIR state carriers the recurrence form binds `prev` against.
-- `processors.mn` — gain, filters, clip: the everyday stages.
-- `signal.mn` — stft, bandpass, the comodulogram machinery.
-- `spectral.mn` — the DFT family.
+- `clock.mn` — the notions of time (`Clock`, `Tick`, `Sample`, `Deadline`);
+  `Sample(rate)` is the rate a program declares it runs at, an effect whose
+  instance is the rate, so two rates are two effects.
+- `signal.mn` — the signal's value types (`Sample`, `Hz`, `Gain`), the pure
+  stages (`gain`, `mix`, `clip`, `soft_clip`), and the spectral analysis
+  (stft, bandpass, the comodulogram).
+- `osc.mn` — the oscillators: `saw_voice`, `sine_voice`, `square_voice`,
+  `noise_source`, each a maker whose stage owns its phase line.
+- `envelope.mn` — the shape of a note in time: `adsr`, `fade`, `fall`.
+- `feedback.mn` — the filters: `lowpass_filter`, `highpass_filter`,
+  `dc_blocker`, `envelope_follower`, and the channel and stereo strips.
+- `stereo.mn` — the field a voice stands in: `pan_left`, `pan_right`, the
+  `echo`, the Schroeder rooms (`room_left`, `room_right`), the `limiter`.
+- `spectral.mn` — the `Distort` effect and its handlers: the distortion is
+  whichever handler the root installs.
+- `processors.mn` — gain, filters, clip over whole sequences.
 - `cfc.mn` — the founding research pipeline: cross-frequency coupling on
   real recordings, native `[Float]` end to end.
 
@@ -85,7 +89,9 @@ is a claim the compiler refuses at the line that broke it.
 
 The DSP claims are gated like everything else — real workloads
 cross-validated against independent oracles over the same bytes, wired into
-`bash tools/frontier-gate.sh`: the `cfc-demo` leg finds a planted (6,40)
+`bash tools/frontier-gate.sh`: Pulse and every course lesson render and an
+oracle that shares nothing with the medium hears the score in the file, and
+their one-line twins refuse; the `cfc-demo` leg finds a planted (6,40)
 coupling and the comodulogram matches a numpy port of the same formulas;
 the `dsp-crucible` leg pushes two sinusoids and a noise tone through the
 `<~` lowpass and the verdict is the filtered spectrum's argmax, exact. The

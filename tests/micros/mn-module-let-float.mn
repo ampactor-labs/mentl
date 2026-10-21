@@ -1,0 +1,11 @@
+// expect: 0
+// A module value that is a Float is read back as the double it is: its global
+// is declared at the value's own width. Declared a word for every let, the
+// read failed to validate (expected f64, found i32) on boot 0d559744.
+let level = 1.5
+
+let count = 3
+
+fn louder() -> Float with Pure = level * 2.0
+
+fn main() = if louder() == 3.0 && count == 3 { 0 } else { 1 }

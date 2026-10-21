@@ -653,11 +653,130 @@ fn query_render(question, m: String) =
 fn query_judged(entry_module: String, read) = match driver_link(entry_module) {
   None => None,
   Some(_) => Some(read(entry_module)),
-} ~> query_default ~> mentl_default ~> arm_state_ctx([], OneShot, None) ~> spec_registry ~>
+} ~> query_context ~> mentl_default ~> arm_state_ctx([], OneShot, None) ~> spec_registry ~>
 // the derivation's fs_read — handled in-chain, as compile/check do; outermost
 // of the query's own installs, because a query arm reads the filesystem too
 // and an arm's performs resolve outer of its own install
 wasi_filesystem ~> infer_context
+
+// How deep a walk reads: the directory's own entries, or its whole tree.
+type Reach = Level | Tree
+
+// THE ONE HOME for "the .mn files under a directory" — fmt's project, the
+// march's wheel, the battery's fixtures, a query over a directory of
+// programs and the board's owed question all read it. Paths come back as the
+// root joined to each entry ("." joins as nothing, so the project's paths are
+// the ones a developer types), each directory's entries in byte order, so
+// the walk is the flat sort of the paths. A dot-named entry is never
+// visited: the self and parent links (a walk that descends them loops
+// "src/./." forever — measured: 3,000-byte paths, +2 per level, until the
+// alloc ceiling), `.build`'s artifacts and `.git`'s objects alike. A root
+// that is not a directory answers no files.
+fn mn_files(root, reach) = match fs_list_dir(root) {
+  None => [],
+  Some(names) => mn_walk(root, reach, sort(names), 0, make_list(0)),
+}
+
+// A walked path's own name without its `.mn` — the stem a fixture's
+// verdict line and its artifact are filed under.
+fn path_stem(path: String) = {
+  let leaf = str_slice(path, after_last_slash(path, 0, 0), byte_len(path))
+  if ends_with(leaf, ".mn") { str_slice(leaf, 0, byte_len(leaf) - 3) } else { leaf }
+}
+
+fn after_last_slash(path: String, i, at) = if i >= byte_len(path) {
+  at
+} else if byte_at(path, i) == 47 {
+  after_last_slash(path, i + 1, i + 1)
+} else {
+  after_last_slash(path, i + 1, at)
+}
+
+fn mn_walk(dir, reach, names, i, acc) = if i >= len(names) {
+  acc
+} else {
+  let name = names[i]
+  if starts_with(name, ".") {
+    mn_walk(dir, reach, names, i + 1, acc)
+  } else {
+    let path = if dir == "." { name } else { "{dir}/{name}" }
+    match fs_list_dir(path) {
+      Some(sub) => match reach {
+        Tree => mn_walk(dir, reach, names, i + 1, mn_walk(path, reach, sort(sub), 0, acc)),
+        Level => mn_walk(dir, reach, names, i + 1, acc),
+      },
+      None => if ends_with(name, ".mn") {
+        mn_walk(dir, reach, names, i + 1, push(acc, path))
+      } else {
+        mn_walk(dir, reach, names, i + 1, acc)
+      },
+    }
+  }
+}
+
+// The judgment's chain for a program whose reports are COUNTED, never said:
+// `infer_context` with the register replaced by the quiet handler, so what
+// the program reports is banked for the reader that asked and reaches no
+// terminal.
+handler quiet_context = judgment_ledgers ~> lookup_ty_graph ~> env_handler(env_root()) ~> no_state_walked ~> graph_handler(root_version()) ~> diag_bank ~> diag_quiet ~> intern_table
+
+// THE OWED QUESTION'S ANSWER: every program under the directory judged on a
+// chain of its own inside an arena, and owed at one site — its first
+// error's, else its first open claim's, else its own first line when it
+// never joined the weave. The board asks this of the course and the score
+// (`QOwed`), so a lesson the medium cannot yet judge clean is a count that
+// only falls, never a sentence in a document.
+handler owed_by_judging {
+  owed_programs(dir) => resume(list_to_flat(mn_files(dir, Level)) |> flat_map(owed_site)),
+}
+
+// THE CHAIN EVERY ASK IS ANSWERED UNDER: the query handler, and outside it
+// the answer only a verb that reaches the driver can give, since an arm's
+// performs resolve outer of its own install. Every verb that asks a
+// question — the board, a query, teach, the REPL, the page and the MCP
+// transport — installs this name and never the query handler bare.
+handler query_context = query_default ~> owed_by_judging
+
+// A program is owed where the medium stops being able to judge it clean: an
+// error its judgment or its plan's settle reports anywhere in its link —
+// a floor, a threaded branch refused, an effect no handler answers — since
+// an error withholds the program whoever wrote it; else an open claim of
+// its own layer, the same claims the check route's summary counts for it
+// (`debt_in_scope`), never the library's beneath it. A hole is not owed: a
+// program with a hole is judged clean and the fan knows what is missing, so
+// the gate's hole law is the one read left aside here.
+fn owed_site(path: String) = {
+  let m = str_slice(path, 0, byte_len(path) - 3)
+  match driver_link(m) {
+    None => [(m, span_zero())],
+    Some(_) => {
+      let lowered = reachable_from_main(lower_program(saturate_pass(link_program())))
+      report_unhandled_effects(lowered)
+      match filter(report_is_error, diag_banked()) {
+        [] => {
+          let _ = emit_plan(lowered)
+          ()
+        },
+        [_, ..._] => (),
+      }
+      match filter(report_is_error, diag_banked()) {
+        [first, ..._] => [report_site(first)],
+        [] => match filter(owed_claim(diag_scope_of(), ??), verify_debt()) {
+          [ob, ..._] => [debt_site(ob)],
+          [] => [],
+        },
+      }
+    },
+  }
+} ~> wasi_filesystem ~> emit_context ~> quiet_context ~> arena
+
+fn report_is_error(entry) = match entry {
+  (d, _, _, _) => diag_severity(d) == SError,
+}
+
+fn owed_claim(scope, ob) = match ob {
+  (modh, _, _, _) => debt_in_scope(modh, scope),
+}
 
 // One program's answer to a SITE facet, kept to the program's own module —
 // what `mentl query <dir> …` asks of each program in a directory, since the
@@ -1477,6 +1596,7 @@ fn render_query_result(result) = match result {
   QROrphanClaims(rows) => render_orphan_rows(rows),
   QRCost(mods, lines, nodes) => "→ {int_to_str(mods)} module(s) · {int_to_str(lines)} source line(s) · {int_to_str(nodes)} node(s) minted",
   QRGhosts(sites) => "→ {int_to_str(len(sites))} cell(s) minted and never judged{render_census_sites(sites)}",
+  QROwed(sites) => "→ {int_to_str(len(sites))} program(s) the medium owes{render_census_sites(sites)}",
   QRWhere(lines, sites) => "→ {str_join_indented(lines)}{render_where_sites(sites)}",
   QRError(msg) => "error: {msg}",
 }
@@ -1533,6 +1653,7 @@ type QueryVerb
   | QVOwnership
   | QVWhy
   | QVRefs
+  | QVOwed
   | QVProvider
   | QVUnresolved
   | QVVerification
@@ -1617,6 +1738,8 @@ fn classify_query_verb(w: String) with Pure = if w == "type" {
   QVWrites
 } else if w == "reads" {
   QVReads
+} else if w == "owed" {
+  QVOwed
 } else {
   QVUnknownVerb
 }
@@ -1695,6 +1818,7 @@ fn build_question(verb, arg, raw, scope: String) = match verb {
   QVProse => QCensus(CsProse(words_after_the_verb(raw))),
   QVWrites => QStateWrites(arg),
   QVReads => QCensus(CsFieldRead(arg)),
+  QVOwed => QOwed(arg),
   QVUnknownVerb => QUnknown(raw),
 }
 

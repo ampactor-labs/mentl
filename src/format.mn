@@ -703,13 +703,18 @@ fn expr_prec_of(node) = match graph_node_body(node) {
   NExpr(UnaryOpExpr(_, _)) => 90,
   NExpr(IfExpr(_, _, _)) => 15,
   NExpr(MatchExpr(_, _)) => 15,
-  // A lambda's body extends maximally rightward — as an operand it must
-  // ALWAYS re-wrap, or the re-parse absorbs the operator into the body
+  // A binder lambda's body extends maximally rightward — as an operand it
+  // must ALWAYS re-wrap, or the re-parse absorbs the operator into the body
   // (measured: the recurrence `((prev) => …) <~ delay(1)` rendered
   // paren-free, and pass 2 read `delay(1)(prev)` as an application).
   // Prec 0 sits below every operator, so render_operand wraps it in
-  // every operand position — SYNTAX's own canonical spelling.
-  NExpr(LambdaExpr(_, _)) => 0,
+  // every operand position. An arm list is its own delimiter — the braces
+  // close it — so `{ prev => … } <~ delay(1)` renders bare, SYNTAX's own
+  // canonical spelling of a recurrence.
+  NExpr(LambdaExpr(params, body)) => match arm_list_of(params, body) {
+    Some(_) => 100,
+    None => 0,
+  },
   _ => 100,
 }
 

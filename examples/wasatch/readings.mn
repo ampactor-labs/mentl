@@ -1,0 +1,81 @@
+// Wasatch "Inversion" · the readings — Salt Lake on the evening of
+// 2026-10-20, read once
+//
+// Every value below was fetched from the public source its comment names
+// between 00:44 and 00:52 UTC on 2026-10-21 (18:44 to 18:52 Mountain
+// Daylight Time on the 20th), and is written here exactly as the source
+// answered it. Nothing is invented: a reading whose source did not answer
+// says so in its line, and the score reads what is here. The provisional
+// values the USGS marks P are provisional here too.
+//
+// The Great Salt Lake's water-surface elevation in feet above the 1929
+// datum, USGS gauge 10010000 (Saltair Boat Harbor), parameter 62614, the
+// 15-minute value at 23:45 UTC. The hour before read 4189.7, 4189.8,
+// 4189.8. https://waterservices.usgs.gov/nwis/iv/?sites=10010000&parameterCd=62614
+let lake_elevation_ft = 4189.8
+
+// The Jordan River's discharge in cubic feet a second at 1700 South, Salt
+// Lake City, USGS gauge 10171000, parameter 00060, the instantaneous value
+// at 00:15 UTC. The six readings before it: 146, 129, 133, 130, 127, 132.
+// https://waterservices.usgs.gov/nwis/iv/?sites=10171000&parameterCd=00060
+let jordan_cfs = 132.0
+
+// The valley's air temperature in Fahrenheit: Salt Lake City International
+// Airport (KSLC, 4,226 ft), the National Weather Service observation at
+// 00:35 UTC, 19 °C to the whole degree, mostly clear.
+// https://api.weather.gov/stations/KSLC/observations/latest
+let valley_temp_f = 66.2
+
+// The mountain's air temperature in Fahrenheit: the Snowbird SNOTEL station
+// (NRCS 766, 9,170 ft), the hourly observation at 00:00 UTC. Brighton
+// (NRCS 366, 8,790 ft) read 47.7 at the same hour.
+// https://wcc.sc.egov.usda.gov/reportGenerator/view_csv/customSingleStationReport/hourly/766:UT:SNTL
+let mountain_temp_f = 48.7
+
+// Every earthquake of magnitude 1.5 or more within 150 km of the city in the
+// seven days before the reading, from the USGS catalogue, newest first: the
+// magnitude and how many hours before the reading it struck.
+//   M1.9  2026-10-19 16:10 UTC  17 km WSW of Levan         0.66 km deep
+//   M2.23 2026-10-18 11:01 UTC  14 km E of Independence   5.74 km deep
+//   M2.44 2026-10-17 19:30 UTC  1 km ENE of Summit Park   11.82 km deep
+//   M2.03 2026-10-16 05:09 UTC  14 km ESE of Providence   13.22 km deep
+// https://earthquake.usgs.gov/fdsnws/event/1/query?latitude=40.76&longitude=-111.89&maxradiuskm=150&minmagnitude=1.5&starttime=2026-10-14
+let quake_magnitudes = [1.9, 2.23, 2.44, 2.03]
+
+let quake_hours_ago = [8.6, 37.7, 53.3, 91.6]
+
+// Snow water equivalent in inches at the Snowbird SNOTEL station (NRCS 766),
+// the daily value for 2026-10-20. The early-season snow of the 13th to the
+// 17th (up to 1.5 in, 9 in deep) had melted out; the hourly sensor read 0.4
+// at 00:00 UTC, noise near zero.
+// https://wcc.sc.egov.usda.gov/reportGenerator/view_csv/customSingleStationReport/daily/766:UT:SNTL
+let snowpack_in = 0.0
+
+// Aircraft airborne over the valley — latitude 40.3 to 41.2, longitude
+// −112.5 to −111.3 — at 00:48:53 UTC: 23, counted from the adsb.lol feed
+// (29 in the box, 6 of them on the ground). The OpenSky Network answered
+// 503 three times, so this is the one reading not from the source first
+// asked. https://api.adsb.lol/v2/point/40.75/-111.9/60
+let aircraft_airborne = 23
+
+// The Utah Jazz's most recent game before the reading: the 2026–27
+// preseason's last, 2026-10-16 at Phoenix, Jazz 119, Suns 116, a win. The
+// regular season opens at Memphis on the 21st.
+// https://www.espn.com/nba/game/_/gameId/401908948/jazz-suns
+let jazz_points = 119
+
+let opponent_points = 116
+
+// The sun over the city (40.7608 N, 111.8910 W) on 2026-10-21, in minutes
+// after local midnight: sunrise 07:46, solar noon 13:12, sunset 18:38, from
+// the NOAA solar calculator.
+// https://gml.noaa.gov/grad/solcalc/table.php?lat=40.7608&lon=-111.891&year=2026
+let sunrise_minute = 466
+
+let noon_minute = 792
+
+let sunset_minute = 1118
+
+// The reading was taken at 18:48 Mountain Daylight Time: ten minutes after
+// sunset, the sun 2 degrees below the western horizon.
+let reading_minute = 1128

@@ -1456,6 +1456,16 @@ author wrote it. What `Verify` decides is a projection of that expression the
 type carries (tests/micros/mn-predicate-as-written.mn,
 mn-refs-of-predicate-callee.mn).
 
+**A predicate may perform, and the claim is then the install's to decide.**
+`type Hz48 = Float where 0.0 < self && self < nyquist()`, with `nyquist`
+reading the installed `Sample(48000)`, is a bound the clock answers: the
+predicate's row rides the claim, judged where the claim is made under the
+installs that stand there. The medium decides such a claim only where the
+perform's answer is in sight; today it leaves it pending, honest debt the
+board counts (examples/pulse/course/06-rate.mn), and the proof engine's
+reading of an install's answer inside a predicate is §11's verification
+whole.
+
 **The bounds join with `&&` — there is no comparison chaining.** A chained
 `-1.0 <= self <= 1.0` parses left-associatively as `(-1.0 <= self) <= 1.0`
 (one precedence table, no special case), an ill-sorted `Bool <= Float` that
@@ -2871,6 +2881,11 @@ The parser accepts any whitespace; the precedence table alone draws the tree (Go
 - The formatter renders code in canonical 2-space / 4-space form on save.
 - **A render that would lose what the author wrote is not written.** `mentl fmt` lexes its render beside the source and spends every identifier, literal (by value, so `48_000` and `48000` are one) and prose line of the source against the render's; anything left unpaid is a loss, the verb names it with its line, leaves the file untouched, and exits nonzero.
 - **The head of a postfix form keeps its parens.** A call, a field read and an index bind tighter than every operator, so a callee, a receiver or an indexed value that is anything but an atom renders parenthesized: `(r |> keep).level`, `((a, b) => a * b)(2, 3)`, `([1, 2] ++ [3, 4])[2]`. Rendered bare, the re-parse would take the postfix onto the head's last operand under "names conserved", because no name is lost; a render that re-parses to a different tree is not yet refused (`Hβ.fmt.render-must-parse-to-the-same-tree`).
+- **An arm list is its own delimiter.** A recurrence whose body is an arm
+  list renders bare, `{ prev => a * x + (1.0 - a) * prev } <~ delay(1)`, and
+  so does a literal standing as a stage or a branch; the binder form keeps
+  its parens, `((prev) => body) <~ delay(1)`, because its body extends
+  rightward and a bare render would re-parse the verb into it.
 - **A destructuring let renders as the let.** The parse makes `let (a, b) = v` and the rest of its block one arm of a `match`, the same graph a hand-written one-arm `match` makes; the match a let becomes is born remembering it, so `mentl fmt` writes the let back at the block's indent and a written `match` stays a match.
 - **A tuple, a list or a `><` fanout past the width breaks** — one element per line, or §`><`'s vertical layout — as a call's arguments and a record do.
 - The `Format` effect at `src/format.mn` declares one op, `format_program`; `format_default` is the canonical handler.
@@ -3228,7 +3243,7 @@ stage, which the parse builds as the pipe it is (§«`<|` — diverge»).
 
 ## What this document is NOT
 
-- NOT a tutorial. The course is a program the page opens (`docs/MENTL_SPACE.md` §5.5); its text-first lessons are `lib/tutorial/` until Pulse's course replaces them.
+- NOT a tutorial. The course is `examples/pulse/course`: ten programs on one audio chain, each a lesson `mentl run` renders, which the page opens as a project (`docs/MENTL_SPACE.md` §5.5).
 - NOT a reference for library functions. See `lib/` and `mentl doc <module>`.
 - NOT a description of the current parser. The parser implements this; where they disagree, the parser is wrong.
 - NOT an aspirational wishlist. Every form here is required to land in the parser — closing the gap between this spec and the parser is a standing obligation, not a someday (the parser is the lathe turned to SYNTAX.md; where they disagree, the parser is wrong).

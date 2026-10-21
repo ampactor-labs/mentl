@@ -1,0 +1,68 @@
+// 02 · line — sound has memory, and memory is a loop you draw
+//
+// A sawtooth at 220 Hz through a low-pass filter, the left channel dark and
+// the right bright, three seconds long.
+//
+//   mentl run examples/pulse/course/02-line.mn > 02.wav
+//
+// The verb is `<~`: a cycle in the graph. A one-pole low-pass is y[n] =
+// a·x[n] + (1 − a)·y[n−1], and that is exactly what `one_pole` below writes:
+// the body computes this sample from the input and the prior it binds, the
+// output one sample ago, and `delay(1)` is the depth of the memory the cycle
+// reads. The
+// medium allocates the line ONCE, where the closure that owns it is minted,
+// so the stage is `!Alloc` and a tick is a load, a store and an increment.
+// Two filters from one maker are two lines: `rig.dark` and `rig.bright`
+// below each remember their own last output, which is why one sawtooth can
+// come out two colours. The sawtooth is a line too — its phase, wrapping at
+// 1.0 (lib/dsp/osc.mn). Put the caret on the cycle:
+//
+//   mentl examples/pulse/course/02-line.mn:44    the aspects at `<~`: the line, its depth, its owner
+import audio/wav
+
+import dsp/clock
+
+import dsp/feedback
+
+import dsp/osc
+
+import dsp/signal
+
+import io
+
+import rate
+
+fn seconds() with Pure = 3
+
+// The one-pole low-pass, written whole. The cutoff arrives with every
+// sample, so the filter can sweep; α follows it (lib/dsp/feedback.mn's
+// `compute_alpha`). The signal is the stage's last parameter, so
+// `x |> lp(cutoff)` filters x.
+fn one_pole(sr: Int) = {
+  fn stage(cutoff: Hz, x: Float) with !Alloc = {
+    let a = compute_alpha(cutoff, sr)
+    { prev => a * x + (1.0 - a) * prev } <~ delay(1)
+  }
+  stage
+}
+
+// One frame: the sawtooth, then each channel through its own filter.
+fn frame(buf, rig, n: Int) = {
+  let saw = rig.voice(220.0) * 0.4
+  let l = saw |> rig.dark(300.0) |> soft_clip
+  let r = saw |> rig.bright(3000.0) |> soft_clip
+  wav_frame(buf, n, l, r)
+}
+
+// Everything with memory is made here, once, before a sample renders.
+fn build_rig(sr: Int) = {bright: one_pole(sr), dark: one_pole(sr), voice: saw_voice(sr)}
+
+fn main() = {
+  {
+    let frames = frames_of(seconds())
+    let buf = wav_header(wav_alloc(frames), frames, rate())
+    play(frames, frame(buf, build_rig(rate())))
+    print(wav_bytes(buf))
+  } ~> stdout_console ~> sample_at(48000)
+  0
+}

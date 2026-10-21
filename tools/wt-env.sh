@@ -373,7 +373,7 @@ wt_wheel_compile() {
 # stamp's key is a red verify rather than a stale green. It was a hand list in
 # wt_state_key, and it under-included twice: three directories in 2026-08,
 # and tests/lens/negation from its birth until G2.
-WT_VERIFY_FIXTURE_DIRS=(tests/micros tests/lens/negation tests/syntax tests/floors tests/rows)
+WT_VERIFY_FIXTURE_DIRS=(tests/micros tests/lens/negation tests/syntax tests/floors tests/rows examples/pulse/course examples/pulse/render examples/wasatch)
 wt_verify_fixtures() { find "${WT_VERIFY_FIXTURE_DIRS[@]}" -name '*.mn' 2>/dev/null | LC_ALL=C sort; }
 
 wt_state_key() {  # the gate-relevant tree state, hashed. Over-inclusion is a

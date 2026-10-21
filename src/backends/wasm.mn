@@ -4144,15 +4144,35 @@ fn emit_fn_index_globals(names, base_idx) = each(
 //
 // Module VALUE bindings — the declaration half of the edge whose reference
 // half (VarRef → LGlobal → `(global.get $<name>)`) always existed. One
-// mutable global per top-level value let, zero-initialized; $__init_lets
+// mutable global per top-level value let, at the WIDTH of the value it holds
+// — a Float's is f64, so `let level = 1.5` is read back as the double it is
+// (declared i32 for every let, a Float module value read as a word failed
+// to validate: expected f64, found i32) — zero-initialized; $__init_lets
 // writes the real value before main runs.
 fn emit_top_let_globals(value_lets) = value_lets |> each({
-  (name, _) => {
+  (name, init) => {
+    let rw = top_let_width(init)
     wat_emit("  (global $")
     wat_emit(name)
-    wat_emit(" (mut i32) (i32.const 0))\n")
+    wat_emit(" (mut {rw}) ({rw}.const 0))\n")
   },
 })
+
+// The WAT type a module value's global, and its slot in the record a spawned
+// instance reads it from, carry: a word for everything a word holds, the
+// double's own width for a Float. A width with no lane yet is the floor the
+// continuation face states.
+fn top_let_width(init) = {
+  let r = tail_expr_repr(init)
+  match lane_of(r) {
+    NoLane => "i32",
+    LaneAt(_) => repr_wat(r),
+    LaneFloor => {
+      emit_lane_floor()
+      "i32"
+    },
+  }
+}
 
 // ─── The rooted-image persist substrate (§4④: persist = memcpy) ─────
 // Emitted only when the reachable tree performs an image op (Law 7: an
@@ -6579,11 +6599,11 @@ fn emit_start(top_fn_names, value_lets, has_lines, main_params, yield_seen, yiel
   // The module's values, written once where a spawned instance reads them
   // (`$mvals_g`, emit_memory_decl).
   if threaded && len(value_lets) > 0 {
-    wat_emit("    (global.set $mvals_g (call $alloc (i32.const {int_to_str(4 * len(value_lets))})))\n")
+    wat_emit("    (global.set $mvals_g (call $alloc (i32.const {int_to_str(8 * len(value_lets))})))\n")
     each(
       {
         (i, entry) => match entry {
-          (name, _) => wat_emit("    (i32.store offset={int_to_str(4 * i)} (global.get $mvals_g) (global.get ${name}))\n"),
+          (name, init) => wat_emit("    ({top_let_width(init)}.store offset={int_to_str(8 * i)} (global.get $mvals_g) (global.get ${name}))\n"),
         },
       },
       enumerate(value_lets)
@@ -6641,7 +6661,11 @@ fn emit_start(top_fn_names, value_lets, has_lines, main_params, yield_seen, yiel
   // The thread entry exists only in a spawning module (Law 7 — a
   // thread-free module carries no entry, no import, no spawn substrate).
   if threaded {
-    emit_wasi_thread_start(map({ (name, _) => name }, value_lets), has_lines, yield_slots)
+    emit_wasi_thread_start(
+      map({ (name, init) => (name, top_let_width(init)) }, value_lets),
+      has_lines,
+      yield_slots
+    )
   }
 }
 
@@ -6685,7 +6709,9 @@ fn emit_wasi_thread_start(let_names, has_lines, yield_slots) = {
     wat_emit("    (global.set $mvals_g (i32.load offset={int_to_str(task_mvals_offset(yield_slots))} (local.get $start_arg)))\n")
     each(
       {
-        (i, name) => wat_emit("    (global.set ${name} (i32.load offset={int_to_str(4 * i)} (global.get $mvals_g)))\n"),
+        (i, entry) => match entry {
+          (name, rw) => wat_emit("    (global.set ${name} ({rw}.load offset={int_to_str(8 * i)} (global.get $mvals_g)))\n"),
+        },
       },
       enumerate(let_names)
     )
@@ -8350,14 +8376,22 @@ fn call_site_vector(f, args, h) = site_vector(args, call_result_repr(f, h))
 
 fn call_result_repr(f, h) = match lexpr_handle(f) {
   0 => repr_of(lookup_ty(h)),
-  fh => match lookup_ty(fh) {
-    TFun(_, ret, _) => slot_repr(ret),
-    _ => repr_of(lookup_ty(h)),
-  },
+  fh => result_repr_at(fh, h),
 }
 
-// A perform site's vector: its result the op's answer the site proves.
-fn perform_vector_at(h, args) = site_vector(args, repr_of(lookup_ty(h)))
+// The result a site answers, read off the node at `fh`: an arrow's return
+// where that node's type is one, else the site's own proof.
+fn result_repr_at(fh, h) = match lookup_ty(fh) {
+  TFun(_, ret, _) => slot_repr(ret),
+  _ => repr_of(lookup_ty(h)),
+}
+
+// A perform site's vector: its result the op's answer the site proves. The
+// synthesized body of a partial over an op performs through the partial
+// node itself, whose type is the product's arrow, so its answer is that
+// arrow's return — read as the site's own type it was a word, and
+// `map(thread_join)` over Float branches did not assemble.
+fn perform_vector_at(h, args) = site_vector(args, result_repr_at(h, h))
 
 // A closure call (W7): the record parks in $call_<h> — per handle, so a call
 // nested in an argument cannot clobber it — and rides as the callee's

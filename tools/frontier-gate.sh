@@ -657,6 +657,100 @@ run_pulse_render() {
   done
 }
 
+# The course (examples/pulse/course): every lesson the compiler builds is
+# rendered as its own project — the folder's modules beside it, the lesson
+# the entry (run_module) — and its WAV judged by the oracle Pulse's render
+# is judged by, with the lesson's own length and notes. Lesson 8 is accepted
+# first: `accept` at its hole writes the one survivor into the copy, and a
+# tie or a miss fails. A lesson the compiler refuses is the board's
+# (`mentl verify`, the owed bounds), never this gate's expected red, so it
+# is not rendered here. Then the twins, each the course with ONE line
+# changed, so a twin can never drift from the lesson:
+#   alloc  an allocation on lesson 5's per-sample path    → E_EffectMismatch
+#   rate   rate.mn's `now` pinned at 44.1 kHz under play's `!Sample(44100)`
+#                                                         → E_EffectMismatch
+#   range  lesson 7's cutoff a constant past Nyquist      → E_RefinementRejected
+#   teach  `accept` at lesson 7's division writes `notes: Positive`
+run_course() {
+  local compiler="$1" dir="$2" src="$ROOT/examples/pulse/course" spec lesson secs notes pdir rc
+  for spec in "01-tone 3 220" "02-line 3 220" "03-bus 4 220,329.63" "04-rack 4 220,261.63,329.63,440" \
+              "05-silence 4 220,261.63,329.63,440" "06-rate 3 220,277.18,329.63" \
+              "07-bounds 4 220,261.63,329.63,440" "08-hole 3 220,329.63" "09-learn 3 220"; do
+    set -- $spec; lesson=$1; secs=$2; notes=$3
+    pdir="$dir/course-$lesson.proj"
+    rm -rf "$pdir"; mkdir -p "$pdir"; cp "$src"/*.mn "$pdir"/
+    if [ "$lesson" = 08-hole ] && ! wt_run --dir "$pdir::." --dir "$ROOT::/mentl-home" "$compiler" accept 08-hole.mn:50:76 > "$dir/course-08.accept" 2>&1; then
+      fail "course 08-hole: accept at the stage hole (see $dir/course-08.accept)"; continue
+    fi
+    run_module "$compiler" "$pdir" "$lesson" "$dir/course-$lesson.wav" "$dir/course-$lesson.err"; rc=$?
+    if [ "$rc" -ne 0 ] || [ ! -s "$dir/course-$lesson.wav" ]; then
+      fail "course $lesson render (exit=$rc; see $dir/course-$lesson.err)"
+    elif python3 "$ROOT/tests/frontier/pulse-render/oracle.py" "$dir/course-$lesson.wav" --seconds "$secs" --notes "$notes" > "$dir/course-$lesson.oracle" 2>&1; then
+      pass "course $lesson: $secs s rendered, the oracle holds ($(grep -c '^PASS' "$dir/course-$lesson.oracle") checks)"
+    else
+      fail "course $lesson oracle ($(grep '^FAIL' "$dir/course-$lesson.oracle" | head -1); see $dir/course-$lesson.oracle)"
+    fi
+  done
+  local twin file entry pattern replacement class tdir
+  for twin in alloc rate range; do
+    case "$twin" in
+      alloc) file=05-silence.mn; entry=05-silence; pattern='^  let t = time()$'
+             replacement='  let t = time()\n  let label = int_to_str(n)'; class=E_EffectMismatch;;
+      rate)  file=rate.mn; entry=05-silence; pattern='^fn now() with Sample(48000) = current_sample()$'
+             replacement='fn now() with Sample(44100) = current_sample()'; class=E_EffectMismatch;;
+      range) file=07-bounds.mn; entry=07-bounds; pattern='^fn cutoff_at(t: Float) -> Hz = 600.0 + 400.0 \* sin(two_pi() \* 0.5 \* t)$'
+             replacement='fn cutoff_at(t: Float) -> Hz = 30000.0'; class=E_RefinementRejected;;
+    esac
+    tdir="$dir/course-$twin.proj"; rm -rf "$tdir"; mkdir -p "$tdir"; cp "$src"/*.mn "$tdir"/
+    if [ "$(grep -c "$pattern" "$src/$file")" != "1" ]; then
+      fail "course-$twin: the patch no longer applies to $file (pattern: $pattern)"; continue
+    fi
+    sed -i "s/$pattern/$replacement/" "$tdir/$file"
+    wt_run --dir "$tdir::." --dir "$ROOT::/mentl-home" "$compiler" check "$entry" > "$dir/course-$twin.out" 2> "$dir/course-$twin.err"; rc=$?
+    if [ "$rc" -ne 0 ] && grep -q "$class" "$dir/course-$twin.err"; then
+      pass "course-$twin refuses ($class)"
+    else
+      fail "course-$twin: expected $class and a refusal (exit=$rc; see $dir/course-$twin.err)"
+    fi
+  done
+  tdir="$dir/course-teach.proj"; rm -rf "$tdir"; mkdir -p "$tdir"; cp "$src"/*.mn "$tdir"/
+  if wt_run --dir "$tdir::." --dir "$ROOT::/mentl-home" "$compiler" accept 07-bounds.mn:48:1 > "$dir/course-teach.out" 2>&1 \
+     && grep -q '^fn frames_per(notes: Positive)' "$tdir/07-bounds.mn"; then
+    pass "course-teach: accept at lesson 7's division writes notes: Positive"
+  else
+    fail "course-teach: the accepted declaration reads '$(grep '^fn frames_per' "$tdir/07-bounds.mn")' (see $dir/course-teach.out)"
+  fi
+}
+
+# Wasatch "Inversion" (examples/wasatch): the score renders from its readings
+# module and the oracle hears the lake's pitch under everything else; its
+# twin fetches one parameter on the per-sample path and refuses
+# (E_EffectMismatch: the path is `!Network`).
+run_wasatch() {
+  local compiler="$1" dir="$2" src="$ROOT/examples/wasatch" pdir="$dir/wasatch.proj" rc
+  rm -rf "$pdir"; mkdir -p "$pdir"; cp "$src"/*.mn "$pdir"/
+  run_module "$compiler" "$pdir" inversion "$dir/wasatch.wav" "$dir/wasatch.err"; rc=$?
+  if [ "$rc" -ne 0 ] || [ ! -s "$dir/wasatch.wav" ]; then
+    fail "wasatch render (exit=$rc; see $dir/wasatch.err)"
+  elif python3 "$ROOT/tests/frontier/pulse-render/oracle.py" "$dir/wasatch.wav" --seconds 16 --notes 76.27 > "$dir/wasatch.oracle" 2>&1; then
+    pass "wasatch: sixteen seconds rendered, the lake's pitch stands ($(grep -c '^PASS' "$dir/wasatch.oracle") checks)"
+  else
+    fail "wasatch oracle ($(grep '^FAIL' "$dir/wasatch.oracle" | head -1); see $dir/wasatch.oracle)"
+  fi
+  local tdir="$dir/wasatch-network.proj" pattern='^  let lake = drone_hz(lake_elevation_ft)$'
+  rm -rf "$tdir"; mkdir -p "$tdir"; cp "$src"/*.mn "$tdir"/
+  if [ "$(grep -c "$pattern" "$src/inversion.mn")" != "1" ]; then
+    fail "wasatch-network: the patch no longer applies to inversion.mn"; return
+  fi
+  sed -i "s/$pattern/  let lake = drone_hz(lake_elevation_ft)\n  let _ = fetch_param(\"lake\")/" "$tdir/inversion.mn"
+  wt_run --dir "$tdir::." --dir "$ROOT::/mentl-home" "$compiler" check inversion > "$dir/wasatch-network.out" 2> "$dir/wasatch-network.err"; rc=$?
+  if [ "$rc" -ne 0 ] && grep -q E_EffectMismatch "$dir/wasatch-network.err"; then
+    pass "wasatch-network refuses (E_EffectMismatch: the per-sample path cannot reach the network)"
+  else
+    fail "wasatch-network: expected E_EffectMismatch and a refusal (exit=$rc; see $dir/wasatch-network.err)"
+  fi
+}
+
 # A program that links library modules by import runs as a project — the
 # compile resolves its imports the way a developer's program does, where a
 # battery fixture is compiled over the runtime floor alone — and answers
@@ -2020,6 +2114,11 @@ for i in "${!compilers[@]}"; do
   # Pulse scene 1: the flagship renders, the oracle judges the file, and its
   # three one-line twins refuse (run_pulse_render's own header).
   run_pulse_render "$compiler" "$dir"
+  # The course beside it: every lesson the compiler builds rendered and
+  # judged, lesson 8 accepted first, the course's twins refusing (run_course's
+  # own header); then Wasatch's score and its network twin (run_wasatch).
+  run_course "$compiler" "$dir"
+  run_wasatch "$compiler" "$dir"
   # The JSON serializer's string escape over the shapes that defeated it — a
   # one-byte string serialized as a NUL, a quote as two, a control byte with
   # no short spelling crossed raw. RED on boot 2198ed97: exit 1.
@@ -4721,9 +4820,10 @@ for i in "${!compilers[@]}"; do
   # may only FALL — Hβ.driver.link-is-reachability is what lowers it.
   # A RISE means the medium started processing more source to answer the
   # same trivial question; the landing that causes one pays it down in the
-  # modules a bare program links. The ceiling is the measured floor, so a
-  # landing that lowers the floor lowers the ceiling with it.
-  cost_ceiling=2671
+  # modules a bare program links. The ceiling is the measured floor, held as
+  # `prelude_floor_lines_max` in tools/verify-baseline.txt where the obey
+  # gate refuses a raise, so a landing that lowers the floor lowers it too.
+  cost_ceiling=$(grep -E '^prelude_floor_lines_max:' "$ROOT/tools/verify-baseline.txt" | head -1 | cut -d: -f2 | tr -d ' ')
   ct_out=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" query "$ROOT/tests/frontier/mn-bare-floor.mn" "cost" 2>/dev/null)
   ct_lines=$(printf '%s' "$ct_out" | grep -o '[0-9]* source line' | grep -o '[0-9]*' | head -1)
   if [ -n "$ct_lines" ] && [ "$ct_lines" -le "$cost_ceiling" ]; then

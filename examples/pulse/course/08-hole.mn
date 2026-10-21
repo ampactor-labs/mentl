@@ -1,0 +1,64 @@
+// 08 · hole — ask the medium what goes here
+//
+// Two notes, three seconds, and one stage of the chain left open: `??`.
+//
+//   mentl examples/pulse/course/08-hole.mn:50:76     Propose: brighten — the one survivor
+//   mentl accept examples/pulse/course/08-hole.mn:50:76
+//   mentl run examples/pulse/course/08-hole.mn > 08.wav
+//
+// A hole is a typed CONSTRAINT, not a gap in the text. The pipe asks for a
+// stage from Float to Float, so the cursor takes every candidate the
+// module's own vocabulary offers, judges each in a version of the graph —
+// infer, verify, restore — and keeps only what proves. Here one survives,
+// `brighten`, and the accept verb writes it where the hole stood: the edge
+// is drawn first, the text is its projection, and the Why at the stage walks
+// back to the proposal. Until the hole is filled the file does not run — an
+// executable with a hole refuses by law, E_UnresolvedHole at the hole —
+// while `mentl check` judges it clean, since a hole is productive. Declare a second stage
+// of the same type, `fn darken(x: Float) -> Float`, and the fan holds two
+// survivors: a tie in meaning is a question, and the medium asks which
+// behaviour is meant rather than guess (PLAN §5). The frontier gate accepts
+// this lesson's survivor into a scratch copy and renders it, so the
+// proposal is a contract the board keeps.
+import audio/wav
+
+import dsp/clock
+
+import dsp/envelope
+
+import dsp/osc
+
+import dsp/signal
+
+import io
+
+import rate
+
+fn seconds() with Pure = 3
+
+// The score: A3 then E4, a second and a half each.
+fn note_hz(k: Int) -> Hz = if k == 0 { 220.0 } else { 329.63 }
+
+// A soft brightening: the signal plus a little of its cube, which adds the
+// third harmonic without moving the peak much.
+fn brighten(x: Float) -> Float with Pure = x + 0.3 * x * x * x
+
+fn frame(buf, rig, n: Int) with !Alloc = {
+  let t = time()
+  let k = float_to_int(t / 1.5)
+  let tn = t - 1.5 * float_of_int(k)
+  let lead = rig.voice(note_hz(k)) * adsr(0.01, 0.3, 0.6, 0.4, 1.5, tn) |> ?? |> soft_clip
+  wav_frame(buf, n, lead, lead)
+}
+
+fn build_rig(sr: Int) = {voice: sine_voice(sr)}
+
+fn main() = {
+  {
+    let frames = frames_of(seconds())
+    let buf = wav_header(wav_alloc(frames), frames, rate())
+    play(frames, frame(buf, build_rig(rate())))
+    print(wav_bytes(buf))
+  } ~> stdout_console ~> sample_at(48000)
+  0
+}

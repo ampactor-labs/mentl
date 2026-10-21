@@ -25,10 +25,15 @@ Mentl closes the gap between what a person means and what they are forced to
 write (PLAN §0). A landing is done when a person at the keyboard can see it: a
 `mentl` verb on a user program shows the property it advances — proof beats
 review, the negative is provable, intent is lossless, computation is durable,
-systems explain themselves. The commit message names the property, the verb
-that shows it, the measurement that was RED before, and the pin. A change no
-person can feel at the keyboard is either infrastructure a named PLAN §11
-landing stands on, or it is not done.
+systems explain themselves. The user program is a course lesson
+(`examples/pulse/course`, ten programs on one audio chain) or one of the two
+scores (`examples/pulse/render`, `examples/wasatch`) wherever one can show the
+property: `mentl verify` counts the lessons the medium cannot yet judge clean
+(the `QOwed` bounds, `src/board.mn`), and a landing that turns one green
+lowers that ceiling and names the lesson in its commit. The commit message
+names the property, the verb that shows it, the measurement that was RED
+before, and the pin. A change no person can feel at the keyboard is either
+infrastructure a named PLAN §11 landing stands on, or it is not done.
 
 ## What the hooks refuse — the exact rules
 
@@ -182,6 +187,10 @@ ceilings only fall.
 - **A gate is obeyed, never satisfied.** When a gate goes red, the work is what
   it measures. Deleting the symptom where its cause is fixable is the same
   move as raising the ceiling.
+- **A ceiling above zero is a landing's RED, never a resting place.** An
+  expected-red entry, a silencer, a diagnostic class named and unborn, and a
+  landing named outside PLAN §11 are the same thing in four spellings; each
+  is attached to the landing that zeroes it.
 - **The artifact is the refuter.** Measure before asserting a cause; when the
   cause is unmeasured, build the instrument.
 

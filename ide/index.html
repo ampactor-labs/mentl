@@ -809,7 +809,7 @@ function writeBuffer(text){
    under its own path and the address targets it. A draft is kept per file
    in this browser until the files are the project's own (the File System
    Access API, where a host has it). ───────────────────────────────────── */
-const programName = path => path.replace(/^lib\/tutorial\//, "").replace(/\.mn$/, "").replace(/^(\d\d)-/, "$1 · ");
+const programName = path => path.replace(/^.*\//, "").replace(/\.mn$/, "").replace(/^(\d\d)-/, "$1 · ");
 const ENTRIES = [];   // what the select offers: { key, label, dir, path, file }
 const VFS_TEXT = {};
 const draftKey = path => "mentl-space-draft:" + path;
@@ -912,7 +912,7 @@ async function boot(){
     for (const p of PROGRAMS) offer({ key: p, label: programName(p), dir: null, path: p, file: "main.mn" }, sel);
     for (const pr of PROJECTS){
       const g = document.createElement("optgroup"); g.label = pr.dir;
-      for (const m of pr.members) offer({ key: m, label: m.slice(pr.dir.length + 1), dir: pr.dir, path: m, file: m.slice(pr.dir.length + 1) }, g);
+      for (const m of pr.members) offer({ key: m, label: programName(m), dir: pr.dir, path: m, file: m.slice(pr.dir.length + 1) }, g);
       sel.appendChild(g);
     }
     offer({ key: "scratch", label: "scratch", dir: null, path: "scratch", file: "main.mn" }, sel);

@@ -248,6 +248,11 @@ type Question
   // developer's eye, re-parsed and rendered again: a head that does not
   // come back as itself is a render that does not say what was written
   | QHeads
+  // "owed DIR" — the programs under DIR the medium cannot yet judge clean,
+  // one site per owed program: its first error's, else its first open
+  // claim's; a program that never joins the weave is owed at its first line.
+  // The course and the score are measured by it (src/board.mn).
+  | QOwed(String)
   // "QUESTION in MODULE" — a site facet's answer kept to one module's sites:
   // the link answers every module it judged, and a developer asking about the
   // module they are writing reads that module's sites alone
@@ -316,6 +321,8 @@ type QueryResult
   | QRCost(Int, Int, Int)
   // (module, span) of each cell minted and never judged
   | QRGhosts([(String, Span)])
+  // (module, span) of each program under a directory the medium owes
+  | QROwed([(String, Span)])
   // the derived badges (plain lines) + the fanout sites
   | QRWhere([String], [WhereSite])
   | QRError(String)
@@ -442,6 +449,7 @@ fn query_answer(q) = match q {
   QOrphanClaims => QROrphanClaims(orphan_claim_report(module_cells())),
   QCost => QRCost(len(module_cells()), weave_line_extent(), graph_next()),
   QGhosts => QRGhosts(ghost_sites()),
+  QOwed(dir) => QROwed(owed_programs(dir)),
   QHeads => QRWhere(head_round_trip(), []),
   QIn(inner, m) => query_answer(inner) |> sites_in(m),
   QUnknown(raw) => QRError("unknown query: {raw}"),
@@ -469,12 +477,13 @@ fn sites_in(m, answer) = match answer {
   QRRefs(sites) => QRRefs(filter(noted_in_module(m, ??), sites)),
   QRCensus(label, sites) => QRCensus(label, filter(noted_in_module(m, ??), sites)),
   QRGhosts(sites) => QRGhosts(filter(site_in_module(m, ??), sites)),
+  QROwed(sites) => QROwed(filter(site_in_module(m, ??), sites)),
   QRDecls(named) => QRDecls(filter(named_in_module(m, ??), named)),
   QRVerifyDebt(debt) => QRVerifyDebt(filter(obligation_in_module(m, ??), debt)),
   QRSmt(debt) => QRSmt(filter(obligation_in_module(m, ??), debt)),
   QRReports(entries) => QRReports(filter(report_in_module(m, ??), entries)),
   QRError(msg) => QRError(msg),
-  unscoped => QRError("`in` keeps a site facet's sites: refs of, reads of, census, text, prose, ghosts, decls, verification, smt, reports"),
+  unscoped => QRError("`in` keeps a site facet's sites: refs of, reads of, census, text, prose, ghosts, owed, decls, verification, smt, reports"),
 }
 
 // A banked report the register prints under the scope in force.
@@ -1377,6 +1386,7 @@ fn census_named(arg: String, shape) = census_name(shape) == arg
 fn noted_answer(r) = match r {
   QRCensus(label, sites) => Some((label, sites)),
   QRGhosts(sites) => Some(("cell(s) minted and never judged", map(unnoted, sites))),
+  QROwed(sites) => Some(("program(s) the medium owes", map(unnoted, sites))),
   QRVerifyDebt(obligations) => Some(("open obligation(s)", obligations |> map(debt_site) |> map(unnoted))),
   QRSmt(obligations) => Some(("open obligation(s)", obligations |> map(debt_site) |> map(unnoted))),
   QRDecls(names) => Some(("declared name(s)", names |> map(name_site) |> map(unnoted))),

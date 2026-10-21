@@ -1,0 +1,81 @@
+// 07 · bounds — the signal carries its bounds as types
+//
+// Four notes under a filter that opens and closes, four seconds long.
+//
+//   mentl run examples/pulse/course/07-bounds.mn > 07.wav
+//
+// A `Sample` is a Float the unit range bounds, an `Hz` a frequency below the
+// Nyquist ceiling, a `Positive` an integer above zero (lib/dsp/signal.mn,
+// lib/dsp/cfc.mn): refinement types, each a predicate over the value. A
+// constant that breaks one refuses at the line that wrote it — make
+// `cutoff_at` below answer the constant 30000.0 and the program does not
+// build: E_RefinementRejected at the constant. A computed value is a CLAIM:
+// `cutoff_at` answers `Hz`, and the medium decides it from what it knows of
+// the sine's range, or leaves it pending and says so at every compile. A
+// value a stage is handed through the rig's record is a claim the same way:
+// `rig.tone(30000.0)` is owed at the filter's parameter, not yet refused,
+// since the verifier reads no demand through a function-typed field. Honest
+// debt, never a silent assumption: `mentl verify` counts this lesson owed.
+//
+// The gradient PROPOSES the annotation that discharges a claim. `frames_per`
+// divides by its parameter, so its row carries `Trap` until the divisor is
+// bounded. Put the caret on its declaration and the Teach facet names the
+// refinement in reach that discharges it, and the accept verb writes it:
+//
+//   mentl examples/pulse/course/07-bounds.mn:48         Teach: add `notes: Positive`
+//   mentl accept examples/pulse/course/07-bounds.mn:48:1
+import audio/wav
+
+import dsp/clock
+
+import dsp/envelope
+
+import dsp/feedback
+
+import dsp/osc
+
+import dsp/signal
+
+import io
+
+import math
+
+import rate
+
+fn seconds() with Pure = 4
+
+// How many frames one note lasts, for a score of `notes` notes.
+fn frames_per(notes) = frames_of(seconds()) / notes
+
+// The lead's filter opens and closes between 200 Hz and 1 kHz twice a second.
+// The result is claimed `Hz` here, where the value is made, so the filter
+// receives a frequency the type bounds.
+fn cutoff_at(t: Float) -> Hz = 600.0 + 400.0 * sin(two_pi() * 0.5 * t)
+
+fn note_hz(k: Int) -> Hz = match k {
+  0 => 220.0,
+  1 => 261.63,
+  2 => 329.63,
+  _ => 440.0,
+}
+
+fn frame(buf, rig, per_note: Int, n: Int) with !Alloc = {
+  let t = time()
+  let k = n / per_note
+  let tn = float_of_int(n - k * per_note) / float_of_int(rate())
+  let lead = rig.lead(note_hz(k)) * adsr(0.01, 0.2, 0.6, 0.3, 1.0, tn) |> rig.tone(cutoff_at(t))
+  let s = 0.6 * lead |> soft_clip
+  wav_frame(buf, n, s, s)
+}
+
+fn build_rig(sr: Int) = {lead: saw_voice(sr), tone: lowpass_filter(sr)}
+
+fn main() = {
+  {
+    let frames = frames_of(seconds())
+    let buf = wav_header(wav_alloc(frames), frames, rate())
+    play(frames, frame(buf, build_rig(rate()), frames_per(4)))
+    print(wav_bytes(buf))
+  } ~> stdout_console ~> sample_at(48000)
+  0
+}

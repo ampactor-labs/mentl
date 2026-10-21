@@ -1,0 +1,86 @@
+// 04 · rack — an effect is an effect
+//
+// Four notes through a distortion and a limiter, four seconds long.
+//
+//   mentl run examples/pulse/course/04-rack.mn > 04.wav
+//
+// The verb is `~>`: it installs a HANDLER over everything to its left, and
+// a handler is what an audio engineer calls an effect. The frame asks
+// `distort(v, 2.5)` and `tame(s)` — bare calls, two ops of two effects — and
+// says nothing about how either is answered. The root answers: `rack` is a
+// named chain of two handlers (SYNTAX §«Handler chains»), the library's
+// spectral-flux distortion, whose transfer function follows the signal's
+// transients, and the limiter written below, whose state is the envelope it
+// tracks. Swap `spectral_flux_distort` for `warm_distort` at the chain and
+// the frame does not change. Ask the medium where the effect enters the
+// frame, and what the rack absorbs:
+//
+//   mentl why examples/pulse/course/04-rack.mn frame Distort
+//   mentl where examples/pulse/course/04-rack.mn rack
+import audio/wav
+
+import dsp/clock
+
+import dsp/envelope
+
+import dsp/osc
+
+import dsp/signal
+
+import dsp/spectral
+
+import io
+
+import rate
+
+fn seconds() with Pure = 4
+
+// The score: A3, C4, E4, A4 — one a second.
+fn note_hz(k: Int) -> Hz = match k {
+  0 => 220.0,
+  1 => 261.63,
+  2 => 329.63,
+  _ => 440.0,
+}
+
+// The limiter as an effect: `tame` hands a sample in and gets it back held
+// under a ceiling.
+effect Level {
+  tame(x: Float) -> Float
+}
+
+// A peak limiter: the envelope rises fast and falls slowly, and the gain
+// that holds it at the ceiling is applied to the sample. The envelope is
+// the handler's STATE, written by every resume — one record per install.
+handler limiter_at(ceiling: Float) with env = 0.0 {
+  tame(x) => {
+    let level = abs(x)
+    let e = if level > env { env + 0.5 * (level - env) } else { env + 0.002 * (level - env) }
+    resume(if e > ceiling { x * ceiling / e } else { x }) with env = e
+  },
+}
+
+// The rack: the distortion, then the limiter over it. An install of the
+// name is the installs of its members, innermost first.
+handler rack = spectral_flux_distort ~> limiter_at(0.6)
+
+fn frame(buf, rig, n: Int) = {
+  let t = time()
+  let k = float_to_int(t)
+  let tn = t - float_of_int(k)
+  let v = rig.voice(note_hz(k)) * adsr(0.01, 0.2, 0.6, 0.3, 1.0, tn)
+  let s = distort(v, 2.5) |> tame |> soft_clip
+  wav_frame(buf, n, s, s)
+}
+
+fn build_rig(sr: Int) = {voice: saw_voice(sr)}
+
+fn main() = {
+  {
+    let frames = frames_of(seconds())
+    let buf = wav_header(wav_alloc(frames), frames, rate())
+    play(frames, frame(buf, build_rig(rate())))
+    print(wav_bytes(buf))
+  } ~> stdout_console ~> rack ~> sample_at(48000)
+  0
+}

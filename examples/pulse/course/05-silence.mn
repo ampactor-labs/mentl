@@ -1,0 +1,81 @@
+// 05 · silence — the per-sample path cannot allocate
+//
+// A lead, a bass and a hi-hat, four seconds long, and one oath over the
+// whole frame.
+//
+//   mentl run examples/pulse/course/05-silence.mn > 05.wav
+//
+// `!Alloc` on `frame` is a NEGATION in the effect row: everything that runs
+// once per sample — the oscillators, the noise, the filters, the envelopes,
+// the PCM writes into a buffer sized before the first frame — cannot
+// allocate, and the medium proves it transitively, through every call.
+// Read it as "cannot", not "does not" and not "was tested and didn't": add
+// one allocation anywhere beneath that signature and the program does not
+// build. The course's render loop carries the same oath for every lesson
+// (`play`, rate.mn): a negation on a function that calls a callback is a
+// gate on the callback's row, so a frame that allocates is refused at the
+// call, and the refusal names the declaration. In every other language this
+// is the dropout you hear on stage; here it is a wall the medium draws
+// before the call is finished.
+//
+//   mentl why examples/pulse/course/05-silence.mn frame Alloc    the oath, and nothing enters
+import audio/wav
+
+import dsp/clock
+
+import dsp/envelope
+
+import dsp/feedback
+
+import dsp/osc
+
+import dsp/signal
+
+import io
+
+import rate
+
+fn seconds() with Pure = 4
+
+// The score: a lead that rises, a bass under every second note.
+fn note_hz(k: Int) -> Hz = match k {
+  0 => 220.0,
+  1 => 261.63,
+  2 => 329.63,
+  _ => 440.0,
+}
+
+fn bass_hz(k: Int) -> Hz = if k < 2 { 55.0 } else { 65.41 }
+
+fn frame(buf, rig, n: Int) with !Alloc = {
+  let t = time()
+  let k = float_to_int(t)
+  let tn = t - float_of_int(k)
+  let eighth = float_to_int(t * 4.0)
+  let te = t - float_of_int(eighth) / 4.0
+  let lead = rig.lead(note_hz(k)) * adsr(0.01, 0.2, 0.6, 0.3, 1.0, tn) |> rig.tone(1200.0)
+  let bass = rig.bass(bass_hz(k)) * adsr(0.005, 0.25, 0.5, 0.1, 1.0, tn)
+  let hat = rig.hiss() * fade(0.035, te) |> rig.hat_tone(7000.0)
+  let s = 0.5 * lead + 0.4 * bass + 0.15 * hat |> soft_clip
+  wav_frame(buf, n, s, s)
+}
+
+// Every stateful stage, built once: the record is the instrument, the loop
+// plays it.
+fn build_rig(sr: Int) = {
+  bass: square_voice(sr),
+  hat_tone: highpass_filter(sr),
+  hiss: noise_source(),
+  lead: saw_voice(sr),
+  tone: lowpass_filter(sr),
+}
+
+fn main() = {
+  {
+    let frames = frames_of(seconds())
+    let buf = wav_header(wav_alloc(frames), frames, rate())
+    play(frames, frame(buf, build_rig(rate())))
+    print(wav_bytes(buf))
+  } ~> stdout_console ~> sample_at(48000)
+  0
+}

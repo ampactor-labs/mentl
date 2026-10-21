@@ -1345,14 +1345,19 @@ fn infer_program_once(stmts, parse_start, parse_end) = {
 } ~> row_gate ~> store_ages ~> infer_ctx ~> fresh_for_inference
 
 // Reports said to no one: the discovery parse's import read (the weave
-// parse reports every lex diagnostic again, placeably) and the gradient's
+// parse reports every lex diagnostic again, placeably), the gradient's
 // dry claims (a proposal judged on a scratch ledger, its refutation the
-// answer and never a report). The counts answer zero, because nothing
-// here judges the program.
-handler diag_quiet {
+// answer and never a report) and a program judged for the board's owed
+// question, whose reports are banked for the reader that asked. The counts
+// answer zero, because nothing here judges the program; the scope is kept
+// as the driver sets it, so a reader under this register still knows whose
+// layer the program is.
+handler diag_quiet with scope = ScopeNone {
   diag_report(_d, _msg, _dmod, _dlayer) => resume(),
   diag_errors() => resume(0),
   diag_narrations() => resume(0),
+  diag_scope(sc) => resume() with scope = sc,
+  diag_scope_of() => resume(scope),
 }
 
 // diag_branch — a fork's collector: each report held as the fact it carried

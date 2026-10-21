@@ -14,16 +14,10 @@ The compiler is one WebAssembly module, `boot/mentl.wasm`, and it imports WASI p
 git clone https://github.com/ampactor-labs/mentl.git && cd mentl
 bash tools/wasmtime-get.sh  # the pinned engine, into .build/wasmtime (or put a wasmtime 36 on your PATH)
 bash tools/install.sh       # writes ~/.local/bin/mentl, a live pointer to boot/mentl.wasm through that engine
-mentl run lib/tutorial/00-hello.mn
+mentl run examples/pulse/course/01-tone.mn > 01.wav
 ```
 
-The last command compiles the first lesson, proves its claims and runs it. It prints three lines:
-
-```
-Hello, kernel. The medium is reading you back.
-Hello, oracle. The medium is reading you back.
-Hello, octopus. The medium is reading you back.
-```
+The last command compiles the course's first lesson, proves its claims and renders it: three seconds of a sine at 220 Hz, 48 kHz stereo, as a WAV on standard output. The course is ten such programs on one growing audio chain (`examples/pulse/course`), each lesson a verb or a proof a developer hears, and `mentl examples/pulse/course/01-tone.mn:38` puts the caret on the chain and answers what is true there.
 
 `mentl new hello` writes a one-file project `hello.mn` in the current directory and `mentl run hello` runs it; the file's imports are its manifest. A bare `mentl` at a terminal lists the `.mn` files in the directory and the verbs that apply to each. The shim is a pointer into the checkout, so after a re-pin of `boot/mentl.wasm` the installed command is the new compiler with no further step.
 
@@ -80,7 +74,7 @@ Self-hosting means the compiler is written in the language it compiles, and the 
 
 Two decisions shaped the design. The graph has one writer so that no tool can hold a second copy of a fact that could drift from the first, and every tool answers by reading it. The effect row carries negation as a first-class claim, because "this never reaches the network" is something people mean and no mainstream language lets them say, and a claim the compiler can refuse against is what makes it checkable.
 
-The language reference is [docs/SYNTAX.md](docs/SYNTAX.md); `PLAN.md` holds the thesis, the design decisions, the audit of what the code has not reached (§7) and the one ordered list of open work (§11); `CLAUDE.md` is the working method for changing the compiler. The ten lessons in `lib/tutorial/` are written to be read first and run second, [lib/dsp/README.md](lib/dsp/README.md) shows the feedback verb `<~` on audio, and [ide/README.md](ide/README.md) describes the browser IDE.
+The language reference is [docs/SYNTAX.md](docs/SYNTAX.md); `PLAN.md` holds the thesis, the design decisions, the audit of what the code has not reached (§7) and the one ordered list of open work (§11); `CLAUDE.md` is the working method for changing the compiler. The course in `examples/pulse/course` is written to be read first and heard second — ten lessons on one chain, each a program `mentl run` renders — beside Pulse (`examples/pulse/render`) and Wasatch "Inversion" (`examples/wasatch`), the two scores it grows into; [lib/dsp/README.md](lib/dsp/README.md) shows the feedback verb `<~` on audio, and [ide/README.md](ide/README.md) describes the browser IDE.
 
 ## Testing
 
@@ -127,7 +121,7 @@ The verifier is sound for the claims it decides and incomplete: a claim it canno
 
 ## Roadmap
 
-The order is PLAN.md §11, one list, the frontier first: the fused oracle (the compiler's own speculation forked on threads over one graph, a fork an instance of the graph handler the join merges below it or drops), the crown made modal (an effect in a row indexed by the install that answers it, so `!E` is sound under polymorphism at every altitude — PLAN.md §4③), verification whole (the verifier deciding a predicate's expression and reading the path's guards, the open debt falling), and `!Outside` closing last (lowering as a column on the program's own handles, the native backend, diverse double compilation). Behind it the standing cursor: a module as a scope, so a library's names never collide with a user's; the course — ten lessons on one audio chain that the page opens as a project — beside the Severance Map, which bands each module by the capabilities proven absent; and Wasatch "Inversion", a generative score of Salt Lake's live data, provably unable to reach the network from its per-sample path.
+The order is PLAN.md §11, one list, the frontier first: the fused oracle (the compiler's own speculation forked on threads over one graph, a fork an instance of the graph handler the join merges below it or drops), the crown made modal (an effect in a row indexed by the install that answers it, so `!E` is sound under polymorphism at every altitude — PLAN.md §4③), verification whole (the verifier deciding a predicate's expression and reading the path's guards, the open debt falling), and `!Outside` closing last (lowering as a column on the program's own handles, the native backend, diverse double compilation). Behind it the standing cursor: a module as a scope, so a library's names never collide with a user's; the lessons the medium still owes — `mentl verify` counts the course programs it cannot yet judge clean, and each falls with the landing it names — beside the Severance Map, which bands each module by the capabilities proven absent; and Wasatch "Inversion"'s live sources and the page that plays it, the score itself rendering today from a snapshot of Salt Lake's readings, provably unable to reach the network from its per-sample path.
 
 ## License
 

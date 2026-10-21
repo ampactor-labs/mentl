@@ -330,61 +330,6 @@ fn march_entry() = if fs_exists("src/main.mn") {
   None
 }
 
-// How deep a walk reads: the directory's own entries, or its whole tree.
-type Reach = Level | Tree
-
-// THE ONE HOME for "the .mn files under a directory" — fmt's project, the
-// march's wheel, the battery's fixtures and a query over a directory of
-// programs all read it. Paths come back as the root joined to each entry
-// ("." joins as nothing, so the project's paths are the ones a developer
-// types), each directory's entries in byte order, so the walk is the flat
-// sort of the paths. A dot-named entry is never visited: the self and parent
-// links (a walk that descends them loops "src/./." forever — measured:
-// 3,000-byte paths, +2 per level, until the alloc ceiling), `.build`'s
-// artifacts and `.git`'s objects alike. A root that is not a directory
-// answers no files.
-fn mn_files(root, reach) = match fs_list_dir(root) {
-  None => [],
-  Some(names) => mn_walk(root, reach, sort(names), 0, make_list(0)),
-}
-
-// A walked path's own name without its `.mn` — the stem a fixture's
-// verdict line and its artifact are filed under.
-fn path_stem(path: String) = {
-  let leaf = str_slice(path, after_last_slash(path, 0, 0), byte_len(path))
-  if ends_with(leaf, ".mn") { str_slice(leaf, 0, byte_len(leaf) - 3) } else { leaf }
-}
-
-fn after_last_slash(path: String, i, at) = if i >= byte_len(path) {
-  at
-} else if byte_at(path, i) == 47 {
-  after_last_slash(path, i + 1, i + 1)
-} else {
-  after_last_slash(path, i + 1, at)
-}
-
-fn mn_walk(dir, reach, names, i, acc) = if i >= len(names) {
-  acc
-} else {
-  let name = names[i]
-  if starts_with(name, ".") {
-    mn_walk(dir, reach, names, i + 1, acc)
-  } else {
-    let path = if dir == "." { name } else { "{dir}/{name}" }
-    match fs_list_dir(path) {
-      Some(sub) => match reach {
-        Tree => mn_walk(dir, reach, names, i + 1, mn_walk(path, reach, sort(sub), 0, acc)),
-        Level => mn_walk(dir, reach, names, i + 1, acc),
-      },
-      None => if ends_with(name, ".mn") {
-        mn_walk(dir, reach, names, i + 1, push(acc, path))
-      } else {
-        mn_walk(dir, reach, names, i + 1, acc)
-      },
-    }
-  }
-}
-
 fn count_newlines(s) = count_newlines_from(s, 0, byte_len(s), 0)
 
 fn count_newlines_from(s, i, n, acc) = if i >= n {
@@ -2280,7 +2225,7 @@ fn verify_run(target_opt) = {
 // eight refuted `own` markers the entry-scoped check hid can never return
 // unseen.
 fn verify_board(entry_module: String) = {
-  let board = board_read() ~> query_default
+  let board = board_read() ~> query_context
   let narrated = diag_narrations()
   print_string("verify: the medium's verdict on {entry_module}\n")
   each(print_board_line, board)
@@ -2342,7 +2287,7 @@ fn teach_run(target_opt) = {
   // chain was the eighth found missing the analysis handlers, by design
   // pass not by trap; query_default's env_lookup / env_snapshot resolve
   // into the bracket's env).
-  teach(entry_module) ~> stdout_console ~> query_default ~> wasi_filesystem ~> infer_context
+  teach(entry_module) ~> stdout_console ~> query_context ~> wasi_filesystem ~> infer_context
   0
 }
 
@@ -2358,7 +2303,7 @@ fn teach_run(target_opt) = {
 fn repl_run() = {
   // The line-eval runs infer; the core installs as the one bracket (the
   // driverless-zero-state class the bounds trap unmasked lives in its law).
-  repl_eval_line(read_stdin_line()) ~> stdout_console ~> query_default ~> wasi_filesystem ~> infer_context
+  repl_eval_line(read_stdin_line()) ~> stdout_console ~> query_context ~> wasi_filesystem ~> infer_context
   0
 }
 
@@ -2391,8 +2336,8 @@ fn repl_eval_line(line) = if byte_len(line) == 0 {
 // repo file made the CLI depend on an artifact outside itself: from any
 // directory but the repo, fs_read_file found nothing, returned "" (its
 // own surrender-fallback) and `new` wrote a ZERO-BYTE file while printing
-// "scaffolded ... from lib/tutorial/00-hello.mn" — a claim about the
-// world that was false.
+// that it had scaffolded the file from the first lesson — a claim about
+// the world that was false.
 //
 // So `new` states nothing it did not read. It never claims "wrote
 // hello.mn"; it re-projects the directory and lets the file speak for

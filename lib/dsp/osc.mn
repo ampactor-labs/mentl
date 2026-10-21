@@ -1,0 +1,66 @@
+// osc.mn — oscillators: a phase is a loop in the graph
+//
+// An oscillator remembers where it is in its cycle, and that memory is one
+// `<~` line: the phase advances by its step every tick and wraps at 1.0, and
+// the prior the body binds is the phase the line handed back one sample
+// ago. Each maker below
+// mints a closure that OWNS its line (SYNTAX §«`<~` — feedback»), so every
+// voice minted from one maker runs its own phase: two `saw_voice(sr)` are two
+// oscillators, never one oscillator called twice. The rate is the maker's
+// configuration, as it is a filter's (lib/dsp/feedback.mn), and the
+// frequency arrives per sample, so a voice follows a score and a vibrato.
+// Every stage is declared `!Alloc` and the medium proves it: the line was
+// allocated when the voice was minted, and a tick is a load, a store and an
+// increment.
+import math
+
+fn wrap_phase(p: Float) -> Float with Pure = if p >= 1.0 { p - 1.0 } else { p }
+
+// How far the phase moves in one sample at `freq` cycles a second.
+fn phase_step(freq: Float, sr: Int) -> Float with Pure = freq / float_of_int(sr)
+
+// A sawtooth: the phase itself, scaled to [-1, 1). Bright, every harmonic
+// present — the raw material a filter shapes.
+fn saw_voice(sr: Int) = {
+  fn stage(freq) with !Alloc = {
+    let step = phase_step(freq, sr)
+    let ph = { prev => wrap_phase(prev + step) } <~ delay(1)
+    2.0 * ph - 1.0
+  }
+  stage
+}
+
+// A sine: the same phase line read through `sin` — the foundation the ear
+// locks onto.
+fn sine_voice(sr: Int) = {
+  fn stage(freq) with !Alloc = {
+    let step = phase_step(freq, sr)
+    let ph = { prev => wrap_phase(prev + step) } <~ delay(1)
+    sin(two_pi() * ph)
+  }
+  stage
+}
+
+// A square: the phase read as a sign — odd harmonics only, the hollow weight
+// a bass line wants.
+fn square_voice(sr: Int) = {
+  fn stage(freq) with !Alloc = {
+    let step = phase_step(freq, sr)
+    let ph = { prev => wrap_phase(prev + step) } <~ delay(1)
+    if ph < 0.5 { 1.0 } else { -1.0 }
+  }
+  stage
+}
+
+// White noise from a linear congruential generator: the state is one 32-bit
+// integer line, stepped as s·1664525 + 1013904223 and wrapping, as a machine
+// word does, at 2^32. Its low 24 bits, scaled, are a sample in [-1, 1). The
+// line starts at zero like every line does, and the step's constant moves it
+// off zero on the first tick.
+fn noise_source() = {
+  fn stage() with !Alloc = {
+    let s = { prev => prev * 1664525 + 1013904223 } <~ delay(1)
+    float_of_int(i32_and(s, 16777215)) / 8388608.0 - 1.0
+  }
+  stage
+}

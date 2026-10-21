@@ -9,8 +9,9 @@ one WebAssembly module and the page is its host.
     python3 tools/space-serve.py         # serve it with the two isolation headers at http://127.0.0.1:7397/
 
 WHAT THE SITE IS has one home, `ide/space.manifest`: the compiler, the runtime
-modules the driver links (`lib/*.mn`, `src/types.mn`) and the lessons in
-`lib/tutorial/`. The page reads the manifest to know what to fetch; the staging
+modules the driver links (`lib/*.mn`, `src/types.mn`) and the projects — Pulse's
+renderer, the course (`examples/pulse/course`) and Wasatch's score
+(`examples/wasatch`). The page reads the manifest to know what to fetch; the staging
 script copies exactly those files beside the page; the deploy workflow
 (`.github/workflows/deploy-space.yml`) and the IDE gate serve THAT directory —
 so a file the page needs and the deploy lacks is a red gate before it is a 404
@@ -79,15 +80,19 @@ is the interaction architecture; docs/DESIGN_SYSTEM.md the tokens, which live in
   proximity, each with its inferred row, the open obligations and the
   tightenings the medium would author. The Why chain is the ring's eighth
   facet.
-- **The programs** — the lessons `lib/tutorial/00…09` and a scratch buffer;
-  drafts persist in the browser; a project's members (`project <dir>` in
-  ide/space.manifest, or `mentl space <dir>`) open under their own paths.
+- **The programs** — the projects the manifest names, each member under its
+  own path: Pulse's renderer, the course's ten lessons (`examples/pulse/course`,
+  the module they share beside them) and Wasatch's score; a scratch buffer;
+  drafts persist in the browser; `mentl space <dir>` opens a folder of your
+  own the same way.
   Density is computed from the caret, never configured; ◐ switches the
   ground (obsidian / parchment, the system preference by default).
 
-What deliberately does not exist yet, each named: RUNNING the compiled program
-in the page needs the assembler in the wheel (`Hβ.felt.ide-run-in-page` — until
-then download the .wat); the row-flow tint and the sealed `!E` wall over the
+What does not exist yet, each named: RUNNING the compiled program in the page
+— `mentl asm` assembles the wheel's own output, and the worker instantiating
+those bytes so a lesson plays to the speaker is PLAN §11's course item; until
+then a lesson renders in the terminal (`mentl run … > lesson.wav`); the
+row-flow tint and the sealed `!E` wall over the
 canvas (docs/MENTL_SPACE.md §8, named next); fill-and-resume and reality
 scrubbing (band B); the transitive `!E` proof (band A's crown).
 

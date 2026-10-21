@@ -1,29 +1,35 @@
 #!/usr/bin/env python3
-"""The Pulse render's oracle: reads the WAV the program wrote and checks what
-the score says must be in it, independently of the medium that made it.
+"""The oracle for a rendered program: reads the WAV the program wrote and
+checks what the score says must be in it, independently of the medium that
+made it.
 
-  python3 oracle.py out.wav
+  python3 oracle.py out.wav                         Pulse: ten seconds, its eight notes
+  python3 oracle.py out.wav --seconds 3 --notes 220 a course lesson: one note over three seconds
+  python3 oracle.py out.wav --seconds 4 --notes 220,261.63,329.63,440
 
 Exit 0 when every check holds, 1 otherwise; one line per check either way.
 
 What it checks, and why each is the program's own claim:
   - the RIFF/WAVE header: PCM, 2 channels, 48,000 Hz, 16 bits, block align 4,
-    and a data chunk of exactly frames x 4 bytes for ten seconds;
+    and a data chunk of exactly frames x 4 bytes for the stated seconds;
   - loudness: each channel's RMS inside [0.05, 0.5] — a render that is
     silent, or that clips, fails;
   - no full-scale sample: the soft clip keeps every sample strictly inside
     the unit range, so |sample| < 32767;
-  - the score is in the file: for each of the eight notes, the power at the
-    lead's own pitch stands at least 20 dB above the median power at the
-    score's other pitches, measured over that note's window.
+  - the score is in the file: the file is cut into one window per note, and
+    in each the power at the note's own pitch stands at least 20 dB above the
+    median power at the other pitches the course uses.
 """
+import argparse
 import math
 import struct
 import sys
 
 RATE = 48000
-SECONDS = 10
-NOTES = [220.0, 261.63, 329.63, 440.0, 392.0, 329.63, 293.66, 261.63]
+PULSE_SECONDS = 10
+PULSE_NOTES = [220.0, 261.63, 329.63, 440.0, 392.0, 329.63, 293.66, 261.63]
+# Every pitch the course and Pulse write, the set a note stands out against.
+PROBES = sorted(set(PULSE_NOTES) | {277.18})
 
 
 def goertzel(xs, freq):
@@ -36,7 +42,7 @@ def goertzel(xs, freq):
     return s1 * s1 + s2 * s2 - c * s1 * s2
 
 
-def main(path):
+def main(path, seconds, notes):
     data = open(path, "rb").read()
     results = []
 
@@ -44,7 +50,7 @@ def main(path):
         results.append(ok)
         print(("PASS " if ok else "FAIL ") + what)
 
-    frames = RATE * SECONDS
+    frames = RATE * seconds
     header_ok = (
         len(data) >= 44
         and data[0:4] == b"RIFF"
@@ -73,10 +79,11 @@ def main(path):
         check(0.05 <= rms <= 0.5, "%s RMS %.4f inside [0.05, 0.5]" % (name, rms))
     check(peak < 32767, "no full-scale sample (peak %d)" % peak)
     mono = [(a + b) / 2 for a, b in zip(left, right)]
-    per_note = frames // len(NOTES)
-    probes = sorted(set(NOTES))
-    for k, own in enumerate(NOTES):
-        window = mono[k * per_note + RATE // 10 : k * per_note + RATE // 10 + RATE]
+    per_note = frames // len(notes)
+    probes = sorted(set(PROBES) | set(notes))
+    for k, own in enumerate(notes):
+        start = k * per_note + RATE // 10
+        window = mono[start : min(start + RATE, (k + 1) * per_note)]
         power = {p: 10 * math.log10(goertzel(window, p) + 1e-12) for p in probes}
         others = sorted(v for p, v in power.items() if p != own)
         margin = power[own] - others[len(others) // 2]
@@ -85,4 +92,9 @@ def main(path):
 
 
 if __name__ == "__main__":
-    sys.exit(main(sys.argv[1]))
+    ap = argparse.ArgumentParser()
+    ap.add_argument("wav")
+    ap.add_argument("--seconds", type=int, default=PULSE_SECONDS)
+    ap.add_argument("--notes", default=",".join(str(n) for n in PULSE_NOTES))
+    args = ap.parse_args()
+    sys.exit(main(args.wav, args.seconds, [float(n) for n in args.notes.split(",")]))

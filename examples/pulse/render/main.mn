@@ -8,8 +8,12 @@
 // This is the first program written in Mentl that is not the compiler. It
 // exists to be READ as much as heard, so every stage below says what it is
 // in the words of the domain, and the medium's own claims sit where a
-// listener would ask about them. Four of those claims are the reason the
-// program exists at all:
+// listener would ask about them. Its instruments are the library's — the
+// oscillators (lib/dsp/osc.mn), the envelopes (lib/dsp/envelope.mn), the
+// filters (lib/dsp/feedback.mn), the echo, the rooms, the panning and the
+// limiter (lib/dsp/stereo.mn) — and the course beside it
+// (examples/pulse/course) teaches each in turn. Four of the medium's claims
+// are the reason the program exists at all:
 //
 //   1. THE PER-SAMPLE PATH CANNOT ALLOCATE. `render_frame` — everything
 //      that runs once per sample — is declared `!Alloc`, and the medium
@@ -45,11 +49,17 @@ import audio/wav
 
 import dsp/clock
 
+import dsp/envelope
+
 import dsp/feedback
+
+import dsp/osc
 
 import dsp/signal
 
 import dsp/spectral
+
+import dsp/stereo
 
 import math
 
@@ -68,10 +78,6 @@ fn notes_in_score() with Pure = 8
 fn hats_per_note() with Pure = 4
 
 fn beats_per_note() with Pure = 2
-
-// A feedback gain under unity — a line fed back through it dies away. At
-// 1.0 an echo would ring forever; above it, grow without bound.
-type Decay = Float where 0.0 <= self && self < 1.0
 
 // The lead's pitch for note `k`. Every arm is a literal, so the `Hz` claim
 // is decided where it is written — the compiler knows 440.0 is under the
@@ -118,108 +124,24 @@ fn frames_per_beat() = frames_per_note() / beats_per_note()
 
 // ─── Envelopes — the shape of a note in time ──────────────────────────
 //
-// An ADSR envelope: a linear rise over `attack` seconds, a fall to the
-// `sustain` level over `decay`, a hold, and a linear release over the last
-// `release` seconds of the note. Pure arithmetic over the note's own
-// time, so an envelope needs no memory line.
-fn adsr(tn: Float, len: Float, attack: Float, decay: Float, sustain: Float, release: Float) -> Float with Pure = if tn < attack {
-  tn / attack
-} else if tn < attack + decay {
-  1.0 - (1.0 - sustain) * (tn - attack) / decay
-} else if tn < len - release {
-  sustain
-} else if tn < len {
-  sustain * (len - tn) / release
-} else {
-  0.0
-}
+// The lead swells in and rings; the bass plucks and holds lower. Both are
+// the library's ADSR with the note's own time last, so a note's time pipes
+// into its shape.
+fn lead_shape(len: Float, tn: Float) -> Float with Pure = adsr(0.01, 0.2, 0.65, 0.3, len, tn)
 
-// The lead swells in and rings; the bass plucks and holds lower.
-fn lead_shape(tn: Float, len: Float) -> Float with Pure = adsr(tn, len, 0.01, 0.2, 0.65, 0.3)
-
-fn bass_shape(tn: Float, len: Float) -> Float with Pure = adsr(tn, len, 0.005, 0.25, 0.5, 0.08)
+fn bass_shape(len: Float, tn: Float) -> Float with Pure = adsr(0.005, 0.25, 0.5, 0.08, len, tn)
 
 // A hi-hat is struck and gone: an exponential fall with a 35 ms time
 // constant from each eighth's onset, the off-beats accented.
 fn hat_shape(th: Float, index: Int) -> Float with Pure = {
   let accent = if index % 2 == 1 { 1.0 } else { 0.55 }
-  accent * exp(0.0 - th / 0.035)
+  accent * fade(0.035, th)
 }
-
-// A kick is a sine that falls in pitch as it dies — from 150 Hz toward
-// 45 Hz with a 40 ms time constant, its level falling over 180 ms — struck
-// on every beat.
-fn kick_pitch(tb: Float) -> Float with Pure = 45.0 + 105.0 * exp(0.0 - tb / 0.04)
-
-fn kick_level(tb: Float) -> Float with Pure = exp(0.0 - tb / 0.18)
 
 // A snare answers on the off-beats: a crack of noise over a 185 Hz body,
 // gone in about a tenth of a second.
 fn snare_level(tb: Float, beat: Int) -> Float with Pure =
-  if beat % 2 == 1 { exp(0.0 - tb / 0.12) } else { 0.0 }
-
-// ─── Oscillators — a phase is a loop in the graph ─────────────────────
-//
-// An oscillator remembers where it is in its cycle. That memory is one
-// `<~` line: the phase advances by its increment every tick and wraps at
-// 1.0, and `(prev)` binds the phase the line handed back one sample ago.
-// Each maker below mints a closure that OWNS its line, so every voice
-// minted from one maker runs its own phase — two `saw_voice()`s are two
-// oscillators, not one oscillator called twice.
-//
-// The frequency arrives per sample (it follows the score and the vibrato),
-// so the increment is recomputed each tick from the rate the clock answers.
-fn wrap_phase(p: Float) -> Float with Pure = if p >= 1.0 { p - 1.0 } else { p }
-
-fn phase_increment(freq: Float, vib: Float) = freq * (1.0 + vib) / float_of_int(clock_rate())
-
-// A sawtooth: the phase itself, scaled to [-1, 1). Bright, every harmonic
-// present — the raw material the filter and the distortion shape.
-fn saw_voice() = {
-  fn stage(freq, vib) with !Alloc = {
-    let inc = phase_increment(freq, vib)
-    let ph = ((prev) => wrap_phase(prev + inc)) <~ delay(1)
-    2.0 * ph - 1.0
-  }
-  stage
-}
-
-// A sine: the same phase line read through `sin`, an octave below the saws
-// — the foundation the ear locks onto.
-fn sine_voice() = {
-  fn stage(freq, vib) with !Alloc = {
-    let inc = phase_increment(freq, vib)
-    let ph = ((prev) => wrap_phase(prev + inc)) <~ delay(1)
-    sin(two_pi() * ph)
-  }
-  stage
-}
-
-// A square: the phase read as a sign — odd harmonics only, the hollow
-// weight a bass line wants.
-fn square_voice() = {
-  fn stage(freq) with !Alloc = {
-    let inc = phase_increment(freq, 0.0)
-    let ph = ((prev) => wrap_phase(prev + inc)) <~ delay(1)
-    if ph < 0.5 { 1.0 } else { -1.0 }
-  }
-  stage
-}
-
-// ─── Noise — an integer loop ──────────────────────────────────────────
-//
-// White noise from a linear congruential generator: the state is one
-// 32-bit integer line, stepped as s·1664525 + 1013904223 and wrapping, as
-// a machine word does, at 2^32. Its low 24 bits, scaled, are a sample in
-// [-1, 1). The line starts at zero like every line does, and the step's
-// constant moves it off zero on the first tick.
-fn noise_source() = {
-  fn stage() with !Alloc = {
-    let s = ((prev) => prev * 1664525 + 1013904223) <~ delay(1)
-    float_of_int(i32_and(s, 16777215)) / 8388608.0 - 1.0
-  }
-  stage
-}
+  if beat % 2 == 1 { fade(0.12, tb) } else { 0.0 }
 
 // ─── The sweep ────────────────────────────────────────────────────────
 //
@@ -227,109 +149,13 @@ fn noise_source() = {
 // five seconds. The result is claimed `Hz` HERE, where the value is made,
 // so the filters below receive a frequency the type bounds. The claim rests
 // on the sine's range and the compiler's Float arithmetic, which the proof
-// engine cannot yet bound — it is the program's one open obligation, and
-// the compile says so every time (`V_Pending`), instead of assuming it.
+// engine cannot yet bound — it is the program's one open obligation of its
+// own, and the compile says so every time instead of assuming it.
 fn cutoff_at(t: Float) -> Hz with Pure = 900.0 + 700.0 * sin(two_pi() * 0.2 * t)
 
 // The vibrato: five and a half wobbles per second, four tenths of a percent
 // deep — enough to hear the voice breathe, not enough to hear it as pitch.
 fn vibrato_at(t: Float) -> Float with Pure = 0.004 * sin(two_pi() * 5.5 * t)
-
-// ─── The echo — a quarter second of before ────────────────────────────
-//
-// An echo is now plus a little of before, and there is no echo without a
-// before: `delay(12_000)` is 12,000 samples of memory — a quarter second at
-// 48 kHz — and `(prev)` is what came out of this echo a quarter second ago,
-// fed back at `fb`. The ring was allocated when the closure was, so the
-// echo sits inside the `!Alloc` path. The signal parameter is declared a
-// Float: the stage accepts any signal, and saying so keeps the feedback
-// gain's `Decay` bound from spreading, through the sum, onto the input.
-fn make_echo(fb: Decay) = {
-  fn stage(x: Float) -> Float with !Alloc = ((prev) => x + fb * prev) <~ delay(12000)
-  stage
-}
-
-// ─── The rooms — a Schroeder reverberator per channel ─────────────────
-//
-// Four comb filters in parallel, then two allpasses in series. A comb is
-// y[n] = x[n] + g·y[n−D]: a line D samples deep fed back at gain g, a
-// train of fading reflections every D samples. Four combs with mutually
-// prime lengths (29.7 to 43.7 ms) blur into a dense tail; each gain is set
-// so the tail falls 60 dB in about a second and a half.
-//
-// An allpass passes every frequency at unit gain and smears its phase —
-// the diffusion that turns reflections into a room. Its textbook form
-// reads the input D samples ago, and a `<~` site hands its body only its
-// OWN prior, so the allpass is written through the comb it contains:
-// with w[n] = x[n] + g·w[n−D], the allpass output is
-// y[n] = ((1 − g²)·w[n] − x[n]) / g — the same transfer function,
-// (z^−D − g) / (1 − g·z^−D), one line deep.
-//
-// The right room's lines are 23 samples longer than the left's, so the two
-// tails never line up — the width a listener hears as space.
-fn comb_sum(c1: Float, c2: Float, c3: Float, c4: Float) -> Float with Pure =
-  (c1 + c2 + c3 + c4) * 0.25
-
-fn allpass_out(w: Float, x: Float) -> Float with Pure = (0.51 * w - x) / 0.7
-
-// The room is drawn in the verbs: the input fans to four combs (`<|`, each
-// branch a cycle of its own whose line belongs to this stage's record), the
-// four merge into `comb_sum`, and each allpass is the comb and the signal it
-// combs, side by side, merged into `allpass_out`. No tuple is built — a fanout
-// taken apart where it stands costs what its lets would — so the room keeps
-// its `!Alloc`.
-fn room_left() = {
-  fn stage(x: Float) -> Float with !Alloc = {
-    let combs = (x <| (
-      (v) => ((prev) => v + 0.872 * prev) <~ delay(1426),
-      (v) => ((prev) => v + 0.843 * prev) <~ delay(1781),
-      (v) => ((prev) => v + 0.828 * prev) <~ delay(1973),
-      (v) => ((prev) => v + 0.818 * prev) <~ delay(2098)
-    )) |> comb_sum
-    let d1 = (combs <| ((v) => ((prev) => v + 0.7 * prev) <~ delay(240), (v) => v)) |> allpass_out
-    (d1 <| ((v) => ((prev) => v + 0.7 * prev) <~ delay(82), (v) => v)) |> allpass_out
-  }
-  stage
-}
-
-fn room_right() = {
-  fn stage(x: Float) -> Float with !Alloc = {
-    let combs = (x <| (
-      (v) => ((prev) => v + 0.871 * prev) <~ delay(1449),
-      (v) => ((prev) => v + 0.842 * prev) <~ delay(1804),
-      (v) => ((prev) => v + 0.827 * prev) <~ delay(1996),
-      (v) => ((prev) => v + 0.817 * prev) <~ delay(2121)
-    )) |> comb_sum
-    let d1 = (combs <| ((v) => ((prev) => v + 0.7 * prev) <~ delay(263), (v) => v)) |> allpass_out
-    (d1 <| ((v) => ((prev) => v + 0.7 * prev) <~ delay(105), (v) => v)) |> allpass_out
-  }
-  stage
-}
-
-// ─── Placement and loudness ───────────────────────────────────────────
-//
-// Equal-power panning: a position p in [-1, 1] sweeps a quarter circle,
-// so the two gains' squares always sum to one and a voice keeps its
-// loudness as it moves.
-fn pan_left(p: Float) -> Float with Pure = cos((p + 1.0) * two_pi() * 0.125)
-
-fn pan_right(p: Float) -> Float with Pure = sin((p + 1.0) * two_pi() * 0.125)
-
-// The larger magnitude of two channels.
-fn louder(l: Float, r: Float) -> Float with Pure = if abs(l) > abs(r) { abs(l) } else { abs(r) }
-
-// A peak limiter over the pair: the louder channel's envelope, rising in
-// about a millisecond and falling over a few hundred, and the gain that
-// holds that envelope at 0.9. One follower for both channels, so the
-// stereo image does not lean when one side peaks.
-fn make_limiter(sr: Int) = {
-  let follow = envelope_follower(800.0, 3.0, sr)
-  fn stage(l: Float, r: Float) -> Float with !Alloc = {
-    let env = follow(louder(l, r))
-    if env > 0.9 { 0.9 / env } else { 1.0 }
-  }
-  stage
-}
 
 // One channel of the output: the dry signal and its echo blended
 // (lib/dsp/signal.mn's `mix`), the room under it, the limiter's gain, and
@@ -345,23 +171,25 @@ fn channel(dry: Float, echo: Float, room: Float, gain: Float) -> Sample with Pur
 // for the lead, one for the bass and its filter, the kick's sine, the noise
 // and the two filters that make it a hat and a snare, the snare's body, the
 // swept filter per channel, an echo and a room per channel, and the
-// limiter. The record is the instrument; the loop plays it.
+// limiter. The record is the instrument; the loop plays it. The right echo
+// feeds back harder than the left, so the image opens as each note rings
+// out.
 fn build_rig(sr: Int) = {
-  bass: square_voice(),
+  bass: square_voice(sr),
   bass_tone: lowpass_filter(sr),
-  echo_l: make_echo(0.35),
-  echo_r: make_echo(0.5),
+  echo_l: echo(0.35),
+  echo_r: echo(0.5),
   hat_tone: highpass_filter(sr),
   hiss: noise_source(),
-  kick: sine_voice(),
-  lead_a: saw_voice(),
-  lead_b: saw_voice(),
-  limiter: make_limiter(sr),
+  kick: sine_voice(sr),
+  lead_a: saw_voice(sr),
+  lead_b: saw_voice(sr),
+  limiter: limiter(0.9, sr),
   room_l: room_left(),
   room_r: room_right(),
-  snare_body: sine_voice(),
+  snare_body: sine_voice(sr),
   snare_tone: highpass_filter(sr),
-  sub: sine_voice(),
+  sub: sine_voice(sr),
   sweep_l: lowpass_filter(sr),
   sweep_r: lowpass_filter(sr),
 }
@@ -394,25 +222,25 @@ fn render_frame(buf, rig) with !Alloc + !Sample(44100) = {
   // The lead: two sawtooths a hair apart — the second three tenths of a
   // percent sharp, which the ear hears as width, not as a second note —
   // and a sine an octave down, under one envelope, then the distortion.
-  let f = note_hz(k)
-  let vib = vibrato_at(t)
-  let voiced = (rig.lead_a(f, vib) + rig.lead_b(f * 1.003, vib) + 0.6 * rig.sub(f * 0.5, 0.0)) / 2.6
+  let f = note_hz(k) * (1.0 + vibrato_at(t))
+  let voiced = (rig.lead_a(f) + rig.lead_b(f * 1.003) + 0.6 * rig.sub(f * 0.5)) / 2.6
   // The distortion is an EFFECT: `distort` asks whatever handler the root
   // installed to shape the sample. Here that is the spectral-flux
   // distortion (lib/dsp/spectral.mn), whose transfer function follows the
   // signal's transients — warm on sustain, folded on attack. Swap the
   // handler at the root and this line does not change.
-  let lead = distort(voiced * lead_shape(tn, len), 2.5)
+  let lead = distort(voiced * lead_shape(len, tn), 2.5)
   // The bass through its own low-pass — one filter of the library's, its
   // memory its own.
-  let bass = rig.bass(bass_hz(k)) * bass_shape(tn, len) |> rig.bass_tone(320.0)
+  let bass = rig.bass(bass_hz(k)) * bass_shape(len, tn) |> rig.bass_tone(320.0)
   // The drums. One noise source fans to two high-passes (`<|`): at 7 kHz it
   // is a hi-hat, at 1.8 kHz over a sine body it is a snare. The kick is a
-  // sine voice driven by a falling pitch.
+  // sine voice driven by a pitch that falls from 150 Hz toward 45 Hz as it
+  // dies, its level falling over 180 ms, struck on every beat.
   let noise = rig.hiss()
-  let (hats, hiss_band) = noise <| ((v) => v * hat_shape(th, hat) |> rig.hat_tone(7000.0), rig.snare_tone(1800.0))
-  let snare = (0.7 * hiss_band + 0.5 * rig.snare_body(185.0, 0.0)) * snare_level(tb, beat)
-  let kick = rig.kick(kick_pitch(tb), 0.0) * kick_level(tb)
+  let (hats, hiss_band) = noise <| ({ v => v * hat_shape(th, hat) |> rig.hat_tone(7000.0) }, rig.snare_tone(1800.0))
+  let snare = (0.7 * hiss_band + 0.5 * rig.snare_body(185.0)) * snare_level(tb, beat)
+  let kick = rig.kick(fall(45.0, 150.0, 0.04, tb)) * fade(0.18, tb)
   let drums = 0.9 * kick + 0.35 * snare
   // Placement: the lead a little left, the bass and the drums centred, the
   // hats right. The swept filter runs per channel — two filters, one maker
@@ -424,8 +252,7 @@ fn render_frame(buf, rig) with !Alloc + !Sample(44100) = {
   (lead * pan_right(-0.2) + 0.8 * bass * pan_right(0.0) |> rig.sweep_r(cutoff))
   let dry_l = tone_l + drums * pan_left(0.0) + 0.3 * hats * pan_left(0.6)
   let dry_r = tone_r + drums * pan_right(0.0) + 0.3 * hats * pan_right(0.6)
-  // Each channel fans to its echo and its room (`<|`): the right echo feeds
-  // back harder, so the image opens as each note rings out.
+  // Each channel fans to its echo and its room (`<|`).
   let (echo_l, room_l) = dry_l <| (rig.echo_l, rig.room_l)
   let (echo_r, room_r) = dry_r <| (rig.echo_r, rig.room_r)
   let gain = rig.limiter(dry_l + room_l, dry_r + room_r)

@@ -1,0 +1,80 @@
+// 06 · rate — one clock, and two rates are two effects
+//
+// A bass and a lead at 48,000 samples a second, three seconds long.
+//
+//   mentl run examples/pulse/course/06-rate.mn > 06.wav
+//
+// The clock is an effect with an INSTANCE: `Sample(48000)` and
+// `Sample(44100)` are two members of the effect row, as distinct as the
+// console and the network. The course pins its rate once, at the three readers of the
+// clock (rate.mn), and every stage that reads the clock carries that
+// instance in its projected row without writing it. So the frame can say
+// what every audio program means and no other language lets it say:
+// `!Sample(44100)` — nothing on this path was written for 44.1 kHz. A stage
+// pinned at the other rate cannot be reached from it; the canonical audio
+// bug refuses at compile time, naming the declaration. Change `now`'s pin in
+// rate.mn to `Sample(44100)` and `play` refuses: E_EffectMismatch, the chain
+// naming where the other rate enters.
+//
+// The bound a frequency must stay under is HALF THE RATE, so `Hz48` below
+// reads the rate from the installed clock inside its predicate: a predicate
+// is an ordinary expression, and this one performs the clock's op. The
+// medium judges the claim where a constant is handed in and leaves it
+// pending today — the predicate's value is the install's, which the proof
+// engine does not yet read — so the board counts this lesson among the
+// programs the medium owes (`mentl verify`), and the count only falls.
+//
+// The handler at the root answers whichever instance asks: an install does
+// not yet pin the instance it serves (PLAN §11.10), so the negation is where
+// the rule is written.
+import audio/wav
+
+import dsp/clock
+
+import dsp/envelope
+
+import dsp/feedback
+
+import dsp/osc
+
+import dsp/signal
+
+import io
+
+import rate
+
+fn seconds() with Pure = 3
+
+// Half the installed rate, read from the clock the root answers.
+fn nyquist() = float_of_int(rate()) / 2.0
+
+// A frequency the installed rate can carry.
+type Hz48 = Float where 0.0 < self && self < nyquist()
+
+fn note_hz(k: Int) -> Hz48 = match k {
+  0 => 220.0,
+  1 => 277.18,
+  _ => 329.63,
+}
+
+fn frame(buf, rig, n: Int) with !Alloc + !Sample(44100) = {
+  let t = time()
+  let k = float_to_int(t)
+  let tn = t - float_of_int(k)
+  let lead = rig.lead(note_hz(k)) * adsr(0.01, 0.2, 0.6, 0.3, 1.0, tn) |> rig.tone(900.0)
+  let bass = rig.bass(55.0) * adsr(0.005, 0.25, 0.5, 0.1, 1.0, tn)
+  let s = 0.5 * lead + 0.4 * bass |> soft_clip
+  wav_frame(buf, n, s, s)
+}
+
+fn build_rig(sr: Int) = {bass: square_voice(sr), lead: saw_voice(sr), tone: lowpass_filter(sr)}
+
+fn main() = {
+  {
+    let frames = frames_of(seconds())
+    let buf = wav_header(wav_alloc(frames), frames, rate())
+    play(frames, frame(buf, build_rig(rate())))
+    print(wav_bytes(buf))
+  } ~> stdout_console ~> sample_at(48000)
+  0
+}

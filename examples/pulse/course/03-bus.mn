@@ -1,0 +1,65 @@
+// 03 · bus — one signal to many places, many signals to one
+//
+// Two notes, each two seconds: a sine sent to an echo and to a room, the dry
+// signal blended with its echo on the left and with its room on the right.
+//
+//   mentl run examples/pulse/course/03-bus.mn > 03.wav
+//
+// Two verbs, one topology. `<|` fans ONE input to several branches —
+// `dry <| (rig.echo, rig.room)` hands the same sample to the echo and to the
+// room, each a stage with memory of its own, and answers the pair of what
+// they made. The input is borrowed by every branch and consumed by none,
+// which is what makes the fanout provably race-free. `><` is the other glyph
+// of the same fanout: INDEPENDENT pipelines, each with its own input, their
+// results side by side — `(echoed) >< (dry)` is the pair, and piping that
+// pair into `mix(0.35)`, a stage with two slots left open, is the MERGE: no
+// tuple is built, `mix` is called on the two values where they stand (SYNTAX
+// §«`|>` — converge»). The verbs draw the shape, so the frame reads as the
+// bus it is. Put the caret on the fanout to see it:
+//
+//   mentl examples/pulse/course/03-bus.mn:49    `<|`: two branches, the input shared
+import audio/wav
+
+import dsp/clock
+
+import dsp/osc
+
+import dsp/signal
+
+import dsp/stereo
+
+import io
+
+import rate
+
+fn seconds() with Pure = 4
+
+// The score: A3 for two seconds, then E4.
+fn note_hz(t: Float) -> Hz = if t < 2.0 { 220.0 } else { 329.63 }
+
+// A note swells in over 20 ms and fades over its last half second, so the
+// two notes are two events and not one tone that moves.
+fn shape(tn: Float) -> Float with Pure =
+  if tn < 0.02 { tn / 0.02 } else if tn > 1.5 { (2.0 - tn) / 0.5 } else { 1.0 }
+
+fn frame(buf, rig, n: Int) = {
+  let t = time()
+  let tn = if t < 2.0 { t } else { t - 2.0 }
+  let dry = rig.voice(note_hz(t)) * 0.5 * shape(tn)
+  let (echoed, roomed) = dry <| (rig.echo, rig.room)
+  let l = ((echoed) >< (dry)) |> mix(0.35) |> soft_clip
+  let r = ((roomed) >< (dry)) |> mix(0.5) |> soft_clip
+  wav_frame(buf, n, l, r)
+}
+
+fn build_rig(sr: Int) = {echo: echo(0.4), room: room_left(), voice: sine_voice(sr)}
+
+fn main() = {
+  {
+    let frames = frames_of(seconds())
+    let buf = wav_header(wav_alloc(frames), frames, rate())
+    play(frames, frame(buf, build_rig(rate())))
+    print(wav_bytes(buf))
+  } ~> stdout_console ~> sample_at(48000)
+  0
+}

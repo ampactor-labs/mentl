@@ -341,7 +341,7 @@ safe; the body already proves it."*
 ┌──────────────────────────────────────────────────────────────────────────────┐
 │ ◯ mentl space   [ 00 · hello ▾ ]                                              ◐ │
 ├──────────────────────────────────────────────┬───────────────────────────────┤
-│ 17  // Read it: mentl lib/tutorial/…:29:77     │ ASPECT RING            kw: fn │
+│ 17  // Read it: mentl examples/pulse/course/…  │ ASPECT RING            kw: fn │
 │ 19  import io                                  │ ● graph     REAL  …           │
 │ 29  fn greet(name) = "Hello, " ++ name … |> … │ ● propose   REAL  …           │
 │ 31  fn main() = {                              │ ● topology  REAL  …           │
@@ -372,8 +372,9 @@ safe; the body already proves it."*
 Density is **computed**, never configured: each fact scores a degree of
 interest from the caret (docs/MENTL_SPACE.md §3), and the knob, the status
 bar, the footer, the Wavefront strip and the Module pane are gone. The
-**programs** are the lessons in `lib/tutorial/`, the projects the manifest
-lists (`project <dir>`, or `mentl space <dir>`) and the developer's drafts,
+**programs** are the projects the manifest lists — Pulse's renderer, the
+course's lessons in `examples/pulse/course`, Wasatch's score (`project <dir>`,
+or `mentl space <dir>`) — and the developer's drafts,
 kept in the browser; there is no sample-code dropdown that warns about itself.
 
 **The next two layers, named (PLAN §11, L-D and L-E):** the **aspect strip** —
