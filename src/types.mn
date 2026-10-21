@@ -10,7 +10,7 @@
 // types.mn owns ONLY shared vocabulary. Every foreign-owned ADT lives
 // at its natural owner:
 //
-//   graph.mn (spec 00)   → chase / occurs / trail revert / graph_handler
+//   graph.mn (spec 00)   → chase / occurs / the versioned columns / graph_handler
 //   effects.mn (spec 01) → row algebra (normalize / subsumes / unify)
 //   clock.mn (spec 11)   → Clock / Tick / Sample / Deadline
 //   own.mn (spec 07)     → affine_ledger handler arms, escape check
@@ -1399,8 +1399,8 @@ type EConn
 type RowTerm = RtEff(EffName, Option(Int)) | RtGroup([(RowTerm, Bool, EConn)])
 
 // Substrate owned by graph.mn. The ADTs live here because every
-// consumer of the graph names them — Read/Write/Speculate effects,
-// chase return type, trail mutations, overlay tags.
+// consumer of the graph names them — the read and write effects, the
+// chase's return type, the version a fork is seeded with.
 type NodeKind
   // resolved — chase terminates; delivers Ty
   = NBound(Ty)
@@ -2280,33 +2280,50 @@ fn applicability_text(a) = match a {
 // and here the index IS the identity — the handle is the key, so the columns
 // cannot desynchronize any more than a record's fields can.
 //
-// A version is taken by remembering the roots and marking the heap line — the
-// mark held as the address's number, since an address stored into the
-// handler's state would be a value no arena's exit can read, and the region
-// around it would be kept whole for its sake
-// (`graph_version`, O(1)): the writes that follow copy what they touch of it
-// and leave it readable, so making it the graph again (`graph_restore`) or
-// dropping it (`graph_keep`) costs nothing whatever was written, and two
-// versions compared are the write set between them. The root installs the
-// empty version (the graph module's root version) at the verb entries; a
-// speculation's bracket is a version taken and restored or kept; a fork on
-// another cursor is an instance installed with a version as its seed.
+// A version is a graph handler instance's whole state as a value: the
+// columns it wrote, every other fact it keeps — the mint, the span log, the
+// module in force, the epoch, the decls column, the emitted-fn enumeration
+// and its index, the signature column, the holes, the write guard's
+// refusals, the accepted proposals, the modules by file, the superseded
+// cells, the link and the tail facts — and, below them, the version the
+// instance was seeded with. Taking one is O(1) and copies nothing
+// (`graph_version`). A speculation is an INSTANCE of the handler installed
+// around the resumption with a version as its seed: it reads its own column
+// first and the chain of versions below it for every other cell, writes
+// only the column it built, and so leaves every instance below it untouched by
+// construction, while the instance below writes nothing until the
+// resumption ends. A kept speculation's final version is merged into the
+// instance below cell by cell (`graph_keep`, O(what it wrote)); every other
+// dies with the resumption's arena. The root installs the empty version
+// (the graph module's root version) at the verb entries.
 type Version = {
+  accepted: [(String, Span, String, Reason)],
+  below: Option(Version),
   binders: [[[[[BinderFact]]]]],
   births: [[[[Int]]]],
   boundaries: [[[[ExecutableBoundary]]]],
   canon: [[[[Int]]]],
   claims: [[[[[Ty]]]]],
   comments: [[[[(String, Span)]]]],
+  cur_module: Int,
+  decls_col: [Int],
   demands: [[[[[TypeDemand]]]]],
+  emitfns_col: [EmitFnEntry],
+  emitfns_idx: [[(String, EmitFnEntry)]],
+  emitfns_idx_covers: Int,
+  epoch: Int,
   gates: [[[[[Gate]]]]],
+  guard_diags: [(DiagKind, Int)],
+  holes_col: [Int],
+  holes_pend: [Int],
   in_edges: [[[[[InEdge]]]]],
   installs: [[[[InstallShape]]]],
   instances: [[[[[Int]]]]],
   late: [[[[[Int]]]]],
+  link_now: Option(Int),
   links: [[[[Int]]]],
-  mark: Int,
   module: [[[[Int]]]],
+  modules_now: [[(String, Int)]],
   narrowing: [[[[Int]]]],
   next: Int,
   nodes: [[[[GNode]]]],
@@ -2315,9 +2332,12 @@ type Version = {
   program: [[[[NodeBody]]]],
   published: [[[[[(Binding, Reason, SchemeKind)]]]]],
   rows: [[[[[EffRow]]]]],
+  sigs_col: [[(String, EmitSig)]],
   span_index: [(Span, Int)],
   spans: [[[[ValidSpan]]]],
   store_claims: [[[[[StoreClaim]]]]],
+  superseded: [[(Int, Int)]],
+  tails_idx: [[(String, [Int])]],
 }
 
 // Newlines in a flat string — a module's own extent, sized at its parse.
@@ -3129,10 +3149,10 @@ type Verdict = VFill(Node, Reason) | VAsk(Divergence, [(Node, Reason)]) | VNone
 // interchangeable the way two extraction-equal forms are. Rank orders how a
 // tie renders; the divergence is what decides it.
 //
-// The SOURCE of "which cell" is the trail first (C6): every candidate is
-// judged as a segment over the one live graph, the segment carries out the
-// context cells its binds moved (`graph_written_since`, read before the
-// rollback), and the first of those cells that two survivors bound
+// The SOURCE of "which cell" is the segment's own write set: every candidate
+// is judged in a graph instance of its own, the segment carries out the
+// context cells its binds moved (`graph_written_since`, read inside the
+// instance before it is dropped), and the first of those cells that two survivors bound
 // differently IS the divergence — a type cell renders as `DivType` with the
 // cell's own Reason, a row cell as `DivRow`. Only when no context cell moves
 // — the position was narrowed enough that every survivor fits without
@@ -3279,27 +3299,25 @@ effect EnvWrite {
   // resolves to what it resolved to before the statement declared it, or to
   // nothing. Performed between judgments, where no scope is open.
   env_retract(name: String, stmt: Int)
+  // A kept fork's entry adopted into this instance: the name bound to its
+  // declaration, whose facts the graph keep merged already.
+  env_adopt(name: String, decl: Int)
 }
 
-// The branch cursor's env join surface (Phase C, C1c-2). Both ops are
-// armed on env_handler and answer BY INSTANCE POSITION: performed
-// outside any branch bracket they read the ROOT's live triple (the
-// layer-start base capture); performed inside one they read the
-// BRANCH's private entries (the publish log the join replays). A
-// separate effect — not new EnvRead ops — so no other handler's arm
-// set grows (the one-handler-two-effects precedent).
+// An env instance's view: its entries — the buffer, the count that freezes
+// its extent, the index — with the view it stands over below them, so a
+// fork's env resolves through the instances it was forked from as its
+// graph reads through the versions below it (`Version`).
+type EnvView = {below: Option(EnvView), buf: [(String, Int)], count: Int, index: [[(String, Int)]]}
+
+// The fork's env surface. Both ops are armed on env_handler and answer by
+// instance: the view of the instance the perform reaches, and the entries
+// it holds (what a keep adopts below it). A separate effect — not new
+// EnvRead ops — so no other handler's arm set grows.
 effect BranchEnv {
-  // The index is env_index_new's concrete shape — a free var here would
-  // PARAMETERIZE the effect and the handler-arm binding refuses a
-  // parameterized/bare mix on one handler (measured: BranchEnv(t) vs
-  // EnvWrite at both arm sites).
-  // The fourth component is the base's MODULE-LEVEL extent — the root's
-  // first open scope mark, or its count when no scope is open — so a
-  // branch instance answers env_lookup_is_global for a base hit exactly.
-  env_base_view() -> ([(String, Int)], Int, [[(String, Int)]])
-  // The branch's publishes, each read with the facts its declaration holds
-  // while the segment's writes are still live.
-  env_publishes() -> [(String, Binding, Reason, SchemeKind, Int)]
+  env_base_view() -> EnvView
+  // The instance's own entries, each a name bound to its declaration.
+  env_entries() -> [(String, Int)]
 }
 
 // The lex-name intern (§5.O layer 1) — an identifier's canonical String
@@ -3316,13 +3334,6 @@ effect Intern {
   intern_span(String, Int, Int) -> (String, Int, Option(TokenKind))
   intern_str(String) -> Int
   intern_name_of(Int) -> String
-  // The branch view's config seed (the fan): the root's live table,
-  // read once per walk. A spawned cursor's view serves READS (probe
-  // hits and name_of — every name interns at parse, so the walk is
-  // pre-warmed); its miss is LOUD by construction (a view-minted
-  // handle escaping into published state would render garbage at the
-  // root — never an accident-invariant).
-  intern_seed() -> ([[(String, Int, Option(TokenKind))]], [String], Int)
 }
 
 // The Read/Write split IS the "one writer" invariant. Inference
@@ -3330,24 +3341,25 @@ effect Intern {
 // A perform graph_bind in a read-only handler is a type error at
 // handler install — caught structurally, never shipped to runtime.
 //
-// graph_version, graph_restore and graph_keep are the speculative surface,
-// and the graph module's forking handlers are its one performer: a
-// resumption of a choice runs between taking the version and restoring or
-// keeping it, each O(1) whatever the resumption wrote.
+// graph_version and graph_keep are the speculative surface, and the graph
+// module's forking handlers are their one performer: a resumption of a
+// choice runs in an instance seeded with the version, and the instance
+// below keeps its final version or lets it die with the resumption's arena.
 effect GraphRead {
   graph_chase(Int) -> GNode
   // the canonical ROOT handle of a TVar chain (union-find find)
   graph_chase_handle(Int) -> Int
-  // THE VERSION (types.mn Version): the graph as it stands, the heap line
-  // marked so the writes that follow copy what they touch of it and leave it
-  // readable. A speculation's bracket opens with it and closes by restoring
-  // or keeping it; the open versions are a stack, and the write set a
-  // speculation reads (graph_written_since) is the graph compared with the
-  // innermost open version
+  // THE VERSION (types.mn Version): this instance's state as a value — the
+  // cells it wrote, every other fact it keeps, and the version it was seeded
+  // with below them. An instance installed with it as its seed reads through
+  // it and writes a column of its own; nothing is copied, since the instance
+  // below writes nothing while a seeded instance runs
   graph_version() -> Version
-  // the nodes column's root — the state-passed occurs family's seed, for the
-  // bracketed pre-check that holds no column of its own
+  // the column this instance wrote and the version it reads through for the
+  // rest — the state-passed occurs family's seed, for the bracketed
+  // pre-check that holds no column of its own
   graph_nodes() -> [[[[GNode]]]]
+  graph_seed() -> Version
   graph_epoch() -> Int
   // the fresh-handle counter — the node-space bound for saturation
   graph_next() -> Int
@@ -3492,13 +3504,12 @@ effect GraphRead {
   // formatter's, which writes a label as the name of the parameter its
   // slot fills.
   graph_product_at(Int) -> CallProduct
-  // THE SEGMENT'S WRITE SET (C6): the cells below a handle frontier whose
-  // type or row the graph and the innermost open version disagree on — each
-  // once, ascending. A speculation reads it BEFORE its undo, so what a
-  // candidate taught the context survives the undo as facts about those
-  // cells; the handles above the frontier are the segment's own mints and
-  // mean nothing across segments (they collide numerically after a restore).
-  // With no version open, nothing is speculative and the set is empty
+  // THE SEGMENT'S WRITE SET (C6): the cells below a handle frontier this
+  // instance wrote — the keys of its own nodes column — each once,
+  // ascending. A speculation reads it before its instance ends, so what a
+  // candidate taught the context survives as facts about those cells; the
+  // handles above the frontier are the segment's own mints and mean nothing
+  // across segments (two instances mint them alike)
   graph_written_since(Int) -> [Int]
   // The parameters each top-level function calls only at its own tail, by
   // name, as the judgments so far wrote them: the newest judgment of a name
@@ -3582,12 +3593,9 @@ effect GraphWrite {
   // demand_install / demands_copy)
   graph_demand_add(Int, TypeDemand)
   graph_bind_record_row(Int, [(String, Ty)], RecordRowTail, Reason)
-  // A version made the graph again: every column, the mint and the span log
-  // as they stood, the mark handed back, the version popped — a
-  // speculation's undo, O(1) whatever it wrote
-  graph_restore(Version)
-  // A version dropped: the graph stands as it is, the mark handed back, the
-  // version popped — the keep of the first held round
+  // A kept instance's final version merged into this instance: every cell
+  // its columns hold written into this instance's own, every other fact
+  // taken as it left it — the keep of the first held round, O(what it wrote)
   graph_keep(Version)
   // a node's birth span, by handle — the column takes it and the ordered
   // (span, handle) log gains the pair. Indexed again for a cell whose extent
@@ -4170,21 +4178,6 @@ effect DiagRegister {
   // here — they ride diag_report, where the register's own arms scope
   // them with errors always rendering.
   diag_scope_of() -> DiagScope
-}
-
-// The branch cursor's diagnostic join surface: the facts a branch's
-// collector (diag_branch) holds, taken at the join. Each fact is what the
-// report carried — the kind, its message rendered at the perform against
-// the branch's live values, its module — so a fact read after the join,
-// or after a speculation's rollback, says what it said when it fired; a
-// DiagKind re-rendered there would read the post-join graph. The join
-// RE-PERFORMS diag_report per fact into the root chain, in statement
-// order, so the root arm counts and scope-registers off the kind itself
-// and every Diagnostic forwarder — the bank among them — sees the
-// structure. A separate effect so the forwarders and diag_quiet keep
-// their arm sets untouched.
-effect BranchDiag {
-  diag_lines_taken() -> [(DiagKind, String, String, Layer)]
 }
 
 // ─── The catalog AS projections of the DiagKind constructors ───────────
@@ -4924,6 +4917,10 @@ effect Verify {
   // program is judged, by the settle in verify.mn, since what can reach a
   // value is a fact of the whole program.
   verify_flows() -> [(Int, Span, Predicate, Reason)]
+  // A kept fork's decided claims, adopted as the verdicts they are: decided
+  // over the graph the keep merged, so nothing is decided again and a
+  // refutation reported inside the fork is not reported twice.
+  verify_adopt(entries: [(Int, Span, Predicate, Bool)])
   // What the settle decided of every such claim and of every demand they
   // stand on, replacing what the last settle decided: None owed, Some(true)
   // proven, Some(false) refuted.

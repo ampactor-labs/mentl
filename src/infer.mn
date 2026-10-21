@@ -37,8 +37,6 @@ import env
 
 import imap
 
-import intern
-
 import io
 
 import lexer
@@ -57,13 +55,33 @@ import verify
 // accumulated row (the op's TFun row carries Closed[eff]; infer_call reads
 // it live and inf_add_row joins it). On scope exit, the accumulated row
 // binds to the handle via `graph_bind_row`. One write; no conflict.
+// What a frame's exit hands back, the handler's own state and nothing read
+// off the graph: the frame's authored declaration, its row cell, its
+// accumulated row and its span; the cells whose live types the completion
+// prune keeps reachable (the whole stack's signatures and the open runs'
+// registrations); the enclosing frames' row cells; and the pass's ceiling.
+// The body computes and finalizes the published row from these
+// (exit_frame), where the graph it reads is the one the judgment writes.
+type FrameExit = {
+  ceiling: Int,
+  declared: [(RowTerm, Bool, EConn)],
+  enclosing: [Int],
+  fn_span: Span,
+  raw: EffRow,
+  row_handle: Int,
+  sig_cells: [Int],
+}
+
 effect InferCtx {
   inf_enter_fn(Int, Span, [(RowTerm, Bool, EConn)])
-  // The frame's exit hands back what the CALLER finalizes — its authored
-  // declaration, its row cell, the published row, its span — so the write
-  // and the gate check that judges it run in the body's world (exit_frame),
-  // never inside this handler's arm. A no-frame exit answers a negative cell.
-  inf_exit_fn() -> ([(RowTerm, Bool, EConn)], Int, EffRow, Span)
+  // The frame's exit hands back the facts the CALLER publishes from — never
+  // a row it computed itself: this handler stands outside every fork, and
+  // an arm's perform resolves OUTER of its own install, so a chase made
+  // here reads the graph instance below a fork and misses what the fork
+  // bound (the group completion fold then walked a DAG as deep as the
+  // group, measured 2026-10-20). The write and the gate check run in the
+  // body's world (exit_frame). A no-frame exit answers a negative cell.
+  inf_exit_fn() -> FrameExit
   inf_frame_params([Int])
   // A block's run of fn declarations (`judge_fn_run`) pre-registers its
   // members mid-walk, above the pass's prereg ceiling, before any of their
@@ -78,10 +96,11 @@ effect InferCtx {
   // enclosing record's (SYNTAX §«<~»).
   inf_mark_transparent()
   inf_add_row_owner(EffRow)
-  // Strip every edge reaching the cell from the open frame's accumulated row
-  // — a handler's exit cutting its remainder world out of the residual
-  // before it is published (register_handler).
-  inf_cut_edge(Int)
+  // Replace the open frame's accumulated row — a handler's exit cutting its
+  // remainder world out of the residual before it is published
+  // (register_handler), the cut computed in the body, since an arm of this
+  // handler reads no graph.
+  inf_replace_row(EffRow)
   inf_current_row() -> EffRow
   inf_current_world() -> EffRow
   inf_enter_arm(Int, Ty)
@@ -161,17 +180,27 @@ handler infer_ctx with stack = [], arm_stack = [], install_marks = [], mint_ceil
   inf_keep_open(cells) => resume() with kept = push(kept, cells),
   inf_keep_close() => if len(kept) == 0 { resume() } else { resume() with kept = drop_last(kept) },
   inf_exit_fn() => if len(stack) == 0 {
-    resume(([], -1, mk_ef_pure(), span_zero()))
+    resume(FrameExit{
+      ceiling: 0,
+      declared: [],
+      enclosing: [],
+      fn_span: span_zero(),
+      raw: mk_ef_pure(),
+      row_handle: -1,
+      sig_cells: [],
+    })
   } else {
     let frame = last(stack)
-    // The published row is COMPUTED here and FINALIZED by the caller
-    // (exit_frame): the finalize op, not the teaching bind — the frame's
-    // accumulation is the decl's own total, and a JOIN would re-widen what
-    // row_without_self strips (the teaching bind joins by the lattice law;
-    // the exit REPLACES — two algebras, two ops) — and the gate check that
-    // judges the value must report in the body's world, where every
-    // capture bracket the judgment installed can see it (an arm's report
-    // resolves OUTER of its own install, the graph_guard_drain law).
+    // The published row is COMPUTED AND FINALIZED by the caller
+    // (exit_frame) from the facts handed back here: the finalize op, not
+    // the teaching bind — the frame's accumulation is the decl's own total,
+    // and a JOIN would re-widen what row_without_self strips (the teaching
+    // bind joins by the lattice law; the exit REPLACES — two algebras, two
+    // ops) — and both the reads that prune the row and the gate check that
+    // judges it must run in the body's world, where the graph is the
+    // judgment's own instance and every capture bracket the judgment
+    // installed can see a report (an arm's perform resolves OUTER of its
+    // own install, the graph_guard_drain law).
     //
     // THE KEEP-SET IS THE WHOLE STACK'S SIGNATURES, not this frame's own.
     // A nested frame — a lambda, a `~>` body, a fanout thunk — exits
@@ -204,10 +233,8 @@ handler infer_ctx with stack = [], arm_stack = [], install_marks = [], mint_ceil
     // AND THE OPEN RUNS' REGISTRATIONS: a block member judged before the
     // sibling it calls chains the sibling's pre-registered row cell, minted
     // above the ceiling and free until the sibling's own judgment fills it.
-    let keep =
-      signature_free_roots((stack |> map((fr) => fr.params) |> flatten) ++ flatten(kept)) ++ (drop_last(stack) |> map((fr) => fr.row_handle))
-    let published =
-      row_keep_completion(row_without_self(frame.accumulated_row, frame.row_handle), mint_ceiling, keep)
+    let sig_cells = (stack |> map((fr) => fr.params) |> flatten) ++ flatten(kept)
+    let enclosing = drop_last(stack) |> map((fr) => fr.row_handle)
     // The popped frame's declaration comes back to the closer — the
     // enforcement site reads it from the resume value, no ambient read.
     // An install mark on THIS depth pops with its frame.
@@ -216,7 +243,15 @@ handler infer_ctx with stack = [], arm_stack = [], install_marks = [], mint_ceil
     } else {
       install_marks
     }
-    resume((frame.declared, frame.row_handle, published, frame.fn_span)) with stack = drop_last(stack), install_marks = marks2
+    resume(FrameExit{
+      ceiling: mint_ceiling,
+      declared: frame.declared,
+      enclosing,
+      fn_span: frame.fn_span,
+      raw: frame.accumulated_row,
+      row_handle: frame.row_handle,
+      sig_cells,
+    }) with stack = drop_last(stack), install_marks = marks2
   },
   inf_mark_install_frame(handled) => // drift-audit: ignore — bounded-depth mark PUSH paired with the exit's pop (§9 push-at-END), not a loop accumulator
   resume() with install_marks = push(install_marks, (len(stack), handled)),
@@ -262,14 +297,10 @@ handler infer_ctx with stack = [], arm_stack = [], install_marks = [], mint_ceil
     // drift-audit: ignore — top-frame REPLACE on a bounded-depth stack (§9 push-at-END), not a loop accumulator
     resume() with stack = push(drop_last(stack), {...frame, accumulated_row: extended})
   },
-  inf_cut_edge(cell) => if len(stack) == 0 {
+  inf_replace_row(row) => if len(stack) == 0 {
     resume()
   } else {
-    // The same cut the exit applies to the frame's own cell
-    // (row_without_self), aimed at another: the row is folded, every edge
-    // chasing to the cell drops, the rest stay open.
-    let frame = last(stack)
-    resume() with stack = push(drop_last(stack), {...frame, accumulated_row: row_without_self(frame.accumulated_row, cell)})
+    resume() with stack = push(drop_last(stack), {...last(stack), accumulated_row: row})
   },
   inf_current_row() => if len(stack) == 0 {
     resume(mk_ef_pure())
@@ -303,12 +334,21 @@ fn owner_frame_at(stack, i) = if i < 0 {
   owner_frame_at(stack, i - 1)
 }
 
-// The frame's exit, finished in the BODY's world: the arm computes the
-// published row and hands it back; the finalize and its gate check run
-// here, where a refusal reaches every bracket the judgment installed.
-// Returns the frame's authored declaration for the enforcement site.
-fn exit_frame() = match inf_exit_fn() {
-  (declared, h, row, sp) => {
+// The frame's exit, finished in the BODY's world: the arm hands back the
+// frame and its keep facts, and the published row is computed here — the
+// frame's own cell cut out (row_without_self), the completion prune over
+// the keep-set (row_keep_completion, the signature cells' free roots read
+// through the live graph and the enclosing frames' row cells) — and
+// finalized here, where the graph is the judgment's own instance and a
+// refusal reaches every bracket the judgment installed. Returns the frame's
+// authored declaration for the enforcement site.
+fn exit_frame() = {
+  let x = inf_exit_fn()
+  if x.row_handle < 0 {
+    ()
+  } else {
+    let keep = signature_free_roots(x.sig_cells) ++ x.enclosing
+    let published = row_keep_completion(row_without_self(x.raw, x.row_handle), x.ceiling, keep)
     // The decl-exit REPLACE is judged by `row_gate`, the install every
     // judgment runs under: a cell a caller's gate reached before this
     // declaration finalized (the co-member `run(a)` shape — `a`'s
@@ -316,9 +356,9 @@ fn exit_frame() = match inf_exit_fn() {
     // judgment cell, which now finalizes) is checked against every gate it
     // carries there, and the gates ride the finalized value's free
     // terminals.
-    if h < 0 { () } else { graph_finalize_row(h, row, Located(sp, Inferred("fn effect row"))) }
-    declared
-  },
+    graph_finalize_row(x.row_handle, published, Located(x.fn_span, Inferred("fn effect row")))
+  }
+  x.declared
 }
 
 // fresh_for_inference — the FreshHandle install inference runs under:
@@ -1315,13 +1355,15 @@ handler diag_quiet {
   diag_narrations() => resume(0),
 }
 
-// diag_branch — the branch cursor's per-statement collector: each report
-// held as the fact it carried (the kind, its message rendered at the
-// perform against the branch's live values, its module); the local tally
-// answers any in-branch diag_errors read with branch-local truth;
-// diag_lines_taken hands the facts to the join, which re-performs each into
-// the root chain, so every Diagnostic forwarder — the bank among them — sees
-// a branch report exactly as a live one.
+// diag_branch — a fork's collector: each report held as the fact it carried
+// (the kind, its message rendered at the perform against the fork's live
+// values, its module), so a fact read after the fork is dropped says what it
+// said when it fired; the local tally answers any in-fork diag_errors read
+// with fork-local truth. It is a bank over the fork's extent, so it answers
+// the bank's own reads: `diag_banked` hands the facts to the keep, which
+// re-performs each into the chain below, so every Diagnostic forwarder — the
+// root's bank among them — sees a fork's report exactly as a live one; a
+// forget is an edit's and reaches the bank below.
 handler diag_branch with lines = make_list(16), count = 0, errors = 0 {
   diag_report(diag, msg, dmod, dlayer) => {
     let grown = list_set(list_extend_to(lines, count + 1), count, (diag, msg, dmod, dlayer))
@@ -1333,12 +1375,16 @@ handler diag_branch with lines = make_list(16), count = 0, errors = 0 {
   },
   diag_errors() => resume(errors),
   diag_narrations() => resume(count - errors),
-  diag_lines_taken() => resume(list_to_flat(slice(lines, 0, count))),
+  diag_banked() => resume(list_to_flat(slice(lines, 0, count))),
+  diag_forget(gone) => {
+    diag_forget(gone)
+    resume()
+  },
 }
 
 // The Mycroft speculation's release read (§11 5.3, the fragment) — the
 // capture handler hands the driver its held list through this op, the
-// diag_lines_taken precedent one bracket over.
+// diag_banked precedent one bracket over.
 effect PolyCapture {
   poly_captured() -> [(DiagKind, String, String, Layer)]
 }
@@ -1973,80 +2019,130 @@ fn layer_name_index(ref names, i, idx) = if i >= len(names) {
   )
 }
 
-// THE BRANCH BRACKET — the ??-fan's candidate branches run this
-// eleven-handler bracket over the shared image; the judgment's own stmt
-// branches ran it too until the planned layer sweep went with the second
-// pass. The fan's parallel form returns at Phase 9.2 on the deterministic
-// handle partition with ATOMIC join writes — the lattice law that makes N
-// branches teaching one row cell converge in any order (graph_bind_row's
-// bound arm is a row JOIN; the decl-exit REPLACE is graph_finalize_row).
-// The bracket mirrors the ambient chain's order whole (the final's
-// trio innermost, then pipeline.mn's spine law — ledgers inside env
-// inside diagnostics): infer_ctx's frames and fresh_for_inference are
-// stmt-local, so fresh instances are exact. The affine instance seeds from the root's frozen consumed-set; its log
-// replays at the join. verify accrues branch-locally; the debt
-// replays by re-perform — EXACT because a predicate's operands live
-// in the branch's own planned range, so no sibling bind can move a
-// decision between judge and join. region_tracker needs NO replay:
-// top-level values tag region 0 (global) by construction, and a
-// fresh instance's None answers check_escape exactly as the root's
-// Some((_, 0)) would — same verdict, zero cross-branch state. Their
-// arms' reports resolve outward to diag_branch (rendered at
-// collect), so every refusal a branch raises rides the banked lines.
-// The graph instance is the C1c-2a config cashed out: the branch
-// installs over the SHARED spine (pre-opened by the plan, stable for
-// the walk) with its stmt's planned range as (next0, limit0) — the
-// former root-side graph_mint_at dissolved into this config — the
-// root's complete span index (parse-only writes), and its PRIVATE
-// overflow band [bh, bh + quota) above the plan. An over-measure
-// stmt jumps into its own band (the measured residue: deltas of 1–2
-// on ~324 stmts); crossing the band trips the unseeded guard loudly.
-// Numbering — jumps included — is therefore a pure function of the
-// source and the plan, independent of execution order: the fan
-// reproduces these bytes at any K. Trail and checkpoints are
-// branch-local; binds land in shared cells the plan partitioned.
-// ─── The SEGMENT bracket — the same chain, on the LIVE graph ─────────
+// THE FORKING HANDLERS. Speculation is a choice whose resumptions a fork
+// isolates: each handler answers `choose` (lib/choice.mn) by resuming the
+// computation once per option. A site that judges candidates says what one
+// candidate's judgment is; the handler that catches the resumptions says how
+// they are judged, and the fork — the chain installed, the keep or the drop
+// — is written here and nowhere else.
 //
-// Every handler the deleted branch bracket installed EXCEPT `graph_handler`, so the
-// body's graph performs resolve OUTER to the root's own instance and the
-// judgment happens on the one live graph. Isolation is the forking
-// handler's (`speculate`): the checkpoint and the world's top taken before
-// the candidate's resumption and restored after it.
+// EVERY OPTION'S JUDGMENT IS ITS OWN. A resumption runs under the judgment's
+// chain over a graph handler instance of its own (`forked`): the graph
+// instance is seeded with the version the instance below holds (the install
+// around a resume governs the remainder), and above it stand instances of
+// every handler whose arms write the graph — the row gate, the mint, the
+// ledgers (`judgment_ledgers`), an env view over the entries below, a
+// diagnostic collector and the type lookup — because an arm's perform
+// resolves outward from its own install: a handler standing outside the
+// fork would send the option's mints and binds to the instance below. So
+// the option's every write lands in its own instances and the instances
+// below are untouched by construction: the options are independent, a
+// schedule installed over the judgment may run them on threads, and
+// whatever an option wrote dies with its instances unless the arm keeps it.
+// The same resolution rule binds the handlers that stand OUTSIDE every fork
+// — the frame stack (`infer_ctx`), the store ages — the other way: an arm
+// of theirs performing a graph read would reach the instance below the
+// fork and miss what the fork bound, so their arms hand the body the facts
+// it computes from and read no graph (measured 2026-10-20: the frame
+// exit's prune against the root's view published rows whose edges copied
+// co-members' cells, and a group's completion fold walked a DAG as deep as
+// the group).
+// Each resumption runs in an arena (lib/arena.mn): what crosses its exit is
+// the answer, and the world is restored after the resumption ends, so a
+// fact replayed afterwards resolves to the chain the arm stands in. The
+// instances a fork is seeded from are read in the arm, before its options
+// run (`fork_seed`): a branch of a threaded schedule may not reach the
+// handlers below the fork (the race rule), and nothing writes them while the
+// options run.
 //
-// The fresh ledgers stay, and that is the point of keeping the chain: the
-// triple covers graph, heap and world ONLY, while a candidate's judgment
-// also enters env scopes, accrues verify debt, tags allocations and reports
-// diagnostics — none of it trailed. Those ride per-segment instances and
-// the caller reads their facts before replaying, exactly as the copy did.
-//
-// What this DELETES is the graph copy: a candidate no longer judges against
-// a fresh instance seeded from four root views inside a pre-planned band, so
-// a fact proven in one segment is visible to the next, the hole's own cell
-// is reachable, and the trail records the segment's binds where a diff can
-// read them.
-fn segment_bracket(body, base, iseed) = match base {
-  (bb, bc, bi) => match iseed {
-    (ib, ie, ic) => body() ~> row_gate ~> store_ages ~> infer_ctx ~> fresh_for_inference ~> fork_judgment ~> env_handler(bb, bc, bi) ~> diag_branch ~> intern_view(ib, ie, ic),
+// `speculate` judges every option and keeps none: the answers are what the
+// options carried out.
+handler speculate {
+  choose(options) => {
+    let seed = fork_seed()
+    options |> fanout({
+      o => {
+        match forked(seed, () => resume(o)) {
+          (a, _, _) => a,
+        }
+      } ~> arena,
+    }) |> flatten
   },
 }
 
-// THE SPECULATION'S JUDGMENT CHAIN: the ledgers, an instance per
-// speculation, installed inside a forking handler's resume with an env view
-// over the root's beside them (`env_handler(bb, bc, bi)`, from an
-// `env_base_view` read before the choice). The graph itself needs no
-// instance — a speculation's graph writes are undone by restoring the version
-// its bracket took — but the facts these ledgers accrue have no version, so
-// each speculation gets its own and they die with it; a segment reads the
-// ones it replays before its bracket closes.
-handler fork_judgment = affine_ledger ~> region_tracker ~> verify_ledger
+// `first_held` judges the options in order and keeps the first whose answer
+// holds; none after it is resumed. The kept option's final version is
+// adopted into the instance below (`graph_keep`) and its facts replayed
+// there (`branch_join`), so its writes stand as truth where a speculation
+// around it can still undo them, and an option that did not hold leaves
+// nothing behind: its instances die with its arena.
+handler first_held {
+  choose(options) => options |> fold(
+    false,
+    (held, o) => held || {
+      let seed = fork_seed()
+      let kept = {
+        match forked(seed, () => resume(o)) {
+          (true, fv, facts) => Some((fv, facts)),
+          (false, _, _) => None,
+        }
+      } ~> arena
+      match kept {
+        Some((fv, facts)) => {
+          graph_keep(fv)
+          branch_join(facts)
+          true
+        },
+        None => false,
+      }
+    }
+  ),
+}
 
-// The join: replay the branch's facts into the root in occurrence order —
-// publishes re-perform env_extend (the Reason edge rides whole), the
-// rendered lines re-print, the tally folds. Runs AFTER the bracket
-// closes, so every perform here resolves to the root instances.
+// What a fork is seeded from: the version of the graph instance, the view of
+// the env instance and the consumed set of the ledger it stands over.
+fn fork_seed() = (graph_version(), env_base_view(), consume_base())
+
+// One option's judgment under the chain, and what it leaves: its answer, the
+// graph instance's final version, and the facts the ledgers hold — the env
+// entries, the reports, the open claims (the debt and the claims naming a
+// label, which the root settles once every declaration is judged), the
+// consume log and the decided claims — read inside the chain, where the
+// instances still stand, for a keep to replay below.
+fn forked(seed, body) = match seed {
+  (v, base, consumed) => {
+    consume_seed(consumed)
+    let w = world_top()
+    let a = body()
+    world_restore(w)
+    (
+      a,
+      graph_version(),
+      (env_entries(), diag_banked(), verify_debt() ++ verify_flows(), consume_log(), verify_decided())
+    )
+  } ~> row_gate ~> fresh_for_inference ~> judgment_ledgers ~> env_handler(base) ~> diag_branch ~> lookup_ty_graph ~> graph_handler(v),
+}
+
+// THE JUDGMENT'S LEDGERS, named once: the affine ledger, the region tracker
+// and the verify ledger. Every verb's root stands on them, and `forked`
+// installs an instance per fork beside the env view and the graph instance,
+// so what a fork accrues dies with it unless a keep replays it
+// (`branch_join`). A root that stood on fewer let a fork's consume read reach
+// no ledger at all (the fmt verb's teaching, found by the row).
+handler judgment_ledgers = affine_ledger ~> region_tracker ~> verify_ledger
+
+// The join: the fork's ledger facts enter the instances below in occurrence
+// order. The env entries are adopted — a name bound to its declaration,
+// whose schemes the graph keep merged already, so nothing is published
+// again and no scheme is re-derived from a value — and so are the decided
+// claims, verdicts over the graph the keep merged; the consumes and the
+// open claims re-perform, and the held reports re-enter. Runs after the
+// fork's installs close, so every perform here resolves to the instances the
+// fork stood over.
 fn branch_join(facts) = match facts {
-  (pubs, dfacts, vdebt, clog) => {
-    branch_replay_pubs(pubs, 0)
+  (entries, dfacts, vdebt, clog, vdecided) => {
+    each(adopt_entry, entries)
+    verify_adopt(vdecided)
     // Both ledgers' logs are PREPEND-ordered; the replay walks from the
     // tail so the root re-performs in occurrence order. Consumes re-check
     // against the root's live set — a same-layer double-consume refuses
@@ -2059,6 +2155,11 @@ fn branch_join(facts) = match facts {
     // root arm counts it and every forwarder (the bank among them) sees it.
     each(replay_report, dfacts)
   },
+}
+
+// A kept fork's env entry, adopted below it.
+fn adopt_entry(entry) = match entry {
+  (name, decl) => env_adopt(name, decl),
 }
 
 // A held report, performed again: its message was rendered where the report
@@ -2087,79 +2188,6 @@ fn branch_replay_verify(ref vdebt, i) = if i < 0 {
       branch_replay_verify(vdebt, i - 1)
     },
   }
-}
-
-fn branch_replay_pubs(ref pubs, i) = if i >= len(pubs) {
-  ()
-} else {
-  match pubs[i] {
-    (name, scheme, reason, kind, decl) => {
-      branch_replay_one(name, scheme, reason, kind, decl)
-      branch_replay_pubs(pubs, i + 1)
-    },
-  }
-}
-
-// An EffectOpScheme publish is a READ-MODIFY-WRITE of the op→handler
-// edge: replaying the branch's value would let two same-layer handlers
-// each evolve the frozen base and the latest erase the first sighting. The
-// join RE-RUNS draw_op_edges' own default/ambiguous algebra against the
-// root's live entry, the branch's verdict as the sighting; disc joins
-// monotone.
-//
-// THE VALUE BOUNDARY AT EVERY PUBLISH: the scheme crosses the join as
-// a chase_deep'd VALUE — quantified vars stay free leaves; everything
-// bound inlines its resolution — so no published entry of ANY kind
-// carries a live cell a concurrent sibling could bind. FnScheme
-// finals got this law first (the subst/quantification landing);
-// op-scheme and handler-sig publishes still carried live handles,
-// and a same-block race on one such cell was the K>1 flip's target
-// set (measured: str_of_single_byte's can_yield chasing a row var
-// bound in four of six runs, free in two — the k2 wrap flipping the
-// whole float-format family).
-fn branch_replay_one(name, scheme, reason, kind, decl) = match scheme {
-  // A live cell replays AS a live cell: the branch's judgment wrote the
-  // decl's graph cell in place (one graph, one truth), so the root's
-  // readers resolve it live. Freezing here would publish a snapshot the
-  // cell has already moved past — the two-generations disease this
-  // landing deletes.
-  Live(h) => env_extend(name, Live(h), reason, kind, decl),
-  Frozen(q, sty) => {
-    let fty = chase_deep(sty)
-    // The quantifier RE-DERIVES from the frozen type: chase_deep folds
-    // bound structure to values and canonicalizes free leaves to their
-    // union-find ROOTS, so pre-fold qvars name surface aliases the
-    // frozen tree no longer holds — any frozen leaf outside the
-    // instantiation mapping is SHARED by every caller, and the callers'
-    // teachings union into that one live cell (measured: infer_context
-    // publishing a maskless GraphRead/Intern face it never performs —
-    // the union of all fourteen chains' contexts — with stale-band and
-    // duplicated qvars as the two-era tell). An EMPTY q is the
-    // deliberate mono/two-phase share and stays empty.
-    let frozen = if len(q) == 0 { Frozen([], fty) } else { Frozen(free_in_ty(fty), fty) }
-    match kind {
-      EffectOpScheme(ename, bd, ba, bdisc) => {
-        let joined = match env_lookup(name) {
-          Some((_, _, EffectOpScheme(_, rd, ra, rdisc))) => {
-            let disc = disc_join(rdisc, bdisc)
-            match if ra || rd == bd {
-              (rd, ra)
-            } else {
-              match rd {
-                None => (bd, ba),
-                Some(_) => (rd, true),
-              }
-            } {
-              (nd, na) => EffectOpScheme(ename, nd, na, disc),
-            }
-          },
-          _ => kind,
-        }
-        env_extend(name, frozen, reason, joined, decl)
-      },
-      _ => env_extend(name, frozen, reason, kind, decl),
-    }
-  },
 }
 
 // A block's statements, judged run by run (`stmt_runs`). A lone statement
@@ -2782,8 +2810,8 @@ fn mycroft_field_pairs(fs1, fs2, i, acc) = if i >= len(fs1) || i >= len(fs2) {
   }
 }
 
-// The speculative decl judgment (§11 5.3's fragment — Mycroft iteration on
-// the medium's own trail). Its rounds are the options of one choice, judged
+// The speculative decl judgment (§11 5.3's fragment — Mycroft iteration, each
+// round a fork of the graph). Its rounds are the options of one choice, judged
 // in order, and the first that holds is kept (`first_held`): the plain
 // judgment under report capture, held when no refusal carries the poly
 // teach's own fingerprint; the general assumption, judged and undone for the
@@ -2824,7 +2852,7 @@ fn judged_round(name, params, body_node, ret_ann, effs, handle, span: ValidSpan,
   // The general assumption is a speculation of one: judged in a fork of the
   // graph and dropped, carrying out the scheme it published, chased off its
   // cells before the drop so the value outlives them.
-  PolyRound => match general_scheme(choose([name]), params, body_node, ret_ann, effs, handle, span, env_base_view()) ~> speculate {
+  PolyRound => match general_scheme(choose([name]), params, body_node, ret_ann, effs, handle, span) ~> speculate {
     [] => false,
     [(q, detached), ..._] => rechecked(name, params, body_node, ret_ann, effs, handle, span, q, detached),
   },
@@ -2834,29 +2862,24 @@ fn judged_round(name, params, body_node, ret_ann, effs, handle, span: ValidSpan,
   },
 }
 
-// The round runs under the judgment's own chain above the fork's graph
-// instance — the ledgers, the type lookup and an env view over the root's —
-// because an arm's perform resolves outward from its own install: the env
-// arm's publish and the lookup's chase must reach the fork's graph, not the
-// root's below it, and the segment bracket gives a candidate the same chain
-// for the same reason. What the round publishes and reads lives and dies
-// with these instances; the scheme it carries out is read inside them.
-fn general_scheme(name, params, body_node, ret_ann, effs, handle, span: ValidSpan, base) = match base {
-  (bb, bc, bi) => {
-    mycroft_prebind(name, params, span, handle)
-    infer_fn(name, params, body_node, ret_ann, effs, handle, span, true)
-    if held_has_error(poly_captured()) {
-      []
-    } else {
-      match env_lookup(name) {
-        Some((sch, _, _)) => match judgment_pair(sch) {
-          (q, ty) => [(q, chase_deep(ty))],
-        },
-        None => [],
-      }
+// The assumption is judged under the capture bracket alone: the forking
+// handler installs the judgment's chain over the fork's graph instance
+// (`forked`), so what the round publishes and reads lives and dies with the
+// fork, and the scheme it carries out is read inside it.
+fn general_scheme(name, params, body_node, ret_ann, effs, handle, span: ValidSpan) = {
+  mycroft_prebind(name, params, span, handle)
+  infer_fn(name, params, body_node, ret_ann, effs, handle, span, true)
+  if held_has_error(poly_captured()) {
+    []
+  } else {
+    match env_lookup(name) {
+      Some((sch, _, _)) => match judgment_pair(sch) {
+        (q, ty) => [(q, chase_deep(ty))],
+      },
+      None => [],
     }
-  } ~> poly_capture ~> fork_judgment ~> env_handler(bb, bc, bi),
-}
+  }
+} ~> poly_capture
 
 // The recheck: the assumption is written before the capture bracket — it
 // mints and binds, reports nothing, and its type rides to the accept's gate
@@ -3462,33 +3485,50 @@ fn decl_effect_entry(h, bh, eff) = EffectEnters(eff_name_str(eff), h, body_entry
 // The chain from a declaration's body: the descent where the body's nodes
 // note the effect, else the one sentence for a charge no node owns.
 fn body_entry(eff, bh, seen) = if carries(eff, bh) {
-  effect_entry(eff, bh, seen)
+  match effect_entry(eff, bh, seen) {
+    Some(r) => r,
+    None => Inferred("every site below calls back into a declaration on this path"),
+  }
 } else {
   Inferred("the body's row without a site — a guard a callee's precondition hands to its caller")
 }
 
-// The descent: into the earliest child that carries the effect, else this
-// node is the site.
-fn effect_entry(eff, h, seen) = match entry_child(eff, h) {
-  Some(c) => effect_entry(eff, c, seen),
-  None => entry_at(eff, h, seen),
+// The descent: into the earliest child carrying the effect whose own descent
+// reaches a site OFF THE PATH, the next carrier where it does not, and this
+// node is the site where no child carries the effect. None where every site
+// below is a call back into a declaration already on the path: a member of a
+// recursive group carries what its co-members charge, so the first carrier
+// in a body is often the recursive call, and a walk that stopped there named
+// the cycle where the group's one store stood a few lines further on
+// (measured 2026-10-20 on the unifier, whose every chain ended at itself).
+fn effect_entry(eff, h, seen) = match carriers_in_order(eff, h) {
+  [] => entry_at(eff, h, seen),
+  cs => fold(None, entry_through(eff, seen, ??, ??), cs),
 }
 
-// Which child the walk enters, under `row_of_subtree`'s own reading of what
-// runs when a node is evaluated: a lambda, a nested fn and a handler
+fn entry_through(eff, seen, found, c) = match found {
+  Some(_) => found,
+  None => effect_entry(eff, c, seen),
+}
+
+// Which children the walk may enter, under `row_of_subtree`'s own reading of
+// what runs when a node is evaluated: a lambda, a nested fn and a handler
 // declaration mint and install nothing of their bodies; a tee's body may
 // still carry what its handler does not absorb, and carries nothing of what
 // it does, so an absorbed effect enters through the install itself — its
 // arms, read at `entry_at`; a cycle's delay spec never runs; every other
 // node's children run before it.
-fn entry_child(eff, h) = match graph_node_body(h) {
-  NExpr(LambdaExpr(_, _)) => None,
-  NStmt(FnStmt(_, _, _, _, _)) => None,
-  NStmt(HandlerDeclStmt(_, _, _, _, _, _)) => None,
-  NExpr(PipeExpr(PTee, l, hnd)) => if tee_absorbs_here(hnd, eff) { None } else { earliest_carrier(eff, [l]) },
-  NExpr(PipeExpr(PFeedback, l, _)) => earliest_carrier(eff, [l]),
-  body => earliest_carrier(eff, body_child_handles(body)),
-}
+fn carriers_in_order(eff, h) = carrying_children(
+  eff,
+  match graph_node_body(h) {
+    NExpr(LambdaExpr(_, _)) => [],
+    NStmt(FnStmt(_, _, _, _, _)) => [],
+    NStmt(HandlerDeclStmt(_, _, _, _, _, _)) => [],
+    NExpr(PipeExpr(PTee, l, hnd)) => if tee_absorbs_here(hnd, eff) { [] } else { [l] },
+    NExpr(PipeExpr(PFeedback, l, _)) => [l],
+    body => body_child_handles(body),
+  }
+)
 
 // Whether the install at a tee absorbs the effect — its handler's arms name
 // it, the same read the tee's row takes (`infer_pipe_tee`). What the body
@@ -3503,10 +3543,17 @@ fn tee_absorbs_here(hnd, eff) = match tee_arms(hnd) {
 
 // The site's hop: what the effect crosses there, and the chain beyond it.
 fn entry_at(eff, h, seen) = match graph_node_body(h) {
-  NExpr(CallExpr(f, args)) => EffectEnters(eff_name_str(eff), h, callee_entry(eff, f, args, seen)),
-  NExpr(PipeExpr(PForward, l, stage)) => EffectEnters(eff_name_str(eff), h, stage_entry(eff, stage, [l], seen)),
-  NExpr(PipeExpr(PTee, _, hnd)) => EffectEnters(eff_name_str(eff), h, install_entry(eff, hnd, seen)),
-  body => EffectEnters(eff_name_str(eff), h, Inferred(charge_word_at(h, body))),
+  NExpr(CallExpr(f, args)) => enters(eff, h, callee_entry(eff, f, args, seen)),
+  NExpr(PipeExpr(PForward, l, stage)) => enters(eff, h, stage_entry(eff, stage, [l], seen)),
+  NExpr(PipeExpr(PTee, _, hnd)) => enters(eff, h, install_entry(eff, hnd, seen)),
+  body => Some(EffectEnters(eff_name_str(eff), h, Inferred(charge_word_at(h, body)))),
+}
+
+// The hop at a site, over the chain beyond it: none where that chain found
+// no site off the path.
+fn enters(eff, h, beyond) = match beyond {
+  Some(r) => Some(EffectEnters(eff_name_str(eff), h, r)),
+  None => None,
 }
 
 // What a node charges by itself, in words: a match the parse made of a
@@ -3520,20 +3567,20 @@ fn stage_entry(eff, stage_h, piped, seen) = match graph_node_body(stage_h) {
   NExpr(VarRef(_)) => callee_entry(eff, stage_h, piped, seen),
   NExpr(CallExpr(f, args)) => callee_entry(eff, f, args ++ piped, seen),
   NExpr(LambdaExpr(_, body)) => effect_entry(eff, body, seen),
-  _ => Inferred("a call through a value"),
+  _ => Some(Inferred("a call through a value")),
 }
 
 // Through an install: the handler's arms and state inits run under the tee,
 // and the install itself charges its record.
 fn install_entry(eff, hnd, seen) = match tee_handler_decl(hnd) {
   Some(dh) => match graph_node_body(dh) {
-    NStmt(HandlerDeclStmt(hname, _, _, _, _, _)) => match earliest_carrier(eff, body_child_handles(graph_node_body(dh))) {
-      Some(c) => effect_entry(eff, c, seen),
-      None => Inferred("the install of `{hname}`"),
+    NStmt(HandlerDeclStmt(hname, _, _, _, _, _)) => match carrying_children(eff, body_child_handles(graph_node_body(dh))) {
+      [] => Some(Inferred("the install of `{hname}`")),
+      cs => fold(None, entry_through(eff, seen, ??, ??), cs),
     },
-    _ => Inferred("the install"),
+    _ => Some(Inferred("the install")),
   },
-  None => Inferred("the install"),
+  None => Some(Inferred("the install")),
 }
 
 // Through a callee, by its edge to what it names: an op of the effect is the
@@ -3543,16 +3590,16 @@ fn install_entry(eff, hnd, seen) = match tee_handler_decl(hnd) {
 fn callee_entry(eff, callee_h, arg_hs, seen) = match graph_node_body(callee_h) {
   NExpr(VarRef(name)) => match graph_ref_decl(callee_h) {
     Some(dh) => match graph_published(dh) {
-      Some((_, _, EffectOpScheme(_, _, _, _))) => op_entry(eff, dh, name),
-      Some((_, _, ConstructorScheme(_, _))) => Inferred("building `{name}`"),
+      Some((_, _, EffectOpScheme(_, _, _, _))) => Some(op_entry(eff, dh, name)),
+      Some((_, _, ConstructorScheme(_, _))) => Some(Inferred("building `{name}`")),
       _ => match graph_node_body(dh) {
         NStmt(FnStmt(_, _, _, _, _)) => decl_entry(eff, name, dh, arg_hs, seen),
-        _ => Inferred("the function value `{name}`"),
+        _ => Some(Inferred("the function value `{name}`")),
       },
     },
-    None => Inferred("`{name}`, which no declaration in this link names"),
+    None => Some(Inferred("`{name}`, which no declaration in this link names")),
   },
-  _ => Inferred("a call through a value"),
+  _ => Some(Inferred("a call through a value")),
 }
 
 // An op's effect is its declaration's parent: the effect declaration whose
@@ -3579,9 +3626,11 @@ fn foreign_op_charge(opname: String, en: String) = match raw_store_target(opname
 
 // Into a declaration: its body where the body carries the effect; else the
 // effect came in through a function value handed to it — a literal whose
-// body carries it, or a named function whose row does.
+// body carries it, or a named function whose row does. A declaration already
+// on the path is no site: the walk answers None and the caller tries its
+// next carrier.
 fn decl_entry(eff, name: String, dh, arg_hs, seen) = if any({ x => x == dh }, seen) {
-  Inferred("`{name}`, already on this path")
+  None
 } else {
   match graph_node_body(dh) {
     NStmt(FnStmt(_, _, _, _, body)) => if carries(eff, body) {
@@ -3589,10 +3638,10 @@ fn decl_entry(eff, name: String, dh, arg_hs, seen) = if any({ x => x == dh }, se
     } else {
       match find(value_carries(eff, ??), arg_hs) {
         Some(vh) => value_entry(eff, vh, seen),
-        None => Inferred("a value handed to `{name}`"),
+        None => Some(Inferred("a value handed to `{name}`")),
       }
     },
-    _ => Inferred("the value `{name}`"),
+    _ => Some(Inferred("the value `{name}`")),
   }
 }
 
@@ -3607,10 +3656,10 @@ fn value_carries(eff, vh) = match graph_node_body(vh) {
 // A value handed in is entered where it runs: a literal's body, a named
 // function, a partial application's callee.
 fn value_entry(eff, vh, seen) = match graph_node_body(vh) {
-  NExpr(LambdaExpr(_, body)) => EffectEnters(eff_name_str(eff), vh, effect_entry(eff, body, seen)),
-  NExpr(VarRef(_)) => EffectEnters(eff_name_str(eff), vh, callee_entry(eff, vh, [], seen)),
-  NExpr(CallExpr(f, args)) => EffectEnters(eff_name_str(eff), vh, callee_entry(eff, f, args, seen)),
-  _ => Inferred("a function value handed in"),
+  NExpr(LambdaExpr(_, body)) => enters(eff, vh, effect_entry(eff, body, seen)),
+  NExpr(VarRef(_)) => enters(eff, vh, callee_entry(eff, vh, [], seen)),
+  NExpr(CallExpr(f, args)) => enters(eff, vh, callee_entry(eff, f, args, seen)),
+  _ => Some(Inferred("a function value handed in")),
 }
 
 // Whether a subtree's row carries the effect, by name.
@@ -3623,24 +3672,20 @@ fn row_carries(row, eff) = match row {
   EfRow(present, _, _) => any({ p => eff_name_handle(p) == eff_name_handle(eff) }, present),
 }
 
-// The earliest-placed child that carries the effect — evaluation order is
-// source order among a node's children, and a child the parser placed
-// nowhere never wins over one it did.
-fn earliest_carrier(eff, hs) = fold(None, earlier_carrier(eff, ??, ??), hs)
+// The children that carry the effect, earliest-placed first — evaluation
+// order is source order among a node's children, and a child the parser
+// placed nowhere comes after every one it did.
+fn carrying_children(eff, hs) =
+  hs |> filter(carries(eff, ??)) |> map(by_span_key) |> sort |> map(keyed_carrier)
 
-fn earlier_carrier(eff, best, h) = if carries(eff, h) {
-  match best {
-    None => Some(h),
-    Some(b) => if span_before(graph_span_of(h), graph_span_of(b)) { Some(h) } else { best },
-  }
-} else {
-  best
+fn by_span_key(h) = (span_order_key(graph_span_of(h)), h)
+
+fn span_order_key(sp) = match sp {
+  Span(l, c, _, _) => (if l == 0 { 2147483647 } else { l }, c),
 }
 
-fn span_before(a, b) = match a {
-  Span(al, ac, _, _) => match b {
-    Span(bl, bc, _, _) => al > 0 && (bl == 0 || al < bl || al == bl && ac < bc),
-  },
+fn keyed_carrier(p) = match p {
+  (_, h) => h,
 }
 
 // What a node charges by itself, for a site no call explains. A reference
@@ -7704,28 +7749,10 @@ fn unify_record_fields_loop_shared(fa, fb, names, span: ValidSpan, reason) = if 
   unify_record_fields_loop_shared(fa, fb, drop_last(names), span, reason)
 }
 
-fn intersect_record_fields(fa, fb) = {
-  let n = len(fa)
-  match intersect_record_fields_loop(fa, fb, 0, n, make_list(n), 0) {
-    (buf, count) => slice(buf, 0, count),
-  }
-}
+// The names both field lists hold, in the first list's order.
+fn intersect_record_fields(fa, fb) = fa |> filter(field_shared_with(fb, ??)) |> map(field_name)
 
-fn intersect_record_fields_loop(fa, fb, i, n, own buf, count) = if i >= n {
-  (buf, count)
-} else {
-  match list_index(fa, i) {
-    (name, _) => match if find_record_field_pos(fb, name) >= 0 {
-      let extended = list_extend_to(buf, count + 1)
-      let written = list_set(extended, count, name)
-      (written, count + 1)
-    } else {
-      (buf, count)
-    } {
-      (next_buf, next_count) => intersect_record_fields_loop(fa, fb, i + 1, n, next_buf, next_count),
-    },
-  }
-}
+fn field_shared_with(fb, f) = find_record_field_pos(fb, field_name(f)) >= 0
 
 fn record_fields_diff(left, right) = {
   let n = len(left)
@@ -14970,7 +14997,9 @@ fn register_handler(hname, ename_parsed, config, state, arms, effs, span: ValidS
   // residual it would reach every installer as a free edge and carry the
   // handler's own clause onto the remainder (A5 already judges that clause
   // against each remainder, and a cap on the arms is not a cap on the body).
-  inf_cut_edge(w_handle)
+  // The cut is computed here, where the graph is the judgment's own: every
+  // edge of the open frame's row chasing to the remainder cell drops.
+  inf_replace_row(row_without_self(inf_current_row(), w_handle))
   let declared_effs = exit_frame()
   env_scope_exit()
   // The handler's own `with` row, judged exactly as a fn's at its exit (one

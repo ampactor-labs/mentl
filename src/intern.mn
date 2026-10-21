@@ -62,7 +62,6 @@ handler intern_table with table = vocab_seed() {
   intern_name_of(h) => match table {
     (_buckets, entries, _count) => resume(list_index(entries, h)),
   },
-  intern_seed() => resume(table),
 }
 
 // THE MEDIUM'S OWN VOCABULARY — the names the wheel itself interns by
@@ -96,37 +95,4 @@ fn vocab_insert(table, w: String) = match table {
       count + 1
     )
   },
-}
-
-// The branch cursor's READ-ONLY intern view (the fan): serves probe
-// hits and name_of over the root's live table; a MISS traps loudly —
-// a view-minted handle would fork identity (its entry absent from the
-// root's table, rendering garbage wherever it escaped), and the walk
-// is pre-warmed by parse and by the table's birth (`medium_vocabulary`),
-// so a miss IS a counterexample worth the loud stop. intern_span is
-// unreachable in a branch (lex is root-side); its arm carries the same
-// trap for totality.
-handler intern_view(buckets0, entries0, count0) {
-  intern_span(src, s, e) => {
-    let b = i32_and(str_hash_loop(src, s, e, -2128831035), 4095)
-    match intern_probe(list_index(buckets0, b), src, s, e, 0, len(list_index(buckets0, b))) {
-      Some(row) => resume(row),
-      None => {
-        out_of_range()
-        resume(("", 0, None))
-      },
-    }
-  },
-  intern_str(s) => {
-    let e = byte_len(s)
-    let b = i32_and(str_hash_loop(s, 0, e, -2128831035), 4095)
-    match intern_probe(list_index(buckets0, b), s, 0, e, 0, len(list_index(buckets0, b))) {
-      Some(row) => match row {
-        (_canonical, h, _kw) => resume(h),
-      },
-      None => resume(out_of_range()),
-    }
-  },
-  intern_name_of(h) => resume(list_index(entries0, h)),
-  intern_seed() => resume((buckets0, entries0, count0)),
 }

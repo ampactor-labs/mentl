@@ -3,8 +3,8 @@
 // what choosing means. Search, backtracking and speculation are handlers over
 // this one perform, never a second mechanism (PLAN §4④): `every` resumes once
 // per option and joins what each answered, `first` resumes in order until an
-// option answers something, and the compiler's own forking handlers bracket
-// each resumption on the graph's trail.
+// option answers something, and the compiler's own forking handlers run
+// each resumption in a graph instance of its own.
 effect Choice {
   choose(options: [a]) -> a
 }

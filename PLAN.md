@@ -217,10 +217,11 @@ everything above it.
 
 - **L0 · The graph.** Nodes and typed edges, live, every fact a column keyed by
   the handle itself (a four-level trie: an O(1) chase), and the graph a VALUE:
-  a version is taken in O(1) by remembering the column roots and marking the
-  heap line, every write after it copies the one page it touches, and a
-  speculation restores or keeps the version in O(1) whatever it wrote. *Only
-  inference writes.*
+  a version is taken in O(1) by remembering the column roots, a fork is an
+  instance of the graph handler seeded with one — its own columns hold what
+  it writes and a read falls through to the versions below — and a
+  speculation keeps the fork by merging its cells into the instance below or
+  drops it with its extent. *Only inference writes.*
 - **L1 · The value ontology** — **five node-kinds**: *word*, *sequence*,
   *product* (record; tuple = positional product), *sum*, *function*
   (closure-with-evidence). Everything else is a **view** (§4①).
@@ -543,21 +544,25 @@ landing that closes it. A gate that did not run is UNKNOWN, never green.
   start restores an image and judges the edit's cone over it.
 - **The resident Space keeps its graph for a session's life**; a session derives
   once per open, and a fresh process derives cold (§11.18).
-- **Speculation is a choice, and the graph is a value, one speculation at a
+- **Speculation is a choice, and a fork is an instance, one speculation at a
   time**: every judgment the medium tries and may undo performs `choose`
-  (lib/choice.mn), and the forking handlers bracket each resumption with a
-  version of the graph (`graph_version`: the column roots, the mint, the span
-  log and the heap mark, O(1)). The writes that follow copy the pages they
-  touch and leave the version readable, so the handler that judges every
-  option restores it after each (`graph_restore`, O(1) whatever the option
-  wrote) and the handler that keeps the first held round drops it
-  (`graph_keep`). The ??-fan's candidates, teach's locks and contracts and
-  the Mycroft rounds of every unsigned declaration's judgment undo this way,
-  each under its own ledgers and an env view over the root's, which have no
-  version; a candidate's teaching is read before the restore as the cells on
-  which the graph and its version disagree. The options run one after
-  another and `next` is restored with the version, so two never run at
-  once; forks on threads are the fused oracle's one pin left (§11). A
+  (lib/choice.mn), and the forking handlers run each resumption under the
+  judgment's chain over a graph handler instance of its own, seeded with the
+  version of the instance below (`graph_version`: the column roots, the
+  mint, the span log, O(1)), beside instances of the row gate, the mint, the
+  ledgers, an env view over the entries below and a diagnostic collector
+  (`forked`). The option's writes land in its own columns and a read falls
+  through to the versions below, so the handler that judges every option
+  drops each instance with its arena (`speculate`) and the handler that
+  keeps the first held round merges its cells into the instance below
+  (`graph_keep`) and adopts its ledger facts (`branch_join`). The ??-fan's
+  candidates, teach's locks and contracts and the Mycroft rounds of every
+  unsigned declaration's judgment fork this way; a candidate's teaching is
+  read inside its instance as the cells that instance wrote. A handler
+  standing outside every fork (the frame stack, the store ages) reads no
+  graph in its arms, since an arm's perform resolves to the instance below
+  the fork. The options run one after another, so two never run at once;
+  forks on threads are the fused oracle's one pin left (§11). A
   continuation is captured at any position, by a copy of its frame's
   lowered tail (§11.18).
 - **The compile is sequential by construction** (§11.16).
@@ -707,42 +712,44 @@ a provenance diff, a search over live shared cells.
 runs, its design written here whole so a session starts from this paragraph
 and the artifact:
 
-- **The fused oracle** — the graph is a VALUE, and a fork is a version of
-  it. `choose` (lib/choice.mn) is caught by `speculate` and `first_held`
-  (src/graph.mn). Landed 2026-10-20: every per-handle fact is a column
-  keyed by the handle itself (lib/imap.mn's persistent trie, four levels of
-  64 under a root that grows with the mint), the graph handler's state is a
-  `Version` — the column roots, the mint, the span log and the heap mark —
-  and a version is taken in O(1) (`graph_version`: the roots remembered,
-  the line marked). A write lands in place when the page it reaches was
-  allocated past the mark and copies that one page otherwise, so the
-  version stays readable, and a speculation ends by restoring it
-  (`graph_restore`) or dropping it (`graph_keep`), each O(1) whatever was
-  written: the trail, the checkpoint stack, the fork seed and the mutation
-  event are deleted, nothing is journaled, and the old value is read live
-  through the old root. Every speculation's body runs under its own
-  ledgers and an env view over the root's (`fork_judgment ~>
-  env_handler(bb, bc, bi)`), since those facts have no version. The
-  tie-break is computed: each survivor is sealed with the context cells its
-  judgment bound, read before the restore as the cells on which the graph
-  and its version disagree (`graph_written_since`, a comparison that skips
-  every page the two share), the first cell two survivors bound differently
-  is the question (`DivType` with the cell's own Reason, `DivRow`), and
-  survivors the e-graph extracts to one class are one meaning shown once.
-  The compiler is still emitted as a thread-free module (a defined memory,
-  a bump allocator, no spawn import), and that is the one pin left. The
-  compiler spawns: the schedule is installed over the judgment at the verb
-  entries — `parallel_compose` where the host answers a spawn,
-  `sequential_compose` otherwise — and `speculate` fans its options under
-  it, each resumption a graph handler instance of its own seeded with the
-  version (the install around a resume governing the remainder), its mint
-  in a band keyed by the choice site and the option's index, never by the
-  open count, so the handle an option mints is the same under any schedule;
-  interning banded the same way; a kept fork's version adopted into the
-  parent — the pages past its mark the parent's own to write — and the
-  facts replayed in options order; the race rule accepts exactly this shape
-  and refuses a branch reaching the root's handler, which is its proof; the
-  `mentl` shim and the page's worker instantiate the spawning module
+- **The fused oracle** — the graph is a VALUE, and a fork is an instance of
+  the graph handler seeded with a version of it. `choose` (lib/choice.mn)
+  is caught by `speculate` and `first_held` (src/infer.mn). Landed
+  2026-10-20: every per-handle fact is a column keyed by the handle itself
+  (lib/imap.mn's persistent trie, four levels of 64 under a root that grows
+  with the mint); an instance's columns hold the cells it wrote and a read
+  falls through to the version it was seeded with and the versions below
+  that (`col_get`); a version is taken in O(1) (`graph_version`: the
+  instance's columns and the version below them). Each resumption of a
+  `choose` runs under the judgment's whole chain over an instance of its
+  own (`forked`: the row gate, the mint, the ledgers, an env view over the
+  entries below, a diagnostic collector, the graph instance), so every
+  write of the option lands in its instances and the instances below are
+  untouched by construction; `speculate` drops each instance with its arena
+  and `first_held` merges the kept instance's cells into the instance below
+  (`graph_keep`, lib/imap.mn's `pt_merge`, O(what it wrote)) and adopts its
+  ledger facts — the env entries, the decided and the open claims, the
+  consumes, the held reports (`branch_join`). The trail, the checkpoint stack, the restore and
+  the heap mark are deleted; nothing is journaled. A handler standing
+  outside every fork — the frame stack, the store ages — reads no graph in
+  its arms, because an arm's perform resolves to the instance below the
+  fork (the frame exit hands the body its facts and the body computes the
+  published row). The tie-break is computed: each survivor is sealed with
+  the context cells its judgment bound, read inside its instance as the
+  cells that instance wrote (`graph_written_since`), the first cell two
+  survivors bound differently is the question (`DivType` with the cell's
+  own Reason, `DivRow`), and survivors the e-graph extracts to one class
+  are one meaning shown once. The compiler is still emitted as a
+  thread-free module (a defined memory, a bump allocator, no spawn import),
+  and that is the one pin left. The compiler spawns: the schedule is
+  installed over the judgment at the verb entries — `parallel_compose`
+  where the host answers a spawn, `sequential_compose` otherwise — and
+  `speculate` fans its options under it, each option's mint in a band keyed
+  by the choice site and the option's index, never by the open count, so
+  the handle an option mints is the same under any schedule; interning
+  banded the same way; the race rule accepts exactly this shape and refuses
+  a branch reaching the root's handler, which is its proof; the `mentl`
+  shim and the page's worker instantiate the spawning module
   (`Hβ.oracle.forks-on-threads`). Gates: m3
   under `sequential_compose` byte-identical to m3 under `parallel_compose`
   (§11.16's statement made real), the ??-fan's latency falling with the
@@ -1015,8 +1022,8 @@ and the artifact:
     m3 under `Seq` byte-identical to m3 under `parallel_compose`.
 17. **Verify's own solver** (`Hβ.verify.the-solver-is-the-search`). The
     proposer's search is the solver: union-find and the e-graph as congruence
-    closure, the version stack as the assignment stack, a fork as a case split,
-    the first divergence of two versions as conflict analysis. The fragment, in the order the
+    closure, the chain of forked instances as the assignment stack, a fork as a case split,
+    the first divergence of two forks' write sets as conflict analysis. The fragment, in the order the
     wheel's own debt names it: path narrowing (the guarded index reads and the
     divisions under a guard), overflow-aware intervals, linear arithmetic,
     equality from the e-graph. An external solver plugs in only as a proposer

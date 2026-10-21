@@ -764,8 +764,9 @@ resumptions says what choosing means — `every` joins what each option
 answered, `first` stops at the first option that answers `Some`. The ??-fan is
 one choice (`segment_verify`, src/synth_proposer.mn): its candidates are the
 resumptions of one `choose`, and the compiler's forking handler judges each
-against a version of the graph and restores it, the bracket written once in
-that handler's arm (tests/micros/mn-choice-every-first.mn).
+in a graph instance of its own, seeded with a version of the graph, and drops
+it, the fork written once in that handler's arm
+(tests/micros/mn-choice-every-first.mn).
 
 **`><` is a structural N-ary construct the formatter renders in one of two layouts** (a presentation choice, never a parse distinction — there are no semantic "forms," only render shapes):
 

@@ -179,11 +179,10 @@ fn list_set(l, idx, val) = {
 // per append when callers maintain a separate logical-length
 // counter.
 //
-// Substrate primitive for graph.mn's (nodes, next),
-// (trail, trail_len), per-overlay (handles_buf, handles_len), and
-// flat-buffer-plus-counter state in infer.mn (evidence vectors)
-// and query.mn (capability sets). Every flat-substrate grow in the
-// compiler routes through here.
+// Substrate primitive for every flat-buffer-plus-counter state in the
+// compiler — the env's entries, infer.mn's evidence vectors, query.mn's
+// capability sets. Every flat-substrate grow in the compiler routes
+// through here.
 //
 // CONTRACT: slots in [len(list), new_cap) are zero-initialized by
 // the allocator but carry no semantic meaning. Callers must track

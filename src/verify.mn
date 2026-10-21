@@ -33,6 +33,7 @@ handler verify_ledger with debt = [], decided = [], flows = [], settled = [] {
   verify_debt() => resume(debt ++ flat_map(settled_owed, settled)),
   verify_decided() => resume(decided ++ flat_map(settled_verdict, settled)),
   verify_flows() => resume(flows),
+  verify_adopt(entries) => resume() with decided = entries ++ decided,
   verify_settle(entries) => resume() with settled = entries,
   verify_forget(gone) => resume() with debt = filter(debt_outside(gone, ??), debt), decided = filter(debt_outside(gone, ??), decided), flows = filter(debt_outside(gone, ??), flows), settled = filter(settled_outside(gone, ??), settled),
 }

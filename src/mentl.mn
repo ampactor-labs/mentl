@@ -362,18 +362,15 @@ type Proven = Proven(Site, AnnotationSuggestion)
 // ── The row clause: a lock some clause stands on, proven ───────────────
 //
 // Each candidate is a lock a dependent's clause stands on (above), proven by
-// the declaration gate's own engine on a trail of its own (`speculate`): the
+// the declaration gate's own engine in a fork of its own (`speculate`): the
 // narrowed row bound, the body's row asked to subsume it, undone. A proven
 // clause locks an absence the body already has — the gate every edit of the
 // body must meet — and discharges nothing.
 fn row_suggestions(f) = {
   let candidates = standing_clauses(f.handle, [f.handle]) |> lock_candidates
-  let base = env_base_view()
   let held = {
     let c = choose(candidates)
-    match base {
-      (bb, bc, bi) => if lock_holds(f.handle, f.ty, c) { [c] } else { [] } ~> fork_judgment ~> env_handler(bb, bc, bi),
-    }
+    if lock_holds(f.handle, f.ty, c) { [c] } else { [] }
   } ~> speculate
   held |> map(row_suggestion)
 }
@@ -548,12 +545,9 @@ fn param_candidates(f, owed, aliases, lean) = match lean {
   (b, name, i) => {
     let fitting =
       aliases |> filter(binder_fits(b, ??)) |> filter(writable_over(written_param_ty(list_index(f.params, i)), ??))
-    let base = env_base_view()
     let counted = {
       let alias = choose(fitting)
-      match base {
-        (bb, bc, bi) => [(alias, precondition_counts(f, owed, b, i, alias))] ~> fork_judgment ~> env_handler(bb, bc, bi),
-      }
+      [(alias, precondition_counts(f, owed, b, i, alias))]
     } ~> speculate
     counted |> flat_map(precondition_proven(i, name, ??))
   },
@@ -759,12 +753,9 @@ fn return_suggestions(f) = if authored_return(f.retty) {
     [] => [],
     resting => {
       let fitting = aliases_in_reach(graph_module_of(f.handle)) |> filter(ret_fits(f.ret, ??))
-      let base = env_base_view()
       let counted = {
         let alias = choose(fitting)
-        match base {
-          (bb, bc, bi) => [(alias, return_counts(f, resting, alias))] ~> fork_judgment ~> env_handler(bb, bc, bi),
-        }
+        [(alias, return_counts(f, resting, alias))]
       } ~> speculate
       counted |> flat_map(return_proven)
     },

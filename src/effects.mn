@@ -571,8 +571,8 @@ fn edge_content_into(ref p, am, ref res, saw_all, m, ri) = match ri {
 }
 
 // The compressing resolve — union-find's other half at the row sort:
-// folding a chain REBINDS the var to its resolved terminal (trail-backed,
-// semantically equal), so every later read is one hop. UNIFY-ONLY: the
+// folding a chain REBINDS the var to its resolved terminal (a write of the
+// instance's own, semantically equal), so every later read is one hop. UNIFY-ONLY: the
 // graph has one writer, so only unify_row (inference's own bind site)
 // compresses; every other reader takes resolve_row and rides the web
 // unify already compressed. The write goes through graph_compress_row —

@@ -1453,11 +1453,11 @@ selfcompile_peak_kb_max: 421100
 # m3 leg's stderr (`arena: … line peak N KB`), a pure function of the
 # computation, so it is the memory ratchet no machine moves, refused on a
 # breach by `read_line` (tools/march.sh) with no re-measure; a landing that
-# breaches it pays the cost down. Held at 1% over the landed form's 246,116
-# KB (2026-10-20): the versioned columns read 269,910 KB, refused, and fell
-# when the emit plan's collection walks each ran in an arena — 62 MB of their
-# garbage had lived to the end of the plan.
-selfcompile_line_peak_kb_max: 248577
+# breaches it pays the cost down. Held at 1% over the landed form's 244,025
+# KB (2026-10-21, the fork an instance of the graph handler): the versioned
+# columns had read 269,910 KB, refused, and fell when the emit plan's walks
+# each ran in an arena (62 MB of their garbage had lived to the plan's end).
+selfcompile_line_peak_kb_max: 246448
 # THE HEAD ROUND TRIP (render lane, 2026-10-06): module-level function heads,
 # formatter's and eye's, that do not come back as themselves through
 # parse∘render. Born at the measured 92 of 4,550 (the base renderer: 787 of

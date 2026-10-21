@@ -2,29 +2,31 @@
 //
 // The substrate. One live graph, all variables, held as a VALUE: every
 // per-handle fact is a column keyed by the handle itself (lib/imap.mn's
-// persistent trie, pt), and the graph is the roots of its columns with the
-// mint, the span log and the heap mark its writes are told from
-// (types.mn Version). Every TVar(id) is a handle into the columns; every
-// observer chases via graph_chase; only inference writes.
+// trie, pt), and a graph handler instance's state is a version (types.mn
+// Version) — the columns it wrote, the mint, the span log, every other fact
+// it keeps, and the version it was seeded with below them. Every TVar(id)
+// is a handle into the columns; every observer chases via graph_chase; only
+// inference writes.
 //
 // types.mn owns the vocabulary (NodeKind, GNode, Graph, Version, GraphRead,
 // GraphWrite). This file owns the mechanism: graph_handler (the live
 // state), the column reads with their absent-contracts, chase_node (the
 // read primitive), occurs_in (cycle detection), the forking handlers
-// (speculation as a version taken and restored or kept).
+// (speculation as an instance seeded with a version, kept or dropped).
 //
-// THE VERSIONED COLUMNS. A column read is four loads along the handle's
-// digits. A write lands in place when the node it reaches was allocated
-// after the open version's mark and copies that node's one page otherwise,
-// so a version is taken in O(1) by remembering the roots and the line
-// (`graph_version`), the writes after it leave it readable, and a
-// speculation undoes everything it wrote by making the version the graph
-// again (`graph_restore`), in O(1), or keeps everything by dropping it
-// (`graph_keep`). Nothing is journaled and nothing walked back: the old
-// value is still where it was, read live through the old root. Two versions
-// compared are the write set between them (`graph_written_since`), which is
-// how a candidate's teaching survives its undo. A column absent at a
-// handle reads its zero word, and each read below answers that word's
+// THE COLUMNS OF AN INSTANCE. A column read is four loads along the
+// handle's digits, falling through to the version below for a cell this
+// instance never wrote. A write lands in place in this instance's own
+// column — every node of it was allocated by the writes that built it, so a
+// write touches nothing another instance reads — and a version is taken in
+// O(1) by naming the roots (`graph_version`). A speculation is an instance
+// seeded with the version: its writes live in columns of its own, the
+// instance below is untouched by construction, and when the resumption
+// ends the instance below keeps the writes by merging them cell by cell
+// (`graph_keep`) or lets them die with the resumption's arena. The cells an
+// instance wrote are its write set (`graph_written_since`), which is how a
+// candidate's teaching survives its instance. A column absent at a handle
+// reads its zero word, and each read below answers that word's
 // absent-contract: the nodes column answers a free cell, the program column
 // an absent body, the canon column the handle itself, a multi-map column
 // the one shared empty list.
@@ -33,10 +35,6 @@
 // (graph_module_of), never a side-ledger and never a span — every module
 // numbers its lines from 1.
 import types
-
-import arena
-
-import choice
 
 import effects
 
@@ -53,21 +51,33 @@ import strings
 // a still-open declaration hands out — are the same shape as the dense
 // ones, a trie populated where something was entered.
 fn root_version() = Version{
+  accepted: [],
+  below: None,
   binders: pt_empty(),
   births: pt_empty(),
   boundaries: pt_empty(),
   canon: pt_empty(),
   claims: pt_empty(),
   comments: pt_empty(),
+  cur_module: 0,
+  decls_col: [],
   demands: pt_empty(),
+  emitfns_col: [],
+  emitfns_idx: [],
+  emitfns_idx_covers: 0,
+  epoch: 0,
   gates: pt_empty(),
+  guard_diags: [],
+  holes_col: [],
+  holes_pend: [],
   in_edges: pt_empty(),
   installs: pt_empty(),
   instances: pt_empty(),
   late: pt_empty(),
+  link_now: None,
   links: pt_empty(),
-  mark: 0,
   module: pt_empty(),
+  modules_now: smap_new(),
   narrowing: pt_empty(),
   next: 0,
   nodes: pt_empty(),
@@ -76,10 +86,100 @@ fn root_version() = Version{
   program: pt_empty(),
   published: pt_empty(),
   rows: pt_empty(),
+  sigs_col: [],
   span_index: [],
   spans: pt_empty(),
   store_claims: pt_empty(),
+  superseded: wmap_new(64),
+  tails_idx: smap_new(),
 }
+
+// ─── The column reads through the versions below ─────────────────────────
+// An instance's column holds the cells it wrote; a cell it never wrote is
+// read from the version it was seeded with, and from that version's own
+// seed below it, each level one column read. The picker names the column
+// of a version (`version_nodes` and its siblings), so one read serves every
+// column.
+fn col_get(h, col, seed: Version, pick) = {
+  let c = pt_get(col, h)
+  if slot_present(c) { c } else { col_get_in(h, seed, pick) }
+}
+
+fn col_get_in(h, v: Version, pick) = {
+  let c = pt_get(pick(v), h)
+  if slot_present(c) {
+    c
+  } else {
+    match v.below {
+      None => pt_absent(),
+      Some(b) => col_get_in(h, b, pick),
+    }
+  }
+}
+
+// The multi-map face: a cell holds every value entered under its key, in
+// the order entered, the newest last; a key nothing entered answers the one
+// shared empty list, so a miss allocates nothing. A push reads the list
+// through the versions below and writes the longer one into the instance's
+// own column, so the version below keeps the list it had.
+fn col_all(h, col, seed: Version, pick) = {
+  let c = col_get(h, col, seed, pick)
+  if slot_present(c) { c } else { wmap_none }
+}
+
+fn col_push(h, col, seed: Version, pick, v) = pt_set(col, h, push(col_all(h, col, seed, pick), v))
+
+fn col_newest(h, col, seed: Version, pick) = {
+  let c = col_all(h, col, seed, pick)
+  if len(c) == 0 { None } else { Some(last(c)) }
+}
+
+// The columns of a version, each named once for the reads above.
+fn version_nodes(v) = v.nodes
+
+fn version_program(v) = v.program
+
+fn version_comments(v) = v.comments
+
+fn version_canon(v) = v.canon
+
+fn version_narrowing(v) = v.narrowing
+
+fn version_boundaries(v) = v.boundaries
+
+fn version_installs(v) = v.installs
+
+fn version_links(v) = v.links
+
+fn version_module(v) = v.module
+
+fn version_parent(v) = v.parent
+
+fn version_products(v) = v.products
+
+fn version_spans(v) = v.spans
+
+fn version_gates(v) = v.gates
+
+fn version_instances(v) = v.instances
+
+fn version_demands(v) = v.demands
+
+fn version_rows(v) = v.rows
+
+fn version_binders(v) = v.binders
+
+fn version_births(v) = v.births
+
+fn version_late(v) = v.late
+
+fn version_claims(v) = v.claims
+
+fn version_in_edges(v) = v.in_edges
+
+fn version_published(v) = v.published
+
+fn version_store_claims(v) = v.store_claims
 
 // ─── The column reads, each with its absent-contract ──────────────────────
 // A virgin cell is word 0 (the allocator's virginity contract IS the
@@ -95,31 +195,31 @@ fn root_version() = Version{
 // The one nodes read. Every minted handle's cell was written at its own
 // mint, so only a never-minted handle reads a virgin cell, and the word-face
 // guard answers it with the synthesized NFree.
-fn graph_node_at(ref nodes, idx) = {
-  let cell = pt_get(nodes, idx)
+fn graph_node_at(ref nodes, seed, idx) = {
+  let cell = col_get(idx, nodes, seed, version_nodes)
   if slot_present(cell) { cell } else { GNode(NFree(0), Fresh(idx)) }
 }
 
-fn body_at(ref program, h) = {
-  let cell = pt_get(program, h)
+fn body_at(ref program, seed, h) = {
+  let cell = col_get(h, program, seed, version_program)
   if slot_present(cell) { cell } else { NHole(0) }
 }
 
 // The birth-span column read — a virgin cell (never parse-indexed) is
 // span_zero, the same absent-contract every position consumer already
 // treats as "no source site".
-fn span_cell_at(ref spans, h) = {
-  let cell = pt_get(spans, h)
+fn span_cell_at(ref spans, seed, h) = {
+  let cell = col_get(h, spans, seed, version_spans)
   if slot_present(cell) { cell } else { span_zero() }
 }
 
-fn comment_at(ref comments, h) = {
-  let cell = pt_get(comments, h)
+fn comment_at(ref comments, seed, h) = {
+  let cell = col_get(h, comments, seed, version_comments)
   if slot_present(cell) { cell } else { ("", span_zero()) }
 }
 
-fn canon_at(ref canon, h) = {
-  let to = pt_get(canon, h)
+fn canon_at(ref canon, seed, h) = {
+  let to = col_get(h, canon, seed, version_canon)
   if to == 0 { h } else { to }
 }
 
@@ -133,8 +233,8 @@ fn canon_at(ref canon, h) = {
 // handle 0, so the first module node IS handle 0, and an unbiased column
 // could not tell "born in module 0" from "never stamped" — measured, the
 // day this column landed, as a trap on handle 1 whose module really was 0.
-fn module_at(ref module, handle) = {
-  let cell = pt_get(module, handle)
+fn module_at(ref module, seed, handle) = {
+  let cell = col_get(handle, module, seed, version_module)
   if cell == 0 { out_of_range() } else { 0 }
   cell - 1
 }
@@ -145,7 +245,7 @@ fn module_at(ref module, handle) = {
 // of its own install (the wrong-instance class this guard family already
 // pays for) and because charging GraphRead into this handler's residual is
 // the row leak its comment names.
-fn module_name(ref program, m) = match body_at(program, m) {
+fn module_name(ref program, seed, m) = match body_at(program, seed, m) {
   NModule(mm) => mm.path,
   NLink(_) => "<link>",
   NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => {
@@ -154,16 +254,16 @@ fn module_name(ref program, m) = match body_at(program, m) {
   },
 }
 
-fn parent_at(ref parent, h) = {
-  let cell = pt_get(parent, h)
+fn parent_at(ref parent, seed, h) = {
+  let cell = col_get(h, parent, seed, version_parent)
   if cell == 0 { None } else { Some(cell - 1) }
 }
 
 // A reference's link: the cell holds the declaration's handle BIASED BY ONE,
 // the parent column's convention, since a declaration may be handle 0 and a
 // virgin cell reads as no link.
-fn link_at(ref links, h) = {
-  let cell = pt_get(links, h)
+fn link_at(ref links, seed, h) = {
+  let cell = col_get(h, links, seed, version_links)
   if cell == 0 { None } else { Some(cell - 1) }
 }
 
@@ -173,12 +273,12 @@ fn link_at(ref links, h) = {
 // walk — the top-level statement it stands in, above all — was replaced by
 // an edit (graph_supersede). The module column's word answers for a cell the
 // judgment minted, which no parent holds.
-fn current_at(module, parent, superseded, handle) =
-  unsuperseded(superseded, module_at(module, handle)) && ancestry_unsuperseded(parent, superseded, handle)
+fn current_at(module, parent, seed, superseded, handle) =
+  unsuperseded(superseded, module_at(module, seed, handle)) && ancestry_unsuperseded(parent, seed, superseded, handle)
 
-fn ancestry_unsuperseded(parent, superseded, h) = unsuperseded(superseded, h) && match parent_at(parent, h) {
+fn ancestry_unsuperseded(parent, seed, superseded, h) = unsuperseded(superseded, h) && match parent_at(parent, seed, h) {
   None => true,
-  Some(p) => ancestry_unsuperseded(parent, superseded, p),
+  Some(p) => ancestry_unsuperseded(parent, seed, superseded, p),
 }
 
 // Whether a node was neither superseded as its path's module nor replaced
@@ -192,7 +292,7 @@ fn unsuperseded(superseded, h) = match wmap_get(superseded, h) {
 
 // The purge's question at a supersession: was the node at `handle` born
 // anywhere but in the module node being superseded?
-fn born_outside(module, m: Int, handle) = module_at(module, handle) != m
+fn born_outside(module, seed, m: Int, handle) = module_at(module, seed, handle) != m
 
 // The tree's own edge, child to parent: drawn here, where a parent's body
 // registers, for every node that body holds — a module's declarations and
@@ -201,8 +301,8 @@ fn born_outside(module, m: Int, handle) = module_at(module, handle) != m
 // block becomes); a candidate a restored version minted held only nodes
 // minted in that version, and a re-mint at the same handle redraws its
 // edge when its own parent registers.
-fn put_parents(parent, mark, p, body) =
-  fold(parent, put_parent(mark, p, ??, ??), body_children_for_parent(body))
+fn put_parents(parent, p, body) =
+  fold(parent, put_parent(p, ??, ??), body_children_for_parent(body))
 
 fn body_children_for_parent(body) = match body {
   NModule(m) => m.decls,
@@ -210,15 +310,19 @@ fn body_children_for_parent(body) = match body {
   NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => body_child_handles(body),
 }
 
-fn put_parent(mark, p, parent, h) = pt_set(parent, mark, h, p + 1)
+fn put_parent(p, parent, h) = pt_set(parent, h, p + 1)
 
 // The three kinds of a declaration's in-edges, each read off the one store,
 // each answered only from a node the program still holds. A use still names
 // its reference when the reference's cell links to the declaration it stands
 // under: a reference re-resolved to another declaration leaves its old entry
 // behind, and the read drops it, as it drops one an edit replaced.
-fn use_still_linked(links, module, parent, superseded, decl, e) = match e {
-  UseBy(r) => if pt_get(links, r) == decl + 1 && current_at(module, parent, superseded, r) { [r] } else { [] },
+fn use_still_linked(links, module, parent, seed, superseded, decl, e) = match e {
+  UseBy(r) => if col_get(r, links, seed, version_links) == decl + 1 && current_at(module, parent, seed, superseded, r) {
+    [r]
+  } else {
+    []
+  },
   MentionBy(_) | AppliedAt(_) => [],
 }
 
@@ -240,13 +344,13 @@ fn distinct_step(acc, h: Int) = match acc {
   },
 }
 
-fn mention_owner(module, parent, superseded, e) = match e {
-  MentionBy(owner) => if current_at(module, parent, superseded, owner) { [owner] } else { [] },
+fn mention_owner(module, parent, seed, superseded, e) = match e {
+  MentionBy(owner) => if current_at(module, parent, seed, superseded, owner) { [owner] } else { [] },
   UseBy(_) | AppliedAt(_) => [],
 }
 
-fn application_at(module, parent, superseded, e) = match e {
-  AppliedAt(call) => if current_at(module, parent, superseded, call) { [call] } else { [] },
+fn application_at(module, parent, seed, superseded, e) = match e {
+  AppliedAt(call) => if current_at(module, parent, seed, superseded, call) { [call] } else { [] },
   UseBy(_) | MentionBy(_) => [],
 }
 
@@ -307,11 +411,11 @@ fn at_module_level(h) = match graph_parent_of(h) {
 // (span_of_reason, the caret's authored-hole test) reads the reason's
 // head, and an acceptance must not unlocate the node it names. A cell
 // already carrying the edge keeps it — the wrap is idempotent.
-fn accepted_reason(accepted, spans, module, program, handle, reason) = if len(accepted) == 0 {
+fn accepted_reason(accepted, spans, module, program, seed, handle, reason) = if len(accepted) == 0 {
   reason
 } else {
-  let sp = span_cell_at(spans, handle)
-  let path = module_name(program, module_at(module, handle))
+  let sp = span_cell_at(spans, seed, handle)
+  let path = module_name(program, seed, module_at(module, seed, handle))
   match find({ (p, asp, _t, _r) => accepted_here(p, path, asp, sp) }, accepted) {
     Some(entry) => match entry {
       (_p, _asp, text, proof) => accept_wrap(reason, text, proof),
@@ -383,115 +487,124 @@ fn accept_wrap(reason, text, proof) = match reason {
 // pre-check sites (unify's typed-render occurs report), which hold no
 // column: one seed read, then a zero-op walk. The arms call the family
 // directly with their own state and never come here.
-fn occurs_in_live(handle, ref ty) with !Mutate = occurs_in(graph_nodes(), handle, ty)
+fn occurs_in_live(handle, ref ty) with !Mutate = occurs_in(graph_nodes(), graph_seed(), handle, ty)
+
+// One of an edit's replaced statements, marked superseded.
+fn supersede_one(gone, s) = wmap_add(gone, s, 1)
 
 // graph_handler — the substrate handler
 //
-// Config: THE VERSION it starts from (types.mn Version) — the empty one at
-// the verb entries (`root_version`); a fork on another cursor is an
-// instance installed with the parent's version. The versioned state is the
-// version's own fields: the twenty-three column roots, the mint, the span
-// log and the mark, read by every arm and rebound by the writes, each a
-// word store into the install record. Beside them the handler keeps what no
-// version carries, because no speculation may take it back: the open
-// versions (a stack — the innermost is what a speculation's write set is
-// read against), the epoch (bumps on every bind; query observers key
-// (handle, epoch)), the module in force, the decls column, the emitted-fn
-// enumeration and its index, the signature column, the holes, the write
-// guard's stored refusals, the accepted proposals, the modules by file,
-// the superseded cells, the link and the tail facts.
+// Config: THE VERSION it is seeded with (types.mn Version) — the empty one
+// at the verb entries (`root_version`), and at a fork the version of the
+// instance it stands over (`graph_version`). An instance's columns hold the
+// cells IT wrote and nothing else: a read asks its own column first, then
+// the version it was seeded with, then that version's own seed below it
+// (`col_get`), so a fork reads everything the instances below it knew and
+// writes in place into pages that are its own. Beside the columns the
+// instance continues the other facts of the version it was seeded with —
+// the mint, the span log, the epoch (bumps on every
+// bind; query observers key (handle, epoch)), the module in force, the
+// decls column, the emitted-fn enumeration and its index, the signature
+// column, the holes, the write guard's stored refusals, the accepted
+// proposals, the link — as values of its own. A kept fork's final version
+// is merged cell by cell into the instance below (`graph_keep`); a dropped
+// fork's dies with its extent. Three facts are written in place and shared
+// down the chain — the modules by file, the superseded cells and the tail
+// facts — because each is written at the outermost boundary alone (a
+// module's registration, an edit's supersession, the module judgment's
+// tails note), never inside a fork.
 //
 // Threaded through the pipeline via ~>. Installed once at compile entry.
 // Every downstream pass (infer, lower, query, teach, emit, mentl) sees the
 // same live graph through the same effect discipline. State is internal to
 // the handler; callers never see the columns as a value except as a
 // Version they hand back; access is only through perform.
-handler graph_handler(seed: Version) with nodes = seed.nodes, program = seed.program, comments = seed.comments, canon = seed.canon, narrowing = seed.narrowing, boundaries = seed.boundaries, installs = seed.installs, links = seed.links, module = seed.module, parent = seed.parent, products = seed.products, spans = seed.spans, gates = seed.gates, instances = seed.instances, demands = seed.demands, rows = seed.rows, binders = seed.binders, births = seed.births, late = seed.late, claims = seed.claims, in_edges = seed.in_edges, published = seed.published, store_claims = seed.store_claims, next = seed.next, span_index = seed.span_index, mark = seed.mark, versions = [], epoch = 0, cur_module = 0, decls_col = [], emitfns_col = [], emitfns_idx = [], emitfns_idx_covers = 0, sigs_col = [], holes_pend = [], holes_col = [], guard_diags = [], accepted = [], modules_now = smap_new(), superseded = wmap_new(64), link_now = None, tails_idx = smap_new() {
-  graph_chase(handle) => resume(chase_node(nodes, handle, 0)),
-  graph_chase_handle(handle) => resume(chase_handle(nodes, handle, 0)),
+handler graph_handler(seed: Version) with nodes = pt_empty(), program = pt_empty(), comments = pt_empty(), canon = pt_empty(), narrowing = pt_empty(), boundaries = pt_empty(), installs = pt_empty(), links = pt_empty(), module = pt_empty(), parent = pt_empty(), products = pt_empty(), spans = pt_empty(), gates = pt_empty(), instances = pt_empty(), demands = pt_empty(), rows = pt_empty(), binders = pt_empty(), births = pt_empty(), late = pt_empty(), claims = pt_empty(), in_edges = pt_empty(), published = pt_empty(), store_claims = pt_empty(), next = seed.next, span_index = seed.span_index, epoch = seed.epoch, cur_module = seed.cur_module, decls_col = seed.decls_col, emitfns_col = seed.emitfns_col, emitfns_idx = seed.emitfns_idx, emitfns_idx_covers = seed.emitfns_idx_covers, sigs_col = seed.sigs_col, holes_pend = seed.holes_pend, holes_col = seed.holes_col, guard_diags = seed.guard_diags, accepted = seed.accepted, modules_now = seed.modules_now, superseded = seed.superseded, link_now = seed.link_now, tails_idx = seed.tails_idx {
+  graph_chase(handle) => resume(chase_node(nodes, seed, handle, 0)),
+  graph_chase_handle(handle) => resume(chase_handle(nodes, seed, handle, 0)),
   graph_epoch() => resume(epoch),
   graph_next() => resume(next),
-  graph_reason_at(handle) => match graph_node_at(nodes, handle) {
+  graph_reason_at(handle) => match graph_node_at(nodes, seed, handle) {
     GNode(_, r) => resume(r),
   },
   graph_snapshot() => resume(Graph(next, span_index)),
   graph_nodes() => resume(nodes),
-  graph_node_body(handle) => resume(body_at(program, handle)),
-  graph_span_of(handle) => resume(span_cell_at(spans, handle)),
+  graph_seed() => resume(seed),
+  graph_node_body(handle) => resume(body_at(program, seed, handle)),
+  graph_span_of(handle) => resume(span_cell_at(spans, seed, handle)),
   graph_module_of(handle) => // The module a node was born in — ONE cell read, never a containment
   // scan over module spans. The read is module_at's, shared with the accept
   // read at graph_bind.
-  resume(module_at(module, handle)),
-  graph_parent_of(handle) => resume(parent_at(parent, handle)),
+  resume(module_at(module, seed, handle)),
+  graph_parent_of(handle) => resume(parent_at(parent, seed, handle)),
   graph_module_current() => resume(cur_module),
   graph_module_enter(m) => // Enter a module: every subsequent mint is attributed to it. The module
   // node attributes ITSELF, which is what makes the column total without a
   // sentinel — the first stamp has no earlier module to inherit, so it is
   // its own, and the recursion bottoms out at the file the developer named.
-  resume() with module = pt_set(module, mark, m, m + 1), cur_module = m,
-  graph_version() => // THE VERSION: the graph as it stands, O(1) — the roots, the mint, the
-  // span log and the mark the enclosing version left, so a restore or a
-  // keep hands that mark back. The line is marked AFTER the record is
-  // built, so every node written from here on lies past the mark and is
-  // this version's own, and every node the record's roots reach lies below
-  // it and is copied before it is written. The version is pushed, since a
-  // speculation's write set is read against the innermost open one. The mark
-  // is kept as the line's NUMBER: an address committed into this state would
-  // be a value the enclosing arena's exit cannot read, and it would keep its
-  // whole region for it (measured 2026-10-20: 4,711 of 33,943 exits kept).
-  {
-    let v = Version{
-      binders,
-      births,
-      boundaries,
-      canon,
-      claims,
-      comments,
-      demands,
-      gates,
-      in_edges,
-      installs,
-      instances,
-      late,
-      links,
-      mark,
-      module,
-      narrowing,
-      next,
-      nodes,
-      parent,
-      products,
-      program,
-      published,
-      rows,
-      span_index,
-      spans,
-      store_claims,
-    }
-    resume(v) with mark = addr_word(heap_mark()), versions = push(versions, v)
-  },
-  graph_restore(v) => // The undo: the version is the graph again, every column read through
-  // the root it held, the mint and the span log as they stood. Nothing is
-  // walked: what the restored resumption wrote lives past the mark, where
-  // no root of this version reaches, and dies with the extent that made it.
-  // The mark the version saved is handed back, so the nodes the enclosing
-  // version made are written in place again.
-  resume() with nodes = v.nodes, program = v.program, comments = v.comments, canon = v.canon, narrowing = v.narrowing, boundaries = v.boundaries, installs = v.installs, links = v.links, module = v.module, parent = v.parent, products = v.products, spans = v.spans, gates = v.gates, instances = v.instances, demands = v.demands, rows = v.rows, binders = v.binders, births = v.births, late = v.late, claims = v.claims, in_edges = v.in_edges, published = v.published, store_claims = v.store_claims, next = v.next, span_index = v.span_index, mark = v.mark, versions = drop_last(versions),
-  graph_keep(v) => // The keep: what the version's successor wrote stands, adopted back into
-  // the pages the writes replaced where those are the enclosing version's
-  // own (lib/imap.mn's pt_adopt), so the copies the writes made die with
-  // the extent that made them and no replaced page is left orphaned in
-  // memory nothing reclaims. The version's mark is handed back, since
-  // nothing holds the roots it saved any longer and the pages written under
-  // it are the graph's own. O(what the kept version wrote).
-  resume() with nodes = pt_adopt(nodes, v.nodes, v.mark), program = pt_adopt(program, v.program, v.mark), comments = pt_adopt(comments, v.comments, v.mark), canon = pt_adopt(canon, v.canon, v.mark), narrowing = pt_adopt(narrowing, v.narrowing, v.mark), boundaries = pt_adopt(boundaries, v.boundaries, v.mark), installs = pt_adopt(installs, v.installs, v.mark), links = pt_adopt(links, v.links, v.mark), module = pt_adopt(module, v.module, v.mark), parent = pt_adopt(parent, v.parent, v.mark), products = pt_adopt(products, v.products, v.mark), spans = pt_adopt(spans, v.spans, v.mark), gates = pt_adopt(gates, v.gates, v.mark), instances = pt_adopt(instances, v.instances, v.mark), demands = pt_adopt(demands, v.demands, v.mark), rows = pt_adopt(rows, v.rows, v.mark), binders = pt_adopt(binders, v.binders, v.mark), births = pt_adopt(births, v.births, v.mark), late = pt_adopt(late, v.late, v.mark), claims = pt_adopt(claims, v.claims, v.mark), in_edges = pt_adopt(in_edges, v.in_edges, v.mark), published = pt_adopt(published, v.published, v.mark), store_claims = pt_adopt(store_claims, v.store_claims, v.mark), mark = v.mark, versions = drop_last(versions),
+  resume() with module = pt_set(module, m, m + 1), cur_module = m,
+  graph_version() => // THE VERSION: this instance's state as a value, O(1) — the columns it
+  // wrote, every other fact it keeps, and the version it was seeded with
+  // below them. Nothing is copied: an instance seeded with it reads through
+  // it, and this instance writes nothing while that one runs, since the arm
+  // that installed it waits for it.
+  resume(Version{
+    accepted,
+    below: Some(seed),
+    binders,
+    births,
+    boundaries,
+    canon,
+    claims,
+    comments,
+    cur_module,
+    decls_col,
+    demands,
+    emitfns_col,
+    emitfns_idx,
+    emitfns_idx_covers,
+    epoch,
+    gates,
+    guard_diags,
+    holes_col,
+    holes_pend,
+    in_edges,
+    installs,
+    instances,
+    late,
+    link_now,
+    links,
+    module,
+    modules_now,
+    narrowing,
+    next,
+    nodes,
+    parent,
+    products,
+    program,
+    published,
+    rows,
+    sigs_col,
+    span_index,
+    spans,
+    store_claims,
+    superseded,
+    tails_idx,
+  }),
+  graph_keep(fv) => // The keep: FV is the final version of an instance seeded with this
+  // instance's version, and what it wrote stands — every cell its columns
+  // hold is written into this instance's columns, which are its own
+  // (lib/imap.mn's pt_merge), and every other fact is the kept instance's
+  // as it left it. O(what the kept instance wrote); FV's columns die with
+  // the extent that built them.
+  resume() with nodes = pt_merge(nodes, fv.nodes), program = pt_merge(program, fv.program), comments = pt_merge(comments, fv.comments), canon = pt_merge(canon, fv.canon), narrowing = pt_merge(narrowing, fv.narrowing), boundaries = pt_merge(boundaries, fv.boundaries), installs = pt_merge(installs, fv.installs), links = pt_merge(links, fv.links), module = pt_merge(module, fv.module), parent = pt_merge(parent, fv.parent), products = pt_merge(products, fv.products), spans = pt_merge(spans, fv.spans), gates = pt_merge(gates, fv.gates), instances = pt_merge(instances, fv.instances), demands = pt_merge(demands, fv.demands), rows = pt_merge(rows, fv.rows), binders = pt_merge(binders, fv.binders), births = pt_merge(births, fv.births), late = pt_merge(late, fv.late), claims = pt_merge(claims, fv.claims), in_edges = pt_merge(in_edges, fv.in_edges), published = pt_merge(published, fv.published), store_claims = pt_merge(store_claims, fv.store_claims), next = fv.next, span_index = fv.span_index, epoch = fv.epoch, cur_module = fv.cur_module, decls_col = fv.decls_col, emitfns_col = fv.emitfns_col, emitfns_idx = fv.emitfns_idx, emitfns_idx_covers = fv.emitfns_idx_covers, sigs_col = fv.sigs_col, holes_pend = fv.holes_pend, holes_col = fv.holes_col, guard_diags = fv.guard_diags, accepted = fv.accepted, modules_now = fv.modules_now, superseded = fv.superseded, link_now = fv.link_now, tails_idx = fv.tails_idx,
   graph_fresh_ty(reason) => // ─── Write ops ───────────────────────────────────────────────────
   // Each write rebinds the column it wrote: pt_set answers the root as it
   // stands when the path was this version's own, else the copied root.
   //
   // A mint is `next`, and nothing else.
-  resume(next) with nodes = pt_set(nodes, mark, next, GNode(NFree(epoch), reason)), module = pt_set(module, mark, next, cur_module + 1), next = next + 1,
-  graph_fresh_row(reason) => resume(next) with nodes = pt_set(nodes, mark, next, GNode(NRowFree(epoch), reason)), module = pt_set(module, mark, next, cur_module + 1), next = next + 1,
+  resume(next) with nodes = pt_set(nodes, next, GNode(NFree(epoch), reason)), module = pt_set(module, next, cur_module + 1), next = next + 1,
+  graph_fresh_row(reason) => resume(next) with nodes = pt_set(nodes, next, GNode(NRowFree(epoch), reason)), module = pt_set(module, next, cur_module + 1), next = next + 1,
   graph_register_node(handle, body) => // Edge-link a node's body into the one graph at its handle — the program
   // COLUMN. Every AST node registers here at construction, so any handle
   // resolves to its body live (graph_node_body) — the incremental cursor
@@ -512,18 +625,19 @@ handler graph_handler(seed: Version) with nodes = seed.nodes, program = seed.pro
   // MB higher on the wheel's own source, where nothing is ever superseded. A
   // LINK's registration makes it the link the graph holds.
   {
-    let program2 = pt_set(program, mark, handle, body)
-    let parent2 = put_parents(parent, mark, handle, body)
+    let program2 = pt_set(program, handle, body)
+    let parent2 = put_parents(parent, handle, body)
     match body {
       // A module's generation turns over at the outermost boundary alone: the
       // by-file table and the in-edges purge are written in place, which no
-      // restore could take back, so a speculation registering a module is a
-      // defect in the caller and traps.
-      NModule(m) => match if len(versions) > 0 { out_of_range() } else { smap_get(modules_now, m.file) } {
+      // restore could take back, so a speculation registering a module — an
+      // open version, or an instance seeded from a live graph — is a defect
+      // in the caller and traps.
+      NModule(m) => match if seed.next > 0 { out_of_range() } else { smap_get(modules_now, m.file) } {
         Some(old) => if old == handle {
           resume() with program = program2, parent = parent2
         } else {
-          let keep = born_outside(module, old, ??)
+          let keep = born_outside(module, seed, old, ??)
           resume() with program = program2, parent = parent2, modules_now = smap_add(modules_now, m.file, handle), superseded = wmap_add(superseded, old, 1), decls_col = filter(keep, decls_col), in_edges = pt_retain(in_edges, in_edge_kept(keep, ??))
         },
         None => resume() with program = program2, parent = parent2, modules_now = smap_add(modules_now, m.file, handle),
@@ -544,30 +658,33 @@ handler graph_handler(seed: Version) with nodes = seed.nodes, program = seed.pro
   // nested arm attaches the LATER block first, so an existing entry
   // merges BEHIND the incoming earlier text — source order, one home,
   // the blank line surviving as the paragraph break.
-  match comment_at(comments, handle) {
+  match comment_at(comments, seed, handle) {
     (existing, _) => {
       let merged = if byte_len(existing) > 0 { "{text}\n\n{existing}" } else { text }
-      resume() with comments = pt_set(comments, mark, handle, (merged, span))
+      resume() with comments = pt_set(comments, handle, (merged, span))
     },
   },
   graph_reword_comment(handle, text) => // A rename's write along a mention edge: the prose replaced, the span its
   // parse attached kept.
-  match comment_at(comments, handle) {
-    (_, span) => resume() with comments = pt_set(comments, mark, handle, (text, span)),
+  match comment_at(comments, seed, handle) {
+    (_, span) => resume() with comments = pt_set(comments, handle, (text, span)),
   },
   graph_comment_at(handle) => // A virgin cell reads as ("", zero span) — the same absent-contract every
   // column read shares.
-  match comment_at(comments, handle) {
+  match comment_at(comments, seed, handle) {
     (text, _) => resume(text),
   },
-  graph_comment_span_at(handle) => match comment_at(comments, handle) {
+  graph_comment_span_at(handle) => match comment_at(comments, seed, handle) {
     (_, span) => resume(span),
   },
   graph_attach_comment_ref(owner, referent) => // A resolved backticked reference is an edge from the comment's node to
   // the declaration it names, entered among the declaration's in-edges with
   // the uses and applications that arrive there.
-  resume() with in_edges = pt_push(in_edges, mark, referent, MentionBy(owner)),
-  graph_comment_refs_of(referent) => resume(distinct_handles(flat_map(mention_owner(module, parent, superseded, ??), pt_all(in_edges, referent)))),
+  resume() with in_edges = col_push(referent, in_edges, seed, version_in_edges, MentionBy(owner)),
+  graph_comment_refs_of(referent) => resume(distinct_handles(flat_map(
+    mention_owner(module, parent, seed, superseded, ??),
+    col_all(referent, in_edges, seed, version_in_edges)
+  ))),
   graph_canon_set(from, to) => // The e-graph equivalence weave — union-find as a fabric EDGE, a column
   // beside the program/comments/nodes columns (the TVar union-find
   // precedent). `graph_canon_set(from, to)` draws the equivalence edge
@@ -578,12 +695,12 @@ handler graph_handler(seed: Version) with nodes = seed.nodes, program = seed.pro
   // egraph_extract (egraph.mn) follows it live. No side-ledger: an
   // already-rooted `from` overwrites its one cell, so saturation never grows
   // an O(N²) pair-list (the OOM the snoc-list ledger caused).
-  resume() with canon = pt_set(canon, mark, from, to),
+  resume() with canon = pt_set(canon, from, to),
   graph_canon_at(handle) => // A handle with no edge (absent, or a self-pointer) is its own e-class root —
   // the extracted term. A virgin cell holds 0, and handle 0 is the synthetic
   // Module root (never an expr operand), so a 0 cell reads as "no edge" ⇒
   // return the handle itself.
-  resume(canon_at(canon, handle)),
+  resume(canon_at(canon, seed, handle)),
   graph_narrow_set(handle, pred_handle) => // The refinement-narrowing column — beside canon.
   // graph_narrow_set(handle, verdict) records what the judgment proved AT
   // program-point `handle`: a sequence read's index node carries 1 where its
@@ -592,12 +709,12 @@ handler graph_handler(seed: Version) with nodes = seed.nodes, program = seed.pro
   // default). One cell per handle: every judgment of a read writes its
   // verdict both ways, so a cell a restored speculation wrote is overwritten
   // by the judgment of the node that holds the handle now.
-  resume() with narrowing = pt_set(narrowing, mark, handle, pred_handle),
-  graph_narrow_at(handle) => resume(pt_get(narrowing, handle)),
+  resume() with narrowing = pt_set(narrowing, handle, pred_handle),
+  graph_narrow_at(handle) => resume(col_get(handle, narrowing, seed, version_narrowing)),
   graph_boundary_at(site_handle) => // The executable-boundary weave: one O(1) read per fanout site, containing
   // its ordered branch edges. A virgin cell IS NoBoundary, the nullary tag 0.
-  resume(pt_get(boundaries, site_handle)),
-  graph_boundary_set(site_handle, boundary) => resume() with epoch = epoch + 1, boundaries = pt_set(boundaries, mark, site_handle, boundary),
+  resume(col_get(site_handle, boundaries, seed, version_boundaries)),
+  graph_boundary_set(site_handle, boundary) => resume() with epoch = epoch + 1, boundaries = pt_set(boundaries, site_handle, boundary),
   graph_bind(handle, ty, reason) => // The guard reads THIS instance's state DIRECTLY: the occurs family is
   // mechanism-layer (state-passed, zero ops), so the check can neither
   // chase a wrong instance (an arm's performs resolve OUTER of its own
@@ -605,7 +722,7 @@ handler graph_handler(seed: Version) with nodes = seed.nodes, program = seed.pro
   // the enclosing chain held) nor charge GraphRead into this handler's
   // residual (the row leak that carried the render/guard ops past every
   // bracket into the wheel's own root row).
-  if occurs_in(nodes, handle, ty) {
+  if occurs_in(nodes, seed, handle, ty) {
     // STORED, NOT REPORTED, AND NOT RENDERED. A report here resolves OUTER
     // of this install, so it would sail past any capture bracket installed
     // deeper (where speculation installs one, so the refusal the Mycroft
@@ -621,7 +738,7 @@ handler graph_handler(seed: Version) with nodes = seed.nodes, program = seed.pro
     // The poly-recursion teach rides the refusal: an infinite type through
     // a fn's OWN param or return mint (read from this instance's own
     // state) is the self-call-at-a-different-type fingerprint.
-    let g2 = match graph_node_at(nodes, handle) {
+    let g2 = match graph_node_at(nodes, seed, handle) {
       GNode(_, mint_r) => match mint_r {
         FnParam(owner, _, _) => push(g1, (TPolyRecursionSignature(owner, reason_span_or_zero(reason)), dm)),
         FnReturn(owner, _) => push(g1, (TPolyRecursionSignature(owner, reason_span_or_zero(reason)), dm)),
@@ -657,9 +774,8 @@ handler graph_handler(seed: Version) with nodes = seed.nodes, program = seed.pro
     // values into (types.mn shape_of).
     resume() with epoch = epoch + 1, nodes = pt_set(
       nodes,
-      mark,
       handle,
-      GNode(NBound(shape_of(ty)), accepted_reason(accepted, spans, module, program, handle, reason))
+      GNode(NBound(shape_of(ty)), accepted_reason(accepted, spans, module, program, seed, handle, reason))
     )
   },
   graph_bind_hole(handle, reason) => // The productive-under-error poison write (infer.mn:24's law, given its
@@ -667,7 +783,7 @@ handler graph_handler(seed: Version) with nodes = seed.nodes, program = seed.pro
   // carries no type to cycle through. A column of the version like every
   // write, so a restored speculation takes a poison back with everything
   // else.
-  resume() with epoch = epoch + 1, nodes = pt_set(nodes, mark, handle, GNode(NErrorHole(reason), reason)),
+  resume() with epoch = epoch + 1, nodes = pt_set(nodes, handle, GNode(NErrorHole(reason), reason)),
   graph_bind_row(handle, row, reason) => // A row is a SET, so a row var referencing itself (v = names ∪ v) is
   // idempotent — the least fixed point is `names`, v contributes nothing new,
   // and there is no infinite row (the effect universe is finite). Binding the
@@ -678,7 +794,7 @@ handler graph_handler(seed: Version) with nodes = seed.nodes, program = seed.pro
   // occurs (a real infinite type), a row self-loop is benign set-idempotence.
   // The guard reads THIS instance's state directly (the graph_bind arm's
   // law): state-passed, zero ops, no wrong instance, no residual charge.
-  if occurs_in_row(nodes, handle, row) {
+  if occurs_in_row(nodes, seed, handle, row) {
     resume()
   } else {
     // THE TEACHING WRITE IS A JOIN. A row cell is a join-semilattice
@@ -694,7 +810,7 @@ handler graph_handler(seed: Version) with nodes = seed.nodes, program = seed.pro
     // decl-exit REPLACE is a different operation with its own op
     // (graph_finalize_row below); the freeze that makes lattice reads
     // sound is the infer→lower phase boundary, already structural.
-    let stored = match graph_node_at(nodes, handle) {
+    let stored = match graph_node_at(nodes, seed, handle) {
       GNode(NRowBound(prev), r0) => {
         if row_frag_collision(prev, row) {
           // The census line speaks SPANS only (pure projections): a
@@ -714,7 +830,7 @@ handler graph_handler(seed: Version) with nodes = seed.nodes, program = seed.pro
     // THE FLAT-CELL LAW at the teaching write: the joined value folds
     // before it stores, so the cell holds depth-1 truth and every
     // read is a flat lookup (flatten_row_stored's own header).
-    resume() with epoch = epoch + 1, nodes = pt_set(nodes, mark, handle, GNode(NRowBound(flatten_row_stored(nodes, stored, handle)), reason))
+    resume() with epoch = epoch + 1, nodes = pt_set(nodes, handle, GNode(NRowBound(flatten_row_stored(nodes, seed, stored, handle)), reason))
   },
   graph_finalize_row(handle, row, reason) => // The decl-exit REPLACE — inf_exit_fn publishing the frame's accumulated
   // row as the fn's verdict. Not a join: the frame's accumulation is the
@@ -724,84 +840,90 @@ handler graph_handler(seed: Version) with nodes = seed.nodes, program = seed.pro
   // op (each decl finalizes its own row_handle, in its own branch). The
   // finalize stores flat too (THE FLAT-CELL LAW — the published verdict is a
   // depth-1 value every caller reads without recursion).
-  resume() with epoch = epoch + 1, nodes = pt_set(nodes, mark, handle, GNode(NRowBound(flatten_row_stored(nodes, row, handle)), reason)),
+  resume() with epoch = epoch + 1, nodes = pt_set(nodes, handle, GNode(NRowBound(flatten_row_stored(nodes, seed, row, handle)), reason)),
   graph_compress_row(v, row) => // Path compression at the row sort — an OPTIMIZATION write, distinct
   // from the judgment bind by OP so the policy lives where the band facts
-  // live. A candidate is judged on the one live graph inside a version, so
-  // every walk is the root's and compresses at full strength. The target is
-  // NRowBound by construction (compression only fires on a bound link), so
-  // no self-loop guard.
+  // live. A candidate is judged in a graph instance of its own, so every
+  // walk compresses at full strength into that instance's columns. The
+  // target is NRowBound by construction (compression only fires on a bound
+  // link), so no self-loop guard.
   //
-  // These writes DO move the cell, which the first-divergence read must
-  // account for: a compression write is optimization, not meaning, and is
-  // order-dependent, so a segment diff filters them
-  // (`Hβ.synth.divergence-from-the-trail`).
-  resume() with epoch = epoch + 1, nodes = pt_set(nodes, mark, v, GNode(NRowBound(row), Inferred("row path compression"))),
+  // These writes DO move the cell without changing what it means: a
+  // compression write is optimization, not meaning, and is order-dependent,
+  // so the divergence read over two survivors' write sets compares what
+  // each cell resolves to and never reads a compression as a difference.
+  resume() with epoch = epoch + 1, nodes = pt_set(nodes, v, GNode(NRowBound(row), Inferred("row path compression"))),
   graph_gate_add(handle, gate) => // The gate column's one write: entered under the cell's handle, a column
   // of the version, so a speculative judgment (the ??-fan's candidate, a
   // Mycroft round) that installs gates and is restored leaves none behind.
-  resume() with epoch = epoch + 1, gates = pt_push(gates, mark, handle, gate),
-  graph_instance_note(root, fresh) => resume() with instances = pt_push(instances, mark, root, fresh),
-  graph_gates_of(handle) => resume(pt_all(gates, handle)),
-  graph_instances_of(handle) => resume(pt_all(instances, handle)),
+  resume() with epoch = epoch + 1, gates = col_push(handle, gates, seed, version_gates, gate),
+  graph_instance_note(root, fresh) => resume() with instances = col_push(root, instances, seed, version_instances, fresh),
+  graph_gates_of(handle) => resume(col_all(handle, gates, seed, version_gates)),
+  graph_instances_of(handle) => resume(col_all(handle, instances, seed, version_instances)),
   graph_demand_add(handle, demand) => // The demand column's one write — the row gate column's twin over TYPE
-  // cells: entered under the cell's handle, a column of the version, so a
-  // restored speculation leaves no demand behind.
-  resume() with epoch = epoch + 1, demands = pt_push(demands, mark, handle, demand),
-  graph_demands_of(handle) => resume(pt_all(demands, handle)),
+  // cells: entered under the cell's handle, a column of the instance, so a
+  // dropped speculation leaves no demand behind.
+  resume() with epoch = epoch + 1, demands = col_push(handle, demands, seed, version_demands, demand),
+  graph_demands_of(handle) => resume(col_all(handle, demands, seed, version_demands)),
   graph_bind_record_row(handle, fields, tail, reason) => // The record-row residual bind — a `...R` rest's remaining fields, under
   // its OWN node kind (NRecordRowBound). Binding residuals under NRowBound
   // made the row slot an untagged EffRow-or-Ty union every row walk's
   // catch-all silently crossed. The occurs guard is the TYPE-side check over
   // each field ty (a residual's self-reference is a real infinite type), and
   // the tail's own self-reference is the row-side half of the same check.
-  if occurs_in_record_fields(nodes, handle, fields) || record_row_tail_is(tail, handle) {
+  if occurs_in_record_fields(nodes, seed, handle, fields) || record_row_tail_is(tail, handle) {
     resume()
   } else {
     // The TAIL rides from the writer that knew it (types.mn RecordRowTail):
     // proven, continuing, or assumed. It is never re-derived here, because
     // the fields alone cannot say which of the three produced them.
-    resume() with epoch = epoch + 1, nodes = pt_set(nodes, mark, handle, GNode(NRecordRowBound(fields, tail), reason))
+    resume() with epoch = epoch + 1, nodes = pt_set(nodes, handle, GNode(NRecordRowBound(fields, tail), reason))
   },
   graph_index_span(span, handle) => // ONE write, TWO projections: the ordered (span, handle) log serves the
   // containment scans (address resolution walks span -> handle); the spans
   // column serves the by-handle O(1) read (graph_span_of).
-  resume() with spans = pt_set(spans, mark, handle, span), span_index = push(span_index, (span, handle)),
+  resume() with spans = pt_set(spans, handle, span), span_index = push(span_index, (span, handle)),
   graph_ref_link(r, decl) => // THE REFERENCE LINK's write (M1): the reference's cell forward, the
   // declaration's in-edge back, both columns of the version so a restored
   // judgment's links go with it. A reference already linked to this
   // declaration writes nothing.
-  if pt_get(links, r) == decl + 1 {
+  if col_get(r, links, seed, version_links) == decl + 1 {
     resume()
   } else {
-    resume() with links = pt_set(links, mark, r, decl + 1), in_edges = pt_push(in_edges, mark, decl, UseBy(r))
+    resume() with links = pt_set(links, r, decl + 1), in_edges = col_push(decl, in_edges, seed, version_in_edges, UseBy(r))
   },
-  graph_ref_decl(r) => resume(link_at(links, r)),
+  graph_ref_decl(r) => resume(link_at(links, seed, r)),
   graph_refs_of(decl) => // The current generation's references: the registration that supersedes
   // a module drops what its generation linked (graph_register_node), because
   // a reader handed a re-judged module's older references counts a program
   // that no longer exists (the generation oracle, 2026-10-02). A reference
   // re-linked elsewhere leaves its entry here, and its own cell says so.
-  resume(distinct_handles(flat_map(use_still_linked(links, module, parent, superseded, decl, ??), pt_all(in_edges, decl)))),
-  graph_apply_note(decl, call) => resume() with in_edges = pt_push(in_edges, mark, decl, AppliedAt(call)),
-  graph_applies_of(decl) => resume(distinct_handles(flat_map(application_at(module, parent, superseded, ??), pt_all(in_edges, decl)))),
+  resume(distinct_handles(flat_map(
+    use_still_linked(links, module, parent, seed, superseded, decl, ??),
+    col_all(decl, in_edges, seed, version_in_edges)
+  ))),
+  graph_apply_note(decl, call) => resume() with in_edges = col_push(decl, in_edges, seed, version_in_edges, AppliedAt(call)),
+  graph_applies_of(decl) => resume(distinct_handles(flat_map(
+    application_at(module, parent, seed, superseded, ??),
+    col_all(decl, in_edges, seed, version_in_edges)
+  ))),
   graph_publish(decl, scheme, reason, kind) => // What the judgment learned about a declaration, at its handle, newest
   // last — the facts the env's entries carried by name until 2026-10-14.
-  resume() with published = pt_push(published, mark, decl, (scheme, reason, kind)),
-  graph_published(decl) => resume(pt_newest(published, decl)),
+  resume() with published = col_push(decl, published, seed, version_published, (scheme, reason, kind)),
+  graph_published(decl) => resume(col_newest(decl, published, seed, version_published)),
   graph_decl_note(decl_handle) => // The refs column's decl-granularity sibling — append-only telemetry,
   // the handler's own: judgment rounds re-note the same handle, readers
   // dedup by handle.
   resume() with decls_col = push(decls_col, decl_handle),
   graph_decls_at() => resume(decls_col),
-  graph_node_current(h) => resume(current_at(module, parent, superseded, h)),
+  graph_node_current(h) => resume(current_at(module, parent, seed, superseded, h)),
   graph_supersede(stmts) => // An edit's replaced statements, marked where every currency read asks
   // (current_at), and the decls column kept to what the program still
   // declares — once per edit, as a module's supersession keeps it, so the
   // proof fragment's per-name read of the column never filters it again.
   {
-    let gone = fold(superseded, (acc, s) => wmap_add(acc, s, 1), stmts)
-    resume() with superseded = gone, decls_col = filter(current_at(module, parent, gone, ??), decls_col)
+    let gone = fold(superseded, supersede_one, stmts)
+    resume() with superseded = gone, decls_col = filter(current_at(module, parent, seed, gone, ??), decls_col)
   },
   graph_tails_note(tails) => resume() with tails_idx = smap_build_from(tails, len(tails) - 1, tails_idx),
   graph_tails() => resume(tails_idx),
@@ -826,57 +948,55 @@ handler graph_handler(seed: Version) with nodes = seed.nodes, program = seed.pro
   // that charges it — the frame join's per-node twin, entered under the
   // handle like the gates, a column of the version so a restored judgment's
   // notes go with its bindings.
-  resume() with epoch = epoch + 1, rows = pt_push(rows, mark, h, row),
-  graph_rows_at(h) => resume(pt_all(rows, h)),
+  resume() with epoch = epoch + 1, rows = col_push(h, rows, seed, version_rows, row),
+  graph_rows_at(h) => resume(col_all(h, rows, seed, version_rows)),
   graph_binder_note(h, fact) => // THE BINDER FACT's write (P0): newest last under the binder's handle, a
   // column of the version — a binder minted inside a speculative judgment is
   // a handle the restore hands out again, so its fact must go with it.
-  resume() with epoch = epoch + 1, binders = pt_push(binders, mark, h, fact),
+  resume() with epoch = epoch + 1, binders = col_push(h, binders, seed, version_binders, fact),
   graph_let_born_note(h) => // The parse's note that it made the node of a destructuring `let`, a
   // column of the version for the same reason a binder's fact is: a node
   // minted inside a speculation is a handle the restore hands out again.
-  resume() with epoch = epoch + 1, births = pt_set(births, mark, h, 1),
+  resume() with epoch = epoch + 1, births = pt_set(births, h, 1),
   graph_store_claim_note(h, claim) => // A declaration's store claim, a column of the version like a binder's
   // fact: a declaration judged inside a speculation takes its claim back
   // with it, and the image carries every claim to a warm start.
-  resume() with epoch = epoch + 1, store_claims = pt_push(store_claims, mark, h, claim),
-  graph_binder_of(h) => resume(pt_newest(binders, h)),
-  graph_let_born(h) => resume(pt_get(births, h) != 0),
-  graph_store_claim_of(h) => resume(pt_newest(store_claims, h)),
+  resume() with epoch = epoch + 1, store_claims = col_push(h, store_claims, seed, version_store_claims, claim),
+  graph_binder_of(h) => resume(col_newest(h, binders, seed, version_binders)),
+  graph_let_born(h) => resume(col_get(h, births, seed, version_births) != 0),
+  graph_store_claim_of(h) => resume(col_newest(h, store_claims, seed, version_store_claims)),
   graph_owe_late(g, payer) => // THE LATE PAYERS' write (P0): a frame called through a guard cell its
   // declaration has not written yet. Entered under the cell, a column of the
   // version, so a restored judgment's payments go with it.
-  resume() with epoch = epoch + 1, late = pt_push(late, mark, g, payer),
-  graph_late_payers(g) => resume(pt_all(late, g)),
+  resume() with epoch = epoch + 1, late = col_push(g, late, seed, version_late, payer),
+  graph_late_payers(g) => resume(col_all(g, late, seed, version_late)),
   graph_claim_note(h, contract) => // THE CLAIMS' write (P0): a contract claimed of the value at a node,
   // entered under its handle, a column of the version so a restored
   // judgment's claims go with it.
-  resume() with epoch = epoch + 1, claims = pt_push(claims, mark, h, contract),
-  graph_claims_of(h) => resume(pt_all(claims, h)),
-  graph_written_since(below) => // The write set of the innermost open version: the cells below the
-  // frontier whose type or row cell the graph and that version disagree on,
-  // compared root to leaf and skipping every page the two share. With no
-  // version open nothing is speculative, and the set is empty.
-  resume(if len(versions) == 0 { [] } else { pt_changed(nodes, last(versions).nodes, below) }),
+  resume() with epoch = epoch + 1, claims = col_push(h, claims, seed, version_claims, contract),
+  graph_claims_of(h) => resume(col_all(h, claims, seed, version_claims)),
+  graph_written_since(below) => // The write set of this instance: the cells below the frontier its own
+  // nodes column holds, which are exactly the ones it wrote.
+  resume(pt_keys_below(nodes, below)),
   graph_accept_note(path, span, text, proof) => // THE ACCEPT EDGE's write (C4): an outermost-boundary fact. A human
   // accepted a proposal; nothing speculative writes here, and a restore
   // must never lose it — so an open version is a defect in the caller and
   // traps rather than storing a fact outside what the restore reverts to.
   // The read is graph_bind's.
   {
-    if len(versions) > 0 { out_of_range() } else { 0 }
+    if seed.next > 0 { out_of_range() } else { 0 }
     resume() with accepted = push(accepted, (path, span, text, proof))
   },
   graph_install_note(h, ish) => // The install-shape column: a cell at the install node's handle, written
   // by the lowering, which runs after the judgment; a re-lower writes the
   // same shape.
-  resume() with installs = pt_set(installs, mark, h, ish),
-  graph_install_at(h) => resume(pt_get(installs, h)),
+  resume() with installs = pt_set(installs, h, ish),
+  graph_install_at(h) => resume(col_get(h, installs, seed, version_installs)),
   graph_product_note(h, slots, holes, shape) => // The call-product column's one write — the judgment's, a column of the
   // version: a candidate or a Mycroft round that noted a product and is
   // restored leaves the cell as it found it.
-  resume() with epoch = epoch + 1, products = pt_set(products, mark, h, ProductOf(slots, holes, shape)),
-  graph_product_at(h) => resume(pt_get(products, h)),
+  resume() with epoch = epoch + 1, products = pt_set(products, h, ProductOf(slots, holes, shape)),
+  graph_product_at(h) => resume(col_get(h, products, seed, version_products)),
   graph_emitfn_note(entry) => // The emittable-fn enumeration (the no-mint resolution): one append per
   // synthesized-fn construction, in lower's deterministic walk order. The
   // handler's own by the decls contract; the step-iii reader filters by the
@@ -917,80 +1037,19 @@ handler graph_handler(seed: Version) with nodes = seed.nodes, program = seed.pro
   if len(sigs_col) == 0 { resume(None) } else { resume(smap_get(sigs_col, name)) },
 }
 
-// THE FORKING HANDLERS. Speculation is a choice whose resumptions a bracket
-// isolates: each handler answers `choose` (lib/choice.mn) by resuming the
-// computation once per option. A site that judges candidates says what one
-// candidate's judgment is; the handler that catches the resumptions says how
-// they are judged, and the bracket — the version taken, the world's top, the
-// restore or the keep — is written here and nowhere else.
-//
-// `speculate` judges every option against a version of the graph and
-// restores it: the version is taken before the option's arena opens, so the
-// option's every write lands past the mark and copies what it touches, the
-// options are independent — the fanout says so: under no schedule it runs
-// them in order, and a schedule installed over the judgment may run them on
-// threads once each option's other handlers are its own — and the restore
-// runs before the arena exits, so the state reaches nothing the arena
-// reclaims. Each resumption runs in an arena (lib/arena.mn): what crosses
-// its exit is the answer and whatever the resumption stored into older
-// memory that no version carries — a name it was the first to intern stays
-// in the table, as interning anywhere else would leave it. The world is
-// restored after the resumption ends, and both before anything replays a
-// branch's facts, so the replay's performs resolve to the root's chain.
-handler speculate {
-  choose(options) => options |> fanout({
-    o => {
-      let v = graph_version()
-      {
-        let w = world_top()
-        let answers = resume(o)
-        world_restore(w)
-        graph_restore(v)
-        answers
-      } ~> arena
-    },
-  }) |> flatten,
-}
-
-// `first_held` judges the options in order and keeps the first whose answer
-// holds, restoring the version before every other; none after it is
-// resumed. The kept resumption's writes stand as truth: its version is
-// dropped, never restored, so a speculation around it can still undo them.
-// Each resumption is an extent of its own and runs in an arena, as
-// `speculate`'s do: a round's page copies die at its end, kept or restored,
-// and a round that did not hold leaves nothing behind, where the rounds of
-// a binding group once stacked their scratch until the group's extent ended.
-handler first_held {
-  choose(options) => options |> fold(
-    false,
-    (held, o) => held || {
-      let v = graph_version()
-      {
-        if resume(o) {
-          graph_keep(v)
-          true
-        } else {
-          graph_restore(v)
-          false
-        }
-      } ~> arena
-    }
-  ),
-}
-
 // Pure graph operations — the mechanism
 // Internal machinery the handler delegates to. All pure; all
 // deterministic; no effects.
 //
 // Follow NBound / NRowBound links until terminal. Amortized O(1) —
 // chains shallow in practice, depth-limited for cycle safety.
-fn chase_node(ref nodes, handle, depth) with !Mutate = if depth > 100 {
+fn chase_node(ref nodes, seed, handle, depth) with !Mutate = if depth > 100 {
   GNode(NErrorHole(Inferred("chase depth exceeded")), Fresh(handle))
 } else {
-  match graph_node_at(nodes, handle) {
+  match graph_node_at(nodes, seed, handle) {
     GNode(kind, reason) => match kind {
       NBound(ty) => match ty {
-        TVar(next) => chase_node(nodes, next, depth + 1),
+        TVar(next) => chase_node(nodes, seed, next, depth + 1),
         TInt
         | TFloat
         | TUnit
@@ -1021,7 +1080,7 @@ fn chase_node(ref nodes, handle, depth) with !Mutate = if depth > 100 {
         // own mask joins the masks carried forward: it is this path's.
         EfRow(names, absents, EtOpen(edges)) => if len(edges) == 1 {
           let next = edge_cell(last(edges))
-          chase_node(nodes, next, depth + 1) |> merge_chased_row(??, names, name_set_union(absents, edge_mask(last(edges))), next)
+          chase_node(nodes, seed, next, depth + 1) |> merge_chased_row(??, names, name_set_union(absents, edge_mask(last(edges))), next)
         } else {
           GNode(kind, reason)
         },
@@ -1047,13 +1106,13 @@ fn holes_pend_without(hs, h) = fold([], (a, x) => if x == h { a } else { push(a,
 // canonical ROOT handle (the integer), not the node. unify unions the
 // roots; binding a surface alias instead strands the canonical var
 // free. Mirror of chase_node's NBound(TVar) arm, returning the handle.
-fn chase_handle(ref nodes, handle, depth) with !Mutate = if depth > 100 {
+fn chase_handle(ref nodes, seed, handle, depth) with !Mutate = if depth > 100 {
   handle
 } else {
-  match graph_node_at(nodes, handle) {
+  match graph_node_at(nodes, seed, handle) {
     GNode(kind, _) => match kind {
       NBound(ty) => match ty {
-        TVar(next) => chase_handle(nodes, next, depth + 1),
+        TVar(next) => chase_handle(nodes, seed, next, depth + 1),
         TInt
         | TFloat
         | TUnit
@@ -1077,7 +1136,7 @@ fn chase_handle(ref nodes, handle, depth) with !Mutate = if depth > 100 {
       // reach this arm; a MULTI-edge tail has no single root, so the
       // cell is its own canonical handle (content reads ride resolve).
       NRowBound(row) => match row {
-        EfRow(_, _, EtOpen(edges)) => if len(edges) == 1 { chase_handle(nodes, edge_cell(last(edges)), depth + 1) } else { handle },
+        EfRow(_, _, EtOpen(edges)) => if len(edges) == 1 { chase_handle(nodes, seed, edge_cell(last(edges)), depth + 1) } else { handle },
         EfRow(_, _, _) => handle,
       },
       NFree(_) | NRowFree(_) | NRecordRowBound(_, _) | NErrorHole(_) => handle,
@@ -1140,32 +1199,39 @@ fn merge_row(ref names, ref absents, ref row) = match row {
 // keeps its chain's terminal, and an edge that is the cell, or ends at it,
 // keeps nothing.
 // Mechanism-layer: state-passed, structural, zero ops.
-fn flatten_row_stored(ref nodes, row, written) with !Mutate = match row {
+fn flatten_row_stored(ref nodes, seed, row, written) with !Mutate = match row {
   EfRow(p, a, t) => match t {
-    EtOpen(vs) => match flatten_row_edges(nodes, edges_masked(vs, a), (p, [], [], false), written) {
+    EtOpen(vs) => match flatten_row_edges(nodes, seed, edges_masked(vs, a), (p, [], [], false), written) {
       (rp, am, res, saw_all) => row_of_fold(rp, am, res, saw_all),
     },
     EtClosed | EtAll => row,
   },
 }
 
-fn flatten_row_edges(ref nodes, ref vs: [RowEdge], acc, written) with !Mutate = match vs {
+fn flatten_row_edges(ref nodes, seed, ref vs: [RowEdge], acc, written) with !Mutate = match vs {
   [] => acc,
   [e, ...rest] => match acc {
     (p, am, res, saw_all) => {
       let next = if edge_cell(e) == written {
         acc
       } else {
-        match chase_node(nodes, edge_cell(e), 0) {
+        match chase_node(nodes, seed, edge_cell(e), 0) {
           GNode(kind, _) => match edge_row_of(kind) {
-            Some(inner) => match edge_content_into(p, am, res, saw_all, edge_mask(e), flatten_row_stored(nodes, inner, written)) {
+            Some(inner) => match edge_content_into(
+              p,
+              am,
+              res,
+              saw_all,
+              edge_mask(e),
+              flatten_row_stored(nodes, seed, inner, written)
+            ) {
               (p2, am2, r2, s2, _) => (p2, am2, r2, s2),
             },
-            None => (p, am, kept_edge(nodes, res, e, written), saw_all),
+            None => (p, am, kept_edge(nodes, seed, res, e, written), saw_all),
           },
         }
       }
-      flatten_row_edges(nodes, rest, next, written)
+      flatten_row_edges(nodes, seed, rest, next, written)
     },
   },
 }
@@ -1176,8 +1242,8 @@ fn flatten_row_edges(ref nodes, ref vs: [RowEdge], acc, written) with !Mutate = 
 // instead, or nothing when the terminal is that cell. The chase reached the
 // terminal with no names and no masks on the way (either would have bound
 // the result), so the edge's own mask is the whole path's.
-fn kept_edge(nodes, res, e, written) with !Mutate = if chain_passes(nodes, edge_cell(e), written, 0) {
-  let t = chase_handle(nodes, edge_cell(e), 0)
+fn kept_edge(nodes, seed, res, e, written) with !Mutate = if chain_passes(nodes, seed, edge_cell(e), written, 0) {
+  let t = chase_handle(nodes, seed, edge_cell(e), 0)
   if t == written { res } else { tail_set_insert(res, row_edge(t, edge_mask(e))) }
 } else {
   tail_set_insert(res, e)
@@ -1185,15 +1251,15 @@ fn kept_edge(nodes, res, e, written) with !Mutate = if chain_passes(nodes, edge_
 
 // Does the link chain from `v` reach `written`? `chase_handle`'s walk, with
 // the comparison at every cell rather than at the root alone.
-fn chain_passes(nodes, v, written, depth) with !Mutate = if v == written {
+fn chain_passes(nodes, seed, v, written, depth) with !Mutate = if v == written {
   true
 } else if depth > 100 {
   false
 } else {
-  match graph_node_at(nodes, v) {
+  match graph_node_at(nodes, seed, v) {
     GNode(kind, _) => match kind {
       NBound(ty) => match ty {
-        TVar(n) => chain_passes(nodes, n, written, depth + 1),
+        TVar(n) => chain_passes(nodes, seed, n, written, depth + 1),
         TInt
         | TFloat
         | TUnit
@@ -1212,7 +1278,7 @@ fn chain_passes(nodes, v, written, depth) with !Mutate = if v == written {
       },
       NRowBound(row) => match row {
         EfRow(_, _, EtOpen(edges)) => if len(edges) == 1 {
-          chain_passes(nodes, edge_cell(last(edges)), written, depth + 1)
+          chain_passes(nodes, seed, edge_cell(last(edges)), written, depth + 1)
         } else {
           false
         },
@@ -1238,7 +1304,7 @@ fn chain_passes(nodes, v, written, depth) with !Mutate = if v == written {
 // admits infinite types. Every current Ty variant is named; any
 // future variant fails to compile until its containment semantics
 // are decided explicitly.
-fn occurs_in(nodes, handle, ref ty) = match ty {
+fn occurs_in(nodes, seed, handle, ref ty) = match ty {
   TInt => false,
   TFloat => false,
   TUnit => false,
@@ -1260,89 +1326,89 @@ fn occurs_in(nodes, handle, ref ty) = match ty {
   TVar(id) => if id == handle {
     true
   } else {
-    let root = chase_handle(nodes, id, 0)
+    let root = chase_handle(nodes, seed, id, 0)
     if root == handle {
       true
     } else {
-      match chase_node(nodes, root, 0) {
-        GNode(NBound(inner), _) => occurs_in(nodes, handle, inner),
-        GNode(NRecordRowBound(fields, tail), _) => occurs_in_fields(nodes, handle, fields) || occurs_in_row_tail(nodes, handle, tail),
+      match chase_node(nodes, seed, root, 0) {
+        GNode(NBound(inner), _) => occurs_in(nodes, seed, handle, inner),
+        GNode(NRecordRowBound(fields, tail), _) => occurs_in_fields(nodes, seed, handle, fields) || occurs_in_row_tail(nodes, seed, handle, tail),
         GNode(_, _) => false,
       }
     }
   },
-  TList(elem) => occurs_in(nodes, handle, elem),
-  TTuple(elems) => occurs_in_list(nodes, handle, elems),
-  TFun(params, ret, eff) => occurs_in_params(nodes, handle, params) || occurs_in(nodes, handle, ret) || occurs_in_row(nodes, handle, eff),
-  TName(_, args) => occurs_in_list(nodes, handle, args),
-  TRecord(fields) => occurs_in_fields(nodes, handle, fields),
-  TRecordOpen(fields, v) => if v == handle || occurs_in_fields(nodes, handle, fields) {
+  TList(elem) => occurs_in(nodes, seed, handle, elem),
+  TTuple(elems) => occurs_in_list(nodes, seed, handle, elems),
+  TFun(params, ret, eff) => occurs_in_params(nodes, seed, handle, params) || occurs_in(nodes, seed, handle, ret) || occurs_in_row(nodes, seed, handle, eff),
+  TName(_, args) => occurs_in_list(nodes, seed, handle, args),
+  TRecord(fields) => occurs_in_fields(nodes, seed, handle, fields),
+  TRecordOpen(fields, v) => if v == handle || occurs_in_fields(nodes, seed, handle, fields) {
     true
   } else {
-    let vroot = chase_handle(nodes, v, 0)
+    let vroot = chase_handle(nodes, seed, v, 0)
     if vroot == handle {
       true
     } else {
       // The row is a CHAIN, and the guard walks all of it — the same links
       // record_row_full reads, so the three walks of a record row (free
       // variables, substitution, occurs) agree about where it ends.
-      match chase_node(nodes, vroot, 0) {
-        GNode(NRecordRowBound(rest, tail), _) => occurs_in_fields(nodes, handle, rest) || occurs_in_row_tail(nodes, handle, tail),
-        GNode(NBound(inner), _) => occurs_in(nodes, handle, inner),
+      match chase_node(nodes, seed, vroot, 0) {
+        GNode(NRecordRowBound(rest, tail), _) => occurs_in_fields(nodes, seed, handle, rest) || occurs_in_row_tail(nodes, seed, handle, tail),
+        GNode(NBound(inner), _) => occurs_in(nodes, seed, handle, inner),
         GNode(_, _) => false,
       }
     }
   },
-  TRefined(base, _) => occurs_in(nodes, handle, base),
-  TCont(input, answer, _, world) => occurs_in(nodes, handle, input) || occurs_in(nodes, handle, answer) || occurs_in_row(nodes, handle, world),
-  TAlias(_, inner) => occurs_in(nodes, handle, inner),
-  TReprPin(_, base) => occurs_in(nodes, handle, base),
+  TRefined(base, _) => occurs_in(nodes, seed, handle, base),
+  TCont(input, answer, _, world) => occurs_in(nodes, seed, handle, input) || occurs_in(nodes, seed, handle, answer) || occurs_in_row(nodes, seed, handle, world),
+  TAlias(_, inner) => occurs_in(nodes, seed, handle, inner),
+  TReprPin(_, base) => occurs_in(nodes, seed, handle, base),
 }
 
-fn occurs_in_params(nodes, handle, ref params) = {
+fn occurs_in_params(nodes, seed, handle, ref params) = {
   let flat = list_to_flat(params)
-  occurs_in_params_loop(nodes, handle, flat, 0, len(flat))
+  occurs_in_params_loop(nodes, seed, handle, flat, 0, len(flat))
 }
 
-fn occurs_in_params_loop(nodes, handle, ref params, i, n) = if i >= n {
+fn occurs_in_params_loop(nodes, seed, handle, ref params, i, n) = if i >= n {
   false
 } else {
   let ty = param_ty(list_index(params, i))
-  if occurs_in(nodes, handle, ty) {
+  if occurs_in(nodes, seed, handle, ty) {
     true
   } else {
-    occurs_in_params_loop(nodes, handle, params, i + 1, n)
+    occurs_in_params_loop(nodes, seed, handle, params, i + 1, n)
   }
 }
 
-fn occurs_in_list(nodes, handle, ref tys) = {
+fn occurs_in_list(nodes, seed, handle, ref tys) = {
   let flat = list_to_flat(tys)
-  occurs_in_list_loop(nodes, handle, flat, 0, len(flat))
+  occurs_in_list_loop(nodes, seed, handle, flat, 0, len(flat))
 }
 
-fn occurs_in_list_loop(nodes, handle, ref tys, i, n) = if i >= n {
+fn occurs_in_list_loop(nodes, seed, handle, ref tys, i, n) = if i >= n {
   false
 } else {
-  if occurs_in(nodes, handle, list_index(tys, i)) {
+  if occurs_in(nodes, seed, handle, list_index(tys, i)) {
     true
   } else {
-    occurs_in_list_loop(nodes, handle, tys, i + 1, n)
+    occurs_in_list_loop(nodes, seed, handle, tys, i + 1, n)
   }
 }
 
-fn occurs_in_fields(nodes, handle, ref fields) = {
+fn occurs_in_fields(nodes, seed, handle, ref fields) = {
   let flat = list_to_flat(fields)
-  occurs_in_fields_loop(nodes, handle, flat, 0, len(flat))
+  occurs_in_fields_loop(nodes, seed, handle, flat, 0, len(flat))
 }
 
-fn occurs_in_fields_loop(nodes, handle, ref fields, i, n) = if i >= n {
+fn occurs_in_fields_loop(nodes, seed, handle, ref fields, i, n) = if i >= n {
   false
 } else {
   match list_index(fields, i) {
-    (_, ty) => if occurs_in(nodes, handle, ty) {
+    (_, ty) => if occurs_in(nodes, seed, handle, ty) {
       true
     } else {
-      occurs_in_fields_loop(nodes, handle, fields, i + 1, n)
+      occurs_in_fields_loop(nodes, seed, handle, fields, i + 1, n)
     },
   }
 }
@@ -1368,13 +1434,14 @@ fn occurs_in_fields_loop(nodes, handle, ref fields, i, n) = if i >= n {
 // already entered and a second arrival reads only the edge's own mask. The
 // table is made where a row walk begins, which most occurs checks never
 // reach.
-fn occurs_in_row(nodes, handle, ref eff) = occurs_in_row_seen(nodes, handle, eff, wmap_new(16))
+fn occurs_in_row(nodes, seed, handle, ref eff) =
+  occurs_in_row_seen(nodes, seed, handle, eff, wmap_new(16))
 
-fn occurs_in_row_seen(nodes, handle, eff, seen) = match eff {
-  EfRow(p, a, t) => if occurs_in_eff_names(nodes, handle, p) {
+fn occurs_in_row_seen(nodes, seed, handle, eff, seen) = match eff {
+  EfRow(p, a, t) => if occurs_in_eff_names(nodes, seed, handle, p) {
     true
   } else {
-    if occurs_in_eff_names(nodes, handle, a) {
+    if occurs_in_eff_names(nodes, seed, handle, a) {
       true
     } else {
       match t {
@@ -1383,47 +1450,47 @@ fn occurs_in_row_seen(nodes, handle, eff, seen) = match eff {
         // reach the same leaves through EVERY edge (the trio law over
         // rows — any edge occurring is the row occurring). Structural
         // walk — the mechanism layer's own discipline.
-        EtOpen(vs) => occurs_in_edges(nodes, handle, vs, seen),
+        EtOpen(vs) => occurs_in_edges(nodes, seed, handle, vs, seen),
         EtClosed | EtAll => false,
       }
     }
   },
 }
 
-fn occurs_in_edges(nodes, handle, ref vs: [RowEdge], seen) = match vs {
+fn occurs_in_edges(nodes, seed, handle, ref vs: [RowEdge], seen) = match vs {
   [] => false,
   [e, ...rest] => {
     let v = edge_cell(e)
-    let r = chase_handle(nodes, v, 0)
+    let r = chase_handle(nodes, seed, v, 0)
     // The mask is part of the edge's structure (a parameterized name can
     // carry a payload type), so the cycle guard reads it as subst does.
     let here = if v == handle || r == handle {
       true
-    } else if occurs_in_eff_names(nodes, handle, edge_mask(e)) {
+    } else if occurs_in_eff_names(nodes, seed, handle, edge_mask(e)) {
       true
     } else {
       match wmap_get(seen, r) {
         Some(_) => false,
         None => {
           wmap_add(seen, r, r)
-          match chase_node(nodes, r, 0) {
+          match chase_node(nodes, seed, r, 0) {
             GNode(kind, _) => match edge_row_of(kind) {
-              Some(inner) => occurs_in_row_seen(nodes, handle, inner, seen),
+              Some(inner) => occurs_in_row_seen(nodes, seed, handle, inner, seen),
               None => false,
             },
           }
         },
       }
     }
-    if here { true } else { occurs_in_edges(nodes, handle, rest, seen) }
+    if here { true } else { occurs_in_edges(nodes, seed, handle, rest, seen) }
   },
 }
 
-fn occurs_in_record_fields(nodes, handle, ref fields) = if len(fields) == 0 {
+fn occurs_in_record_fields(nodes, seed, handle, ref fields) = if len(fields) == 0 {
   false
 } else {
   match last(fields) {
-    (_, ty) => occurs_in(nodes, handle, ty) || occurs_in_record_fields(nodes, handle, drop_last(fields)),
+    (_, ty) => occurs_in(nodes, seed, handle, ty) || occurs_in_record_fields(nodes, seed, handle, drop_last(fields)),
   }
 }
 
@@ -1431,9 +1498,9 @@ fn occurs_in_record_fields(nodes, handle, ref fields) = if len(fields) == 0 {
 // continues at the very handle being bound is the row sort's own infinite
 // type, and subst would walk it forever. The other two arms carry no
 // handle, so there is nothing to close.
-fn occurs_in_row_tail(nodes, handle, tail) = match tail {
+fn occurs_in_row_tail(nodes, seed, handle, tail) = match tail {
   RowClosed => false,
-  RowContinues(next) => occurs_in(nodes, handle, TRecordOpen([], next)),
+  RowContinues(next) => occurs_in(nodes, seed, handle, TRecordOpen([], next)),
 }
 
 fn record_row_tail_is(tail, handle) with Pure = match tail {
@@ -1441,41 +1508,41 @@ fn record_row_tail_is(tail, handle) with Pure = match tail {
   RowContinues(v) => v == handle,
 }
 
-fn occurs_in_eff_names(nodes, handle, ref names) = {
+fn occurs_in_eff_names(nodes, seed, handle, ref names) = {
   let flat = list_to_flat(names)
-  occurs_in_eff_names_loop(nodes, handle, flat, 0, len(flat))
+  occurs_in_eff_names_loop(nodes, seed, handle, flat, 0, len(flat))
 }
 
-fn occurs_in_eff_names_loop(nodes, handle, ref names, i, n) = if i >= n {
+fn occurs_in_eff_names_loop(nodes, seed, handle, ref names, i, n) = if i >= n {
   false
 } else {
   let occ = match list_index(names, i) {
     ENamed(_) => false,
     EPure => false,
-    EParameterized(_, args) => occurs_in_eff_args(nodes, handle, args),
+    EParameterized(_, args) => occurs_in_eff_args(nodes, seed, handle, args),
   }
-  if occ { true } else { occurs_in_eff_names_loop(nodes, handle, names, i + 1, n) }
+  if occ { true } else { occurs_in_eff_names_loop(nodes, seed, handle, names, i + 1, n) }
 }
 
-fn occurs_in_eff_args(nodes, handle, ref args) = {
+fn occurs_in_eff_args(nodes, seed, handle, ref args) = {
   let flat = list_to_flat(args)
-  occurs_in_eff_args_loop(nodes, handle, flat, 0, len(flat))
+  occurs_in_eff_args_loop(nodes, seed, handle, flat, 0, len(flat))
 }
 
-fn occurs_in_eff_args_loop(nodes, handle, ref args, i, n) = if i >= n {
+fn occurs_in_eff_args_loop(nodes, seed, handle, ref args, i, n) = if i >= n {
   false
 } else {
   let occ = match list_index(args, i) {
     EAInt(_) => false,
     EAFloat(_) => false,
     EAString(_) => false,
-    EAType(ty) => occurs_in(nodes, handle, ty),
+    EAType(ty) => occurs_in(nodes, seed, handle, ty),
     EANode(_) => false,
     // interned identities — no embedded Ty, nothing to occur in
     EAEffect(_) => false,
     EACon(_) => false,
   }
-  if occ { true } else { occurs_in_eff_args_loop(nodes, handle, args, i + 1, n) }
+  if occ { true } else { occurs_in_eff_args_loop(nodes, seed, handle, args, i + 1, n) }
 }
 
 // ── the one total child projection — the weave's tree edge ──────────

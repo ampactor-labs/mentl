@@ -789,32 +789,30 @@ fn enumerate_tuple_candidates(elems, context) = [
 // valid completion exists from here — a teachable refusal, never a
 // shrug.
 //
-// THE SEGMENT WALK judges every candidate on the ONE live graph the cursor
-// is already sitting in, so the hole's own cell is reachable, a candidate
-// binds it as any expression would, and the trail records the binds where a
-// diff between two survivors can read them.
+// THE SEGMENT WALK judges every candidate over the graph the cursor is
+// already sitting in, so the hole's own cell is reachable and a candidate
+// binds it as any expression would; the instance's own nodes column holds
+// the binds where a diff between two survivors reads them
+// (`graph_written_since`).
 //
 // THE FAN IS ONE CHOICE: every candidate is a resumption of one `choose`,
-// and `speculate` judges each on its own trail and undoes it — in the
-// candidates' order, by that handler's arm, never by a constant here. The
-// candidates are minted BEFORE any checkpoint (the arm reads the mint
-// frontier at the arm's head, ahead of enumeration), so the undo's
-// MFreshNode shrink never un-allocates the node being judged.
+// and `speculate` judges each in instances of its own and drops them — in
+// the candidates' order, by that handler's arm, never by a constant here.
+// The candidates are minted before the choice, in the instance the fan
+// stands in, so every option reads them below itself.
 //
 // A REFUTED BRANCH'S FACTS DO NOT REACH THE ROOT. A refused candidate
 // reports an ordinary type mismatch, and that mismatch is the SEARCH
 // discovering a dead branch, never the developer's program being wrong;
 // replaying it would make the proposer print errors about code nobody
 // wrote. So a branch's facts join the root only when it proved, once its
-// trail is undone and the world restored, because the replay re-performs
-// `env_extend` and `diag_report` and those must resolve to the root chain.
-// Every segment reads the root's views as they stood before the fan, so the
-// joins wait for the last candidate and change no candidate's judgment.
+// instances are dropped and the world restored, because the replay
+// re-performs `env_extend` and `diag_report` and those must resolve to the
+// root chain. Every segment reads the root's views as they stood before the
+// fan, so the joins wait for the last candidate and change no candidate's
+// judgment.
 fn segment_verify(candidates, hole_h, below) = {
-  let base = env_base_view()
-  let seed = consume_base()
-  let iseed = intern_seed()
-  let judged = [segment_judge(choose(candidates), hole_h, base, seed, iseed, below)] ~> speculate
+  let judged = [segment_judge(choose(candidates), hole_h, below)] ~> speculate
   judged |> map(joined)
 }
 
@@ -834,7 +832,7 @@ fn joined(judged) = match judged {
 // refused is a guess they cannot audit. The message is the part about the
 // candidate; a line's module and span are wherever the judgment stood.
 fn refusal_reason(inner) with !Mutate = match inner {
-  (_, dfacts, _, _) => match dfacts {
+  (_, dfacts, _, _, _) => match dfacts {
     [] => Inferred("the hole's refinement is not satisfied"),
     [first, ..._] => match first {
       (_, msg, _, _) => Inferred(msg),
@@ -842,11 +840,10 @@ fn refusal_reason(inner) with !Mutate = match inner {
   },
 }
 
-// One candidate's judgment, on the trail `speculate` opened for it, under
-// the segment bracket — the branch chain minus its graph copy — and its
-// verdict: the candidate's own Reason when it proved, the medium's refusal
-// otherwise. The facts are read INSIDE, where the per-segment ledgers are
-// still installed, and carried out for the root to join once the graph and
+// One candidate's judgment, in the instances `speculate` opened for it, and
+// its verdict: the candidate's own Reason when it proved, the medium's
+// refusal otherwise. The facts are read INSIDE, where the segment's ledgers
+// still stand, and carried out for the root to join once the graph and
 // world are the root's again.
 //
 // The diagnostic fact list is the TYPE-ADMISSION verdict, not merely
@@ -854,26 +851,21 @@ fn refusal_reason(inner) with !Mutate = match inner {
 // through the same report path every other expression uses, so an empty
 // list IS "this candidate unified". Reading the medium's own voice beats
 // any comparison standing beside it.
-fn segment_judge(candidate, hole_h, base, seed, iseed, below) = {
-  let body = () => {
-    consume_seed(seed)
-    let admitted = candidate_proven(candidate_node(candidate), hole_h, candidate_reason(candidate))
-    let vdebt = verify_debt()
-    let clog = consume_log()
-    let pubs = env_publishes()
-    let dfacts = diag_lines_taken()
-    // The context cells this candidate bound, read while the binds are
-    // still live — the undo that follows is exactly why the segment carries
-    // them out as facts (C6).
-    let writes = context_writes(below)
-    (admitted && len(dfacts) == 0, (pubs, dfacts, vdebt, clog), writes)
-  }
-  match segment_bracket(body, base, iseed) {
-    (proven, inner, writes) => if proven {
-      (SegmentVerdict({proven: true, reason: candidate_reason(candidate), writes}), Some(inner))
-    } else {
-      (SegmentVerdict({proven: false, reason: refusal_reason(inner), writes: []}), None)
-    },
+fn segment_judge(candidate, hole_h, below) = {
+  let admitted = candidate_proven(candidate_node(candidate), hole_h, candidate_reason(candidate))
+  let vdebt = verify_debt() ++ verify_flows()
+  let clog = consume_log()
+  let pubs = env_entries()
+  let dfacts = diag_banked()
+  // The context cells this candidate bound, read while the binds are still
+  // live — the drop that follows is exactly why the segment carries them
+  // out as facts.
+  let writes = context_writes(below)
+  let inner = (pubs, dfacts, vdebt, clog, verify_decided())
+  if admitted && len(dfacts) == 0 {
+    (SegmentVerdict({proven: true, reason: candidate_reason(candidate), writes}), Some(inner))
+  } else {
+    (SegmentVerdict({proven: false, reason: refusal_reason(inner), writes: []}), None)
   }
 }
 
@@ -1000,11 +992,7 @@ fn candidate_proven(node, hole_h, reason) = {
 // FORCED: extract-then-prove would optimize a program that may be
 // inadmissible. What reaches the user is therefore proven AND
 // extraction-optimal, never merely proven.
-// The declared row lost `WasiThreads` and `BranchDiag` at the segment walk,
-// and that loss IS the measurement: nothing spawns a task any more, so the
-// judgment no longer reaches the threading vocabulary at all. The medium
-// named it (`T_OverDeclared`) the moment the spawn left.
-fn verify_each_enriched(candidates, hole_h, cand_start) with !Mutate = {
+fn verify_each_enriched(candidates, hole_h, cand_start) = {
   let verdicts = segment_verify(candidates, hole_h, cand_start)
   let refusals = named_refusals(candidates, verdicts)
   let survivors = keep_survivors(candidates, verdicts)
