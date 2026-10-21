@@ -371,7 +371,7 @@ fn row_suggestions(f) = {
   let held = {
     let c = choose(candidates)
     if lock_holds(f.handle, f.ty, c) { [c] } else { [] }
-  } ~> speculate
+  } ~> speculate ~> judgment_core
   held |> map(row_suggestion)
 }
 
@@ -548,7 +548,7 @@ fn param_candidates(f, owed, aliases, lean) = match lean {
     let counted = {
       let alias = choose(fitting)
       [(alias, precondition_counts(f, owed, b, i, alias))]
-    } ~> speculate
+    } ~> speculate ~> judgment_core
     counted |> flat_map(precondition_proven(i, name, ??))
   },
 }
@@ -756,7 +756,7 @@ fn return_suggestions(f) = if authored_return(f.retty) {
       let counted = {
         let alias = choose(fitting)
         [(alias, return_counts(f, resting, alias))]
-      } ~> speculate
+      } ~> speculate ~> judgment_core
       counted |> flat_map(return_proven)
     },
   }

@@ -37,6 +37,8 @@ import env
 
 import imap
 
+import intern
+
 import io
 
 import lexer
@@ -75,12 +77,12 @@ type FrameExit = {
 effect InferCtx {
   inf_enter_fn(Int, Span, [(RowTerm, Bool, EConn)])
   // The frame's exit hands back the facts the CALLER publishes from — never
-  // a row it computed itself: this handler stands outside every fork, and
+  // a row it computed itself: an arm of this handler reads no graph, since
   // an arm's perform resolves OUTER of its own install, so a chase made
-  // here reads the graph instance below a fork and misses what the fork
-  // bound (the group completion fold then walked a DAG as deep as the
-  // group, measured 2026-10-20). The write and the gate check run in the
-  // body's world (exit_frame). A no-frame exit answers a negative cell.
+  // here would read a graph instance other than the body's own and miss
+  // what it bound (the group completion fold then walked a DAG as deep as
+  // the group, measured 2026-10-20). The write and the gate check run in
+  // the body's world (exit_frame). A no-frame exit answers a negative cell.
   inf_exit_fn() -> FrameExit
   inf_frame_params([Int])
   // A block's run of fn declarations (`judge_fn_run`) pre-registers its
@@ -139,9 +141,34 @@ effect InferCtx {
   // or is `to` in the prelude's closure, which the driver links into every
   // compile unasked.
   inf_module_reaches(Int, Int) -> Bool
+  // The instance's state as a value: a fork installs an instance seeded with
+  // the state of the instance below it, so the frames and marks its option
+  // pushes are its own, and a keep adopts the kept option's final state
+  // below.
+  inf_seed() -> CtxSeed
+  inf_adopt(CtxSeed)
 }
 
-handler infer_ctx with stack = [], arm_stack = [], install_marks = [], mint_ceiling = 0, decl_entry = 0, reach = [], kept = [] {
+// The judgment's frame stack as a value — the state a fork's instance is
+// seeded with and a keep adopts. A frame is the record `inf_enter_fn` pushes.
+type CtxSeed = {
+  arm_stack: [(Int, Ty)],
+  decl_entry: Int,
+  install_marks: [(Int, [EffName])],
+  kept: [[Int]],
+  mint_ceiling: Int,
+  reach: [[(Int, [Int])]],
+  stack: [{accumulated_row: EffRow, declared: [(RowTerm, Bool, EConn)], fn_span: Span, owner: Bool, params: [Int], row_handle: Int}],
+}
+
+// The root's seed: no frame, no mark, no ceiling, no declaration open, the
+// module reach table not yet read.
+fn ctx_root() =
+  CtxSeed{arm_stack: [], decl_entry: 0, install_marks: [], kept: [], mint_ceiling: 0, reach: [], stack: []}
+
+handler infer_ctx(seed: CtxSeed) with stack = seed.stack, arm_stack = seed.arm_stack, install_marks = seed.install_marks, mint_ceiling = seed.mint_ceiling, decl_entry = seed.decl_entry, reach = seed.reach, kept = seed.kept {
+  inf_seed() => resume(CtxSeed{arm_stack, decl_entry, install_marks, kept, mint_ceiling, reach, stack}),
+  inf_adopt(s) => resume() with stack = s.stack, arm_stack = s.arm_stack, install_marks = s.install_marks, mint_ceiling = s.mint_ceiling, decl_entry = s.decl_entry, reach = s.reach, kept = s.kept,
   inf_module_reaches(from, to) => {
     let table = if len(reach) == 0 { module_reach_table() } else { reach }
     resume(reach_table_has(table, from, to)) with reach = table
@@ -1343,7 +1370,7 @@ fn infer_program_once(stmts, parse_start, parse_end) = {
   // naming a label are decided here, once every declaration is judged.
   flow_settle()
   root_settle(stmts)
-} ~> row_gate ~> store_ages ~> infer_ctx ~> fresh_for_inference
+} ~> judgment_core
 
 // THE EXECUTABLE ROOT, judged where the program is judged. `main`'s row is
 // every effect no install absorbed, read through the instances of its free
@@ -1508,7 +1535,8 @@ handler diag_quiet with scope = ScopeNone {
 // the bank's own reads: `diag_banked` hands the facts to the keep, which
 // re-performs each into the chain below, so every Diagnostic forwarder — the
 // root's bank among them — sees a fork's report exactly as a live one; a
-// forget is an edit's and reaches the bank below.
+// forget filters the collector's own list, as the bank filters its own, so a
+// fork reaches no bank below it.
 handler diag_branch with lines = make_list(16), count = 0, errors = 0 {
   diag_report(diag, msg, dmod, dlayer) => {
     let grown = list_set(list_extend_to(lines, count + 1), count, (diag, msg, dmod, dlayer))
@@ -1522,8 +1550,8 @@ handler diag_branch with lines = make_list(16), count = 0, errors = 0 {
   diag_narrations() => resume(count - errors),
   diag_banked() => resume(list_to_flat(slice(lines, 0, count))),
   diag_forget(gone) => {
-    diag_forget(gone)
-    resume()
+    let kept = filter(diag_outside(gone, ??), slice(lines, 0, count))
+    resume() with lines = kept, count = len(kept), errors = len(filter(report_is_error, kept))
   },
 }
 
@@ -2245,17 +2273,22 @@ handler first_held {
 }
 
 // What a fork is seeded from: the version of the graph instance, the view of
-// the env instance and the consumed set of the ledger it stands over.
-fn fork_seed() = (graph_version(), env_base_view(), consume_base())
+// the env instance, the consumed set of the ledger, the frame stack, the
+// store ages and the intern table it stands over — every ledger an option's
+// judgment writes, so the option's writes land in instances of its own and a
+// branch of a threaded schedule reaches no handler below the fork.
+fn fork_seed() =
+  (graph_version(), env_base_view(), consume_base(), inf_seed(), ages_seed(), intern_table_view())
 
 // One option's judgment under the chain, and what it leaves: its answer, the
 // graph instance's final version, and the facts the ledgers hold — the env
 // entries, the reports, the open claims (the debt and the claims naming a
 // label, which the root settles once every declaration is judged), the
-// consume log and the decided claims — read inside the chain, where the
-// instances still stand, for a keep to replay below.
+// consume log, the decided claims, and the frame stack's and the store
+// ages' final state — read inside the chain, where the instances still
+// stand, for a keep to replay below.
 fn forked(seed, body) = match seed {
-  (v, base, consumed) => {
+  (v, base, consumed, ctx, ages, words) => {
     consume_seed(consumed)
     let w = world_top()
     let a = body()
@@ -2263,10 +2296,25 @@ fn forked(seed, body) = match seed {
     (
       a,
       graph_version(),
-      (env_entries(), diag_banked(), verify_debt() ++ verify_flows(), consume_log(), verify_decided())
+      (
+        env_entries(),
+        diag_banked(),
+        verify_debt() ++ verify_flows(),
+        consume_log(),
+        verify_decided(),
+        inf_seed(),
+        ages_seed()
+      )
     )
-  } ~> row_gate ~> fresh_for_inference ~> judgment_ledgers ~> env_handler(base) ~> diag_branch ~> lookup_ty_graph ~> graph_handler(v),
+  } ~> row_gate ~> store_ages(ages) ~> infer_ctx(ctx) ~> fresh_for_inference ~> judgment_ledgers ~> env_handler(base) ~> diag_branch ~> lookup_ty_graph ~> graph_handler(v) ~> intern_view(words),
 }
+
+// THE JUDGMENT'S CORE, named once: the row gate, the store ages, the frame
+// stack and the mint, fresh. The module judgment stands on them, and so does
+// every fan and facet that speculates outside a judgment, since a fork is
+// seeded from the instances below it (`fork_seed`) and its remainder reaches
+// nothing further out; `forked` installs the same four with their seeds.
+handler judgment_core = row_gate ~> store_ages(ages_root()) ~> infer_ctx(ctx_root()) ~> fresh_for_inference
 
 // THE JUDGMENT'S LEDGERS, named once: the affine ledger, the region tracker
 // and the verify ledger. Every verb's root stands on them, and `forked`
@@ -2285,9 +2333,16 @@ handler judgment_ledgers = affine_ledger ~> region_tracker ~> verify_ledger
 // fork's installs close, so every perform here resolves to the instances the
 // fork stood over.
 fn branch_join(facts) = match facts {
-  (entries, dfacts, vdebt, clog, vdecided) => {
+  (entries, dfacts, vdebt, clog, vdecided, ctx, ages) => {
     each(adopt_entry, entries)
     verify_adopt(vdecided)
+    // The kept option's frame stack and store ages become the state below:
+    // its frames and marks are balanced at its end, so the stack is the one
+    // it was seeded with, and what it set — the declaration entry, the
+    // reach table it read, the calls its group deferred — stands as judged
+    // here.
+    inf_adopt(ctx)
+    ages_adopt(ages)
     // Both ledgers' logs are PREPEND-ordered; the replay walks from the
     // tail so the root re-performs in occurrence order. Consumes re-check
     // against the root's live set — a same-layer double-consume refuses
@@ -8757,11 +8812,26 @@ effect StoreAges {
   ages_in_cycle(Int) -> Bool
   ages_defer(Int, [(Int, Int, [(Bool, [Int])])])
   ages_group_close() -> ([Int], [(Int, Int, Int, [(Bool, [Int])])])
+  // The instance's state as a value: a fork installs an instance seeded with
+  // the state of the instance below it, so the scopes its option opens and
+  // the calls it defers are its own, and a keep adopts the kept option's
+  // final state below.
+  ages_seed() -> AgesSeed
+  ages_adopt(AgesSeed)
 }
+
+// The store ages as a value — the state a fork's instance is seeded with and
+// a keep adopts.
+type AgesSeed = {groups: [([Int], [(Int, Int, Int, [(Bool, [Int])])])], scopes: [AgeScope]}
+
+// The root's seed: no scope open, no group open.
+fn ages_root() = AgesSeed{groups: [], scopes: []}
 
 // Groups nest, as a block's run of fns is judged inside a member of the
 // group around it.
-handler store_ages with scopes = [], groups = [] {
+handler store_ages(seed: AgesSeed) with scopes = seed.scopes, groups = seed.groups {
+  ages_seed() => resume(AgesSeed{groups, scopes}),
+  ages_adopt(s) => resume() with scopes = s.scopes, groups = s.groups,
   ages_open(kind) => resume() with scopes = scopes ++ [AgeScope({branches: [], deferred: [], depth: 0, kind, lets: [], mutated: [], stores: []})],
   ages_pop() => resume() with scopes = drop_last(scopes),
   ages_top() => resume(if len(scopes) == 0 { None } else { Some(last(scopes)) }),

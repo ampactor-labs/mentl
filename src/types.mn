@@ -3328,15 +3328,18 @@ effect BranchEnv {
 // name. lex_from performs it at every identifier; a repeat occurrence is a
 // hash probe returning the SAME String pointer — zero allocation, zero
 // keyword compares (the row carries the kind, classified at first sight).
-// Handle 0 is reserved = absent; handles are per-install and never cross
-// an analysis bracket (a nested infer_context minting its own table is the
-// isolation the session-weave contract demands at the name layer). Handled
-// by intern_table (pipeline.mn), innermost in the analysis core; the op
-// vocabulary declares here, the lowest module every performer imports.
+// Handle 0 is reserved = absent. A word is interned at the text boundary,
+// where a person typed it, or born in every table as the medium's own
+// vocabulary (src/intern.mn), so a fork reads the table it stands over
+// through a view and mints nothing: `intern_table_view` hands a fork the
+// table as it stands. Handled by intern_table (src/intern.mn), outermost in
+// the analysis core; the op vocabulary declares here, the lowest module
+// every performer imports.
 effect Intern {
   intern_span(String, Int, Int) -> (String, Int, Option(TokenKind))
   intern_str(String) -> Int
   intern_name_of(Int) -> String
+  intern_table_view() -> ([[(String, Int, Option(TokenKind))]], [String], Int)
 }
 
 // The Read/Write split IS the "one writer" invariant. Inference
@@ -4187,6 +4190,19 @@ effect DiagRegister {
 // `mentl diagnostics` walks these. No hand-maintained code registry —
 // the constructor IS the identity; source/code/kind/applicability/message
 // are READS of it.
+// A banked report survives a forget unless an edit replaced what made it:
+// its module whole, or the statement whose extent holds it. Read by every
+// bank — the root's and a fork's collector — so a forget filters each where
+// it holds its reports.
+fn diag_outside(gone, entry) = match entry {
+  (diag, _, dmod, _) => !any(report_replaced(dmod, diag_span(diag), ??), gone),
+}
+
+// A held report that is an error — the tally every bank keeps.
+fn report_is_error(entry) = match entry {
+  (d, _, _, _) => diag_severity(d) == SError,
+}
+
 fn diag_span(d) with Pure = match d {
   PExpectedToken(_, s) => s,
   PUnclosedConstruct(_, s) => s,

@@ -814,7 +814,7 @@ fn enumerate_tuple_candidates(elems, context) = [
 fn segment_verify(candidates, hole_h, below) = {
   let judged = [segment_judge(choose(candidates), hole_h, below)] ~> speculate
   judged |> map(joined)
-}
+} ~> judgment_core
 
 fn joined(judged) = match judged {
   (verdict, Some(facts)) => {
@@ -832,7 +832,7 @@ fn joined(judged) = match judged {
 // refused is a guess they cannot audit. The message is the part about the
 // candidate; a line's module and span are wherever the judgment stood.
 fn refusal_reason(inner) with !Mutate = match inner {
-  (_, dfacts, _, _, _) => match dfacts {
+  (_, dfacts, _, _, _, _, _) => match dfacts {
     [] => Inferred("the hole's refinement is not satisfied"),
     [first, ..._] => match first {
       (_, msg, _, _) => Inferred(msg),
@@ -861,7 +861,7 @@ fn segment_judge(candidate, hole_h, below) = {
   // live — the drop that follows is exactly why the segment carries them
   // out as facts.
   let writes = context_writes(below)
-  let inner = (pubs, dfacts, vdebt, clog, verify_decided())
+  let inner = (pubs, dfacts, vdebt, clog, verify_decided(), inf_seed(), ages_seed())
   if admitted && len(dfacts) == 0 {
     (SegmentVerdict({proven: true, reason: candidate_reason(candidate), writes}), Some(inner))
   } else {
@@ -953,8 +953,9 @@ fn keep_named_refusal(verdicts, acc, indexed) = match indexed {
 // variable, and this is where that stops being a design
 // sentence: infer the candidate, UNIFY its cell with the hole's, and let
 // the one machine answer. Safe by construction — `speculate` runs each
-// candidate on a trail of its own and undoes it, so a bind made here is
-// undone before the next candidate.
+// candidate in a fork of its own, every ledger an instance seeded from the
+// fan's (`judgment_core` stands below the fan), and drops it, so a bind
+// made here dies before the next candidate.
 //
 // The unify carries the CANDIDATE'S OWN Reason rather than a minted one:
 // the bind dies at rollback, so a fresh Reason constructor would have zero
@@ -966,9 +967,7 @@ fn keep_named_refusal(verdicts, acc, indexed) = match indexed {
 // the type-admission verdict — read from the medium's own voice instead of
 // re-derived by a comparison beside it.
 fn candidate_proven(node, hole_h, reason) = {
-  {
-    infer_expr(node)
-  } ~> row_gate ~> store_ages ~> infer_ctx ~> fresh_for_inference
+  infer_expr(node)
   unify(hole_h, node, graph_span_of(node), reason)
   verify_after_apply(node) && all(refinement_admits(??, node), graph_claims_of(hole_h))
 }

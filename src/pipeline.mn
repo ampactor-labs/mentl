@@ -551,10 +551,6 @@ fn owed_site(path: String) = {
   }
 } ~> wasi_filesystem ~> emit_context ~> quiet_context ~> arena
 
-fn report_is_error(entry) = match entry {
-  (d, _, _, _) => diag_severity(d) == SError,
-}
-
 fn owed_claim(scope, ob) = match ob {
   (modh, _, _, _) => debt_in_scope(modh, scope),
 }
@@ -596,12 +592,6 @@ handler diag_bank with banked = [] {
   diag_narrations() => resume(diag_narrations()),
   diag_banked() => resume(banked),
   diag_forget(gone) => resume() with banked = filter(diag_outside(gone, ??), banked),
-}
-
-// A banked report survives a forget unless an edit replaced what made it:
-// its module whole, or the statement whose extent holds it.
-fn diag_outside(gone, entry) = match entry {
-  (diag, _, dmod, _) => !any(report_replaced(dmod, diag_span(diag), ??), gone),
 }
 
 // The tightenings the judgment banked, read off the bank: T_OverDeclared

@@ -563,20 +563,22 @@ landing that closes it. A gate that did not run is UNKNOWN, never green.
   judgment's chain over a graph handler instance of its own, seeded with the
   version of the instance below (`graph_version`: the column roots, the
   mint, the span log, O(1)), beside instances of the row gate, the mint, the
-  ledgers, an env view over the entries below and a diagnostic collector
-  (`forked`). The option's writes land in its own columns and a read falls
-  through to the versions below, so the handler that judges every option
-  drops each instance with its arena (`speculate`) and the handler that
-  keeps the first held round merges its cells into the instance below
-  (`graph_keep`) and adopts its ledger facts (`branch_join`). The ??-fan's
-  candidates, teach's locks and contracts and the Mycroft rounds of every
-  unsigned declaration's judgment fork this way; a candidate's teaching is
-  read inside its instance as the cells that instance wrote. A handler
-  standing outside every fork (the frame stack, the store ages) reads no
-  graph in its arms, since an arm's perform resolves to the instance below
-  the fork. The options run one after another, so two never run at once;
-  forks on threads are the fused oracle's one pin left (§11). A
-  continuation is captured at any position, by a copy of its frame's
+  ledgers, the store ages and the frame stack seeded from the instances
+  below, an env view over the entries below, a diagnostic collector and a
+  view of the intern table as the fork found it (`forked`). The option's
+  writes land in its own columns and a read falls through to the versions
+  below, so the handler that judges every option drops each instance with
+  its arena (`speculate`) and the handler that keeps the first held round
+  merges its cells into the instance below (`graph_keep`) and adopts its
+  ledger facts, its frame stack and its store ages (`branch_join`). The
+  ??-fan's candidates, teach's locks and contracts and the Mycroft rounds
+  of every unsigned declaration's judgment fork this way; a candidate's
+  teaching is read inside its instance as the cells that instance wrote. A
+  fork mints no word: the intern table is written at the text boundary and
+  born holding the medium's own vocabulary, and a word first seen inside a
+  fork is refused by name. The options run one after another, so two never
+  run at once; forks on threads are the fused oracle's one pin left (§11).
+  A continuation is captured at any position, by a copy of its frame's
   lowered tail (§11.18).
 - **The compile is sequential by construction** (§11.16).
 - **The prose still asserts machinery that is not there**: decoration banners,
@@ -760,19 +762,52 @@ and the artifact:
   own Reason, `DivRow`), and survivors the e-graph extracts to one class
   are one meaning shown once. The compiler is still emitted as a
   thread-free module (a defined memory, a bump allocator, no spawn import),
-  and that is the one pin left. The compiler spawns: the schedule is
-  installed over the judgment at the verb entries — `parallel_compose`
-  where the host answers a spawn, `sequential_compose` otherwise — and
-  `speculate` fans its options under it, each option's mint in a band keyed
-  by the choice site and the option's index, never by the open count, so
-  the handle an option mints is the same under any schedule; interning
-  banded the same way; the race rule accepts exactly this shape and refuses
-  a branch reaching the root's handler, which is its proof; the `mentl`
-  shim and the page's worker instantiate the spawning module
-  (`Hβ.oracle.forks-on-threads`). Gates: m3
-  under `sequential_compose` byte-identical to m3 under `parallel_compose`
-  (§11.16's statement made real), the ??-fan's latency falling with the
-  cores, every battery green at every pin.
+  and that is the one pin left, taken in three landings. (a) A fork owns
+  every ledger it writes — landed 2026-10-21: `forked` installs, beside the
+  instances above, a store-ages and a frame-stack instance seeded with the
+  state of the instances below (`AgesSeed`, `CtxSeed`) and a view of the
+  intern table as the fork found it (`intern_view`), so every ledger an
+  option's judgment writes is the option's own; the keep adopts the kept
+  option's frame stack and store ages (`inf_adopt`, `ages_adopt`) as it
+  merges its graph cells; the collector filters a forget on its own list;
+  every option of one choice mints its handles from the version's own
+  `next`, so a handle is the same under any schedule; a word is interned at
+  the text boundary or born in every table (`medium_vocabulary`, `Mutate`
+  among them), so a fork mints no word and one first seen inside a fork is
+  refused by name — nothing is banded, since nothing in a fork mints; and
+  the judgment's core is named once (`judgment_core`) and stands under the
+  module judgment, the fan and the facets. `mentl why src/infer.mn forked`
+  names the substrate's effects, `StateWalk` (the root's stateless walk),
+  `Mutate` (the graph instance's own trie store) and the view's refusal,
+  and nothing else. (b) A store claim travels with the function
+  (`Hβ.effects.store-claim-travels-with-the-function`): a function's type
+  carries which memory its body stores into — a parameter's, a capture's,
+  its own line, a module value's — written once at the declaration's exit
+  from the store facts the judgment keeps, and a call pays `Mutate` only
+  where the memory it hands is older than the caller's frame; the race rule
+  reads a branch's `Mutate` through the claim against the BRANCH's start,
+  so a store into memory the branch allocated — a handler instance's
+  state, a voice's line minted in the branch — builds a value and runs, and
+  a store into memory older than the branch refuses naming the store. The
+  tenth lesson (`examples/pulse/course/10-voices.mn`) is owed by exactly
+  this read and turns green here. (c) The compiler spawns
+  (`Hβ.oracle.forks-on-threads`): the demand walk that twins a direct
+  callee by the install's schedule follows a `~> h` in the demanded reach
+  into `h`'s arms, the arm twins keyed by the schedule letter and minted
+  only where the schedule changes the lowering; `parallel_compose` is a
+  POOL sized to the cores — a fanout enqueues its branches as task records
+  in the image's shared queue, a nested fanout inside a worker enqueues
+  instead of spawning, and the join reads results by option index — and
+  stands over the judgment at every verb entry; `sequential_compose`
+  stands at one site, `mentl march`'s determinism leg, which compiles the
+  wheel twice in-process, once under each schedule, asserts the two WATs
+  byte-identical and prints both wall times, its spawn arm running the
+  task in the performer's world as the task record does; the emit sees
+  `spawn_task` reached and emits the spawning module; the page's resident
+  session arms the pool its run role has. Gates: m3 under
+  `sequential_compose` byte-identical to m3 under `parallel_compose`
+  (§11.16's statement made real), the two wall times on the board, every
+  battery green at every pin.
 - **The crown, modal** (`Hβ.effects.modal-world-index`): a row names
   EFFECTS — `EffName` carries a name and its arguments, a `RowEdge`'s mask
   names effects, `inf_mark_install_frame` drops the handler the install

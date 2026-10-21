@@ -1,9 +1,12 @@
 // intern.mn — the intern table's handlers (the string identity).
-// The forking handlers' chain in infer installs an instance of the table
-// over every option it judges, so the declarations live BELOW infer — the
-// table's own module. effect Intern declares in types.mn — the vocabulary home
-// every performer imports (lex and the EffName mints live below this
-// module); the handlers live with the table they manage.
+// The table stands outermost in every judging chain, and a fork reads it
+// through `intern_view`, an instance holding the table as the fork found it
+// (the fork's seed reads it through `intern_table_view`): a word is interned
+// at the text boundary or born in the table (`medium_vocabulary`), so a fork
+// mints nothing and a word first seen inside one is refused by name. effect
+// Intern declares in types.mn — the vocabulary home every performer imports
+// (lex and the EffName mints live below this module); the handlers live with
+// the table they manage.
 import types
 
 import lexer
@@ -61,21 +64,51 @@ handler intern_table with table = vocab_seed() {
   intern_name_of(h) => match table {
     (_buckets, entries, _count) => resume(list_index(entries, h)),
   },
+  intern_table_view() => resume(table),
+}
+
+// A fork's view of the table it stands over: the table as the fork found it,
+// read and never written. Every word a judgment interns is a word the text
+// boundary interned or the medium's own vocabulary, so a miss here is a word
+// first seen inside a speculation — refused by name, never minted, since a
+// handle minted in one option would name another word in the next.
+handler intern_view(table) {
+  intern_span(src, s, e) => match table {
+    (buckets, _entries, _count) => {
+      let bucket = list_index(buckets, i32_and(str_hash_loop(src, s, e, -2128831035), 4095))
+      match intern_probe(bucket, src, s, e, 0, len(bucket)) {
+        Some(row) => resume(row),
+        None => fail("intern: `{str_slice(src, s, e)}` is first interned inside a speculation; a word is interned at the text boundary or born in the table"),
+      }
+    },
+  },
+  intern_str(s) => match table {
+    (buckets, _entries, _count) => {
+      let bucket = list_index(buckets, i32_and(str_hash_loop(s, 0, byte_len(s), -2128831035), 4095))
+      match intern_probe(bucket, s, 0, byte_len(s), 0, len(bucket)) {
+        Some((_canonical, h, _kw)) => resume(h),
+        None => fail("intern: `{s}` is first interned inside a speculation; a word is interned at the text boundary or born in the table"),
+      }
+    },
+  },
+  intern_name_of(h) => match table {
+    (_buckets, entries, _count) => resume(list_index(entries, h)),
+  },
+  intern_table_view() => resume(table),
 }
 
 // THE MEDIUM'S OWN VOCABULARY — the names the wheel itself interns by
 // literal: the effects the judgment charges by name (a construction's
-// `Memory + Alloc`, an arena's `Arena`) and the ones the teaching surface
-// classifies (`IO`, `Network`). Every table is BORN holding them — its state
-// init inserts them in this order, so their handles are the same in every
-// table (1 through 6) and a read-only view always finds them. Until
-// 2026-09-28 they were interned by whoever asked first, which held only while
-// every program that judged a candidate had judged a literal before it: a
-// program with no literal and no library (the frontier's stage-ring demo,
-// whose link is two files) asked for `Memory` from inside a proposal once a
-// closure mint was charged, and the view trapped. A literal intern anywhere
-// in the wheel names one of these.
-fn medium_vocabulary() = ["Memory", "Alloc", "IO", "Network", "Trap", "Arena"]
+// `Memory + Alloc`, an arena's `Arena`, a partial primitive's `Trap`, a
+// store's `Mutate`) and the ones the teaching surface classifies (`IO`,
+// `Network`). Every table is BORN holding them — its state init inserts them
+// in this order, so their handles are the same in every table (1 through 7)
+// and a fork's view always finds them: a program with no literal and no
+// library (the frontier's stage-ring demo, whose link is two files) asks for
+// `Memory` from inside a proposal once a closure mint is charged, and for
+// `Mutate` once a store is. A literal intern anywhere in the wheel names one
+// of these.
+fn medium_vocabulary() = ["Memory", "Alloc", "IO", "Network", "Trap", "Arena", "Mutate"]
 
 // A table born holding the vocabulary: fresh buckets and entries with the
 // words inserted in order — the same insertion the `intern_str` arm makes on
