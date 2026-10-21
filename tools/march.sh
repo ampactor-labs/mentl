@@ -49,7 +49,7 @@ trap_lines() { grep -nE 'out of bounds|wasm trap|undefined element|unreachable|o
 # explicit in-commit act with a fixed-input justification. Beside it the
 # IMAGE's own high-water — the guest's `arena:` line, the bump line's peak —
 # is a pure function of the computation, the same on every machine the board
-# runs on, and selfcompile_line_peak_kb_max ratchets that (2026-10-13: the CI
+# runs on, and read_line holds it against the boot (2026-10-13: the CI
 # runner read a boot's peak RSS at 471,568 KB where this machine read 460,108,
 # the engine's and the host allocator's share differing by machine; the line
 # peak cannot).
@@ -369,21 +369,20 @@ read_cost() {  # read_cost <leg> <compiler> — sets MARCH_COST from $OUT/<leg>.
 }
 read_cost m3 "$OUT/m2.wasm"
 # ── the IMAGE's own high-water: the guest prints its bump line's peak on the
-# leg's stderr (`arena: … line peak N KB`), a reading no machine moves, so it
-# is ratcheted exactly — no re-measure, since there is no jitter to die — and
-# a breach refuses the repin as the RSS ceiling does. The RSS reading stays the
-# pin's recorded cost: it is what a kernel kills on, and it is machine-bound.
+# leg's stderr (`arena: … line peak N KB`), a reading no machine moves, held
+# against the PINNED BOOT compiling the same wheel (run once a march), so the
+# wheel growing never reads as the compiler growing and nothing a commit
+# writes moves either number (Morgan, 2026-10-21).
 read_line() {  # read_line <leg> — ratchets the image's line peak from $OUT/<leg>.err
-  local leg="$1" line_kb line_max
+  local leg="$1" line_kb allow
   line_kb=$(grep -oE 'line peak [0-9]+ KB' "$OUT/$leg.err" 2>/dev/null | head -1 | grep -oE '[0-9]+')
-  [ -n "${line_kb:-}" ] || return 0
-  MARCH_COST="${MARCH_COST:+$MARCH_COST · }line peak ${line_kb} KB"
-  echo "· image: line peak ${line_kb} KB (the guest's own high-water)"
-  line_max=$(grep -E '^selfcompile_line_peak_kb_max:' "$BASELINE" 2>/dev/null | head -1 | cut -d: -f2 | tr -d ' ')
-  [ -n "${line_max:-}" ] || return 0
-  [ "$line_kb" -gt "$line_max" ] || return 0
-  echo "✗ LINE RATCHET: the image's line peak ${line_kb}KB > ${line_max}KB ceiling — a deterministic reading,"
-  echo "  nothing to re-measure; the landing pays the cost down (fixed-input justification in $BASELINE); repin refused."
+  [ -n "${BOOT_LINE_KB:-}" ] || { gen "$BOOT" "$OUT/m1.wat" "$OUT/m1.err"; BOOT_LINE_KB=$(grep -oE 'line peak [0-9]+ KB' "$OUT/m1.err" | head -1 | grep -oE '[0-9]+'); }
+  allow=$(grep -E '^selfcompile_line_peak_kb_max:' "$BASELINE" 2>/dev/null | head -1 | cut -d: -f2 | tr -d ' ')
+  MARCH_COST="${MARCH_COST:+$MARCH_COST · }line peak ${line_kb:-?} KB (boot ${BOOT_LINE_KB:-?} KB)"
+  echo "· image: line peak ${line_kb:-?} KB; the pinned boot on the same wheel ${BOOT_LINE_KB:-?} KB"
+  [ -n "${line_kb:-}" ] && [ -n "${BOOT_LINE_KB:-}" ] && [ "$line_kb" -le $(( BOOT_LINE_KB + ${allow:-0} )) ] && return 0
+  echo "✗ LINE RATCHET: line peak ${line_kb:-?}KB against the boot's ${BOOT_LINE_KB:-?}KB on the same wheel plus ${allow:-0}KB"
+  echo "  (selfcompile_line_peak_kb_max in $BASELINE) — a deterministic reading; the landing pays it down; repin refused."
   costok=0
 }
 read_line m3

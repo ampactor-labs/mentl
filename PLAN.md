@@ -379,9 +379,10 @@ then took the self-compile from 1,400 s to 10 s. `wasm-opt -O2` measured a 4%
 regression: the cost is algorithmic, never instruction slop. **If a change's
 justification is a number and not a law, it is the wrong change.**
 
-Cost is on the board: the march's m3 leg ratchets its peak RSS and the image's
-own high-water, and a ceiling never rises (a landing whose cost breaches one pays
-it down). The build order, each layer making the next O(1): (1) a name is a
+Cost is on the board: the march's m3 leg ratchets its peak RSS, and holds the
+image's own high-water against the pinned boot compiling the same wheel, so the
+ratchet measures the compiler and never the wheel's size; a ceiling never rises
+(a landing whose cost breaches one pays it down). The build order, each layer making the next O(1): (1) a name is a
 handle from the lexer on; (2) every read an O(1) chase — the environment, the
 reach walks (§11.18), instantiation shared rather than cloned; (3) the arena —
 every extent reclaims at its exit what its publication does not reach (built);

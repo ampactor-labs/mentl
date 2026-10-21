@@ -751,15 +751,14 @@ authored_ref_max: 523
 # from a predicted reading is a number nobody read; tools/state.sh prints the
 # march's cost line on every run, so each boot's reading is on main's board log.
 selfcompile_peak_kb_max: 421100
-# THE IMAGE'S OWN HIGH-WATER: the guest prints its bump line's peak on the
-# m3 leg's stderr (`arena: … line peak N KB`), a pure function of the
-# computation, so it is the memory ratchet no machine moves, refused on a
-# breach by `read_line` (tools/march.sh) with no re-measure; a landing that
-# breaches it pays the cost down. Held at 1% over the landed form's 241,176
-# KB (2026-10-21, the root judged in the judgment, the emit's census gone): the
-# versioned columns had read 269,910 KB, refused, and fell when the emit
-# plan's walks each ran in an arena (62 MB of garbage had lived to the end).
-selfcompile_line_peak_kb_max: 243588
+# THE IMAGE'S OWN HIGH-WATER: the KB the candidate's line peak may exceed
+# the pinned boot's on the SAME wheel (`arena: … line peak N KB`, read_line in
+# tools/march.sh), a pure function of the computation, refused with no
+# re-measure. Held at 0 (2026-10-21, Morgan): an absolute ceiling measured
+# the wheel's size times the compiler's cost, so a landing adding code to an
+# unchanged compiler breached it (F1b: 245,616 KB from the boot, 245,605 KB
+# from the candidate, on one wheel); this compares two compilers on one input.
+selfcompile_line_peak_kb_max: 0
 # THE HEAD ROUND TRIP (render lane, 2026-10-06): module-level function heads,
 # formatter's and eye's, that do not come back as themselves through
 # parse∘render. Born at the measured 92 of 4,550 (the base renderer: 787 of

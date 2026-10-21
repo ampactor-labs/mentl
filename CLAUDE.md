@@ -158,7 +158,9 @@ its fix is the edge. Measure before asserting: `bash tools/profile-self.sh`
 samples the self-compile and `tools/guest-profile.py` names the callers; eight
 readers once missed the cost that one profile found in a minute. A change
 justified by a number and not a law is the wrong change; the board's cost
-ceilings only fall.
+ceilings only fall, and the image's line peak is held against the pinned boot
+compiling the same wheel, so it measures the compiler and never the wheel's
+size, and nothing a commit writes moves it.
 
 ## Mentl builds Mentl — enforced, not requested
 
