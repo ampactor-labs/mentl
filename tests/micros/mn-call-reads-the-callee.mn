@@ -1,0 +1,7 @@
+// expect: 20
+// A call of a declaration in sight is what the declaration computes there:
+// `five()` answers 5, so the division by it is proven and `!Trap` holds. The
+// prior boot read the call as its unrefined return and refused.
+fn five() = 5
+
+fn main() with !Trap = 100 / five()

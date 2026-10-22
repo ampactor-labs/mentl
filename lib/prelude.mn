@@ -33,6 +33,12 @@ type Option = None | Some(a)
 
 type Result = Ok(a) | Err(e)
 
+// A Float whose truncation toward zero is an Int: finite, and inside the
+// range an Int holds. It is what `float_to_int` demands of its argument, the
+// one conversion the machine refuses to complete, so every value handed to it
+// carries the claim and a value nothing bounds pays the trap.
+type Truncatable = Float where -2147483649.0 < self && self < 2147483648.0
+
 // Failure IS an effect — the kernel's answer to bottom.  `fail` never
 // resumes: its result is the never type, quantified per perform, so each
 // consumer meets a variable of its own and the effect carries no

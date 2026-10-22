@@ -230,7 +230,7 @@ fn position_to_span(pos) = match pos {
 // hover, diagnostics, definition and references.
 fn handle_initialize(_params) = {
   let caps = JObj([
-    ("textDocumentSync", JObj([("openClose", JBool(true)), ("change", JNum(0.0))])),
+    ("textDocumentSync", JObj([("openClose", JBool(true)), ("change", JInt(0))])),
     ("hoverProvider", JBool(true)),
     ("diagnosticProvider", JObj([])),
     ("definitionProvider", JBool(true)),
@@ -396,7 +396,7 @@ fn map_diagnostics_to_json(diags, i, n, acc_rev) = if i >= n {
     LspDiagnostic(sl, sc, el, ec, severity, code, msg) => {
       let json = JObj([
         ("range", range_to_json(sl, sc, el, ec)),
-        ("severity", JNum(float_of_int(severity))),
+        ("severity", JInt(severity)),
         ("code", JStr(code)),
         ("message", JStr(msg))
       ])
@@ -417,8 +417,8 @@ fn location_to_json(loc) = match loc {
 }
 
 fn range_to_json(sl, sc, el, ec) = JObj([
-  ("start", JObj([("line", JNum(float_of_int(sl - 1))), ("character", JNum(float_of_int(sc - 1)))])),
-  ("end", JObj([("line", JNum(float_of_int(el - 1))), ("character", JNum(float_of_int(ec - 1)))]))
+  ("start", JObj([("line", JInt(sl - 1)), ("character", JInt(sc - 1))])),
+  ("end", JObj([("line", JInt(el - 1)), ("character", JInt(ec - 1))]))
 ])
 
 // lsp_session — the session loop entry. Reads frames from stdin
@@ -444,7 +444,7 @@ fn handle_message(msg) = match msg {
     let kind = classify_method(method)
     let resp = dispatch_request(kind, params)
     let resp_json =
-      JObj([("jsonrpc", JStr("2.0")), ("id", JNum(float_of_int(id))), ("result", response_to_json(resp))])
+      JObj([("jsonrpc", JStr("2.0")), ("id", JInt(id)), ("result", response_to_json(resp))])
     write_lsp_frame(json_serialize(resp_json))
   },
   LspNotification(method, params) => {

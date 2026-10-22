@@ -1,0 +1,18 @@
+// expect: 5
+// A computed clock serves the stages that run at its rate, never a stage
+// that declares another: `r` is declared at Rt(5), so its perform passes the
+// install computing 7 and reaches the install serving Rt(5). The boot let
+// the computed install answer it, and `r` read 7.
+effect Rt(n: Int) {
+  rt() -> Int
+}
+
+handler rt_at(n) {
+  rt() => resume(n),
+}
+
+fn r() with Rt(5) = rt()
+
+fn seven(a) = a + 4
+
+fn main() = r() ~> rt_at(seven(3)) ~> rt_at(5)

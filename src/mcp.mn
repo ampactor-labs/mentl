@@ -100,12 +100,11 @@ fn mcp_verdict_text(text, nerr, left, wat_path) = {
 fn mcp_response(id, result) =
   json_serialize(JObj([("jsonrpc", JStr("2.0")), ("id", id), ("result", result)])) ++ "\n"
 
-// The code rides as the Int it is (JSON-RPC codes are integers); the one
-// float conversion sits at the JNum boundary.
+// The code rides as the Int it is: JSON-RPC codes are integers.
 fn mcp_error(id, code, msg) = json_serialize(JObj([
   ("jsonrpc", JStr("2.0")),
   ("id", id),
-  ("error", JObj([("code", JNum(float_of_int(code))), ("message", JStr(msg))]))
+  ("error", JObj([("code", JInt(code)), ("message", JStr(msg))]))
 ])) ++ "\n"
 
 // The initialize result echoes the client's protocolVersion (the server's
@@ -304,10 +303,10 @@ fn mcp_tool_call(id, params, at_read) = {
         None => None,
       }
       match lineo {
-        Some(JNum(lf)) => {
+        Some(JInt(line)) => {
           let col = match json_obj_get(params, "arguments") {
             Some(args) => match json_obj_get(args, "col") {
-              Some(JNum(cf)) => float_to_int(cf),
+              Some(JInt(c)) => c,
               _ => 1,
             },
             None => 1,
@@ -315,7 +314,7 @@ fn mcp_tool_call(id, params, at_read) = {
           // The SAME address core the CLI serves, under the collecting
           // console — the transport is the install (at_read is the
           // closure main.mn built where the renders live).
-          let banked = at_read(float_to_int(lf), col)
+          let banked = at_read(line, col)
           mcp_response(
             id,
             JObj([

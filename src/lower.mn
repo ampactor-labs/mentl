@@ -417,21 +417,17 @@ type LowExpr
   // layer deeper). FByName selects a record field; FByIndex a positional
   // product slot.
   | LFieldLoad(Int, LowExpr, FieldSel)
-  // W11: a REAL machine int<->float conversion — the gradient's coercion arm.
-  // float_of_int / float_to_int are NOT identity stubs that reinterpret bits
-  // (a silent miscompile); they are a value-changing convert: i32->f64 is
-  // f64.convert_i32_s, f64->i32 (truncating toward zero) is i32.trunc_f64_s.
-  // The kind is an ADT (never a string flag); emit projects the one WASM op.
+  // A word primitive applied: its arguments, then the one instruction its
+  // declaration is (types.mn's `Primitive`), never a call.
   //
-  // handle, direction, operand
-  // Hβ.first-light.resume-with-state-mutation: `resume(val) with field =
-  // expr` per SYNTAX §State updates via with on resume lowers each
-  // (field, value) update to an LStateSlotStore preceding the LReturn.
-  // slot_offset is field source-order * 4 per PLAN §5.U's one record; the
-  // arm fn's __state IS the handler's state record per
-  // PLAN §5.U, so the store
-  // mutates handler state across resume calls.
-  | LConvert(Int, ConvertKind, LowExpr)
+  // handle, primitive, arguments
+  | LPrim(Int, Primitive, [LowExpr])
+  // `resume(val) with field = expr` (SYNTAX §State updates via with on
+  // resume) lowers each (field, value) update to an LStateSlotStore before
+  // the LReturn: the arm fn's __state IS the handler's state record (PLAN
+  // §5.U's one record), so the store mutates handler state across resume
+  // calls.
+  //
   // handle, slot_offset, value, record READ — resolved at lower through the __hrec ladder (arm frame: the LLet alias of the arm's own $__state; a lambda or a nested fn minted in the arm: the seeded capture). The record is a value the frame was born holding — the retired $<hname>_state_g singleton was a bracket-scoped CACHE of it, and a closure's own $__state is its closure record (the measured 32-not-46 / 20-not-25 silent state loss, both disciplines)
   | LStateSlotStore(Int, Int, LowExpr, LowExpr)
   // handle, handler declaration, slot index, value — a state field's FIRST
@@ -459,14 +455,6 @@ type LowExpr
   //
   // handle, import name (no $ prefix), args
   | LWasiCall(Int, String, [LowExpr])
-
-// The two directions of int<->float conversion. An ADT, not a string/int flag
-// (drift 8): each direction projects exactly one signed WASM convert op.
-type ConvertKind
-  // f64.convert_i32_s — i32 value widened to its f64
-  = IntToFloat
-  // i32.trunc_f64_s   — f64 truncated toward zero to i32
-  | FloatToInt
 
 // HOW MUCH OF THE WALK WAS ALREADY DONE — the one perform's only variation.
 // The operation is fixed: find, innermost-out, the installed handler that
@@ -653,7 +641,7 @@ fn lexpr_handle(e) with Pure = match e {
   LFeedbackPrior(h) => h,
   LPerform(h, _, _) => h,
   LFieldLoad(h, _, _) => h,
-  LConvert(h, _, _) => h,
+  LPrim(h, _, _) => h,
   LStateSlotStore(h, _, _, _) => h,
   LStateInit(h, _, _, _) => h,
   LInvariantFailure(h, _) => h,
@@ -851,22 +839,21 @@ fn site_schedule_seed(fh) = match lower_site_schedule() {
 }
 
 // A call whose callee resolved to module scope, where the env's kinds live:
-// an intrinsic, a substrate op, a constructor, an effect op, or a function.
-fn lower_global_call(handle, fh, name: String, r_args, lo_args) = if name == "to_string" && len(r_args) == 1 {
+// a primitive, an intrinsic, a substrate op, a constructor, an effect op, or
+// a function. A primitive is read off the declaration the callee's edge
+// reaches; it applies its instruction where it stands.
+fn lower_global_call(handle, fh, name: String, r_args, lo_args) = match published_kind(graph_ref_decl(fh)) {
+  Some(PrimitiveKind(p)) => LPrim(handle, p, lo_args),
+  Some(_) | None => lower_named_call(handle, fh, name, r_args, lo_args),
+}
+
+fn lower_named_call(handle, fh, name: String, r_args, lo_args) = if name == "to_string" && len(r_args) == 1 {
   LShow(handle, last(lo_args))
 } else if name == "hash" && len(r_args) == 1 {
   // hash(x) IS the HASH leaf of the structural fold — dispatched at
   // EMIT from the node's live type (hash_node_of), never a name baked
   // here, so a twin's bracket re-answers it (eq/hash agreement).
   LHash(handle, last(lo_args))
-} else if name == "float_of_int" && len(r_args) == 1 {
-  // W11: the gradient's coercion arm — a REAL i32->f64 widen
-  // (f64.convert_i32_s), never an identity stub reinterpreting bits.
-  LConvert(handle, IntToFloat, last(lo_args))
-} else if name == "float_to_int" && len(r_args) == 1 {
-  // f64->i32 truncating toward zero (i32.trunc_f64_s) — the value-
-  // faithful inverse, replacing the bit-reinterpreting identity stub.
-  LConvert(handle, FloatToInt, last(lo_args))
 } else if name == "tangent_of" {
   // What `d(v)` MEANS under `~> grad(w)` — and only there. The one arm that
   // writes it is a projection's, which is never lowered, so reaching
@@ -1031,10 +1018,15 @@ fn open_slot_handle(open, k, handle) = if k < len(open) {
 
 // The callee shapes a partial can synthesize a body for, as a VALUE rather
 // than as a returned closure: fn name · variant tag · the singleton-tier
-// perform's (handler, op, stateful) triple · a local callee's value. Each
-// carries exactly what apply_callee_form needs and nothing the site could
-// re-derive.
-type PartialCalleeForm = PcfCall(Callee) | PcfVariant(TagId) | PcfPerform(PerformDispatch) | PcfLocal(LowExpr)
+// perform's (handler, op, stateful) triple · a local callee's value · a
+// primitive's instruction. Each carries exactly what apply_callee_form needs
+// and nothing the site could re-derive.
+type PartialCalleeForm
+  = PcfCall(Callee)
+  | PcfVariant(TagId)
+  | PcfPerform(PerformDispatch)
+  | PcfLocal(LowExpr)
+  | PcfPrim(Primitive)
 
 // The callee is resolved ONCE, by scope, exactly as the saturated call's
 // dispatch resolves it (`lower_call_dispatch`): a binding the lowering's
@@ -1056,12 +1048,13 @@ fn partial_callee_form(handle, fbody, fh) = match fbody {
 }
 
 // A module-scope callee's form, by what its declaration was published as —
-// the declaration the reference's edge reaches. The name-keyed intrinsic
-// projections (the show/hash fold leaves, the gradient's converts) and the
-// substrate/wasi instruction ops have no global fn to LCall — a partial
-// over one floors typed with the rest of the unbuilt shapes, never a call
-// past the projection.
-fn partial_global_callee_form(fh, name) = if is_substrate_mem_op(name) || is_wasi_import_op(name) || name == "to_string" || name == "hash" || name == "float_of_int" || name == "float_to_int" {
+// the declaration the reference's edge reaches. A primitive is a function
+// like any other, so a reference to one as a value is the closure whose body
+// applies its instruction. The name-keyed intrinsic projections (the
+// show/hash fold leaves) and the substrate/wasi instruction ops have no
+// global fn to LCall — a partial over one floors typed with the rest of the
+// unbuilt shapes, never a call past the projection.
+fn partial_global_callee_form(fh, name) = if is_substrate_mem_op(name) || is_wasi_import_op(name) || name == "to_string" || name == "hash" {
   None
 } else {
   let decl = graph_ref_decl(fh)
@@ -1088,6 +1081,7 @@ fn partial_global_callee_form(fh, name) = if is_substrate_mem_op(name) || is_was
     // eta-wrapper ceiling. The op-keyed walk has no such gap, so there is
     // nothing left to decline.
     Some(EffectOpScheme(_, _, _)) => Some(PcfPerform(perform_dispatch_of(name, None))),
+    Some(PrimitiveKind(p)) => Some(PcfPrim(p)),
     _ => None,
   }
 }
@@ -1106,6 +1100,7 @@ fn apply_callee_form(form, handle, fh, bargs, n_caps) = match form {
   // The callee value rides the record past the supplied fields, at the
   // capture ordinal the supplied slots leave free; the body calls it.
   PcfLocal(v) => LCall(handle, LUpval(lexpr_handle(v), n_caps), bargs),
+  PcfPrim(p) => LPrim(handle, p, bargs),
 }
 
 // What the callee form adds to the partial's record: a local callee's
@@ -1116,6 +1111,7 @@ fn partial_callee_capture(form) = match form {
   PcfCall(_) => [],
   PcfVariant(_) => [],
   PcfPerform(_) => [],
+  PcfPrim(_) => [],
 }
 
 // PARTIAL APPLICATION AS A VALUE — the mint. The record is LambdaExpr's
@@ -1562,12 +1558,12 @@ fn resolve_in_stack(op_name: String, ename, word, stack) = if ename == "" || len
 }
 
 // THE INSTANCE A DISPATCH KEYS ON, as one word: the effect's values spelled
-// and interned, or 0 where some value is not known before the run — which
-// any install may serve, and which may reach any. Two words both known and
-// different are route-distinct, the law the judgment's absorption reads
-// (effects.mn), so the static walk above and the run's walk pass exactly
-// the installs the row says do not answer.
-fn instance_word(ename: String, args) = if len(args) > 0 && all(eff_arg_ground, args) {
+// and interned — an operand by its node — or 0 where an instance variable is
+// still free, which any install may serve and which may reach any. Two words
+// both known and different are route-distinct, the law the judgment's
+// absorption reads (effects.mn), so the static walk above and the run's walk
+// pass exactly the installs the row says do not answer.
+fn instance_word(ename: String, args) = if len(args) > 0 && all(route_known, args) {
   intern_str("{ename}({show_list(args, value_sig, ",")})") + 1
 } else {
   0
@@ -1598,8 +1594,8 @@ fn instance_arg_value(a) = match instance_value_at(a) {
 }
 
 // The instance an install serves of the effect, read off its handler's
-// config where it pins it; a handler that serves every instance, or a config
-// computed at the run, is 0.
+// config where it pins it — a computed config by the operand that computes
+// it; a handler that serves every instance is 0.
 fn served_word(right, hd, ename: String) = match handler_e_r(Some(hd), right) {
   Some(er) => match served_instance(er, right) {
     Some(s) => if eff_name_is(ename, s) { instance_word(ename, entry_args(s)) } else { 0 },
@@ -2290,6 +2286,12 @@ fn lower_declared_ref(handle, d) = match published_kind(Some(d)) {
     // included, so a missing product is an unresolved judgment and the
     // typed floor is the honest answer — lower_call_partial's own
     // None path, reached with the arity the graph actually proved.
+    NoProduct => LInvariantFailure(handle, PartialCalleeShape(handle)),
+    ProductOf(_, open, _) => lower_call_partial(handle, graph_node_body(handle), handle, [], open, len(open)),
+  },
+  // A primitive as a value has no symbol to reach: it is the partial with
+  // every slot open, whose body applies the instruction.
+  Some(PrimitiveKind(_)) => match graph_product_at(handle) {
     NoProduct => LInvariantFailure(handle, PartialCalleeShape(handle)),
     ProductOf(_, open, _) => lower_call_partial(handle, graph_node_body(handle), handle, [], open, len(open)),
   },
@@ -5118,7 +5120,7 @@ fn cp_checked(root, e, terminus) = match e {
   | LMakeVariant(_, _, _)
   | LResumeK(_, _, _, _)
   | LFieldLoad(_, _, _)
-  | LConvert(_, _, _)
+  | LPrim(_, _, _)
   | LStateSlotStore(_, _, _, _)
   | LStateInit(_, _, _, _)
   | LShow(_, _)
@@ -5261,7 +5263,7 @@ fn pass_kids(e) = match e {
   | LFeedback(_, _, _, _, _)
   | LFeedbackPrior(_)
   | LFieldLoad(_, _, _)
-  | LConvert(_, _, _)
+  | LPrim(_, _, _)
   | LStateSlotStore(_, _, _, _)
   | LStateInit(_, _, _, _)
   | LShow(_, _)
@@ -5306,7 +5308,7 @@ fn pass_rebuild(e, kids) = match e {
   LFeedbackPrior(_) => e,
   LPerform(h, d, _) => LPerform(h, dispatch_with(d, kids), drop(len(dispatch_kids(d)), kids)),
   LFieldLoad(h, _, sel) => LFieldLoad(h, list_index(kids, 0), sel),
-  LConvert(h, k, _) => LConvert(h, k, list_index(kids, 0)),
+  LPrim(h, p, _) => LPrim(h, p, kids),
   LStateSlotStore(h, o, _, _) => LStateSlotStore(h, o, list_index(kids, 0), list_index(kids, 1)),
   LStateInit(h, hd, s, _) => LStateInit(h, hd, s, list_index(kids, 0)),
   LShow(h, _) => LShow(h, list_index(kids, 0)),
@@ -5429,7 +5431,7 @@ fn site_walk(mode, e) = match e {
   | LFeedbackPrior(_)
   | LPerform(_, _, _)
   | LFieldLoad(_, _, _)
-  | LConvert(_, _, _)
+  | LPrim(_, _, _)
   | LStateSlotStore(_, _, _, _)
   | LStateInit(_, _, _, _)
   | LShow(_, _)
@@ -5638,7 +5640,7 @@ fn zip_at(e, name, hole) = match e {
   | LFeedbackPrior(_)
   | LPerform(_, _, _)
   | LFieldLoad(_, _, _)
-  | LConvert(_, _, _)
+  | LPrim(_, _, _)
   | LStateSlotStore(_, _, _, _)
   | LStateInit(_, _, _, _)
   | LShow(_, _)
@@ -5787,7 +5789,7 @@ fn ref_walk(mode, e, sc) = match e {
   | LResumeK(_, _, _, _)
   | LDerive(_, _, _)
   | LFieldLoad(_, _, _)
-  | LConvert(_, _, _)
+  | LPrim(_, _, _)
   | LStateSlotStore(_, _, _, _)
   | LStateInit(_, _, _, _)
   | LShow(_, _)
@@ -5910,7 +5912,7 @@ fn let_binds(s) = match s {
   | LFeedbackPrior(_)
   | LPerform(_, _, _)
   | LFieldLoad(_, _, _)
-  | LConvert(_, _, _)
+  | LPrim(_, _, _)
   | LStateSlotStore(_, _, _, _)
   | LStateInit(_, _, _, _)
   | LShow(_, _)
@@ -6780,7 +6782,7 @@ fn low_refs(acc, expr) = match expr {
   LWasiCall(_h, _n, args) => low_refs_list(acc, args),
   LInvariantFailure(_, _) => acc,
   LFieldLoad(_h, rec, _off) => low_refs(acc, rec),
-  LConvert(_h, _, operand) => low_refs(acc, operand),
+  LPrim(_h, _, args) => low_refs_list(acc, args),
   LStateSlotStore(_h, _o, v, _) => low_refs(acc, v),
   LStateInit(_h, _hn, _s, v) => low_refs(acc, v),
   LConst(_, _) => acc,
@@ -6852,7 +6854,7 @@ fn frame_children(expr) = match expr {
   LFeedbackPrior(_) => [],
   LPerform(_, _, args) => args,
   LFieldLoad(_, rec, _) => [rec],
-  LConvert(_, _, x) => [x],
+  LPrim(_, _, args) => args,
   LStateSlotStore(_, _, v, r) => [v, r],
   LStateInit(_, _, _, v) => [v],
   LShow(_, x) => [x],
@@ -7825,7 +7827,8 @@ fn fn_judgment_fresh(d) = match graph_published(d) {
     | HandlerKind(_, _, _, _, _)
     | HandlerChainKind(_)
     | RowAliasKind(_)
-    | TypeVariants(_) => None,
+    | TypeVariants(_)
+    | PrimitiveKind(_) => None,
   },
   None => None,
 }

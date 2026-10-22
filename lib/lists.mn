@@ -208,15 +208,9 @@ fn list_copy_into(src, dst, i, count) = if i >= count {
   list_copy_into(src, list_set(dst, i, list_index(src, i)), i + 1, count)
 }
 
-// list_index — O(1) for tag=0, O(log N) for snoc chains, O(depth) for
-// concat/slice. SYNTAX §Indexing: bounds-checking is RUNTIME for lists —
-// traps on out-of-range. That sentence was PROSE until 2026-07-18: tag-0
-// raw-loaded, so every out-of-range index read adjacent memory silently
-// (the panel's find while refuting the elision landmine). The trap is
-// out_of_range, the ev-miss precedent (3b19771c): a 4-byte load crossing
-// 2^32 is out of bounds at every wasm32 memory size. One check at the
-// boundary; the traversal below it runs unchecked — ONE home, no duplicate
-// to drift.
+// O(1) for a flat list, O(log N) for a snoc chain, O(depth) for a concat or
+// a slice. An index out of range traps at this one boundary check, and the
+// traversal below it runs unchecked.
 fn list_index(ref list, i) = if i < 0 {
   out_of_range()
 } else if i >= load_i32(list) {
@@ -230,15 +224,10 @@ fn list_index(ref list, i) = if i < 0 {
 // sequence read's bounds claim, where `xs[i]` lowers here directly (TRAP).
 // It matches the four tags and traps on any other word.
 //
-// The tag WORD is read ONCE and both projections (tag, stride) derive
-// locally from it. The accessor-call form re-read the same word three
-// times per element (seq_stride + seq_tag + load_strided's branches) and
-// priced at ~21% of the whole self-compile (perf, 2026-07-24) — the
-// carried-truth law at the representation layer: one load already holds
-// both facts. In the tag-0 arm the word IS pack_tag(0, sc) = sc*16, so
-// 0 is the word floor and 16 the byte code; in the snoc arm it is
-// sc*16 + 1. Concat/slice recursion derives no stride at all (the child
-// node carries its own word).
+// The tag word is read once and both projections, tag and stride, come from
+// it. In the flat arm the word is sc*16, so 0 is the word floor and 16 the
+// byte code; in the snoc arm it is sc*16 + 1. A concat or slice derives no
+// stride: each child carries its own word.
 fn list_index_unchecked(ref list, i) = {
   let tw = load_i32(addr_at(list, 4))
   match i32_and(tw, 15) {
@@ -557,10 +546,8 @@ fn drop_last(list) = {
 // the RAW body (an address in, an address out — the flatten laid out by
 // addr_at), used by this file's walks and str_payload's raw body;
 // list_to_flat is the TYPED name the substrate table projects as [a] -> [a]
-// for every consumer above the boundary. A raw body calling the table-typed
-// name would force the typed view onto its own word-level locals; a typed
-// caller reaching the raw name poisons its element var to Int (the iterate
-// leak that refused map(f, "abc") in libs-isolation, 2026-07-21).
+// for every consumer above the boundary; a typed caller reaching the raw
+// name would read its element as a word.
 fn list_to_flat(list) = flat_raw(list)
 
 fn flat_raw(list) = if load_i32(list) == 0 || seq_tag(list) == 0 {

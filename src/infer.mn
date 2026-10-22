@@ -942,47 +942,32 @@ fn record_field_named(name: String, field) = match field {
   (fname, _) => fname == name,
 }
 
-// float_of_int / float_to_int are PRIMITIVES — the Int↔Float conversions lower
-// recognizes (→ f64.convert_i32_s / i32.trunc_f64_s) that no .mn body can
-// express. Their TYPES belong in the env like any scheme, read live by a call
-// site, instead of flooring to E_MissingVariable (175 in the wheel) — the free
-// var an untyped float_of_int leaves cannot force `float_of_int(n) * x` to
-// Float, so the product's other operand floors to i32. Registered before
-// pre_register so every module sees them; pure, monomorphic.
+// The word primitives (types.mn's `Primitive`) are declared by the judgment
+// itself, since no body in source can be one instruction: each declaration is
+// a cell minted in the prelude's module, which every module reaches, its face
+// published there like any declaration's and its kind the instruction a
+// reference's edge reaches. The face is a signature as a person would write
+// it, resolved by the resolver an authored signature goes through — so
+// float_to_int's `x: Truncatable` names the prelude's alias, and the trap the
+// instruction makes on a value outside it is what that precondition guards:
+// a call whose claim is open pays `Trap`, a constant or a parameter that
+// states it pays nothing. They register after the aliases their faces name.
 //
 // `tangent_of(v, w)` is the tangent of v in the shape of the seed w — what
 // `d(v)` means under `~> grad(w)` (lib/ml/grad.mn). Its meaning exists
 // only inside the derivative reading, so it has a type and no forward
 // lowering: the one arm that writes it is read as a rewrite and never
 // lowered, and a call anywhere else refuses at lower.
-//
-// A primitive is declared by the judgment itself, so its declaration is a
-// cell the judgment mints in the prelude's module, which every module
-// reaches, and its facts are published at that cell like any declaration's.
 fn register_primitives() = {
   let here = graph_module_current()
   match link_prelude() {
     Some(p) => graph_module_enter(p),
     None => (),
   }
-  let f2i = mint(Declared("float_of_int"))
-  let i2f = mint(Declared("float_to_int"))
+  let cells = primitives() |> map(primitive_cell)
   let tan = mint(Declared("tangent_of"))
   graph_module_enter(here)
-  env_extend(
-    "float_of_int",
-    Frozen([], TFun([mk_param("_", TInt)], TFloat, mk_ef_pure())),
-    Declared("float_of_int"),
-    FnScheme,
-    f2i
-  )
-  env_extend(
-    "float_to_int",
-    Frozen([], TFun([mk_param("_", TFloat)], TInt, mk_ef_pure())),
-    Declared("float_to_int"),
-    FnScheme,
-    i2f
-  )
+  cells |> each(register_primitive)
   let seed_shape = mint(Inferred("the seed's shape"))
   env_extend(
     "tangent_of",
@@ -996,9 +981,36 @@ fn register_primitives() = {
   )
 }
 
+fn primitive_cell(p) = (p, mint(Declared(primitive_name(p))))
+
+fn register_primitive(pc) = match pc {
+  (p, cell) => env_extend(
+    primitive_name(p),
+    Frozen([], primitive_face(p)),
+    Declared(primitive_name(p)),
+    PrimitiveKind(p),
+    cell
+  ),
+}
+
+// What a primitive takes and answers, written as its signature would be.
+fn primitive_face(p) = match p {
+  FloatOfInt => TFun([mk_param("n", TInt)], TFloat, mk_ef_pure()),
+  FloatToInt => TFun([refined_param("x", "Truncatable", trap_row())], TInt, mk_ef_pure()),
+  FloatFloor => TFun([mk_param("x", TFloat)], TFloat, mk_ef_pure()),
+  FloatSqrt => TFun([mk_param("x", TFloat)], TFloat, mk_ef_pure()),
+}
+
+// A parameter whose type is a declared refinement, resolved where an
+// authored annotation is, guarding what its precondition protects.
+fn refined_param(name, refinement, guards) = match quantify_ctor_ty(TName(refinement, []), [], Declared(name)) {
+  (ty, _) => TParam(name, ty, Unmarked, Unmarked, None, guards),
+}
+
 // Two phases, and the order is load-bearing. Aliases are pure env writes
 // with no body dependence — pre-pass citizens — so they register FIRST,
-// before any fn signature quantifies its params. A fn used before its
+// before any fn signature quantifies its params, a primitive's face among
+// them (`register_primitives`). A fn used before its
 // alias is declared (`fn f(span: ValidSpan)` in parser.mn precedes
 // `type ValidSpan` in types.mn — src/ sorts before types.mn, which sorts
 // last in the concatenated wheel) then reads the LIVE alias edge instead
@@ -1010,6 +1022,7 @@ fn register_primitives() = {
 fn pre_register_decls(stmts) = {
   refuse_duplicate_type_decls(stmts, 0, len(stmts), smap_new())
   each(pre_register_alias, stmts)
+  register_primitives()
   each(pre_register_effect, stmts)
   // The duplicate-fn refusal is keyed by THIS WALK's own seen-set, never
   // by the env: an existing FnScheme entry may be a PRIOR JUDGMENT of the
@@ -1099,10 +1112,13 @@ fn pre_register_stmt(seen, ref node) = match graph_node_body(node) {
     // the fn, the linked module's own calls of its op mistyped — measured
     // 2026-09-17 as E_TypeMismatch noise inside threading.mn, exit 0,
     // WAT emitted). register_one_op's arm covers the other order. A
-    // block's fn shadows an op lexically, as any local binding does, and
+    // primitive registers before this fold too, and a module fn of its name
+    // would replace it for every module, the library's calls among them. A
+    // block's fn shadows either lexically, as any local binding does, and
     // is not asked.
     match env_lookup(name) {
       Some((_, _, EffectOpScheme(prior_effect, _, _))) => report(EFnShadowsOp(name, prior_effect, graph_span_of(node))),
+      Some((_, _, PrimitiveKind(_))) => report(EDuplicateFnName(name, graph_span_of(node))),
       _ => (),
     }
     pre_register_fn_once(seen, node)
@@ -1329,7 +1345,6 @@ fn pre_register_fn_sig(name, params, ret_ann, handle, span: ValidSpan) = {
 // pass deletes; its price was 67% of the judgment's heap and the 5% that
 // kept the wheel above the warm-start line.
 fn infer_program_once(stmts, parse_start, parse_end) = {
-  register_primitives()
   // The tail facts of these statements' functions join the program's BEFORE
   // pre-registration, which draws each handler's op edges from its arms'
   // grades (`arm_grade`), so every op's discipline — and the MultiShot cost
@@ -1379,9 +1394,10 @@ fn infer_program_once(stmts, parse_start, parse_end) = {
   // less.
   comment_refs_check(parse_start, parse_end)
   // A claim still owed is asked again here, once everything it can read is
-  // judged: a handler's arms read each other's writes in any order. What it
-  // publishes is the ledger it rewrites and the refusals it reports, so the
-  // walks it makes die at the arena's exit.
+  // judged: a handler's arms read each other's writes in any order, and a
+  // predicate's call a declaration later in the file. What it publishes is
+  // the ledger it rewrites and the refusals it reports, so the walks it makes
+  // die at the arena's exit.
   reask_settle() ~> arena
   // What can reach a value is a fact of the whole program, so the claims
   // naming a label are decided here, once every declaration is judged.
@@ -3365,7 +3381,7 @@ fn infer_fn(name, params, body_node, ret_ann, effs, handle, span: ValidSpan, pol
     // params publish what the body learned of them (published_params).
     TFun(
       published_params(inferred_params, params, name, span),
-      published_ret(pinned_ret, body_node, ret_handle),
+      published_ret(pinned_ret, handle, body_node, ret_handle),
       mk_ef_open([], row_handle)
     ),
     Located(span, Inferred("ownership-resolved params of '{name}'"))
@@ -3873,12 +3889,15 @@ fn install_entry(eff, hnd, seen) = match tee_handler_decl(hnd) {
 // Through a callee, by its edge to what it names: an op of the effect is the
 // perform, and the chain ends at the effect's declaration; a function is
 // entered, a module's or a block's alike; a constructor builds its variant,
-// which is the charge; a value in scope is where the walk stops.
+// which is the charge; a primitive charges only what its precondition guards,
+// where the claim at its argument is open; a value in scope is where the walk
+// stops.
 fn callee_entry(eff, callee_h, arg_hs, seen) = match graph_node_body(callee_h) {
   NExpr(VarRef(name)) => match graph_ref_decl(callee_h) {
     Some(dh) => match graph_published(dh) {
       Some((_, _, EffectOpScheme(_, _, _))) => Some(op_entry(eff, dh, name)),
       Some((_, _, ConstructorScheme(_, _))) => Some(Inferred("building `{name}`")),
+      Some((_, _, PrimitiveKind(_))) => Some(Inferred("`{name}`'s precondition, open at its argument")),
       _ => match graph_node_body(dh) {
         NStmt(FnStmt(_, _, _, _, _)) => decl_entry(eff, name, dh, arg_hs, seen),
         _ => Some(Inferred("the function value `{name}`")),
@@ -4197,7 +4216,8 @@ fn check_effect_name(ename, at, span: ValidSpan) = if row_var_spelled(ename) || 
         | HandlerChainKind(_)
         | ConstructorScheme(_, _)
         | RecordSchemeKind(_)
-        | TypeVariants(_) => report(EMissingVariable("effect: {eff_name_str(ename)}", span)),
+        | TypeVariants(_)
+        | PrimitiveKind(_) => report(EMissingVariable("effect: {eff_name_str(ename)}", span)),
       },
       None => report(EMissingVariable("effect: {eff_name_str(ename)}", span)),
     },
@@ -4839,10 +4859,10 @@ fn infer_callee(func) = match graph_node_body(func) {
   _ => infer_expr(func),
 }
 
-// A bare constructor or op reference's product: no arguments, one cell per
-// slot, so the partial the lowering mints for it reads each open slot at its
-// own width. A nullary constructor's reference is the value itself, not an
-// arrow, and writes none.
+// A bare constructor, op or primitive reference's product: no arguments, one
+// cell per slot, so the partial the lowering mints for it reads each open
+// slot at its own width. A nullary constructor's reference is the value
+// itself, not an arrow, and writes none.
 fn bare_reference_product(handle, ty, span: ValidSpan) = match ty {
   TFun(ps, _, _) => graph_product_note(handle, [], open_slot_cells(ps, 0, span), CallSuspended),
   _ => (),
@@ -4915,6 +4935,7 @@ fn judge_reference(name: String, handle, span: ValidSpan, use, scheme, reason, k
     RefValued => match kind {
       ConstructorScheme(_, _) => bare_reference_product(handle, ty, span),
       EffectOpScheme(_, _, _) => bare_reference_product(handle, ty, span),
+      PrimitiveKind(_) => bare_reference_product(handle, ty, span),
       _ => (),
     },
   }
@@ -6601,12 +6622,7 @@ fn handler_pinned_effect(hd) = match published_kind(Some(hd)) {
   _ => None,
 }
 
-fn config_pins(config, n) = {
-  let dims = effect_dim_names(eff_name_str(n))
-  len(dims) > 0 && all(config_names_dim(config, ??), dims)
-}
-
-fn config_names_dim(config, d) = any({ p => param_name(p) == d }, config)
+fn config_pins(config, n) = config_pins_dims(config, effect_dim_names(eff_name_str(n)))
 
 // Each entry of the body the install may serve takes the instance at its
 // variables: a stage written for no rate runs at the rate of the clock that
@@ -6717,6 +6733,7 @@ fn op_effect_of(cname: String) = match env_lookup(cname) {
       RowAliasKind(_) => None,
       TypeVariants(_) => None,
       ValueScheme => None,
+      PrimitiveKind(_) => None,
     },
   },
   None => None,
@@ -11390,6 +11407,7 @@ fn infer_one_handler_arm(arm: {args: [Node], body: Node, op: Node}, result_h, in
   )
   inf_enter_arm(continuation_h, op_ret_ty)
   infer_expr(arm.body)
+  each(pay_arm_guard, arm.args)
   inf_exit_arm()
   unify(arm.body, result_h, arm_span, Inferred("handler arm result"))
 }
@@ -11434,8 +11452,39 @@ fn bind_arm_args(args, params, op_name, span: ValidSpan) = {
   declare_param_binders(args, op_name)
 }
 
+// An op's declared parameter is a precondition: every performer owes it at
+// its argument (`discharge_arg`), so the arm's argument assumes it, as a
+// function's parameter assumes its own — the dual of an op's declared return,
+// which every resume owes. A parameter that states no refinement has nothing
+// to assume and nothing to guard, so its argument holds no fact.
 fn bind_arm_arg(op_name: String, pair) = match pair {
-  (a, param) => graph_bind(a, param_ty(param), Located(graph_span_of(a), Declared(op_name))),
+  (a, param) => {
+    graph_bind(a, param_ty(param), Located(graph_span_of(a), Declared(op_name)))
+    if ty_states_refinement(param_ty(param)) {
+      graph_binder_note(
+        a,
+        ParamFact({
+          guard: graph_fresh_row(Inferred("what a precondition of op '{op_name}' guards")),
+          owes: guards_nothing(),
+          pre: Stated(param_ty(param)),
+        })
+      )
+    } else {
+      ()
+    }
+  },
+}
+
+// A row fact an arm proves by its argument's precondition is paid where the
+// arm stands: the arms of an op are judged apart from its performers, so its
+// guard has no exit its performers could read. Its cell is written with what
+// was paid, so no cell is left unjudged.
+fn pay_arm_guard(a) = match graph_binder_of(a) {
+  Some(ParamFact(f)) => {
+    if guards_nothing_row(resolve_row(f.owes)) { () } else { inf_add_row(f.owes) }
+    graph_finalize_row(f.guard, f.owes, Inferred("what an arm's argument guards, paid at the arm"))
+  },
+  Some(PartFact(_)) | Some(StateFact(_)) | None => (),
 }
 
 // Unify a handler's payload var with the op's payload type carried in its
@@ -12927,8 +12976,8 @@ fn claim_authored_return(ret_ann, body_node, name: String, span: ValidSpan) = ma
 // The return the exit publishes: an authored `->` stands as written; with
 // none, the contract the body proves of every tail (verify.mn
 // `proven_return`), or the return cell itself when it proves none.
-fn published_ret(pinned_ret, body_h, ret_h) = match pinned_ret {
-  TVar(_) => match proven_return(body_h, ret_h) {
+fn published_ret(pinned_ret, decl, body_h, ret_h) = match pinned_ret {
+  TVar(_) => match proven_return(decl, body_h, ret_h) {
     Some(c) => c,
     None => published_fn_ret(pinned_ret, body_h),
   },
@@ -14680,14 +14729,6 @@ fn holds_a_function(h) = match graph_chase(h) {
   _ => false,
 }
 
-// Where a quantified variable stands in a declared signature: in an
-// argument's value at a path, or at a function argument's position or
-// result — that function found at a path in the argument — at a path
-// inside that end.
-type FnEnd = AtValue | AtParam(Int) | AtResult
-
-type Occurrence = Occ(Int, Int, [PartStep], FnEnd, [PartStep])
-
 // Where the values a variable takes come from at one application: a
 // function or value in sight, a part of an argument this walk cannot see
 // into, a contract a callback's declaration states for its result, or
@@ -14699,66 +14740,6 @@ fn channel_at(qs, dps, args, call_h, span: ValidSpan) = {
   let sources =
     qs |> map({ q => (q, occs |> filter(occ_source_of(q, ??)) |> flat_map(occurrence_sources(args, ??))) })
   callback_positions(dps) |> each(channel_callback(qs, sources, args, call_h, span, ??))
-}
-
-fn scheme_occurrences(qs, dps) =
-  dps |> enumerate |> flat_map({ (i, dp) => value_occurrences(qs, i, param_ty(dp), []) })
-
-fn value_occurrences(qs, i, t, path) = match t {
-  TVar(v) => if any({ q => q == v }, qs) { [Occ(v, i, path, AtValue, [])] } else { [] },
-  TList(e) => value_occurrences(qs, i, e, path ++ [PartElem]),
-  TTuple(es) => es |> enumerate |> flat_map({ (k, e) => value_occurrences(qs, i, e, path ++ [PartIndex(k)]) }),
-  TRecord(fs) => fs |> flat_map({ (n, ft) => value_occurrences(qs, i, ft, path ++ [PartField(n)]) }),
-  TRecordOpen(fs, _) => fs |> flat_map({ (n, ft) => value_occurrences(qs, i, ft, path ++ [PartField(n)]) }),
-  TFun(ps, r, _) => {
-    let at_params =
-      ps |> enumerate |> flat_map({ (j, p) => end_occurrences(qs, i, path, AtParam(j), param_ty(p), []) })
-    at_params ++ end_occurrences(qs, i, path, AtResult, r, [])
-  },
-  TName(_, args) => args |> enumerate |> flat_map(type_arg_values(qs, i, path, ??)),
-  TAlias(_, inner) => value_occurrences(qs, i, inner, path),
-  TRefined(base, _) => value_occurrences(qs, i, base, path),
-  TReprPin(_, base) => value_occurrences(qs, i, base, path),
-  _ => [],
-}
-
-// A nominal type is read as a container of its type arguments' values: the
-// variable standing at argument `k` is reached at `PartTypeArg(k)`, whose
-// parts are the fields of a construction in sight (verify.mn `built_part`).
-// `Option(a)` went unread until H4, so the function `Some(inv)` carries
-// reached no callback, and `opt_apply({ g => g(0) }, Some(inv))` over a
-// generic `opt_apply(f, o)` checked clean under `!Trap` and trapped.
-fn type_arg_values(qs, i, path, slot) = match slot {
-  (k, a) => value_occurrences(qs, i, a, path ++ [PartTypeArg(k)]),
-}
-
-// One end of a function argument: a function nested inside it is not read
-// (Hβ.verify.channel-depth-one).
-fn end_occurrences(qs, i, path, end, t, sub) = match t {
-  TVar(v) => if any({ q => q == v }, qs) { [Occ(v, i, path, end, sub)] } else { [] },
-  TList(e) => end_occurrences(qs, i, path, end, e, sub ++ [PartElem]),
-  TTuple(es) => es |> enumerate |> flat_map({ (k, e) => end_occurrences(qs, i, path, end, e, sub ++ [PartIndex(k)]) }),
-  TRecord(fs) => fs |> flat_map({ (n, ft) => end_occurrences(qs, i, path, end, ft, sub ++ [PartField(n)]) }),
-  TRecordOpen(fs, _) => fs |> flat_map({ (n, ft) => end_occurrences(qs, i, path, end, ft, sub ++ [PartField(n)]) }),
-  TName(_, args) => args |> enumerate |> flat_map(type_arg_ends(qs, i, path, end, sub, ??)),
-  TAlias(_, inner) => end_occurrences(qs, i, path, end, inner, sub),
-  TRefined(base, _) => end_occurrences(qs, i, path, end, base, sub),
-  TReprPin(_, base) => end_occurrences(qs, i, path, end, base, sub),
-  _ => [],
-}
-
-fn type_arg_ends(qs, i, path, end, sub, slot) = match slot {
-  (k, a) => end_occurrences(qs, i, path, end, a, sub ++ [PartTypeArg(k)]),
-}
-
-fn occ_source_of(q, occ) = match occ {
-  Occ(v, _, _, end, _) => if v == q { is_source_end(end) } else { false },
-}
-
-fn is_source_end(end) = match end {
-  AtValue => true,
-  AtResult => true,
-  AtParam(_) => false,
 }
 
 fn occurrence_sources(args, occ) = match occ {
@@ -14917,14 +14898,6 @@ fn provided_of_source(src) = match src {
   SrcPart(_, _) => ProvidedBeyond([]),
   SrcContract(_, _) => ProvidedBeyond([]),
   SrcUnknown => ProvidedBeyond([]),
-}
-
-fn bare_var(qs, t) = match t {
-  TVar(v) => if any({ q => q == v }, qs) { Some(v) } else { None },
-  TAlias(_, inner) => bare_var(qs, inner),
-  TRefined(base, _) => bare_var(qs, base),
-  TReprPin(_, base) => bare_var(qs, base),
-  _ => None,
 }
 
 fn var_sources(sources, q) = match find({ (v, _) => v == q }, sources) {
@@ -15806,6 +15779,9 @@ fn register_one_op(effect_name, eff_name, op) = match op {
           // A parameter binding is scoped to its own fn and cannot stand as
           // the prior claim on a top-level op registration.
           ParamScheme(_) => (),
+          // A primitive is the judgment's own declaration, with no line of
+          // its own to name, so the refusal stands at the op.
+          PrimitiveKind(_) => report(EOpShadowsPrimitive(op_name, effect_name, graph_span_of(op_node))),
         },
       },
       None => (),

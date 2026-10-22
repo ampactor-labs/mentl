@@ -227,13 +227,8 @@ fn str_repack_loop(flat, dest, stride, i, n) = if i >= n {
 // slice — no ++ in the loop). Adjacent separators yield empty
 // tokens; empty input yields [""]; empty sep yields [s].
 //
-// SEPARATOR FIRST, DATUM LAST — the Stage Law (SYNTAX), and its absence
-// here was a SILENT WRONG ANSWER, not an ergonomic complaint:
-// `"a,b,c" |> split(",")` bound `s = ","` and left `sep` as the hole, so
-// the pipe split the SEPARATOR by the data and returned one part, at
-// exit 0, with no diagnostic (measured 2026-07-31). Both arguments are
-// String, so nothing in the type system could catch it — the signature
-// order IS the contract.
+// Separator first, datum last — the Stage Law: both arguments are String,
+// so the order is the contract `"a,b,c" |> split(",")` stands on.
 fn split(sep: String, s: String) = {
   let n = byte_len(s)
   let seplen = byte_len(sep)
@@ -331,8 +326,7 @@ fn str_unescape_into(s, i, n, dest, w) = if i >= n {
 // spelling SYNTAX declares (`\n \r \t \\ \" \{ \} \0 \xHH`). The formatter
 // is the parse's inverse, so a string that decoded from any of those must
 // render back to one of them: a raw control byte in canonical source is a
-// render that lost its escape (measured 2026-09-18 — `"\x00"` came back as
-// a NUL byte, and fmt was not a fixpoint on the wheel's own argv wire).
+// render that lost its escape.
 // Two passes over the bytes, both as topology: a pure fold counts the
 // escaped length for the one allocation, then `each` streams every byte's
 // spelling into a `ByteSink` whose write cursor is the handler's state —
@@ -602,26 +596,30 @@ else if f < 1.0 {
   1 + float_floor_log10(f / 10.0)
 }
 
-// float_extract_digits: extract up to max_digits decimal digits, most
-// significant first, from a value already normalized so that `scaled` is in
-// [1, 10). The leading digit is floor(scaled); the remaining fraction times
-// ten is the next step's scaled, so scaled stays in [0, 10) for the whole
-// recursion. That bound is load-bearing: float_to_int is an i32 truncation,
-// so a scaled allowed to grow past 2^31 traps (integer overflow). Returns a
-// flat list of digit values (0-9).
-//
-// acc is a PREALLOCATED FLAT list of max_digits slots — each digit
-// lands by index (list_set's flat contract). The push-built snoc
-// accumulator was the render bug: the shortest ascent's rounded-last
-// bump list_set into the snoc chain, whose headers sit where flat
-// elements would, so the bump never took effect and every ascent fell
-// to the 17-digit tail.
+// Up to max_digits decimal digits, most significant first, of a value whose
+// `scaled` is in [1, 10): each step's remaining fraction times ten is the
+// next step's scaled, so it stays in [0, 10). `acc` is a flat list of
+// max_digits slots, each digit landing by index (list_set's flat contract).
 fn float_extract_digits(scaled: Float, count, max_digits, acc) = if count >= max_digits {
   acc
 } else {
-  let digit = float_to_int(scaled)
+  let digit = decimal_digit(scaled)
   let next = (scaled - float_of_int(digit)) * 10.0
   float_extract_digits(next, count + 1, max_digits, list_set(acc, count, digit))
+}
+
+// The decimal digit of a value in [0, 10): how many of the units 1 through 9
+// it reaches, read by comparison alone, so no conversion is asked to hold it.
+fn decimal_digit(x: Float) -> Int with Pure = if x < 5.0 {
+  if x < 2.0 { if x < 1.0 { 0 } else { 1 } } else if x < 3.0 { 2 } else if x < 4.0 { 3 } else { 4 }
+} else if x < 7.0 {
+  if x < 6.0 { 5 } else { 6 }
+} else if x < 8.0 {
+  7
+} else if x < 9.0 {
+  8
+} else {
+  9
 }
 
 // float_format_digits: format a digit list and exponent into a decimal string.
@@ -743,11 +741,7 @@ fn float_pow10(exp) with Pure = if exp == 0 {
 fn float_is_nan(f: Float) = f != f
 
 // IEEE identity, no threshold literal: finite f has f - f == 0.0; ±Inf has
-// Inf - Inf = NaN (never equal to itself); NaN fails the f == f guard. The
-// prior form compared against 1.79…e308 — but TFloatLit has NO exponent form
-// (SYNTAX §Token enumeration), so the e308 tail lexed as an IDENTIFIER, the compare
-// went through a recovered E_MissingVariable, and every finite float rendered
-// "Inf" (unreached until the render floors grounded, 2026-07-09).
+// Inf - Inf = NaN (never equal to itself); NaN fails the f == f guard.
 fn float_is_inf(f: Float) = f == f && f - f != f - f
 
 fn float_is_zero(f) = f == 0.0 || f == 0.0 - 0.0
@@ -983,13 +977,8 @@ fn set_canonicalize_loop(lst, acc, i, n) =
 fn set_insert(set, name) = {
   let n = len(set)
   let pos = set_find_pos(set, name, 0, n)
-  // The guard written as the nested if it means. Under the old eager `&&`
-  // (i32.and — both operands evaluate) `pos < n && read(pos)` ran the
-  // one-past read the guard exists to prevent — the first trap the bounds
-  // check ever fired. `&&` short-circuits now (lower's BKBool arm), and this
-  // control-flow form is valid under BOTH lowerings, which the bootstrap
-  // requires (an m2 body compiled by the still-eager boot carries the
-  // checked list_index in the same binary).
+  // The guard written as the nested if it means: the read past the end runs
+  // only where the position is inside the set.
   let present = if pos < n { str_eq(list_index(set, pos), name) } else { false }
   if present { set } else { set_insert_at(set, name, pos, n) }
 }

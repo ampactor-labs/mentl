@@ -714,9 +714,9 @@ run_course() {
     fi
   done
   tdir="$dir/course-teach.proj"; rm -rf "$tdir"; mkdir -p "$tdir"; cp "$src"/*.mn "$tdir"/
-  if wt_run --dir "$tdir::." --dir "$ROOT::/mentl-home" "$compiler" accept 07-bounds.mn:48:1 > "$dir/course-teach.out" 2>&1 \
-     && grep -q '^fn frames_per(notes: Positive)' "$tdir/07-bounds.mn"; then
-    pass "course-teach: accept at lesson 7's division writes notes: Positive"
+  if ! wt_run --dir "$tdir::." --dir "$ROOT::/mentl-home" "$compiler" accept 07-bounds.mn:48:1 > "$dir/course-teach.out" 2>&1 \
+     && grep -q '`notes: Rate` or `notes: Positive`' "$dir/course-teach.out" && grep -q '^fn frames_per(notes)' "$tdir/07-bounds.mn"; then
+    pass "course-teach: accept at lesson 7's division asks Rate or Positive and writes neither"
   else
     fail "course-teach: the accepted declaration reads '$(grep '^fn frames_per' "$tdir/07-bounds.mn")' (see $dir/course-teach.out)"
   fi
@@ -3416,20 +3416,16 @@ for i in "${!compilers[@]}"; do
   # THE ACCEPT WRITES WHAT THE GRADIENT PROVED (D4): `mentl accept` at a
   # declaration writes the Teaching's annotation into its head through the
   # formatter's head render, and the module re-judges with the debt gone —
-  # a precondition (the division total, no pending claim) and a return
-  # contract (the caller's claim standing on it). RED on boot 6f62b7c4: the
+  # a precondition (the division total, no pending claim). RED on boot 6f62b7c4: the
   # accept at a declaration answered "no proposal at this position". A
   # refinement over a parameter written `n: Int` replaces the written type,
   # and the head's census counts `Int` present as the base NonZero declares.
   tadir="$dir/teach-accept"
   rm -rf "$tadir"; mkdir -p "$tadir"
   cp "$ROOT/tests/teach/precondition-weakest.mn" "$tadir/pre.mn"
-  cp "$ROOT/tests/teach/return-constant.mn" "$tadir/ret.mn"
   cp "$ROOT/tests/teach/precondition-over-a-plain-type.mn" "$tadir/plain.mn"
   wt_run --dir "$tadir::." --dir "$ROOT::/mentl-home" "$compiler" accept pre.mn:12:1 > /dev/null 2>"$dir/teach-accept-pre.err"
   tapre=$?
-  wt_run --dir "$tadir::." --dir "$ROOT::/mentl-home" "$compiler" accept ret.mn:7:1 > /dev/null 2>"$dir/teach-accept-ret.err"
-  taret=$?
   wt_run --dir "$tadir::." --dir "$ROOT::/mentl-home" "$compiler" accept plain.mn:8:1 > /dev/null 2>"$dir/teach-accept-plain.err"
   taplain=$?
   # The debt is the fixture's own. The file route's summary counts the
@@ -3442,18 +3438,17 @@ for i in "${!compilers[@]}"; do
     | awk '/ error/ {e++} /verification obligations pending/ {for (i=1;i<=NF;i++) if ($i ~ /^[0-9]+$/) p=$i} END {print (e+0) " " (p+0)}'; }
   read -r _ tabase <<<"$(ta_pending bare.mn)"
   tadebt=0
-  for taf in pre.mn ret.mn plain.mn; do
+  for taf in pre.mn plain.mn; do
     read -r tae tap <<<"$(ta_pending "$taf")"
     tadebt=$((tadebt + tae + tap - tabase))
   done
-  if [ "$tapre" = 0 ] && [ "$taret" = 0 ] && [ "$taplain" = 0 ] \
+  if [ "$tapre" = 0 ] && [ "$taplain" = 0 ] \
      && [ "$(sed -n 12p "$tadir/pre.mn")" = "fn inv(n: NonZero) = 100 / n" ] \
-     && [ "$(sed -n 7p "$tadir/ret.mn")" = "fn five() -> Positive = 5" ] \
      && [ "$(sed -n 8p "$tadir/plain.mn")" = "fn inv(n: NonZero) = 100 / n" ] \
      && [ "$tadebt" = 0 ]; then
-    pass "teach accept: a precondition, a refinement over a written Int and a return contract written into their heads, the debt gone"
+    pass "teach accept: a precondition and a refinement over a written Int written into their heads, the debt gone"
   else
-    fail "teach accept (pre exit=$tapre line: $(sed -n 12p "$tadir/pre.mn"); ret exit=$taret line: $(sed -n 7p "$tadir/ret.mn"); plain exit=$taplain line: $(sed -n 8p "$tadir/plain.mn"); debt lines=$tadebt)"
+    fail "teach accept (pre exit=$tapre line: $(sed -n 12p "$tadir/pre.mn"); plain exit=$taplain line: $(sed -n 8p "$tadir/plain.mn"); debt lines=$tadebt)"
   fi
   # OBLIGATIONS AT A NODE ARE THE NODE'S MODULE'S (D4): the Verify facet
   # filtered the ledger by span alone, and every module numbers its lines
@@ -3750,7 +3745,7 @@ for i in "${!compilers[@]}"; do
   fi
   if grep -q '"isError":true' "$mcp_dir/out.jsonl" \
      && grep -q '"code":-32601' "$mcp_dir/out.jsonl" \
-     && grep -q '"id":7.0,"result":{}' "$mcp_dir/out.jsonl"; then
+     && grep -q '"id":7,"result":{}' "$mcp_dir/out.jsonl"; then
     pass "mcp malformed call teaches; unknown method -32601; ping answers"
   else
     fail "mcp error contract (see $mcp_dir/out.jsonl)"

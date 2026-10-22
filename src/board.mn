@@ -147,8 +147,10 @@ fn board_bounds() = [
   // trailing pair. 936 -> 930 the same day: the walks that bound a function
   // to a handler by its spelling left when an arm's resume summaries became
   // its own. 930 -> 929 (2026-10-21): the root census's op-to-effect read
-  // left the pipeline when the judgment read the row at the root.
-  Bound({ceiling: 929, question: QCensus(CsWildcardOverSum)}),
+  // left the pipeline when the judgment read the row at the root. 929 -> 926
+  // (2026-10-22): the readings rewritten when a primitive became a kind and
+  // a call a reading of its callee name their rosters.
+  Bound({ceiling: 926, question: QCensus(CsWildcardOverSum)}),
   // Drift mode 15 — a value given a leading-underscore name instead of being
   // deleted. The rename silences the reader, never the fact that nothing
   // reads it.
@@ -217,8 +219,9 @@ fn board_bounds() = [
   // (2026-10-20): the trail's index walks left with the trail, the columns
   // reading by handle through the persistent trie. 164 -> 163 the same day:
   // the publish replay's index walk left when a kept fork's entries became
-  // an adoption.
-  Bound({ceiling: 163, question: QVerifyDebt}),
+  // an adoption. 163 -> 162 (2026-10-22): a call is what its callee computes
+  // at its arguments, so a claim on a call's answer reads the callee's body.
+  Bound({ceiling: 162, question: QVerifyDebt}),
   // THE COURSE AND THE SCORE — the programs the medium owes. A lesson is a
   // program a developer hears (examples/pulse/course, ten lessons on one
   // chain), written in the form SYNTAX asks for whether or not the pinned

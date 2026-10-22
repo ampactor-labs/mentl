@@ -1504,8 +1504,18 @@ callee, and judging them there is refinement variables' work
 never a property of its type.** A value is what its sources are: a constant is
 its point, a reference reads its binder (a parameter's refinement, a `let`'s
 annotation, a constructor field's declared contract), a join takes every
-tail, a call is its callee's declared return, and a part a pattern
-destructured is the argument at that position where its whole was built. A
+tail, and a part a pattern destructured is the argument at that position
+where its whole was built. A call of a declaration in sight is what its body
+computes at the call's arguments — each tail a value the call MAY take, which
+together prove a claim and alone refute none — under the postcondition the
+callee states; a body the reading already entered, down another branch or
+through another call, answers what the declaration publishes, so a reading
+costs the declarations it reaches. A generic call answers by its signature: a
+result at a quantified variable is one of the values handed in at that
+variable. A perform is what the op's providers resume with, each a value it
+MAY take, an install that pins the op's effect answering only the instance
+it serves (tests/micros/mn-call-reads-the-callee.mn,
+mn-perform-reads-the-providers.mn, mn-generic-result-by-signature.mn). A
 computation inherits nothing: `fn dec(x: Positive) -> Positive = x - 1`
 leaves `0 < x - 1` honest `V_Pending`, and `let d = if c { n } else { 0 }` is
 the join of `n` and `0`, never `n`'s refinement. A refinement riding the
@@ -1626,6 +1636,14 @@ arm answering `5` it is proven under `!Trap` and runs; a label is read
 through the same answers, so an arm answering an untrusted value brings the
 label through the install (`tests/micros/mn-flow-tee-arm.mn`,
 `mn-refine-install-answer.mn`, `mn-refine-install-answer-proven.mn`).
+
+**An op's declared parameter is a precondition its arms assume and its
+performers owe.** Every perform claims the parameter's refinement of its
+argument, and an arm's argument stands on it as a function's parameter
+does: under `put(v: Positive)`, an arm dividing by `v` proves the division.
+What the precondition guards is paid where the arm runs, at the install: a
+handler's arms may be judged after its performers, whose rows are already
+published by then.
 
 **An op's declared return is a contract every resume owes.** A performer
 stands on what its op is declared to answer, so a refinement there is claimed
@@ -1801,7 +1819,7 @@ fn audio_loop() with Sample(44100) + IO + !Alloc =
   ...
 ```
 
-The argument is evaluated at install time and frozen. Two functions declared with `Sample(44100)` and `Sample(48000)` cannot interoperate without an explicit handler bridge, and the install is that bridge's one form: **an install serves the instance its handler's config names.** A handler's config parameter that shares its NAME with one of the effect's parameters is that parameter at the install — the perform's own grounding rule (§«The perform grounds its instance») read at the handler — so lib/dsp's `handler sample_at(rate)` serves `Sample(rate)`, and `~> sample_at(48000)` serves `Sample(48000)` alone. A handler whose config names no effect parameter, or whose config is computed where the install stands, serves every instance it cannot prove another. One law decides three readings, so the row says what the run does:
+The argument is evaluated at install time and frozen. Two functions declared with `Sample(44100)` and `Sample(48000)` cannot interoperate without an explicit handler bridge, and the install is that bridge's one form: **an install serves the instance its handler's config names.** A handler's config parameter that shares its NAME with one of the effect's parameters is that parameter at the install — the perform's own grounding rule (§«The perform grounds its instance») read at the handler — so lib/dsp's `handler sample_at(rate)` serves `Sample(rate)`, and `~> sample_at(48000)` serves `Sample(48000)` alone. A handler whose config names no effect parameter serves every instance. One whose config is computed where the install stands serves the instance the computing operand names: a stage that names no rate runs at the rate of the clock around it, and a stage declared at a rate the operand is not proven to equal passes the install, so `r() with Rt(5)` under `~> rt_at(seven(3)) ~> rt_at(5)` reads 5, never the 7 the inner clock computes (tests/micros/mn-instance-computed-clock-passes.mn, tests/crown/leak-root-instance-computed-install.mn). One law decides three readings, so the row says what the run does:
 
 - **A perform reaches the innermost install serving its instance.** Nested clocks are two clocks: under `~> sample_at(48000) ~> sample_at(750)` an audio stage declared `with Sample(48000)` reads the inner one and a control stage declared `with Sample(750)` passes it and reads the outer, for an op that resumes and for one that never does (tests/micros/mn-instance-routes-multirate.mn, mn-instance-routes-abandon.mn).
 - **An install subtracts only the instance it serves.** `fn play() with !Sample(44100) = rate44() ~> sample_at(48000)` refuses, the 44.1 kHz stage's instance passing the 48 kHz clock (tests/crown/leak-instance-passes-install.mn), and so does an install over a callback whose row is open where the install is judged (leak-root-instance-foreign-callback.mn).
@@ -2823,6 +2841,21 @@ the refinement itself — its predicate decided with `self` bound to that
 point — so any refinement the fragment can decide at a constant serves,
 never a name-allowlist of "nonzero-ish" types.
 
+`float_to_int` is the same law at the conversion the machine refuses to
+complete: a Float that is not finite, or past what an Int holds, traps. Its
+face claims `Truncatable` (`type Truncatable = Float where -2147483649.0 <
+self && self < 2147483648.0`, the prelude) of its argument, so a constant in
+range is proven, one out of range is `E_RefinementRejected` where it is
+handed, and a value nothing bounds charges `Trap`
+(tests/micros/mn-float-to-int-*.mn). The word primitives are one roster
+published by kind, each answering what it does by its face: `floor` and
+`sqrt` are instructions, total over every Float, and an effect op may not
+take a primitive's name (`E_OpShadowsPrimitive`), since it would answer some
+calls of it and not others. The library reaches the conversion only where its
+argument is bounded: `exp` scales by squaring, `sin` reduces its phase by
+`floor`, and a decimal digit is read by comparison
+(tests/micros/mn-sin-large-argument.mn).
+
 The e-graph reads the same fact: `x * 0 ≡ 0` drops its operand only when the
 operand's subtree row is pure, and a division whose claim stays open is not,
 so `(1 / n) * 0` traps at `n = 0` as written.
@@ -3254,6 +3287,7 @@ builds as the pipe it is (§«`<|` — diverge»).
 | `E_FieldOffsetUnprovable` | a field read or a record pattern whose receiver's row never closed where the body is emitted — no field set, so no slot. Said at the SETTLE POINT: the plan's emitted reach asks it of every body under the bracket that body is emitted in, a base at the floor and a twin under its own pairs, before the gate reads the ledger, so the compile exits 1 with zero WAT bytes. ARMED (`tests/micros/mn-payload3.mn`) | `MaybeIncorrect` | close the receiver's row — annotate it at its Intent Boundary, or give the call site a shape its specialization can key on |
 | `E_ShapeUnprovable` | a comparison, a show, a hash or a `++` whose operand is still a type VARIABLE where it is emitted: nothing proves the shape the read needs, and the word reading it would fall to is an address lie for anything but a word. Said at the settle point beside its row sibling and ARMED with it | `MaybeIncorrect` | prove the operand — give the call site a shape its specialization can key on, or name the type at its Intent Boundary |
 | `E_HandlerChainShape` | a handler chain (`handler NAME = h1 ~> h2`, §«Handler chains») with the wrong shape: a member that is not a handler or a chain, a member whose argument declares anything (a function, a handler, a type, an import), or the chain installed with arguments of its own — a chain carries no config, its members do; all three judged at the declaration or the install, never at the lowering. ARMED (tests/micros/mn-handler-chain-shape-refuses.mn) | `MaybeIncorrect` | name a handler at the member; move the declaration beside the chain; install the chain bare and give the member its config |
+| `E_OpShadowsPrimitive` | an effect op declared with a word primitive's name (`floor`, `float_to_int`, …): the primitive is the judgment's own declaration, and an op of its name would answer some calls of it and not others (§«Partiality»). ARMED (tests/micros/mn-op-shadows-primitive.mn) | `MaybeIncorrect` | name the op for what it answers |
 | `E_InstantiationDepth` | a reference eight instantiations deep in a recursion whose type grows with every call, reaching a callee that READS the growing structure (a comparison, a show, a field — or a number). Monomorphization cannot specialize without bound, and the ninth level would read the structure as a word, so the settle point refuses there. ARMED. A wide value nothing reads crosses the word protocol boxed and back, and is admitted | `Unspecified` | recurse over a type that keeps its shape, or leave the growing part unread |
 
 ### Gradient narration (teaching surfaces)

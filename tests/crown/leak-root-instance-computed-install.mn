@@ -1,0 +1,18 @@
+// A stage written for 44.1 kHz under a clock whose rate is computed: the
+// install serves the instance its config's operand names, which nothing says
+// is 44100, so the stage's Sample(44100) passes it and reaches the root. On
+// boot 59d5b281 the install absorbed it as "not provably another" and the
+// run answered the stage with whatever `r` held — 48000 handed in here.
+effect Sample(rate: Int) {
+  tick() -> Int
+}
+
+handler clock_at(rate) {
+  tick() => resume(rate),
+}
+
+fn rate44() with Sample(44100) = tick()
+
+fn run(r) = rate44() ~> clock_at(r)
+
+fn main() = run(48000) - 47990

@@ -1,0 +1,15 @@
+// expect: 20
+// A perform is what the op's providers resume with: every handler with an
+// arm for `amount` resumes 5, so the division by it is proven wherever the
+// perform stands. The prior boot read the perform as unknown and refused.
+effect Amount {
+  amount() -> Int
+}
+
+handler five {
+  amount() => resume(5),
+}
+
+fn share() with !Trap = 100 / amount()
+
+fn main() = share() ~> five

@@ -771,4 +771,4 @@ head_round_trip_max: 0
 # The source lines the medium processes to judge `fn main() = 7`: the prelude
 # vocabulary a trivial program links. It only falls; a rise means the medium
 # started reading more source to answer the same nothing.
-prelude_floor_lines_max: 2671
+prelude_floor_lines_max: 2652

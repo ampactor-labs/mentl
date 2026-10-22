@@ -72,8 +72,8 @@ fn gd_run(xs, ys, w: Float, b: Float, iter: Int, iters: Int, n: Int, lr: Float) 
   }
 }
 
-// round-to-nearest for a positive value: truncate(v + 0.5).
-fn round_pos(v: Float) with Pure = float_to_int(v + 0.5)
+// round-to-nearest, traps where a weight leaves what an Int holds.
+fn round_pos(v: Float) = float_to_int(v + 0.5)
 
 fn main() ={
   let n = 32

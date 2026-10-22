@@ -45,7 +45,7 @@ fn brighten(x: Float) -> Float with Pure = x + 0.3 * x * x * x
 
 fn frame(buf, rig, n: Int) with !Alloc = {
   let t = time()
-  let k = float_to_int(t / 1.5)
+  let k = n * 2 / 3 / rate()
   let tn = t - 1.5 * float_of_int(k)
   let lead = rig.voice(note_hz(k)) * adsr(0.01, 0.3, 0.6, 0.4, 1.5, tn) |> ?? |> soft_clip
   wav_frame(buf, n, lead, lead)

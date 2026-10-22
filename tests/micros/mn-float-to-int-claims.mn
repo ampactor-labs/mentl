@@ -1,0 +1,9 @@
+// expect: refuse E_EffectMismatch
+// `float_to_int` is the one conversion the machine refuses to complete: a
+// Float that is not finite, or past what an Int holds, traps. Its face
+// claims `Truncatable` of the argument, and a value computed from nothing
+// that bounds it pays the trap where it is handed, so the declared negation
+// refuses. The prior boot checked this clean, and `scaled(1e10)` trapped.
+fn scaled(x) with !Trap = float_to_int(x * 2.0)
+
+fn main() = scaled(2.5)

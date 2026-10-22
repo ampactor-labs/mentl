@@ -1,7 +1,8 @@
-// teach 7: add -> Positive
-// A caller's open claim rests on this result, and the body proves the
-// contract — stating it lets the caller's claim stand (P0: a claim may stand
-// on a contract its callee owes). On boot 6f62b7c4 it answered `with Pure`.
+// teach 8: none
+// A caller's claim rests on this result, and the call is what the body
+// computes there: `five()` answers 5, so `inv(five())` owes nothing and no
+// stated return is needed. On the boot before the call reading it proposed
+// `-> Positive`; on boot 6f62b7c4 it answered `with Pure`.
 type Positive = Int where 0 < self
 
 fn five() = 5

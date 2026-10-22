@@ -12,9 +12,10 @@
 // Per kernel-closure discipline (insight #13): pure substrate;
 // composition on Memory + Alloc; no new effects.
 //
-// Honest scope: integers + floats parsed as JNum(Float); LSP's
-// integer fields (line / character / version / id) cast at use
-// site. \uXXXX Unicode escapes deferred to JSON.unicode peer
+// A number is the Int an integer token spells (JInt), or the Float the
+// medium's own reader makes of any other number (JNum), so an integer field
+// (a line, a column, an id) is read as the Int it was written as.
+// \uXXXX Unicode escapes deferred to JSON.unicode peer
 // sub-handle (rare in LSP traffic; ASCII covers the common path).
 import strings
 
@@ -26,6 +27,7 @@ import strings
 type JsonValue
   = JNull
   | JBool(Bool)
+  | JInt(Int)
   | JNum(Float)
   | JStr(String)
   | JArr([JsonValue])
@@ -133,23 +135,42 @@ fn keyword_matches(src, pos, kw, i, n) = if i >= n {
   false
 }
 
-// ─── parse_number — JSON number → JNum(Float) ─────────────────────────
-//
-// parse_number — JSON number per spec (sign? digits . digits? e digits?).
-// Honest scope: handles integer + decimal forms. Scientific notation
-// (1e10) parses but stored as Float magnitude — LSP doesn't use
-// scientific in practice. Negative numbers via unary minus.
-//
-// State: start position; scan until non-numeric byte; build via
-// digit accumulation. No allocation in the scan loop (substrate
-// idiom).
+// A JSON number (-? digits (. digits)? ((e|E) (+|-)? digits)?). An integer
+// token whose value an Int holds is that Int; any other number — a
+// fraction, an exponent, an integer past the Int range — is the Float the
+// medium's own correctly rounded reader makes of its text (`parse_float`).
 fn parse_number(src, pos) = match json_scan_number(src, pos, pos, false) {
-  (end, _is_float) => if end == pos {
+  (end, is_float) => if end == pos || end == pos + 1 && byte_at(src, pos) == 45 {
     JErr("expected number", pos)
   } else {
-    let n = number_from_substring(src, pos, end)
-    JOk(JNum(n), end)
+    JOk(json_number(str_slice(src, pos, end), is_float), end)
   },
+}
+
+fn json_number(text, is_float) = if is_float {
+  JNum(parse_float(text))
+} else {
+  match json_int_token(text) {
+    Some(n) => JInt(n),
+    None => JNum(parse_float(text)),
+  }
+}
+
+// The Int an integer token spells, or None past the range an Int holds. The
+// magnitude accumulates below zero, where the range reaches one further, so
+// the least Int reads as itself.
+fn json_int_token(text) = match if byte_at(text, 0) == 45 { (true, str_slice(text, 1, byte_len(text))) } else { (false, text) } {
+  (negative, digits) => match fold(Some(0), digit_below, digits) {
+    Some(m) => if negative { Some(m) } else if m < -2147483647 { None } else { Some(0 - m) },
+    None => None,
+  },
+}
+
+// One more digit onto a magnitude held below zero, or None once it would pass
+// the least Int.
+fn digit_below(acc, b) = match acc {
+  Some(m) => if m < -214748364 || m == -214748364 && b > 56 { None } else { Some(m * 10 - (b - 48)) },
+  None => None,
 }
 
 // json_scan_number — advance past digits, optional decimal point, optional
@@ -173,52 +194,11 @@ fn json_scan_number(src, start, pos, is_float) = if pos >= byte_len(src) {
   else if b == 101 || b == 69 {
     json_scan_number(src, start, pos + 1, true)
   }
-  // exponent sign
-  else if b == 43 || b == 45 {
+  // the exponent's sign, right after its marker
+  else if (b == 43 || b == 45) && pos > start && (byte_at(src, pos - 1) == 101 || byte_at(src, pos - 1) == 69) {
     json_scan_number(src, start, pos + 1, is_float)
   } else {
     (pos, is_float)
-  }
-}
-
-// number_from_substring — naive Float construction from a digit run.
-// Walks bytes; accumulates Int magnitude before decimal point, then
-// fractional part after. Honest substrate for LSP scope; full IEEE
-// round-trip is JSON.precise peer sub-handle when scientific
-// computation needs it.
-fn number_from_substring(src, start, end) = match if byte_at(src, start) == 45 { (-1.0, start + 1) } else { (1.0, start) } {
-  (sign, p0) => match scan_int_part(src, p0, end, 0.0) {
-    (int_part, p1) => match if p1 < end && byte_at(src, p1) == 46 {
-      scan_frac_part(src, p1 + 1, end, 0.0, 0.1)
-    } else {
-      (0.0, p1)
-    } {
-      (frac_part, _p2) => sign * (int_part + frac_part),
-    },
-  },
-}
-
-fn scan_int_part(src, pos, end, acc) = if pos >= end {
-  (acc, pos)
-} else {
-  let b = byte_at(src, pos)
-  if json_is_digit(b) {
-    let d = b - 48
-    scan_int_part(src, pos + 1, end, acc * 10.0 + float_of_int(d))
-  } else {
-    (acc, pos)
-  }
-}
-
-fn scan_frac_part(src, pos, end, acc, place) = if pos >= end {
-  (acc, pos)
-} else {
-  let b = byte_at(src, pos)
-  if json_is_digit(b) {
-    let d = b - 48
-    scan_frac_part(src, pos + 1, end, acc + float_of_int(d) * place, place * 0.1)
-  } else {
-    (acc, pos)
   }
 }
 
@@ -388,6 +368,7 @@ fn parse_object_pairs(src, pos, acc_rev) = match parse_string(src, pos) {
       JStr(s) => s,
       JNull => "",
       JBool(_) => "",
+      JInt(_) => "",
       JNum(_) => "",
       JArr(_) => "",
       JObj(_) => "",
@@ -432,6 +413,7 @@ fn json_serialize(v) = match v {
   JNull => "null",
   JBool(true) => "true",
   JBool(false) => "false",
+  JInt(n) => int_to_str(n),
   JNum(n) => float_to_str(n),
   JStr(s) => serialize_string(s),
   JArr(items) => serialize_array(items),
@@ -518,6 +500,7 @@ fn json_obj_get(v, key) = match v {
   JObj(fields) => json_obj_get_loop(fields, key, 0, len(fields)),
   JNull => None,
   JBool(_) => None,
+  JInt(_) => None,
   JNum(_) => None,
   JStr(_) => None,
   JArr(_) => None,
@@ -538,16 +521,18 @@ fn json_str_or_default(v, default) with Pure = match v {
   JStr(s) => s,
   JNull => default,
   JBool(_) => default,
+  JInt(_) => default,
   JNum(_) => default,
   JArr(_) => default,
   JObj(_) => default,
 }
 
-// json_int_or_default — extract Int from JNum (truncating); default
-// for other variants. LSP integer fields (line/character/version/id)
-// route through the helper.
+// json_int_or_default — the Int an integer token spelled; default for every
+// other value, a number written with a fraction or an exponent among them.
+// LSP integer fields (line/character/version/id) route through the helper.
 fn json_int_or_default(v, default) with Pure = match v {
-  JNum(n) => float_to_int(n),
+  JInt(n) => n,
+  JNum(_) => default,
   JNull => default,
   JBool(_) => default,
   JStr(_) => default,

@@ -717,7 +717,7 @@ fn settle_node(site: String, expr) = match expr {
   LFeedback(_, _, _, _, _) => (),
   LFeedbackPrior(_) => (),
   LPerform(_, _, _) => (),
-  LConvert(_, _, _) => (),
+  LPrim(_, _, _) => (),
   LStateSlotStore(_, _, _, _) => (),
   LStateInit(_, _, _, _) => (),
   LWasiCall(_, _, _) => (),
@@ -1440,7 +1440,7 @@ fn alloc_walk(unit, e) = match e {
     _ => alloc_walk(unit, fanout_form(lex, forms)),
   },
   LFieldLoad(_, rec, _) => alloc_walk(unit, rec),
-  LConvert(_, _, operand) => alloc_walk(unit, operand),
+  LPrim(_, _, args) => alloc_walk_list(unit, args, 0),
   LStateSlotStore(_, _, v, record) => {
     let r = alloc_walk(unit, record)
     let value = alloc_walk(unit, v)
@@ -3079,7 +3079,7 @@ fn walk_lemit_expr(expr) = match expr {
   },
   LInvariantFailure(_, _) => (),
   LFieldLoad(_, rec, _) => walk_lemit_expr(rec),
-  LConvert(_, _, operand) => walk_lemit_expr(operand),
+  LPrim(_, _, args) => walk_lemit_list(args),
   LStateSlotStore(_, _, v, _) => walk_lemit_expr(v),
   // A state init runs before the install exists; a perform there of an
   // effect its handler alone answers was refused by the judgment.
@@ -4550,7 +4550,7 @@ fn collect_call_vectors_expr(expr, acc) = match expr {
   LFeedback(_h, _d, _home, b, s) => collect_call_vectors_expr(s, collect_call_vectors_expr(b, acc)),
   LWasiCall(_h, _n, args) => collect_call_vectors_list(args, acc),
   LFieldLoad(_h, rec, _o) => collect_call_vectors_expr(rec, acc),
-  LConvert(_h, _, operand) => collect_call_vectors_expr(operand, acc),
+  LPrim(_h, _, args) => collect_call_vectors_list(args, acc),
   LStateSlotStore(_h, _o, v, _) => collect_call_vectors_expr(v, acc),
   LStateInit(_h, _hn, _s, v) => collect_call_vectors_expr(v, acc),
   LConst(_, _) => acc,
@@ -5859,7 +5859,7 @@ fn collect_fn_emit_records_expr(expr) = match expr {
   LWasiCall(_h, _n, args) => collect_fn_emit_records(args),
   LInvariantFailure(_, _) => [],
   LFieldLoad(_h, rec, _off) => collect_fn_emit_records_expr(rec),
-  LConvert(_h, _, operand) => collect_fn_emit_records_expr(operand),
+  LPrim(_h, _, args) => collect_fn_emit_records(args),
   LStateSlotStore(_h, _o, v, _) => collect_fn_emit_records_expr(v),
   LStateInit(_h, _hn, _s, v) => collect_fn_emit_records_expr(v),
   // H6: exhaustive LowExpr. Leaves with no fn-containing
@@ -6147,7 +6147,7 @@ fn walk_locals_expr(expr, acc) = match expr {
   ),
   LInvariantFailure(_, _) => acc,
   LFieldLoad(_h, rec, _off) => walk_locals_expr(rec, acc),
-  LConvert(_h, _, operand) => walk_locals_expr(operand, acc),
+  LPrim(_h, _, args) => walk_locals_list(args, acc),
   LStateSlotStore(_h, _o, v, _) => walk_locals_expr(v, acc),
   LStateInit(_h, _hn, _s, v) => walk_locals_expr(v, acc),
   // H6: exhaustive LowExpr. Leaves declare no locals; LUpval,
@@ -6369,16 +6369,14 @@ fn tail_expr_repr(expr) = match expr {
   LIf(_h, _c, t, e) => repr_join(body_result_repr(t), body_result_repr(e)),
   LMatch(_h, _s, arms) => match_arms_repr(arms),
   // The reliable STRUCTURAL leaves — the width emission ACTUALLY produces.
-  // An IntToFloat convert IS f64 by construction; an arithmetic binop carries
-  // operand width (f64 iff either operand is — same-typed operands, §4①, so
-  // the join reads the truth). A call reads its NODE's proven type — the same
-  // live graph edge inference wrote and every use-site reads, so decl and use
-  // agree by construction (the fn-result side-ledger was a Carried-Truth
-  // violation: inference already types the call node Float; read it live).
-  LConvert(_h, kind, _) => match kind {
-    IntToFloat => RF64,
-    FloatToInt => RI32,
-  },
+  // A primitive leaves the width its instruction does; an arithmetic binop
+  // carries operand width (f64 iff either operand is — same-typed operands,
+  // §4①, so the join reads the truth). A call reads its NODE's proven type —
+  // the same live graph edge inference wrote and every use-site reads, so decl
+  // and use agree by construction (the fn-result side-ledger was a
+  // Carried-Truth violation: inference already types the call node Float;
+  // read it live).
+  LPrim(_h, p, _) => primitive_repr(p),
   LBinOp(_h, op, l, r) => match binop_kind(op) {
     BKArith => repr_join(tail_expr_repr(l), tail_expr_repr(r)),
     _ => RI32,
@@ -7971,13 +7969,11 @@ fn emit_expr(expr) = match expr {
       wat_emit(")\n")
     }
   },
-  LConvert(_h, kind, operand) => {
-    // W11: a REAL machine int<->float convert — the gradient's coercion arm.
-    // Emit the operand (which leaves an i32 or f64 on the stack), then the one
-    // signed WASM convert the kind names. Never an identity bit-reinterpret.
-    emit_expr(operand)
+  // A primitive: its arguments left on the stack, then its one instruction.
+  LPrim(_h, p, args) => {
+    each(emit_expr, args)
     wat_emit("    (")
-    wat_emit(convert_op(kind))
+    wat_emit(primitive_op(p))
     wat_emit(")\n")
   },
   // Hβ.first-light.resume-with-state-mutation: store VALUE into the
@@ -8766,7 +8762,7 @@ fn collect_fold_tys_expr(expr, acc: {cmp: [Ty], eq: [Ty], evac: [Ty], hash: [Ty]
   LPerform(_h, _d, args) => collect_fold_tys_list(args, acc),
   LWasiCall(_h, _n, args) => collect_fold_tys_list(args, acc),
   LFieldLoad(_h, rec, _o) => collect_fold_tys_expr(rec, acc),
-  LConvert(_h, _, operand) => collect_fold_tys_expr(operand, acc),
+  LPrim(_h, _, args) => collect_fold_tys_list(args, acc),
   LStateSlotStore(_h, _o, v, _) => collect_fold_tys_expr(v, fold_acc_evac_at(acc, lexpr_handle(v))),
   LStateInit(_h, _hn, _s, v) => collect_fold_tys_expr(v, acc),
   LConst(_, _) => acc,
@@ -9154,12 +9150,19 @@ fn repr_store_op(r) with Pure = match r {
   RI32 => "i32.store",
 }
 
-// W11: the one signed WASM convert op per direction — the gradient's coercion
-// arm rendered. IntToFloat widens an i32 to its f64 value; FloatToInt truncates
-// an f64 toward zero to i32. Both are value-changing (never bit-reinterpreting).
-fn convert_op(k) with Pure = match k {
-  IntToFloat => "f64.convert_i32_s",
+// A primitive's instruction. The conversions are value-changing, never a
+// reinterpretation of bits.
+fn primitive_op(p) with Pure = match p {
+  FloatOfInt => "f64.convert_i32_s",
   FloatToInt => "i32.trunc_f64_s",
+  FloatFloor => "f64.floor",
+  FloatSqrt => "f64.sqrt",
+}
+
+// The width a primitive's instruction leaves on the stack.
+fn primitive_repr(p) with Pure = match p {
+  FloatToInt => RI32,
+  FloatOfInt | FloatFloor | FloatSqrt => RF64,
 }
 
 // The leaf eq instruction over an already-stripped field type, with the two

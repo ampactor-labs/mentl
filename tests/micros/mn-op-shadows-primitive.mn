@@ -1,0 +1,9 @@
+// expect: refuse E_OpShadowsPrimitive
+// A word primitive is the judgment's own declaration: an op of the same name
+// would answer some calls of it and not others, so the op refuses where it
+// is declared.
+effect Rounding {
+  floor(x: Float) -> Float
+}
+
+fn main() = 0

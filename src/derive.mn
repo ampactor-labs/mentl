@@ -632,13 +632,7 @@ fn jvp(e, env, cx) = match e {
   },
   LBinOp(h, op, l, r) => jvp_binop(h, op, jvp(l, env, cx), jvp(r, env, cx)),
   LUnaryOp(h, op, x) => jvp_unary(h, op, jvp(x, env, cx)),
-  LConvert(h, k, x) => {
-    // IntToFloat widens an Int, and an Int does not move with the seed;
-    // FloatToInt truncates, whose derivative is zero wherever it exists.
-    let jx = jvp(x, env, cx)
-    grad_consumed(h, jx)
-    jv(jv_pre(jx), LConvert(h, k, jv_val(jx)), LinZero, AInactive)
-  },
+  LPrim(h, p, args) => jvp_prim(h, p, jvp_list(args, env, cx)),
   // A call where a VALUE stands is an ordinary call, whatever lower marked
   // it: only a twin's own exits keep the tail form, and they are read by
   // the exit rules below, never here.
@@ -756,6 +750,36 @@ fn jvp_unary(h, op, jx) = {
     UNeg => jv(jv_pre(jx), LUnaryOp(h, op, jv_val(jx)), lin_neg(h, jv_tan(jx)), jv_act(jx)),
     UNot => jv(jv_pre(jx), LUnaryOp(h, op, jv_val(jx)), LinZero, AInactive),
   }
+}
+
+// A primitive's partials, written once as the linear program both
+// projections read. An Int does not move with the seed, and a truncation, a
+// conversion to Int and a floor are steps whose derivative is zero wherever
+// it exists; the square root's is the tangent over twice the root, the root
+// a residual bound once.
+fn jvp_prim(h, p, jargs) = match p {
+  FloatSqrt => match jargs {
+    [jx] => if act_rank(jv_act(jx)) == 0 { jvp_prim_step(h, p, jargs) } else { jvp_sqrt(h, jx) },
+    _ => jvp_prim_step(h, p, jargs),
+  },
+  FloatOfInt | FloatToInt | FloatFloor => jvp_prim_step(h, p, jargs),
+}
+
+fn jvp_prim_step(h, p, jargs) = match seq_values(h, jargs) {
+  (pre, vals, _) => jv(pre, LPrim(h, p, vals), LinZero, AInactive),
+}
+
+// d(√a) = da / (2 · √a)
+fn jvp_sqrt(h, jx) = match named(h, 0, jx) {
+  (pre, a) => {
+    let r = temp(h, 1)
+    jv(
+      pre ++ [SPrim(LLet(h, r, LPrim(h, FloatSqrt, [a])))],
+      LLocal(h, r),
+      lin_quot(h, jv_tan(jx), LBinOp(h, BMul, LConst(h, LFloat(2.0)), LLocal(h, r))),
+      jv_act(jx)
+    )
+  },
 }
 
 // Two operands, in order, with no partials of their own: the primal
@@ -1235,7 +1259,7 @@ fn leaves_value(e) = match e {
   LFeedback(_, _, _, _, _) => true,
   LPerform(_, _, _) => true,
   LFieldLoad(_, _, _) => true,
-  LConvert(_, _, _) => true,
+  LPrim(_, _, _) => true,
   LShow(_, _) => true,
   LHash(_, _) => true,
   LWasiCall(_, _, _) => true,
@@ -2642,7 +2666,7 @@ fn node_touches(e) = match e {
   LMatch(_, _, _) => false,
   LResumeK(_, _, _, _) => false,
   LFieldLoad(_, _, _) => false,
-  LConvert(_, _, _) => false,
+  LPrim(_, _, _) => false,
   LStateSlotStore(_, _, _, _) => false,
   LStateInit(_, _, _, _) => false,
   LShow(_, _) => false,
@@ -2698,7 +2722,7 @@ fn callee_of(e) = match e {
   LArena(_, _) => [],
   LFeedback(_, _, _, _, _) => [],
   LFieldLoad(_, _, _) => [],
-  LConvert(_, _, _) => [],
+  LPrim(_, _, _) => [],
   LStateSlotStore(_, _, _, _) => [],
   LStateInit(_, _, _, _) => [],
   LShow(_, _) => [],
@@ -2857,7 +2881,7 @@ fn seed_lanes(h, seed) = match seed {
   LFeedback(_, _, _, _, _) => None,
   LPerform(_, _, _) => None,
   LFieldLoad(_, _, _) => None,
-  LConvert(_, _, _) => None,
+  LPrim(_, _, _) => None,
   LStateSlotStore(_, _, _, _) => None,
   LStateInit(_, _, _, _) => None,
   LShow(_, _) => None,

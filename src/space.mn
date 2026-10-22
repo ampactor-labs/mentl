@@ -1134,7 +1134,7 @@ fn view_json(view) = match view {
 fn canvas_json(c) = match c {
   NoCanvas => JNull,
   Canvas(cv) => JObj([
-    ("lines", jnum(cv.lines)),
+    ("lines", JInt(cv.lines)),
     ("tokens", JArr(map(token_json, cv.tokens))),
     ("strip", JArr(map(strip_line_json, cv.strip))),
     ("frames", JArr(map(frame_json, cv.frames))),
@@ -1144,7 +1144,7 @@ fn canvas_json(c) = match c {
 }
 
 fn token_json(t) = match t {
-  CanvasToken(Span(sl, sc, el, ec), cls) => JArr([jnum(sl), jnum(sc), jnum(el), jnum(ec), JStr(token_class_word(cls))]),
+  CanvasToken(Span(sl, sc, el, ec), cls) => JArr([JInt(sl), JInt(sc), JInt(el), JInt(ec), JStr(token_class_word(cls))]),
 }
 
 fn token_class_word(cls) = match cls {
@@ -1165,7 +1165,7 @@ fn token_class_word(cls) = match cls {
 }
 
 fn strip_line_json(s) = match s {
-  StripLine(line, cells) => JObj([("line", jnum(line)), ("cells", JArr(map(cell_json, cells)))]),
+  StripLine(line, cells) => JObj([("line", JInt(line)), ("cells", JArr(map(cell_json, cells)))]),
 }
 
 fn cell_json(c) = match c {
@@ -1186,7 +1186,7 @@ fn cell_state_word(state) = match state {
 }
 
 fn frame_json(f) = match f {
-  Frame(h, verb, spans) => JObj([("h", jnum(h)), ("verb", JStr(canvas_verb_word(verb))), ("stages", JArr(map(span_json, spans)))]),
+  Frame(h, verb, spans) => JObj([("h", JInt(h)), ("verb", JStr(canvas_verb_word(verb))), ("stages", JArr(map(span_json, spans)))]),
 }
 
 fn mark_json(m) = match m {
@@ -1195,7 +1195,7 @@ fn mark_json(m) = match m {
 
 fn trace_json(t) = match t {
   OwnTrace(h, name, head, uses) => JObj([
-    ("h", jnum(h)),
+    ("h", JInt(h)),
     ("name", JStr(name)),
     ("head", span_json(head)),
     ("uses", JArr(map(span_json, uses)))
@@ -1220,13 +1220,13 @@ fn site_json(s) = match s {
 fn field_json(f) = match f {
   FieldHole(h, sp, ring) => JObj([
     ("kind", JStr("hole")),
-    ("h", jnum(h)),
+    ("h", JInt(h)),
     ("site", span_json(sp)),
     ("ring", JArr(map(ring_json, ring)))
   ]),
   FieldGradient(h, sp, ring) => JObj([
     ("kind", JStr("gradient")),
-    ("h", jnum(h)),
+    ("h", JInt(h)),
     ("site", span_json(sp)),
     ("ring", JArr(map(ring_json, ring)))
   ]),
@@ -1235,17 +1235,15 @@ fn field_json(f) = match f {
 fn at_json(at) = match at {
   ViewAt(a) => JObj([
     ("module", JStr(a.module)),
-    ("line", jnum(a.line)),
-    ("col", jnum(a.col)),
-    ("h", jnum(a.h)),
+    ("line", JInt(a.line)),
+    ("col", JInt(a.col)),
+    ("h", JInt(a.h)),
     ("span", span_json(a.span))
   ]),
 }
 
-fn jnum(n) = JNum(float_of_int(n))
-
 fn span_json(sp) = match sp {
-  Span(sl, sc, el, ec) => JObj([("line", jnum(sl)), ("col", jnum(sc)), ("end_line", jnum(el)), ("end_col", jnum(ec))]),
+  Span(sl, sc, el, ec) => JObj([("line", JInt(sl)), ("col", JInt(sc)), ("end_line", JInt(el)), ("end_col", JInt(ec))]),
 }
 
 // A ring fact: its kind, the sentence, what the kind adds, and its notes.
@@ -1269,7 +1267,7 @@ fn aspect_fields(a) = match a {
   AQuery(_) => [],
   APropose(sk) => match sk {
     SkFill(src, why) => [("verdict", JStr("fill")), ("fill", JStr(src)), ("why", JStr(why))],
-    SkAsk(n) => [("verdict", JStr("ask")), ("survivors", jnum(n))],
+    SkAsk(n) => [("verdict", JStr("ask")), ("survivors", JInt(n))],
     SkNone => [("verdict", JStr("none"))],
     SkSilent => [("verdict", JStr("silent"))],
   },
@@ -1354,7 +1352,7 @@ fn ledger_json(f) = match f {
   LedgerDecl(h, word, name, text, sp, near) => JObj([
     ("kind", JStr("decl")),
     ("text", JStr(text)),
-    ("h", jnum(h)),
+    ("h", JInt(h)),
     ("word", JStr(word)),
     ("name", JStr(name)),
     ("site", span_json(sp)),

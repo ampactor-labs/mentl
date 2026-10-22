@@ -49,9 +49,9 @@ fn bass_hz(k: Int) -> Hz = if k < 2 { 55.0 } else { 65.41 }
 
 fn frame(buf, rig, n: Int) with !Alloc = {
   let t = time()
-  let k = float_to_int(t)
+  let k = n / rate()
   let tn = t - float_of_int(k)
-  let eighth = float_to_int(t * 4.0)
+  let eighth = n * 4 / rate()
   let te = t - float_of_int(eighth) / 4.0
   let lead = rig.lead(note_hz(k)) * adsr(0.01, 0.2, 0.6, 0.3, 1.0, tn) |> rig.tone(1200.0)
   let bass = rig.bass(bass_hz(k)) * adsr(0.005, 0.25, 0.5, 0.1, 1.0, tn)

@@ -39,6 +39,10 @@ effect Tick {
   current_tick() -> Int
 }
 
+// A sample rate: some number of frames each second, never none, so a frame
+// count divided by it is a whole division.
+type Rate = Int where 0 < self
+
 // Sample is INSTANCE-PARAMETERIZED (SYNTAX §«Parameterized effect»): the
 // rate rides the effect, so `Sample(44100)` and `Sample(48000)` are distinct
 // row members, and a path that declares `!Sample(44100)` refuses a stage
@@ -47,7 +51,7 @@ effect Tick {
 // and reads it back through `sample_rate()`; the number is authored ONCE,
 // and the install that answers it is the one serving that instance.
 effect Sample(rate: Int) {
-  sample_rate() -> Int
+  sample_rate() -> Rate
   advance_sample()
   current_sample() -> Int
 }
@@ -79,8 +83,10 @@ handler tick_real with counter = 0 {
 // parameter, so `~> sample_at(48_000)` serves `Sample(48_000)` alone: a
 // stage declared `with Sample(44_100)` passes it to the install serving its
 // own rate, and with none the root refuses, proposing that install. Nested
-// installs at two rates are two clocks, each answering its own stages.
-handler sample_at(rate) with count = 0 {
+// installs at two rates are two clocks, each answering its own stages. The
+// rate is a `Rate`, claimed where the install is written, so the rate every
+// stage reads back is one it may divide by.
+handler sample_at(rate: Rate) with count = 0 {
   sample_rate() => resume(rate),
   advance_sample() => resume() with count = count + 1,
   current_sample() => resume(count),

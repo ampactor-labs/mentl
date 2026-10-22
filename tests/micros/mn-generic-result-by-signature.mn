@@ -1,0 +1,17 @@
+// expect: 25
+// A generic call answers by its signature: `head_or`'s result is one of the
+// values handed in at its variable, so with a list of Positive and a
+// Positive default it is Positive, and `inv` owes nothing. The prior boot
+// owed the claim and refused under `!Trap`.
+type Positive = Int where 0 < self
+
+fn inv(n: Positive) = 100 / n
+
+fn head_or(xs, d) = match xs {
+  [h, ..._] => h,
+  [] => d,
+}
+
+fn use(xs: [Positive], d: Positive) with !Trap = inv(head_or(xs, d))
+
+fn main() = use([4], 2)

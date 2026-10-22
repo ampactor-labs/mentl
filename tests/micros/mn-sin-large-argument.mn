@@ -1,0 +1,11 @@
+// expect: 7
+// `sin` answers every finite argument: its range reduction never hands a
+// value past an Int to the partial conversion, so a large phase is a sine,
+// not a trap. The library before this pin reduced the phase through
+// `float_to_int` and trapped here.
+import math
+
+fn main() = {
+  let s = sin(100000000000.0)
+  if s <= 1.0 && s >= -1.0 { 7 } else { 9 }
+}

@@ -1619,24 +1619,36 @@ fn eff_admits(gate_name: EffName, body_name: EffName) = if eff_name_handle(gate_
 fn present_admitted(ref bp, ref gp) = all((b) => any((g) => eff_admits(g, b), gp), bp)
 
 // Two instances are ROUTE-distinct when every value either carries is known
-// and one differs: an install serves the instance its pinned config names,
-// a perform reaches the innermost install not route-distinct from its own
-// instance, and the absorption at the install reads the same law, so the
-// row says what the run does. A value no compile-time fact names — an
-// instance variable still free, an operand nothing grounds — may be any
-// instance; a type dimension is the install flow's and keys nothing here.
+// and they are not the same instance: an install serves the instance its
+// pinned config names, a perform reaches the innermost install not
+// route-distinct from its own instance, and the absorption at the install
+// reads the same law, so the row says what the run does. An operand's value
+// is known by its node: an install whose config is computed serves the
+// instance that operand names — the stages that run at its rate — and a
+// perform at a literal rate, or at another operand, passes it, since nothing
+// says the operand evaluates to that rate. Only an instance variable still
+// free may be any instance; a type dimension is the install flow's and keys
+// nothing here.
 fn route_distinct(a: EffName, b: EffName) = match a {
   EParameterized(_, xa) => match b {
-    EParameterized(_, xb) => all(route_known, xa) && all(route_known, xb) && eff_args_provably_distinct(xa, xb, 0),
+    EParameterized(_, xb) => all(route_known, xa) && all(route_known, xb) && !values_alike(xa, xb, 0),
     ENamed(_) | EPure => false,
   },
   ENamed(_) | EPure => false,
 }
 
 fn route_known(a) with Pure = match a {
-  EAInt(_) | EAFloat(_) | EAString(_) | EAEffect(_) | EACon(_) | EAType(_) => true,
-  EANode(_) | EAVar(_) => false,
+  EAInt(_) | EAFloat(_) | EAString(_) | EAEffect(_) | EACon(_) | EAType(_) | EANode(_) => true,
+  EAVar(_) => false,
 }
+
+// A handler pins its effect's instance when its config names every one of
+// the effect's dimensions: each such config parameter IS that dimension at
+// the install, as an op's parameter is at a perform. A handler whose config
+// names none, or only some, serves every instance and pins nothing.
+fn config_pins_dims(config, dims) = len(dims) > 0 && all(config_names_dim(config, ??), dims)
+
+fn config_names_dim(config, d: String) = any({ p => param_name(p) == d }, config)
 
 fn eff_args_provably_distinct(ref a, ref b, i) = if len(a) != len(b) {
   // Differing arity never proves distinctness — an effect has ONE

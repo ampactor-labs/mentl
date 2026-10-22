@@ -1,31 +1,15 @@
-// math.mn — transcendental float substrate
+// math.mn — the transcendental functions over Float
 //
-// WASM f64 has no transcendental instructions (only sqrt/abs/ceil/
-// floor/trunc/nearest/min/max/copysign), and WASI has no math host
-// calls — so exp/log/sin/tanh are Mentl-native series over the
-// float_* arithmetic family (lib/strings.mn). Every float
-// operation routes through float_add/float_mul/... so the post-L1
-// f64 handler swap (#110 Hβ.emit.float-substrate-handler) emits
-// typed f64 ops here without a second pass.
+// WebAssembly's f64 instructions stop at sqrt, abs, ceil, floor, trunc,
+// nearest, min, max and copysign, and WASI has no math calls, so exp, log,
+// sin and atan are series in Mentl, each range-reduced so a fixed count of
+// terms reaches f64 precision on the reduced range. The instructions they
+// stand on are primitives (`floor`, `sqrt`), and none of them reaches the one
+// conversion that can trap, so every function here answers for every Float —
+// at the edges what IEEE answers: a NaN gives NaN, an overflow infinity — and
+// is `Pure`, which is what lets a real-time stage call `exp` under `!Alloc`
+// and `!Trap`.
 //
-// Each series is genuine sequential recursion — term n+1 derives
-// from term n (no list to map/fold; the float_pow10 recursion shape
-// is the family precedent). Because the recursion carries scalars and
-// never touches the heap (float_of_int/float_to_int are lower-time
-// LConvert intrinsics with no row), every function here is `with Pure`
-// — which is what unlocks `!Alloc` real-time DSP callbacks downstream:
-// a one-pole filter calling exp() proves heap-free transitively. The
-// prior `Memory + Alloc` row was a stale over-declaration (W12); the
-// inferred row IS Pure, so the declared row now matches it.
-//
-// Named peer Hμ.lib.float-family-home: relocate the float_*
-// arithmetic family from strings.mn (where float_to_str's internals
-// grew it) to this file, flipping the import direction. Structural
-// reason it isn't this commit: strings.mn's formatting internals
-// consume the family throughout; the relocation is an orthogonal
-// dependency-graph move with no diagnostic payoff.
-import strings
-
 // Float parameters are annotated `: Float` throughout. This is a
 // representation PIN, not inference laziness: today the emit reads an
 // UNANNOTATED float parameter at the i32 floor (§5.U's repr gradient
@@ -37,34 +21,55 @@ import strings
 // infer. Named peer Hβ.emit.float-evidence-ft (PLAN §7): the gradient
 // propagating a param's repr from its use makes every `: Float` here
 // redundant and the annotations dissolve.
-//
-// ─── Constants — f64 literals at 17 significant digits ─────────────
 fn ln2() with Pure = 0.6931471805599453
 
 fn pi() with Pure = 3.141592653589793
 
 fn two_pi() -> Float with Pure = 6.283185307179586
 
-// ─── floor / pow2 ───────────────────────────────────────────────────
-//
-// float_to_int truncates toward zero; floor differs only for
-// negative non-integers.
-fn float_floor(f: Float) -> Float with Pure = {
-  let t = float_of_int(float_to_int(f))
-  if f < t { t - 1.0 } else { t }
+// The positive infinity: one over zero, which a Float division answers.
+fn infinity() -> Float with Pure = 1.0 / 0.0
+
+// 2^k for an integral k. Past ±1100 every power is beyond the Float range, so
+// the exponent stops there and the answer is what IEEE gives, infinity or
+// zero; a NaN exponent answers NaN.
+fn pow2(k: Float) -> Float with Pure = if k > 1100.0 {
+  pow2(1100.0)
+} else if k < -1100.0 {
+  pow2(-1100.0)
+} else if k < 0.0 {
+  power_by_squaring(0.5, 0.0 - k)
+} else if k >= 0.0 {
+  power_by_squaring(2.0, k)
+} else {
+  k
 }
 
-fn float_pow2(k: Int) -> Float with Pure =
-  if k == 0 { 1.0 } else if k > 0 { 2.0 * float_pow2(k - 1) } else { 1.0 / float_pow2(0 - k) }
+// b^n for an integral n in [0, 1100] by squaring, b^n = (b^⌊n/2⌋)² · b^(n mod 2),
+// so the depth is n's bit count.
+fn power_by_squaring(b: Float, n: Float) -> Float with Pure = if n < 1.0 {
+  1.0
+} else {
+  let half = floor(n / 2.0)
+  let h = power_by_squaring(b, half)
+  if n - 2.0 * half < 0.5 { h * h } else { b * h * h }
+}
 
-// ─── exp — range-reduced Taylor ─────────────────────────────────────
-//
-// x = k·ln2 + r with r ∈ [0, ln2); exp(x) = 2^k · Σ rⁿ/n!.
-// 13 terms bound the series error below f64 epsilon on [0, ln2).
-fn exp(x: Float) -> Float with Pure = {
-  let k = float_to_int(float_floor(x / ln2()))
-  let r = x - float_of_int(k) * ln2()
-  float_pow2(k) * exp_series(r, 1, 1.0, 1.0)
+// x = k·ln2 + r with k integral and r ∈ [0, ln2); exp(x) = 2^k · Σ rⁿ/n!.
+// 13 terms bound the series error below f64 epsilon on [0, ln2). Above
+// 709.8 the answer overflows and below −745.2 it underflows, so those ends
+// answer infinity and zero; a NaN answers itself.
+fn exp(x: Float) -> Float with Pure = if x < 709.8 {
+  if x > -745.2 {
+    let k = floor(x / ln2())
+    pow2(k) * exp_series(x - k * ln2(), 1, 1.0, 1.0)
+  } else {
+    0.0
+  }
+} else if x >= 709.8 {
+  infinity()
+} else {
+  x
 }
 
 fn exp_series(r: Float, n: Int, term: Float, acc: Float) -> Float with Pure = if n > 13 {
@@ -74,14 +79,17 @@ fn exp_series(r: Float, n: Int, term: Float, acc: Float) -> Float with Pure = if
   exp_series(r, n + 1, t, acc + t)
 }
 
-// ─── log — normalize + atanh series ─────────────────────────────────
-//
 // x = m·2^k with m ∈ [1, 2); ln(x) = k·ln2 + 2·atanh((m-1)/(m+1)).
-// t = (m-1)/(m+1) ∈ [0, 1/3] so nine odd terms reach f64 epsilon.
-// Non-positive input returns 0.0 — productive-under-error, same
-// guard discipline as float_div's zero case (strings.mn).
-fn log(x: Float) -> Float with Pure =
-  if x < 0.0 { 0.0 } else if x == 0.0 { 0.0 } else { log_normalized(x, 0) }
+// t = (m-1)/(m+1) ∈ [0, 1/3] so nine odd terms reach f64 epsilon. At the
+// edges it answers what IEEE does: −∞ at zero, NaN below zero and for a
+// NaN, ∞ at ∞.
+fn log(x: Float) -> Float with Pure = if x > 0.0 {
+  if x < infinity() { log_normalized(x, 0) } else { x }
+} else if x == 0.0 {
+  0.0 - infinity()
+} else {
+  0.0 / 0.0
+}
 
 fn log_normalized(m: Float, k: Int) -> Float with Pure = if m >= 2.0 {
   log_normalized(m / 2.0, k + 1)
@@ -101,12 +109,23 @@ fn atanh_series(t2: Float, n: Int, term: Float, acc: Float) -> Float with Pure =
   atanh_series(t2, n + 1, next_term, acc + next_term / odd)
 }
 
-// ─── sin — range-reduced Taylor ─────────────────────────────────────
-//
-// Reduce to [-π, π), then x - x³/3! + x⁵/5! - …; eight alternating
-// terms bound the error below f64 epsilon on the reduced range.
+// The angle reduced into [0, 2π). One step lands there for every |x| below
+// 2^53·2π, where the Float grid is finer than a turn; past it the product
+// 2π·⌊x/2π⌋ rounds whole turns away, so the step repeats, each shrinking the
+// remainder by the grid's own factor. An infinity or a NaN has no angle and
+// answers NaN.
+fn turn_of(x: Float) -> Float with Pure = if x >= 0.0 && x < two_pi() {
+  x
+} else if x - x == 0.0 {
+  turn_of(x - two_pi() * floor(x / two_pi()))
+} else {
+  x - x
+}
+
+// Reduce to [-π, π), then x - x³/3! + x⁵/5! - …; eight alternating terms
+// bound the error below f64 epsilon on the reduced range.
 fn sin(x: Float) -> Float with Pure = {
-  let r0 = x - two_pi() * float_floor(x / two_pi())
+  let r0 = turn_of(x)
   let r = if r0 >= pi() { r0 - two_pi() } else { r0 }
   sin_series(r * r, 1, r, r)
 }
@@ -120,8 +139,6 @@ fn sin_series(r2: Float, n: Int, term: Float, acc: Float) -> Float with Pure = i
   sin_series(r2, n + 1, next_term, acc + next_term)
 }
 
-// ─── tanh — via exp, saturating ─────────────────────────────────────
-//
 // (e^{2x} - 1)/(e^{2x} + 1); magnitude past 20 saturates to ±1 (e^{40}
 // overflows the series' useful range while tanh is already 1.0
 // to f64 precision).
@@ -134,41 +151,10 @@ fn tanh(x: Float) -> Float with Pure = if x >= 20.0 {
   (e2 - 1.0) / (e2 + 1.0)
 }
 
-// ─── cos — the quarter-turn view of sin ─────────────────────────────
-//
 // cos(x) = sin(x + π/2). The range reduction and eight-term alternating
 // series live in sin; cos reads the same wheel a quarter turn along, so
 // there is one trig series in the file, not two.
 fn cos(x: Float) -> Float with Pure = sin(x + pi() / 2.0)
-
-// ─── sqrt — range-reduced Newton-Raphson ────────────────────────────
-//
-// x = m·4^k with m ∈ [1, 4); √x = 2^k·√m. Newton (yₙ₊₁ = (yₙ + m/yₙ)/2)
-// converges quadratically on the reduced range from the seed 1 + m/4, so
-// eight steps reach f64 epsilon regardless of x's magnitude — the same
-// range-reduce-then-iterate shape exp/log/sin use. Non-positive input
-// returns 0.0, the productive-under-error guard log's domain uses.
-//
-// Named peer Hβ.math.sqrt-intrinsic: WASM f64 HAS a native sqrt
-// instruction (the file header names it), so the ultimate form is a
-// one-instruction LConvert-style intrinsic (lower recognizing sqrt →
-// f64.sqrt), the same arm float_of_int/float_to_int ride. Until that
-// arm lands, the series is the substrate-honest floor — correct on every
-// f64, never a stub.
-fn sqrt(x: Float) -> Float with Pure = if x <= 0.0 { 0.0 } else { sqrt_reduce(x, 0) }
-
-// Fold m into [1, 4) by factors of four, tracking the halved exponent k.
-fn sqrt_reduce(m: Float, k: Int) -> Float with Pure = if m >= 4.0 {
-  sqrt_reduce(m / 4.0, k + 1)
-} else if m < 1.0 {
-  sqrt_reduce(m * 4.0, k - 1)
-} else {
-  float_pow2(k) * sqrt_newton(m, 8, 1.0 + m / 4.0)
-}
-
-// Newton on √m for m ∈ [1, 4): yₙ₊₁ = (yₙ + m/yₙ)/2.
-fn sqrt_newton(m: Float, n: Int, y: Float) -> Float with Pure =
-  if n <= 0 { y } else { sqrt_newton(m, n - 1, (y + m / y) / 2.0) }
 
 // ─── atan / atan2 — half-angle-reduced arctangent ───────────────────
 //

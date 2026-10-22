@@ -1,8 +1,8 @@
 // The computed face of sound-instance-own-install: `run` installs the clock
-// at a rate its caller hands, so the instance the install serves is not
-// grounded where the install is judged, and a 44.1 kHz stage under it is
-// not provably another instance. Distinct means provably distinct, as a
-// row's membership and a negation read it. Expect NO E_EffectMismatch.
+// at a rate its caller hands, and a stage that names no rate runs at the
+// rate of the clock around it — the install binds its instance to the
+// operand that computes the config, so the install absorbs it and `run`
+// performs nothing at 44.1 kHz. Expect NO E_EffectMismatch.
 effect Sample(rate: Int) {
   tick() -> Int
 }
@@ -11,8 +11,8 @@ handler clock_at(rate) {
   tick() => resume(rate),
 }
 
-fn rate44() with Sample(44100) = tick()
+fn any_rate() = tick()
 
-fn run(r) = rate44() ~> clock_at(r)
+fn run(r) with !Sample(44100) = any_rate() ~> clock_at(r)
 
 fn main() = run(44100) - 44090

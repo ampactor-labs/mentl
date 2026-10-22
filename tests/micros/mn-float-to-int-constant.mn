@@ -1,0 +1,4 @@
+// expect: 3
+// A constant inside the range an Int holds discharges `float_to_int`'s
+// claim where it is written, so the conversion owes nothing.
+fn main() with !Trap = float_to_int(3.7)

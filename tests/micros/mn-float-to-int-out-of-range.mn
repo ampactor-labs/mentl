@@ -1,0 +1,5 @@
+// expect: refuse E_RefinementRejected
+// A constant past what an Int holds refutes `float_to_int`'s claim where it
+// is handed: the program's meaning is a trap, said before it runs. The prior
+// boot compiled this and trapped (exit 134).
+fn main() = float_to_int(10000000000.0)

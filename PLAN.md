@@ -877,7 +877,12 @@ nothing; and the `<|` branch, which owed nothing, owes what a stage owes
 (lessons 2, 5 and 9; tests/micros/mn-refine-stage-through-field.mn,
 mn-refine-fanout-branch-owes.mn); a state
   write is read as the claim's own hypothesis, an inductive invariant
-  (`Hβ.verify.state-reads-its-invariant`); non-termination is a row fact
+  (`Hβ.verify.state-reads-its-invariant`); a handler is a judgment unit: a
+  claim an arm makes about its own state's parts is decided once every arm
+  is judged, its row fact with it, where today an arm's claim over the
+  state's memory is owed and the `Trap` it guards charged at the install,
+  since a later arm could hand the memory away
+  (`Hβ.verify.handler-is-a-judgment-unit`); non-termination is a row fact
   beside `Trap` (`Hβ.effects.divergence-is-a-row-fact`); then the solver is the search
   (§11.17), the fragment growing in the order the wheel's own debt names it,
   the debt ceiling falling with each step.
