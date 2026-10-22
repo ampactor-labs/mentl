@@ -1,0 +1,16 @@
+// expect: 134
+// A parameter's precondition holds where the function is entered, and a store
+// the body makes into the parameter's memory may replace what it promised: the
+// element read after the store is a value the store may have written, so the
+// division is not proven and the product keeps it.
+type Pos = Int where 0 < self
+
+fn first_inverse(xs: [Pos]) = {
+  list_set(xs, 0, 0)
+  match xs {
+    [h, ..._] => 100 / h * 0,
+    [] => 1,
+  }
+}
+
+fn main() = first_inverse([7])

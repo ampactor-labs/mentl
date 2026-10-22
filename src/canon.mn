@@ -15,3 +15,72 @@ import types
 // is the render (show_type's TAlias arm prints "String"); the inner
 // byte-list is the truth every walk sees through the peel.
 let ty_string = TAlias("String", TList(TByte))
+
+// The sequence node-kind's projections, by the name each substrate primitive
+// is declared with. A sequence is ONE kernel node-kind (§4①), and these read
+// or build it, each typed by its ELEMENT, never by the word-idiom body whose
+// inferred type erases [a] to Int. Strings are [byte]: byte_at IS list_index,
+// byte_len IS len, str_concat IS list_concat — the same projections over a
+// different element. The by-name table dissolves into each primitive's own
+// signature, its body typed through it (Hβ.infer.seq-op-signature-driven).
+fn is_seq_op(cname: String) with Pure = cname == "len" || cname == "list_index" || cname == "last" || cname == "drop_last" || cname == "list_set" || cname == "list_concat" || cname == "list_to_flat" || cname == "make_list" || cname == "slice" || cname == "push" ||
+// The String-builder half of the same boundary: int_to_str assembles a
+// [len][bytes] record by address arithmetic (a word), and the table
+// projects the String its consumers read — the §4① seam at the text face.
+cname == "int_to_str" ||
+// The Option-of-handle niche's READ (types.mn slot_present): typed
+// `a -> Bool` so a presence test never pins its operand's element type;
+// the raw body compares the word.
+cname == "slot_present" ||
+// The show/hash surfaces: the lowering intercepts both names into structural
+// show and hash nodes, so the table carries their generic faces (a -> String,
+// a -> Int) and the raw bodies never run.
+cname == "to_string" || cname == "hash" ||
+// The String face of the sequence node-kind: byte_at IS list_index, byte_len
+// IS len, typed so a consumer holding a String types against the projection,
+// never the word-idiom body.
+cname == "byte_len" || cname == "byte_at" ||
+// The String BUILDERS: their bodies alloc a [count][tag][bytes] record and
+// return its address; typed so the projected RESULT is the String consumers
+// read, never the raw buffer. str_payload resolves a String to the address
+// of its contiguous stride-1 payload — String in, address out (the WASI
+// materialization boundary).
+cname == "str_slice" || cname == "str_concat" || cname == "str_of_single_byte" || cname == "str_payload" || cname == "str_of_buf" || cname == "float_to_str" || cname == "float_zero_pad" || cname == "float_format_fixed" || cname == "float_format_scientific" || cname == "float_render_positive" || cname == "float_digits_to_str"
+
+// The faces typed over the element var alone, minting nothing: the judgment
+// reads them beside the three faces whose operand is minted per call, and
+// the value walk reads which slot a writer stores — the one typed by the
+// element alone.
+fn seq_face(cname: String, elem) = match cname {
+  "last" => Some(([TList(elem)], elem)),
+  "list_index" => Some(([TList(elem), TInt], elem)),
+  "int_to_str" => Some(([TInt], ty_string)),
+  // The String face: byte_at IS list_index over [byte], byte_len IS len.
+  "byte_len" => Some(([ty_string], TInt)),
+  "byte_at" => Some(([ty_string, TInt], TInt)),
+  "str_slice" => Some(([ty_string, TInt, TInt], ty_string)),
+  "str_concat" => Some(([ty_string, ty_string], ty_string)),
+  "str_of_single_byte" => Some(([TInt], ty_string)),
+  // str_payload resolves a String to the address of its contiguous stride-1
+  // payload; str_of_buf is the way back, a filled buffer's address read as
+  // the String it holds.
+  "str_payload" => Some(([ty_string], TAddr)),
+  "str_of_buf" => Some(([TAddr], ty_string)),
+  "float_to_str" => Some(([TFloat], ty_string)),
+  "float_render_positive" => Some(([TFloat], ty_string)),
+  "float_zero_pad" => Some(([TInt], ty_string)),
+  "float_format_fixed" => Some(([TList(TInt), TInt], ty_string)),
+  "float_format_scientific" => Some(([TList(TInt), TInt], ty_string)),
+  "float_digits_to_str" => Some(([TList(TInt), TInt, TInt], ty_string)),
+  "len" => Some(([TList(elem)], TInt)),
+  "drop_last" => Some(([TList(elem)], TList(elem))),
+  "list_set" => Some(([TList(elem), TInt, elem], TList(elem))),
+  "push" => Some(([TList(elem), elem], TList(elem))),
+  "slice" => Some(([TList(elem), TInt, TInt], TList(elem))),
+  "list_concat" => Some(([TList(elem), TList(elem)], TList(elem))),
+  // Flatten is representation-only: type-preserving [a] -> [a] (flat_raw is
+  // its raw altitude; a raw-typed list_to_flat poisoned iterate's element).
+  "list_to_flat" => Some(([TList(elem)], TList(elem))),
+  "make_list" => Some(([TInt], TList(elem))),
+  _ => None,
+}

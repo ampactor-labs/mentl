@@ -10,6 +10,8 @@
 // proposer whose certificate the kernel checks.
 import types
 
+import canon
+
 import effects
 
 import graph
@@ -34,9 +36,41 @@ handler verify_ledger with debt = [], decided = [], flows = [], settled = [] {
   verify_decided() => resume(decided ++ flat_map(settled_verdict, settled)),
   verify_flows() => resume(flows),
   verify_adopt(entries) => resume() with decided = entries ++ decided,
+  verify_reask() => {
+    let asked = debt |> map(reasked)
+    let verdicts = flat_map(reask_verdict, asked)
+    if len(verdicts) == 0 {
+      resume([])
+    } else {
+      resume(flat_map(reask_refuted, asked)) with debt = flat_map(reask_owed, asked), decided = verdicts ++ decided
+    }
+  },
   verify_settle(entries) => resume() with settled = entries,
   verify_forget(gone) => resume() with debt = filter(debt_outside(gone, ??), debt), decided = filter(debt_outside(gone, ??), decided), flows = filter(debt_outside(gone, ??), flows), settled = filter(settled_outside(gone, ??), settled),
 }
+
+fn reasked(entry) = match entry {
+  (_, _, pred, _) => (entry, predicate_decide(pred)),
+}
+
+fn reask_owed(asked) = match asked {
+  (entry, None) => [entry],
+  (_, Some(_)) => [],
+}
+
+fn reask_verdict(asked) = match asked {
+  ((modh, span, pred, _), Some(held)) => [(modh, span, pred, held)],
+  (_, None) => [],
+}
+
+fn reask_refuted(asked) = match asked {
+  (entry, Some(false)) => [entry],
+  (_, Some(true)) | (_, None) => [],
+}
+
+// The settle's re-ask: a claim refuted now is reported where it was raised.
+fn reask_settle() =
+  verify_reask() |> each({ (modh, span, pred, reason) => report_at(modh, ERefinementRejected(pred, span, reason)) })
 
 fn settled_owed(entry) = match entry {
   (modh, span, pred, reason, None) => [(modh, span, pred, reason)],
@@ -163,6 +197,7 @@ fn leaf_nonneg(leaf) = match leaf {
     None => None,
   },
   LClaimed(_, beneath) => leaf_nonneg(beneath),
+  LMay(beneath) => proves_only(leaf_nonneg(beneath)),
   LPost(_) => None,
   LSum(_) => None,
   LRet(_) => None,
@@ -187,6 +222,7 @@ fn leaf_below(leaf, lengths) = match leaf {
     LVFloat(_) | LVString(_) | LVBool(_) => None,
   },
   LClaimed(_, beneath) => leaf_below(beneath, lengths),
+  LMay(beneath) => proves_only(leaf_below(beneath, lengths)),
   LParam(_, _) | LPost(_) | LSum(_) | LLength | LRet(_) | LBuilt(_) | LUnknown => None,
 }
 
@@ -276,6 +312,7 @@ fn leaves_decide(leaves, test) =
 fn leaf_is_point(lv, leaf) = match leaf {
   LPoint(v) => litval_eq(v, lv),
   LClaimed(_, beneath) => leaf_is_point(lv, beneath),
+  LMay(beneath) => proves_only(leaf_is_point(lv, beneath)),
   LBuilt(_) | LParam(_, _) | LPost(_) | LSum(_) | LLength | LRet(_) | LUnknown => None,
 }
 
@@ -291,6 +328,7 @@ fn ctor_decide(cname: String, n) = if len(ctor_roster(cname)) == 1 {
 fn leaf_is_built_by(cname: String, leaf) = match leaf {
   LBuilt(made) => Some(made == cname),
   LClaimed(_, beneath) => leaf_is_built_by(cname, beneath),
+  LMay(beneath) => proves_only(leaf_is_built_by(cname, beneath)),
   LPoint(_) | LParam(_, _) | LPost(_) | LSum(_) | LLength | LRet(_) | LUnknown => None,
 }
 
@@ -780,6 +818,10 @@ type Leaf
   // `construction_part` compares, read by a destructuring pattern's claim
   // (`shape_decide`); no number, bound or label stands on it
   | LBuilt(String)
+  // a value the read MAY take: what a writer stored into the memory, which
+  // another write may have replaced since — what holds of every such value
+  // holds of the read, and no one of them alone refutes a claim
+  | LMay(Leaf)
   // nothing this walk can read
   | LUnknown
 
@@ -916,7 +958,7 @@ fn part_leaves(whole, step) = match part_read(whole, step, node_leaves_read) {
   Some(leaves) => leaves,
   None => match step {
     PartRest => [LUnknown],
-    PartIndex(_) | PartCtor(_, _) | PartField(_) | PartElem | PartTypeArg(_) => node_leaves(whole) |> map(project_leaf(??, step)),
+    PartIndex(_) | PartCtor(_, _) | PartField(_) | PartElem | PartTypeArg(_) => path_leaves(whole, [step]),
   },
 }
 
@@ -953,12 +995,19 @@ fn expr_path_read(whole, step, rest, read) = match value_tails(whole) {
   None => built_path_read(whole, step, rest, read),
 }
 
-// A state's path is each writer's, read off the writer as an expression;
-// inside its own writers the state is out of sight.
+// A state's path is each writer's, read off the writer as an expression,
+// while nothing stores into the state's memory there; inside its own
+// writers the state is out of sight.
 fn state_path_read(b, writes, path, read) = if walking_state(b) {
   None
 } else {
-  read_all(writes, writer_path_read(path, read, ??)) ~> walking_state_of(b)
+  match read_all(writes, writer_path_read(path, read, ??)) ~> walking_state_of(b) {
+    Some(found) => match path {
+      [step, ..._] => if nothing_written(memory_writes(b, step)) { Some(found) } else { None },
+      [] => Some(found),
+    },
+    None => None,
+  }
 }
 
 fn writer_path_read(path, read, w) = match path {
@@ -987,7 +1036,22 @@ fn built_path_read(whole, step, rest, read) = match graph_node_body(whole) {
   | NTypeAnn(_)
   | NName(_)
   | NRow(_)
-  | NParam(_) => nodes_path_read(built_part(whole, step), rest, read),
+  | NParam(_) => match built_part(whole, step) {
+    Some(placed) => if nothing_written(memory_writes(whole, step)) {
+      nodes_path_read(Some(placed), rest, read)
+    } else {
+      None
+    },
+    None => None,
+  },
+}
+
+// A node read answers what the part IS; a value a writer stored there is one
+// the part MAY hold, which only the leaves can say (`LMay`), so a written
+// memory is out of a node reader's sight.
+fn nothing_written(w) = match w {
+  WrittenBy(written) => len(written) == 0,
+  WrittenUnseen => false,
 }
 
 fn nodes_path_read(found, rest, read) = match found {
@@ -1086,6 +1150,7 @@ fn project_leaf(leaf, step) = match leaf {
     Some(pc) => LClaimed(pc, project_leaf(beneath, step)),
     None => project_leaf(beneath, step),
   },
+  LMay(beneath) => LMay(project_leaf(beneath, step)),
   // a constant, a sum, a length or a free return has no parts
   LPoint(_) => LUnknown,
   LSum(_) => LUnknown,
@@ -1392,6 +1457,7 @@ fn leaves_contract(leaves) = match leaves {
 
 fn leaf_is_ret(root, leaf) = match leaf {
   LRet(r) => graph_chase_handle(r) == root,
+  LMay(beneath) => leaf_is_ret(root, beneath),
   LPoint(_) | LParam(_, _) | LPost(_) | LSum(_) | LLength | LClaimed(_, _) | LBuilt(_) | LUnknown => false,
 }
 
@@ -1399,6 +1465,7 @@ fn leaf_contract(leaf) = match leaf {
   LParam(_, c) => Some(c),
   LPost(c) => Some(c),
   LClaimed(c, _) => Some(c),
+  LMay(beneath) => leaf_contract(beneath),
   LPoint(_) | LSum(_) | LLength | LRet(_) | LBuilt(_) | LUnknown => None,
 }
 
@@ -1438,6 +1505,7 @@ fn leaf_excludes(k, leaf) = match leaf {
   LParam(_, c) => if contract_excludes(c, k) { Some(true) } else { None },
   LLength => if k < 0 { Some(true) } else { None },
   LClaimed(_, beneath) => leaf_excludes(k, beneath),
+  LMay(beneath) => proves_only(leaf_excludes(k, beneath)),
   LPost(_) => None,
   LSum(_) => None,
   LRet(_) => None,
@@ -1468,6 +1536,7 @@ fn leaf_lo(leaf) = match leaf {
   LPost(c) => domain_lo(ty_domain(c)),
   // both hold of the one value, so the bounds MEET
   LClaimed(c, beneath) => bound_meet(int_max, domain_lo(ty_domain(c)), leaf_lo(beneath)),
+  LMay(beneath) => leaf_lo(beneath),
   LSum(lo) => lo,
   LLength => Some(0),
   LRet(_) => None,
@@ -1497,8 +1566,22 @@ fn leaves_carry_alias(leaves, aname: String) =
   len(leaves) > 0 && all(leaf_carries(aname, ??), leaves)
 
 // A value's leaves read at a path into it — each projected one step at a
-// time, as a destructured part reads its whole (`project_leaf`).
-fn path_leaves(h, path) = path |> fold(node_leaves(h), project_leaves)
+// time, as a destructured part reads its whole (`project_leaf`) — beside
+// what every writer of its memory stored there. Where a writer stored, what
+// the part held may have been replaced, so each value is one it MAY hold.
+fn path_leaves(h, path) = match path {
+  [] => node_leaves(h),
+  [step, ...rest] => match memory_writes(h, step) {
+    WrittenUnseen => [LUnknown],
+    WrittenBy(written) => written_may(
+      written,
+      (rest |> fold(project_leaves(node_leaves(h), step), project_leaves)) ++ (written |> flat_map(path_leaves(??, rest)))
+    ),
+  },
+}
+
+// A part's leaves where a writer stored: every one a value it MAY hold.
+fn written_may(written, leaves) = if len(written) == 0 { leaves } else { leaves |> map(LMay) }
 
 fn project_leaves(leaves, step) = leaves |> map(project_leaf(??, step))
 
@@ -1506,6 +1589,7 @@ fn leaf_carries(aname: String, leaf) = match leaf {
   LParam(_, c) => ty_names_alias(c, aname),
   LPost(c) => ty_names_alias(c, aname),
   LClaimed(c, beneath) => ty_names_alias(c, aname) || leaf_carries(aname, beneath),
+  LMay(beneath) => leaf_carries(aname, beneath),
   LPoint(_) | LSum(_) | LLength | LRet(_) | LBuilt(_) | LUnknown => false,
 }
 
@@ -1538,6 +1622,7 @@ fn leaves_params(leaves) = leaves |> flat_map(leaf_param)
 fn leaf_param(leaf) = match leaf {
   LParam(b, _) => [b],
   LClaimed(_, beneath) => leaf_param(beneath),
+  LMay(beneath) => leaf_param(beneath),
   LPoint(_) | LPost(_) | LSum(_) | LLength | LRet(_) | LBuilt(_) | LUnknown => [],
 }
 
@@ -1549,6 +1634,7 @@ fn leaf_unproven(leaf) = match leaf {
   LPost(_) => true,
   LSum(_) => true,
   LClaimed(_, _) => true,
+  LMay(beneath) => leaf_unproven(beneath),
   LPoint(_) | LParam(_, _) | LLength | LRet(_) | LBuilt(_) | LUnknown => false,
 }
 
@@ -3386,6 +3472,519 @@ fn holds_memory(h) = match graph_chase(h) {
     | TAlias(_, _) => true,
   },
   GNode(_, _) => true,
+}
+
+// A memory's parts are what its writers put there. A part read off how a
+// value was built is the construction's only while nothing else writes that
+// memory: each write the walk can place in it adds what it stored there, and
+// a memory whose writers cannot all be seen is out of sight at every part.
+// The language writes a list in place — `list_set`, and through it any
+// function that writes what it is handed — and never a record, a tuple or a
+// constructor's payload, so a list's elements are what has writers.
+type Written = WrittenBy([Int]) | WrittenUnseen
+
+fn memory_writes(n, step) = if step_into_list(step) && holds_memory(n) {
+  frame_writes(frame_of(n), memory_roots(n), step)
+} else {
+  WrittenBy([])
+}
+
+// The memory a node names: a parameter's or a state's binder is that memory
+// itself, a part of another value is out of the roots' reach, and any other
+// node is the memory its value may be.
+fn memory_roots(n) = match graph_binder_of(n) {
+  Some(fact) => match fact {
+    StateFact(_) => RootsAt([n]),
+    ParamFact(_) => RootsAt([n]),
+    PartFact(_) => RootsAny,
+  },
+  None => value_roots(n),
+}
+
+fn step_into_list(step) = match step {
+  PartElem | PartRest => true,
+  PartIndex(_) | PartCtor(_, _) | PartField(_) | PartTypeArg(_) => false,
+}
+
+fn written_join(a, b) = match a {
+  WrittenUnseen => WrittenUnseen,
+  WrittenBy(xs) => match b {
+    WrittenUnseen => WrittenUnseen,
+    WrittenBy(ys) => WrittenBy(xs ++ ys),
+  },
+}
+
+// The code that runs between a memory's making and a read of it: the
+// declaration or the handler it stands in, with every nested function and
+// literal inside it, since each runs while the frame does. A module value
+// stands in the whole program, which every declaration can write.
+type MemoryFrame = FrameOf(Int, Int) | FrameProgram
+
+fn frame_of(n) = match graph_parent_of(n) {
+  Some(p) => match graph_node_body(p) {
+    NStmt(FnStmt(_, _, _, _, body)) => FrameOf(p, body),
+    NStmt(HandlerDeclStmt(_, _, _, _, _, _)) => FrameOf(p, p),
+    NModule(_) => FrameProgram,
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => frame_of(p),
+  },
+  None => FrameProgram,
+}
+
+// The frame's code is walked where it stands, each judged node asked once.
+fn frame_any(p, h) =
+  node_judged(h) && p(h) || (graph_node_body(h) |> body_child_handles |> any(frame_any(p, ??)))
+
+fn frame_written(rs, step, acc, h) = match acc {
+  WrittenUnseen => WrittenUnseen,
+  WrittenBy(_) => {
+    let here = if node_judged(h) { written_join(acc, node_writes(rs, step, h)) } else { acc }
+    graph_node_body(h) |> body_child_handles |> fold(here, frame_written(rs, step, ??, ??))
+  },
+}
+
+// What the frame's code can have written into memory the roots name, where
+// a part of it is read. A write the walk cannot place — into a part of a
+// value, through a name it cannot follow — may be any memory. A memory
+// handed to code that keeps it or writes it out of sight is out of sight,
+// and so is a memory older than the frame — a parameter's, a state's, a
+// capture's — or one a value holds elsewhere, where the frame calls code
+// that writes memory older than its own. A handler's arms run in any order,
+// so its memory is read once every arm is judged; a declaration's code runs
+// in its order, so what the judgment has not reached is written after.
+fn frame_writes(frame, roots, step) = match frame {
+  FrameProgram => WrittenUnseen,
+  FrameOf(owner, body) => if frame_unjudged(owner, body) || frame_any(writes_unplaced, body) {
+    WrittenUnseen
+  } else {
+    match roots {
+      RootsAny => if frame_any(writes_older, body) { WrittenUnseen } else { WrittenBy([]) },
+      RootsAt(rs) => if frame_any(hands_away(rs, ??), body) || any(root_shared(owner, ??), rs) && frame_any(writes_older, body) {
+        WrittenUnseen
+      } else {
+        frame_written(rs, step, WrittenBy([]), body)
+      },
+    }
+  },
+}
+
+fn node_judged(n) = match graph_chase(n) {
+  GNode(NBound(_), _) => true,
+  GNode(_, _) => false,
+}
+
+fn frame_unjudged(owner, body) = match graph_node_body(owner) {
+  NStmt(HandlerDeclStmt(_, _, _, _, _, _)) => expr_unjudged(body),
+  NExpr(_)
+  | NStmt(_)
+  | NPat(_)
+  | NHole(_)
+  | NModule(_)
+  | NLink(_)
+  | NTypeAnn(_)
+  | NName(_)
+  | NRow(_)
+  | NParam(_) => false,
+}
+
+fn expr_unjudged(h) = match graph_node_body(h) {
+  NExpr(_) => !node_judged(h),
+  NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => false,
+} || (graph_node_body(h) |> body_child_handles |> any(expr_unjudged))
+
+fn meets(rs, x) = match value_roots(x) {
+  RootsAt(xs) => any({ x => any({ r => r == x }, rs) }, xs),
+  RootsAny => false,
+}
+
+// A root the frame did not make: a parameter, a state, a part of another
+// value, or a binder or construction standing outside the frame.
+fn root_shared(owner, r) = match graph_binder_of(r) {
+  Some(_) => true,
+  None => match graph_node_body(r) {
+    NParam(_) => true,
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) => !within(r, owner),
+  },
+}
+
+fn within(n, owner) = n == owner || match graph_parent_of(n) {
+  Some(p) => within(p, owner),
+  None => false,
+}
+
+// What an application is to the memory it is handed: a construction, a raw
+// store of the substrate, a substrate primitive read by its face, a declared
+// function read by its claim, a perform, an install's configuration, or a
+// function value the walk cannot name.
+type AppKind = AkBuild | AkRaw(RawStore) | AkFace(Int) | AkDecl(Int) | AkPerform([Int]) | AkInstall | AkValue
+
+fn app_kind(c) = if ref_is_constructor(c) {
+  AkBuild
+} else if reaches_substrate(c) {
+  match graph_ref_decl(c) {
+    Some(d) => AkFace(d),
+    None => AkValue,
+  }
+} else {
+  match graph_node_body(c) {
+    NExpr(VarRef(cname)) => match raw_store_target(cname) {
+      RsNone => named_app_kind(c),
+      found @ (RsAt(_) | RsAll) => AkRaw(found),
+    },
+    NExpr(_)
+    | NStmt(_)
+    | NPat(_)
+    | NHole(_)
+    | NModule(_)
+    | NLink(_)
+    | NTypeAnn(_)
+    | NName(_)
+    | NRow(_)
+    | NParam(_) => AkValue,
+  }
+}
+
+fn named_app_kind(c) = match graph_ref_decl(c) {
+  Some(d) => match graph_published(d) {
+    Some((_, _, kind)) => match kind {
+      FnScheme => match graph_node_body(d) {
+        NStmt(FnStmt(_, _, _, _, _)) => AkDecl(d),
+        NExpr(_)
+        | NStmt(_)
+        | NPat(_)
+        | NHole(_)
+        | NModule(_)
+        | NLink(_)
+        | NTypeAnn(_)
+        | NName(_)
+        | NRow(_)
+        | NParam(_) => AkValue,
+      },
+      ConstructorScheme(_, _) => AkBuild,
+      EffectOpScheme(_, providers, _) => AkPerform(providers),
+      HandlerKind(_, _, _, _, _) | HandlerChainKind(_) => AkInstall,
+      RecordSchemeKind(_)
+      | EffectDeclKind(_, _)
+      | ParamScheme(_)
+      | RowAliasKind(_)
+      | TypeVariants(_)
+      | ValueScheme => AkValue,
+    },
+    None => AkValue,
+  },
+  None => AkValue,
+}
+
+// An application and what it is handed: a call; a pipe into a stage that is
+// not itself a call, whose piped value is the stage's argument; a fanout,
+// whose input its branches are handed; a feedback line, which keeps what it
+// is fed.
+fn app_of(n) = match graph_node_body(n) {
+  NExpr(CallExpr(callee, _)) => Some((app_kind(callee), applied_args(n))),
+  NExpr(PipeExpr(kind, left, stage)) => match kind {
+    PForward => match graph_node_body(stage) {
+      NExpr(CallExpr(_, _)) => None,
+      NExpr(_)
+      | NStmt(_)
+      | NPat(_)
+      | NHole(_)
+      | NModule(_)
+      | NLink(_)
+      | NTypeAnn(_)
+      | NName(_)
+      | NRow(_)
+      | NParam(_) => Some((app_kind(stage), [left])),
+    },
+    PFanout(_) | PFeedback => Some((AkValue, [left])),
+    PTee => None,
+  },
+  NExpr(_)
+  | NStmt(_)
+  | NPat(_)
+  | NHole(_)
+  | NModule(_)
+  | NLink(_)
+  | NTypeAnn(_)
+  | NName(_)
+  | NRow(_)
+  | NParam(_) => None,
+}
+
+// A node that puts the memory where its later writes cannot be seen: into
+// another value — a construction's field, a fanout's branch, the value a
+// writer stores, a resume, a state's update — or into code that keeps it or
+// writes it out of sight.
+fn hands_away(rs, n) = match graph_node_body(n) {
+  NExpr(MakeListExpr(elems)) => any(meets(rs, ??), elems),
+  NExpr(MakeTupleExpr(elems)) => any(meets(rs, ??), elems),
+  NExpr(FanoutExpr(elems)) => any(meets(rs, ??), elems),
+  NExpr(MakeRecordExpr(fields)) => any({ (_, v) => meets(rs, v) }, fields),
+  NExpr(NamedRecordExpr(_, fields)) => any({ (_, v) => meets(rs, v) }, fields),
+  NExpr(RecordUpdateExpr(_, fields)) => any({ (_, v) => meets(rs, v) }, fields),
+  NExpr(ResumeExpr(v, updates)) => meets(rs, v) || any({ u => meets(rs, u.init) }, updates),
+  NExpr(_)
+  | NStmt(_)
+  | NPat(_)
+  | NHole(_)
+  | NModule(_)
+  | NLink(_)
+  | NTypeAnn(_)
+  | NName(_)
+  | NRow(_)
+  | NParam(_) => match app_of(n) {
+    Some((kind, args)) => app_hands_away(rs, kind, args),
+    None => false,
+  },
+}
+
+fn app_hands_away(rs, kind, args) = match kind {
+  AkBuild => any(meets(rs, ??), args),
+  AkRaw(target) => args |> enumerate |> any({ (i, a) => !raw_targets(target, i) && meets(rs, a) }),
+  AkFace(d) => face_stored_slots(d) |> any({ i => slot_meets(rs, args, i) }),
+  AkDecl(d) => match graph_store_claim_of(d) {
+    Some(StoreClaim(s)) => (s.beyond || s.opaque) && any(meets(rs, ??), args) || applies_write_handed(rs, s, args),
+    None => any(meets(rs, ??), args),
+  },
+  AkPerform(_) | AkInstall | AkValue => any(meets(rs, ??), args),
+}
+
+fn raw_targets(target, i) = match target {
+  RsAt(t) => t == i,
+  RsAll | RsNone => false,
+}
+
+fn slot_meets(rs, args, i) = match nth_handle(args, i) {
+  Some([a]) => meets(rs, a),
+  None | Some(_) => false,
+}
+
+fn slot_nodes(args, i) = match nth_handle(args, i) {
+  Some(nodes) => nodes,
+  None => [],
+}
+
+// A function a callee applies writes what the callee hands it: the memory a
+// slot hands the callee is written where it is handed to such a function.
+fn applies_write_handed(rs, s, args) =
+  s.applies |> any({ (k, handed) => applied_writes(args, k) && any(handed_meets(rs, args, ??), handed) })
+
+fn handed_meets(rs, args, handed) = match handed {
+  HandedParam(j) => slot_meets(rs, args, j),
+  HandedLoop(j, _) => slot_meets(rs, args, j),
+  HandedNone => any(meets(rs, ??), args),
+}
+
+// Whether the function at a slot writes memory — any it is handed, a
+// capture, its own record, or memory older than its frame: a literal or a
+// declaration read by its claim, anything else by nothing it can show.
+fn applied_writes(args, k) = match nth_handle(args, k) {
+  Some([f]) => match fn_claim(f) {
+    Some(StoreClaim(s)) => len(s.mutated) > 0 || len(s.captures) > 0 || s.record || s.beyond || s.opaque,
+    None => true,
+  },
+  None | Some(_) => true,
+}
+
+fn fn_claim(f) = match graph_node_body(f) {
+  NExpr(LambdaExpr(_, _)) => graph_store_claim_of(f),
+  NExpr(VarRef(_)) => match graph_ref_decl(f) {
+    Some(d) => graph_store_claim_of(d),
+    None => None,
+  },
+  NExpr(_)
+  | NStmt(_)
+  | NPat(_)
+  | NHole(_)
+  | NModule(_)
+  | NLink(_)
+  | NTypeAnn(_)
+  | NName(_)
+  | NRow(_)
+  | NParam(_) => None,
+}
+
+// A write into memory the walk cannot place: a raw store, a substrate writer
+// or a function writing what it is handed, each into a part of a value or
+// through a name the walk cannot follow, and the image restored whole.
+fn writes_unplaced(n) = match app_of(n) {
+  Some((kind, args)) => match kind {
+    AkRaw(target) => match target {
+      RsAt(i) => slot_unplaced(args, i),
+      RsAll => true,
+      RsNone => false,
+    },
+    AkFace(d) => claim_mutated(d) |> any(slot_unplaced(args, ??)),
+    AkDecl(d) => claim_mutated(d) |> any(slot_unplaced(args, ??)),
+    AkBuild | AkPerform(_) | AkInstall | AkValue => false,
+  },
+  None => false,
+}
+
+fn slot_unplaced(args, i) = match nth_handle(args, i) {
+  Some([a]) => value_roots(a) == RootsAny,
+  None | Some(_) => true,
+}
+
+fn claim_mutated(d) = match graph_store_claim_of(d) {
+  Some(StoreClaim(s)) => s.mutated,
+  None => [],
+}
+
+// A write into memory older than the frame, by code the frame calls: a
+// callee whose claim says it writes beyond what it is handed, or applies a
+// function that writes; a perform whose handlers' arms write their
+// configuration or older memory; a function value whose row can carry
+// `Mutate`, since a store into any memory older than the function's own run
+// is that effect in its row.
+fn writes_older(n) = match app_of(n) {
+  Some((kind, args)) => match kind {
+    AkDecl(d) => match graph_store_claim_of(d) {
+      Some(StoreClaim(s)) => s.beyond || s.opaque || (s.applies |> any({ (k, _) => applied_writes(args, k) })),
+      None => true,
+    },
+    AkPerform(providers) => any(arms_write, providers),
+    AkValue => value_call_writes(n),
+    AkBuild | AkRaw(_) | AkFace(_) | AkInstall => false,
+  },
+  None => false,
+}
+
+fn value_call_writes(n) = match graph_node_body(n) {
+  NExpr(CallExpr(callee, _)) => match graph_chase(callee) {
+    GNode(NBound(TFun(_, _, row)), _) => row_may_carry_mutate(row),
+    GNode(_, _) => true,
+  },
+  NExpr(_)
+  | NStmt(_)
+  | NPat(_)
+  | NHole(_)
+  | NModule(_)
+  | NLink(_)
+  | NTypeAnn(_)
+  | NName(_)
+  | NRow(_)
+  | NParam(_) => true,
+}
+
+// Whether a callee's row can carry Mutate into this frame: it names it, or
+// its tail is still open to a row this frame's callers fill. A row that can
+// carry none makes the callee's claim moot, whatever it says of itself: the
+// scope keeps every unaccounted write where the row could hold one, and
+// nowhere else, so an opaque callee whose row is closed and clean costs its
+// callers nothing. The tail is read through its cells: an edge whose mask
+// names Mutate carries none, an edge bound to a row carries what that row
+// can, and a free edge can carry anything. Read off the edges alone, every
+// call of a stage whose callback was already judged clean was masked into a
+// row of its own — the self-compile's line peak, 2026-10-21.
+fn row_may_carry_mutate(row) = match row {
+  EfRow(present, absent, tail) => any(names_mutate, present) || match tail {
+    EtClosed => false,
+    EtAll => !any(names_mutate, absent),
+    EtOpen(edges) => any(edge_may_carry_mutate, edges),
+  },
+}
+
+fn edge_may_carry_mutate(e) = if any(names_mutate, edge_mask(e)) {
+  false
+} else {
+  match graph_chase(edge_cell(e)) {
+    GNode(kind, _) => match edge_row_of(kind) {
+      Some(inner) => row_may_carry_mutate(inner),
+      None => true,
+    },
+  }
+}
+
+fn arms_write(hd) = match graph_store_claim_of(hd) {
+  Some(StoreClaim(s)) => s.beyond || s.opaque || len(s.mutated) > 0,
+  None => true,
+}
+
+// What one node writes into memory the roots name: a raw store's word, at a
+// place no part names; a substrate writer the values its face stores; a
+// declared function what its own code stores into the parameter it is
+// handed the memory at.
+fn node_writes(rs, step, n) = match app_of(n) {
+  Some((kind, args)) => match kind {
+    AkRaw(target) => match target {
+      RsAt(i) => if slot_meets(rs, args, i) { WrittenUnseen } else { WrittenBy([]) },
+      RsAll => WrittenUnseen,
+      RsNone => WrittenBy([]),
+    },
+    AkFace(d) => if claim_mutated(d) |> any(slot_meets(rs, args, ??)) {
+      WrittenBy(face_stored_slots(d) |> flat_map(slot_nodes(args, ??)))
+    } else {
+      WrittenBy([])
+    },
+    AkDecl(d) => claim_mutated(d) |> filter(slot_meets(rs, args, ??)) |> map(param_writes(d, ??, step)) |> fold(WrittenBy([]), written_join),
+    AkBuild | AkPerform(_) | AkInstall | AkValue => WrittenBy([]),
+  },
+  None => WrittenBy([]),
+}
+
+// What a declared function stores into the memory its parameter is handed:
+// the same law read in its own frame. A function the walk is already inside
+// writes what the walk cannot yet say.
+fn param_writes(d, k, step) = if walking_state(d) {
+  WrittenUnseen
+} else {
+  match graph_node_body(d) {
+    NStmt(FnStmt(_, params, _, _, body)) => match nth_handle(params, k) {
+      Some([p]) => frame_writes(FrameOf(d, body), RootsAt([p]), step) ~> walking_state_of(d),
+      None | Some(_) => WrittenUnseen,
+    },
+    NExpr(_)
+    | NStmt(_)
+    | NPat(_)
+    | NHole(_)
+    | NModule(_)
+    | NLink(_)
+    | NTypeAnn(_)
+    | NName(_)
+    | NRow(_)
+    | NParam(_) => WrittenUnseen,
+  }
+}
+
+// The slots whose values a substrate writer stores into the list it writes:
+// those its face types by the element alone.
+fn face_stored_slots(d) = match graph_node_body(d) {
+  NStmt(FnStmt(name, _, _, _, _)) => match seq_face(name, face_element()) {
+    Some((ptys, _)) => ptys |> enumerate |> flat_map({ (i, t) => if is_face_element(t) { [i] } else { [] } }),
+    None => [],
+  },
+  NExpr(_)
+  | NStmt(_)
+  | NPat(_)
+  | NHole(_)
+  | NModule(_)
+  | NLink(_)
+  | NTypeAnn(_)
+  | NName(_)
+  | NRow(_)
+  | NParam(_) => [],
+}
+
+// The element a face is read over: a variable no judgment mints.
+fn face_element() = TVar(-1)
+
+fn is_face_element(t) = match t {
+  TVar(v) => v == -1,
+  TInt
+  | TFloat
+  | TUnit
+  | TByte
+  | TAddr
+  | TList(_)
+  | TTuple(_)
+  | TFun(_, _, _)
+  | TName(_, _)
+  | TRecord(_)
+  | TRecordOpen(_, _)
+  | TRefined(_, _)
+  | TReprPin(_, _)
+  | TCont(_, _, _, _)
+  | TAlias(_, _)
+  | TValue(_) => false,
 }
 
 // How a store writes: a raw Memory store writes what it is handed into the

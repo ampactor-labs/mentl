@@ -1,0 +1,9 @@
+// expect: 6
+// A sugar's node reaches its primitive by an edge, and is no reference to it:
+// `fs[0](5)` calls the element the index reads, and is typed by the element's
+// own function type, never by `list_index`'s face.
+fn first_applied(fs) = fs[0](5)
+
+fn succ(n) = n + 1
+
+fn main() = first_applied([succ])

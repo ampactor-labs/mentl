@@ -36,6 +36,8 @@
 // numbers its lines from 1.
 import types
 
+import canon
+
 import effects
 
 import imap
@@ -405,6 +407,41 @@ fn at_module_level(h) = match graph_parent_of(h) {
     NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => false,
   },
   None => false,
+}
+
+// A substrate primitive's face belongs to its declaration: a reference takes
+// it along the edge that reaches the primitive — a module-level declaration
+// whose name the face table holds (canon.mn's `is_seq_op`) — and a
+// parameter, a local or a nested fn sharing that name is read as itself. A
+// sugar's node reaches its primitive by an edge too, and is no reference to
+// it: `fs[0](0)` calls the element, never `list_index`.
+fn reaches_substrate(ref_h) = match graph_node_body(ref_h) {
+  NExpr(VarRef(_)) => match graph_ref_decl(ref_h) {
+    Some(d) => at_module_level(d) && match graph_node_body(d) {
+      NStmt(FnStmt(name, _, _, _, _)) => is_seq_op(name),
+      NStmt(_)
+      | NExpr(_)
+      | NPat(_)
+      | NHole(_)
+      | NModule(_)
+      | NLink(_)
+      | NTypeAnn(_)
+      | NName(_)
+      | NRow(_)
+      | NParam(_) => false,
+    },
+    None => false,
+  },
+  NExpr(_)
+  | NStmt(_)
+  | NPat(_)
+  | NHole(_)
+  | NModule(_)
+  | NLink(_)
+  | NTypeAnn(_)
+  | NName(_)
+  | NRow(_)
+  | NParam(_) => false,
 }
 
 // THE ACCEPT EDGE, read at the one writer (C4). A node bound at an extent

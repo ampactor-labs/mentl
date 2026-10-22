@@ -1,0 +1,16 @@
+// expect: 134
+// A callee that stores into a parameter writes the memory its caller hands it:
+// the caller's list holds what the callee's store put there, so the division
+// over its element is not proven and the product keeps it.
+fn zero_first(xs) = list_set(xs, 0, 0)
+
+fn first_inverse() = {
+  let ys = [3]
+  zero_first(ys)
+  match ys {
+    [h, ..._] => 100 / h * 0,
+    [] => 1,
+  }
+}
+
+fn main() = first_inverse()

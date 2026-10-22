@@ -1,0 +1,19 @@
+// expect: 134
+// A list placed inside another value is out of its frame's sight: whoever is
+// handed the value may write it, so nothing is known of its parts after, and
+// the division over its element is kept.
+fn zero_inner(t) = match t {
+  [inner, ..._] => list_set(inner, 0, 0),
+  [] => [],
+}
+
+fn first_inverse() = {
+  let ys = [4]
+  zero_inner([ys])
+  match ys {
+    [h, ..._] => 100 / h * 0,
+    [] => 1,
+  }
+}
+
+fn main() = first_inverse()

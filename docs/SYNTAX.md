@@ -1548,6 +1548,24 @@ its precondition guards paid where the claim is open. An index read is a part
 read (`100 / xs[0]` under `xs: [Positive]` is total), and `let xs:
 [Positive] = [0]` refuses where it is written.
 
+**A memory's parts are what its writers put there.** A list is written in
+place (`list_set`), so an element read from it is what it was built with or
+any value a store into its memory placed there, and each stored value is one
+the part MAY hold: what holds of every such value proves the claim, and no
+one of them refutes it, since another write may have replaced it. The
+writers are read in the frame the memory is read in — the declaration or
+handler holding the read, every function and literal inside it — and through
+each callee the memory is handed to, by what its own code stores into the
+parameter. A memory the frame hands where its later writes cannot be seen —
+into another value, a resume, a state's update, a function value whose row
+can carry `Mutate` — or a memory older than the frame where the frame calls
+code that writes older memory, is out of sight, and so is every memory in a
+frame holding a write the walk cannot place. A parameter's precondition and
+a state's writes hold where they are made; a store the frame makes after
+them may replace what they promised. A handler's arms run in any order, so
+its memory is read once every arm is judged, and a claim owed before then is
+asked again when the judgment settles (tests/micros/mn-memory-written-*.mn).
+
 **A function's contract travels with the function.** A lambda's parameter
 learns its precondition as a declared one does — `(c) => alpha(c)` demands
 `Hz` of every value it is called with — and every application owes it: a call

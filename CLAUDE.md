@@ -186,6 +186,11 @@ size, and nothing a commit writes moves it.
 - **A landing is committed whole.** No "first pin", no "remaining" list: an arc
   too large for one commit is split into landings each whole in itself, each a
   PLAN §11 item.
+- **Foundations first, by dependency.** Before a landing starts, every fact it
+  reads is carried by an edge already landed; a fact it needs that no landing
+  carries is the landing built first. Nothing is left pending, "may" or half
+  done because a later landing is missing — the order is chosen so each
+  landing is whole when it lands.
 - **PLAN §11 is the only list of open work.** A gap found inside the arc is
   fixed inside the arc; nothing is parked anywhere else.
 - **A gate is obeyed, never satisfied.** When a gate goes red, the work is what

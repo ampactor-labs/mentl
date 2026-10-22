@@ -1,0 +1,23 @@
+// expect: 134
+// A handler state an arm hands out is memory its performer may write, so the
+// state's parts are no longer only what its writes put there, and the arm's
+// division over its element is kept.
+effect Bag {
+  items() -> [Int]
+  first() -> Int
+}
+
+handler bag with xs = [5] {
+  items() => resume(xs),
+  first() => match xs {
+    [h, ..._] => resume(100 / h * 0),
+    [] => resume(1),
+  },
+}
+
+fn hand_out() = {
+  list_set(items(), 0, 0)
+  first()
+} ~> bag
+
+fn main() = hand_out()

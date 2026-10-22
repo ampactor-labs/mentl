@@ -5025,6 +5025,11 @@ effect Verify {
   // over the graph the keep merged, so nothing is decided again and a
   // refutation reported inside the fork is not reported twice.
   verify_adopt(entries: [(Int, Span, Predicate, Bool)])
+  // Every claim still owed, asked again once the whole program is judged —
+  // a claim reads what the judgment may reach after it: a handler's later
+  // arm, a declaration later in the file — and kept as the verdict it now
+  // has: answers the claims refuted.
+  verify_reask() -> [(Int, Span, Predicate, Reason)]
   // What the settle decided of every such claim and of every demand they
   // stand on, replacing what the last settle decided: None owed, Some(true)
   // proven, Some(false) refuted.

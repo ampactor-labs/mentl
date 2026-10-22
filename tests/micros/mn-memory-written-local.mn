@@ -1,0 +1,15 @@
+// expect: 134
+// A list's parts are what its writers put there: the literal holds 1, and the
+// store beside it replaced it with 0, so the division is not proven and the
+// product keeps it — the program traps as written. Read as the literal alone,
+// the claim was proven and `(100 / h) * 0` folded to 0 over a zero divisor.
+fn first_inverse() = {
+  let xs = [1, 2]
+  list_set(xs, 0, 0)
+  match xs {
+    [h, ..._] => 100 / h * 0,
+    [] => 1,
+  }
+}
+
+fn main() = first_inverse()

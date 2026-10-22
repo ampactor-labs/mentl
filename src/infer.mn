@@ -1378,6 +1378,11 @@ fn infer_program_once(stmts, parse_start, parse_end) = {
   // reads every generation's literals, which can only resolve more, never
   // less.
   comment_refs_check(parse_start, parse_end)
+  // A claim still owed is asked again here, once everything it can read is
+  // judged: a handler's arms read each other's writes in any order. What it
+  // publishes is the ledger it rewrites and the refusals it reports, so the
+  // walks it makes die at the arena's exit.
+  reask_settle() ~> arena
   // What can reach a value is a fact of the whole program, so the claims
   // naming a label are decided here, once every declaration is judged.
   flow_settle()
@@ -4985,70 +4990,6 @@ fn callee_params_at(fh) = match lookup_ty(fh) {
   _ => [],
 }
 
-// is_seq_op — the names of the sequence node-kind's projections. A sequence is
-// ONE kernel node-kind (§4①); these are the cursor reading or building it.
-// Routed to `infer_seq_op` so each types by the ELEMENT, never by its
-// `load_i32`/`alloc` substrate body (whose inferred type erases `[a]` to `Int`
-// — the value-ontology violation that poisoned the whole compiler's list
-// handling). Strings are `[byte]`: `byte_at` IS `list_index`, `byte_len` IS
-// `len`, `str_concat` IS `list_concat` — the same projections over a different
-// element, so the string ops route here too (the §IX four-set unification).
-// cname pins : String — the Intent Boundary that proves ALL sixteen `==`
-// below STRUCTURAL (str_eq), not the pointer-eq i32.eq an unproven operand
-// floors to. Unproven, whether `len` was recognized as a sequence op was a
-// LAYOUT LOTTERY (interned "len" in the data section vs the heap cname from
-// the token): m2's allocation happened to recognize it, m3's did not, so
-// m3 routed `len(argv)` through the normal path, mistyped the compare, and
-// `len(argv) < 2` emitted `list_compare` — m3 dispatched every stdin
-// compile (incl. the wheel → m4) to CLI help. The mint_params handle-bind
-// (this session) is what makes this pin propagate. The by-name fork itself
-// is drift-8; its ultimate dissolution — the seq ops carry authored
-// signatures (`len(xs: [a]) -> Int`) so inference reads the signature not
-// the load_i32 word-idiom body, retiring is_seq_op — is the named peer
-// Hβ.infer.seq-op-signature-driven (DEP Hβ.infer.authored-typaram-rigid).
-//
-// The SUBSTRATE primitives only — their bodies do pointer arithmetic
-// (load_i32(list + 4)) that erases [a] to Int, so inference reads the element
-// type here instead (the value-ontology boundary, §4①, named peer
-// Hβ.value.repr-projection-primitives). The FUNCTORS are GONE from here: they
-// DERIVE their own types from their bodies now that Iterate.result returns the
-// handler-delivered value (result() -> r, prelude.mn) instead of a fabricated
-// (). Zero re-derivation — the type is read from the one place it lives.
-// A primitive's face belongs to its declaration: a reference takes it along
-// the edge that reaches the primitive — a module-level declaration of a name
-// in the table — and a parameter, a local or a nested fn sharing that name is
-// judged as itself.
-fn reaches_substrate(ref_h) = match graph_ref_decl(ref_h) {
-  Some(d) => at_module_level(d) && is_seq_op(callee_name(ref_h)),
-  None => false,
-}
-
-fn is_seq_op(cname: String) with Pure = cname == "len" || cname == "list_index" || cname == "last" || cname == "drop_last" || cname == "list_set" || cname == "list_concat" || cname == "list_to_flat" || cname == "make_list" || cname == "slice" || cname == "push" ||
-// The String-builder half of the same boundary: int_to_str assembles a
-// [len][bytes] record by address arithmetic (a word), and the table
-// projects the String its consumers read — the §4① seam at the text face.
-cname == "int_to_str" ||
-// The Option-of-handle niche's READ (types.mn slot_present): typed
-// `a -> Bool` here so a presence test never pins its operand's element
-// type; the raw body compares the word.
-cname == "slot_present" ||
-// The show/hash surfaces: lower intercepts both names into structural
-// LShow/LHash nodes (emit-dispatched), so the table carries their
-// generic faces (a -> String, a -> Int) and the raw bodies never run.
-cname == "to_string" || cname == "hash" ||
-// The String face of the sequence node-kind (the comment above: byte_at IS
-// list_index, byte_len IS len). Typed here so consumers holding a String
-// type against the projection, never the load_i32 word-idiom body — the
-// exact list_index pattern (self-consistent raw body, typed calls).
-cname == "byte_len" || cname == "byte_at" ||
-// The String BUILDERS: their bodies alloc a [count][tag][bytes] record and
-// return its address (self-consistent inside, the int_to_str pattern);
-// typed here so the projected RESULT is the String consumers read, never the
-// raw buffer. str_payload is the reader that resolves a String to the
-// address of its contiguous stride-1 payload — String in, address out (the
-// WASI materialization boundary; the seq-addr down-cast in table form).
-cname == "str_slice" || cname == "str_concat" || cname == "str_of_single_byte" || cname == "str_payload" || cname == "str_of_buf" || cname == "float_to_str" || cname == "float_zero_pad" || cname == "float_format_fixed" || cname == "float_format_scientific" || cname == "float_render_positive" || cname == "float_digits_to_str"
-
 // seq_force — bind the i-th argument's type to `ty` (a no-op past the end).
 // `graph_bind` on a VarRef handle propagates to the bound variable (the same
 // mechanism the `xs[i]` IndexExpr arm uses to force its receiver).
@@ -5088,40 +5029,10 @@ fn seq_force(ah, i, ty, span: ValidSpan) = if len(ah) > i {
 // position typed by a fresh var (seq_unconstrained) is deliberately
 // unconstrained: the presence test (slot_present) reads any slot's word.
 fn seq_op_sig(cname: String, elem) = match cname {
-  "last" => Some(([TList(elem)], elem)),
-  "list_index" => Some(([TList(elem), TInt], elem)),
-  "int_to_str" => Some(([TInt], ty_string)),
-  // The String face: byte_at IS list_index over [byte], byte_len IS len.
-  "byte_len" => Some(([ty_string], TInt)),
-  "byte_at" => Some(([ty_string, TInt], TInt)),
-  "str_slice" => Some(([ty_string, TInt, TInt], ty_string)),
-  "str_concat" => Some(([ty_string, ty_string], ty_string)),
-  "str_of_single_byte" => Some(([TInt], ty_string)),
-  // str_payload resolves a String to the address of its contiguous stride-1
-  // payload; str_of_buf is the way back, a filled buffer's address read as
-  // the String it holds.
-  "str_payload" => Some(([ty_string], TAddr)),
-  "str_of_buf" => Some(([TAddr], ty_string)),
-  "float_to_str" => Some(([TFloat], ty_string)),
-  "float_render_positive" => Some(([TFloat], ty_string)),
-  "float_zero_pad" => Some(([TInt], ty_string)),
-  "float_format_fixed" => Some(([TList(TInt), TInt], ty_string)),
-  "float_format_scientific" => Some(([TList(TInt), TInt], ty_string)),
-  "float_digits_to_str" => Some(([TList(TInt), TInt, TInt], ty_string)),
   "slot_present" => Some(([seq_unconstrained()], TName("Bool", []))),
   "to_string" => Some(([seq_read_whole()], ty_string)),
   "hash" => Some(([seq_read_whole()], TInt)),
-  "len" => Some(([TList(elem)], TInt)),
-  "drop_last" => Some(([TList(elem)], TList(elem))),
-  "list_set" => Some(([TList(elem), TInt, elem], TList(elem))),
-  "push" => Some(([TList(elem), elem], TList(elem))),
-  "slice" => Some(([TList(elem), TInt, TInt], TList(elem))),
-  "list_concat" => Some(([TList(elem), TList(elem)], TList(elem))),
-  // Flatten is representation-only: type-preserving [a] -> [a] (flat_raw is
-  // its raw altitude; a raw-typed list_to_flat poisoned iterate's element).
-  "list_to_flat" => Some(([TList(elem)], TList(elem))),
-  "make_list" => Some(([TInt], TList(elem))),
-  _ => None,
+  _ => seq_face(cname, elem),
 }
 
 fn seq_unconstrained() = TVar(mint(Inferred("unconstrained substrate operand")))
@@ -9897,35 +9808,6 @@ fn mutation_masked(site, callee_h, row, args) = if row_may_carry_mutate(row) {
 }
 
 fn charged_fate(site, applied, acc, leaf) = fate_meet(acc, charge_leaf(site, leaf, applied, 0))
-
-// Whether a callee's row can carry Mutate into this frame: it names it, or
-// its tail is still open to a row this frame's callers fill. A row that can
-// carry none makes the callee's claim moot, whatever it says of itself: the
-// scope keeps every unaccounted write where the row could hold one, and
-// nowhere else, so an opaque callee whose row is closed and clean costs its
-// callers nothing. The tail is read through its cells: an edge whose mask
-// names Mutate carries none, an edge bound to a row carries what that row
-// can, and a free edge can carry anything. Read off the edges alone, every
-// call of a stage whose callback was already judged clean was masked into a
-// row of its own — the self-compile's line peak, 2026-10-21.
-fn row_may_carry_mutate(row) = match row {
-  EfRow(present, absent, tail) => any(names_mutate, present) || match tail {
-    EtClosed => false,
-    EtAll => !any(names_mutate, absent),
-    EtOpen(edges) => any(edge_may_carry_mutate, edges),
-  },
-}
-
-fn edge_may_carry_mutate(e) = if any(names_mutate, edge_mask(e)) {
-  false
-} else {
-  match graph_chase(edge_cell(e)) {
-    GNode(kind, _) => match edge_row_of(kind) {
-      Some(inner) => row_may_carry_mutate(inner),
-      None => true,
-    },
-  }
-}
 
 // What a callee's row's Mutate stands for at a call, read off its claim.
 // WHOLE: every write the callee makes has been charged at the site by the age
