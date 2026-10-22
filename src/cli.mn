@@ -300,7 +300,7 @@ fn verb_specs() = [
     "march",
     "",
     bare_verb(VMarch, ??),
-    "judge the wheel: emit, compare against the last generation, verdict"
+    "judge the wheel and emit its generation — tools/march.sh runs the generations and compares them"
   ),
   VerbSpec(
     "verify",

@@ -380,8 +380,9 @@ regression: the cost is algorithmic, never instruction slop. **If a change's
 justification is a number and not a law, it is the wrong change.**
 
 Cost is on the board: the march's m3 leg ratchets its peak RSS, and holds the
-image's own high-water against the pinned boot compiling the same wheel, so the
-ratchet measures the compiler and never the wheel's size; a ceiling never rises
+image's own high-water and its wall time against the pinned boot compiling the
+same wheel in the same march, so each ratchet measures the compiler and never
+the wheel's size or the machine's load; a ceiling never rises
 (a landing whose cost breaches one pays it down). The build order, each layer making the next O(1): (1) a name is a
 handle from the lexer on; (2) every read an O(1) chase — the environment, the
 reach walks (§11.18), instantiation shared rather than cloned; (3) the arena —
@@ -944,7 +945,9 @@ mn-refine-fanout-branch-owes.mn); a state
    `effects_of_edges` loop; the `wmap` columns have fixed bucket counts, so a
    graph read scans a bucket of hundreds; `ls_find_str_local` and
    `name_set_prefix_contains` scan per lookup (`Hβ.cost.hot-path-by-law`).
-   The self-compile's wall and peak ratchet down. (d) The edit's cone has a cutoff: a
+   The self-compile's wall and peak ratchet down; the wall is read as a share
+   of the boot's on the same wheel, since a lone wall reading is the machine's
+   load as much as the compiler's. (d) The edit's cone has a cutoff: a
    declaration whose rewritten dependency publishes the same scheme, row and
    claims is not judged again (`Hβ.session.edit-cone-cutoff`), where today
    every declaration whose judgment read a rewritten one is judged again

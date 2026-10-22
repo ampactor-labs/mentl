@@ -177,6 +177,15 @@ fn drop_variant_name(spec) = match spec {
   (t, _, tys) => (t, tys),
 }
 
+// A nominal type whose variants carry no payload is its tag word: a nullary
+// constructor builds its declaration index and nothing else, so the
+// structural fold at such a type is the word's own compare, and a sequence
+// of them is a sequence of words.
+fn sum_is_tag(applied) = match variant_specs_at(applied) {
+  [] => false,
+  specs => specs |> all({ (_, tys) => tys == [] }),
+}
+
 // The same read carrying each variant's constructor NAME — show prints it.
 fn variant_named_specs_at(applied) = match applied {
   TName(name, args) => match env_lookup_variants(name) {

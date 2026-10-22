@@ -57,11 +57,11 @@ fn pack_tag(tag, sc) with Pure = sc * 16 + tag
 fn seq_stride(ref list) = decode_stride(load_i32(addr_at(list, 4)) / 16)
 
 // The node's shape, off its tag word (0 flat, 1 snoc, 3 concat, 4 slice):
-// the builders here write the only tags, and this load trusts the image as a
-// walk's every load does, so a walk dispatches on the shape whole.
+// the builders here write the only tags, and the word is trusted as a walk's
+// every load is, so a walk dispatches on the shape whole.
 type SeqShape = SeqFlat | SeqSnoc | SeqConcat | SeqSlice
 
-fn seq_shape(ref list) = match i32_and(load_i32(addr_at(list, 4)), 15) {
+fn seq_shape(tw) = match i32_and(tw, 15) {
   0 => SeqFlat,
   1 => SeqSnoc,
   3 => SeqConcat,
@@ -237,8 +237,8 @@ fn list_index(ref list, i) = if i < 0 {
 // byte code; in the snoc arm it is sc*16 + 1. A concat or slice derives no
 // stride: each child carries its own word.
 fn list_index_unchecked(ref list, i) = {
-  let tw = load_i32(addr_at(list, 4))
-  match seq_shape(list) {
+  let tw = addr_at(list, 4) |> load_i32
+  match tw |> seq_shape {
     SeqFlat => if tw == 0 {
       load_i32(addr_at(list, 8 + i * 4))
     } else if tw == 16 {
@@ -506,10 +506,11 @@ fn slice_raw(list, start, end) = {
   let new_len = cend - cstart
   if new_len <= 0 {
     alloc_list_sc(0, seq_sc(list))
-  } else if seq_shape(list) == SeqSlice {
-    slice_node(load_addr(addr_at(list, 8)), load_i32(addr_at(list, 12)) + cstart, new_len, seq_sc(list))
   } else {
-    slice_node(list, cstart, new_len, seq_sc(list))
+    match addr_at(list, 4) |> load_i32 |> seq_shape {
+      SeqSlice => slice_node(load_addr(addr_at(list, 8)), load_i32(addr_at(list, 12)) + cstart, new_len, seq_sc(list)),
+      SeqFlat | SeqSnoc | SeqConcat => slice_node(list, cstart, new_len, seq_sc(list)),
+    }
   }
 }
 
@@ -532,7 +533,7 @@ fn last(xs) = xs[len(xs) - 1]
 
 // drop_last — the list without its last element: a snoc's left link, else
 // an O(1) slice by reference.
-fn drop_last(list) = match seq_shape(list) {
+fn drop_last(list) = match addr_at(list, 4) |> load_i32 |> seq_shape {
   SeqSnoc => load_addr(addr_at(list, 8)),
   SeqFlat | SeqConcat | SeqSlice => slice_raw(list, 0, load_i32(list) - 1),
 }
@@ -550,12 +551,13 @@ fn drop_last(list) = match seq_shape(list) {
 // name would read its element as a word.
 fn list_to_flat(list) = flat_raw(list)
 
-fn flat_raw(list) = if load_i32(list) == 0 || seq_shape(list) == SeqFlat {
-  list
-} else {
-  let flat = alloc_list_sc(load_i32(list), seq_sc(list))
-  fill_range(flat, list, 0, 0, load_i32(list), decode_stride(load_i32(addr_at(flat, 4)) / 16))
-  flat
+fn flat_raw(list) = match addr_at(list, 4) |> load_i32 |> seq_shape {
+  SeqFlat => list,
+  SeqSnoc | SeqConcat | SeqSlice => {
+    let flat = alloc_list_sc(load_i32(list), seq_sc(list))
+    fill_range(flat, list, 0, 0, load_i32(list), seq_stride(flat))
+    flat
+  },
 }
 
 // fill_range — node[src .. src + n) into flat[dest ..], each element read
@@ -566,7 +568,7 @@ fn flat_raw(list) = if load_i32(list) == 0 || seq_shape(list) == SeqFlat {
 fn fill_range(flat, node, dest, src, n, st) = if n == 0 {
   ()
 } else {
-  match seq_shape(node) {
+  match addr_at(node, 4) |> load_i32 |> seq_shape {
     SeqFlat => mem_copy(addr_at(flat, 8 + dest * st), addr_at(node, 8 + src * st), n * st),
     SeqSnoc => fill_snoc(flat, node, dest, src, n, st),
     SeqConcat => if n == load_i32(node) {
@@ -630,12 +632,15 @@ fn ff_concat_drain(flat, stack, sp, st) = if sp <= 1 {
 } else {
   let node = word_addr(stack[(sp - 1) * 2])
   let off = stack[(sp - 1) * 2 + 1]
-  if seq_shape(node) == SeqConcat {
-    let left = load_addr(addr_at(node, 8))
-    let right_entry = ff_push(stack, sp - 1, load_addr(addr_at(node, 12)), off + load_i32(left))
-    ff_concat_drain(flat, ff_push(right_entry, sp, left, off), sp + 1, st)
-  } else {
-    fill_range(flat, node, off, 0, load_i32(node), st)
-    ff_concat_drain(flat, stack, sp - 1, st)
+  match addr_at(node, 4) |> load_i32 |> seq_shape {
+    SeqConcat => {
+      let left = load_addr(addr_at(node, 8))
+      let right_entry = ff_push(stack, sp - 1, load_addr(addr_at(node, 12)), off + load_i32(left))
+      ff_concat_drain(flat, ff_push(right_entry, sp, left, off), sp + 1, st)
+    },
+    SeqFlat | SeqSnoc | SeqSlice => {
+      fill_range(flat, node, off, 0, load_i32(node), st)
+      ff_concat_drain(flat, stack, sp - 1, st)
+    },
   }
 }

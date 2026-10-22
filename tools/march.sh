@@ -386,6 +386,29 @@ read_line() {  # read_line <leg> — ratchets the image's line peak from $OUT/<l
   costok=0
 }
 read_line m3
+# ── the compiler's own WALL, as a share of the pinned boot's on the same wheel
+# in the same march (the m1 leg the line peak reads): the machine's load and
+# the wheel's size move both readings, so the ratio measures the compiler. A
+# breach re-reads both legs and compares the minimums.
+read_wall() {  # read_wall <leg> <compiler>
+  local leg="$1" compiler="$2" pct w b i r
+  pct=$(grep -E '^selfcompile_wall_pct_max:' "$BASELINE" 2>/dev/null | head -1 | cut -d: -f2 | tr -d ' ')
+  [ -n "${pct:-}" ] && [ -s "$OUT/$leg.time" ] && [ -s "$OUT/m1.time" ] || return 0
+  w=$(tail -1 "$OUT/$leg.time" | cut -d' ' -f1); b=$(tail -1 "$OUT/m1.time" | cut -d' ' -f1)
+  if awk -v w="$w" -v b="$b" -v p="$pct" 'BEGIN { exit !(w * 100 > b * p) }'; then
+    for i in 1 2; do
+      gen "$compiler" "$OUT/$leg-wall.wat" "$OUT/$leg-wall.err"; r=$(tail -1 "$OUT/$leg-wall.time" | cut -d' ' -f1); w=$(awk -v a="$w" -v c="$r" 'BEGIN { print (c < a) ? c : a }')
+      gen "$BOOT" "$OUT/m1-wall.wat" "$OUT/m1-wall.err"; r=$(tail -1 "$OUT/m1-wall.time" | cut -d' ' -f1); b=$(awk -v a="$b" -v c="$r" 'BEGIN { print (c < a) ? c : a }')
+    done
+  fi
+  MARCH_COST="${MARCH_COST:+$MARCH_COST · }wall ${w}s (boot ${b}s on the same wheel)"
+  echo "· wall: the $leg leg ${w}s; the pinned boot on the same wheel ${b}s"
+  awk -v w="$w" -v b="$b" -v p="$pct" 'BEGIN { exit !(w * 100 > b * p) }' || return 0
+  echo "✗ WALL RATCHET: ${w}s against the boot's ${b}s on the same wheel (minimums of three), over ${pct}%"
+  echo "  (selfcompile_wall_pct_max in $BASELINE) — the landing pays it down; repin refused."
+  costok=0
+}
+read_wall m3 "$OUT/m2.wasm"
 # ── the CENSUS gate (the 25-divergence lesson, 2026-08-08): a repin with a
 # rising census rode the TRANSITION path — verify's ratchet caught it only
 # post-pin, after the boot was already blessed. The march reads the same

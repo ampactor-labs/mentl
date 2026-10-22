@@ -2589,24 +2589,25 @@ fn bind_stage_param(pair) = match pair {
 
 fn lower_pipe_stage(lo_ls, right, handle) = {
   let rbody = graph_node_body(right)
-  match stage_op_name(right, rbody) {
-    // A bare op reference standing as the stage is the perform `op(x)` in
-    // the frame the pipe stands in — applied, never minted. The judgment
-    // charges the stage the op's row and nothing else, and an op has no
-    // static record a value could reach, so lowering the reference built the
-    // op's partial and called it: `x |> put` under `!Alloc` refused as an
-    // internal invariant where `put(x)` ran (tests/micros/mn-pipe-into-op.mn).
+  match stage_global_name(right, rbody) {
+    // A bare reference to a module-level function or op standing as the
+    // stage is the call `f(x)` in the frame the pipe stands in — applied,
+    // never minted, one graph with the call it spells: an op has no static
+    // record a value could reach (`x |> put` under `!Alloc`,
+    // tests/micros/mn-pipe-into-op.mn), and a function's record is reached
+    // through a direct call, never dispatched through as a value.
     Some(name) => lower_global_call(handle, right, name, [], lo_ls),
     None => lower_pipe_stage_value(lo_ls, right, handle, rbody),
   }
 }
 
-// The op a bare reference stage names, when its edge reaches an effect op at
-// module scope; a local, a function or a constructor is the value it is.
-fn stage_op_name(right, rbody) = match rbody {
+// The declaration a bare reference stage names, when its edge reaches a
+// function or an effect op at module scope; a local or a constructor is the
+// value it is.
+fn stage_global_name(right, rbody) = match rbody {
   NExpr(VarRef(name)) => match ls_resolve(name) {
     (RGlobal, _) => match published_kind(graph_ref_decl(right)) {
-      Some(EffectOpScheme(_, _, _)) => Some(name),
+      Some(EffectOpScheme(_, _, _)) | Some(FnScheme) => Some(name),
       _ => None,
     },
     _ => None,
@@ -8446,13 +8447,14 @@ fn seq_elem_face(e) = match fold_strip(e) {
 // structure (the silent fallback the eq law forbids). Byte and float
 // faces stay with their runtime families (str_*/list_*_f64); word
 // scalars and the unresolved floor keep the word fns, which ARE
-// value-faithful for single-word elements. One predicate, three leaf
-// dispatches and the fold collector all read it.
+// value-faithful for single-word elements, a sum with no payload among
+// them. One predicate, three leaf dispatches and the fold collector all
+// read it.
 fn seq_face_structural(face) = match face {
   TRecord(_) => true,
   TRecordOpen(_, _) => true,
   TTuple(_) => true,
-  TName(_, _) => true,
+  TName(_, _) => !sum_is_tag(face),
   TList(_) => true,
   _ => false,
 }

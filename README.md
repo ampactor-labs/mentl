@@ -89,7 +89,8 @@ bash tools/verify.sh                 # the programs in tests/micros (each states
                                      # the census ratchet (tools/verify-baseline.txt, counts the compiler's own source may
                                      # not raise); and doc-truth. Stamped, so an unchanged tree answers at once
 bash tools/march.sh                  # boot compiles the source to m2, m2 compiles it to m3, assert m2 == m3; on a mismatch
-                                     # it runs m4 and rules TRANSITION (re-pin from m3) or BROKEN; --fixpoint forces the m4 leg
+                                     # it runs m4 and rules TRANSITION (re-pin from m3) or BROKEN; --fixpoint forces the m4 leg.
+                                     # The candidate's wall and image line peak are held against the pinned boot on the same wheel
 bash tools/frontier-gate.sh          # contracts over the fixtures in tests/frontier and the ?? authoring workflows; a green
                                      # run stamps the boot sha, and the pre-commit hook refuses a compiler commit without it
 bash tools/crown-gate.sh             # !E soundness: every leak-* crucible in tests/crown must report E_EffectMismatch and

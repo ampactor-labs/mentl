@@ -102,7 +102,6 @@ handler parallel_compose {
 // the sequential twin of the task record.
 handler sequential_compose with results = [] {
   spawn(task) => {
-    // drift-audit: ignore — task() is effectful; result feeds the with-clause's push, not chain-position
     let result = task()
     let handle = ThreadHandle(len(results))
     resume(handle) with results = push(results, result)

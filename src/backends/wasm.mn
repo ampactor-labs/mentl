@@ -8547,9 +8547,9 @@ fn emit_eq_for_ty(ty, neg) = match ty {
   TTuple(elems) => emit_eq_product_call(fold_sig(ty), neg),
   // Sum payload-ADT — per-variant tag-then-payload recursion via the generated
   // $eq_n<Name> helper (the fifth leaf, reading the env's ConstructorScheme
-  // variant payload types). A purely-nullary ADT folds to a tag i32.eq inside
-  // the helper; a fielded ADT loads tags then recurses each payload.
-  TName(_, _) => emit_eq_sum_call(fold_sig(ty), neg),
+  // variant payload types). A sum with no payload is its tag word, so its
+  // fold is the word compare in place.
+  TName(_, _) => if sum_is_tag(ty) { emit_word_eq(neg) } else { emit_eq_sum_call(fold_sig(ty), neg) },
   // The word leaf READS THE GRADIENT (§5.U: "the word-leaf reads the
   // gradient — f64.eq for an f64 field"): a proven-Float operand compares
   // at its native width. i32.eq on two f64 operands was the one leaf the
@@ -8561,8 +8561,10 @@ fn emit_eq_for_ty(ty, neg) = match ty {
   // `==` leaves a Bool regardless of operand width. A VARIABLE reaches this
   // arm only where the settle point proved nothing runs it as anything but a
   // word (`settle_node` refused every executable site where it would be).
-  _ => if neg { wat_emit("    (i32.ne)\n") } else { wat_emit("    (i32.eq)\n") },
+  _ => emit_word_eq(neg),
 }
+
+fn emit_word_eq(neg) = if neg { wat_emit("    (i32.ne)\n") } else { wat_emit("    (i32.eq)\n") }
 
 // A ++ on a genuinely-unresolved operand element type: no representation
 // to project, so emit refuses to guess (the dissolved unresolved→str_concat
@@ -8972,7 +8974,9 @@ fn emit_hash_seq_body(sig, elem) = {
 // a SEQUENCE-of-struct walks elements through its own recursive body
 // (emit_eq_leaf_seq). One generator per leaf family — divergence is unsayable.
 fn emit_one_eq_helper(sig, ty) = match fold_strip(ty) {
-  TName(_, _) => emit_eq_leaf_sum(sig, fold_strip(ty)),
+  // A sum with no payload compares as its word where it is compared, so
+  // nothing calls a helper for it.
+  TName(_, _) => if sum_is_tag(fold_strip(ty)) { () } else { emit_eq_leaf_sum(sig, fold_strip(ty)) },
   TList(elem) => emit_eq_leaf_seq(sig, elem),
   _ => {
     wat_emit("  (func $eq_")
@@ -9193,8 +9197,9 @@ fn emit_field_eq(fty) = match fty {
   // A sum-typed field: insert __state under the pair and recurse into the
   // variant's own generated $eq_n<Name> helper (same convention as a nested
   // product). Recursive ADTs descend the value at runtime — finite, the call
-  // (never inline) is what makes a self-referential type well-founded.
-  TName(_, _) => emit_field_product_eq(fold_sig(fty)),
+  // (never inline) is what makes a self-referential type well-founded. A
+  // sum with no payload is its tag word.
+  TName(_, _) => if sum_is_tag(fty) { wat_emit("    (i32.eq)\n") } else { emit_field_product_eq(fold_sig(fty)) },
   TFloat => wat_emit("    (f64.eq)\n"),
   // Int / Unit / resolved-TVar / nullary-tag / fn-idx / cont-ptr — word eq.
   _ => wat_emit("    (i32.eq)\n"),

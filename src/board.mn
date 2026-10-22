@@ -295,8 +295,9 @@ fn board_bounds() = [
   // the root census's four index walks left the pipeline when the judgment
   // read the row at the root and the op scheme carried its handlers. 391 ->
   // 389 (2026-10-22): JSON's two digit scans left when a number became an
-  // integer read.
-  Bound({ceiling: 389, question: QCensus(CsIterationCostume)}),
+  // integer read. 389 -> 388 the same day: the march verb's newline count
+  // left with the generation tally nothing read.
+  Bound({ceiling: 388, question: QCensus(CsIterationCostume)}),
   // The ghosts — cells the parser minted and the judgment never bound
   // (`mentl query <entry> ghosts`): names, parameters, predicates and
   // annotations that are not yet cells inference writes, which is why `refs
@@ -401,8 +402,9 @@ fn board_bounds() = [
   // (2026-10-20): the graph module's notes over the trail, the checkpoint
   // stack and the fork seed left with them. 59 -> 58 (2026-10-21): the
   // dispatch walk's note over its world entry left when the entry took the
-  // instance it serves.
-  Bound({ceiling: 58, question: QCensus(CsProseClass(PcArchaeology))}),
+  // instance it serves. 58 -> 57 (2026-10-22): the strings module's note
+  // over a float family that module does not hold left.
+  Bound({ceiling: 57, question: QCensus(CsProseClass(PcArchaeology))}),
   // Decoration runs; the formatter's decoration strip takes this to zero
   // (PLAN §11, the project canonical). 267 -> 266 (2026-10-15): the pattern
   // type's banner left when a pattern became a node. 266 -> 265
@@ -434,8 +436,9 @@ fn board_bounds() = [
   // 113 -> 111 the same day: the two over the walks that bound a function to
   // a handler by its spelling left with the walks.
   // 111 -> 110 (2026-10-19): the name dedup's silencer left with the scan
-  // it silenced.
-  Bound({ceiling: 110, question: QCensus(CsProseClass(PcSilencer))})
+  // it silenced. 110 -> 108 (2026-10-22): two markers over modes the audit
+  // never matched left the prelude's strings and threading.
+  Bound({ceiling: 108, question: QCensus(CsProseClass(PcSilencer))})
 ]
 
 // The board: every bound answered by the medium's own answer to its question.

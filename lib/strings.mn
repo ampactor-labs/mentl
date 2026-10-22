@@ -648,7 +648,7 @@ fn float_format_fixed(digits, exp) = {
     let zero = str_of_single_byte(48)
     // "."
     let dot = str_of_single_byte(46)
-    // |int_digits| zeros // drift-audit: ignore
+    // |int_digits| zeros
     let leading = float_zero_pad(0 - int_digits)
     let frac = float_digits_to_str(digits, 0, n)
     zero ++ dot ++ leading ++ frac
@@ -712,22 +712,6 @@ fn float_fill_digit_bytes(buf, digits, start, end, i) = if i >= end {
   float_fill_digit_bytes(buf, digits, start, end, i + 1)
 }
 
-// These map 1:1 to WASM f64 instructions when emitted. Named
-// explicitly rather than overloading +/-/* so the emitter can
-// distinguish float ops from integer ops without a type pass.
-//
-// DISSOLVED (W11): the float_add/sub/mul/div/neg/lt/ge arithmetic family and
-// the float_of_int/float_to_int identity stubs are GONE. The representation
-// gradient emits f64.add/f64.sub/f64.mul/f64.div/f64.neg directly from TFloat
-// operands (emit_binop_for's match lookup_ty), so the operators ARE the float
-// ops — `a + b`, `a < b`, `a / b`, `0.0 - f`. Comparison yields Bool natively
-// (no `== 1` Int dance). int<->float is the LConvert intrinsic (lower
-// recognizes float_of_int/float_to_int → f64.convert_i32_s / i32.trunc_f64_s,
-// the gradient's coercion arm — a REAL machine convert, never a bit-
-// reinterpreting identity stub). The float_div int-0 zero-guard is DELETED:
-// IEEE-754 NaN/Inf is the correct total semantics, and float_to_str renders
-// them (float_is_nan/float_is_inf below). The boxed-float indirection the
-// gradient dissolved is gone.
 fn float_pow10(exp) with Pure = if exp == 0 {
   1.0
 } else if exp > 0 {
