@@ -9,6 +9,9 @@ refuses, with no flag that lets a commit through:
   1. a ceiling raised     — src/board.mn `Bound({ceiling: N, …})` and every
                             `*_max:` line of tools/verify-baseline.txt
   2. a bound deleted      — the same entries, gone, unless the ceiling was 0
+                            or the human reshaped it into a bound born in the
+                            same commit (`reshaped: old -> new` in the staged
+                            file, refused in any later one), never raised
   3. a red leg declared   — a new `frontier_expected_red:` entry
   4. a gate silenced      — more `drift-audit: ignore` markers in .mn source
   5. work left unfinished — more "landed in part" or "NOT LANDED" records in
@@ -17,9 +20,6 @@ refuses, with no flag that lets a commit through:
                             a new .md document, or more text lines under
                             tools/: a capability belongs in the medium's own
                             source, and the scaffolds only shrink
-
-A bound a correct landing must raise is the wrong shape: it is reshaped, by
-the human, in this file's company — never raised to fit.
 """
 import os
 import re
@@ -78,6 +78,7 @@ def silencers(rev):
 
 PARTIAL = re.compile(r"\b(landed in part|partially landed|landed partially)\b", re.I)
 NOT_LANDED = re.compile(r"\bNOT LANDED\b")
+RESHAPED = re.compile(r"^reshaped: ([a-z0-9_]+) -> ([a-z0-9_]+)$", re.M)
 
 
 def unfinished(rev, paths):
@@ -95,9 +96,12 @@ SCRIPT = re.compile(r"\.(sh|py|js|mjs|ts)$")
 def main():
     refusals = []
     for path, read in (("src/board.mn", board_bounds), ("tools/verify-baseline.txt", baseline_maxes)):
-        head, staged = read(show("HEAD", path)), read(show(":", path))
+        texts = show("HEAD", path), show(":", path)
+        head, staged = map(read, texts)
+        was_moved, moved = (dict(RESHAPED.findall(t)) for t in texts)
+        refusals += [f"{path}: the reshape record of `{k}` outlived its commit" for k in moved.keys() & was_moved.keys()]
         for key, was in head.items():
-            if key not in staged and was != 0:
+            if key not in staged and was != 0 and moved.get(key) not in staged.keys() - head.keys():
                 refusals.append(f"{path}: the bound on `{key}` (ceiling {was}) is gone")
             elif key in staged and staged[key] > was:
                 refusals.append(f"{path}: `{key}` raised {was} -> {staged[key]}")

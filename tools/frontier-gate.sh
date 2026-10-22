@@ -4805,24 +4805,19 @@ for i in "${!compilers[@]}"; do
     fail "float sentinels: assemble"
   fi
 
-  # ─── The cost facet, AND the prelude-floor ratchet it makes possible
-  # (`cost` — modules linked, source lines processed, nodes minted, all
-  # graph reads). A wall clock is a host fact that varies per run and can
-  # never be ratcheted; these three are identical every time, so the
-  # floor a TRIVIAL program pays becomes a contract. The fixture is a
-  # bare `fn main() = 7`-class module: whatever it costs is the prelude
-  # vocabulary the medium processes to answer nothing, and that number
-  # may only FALL — Hβ.driver.link-is-reachability is what lowers it.
-  # A RISE means the medium started processing more source to answer the
-  # same trivial question; the landing that causes one pays it down in the
-  # modules a bare program links. The ceiling is the measured floor, held as
-  # `prelude_floor_lines_max` in tools/verify-baseline.txt where the obey
-  # gate refuses a raise, so a landing that lowers the floor lowers it too.
-  cost_ceiling=$(grep -E '^prelude_floor_lines_max:' "$ROOT/tools/verify-baseline.txt" | head -1 | cut -d: -f2 | tr -d ' ')
+  # ─── The cost facet, and the prelude floor it makes a contract: the nodes
+  # the medium mints to judge a bare `fn main() = 7`-class module — the
+  # prelude vocabulary it processes to answer nothing. A count of nodes is
+  # the same every run and moves with what the judgment does, never with the
+  # layout the formatter projects; it may only FALL, and a landing that
+  # raises it pays it down in the modules a bare program links. The ceiling
+  # is `prelude_floor_nodes_max` in tools/verify-baseline.txt, where the
+  # obey gate refuses a raise.
+  cost_ceiling=$(grep -E '^prelude_floor_nodes_max:' "$ROOT/tools/verify-baseline.txt" | head -1 | cut -d: -f2 | tr -d ' ')
   ct_out=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" query "$ROOT/tests/frontier/mn-bare-floor.mn" "cost" 2>/dev/null)
-  ct_lines=$(printf '%s' "$ct_out" | grep -o '[0-9]* source line' | grep -o '[0-9]*' | head -1)
-  if [ -n "$ct_lines" ] && [ "$ct_lines" -le "$cost_ceiling" ]; then
-    pass "cost facet + prelude floor: $ct_lines source line(s) within the $cost_ceiling ceiling (monotone DOWN)"
+  ct_nodes=$(printf '%s' "$ct_out" | grep -o '[0-9]* node(s) minted' | grep -o '[0-9]*' | head -1)
+  if [ -n "$ct_nodes" ] && [ "$ct_nodes" -le "$cost_ceiling" ]; then
+    pass "cost facet + prelude floor: $ct_nodes node(s) minted within the $cost_ceiling ceiling (monotone DOWN)"
   else
     fail "prelude floor (got: $(printf '%s' "$ct_out" | head -1), ceiling $cost_ceiling)"
   fi

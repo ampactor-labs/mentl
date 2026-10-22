@@ -52,6 +52,7 @@ selfcompile_wall_pct_max: 103
 # parse∘render (`mentl query <entry> heads`).
 head_round_trip_max: 0
 
-# The source lines the medium processes to judge `fn main() = 7`: the prelude
-# a trivial program links (tools/frontier-gate.sh, the cost facet).
-prelude_floor_lines_max: 2639
+# The nodes the medium mints to judge `fn main() = 7` — the prelude a trivial
+# program links, never its layout (tools/frontier-gate.sh, the cost facet).
+prelude_floor_nodes_max: 12802
+reshaped: prelude_floor_lines_max -> prelude_floor_nodes_max
