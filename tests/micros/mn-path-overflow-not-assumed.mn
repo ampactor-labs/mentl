@@ -1,0 +1,8 @@
+// expect: refuse E_EffectMismatch
+// A guard is a fact about the machine's words, so `i + 1 <= len(xs)` says
+// nothing of `i < len(xs)` where `i + 1` may wrap: at the largest Int it is
+// the smallest, and the read past it traps. Nothing on the path bounds `i`
+// from above, so the claim stays open.
+fn bad(xs, i) with !Trap = if i >= 0 && i + 1 <= len(xs) { xs[i] } else { 0 }
+
+fn main() = bad([1, 2], 0)

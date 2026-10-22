@@ -1889,6 +1889,10 @@ fn subscript_callees() = [subscript_callee(false), subscript_callee(true)]
 
 fn list_rest_callee() with Pure = "slice"
 
+// The lengths the vocabulary names: a call is a sequence's length when its
+// callee's edge reaches one of them, never because it is spelled so.
+fn length_callees() = ["len", "byte_len"]
+
 fn binop_kind(op) with Pure = match op {
   BAdd => BKArith,
   BSub => BKArith,

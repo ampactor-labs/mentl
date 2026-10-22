@@ -1680,7 +1680,7 @@ and repeated to its least fixed point, so recursion terminates. `mentl query
 (`tests/micros/mn-flow-*.mn`, each fixture's second line its contract at the
 sink).
 
-The predicate is a compile-time obligation; at gradient-top it erases entirely (no runtime check). `Verify`'s default ledger accrues what it cannot discharge statically (`V_Pending`); Verify's own solver discharges more of it as its fragment grows (`PLAN.md §11`, Verify's own solver: path narrowing, overflow-aware intervals, linear arithmetic, case splits by fork) — same source, deeper proof engine. An external solver plugs in only as a proposer whose certificate the kernel checks.
+The predicate is a compile-time obligation; at gradient-top it erases entirely (no runtime check). `Verify`'s default ledger accrues what it cannot discharge statically (`V_Pending`); Verify's own solver discharges more of it as its fragment grows (`PLAN.md §11`, Verify's own solver: overflow-aware intervals, linear arithmetic, case splits by fork) — same source, deeper proof engine. An external solver plugs in only as a proposer whose certificate the kernel checks.
 
 ---
 
@@ -2860,16 +2860,31 @@ The e-graph reads the same fact: `x * 0 ≡ 0` drops its operand only when the
 operand's subtree row is pure, and a division whose claim stays open is not,
 so `(1 / n) * 0` traps at `n = 0` as written.
 
-What the fragment cannot yet read, named: a guard on the PATH (`if b == 0 {
-None } else { a / b }` — a read up the parent edge the verifier has not
-grown, `Hβ.verify.partiality-reads-the-path-narrowing`; the wheel's two open
-division claims, both in `int_fold`, are of this shape), and the other partial
-primitives — an index out of range (`xs[i]`, whose precondition needs the
-same path read), a slice past its sequence — which are the same law one
-primitive over (`Hβ.effects.index-partiality-is-a-row-fact`). A destructuring
-pattern is that law one form over: the shape it asserts is its precondition,
-decided by the same walk (§«Exhaustiveness»). Non-termination is not a trap
-and not in the row (`Hβ.effects.divergence-is-a-row-fact`).
+**The path is a hypothesis.** A claim stands where control reached it, so the
+conditions above it on the parent edge hold there: an `if`'s branch holds its
+test one way, the right operand of `&&` holds the left and of `||` its
+negation, and a `match` arm holds its own literal pattern and every earlier
+literal arm failing. `if b > 0 { a / b }`, `if b == 0 { 0 } else { a % b }`,
+`match b { 0 => 0, _ => a % b }`, `if i >= 0 && i < len(xs) { xs[i] }` and
+`if len(xs) == 0 { d } else { xs[len(xs) - 1] }` are total, and `!Trap`
+holds over each. The conditions speak of terms — a constant, a binder read
+along its edge, the length the vocabulary's `len` answers (a parameter
+spelled `len` is no length), each plus a constant — and decide as difference
+bounds. A condition is a fact about machine words, so a term with an offset
+counts only where the facts already counted keep it inside the word: past `i
+>= 0 && i + 1 <= len(xs)` the read `xs[i]` stays open, since `i + 1` wraps
+at the largest Int (tests/micros/mn-path-*.mn). A read the judgment proves
+in bounds is the unchecked traversal, which dispatches on the list's shape
+and is total (tests/micros/mn-proven-read-is-total.mn).
+
+What the fragment cannot yet read, named: a bound a parameter takes from
+every call — `0 <= i` where each call hands `0` or `i + 1`
+(`Hβ.verify.parameter-is-what-its-calls-hand`) — and the other partial
+primitives, a slice past its sequence among them
+(`Hβ.effects.index-partiality-is-a-row-fact`). A destructuring pattern is
+that law one form over: the shape it asserts is its precondition, decided by
+the same walk (§«Exhaustiveness»). Non-termination is not a trap and not in
+the row (`Hβ.effects.divergence-is-a-row-fact`).
 
 ---
 

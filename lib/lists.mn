@@ -56,9 +56,17 @@ fn pack_tag(tag, sc) with Pure = sc * 16 + tag
 
 fn seq_stride(ref list) = decode_stride(load_i32(addr_at(list, 4)) / 16)
 
-// The node's shape (PLAN §6): 0 flat, 1 snoc, 3 concat, 4 slice; a walk
-// traps on any word the representation never writes.
-fn seq_tag(ref list) = i32_and(load_i32(addr_at(list, 4)), 15)
+// The node's shape, off its tag word (0 flat, 1 snoc, 3 concat, 4 slice):
+// the builders here write the only tags, and this load trusts the image as a
+// walk's every load does, so a walk dispatches on the shape whole.
+type SeqShape = SeqFlat | SeqSnoc | SeqConcat | SeqSlice
+
+fn seq_shape(ref list) = match i32_and(load_i32(addr_at(list, 4)), 15) {
+  0 => SeqFlat,
+  1 => SeqSnoc,
+  3 => SeqConcat,
+  _ => SeqSlice,
+}
 
 fn seq_sc(ref list) = load_i32(addr_at(list, 4)) / 16
 
@@ -222,23 +230,23 @@ fn list_index(ref list, i) = if i < 0 {
 // The raw traversal — every entry already carries a discharged bounds
 // obligation: list_index's boundary check, or the judgment's proof of a
 // sequence read's bounds claim, where `xs[i]` lowers here directly (TRAP).
-// It matches the four tags and traps on any other word.
+// It dispatches on the node's shape, so a read the judgment proved in bounds
+// is total.
 //
-// The tag word is read once and both projections, tag and stride, come from
-// it. In the flat arm the word is sc*16, so 0 is the word floor and 16 the
+// In the flat arm the tag word is sc*16, so 0 is the word floor and 16 the
 // byte code; in the snoc arm it is sc*16 + 1. A concat or slice derives no
 // stride: each child carries its own word.
 fn list_index_unchecked(ref list, i) = {
   let tw = load_i32(addr_at(list, 4))
-  match i32_and(tw, 15) {
-    0 => if tw == 0 {
+  match seq_shape(list) {
+    SeqFlat => if tw == 0 {
       load_i32(addr_at(list, 8 + i * 4))
     } else if tw == 16 {
       load_i8(addr_at(list, 8 + i))
     } else {
       load_strided(addr_at(list, 8), i, decode_stride(tw / 16))
     },
-    1 => {
+    SeqSnoc => {
       let left = load_addr(addr_at(list, 8))
       let left_len = load_i32(left)
       if i < left_len {
@@ -249,7 +257,7 @@ fn list_index_unchecked(ref list, i) = {
         load_strided(addr_at(list, 12), 0, decode_stride(tw / 16))
       }
     },
-    3 => {
+    SeqConcat => {
       let left = load_addr(addr_at(list, 8))
       let left_len = load_i32(left)
       if i < left_len {
@@ -258,12 +266,11 @@ fn list_index_unchecked(ref list, i) = {
         list_index_unchecked(load_addr(addr_at(list, 12)), i - left_len)
       }
     },
-    4 => {
+    SeqSlice => {
       let base = load_addr(addr_at(list, 8))
       let start = load_i32(addr_at(list, 12))
       list_index_unchecked(base, start + i)
     },
-    _ => out_of_range(),
   }
 }
 
@@ -499,7 +506,7 @@ fn slice_raw(list, start, end) = {
   let new_len = cend - cstart
   if new_len <= 0 {
     alloc_list_sc(0, seq_sc(list))
-  } else if seq_tag(list) == 4 {
+  } else if seq_shape(list) == SeqSlice {
     slice_node(load_addr(addr_at(list, 8)), load_i32(addr_at(list, 12)) + cstart, new_len, seq_sc(list))
   } else {
     slice_node(list, cstart, new_len, seq_sc(list))
@@ -523,18 +530,11 @@ fn slice_node(base, start, n, sc) = {
 // traps there.
 fn last(xs) = xs[len(xs) - 1]
 
-// drop_last — return the list without its last element.
-// O(1) for snoc nodes (reads the left link). Creates a slice for
-// other tag variants — still O(1) allocation, O(1) by-reference.
-// Exhaustive on the four tags, as every walk here is: a node carries no
-// other, so no arm fabricates a list for one.
-fn drop_last(list) = {
-  let list_len = load_i32(list)
-  match seq_tag(list) {
-    1 => load_addr(addr_at(list, 8)),
-    0 | 3 | 4 => slice_raw(list, 0, list_len - 1),
-    _ => out_of_range(),
-  }
+// drop_last — the list without its last element: a snoc's left link, else
+// an O(1) slice by reference.
+fn drop_last(list) = match seq_shape(list) {
+  SeqSnoc => load_addr(addr_at(list, 8)),
+  SeqFlat | SeqConcat | SeqSlice => slice_raw(list, 0, load_i32(list) - 1),
 }
 
 // Materialization
@@ -550,7 +550,7 @@ fn drop_last(list) = {
 // name would read its element as a word.
 fn list_to_flat(list) = flat_raw(list)
 
-fn flat_raw(list) = if load_i32(list) == 0 || seq_tag(list) == 0 {
+fn flat_raw(list) = if load_i32(list) == 0 || seq_shape(list) == SeqFlat {
   list
 } else {
   let flat = alloc_list_sc(load_i32(list), seq_sc(list))
@@ -566,16 +566,15 @@ fn flat_raw(list) = if load_i32(list) == 0 || seq_tag(list) == 0 {
 fn fill_range(flat, node, dest, src, n, st) = if n == 0 {
   ()
 } else {
-  match seq_tag(node) {
-    0 => mem_copy(addr_at(flat, 8 + dest * st), addr_at(node, 8 + src * st), n * st),
-    1 => fill_snoc(flat, node, dest, src, n, st),
-    3 => if n == load_i32(node) {
+  match seq_shape(node) {
+    SeqFlat => mem_copy(addr_at(flat, 8 + dest * st), addr_at(node, 8 + src * st), n * st),
+    SeqSnoc => fill_snoc(flat, node, dest, src, n, st),
+    SeqConcat => if n == load_i32(node) {
       ff_concat_drain(flat, ff_push(ff_push(make_list(16), 0, null_addr(), 0), 1, node, dest), 2, st)
     } else {
       fill_concat_part(flat, node, dest, src, n, st)
     },
-    4 => fill_range(flat, load_addr(addr_at(node, 8)), dest, load_i32(addr_at(node, 12)) + src, n, st),
-    _ => out_of_range(),
+    SeqSlice => fill_range(flat, load_addr(addr_at(node, 8)), dest, load_i32(addr_at(node, 12)) + src, n, st),
   }
 }
 
@@ -631,7 +630,7 @@ fn ff_concat_drain(flat, stack, sp, st) = if sp <= 1 {
 } else {
   let node = word_addr(stack[(sp - 1) * 2])
   let off = stack[(sp - 1) * 2 + 1]
-  if seq_tag(node) == 3 {
+  if seq_shape(node) == SeqConcat {
     let left = load_addr(addr_at(node, 8))
     let right_entry = ff_push(stack, sp - 1, load_addr(addr_at(node, 12)), off + load_i32(left))
     ff_concat_drain(flat, ff_push(right_entry, sp, left, off), sp + 1, st)

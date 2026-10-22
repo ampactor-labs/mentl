@@ -1,0 +1,7 @@
+// expect: refuse E_EffectMismatch
+// A length is the vocabulary's `len`, reached along the callee's edge: a
+// parameter that happens to be spelled `len` computes whatever its caller
+// hands it, so a guard on it bounds nothing.
+fn bad(len, xs, i) with !Trap = if i >= 0 && i < len(xs) { xs[i] } else { 0 }
+
+fn main() = bad({ _ => 100 }, [1, 2], 0)

@@ -1,0 +1,10 @@
+// expect: 50
+// A guard on the path is a hypothesis of every claim beneath it: inside the
+// branch `i >= 0 && i < len(xs)` holds, so the read `xs[i]` is in bounds and
+// `!Trap` holds; the else branch of `i < 0 || i >= len(xs)` holds both
+// bounds the same way. The prior boot left both reads open and refused.
+fn at(xs, i) with !Trap = if i >= 0 && i < len(xs) { xs[i] } else { 0 }
+
+fn at_or(xs, i, d) with !Trap = if i < 0 || i >= len(xs) { d } else { xs[i] }
+
+fn main() = at([10, 20, 30], 1) + at_or([10, 20, 30], 2, 7)

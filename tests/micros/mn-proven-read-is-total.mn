@@ -1,0 +1,8 @@
+// expect: 6
+// A read the judgment proved in bounds is total: it dispatches on the
+// list's shape, which the library's builders write and every load trusts,
+// so nothing is left to trap. The prior boot charged `Trap` to every list
+// read, proven or not, through the tag word's complement.
+fn second() with !Trap = [5, 6][1]
+
+fn main() = second()

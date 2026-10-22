@@ -221,7 +221,9 @@ fn board_bounds() = [
   // the publish replay's index walk left when a kept fork's entries became
   // an adoption. 163 -> 162 (2026-10-22): a call is what its callee computes
   // at its arguments, so a claim on a call's answer reads the callee's body.
-  Bound({ceiling: 162, question: QVerifyDebt}),
+  // 162 -> 139 (2026-10-22): a claim reads the conditions on its path as
+  // hypotheses — a guarded read, a guarded division, a later arm of a match.
+  Bound({ceiling: 139, question: QVerifyDebt}),
   // THE COURSE AND THE SCORE — the programs the medium owes. A lesson is a
   // program a developer hears (examples/pulse/course, ten lessons on one
   // chain), written in the form SYNTAX asks for whether or not the pinned
@@ -291,8 +293,10 @@ fn board_bounds() = [
   // 395 the same day: the publish replay's walk and the map's LIFO pop left
   // when a kept fork's entries became an adoption. 395 -> 391 (2026-10-21):
   // the root census's four index walks left the pipeline when the judgment
-  // read the row at the root and the op scheme carried its handlers.
-  Bound({ceiling: 391, question: QCensus(CsIterationCostume)}),
+  // read the row at the root and the op scheme carried its handlers. 391 ->
+  // 389 (2026-10-22): JSON's two digit scans left when a number became an
+  // integer read.
+  Bound({ceiling: 389, question: QCensus(CsIterationCostume)}),
   // The ghosts — cells the parser minted and the judgment never bound
   // (`mentl query <entry> ghosts`): names, parameters, predicates and
   // annotations that are not yet cells inference writes, which is why `refs
@@ -371,8 +375,9 @@ fn board_bounds() = [
   // (2026-10-16): a note on the label lattice left with the lattice.
   // 43 -> 42 (2026-10-19): the name dedup's note on an old fold left with
   // the scan it described. 42 -> 41 (2026-10-21): the root census's note on
-  // the init's pin left with the census.
-  Bound({ceiling: 41, question: QCensus(CsProseClass(PcCommit))}),
+  // the init's pin left with the census. 41 -> 40 (2026-10-22): the note on
+  // a load crossing the image's end left with the partial conversion's call.
+  Bound({ceiling: 40, question: QCensus(CsProseClass(PcCommit))}),
   // Numbered citations of the archived spec corpus. 20 -> 19 (2026-10-15):
   // the banner over the pattern type left when a pattern became a node.
   // 19 -> 18 (2026-10-20): the graph module's trail prose left with the
@@ -407,8 +412,9 @@ fn board_bounds() = [
   // banner left when the ??-fan became one choice. 254 -> 253 (2026-10-19):
   // the rollback's banner, attached to the span index's arm, left with the
   // fork. 253 -> 252 (2026-10-21): the evidence-hole banner left with the
-  // root census.
-  Bound({ceiling: 252, question: QCensus(CsProseClass(PcBanner))}),
+  // root census. 252 -> 251 (2026-10-22): a math section's banner left when
+  // its functions became total.
+  Bound({ceiling: 251, question: QCensus(CsProseClass(PcBanner))}),
   // A COMMENT NEVER SILENCES A GATE (SYNTAX §Comments). Each marker mutes a
   // text row of tools/drift-patterns.tsv that a structural census reads
   // correctly — a string literal is text, a one-shot concat is not an

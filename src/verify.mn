@@ -192,15 +192,27 @@ fn total_div_faces(op, a, b, bind) = match op {
 // its leaves' lower bounds; the upper face pairs every constant the index can
 // be with every length the receiver can have, read along the receiver's
 // edges (`seq_lengths`). A pair the text fixes out of range refutes — a
-// join's tail that reads past its own literal is the trap written down — and
-// an index or a length nothing here bounds leaves the claim open, which is
-// the row fact `Trap` at the site. A guarded read (`if i < len(xs)`) stays
-// open until the path narrowing is read
-// (`Hβ.verify.partiality-reads-the-path-narrowing`).
+// join's tail that reads past its own literal is the trap written down. A
+// face the values leave open is proven where the read's path implies it
+// (`if i >= 0 && i < len(xs) { xs[i] }`), and otherwise stays open, which is
+// the row fact `Trap` at the site.
 fn in_bounds_decide(recv, idx, bind) = {
   let ileaves = value_leaves(idx, bind)
-  and_decide(leaves_nonneg(ileaves), below_lengths(ileaves, seq_lengths(recv)))
+  let at = term_of(idx, bind)
+  and_decide(
+    or_path(leaves_nonneg(ileaves), idx, BLe, Some(TermAt(MZero, 0)), at),
+    or_path(below_lengths(ileaves, seq_lengths(recv)), idx, BLt, at, length_of(recv, bind))
+  )
 }
+
+// A sequence's length as a term: the constant the text fixes where every
+// value it can be has one, else the length of the term it is.
+fn length_of(recv, bind) = match seq_lengths(recv) {
+  [Some(n), ...rest] => if all(same_length(n, ??), rest) { point_term(n) } else { length_term(term_of(recv, bind)) },
+  _ => length_term(term_of(recv, bind)),
+}
+
+fn same_length(n, length) = length == Some(n)
 
 fn leaves_nonneg(leaves) =
   if len(leaves) == 0 { None } else { fold(Some(true), nonneg_step, leaves) }
@@ -253,6 +265,435 @@ fn point_below(k, n) = match n {
   Some(m) => Some(k < m),
   None => None,
 }
+
+// A claim stands where control reached it, and control reached it through
+// every condition above it on the parent edge: an `if`'s branch holds its
+// test one way, the right operand of `&&` or `||` holds the left one, and a
+// `match` arm holds its own literal pattern and every earlier literal arm
+// failing. Those conditions are the claim's hypotheses, read up the edge
+// from the claim's own node.
+//
+// They speak of TERMS: a constant, a binder read along its edge, the length
+// the vocabulary names, each plus a constant. A binder is one value wherever
+// it is read, so two reads of it are one term; a handler's state is rebound
+// by every resume and stands for nothing here. A hypothesis is a fact about
+// machine words, so a term with an offset is admitted only where the facts
+// already admitted keep it inside the word: `i + 1 <= len(xs)` says nothing
+// of `i < len(xs)` where `i + 1` can wrap. The facts are difference bounds; a
+// claim is proven when they imply it, and a path whose facts contradict each
+// other is never taken, so every claim on it holds.
+type Measure = MZero | MBinder(Int) | MLength(Measure)
+
+type Term = TermAt(Measure, Int)
+
+type Hyp = Holds(BinOp, Term, Term)
+
+// `a - b <= w`, and `a - b != w`.
+type Gap = AtMost(Measure, Measure, Int) | Apart(Measure, Measure, Int)
+
+// A verdict the values left open, proven where the site's path implies the
+// claim; one they decided stands.
+fn or_path(verdict, site, op, lt, rt) = match verdict {
+  None => if path_holds(site, op, lt, rt) { Some(true) } else { None },
+  Some(v) => Some(v),
+}
+
+fn path_holds(site, op, lt, rt) = match lt {
+  Some(l) => match rt {
+    Some(r) => hyps_prove(path_hyps(site), Holds(op, l, r)),
+    None => false,
+  },
+  None => false,
+}
+
+fn path_hyps(h) = match graph_parent_of(h) {
+  Some(p) => step_hyps(h, p) ++ path_hyps(p),
+  None => [],
+}
+
+fn step_hyps(child, p) = match graph_node_body(p) {
+  NExpr(IfExpr(c, t, e)) => if child == t { cond_hyps(c, true) } else if child == e { cond_hyps(c, false) } else { [] },
+  NExpr(BinOpExpr(op, a, b)) => if child == b { operand_hyps(op, a) } else { [] },
+  NExpr(MatchExpr(s, arms)) => arm_hyps(child, s, arms),
+  NExpr(_)
+  | NStmt(_)
+  | NPat(_)
+  | NHole(_)
+  | NModule(_)
+  | NLink(_)
+  | NTypeAnn(_)
+  | NName(_)
+  | NRow(_)
+  | NParam(_) => [],
+}
+
+// The right operand of `&&` runs where the left held, of `||` where it failed.
+fn operand_hyps(op, a) = match op {
+  BAnd => cond_hyps(a, true),
+  BOr => cond_hyps(a, false),
+  BAdd | BSub | BMul | BDiv | BMod | BEq | BNe | BLt | BGt | BLe | BGe | BConcat => [],
+}
+
+fn arm_hyps(child, s, arms) = match find(arm_body_is(child, ??), enumerate(arms)) {
+  Some((k, (pat, _))) => (take(k, arms) |> flat_map(arm_failed(s, ??))) ++ pat_hyps(s, pat, true),
+  None => [],
+}
+
+fn arm_body_is(child, indexed) = match indexed {
+  (_, (_, body)) => body == child,
+}
+
+fn arm_failed(s, arm) = match arm {
+  (pat, _) => pat_hyps(s, pat, false),
+}
+
+// What a literal arm says of its scrutinee: that it is the literal where the
+// arm runs, and that it is not where a later arm runs. Any other pattern
+// says nothing a term can hold.
+fn pat_hyps(s, pat, holds) = match pat_of(pat) {
+  PLit(lv) => match lv {
+    LVInt(v) => compare_hyps(if holds { BEq } else { BNe }, term_of(s, NoSelf), point_term(v)),
+    LVBool(b) => cond_hyps(s, b == holds),
+    LVFloat(_) | LVString(_) => [],
+  },
+  PVar(_) | PWild | PAs(_, _) | PAlt(_) | PCon(_, _) | PTuple(_) | PRecord(_, _) | PList(_, _) => [],
+}
+
+// What a condition says where it held (or failed): a comparison its two
+// terms, a conjunction both sides where it held, a disjunction both
+// negations where it failed, a negation the other way, a let's test its
+// value.
+fn cond_hyps(c, holds) = match graph_node_body(c) {
+  NExpr(BinOpExpr(op, l, r)) => match op {
+    BAnd => if holds { cond_hyps(l, true) ++ cond_hyps(r, true) } else { [] },
+    BOr => if holds { [] } else { cond_hyps(l, false) ++ cond_hyps(r, false) },
+    BEq | BNe | BLt | BGt | BLe | BGe => compare_hyps(if holds { op } else { cmp_negated(op) }, term_of(l, NoSelf), term_of(r, NoSelf)),
+    BAdd | BSub | BMul | BDiv | BMod | BConcat => [],
+  },
+  NExpr(UnaryOpExpr(op, x)) => match op {
+    UNot => cond_hyps(x, !holds),
+    UNeg => [],
+  },
+  NExpr(VarRef(_)) => match binder_read_by(c) {
+    Some(b) => match graph_binder_of(b) {
+      None => cond_hyps(b, holds),
+      Some(_) => [],
+    },
+    None => [],
+  },
+  NExpr(_)
+  | NStmt(_)
+  | NPat(_)
+  | NHole(_)
+  | NModule(_)
+  | NLink(_)
+  | NTypeAnn(_)
+  | NName(_)
+  | NRow(_)
+  | NParam(_) => [],
+}
+
+fn cmp_negated(op) = match op {
+  BEq => BNe,
+  BNe => BEq,
+  BLt => BGe,
+  BGe => BLt,
+  BGt => BLe,
+  BLe => BGt,
+  BAdd | BSub | BMul | BDiv | BMod | BAnd | BOr | BConcat => op,
+}
+
+fn compare_hyps(op, lt, rt) = match lt {
+  Some(l) => match rt {
+    Some(r) => [Holds(op, l, r)],
+    None => [],
+  },
+  None => [],
+}
+
+// The term a node is: a constant, a binder followed along its reference, the
+// length of a term, or a term plus a constant. A constant past the bound the
+// difference arithmetic keeps exact is no term.
+fn term_of(h, bind) = match node_const_at(h, bind) {
+  Some(v) => match v {
+    LVInt(k) => point_term(k),
+    LVFloat(_) | LVString(_) | LVBool(_) => None,
+  },
+  None => match graph_node_body(h) {
+    NExpr(VarRef(name)) => if name == "self" {
+      self_term(bind)
+    } else {
+      match binder_read_by(h) {
+        Some(b) => binder_term(b),
+        None => None,
+      }
+    },
+    NExpr(CallExpr(f, args)) => match args {
+      [x] => if is_length_callee(f) { length_term(term_of(x, bind)) } else { None },
+      _ => None,
+    },
+    NExpr(PipeExpr(PForward, x, stage)) => if is_length_callee(stage) { length_term(term_of(x, bind)) } else { None },
+    NExpr(BinOpExpr(op, l, r)) => match op {
+      BAdd => term_sum(term_of(l, bind), term_of(r, bind)),
+      BSub => term_less(term_of(l, bind), term_of(r, bind)),
+      BMul | BDiv | BMod | BEq | BNe | BLt | BGt | BLe | BGe | BAnd | BOr | BConcat => None,
+    },
+    NExpr(_)
+    | NStmt(_)
+    | NPat(_)
+    | NHole(_)
+    | NModule(_)
+    | NLink(_)
+    | NTypeAnn(_)
+    | NName(_)
+    | NRow(_)
+    | NParam(_) => None,
+  },
+}
+
+fn self_term(bind) = match bind {
+  SelfNode(sh) => term_of(sh, NoSelf),
+  SelfVal(v) => match v {
+    LVInt(k) => point_term(k),
+    LVFloat(_) | LVString(_) | LVBool(_) => None,
+  },
+  NoSelf => None,
+}
+
+// A parameter and a destructured part are their binder; a let is its value's
+// term, or its binder where the value is no term; a handler's state is no
+// term, since a resume rebinds it.
+fn binder_term(b) = match graph_binder_of(b) {
+  Some(fact) => match fact {
+    ParamFact(_) => Some(TermAt(MBinder(b), 0)),
+    PartFact(_) => Some(TermAt(MBinder(b), 0)),
+    StateFact(_) => None,
+  },
+  None => match graph_node_body(b) {
+    NExpr(_) => match term_of(b, NoSelf) {
+      Some(t) => Some(t),
+      None => Some(TermAt(MBinder(b), 0)),
+    },
+    NParam(_) => Some(TermAt(MBinder(b), 0)),
+    NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) => None,
+  },
+}
+
+fn is_length_callee(callee) = match graph_ref_decl(callee) {
+  Some(d) => any(names_decl(d, ??), length_callees()),
+  None => false,
+}
+
+fn names_decl(d, name: String) = env_resolve_linked(name) == Some(d)
+
+fn length_term(t) = match t {
+  Some(TermAt(m, k)) => if k == 0 { Some(TermAt(MLength(m), 0)) } else { None },
+  None => None,
+}
+
+fn point_term(k) = if exact_offset(k) { Some(TermAt(MZero, k)) } else { None }
+
+// The constants the bounds carry stay small, so no sum of them along a path
+// leaves the word the arithmetic here is done in.
+fn exact_offset(k) with Pure = k <= 1048576 && k >= -1048576
+
+fn term_sum(a, b) = match a {
+  Some(TermAt(m, k)) => match b {
+    Some(TermAt(n, j)) => if n == MZero { offset_term(m, k + j) } else if m == MZero { offset_term(n, k + j) } else { None },
+    None => None,
+  },
+  None => None,
+}
+
+fn term_less(a, b) = match a {
+  Some(TermAt(m, k)) => match b {
+    Some(TermAt(n, j)) => if n == MZero { offset_term(m, k - j) } else { None },
+    None => None,
+  },
+  None => None,
+}
+
+fn offset_term(m, k) = if exact_offset(k) { Some(TermAt(m, k)) } else { None }
+
+// The hypotheses the path states, admitted round by round as the facts
+// already admitted keep their terms inside the word, beside what every term
+// is by itself — a length is at least zero, a parameter what its
+// precondition bounds; a disequation tightens a bound it sits at the edge of.
+fn hyps_prove(hyps, goal) = {
+  let base = flat_map(hyp_measures, [goal] ++ hyps) |> unique |> flat_map(measure_gaps)
+  let gaps = tightened(admitted(hyps, base))
+  !consistent(gaps) || hyp_in_word(gaps, goal) && follows(gaps, goal)
+}
+
+fn hyp_measures(hyp) = match hyp {
+  Holds(_, TermAt(a, _), TermAt(b, _)) => [a, b],
+}
+
+fn measure_gaps(m) = match m {
+  MZero => [],
+  MLength(_) => [AtMost(MZero, m, 0)],
+  MBinder(b) => binder_gaps(b, m),
+}
+
+fn binder_gaps(b, m) = match graph_binder_of(b) {
+  Some(fact) => match fact {
+    ParamFact(f) => match pre_contract(f.pre) {
+      Some(c) => domain_gaps(ty_domain(c), m),
+      None => [],
+    },
+    PartFact(_) => [],
+    StateFact(_) => [],
+  },
+  None => [],
+}
+
+fn domain_gaps(d, m) = match d {
+  DRange(lo, hi) => lo_gaps(lo, m) ++ hi_gaps(hi, m),
+  DFinite(_) | DUndecided => [],
+}
+
+fn lo_gaps(lo, m) = match lo {
+  Some(l) => if exact_offset(l) { [AtMost(MZero, m, 0 - l)] } else { [] },
+  None => [],
+}
+
+fn hi_gaps(hi, m) = match hi {
+  Some(h) => if exact_offset(h) { [AtMost(m, MZero, h)] } else { [] },
+  None => [],
+}
+
+fn admitted(pending, gaps) = match filter(hyp_in_word(gaps, ??), pending) {
+  [] => gaps,
+  ready => admitted(filter(hyp_outside(gaps, ??), pending), gaps ++ flat_map(hyp_gaps, ready)),
+}
+
+fn hyp_outside(gaps, hyp) = !hyp_in_word(gaps, hyp)
+
+fn hyp_in_word(gaps, hyp) = match hyp {
+  Holds(_, l, r) => term_in_word(gaps, l) && term_in_word(gaps, r),
+}
+
+// `m + k` is the word it denotes when m is bounded on the side k moves it
+// toward: against zero by any bound, against another measure — itself a word
+// — by at least k.
+fn term_in_word(gaps, t) = match t {
+  TermAt(m, k) => if k == 0 || m == MZero {
+    true
+  } else {
+    let ms = gap_measures(gaps)
+    if k > 0 {
+      dist(gaps, ms, MZero, m) != None || any(bounds_above(gaps, ms, m, k, ??), ms)
+    } else {
+      dist(gaps, ms, m, MZero) != None || any(bounds_below(gaps, ms, m, k, ??), ms)
+    }
+  },
+}
+
+fn bounds_above(gaps, ms, m, k, l) = l != MZero && at_most(dist(gaps, ms, l, m), 0 - k)
+
+fn bounds_below(gaps, ms, m, k, l) = l != MZero && at_most(dist(gaps, ms, m, l), k)
+
+fn at_most(d, c) = match d {
+  Some(v) => v <= c,
+  None => false,
+}
+
+fn hyp_gaps(hyp) = match hyp {
+  Holds(op, TermAt(a, ka), TermAt(b, kb)) => match op {
+    BLe => [AtMost(a, b, kb - ka)],
+    BLt => [AtMost(a, b, kb - ka - 1)],
+    BGe => [AtMost(b, a, ka - kb)],
+    BGt => [AtMost(b, a, ka - kb - 1)],
+    BEq => [AtMost(a, b, kb - ka), AtMost(b, a, ka - kb)],
+    BNe => [Apart(a, b, kb - ka)],
+    BAdd | BSub | BMul | BDiv | BMod | BAnd | BOr | BConcat => [],
+  },
+}
+
+fn follows(gaps, goal) = match goal {
+  Holds(op, TermAt(a, ka), TermAt(b, kb)) => match op {
+    BLe => implied(gaps, a, b, kb - ka),
+    BLt => implied(gaps, a, b, kb - ka - 1),
+    BGe => implied(gaps, b, a, ka - kb),
+    BGt => implied(gaps, b, a, ka - kb - 1),
+    BEq => implied(gaps, a, b, kb - ka) && implied(gaps, b, a, ka - kb),
+    BNe => implied(gaps, a, b, kb - ka - 1) || implied(gaps, b, a, ka - kb - 1) || any(stated_apart(a, b, kb - ka, ??), gaps),
+    BAdd | BSub | BMul | BDiv | BMod | BAnd | BOr | BConcat => false,
+  },
+}
+
+fn stated_apart(a, b, c, gap) = match gap {
+  Apart(x, y, d) => x == a && y == b && d == c || x == b && y == a && d == 0 - c,
+  AtMost(_, _, _) => false,
+}
+
+// A disequation at the edge of a bound moves the bound past it: `n != 0`
+// beside `n >= 0` is `n >= 1`.
+fn tightened(gaps) = gaps ++ flat_map(apart_tightens(gaps, ??), gaps)
+
+fn apart_tightens(gaps, gap) = match gap {
+  Apart(a, b, c) => if implied(gaps, a, b, c) { [AtMost(a, b, c - 1)] } else { [] } ++ if implied(gaps, b, a, 0 - c) { [AtMost(b, a, 0 - c - 1)] } else { [] },
+  AtMost(_, _, _) => [],
+}
+
+// `a - b <= c` follows when the shortest path from b to a weighs at most c.
+fn implied(gaps, a, b, c) = at_most(dist(gaps, gap_measures(gaps), b, a), c)
+
+fn gap_measures(gaps) = gaps |> flat_map(gap_ends) |> unique
+
+fn gap_ends(gap) = match gap {
+  AtMost(a, b, _) => [a, b],
+  Apart(a, b, _) => [a, b],
+}
+
+// The shortest path from `src` to `dst`, every bound `x - y <= w` an edge
+// from y to x weighing w, relaxed once per measure.
+fn dist(gaps, ms, src, dst) = ms |> map(start_dist(src, ??)) |> relaxed(gaps, ms) |> dist_at(dst)
+
+fn start_dist(src, m) = (m, if m == src { Some(0) } else { None })
+
+fn relaxed(gaps, ms, ds) = fold(ds, relax_round(gaps, ??, ??), ms)
+
+fn relax_round(gaps, ds, _) = fold(ds, relax, gaps)
+
+fn relax(ds, gap) = match gap {
+  AtMost(x, y, w) => match dist_at(y, ds) {
+    Some(dy) => if shorter(dist_at(x, ds), dy + w) { set_dist(ds, x, dy + w) } else { ds },
+    None => ds,
+  },
+  Apart(_, _, _) => ds,
+}
+
+fn shorter(cur, d) = match cur {
+  Some(c) => d < c,
+  None => true,
+}
+
+fn dist_at(m, ds) = match find(dist_of(m, ??), ds) {
+  Some((_, d)) => d,
+  None => None,
+}
+
+fn dist_of(m, entry) = match entry {
+  (n, _) => n == m,
+}
+
+fn set_dist(ds, m, d) = ds |> map(set_entry(m, d, ??))
+
+fn set_entry(m, d, entry) = match entry {
+  (n, e) => if n == m { (n, Some(d)) } else { (n, e) },
+}
+
+// Bounds that close a cycle of negative weight cannot all hold: every
+// measure starts at zero, and a round past one per measure still shortens a
+// path only around such a cycle.
+fn consistent(gaps) = {
+  let ms = gap_measures(gaps)
+  let settled = ms |> map(at_zero) |> relaxed(gaps, ms)
+  fold(settled, relax, gaps) == settled
+}
+
+fn at_zero(m) = (m, Some(0))
 
 // The lengths a sequence can have, read along its edges: a list literal's
 // own count, a string literal's bytes, a let's value through the reference's
@@ -436,7 +877,7 @@ fn field_asserts_nothing(field) = match field {
 // `!Trap` where the arm's `0` refutes it.
 fn node_excludes(h, k, bind) = match node_const_at(h, bind) {
   Some(v) => not_decide(litval_eq(v, LVInt(k))),
-  None => leaves_exclude(value_leaves(h, bind), k),
+  None => or_path(leaves_exclude(value_leaves(h, bind), k), h, BNe, term_of(h, bind), point_term(k)),
 }
 
 // THE IMPLICATION READ: a contract excludes a point exactly when one of its
@@ -693,13 +1134,21 @@ fn arm_tails(h) = match value_tails(h) {
 
 // A comparison decides iff BOTH operands reduce to ground constants under the
 // current `self` binding — or, with a ground LEFT and a structural right, the
-// interval fragment proves `n <= X` from X's lower bound; otherwise None.
+// interval fragment proves `n <= X` from X's lower bound; a claim over a value
+// it leaves open is proven where the value's path implies it.
 fn compare_decide_at(op, lh, rh, bind) = match node_const_at(lh, bind) {
   Some(lv) => match node_const_at(rh, bind) {
     Some(rv) => litval_compare(op, lv, rv),
-    None => interval_ge_decide(op, lv, rh, bind),
+    None => claim_on_path(interval_ge_decide(op, lv, rh, bind), op, lh, rh, bind),
   },
-  None => None,
+  None => claim_on_path(None, op, lh, rh, bind),
+}
+
+// The path a comparison stands on is the claimed value's: a predicate's own
+// nodes sit in its type's declaration, where no condition holds.
+fn claim_on_path(verdict, op, lh, rh, bind) = match bind {
+  SelfNode(sh) => or_path(verdict, sh, op, term_of(lh, bind), term_of(rh, bind)),
+  NoSelf | SelfVal(_) => verdict,
 }
 
 // `n <= X` / `n < X` with ground left: proves when X's structural LOWER BOUND
@@ -1548,7 +1997,7 @@ fn field_contract(fs, step) = match step {
 // declared, or proven at the callee's exit — when that return states a
 // refinement.
 fn call_leaves(h, ref callee) = match graph_node_body(callee) {
-  NExpr(VarRef(cname)) => if cname == "len" || cname == "byte_len" {
+  NExpr(VarRef(cname)) => if is_length_callee(callee) {
     [LLength]
   } else if ref_is_constructor(callee) {
     [LBuilt(cname)]

@@ -1,0 +1,15 @@
+// expect: 10
+// A divisor the path has guarded is a divisor the claim can stand on: past
+// `b > 0` neither zero nor -1 is possible, so `a / b` is total; past
+// `b == 0` failing, `a % b` is, and so is the arm of a match whose earlier
+// arm took the zero. The prior boot charged `Trap` at all three.
+fn ratio(a, b) with !Trap = if b > 0 { a / b } else { 0 }
+
+fn rem(a, b) with !Trap = if b == 0 { 0 } else { a % b }
+
+fn rem_arm(a, b) with !Trap = match b {
+  0 => 0,
+  _ => a % b,
+}
+
+fn main() = ratio(20, 4) + rem(17, 5) + rem_arm(23, 4)

@@ -1,0 +1,6 @@
+// expect: refuse E_EffectMismatch
+// The guard's branch decides which way it holds: the read under the else of
+// `i < len(xs)` is the read the guard ruled out, so it stays open.
+fn bad(xs, i) with !Trap = if i >= 0 && i < len(xs) { 0 } else { xs[i] }
+
+fn main() = bad([1, 2], 0)

@@ -1,0 +1,7 @@
+// expect: 9
+// A length the path has fixed away from zero leaves its last slot in
+// bounds: past `len(xs) == 0` failing, `len(xs) - 1` is a valid index. The
+// prior boot refused.
+fn last_or(xs, d) with !Trap = if len(xs) == 0 { d } else { xs[len(xs) - 1] }
+
+fn main() = last_or([3, 5, 9], 0)

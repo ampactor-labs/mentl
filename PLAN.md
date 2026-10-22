@@ -856,11 +856,13 @@ and the artifact:
   `Predicate` projection, `node_to_predicate` and the copy frozen into
   `TRefined` delete, the value walk reading the predicate's nodes and a
   called function's contract and body — so a predicate that calls a function
-  is decided; a claim reads the path's conditions on the parent edge as
-  hypotheses, so a guarded division and a guarded index are proven and an
-  index out of range is the row fact `Trap`
-  (`Hβ.verify.partiality-reads-the-path-narrowing`,
-  `Hβ.effects.index-partiality-is-a-row-fact`); a bug trap performs `Trap`
+  is decided; a parameter is what its calls hand it, so a bound every call
+  establishes — `0 <= i` where each call hands `0` or `i + 1`, read under the
+  path at each call and the body's own hypothesis at the recursive one — is
+  a hypothesis of the body, and the wheel's index loops are proven
+  (`Hβ.verify.parameter-is-what-its-calls-hand`); a slice past its sequence
+  is the row fact `Trap` as an index out of range is
+  (`Hβ.effects.index-partiality-is-a-row-fact`); a bug trap performs `Trap`
   carrying the node, and the root answers it with the node's aspects and
   Reason chain, never a bare `unreachable`; a label's claim on a part read off
   a call's answer is read through the callee's return tails, proven where
@@ -1184,9 +1186,9 @@ arithmetic on `Nope` (measured 2026-10-21). `mentl diagnostics` projects the cat
     proposer's search is the solver: union-find and the e-graph as congruence
     closure, the chain of forked instances as the assignment stack, a fork as a case split,
     the first divergence of two forks' write sets as conflict analysis. The fragment, in the order the
-    wheel's own debt names it: path narrowing (the guarded index reads and the
-    divisions under a guard), overflow-aware intervals, linear arithmetic,
-    equality from the e-graph. An external solver plugs in only as a proposer
+    wheel's own debt names it: overflow-aware intervals, linear arithmetic
+    beyond the difference bounds the path is read in, equality from the
+    e-graph. An external solver plugs in only as a proposer
     whose certificate the kernel checks.
 18. **The remaining faces of the one law.** Schemes are edges
     (`Hβ.infer.schemes-are-edges`: instantiation a correspondence edge, never a
