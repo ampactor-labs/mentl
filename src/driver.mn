@@ -445,7 +445,7 @@ fn driver_judge_link(link, entries, entry_key: String, prelude_key, dscope) = {
   // has read every module and lexed its header.
   match dscope {
     ScopeAll => eprint_string("heap: {discovered} byte(s) when the link is discovered\n"),
-    _ => (),
+    ScopeNone | ScopeProject(_) => (),
   }
   let start = graph_next()
   let keyed = fold([], mint_entry, entries)
@@ -621,7 +621,7 @@ fn driver_warm_persist(ref entry_module) = if diag_errors() == 0 {
 // reachability, the gate and emit re-run over the restored graph — measured
 // at 3.8 s of a 5.75 s warm compile for a five-line program whose whole
 // output is 78 KB, so it is derivation and not delivery, and it goes to zero
-// when the lowered form becomes graph columns (PLAN §11.18). And a cone's
+// when the lowered form becomes graph columns (PLAN §11.17). And a cone's
 // emission is not the cold one's bytes: the superseded generations' nodes
 // stay in the graph and the twin demand reads them, so one wheel source
 // emitted 7,493 functions cold and 9,206 through a thirteen-module cone
@@ -712,7 +712,7 @@ fn edit_node(e) = edit_of(e).node
 // judgment wrote at them — and reads again, from their own lines, the
 // statements the edit rewrote or moved. A moved statement is read again
 // because its positions are copied into its reasons and its reports; a Reason
-// that is an edge to its node (PLAN §11.18) lets a moved statement keep its
+// that is an edge to its node (PLAN §11.17) lets a moved statement keep its
 // judgment. Every statement whose judgment read a replaced one is read again
 // with it: one holding a reference or a comment mention into its subtree,
 // transitively; one declaring a name a rewritten statement now declares, with

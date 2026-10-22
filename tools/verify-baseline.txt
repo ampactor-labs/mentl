@@ -14,7 +14,7 @@ fs_impl_bypass_max: 0
 
 # The one declared red frontier leg, judged by name in both directions: a
 # Why chain's coordinate carries no file, because a Located Reason holds a
-# span and no handle. §11.18's Reason face, where Located gains the handle,
+# span and no handle. §11.17's Reason face, where Located gains the handle,
 # turns it green and deletes this line.
 frontier_expected_red: why-coordinates
 
@@ -30,7 +30,7 @@ desugar_vocabulary: 48
 # The ownership markers the wheel's source authors; inference grades the
 # rest, so each falls as a marker becomes a fact the judgment derives.
 authored_own_max: 40
-authored_ref_max: 520
+authored_ref_max: 519
 
 # The self-compile's peak RSS in KB (the march's m3 leg, the minimum of three
 # on a breach): 1% over the CI runner's reading of the boot it holds, since
@@ -55,4 +55,3 @@ head_round_trip_max: 0
 # The nodes the medium mints to judge `fn main() = 7` — the prelude a trivial
 # program links, never its layout (tools/frontier-gate.sh, the cost facet).
 prelude_floor_nodes_max: 12802
-reshaped: prelude_floor_lines_max -> prelude_floor_nodes_max

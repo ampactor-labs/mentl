@@ -56,7 +56,9 @@ fn nstmt(s, span: ValidSpan) = {
 
 fn is_let_born(s) = match s {
   LetStmt(pat, _, _) => is_destructure_pat(pat),
-  _ => false,
+  FnStmt(_, _, _, _, _) | TypeDefStmt(_, _) | EffectDeclStmt(_, _, _)
+  | HandlerDeclStmt(_, _, _, _, _, _) | HandlerChainStmt(_, _) | ExprStmt(_) | ImportStmt(_)
+  | RefineStmt(_, _, _) | AliasStmt(_, _) | RowAliasStmt(_, _) => false,
 }
 
 // A destructuring let is born the match it becomes: `desugar_block` gives
@@ -69,7 +71,9 @@ fn stmt_birth(s, span: ValidSpan) = match s {
   } else {
     Placeholder(span)
   },
-  _ => Placeholder(span),
+  FnStmt(_, _, _, _, _) | TypeDefStmt(_, _) | EffectDeclStmt(_, _, _)
+  | HandlerDeclStmt(_, _, _, _, _, _) | HandlerChainStmt(_, _) | ExprStmt(_) | ImportStmt(_)
+  | RefineStmt(_, _, _) | AliasStmt(_, _) | RowAliasStmt(_, _) => Placeholder(span),
 }
 
 // A hole is one cell, and its id is that cell's handle: the id names the
@@ -121,7 +125,12 @@ fn at(ref tokens, pos, kind) = kind_eq(kind_at(tokens, pos), kind)
 fn skip_ws(ref tokens, pos) = match kind_at(tokens, pos) {
   TNewline => skip_ws(tokens, pos + 1),
   TComment(_) => skip_ws(tokens, pos + 1),
-  _ => pos,
+  TFn | TLet | TIf | TElse | TMatch | TType | TEffect | THandler | TWith | TResume | TImport
+  | TWhere | TOwn | TRef | TPure | TTrue | TFalse | TIdent(_) | TIntLit(_) | TFloatLit(_)
+  | TStringPart(_) | TStringSplice | TEqEq | TBangEq | TLtEq | TGtEq | TArrow | TFatArrow | TPlusPlus
+  | TPipeGt | TLtPipe | TGtLt | TTildeGt | TLtTilde | TAndAnd | TOrOr | TLParen | TRParen | TLBrace
+  | TRBrace | TLBracket | TRBracket | TComma | TDot | TColon | TSemicolon | TPlus | TMinus | TStar
+  | TSlash | TPercent | TEq | TLt | TGt | TBang | TAmp | TPipe | TAt | THole | TEof => pos,
 }
 
 // The same walk backward — the dual skip_ws never had, and the reason a
@@ -136,7 +145,12 @@ fn skip_ws_back(ref tokens, pos) = if pos <= 0 {
     TNewline => skip_ws_back(tokens, pos - 1),
     TComment(_) => skip_ws_back(tokens, pos - 1),
     TSemicolon => skip_ws_back(tokens, pos - 1),
-    _ => pos,
+    TFn | TLet | TIf | TElse | TMatch | TType | TEffect | THandler | TWith | TResume | TImport
+    | TWhere | TOwn | TRef | TPure | TTrue | TFalse | TIdent(_) | TIntLit(_) | TFloatLit(_)
+    | TStringPart(_) | TStringSplice | TEqEq | TBangEq | TLtEq | TGtEq | TArrow | TFatArrow | TPlusPlus
+    | TPipeGt | TLtPipe | TGtLt | TTildeGt | TLtTilde | TAndAnd | TOrOr | TLParen | TRParen | TLBrace
+    | TRBrace | TLBracket | TRBracket | TComma | TDot | TColon | TPlus | TMinus | TStar | TSlash
+    | TPercent | TEq | TLt | TGt | TBang | TAmp | TPipe | TAt | THole | TEof => pos,
   }
 }
 
@@ -157,7 +171,12 @@ fn skip_sep(ref tokens, pos) = match kind_at(tokens, pos) {
   TSemicolon => skip_sep(tokens, pos + 1),
   TNewline => skip_sep(tokens, pos + 1),
   TComment(_) => skip_sep(tokens, pos + 1),
-  _ => pos,
+  TFn | TLet | TIf | TElse | TMatch | TType | TEffect | THandler | TWith | TResume | TImport
+  | TWhere | TOwn | TRef | TPure | TTrue | TFalse | TIdent(_) | TIntLit(_) | TFloatLit(_)
+  | TStringPart(_) | TStringSplice | TEqEq | TBangEq | TLtEq | TGtEq | TArrow | TFatArrow | TPlusPlus
+  | TPipeGt | TLtPipe | TGtLt | TTildeGt | TLtTilde | TAndAnd | TOrOr | TLParen | TRParen | TLBrace
+  | TRBrace | TLBracket | TRBracket | TComma | TDot | TColon | TPlus | TMinus | TStar | TSlash
+  | TPercent | TEq | TLt | TGt | TBang | TAmp | TPipe | TAt | THole | TEof => pos,
 }
 
 // show_token_kind: human-readable name for diagnostics.
@@ -250,95 +269,157 @@ fn expect(ref tokens, pos, kind) = if at(tokens, pos, kind) {
   pos
 }
 
-// Payload extractors — return defaults if the kind doesn't match.
-// Most call sites should pattern-match directly via `match
-// kind_at(tokens, pos) { TIdent(s) => …, TIntLit(n) => …, … }`;
-// these helpers are for the few sites (e.g., parse_fn extracting
-// the function name after dispatching past TFn) where the parent
-// has already verified the variant and just needs the payload.
-fn ident_at(ref tokens, pos) = match kind_at(tokens, pos) {
+// A name the grammar demands: the word an identifier token spells, or a
+// refusal at the token standing there instead. The empty name is the
+// recovery the judgment goes on with, and the program refuses either way
+// (P_ExpectedToken).
+fn ident_at(tokens, pos) = match kind_at(tokens, pos) {
   TIdent(s) => s,
-  // drift-audit: ignore — "" = non-ident payload null (parent already verified the variant; surfaces downstream, SYNTAX §414)
-  _ => "",
+  other @ (
+    TFn | TLet | TIf | TElse | TMatch | TType | TEffect | THandler | TWith | TResume | TImport
+    | TWhere | TOwn | TRef | TPure | TTrue | TFalse | TIntLit(_) | TFloatLit(_) | TComment(_)
+    | TStringPart(_) | TStringSplice | TEqEq | TBangEq | TLtEq | TGtEq | TArrow | TFatArrow | TPlusPlus
+    | TPipeGt | TLtPipe | TGtLt | TTildeGt | TLtTilde | TAndAnd | TOrOr | TLParen | TRParen | TLBrace
+    | TRBrace | TLBracket | TRBracket | TComma | TDot | TColon | TSemicolon | TPlus | TMinus | TStar
+    | TSlash | TPercent | TEq | TLt | TGt | TBang | TAmp | TPipe | TAt | THole | TNewline | TEof
+  ) => name_refused(tokens, pos, "a name", other),
+}
+
+// The word a name spells where the grammar reads the contextual keywords as
+// names — a record field, an import segment, a parameter — or the refusal of
+// what stands there instead, saying what was expected.
+fn name_at(tokens, pos, expected: String) = match kind_at(tokens, pos) {
+  TIdent(s) => s,
+  TOwn => "own",
+  TRef => "ref",
+  other @ (
+    TFn | TLet | TIf | TElse | TMatch | TType | TEffect | THandler | TWith | TResume | TImport
+    | TWhere | TPure | TTrue | TFalse | TIntLit(_) | TFloatLit(_) | TComment(_) | TStringPart(_)
+    | TStringSplice | TEqEq | TBangEq | TLtEq | TGtEq | TArrow | TFatArrow | TPlusPlus | TPipeGt
+    | TLtPipe | TGtLt | TTildeGt | TLtTilde | TAndAnd | TOrOr | TLParen | TRParen | TLBrace | TRBrace
+    | TLBracket | TRBracket | TComma | TDot | TColon | TSemicolon | TPlus | TMinus | TStar | TSlash
+    | TPercent | TEq | TLt | TGt | TBang | TAmp | TPipe | TAt | THole | TNewline | TEof
+  ) => name_refused(tokens, pos, expected, other),
+}
+
+fn name_refused(tokens, pos, expected: String, found) = {
+  report(PExpectedToken("expected {expected}, found `{show_token_kind(found)}`", span_at(tokens, pos)))
+  ""
+}
+
+// The operator a token stands for between two operands: a verb, which draws
+// topology, a binary operation on values, or none, where the expression
+// ends.
+type Infix = InfixVerb(PipeKind) | InfixBin(BinOp) | NotInfix
+
+// Each operator is one value of the module, built once where the module
+// starts, so classifying a token builds nothing. `<|` and `><` are ONE
+// PFanout topology; the glyph authors the ownership aspect (FanShare = one
+// ref-borrowed input; FanDistribute = N owned inputs). The surface keeps both
+// glyphs; ownership CHECKS coherence (own through `<|` →
+// E_OwnershipViolation; the cursor projects the glyph from the inferred
+// ownership at fmt). The verb contributes ZERO execution facts — schedule is
+// a `~>` handler.
+let infix_tee = InfixVerb(PTee)
+
+let infix_pipe = InfixVerb(PForward)
+
+let infix_share = InfixVerb(PFanout(FanShare))
+
+let infix_distribute = InfixVerb(PFanout(FanDistribute))
+
+let infix_feedback = InfixVerb(PFeedback)
+
+let infix_add = InfixBin(BAdd)
+
+let infix_sub = InfixBin(BSub)
+
+let infix_mul = InfixBin(BMul)
+
+let infix_div = InfixBin(BDiv)
+
+let infix_mod = InfixBin(BMod)
+
+let infix_concat = InfixBin(BConcat)
+
+let infix_eq = InfixBin(BEq)
+
+let infix_ne = InfixBin(BNe)
+
+let infix_lt = InfixBin(BLt)
+
+let infix_gt = InfixBin(BGt)
+
+let infix_le = InfixBin(BLe)
+
+let infix_ge = InfixBin(BGe)
+
+let infix_and = InfixBin(BAnd)
+
+let infix_or = InfixBin(BOr)
+
+// The infix operator a token spells — the one classification the binop loop
+// reads: its binding power and the node it builds are both the operator's.
+// One token, one operator: `~>` is PTee always, and scope is precedence's
+// job.
+fn infix_of(k) = match k {
+  TTildeGt => infix_tee,
+  TPipeGt => infix_pipe,
+  TLtPipe => infix_share,
+  TGtLt => infix_distribute,
+  TLtTilde => infix_feedback,
+  TPlus => infix_add,
+  TMinus => infix_sub,
+  TStar => infix_mul,
+  TSlash => infix_div,
+  TPercent => infix_mod,
+  TPlusPlus => infix_concat,
+  TEqEq => infix_eq,
+  TBangEq => infix_ne,
+  TLt => infix_lt,
+  TGt => infix_gt,
+  TLtEq => infix_le,
+  TGtEq => infix_ge,
+  TAndAnd => infix_and,
+  TOrOr => infix_or,
+  TFn | TLet | TIf | TElse | TMatch | TType | TEffect | THandler | TWith | TResume | TImport
+  | TWhere | TOwn | TRef | TPure | TTrue | TFalse | TIdent(_) | TIntLit(_) | TFloatLit(_)
+  | TComment(_) | TStringPart(_) | TStringSplice | TArrow | TFatArrow | TLParen | TRParen | TLBrace
+  | TRBrace | TLBracket | TRBracket | TComma | TDot | TColon | TSemicolon | TEq | TBang | TAmp | TPipe
+  | TAt | THole | TNewline | TEof => NotInfix,
 }
 
 // Operator precedence — THE canonical table, per SYNTAX.md §Precedence.
-// Higher number = tighter binding. The same literal integers appear in
-// SYNTAX.md — one table, two projections (the spec and this fn),
-// zero translation; the seed's third projection retired with the seed.
+// Higher number = tighter binding, the same literal integers SYNTAX writes:
+// one table, which the parser binds by and the formatter parenthesizes by.
 //
 // The one law of `~>`: precedence 1, the loosest binary operator
 // (sharing the floor with nothing — verbs tier above it). The handler
 // at the foot of a chain governs everything to its left; parenthesize
 // `(stage ~> h)` to narrow. Layout is NEVER semantics — block vs
 // inline on the page is the formatter's projection.
-fn op_prec(k) with Pure = match k {
-  TTildeGt => 1,
-  TLtPipe => 2,
-  TGtLt => 2,
-  TLtTilde => 2,
-  TPipeGt => 3,
-  TOrOr => 4,
-  TAndAnd => 5,
-  TEqEq => 6,
-  TBangEq => 6,
-  TLt => 7,
-  TGt => 7,
-  TLtEq => 7,
-  TGtEq => 7,
-  TPlusPlus => 8,
-  TPlus => 9,
-  TMinus => 9,
-  TStar => 10,
-  TSlash => 10,
-  TPercent => 10,
-  // drift-audit: ignore — prec 0 IS "not a binary operator"; the ladder's terminator, not a fabricated default
-  _ => 0,
+fn binop_prec(op) with Pure = match op {
+  BMul => 10,
+  BDiv => 10,
+  BMod => 10,
+  BAdd => 9,
+  BSub => 9,
+  BConcat => 8,
+  BLt => 7,
+  BGt => 7,
+  BLe => 7,
+  BGe => 7,
+  BEq => 6,
+  BNe => 6,
+  BAnd => 5,
+  BOr => 4,
 }
 
-// Pipe-verb token → PipeKind. One token, one kind — `~>` is PTee
-// always; scope is precedence's job, layout is the formatter's.
-fn op_to_pipe_kind(k) = match k {
-  TTildeGt => Some(PTee),
-  TPipeGt => Some(PForward),
-  // `<|` and `><` are ONE PFanout topology; the glyph authors the
-  // ownership aspect (FanShare = one ref-borrowed input; FanDistribute
-  // = N owned inputs). The surface keeps both glyphs; ownership CHECKS
-  // coherence (own through `<|` → E_OwnershipViolation; the cursor
-  // projects the glyph from the inferred ownership at fmt). The verb
-  // contributes ZERO execution facts — schedule is a `~>` handler.
-  TLtPipe => Some(PFanout(FanShare)),
-  TGtLt => Some(PFanout(FanDistribute)),
-  TLtTilde => Some(PFeedback),
-  _ => None,
-}
-
-// Map a binop `TokenKind` to `Some(BinOp)`, or `None` if `k` is not
-// a binop-producing token. Caller matches `Some`/`None` explicitly;
-// `None` at that site is unreachable (caller has already filtered via
-// `op_prec(k) > 0` + `op_to_pipe_kind == None`), but the
-// unreachability is expressed at the call site — not fabricated here
-// via a wildcard arm.
-//
-// Future form (named peer 11.B.1.R): refinement-typed parameter
-//   `fn op_to_binop(k) -> BinOp where binop(k)`
-// exercises primitive #6 and eliminates the `Option` entirely.
-fn op_to_binop(k) = match k {
-  TPlus => Some(BAdd),
-  TMinus => Some(BSub),
-  TStar => Some(BMul),
-  TSlash => Some(BDiv),
-  TPercent => Some(BMod),
-  TPlusPlus => Some(BConcat),
-  TEqEq => Some(BEq),
-  TBangEq => Some(BNe),
-  TLt => Some(BLt),
-  TGt => Some(BGt),
-  TLtEq => Some(BLe),
-  TGtEq => Some(BGe),
-  TAndAnd => Some(BAnd),
-  TOrOr => Some(BOr),
-  _ => None,
+fn pipe_prec(k) with Pure = match k {
+  PForward => 3,
+  PFanout(_) => 2,
+  PFeedback => 2,
+  PTee => 1,
 }
 
 // Program — top-level loop
@@ -422,7 +503,12 @@ fn cw_collect_runs(ref tokens, i, prev_line, acc) -> [CwRun] = if i >= len(token
     },
     TNewline => cw_collect_runs(tokens, i + 1, prev_line, acc),
     TEof => acc,
-    _ => match span_at(tokens, i) {
+    TFn | TLet | TIf | TElse | TMatch | TType | TEffect | THandler | TWith | TResume | TImport
+    | TWhere | TOwn | TRef | TPure | TTrue | TFalse | TIdent(_) | TIntLit(_) | TFloatLit(_)
+    | TStringPart(_) | TStringSplice | TEqEq | TBangEq | TLtEq | TGtEq | TArrow | TFatArrow | TPlusPlus
+    | TPipeGt | TLtPipe | TGtLt | TTildeGt | TLtTilde | TAndAnd | TOrOr | TLParen | TRParen | TLBrace
+    | TRBrace | TLBracket | TRBracket | TComma | TDot | TColon | TSemicolon | TPlus | TMinus | TStar
+    | TSlash | TPercent | TEq | TLt | TGt | TBang | TAmp | TPipe | TAt | THole => match span_at(tokens, i) {
       Span(_, _, el, _) => cw_collect_runs(tokens, i + 1, el, acc),
     },
   }
@@ -444,9 +530,19 @@ fn cw_join_run(ref tokens, i, own acc, last_line) = match token_kind(tokens[i]) 
         (acc, last_line, i)
       },
     },
-    _ => (acc, last_line, i),
+    TFn | TLet | TIf | TElse | TMatch | TType | TEffect | THandler | TWith | TResume | TImport
+    | TWhere | TOwn | TRef | TPure | TTrue | TFalse | TIdent(_) | TIntLit(_) | TFloatLit(_)
+    | TStringPart(_) | TStringSplice | TEqEq | TBangEq | TLtEq | TGtEq | TArrow | TFatArrow | TPlusPlus
+    | TPipeGt | TLtPipe | TGtLt | TTildeGt | TLtTilde | TAndAnd | TOrOr | TLParen | TRParen | TLBrace
+    | TRBrace | TLBracket | TRBracket | TComma | TDot | TColon | TSemicolon | TPlus | TMinus | TStar
+    | TSlash | TPercent | TEq | TLt | TGt | TBang | TAmp | TPipe | TAt | THole | TNewline | TEof => (acc, last_line, i),
   },
-  _ => (acc, last_line, i),
+  TFn | TLet | TIf | TElse | TMatch | TType | TEffect | THandler | TWith | TResume | TImport
+  | TWhere | TOwn | TRef | TPure | TTrue | TFalse | TIdent(_) | TIntLit(_) | TFloatLit(_)
+  | TStringPart(_) | TStringSplice | TEqEq | TBangEq | TLtEq | TGtEq | TArrow | TFatArrow | TPlusPlus
+  | TPipeGt | TLtPipe | TGtLt | TTildeGt | TLtTilde | TAndAnd | TOrOr | TLParen | TRParen | TLBrace
+  | TRBrace | TLBracket | TRBracket | TComma | TDot | TColon | TSemicolon | TPlus | TMinus | TStar
+  | TSlash | TPercent | TEq | TLt | TGt | TBang | TAmp | TPipe | TAt | THole | TEof => (acc, last_line, i),
 }
 
 // A candidate slot: (start_line, start_col, end_line, end_col, handle).
@@ -624,7 +720,8 @@ fn import_kept(acc, stmt) = match acc {
       },
       None => (smap_add(seen, path, 1), push(kept, stmt)),
     },
-    _ => (seen, push(kept, stmt)),
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => (seen, push(kept, stmt)),
   },
 }
 
@@ -688,7 +785,12 @@ fn parse_stmt(ref tokens, pos, scope) = match kind_at(tokens, pos) {
       },
     }
   },
-  _ => match parse_stmt_form(tokens, pos, scope) {
+  TFn | TLet | TIf | TElse | TMatch | TType | TEffect | THandler | TWith | TResume | TImport
+  | TWhere | TOwn | TRef | TPure | TTrue | TFalse | TIdent(_) | TIntLit(_) | TFloatLit(_)
+  | TStringPart(_) | TStringSplice | TEqEq | TBangEq | TLtEq | TGtEq | TArrow | TFatArrow | TPlusPlus
+  | TPipeGt | TLtPipe | TGtLt | TTildeGt | TLtTilde | TAndAnd | TOrOr | TLParen | TRParen | TLBrace
+  | TRBrace | TLBracket | TRBracket | TComma | TDot | TColon | TSemicolon | TPlus | TMinus | TStar
+  | TSlash | TPercent | TEq | TLt | TGt | TBang | TAmp | TPipe | TAt | THole | TNewline | TEof => match parse_stmt_form(tokens, pos, scope) {
     (stmt, p) => (nstmt(stmt, upto(tokens, span_at(tokens, pos), p)), p),
   },
 }
@@ -703,7 +805,12 @@ fn parse_stmt_form(ref tokens, pos, scope) = match kind_at(tokens, pos) {
   TEffect => parse_effect_decl(tokens, pos + 1),
   THandler => parse_handler_decl(tokens, pos + 1),
   TImport => parse_import(tokens, pos + 1),
-  _ => match parse_expr(tokens, pos) {
+  TIf | TElse | TMatch | TWith | TResume | TWhere | TOwn | TRef | TPure | TTrue | TFalse | TIdent(_)
+  | TIntLit(_) | TFloatLit(_) | TComment(_) | TStringPart(_) | TStringSplice | TEqEq | TBangEq | TLtEq
+  | TGtEq | TArrow | TFatArrow | TPlusPlus | TPipeGt | TLtPipe | TGtLt | TTildeGt | TLtTilde | TAndAnd
+  | TOrOr | TLParen | TRParen | TLBrace | TRBrace | TLBracket | TRBracket | TComma | TDot | TColon
+  | TSemicolon | TPlus | TMinus | TStar | TSlash | TPercent | TEq | TLt | TGt | TBang | TAmp | TPipe
+  | TAt | THole | TNewline | TEof => match parse_expr(tokens, pos) {
     (expr, next) => (ExprStmt(expr), next),
   },
 }
@@ -715,7 +822,12 @@ fn parse_stmt_form(ref tokens, pos, scope) = match kind_at(tokens, pos) {
 fn skip_seps_only(ref tokens, pos) = match kind_at(tokens, pos) {
   TSemicolon => skip_seps_only(tokens, pos + 1),
   TNewline => skip_seps_only(tokens, pos + 1),
-  _ => pos,
+  TFn | TLet | TIf | TElse | TMatch | TType | TEffect | THandler | TWith | TResume | TImport
+  | TWhere | TOwn | TRef | TPure | TTrue | TFalse | TIdent(_) | TIntLit(_) | TFloatLit(_)
+  | TComment(_) | TStringPart(_) | TStringSplice | TEqEq | TBangEq | TLtEq | TGtEq | TArrow
+  | TFatArrow | TPlusPlus | TPipeGt | TLtPipe | TGtLt | TTildeGt | TLtTilde | TAndAnd | TOrOr
+  | TLParen | TRParen | TLBrace | TRBrace | TLBracket | TRBracket | TComma | TDot | TColon | TPlus
+  | TMinus | TStar | TSlash | TPercent | TEq | TLt | TGt | TBang | TAmp | TPipe | TAt | THole | TEof => pos,
 }
 
 // Concatenate the contiguous // run into one comment String. Exactly ONE
@@ -726,9 +838,19 @@ fn collect_comment(ref tokens, pos, own acc) = match kind_at(tokens, pos) {
   TComment(next_line) => collect_comment(tokens, pos + 1, "{acc}\n{next_line}"),
   TNewline => match kind_at(tokens, pos + 1) {
     TComment(next_line) => collect_comment(tokens, pos + 2, "{acc}\n{next_line}"),
-    _ => (acc, pos),
+    TFn | TLet | TIf | TElse | TMatch | TType | TEffect | THandler | TWith | TResume | TImport
+    | TWhere | TOwn | TRef | TPure | TTrue | TFalse | TIdent(_) | TIntLit(_) | TFloatLit(_)
+    | TStringPart(_) | TStringSplice | TEqEq | TBangEq | TLtEq | TGtEq | TArrow | TFatArrow | TPlusPlus
+    | TPipeGt | TLtPipe | TGtLt | TTildeGt | TLtTilde | TAndAnd | TOrOr | TLParen | TRParen | TLBrace
+    | TRBrace | TLBracket | TRBracket | TComma | TDot | TColon | TSemicolon | TPlus | TMinus | TStar
+    | TSlash | TPercent | TEq | TLt | TGt | TBang | TAmp | TPipe | TAt | THole | TNewline | TEof => (acc, pos),
   },
-  _ => (acc, pos),
+  TFn | TLet | TIf | TElse | TMatch | TType | TEffect | THandler | TWith | TResume | TImport
+  | TWhere | TOwn | TRef | TPure | TTrue | TFalse | TIdent(_) | TIntLit(_) | TFloatLit(_)
+  | TStringPart(_) | TStringSplice | TEqEq | TBangEq | TLtEq | TGtEq | TArrow | TFatArrow | TPlusPlus
+  | TPipeGt | TLtPipe | TGtLt | TTildeGt | TLtTilde | TAndAnd | TOrOr | TLParen | TRParen | TLBrace
+  | TRBrace | TLBracket | TRBracket | TComma | TDot | TColon | TSemicolon | TPlus | TMinus | TStar
+  | TSlash | TPercent | TEq | TLt | TGt | TBang | TAmp | TPipe | TAt | THole | TEof => (acc, pos),
 }
 
 // Parse `fn name(params) [-> retty] [with effects] = body`.
@@ -771,35 +893,16 @@ fn parse_fn(ref tokens, pos) = {
   }
 }
 
-// A param-name token: TIdent or the contextual keywords
-// own/ref/handle (SYNTAX.md — contextual keywords are idents outside
-// keyword-role position; #117 class). Pure structural match — no
-// string, no .len-on-call (the canonical projection — one predicate,
-// both call sites).
+// A param-name token: an identifier or a contextual keyword, which is a
+// name outside its keyword role.
 fn is_param_name_tok(ref tokens, p) = match kind_at(tokens, p) {
-  TIdent(_) => true,
-  TOwn => true,
-  TRef => true,
-  _ => false,
-}
-
-// Lexeme of an ident-shaped token: TIdent payload, or the contextual
-// keyword's spelling (own/ref). The canonical contextual-ident
-// LEXEME projection (paired with is_param_name_tok, the Bool gate) —
-// TIdent payload; TOwn→"own", TRef→"ref".
-// "" = not an ident-shaped token (the canonical null; surfaces
-// downstream, not a masked ADT). Used for record-field names:
-// SYNTAX.md admits keyword-named fields (e.with, r.ref) — record
-// construction is symmetric. (`handle` is NOT a keyword — it is the
-// medium's own domain noun; the legacy `handle {…} with h` spelling
-// retired with THandle, the turbofish precedent: no bespoke
-// recognizer, the general diagnostic teaches.)
-fn ident_or_kw_at(ref tokens, p) = match kind_at(tokens, p) {
-  TIdent(s) => s,
-  TOwn => "own",
-  TRef => "ref",
-  // drift-audit: ignore — "" = not an ident-shaped token (seed-canonical null; surfaces downstream, not a masked ADT)
-  _ => "",
+  TIdent(_) | TOwn | TRef => true,
+  TFn | TLet | TIf | TElse | TMatch | TType | TEffect | THandler | TWith | TResume | TImport
+  | TWhere | TPure | TTrue | TFalse | TIntLit(_) | TFloatLit(_) | TComment(_) | TStringPart(_)
+  | TStringSplice | TEqEq | TBangEq | TLtEq | TGtEq | TArrow | TFatArrow | TPlusPlus | TPipeGt
+  | TLtPipe | TGtLt | TTildeGt | TLtTilde | TAndAnd | TOrOr | TLParen | TRParen | TLBrace | TRBrace
+  | TLBracket | TRBracket | TComma | TDot | TColon | TSemicolon | TPlus | TMinus | TStar | TSlash
+  | TPercent | TEq | TLt | TGt | TBang | TAmp | TPipe | TAt | THole | TNewline | TEof => false,
 }
 
 // Does a real param start at p? TIdent → yes. A pattern opener
@@ -821,7 +924,12 @@ fn param_starts_here(ref tokens, p) = match kind_at(tokens, p) {
   TLBrace => true,
   TLBracket => true,
   TLParen => true,
-  _ => false,
+  TFn | TLet | TIf | TElse | TMatch | TType | TEffect | THandler | TWith | TResume | TImport
+  | TWhere | TPure | TTrue | TFalse | TIntLit(_) | TFloatLit(_) | TComment(_) | TStringPart(_)
+  | TStringSplice | TEqEq | TBangEq | TLtEq | TGtEq | TArrow | TFatArrow | TPlusPlus | TPipeGt
+  | TLtPipe | TGtLt | TTildeGt | TLtTilde | TAndAnd | TOrOr | TRParen | TRBrace | TRBracket | TComma
+  | TDot | TColon | TSemicolon | TPlus | TMinus | TStar | TSlash | TPercent | TEq | TLt | TGt | TBang
+  | TAmp | TPipe | TAt | THole | TNewline | TEof => false,
 }
 
 // Advance to the token after the next TRParen. Param lists are flat
@@ -884,7 +992,12 @@ fn parse_params_tail(ref tokens, pos, own buf, count, owner: String) = {
 fn parse_one_param(ref tokens, pos, owner: String, idx) = match match kind_at(tokens, pos) {
   TOwn => (Own, skip_ws(tokens, pos + 1)),
   TRef => (Ref, skip_ws(tokens, pos + 1)),
-  _ => (Unmarked, pos),
+  TFn | TLet | TIf | TElse | TMatch | TType | TEffect | THandler | TWith | TResume | TImport
+  | TWhere | TPure | TTrue | TFalse | TIdent(_) | TIntLit(_) | TFloatLit(_) | TComment(_)
+  | TStringPart(_) | TStringSplice | TEqEq | TBangEq | TLtEq | TGtEq | TArrow | TFatArrow | TPlusPlus
+  | TPipeGt | TLtPipe | TGtLt | TTildeGt | TLtTilde | TAndAnd | TOrOr | TLParen | TRParen | TLBrace
+  | TRBrace | TLBracket | TRBracket | TComma | TDot | TColon | TSemicolon | TPlus | TMinus | TStar
+  | TSlash | TPercent | TEq | TLt | TGt | TBang | TAmp | TPipe | TAt | THole | TNewline | TEof => (Unmarked, pos),
 } {
   (marker, p) => match parse_pat(tokens, p) {
     (pat, p_pat) => parse_param_tail(tokens, pat, marker, span_at(tokens, pos), p_pat, owner, idx),
@@ -1059,7 +1172,12 @@ fn parse_one_eff_arg(ref tokens, pos) = match kind_at(tokens, pos) {
   TLParen => type_eff_arg(tokens, pos),
   TLBracket => type_eff_arg(tokens, pos),
   TLBrace => type_eff_arg(tokens, pos),
-  _ => {
+  TFn | TLet | TIf | TElse | TMatch | TType | TEffect | THandler | TWith | TResume | TImport
+  | TWhere | TOwn | TRef | TPure | TTrue | TFalse | TComment(_) | TStringSplice | TEqEq | TBangEq
+  | TLtEq | TGtEq | TArrow | TFatArrow | TPlusPlus | TPipeGt | TLtPipe | TGtLt | TTildeGt | TLtTilde
+  | TAndAnd | TOrOr | TRParen | TRBrace | TRBracket | TComma | TDot | TColon | TSemicolon | TPlus
+  | TMinus | TStar | TSlash | TPercent | TEq | TLt | TGt | TBang | TAmp | TPipe | TAt | THole
+  | TNewline | TEof => {
     report(EEffArgNotLiteral(span_at(tokens, pos)))
     (EAInt(0), pos + 1)
   },
@@ -1111,15 +1229,27 @@ fn parse_let(ref tokens, pos, scope) = match parse_let_head(tokens, pos) {
 // it is a declaration's name, and no pattern stands at it.
 type LetHead = LhName(String, ValidSpan) | LhPat(Node)
 
-fn parse_let_head(tokens, pos) = {
-  let v = ident_at(tokens, pos)
-  if byte_len(v) > 0 && v != "_" && !upper_initial(v) && !at(tokens, skip_ws(tokens, pos + 1), TAt) {
+fn parse_let_head(tokens, pos) = match kind_at(tokens, pos) {
+  TIdent(v) => if is_let_name(tokens, pos, v) {
     (LhName(v, span_at(tokens, pos)), pos + 1)
   } else {
-    match parse_pat(tokens, pos) {
-      (pat, p) => (LhPat(pat), p),
-    }
-  }
+    let_head_pattern(tokens, pos)
+  },
+  TFn | TLet | TIf | TElse | TMatch | TType | TEffect | THandler | TWith | TResume | TImport
+  | TWhere | TOwn | TRef | TPure | TTrue | TFalse | TIntLit(_) | TFloatLit(_) | TComment(_)
+  | TStringPart(_) | TStringSplice | TEqEq | TBangEq | TLtEq | TGtEq | TArrow | TFatArrow | TPlusPlus
+  | TPipeGt | TLtPipe | TGtLt | TTildeGt | TLtTilde | TAndAnd | TOrOr | TLParen | TRParen | TLBrace
+  | TRBrace | TLBracket | TRBracket | TComma | TDot | TColon | TSemicolon | TPlus | TMinus | TStar
+  | TSlash | TPercent | TEq | TLt | TGt | TBang | TAmp | TPipe | TAt | THole | TNewline | TEof => let_head_pattern(tokens, pos),
+}
+
+// The name a let's head binds alone: a lowercase word that is no wildcard
+// and stands before no `@`.
+fn is_let_name(tokens, pos, v: String) =
+  v != "_" && !upper_initial(v) && !at(tokens, skip_ws(tokens, pos + 1), TAt)
+
+fn let_head_pattern(tokens, pos) = match parse_pat(tokens, pos) {
+  (pat, p) => (LhPat(pat), p),
 }
 
 fn upper_initial(v: String) = {
@@ -1145,7 +1275,8 @@ fn let_at_scope(head, val, ann, scope) = match (scope, head) {
   (AtModule, LhName(name, _)) => if ann == val {
     match graph_node_body(val) {
       NExpr(LambdaExpr(params, body)) => FnStmt(name, params, body, [], body),
-      _ => LetStmt(let_head_node(head), val, ann),
+      NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+      | NRow(_) | NParam(_) => LetStmt(let_head_node(head), val, ann),
     }
   } else {
     LetStmt(let_head_node(head), val, ann)
@@ -1244,7 +1375,12 @@ fn row_term_joins(tokens, pos) = match kind_at(tokens, pos) {
     let q = skip_ws(tokens, after)
     at(tokens, q, TPlus) || at(tokens, q, TMinus) || at(tokens, q, TAmp)
   },
-  _ => false,
+  TFn | TLet | TIf | TElse | TMatch | TType | TEffect | THandler | TWith | TResume | TImport
+  | TWhere | TOwn | TRef | TPure | TTrue | TFalse | TIntLit(_) | TFloatLit(_) | TComment(_)
+  | TStringPart(_) | TStringSplice | TEqEq | TBangEq | TLtEq | TGtEq | TArrow | TFatArrow | TPlusPlus
+  | TPipeGt | TLtPipe | TGtLt | TTildeGt | TLtTilde | TAndAnd | TOrOr | TLParen | TRParen | TLBrace
+  | TRBrace | TLBracket | TRBracket | TComma | TDot | TColon | TSemicolon | TPlus | TMinus | TStar
+  | TSlash | TPercent | TEq | TLt | TGt | TBang | TAmp | TPipe | TAt | THole | TNewline | TEof => false,
 }
 
 // A name the type parse read as written, with what it applies to, and the
@@ -1252,33 +1388,12 @@ fn row_term_joins(tokens, pos) = match kind_at(tokens, pos) {
 fn written_constructor(ty) = match ty {
   TVar(n) => match graph_node_body(n) {
     NTypeAnn(TName(vname, fields)) => Some((vname, fields, n)),
-    NTypeAnn(_)
-    | NExpr(_)
-    | NStmt(_)
-    | NPat(_)
-    | NHole(_)
-    | NModule(_)
-    | NLink(_)
-    | NName(_)
-    | NRow(_)
-    | NParam(_) => None,
+    NTypeAnn(_) | NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NName(_)
+    | NRow(_) | NParam(_) => None,
   },
-  TInt
-  | TFloat
-  | TUnit
-  | TByte
-  | TAddr
-  | TList(_)
-  | TTuple(_)
-  | TFun(_, _, _)
-  | TName(_, _)
-  | TRecord(_)
-  | TRecordOpen(_, _)
-  | TRefined(_, _)
-  | TReprPin(_, _)
-  | TCont(_, _, _, _)
-  | TAlias(_, _)
-  | TValue(_) => None,
+  TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TName(_, _)
+  | TRecord(_) | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _)
+  | TAlias(_, _) | TValue(_) => None,
 }
 
 // A constructor the type parse read as a written name declares a variant:
@@ -1299,7 +1414,7 @@ fn parse_repr_pin(ref tokens, base_ty, pos) = {
   let term = skip_ws(tokens, pos)
   if at_ident_word(tokens, term, "repr") {
     let wpos = skip_ws(tokens, term + 1)
-    match repr_of_width_name(ident_at(tokens, wpos)) {
+    match repr_width_at(tokens, wpos) {
       Some(r) => (TReprPin(r, base_ty), wpos + 1),
       None => {
         report(PUnexpectedToken("unknown repr width — one of i32, i64, f64, f32, v128", span_at(tokens, wpos)))
@@ -1311,9 +1426,26 @@ fn parse_repr_pin(ref tokens, base_ty, pos) = {
   }
 }
 
+// The width a `repr` pin names; None for a word that names none and for a
+// token that is no word.
+fn repr_width_at(tokens, pos) = match kind_at(tokens, pos) {
+  TIdent(w) => repr_of_width_name(w),
+  TFn | TLet | TIf | TElse | TMatch | TType | TEffect | THandler | TWith | TResume | TImport
+  | TWhere | TOwn | TRef | TPure | TTrue | TFalse | TIntLit(_) | TFloatLit(_) | TComment(_)
+  | TStringPart(_) | TStringSplice | TEqEq | TBangEq | TLtEq | TGtEq | TArrow | TFatArrow | TPlusPlus
+  | TPipeGt | TLtPipe | TGtLt | TTildeGt | TLtTilde | TAndAnd | TOrOr | TLParen | TRParen | TLBrace
+  | TRBrace | TLBracket | TRBracket | TComma | TDot | TColon | TSemicolon | TPlus | TMinus | TStar
+  | TSlash | TPercent | TEq | TLt | TGt | TBang | TAmp | TPipe | TAt | THole | TNewline | TEof => None,
+}
+
 fn at_ident_word(ref tokens, pos, w: String) = match kind_at(tokens, pos) {
   TIdent(v) => v == w,
-  _ => false,
+  TFn | TLet | TIf | TElse | TMatch | TType | TEffect | THandler | TWith | TResume | TImport
+  | TWhere | TOwn | TRef | TPure | TTrue | TFalse | TIntLit(_) | TFloatLit(_) | TComment(_)
+  | TStringPart(_) | TStringSplice | TEqEq | TBangEq | TLtEq | TGtEq | TArrow | TFatArrow | TPlusPlus
+  | TPipeGt | TLtPipe | TGtLt | TTildeGt | TLtTilde | TAndAnd | TOrOr | TLParen | TRParen | TLBrace
+  | TRBrace | TLBracket | TRBracket | TComma | TDot | TColon | TSemicolon | TPlus | TMinus | TStar
+  | TSlash | TPercent | TEq | TLt | TGt | TBang | TAmp | TPipe | TAt | THole | TNewline | TEof => false,
 }
 
 fn repr_of_width_name(w: String) = if w == "i32" {
@@ -1592,16 +1724,8 @@ fn parse_handler_arms_decl(tokens, name, p_after_name) = match if at(tokens, p_a
 fn state_field_name(f: {init: Node, name: Node}) -> String = match graph_node_body(f.name) {
   NPat(PVar(n)) => n,
   NName(StateWrite(n)) => n,
-  NPat(_)
-  | NName(_)
-  | NExpr(_)
-  | NStmt(_)
-  | NHole(_)
-  | NModule(_)
-  | NLink(_)
-  | NTypeAnn(_)
-  | NRow(_)
-  | NParam(_) => out_of_range(),
+  NPat(_) | NName(_) | NExpr(_) | NStmt(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_)
+  | NRow(_) | NParam(_) => out_of_range(),
 }
 
 fn state_field_node(f: {init: Node, name: Node}) -> Node = f.name
@@ -1622,17 +1746,8 @@ fn handler_arm_op(a: {args: [Node], body: Node, op: Node}) -> Node = a.op
 // The op an arm serves, as written at its node.
 fn handler_arm_op_name(a: {args: [Node], body: Node, op: Node}) -> String = match graph_node_body(a.op) {
   NName(ArmOp(name)) => name,
-  NName(RowEffect(_))
-  | NName(StateWrite(_))
-  | NExpr(_)
-  | NStmt(_)
-  | NPat(_)
-  | NHole(_)
-  | NModule(_)
-  | NLink(_)
-  | NTypeAnn(_)
-  | NRow(_)
-  | NParam(_) => out_of_range(),
+  NName(RowEffect(_)) | NName(StateWrite(_)) | NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_)
+  | NLink(_) | NTypeAnn(_) | NRow(_) | NParam(_) => out_of_range(),
 }
 
 fn handler_arm_arity(a: {args: [Node], body: Node, op: Node}) -> Int = len(a.args)
@@ -1696,7 +1811,12 @@ fn parse_resume_state_updates(ref tokens, pos) = {
           } else {
             ([field], p_next)
           },
-          _ => ([field], p_next),
+          TFn | TLet | TIf | TElse | TMatch | TType | TEffect | THandler | TWith | TResume | TImport
+          | TWhere | TOwn | TRef | TPure | TTrue | TFalse | TIntLit(_) | TFloatLit(_) | TComment(_)
+          | TStringPart(_) | TStringSplice | TEqEq | TBangEq | TLtEq | TGtEq | TArrow | TFatArrow | TPlusPlus
+          | TPipeGt | TLtPipe | TGtLt | TTildeGt | TLtTilde | TAndAnd | TOrOr | TLParen | TRParen | TLBrace
+          | TRBrace | TLBracket | TRBracket | TComma | TDot | TColon | TSemicolon | TPlus | TMinus | TStar
+          | TSlash | TPercent | TEq | TLt | TGt | TBang | TAmp | TPipe | TAt | THole | TNewline | TEof => ([field], p_next),
         }
       } else {
         ([field], p_after_init)
@@ -1810,24 +1930,14 @@ fn parse_config_params_from(tokens, pos, owner: String, idx) = {
 
 // Parse `import path/to/module`.
 // An import segment is a TRANSPORT name (a file on disk), not an expression
-// identifier, so a keyword-spelled word is a legal segment: `import own`
-// lexes TImport TOwn and names src/own.mn. The keyword set that collides
-// with a real module name is exactly {own, ref}; every other keyword names
-// no file and falls to the ident_at floor.
-fn import_segment_at(ref tokens, pos) = if at(tokens, pos, TOwn) {
-  "own"
-} else if at(tokens, pos, TRef) {
-  "ref"
-} else {
-  ident_at(tokens, pos)
-}
-
+// identifier, so a contextual keyword is a legal segment: `import own` lexes
+// TImport TOwn and names src/own.mn (`name_at`).
 fn parse_import(ref tokens, pos) = match parse_import_path(tokens, pos, "") {
   (path, p) => (ImportStmt(path), p),
 }
 
 fn parse_import_path(ref tokens, pos, own acc) = {
-  let name = import_segment_at(tokens, pos)
+  let name = name_at(tokens, pos, "a module name")
   let joined = acc ++ name
   let p = pos + 1
   if at(tokens, p, TSlash) { parse_import_path(tokens, p + 1, "{joined}/") } else { (joined, p) }
@@ -1941,7 +2051,8 @@ fn parse_let_expr(ref tokens, pos, start_span) = match parse_pat(tokens, pos) {
           // explicit block was the final expression — nothing followed it.
           (body, p7) => match graph_node_body(body) {
             NExpr(BlockExpr(stmts2, final2)) => (desugar_block([let_stmt] ++ stmts2, final2, upto(tokens, start_span, p7)), p7),
-            _ => (desugar_block([let_stmt], body, upto(tokens, start_span, p7)), p7),
+            NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+            | NRow(_) | NParam(_) => (desugar_block([let_stmt], body, upto(tokens, start_span, p7)), p7),
           },
         }
       },
@@ -1958,69 +2069,67 @@ fn parse_binop(ref tokens, pos, min_prec, slot) = match parse_postfix(tokens, po
 // builds spans from there to the last token its right operand consumed.
 fn binop_loop(ref tokens, left, first: ValidSpan, pos, min_prec, slot) = {
   let p = skip_ws(tokens, pos)
-  let k = kind_at(tokens, p)
-  let prec = op_prec(k)
-  if prec >= min_prec && prec > 0 {
-    let op_span = span_at(tokens, p)
-    // Per Hβ.parser.binop-skip-ws-after-op (seed parser_expr.wat:41-45):
-    // skip TNewlines AFTER the operator before the right operand.
-    // `a == b() &&\n  c` had the right-recursion start at p+1 (the
-    // trailing newline) → parse_primary truncates the chain. Newlines
-    // around a binop are transparent in BOTH directions (SYNTAX.md —
-    // layout is never semantics; the table is the only scope law).
-    match parse_binop(tokens, skip_ws(tokens, p + 1), prec + 1, slot) {
-      (right, p2) => {
-        // The operation's span is its whole extent, left operand through
-        // right — it used to stop at the operator (`x * ` for `x * 2`), a
-        // span that named no expression in the source.
-        let combined_span = upto(tokens, first, p2)
-        let node = match op_to_pipe_kind(k) {
-          Some(pk) => match pk {
-            // The N-ary law (SYNTAX §><): a `><` chain's branches are
-            // peers in ONE FanoutExpr, accreted by the left-assoc loop —
-            // never nested pairs (the fold was the binary shape's
-            // artifact, not the verb's semantics). An authored
-            // tuple-valued branch stays a branch: only the chain
-            // accretes, so `(1, 2) >< (3, 4)` is two branches of two.
-            PFanout(FanDistribute) => match graph_node_body(left) {
-              NExpr(FanoutExpr(branches)) => nexpr(FanoutExpr(branches ++ [right]), combined_span),
-              _ => nexpr(FanoutExpr([left, right]), combined_span),
-            },
-            // A `<|` over one stage is the pipe: the product of one it would
-            // answer is its field, so `x <| f` and `x |> f` are one graph and the
-            // redundant spelling never survives the parse (SYNTAX §`<|`). Every
-            // `<|` the graph holds fans into a tuple of stages (`share_stages`).
-            PFanout(FanShare) => match graph_node_body(right) {
-              NExpr(MakeTupleExpr(_)) => nexpr(PipeExpr(pk, left, right), combined_span),
-              _ => nexpr(PipeExpr(PForward, left, right), combined_span),
-            },
-            _ => nexpr(PipeExpr(pk, left, right), combined_span),
-          },
-          None => match op_to_binop(k) {
-            Some(bo) => nexpr(BinOpExpr(bo, left, right), combined_span),
-            None => {
-              // Unreachable per caller invariant: op_prec(k) > 0 and
-              // op_to_pipe_kind returned None together imply k
-              // IS a binop token. ICE rather than fabricate a BinOp —
-              // if this ever fires, op_prec and op_to_binop have
-              // drifted out of sync.
-              //
-              // drift-audit: ignore
-              report(EInternalInvariant("op_to_binop returned None for token with op_prec > 0", op_span))
-              nexpr(BinOpExpr(BAdd, left, right), combined_span)
-            },
-          },
-        }
-        binop_loop(tokens, node, first, p2, min_prec, slot)
-      },
-    }
-  } else {
-    // Comments are graph content, never layout: with no continuation the
-    // caller resumes AT the comment run so it reaches the statement layer
-    // and attaches (SYNTAX §Comments — never dropped). Newlines/semis
-    // stay consumed exactly as before.
-    (left, skip_seps_only(tokens, pos))
+  match infix_of(kind_at(tokens, p)) {
+    InfixVerb(k) => if pipe_prec(k) >= min_prec {
+      match right_operand(tokens, p, pipe_prec(k), slot) {
+        (right, p2) => binop_loop(tokens, verb_node(k, left, right, upto(tokens, first, p2)), first, p2, min_prec, slot),
+      }
+    } else {
+      binop_end(tokens, left, pos)
+    },
+    InfixBin(op) => if binop_prec(op) >= min_prec {
+      match right_operand(tokens, p, binop_prec(op), slot) {
+        (right, p2) => binop_loop(
+          tokens,
+          nexpr(BinOpExpr(op, left, right), upto(tokens, first, p2)),
+          first,
+          p2,
+          min_prec,
+          slot
+        ),
+      }
+    } else {
+      binop_end(tokens, left, pos)
+    },
+    NotInfix => binop_end(tokens, left, pos),
   }
+}
+
+// The operand right of the operator at `p`, read at one level tighter than
+// the operator binds. Newlines around an operator are transparent in both
+// directions (layout is never semantics; the table is the only scope law),
+// so the operand starts past the ones after it, and the operation spans its
+// whole extent, left operand through right.
+fn right_operand(ref tokens, p, prec, slot) =
+  parse_binop(tokens, skip_ws(tokens, p + 1), prec + 1, slot)
+
+// Where the expression ends. Comments are graph content, never layout: with
+// no continuation the caller resumes AT the comment run so it reaches the
+// statement layer and attaches (SYNTAX §Comments — never dropped).
+// Newlines and semicolons stay consumed.
+fn binop_end(ref tokens, left, pos) = (left, skip_seps_only(tokens, pos))
+
+// The node a verb builds over its two operands.
+fn verb_node(k, left, right, span: ValidSpan) = match k {
+  // The N-ary law (SYNTAX §><): a `><` chain's branches are peers in ONE
+  // FanoutExpr, accreted by the left-assoc loop — never nested pairs. An
+  // authored tuple-valued branch stays a branch: only the chain accretes,
+  // so `(1, 2) >< (3, 4)` is two branches of two.
+  PFanout(FanDistribute) => match graph_node_body(left) {
+    NExpr(FanoutExpr(branches)) => nexpr(FanoutExpr(branches ++ [right]), span),
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => nexpr(FanoutExpr([left, right]), span),
+  },
+  // A `<|` over one stage is the pipe: the product of one it would answer is
+  // its field, so `x <| f` and `x |> f` are one graph and the redundant
+  // spelling never survives the parse (SYNTAX §`<|`). Every `<|` the graph
+  // holds fans into a tuple of stages (`share_stages`).
+  PFanout(FanShare) => match graph_node_body(right) {
+    NExpr(MakeTupleExpr(_)) => nexpr(PipeExpr(PFanout(FanShare), left, right), span),
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => nexpr(PipeExpr(PForward, left, right), span),
+  },
+  pk @ (PForward | PTee | PFeedback) => nexpr(PipeExpr(pk, left, right), span),
 }
 
 // Postfix: call, field access, indexing.
@@ -2055,16 +2164,8 @@ fn postfix_loop(ref tokens, e, first: ValidSpan, pos, slot) = match kind_at(toke
     // The field name is read the way the record LITERAL reads it, where the
     // contextual keywords own/ref are names — so `r.own` reaches the field
     // `{own: …}` declared. A token that is not name-shaped is refused at its
-    // own span: it used to mint a field named "" that surfaced layers later
-    // as a record type mismatch against a field with no name
-    // (tests/syntax/record-field-keyword-name.mn, measured 2026-09-25).
-    let field = ident_or_kw_at(tokens, pos + 1)
-    if field == "" {
-      report(PExpectedToken(
-        "expected a field name after `.`, found `{show_token_kind(kind_at(tokens, pos + 1))}`",
-        span_at(tokens, pos + 1)
-      ))
-    }
+    // own span (tests/syntax/record-field-keyword-name.mn).
+    let field = name_at(tokens, pos + 1, "a field name after `.`")
     postfix_loop(tokens, nexpr(FieldExpr(e, field), upto(tokens, first, pos + 2)), first, pos + 2, slot)
   },
   // H2.3 nominal record literal: `Person{name: "Morgan", ...}`.
@@ -2079,7 +2180,8 @@ fn postfix_loop(ref tokens, e, first: ValidSpan, pos, slot) = match kind_at(toke
       BraceHeader => false,
       FreeExpr => match graph_node_body(e) {
         NExpr(VarRef(name)) => byte_len(name) > 0 && first_char_code(name) >= 65 && first_char_code(name) <= 90,
-        _ => false,
+        NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+        | NRow(_) | NParam(_) => false,
       },
     }
     if is_named_record {
@@ -2098,7 +2200,12 @@ fn postfix_loop(ref tokens, e, first: ValidSpan, pos, slot) = match kind_at(toke
   // type-mismatch diagnostic teaches in context — NOT a Rust-specific
   // balanced-`<...>` lookahead. A bespoke recognizer per foreign syntax does
   // not scale (the owner's point); the general diagnostic path is the one home.
-  _ => (e, pos),
+  TFn | TLet | TIf | TElse | TMatch | TType | TEffect | THandler | TWith | TResume | TImport
+  | TWhere | TOwn | TRef | TPure | TTrue | TFalse | TIdent(_) | TIntLit(_) | TFloatLit(_)
+  | TComment(_) | TStringPart(_) | TStringSplice | TEqEq | TBangEq | TLtEq | TGtEq | TArrow
+  | TFatArrow | TPlusPlus | TPipeGt | TLtPipe | TGtLt | TTildeGt | TLtTilde | TAndAnd | TOrOr
+  | TRParen | TRBrace | TRBracket | TComma | TColon | TSemicolon | TPlus | TMinus | TStar | TSlash
+  | TPercent | TEq | TLt | TGt | TBang | TAmp | TPipe | TAt | THole | TNewline | TEof => (e, pos),
 }
 
 // Parse the body of a nominal record literal — same shape as
@@ -2162,7 +2269,12 @@ fn parse_one_call_arg(ref tokens, pos) = {
         parse_expr(tokens, p)
       }
     },
-    _ => parse_expr(tokens, p),
+    TFn | TLet | TIf | TElse | TMatch | TType | TEffect | THandler | TWith | TResume | TImport
+    | TWhere | TOwn | TRef | TPure | TTrue | TFalse | TIntLit(_) | TFloatLit(_) | TComment(_)
+    | TStringPart(_) | TStringSplice | TEqEq | TBangEq | TLtEq | TGtEq | TArrow | TFatArrow | TPlusPlus
+    | TPipeGt | TLtPipe | TGtLt | TTildeGt | TLtTilde | TAndAnd | TOrOr | TLParen | TRParen | TLBrace
+    | TRBrace | TLBracket | TRBracket | TComma | TDot | TColon | TSemicolon | TPlus | TMinus | TStar
+    | TSlash | TPercent | TEq | TLt | TGt | TBang | TAmp | TPipe | TAt | THole | TNewline | TEof => parse_expr(tokens, p),
   }
 }
 
@@ -2253,7 +2365,10 @@ fn parse_primary(ref tokens, pos, slot) = {
       report(EOrphanHandlerAttach(span))
       (nhole(span), pos + 1)
     },
-    _ => {
+    TLet | TElse | TType | TEffect | TWith | TImport | TWhere | TPure | TComment(_) | TStringSplice
+    | TEqEq | TBangEq | TLtEq | TGtEq | TArrow | TFatArrow | TPlusPlus | TPipeGt | TLtPipe | TGtLt
+    | TLtTilde | TAndAnd | TRParen | TRBrace | TRBracket | TComma | TDot | TColon | TSemicolon | TPlus
+    | TStar | TSlash | TPercent | TEq | TLt | TGt | TAmp | TAt | TNewline | TEof => {
       report(PUnexpectedToken("unexpected token: {show_token_kind(kind_at(tokens, pos))}", span))
       (nhole(span), pos + 1)
     },
@@ -2300,12 +2415,14 @@ fn cover_pat_body(e) = match graph_node_body(e) {
   NExpr(MakeListExpr(elems)) => if len(elems) > 0 {
     match graph_node_body(last(elems)) {
       NExpr(RestExpr(rest_nm)) => PList(map(cover_pat, drop_last(elems)), Some(cover_rest(last(elems), rest_nm))),
-      _ => PList(map(cover_pat, elems), None),
+      NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+      | NRow(_) | NParam(_) => PList(map(cover_pat, elems), None),
     }
   } else {
     PList([], None)
   },
-  _ => PWild,
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => PWild,
 }
 
 fn cover_pat(e) = {
@@ -2504,7 +2621,12 @@ fn parse_string_interpolation_loop(ref tokens, pos, own buf, count) = if at(toke
 // (coalesced_chunk, advanced_pos).
 fn consume_string_parts(ref tokens, pos, acc) = match kind_at(tokens, pos) {
   TStringPart(s) => consume_string_parts(tokens, pos + 1, acc ++ s),
-  _ => (acc, pos),
+  TFn | TLet | TIf | TElse | TMatch | TType | TEffect | THandler | TWith | TResume | TImport
+  | TWhere | TOwn | TRef | TPure | TTrue | TFalse | TIdent(_) | TIntLit(_) | TFloatLit(_)
+  | TComment(_) | TStringSplice | TEqEq | TBangEq | TLtEq | TGtEq | TArrow | TFatArrow | TPlusPlus
+  | TPipeGt | TLtPipe | TGtLt | TTildeGt | TLtTilde | TAndAnd | TOrOr | TLParen | TRParen | TLBrace
+  | TRBrace | TLBracket | TRBracket | TComma | TDot | TColon | TSemicolon | TPlus | TMinus | TStar
+  | TSlash | TPercent | TEq | TLt | TGt | TBang | TAmp | TPipe | TAt | THole | TNewline | TEof => (acc, pos),
 }
 
 fn parse_list_literal(ref tokens, pos, start_span) = {
@@ -2595,7 +2717,11 @@ fn pat_atom_end(tokens, pos) = match kind_at(tokens, pos) {
   TLParen => skip_group(tokens, pos, 0),
   TLBracket => skip_group(tokens, pos, 0),
   TLBrace => skip_group(tokens, pos, 0),
-  _ => pos,
+  TFn | TLet | TIf | TElse | TMatch | TType | TEffect | THandler | TWith | TResume | TImport
+  | TWhere | TOwn | TRef | TPure | TComment(_) | TStringSplice | TEqEq | TBangEq | TLtEq | TGtEq
+  | TArrow | TFatArrow | TPlusPlus | TPipeGt | TLtPipe | TGtLt | TTildeGt | TLtTilde | TAndAnd | TOrOr
+  | TRParen | TRBrace | TRBracket | TComma | TDot | TColon | TSemicolon | TPlus | TMinus | TStar
+  | TSlash | TPercent | TEq | TLt | TGt | TBang | TAmp | TPipe | TAt | THole | TNewline | TEof => pos,
 }
 
 // Past a balanced group opening AT `pos`. `TStringSplice` opens a brace
@@ -2612,7 +2738,12 @@ fn skip_group(tokens, pos, depth) = match kind_at(tokens, pos) {
   TRParen => if depth <= 1 { pos + 1 } else { skip_group(tokens, pos + 1, depth - 1) },
   TRBracket => if depth <= 1 { pos + 1 } else { skip_group(tokens, pos + 1, depth - 1) },
   TRBrace => if depth <= 1 { pos + 1 } else { skip_group(tokens, pos + 1, depth - 1) },
-  _ => skip_group(tokens, pos + 1, depth),
+  TFn | TLet | TIf | TElse | TMatch | TType | TEffect | THandler | TWith | TResume | TImport
+  | TWhere | TOwn | TRef | TPure | TTrue | TFalse | TIdent(_) | TIntLit(_) | TFloatLit(_)
+  | TComment(_) | TStringPart(_) | TEqEq | TBangEq | TLtEq | TGtEq | TArrow | TFatArrow | TPlusPlus
+  | TPipeGt | TLtPipe | TGtLt | TTildeGt | TLtTilde | TAndAnd | TOrOr | TComma | TDot | TColon
+  | TSemicolon | TPlus | TMinus | TStar | TSlash | TPercent | TEq | TLt | TGt | TBang | TAmp | TPipe
+  | TAt | THole | TNewline => skip_group(tokens, pos + 1, depth),
 }
 
 // The literal, built as the shape it already is: a fresh `al_prefix` param
@@ -2681,9 +2812,11 @@ fn arm_list_of(params, body) = if len(params) != 1 {
           } else {
             None
           },
-          _ => None,
+          NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+          | NRow(_) | NParam(_) => None,
         },
-        _ => None,
+        NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+        | NRow(_) | NParam(_) => None,
       },
       PWild => None,
       PLit(_) | PCon(_, _) | PTuple(_) | PList(_, _) | PRecord(_, _) | PAlt(_) | PAs(_, _) => Some([(param_pat(p), body)]),
@@ -2719,7 +2852,12 @@ fn brace_form(tokens, p) = if at_ellipsis(tokens, p) {
     TColon => BraceRecord,
     TComma => BraceRecord,
     TRBrace => BraceRecord,
-    _ => BraceBlock,
+    TFn | TLet | TIf | TElse | TMatch | TType | TEffect | THandler | TWith | TResume | TImport
+    | TWhere | TOwn | TRef | TPure | TTrue | TFalse | TIdent(_) | TIntLit(_) | TFloatLit(_)
+    | TComment(_) | TStringPart(_) | TStringSplice | TEqEq | TBangEq | TLtEq | TGtEq | TArrow
+    | TFatArrow | TPlusPlus | TPipeGt | TLtPipe | TGtLt | TTildeGt | TLtTilde | TAndAnd | TOrOr
+    | TLParen | TRParen | TLBrace | TLBracket | TRBracket | TDot | TSemicolon | TPlus | TMinus | TStar
+    | TSlash | TPercent | TEq | TLt | TGt | TBang | TAmp | TPipe | TAt | THole | TNewline | TEof => BraceBlock,
   }
 } else {
   BraceBlock
@@ -2789,9 +2927,8 @@ fn parse_record_fields(ref tokens, pos, own buf, count) = {
   if at(tokens, p, TRBrace) {
     (buf, count, p + 1)
   } else {
-    // Contextual-keyword field names (handle/own/ref) resolve to their
-    // spelling — SYNTAX.md §572; canonical ident_or_kw_at projection.
-    let name = ident_or_kw_at(tokens, p)
+    // A contextual keyword is a field name (`{own: …}`), spelled as written.
+    let name = name_at(tokens, p, "a field name")
     let name_span = span_at(tokens, p)
     let p1 = p + 1
     let p2 = skip_ws(tokens, p1)
@@ -2878,7 +3015,12 @@ fn peek_past_comments(ref tokens, pos) = {
     TComment(first) => match collect_comment(tokens, p + 1, first) {
       (_text, p2) => peek_past_comments(tokens, p2),
     },
-    _ => p,
+    TFn | TLet | TIf | TElse | TMatch | TType | TEffect | THandler | TWith | TResume | TImport
+    | TWhere | TOwn | TRef | TPure | TTrue | TFalse | TIdent(_) | TIntLit(_) | TFloatLit(_)
+    | TStringPart(_) | TStringSplice | TEqEq | TBangEq | TLtEq | TGtEq | TArrow | TFatArrow | TPlusPlus
+    | TPipeGt | TLtPipe | TGtLt | TTildeGt | TLtTilde | TAndAnd | TOrOr | TLParen | TRParen | TLBrace
+    | TRBrace | TLBracket | TRBracket | TComma | TDot | TColon | TSemicolon | TPlus | TMinus | TStar
+    | TSlash | TPercent | TEq | TLt | TGt | TBang | TAmp | TPipe | TAt | THole | TNewline | TEof => p,
   }
 }
 
@@ -2912,7 +3054,12 @@ fn parse_block_body(ref tokens, pos, own buf, count) = {
     let is_decl = match kind_at(tokens, p) {
       TLet => true,
       TFn => true,
-      _ => false,
+      TIf | TElse | TMatch | TType | TEffect | THandler | TWith | TResume | TImport | TWhere | TOwn
+      | TRef | TPure | TTrue | TFalse | TIdent(_) | TIntLit(_) | TFloatLit(_) | TComment(_)
+      | TStringPart(_) | TStringSplice | TEqEq | TBangEq | TLtEq | TGtEq | TArrow | TFatArrow | TPlusPlus
+      | TPipeGt | TLtPipe | TGtLt | TTildeGt | TLtTilde | TAndAnd | TOrOr | TLParen | TRParen | TLBrace
+      | TRBrace | TLBracket | TRBracket | TComma | TDot | TColon | TSemicolon | TPlus | TMinus | TStar
+      | TSlash | TPercent | TEq | TLt | TGt | TBang | TAmp | TPipe | TAt | THole | TNewline | TEof => false,
     }
     if is_decl {
       match parse_stmt(tokens, p, AtBlock) {
@@ -2999,7 +3146,8 @@ fn find_destructure_let(stmts, i) = if i >= len(stmts) {
 } else {
   match graph_node_body(list_index(stmts, i)) {
     NStmt(LetStmt(pat, v, _)) => if is_destructure_pat(pat) { Some((i, pat, v)) } else { find_destructure_let(stmts, i + 1) },
-    _ => find_destructure_let(stmts, i + 1),
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => find_destructure_let(stmts, i + 1),
   }
 }
 
@@ -3067,7 +3215,13 @@ fn parse_match_arms(ref tokens, pos, own buf, count) = {
   match kind_at(tokens, p) {
     TRBrace => (buf, count, p + 1),
     TEof => unclosed_eof(tokens, p, "match arms", buf, count),
-    _ => match parse_pat_alt(tokens, p) {
+    TFn | TLet | TIf | TElse | TMatch | TType | TEffect | THandler | TWith | TResume | TImport
+    | TWhere | TOwn | TRef | TPure | TTrue | TFalse | TIdent(_) | TIntLit(_) | TFloatLit(_)
+    | TComment(_) | TStringPart(_) | TStringSplice | TEqEq | TBangEq | TLtEq | TGtEq | TArrow
+    | TFatArrow | TPlusPlus | TPipeGt | TLtPipe | TGtLt | TTildeGt | TLtTilde | TAndAnd | TOrOr
+    | TLParen | TRParen | TLBrace | TLBracket | TRBracket | TComma | TDot | TColon | TSemicolon | TPlus
+    | TMinus | TStar | TSlash | TPercent | TEq | TLt | TGt | TBang | TAmp | TPipe | TAt | THole
+    | TNewline => match parse_pat_alt(tokens, p) {
       (pat, p2) => {
         let p3 = expect(tokens, skip_ws(tokens, p2), TFatArrow)
         match parse_expr(tokens, skip_ws(tokens, p3)) {
@@ -3263,7 +3417,7 @@ fn parse_block_expr_checked(ref tokens, pos, start_span) = match parse_block_exp
 // "no `_ => <fabricated value>` over a load-bearing ADT".
 fn is_empty_block(node) = match graph_node_body(node) {
   NExpr(e) => is_empty_block_expr(e),
-  _ => false,
+  NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => false,
 }
 
 // SYNTAX.md:1599 — names that look like keywords from other languages
@@ -3288,7 +3442,11 @@ name == "return"
 
 fn is_empty_block_expr(e) = match e {
   BlockExpr(stmts, _) => len(stmts) == 0,
-  _ => false,
+  LitInt(_) | LitFloat(_) | LitString(_) | LitBool(_) | LitUnit | VarRef(_) | BinOpExpr(_, _, _)
+  | UnaryOpExpr(_, _) | CallExpr(_, _) | LabeledArg(_, _) | LambdaExpr(_, _) | IfExpr(_, _, _)
+  | MatchExpr(_, _) | ResumeExpr(_, _) | MakeListExpr(_) | MakeTupleExpr(_) | MakeRecordExpr(_)
+  | RecordUpdateExpr(_, _) | NamedRecordExpr(_, _) | IndexExpr(_, _) | MakeStringExpr(_) | ShowExpr(_)
+  | FieldExpr(_, _) | PipeExpr(_, _, _) | FanoutExpr(_) | RestExpr(_) | ExprPlaceholder => false,
 }
 
 // Patterns — each one a node minted over the tokens it consumed, and each
@@ -3360,7 +3518,11 @@ fn parse_pat(ref tokens, pos) = {
     TLBrace => match parse_pat_record_fields(tokens, skip_ws(tokens, pos + 1)) {
       (flds, rest, p) => (npat(PRecord(sort_pat_fields(flds), rest), upto(tokens, start, p)), p),
     },
-    _ => {
+    TFn | TLet | TIf | TElse | TMatch | TType | TEffect | THandler | TWith | TResume | TImport
+    | TWhere | TOwn | TRef | TPure | TComment(_) | TStringSplice | TEqEq | TBangEq | TLtEq | TGtEq
+    | TArrow | TFatArrow | TPlusPlus | TPipeGt | TLtPipe | TGtLt | TTildeGt | TLtTilde | TAndAnd | TOrOr
+    | TRParen | TRBrace | TRBracket | TComma | TDot | TColon | TSemicolon | TPlus | TMinus | TStar
+    | TSlash | TPercent | TEq | TLt | TGt | TBang | TAmp | TPipe | TAt | THole | TNewline | TEof => {
       report(PUnexpectedToken("unexpected token in pattern position", start))
       (npat(PWild, start), pos + 1)
     },
@@ -3524,7 +3686,13 @@ fn type_head_items(tokens, pos) = match kind_at(tokens, pos) {
   TLParen => match parse_paren_types(tokens, pos) {
     (items, p) => (items, paren_group_type(items), p),
   },
-  _ => match parse_type_atom(tokens, pos) {
+  TFn | TLet | TIf | TElse | TMatch | TType | TEffect | THandler | TWith | TResume | TImport
+  | TWhere | TOwn | TRef | TPure | TTrue | TFalse | TIdent(_) | TIntLit(_) | TFloatLit(_)
+  | TComment(_) | TStringPart(_) | TStringSplice | TEqEq | TBangEq | TLtEq | TGtEq | TArrow
+  | TFatArrow | TPlusPlus | TPipeGt | TLtPipe | TGtLt | TTildeGt | TLtTilde | TAndAnd | TOrOr
+  | TRParen | TLBrace | TRBrace | TLBracket | TRBracket | TComma | TDot | TColon | TSemicolon | TPlus
+  | TMinus | TStar | TSlash | TPercent | TEq | TLt | TGt | TBang | TAmp | TPipe | TAt | THole
+  | TNewline | TEof => match parse_type_atom(tokens, pos) {
     (base, p) => ([base], base, p),
   },
 }
@@ -3583,7 +3751,12 @@ fn parse_type_atom(ref tokens, pos) = match kind_at(tokens, pos) {
   TLBracket => match parse_type_ty(tokens, skip_ws(tokens, pos + 1)) {
     (elem, p) => (TList(elem), expect(tokens, skip_ws(tokens, p), TRBracket)),
   },
-  _ => {
+  TFn | TLet | TIf | TElse | TMatch | TType | TEffect | THandler | TWith | TResume | TImport
+  | TWhere | TOwn | TRef | TPure | TTrue | TFalse | TIntLit(_) | TFloatLit(_) | TComment(_)
+  | TStringPart(_) | TStringSplice | TEqEq | TBangEq | TLtEq | TGtEq | TArrow | TFatArrow | TPlusPlus
+  | TPipeGt | TLtPipe | TGtLt | TTildeGt | TLtTilde | TAndAnd | TOrOr | TRParen | TRBrace | TRBracket
+  | TComma | TDot | TColon | TSemicolon | TPlus | TMinus | TStar | TSlash | TPercent | TEq | TLt | TGt
+  | TAmp | TPipe | TAt | THole | TNewline | TEof => {
     report(PUnexpectedToken("unexpected token in type position — expected a type", span_at(tokens, pos)))
     (TUnit, pos + 1)
   },
@@ -3735,7 +3908,12 @@ fn parse_record_type_fields(ref tokens, pos) = {
         Some(fresh_handle_as(sp, Declared(r))),
         expect(tokens, skip_ws(tokens, after_dots + 1), TRBrace)
       ),
-      _ => ([], Some(fresh_handle(sp)), expect(tokens, skip_ws(tokens, after_dots), TRBrace)),
+      TFn | TLet | TIf | TElse | TMatch | TType | TEffect | THandler | TWith | TResume | TImport
+      | TWhere | TOwn | TRef | TPure | TTrue | TFalse | TIntLit(_) | TFloatLit(_) | TComment(_)
+      | TStringPart(_) | TStringSplice | TEqEq | TBangEq | TLtEq | TGtEq | TArrow | TFatArrow | TPlusPlus
+      | TPipeGt | TLtPipe | TGtLt | TTildeGt | TLtTilde | TAndAnd | TOrOr | TLParen | TRParen | TLBrace
+      | TRBrace | TLBracket | TRBracket | TComma | TDot | TColon | TSemicolon | TPlus | TMinus | TStar
+      | TSlash | TPercent | TEq | TLt | TGt | TBang | TAmp | TPipe | TAt | THole | TNewline | TEof => ([], Some(fresh_handle(sp)), expect(tokens, skip_ws(tokens, after_dots), TRBrace)),
     }
   } else {
     let name = ident_at(tokens, p)
@@ -3786,7 +3964,8 @@ fn parse_predicate(ref tokens, pos) = match parse_expr(tokens, pos) {
   (expr_node, p) => {
     match node_to_predicate(expr_node) {
       PTrue => report(WRedundantWhere(graph_span_of(expr_node))),
-      _ => (),
+      PCompare(_, _, _) | PAnd(_, _) | POr(_, _) | PNot(_) | PBoolNode(_) | PPatternMatch(_, _)
+      | PWithSelf(_, _) | PTotalDiv(_, _, _) | PProvides(_) | PInBounds(_, _) => (),
     }
     (expr_node, p)
   },
@@ -4098,7 +4277,8 @@ fn free_vars_run_step(acc, run) = match acc {
         free_uses_merge(frees, collect_free_uses(expr, bound)),
         free_vars_merge(bound, pat_binder_names(pat))
       ),
-      _ => (free_uses_merge(frees, collect_free_uses(stmt, bound)), bound),
+      NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+      | NRow(_) | NParam(_) => (free_uses_merge(frees, collect_free_uses(stmt, bound)), bound),
     },
   },
 }
@@ -4115,7 +4295,8 @@ fn free_vars_decl_step(acc, decl) = match acc {
       inner
     ),
     // a run holds fn declarations only (`stmt_runs`)
-    _ => acc,
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => acc,
   },
 }
 
@@ -4131,7 +4312,8 @@ fn stmt_runs(stmts) = runs_of(fn_joins, stmts)
 // A `fn` declaration joins its neighbours' run; any other statement ends it.
 fn fn_joins(node) = match graph_node_body(node) {
   NStmt(FnStmt(_, _, _, _, _)) => Joined([node]),
-  _ => Lone(node),
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => Lone(node),
 }
 
 // The names a run declares, in source order.
@@ -4140,7 +4322,8 @@ fn run_names(decls) = flat_map(declared_fn_name, decls)
 fn declared_fn_name(decl) = match graph_node_body(decl) {
   NStmt(FnStmt(name, _, _, _, _)) => [name],
   // a run holds fn declarations only (`stmt_runs`)
-  _ => [],
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => [],
 }
 
 fn free_vars_match_arms(arms, bound) = fold(

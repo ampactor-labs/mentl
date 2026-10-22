@@ -9,7 +9,7 @@ fn pa11(v, w) = match w {
   Some(x) => {
     let acc2 = match v {
       C1 | C2 | C3 | C4 | C5 | C6 | C7 | C8 | C9 | C10 | C11 => x + 1,
-      _ => x
+      C12 => x
     }
     acc2
   },

@@ -200,7 +200,9 @@ fn enumerate_typed(target_ty, allowed_effects, context) = match target_ty {
   // String-typed hole proposes string literals, never list literals.
   TList(elem) => match seq_elem_face(elem) {
     TByte => enumerate_string_literals(context),
-    _ => enumerate_list_candidates(elem, context),
+    TInt | TFloat | TUnit | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TVar(_) | TName(_, _)
+    | TRecord(_) | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _)
+    | TAlias(_, _) | TValue(_) => enumerate_list_candidates(elem, context),
   },
   TTuple(elems) => enumerate_tuple_candidates(elems, context),
   // an instance's value is no hole's type: nothing proposes into it
@@ -290,10 +292,13 @@ fn vocabulary_step(target_ty, allowed_row, rings, reaching, acc, entry) with !Mu
           } else {
             (accepted, rejected)
           },
-          _ => (accepted, rejected),
+          TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TVar(_) | TName(_, _) | TRecord(_)
+          | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => (accepted, rejected),
         },
       },
-      _ => (accepted, rejected),
+      ConstructorScheme(_, _) | EffectOpScheme(_, _, _) | RecordSchemeKind(_) | EffectDeclKind(_, _)
+      | HandlerKind(_, _, _, _, _) | ParamScheme(_) | RowAliasKind(_) | TypeVariants(_)
+      | HandlerChainKind(_) | PrimitiveKind(_) => (accepted, rejected),
     },
   },
 }
@@ -434,36 +439,48 @@ fn heads_may_unify(a, b) with Pure = match a {
   TVar(_) => true,
   TAlias(_, inner) => heads_may_unify(inner, b),
   TRefined(inner, _) => heads_may_unify(inner, b),
-  _ => match b {
+  TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TName(_, _)
+  | TRecord(_) | TRecordOpen(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TValue(_) => match b {
     TVar(_) => true,
     TAlias(_, inner) => heads_may_unify(a, inner),
     TRefined(inner, _) => heads_may_unify(a, inner),
-    _ => same_head(a, b),
+    TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TName(_, _)
+    | TRecord(_) | TRecordOpen(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TValue(_) => same_head(a, b),
   },
 }
 
 fn same_head(a, b) with Pure = match a {
   TList(_) => match b {
     TList(_) => true,
-    _ => false,
+    TInt | TFloat | TUnit | TByte | TAddr | TTuple(_) | TFun(_, _, _) | TVar(_) | TName(_, _)
+    | TRecord(_) | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _)
+    | TAlias(_, _) | TValue(_) => false,
   },
   TName(an, _) => match b {
     TName(bn, _) => an == bn,
-    _ => false,
+    TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TVar(_)
+    | TRecord(_) | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _)
+    | TAlias(_, _) | TValue(_) => false,
   },
   TFun(_, _, _) => match b {
     TFun(_, _, _) => true,
-    _ => false,
+    TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TVar(_) | TName(_, _) | TRecord(_)
+    | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => false,
   },
   TTuple(_) => match b {
     TTuple(_) => true,
-    _ => false,
+    TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TFun(_, _, _) | TVar(_) | TName(_, _)
+    | TRecord(_) | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _)
+    | TAlias(_, _) | TValue(_) => false,
   },
   TRecord(_) => match b {
     TRecord(_) => true,
-    _ => false,
+    TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TVar(_)
+    | TName(_, _) | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _)
+    | TAlias(_, _) | TValue(_) => false,
   },
-  _ => same_ground(a, b),
+  TInt | TFloat | TUnit | TByte | TAddr | TVar(_) | TRecordOpen(_, _) | TRefined(_, _)
+  | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => same_ground(a, b),
 }
 
 // THE RETURN-TYPE EQUALITY MATCHER IS GONE, and what it was doing is the point.
@@ -511,7 +528,8 @@ fn linked_ref(name: String, decl) with !Mutate = {
 fn fn_heads_may_unify(params, ret, target_ty) = match target_ty {
   TFun(tparams, tret, _) => len(params) == len(tparams) && heads_may_unify(ret, tret) && all(params_heads_agree, zip(params, tparams)),
   TAlias(_, inner) => fn_heads_may_unify(params, ret, inner),
-  _ => false,
+  TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TVar(_) | TName(_, _) | TRecord(_)
+  | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TValue(_) => false,
 }
 
 fn params_heads_agree(pair) with Pure = match pair {
@@ -556,7 +574,8 @@ fn rank_of(c, hole_h, reach) with !Mutate = match c {
     NExpr(CallExpr(callee, _)) => candidate_rank(graph_ref_decl(callee), hole_h, reach),
     // A reference ranks by the same local-intent read as a call of it.
     NExpr(VarRef(_)) => candidate_rank(graph_ref_decl(cr.node), hole_h, reach),
-    _ => 0.5,
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => 0.5,
   },
 }
 
@@ -1044,10 +1063,12 @@ fn candidate_reason(candidate) with Pure = match candidate {
 fn candidate_head_name(node) = match graph_node_body(node) {
   NExpr(CallExpr(callee, _)) => match graph_node_body(callee) {
     NExpr(VarRef(name)) => Some(name),
-    _ => None,
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => None,
   },
   NExpr(VarRef(name)) => Some(name),
-  _ => None,
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => None,
 }
 
 // A survivor's node, replaced by the cost-minimal member of its own
@@ -1092,14 +1113,16 @@ fn reference_before_mint(survivors) = if any(is_reference_candidate, survivors) 
 fn is_reference_candidate(c) = match c {
   EnrichedCandidate(cr) => match graph_node_body(cr.node) {
     NExpr(VarRef(_)) => true,
-    _ => false,
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => false,
   },
 }
 
 fn is_not_lambda_candidate(c) = match c {
   EnrichedCandidate(cr) => match graph_node_body(cr.node) {
     NExpr(LambdaExpr(_, _)) => false,
-    _ => true,
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => true,
   },
 }
 
@@ -1221,7 +1244,8 @@ fn divergence_of_terms(nodes, target_ty) = match first_row_split(nodes) {
     // one type: no denotation read separates them, and "shape" was the
     // wrong word for two functions with the same shape.
     TFun(_, _, _) => DivBehavior,
-    _ => divergence_by_denotation(nodes, target_ty),
+    TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TVar(_) | TName(_, _) | TRecord(_)
+    | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => divergence_by_denotation(nodes, target_ty),
   },
 }
 
@@ -1269,11 +1293,12 @@ fn nullary_ctor_name(node) = match graph_node_body(node) {
   NExpr(VarRef(name)) => match graph_ref_decl(node) {
     Some(d) => match graph_published(d) {
       Some((_, _, ConstructorScheme(_, _))) => Some(name),
-      _ => None,
+      None | Some(_) => None,
     },
     None => None,
   },
-  _ => None,
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => None,
 }
 
 // Rows compare by MUTUAL subsumption — the crown's own algebra, never a
@@ -1306,7 +1331,8 @@ fn candidate_row(node) = match zero_arg_callee_decl(node) {
 // (`Hβ.synth.vocabulary-arg-holes`).
 fn zero_arg_callee_decl(node) = match graph_node_body(node) {
   NExpr(CallExpr(callee, args)) => if len(args) == 0 { graph_ref_decl(callee) } else { None },
-  _ => None,
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => None,
 }
 
 // What this candidate DENOTES, if the medium can read it: a literal denotes
@@ -1327,7 +1353,8 @@ fn candidate_denotation(seen, node) = match zero_arg_callee_decl(node) {
   } else {
     match graph_node_body(d) {
       NStmt(FnStmt(_, _, _, _, body)) => candidate_denotation(push(seen, d), body),
-      _ => None,
+      NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+      | NRow(_) | NParam(_) => None,
     }
   },
   None => node_const(node),
@@ -1415,7 +1442,8 @@ fn synthesize_record_node(fields) with !Mutate =
 // fact: SYNTAX's own surface says `let nothing = None`.
 fn synthesize_ctor_call_node(name, scheme, decl) with !Mutate = match judgment_ty(scheme) {
   TFun(params, _, _) => synth_node(CallExpr(linked_ref(name, decl), synth_holes_for(params))),
-  _ => linked_ref(name, decl),
+  TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TVar(_) | TName(_, _) | TRecord(_)
+  | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => linked_ref(name, decl),
 }
 
 // params arrive as the scheme's own [TParam]; each becomes a parameter node

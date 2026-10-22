@@ -756,7 +756,7 @@ applications independent, which is the whole difference between them. Simd
 and Gpu pack a fixed lane count and run a sequence fanout sequentially. The
 race rule reads the function a sequence fanout applies as every branch's, so a
 `~> parallel_compose` over a fanout whose function writes through a stateful
-handler refuses — the deterministic partition (`PLAN.md §11.16`) stated as a
+handler refuses — the deterministic partition (`PLAN.md §11.15`) stated as a
 gate (tests/micros/mn-race-sequence-fanout-store.mn,
 mn-race-sequence-fanout-stateful.mn).
 
@@ -1276,9 +1276,7 @@ that escapes as a pattern:
 > "match misses `None` — write its arm"
 
 Quick Fix: insert the arm the witness names. The refusal never proposes a
-wildcard: a `_` arm over a sum is the roster of variants the author declined
-to write, and the medium bounds the shapes of it that fabricate (`mentl verify`,
-the wildcard-zero and wildcard-fabricates census).
+wildcard: a `_` arm over a sum refuses (below).
 
 **The check reads the WHOLE pattern, column by column**: the arms are a
 matrix of pattern rows, a column of constructors is complete when the arms
@@ -1305,22 +1303,24 @@ that traps when the variant arrives.
 or a bare binder after other arms of a match over a sum swallows the
 constructors those arms leave, and a constructor declared later joins it
 unread — the exhaustiveness gate satisfied while what it knew is thrown away.
-So the medium counts the shape (`mentl verify`'s catch-all census, bounded at
-the wheel's count) and `mentl tighten` writes in its place the alternation of
-the constructors that reach it, each payload `_`, under the arm's binder when
-it bound one: after `Dot => 1`, the arm `other => "many"` over `type Shape =
-Dot | Line(Int) | Box(Int, Int) | Blob` becomes `other @ (Line(_) | Box(_, _)
-| Blob) => "many"`, and `_ => 4` after `Dot` and `Line(_)` becomes `Box(_, _)
-| Blob => 4`, the comment the arm carries kept above it
-(tests/frontier/tighten-demo/wild.mn). The roster is written at the arm's own
-pattern node, so the arm keeps its body and its prose. The write costs nothing
-at run time: the last arm of an exhaustive match runs untested, as the `_`
-did. Three shapes are not the roster and are never counted: a `_` inside a
-payload, which ignores a part the arm does not read; a `_` over a word, a
-text or a list, the honest complement no roster could name; and a match's
-only arm, which is a binding (`{ x => body }`, `match v { x => … }`), never a
-dispatch. Once nothing in the wheel is left to rewrite the shape refuses —
-the third step of `Hβ.match.catch-all-over-a-sum-is-the-roster`.
+So the shape refuses: **`E_CatchAllOverSum`** at the arm, naming the roster
+it stands for as a pattern, and `mentl tighten` writes that roster in the
+arm's place — the alternation of the constructors that reach it, each
+payload `_`, under the arm's binder when it bound one: after `Dot => 1`, the
+arm `other => "many"` over `type Shape = Dot | Line(Int) | Box(Int, Int) |
+Blob` becomes `other @ (Line(_) | Box(_, _) | Blob) => "many"`, and `_ => 4`
+after `Dot` and `Line(_)` becomes `Box(_, _) | Blob => 4`, the comment the
+arm carries kept above it (tests/frontier/tighten-demo/wild.mn,
+tests/micros/mn-catch-all-over-sum-refuses.mn). The roster is written at the
+arm's own pattern node, so the arm keeps its body and its prose. It costs
+nothing at run time: the last arm of a match of several arms runs untested,
+as the `_` did, since the judgment refuses every such match a value escapes.
+A constructor declared later is then `E_PatternInexhaustive` at every match
+over its type, a question at each place its author decides. Three shapes are
+not the roster and stay legal: a `_` inside a payload, which ignores a part
+the arm does not read; a `_` over a word, a text or a list, the honest
+complement no roster could name; and a match's only arm, which is a binding
+(`{ x => body }`, `match v { x => … }`), never a dispatch.
 
 **A match of several arms dispatches; a match of one arm asserts.** `let [a,
 b] = xs`, `let Some(v) = o`, a one-arm literal (`{ [h, ...t] => h }`) and
@@ -2313,7 +2313,7 @@ match list {
 }
 
 match user {
-  {name: "Morgan", ...} => "found Morgan",
+  {name: "Morgan", ..._} => "found Morgan",
   {name: n}             => "user " ++ n,
 }
 
@@ -2401,7 +2401,7 @@ as `// rename L:C to NEW: N name(s)` or `refuses <word>`
 
 ### Exhaustiveness
 
-Match arms must cover all variants OR include a wildcard. Missing-variant errors include the missing variants by name (per H3's exhaustiveness machinery).
+Match arms cover every value; a wildcard covers only what no roster could name (§«Exhaustiveness» above). A missing variant is named by the pattern that escapes.
 
 ### Pattern alternation — rule
 
@@ -2434,9 +2434,10 @@ one in those positions are the redundant spelling, and `mentl fmt` writes
 (tests/micros/mn-payload-alternation.mn).
 
 **Layout**: an alternation renders inline when it fits
-and past the width one branch per line, each continuation led by its `|` —
-the roster a catch-all stood for is often forty names, and the parser passes
-over the newline before a `|` as layout. Branches that each bind the whole
+and past the width filled to it, each continuation line led by its `|` —
+the roster a catch-all stood for is often forty names, read as a paragraph,
+and the parser passes over the newline before a `|` as layout
+(tests/micros/mn-roster-filled.mn). Branches that each bind the whole
 value under one name render as that binder over the group, `b @ (C(_) | D)`
 (§«As-patterns — rule»).
 
@@ -2453,8 +2454,8 @@ branch of the alternation it groups — the spelling `mentl tighten` writes for
 a binder that stood over a sum — and a parenthesized pattern is that pattern,
 since there is no product of one: `(A | B)` is the alternation, `(a, b)` the
 pair as before. One spelling for one graph: `b @ C(_) | b @ D`, every branch
-under the same binder, is the tree the formatter writes back as `b @ (C(_) |
-D)`, one branch per line past the width
+under the same binder, is the graph the formatter writes back as `b @ (C(_) |
+D)`, filled past the width
 (tests/micros/mn-grouped-as-pattern.mn).
 
 `@` is TAt (reserved for handler annotations more generally; no current load-bearing user-facing `@`-form on effect ops — `@resume=` was erased per the inference-from-body discipline). Context disambiguates if other `@`-forms are introduced in future kernel additions.
@@ -2635,9 +2636,9 @@ There is no `'...'` literal form, no `'''...'''` variant and no `{{`/`}}` brace-
 ## Operator precedence
 
 One canonical table. Higher number = tighter binding. **These are
-the literal integers** returned by `op_prec` (src/parser.mn) — one
-table, two projections (this spec and that fn), zero translation; the
-seed's third projection retired with the seed. Structural forms (call
+the literal integers** `binop_prec` and `pipe_prec` answer
+(src/parser.mn) — one table, which the parser binds by and the formatter
+parenthesizes by, and this spec projects. Structural forms (call
 `f(args)`, field access `.`, indexing, unary `-`/`!`) bind tighter
 than every binary operator; `=` in let and `=>` in lambda sit at
 statement level — neither participates in the binop ladder.
@@ -3011,7 +3012,7 @@ else today, so a module-scope `let _ = e`, `let 5 = e` or `let (w, h) = e`
 refuses where the program is emitted (`E_InternalInvariant`), never runs
 without the value it was written for
 (tests/micros/mn-module-let-discard-refuses.mn,
-mn-module-let-destructure-refuses.mn; PLAN §11.18).
+mn-module-let-destructure-refuses.mn; PLAN §11.17).
 
 ---
 
@@ -3268,7 +3269,8 @@ builds as the pipe it is (§«`<|` — diverge»).
 | Code                  | Trigger                                       | Applicability        | Quick Fix                                      |
 |-----------------------|-----------------------------------------------|----------------------|-------------------------------------------------|
 | `E_PatternInexhaustive` | a value escapes every arm of a match of two or more arms — a match of one arm, a destructuring `let` among them, claims its shape instead (§«Exhaustiveness») — read over the whole pattern, column by column, so a variant missing INSIDE a constructor's payload refuses too; the message names the escaping value as a pattern. An alternation covers its branches, an as-pattern its inner pattern; a list column is `[]` or a head before a rest, a record its fields, Bool's literals its constructors, and any other literal column is covered only by a wild row (`0` beside `1` misses `_`). ARMED | `HasPlaceholders`    | insert the arm the witness names |
-| `P_ExpectedToken`     | the parser expected one token and found another. It recovers so the judgment can go on, and a recovery is a guess at text it could not read, so the program refuses | `MaybeIncorrect`     | write the token it expected |
+| `E_CatchAllOverSum`   | a `_` or bare binder after other arms of a match over a sum — it stands for the constructors those arms leave, and one declared later would join it unread; the message names the roster as a pattern. A `_` in a payload, over a word, a text or a list, and a match's only arm are legal (§«Exhaustiveness»). ARMED (tests/micros/mn-catch-all-over-sum-refuses.mn) | `MachineApplicable` | write the roster; `mentl tighten` writes each in its arm's place |
+| `P_ExpectedToken`     | the parser expected one token and found another — a name the grammar demands among them, so `fn let(x)` refuses at the keyword (tests/micros/mn-keyword-name-refuses.mn). It recovers so the judgment can go on, and a recovery is a guess at text it could not read, so the program refuses | `MaybeIncorrect`     | write the token it expected |
 | `P_UnexpectedToken`   | a token not valid at its position; in pattern position the recovery is a wildcard, so the program refuses rather than run the arms it swallowed (tests/micros/mn-pattern-token-refuses.mn) | `MaybeIncorrect`     | restructure per the surrounding form |
 | `P_UnclosedConstruct` | EOF inside a construct (block, match arms, etc.) before its closer | `MaybeIncorrect` | close the construct OR remove its opening token |
 | `E_RefinementRejected`| value violates refinement predicate — or a partial primitive's precondition refuted by constants (`1 / 0`, `INT_MIN / -1`; §«Partiality»), or a destructuring pattern's shape refuted by how the value was built (`let Some(v) = None`; §«Exhaustiveness») | `Unspecified`        | adjust value or widen refinement               |

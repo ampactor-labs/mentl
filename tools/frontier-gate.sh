@@ -2734,17 +2734,18 @@ for i in "${!compilers[@]}"; do
   # ── the catch-all over a sum is the roster the author declined to write ──
   # (Morgan, 2026-10-13). wild.mn stands a `_` and a bare binder after other
   # arms over `Dot | Line(Int) | Box(Int, Int) | Blob`, and a `_` over an Int.
-  # The census names the two over the sum with the roster each stands for;
+  # The judgment refuses the two over the sum, each naming its roster;
   # tighten writes the rosters — the binder's as the binder over the group,
   # the arm's comment kept; the result checks clean and runs to 5; the second
-  # run finds nothing; the file is canonical. RED on boot 7730b750: the arm's
-  # comment was lost, so the formatter refused the file.
+  # run finds nothing; the file is canonical. RED on boot eed49486: both
+  # catch-alls accepted.
   cp "$ROOT/tests/frontier/tighten-demo/wild.mn" "$tdemo/wild.mn"
-  (cd "$tdemo" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$tdemo" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" query wild.mn "census wildcard-over-sum") >"$dir/wild-census.out" 2>&1
-  if grep -q '^→ 2 catch-all arm(s) over a sum' "$dir/wild-census.out" && grep -q 'other @ (Line(_) | Box(_, _) | Blob)' "$dir/wild-census.out"; then
-    pass "the census names each catch-all over a sum with its roster"
+  (cd "$tdemo" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$tdemo" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" check wild.mn) >"$dir/wild-refuse.out" 2>&1
+  wref=$?
+  if [ $wref -ne 0 ] && [ "$(grep -c 'E_CatchAllOverSum' "$dir/wild-refuse.out")" -eq 2 ] && grep -q 'other @ (Line(_) | Box(_, _) | Blob)' "$dir/wild-refuse.out"; then
+    pass "the judgment refuses each catch-all over a sum, naming its roster"
   else
-    fail "wildcard-over-sum census (see $dir/wild-census.out)"
+    fail "catch-all over a sum (exit=$wref; see $dir/wild-refuse.out)"
   fi
   (cd "$tdemo" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$tdemo" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" tighten wild.mn) >"$dir/wild-tighten.out" 2>&1
   wrc=$?

@@ -1,0 +1,7 @@
+// expect: refuse P_ExpectedToken
+// A name the grammar demands is a name: `let` in a function's name position
+// refuses at the keyword, where it was read as the empty name and the
+// program compiled.
+fn let(x) = x + 1
+
+fn main() = 7

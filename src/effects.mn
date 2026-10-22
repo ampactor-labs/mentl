@@ -564,21 +564,8 @@ fn arg_read(a) = match a {
   EAVar(v) => match graph_chase(v) {
     GNode(NBound(t), _) => match t {
       TValue(x) => x,
-      TInt
-      | TFloat
-      | TUnit
-      | TByte
-      | TAddr
-      | TList(_)
-      | TTuple(_)
-      | TFun(_, _, _)
-      | TVar(_)
-      | TName(_, _)
-      | TRecord(_)
-      | TRecordOpen(_, _)
-      | TRefined(_, _)
-      | TReprPin(_, _)
-      | TCont(_, _, _, _)
+      TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TVar(_)
+      | TName(_, _) | TRecord(_) | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _)
       | TAlias(_, _) => a,
     },
     GNode(_, _) => EAVar(graph_chase_handle(v)),
@@ -783,41 +770,15 @@ fn frag_arg_same(x, y) = match x {
     TVar(hx) => match y {
       EAType(ty2) => match ty2 {
         TVar(hy) => hx == hy,
-        TInt
-        | TFloat
-        | TUnit
-        | TByte
-        | TAddr
-        | TList(_)
-        | TTuple(_)
-        | TFun(_, _, _)
-        | TName(_, _)
-        | TRecord(_)
-        | TRecordOpen(_, _)
-        | TRefined(_, _)
-        | TReprPin(_, _)
-        | TCont(_, _, _, _)
-        | TAlias(_, _)
-        | TValue(_) => false,
+        TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TName(_, _)
+        | TRecord(_) | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _)
+        | TAlias(_, _) | TValue(_) => false,
       },
       EAInt(_) | EAFloat(_) | EAString(_) | EANode(_) | EAEffect(_) | EACon(_) | EAVar(_) => false,
     },
-    TInt
-    | TFloat
-    | TUnit
-    | TByte
-    | TAddr
-    | TList(_)
-    | TTuple(_)
-    | TFun(_, _, _)
-    | TName(_, _)
-    | TRecord(_)
-    | TRecordOpen(_, _)
-    | TRefined(_, _)
-    | TReprPin(_, _)
-    | TCont(_, _, _, _)
-    | TAlias(_, _)
-    | TValue(_) => false,
+    TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TName(_, _)
+    | TRecord(_) | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _)
+    | TAlias(_, _) | TValue(_) => false,
   },
   EANode(nx) => match y {
     EANode(ny) => nx == ny,

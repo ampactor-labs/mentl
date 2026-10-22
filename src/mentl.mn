@@ -122,11 +122,13 @@ fn gradient_next(handle) = match graph_node_body(handle) {
   NStmt(FnStmt(name, params, retty, effs, body)) => match graph_chase(handle) {
     GNode(NBound(ty), anchor) => match ty {
       TFun(_, ret, _) => decl_teaching(Decl({anchor, body, effs, handle, name, params, ret, retty, ty})),
-      _ => TeachNone,
+      TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TVar(_) | TName(_, _) | TRecord(_)
+      | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => TeachNone,
     },
-    _ => TeachNone,
+    GNode(_, _) => TeachNone,
   },
-  _ => TeachNone,
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => TeachNone,
 }
 
 // One declaration as the gradient reads it: its handle and name, the
@@ -220,7 +222,8 @@ fn effect_named(p) = match p {
 fn decl_clause(dh) = match graph_node_body(dh) {
   NStmt(FnStmt(name, _, _, effs, _)) => Some((name, effs)),
   NStmt(HandlerDeclStmt(name, _, _, _, _, effs)) => Some((name, effs)),
-  _ => None,
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => None,
 }
 
 // The locks a clause states: `with Pure`, or each bare name it negates — a
@@ -247,7 +250,8 @@ fn masked_between(child, top) = if child == top {
     None => [],
     Some(p) => match graph_node_body(p) {
       NExpr(PipeExpr(PTee, l, r)) => if l == child { tee_absorbs(r) ++ masked_between(p, top) } else { masked_between(p, top) },
-      _ => masked_between(p, top),
+      NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+      | NRow(_) | NParam(_) => masked_between(p, top),
     },
   }
 }
@@ -446,14 +450,15 @@ fn own_lean(f, lean) = match lean {
       },
       None => [],
     },
-    _ => [],
+    TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TVar(_) | TName(_, _) | TRecord(_)
+    | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => [],
   },
 }
 
 fn guarded_by(g, ip) = match ip {
   (_, p) => match param_row(p) {
     EfRow(_, _, EtOpen(edges)) => any(edge_is(g, ??), edges),
-    _ => false,
+    EfRow(_, _, _) => false,
   },
 }
 
@@ -467,7 +472,8 @@ fn predicate_leans(pred) = match pred {
   PTotalDiv(_, a, b) => value_leans(b) ++ value_leans(a),
   PInBounds(recv, idx) => value_leans(idx) ++ value_leans(recv),
   PWithSelf(h, _) => value_leans(h),
-  _ => [],
+  PTrue | PCompare(_, _, _) | PAnd(_, _) | POr(_, _) | PNot(_) | PBoolNode(_) | PPatternMatch(_, _)
+  | PProvides(_) => [],
 }
 
 // The parameters a value leans on that state no precondition, each with the
@@ -485,7 +491,8 @@ fn value_leans(h) = match join_tails(h) {
     NExpr(VarRef(name)) => if name == "self" { [] } else { link_leans(h, name) },
     NExpr(BinOpExpr(_, l, r)) => value_leans(l) ++ value_leans(r),
     NExpr(UnaryOpExpr(_, e)) => value_leans(e),
-    _ => [],
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => [],
   },
 }
 
@@ -504,7 +511,7 @@ fn link_leans(use_h, name: String) = match binder_read_by(use_h) {
     },
     None => match graph_node_body(b) {
       NExpr(_) => value_leans(b),
-      _ => [],
+      NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => [],
     },
   },
 }
@@ -528,7 +535,7 @@ fn aliases_in_reach(mh) = module_reach_of(mh) |> flat_map(module_refinements)
 
 fn module_refinements(m) = match graph_node_body(m) {
   NModule(mod) => mod.decls |> flat_map(refinement_alias),
-  _ => [],
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => [],
 }
 
 fn refinement_alias(d) = match graph_node_body(d) {
@@ -538,7 +545,8 @@ fn refinement_alias(d) = match graph_node_body(d) {
     },
     None => [],
   },
-  _ => [],
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => [],
 }
 
 fn param_candidates(f, owed, aliases, lean) = match lean {
@@ -575,12 +583,13 @@ fn is_word_base(t) = match t {
   TInt => true,
   TFloat => true,
   TByte => true,
-  _ => false,
+  TUnit | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TVar(_) | TName(_, _) | TRecord(_)
+  | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => false,
 }
 
 fn binder_fits(b, alias) = match graph_chase(b) {
   GNode(NBound(t), _) => alias_fits(t, alias),
-  _ => false,
+  GNode(_, _) => false,
 }
 
 fn alias_fits(t, alias) = match alias {
@@ -591,23 +600,31 @@ fn base_of(t) = match t {
   TAlias(_, inner) => base_of(inner),
   TRefined(b, _) => base_of(b),
   TReprPin(_, b) => base_of(b),
-  _ => t,
+  TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TVar(_)
+  | TName(_, _) | TRecord(_) | TRecordOpen(_, _) | TCont(_, _, _, _) | TValue(_) => t,
 }
 
 fn same_base(a, b) = match a {
   TInt => match b {
     TInt => true,
-    _ => false,
+    TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TVar(_) | TName(_, _)
+    | TRecord(_) | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _)
+    | TAlias(_, _) | TValue(_) => false,
   },
   TFloat => match b {
     TFloat => true,
-    _ => false,
+    TInt | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TVar(_) | TName(_, _)
+    | TRecord(_) | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _)
+    | TAlias(_, _) | TValue(_) => false,
   },
   TByte => match b {
     TByte => true,
-    _ => false,
+    TInt | TFloat | TUnit | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TVar(_) | TName(_, _)
+    | TRecord(_) | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _)
+    | TAlias(_, _) | TValue(_) => false,
   },
-  _ => false,
+  TUnit | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TVar(_) | TName(_, _) | TRecord(_)
+  | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => false,
 }
 
 // THE PRECONDITION'S BRACKET. The candidate is stated on the parameter as an
@@ -696,7 +713,8 @@ fn verdict_open(v) = match v {
 // order: a call's positional product, a pipe's piped value.
 fn application_args(h) = match graph_node_body(h) {
   NExpr(PipeExpr(PForward, left, _)) => [left],
-  _ => match graph_product_at(h) {
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => match graph_product_at(h) {
     ProductOf(args, _, _) => args,
     NoProduct => [],
   },
@@ -764,7 +782,7 @@ fn return_suggestions(f) = if authored_return(f.retty) {
 
 fn authored_return(retty) = match graph_node_body(retty) {
   NTypeAnn(_) => true,
-  _ => false,
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NName(_) | NRow(_) | NParam(_) => false,
 }
 
 fn ret_fits(ret, alias) = alias_fits(chase_deep(ret), alias)
@@ -775,7 +793,8 @@ fn resting_on(decl, o) = match o {
       [] => [],
       chs => [(pred, chs)],
     },
-    _ => [],
+    PTrue | PCompare(_, _, _) | PAnd(_, _) | POr(_, _) | PNot(_) | PBoolNode(_) | PPatternMatch(_, _)
+    | PTotalDiv(_, _, _) | PProvides(_) | PInBounds(_, _) => [],
   },
 }
 
@@ -793,7 +812,8 @@ fn value_calls(h, decl) = match join_tails(h) {
       },
       None => [],
     },
-    _ => [],
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => [],
   },
 }
 
@@ -838,9 +858,10 @@ fn rest_on_contract(contract, r) = match r {
 fn return_as(contract, ch) = match graph_chase(ch) {
   GNode(NBound(t), reason) => match t {
     TFun(ps, _, row) => graph_bind(ch, TFun(ps, contract, row), reason),
-    _ => (),
+    TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TVar(_) | TName(_, _) | TRecord(_)
+    | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => (),
   },
-  _ => (),
+  GNode(_, _) => (),
 }
 
 fn rest_holds(r) = match r {
@@ -898,7 +919,7 @@ fn lev_discharged(p) = match p {
 fn teaching_from(best, rest) = match best {
   Proven(site, s) => match site {
     SiteRow => TeachAdd(s),
-    _ => match rest |> filter(same_choice(best, ??)) {
+    SiteParam(_) | SiteReturn => match rest |> filter(same_choice(best, ??)) {
       [] => TeachAdd(s),
       ties => TeachAsk([s] ++ map(suggestion_of, ties)),
     },
@@ -972,7 +993,8 @@ fn narrow_row_proven(handle, base_ty, narrow, source_span) = match base_ty {
     narrow_row(handle, base_ty, narrow, source_span)
     row_subsumes(resolve_row(base_row), narrow)
   },
-  _ => false,
+  TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TVar(_) | TName(_, _) | TRecord(_)
+  | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => false,
 }
 
 fn unwrap_source_span(opt) = match opt {
@@ -1031,7 +1053,8 @@ fn narrow_row(handle, base_ty, narrow, source_span) = match base_ty {
       Located(unwrap_source_span(source_span), Inferred("mentl speculative narrow"))
     )
   },
-  _ => (),
+  TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TVar(_) | TName(_, _) | TRecord(_)
+  | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => (),
 }
 
 // The STRUCTURAL belt after a tentative apply: the post-apply handle

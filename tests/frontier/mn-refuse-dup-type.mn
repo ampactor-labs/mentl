@@ -13,6 +13,6 @@ fn main() = {
   match v {
     Go   => 13,
     Stop => 42,
-    _    => 99,
+    Halt | Run => 99,
   }
 }

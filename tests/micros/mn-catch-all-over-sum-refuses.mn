@@ -1,0 +1,13 @@
+// expect: refuse E_CatchAllOverSum
+// A catch-all arm over a sum stands for the constructors the arms before it
+// leave, and a constructor declared later would join it unread: the
+// judgment refuses it, naming the roster `mentl tighten` writes in its place.
+type Shape = Dot | Line(Int) | Box(Int, Int) | Blob
+
+fn sides(s) = match s {
+  Dot => 0,
+  Line(_) => 1,
+  _ => 4,
+}
+
+fn main() = sides(Box(2, 3))

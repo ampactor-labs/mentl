@@ -210,7 +210,7 @@ fn caret_handle(caret) = match caret {
 // numbers its lines from 1.
 fn module_of_position(h) = match graph_node_body(h) {
   NModule(_) => h,
-  _ => graph_module_of(h),
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => graph_module_of(h),
 }
 
 // Every handle the module minted that the program still holds, in mint order
@@ -258,9 +258,11 @@ fn gradient_position(i) = match graph_node_body(i) {
       TeachAsk(_) => true,
       TeachNeed(_, _, _) => true,
     },
-    _ => false,
+    LetStmt(_, _, _) | TypeDefStmt(_, _) | EffectDeclStmt(_, _, _) | HandlerDeclStmt(_, _, _, _, _, _)
+    | HandlerChainStmt(_, _) | ExprStmt(_) | ImportStmt(_) | RefineStmt(_, _, _) | AliasStmt(_, _)
+    | RowAliasStmt(_, _) => false,
   },
-  _ => false,
+  NExpr(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => false,
 }
 
 // ─── The one ranked field ────────────────────────────────────────────
@@ -362,7 +364,11 @@ fn same_enclosing_decl(a, b) with !Mutate = match enclosing_decl(a) {
 
 fn caret_span_from_reason(reason) = match reason {
   Located(sp, _) => sp,
-  _ => span_zero(),
+  Declared(_) | Inferred(_) | Fresh(_) | OpConstraint(_, _, _) | VarLookup(_, _) | FnReturn(_, _)
+  | FnParam(_, _, _) | MatchBranch(_, _) | ListElement(_) | IfBranch(_) | LetBinding(_, _)
+  | Unified(_, _) | Instantiation(_, _) | Placeholder(_) | MissingVar(_) | Refinement(_, _)
+  | InferredCallReturn(_, _) | InferredPipeResult(_, _) | DefaultReason(_, _) | Accepted(_, _, _)
+  | EffectEnters(_, _, _) | LabelEnters(_, _, _) | ChainInstall(_, _) | StateBinding(_, _) => span_zero(),
 }
 
 // Proximity decay constants — literal floats, not learned. Per
@@ -440,12 +446,13 @@ fn ty_of_kind(handle, kind) = match kind {
 fn row_of_kind(kind) with Pure = match kind {
   NBound(ty) => extract_row_local(ty),
   NRowBound(r) => r,
-  _ => mk_ef_pure(),
+  NFree(_) | NRowFree(_) | NRecordRowBound(_, _) | NErrorHole(_) => mk_ef_pure(),
 }
 
 fn extract_row_local(ty) with Pure = match ty {
   TFun(_, _, row) => row,
-  _ => mk_ef_pure(),
+  TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TVar(_) | TName(_, _) | TRecord(_)
+  | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => mk_ef_pure(),
 }
 
 // ownership_of_kind — derives Ownership from the graph's binding
@@ -456,12 +463,13 @@ fn extract_row_local(ty) with Pure = match ty {
 // that want it). For non-function nodes, default Unmarked.
 fn ownership_of_kind(kind) = match kind {
   NBound(ty) => ownership_of_ty(ty),
-  _ => Unmarked,
+  NFree(_) | NRowBound(_) | NRowFree(_) | NRecordRowBound(_, _) | NErrorHole(_) => Unmarked,
 }
 
 fn ownership_of_ty(ty) = match ty {
   TFun(params, _, _) => if len(params) == 0 { Unmarked } else { param_resolved(list_index(params, 0)) },
-  _ => Unmarked,
+  TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TVar(_) | TName(_, _) | TRecord(_)
+  | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => Unmarked,
 }
 
 // The verbs that hold a node: the path from its declaration down to it, read
@@ -495,7 +503,7 @@ fn ancestry(h, up) with !Mutate = match graph_parent_of(h) {
   None => None,
   Some(p) => match graph_node_body(p) {
     NModule(_) => Some(up),
-    _ => ancestry(p, push(up, p)),
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => ancestry(p, push(up, p)),
   },
 }
 
@@ -522,7 +530,8 @@ fn verb_role(site, path, i) with !Mutate = {
       Some(k) => Some(FanBranch(k, len(branches))),
       None => None,
     },
-    _ => None,
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => None,
   }
 }
 
@@ -532,7 +541,8 @@ fn chain_continues_above(path, i) with !Mutate = if i == 0 {
 } else {
   match graph_node_body(list_index(path, i - 1)) {
     NExpr(PipeExpr(PForward, l, _)) => l == list_index(path, i),
-    _ => false,
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => false,
   }
 }
 
@@ -549,7 +559,8 @@ fn chain_role(site, path, from) with !Mutate = {
 
 fn chain_elements(h) with !Mutate = match graph_node_body(h) {
   NExpr(PipeExpr(PForward, l, r)) => push(chain_elements(l), r),
-  _ => [h],
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => [h],
 }
 
 fn entered_element(elems, found, h) = match found {
@@ -595,7 +606,8 @@ fn served_at(h) with !Mutate = match performed_effect(h) {
 fn performed_effect(h) with !Mutate = match graph_node_body(h) {
   NExpr(CallExpr(callee, _)) => ref_op_effect(callee),
   NExpr(VarRef(_)) => ref_op_effect(h),
-  _ => None,
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => None,
 }
 
 fn served_step(en: String, up, found, i) with !Mutate = match found {
@@ -610,7 +622,8 @@ fn served_step(en: String, up, found, i) with !Mutate = match found {
       } else {
         None
       },
-      _ => None,
+      NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+      | NRow(_) | NParam(_) => None,
     }
   },
 }
@@ -674,7 +687,8 @@ fn row_facet_at(h, kind) with !Mutate = match row_of_subtree(h) {
   None => HoleRow,
   Some(eval) => match ty_of_kind(h, kind) {
     TFun(_, _, call) => WhenCalled(eval, call),
-    _ => Evaluates(eval),
+    TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TVar(_) | TName(_, _) | TRecord(_)
+    | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => Evaluates(eval),
   },
 }
 
@@ -737,7 +751,8 @@ fn mentl_context_at(handle) with !Mutate = match env_snapshot() {
 // contained the position, a walk of each candidate's subtree per handle.
 fn innermost_fn(path, found, i) with !Mutate = match graph_node_body(list_index(path, i)) {
   NStmt(FnStmt(_, _, _, effs, _)) => Some((effs, i)),
-  _ => found,
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => found,
 }
 
 // What a candidate at the hole may perform: what the enclosing declaration
@@ -777,7 +792,8 @@ fn absorbed_step(path, acc, i) with !Mutate = match graph_node_body(list_index(p
   } else {
     acc
   },
-  _ => acc,
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => acc,
 }
 
 // verify_pending_at — Verify ledger holds ALL pending refinement

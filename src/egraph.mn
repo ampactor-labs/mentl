@@ -108,7 +108,8 @@ fn rw_add_identity(handle) = match graph_node_body(handle) {
       false
     }
   },
-  _ => false,
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => false,
 }
 
 // x * 1 ≡ x  and  1 * x ≡ x  — survivor kept, never gated.
@@ -124,7 +125,8 @@ fn rw_mul_identity(handle) = match graph_node_body(handle) {
       false
     }
   },
-  _ => false,
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => false,
 }
 
 // x * 0 ≡ 0  and  0 * x ≡ 0  — DROPS the non-zero operand, so it fires only
@@ -142,7 +144,8 @@ fn rw_mul_absorb(handle) = match graph_node_body(handle) {
       false
     }
   },
-  _ => false,
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => false,
 }
 
 // x - 0 ≡ x — survivor kept, never gated. (0 - x is NOT x, so left only.)
@@ -151,7 +154,8 @@ fn rw_sub_identity(handle) = match graph_node_body(handle) {
     let rh = egraph_extract(r)
     if is_zero(rh) { rewrite_to(handle, egraph_extract(l)) } else { false }
   },
-  _ => false,
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => false,
 }
 
 // x / 1 ≡ x — survivor kept, never gated.
@@ -160,17 +164,20 @@ fn rw_div_identity(handle) = match graph_node_body(handle) {
     let rh = egraph_extract(r)
     if is_one(rh) { rewrite_to(handle, egraph_extract(l)) } else { false }
   },
-  _ => false,
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => false,
 }
 
 fn is_zero(handle) = match graph_node_body(handle) {
   NExpr(LitInt(n)) => n == 0,
-  _ => false,
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => false,
 }
 
 fn is_one(handle) = match graph_node_body(handle) {
   NExpr(LitInt(n)) => n == 1,
-  _ => false,
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => false,
 }
 
 // ─── Constant folding — lit op lit ≡ lit (the one rule that CREATES) ───
@@ -187,7 +194,8 @@ fn is_one(handle) = match graph_node_body(handle) {
 // nothing new and converges.
 fn const_int(handle) = match graph_node_body(handle) {
   NExpr(LitInt(n)) => Some(n),
-  _ => None,
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => None,
 }
 
 fn rw_const_fold(handle) = match graph_node_body(handle) {
@@ -206,7 +214,8 @@ fn rw_const_fold(handle) = match graph_node_body(handle) {
     },
     None => false,
   },
-  _ => false,
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => false,
 }
 
 fn mint_fold(handle, v) = {

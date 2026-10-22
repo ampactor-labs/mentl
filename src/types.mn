@@ -98,17 +98,9 @@ fn ref_op_effect(r) = match graph_ref_decl(r) {
   Some(d) => match graph_published(d) {
     Some((_, _, kind)) => match kind {
       EffectOpScheme(en, _, _) => Some(en),
-      FnScheme
-      | ValueScheme
-      | ParamScheme(_)
-      | ConstructorScheme(_, _)
-      | RecordSchemeKind(_)
-      | EffectDeclKind(_, _)
-      | HandlerKind(_, _, _, _, _)
-      | HandlerChainKind(_)
-      | RowAliasKind(_)
-      | TypeVariants(_)
-      | PrimitiveKind(_) => None,
+      FnScheme | ValueScheme | ParamScheme(_) | ConstructorScheme(_, _) | RecordSchemeKind(_)
+      | EffectDeclKind(_, _) | HandlerKind(_, _, _, _, _) | HandlerChainKind(_) | RowAliasKind(_)
+      | TypeVariants(_) | PrimitiveKind(_) => None,
     },
     None => None,
   },
@@ -122,17 +114,9 @@ fn ref_is_constructor(r) = match graph_ref_decl(r) {
   Some(d) => match graph_published(d) {
     Some((_, _, kind)) => match kind {
       ConstructorScheme(_, _) => true,
-      FnScheme
-      | ValueScheme
-      | ParamScheme(_)
-      | EffectOpScheme(_, _, _)
-      | RecordSchemeKind(_)
-      | EffectDeclKind(_, _)
-      | HandlerKind(_, _, _, _, _)
-      | HandlerChainKind(_)
-      | RowAliasKind(_)
-      | TypeVariants(_)
-      | PrimitiveKind(_) => false,
+      FnScheme | ValueScheme | ParamScheme(_) | EffectOpScheme(_, _, _) | RecordSchemeKind(_)
+      | EffectDeclKind(_, _) | HandlerKind(_, _, _, _, _) | HandlerChainKind(_) | RowAliasKind(_)
+      | TypeVariants(_) | PrimitiveKind(_) => false,
     },
     None => false,
   },
@@ -192,37 +176,16 @@ fn variant_named_specs_at(applied) = match applied {
     Some(entry) => match entry {
       (binding, _r, kind) => match kind {
         TypeVariants(specs) => if len(args) == 0 { specs } else { map(ground_variant_spec(type_params_of(binding), args), specs) },
-        FnScheme
-        | ConstructorScheme(_, _)
-        | EffectOpScheme(_, _, _)
-        | RecordSchemeKind(_)
-        | EffectDeclKind(_, _)
-        | HandlerKind(_, _, _, _, _)
-        | ParamScheme(_)
-        | RowAliasKind(_)
-        | HandlerChainKind(_)
-        | ValueScheme
-        | PrimitiveKind(_) => [],
+        FnScheme | ConstructorScheme(_, _) | EffectOpScheme(_, _, _) | RecordSchemeKind(_)
+        | EffectDeclKind(_, _) | HandlerKind(_, _, _, _, _) | ParamScheme(_) | RowAliasKind(_)
+        | HandlerChainKind(_) | ValueScheme | PrimitiveKind(_) => [],
       },
     },
     None => [],
   },
-  TInt
-  | TFloat
-  | TUnit
-  | TByte
-  | TAddr
-  | TList(_)
-  | TTuple(_)
-  | TFun(_, _, _)
-  | TVar(_)
-  | TRecord(_)
-  | TRecordOpen(_, _)
-  | TRefined(_, _)
-  | TReprPin(_, _)
-  | TCont(_, _, _, _)
-  | TAlias(_, _)
-  | TValue(_) => [],
+  TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TVar(_)
+  | TRecord(_) | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _)
+  | TAlias(_, _) | TValue(_) => [],
 }
 
 // The variants of the type a constructor belongs to, from the type's own
@@ -238,21 +201,8 @@ fn ctor_roster(cname: String) = match env_lookup(cname) {
 fn roster_of_result(ty) = match ty {
   TFun(_, ret, _) => roster_of_result(ret),
   TName(t, _) => variant_named_specs_at(TName(t, [])),
-  TInt
-  | TFloat
-  | TUnit
-  | TByte
-  | TAddr
-  | TList(_)
-  | TTuple(_)
-  | TVar(_)
-  | TRecord(_)
-  | TRecordOpen(_, _)
-  | TRefined(_, _)
-  | TReprPin(_, _)
-  | TCont(_, _, _, _)
-  | TAlias(_, _)
-  | TValue(_) => [],
+  TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TVar(_) | TRecord(_)
+  | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => [],
 }
 
 fn spec_named(cname: String, spec) = match spec {
@@ -272,22 +222,9 @@ fn spec_named(cname: String, spec) = match spec {
 fn type_params_of(binding) = match binding {
   Frozen(_, ty) => match ty {
     TName(_, params) => params,
-    TInt
-    | TFloat
-    | TUnit
-    | TByte
-    | TAddr
-    | TList(_)
-    | TTuple(_)
-    | TFun(_, _, _)
-    | TVar(_)
-    | TRecord(_)
-    | TRecordOpen(_, _)
-    | TRefined(_, _)
-    | TReprPin(_, _)
-    | TCont(_, _, _, _)
-    | TAlias(_, _)
-    | TValue(_) => [],
+    TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TVar(_)
+    | TRecord(_) | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _)
+    | TAlias(_, _) | TValue(_) => [],
   },
   // A Live binding here would mean the entry came from somewhere the
   // registration does not reach; inventing parameters for it is the
@@ -351,22 +288,9 @@ fn ground_var(params, args, h, ty) = match find(param_at_root(h), enumerate(para
 fn param_at_root(h, indexed) = match indexed {
   (_, p) => match p {
     TVar(ph) => graph_chase_handle(ph) == graph_chase_handle(h),
-    TInt
-    | TFloat
-    | TUnit
-    | TByte
-    | TAddr
-    | TList(_)
-    | TTuple(_)
-    | TFun(_, _, _)
-    | TName(_, _)
-    | TRecord(_)
-    | TRecordOpen(_, _)
-    | TRefined(_, _)
-    | TReprPin(_, _)
-    | TCont(_, _, _, _)
-    | TAlias(_, _)
-    | TValue(_) => false,
+    TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TName(_, _)
+    | TRecord(_) | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _)
+    | TAlias(_, _) | TValue(_) => false,
   },
 }
 
@@ -421,17 +345,9 @@ fn nominal_fields_carry(ty) = match ty {
   TName(name, _) => match published_at(env_resolve_type(name)) {
     Some((_, _, kind)) => match kind {
       RecordSchemeKind(fields) => any(field_carries_refinement, fields),
-      FnScheme
-      | ConstructorScheme(_, _)
-      | EffectOpScheme(_, _, _)
-      | TypeVariants(_)
-      | EffectDeclKind(_, _)
-      | HandlerKind(_, _, _, _, _)
-      | ParamScheme(_)
-      | RowAliasKind(_)
-      | HandlerChainKind(_)
-      | ValueScheme
-      | PrimitiveKind(_) => false,
+      FnScheme | ConstructorScheme(_, _) | EffectOpScheme(_, _, _) | TypeVariants(_)
+      | EffectDeclKind(_, _) | HandlerKind(_, _, _, _, _) | ParamScheme(_) | RowAliasKind(_)
+      | HandlerChainKind(_) | ValueScheme | PrimitiveKind(_) => false,
     },
     None => false,
   },
@@ -615,42 +531,34 @@ fn repr_is_wide(r) with Pure = match r {
 // reads it (the RI64/RF32 gradient-arm precedent — a trigger, not a live path).
 fn stride_of(elem_ty) with Pure = match elem_ty {
   TByte => 1,
-  TInt
-  | TFloat
-  | TUnit
-  | TAddr
-  | TList(_)
-  | TTuple(_)
-  | TFun(_, _, _)
-  | TVar(_)
-  | TName(_, _)
-  | TRecord(_)
-  | TRecordOpen(_, _)
-  | TRefined(_, _)
-  | TReprPin(_, _)
-  | TCont(_, _, _, _)
-  | TAlias(_, _)
-  | TValue(_) => repr_width(repr_of(elem_ty)),
+  TInt | TFloat | TUnit | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TVar(_) | TName(_, _)
+  | TRecord(_) | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _)
+  | TAlias(_, _) | TValue(_) => repr_width(repr_of(elem_ty)),
 }
 
-// stride_class — the ZERO-BIASED carrier codec, EMIT side: the stride-code the
-// emit packs into a byte/float sequence's tag word (stride_class(stride_of(elem))
-// feeds make_list_sc / the data-section header). The bias is load-bearing: sc 0
-// => stride 4 (Int/handle/pointer — the FREE word default every existing list
-// already writes as tag 0), so `pack_tag(0, 0) == 0` and the whole i32/handle
-// world is byte-identical; only a byte (sc 1) or a packed float (sc 2/3) writes a
-// nonzero code. Mirrors repr_of (RI32 the free floor; RI64/RF64/RF32/RV128 the
-// gradient triggers) one axis down: the element SLOT stride, not the VALUE repr.
-// The RUNTIME inverse (`decode_stride`, sc => stride) lives in lib/
-// lists.mn beside the readers that consume it — the RTLIBS blob has no src/.
-fn stride_class(stride) with Pure = match stride {
-  4 => 0,
-  1 => 1,
-  8 => 2,
-  16 => 3,
-  2 => 4,
-  // drift-audit: ignore — the word class IS stride 4; any unlisted stride is word-classed by definition, not a fabricated default
-  _ => 0,
+// stride_class — the ZERO-BIASED carrier codec, EMIT side: the code the emit
+// packs into a byte/float sequence's tag word (make_list_sc / the
+// data-section header), read off the element — `stride_of`'s widths, coded.
+// The bias is load-bearing: code 0 is a four-byte slot (Int/handle/pointer —
+// the FREE word default every existing list already writes as tag 0), so
+// `pack_tag(0, 0) == 0` and the whole i32/handle world is byte-identical;
+// only a byte (1), an eight-byte slot (2) or a sixteen-byte lane (3) writes a
+// nonzero code. The RUNTIME inverse (`decode_stride`, code => stride) lives in
+// lib/lists.mn beside the readers that consume it.
+fn stride_class(elem_ty) with Pure = match elem_ty {
+  TByte => 1,
+  TInt | TFloat | TUnit | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TVar(_) | TName(_, _)
+  | TRecord(_) | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _)
+  | TAlias(_, _) | TValue(_) => repr_class(repr_of(elem_ty)),
+}
+
+// The slot code of a word-or-wider element's representation.
+fn repr_class(r) with Pure = match r {
+  RI32 => 0,
+  RF32 => 0,
+  RI64 => 2,
+  RF64 => 2,
+  RV128 => 3,
 }
 
 // repr_wat — the WAT value-type token for a representation class. STEP 1's
@@ -725,20 +633,8 @@ fn fold_strip(ty) with Pure = match ty {
   // fold_sig(TList(TByte)) and a String field and a [byte] field share the one
   // generated `$eq_<sig>`/`$hash_<sig>`/`$show_<sig>` helpers at sig "lb" —
   // the eq/hash-divergence footgun unsayable.
-  TInt
-  | TFloat
-  | TUnit
-  | TByte
-  | TAddr
-  | TList(_)
-  | TTuple(_)
-  | TFun(_, _, _)
-  | TVar(_)
-  | TName(_, _)
-  | TRecord(_)
-  | TRecordOpen(_, _)
-  | TCont(_, _, _, _)
-  | TValue(_) => ty,
+  TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TVar(_)
+  | TName(_, _) | TRecord(_) | TRecordOpen(_, _) | TCont(_, _, _, _) | TValue(_) => ty,
 }
 
 // fold_sig — a deterministic structural name for a type: the dedup key and the
@@ -918,22 +814,9 @@ fn unwritten_cell(ty) = match ty {
     NTypeAnn(_) => None,
     NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NName(_) | NRow(_) | NParam(_) => Some(h),
   },
-  TInt
-  | TFloat
-  | TUnit
-  | TByte
-  | TAddr
-  | TList(_)
-  | TTuple(_)
-  | TFun(_, _, _)
-  | TName(_, _)
-  | TRecord(_)
-  | TRecordOpen(_, _)
-  | TRefined(_, _)
-  | TReprPin(_, _)
-  | TCont(_, _, _, _)
-  | TAlias(_, _)
-  | TValue(_) => None,
+  TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TName(_, _)
+  | TRecord(_) | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _)
+  | TAlias(_, _) | TValue(_) => None,
 }
 
 fn param_authored(p) = match p {
@@ -1377,22 +1260,8 @@ fn edge_row_of(kind) = match kind {
   NRowBound(inner) => Some(inner),
   NBound(ty) => match ty {
     TFun(_, _, frow) => Some(frow),
-    TInt
-    | TFloat
-    | TUnit
-    | TByte
-    | TAddr
-    | TList(_)
-    | TTuple(_)
-    | TVar(_)
-    | TName(_, _)
-    | TRecord(_)
-    | TRecordOpen(_, _)
-    | TRefined(_, _)
-    | TReprPin(_, _)
-    | TCont(_, _, _, _)
-    | TAlias(_, _)
-    | TValue(_) => None,
+    TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TVar(_) | TName(_, _) | TRecord(_)
+    | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => None,
   },
   NFree(_) | NRowFree(_) | NRecordRowBound(_, _) | NErrorHole(_) => None,
 }
@@ -2538,30 +2407,11 @@ fn span_zero() -> ValidSpan = Span(0, 0, 0, 0)
 // read THIS instead of flooring to 0:0 (SYNTAX principle 5).
 fn reason_span_or_zero(ref reason) = match reason {
   Located(span, _) => span,
-  Declared(_)
-  | Inferred(_)
-  | Fresh(_)
-  | OpConstraint(_, _, _)
-  | VarLookup(_, _)
-  | FnReturn(_, _)
-  | FnParam(_, _, _)
-  | MatchBranch(_, _)
-  | ListElement(_)
-  | IfBranch(_)
-  | LetBinding(_, _)
-  | Unified(_, _)
-  | Instantiation(_, _)
-  | Placeholder(_)
-  | MissingVar(_)
-  | Refinement(_, _)
-  | InferredCallReturn(_, _)
-  | InferredPipeResult(_, _)
-  | DefaultReason(_, _)
-  | Accepted(_, _, _)
-  | EffectEnters(_, _, _)
-  | LabelEnters(_, _, _)
-  | ChainInstall(_, _)
-  | StateBinding(_, _) => span_zero(),
+  Declared(_) | Inferred(_) | Fresh(_) | OpConstraint(_, _, _) | VarLookup(_, _) | FnReturn(_, _)
+  | FnParam(_, _, _) | MatchBranch(_, _) | ListElement(_) | IfBranch(_) | LetBinding(_, _)
+  | Unified(_, _) | Instantiation(_, _) | Placeholder(_) | MissingVar(_) | Refinement(_, _)
+  | InferredCallReturn(_, _) | InferredPipeResult(_, _) | DefaultReason(_, _) | Accepted(_, _, _)
+  | EffectEnters(_, _, _) | LabelEnters(_, _, _) | ChainInstall(_, _) | StateBinding(_, _) => span_zero(),
 }
 
 // Inference + Verify ledger discharges obligations at construction
@@ -3152,14 +3002,7 @@ type Pat
 // The pattern at a node; every handle a pattern holds is one.
 fn pat_of(h) = match graph_node_body(h) {
   NPat(p) => p,
-  NExpr(_)
-  | NStmt(_)
-  | NHole(_)
-  | NModule(_)
-  | NLink(_)
-  | NTypeAnn(_)
-  | NName(_)
-  | NRow(_)
+  NExpr(_) | NStmt(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_)
   | NParam(_) => out_of_range(),
 }
 
@@ -3202,6 +3045,27 @@ fn ann_ty_of(a) = match graph_node_body(a) {
 // before it: each with its payload count, under the arm's binder when it
 // bound one. Bool's two are its literals.
 type Roster = Roster(Option(String), [(String, Int)])
+
+// One constructor of a roster as a pattern writes it: its payload left to
+// `_`, Bool's two by their literals.
+fn roster_ctor_text(entry) = match entry {
+  ("True", 0) => "true",
+  ("False", 0) => "false",
+  (cname, k) => if k == 0 { cname } else { "{cname}({join(", ", map({ _ => "_" }, range(0, k)))})" },
+}
+
+// A roster on one line, under the arm's binder when it bound one — the form a
+// refusal names it in.
+fn roster_inline(roster) = match roster {
+  Roster(binder, ctors) => {
+    let alternation = ctors |> map(roster_ctor_text) |> join(" | ")
+    match (binder, ctors) {
+      (Some(name), [_]) => "{name} @ {alternation}",
+      (Some(name), _) => "{name} @ ({alternation})",
+      (None, _) => alternation,
+    }
+  },
+}
 
 type LitValue = LVInt(Int) | LVFloat(Float) | LVString(String) | LVBool(Bool)
 
@@ -3998,6 +3862,9 @@ type DiagKind
   | ERecordFieldMissing(String, String, Span)
   // missing, total
   | EPatternInexhaustive(String, Span)
+  // the roster the catch-all stands for, the arm's pattern node it is
+  // written at
+  | ECatchAllOverSum(Roster, Int, Span)
   // the binding-conflict detail
   | EPatternAlternationBindingMismatch(String, Span)
   | EIfMissingElse(Span)
@@ -4362,6 +4229,7 @@ fn diag_span(d) with Pure = match d {
   ERecordFieldExtra(_, _, s) => s,
   ERecordFieldMissing(_, _, s) => s,
   EPatternInexhaustive(_, s) => s,
+  ECatchAllOverSum(_, _, s) => s,
   EPatternAlternationBindingMismatch(_, s) => s,
   EIfMissingElse(s) => s,
   TOverDeclared(_, _, _, s) => s,
@@ -4442,6 +4310,7 @@ fn diag_source(d) with Pure = match d {
   ERecordFieldExtra(_, _, _) => "infer",
   ERecordFieldMissing(_, _, _) => "infer",
   EPatternInexhaustive(_, _) => "infer",
+  ECatchAllOverSum(_, _, _) => "infer",
   EPatternAlternationBindingMismatch(_, _) => "infer",
   EIfMissingElse(_) => "infer",
   TOverDeclared(_, _, _, _) => "infer",
@@ -4523,6 +4392,7 @@ fn diag_arm(d) with Pure = match d {
   ERecordFieldExtra(_, _, _) => OnQuery,
   ERecordFieldMissing(_, _, _) => OnQuery,
   EPatternInexhaustive(_, _) => OnQuery,
+  ECatchAllOverSum(_, _, _) => OnQuery,
   EPatternAlternationBindingMismatch(_, _) => OnQuery,
   EIfMissingElse(_) => OnQuery,
   TOverDeclared(_, _, _, _) => OnTeach,
@@ -4603,6 +4473,7 @@ fn diag_code(d) with Pure = match d {
   ERecordFieldExtra(_, _, _) => "E_RecordFieldExtra",
   ERecordFieldMissing(_, _, _) => "E_RecordFieldMissing",
   EPatternInexhaustive(_, _) => "E_PatternInexhaustive",
+  ECatchAllOverSum(_, _, _) => "E_CatchAllOverSum",
   EPatternAlternationBindingMismatch(_, _) => "E_PatternAlternationBindingMismatch",
   EIfMissingElse(_) => "E_IfMissingElse",
   TOverDeclared(_, _, _, _) => "T_OverDeclared",
@@ -4666,65 +4537,26 @@ fn diag_severity(d) with Pure = match d {
   TOwnAcrossReplay(_, _) => SWarning,
   VPending(_, _) => SVerificationPending,
   EVerifyUnencodable(_) => SVerificationPending,
-  PExpectedToken(_, _)
-  | PUnexpectedToken(_, _)
-  | EArithOnAggregate(_, _)
-  | EDerivativeUnreachable(_, _)
-  | EUseAfterMove(_, _)
-  | PUnclosedConstruct(_, _)
-  | EOrphanHandlerAttach(_)
-  | EEffArgNotLiteral(_)
-  | EInternalInvariant(_, _)
-  | ETypeMismatch(_, _, _, _)
-  | ETypeArityMismatch(_, _, _)
-  | EConstructorArity(_, _, _, _)
-  | EHandlerArmArity(_, _, _, _)
-  | EFnArityMismatch(_, _, _)
-  | EOccursCheck(_, _, _)
-  | EMissingVariable(_, _)
-  | EMissingImport(_, _, _, _)
-  | EDuplicateImport(_, _)
-  | ENotARecordType(_, _)
-  | EResumeOutsideArm(_)
-  | EResumeWorldMismatch(_, _, _)
-  | EUnknownArgLabel(_, _)
-  | EZeroDelayFeedback(_)
-  | EInitPerformsOwnOp(_, _, _, _)
-  | EHandlerInexhaustive(_, _, _, _)
-  | EResumeOfNever(_, _, _)
-  | EComputedDelayDepth(_)
-  | ERestOutsideDestructure(_)
-  | ERowAliasCycle(_, _)
-  | EDeclaredRowContradiction(_, _)
-  | EMalformedNumericLiteral(_, _, _)
-  | ERowAliasNegation(_, _)
-  | ERecordFieldExtra(_, _, _)
-  | ERecordFieldMissing(_, _, _)
-  | EPatternInexhaustive(_, _)
-  | EPatternAlternationBindingMismatch(_, _)
-  | EIfMissingElse(_)
-  | EEffectMismatch(_, _, _, _)
-  | EPurityViolated(_, _)
-  | ERefinementRejected(_, _, _)
-  | EOwnershipViolation(_, _)
-  | ERegionEscape(_, _)
-  | EMissingModule(_, _, _)
-  | EHandlerStateShadowsOp(_, _, _)
-  | EFnShadowsOp(_, _, _)
-  | EOpShadowsPrimitive(_, _, _)
-  | EOpShadowsOp(_, _, _, _)
-  | EDuplicateFnName(_, _)
-  | EDuplicateTypeName(_, _)
-  | EDuplicateBinder(_, _, _)
-  | EEmittedNameCollision(_, _)
-  | EUnresolvedType(_, _, _)
-  | EEffectUnhandled(_, _, _, _)
-  | EThreadedBranchEffect(_, _, _)
-  | EEnvNameUngrounded(_)
-  | EUnresolvedHole(_, _)
-  | EFieldOffsetUnprovable(_, _)
-  | EShapeUnprovable(_, _)
-  | EInstantiationDepth(_, _)
+  PExpectedToken(_, _) | PUnexpectedToken(_, _) | EArithOnAggregate(_, _)
+  | EDerivativeUnreachable(_, _) | EUseAfterMove(_, _) | PUnclosedConstruct(_, _)
+  | EOrphanHandlerAttach(_) | EEffArgNotLiteral(_) | EInternalInvariant(_, _)
+  | ETypeMismatch(_, _, _, _) | ETypeArityMismatch(_, _, _) | EConstructorArity(_, _, _, _)
+  | EHandlerArmArity(_, _, _, _) | EFnArityMismatch(_, _, _) | EOccursCheck(_, _, _)
+  | EMissingVariable(_, _) | EMissingImport(_, _, _, _) | EDuplicateImport(_, _)
+  | ENotARecordType(_, _) | EResumeOutsideArm(_) | EResumeWorldMismatch(_, _, _)
+  | EUnknownArgLabel(_, _) | EZeroDelayFeedback(_) | EInitPerformsOwnOp(_, _, _, _)
+  | EHandlerInexhaustive(_, _, _, _) | EResumeOfNever(_, _, _) | EComputedDelayDepth(_)
+  | ERestOutsideDestructure(_) | ERowAliasCycle(_, _) | EDeclaredRowContradiction(_, _)
+  | EMalformedNumericLiteral(_, _, _) | ERowAliasNegation(_, _) | ERecordFieldExtra(_, _, _)
+  | ERecordFieldMissing(_, _, _) | EPatternInexhaustive(_, _) | ECatchAllOverSum(_, _, _)
+  | EPatternAlternationBindingMismatch(_, _) | EIfMissingElse(_) | EEffectMismatch(_, _, _, _)
+  | EPurityViolated(_, _) | ERefinementRejected(_, _, _) | EOwnershipViolation(_, _)
+  | ERegionEscape(_, _) | EMissingModule(_, _, _) | EHandlerStateShadowsOp(_, _, _)
+  | EFnShadowsOp(_, _, _) | EOpShadowsPrimitive(_, _, _) | EOpShadowsOp(_, _, _, _)
+  | EDuplicateFnName(_, _) | EDuplicateTypeName(_, _) | EDuplicateBinder(_, _, _)
+  | EEmittedNameCollision(_, _) | EUnresolvedType(_, _, _) | EEffectUnhandled(_, _, _, _)
+  | EThreadedBranchEffect(_, _, _) | EEnvNameUngrounded(_) | EUnresolvedHole(_, _)
+  | EFieldOffsetUnprovable(_, _) | EShapeUnprovable(_, _) | EInstantiationDepth(_, _)
   | EHandlerChainShape(_, _) => SError,
 }
 
@@ -4755,6 +4587,7 @@ fn diag_applicability(d) with Pure = match d {
   // move happens after it — never a patch.
   EUseAfterMove(_, _) => Unspecified,
   EPatternInexhaustive(_, _) => HasPlaceholders,
+  ECatchAllOverSum(_, _, _) => MachineApplicable,
   EHandlerInexhaustive(_, _, _, _) => HasPlaceholders,
   EResumeOfNever(_, _, _) => MaybeIncorrect,
   EEffectUnhandled(_, _, _, _) => MaybeIncorrect,
@@ -4780,45 +4613,18 @@ fn diag_applicability(d) with Pure = match d {
   // Nothing the reader can apply — the collision is in the compiler's own
   // naming, and the program that provoked it is correct.
   EEmittedNameCollision(_, _) => Unspecified,
-  PExpectedToken(_, _)
-  | PUnclosedConstruct(_, _)
-  | PUnexpectedToken(_, _)
-  | ELambdaFence(_)
-  | ERedundantFnOnLambda(_)
-  | ELambdaAsOrOr(_)
-  | ENotAKeyword(_, _)
-  | EEffArgNotLiteral(_)
-  | EInternalInvariant(_, _)
-  | EMissingVariable(_, _)
-  | EMissingImport(_, _, _, _)
-  | ENotARecordType(_, _)
-  | EResumeWorldMismatch(_, _, _)
-  | EUnknownArgLabel(_, _)
-  | EZeroDelayFeedback(_)
-  | EInitPerformsOwnOp(_, _, _, _)
-  | EComputedDelayDepth(_)
-  | ERestOutsideDestructure(_)
-  | ERowAliasCycle(_, _)
-  | EDeclaredRowContradiction(_, _)
-  | EMalformedNumericLiteral(_, _, _)
-  | ERowAliasNegation(_, _)
-  | ERecordFieldExtra(_, _, _)
-  | ERecordFieldMissing(_, _, _)
-  | EPatternAlternationBindingMismatch(_, _)
-  | EIfMissingElse(_)
-  | EEffectMismatch(_, _, _, _)
-  | EPurityViolated(_, _)
-  | VPending(_, _)
-  | ERegionEscape(_, _)
-  | EMissingModule(_, _, _)
-  | EHandlerStateShadowsOp(_, _, _)
-  | EFnShadowsOp(_, _, _)
-  | EOpShadowsPrimitive(_, _, _)
-  | EOpShadowsOp(_, _, _, _)
-  | EDuplicateFnName(_, _)
-  | EDuplicateTypeName(_, _)
-  | EDuplicateBinder(_, _, _)
-  | EUnresolvedType(_, _, _)
+  PExpectedToken(_, _) | PUnclosedConstruct(_, _) | PUnexpectedToken(_, _) | ELambdaFence(_)
+  | ERedundantFnOnLambda(_) | ELambdaAsOrOr(_) | ENotAKeyword(_, _) | EEffArgNotLiteral(_)
+  | EInternalInvariant(_, _) | EMissingVariable(_, _) | EMissingImport(_, _, _, _)
+  | ENotARecordType(_, _) | EResumeWorldMismatch(_, _, _) | EUnknownArgLabel(_, _)
+  | EZeroDelayFeedback(_) | EInitPerformsOwnOp(_, _, _, _) | EComputedDelayDepth(_)
+  | ERestOutsideDestructure(_) | ERowAliasCycle(_, _) | EDeclaredRowContradiction(_, _)
+  | EMalformedNumericLiteral(_, _, _) | ERowAliasNegation(_, _) | ERecordFieldExtra(_, _, _)
+  | ERecordFieldMissing(_, _, _) | EPatternAlternationBindingMismatch(_, _) | EIfMissingElse(_)
+  | EEffectMismatch(_, _, _, _) | EPurityViolated(_, _) | VPending(_, _) | ERegionEscape(_, _)
+  | EMissingModule(_, _, _) | EHandlerStateShadowsOp(_, _, _) | EFnShadowsOp(_, _, _)
+  | EOpShadowsPrimitive(_, _, _) | EOpShadowsOp(_, _, _, _) | EDuplicateFnName(_, _)
+  | EDuplicateTypeName(_, _) | EDuplicateBinder(_, _, _) | EUnresolvedType(_, _, _)
   | EHandlerChainShape(_, _) => MaybeIncorrect,
 }
 
@@ -4875,6 +4681,7 @@ fn diag_message(d) with !Mutate = match d {
   // drift-audit: ignore — diagnostic message string, not a control keyword
   ERecordFieldMissing(field, tn, _) => "record literal missing field '{field}' for type {tn}",
   EPatternInexhaustive(witness, _) => "match misses `{witness}` — write its arm",
+  ECatchAllOverSum(roster, _, _) => "the catch-all stands for `{roster_inline(roster)}` — a constructor declared later would join it unread; write the roster (`mentl tighten` writes it)",
   EPatternAlternationBindingMismatch(detail, _) => detail,
   EIfMissingElse(_) => "`if` without `else` requires a unit body",
   TOverDeclared(declared, used, name, _) => "function '{name}' declares {render_row(declared)} but body only uses {render_row(used)} — tighten the signature to unlock capabilities" ~> var_names,
@@ -5332,29 +5139,11 @@ fn fresh_var_name(taken, h, sort) = match sort {
 // clause's row variable (effects.mn's leaf_row_of), a record's named rest.
 fn declared_var_name(h) = match graph_reason_at(h) {
   Declared(n) => if is_var_spelling(n) { Some(n) } else { None },
-  Inferred(_)
-  | Fresh(_)
-  | OpConstraint(_, _, _)
-  | VarLookup(_, _)
-  | FnReturn(_, _)
-  | FnParam(_, _, _)
-  | MatchBranch(_, _)
-  | ListElement(_)
-  | IfBranch(_)
-  | LetBinding(_, _)
-  | Unified(_, _)
-  | Instantiation(_, _)
-  | Placeholder(_)
-  | MissingVar(_)
-  | Refinement(_, _)
-  | Located(_, _)
-  | InferredCallReturn(_, _)
-  | InferredPipeResult(_, _)
-  | DefaultReason(_, _)
-  | Accepted(_, _, _)
-  | EffectEnters(_, _, _)
-  | LabelEnters(_, _, _)
-  | ChainInstall(_, _)
+  Inferred(_) | Fresh(_) | OpConstraint(_, _, _) | VarLookup(_, _) | FnReturn(_, _)
+  | FnParam(_, _, _) | MatchBranch(_, _) | ListElement(_) | IfBranch(_) | LetBinding(_, _)
+  | Unified(_, _) | Instantiation(_, _) | Placeholder(_) | MissingVar(_) | Refinement(_, _)
+  | Located(_, _) | InferredCallReturn(_, _) | InferredPipeResult(_, _) | DefaultReason(_, _)
+  | Accepted(_, _, _) | EffectEnters(_, _, _) | LabelEnters(_, _, _) | ChainInstall(_, _)
   | StateBinding(_, _) => None,
 }
 
@@ -5473,21 +5262,8 @@ fn render_ty_top(ty) with !Mutate = match ty {
     GNode(NBound(b), _) => render_ty_top(b),
     GNode(_, _) => render_ty(ty),
   },
-  TInt
-  | TFloat
-  | TUnit
-  | TByte
-  | TAddr
-  | TList(_)
-  | TTuple(_)
-  | TName(_, _)
-  | TRecord(_)
-  | TRecordOpen(_, _)
-  | TRefined(_, _)
-  | TReprPin(_, _)
-  | TCont(_, _, _, _)
-  | TAlias(_, _)
-  | TValue(_) => render_ty(ty),
+  TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TName(_, _) | TRecord(_)
+  | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => render_ty(ty),
 }
 
 fn render_field(field: (String, Ty)) with !Mutate = match field {
@@ -5589,16 +5365,8 @@ fn resolve_call_args(params, args, cname: String) =
 // Unwrap a LabeledArg to its value node; a positional arg passes through.
 fn unwrap_labeled_arg(arg) = match graph_node_body(arg) {
   NExpr(LabeledArg(_, v)) => v,
-  NExpr(_)
-  | NStmt(_)
-  | NPat(_)
-  | NHole(_)
-  | NModule(_)
-  | NLink(_)
-  | NTypeAnn(_)
-  | NName(_)
-  | NRow(_)
-  | NParam(_) => arg,
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => arg,
 }
 
 // Build the positional slot buffer (one slot per declared param, 0 = unfilled
@@ -5630,16 +5398,8 @@ fn place_labeled(params, args, i, slots, cname: String) = if i >= len(args) {
         list_set(slots, idx, v)
       }
     },
-    NExpr(_)
-    | NStmt(_)
-    | NPat(_)
-    | NHole(_)
-    | NModule(_)
-    | NLink(_)
-    | NTypeAnn(_)
-    | NName(_)
-    | NRow(_)
-    | NParam(_) => slots,
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => slots,
   }
   place_labeled(params, args, i + 1, next, cname)
 }
@@ -5653,16 +5413,8 @@ fn place_positional(args, cur, slot, slots, n) = if cur >= len(args) {
   let arg = list_index(args, cur)
   match graph_node_body(arg) {
     NExpr(LabeledArg(_, _)) => place_positional(args, cur + 1, slot, slots, n),
-    NExpr(_)
-    | NStmt(_)
-    | NPat(_)
-    | NHole(_)
-    | NModule(_)
-    | NLink(_)
-    | NTypeAnn(_)
-    | NName(_)
-    | NRow(_)
-    | NParam(_) => {
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => {
       let free = next_free_slot(slots, slot, n)
       if free >= n {
         // An argument with no slot is the refusal, and it must be
@@ -5773,21 +5525,8 @@ fn render_head(name: String, params, ret, row) with !Mutate =
 fn render_ret(ret) with !Mutate = match chase_ret(ret) {
   TUnit => "",
   TFun(_, _, _) => " -> ({render_ty(ret)})",
-  TInt
-  | TFloat
-  | TByte
-  | TAddr
-  | TList(_)
-  | TTuple(_)
-  | TVar(_)
-  | TName(_, _)
-  | TRecord(_)
-  | TRecordOpen(_, _)
-  | TRefined(_, _)
-  | TReprPin(_, _)
-  | TCont(_, _, _, _)
-  | TAlias(_, _)
-  | TValue(_) => " -> {render_ty(ret)}",
+  TInt | TFloat | TByte | TAddr | TList(_) | TTuple(_) | TVar(_) | TName(_, _) | TRecord(_)
+  | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => " -> {render_ty(ret)}",
 }
 
 // A result type read through the variables bound to it, so a unit bound to a
@@ -5797,22 +5536,9 @@ fn chase_ret(t) = match t {
     GNode(NBound(b), _) => chase_ret(b),
     GNode(_, _) => t,
   },
-  TInt
-  | TFloat
-  | TUnit
-  | TByte
-  | TAddr
-  | TList(_)
-  | TTuple(_)
-  | TFun(_, _, _)
-  | TName(_, _)
-  | TRecord(_)
-  | TRecordOpen(_, _)
-  | TRefined(_, _)
-  | TReprPin(_, _)
-  | TCont(_, _, _, _)
-  | TAlias(_, _)
-  | TValue(_) => t,
+  TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TName(_, _)
+  | TRecord(_) | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _)
+  | TAlias(_, _) | TValue(_) => t,
 }
 
 fn show_head(name: String, params, ret, row) with !Mutate =
@@ -5873,14 +5599,7 @@ fn render_row_head(p, a) with !Mutate = {
 // clause — has neither and renders nothing.
 fn render_authored_edge(e: RowEdge) with !Mutate = match graph_node_body(e.cell) {
   NRow(terms) => [render_written_row(terms)],
-  NExpr(_)
-  | NStmt(_)
-  | NPat(_)
-  | NHole(_)
-  | NModule(_)
-  | NLink(_)
-  | NTypeAnn(_)
-  | NName(_)
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
   | NParam(_) => if is_named_var(e.cell) { [render_row_edge(e)] } else { [] },
 }
 
@@ -6080,16 +5799,8 @@ fn render_eff_arg(arg) with !Mutate = match arg {
   // name keeps the honest placeholder (display totality).
   EANode(h) => match graph_node_body(h) {
     NExpr(VarRef(name)) => name,
-    NExpr(_)
-    | NStmt(_)
-    | NPat(_)
-    | NHole(_)
-    | NModule(_)
-    | NLink(_)
-    | NTypeAnn(_)
-    | NName(_)
-    | NRow(_)
-    | NParam(_) => "<operand #{int_to_str(h)}>",
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => "<operand #{int_to_str(h)}>",
   },
   // The bare spelling holds the fmt fixpoint: the render
   // re-parses to EANode and re-resolves to the same folded form.
@@ -6117,16 +5828,8 @@ fn node_to_predicate(node) = match graph_node_body(node) {
   NExpr(BinOpExpr(BOr, l, r)) => POr(node_to_predicate(l), node_to_predicate(r)),
   NExpr(UnaryOpExpr(UNot, inner)) => PNot(node_to_predicate(inner)),
   NExpr(LitBool(true)) => PTrue,
-  NExpr(_)
-  | NStmt(_)
-  | NPat(_)
-  | NHole(_)
-  | NModule(_)
-  | NLink(_)
-  | NTypeAnn(_)
-  | NName(_)
-  | NRow(_)
-  | NParam(_) => PBoolNode(node),
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => PBoolNode(node),
 }
 
 fn show_predicate(ref pred) = match pred {
@@ -6184,16 +5887,8 @@ fn show_pred_operand(handle) = match graph_node_body(handle) {
   NExpr(UnaryOpExpr(UNeg, inner)) => "-{show_pred_operand(inner)}",
   NExpr(UnaryOpExpr(UNot, inner)) => "!{show_pred_operand(inner)}",
   NExpr(BinOpExpr(op, l, r)) => "{show_pred_atom(l)} {binop_to_str(op)} {show_pred_atom(r)}",
-  NExpr(_)
-  | NStmt(_)
-  | NPat(_)
-  | NHole(_)
-  | NModule(_)
-  | NLink(_)
-  | NTypeAnn(_)
-  | NName(_)
-  | NRow(_)
-  | NParam(_) => "<expr>",
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => "<expr>",
 }
 
 // An operand standing beside an operator keeps the parentheses its source
@@ -6202,30 +5897,14 @@ fn show_pred_operand(handle) = match graph_node_body(handle) {
 // boot 8b071ba3 at the caret's Verify facet and in the ledger's line alike).
 fn show_pred_atom(handle) = match graph_node_body(handle) {
   NExpr(BinOpExpr(_, _, _)) => "({show_pred_operand(handle)})",
-  NExpr(_)
-  | NStmt(_)
-  | NPat(_)
-  | NHole(_)
-  | NModule(_)
-  | NLink(_)
-  | NTypeAnn(_)
-  | NName(_)
-  | NRow(_)
-  | NParam(_) => show_pred_operand(handle),
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => show_pred_operand(handle),
 }
 
 fn show_callee_name(ref callee) = match graph_node_body(callee) {
   NExpr(VarRef(n)) => n,
-  NExpr(_)
-  | NStmt(_)
-  | NPat(_)
-  | NHole(_)
-  | NModule(_)
-  | NLink(_)
-  | NTypeAnn(_)
-  | NName(_)
-  | NRow(_)
-  | NParam(_) => "_",
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => "_",
 }
 
 // One hop of a Reason chain in a developer's words, never its subtree: the
@@ -6277,48 +5956,24 @@ fn site_phrase(body) with !Mutate = match body {
   NExpr(PipeExpr(PForward, _, stage)) => stage_phrase(stage),
   NExpr(PipeExpr(PTee, _, h)) => "through `~> {install_name(h)}`",
   NExpr(LambdaExpr(_, _)) => "inside the function value",
-  NExpr(_)
-  | NStmt(_)
-  | NPat(_)
-  | NHole(_)
-  | NModule(_)
-  | NLink(_)
-  | NTypeAnn(_)
-  | NName(_)
-  | NRow(_)
-  | NParam(_) => "here",
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => "here",
 }
 
 fn stage_phrase(stage) = match graph_node_body(stage) {
   NExpr(VarRef(n)) => "through `{n}`",
   NExpr(CallExpr(f, _)) => "through `{show_callee_name(f)}`",
   NExpr(LambdaExpr(_, _)) => "inside the stage's function value",
-  NExpr(_)
-  | NStmt(_)
-  | NPat(_)
-  | NHole(_)
-  | NModule(_)
-  | NLink(_)
-  | NTypeAnn(_)
-  | NName(_)
-  | NRow(_)
-  | NParam(_) => "through the stage",
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => "through the stage",
 }
 
 // The handler a tee installs, named: a bare reference or a configured call.
 fn install_name(h) = match graph_node_body(h) {
   NExpr(VarRef(n)) => n,
   NExpr(CallExpr(f, _)) => show_callee_name(f),
-  NExpr(_)
-  | NStmt(_)
-  | NPat(_)
-  | NHole(_)
-  | NModule(_)
-  | NLink(_)
-  | NTypeAnn(_)
-  | NName(_)
-  | NRow(_)
-  | NParam(_) => "_",
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => "_",
 }
 
 // The chain an install names, read through the edge its authored reference
@@ -6349,13 +6004,8 @@ fn binder_spelling(p) = match p {
 }
 
 fn head_spelling(s) = match s {
-  FnStmt(n, _, _, _, _)
-  | TypeDefStmt(n, _)
-  | EffectDeclStmt(n, _, _)
-  | HandlerDeclStmt(n, _, _, _, _, _)
-  | HandlerChainStmt(n, _)
-  | RefineStmt(n, _, _)
-  | AliasStmt(n, _)
+  FnStmt(n, _, _, _, _) | TypeDefStmt(n, _) | EffectDeclStmt(n, _, _)
+  | HandlerDeclStmt(n, _, _, _, _, _) | HandlerChainStmt(n, _) | RefineStmt(n, _, _) | AliasStmt(n, _)
   | RowAliasStmt(n, _) => Some(n),
   LetStmt(_, _, _) | ExprStmt(_) | ImportStmt(_) => None,
 }
@@ -6374,14 +6024,8 @@ fn part_spelling(d) = match graph_parent_of(d) {
 fn part_of_head(s, d) = match s {
   TypeDefStmt(_, variants) => map_option(part_variant_name, find(part_variant_at(d, ??), variants)),
   EffectDeclStmt(_, _, ops) => map_option(part_op_name, find(part_op_at(d, ??), ops)),
-  LetStmt(_, _, _)
-  | FnStmt(_, _, _, _, _)
-  | HandlerDeclStmt(_, _, _, _, _, _)
-  | HandlerChainStmt(_, _)
-  | ExprStmt(_)
-  | ImportStmt(_)
-  | RefineStmt(_, _, _)
-  | AliasStmt(_, _)
+  LetStmt(_, _, _) | FnStmt(_, _, _, _, _) | HandlerDeclStmt(_, _, _, _, _, _)
+  | HandlerChainStmt(_, _) | ExprStmt(_) | ImportStmt(_) | RefineStmt(_, _, _) | AliasStmt(_, _)
   | RowAliasStmt(_, _) => None,
 }
 
@@ -6417,59 +6061,22 @@ fn ref_spelling(r, written: String) = match graph_ref_decl(r) {
 // the one sentence a chain with no site has to say.
 fn enters_tail(next) with !Mutate = match next {
   Inferred(what) => what,
-  Declared(_)
-  | Fresh(_)
-  | OpConstraint(_, _, _)
-  | VarLookup(_, _)
-  | FnReturn(_, _)
-  | FnParam(_, _, _)
-  | MatchBranch(_, _)
-  | ListElement(_)
-  | IfBranch(_)
-  | LetBinding(_, _)
-  | Unified(_, _)
-  | Instantiation(_, _)
-  | Placeholder(_)
-  | MissingVar(_)
-  | Refinement(_, _)
-  | Located(_, _)
-  | InferredCallReturn(_, _)
-  | InferredPipeResult(_, _)
-  | DefaultReason(_, _)
-  | Accepted(_, _, _)
-  | EffectEnters(_, _, _)
-  | LabelEnters(_, _, _)
-  | ChainInstall(_, _)
+  Declared(_) | Fresh(_) | OpConstraint(_, _, _) | VarLookup(_, _) | FnReturn(_, _)
+  | FnParam(_, _, _) | MatchBranch(_, _) | ListElement(_) | IfBranch(_) | LetBinding(_, _)
+  | Unified(_, _) | Instantiation(_, _) | Placeholder(_) | MissingVar(_) | Refinement(_, _)
+  | Located(_, _) | InferredCallReturn(_, _) | InferredPipeResult(_, _) | DefaultReason(_, _)
+  | Accepted(_, _, _) | EffectEnters(_, _, _) | LabelEnters(_, _, _) | ChainInstall(_, _)
   | StateBinding(_, _) => show_reason(next),
 }
 
 // A refused claim of information flow says where the label enters it.
 fn label_entry(why) with !Mutate = match why {
   LabelEnters(_, _, _) => " — {show_reason(why)}",
-  Declared(_)
-  | Inferred(_)
-  | Fresh(_)
-  | OpConstraint(_, _, _)
-  | VarLookup(_, _)
-  | FnReturn(_, _)
-  | FnParam(_, _, _)
-  | MatchBranch(_, _)
-  | ListElement(_)
-  | IfBranch(_)
-  | LetBinding(_, _)
-  | Unified(_, _)
-  | Instantiation(_, _)
-  | Placeholder(_)
-  | MissingVar(_)
-  | Refinement(_, _)
-  | Located(_, _)
-  | InferredCallReturn(_, _)
-  | InferredPipeResult(_, _)
-  | DefaultReason(_, _)
-  | Accepted(_, _, _)
-  | EffectEnters(_, _, _)
-  | ChainInstall(_, _)
-  | StateBinding(_, _) => "",
+  Declared(_) | Inferred(_) | Fresh(_) | OpConstraint(_, _, _) | VarLookup(_, _) | FnReturn(_, _)
+  | FnParam(_, _, _) | MatchBranch(_, _) | ListElement(_) | IfBranch(_) | LetBinding(_, _)
+  | Unified(_, _) | Instantiation(_, _) | Placeholder(_) | MissingVar(_) | Refinement(_, _)
+  | Located(_, _) | InferredCallReturn(_, _) | InferredPipeResult(_, _) | DefaultReason(_, _)
+  | Accepted(_, _, _) | EffectEnters(_, _, _) | ChainInstall(_, _) | StateBinding(_, _) => "",
 }
 
 fn show_reason(ref reason) with !Mutate = match reason {
@@ -6506,41 +6113,15 @@ fn show_reason(ref reason) with !Mutate = match reason {
     NStmt(LetStmt(_, _, _)) => "a module value's init, which runs before main; {eff} enters {enters_tail(next)}",
     NStmt(EffectDeclStmt(ename, _, _)) => "{show_reason(next)}, an op of {ename} declared at {site_address(site)}",
     body @ (
-      NExpr(_)
-      | NStmt(_)
-      | NPat(_)
-      | NHole(_)
-      | NModule(_)
-      | NLink(_)
-      | NTypeAnn(_)
-      | NName(_)
-      | NRow(_)
-      | NParam(_)
+      NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+      | NRow(_) | NParam(_)
     ) => match next {
       Inferred(what) => "at {site_address(site)}, {what}",
-      Declared(_)
-      | Fresh(_)
-      | OpConstraint(_, _, _)
-      | VarLookup(_, _)
-      | FnReturn(_, _)
-      | FnParam(_, _, _)
-      | MatchBranch(_, _)
-      | ListElement(_)
-      | IfBranch(_)
-      | LetBinding(_, _)
-      | Unified(_, _)
-      | Instantiation(_, _)
-      | Placeholder(_)
-      | MissingVar(_)
-      | Refinement(_, _)
-      | Located(_, _)
-      | InferredCallReturn(_, _)
-      | InferredPipeResult(_, _)
-      | DefaultReason(_, _)
-      | Accepted(_, _, _)
-      | EffectEnters(_, _, _)
-      | LabelEnters(_, _, _)
-      | ChainInstall(_, _)
+      Declared(_) | Fresh(_) | OpConstraint(_, _, _) | VarLookup(_, _) | FnReturn(_, _)
+      | FnParam(_, _, _) | MatchBranch(_, _) | ListElement(_) | IfBranch(_) | LetBinding(_, _)
+      | Unified(_, _) | Instantiation(_, _) | Placeholder(_) | MissingVar(_) | Refinement(_, _)
+      | Located(_, _) | InferredCallReturn(_, _) | InferredPipeResult(_, _) | DefaultReason(_, _)
+      | Accepted(_, _, _) | EffectEnters(_, _, _) | LabelEnters(_, _, _) | ChainInstall(_, _)
       | StateBinding(_, _) => "at {site_address(site)} {site_phrase(body)} → {show_reason(next)}",
     },
   },
@@ -6555,30 +6136,11 @@ fn show_reason(ref reason) with !Mutate = match reason {
 // an install says which arm answered the second.
 fn reason_line(reason) with !Mutate = match reason {
   Located(_, inner) => show_reason(inner),
-  Declared(_)
-  | Inferred(_)
-  | Fresh(_)
-  | OpConstraint(_, _, _)
-  | VarLookup(_, _)
-  | FnReturn(_, _)
-  | FnParam(_, _, _)
-  | MatchBranch(_, _)
-  | ListElement(_)
-  | IfBranch(_)
-  | LetBinding(_, _)
-  | Unified(_, _)
-  | Instantiation(_, _)
-  | Placeholder(_)
-  | MissingVar(_)
-  | Refinement(_, _)
-  | InferredCallReturn(_, _)
-  | InferredPipeResult(_, _)
-  | DefaultReason(_, _)
-  | Accepted(_, _, _)
-  | EffectEnters(_, _, _)
-  | LabelEnters(_, _, _)
-  | ChainInstall(_, _)
-  | StateBinding(_, _) => show_reason(reason),
+  Declared(_) | Inferred(_) | Fresh(_) | OpConstraint(_, _, _) | VarLookup(_, _) | FnReturn(_, _)
+  | FnParam(_, _, _) | MatchBranch(_, _) | ListElement(_) | IfBranch(_) | LetBinding(_, _)
+  | Unified(_, _) | Instantiation(_, _) | Placeholder(_) | MissingVar(_) | Refinement(_, _)
+  | InferredCallReturn(_, _) | InferredPipeResult(_, _) | DefaultReason(_, _) | Accepted(_, _, _)
+  | EffectEnters(_, _, _) | LabelEnters(_, _, _) | ChainInstall(_, _) | StateBinding(_, _) => show_reason(reason),
 }
 
 fn show_span(ref span) = match span {

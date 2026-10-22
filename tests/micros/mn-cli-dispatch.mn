@@ -90,12 +90,12 @@ fn build_question(verb, arg, raw) with Memory + Alloc = match verb {
 
 fn is_type_of(q, expected) with Pure = match q {
   QTypeOf(n)  => if n == expected { 1 } else { 0 },
-  _           => 0
+  QUnresolved | QUnknown(_) => 0
 }
 
 fn is_unresolved(q) with Pure = match q {
   QUnresolved => 1,
-  _           => 0
+  QTypeOf(_) | QUnknown(_) => 0
 }
 
 fn main(argv) = {

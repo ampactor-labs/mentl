@@ -1,8 +1,8 @@
 // The catch-all fixture: a `_` or a bare binder over a SUM is the roster the
-// author declined to write (Morgan, 2026-10-13). The census counts each such
-// match and its note names the roster; `mentl tighten` writes the roster in
-// the arm's place — under the binder when the arm bound one, the comment the
-// arm carries kept above it — and a second run finds nothing. The arm over a
+// author declined to write (Morgan, 2026-10-13). The judgment refuses each
+// such match, naming the roster; `mentl tighten` writes the roster in the
+// arm's place — under the binder when the arm bound one, the comment the arm
+// carries kept above it — and a second run finds nothing. The arm over a
 // word stays: `_` there is the honest complement.
 type Shape = Dot | Line(Int) | Box(Int, Int) | Blob
 

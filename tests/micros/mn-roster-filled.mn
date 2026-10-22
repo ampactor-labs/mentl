@@ -1,0 +1,38 @@
+// fmt: canonical
+// A roster past the width is filled to it, each continuation line led by its
+// `|`: twenty-one names read as a paragraph, never a column.
+type Letter
+  = Alpha
+  | Bravo
+  | Charlie
+  | Delta
+  | Echo
+  | Foxtrot
+  | Golf
+  | Hotel
+  | India
+  | Juliett
+  | Kilo
+  | Lima
+  | Mike
+  | November
+  | Oscar
+  | Papa
+  | Quebec
+  | Romeo
+  | Sierra
+  | Tango
+  | Uniform
+  | Victor
+  | Whiskey
+  | Xray
+  | Yankee
+  | Zulu
+
+fn is_vowel(l) = match l {
+  Alpha | Echo | India | Oscar | Uniform => true,
+  Bravo | Charlie | Delta | Foxtrot | Golf | Hotel | Juliett | Kilo | Lima | Mike | November | Papa
+  | Quebec | Romeo | Sierra | Tango | Victor | Whiskey | Xray | Yankee | Zulu => false,
+}
+
+fn main() = if is_vowel(Echo) { 5 } else { 0 }

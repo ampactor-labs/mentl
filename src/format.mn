@@ -76,7 +76,8 @@ fn import_run_step(acc, stmt) = match acc {
 
 fn import_path_of(stmt) = match graph_node_body(stmt) {
   NStmt(ImportStmt(path)) => Some(path),
-  _ => None,
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => None,
 }
 
 fn imports_sorted(run) = fold([], import_inserted, run)
@@ -148,7 +149,11 @@ fn chain_installed(h) = chain_of_reason(graph_reason_at(h))
 fn chain_of_reason(reason) = match reason {
   ChainInstall(r, n) => Some((r, n)),
   Located(_, inner) => chain_of_reason(inner),
-  _ => None,
+  Declared(_) | Inferred(_) | Fresh(_) | OpConstraint(_, _, _) | VarLookup(_, _) | FnReturn(_, _)
+  | FnParam(_, _, _) | MatchBranch(_, _) | ListElement(_) | IfBranch(_) | LetBinding(_, _)
+  | Unified(_, _) | Instantiation(_, _) | Placeholder(_) | MissingVar(_) | Refinement(_, _)
+  | InferredCallReturn(_, _) | InferredPipeResult(_, _) | DefaultReason(_, _) | Accepted(_, _, _)
+  | EffectEnters(_, _, _) | LabelEnters(_, _, _) | StateBinding(_, _) => None,
 }
 
 // The body under a chain's installs: `k` nested member installs unwrapped
@@ -158,14 +163,16 @@ fn chain_body(l, k) = if k <= 0 {
 } else {
   match graph_node_body(l) {
     NExpr(PipeExpr(PTee, inner, _)) => chain_body(inner, k - 1),
-    _ => l,
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => l,
   }
 }
 
 // A chain declaration's members on one line, joined by ` ~> `.
 fn render_chain_members(h) with !Mutate = match graph_node_body(h) {
   NExpr(PipeExpr(PTee, l, r)) => "{render_chain_members(l)} ~> {render_tokens_for(r)}",
-  _ => render_tokens_for(h),
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => render_tokens_for(h),
 }
 
 fn spaces(n) = if n == 0 { "" } else { " {spaces(n - 1)}" }
@@ -238,7 +245,8 @@ fn let_born(n) = match graph_node_body(n) {
   } else {
     None
   },
-  _ => None,
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => None,
 }
 
 fn render_let_chain(scrut, pat, body) with !Mutate =
@@ -248,7 +256,8 @@ fn render_let_chain(scrut, pat, body) with !Mutate =
 // arm, then the block's final.
 fn render_block_rest(body) with !Mutate = match graph_node_body(body) {
   NExpr(BlockExpr(stmts, final)) => "{render_stmt_comment(body)}{render_block_stmts(stmts, 0)}{render_block_final(final)}",
-  _ => render_block_final(body),
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => render_block_final(body),
 }
 
 // A block's final, at the block's indent: a destructuring let continues the
@@ -401,7 +410,8 @@ fn render_stmt_tokens(s) with !Mutate = match s {
   // its tokens do not.
   ExprStmt(e) => match graph_node_body(e) {
     NExpr(LitUnit) => "",
-    _ => render_grouped_body(e),
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => render_grouped_body(e),
   },
   AliasStmt(name, ty) => "type {name} = {render_decl_type(ty)}",
   RowAliasStmt(name, effs) => "type {name} = {render_authored_row(effs)}",
@@ -448,7 +458,11 @@ fn render_stmt_tokens(s) with !Mutate = match s {
 // declaration written as SYNTAX writes it came back as `type Coeff = f64`.
 fn render_decl_type(ty) with !Mutate = match ty {
   TReprPin(r, base) => "{render_type_tokens(base)} repr {repr_wat(r)}",
-  t => render_type_tokens(t),
+  t @ (
+    TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TVar(_)
+    | TName(_, _) | TRecord(_) | TRecordOpen(_, _) | TRefined(_, _) | TCont(_, _, _, _) | TAlias(_, _)
+    | TValue(_)
+  ) => render_type_tokens(t),
 }
 
 fn render_pat_tokens(h) = render_pat_value(h, pat_of(h))
@@ -486,20 +500,36 @@ fn render_pat_value(node, p) = match p {
   },
 }
 
-// An alternation, inline when it fits; past the width, one branch per line,
-// each continuation led by its `|` (SYNTAX §«Pattern alternation — rule»):
-// the roster a catch-all stood for is often forty names, and the parser
-// passes over the newline before a `|` as layout.
+// An alternation, inline when it fits; past the width, filled: its branches
+// packed to the width, each continuation line led by its `|` (SYNTAX
+// §«Pattern alternation — rule») — a roster is often forty names, and the
+// parser passes over the newline before a `|` as layout.
 fn render_alternation(branches) = {
   let inline = join(" | ", branches)
-  if fits_inline(inline) { inline } else { join("\n| ", branches) }
+  if fits_inline(inline) { inline } else { join("\n| ", fill_lines(branches)) }
 }
 
-// The binder over the alternation it groups, one branch per line past the
-// width as the bare alternation breaks.
+// The binder over the alternation it groups, filled past the width as the
+// bare alternation is.
 fn render_binder_over(name: String, branches) = {
   let inline = "{name} @ ({join(" | ", branches)})"
-  if fits_inline(inline) { inline } else { "{name} @ (\n{indent_block(join("\n| ", branches))}\n)" }
+  if fits_inline(inline) {
+    inline
+  } else {
+    "{name} @ (\n{indent_block(join("\n| ", fill_lines(branches)))}\n)"
+  }
+}
+
+// Branches packed into lines that each fit, in order: a branch joins the line
+// before it while the joined line, led by its `|`, fits.
+fn fill_lines(branches) = branches |> fold([], fill_branch)
+
+fn fill_branch(lines, b) = match lines {
+  [] => [b],
+  [_, ..._] => {
+    let joined = "{last(lines)} | {b}"
+    if fits_inline("| {joined}") { push(drop_last(lines), joined) } else { push(lines, b) }
+  },
 }
 
 // The roster a catch-all over a sum stands for, as `mentl tighten` writes it:
@@ -507,19 +537,13 @@ fn render_binder_over(name: String, branches) = {
 // literals, under the arm's binder when it bound one.
 fn render_roster(roster) = match roster {
   Roster(binder, ctors) => {
-    let branches = map(render_roster_ctor, ctors)
+    let branches = map(roster_ctor_text, ctors)
     match (binder, branches) {
       (Some(name), [one]) => "{name} @ {one}",
       (Some(name), _) => render_binder_over(name, branches),
       (None, _) => render_alternation(branches),
     }
   },
-}
-
-fn render_roster_ctor(entry) = match entry {
-  ("True", 0) => "true",
-  ("False", 0) => "false",
-  (cname, k) => if k == 0 { cname } else { "{cname}({join(", ", map({ _ => "_" }, range(0, k)))})" },
 }
 
 // The one binder every branch of an alternation places over the whole value,
@@ -715,33 +739,8 @@ fn expr_prec_of(node) = match graph_node_body(node) {
     Some(_) => 100,
     None => 0,
   },
-  _ => 100,
-}
-
-// The literal SYNTAX table integers (op_prec's own values — one table,
-// this is its render-side projection).
-fn binop_prec(op) with Pure = match op {
-  BMul => 10,
-  BDiv => 10,
-  BMod => 10,
-  BAdd => 9,
-  BSub => 9,
-  BConcat => 8,
-  BLt => 7,
-  BGt => 7,
-  BLe => 7,
-  BGe => 7,
-  BEq => 6,
-  BNe => 6,
-  BAnd => 5,
-  BOr => 4,
-}
-
-fn pipe_prec(k) with Pure = match k {
-  PForward => 3,
-  PFanout(_) => 2,
-  PFeedback => 2,
-  PTee => 1,
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => 100,
 }
 
 // ─── The totality helpers — one per structural form ─────────────────
@@ -799,7 +798,10 @@ fn field_line(field) with !Mutate = "{field_init(field)},"
 // renders, with no prose of its own to carry.
 fn field_puns(fname, v) = match graph_node_body(v) {
   NExpr(VarRef(n)) => ref_spelling(v, n) == fname && graph_comment_at(v) == "",
-  other => false,
+  other @ (
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_)
+  ) => false,
 }
 
 fn field_carries_prose(field) = match field {
@@ -814,7 +816,8 @@ fn render_string_parts(ref parts, i) with !Mutate = if i >= len(parts) {
     // The splice's ShowExpr wrap is invisible surface — the braces
     // render the INNER (render∘parse fixpoint over the wrap).
     NExpr(ShowExpr(inner)) => "\{{render_tokens_for(inner)}\}",
-    _ => "\{{render_tokens_for(parts[i])}\}",
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => "\{{render_tokens_for(parts[i])}\}",
   }
   "{one}{render_string_parts(parts, i + 1)}"
 }
@@ -835,7 +838,8 @@ fn render_string_parts(ref parts, i) with !Mutate = if i >= len(parts) {
 // already emits.
 fn render_branch_block(n) with !Mutate = match graph_node_body(n) {
   NExpr(BlockExpr(_, _)) => render_tokens_for(n),
-  _ => match let_born(n) {
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => match let_born(n) {
     Some(_) => render_tokens_for(n),
     None => "\{\n{indent_block(render_grouped_body(n))}\n\}",
   },
@@ -851,7 +855,8 @@ fn render_else_block(el) with !Mutate = match graph_node_body(el) {
     let ec = graph_comment_at(el)
     if ec == "" { " {core}" } else { "\n//{replace(ec, "\n", "\n//")}\n{core}" }
   },
-  _ => " else {render_branch_block(el)}",
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => " else {render_branch_block(el)}",
 }
 
 fn render_if_branch(n) with !Mutate = match graph_node_body(n) {
@@ -864,7 +869,8 @@ fn render_if_branch(n) with !Mutate = match graph_node_body(n) {
     render_tokens_for(n)
   },
   NExpr(IfExpr(_, _, _)) => render_tokens_for(n),
-  _ => match let_born(n) {
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => match let_born(n) {
     Some(_) => render_tokens_for(n),
     None => "\{ {render_tokens_for(n)} \}",
   },
@@ -875,7 +881,8 @@ fn render_if_branch(n) with !Mutate = match graph_node_body(n) {
 // the identity (the re-parse re-inserts the same unit node).
 fn render_else(el) with !Mutate = match graph_node_body(el) {
   NExpr(LitUnit) => "",
-  _ => " else {render_if_branch(el)}",
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => " else {render_if_branch(el)}",
 }
 
 // ─── Reindent-on-compose — the depth engine's one primitive ─────────
@@ -919,8 +926,9 @@ fn render_grouped_body(node) with !Mutate = match graph_node_body(node) {
   } else {
     render_tokens_for(node)
   },
-  // drift-audit: ignore — the brace-lead expr forms and the stmt-less block are the enumerated classes; everything else renders unwrapped by design
-  _ => render_tokens_for(node),
+  // Every other form renders unwrapped.
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => render_tokens_for(node),
 }
 
 fn render_match_arms(ref arms, i) with !Mutate = if i >= len(arms) {
@@ -933,7 +941,8 @@ fn render_match_arms(ref arms, i) with !Mutate = if i >= len(arms) {
 
 fn render_resume_head(v) with !Mutate = match graph_node_body(v) {
   NExpr(LitUnit) => "resume()",
-  _ => "resume({render_tokens_for(v)})",
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => "resume({render_tokens_for(v)})",
 }
 
 fn render_state_updates(ref updates: [{init: Node, name: Node}], i) with !Mutate = if i >= len(updates) {
@@ -947,8 +956,9 @@ fn render_state_updates(ref updates: [{init: Node, name: Node}], i) with !Mutate
 
 fn render_let_ann(ann) with !Mutate = match graph_node_body(ann) {
   NTypeAnn(ty) => ": {render_type_tokens(ty)}",
-  // drift-audit: ignore — the ADT's own absence sentinel: LetStmt's ann node is LitUnit when unannotated (the LetStmt decl comment); any non-NTypeAnn body IS that absence, rendered as no clause
-  _ => "",
+  // A let with no annotation holds LitUnit at its annotation node, rendered as
+  // no clause.
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NName(_) | NRow(_) | NParam(_) => "",
 }
 
 // The record a nominal record type IS: a lone variant named as its type,
@@ -1071,7 +1081,8 @@ fn pred_prec(pred) with Pure = match pred {
   PCompare(op, _, _) => binop_prec(op),
   PAnd(_, _) => 5,
   POr(_, _) => 4,
-  _ => 90,
+  PTrue | PNot(_) | PBoolNode(_) | PPatternMatch(_, _) | PWithSelf(_, _) | PTotalDiv(_, _, _)
+  | PProvides(_) | PInBounds(_, _) => 90,
 }
 
 fn render_pred_node(h) with !Mutate = render_body_tokens(h, graph_node_body(h))
@@ -1085,7 +1096,11 @@ fn render_effect_ops(ref ops: [(String, [TParam], Ty, Node)], i) with !Mutate = 
     (oname, params, rty, cnode) => {
       let ret = match rty {
         TUnit => "",
-        t => " -> {render_type_tokens(t)}",
+        t @ (
+          TInt | TFloat | TByte | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TVar(_) | TName(_, _)
+          | TRecord(_) | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _)
+          | TAlias(_, _) | TValue(_)
+        ) => " -> {render_type_tokens(t)}",
       }
       "{render_stmt_comment(cnode)}{oname}({join(", ", map(render_op_param, params))}){ret}\n{render_effect_ops(ops, i + 1)}"
     },
@@ -1184,16 +1199,8 @@ fn slot_param(pair) = match pair {
 
 fn call_callee_decl(call) = match graph_node_body(call) {
   NExpr(CallExpr(f, _)) => graph_ref_decl(f),
-  NExpr(_)
-  | NStmt(_)
-  | NPat(_)
-  | NHole(_)
-  | NModule(_)
-  | NLink(_)
-  | NTypeAnn(_)
-  | NName(_)
-  | NRow(_)
-  | NParam(_) => None,
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => None,
 }
 
 // The parameter nodes a callee's declaration holds: a function's, a
@@ -1202,46 +1209,23 @@ fn callee_params(d) = match graph_node_body(d) {
   NStmt(FnStmt(_, ps, _, _, _)) => ps,
   NStmt(HandlerDeclStmt(_, _, cfg, _, _, _)) => cfg,
   NPat(_) => bound_literal_params(d),
-  NStmt(_)
-  | NExpr(_)
-  | NHole(_)
-  | NModule(_)
-  | NLink(_)
-  | NTypeAnn(_)
-  | NName(_)
-  | NRow(_)
+  NStmt(_) | NExpr(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_)
   | NParam(_) => [],
 }
 
 fn bound_literal_params(b) = match graph_parent_of(b) {
   Some(s) => match graph_node_body(s) {
     NStmt(LetStmt(_, value, _)) => literal_params(value),
-    NStmt(_)
-    | NExpr(_)
-    | NPat(_)
-    | NHole(_)
-    | NModule(_)
-    | NLink(_)
-    | NTypeAnn(_)
-    | NName(_)
-    | NRow(_)
-    | NParam(_) => [],
+    NStmt(_) | NExpr(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => [],
   },
   None => [],
 }
 
 fn literal_params(value) = match graph_node_body(value) {
   NExpr(LambdaExpr(ps, _)) => ps,
-  NExpr(_)
-  | NStmt(_)
-  | NPat(_)
-  | NHole(_)
-  | NModule(_)
-  | NLink(_)
-  | NTypeAnn(_)
-  | NName(_)
-  | NRow(_)
-  | NParam(_) => [],
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => [],
 }
 
 fn render_lit_value(lv) = match lv {
@@ -1263,15 +1247,18 @@ fn zero_minus_literal(op, l, r) = match op {
   BSub => match graph_node_body(l) {
     NExpr(LitInt(0)) => match graph_node_body(r) {
       NExpr(LitInt(_)) => true,
-      _ => false,
+      NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+      | NRow(_) | NParam(_) => false,
     },
     NExpr(LitFloat(z)) => match graph_node_body(r) {
       NExpr(LitFloat(f)) => z == 0.0 && f != 0.0,
-      _ => false,
+      NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+      | NRow(_) | NParam(_) => false,
     },
-    _ => false,
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => false,
   },
-  _ => false,
+  BAdd | BMul | BDiv | BMod | BEq | BNe | BLt | BGt | BLe | BGe | BAnd | BOr | BConcat => false,
 }
 
 // The lift as the render takes it: never across prose, which rides the
@@ -1296,7 +1283,8 @@ fn lifted_at(kept, h) = match graph_node_body(h) {
   NExpr(BinOpExpr(op, l, r)) => if lifts_zero_minus(op, l, r) {
     match graph_node_body(l) {
       NExpr(LitInt(_)) => ["#0"],
-      _ => ["#{float_to_str(0.0)}"],
+      NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+      | NRow(_) | NParam(_) => ["#{float_to_str(0.0)}"],
     }
   } else {
     []
@@ -1314,7 +1302,8 @@ fn lifted_at(kept, h) = match graph_node_body(h) {
   // `b @ C(_) | b @ D` renders as `b @ (C(_) | D)`: the binder is written once
   // for branches the parse read it on each of
   NExpr(MatchExpr(_, arms)) => flat_map(arm_grouped_binders, arms),
-  _ => [],
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => [],
 }
 
 fn arm_grouped_binders(arm) = match arm {
@@ -1323,7 +1312,7 @@ fn arm_grouped_binders(arm) = match arm {
       Some((name, inners)) => map({ _ => name }, range_list(1, len(inners))),
       None => [],
     },
-    _ => [],
+    PVar(_) | PWild | PLit(_) | PCon(_, _) | PTuple(_) | PList(_, _) | PRecord(_, _) | PAs(_, _) => [],
   },
 }
 
@@ -1447,7 +1436,7 @@ fn render_pat_fields(ref fields, i) = if i >= len(fields) {
       // own name (SYNTAX §records).
       let one = match pat_of(p) {
         PVar(n) => if n == fname { fname } else { "{fname}: {n}" },
-        _ => "{fname}: {render_pat_tokens(p)}",
+        PWild | PLit(_) | PCon(_, _) | PTuple(_) | PList(_, _) | PRecord(_, _) | PAlt(_) | PAs(_, _) => "{fname}: {render_pat_tokens(p)}",
       }
       if i == len(fields) - 1 { one } else { "{one}, {render_pat_fields(fields, i + 1)}" }
     },
@@ -1489,10 +1478,11 @@ fn render_retty(ann, effs) with !Mutate = match ann {
     } else {
       " -> {render_type_tokens(ann_ty)}"
     },
-    _ => " -> {render_type_tokens(ann_ty)}",
+    TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TVar(_) | TName(_, _) | TRecord(_)
+    | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => " -> {render_type_tokens(ann_ty)}",
   },
-  // drift-audit: ignore — the documented absent-annotation contract (an inferred return renders no clause)
-  _ => "",
+  // An inferred return renders no clause.
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NName(_) | NRow(_) | NParam(_) => "",
 }
 
 // Canonical indent depth per node kind. Match-arm bodies +2; let-
@@ -1529,8 +1519,8 @@ fn ast_top_level_stmts(ast) with Pure = ast
 fn canonical_indent_depth(kind) with Pure = match kind {
   NStmt(_) => 0,
   NExpr(_) => left_edge_indent(),
-  // drift-audit: ignore — non-stmt/expr kinds sit at left edge; depth 0 IS their canonical indent, not a fabricated default
-  _ => 0,
+  // Every other kind sits at the left edge.
+  NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => 0,
 }
 
 // The unary operator glyph per SYNTAX.md — `-` negate, `!` logical-not.
@@ -1592,7 +1582,12 @@ fn atom_key(t) = match token_kind(t) {
   TIntLit(n) => Some("#{int_to_str(n)}"),
   TFloatLit(f) => Some("#{float_to_str(f)}"),
   TStringPart(s) => Some("\"{s}"),
-  _ => None,
+  TFn | TLet | TIf | TElse | TMatch | TType | TEffect | THandler | TWith | TResume | TImport
+  | TWhere | TOwn | TRef | TPure | TTrue | TFalse | TComment(_) | TStringSplice | TEqEq | TBangEq
+  | TLtEq | TGtEq | TArrow | TFatArrow | TPlusPlus | TPipeGt | TLtPipe | TGtLt | TTildeGt | TLtTilde
+  | TAndAnd | TOrOr | TLParen | TRParen | TLBrace | TRBrace | TLBracket | TRBracket | TComma | TDot
+  | TColon | TSemicolon | TPlus | TMinus | TStar | TSlash | TPercent | TEq | TLt | TGt | TBang | TAmp
+  | TPipe | TAt | THole | TNewline | TEof => None,
 }
 
 // ─── A literal's authored spelling — intent the source holds ─────────
@@ -1635,7 +1630,12 @@ fn spelling_queued(m, lit) = match lit {
 fn numeric_key(t) = match token_kind(t) {
   TIntLit(_) => atom_key(t),
   TFloatLit(_) => atom_key(t),
-  _ => None,
+  TFn | TLet | TIf | TElse | TMatch | TType | TEffect | THandler | TWith | TResume | TImport
+  | TWhere | TOwn | TRef | TPure | TTrue | TFalse | TIdent(_) | TComment(_) | TStringPart(_)
+  | TStringSplice | TEqEq | TBangEq | TLtEq | TGtEq | TArrow | TFatArrow | TPlusPlus | TPipeGt
+  | TLtPipe | TGtLt | TTildeGt | TLtTilde | TAndAnd | TOrOr | TLParen | TRParen | TLBrace | TRBrace
+  | TLBracket | TRBracket | TComma | TDot | TColon | TSemicolon | TPlus | TMinus | TStar | TSlash
+  | TPercent | TEq | TLt | TGt | TBang | TAmp | TPipe | TAt | THole | TNewline | TEof => None,
 }
 
 fn spellings_of(m, k: String) = match smap_get(m, k) {
@@ -1686,6 +1686,11 @@ fn count_comment_tokens(tokens, i, acc) = if i >= len(tokens) {
 } else {
   match token_kind(tokens[i]) {
     TComment(_) => count_comment_tokens(tokens, i + 1, acc + 1),
-    _ => count_comment_tokens(tokens, i + 1, acc),
+    TFn | TLet | TIf | TElse | TMatch | TType | TEffect | THandler | TWith | TResume | TImport
+    | TWhere | TOwn | TRef | TPure | TTrue | TFalse | TIdent(_) | TIntLit(_) | TFloatLit(_)
+    | TStringPart(_) | TStringSplice | TEqEq | TBangEq | TLtEq | TGtEq | TArrow | TFatArrow | TPlusPlus
+    | TPipeGt | TLtPipe | TGtLt | TTildeGt | TLtTilde | TAndAnd | TOrOr | TLParen | TRParen | TLBrace
+    | TRBrace | TLBracket | TRBracket | TComma | TDot | TColon | TSemicolon | TPlus | TMinus | TStar
+    | TSlash | TPercent | TEq | TLt | TGt | TBang | TAmp | TPipe | TAt | THole | TNewline | TEof => count_comment_tokens(tokens, i + 1, acc),
   }
 }

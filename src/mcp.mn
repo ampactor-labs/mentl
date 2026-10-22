@@ -113,7 +113,7 @@ fn mcp_error(id, code, msg) = json_serialize(JObj([
 fn mcp_initialize_result(params) = {
   let pv = match json_obj_get(params, "protocolVersion") {
     Some(JStr(s)) => s,
-    _ => "2025-06-18",
+    None | Some(_) => "2025-06-18",
   }
   JObj([
     ("protocolVersion", JStr(pv)),
@@ -236,8 +236,9 @@ fn mcp_tools_result() = JObj([
 fn mcp_tool_call(id, params, at_read) = {
   let name = match json_obj_get(params, "name") {
     Some(JStr(s)) => s,
-    // drift-audit: ignore — the protocol-null sentinel: no real tool name is empty, and the match below refuses "" with -32602
-    _ => "",
+    // The protocol-null sentinel: no real tool name is empty, and the match
+    // below refuses "" with -32602.
+    None | Some(_) => "",
   }
   // The session's reads answer over the link the graph holds; a server
   // started outside a project judged none.
@@ -261,7 +262,7 @@ fn mcp_tool_call(id, params, at_read) = {
             )
           },
         },
-        _ => mcp_response(
+        None | Some(_) => mcp_response(
           id,
           JObj([
             (
@@ -307,7 +308,7 @@ fn mcp_tool_call(id, params, at_read) = {
           let col = match json_obj_get(params, "arguments") {
             Some(args) => match json_obj_get(args, "col") {
               Some(JInt(c)) => c,
-              _ => 1,
+              None | Some(_) => 1,
             },
             None => 1,
           }
@@ -323,7 +324,7 @@ fn mcp_tool_call(id, params, at_read) = {
             ])
           )
         },
-        _ => mcp_response(
+        None | Some(_) => mcp_response(
           id,
           JObj([
             (
@@ -470,7 +471,7 @@ fn mcp_tool_call(id, params, at_read) = {
             ])
           )
         },
-        _ => mcp_response(
+        None | Some(_) => mcp_response(
           id,
           JObj([
             (
@@ -510,8 +511,9 @@ fn mcp_request(id, method, params, at_read) = match method {
 fn mcp_dispatch(req, at_read) = {
   let method = match json_obj_get(req, "method") {
     Some(JStr(s)) => s,
-    // drift-audit: ignore — the protocol-null sentinel: no real method is empty, and mcp_request refuses "" with -32601
-    _ => "",
+    // The protocol-null sentinel: no real method is empty, and `mcp_request`
+    // refuses "" with -32601.
+    None | Some(_) => "",
   }
   match json_obj_get(req, "id") {
     None => "",

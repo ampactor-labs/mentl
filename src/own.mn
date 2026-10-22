@@ -101,7 +101,7 @@ handler affine_ledger with used = [], used_sites = [], branches = [], fn_saved =
       // the actual first-use span (sorting it would lose temporal order).
       resume() with used = set_insert(used, name), used_sites = [(name, span)] ++ used_sites
     },
-    _ => resume(),
+    Unmarked | Ref => resume(),
   },
   branch_enter(mode) => // branch_enter — snapshot the current `used` as the frame's base;
   // deltas list starts empty; the mode rides the frame so branch_exit
@@ -448,7 +448,7 @@ fn classify_pair(usage) = match usage {
   (consume, read) => match consume {
     UZero => match read {
       UZero => Unmarked,
-      _ => Ref,
+      UOne | UMany => Ref,
     },
     UOne => Own,
     UMany => Ref,
@@ -508,7 +508,7 @@ fn usage_of(ref binder, ref node, mode) = match graph_node_body(node) {
   NExpr(LambdaExpr(_, lb)) => match usage_of(binder, lb, MConsume) {
     (c, r) => match c {
       UZero => (UZero, r),
-      _ => (UMany, r),
+      UOne | UMany => (UMany, r),
     },
   },
   // The datum's true slot mode is the completed call's own param; the
@@ -617,7 +617,7 @@ fn callee_borrow_params(f) with !Mutate = match graph_ref_decl(f) {
       Frozen(_, TFun(ps, _, _)) => Some(ps),
       Frozen(_, TVar(h)) => chased_borrow_params(h),
       Live(h) => chased_borrow_params(h),
-      _ => None,
+      Frozen(_, _) => None,
     },
     None => None,
   },
@@ -629,7 +629,7 @@ fn callee_borrow_params(f) with !Mutate = match graph_ref_decl(f) {
 // TVar, which are the same read taken at two moments.
 fn chased_borrow_params(h) = match graph_chase(h) {
   GNode(NBound(TFun(ps, _, _)), _) => Some(ps),
-  _ => None,
+  GNode(_, _) => None,
 }
 
 // Per-arg walk with the callee's slot modes. An index walk because the
@@ -661,9 +661,11 @@ fn arg_slot_mode(ref arg, ref borrow_slots, i) = match graph_node_body(arg) {
       Some(ps) => if labeled_param_borrows(ps, label, 0) { MRead } else { MConsume },
       None => MRead,
     },
-    _ => MConsume,
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => MConsume,
   },
-  _ => MConsume,
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => MConsume,
 }
 
 fn labeled_param_borrows(ref ps, ref label: String, i) = if i >= len(ps) {

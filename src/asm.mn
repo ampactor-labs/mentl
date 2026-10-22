@@ -106,7 +106,7 @@ handler wat_lexer with mode = InCode, at = 0 {
   yield(b) => match mode {
     InCode => match wat_class(b) {
       CSpace => resume() with at = at + 1,
-      k => resume() with mode = wat_code(k, at), at = at + 1,
+      k @ (COpen | CClose | CQuote | CSemi | CWord) => resume() with mode = wat_code(k, at), at = at + 1,
     },
     InOpen => if b == 59 {
       tok_retract()
@@ -116,7 +116,7 @@ handler wat_lexer with mode = InCode, at = 0 {
     },
     InAtom(s) => match wat_class(b) {
       CWord => resume() with at = at + 1,
-      k => {
+      k @ (CSpace | COpen | CClose | CQuote | CSemi) => {
         tok_put(wtok(s, at, Atom))
         resume() with mode = wat_code(k, at), at = at + 1
       },
@@ -1760,7 +1760,10 @@ fn out_instr(code, arg) = match arg {
     out_byte(28)
     out_arg(arg)
   },
-  plain => {
+  plain @ (
+    ArgNone | ArgIdx(_) | ArgPair(_, _) | ArgI32(_) | ArgI64(_, _) | ArgF32(_) | ArgF64(_, _)
+    | ArgLabels(_) | ArgBytes(_) | ArgByte(_)
+  ) => {
     out_code(code)
     out_arg(plain)
   },

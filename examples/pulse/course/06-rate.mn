@@ -25,7 +25,7 @@
 // programs the medium owes (`mentl verify`), and the count only falls.
 //
 // The handler at the root answers whichever instance asks: an install does
-// not yet pin the instance it serves (PLAN §11.10), so the negation is where
+// not yet pin the instance it serves (PLAN §11.9), so the negation is where
 // the rule is written.
 import audio/wav
 

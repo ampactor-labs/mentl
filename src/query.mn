@@ -44,7 +44,7 @@ import parser
 fn term_is_bare_positive(term) = match term {
   (RtEff(name, _), false, _) => match name {
     ENamed(_) => !row_var_spelled(name),
-    _ => false,
+    EParameterized(_, _) | EPure => false,
   },
   _ => false,
 }
@@ -371,7 +371,8 @@ fn query_answer(q) = match q {
     Some(entry) => match entry {
       (scheme, _, _) => match chase_type_deep(judgment_ty(scheme)) {
         TFun(_, _, row) => QREffects(row),
-        _ => QRError("{name} is not a function"),
+        TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TVar(_) | TName(_, _) | TRecord(_)
+        | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => QRError("{name} is not a function"),
       },
     },
   },
@@ -380,7 +381,8 @@ fn query_answer(q) = match q {
     Some(entry) => match entry {
       (scheme, _, _) => match chase_type_deep(judgment_ty(scheme)) {
         TFun(params, _, _) => QROwnership(params),
-        _ => QRError("{name} is not a function"),
+        TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TVar(_) | TName(_, _) | TRecord(_)
+        | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => QRError("{name} is not a function"),
       },
     },
   },
@@ -483,7 +485,11 @@ fn sites_in(m, answer) = match answer {
   QRSmt(debt) => QRSmt(filter(obligation_in_module(m, ??), debt)),
   QRReports(entries) => QRReports(filter(report_in_module(m, ??), entries)),
   QRError(msg) => QRError(msg),
-  unscoped => QRError("`in` keeps a site facet's sites: refs of, reads of, census, text, prose, ghosts, owed, decls, verification, smt, reports"),
+  unscoped @ (
+    QRType(_, _) | QRUnresolved(_) | QREffects(_) | QROwnership(_) | QRWhy(_) | QRHandlerProvider(_)
+    | QRFlow(_, _) | QRCensusRoster(_) | QRModules(_) | QRImports(_) | QRUnreferenced(_)
+    | QRUnreachable(_) | QRPerforms(_) | QREnv(_) | QROrphanClaims(_) | QRCost(_, _, _) | QRWhere(_, _)
+  ) => QRError("`in` keeps a site facet's sites: refs of, reads of, census, text, prose, ghosts, owed, decls, verification, smt, reports"),
 }
 
 // A banked report the register prints under the scope in force.
@@ -512,7 +518,7 @@ fn chase_type_deep(ref ty) = match ty {
   TVar(h) => match graph_chase(h) {
     GNode(kind, _) => match kind {
       NBound(inner) => chase_type_deep(inner),
-      _ => ty,
+      NFree(_) | NRowBound(_) | NRowFree(_) | NRecordRowBound(_, _) | NErrorHole(_) => ty,
     },
   },
   TList(elem) => TList(chase_type_deep(elem)),
@@ -524,7 +530,7 @@ fn chase_type_deep(ref ty) = match ty {
   TRefined(base, pred) => TRefined(chase_type_deep(base), pred),
   TCont(input, answer, disc, world) => TCont(chase_type_deep(input), chase_type_deep(answer), disc, world),
   TAlias(name, inner) => TAlias(name, chase_type_deep(inner)),
-  _ => ty,
+  TInt | TFloat | TUnit | TByte | TAddr | TReprPin(_, _) | TValue(_) => ty,
 }
 
 // Order-preserving BY the vocabulary form (Hβ.query.param-render-reversed's
@@ -553,7 +559,7 @@ fn has_free_tvar(ref ty) = match ty {
     GNode(kind, _) => match kind {
       NFree(_) => true,
       NBound(inner) => has_free_tvar(inner),
-      _ => false,
+      NRowBound(_) | NRowFree(_) | NRecordRowBound(_, _) | NErrorHole(_) => false,
     },
   },
   TList(elem) => has_free_tvar(elem),
@@ -565,7 +571,7 @@ fn has_free_tvar(ref ty) = match ty {
   TRefined(base, _) => has_free_tvar(base),
   TCont(input, answer, _, _) => has_free_tvar(input) || has_free_tvar(answer),
   TAlias(_, inner) => has_free_tvar(inner),
-  _ => false,
+  TInt | TFloat | TUnit | TByte | TAddr | TReprPin(_, _) | TValue(_) => false,
 }
 
 fn has_free_tvar_list(ref tys) with !Mutate =
@@ -634,7 +640,8 @@ fn ref_role(h) with !Mutate = match graph_node_body(h) {
 fn callee_of_parent(h) with !Mutate = match graph_parent_of(h) {
   Some(p) => match graph_node_body(p) {
     NExpr(CallExpr(f, _)) => f == h,
-    _ => false,
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => false,
   },
   None => false,
 }
@@ -779,7 +786,8 @@ fn import_edges_of(cell) = match cell {
 
 fn import_edge_join(acc, d) = match graph_node_body(d) {
   NStmt(ImportStmt(p)) => push(acc, p),
-  _ => acc,
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => acc,
 }
 
 // What a statement declares that a reference can link to, each name with the
@@ -798,9 +806,9 @@ fn decl_links_of(d) = match graph_node_body(d) {
     EffectDeclStmt(n, _, ops) => [(n, d)] ++ map({ (on, _, _, onode) => (on, onode) }, ops),
     HandlerDeclStmt(n, _, _, _, _, _) => [(n, d)],
     LetStmt(pat, _, _) => pat_binders(pat),
-    _ => [],
+    HandlerChainStmt(_, _) | ExprStmt(_) | ImportStmt(_) => [],
   },
-  _ => [],
+  NExpr(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => [],
 }
 
 // A reference stands inside a declaration when the declaration is among its
@@ -906,16 +914,9 @@ fn ur_value_let(entry) = match entry {
   (_, d, _) => match graph_node_body(d) {
     NStmt(s) => match s {
       LetStmt(_, _, _) => [d],
-      FnStmt(_, _, _, _, _)
-      | TypeDefStmt(_, _)
-      | EffectDeclStmt(_, _, _)
-      | HandlerDeclStmt(_, _, _, _, _, _)
-      | HandlerChainStmt(_, _)
-      | ImportStmt(_)
-      | RefineStmt(_, _, _)
-      | AliasStmt(_, _)
-      | RowAliasStmt(_, _)
-      | ExprStmt(_) => [],
+      FnStmt(_, _, _, _, _) | TypeDefStmt(_, _) | EffectDeclStmt(_, _, _)
+      | HandlerDeclStmt(_, _, _, _, _, _) | HandlerChainStmt(_, _) | ImportStmt(_) | RefineStmt(_, _, _)
+      | AliasStmt(_, _) | RowAliasStmt(_, _) | ExprStmt(_) => [],
     },
     NExpr(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => [],
   },
@@ -946,16 +947,9 @@ fn refine_root(entry) = match entry {
   (_, d, _) => match graph_node_body(d) {
     NStmt(s) => match s {
       RefineStmt(_, _, _) => [d],
-      LetStmt(_, _, _)
-      | FnStmt(_, _, _, _, _)
-      | TypeDefStmt(_, _)
-      | EffectDeclStmt(_, _, _)
-      | HandlerDeclStmt(_, _, _, _, _, _)
-      | HandlerChainStmt(_, _)
-      | ImportStmt(_)
-      | AliasStmt(_, _)
-      | RowAliasStmt(_, _)
-      | ExprStmt(_) => [],
+      LetStmt(_, _, _) | FnStmt(_, _, _, _, _) | TypeDefStmt(_, _) | EffectDeclStmt(_, _, _)
+      | HandlerDeclStmt(_, _, _, _, _, _) | HandlerChainStmt(_, _) | ImportStmt(_) | AliasStmt(_, _)
+      | RowAliasStmt(_, _) | ExprStmt(_) => [],
     },
     NExpr(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => [],
   },
@@ -1001,10 +995,11 @@ fn ur_decl_edges(d, reached) = match graph_node_body(d) {
       ur_arm(reached, d, ??, ??),
       arms
     ),
-    _ => (ur_targets(d, d) ++ flat_map(ur_targets(d, ??), ur_defaults(config)), []),
+    PSchedule(_) | PDerivative | PArena => (ur_targets(d, d) ++ flat_map(ur_targets(d, ??), ur_defaults(config)), []),
   },
   NStmt(FnStmt(_, params, _, _, _)) => (ur_targets(d, d) ++ flat_map(ur_targets(d, ??), ur_defaults(params)), []),
-  _ => (ur_targets(d, d), []),
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => (ur_targets(d, d), []),
 }
 
 fn ur_defaults(params) = flat_map(
@@ -1065,7 +1060,8 @@ fn ur_row(layer, reached, entry) = match entry {
   (path, d, l) => if l == layer {
     match graph_node_body(d) {
       NStmt(FnStmt(name, _, _, _, _)) => [(path, name, is_some(wmap_get(reached, d)), span_of_node_raw(d))],
-      _ => [],
+      NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+      | NRow(_) | NParam(_) => [],
     }
   } else {
     []
@@ -1117,7 +1113,7 @@ fn orphan_claim_report(cells) with !Mutate = fold([], orphan_rows_join, cells)
 // scaffolding are not positions: there is nothing at 0:0 to render or patch.
 fn authored_hole(handle) with !Mutate = match graph_node_body(handle) {
   NHole(id) => id != 0 && !span_eq(graph_span_of(handle), span_zero()),
-  _ => false,
+  NExpr(_) | NStmt(_) | NPat(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => false,
 }
 
 // A cell the parser minted and the judgment never bound: its own reason is
@@ -1130,9 +1126,13 @@ fn node_is_ghost(h) with !Mutate = match graph_node_body(h) {
   NModule(_) | NLink(_) => false,
   // A written name is judged by the link it draws.
   NName(_) => !is_some(graph_ref_decl(h)),
-  _ => match graph_reason_at(h) {
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NTypeAnn(_) | NRow(_) | NParam(_) => match graph_reason_at(h) {
     Placeholder(_) => !authored_hole(h),
-    _ => false,
+    Declared(_) | Inferred(_) | Fresh(_) | OpConstraint(_, _, _) | VarLookup(_, _) | FnReturn(_, _)
+    | FnParam(_, _, _) | MatchBranch(_, _) | ListElement(_) | IfBranch(_) | LetBinding(_, _)
+    | Unified(_, _) | Instantiation(_, _) | MissingVar(_) | Refinement(_, _) | Located(_, _)
+    | InferredCallReturn(_, _) | InferredPipeResult(_, _) | DefaultReason(_, _) | Accepted(_, _, _)
+    | EffectEnters(_, _, _) | LabelEnters(_, _, _) | ChainInstall(_, _) | StateBinding(_, _) => false,
   },
 }
 
@@ -1219,9 +1219,11 @@ fn effect_rows_for(cell) with !Mutate = match cell {
 fn effect_row_join(path: String, acc, d) with !Mutate = match graph_node_body(d) {
   NStmt(s) => match s {
     EffectDeclStmt(n, _, ops) => push(acc, (path, n, len(ops), ops |> filter(op_is_unperformed(d, ??)) |> map(op_name))),
-    _ => acc,
+    LetStmt(_, _, _) | FnStmt(_, _, _, _, _) | TypeDefStmt(_, _) | HandlerDeclStmt(_, _, _, _, _, _)
+    | HandlerChainStmt(_, _) | ExprStmt(_) | ImportStmt(_) | RefineStmt(_, _, _) | AliasStmt(_, _)
+    | RowAliasStmt(_, _) => acc,
   },
-  _ => acc,
+  NExpr(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => acc,
 }
 
 fn op_is_unperformed(stmt, op) with !Mutate = match op {
@@ -1231,16 +1233,8 @@ fn op_is_unperformed(stmt, op) with !Mutate = match op {
 // A reference performs its op unless it is the name an arm serves.
 fn performs_at(r) with !Mutate = match graph_node_body(r) {
   NName(ArmOp(_)) | NName(StateWrite(_)) => false,
-  NName(RowEffect(_))
-  | NExpr(_)
-  | NStmt(_)
-  | NPat(_)
-  | NHole(_)
-  | NModule(_)
-  | NLink(_)
-  | NTypeAnn(_)
-  | NRow(_)
-  | NParam(_) => true,
+  NName(RowEffect(_)) | NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_)
+  | NTypeAnn(_) | NRow(_) | NParam(_) => true,
 }
 
 fn op_name(op) with Pure = match op {
@@ -1438,8 +1432,28 @@ fn census_sites(shape) with !Mutate = census_noted(shape) |> map(noted_address)
 // The sites with what stands at each — the answer the terminal renders; the
 // board and the caret read the addresses alone, through `located_answer`, and
 // the roster counts them (`census_sites`).
-fn census_noted(shape) with !Mutate = match graph_snapshot() {
-  Graph(next, _) => map({ (m, sp, h) => (m, sp, census_note(shape, h)) }, census_walk(shape, 0, next, make_list(0))),
+fn census_noted(shape) with !Mutate = if shape == CsWildcardOverSum {
+  catch_all_refusals() |> map(refusal_noted)
+} else {
+  match graph_snapshot() {
+    Graph(next, _) => map({ (m, sp, h) => (m, sp, census_note(shape, h)) }, census_walk(shape, 0, next, make_list(0))),
+  }
+}
+
+// The catch-alls the judgment refused, read off the bank: each refusal
+// carries the arm's pattern node and the roster it stands for, which the
+// census counts and `mentl tighten` writes at the node.
+fn catch_all_refusals() = fold([], catch_all_refusal_of, diag_banked())
+
+fn catch_all_refusal_of(acc, entry) = match entry {
+  (ECatchAllOverSum(roster, pat, _), _, _, _) => push(acc, (pat, roster)),
+  _ => acc,
+}
+
+// A refused catch-all as a census site: where its arm stands, and the roster
+// as the pattern `mentl tighten` writes there.
+fn refusal_noted(refusal) = match refusal {
+  (pat, roster) => (module_name_of_handle(graph_module_of(pat)), graph_span_of(pat), Some(render_roster(roster))),
 }
 
 // What a site shows beside its address: for a prose shape, the comment line
@@ -1450,35 +1464,10 @@ fn census_noted(shape) with !Mutate = match graph_snapshot() {
 fn census_note(shape, h) with !Mutate = match shape {
   CsProse(needle) => prose_line(prose_holds(??, needle), graph_comment_at(h)),
   CsProseClass(c) => prose_line(prose_class_holds(c), graph_comment_at(h)),
-  CsWildcardOverSum => match catch_all_of(graph_node_body(h)) {
-    Some((_, _, roster)) => Some(render_roster(roster)),
-    None => None,
-  },
-  _ => None,
-}
-
-// The one read of the shape: a match whose catch-all arm stands over a sum
-// answers the arm's index, its pattern and the roster it stands for
-// (`catch_all_arm`, src/infer.mn); any other node answers nothing.
-fn catch_all_of(body) with !Mutate = match body {
-  NExpr(MatchExpr(scrut, arms)) => catch_all_arm(scrut, arms),
-  NExpr(_)
-  | NStmt(_)
-  | NHole(_)
-  | NPat(_)
-  | NTypeAnn(_)
-  | NModule(_)
-  | NLink(_)
-  | NName(_)
-  | NRow(_)
-  | NParam(_) => None,
-}
-
-// Every match the census convicts, as its handle — the node `mentl tighten`
-// writes the roster into. Everything else about a site is read off the
-// handle: its module, its span, its catch-all arm.
-fn catch_all_sites() with !Mutate = match graph_snapshot() {
-  Graph(next, _) => census_walk(CsWildcardOverSum, 0, next, make_list(0)) |> map({ (_, _, h) => h }),
+  CsAnonymous | CsVerb(_) | CsEta | CsEffectfulLambda | CsIterationCostume | CsWildcardZero
+  | CsFailureMask | CsPrintInReport | CsWildcardFabricates | CsWildcardOverSum | CsUnderscoreRetain
+  | CsFlagAsInt | CsParallelArrays | CsVtableRecord | CsEnvFrame | CsDefaultParam | CsDeclaredRowHof
+  | CsAuthoredPositiveRow | CsRecordPattern | CsText(_) | CsFieldRead(_) => None,
 }
 
 fn prose_line(holds, text) = match find(holds, lines(text)) {
@@ -1530,7 +1519,10 @@ fn census_walk(shape, i, n, acc) with !Mutate = if i >= n {
 fn census_site_at(shape, h) with !Mutate = match shape {
   CsProse(needle) => prose_site(prose_holds(??, needle), h),
   CsProseClass(c) => prose_site(prose_class_holds(c), h),
-  _ => span_of_node_raw(h),
+  CsAnonymous | CsVerb(_) | CsEta | CsEffectfulLambda | CsIterationCostume | CsWildcardZero
+  | CsFailureMask | CsPrintInReport | CsWildcardFabricates | CsWildcardOverSum | CsUnderscoreRetain
+  | CsFlagAsInt | CsParallelArrays | CsVtableRecord | CsEnvFrame | CsDefaultParam | CsDeclaredRowHof
+  | CsAuthoredPositiveRow | CsRecordPattern | CsText(_) | CsFieldRead(_) => span_of_node_raw(h),
 }
 
 // The line the note shows, located: a comment's lines are its source lines
@@ -1568,14 +1560,16 @@ fn site_in(ref acc, ref m: String, ref sp, i) = if i >= len(acc) {
 fn census_matches(shape: CensusShape, h, body: NodeBody) with !Mutate = match shape {
   CsAnonymous => match body {
     NExpr(LambdaExpr(params, lbody)) => lambda_is_written_as_a_mint(params, lbody),
-    _ => false,
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => false,
   },
   CsVerb(k) => match body {
     NExpr(PipeExpr(pk, _, _)) => pk == k,
     // the N-ary carrier IS the `><` site; the kind
     // stays the census key (Hβ.parser.pcompose-nary)
     NExpr(FanoutExpr(_)) => k == PFanout(FanDistribute),
-    _ => false,
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => false,
   },
   CsEta => match body {
     NExpr(LambdaExpr(params, lbody)) => lambda_is_eta(params, lbody),
@@ -1589,15 +1583,18 @@ fn census_matches(shape: CensusShape, h, body: NodeBody) with !Mutate = match sh
     // home, deleted by reading, so the link holds the 15. A shape that
     // convicts a spelling the surface wants claims the language is wrong, so
     // a named forwarder is a reader's question, never a count.
-    _ => false,
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => false,
   },
   CsEffectfulLambda => match body {
     NExpr(LambdaExpr(params, lbody)) => lambda_is_written_as_a_mint(params, lbody) && !lambda_is_eta(params, lbody) && lambda_carries_row(h),
-    _ => false,
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => false,
   },
   CsIterationCostume => match body {
     NStmt(FnStmt(_, _, _, _, _)) => recursion_shape_of(h),
-    _ => false,
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => false,
   },
   // Drift mode 10's shape (the 5.6 absorption's first instance —
   // the detector moves from bash grep into the weave): a match arm
@@ -1608,7 +1605,8 @@ fn census_matches(shape: CensusShape, h, body: NodeBody) with !Mutate = match sh
   // exactly as the bash mode's suppression comment encoded it.
   CsWildcardZero => match body {
     NExpr(MatchExpr(_, arms)) => any_wildcard_zero(arms, 0, len(arms)),
-    _ => false,
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => false,
   },
   // Drift mode 13's shape (the second absorption): `expr || true`
   // — a failure masked into unconditional success. The census counts
@@ -1618,11 +1616,13 @@ fn census_matches(shape: CensusShape, h, body: NodeBody) with !Mutate = match sh
     NExpr(BinOpExpr(op, _, r)) => match op {
       BOr => match graph_node_body(r) {
         NExpr(LitBool(v)) => v,
-        _ => false,
+        NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+        | NRow(_) | NParam(_) => false,
       },
-      _ => false,
+      BAdd | BSub | BMul | BDiv | BMod | BEq | BNe | BLt | BGt | BLe | BGe | BAnd | BConcat => false,
     },
-    _ => false,
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => false,
   },
   // Drift mode 16's shape (the third absorption): a `report(...)`
   // call whose argument subtree calls the print family — the class
@@ -1632,9 +1632,11 @@ fn census_matches(shape: CensusShape, h, body: NodeBody) with !Mutate = match sh
   CsPrintInReport => match body {
     NExpr(CallExpr(callee, args)) => match graph_node_body(callee) {
       NExpr(VarRef(cn)) => if cn == "report" { any_subtree_prints(args, 0, len(args)) } else { false },
-      _ => false,
+      NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+      | NRow(_) | NParam(_) => false,
     },
-    _ => false,
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => false,
   },
   // Drift mode 10's TYPED fabrications (the fourth absorption):
   // a wildcard arm whose body mints a Scheme (Forall), a fresh type
@@ -1645,17 +1647,15 @@ fn census_matches(shape: CensusShape, h, body: NodeBody) with !Mutate = match sh
   // CsPrintInReport keys on the print family.
   CsWildcardFabricates => match body {
     NExpr(MatchExpr(_, arms)) => any_wildcard_fabricates(arms, 0, len(arms)),
-    _ => false,
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => false,
   },
   // Drift mode 10 at the arm itself (Morgan, 2026-10-13): a `_` or a bare
   // binder over a SUM swallows the constructors the arms before it leave,
-  // and a constructor declared later joins it unread. The site is the
-  // match; its note is the roster the arm stands for, as the pattern
-  // `mentl tighten` writes in its place (`catch_all_arm`, src/infer.mn).
-  CsWildcardOverSum => match catch_all_of(body) {
-    Some(_) => true,
-    None => false,
-  },
+  // and a constructor declared later joins it unread. The judgment refuses
+  // the shape (E_CatchAllOverSum), so its sites are the refusals, read off
+  // the bank (`census_noted`), and no node is convicted here.
+  CsWildcardOverSum => false,
   // Drift mode 15's shape (the fifth absorption): a let whose
   // binder KEEPS a leading underscore — an unused value renamed
   // instead of deleted. A bare `_` is PWild at parse, so any PVar
@@ -1664,9 +1664,10 @@ fn census_matches(shape: CensusShape, h, body: NodeBody) with !Mutate = match sh
   CsUnderscoreRetain => match body {
     NStmt(LetStmt(p, _, _)) => match pat_of(p) {
       PVar(name) => starts_with(name, "_"),
-      _ => false,
+      PWild | PLit(_) | PCon(_, _) | PTuple(_) | PList(_, _) | PRecord(_, _) | PAlt(_) | PAs(_, _) => false,
     },
-    _ => false,
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => false,
   },
   // Drift mode 8's shape (the sixth absorption): a flag compared
   // as an integer — `mode == 0`, `token_kind == 2`, `scheme_kind == 1`
@@ -1677,9 +1678,10 @@ fn census_matches(shape: CensusShape, h, body: NodeBody) with !Mutate = match sh
   CsFlagAsInt => match body {
     NExpr(BinOpExpr(op, l, r)) => match op {
       BEq => flag_int_compare(l, r) || flag_int_compare(r, l),
-      _ => false,
+      BAdd | BSub | BMul | BDiv | BMod | BNe | BLt | BGt | BLe | BGe | BAnd | BOr | BConcat => false,
     },
-    _ => false,
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => false,
   },
   // Drift mode 7's shape (the seventh absorption): parallel
   // arrays where one record was native, in its TWO faces. The let-tuple
@@ -1697,14 +1699,15 @@ fn census_matches(shape: CensusShape, h, body: NodeBody) with !Mutate = match sh
       match list_index(arms, 0) {
         (p, _) => match pat_of(p) {
           PTuple(elems) => paired_handle_binders(elems),
-          _ => false,
+          PVar(_) | PWild | PLit(_) | PCon(_, _) | PList(_, _) | PRecord(_, _) | PAlt(_) | PAs(_, _) => false,
         },
       }
     } else {
       false
     },
     NStmt(FnStmt(_, params, _, _, _)) => adjacent_handle_params(params |> map(param_binder)),
-    _ => false,
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => false,
   },
   // Drift mode 1's shape (the eighth absorption): a record
   // literal with a field NAMED like a dispatch slot (fn_* / handler_*)
@@ -1717,7 +1720,8 @@ fn census_matches(shape: CensusShape, h, body: NodeBody) with !Mutate = match sh
   CsVtableRecord => match body {
     NExpr(MakeRecordExpr(flds)) => any_vtable_field(flds, 0, len(flds)),
     NExpr(NamedRecordExpr(_, flds)) => any_vtable_field(flds, 0, len(flds)),
-    _ => false,
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => false,
   },
   // Drift mode 2's shape (the tenth absorption): the
   // scope-as-frame-stack family — parent_env / env_stack / push_frame /
@@ -1731,9 +1735,10 @@ fn census_matches(shape: CensusShape, h, body: NodeBody) with !Mutate = match sh
     NExpr(VarRef(name)) => env_frame_name(name),
     NStmt(LetStmt(p, _, _)) => match pat_of(p) {
       PVar(name) => env_frame_name(name),
-      _ => false,
+      PWild | PLit(_) | PCon(_, _) | PTuple(_) | PList(_, _) | PRecord(_, _) | PAlt(_) | PAs(_, _) => false,
     },
-    _ => false,
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => false,
   },
   // The declared surface read from the carrier that already holds it:
   // a default is TParam slot 4, an Option(Node) the parser fills at the
@@ -1750,7 +1755,8 @@ fn census_matches(shape: CensusShape, h, body: NodeBody) with !Mutate = match sh
       },
       params
     ),
-    _ => false,
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => false,
   },
   // The population `Hβ.infer.declared-row-vacuous-against-a-free-body-row`
   // needs priced before its fix is built: a fn that DECLARES a row and
@@ -1763,7 +1769,8 @@ fn census_matches(shape: CensusShape, h, body: NodeBody) with !Mutate = match sh
   // tree edge walked to the callee's VarRef.
   CsDeclaredRowHof => match body {
     NStmt(FnStmt(_, params, _, effs, fbody)) => if len(effs) == 0 { false } else { subtree_calls_param(fbody, map(param_binder, params), 64) },
-    _ => false,
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => false,
   },
   // The declared clauses are `FnStmt`'s own field — the row is read where
   // the signature holds it, never re-parsed from the page. A term is
@@ -1771,7 +1778,8 @@ fn census_matches(shape: CensusShape, h, body: NodeBody) with !Mutate = match sh
   // negation, an instance pin and Pure are decisions and are not.
   CsAuthoredPositiveRow => match body {
     NStmt(FnStmt(_, _, _, effs, _)) => any(term_is_bare_positive, effs),
-    _ => false,
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => false,
   },
   // Both spellings of one shape, read where the pattern lives: a
   // let-binding's own pattern and a match arm's. The emit reads a record
@@ -1781,20 +1789,23 @@ fn census_matches(shape: CensusShape, h, body: NodeBody) with !Mutate = match sh
   CsRecordPattern => match body {
     NStmt(LetStmt(p, _, _)) => match pat_of(p) {
       PRecord(_, _) => true,
-      _ => false,
+      PVar(_) | PWild | PLit(_) | PCon(_, _) | PTuple(_) | PList(_, _) | PAlt(_) | PAs(_, _) => false,
     },
     NExpr(MatchExpr(_, arms)) => any_record_arm(arms, 0, len(arms)),
-    _ => false,
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => false,
   },
   CsText(needle) => match body {
     NExpr(LitString(s)) => str_contains(s, needle),
-    _ => false,
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => false,
   },
   CsProse(needle) => prose_holds(graph_comment_at(h), needle),
   CsProseClass(c) => prose_class_holds(c, graph_comment_at(h)),
   CsFieldRead(f) => match body {
     NExpr(FieldExpr(_, name)) => name == f,
-    _ => false,
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => false,
   },
 }
 
@@ -1931,7 +1942,7 @@ fn any_record_arm(arms, i, n) = if i >= n {
   match list_index(arms, i) {
     (p, _) => match pat_of(p) {
       PRecord(_, _) => true,
-      _ => any_record_arm(arms, i + 1, n),
+      PVar(_) | PWild | PLit(_) | PCon(_, _) | PTuple(_) | PList(_, _) | PAlt(_) | PAs(_, _) => any_record_arm(arms, i + 1, n),
     },
   }
 }
@@ -1948,7 +1959,8 @@ fn any_vtable_field(flds, i, n) with !Mutate = if i >= n {
     (fname, fval) => if starts_with(fname, "fn_") || starts_with(fname, "handler_") {
       match graph_node_body(fval) {
         NExpr(LambdaExpr(_, _)) => true,
-        _ => any_vtable_field(flds, i + 1, n),
+        NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+        | NRow(_) | NParam(_) => any_vtable_field(flds, i + 1, n),
       }
     } else {
       any_vtable_field(flds, i + 1, n)
@@ -1978,12 +1990,14 @@ fn flag_int_compare(a, b) = match graph_node_body(a) {
   NExpr(VarRef(n)) => if n == "mode" || n == "token_kind" || n == "scheme_kind" {
     match graph_node_body(b) {
       NExpr(LitInt(_)) => true,
-      _ => false,
+      NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+      | NRow(_) | NParam(_) => false,
     }
   } else {
     false
   },
-  _ => false,
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => false,
 }
 
 fn any_subtree_prints(nodes, i, n) with !Mutate = if i >= n {
@@ -1999,9 +2013,11 @@ fn subtree_prints(h, fuel) with !Mutate = if fuel <= 0 {
   let here = match body {
     NExpr(CallExpr(callee, _)) => match graph_node_body(callee) {
       NExpr(VarRef(cn)) => cn == "println" || cn == "print" || cn == "print_string",
-      _ => false,
+      NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+      | NRow(_) | NParam(_) => false,
     },
-    _ => false,
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => false,
   }
   if here { true } else { subtree_prints_children(body_child_handles(body), fuel - 1) }
 }
@@ -2022,9 +2038,11 @@ fn subtree_calls_param(h, pnames, fuel) with !Mutate = if fuel <= 0 {
   let here = match body {
     NExpr(CallExpr(callee, _)) => match graph_node_body(callee) {
       NExpr(VarRef(cn)) => set_contains(pnames, cn),
-      _ => false,
+      NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+      | NRow(_) | NParam(_) => false,
     },
-    _ => false,
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => false,
   }
   if here { true } else { subtree_calls_param_children(body_child_handles(body), pnames, fuel - 1) }
 }
@@ -2099,9 +2117,10 @@ fn any_wildcard_zero(arms, i, n) = if i >= n {
     (p, b) => match pat_of(p) {
       PWild => match graph_node_body(b) {
         NExpr(LitInt(0)) => true,
-        _ => any_wildcard_zero(arms, i + 1, n),
+        NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+        | NRow(_) | NParam(_) => any_wildcard_zero(arms, i + 1, n),
       },
-      _ => any_wildcard_zero(arms, i + 1, n),
+      PVar(_) | PLit(_) | PCon(_, _) | PTuple(_) | PList(_, _) | PRecord(_, _) | PAlt(_) | PAs(_, _) => any_wildcard_zero(arms, i + 1, n),
     },
   }
 }
@@ -2112,7 +2131,7 @@ fn any_wildcard_fabricates(arms, i, n) = if i >= n {
   match list_index(arms, i) {
     (p, b) => match pat_of(p) {
       PWild => if wildcard_body_fabricates(b) { true } else { any_wildcard_fabricates(arms, i + 1, n) },
-      _ => any_wildcard_fabricates(arms, i + 1, n),
+      PVar(_) | PLit(_) | PCon(_, _) | PTuple(_) | PList(_, _) | PRecord(_, _) | PAlt(_) | PAs(_, _) => any_wildcard_fabricates(arms, i + 1, n),
     },
   }
 }
@@ -2122,9 +2141,11 @@ fn wildcard_body_fabricates(b) = match graph_node_body(b) {
   NExpr(LitString(s)) => s == "" || s == "Pure",
   NExpr(CallExpr(callee, _)) => match graph_node_body(callee) {
     NExpr(VarRef(cn)) => cn == "Forall" || cn == "TVar",
-    _ => false,
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => false,
   },
-  _ => false,
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => false,
 }
 
 // The one total child projection over NodeBody — `body_child_handles` and
@@ -2151,7 +2172,8 @@ fn wildcard_body_fabricates(b) = match graph_node_body(b) {
 // incremented counter, so derived-fold-shaped recursion never fires).
 fn recursion_shape_of(fn_handle) = match graph_node_body(fn_handle) {
   NStmt(FnStmt(name, params, _, _, body)) => self_call_increments(body, name, params |> map(param_binder)),
-  _ => false,
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => false,
 }
 
 // ── the verb-shape read — the topology the bindings already draw ─────
@@ -2169,7 +2191,8 @@ fn recursion_shape_of(fn_handle) = match graph_node_body(fn_handle) {
 // not the name — the false arm is the predicate's definition).
 fn body_is_var(body, name: String) with Pure = match body {
   NExpr(VarRef(n)) => n == name,
-  _ => false,
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => false,
 }
 
 // count_var_uses — VarRef occurrences of `name` in the subtree at h.
@@ -2210,7 +2233,8 @@ fn chain_links(nodes) = if len(nodes) < 2 {
       PVar(name) => let_feeds_next(name, nodes, i),
       PWild | PLit(_) | PCon(_, _) | PTuple(_) | PList(_, _) | PRecord(_, _) | PAlt(_) | PAs(_, _) => false,
     },
-    _ => false,
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => false,
   })
 }
 
@@ -2229,9 +2253,11 @@ fn rest_uses(name: String, nodes, j) =
 fn pipe_shape_of(fn_handle) = match graph_node_body(fn_handle) {
   NStmt(FnStmt(_, _, _, _, body)) => match graph_node_body(body) {
     NExpr(BlockExpr(stmts, fin)) => chain_scan(stmts ++ [fin]),
-    _ => [],
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => [],
   },
-  _ => [],
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => [],
 }
 
 // ── the anonymity read — the named stage in hiding ───────────────────
@@ -2248,14 +2274,16 @@ fn pipe_shape_of(fn_handle) = match graph_node_body(fn_handle) {
 // escape-bit lands, the read speaks the two classes it can prove.
 fn anonymity_shape_of(fn_handle) with !Mutate = match graph_node_body(fn_handle) {
   NStmt(FnStmt(_, _, _, _, body)) => lambda_shapes(body, (0, 0)),
-  _ => (0, 0),
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => (0, 0),
 }
 
 fn lambda_shapes(h, acc) with !Mutate = {
   let body = graph_node_body(h)
   let here = match body {
     NExpr(LambdaExpr(params, lbody)) => classify_lambda(h, params, lbody, acc),
-    _ => acc,
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => acc,
   }
   body_child_handles(body) |> fold(here, (a, c) => lambda_shapes(c, a))
 }
@@ -2274,27 +2302,32 @@ fn self_call_increments(h, name: String, pnames) = {
   let body = graph_node_body(h)
   let here = match body {
     NExpr(CallExpr(callee, args)) => callee_names(callee, name) && (args |> any((a) => arg_is_increment(a, pnames))),
-    _ => false,
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => false,
   }
   here || (body_child_handles(body) |> any((c) => self_call_increments(c, name, pnames)))
 }
 
 fn callee_names(callee, name: String) = match graph_node_body(callee) {
   NExpr(VarRef(n)) => n == name,
-  _ => false,
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => false,
 }
 
 fn arg_is_increment(arg, pnames) = match graph_node_body(arg) {
   NExpr(BinOpExpr(BAdd, l, r)) => param_plus_one(l, r, pnames) || param_plus_one(r, l, pnames),
-  _ => false,
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => false,
 }
 
 fn param_plus_one(a, b, pnames) = match graph_node_body(a) {
   NExpr(VarRef(n)) => string_in_list(pnames, n) && match graph_node_body(b) {
     NExpr(LitInt(1)) => true,
-    _ => false,
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => false,
   },
-  _ => false,
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => false,
 }
 
 // THE ANONYMITY CENSUS COUNTS A REFERENCE WRITTEN AS A MINT, and this
@@ -2324,9 +2357,11 @@ fn lambda_is_eta(params, lbody) = match graph_node_body(lbody) {
       let pnames = params |> map(param_binder)
       !string_in_list(pnames, g) && args_mirror_params(args, pnames)
     },
-    _ => false,
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => false,
   },
-  _ => false,
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => false,
 }
 
 fn args_mirror_params(args, pnames) =
@@ -2334,7 +2369,8 @@ fn args_mirror_params(args, pnames) =
 
 fn arg_is_var(a, n: String) = match graph_node_body(a) {
   NExpr(VarRef(v)) => v == n,
-  _ => false,
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => false,
 }
 
 // A lambda that PERFORMS: its judged TFun row resolves to present
@@ -2346,7 +2382,7 @@ fn lambda_carries_row(h) with !Mutate = match graph_chase(h) {
   GNode(NBound(TFun(_, _, row)), _) => match resolve_row(row) {
     EfRow(present, _, _) => len(present) > 0,
   },
-  _ => false,
+  GNode(_, _) => false,
 }
 
 // ── the where projection — derived badges (Hβ.cli.where-verb) ────────
@@ -2391,7 +2427,7 @@ fn type_level_lines(h) with !Mutate = match graph_node_body(h) {
     ExprStmt(_) => [],
     ImportStmt(_) => [],
   },
-  _ => [],
+  NExpr(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => [],
 }
 
 // THE HEAD ROUND TRIP — `parse(render(head)) == head`, for every function
@@ -2410,7 +2446,8 @@ fn head_round_trip() = {
 
 fn fn_decl_of(h) = match graph_node_body(h) {
   NStmt(FnStmt(name, params, retty, effs, body)) => [(name, params, retty, effs, body)],
-  _ => [],
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => [],
 }
 
 fn head_failures(decl) = match decl {
@@ -2419,7 +2456,8 @@ fn head_failures(decl) = match decl {
     let eye = match env_lookup(name) {
       Some((sch, _, _)) => match chase_type_deep(judgment_ty(sch)) {
         TFun(ps, ret, row) => "fn {show_head(name, ps, ret, row)} =",
-        _ => authored,
+        TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TVar(_) | TName(_, _) | TRecord(_)
+        | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => authored,
       },
       None => authored,
     }
@@ -2434,7 +2472,7 @@ fn round_trip_failure(face: String, head: String) = match sole_decl_body("{head}
     let back = render_fn_head(n, ps, graph_node_body(r), es)
     if back == head { [] } else { ["{face}: {head}  ⇢  {back}"] }
   },
-  _ => ["{face}: {head}  ⇢  does not parse as one declaration"],
+  None | Some(_) => ["{face}: {head}  ⇢  does not parse as one declaration"],
 }
 
 // The body of a parse that is exactly one statement.
@@ -2476,11 +2514,14 @@ fn value_where(name: String, scope: String) with !Mutate = match env_lookup(name
         ],
         []
       ),
-      _ => {
+      FnScheme | ConstructorScheme(_, _) | RecordSchemeKind(_) | EffectDeclKind(_, _)
+      | HandlerKind(_, _, _, _, _) | ParamScheme(_) | RowAliasKind(_) | TypeVariants(_)
+      | HandlerChainKind(_) | ValueScheme | PrimitiveKind(_) => {
         let ty = judgment_ty(scheme)
         match chase_type_deep(ty) {
           TFun(params, ret, row) => decl_badges(name, params, ret, row),
-          _ => QRWhere([value_badge(name, ty) ~> var_names], []),
+          TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TVar(_) | TName(_, _) | TRecord(_)
+          | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => QRWhere([value_badge(name, ty) ~> var_names], []),
         }
       },
     },
@@ -2507,7 +2548,9 @@ fn decl_badges(name: String, params, ret, row) with !Mutate = {
 // The result's badge; a unit result has none, as its head writes no arrow.
 fn ret_badge(ret) with !Mutate = match chase_ret(ret) {
   TUnit => [],
-  _ => ["-> {value_type(ret)} @ {width_badge(ret)}"],
+  TInt | TFloat | TByte | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TVar(_) | TName(_, _)
+  | TRecord(_) | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _)
+  | TAlias(_, _) | TValue(_) => ["-> {value_type(ret)} @ {width_badge(ret)}"],
 }
 
 // A site whose own frame installs no schedule runs under the one its
@@ -2547,7 +2590,8 @@ fn effect_address(ename: String) with !Mutate = match find(declares_effect(ename
 
 fn declares_effect(ename: String, h) = match graph_node_body(h) {
   NStmt(EffectDeclStmt(n, _, _)) => n == ename,
-  _ => false,
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => false,
 }
 
 fn param_badge(p) with !Mutate = value_badge(param_name(p), param_ty(p))
@@ -2559,7 +2603,11 @@ fn value_badge(name: String, ty) with !Mutate = "{name} : {value_type(ty)} @ {wi
 
 fn value_type(ty) with !Mutate = match chase_type_deep(ty) {
   TReprPin(_, base) => render_ty(base),
-  shown => render_ty(shown),
+  shown @ (
+    TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TVar(_)
+    | TName(_, _) | TRecord(_) | TRecordOpen(_, _) | TRefined(_, _) | TCont(_, _, _, _) | TAlias(_, _)
+    | TValue(_)
+  ) => render_ty(shown),
 }
 
 // A width as the gradient settled it. A type that is still a variable has
@@ -2568,7 +2616,11 @@ fn value_type(ty) with !Mutate = match chase_type_deep(ty) {
 // what any caller runs.
 fn width_badge(ty) with !Mutate = match chase_type_deep(ty) {
   TVar(_) => "per instantiation",
-  chased => known_width(chased),
+  chased @ (
+    TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TName(_, _)
+    | TRecord(_) | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _)
+    | TAlias(_, _) | TValue(_)
+  ) => known_width(chased),
 }
 
 fn known_width(ty) with !Mutate = "{repr_name(repr_of(ty))} ({pin_word(ty_has_repr_pin(ty))})"
@@ -2579,7 +2631,8 @@ fn known_width(ty) with !Mutate = "{repr_name(repr_of(ty))} ({pin_word(ty_has_re
 fn decl_body(decl) with !Mutate = match decl {
   Some(h) => match graph_node_body(h) {
     NStmt(FnStmt(_, _, _, _, body)) => [body],
-    _ => [],
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => [],
   },
   None => [],
 }
@@ -2618,7 +2671,8 @@ fn spelled_reads(name: String, scope: String) with !Mutate = match graph_snapsho
 fn spelled_in(name: String, scope: String, entry) with !Mutate = match entry {
   (_, h) => match graph_node_body(h) {
     NExpr(VarRef(n)) => n == name && graph_node_current(h) && read_in(scope, h),
-    _ => false,
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => false,
   },
 }
 
@@ -2657,7 +2711,9 @@ fn read_of(b, read) = match read {
 fn is_ctor_of(kind, scheme, type_name) = match kind {
   ConstructorScheme(_, _) => scheme_result_is(type_name, judgment_ty(scheme)),
   EffectOpScheme(owner, _, _) => owner == type_name,
-  _ => false,
+  FnScheme | RecordSchemeKind(_) | EffectDeclKind(_, _) | HandlerKind(_, _, _, _, _)
+  | ParamScheme(_) | RowAliasKind(_) | TypeVariants(_) | HandlerChainKind(_) | ValueScheme
+  | PrimitiveKind(_) => false,
 }
 
 // Stage Law: the type name is configuration, the candidate result type is
@@ -2665,7 +2721,8 @@ fn is_ctor_of(kind, scheme, type_name) = match kind {
 fn scheme_result_is(type_name, ty) with Pure = match ty {
   TName(n, _) => n == type_name,
   TFun(_, ret, _) => scheme_result_is(type_name, ret),
-  _ => false,
+  TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TVar(_) | TRecord(_)
+  | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => false,
 }
 
 fn variants_of(tname: String) = match env_snapshot() {
@@ -2694,13 +2751,17 @@ fn variant_lines(entries, tname: String, i, n, acc) = if i >= n {
 
 fn ctor_arity(scheme) = match judgment_ty(scheme) {
   TFun(params, _, _) => len(params),
-  // drift-audit: ignore — the arity of any non-TFun scheme IS zero (a value takes no params); a true total answer, not a masked case
-  _ => 0,
+  // A scheme that is no function takes no parameters.
+  TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TVar(_) | TName(_, _) | TRecord(_)
+  | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => 0,
 }
 
 fn op_resume_ty(scheme) with !Mutate = match chase_type_deep(judgment_ty(scheme)) {
   TFun(_, ret, _) => show_type(ret),
-  other => show_type(other),
+  other @ (
+    TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TVar(_) | TName(_, _) | TRecord(_)
+    | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_)
+  ) => show_type(other),
 }
 
 // SYNTAX §«Resume discipline»: ->1 one-shot, ->* multi-shot; ->0 is
@@ -2728,7 +2789,8 @@ fn ty_has_repr_pin(ty) with Pure = match ty {
   TReprPin(_, _) => true,
   TAlias(_, base) => ty_has_repr_pin(base),
   TRefined(base, _) => ty_has_repr_pin(base),
-  _ => false,
+  TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TVar(_)
+  | TName(_, _) | TRecord(_) | TRecordOpen(_, _) | TCont(_, _, _, _) | TValue(_) => false,
 }
 
 // The fanout sites of a body, each with the schedule its own frame
@@ -2748,7 +2810,8 @@ fn fanout_sites(h, tees) with !Mutate = {
     },
     NExpr(LambdaExpr(_, lb)) => fanout_sites(lb, []),
     NStmt(FnStmt(_, _, _, _, fb)) => fanout_sites(fb, []),
-    _ => child_sites(body, tees),
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => child_sites(body, tees),
   }
 }
 
@@ -2783,7 +2846,8 @@ fn demanded_vias(decl: Int) with !Mutate = {
 // edge reaches, paired with the fn whose frame holds the install.
 fn decl_seeds(acc, h) with !Mutate = match graph_node_body(h) {
   NStmt(FnStmt(_, _, _, _, body)) => extent_calls(body, [], h, acc),
-  _ => acc,
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => acc,
 }
 
 fn extent_calls(h, tees, via: Int, acc) with !Mutate = {
@@ -2793,7 +2857,8 @@ fn extent_calls(h, tees, via: Int, acc) with !Mutate = {
     NExpr(CallExpr(f, _)) => fold(seed_call(acc, f, tees, via), extent_calls_step(tees, via), body_child_handles(body)),
     NExpr(LambdaExpr(_, _)) => acc,
     NStmt(FnStmt(_, _, _, _, _)) => acc,
-    _ => fold(acc, extent_calls_step(tees, via), body_child_handles(body)),
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => fold(acc, extent_calls_step(tees, via), body_child_handles(body)),
   }
 }
 
@@ -2855,7 +2920,8 @@ fn direct_callees(decl: Int) with !Mutate = match graph_node_body(decl) {
   NStmt(FnStmt(_, _, _, _, body)) => match fanout_fact((false, []), body) {
     (_, callees) => callees,
   },
-  _ => [],
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => [],
 }
 
 // The capability-at-tee projection (§11 6.3's felt face): every `~>`
@@ -2866,7 +2932,8 @@ fn tee_lines(h) with !Mutate = {
   let body = graph_node_body(h)
   match body {
     NExpr(PipeExpr(PTee, l, r)) => tee_line(h, r) ++ tee_lines(l),
-    _ => body_child_handles(body) |> flat_map(tee_lines),
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => body_child_handles(body) |> flat_map(tee_lines),
   }
 }
 
@@ -2963,16 +3030,19 @@ fn env_read_demand(c) = match graph_node_body(c) {
     } else {
       None
     },
-    _ => None,
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => None,
   },
-  _ => None,
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => None,
 }
 
 // The first argument's text, when the call writes it as a string literal.
 fn literal_first_arg(args) = match args {
   [a, ..._] => match graph_node_body(a) {
     NExpr(LitString(s)) => Some(s),
-    _ => None,
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => None,
   },
   [] => None,
 }
@@ -2995,7 +3065,8 @@ fn serving_up(en: String, child, parent, seen) = match parent {
       } else {
         graph_applies_of(child) |> unique |> flat_map(serving_installs(en, ??, push(seen, child)))
       },
-      _ => [],
+      NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+      | NRow(_) | NParam(_) => [],
     },
     NExpr(PipeExpr(PTee, l, r)) => match tee_handler_decl(r) {
       Some(d) => if l == child && handler_answers_effect(d, en) {
@@ -3005,7 +3076,7 @@ fn serving_up(en: String, child, parent, seen) = match parent {
       },
       None => serving_up(en, p, graph_parent_of(p), seen),
     },
-    _ => serving_up(en, p, graph_parent_of(p), seen),
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => serving_up(en, p, graph_parent_of(p), seen),
   },
 }
 
@@ -3100,7 +3171,8 @@ fn inner_decl_names(body) = match body {
   NStmt(TypeDefStmt(_, variants)) => map(variant_name, variants),
   NStmt(EffectDeclStmt(_, _, ops)) => map(op_decl_name, ops),
   NStmt(HandlerDeclStmt(_, _, _, states, _, _)) => map(state_field_name, states),
-  _ => [],
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => [],
 }
 
 fn variant_name(v) = match v {
@@ -3123,7 +3195,8 @@ fn handlers_providing_op(op_name: String) with !Mutate =
 
 fn arms_for_op(op_name: String, h) with !Mutate = match graph_node_body(h) {
   NStmt(HandlerDeclStmt(hname, _, _, _, arms, _)) => arms |> filter(arm_answers(op_name, ??)) |> map(arm_site(hname, ??)),
-  _ => [],
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => [],
 }
 
 fn arm_answers(op_name: String, arm) = handler_arm_op_name(arm) == op_name
@@ -3142,7 +3215,8 @@ fn state_write_lines(field: String) with !Mutate =
 
 fn field_write_lines(field: String, h) with !Mutate = match graph_node_body(h) {
   NStmt(HandlerDeclStmt(hname, _, _, states, _, _)) => states |> filter(state_named(field, ??)) |> flat_map(state_writes(hname, ??)),
-  _ => [],
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => [],
 }
 
 fn state_named(field: String, st) = state_field_name(st) == field
@@ -3151,7 +3225,7 @@ fn state_writes(hname: String, st) with !Mutate = match graph_binder_of(st.init)
   Some(StateFact(f)) => [
     "{hname}.{state_field_name(st)}: {int_to_str(len(f.writes))} write(s), {int_to_str(len(f.stores))} in-place store(s)"
   ] ++ map(write_line, f.writes) ++ map(store_line, f.stores),
-  _ => ["{hname}.{state_field_name(st)}: no writers noted — the handler was never judged"],
+  None | Some(_) => ["{hname}.{state_field_name(st)}: no writers noted — the handler was never judged"],
 }
 
 fn write_line(w) with !Mutate =
@@ -3174,7 +3248,8 @@ fn name_at_span(span) with !Mutate = match graph_snapshot() {
     None => None,
     Some(handle) => match graph_node_body(handle) {
       NExpr(VarRef(name)) => Some(name),
-      _ => None,
+      NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+      | NRow(_) | NParam(_) => None,
     },
   },
 }
@@ -3188,7 +3263,11 @@ fn defining_span_of(name) with !Mutate = match env_lookup(name) {
   Some(entry) => match entry {
     (_, reason, _) => match reason {
       Located(sp, _) => Some(sp),
-      _ => None,
+      Declared(_) | Inferred(_) | Fresh(_) | OpConstraint(_, _, _) | VarLookup(_, _) | FnReturn(_, _)
+      | FnParam(_, _, _) | MatchBranch(_, _) | ListElement(_) | IfBranch(_) | LetBinding(_, _)
+      | Unified(_, _) | Instantiation(_, _) | Placeholder(_) | MissingVar(_) | Refinement(_, _)
+      | InferredCallReturn(_, _) | InferredPipeResult(_, _) | DefaultReason(_, _) | Accepted(_, _, _)
+      | EffectEnters(_, _, _) | LabelEnters(_, _, _) | ChainInstall(_, _) | StateBinding(_, _) => None,
     },
   },
 }
@@ -3250,11 +3329,18 @@ fn why_expand(reason, depth) = if depth > 20 {
     Fresh(id) => match graph_chase(id) {
       GNode(_, resolved) => match resolved {
         Fresh(_) => reason,
-        _ => why_expand(resolved, depth + 1),
+        Declared(_) | Inferred(_) | OpConstraint(_, _, _) | VarLookup(_, _) | FnReturn(_, _)
+        | FnParam(_, _, _) | MatchBranch(_, _) | ListElement(_) | IfBranch(_) | LetBinding(_, _)
+        | Unified(_, _) | Instantiation(_, _) | Placeholder(_) | MissingVar(_) | Refinement(_, _)
+        | Located(_, _) | InferredCallReturn(_, _) | InferredPipeResult(_, _) | DefaultReason(_, _)
+        | Accepted(_, _, _) | EffectEnters(_, _, _) | LabelEnters(_, _, _) | ChainInstall(_, _)
+        | StateBinding(_, _) => why_expand(resolved, depth + 1),
       },
     },
     EffectEnters(eff, site, next) => EffectEnters(eff, site, why_expand(next, depth + 1)),
-    _ => reason,
+    Declared(_) | Inferred(_) | Placeholder(_) | MissingVar(_) | Refinement(_, _)
+    | InferredCallReturn(_, _) | InferredPipeResult(_, _) | DefaultReason(_, _) | LabelEnters(_, _, _)
+    | ChainInstall(_, _) | StateBinding(_, _) => reason,
   }
 }
 
@@ -3267,7 +3353,11 @@ fn decl_effect_chains(name: String) = match name_decl(name) {
 
 fn chain_enters(e: String, chain) = match chain {
   EffectEnters(eff, _, _) => eff == e,
-  _ => false,
+  Declared(_) | Inferred(_) | Fresh(_) | OpConstraint(_, _, _) | VarLookup(_, _) | FnReturn(_, _)
+  | FnParam(_, _, _) | MatchBranch(_, _) | ListElement(_) | IfBranch(_) | LetBinding(_, _)
+  | Unified(_, _) | Instantiation(_, _) | Placeholder(_) | MissingVar(_) | Refinement(_, _)
+  | Located(_, _) | InferredCallReturn(_, _) | InferredPipeResult(_, _) | DefaultReason(_, _)
+  | Accepted(_, _, _) | LabelEnters(_, _, _) | ChainInstall(_, _) | StateBinding(_, _) => false,
 }
 
 // Fill a typed hole with THE sole proven survivor from the Synth chain,

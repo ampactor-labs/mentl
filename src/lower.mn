@@ -82,7 +82,7 @@ handler arm_state_ctx(fields, disc, hd) {
 // edge the judgment drew when it resolved the install (infer.mn's
 // `install_decl`). None for a handler held by a value — a let, a parameter
 // — which the judgment reads as absorbing nothing, so its install lowers to
-// its body (a value carrying its handler's record is PLAN §11.10).
+// its body (a value carrying its handler's record is PLAN §11.9).
 fn installed_handler(right) = match tee_handler_decl(right) {
   Some(d) => match handler_shape_at(d) {
     Some(_) => Some(d),
@@ -101,7 +101,7 @@ fn multishot_ops_of(hd) = match handler_shape_at(hd) {
     MultiShot => true,
     // M4 — an abandon op needs the driver too: it delivers the arm value on flag-clear (the redrive's existing behaviour IS abandon)
     Abandon => true,
-    _ => false,
+    OneShot => false,
   }) |> map((a) => (handler_arm_op_name(a), handler_arm_arity(a))),
   None => [],
 }
@@ -672,7 +672,14 @@ fn mark_tail(e) = match e {
   LIf(h, cond, then_b, else_b) => LIf(h, cond, mark_tail_last_in(then_b), mark_tail_last_in(else_b)),
   LBlock(h, stmts) => LBlock(h, mark_tail_last_in(stmts)),
   LMatch(h, scrut, arms) => LMatch(h, scrut, mark_tail_arms(arms)),
-  _ => e,
+  LConst(_, _) | LLocal(_, _) | LGlobal(_, _) | LLet(_, _, _) | LUpval(_, _) | LBinOp(_, _, _, _)
+  | LUnaryOp(_, _, _) | LTailCall(_, _, _) | LReturn(_, _) | LMakeClosure(_, _, _)
+  | LYield(_, _, _, _) | LCheck(_, _, _) | LAbandon(_, _, _) | LDeclareFn(_) | LMakeList(_, _)
+  | LMakeTuple(_, _) | LSimdLanes(_, _) | LMakeRecord(_, _) | LRecordUpdate(_, _, _)
+  | LMakeVariant(_, _, _) | LResumeK(_, _, _, _) | LHandleWith(_, _, _, _, _, _) | LDerive(_, _, _)
+  | LArena(_, _) | LFeedback(_, _, _, _, _) | LFeedbackPrior(_) | LPerform(_, _, _)
+  | LFieldLoad(_, _, _) | LPrim(_, _, _) | LStateSlotStore(_, _, _, _) | LStateInit(_, _, _, _)
+  | LShow(_, _) | LHash(_, _) | LInvariantFailure(_, _) | LWasiCall(_, _, _) => e,
 }
 
 // A fanout's forms each stand in the fanout's own position: a sequence
@@ -796,9 +803,17 @@ fn lower_call_default(handle, f, lo_args) = lower_call_of(handle, lower_expr(f),
 fn lower_call_of(handle, lo_f, lo_args) = match lo_f {
   LGlobal(gh, c) => match callee_kind(c) {
     Some(FnScheme) => LDirectCall(handle, gh, c, false, lo_args),
-    _ => LCall(handle, lo_f, lo_args),
+    None | Some(_) => LCall(handle, lo_f, lo_args),
   },
-  _ => LCall(handle, lo_f, lo_args),
+  LConst(_, _) | LLocal(_, _) | LLet(_, _, _) | LUpval(_, _) | LBinOp(_, _, _, _)
+  | LUnaryOp(_, _, _) | LCall(_, _, _) | LTailCall(_, _, _) | LDirectCall(_, _, _, _, _)
+  | LReturn(_, _) | LMakeClosure(_, _, _) | LYield(_, _, _, _) | LCheck(_, _, _) | LAbandon(_, _, _)
+  | LDeclareFn(_) | LIf(_, _, _, _) | LBlock(_, _) | LMakeList(_, _) | LMakeTuple(_, _)
+  | LSimdLanes(_, _) | LFanout(_, _, _, _) | LMakeRecord(_, _) | LRecordUpdate(_, _, _)
+  | LMakeVariant(_, _, _) | LMatch(_, _, _) | LResumeK(_, _, _, _) | LHandleWith(_, _, _, _, _, _)
+  | LDerive(_, _, _) | LArena(_, _) | LFeedback(_, _, _, _, _) | LFeedbackPrior(_) | LPerform(_, _, _)
+  | LFieldLoad(_, _, _) | LPrim(_, _, _) | LStateSlotStore(_, _, _, _) | LStateInit(_, _, _, _)
+  | LShow(_, _) | LHash(_, _) | LInvariantFailure(_, _) | LWasiCall(_, _, _) => LCall(handle, lo_f, lo_args),
 }
 
 // The saturated call's ONE dispatch body — two callers project through it:
@@ -824,7 +839,8 @@ fn lower_call_dispatch(handle, f, fbody, r_args) = {
       },
       (res, local_h) => lower_call_of(handle, lower_resolved_ref(f, name, res, local_h), lo_args),
     },
-    _ => lower_call_default(handle, f, lo_args),
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => lower_call_default(handle, f, lo_args),
   }
 }
 
@@ -918,7 +934,7 @@ fn lower_named_call(handle, fh, name: String, r_args, lo_args) = if name == "to_
     } else {
       lower_perform_dispatch(handle, name, lo_args)
     },
-    _ => lower_call_of(handle, lower_resolved_ref(fh, name, RGlobal, 0), lo_args),
+    None | Some(_) => lower_call_of(handle, lower_resolved_ref(fh, name, RGlobal, 0), lo_args),
   }
 }
 
@@ -959,7 +975,8 @@ fn partial_unfilled(fh, shape) = match shape {
   } else {
     match lookup_ty(fh) {
       TFun(ps, _, _) => Some(len(ps)),
-      _ => None,
+      TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TVar(_) | TName(_, _) | TRecord(_)
+      | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => None,
     }
   },
 }
@@ -997,7 +1014,7 @@ fn partial_split(r_args, open, n_args, n_ps, handle, i, ci) = if i >= n_ps {
         (caps, names, bargs, cells) => (caps, [pn] ++ names, [LLocal(arg, pn)] ++ bargs, [arg] ++ cells),
       }
     },
-    _ => {
+    NExpr(_) | NStmt(_) | NPat(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => {
       let e = lower_expr(arg)
       match partial_split(r_args, open, n_args, n_ps, handle, i + 1, ci + 1) {
         (caps, names, bargs, cells) => ([e] ++ caps, names, [LUpval(lexpr_handle(e), ci)] ++ bargs, cells),
@@ -1044,7 +1061,8 @@ fn partial_callee_form(handle, fbody, fh) = match fbody {
     (RGlobal, _) => partial_global_callee_form(fh, name),
     (res, local_h) => Some(PcfLocal(lower_resolved_ref(fh, name, res, local_h))),
   },
-  _ => None,
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => None,
 }
 
 // A module-scope callee's form, by what its declaration was published as —
@@ -1082,7 +1100,7 @@ fn partial_global_callee_form(fh, name) = if is_substrate_mem_op(name) || is_was
     // nothing left to decline.
     Some(EffectOpScheme(_, _, _)) => Some(PcfPerform(perform_dispatch_of(name, None))),
     Some(PrimitiveKind(p)) => Some(PcfPrim(p)),
-    _ => None,
+    None | Some(_) => None,
   }
 }
 
@@ -1147,7 +1165,8 @@ fn project_lambda_fn(origin, cap_pairs) = match graph_node_body(origin) {
     let lines = ls_exit_frame()
     Some(LFn("lambda_{int_to_str(origin)}", len(params), param_names_list, [lo_body], len(cap_pairs), lines))
   },
-  _ => None,
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => None,
 }
 
 // The nested-fn body projector (landing shape α, second kind): the ONE
@@ -1177,7 +1196,8 @@ fn project_nested_fn(origin, fn_name, cap_pairs) = match graph_node_body(origin)
     let lines = ls_exit_frame()
     Some(LFn(fn_name, len(param_names_list), param_names_list, [lo_body], len(cap_pairs), lines))
   },
-  _ => None,
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => None,
 }
 
 // The thunk body projector (landing shape α, third move — and the
@@ -1217,7 +1237,7 @@ fn share_enclosing_line(line) = match line {
       Some(from) => (h, depth, LhShare(slot, from)),
       None => line,
     },
-    _ => line,
+    LhStatic | LhStaticJvp | LhShare(_, _) => line,
   },
 }
 
@@ -1278,7 +1298,7 @@ fn effects_of_row(row) = match row {
     let inline = row_dispatched_names(eff_names_of(names))
     match t {
       EtOpen(vs) => effects_of_edges(vs, inline, ab),
-      _ => inline,
+      EtClosed | EtAll => inline,
     }
   },
 }
@@ -1316,7 +1336,8 @@ fn may_yield_by(callee_handle, effect_pred) = if !ls_program_may_yield() {
 } else {
   match lookup_ty(callee_handle) {
     TFun(_, _, row) => row_may_yield_by(row, effect_pred),
-    _ => true,
+    TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TVar(_) | TName(_, _) | TRecord(_)
+    | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => true,
   }
 }
 
@@ -1395,7 +1416,8 @@ fn effect_yield_facts(stmts) = flat_map(
   {
     s => match graph_node_body(s) {
       NStmt(EffectDeclStmt(ename, _, _)) => [(ename, (effect_has_op_by(ename, disc_yields), effect_has_op_by(ename, disc_live)))],
-      _ => [],
+      NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+      | NRow(_) | NParam(_) => [],
     },
   },
   stmts
@@ -1443,7 +1465,8 @@ fn handler_ops_where(pred, stmts) = flat_map(
   {
     s => match graph_node_body(s) {
       NStmt(HandlerDeclStmt(_, _, _, _, arms, _)) => if pred(s) { map(handler_arm_op_name, arms) } else { [] },
-      _ => [],
+      NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+      | NRow(_) | NParam(_) => [],
     },
   },
   stmts
@@ -1719,7 +1742,7 @@ fn fanout_schedule(lexical, forms) = match lexical {
   Some(s) => s,
   None => match enc_sched(spec_enc_active()) {
     Seq => Seq,
-    demanded => match forms_lookup(forms, demanded) {
+    demanded @ (Threaded | Simd | Gpu | Persisted) => match forms_lookup(forms, demanded) {
       Some(_) => demanded,
       None => Seq,
     },
@@ -1743,23 +1766,23 @@ fn forms_lookup(forms, s) = match forms {
 fn schedule_eq(a: Schedule, b: Schedule) = match a {
   Seq => match b {
     Seq => true,
-    _ => false,
+    Threaded | Simd | Gpu | Persisted => false,
   },
   Threaded => match b {
     Threaded => true,
-    _ => false,
+    Seq | Simd | Gpu | Persisted => false,
   },
   Simd => match b {
     Simd => true,
-    _ => false,
+    Seq | Threaded | Gpu | Persisted => false,
   },
   Gpu => match b {
     Gpu => true,
-    _ => false,
+    Seq | Threaded | Simd | Persisted => false,
   },
   Persisted => match b {
     Persisted => true,
-    _ => false,
+    Seq | Threaded | Simd | Gpu => false,
   },
 }
 
@@ -1800,7 +1823,7 @@ fn enc_sched(enc: String) = {
 // The enc without its schedule letter — the instantiation alone.
 fn enc_type_part(enc: String) = match enc_sched(enc) {
   Seq => enc,
-  _ => str_slice(enc, 0, byte_len(enc) - 1),
+  Threaded | Simd | Gpu | Persisted => str_slice(enc, 0, byte_len(enc) - 1),
 }
 
 // THE ENC A NESTED RECORD TAKES under a schedule twin. A branch thunk, an
@@ -2018,9 +2041,10 @@ fn expr_diverges(node) = match graph_node_body(node) {
   NExpr(CallExpr(f, _)) => match graph_node_body(f) {
     NExpr(VarRef(_)) => match op_resume_discipline(graph_ref_decl(f)) {
       Abandon => true,
-      _ => false,
+      OneShot | MultiShot => false,
     },
-    _ => false,
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => false,
   },
   NExpr(IfExpr(_, t, e)) => expr_diverges(t) && expr_diverges(e),
   NExpr(MatchExpr(_, arms)) => all_arms_diverge(arms, 0),
@@ -2028,7 +2052,8 @@ fn expr_diverges(node) = match graph_node_body(node) {
     Some(_) => true,
     None => expr_diverges(final),
   },
-  _ => false,
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => false,
 }
 
 fn all_arms_diverge(arms, i) = if i >= len(arms) {
@@ -2055,7 +2080,8 @@ fn first_diverging(stmts, i) = if i >= len(stmts) {
 fn diverging_expr(stmt) = match graph_node_body(stmt) {
   NStmt(ExprStmt(e)) => e,
   NStmt(LetStmt(_, init, _)) => init,
-  _ => stmt,
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => stmt,
 }
 
 // Lexical install wins over the keyed forward (a nested handler shadows the
@@ -2073,7 +2099,7 @@ fn lower_perform_dispatch(handle, op_name, lo_args) = match op_resume_discipline
   // unwinds through the boundary checks (never a bare return, which would
   // skip an install's driver bracket — the M1.3 finding).
   Abandon => LAbandon(handle, op_name, lo_args),
-  _ => lower_perform_walk(handle, op_name, lo_args),
+  OneShot => lower_perform_walk(handle, op_name, lo_args),
 }
 
 // THE ONE WALK, ASKED AT LOWER. It is the same traversal the runtime does —
@@ -2150,7 +2176,9 @@ fn lower_op_default_handler(op_name) = match env_lookup(op_name) {
         [hd] => Some(hd),
         _ => None,
       },
-      _ => None,
+      FnScheme | ConstructorScheme(_, _) | RecordSchemeKind(_) | EffectDeclKind(_, _)
+      | HandlerKind(_, _, _, _, _) | ParamScheme(_) | RowAliasKind(_) | TypeVariants(_)
+      | HandlerChainKind(_) | ValueScheme | PrimitiveKind(_) => None,
     },
   },
   None => None,
@@ -2161,7 +2189,9 @@ fn lookup_parent_effect(op_name) = match env_lookup(op_name) {
   Some(entry) => match entry {
     (_, _, kind) => match kind {
       EffectOpScheme(ename, _, _) => Some(ename),
-      _ => None,
+      FnScheme | ConstructorScheme(_, _) | RecordSchemeKind(_) | EffectDeclKind(_, _)
+      | HandlerKind(_, _, _, _, _) | ParamScheme(_) | RowAliasKind(_) | TypeVariants(_)
+      | HandlerChainKind(_) | ValueScheme | PrimitiveKind(_) => None,
     },
   },
   None => None,
@@ -2200,7 +2230,7 @@ fn lower_expr(handle) = match graph_node_body(handle) {
     if executable_hole(handle) { graph_hole_note(handle) } else { () }
     LConst(handle, LInt(0))
   },
-  _ => {
+  NExpr(_) | NStmt(_) | NPat(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => {
     let canon = egraph_extract(handle)
     let span = graph_span_of(handle)
     match graph_node_body(canon) {
@@ -2335,7 +2365,7 @@ fn lower_expr_body(e, handle, span) = match e {
   BinOpExpr(op, left, right) => match binop_kind(op) {
     BKBool => match op {
       BAnd => LIf(handle, lower_expr(left), [lower_expr(right)], [LConst(handle, LInt(0))]),
-      _ => LIf(handle, lower_expr(left), [LConst(handle, LInt(1))], [lower_expr(right)]),
+      BAdd | BSub | BMul | BDiv | BMod | BEq | BNe | BLt | BGt | BLe | BGe | BOr | BConcat => LIf(handle, lower_expr(left), [LConst(handle, LInt(1))], [lower_expr(right)]),
     },
     BKArith => LBinOp(handle, op, lower_expr(left), lower_expr(right)),
     BKCmp => LBinOp(handle, op, lower_expr(left), lower_expr(right)),
@@ -2608,11 +2638,12 @@ fn stage_global_name(right, rbody) = match rbody {
   NExpr(VarRef(name)) => match ls_resolve(name) {
     (RGlobal, _) => match published_kind(graph_ref_decl(right)) {
       Some(EffectOpScheme(_, _, _)) | Some(FnScheme) => Some(name),
-      _ => None,
+      None | Some(_) => None,
     },
     _ => None,
   },
-  _ => None,
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => None,
 }
 
 fn lower_pipe_stage_value(lo_ls, right, handle, rbody) = {
@@ -2626,22 +2657,26 @@ fn lower_pipe_stage_value(lo_ls, right, handle, rbody) = {
   // hole-bearing call in stage position never mints a partial closure.
   let lo_r = match rbody {
     NExpr(CallExpr(f2, args2)) => lower_call_dispatch(right, f2, graph_node_body(f2), call_product_nodes(right, args2)),
-    _ => lower_expr(right),
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => lower_expr(right),
   }
   let hole_at = match rbody {
     NExpr(CallExpr(_, cargs)) => pipe_hole_index(cargs, 0),
-    _ => -1,
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => -1,
   }
   // The pipe owns its hole: the slot lowered above (the column note
   // fired at the visit) and the splice below consumes it — retract the
   // pending note so a consumed hole never reads as a survival.
   match rbody {
     NExpr(CallExpr(_, cargs2)) => if hole_at >= 0 { graph_hole_unnote(list_index(cargs2, hole_at)) } else { () },
-    _ => (),
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => (),
   }
   let is_partial = match rbody {
     NExpr(CallExpr(f, cargs)) => len(cargs) < callee_arity_of(f),
-    _ => false,
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => false,
   }
   // The completed application is the PIPE's value, so it carries the pipe
   // node's handle, whose type is the stage's result. It carried the
@@ -2681,7 +2716,15 @@ fn lower_pipe_stage_value(lo_ls, right, handle, rbody) = {
     // A bare fn-VALUE stage (`7 |> outer`): the completion call is a call
     // like any other — the callee's performs dispatch through the world
     // chain, and a stage that resumes reads the k its record carries.
-    _ => LCall(handle, lo_r, lo_ls),
+    LConst(_, _) | LLocal(_, _) | LGlobal(_, _) | LLet(_, _, _) | LUpval(_, _) | LBinOp(_, _, _, _)
+    | LUnaryOp(_, _, _) | LTailCall(_, _, _) | LReturn(_, _) | LMakeClosure(_, _, _)
+    | LYield(_, _, _, _) | LCheck(_, _, _) | LAbandon(_, _, _) | LDeclareFn(_) | LIf(_, _, _, _)
+    | LBlock(_, _) | LMakeList(_, _) | LMakeTuple(_, _) | LSimdLanes(_, _) | LFanout(_, _, _, _)
+    | LMakeRecord(_, _) | LRecordUpdate(_, _, _) | LMatch(_, _, _) | LResumeK(_, _, _, _)
+    | LHandleWith(_, _, _, _, _, _) | LDerive(_, _, _) | LArena(_, _) | LFeedback(_, _, _, _, _)
+    | LFeedbackPrior(_) | LPerform(_, _, _) | LFieldLoad(_, _, _) | LPrim(_, _, _)
+    | LStateSlotStore(_, _, _, _) | LStateInit(_, _, _, _) | LShow(_, _) | LHash(_, _)
+    | LInvariantFailure(_, _) | LWasiCall(_, _, _) => LCall(handle, lo_r, lo_ls),
   }
 }
 
@@ -2723,7 +2766,7 @@ fn lower_product_merge(handle, ph, right) = {
 fn bind_destructured_part(pair) = match pair {
   (sub, part_h) => match pat_of(sub) {
     PVar(name) => ls_bind_local(name, part_h),
-    _ => ls_bind_local("__part_{int_to_str(part_h)}", part_h),
+    PWild | PLit(_) | PCon(_, _) | PTuple(_) | PList(_, _) | PRecord(_, _) | PAlt(_) | PAs(_, _) => ls_bind_local("__part_{int_to_str(part_h)}", part_h),
   },
 }
 
@@ -2739,7 +2782,8 @@ fn read_part_reg(pair) = match pair {
 // branch results (the boundary edges inference drew).
 fn part_handles_of(ph) = match graph_node_body(ph) {
   NExpr(MakeTupleExpr(elems)) => elems,
-  _ => match fanout_boundaries(ph) {
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => match fanout_boundaries(ph) {
     Ok(boundaries) => map(boundary_result_handle, boundaries),
     Err(_) => [],
   },
@@ -2753,7 +2797,8 @@ fn boundary_result_handle(edge) = match edge {
 // schedule's business, so its values are built with the form (`fill_product_parts`).
 fn lower_product_parts(ph) = match graph_node_body(ph) {
   NExpr(MakeTupleExpr(elems)) => lower_expr_list(elems),
-  _ => [],
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => [],
 }
 
 // The expression that puts the parts in the registers: plain lets for a tuple
@@ -2763,7 +2808,8 @@ fn fill_product_parts(ph, regs, values) = match graph_node_body(ph) {
   NExpr(MakeTupleExpr(_)) => LBlock(ph, map(bind_part_to_reg, zip(regs, values))),
   NExpr(FanoutExpr(branches)) => lower_fanout_nary_to(ph, branches, FdRegs(regs)),
   NExpr(PipeExpr(PFanout(fan_own), l, r)) => lower_fanout_to(ph, fan_own, l, r, FdRegs(regs)),
-  _ => LInvariantFailure(ph, MissingFanoutBoundary),
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => LInvariantFailure(ph, MissingFanoutBoundary),
 }
 
 fn lower_pipe(kind, left, right, handle) = match kind {
@@ -2886,7 +2932,7 @@ fn pipe_hole_index(args, i) = if i >= len(args) {
 } else {
   match graph_node_body(list_index(args, i)) {
     NHole(_) => i,
-    _ => pipe_hole_index(args, i + 1),
+    NExpr(_) | NStmt(_) | NPat(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => pipe_hole_index(args, i + 1),
   }
 }
 
@@ -2896,7 +2942,8 @@ fn pipe_hole_index(args, i) = if i >= len(args) {
 // diagnostic); the pipe then treats the right side as a saturated stage.
 fn callee_arity_of(f) = match lookup_ty(f) {
   TFun(ps, _, _) => len(ps),
-  _ => -1,
+  TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TVar(_) | TName(_, _) | TRecord(_)
+  | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => -1,
 }
 
 // Replace the completed hole's slot in a lowered args list — the product's
@@ -2957,7 +3004,8 @@ fn extract_handler_config_args(node) = match graph_node_body(node) {
     ProductOf(nodes, _, _) => nodes,
     NoProduct => [],
   },
-  _ => [],
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => [],
 }
 
 // Fanout lowering — ONE path for `<|` and `>< `, discriminated by the
@@ -3125,7 +3173,8 @@ fn fanout_boundary_at(boundaries, i, fallback_h) = if i < len(boundaries) {
 
 fn executable_boundary_row(thunk_h) = match lookup_ty(thunk_h) {
   TFun(_, _, row) => Ok(row),
-  _ => {
+  TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TVar(_) | TName(_, _) | TRecord(_)
+  | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => {
     report_at(thunk_h, EUnresolvedType(thunk_h, graph_epoch(), graph_span_of(thunk_h)))
     Err(UnresolvedBoundaryThunk(thunk_h))
   },
@@ -3188,7 +3237,7 @@ fn threaded_branch_check(branch_h, thunk_row, older_stores) = match lower_fanout
   } else {
     ()
   },
-  _ => (),
+  Seq | Simd | Gpu | Persisted => (),
 }
 
 // Whether the Thread handler the fanout runs under actually SPAWNS: its
@@ -3425,7 +3474,8 @@ fn bind_part_to_reg(pair) = match pair {
 // live continuation does not cross a join: nothing past the thread can hold it.
 fn branch_checked(h, thunk, e) = match lookup_ty(lexpr_handle(thunk)) {
   TFun(_, _, row) => if ls_program_may_yield() && row_may_multishot(row) { LCheck(h, e, None) } else { e },
-  _ => e,
+  TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TVar(_) | TName(_, _) | TRecord(_)
+  | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => e,
 }
 
 fn spawn_let_at(handle, indexed) = match indexed {
@@ -3500,22 +3550,8 @@ fn lower_fanout_seq(handle, fh, f_h, lo_args) = {
   // that function's row, as it reads a syntactic branch's.
   match lookup_ty(f_h) {
     TFun(_, _, f_row) => threaded_branch_check(f_h, f_row, []),
-    TInt
-    | TFloat
-    | TUnit
-    | TByte
-    | TAddr
-    | TList(_)
-    | TTuple(_)
-    | TVar(_)
-    | TName(_, _)
-    | TRecord(_)
-    | TRecordOpen(_, _)
-    | TRefined(_, _)
-    | TCont(_, _, _, _)
-    | TAlias(_, _)
-    | TReprPin(_, _)
-    | TValue(_) => (),
+    TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TVar(_) | TName(_, _) | TRecord(_)
+    | TRecordOpen(_, _) | TRefined(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TReprPin(_, _) | TValue(_) => (),
   }
   let lexical = lower_site_schedule()
   let forms = match lexical {
@@ -3546,7 +3582,7 @@ fn fanout_seq_linked(handle, fh, lo_args, s, impl: String) = {
   let c = vocabulary_callee(impl)
   match callee_kind(c) {
     Some(FnScheme) => [(s, LDirectCall(handle, fh, c, false, lo_args))],
-    _ => [],
+    None | Some(_) => [],
   }
 }
 
@@ -3564,7 +3600,7 @@ fn fanout_seq_impl(handle, fh, lo_args, impl: String) = {
   let c = vocabulary_callee(impl)
   match callee_kind(c) {
     Some(FnScheme) => LDirectCall(handle, fh, c, false, lo_args),
-    _ => LInvariantFailure(handle, SequenceFanoutUnlinked(impl)),
+    None | Some(_) => LInvariantFailure(handle, SequenceFanoutUnlinked(impl)),
   }
 }
 
@@ -3754,7 +3790,11 @@ fn record_full_fields(ty) = match ty {
   } else {
     match lookup_ty(h) {
       TVar(h2) => if h2 == h { None } else { record_full_fields(TVar(h2)) },
-      t => record_full_fields(t),
+      t @ (
+        TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TName(_, _)
+        | TRecord(_) | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _)
+        | TAlias(_, _) | TValue(_)
+      ) => record_full_fields(t),
     }
   },
   TRecord(fields) => Some(fields),
@@ -3763,7 +3803,9 @@ fn record_full_fields(ty) = match ty {
       RowEndClosed => Some(sort_record_type_fields(all)),
       RowEndFree(t) => match lookup_ty(t) {
         TRecord(residual) => Some(sort_record_type_fields(all ++ residual)),
-        _ => None,
+        TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TVar(_)
+        | TName(_, _) | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _)
+        | TAlias(_, _) | TValue(_) => None,
       },
     },
   },
@@ -3826,12 +3868,17 @@ fn slot_ty(ty) = match ty {
   } else {
     match lookup_ty(h) {
       TVar(h2) => if h2 == h { ty } else { slot_ty(TVar(h2)) },
-      t => slot_ty(t),
+      t @ (
+        TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TName(_, _)
+        | TRecord(_) | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _)
+        | TAlias(_, _) | TValue(_)
+      ) => slot_ty(t),
     }
   },
   TAlias(_, inner) => slot_ty(inner),
   TRefined(base, _) => slot_ty(base),
-  _ => ty,
+  TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TName(_, _)
+  | TRecord(_) | TRecordOpen(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TValue(_) => ty,
 }
 
 // v128 lanes want 16-byte alignment for aligned loads/stores; every other
@@ -3842,7 +3889,7 @@ fn align_for(off, r) with Pure = match r {
     let m = off % 16
     if m == 0 { off } else { off + (16 - m) }
   },
-  _ => off,
+  RI32 | RI64 | RF64 | RF32 => off,
 }
 
 // tuple_elem_offset — a tuple IS a positional product (L1); element `i`'s byte
@@ -3886,14 +3933,16 @@ fn lower_run_into(acc, run) = match run {
 fn bind_member(decl) = match graph_node_body(decl) {
   NStmt(FnStmt(name, _, _, _, _)) => [ls_bind_local(name, decl)],
   // a run holds fn declarations only
-  _ => [],
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => [],
 }
 
 fn lower_member_into(acc, member) = match member {
   (decl, reg) => match graph_node_body(decl) {
     NStmt(FnStmt(name, params, _, _, body_node)) => lowered_into(acc, lower_fn_mint(name, params, body_node, decl, reg)),
     // a run holds fn declarations only
-    _ => acc,
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => acc,
   },
 }
 
@@ -3919,7 +3968,7 @@ fn lowered_into(acc, lo) = match acc {
 fn lower_module_init(pat, handle, expr) = {
   let frame_name = match pat_of(pat) {
     PVar(_) => decl_symbol(handle),
-    _ => "init{int_to_str(handle)}",
+    PWild | PLit(_) | PCon(_, _) | PTuple(_) | PList(_, _) | PRecord(_, _) | PAlt(_) | PAs(_, _) => "init{int_to_str(handle)}",
   }
   ls_enter_frame(frame_name, [], [], [], [], -1)
   lower_frame_fence_push()
@@ -3967,7 +4016,7 @@ fn lower_stmt_body(s, handle, span) = match s {
       // whose one pattern walk binds and lowers (`lower_match_arms`). The
       // module's init stores only what one binder names, so at module scope
       // any other pattern is refused.
-      _ => if ls_frame_depth() == 0 { LInvariantFailure(handle, ModuleLetPattern) } else { lo },
+      PWild | PLit(_) | PCon(_, _) | PTuple(_) | PList(_, _) | PRecord(_, _) | PAlt(_) | PAs(_, _) => if ls_frame_depth() == 0 { LInvariantFailure(handle, ModuleLetPattern) } else { lo },
     }
   },
   // Bind the fn's name in the enclosing frame (the fn's handle is the type
@@ -4065,19 +4114,14 @@ fn lower_match_arms(scrut_h, arms) = {
   // elements may be read raw is the emit's question: it depends on the
   // element's width, which only the twin being emitted knows.
   let srep = seq_rep_of(scrut_h)
-  // THE LAST ARM OF AN EXHAUSTIVE MATCH RUNS UNTESTED when its pattern
-  // extracts nothing from a payload: the judgment proved every value the
-  // arms before it leave reaches it, so the roster `mentl tighten` writes in
-  // a catch-all's place costs what the `_` cost — the fixture's WAT is the
-  // same bytes but a handle-numbered local. The proof is re-derived here
-  // from the same matrix the refusal reads (`uncovered`), where one
-  // exhaustiveness fact on the match node would serve both
-  // (`Hβ.match.catch-all-over-a-sum-is-the-roster`).
+  // THE LAST ARM OF A MATCH OF SEVERAL ARMS RUNS UNTESTED when its pattern
+  // extracts nothing from a payload: the judgment refuses every such match a
+  // value escapes (E_PatternInexhaustive), so every value the arms before it
+  // leave reaches it, and a roster costs what the `_` cost. A match of one
+  // arm asserts its shape, and its arm keeps the test the claim's Trap
+  // stands for.
   let n = len(arms)
-  let last_unconditional = match uncovered(flat_map(arm_row, arms), 1) {
-    None => true,
-    Some(_) => false,
-  }
+  let last_unconditional = n > 1
   map(
     {
       (i, arm) => match arm {
@@ -4160,13 +4204,8 @@ fn merge_unconditional(acc, u) = match acc {
       PVar(m) => if m == n { Some(PVar(n)) } else { None },
       PLit(_) | PCon(_, _) | PTuple(_) | PList(_, _) | PRecord(_, _) | PAlt(_) | PAs(_, _) => None,
     },
-    Some(PLit(_))
-    | Some(PCon(_, _))
-    | Some(PTuple(_))
-    | Some(PList(_, _))
-    | Some(PRecord(_, _))
-    | Some(PAlt(_))
-    | Some(PAs(_, _)) => None,
+    Some(PLit(_)) | Some(PCon(_, _)) | Some(PTuple(_)) | Some(PList(_, _)) | Some(PRecord(_, _))
+    | Some(PAlt(_)) | Some(PAs(_, _)) => None,
   },
 }
 
@@ -4243,11 +4282,12 @@ fn seq_rep_of_fuel(h, fuel) = if fuel <= 0 {
     NExpr(ShowExpr(_)) => SRFlat,
     NExpr(BinOpExpr(op, _, _)) => match op {
       BConcat => SRRope,
-      _ => SRUnknown,
+      BAdd | BSub | BMul | BDiv | BMod | BEq | BNe | BLt | BGt | BLe | BGe | BAnd | BOr => SRUnknown,
     },
     NExpr(CallExpr(f, _)) => match graph_node_body(f) {
       NExpr(VarRef(cname)) => seq_rep_of_call(cname),
-      _ => SRUnknown,
+      NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+      | NRow(_) | NParam(_) => SRUnknown,
     },
     NExpr(IfExpr(_, t, e)) => seq_rep_join(seq_rep_of_fuel(t, fuel - 1), seq_rep_of_fuel(e, fuel - 1)),
     NExpr(MatchExpr(_, arms)) => seq_rep_arms(arms, 0, SRUnknown, true, fuel - 1),
@@ -4255,10 +4295,11 @@ fn seq_rep_of_fuel(h, fuel) = if fuel <= 0 {
     NExpr(VarRef(name)) => match ls_resolve(name) {
       (res, local_h) => match res {
         RLocal(_) => if local_h == 0 { SRUnknown } else { seq_rep_of_fuel(local_h, fuel - 1) },
-        _ => SRUnknown,
+        RUpval(_) | RGlobal | RFbPrior(_) => SRUnknown,
       },
     },
-    _ => SRUnknown,
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => SRUnknown,
   }
 }
 
@@ -4332,7 +4373,7 @@ fn lower_pat_value(bind, p, node, ty, srep, rh) = match p {
     Some(RecordSchemeKind(_)) => if len(sub) == 0 { LPWild } else { lower_pat_at(bind, list_index(sub, 0), ty, srep, rh) },
     // a name no declaration proves: infer already reported it, and the
     // sub-binders still declare so the dead arm body assembles
-    _ => LPUnresolvedCon(name, map(lower_pat_at(bind, ??, TVar(0), SRUnknown, rh), sub)),
+    None | Some(_) => LPUnresolvedCon(name, map(lower_pat_at(bind, ??, TVar(0), SRUnknown, rh), sub)),
   },
   PRecord(flds, rest) => {
     let lflds = map(lower_pat_field(bind, ty, rh, ??), flds)
@@ -4415,17 +4456,8 @@ fn record_known_fields(ty) = match tuple_pat_strip(ty) {
   TReprPin(_, inner) => record_known_fields(inner),
   TAlias(_, inner) => record_known_fields(inner),
   TRefined(inner, _) => record_known_fields(inner),
-  TVar(_)
-  | TInt
-  | TFloat
-  | TUnit
-  | TByte
-  | TAddr
-  | TList(_)
-  | TTuple(_)
-  | TFun(_, _, _)
-  | TCont(_, _, _, _)
-  | TValue(_) => [],
+  TVar(_) | TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TFun(_, _, _)
+  | TCont(_, _, _, _) | TValue(_) => [],
 }
 
 fn field_named(name: String, f) = match f {
@@ -4437,19 +4469,8 @@ fn tuple_elem_tys(ty) = match tuple_pat_strip(ty) {
   TReprPin(_, inner) => tuple_elem_tys(inner),
   TAlias(_, inner) => tuple_elem_tys(inner),
   TRefined(inner, _) => tuple_elem_tys(inner),
-  TVar(_)
-  | TInt
-  | TFloat
-  | TUnit
-  | TByte
-  | TAddr
-  | TList(_)
-  | TFun(_, _, _)
-  | TName(_, _)
-  | TRecord(_)
-  | TRecordOpen(_, _)
-  | TCont(_, _, _, _)
-  | TValue(_) => [],
+  TVar(_) | TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TFun(_, _, _) | TName(_, _)
+  | TRecord(_) | TRecordOpen(_, _) | TCont(_, _, _, _) | TValue(_) => [],
 }
 
 fn list_elem_ty(ty) = match tuple_pat_strip(ty) {
@@ -4457,26 +4478,17 @@ fn list_elem_ty(ty) = match tuple_pat_strip(ty) {
   TReprPin(_, inner) => list_elem_ty(inner),
   TAlias(_, inner) => list_elem_ty(inner),
   TRefined(inner, _) => list_elem_ty(inner),
-  TVar(_)
-  | TInt
-  | TFloat
-  | TUnit
-  | TByte
-  | TAddr
-  | TTuple(_)
-  | TFun(_, _, _)
-  | TName(_, _)
-  | TRecord(_)
-  | TRecordOpen(_, _)
-  | TCont(_, _, _, _)
-  | TValue(_) => TVar(0),
+  TVar(_) | TInt | TFloat | TUnit | TByte | TAddr | TTuple(_) | TFun(_, _, _) | TName(_, _)
+  | TRecord(_) | TRecordOpen(_, _) | TCont(_, _, _, _) | TValue(_) => TVar(0),
 }
 
 // A constructor's payload types at the scrutinee — none where no type
 // reached it (the null handle is never chased).
 fn pat_payload_tys(name: String, ty) = match ty {
   TVar(h) => if h == 0 { [] } else { con_payload_tys_at(name, ty) },
-  _ => con_payload_tys_at(name, ty),
+  TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TName(_, _)
+  | TRecord(_) | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _)
+  | TAlias(_, _) | TValue(_) => con_payload_tys_at(name, ty),
 }
 
 // Strip alias/refinement and chase a top-level TVar to its bound type so a
@@ -4488,12 +4500,13 @@ fn tuple_pat_strip(ty) = match ty {
   } else {
     match graph_chase(h) {
       GNode(NBound(inner), _) => tuple_pat_strip(inner),
-      _ => ty,
+      GNode(_, _) => ty,
     }
   },
   TAlias(_, inner) => tuple_pat_strip(inner),
   TRefined(base, _) => tuple_pat_strip(base),
-  _ => ty,
+  TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TName(_, _)
+  | TRecord(_) | TRecordOpen(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TValue(_) => ty,
 }
 
 // A tuple's elements or a constructor's payloads: each sub-pattern paired
@@ -4574,7 +4587,17 @@ fn lower_handler_arms_as_decls(arms, hd, config, state) = {
     (acc, arm) => match acc {
       (decls, line_base) => match lower_one_arm_decl(arm, hd, config, state, fence, line_base) {
         LDeclareFn(LFn(n, a, p, b, f, lines)) => (decls ++ [LDeclareFn(LFn(n, a, p, b, f, lines))], line_base + len(lines)),
-        other => (decls ++ [other], line_base),
+        other @ (
+          LConst(_, _) | LLocal(_, _) | LGlobal(_, _) | LLet(_, _, _) | LUpval(_, _) | LBinOp(_, _, _, _)
+          | LUnaryOp(_, _, _) | LCall(_, _, _) | LTailCall(_, _, _) | LDirectCall(_, _, _, _, _)
+          | LReturn(_, _) | LMakeClosure(_, _, _) | LYield(_, _, _, _) | LCheck(_, _, _) | LAbandon(_, _, _)
+          | LIf(_, _, _, _) | LBlock(_, _) | LMakeList(_, _) | LMakeTuple(_, _) | LSimdLanes(_, _)
+          | LFanout(_, _, _, _) | LMakeRecord(_, _) | LRecordUpdate(_, _, _) | LMakeVariant(_, _, _)
+          | LMatch(_, _, _) | LResumeK(_, _, _, _) | LHandleWith(_, _, _, _, _, _) | LDerive(_, _, _)
+          | LArena(_, _) | LFeedback(_, _, _, _, _) | LFeedbackPrior(_) | LPerform(_, _, _)
+          | LFieldLoad(_, _, _) | LPrim(_, _, _) | LStateSlotStore(_, _, _, _) | LStateInit(_, _, _, _)
+          | LShow(_, _) | LHash(_, _) | LInvariantFailure(_, _) | LWasiCall(_, _, _)
+        ) => (decls ++ [other], line_base),
       },
     },
     arms
@@ -4645,9 +4668,11 @@ fn op_scheme_instance(op) = match published_at(op) {
     (scheme, _, kind) => match kind {
       EffectOpScheme(_, _, _) => match scheme {
         Frozen(_, TFun(_, _, row)) => op_instance_ty(row),
-        _ => None,
+        Frozen(_, _) | Live(_) => None,
       },
-      _ => None,
+      FnScheme | ConstructorScheme(_, _) | RecordSchemeKind(_) | EffectDeclKind(_, _)
+      | HandlerKind(_, _, _, _, _) | ParamScheme(_) | RowAliasKind(_) | TypeVariants(_)
+      | HandlerChainKind(_) | ValueScheme | PrimitiveKind(_) => None,
     },
   },
   None => None,
@@ -4658,7 +4683,9 @@ fn handler_decl_instance(hd) = match graph_published(hd) {
   Some((scheme, _, _)) => match judgment_pair(scheme) {
     (_, sty) => match handler_result_ty(sty) {
       TName(_, [inst, _]) => Some(inst),
-      _ => None,
+      TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TVar(_)
+      | TName(_, _) | TRecord(_) | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _)
+      | TAlias(_, _) | TValue(_) => None,
     },
   },
   None => None,
@@ -4702,7 +4729,7 @@ fn lower_one_arm_decl(arm: {args: [Node], body: Node, op: Node}, hd, config, sta
     MultiShot => ["__k"] ++ arg_names,
     // M4 — the driver pushes (record, k) uniformly; an Abandon arm takes __k and ignores it (it never resumes), returning its value flag-clear so the driver delivers it as the install's
     Abandon => ["__k"] ++ arg_names,
-    _ => arg_names,
+    OneShot => arg_names,
   }
   let locals_handles = zeros_of_len(len(arm_params))
   // The arm's param edges are the OP's declared arg types, read from the
@@ -4722,7 +4749,7 @@ fn lower_one_arm_decl(arm: {args: [Node], body: Node, op: Node}, hd, config, sta
     match disc {
       MultiShot => floor_tys(1) ++ arm_arg_tys,
       Abandon => floor_tys(1) ++ arm_arg_tys,
-      _ => arm_arg_tys,
+      OneShot => arm_arg_tys,
     }
   } else {
     floor_tys(len(arm_params))
@@ -4733,7 +4760,7 @@ fn lower_one_arm_decl(arm: {args: [Node], body: Node, op: Node}, hd, config, sta
   let arm_ret = match disc {
     MultiShot => Some(lookup_ty(arm.body)),
     Abandon => Some(lookup_ty(arm.body)),
-    _ => at_instance(at_inst, op_ret_ty(op)),
+    OneShot => at_instance(at_inst, op_ret_ty(op)),
   }
   graph_emitfn_note(EmitFnEntry{
     caps: [],
@@ -4925,7 +4952,7 @@ fn lower_seed_k(free_uses) = match ls_resolve("__k") {
   (res, _lh) => match res {
     RLocal(_) => free_uses_merge([("__k", 0)], free_uses),
     RUpval(_) => free_uses_merge([("__k", 0)], free_uses),
-    _ => free_uses,
+    RGlobal | RFbPrior(_) => free_uses,
   },
 }
 
@@ -4936,7 +4963,7 @@ fn lower_seed_hrec(free_uses) = match ls_resolve("__hrec") {
   (res, _lh) => match res {
     RLocal(_) => free_uses_merge([("__hrec", 0)], free_uses),
     RUpval(_) => free_uses_merge([("__hrec", 0)], free_uses),
-    _ => free_uses,
+    RGlobal | RFbPrior(_) => free_uses,
   },
 }
 
@@ -5101,31 +5128,12 @@ fn cp_checked(root, e, terminus) = match e {
     (b2, inside) => (LFeedback(fh, d, home, b2, s), inside),
   },
   LCheck(_, _, _) => (e, false),
-  LConst(_, _)
-  | LLocal(_, _)
-  | LGlobal(_, _)
-  | LUpval(_, _)
-  | LFeedbackPrior(_)
-  | LDeclareFn(_)
+  LConst(_, _) | LLocal(_, _) | LGlobal(_, _) | LUpval(_, _) | LFeedbackPrior(_) | LDeclareFn(_)
   | LInvariantFailure(_, _) => (e, false),
-  LBinOp(_, _, _, _)
-  | LUnaryOp(_, _, _)
-  | LTailCall(_, _, _)
-  | LMakeClosure(_, _, _)
-  | LAbandon(_, _, _)
-  | LMakeList(_, _)
-  | LMakeTuple(_, _)
-  | LSimdLanes(_, _)
-  | LMakeRecord(_, _)
-  | LRecordUpdate(_, _, _)
-  | LMakeVariant(_, _, _)
-  | LResumeK(_, _, _, _)
-  | LFieldLoad(_, _, _)
-  | LPrim(_, _, _)
-  | LStateSlotStore(_, _, _, _)
-  | LStateInit(_, _, _, _)
-  | LShow(_, _)
-  | LHash(_, _)
+  LBinOp(_, _, _, _) | LUnaryOp(_, _, _) | LTailCall(_, _, _) | LMakeClosure(_, _, _)
+  | LAbandon(_, _, _) | LMakeList(_, _) | LMakeTuple(_, _) | LSimdLanes(_, _) | LMakeRecord(_, _)
+  | LRecordUpdate(_, _, _) | LMakeVariant(_, _, _) | LResumeK(_, _, _, _) | LFieldLoad(_, _, _)
+  | LPrim(_, _, _) | LStateSlotStore(_, _, _, _) | LStateInit(_, _, _, _) | LShow(_, _) | LHash(_, _)
   | LWasiCall(_, _, _) => cp_node(root, e),
 }
 
@@ -5209,19 +5217,8 @@ fn ty_may_yield_live(t) = match t {
   TAlias(_, inner) => ty_may_yield_live(inner),
   TRefined(inner, _) => ty_may_yield_live(inner),
   TReprPin(_, inner) => ty_may_yield_live(inner),
-  TInt
-  | TFloat
-  | TUnit
-  | TByte
-  | TAddr
-  | TList(_)
-  | TTuple(_)
-  | TVar(_)
-  | TName(_, _)
-  | TRecord(_)
-  | TRecordOpen(_, _)
-  | TCont(_, _, _, _)
-  | TValue(_) => false,
+  TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TVar(_) | TName(_, _) | TRecord(_)
+  | TRecordOpen(_, _) | TCont(_, _, _, _) | TValue(_) => false,
 }
 
 // The expressions a node runs in its own frame, in the order it runs them —
@@ -5234,43 +5231,14 @@ fn pass_kids(e) = match e {
   LArena(_, _) => [],
   LFanout(_, _, _, forms) => map({ (_, f) => f }, forms),
   LPerform(_, d, args) => dispatch_kids(d) ++ args,
-  LConst(_, _)
-  | LLocal(_, _)
-  | LGlobal(_, _)
-  | LLet(_, _, _)
-  | LUpval(_, _)
-  | LBinOp(_, _, _, _)
-  | LUnaryOp(_, _, _)
-  | LCall(_, _, _)
-  | LTailCall(_, _, _)
-  | LDirectCall(_, _, _, _, _)
-  | LReturn(_, _)
-  | LMakeClosure(_, _, _)
-  | LYield(_, _, _, _)
-  | LCheck(_, _, _)
-  | LAbandon(_, _, _)
-  | LDeclareFn(_)
-  | LIf(_, _, _, _)
-  | LBlock(_, _)
-  | LMakeList(_, _)
-  | LMakeTuple(_, _)
-  | LSimdLanes(_, _)
-  | LMakeRecord(_, _)
-  | LRecordUpdate(_, _, _)
-  | LMakeVariant(_, _, _)
-  | LMatch(_, _, _)
-  | LResumeK(_, _, _, _)
-  | LDerive(_, _, _)
-  | LFeedback(_, _, _, _, _)
-  | LFeedbackPrior(_)
-  | LFieldLoad(_, _, _)
-  | LPrim(_, _, _)
-  | LStateSlotStore(_, _, _, _)
-  | LStateInit(_, _, _, _)
-  | LShow(_, _)
-  | LHash(_, _)
-  | LInvariantFailure(_, _)
-  | LWasiCall(_, _, _) => frame_children(e),
+  LConst(_, _) | LLocal(_, _) | LGlobal(_, _) | LLet(_, _, _) | LUpval(_, _) | LBinOp(_, _, _, _)
+  | LUnaryOp(_, _, _) | LCall(_, _, _) | LTailCall(_, _, _) | LDirectCall(_, _, _, _, _)
+  | LReturn(_, _) | LMakeClosure(_, _, _) | LYield(_, _, _, _) | LCheck(_, _, _) | LAbandon(_, _, _)
+  | LDeclareFn(_) | LIf(_, _, _, _) | LBlock(_, _) | LMakeList(_, _) | LMakeTuple(_, _)
+  | LSimdLanes(_, _) | LMakeRecord(_, _) | LRecordUpdate(_, _, _) | LMakeVariant(_, _, _)
+  | LMatch(_, _, _) | LResumeK(_, _, _, _) | LDerive(_, _, _) | LFeedback(_, _, _, _, _)
+  | LFeedbackPrior(_) | LFieldLoad(_, _, _) | LPrim(_, _, _) | LStateSlotStore(_, _, _, _)
+  | LStateInit(_, _, _, _) | LShow(_, _) | LHash(_, _) | LInvariantFailure(_, _) | LWasiCall(_, _, _) => frame_children(e),
 }
 
 // A node rebuilt over new children, in `pass_kids`' order.
@@ -5400,45 +5368,15 @@ fn site_walk(mode, e) = match e {
       None => (LCheck(h, inner2, None), found),
     },
   },
-  LConst(_, _)
-  | LLocal(_, _)
-  | LGlobal(_, _)
-  | LLet(_, _, _)
-  | LUpval(_, _)
-  | LBinOp(_, _, _, _)
-  | LUnaryOp(_, _, _)
-  | LCall(_, _, _)
-  | LTailCall(_, _, _)
-  | LDirectCall(_, _, _, _, _)
-  | LReturn(_, _)
-  | LMakeClosure(_, _, _)
-  | LAbandon(_, _, _)
-  | LDeclareFn(_)
-  | LIf(_, _, _, _)
-  | LBlock(_, _)
-  | LMakeList(_, _)
-  | LMakeTuple(_, _)
-  | LSimdLanes(_, _)
-  | LFanout(_, _, _, _)
-  | LMakeRecord(_, _)
-  | LRecordUpdate(_, _, _)
-  | LMakeVariant(_, _, _)
-  | LMatch(_, _, _)
-  | LResumeK(_, _, _, _)
-  | LHandleWith(_, _, _, _, _, _)
-  | LDerive(_, _, _)
-  | LArena(_, _)
-  | LFeedback(_, _, _, _, _)
-  | LFeedbackPrior(_)
-  | LPerform(_, _, _)
-  | LFieldLoad(_, _, _)
-  | LPrim(_, _, _)
-  | LStateSlotStore(_, _, _, _)
-  | LStateInit(_, _, _, _)
-  | LShow(_, _)
-  | LHash(_, _)
-  | LInvariantFailure(_, _)
-  | LWasiCall(_, _, _) => match site_walk_list(mode, pass_kids(e)) {
+  LConst(_, _) | LLocal(_, _) | LGlobal(_, _) | LLet(_, _, _) | LUpval(_, _) | LBinOp(_, _, _, _)
+  | LUnaryOp(_, _, _) | LCall(_, _, _) | LTailCall(_, _, _) | LDirectCall(_, _, _, _, _)
+  | LReturn(_, _) | LMakeClosure(_, _, _) | LAbandon(_, _, _) | LDeclareFn(_) | LIf(_, _, _, _)
+  | LBlock(_, _) | LMakeList(_, _) | LMakeTuple(_, _) | LSimdLanes(_, _) | LFanout(_, _, _, _)
+  | LMakeRecord(_, _) | LRecordUpdate(_, _, _) | LMakeVariant(_, _, _) | LMatch(_, _, _)
+  | LResumeK(_, _, _, _) | LHandleWith(_, _, _, _, _, _) | LDerive(_, _, _) | LArena(_, _)
+  | LFeedback(_, _, _, _, _) | LFeedbackPrior(_) | LPerform(_, _, _) | LFieldLoad(_, _, _)
+  | LPrim(_, _, _) | LStateSlotStore(_, _, _, _) | LStateInit(_, _, _, _) | LShow(_, _) | LHash(_, _)
+  | LInvariantFailure(_, _) | LWasiCall(_, _, _) => match site_walk_list(mode, pass_kids(e)) {
     (kids, found) => (pass_rebuild(e, kids), found),
   },
 }
@@ -5616,38 +5554,14 @@ fn zip_at(e, name, hole) = match e {
   },
   // the fanout ran the form the boundary stands in, in this frame
   LFanout(_, _, _, forms) => forms |> find_map(zip_form(name, hole, ??)),
-  LConst(_, _)
-  | LLocal(_, _)
-  | LGlobal(_, _)
-  | LUpval(_, _)
-  | LBinOp(_, _, _, _)
-  | LUnaryOp(_, _, _)
-  | LCall(_, _, _)
-  | LTailCall(_, _, _)
-  | LDirectCall(_, _, _, _, _)
-  | LMakeClosure(_, _, _)
-  | LAbandon(_, _, _)
-  | LDeclareFn(_)
-  | LMakeList(_, _)
-  | LMakeTuple(_, _)
-  | LSimdLanes(_, _)
-  | LMakeRecord(_, _)
-  | LRecordUpdate(_, _, _)
-  | LMakeVariant(_, _, _)
-  | LResumeK(_, _, _, _)
-  | LHandleWith(_, _, _, _, _, _)
-  | LDerive(_, _, _)
-  | LArena(_, _)
-  | LFeedbackPrior(_)
-  | LPerform(_, _, _)
-  | LFieldLoad(_, _, _)
-  | LPrim(_, _, _)
-  | LStateSlotStore(_, _, _, _)
-  | LStateInit(_, _, _, _)
-  | LShow(_, _)
-  | LHash(_, _)
-  | LInvariantFailure(_, _)
-  | LWasiCall(_, _, _) => zip_kids(e, name, hole),
+  LConst(_, _) | LLocal(_, _) | LGlobal(_, _) | LUpval(_, _) | LBinOp(_, _, _, _)
+  | LUnaryOp(_, _, _) | LCall(_, _, _) | LTailCall(_, _, _) | LDirectCall(_, _, _, _, _)
+  | LMakeClosure(_, _, _) | LAbandon(_, _, _) | LDeclareFn(_) | LMakeList(_, _) | LMakeTuple(_, _)
+  | LSimdLanes(_, _) | LMakeRecord(_, _) | LRecordUpdate(_, _, _) | LMakeVariant(_, _, _)
+  | LResumeK(_, _, _, _) | LHandleWith(_, _, _, _, _, _) | LDerive(_, _, _) | LArena(_, _)
+  | LFeedbackPrior(_) | LPerform(_, _, _) | LFieldLoad(_, _, _) | LPrim(_, _, _)
+  | LStateSlotStore(_, _, _, _) | LStateInit(_, _, _, _) | LShow(_, _) | LHash(_, _)
+  | LInvariantFailure(_, _) | LWasiCall(_, _, _) => zip_kids(e, name, hole),
 }
 
 fn opt_site_name(site) = match site {
@@ -5770,33 +5684,12 @@ fn ref_walk(mode, e, sc) = match e {
   LFanout(h, lex, br, forms) => match ref_forms(mode, forms, sc) {
     (forms2, sc2) => (LFanout(h, lex, br, forms2), sc2),
   },
-  LConst(_, _)
-  | LGlobal(_, _)
-  | LBinOp(_, _, _, _)
-  | LUnaryOp(_, _, _)
-  | LCall(_, _, _)
-  | LTailCall(_, _, _)
-  | LDirectCall(_, _, _, _, _)
-  | LReturn(_, _)
-  | LMakeClosure(_, _, _)
-  | LAbandon(_, _, _)
-  | LDeclareFn(_)
-  | LMakeList(_, _)
-  | LMakeTuple(_, _)
-  | LSimdLanes(_, _)
-  | LMakeRecord(_, _)
-  | LRecordUpdate(_, _, _)
-  | LMakeVariant(_, _, _)
-  | LResumeK(_, _, _, _)
-  | LDerive(_, _, _)
-  | LFieldLoad(_, _, _)
-  | LPrim(_, _, _)
-  | LStateSlotStore(_, _, _, _)
-  | LStateInit(_, _, _, _)
-  | LShow(_, _)
-  | LHash(_, _)
-  | LInvariantFailure(_, _)
-  | LWasiCall(_, _, _) => match ref_list(mode, pass_kids(e), sc) {
+  LConst(_, _) | LGlobal(_, _) | LBinOp(_, _, _, _) | LUnaryOp(_, _, _) | LCall(_, _, _)
+  | LTailCall(_, _, _) | LDirectCall(_, _, _, _, _) | LReturn(_, _) | LMakeClosure(_, _, _)
+  | LAbandon(_, _, _) | LDeclareFn(_) | LMakeList(_, _) | LMakeTuple(_, _) | LSimdLanes(_, _)
+  | LMakeRecord(_, _) | LRecordUpdate(_, _, _) | LMakeVariant(_, _, _) | LResumeK(_, _, _, _)
+  | LDerive(_, _, _) | LFieldLoad(_, _, _) | LPrim(_, _, _) | LStateSlotStore(_, _, _, _)
+  | LStateInit(_, _, _, _) | LShow(_, _) | LHash(_, _) | LInvariantFailure(_, _) | LWasiCall(_, _, _) => match ref_list(mode, pass_kids(e), sc) {
     (kids, sc2) => (pass_rebuild(e, kids), sc2),
   },
 }
@@ -5880,46 +5773,15 @@ fn ref_form(mode, acc, form) = match (acc, form) {
 // The register a statement binds.
 fn let_binds(s) = match s {
   LLet(_, n, _) => [n],
-  LConst(_, _)
-  | LLocal(_, _)
-  | LGlobal(_, _)
-  | LUpval(_, _)
-  | LBinOp(_, _, _, _)
-  | LUnaryOp(_, _, _)
-  | LCall(_, _, _)
-  | LTailCall(_, _, _)
-  | LDirectCall(_, _, _, _, _)
-  | LReturn(_, _)
-  | LMakeClosure(_, _, _)
-  | LYield(_, _, _, _)
-  | LCheck(_, _, _)
-  | LAbandon(_, _, _)
-  | LDeclareFn(_)
-  | LIf(_, _, _, _)
-  | LBlock(_, _)
-  | LMakeList(_, _)
-  | LMakeTuple(_, _)
-  | LSimdLanes(_, _)
-  | LFanout(_, _, _, _)
-  | LMakeRecord(_, _)
-  | LRecordUpdate(_, _, _)
-  | LMakeVariant(_, _, _)
-  | LMatch(_, _, _)
-  | LResumeK(_, _, _, _)
-  | LHandleWith(_, _, _, _, _, _)
-  | LDerive(_, _, _)
-  | LArena(_, _)
-  | LFeedback(_, _, _, _, _)
-  | LFeedbackPrior(_)
-  | LPerform(_, _, _)
-  | LFieldLoad(_, _, _)
-  | LPrim(_, _, _)
-  | LStateSlotStore(_, _, _, _)
-  | LStateInit(_, _, _, _)
-  | LShow(_, _)
-  | LHash(_, _)
-  | LInvariantFailure(_, _)
-  | LWasiCall(_, _, _) => [],
+  LConst(_, _) | LLocal(_, _) | LGlobal(_, _) | LUpval(_, _) | LBinOp(_, _, _, _)
+  | LUnaryOp(_, _, _) | LCall(_, _, _) | LTailCall(_, _, _) | LDirectCall(_, _, _, _, _)
+  | LReturn(_, _) | LMakeClosure(_, _, _) | LYield(_, _, _, _) | LCheck(_, _, _) | LAbandon(_, _, _)
+  | LDeclareFn(_) | LIf(_, _, _, _) | LBlock(_, _) | LMakeList(_, _) | LMakeTuple(_, _)
+  | LSimdLanes(_, _) | LFanout(_, _, _, _) | LMakeRecord(_, _) | LRecordUpdate(_, _, _)
+  | LMakeVariant(_, _, _) | LMatch(_, _, _) | LResumeK(_, _, _, _) | LHandleWith(_, _, _, _, _, _)
+  | LDerive(_, _, _) | LArena(_, _) | LFeedback(_, _, _, _, _) | LFeedbackPrior(_) | LPerform(_, _, _)
+  | LFieldLoad(_, _, _) | LPrim(_, _, _) | LStateSlotStore(_, _, _, _) | LStateInit(_, _, _, _)
+  | LShow(_, _) | LHash(_, _) | LInvariantFailure(_, _) | LWasiCall(_, _, _) => [],
 }
 
 // The registers a pattern binds.
@@ -6073,15 +5935,7 @@ fn param_layer(pair) = match pair {
       Some(i) => i,
       None => pat,
     }
-    let whole = match uncovered([[pat_of(inner)]], 1) {
-      None => true,
-      Some(_) => false,
-    }
-    (
-      p,
-      read,
-      lower_pat_value(bind_fresh, arm_pat_lowered(inner, whole), inner, lookup_ty(p), seq_rep_of(p), p)
-    )
+    (p, read, lower_pat_value(bind_fresh, pat_of(inner), inner, lookup_ty(p), seq_rep_of(p), p))
   },
 }
 
@@ -6127,7 +5981,8 @@ fn param_read(p) = {
 // learn, where None is a fact the type states. The reader floors on None.
 fn entry_param_tys(fn_handle, params) = match lookup_ty(fn_handle) {
   TFun(tparams, _, _) => if len(tparams) == len(params) { map(some_param_ty, tparams) } else { map(param_node_ty, params) },
-  _ => map(param_node_ty, params),
+  TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TVar(_) | TName(_, _) | TRecord(_)
+  | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => map(param_node_ty, params),
 }
 
 // A parameter's type where the declaration's own is not a readable arrow:
@@ -6136,7 +5991,8 @@ fn param_node_ty(p) = Some(TVar(p))
 
 fn ret_ty_of(fn_handle) = match lookup_ty(fn_handle) {
   TFun(_, r, _) => Some(r),
-  _ => None,
+  TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TVar(_) | TName(_, _) | TRecord(_)
+  | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => None,
 }
 
 fn floor_tys(n) = map(none_of, range(0, n))
@@ -6155,9 +6011,12 @@ fn none_of(_i) = None
 fn lower_index(handle, receiver, index) = match lookup_ty(receiver) {
   TTuple(elems) => match graph_node_body(index) {
     NExpr(LitInt(n)) => LFieldLoad(handle, lower_expr(receiver), FByIndex(n)),
-    _ => lower_index_runtime(handle, receiver, index),
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => lower_index_runtime(handle, receiver, index),
   },
-  _ => lower_index_runtime(handle, receiver, index),
+  TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TFun(_, _, _) | TVar(_) | TName(_, _)
+  | TRecord(_) | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _)
+  | TAlias(_, _) | TValue(_) => lower_index_runtime(handle, receiver, index),
 }
 
 // A list index lowers to the runtime list_index call. When the judgment proved
@@ -6227,7 +6086,7 @@ fn lower_string_interpolation(handle, lowered_fragments) = {
     // node's handle: the expression's type and span reads key on it.
     let cells = match graph_boundary_at(handle) {
       InterpBoundary(cs) => cs,
-      _ => [],
+      NoBoundary | FanoutBoundary(_) => [],
     }
     // A count mismatch would let zip TRUNCATE — fragments silently
     // dropped from the string. The judge's elision mirror and this
@@ -6243,7 +6102,17 @@ fn lower_string_interpolation(handle, lowered_fragments) = {
       )
       match chained {
         LCall(_, g, args) => LCall(handle, g, args),
-        other => other,
+        other @ (
+          LConst(_, _) | LLocal(_, _) | LGlobal(_, _) | LLet(_, _, _) | LUpval(_, _) | LBinOp(_, _, _, _)
+          | LUnaryOp(_, _, _) | LTailCall(_, _, _) | LDirectCall(_, _, _, _, _) | LReturn(_, _)
+          | LMakeClosure(_, _, _) | LYield(_, _, _, _) | LCheck(_, _, _) | LAbandon(_, _, _) | LDeclareFn(_)
+          | LIf(_, _, _, _) | LBlock(_, _) | LMakeList(_, _) | LMakeTuple(_, _) | LSimdLanes(_, _)
+          | LFanout(_, _, _, _) | LMakeRecord(_, _) | LRecordUpdate(_, _, _) | LMakeVariant(_, _, _)
+          | LMatch(_, _, _) | LResumeK(_, _, _, _) | LHandleWith(_, _, _, _, _, _) | LDerive(_, _, _)
+          | LArena(_, _) | LFeedback(_, _, _, _, _) | LFeedbackPrior(_) | LPerform(_, _, _)
+          | LFieldLoad(_, _, _) | LPrim(_, _, _) | LStateSlotStore(_, _, _, _) | LStateInit(_, _, _, _)
+          | LShow(_, _) | LHash(_, _) | LInvariantFailure(_, _) | LWasiCall(_, _, _)
+        ) => other,
       }
     } else {
       LInvariantFailure(handle, ProjectionOriginShape(handle))
@@ -6253,7 +6122,15 @@ fn lower_string_interpolation(handle, lowered_fragments) = {
 
 fn is_empty_lconst_string(frag) = match frag {
   LConst(_, LString(s)) => byte_len(s) == 0,
-  _ => false,
+  LConst(_, _) | LLocal(_, _) | LGlobal(_, _) | LLet(_, _, _) | LUpval(_, _) | LBinOp(_, _, _, _)
+  | LUnaryOp(_, _, _) | LCall(_, _, _) | LTailCall(_, _, _) | LDirectCall(_, _, _, _, _)
+  | LReturn(_, _) | LMakeClosure(_, _, _) | LYield(_, _, _, _) | LCheck(_, _, _) | LAbandon(_, _, _)
+  | LDeclareFn(_) | LIf(_, _, _, _) | LBlock(_, _) | LMakeList(_, _) | LMakeTuple(_, _)
+  | LSimdLanes(_, _) | LFanout(_, _, _, _) | LMakeRecord(_, _) | LRecordUpdate(_, _, _)
+  | LMakeVariant(_, _, _) | LMatch(_, _, _) | LResumeK(_, _, _, _) | LHandleWith(_, _, _, _, _, _)
+  | LDerive(_, _, _) | LArena(_, _) | LFeedback(_, _, _, _, _) | LFeedbackPrior(_) | LPerform(_, _, _)
+  | LFieldLoad(_, _, _) | LPrim(_, _, _) | LStateSlotStore(_, _, _, _) | LStateInit(_, _, _, _)
+  | LShow(_, _) | LHash(_, _) | LInvariantFailure(_, _) | LWasiCall(_, _, _) => false,
 }
 
 // Expression list
@@ -6805,7 +6682,17 @@ fn low_children(expr) = match expr {
     None => [],
   },
   LDeclareFn(LFn(_, _, _, body, _, _)) => body,
-  other => frame_children(other),
+  other @ (
+    LConst(_, _) | LLocal(_, _) | LGlobal(_, _) | LLet(_, _, _) | LUpval(_, _) | LBinOp(_, _, _, _)
+    | LUnaryOp(_, _, _) | LCall(_, _, _) | LTailCall(_, _, _) | LDirectCall(_, _, _, _, _)
+    | LReturn(_, _) | LAbandon(_, _, _) | LIf(_, _, _, _) | LBlock(_, _) | LMakeList(_, _)
+    | LMakeTuple(_, _) | LSimdLanes(_, _) | LFanout(_, _, _, _) | LMakeRecord(_, _)
+    | LRecordUpdate(_, _, _) | LMakeVariant(_, _, _) | LMatch(_, _, _) | LResumeK(_, _, _, _)
+    | LHandleWith(_, _, _, _, _, _) | LDerive(_, _, _) | LArena(_, _) | LFeedback(_, _, _, _, _)
+    | LFeedbackPrior(_) | LPerform(_, _, _) | LFieldLoad(_, _, _) | LPrim(_, _, _)
+    | LStateSlotStore(_, _, _, _) | LStateInit(_, _, _, _) | LShow(_, _) | LHash(_, _)
+    | LInvariantFailure(_, _) | LWasiCall(_, _, _)
+  ) => frame_children(other),
 }
 
 // What a continuation site holds: its captures, and the remainder's body
@@ -6900,8 +6787,17 @@ fn ref_is_wide(r) = match r {
 fn reach_decl_name(stmt) = match stmt {
   LDeclareFn(LFn(n, _, _, _, _, _)) => n,
   LLet(_, n, LMakeClosure(_, _, _)) => n,
-  // drift-audit: ignore — "" = stmt is not a named fn (module value lets run in __init_lets)
-  _ => "",
+  // A statement that is no named function names nothing; module value lets
+  // run in __init_lets.
+  LConst(_, _) | LLocal(_, _) | LGlobal(_, _) | LLet(_, _, _) | LUpval(_, _) | LBinOp(_, _, _, _)
+  | LUnaryOp(_, _, _) | LCall(_, _, _) | LTailCall(_, _, _) | LDirectCall(_, _, _, _, _)
+  | LReturn(_, _) | LMakeClosure(_, _, _) | LYield(_, _, _, _) | LCheck(_, _, _) | LAbandon(_, _, _)
+  | LIf(_, _, _, _) | LBlock(_, _) | LMakeList(_, _) | LMakeTuple(_, _) | LSimdLanes(_, _)
+  | LFanout(_, _, _, _) | LMakeRecord(_, _) | LRecordUpdate(_, _, _) | LMakeVariant(_, _, _)
+  | LMatch(_, _, _) | LResumeK(_, _, _, _) | LHandleWith(_, _, _, _, _, _) | LDerive(_, _, _)
+  | LArena(_, _) | LFeedback(_, _, _, _, _) | LFeedbackPrior(_) | LPerform(_, _, _)
+  | LFieldLoad(_, _, _) | LPrim(_, _, _) | LStateSlotStore(_, _, _, _) | LStateInit(_, _, _, _)
+  | LShow(_, _) | LHash(_, _) | LInvariantFailure(_, _) | LWasiCall(_, _, _) => "",
 }
 
 // The top-level declaration a lowered reference reaches. A reference carries
@@ -6957,7 +6853,8 @@ fn vocabulary_target(n: String) = match env_resolve_linked(n) {
 fn stmt_is_main_fn(node) = match graph_node_body(node) {
   NStmt(FnStmt(name, _, _, _, _)) => name == "main",
   // not a fn decl — cannot be the entry
-  _ => false,
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => false,
 }
 
 // A stmt DEFERS to the demand frontier when it runs only where a reference
@@ -7012,7 +6909,15 @@ fn reach_seed(stmts, i, w, frontier) = if i >= len(stmts) {
       match lo {
         LLet(_, _, LMakeClosure(_, _, _)) => frontier,
         LLet(_, _, init) => reach_root(w, s, init, frontier),
-        _ => reach_mint_root(w, s, lo, frontier),
+        LConst(_, _) | LLocal(_, _) | LGlobal(_, _) | LUpval(_, _) | LBinOp(_, _, _, _)
+        | LUnaryOp(_, _, _) | LCall(_, _, _) | LTailCall(_, _, _) | LDirectCall(_, _, _, _, _)
+        | LReturn(_, _) | LMakeClosure(_, _, _) | LYield(_, _, _, _) | LCheck(_, _, _) | LAbandon(_, _, _)
+        | LDeclareFn(_) | LIf(_, _, _, _) | LBlock(_, _) | LMakeList(_, _) | LMakeTuple(_, _)
+        | LSimdLanes(_, _) | LFanout(_, _, _, _) | LMakeRecord(_, _) | LRecordUpdate(_, _, _)
+        | LMakeVariant(_, _, _) | LMatch(_, _, _) | LResumeK(_, _, _, _) | LHandleWith(_, _, _, _, _, _)
+        | LDerive(_, _, _) | LArena(_, _) | LFeedback(_, _, _, _, _) | LFeedbackPrior(_) | LPerform(_, _, _)
+        | LFieldLoad(_, _, _) | LPrim(_, _, _) | LStateSlotStore(_, _, _, _) | LStateInit(_, _, _, _)
+        | LShow(_, _) | LHash(_, _) | LInvariantFailure(_, _) | LWasiCall(_, _, _) => reach_mint_root(w, s, lo, frontier),
       }
     )
   }
@@ -7124,7 +7029,14 @@ fn reach_nested_names(d, acc) = match d {
   LHandleWith(_h, b, _hn, _hd, _inits, _an) => reach_nested_names(b, acc),
   LDerive(_h, _seed, b) => reach_nested_names(b, acc),
   LArena(_h, b) => reach_nested_names(b, acc),
-  _ => acc,
+  LConst(_, _) | LLocal(_, _) | LGlobal(_, _) | LUpval(_, _) | LBinOp(_, _, _, _)
+  | LUnaryOp(_, _, _) | LCall(_, _, _) | LTailCall(_, _, _) | LDirectCall(_, _, _, _, _)
+  | LReturn(_, _) | LMakeClosure(_, _, _) | LYield(_, _, _, _) | LCheck(_, _, _) | LAbandon(_, _, _)
+  | LMakeList(_, _) | LMakeTuple(_, _) | LSimdLanes(_, _) | LFanout(_, _, _, _) | LMakeRecord(_, _)
+  | LRecordUpdate(_, _, _) | LMakeVariant(_, _, _) | LMatch(_, _, _) | LResumeK(_, _, _, _)
+  | LFeedback(_, _, _, _, _) | LFeedbackPrior(_) | LPerform(_, _, _) | LFieldLoad(_, _, _)
+  | LPrim(_, _, _) | LStateSlotStore(_, _, _, _) | LStateInit(_, _, _, _) | LShow(_, _) | LHash(_, _)
+  | LInvariantFailure(_, _) | LWasiCall(_, _, _) => acc,
 }
 
 fn reach_nested_names_list(stmts, acc) = if len(stmts) == 0 {
@@ -7171,7 +7083,7 @@ fn reach_push(w, frontier, target) = match target {
 // reads re-unify under Hβ.cursor.session-weave-epoch-scope.
 fn executable_hole(handle) with !Mutate = match graph_node_body(handle) {
   NHole(id) => id != 0 && !span_eq(graph_span_of(handle), span_zero()),
-  _ => false,
+  NExpr(_) | NStmt(_) | NPat(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => false,
 }
 
 // A type NAMES a wide-element sequence — directly or nested — when some
@@ -7210,7 +7122,8 @@ fn wide_reach(t) = match fold_strip(t) {
   TRecordOpen(fields, _) => wide_reach_list(map(field_ty_of, fields)),
   TTuple(elems) => wide_reach_list(elems),
   TName(name, _) => wide_reach_name(name),
-  _ => (false, []),
+  TInt | TFloat | TUnit | TByte | TAddr | TFun(_, _, _) | TVar(_) | TRefined(_, _) | TReprPin(_, _)
+  | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => (false, []),
 }
 
 fn field_ty_of(field) = match field {
@@ -7273,7 +7186,7 @@ fn wide_binop_name(op) = match op {
   BGt => Some("list_compare_f64"),
   BLe => Some("list_compare_f64"),
   BGe => Some("list_compare_f64"),
-  _ => None,
+  BAdd | BSub | BMul | BDiv | BMod | BAnd | BOr | BConcat => None,
 }
 
 // The show/hash reach projections — the exact names emit's show_node_of /
@@ -7300,7 +7213,8 @@ fn show_reach_names(x) = {
     TName(_, _) => show_agg_reach(ty),
     TRecord(_) => show_agg_reach(ty),
     TRecordOpen(_, _) => show_agg_reach(ty),
-    _ => ["int_to_str"],
+    TInt | TUnit | TByte | TAddr | TFun(_, _, _) | TVar(_) | TRefined(_, _) | TReprPin(_, _)
+    | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => ["int_to_str"],
   }
 }
 
@@ -7327,7 +7241,9 @@ fn hash_reach_names(x) = {
       } else {
         match face {
           TByte => ["str_hash"],
-          _ => ["list_hash"],
+          TInt | TFloat | TUnit | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TVar(_) | TName(_, _)
+          | TRecord(_) | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _)
+          | TAlias(_, _) | TValue(_) => ["list_hash"],
         }
       }
     },
@@ -7336,7 +7252,8 @@ fn hash_reach_names(x) = {
     TRecordOpen(_, _) => hash_agg_reach(ty),
     TTuple(_) => hash_agg_reach(ty),
     TName(_, _) => hash_agg_reach(ty),
-    _ => [],
+    TInt | TUnit | TByte | TAddr | TFun(_, _, _) | TVar(_) | TRefined(_, _) | TReprPin(_, _)
+    | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => [],
   }
 }
 
@@ -7403,7 +7320,9 @@ fn spec_resolve(t) = if spec_resolve_changes(t) { spec_resolve_build(t) } else {
 fn spec_resolve_changes(t) = match t {
   TVar(h) => match lookup_ty(h) {
     TVar(h2) => h2 != h,
-    _ => true,
+    TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TName(_, _)
+    | TRecord(_) | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _)
+    | TAlias(_, _) | TValue(_) => true,
   },
   TList(e) => spec_resolve_changes(e),
   TTuple(es) => spec_resolve_changes_list(es, 0),
@@ -7417,13 +7336,15 @@ fn spec_resolve_changes(t) = match t {
   // the outer site had already been keyed on the proven set.
   TRecordOpen(fs, v) => match lookup_ty(v) {
     TVar(h2) => h2 != v || spec_resolve_changes_fields(fs, 0),
-    _ => true,
+    TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TName(_, _)
+    | TRecord(_) | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _)
+    | TAlias(_, _) | TValue(_) => true,
   },
   TRefined(b, _) => spec_resolve_changes(b),
   TAlias(_, i) => spec_resolve_changes(i),
   TCont(i, a, _, _) => spec_resolve_changes(i) || spec_resolve_changes(a),
   // scalars (TInt/TFloat/TUnit/TByte)
-  _ => false,
+  TInt | TFloat | TUnit | TByte | TAddr | TReprPin(_, _) | TValue(_) => false,
 }
 
 // Raw-recursion loops (the battery's own law): a closure-taking any()
@@ -7457,7 +7378,11 @@ fn spec_resolve_build(t) = match t {
   TVar(h) => match lookup_ty(h) {
     // genuinely free — the floor terminal
     TVar(h2) => TVar(h2),
-    other => if any((fv) => fv == h, free_in_ty(other)) {
+    other @ (
+      TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TName(_, _)
+      | TRecord(_) | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _)
+      | TAlias(_, _) | TValue(_)
+    ) => if any((fv) => fv == h, free_in_ty(other)) {
       // The polymorphic-recursion self-reference: a sig'd self-call's
       // demand ctx maps the base's own var to a type CONTAINING it
       // (a := [a]), and resolving would re-apply the ctx to its own
@@ -7487,7 +7412,9 @@ fn spec_resolve_build(t) = match t {
         RowEndClosed => TRecord(field_canonicalize(learned)),
         RowEndFree(t) => match lookup_ty(t) {
           TRecord(residual) => TRecord(field_canonicalize(learned ++ residual)),
-          _ => mk_record_open(learned, t),
+          TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TVar(_)
+          | TName(_, _) | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _)
+          | TAlias(_, _) | TValue(_) => mk_record_open(learned, t),
         },
       }
     },
@@ -7496,7 +7423,7 @@ fn spec_resolve_build(t) = match t {
   TAlias(n, i) => TAlias(n, spec_resolve(i)),
   TCont(i, a, d, w) => TCont(spec_resolve(i), spec_resolve(a), d, w),
   // scalars (TInt/TFloat/TUnit/TByte)
-  _ => t,
+  TInt | TFloat | TUnit | TByte | TAddr | TReprPin(_, _) | TValue(_) => t,
 }
 
 // The parallel walk: scheme side vs site side, same shape by construction
@@ -7512,30 +7439,38 @@ fn spec_pairs_walk(st0, it0, acc) = {
   match st {
     TVar(v) => match graph_chase(v) {
       GNode(NBound(inner), _) => spec_pairs_walk(inner, it0, acc),
-      _ => spec_pairs_add(acc, graph_chase_handle(v), it0),
+      GNode(_, _) => spec_pairs_add(acc, graph_chase_handle(v), it0),
     },
     TList(e) => match fold_strip(it0) {
       TList(ie) => spec_pairs_walk(e, ie, acc),
-      _ => acc,
+      TInt | TFloat | TUnit | TByte | TAddr | TTuple(_) | TFun(_, _, _) | TVar(_) | TName(_, _)
+      | TRecord(_) | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _)
+      | TAlias(_, _) | TValue(_) => acc,
     },
     TTuple(es) => match fold_strip(it0) {
       TTuple(ies) => spec_pairs_walk_list(es, ies, acc),
-      _ => acc,
+      TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TFun(_, _, _) | TVar(_) | TName(_, _)
+      | TRecord(_) | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _)
+      | TAlias(_, _) | TValue(_) => acc,
     },
     TFun(ps, r, srow) => match fold_strip(it0) {
       TFun(ips, ir, irow) => spec_pairs_instances(srow, irow, spec_pairs_walk(r, ir, spec_pairs_walk_params(ps, ips, acc))),
-      _ => acc,
+      TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TVar(_) | TName(_, _) | TRecord(_)
+      | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => acc,
     },
     TName(_, args) => match fold_strip(it0) {
       TName(_, iargs) => spec_pairs_walk_list(args, iargs, acc),
-      _ => acc,
+      TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TVar(_)
+      | TRecord(_) | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _)
+      | TAlias(_, _) | TValue(_) => acc,
     },
     TRecord(fs) => match fold_strip(it0) {
       TRecord(ifs) => spec_pairs_walk_fields(fs, ifs, acc),
       TRecordOpen(ifs, iv) => match record_row_full(ifs, iv) {
         (iall, _) => spec_pairs_walk_fields(fs, iall, acc),
       },
-      _ => acc,
+      TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TVar(_)
+      | TName(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => acc,
     },
     // The ROW's free REST is a quantified var like any other, and it keys the
     // twin. Dropping it made every record shape share one body, so the offset
@@ -7563,10 +7498,12 @@ fn spec_pairs_walk(st0, it0, acc) = {
     },
     TCont(i1, a1, _, _) => match fold_strip(it0) {
       TCont(i2, a2, _, _) => spec_pairs_walk(a1, a2, spec_pairs_walk(i1, i2, acc)),
-      _ => acc,
+      TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TVar(_)
+      | TName(_, _) | TRecord(_) | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TAlias(_, _)
+      | TValue(_) => acc,
     },
     // scalars carry no vars
-    _ => acc,
+    TInt | TFloat | TUnit | TByte | TAddr | TRefined(_, _) | TReprPin(_, _) | TAlias(_, _) | TValue(_) => acc,
   }
 }
 
@@ -7625,21 +7562,8 @@ fn spec_pair_instance(iargs, acc, ka) = match ka {
 fn instance_value_at(a) = match a {
   EAVar(f) => match lookup_ty(f) {
     TValue(x) => Some(x),
-    TInt
-    | TFloat
-    | TUnit
-    | TByte
-    | TAddr
-    | TList(_)
-    | TTuple(_)
-    | TFun(_, _, _)
-    | TVar(_)
-    | TName(_, _)
-    | TRecord(_)
-    | TRecordOpen(_, _)
-    | TRefined(_, _)
-    | TReprPin(_, _)
-    | TCont(_, _, _, _)
+    TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TVar(_)
+    | TName(_, _) | TRecord(_) | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _)
     | TAlias(_, _) => None,
   },
   EAInt(_) | EAFloat(_) | EAString(_) | EAEffect(_) | EACon(_) => Some(a),
@@ -7819,17 +7743,9 @@ fn fn_judgment(c) = match c {
 fn fn_judgment_fresh(d) = match graph_published(d) {
   Some((scheme, _, kind)) => match kind {
     FnScheme => Some(judgment_pair(scheme)),
-    ValueScheme
-    | ParamScheme(_)
-    | ConstructorScheme(_, _)
-    | EffectOpScheme(_, _, _)
-    | RecordSchemeKind(_)
-    | EffectDeclKind(_, _)
-    | HandlerKind(_, _, _, _, _)
-    | HandlerChainKind(_)
-    | RowAliasKind(_)
-    | TypeVariants(_)
-    | PrimitiveKind(_) => None,
+    ValueScheme | ParamScheme(_) | ConstructorScheme(_, _) | EffectOpScheme(_, _, _)
+    | RecordSchemeKind(_) | EffectDeclKind(_, _) | HandlerKind(_, _, _, _, _) | HandlerChainKind(_)
+    | RowAliasKind(_) | TypeVariants(_) | PrimitiveKind(_) => None,
   },
   None => None,
 }
@@ -7883,27 +7799,16 @@ fn twin_pair_code(p) = match p {
 // their dispatch on it, so it keys the twin and stays bound in it.
 fn is_instance_value(t) = match t {
   TValue(_) => true,
-  TInt
-  | TFloat
-  | TUnit
-  | TByte
-  | TAddr
-  | TList(_)
-  | TTuple(_)
-  | TFun(_, _, _)
-  | TVar(_)
-  | TName(_, _)
-  | TRecord(_)
-  | TRecordOpen(_, _)
-  | TRefined(_, _)
-  | TReprPin(_, _)
-  | TCont(_, _, _, _)
+  TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TVar(_)
+  | TName(_, _) | TRecord(_) | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _)
   | TAlias(_, _) => false,
 }
 
 fn observed_code(t) = match fold_strip(t) {
   TVar(_) => spec_repr_digit(t),
-  _ => fold_sig(t),
+  TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TName(_, _)
+  | TRecord(_) | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _)
+  | TAlias(_, _) | TValue(_) => fold_sig(t),
 }
 
 // A moved variable keys by what its move needs: a word moves nothing, so
@@ -7915,7 +7820,9 @@ fn observed_code(t) = match fold_strip(t) {
 // where the barrier cannot see the type and its entry keeps the region.
 fn moved_code(t) = match fold_strip(t) {
   TVar(_) => spec_repr_digit(t),
-  _ => match evac_of(t) {
+  TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TName(_, _)
+  | TRecord(_) | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _)
+  | TAlias(_, _) | TValue(_) => match evac_of(t) {
     EvWord => "w",
     EvWide => spec_repr_digit(t),
     EvShape(_) => move_sig(t),
@@ -7935,7 +7842,9 @@ fn twin_keeps(p) = match p {
 // reads the bound type to choose its leaf, or to know a word needs none.
 fn moved_bound(t) = match fold_strip(t) {
   TVar(_) => false,
-  _ => true,
+  TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TName(_, _)
+  | TRecord(_) | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _)
+  | TAlias(_, _) | TValue(_) => true,
 }
 
 // What a body reads of a variable, off the demands on its cell: its
@@ -7981,7 +7890,8 @@ fn program_opens_arenas() = match env_lookup("main") {
       TFun(_, _, row) => match resolve_row(row) {
         EfRow(p, _, _) => any(names_arena, p),
       },
-      _ => false,
+      TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TVar(_) | TName(_, _) | TRecord(_)
+      | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => false,
     },
   },
   None => false,
@@ -8122,16 +8032,19 @@ fn arm_pairs_walk(sty, hexpr_ty, cfg_hs) = match sty {
   TFun(ps, res, _) => {
     let inst = match fold_strip(hexpr_ty) {
       TFun(_, _, _) => spec_pairs_walk(sty, hexpr_ty, []),
-      _ => spec_pairs_walk(res, hexpr_ty, []),
+      TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TVar(_) | TName(_, _) | TRecord(_)
+      | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => spec_pairs_walk(res, hexpr_ty, []),
     }
     fold(inst, arm_pair_step, zip(ps, cfg_hs))
   },
-  _ => spec_pairs_walk(sty, hexpr_ty, []),
+  TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TVar(_) | TName(_, _) | TRecord(_)
+  | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => spec_pairs_walk(sty, hexpr_ty, []),
 }
 
 fn handler_result_ty(sty) = match sty {
   TFun(_, res, _) => res,
-  _ => sty,
+  TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TVar(_) | TName(_, _) | TRecord(_)
+  | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => sty,
 }
 
 fn arm_pair_step(acc, pc) = match pc {
@@ -8182,7 +8095,9 @@ fn handler_may_key(hd) = match graph_published(hd) {
       HandlerKind(_, _, _, _, _) => match judgment_pair(scheme) {
         (qs, _) => len(qs) > 0,
       },
-      _ => false,
+      FnScheme | ConstructorScheme(_, _) | EffectOpScheme(_, _, _) | RecordSchemeKind(_)
+      | EffectDeclKind(_, _) | ParamScheme(_) | RowAliasKind(_) | TypeVariants(_) | HandlerChainKind(_)
+      | ValueScheme | PrimitiveKind(_) => false,
     },
   },
 }
@@ -8224,7 +8139,7 @@ fn twin_call_key(h, c) = {
   }
   match demanded {
     Seq => key,
-    _ => if callee_reaches_fanout(c) {
+    Threaded | Simd | Gpu | Persisted => if callee_reaches_fanout(c) {
       {enc: key.enc ++ sched_suffix(demanded), pairs: key.pairs}
     } else {
       key
@@ -8409,7 +8324,8 @@ fn main_param_count() = fold(
   0,
   (acc, h) => match graph_node_body(h) {
     NStmt(FnStmt(name, params, _ret, _effs, _body)) => if name == "main" { len(params) } else { acc },
-    _ => acc,
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => acc,
   },
   graph_decls_at()
 )
@@ -8435,9 +8351,17 @@ fn main_param_count() = fold(
 fn seq_elem_face(e) = match fold_strip(e) {
   TVar(h) => match lookup_ty(h) {
     TVar(h2) => if h2 == h { TVar(h) } else { seq_elem_face(TVar(h2)) },
-    inner => seq_elem_face(inner),
+    inner @ (
+      TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TName(_, _)
+      | TRecord(_) | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _)
+      | TAlias(_, _) | TValue(_)
+    ) => seq_elem_face(inner),
   },
-  stripped => stripped,
+  stripped @ (
+    TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TName(_, _)
+    | TRecord(_) | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _)
+    | TAlias(_, _) | TValue(_)
+  ) => stripped,
 }
 
 // A sequence element FACE that requires the generated sequence walker
@@ -8456,7 +8380,8 @@ fn seq_face_structural(face) = match face {
   TTuple(_) => true,
   TName(_, _) => !sum_is_tag(face),
   TList(_) => true,
-  _ => false,
+  TInt | TFloat | TUnit | TByte | TAddr | TFun(_, _, _) | TVar(_) | TRefined(_, _) | TReprPin(_, _)
+  | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => false,
 }
 
 fn ls_find_str_local_loop(lst: [String], target: String, i, n) = if i >= n {

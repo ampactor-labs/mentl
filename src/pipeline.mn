@@ -765,7 +765,8 @@ handler diagnostics_handler with errors = 0, narrations = 0, scope = ScopeAll {
 fn map_fn_stmts(ast, project) = ast |> map({
   handle => match graph_node_body(handle) {
     NStmt(FnStmt(name, _, _, _, _)) => [project(name, handle)],
-    _ => [],
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => [],
   },
 }) |> flatten
 
@@ -1536,7 +1537,12 @@ fn parse_query_string(scope: String, q) = {
     } else {
       match classify_query_verb(w0) {
         QVWhy => QWhy(w1, Some(w2)),
-        verb => build_question(verb, w2, q, scope),
+        verb @ (
+          QVType | QVEffects | QVOwnership | QVRefs | QVOwed | QVProvider | QVUnresolved | QVVerification
+          | QVReports | QVFlow | QVCensus | QVWhere | QVDecls | QVVariants | QVModules | QVImports
+          | QVUnreferenced | QVUnreachable | QVPerforms | QVEnv | QVOrphanClaims | QVCost | QVGhosts | QVHeads
+          | QVSmt | QVText | QVProse | QVWrites | QVReads | QVUnknownVerb
+        ) => build_question(verb, w2, q, scope),
       }
     },
     _ => if nth(words, len(words) - 2, "") == "in" {

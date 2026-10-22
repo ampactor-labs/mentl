@@ -304,14 +304,16 @@ fn frames_at(h) = match graph_node_body(h) {
   NExpr(PipeExpr(PFeedback, l, r)) => [Frame(h, CvLoop, [graph_span_of(l), graph_span_of(r)])],
   NExpr(PipeExpr(PFanout(_), l, r)) => [Frame(h, CvShare, [graph_span_of(l)] ++ map(graph_span_of, share_stages(r)))],
   NExpr(FanoutExpr(branches)) => [Frame(h, CvFan, map(graph_span_of, branches))],
-  _ => [],
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => [],
 }
 
 // A `|>` that is the LEFT side of the `|>` above it is that chain's prefix.
 fn is_chain_prefix(h) = match graph_parent_of(h) {
   Some(p) => match graph_node_body(p) {
     NExpr(PipeExpr(PForward, l, _)) => l == h,
-    _ => false,
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => false,
   },
   None => false,
 }
@@ -430,7 +432,12 @@ fn node_cells(v, h) = {
   }
   let accepted = match graph_reason_at(h) {
     Located(_, Accepted(text, _, _)) => [cell_at(OnWhy, CellProven, "accepted", sp, "accepted `{text}`")],
-    _ => [],
+    Declared(_) | Inferred(_) | Fresh(_) | OpConstraint(_, _, _) | VarLookup(_, _) | FnReturn(_, _)
+    | FnParam(_, _, _) | MatchBranch(_, _) | ListElement(_) | IfBranch(_) | LetBinding(_, _)
+    | Unified(_, _) | Instantiation(_, _) | Placeholder(_) | MissingVar(_) | Refinement(_, _)
+    | Located(_, _) | InferredCallReturn(_, _) | InferredPipeResult(_, _) | DefaultReason(_, _)
+    | Accepted(_, _, _) | EffectEnters(_, _, _) | LabelEnters(_, _, _) | ChainInstall(_, _)
+    | StateBinding(_, _) => [],
   }
   let served = match served_at(h) {
     Some((en, s)) => [served_cell(en, s, sp, v.name)],
@@ -446,14 +453,16 @@ fn node_cells(v, h) = {
         "~> {tee_handler_name(r)} grants what its arms answer"
       )
     ],
-    _ => [],
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => [],
   }
   decl ++ lede ++ accepted ++ served ++ granted
 }
 
 fn is_nested_fn(body) = match body {
   NStmt(FnStmt(_, _, _, _, _)) => true,
-  _ => false,
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => false,
 }
 
 // A perform an install on its path serves is GRANTED here — the filled
@@ -598,14 +607,16 @@ fn own_traces(uses, h) = match graph_node_body(h) {
     match env_lookup(name) {
       Some((scheme, _, _)) => match judgment_ty(scheme) {
         TFun(params, _, _) => params |> filter(param_is_owned) |> map(trace_of(uses, h, ??)) |> filter(trace_has_uses),
-        _ => [],
+        TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TVar(_) | TName(_, _) | TRecord(_)
+        | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => [],
       },
       None => [],
     }
   } else {
     []
   },
-  _ => [],
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => [],
 }
 
 fn param_is_owned(p) = match param_resolved(p) {
@@ -642,7 +653,8 @@ fn param_uses(h) = match graph_node_body(h) {
   } else {
     []
   },
-  _ => [],
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => [],
 }
 
 fn links_a_param(h) = match binder_read_by(h) {
@@ -678,7 +690,8 @@ fn refs_at(h, v) = match declared_at(h) {
   None => match graph_node_body(h) {
     NExpr(VarRef(name)) => linked_refs(name, h),
     NPat(PCon(name, _)) => linked_refs(name, h),
-    _ => FoundNothing,
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => FoundNothing,
   },
 }
 
@@ -841,7 +854,8 @@ fn teach_fact(h, teach, tights) = match teach {
       Some((declared, used)) => RingFact(ATeach(tighten_line(name, declared, used), TmTighten), []),
       None => RingFact(ATeach("", TmNone), []),
     },
-    _ => RingFact(ATeach("", TmNone), []),
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => RingFact(ATeach("", TmNone), []),
   },
   TeachAdd(_) => RingFact(ATeach(show_teaching(teach), TmAdd), []),
   TeachAsk(_) => RingFact(ATeach(show_teaching(teach), TmAsk), []),
@@ -866,7 +880,11 @@ fn chain_note(v, chain) = match chain {
     [] => NoteEffectChain("", []),
     [first, ...rest] => NoteEffectChain(first, rest),
   },
-  _ => match why_lines(chain, v, 0) {
+  Declared(_) | Inferred(_) | Fresh(_) | OpConstraint(_, _, _) | VarLookup(_, _) | FnReturn(_, _)
+  | FnParam(_, _, _) | MatchBranch(_, _) | ListElement(_) | IfBranch(_) | LetBinding(_, _)
+  | Unified(_, _) | Instantiation(_, _) | Placeholder(_) | MissingVar(_) | Refinement(_, _)
+  | Located(_, _) | InferredCallReturn(_, _) | InferredPipeResult(_, _) | DefaultReason(_, _)
+  | Accepted(_, _, _) | LabelEnters(_, _, _) | ChainInstall(_, _) | StateBinding(_, _) => match why_lines(chain, v, 0) {
     [] => NoteTypeChain("", []),
     [first, ...rest] => NoteTypeChain(first, rest),
   },
@@ -1047,7 +1065,7 @@ fn is_top_decl(h) = match graph_node_body(h) {
     AliasStmt(_, _) => at_module_level(h),
     RowAliasStmt(_, _) => at_module_level(h),
   },
-  _ => false,
+  NExpr(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => false,
 }
 
 // One declaration of the module: its query line — the type the judgment
@@ -1082,7 +1100,7 @@ fn decl_word(body) = match body {
     ImportStmt(_) => "import",
     ExprStmt(_) => "expression",
   },
-  _ => "node",
+  NExpr(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_) | NRow(_) | NParam(_) => "node",
 }
 
 // How much a Ledger fact matters at the caret: debt first, then a
@@ -1327,7 +1345,28 @@ fn diag_lead(d, msg: String) = match d {
   EEffectUnhandled(_, _, _, _) => "this path performs an effect no handler around it answers. {msg}",
   EMissingVariable(_, _) => "a name here isn't in scope — check the spelling or the import. {msg}",
   ERefinementRejected(_, _, _) => "a claim is proven false — the value cannot meet its bound. {msg}",
-  _ => if diag_applies_itself(d) { "a step the medium can take: {msg}" } else { msg },
+  PExpectedToken(_, _) | PUnclosedConstruct(_, _) | PUnexpectedToken(_, _) | ERedundantBraces(_)
+  | ELambdaFence(_) | ERedundantFnOnLambda(_) | ELambdaAsOrOr(_) | EOrphanHandlerAttach(_)
+  | ENotAKeyword(_, _) | EEffArgNotLiteral(_) | EInternalInvariant(_, _) | WRedundantWhere(_)
+  | WCommentRefUnresolved(_, _, _) | ETypeMismatch(_, _, _, _) | ETypeArityMismatch(_, _, _)
+  | EConstructorArity(_, _, _, _) | EHandlerArmArity(_, _, _, _) | EFnArityMismatch(_, _, _)
+  | EOccursCheck(_, _, _) | EMissingImport(_, _, _, _) | EDuplicateImport(_, _)
+  | ENotARecordType(_, _) | EResumeOutsideArm(_) | EResumeWorldMismatch(_, _, _)
+  | EUnknownArgLabel(_, _) | EZeroDelayFeedback(_) | EInitPerformsOwnOp(_, _, _, _)
+  | EHandlerInexhaustive(_, _, _, _) | EResumeOfNever(_, _, _) | EComputedDelayDepth(_)
+  | ERestOutsideDestructure(_) | ERowAliasCycle(_, _) | EDeclaredRowContradiction(_, _)
+  | EMalformedNumericLiteral(_, _, _) | ERowAliasNegation(_, _) | ERecordFieldExtra(_, _, _)
+  | ERecordFieldMissing(_, _, _) | EPatternInexhaustive(_, _) | ECatchAllOverSum(_, _, _)
+  | EPatternAlternationBindingMismatch(_, _) | EIfMissingElse(_) | TOverDeclared(_, _, _, _)
+  | TRowInventory(_, _, _, _) | TWordSlotBox(_, _, _) | TPolyRecursionSignature(_, _)
+  | TOwnUnconsumed(_, _) | TOwnAcrossReplay(_, _) | EUseAfterMove(_, _) | EVerifyUnencodable(_)
+  | VPending(_, _) | EOwnershipViolation(_, _) | ERegionEscape(_, _) | EMissingModule(_, _, _)
+  | EHandlerStateShadowsOp(_, _, _) | EFnShadowsOp(_, _, _) | EOpShadowsPrimitive(_, _, _)
+  | EOpShadowsOp(_, _, _, _) | EDuplicateFnName(_, _) | EDuplicateTypeName(_, _)
+  | EDuplicateBinder(_, _, _) | EEmittedNameCollision(_, _) | EUnresolvedType(_, _, _)
+  | EThreadedBranchEffect(_, _, _) | EDerivativeUnreachable(_, _) | EEnvNameUngrounded(_)
+  | EUnresolvedHole(_, _) | EFieldOffsetUnprovable(_, _) | EShapeUnprovable(_, _)
+  | EInstantiationDepth(_, _) | EArithOnAggregate(_, _) | EHandlerChainShape(_, _) => if diag_applies_itself(d) { "a step the medium can take: {msg}" } else { msg },
 }
 
 // A diagnostic on the wire carries its own lead — the sentence the page
@@ -1761,7 +1800,11 @@ fn node_query_line(h, kind) = match graph_node_body(h) {
   // its cell's type where nothing claimed it (the cell holds a shape).
   NHole(_) => match hole_demand(h) {
     TVar(_) => "_ — still free: annotate the enclosing function's param or result and the fan arrives with the type",
-    ty => show_type(ty),
+    ty @ (
+      TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TName(_, _)
+      | TRecord(_) | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _)
+      | TAlias(_, _) | TValue(_)
+    ) => show_type(ty),
   },
   // A literal's type IS its body when the cell is still free (a top-level
   // let's value node keeps its own cell unbound; the body already proves
@@ -1770,7 +1813,7 @@ fn node_query_line(h, kind) = match graph_node_body(h) {
   NExpr(LitInt(_)) => "Int",
   NExpr(LitString(_)) => "String",
   NExpr(LitBool(_)) => "Bool",
-  _ => show_type(ty_of_kind(h, kind)),
+  NExpr(_) | NStmt(_) | NPat(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NRow(_) | NParam(_) => show_type(ty_of_kind(h, kind)),
 }
 
 // The addressed source itself: the text the judgment read, sliced to the
@@ -1845,7 +1888,11 @@ fn why_lines(reason, v, depth) = if depth > 7 {
     Located(span, inner) => ["{reason_phrase(inner)}, at {file_line(v.name, span)}{binding_ledes(span, inner, v)}"] ++ why_deeper(inner, v, depth),
     VarLookup(name, br) => ["{name} read here"] ++ why_lines(br, v, depth + 1),
     EffectEnters(eff, site, next) => enters_lines(eff, site, next, v),
-    _ => ["{reason_phrase(reason)}"] ++ why_deeper(reason, v, depth),
+    Declared(_) | Inferred(_) | Fresh(_) | OpConstraint(_, _, _) | FnReturn(_, _) | FnParam(_, _, _)
+    | MatchBranch(_, _) | ListElement(_) | IfBranch(_) | LetBinding(_, _) | Unified(_, _)
+    | Instantiation(_, _) | Placeholder(_) | MissingVar(_) | Refinement(_, _) | InferredCallReturn(_, _)
+    | InferredPipeResult(_, _) | DefaultReason(_, _) | Accepted(_, _, _) | LabelEnters(_, _, _)
+    | ChainInstall(_, _) | StateBinding(_, _) => ["{reason_phrase(reason)}"] ++ why_deeper(reason, v, depth),
   }
 }
 
@@ -1858,15 +1905,27 @@ fn why_lines(reason, v, depth) = if depth > 7 {
 fn enters_lines(eff: String, site, next, v) = match graph_node_body(site) {
   NStmt(FnStmt(name, _, _, _, _)) => ["{eff} enters `{name}`"] ++ enters_rest(next, v),
   NStmt(EffectDeclStmt(ename, _, _)) => ["{reason_phrase(next)}, an op of {ename}, at {site_address(site)}"],
-  body => match next {
+  body @ (
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_)
+  ) => match next {
     Inferred(what) => ["{what}, at {site_address(site)}"],
-    _ => ["{site_phrase(body)}, at {site_address(site)}"] ++ enters_rest(next, v),
+    Declared(_) | Fresh(_) | OpConstraint(_, _, _) | VarLookup(_, _) | FnReturn(_, _)
+    | FnParam(_, _, _) | MatchBranch(_, _) | ListElement(_) | IfBranch(_) | LetBinding(_, _)
+    | Unified(_, _) | Instantiation(_, _) | Placeholder(_) | MissingVar(_) | Refinement(_, _)
+    | Located(_, _) | InferredCallReturn(_, _) | InferredPipeResult(_, _) | DefaultReason(_, _)
+    | Accepted(_, _, _) | EffectEnters(_, _, _) | LabelEnters(_, _, _) | ChainInstall(_, _)
+    | StateBinding(_, _) => ["{site_phrase(body)}, at {site_address(site)}"] ++ enters_rest(next, v),
   },
 }
 
 fn enters_rest(next, v) = match next {
   EffectEnters(eff, site, deeper) => enters_lines(eff, site, deeper, v),
-  _ => why_lines(next, v, 0),
+  Declared(_) | Inferred(_) | Fresh(_) | OpConstraint(_, _, _) | VarLookup(_, _) | FnReturn(_, _)
+  | FnParam(_, _, _) | MatchBranch(_, _) | ListElement(_) | IfBranch(_) | LetBinding(_, _)
+  | Unified(_, _) | Instantiation(_, _) | Placeholder(_) | MissingVar(_) | Refinement(_, _)
+  | Located(_, _) | InferredCallReturn(_, _) | InferredPipeResult(_, _) | DefaultReason(_, _)
+  | Accepted(_, _, _) | LabelEnters(_, _, _) | ChainInstall(_, _) | StateBinding(_, _) => why_lines(next, v, 0),
 }
 
 fn why_deeper(inner, v, depth) = match inner {
@@ -1885,7 +1944,9 @@ fn why_deeper(inner, v, depth) = match inner {
   OpConstraint(_, a, b) => why_lines(a, v, depth + 1) ++ why_lines(b, v, depth + 1),
   IfBranch(br) => why_lines(br, v, depth + 1),
   Instantiation(_, br) => why_lines(br, v, depth + 1),
-  _ => [],
+  Declared(_) | Inferred(_) | Fresh(_) | FnParam(_, _, _) | MatchBranch(_, _) | ListElement(_)
+  | Placeholder(_) | MissingVar(_) | Refinement(_, _) | Located(_, _) | DefaultReason(_, _)
+  | LabelEnters(_, _, _) | ChainInstall(_, _) | StateBinding(_, _) => [],
 }
 
 // The value + comment ledes at a binding hop — both read LIVE from the
@@ -1902,8 +1963,12 @@ fn binding_ledes(span, inner, v) = match inner {
       (_, sh) => "{value_lede(sh)}{comment_lede(sh)}",
     },
   },
-  // drift-audit: ignore — genuine String-null lede: a non-binding hop carries no value/comment lede by construction
-  _ => "",
+  // A hop that binds nothing carries no lede.
+  Declared(_) | Inferred(_) | Fresh(_) | OpConstraint(_, _, _) | VarLookup(_, _) | FnReturn(_, _)
+  | FnParam(_, _, _) | MatchBranch(_, _) | ListElement(_) | IfBranch(_) | Unified(_, _)
+  | Instantiation(_, _) | Placeholder(_) | MissingVar(_) | Refinement(_, _) | Located(_, _)
+  | InferredCallReturn(_, _) | InferredPipeResult(_, _) | DefaultReason(_, _) | Accepted(_, _, _)
+  | EffectEnters(_, _, _) | LabelEnters(_, _, _) | ChainInstall(_, _) | StateBinding(_, _) => "",
 }
 
 fn span_line_of(s) with Pure = match s {
@@ -1918,8 +1983,9 @@ fn value_lede(sh) = match graph_node_body(sh) {
     Some(LVBool(b)) => if b { " = true" } else { " = false" },
     None => "",
   },
-  // drift-audit: ignore — genuine String-null lede: a non-let node has no binding value to render
-  _ => "",
+  // A node that is no let has no bound value to render.
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => "",
 }
 
 fn comment_lede(sh) = {

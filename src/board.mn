@@ -98,15 +98,15 @@ fn board_bounds() = [
   // handler's step is one lambda more, and two wrappers of the specializer's
   // substitution became the holes they were. 131 -> 128 (2026-10-21): the
   // perform's pin walk over its declared row left when an instance became a
-  // variable the perform, the declaration and the install bind.
-  Bound({ceiling: 128, question: QCensus(CsEffectfulLambda)}),
-  // Drift mode 10 — the seven survivors are documented sentinels, not masked
-  // cases. Every wildcard that is NOT one of them is a variant the author
-  // declined to enumerate, and the medium cannot tell the difference, which
-  // is exactly why the bound is a count and not zero. 9 -> 7 (2026-09-28,
-  // R0d): the count read 7 at pin 0bc8383e, so the bound admitted two new
-  // masked cases nobody would have seen.
-  Bound({ceiling: 7, question: QCensus(CsWildcardZero)}),
+  // variable the perform, the declaration and the install bind. 128 -> 127
+  // (2026-10-22): the count read 127 at the pin before.
+  Bound({ceiling: 127, question: QCensus(CsEffectfulLambda)}),
+  // Drift mode 10 — a wildcard answering zero. A catch-all over a sum
+  // refuses (E_CatchAllOverSum), so a zero answers by meaning: a roster for
+  // an honest total, a demand where a name is required, an invariant's
+  // refusal where the shape is the compiler's own. 7 -> 0 (2026-10-22): the
+  // seven sentinels took those forms.
+  Bound({ceiling: 0, question: QCensus(CsWildcardZero)}),
   // Drift mode 13 — a bug is zero or it is blocking; a masked failure is the
   // surrender-fallback Anchor 2 deletes rather than wraps.
   Bound({ceiling: 0, question: QCensus(CsFailureMask)}),
@@ -124,33 +124,16 @@ fn board_bounds() = [
   // were written as their rosters when the flow walk replaced the label
   // lattice. 15 -> 14 the same day: the callee-name read's `""` left with the
   // trailing pair a resume-bound fn took, once a nested fn captured its k.
-  Bound({ceiling: 14, question: QCensus(CsWildcardFabricates)}),
+  // 14 -> 0 (2026-10-22): each took the form its meaning has, a roster, a
+  // demand or an invariant's refusal, when a catch-all over a sum refused.
+  Bound({ceiling: 0, question: QCensus(CsWildcardFabricates)}),
   // Drift mode 10 at the arm itself (Morgan, 2026-10-13): a `_` or a bare
   // binder after other arms of a match over a sum is the roster the author
   // declined to write, and a constructor declared later joins it unread.
-  // `mentl tighten` writes the roster. The ceiling is the wheel's count,
-  // seen RED one below the day the shape was counted, and follows every
-  // landing that lowers it; it falls to zero where the migration lands
-  // (`Hβ.match.catch-all-over-a-sum-is-the-roster`). 1177 -> 1171
-  // (2026-10-16): the parameter desugar and its re-sugaring render left
-  // with their catch-alls when a parameter became its node. 1171 -> 1168
-  // the same day: the comment gate's walks over binder names became one
-  // search over the child projection, and a comment's owner reads its
-  // declaration's spelling. 1168 -> 1167 the same day: the walk to a
-  // position's declaration names its roster where the session's cone reads it.
-  // 1167 -> 1141: the lowering's spine of capture points and the judgment's
-  // continuation boundaries left when a continuation was captured at any
-  // position. 1141 -> 937: `mentl tighten` wrote every catch-all of the
-  // verifier and of the graph, type and effect modules it imports as its
-  // roster, the day information flow became the verifier's walk. 937 -> 936
-  // the same day: the callee-name read left with the resume-bound fn's
-  // trailing pair. 936 -> 930 the same day: the walks that bound a function
-  // to a handler by its spelling left when an arm's resume summaries became
-  // its own. 930 -> 929 (2026-10-21): the root census's op-to-effect read
-  // left the pipeline when the judgment read the row at the root. 929 -> 926
-  // (2026-10-22): the readings rewritten when a primitive became a kind and
-  // a call a reading of its callee name their rosters.
-  Bound({ceiling: 926, question: QCensus(CsWildcardOverSum)}),
+  // The judgment refuses the shape (E_CatchAllOverSum), and the census
+  // reads its sites off the refusals. 926 -> 0 (2026-10-22): `mentl
+  // tighten` wrote every one as its roster.
+  Bound({ceiling: 0, question: QCensus(CsWildcardOverSum)}),
   // Drift mode 15 — a value given a leading-underscore name instead of being
   // deleted. The rename silences the reader, never the fact that nothing
   // reads it.
@@ -378,7 +361,9 @@ fn board_bounds() = [
   // the scan it described. 42 -> 41 (2026-10-21): the root census's note on
   // the init's pin left with the census. 41 -> 40 (2026-10-22): the note on
   // a load crossing the image's end left with the partial conversion's call.
-  Bound({ceiling: 40, question: QCensus(CsProseClass(PcCommit))}),
+  // 40 -> 39 (2026-10-22): the wildcard-zero bound's note on the pin its
+  // count was read at left when the bound reached zero.
+  Bound({ceiling: 39, question: QCensus(CsProseClass(PcCommit))}),
   // Numbered citations of the archived spec corpus. 20 -> 19 (2026-10-15):
   // the banner over the pattern type left when a pattern became a node.
   // 19 -> 18 (2026-10-20): the graph module's trail prose left with the
@@ -390,8 +375,10 @@ fn board_bounds() = [
   // free-name walk began drawing them left with the by-spelling rows. 38 ->
   // 36 (2026-10-20): the publish replay's prose left with the replay, and
   // the map's pop prose with the pop. 36 -> 35 (2026-10-21): the emit's
-  // init-scope prose left when the judgment took the check.
-  Bound({ceiling: 35, question: QCensus(CsProseClass(PcLifecycle))}),
+  // init-scope prose left when the judgment took the check. 35 -> 34
+  // (2026-10-22): the parser's note on a retired install spelling left when
+  // a name the grammar demands became a demand.
+  Bound({ceiling: 34, question: QCensus(CsProseClass(PcLifecycle))}),
   // Archaeology — the seed era's vocabulary and its design notes. 68 -> 67
   // (2026-10-15): the note over the type annotation's node kind that said
   // why its tag stood last. 67 -> 66 (2026-10-15): a stale note over the
@@ -403,8 +390,10 @@ fn board_bounds() = [
   // stack and the fork seed left with them. 59 -> 58 (2026-10-21): the
   // dispatch walk's note over its world entry left when the entry took the
   // instance it serves. 58 -> 57 (2026-10-22): the strings module's note
-  // over a float family that module does not hold left.
-  Bound({ceiling: 57, question: QCensus(CsProseClass(PcArchaeology))}),
+  // over a float family that module does not hold left. 57 -> 56 the same
+  // day: the parser's note on a third precedence table left when the table
+  // became one.
+  Bound({ceiling: 56, question: QCensus(CsProseClass(PcArchaeology))}),
   // Decoration runs; the formatter's decoration strip takes this to zero
   // (PLAN §11, the project canonical). 267 -> 266 (2026-10-15): the pattern
   // type's banner left when a pattern became a node. 266 -> 265
@@ -437,8 +426,10 @@ fn board_bounds() = [
   // a handler by its spelling left with the walks.
   // 111 -> 110 (2026-10-19): the name dedup's silencer left with the scan
   // it silenced. 110 -> 108 (2026-10-22): two markers over modes the audit
-  // never matched left the prelude's strings and threading.
-  Bound({ceiling: 108, question: QCensus(CsProseClass(PcSilencer))})
+  // never matched left the prelude's strings and threading. 108 -> 85 the
+  // same day: the markers over fabricating catch-alls left when each became
+  // its roster, a demand or an invariant's refusal.
+  Bound({ceiling: 85, question: QCensus(CsProseClass(PcSilencer))})
 ]
 
 // The board: every bound answered by the medium's own answer to its question.

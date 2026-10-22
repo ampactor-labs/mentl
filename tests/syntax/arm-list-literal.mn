@@ -19,6 +19,6 @@ type Shape = Leaf | Node(Int) | Fork(Int, Int)
 fn apply_twice(f, a, b) = f(a) + f(b)
 
 fn main() = {
-  let weigh = { Leaf => 3, Node(n) => n * 2, _ => 7 }
+  let weigh = { Leaf => 3, Node(n) => n * 2, Fork(_, _) => 7 }
   apply_twice(weigh, Node(5), Leaf) + weigh(Fork(1, 2)) + weigh(Node(7))
 }

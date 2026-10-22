@@ -44,7 +44,7 @@ fn twac(try_fn, catch_fn) = {
   let attempted = (try_fn()) ~> my_catch
   match attempted {
     None  => catch_fn(),
-    found => found,
+    found @ Some(_) => found,
   }
 }
 

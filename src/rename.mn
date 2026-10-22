@@ -175,16 +175,8 @@ fn written_in_a_type(r) = match graph_node_body(r) {
 fn nominal_constructor(d) = match graph_parent_of(d) {
   Some(p) => match graph_node_body(p) {
     NStmt(TypeDefStmt(tname, variants)) => any(nominal_variant(tname, d, ??), variants),
-    NStmt(_)
-    | NExpr(_)
-    | NPat(_)
-    | NHole(_)
-    | NModule(_)
-    | NLink(_)
-    | NTypeAnn(_)
-    | NName(_)
-    | NRow(_)
-    | NParam(_) => false,
+    NStmt(_) | NExpr(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => false,
   },
   None => false,
 }
@@ -283,16 +275,8 @@ fn head_named(s, new: String) = match s {
 fn part_written(p, d, new: String) = match graph_node_body(p) {
   NStmt(TypeDefStmt(tname, vs)) => graph_register_node(p, NStmt(TypeDefStmt(tname, map(variant_named(d, new, ??), vs)))),
   NStmt(EffectDeclStmt(ename, ps, ops)) => graph_register_node(p, NStmt(EffectDeclStmt(ename, ps, map(op_named_as(d, new, ??), ops)))),
-  NStmt(_)
-  | NExpr(_)
-  | NPat(_)
-  | NHole(_)
-  | NModule(_)
-  | NLink(_)
-  | NTypeAnn(_)
-  | NName(_)
-  | NRow(_)
-  | NParam(_) => (),
+  NStmt(_) | NExpr(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+  | NRow(_) | NParam(_) => (),
 }
 
 fn variant_named(d, new: String, v) = match v {

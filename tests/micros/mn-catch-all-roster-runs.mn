@@ -1,0 +1,23 @@
+// expect: 10
+// The roster a catch-all stood for, written: a binder over the group and a
+// payload left to `_` run as the `_` did, and the complement of a word, which
+// no roster could name, stays a `_`.
+type Shape = Dot | Line(Int) | Box(Int, Int) | Blob
+
+fn sides(s) = match s {
+  Dot => 0,
+  Line(_) => 1,
+  Box(_, _) | Blob => 4,
+}
+
+fn named(s) = match s {
+  Dot => 1,
+  other @ (Line(_) | Box(_, _) | Blob) => 5,
+}
+
+fn sign(n) = match n {
+  0 => 0,
+  _ => 1,
+}
+
+fn main() = sides(Box(2, 3)) + named(Blob) + sign(7)

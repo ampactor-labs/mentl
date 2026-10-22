@@ -285,7 +285,8 @@ fn spec_is_agg(ty) with Pure = match ty {
   TName(_, _) => true,
   TRecord(_) => true,
   TRecordOpen(_, _) => true,
-  _ => false,
+  TInt | TFloat | TUnit | TByte | TAddr | TFun(_, _, _) | TVar(_) | TRefined(_, _) | TReprPin(_, _)
+  | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => false,
 }
 
 // The scalar/word face of show — the synthesized call (a show through a
@@ -301,7 +302,8 @@ fn show_node_of(h, x) = {
     TRecord(_) => x,
     TRecordOpen(_, _) => x,
     TAddr => x,
-    _ => LCall(h, LGlobal(h, vocabulary_callee("int_to_str")), [x]),
+    TInt | TUnit | TByte | TFun(_, _, _) | TVar(_) | TRefined(_, _) | TReprPin(_, _)
+    | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => LCall(h, LGlobal(h, vocabulary_callee("int_to_str")), [x]),
   }
 }
 
@@ -309,7 +311,9 @@ fn show_node_of(h, x) = {
 // address, whose leaf reads the word unsigned.
 fn show_is_leaf(ty) = match ty {
   TAddr => true,
-  _ => spec_is_agg(ty),
+  TInt | TFloat | TUnit | TByte | TList(_) | TTuple(_) | TFun(_, _, _) | TVar(_) | TName(_, _)
+  | TRecord(_) | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _)
+  | TAlias(_, _) | TValue(_) => spec_is_agg(ty),
 }
 
 fn hash_node_of(h, x) = {
@@ -325,7 +329,8 @@ fn hash_node_of(h, x) = {
       // the field twin's route (emit_field_hash) — one type, one
       // hash fn; the word list_hash here hashed the f64 REFERENCES
       TFloat => LCall(h, LGlobal(h, vocabulary_callee("list_hash_f64")), [x]),
-      _ => LCall(h, LGlobal(h, vocabulary_callee("list_hash")), [x]),
+      TInt | TUnit | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TVar(_) | TName(_, _) | TRecord(_)
+      | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => LCall(h, LGlobal(h, vocabulary_callee("list_hash")), [x]),
     },
     TFloat => LCall(
       h,
@@ -336,7 +341,8 @@ fn hash_node_of(h, x) = {
     TName(_, _) => x,
     TRecord(_) => x,
     TRecordOpen(_, _) => x,
-    _ => x,
+    TInt | TUnit | TByte | TAddr | TFun(_, _, _) | TVar(_) | TRefined(_, _) | TReprPin(_, _)
+    | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => x,
   }
 }
 
@@ -369,7 +375,9 @@ fn emit_hash(h, x) = {
 // an undefined-symbol assembly break (measured: hash([1, 2])).
 fn hash_is_agg(ty) = match ty {
   TList(e) => seq_face_structural(seq_elem_face(e)),
-  _ => spec_is_agg(ty),
+  TInt | TFloat | TUnit | TByte | TAddr | TTuple(_) | TFun(_, _, _) | TVar(_) | TName(_, _)
+  | TRecord(_) | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _)
+  | TAlias(_, _) | TValue(_) => spec_is_agg(ty),
 }
 
 // The closure-mint face of `spec_target_name`'s redirect (lower.mn, where
@@ -522,7 +530,15 @@ fn emit_reach_roots(program, library, i, n, live, roots) = if i >= n {
         settle_floors("__init_lets", stmt)
         roots
       },
-      _ => roots,
+      LConst(_, _) | LLocal(_, _) | LGlobal(_, _) | LUpval(_, _) | LBinOp(_, _, _, _)
+      | LUnaryOp(_, _, _) | LCall(_, _, _) | LTailCall(_, _, _) | LDirectCall(_, _, _, _, _)
+      | LReturn(_, _) | LMakeClosure(_, _, _) | LYield(_, _, _, _) | LCheck(_, _, _) | LAbandon(_, _, _)
+      | LDeclareFn(_) | LIf(_, _, _, _) | LBlock(_, _) | LMakeList(_, _) | LMakeTuple(_, _)
+      | LSimdLanes(_, _) | LFanout(_, _, _, _) | LMakeRecord(_, _) | LRecordUpdate(_, _, _)
+      | LMakeVariant(_, _, _) | LMatch(_, _, _) | LResumeK(_, _, _, _) | LHandleWith(_, _, _, _, _, _)
+      | LDerive(_, _, _) | LArena(_, _) | LFeedback(_, _, _, _, _) | LFeedbackPrior(_) | LPerform(_, _, _)
+      | LFieldLoad(_, _, _) | LPrim(_, _, _) | LStateSlotStore(_, _, _, _) | LStateInit(_, _, _, _)
+      | LShow(_, _) | LHash(_, _) | LWasiCall(_, _, _) => roots,
     }
     emit_reach_roots(program, library, i + 1, n, list_set(live, i, Reached), roots2)
   } else {
@@ -648,7 +664,15 @@ fn lineage_depth(lineage, base: String) =
 // static and only what it holds is settled as minted.
 fn settle_decl(site: String, stmt) = match stmt {
   LLet(_, _, LMakeClosure(_, LFn(_, _, _, body, _, _), caps)) => each(settle_floors(site, ??), caps ++ body),
-  _ => settle_floors(site, stmt),
+  LConst(_, _) | LLocal(_, _) | LGlobal(_, _) | LLet(_, _, _) | LUpval(_, _) | LBinOp(_, _, _, _)
+  | LUnaryOp(_, _, _) | LCall(_, _, _) | LTailCall(_, _, _) | LDirectCall(_, _, _, _, _)
+  | LReturn(_, _) | LMakeClosure(_, _, _) | LYield(_, _, _, _) | LCheck(_, _, _) | LAbandon(_, _, _)
+  | LDeclareFn(_) | LIf(_, _, _, _) | LBlock(_, _) | LMakeList(_, _) | LMakeTuple(_, _)
+  | LSimdLanes(_, _) | LFanout(_, _, _, _) | LMakeRecord(_, _) | LRecordUpdate(_, _, _)
+  | LMakeVariant(_, _, _) | LMatch(_, _, _) | LResumeK(_, _, _, _) | LHandleWith(_, _, _, _, _, _)
+  | LDerive(_, _, _) | LArena(_, _) | LFeedback(_, _, _, _, _) | LFeedbackPrior(_) | LPerform(_, _, _)
+  | LFieldLoad(_, _, _) | LPrim(_, _, _) | LStateSlotStore(_, _, _, _) | LStateInit(_, _, _, _)
+  | LShow(_, _) | LHash(_, _) | LInvariantFailure(_, _) | LWasiCall(_, _, _) => settle_floors(site, stmt),
 }
 
 fn settle_floors(site: String, expr) = {
@@ -733,7 +757,11 @@ fn settle_binop(site: String, h, op, l) = {
   match op {
     BConcat => match fold_strip(lookup_ty(lh)) {
       TList(_) => (),
-      other => settle_unprovable(h, "`++` on {show_type(other)}, emitting {site}"),
+      other @ (
+        TInt | TFloat | TUnit | TByte | TAddr | TTuple(_) | TFun(_, _, _) | TVar(_) | TName(_, _)
+        | TRecord(_) | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _)
+        | TAlias(_, _) | TValue(_)
+      ) => settle_unprovable(h, "`++` on {show_type(other)}, emitting {site}"),
     },
     BEq => settle_compare(site, h, op, lh),
     BNe => settle_compare(site, h, op, lh),
@@ -758,7 +786,9 @@ fn settle_binop(site: String, h, op, l) = {
 fn settle_compare(site: String, h, op, lh) = if lh != 0 {
   match fold_strip(chase_deep(lookup_ty(lh))) {
     TVar(_) => settle_unprovable(h, "`{binop_to_str(op)}` on {show_type(lookup_ty(lh))}, emitting {site}"),
-    _ => (),
+    TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TName(_, _)
+    | TRecord(_) | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _)
+    | TAlias(_, _) | TValue(_) => (),
   }
 }
 
@@ -767,7 +797,9 @@ fn settle_compare(site: String, h, op, lh) = if lh != 0 {
 // a handler head rendered its config list as `(66036)`). Said at the show.
 fn settle_shape(site: String, h, what: String, x) = match show_hash_ty(x) {
   TVar(_) => settle_unprovable(h, "{what} of {show_type(show_hash_ty(x))}, emitting {site}"),
-  _ => (),
+  TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TName(_, _)
+  | TRecord(_) | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _)
+  | TAlias(_, _) | TValue(_) => (),
 }
 
 fn settle_unprovable(h, why: String) = report_at(h, EShapeUnprovable(why, graph_span_of(h)))
@@ -1097,7 +1129,10 @@ fn alloc_unit_named(name: String, sym: String, enc: String, parent) = match pare
 fn alloc_owner_row(owner) = match owner {
   OwnedByFn(origin) => match lookup_ty(origin) {
     TFun(_, _, row) => alloc_row_read(row),
-    other => RowAbsent("its origin is not a function: {show_type(other)}"),
+    other @ (
+      TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TVar(_) | TName(_, _) | TRecord(_)
+      | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_)
+    ) => RowAbsent("its origin is not a function: {show_type(other)}"),
   },
   OwnedByHandler(hd) => alloc_handler_row(hd),
   OwnedByInstall(hd) => match projection_of(hd) {
@@ -1137,7 +1172,8 @@ fn alloc_named_answer(c) = match graph_emitfn_at(callee_symbol(c)) {
     DeclaredAt(d) => match graph_published(d) {
       Some((scheme, _, _)) => match judgment_ty(scheme) {
         TFun(_, _, row) => row_read_allows(alloc_row_read(row)),
-        _ => false,
+        TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TVar(_) | TName(_, _) | TRecord(_)
+        | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => false,
       },
       None => false,
     },
@@ -1235,7 +1271,17 @@ fn alloc_spawned(unit, branches, form) = match branches {
 fn alloc_thunk(unit, b) = match b {
   ScheduledBoundary(thunk, _, _, _, _, _) => match thunk {
     LMakeClosure(_, LFn(name, _, _, body, _, _), _) => alloc_walk_nested(unit, name, body),
-    other => {
+    other @ (
+      LConst(_, _) | LLocal(_, _) | LGlobal(_, _) | LLet(_, _, _) | LUpval(_, _) | LBinOp(_, _, _, _)
+      | LUnaryOp(_, _, _) | LCall(_, _, _) | LTailCall(_, _, _) | LDirectCall(_, _, _, _, _)
+      | LReturn(_, _) | LYield(_, _, _, _) | LCheck(_, _, _) | LAbandon(_, _, _) | LDeclareFn(_)
+      | LIf(_, _, _, _) | LBlock(_, _) | LMakeList(_, _) | LMakeTuple(_, _) | LSimdLanes(_, _)
+      | LFanout(_, _, _, _) | LMakeRecord(_, _) | LRecordUpdate(_, _, _) | LMakeVariant(_, _, _)
+      | LMatch(_, _, _) | LResumeK(_, _, _, _) | LHandleWith(_, _, _, _, _, _) | LDerive(_, _, _)
+      | LArena(_, _) | LFeedback(_, _, _, _, _) | LFeedbackPrior(_) | LPerform(_, _, _)
+      | LFieldLoad(_, _, _) | LPrim(_, _, _) | LStateSlotStore(_, _, _, _) | LStateInit(_, _, _, _)
+      | LShow(_, _) | LHash(_, _) | LInvariantFailure(_, _) | LWasiCall(_, _, _)
+    ) => {
       let _ = alloc_walk(unit, other)
       ()
     },
@@ -1290,7 +1336,7 @@ fn alloc_walk(unit, e) = match e {
   LBinOp(h, op, l, r) => {
     let built = match op {
       BConcat => alloc_callee_builds(sugar_callee(h, concat_callee())) && alloc_at(unit, h, AsConcat),
-      _ => false,
+      BAdd | BSub | BMul | BDiv | BMod | BEq | BNe | BLt | BGt | BLe | BGe | BAnd | BOr => false,
     }
     let left = alloc_walk(unit, l)
     let right = alloc_walk(unit, r)
@@ -1437,7 +1483,7 @@ fn alloc_walk(unit, e) = match e {
   LFanout(_, lex, branches, forms) => match fanout_schedule(lex, forms) {
     Threaded => alloc_spawned(unit, branches, fanout_form(lex, forms)),
     Persisted => alloc_spawned(unit, branches, fanout_form(lex, forms)),
-    _ => alloc_walk(unit, fanout_form(lex, forms)),
+    Seq | Simd | Gpu => alloc_walk(unit, fanout_form(lex, forms)),
   },
   LFieldLoad(_, rec, _) => alloc_walk(unit, rec),
   LPrim(_, _, args) => alloc_walk_list(unit, args, 0),
@@ -1632,7 +1678,9 @@ fn field_sel_offset(ref rec, sel) = match sel {
   FByName(fname) => resolve_field_offset(lexpr_handle(rec), fname),
   FByIndex(i) => match lookup_ty(lexpr_handle(rec)) {
     TTuple(elems) => tuple_elem_offset(elems, i, 0, 0),
-    _ => -1,
+    TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TFun(_, _, _) | TVar(_) | TName(_, _)
+    | TRecord(_) | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _)
+    | TAlias(_, _) | TValue(_) => -1,
   },
 }
 
@@ -1658,7 +1706,9 @@ fn field_sel_slot_ty(rec, sel) = match sel {
   },
   FByIndex(i) => match lookup_ty(lexpr_handle(rec)) {
     TTuple(elems) => if i < len(elems) { Some(list_index(elems, i)) } else { None },
-    _ => None,
+    TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TFun(_, _, _) | TVar(_) | TName(_, _)
+    | TRecord(_) | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _)
+    | TAlias(_, _) | TValue(_) => None,
   },
 }
 
@@ -2036,7 +2086,16 @@ fn race_scan(path, recs, e) = match e {
     race_scan_list(args, path, recs)
   },
   LDeclareFn(_) => (),
-  other => race_scan_list(frame_children(other), path, recs),
+  other @ (
+    LConst(_, _) | LLocal(_, _) | LGlobal(_, _) | LLet(_, _, _) | LUpval(_, _) | LBinOp(_, _, _, _)
+    | LUnaryOp(_, _, _) | LCall(_, _, _) | LTailCall(_, _, _) | LReturn(_, _) | LMakeClosure(_, _, _)
+    | LYield(_, _, _, _) | LCheck(_, _, _) | LAbandon(_, _, _) | LIf(_, _, _, _) | LBlock(_, _)
+    | LMakeList(_, _) | LMakeTuple(_, _) | LSimdLanes(_, _) | LFanout(_, _, _, _) | LMakeRecord(_, _)
+    | LRecordUpdate(_, _, _) | LMakeVariant(_, _, _) | LMatch(_, _, _) | LResumeK(_, _, _, _)
+    | LDerive(_, _, _) | LArena(_, _) | LFeedback(_, _, _, _, _) | LFeedbackPrior(_) | LPerform(_, _, _)
+    | LFieldLoad(_, _, _) | LPrim(_, _, _) | LStateSlotStore(_, _, _, _) | LStateInit(_, _, _, _)
+    | LShow(_, _) | LHash(_, _) | LInvariantFailure(_, _) | LWasiCall(_, _, _)
+  ) => race_scan_list(frame_children(other), path, recs),
 }
 
 // A path demands a callee's schedule twin when its innermost schedule
@@ -2044,7 +2103,7 @@ fn race_scan(path, recs, e) = match e {
 // The persisting schedule runs its branches inline and races nothing.
 fn schedule_demands(path) = match schedule_in_stack(path) {
   Threaded => schedule_spawns(path),
-  _ => false,
+  Seq | Simd | Gpu | Persisted => false,
 }
 
 // The demand walk into one callee under the demanding site's path.
@@ -2081,7 +2140,16 @@ fn race_body(local, ctx, rowpairs, visited, recs, e) = match e {
     race_body_list(args, local, ctx, rowpairs, visited, recs)
   },
   LDeclareFn(_) => (),
-  other => race_body_list(frame_children(other), local, ctx, rowpairs, visited, recs),
+  other @ (
+    LConst(_, _) | LLocal(_, _) | LGlobal(_, _) | LLet(_, _, _) | LUpval(_, _) | LBinOp(_, _, _, _)
+    | LUnaryOp(_, _, _) | LCall(_, _, _) | LTailCall(_, _, _) | LReturn(_, _) | LMakeClosure(_, _, _)
+    | LYield(_, _, _, _) | LCheck(_, _, _) | LAbandon(_, _, _) | LIf(_, _, _, _) | LBlock(_, _)
+    | LMakeList(_, _) | LMakeTuple(_, _) | LSimdLanes(_, _) | LMakeRecord(_, _) | LRecordUpdate(_, _, _)
+    | LMakeVariant(_, _, _) | LMatch(_, _, _) | LResumeK(_, _, _, _) | LDerive(_, _, _) | LArena(_, _)
+    | LFeedback(_, _, _, _, _) | LFeedbackPrior(_) | LPerform(_, _, _) | LFieldLoad(_, _, _)
+    | LPrim(_, _, _) | LStateSlotStore(_, _, _, _) | LStateInit(_, _, _, _) | LShow(_, _) | LHash(_, _)
+    | LInvariantFailure(_, _) | LWasiCall(_, _, _)
+  ) => race_body_list(frame_children(other), local, ctx, rowpairs, visited, recs),
 }
 
 // One demanded fanout's branches against the chain: each branch's row,
@@ -2091,7 +2159,8 @@ fn race_fanout(h, br, stack, rowpairs) = match br {
   FanBranches(bs) => each(race_branch(stack, rowpairs), bs),
   FanSeq(f_h) => match lookup_ty(f_h) {
     TFun(_, _, row) => each(threaded_effect_check(h, stack, ""), row_effects_under(row, rowpairs)),
-    _ => (),
+    TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TVar(_) | TName(_, _) | TRecord(_)
+    | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => (),
   },
 }
 
@@ -2118,25 +2187,33 @@ fn row_pairs_at(fh, c) = match fn_judgment(c) {
 fn row_pairs_walk(st0, it0, acc) = match fold_strip(st0) {
   TVar(v) => match graph_chase(v) {
     GNode(NBound(inner), _) => row_pairs_walk(inner, it0, acc),
-    _ => acc,
+    GNode(_, _) => acc,
   },
   TFun(ps, r, srow) => match fold_strip(it0) {
     TFun(ips, ir, irow) => row_pairs_params(ps, ips, row_pairs_walk(r, ir, row_pair_add(acc, srow, irow))),
-    _ => acc,
+    TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TVar(_) | TName(_, _) | TRecord(_)
+    | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => acc,
   },
   TList(e) => match fold_strip(it0) {
     TList(ie) => row_pairs_walk(e, ie, acc),
-    _ => acc,
+    TInt | TFloat | TUnit | TByte | TAddr | TTuple(_) | TFun(_, _, _) | TVar(_) | TName(_, _)
+    | TRecord(_) | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _)
+    | TAlias(_, _) | TValue(_) => acc,
   },
   TTuple(es) => match fold_strip(it0) {
     TTuple(ies) => row_pairs_list(es, ies, acc),
-    _ => acc,
+    TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TFun(_, _, _) | TVar(_) | TName(_, _)
+    | TRecord(_) | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _)
+    | TAlias(_, _) | TValue(_) => acc,
   },
   TName(_, args) => match fold_strip(it0) {
     TName(_, iargs) => row_pairs_list(args, iargs, acc),
-    _ => acc,
+    TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TVar(_)
+    | TRecord(_) | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _)
+    | TAlias(_, _) | TValue(_) => acc,
   },
-  _ => acc,
+  TInt | TFloat | TUnit | TByte | TAddr | TRecord(_) | TRecordOpen(_, _) | TRefined(_, _)
+  | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => acc,
 }
 
 fn row_pairs_list(xs, ys, acc) = match xs {
@@ -2158,7 +2235,7 @@ fn row_pairs_params(ps, ips, acc) = match ps {
 // Each free cell of the scheme's row pairs with the whole site row.
 fn row_pair_add(acc, srow, irow) = match resolve_row(srow) {
   EfRow(_, _, EtOpen(edges)) => fold(acc, row_pair_edge(resolve_row(irow)), edges),
-  _ => acc,
+  EfRow(_, _, _) => acc,
 }
 
 fn row_pair_edge(site_row, acc, e) = push(acc, (graph_chase_handle(edge_cell(e)), site_row))
@@ -2170,7 +2247,7 @@ fn row_pair_edge(site_row, acc, e) = push(acc, (graph_chase_handle(edge_cell(e))
 fn row_effects_under(row, rowpairs) = match resolve_row(row) {
   EfRow(_, _, t) => match t {
     EtOpen(edges) => fold(effects_of_row(row), row_edge_under(rowpairs), edges),
-    _ => effects_of_row(row),
+    EtClosed | EtAll => effects_of_row(row),
   },
 }
 
@@ -2854,7 +2931,8 @@ fn register_one_show_literals(ty) = match fold_strip(ty) {
     visit_string(", ")
     register_show_field_name_literals(show_named_fields(fold_strip(ty)), 0, false)
   },
-  _ => {
+  TInt | TFloat | TUnit | TByte | TAddr | TFun(_, _, _) | TVar(_) | TRecord(_) | TRecordOpen(_, _)
+  | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => {
     visit_string("\{")
     visit_string("\}")
     visit_string(", ")
@@ -3142,7 +3220,7 @@ fn walk_lemit_pat(pat) = match pat {
   LPRecord(_, _, fs, _) => each({ (_, sp) => walk_lemit_pat(sp) }, fs),
   LPAlt(branches) => each(walk_lemit_pat, branches),
   LPAs(_, inner) => walk_lemit_pat(inner),
-  _ => (),
+  LPVar(_) | LPWild | LPUnresolvedCon(_, _) => (),
 }
 
 // ─── The `<~` line: a ring in the image, owned by the record that holds
@@ -3211,7 +3289,15 @@ fn init_static_lines(expr) = match expr {
   LYield(_, _, args, k) => flat_map(init_static_lines, args ++ site_caps(k)),
   LCheck(_, inner, k) => init_static_lines(inner) ++ flat_map(init_static_lines, opt_site_caps(k)),
   LDeclareFn(_) => [],
-  _ => flat_map(init_static_lines, low_children(expr)),
+  LConst(_, _) | LLocal(_, _) | LGlobal(_, _) | LLet(_, _, _) | LUpval(_, _) | LBinOp(_, _, _, _)
+  | LUnaryOp(_, _, _) | LCall(_, _, _) | LTailCall(_, _, _) | LDirectCall(_, _, _, _, _)
+  | LReturn(_, _) | LAbandon(_, _, _) | LIf(_, _, _, _) | LBlock(_, _) | LMakeList(_, _)
+  | LMakeTuple(_, _) | LSimdLanes(_, _) | LFanout(_, _, _, _) | LMakeRecord(_, _)
+  | LRecordUpdate(_, _, _) | LMakeVariant(_, _, _) | LMatch(_, _, _) | LResumeK(_, _, _, _)
+  | LHandleWith(_, _, _, _, _, _) | LDerive(_, _, _) | LArena(_, _) | LFeedback(_, _, _, _, _)
+  | LFeedbackPrior(_) | LPerform(_, _, _) | LFieldLoad(_, _, _) | LPrim(_, _, _)
+  | LStateSlotStore(_, _, _, _) | LStateInit(_, _, _, _) | LShow(_, _) | LHash(_, _)
+  | LInvariantFailure(_, _) | LWasiCall(_, _, _) => flat_map(init_static_lines, low_children(expr)),
 }
 
 fn line_is_static(line) = match line {
@@ -3230,7 +3316,7 @@ fn line_is_static(line) = match line {
 // its own width.
 fn line_symbol(sym: String, enc: String) = match enc_sched(enc) {
   Seq => sym,
-  _ => {
+  Threaded | Simd | Gpu | Persisted => {
     let te = enc_type_part(enc)
     let base = spec_unmangle(sym, enc)
     if spec_enc_is_floor(te) { base } else { spec_mangle(base, te) }
@@ -3765,8 +3851,16 @@ fn escape_into(out, pos, b) = if b >= 32 && b < 127 && b != 34 && b != 92 {
 // "" as no-op).
 fn extract_top_fn_name(stmt) with Pure = match stmt {
   LLet(_, name, LMakeClosure(_, _, _)) => name,
-  // drift-audit: ignore — "" = non-binding shape (caller treats "" as no-op)
-  _ => "",
+  // A shape that binds no function names nothing; its caller passes over "".
+  LConst(_, _) | LLocal(_, _) | LGlobal(_, _) | LLet(_, _, _) | LUpval(_, _) | LBinOp(_, _, _, _)
+  | LUnaryOp(_, _, _) | LCall(_, _, _) | LTailCall(_, _, _) | LDirectCall(_, _, _, _, _)
+  | LReturn(_, _) | LMakeClosure(_, _, _) | LYield(_, _, _, _) | LCheck(_, _, _) | LAbandon(_, _, _)
+  | LDeclareFn(_) | LIf(_, _, _, _) | LBlock(_, _) | LMakeList(_, _) | LMakeTuple(_, _)
+  | LSimdLanes(_, _) | LFanout(_, _, _, _) | LMakeRecord(_, _) | LRecordUpdate(_, _, _)
+  | LMakeVariant(_, _, _) | LMatch(_, _, _) | LResumeK(_, _, _, _) | LHandleWith(_, _, _, _, _, _)
+  | LDerive(_, _, _) | LArena(_, _) | LFeedback(_, _, _, _, _) | LFeedbackPrior(_) | LPerform(_, _, _)
+  | LFieldLoad(_, _, _) | LPrim(_, _, _) | LStateSlotStore(_, _, _, _) | LStateInit(_, _, _, _)
+  | LShow(_, _) | LHash(_, _) | LInvariantFailure(_, _) | LWasiCall(_, _, _) => "",
 }
 
 // The VALUE peer of extract_top_fn_name: a top-level LLet whose init is
@@ -3774,8 +3868,19 @@ fn extract_top_fn_name(stmt) with Pure = match stmt {
 // declaration and an init-before-main write ($__init_lets). ONE
 // projection over lowered's direct children feeds both consumers
 // (declaration + init) — never two walks of one tree.
-fn collect_top_value_lets(stmts) =
-  stmts |> map({ LLet(_, _, LMakeClosure(_, _, _)) => [], LLet(_, name, init) => [(name, init)], _ => [] }) |> flatten
+fn collect_top_value_lets(stmts) = stmts |> map({
+  LLet(_, _, LMakeClosure(_, _, _)) => [],
+  LLet(_, name, init) => [(name, init)],
+  LConst(_, _) | LLocal(_, _) | LGlobal(_, _) | LUpval(_, _) | LBinOp(_, _, _, _)
+  | LUnaryOp(_, _, _) | LCall(_, _, _) | LTailCall(_, _, _) | LDirectCall(_, _, _, _, _)
+  | LReturn(_, _) | LMakeClosure(_, _, _) | LYield(_, _, _, _) | LCheck(_, _, _) | LAbandon(_, _, _)
+  | LDeclareFn(_) | LIf(_, _, _, _) | LBlock(_, _) | LMakeList(_, _) | LMakeTuple(_, _)
+  | LSimdLanes(_, _) | LFanout(_, _, _, _) | LMakeRecord(_, _) | LRecordUpdate(_, _, _)
+  | LMakeVariant(_, _, _) | LMatch(_, _, _) | LResumeK(_, _, _, _) | LHandleWith(_, _, _, _, _, _)
+  | LDerive(_, _, _) | LArena(_, _) | LFeedback(_, _, _, _, _) | LFeedbackPrior(_) | LPerform(_, _, _)
+  | LFieldLoad(_, _, _) | LPrim(_, _, _) | LStateSlotStore(_, _, _, _) | LStateInit(_, _, _, _)
+  | LShow(_, _) | LHash(_, _) | LInvariantFailure(_, _) | LWasiCall(_, _, _) => [],
+}) |> flatten
 
 // The module's fn set IS a set. The k machinery's dual-residency and
 // nested reification legitimately SHARE LFn subtrees — one node, many
@@ -4571,7 +4676,7 @@ fn word_vector(n_args) = (map((_) => RI32, range(0, n_args + 1)), RI32)
 // word face.
 fn perform_site_vector(h, d, args) = match d {
   PdDriver(_, _) => word_vector(len(args)),
-  _ => perform_vector_at(h, args),
+  PdFrame(_, _, _) | PdWalk(_, _, _, _) => perform_vector_at(h, args),
 }
 
 // Emit each DISTINCT non-i32 repr-vector once. The seen list carries the ft_names
@@ -4602,7 +4707,7 @@ fn emit_param_types(n) = if n == 0 {
 // the wideness read the wrapper generator and the ceiling share.
 fn repr_is_i32(r) with Pure = match r {
   RI32 => true,
-  _ => false,
+  RI64 | RF64 | RF32 | RV128 => false,
 }
 
 // call_ft_name — the WORD face's type: the arity family, spoken only by a
@@ -4688,7 +4793,7 @@ fn emit_wasi_args_at_widths(args, preprs, i) = if i >= len(args) {
   if i < len(preprs) {
     match list_index(preprs, i) {
       RI64 => wat_emit("    (i64.extend_i32_u)\n"),
-      _ => (),
+      RI32 | RF64 | RF32 | RV128 => (),
     }
   } else {
     ()
@@ -6057,7 +6162,7 @@ fn walk_locals_expr(expr, acc) = match expr {
     let sr = tail_expr_repr(s)
     let with_scratch = match sr {
       RI32 => walk_locals_expr(s, acc),
-      _ => [scrut_local(sr) ++ " " ++ repr_wat(sr)] ++ walk_locals_expr(s, acc),
+      RI64 | RF64 | RF32 | RV128 => [scrut_local(sr) ++ " " ++ repr_wat(sr)] ++ walk_locals_expr(s, acc),
     }
     walk_locals_arms(arms, sr, with_scratch)
   },
@@ -6334,7 +6439,7 @@ fn walk_locals_pat_tuple(elem_binds, acc) = if len(elem_binds) == 0 {
 // proofs pass through; unequal proofs keep the left (loud at assembly).
 fn repr_join(a, b) = match a {
   RI32 => b,
-  _ => a,
+  RI64 | RF64 | RF32 | RV128 => a,
 }
 
 // The ONE width read a let's DECL and its STORE share — the graph's proof at
@@ -6379,7 +6484,7 @@ fn tail_expr_repr(expr) = match expr {
   LPrim(_h, p, _) => primitive_repr(p),
   LBinOp(_h, op, l, r) => match binop_kind(op) {
     BKArith => repr_join(tail_expr_repr(l), tail_expr_repr(r)),
-    _ => RI32,
+    BKCmp | BKBool | BKConcat => RI32,
   },
   LCall(ch, callee, _) => call_result_repr(callee, ch),
   LShow(_h, _x) => RI32,
@@ -6400,7 +6505,15 @@ fn tail_expr_repr(expr) = match expr {
     Some(DoAdjOut) => RI32,
     None => if h == 0 { RI32 } else { repr_of(lookup_ty(h)) },
   },
-  other => {
+  other @ (
+    LConst(_, _) | LLocal(_, _) | LGlobal(_, _) | LLet(_, _, _) | LUpval(_, _) | LUnaryOp(_, _, _)
+    | LDirectCall(_, _, _, _, _) | LMakeClosure(_, _, _) | LYield(_, _, _, _) | LCheck(_, _, _)
+    | LAbandon(_, _, _) | LDeclareFn(_) | LMakeList(_, _) | LMakeTuple(_, _) | LSimdLanes(_, _)
+    | LFanout(_, _, _, _) | LMakeRecord(_, _) | LRecordUpdate(_, _, _) | LMakeVariant(_, _, _)
+    | LResumeK(_, _, _, _) | LHandleWith(_, _, _, _, _, _) | LDerive(_, _, _) | LArena(_, _)
+    | LFeedback(_, _, _, _, _) | LFeedbackPrior(_) | LPerform(_, _, _) | LStateSlotStore(_, _, _, _)
+    | LStateInit(_, _, _, _) | LInvariantFailure(_, _)
+  ) => {
     let h = lexpr_handle(other)
     if h == 0 { RI32 } else { repr_of(lookup_ty(h)) }
   },
@@ -6510,7 +6623,13 @@ fn lexpr_leaves_value(e) = match e {
   LInvariantFailure(_, _) => false,
   LDeclareFn(_) => false,
   LReturn(_, _) => false,
-  _ => true,
+  LConst(_, _) | LLocal(_, _) | LGlobal(_, _) | LUpval(_, _) | LBinOp(_, _, _, _)
+  | LUnaryOp(_, _, _) | LCall(_, _, _) | LTailCall(_, _, _) | LDirectCall(_, _, _, _, _)
+  | LMakeClosure(_, _, _) | LYield(_, _, _, _) | LCheck(_, _, _) | LAbandon(_, _, _) | LIf(_, _, _, _)
+  | LMakeList(_, _) | LMakeTuple(_, _) | LSimdLanes(_, _) | LMakeRecord(_, _) | LRecordUpdate(_, _, _)
+  | LMakeVariant(_, _, _) | LMatch(_, _, _) | LResumeK(_, _, _, _) | LHandleWith(_, _, _, _, _, _)
+  | LDerive(_, _, _) | LArena(_, _) | LFeedback(_, _, _, _, _) | LFeedbackPrior(_) | LPerform(_, _, _)
+  | LFieldLoad(_, _, _) | LPrim(_, _, _) | LShow(_, _) | LHash(_, _) | LWasiCall(_, _, _) => true,
 }
 
 // The slots the argument area holds: the widest perform's arity, and one
@@ -6908,7 +7027,15 @@ fn emit_lane_pairs(rec_local: String, n, pairs) = match pairs {
         wat_emit("    (f64.store offset=8)\n")
         wat_emit("    (i32.sub (local.get ${rec_local}) (i32.const {int_to_str(16 * (n - i))})) (global.get $__dt_epoch) (i32.store)\n")
       },
-      _ => wat_emit("    (unreachable)  ;; a lane index that is not a literal\n"),
+      LConst(_, _) | LLocal(_, _) | LGlobal(_, _) | LLet(_, _, _) | LUpval(_, _) | LBinOp(_, _, _, _)
+      | LUnaryOp(_, _, _) | LCall(_, _, _) | LTailCall(_, _, _) | LDirectCall(_, _, _, _, _)
+      | LReturn(_, _) | LMakeClosure(_, _, _) | LYield(_, _, _, _) | LCheck(_, _, _) | LAbandon(_, _, _)
+      | LDeclareFn(_) | LIf(_, _, _, _) | LBlock(_, _) | LMakeList(_, _) | LMakeTuple(_, _)
+      | LSimdLanes(_, _) | LFanout(_, _, _, _) | LMakeRecord(_, _) | LRecordUpdate(_, _, _)
+      | LMakeVariant(_, _, _) | LMatch(_, _, _) | LResumeK(_, _, _, _) | LHandleWith(_, _, _, _, _, _)
+      | LDerive(_, _, _) | LArena(_, _) | LFeedback(_, _, _, _, _) | LFeedbackPrior(_) | LPerform(_, _, _)
+      | LFieldLoad(_, _, _) | LPrim(_, _, _) | LStateSlotStore(_, _, _, _) | LStateInit(_, _, _, _)
+      | LShow(_, _) | LHash(_, _) | LInvariantFailure(_, _) | LWasiCall(_, _, _) => wat_emit("    (unreachable)  ;; a lane index that is not a literal\n"),
     }
     emit_lane_pairs(rec_local, n, rest)
   },
@@ -6925,7 +7052,15 @@ fn emit_derive_op(h, op, args) = match op {
         emit_lane_addr(lane, i)
         emit_lane_load(lane)
       },
-      _ => wat_emit("    (unreachable)  ;; lane_read: an index that is not a literal\n"),
+      LConst(_, _) | LLocal(_, _) | LGlobal(_, _) | LLet(_, _, _) | LUpval(_, _) | LBinOp(_, _, _, _)
+      | LUnaryOp(_, _, _) | LCall(_, _, _) | LTailCall(_, _, _) | LDirectCall(_, _, _, _, _)
+      | LReturn(_, _) | LMakeClosure(_, _, _) | LYield(_, _, _, _) | LCheck(_, _, _) | LAbandon(_, _, _)
+      | LDeclareFn(_) | LIf(_, _, _, _) | LBlock(_, _) | LMakeList(_, _) | LMakeTuple(_, _)
+      | LSimdLanes(_, _) | LFanout(_, _, _, _) | LMakeRecord(_, _) | LRecordUpdate(_, _, _)
+      | LMakeVariant(_, _, _) | LMatch(_, _, _) | LResumeK(_, _, _, _) | LHandleWith(_, _, _, _, _, _)
+      | LDerive(_, _, _) | LArena(_, _) | LFeedback(_, _, _, _, _) | LFeedbackPrior(_) | LPerform(_, _, _)
+      | LFieldLoad(_, _, _) | LPrim(_, _, _) | LStateSlotStore(_, _, _, _) | LStateInit(_, _, _, _)
+      | LShow(_, _) | LHash(_, _) | LInvariantFailure(_, _) | LWasiCall(_, _, _) => wat_emit("    (unreachable)  ;; lane_read: an index that is not a literal\n"),
     },
     _ => wat_emit("    (unreachable)  ;; lane_read: not (record, index)\n"),
   },
@@ -6939,7 +7074,15 @@ fn emit_derive_op(h, op, args) = match op {
         emit_lane_store(lane, v)
         wat_emit("    (i32.const 0)\n")
       },
-      _ => wat_emit("    (unreachable)  ;; lane_write: an index that is not a literal\n"),
+      LConst(_, _) | LLocal(_, _) | LGlobal(_, _) | LLet(_, _, _) | LUpval(_, _) | LBinOp(_, _, _, _)
+      | LUnaryOp(_, _, _) | LCall(_, _, _) | LTailCall(_, _, _) | LDirectCall(_, _, _, _, _)
+      | LReturn(_, _) | LMakeClosure(_, _, _) | LYield(_, _, _, _) | LCheck(_, _, _) | LAbandon(_, _, _)
+      | LDeclareFn(_) | LIf(_, _, _, _) | LBlock(_, _) | LMakeList(_, _) | LMakeTuple(_, _)
+      | LSimdLanes(_, _) | LFanout(_, _, _, _) | LMakeRecord(_, _) | LRecordUpdate(_, _, _)
+      | LMakeVariant(_, _, _) | LMatch(_, _, _) | LResumeK(_, _, _, _) | LHandleWith(_, _, _, _, _, _)
+      | LDerive(_, _, _) | LArena(_, _) | LFeedback(_, _, _, _, _) | LFeedbackPrior(_) | LPerform(_, _, _)
+      | LFieldLoad(_, _, _) | LPrim(_, _, _) | LStateSlotStore(_, _, _, _) | LStateInit(_, _, _, _)
+      | LShow(_, _) | LHash(_, _) | LInvariantFailure(_, _) | LWasiCall(_, _, _) => wat_emit("    (unreachable)  ;; lane_write: an index that is not a literal\n"),
     },
     _ => wat_emit("    (unreachable)  ;; lane_write: not (record, index, tangent)\n"),
   },
@@ -6952,7 +7095,15 @@ fn emit_derive_op(h, op, args) = match op {
         emit_lane_pairs(lane, len(caps), pairs)
         wat_emit("    (local.get ${lane})\n")
       },
-      _ => wat_emit("    (unreachable)  ;; mint_lanes: not a mint\n"),
+      LConst(_, _) | LLocal(_, _) | LGlobal(_, _) | LLet(_, _, _) | LUpval(_, _) | LBinOp(_, _, _, _)
+      | LUnaryOp(_, _, _) | LCall(_, _, _) | LTailCall(_, _, _) | LDirectCall(_, _, _, _, _)
+      | LReturn(_, _) | LYield(_, _, _, _) | LCheck(_, _, _) | LAbandon(_, _, _) | LDeclareFn(_)
+      | LIf(_, _, _, _) | LBlock(_, _) | LMakeList(_, _) | LMakeTuple(_, _) | LSimdLanes(_, _)
+      | LFanout(_, _, _, _) | LMakeRecord(_, _) | LRecordUpdate(_, _, _) | LMakeVariant(_, _, _)
+      | LMatch(_, _, _) | LResumeK(_, _, _, _) | LHandleWith(_, _, _, _, _, _) | LDerive(_, _, _)
+      | LArena(_, _) | LFeedback(_, _, _, _, _) | LFeedbackPrior(_) | LPerform(_, _, _)
+      | LFieldLoad(_, _, _) | LPrim(_, _, _) | LStateSlotStore(_, _, _, _) | LStateInit(_, _, _, _)
+      | LShow(_, _) | LHash(_, _) | LInvariantFailure(_, _) | LWasiCall(_, _, _) => wat_emit("    (unreachable)  ;; mint_lanes: not a mint\n"),
     },
     _ => wat_emit("    (unreachable)  ;; mint_lanes: no mint\n"),
   },
@@ -6960,21 +7111,45 @@ fn emit_derive_op(h, op, args) = match op {
     [call] => match call {
       LCall(ch, f, cargs) => emit_closure_call_at(ch, f, cargs, false, true),
       LTailCall(ch, f, cargs) => emit_closure_call_at(ch, f, cargs, true, true),
-      _ => wat_emit("    (unreachable)  ;; jvp_call: not a call through a value\n"),
+      LConst(_, _) | LLocal(_, _) | LGlobal(_, _) | LLet(_, _, _) | LUpval(_, _) | LBinOp(_, _, _, _)
+      | LUnaryOp(_, _, _) | LDirectCall(_, _, _, _, _) | LReturn(_, _) | LMakeClosure(_, _, _)
+      | LYield(_, _, _, _) | LCheck(_, _, _) | LAbandon(_, _, _) | LDeclareFn(_) | LIf(_, _, _, _)
+      | LBlock(_, _) | LMakeList(_, _) | LMakeTuple(_, _) | LSimdLanes(_, _) | LFanout(_, _, _, _)
+      | LMakeRecord(_, _) | LRecordUpdate(_, _, _) | LMakeVariant(_, _, _) | LMatch(_, _, _)
+      | LResumeK(_, _, _, _) | LHandleWith(_, _, _, _, _, _) | LDerive(_, _, _) | LArena(_, _)
+      | LFeedback(_, _, _, _, _) | LFeedbackPrior(_) | LPerform(_, _, _) | LFieldLoad(_, _, _)
+      | LPrim(_, _, _) | LStateSlotStore(_, _, _, _) | LStateInit(_, _, _, _) | LShow(_, _) | LHash(_, _)
+      | LInvariantFailure(_, _) | LWasiCall(_, _, _) => wat_emit("    (unreachable)  ;; jvp_call: not a call through a value\n"),
     },
     _ => wat_emit("    (unreachable)  ;; jvp_call: not one call\n"),
   },
   DoJvpPerform => match args {
     [perform] => match perform {
       LPerform(ph, disp, pargs) => emit_perform(ph, disp, pargs, true),
-      _ => wat_emit("    (unreachable)  ;; jvp_perform: not a perform\n"),
+      LConst(_, _) | LLocal(_, _) | LGlobal(_, _) | LLet(_, _, _) | LUpval(_, _) | LBinOp(_, _, _, _)
+      | LUnaryOp(_, _, _) | LCall(_, _, _) | LTailCall(_, _, _) | LDirectCall(_, _, _, _, _)
+      | LReturn(_, _) | LMakeClosure(_, _, _) | LYield(_, _, _, _) | LCheck(_, _, _) | LAbandon(_, _, _)
+      | LDeclareFn(_) | LIf(_, _, _, _) | LBlock(_, _) | LMakeList(_, _) | LMakeTuple(_, _)
+      | LSimdLanes(_, _) | LFanout(_, _, _, _) | LMakeRecord(_, _) | LRecordUpdate(_, _, _)
+      | LMakeVariant(_, _, _) | LMatch(_, _, _) | LResumeK(_, _, _, _) | LHandleWith(_, _, _, _, _, _)
+      | LDerive(_, _, _) | LArena(_, _) | LFeedback(_, _, _, _, _) | LFeedbackPrior(_)
+      | LFieldLoad(_, _, _) | LPrim(_, _, _) | LStateSlotStore(_, _, _, _) | LStateInit(_, _, _, _)
+      | LShow(_, _) | LHash(_, _) | LInvariantFailure(_, _) | LWasiCall(_, _, _) => wat_emit("    (unreachable)  ;; jvp_perform: not a perform\n"),
     },
     _ => wat_emit("    (unreachable)  ;; jvp_perform: not one perform\n"),
   },
   DoJvpInstall => match args {
     [install, ...pairs] => match install {
       LHandleWith(ih, body, _handler, hd, inits, arm_names) => emit_install(ih, body, hd, inits, arm_names, Some(pairs)),
-      _ => wat_emit("    (unreachable)  ;; jvp_install: not an install\n"),
+      LConst(_, _) | LLocal(_, _) | LGlobal(_, _) | LLet(_, _, _) | LUpval(_, _) | LBinOp(_, _, _, _)
+      | LUnaryOp(_, _, _) | LCall(_, _, _) | LTailCall(_, _, _) | LDirectCall(_, _, _, _, _)
+      | LReturn(_, _) | LMakeClosure(_, _, _) | LYield(_, _, _, _) | LCheck(_, _, _) | LAbandon(_, _, _)
+      | LDeclareFn(_) | LIf(_, _, _, _) | LBlock(_, _) | LMakeList(_, _) | LMakeTuple(_, _)
+      | LSimdLanes(_, _) | LFanout(_, _, _, _) | LMakeRecord(_, _) | LRecordUpdate(_, _, _)
+      | LMakeVariant(_, _, _) | LMatch(_, _, _) | LResumeK(_, _, _, _) | LDerive(_, _, _) | LArena(_, _)
+      | LFeedback(_, _, _, _, _) | LFeedbackPrior(_) | LPerform(_, _, _) | LFieldLoad(_, _, _)
+      | LPrim(_, _, _) | LStateSlotStore(_, _, _, _) | LStateInit(_, _, _, _) | LShow(_, _) | LHash(_, _)
+      | LInvariantFailure(_, _) | LWasiCall(_, _, _) => wat_emit("    (unreachable)  ;; jvp_install: not an install\n"),
     },
     _ => wat_emit("    (unreachable)  ;; jvp_install: no install\n"),
   },
@@ -7198,7 +7373,7 @@ fn emit_perform(h, disp, args, jvp) = if perform_is_query(disp) {
   // keeps the word protocol it was written in.
   match disp {
     PdDriver(_, _) => emit_args_continuation(args),
-    _ => emit_expr_list(args),
+    PdFrame(_, _, _) | PdWalk(_, _, _, _) => emit_expr_list(args),
   }
   // (2) the arm's identity, where the target does not already name it: the
   // slot form pushes the fn index out of the record's own arm region.
@@ -7208,7 +7383,7 @@ fn emit_perform(h, disp, args, jvp) = if perform_is_query(disp) {
   // against the install record it drives.
   match disp {
     PdDriver(hd, _) => wat_emit("    (call ${redrive_fn_name(hd)})\n"),
-    _ => {
+    PdFrame(_, _, _) | PdWalk(_, _, _, _) => {
       // The record holds the arm's WORD face, as every fn_ptr does; a site
       // whose own vector is wide dispatches at the native face, and one
       // under the reading at the derivative face.
@@ -7229,7 +7404,7 @@ fn emit_perform(h, disp, args, jvp) = if perform_is_query(disp) {
             ArmNamed(_) => (),
           }
         },
-        _ => (),
+        PdFrame(_, _, _) | PdDriver(_, _) => (),
       }
       wat_emit("    (global.get $world_g)(local.set $evw_")
       wat_emit(hs)
@@ -7263,7 +7438,7 @@ fn emit_perform(h, disp, args, jvp) = if perform_is_query(disp) {
   // continuation face, a wide answer in the lane.
   match disp {
     PdDriver(_, _) => emit_from_continuation(repr_of(lookup_ty(h))),
-    _ => (),
+    PdFrame(_, _, _) | PdWalk(_, _, _, _) => (),
   }
 }
 
@@ -8124,7 +8299,7 @@ fn emit_float_const(f: Float, r) = match r {
     wat_emit(float_to_str(f))
     wat_emit(")\n")
   },
-  _ => {
+  RI32 | RI64 => {
     wat_emit("    ;; float literal at a non-float representation —\n")
     wat_emit("    ;; an HM type error upstream, not a fabricated value.\n")
     wat_emit("    (unreachable)\n")
@@ -8161,7 +8336,11 @@ fn emit_binop_for(h, op, l, r) = {
       // An unresolved operand keeps the loud floor.
       match fold_strip(lookup_ty(left_h)) {
         TList(_) => wat_emit("    (call ${callee_symbol(sugar_callee(h, concat_callee()))})\n"),
-        other => emit_concat_unresolved(other),
+        other @ (
+          TInt | TFloat | TUnit | TByte | TAddr | TTuple(_) | TFun(_, _, _) | TVar(_) | TName(_, _)
+          | TRecord(_) | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _)
+          | TAlias(_, _) | TValue(_)
+        ) => emit_concat_unresolved(other),
       }
     },
     // == / != is ONE structural-equality derivation, total over the five
@@ -8200,7 +8379,7 @@ fn emit_binop_for(h, op, l, r) = {
     // arithmetic operand's cell numeric (infer.mn numeric_demand), so what
     // reaches this arm is a word at its proven repr, or a floor twin's
     // quantified var — a word at the floor width by construction.
-    _ => emit_arith_for(op, left_h, l, r),
+    BAdd | BSub | BMul | BDiv | BMod | BAnd | BOr => emit_arith_for(op, left_h, l, r),
   }
 }
 
@@ -8314,7 +8493,7 @@ fn emit_install_world(disp, hs: String) = match disp {
     wat_emit(int_to_str(ih))
     wat_emit("_wprev))\n")
   },
-  _ => {
+  PdWalk(_, _, _, _) | PdDriver(_, _) => {
     wat_emit("    (global.set $world_g (i32.load offset=12 (local.get $evn_")
     wat_emit(hs)
     wat_emit(")))\n")
@@ -8335,7 +8514,7 @@ fn emit_args_continuation(args) = each(
 // word face it was written in.
 fn perform_ft(h, disp, args) = match disp {
   PdDriver(_, _) => call_ft_name(args),
-  _ => vector_ft_name(perform_vector_at(h, args)),
+  PdFrame(_, _, _) | PdWalk(_, _, _, _) => vector_ft_name(perform_vector_at(h, args)),
 }
 
 // An indirect site's vector: the record word, each argument at the width it
@@ -8361,7 +8540,8 @@ fn call_result_repr(f, h) = match lexpr_handle(f) {
 // where that node's type is one, else the site's own proof.
 fn result_repr_at(fh, h) = match lookup_ty(fh) {
   TFun(_, ret, _) => slot_repr(ret),
-  _ => repr_of(lookup_ty(h)),
+  TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TVar(_) | TName(_, _) | TRecord(_)
+  | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => repr_of(lookup_ty(h)),
 }
 
 // A perform site's vector: its result the op's answer the site proves. The
@@ -8528,7 +8708,10 @@ fn emit_eq_for_ty(ty, neg) = match ty {
     match seq_elem_face(e) {
       TByte => emit_vocab_call("str_eq"),
       TFloat => emit_vocab_call("list_eq_f64"),
-      face => if seq_face_structural(face) {
+      face @ (
+        TInt | TUnit | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TVar(_) | TName(_, _) | TRecord(_)
+        | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_)
+      ) => if seq_face_structural(face) {
         wat_emit("    (call $eq_")
         wat_emit(fold_sig(ty))
         wat_emit(")\n")
@@ -8561,7 +8744,8 @@ fn emit_eq_for_ty(ty, neg) = match ty {
   // `==` leaves a Bool regardless of operand width. A VARIABLE reaches this
   // arm only where the settle point proved nothing runs it as anything but a
   // word (`settle_node` refused every executable site where it would be).
-  _ => emit_word_eq(neg),
+  TInt | TUnit | TByte | TAddr | TFun(_, _, _) | TVar(_) | TRefined(_, _) | TReprPin(_, _)
+  | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => emit_word_eq(neg),
 }
 
 fn emit_word_eq(neg) = if neg { wat_emit("    (i32.ne)\n") } else { wat_emit("    (i32.eq)\n") }
@@ -8706,7 +8890,7 @@ fn fold_trigger_binop(op, lh, acc: {cmp: [Ty], eq: [Ty], evac: [Ty], hash: [Ty],
   BGt => fold_acc_cmp(acc, lh),
   BLe => fold_acc_cmp(acc, lh),
   BGe => fold_acc_cmp(acc, lh),
-  _ => acc,
+  BAdd | BSub | BMul | BDiv | BMod | BAnd | BOr | BConcat => acc,
 }
 
 fn collect_fold_tys_list(stmts, acc: {cmp: [Ty], eq: [Ty], evac: [Ty], hash: [Ty], show: [Ty]}) = if len(stmts) == 0 {
@@ -8830,9 +9014,14 @@ fn seq_elem_leaf_callee(prefix: String, rt_byte: String, rt_f64: String, rt_word
   TList(inner) => match seq_elem_face(inner) {
     TByte => vocab_symbol(rt_byte),
     TFloat => vocab_symbol(rt_f64),
-    f2 => if seq_face_structural(f2) { "{prefix}_{fold_sig(face)}" } else { vocab_symbol(rt_word) },
+    f2 @ (
+      TInt | TUnit | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TVar(_) | TName(_, _) | TRecord(_)
+      | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_)
+    ) => if seq_face_structural(f2) { "{prefix}_{fold_sig(face)}" } else { vocab_symbol(rt_word) },
   },
-  _ => "{prefix}_{fold_sig(face)}",
+  TInt | TFloat | TUnit | TByte | TAddr | TTuple(_) | TFun(_, _, _) | TVar(_) | TName(_, _)
+  | TRecord(_) | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _)
+  | TAlias(_, _) | TValue(_) => "{prefix}_{fold_sig(face)}",
 }
 
 // A call into the compiler's vocabulary, under the symbol of the
@@ -8978,7 +9167,8 @@ fn emit_one_eq_helper(sig, ty) = match fold_strip(ty) {
   // nothing calls a helper for it.
   TName(_, _) => if sum_is_tag(fold_strip(ty)) { () } else { emit_eq_leaf_sum(sig, fold_strip(ty)) },
   TList(elem) => emit_eq_leaf_seq(sig, elem),
-  _ => {
+  TInt | TFloat | TUnit | TByte | TAddr | TTuple(_) | TFun(_, _, _) | TVar(_) | TRecord(_)
+  | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => {
     wat_emit("  (func $eq_")
     wat_emit(sig)
     wat_emit(" (param $__state i32) (param $a i32) (param $b i32) (result i32)")
@@ -9182,7 +9372,10 @@ fn emit_field_eq(fty) = match fty {
     match seq_elem_face(e) {
       TByte => emit_vocab_call("str_eq"),
       TFloat => emit_vocab_call("list_eq_f64"),
-      face => if seq_face_structural(face) {
+      face @ (
+        TInt | TUnit | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TVar(_) | TName(_, _) | TRecord(_)
+        | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_)
+      ) => if seq_face_structural(face) {
         wat_emit("    (call $eq_")
         wat_emit(fold_sig(fty))
         wat_emit(")\n")
@@ -9202,7 +9395,8 @@ fn emit_field_eq(fty) = match fty {
   TName(_, _) => if sum_is_tag(fty) { wat_emit("    (i32.eq)\n") } else { emit_field_product_eq(fold_sig(fty)) },
   TFloat => wat_emit("    (f64.eq)\n"),
   // Int / Unit / resolved-TVar / nullary-tag / fn-idx / cont-ptr — word eq.
-  _ => wat_emit("    (i32.eq)\n"),
+  TInt | TUnit | TByte | TAddr | TFun(_, _, _) | TVar(_) | TRefined(_, _) | TReprPin(_, _)
+  | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => wat_emit("    (i32.eq)\n"),
 }
 
 // A nested product field: the two field pointers are on the stack; insert
@@ -9261,7 +9455,10 @@ fn emit_cmp_for_ty(op, ty) = match ty {
   TList(e) => match seq_elem_face(e) {
     TByte => emit_cmp_seq_call(vocab_symbol("str_compare"), op),
     TFloat => emit_cmp_seq_call(vocab_symbol("list_compare_f64"), op),
-    face => if seq_face_structural(face) {
+    face @ (
+      TInt | TUnit | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TVar(_) | TName(_, _) | TRecord(_)
+      | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_)
+    ) => if seq_face_structural(face) {
       emit_cmp_agg_call(fold_sig(ty), op)
     } else {
       emit_cmp_seq_call(vocab_symbol("list_compare"), op)
@@ -9274,7 +9471,8 @@ fn emit_cmp_for_ty(op, ty) = match ty {
   TFloat => emit_binop_repr(op, RF64),
   // Int / Unit / resolved-TVar / nullary-tag / fn-idx / cont-ptr / address —
   // word compare, in the word's own order.
-  _ => match word_order_of(ty) {
+  TInt | TUnit | TByte | TAddr | TFun(_, _, _) | TVar(_) | TRefined(_, _) | TReprPin(_, _)
+  | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => match word_order_of(ty) {
     Signed => emit_binop_repr(op, RI32),
     Unsigned => emit_unsigned_cmp(op),
   },
@@ -9287,7 +9485,9 @@ type WordOrder = Signed | Unsigned
 
 fn word_order_of(ty) = match ty {
   TAddr => Unsigned,
-  _ => Signed,
+  TInt | TFloat | TUnit | TByte | TList(_) | TTuple(_) | TFun(_, _, _) | TVar(_) | TName(_, _)
+  | TRecord(_) | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _)
+  | TAlias(_, _) | TValue(_) => Signed,
 }
 
 fn emit_unsigned_cmp(op) = match op {
@@ -9295,7 +9495,7 @@ fn emit_unsigned_cmp(op) = match op {
   BGt => wat_emit("    (i32.gt_u)\n"),
   BLe => wat_emit("    (i32.le_u)\n"),
   BGe => wat_emit("    (i32.ge_u)\n"),
-  _ => emit_binop(op),
+  BAdd | BSub | BMul | BDiv | BMod | BEq | BNe | BAnd | BOr | BConcat => emit_binop(op),
 }
 
 // A sequence compare: insert __state under (a, b) (the W7 convention), call the
@@ -9331,7 +9531,7 @@ fn emit_cmp_sign_test(op) = {
     BGt => wat_emit("    (i32.gt_s)\n"),
     BLe => wat_emit("    (i32.le_s)\n"),
     BGe => wat_emit("    (i32.ge_s)\n"),
-    _ => wat_emit("    (i32.lt_s)\n"),
+    BAdd | BSub | BMul | BDiv | BMod | BEq | BNe | BAnd | BOr | BConcat => wat_emit("    (i32.lt_s)\n"),
   }
 }
 
@@ -9343,7 +9543,8 @@ fn emit_cmp_sign_test(op) = {
 fn emit_one_compare_helper(sig, ty) = match fold_strip(ty) {
   TName(_, _) => emit_one_compare_sum_helper(sig, fold_strip(ty)),
   TList(elem) => emit_cmp_leaf_seq(sig, elem),
-  _ => {
+  TInt | TFloat | TUnit | TByte | TAddr | TTuple(_) | TFun(_, _, _) | TVar(_) | TRecord(_)
+  | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => {
     wat_emit("  (func $compare_")
     wat_emit(sig)
     wat_emit(" (param $__state i32) (param $a i32) (param $b i32) (result i32)")
@@ -9512,7 +9713,10 @@ fn emit_field_cmp(fty) = match fty {
     match seq_elem_face(e) {
       TByte => emit_vocab_call("str_compare"),
       TFloat => emit_vocab_call("list_compare_f64"),
-      face => if seq_face_structural(face) {
+      face @ (
+        TInt | TUnit | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TVar(_) | TName(_, _) | TRecord(_)
+        | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_)
+      ) => if seq_face_structural(face) {
         wat_emit("    (call $compare_")
         wat_emit(fold_sig(fty))
         wat_emit(")\n")
@@ -9538,7 +9742,8 @@ fn emit_field_cmp(fty) = match fty {
   // sign-of-difference in the word's own order. The stack has [a_field,
   // b_field]; (select 1 (select -1 0 (i32.lt_s)) (i32.gt_s)) needs the pair
   // twice, so reload through scratch.
-  _ => emit_word_field_sign_compare(word_order_of(fty)),
+  TInt | TUnit | TByte | TAddr | TFun(_, _, _) | TVar(_) | TRefined(_, _) | TReprPin(_, _)
+  | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => emit_word_field_sign_compare(word_order_of(fty)),
 }
 
 // Word field compare with the pair on the stack: save both, then emit the
@@ -9571,7 +9776,8 @@ fn product_field_tys(ty) = match fold_strip(ty) {
   TRecord(fields) => map(field_type_of, fields),
   TRecordOpen(fields, _) => map(field_type_of, fields),
   TTuple(elems) => elems,
-  _ => [],
+  TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TFun(_, _, _) | TVar(_) | TName(_, _)
+  | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => [],
 }
 
 // A == operand contributes its aggregate type AND every nested aggregate its
@@ -9623,7 +9829,8 @@ fn eq_subtys(ty, seen, acc) = match fold_strip(ty) {
     let specs = variant_specs_at(fold_strip(ty))
     eq_subtys_variants(specs, 0, len(specs), [fold_sig(fold_strip(ty))] ++ seen, [ty] ++ acc)
   },
-  _ => acc,
+  TInt | TFloat | TUnit | TByte | TAddr | TFun(_, _, _) | TVar(_) | TRefined(_, _) | TReprPin(_, _)
+  | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => acc,
 }
 
 fn eq_subtys_fields(fields, i, n, seen, acc) = if i >= n {
@@ -9674,7 +9881,8 @@ fn emit_one_show_helper(sig, ty) = match fold_strip(ty) {
   TName(_, _) => emit_one_show_sum_helper(sig, fold_strip(ty)),
   TList(elem) => emit_one_show_list_helper(sig, elem),
   TAddr => emit_one_show_addr_helper(sig),
-  _ => emit_one_show_product_helper(sig, ty),
+  TInt | TFloat | TUnit | TByte | TTuple(_) | TFun(_, _, _) | TVar(_) | TRecord(_)
+  | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => emit_one_show_product_helper(sig, ty),
 }
 
 // The word leaf in the unsigned order: an address renders as the number it
@@ -9727,7 +9935,8 @@ fn emit_one_show_product_helper(sig, ty) = {
 fn ty_is_record(ty) with Pure = match ty {
   TRecord(_) => true,
   TRecordOpen(_, _) => true,
-  _ => false,
+  TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TVar(_)
+  | TName(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => false,
 }
 
 // The named field set the show fold descends: a record's (name, ty) pairs in
@@ -9738,7 +9947,8 @@ fn show_named_fields(ty) = match ty {
   TRecord(fields) => fields,
   TRecordOpen(fields, _) => fields,
   TTuple(elems) => name_positional(elems, 0, len(elems)),
-  _ => [],
+  TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TFun(_, _, _) | TVar(_) | TName(_, _)
+  | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => [],
 }
 
 fn name_positional(elems, i, n) =
@@ -9793,7 +10003,8 @@ fn emit_show_field_render(off, r, fty) = match fty {
   TName(_, _) => emit_show_call_field("show_{fold_sig(fty)}", off, r),
   TAddr => emit_show_call_field("show_{fold_sig(fty)}", off, r),
   // Int / Unit / resolved-TVar / closure / continuation — render the word.
-  _ => emit_show_call_field(vocab_symbol("int_to_str"), off, r),
+  TInt | TUnit | TByte | TFun(_, _, _) | TVar(_) | TRefined(_, _) | TReprPin(_, _)
+  | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => emit_show_call_field(vocab_symbol("int_to_str"), off, r),
 }
 
 // emit_show_call_field — a folded `(call $name (local.get $__state) <field-load>)`.
@@ -9918,7 +10129,8 @@ fn emit_show_variant_payload_render(off, pty) = match pty {
   TTuple(_) => emit_show_call_variant("show_{fold_sig(pty)}", off, pty),
   TName(_, _) => emit_show_call_variant("show_{fold_sig(pty)}", off, pty),
   TAddr => emit_show_call_variant("show_{fold_sig(pty)}", off, pty),
-  _ => emit_show_call_variant(vocab_symbol("int_to_str"), off, pty),
+  TInt | TUnit | TByte | TFun(_, _, _) | TVar(_) | TRefined(_, _) | TReprPin(_, _)
+  | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => emit_show_call_variant(vocab_symbol("int_to_str"), off, pty),
 }
 
 // A folded `(call $name (local.get $__state) (<repr>.load offset=off (local.get $a)))`
@@ -10009,7 +10221,8 @@ fn emit_show_list_elem_render(elem) = match elem {
   TTuple(_) => emit_show_call_listidx("show_{fold_sig(elem)}"),
   TName(_, _) => emit_show_call_listidx("show_{fold_sig(elem)}"),
   TAddr => emit_show_call_listidx("show_{fold_sig(elem)}"),
-  _ => emit_show_call_listidx(vocab_symbol("int_to_str")),
+  TInt | TUnit | TByte | TFun(_, _, _) | TVar(_) | TRefined(_, _) | TReprPin(_, _)
+  | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => emit_show_call_listidx(vocab_symbol("int_to_str")),
 }
 
 // A folded `(call $name (local.get $__state) (call $list_index … i))` — the
@@ -10084,7 +10297,8 @@ fn show_subtys(ty, seen, acc) = match fold_strip(ty) {
   },
   // an address renders through its own leaf, wherever it sits
   TAddr => [ty] ++ acc,
-  _ => acc,
+  TInt | TFloat | TUnit | TByte | TFun(_, _, _) | TVar(_) | TRefined(_, _) | TReprPin(_, _)
+  | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => acc,
 }
 
 fn show_subtys_fields(fields, i, n, seen, acc) = if i >= n {
@@ -10135,7 +10349,8 @@ fn show_operand_contrib(arg, acc) = {
 fn emit_one_hash_helper(sig, ty) = match fold_strip(ty) {
   TName(_, _) => emit_one_hash_sum_helper(sig, fold_strip(ty)),
   TList(elem) => emit_hash_leaf_seq(sig, elem),
-  _ => {
+  TInt | TFloat | TUnit | TByte | TAddr | TTuple(_) | TFun(_, _, _) | TVar(_) | TRecord(_)
+  | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => {
     wat_emit("  (func $hash_")
     wat_emit(sig)
     wat_emit(" (param $__state i32) (param $a i32) (result i32)")
@@ -10240,7 +10455,10 @@ fn emit_field_hash(off, r, fty) = match fty {
   TList(e) => match seq_elem_face(e) {
     TByte => emit_field_hash_seq_call(off, vocab_symbol("str_hash")),
     TFloat => emit_field_hash_seq_call(off, vocab_symbol("list_hash_f64")),
-    face => if seq_face_structural(face) {
+    face @ (
+      TInt | TUnit | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TVar(_) | TName(_, _) | TRecord(_)
+      | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_)
+    ) => if seq_face_structural(face) {
       emit_field_hash_seq_call(off, "hash_{fold_sig(fty)}")
     } else {
       emit_field_hash_seq_call(off, vocab_symbol("list_hash"))
@@ -10257,7 +10475,8 @@ fn emit_field_hash(off, r, fty) = match fty {
     wat_emit(" (local.get $a))))")
   },
   // Int / Unit / resolved-TVar / nullary-tag — the loaded word IS its hash.
-  _ => {
+  TInt | TUnit | TByte | TAddr | TFun(_, _, _) | TVar(_) | TRefined(_, _) | TReprPin(_, _)
+  | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => {
     wat_emit("(")
     wat_emit(repr_load_op(r))
     wat_emit(" offset=")
@@ -10311,7 +10530,7 @@ fn emit_binop_f64(op) = match op {
   // BMod/BAnd/BOr/BEq/BNe/BConcat are not float operations; an inferred-float
   // operand reaching them is an HM type error upstream (Reason-carrying),
   // never a fabricated f64 instruction. Loud floor, no silent guess.
-  _ => emit_binop_repr_unsupported("f64", op),
+  BMod | BEq | BNe | BAnd | BOr | BConcat => emit_binop_repr_unsupported("f64", op),
 }
 
 fn emit_binop_f32(op) = match op {
@@ -10323,7 +10542,7 @@ fn emit_binop_f32(op) = match op {
   BGt => wat_emit("    (f32.gt)\n"),
   BLe => wat_emit("    (f32.le)\n"),
   BGe => wat_emit("    (f32.ge)\n"),
-  _ => emit_binop_repr_unsupported("f32", op),
+  BMod | BEq | BNe | BAnd | BOr | BConcat => emit_binop_repr_unsupported("f32", op),
 }
 
 fn emit_binop_i64(op) = match op {
@@ -10338,7 +10557,7 @@ fn emit_binop_i64(op) = match op {
   BGe => wat_emit("    (i64.ge_s)\n"),
   BAnd => wat_emit("    (i64.and)\n"),
   BOr => wat_emit("    (i64.or)\n"),
-  _ => emit_binop_repr_unsupported("i64", op),
+  BEq | BNe | BConcat => emit_binop_repr_unsupported("i64", op),
 }
 
 fn emit_binop_v128(op) = match op {
@@ -10347,7 +10566,7 @@ fn emit_binop_v128(op) = match op {
   BSub => wat_emit("    (f32x4.sub)\n"),
   BMul => wat_emit("    (f32x4.mul)\n"),
   BDiv => wat_emit("    (f32x4.div)\n"),
-  _ => emit_binop_repr_unsupported("v128", op),
+  BMod | BEq | BNe | BLt | BGt | BLe | BGe | BAnd | BOr | BConcat => emit_binop_repr_unsupported("v128", op),
 }
 
 // A binop with no machine instruction at the operand's repr (e.g. BMod on a
@@ -10493,11 +10712,27 @@ fn minted_binding(s) = match s {
   LLet(h, name, val) => match closure_mint(val) {
     Some((mint, pairs)) => match mint {
       LMakeClosure(ch, LFn(entry, _, _, _, _, lines), caps) => Some(MintedBinding({caps, entry, lines, pairs, record: ch, reg: local_wat_name(name, llet_repr(h, val))})),
-      _ => None,
+      LConst(_, _) | LLocal(_, _) | LGlobal(_, _) | LLet(_, _, _) | LUpval(_, _) | LBinOp(_, _, _, _)
+      | LUnaryOp(_, _, _) | LCall(_, _, _) | LTailCall(_, _, _) | LDirectCall(_, _, _, _, _)
+      | LReturn(_, _) | LYield(_, _, _, _) | LCheck(_, _, _) | LAbandon(_, _, _) | LDeclareFn(_)
+      | LIf(_, _, _, _) | LBlock(_, _) | LMakeList(_, _) | LMakeTuple(_, _) | LSimdLanes(_, _)
+      | LFanout(_, _, _, _) | LMakeRecord(_, _) | LRecordUpdate(_, _, _) | LMakeVariant(_, _, _)
+      | LMatch(_, _, _) | LResumeK(_, _, _, _) | LHandleWith(_, _, _, _, _, _) | LDerive(_, _, _)
+      | LArena(_, _) | LFeedback(_, _, _, _, _) | LFeedbackPrior(_) | LPerform(_, _, _)
+      | LFieldLoad(_, _, _) | LPrim(_, _, _) | LStateSlotStore(_, _, _, _) | LStateInit(_, _, _, _)
+      | LShow(_, _) | LHash(_, _) | LInvariantFailure(_, _) | LWasiCall(_, _, _) => None,
     },
     None => None,
   },
-  _ => None,
+  LConst(_, _) | LLocal(_, _) | LGlobal(_, _) | LUpval(_, _) | LBinOp(_, _, _, _)
+  | LUnaryOp(_, _, _) | LCall(_, _, _) | LTailCall(_, _, _) | LDirectCall(_, _, _, _, _)
+  | LReturn(_, _) | LMakeClosure(_, _, _) | LYield(_, _, _, _) | LCheck(_, _, _) | LAbandon(_, _, _)
+  | LDeclareFn(_) | LIf(_, _, _, _) | LBlock(_, _) | LMakeList(_, _) | LMakeTuple(_, _)
+  | LSimdLanes(_, _) | LFanout(_, _, _, _) | LMakeRecord(_, _) | LRecordUpdate(_, _, _)
+  | LMakeVariant(_, _, _) | LMatch(_, _, _) | LResumeK(_, _, _, _) | LHandleWith(_, _, _, _, _, _)
+  | LDerive(_, _, _) | LArena(_, _) | LFeedback(_, _, _, _, _) | LFeedbackPrior(_) | LPerform(_, _, _)
+  | LFieldLoad(_, _, _) | LPrim(_, _, _) | LStateSlotStore(_, _, _, _) | LStateInit(_, _, _, _)
+  | LShow(_, _) | LHash(_, _) | LInvariantFailure(_, _) | LWasiCall(_, _, _) => None,
 }
 
 // A value that mints a closure: alone, or under a reading with the lane
@@ -10508,7 +10743,15 @@ fn closure_mint(val) = match val {
     (Some(DoMintLanes), [mint, ...pairs]) => Some((mint, pairs)),
     _ => None,
   },
-  _ => None,
+  LConst(_, _) | LLocal(_, _) | LGlobal(_, _) | LLet(_, _, _) | LUpval(_, _) | LBinOp(_, _, _, _)
+  | LUnaryOp(_, _, _) | LCall(_, _, _) | LTailCall(_, _, _) | LDirectCall(_, _, _, _, _)
+  | LReturn(_, _) | LYield(_, _, _, _) | LCheck(_, _, _) | LAbandon(_, _, _) | LDeclareFn(_)
+  | LIf(_, _, _, _) | LBlock(_, _) | LMakeList(_, _) | LMakeTuple(_, _) | LSimdLanes(_, _)
+  | LFanout(_, _, _, _) | LMakeRecord(_, _) | LRecordUpdate(_, _, _) | LMakeVariant(_, _, _)
+  | LMatch(_, _, _) | LResumeK(_, _, _, _) | LHandleWith(_, _, _, _, _, _) | LDerive(_, _, _)
+  | LArena(_, _) | LFeedback(_, _, _, _, _) | LFeedbackPrior(_) | LPerform(_, _, _)
+  | LFieldLoad(_, _, _) | LPrim(_, _, _) | LStateSlotStore(_, _, _, _) | LStateInit(_, _, _, _)
+  | LShow(_, _) | LHash(_, _) | LInvariantFailure(_, _) => None,
 }
 
 // A run of closure bindings, minted in two phases: every record is
@@ -10877,7 +11120,7 @@ fn emit_pat_predicate_at(pat, path, path_len) = match pat {
     // (emit_scrut_at_repr at low_value_repr) and compares f64.eq (the gradient
     // at the match layer); Int/Bool/Unit take the i32.eq floor (byte-identical,
     // Law 7). The leaf load, the const, and the compare project the SAME repr.
-    _ => {
+    LInt(_) | LFloat(_) | LBool(_) | LZero => {
       emit_scrut_at_repr(path, path_len, low_value_repr(lv))
       emit_low_value_const(lv)
       wat_emit("    (")
@@ -11508,7 +11751,7 @@ fn emit_low_value_const(lv) = match lv {
 // a coherence-completeness peer, not a present miscompile.
 fn low_value_repr(lv) with Pure = match lv {
   LFloat(_) => RF64,
-  _ => RI32,
+  LInt(_) | LString(_) | LBool(_) | LZero => RI32,
 }
 
 fn emit_list_literal(h, elems) = {
@@ -11561,12 +11804,23 @@ fn emit_list_literal(h, elems) = {
 // the emission writes and the allocation audit reads the row of.
 fn list_literal_callee(sc) = if sc == 0 { "make_list" } else { "make_list_sc" }
 
-// The literal's element stride-class, read from the node's proven type.
-// An unresolved/non-list shape is the word floor (sc 0).
+// The literal's element stride-class, read from the node's proven type: a
+// list literal is a list wherever the judgment let it through, and a type
+// that is no list is the compiler's own invariant broken, refused here.
 fn literal_stride_class(h) = match fold_strip(lookup_ty(h)) {
-  TList(e) => stride_class(stride_of(seq_elem_face(e))),
-  // drift-audit: ignore — the fn's own comment names it: an unresolved/non-list shape IS the word floor (sc 0)
-  _ => 0,
+  TList(e) => stride_class(seq_elem_face(e)),
+  other @ (
+    TInt | TFloat | TUnit | TByte | TAddr | TTuple(_) | TFun(_, _, _) | TVar(_) | TName(_, _)
+    | TRecord(_) | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _)
+    | TAlias(_, _) | TValue(_)
+  ) => {
+    diag_report_at(
+      EInternalInvariant("a list literal's type is `{show_type(other)}`, no list", graph_span_of(h)),
+      "",
+      Compiler
+    )
+    0
+  },
 }
 
 fn emit_list_stores(elems, base_idx) = each(

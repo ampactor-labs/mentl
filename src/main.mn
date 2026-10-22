@@ -503,7 +503,12 @@ fn lost_comment_lines(ref src_toks, ref out_toks, i, acc) = if i >= len(src_toks
     } else {
       lost_comment_lines(src_toks, out_toks, i + 1, push(acc, "lost: //{t}"))
     },
-    _ => lost_comment_lines(src_toks, out_toks, i + 1, acc),
+    TFn | TLet | TIf | TElse | TMatch | TType | TEffect | THandler | TWith | TResume | TImport
+    | TWhere | TOwn | TRef | TPure | TTrue | TFalse | TIdent(_) | TIntLit(_) | TFloatLit(_)
+    | TStringPart(_) | TStringSplice | TEqEq | TBangEq | TLtEq | TGtEq | TArrow | TFatArrow | TPlusPlus
+    | TPipeGt | TLtPipe | TGtLt | TTildeGt | TLtTilde | TAndAnd | TOrOr | TLParen | TRParen | TLBrace
+    | TRBrace | TLBracket | TRBracket | TComma | TDot | TColon | TSemicolon | TPlus | TMinus | TStar
+    | TSlash | TPercent | TEq | TLt | TGt | TBang | TAmp | TPipe | TAt | THole | TNewline | TEof => lost_comment_lines(src_toks, out_toks, i + 1, acc),
   }
 }
 
@@ -541,12 +546,12 @@ fn fmt_settle(mode, key: String, stamps, verdicts) = {
 
 fn fmt_is_refused(v) = match v {
   FmtRefused(_, _) => true,
-  _ => false,
+  FmtCanonical(_, _) | FmtRenders(_, _, _) | FmtUnparsed(_, _) => false,
 }
 
 fn fmt_is_render(v) = match v {
   FmtRenders(_, _, _) => true,
-  _ => false,
+  FmtCanonical(_, _) | FmtRefused(_, _) | FmtUnparsed(_, _) => false,
 }
 
 fn fmt_print_refused(v) = match v {
@@ -554,14 +559,14 @@ fn fmt_print_refused(v) = match v {
     print_string("fmt: {path} NOT written\n")
     each(fmt_print_reason, lines)
   },
-  _ => (),
+  FmtCanonical(_, _) | FmtRenders(_, _, _) | FmtUnparsed(_, _) => (),
 }
 
 fn fmt_print_reason(line) = print_string("  {line}\n")
 
 fn fmt_print_unparsed(v) = match v {
   FmtUnparsed(path, n) => print_string("fmt: {path} not rendered — its parse recovered from {int_to_str(n)} problem(s) a render cannot fix\n"),
-  _ => (),
+  FmtCanonical(_, _) | FmtRenders(_, _, _) | FmtRefused(_, _) => (),
 }
 
 // What would change, named at the first line that does — the source's line
@@ -570,7 +575,7 @@ fn fmt_print_would(v) = match v {
   FmtRenders(path, src, rendered) => match first_changed_line(src, rendered) {
     (n, was, now) => print_string("fmt: {path}:{int_to_str(n)} not canonical\n  - {was}\n  + {now}\n"),
   },
-  _ => (),
+  FmtCanonical(_, _) | FmtRefused(_, _) | FmtUnparsed(_, _) => (),
 }
 
 fn fmt_write(v) = match v {
@@ -578,13 +583,13 @@ fn fmt_write(v) = match v {
     fs_write_file(path, rendered)
     print_string("fmt: wrote {path}\n")
   },
-  _ => (),
+  FmtCanonical(_, _) | FmtRefused(_, _) | FmtUnparsed(_, _) => (),
 }
 
 // After a write, every file the verb saw is canonical at its new bytes.
 fn fmt_written(v) = match v {
   FmtRenders(path, _, rendered) => FmtCanonical(path, fmt_stamp(rendered)),
-  _ => v,
+  FmtCanonical(_, _) | FmtRefused(_, _) | FmtUnparsed(_, _) => v,
 }
 
 // The first line at which two texts differ, 1-based, with each side's line.
@@ -659,7 +664,7 @@ fn fmt_stamps_write(key: String, stamps, verdicts) = {
 
 fn verdict_stamp(v) = match v {
   FmtCanonical(path, stamp) => [(path, stamp)],
-  _ => [],
+  FmtRenders(_, _, _) | FmtRefused(_, _) | FmtUnparsed(_, _) => [],
 }
 
 fn stamp_unseen(seen, pair) = match pair {
@@ -681,7 +686,12 @@ fn comment_text_present(ref toks, t: String, i) -> Bool = if i >= len(toks) {
 } else {
   match token_kind(toks[i]) {
     TComment(u) => if u == t { true } else { comment_text_present(toks, t, i + 1) },
-    _ => comment_text_present(toks, t, i + 1),
+    TFn | TLet | TIf | TElse | TMatch | TType | TEffect | THandler | TWith | TResume | TImport
+    | TWhere | TOwn | TRef | TPure | TTrue | TFalse | TIdent(_) | TIntLit(_) | TFloatLit(_)
+    | TStringPart(_) | TStringSplice | TEqEq | TBangEq | TLtEq | TGtEq | TArrow | TFatArrow | TPlusPlus
+    | TPipeGt | TLtPipe | TGtLt | TTildeGt | TLtTilde | TAndAnd | TOrOr | TLParen | TRParen | TLBrace
+    | TRBrace | TLBracket | TRBracket | TComma | TDot | TColon | TSemicolon | TPlus | TMinus | TStar
+    | TSlash | TPercent | TEq | TLt | TGt | TBang | TAmp | TPipe | TAt | THole | TNewline | TEof => comment_text_present(toks, t, i + 1),
   }
 }
 
@@ -710,7 +720,7 @@ fn tighten_run(target_opt) = {
   {
     driver_link(entry_module)
     let cands = tightenables()
-    let rosters = project_sites(catch_all_sites())
+    let rosters = project_sites(catch_all_refusals())
     // The refuted ownership markers first: a release rewrites one word of a
     // head and moves no line, so the clause patches below read the same line
     // numbers whichever runs first.
@@ -723,10 +733,10 @@ fn tighten_run(target_opt) = {
     // row the parser cannot read back. Per file, patch bottom-up so line
     // offsets hold.
     let n = apply_tightenings(cands)
-    // The catch-alls over sums last: each is written at its match node and
-    // the module rendered whole, which moves lines, so every patch that reads
-    // a line number has run by now; a module those patches changed is refused
-    // here and rewritten by the next run's judgment.
+    // The catch-alls over sums last: each is written at its arm's pattern
+    // node and the module rendered whole, which moves lines, so every patch
+    // that reads a line number has run by now; a module those patches
+    // changed is refused here and rewritten by the next run's judgment.
     let rostered = apply_pattern_tightenings(rosters)
     if len(cands) + len(rosters) == 0 && released == 0 {
       print_string("mentl tighten: nothing to tighten — no declared row is an inventory or over-declared, no `own` is refuted, and no catch-all stands over a sum\n")
@@ -739,8 +749,9 @@ fn tighten_run(target_opt) = {
 }
 
 // THE CATCH-ALLS OVER SUMS, WRITTEN AS THEIR ROSTERS (Morgan, 2026-10-13: a
-// `_` over a sum is the roster the author declined to write). A site is the
-// judged match's own handle (`catch_all_sites`, src/query.mn), so the
+// `_` over a sum is the roster the author declined to write). A site is a
+// refusal the judgment banked (`catch_all_refusals`, src/query.mn): the
+// catch-all arm's pattern node and the roster it stands for, so the
 // rewrite is ONE WRITE AT THE NODE — the roster registered over the
 // catch-all arm — and the page is its projection: the module rendered whole
 // from its own module node through the formatter's render, its conservation
@@ -749,22 +760,20 @@ fn tighten_run(target_opt) = {
 // is rewritten only when its file is canonical and unchanged since the
 // judgment, because a render that changed anything but the roster would
 // write layout the author did not ask for, or undo a clause the passes
-// above just patched at a line; each refusal says which. Writing those
-// passes at the node too, so one render projects every tightening, is the
-// verb's next form (`Hβ.match.catch-all-over-a-sum-is-the-roster`).
+// above just patched at a line; each refusal says which.
 fn apply_pattern_tightenings(sites) = fold(0, roster_module(sites, ??, ??), link_modules())
 
 // The sites of the entry's own layer: a user's `tighten` never writes the
 // library its program links, as its reports never name it (ScopeProject).
 fn project_sites(sites) = match diag_scope_of() {
-  ScopeProject(layer) => filter({ h => module_layer_of_handle(graph_module_of(h)) == layer }, sites),
+  ScopeProject(layer) => filter({ (pat, _) => module_layer_of_handle(graph_module_of(pat)) == layer }, sites),
   ScopeAll | ScopeNone => sites,
 }
 
 // One module of the link with its sites written: the sites the module holds,
 // its file, the text its judgment read and its declarations, all off its
 // node.
-fn roster_module(sites, acc, mh) = match filter({ h => graph_module_of(h) == mh }, sites) {
+fn roster_module(sites, acc, mh) = match filter({ (pat, _) => graph_module_of(pat) == mh }, sites) {
   [] => acc,
   mine => {
     let m = module_of(mh)
@@ -821,25 +830,12 @@ fn roster_render(path: String, judged: String, decls, sites) = {
 // are. Answers the atom the roster leaves out of the arm's pattern — a
 // wildcard arm's `_`, which the roster says in constructors; a binder
 // survives as the name over the grouped alternation.
-fn write_roster(h) = match graph_node_body(h) {
-  NExpr(MatchExpr(scrut, arms)) => match catch_all_arm(scrut, arms) {
-    Some((_, pat, roster)) => {
-      let consumed = consumed_by(pat)
-      graph_register_node(pat, NPat(roster_pattern(roster, graph_span_of(pat))))
-      consumed
-    },
-    None => [],
+fn write_roster(refusal) = match refusal {
+  (pat, roster) => {
+    let consumed = consumed_by(pat)
+    graph_register_node(pat, NPat(roster_pattern(roster, graph_span_of(pat))))
+    consumed
   },
-  NExpr(_)
-  | NStmt(_)
-  | NHole(_)
-  | NPat(_)
-  | NTypeAnn(_)
-  | NModule(_)
-  | NLink(_)
-  | NName(_)
-  | NRow(_)
-  | NParam(_) => [],
 }
 
 // The roster as the pattern written in the catch-all's place: each
@@ -931,7 +927,8 @@ fn tighten_fold(items: [(String, Int, String, EffRow, EffRow)], i, cur_path, cur
 // read back (measured 2026-09-04: twenty E_ConstructorArity from one run).
 fn clause_residue(ref declared) = match declared {
   EfRow(p, a, _) => {
-    let pins = map(show_eff_name, filter({ EParameterized(_, _) => true, _ => false }, p))
+    let pins =
+      map(show_eff_name, filter({ EParameterized(_, _) => true, ENamed(_) | EPure => false }, p))
     let negs = map({ n => "!{show_eff_name(n)}" }, a)
     show_list(pins ++ negs, { s => s }, " + ")
   },
@@ -1095,7 +1092,8 @@ fn doc_render_decl(h) = {
     NStmt(HandlerDeclStmt(name, _, _, _, _, _)) => doc_render_lines([doc_value_line(name)], h),
     NStmt(TypeDefStmt(_, _)) => doc_render_lines(type_level_lines(h), h),
     NStmt(EffectDeclStmt(_, _, _)) => doc_render_lines(type_level_lines(h), h),
-    _ => (),
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => (),
   }
 }
 
@@ -1104,7 +1102,10 @@ fn doc_render_decl(h) = {
 fn doc_value_line(name: String) = match env_lookup(name) {
   Some((sch, _, _)) => match chase_type_deep(judgment_ty(sch)) {
     TFun(params, ret, row) => show_head(name, params, ret, row),
-    ty => "{name} : {show_type(ty)}",
+    ty @ (
+      TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TVar(_) | TName(_, _) | TRecord(_)
+      | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_)
+    ) => "{name} : {show_type(ty)}",
   },
   None => name,
 }
@@ -1328,7 +1329,10 @@ fn session_answer(line, manifest) = match parse_cli_args(session_argv(line)) {
   ParseError(_) => (session_miss(), manifest),
   Invocation(verb) => match verb {
     VAccept(target, l, c) => session_accept(target, l, c, manifest),
-    _ => (session_read(verb), manifest),
+    VEdit(_) | VDoc(_) | VServe | VSpace(_) | VTighten(_) | VFmt(_, _) | VCompile(_) | VAsm(_)
+    | VResume(_) | VCompileStdin | VRun(_, _) | VCheck(_) | VAt(_, _, _) | VRename(_, _, _, _)
+    | VTest(_) | VAudit(_) | VQuery(_, _) | VTeach(_) | VRepl | VMarch | VVerify(_) | VMcp | VSession
+    | VNew(_) | VWith(_, _) | VWelcome => (session_read(verb), manifest),
   },
 }
 
@@ -1352,8 +1356,10 @@ fn session_read(verb) = match verb {
     Some(m) => if m == "main" { teach_project(link_entry_decls()) } else { session_miss() },
     None => teach_project(link_entry_decls()),
   },
-  // drift-audit: ignore — the wildcard IS the policy (cold-only verbs answer MISS by design; a new verb defaults to the cold path, never to a wrong resident answer)
-  _ => session_miss(),
+  // The cold-only verbs answer MISS, so they take the cold path.
+  VEdit(_) | VDoc(_) | VServe | VTighten(_) | VFmt(_, _) | VCompile(_) | VAsm(_) | VResume(_)
+  | VCompileStdin | VRun(_, _) | VCheck(_) | VAccept(_, _, _) | VRename(_, _, _, _) | VTest(_) | VRepl
+  | VMarch | VVerify(_) | VMcp | VSession | VNew(_) | VWith(_, _) | VWelcome => session_miss(),
 }
 
 // THE SESSION'S ACCEPT. The edge is drawn and the file written exactly as

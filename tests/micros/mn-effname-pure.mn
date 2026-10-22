@@ -27,7 +27,7 @@ type EName
 // is_pure_eff_name reads the VARIANT (the wheel's exact shape), never a string.
 fn is_pure(n) = match n {
   EPure  => true,
-  _      => false
+  ENamed(_) => false
 }
 
 // build_declared_row's per-term map: Pure ⇒ the identity (0), a named effect ⇒

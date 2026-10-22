@@ -287,7 +287,7 @@ fn verb_specs() = [
     "tighten",
     "[path]",
     opt_target(VTighten, ??),
-    "author each declared row's residue — its negations and pins; the positive row is projected"
+    "author each declared row's residue (its negations and pins) and each catch-all's roster; the positive row is projected"
   ),
   VerbSpec(
     "fmt",

@@ -294,7 +294,8 @@ fn accept_annotation(handle, s) = match s {
         },
       }
     },
-    _ => {
+    NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NModule(_) | NLink(_) | NTypeAnn(_) | NName(_)
+    | NRow(_) | NParam(_) => {
       eprint_string("mentl edit: the suggestion's position is not a declaration — nothing written\n")
       false
     },

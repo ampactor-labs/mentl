@@ -464,7 +464,8 @@ fn is_fun_at(h) = if h == 0 { false } else { is_fun_ty(lookup_ty(h)) }
 
 fn is_fun_ty(ty) = match fold_strip(slot_ty(ty)) {
   TFun(_, _, _) => true,
-  _ => false,
+  TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TVar(_) | TName(_, _) | TRecord(_)
+  | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => false,
 }
 
 // A value of a kind that never moves with the seed: a word that is not a
@@ -478,7 +479,8 @@ fn is_word_at(h) = if h == 0 {
     TByte => true,
     TAddr => true,
     TName(n, args) => len(args) == 0 && field_name_eq(n, "Bool"),
-    _ => false,
+    TFloat | TList(_) | TTuple(_) | TFun(_, _, _) | TVar(_) | TRecord(_) | TRecordOpen(_, _)
+    | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => false,
   }
 }
 
@@ -804,7 +806,17 @@ fn jvp_field(h, rec, sel, env, cx) = match rec {
       CLocal(_) => jvp_field_plain(h, rec, sel, env, cx),
     },
   },
-  other => jvp_field_plain(h, other, sel, env, cx),
+  other @ (
+    LConst(_, _) | LGlobal(_, _) | LLet(_, _, _) | LUpval(_, _) | LBinOp(_, _, _, _)
+    | LUnaryOp(_, _, _) | LCall(_, _, _) | LTailCall(_, _, _) | LDirectCall(_, _, _, _, _)
+    | LReturn(_, _) | LMakeClosure(_, _, _) | LYield(_, _, _, _) | LCheck(_, _, _) | LAbandon(_, _, _)
+    | LDeclareFn(_) | LIf(_, _, _, _) | LBlock(_, _) | LMakeList(_, _) | LMakeTuple(_, _)
+    | LSimdLanes(_, _) | LFanout(_, _, _, _) | LMakeRecord(_, _) | LRecordUpdate(_, _, _)
+    | LMakeVariant(_, _, _) | LMatch(_, _, _) | LResumeK(_, _, _, _) | LHandleWith(_, _, _, _, _, _)
+    | LDerive(_, _, _) | LArena(_, _) | LFeedback(_, _, _, _, _) | LFeedbackPrior(_) | LPerform(_, _, _)
+    | LFieldLoad(_, _, _) | LPrim(_, _, _) | LStateSlotStore(_, _, _, _) | LStateInit(_, _, _, _)
+    | LShow(_, _) | LHash(_, _) | LInvariantFailure(_, _) | LWasiCall(_, _, _)
+  ) => jvp_field_plain(h, other, sel, env, cx),
 }
 
 fn jvp_field_plain(h, rec, sel, env, cx) = {
@@ -934,7 +946,7 @@ fn jvp_short_circuit(h, op, jl, jr) = if len(jv_pre(jr)) == 0 {
       LinZero,
       AInactive
     ),
-    other => jvp_pair(h, other, jl, jr, inactive_of),
+    other @ (BAdd | BSub | BMul | BDiv | BMod | BEq | BNe | BLt | BGt | BLe | BGe | BConcat) => jvp_pair(h, other, jl, jr, inactive_of),
   }
 }
 
@@ -986,7 +998,7 @@ fn jvp_arith(h, op, jl, jr) = match op {
   },
   // The remainder of a float division has no partials the reading writes
   // yet; what it knows about the result is that its tangent is lost here.
-  other => jvp_pair(h, other, jl, jr, stored_in(h, ??)),
+  other @ (BMod | BEq | BNe | BLt | BGt | BLe | BGe | BAnd | BOr | BConcat) => jvp_pair(h, other, jl, jr, stored_in(h, ??)),
 }
 
 // ─── Calls ────────────────────────────────────────────────────────────
@@ -1117,7 +1129,7 @@ fn jvp_dynamic(h, jf, jargs, tail) = match seq_values(h, [jf] ++ jargs) {
         let call = if tail { LTailCall(h, f, rest_vals) } else { LCall(h, f, rest_vals) }
         jv(pre, call, LinZero, ALost(h, LwClosureCall))
       },
-      _ => {
+      AInactive | AActive => {
         dv_forward_only(h, LwClosureCall)
         dv_face(site_code(rest_vals, callee_result_repr(f, h)))
         let targs = face_args(jargs, rest_vals, 0, [])
@@ -1169,7 +1181,8 @@ fn callee_result_repr(f, h) = match lexpr_handle(f) {
   0 => val_repr(LLocal(h, "")),
   fh => match fold_strip(slot_ty(lookup_ty(fh))) {
     TFun(_, ret, _) => slot_repr(ret),
-    _ => val_repr(LLocal(h, "")),
+    TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TVar(_) | TName(_, _) | TRecord(_)
+    | TRecordOpen(_, _) | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => val_repr(LLocal(h, "")),
   },
 }
 
@@ -1410,7 +1423,17 @@ fn jvp_stmts_from(stmts, i, env, cx, out) = if i >= len(stmts) {
       grad_consumed(h, ji)
       (out ++ jv_pre(ji), jv([], LLet(h, name, jv_val(ji)), LinZero, AInactive))
     },
-    last_stmt => {
+    last_stmt @ (
+      LConst(_, _) | LLocal(_, _) | LGlobal(_, _) | LUpval(_, _) | LBinOp(_, _, _, _)
+      | LUnaryOp(_, _, _) | LCall(_, _, _) | LTailCall(_, _, _) | LDirectCall(_, _, _, _, _)
+      | LReturn(_, _) | LMakeClosure(_, _, _) | LYield(_, _, _, _) | LCheck(_, _, _) | LAbandon(_, _, _)
+      | LDeclareFn(_) | LIf(_, _, _, _) | LBlock(_, _) | LMakeList(_, _) | LMakeTuple(_, _)
+      | LSimdLanes(_, _) | LFanout(_, _, _, _) | LMakeRecord(_, _) | LRecordUpdate(_, _, _)
+      | LMakeVariant(_, _, _) | LMatch(_, _, _) | LResumeK(_, _, _, _) | LHandleWith(_, _, _, _, _, _)
+      | LDerive(_, _, _) | LArena(_, _) | LFeedback(_, _, _, _, _) | LFeedbackPrior(_) | LPerform(_, _, _)
+      | LFieldLoad(_, _, _) | LPrim(_, _, _) | LStateSlotStore(_, _, _, _) | LStateInit(_, _, _, _)
+      | LShow(_, _) | LHash(_, _) | LInvariantFailure(_, _) | LWasiCall(_, _, _)
+    ) => {
       let jl = jvp(last_stmt, env, cx)
       (
         out ++ jv_pre(jl),
@@ -1423,7 +1446,17 @@ fn jvp_stmts_from(stmts, i, env, cx, out) = if i >= len(stmts) {
     LLet(h, name, inner) => match jvp_let(h, name, inner, env, cx) {
       (lets, env2) => jvp_stmts_from(stmts, i + 1, env2, cx, out ++ lets),
     },
-    stmt => {
+    stmt @ (
+      LConst(_, _) | LLocal(_, _) | LGlobal(_, _) | LUpval(_, _) | LBinOp(_, _, _, _)
+      | LUnaryOp(_, _, _) | LCall(_, _, _) | LTailCall(_, _, _) | LDirectCall(_, _, _, _, _)
+      | LReturn(_, _) | LMakeClosure(_, _, _) | LYield(_, _, _, _) | LCheck(_, _, _) | LAbandon(_, _, _)
+      | LDeclareFn(_) | LIf(_, _, _, _) | LBlock(_, _) | LMakeList(_, _) | LMakeTuple(_, _)
+      | LSimdLanes(_, _) | LFanout(_, _, _, _) | LMakeRecord(_, _) | LRecordUpdate(_, _, _)
+      | LMakeVariant(_, _, _) | LMatch(_, _, _) | LResumeK(_, _, _, _) | LHandleWith(_, _, _, _, _, _)
+      | LDerive(_, _, _) | LArena(_, _) | LFeedback(_, _, _, _, _) | LFeedbackPrior(_) | LPerform(_, _, _)
+      | LFieldLoad(_, _, _) | LPrim(_, _, _) | LStateSlotStore(_, _, _, _) | LStateInit(_, _, _, _)
+      | LShow(_, _) | LHash(_, _) | LInvariantFailure(_, _) | LWasiCall(_, _, _)
+    ) => {
       let js = jvp(stmt, env, cx)
       jvp_stmts_from(stmts, i + 1, env, cx, out ++ jv_pre(js) ++ kept_statement(jv_val(js)))
     },
@@ -1436,7 +1469,17 @@ fn jvp_stmts_from(stmts, i, env, cx, out) = if i >= len(stmts) {
 fn kept_statement(v) = match v {
   LLocal(_, _) => [],
   LConst(_, _) => [],
-  other => [SPrim(other)],
+  other @ (
+    LGlobal(_, _) | LLet(_, _, _) | LUpval(_, _) | LBinOp(_, _, _, _) | LUnaryOp(_, _, _)
+    | LCall(_, _, _) | LTailCall(_, _, _) | LDirectCall(_, _, _, _, _) | LReturn(_, _)
+    | LMakeClosure(_, _, _) | LYield(_, _, _, _) | LCheck(_, _, _) | LAbandon(_, _, _) | LDeclareFn(_)
+    | LIf(_, _, _, _) | LBlock(_, _) | LMakeList(_, _) | LMakeTuple(_, _) | LSimdLanes(_, _)
+    | LFanout(_, _, _, _) | LMakeRecord(_, _) | LRecordUpdate(_, _, _) | LMakeVariant(_, _, _)
+    | LMatch(_, _, _) | LResumeK(_, _, _, _) | LHandleWith(_, _, _, _, _, _) | LDerive(_, _, _)
+    | LArena(_, _) | LFeedback(_, _, _, _, _) | LFeedbackPrior(_) | LPerform(_, _, _)
+    | LFieldLoad(_, _, _) | LPrim(_, _, _) | LStateSlotStore(_, _, _, _) | LStateInit(_, _, _, _)
+    | LShow(_, _) | LHash(_, _) | LInvariantFailure(_, _) | LWasiCall(_, _, _)
+  ) => [SPrim(other)],
 }
 
 // `let name = inner`: the binding as it was, and beside an active Float its
@@ -1693,7 +1736,17 @@ fn scrutinee_carried(s, hs, sname: String, js, env) = match s {
       CLocal(_) => carried_local(hs, sname, jv_act(js)),
     },
   },
-  other => carried_local(hs, sname, jv_act(js)),
+  other @ (
+    LConst(_, _) | LGlobal(_, _) | LLet(_, _, _) | LUpval(_, _) | LBinOp(_, _, _, _)
+    | LUnaryOp(_, _, _) | LCall(_, _, _) | LTailCall(_, _, _) | LDirectCall(_, _, _, _, _)
+    | LReturn(_, _) | LMakeClosure(_, _, _) | LYield(_, _, _, _) | LCheck(_, _, _) | LAbandon(_, _, _)
+    | LDeclareFn(_) | LIf(_, _, _, _) | LBlock(_, _) | LMakeList(_, _) | LMakeTuple(_, _)
+    | LSimdLanes(_, _) | LFanout(_, _, _, _) | LMakeRecord(_, _) | LRecordUpdate(_, _, _)
+    | LMakeVariant(_, _, _) | LMatch(_, _, _) | LResumeK(_, _, _, _) | LHandleWith(_, _, _, _, _, _)
+    | LDerive(_, _, _) | LArena(_, _) | LFeedback(_, _, _, _, _) | LFeedbackPrior(_) | LPerform(_, _, _)
+    | LFieldLoad(_, _, _) | LPrim(_, _, _) | LStateSlotStore(_, _, _, _) | LStateInit(_, _, _, _)
+    | LShow(_, _) | LHash(_, _) | LInvariantFailure(_, _) | LWasiCall(_, _, _)
+  ) => carried_local(hs, sname, jv_act(js)),
 }
 
 // The scrutinee's tangent, named once where the match stands.
@@ -1987,7 +2040,17 @@ fn jvp_tail_from(stmts, i, env, cx, out, act) = if i >= len(stmts) {
     LLet(h, name, inner) => match jvp_let(h, name, inner, env, cx) {
       (lets, env2) => jvp_tail_from(stmts, i + 1, env2, cx, out ++ lets, act),
     },
-    stmt => {
+    stmt @ (
+      LConst(_, _) | LLocal(_, _) | LGlobal(_, _) | LUpval(_, _) | LBinOp(_, _, _, _)
+      | LUnaryOp(_, _, _) | LCall(_, _, _) | LTailCall(_, _, _) | LDirectCall(_, _, _, _, _)
+      | LReturn(_, _) | LMakeClosure(_, _, _) | LYield(_, _, _, _) | LCheck(_, _, _) | LAbandon(_, _, _)
+      | LDeclareFn(_) | LIf(_, _, _, _) | LBlock(_, _) | LMakeList(_, _) | LMakeTuple(_, _)
+      | LSimdLanes(_, _) | LFanout(_, _, _, _) | LMakeRecord(_, _) | LRecordUpdate(_, _, _)
+      | LMakeVariant(_, _, _) | LMatch(_, _, _) | LResumeK(_, _, _, _) | LHandleWith(_, _, _, _, _, _)
+      | LDerive(_, _, _) | LArena(_, _) | LFeedback(_, _, _, _, _) | LFeedbackPrior(_) | LPerform(_, _, _)
+      | LFieldLoad(_, _, _) | LPrim(_, _, _) | LStateSlotStore(_, _, _, _) | LStateInit(_, _, _, _)
+      | LShow(_, _) | LHash(_, _) | LInvariantFailure(_, _) | LWasiCall(_, _, _)
+    ) => {
       let js = jvp(stmt, env, cx)
       jvp_tail_from(stmts, i + 1, env, cx, out ++ jv_pre(js) ++ kept_statement(jv_val(js)), act)
     },
@@ -2067,7 +2130,17 @@ fn jvp_tail(e, env, cx) = match e {
       (stmts, v) => (stmts ++ [SPrim(LReturn(h, v))], jv_act(ji)),
     }
   },
-  other => exit_value(lexpr_handle(other), jvp(other, env, cx)),
+  other @ (
+    LConst(_, _) | LLocal(_, _) | LGlobal(_, _) | LLet(_, _, _) | LUpval(_, _) | LBinOp(_, _, _, _)
+    | LUnaryOp(_, _, _) | LCall(_, _, _) | LDirectCall(_, _, _, _, _) | LMakeClosure(_, _, _)
+    | LYield(_, _, _, _) | LCheck(_, _, _) | LAbandon(_, _, _) | LDeclareFn(_) | LMakeList(_, _)
+    | LMakeTuple(_, _) | LSimdLanes(_, _) | LFanout(_, _, _, _) | LMakeRecord(_, _)
+    | LRecordUpdate(_, _, _) | LMakeVariant(_, _, _) | LResumeK(_, _, _, _)
+    | LHandleWith(_, _, _, _, _, _) | LDerive(_, _, _) | LArena(_, _) | LFeedback(_, _, _, _, _)
+    | LFeedbackPrior(_) | LPerform(_, _, _) | LFieldLoad(_, _, _) | LPrim(_, _, _)
+    | LStateSlotStore(_, _, _, _) | LStateInit(_, _, _, _) | LShow(_, _) | LHash(_, _)
+    | LInvariantFailure(_, _) | LWasiCall(_, _, _)
+  ) => exit_value(lexpr_handle(other), jvp(other, env, cx)),
 }
 
 fn tail_arms(arms, envs, cx, i, acc, act) = if i >= len(arms) {
@@ -2606,7 +2679,17 @@ fn installs_step(acc, e) = installs_in(e, acc)
 
 fn installs_in(e, acc) = match e {
   LDerive(_, _, _) => push(acc, e),
-  other => installs_in_list(frame_children(other), acc),
+  other @ (
+    LConst(_, _) | LLocal(_, _) | LGlobal(_, _) | LLet(_, _, _) | LUpval(_, _) | LBinOp(_, _, _, _)
+    | LUnaryOp(_, _, _) | LCall(_, _, _) | LTailCall(_, _, _) | LDirectCall(_, _, _, _, _)
+    | LReturn(_, _) | LMakeClosure(_, _, _) | LYield(_, _, _, _) | LCheck(_, _, _) | LAbandon(_, _, _)
+    | LDeclareFn(_) | LIf(_, _, _, _) | LBlock(_, _) | LMakeList(_, _) | LMakeTuple(_, _)
+    | LSimdLanes(_, _) | LFanout(_, _, _, _) | LMakeRecord(_, _) | LRecordUpdate(_, _, _)
+    | LMakeVariant(_, _, _) | LMatch(_, _, _) | LResumeK(_, _, _, _) | LHandleWith(_, _, _, _, _, _)
+    | LArena(_, _) | LFeedback(_, _, _, _, _) | LFeedbackPrior(_) | LPerform(_, _, _)
+    | LFieldLoad(_, _, _) | LPrim(_, _, _) | LStateSlotStore(_, _, _, _) | LStateInit(_, _, _, _)
+    | LShow(_, _) | LHash(_, _) | LInvariantFailure(_, _) | LWasiCall(_, _, _)
+  ) => installs_in_list(frame_children(other), acc),
 }
 
 // Which symbols reach a line, a query or a reading of their own through
@@ -2827,7 +2910,17 @@ fn expand_install(ld, owner: String) = match ld {
       (MForward, body)
     },
   },
-  other => (MForward, other),
+  other @ (
+    LConst(_, _) | LLocal(_, _) | LGlobal(_, _) | LLet(_, _, _) | LUpval(_, _) | LBinOp(_, _, _, _)
+    | LUnaryOp(_, _, _) | LCall(_, _, _) | LTailCall(_, _, _) | LDirectCall(_, _, _, _, _)
+    | LReturn(_, _) | LMakeClosure(_, _, _) | LYield(_, _, _, _) | LCheck(_, _, _) | LAbandon(_, _, _)
+    | LDeclareFn(_) | LIf(_, _, _, _) | LBlock(_, _) | LMakeList(_, _) | LMakeTuple(_, _)
+    | LSimdLanes(_, _) | LFanout(_, _, _, _) | LMakeRecord(_, _) | LRecordUpdate(_, _, _)
+    | LMakeVariant(_, _, _) | LMatch(_, _, _) | LResumeK(_, _, _, _) | LHandleWith(_, _, _, _, _, _)
+    | LArena(_, _) | LFeedback(_, _, _, _, _) | LFeedbackPrior(_) | LPerform(_, _, _)
+    | LFieldLoad(_, _, _) | LPrim(_, _, _) | LStateSlotStore(_, _, _, _) | LStateInit(_, _, _, _)
+    | LShow(_, _) | LHash(_, _) | LInvariantFailure(_, _) | LWasiCall(_, _, _)
+  ) => (MForward, other),
 }
 
 // The seed's lanes: for a Float, one tangent name under the seed's own key;
@@ -2899,7 +2992,8 @@ fn seed_product(h, sh, key: String) = if sh == 0 {
     TRecord(fs) => seed_record_fields(h, fs, 0, []),
     TRecordOpen(fs, _) => seed_record_fields(h, fs, 0, []),
     TTuple(ts) => seed_tuple_fields(h, ts, 0, []),
-    _ => [],
+    TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TFun(_, _, _) | TVar(_) | TName(_, _)
+    | TRefined(_, _) | TReprPin(_, _) | TCont(_, _, _, _) | TAlias(_, _) | TValue(_) => [],
   }
   match fields {
     [] => None,
@@ -3168,7 +3262,17 @@ fn twin_ref_add(names, e) = match e {
   } else {
     names
   },
-  other => names,
+  other @ (
+    LConst(_, _) | LLocal(_, _) | LGlobal(_, _) | LLet(_, _, _) | LUpval(_, _) | LBinOp(_, _, _, _)
+    | LUnaryOp(_, _, _) | LCall(_, _, _) | LTailCall(_, _, _) | LDirectCall(_, _, _, _, _)
+    | LReturn(_, _) | LMakeClosure(_, _, _) | LYield(_, _, _, _) | LCheck(_, _, _) | LAbandon(_, _, _)
+    | LDeclareFn(_) | LIf(_, _, _, _) | LBlock(_, _) | LMakeList(_, _) | LMakeTuple(_, _)
+    | LSimdLanes(_, _) | LFanout(_, _, _, _) | LMakeRecord(_, _) | LRecordUpdate(_, _, _)
+    | LMakeVariant(_, _, _) | LMatch(_, _, _) | LResumeK(_, _, _, _) | LHandleWith(_, _, _, _, _, _)
+    | LDerive(_, _, _) | LArena(_, _) | LFeedback(_, _, _, _, _) | LFeedbackPrior(_) | LPerform(_, _, _)
+    | LFieldLoad(_, _, _) | LPrim(_, _, _) | LStateSlotStore(_, _, _, _) | LStateInit(_, _, _, _)
+    | LShow(_, _) | LHash(_, _) | LInvariantFailure(_, _) | LWasiCall(_, _, _)
+  ) => names,
 }
 
 // The facts the next pass reads.
